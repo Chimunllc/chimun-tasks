@@ -4236,10 +4236,9 @@ function renderSidebar() {
     // ⚠ Тоог харуулахад дата ЭХЛЭЭД хэрэгтэй — дэлгэц нээхийг хүлээвэл
     //   «5 хүн хариу хүлээж байна» гэдгийг хэн ч мэдэхгүй өнгөрнө.
     if (seeFc && state.fbChats === undefined) { state.fbChats = null; loadFbChats(true).then(() => render()); }
-    if (seeFc && state.fbChatLog === undefined) { state.fbChatLog = null; loadFbChatLog(true).then(() => render()); }
     const fcC = document.getElementById('cnt-chats');
     if (fcC) {
-      const n = seeFc ? chatWaiting(state.fbChats || [], Date.now()).length + chatPending(state.fbChatLog || []).length : 0;
+      const n = seeFc ? chatWaiting(state.fbChats || [], Date.now()).length : 0;
       fcC.textContent = n ? String(n) : '';
     }
   }
@@ -30169,7 +30168,6 @@ function attachMissedCallsHandlers() {
 //   бол Facebook Inbox — мөр бүр дээр холбоос бий. Энд төлөв ба БОТ юу
 //   хэлснийг харна.
 const FB_CHATS_URL = () => `${DB_URL}/rest/v1/fb_chats`;
-const FB_CHAT_LOG_URL = () => `${DB_URL}/rest/v1/fb_chat_bot_log`;
 const CHAT_DAYS = 30;
 const CHAT_WINDOW_H = 24;        // Meta-гийн чөлөөт бичвэрийн цонх
 
@@ -30186,17 +30184,6 @@ async function loadFbChats(force) {
     state.fbChats = await r.json();
     return state.fbChats;
   } catch (e) { dataLoadFailed('Facebook чат', e); state.fbChats = state.fbChats || []; return state.fbChats; }
-}
-
-async function loadFbChatLog(force) {
-  if (state.fbChatLog && !force) return state.fbChatLog;
-  try {
-    const r = await fetchWithTimeout(`${FB_CHAT_LOG_URL()}?select=*&order=at.desc&limit=400`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    state.fbChatLog = await r.json();
-    return state.fbChatLog;
-  } catch (e) { dataLoadFailed('Ботын лог', e); state.fbChatLog = state.fbChatLog || []; return state.fbChatLog; }
 }
 
 // ── Цэвэр функцууд ─────────────────────────────────────────────────────────
@@ -30254,47 +30241,17 @@ function chatStats(chats, fromDay, now) {
   return out;
 }
 
-// Баталгаа хүлээж буй ботын хариулт: `review` тэмдэгтэй, илгээгдээгүй,
-// батлагдаагүй, алдаагүй. Дөрвүүлээ шалгагдана — аль нэгийг нь орхивол
-// татгалзсан эсвэл аль хэдийн явсан мөр дахин гарч ирнэ.
-function chatPending(log) {
-  return (log || []).filter(x => x && x.review && !x.sent && !x.approved_by && !x.error && x.out_text)
-    .sort((a, b) => chatT(b.at) - chatT(a.at));
-}
-
 function chatFbLink(c) {
   const t = String((c && c.thread_id) || '').replace(/^t_/, '');
   return t ? `https://business.facebook.com/latest/inbox/all?selected_item_id=${encodeURIComponent(t)}` : '';
 }
 
-// Ботын горим: off (унтраалттай) · review (хариулт бэлдээд ХҮЛЭЭНЭ) · live (шууд илгээнэ).
-const CHAT_MODES = [
-  { k: 'off', label: 'Унтраалттай', hint: 'Бот ямар ч мессеж бичихгүй' },
-  { k: 'review', label: 'Баталгаатай', hint: 'Бот хариултаа бэлдэнэ, та баталсны дараа явна' },
-  { k: 'live', label: 'Шууд', hint: 'Бот өөрөө хариулна' },
-];
-function chatBotMode(cfg) {
-  if (!cfg || !cfg.enabled) return 'off';
-  return cfg.review ? 'review' : 'live';
-}
-
 function renderChats() {
-  if (state.fbChats === null || state.fbChatLog === null) return '<div class="fc-empty">Ачаалж байна…</div>';
+  if (state.fbChats === null) return '<div class="fc-empty">Ачаалж байна…</div>';
   const now = Date.now();
   const chats = state.fbChats || [];
-  const log = state.fbChatLog || [];
   const st = chatStats(chats, addDays(todayStr(), -CHAT_DAYS), now);
-  const waiting = chatWaiting(chats, now);
-  const pending = chatPending(log);
-  const sent = log.filter(x => x && x.sent).slice(0, 60);
-  const tab = state._fcTab || (pending.length ? 'review' : 'wait');
-  const mode = chatBotMode(state.fbBot);
-
-  const modeBar = `<div class="fc-mode">
-    <span class="fc-mode-l">Бот:</span>
-    ${CHAT_MODES.map(m => `<button class="fc-mode-b${mode === m.k ? ' on' : ''}" data-fc-mode="${m.k}"${state.isCEO ? '' : ' disabled'}>${m.label}</button>`).join('')}
-    <span class="fc-mode-h">${escapeHtml((CHAT_MODES.find(m => m.k === mode) || {}).hint || '')}</span>
-  </div>`;
+  const rows = chatWaiting(chats, now);
 
   const cards = `<div class="fc-cards">
     <div class="fc-card"><div class="fc-v">${st.n}</div><div class="fc-k">чат · ${CHAT_DAYS} хоног</div></div>
@@ -30303,72 +30260,32 @@ function renderChats() {
     <div class="fc-card"><div class="fc-v">${st.med === null ? '—' : st.med + ' мин'}</div><div class="fc-k">эхний хариулт</div></div>
   </div>`;
 
-  const tabs = `<div class="fc-tabs">
-    ${[['wait', 'Хүлээгдэж буй', waiting.length], ['review', 'Батлах', pending.length], ['log', 'Бот юу хэлсэн', sent.length]]
-      .map(([k, l, n]) => `<button class="fc-tab${tab === k ? ' on' : ''}" data-fc-tab="${k}">${l}${n ? ` <b>${n}</b>` : ''}</button>`).join('')}
-  </div>`;
-
-  let body = '';
-  if (tab === 'wait') {
-    body = waiting.length ? `<div class="fc-list">${waiting.slice(0, 120).map(c => {
-      const left = chatWindowLeft(c.last_in_at, now);
-      // ⚠ Цонх хаагдсан чатыг НУУХГҮЙ — тэр нь алдагдсан лид. Гэхдээ «хариулж
-      //   болно» гэж хуурахгүй: Meta чөлөөт бичвэр авахаа больсон гэдгийг ил хэлнэ.
-      const win = left > 0
-        ? `<span class="fc-tag ok">${left} цаг үлдсэн</span>`
-        : '<span class="fc-tag off">цонх хаагдсан — зөвхөн залгах</span>';
-      const own = c.state === 'human' ? '<span class="fc-tag">ажилтан авсан</span>' : '';
-      const hand = c.handoff_why ? `<span class="fc-tag warn">${escapeHtml(c.handoff_why)}</span>` : '';
-      return `<div class="fc-row">
-        <div class="fc-main">
-          <div class="fc-name">${escapeHtml(c.name || 'Нэргүй')}</div>
-          <div class="fc-sub">${escapeHtml(ubStamp(c.last_in_at))} · ${Number(c.msgs_in) || 0} мессеж бичсэн</div>
-          <div class="fc-tags">${win}${own}${hand}</div>
-        </div>
-        <div class="fc-act">
-          <a class="btn btn-sm ui-raw" href="${chatFbLink(c)}" target="_blank" rel="noopener">Inbox ↗</a>
-          <button class="btn btn-sm ui-raw" data-fc-done="${escapeHtml(c.thread_id)}">Шийдсэн</button>
-        </div>
-      </div>`;
-    }).join('')}</div>` : '<div class="fc-empty">Хариу хүлээж буй чат алга.</div>';
-  } else if (tab === 'review') {
-    body = pending.length ? `<div class="fc-list">${pending.map(x => {
-      const c = chats.find(z => z && z.thread_id === x.thread_id) || {};
-      return `<div class="fc-draft">
-        <div class="fc-sub">${escapeHtml(c.name || 'Нэргүй')} · ${escapeHtml(ubStamp(x.at))}${x.tools ? ' · ' + escapeHtml(x.tools) : ''}</div>
-        <div class="fc-in">${escapeHtml(x.in_text || '')}</div>
-        <div class="fc-out">${escapeHtml(x.out_text || '')}</div>
-        <div class="fc-act">
-          <button class="btn btn-primary btn-sm ui-raw" data-fc-ok="${x.id}">Батлаад илгээх</button>
-          <button class="btn btn-sm ui-raw" data-fc-no="${x.id}">Татгалзах</button>
-          <a class="btn btn-sm ui-raw" href="${chatFbLink(c)}" target="_blank" rel="noopener">Inbox ↗</a>
-        </div>
-      </div>`;
-    }).join('')}</div>` : '<div class="fc-empty">Батлах хариулт алга.</div>';
-  } else {
-    body = sent.length ? `<div class="fc-list">${sent.map(x => {
-      const c = chats.find(z => z && z.thread_id === x.thread_id) || {};
-      return `<div class="fc-draft">
-        <div class="fc-sub">${escapeHtml(c.name || 'Нэргүй')} · ${escapeHtml(ubStamp(x.at))}${x.approved_by ? ' · батлав: ' + escapeHtml(x.approved_by) : ''}</div>
-        <div class="fc-in">${escapeHtml(x.in_text || '')}</div>
-        <div class="fc-out">${escapeHtml(x.out_text || '')}</div>
-      </div>`;
-    }).join('')}</div>` : '<div class="fc-empty">Бот хараахан юу ч илгээгээгүй.</div>';
-  }
+  const body = rows.length ? `<div class="fc-list">${rows.slice(0, 120).map(c => {
+    const left = chatWindowLeft(c.last_in_at, now);
+    // ⚠ Цонх хаагдсан чатыг НУУХГҮЙ — тэр нь алдагдсан лид. Гэхдээ «хариулж
+    //   болно» гэж хуурахгүй: Meta чөлөөт бичвэр авахаа больсныг ил хэлнэ.
+    const win = left > 0
+      ? `<span class="fc-tag ok">${left} цаг үлдсэн</span>`
+      : '<span class="fc-tag off">цонх хаагдсан — зөвхөн залгах</span>';
+    return `<div class="fc-row">
+      <div class="fc-main">
+        <div class="fc-name">${escapeHtml(c.name || 'Нэргүй')}</div>
+        <div class="fc-sub">${escapeHtml(ubStamp(c.last_in_at))} · ${Number(c.msgs_in) || 0} мессеж бичсэн</div>
+        <div class="fc-tags">${win}</div>
+      </div>
+      <div class="fc-act">
+        <a class="btn btn-sm ui-raw" href="${chatFbLink(c)}" target="_blank" rel="noopener">Inbox ↗</a>
+        <button class="btn btn-sm ui-raw" data-fc-done="${escapeHtml(c.thread_id)}">Шийдсэн</button>
+      </div>
+    </div>`;
+  }).join('')}</div>` : '<div class="fc-empty">Хариу хүлээж буй чат алга.</div>';
 
   return `<div class="fc-wrap"><h3 class="fc-h">💬 Facebook чат</h3>
-    <div class="fc-note">Бүтэн яриа Facebook Inbox дээр. Энд төлөв ба бот юу хэлснийг харна.</div>
-    ${modeBar}${cards}${tabs}${body}</div>`;
+    <div class="fc-note">Хариулах ажлыг Meta Business Agent гүйцэтгэнэ. Энэ дэлгэц нь
+      хэмжүүр: хэдэн чат хариугүй үлдэж байгааг харуулна. Бүтэн яриа Facebook Inbox дээр.</div>
+    ${cards}${body}</div>`;
 }
 
-async function saveChatRow(id, patch) {
-  const r = await fetchWithTimeout(`${FB_CHAT_LOG_URL()}?id=eq.${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify(patch),
-  }, 15000);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-}
 async function saveChatState(thread, patch) {
   const r = await fetchWithTimeout(`${FB_CHATS_URL()}?thread_id=eq.${encodeURIComponent(thread)}`, {
     method: 'PATCH',
@@ -30379,48 +30296,6 @@ async function saveChatState(thread, patch) {
 }
 
 function attachChatsHandlers() {
-  document.querySelectorAll('[data-fc-tab]').forEach(b => b.onclick = () => { state._fcTab = b.dataset.fcTab; render(); });
-
-  // ⛔ ГОРИМ СОЛИХ = ГАДАГШ чиглэсэн үйлдэл. «Шууд» болгосон мөчид бот
-  //   харилцагч руу өөрөө бичиж эхэлнэ — баталгаажуулалтгүй байж БОЛОХГҮЙ.
-  document.querySelectorAll('[data-fc-mode]').forEach(b => b.onclick = async () => {
-    const m = b.dataset.fcMode;
-    const msg = m === 'live'
-      ? 'Бот харилцагч руу ӨӨРӨӨ хариулж эхэлнэ. Таны баталгаа хүлээхгүй. Итгэлтэй байна уу?'
-      : m === 'off' ? 'Ботыг бүрэн унтраах уу?' : 'Бот хариултаа бэлдээд таны баталгааг хүлээх үү?';
-    if (!(await showConfirm(msg, { okText: 'Тийм' }))) return;
-    try {
-      const cfg = Object.assign({}, state.fbBot || {}, { enabled: m !== 'off', review: m === 'review' });
-      await saveAppConfig('fb_bot', cfg);
-      state.fbBot = cfg;
-      showToast('Ботын горим: ' + ((CHAT_MODES.find(x => x.k === m) || {}).label || m), 'success');
-      render();
-    } catch (err) { showToast('Хадгалж чадсангүй: ' + err.message, 'error', 4000); }
-  });
-
-  document.querySelectorAll('[data-fc-ok]').forEach(b => b.onclick = async () => {
-    if (!(await showConfirm('Энэ хариултыг харилцагч руу илгээх үү?', { okText: 'Илгээх' }))) return;
-    try {
-      await saveChatRow(b.dataset.fcOk, { approved_by: state.me || 'CEO' });
-      await loadFbChatLog(true);
-      showToast('Батлагдлаа — удахгүй илгээгдэнэ', 'success', 3000);
-      render();
-    } catch (err) { showToast('Хадгалж чадсангүй: ' + err.message, 'error', 4000); }
-  });
-
-  document.querySelectorAll('[data-fc-no]').forEach(b => b.onclick = async () => {
-    const row = (state.fbChatLog || []).find(x => x && String(x.id) === String(b.dataset.fcNo));
-    try {
-      await saveChatRow(b.dataset.fcNo, { error: 'татгалзсан: ' + (state.me || 'CEO') });
-      // Татгалзсан хариулт = бот энэ чатыг зөв ойлгоогүй. Хүнд шилжүүлнэ,
-      // эс бөгөөс бот дараагийн эргэлтэд ижил алдаагаа давтана.
-      if (row && row.thread_id) await saveChatState(row.thread_id, { state: 'human', handoff_at: new Date().toISOString(), handoff_why: 'ботын хариулт татгалзсан' });
-      await loadFbChatLog(true); await loadFbChats(true);
-      showToast('Татгалзлаа — чат ажилтанд шилжлээ', 'success', 3000);
-      render();
-    } catch (err) { showToast('Хадгалж чадсангүй: ' + err.message, 'error', 4000); }
-  });
-
   document.querySelectorAll('[data-fc-done]').forEach(b => b.onclick = async () => {
     try {
       await saveChatState(b.dataset.fcDone, { state: 'done' });
@@ -37512,10 +37387,6 @@ function refreshViewData() {
   // 📵 Алдсан дуудлага — лог + тэмдэглэл + харилцагч (нэр тааруулахад).
   if (v === 'chats' && canSeeChats()) {
     if (state.fbChats === undefined) { state.fbChats = null; loadFbChats(true).then(() => { if (state.view === 'chats') render(); }); }
-    if (state.fbChatLog === undefined) { state.fbChatLog = null; loadFbChatLog(true).then(() => { if (state.view === 'chats') render(); }); }
-    // Ботын горим = `app_config.fb_bot`. Ачаалагдаагүй бол дэлгэц «унтраалттай»
-    // гэж ХУДЛАА харуулна — тиймээс нээх бүрд нэг удаа уншина.
-    if (state.fbBot === undefined) { state.fbBot = null; loadAppConfig('fb_bot').then(v2 => { state.fbBot = v2 || {}; if (state.view === 'chats') render(); }); }
   }
   if (v === 'missedcalls' && canSeeMissedCalls()) {
     if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'missedcalls') render(); }); }

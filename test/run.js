@@ -7709,6 +7709,8 @@ need(['orderCustType']);
 }
 
 // ── 💬 Facebook чат дэлгэц ─────────────────────────────────────────────────
+// Хариулах ажлыг Meta Business Agent хийнэ. Энэ дэлгэц нь ХЭМЖҮҮР —
+// Meta-гийн бот үнэхээр ажиллаж байгаа эсэхийг яг эндээс мэднэ.
 {
   const now = Date.parse('2026-09-17T12:00:00Z');
   const h = (n) => new Date(now - n * 3600000).toISOString();
@@ -7719,15 +7721,14 @@ need(['orderCustType']);
   eq(F.chatWindowLeft(null, now), 0, 'чат: мессежгүй → 0');
 
   const cs = [
-    { thread_id: 't1', name: 'А', state: 'bot', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(3) },
-    { thread_id: 't2', name: 'Б', state: 'bot', last_at: '2026-09-17', last_in_at: h(40), last_out_at: h(50) },
-    { thread_id: 't3', name: 'В', state: 'bot', last_at: '2026-09-17', last_in_at: h(5), last_out_at: h(2) },
+    { thread_id: 't1', name: 'А', state: 'open', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(3) },
+    { thread_id: 't2', name: 'Б', state: 'open', last_at: '2026-09-17', last_in_at: h(40), last_out_at: h(50) },
+    { thread_id: 't3', name: 'В', state: 'open', last_at: '2026-09-17', last_in_at: h(5), last_out_at: h(2) },
     { thread_id: 't4', name: 'Г', state: 'done', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(9) },
   ];
   const w = F.chatWaiting(cs, now);
   eq(w.map(x => x.thread_id).join(','), 't1,t2', 'чат: харилцагч сүүлд бичсэн нь л жагсана');
-  // ⛔ Цонх хаагдсан чатыг ХАСАХГҮЙ — тэр нь алдагдсан лид, тоолуураас нуувал
-  //   «бүгд хариулагдсан» гэсэн худал дүр зураг гарна.
+  // ⛔ Цонх хаагдсан чатыг ХАСАХГҮЙ — тэр нь алдагдсан лид.
   ok(w.some(x => x.thread_id === 't2'), 'чат: цонх хаагдсан ч жагсаалтад үлдэнэ');
 
   const stt = F.chatStats(cs, '2026-09-01', now);
@@ -7738,62 +7739,11 @@ need(['orderCustType']);
   eq(F.chatStats([], '2026-09-01', now).med, null, 'чат: дата алга → медиан null');
   eq(stt.med, 180, 'чат: эхний хариултын медиан (t3 = 3 цаг)');
 
-  // Батлах дараалал — дөрвөн нөхцөл ЗЭРЭГ шалгагдана.
-  const lg = [
-    { id: 1, review: true, sent: false, approved_by: null, error: null, out_text: 'а', at: h(1) },
-    { id: 2, review: true, sent: true, approved_by: 'X', error: null, out_text: 'б', at: h(2) },
-    { id: 3, review: true, sent: false, approved_by: 'X', error: null, out_text: 'в', at: h(3) },
-    { id: 4, review: true, sent: false, approved_by: null, error: 'татгалзсан', out_text: 'г', at: h(4) },
-    { id: 5, review: false, sent: false, approved_by: null, error: null, out_text: 'д', at: h(5) },
-  ];
-  eq(F.chatPending(lg).map(x => x.id).join(','), '1', 'чат: зөвхөн шийдэгдээгүй ноорог батлахаар гарна');
-  eq(F.chatBotMode({}), 'off', 'чат: тохиргоогүй → унтраалттай');
-  eq(F.chatBotMode({ enabled: true, review: true }), 'review', 'чат: баталгаатай горим');
-  eq(F.chatBotMode({ enabled: true, review: false }), 'live', 'чат: шууд горим');
-
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-  // ⛔ «Шууд» болгох нь ГАДАГШ чиглэсэн, буцаахад хэцүү үйлдэл — бот тэр
-  //   мөчөөс харилцагч руу өөрөө бичиж эхэлнэ. Баталгаажуулалт ЗААВАЛ.
-  ok(/data-fc-mode\]'\)\.forEach[\s\S]{0,700}?if \(!\(await showConfirm\(msg[\s\S]{0,60}?\)\)\) return;/.test(src),
-     'чат: горим солиход баталгаажуулалт байна');
-  ok(/data-fc-ok\]'\)\.forEach[\s\S]{0,300}?if \(!\(await showConfirm\([\s\S]{0,120}?\)\)\) return;/.test(src),
-     'чат: хариулт илгээхэд баталгаажуулалт байна');
-  // ⛔ Татгалзсан хариулт = бот энэ чатыг ойлгоогүй. Хүнд шилжүүлэхгүй бол
-  //   дараагийн эргэлтэд ижил алдаагаа давтана.
-  ok(/data-fc-no\]'\)\.forEach[\s\S]{0,800}?state: 'human'/.test(src),
-     'чат: татгалзсан чат хүнд шилжинэ');
-}
-
-// ── Meta Business AI-ийн үнийн жагсаалт (tools/meta_pricelist.py) ─────────
-// Business AI нь Commerce каталогийг УНШДАГГҮЙ. Бөөнөөр бөгөөд автоматаар
-// шинэчлэгддэг цорын ганц зам = Google Drive (Meta-гийн баримт: синк 12 цаг).
-{
-  const pl = path.join(__dirname, '..', 'tools', 'meta_pricelist.py');
-  const py = fs.readFileSync(pl, 'utf8');
-  const out = require('child_process')
-    .execSync(`python3 ${JSON.stringify(pl)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  ok(/meta_pricelist selftest: \d+ тест OK/.test(out), 'үнэ: Python өөрийн тест тэнцэв — ' + out.trim());
-
-  // ⛔ «1 ХОНОГИЙН» гэж ил бичихгүй бол AI нийт үнэ гэж ойлгоно.
-  ok(/1 хоногийн түрээсийн үнэ \(төгрөг\)/.test(py) && /1 хоногийн түрээс, НӨАТ багтсан/.test(py),
-     'үнэ: хоногийн үнэ гэдэг нь багана ба тайлбарт ил бичигдэнэ');
-  // ⛔ ХОЛБООС ТАСРАХААС СЭРГИЙЛ. Meta нь Sheet-ийг хаягаар нь холбодог тул
-  //    шинэчлэх бүрд шинэ файл үүсгэвэл холбоос үхнэ. Файлын нэр ТОГТМОЛ.
-  ok(/FNAME = 'M-event-unijn-jagsaalt\.csv'/.test(py), 'үнэ: файлын нэр тогтмол');
-  // ⚠ rclone-д import БА export формат хоёулаа csv байх ёстой — эс бөгөөс
-  //    тохиргооны өгөгдмөл (xlsx) зөрчилдөж «can't convert» гэж унана.
-  ok(/'--drive-import-formats', 'csv', '--drive-export-formats', 'csv'/.test(py),
-     'үнэ: rclone хоёр форматыг зэрэг өгнө');
-  // ⛔ Үнэ зөвхөн ТОО — таслал, ₮ тэмдэгтэй бол Meta текст гэж уншина.
-  ok(/str\(v\), group_of|str\(v\), cat/.test(py), 'үнэ: CSV-д цэвэр тоо');
-  // ⛔ Барааны КОД байхгүй бол «M-102 хэд вэ?» гэсэн асуултад хариулахгүй.
-  //    Мөн ХОЛБООС байхгүй бол Custom instructions-ийн «барааны холбоосыг өг»
-  //    гэсэн дүрэм хэрэгжих боломжгүй — AI холбоосыг зохиох аргагүй.
-  ok(/'Барааны код'/.test(py) && /'Барааны холбоос'/.test(py),
-     'үнэ: код ба холбоос багана байна');
-  ok(/def item_link/.test(py) && /mevent\.mn\/products/.test(py),
-     'үнэ: барааны хуудсын хаяг угсрана');
-  ok(/stdout\.strip\('\\n'\)/.test(py), 'үнэ: psql тусгаарлагч хамгаалагдсан');
+  // ⛔ ДАХИН БОТ БОЛГОХГҮЙ — Meta-гийн ботын хажуугаар хоёр дахь бот
+  //    ярьж эхэлбэл харилцагч төөрнө.
+  ok(!/data-fc-ok|data-fc-no|data-fc-mode|chatBotMode|chatPending/.test(src),
+     'чат: ботын удирдлага дэлгэцэд байхгүй');
 }
 
 // ── Meta-гийн бүтээгдэхүүний каталог (tools/fb_catalog.py) ─────────────────
@@ -7820,9 +7770,10 @@ need(['orderCustType']);
   ok(/stdout\.strip\('\\n'\)/.test(py), 'каталог: psql тусгаарлагч хамгаалагдсан');
 }
 
-// ── Messenger чатбот (tools/fb_chat.py) ────────────────────────────────────
-// Бот КОМПАНИЙН НЭРЭЭР харилцагчтай ярьдаг тул дүрмийг прозоор бичээд орхиж
-// БОЛОХГҮЙ — зөрчвөл CI унана.
+// ── Messenger чатын татагч (tools/fb_chat.py) ─────────────────────────────
+// ⛔ ХАРИУЛАХ АЖИЛ ЭНД БАЙХГҮЙ (2026-09-17). Meta Business Agent тэр ажлыг
+//    хийдэг болсон тул манай ботыг хассан — хоёр бот нэг чатад хариулах нь
+//    харилцагчийг төөрүүлнэ. Энд үлдсэн нь зөвхөн ХЭМЖИЛТ.
 {
   const chat = path.join(__dirname, '..', 'tools', 'fb_chat.py');
   const py = fs.readFileSync(chat, 'utf8');
@@ -7832,87 +7783,24 @@ need(['orderCustType']);
     .execSync(`python3 ${JSON.stringify(chat)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   ok(/fb_chat selftest: \d+ тест OK/.test(out), 'chat: Python өөрийн тест тэнцэв — ' + out.trim());
 
-  // ⛔ ҮНЭ ЗОХИОХГҮЙ — бот үнэ/сул үлдэгдлийг манай өөрийн харагдацаас л уншина.
-  //    Энэ нь сайт юу харуулж байгаатай ЯГ ижил эх сурвалж. Салгавал бот
-  //    сайтаас өөр үнэ хэлж, компани түүнийг барих үүрэгтэй болно.
-  ok(/from public_catalog/.test(py), 'chat: үнэ public_catalog-оос уншигдана');
-  ok(/def tool_delivery/.test(py) && /delivery_city_fee/.test(py) && /delivery_per_km/.test(py),
-     'chat: хүргэлтийн төлбөр тарифаас уншигдана');
+  // ⛔ ДАХИН БОТ БОЛГОХГҮЙ. Хэрэв энд LLM дуудлага буцаж ирвэл Meta-гийн
+  //    ботын хажуугаар хоёр дахь бот ярьж эхэлнэ.
+  ok(!/anthropic|api\.anthropic|ANTHROPIC/i.test(py), 'chat: LLM дуудлага байхгүй');
+  ok(!/\/messages['"]?\s*,/.test(py) && !/def api_post/.test(py),
+     'chat: мессеж илгээх зам байхгүй');
 
-  // ⛔ ХҮН ОРВОЛ БОТ ГАРНА. Ажилтны бичсэн мессежийн id бидний логт байхгүй —
-  //    тэр л цорын ганц дохио. Хасвал бот ажилтны яриаг дундуур нь таслана.
-  ok(/def thread_state/.test(py) && /bot_mids/.test(py), 'chat: хүний оролцоог таьна');
-  // ⛔ ГЭХДЭЭ ЭЗЭМШИЛ ХУГАЦААТАЙ. Хугацаагүй бол эхний татацад «human» болсон
-  //    294 хуучин харилцагч бот руу ХЭЗЭЭ Ч эргэж орохгүй болно.
-  ok(/HUMAN_TTL_H/.test(py) && /ttl_h/.test(py), 'chat: ажилтны эзэмшил хугацаатай');
-  // ⛔ Трипвайрын шилжүүлэг харин НААЛДАНА — гомдол 12 цагаар уусдаггүй.
-  ok(/when fb_chats\.handoff_at is not null then 'human'/.test(py),
-     'chat: трипвайрын шилжүүлэг татацаар арилахгүй');
-  ok(/row\['state'\] == 'human'/.test(py), 'chat: human чатыг алгасна');
-  ok(/out_mid/.test(py) && /out_mid/.test(sql),
-     'chat: илгээсэн мессежийн id хадгалагдана');
-
-  // ⛔ META-ГИЙН 24 ЦАГИЙН ЦОНХ — хэтэрвэл Meta татгалзана.
-  ok(/def in_window/.test(py) && /in_window\(last_in, now\)/.test(py),
-     'chat: 24 цагийн цонх шалгагдана');
-
-  // ⛔ ТРИПВАЙР — мөнгө, гомдол, хөнгөлөлтийг машин шийдэхгүй.
-  ok(/TRIPWIRES/.test(py) && /хөнгөлөлт/.test(py) && /гомдол/.test(py),
-     'chat: хөнгөлөлт/гомдол хүнд шилжинэ');
-  ok(/why = tripwire\(in_text\)/.test(py), 'chat: трипвайр илгээхээс ӨМНӨ шалгагдана');
-
-  // ⛔ УНТРААХ ТОВЧ — `enabled` худал бол ганц ч мессеж явахгүй.
-  ok(/if not conf\.get\('enabled'\)/.test(py), 'chat: kill switch байна');
-  // ⛔ LLM түлхүүрийг ХУУЛЖ БҮҮ БИЧ — VPS-ийн стекийн .env-д аль хэдийн байгаа.
-  //    Хоёр файлд байвал нэгийг эргүүлэхэд нөгөө нь чимээгүй хуучирна.
-  ok(/STACK_ENV/.test(py) && /ANTHROPIC_API_KEY/.test(py),
-     'chat: түлхүүр байгаа газраасаа уншигдана');
-  // ⚠ Стекийн .env-д DB нууц үг ч бий — зөвхөн LLM түлхүүрийн НЭРийг авна.
-  ok(/_read_env\(STACK_ENV, set\(LLM_KEYS\)\)/.test(py),
-     'chat: стекийн .env-ээс зөвхөн түлхүүр уншина');
-  ok(/row\['turns'\] >= max_turns/.test(py), 'chat: ботын эргэлт хязгаартай');
-  // ⛔ ДАВХАР НООРОГ = МӨНГӨ ШАТААХ. Cron 2 мин тутам ажилладаг тул хүлээж
-  //    буй ноорогийг шалгахгүй бол нэг чат цагт 30 ноорог үүсгэнэ (амьд
-  //    системд эхний ажиллалтад 2 хүнд 5-5 ноорог үүссэн).
-  ok(/def pending_threads/.test(py) && /if tid in pend:/.test(py),
-     'chat: ноорог хүлээж байхад шинийг үүсгэхгүй');
-  // ⛔ HAIKU-гийн монгол хэл хангалтгүй — харилцагч руу явах бичвэр тул
-  //    хэлний чанар нь бүтээгдэхүүний асуудал.
-  ok(/^MODEL = '(?!.*haiku)/mi.test(py), 'chat: MODEL нь Haiku БИШ');
-  // ⛔ Messenger markdown харагдуулдаггүй — од, доогуур зураас түүхийгээр гарна.
-  ok(/ЭМОДЗИ, ОД/.test(py), 'chat: markdown хориглосон');
-  // Зардлыг таамаглахгүй хэмжинэ.
-  ok(/tok_in/.test(py) && /tok_in/.test(sql), 'chat: токены зарцуулалт бүртгэгдэнэ');
-  // ⛔ БОТ ЗУРАГ ХАРДАГГҮЙ. 195 чатын 25-д харилцагчийн сүүлийн мессеж зөвхөн
-  //    зураг байв — бот өмнөх бичвэрээр ТААМАГЛАН, итгэлтэй сонсогдох буруу
-  //    хариулт өгдөг байв. Хүнд шилжинэ.
-  ok(/def blind_on_photo/.test(py) && /if blind_on_photo\(msgs, page\)/.test(py),
-     'chat: зөвхөн зурагтай мессеж хүнд шилжинэ');
-  // ⚠ `attachments`-ыг татахгүй бол дээрх хамгаалалт ЧИМЭЭГҮЙ унтарна.
-  ok(/attachments\{mime_type\}/.test(py), 'chat: хавсралт татагдана');
-  // Зурган мессежийг чимээгүй алгасвал ярианы утга тасарна.
-  ok(/\[зураг илгээв\]/.test(py), 'chat: зураг түүхэнд тэмдэглэгдэнэ');
-  // ⛔ DB-ийн ТӨЛӨВ эрхэм. `handoff()` DB-д бичдэг ч ярианд ажилтан бичээгүй
-  //    тул `thread_state()` «bot» гэж буцаана — шилжүүлсэн чат 2 минут тутам
-  //    дахин Claude руу явж, нэг чат өдөрт ~$7 шатаах нүх байв.
-  ok(/def stored_states/.test(py) && /if handed or st_db in \('human', 'done'\)/.test(py),
-     'chat: шилжүүлсэн чат дахин ботод очихгүй');
-  // ⛔ Нэг ажиллалт 1-2 минут үргэлжилдэг тул cron давхарлаж ХОЁР ноорог
-  //    үүсгэдэг байв (амьд системд болсон). Түгжээгүй бол давтагдана.
-  ok(/fcntl\.flock/.test(py) && /LOCK_EX \| fcntl\.LOCK_NB/.test(py),
-     'chat: давхар ажиллалт түгжигдсэн');
-  // ⚠ Бүтэн татац 132 сек болдог тул минут тутам ажиллуулах боломжгүй —
-  //    хариулт 3-5 мин хоцорч, ботоос хурдны давуу тал гарахгүй байв.
-  //    Хариултын зам зөвхөн ЭХНИЙ хуудсыг (хамгийн сүүлд хөдөлсөн 50 яриа) татна.
-  ok(/QUICK_PAGES = 1/.test(py) && /FULL_PAGES if FULL else QUICK_PAGES/.test(py),
-     'chat: хариултын зам түргэн татацтай');
-
-  // ⛔ `.strip()` нь psql-ийн `\x1f`-ийг хасдаг тул сүүлийн багана алдагдана.
+  // ⚠ Цонх хаагдсан чатыг тоолуураас нуувал «бүгд хариулагдсан» гэсэн худал
+  //    дүр зураг гарна.
+  ok(/def in_window/.test(py) && /def waiting/.test(py), 'chat: хүлээлт, цонх хэмжигдэнэ');
+  // ⛔ Хариулаагүйг 0 гэвэл «шууд хариулсан» гэж уншигдана.
+  ok(/def first_reply_min/.test(py) && /return None/.test(py),
+     'chat: хариулаагүй бол None');
+  // ⛔ `.strip()` нь psql-ийн тусгаарлагчийг хасдаг.
   ok(/stdout\.strip\('\\n'\)/.test(py), 'chat: psql тусгаарлагч хамгаалагдсан');
-
+  // ⛔ `done` нь хүний шийдвэр — татагч дарж бичихгүй.
+  ok(/when fb_chats\.state='done' then 'done'/.test(py), 'chat: шийдсэн төлөв хадгалагдана');
   // ⛔ Шинэ хүснэгт: anon-д нээхгүй, хатуу устгалгүй, PostgREST кэш шинэчилнэ.
-  ok(/revoke delete on fb_chats/.test(sql) && /revoke delete on fb_chat_bot_log/.test(sql),
-     'chat: хатуу устгал хураагдсан');
+  ok(/revoke delete on fb_chats/.test(sql), 'chat: хатуу устгал хураагдсан');
   ok(!/to anon/.test(sql), 'chat: anon-д нээгээгүй');
   ok(/notify pgrst, 'reload schema';/.test(sql), 'chat: PostgREST кэш шинэчилнэ');
 }

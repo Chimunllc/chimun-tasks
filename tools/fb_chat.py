@@ -22,7 +22,7 @@
 Ажиллах: VPS cron, 2 минут тутам.
 Гараар:  python3 fb_chat.py [--dry] [--pull-only] [--selftest]
 """
-import json, os, re, subprocess, sys, urllib.error, urllib.parse, urllib.request
+import fcntl, json, os, re, subprocess, sys, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 
 ENV = '/opt/chimun/marketing/fb.env'
@@ -252,6 +252,19 @@ def tariffs():
         return json.loads(r[0][0]) if r and r[0][0] else {}
     except (ValueError, IndexError):
         return {}
+
+
+def stored_states():
+    """DB дэх ТӨЛӨВ — `thread_id → (state, шилжүүлсэн эсэх)`.
+
+    ⛔ Ярианаас БОДСОН төлөвөөр шийдэж БОЛОХГҮЙ. `handoff()` нь DB-д
+       `state='human'` бичдэг ч ярианд ажилтан бичээгүй тул `thread_state()`
+       дараагийн удаа «bot» гэж буцаана — улмаар аль хэдийн хүнд шилжүүлсэн
+       чат 2 МИНУТ ТУТАМ дахин Claude руу явдаг байв. Нэг англи мессежтэй
+       чат өдөрт ~720 дуудлага ≈ $7 шатаах нүх байсныг амьд системд барив.
+    """
+    r = psql("select thread_id, state, (handoff_at is not null)::int from fb_chats;", rows=True)
+    return {x[0]: (x[1], x[2] == '1') for x in r if x and len(x) >= 3}
 
 
 def pending_threads():
@@ -552,6 +565,16 @@ def send_approved(tok, page, now):
 
 
 def main():
+    # ⛔ НЭГ Л ХУВИЛБАР АЖИЛЛАНА. Нэг ажиллалт 1-2 минут үргэлжилдэг (300 яриа ×
+    #    60 мессеж + Claude дуудлага) тул cron давхарлаж, хоёр ажиллалт нэг чатыг
+    #    зэрэг уншаад ХОЁР ноорог үүсгэдэг байв (амьд системд 15:14 ба 15:15-д
+    #    яг ингэсэн). Түгжээ нь мөнгө ба давхар мессежээс хоёуланг хамгаална.
+    lock = open('/tmp/fb_chat.lock', 'w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print('өмнөх ажиллалт дуусаагүй — алгаслаа')
+        return
     c = cfg()
     tok, page = c['FB_PAGE_TOKEN'], c['FB_PAGE_ID']
     now = datetime.now(timezone.utc)
@@ -559,6 +582,7 @@ def main():
     conf = bot_config()
     bot_mids = known_bot_mids()
     pend = pending_threads()
+    stored = stored_states()
 
     threads = fetch_threads(tok, page)
     todo = []
@@ -616,9 +640,11 @@ def main():
         if tid in pend:
             skip_n += 1
             continue                                    # ноорог хүлээж байна — давхардуулахгүй
-        if row['state'] == 'human':
+        st_db, handed = stored.get(tid, ('bot', False))
+        # ⛔ DB-ийн төлөв ЭРХЭМ. Ярианаас бодсон төлөв нь шилжүүлгийг мэдэхгүй.
+        if handed or st_db in ('human', 'done') or row['state'] == 'human':
             skip_n += 1
-            continue                                    # хүн гарт авсан — бот орохгүй
+            continue
         if row['turns'] >= max_turns:
             handoff(tid, 'бот %d удаа хариулсан' % row['turns'])
             skip_n += 1

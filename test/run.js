@@ -7766,7 +7766,7 @@ need(['orderCustType']);
   // ⛔ Трипвайрын шилжүүлэг харин НААЛДАНА — гомдол 12 цагаар уусдаггүй.
   ok(/when fb_chats\.handoff_at is not null then 'human'/.test(py),
      'chat: трипвайрын шилжүүлэг татацаар арилахгүй');
-  ok(/if row\['state'\] == 'human'/.test(py), 'chat: human чатыг алгасна');
+  ok(/row\['state'\] == 'human'/.test(py), 'chat: human чатыг алгасна');
   ok(/out_mid/.test(py) && /out_mid/.test(sql),
      'chat: илгээсэн мессежийн id хадгалагдана');
 
@@ -7810,6 +7810,15 @@ need(['orderCustType']);
   ok(/attachments\{mime_type\}/.test(py), 'chat: хавсралт татагдана');
   // Зурган мессежийг чимээгүй алгасвал ярианы утга тасарна.
   ok(/\[зураг илгээв\]/.test(py), 'chat: зураг түүхэнд тэмдэглэгдэнэ');
+  // ⛔ DB-ийн ТӨЛӨВ эрхэм. `handoff()` DB-д бичдэг ч ярианд ажилтан бичээгүй
+  //    тул `thread_state()` «bot» гэж буцаана — шилжүүлсэн чат 2 минут тутам
+  //    дахин Claude руу явж, нэг чат өдөрт ~$7 шатаах нүх байв.
+  ok(/def stored_states/.test(py) && /if handed or st_db in \('human', 'done'\)/.test(py),
+     'chat: шилжүүлсэн чат дахин ботод очихгүй');
+  // ⛔ Нэг ажиллалт 1-2 минут үргэлжилдэг тул cron давхарлаж ХОЁР ноорог
+  //    үүсгэдэг байв (амьд системд болсон). Түгжээгүй бол давтагдана.
+  ok(/fcntl\.flock/.test(py) && /LOCK_EX \| fcntl\.LOCK_NB/.test(py),
+     'chat: давхар ажиллалт түгжигдсэн');
 
   // ⛔ `.strip()` нь psql-ийн `\x1f`-ийг хасдаг тул сүүлийн багана алдагдана.
   ok(/stdout\.strip\('\\n'\)/.test(py), 'chat: psql тусгаарлагч хамгаалагдсан');

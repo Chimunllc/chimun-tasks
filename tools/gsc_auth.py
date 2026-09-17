@@ -16,7 +16,10 @@
 import glob, http.server, json, os, secrets, socketserver, sys, threading
 import urllib.parse, urllib.request, webbrowser
 
-SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly'
+# Хоёр scope НЭГ токенд: Search Console (хайлтын үг) + Analytics (сайтын зочид).
+# ⚠ Аль нэгийг нь нэмбэл ХУУЧИН токен тэр эрхийг АВАХГҮЙ — дахин Allow хийнэ.
+SCOPE = ('https://www.googleapis.com/auth/webmasters.readonly'
+         ' https://www.googleapis.com/auth/analytics.readonly')
 AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
 TOKEN = 'https://oauth2.googleapis.com/token'
 OUT = os.path.expanduser('~/.chimun/gsc.env')

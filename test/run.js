@@ -7573,6 +7573,61 @@ need(['orderCustType']);
   eq(F.leadStats([{ created_at: '2026-01-01', starts_at: '2026-01-08' }]).median, 7, 'хугацаа: нэг мөрийн медиан');
 }
 
+// ── Messenger чатбот (tools/fb_chat.py) ────────────────────────────────────
+// Бот КОМПАНИЙН НЭРЭЭР харилцагчтай ярьдаг тул дүрмийг прозоор бичээд орхиж
+// БОЛОХГҮЙ — зөрчвөл CI унана.
+{
+  const chat = path.join(__dirname, '..', 'tools', 'fb_chat.py');
+  const py = fs.readFileSync(chat, 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'fb_chats.sql'), 'utf8');
+
+  const out = require('child_process')
+    .execSync(`python3 ${JSON.stringify(chat)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  ok(/fb_chat selftest: \d+ тест OK/.test(out), 'chat: Python өөрийн тест тэнцэв — ' + out.trim());
+
+  // ⛔ ҮНЭ ЗОХИОХГҮЙ — бот үнэ/сул үлдэгдлийг манай өөрийн харагдацаас л уншина.
+  //    Энэ нь сайт юу харуулж байгаатай ЯГ ижил эх сурвалж. Салгавал бот
+  //    сайтаас өөр үнэ хэлж, компани түүнийг барих үүрэгтэй болно.
+  ok(/from public_catalog/.test(py), 'chat: үнэ public_catalog-оос уншигдана');
+  ok(/def tool_delivery/.test(py) && /delivery_city_fee/.test(py) && /delivery_per_km/.test(py),
+     'chat: хүргэлтийн төлбөр тарифаас уншигдана');
+
+  // ⛔ ХҮН ОРВОЛ БОТ ГАРНА. Ажилтны бичсэн мессежийн id бидний логт байхгүй —
+  //    тэр л цорын ганц дохио. Хасвал бот ажилтны яриаг дундуур нь таслана.
+  ok(/def thread_state/.test(py) && /bot_mids/.test(py), 'chat: хүний оролцоог таьна');
+  // ⛔ ГЭХДЭЭ ЭЗЭМШИЛ ХУГАЦААТАЙ. Хугацаагүй бол эхний татацад «human» болсон
+  //    294 хуучин харилцагч бот руу ХЭЗЭЭ Ч эргэж орохгүй болно.
+  ok(/HUMAN_TTL_H/.test(py) && /ttl_h/.test(py), 'chat: ажилтны эзэмшил хугацаатай');
+  // ⛔ Трипвайрын шилжүүлэг харин НААЛДАНА — гомдол 12 цагаар уусдаггүй.
+  ok(/when fb_chats\.handoff_at is not null then 'human'/.test(py),
+     'chat: трипвайрын шилжүүлэг татацаар арилахгүй');
+  ok(/if row\['state'\] == 'human'/.test(py), 'chat: human чатыг алгасна');
+  ok(/out_mid/.test(py) && /out_mid/.test(sql),
+     'chat: илгээсэн мессежийн id хадгалагдана');
+
+  // ⛔ META-ГИЙН 24 ЦАГИЙН ЦОНХ — хэтэрвэл Meta татгалзана.
+  ok(/def in_window/.test(py) && /in_window\(last_in, now\)/.test(py),
+     'chat: 24 цагийн цонх шалгагдана');
+
+  // ⛔ ТРИПВАЙР — мөнгө, гомдол, хөнгөлөлтийг машин шийдэхгүй.
+  ok(/TRIPWIRES/.test(py) && /хөнгөлөлт/.test(py) && /гомдол/.test(py),
+     'chat: хөнгөлөлт/гомдол хүнд шилжинэ');
+  ok(/why = tripwire\(in_text\)/.test(py), 'chat: трипвайр илгээхээс ӨМНӨ шалгагдана');
+
+  // ⛔ УНТРААХ ТОВЧ — `enabled` худал бол ганц ч мессеж явахгүй.
+  ok(/if not conf\.get\('enabled'\)/.test(py), 'chat: kill switch байна');
+  ok(/row\['turns'\] >= max_turns/.test(py), 'chat: ботын эргэлт хязгаартай');
+
+  // ⛔ `.strip()` нь psql-ийн `\x1f`-ийг хасдаг тул сүүлийн багана алдагдана.
+  ok(/stdout\.strip\('\\n'\)/.test(py), 'chat: psql тусгаарлагч хамгаалагдсан');
+
+  // ⛔ Шинэ хүснэгт: anon-д нээхгүй, хатуу устгалгүй, PostgREST кэш шинэчилнэ.
+  ok(/revoke delete on fb_chats/.test(sql) && /revoke delete on fb_chat_bot_log/.test(sql),
+     'chat: хатуу устгал хураагдсан');
+  ok(!/to anon/.test(sql), 'chat: anon-д нээгээгүй');
+  ok(/notify pgrst, 'reload schema';/.test(sql), 'chat: PostgREST кэш шинэчилнэ');
+}
+
 // ── db/ — харагдацын SQL эх бичиг репод байгаа эсэх ─────────────────────────
 // ⚠ Харагдацын SQL зөвхөн VPS дээр байсан бол VPS дахин байгуулахад дүрэм алга
 //   болно. `db/` фолдер нь эх бичиг; уствал/хоосорвол энэ тест унана.

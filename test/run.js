@@ -5587,6 +5587,60 @@ need(['orderCustType']);
     'scan: бичсэн зураглалаа DB-ээс баталгаажуулдаг');
 }
 
+// ── ТӨЛӨВЛӨГӨӨ — шийдвэрийн дэлгэц (2026-09-17) ────────────────────────────
+// Агент `PLAN_SEED`-д мөр нэмнэ, CEO аппад хаана. Хамгийн чухал инвариант:
+// хаасан ажил дараагийн PR-аар ДАХИН НЭЭГДЭХГҮЙ (хадгалсан төлөв ялна).
+{
+  const seed = [
+    { id: 'a', sec: 'now',  title: 'A' },
+    { id: 'b', sec: 'next', title: 'B' },
+    { id: 'c', sec: 'no',   title: 'C', why: 'болохгүй' },
+  ];
+  eq(F.planMerge(seed, []).length, 3, 'төлөвлөгөө: хоосон дээр seed бүтнээрээ орно');
+  eq(F.planMerge(seed, []).every(x => x.status === 'open'), true, 'төлөвлөгөө: seed мөр нээлттэйгээр орно');
+
+  // ИНВАРИАНТ: хаасан мөр seed-ээс дахин нээгдэхгүй
+  const stored = [{ id: 'a', sec: 'now', title: 'A', status: 'done', closed_at: '2026-09-17' }];
+  const m = F.planMerge(seed, stored);
+  eq(m.length, 3, 'төлөвлөгөө: хадгалсан + шинэ seed нийлнэ');
+  eq(m.find(x => x.id === 'a').status, 'done', 'ИНВАРИАНТ: хаасан ажил seed-ээр дахин нээгдэхгүй');
+  eq(m.find(x => x.id === 'a').closed_at, '2026-09-17', 'төлөвлөгөө: хаасан огноо хадгалагдана');
+
+  // CEO-гийн нэмсэн мөр seed-д байхгүй ч алга болохгүй
+  const withUser = F.planMerge(seed, [{ id: 'u1', sec: 'next', title: 'Миний', status: 'open' }]);
+  eq(withUser.length, 4, 'төлөвлөгөө: CEO-гийн нэмсэн мөр үлдэнэ');
+
+  // Хог мөр унагахгүй
+  eq(F.planMerge(seed, null).length, 3, 'төлөвлөгөө: stored=null үед унахгүй');
+  eq(F.planMerge(null, null).length, 0, 'төлөвлөгөө: хоосон seed → хоосон');
+  eq(F.planMerge(seed, [null, { title: 'id-гүй' }]).length, 3, 'төлөвлөгөө: id-гүй мөр алгасагдана');
+
+  // Хэсэгт хуваах
+  const sec = F.planSections(F.planMerge(seed, stored));
+  eq(sec.now.length, 0, 'төлөвлөгөө: хаасан ажил «одоо»-д тоологдохгүй');
+  eq(sec.next.length, 1, 'төлөвлөгөө: дараагийнх нь нээлттэй мөр');
+  eq(sec.no.length, 1, 'төлөвлөгөө: «хийхгүй» тусдаа');
+  eq(sec.done.length, 1, 'төлөвлөгөө: хаагдсан нь тусдаа');
+
+  // «Хийхгүй гэж шийдсэн» нь АЖИЛ БИШ — хаагдсанд ч, тоололд ч орохгүй
+  const noDone = F.planSections([{ id: 'x', sec: 'no', status: 'done', title: 'X' }]);
+  eq(noDone.done.length, 0, 'ИНВАРИАНТ: «хийхгүй» шийдвэр хаагдсан жагсаалтад орохгүй');
+  eq(noDone.no.length, 1, 'төлөвлөгөө: «хийхгүй» шийдвэр үргэлж харагдана');
+
+  // Хаагдсан нь сүүлд хаагдсанаараа эхэлнэ
+  const ord = F.planSections([
+    { id: '1', sec: 'now', status: 'done', closed_at: '2026-09-01' },
+    { id: '2', sec: 'now', status: 'done', closed_at: '2026-09-17' },
+  ]);
+  eq(ord.done[0].id, '2', 'төлөвлөгөө: хаагдсан нь шинээсээ эрэмбэлэгдэнэ');
+
+  // Seed бодитоор зөв бүтэцтэй эсэх — id давхардвал мөр чимээгүй алга болно
+  const ids = F.planSeed().map(x => x.id);
+  eq(new Set(ids).size, ids.length, 'ИНВАРИАНТ: PLAN_SEED-ийн id давхардахгүй');
+  eq(F.planSeed().every(x => ['now', 'next', 'no'].includes(x.sec)), true, 'төлөвлөгөө: seed бүрийн sec зөв');
+  eq(F.planSeed().every(x => !!x.title), true, 'төлөвлөгөө: seed бүр гарчигтай');
+}
+
 // ── АКТ — түрээслэх боломжгүй бараа (2026-09-07) ────────────────────────────
 // Хэт хуучирсан / эвдэрсэн / өгөөжгүй барааг актаар нөөцөөс гаргана. Зарж
 // болох бол зараад орлогыг нь тусад нь (түрээсийн орлогод НЭМЭЛГҮЙ) бүртгэнэ.

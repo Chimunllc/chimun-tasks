@@ -4204,6 +4204,13 @@ function renderSidebar() {
     const wc = document.getElementById('cnt-writeoff');
     if (wc) wc.textContent = String(woList().filter(x => x && x.status === 'pending').length);
   }
+  // Төлөвлөгөө — тоо нь «одоо хийж байгаа» ажлын тоо.
+  const plNav = document.getElementById('nav-plan');
+  if (plNav) {
+    plNav.style.display = canSeePlan() ? '' : 'none';
+    const pc = document.getElementById('cnt-plan');
+    if (pc) pc.textContent = String(planOpenCount());
+  }
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
@@ -4323,7 +4330,7 @@ function renderSidebar() {
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
   _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
-  _setGrp('nav-group-analytics', ['nav-reports']);
+  _setGrp('nav-group-analytics', ['nav-reports', 'nav-plan']);
   _setGrp('nav-group-my', ['nav-myattend', 'nav-myexpenses']);
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
@@ -4353,6 +4360,7 @@ function renderTitle() {
     ads:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>', 'Зар & үр дүн', 'Facebook зарын зарцуулалт ба борлуулалтын тулгалт — аль зар үр дүнтэйг харуулна'],
     chats: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>', 'Facebook чат', 'Хариу хүлээж буй яриа, ботын хариултын баталгаа'],
     missedcalls: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>', 'Алдсан дуудлага', 'Хүлээгээд холбогдоогүй хүмүүс — буцаж залгах ажлын жагсаалт'],
+    plan:      ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 11l3 3 7-7"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', 'Төлөвлөгөө', 'Шийдвэрийг чи гаргана, бичилтийг агент хийнэ — хийгдсэнийг нь дарж хаа'],
     writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
@@ -4470,6 +4478,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderAds, 'Зар & үр дүн');
     attachAdsHandlers();
+    return;
+  } else if (state.view === 'plan') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderPlan, 'Төлөвлөгөө');
+    attachPlanHandlers();
     return;
   } else if (state.view === 'writeoff') {
     if (tableHead) tableHead.style.display = 'none';
@@ -12874,7 +12888,8 @@ const PERM_MENUS = [
   { key: 'coosalary',   label: 'COO цалин',       actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
-  { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },   // FB зарцуулалт ↔ борлуулалт
+  { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },
+  { key: 'plan',        label: 'Төлөвлөгөө',           actions: [] },   // шийдвэр — агент бичнэ, CEO хаана   // FB зарцуулалт ↔ борлуулалт
   { key: 'vat',         label: 'НӨАТ тайлан',          actions: [] },
   { key: 'documents',   label: 'Баримт бичиг',         actions: [
       { key: 'documents.edit', label: 'Баримт нэмэх / устгах' } ] },
@@ -21386,6 +21401,163 @@ async function openPurchaseLink(id) {
 }
 
 function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO || can('products.stock')); }
+// ─────────────────────────────────────────────────────────────────────────────
+// ТӨЛӨВЛӨГӨӨ — шийдвэр хаана амьдрах вэ (2026-09-17)
+//
+// Зөвлөгөө ярианы дотор үлдэж мартагддаг байв. Одоо шийдвэр бүр аппад харагдаж,
+// хийгдсэн нь ХААГДана.
+// ⛔ CEO гараар шивдэггүй — агент ярианаас гарсан зүйлээ `PLAN_SEED`-д (PR-аар)
+//   нэмэхэд апп өөрөө жагсаалтад оруулна. «Гараар нэмэлт бичүүлдэг боломж үхдэг»
+//   дүрэм зөрчигдөхгүйн цорын ганц шалтгаан нь ЭНЭ — бичилт нь ажлын дундаас
+//   (ярианаас) өөрөө үүсдэг. Хоосон форм болговол энэ дэлгэц үхнэ.
+// ⚠ Хадгалалт = `app_config['plan']` (шинэ хүснэгт БАЙХГҮЙ).
+// ⚠ Бичлэг ХЭЗЭЭ Ч устахгүй — «хаах» = status:'done', буцааж нээж болно.
+const PLAN_KEY = 'plan';
+const PLAN_NOW_MAX = 3;   // зэрэг эхлүүлэх ажлын дээд тоо (хэтэрвэл анхааруулна)
+// sec: now = одоо хийж байгаа · next = дараагийнх · no = хийхгүй гэж шийдсэн
+const PLAN_SEED = [
+  { id: 'p-today-block', sec: 'now', owner: 'Claude', created: '2026-09-17',
+    title: '«Өнөөдөр» блок — Тойм дэлгэцэд',
+    why: 'Авлага · илгээгээгүй үнийн санал · буцаж залгах · хугацаа хэтэрсэн ажил нэг дор. Датанаас өөрөө гарна, гараар шивэхгүй, «хаах» товчгүй — ажлыг хийхэд тоо буурна.' },
+  { id: 'p-rev-measure', sec: 'now', owner: 'Claude', created: '2026-09-17',
+    title: 'Орлогын эхний 3 ажлыг датанаас хэмжих',
+    why: 'Авлагын нийт дүн, илгээгээгүй саналын тоо, буцаж залгах хүний тоо. Хэмжсэний дараа юунаас эхлэх нь маргаангүй болно.' },
+  { id: 'p-saas-calls', sec: 'now', owner: 'CEO', created: '2026-09-17',
+    title: 'Түрээсийн SaaS — 10 дуудлага',
+    why: 'Зэргэлдээ салбарын 10 компанид залгаж 4 асуулт: юугаар хөтөлдөг вэ · давхар захиалга орсон уу · дутуу эвдэрснийг яаж барьдаг вэ · сард 100,000₮ төлөх үү. 3+ «төлнө» гэвэл барина, 0-1 бол сегмент солино. Шууд өрсөлдөгч рүү БҮҮ эхэл — тэд датагаа өрсөлдөгчид өгөхгүй.' },
+  { id: 'p-price-test', sec: 'next', owner: 'CEO', created: '2026-09-17',
+    title: 'Үнэ турших',
+    why: 'Хамгийн хүчтэй хөшүүрэг, өртөг нь тэг. Тариф app_config[tariffs]-д. 10% нэмээд нэг сар хэмжих — захиалга 10%-иар буурахгүй бол ашиг шууд өснө.' },
+  { id: 'p-repeat', sec: 'next', owner: 'CEO', created: '2026-09-17',
+    title: 'Давтан худалдан авалт',
+    why: 'Бүртгэлтэй харилцагчид дахин хүрэх нь шинэ лид худалдаж авахаас олон дахин хямд. Хурим хийсэн хүн ой хийнэ; компани жил бүр эвент хийнэ.' },
+  { id: 'p-rural', sec: 'next', owner: 'CEO', created: '2026-09-17',
+    title: 'Хөдөө зориудаар',
+    why: 'Дата: хот 30 захиалга ≈ хөдөө 7 захиалга (дүнгээр тэнцүү) — нэг захиалга 4 дахин том. Хөдөө рүү чиглэсэн зар, үнийн санал байхгүй.' },
+  { id: 'p-lead-cov', sec: 'next', owner: 'CEO', created: '2026-09-17',
+    title: 'Лид сувгийн хамралт 70%+',
+    why: 'Бүрэн болтол аль зар ажилладгийг мэдэхгүй → төсөв таамгаар хуваарилагдана. Бусад зарын ажлын урьдчилсан нөхцөл.' },
+  { id: 'p-ads-purchase', sec: 'next', owner: 'Claude', created: '2026-09-17',
+    title: 'Хөрвөлтөөр зар оновчлох',
+    why: 'Meta апп Live болсон, Pixel + CAPI ажиллаж эхэлсэн. Одоо 1 чатын өртөг биш, 1 захиалгын өртгөөр оновчлох боломж нээгдсэн.' },
+  { id: 'p-winter', sec: 'next', owner: 'CEO', created: '2026-09-17',
+    title: 'Өвлийн ачаалал',
+    why: 'Агуулахын хөрөнгө өвөл зогсдог. Зогссон хөрөнгөөс олсон мөнгө бараг бүхэлдээ ашиг. Зах зээл: кино/зураг авалт, дотоод эвент, барилгын түр байр, өвлийн жуулчлал.' },
+  { id: 'p-google', sec: 'next', owner: 'Claude', created: '2026-09-17',
+    title: 'Google хайлт',
+    why: 'Хайлтад Facebook манай нэрийг эзэлж байна, ангиллын хуудас алга. Search Console дата урсаж эхэлсэн. Удаан ажиллана, гэхдээ зар шиг мөнгө иддэггүй.' },
+  { id: 'p-no-resell', sec: 'no', owner: '', created: '2026-09-17',
+    title: 'Гадаад дижитал захиалга дахин зарах (Netflix, Spotify, ChatGPT Plus)',
+    why: 'Албан ёсны дилерийн зам БАЙХГҮЙ: Netflix нөхцөлдөө дахин худалдааг хориглосон, Spotify хөтөлбөргүй, OpenAI-ийнх зөвхөн Enterprise дээр. Саарал зах зээл — данс хаагдана. (Нээлттэй нь: Microsoft CSP Indirect, Adobe Registered — гэхдээ B2B болж хувирна.)' },
+  { id: 'p-no-invest', sec: 'no', owner: '', created: '2026-09-17',
+    title: 'Хөрөнгө оруулалтын зөвлөгөө / мэдээний хуудас',
+    why: '(1) «Зөвлөх үйлчилгээ» нь СЗХ-ны тусгай зөвшөөрөлтэй үйл ажиллагаа. (2) Тэр үзэгч түрээсийн программ худалдаж авахгүй — «үзэгч → бүтээгдэхүүн» логик тасарна. (3) AI-аар автоматаар нийтлэхэд хамгийн эрсдэлтэй сэдэв.' },
+  { id: 'p-no-planform', sec: 'no', owner: '', created: '2026-09-17',
+    title: 'Гараар шивдэг төлөвлөгөөний форм',
+    why: 'Хоосон форм үхдэг (дагалтын лог, дуут заавар, худалдан авсан багц — гурвуулаа 0 мөр). Энэ дэлгэц ажиллах цорын ганц шалтгаан нь мөр агентаас өөрөө ирдэгт байгаа.' },
+  { id: 'p-no-esim', sec: 'no', owner: '', created: '2026-09-17',
+    title: 'Аялалын eSIM / даатгал (хойшлуулав)',
+    why: 'Техникээр 95% агент боломжтой. Гэхдээ одоо байгаа суваг — mevent.mn, Facebook хуудас, харилцагчийн жагсаалт, ирдэг дуудлага — аялалын сэдэвт огт тохирохгүй. Тэгээс суваг барих тул түрээсийн чиглэлээс хойш.' },
+];
+// Жагсаалт = хадгалсан төлөв + шинэ seed мөрүүд. ЦЭВЭР функц (тестлэгдэнэ).
+// ⚠ Хадгалсан мөр ялна — эс бөгөөс хаасан ажил дараагийн PR-аар дахин нээгдэнэ.
+function planMerge(seed, stored) {
+  const list = (Array.isArray(stored) ? stored : []).filter(x => x && x.id).map(x => ({ ...x }));
+  const have = new Set(list.map(x => String(x.id)));
+  (Array.isArray(seed) ? seed : []).forEach(sd => {
+    if (!sd || !sd.id || have.has(String(sd.id))) return;
+    list.push({ ...sd, status: 'open' });
+  });
+  return list;
+}
+// Хэсэгт хуваах. `no` (хийхгүй гэж шийдсэн) нь ажил БИШ тул хаагдсанд ч,
+// тоололд ч орохгүй — тэдгээр нь шалтгаан нь бүртгэлтэй шийдвэрүүд.
+function planSections(list) {
+  const arr = (Array.isArray(list) ? list : []).filter(Boolean);
+  const open = (sec) => arr.filter(x => x.sec === sec && x.status !== 'done');
+  return {
+    now: open('now'),
+    next: open('next'),
+    no: arr.filter(x => x.sec === 'no'),
+    done: arr.filter(x => x.sec !== 'no' && x.status === 'done')
+      .sort((a, b) => String(b.closed_at || '').localeCompare(String(a.closed_at || ''))),
+  };
+}
+// ⚠ Тест `PLAN_SEED`-ийг ингэж уншина (const нь vm контекстээс гардаггүй) —
+//   id давхардвал мөр чимээгүй алга болдог тул бүтцийг тестээр хамгаална.
+function planSeed() { return PLAN_SEED; }
+function planList() { return Array.isArray(state.plan) ? state.plan : []; }
+function planOpenCount() { return planSections(planList()).now.length; }
+async function loadPlan(force) {
+  if (state.plan && !force) return state.plan;
+  let stored = null, ok = false;
+  try { stored = await loadAppConfig(PLAN_KEY); ok = true; }
+  catch (e) { dataLoadFailed('Төлөвлөгөө', e); }
+  state.plan = planMerge(PLAN_SEED, Array.isArray(stored) ? stored : []);
+  if (ok) state.planLoaded = true;
+  return state.plan;
+}
+// ⚠ Ачаалж чадаагүй үед БИЧИХГҮЙ — seed-ээс шинээр угсарсан жагсаалт нь
+// хадгалсан төлөвийг (хаасан ажлууд) чимээгүй дарна.
+async function savePlan() {
+  if (!state.planLoaded) throw new Error('Төлөвлөгөө серверээс ирээгүй байна');
+  await saveAppConfig(PLAN_KEY, planList());
+}
+function canSeePlan() { return canAccessView('plan', () => !!state.isCEO); }
+async function planSet(id, patch) {
+  state.plan = planList().map(x => (x && String(x.id) === String(id) ? { ...x, ...patch } : x));
+  try { await savePlan(); } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+  render();
+}
+async function planAdd() {
+  const t = String((await showPrompt('Шинэ ажил — нэр:', { okText: 'Нэмэх' })) || '').trim();
+  if (!t) return;
+  state.plan = planList().concat([{ id: 'u' + Date.now().toString(36), sec: 'next', status: 'open', title: t, owner: 'CEO', created: todayStr() }]);
+  try { await savePlan(); showToast('Нэмлээ', 'success', 2000); }
+  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+  render();
+}
+function renderPlan() {
+  if (state.plan === undefined) { state.plan = null; loadPlan(true).then(() => { if (state.view === 'plan') render(); }); }
+  if (!state.plan) return '<div class="plan-empty">Ачаалж байна…</div>';
+  const s = planSections(planList());
+  const btn = (attr, id, label) => `<button class="btn plan-btn" data-${attr}="${escapeHtml(String(id))}">${label}</button>`;
+  const item = (x, acts) => `<div class="plan-item">`
+    + `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
+    + `${x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : ''}</div>`
+    + `${x.why ? `<div class="plan-w">${escapeHtml(x.why)}</div>` : ''}`
+    + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}</div>` : ''}`
+    + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
+    + `</div>`;
+  const nowActs = (x) => btn('plan-done', x.id, '✓ Дууслаа') + btn('plan-down', x.id, '↓ Хойшлуулах');
+  const nextActs = (x) => btn('plan-up', x.id, '↑ Одоо эхэлье') + btn('plan-done', x.id, '✓ Дууслаа');
+  const warn = s.now.length > PLAN_NOW_MAX
+    ? `<div class="plan-warn">⚠ ${s.now.length} ажил зэрэг эхэлсэн байна. ${PLAN_NOW_MAX}-аас олон бол аль нь ч дуусахгүй.</div>` : '';
+  return `<div class="plan-wrap">`
+    + `<div class="plan-top"><h2 class="plan-h1">Төлөвлөгөө</h2>`
+    + `<span class="plan-sub">Шийдвэрийг чи гаргана, бичилтийг агент хийнэ. Хийгдсэнийг нь дарж хаа.</span></div>`
+    + warn
+    + `<div class="plan-sec"><div class="plan-sec-h">Одоо хийж байгаа<span class="plan-n">${s.now.length}</span></div>`
+    + (s.now.length ? s.now.map(x => item(x, nowActs(x))).join('') : '<div class="plan-empty">Одоо эхэлсэн ажил алга — доороос нэгийг дээшлүүл.</div>')
+    + `</div>`
+    + `<div class="plan-sec"><div class="plan-sec-h">Дараагийнх<span class="plan-n">${s.next.length}</span></div>`
+    + (s.next.length ? s.next.map(x => item(x, nextActs(x))).join('') : '<div class="plan-empty">Хоосон.</div>')
+    + `<button class="btn plan-btn plan-add" id="plan-add">+ Нэмэх</button></div>`
+    + `<details class="plan-more"><summary>Хийхгүй гэж шийдсэн — ${s.no.length}</summary>`
+    + (s.no.length ? s.no.map(x => item(x, '')).join('') : '<div class="plan-empty">Хоосон.</div>')
+    + `</details>`
+    + `<details class="plan-more"><summary>Хаагдсан — ${s.done.length}</summary>`
+    + (s.done.length ? s.done.map(x => item(x, btn('plan-reopen', x.id, '↩ Буцааж нээх'))).join('') : '<div class="plan-empty">Хоосон.</div>')
+    + `</details>`
+    + `</div>`;
+}
+function attachPlanHandlers() {
+  document.getElementById('plan-add')?.addEventListener('click', () => planAdd());
+  document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() })));
+  document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
+  document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
+  document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '' })));
+}
 function renderWriteoff() {
   // Кэшээс шууд үзүүлээд, ард нь DB-ээс шинэчилнэ — refresh дээр жагсаалт «алга»
   // болоод буцаж ирдэг байсныг зогсооно.
@@ -37363,6 +37535,10 @@ function refreshViewData() {
     if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'missedcalls') render(); }); }
     if (state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => { if (state.view === 'missedcalls') render(); }); }
     if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'missedcalls') render(); }); }
+  }
+  if (v === 'plan' && canSeePlan()) {
+    // Дэлгэц нээх бүрд DB-ээс ШИНЭЧЛЭНЭ — өөр сессээс хаасан ажил энд харагдана.
+    loadPlan(true).then(() => { if (state.view === 'plan') render(); });
   }
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();

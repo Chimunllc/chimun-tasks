@@ -7422,3 +7422,31 @@ select.no-asar-len {
   .fc-cards { grid-template-columns: repeat(2, 1fr); }
   .fc-act { width: 100%; }
 }
+
+/* ── Төлөвлөгөө — шийдвэрийн дэлгэц (2026-09-17) ──────────────────────────
+   Агент мөрийг бичнэ, CEO хаана. Зөвхөн токен + класс. */
+.plan-wrap { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); max-width: 820px; }
+.plan-top { display: flex; flex-direction: column; gap: var(--space-1); }
+.plan-h1 { font-size: var(--fs-xl); margin: 0; }
+.plan-sub { font-size: var(--fs-sm); color: var(--muted); }
+.plan-warn { font-size: var(--fs-sm); color: var(--warn); border: 1px solid var(--warn);
+  border-radius: var(--r-sm); padding: var(--space-2) var(--space-3); }
+.plan-sec { display: flex; flex-direction: column; gap: var(--space-2); }
+.plan-sec-h { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-md);
+  font-weight: 600; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: var(--space-1); }
+.plan-n { font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.plan-item { display: flex; flex-direction: column; gap: var(--space-1);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: var(--space-3); background: var(--panel); }
+.plan-head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.plan-t { font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.plan-own { font-size: var(--fs-xs); color: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 0 var(--space-1); }
+.plan-w { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
+.plan-when { font-size: var(--fs-xs); color: var(--ok); }
+.plan-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
+.plan-btn { font-size: var(--fs-sm); padding: var(--space-1) var(--space-3); }
+.plan-add { align-self: flex-start; }
+.plan-empty { font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }
+.plan-more { font-size: var(--fs-sm); display: flex; flex-direction: column; gap: var(--space-2); }
+.plan-more > summary { cursor: pointer; color: var(--muted); padding: var(--space-2) 0; }

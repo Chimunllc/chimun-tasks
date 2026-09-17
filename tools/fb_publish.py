@@ -110,7 +110,8 @@ on = bool(budget.get('enabled')) and str(budget.get('month') or '') == month \
 rows = json.loads(psql(
     "select coalesce(json_agg(row_to_json(t))::text, '[]') from ("
     "select id, coalesce(sku,'') sku, body, coalesce(image_url,'') image_url, "
-    "coalesce(fb_post_id,'') fb_post_id, coalesce(campaign_id,'') campaign_id from ads_posts "
+    "coalesce(fb_post_id,'') fb_post_id, coalesce(campaign_id,'') campaign_id, "
+    "coalesce(link_url,'') link_url from ads_posts "
     "where status = 'approved' order by created_at) t") or '[]')
 
 if not rows:
@@ -148,6 +149,20 @@ if not sets:
     sys.exit(0)
 tpl = sets[0]
 
+# ⛔ АППЫН НИЙТЭЛСЭН ПОСТЫГ FACEBOOK ЖАГСААДАГГҮЙ (2026-09-17). `published_posts`
+#    edge-д ч гарахгүй, Graph-аар уншихад ч «Object does not exist» гэнэ — тиймээс
+#    `fb_posts_pull.py` тэдгээрийг ХЭЗЭЭ Ч олохгүй, аппын «бүүст хийх» жагсаалтад
+#    гарахгүй байв. Шийдэл: нийтлэх мөчид нь ӨӨРСДӨӨ бүртгэнэ. Зураг, бичвэр,
+#    холбоос бүгд манай DB-д байгаа тул бүүст хийхэд Facebook-ээс юу ч уншихгүй.
+def register_page_post(post_id, body, image, link):
+    page, _, tail = str(post_id).partition('_')
+    perma = f'https://www.facebook.com/{page}/posts/{tail}' if tail else ''
+    psql('insert into fb_page_posts (post_id, created_time, message, picture, permalink, '
+         'status_type, link_url, source) values ('
+         f'{sq(post_id)}, now(), {sq(body)}, {sq(image)}, {sq(perma)}, '
+         f"'app_photo', {sq(link)}, 'app') on conflict (post_id) do nothing;")
+
+
 ok = err = 0
 for row in rows:
     pid = row['id']
@@ -176,6 +191,7 @@ for row in rows:
             # ⚠ ШУУД хадгална — доорх зар үүсэхгүй байсан ч пост давхардахгүй.
             if not DRY:
                 psql(f'update ads_posts set fb_post_id={sq(post_id)} where id={sq(pid)};')
+                register_page_post(post_id, body, image, row.get('link_url') or '')
             log(f'нийтлэв: {title} → {post_id}')
 
         if not BOOST:

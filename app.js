@@ -29257,6 +29257,9 @@ function pagePostRows(posts, limit) {
         //   хоёр товч ижил үнэтэй мэт харагдана.
         kindLabel: site ? '🔗 Сайт руу' : '👁 Зөвхөн хандалт',
         weak: !site,
+        // Аппаас нийтэлсэн пост. Facebook эдгээрийг жагсаалтдаа ОРУУЛДАГГҮЙ тул
+        // `fb_publish.py` өөрөө бүртгэдэг — хүнд аль нь болохыг ил хэлнэ.
+        fromApp: String((p && p.source) || '') === 'app',
         state: st ? String(p.boost) : '',
         stateLabel: st ? st.label : '',
         stateCls: st ? st.cls : '',
@@ -29719,6 +29722,7 @@ function renderAds() {
     <div class="ads-list">${ppRows.map(r => `<div class="pp-row">
       <div class="pp-b">
         <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind${r.weak ? ' pp-weak' : ''}">${escapeHtml(r.kindLabel)}</span>${
+          r.fromApp ? '<span class="pp-src">📱 Аппаас</span>' : ''}${
           r.link ? `<a class="pp-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">Facebook дээр ↗</a>` : ''}</div>
         <div class="pp-t">${escapeHtml(r.msg.slice(0, 90))}</div>
         ${r.err ? `<div class="pp-err">${escapeHtml(r.err)}</div>` : ''}
@@ -29728,7 +29732,8 @@ function renderAds() {
             r.state === 'error' ? `<button class="btn" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">↻ Дахин</button>` : ''}`
         : `<button class="btn${r.weak ? '' : ' btn-primary'}" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">⚡ Бүүст</button>`}</div>
     </div>`).join('')}</div>
-    <div class="ads-note"><b>Постдоо mevent.mn-ий холбоос оруулаарай</b> — тэгвэл сайт руу хүн чиглүүлж захиалга авч болно. Холбоосгүй зураг постыг Meta зөвхөн хандалтаар бүүстлэхийг зөвшөөрдөг: таалагдсан тоо нэмнэ, захиалга ховор. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.</div>`;
+    <div class="ads-note">📱 тэмдэгтэй нь аппын постер үүсгэгчээс нийтлэгдсэн пост — зураг, бичвэр, холбоос нь манай санд байгаа тул шууд бүүст хийж болно.
+      <b>Гараар нийтлэх постдоо mevent.mn-ий холбоос оруулаарай</b> — тэгвэл сайт руу хүн чиглүүлж захиалга авч болно. Холбоосгүй зураг постыг Meta зөвхөн хандалтаар бүүстлэхийг зөвшөөрдөг: таалагдсан тоо нэмнэ, захиалга ховор. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.</div>`;
 
   const queueHtml = !queued.length ? '' : `<div class="ads-sec">Постын дараалал</div>
     <div class="ads-list">${queued.map(x => `<div class="ads-row">

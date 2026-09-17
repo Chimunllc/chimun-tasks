@@ -14,7 +14,7 @@ Development горимд) — гараар нийтэлсэн пост хари�
 
 Ажиллах: VPS cron, 10 минут тутам.  Гараар: python3 fb_boost.py [--dry]
 """
-import json, subprocess, sys, urllib.error, urllib.parse, urllib.request
+import base64, json, subprocess, sys, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 
 ENV = '/opt/chimun/marketing/fb.env'
@@ -144,6 +144,15 @@ def ad_link(url, campaign=''):
     return out + ('#' + frag if frag else '')
 
 
+def b64_msg(v):
+    """psql-ээс base64-ээр ирсэн бичвэрийг буцаана. Эвдэрсэн бол ХООСОН —
+    задлалтын алдаанаас болж бүүст бүхэлдээ унах ёсгүй."""
+    try:
+        return base64.b64decode(str(v or '')).decode('utf-8')
+    except Exception:
+        return ''
+
+
 def head_line(msg, n=40):
     """Зарын гарчиг = бичвэрийн эхний мөр (богиносгосон)."""
     first = (str(msg or '').strip().split('\n') or [''])[0].strip()
@@ -191,10 +200,14 @@ def main():
     # ⛔ БИЧВЭРИЙГ ТҮҮХИЙГЭЭР БҮҮ СОНГО — постын мөр таслалт нь psql-ийн мөрийг
     #    хоёр хуваадаг тул задлалт унана («not enough values to unpack», амьд
     #    туршихад яг ингэсэн). Кампанит ажлын нэрэнд эхний мөр л хэрэгтэй.
+    # ⚠ Бичвэрийг base64-ээр авна — мөр таслалт нь psql-ийн МӨРИЙГ хуваадаг тул
+    #   түүхийгээр авбал задлалт унана. Ингэснээр зарын бичвэр БҮТНЭЭРЭЭ ирнэ.
     rows = [r for r in psql(
-        "select post_id, split_part(replace(coalesce(message,''), chr(13), ''), chr(10), 1), "
-        "coalesce(boost_kind,'engage'), coalesce(link_url,'') from fb_page_posts "
-        "where boost = 'requested' order by requested_at limit 5") if len(r) == 4]
+        "select post_id, "
+        "replace(encode(convert_to(coalesce(message,''),'UTF8'),'base64'), chr(10), ''), "
+        "coalesce(boost_kind,'engage'), coalesce(link_url,''), coalesce(picture,'') "
+        "from fb_page_posts where boost = 'requested' order by requested_at limit 5")
+        if len(r) == 5]
     stamp = datetime.now(UB).strftime('%Y-%m-%d %H:%M')
     if not rows:
         print(f'[{stamp}] boost: хүсэлт алга')
@@ -215,7 +228,9 @@ def main():
     targeting = clean_targeting(tpl.get('targeting'))
 
     ok = bad = 0
-    for post_id, msg, kind, link in rows:
+    for post_id, msg_b64, kind, link, pic_db in rows:
+        msg_full = b64_msg(msg_b64)
+        msg = head_line(msg_full, 60)
         k = KINDS.get(kind) or KINDS['engage']
         name = camp_name(msg, post_id)
         if DRY:
@@ -241,12 +256,20 @@ def main():
             #    руу чиглүүлэх зарыг постын ЗУРАГ + ЛИНКЭЭС дахин угсарна
             #    (link_data). Энэ нь ШИНЭ зар болох тул органик постын таалагдсан
             #    тоо/сэтгэгдэл ШИЛЖИХГҮЙ — тэр нь энэ замын үнэ.
-            full_msg, pic, atyp = ('', '', '')
+            # ⛔ АППЫН НИЙТЭЛСЭН ПОСТЫГ GRAPH УНШУУЛДАГГҮЙ («Object does not
+            #    exist…», 2026-09-17-нд амьд туршсан) — тиймээс уншилт унавал
+            #    ЗОГСОХГҮЙ, өөрсдийн DB дэх зураг/бичвэрээр үргэлжилнэ. Аппын
+            #    постын зураг манай VPS дээр байдаг тул Facebook-ээс юу ч хэрэггүй.
+            full_msg, pic, atyp = ('', pic_db, '')
             if kind == 'site':
-                full_msg, pic, atyp = post_media(post_id, tok)
+                try:
+                    full_msg, g_pic, atyp = post_media(post_id, tok)
+                    pic = g_pic or pic_db
+                except Exception:
+                    full_msg, atyp = '', ''
             if kind == 'site' and atyp != 'share':
                 ld = {'link': ad_link(link, head_line(msg, 30)),
-                      'message': full_msg or msg,
+                      'message': full_msg or msg_full or msg,
                       'name': head_line(msg) or 'M-Event түрээс',
                       'call_to_action': {'type': 'LEARN_MORE'}}
                 # Зураг олдохгүй бол ЛИНКИЙН урьдчилсан харагдацыг Facebook өөрөө
@@ -335,6 +358,14 @@ def selftest():
     eq(head_line('Асар майхан түрээс\nдэлгэрэнгүй'), 'Асар майхан түрээс', 'гарчиг: эхний мөр')
     eq(len(head_line('я' * 100)), 40, 'гарчиг: 40 тэмдэгтээр таслана')
     eq(head_line(None), '', 'гарчиг: None → хоосон')
+
+    # ⛔ Бичвэр МӨР ТАСЛАЛТТАЙГАА бүтэн ирнэ — зарын бичвэр таслагдвал утга алдана.
+    import base64 as _b
+    eq(b64_msg(_b.b64encode('Асар майхан\n\n👉 https://mevent.mn/'.encode()).decode()),
+       'Асар майхан\n\n👉 https://mevent.mn/', 'бичвэр: base64-оос бүтнээрээ')
+    eq(b64_msg(''), '', 'бичвэр: хоосон → хоосон')
+    eq(b64_msg('энэ base64 биш'), '', 'бичвэр: эвдэрсэн → хоосон, унахгүй')
+    eq(b64_msg(None), '', 'бичвэр: None → унахгүй')
 
     eq(KINDS['site']['dest'], 'WEBSITE', 'төрөл: сайт → WEBSITE')
     eq(KINDS['engage']['dest'], 'ON_POST', 'төрөл: хандалт → ON_POST')

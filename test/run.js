@@ -10262,3 +10262,41 @@ async function swFetchTests() {
   ok(!/банк бүртгэгдээгүй<\/span>`?\s*;/.test(fn.replace(/\s+/g, ' ')) || /bankLineReason\(/.test(fn),
      'scan: данс хоосон бол шалтгааныг bankLineReason-оор ялгана');
 }
+
+// ── ӨГЛӨӨНИЙ МЭДЭГДЭЛ — алдсан дуудлага (2026-09-17) ───────────────────────
+// 📵 дэлгэц дарааллыг хэлж өгдөг ч хэн ч нээхээ санадаггүй байв (буцаж
+// залгасан нь 0). `tools/pbx_notify.py` өдөр бүр өглөө утсанд нь мэдэгдэнэ.
+{
+  const p = path.join(__dirname, '..', 'tools', 'pbx_notify.py');
+  const py = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  ok(!!py, 'мэдэгдэл: pbx_notify.py байна');
+
+  // ⛔ Босго app.js-тэй ИЖИЛ. Зөрвөл апп нэг тоо, мэдэгдэл өөр тоо хэлнэ.
+  const jsWait = vm.runInContext('PBX_WAIT_SEC', sandbox);
+  const pyWait = Number((py.match(/^PBX_WAIT_SEC\s*=\s*(\d+)/m) || [])[1]);
+  eq(pyWait, jsWait, 'мэдэгдэл: босго app.js-ийн PBX_WAIT_SEC-тэй ижил');
+
+  // ⛔ `email` шүүлтгүй илгээвэл 50 ажилтан БҮГД мэдэгдэл авна.
+  ok(/body\['email'\]\s*=\s*phone/.test(py), 'мэдэгдэл: хүлээн авагч үргэлж заагдана');
+  ok(/if not to:/.test(py) && py.indexOf('if not to:') < py.indexOf('for phone in to'),
+     'мэдэгдэл: хүлээн авагчгүй бол илгээхгүй');
+
+  // ⛔ Хоосон өдөр дуугарвал хүн мэдэгдлийг унтраана — тэгвэл жинхэнэ өдөр ч хүрэхгүй.
+  ok(/if not n:\s*\n\s*return None/.test(py), 'мэдэгдэл: 0 бол юу ч илгээхгүй');
+
+  // ⚠ Ажлын цаг тарифаас — хоёр газар хатуу бичвэл зөрнө.
+  ok(/def work_hours\(tariffs\)/.test(py) && /cfg_json\('tariffs'\)/.test(py),
+     'мэдэгдэл: ажлын цаг тарифаас уншигдана');
+  // ⚠ Хүлээн авагч кодод хатуу бичигдээгүй.
+  ok(/cfg_json\('pbx_notify'\)/.test(py) && !/\b8800\d{4}\b/.test(py),
+     'мэдэгдэл: хүлээн авагч тохиргооноос, кодод биш');
+
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(p)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ PBX NOTIFY OK/.test(out), 'мэдэгдэл: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'мэдэгдэл: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}

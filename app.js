@@ -28355,6 +28355,45 @@ function pbxFollowups(calls, opts) {
   out.off = Object.keys(offOnly).filter(p => !by[p]).length;
   return out;
 }
+// ── 🌙 ОРОЙН ДУУДЛАГА — МАРГААШ ЗАЛГАХ (2026-09-17) ─────────────────────────
+// Амьд датаар (90 хоног): оройд 427 хүн залгасны **373 нь (87%) ажлын цагаар
+// НЭГ Ч УДАА залгаагүй** — өөрөөр хэлбэл эргэж ирдэггүй. Оройн 441 тохиолдлын
+// ердөө 25 нь (6%) дараагийн 3 хоногт өдрөөр залгасан. Тиймээс «маргааш
+// ажлын цагаар холбогдоно уу» гэсэн хариу АЖИЛЛАХГҮЙ — бид өөрсдөө залгана.
+//
+// ⚠ Эдгээр «алдсан дуудлага» гэсэн ТООЛОЛД ОРОХГҮЙ (CEO-гийн дүрэм: хаалттай
+//   цагт утас аваагүй нь ажилтны алдаа биш). Хэмжүүр ба АЖЛЫН ЖАГСААЛТ хоёр
+//   өөр зүйл — тоололд оруулахгүйгээр буцаж залгах ажлыг нь үлдээнэ.
+// ⛔ 13 СЕКУНДЫН БОСГЫГ ЭНД ХЭРЭГЛЭХГҮЙ. Ажлын цагийн гадна PBX мэндчилгээгээ
+//   хэлээд ~9 секундэд ӨӨРӨӨ таслдаг тул амьд датаар оройн 144/144 дуудлага
+//   10 секундээс богино байсан. Босго тавибал жагсаалт ҮРГЭЛЖ ХООСОН гарна.
+//   Үүний хариу нь: андуурч залгасан хүнийг оройд ЯЛГАХ БОЛОМЖГҮЙ — дэлгэцэд
+//   ил хэлнэ.
+// ⚠ Хэзээ нэгэн цагт хүнтэй ярьж чадсан дугаар ОРОХГҮЙ (асуудал нь шийдэгдсэн).
+function pbxEvening(calls, opts) {
+  const o = opts || {};
+  const from = String(o.from || '');
+  const w0 = Number.isFinite(Number(o.ws)) ? Number(o.ws) : 9;
+  const w1 = Number.isFinite(Number(o.we)) ? Number(o.we) : 18;
+  const by = {}; const reached = {};
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    const p = String(c.peer || '');
+    if (p.replace(/\D/g, '').length < 6) return;
+    if ((Number(c.answer_sec) || 0) > 0) { reached[p] = 1; return; }
+    const at = String(c.started_at || '');
+    if (from && at < from) return;
+    const h = _ubHour(at);
+    if (h === null || (h >= w0 && h <= w1)) return;      // ажлын цагт — өөр жагсаалт
+    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0 });
+    x.tries++;
+    x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0);
+    if (at && at < x.first) x.first = at;
+    if (at && at > x.last) x.last = at;
+  });
+  return Object.values(by).filter(x => !reached[x.peer]);
+}
+
 // ── ДУУДЛАГА → ЗАХИАЛГА (2026-09-16) ────────────────────────────────────────
 // «Ирсэн дуудлагын хэдэн хувь нь борлуулалт болов?» гэдгийг дугаараар тулгаж
 // хариулна: дуудлага ирсэн дугаараас (эхний дуудлагын өдрөөс хойш) захиалга
@@ -29714,9 +29753,14 @@ function renderMissedCalls() {
         ${tags ? `<div class="mc-tags">${tags}</div>` : ''}</div>
       <div class="mc-acts">${acts}</div></div>`;
   };
+  // 🌙 Оройн дуудлага — маргааш залгах (тоололд ОРОХГҮЙ, ажлын жагсаалтад ОРНО).
+  const eveRows = pbxOpenCalls(
+    pbxEvening(state.pbxLog || [], { from, ws: tariffWorkStart(), we: tariffWorkEnd() }),
+    state.pbxCb || [], state.appOrders || []);
+  const eveOpen = eveRows.filter(r => !r.done);
   // Бүх залгагч (90 хоног = порталын хадгалах хугацаа).
   const allRows = pbxCallers(state.pbxLog || [], state.appOrders || [], {});
-  const tab = state._mcTab === 'all' ? 'all' : 'open';
+  const tab = ['all', 'eve'].includes(state._mcTab) ? state._mcTab : 'open';
   const q = String(state._mcQ || '');
   // Эрэмбэ — «хаа хамаагүй залгах уу?» гэсэн асуултын хариу нь ЭНЭ.
   const MC_SORTS = {
@@ -29754,6 +29798,18 @@ function renderMissedCalls() {
         <div class="mc-acts"><a class="mc-btn call" href="tel:${escapeHtml(r.peer)}">☎ Залгах</a></div></div>`;
     }).join('') || '<div class="mc-empty">Олдсонгүй.</div>'}</div>
     ${shown.length > 200 ? `<div class="mc-empty">…бас ${shown.length - 200} дугаар. Хайлтаар нарийсга.</div>` : ''}`;
+  const eveDone = eveRows.filter(r => r.done);
+  const eveHtml = `
+    <div class="ads-sec">Ажлын цагийн гадна залгасан <span class="ads-sub">(${MISSED_DAYS} хоног)</span></div>
+    <div class="mc-list">${eveOpen.map(row).join('') || '<div class="mc-empty">Оройн дуудлага алга.</div>'}</div>
+    ${eveDone.length ? `<details class="mc-more"><summary>Шийдэгдсэн (${eveDone.length})</summary>
+      <div class="mc-list">${eveDone.map(row).join('')}</div></details>` : ''}
+    <div class="ads-note">Эдгээр хүн ${ws}:00–${we}:59 цагаас гадна залгасан тул PBX мэндчилгээгээ хэлээд
+      таслсан. <b>Тэд эргэж ирдэггүй:</b> амьд датаар оройн залгагчдын <b>87%</b> ажлын цагаар нэг ч удаа
+      залгаагүй. Тиймээс «маргааш залгаарай» гэж хүлээлгүй, өглөө нь бид залгана.
+      ⚠ Эдгээр «алдсан дуудлага» гэсэн тоололд ОРОХГҮЙ — хаалттай цагт утас аваагүй нь ажилтны алдаа биш.
+      ⚠ Оройд бүх дуудлага 9 секундэд тасардаг тул андуурч залгасан хүнийг ялгах <b>боломжгүй</b> —
+      жагсаалтад хэдэн андуурсан дугаар холилдож болно.</div>`;
   const age = pbxFeedAge(state.pbxLog || [], todayStr());
   const stale = (age !== null && age >= PBX_STALE_D)
     ? `<div class="mc-stale">⚠ <b>Дуудлагын дата ${age} хоног шинэчлэгдээгүй.</b>
@@ -29773,9 +29829,10 @@ function renderMissedCalls() {
     </div>
     <div class="ads-tabs">
       <button class="ads-tab${tab === 'open' ? ' on' : ''}" data-mc-tab="open">Буцаж залгах (${open.length})</button>
+      <button class="ads-tab${tab === 'eve' ? ' on' : ''}" data-mc-tab="eve">🌙 Оройн (${eveOpen.length})</button>
       <button class="ads-tab${tab === 'all' ? ' on' : ''}" data-mc-tab="all">Бүх залгагч (${allRows.length})</button>
     </div>
-    ${tab === 'all' ? allHtml : `
+    ${tab === 'all' ? allHtml : tab === 'eve' ? eveHtml : `
     ${(() => {
       // ⛔ Өчигдрийнхийг 14 хоногийн эрэмбэ дотор БҮҮ ууш — өглөөний push
       //    «Өчигдөр N хүн» гэж хэлсэн бол дэлгэцэн дээр ЯГ тэр бүлэг байна.

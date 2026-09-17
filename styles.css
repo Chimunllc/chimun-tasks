@@ -4829,6 +4829,8 @@ body.role-daily #add-project { display: none !important; }
 .mk-pub { margin-top: var(--space-3); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
 .mk-pub-h { font-weight: 800; font-size: var(--fs-md); }
 .mk-hint { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; line-height: 1.5; }
+/* Шатны зургийн заавар (дамжлагын модал). */
+.sa-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; margin: -2px 0 6px; }
 .mk-pub-t { width: 100%; margin: 8px 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: inherit; font-size: var(--fs-sm); line-height: 1.5; resize: vertical; }
 .ads-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: var(--fs-sm); }
 .ads-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

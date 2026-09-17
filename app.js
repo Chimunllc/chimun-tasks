@@ -22724,6 +22724,43 @@ const STAGE_ACTION = {
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
+
+// ── ЭВЕНТИЙН ЗУРАГ (2026-09-17) ─────────────────────────────────────────────
+// Дамжлага шат бүрд зураг аль хэдийн ЗААВАЛ авдаг ч бүгд агуулахын зураг
+// (ачсан машин, савласан бараа) байсан тул маркетингд ашиглах зураг байхгүй:
+// 190 бараанаас 31 нь л нэгээс олон зурагтай, эвентийн зураг ердөө 6.
+// Шийдэл: ХҮРГЭЛТ ба СУУРИЛУУЛАЛТЫН шатанд «угсарч дууссан байдал» гэж ил
+// хэлнэ. Ажилтан зураг аль хэдийн авдаг тул НЭМЭЛТ АЖИЛ ҮҮСЭХГҮЙ — зөвхөн
+// юуг нь авахыг зааж өгнө.
+// ⚠ Заавал биш — зураг шаардлага хэвээр, зүгээр л бичвэр өөрчлөгдөнө.
+const STAGE_SHOWCASE = { deliver: 1, setup: 1 };
+function stageIsShowcase(key) { return !!STAGE_SHOWCASE[String(key || '')]; }
+function stagePhotoHint(key) {
+  return stageIsShowcase(key)
+    ? 'Угсарч дууссан байдлыг бүтнээр нь ав — энэ зураг постер, зард ашиглагдана.'
+    : '';
+}
+// Маркетингд тохиромжтой эвентийн зургууд — захиалгуудаас цуглуулна.
+// ⚠ ТААМАГЛАХГҮЙ: зөвхөн `STAGE_SHOWCASE` шатны зураг. Агуулахын зураг
+//   (цэвэрлэсэн, бэлдсэн, ачсан) постерт тохирохгүй.
+function showcasePhotos(orders, limit) {
+  const out = [];
+  (orders || []).forEach(o => {
+    const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : null;
+    if (!sm) return;
+    Object.keys(STAGE_SHOWCASE).forEach(k => {
+      const e = sm[k];
+      const ph = (e && Array.isArray(e.photos)) ? e.photos : [];
+      ph.forEach(u => {
+        if (typeof u === 'string' && u) {
+          out.push({ url: u, at: (e && e.at) || '', order: o.number || '', stage: k });
+        }
+      });
+    });
+  });
+  out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return limit ? out.slice(0, limit) : out;
+}
 const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гаргасан', deliver: '🚚 Хүргэж өгсөн', setup: '🔧 Суурилуулсан', teardown: '🧱 Буулгасан', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
@@ -22914,7 +22951,8 @@ function openStageAdvanceModal(oid, to) {
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">${escapeHtml(act.label)} · #${o.number ?? ''}</h2><button class="btn" id="sa-close" style="padding:5px 10px;">✕</button></div>
-    ${needPhoto ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 Гүйцэтгэлийн зураг <span style="color:var(--danger);">*</span></div>
+    ${needPhoto ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 ${stageIsShowcase(act.key) ? 'Угсарсан байдлын зураг' : 'Гүйцэтгэлийн зураг'} <span style="color:var(--danger);">*</span></div>
+      ${stagePhotoHint(act.key) ? `<div class="sa-hint">${escapeHtml(stagePhotoHint(act.key))}</div>` : ''}
       <div id="sa-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-bottom:6px;"></div>
       <label class="btn" for="sa-photo-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>

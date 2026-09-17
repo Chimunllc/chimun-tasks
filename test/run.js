@@ -6441,6 +6441,48 @@ need(['orderCustType']);
   eq(F.adPostStatusLabel('шинэ_төлөв'), 'шинэ_төлөв', 'пост: танихгүй төлвийг далдлахгүй');
 }
 
+// ── ЭВЕНТИЙН ЗУРАГ (2026-09-17) ─────────────────────────────────────────────
+// Дамжлагад зураг заавал авдаг ч бүгд агуулахын зураг байсан тул маркетингд
+// ашиглах зураг байхгүй байв (190 бараанаас 31 нь л нэгээс олон зурагтай,
+// эвентийн зураг ердөө 6). Хүргэлт/суурилуулалтын шатанд «угсарсан байдал»
+// гэж ил хэлснээр НЭМЭЛТ АЖИЛГҮЙГЭЭР зураг хуримтлагдана.
+{
+  ok(F.stageIsShowcase('deliver'), 'зураг: хүргэлт = эвентийн зураг');
+  ok(F.stageIsShowcase('setup'), 'зураг: суурилуулалт = эвентийн зураг');
+  // ⛔ Агуулахын шатыг БҮҮ оруул — ачсан машин, савласан бараа постерт тохирохгүй.
+  ['clean', 'prepare', 'dispatch', 'received', 'teardown', 'archive'].forEach(k =>
+    ok(!F.stageIsShowcase(k), 'зураг: агуулахын шат оруулахгүй — ' + k));
+  ok(!F.stageIsShowcase(''), 'зураг: хоосон түлхүүр → үгүй');
+  ok(F.stagePhotoHint('deliver').length > 10, 'зураг: хүргэлтэд заавар гарна');
+  eq(F.stagePhotoHint('clean'), '', 'зураг: агуулахын шатанд заавар гарахгүй');
+
+  const os = [
+    { number: 1, stage_meta: { deliver: { at: '2026-09-10', photos: ['a.jpg', 'b.jpg'] },
+                               clean: { at: '2026-09-09', photos: ['skip.jpg'] } } },
+    { number: 2, stage_meta: { setup: { at: '2026-09-12', photos: ['c.jpg'] } } },
+    { number: 3, stage_meta: { dispatch: { at: '2026-09-13', photos: ['nope.jpg'] } } },
+    { number: 4, stage_meta: null },
+    { number: 5 },
+  ];
+  const sh = F.showcasePhotos(os);
+  eq(sh.length, 3, 'зураг: зөвхөн хүргэлт/суурилуулалтын зураг');
+  eq(sh[0].url, 'c.jpg', 'зураг: хамгийн сүүлийн нь эхэнд');
+  ok(!sh.some(x => x.url === 'skip.jpg' || x.url === 'nope.jpg'), 'зураг: агуулахын зураг орохгүй');
+  eq(sh[0].order, 2, 'зураг: захиалгын дугаар дагана');
+  eq(F.showcasePhotos(os, 2).length, 2, 'зураг: хязгаар');
+  eq(F.showcasePhotos([]).length, 0, 'зураг: хоосон → 0');
+  eq(F.showcasePhotos(null).length, 0, 'зураг: null → унахгүй');
+  // Зураггүй шат унагаахгүй.
+  eq(F.showcasePhotos([{ stage_meta: { deliver: { at: '2026-09-01' } } }]).length, 0,
+     'зураг: photos талбаргүй шат → унахгүй');
+
+  // scan: модал шатны түлхүүрээ функцээр шалгана (хатуу жагсаалт БИШ).
+  const i = src.indexOf('sa-photo-input');
+  const fn = src.slice(Math.max(0, i - 900), i + 200);
+  ok(/stageIsShowcase\(act\.key\)/.test(fn), 'scan: модал stageIsShowcase ашиглана');
+  ok(/stagePhotoHint\(act\.key\)/.test(fn), 'scan: модалд заавар гарна');
+}
+
 // ── ПОСТЕР → FACEBOOK (2026-09-17) ──────────────────────────────────────────
 // Бичвэрийг апп САНАЛ болгоод хүн засна. ⛔ ХООСОН форм биш — урьдчилан
 // бөглөгдсөн байх нь нэмэлт ажил шаардахгүй тул үхэхгүй.

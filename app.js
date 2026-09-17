@@ -28864,7 +28864,13 @@ function pagePostRows(posts, limit) {
         // ⚠ Холбоосгүй постыг «сайт руу» гэж бүүстлэх боломжгүй — Facebook
         //   татгалздаг. Хүнд ЯГ юу болохыг нь хэлнэ.
         kind: site ? 'site' : 'engage',
-        kindLabel: site ? '🔗 Сайт руу' : '👁 Хандалт',
+        // ⚠ Зурагтай постыг ЗӨВХӨН хандалтаар бүүстлэх боломжтой — Meta нь
+        //   чат руу чиглүүлэхийг «Invalid Creative For Objective» гэж
+        //   татгалздаг (амьд туршиж баталсан). Хандалт нь таалагдсан тоо
+        //   нэмдэг ч захиалга ховор авчирдаг тул хүнд ИЛ хэлнэ — эс бөгөөс
+        //   хоёр товч ижил үнэтэй мэт харагдана.
+        kindLabel: site ? '🔗 Сайт руу' : '👁 Зөвхөн хандалт',
+        weak: !site,
         state: st ? String(p.boost) : '',
         stateLabel: st ? st.label : '',
         stateCls: st ? st.cls : '',
@@ -29170,7 +29176,7 @@ function renderAds() {
     <div class="ads-sec">📣 Таны постыг бүүст хийх <span class="ads-sub">(хуудсанд нийтэлсэн сүүлийн постууд)</span></div>
     <div class="ads-list">${ppRows.map(r => `<div class="pp-row">
       <div class="pp-b">
-        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind">${escapeHtml(r.kindLabel)}</span>${
+        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind${r.weak ? ' pp-weak' : ''}">${escapeHtml(r.kindLabel)}</span>${
           r.link ? `<a class="pp-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">Facebook дээр ↗</a>` : ''}</div>
         <div class="pp-t">${escapeHtml(r.msg.slice(0, 90))}</div>
         ${r.err ? `<div class="pp-err">${escapeHtml(r.err)}</div>` : ''}
@@ -29178,9 +29184,9 @@ function renderAds() {
       <div class="pp-a">${r.state
         ? `<span class="pp-st ${r.stateCls}">${escapeHtml(r.stateLabel)}</span>${
             r.state === 'error' ? `<button class="btn" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">↻ Дахин</button>` : ''}`
-        : `<button class="btn btn-primary" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">⚡ Бүүст</button>`}</div>
+        : `<button class="btn${r.weak ? '' : ' btn-primary'}" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">⚡ Бүүст</button>`}</div>
     </div>`).join('')}</div>
-    <div class="ads-note">Facebook дээрээ пост хийгээд энд ирж сонгоно. Төсөв нь байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй. Сайт руу хүн оруулах бол постдоо mevent.mn-ий холбоос оруулаарай; холбоосгүй пост зөвхөн хандалтаар бүүстлэгдэнэ.</div>`;
+    <div class="ads-note"><b>Постдоо mevent.mn-ий холбоос оруулаарай</b> — тэгвэл сайт руу хүн чиглүүлж захиалга авч болно. Холбоосгүй зураг постыг Meta зөвхөн хандалтаар бүүстлэхийг зөвшөөрдөг: таалагдсан тоо нэмнэ, захиалга ховор. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.</div>`;
 
   const queueHtml = !queued.length ? '' : `<div class="ads-sec">Постын дараалал</div>
     <div class="ads-list">${queued.map(x => `<div class="ads-row">
@@ -29603,7 +29609,9 @@ function attachAdsHandlers() {
   // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна тул баталгаажуулалтгүй болохгүй.
   document.querySelectorAll('[data-pp-boost]').forEach(b => b.onclick = async () => {
     const id = b.dataset.ppBoost, kind = b.dataset.ppKind || 'engage';
-    const what = kind === 'site' ? 'сайт руу хүн оруулах' : 'хандалт нэмэх';
+    const what = kind === 'site'
+      ? 'сайт руу хүн оруулах'
+      : 'зөвхөн хандалт нэмэх — захиалга ховор авчирна';
     if (!(await showConfirm(`Энэ постыг бүүст хийх үү? Зорилго: ${what}. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.`,
       { okText: 'Бүүст хийх' }))) return;
     b.disabled = true;

@@ -28593,6 +28593,28 @@ function pbxCbKey(peer) { return custPhoneKey(peer) || String(peer || '').replac
 //    Амьд системд болсон: Meta аппын хандалт хаагдаж бүх татагч унасан ч
 //    дэлгэц юу ч хэлээгүй. Цэвэр функц — тестлэгдэнэ.
 const ADS_STALE_D = 2;
+// ⛔ ӨДРӨӨР БИШ, ТАТАЛТААР ХЭМЖИНЭ (2026-09-17). `adsFeedAge` нь «хамгийн сүүлийн
+//    ӨДӨР» -ийг хардаг тул татагч өдөрт нэг удаа ажиллаж, өнөөдрийн мөр огт
+//    ирдэггүй байхад ҮРГЭЛЖ «1 хоног» гарч, анхааруулга хэзээ ч асдаггүй байв —
+//    хэрэглэгч «зарын үр дүн ерөөсөө шинэчлэгдэхгүй» гэж бодит байдлыг олсон.
+//    `fetched_at` нь татагч ХЭЗЭЭ ажилласныг хэлдэг цорын ганц үнэн дохио.
+const ADS_FETCH_STALE_H = 3;
+function adsFetchAge(rows, nowMs) {
+  let last = 0;
+  (rows || []).forEach(r => { const t = Date.parse((r && r.fetched_at) || ''); if (t > last) last = t; });
+  if (!last) return null;
+  return Math.max(0, Math.floor(((nowMs || Date.now()) - last) / 3600000));
+}
+// Анхааруулгын БИЧВЭР (HTML биш) — цэвэр функц, тестлэгдэнэ. Хоосон = бүх юм хэвийн.
+function adsStaleMsg(feedAge, fetchAge) {
+  if (fetchAge !== null && fetchAge !== undefined && fetchAge >= ADS_FETCH_STALE_H)
+    return `Татагч ${fetchAge} цаг ажиллаагүй — доорх тоо тэр үеийнх. `
+      + 'Зар үргэлжилж байвал зарцуулалт үүнээс ИХ. Автомат төсөв ч хуваарилагдахгүй '
+      + 'байгаа тул Ads Manager-ээс гараар шалгаарай.';
+  if (feedAge !== null && feedAge !== undefined && feedAge >= ADS_STALE_D)
+    return `Зарын дата ${feedAge} хоног шинэчлэгдээгүй — доорх бүх тоо тэр өдрийнх.`;
+  return '';
+}
 function adsFeedAge(rows, today) {
   let last = '';
   (rows || []).forEach(r => { const d = String((r && r.day) || '').slice(0, 10); if (d > last) last = d; });
@@ -29399,11 +29421,15 @@ function renderAds() {
   // ⚠ Татагч зогссон бол доорх БҮХ тоо хуучирсан. Мөнгө зарцуулагдсаар
   //   байхад «өнөөдрийн» гэж уншихаас сэргийлж ХАМГИЙН ДЭЭР нь бичнэ.
   const feedAge = adsFeedAge(rows, todayStr());
-  const staleHtml = (feedAge !== null && feedAge >= ADS_STALE_D)
-    ? `<div class="mc-stale">⚠ <b>Зарын дата ${feedAge} хоног шинэчлэгдээгүй.</b>
-        Доорх бүх тоо тэр өдрийнх — зар үргэлжилж байвал зарцуулалт үүнээс ИХ.
-        Facebook-ийн холболт тасарсан байж магадгүй: автомат төсөв ч хуваарилагдахгүй,
-        зар зогсоох ч боломжгүй байна. Ads Manager-ээс гараар шалгаарай.</div>`
+  const fetchAge = adsFetchAge(rows, Date.now());
+  const _staleMsg = adsStaleMsg(feedAge, fetchAge);
+  const staleHtml = _staleMsg ? `<div class="mc-stale">⚠ <b>${escapeHtml(_staleMsg)}</b></div>` : '';
+  // Хэзээ татсаныг ҮРГЭЛЖ ил бичнэ — «шинэчлэгдэж байна уу» гэдгийг тааварлахгүй.
+  let _fetchTs = 0;
+  (rows || []).forEach(r => { const t = Date.parse((r && r.fetched_at) || ''); if (t > _fetchTs) _fetchTs = t; });
+  const freshHtml = _fetchTs
+    ? `<div class="ads-fresh">🔄 Facebook-ээс сүүлд татсан: ${escapeHtml(ubStamp(new Date(_fetchTs).toISOString()))}
+        · дата ${escapeHtml(String(rows.length))} мөр</div>`
     : '';
 
   const period = `<div class="ads-tabs">${[7, 30, 90].map(d =>
@@ -29669,6 +29695,7 @@ function renderAds() {
 
   return `<h2 class="view-title">📣 Зар & үр дүн</h2>
     ${staleHtml}
+    ${freshHtml}
     ${tabsHtml}
     ${period}
     ${body || '<div class="ads-note">Энэ хэсэгт одоогоор харуулах зүйл алга.</div>'}`;

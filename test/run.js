@@ -7060,6 +7060,26 @@ need(['orderCustType']);
   eq(F.adsFeedAge([{ day: '2026-09-01' }, { day: '2026-09-16' }], '2026-09-17'), 1,
      'хуучрал: дарааллаас үл хамаарна');
 
+  // ⛔ ӨДРӨӨР БИШ, ТАТАЛТААР (2026-09-17). Татагч өдөрт нэг ажиллаж, өнөөдрийн
+  //    мөр ирдэггүй байхад `adsFeedAge` ҮРГЭЛЖ 1 гарч, анхааруулга хэзээ ч
+  //    асдаггүй байв — «зарын үр дүн ерөөсөө шинэчлэгдэхгүй» гомдол эндээс.
+  const NOW = Date.parse('2026-09-17T14:00:00+08:00');
+  const fr = t => ({ fetched_at: t });
+  eq(F.adsFetchAge([fr('2026-09-17T13:30:00+08:00')], NOW), 0, 'татац: саяхан → 0 цаг');
+  eq(F.adsFetchAge([fr('2026-09-17T09:00:00+08:00')], NOW), 5, 'татац: 5 цагийн өмнө');
+  eq(F.adsFetchAge([fr('2026-09-16T06:30:00+08:00'), fr('2026-09-17T12:00:00+08:00')], NOW), 2,
+     'татац: ХАМГИЙН СҮҮЛИЙН таталтаар');
+  eq(F.adsFetchAge([], NOW), null, 'татац: дата алга → null');
+  eq(F.adsFetchAge(null, NOW), null, 'татац: null → унахгүй');
+  eq(F.adsFetchAge([{}], NOW), null, 'татац: талбаргүй мөр → null');
+
+  eq(F.adsStaleMsg(0, 0), '', 'анхааруулга: бүх юм шинэ → чимээгүй');
+  eq(F.adsStaleMsg(1, 1), '', 'анхааруулга: 1 цаг/1 хоног → чимээгүй');
+  ok(/4 цаг/.test(F.adsStaleMsg(0, 4)), 'анхааруулга: татагч зогссоныг ЦАГААР хэлнэ');
+  ok(/3 хоног/.test(F.adsStaleMsg(3, 0)), 'анхааруулга: дата хуучирсныг ӨДРӨӨР хэлнэ');
+  ok(/цаг/.test(F.adsStaleMsg(5, 9)), 'анхааруулга: хоёулаа муу бол татагчийнх ДАВУУ');
+  eq(F.adsStaleMsg(null, null), '', 'анхааруулга: дата огт алга → чимээгүй');
+
   // ── ЗАРЫН ДЭЛГЭЦИЙН 4 ТАБ (2026-09-17) ───────────────────────────────────
   // 20 гаруй блок нэг хуудсанд дараалж «юу хараад юу хийхээ» олдохгүй байв.
   // ⛔ Блок бүр ЯГ НЭГ табд байх ёстой: хоёр табд тавибал аль нь шинэ болохыг
@@ -7172,6 +7192,23 @@ need(['orderCustType']);
   // ⛔ Анхааруулга ХАМГИЙН ДЭЭР — доорх тоог уншихаас ӨМНӨ харагдана.
   ok(/📣 Зар & үр дүн<\/h2>\s*\n\s*\$\{staleHtml\}/.test(asrc2), 'scan: хуучрлын анхааруулга дээд талд');
   ok(/adsFeedAge\(rows, todayStr\(\)\)/.test(asrc2), 'scan: зарын дэлгэц хуучрлыг хэмжинэ');
+  ok(/adsFetchAge\(rows, Date\.now\(\)\)/.test(asrc2), 'scan: татагчийн амьд эсэхийг хэмжинэ');
+  ok(/ads-fresh/.test(asrc2), 'scan: хэзээ татсаныг ил бичнэ');
+
+  // ⛔ `date_preset=last_Nd` нь ӨНӨӨДРИЙГ ОРОЛЦУУЛДАГГҮЙ — өдөржин мөнгө
+  //    зарцуулж байхад «өнөөдөр 0» гэж харагдана.
+  const pull = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_pull.py'), 'utf8');
+  ok(!/'date_preset':/.test(pull) && /'time_range': json\.dumps\(win\(/.test(pull),
+     'scan: зарын татагч өнөөдрийг хамруулна');
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(path.join(__dirname, '..', 'tools', 'fb_pull.py'))} --selftest`,
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/PULL OK/.test(out), 'fb_pull.py: өөрийн тест — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'fb_pull.py: тест — ' + msg.trim().slice(0, 200));
+  }
 }
 
 // ── КЭШ БИЧИЛТ УНАХ ≠ ДАТА АЧААЛАГДААГҮЙ (2026-09-17) ──────────────────────

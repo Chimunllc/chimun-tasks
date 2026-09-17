@@ -7343,3 +7343,18 @@ select.no-asar-len {
   background: var(--panel); color: var(--muted); font-size: var(--fs-xs); cursor: pointer; }
 .mc-chip.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .mc-why { color: var(--ok); font-weight: 700; }
+/* Гараагийн ачааллын багана (2026-09-17) */
+.wd-row { grid-template-columns: 56px 1fr auto auto; }
+.wd-bar { display: block; height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.wd-bar > i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
+.wd-w0 { width: 0%; }
+.wd-w10 { width: 10%; }
+.wd-w20 { width: 20%; }
+.wd-w30 { width: 30%; }
+.wd-w40 { width: 40%; }
+.wd-w50 { width: 50%; }
+.wd-w60 { width: 60%; }
+.wd-w70 { width: 70%; }
+.wd-w80 { width: 80%; }
+.wd-w90 { width: 90%; }
+.wd-w100 { width: 100%; }

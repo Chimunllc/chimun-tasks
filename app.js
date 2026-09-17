@@ -29214,8 +29214,56 @@ const ADS_TABS = [
 function adsTabParts(tab, p) {
   if (tab === 'money') return [p.kpi, p.budget, p.camps, p.cmp, p.state, p.act];
   if (tab === 'src') return [p.ga, p.gsc, p.attrib, p.lead, p.capi];
-  if (tab === 'calls') return [p.call, p.conv, p.agent, p.fup];
+  if (tab === 'calls') return [p.call, p.wd, p.conv, p.agent, p.fup];
   return [p.advice, p.daily, p.cand, p.pubNote, p.pp, p.queue];   // 'todo' = өгөгдмөл
+}
+
+// ── ГАРАГААР — ХЭЗЭЭ ХҮН ХЭРЭГТЭЙ ВЭ (2026-09-17) ───────────────────────────
+// «Хэддэх өдөр хамгийн ачаалалтай вэ» гэдэг нь ээлжийн хуваарийн асуулт.
+// Амьд датаар (90 хоног) Мягмар хамгийн ачаалалтай (өдөрт 16.6) ч хамгийн их
+// АЛДАЖ байгаа нь Даваа (64), хамгийн муу хувьтай нь Ням (52%). Ялгаа нь
+// ачаалал биш — хүн байгаа эсэх.
+// ⚠ Гарагийг УБ-ийн цагаар (`_ubHour`-тай ижил +8) тооцно — браузерын бүсээр
+//   гулсуулбал Ням гарагийн дуудлага Бямбад унана.
+// ⚠ Өдрийн дундажийг тухайн гарагийн БОДИТ хоногийн тоонд хуваана (90 хоногт
+//   гараг бүр 12-13 удаа тохиолддог тул тэнцүү гэж үзэж болохгүй).
+// ⚠ Богино нэр (`WEEKDAY_MN`) аль хэдийн байдаг — ээлжийн хуваарь уншихад
+//   бүтэн нэр хэрэгтэй тул тусдаа.
+const WEEKDAY_FULL_MN = ['Ням', 'Даваа', 'Мягмар', 'Лхагва', 'Пүрэв', 'Баасан', 'Бямба'];
+function pbxByWeekday(calls, fromDay, workStart, workEnd) {
+  const w0 = Number.isFinite(Number(workStart)) ? Number(workStart) : 9;
+  const w1 = Number.isFinite(Number(workEnd)) ? Number(workEnd) : 18;
+  const out = WEEKDAY_FULL_MN.map((label, dw) => ({ dw, label, calls: 0, answered: 0, missed: 0, evening: 0, days: {} }));
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    if (String(c.peer || '').replace(/\D/g, '').length < 6) return;
+    const at = String(c.started_at || '');
+    const d = at.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || (fromDay && d < fromDay)) return;
+    const t = Date.parse(at);
+    if (isNaN(t)) return;
+    const ub = new Date(t + 8 * 3600 * 1000);
+    const x = out[ub.getUTCDay()];
+    const h = ub.getUTCHours();
+    const a = Number(c.answer_sec) || 0;
+    // ⚠ `dateStr` нь ЛОКАЛ огноо буцаадаг — `ub` аль хэдийн +8 болсон тул
+    //   дахин гулсуулна. UTC геттерээр (=УБ-ийн хана цаг) угсарна.
+    const p2 = n => String(n).padStart(2, '0');
+    // Өдрийн тоололд оройн дуудлага ч ордог — тэр өдөр ажилласан эсэхийг заана.
+    x.days[`${ub.getUTCFullYear()}-${p2(ub.getUTCMonth() + 1)}-${p2(ub.getUTCDate())}`] = 1;
+    if (h < w0 || h > w1) { x.evening++; return; }
+    if (a <= 0 && (Number(c.call_sec) || 0) < PBX_WAIT_SEC) return;   // андуурсан
+    x.calls++;
+    if (a > 0) x.answered++; else x.missed++;
+  });
+  out.forEach(x => {
+    const n = Object.keys(x.days).length;
+    x.dayCount = n;
+    x.perDay = n ? Math.round(x.calls * 10 / n) / 10 : 0;
+    x.rate = x.calls ? Math.round(x.answered * 100 / x.calls) : 0;
+  });
+  // Долоо хоног Даваагаар эхэлнэ (Ням сүүлд) — хуваарь ингэж уншигддаг.
+  return out.slice(1).concat(out.slice(0, 1));
 }
 
 // ── САЙТЫН ЗОЧИД (GA4) — юүлүүрийн ДЭЭД тал (2026-09-17) ───────────────────
@@ -29500,6 +29548,23 @@ function renderAds() {
       KFC-тэй төстэй тул ихэнх нь андуурч залгасан хүмүүс.
       Ажлын цагийн гадна залгасныг «алдсан» гэж тооцохгүй: тэнд PBX мэндчилгээгээ хэлээд өөрөө таслана.</div>`;
 
+  // ── Гараагаар — ээлжийн хуваарийн хариу ──
+  // ⚠ Хамгийн муу гараг нь хамгийн ачаалалтай нь БАЙХ албагүй: амьд датаар
+  //   Мягмар хамгийн олон дуудлагатай атлаа Даваа хоёр дахин их алддаг.
+  const wd = pbxByWeekday(state.pbxLog || [], from, ws, we);
+  const wdMax = Math.max(1, ...wd.map(x => x.calls));
+  const wdWorst = wd.slice().sort((a, b) => b.missed - a.missed)[0];
+  const wdHtml = !pbx.calls ? '' : `<div class="ads-sec">Гараагаар <span class="ads-sub">(ажлын цагт · ${days} хоног)</span></div>
+    <div class="ads-list">${wd.map(x => `<div class="ads-row wd-row">
+      <span class="ads-nm">${x.label}</span>
+      <span class="wd-bar"><i class="wd-w${Math.round(x.calls * 10 / wdMax) * 10}"></i></span>
+      <span class="ads-ms">${x.perDay}/өдөр</span>
+      <b class="ads-pm${x.missed && x === wdWorst ? ' ads-bad' : ''}">${x.missed} алдсан · ${x.rate}%</b>
+    </div>`).join('')}</div>
+    <div class="ads-note">Баганын урт = тухайн гарагийн дуудлагын тоо; «/өдөр» нь тэр гараг хэдэн удаа
+      тохиосныг тооцсон дундаж. <b>${escapeHtml(wdWorst.label)}</b> хамгийн их алдаж байна —
+      ачаалал биш, хүн байгаа эсэх нь ялгаа гаргадаг. Оройн дуудлага энд ОРООГҮЙ.</div>`;
+
   // ── Facebook руу буцсан худалдан авалт (Conversions API) ──
   // Хэрэглэгч «холбоо ажиллаж байна уу» гэдгийг ЭНДЭЭС л харна.
   const capi = capiStats(state.fbCapi || [], from);
@@ -29576,7 +29641,7 @@ function renderAds() {
     advice: adviceHtml, daily: dailyHtml, cand: candHtml, pubNote, pp: ppHtml, queue: queueHtml,
     kpi, budget: budgetHtml, camps: campsHtml, cmp: cmpHtml, state: stateHtml, act: actHtml,
     ga: gaHtml, gsc: gscHtml, attrib: attribHtml, lead: leadHtml, capi: capiHtml,
-    call: callHtml, conv: convHtml, agent: agentHtml, fup: fupHtml,
+    call: callHtml, wd: wdHtml, conv: convHtml, agent: agentHtml, fup: fupHtml,
   }).filter(x => x && String(x).trim()).join('\n');
 
   return `<h2 class="view-title">📣 Зар & үр дүн</h2>

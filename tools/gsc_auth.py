@@ -7,9 +7,13 @@
 
   python3 tools/gsc_auth.py           # браузер нээж, refresh token хэвлэнэ
 
-⛔ ТОКЕН ЧАТАД ХЭВЛЭГДЭХГҮЙ — шууд файлд бичигдэнэ.
+Түлхүүрийг Google Cloud → Clients → gsc-pull → ⬇ гэж татсаны дараа скрипт
+`~/Downloads/client_secret_*.json`-г ӨӨРӨӨ олно (шинийг нь эхэлж). Өөр зам
+бол argv-д өг. Хувьсагчаар ч болно: GSC_CLIENT_ID / GSC_CLIENT_SECRET.
+
+⛔ ТҮЛХҮҮР Ч, ТОКЕН Ч ДЭЛГЭЦЭД ХЭВЛЭГДЭХГҮЙ — шууд файлд бичигдэнэ.
 """
-import http.server, json, os, secrets, socketserver, sys, threading
+import glob, http.server, json, os, secrets, socketserver, sys, threading
 import urllib.parse, urllib.request, webbrowser
 
 SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly'

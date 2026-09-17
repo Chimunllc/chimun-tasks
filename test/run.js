@@ -7008,6 +7008,28 @@ need(['orderCustType']);
   ok(!/print\([^)]*refresh_token[^)]*\)/.test(au), 'scan: gsc_auth токен хэвлэхгүй');
   ok(/chmod\(OUT, 0o600\)/.test(au), 'scan: gsc_auth файлын эрх хаана');
 
+  // ⛔ ХЭРЭГЛЭСЭН МОДУЛЬ ИМПОРТЛОГДООГҮЙ = АЖИЛЛАХ ҮЕИЙН NameError (2026-09-17).
+  //    `gsc_auth.py` нь `glob.glob(...)` дууддаг атлаа `import glob` байхгүй байсан
+  //    тул хэрэглэгчийн ЭХНИЙ ажиллуулалт унасан. `python3 -m py_compile` ийм
+  //    алдааг БАРИХГҮЙ (нэр нь ажиллах үед л шалгагдана), тестийн дуудлага ч
+  //    богино холболтоор тойрч болно — тиймээс эх кодоор шалгана.
+  {
+    const dir = path.join(__dirname, '..', 'tools');
+    const mods = ['glob', 'json', 'os', 're', 'subprocess', 'sys', 'time',
+      'hashlib', 'base64', 'csv', 'secrets', 'socketserver', 'webbrowser', 'threading'];
+    const missing = [];
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.py'))) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      for (const m of mods) {
+        if (!new RegExp(`\\b${m}\\.[A-Za-z_]`).test(src)) continue;
+        if (new RegExp(`^\\s*(import|from)\\s+[^\\n]*\\b${m}\\b`, 'm').test(src)) continue;
+        missing.push(`${f}:${m}`);
+      }
+    }
+    ok(missing.length === 0, 'scan: tools/*.py импортлоогүй модуль хэрэглэхгүй' +
+      (missing.length ? ' — ' + missing.join(', ') : ''));
+  }
+
   try {
     const out = require('child_process')
       .execSync(`python3 ${JSON.stringify(gsc)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

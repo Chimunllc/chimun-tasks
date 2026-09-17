@@ -10118,6 +10118,46 @@ async function uploadProductImage(file) {
   return b64;
 }
 
+// ── ПОСТЕР → FACEBOOK (2026-09-17) ──────────────────────────────────────────
+// Постерыг хуудсанд шууд нийтлэх. Бичвэрийг апп САНАЛ болгоод хүн засна.
+// ⛔ ХООСОН форм БИШ — бичвэр үргэлж бөглөгдсөн ирнэ. Хоосон форм энэ репод
+//   дандаа үхдэг; урьдчилан бичсэн саналыг засах нь нэмэлт ажил шаардахгүй.
+// Санал хоёр эх сурвалжтай:
+//   · бараанаас хийсэн постер → `adPostText` (зарын дэлгэцтэй ИЖИЛ функц)
+//   · өөрийн зурагтай постер → постерын гарчиг/тайлбар (хүн аль хэдийн бичсэн)
+//     + брэндийн утас/вэб.
+function adPosterText(poster, prod, kit) {
+  if (prod) return adPostText(prod);
+  const P = poster || {}, k = kit || {};
+  const title = String(P.title || '').trim();
+  const sub = String(P.subtitle || '').trim();
+  if (!title && !sub) return '';
+  const out = [];
+  if (title) out.push(title);
+  if (sub) out.push('', sub);
+  const tail = [];
+  if (k.phone) tail.push('📞 ' + String(k.phone).trim());
+  if (k.website) tail.push('🌐 ' + String(k.website).trim());
+  if (tail.length) out.push('', tail.join('\n'));
+  return out.join('\n');
+}
+
+// Постерын canvas-ыг VPS рүү байршуулж НИЙТИЙН URL буцаана.
+// ⛔ base64 руу FALLBACK ХИЙХГҮЙ (`uploadProductImage`-ээс ялгаатай) — Facebook нь
+//   зургийг URL-ээр ТАТдаг тул data: URL ирвэл нийтлэл чимээгүй бүтэлгүйтэнэ.
+async function uploadPosterPng(canvas) {
+  const b64 = canvas.toDataURL('image/jpeg', 0.88);
+  const r = await fetchWithTimeout(
+    'https://n8n.nomaadcamp.com/webhook/mevent-upload-image?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: b64 }) },
+    30000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  const url = j && (j.url || (Array.isArray(j) && j[0] && j[0].url));
+  if (!url || !/^https?:\/\//.test(url)) throw new Error('Байршуулагчаас хаяг ирсэнгүй');
+  return url;
+}
+
 // Видеог VPS-д (n8n.nomaadcamp.com/video/) байршуулж hosted URL авна. base64-ээр илгээнэ.
 // Зурагнаас ялгаатай: шахахгүй (native тоглуулагч), хэмжээ хязгаартай, base64 fallback БАЙХГҮЙ (DB-д том видео хадгалахгүй).
 function fileToDataUrl(file) {
@@ -14613,7 +14653,13 @@ function renderMarketing() {
     <div style="margin-top:18px;text-align:center;">
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Урьдчилан харах</div>
       <canvas id="mk-canvas" style="max-width:100%;width:${P.size === 'story' ? '300' : (P.size === 'wide' ? '460' : '380')}px;height:auto;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18);background:#111;"></canvas>
-      <div style="margin-top:12px;"><button class="btn btn-primary" id="mk-download" style="padding:9px 22px;">⬇ PNG татах</button></div>
+      <div class="mk-acts"><button class="btn btn-primary" id="mk-download">⬇ PNG татах</button></div>
+      <div class="mk-pub">
+        <div class="mk-pub-h">📣 Facebook-т нийтлэх</div>
+        <div class="mk-hint">Доорх бичвэрийг апп санал болголоо — засаж болно.</div>
+        <textarea id="mk-post-text" class="mk-pub-t" rows="7" placeholder="Постын бичвэр"></textarea>
+        <button class="btn" id="mk-publish">📣 M event хуудсанд нийтлэх</button>
+      </div>
     </div>
   </div>`;
 }
@@ -14709,6 +14755,44 @@ function attachMarketingHandlers() {
     // Бүтэн барааны бичлэгийг дамжуулна (saveProduct merge-safe, дутуу талбар 0 болгодог тул)
     await saveProduct({ ...prod, name, description: desc });
     showToast('Бараа шинэчлэгдлээ — агуулах + сайтад орлоо ✓', 'success', 2800);
+  });
+  // Саналыг бөглөнө. Хүн засаж эхэлсэн бол ДАХИН БҮҮ ДАР — гараар оруулсан
+  // бичвэрийг постер дахин зурах бүрд устгавал хүн ажлаа алдана.
+  const _mkFillPost = () => {
+    const ta = document.getElementById('mk-post-text');
+    if (!ta || ta.dataset.touched === '1') return;
+    const prod = P.productSku ? (state.products || []).find(x => x && x.sku === P.productSku) : null;
+    ta.value = adPosterText(P, prod, state.brandKit || {});
+  };
+  document.getElementById('mk-post-text')?.addEventListener('input', e => { e.target.dataset.touched = '1'; });
+  _mkFillPost();
+
+  // ⛔ Гадагш нийтлэгдэх тул `showConfirm`-гүй байж БОЛОХГҮЙ.
+  document.getElementById('mk-publish')?.addEventListener('click', async () => {
+    const cv = document.getElementById('mk-canvas');
+    const ta = document.getElementById('mk-post-text');
+    const body = String((ta && ta.value) || '').trim();
+    if (!cv) return;
+    if (!body) { showToast('Постын бичвэр хоосон байна', 'warn', 2500); return; }
+    if (!(await showConfirm(`Энэ постерыг M event хуудсанд нийтлэх үү?\n\n${body}`,
+      { title: 'Facebook-т нийтлэх', okText: 'Нийтлэх', cancelText: 'Болих' }))) return;
+    const btn = document.getElementById('mk-publish');
+    if (btn) { btn.disabled = true; btn.textContent = 'Илгээж байна…'; }
+    try {
+      const prod = P.productSku ? (state.products || []).find(x => x && x.sku === P.productSku) : null;
+      const img = await uploadPosterPng(cv);
+      await saveAdPost({
+        id: 'post-' + Date.now().toString(36) + '-' + String(P.productSku || 'poster').toLowerCase(),
+        sku: P.productSku || null, status: 'approved', body, image_url: img,
+        link_url: prod ? adPostUrl(prod) : null, created_by: state.me || null,
+        approved_at: new Date().toISOString(), approved_by: state.me || null,
+      });
+      showToast('Дараалалд орлоо — 10 минутын дотор нийтлэгдэнэ ✓', 'success', 4000);
+    } catch (e) {
+      showToast('Илгээгдсэнгүй: ' + e.message, 'error', 5000);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '📣 M event хуудсанд нийтлэх'; }
+    }
   });
   document.getElementById('mk-download')?.addEventListener('click', () => {
     const cv = document.getElementById('mk-canvas'); if (!cv) return;

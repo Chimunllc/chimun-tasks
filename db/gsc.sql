@@ -27,3 +27,8 @@ grant select on gsc_daily to authenticated;
 -- ⛔ DELETE ИЛ ХУРААНА — эзний default privileges шинэ хүснэгт бүрд
 --    `authenticated`-д `arwd` автоматаар олгодог.
 revoke delete on gsc_daily from authenticated;
+
+-- ⛔ ХҮСНЭГТ ҮҮСГЭСЭН НЬ ХАНГАЛТГҮЙ — PostgREST схемээ КЭШЛЭДЭГ тул шинэ
+--    хүснэгтийг мэдэхгүй, апп нь **404** авна (2026-09-17-нд яг ингэсэн:
+--    кэш 78 relation дээр зогссон байсныг 81 болгож зассан).
+notify pgrst, 'reload schema';

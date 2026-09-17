@@ -80,7 +80,10 @@ def rows_from(data):
             'post_id': pid,
             'created_time': (p.get('created_time') or '')[:25] or None,
             'message': (p.get('message') or '')[:600],
-            'picture': (p.get('full_picture') or '')[:500],
+            # ⛔ ЗУРГИЙГ ХАДГАЛАХГҮЙ — Facebook-ийн CDN нь гадны хуудсанд
+            #    **403** буцаадаг тул аппад саарал хайрцаг болж харагдана
+            #    (2026-09-17-нд амьд туршиж баталсан).
+            'picture': '',
             'permalink': (p.get('permalink_url') or '')[:400],
             'status_type': (p.get('status_type') or typ or '')[:40],
             'link_url': link[:400],
@@ -95,7 +98,7 @@ def main():
     if not tok or not page:
         raise SystemExit('fb.env-д FB_PAGE_TOKEN эсвэл FB_PAGE_ID алга')
     q = urllib.parse.urlencode({
-        'fields': 'id,created_time,message,full_picture,permalink_url,status_type,'
+        'fields': 'id,created_time,message,permalink_url,status_type,'
                   'attachments{type,unshimmed_url}',
         'limit': LIMIT, 'access_token': tok})
     try:

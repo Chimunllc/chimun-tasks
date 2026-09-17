@@ -28107,6 +28107,15 @@ function _ubDate(ts) {
 //   байх ёстой — эс бөгөөс мэдэгдэл дээрх тоог хаанаас хайхаа мэдэхгүй.
 //   Огноо уншигдахгүй бол «older» — шинэ рүү хийвэл хуучин мөр өдөр бүр
 //   дээд талд гацна.
+// Дуудлагын цагийг ТОО болгоно. ⛔ Цагийг МӨРӨӨР бүү харьцуул — «…Z» ба
+// «…+00:00» нь ижил мөч боловч мөрийн эрэмбээр өөр гарна. Уншигдахгүй бол 0
+// (эрэмбийн ард унана, мөр АЛГА БОЛОХГҮЙ).
+function pbxTime(ts) {
+  const t = Date.parse(String(ts || ''));
+  return isNaN(t) ? 0 : t;
+}
+// Сүүлд залгаснаар нь ЭРЭМБЭЛНЭ (шинэ нь дээр) — CEO 2026-09-17.
+const pbxByRecent = (a, b) => pbxTime(b.last) - pbxTime(a.last);
 function pbxDayBucket(lastTs, today) {
   const d = _ubDate(lastTs);
   if (!d) return 'older';
@@ -28199,7 +28208,7 @@ function pbxFollowups(calls, opts) {
     if (at && at > x.last) x.last = at;
   });
   const out = Object.values(by).filter(x => !x.answered && x.maxSec >= minSec)
-    .sort((a, b) => (b.tries - a.tries) || String(b.last).localeCompare(String(a.last)));
+    .sort((a, b) => (b.tries - a.tries) || pbxByRecent(a, b));
   out.short = Object.values(by).filter(x => !x.answered && x.maxSec < minSec).length;
   out.off = Object.keys(offOnly).filter(p => !by[p]).length;
   return out;
@@ -28420,7 +28429,7 @@ function pbxOpenCalls(fups, cbs, orders) {
       status: cb ? String(cb.status || '') : '',
     });
   }).sort((a, b) => (a.done - b.done) || (a.cbTries - b.cbTries) ||
-                    String(b.last).localeCompare(String(a.last)));
+                    pbxByRecent(a, b));
 }
 // Сайдбарын тоо — зөвхөн шийдэгдээгүй нь.
 function pbxOpenCount() {
@@ -29172,7 +29181,7 @@ function pbxCallers(calls, orders, opts) {
   return Object.values(by).map(x => Object.assign(x, {
     orders: ordBy[custPhoneKey(x.peer)] || 0,
     missed: x.tries - x.answered,
-  })).sort((a, b) => String(b.last).localeCompare(String(a.last)));
+  })).sort((a, b) => pbxByRecent(a, b));
 }
 // Хайлт — дугаар эсвэл харилцагчийн нэрээр.
 function pbxCallerMatch(row, q, customers) {
@@ -29196,7 +29205,11 @@ function renderMissedCalls() {
   const rows = pbxOpenCalls(fups, state.pbxCb || [], state.appOrders || []);
   const nameIdx0 = pbxNameIndex(state.customers || [], state.appOrders || []);
   rows.forEach(r => { r.pri = pbxPriority(r, pbxWho(r.peer, nameIdx0), todayStr()); });
-  const open = rows.filter(r => !r.done).sort((a, b) => b.pri.score - a.pri.score);
+  // ⛔ ЭРЭМБЭ = СҮҮЛД ЗАЛГАСАН (CEO, 2026-09-17). Өмнө нь `pri.score`-оор
+  //   эрэмбэлдэг байсан тул «Өмнөх өдрүүд» доторх мөр 09-14, 09-06, 09-11
+  //   гэж эмх замбараагүй гарч, хүн хаанаас уншихаа мэдэхгүй байв.
+  //   `pri.why` нь ШАЛТГААНЫГ хэлсээр байна — зөвхөн дарааллыг заахаа болив.
+  const open = rows.filter(r => !r.done).sort(pbxByRecent);
   const done = rows.filter(r => r.done);
 
   const nameIdx = nameIdx0;
@@ -29207,8 +29220,9 @@ function renderMissedCalls() {
     const head = w.name
       ? `<div class="mc-num">${escapeHtml(w.name)}</div><div class="mc-sub">${escapeHtml(r.peer)}</div>`
       : `<div class="mc-num">${escapeHtml(r.peer)}</div><div class="mc-sub">шинэ дугаар — өмнө захиалга өгөөгүй</div>`;
-    // ⚠ «Яагаад эхэнд байна» гэдэг шалтгааныг шошго болгож ДАВТАХГҮЙ — нэг
-    //   мэдээлэл хоёр газар байвал нүд хаашаа харахаа мэдэхгүй болно.
+    // ⚠ Дарааллыг СҮҮЛД ЗАЛГАСАН цаг заана; `why` нь тэр хүний хамгийн хүнд
+    //   дохиог (танил харилцагч, олон удаа залгасан г.м.) хэлнэ. Түүнийг
+    //   шошго болгож ДАВТАХГҮЙ — нэг мэдээлэл хоёр газар байвал нүд төөрнө.
     const why = (!r.done && r.pri) ? r.pri.why : '';
     const tags = [
       w.orders ? { t: `🛒 ${w.orders} захиалга · ${fmtMoney(w.revenue)}${w.last ? ' · сүүлд ' + w.last : ''}`, warm: 1 } : null,
@@ -29238,9 +29252,9 @@ function renderMissedCalls() {
   const q = String(state._mcQ || '');
   // Эрэмбэ — «хаа хамаагүй залгах уу?» гэсэн асуултын хариу нь ЭНЭ.
   const MC_SORTS = {
-    last:   { label: 'Сүүлд залгасан', fn: (a, b) => String(b.last).localeCompare(String(a.last)) },
-    tries:  { label: 'Олон удаа залгасан', fn: (a, b) => b.tries - a.tries || String(b.last).localeCompare(String(a.last)) },
-    money:  { label: 'Танил — худалдан авсан', fn: (a, b) => (pbxWho(b.peer, nameIdx).revenue - pbxWho(a.peer, nameIdx).revenue) || String(b.last).localeCompare(String(a.last)) },
+    last:   { label: 'Сүүлд залгасан', fn: (a, b) => pbxByRecent(a, b) },
+    tries:  { label: 'Олон удаа залгасан', fn: (a, b) => b.tries - a.tries || pbxByRecent(a, b) },
+    money:  { label: 'Танил — худалдан авсан', fn: (a, b) => (pbxWho(b.peer, nameIdx).revenue - pbxWho(a.peer, nameIdx).revenue) || pbxByRecent(a, b) },
     cold:   { label: 'Хэзээ ч яриагүй', fn: (a, b) => (a.answered - b.answered) || (b.tries - a.tries) },
   };
   const sortKey = MC_SORTS[state._mcSort] ? state._mcSort : 'last';
@@ -30789,17 +30803,21 @@ function openAppErrorsModal() {
   document.body.appendChild(ov);
   const close = () => ov.remove();
 
+  // Алдааны цагийг ТОО болгоно (уншигдахгүй бол 0 — мөр алга болохгүй).
+  const errTime = ts => { const t = Date.parse(String(ts || '')); return isNaN(t) ? 0 : t; };
   function rowsFor(f) {
     if (f === 'active') {
       // Локал (энэ төхөөрөмж, 24ц) + сервер (шийдэгдээгүй) — шинэ нь дээр
       const srv = (Array.isArray(state.serverErrors) ? state.serverErrors : []).map(e => Object.assign({}, e, { _srv: true }));
+      // ⛔ Цагийг МӨРӨӨР бүү харьцуул — локал алдаа «…Z», серверийнх «…+00:00»
+      //   тул мөрийн эрэмбээр хоёр эх сурвалж холилдож буруу дараалалд орно.
       return recentAppErrors().concat(srv)
-        .sort((a, b) => String(b._srv ? b.last_at : b.at || '').localeCompare(String(a._srv ? a.last_at : a.at || '')));
+        .sort((a, b) => errTime(b._srv ? b.last_at : b.at) - errTime(a._srv ? a.last_at : a.at));
     }
     // Түүх — сервер, бүх төлөв (зассан/үл хамаарах орсон)
     const hist = (Array.isArray(state.serverErrorHist) ? state.serverErrorHist : []).map(e => Object.assign({}, e, { _srv: true }));
     return (f === 'fixed' ? hist.filter(e => (e.status || 'new') === 'fixed') : hist)
-      .sort((a, b) => String(b.last_at || '').localeCompare(String(a.last_at || '')));
+      .sort((a, b) => errTime(b.last_at) - errTime(a.last_at));
   }
   function renderRow(e) {
     const st = e._srv ? (e.status || 'new') : 'new';

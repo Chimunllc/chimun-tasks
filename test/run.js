@@ -6987,6 +6987,15 @@ need(['orderCustType']);
 
   // ── САЙТЫН ЗОЧИД (GA4) — юүлүүрийн дээд тал (2026-09-17) ─────────────────
   {
+    // ⛔ Сайтын захиалгыг `source === 'site'` гэж түүхийгээр таних нь БУРУУ —
+    //    DB-д 'm-event-website' гэж хадгалагддаг тул тоолуур үргэлж 0 гарна
+    //    (эхний хувилбарт яг ингэж гарсныг амьд датаар барьсан).
+    eq(F.orderSourceKey({ source: 'm-event-website' }), 'site', 'ga: сайтын захиалга танигдана');
+    const asrcS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    eq((asrcS.match(/source \|\| ''\) === 'site'|source === 'site'/g) || []).length, 0,
+       'scan: сайтын эх сурвалжийг түүхийгээр харьцуулахгүй (orderSourceKey ашигла)');
+  }
+  {
     const g = [
       { day: '2026-09-16', channel: 'Organic Search', sessions: 120, users: 95, engaged: 80, leads: 3 },
       { day: '2026-09-15', channel: 'Organic Search', sessions: 80, users: 60, engaged: 50, leads: 1 },

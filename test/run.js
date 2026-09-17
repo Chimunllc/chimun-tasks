@@ -7259,6 +7259,26 @@ need(['orderCustType']);
   ok(/geo_locations/.test(bsrc) && /countries/.test(bsrc),
      'scan: газарзүйг улс даяар барина');
 
+  // ⛔ САЙТ РУУ ЧИГЛҮҮЛСЭН ТӨЛБӨРТ ЗАР (2026-09-17). Facebook зураг+бичвэр постыг
+  //    «холбоост пост» гэж үздэггүй тул постоор нь вэб зар болгох боломжгүй
+  //    («Non-Website Ad in Website Ad Set»). Зураг+линкээс шинэ creative угсарна.
+  ok(/'object_story_spec': json\.dumps\(\{'page_id': page, 'link_data': ld\}\)/.test(bsrc),
+     'scan: сайтын зар link_data-аар угсрагдана');
+  ok(/atyp != 'share'/.test(bsrc),
+     'scan: жинхэнэ холбоост пост хуучин замаараа (постоороо) явна');
+  ok(/ad_link\(link/.test(bsrc), 'scan: зарын линк utm-ээр тэмдэглэгдэнэ');
+  ok(/AD_MEDIUM = 'cpc'/.test(bsrc),
+     'scan: төлбөрт урсгал органикаас ялгагдана');
+  ok(/upload_image\(/.test(bsrc) && /adimages/.test(bsrc),
+     'scan: постын зураг зарын санд байршина');
+  // ⛔ Алдаа нь зөвхөн HTTP биш — зураг татах/hash авахад ч гарна. Барихгүй бол
+  //    скрипт унаж, үлдсэн хүсэлтүүд дараалалдаа гацна.
+  ok(/except Exception as e:/.test(bsrc), 'scan: бүүстын алдаа бүрэн баригдана');
+
+  const psrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_posts_pull.py'), 'utf8');
+  ok(/msg_link\(p\.get\('message'\)\)/.test(psrc),
+     'scan: зурагтай постын линкийг бичвэрээс уншина');
+
   // ⛔ ХҮСНЭГТ ҮҮСГЭСЭН НЬ ХАНГАЛТГҮЙ — PostgREST схемээ кэшлэдэг тул шинэ
   //    хүснэгтэд апп 404 авна. SQL бүр өөрөө кэшийг шинэчлүүлнэ.
   for (const f of ['fb_page_posts.sql', 'fb_capi.sql', 'gsc.sql']) {

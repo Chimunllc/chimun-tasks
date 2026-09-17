@@ -6986,6 +6986,93 @@ need(['orderCustType']);
   }
 }
 
+// ── psql-ийн ТУСГААРЛАГЧИЙГ `.strip()` ИДДЭГ (2026-09-17) ──────────────────
+// Python-д `'\x1f'.isspace()` нь TRUE тул `stdout.strip()` нь мөрийн ТӨГСГӨЛИЙН
+// тусгаарлагчийг хасдаг — сүүлийн багана ХООСОН байхад мөр нэг талбараар дутуу
+// задарна. Амьд системд «бүүстын хүсэлт алга» гэсэн ХУДАЛ хариу ингэж гарсан.
+{
+  const files = ['fb_boost.py', 'fb_capi.py', 'pbx_notify.py'];
+  for (const f of files) {
+    const fp = path.join(__dirname, '..', 'tools', f);
+    if (!fs.existsSync(fp)) continue;
+    const py = fs.readFileSync(fp, 'utf8');
+    if (!/\\x1f/.test(py)) continue;
+    ok(!/stdout\.strip\(\)\.split/.test(py), `scan: ${f} — strip() тусгаарлагчийг идэхгүй`);
+    ok(/stdout\.strip\('\\n'\)/.test(py), `scan: ${f} — зөвхөн мөр таслалт хасна`);
+  }
+}
+
+// ── ХУУДАСНЫ ПОСТЫГ БҮҮСТ ХИЙХ (2026-09-17) ────────────────────────────────
+// Аппын өөрийн нийтэлсэн постыг зарын систем ХАРДАГГҮЙ (апп Development
+// горимд); CEO гараар нийтэлсэн пост харин бүүстлэгддэг — амьд туршиж
+// баталсан. Тиймээс урсгал эргэв: хүн постлоно → апп жагсаана → хүн сонгоно.
+{
+  const posts = [
+    { post_id: 'a', created_time: '2026-09-15T05:42:29+00:00', message: 'Сайн  байна\nуу',
+      picture: 'i.jpg', link_url: '', permalink: 'p' },
+    { post_id: 'b', created_time: '2026-09-16T05:00:00+00:00', message: 'Сайт',
+      link_url: 'https://mevent.mn/', boost: 'done' },
+    { post_id: 'c', created_time: '2026-09-10T05:00:00+00:00', message: '',
+      boost: 'error', error: 'Non-Website Ad' },
+    { no_id: 1 },
+  ];
+  const rows = F.pagePostRows(posts, 10);
+  eq(rows.length, 3, 'пост: id-гүй мөр хасагдана');
+  eq(rows[0].id, 'b', 'пост: шинэ нь эхэнд');
+  // ⛔ Холбоосгүй постыг «сайт руу» гэж бүүстлэх боломжгүй — Facebook татгалздаг.
+  eq(rows[0].kind, 'site', 'пост: холбоостой → сайт');
+  eq(rows[1].kind, 'engage', 'пост: холбоосгүй → хандалт');
+  eq(rows[1].msg, 'Сайн байна уу', 'пост: зай нэгтгэгдэнэ');
+  eq(rows[2].msg, '(бичвэргүй)', 'пост: бичвэргүй нь ил');
+  eq(rows[0].state, 'done', 'пост: төлөв уншигдана');
+  eq(rows[0].stateLabel, '✅ Ажиллаж байна', 'пост: төлвийн шошго');
+  eq(rows[1].state, '', 'пост: хүсэлтгүй → хоосон');
+  eq(rows[2].err, 'Non-Website Ad', 'пост: алдаа харагдана');
+  eq(rows[0].day, '09-16', 'пост: сар-өдөр');
+  eq(F.pagePostRows([], 5).length, 0, 'пост: хоосон');
+  eq(F.pagePostRows(null, 5).length, 0, 'пост: null → унахгүй');
+  eq(F.pagePostRows(posts, 1).length, 1, 'пост: хязгаар');
+
+  const asrc3 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна — баталгаажуулалтгүй болохгүй.
+  // ⚠ Хамгаалалт нь БОДИТООР хаадаг байх ёстой — `await showConfirm(` гэсэн
+  //   мөр байгаад ч болохгүй (`false &&` нэмэхэд хэвээр таарч байв). Хүлээж
+  //   авсан хариуг ШАЛГАЖ, үгүй бол ГАРдаг хэлбэрийг шаардана.
+  ok(/data-pp-boost\][\s\S]{0,500}?if \(!\(await showConfirm\([\s\S]{0,300}?\)\)\) return;/.test(asrc3),
+     'scan: бүүст showConfirm-оор хаагдана');
+  ok(/data-pp-boost\][\s\S]{0,900}?await requestBoost\(/.test(asrc3),
+     'scan: бүүстын хүсэлт илгээгдэнэ');
+  ok(/loadPagePosts\(true\)/.test(asrc3), 'scan: постын жагсаалт ачаалагдана');
+
+  // Python талын цэвэр функцууд
+  for (const [f, tag] of [['fb_posts_pull.py', 'POSTS OK'], ['fb_boost.py', 'BOOST OK']]) {
+    const fp = path.join(__dirname, '..', 'tools', f);
+    const py = fs.readFileSync(fp, 'utf8');
+    try {
+      const out = require('child_process')
+        .execSync(`python3 ${JSON.stringify(fp)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      ok(out.includes(tag), `${f}: өөрийн тест — ` + out.trim());
+    } catch (e) {
+      const msg = String((e.stdout || '') + (e.stderr || ''));
+      ok(/No such file|not found|ENOENT/.test(msg) || !msg, `${f}: тест — ` + msg.trim().slice(0, 250));
+    }
+    if (f === 'fb_posts_pull.py') {
+      // ⛔ Татагч БҮҮСТЫН баганыг дарж бичвэл хүний хүсэлт чимээгүй арилна.
+      ok(/on conflict \(post_id\) do update set/.test(py) && !/do update set[\s\S]{0,300}?boost=/.test(py),
+         'scan: татагч бүүстын төлвийг дардаггүй');
+      ok(/мөр ирсэнгүй/.test(py), 'scan: татагч хоосныг чимээгүй өнгөрөөхгүй');
+    } else {
+      // ⛔ creative ба ad хоёулаа PAGE токеноор — системийнхээр «No Advertiser
+      //    Permission On Page» гэж унана (амьд туршсан).
+      ok(/FB_PAGE_TOKEN/.test(py) && !/FB_TOKEN/.test(py), 'scan: бүүст PAGE токеноор');
+      // ⛔ Алдааг бүртгэнэ — эс бөгөөс 10 мин тутам ижил алдаа давтагдана.
+      ok(/boost='error'/.test(py), 'scan: алдаа бүртгэгдэж давтагдахаа болино');
+      ok(/'status': 'PAUSED'[\s\S]{0,1200}?status.*ACTIVE/.test(py),
+         'scan: бүх хэсэг бүрдсэний дараа асаана');
+    }
+  }
+}
+
 // ── GOOGLE SEARCH CONSOLE (2026-09-16) ─────────────────────────────────────
 // Facebook дээр бид хүнд өөрөө очдог; Google дээр хүн БИДНИЙГ хайж байна.
 // Аль үгээр олдож байгаагаа мэдэхгүй бол ямар бараанд зар тавихаа мэдэхгүй.

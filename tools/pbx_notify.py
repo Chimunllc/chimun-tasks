@@ -65,7 +65,10 @@ def psql(sql):
                        capture_output=True, text=True)
     if p.returncode:
         raise SystemExit('psql: ' + p.stderr.strip())
-    return [r.split('\x1f') for r in p.stdout.strip().split('\n') if r.strip()]
+    # ⛔ `.strip()` нь `\x1f`-ийг ЧУ ХАСДАГ (Python-д тэр нь «зай» гэж тооцогддог) —
+    #    сүүлийн багана ХООСОН байхад тусгаарлагч нь идэгдэж мөр нэг талбараар
+    #    дутуу задардаг. Амьд системд яг ингэж «хүсэлт алга» гэж худал гарсан.
+    return [r.split('\x1f') for r in p.stdout.strip('\n').split('\n') if r.strip()]
 
 
 # ── Цэвэр функцууд (тестлэгдэнэ) ────────────────────────────────────────────

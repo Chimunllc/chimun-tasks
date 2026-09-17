@@ -28818,6 +28818,74 @@ async function saveAdPost(row) {
   if (!r.ok) throw new Error('HTTP ' + r.status);
 }
 
+// ── ХУУДСАНД ГАРААР НИЙТЭЛСЭН ПОСТЫГ БҮҮСТ ХИЙХ (2026-09-17) ───────────────
+// ⛔ Аппын ӨӨРИЙН нийтэлсэн постыг Facebook-ийн зарын систем ХАРДАГГҮЙ (апп
+//    Development горимд). CEO гараар нийтэлсэн пост харин бүрэн бүүстлэгддэг —
+//    амьд туршиж баталсан. Тиймээс урсгал эргэв: хүн постоо хийнэ → апп
+//    жагсаана → хүн сонгоно → VPS зар болгоно (`tools/fb_boost.py`).
+// ⚠ Жагсаалт `fb_page_posts`-оос ирнэ (VPS 15 мин тутам татна) — апп Facebook
+//   руу ШУУД ханддаггүй (токен сервер дээр, CORS ч зөвшөөрөхгүй).
+const PAGE_POST_ST = {
+  requested: { label: '⏳ Дараалалд', cls: 'pp-wait' },
+  done:      { label: '✅ Ажиллаж байна', cls: 'pp-on' },
+  error:     { label: '⚠ Бүтсэнгүй', cls: 'pp-bad' },
+};
+// Жагсаалтын мөрүүд. Цэвэр функц — тестлэгдэнэ.
+function pagePostRows(posts, limit) {
+  return (posts || [])
+    .filter(p => p && p.post_id)
+    .slice()
+    .sort((a, b) => String(b.created_time || '').localeCompare(String(a.created_time || '')))
+    .slice(0, limit || 12)
+    .map(p => {
+      const st = PAGE_POST_ST[String(p.boost || '')] || null;
+      const site = !!String(p.link_url || '').trim();
+      return {
+        id: String(p.post_id),
+        day: String(p.created_time || '').slice(5, 10),
+        msg: String(p.message || '').replace(/\s+/g, ' ').trim() || '(бичвэргүй)',
+        img: String(p.picture || ''),
+        // ⚠ Холбоосгүй постыг «сайт руу» гэж бүүстлэх боломжгүй — Facebook
+        //   татгалздаг. Хүнд ЯГ юу болохыг нь хэлнэ.
+        kind: site ? 'site' : 'engage',
+        kindLabel: site ? '🔗 Сайт руу' : '👁 Хандалт',
+        state: st ? String(p.boost) : '',
+        stateLabel: st ? st.label : '',
+        stateCls: st ? st.cls : '',
+        err: String(p.error || '').slice(0, 120),
+        link: String(p.permalink || ''),
+      };
+    });
+}
+async function loadPagePosts(force) {
+  if (state.pagePosts && !force) return state.pagePosts;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/fb_page_posts?select=*&order=created_time.desc&limit=30`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.pagePosts = await r.json();
+    return state.pagePosts;
+  } catch (e) {
+    dataLoadFailed('Хуудасны пост', e);
+    state.pagePosts = state.pagePosts || [];
+    return state.pagePosts;
+  }
+}
+// Бүүстын хүсэлт тавина. VPS 10 минут тутам шалгаж зар болгоно.
+async function requestBoost(postId, kind) {
+  const r = await fetchWithTimeout(
+    `${DB_URL}/rest/v1/fb_page_posts?post_id=eq.${encodeURIComponent(postId)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ boost: 'requested', boost_kind: kind,
+                             requested_by: state.me || '', requested_at: new Date().toISOString(),
+                             error: null }),
+    }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+
 function canSeeAds() { return canAccessView('ads', () => !!state.isCEO || canSeeMarketing()); }
 
 function renderAds() {
@@ -28976,6 +29044,24 @@ function renderAds() {
     `<div class="ads-note">⚠ Нийтлэгч хараахан холбогдоогүй — баталсан пост дараалалд хүлээнэ. Facebook хуудасны эрх тохируулмагц автоматаар нийтлэгдэж бүүст хийгдэнэ.</div>`;
 
   const queued = posts.filter(x => x && x.status !== 'discarded').slice(0, 10);
+  // ── Таны гараар нийтэлсэн пост → бүүст ──
+  const ppRows = pagePostRows(state.pagePosts || [], 12);
+  const ppHtml = !ppRows.length ? '' : `
+    <div class="ads-sec">📣 Таны постыг бүүст хийх <span class="ads-sub">(хуудсанд нийтэлсэн сүүлийн постууд)</span></div>
+    <div class="ads-list">${ppRows.map(r => `<div class="pp-row">
+      ${r.img ? `<img class="pp-img" src="${escapeHtml(r.img)}" alt="" loading="lazy">` : '<span class="pp-img pp-noimg">—</span>'}
+      <div class="pp-b">
+        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind">${escapeHtml(r.kindLabel)}</span></div>
+        <div class="pp-t">${escapeHtml(r.msg.slice(0, 90))}</div>
+        ${r.err ? `<div class="pp-err">${escapeHtml(r.err)}</div>` : ''}
+      </div>
+      <div class="pp-a">${r.state
+        ? `<span class="pp-st ${r.stateCls}">${escapeHtml(r.stateLabel)}</span>${
+            r.state === 'error' ? `<button class="btn" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">↻ Дахин</button>` : ''}`
+        : `<button class="btn btn-primary" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">⚡ Бүүст</button>`}</div>
+    </div>`).join('')}</div>
+    <div class="ads-note">Facebook дээрээ пост хийгээд энд ирж сонгоно. Төсөв нь байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй. Сайт руу хүн оруулах бол постдоо mevent.mn-ий холбоос оруулаарай; холбоосгүй пост зөвхөн хандалтаар бүүстлэгдэнэ.</div>`;
+
   const queueHtml = !queued.length ? '' : `<div class="ads-sec">Постын дараалал</div>
     <div class="ads-list">${queued.map(x => `<div class="ads-row">
       <span class="ads-nm">${escapeHtml(String(x.body || '').split('\n')[0])}</span>
@@ -29063,6 +29149,7 @@ function renderAds() {
     ${dailyHtml}
     ${candHtml}
     ${pubNote}
+    ${ppHtml}
     ${queueHtml}
     ${stateHtml}
     ${actHtml}
@@ -29391,6 +29478,23 @@ function attachAdsHandlers() {
     b.onclick = () => postAct(b.dataset.postNo, false));
   document.querySelectorAll('[data-ads-days]').forEach(b => b.onclick = () => {
     state.adsDays = Number(b.dataset.adsDays) || 30; render();
+  });
+  // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна тул баталгаажуулалтгүй болохгүй.
+  document.querySelectorAll('[data-pp-boost]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.ppBoost, kind = b.dataset.ppKind || 'engage';
+    const what = kind === 'site' ? 'сайт руу хүн оруулах' : 'хандалт нэмэх';
+    if (!(await showConfirm(`Энэ постыг бүүст хийх үү? Зорилго: ${what}. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.`,
+      { okText: 'Бүүст хийх' }))) return;
+    b.disabled = true;
+    try {
+      await requestBoost(id, kind);
+      await loadPagePosts(true);
+      showToast('Дараалалд орлоо — 10 минутын дотор зар болно', 'success', 4000);
+      render();
+    } catch (e) {
+      b.disabled = false;
+      showToast('Болсонгүй: ' + e.message, 'error', 5000);
+    }
   });
   const save = async (cfg) => {
     try { await saveAppConfig(ADS_BUDGET_KEY, cfg); state.adsBudget = cfg; render(); }
@@ -36383,6 +36487,10 @@ function refreshViewData() {
   }
   if (v === 'ads' && canSeeAds() && state.fbActions === undefined) {
     loadFbActions().then(() => { if (state.view === 'ads') render(); });
+  }
+  if (v === 'ads' && canSeeAds() && state.pagePosts === undefined) {
+    state.pagePosts = null;
+    loadPagePosts(true).then(() => { if (state.view === 'ads') render(); });
   }
   if (v === 'ads' && canSeeAds() && state.fbCapi === undefined) {
     state.fbCapi = null;

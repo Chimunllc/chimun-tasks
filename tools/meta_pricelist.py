@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Meta Business AI-д зориулсан үнийн жагсаалтыг Google Drive руу бичнэ.
+"""Meta Business AI-ийн Price list руу үнийн жагсаалтыг Google Sheet-ээр өгнө.
 
 ЯАГААД: Meta Business AI нь дөрвөн эх сурвалжаас л уншдаг — өөрийн барааны
 жагсаалт (гараар, нэг нэгээр), бичвэр бичлэгүүд (2000 тэмдэгтийн хязгаартай),
@@ -9,18 +9,28 @@ Pricelist, ба **Google Drive**. Эдгээрээс зөвхөн Drive нь б�
 ⛔ Commerce каталогийг Business AI УНШДАГГҮЙ. `tools/fb_catalog.py` нь тусдаа
    зорилготой (динамик барааны зар) — хоёрыг андуурч болохгүй.
 
+⛔ ХОЛБООС ТАСРАХААС СЭРГИЙЛ. Meta нь Google Sheet-ийг ХАЯГААР нь холбодог тул
+   шинэчлэх бүрд ШИНЭ файл үүсгэвэл холбоос үхнэ. `rclone copy` нь нэрээр нь
+   таарсан файлыг ДАРЖ бичдэг — ID хэвээр үлдэнэ (2026-09-17-нд туршиж баталсан).
+   Файлын НЭРИЙГ хэзээ ч бүү сольж бай.
+
+⚠ rclone-д `--drive-import-formats csv` БА `--drive-export-formats csv` ХОЁУЛАА
+  хэрэгтэй. Зөвхөн эхнийхийг өгвөл тохиргооны өгөгдмөл (xlsx) зөрчилдөж
+  «can't convert» гэж унана.
+
 ⛔ СУЛ ҮЛДЭГДЛИЙН ТОО БИЧИХГҮЙ. Файл өдөрт нэг удаа шинэчлэгдэж, Meta 12 цаг
    хүртэл синк хийдэг тул тоо нь ирэхдээ аль хэдийн хуучирсан байна. Зөвхөн үнэ.
 
 Ажиллах: VPS cron, өдөрт нэг удаа.
 Гараар:  python3 meta_pricelist.py [--dry] [--selftest]
 """
-import subprocess, sys, tempfile, os
+import csv, os, subprocess, sys, tempfile
 
 CONTAINER = 'vps-deploy-postgres-1'
 SEP = '\x1f'
 REMOTE = 'gdrive:M-event-AI'
-FNAME = 'M-event-turees-une.md'
+FNAME = 'M-event-unijn-jagsaalt.csv'
+SHEET_ID = '12tv2KpEsceqkO_YGRyhTpF_n4Ne1mPrB-m9h5x2uOSg'
 DRY = '--dry' in sys.argv
 
 # Ангиллыг хүн уншихаар бүлэглэнэ. Жагсаалтад байхгүй ангилал «Бусад» руу.
@@ -75,42 +85,28 @@ def money(v):
         return ''
 
 
-def build_doc(rows, today):
-    """Мөрүүд → Meta-гийн AI уншихад тохирсон баримт.
+def build_csv(rows, today):
+    """Мөрүүд → Meta-гийн Price list уншдаг CSV.
 
-    ⚠ Гарчигт «1 ХОНОГИЙН түрээс» гэдгийг ил бичнэ — эс бөгөөс AI нийт үнэ
-      гэж ойлгож, олон хоногийн захиалгад буруу тоо хэлнэ.
+    ⚠ Баганын толгойг ТОДОРХОЙ бич — Meta «clear column headers» шаарддаг.
+    ⚠ Үнэ нь ЗӨВХӨН тоо байна (таслал, ₮ тэмдэггүй) — эс бөгөөс CSV багана
+      эвдэрч, Meta үнийг текст гэж уншина.
     """
-    buckets = {}
+    out = [['Барааны нэр', '1 хоногийн түрээсийн үнэ (төгрөг)', 'Ангилал', 'Тайлбар']]
+    n = 0
     for r in rows:
         if len(r) < 4:
             continue
-        sku, name, price, cat = r[0], r[1], r[2], r[3]
-        m = money(price)
-        if not name or not m or m == '0₮':
+        name, price, cat = r[1].strip(), r[2], group_of(r[3])
+        try:
+            v = int(round(float(price)))
+        except (TypeError, ValueError):
             continue
-        buckets.setdefault(group_of(cat), []).append((name.strip(), m))
-    out = ['# M event — түрээсийн үнийн жагсаалт',
-           '',
-           'Шинэчилсэн: %s. Бүх үнэ **1 ХОНОГИЙН** түрээсийн үнэ, НӨАТ багтсан.' % today,
-           '',
-           'Сул үлдэгдэл өдөр бүр өөрчлөгддөг тул энд бичээгүй. Тухайн өдөр '
-           'захиалах боломжтой эсэхийг mevent.mn сайтаас эсвэл 7755-1010 утсаар шалгана.',
-           '']
-    n = 0
-    order = [g[0] for g in GROUPS] + ['Бусад']
-    for g in order:
-        items = buckets.get(g)
-        if not items:
+        if not name or v <= 0:
             continue
-        out.append('## ' + g)
-        out.append('')
-        for name, m in sorted(items):
-            out.append('- %s — %s' % (name, m))
-            n += 1
-        out.append('')
-    out.append(TERMS)
-    return '\n'.join(out), n
+        out.append([name, str(v), cat, '1 хоногийн түрээс, НӨАТ багтсан. Шинэчилсэн %s' % today])
+        n += 1
+    return out, n
 
 
 def selftest():
@@ -125,16 +121,15 @@ def selftest():
     eq(group_of('Юу ч биш'), 'Бусад', 'танихгүй ангилал')
     eq(group_of(None), 'Бусад', 'хоосон ангилал')
     eq(money(6600), '6,600₮', 'мөнгө')
-    eq(money(None), '', 'хоосон мөнгө')
-    doc, n = build_doc([('M-1', 'Сандал', 6600, 'Ширээ, сандал, бүтээлэг'),
-                        ('M-2', 'Асар', 825000, 'Асар'),
-                        ('M-3', 'Үнэгүй', 0, 'Асар')], '2026-09-17')
+    t, n = build_csv([('M-1', 'Сандал', 6600, 'Ширээ, сандал, бүтээлэг'),
+                      ('M-2', 'Асар', 825000, 'Асар'),
+                      ('M-3', 'Үнэгүй', 0, 'Асар')], '2026-09-17')
     eq(n, 2, 'үнэгүй бараа орохгүй')
-    eq('1 ХОНОГИЙН' in doc, True, 'хоногийн үнэ гэж ил бичигдэнэ')
-    eq('Сул үлдэгдэл өдөр бүр' in doc, True, 'нөөцийн тоо биш, заавар')
-    eq('- Сандал — 6,600₮' in doc, True, 'мөр зөв')
-    eq(doc.index('## Ширээ') < doc.index('## Асар'), True, 'бүлгийн дараалал')
-    eq('7755-1010' in doc, True, 'холбоо барих')
+    eq(t[0][0], 'Барааны нэр', 'толгой мөр')
+    # ⚠ Үнэ зөвхөн ТОО — таслал, ₮ тэмдэг байвал Meta текст гэж уншина.
+    eq(t[1][1], '6600', 'үнэ цэвэр тоо')
+    eq(t[2][2], 'Асар, майхан, сүүдрэвч', 'ангилал бүлэглэгдэв')
+    eq(len(t[0]), 4, 'дөрвөн багана')
     print('meta_pricelist selftest: %d тест OK' % k[0])
 
 
@@ -142,23 +137,24 @@ def main():
     rows = psql("select sku, name, coalesce(price,0)::bigint, coalesce(category,'') "
                 "from public_catalog where coalesce(price,0) > 0 order by name;")
     today = subprocess.run(['date', '+%Y-%m-%d'], capture_output=True, text=True).stdout.strip()
-    doc, n = build_doc(rows, today)
-    print('үнийн жагсаалт: %d бараа, %d тэмдэгт' % (n, len(doc)))
+    table, n = build_csv(rows, today)
+    print('үнийн жагсаалт: %d бараа' % n)
     if DRY:
-        print(doc[:600])
+        for r in table[:4]:
+            print(' ', r)
         return
     d = tempfile.mkdtemp()
     p = os.path.join(d, FNAME)
-    with open(p, 'w', encoding='utf-8') as f:
-        f.write(doc)
-    # ⚠ `--drive-import-formats` БИЧИХГҮЙ — rclone .md-г Google Doc руу хөрвүүлэх
-    #   гэж оролдоод «can't convert» гэж унана. Энгийн файлаар байршуулна.
-    r = subprocess.run(['rclone', 'copy', p, REMOTE], capture_output=True, text=True)
+    with open(p, 'w', encoding='utf-8', newline='') as f:
+        csv.writer(f).writerows(table)
+    r = subprocess.run(['rclone', 'copy', p, REMOTE,
+                        '--drive-import-formats', 'csv', '--drive-export-formats', 'csv'],
+                       capture_output=True, text=True)
     os.remove(p)
     os.rmdir(d)
     if r.returncode:
         raise SystemExit('rclone: ' + (r.stderr or '')[:300])
-    print('Drive руу байршуулав:', REMOTE + '/' + FNAME)
+    print('Google Sheet шинэчлэв: https://docs.google.com/spreadsheets/d/%s/edit' % SHEET_ID)
 
 
 if __name__ == '__main__':

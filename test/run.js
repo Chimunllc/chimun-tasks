@@ -7764,6 +7764,27 @@ need(['orderCustType']);
      'чат: татгалзсан чат хүнд шилжинэ');
 }
 
+// ── Meta Business AI-ийн үнийн жагсаалт (tools/meta_pricelist.py) ─────────
+// Business AI нь Commerce каталогийг УНШДАГГҮЙ. Бөөнөөр бөгөөд автоматаар
+// шинэчлэгддэг цорын ганц зам = Google Drive (Meta-гийн баримт: синк 12 цаг).
+{
+  const pl = path.join(__dirname, '..', 'tools', 'meta_pricelist.py');
+  const py = fs.readFileSync(pl, 'utf8');
+  const out = require('child_process')
+    .execSync(`python3 ${JSON.stringify(pl)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  ok(/meta_pricelist selftest: \d+ тест OK/.test(out), 'үнэ: Python өөрийн тест тэнцэв — ' + out.trim());
+
+  // ⛔ «1 ХОНОГИЙН» гэж ил бичихгүй бол AI нийт үнэ гэж ойлгоно.
+  ok(/1 ХОНОГИЙН/.test(py), 'үнэ: хоногийн үнэ гэж ил бичигдэнэ');
+  // ⛔ Нөөцийн тоо бичихгүй — файл өдөрт нэг удаа, Meta 12 цаг хүртэл синк
+  //    хийдэг тул тоо нь ирэхдээ аль хэдийн хуучирсан байна.
+  ok(/Сул үлдэгдэл өдөр бүр өөрчлөгддөг тул энд бичээгүй/.test(py),
+     'үнэ: нөөцийн тоо явахгүй');
+  // ⚠ rclone .md-г Google Doc руу хөрвүүлэх гэж оролдоод унадаг.
+  ok(/'rclone', 'copy', p, REMOTE\]/.test(py), 'үнэ: rclone хөрвүүлэлтгүй хуулна');
+  ok(/stdout\.strip\('\\n'\)/.test(py), 'үнэ: psql тусгаарлагч хамгаалагдсан');
+}
+
 // ── Meta-гийн бүтээгдэхүүний каталог (tools/fb_catalog.py) ─────────────────
 // Meta Business AI нь холбогдсон каталогоос л уншдаг. Тэнд 1 бараа байсан тул
 // AI «10 гаруй төрлийн сандал» гэх мэт ЗОХИОСОН хариулт өгч байв.

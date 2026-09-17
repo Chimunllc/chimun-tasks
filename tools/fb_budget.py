@@ -215,6 +215,18 @@ def save_state(camps, plan):
          'on conflict (campaign_id) do update set name=excluded.name, status=excluded.status, '
          'effective_status=excluded.effective_status, daily_usd=excluded.daily_usd, '
          'updated_at=excluded.updated_at;')
+    # ⛔ META-Д БАЙХГҮЙ БОЛСОН КАМПАНИТ АЖЛЫГ «ACTIVE» ХЭВЭЭР ОРХИЖ БОЛОХГҮЙ
+    #    (2026-09-17). Устгасан кампанит ажил API-аас буцахаа болих ч мөр нь
+    #    хүснэгтэд ACTIVE хэвээр үлдэж, апп «9 зар ажиллаж байна» гэж ХУДЛАА
+    #    харуулж байв (бодит нь 7). Амьд датаас 2 сүнс мөр ингэж олдсон.
+    # ⚠ Зөвхөн бүтэн хуудас ирсэн үед л цэвэрлэнэ — `api_get` хуудаслалтыг
+    #   дагадаггүй тул 100 мөр ирвэл цааш нь байж мэднэ, тэр үед цэвэрлэвэл
+    #   бодит кампанит ажлыг «устсан» гэж тэмдэглэх эрсдэлтэй.
+    if len(camps) < 100:
+        ids = ','.join(sq(c['id']) for c in camps)
+        psql("update fb_campaign_state set status='REMOVED', effective_status='REMOVED', "
+             "daily_usd=null, updated_at=now() "
+             f"where campaign_id not in ({ids}) and coalesce(effective_status,'') <> 'REMOVED';")
 
 
 def pause_all(camps, why):

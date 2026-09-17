@@ -92,11 +92,24 @@ def camp_name(msg, post_id):
 
 
 def clean_targeting(t):
-    """Загвар зарын байршлын тохиргоог ХАСНА — өөр зорилготой зарт таарахгүй
-    байж болно (Messenger байршил вэб зард утгагүй)."""
+    """Загвар зарын БАЙРШЛЫН (placement) тохиргоог хасна — өөр зорилготой зарт
+    таарахгүй байж болно (Messenger байршил вэб зард утгагүй).
+
+    ⛔ ГАЗАРЗҮЙН хамрах хүрээг (`geo_locations`) БҮҮ ХУМИ. «Улаанбаатар руу
+       төвлөрүүл» гэж бодогдож болох ч амьд дата ЭСРЭГИЙГ хэлнэ (180 хоног):
+         · хотод хүргэсэн  30 захиалга — 44.1 сая₮ (дунджаар 1.5 сая)
+         · ХӨДӨӨ хүргэсэн  7 захиалга — 44.1 сая₮ (дунджаар **6.3 сая**, 148 км)
+       Хөдөөгийн захиалга тоогоор 4 дахин цөөн атлаа НИЙТ ОРЛОГО нь ижил;
+       нэг захиалга нь 4 дахин том. Хот руу хумивал хамгийн үнэтэй сегмент
+       таслагдана. Тиймээс улс даяар ҮЛДЭНЭ — scan-тест хамгаална."""
     drop = ('publisher_platforms', 'facebook_positions', 'instagram_positions',
             'messenger_positions', 'audience_network_positions', 'device_platforms')
-    return {k: v for k, v in (t or {}).items() if k not in drop}
+    out = {k: v for k, v in (t or {}).items() if k not in drop}
+    # ⚠ Хот/бүсээр хумисан загвар ирвэл ч улс даяар болгоно (дээрх шалтгаан).
+    g = out.get('geo_locations')
+    if isinstance(g, dict) and (g.get('cities') or g.get('regions')):
+        out['geo_locations'] = {'countries': g.get('countries') or ['MN']}
+    return out
 
 
 def main():
@@ -201,6 +214,14 @@ def selftest():
                         'messenger_positions': ['y'], 'age_min': 18}),
        {'geo_locations': 1, 'age_min': 18}, 'таргет: байршил хасагдана')
     eq(clean_targeting(None), {}, 'таргет: None → хоосон')
+
+    # ⛔ ХОТООР ХУМИХГҮЙ — хөдөөгийн 7 захиалга нь хотын 30-тай ижил орлоготой
+    #    (дунджаар 4 дахин том). Хумивал хамгийн үнэтэй сегмент таслагдана.
+    eq(clean_targeting({'geo_locations': {'countries': ['MN'],
+                                          'cities': [{'key': '123', 'name': 'Ulaanbaatar'}]}}),
+       {'geo_locations': {'countries': ['MN']}}, 'таргет: хот хасагдаж улс үлдэнэ')
+    eq(clean_targeting({'geo_locations': {'countries': ['MN']}}),
+       {'geo_locations': {'countries': ['MN']}}, 'таргет: улс байвал хэвээр')
 
     # ⛔ Хоёр төрөл ЗААВАЛ өөр зорилготой байна — холбоосгүй постыг вэб зар
     #    болговол Facebook татгалзана.

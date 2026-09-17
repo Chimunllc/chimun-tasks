@@ -19422,14 +19422,13 @@ function openNomaadPrepChecklist(quoteNo) {
   document.getElementById('na-title').textContent = `Бэлтгэл · ${o.quote_no}`;
   document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${nomaadDatePlain(o.date_start)}`;
   const itemsEl = document.getElementById('na-items');
-  const secHdr = (txt) => `<div style="font-size:12px;font-weight:800;color:var(--text);background:var(--bg-soft,#eef2f7);padding:8px 10px;margin:14px -4px 6px;border-radius:6px;">${escapeHtml(txt)}</div>`;
-  const grpHdr = (txt) => `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(txt)}</div>`;
+  const secHdr = (txt) => `<div class="na-sec">${escapeHtml(txt)}</div>`;
+  const grpHdr = (txt) => `<div class="na-grp">${escapeHtml(txt)}</div>`;
   const pickBtn = (type, idx, owner, exTask) => {
-    const style = owner ? 'color:var(--text);border-style:solid;font-weight:600;' : 'color:var(--muted);border-style:dashed;font-weight:400;';
     const exId = exTask ? exTask.id : '';
-    return `<button type="button" class="na-pick" data-na-type="${type}" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${exTask ? '1' : ''}" data-na-task-id="${escapeHtml(exId)}" data-na-orig="${owner ? escapeHtml(owner) : ''}" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);cursor:pointer;${style}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>`;
+    return `<button type="button" class="na-pick${owner ? ' is-set' : ''}" data-na-type="${type}" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${exTask ? '1' : ''}" data-na-task-id="${escapeHtml(exId)}" data-na-orig="${owner ? escapeHtml(owner) : ''}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>`;
   };
-  const row = (label, meta, btn) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);"><span style="flex:1;font-size:13px;min-width:0;">${label}${meta}</span>${btn}</div>`;
+  const row = (label, meta, btn) => `<div class="na-row"><span class="na-row-label">${label}${meta}</span>${btn}</div>`;
   // 1) Стандарт чеклист (үүссэнийг таниж тэмдэглэнэ)
   const byGroup = {};
   NOMAAD_PREP_CHECKLIST.forEach((c, idx) => { (byGroup[c.group] = byGroup[c.group] || []).push({ c, idx }); });
@@ -19438,7 +19437,7 @@ function openNomaadPrepChecklist(quoteNo) {
   let html = secHdr('1. Үйл ажиллагааны чеклист');
   html += Object.keys(byGroup).map(g => grpHdr(g) + byGroup[g].map(({ c, idx }) => {
     const ex = findExisting(c);
-    const meta = `<span style="color:var(--muted);font-size:11px;">${c.deadline ? '· ' + escapeHtml(c.deadline) : ''}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b style="color:var(--ok)">✓ үүссэн</b>' : ''}</span>`;
+    const meta = `<span class="na-meta">${c.deadline ? '· ' + escapeHtml(c.deadline) : ''}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b class="na-ok">✓ үүссэн</b>' : ''}</span>`;
     return row(escapeHtml(c.title) + ' ', meta, pickBtn('prep', idx, ex ? (ex.assignee || '') : '', ex));
   }).join('')).join('');
   // 2) Захиалгын бараа (түрээсийн эд хогшил)
@@ -19448,14 +19447,14 @@ function openNomaadPrepChecklist(quoteNo) {
     const byCat = {};
     items.forEach((it, idx) => { (byCat[it.category || 'Бусад'] = byCat[it.category || 'Бусад'] || []).push({ it, idx }); });
     html += Object.keys(byCat).map(cat => grpHdr(cat) + byCat[cat].map(({ it, idx }) =>
-      row(escapeHtml(it.name || '') + ' ', `<span style="color:var(--muted);font-size:11px;">${it.qty || ''} ${escapeHtml(it.unit || '')}</span>`, pickBtn('item', idx, '', false))
+      row(escapeHtml(it.name || '') + ' ', `<span class="na-meta">${it.qty || ''} ${escapeHtml(it.unit || '')}</span>`, pickBtn('item', idx, '', false))
     ).join('')).join('');
   }
   itemsEl.innerHTML = html;
   function setOwnerBtn(btn, key) {
     btn.dataset.naOwner = key || '';
-    if (key) { btn.textContent = memberName(key); btn.style.color = 'var(--text)'; btn.style.borderStyle = 'solid'; btn.style.fontWeight = '600'; }
-    else { btn.textContent = '+ Хүн сонгох'; btn.style.color = 'var(--muted)'; btn.style.borderStyle = 'dashed'; btn.style.fontWeight = '400'; }
+    btn.textContent = key ? memberName(key) : '+ Хүн сонгох';
+    btn.classList.toggle('is-set', !!key);   // өнгө/хүрээ/жин нь `.na-pick.is-set`-д
   }
   itemsEl.querySelectorAll('button.na-pick').forEach(btn => {
     btn.onclick = async () => {

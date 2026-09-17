@@ -14328,13 +14328,15 @@ function drawPoster(canvas, opts) {
     if (state._mkLogoH) { const lw = Math.round(markH * (state._mkLogoH.width / state._mkLogoH.height)); ctx.drawImage(state._mkLogoH, M, hTop, lw, markH); }
     else if (state._mkMark) { const mw = Math.round(markH * (state._mkMark.width / state._mkMark.height)); ctx.drawImage(state._mkMark, M, hTop, mw, markH); ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink; const wm = Math.round(W * 0.03); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02); ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), M + mw + Math.round(W * 0.02), hTop + markH / 2 + 1); clrLS(); }
     // Trust badge (баруун дээд) — B2B нөөцийн хэмжээ + брэнд өнгө pop (түрээс мессежийг дээд талд авчирна)
-    { const bt = kit.posterStat || '250+ түрээсийн бараа';
-      const bs = Math.round(W * 0.019); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
+    { const bt = kit.posterStat || 'ТҮРЭЭС';
+      // ⚠ Badge-ийн өндөр (bs + 2*bpy) нь `markH` (0.057W)-аас ХЭТЭРВЭЛ логоны
+      //   мөрнөөс цухуйна — badge нь логоны төвөөр байрладаг. Одоо 0.050W.
+      const bs = Math.round(W * 0.028); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
       const bgap = Math.round(W * 0.006);   // "250+" ↔ текст завсар (premium)
       const sp = bt.indexOf(' ');
       const p1 = sp > 0 ? bt.slice(0, sp) : bt, p2 = sp > 0 ? bt.slice(sp + 1) : '';
       const w1 = ctx.measureText(p1).width, w2 = p2 ? ctx.measureText(p2).width : 0;
-      const bpx = Math.round(W * 0.024), bpy = Math.round(W * 0.009);   // капсул нарийн + намхан (зураг/нэр гол болгов)
+      const bpx = Math.round(W * 0.028), bpy = Math.round(W * 0.011);   // томссон бичигт тохируулсан капсул
       const inner = Math.round(w1 + (p2 ? bgap + w2 : 0));
       const bw = inner + bpx * 2, bh = bs + bpy * 2;
       const bx = W - M - bw, by = hTop + markH / 2 - bh / 2;   // badge төв = логоны төв (нэг тэнхлэг)

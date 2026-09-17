@@ -29005,6 +29005,26 @@ function gscSectionHtml(rows, days) {
     <div class="ads-list">${rowsHtml}</div>${young}`;
 }
 
+// ── ЗАРЫН ДЭЛГЭЦ = 4 ТАБ (2026-09-17) ───────────────────────────────────────
+// 20 гаруй блок нэг хуудсан дээр дараалж байсан тул «юу хараад юу хийхээ»
+// олдохгүй байв (хэрэглэгчийн гомдол: «бүгдийг нэг дор харуулсан тул төвөгтэй»).
+// Ажлын ТӨРЛӨӨР хуваав; өгөгдмөл нь ХИЙХ АЖИЛ — бусад нь лавлагаа.
+const ADS_TABS = [
+  { k: 'todo', label: '✅ Хийх ажил' },
+  { k: 'money', label: '💰 Мөнгө' },
+  { k: 'src', label: '🔎 Хаанаас ирсэн' },
+  { k: 'calls', label: '☎️ Утас' },
+];
+// ⛔ Блок бүр ЯГ НЭГ табд харьяалагдана. Хоёр табд тавибал аль нь шинэ болохыг
+//    хүн мэдэхгүй; хаанаас ч гаргахгүй бол блок чимээгүй алга болно. Тест
+//    хоёуланг нь шалгана — шинэ блок нэмбэл энд ч нэм.
+function adsTabParts(tab, p) {
+  if (tab === 'money') return [p.kpi, p.budget, p.camps, p.cmp, p.state, p.act];
+  if (tab === 'src') return [p.gsc, p.attrib, p.lead, p.capi];
+  if (tab === 'calls') return [p.call, p.conv, p.agent, p.fup];
+  return [p.advice, p.daily, p.cand, p.pubNote, p.pp, p.queue];   // 'todo' = өгөгдмөл
+}
+
 function renderAds() {
   const rows = state.fbAds || [];
   const days = Number(state.adsDays) || 30;
@@ -29260,31 +29280,29 @@ function renderAds() {
       ${fups.short ? `Нэмэлт <b>${fups.short}</b> дугаар мэндчилгээ сонсоод шууд тасалсан (KFC-тэй андуурсан байх магадлалтай) — жагсаалтад оруулаагүй.` : ''}
       ⚠ Ажилтнууд гар утсаараа буцаж залгасан бол PBX түүнийг харахгүй — зарим нь аль хэдийн шийдэгдсэн байж болно.</div>`;
 
+  const campsHtml = `<div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
+    <div class="ads-list">${campRows}</div>`;
+  const cmpHtml = `<div class="ads-sec">Зарын хуваарилалт ↔ борлуулалт <span class="ads-sub">(борлуулалт 90 хоног)</span></div>
+    <div class="ads-list">${cmpRows}</div>`;
+
+  const tab = ADS_TABS.some(t => t.k === state._adsTab) ? state._adsTab : 'todo';
+  // Хийх ажлын тоог таб дээр гаргана — аль таб руу орохыг систем хэлж өгнө.
+  const todoN = advice.length + daily.length + cands.length + queued.length;
+  const tabsHtml = `<div class="ads-tabs">${ADS_TABS.map(t =>
+    `<button class="ads-tab${t.k === tab ? ' on' : ''}" data-ads-tab="${t.k}">${t.label}${t.k === 'todo' && todoN ? ` (${todoN})` : ''}</button>`).join('')}</div>`;
+
+  const body = adsTabParts(tab, {
+    advice: adviceHtml, daily: dailyHtml, cand: candHtml, pubNote, pp: ppHtml, queue: queueHtml,
+    kpi, budget: budgetHtml, camps: campsHtml, cmp: cmpHtml, state: stateHtml, act: actHtml,
+    gsc: gscHtml, attrib: attribHtml, lead: leadHtml, capi: capiHtml,
+    call: callHtml, conv: convHtml, agent: agentHtml, fup: fupHtml,
+  }).filter(x => x && String(x).trim()).join('\n');
+
   return `<h2 class="view-title">📣 Зар & үр дүн</h2>
     ${staleHtml}
+    ${tabsHtml}
     ${period}
-    ${kpi}
-    ${budgetHtml}
-    ${adviceHtml}
-    ${dailyHtml}
-    ${candHtml}
-    ${pubNote}
-    ${ppHtml}
-    ${queueHtml}
-    ${stateHtml}
-    ${actHtml}
-    ${capiHtml}
-    ${gscHtml}
-    ${callHtml}
-    ${convHtml}
-    ${agentHtml}
-    ${fupHtml}
-    <div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
-    <div class="ads-list">${campRows}</div>
-    <div class="ads-sec">Зарын хуваарилалт ↔ борлуулалт <span class="ads-sub">(борлуулалт 90 хоног)</span></div>
-    <div class="ads-list">${cmpRows}</div>
-    ${attribHtml}
-    ${leadHtml}`;
+    ${body || '<div class="ads-note">Энэ хэсэгт одоогоор харуулах зүйл алга.</div>'}`;
 }
 
 // ⛔ ДУУДЛАГЫН ЦАГ = УБ-ИЙН ЦАГ (2026-09-16). PostgREST нь `started_at`-ыг
@@ -29599,6 +29617,9 @@ function attachAdsHandlers() {
     b.onclick = () => postAct(b.dataset.postNo, false));
   document.querySelectorAll('[data-ads-days]').forEach(b => b.onclick = () => {
     state.adsDays = Number(b.dataset.adsDays) || 30; render();
+  });
+  document.querySelectorAll('[data-ads-tab]').forEach(b => b.onclick = () => {
+    state._adsTab = b.dataset.adsTab; render();
   });
   // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна тул баталгаажуулалтгүй болохгүй.
   document.querySelectorAll('[data-pp-boost]').forEach(b => b.onclick = async () => {

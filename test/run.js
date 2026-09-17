@@ -6916,6 +6916,31 @@ need(['orderCustType']);
   eq(F.adsFeedAge([{ day: '2026-09-01' }, { day: '2026-09-16' }], '2026-09-17'), 1,
      'хуучрал: дарааллаас үл хамаарна');
 
+  // ── ЗАРЫН ДЭЛГЭЦИЙН 4 ТАБ (2026-09-17) ───────────────────────────────────
+  // 20 гаруй блок нэг хуудсанд дараалж «юу хараад юу хийхээ» олдохгүй байв.
+  // ⛔ Блок бүр ЯГ НЭГ табд байх ёстой: хоёр табд тавибал аль нь шинэ болохыг
+  //    хүн мэдэхгүй, хаанаас ч гаргахгүй бол блок ЧИМЭЭГҮЙ алга болно.
+  {
+    const keys = ['advice', 'daily', 'cand', 'pubNote', 'pp', 'queue', 'kpi', 'budget',
+      'camps', 'cmp', 'state', 'act', 'gsc', 'attrib', 'lead', 'capi', 'call', 'conv', 'agent', 'fup'];
+    const parts = {}; keys.forEach(k => { parts[k] = '<' + k + '>'; });
+    const tabs = ['todo', 'money', 'src', 'calls'];
+    const seen = {};
+    tabs.forEach(t => F.adsTabParts(t, parts).forEach(x => { seen[x] = (seen[x] || 0) + 1; }));
+    eq(Object.keys(seen).filter(k => seen[k] > 1), [], 'зар: нэг блок хоёр табд давхардахгүй');
+    eq(keys.filter(k => !seen['<' + k + '>']), [], 'зар: блок бүр аль нэг табд гарна');
+    // Танихгүй таб → хийх ажил (шинэ хувилбар хуучин төлөвтэй уулзахад хоосон болохгүй)
+    eq(F.adsTabParts('xxx', parts), F.adsTabParts('todo', parts), 'зар: танихгүй таб → хийх ажил');
+    eq(F.adsTabParts(undefined, parts)[0], '<advice>', 'зар: өгөгдмөл таб = хийх ажил, эхэнд зөвлөгөө');
+
+    const asrc3 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    // ADS_TABS-ийн түлхүүр ба дээрх салаа таарах ёстой — шинэ таб нэмээд
+    // `adsTabParts`-д мартвал тэр таб МӨНХӨД хоосон харагдана.
+    const blk = (asrc3.match(/const ADS_TABS = \[([\s\S]*?)\];/) || ['', ''])[1];
+    const declared = [...blk.matchAll(/k: '([a-z]+)'/g)].map(m => m[1]);
+    eq(declared, tabs, 'зар: ADS_TABS ба хуваарилалт ижил');
+  }
+
   // ── GOOGLE ХАЙЛТ (Search Console) — түлхүүр үгийн блок (2026-09-17) ───────
   // Хүн БИДНИЙГ ямар үгээр хайж байна гэдэг нь зарын хамгийн хямд лид.
   {
@@ -6962,7 +6987,7 @@ need(['orderCustType']);
 
   const asrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   // ⛔ Анхааруулга ХАМГИЙН ДЭЭР — доорх тоог уншихаас ӨМНӨ харагдана.
-  ok(/\$\{staleHtml\}\s*\n\s*\$\{period\}/.test(asrc2), 'scan: хуучрлын анхааруулга дээд талд');
+  ok(/📣 Зар & үр дүн<\/h2>\s*\n\s*\$\{staleHtml\}/.test(asrc2), 'scan: хуучрлын анхааруулга дээд талд');
   ok(/adsFeedAge\(rows, todayStr\(\)\)/.test(asrc2), 'scan: зарын дэлгэц хуучрлыг хэмжинэ');
 }
 

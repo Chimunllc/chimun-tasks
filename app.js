@@ -28520,6 +28520,22 @@ async function loadFbAds(force) {
   } catch (e) { dataLoadFailed('Зарын дата', e); state.fbAds = state.fbAds || []; return state.fbAds; }
 }
 
+// ── Google хайлтын дата татах (gsc_daily) ───────────────────────────────────
+// anon-д ОГТ нээгээгүй (өрсөлдөгч манай түлхүүр үгийг харах ёсгүй) —
+// нэвтэрсэн токеноор л ирнэ.
+async function loadGsc(force) {
+  if (state.gsc && !force) return state.gsc;
+  try {
+    const from = addDays(todayStr(), -90);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/gsc_daily?select=day,query,page,clicks,impressions,position&day=gte.${from}&order=day.desc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.gsc = await r.json();
+    return state.gsc;
+  } catch (e) { dataLoadFailed('Google хайлтын дата', e); state.gsc = state.gsc || []; return state.gsc; }
+}
+
 
 // ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭРИЙН БҮРТГЭЛ (2026-09-16) ──────────────────────────
 // `tools/fb_budget.py` 10 минут тутам шийдвэр гаргадаг (төсөв шилжүүлэх, зар
@@ -28888,6 +28904,107 @@ async function requestBoost(postId, kind) {
 
 function canSeeAds() { return canAccessView('ads', () => !!state.isCEO || canSeeMarketing()); }
 
+// ── GOOGLE ХАЙЛТ — «хүн биднийг ямар үгээр хайж байна» (2026-09-17) ─────────
+// Facebook дээр бид хүн рүү өөрөө очдог; Google дээр хүн БИДНИЙГ хайж байна —
+// «асар түрээс» гэж бичсэн хүн бол хамгийн худалдан авах хүсэлтэй лид.
+// ⚠ Дата нь 2-3 хоног ХОЦОРДОГ ба property баталгаажсан өдрөөс хойшхи түүхтэй
+//   (өмнөх үе БАЙХГҮЙ). Тиймээс «Google-ээс хэн ч ирэхгүй байна» гэж дүгнэхээс
+//   өмнө хэдэн хоногийн дата байгааг хар — блок үүнийг ил бичнэ.
+const GSC_STALE_D = 5;      // 2-3 хоногийн хоцролт хэвийн; 5+ бол татагч зогссон
+const GSC_YOUNG_D = 14;     // үүнээс бага бол «дүгнэлт гаргахад эрт»
+const GSC_NEAR_MIN = 5;     // эхний хуудасны ирмэг = хамгийн хямд ялалт
+const GSC_NEAR_MAX = 20;
+const GSC_MIN_IMPR = 10;    // цөөн харагдалтаас дүгнэлт гаргахгүй
+
+// Нийт үзүүлэлт. ⛔ Дундаж байрыг ХАРАГДАЛТААР ЖИГНЭНЭ — энгийн дундаж авбал
+//   нэг удаа харагдсан үг 500 удаа харагдсантай ижил жинтэй болно.
+// ⛔ Дата байхгүй үед байр нь `null` — 0 БИШ. Google-д 0 гэдэг байр байхгүй,
+//   дэлгэцэд «0-р байр» гэж гарвал хамгийн дээд байр мэт уншигдана.
+function gscStats(rows, from) {
+  let clicks = 0, impr = 0, wpos = 0, last = '';
+  const days = new Set();
+  (rows || []).forEach(r => {
+    const d = String((r && r.day) || '').slice(0, 10);
+    if (!d || (from && d < from)) return;
+    const c = Number(r.clicks) || 0, i = Number(r.impressions) || 0;
+    clicks += c; impr += i; wpos += (Number(r.position) || 0) * i;
+    days.add(d); if (d > last) last = d;
+  });
+  return {
+    clicks, impr, last, days: days.size,
+    pos: impr ? Math.round((wpos / impr) * 10) / 10 : null,
+    ctr: impr ? Math.round((clicks / impr) * 1000) / 10 : null,
+  };
+}
+
+// Түлхүүр үгээр нэгтгэнэ (нэг үг олон хуудсаар гарч болно).
+function gscTopQueries(rows, from, n) {
+  const m = new Map();
+  (rows || []).forEach(r => {
+    const d = String((r && r.day) || '').slice(0, 10);
+    if (!d || (from && d < from)) return;
+    const q = String((r && r.query) || '').trim();
+    if (!q) return;
+    const e = m.get(q) || { q, clicks: 0, impr: 0, wpos: 0 };
+    const i = Number(r.impressions) || 0;
+    e.clicks += Number(r.clicks) || 0;
+    e.impr += i;
+    e.wpos += (Number(r.position) || 0) * i;
+    m.set(q, e);
+  });
+  return [...m.values()]
+    .map(e => ({ q: e.q, clicks: e.clicks, impr: e.impr, pos: e.impr ? Math.round((e.wpos / e.impr) * 10) / 10 : null }))
+    .sort((a, b) => b.clicks - a.clicks || b.impr - a.impr || a.q.localeCompare(b.q))
+    .slice(0, n || 12);
+}
+
+// Зөвлөгөө = ЗӨВХӨН энд (зарын `adsAdvice`-тай ижил хэв маяг) — дэлгэцэд тараахгүй.
+function gscAdvice(rows, from) {
+  const qs = gscTopQueries(rows, from, 500), out = [];
+  // ① Эхний хуудасны ирмэг дээрх үг — хуудсаа сайжруулахад л хангалттай
+  qs.filter(q => q.pos !== null && q.pos >= GSC_NEAR_MIN && q.pos <= GSC_NEAR_MAX && q.impr >= GSC_MIN_IMPR)
+    .sort((a, b) => b.impr - a.impr).slice(0, 3)
+    .forEach(q => out.push({ sev: 2, text: `Google: «${q.q}» — ${q.pos}-р байрт, ${q.impr} удаа харагдсан. Тэр үгэнд тохирох хуудсаа сайжруулбал эхний хуудсанд гарах боломжтой.` }));
+  // ② Харагдаж байгаа атлаа нэг ч дардаггүй — гарчиг/тайлбар таарахгүй байна
+  qs.filter(q => !q.clicks && q.impr >= GSC_MIN_IMPR * 3)
+    .sort((a, b) => b.impr - a.impr).slice(0, 2)
+    .forEach(q => out.push({ sev: 2, text: `Google: «${q.q}» — ${q.impr} удаа харагдсан ч нэг ч хүн дараагүй. Хайлтад гарч буй гарчиг, тайлбараа өөрчилж үзэх.` }));
+  return out;
+}
+
+function gscSectionHtml(rows, days) {
+  const from = addDays(todayStr(), -(Number(days) || 30));
+  const s = gscStats(rows, from);
+  const head = `<div class="ads-sec">Google хайлт <span class="ads-sub">(${days} хоног${s.last ? ' · сүүлийн дата ' + escapeHtml(s.last) : ''})</span></div>`;
+  if (!s.impr) {
+    return `${head}<div class="ads-note">Энэ хугацаанд Google-ийн хайлтаас харагдалт бүртгэгдээгүй.
+      Search Console 2026-09-16-нд холбогдсон тул өмнөх түүх БАЙХГҮЙ — дата өдөр бүр 07:00-д нэмэгдэнэ.</div>`;
+  }
+  const age = adsFeedAge(rows, todayStr());
+  const stale = (age !== null && age >= GSC_STALE_D)
+    ? `<div class="mc-stale">⚠ <b>Google-ийн дата ${age} хоног шинэчлэгдээгүй.</b>
+        Хэвийн хоцролт 2-3 хоног — үүнээс удвал татагч зогссон байж магадгүй.</div>` : '';
+  const kpis = `<div class="ads-kpis">
+    <div class="ads-kpi"><div class="ads-kpi-l">Хайлтаас орж ирсэн</div><div class="ads-kpi-v">${s.clicks}</div><div class="ads-kpi-s">товшилт</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Хайлтад харагдсан</div><div class="ads-kpi-v">${s.impr}</div><div class="ads-kpi-s">${s.ctr === null ? '' : s.ctr + '% нь дарсан'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Дундаж байр</div><div class="ads-kpi-v">${s.pos === null ? '—' : s.pos}</div><div class="ads-kpi-s">${s.pos === null ? '' : (s.pos <= 10 ? 'эхний хуудас' : 'хоёр дахь хуудас, цаашаа')}</div></div>
+  </div>`;
+  const top = gscTopQueries(rows, from, 12);
+  // ⚠ 4 нүд = кампанит ажлын мөртэй ЯГ ижил бүтэц: ≤620px-д `.ads-row` нь
+  //    2 багана болж [нэр | товшилт] / [харагдалт | байр] гэж эвхэгдэнэ.
+  const rowsHtml = top.map(q => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(q.q)}</span>
+      <span class="ads-sp">${q.clicks} товшилт</span>
+      <span class="ads-ms">${q.impr} харагдсан</span>
+      <b class="ads-pm">${q.pos === null ? '—' : q.pos + '-р байр'}</b>
+    </div>`).join('');
+  const young = s.days < GSC_YOUNG_D
+    ? `<div class="ads-note">⚠ Ердөө ${s.days} өдрийн дата — дүгнэлт гаргахад эрт. Google хайлтын тоо 2-3 хоног хоцорч ирдэг.</div>` : '';
+  return `${head}${stale}${kpis}
+    <div class="ads-sec">Ямар үгээр олж байна <span class="ads-sub">(товшилтоор)</span></div>
+    <div class="ads-list">${rowsHtml}</div>${young}`;
+}
+
 function renderAds() {
   const rows = state.fbAds || [];
   const days = Number(state.adsDays) || 30;
@@ -28900,11 +29017,14 @@ function renderAds() {
   const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
   const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
   const conv = callConversion(state.pbxLog || [], state.appOrders || [], { from });
-  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we, state.pbxLog || [], from)).concat(callConvAdvice(conv))
+  const gsc = state.gsc || [];
+  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we, state.pbxLog || [], from)).concat(callConvAdvice(conv)).concat(gscAdvice(gsc, from))
     .sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
   const lead = leadChannelStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= addDays(todayStr(), -days)), 'cash');
 
-  if (!rows.length && !pbx.calls) {
+  const gscHtml = gscSectionHtml(gsc, days);
+
+  if (!rows.length && !pbx.calls && !gsc.length) {
     return `<div class="ads-empty">📣 <b>Зарын дата хараахан ирээгүй.</b>
       <div>VPS дээрх татагч өдөр бүр 06:30-д ажиллана. Хэрэв 1 хоногоос удвал холболт тасарсан байж магадгүй.</div></div>`;
   }
@@ -29154,6 +29274,7 @@ function renderAds() {
     ${stateHtml}
     ${actHtml}
     ${capiHtml}
+    ${gscHtml}
     ${callHtml}
     ${convHtml}
     ${agentHtml}
@@ -36505,6 +36626,7 @@ function refreshViewData() {
     if (state.pbxCalls === undefined) { state.pbxCalls = null; loadPbxCalls(true).then(() => { if (state.view === 'ads') render(); }); }
     if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'ads') render(); }); }
     if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'ads') render(); }); }
+    if (state.gsc === undefined) { state.gsc = null; loadGsc().then(() => { if (state.view === 'ads') render(); }); }
   }
   if (v === 'ads' && canSeeAds() && state.fbAds === undefined) {
     loadFbAds().then(() => { if (state.view === 'ads') render(); });

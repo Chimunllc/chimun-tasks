@@ -4828,6 +4828,7 @@ body.role-daily #add-project { display: none !important; }
 .mk-acts .btn { padding: 9px 22px; }
 .mk-pub { margin-top: var(--space-3); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
 .mk-pub-h { font-weight: 800; font-size: var(--fs-md); }
+.pp-src { font-size: var(--fs-xs); color: var(--muted); }
 .mk-hint { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; line-height: 1.5; }
 .mk-url { word-break: break-all; color: var(--text); }
 /* Шатны зургийн заавар (дамжлагын модал). */

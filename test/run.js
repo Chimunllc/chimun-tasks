@@ -7443,6 +7443,16 @@ need(['orderCustType']);
   eq(rows[1].state, '', 'пост: хүсэлтгүй → хоосон');
   eq(rows[2].err, 'Non-Website Ad', 'пост: алдаа харагдана');
   eq(rows[0].day, '09-16', 'пост: сар-өдөр');
+  // ⛔ АППААС нийтэлсэн пост — Facebook жагсаалтдаа оруулдаггүй тул
+  //    `fb_publish.py` өөрөө бүртгэнэ; хүнд аль нь болохыг ил хэлнэ.
+  const appRow = F.pagePostRows([{ post_id: 'p9', created_time: '2026-09-17T05:00:00+00:00',
+    message: 'Асар майхан', link_url: 'https://mevent.mn/products/m-007/', source: 'app' }], 5)[0];
+  eq(appRow.fromApp, true, 'пост: аппын пост тэмдэглэгдэнэ');
+  eq(appRow.kind, 'site', 'пост: аппын пост линктэй тул сайтын зар');
+  eq(F.pagePostRows([{ post_id: 'p8', source: 'page' }], 5)[0].fromApp, false,
+     'пост: гараар нийтэлсэн нь тэмдэггүй');
+  eq(F.pagePostRows([{ post_id: 'p7' }], 5)[0].fromApp, false, 'пост: эх сурвалжгүй → тэмдэггүй');
+
   eq(F.pagePostRows([], 5).length, 0, 'пост: хоосон');
   eq(F.pagePostRows(null, 5).length, 0, 'пост: null → унахгүй');
   eq(F.pagePostRows(posts, 1).length, 1, 'пост: хязгаар');
@@ -7489,6 +7499,22 @@ need(['orderCustType']);
   // ⛔ Алдаа нь зөвхөн HTTP биш — зураг татах/hash авахад ч гарна. Барихгүй бол
   //    скрипт унаж, үлдсэн хүсэлтүүд дараалалдаа гацна.
   ok(/except Exception as e:/.test(bsrc), 'scan: бүүстын алдаа бүрэн баригдана');
+
+  // ⛔ Аппын нийтэлсэн постыг Graph уншуулдаггүй («Object does not exist») тул
+  //    бүүст нь DB дэх ӨӨРИЙН зураг/бичвэрээр үргэлжилнэ — уншилт унавал зогсохгүй.
+  ok(/except Exception:\n\s*full_msg, atyp = '', ''/.test(bsrc),
+     'scan: Graph уншилт унахад DB-ийн зургаар үргэлжилнэ');
+  ok(/coalesce\(picture,''\)/.test(bsrc), 'scan: бүүст DB дэх зургийг уншина');
+  ok(/b64_msg\(msg_b64\)/.test(bsrc), 'scan: зарын бичвэр бүтнээрээ авагдана');
+
+  const fpub = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_publish.py'), 'utf8');
+  ok(/def register_page_post\(/.test(fpub) && /insert into fb_page_posts/.test(fpub),
+     'scan: аппын нийтэлсэн пост бүүстлэх жагсаалтад бүртгэгдэнэ');
+  ok(/'app'\) on conflict \(post_id\) do nothing/.test(fpub),
+     'scan: эх сурвалж app гэж тэмдэглэгдэж, давхардахгүй');
+  ok(/add column if not exists source text/.test(
+       fs.readFileSync(path.join(__dirname, '..', 'db', 'fb_page_posts.sql'), 'utf8')),
+     'scan: source багана байгаа DB дээр ч нэмэгдэнэ');
 
   const psrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_posts_pull.py'), 'utf8');
   ok(/msg_link\(p\.get\('message'\)\)/.test(psrc),

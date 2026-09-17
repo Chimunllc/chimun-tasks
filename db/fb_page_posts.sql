@@ -26,8 +26,13 @@ create table if not exists fb_page_posts (
   requested_by text,
   requested_at timestamptz,
   error        text,
-  fetched_at   timestamptz not null default now()
+  fetched_at   timestamptz not null default now(),
+  -- ⛔ Пост ХААНААС гарсан бэ: null/'page' = хуудсанд гараар нийтэлсэн (татагч
+  --    олно), 'app' = аппын постер үүсгэгчээс (`fb_publish.py` ӨӨРӨӨ бүртгэнэ —
+  --    Facebook аппын постыг жагсаалтдаа ОРУУЛДАГГҮЙ, Graph-аар ч уншуулдаггүй).
+  source       text
 );
+alter table fb_page_posts add column if not exists source text;
 create index if not exists fb_page_posts_time_idx on fb_page_posts (created_time desc);
 create index if not exists fb_page_posts_boost_idx on fb_page_posts (boost) where boost is not null;
 

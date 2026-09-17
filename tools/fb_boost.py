@@ -112,12 +112,81 @@ def clean_targeting(t):
     return out
 
 
+# ⛔ ТӨЛБӨРТ ЗАРЫН ЛИНК = ӨӨР МЕДИУМ (2026-09-17). Органик пост `utm_medium=post`
+#    -оор явдаг; тэр чигээр нь зар болговол GA4 дээр төлбөртэй урсгал үнэгүйтэй
+#    ХОЛИЛДОНО — «зар ажиллаж байна уу» гэдгийг хэзээ ч ялгаж чадахгүй.
+AD_MEDIUM = 'cpc'
+
+
+def ad_link(url, campaign=''):
+    """Зарын холбоос: utm_source/campaign нь байвал ХЭВЭЭР, medium нь ҮРГЭЛЖ `cpc`.
+    utm огт байхгүй линкийг ч тэмдэглэнэ — эс бөгөөс тэр урсгал «шууд орсон»
+    болж, зарын үр дүн 0 харагдана."""
+    u = str(url or '').strip()
+    if not u:
+        return u
+    base, _, frag = u.partition('#')
+    head, _, qs = base.partition('?')
+    kv, seen = [], set()
+    for part in qs.split('&'):
+        if not part:
+            continue
+        k = part.split('=', 1)[0]
+        seen.add(k)
+        kv.append(f'utm_medium={AD_MEDIUM}' if k == 'utm_medium' else part)
+    if 'utm_medium' not in seen:
+        kv.append(f'utm_medium={AD_MEDIUM}')
+    if 'utm_source' not in seen:
+        kv.insert(0, 'utm_source=facebook')
+    if 'utm_campaign' not in seen:
+        kv.append('utm_campaign=' + (urllib.parse.quote(str(campaign or 'boost')) or 'boost'))
+    out = head + '?' + '&'.join(kv)
+    return out + ('#' + frag if frag else '')
+
+
+def head_line(msg, n=40):
+    """Зарын гарчиг = бичвэрийн эхний мөр (богиносгосон)."""
+    first = (str(msg or '').strip().split('\n') or [''])[0].strip()
+    return first[:n]
+
+
+# ── Graph дуудлагууд ────────────────────────────────────────────────────────
+def post_media(post_id, tok):
+    """Постын БҮТЭН бичвэр, зураг, хавсралтын төрөл. Бичвэрийг DB-ээс биш эндээс
+    авна — psql мөр таслалтад задалдаг тул тэнд зөвхөн эхний мөр байдаг."""
+    d = get(post_id, {'fields': 'message,full_picture,attachments{type}',
+                      'access_token': tok})
+    typ = ((d.get('attachments') or {}).get('data') or [{}])[0].get('type') or ''
+    return str(d.get('message') or ''), str(d.get('full_picture') or ''), str(typ)
+
+
+def upload_image(acct, tok, img_url):
+    """Зургийг зарын санд байршуулж `image_hash` буцаана.
+    ⚠ Facebook-ийн CDN зураг гадны ХУУДСАНД 403 буцаадаг ч сервер талаас
+      татахад асуудалгүй."""
+    raw = urllib.request.urlopen(img_url, timeout=90).read()
+    bd = '----chimun' + datetime.now(UB).strftime('%H%M%S%f')
+    body = (f'--{bd}\r\nContent-Disposition: form-data; name="access_token"\r\n\r\n'
+            f'{tok}\r\n--{bd}\r\nContent-Disposition: form-data; name="source"; '
+            'filename="post.jpg"\r\nContent-Type: image/jpeg\r\n\r\n').encode() \
+        + raw + f'\r\n--{bd}--\r\n'.encode()
+    req = urllib.request.Request(f'{API}/{acct}/adimages', data=body,
+                                 headers={'Content-Type': 'multipart/form-data; boundary=' + bd})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        d = json.loads(r.read().decode())
+    for v in (d.get('images') or {}).values():
+        if v.get('hash'):
+            return v['hash']
+    raise RuntimeError('adimages: hash ирсэнгүй')
+
+
 def main():
     c = cfg()
     # ⛔ PAGE токен — creative ба ad хоёулаа хуудасны эрх шаарддаг.
     tok, acct = c.get('FB_PAGE_TOKEN', ''), c.get('FB_ACCT', '')
-    if not tok or not acct:
-        raise SystemExit('fb.env-д FB_PAGE_TOKEN эсвэл FB_ACCT алга')
+    page = c.get('FB_PAGE_ID', '')
+    if not tok or not acct or not page:
+        raise SystemExit('fb.env-д FB_PAGE_TOKEN / FB_ACCT / FB_PAGE_ID алга')
 
     # ⛔ БИЧВЭРИЙГ ТҮҮХИЙГЭЭР БҮҮ СОНГО — постын мөр таслалт нь psql-ийн мөрийг
     #    хоёр хуваадаг тул задлалт унана («not enough values to unpack», амьд
@@ -167,8 +236,29 @@ def main():
                 'optimization_goal': k['goal'], 'destination_type': k['dest'],
                 'targeting': json.dumps(targeting),
                 'status': 'ACTIVE', 'access_token': tok})
-            cre = post(f'{acct}/adcreatives', {
-                'name': name, 'object_story_id': post_id, 'access_token': tok})
+            # ⛔ ЗУРАГТАЙ ПОСТЫГ ПОСТООР НЬ ВЭБ ЗАР БОЛГОХ БОЛОМЖГҮЙ — Facebook
+            #    «Non-Website Ad in Website Ad Set» гэж татгалздаг. Тиймээс сайт
+            #    руу чиглүүлэх зарыг постын ЗУРАГ + ЛИНКЭЭС дахин угсарна
+            #    (link_data). Энэ нь ШИНЭ зар болох тул органик постын таалагдсан
+            #    тоо/сэтгэгдэл ШИЛЖИХГҮЙ — тэр нь энэ замын үнэ.
+            full_msg, pic, atyp = ('', '', '')
+            if kind == 'site':
+                full_msg, pic, atyp = post_media(post_id, tok)
+            if kind == 'site' and atyp != 'share':
+                ld = {'link': ad_link(link, head_line(msg, 30)),
+                      'message': full_msg or msg,
+                      'name': head_line(msg) or 'M-Event түрээс',
+                      'call_to_action': {'type': 'LEARN_MORE'}}
+                # Зураг олдохгүй бол ЛИНКИЙН урьдчилсан харагдацыг Facebook өөрөө
+                # татна — зар зогсоохгүй.
+                if pic:
+                    ld['image_hash'] = upload_image(acct, tok, pic)
+                cre = post(f'{acct}/adcreatives', {
+                    'name': name, 'access_token': tok,
+                    'object_story_spec': json.dumps({'page_id': page, 'link_data': ld})})
+            else:
+                cre = post(f'{acct}/adcreatives', {
+                    'name': name, 'object_story_id': post_id, 'access_token': tok})
             post(f'{acct}/ads', {
                 'name': name, 'adset_id': aset['id'],
                 'creative': json.dumps({'creative_id': cre['id']}),
@@ -182,8 +272,8 @@ def main():
                  f"{sq('хүний сонгосон постыг бүүст хийв (' + kind + ')')},'manual');")
             ok += 1
             print(f'[{stamp}] бүүст хийв [{kind}]: {name} → {camp["id"]}')
-        except urllib.error.HTTPError as e:
-            detail = err_text(e)
+        except Exception as e:
+            detail = err_text(e) if isinstance(e, urllib.error.HTTPError) else str(e)[:300]
             # ⚠ Алдааг АППАД бүртгэнэ — эс бөгөөс хүн «дарсан ч юу ч болохгүй»
             #   гэж бодно. `requested` хэвээр үлдээхгүй: дахин дахин оролдвол
             #   ижил алдаа 10 минут тутам давтагдана.
@@ -225,6 +315,27 @@ def selftest():
 
     # ⛔ Хоёр төрөл ЗААВАЛ өөр зорилготой байна — холбоосгүй постыг вэб зар
     #    болговол Facebook татгалзана.
+    # ⛔ ТӨЛБӨРТ УРСГАЛ = `utm_medium=cpc`. Органик постын `post` медиумтай
+    #    холилдвол «зар ажиллаж байна уу» гэдгийг GA4-д ялгах аргагүй болно.
+    eq(ad_link('https://mevent.mn/products/m-007/?utm_source=facebook&utm_medium=post&utm_campaign=m-007'),
+       'https://mevent.mn/products/m-007/?utm_source=facebook&utm_medium=cpc&utm_campaign=m-007',
+       'линк: медиум cpc болно, бусад нь хэвээр')
+    eq(ad_link('https://mevent.mn/'),
+       'https://mevent.mn/?utm_source=facebook&utm_medium=cpc&utm_campaign=boost',
+       'линк: utm огт байхгүй бол бүрэн тэмдэглэнэ')
+    eq(ad_link('https://mevent.mn/?a=1', 'Асар'),
+       'https://mevent.mn/?utm_source=facebook&a=1&utm_medium=cpc&utm_campaign=%D0%90%D1%81%D0%B0%D1%80',
+       'линк: байгаа параметр хэвээр, кампанит нэр кодлогдоно')
+    eq(ad_link('https://mevent.mn/x#top'),
+       'https://mevent.mn/x?utm_source=facebook&utm_medium=cpc&utm_campaign=boost#top',
+       'линк: fragment төгсгөлдөө үлдэнэ')
+    eq(ad_link(''), '', 'линк: хоосон → хоосон')
+    eq(ad_link(None), '', 'линк: None → унахгүй')
+
+    eq(head_line('Асар майхан түрээс\nдэлгэрэнгүй'), 'Асар майхан түрээс', 'гарчиг: эхний мөр')
+    eq(len(head_line('я' * 100)), 40, 'гарчиг: 40 тэмдэгтээр таслана')
+    eq(head_line(None), '', 'гарчиг: None → хоосон')
+
     eq(KINDS['site']['dest'], 'WEBSITE', 'төрөл: сайт → WEBSITE')
     eq(KINDS['engage']['dest'], 'ON_POST', 'төрөл: хандалт → ON_POST')
     eq(KINDS['site']['objective'] != KINDS['engage']['objective'], True,

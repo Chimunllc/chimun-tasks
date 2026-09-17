@@ -52,6 +52,20 @@ def attach_of(post):
     return (d.get('type') or ''), (d.get('unshimmed_url') or d.get('url') or '')
 
 
+# ⛔ ЗУРАГТАЙ ПОСТЫН ЛИНК БИЧВЭРТ БАЙДАГ (2026-09-17). Facebook зураг+бичвэр
+#    постыг «холбоостой пост» гэж үздэггүй тул хавсралтаас ХЭЗЭЭ Ч сайтын хаяг
+#    гарахгүй — постер үүсгэгчийн бүх пост ингэж «зөвхөн хандалт» болж, сайт руу
+#    хүн оруулах ТӨЛБӨРТ зар хийх боломж хаагдаж байв. Бичвэрээс уншина.
+_MEV_RE = re.compile(r'https?://(?:[a-z0-9-]+\.)?mevent\.mn(?=[/?#]|\s|$)[^\s<>"]*', re.I)
+
+
+def msg_link(message):
+    """Постын БИЧВЭР доторх mevent.mn холбоос (эхний нь). Төгсгөлийн цэг/хаалтыг
+    хасна — «… mevent.mn/products/m-007/).» гэж бичсэн ч зөв хаяг гарна."""
+    m = _MEV_RE.search(str(message or ''))
+    return m.group(0).rstrip('.,);:!?') if m else ''
+
+
 def site_link(url):
     """mevent.mn руу заасан холбоос уу. Facebook-ийн дотоод хаягийг ХАСНА —
     зургийн/reel-ийн хаяг нь сайт БИШ, түүнийг вэб зар гэж үзвэл зар унана."""
@@ -75,7 +89,8 @@ def rows_from(data):
         if not pid:
             continue
         typ, url = attach_of(p)
-        link = site_link(url)
+        # Хавсралтын холбоос ДАВУУ (жинхэнэ холбоост пост), эс бөгөөс бичвэрээс.
+        link = site_link(url) or msg_link(p.get('message'))
         out.append({
             'post_id': pid,
             'created_time': (p.get('created_time') or '')[:25] or None,
@@ -168,6 +183,21 @@ def selftest():
                     {'no_id': 1}])
     eq(len(rs), 1, 'мөр: id-гүйг алгасна')
     eq(rs[0]['kind'], 'site', 'мөр: төрөл тодорхойлогдоно')
+    # ⛔ Зураг+бичвэр постын линк БИЧВЭРТ байдаг — хавсралтад хэзээ ч гарахгүй.
+    eq(msg_link('Асар түрээс\n\n👉 Дэлгэрэнгүй: https://mevent.mn/products/m-007/?utm_source=facebook'),
+       'https://mevent.mn/products/m-007/?utm_source=facebook', 'бичвэр: линк олдоно')
+    eq(msg_link('орох бол (https://mevent.mn/).'), 'https://mevent.mn/',
+       'бичвэр: төгсгөлийн цэг/хаалт хасагдана')
+    eq(msg_link('линкгүй бичвэр'), '', 'бичвэр: линкгүй → хоосон')
+    eq(msg_link('https://mevent.mn.evil.com/'), '', 'бичвэр: хуурамч домэйн → биш')
+    eq(msg_link(None), '', 'бичвэр: None → унахгүй')
+
+    ph = rows_from([{'id': 'p2', 'message': 'Асар https://mevent.mn/products/m-007/',
+                     'status_type': 'added_photos',
+                     'attachments': {'data': [{'type': 'photo', 'url': 'https://www.facebook.com/photo/x'}]}}])
+    eq(ph[0]['kind'], 'site', 'мөр: зурагтай ч бичвэрийн линкээр сайт болно')
+    eq(ph[0]['link_url'], 'https://mevent.mn/products/m-007/', 'мөр: бичвэрийн линк хадгалагдана')
+
     eq(rows_from([]), [], 'мөр: хоосон')
     eq(rows_from(None), [], 'мөр: None → унахгүй')
 

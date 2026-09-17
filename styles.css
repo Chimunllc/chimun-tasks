@@ -7358,3 +7358,66 @@ select.no-asar-len {
 .wd-w80 { width: 80%; }
 .wd-w90 { width: 90%; }
 .wd-w100 { width: 100%; }
+
+/* ── 💬 Facebook чат ─────────────────────────────────────────────────────── */
+.fc-wrap { display: flex; flex-direction: column; gap: var(--space-3); }
+.fc-h { margin: 0; font-size: var(--fs-lg); }
+.fc-note { font-size: var(--fs-sm); color: var(--muted); }
+.fc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-md); }
+.fc-mode { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.fc-mode-l { font-size: var(--fs-sm); color: var(--muted); font-weight: 700; }
+.fc-mode-b {
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  border-radius: var(--r-sm); padding: 4px var(--space-3);
+  font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
+}
+.fc-mode-b.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.fc-mode-b:disabled { opacity: .5; cursor: default; }
+.fc-mode-h { font-size: var(--fs-sm); color: var(--muted); }
+.fc-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
+.fc-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: var(--space-3); text-align: center;
+}
+.fc-card.warn { border-color: var(--warn); }
+.fc-v { font-size: var(--fs-xl); font-weight: 800; }
+.fc-k { font-size: var(--fs-xs); color: var(--muted); }
+.fc-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fc-tab {
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  border-radius: var(--r-sm); padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
+}
+.fc-tab.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.fc-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.fc-row, .fc-draft {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: var(--space-3);
+}
+.fc-draft { flex-direction: column; align-items: stretch; }
+.fc-main { flex: 1 1 190px; min-width: 0; }
+.fc-name { font-size: var(--fs-base); font-weight: 800; }
+.fc-sub { font-size: var(--fs-sm); color: var(--muted); }
+.fc-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+.fc-tag {
+  font-size: var(--fs-xs); border: 1px solid var(--border); color: var(--muted);
+  border-radius: var(--r-sm); padding: 1px var(--space-2);
+}
+.fc-tag.ok { border-color: var(--ok); color: var(--ok); }
+.fc-tag.warn { border-color: var(--warn); color: var(--warn); }
+.fc-tag.off { border-color: var(--danger); color: var(--danger); }
+/* Харилцагчийн мессеж ба ботын ноорог — нүд аль нь алинг хэлснийг шууд ялгана. */
+.fc-in, .fc-out {
+  font-size: var(--fs-md); white-space: pre-wrap; word-break: break-word;
+  border-radius: var(--r-sm); padding: var(--space-2);
+}
+.fc-in { color: var(--muted); border-left: 2px solid var(--border); }
+.fc-out { background: var(--panel-hover); border-left: 2px solid var(--primary); }
+.fc-act { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+/* Inbox холбоос товчны хажууд сууна — доогуур зураас нь эгнээг эвддэг. */
+.fc-act a.btn { text-decoration: none; display: inline-block; }
+@media (max-width: 480px) {
+  .fc-cards { grid-template-columns: repeat(2, 1fr); }
+  .fc-act { width: 100%; }
+}

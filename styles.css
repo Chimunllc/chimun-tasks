@@ -7292,6 +7292,13 @@ select.no-asar-len {
 .pp-row { display: flex; align-items: flex-start; gap: var(--space-3);
   padding: 10px 0; border-bottom: 1px solid var(--border); }
 .pp-row:last-child { border-bottom: 0; }
+.cu-sec { font-size: var(--fs-sm); font-weight: 700; color: var(--text);
+  margin: var(--space-3) 0 6px; }
+.cu-sub { font-weight: 400; color: var(--muted); }
+.cu-why { color: var(--muted); }
+.cu-tel { color: var(--info); text-decoration: none; }
+.cu-tel:hover { text-decoration: underline; }
+.cu-snooze { flex: 0 0 auto; }
 .pp-weak { color: var(--warn); }
 .pp-link { font-size: var(--fs-xs); color: var(--info); text-decoration: none; }
 .pp-link:hover { text-decoration: underline; }

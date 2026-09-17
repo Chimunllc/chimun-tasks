@@ -20939,6 +20939,60 @@ function woSoldIncome(month) {
    (доод талд тоогоор нь ил бичнэ — «алга болсон» гэж эргэлзэхээс сэргийлнэ). */
 function canSeeCustomers() { return canAccessView('customers', () => !!state.isCEO || can('orders.pay')); }
 
+// ── ЭРГЭЖ ИРЭЭГҮЙ ХАРИЛЦАГЧ (2026-09-17) ───────────────────────────────────
+// 183 харилцагч 2+ сар эргэж ирээгүй, нийт 170 сая₮-ийн түүхтэй. Тэднийг
+// татах зардал ТЭГ; давтан ирсэн харилцагч дунджаар 2.5 дахин их үнэ цэнэ
+// үлдээдэг. Гэтэл нэгд нь ч холбогдож үзээгүй байв.
+// ⛔ ГАРААР ТЭМДЭГЛЭХ АЖИЛ БАГА БАЙЛГА — жагсаалт ӨӨРӨӨ богиносно: тэр хүн
+//    захиалга өгмөгц сүүлийн эвентийн огноо шинэчлэгдэж жагсаалтаас гарна.
+//    `followup_until` нь зөвхөн «одоо биш» гэж хойшлуулахад.
+const DORMANT_DAYS = 60;      // үүнээс хойш эргэж ирээгүй бол жагсаалтад
+const DORMANT_SNOOZE = 90;    // «Дараа» дарвал хэдэн хоног нуух
+// Яагаад энэ хүн эхэнд байна вэ — ганц хамгийн хүнд шалтгааныг нэрлэнэ.
+// Цэвэр функц — тестлэгдэнэ.
+function dormantWhy(r) {
+  if ((r.orders || 0) > 1) return `${r.orders} удаа захиалсан`;
+  if ((r.revenue || 0) >= 3000000) return 'том захиалга байсан';
+  return `${r.days} хоног эргэж ирээгүй`;
+}
+// Жагсаалт. Цэвэр функц — `custStats`-ийн гаралтыг авна.
+function dormantRows(customers, stats, today, limit) {
+  const t = String(today || todayStr());
+  return (customers || [])
+    .map(c => Object.assign({}, c, stats.get(c.id) || { orders: 0, revenue: 0, last: '' }))
+    .filter(c => {
+      if (!String(c.phone || '').trim()) return false;      // залгах боломжгүй
+      if (!(c.orders > 0) || !c.last) return false;          // хэзээ ч захиалаагүй
+      if (String(c.followup_until || '') > t) return false;  // хойшлуулсан
+      return daysBetween(String(c.last), t) >= DORMANT_DAYS;
+    })
+    .map(c => {
+      const days = daysBetween(String(c.last), t);
+      return Object.assign({}, c, { days, why: dormantWhy(Object.assign({}, c, { days })) });
+    })
+    .sort((a, b) => (b.revenue || 0) - (a.revenue || 0) || a.days - b.days)
+    .slice(0, limit || 20);
+}
+// Хоёр огнооны хоорондох хоног. UTC геттер — бүсээр гулсуулахгүй.
+function daysBetween(from, to) {
+  const a = Date.parse(String(from).slice(0, 10) + 'T00:00:00Z');
+  const b = Date.parse(String(to).slice(0, 10) + 'T00:00:00Z');
+  return (isNaN(a) || isNaN(b)) ? 0 : Math.round((b - a) / 86400000);
+}
+async function snoozeCustomer(id, days) {
+  const until = addDays(todayStr(), Number(days) || DORMANT_SNOOZE);
+  const r = await fetchWithTimeout(
+    `${DB_URL}/rest/v1/customers?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ followup_until: until }),
+    }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const c = (state.customers || []).find(x => String(x.id) === String(id));
+  if (c) c.followup_until = until;
+}
+
 function renderCustomers() {
   if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => render()); }
   if (state.customers === null) return '<div class="cu-load">Ачаалж байна…</div>';
@@ -20968,6 +21022,23 @@ function renderCustomers() {
     ${(c.owed > 0) ? `<span class="cu-owed">${fmtMoney(c.owed)}</span>` : '<span class="cu-ok">✓</span>'}
   </div>`;
 
+  // ── Эргэж ирээгүй — ажлын жагсаалт ──
+  const dorm = dormantRows(state.customers || [], stats, todayStr(), 20);
+  const dormHtml = !dorm.length ? '' : `
+    <div class="cu-sec">↩ Эргэж ирээгүй <span class="cu-sub">(${dorm.length} хүн · ${DORMANT_DAYS}+ хоног)</span></div>
+    <div class="cu-list cu-dorm">${dorm.map(c => `<div class="cu-row">
+      <div class="cu-main">
+        <div class="cu-nm">${escapeHtml(c.name || '—')}${c.company ? ` <span class="cu-co">${escapeHtml(c.company)}</span>` : ''}</div>
+        <div class="cu-meta"><a class="cu-tel" href="tel:${escapeHtml(String(c.phone).replace(/[^0-9+]/g, ''))}">${escapeHtml(c.phone)}</a> · <span class="cu-why">${escapeHtml(c.why)}</span></div>
+      </div>
+      <div class="cu-nums">
+        <span class="cu-cnt">${c.days} хоног</span>
+        <span class="cu-rev">${fmtMoney(c.revenue || 0)}</span>
+      </div>
+      <button class="btn cu-snooze" data-cu-snooze="${escapeHtml(c.id)}">Дараа</button>
+    </div>`).join('')}</div>
+    <div class="cu-note">Захиалга өгмөгц жагсаалтаас өөрөө гарна — тэмдэглэх шаардлагагүй. «Дараа» дарвал ${DORMANT_SNOOZE} хоног нуугдана.</div>`;
+
   return `<div class="cu-wrap">
     <div class="cu-kpis">
       ${kpi('Харилцагч', (state.customers || []).length)}
@@ -20978,12 +21049,20 @@ function renderCustomers() {
       <input id="cu-q" class="ui-raw cu-q" type="search" placeholder="Нэр, утас, компани, РД…" value="${escapeHtml(q)}">
       <button class="btn btn-primary" id="cu-new">+ Харилцагч</button>
     </div>
+    ${q ? '' : dormHtml}
+    <div class="cu-sec">Бүх харилцагч</div>
     <div class="cu-list">${rows.length ? rows.map(row).join('') : '<div class="cu-empty">Олдсонгүй.</div>'}</div>
     ${unlinked ? `<div class="cu-note">${unlinked} захиалга харилцагчгүй — Booqable түүхэнд нэр нь «?» байсан тул холбогдоогүй.</div>` : ''}
   </div>`;
 }
 
 function attachCustomersHandlers() {
+  document.querySelectorAll('[data-cu-snooze]').forEach(b => b.onclick = async (e) => {
+    e.stopPropagation();
+    b.disabled = true;
+    try { await snoozeCustomer(b.dataset.cuSnooze, DORMANT_SNOOZE); render(); }
+    catch (err) { b.disabled = false; showToast('Болсонгүй: ' + err.message, 'error', 5000); }
+  });
   const q = document.getElementById('cu-q');
   // Түлхэц бүрд биш — 180мс хүлээгээд рендэрлэж, фокус/курсорыг сэргээнэ
   // (захиалгын хайлттай ижил хэв маяг), эс бөгөөс бичилт тасалдана.

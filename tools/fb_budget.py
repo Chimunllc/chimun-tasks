@@ -274,14 +274,39 @@ days_left = (nxt - today).days                      # өнөөдрийг ору�
 acct = api_get(ACCT, {'fields': 'amount_spent,spend_cap'})
 cap_old = float(acct.get('spend_cap') or 0) / 100.0
 cap_usd = round(float(acct.get('amount_spent') or 0) / 100.0 + left_usd, 2)
-try:
-    if changed(cap_old, cap_usd):
-        api_post(ACCT, {'spend_cap': int(round(cap_usd * 100))})
-        record('cap', None, None, cap_old, cap_usd, 'сарын төсвийн дээд хязгаар')
-except Exception as e:
-    log(f'⚠ hard cap тавигдсангүй: {e}')
-    record('error', None, None, cap_old, cap_usd,
-           'дансны хатуу хязгаар тавигдсангүй — систем хэрэглэгчид дансны бүрэн эрх алга')
+# ⚠ ЭРХГҮЙ БОЛ ӨДӨРТ НЭГ Л УДАА ОРОЛДОНО. Систем хэрэглэгчид дансны бүрэн эрх
+#   байхгүй үед энэ дуудлага 400 буцаадаг. Скрипт 10 минут тутам ажилладаг тул
+#   өдөрт 140 гаруй удаа оролдож логийг дүүргэж байв — жинхэнэ алдаа тэр дунд
+#   дарагдана. Эрх өгмөгц маргааш нь өөрөө ажиллана.
+CAP_FAIL = '/opt/chimun/marketing/.cap_fail'
+
+
+def cap_failed_today(today_s):
+    try:
+        with open(CAP_FAIL) as f:
+            return f.read().strip() == today_s
+    except OSError:
+        return False
+
+
+def mark_cap_failed(today_s):
+    try:
+        with open(CAP_FAIL, 'w') as f:
+            f.write(today_s)
+    except OSError:
+        pass
+
+
+if not cap_failed_today(today.isoformat()):
+    try:
+        if changed(cap_old, cap_usd):
+            api_post(ACCT, {'spend_cap': int(round(cap_usd * 100))})
+            record('cap', None, None, cap_old, cap_usd, 'сарын төсвийн дээд хязгаар')
+    except Exception as e:
+        log(f'⚠ hard cap тавигдсангүй (өнөөдөр дахин оролдохгүй): {e}')
+        record('error', None, None, cap_old, cap_usd,
+               'дансны хатуу хязгаар тавигдсангүй — систем хэрэглэгчид дансны бүрэн эрх алга')
+        mark_cap_failed(today.isoformat())
 
 if left_usd <= 0.01:
     pause_all(camps, f'сарын төсөв дууссан (${spent_usd:.2f}/${plan_usd:.2f})')

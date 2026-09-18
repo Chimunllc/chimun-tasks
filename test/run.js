@@ -7340,6 +7340,12 @@ need(['orderCustType']);
   try {
     const out = require('child_process')
       .execSync(`python3 ${JSON.stringify(bud)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const budPy = fs.readFileSync(bud, 'utf8');
+  // ⛔ ЭРХГҮЙ ҮЕД ЛОГ ДҮҮРГЭХГҮЙ. Скрипт 10 минут тутам ажилладаг тул дансны
+  //    hard cap тавих эрхгүй бол өдөрт 140 гаруй удаа оролдож, жинхэнэ алдааг
+  //    дарж байв. Өдөрт нэг л удаа оролдоно; эрх өгмөгц маргааш нь ажиллана.
+  ok(/def cap_failed_today/.test(budPy) && /if not cap_failed_today\(/.test(budPy),
+     'төсөв: hard cap өдөрт нэг л удаа оролдоно');
     ok(/✅ BUDGET OK/.test(out), 'төсөв: Python өөрийн тест тэнцэв — ' + out.trim());
   } catch (e) {
     const msg = String((e.stdout || '') + (e.stderr || ''));

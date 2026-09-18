@@ -22817,7 +22817,7 @@ function orderHasDeliveryItem(o) {
 }
 function isDeliveryOrder(o) {
   const d = (typeof parseDelivery === 'function') ? parseDelivery(o && o.note) : null;
-  if (d && (d.zone === 'city' || d.zone === 'out')) return true;   // DLV token хот/гадна
+  if (d && isDeliveryZone(d.zone)) return true;   // DLV token хот/гадна
   if (String((o && (o.delivery_address || o.customer_address)) || '').trim()) return true;   // хаягтай
   return orderHasDeliveryItem(o);   // хуучин захиалга — хүргэлт нь бараа мөр
 }
@@ -23926,12 +23926,14 @@ async function rejectOrderCancel(oid) {
 // Хот дотор = тогтмол (очих+буцах багтсан). Хотоос гадна = нэг талын км × 2 (очих+буцах) × км-ийн үнэ.
 // ⚠ ТАРИФ SYNC (C2): доорх const-ууд нь app_config['tariffs'] БАЙХГҮЙ үеийн fallback. Сайт
 // m-event-website-ready/index.html мөн энэ app_config-оос татна. [[tariff_two_repos_sync]]
-const DELIVERY_CITY_FEE = 150000;   // ₮ хот дотор (fallback)
+const DELIVERY_CITY_FEE = 150000;      // ₮ хот дотор, очих+буцах (fallback)
+const DELIVERY_CITY_ONE_FEE = 80000;   // ₮ хот дотор, НЭГ тал (fallback)
 const DELIVERY_PER_KM = 5000;       // ₮ нэг талын км тутам (fallback)
 // ── ⭐ ТАРИФЫН НЭГ ЭХ СУРВАЛЖ: app_config['tariffs'] (state.tariffs). Байвал түүгээр, эс бол
 // дээрх const fallback. Тарифыг НЭГ газраас (app_config) удирдана — 2 repo-д хатуу давхардуулахгүй. ──
 function _tariffCfg() { return (state.tariffs && typeof state.tariffs === 'object') ? state.tariffs : {}; }
 function tariffDeliveryCity() { const v = Number(_tariffCfg().delivery_city_fee); return v > 0 ? v : DELIVERY_CITY_FEE; }
+function tariffDeliveryCityOne() { const v = Number(_tariffCfg().delivery_city_one_fee); return v > 0 ? v : DELIVERY_CITY_ONE_FEE; }
 function tariffPerKm() { const v = Number(_tariffCfg().delivery_per_km); return v > 0 ? v : DELIVERY_PER_KM; }
 function tariffOffhoursFee() { const v = Number(_tariffCfg().offhours_fee); return v > 0 ? v : ORDER_OFFHOURS_FEE; }
 function tariffWorkStart() { const v = Number(_tariffCfg().work_start); return (v >= 0 && v <= 23) ? v : 9; }
@@ -23939,11 +23941,13 @@ function tariffWorkEnd() { const v = Number(_tariffCfg().work_end); return (v >=
 function tariffTiers() { const t = _tariffCfg().tiers; return (Array.isArray(t) && t.length) ? t.map(x => ({ min: Number(x.min) || 1, pct: Number(x.pct) || 0, label: x.label || '' })).sort((a, b) => b.min - a.min) : RENTAL_TIERS; }
 function calcDeliveryFee(zone, km) {
   if (zone === 'city') return tariffDeliveryCity();
+  if (zone === 'city1') return tariffDeliveryCityOne();   // нэг тал (хүргээд буцаахгүй, эсвэл зөвхөн авах)
   if (zone === 'out') return Math.max(0, (Math.round(Number(km) || 0)) * 2 * tariffPerKm());
   return 0;   // pickup / хоосон
 }
-// ⟦DLV|zone|km|fee⟧ note token (zone=city|out|pickup). app_orders-д багана нэмэхгүйгээр (RT/SL-тэй ижил).
-const _DLV_RE = /⟦DLV\|([a-z]+)\|(\d+)\|(\d+)⟧/;
+// ⟦DLV|zone|km|fee⟧ note token (zone=city|city1|out|pickup). app_orders-д багана нэмэхгүйгээр (RT/SL-тэй ижил).
+const _DLV_RE = /⟦DLV\|([a-z0-9]+)\|(\d+)\|(\d+)⟧/;
+function isDeliveryZone(z) { return z === 'city' || z === 'city1' || z === 'out'; }   // хүргэлттэй бүс (pickup БИШ)
 function parseDelivery(note) { const m = String(note || '').match(_DLV_RE); return m ? { zone: m[1], km: +m[2], fee: +m[3] } : null; }
 function encodeDelivery(zone, km, fee) { return `⟦DLV|${zone || 'pickup'}|${Math.round(km) || 0}|${Math.round(fee) || 0}⟧`; }
 /* ⟦CMP|шалтгаан|дүн⟧ — БУУЛГАЛТ (манай буруугаас өгсөн хөнгөлөлт) 2026-09-09.
@@ -24353,7 +24357,8 @@ function setCustInfo(note, ci) {
 }
 function deliveryLabel(d) {
   if (!d || d.zone === 'pickup') return '';
-  if (d.zone === 'city') return 'Хот дотор';
+  if (d.zone === 'city') return 'Хот дотор (очих+буцах)';
+  if (d.zone === 'city1') return 'Хот дотор (нэг тал)';
   if (d.zone === 'out') return `Хотоос гадна ${d.km}км (очих+буцах ${d.km * 2}км)`;
   return '';
 }
@@ -24481,7 +24486,8 @@ function openNewOrder(editOrder) {
       <div style="display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:end;">
         <label class="no-lbl">🚚 Хүргэлт<select id="no-delivzone" style="margin-top:3px;">
           <option value="pickup"${_dlv0.zone === 'pickup' ? ' selected' : ''}>🏬 Өөрөө авах (хүргэлтгүй)</option>
-          <option value="city"${_dlv0.zone === 'city' ? ' selected' : ''}>🚚 Хот дотор — 150,000₮</option>
+          <option value="city1"${_dlv0.zone === 'city1' ? ' selected' : ''}>🚚 Хот дотор, нэг тал — ${fmtMoney(tariffDeliveryCityOne())}</option>
+          <option value="city"${_dlv0.zone === 'city' ? ' selected' : ''}>🚚 Хот дотор, очих+буцах — ${fmtMoney(tariffDeliveryCity())}</option>
           <option value="out"${_dlv0.zone === 'out' ? ' selected' : ''}>🚚 Хотоос гадна (км-ээр)</option>
         </select></label>
         <label class="no-lbl" id="no-delivkm-wrap" style="${_dlv0.zone === 'out' ? '' : 'display:none;'}">Нэг тал (км)<input id="no-delivkm" type="number" min="0" value="${_dlv0.km || ''}" placeholder="0" style="margin-top:3px;"></label>
@@ -24769,7 +24775,7 @@ function openNewOrder(editOrder) {
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
     const offFee = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value) * tariffOffhoursFee();   // ажлын бус цаг (сайттай ижил)
-    const isDeliv = dlv.zone === 'city' || dlv.zone === 'out';
+    const isDeliv = isDeliveryZone(dlv.zone);
     const setupOn = dlv.zone !== 'pickup' && !!(($('#no-setup') || {}).checked);
     const setupFee = setupOn ? setupFeeForItems(items) : 0;   // суурилуулалтын хөлс — токенд хадгална, нийт дүнд нэмнэ
     const addr = $('#no-addr').value.trim();
@@ -27394,7 +27400,7 @@ function openDeliveryFeeOrders() {
   const src = (state.history && state.history.orders) || state.appOrders || [];
   const { rows, total } = deliveryFeeRows(src);
   const money = n => fmtMoney(Math.round(n));
-  const zoneLbl = z => z === 'city' ? 'Хот дотор' : (z === 'out' ? 'Хотоос гадна' : 'Очиж авах');
+  const zoneLbl = z => z === 'city' ? 'Хот дотор' : (z === 'city1' ? 'Хот дотор (нэг тал)' : (z === 'out' ? 'Хотоос гадна' : 'Очиж авах'));
   document.getElementById('hist-prod-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.id = 'hist-prod-modal'; modal.style.zIndex = '9700';

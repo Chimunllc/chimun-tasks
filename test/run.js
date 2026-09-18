@@ -2167,6 +2167,13 @@ function finish() {
   ok(noise('', ''), 'алдаа: хоосон мессеж тоохгүй');
   ok(noise('ResizeObserver loop limit exceeded', ''), 'алдаа: ResizeObserver чимээ тоохгүй');
   ok(noise('x', 'chrome-extension://abc/x.js'), 'алдаа: өргөтгөлийн алдаа тоохгүй');
+  // fp f11405417bbb — Facebook-ийн дотоод браузер өөрийн скриптээ шахаад унагадаг.
+  // Манай код БИШ, засах боломжгүй. Бүртгэвэл Issue үүсч жинхэнэ алдаа живнэ.
+  ok(noise('Uncaught SyntaxError: Unexpected end of input', 'iabjs://iab_inner_frame_ota'),
+     'алдаа: in-app браузерын шахсан кодын алдаа тоохгүй (fp f11405417bbb)');
+  ok(noise('boom', 'webkit-masked-url://hidden/'), 'алдаа: далдалсан URL тоохгүй');
+  ok(!noise('boom', 'https://mevent.mn/index.html:120'), 'алдаа: манай https байрлалыг барина');
+  ok(!noise('boom', 'app.js:17472'), 'алдаа: `app.js:1234` байрлалыг схем гэж андуурахгүй');
   ok(!noise("Cannot access 'rcPaint' before initialization", 'app.js:17472'),
      'алдаа: ЖИНХЭНЭ алдааг барина (нярвын тохиолдол)');
 

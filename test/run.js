@@ -7346,6 +7346,14 @@ need(['orderCustType']);
   //    дарж байв. Өдөрт нэг л удаа оролдоно; эрх өгмөгц маргааш нь ажиллана.
   ok(/def cap_failed_today/.test(budPy) && /if not cap_failed_today\(/.test(budPy),
      'төсөв: hard cap өдөрт нэг л удаа оролдоно');
+  // ⛔ spend_cap БИЧИХ нь бүхэл валют, УНШИХ нь цент. ×100 хийвэл хязгаар
+  //    100 дахин өндөр тавигдаж, хамгаалалт байгаа мэт харагдаад юу ч
+  //    хамгаалахгүй ($1,990 гэж зорьсон нь $199,007 болсон, амьд системд).
+  ok(/'spend_cap': int\(round\(cap_usd\)\)/.test(budPy),
+     'төсөв: hard cap бүхэл валютаар бичигдэнэ');
+  // ⛔ Бичсэнийхээ дараа уншиж тулгахгүй бол ийм алдаа чимээгүй үлдэнэ.
+  ok(/back = float\(api_get\(ACCT/.test(budPy) && /hard cap зөрүүтэй/.test(budPy),
+     'төсөв: тавьсан хязгаараа уншиж тулгана');
     ok(/✅ BUDGET OK/.test(out), 'төсөв: Python өөрийн тест тэнцэв — ' + out.trim());
   } catch (e) {
     const msg = String((e.stdout || '') + (e.stderr || ''));

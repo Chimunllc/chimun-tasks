@@ -300,8 +300,18 @@ def mark_cap_failed(today_s):
 if not cap_failed_today(today.isoformat()):
     try:
         if changed(cap_old, cap_usd):
-            api_post(ACCT, {'spend_cap': int(round(cap_usd * 100))})
-            record('cap', None, None, cap_old, cap_usd, 'сарын төсвийн дээд хязгаар')
+            # ⛔ БИЧИХ нь БҮХЭЛ ВАЛЮТ, УНШИХ нь ЦЕНТ (2026-09-18 амьд туршиж
+            #   тогтоов). Бичихдээ ×100 хийвэл хязгаар 100 ДАХИН ӨНДӨР тавигдаж,
+            #   хамгаалалт байгаа мэт харагдаад юу ч хамгаалахгүй: $1,990 гэж
+            #   зорьсон нь $199,007 болсон. Бичсэнийхээ дараа ЗААВАЛ уншиж тулга.
+            api_post(ACCT, {'spend_cap': int(round(cap_usd))})
+            back = float(api_get(ACCT, {'fields': 'spend_cap'}).get('spend_cap') or 0) / 100.0
+            if abs(back - cap_usd) > max(1.0, cap_usd * 0.02):
+                log(f'⚠ hard cap зөрүүтэй: зорьсон ${cap_usd:.2f} → данс дээр ${back:.2f}')
+                record('error', None, None, cap_old, cap_usd,
+                       f'хязгаар буруу тавигдсан: данс дээр ${back:.2f}')
+            else:
+                record('cap', None, None, cap_old, cap_usd, 'сарын төсвийн дээд хязгаар')
     except Exception as e:
         log(f'⚠ hard cap тавигдсангүй (өнөөдөр дахин оролдохгүй): {e}')
         record('error', None, None, cap_old, cap_usd,

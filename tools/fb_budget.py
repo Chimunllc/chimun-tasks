@@ -152,27 +152,49 @@ AUTO_STOP_MIN_DAYS = 4      # Meta-гийн сурах үе — түүнээс �
 AUTO_REF_FLOOR = 10000      # ₮ — жишиг тооцоологдоогүй үеийн хамгийн бага хаалт
 AUTO_REF_MIN_RES = 10       # үүнээс цөөн үр дүнгээс дундаж гаргахгүй
 AUTO_REF_DAYS = 30
+# ⛔ БОРЛУУЛАЛТ БҮХ ЗҮЙЛЭЭС ДЭЭГҮҮР (2026-09-18, CEO). Чат бол зорилго БИШ —
+#   зорилго нь захиалга. `fb_capi.py` захиалга бүрийг Meta руу буцаадаг тул
+#   Meta «энэ зарыг хараад худалдаж авсан» гэдгийг тулгаж буцаана (утсаар
+#   хийгдсэн захиалга ч ордог). Борлуулалт нь ЧАТЫГ БҮРЭН ДАРНА.
+# ⚠ Тулгалт бүрэн БИШ: Facebook худалдан авагчийг утас/мэйлээр таньж чадвал л
+#   тоолно. Тиймээс борлуулалт 0 гэдэг нь «зарагдаагүй» ГЭСЭН ҮГ БИШ — тэр
+#   тохиолдолд чат/лидээр (ойролцоо хэмжүүр) дүгнэнэ.
+# ⚠ ROAS 2× = зарын мөнгө хоёр дахин эргэж ирсэн. Түрээсийн ажилд энэ бол
+#   ДООД хил (бараа, тээвэр, цалин үлддэг) — дээш нь татах бол энэ тоог өсгө.
+AUTO_ROAS_MIN = 2.0
 
 
-def auto_stop_why(spend_mnt, results, days, ref_mnt):
+def auto_stop_why(spend_mnt, results, days, ref_mnt, revenue_mnt=0):
     """Энэ зарыг автоматаар зогсоох уу. Цэвэр функц — тестлэгдэнэ.
     Буцаах нь шалтгааны бичвэр (зогсооно) эсвэл None (үлдээнэ).
+
+    ⛔ ЭРЭМБЭ: борлуулалт → (байхгүй бол) чат/лид. Борлуулалттай зарыг
+      чатгүй гэдгээр нь ХЭЗЭЭ Ч зогсоохгүй — мөнгө авчирч байгаа зар чат
+      бичихгүйгээр шууд залгасан байж болно.
     """
     spend = float(spend_mnt or 0)
     res = int(results or 0)
+    rev = float(revenue_mnt or 0)
     ref = float(ref_mnt or 0) or AUTO_REF_FLOOR
     if int(days or 0) < AUTO_STOP_MIN_DAYS:
         return None                      # ⛔ богино үр дүнгээр дүгнэхгүй
     bar = ref * AUTO_STOP_MULT
     if spend < bar:
         return None                      # ⛔ дүгнэхэд хангалттай мөнгө зарцуулаагүй
+    # ── ① БОРЛУУЛАЛТ (тулгагдсан бол ганц шалгуур) ──
+    if rev > 0:
+        if rev >= spend * AUTO_ROAS_MIN:
+            return None
+        return (f'борлуулалт {rev:,.0f}₮ ÷ зарцуулалт {spend:,.0f}₮ = '
+                f'{rev / spend:.1f}× — {AUTO_ROAS_MIN:g}×-ээс доогуур')
+    # ── ② Борлуулалт тулгагдаагүй → чат/лид нь ОЙРОЛЦОО хэмжүүр ──
     if res == 0:
-        return (f'{spend:,.0f}₮ зарцуулаад үр дүн 0 — дунджаар энэ мөнгөөр '
-                f'{spend / ref:.0f} үр дүн ирдэг')
+        return (f'{spend:,.0f}₮ зарцуулаад борлуулалт ч, чат ч алга — '
+                f'дунджаар энэ мөнгөөр {spend / ref:.0f} үр дүн ирдэг')
     per = spend / res
     if per >= bar:
-        return (f'1 үр дүн {per:,.0f}₮ — дунджаас {per / ref:.1f} дахин үнэтэй '
-                f'({res} үр дүн, {spend:,.0f}₮)')
+        return (f'борлуулалт алга; 1 чат {per:,.0f}₮ — дунджаас '
+                f'{per / ref:.1f} дахин үнэтэй ({res} чат, {spend:,.0f}₮)')
     return None
 
 
@@ -217,8 +239,8 @@ if '--selftest' in sys.argv:
     _eq(auto_stop_why(31955, 0, 9, _REF), None, 'авто: хаалтын дор — үлдэнэ')
     # Хаалт давсан, үр дүн 0 → зогсоно
     _eq(auto_stop_why(31956, 0, 9, _REF) is None, False, 'авто: хаалт давахад зогсоно')
-    _eq('үр дүн 0' in (auto_stop_why(59004, 0, 5, _REF) or ''), True,
-        'авто: шалтгаанд үр дүн 0 гэж бичигдэнэ')
+    _eq('чат ч алга' in (auto_stop_why(59004, 0, 5, _REF) or ''), True,
+        'авто: шалтгаанд юу байхгүйг нэрлэнэ')
     # Үр дүнтэй ч дунджаас 3 дахин үнэтэй → зогсоно (амьд «Mevent post»)
     _eq(auto_stop_why(117648, 1, 6, _REF) is None, False, 'авто: хэт үнэтэй үр дүн зогсоно')
     # Дундаж орчмын өртөг → ҮЛДЭНЭ (амьд «Асар майхан», «nomaad camp»)
@@ -231,6 +253,26 @@ if '--selftest' in sys.argv:
     _eq(auto_stop_why(20000, 0, 9, 0), None, 'авто: жишиггүй бол шалаар хэмжинэ')
     _eq(auto_stop_why(30001, 0, 9, None) is None, False, 'авто: шал давбал зогсоно')
     _eq(auto_stop_why(None, None, None, None), None, 'авто: хоосон → унахгүй')
+
+    # ⛔ БОРЛУУЛАЛТ БҮХ ЗҮЙЛЭЭС ДЭЭГҮҮР — чатгүй ч мөнгө авчирч байвал үлдэнэ.
+    _eq(auto_stop_why(100000, 0, 10, _REF, 250000), None,
+        'авто: чат 0 ч борлуулалт 2.5× → үлдэнэ')
+    _eq(auto_stop_why(100000, 0, 10, _REF, 200000), None,
+        'авто: яг 2× → үлдэнэ')
+    _eq(auto_stop_why(100000, 0, 10, _REF, 150000) is None, False,
+        'авто: борлуулалт 1.5× → зогсоно')
+    _eq('борлуулалт' in (auto_stop_why(100000, 0, 10, _REF, 150000) or ''), True,
+        'авто: шалтгаан борлуулалтаар тайлбарлагдана')
+    # Борлуулалттай зарыг «1 чат үнэтэй» гэдгээр нь зогсоохгүй
+    _eq(auto_stop_why(200000, 1, 10, _REF, 600000), None,
+        'авто: 1 чат 200мянга ч борлуулалт 3× → үлдэнэ')
+    # Борлуулалт тулгагдаагүй (0) бол хуучин чатын дүрэм хэвээр
+    _eq(auto_stop_why(59004, 0, 5, _REF, 0) is None, False,
+        'авто: борлуулалт тулгагдаагүй бол чатаар дүгнэнэ')
+    _eq(auto_stop_why(655812, 81, 20, _REF, 0), None, 'авто: сайн зар үлдсэн хэвээр')
+    # ⚠ Богино хугацааны хамгаалалт борлуулалтаас ДЭЭГҮҮР — 3 хоногтой зарыг
+    #   муу ROAS-тай ч хөндөхгүй (эвент захиалга хожим хаагддаг).
+    _eq(auto_stop_why(100000, 0, 3, _REF, 10000), None, 'авто: залуу зар хөндөгдөхгүй')
 
     if _f:
         print(f'❌ BUDGET FAIL — {_n[0] - len(_f)}/{_n[0]}')
@@ -363,19 +405,20 @@ def auto_stop(camps):
     since = (date.today() - timedelta(days=AUTO_REF_DAYS)).isoformat()
     tot_sp = tot_res = 0.0
     per = {}
-    for ln in psql(f"""select campaign_id, sum(spend_mnt), sum(messages+leads), count(distinct day)
+    for ln in psql(f"""select campaign_id, sum(spend_mnt), sum(messages+leads),
+                              count(distinct day), sum(revenue_mnt)
                        from fb_ads_daily where day >= '{since}' group by 1""").splitlines():
         if not ln.strip():
             continue
-        cid, sp, res, d = ln.split('|')
-        per[cid] = (float(sp or 0), int(res or 0), int(d or 0))
+        cid, sp, res, d, rev = ln.split('|')
+        per[cid] = (float(sp or 0), int(res or 0), int(d or 0), float(rev or 0))
         tot_sp += float(sp or 0); tot_res += int(res or 0)
     ref = (tot_sp / tot_res) if tot_res >= AUTO_REF_MIN_RES and tot_sp > 0 else AUTO_REF_FLOOR
     live = [c for c in camps if c.get('status') == 'ACTIVE']
     kill = []
     for c in live:
-        sp, res, d = per.get(c['id'], (0, 0, 0))
-        why = auto_stop_why(sp, res, d, ref)
+        sp, res, d, rev = per.get(c['id'], (0, 0, 0, 0))
+        why = auto_stop_why(sp, res, d, ref, rev)
         if why:
             kill.append((c, sp, why))
     # Хамгийн муугаас нь эхэлж зогсооно; сүүлийн нэгийг ҮРГЭЛЖ үлдээнэ.

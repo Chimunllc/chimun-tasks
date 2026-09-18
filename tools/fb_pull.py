@@ -30,7 +30,7 @@ DAYS = cfg.get('FB_DAYS', '7')
 API = 'https://graph.facebook.com/v21.0'
 
 FIELDS = ('date_start,ad_id,ad_name,adset_id,campaign_id,campaign_name,'
-          'spend,impressions,reach,clicks,actions')
+          'spend,impressions,reach,clicks,actions,action_values')
 
 
 def get(url, params):
@@ -45,6 +45,27 @@ def act_val(actions, *types):
         if a.get('action_type') in types:
             n += int(float(a.get('value') or 0))
     return n
+
+
+# ⛔ БОРЛУУЛАЛТ = `omni_purchase` (вэб + утсаар + офлайн бүгд), `purchase` нь
+#   зөвхөн вэб. Хоёуланг нэмбэл нэг захиалга ХОЁР удаа тоологдоно — тиймээс
+#   ИХИЙГ нь авна.
+# ⚠ 0 гэдэг нь «борлуулалт болоогүй» гэсэн үг БИШ — Facebook худалдан авагчийг
+#   утас/мэйлээр таньж чадаагүй ч байж болно (`fb_capi.py`-ийн тулгалт).
+def purchase_n(actions):
+    return max(act_val(actions, 'omni_purchase'), act_val(actions, 'purchase'))
+
+
+def act_sum(values, *types):
+    n = 0.0
+    for a in values or []:
+        if a.get('action_type') in types:
+            n += float(a.get('value') or 0)
+    return n
+
+
+def purchase_usd(values):
+    return max(act_sum(values, 'omni_purchase'), act_sum(values, 'purchase'))
 
 
 def win(days, today):
@@ -70,12 +91,27 @@ def selftest():
     # ⛔ Хамгийн чухал нь: ӨНӨӨДӨР хүрээнд багтана.
     if win(7, d)['until'] != str(d):
         bad.append('өнөөдөр багтаагүй — «үр дүн шинэчлэгдэхгүй» алдаа эргэж ирнэ')
+    # ⛔ Нэг захиалга ХОЁР удаа тоологдож болохгүй (omni + web).
+    acts = [{'action_type': 'purchase', 'value': '3'},
+            {'action_type': 'omni_purchase', 'value': '3'}]
+    if purchase_n(acts) != 3:
+        bad.append('борлуулалт давхар тоологдов: ' + str(purchase_n(acts)))
+    if purchase_n([{'action_type': 'omni_purchase', 'value': '5'}]) != 5:
+        bad.append('зөвхөн omni ирвэл тоологдох ёстой')
+    if purchase_n([]) != 0 or purchase_n(None) != 0:
+        bad.append('хоосон үед 0 байх ёстой')
+    vals = [{'action_type': 'purchase', 'value': '100.5'},
+            {'action_type': 'omni_purchase', 'value': '250.25'}]
+    if purchase_usd(vals) != 250.25:
+        bad.append('орлого: их утга авах ёстой — ' + str(purchase_usd(vals)))
+    if purchase_usd(None) != 0:
+        bad.append('орлого: хоосон үед 0')
     if bad:
         print('❌ PULL FAIL')
         for x in bad:
             print('   · ' + x)
         sys.exit(1)
-    print(f'✅ PULL OK — {4} тест')
+    print(f'✅ PULL OK — {9} тест')
 
 
 if SELFTEST:
@@ -109,6 +145,8 @@ buf = io.StringIO()
 w = csv.writer(buf, lineterminator='\n')
 for r in rows:
     acts = r.get('actions')
+    vals = r.get('action_values')
+    rev_usd = purchase_usd(vals)
     spend = float(r.get('spend') or 0)
     w.writerow([json.dumps({
         'day': r['date_start'], 'ad_id': r['ad_id'], 'ad_name': r.get('ad_name'),
@@ -120,6 +158,8 @@ for r in rows:
         'clicks': int(r.get('clicks') or 0),
         'messages': act_val(acts, 'onsite_conversion.messaging_first_reply'),
         'leads': act_val(acts, 'lead', 'onsite_conversion.lead_grouped'),
+        'purchases': purchase_n(acts),
+        'revenue_usd': round(rev_usd, 2), 'revenue_mnt': round(rev_usd * RATE),
         'raw': acts,
     }, ensure_ascii=False)])
 
@@ -129,12 +169,15 @@ create temp table stg (j jsonb);
 __CSV__\.
 insert into fb_ads_daily
   (day, ad_id, ad_name, adset_id, campaign_id, campaign_name, post_id,
-   spend_usd, spend_mnt, impressions, reach, clicks, messages, leads, raw, fetched_at)
+   spend_usd, spend_mnt, impressions, reach, clicks, messages, leads,
+   purchases, revenue_usd, revenue_mnt, raw, fetched_at)
 select (j->>'day')::date, j->>'ad_id', j->>'ad_name', j->>'adset_id',
        j->>'campaign_id', j->>'campaign_name', j->>'post_id',
        (j->>'spend_usd')::numeric, (j->>'spend_mnt')::bigint,
        (j->>'impressions')::bigint, (j->>'reach')::bigint, (j->>'clicks')::bigint,
-       (j->>'messages')::int, (j->>'leads')::int, j->'raw', now()
+       (j->>'messages')::int, (j->>'leads')::int,
+       (j->>'purchases')::int, (j->>'revenue_usd')::numeric, (j->>'revenue_mnt')::bigint,
+       j->'raw', now()
 from stg
 on conflict (day, ad_id) do update set
   ad_name = excluded.ad_name, adset_id = excluded.adset_id,
@@ -143,7 +186,9 @@ on conflict (day, ad_id) do update set
   spend_usd = excluded.spend_usd, spend_mnt = excluded.spend_mnt,
   impressions = excluded.impressions, reach = excluded.reach,
   clicks = excluded.clicks, messages = excluded.messages,
-  leads = excluded.leads, raw = excluded.raw, fetched_at = now();
+  leads = excluded.leads, purchases = excluded.purchases,
+  revenue_usd = excluded.revenue_usd, revenue_mnt = excluded.revenue_mnt,
+  raw = excluded.raw, fetched_at = now();
 """
 
 if not rows:

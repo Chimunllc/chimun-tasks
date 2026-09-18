@@ -242,6 +242,45 @@ def pause_all(camps, why):
     log(f'{why} → {n} кампанит ажил зогсоов')
 
 
+def apply_stop_requests(camps):
+    """Аппаас ирсэн «энэ зарыг зогсоо» хүсэлтүүдийг биелүүлнэ (2026-09-18).
+
+    ⛔ Апп Facebook руу шууд хандаж чадахгүй (токен энд байна) тул хүсэлт
+      `fb_campaign_state.stop_req`-д тэмдэглэгддэг. Биелсэн хойно талбарыг
+      ЦЭВЭРЛЭНЭ — эс бөгөөс дараагийн ажиллагаанд дахин дахин POST явна.
+    ⚠ Хүсэлт биелээгүй бол `stop_req`-ыг ҮЛДЭЭНЭ (дараагийн удаа дахин оролдоно).
+    ⚠ Зогсоосон зарыг `camps`-д ч тэмдэглэнэ — доорх төсвийн хуваарилалт
+      түүнийг «идэвхтэй» гэж үзэж мөнгө хуваарилахгүйн тулд.
+    """
+    rows = psql('select campaign_id, coalesce(stop_by,\'\') from fb_campaign_state '
+                'where stop_req is not null')
+    want = {}
+    for ln in rows.splitlines():
+        if ln.strip():
+            cid, by = ln.split('|', 1)
+            want[cid] = by
+    if not want:
+        return
+    by_id = {c['id']: c for c in camps}
+    for cid, by in want.items():
+        c = by_id.get(cid)
+        if c is None:          # Meta-д байхгүй болсон — хүсэлтийг хаана
+            psql(f'update fb_campaign_state set stop_req=null where campaign_id={sq(cid)};')
+            continue
+        try:
+            if c.get('status') == 'ACTIVE':
+                api_post(cid, {'status': 'PAUSED'})
+                record('pause', cid, c.get('name'), None, None,
+                       f'аппаас гараар зогсоов ({by or "?"})')
+            c['status'] = 'PAUSED'
+            c['effective_status'] = 'PAUSED'
+            psql(f'update fb_campaign_state set stop_req=null where campaign_id={sq(cid)};')
+            log(f'{c.get("name")}: аппын хүсэлтээр зогсоов')
+        except Exception as e:
+            log(f'⚠ {c.get("name")} зогссонгүй: {e}')
+            record('error', cid, c.get('name'), None, None, f'зогссонгүй: {e}')
+
+
 raw = psql("select coalesce(value::text,'') from app_config where key='ads_budget'")
 if not raw:
     log('төсөв тавиагүй — юу ч хийхгүй'); sys.exit(0)
@@ -254,6 +293,10 @@ plan_month = str(budget.get('month') or '')
 
 camps = api_get(f'{ACCT}/campaigns',
                 {'fields': 'name,status,effective_status,daily_budget', 'limit': 100})['data']
+
+# ⚠ Гараар зогсоох хүсэлтийг ЭХЛЭЭД биелүүлнэ — доорх хуваарилалт зогссон зар
+#   руу мөнгө шилжүүлэхгүйн тулд.
+apply_stop_requests(camps)
 
 # ③ Унтраалт / өөр сарын төсөв / 0 төсөв — бүгдийг зогсооно
 if not enabled or plan_month != month or plan_mnt <= 0:

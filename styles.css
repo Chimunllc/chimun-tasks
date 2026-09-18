@@ -4842,12 +4842,17 @@ body.role-daily #add-project { display: none !important; }
 .ads-sp, .ads-ms { color: var(--muted); }
 .ads-pm { font-size: var(--fs-md); }
 .ads-bad { color: var(--danger); }
+/* Идэвхтэй зарын мөр — сүүлийн баганад «⏸ Зогсоо» товч нэмэгдэнэ */
+.ads-srow { grid-template-columns: 1fr auto auto auto auto; }
+.ads-stop { padding: 3px 9px; font-size: var(--fs-xs); justify-self: end; }
+.ads-stopq { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 .ads-note { margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--muted); line-height: 1.55; }
 .ads-budget { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: var(--space-3); background: var(--panel); }
 .ads-brow { display: flex; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); padding: 4px 0; }
 .ads-bact { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 @media (max-width: 620px) {
   .ads-row { grid-template-columns: 1fr auto; row-gap: 2px; }
+  .ads-srow { grid-template-columns: 1fr auto; }
   .ads-sp, .ads-ms { font-size: var(--fs-xs); }
 }
 /* Каталогт олдохгүй бараа — улаан, анхаарал татах ёстой (нөөцөд тооцогдохгүй) */

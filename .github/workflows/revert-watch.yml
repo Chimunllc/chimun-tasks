@@ -15,6 +15,14 @@
 name: Буцаах харуул
 
 on:
+  # ⚠ GitHub нь `*/20`-ыг ДАГАДАГГҮЙ. 2026-09-16..18-нд хэмжихэд schedule-ээр
+  #   ажилласан хоорондын ДУНДАЖ зай 237 мин (2 хоногт 144 биш, 11 удаа) байв.
+  #   Өөрөөр хэлбэл автомат merge-ийн аюулгүйн тор загвараасаа 12 дахин сийрэг
+  #   — эвдэрсэн апп ~4 цаг 150+ ажилтны гар дээр амьдарч болно.
+  #   Тиймээс эрсдэлтэй ҮЙЛ ЯВДАЛД (main-д push) өөрт нь холбов. Хуваарь нь
+  #   нөөц болж үлдэнэ (push алдагдсан, эсвэл merge-гүй өдөр ч шалгана).
+  push:
+    branches: [main]
   schedule:
     - cron: '*/20 * * * *'
   workflow_dispatch:
@@ -36,7 +44,10 @@ concurrency:
 jobs:
   watch:
     runs-on: ubuntu-latest
-    timeout-minutes: 15      # `gh pr checks --watch` мөнхөд хүлээхээс сэргийлнэ
+    # 45 = push үед хүлээх 25 мин + ажиллах зай. `gh pr checks --watch` мөнхөд
+    # хүлээхээс сэргийлэх хуучин 15 минутын хамгаалалт нь тэр АЛХАМ дээрээ
+    # (timeout-minutes: 12) шилжсэн — job-ийн хязгаарыг сулруулснаар алдагдаагүй.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,6 +68,17 @@ jobs:
           else
             echo "off=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # merge хийгдсэн ТЭР АГШИНД шалгах нь ашиггүй: tools/revert-watch.js нь
+      # `v_app_errors?first_at=gte.<deploy>` гэж merge-ийн ДАРАА ШИНЭЭР гарсан
+      # алдааг хайдаг. Тэр агшинд шинэ кодыг хэн ч хараахан дараагүй тул үргэлж
+      # 0 алдаа олно. Ажилтнууд хүрч, алдаа хуримтлагдах хугацаа өгнө.
+      # (Унтраалга дээр шалгасны ДАРАА хүлээнэ — NO_AUTO_REVERT байвал 25 мин үрэхгүй.)
+      - name: Хэрэглэгчид хүрэх хүртэл хүлээх (зөвхөн push)
+        if: github.event_name == 'push' && steps.sw.outputs.off != 'true'
+        run: |
+          echo "main-д push хийгдлээ — алдаа хуримтлагдтал 25 мин хүлээнэ…"
+          sleep 1500
 
       - name: Сүүлийн deploy-г тодорхойлох
         id: dep
@@ -102,6 +124,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Буцаах PR нээж merge хийх
+        # `gh pr checks --watch` мөнхөд хүлээхээс сэргийлнэ (өмнө job-ийн
+        # timeout-minutes: 15 хамгаалж байсныг энд зөөв).
+        timeout-minutes: 12
         if: >
           steps.check.outputs.revert == 'true' &&
           !(github.event_name == 'workflow_dispatch' && inputs.dry_run)

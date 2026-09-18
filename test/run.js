@@ -6908,6 +6908,17 @@ need(['orderCustType']);
   //   зар руу тэр ажиллагаанд мөнгө шилжинэ.
   ok(budsrc.indexOf('apply_stop_requests(camps)') < budsrc.indexOf('active = [c for c in camps'),
      'scan: зогсоолт төсвийн хуваарилалтаас өмнө');
+  // ⛔ АВТОМАТ ЗОГСООЛТ (2026-09-18) — шийдвэрийн дүрэм нь `fb_budget.py`-ийн
+  //   `--selftest`-д тестлэгдэнэ; энд зөвхөн БҮТЦИЙН хамгаалалт.
+  ok(budsrc.indexOf('auto_stop(camps)') < budsrc.indexOf('active = [c for c in camps'),
+     'scan: автомат зогсоолт хуваарилалтаас өмнө');
+  // ⛔ Бүх зар зогсох нь бизнесийн шийдвэр — нэг зарын гүйцэтгэлээс гарахгүй.
+  ok(/сүүлийн идэвхтэй зар/.test(budsrc), 'scan: сүүлийн зар хамгаалагдана');
+  // ⛔ Жишиг өртөг нь ӨӨРИЙН дансны дундаж — гаднаас авсан тоо биш.
+  ok(/from fb_ads_daily where day >= /.test(budsrc), 'scan: жишиг өөрийн датанаас');
+  // ⛔ Чимээгүй зогсоолт байхгүй — push нь шүүлттэй явна.
+  ok(/notify_stop\(/.test(budsrc) && /'email': phone|email=phone/.test(budsrc),
+     'scan: зогсоолт мэдэгдэнэ, push шүүлттэй');
 
   // Шийдвэрийн бичвэр.
   eq(F.adActionLabel({ kind: 'budget', old_val: 3, new_val: 6.52 }),

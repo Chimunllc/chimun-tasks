@@ -492,6 +492,10 @@ jobs:
             LINE="**$DAY** · Хүрээнд ажил үлдээгүй — агент ажиллаагүй. \`tools/debt-check.js --suggest\`-ээр шалга."
           elif [ "$JOB_STATUS" != "success" ]; then
             LINE="**$DAY** · ❌ Унасан (бай: \`${TARGET:-?}\`). [Лог]($RUN_URL) — \`num_turns\`, \`permission_denials_count\`-ыг хар."
+          elif [ "${MERGE_STATE:-}" = "засах боломжгүй гэж үзэв (Issue хүнд үлдэв)" ]; then
+            # ⛔ ЗАСААГҮЙГ ✅ ГЭЖ БИЧИХГҮЙ. Өглөөний мэдэгдэл энэ мөрөөс уншдаг тул
+            #   «засвар хийгдлээ» гэсэн ХУДАЛ мэдээлэл утсанд очиж байв (2026-09-18).
+            LINE="**$DAY** · 🔍 \`${TARGET}\` — засах боломжгүй гэж үзэв, Issue хүнд үлдэв."
           else
             DELTA=$(node -e '
               const fs = require("node:fs");

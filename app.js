@@ -368,9 +368,19 @@ function _reportErrToServer(msg, src, extra) {
 // Тэдгээр нь ЖИНХЭНЭ асуудал БИШ — ажилтан F5 дарах бүрд алдааны лог дүүрч, дунд нь
 // байгаа бодит алдаа алга болно. bfcache-аас буцаж ирвэл дахин бүртгэнэ (pageshow).
 let _pageUnloading = false;
+// ⛔ СҮЛЖЭЭ ТАСАРСАН нь КОДЫН АЛДАА БИШ (2026-09-18).
+//   «Failed to fetch» · «Fetch is aborted» · «Load failed» гэх мэт нь утас лифтэнд
+//   орсон, Wi-Fi сольсон, хэрэглэгч дэлгэц сольсон гэсэн үг — засах код БАЙХГҮЙ.
+//   Эдгээр алдааны логийн голыг эзэлж, GitHub дээр Issue үүсгэж, дунд нь байгаа
+//   ЖИНХЭНЭ алдааг живүүлж байв (амьд датаар идэвхтэй 4 алдааны 2 нь яг энэ).
+//   Хэрэглэгч дэлгэц дээрээ «ачаалагдсангүй» гэдгийг ХАРСАН хэвээр — зөвхөн
+//   серверт мэдээлэхгүй. Сервер үнэхээр унасан бол мэдээлэл ч хүрэхгүй тул
+//   алдагдах дохио алга.
+const NET_BLIP_RE = /failed to fetch|fetch is aborted|load failed|networkerror|network request failed|aborted (a )?request|signal is aborted|the operation was aborted|timeout/i;
 function dataLoadFailed(where, err) {
   if (_pageUnloading) return;                    // хуудас хаагдаж байна — таслагдсан fetch
   if (navigator && navigator.onLine === false) return;   // офлайн — хэрэглэгч мэднэ
+  if (NET_BLIP_RE.test((err && err.message) ? String(err.message) : String(err || ''))) return;
   try {
     const m = (err && err.message) ? String(err.message) : String(err || '');
     _reportErrToServer('Дата ачаалагдсангүй: ' + String(where || '-'),

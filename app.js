@@ -29295,6 +29295,28 @@ async function requestBoost(postId, kind) {
   if (!r.ok) throw new Error('HTTP ' + r.status);
 }
 
+// ── НЭГ ЗАРЫГ ЗОГСООХ (2026-09-18) ──────────────────────────────────────────
+// Өмнө нь зогсоох ГАНЦ зам нь «⛔ Бүх зар зогсоо» байв — үр дүнгүй нэг бүүстыг
+// унтраахын тулд БҮХ зараа унтраах, эсвэл Ads Manager руу орох хэрэгтэй болдог
+// байсан тул хэн ч зогсоодоггүй байв.
+// ⛔ Апп Facebook руу ШУУД хандахгүй (токен VPS дээр) — хүсэлтийг DB-д
+//   тэмдэглэнэ, `fb_budget.py` 10 минут тутам биелүүлнэ.
+// ⛔ ДАХИН АСААХ зам ЗОРИУД байхгүй. Мөнгө гаргах шийдвэр Ads Manager-ээс л
+//   гарна; ингэснээр энэ товч хамгийн муудаа зар зогсооно — мөнгө үрэхгүй.
+async function requestCampaignStop(cid) {
+  const r = await fetchWithTimeout(
+    `${DB_URL}/rest/v1/fb_campaign_state?campaign_id=eq.${encodeURIComponent(cid)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ stop_req: new Date().toISOString(), stop_by: state.me || '' }),
+    }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+// Зогсоох хүсэлт тавигдсан ч хараахан биелээгүй байна уу. Цэвэр функц — тестлэгдэнэ.
+// ⚠ Биелсэн хойно `stop_req` цэвэрлэгддэг тул энэ нь зөвхөн ХҮЛЭЭЛТИЙН үе.
+function adStopPending(s) { return !!(s && s.stop_req) && adIsLive(s); }
+
 function canSeeAds() { return canAccessView('ads', () => !!state.isCEO || canSeeMarketing()); }
 
 // ── GOOGLE ХАЙЛТ — «хүн биднийг ямар үгээр хайж байна» (2026-09-17) ─────────
@@ -29670,12 +29692,17 @@ function renderAds() {
   const states = adStateRows(state.fbStates || []);
   const liveN = states.filter(adIsLive).length;
   const stateHtml = !states.length ? '' : `<div class="ads-sec">Идэвхтэй зар <span class="ads-sub">(${liveN} ажиллаж байна · ${states.length} нийт)</span></div>
-    <div class="ads-list">${states.map(c => `<div class="ads-row">
+    <div class="ads-list">${states.map(c => `<div class="ads-row ads-srow">
       <span class="ads-nm">${escapeHtml(c.name || '—')}</span>
       <span class="ads-sp">${escapeHtml(adStatusLabel(c.effective_status, c.status))}</span>
       <span class="ads-ms">${c.updated_at ? escapeHtml(fmtDateTimeUB(c.updated_at)) : ''}</span>
       <b class="ads-pm${adIsLive(c) ? '' : ' ads-bad'}">${adIsLive(c) ? fmtUsd(c.daily_usd) + '/өдөр' : '—'}</b>
-    </div>`).join('')}</div>`;
+      ${!adsBudgetEditable() || !adIsLive(c) ? '<span></span>' : adStopPending(c)
+        ? '<span class="ads-stopq">⏳ Зогсож байна</span>'
+        : `<button class="btn btn-danger ads-stop ui-raw" data-ads-stop="${escapeHtml(c.campaign_id)}"
+             data-ads-stop-n="${escapeHtml(c.name || '')}">⏸ Зогсоо</button>`}
+    </div>`).join('')}</div>
+    ${adsBudgetEditable() ? '<div class="ads-note">Зогсоосон зар 10 минутын дотор унтарна. Дахин асаахдаа Ads Manager ашиглана — апп зар асаадаггүй.</div>' : ''}`;
 
   // Систем юу хийсэн. ⚠ Зөвхөн ӨӨРЧЛӨЛТ бүртгэгддэг тул мөр цөөн байх нь
   // хэвийн — «юу ч болоогүй» гэдэг нь тогтвортой ажиллаж байгааг хэлнэ.
@@ -30381,6 +30408,23 @@ function attachAdsHandlers() {
     if (!on && !(await showConfirm('Бүх зарыг зогсоох уу? Дараагийн шалгалтаар (10 минутын дотор) зогсоно.',
       { okText: 'Зогсоо', danger: true }))) return;
     await save(Object.assign({}, state.adsBudget || { month: todayStr().slice(0, 7), mnt: 0 }, { enabled: on }));
+  });
+  // ⛔ Нэг зарыг зогсоох нь мөнгө хөндөх ЭРГЭЖ БУЦАШГҮЙ үйлдэл (аппаас дахин
+  //   асаах зам байхгүй) тул баталгаажуулалтгүй байж БОЛОХГҮЙ.
+  document.querySelectorAll('[data-ads-stop]').forEach(b => b.onclick = async () => {
+    const nm = b.dataset.adsStopN || 'энэ зар';
+    if (!(await showConfirm(`«${nm}» зарыг зогсоох уу? 10 минутын дотор унтарна. Дахин асаахдаа Ads Manager ашиглана — аппаас асаах боломжгүй.`,
+      { okText: 'Зогсоо', danger: true }))) return;
+    b.disabled = true;
+    try {
+      await requestCampaignStop(b.dataset.adsStop);
+      await loadFbActions(true);
+      showToast('Зогсоох хүсэлт тавигдлаа — 10 минутын дотор биелнэ', 'success', 4000);
+      render();
+    } catch (e) {
+      b.disabled = false;
+      showToast('Болсонгүй: ' + e.message, 'error', 5000);
+    }
   });
 }
 

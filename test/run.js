@@ -6866,6 +6866,34 @@ need(['orderCustType']);
   eq(F.adStateRows([]).length, 0, 'зар: хоосон → унахгүй');
   eq(F.adStateRows(null).length, 0, 'зар: null → унахгүй');
 
+  // ── Нэг зарыг зогсоох хүсэлт (2026-09-18) ──
+  ok(F.adStopPending({ status: 'ACTIVE', stop_req: '2026-09-18T01:00:00Z' }),
+     'зогсоох: хүсэлт тавьсан, зар ажилласаар → хүлээлт');
+  ok(!F.adStopPending({ status: 'ACTIVE' }), 'зогсоох: хүсэлтгүй → хүлээлт алга');
+  // ⛔ Биелсэн хойно `stop_req` цэвэрлэгддэг ч Facebook-ийн төлөв хоцорч болно —
+  //   аль хэдийн зогссон зарыг «зогсож байна» гэж харуулбал хүн дахин дарна.
+  ok(!F.adStopPending({ status: 'PAUSED', stop_req: '2026-09-18T01:00:00Z' }),
+     'зогсоох: зогссон зар дээр хүлээлт харуулахгүй');
+  ok(!F.adStopPending(null), 'зогсоох: null → унахгүй');
+
+  const asrcStop = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Зогсоох нь мөнгө хөндөх бөгөөд аппаас БУЦААХ зам байхгүй тул
+  //   баталгаажуулалтгүй байж болохгүй. Хариуг ШАЛГАЖ гардаг хэлбэрийг шаардана.
+  ok(/data-ads-stop\][\s\S]{0,600}?if \(!\(await showConfirm\([\s\S]{0,400}?\)\)\) return;/.test(asrcStop),
+     'scan: зар зогсоох showConfirm-оор хаагдана');
+  // ⛔ Зар АСААХ зам аппад БАЙХГҮЙ — `status: 'ACTIVE'` гэж PATCH хийвэл
+  //   мөнгө гарна. Зөвхөн `stop_req` бичигдэнэ.
+  ok(!/fb_campaign_state[\s\S]{0,400}?status['"]?\s*:\s*['"]ACTIVE/.test(asrcStop),
+     'scan: аппаас зар асаадаггүй');
+  const budsrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_budget.py'), 'utf8');
+  // ⛔ Хүсэлт биелсний дараа `stop_req` цэвэрлэгдэхгүй бол скрипт 10 минут тутам
+  //   ижил зар руу POST явуулж, бүртгэл давхардана.
+  ok(/stop_req=null/.test(budsrc), 'scan: биелсэн хүсэлт цэвэрлэгдэнэ');
+  // ⚠ Зогсоолт нь төсвийн хуваарилалтаас ӨМНӨ — эс бөгөөс зогсоох гэж байгаа
+  //   зар руу тэр ажиллагаанд мөнгө шилжинэ.
+  ok(budsrc.indexOf('apply_stop_requests(camps)') < budsrc.indexOf('active = [c for c in camps'),
+     'scan: зогсоолт төсвийн хуваарилалтаас өмнө');
+
   // Шийдвэрийн бичвэр.
   eq(F.adActionLabel({ kind: 'budget', old_val: 3, new_val: 6.52 }),
      'Өдрийн төсөв $3.00 → $6.52 ↑', 'шийдвэр: төсөв өссөн');

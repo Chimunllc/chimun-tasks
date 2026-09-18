@@ -268,11 +268,19 @@ const ERR_LOG_KEY = 'appErrors';
 const ERR_LOG_MAX = 20;
 let _lastErrToastAt = 0;
 // Хэрэглэгчийн буруу биш, засах боломжгүй чимээ — тоохгүй (өргөтгөл, зургийн 404 г.м.)
+// ⛔ ГАДНЫ КОДЫН АЛДААГ БҮРТГЭХГҮЙ. Facebook/Instagram/TikTok-ийн дотоод браузер
+//    хуудсанд ӨӨРИЙН скрипт шахдаг (`iabjs://…`, `webkit-masked-url://…`) ба тэр нь
+//    өөрөө унадаг. Бид засаж ЧАДАХГҮЙ — гэтэл Issue үүсч, жинхэнэ алдаа живнэ
+//    (fp f11405417bbb: «Unexpected end of input» @ iabjs://iab_inner_frame_ota).
+//    Дүрэм: эх байрлал нь http(s) БИШ бол манай код БИШ.
+// ⚠ Шүүлт нь `схем://` хэлбэртэй байрлалд Л хамаарна — `app.js:17472` гэсэн
+//    манай өөрийн байрлалыг «схем» гэж андуурвал ЖИНХЭНЭ алдаа чимээгүй алга болно.
+const ERR_FOREIGN_SRC = /^(?!https?:)[a-z][a-z0-9+.-]*:\/\//i;
 function _errIsNoise(msg, src) {
   const m = String(msg || '');
   if (!m || m === 'Script error.') return true;                  // cross-origin, дэлгэрэнгүй байхгүй
   if (/ResizeObserver loop/i.test(m)) return true;               // хор хөнөөлгүй браузерын чимээ
-  if (/^chrome-extension:|^moz-extension:/.test(String(src || ''))) return true;
+  if (ERR_FOREIGN_SRC.test(String(src || ''))) return true;      // өргөтгөл / in-app браузерын шахсан код
   return false;
 }
 function appErrors() {

@@ -11572,9 +11572,12 @@ async function attSaveManualOut(body, keepDay) {
 // хэлэхээ мартвал тэр өдөр 0 цаг үлдэж байв. Одоо ажилтан «Миний ирц»-ээс
 // хүсэлт гаргаж, удирдлага нэг товчоор батална.
 //
-// Хадгалалт = `app_config['att_requests']` (workStart/nextArrival-тай ижил хэв маяг).
-// Шинэ хүснэгт үүсгээгүй: үүлэн сессээс DB migration хийх боломжгүй, бас хүсэлт
-// сард хэдхэн ширхэг. Түлхүүр = «утас|өдөр» тул нэг өдөрт нэг хүсэлт.
+// Хадгалалт = `att_requests` ХҮСНЭГТ (`db/att_requests.sql`, 2026-09-18).
+// ⛔ Өмнө нь `app_config['att_requests']` гэсэн НЭГ JSON мөр байв — зэрэг бичилт
+//    бие биенээ дарах, бүх ажилтан бусдын хүсэлтийг унших, 120 хоногийн дараа
+//    түүх бүрмөсөн хасагдах гурван нүхтэй. Мөр бүр өөрийн эрхтэй болсон:
+//    ажилтан ӨӨРИЙНХӨӨ хүсэлтийг л харна, батлах нь `attendance.edit` эрхтэйд.
+// Түлхүүр = «утас|өдөр» тул нэг өдөрт нэг хүсэлт.
 const ATT_REQ_MAX_AGE_D = 45;   // үүнээс хуучин өдрийг хүсэлтээр нээхгүй (цалин хаагдсан)
 const ATT_REQ_KEEP_D = 120;     // blob хязгааргүй өсөхөөс сэргийлж хуучныг хусна
 function attReqKey(memberKey, day) { return String(memberKey || '').replace(/\D/g, '') + '|' + String(day || ''); }
@@ -11615,13 +11618,43 @@ function attReqPrune(map, today) {
   });
   return out;
 }
-// Уншаад→нэгтгээд→бичнэ. Нэг blob тул зэрэг бичилт бие биенээ дардаг —
-// хадгалахын өмнө сервэрээс ШИНЭЭР уншиж нэгтгэснээр эрсдэлийг багасгана.
+// Сервэрээс хүсэлтүүдийг уншина. Шийдэгдсэн хуучныг татахгүй, ГЭХДЭЭ
+// хүлээгдэж буйг ХЭЗЭЭ Ч хасахгүй — хариу аваагүй хүний хүсэлт чимээгүй алга
+// болох нь хамгийн муу үр дүн. Мөр DB-д үлдэнэ (устгах эрх байхгүй).
+async function loadAttRequests(force) {
+  if (state.attRequests && !force) return state.attRequests;
+  try {
+    const since = addDays(todayStr(), -ATT_REQ_KEEP_D);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/att_requests?select=id,req&or=(day.gte.${since},status.eq.pending)&limit=2000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    const map = {};
+    (Array.isArray(rows) ? rows : []).forEach(x => { if (x && x.id && x.req) map[x.id] = x.req; });
+    state.attRequests = attReqPrune(map);
+    return state.attRequests;
+  } catch (e) {
+    dataLoadFailed('Ирцийн хүсэлт', e);
+    state.attRequests = state.attRequests || {};
+    return state.attRequests;
+  }
+}
+// Нэг хүсэлт = нэг мөр. Бусад хүсэлтийг хөндөхгүй тул зэрэг бичилт дарахгүй.
+// ⚠ Багана нь `req`-ээс DB-ийн trigger-ээр гарна — хоёр эх сурвалж зөрөхгүй.
 async function attReqWrite(k, entry) {
-  const fresh = await loadAppConfig('att_requests');
-  const map = attReqPrune(Object.assign({}, (fresh && typeof fresh === 'object') ? fresh : {}, attReqAll()));
-  if (entry) map[k] = entry; else delete map[k];
-  await saveAppConfig('att_requests', map);
+  if (!entry) return attReqAll();
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/att_requests?on_conflict=id`, {
+    method: 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+               'Content-Type': 'application/json',
+               Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ id: k, member_key: String(entry.key || '').replace(/\D/g, ''),
+                           day: entry.day, status: entry.status || 'pending', req: entry }),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+  const map = Object.assign({}, attReqAll());
+  map[k] = entry;
   state.attRequests = map;
   return map;
 }
@@ -11994,7 +12027,7 @@ function renderAttendance() {
   // Хоцролт тооцоолол: ажил эхлэх цаг + явахдаа сонгосон «маргааш ирэх цаг»
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
-  if (state.attRequests === undefined) { state.attRequests = null; loadAppConfig('att_requests').then(v => { state.attRequests = (v && typeof v === 'object') ? v : {}; render(); }); }
+  if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
       <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
       <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
@@ -12169,7 +12202,7 @@ async function loadMyAttendance() {
 }
 function renderMyAttend() {
   const me = findMember(state.me) || {};
-  if (state.attRequests === undefined) { state.attRequests = null; loadAppConfig('att_requests').then(v => { state.attRequests = (v && typeof v === 'object') ? v : {}; render(); }); }
+  if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta
   const recs = state.myAttendance || [];
   const today = todayStr();

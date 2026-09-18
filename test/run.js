@@ -142,6 +142,21 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   eq(all - safe, 0, 'scan: түүхий UTC огноо байхгүй (todayStr/dateStr/monthStr ашигла)');
 }
 
+// 0e2) SCAN — ирцийн хүсэлт `app_config`-д БУЦАХГҮЙ (2026-09-18)
+// Хүсэлтүүд нэг JSON blob-д байхад: зэрэг бичилт бие биенээ дарна, `app_config`
+// нэвтэрсэн бүх ажилтанд уншигддаг тул хүн бусдын хүсэлт/тайлбарыг харна, 120
+// хоногийн дараа шийдэгдсэн хүсэлт бүрмөсөн хасагдаж «хэн батлав» гэдэг алга
+// болно. Одоо `att_requests` хүснэгт (мөр бүр өөрийн эрхтэй).
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  eq((codeLines.match(/AppConfig\('att_requests'/g) || []).length, 0,
+     'scan: ирцийн хүсэлт app_config-оор уншиж/бичихгүй (att_requests хүснэгт)');
+  ok(/rest\/v1\/att_requests\?on_conflict=id/.test(codeLines),
+     'scan: хүсэлт нэг мөрөөр upsert хийгдэнэ');
+  ok(/status\.eq\.pending/.test(codeLines),
+     'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
+}
+
 // 0f) SCAN — ажилтны картад «Хувийн мэдээлэл» блок үлдэнэ (2026-09-16)
 // Яаралтай үеийн холбоо, хаяг, РД, и-мэйл, ажилд орсон огноо нь бүртгэлийн маягтаар
 // цуглуулагддаг байтал аппад ХАРАГДАХ газар огт байсангүй — CEO батлах цонхонд нэг л

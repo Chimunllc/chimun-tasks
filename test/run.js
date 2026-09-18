@@ -11126,6 +11126,41 @@ async function swFetchTests() {
      'scan: данс хоосон бол шалтгааныг bankLineReason-оор ялгана');
 }
 
+// ── ӨГЛӨӨНИЙ МЭДЭГДЭЛ — шөнийн агент (2026-09-18) ──────────────────────────
+// Шөнө агент алдаа зассан PR-аа өөрөө merge хийдэг болсон ч үр дүн нь зөвхөн
+// GitHub Issue-д үлддэг байв. `tools/night_notify.py` өглөө утсанд хэлнэ.
+{
+  const p = path.join(__dirname, '..', 'tools', 'night_notify.py');
+  const py = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  ok(!!py, 'шөнө: night_notify.py байна');
+
+  // ⛔ `email` шүүлтгүй илгээвэл БҮХ ажилтан мэдэгдэл авна.
+  ok(/body\['email'\]\s*=\s*phone/.test(py), 'шөнө: хүлээн авагч үргэлж заагдана');
+  ok(/if not to:/.test(py) && py.indexOf('if not to:') < py.indexOf('for phone in to'),
+     'шөнө: хүлээн авагчгүй бол илгээхгүй');
+  // ⛔ Юу ч болоогүй өдөр дуугарвал хүн мэдэгдлийг унтраана.
+  ok(/else:\s*\n\s*return None/.test(py), 'шөнө: юу ч болоогүй бол илгээхгүй');
+  // ⚠ Хүлээн авагч тохиргооноос — кодод хатуу бичигдээгүй.
+  ok(/cfg_json\('night_notify'\)/.test(py) && !/^\s*to\s*=\s*\[/m.test(py),
+     'шөнө: хүлээн авагч тохиргооноос, кодод биш');
+  // ⚠ GitHub токен VPS дээр хадгалахгүй — репо нийтийн.
+  ok(!/ghp_|GITHUB_TOKEN/.test(py), 'шөнө: GitHub токен шаардахгүй');
+
+  // ⛔ ЗАСААГҮЙГ «✅ засвар хийгдлээ» гэж БҮҮ хэл — мэдэгдэл энэ мөрөөс уншина.
+  const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'agent-night.yml'), 'utf8');
+  ok(/🔍 \\`\$\{TARGET\}\\` — засах боломжгүй/.test(wf),
+     'шөнө: засаагүй шөнө ✅ гэж бичигдэхгүй');
+
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(p)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ NIGHT NOTIFY OK/.test(out), 'шөнө: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'шөнө: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
 // ── ӨГЛӨӨНИЙ МЭДЭГДЭЛ — алдсан дуудлага (2026-09-17) ───────────────────────
 // 📵 дэлгэц дарааллыг хэлж өгдөг ч хэн ч нээхээ санадаггүй байв (буцаж
 // залгасан нь 0). `tools/pbx_notify.py` өдөр бүр өглөө утсанд нь мэдэгдэнэ.

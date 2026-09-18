@@ -15,6 +15,8 @@ from datetime import date, timedelta
 
 ENV = '/opt/chimun/marketing/fb.env'
 SELFTEST = '--selftest' in sys.argv     # ⚠ тест нь VPS-ийн нууц файлыг шаардахгүй
+# ⚠ `--dry` = юу хийхээ хэлнэ, ЮУ Ч ХИЙХГҮЙ (шинэ дүрэм тавихын өмнө шалгах).
+DRY = '--dry' in sys.argv
 cfg = {}
 try:
     with open(ENV) as f:
@@ -130,6 +132,50 @@ def worth_changing(old, new, last_h):
 ERR_QUIET_H = 6
 
 
+# ── АВТОМАТ ЗОГСООЛТ (2026-09-18) ──────────────────────────────────────────
+# Хүн үр дүнгүй зарыг зогсоодоггүй: тоо нь дэлгэцэд харагддаг ч «хэдэн хоног
+# хараад дүгнэе» гэж хойшилдог. Амьд түүхээр (2026-08-17…09-18) хоёр зар ингэж
+# 252,180₮ илүү зарцуулсан — нийт төсвийн 12%.
+#
+# ⛔ ХУГАЦААГААР БИШ, ЗАРЦУУЛАЛТААР шийднэ. «3 хоног болоод чат алга» гэдэг нь
+#   ЮУ Ч хэлдэггүй — өдөрт $2.5 зарцуулсан зар 3 хоногт дунджаар 1 чат авах
+#   төдий мөнгө л шатаасан байдаг. Тиймээс хаалт нь: «энэ зар аль хэдийн
+#   ДУНДЖААР N үр дүн авах хэмжээний мөнгө зарцуулсан атлаа авч чадаагүй».
+#   `AUTO_STOP_MULT = 3` үед энэ нь ~95% итгэлтэй дүгнэлт (дундаж хурдтай зар
+#   3 дахин өртгийг нь зарцуулаад 0 үр дүнтэй үлдэх магадлал e⁻³ ≈ 5%).
+# ⚠ Жишиг өртөг нь ӨӨРИЙН дансны сүүлийн 30 хоногийн бодит дундаж — зах зээл
+#   өөрчлөгдвөл хаалт нь дагаж хөдөлнө. Гаднаас авсан «сайн CPA» тоо хэрэглэхгүй.
+# ⚠ Үр дүн = чат + лид. Сайтаар ирсэн захиалга ОДООХОНДОО энд ороогүй (лидийн
+#   хамралт 80% хүрээгүй) тул сайтын зар чатаар хэмжигдэнэ — энэ нь хатуувтар.
+AUTO_STOP_MULT = 3.0        # жишиг өртгийн хэдэн дахин зарцуулаад үр дүнгүй бол
+AUTO_STOP_MIN_DAYS = 4      # Meta-гийн сурах үе — түүнээс залуу зарыг хөндөхгүй
+AUTO_REF_FLOOR = 10000      # ₮ — жишиг тооцоологдоогүй үеийн хамгийн бага хаалт
+AUTO_REF_MIN_RES = 10       # үүнээс цөөн үр дүнгээс дундаж гаргахгүй
+AUTO_REF_DAYS = 30
+
+
+def auto_stop_why(spend_mnt, results, days, ref_mnt):
+    """Энэ зарыг автоматаар зогсоох уу. Цэвэр функц — тестлэгдэнэ.
+    Буцаах нь шалтгааны бичвэр (зогсооно) эсвэл None (үлдээнэ).
+    """
+    spend = float(spend_mnt or 0)
+    res = int(results or 0)
+    ref = float(ref_mnt or 0) or AUTO_REF_FLOOR
+    if int(days or 0) < AUTO_STOP_MIN_DAYS:
+        return None                      # ⛔ богино үр дүнгээр дүгнэхгүй
+    bar = ref * AUTO_STOP_MULT
+    if spend < bar:
+        return None                      # ⛔ дүгнэхэд хангалттай мөнгө зарцуулаагүй
+    if res == 0:
+        return (f'{spend:,.0f}₮ зарцуулаад үр дүн 0 — дунджаар энэ мөнгөөр '
+                f'{spend / ref:.0f} үр дүн ирдэг')
+    per = spend / res
+    if per >= bar:
+        return (f'1 үр дүн {per:,.0f}₮ — дунджаас {per / ref:.1f} дахин үнэтэй '
+                f'({res} үр дүн, {spend:,.0f}₮)')
+    return None
+
+
 # ── Өөрийн тест (`--selftest`) ─────────────────────────────────────────────
 # ⚠ Энэ скрипт дээрээс доош ажилладаг тул тестийг API дуудахаас ӨМНӨ барина.
 if '--selftest' in sys.argv:
@@ -160,6 +206,31 @@ if '--selftest' in sys.argv:
     #   өдөр бүр бага зэрэг хөдлөхөөс хүргэлт тогтвортой байх нь чухал.
     _eq(worth_changing(2.50, 3.20, None), False, 'төсөв: $0.70 зөрүү хийхгүй')
     _eq(worth_changing(2.50, 3.60, None), True, 'төсөв: $1.10 зөрүү хийнэ')
+
+    # ── Автомат зогсоолт ──
+    _REF = 10652        # амьд дансны 30 хоногийн бодит дундаж (2026-09-18)
+    # ⛔ БОГИНО ҮР ДҮНГЭЭР ДҮГНЭХГҮЙ — хамгийн чухал хамгаалалт.
+    _eq(auto_stop_why(200000, 0, 2, _REF), None, 'авто: 2 хоногтой зарыг хөндөхгүй')
+    _eq(auto_stop_why(200000, 0, 3, _REF), None, 'авто: 3 хоног ч эрт')
+    # Мөнгө хангалтгүй зарцуулсан бол дүгнэхгүй (өдөрт $2.5 зар 4 хоногт ~36мянга)
+    _eq(auto_stop_why(20000, 0, 9, _REF), None, 'авто: хаалтад хүрээгүй зарцуулалт')
+    _eq(auto_stop_why(31955, 0, 9, _REF), None, 'авто: хаалтын дор — үлдэнэ')
+    # Хаалт давсан, үр дүн 0 → зогсоно
+    _eq(auto_stop_why(31956, 0, 9, _REF) is None, False, 'авто: хаалт давахад зогсоно')
+    _eq('үр дүн 0' in (auto_stop_why(59004, 0, 5, _REF) or ''), True,
+        'авто: шалтгаанд үр дүн 0 гэж бичигдэнэ')
+    # Үр дүнтэй ч дунджаас 3 дахин үнэтэй → зогсоно (амьд «Mevent post»)
+    _eq(auto_stop_why(117648, 1, 6, _REF) is None, False, 'авто: хэт үнэтэй үр дүн зогсоно')
+    # Дундаж орчмын өртөг → ҮЛДЭНЭ (амьд «Асар майхан», «nomaad camp»)
+    _eq(auto_stop_why(655812, 81, 20, _REF), None, 'авто: сайн зар үлдэнэ')
+    _eq(auto_stop_why(233424, 26, 14, _REF), None, 'авто: дунджийн зар үлдэнэ')
+    # Хилийн утга — яг 3 дахин бол зогсоно (>=)
+    _eq(auto_stop_why(_REF * 3, 1, 9, _REF) is None, False, 'авто: яг 3 дахин → зогсоно')
+    _eq(auto_stop_why(_REF * 3 - 1, 1, 9, _REF), None, 'авто: 3 дахинаас бага → үлдэнэ')
+    # Жишиг байхгүй/утгагүй бол шал ажиллана — 0-д хуваахгүй, бүгдийг зогсоохгүй
+    _eq(auto_stop_why(20000, 0, 9, 0), None, 'авто: жишиггүй бол шалаар хэмжинэ')
+    _eq(auto_stop_why(30001, 0, 9, None) is None, False, 'авто: шал давбал зогсоно')
+    _eq(auto_stop_why(None, None, None, None), None, 'авто: хоосон → унахгүй')
 
     if _f:
         print(f'❌ BUDGET FAIL — {_n[0] - len(_f)}/{_n[0]}')
@@ -281,6 +352,87 @@ def apply_stop_requests(camps):
             record('error', cid, c.get('name'), None, None, f'зогссонгүй: {e}')
 
 
+def auto_stop(camps):
+    """Үр дүнгүй зарыг өөрөө зогсооно (2026-09-18).
+
+    ⛔ СҮҮЛИЙН ИДЭВХТЭЙ ЗАРЫГ ХЭЗЭЭ Ч ЗОГСООХГҮЙ — «бүх зар зогсох» нь
+      бизнесийн шийдвэр, нэг зарын гүйцэтгэлээс гарах дүгнэлт биш.
+    ⚠ Шалтгаан нь `fb_ad_actions`-д үлдэж аппын «Систем юу хийсэн»-д гарна,
+      бас CEO рүү push явна — чимээгүй зогсоолт байхгүй.
+    """
+    since = (date.today() - timedelta(days=AUTO_REF_DAYS)).isoformat()
+    tot_sp = tot_res = 0.0
+    per = {}
+    for ln in psql(f"""select campaign_id, sum(spend_mnt), sum(messages+leads), count(distinct day)
+                       from fb_ads_daily where day >= '{since}' group by 1""").splitlines():
+        if not ln.strip():
+            continue
+        cid, sp, res, d = ln.split('|')
+        per[cid] = (float(sp or 0), int(res or 0), int(d or 0))
+        tot_sp += float(sp or 0); tot_res += int(res or 0)
+    ref = (tot_sp / tot_res) if tot_res >= AUTO_REF_MIN_RES and tot_sp > 0 else AUTO_REF_FLOOR
+    live = [c for c in camps if c.get('status') == 'ACTIVE']
+    kill = []
+    for c in live:
+        sp, res, d = per.get(c['id'], (0, 0, 0))
+        why = auto_stop_why(sp, res, d, ref)
+        if why:
+            kill.append((c, sp, why))
+    # Хамгийн муугаас нь эхэлж зогсооно; сүүлийн нэгийг ҮРГЭЛЖ үлдээнэ.
+    kill.sort(key=lambda x: -x[1])
+    keep = max(0, len(live) - len(kill))
+    for c, _sp, why in kill:
+        if keep < 1:
+            log(f'⚠ {c.get("name")}: зогсоох ёстой ч сүүлийн идэвхтэй зар — үлдээв')
+            record('error', c['id'], c.get('name'), None, None,
+                   'сүүлийн идэвхтэй зар тул зогсоосонгүй: ' + why)
+            keep += 1
+            continue
+        if DRY:
+            log(f'[хуурай] {c.get("name")}: зогсоох байсан — {why}')
+            continue
+        try:
+            api_post(c['id'], {'status': 'PAUSED'})
+            c['status'] = 'PAUSED'; c['effective_status'] = 'PAUSED'
+            record('pause', c['id'], c.get('name'), None, None, 'автомат: ' + why)
+            log(f'{c.get("name")}: автоматаар зогсоов — {why}')
+            notify_stop(c.get('name'), why)
+        except Exception as e:
+            log(f'⚠ {c.get("name")} зогссонгүй: {e}')
+            record('error', c['id'], c.get('name'), None, None, f'зогссонгүй: {e}')
+
+
+def notify_stop(name, why):
+    """Автомат зогсоолтыг CEO рүү push-оор мэдэгдэнэ.
+    ⛔ `email` шүүлтгүй БҮҮ илгээ — push-broadcast нь хоосон үед бүх ажилтанд явуулна.
+    ⚠ Мэдэгдэл явахгүй бол зогсоолт хүчинтэй хэвээр — push унах нь зогсоохыг
+      зогсоох ёсгүй (тиймээс алдааг зөвхөн бүртгэнэ).
+    """
+    secret = cfg.get('PUSH_INTERNAL_KEY', '')
+    raw_to = psql("select coalesce(value::text,'') from app_config "
+                  "where key in ('ads_notify','pbx_notify') order by key limit 1")
+    try:
+        to = [''.join(ch for ch in str(x) if ch.isdigit())
+              for x in (json.loads(raw_to or '{}').get('to') or [])]
+    except Exception:
+        to = []
+    to = [x for x in to if len(x) >= 8]
+    if not (secret and to):
+        log('⚠ push хүлээн авагч эсвэл түлхүүр алга — мэдэгдэл илгээгдсэнгүй')
+        return
+    body = {'title': '⏸ Зар автоматаар зогслоо',
+            'body': f'{name or "Зар"} — {why}'}
+    for phone in to:
+        try:
+            req = urllib.request.Request(
+                'https://n8n.nomaadcamp.com/webhook/push-broadcast',
+                data=json.dumps(dict(body, internal=secret, email=phone)).encode(),
+                headers={'Content-Type': 'application/json'}, method='POST')
+            urllib.request.urlopen(req, timeout=30).read()
+        except Exception as e:
+            log(f'⚠ push илгээгдсэнгүй: {e}')
+
+
 raw = psql("select coalesce(value::text,'') from app_config where key='ads_budget'")
 if not raw:
     log('төсөв тавиагүй — юу ч хийхгүй'); sys.exit(0)
@@ -297,6 +449,10 @@ camps = api_get(f'{ACCT}/campaigns',
 # ⚠ Гараар зогсоох хүсэлтийг ЭХЛЭЭД биелүүлнэ — доорх хуваарилалт зогссон зар
 #   руу мөнгө шилжүүлэхгүйн тулд.
 apply_stop_requests(camps)
+# ⚠ Автомат зогсоолт ч хуваарилалтаас ӨМНӨ — зогсох зар руу мөнгө шилжихгүй.
+auto_stop(camps)
+if DRY:
+    log('[хуурай] цааш юу ч хийхгүй'); sys.exit(0)
 
 # ③ Унтраалт / өөр сарын төсөв / 0 төсөв — бүгдийг зогсооно
 if not enabled or plan_month != month or plan_mnt <= 0:

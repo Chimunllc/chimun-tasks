@@ -7384,6 +7384,19 @@ need(['orderCustType']);
   ok(/function cacheSet\(key, value\)/.test(asrc), 'scan: cacheSet туслах байна');
   // ⚠ Дата ачаалах ЖИНХЭНЭ алдаа хэвээр мэдээлэгдэнэ.
   ok((asrc.match(/dataLoadFailed\(/g) || []).length > 10, 'scan: жинхэнэ алдааны мэдээлэл хэвээр');
+
+  // ⛔ СҮЛЖЭЭ ТАСАРСНЫГ СЕРВЕРТ МЭДЭЭЛЭХГҮЙ (2026-09-18) — засах код байхгүй,
+  //    алдааны логийг дүүргэж жинхэнэ алдааг живүүлдэг (fp 6a624cf9a841, 9cabaf8767a3).
+  const blip = vm.runInContext('NET_BLIP_RE', sandbox);
+  ok(blip.test('Failed to fetch'), 'сүлжээ: «Failed to fetch» тоохгүй');
+  ok(blip.test('Fetch is aborted'), 'сүлжээ: «Fetch is aborted» тоохгүй');
+  ok(blip.test('signal is aborted without reason'), 'сүлжээ: signal aborted тоохгүй');
+  ok(blip.test('The user aborted a request.'), 'сүлжээ: хэрэглэгч таслав — тоохгүй');
+  ok(blip.test('Load failed'), 'сүлжээ: Safari «Load failed» тоохгүй');
+  ok(!blip.test('PG HTTP 401'), 'сүлжээ: 401 бол ЖИНХЭНЭ алдаа — мэдээлнэ');
+  ok(!blip.test('The quota has been exceeded.'), 'сүлжээ: quota нь сүлжээний алдаа биш');
+  ok(/if \(NET_BLIP_RE\.test\([\s\S]{0,120}\) return;/.test(asrc),
+     'scan: dataLoadFailed сүлжээний тасалдлыг эрт буцаана');
 }
 
 // ── ТӨСВИЙН ШАЛГАРАЛ (2026-09-17) ──────────────────────────────────────────

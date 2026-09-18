@@ -28196,18 +28196,25 @@ function adCampaignStats(rows, fromDay) {
     if (fromDay && String(r.day || '') < fromDay) return;
     const id = String(r.campaign_id || r.ad_id || '');
     const nm = String(r.campaign_name || r.ad_name || '—');
-    by[id] = by[id] || { id, name: nm, mnt: 0, imp: 0, clicks: 0, msg: 0, days: 0 };
+    by[id] = by[id] || { id, name: nm, mnt: 0, imp: 0, clicks: 0, msg: 0, rev: 0, buys: 0, days: 0 };
     const x = by[id];
     x.mnt += Number(r.spend_mnt) || 0;
     x.imp += Number(r.impressions) || 0;
     x.clicks += Number(r.clicks) || 0;
     x.msg += Number(r.messages) || 0;
+    // ⛔ Борлуулалт = Meta-гийн тулгасан захиалга (`fb_capi.py` буцаадаг).
+    //    0 гэдэг нь «зарагдаагүй» ГЭСЭН ҮГ БИШ — тулгагдаагүй ч байж болно.
+    x.rev += Number(r.revenue_mnt) || 0;
+    x.buys += Number(r.purchases) || 0;
     x.days++;
   });
   return Object.values(by)
     .map(x => Object.assign(x, {
       cat: adCatOf(x.name),
       perMsg: x.msg > 0 ? Math.round(x.mnt / x.msg) : null,
+      // Зарын мөнгө хэдэн дахин эргэж ирсэн. Тулгагдаагүй бол null — 0 гэж
+      // бичвэл «мөнгө авчраагүй» гэж уншигдана.
+      roas: x.rev > 0 && x.mnt > 0 ? x.rev / x.mnt : null,
     }))
     .sort((a, b) => b.mnt - a.mnt);
 }
@@ -29692,12 +29699,19 @@ function renderAds() {
     </div>` : `<div class="ads-advice"><div class="ads-h">💡 Юу хийх вэ</div>
       <div class="ads-tip ads-sev3">Тодорхой зөрүү олдсонгүй — зарын хуваарилалт борлуулалттайгаа нийцэж байна.</div></div>`;
 
+  // ⛔ ГОЛ БАГАНА = БОРЛУУЛАЛТ (2026-09-18, CEO: «хамгийн гол нь борлуулалт»).
+  //    Чат бол зорилго биш — зөвхөн борлуулалт тулгагдаагүй үеийн ойролцоо хэмжүүр.
+  const campBuys = camps.some(c => c.rev > 0);
   const campRows = camps.map(c => `<div class="ads-row">
       <span class="ads-nm">${escapeHtml(c.name)}</span>
       <span class="ads-sp">${fmtMoney(c.mnt)}</span>
-      <span class="ads-ms">${c.msg} чат</span>
-      <b class="ads-pm${c.perMsg === null ? ' ads-bad' : ''}">${c.perMsg === null ? 'чат алга' : fmtMoney(c.perMsg)}</b>
-    </div>`).join('');
+      <span class="ads-ms">${c.rev > 0 ? `${c.buys} захиалга · ${fmtMoney(c.rev)}` : `${c.msg} чат`}</span>
+      <b class="ads-pm${c.roas === null && c.perMsg === null ? ' ads-bad' : ''}">${c.roas !== null
+        ? c.roas.toFixed(1) + '×'
+        : c.perMsg === null ? 'чат алга' : fmtMoney(c.perMsg)}</b>
+    </div>`).join('') + (campBuys
+      ? '<div class="ads-note">× = зарын мөнгө хэдэн дахин эргэж ирсэн. Борлуулалт нь Facebook-ийн тулгасан захиалга — утсаар хийгдсэн нь ч ордог, гэхдээ бүгд тулгагддаггүй.</div>'
+      : '<div class="ads-note">Борлуулалт хараахан тулгагдаагүй тул чатаар хэмжиж байна. Facebook худалдан авагчийг утас/мэйлээр таньсан үед захиалга энд гарч ирнэ.</div>');
 
   // Зарын хувь ↔ борлуулалтын хувь. Зөрүү нь ЯГ энд харагдана.
   const cmpRows = AD_CATS.concat([{ k: 'other', label: 'Бусад' }]).map(c => {

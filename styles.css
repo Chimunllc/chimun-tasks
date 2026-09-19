@@ -89,6 +89,13 @@
     --shadow-xl: 0 25px 50px -12px rgba(0,0,0,.25);
     --shadow: var(--shadow-sm);
 
+    /* ── ДЭЛГЭЦ БҮРХЭХ ДАВХАРГА ── */
+    /* ⚠ Утгууд нь styles.css-д АЛЬ ХЭДИЙН байгаа бичиглэлтэй ЯГ ижил байх ёстой —
+       tools/debt-check.js нь өнгийг утгаар биш, ТЭМДЭГТ МӨРӨӨР тоолдог тул
+       ялгаатай бичвэл «шинэ өнгө» гэж тоологдоод CI унана. */
+    --scrim-strong: #000;                      /* зураг бүтэн дэлгэцээр — цэвэр хар */
+    --scrim-btn:    rgba(255, 255, 255, 0.15); /* давхаргын товчны дэвсгэр */
+
     /* ── Хөдөлгөөн ── */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
     --duration: 200ms;
@@ -7480,3 +7487,61 @@ select.no-asar-len {
   border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--panel);
   color: var(--muted); font-weight: 400; cursor: pointer; }
 .na-pick.is-set { border-style: solid; color: var(--text); font-weight: 600; }
+
+/* ─── Зураг бүтэн дэлгэцээр (#lightbox) ───────────────────────────
+   ⛔ index.html-д `viewport-fit=cover` тавигдсан тул фиксэд давхарга нь
+   цаг/зүсэлт (notch) ба доод индикаторын ДООГУУР ордог. Хатуу 20px зай
+   бичвэл зургийн дээд тал цагны доор дарагдаж, «Drive дээр нээх» товч
+   доод индикаторт хальтардаг (2026-09-19 утсан дээр ажиглагдсан).
+   Тиймээс зай бүр `max(токен, env(safe-area-inset-*))` байна.
+   Бусад дэлгэц styles.css даяар ингэж бичигдсэн — энэ давхарга л
+   index.html дотор inline үлдсэн тул хоцорч байв. */
+#lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: var(--scrim-strong);
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  padding: max(var(--space-5), env(safe-area-inset-top, 0px))
+           max(var(--space-5), env(safe-area-inset-right, 0px))
+           max(var(--space-5), env(safe-area-inset-bottom, 0px))
+           max(var(--space-5), env(safe-area-inset-left, 0px));
+}
+#lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-xl);
+}
+#lightbox-close,
+#lightbox-open {
+  position: fixed;
+  background: var(--scrim-btn);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+#lightbox-close {
+  top: max(var(--space-5), env(safe-area-inset-top, 0px));
+  right: max(var(--space-5), env(safe-area-inset-right, 0px));
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-full);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#lightbox-open {
+  bottom: max(var(--space-5), env(safe-area-inset-bottom, 0px));
+  right: max(var(--space-5), env(safe-area-inset-right, 0px));
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  font-size: var(--fs-md);
+}

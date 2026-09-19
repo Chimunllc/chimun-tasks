@@ -23,6 +23,7 @@
     --primary: #5e6ad2;
     --primary-hover: #4b56b8;
     --primary-soft: rgba(94, 106, 210, 0.10);
+    --on-primary: #ffffff;        /* үндсэн өнгөн дээрх бичвэр */
 
     /* ── Семантик (төлөв илэрхийлэх — брэндийн өнгөнөөс ТУСДАА) ── */
     --danger: #ef4444;  --danger-soft: #fef2f2;
@@ -69,6 +70,9 @@
        өргөн, товчгүй мөр 0 болж, 1fr өөр тооцогдон бүх багана мөр бүрт
        өөр байрлалд шилждэг байв (2026-09-04 алдаа). */
     --otable-cols: 56px minmax(88px, 1fr) 112px 112px 104px 88px 112px;
+
+    /* NOMAAD бэлтгэлийн модалын «хүн сонгох» товчны доод өргөн — нэр багтах өргөн */
+    --na-pick-w: 140px;
 
     /* ── РАДИУС ── */
     --r-sm: 6px;
@@ -4796,8 +4800,8 @@ body.role-daily #add-project { display: none !important; }
 .lead-inc { font-size: var(--fs-md); }
 /* Зар & үр дүн */
 .ads-empty { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--panel); font-size: var(--fs-sm); line-height: 1.6; }
-.ads-tabs { display: flex; gap: 6px; margin-bottom: var(--space-3); }
-.ads-tab { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: var(--fs-sm); cursor: pointer; }
+.ads-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-3); }
+.ads-tab { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; }
 .ads-tab.on { background: var(--primary); color: #fff; border-color: var(--primary); }
 .ads-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: var(--space-3); }
 .ads-kpi { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--panel); }
@@ -4826,17 +4830,33 @@ body.role-daily #add-project { display: none !important; }
 .ads-post-why { color: var(--muted); font-size: var(--fs-xs); margin-bottom: 4px; }
 .ads-post-t { white-space: pre-wrap; font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
 .ads-post-a { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+/* Постер үүсгэгч — үйлдэл ба «Facebook-т нийтлэх» блок. */
+.mk-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: var(--space-3); }
+.mk-acts .btn { padding: 9px 22px; }
+.mk-pub { margin-top: var(--space-3); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.mk-pub-h { font-weight: 800; font-size: var(--fs-md); }
+.pp-src { font-size: var(--fs-xs); color: var(--muted); }
+.mk-hint { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.mk-url { word-break: break-all; color: var(--text); }
+/* Шатны зургийн заавар (дамжлагын модал). */
+.sa-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; margin: -2px 0 6px; }
+.mk-pub-t { width: 100%; margin: 8px 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: inherit; font-size: var(--fs-sm); line-height: 1.5; resize: vertical; }
 .ads-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: var(--fs-sm); }
 .ads-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ads-sp, .ads-ms { color: var(--muted); }
 .ads-pm { font-size: var(--fs-md); }
 .ads-bad { color: var(--danger); }
+/* Идэвхтэй зарын мөр — сүүлийн баганад «⏸ Зогсоо» товч нэмэгдэнэ */
+.ads-srow { grid-template-columns: 1fr auto auto auto auto; }
+.ads-stop { padding: 3px 9px; font-size: var(--fs-xs); justify-self: end; }
+.ads-stopq { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 .ads-note { margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--muted); line-height: 1.55; }
 .ads-budget { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: var(--space-3); background: var(--panel); }
 .ads-brow { display: flex; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); padding: 4px 0; }
 .ads-bact { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 @media (max-width: 620px) {
   .ads-row { grid-template-columns: 1fr auto; row-gap: 2px; }
+  .ads-srow { grid-template-columns: 1fr auto; }
   .ads-sp, .ads-ms { font-size: var(--fs-xs); }
 }
 /* Каталогт олдохгүй бараа — улаан, анхаарал татах ёстой (нөөцөд тооцогдохгүй) */
@@ -7261,6 +7281,209 @@ select.no-asar-len {
 /* ↩ Буруу захиалгад бүртгэсэн төлбөрийг буцаах — модалын үйлдлийн зүүн талд,
    сүүлчийн арга учир ялгаатай (2026-09-16). */
 .btn-revert { color: var(--danger); border-color: var(--danger); margin-right: auto; }
+
+/* ═══ 📵 Алдсан дуудлага — буцаж залгах ажлын жагсаалт (2026-09-16) ═══ */
+.mc-list { display: flex; flex-direction: column; gap: 6px; }
+.mc-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.mc-main { flex: 1 1 190px; min-width: 0; }
+.mc-num { font-size: var(--fs-base); font-weight: 800; }
+.mc-who { font-size: var(--fs-sm); font-weight: 400; color: var(--muted); }
+.mc-meta { margin-top: 2px; font-size: var(--fs-xs); color: var(--muted); }
+.mc-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.mc-btn { padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm); cursor: pointer;
+  text-decoration: none; white-space: nowrap; }
+.mc-btn:hover { background: var(--panel-hover); }
+.mc-btn.call { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 700; }
+.mc-btn.ok { color: var(--ok); border-color: var(--ok); }
+.mc-btn.drop { color: var(--muted); }
+.mc-done { opacity: .6; }
+.mc-more { margin-top: var(--space-3); }
+.mc-more > summary { cursor: pointer; font-weight: 700; font-size: var(--fs-sm); color: var(--muted); }
+.mc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-sm); line-height: 1.6; }
+/* Хуудасны постыг бүүст хийх жагсаалт (2026-09-17) */
+.pp-row { display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: 10px 0; border-bottom: 1px solid var(--border); }
+.pp-row:last-child { border-bottom: 0; }
+.cu-sec { font-size: var(--fs-sm); font-weight: 700; color: var(--text);
+  margin: var(--space-3) 0 6px; }
+.cu-sub { font-weight: 400; color: var(--muted); }
+.cu-why { color: var(--muted); }
+.cu-tel { color: var(--info); text-decoration: none; }
+.cu-tel:hover { text-decoration: underline; }
+.cu-snooze { flex: 0 0 auto; }
+.pp-weak { color: var(--warn); }
+.pp-link { font-size: var(--fs-xs); color: var(--info); text-decoration: none; }
+.pp-link:hover { text-decoration: underline; }
+.pp-b { flex: 1 1 auto; min-width: 0; }
+.pp-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.pp-day { font-size: var(--fs-xs); color: var(--muted); }
+.pp-kind { font-size: var(--fs-xs); color: var(--muted); }
+.pp-t { font-size: var(--fs-sm); color: var(--text); line-height: 1.45;
+  overflow-wrap: anywhere; }
+.pp-err { font-size: var(--fs-xs); color: var(--danger); margin-top: 3px;
+  overflow-wrap: anywhere; }
+.pp-a { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.pp-st { font-size: var(--fs-xs); white-space: nowrap; }
+.pp-wait { color: var(--muted); }
+.pp-on { color: var(--ok); font-weight: 700; }
+.pp-bad { color: var(--danger); }
+@media (max-width: 480px) {
+  .pp-row { flex-wrap: wrap; }
+  .pp-a { flex: 1 1 100%; flex-direction: row; justify-content: flex-end; align-items: center; }
+}
+.ads-fresh { margin-bottom: var(--space-3); font-size: var(--fs-xs); color: var(--muted); }
+.mc-stale { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--warn);
+  border-radius: 10px; background: var(--warn-soft); color: var(--text); font-size: var(--fs-sm); line-height: 1.5; }
+/* Харилцагчийн картын дуудлагын түүх (2026-09-16) */
+.cu-calls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.cu-cs { padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px;
+  font-size: var(--fs-xs); color: var(--muted); }
+.cu-cs.cu-miss { color: var(--warn); border-color: var(--warn); }
+.mc-tools { margin-bottom: var(--space-3); }
+.mc-q { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm); }
+.mc-cold .mc-num { color: var(--muted); }
+/* Алдсан дуудлагын мөр — нэр гарчиг, дугаар дэд мөр (2026-09-16) */
+.mc-sub { font-size: var(--fs-xs); color: var(--muted); margin-top: 1px; }
+.mc-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.mc-tag { padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px;
+  font-size: var(--fs-xs); color: var(--muted); }
+.mc-tag.mc-warm { color: var(--ok); border-color: var(--ok); }
+.ads-kpi-s { font-size: var(--fs-xs); color: var(--muted); margin-top: 1px; }
+.mc-sorts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-3); }
+.mc-chip { padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--panel); color: var(--muted); font-size: var(--fs-xs); cursor: pointer; }
+.mc-chip.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.mc-why { color: var(--ok); font-weight: 700; }
+/* Гараагийн ачааллын багана (2026-09-17) */
+.wd-row { grid-template-columns: 56px 1fr auto auto; }
+.wd-bar { display: block; height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.wd-bar > i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
+.wd-w0 { width: 0%; }
+.wd-w10 { width: 10%; }
+.wd-w20 { width: 20%; }
+.wd-w30 { width: 30%; }
+.wd-w40 { width: 40%; }
+.wd-w50 { width: 50%; }
+.wd-w60 { width: 60%; }
+.wd-w70 { width: 70%; }
+.wd-w80 { width: 80%; }
+.wd-w90 { width: 90%; }
+.wd-w100 { width: 100%; }
+
+/* ── 💬 Facebook чат ─────────────────────────────────────────────────────── */
+.fc-wrap { display: flex; flex-direction: column; gap: var(--space-3); }
+.fc-h { margin: 0; font-size: var(--fs-lg); }
+.fc-note { font-size: var(--fs-sm); color: var(--muted); }
+.fc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-md); }
+.fc-mode { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.fc-mode-l { font-size: var(--fs-sm); color: var(--muted); font-weight: 700; }
+.fc-mode-b {
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  border-radius: var(--r-sm); padding: 4px var(--space-3);
+  font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
+}
+.fc-mode-b.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.fc-mode-b:disabled { opacity: .5; cursor: default; }
+.fc-mode-h { font-size: var(--fs-sm); color: var(--muted); }
+.fc-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
+.fc-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: var(--space-3); text-align: center;
+}
+.fc-card.warn { border-color: var(--warn); }
+.fc-v { font-size: var(--fs-xl); font-weight: 800; }
+.fc-k { font-size: var(--fs-xs); color: var(--muted); }
+.fc-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fc-tab {
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  border-radius: var(--r-sm); padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
+}
+.fc-tab.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.fc-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.fc-row, .fc-draft {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: var(--space-3);
+}
+.fc-draft { flex-direction: column; align-items: stretch; }
+.fc-main { flex: 1 1 190px; min-width: 0; }
+.fc-name { font-size: var(--fs-base); font-weight: 800; }
+.fc-sub { font-size: var(--fs-sm); color: var(--muted); }
+.fc-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+.fc-tag {
+  font-size: var(--fs-xs); border: 1px solid var(--border); color: var(--muted);
+  border-radius: var(--r-sm); padding: 1px var(--space-2);
+}
+.fc-tag.ok { border-color: var(--ok); color: var(--ok); }
+.fc-tag.warn { border-color: var(--warn); color: var(--warn); }
+.fc-tag.off { border-color: var(--danger); color: var(--danger); }
+/* Харилцагчийн мессеж ба ботын ноорог — нүд аль нь алинг хэлснийг шууд ялгана. */
+.fc-in, .fc-out {
+  font-size: var(--fs-md); white-space: pre-wrap; word-break: break-word;
+  border-radius: var(--r-sm); padding: var(--space-2);
+}
+.fc-in { color: var(--muted); border-left: 2px solid var(--border); }
+.fc-out { background: var(--panel-hover); border-left: 2px solid var(--primary); }
+.fc-act { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+/* Inbox холбоос товчны хажууд сууна — доогуур зураас нь эгнээг эвддэг. */
+.fc-act a.btn { text-decoration: none; display: inline-block; }
+@media (max-width: 480px) {
+  .fc-cards { grid-template-columns: repeat(2, 1fr); }
+  .fc-act { width: 100%; }
+}
+
+/* ── Төлөвлөгөө — шийдвэрийн дэлгэц (2026-09-17) ──────────────────────────
+   Агент мөрийг бичнэ, CEO хаана. Зөвхөн токен + класс. */
+.plan-wrap { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); max-width: 820px; }
+.plan-top { display: flex; flex-direction: column; gap: var(--space-1); }
+.plan-h1 { font-size: var(--fs-xl); margin: 0; }
+.plan-sub { font-size: var(--fs-sm); color: var(--muted); }
+.plan-warn { font-size: var(--fs-sm); color: var(--warn); border: 1px solid var(--warn);
+  border-radius: var(--r-sm); padding: var(--space-2) var(--space-3); }
+.plan-sec { display: flex; flex-direction: column; gap: var(--space-2); }
+.plan-sec-h { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-md);
+  font-weight: 600; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: var(--space-1); }
+.plan-n { font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.plan-item { display: flex; flex-direction: column; gap: var(--space-1);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: var(--space-3); background: var(--panel); }
+.plan-head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.plan-t { font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.plan-own { font-size: var(--fs-xs); color: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 0 var(--space-1); }
+.plan-w { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
+.plan-when { font-size: var(--fs-xs); color: var(--ok); }
+.plan-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
+.plan-btn { font-size: var(--fs-sm); padding: var(--space-1) var(--space-3); }
+.plan-add { align-self: flex-start; }
+.plan-empty { font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }
+.plan-more { font-size: var(--fs-sm); display: flex; flex-direction: column; gap: var(--space-2); }
+.plan-more > summary { cursor: pointer; color: var(--muted); padding: var(--space-2) 0; }
+
+/* ═══ NOMAAD бэлтгэлийн модал (openNomaadPrepChecklist) ═══
+   Өмнө нь энэ модалын мөр бүр app.js дотор inline `style=`-аар зурагддаг байв
+   (хэсгийн толгой, бүлгийн толгой, мөр, мета, хүн сонгох товч). Дизайны
+   гэрээгээр класс болгов — өнгө/зай/фонт ЗӨВХӨН токеноор. */
+.na-sec { font-size: var(--fs-sm); font-weight: 800; color: var(--text);
+  background: var(--panel-hover); padding: var(--space-2) var(--space-3);
+  margin: var(--space-4) calc(var(--space-1) * -1) var(--space-1); border-radius: var(--r-sm); }
+.na-grp { font-size: var(--fs-xs); font-weight: 700; color: var(--text-soft);
+  text-transform: uppercase; margin: var(--space-3) 0 var(--space-1); }
+.na-row { display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+.na-row-label { flex: 1; min-width: 0; font-size: var(--fs-md); }
+.na-meta { color: var(--muted); font-size: var(--fs-xs); }
+.na-ok { color: var(--ok); }
+/* Хүн сонгох товч. Хоосон = тасархай хүрээ + бүдэг, сонгосон = бүтэн + тод. */
+.na-pick { flex-shrink: 0; min-width: var(--na-pick-w); text-align: left;
+  padding: var(--space-2) var(--space-3); border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--panel);
+  color: var(--muted); font-weight: 400; cursor: pointer; }
+.na-pick.is-set { border-style: solid; color: var(--text); font-weight: 600; }
 
 /* ─── Зураг бүтэн дэлгэцээр (#lightbox) ───────────────────────────
    ⛔ index.html-д `viewport-fit=cover` тавигдсан тул фиксэд давхарга нь

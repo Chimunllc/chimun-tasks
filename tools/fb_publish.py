@@ -35,7 +35,25 @@ TOKEN, ACCT = cfg['FB_TOKEN'], cfg['FB_ACCT']
 PAGE_TOKEN, PAGE_ID = cfg['FB_PAGE_TOKEN'], cfg['FB_PAGE_ID']
 CONTAINER = cfg.get('PG_CONTAINER', 'vps-deploy-postgres-1')
 API = 'https://graph.facebook.com/v21.0'
-START_USD = 1.0            # эхлэх өдрийн төсөв; 10 минутын дотор хуваарилагч засна
+# ⚠ Meta-гийн доод хязгаар $2.00-оос ДЭЭШ байх ёстой («Budget Is Too Low»).
+START_USD = 2.50           # эхлэх өдрийн төсөв; 10 минутын дотор хуваарилагч засна
+# ⛔ ЗАР ҮҮСГЭХЭД ХУУДАСНЫ ТОКЕН. Систем хэрэглэгчид M event хуудсанд зар
+#   үүсгэх эрх АЛГА («Insufficient Page Permission to Run Ads») — учир нь
+#   хуудас «Mevent» гэдэг ӨӨР бизнес багцын мэдэлд, систем хэрэглэгчид тэнд
+#   эрх өгөх зам хаалттай. CEO-гийн эрхээр авсан хуудасны токенд `ads_management`
+#   ба `pages_manage_ads` хоёулаа бий тул зарын дансанд ч ажиллана.
+# ⚠ Багц нэгдэж систем хэрэглэгчид хуудасны эрх өгмөгц үүнийг `FB_TOKEN` рүү
+#   буцаа — систем хэрэглэгчийн токен хүнээс хамаардаггүй тул илүү найдвартай.
+ADS_TOKEN = PAGE_TOKEN
+# ⛔ БҮҮСТ ӨГӨГДМӨЛӨӨР УНТРААЛТТАЙ (2026-09-17). Зурагтай постыг чат руу
+#   оптимизацтай зартай хослуулахыг Meta зөвшөөрдөггүй («Invalid Creative For
+#   Objective»). Хоёр удаа оролдоход кампанит ажил + adset үүсээд ЗАР нь
+#   үүсдэггүй — үр дүнд нь хоосон бүрхүүл үлдэж, хуваарилагч түүнд төсөв
+#   хуваарилж БОДИТ зарууд бага авдаг байв.
+#   Асаах бол `fb.env`-д `PUBLISH_BOOST=1` — гэхдээ эхлээд creative-ийн
+#   асуудлыг шийд (чат руу бол «Мессеж бичих» товчтой тусдаа creative,
+#   сайт руу бол OUTCOME_TRAFFIC).
+BOOST = cfg.get('PUBLISH_BOOST', '0') not in ('0', '', 'false', 'no')
 
 
 def log(msg):
@@ -85,9 +103,16 @@ month = date.today().strftime('%Y-%m')
 on = bool(budget.get('enabled')) and str(budget.get('month') or '') == month \
     and float(budget.get('mnt') or 0) > 0
 
-rows = [r for r in psql(
-    "select id, coalesce(sku,''), body, coalesce(image_url,''), coalesce(fb_post_id,'') "
-    "from ads_posts where status = 'approved' order by created_at").splitlines() if r.strip()]
+# ⛔ МӨР МӨРӨӨР БҮҮ УНШ. Постын бичвэр ОЛОН МӨРТЭЙ (8 мөр нь энгийн) тул
+#   `psql -At` хариуг splitlines() хийвэл НЭГ бичлэг олон «мөр» болж задарч,
+#   талбарууд гулсаж «зураггүй пост» гэсэн ХУДАЛ алдаа гарна (2026-09-16-нд
+#   эхний бодит пост яг ингэж нийтлэгдээгүй). JSON-оор нэг мөр болгож авна.
+rows = json.loads(psql(
+    "select coalesce(json_agg(row_to_json(t))::text, '[]') from ("
+    "select id, coalesce(sku,'') sku, body, coalesce(image_url,'') image_url, "
+    "coalesce(fb_post_id,'') fb_post_id, coalesce(campaign_id,'') campaign_id, "
+    "coalesce(link_url,'') link_url from ads_posts "
+    "where status = 'approved' order by created_at) t") or '[]')
 
 if not rows:
     log('батлагдсан пост алга')
@@ -99,61 +124,129 @@ if not on:
     sys.exit(0)
 
 # ── ② Ажиллаж байгаа зарын тохиргоог загвар болгоно ─────────────────────────
-sets = [a for a in api_get(f'{ACCT}/adsets', {
-    'fields': 'status,optimization_goal,billing_event,destination_type,promoted_object,targeting',
-    'limit': 50, 'access_token': TOKEN})['data'] if a.get('status') == 'ACTIVE']
+# ⛔ ЭНД УНАВАЛ ЧИМЭЭГҮЙ БОЛНО. Токен хүчингүй болох нь БОДИТ тохиолдол
+#   (2026-09-17-нд хуудасны эрх цуцлагдаж скрипт бүтнээрээ унасан, аппад юу ч
+#   харагдаагүй, хэрэглэгч «нийтлэгдэхгүй байна» гэж мэдэгдэх хүртэл мэдээгүй).
+#   Тиймээс алдааг барьж АППАД бүртгэнэ.
+try:
+    sets = [a for a in api_get(f'{ACCT}/adsets', {
+        'fields': 'status,optimization_goal,billing_event,destination_type,promoted_object,targeting',
+        'limit': 50, 'access_token': ADS_TOKEN})['data'] if a.get('status') == 'ACTIVE']
+except Exception as e:
+    detail = str(e)
+    if hasattr(e, 'read'):
+        try:
+            detail = e.read().decode('utf-8', 'replace')[:200]
+        except Exception:
+            pass
+    log(f'⚠ зарын тохиргоо уншигдсангүй: {detail}')
+    note(f'{len(rows)} пост хүлээж байна — Facebook-ийн холболт тасарсан '
+         f'(токен хүчингүй байж магадгүй): {detail[:150]}')
+    sys.exit(1)
 if not sets:
     log('идэвхтэй зар алга — загвар авах боломжгүй')
     note('Пост нийтлэгдээгүй: идэвхтэй зар байхгүй тул зорилтот бүлгийн загвар алга')
     sys.exit(0)
 tpl = sets[0]
 
+# ⛔ АППЫН НИЙТЭЛСЭН ПОСТЫГ FACEBOOK ЖАГСААДАГГҮЙ (2026-09-17). `published_posts`
+#    edge-д ч гарахгүй, Graph-аар уншихад ч «Object does not exist» гэнэ — тиймээс
+#    `fb_posts_pull.py` тэдгээрийг ХЭЗЭЭ Ч олохгүй, аппын «бүүст хийх» жагсаалтад
+#    гарахгүй байв. Шийдэл: нийтлэх мөчид нь ӨӨРСДӨӨ бүртгэнэ. Зураг, бичвэр,
+#    холбоос бүгд манай DB-д байгаа тул бүүст хийхэд Facebook-ээс юу ч уншихгүй.
+def register_page_post(post_id, body, image, link):
+    page, _, tail = str(post_id).partition('_')
+    perma = f'https://www.facebook.com/{page}/posts/{tail}' if tail else ''
+    psql('insert into fb_page_posts (post_id, created_time, message, picture, permalink, '
+         'status_type, link_url, source) values ('
+         f'{sq(post_id)}, now(), {sq(body)}, {sq(image)}, {sq(perma)}, '
+         f"'app_photo', {sq(link)}, 'app') on conflict (post_id) do nothing;")
+
+
 ok = err = 0
-for line in rows:
-    pid, sku, body, image, post_id = (line.split('|', 4) + [''] * 5)[:5]
+for row in rows:
+    pid = row['id']
+    body = row['body'] or ''
+    image = row['image_url'] or ''
+    post_id = row['fb_post_id'] or ''
+    camp_id = row.get('campaign_id') or ''
     title = body.split('\n')[0][:60]
     try:
         # ③ Хуудсанд нийтлэх (зурагтай пост) — PAGE токеноор.
         if not post_id:
             if not image:
                 raise RuntimeError('зураггүй пост — Facebook дээр уншигдахгүй')
-            r = api_post(f'{PAGE_ID}/photos', {
-                'url': image, 'caption': body, 'published': 'true',
-                'access_token': PAGE_TOKEN})
-            post_id = r.get('post_id') or f"{PAGE_ID}_{r.get('id')}"
+            # ⛔ `/photos`-оор ШУУД нийтлэвэл пост нь зургийн цомогт орж
+            #   timeline дээр сул харагдана (2026-09-16-нд эхний пост яг ингэж
+            #   «зөвхөн зурагт харагдаж» байсан). Хоёр алхмаар хийнэ:
+            #   ① зургийг НИЙТЛЭХГҮЙГЭЭР байршуулж id авна
+            #   ② түүнийг хавсаргасан ЖИРИЙН feed пост үүсгэнэ
+            ph = api_post(f'{PAGE_ID}/photos', {
+                'url': image, 'published': 'false', 'access_token': PAGE_TOKEN})
+            r = api_post(f'{PAGE_ID}/feed', {
+                'message': body,
+                'attached_media': json.dumps([{'media_fbid': ph['id']}]),
+                'published': 'true', 'access_token': PAGE_TOKEN})
+            post_id = r.get('id') or f"{PAGE_ID}_{r.get('post_id')}"
             # ⚠ ШУУД хадгална — доорх зар үүсэхгүй байсан ч пост давхардахгүй.
             if not DRY:
                 psql(f'update ads_posts set fb_post_id={sq(post_id)} where id={sq(pid)};')
+                register_page_post(post_id, body, image, row.get('link_url') or '')
             log(f'нийтлэв: {title} → {post_id}')
 
-        # ④ Бүүст — зарын данс дээр SYSTEM токеноор.
-        camp = api_post(f'{ACCT}/campaigns', {
-            'name': f'Post: {title}', 'objective': 'OUTCOME_ENGAGEMENT',
-            'status': 'ACTIVE', 'special_ad_categories': '[]', 'access_token': TOKEN})
+        if not BOOST:
+            if not DRY:
+                psql(f"update ads_posts set status='published', published_at=now(), "
+                     f"error=null where id={sq(pid)};")
+            ok += 1
+            log(f'нийтлэв (бүүст унтраалттай): {title}')
+            continue
+
+        # ④ Бүүст — зарын данс дээр.
+        # ⚠ `is_adset_budget_sharing_enabled` нь Meta-гийн ШААРДЛАГАТАЙ талбар
+        #   (2026-09). Төсвийг adset дээр тавьдаг тул false — кампанит ажлын
+        #   түвшний (CBO) төсөв асаавал `fb_budget.py`-ийн хуваарилалт зөрнө.
+        # ⚠ `bid_strategy` нь ADSET дээр тавигдана — төсөв тэнд байдаг тул.
+        #   Кампанит ажлын түвшинд тавибал «No Budget for Campaign» гэж унана.
+        # ⚠ ХАДГАЛААД дараагийн алхам руу орно: доорх adset/creative унавал
+        #   дахин оролдоход ШИНЭ кампанит ажил үүсгэхгүй (эс бөгөөс оролдлого
+        #   бүрд хоосон кампанит ажил үлдэж данс хогдоно).
+        if not camp_id:
+            camp_id = api_post(f'{ACCT}/campaigns', {
+                'name': f'Post: {title}', 'objective': 'OUTCOME_ENGAGEMENT',
+                'status': 'ACTIVE', 'special_ad_categories': '[]',
+                'is_adset_budget_sharing_enabled': 'false',
+                'access_token': ADS_TOKEN})['id']
+            if not DRY:
+                psql(f'update ads_posts set campaign_id={sq(camp_id)} where id={sq(pid)};')
         aset = api_post(f'{ACCT}/adsets', {
-            'name': f'Post: {title}', 'campaign_id': camp['id'],
+            'name': f'Post: {title}', 'campaign_id': camp_id,
             'daily_budget': int(START_USD * 100),
+            'bid_strategy': 'LOWEST_COST_WITHOUT_CAP',
             'billing_event': tpl.get('billing_event') or 'IMPRESSIONS',
             'optimization_goal': tpl.get('optimization_goal') or 'CONVERSATIONS',
-            'destination_type': tpl.get('destination_type') or 'MESSENGER',
+            # ⚠ Загварын adset нь Instagram-тай хосолсон байж болно; манай пост
+            #   зөвхөн Facebook дээр тул MESSENGER ашиглана (эс бөгөөс
+            #   «Invalid Creative For Objective» гэж унана).
+            'destination_type': 'MESSENGER',
             'promoted_object': json.dumps({'page_id': PAGE_ID}),
             'targeting': json.dumps(tpl.get('targeting') or {}),
-            'status': 'ACTIVE', 'access_token': TOKEN})
+            'status': 'ACTIVE', 'access_token': ADS_TOKEN})
         cre = api_post(f'{ACCT}/adcreatives', {
-            'name': f'Post: {title}', 'object_story_id': post_id, 'access_token': TOKEN})
+            'name': f'Post: {title}', 'object_story_id': post_id, 'access_token': ADS_TOKEN})
         api_post(f'{ACCT}/ads', {
             'name': f'Post: {title}', 'adset_id': aset['id'],
             'creative': json.dumps({'creative_id': cre['id']}),
-            'status': 'ACTIVE', 'access_token': TOKEN})
+            'status': 'ACTIVE', 'access_token': ADS_TOKEN})
 
         if not DRY:
             psql(f"update ads_posts set status='published', published_at=now(), "
-                 f"campaign_id={sq(camp['id'])}, error=null where id={sq(pid)};")
+                 f"error=null where id={sq(pid)};")
             psql('insert into fb_ad_actions (kind,campaign_id,campaign_name,reason) values '
-                 f"('budget',{sq(camp['id'])},{sq('Post: ' + title)},"
+                 f"('budget',{sq(camp_id)},{sq('Post: ' + title)},"
                  f"{sq('шинэ пост нийтлэгдэж бүүст хийгдэв')});")
         ok += 1
-        log(f'бүүст хийв: {title} → {camp["id"]}')
+        log(f'бүүст хийв: {title} → {camp_id}')
     except Exception as e:
         msg = str(e)
         if hasattr(e, 'read'):
@@ -164,6 +257,12 @@ for line in rows:
         err += 1
         log(f'⚠ {title}: {msg}')
         if not DRY:
-            psql(f"update ads_posts set status='failed', error={sq(msg[:400])} where id={sq(pid)};")
+            # ⛔ ПОСТ НИЙТЛЭГДСЭН бол «амжилтгүй» гэж БҮҮ БИЧ — хэрэглэгч аппаас
+            #   харахад пост гараагүй гэж ойлгоод гараар дахин нийтэлж,
+            #   хуудсан дээр ДАВХАР пост үүснэ. Бүүст нь л амжаагүй.
+            st = 'published' if post_id else 'failed'
+            pub = ', published_at=now()' if post_id else ''
+            psql(f"update ads_posts set status='{st}'{pub}, error={sq(msg[:400])} "
+                 f"where id={sq(pid)};")
 
 log(f'дуусав: {ok} амжилттай, {err} алдаа' + (' [dry-run]' if DRY else ''))

@@ -47,3 +47,10 @@ grant select, insert, update on invoices to authenticated;
 grant usage on sequence invoice_no_seq to authenticated;
 -- delete ЗОРИУД алга: буруу гаргасан нэхэмжлэхийг `status='void'` болгоно.
 notify pgrst, 'reload schema';
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on invoices from authenticated;

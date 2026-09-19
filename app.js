@@ -268,11 +268,19 @@ const ERR_LOG_KEY = 'appErrors';
 const ERR_LOG_MAX = 20;
 let _lastErrToastAt = 0;
 // Хэрэглэгчийн буруу биш, засах боломжгүй чимээ — тоохгүй (өргөтгөл, зургийн 404 г.м.)
+// ⛔ ГАДНЫ КОДЫН АЛДААГ БҮРТГЭХГҮЙ. Facebook/Instagram/TikTok-ийн дотоод браузер
+//    хуудсанд ӨӨРИЙН скрипт шахдаг (`iabjs://…`, `webkit-masked-url://…`) ба тэр нь
+//    өөрөө унадаг. Бид засаж ЧАДАХГҮЙ — гэтэл Issue үүсч, жинхэнэ алдаа живнэ
+//    (fp f11405417bbb: «Unexpected end of input» @ iabjs://iab_inner_frame_ota).
+//    Дүрэм: эх байрлал нь http(s) БИШ бол манай код БИШ.
+// ⚠ Шүүлт нь `схем://` хэлбэртэй байрлалд Л хамаарна — `app.js:17472` гэсэн
+//    манай өөрийн байрлалыг «схем» гэж андуурвал ЖИНХЭНЭ алдаа чимээгүй алга болно.
+const ERR_FOREIGN_SRC = /^(?!https?:)[a-z][a-z0-9+.-]*:\/\//i;
 function _errIsNoise(msg, src) {
   const m = String(msg || '');
   if (!m || m === 'Script error.') return true;                  // cross-origin, дэлгэрэнгүй байхгүй
   if (/ResizeObserver loop/i.test(m)) return true;               // хор хөнөөлгүй браузерын чимээ
-  if (/^chrome-extension:|^moz-extension:/.test(String(src || ''))) return true;
+  if (ERR_FOREIGN_SRC.test(String(src || ''))) return true;      // өргөтгөл / in-app браузерын шахсан код
   return false;
 }
 function appErrors() {
@@ -360,14 +368,39 @@ function _reportErrToServer(msg, src, extra) {
 // Тэдгээр нь ЖИНХЭНЭ асуудал БИШ — ажилтан F5 дарах бүрд алдааны лог дүүрч, дунд нь
 // байгаа бодит алдаа алга болно. bfcache-аас буцаж ирвэл дахин бүртгэнэ (pageshow).
 let _pageUnloading = false;
+// ⛔ СҮЛЖЭЭ ТАСАРСАН нь КОДЫН АЛДАА БИШ (2026-09-18).
+//   «Failed to fetch» · «Fetch is aborted» · «Load failed» гэх мэт нь утас лифтэнд
+//   орсон, Wi-Fi сольсон, хэрэглэгч дэлгэц сольсон гэсэн үг — засах код БАЙХГҮЙ.
+//   Эдгээр алдааны логийн голыг эзэлж, GitHub дээр Issue үүсгэж, дунд нь байгаа
+//   ЖИНХЭНЭ алдааг живүүлж байв (амьд датаар идэвхтэй 4 алдааны 2 нь яг энэ).
+//   Хэрэглэгч дэлгэц дээрээ «ачаалагдсангүй» гэдгийг ХАРСАН хэвээр — зөвхөн
+//   серверт мэдээлэхгүй. Сервер үнэхээр унасан бол мэдээлэл ч хүрэхгүй тул
+//   алдагдах дохио алга.
+const NET_BLIP_RE = /failed to fetch|fetch is aborted|load failed|networkerror|network request failed|aborted (a )?request|signal is aborted|the operation was aborted|timeout/i;
 function dataLoadFailed(where, err) {
   if (_pageUnloading) return;                    // хуудас хаагдаж байна — таслагдсан fetch
   if (navigator && navigator.onLine === false) return;   // офлайн — хэрэглэгч мэднэ
+  if (NET_BLIP_RE.test((err && err.message) ? String(err.message) : String(err || ''))) return;
   try {
     const m = (err && err.message) ? String(err.message) : String(err || '');
     _reportErrToServer('Дата ачаалагдсангүй: ' + String(where || '-'),
                        'load:' + String(where || '-'), m.slice(0, 200));
   } catch (e) { /* мэдээлэх нь өөрөө унавал чимээгүй өнгөрнө — зориудынх */ }
+}
+
+// ⛔ КЭШ БИЧИЛТ УНАХ нь «ДАТА АЧААЛАГДААГҮЙ» гэсэн үг БИШ (2026-09-17).
+//   Утасны санах ой дүүрэхэд `localStorage.setItem` нь «quota exceeded» шидэж,
+//   12 газар `dataLoadFailed(...)` дуудагдаж «Дата ачаалагдсангүй» гэсэн ХУДАЛ
+//   анхааруулга гарч, алдааны лог дүүрдэг байв — үнэндээ дата САЙН ирсэн,
+//   зөвхөн хадгалах нь бүтээгүй (амьд датаар 2 ажилтан · 11 удаа, fp 1cddeb5f6c64).
+//   Кэш бол зөвхөн хурдны туслах: бүтэхгүй бол апп хэвийн ажиллана.
+//   ⚠ Дата ҮНЭХЭЭР ирээгүй бол `dataLoadFailed()`-ыг хэвээр ашиглана.
+function cacheSet(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch (e) {
+    // Хуучин утгыг нь чөлөөлөөд НЭГ дахин оролдоно — ихэнхдээ энэ хангалттай.
+    try { localStorage.removeItem(key); localStorage.setItem(key, value); return true; }
+    catch (e2) { return false; }
+  }
 }
 
 // ── PostgREST токены хүчинтэй хугацаа ────────────────────────────────────────
@@ -809,7 +842,7 @@ function loadNotifications() {
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const before = state.notifications.length;
   state.notifications = state.notifications.filter(n => (n.ts || 0) >= cutoff);
-  if (state.notifications.length !== before) { try { localStorage.setItem('notifications', JSON.stringify(state.notifications)); } catch (e) { dataLoadFailed('loadNotifications', e); } }
+  if (state.notifications.length !== before) { cacheSet('notifications', JSON.stringify(state.notifications)); }
 }
 function saveNotifications() {
   // Keep only the most recent 50 to avoid localStorage bloat
@@ -2276,7 +2309,7 @@ async function loadFinanceCategories() {
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
     FINANCE_MAIN_CATEGORIES = mains;
     FINANCE_SUB_CATEGORIES = subs;
-    try { localStorage.setItem('finCategories', JSON.stringify({ mains, subs })); } catch (e) { dataLoadFailed('loadFinanceCategories', e); }
+    cacheSet('finCategories', JSON.stringify({ mains, subs }));
     if (typeof render === 'function') render();
   } catch (e) {
     // Сүүлд амжилттай татсан кэш байвал түүгээр (default дээр давхарлана)
@@ -4189,9 +4222,44 @@ function renderSidebar() {
     const wc = document.getElementById('cnt-writeoff');
     if (wc) wc.textContent = String(woList().filter(x => x && x.status === 'pending').length);
   }
+  // Төлөвлөгөө — тоо нь «одоо хийж байгаа» ажлын тоо.
+  const plNav = document.getElementById('nav-plan');
+  if (plNav) {
+    plNav.style.display = canSeePlan() ? '' : 'none';
+    const pc = document.getElementById('cnt-plan');
+    if (pc) pc.textContent = String(planOpenCount());
+  }
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
+  // Алдсан дуудлага — буцаж залгах ажлын жагсаалт.
+  const mcNav = document.getElementById('nav-missedcalls');
+  if (mcNav) {
+    const seeMc = canSeeMissedCalls();
+    mcNav.style.display = seeMc ? '' : 'none';
+    // ⚠ Тоог харуулахын тулд дата ЭХЛЭЭД хэрэгтэй — дэлгэц нээхийг хүлээвэл
+    //   «10 хүн буцаж залгуулахыг хүлээж байна» гэдгийг хэн ч мэдэхгүй өнгөрнө.
+    //   Тиймээс цэс зурагдахад нэг удаа арын дуудлага явуулна (давтахгүй:
+    //   төлвийг ШУУД null болгож тэмдэглэнэ).
+    if (seeMc && state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => render()); }
+    if (seeMc && state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => render()); }
+    const mcC = document.getElementById('cnt-missedcalls');
+    if (mcC) { const n = seeMc ? pbxOpenCount() : 0; mcC.textContent = n ? String(n) : ''; }
+  }
+  // Facebook чат — хариу хүлээж буй яриа + ботын баталгаа.
+  const fcNav = document.getElementById('nav-chats');
+  if (fcNav) {
+    const seeFc = canSeeChats();
+    fcNav.style.display = seeFc ? '' : 'none';
+    // ⚠ Тоог харуулахад дата ЭХЛЭЭД хэрэгтэй — дэлгэц нээхийг хүлээвэл
+    //   «5 хүн хариу хүлээж байна» гэдгийг хэн ч мэдэхгүй өнгөрнө.
+    if (seeFc && state.fbChats === undefined) { state.fbChats = null; loadFbChats(true).then(() => render()); }
+    const fcC = document.getElementById('cnt-chats');
+    if (fcC) {
+      const n = seeFc ? chatWaiting(state.fbChats || [], Date.now()).length : 0;
+      fcC.textContent = n ? String(n) : '';
+    }
+  }
   // Зар & үр дүн — FB зарцуулалт ↔ борлуулалт.
   const adNav = document.getElementById('nav-ads');
   if (adNav) adNav.style.display = canSeeAds() ? '' : 'none';
@@ -4273,13 +4341,13 @@ function renderSidebar() {
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
-  _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
+  _setGrp('nav-group-sales', ['nav-chats', 'nav-missedcalls', 'nav-orders', 'nav-nomaad', 'nav-catering']);
   _setGrp('nav-group-inventory', ['nav-purchases', 'nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
   _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
-  _setGrp('nav-group-analytics', ['nav-reports']);
+  _setGrp('nav-group-analytics', ['nav-reports', 'nav-plan']);
   _setGrp('nav-group-my', ['nav-myattend', 'nav-myexpenses']);
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
@@ -4307,6 +4375,9 @@ function renderTitle() {
     ps_cost:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h5M9.5 14.5h5"/></svg>', 'Өртөг ба хөрөнгө', 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч'],
     ps_stock:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21V12h6v9"/></svg>', 'Нөөц ба салбар', 'Салбар бүрийн тоо — нярав нэг дэлгэцээс шинэчилнэ'],
     ads:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>', 'Зар & үр дүн', 'Facebook зарын зарцуулалт ба борлуулалтын тулгалт — аль зар үр дүнтэйг харуулна'],
+    chats: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>', 'Facebook чат', 'Хариу хүлээж буй яриа, ботын хариултын баталгаа'],
+    missedcalls: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>', 'Алдсан дуудлага', 'Хүлээгээд холбогдоогүй хүмүүс — буцаж залгах ажлын жагсаалт'],
+    plan:      ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 11l3 3 7-7"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', 'Төлөвлөгөө', 'Шийдвэрийг чи гаргана, бичилтийг агент хийнэ — хийгдсэнийг нь дарж хаа'],
     writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
@@ -4407,11 +4478,29 @@ function renderTaskList() {
     wrap.innerHTML = safeViewHtml(renderPurchases, 'Худалдан авалт');
     attachPurchasesHandlers();
     return;
+  } else if (state.view === 'chats') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderChats, 'Facebook чат');
+    attachChatsHandlers();
+    return;
+  } else if (state.view === 'missedcalls') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderMissedCalls, 'Алдсан дуудлага');
+    attachMissedCallsHandlers();
+    return;
   } else if (state.view === 'ads') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderAds, 'Зар & үр дүн');
     attachAdsHandlers();
+    return;
+  } else if (state.view === 'plan') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderPlan, 'Төлөвлөгөө');
+    attachPlanHandlers();
     return;
   } else if (state.view === 'writeoff') {
     if (tableHead) tableHead.style.display = 'none';
@@ -10058,7 +10147,7 @@ async function loadProductsCatalog() {
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
-      try { localStorage.setItem('mevProducts', JSON.stringify(rows)); } catch (e) { dataLoadFailed('loadProductsCatalog', e); }
+      cacheSet('mevProducts', JSON.stringify(rows));
       if (typeof render === 'function') render();
       return;
     } catch (e) { console.warn('Postgres products унш чадсангүй, Sheet fallback:', e.message); }
@@ -10071,7 +10160,7 @@ async function loadProductsCatalog() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     state.products = Array.isArray(data) ? data : (data.products || []);
-    try { localStorage.setItem('mevProducts', JSON.stringify(state.products)); } catch (e) { dataLoadFailed('loadProductsCatalog', e); }
+    cacheSet('mevProducts', JSON.stringify(state.products));
     if (typeof render === 'function') render();
   } catch(e) { console.warn('loadProductsCatalog fallback fail', e); }
 }
@@ -10095,6 +10184,72 @@ async function uploadProductImage(file) {
     }
   } catch (e) { console.warn('Зураг upload webhook амжилтгүй — base64 руу fallback:', e.message); }
   return b64;
+}
+
+// ── ПОСТЕР → FACEBOOK (2026-09-17) ──────────────────────────────────────────
+// Постерыг хуудсанд шууд нийтлэх. Бичвэрийг апп САНАЛ болгоод хүн засна.
+// ⛔ ХООСОН форм БИШ — бичвэр үргэлж бөглөгдсөн ирнэ. Хоосон форм энэ репод
+//   дандаа үхдэг; урьдчилан бичсэн саналыг засах нь нэмэлт ажил шаардахгүй.
+// Санал хоёр эх сурвалжтай:
+//   · бараанаас хийсэн постер → `adPostText` (зарын дэлгэцтэй ИЖИЛ функц)
+//   · өөрийн зурагтай постер → постерын гарчиг/тайлбар (хүн аль хэдийн бичсэн)
+//     + брэндийн утас/вэб.
+// Постын САЙТЫН холбоос. ⛔ Ажил гүйцэтгэлийн постерт ч ЗААВАЛ линк явна — эс
+//   бөгөөс пост ердөө «сайхан зураг» болж, сайт руу орох зам байхгүй, мөн хэн
+//   хаанаас ирснийг ХЭМЖИХ аргагүй (⟦ADS⟧ токен зөвхөн utm-тэй линкээр бичигддэг).
+// ⚠ Сайтад АНГИЛЛЫН хуудас БАЙХГҮЙ — бараа заагаагүй бол нүүр хуудас руу.
+// ⚠ Кампанит нэр = `work-<огноо>` (барааных бол sku) → GA4/⟦ADS⟧-д аль постын
+//   хүн захиалга болсныг ялгаж харна.
+function posterSiteUrl(P, day) {
+  const sku = String((P && (P.linkSku || P.productSku)) || '').trim();
+  if (sku) return adPostUrl({ sku });
+  const camp = 'work-' + String(day || '').trim();
+  return `https://mevent.mn/?utm_source=facebook&utm_medium=${AD_UTM_MEDIUM}&utm_campaign=${encodeURIComponent(camp.replace(/-$/, ''))}`;
+}
+// Хүний засварласан бичвэр дэх линкийн мөрийг ШИНЭ холбоосоор солино (бусад
+// бичвэрийг нь хөндөхгүй). Линкийн мөр огт байхгүй бол төгсгөлд нэмнэ.
+const _POST_LINK_RE = /^👉 (?:Дэлгэрэнгүй|Захиалга): .*$/m;
+function postSwapLink(text, url) {
+  const t = String(text == null ? '' : text);
+  const u = String(url || '').trim();
+  if (!u) return t;
+  const line = `👉 Дэлгэрэнгүй: ${u}`;
+  if (_POST_LINK_RE.test(t)) return t.replace(_POST_LINK_RE, line);
+  return t.trim() ? t.replace(/\s+$/, '') + '\n\n' + line : line;
+}
+function adPosterText(poster, prod, kit, link) {
+  if (prod) return adPostText(prod);
+  const P = poster || {}, k = kit || {};
+  const title = String(P.title || '').trim();
+  const sub = String(P.subtitle || '').trim();
+  if (!title && !sub) return '';
+  const out = [];
+  if (title) out.push(title);
+  if (sub) out.push('', sub);
+  const url = String(link || '').trim();
+  const tail = [];
+  if (k.phone) tail.push('📞 ' + String(k.phone).trim());
+  // Линк байвал вэб хаягийг ДАВТАХГҮЙ — нэг постод хоёр удаа mevent.mn бичигдэнэ.
+  if (k.website && !url) tail.push('🌐 ' + String(k.website).trim());
+  if (tail.length) out.push('', tail.join('\n'));
+  if (url) out.push('', `👉 Дэлгэрэнгүй: ${url}`);
+  return out.join('\n');
+}
+
+// Постерын canvas-ыг VPS рүү байршуулж НИЙТИЙН URL буцаана.
+// ⛔ base64 руу FALLBACK ХИЙХГҮЙ (`uploadProductImage`-ээс ялгаатай) — Facebook нь
+//   зургийг URL-ээр ТАТдаг тул data: URL ирвэл нийтлэл чимээгүй бүтэлгүйтэнэ.
+async function uploadPosterPng(canvas) {
+  const b64 = canvas.toDataURL('image/jpeg', 0.88);
+  const r = await fetchWithTimeout(
+    'https://n8n.nomaadcamp.com/webhook/mevent-upload-image?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: b64 }) },
+    30000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  const url = j && (j.url || (Array.isArray(j) && j[0] && j[0].url));
+  if (!url || !/^https?:\/\//.test(url)) throw new Error('Байршуулагчаас хаяг ирсэнгүй');
+  return url;
 }
 
 // Видеог VPS-д (n8n.nomaadcamp.com/video/) байршуулж hosted URL авна. base64-ээр илгээнэ.
@@ -11435,9 +11590,12 @@ async function attSaveManualOut(body, keepDay) {
 // хэлэхээ мартвал тэр өдөр 0 цаг үлдэж байв. Одоо ажилтан «Миний ирц»-ээс
 // хүсэлт гаргаж, удирдлага нэг товчоор батална.
 //
-// Хадгалалт = `app_config['att_requests']` (workStart/nextArrival-тай ижил хэв маяг).
-// Шинэ хүснэгт үүсгээгүй: үүлэн сессээс DB migration хийх боломжгүй, бас хүсэлт
-// сард хэдхэн ширхэг. Түлхүүр = «утас|өдөр» тул нэг өдөрт нэг хүсэлт.
+// Хадгалалт = `att_requests` ХҮСНЭГТ (`db/att_requests.sql`, 2026-09-18).
+// ⛔ Өмнө нь `app_config['att_requests']` гэсэн НЭГ JSON мөр байв — зэрэг бичилт
+//    бие биенээ дарах, бүх ажилтан бусдын хүсэлтийг унших, 120 хоногийн дараа
+//    түүх бүрмөсөн хасагдах гурван нүхтэй. Мөр бүр өөрийн эрхтэй болсон:
+//    ажилтан ӨӨРИЙНХӨӨ хүсэлтийг л харна, батлах нь `attendance.edit` эрхтэйд.
+// Түлхүүр = «утас|өдөр» тул нэг өдөрт нэг хүсэлт.
 const ATT_REQ_MAX_AGE_D = 45;   // үүнээс хуучин өдрийг хүсэлтээр нээхгүй (цалин хаагдсан)
 const ATT_REQ_KEEP_D = 120;     // blob хязгааргүй өсөхөөс сэргийлж хуучныг хусна
 function attReqKey(memberKey, day) { return String(memberKey || '').replace(/\D/g, '') + '|' + String(day || ''); }
@@ -11478,13 +11636,43 @@ function attReqPrune(map, today) {
   });
   return out;
 }
-// Уншаад→нэгтгээд→бичнэ. Нэг blob тул зэрэг бичилт бие биенээ дардаг —
-// хадгалахын өмнө сервэрээс ШИНЭЭР уншиж нэгтгэснээр эрсдэлийг багасгана.
+// Сервэрээс хүсэлтүүдийг уншина. Шийдэгдсэн хуучныг татахгүй, ГЭХДЭЭ
+// хүлээгдэж буйг ХЭЗЭЭ Ч хасахгүй — хариу аваагүй хүний хүсэлт чимээгүй алга
+// болох нь хамгийн муу үр дүн. Мөр DB-д үлдэнэ (устгах эрх байхгүй).
+async function loadAttRequests(force) {
+  if (state.attRequests && !force) return state.attRequests;
+  try {
+    const since = addDays(todayStr(), -ATT_REQ_KEEP_D);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/att_requests?select=id,req&or=(day.gte.${since},status.eq.pending)&limit=2000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    const map = {};
+    (Array.isArray(rows) ? rows : []).forEach(x => { if (x && x.id && x.req) map[x.id] = x.req; });
+    state.attRequests = attReqPrune(map);
+    return state.attRequests;
+  } catch (e) {
+    dataLoadFailed('Ирцийн хүсэлт', e);
+    state.attRequests = state.attRequests || {};
+    return state.attRequests;
+  }
+}
+// Нэг хүсэлт = нэг мөр. Бусад хүсэлтийг хөндөхгүй тул зэрэг бичилт дарахгүй.
+// ⚠ Багана нь `req`-ээс DB-ийн trigger-ээр гарна — хоёр эх сурвалж зөрөхгүй.
 async function attReqWrite(k, entry) {
-  const fresh = await loadAppConfig('att_requests');
-  const map = attReqPrune(Object.assign({}, (fresh && typeof fresh === 'object') ? fresh : {}, attReqAll()));
-  if (entry) map[k] = entry; else delete map[k];
-  await saveAppConfig('att_requests', map);
+  if (!entry) return attReqAll();
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/att_requests?on_conflict=id`, {
+    method: 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+               'Content-Type': 'application/json',
+               Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ id: k, member_key: String(entry.key || '').replace(/\D/g, ''),
+                           day: entry.day, status: entry.status || 'pending', req: entry }),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+  const map = Object.assign({}, attReqAll());
+  map[k] = entry;
   state.attRequests = map;
   return map;
 }
@@ -11857,7 +12045,7 @@ function renderAttendance() {
   // Хоцролт тооцоолол: ажил эхлэх цаг + явахдаа сонгосон «маргааш ирэх цаг»
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
-  if (state.attRequests === undefined) { state.attRequests = null; loadAppConfig('att_requests').then(v => { state.attRequests = (v && typeof v === 'object') ? v : {}; render(); }); }
+  if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
       <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
       <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
@@ -12032,7 +12220,7 @@ async function loadMyAttendance() {
 }
 function renderMyAttend() {
   const me = findMember(state.me) || {};
-  if (state.attRequests === undefined) { state.attRequests = null; loadAppConfig('att_requests').then(v => { state.attRequests = (v && typeof v === 'object') ? v : {}; render(); }); }
+  if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta
   const recs = state.myAttendance || [];
   const today = todayStr();
@@ -12702,6 +12890,8 @@ const PERM_MENUS = [
       { key: 'attendance.edit', label: 'Гарсан цагийг гараар оруулах' } ] },
   { key: 'access',      label: 'Ажилчид (удирдах)', actions: [
       { key: 'access.delegate', label: 'Доорхийн эрх удирдах' } ] },   // ажилтан нэмэх/засах; эрх засах: CEO бүгдийг, delegate=доорхио
+  { key: 'missedcalls', label: 'Алдсан дуудлага', actions: [] },   // буцаж залгах ажлын жагсаалт
+  { key: 'chats',       label: 'Facebook чат', actions: [] },      // хариу хүлээж буй яриа + ботын баталгаа
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
@@ -12748,7 +12938,8 @@ const PERM_MENUS = [
   { key: 'coosalary',   label: 'COO цалин',       actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
-  { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },   // FB зарцуулалт ↔ борлуулалт
+  { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },
+  { key: 'plan',        label: 'Төлөвлөгөө',           actions: [] },   // шийдвэр — агент бичнэ, CEO хаана   // FB зарцуулалт ↔ борлуулалт
   { key: 'vat',         label: 'НӨАТ тайлан',          actions: [] },
   { key: 'documents',   label: 'Баримт бичиг',         actions: [
       { key: 'documents.edit', label: 'Баримт нэмэх / устгах' } ] },
@@ -12773,10 +12964,10 @@ const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', '
   'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
-  [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
-  [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
+  [/эвент/, { views: ['orders', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
+  [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
   // Агуулахын АХЛАХ / нярав — бараа засах эрхтэй (үнэ, өртөг, нөөц)
   [/нярав|агуулахын\s*ахлах|агуулахын\s*менежер/, { views: ['orders', 'products', 'hourly'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch', 'products.edit'] }],
   // Энгийн агуулахын ажилтан — бараагаа ХАРНА, засахгүй (үнэ/өртөг санхүүгийн мэдээлэл)
@@ -12784,7 +12975,7 @@ const ROLE_PRESETS = [
   [/цэвэрл/, { views: ['orders'], actions: ['orders.clean'] }],           // захиалга ХАРНА (том зураглал) + өөрийн шат (цэвэрлэх)
   [/жолооч|хүргэ|түгээ/, { views: ['orders'], actions: ['orders.clean', 'orders.deliver', 'orders.setup'] }], // захиалга ХАРНА + өөрийн шат (хүргэх/угсрах)
   [/бармен|тогооч|катеринг|кейтеринг/, { views: ['catering', 'orders'], actions: ['orders.clean'] }],
-  [/маркетинг|market|дизайн|контент/, { views: ['marketing'], actions: [] }],
+  [/маркетинг|market|дизайн|контент/, { views: ['marketing', 'missedcalls'], actions: [] }],
 ];
 function rolePresetFor(role) {
   const r = String(role || '').trim().toLowerCase(); if (!r) return null;
@@ -13068,7 +13259,7 @@ async function loadEmployeeAliases() {
       if (norm) map[kind + ':' + norm] = a.canon;
     });
     state.empAliases = map;
-    try { localStorage.setItem('empAliases', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadEmployeeAliases', e); }
+    cacheSet('empAliases', JSON.stringify(map));
   } catch (e) { console.warn('loadEmployeeAliases', e); }
 }
 async function loadMemberPerms() {
@@ -13081,7 +13272,7 @@ async function loadMemberPerms() {
     const map = {};
     rows.forEach(p => { if (p && p.person_key) map[canonKey(p.person_key)] = p.perms || {}; });   // хуучин түлхүүрээр хадгалагдсан эрх алдагдахгүй
     state.memberPerms = map;
-    try { localStorage.setItem('memberPerms', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadMemberPerms', e); }
+    cacheSet('memberPerms', JSON.stringify(map));
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadMemberPerms', e); }
 }
@@ -13113,7 +13304,7 @@ async function loadMemberBranches() {
     const map = {};
     (await r.json()).forEach(x => { if (x && x.person_key) map[x.person_key] = Array.isArray(x.branches) ? x.branches : []; });
     state.memberBranches = map;
-    try { localStorage.setItem('memberBranches', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadMemberBranches', e); }
+    cacheSet('memberBranches', JSON.stringify(map));
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadMemberBranches', e); }
 }
@@ -14178,7 +14369,7 @@ async function loadBrandKit() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return; const rows = await r.json(); const d = rows && rows[0]; if (!d) return;
     const k = {}; BRAND_FIELDS.forEach(f => k[f] = d[f] || ''); state.brandKit = k;
-    try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) { dataLoadFailed('loadBrandKit', _); }
+    cacheSet('brandKit', JSON.stringify(k));
     if (k.logo) { const li = new Image(); li.onload = () => { k._logoImg = li; if (state.view === 'marketing') _mkRedraw(); }; li.src = k.logo; }
     if (state.view === 'marketing' && typeof render === 'function') render();
   } catch (e) { console.warn('loadBrandKit', e); }
@@ -14251,13 +14442,15 @@ function drawPoster(canvas, opts) {
     if (state._mkLogoH) { const lw = Math.round(markH * (state._mkLogoH.width / state._mkLogoH.height)); ctx.drawImage(state._mkLogoH, M, hTop, lw, markH); }
     else if (state._mkMark) { const mw = Math.round(markH * (state._mkMark.width / state._mkMark.height)); ctx.drawImage(state._mkMark, M, hTop, mw, markH); ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink; const wm = Math.round(W * 0.03); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02); ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), M + mw + Math.round(W * 0.02), hTop + markH / 2 + 1); clrLS(); }
     // Trust badge (баруун дээд) — B2B нөөцийн хэмжээ + брэнд өнгө pop (түрээс мессежийг дээд талд авчирна)
-    { const bt = kit.posterStat || '250+ түрээсийн бараа';
-      const bs = Math.round(W * 0.019); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
+    { const bt = kit.posterStat || 'ТҮРЭЭС';
+      // ⚠ Badge-ийн өндөр (bs + 2*bpy) нь `markH` (0.057W)-аас ХЭТЭРВЭЛ логоны
+      //   мөрнөөс цухуйна — badge нь логоны төвөөр байрладаг. Одоо 0.050W.
+      const bs = Math.round(W * 0.028); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
       const bgap = Math.round(W * 0.006);   // "250+" ↔ текст завсар (premium)
       const sp = bt.indexOf(' ');
       const p1 = sp > 0 ? bt.slice(0, sp) : bt, p2 = sp > 0 ? bt.slice(sp + 1) : '';
       const w1 = ctx.measureText(p1).width, w2 = p2 ? ctx.measureText(p2).width : 0;
-      const bpx = Math.round(W * 0.024), bpy = Math.round(W * 0.009);   // капсул нарийн + намхан (зураг/нэр гол болгов)
+      const bpx = Math.round(W * 0.028), bpy = Math.round(W * 0.011);   // томссон бичигт тохируулсан капсул
       const inner = Math.round(w1 + (p2 ? bgap + w2 : 0));
       const bw = inner + bpx * 2, bh = bs + bpy * 2;
       const bx = W - M - bw, by = hTop + markH / 2 - bh / 2;   // badge төв = логоны төв (нэг тэнхлэг)
@@ -14523,6 +14716,9 @@ function renderMarketing() {
   const _mkByCat = {};
   _mkRent.forEach(p => { (_mkByCat[p.category || 'Бусад'] = _mkByCat[p.category || 'Бусад'] || []).push(p); });
   const _mkOptLbl = p => p.name || '';
+  // 🔗 Хаашаа чиглүүлэх — постын бичвэрт орох сайтын холбоос.
+  const _mkLinkCur = String(P.linkSku || P.productSku || '');
+  const mkLinkSelect = `<select id="mk-link-sku" style="${fld}"><option value="">🏠 Сайтын нүүр — mevent.mn</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}"${String(p.sku) === _mkLinkCur ? ' selected' : ''}>${escapeHtml(_mkOptLbl(p))}</option>`).join('')}</optgroup>`).join('')}</select>`;
   const mkProdSelect = `<select id="mk-prod-sel" style="${fld}"><option value="">📂 Бүлгээр сонгох (категори)…</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(_mkOptLbl(p))}${p.price ? ' · ' + fmtMoney(Number(p.price)) : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
   return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
@@ -14585,13 +14781,22 @@ function renderMarketing() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="font-size:11px;color:var(--muted);width:64px;">Байрлал ↔</span><input id="mk-posx" type="range" min="0" max="100" value="${Math.round((P.imgX == null ? 0.5 : P.imgX) * 100)}" style="flex:1;"></div>
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Богино уриа / hook (сонголт — хоосон бол зөвхөн нэр)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="ж: Тайзны шоуг мэргэжлийн түвшинд" style="${fld}">` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" style="${fld}">`}
+        <label style="font-size:11.5px;color:var(--muted);">🔗 Хаашаа чиглүүлэх</label>
+        ${mkLinkSelect}
+        <div class="mk-hint">Постын бичвэрт энэ холбоос орно: <span class="mk-url">${escapeHtml(posterSiteUrl(P, todayStr()))}</span></div>
         ${P.template === 'product' && P.productSku ? `<button class="btn btn-sm" id="mk-save-prod" style="width:100%;border-color:#16a34a;color:#16a34a;margin-top:2px;">💾 Нэр/тайлбарыг бараанд хадгалах (агуулах + сайт)</button><div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Дээрх нэр, тайлбар барааны бүртгэлд бичигдэж, агуулах болон mevent.mn сайтад шинэчлэгдэнэ.</div>` : ''}
       </div>
     </div>
     <div style="margin-top:18px;text-align:center;">
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Урьдчилан харах</div>
       <canvas id="mk-canvas" style="max-width:100%;width:${P.size === 'story' ? '300' : (P.size === 'wide' ? '460' : '380')}px;height:auto;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18);background:#111;"></canvas>
-      <div style="margin-top:12px;"><button class="btn btn-primary" id="mk-download" style="padding:9px 22px;">⬇ PNG татах</button></div>
+      <div class="mk-acts"><button class="btn btn-primary" id="mk-download">⬇ PNG татах</button></div>
+      <div class="mk-pub">
+        <div class="mk-pub-h">📣 Facebook-т нийтлэх</div>
+        <div class="mk-hint">Доорх бичвэрийг апп санал болголоо — засаж болно.</div>
+        <textarea id="mk-post-text" class="mk-pub-t" rows="7" placeholder="Постын бичвэр"></textarea>
+        <button class="btn" id="mk-publish">📣 M event хуудсанд нийтлэх</button>
+      </div>
     </div>
   </div>`;
 }
@@ -14645,6 +14850,8 @@ function attachMarketingHandlers() {
     P.template = 'product';
     P.title = p.name || '';
     P.productSku = p.sku || '';   // энэ барааг дараа шинэчлэхэд
+    P.linkSku = '';                // холбоос энэ бараа руу буцна (хуучин сонголт хоцрохгүй)
+    P.body = '';                   // шинэ бараа = шинэ пост, хуучин бичвэр хоцрохгүй
     P.code = p.code || '';   // барааны код (M-xxx) — постерт харуулна
     P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5;   // шинэ зурагт тохиргоо reset
     // ТАЙЛБАР АВТО ДҮҮРГЭХГҮЙ — постер цэвэр (зураг+нэр+CTA). Хүсвэл богино уриа/hook гараар нэмнэ.
@@ -14654,6 +14861,7 @@ function attachMarketingHandlers() {
     else { P.img = null; render(); }
     showToast('Бараа орлоо ✓', 'success', 1500); render();
   };
+  document.getElementById('mk-link-sku')?.addEventListener('change', e => { P.linkSku = e.target.value || ''; render(); });
   document.getElementById('mk-prod-sel')?.addEventListener('change', e => {
     const sku = e.target.value; if (!sku) return;
     _mkLoadProduct((state.products || []).find(x => x && x.sku === sku));
@@ -14666,6 +14874,7 @@ function attachMarketingHandlers() {
   document.getElementById('mk-img')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return; const r = new FileReader();
     P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5; P.productSku = ''; P.code = '';   // custom зураг = каталогийн бараа биш
+    P.body = '';   // шинэ зураг = шинэ пост
     r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; render(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
   });
   document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
@@ -14687,6 +14896,47 @@ function attachMarketingHandlers() {
     // Бүтэн барааны бичлэгийг дамжуулна (saveProduct merge-safe, дутуу талбар 0 болгодог тул)
     await saveProduct({ ...prod, name, description: desc });
     showToast('Бараа шинэчлэгдлээ — агуулах + сайтад орлоо ✓', 'success', 2800);
+  });
+  // Саналыг бөглөнө. Хүн засаж эхэлсэн бол ДАХИН БҮҮ ДАР — гараар оруулсан
+  // бичвэрийг постер дахин зурах бүрд устгавал хүн ажлаа алдана.
+  const _mkFillPost = () => {
+    const ta = document.getElementById('mk-post-text');
+    if (!ta || ta.dataset.touched === '1') return;
+    const prod = P.productSku ? (state.products || []).find(x => x && x.sku === P.productSku) : null;
+    const url = posterSiteUrl(P, todayStr());
+    // Хүн засаж эхэлсэн бичвэр `P.body`-д үлдэнэ — дэлгэц дахин зурагдахад (хэмжээ,
+    // загвар, холбоос солиход) ажил нь алга болохгүй. Зөвхөн ЛИНКИЙН мөр шинэчлэгдэнэ.
+    ta.value = P.body ? postSwapLink(P.body, url) : adPosterText(P, prod, state.brandKit || {}, url);
+  };
+  document.getElementById('mk-post-text')?.addEventListener('input', e => { e.target.dataset.touched = '1'; P.body = e.target.value; });
+  _mkFillPost();
+
+  // ⛔ Гадагш нийтлэгдэх тул `showConfirm`-гүй байж БОЛОХГҮЙ.
+  document.getElementById('mk-publish')?.addEventListener('click', async () => {
+    const cv = document.getElementById('mk-canvas');
+    const ta = document.getElementById('mk-post-text');
+    const body = String((ta && ta.value) || '').trim();
+    if (!cv) return;
+    if (!body) { showToast('Постын бичвэр хоосон байна', 'warn', 2500); return; }
+    if (!(await showConfirm(`Энэ постерыг M event хуудсанд нийтлэх үү?\n\n${body}`,
+      { title: 'Facebook-т нийтлэх', okText: 'Нийтлэх', cancelText: 'Болих' }))) return;
+    const btn = document.getElementById('mk-publish');
+    if (btn) { btn.disabled = true; btn.textContent = 'Илгээж байна…'; }
+    try {
+      const prod = P.productSku ? (state.products || []).find(x => x && x.sku === P.productSku) : null;
+      const img = await uploadPosterPng(cv);
+      await saveAdPost({
+        id: 'post-' + Date.now().toString(36) + '-' + String(P.productSku || 'poster').toLowerCase(),
+        sku: P.productSku || null, status: 'approved', body, image_url: img,
+        link_url: posterSiteUrl(P, todayStr()), created_by: state.me || null,
+        approved_at: new Date().toISOString(), approved_by: state.me || null,
+      });
+      showToast('Дараалалд орлоо — 10 минутын дотор нийтлэгдэнэ ✓', 'success', 4000);
+    } catch (e) {
+      showToast('Илгээгдсэнгүй: ' + e.message, 'error', 5000);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '📣 M event хуудсанд нийтлэх'; }
+    }
   });
   document.getElementById('mk-download')?.addEventListener('click', () => {
     const cv = document.getElementById('mk-canvas'); if (!cv) return;
@@ -14820,7 +15070,7 @@ async function loadRolePerms() {
     const map = {};
     rows.forEach(p => { if (p && p.role) map[normRole(p.role)] = p.perms || {}; });
     state.rolePerms = map;
-    try { localStorage.setItem('rolePerms', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadRolePerms', e); }
+    cacheSet('rolePerms', JSON.stringify(map));
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadRolePerms', e); }
 }
@@ -14865,7 +15115,7 @@ async function loadSalaries() {
     const rows = await r.json(); const map = {}, ded = {};
     rows.forEach(p => { if (p && p.person_key) { const k = canonKey(p.person_key); map[k] = Number(p.amount) || 0; ded[k] = p.deduct !== false; } });
     state.salaries = map; state.salaryDeduct = ded;
-    try { localStorage.setItem('salaries', JSON.stringify(map)); localStorage.setItem('salaryDeduct', JSON.stringify(ded)); } catch (e) { dataLoadFailed('loadSalaries', e); }
+    cacheSet('salaries', JSON.stringify(map)); cacheSet('salaryDeduct', JSON.stringify(ded));
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadSalaries', e); }
 }
@@ -15813,7 +16063,7 @@ async function loadNomaadOrders() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     state.nomaadOrders = Array.isArray(data.orders) ? data.orders : [];
-    try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch (e) { dataLoadFailed('loadNomaadOrders', e); }
+    cacheSet('nomaadOrders', JSON.stringify(state.nomaadOrders));
     if (typeof render === 'function') render();
     loadNomaadPayments();   // төлбөрийн лог зэрэгцээ татна
   } catch(e) { console.warn('loadNomaadOrders fail', e); }
@@ -18447,7 +18697,7 @@ function nomaadContractHtml(o) {
     const head = `<tr><td colspan="3" class="cat">${escapeHtml((c || '').toUpperCase())}</td></tr>`;
     const rows = grouped[c].map(it => {
       const tot = itTotal(it), incl = it.included || (tot === 0 && !isPkg(it));
-      const price = isPkg(it) ? fmtMoney(tot) : (incl ? '<span style="color:#15803d">Багцад багтсан</span>' : fmtMoney(tot));
+      const price = isPkg(it) ? fmtMoney(tot) : (incl ? '<span class="incl">Багцад багтсан</span>' : fmtMoney(tot));
       const q = Number(it.qty) || 0, u = escapeHtml(it.unit || '');
       const note = it.note ? `<div class="inote">${escapeHtml(it.note)}</div>` : '';
       return `<tr><td>${escapeHtml(it.name || '')}${note}</td><td class="ctr">${q ? `${q}${u ? ' ' + u : ''}` : ''}</td><td class="rt">${price}</td></tr>`;
@@ -18455,7 +18705,7 @@ function nomaadContractHtml(o) {
     return head + rows;
   }).join('');
   const svcTable = items.length
-    ? `<table class="svc"><tr><th>Үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Дүн</th></tr>${svcRows}<tr><td colspan="2" class="rt" style="font-weight:700">Нийт дүн (НӨАТ багтсан):</td><td class="rt" style="font-weight:700">${fmtMoney(total)}</td></tr></table>`
+    ? `<table class="svc"><tr><th>Үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Дүн</th></tr>${svcRows}<tr><td colspan="2" class="rt sum">Нийт дүн (НӨАТ багтсан):</td><td class="rt sum">${fmtMoney(total)}</td></tr></table>`
     : '<div class="muted">(Захиалгад үйлчилгээний дэлгэрэнгүй жагсаалт оруулаагүй)</div>';
   const seal = ' &nbsp;&nbsp; <span class="seal">( Тамга )</span>';
   const sigCust = `<div class="sg-role">ЗАХИАЛАГЧ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}<br>Хаяг: …………………………<br>Утас: ……………………`;
@@ -18493,6 +18743,10 @@ function nomaadContractHtml(o) {
   .ctr{text-align:center;white-space:nowrap}
   .rt{text-align:right;white-space:nowrap}
   .inote{font-size:11px;color:#666;margin-top:1px}
+  .sum{font-weight:700}
+  .incl{color:#15803d}
+  .tbnote{font-size:12px}
+  .ind{margin-left:16px}
   .total{font-size:15px;font-weight:700;margin:10px 0}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
   .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff}
@@ -18500,7 +18754,7 @@ function nomaadContractHtml(o) {
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head>
 <body>
-<div class="toolbar"><button onclick="ctWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button> &nbsp;<span class="muted" style="font-size:12px">…………… талбаруудыг энд бичиж засаж болно</span></div>
+<div class="toolbar"><button onclick="ctWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button> &nbsp;<span class="muted tbnote">…………… талбаруудыг энд бичиж засаж болно</span></div>
 <div contenteditable="true">
   ${topSig}
   <div class="rule-t"></div>
@@ -18541,10 +18795,10 @@ function nomaadContractHtml(o) {
   <h2>ТАВ. ТАЛУУДЫН ХҮЛЭЭХ ХАРИУЦЛАГА</h2>
   <p><b>5.1</b> Майхан кемпийн орчинд захиалагчийн зочин, үйлчлүүлэгч нар өөрсдийн үнэт эдлэл, зургийн аппарат, камер, цүнх болон бусад эд зүйлийг өөрсдөө хариуцах бөгөөд алдаж үрэгдүүлсэн тохиолдолд Гүйцэтгэгч хариуцлага хүлээхгүй, энэхүү асуудлыг зохицуулахад хамтран ажиллана.</p>
   <p><b>5.2</b> Захиалагч тал гэрээг цуцалсан тохиолдолд төлбөрийн буцаалт дараах хуваарийн дагуу хийгдэнэ:</p>
-  <p style="margin-left:16px"><b>а)</b> Арга хэмжээ эхлэхээс 14-өөс дээш хоногийн өмнө цуцалбал захиалагчийн төлсөн төлбөрийг бүрэн (100%) буцаана.</p>
-  <p style="margin-left:16px"><b>б)</b> 7-13 хоногийн өмнө цуцалбал төлсөн төлбөрийн 50%-ийг буцаана.</p>
-  <p style="margin-left:16px"><b>в)</b> 7 хоногийн дотор цуцалбал төлсөн төлбөрийг буцаахгүй бөгөөд гэрээгээр шаардагдах үлдэгдэл төлбөрийг шаардахгүй.</p>
-  <p style="margin-left:16px"><b>г)</b> Гэнэтийн давагдашгүй хүчин зүйл (6.1)-ийн улмаас цуцлах тохиолдолд цуцлалт биш аяллын огноог талуудын харилцан тохиролцооны дагуу шилжүүлнэ.</p>
+  <p class="ind"><b>а)</b> Арга хэмжээ эхлэхээс 14-өөс дээш хоногийн өмнө цуцалбал захиалагчийн төлсөн төлбөрийг бүрэн (100%) буцаана.</p>
+  <p class="ind"><b>б)</b> 7-13 хоногийн өмнө цуцалбал төлсөн төлбөрийн 50%-ийг буцаана.</p>
+  <p class="ind"><b>в)</b> 7 хоногийн дотор цуцалбал төлсөн төлбөрийг буцаахгүй бөгөөд гэрээгээр шаардагдах үлдэгдэл төлбөрийг шаардахгүй.</p>
+  <p class="ind"><b>г)</b> Гэнэтийн давагдашгүй хүчин зүйл (6.1)-ийн улмаас цуцлах тохиолдолд цуцлалт биш аяллын огноог талуудын харилцан тохиролцооны дагуу шилжүүлнэ.</p>
   <p><b>5.3</b> Захиалагч нь гэрээнд заасан хугацаанд төлбөрөө төлөөгүй тохиолдолд хугацаа хэтрүүлсэн хоног тутамд төлбөл зохих үнийн дүнгийн 0.3 хувьтай тэнцэх хэмжээний алдангийг Гүйцэтгэгчид төлнө.</p>
   <p><b>5.4</b> Учирсан хохирол гэдэгт талууд гэрээний үүргээ зохих ёсоор биелүүлээгүйн улмаас нөгөө талд учирсан нэмэлт зардал, илүү төлбөр, гэрээний үүргээ зохих ёсоор биелүүлсэн бол гарахгүй байсан зардал зэрэг хохирлыг тооцно.</p>
   <p><b>5.5</b> Гүйцэтгэгч нь майхан кемп үйлчилгээний заавар, зөвлөгөө, майхан болон бусад эд хэрэгсэл, төхөөрөмжтэй харьцах зааварчилгааг өгнө.</p>
@@ -18661,7 +18915,7 @@ function meventContractHtml(o) {
   const mvTable = mvTotal > 0 ? `<div class="mv-h">Нөхөн төлбөрийн үнэлгээ (заалт 7.3)</div>
     <table class="svc"><tr><th class="ctr">№</th><th>Бараа</th><th class="ctr">Тоо</th><th class="rt">Нэгжийн үнэлгээ</th><th class="rt">Дүн</th></tr>
     ${mvRows.map((r, i) => `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="ctr">${r.qty}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.mv) : '—'}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.line) : '—'}</td></tr>`).join('')}
-    <tr><td colspan="4" class="rt" style="font-weight:700">Нийт үнэлгээ:</td><td class="rt" style="font-weight:700">${fmtMoney(mvTotal)}</td></tr></table>` : '';
+    <tr><td colspan="4" class="rt sum">Нийт үнэлгээ:</td><td class="rt sum">${fmtMoney(mvTotal)}</td></tr></table>` : '';
 
   const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="ctr">НӨАТ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
     <table class="totb"><tbody>
@@ -18706,6 +18960,10 @@ function meventContractHtml(o) {
   .totb .tb-total td{font-weight:700;font-size:13.5px;border-top:2px solid #333}
   .vat-note{text-align:right;font-size:12px;color:#555;margin:4px 0 0}
   .mv-h{font-weight:700;font-size:12.5px;margin:16px 0 4px}
+  .sum{font-weight:700}
+  .tbnote{font-size:12px}
+  .intro{margin-top:8px}
+  .sigh{margin-top:12px;font-weight:700}
   .ctr{text-align:center;white-space:nowrap}
   .rt{text-align:right;white-space:nowrap}
   .pb{page-break-before:always}
@@ -18714,7 +18972,7 @@ function meventContractHtml(o) {
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head>
 <body>
-<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button> <span class="muted" style="font-size:12px">…… талбаруудыг шууд бичиж засаж болно</span></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button> <span class="muted tbnote">…… талбаруудыг шууд бичиж засаж болно</span></div>
 <div contenteditable="true">
   <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
   <table class="chead"><tr>
@@ -18726,7 +18984,7 @@ function meventContractHtml(o) {
 
   ${itemTable}
 
-  <p style="margin-top:8px">Энэхүү гэрээг нэг талаас ${C.reg} регистрийн дугаартай ${C.name} ("Түрээслүүлэгч" гэх), нөгөө талаас ${_isOrg ? (_ci.reg ? escapeHtml(_ci.reg) + ' регистрийн дугаартай ' : '') + '"' + cust + '" ("Хэрэглэгч" гэх), түүнийг төлөөлж ' + (_rep ? escapeHtml(_rep) : '…………………………') : '"' + cust + '" ("Хэрэглэгч" гэх)'} (хамтад нь "Талууд" гэх) нар дараах нөхцөлүүдийг харилцан тохиролцож байгуулав.</p>
+  <p class="intro">Энэхүү гэрээг нэг талаас ${C.reg} регистрийн дугаартай ${C.name} ("Түрээслүүлэгч" гэх), нөгөө талаас ${_isOrg ? (_ci.reg ? escapeHtml(_ci.reg) + ' регистрийн дугаартай ' : '') + '"' + cust + '" ("Хэрэглэгч" гэх), түүнийг төлөөлж ' + (_rep ? escapeHtml(_rep) : '…………………………') : '"' + cust + '" ("Хэрэглэгч" гэх)'} (хамтад нь "Талууд" гэх) нар дараах нөхцөлүүдийг харилцан тохиролцож байгуулав.</p>
 
   <h2>НЭГ. ГЭРЭЭНИЙ ЗҮЙЛ</h2>
   <p><b>1.1.</b> Түрээслүүлэгч нь дээр заасан бараа, төхөөрөмжийг Хэрэглэгчид түр хугацаагаар ашиглуулна. Хэрэглэгч зөвхөн ашиглах эрхтэй бөгөөд өмчлөх эрх шилжихгүй.</p>
@@ -18794,7 +19052,7 @@ function meventContractHtml(o) {
   <p><b>12.2.</b> Гэрээ нь Талууд гарын үсэг зурж, гэрээнд заасан урьдчилгаа буюу бүтэн төлбөр төлөгдсөн өдрөөс хүчин төгөлдөр болно.</p>
   <p><b>12.3.</b> Энэхүү гэрээг монгол хэл дээр 2 хувь үйлдэж, Талууд тус бүр нэг хувийг хадгална. Хувь тус бүр хууль зүйн адил хүчинтэй.</p>
 
-  <p style="margin-top:12px;font-weight:700">ГЭРЭЭ БАЙГУУЛСАН</p>
+  <p class="sigh">ГЭРЭЭ БАЙГУУЛСАН</p>
   <table class="sigt"><tr>
     <td><div class="sg-role">ТҮРЭЭСЛҮҮЛЭГЧ</div>Бараа, төхөөрөмжийн түрээс борлуулалт хариуцсан ажилтан:<br>Овог нэр: …………………………<br>Гарын үсэг: ________________ <span class="seal">( Тамга )</span></td>
     <td class="r"><div class="sg-role">ХЭРЭГЛЭГЧ</div>${_isOrg ? '<b>' + cust + '</b><br>Албан тушаал: …………………………<br>' : ''}Овог нэр: ${_rep ? escapeHtml(_rep) : '…………………………'}<br>Гарын үсэг: ________________${_isOrg ? ' <span class="seal">( Тамга )</span>' : ''}</td>
@@ -19214,14 +19472,13 @@ function openNomaadPrepChecklist(quoteNo) {
   document.getElementById('na-title').textContent = `Бэлтгэл · ${o.quote_no}`;
   document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${nomaadDatePlain(o.date_start)}`;
   const itemsEl = document.getElementById('na-items');
-  const secHdr = (txt) => `<div style="font-size:12px;font-weight:800;color:var(--text);background:var(--bg-soft,#eef2f7);padding:8px 10px;margin:14px -4px 6px;border-radius:6px;">${escapeHtml(txt)}</div>`;
-  const grpHdr = (txt) => `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(txt)}</div>`;
+  const secHdr = (txt) => `<div class="na-sec">${escapeHtml(txt)}</div>`;
+  const grpHdr = (txt) => `<div class="na-grp">${escapeHtml(txt)}</div>`;
   const pickBtn = (type, idx, owner, exTask) => {
-    const style = owner ? 'color:var(--text);border-style:solid;font-weight:600;' : 'color:var(--muted);border-style:dashed;font-weight:400;';
     const exId = exTask ? exTask.id : '';
-    return `<button type="button" class="na-pick" data-na-type="${type}" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${exTask ? '1' : ''}" data-na-task-id="${escapeHtml(exId)}" data-na-orig="${owner ? escapeHtml(owner) : ''}" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);cursor:pointer;${style}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>`;
+    return `<button type="button" class="na-pick${owner ? ' is-set' : ''}" data-na-type="${type}" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${exTask ? '1' : ''}" data-na-task-id="${escapeHtml(exId)}" data-na-orig="${owner ? escapeHtml(owner) : ''}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>`;
   };
-  const row = (label, meta, btn) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);"><span style="flex:1;font-size:13px;min-width:0;">${label}${meta}</span>${btn}</div>`;
+  const row = (label, meta, btn) => `<div class="na-row"><span class="na-row-label">${label}${meta}</span>${btn}</div>`;
   // 1) Стандарт чеклист (үүссэнийг таниж тэмдэглэнэ)
   const byGroup = {};
   NOMAAD_PREP_CHECKLIST.forEach((c, idx) => { (byGroup[c.group] = byGroup[c.group] || []).push({ c, idx }); });
@@ -19230,7 +19487,7 @@ function openNomaadPrepChecklist(quoteNo) {
   let html = secHdr('1. Үйл ажиллагааны чеклист');
   html += Object.keys(byGroup).map(g => grpHdr(g) + byGroup[g].map(({ c, idx }) => {
     const ex = findExisting(c);
-    const meta = `<span style="color:var(--muted);font-size:11px;">${c.deadline ? '· ' + escapeHtml(c.deadline) : ''}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b style="color:var(--ok)">✓ үүссэн</b>' : ''}</span>`;
+    const meta = `<span class="na-meta">${c.deadline ? '· ' + escapeHtml(c.deadline) : ''}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b class="na-ok">✓ үүссэн</b>' : ''}</span>`;
     return row(escapeHtml(c.title) + ' ', meta, pickBtn('prep', idx, ex ? (ex.assignee || '') : '', ex));
   }).join('')).join('');
   // 2) Захиалгын бараа (түрээсийн эд хогшил)
@@ -19240,14 +19497,14 @@ function openNomaadPrepChecklist(quoteNo) {
     const byCat = {};
     items.forEach((it, idx) => { (byCat[it.category || 'Бусад'] = byCat[it.category || 'Бусад'] || []).push({ it, idx }); });
     html += Object.keys(byCat).map(cat => grpHdr(cat) + byCat[cat].map(({ it, idx }) =>
-      row(escapeHtml(it.name || '') + ' ', `<span style="color:var(--muted);font-size:11px;">${it.qty || ''} ${escapeHtml(it.unit || '')}</span>`, pickBtn('item', idx, '', false))
+      row(escapeHtml(it.name || '') + ' ', `<span class="na-meta">${it.qty || ''} ${escapeHtml(it.unit || '')}</span>`, pickBtn('item', idx, '', false))
     ).join('')).join('');
   }
   itemsEl.innerHTML = html;
   function setOwnerBtn(btn, key) {
     btn.dataset.naOwner = key || '';
-    if (key) { btn.textContent = memberName(key); btn.style.color = 'var(--text)'; btn.style.borderStyle = 'solid'; btn.style.fontWeight = '600'; }
-    else { btn.textContent = '+ Хүн сонгох'; btn.style.color = 'var(--muted)'; btn.style.borderStyle = 'dashed'; btn.style.fontWeight = '400'; }
+    btn.textContent = key ? memberName(key) : '+ Хүн сонгох';
+    btn.classList.toggle('is-set', !!key);   // өнгө/хүрээ/жин нь `.na-pick.is-set`-д
   }
   itemsEl.querySelectorAll('button.na-pick').forEach(btn => {
     btn.onclick = async () => {
@@ -19442,7 +19699,7 @@ async function loadEvaluations() {
     state.evaluations = _evRows.map(e => (e && (e.ratee || e.rater))
       ? Object.assign({}, e, { ratee: canonKey(e.ratee), rater: canonKey(e.rater) })
       : e);
-    try { localStorage.setItem('evaluations', JSON.stringify(state.evaluations)); } catch (e) { dataLoadFailed('loadEvaluations', e); }
+    cacheSet('evaluations', JSON.stringify(state.evaluations));
     if (typeof render === 'function') render();
   } catch(e) { console.warn('loadEvaluations fail', e); }
 }
@@ -20808,6 +21065,60 @@ function woSoldIncome(month) {
    (доод талд тоогоор нь ил бичнэ — «алга болсон» гэж эргэлзэхээс сэргийлнэ). */
 function canSeeCustomers() { return canAccessView('customers', () => !!state.isCEO || can('orders.pay')); }
 
+// ── ЭРГЭЖ ИРЭЭГҮЙ ХАРИЛЦАГЧ (2026-09-17) ───────────────────────────────────
+// 183 харилцагч 2+ сар эргэж ирээгүй, нийт 170 сая₮-ийн түүхтэй. Тэднийг
+// татах зардал ТЭГ; давтан ирсэн харилцагч дунджаар 2.5 дахин их үнэ цэнэ
+// үлдээдэг. Гэтэл нэгд нь ч холбогдож үзээгүй байв.
+// ⛔ ГАРААР ТЭМДЭГЛЭХ АЖИЛ БАГА БАЙЛГА — жагсаалт ӨӨРӨӨ богиносно: тэр хүн
+//    захиалга өгмөгц сүүлийн эвентийн огноо шинэчлэгдэж жагсаалтаас гарна.
+//    `followup_until` нь зөвхөн «одоо биш» гэж хойшлуулахад.
+const DORMANT_DAYS = 60;      // үүнээс хойш эргэж ирээгүй бол жагсаалтад
+const DORMANT_SNOOZE = 90;    // «Дараа» дарвал хэдэн хоног нуух
+// Яагаад энэ хүн эхэнд байна вэ — ганц хамгийн хүнд шалтгааныг нэрлэнэ.
+// Цэвэр функц — тестлэгдэнэ.
+function dormantWhy(r) {
+  if ((r.orders || 0) > 1) return `${r.orders} удаа захиалсан`;
+  if ((r.revenue || 0) >= 3000000) return 'том захиалга байсан';
+  return `${r.days} хоног эргэж ирээгүй`;
+}
+// Жагсаалт. Цэвэр функц — `custStats`-ийн гаралтыг авна.
+function dormantRows(customers, stats, today, limit) {
+  const t = String(today || todayStr());
+  return (customers || [])
+    .map(c => Object.assign({}, c, stats.get(c.id) || { orders: 0, revenue: 0, last: '' }))
+    .filter(c => {
+      if (!String(c.phone || '').trim()) return false;      // залгах боломжгүй
+      if (!(c.orders > 0) || !c.last) return false;          // хэзээ ч захиалаагүй
+      if (String(c.followup_until || '') > t) return false;  // хойшлуулсан
+      return daysBetween(String(c.last), t) >= DORMANT_DAYS;
+    })
+    .map(c => {
+      const days = daysBetween(String(c.last), t);
+      return Object.assign({}, c, { days, why: dormantWhy(Object.assign({}, c, { days })) });
+    })
+    .sort((a, b) => (b.revenue || 0) - (a.revenue || 0) || a.days - b.days)
+    .slice(0, limit || 20);
+}
+// Хоёр огнооны хоорондох хоног. UTC геттер — бүсээр гулсуулахгүй.
+function daysBetween(from, to) {
+  const a = Date.parse(String(from).slice(0, 10) + 'T00:00:00Z');
+  const b = Date.parse(String(to).slice(0, 10) + 'T00:00:00Z');
+  return (isNaN(a) || isNaN(b)) ? 0 : Math.round((b - a) / 86400000);
+}
+async function snoozeCustomer(id, days) {
+  const until = addDays(todayStr(), Number(days) || DORMANT_SNOOZE);
+  const r = await fetchWithTimeout(
+    `${DB_URL}/rest/v1/customers?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ followup_until: until }),
+    }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const c = (state.customers || []).find(x => String(x.id) === String(id));
+  if (c) c.followup_until = until;
+}
+
 function renderCustomers() {
   if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => render()); }
   if (state.customers === null) return '<div class="cu-load">Ачаалж байна…</div>';
@@ -20837,6 +21148,23 @@ function renderCustomers() {
     ${(c.owed > 0) ? `<span class="cu-owed">${fmtMoney(c.owed)}</span>` : '<span class="cu-ok">✓</span>'}
   </div>`;
 
+  // ── Эргэж ирээгүй — ажлын жагсаалт ──
+  const dorm = dormantRows(state.customers || [], stats, todayStr(), 20);
+  const dormHtml = !dorm.length ? '' : `
+    <div class="cu-sec">↩ Эргэж ирээгүй <span class="cu-sub">(${dorm.length} хүн · ${DORMANT_DAYS}+ хоног)</span></div>
+    <div class="cu-list cu-dorm">${dorm.map(c => `<div class="cu-row">
+      <div class="cu-main">
+        <div class="cu-nm">${escapeHtml(c.name || '—')}${c.company ? ` <span class="cu-co">${escapeHtml(c.company)}</span>` : ''}</div>
+        <div class="cu-meta"><a class="cu-tel" href="tel:${escapeHtml(String(c.phone).replace(/[^0-9+]/g, ''))}">${escapeHtml(c.phone)}</a> · <span class="cu-why">${escapeHtml(c.why)}</span></div>
+      </div>
+      <div class="cu-nums">
+        <span class="cu-cnt">${c.days} хоног</span>
+        <span class="cu-rev">${fmtMoney(c.revenue || 0)}</span>
+      </div>
+      <button class="btn cu-snooze" data-cu-snooze="${escapeHtml(c.id)}">Дараа</button>
+    </div>`).join('')}</div>
+    <div class="cu-note">Захиалга өгмөгц жагсаалтаас өөрөө гарна — тэмдэглэх шаардлагагүй. «Дараа» дарвал ${DORMANT_SNOOZE} хоног нуугдана.</div>`;
+
   return `<div class="cu-wrap">
     <div class="cu-kpis">
       ${kpi('Харилцагч', (state.customers || []).length)}
@@ -20847,12 +21175,20 @@ function renderCustomers() {
       <input id="cu-q" class="ui-raw cu-q" type="search" placeholder="Нэр, утас, компани, РД…" value="${escapeHtml(q)}">
       <button class="btn btn-primary" id="cu-new">+ Харилцагч</button>
     </div>
+    ${q ? '' : dormHtml}
+    <div class="cu-sec">Бүх харилцагч</div>
     <div class="cu-list">${rows.length ? rows.map(row).join('') : '<div class="cu-empty">Олдсонгүй.</div>'}</div>
     ${unlinked ? `<div class="cu-note">${unlinked} захиалга харилцагчгүй — Booqable түүхэнд нэр нь «?» байсан тул холбогдоогүй.</div>` : ''}
   </div>`;
 }
 
 function attachCustomersHandlers() {
+  document.querySelectorAll('[data-cu-snooze]').forEach(b => b.onclick = async (e) => {
+    e.stopPropagation();
+    b.disabled = true;
+    try { await snoozeCustomer(b.dataset.cuSnooze, DORMANT_SNOOZE); render(); }
+    catch (err) { b.disabled = false; showToast('Болсонгүй: ' + err.message, 'error', 5000); }
+  });
   const q = document.getElementById('cu-q');
   // Түлхэц бүрд биш — 180мс хүлээгээд рендэрлэж, фокус/курсорыг сэргээнэ
   // (захиалгын хайлттай ижил хэв маяг), эс бөгөөс бичилт тасалдана.
@@ -20882,6 +21218,23 @@ function openCustomerCard(id) {
   const hist = mine.slice().sort((a, b) => String(b.starts_at || '').localeCompare(String(a.starts_at || '')));
   const s = id ? (custStats(mine, finBasis()).get(id) || { orders: 0, revenue: 0, owed: 0 }) : null;
 
+  // ── Дуудлагын түүх (сүүлийн 90 хоног, PBX-ийн хадгалах хугацаа) ──
+  const cs = c ? custCallStats(state.pbxLog || [], c.phone) : null;
+  const callBlock = !(cs && cs.total) ? (c && state.pbxLog === null
+    ? '<div class="cu-hist-h">Дуудлагын түүх <span class="cu-dim">ачаалж байна…</span></div>' : '')
+    : `<div class="cu-hist-h">Дуудлагын түүх <span class="cu-dim">(90 хоног)</span></div>
+      <div class="cu-calls">
+        <span class="cu-cs">${cs.total} дуудлага</span>
+        <span class="cu-cs">${cs.answered} ярьсан</span>
+        ${cs.missed ? `<span class="cu-cs cu-miss">${cs.missed} аваагүй</span>` : ''}
+        ${cs.talkSec ? `<span class="cu-cs">${Math.round(cs.talkSec / 60)} мин</span>` : ''}
+      </div>
+      <div class="cu-hist">${cs.rows.slice(0, 8).map(r => `
+        <div class="cu-hrow"><span>${r.ans > 0 ? '📞 ярьсан' : '📵 аваагүй'}</span>
+          <span class="cu-dim">${escapeHtml(ubStamp(r.at))}</span>
+          <span class="cu-dim">${r.ans > 0 ? Math.round(r.ans / 60) + ' мин' : r.sec + ' сек хүлээсэн'}</span></div>`).join('')}
+        ${cs.rows.length > 8 ? `<div class="cu-hrow cu-dim">…бас ${cs.rows.length - 8}</div>` : ''}</div>`;
+
   const fld = (k, label, val, type) =>
     `<label class="fld">${label}<input id="cu-${k}" class="ui-raw" type="${type || 'text'}" value="${escapeHtml(val || '')}"></label>`;
 
@@ -20896,6 +21249,7 @@ function openCustomerCard(id) {
     ${fld('email', 'Имэйл', c && c.email, 'email')}
     ${fld('address', 'Хаяг', c && c.address)}
     <label class="fld">Тэмдэглэл<textarea id="cu-note" class="ui-raw" rows="2">${escapeHtml((c && c.note) || '')}</textarea></label>
+    ${callBlock}
     ${hist.length ? `<div class="cu-hist-h">Захиалгын түүх</div><div class="cu-hist">${hist.map(o => `
       <div class="cu-hrow"><span>#${escapeHtml(String(o.number || ''))}</span>
         <span class="cu-dim">${escapeHtml(String(o.starts_at || '').slice(0, 10))}</span>
@@ -21096,6 +21450,141 @@ async function openPurchaseLink(id) {
 }
 
 function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO || can('products.stock')); }
+// ─────────────────────────────────────────────────────────────────────────────
+// ТӨЛӨВЛӨГӨӨ — шийдвэр хаана амьдрах вэ (2026-09-17)
+//
+// Зөвлөгөө ярианы дотор үлдэж мартагддаг байв. Одоо шийдвэр бүр аппад харагдаж,
+// хийгдсэн нь ХААГДана.
+// ⛔ CEO гараар шивдэггүй — агент ярианаас гарсан зүйлээ `PLAN_SEED`-д (PR-аар)
+//   нэмэхэд апп өөрөө жагсаалтад оруулна. «Гараар нэмэлт бичүүлдэг боломж үхдэг»
+//   дүрэм зөрчигдөхгүйн цорын ганц шалтгаан нь ЭНЭ — бичилт нь ажлын дундаас
+//   (ярианаас) өөрөө үүсдэг. Хоосон форм болговол энэ дэлгэц үхнэ.
+// ⚠ Хадгалалт = `app_config['plan']` (шинэ хүснэгт БАЙХГҮЙ).
+// ⚠ Бичлэг ХЭЗЭЭ Ч устахгүй — «хаах» = status:'done', буцааж нээж болно.
+const PLAN_KEY = 'plan';
+const PLAN_NOW_MAX = 3;   // зэрэг эхлүүлэх ажлын дээд тоо (хэтэрвэл анхааруулна)
+// sec: now = одоо хийж байгаа · next = дараагийнх · no = хийхгүй гэж шийдсэн
+// ⛔ ЭНЭ РЕПО НИЙТИЙН — мөрд ЗӨВХӨН ГАРЧИГ байна (2026-09-17).
+//   Шалтгаан, тоо, стратеги нь ХААЛТТАЙ `Chimunllc/chimun-infra`-гийн `PLAN.md`-д.
+//   Энд «үнэ 10% нэмж туршина» гэх мэт бичвэр тавибал өрсөлдөгч уншина.
+//   Шинэ мөр нэмэхдээ: гарчиг энд, дэлгэрэнгүй тэнд. `why` талбар код дотор
+//   ХЭВЭЭР (CEO аппаас нэмсэн мөрд хэрэглэгдэнэ) — зүгээр л seed түүнийг агуулахгүй.
+const PLAN_SEED = [
+  { id: 'p-today-block',  sec: 'now',  owner: 'Claude', created: '2026-09-17', title: '«Өнөөдөр» блок — Тойм дэлгэцэд' },
+  { id: 'p-rev-measure',  sec: 'now',  owner: 'Claude', created: '2026-09-17', title: 'Орлогын эхний 3 ажлыг датанаас хэмжих' },
+  { id: 'p-saas-calls',   sec: 'now',  owner: 'CEO',    created: '2026-09-17', title: 'Түрээсийн SaaS — 10 дуудлага' },
+  { id: 'p-price-test',   sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Үнэ турших' },
+  { id: 'p-repeat',       sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Давтан худалдан авалт' },
+  { id: 'p-rural',        sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Хөдөө зориудаар' },
+  { id: 'p-lead-cov',     sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Лид сувгийн хамралт 70%+' },
+  { id: 'p-ads-purchase', sec: 'next', owner: 'Claude', created: '2026-09-17', title: 'Хөрвөлтөөр зар оновчлох' },
+  { id: 'p-winter',       sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Өвлийн ачаалал' },
+  { id: 'p-google',       sec: 'next', owner: 'Claude', created: '2026-09-17', title: 'Google хайлт' },
+  { id: 'p-no-resell',    sec: 'no',   owner: '',       created: '2026-09-17', title: 'Гадаад дижитал захиалга дахин зарах' },
+  { id: 'p-no-invest',    sec: 'no',   owner: '',       created: '2026-09-17', title: 'Хөрөнгө оруулалтын зөвлөгөөний хуудас' },
+  { id: 'p-no-planform',  sec: 'no',   owner: '',       created: '2026-09-17', title: 'Гараар шивдэг төлөвлөгөөний форм' },
+  { id: 'p-no-esim',      sec: 'no',   owner: '',       created: '2026-09-17', title: 'Аялалын eSIM / даатгал (хойшлуулав)' },
+];
+// Жагсаалт = хадгалсан төлөв + шинэ seed мөрүүд. ЦЭВЭР функц (тестлэгдэнэ).
+// ⚠ Хадгалсан мөр ялна — эс бөгөөс хаасан ажил дараагийн PR-аар дахин нээгдэнэ.
+function planMerge(seed, stored) {
+  const list = (Array.isArray(stored) ? stored : []).filter(x => x && x.id).map(x => ({ ...x }));
+  const have = new Set(list.map(x => String(x.id)));
+  (Array.isArray(seed) ? seed : []).forEach(sd => {
+    if (!sd || !sd.id || have.has(String(sd.id))) return;
+    list.push({ ...sd, status: 'open' });
+  });
+  return list;
+}
+// Хэсэгт хуваах. `no` (хийхгүй гэж шийдсэн) нь ажил БИШ тул хаагдсанд ч,
+// тоололд ч орохгүй — тэдгээр нь шалтгаан нь бүртгэлтэй шийдвэрүүд.
+function planSections(list) {
+  const arr = (Array.isArray(list) ? list : []).filter(Boolean);
+  const open = (sec) => arr.filter(x => x.sec === sec && x.status !== 'done');
+  return {
+    now: open('now'),
+    next: open('next'),
+    no: arr.filter(x => x.sec === 'no'),
+    done: arr.filter(x => x.sec !== 'no' && x.status === 'done')
+      .sort((a, b) => String(b.closed_at || '').localeCompare(String(a.closed_at || ''))),
+  };
+}
+// ⚠ Тест `PLAN_SEED`-ийг ингэж уншина (const нь vm контекстээс гардаггүй) —
+//   id давхардвал мөр чимээгүй алга болдог тул бүтцийг тестээр хамгаална.
+function planSeed() { return PLAN_SEED; }
+function planList() { return Array.isArray(state.plan) ? state.plan : []; }
+function planOpenCount() { return planSections(planList()).now.length; }
+async function loadPlan(force) {
+  if (state.plan && !force) return state.plan;
+  let stored = null, ok = false;
+  try { stored = await loadAppConfig(PLAN_KEY); ok = true; }
+  catch (e) { dataLoadFailed('Төлөвлөгөө', e); }
+  state.plan = planMerge(PLAN_SEED, Array.isArray(stored) ? stored : []);
+  if (ok) state.planLoaded = true;
+  return state.plan;
+}
+// ⚠ Ачаалж чадаагүй үед БИЧИХГҮЙ — seed-ээс шинээр угсарсан жагсаалт нь
+// хадгалсан төлөвийг (хаасан ажлууд) чимээгүй дарна.
+async function savePlan() {
+  if (!state.planLoaded) throw new Error('Төлөвлөгөө серверээс ирээгүй байна');
+  await saveAppConfig(PLAN_KEY, planList());
+}
+function canSeePlan() { return canAccessView('plan', () => !!state.isCEO); }
+async function planSet(id, patch) {
+  state.plan = planList().map(x => (x && String(x.id) === String(id) ? { ...x, ...patch } : x));
+  try { await savePlan(); } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+  render();
+}
+async function planAdd() {
+  const t = String((await showPrompt('Шинэ ажил — нэр:', { okText: 'Нэмэх' })) || '').trim();
+  if (!t) return;
+  state.plan = planList().concat([{ id: 'u' + Date.now().toString(36), sec: 'next', status: 'open', title: t, owner: 'CEO', created: todayStr() }]);
+  try { await savePlan(); showToast('Нэмлээ', 'success', 2000); }
+  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+  render();
+}
+function renderPlan() {
+  if (state.plan === undefined) { state.plan = null; loadPlan(true).then(() => { if (state.view === 'plan') render(); }); }
+  if (!state.plan) return '<div class="plan-empty">Ачаалж байна…</div>';
+  const s = planSections(planList());
+  const btn = (attr, id, label) => `<button class="btn plan-btn" data-${attr}="${escapeHtml(String(id))}">${label}</button>`;
+  const item = (x, acts) => `<div class="plan-item">`
+    + `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
+    + `${x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : ''}</div>`
+    + `${x.why ? `<div class="plan-w">${escapeHtml(x.why)}</div>` : ''}`
+    + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}</div>` : ''}`
+    + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
+    + `</div>`;
+  const nowActs = (x) => btn('plan-done', x.id, '✓ Дууслаа') + btn('plan-down', x.id, '↓ Хойшлуулах');
+  const nextActs = (x) => btn('plan-up', x.id, '↑ Одоо эхэлье') + btn('plan-done', x.id, '✓ Дууслаа');
+  const warn = s.now.length > PLAN_NOW_MAX
+    ? `<div class="plan-warn">⚠ ${s.now.length} ажил зэрэг эхэлсэн байна. ${PLAN_NOW_MAX}-аас олон бол аль нь ч дуусахгүй.</div>` : '';
+  return `<div class="plan-wrap">`
+    + `<div class="plan-top"><h2 class="plan-h1">Төлөвлөгөө</h2>`
+    + `<span class="plan-sub">Шийдвэрийг чи гаргана, бичилтийг агент хийнэ. Хийгдсэнийг нь дарж хаа.</span>`
+    + `<span class="plan-sub">Шалтгаан, тоо, дэлгэрэнгүй — хаалттай PLAN.md-д (энэ репо нийтийн).</span></div>`
+    + warn
+    + `<div class="plan-sec"><div class="plan-sec-h">Одоо хийж байгаа<span class="plan-n">${s.now.length}</span></div>`
+    + (s.now.length ? s.now.map(x => item(x, nowActs(x))).join('') : '<div class="plan-empty">Одоо эхэлсэн ажил алга — доороос нэгийг дээшлүүл.</div>')
+    + `</div>`
+    + `<div class="plan-sec"><div class="plan-sec-h">Дараагийнх<span class="plan-n">${s.next.length}</span></div>`
+    + (s.next.length ? s.next.map(x => item(x, nextActs(x))).join('') : '<div class="plan-empty">Хоосон.</div>')
+    + `<button class="btn plan-btn plan-add" id="plan-add">+ Нэмэх</button></div>`
+    + `<details class="plan-more"><summary>Хийхгүй гэж шийдсэн — ${s.no.length}</summary>`
+    + (s.no.length ? s.no.map(x => item(x, '')).join('') : '<div class="plan-empty">Хоосон.</div>')
+    + `</details>`
+    + `<details class="plan-more"><summary>Хаагдсан — ${s.done.length}</summary>`
+    + (s.done.length ? s.done.map(x => item(x, btn('plan-reopen', x.id, '↩ Буцааж нээх'))).join('') : '<div class="plan-empty">Хоосон.</div>')
+    + `</details>`
+    + `</div>`;
+}
+function attachPlanHandlers() {
+  document.getElementById('plan-add')?.addEventListener('click', () => planAdd());
+  document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() })));
+  document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
+  document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
+  document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '' })));
+}
 function renderWriteoff() {
   // Кэшээс шууд үзүүлээд, ард нь DB-ээс шинэчилнэ — refresh дээр жагсаалт «алга»
   // болоод буцаж ирдэг байсныг зогсооно.
@@ -21420,6 +21909,9 @@ function renderProducts() {
       <button class="btn btn-primary ui-raw" id="prod-wo-go"${picked.length ? '' : ' disabled'}>Үргэлжлүүлэх (${picked.length})</button>
     </div>`;
   }
+  // Excel экспорт нь ХАРАГДАЖ БУЙ жагсаалтыг татна — шүүлтийн дүрмийг хоёр дахь
+  // газарт давтвал дэлгэц ба файл зөрнө (нэг эх сурвалж).
+  state._prodShown = list;
   // ── 2 ТУУЗ (урьд нь 6) ──
   // 1: хайлт · скан · шинэ бараа   2: шүүлтүүр · тоо · хөрөнгө · салбар
   // Эхний бараа хүртэлх зай утасны дэлгэцийн ~50%-иас ~20% болно.
@@ -21427,6 +21919,7 @@ function renderProducts() {
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
+      <button class="btn" id="prod-xls" title="Дэлгэц дээр харагдаж буй барааг Excel-д татах">📊 Excel</button>
       ${canEditProducts() ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
       ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
       ${canEditProducts() ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
@@ -22101,6 +22594,7 @@ function attachProductsHandlers() {
   document.getElementById('prod-fix-cats')?.addEventListener('click', () => openCategoryGroupsModal());
   // QR скан → бараа таних
   document.getElementById('prod-scan')?.addEventListener('click', () => openScanner());
+  document.getElementById('prod-xls')?.addEventListener('click', () => exportProductsCsv(state._prodShown));
 }
 
 /* ─── CEO Dashboard ───────────────────────────────────────
@@ -22328,7 +22822,7 @@ function orderHasDeliveryItem(o) {
 }
 function isDeliveryOrder(o) {
   const d = (typeof parseDelivery === 'function') ? parseDelivery(o && o.note) : null;
-  if (d && (d.zone === 'city' || d.zone === 'out')) return true;   // DLV token хот/гадна
+  if (d && isDeliveryZone(d.zone)) return true;   // DLV token хот/гадна
   if (String((o && (o.delivery_address || o.customer_address)) || '').trim()) return true;   // хаягтай
   return orderHasDeliveryItem(o);   // хуучин захиалга — хүргэлт нь бараа мөр
 }
@@ -22577,6 +23071,43 @@ const STAGE_ACTION = {
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
+
+// ── ЭВЕНТИЙН ЗУРАГ (2026-09-17) ─────────────────────────────────────────────
+// Дамжлага шат бүрд зураг аль хэдийн ЗААВАЛ авдаг ч бүгд агуулахын зураг
+// (ачсан машин, савласан бараа) байсан тул маркетингд ашиглах зураг байхгүй:
+// 190 бараанаас 31 нь л нэгээс олон зурагтай, эвентийн зураг ердөө 6.
+// Шийдэл: ХҮРГЭЛТ ба СУУРИЛУУЛАЛТЫН шатанд «угсарч дууссан байдал» гэж ил
+// хэлнэ. Ажилтан зураг аль хэдийн авдаг тул НЭМЭЛТ АЖИЛ ҮҮСЭХГҮЙ — зөвхөн
+// юуг нь авахыг зааж өгнө.
+// ⚠ Заавал биш — зураг шаардлага хэвээр, зүгээр л бичвэр өөрчлөгдөнө.
+const STAGE_SHOWCASE = { deliver: 1, setup: 1 };
+function stageIsShowcase(key) { return !!STAGE_SHOWCASE[String(key || '')]; }
+function stagePhotoHint(key) {
+  return stageIsShowcase(key)
+    ? 'Угсарч дууссан байдлыг бүтнээр нь ав — энэ зураг постер, зард ашиглагдана.'
+    : '';
+}
+// Маркетингд тохиромжтой эвентийн зургууд — захиалгуудаас цуглуулна.
+// ⚠ ТААМАГЛАХГҮЙ: зөвхөн `STAGE_SHOWCASE` шатны зураг. Агуулахын зураг
+//   (цэвэрлэсэн, бэлдсэн, ачсан) постерт тохирохгүй.
+function showcasePhotos(orders, limit) {
+  const out = [];
+  (orders || []).forEach(o => {
+    const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : null;
+    if (!sm) return;
+    Object.keys(STAGE_SHOWCASE).forEach(k => {
+      const e = sm[k];
+      const ph = (e && Array.isArray(e.photos)) ? e.photos : [];
+      ph.forEach(u => {
+        if (typeof u === 'string' && u) {
+          out.push({ url: u, at: (e && e.at) || '', order: o.number || '', stage: k });
+        }
+      });
+    });
+  });
+  out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return limit ? out.slice(0, limit) : out;
+}
 const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гаргасан', deliver: '🚚 Хүргэж өгсөн', setup: '🔧 Суурилуулсан', teardown: '🧱 Буулгасан', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
@@ -22767,7 +23298,8 @@ function openStageAdvanceModal(oid, to) {
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">${escapeHtml(act.label)} · #${o.number ?? ''}</h2><button class="btn" id="sa-close" style="padding:5px 10px;">✕</button></div>
-    ${needPhoto ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 Гүйцэтгэлийн зураг <span style="color:var(--danger);">*</span></div>
+    ${needPhoto ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 ${stageIsShowcase(act.key) ? 'Угсарсан байдлын зураг' : 'Гүйцэтгэлийн зураг'} <span style="color:var(--danger);">*</span></div>
+      ${stagePhotoHint(act.key) ? `<div class="sa-hint">${escapeHtml(stagePhotoHint(act.key))}</div>` : ''}
       <div id="sa-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-bottom:6px;"></div>
       <label class="btn" for="sa-photo-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
@@ -23399,12 +23931,14 @@ async function rejectOrderCancel(oid) {
 // Хот дотор = тогтмол (очих+буцах багтсан). Хотоос гадна = нэг талын км × 2 (очих+буцах) × км-ийн үнэ.
 // ⚠ ТАРИФ SYNC (C2): доорх const-ууд нь app_config['tariffs'] БАЙХГҮЙ үеийн fallback. Сайт
 // m-event-website-ready/index.html мөн энэ app_config-оос татна. [[tariff_two_repos_sync]]
-const DELIVERY_CITY_FEE = 150000;   // ₮ хот дотор (fallback)
+const DELIVERY_CITY_FEE = 150000;      // ₮ хот дотор, очих+буцах (fallback)
+const DELIVERY_CITY_ONE_FEE = 80000;   // ₮ хот дотор, НЭГ тал (fallback)
 const DELIVERY_PER_KM = 5000;       // ₮ нэг талын км тутам (fallback)
 // ── ⭐ ТАРИФЫН НЭГ ЭХ СУРВАЛЖ: app_config['tariffs'] (state.tariffs). Байвал түүгээр, эс бол
 // дээрх const fallback. Тарифыг НЭГ газраас (app_config) удирдана — 2 repo-д хатуу давхардуулахгүй. ──
 function _tariffCfg() { return (state.tariffs && typeof state.tariffs === 'object') ? state.tariffs : {}; }
 function tariffDeliveryCity() { const v = Number(_tariffCfg().delivery_city_fee); return v > 0 ? v : DELIVERY_CITY_FEE; }
+function tariffDeliveryCityOne() { const v = Number(_tariffCfg().delivery_city_one_fee); return v > 0 ? v : DELIVERY_CITY_ONE_FEE; }
 function tariffPerKm() { const v = Number(_tariffCfg().delivery_per_km); return v > 0 ? v : DELIVERY_PER_KM; }
 function tariffOffhoursFee() { const v = Number(_tariffCfg().offhours_fee); return v > 0 ? v : ORDER_OFFHOURS_FEE; }
 function tariffWorkStart() { const v = Number(_tariffCfg().work_start); return (v >= 0 && v <= 23) ? v : 9; }
@@ -23412,11 +23946,13 @@ function tariffWorkEnd() { const v = Number(_tariffCfg().work_end); return (v >=
 function tariffTiers() { const t = _tariffCfg().tiers; return (Array.isArray(t) && t.length) ? t.map(x => ({ min: Number(x.min) || 1, pct: Number(x.pct) || 0, label: x.label || '' })).sort((a, b) => b.min - a.min) : RENTAL_TIERS; }
 function calcDeliveryFee(zone, km) {
   if (zone === 'city') return tariffDeliveryCity();
+  if (zone === 'city1') return tariffDeliveryCityOne();   // нэг тал (хүргээд буцаахгүй, эсвэл зөвхөн авах)
   if (zone === 'out') return Math.max(0, (Math.round(Number(km) || 0)) * 2 * tariffPerKm());
   return 0;   // pickup / хоосон
 }
-// ⟦DLV|zone|km|fee⟧ note token (zone=city|out|pickup). app_orders-д багана нэмэхгүйгээр (RT/SL-тэй ижил).
-const _DLV_RE = /⟦DLV\|([a-z]+)\|(\d+)\|(\d+)⟧/;
+// ⟦DLV|zone|km|fee⟧ note token (zone=city|city1|out|pickup). app_orders-д багана нэмэхгүйгээр (RT/SL-тэй ижил).
+const _DLV_RE = /⟦DLV\|([a-z0-9]+)\|(\d+)\|(\d+)⟧/;
+function isDeliveryZone(z) { return z === 'city' || z === 'city1' || z === 'out'; }   // хүргэлттэй бүс (pickup БИШ)
 function parseDelivery(note) { const m = String(note || '').match(_DLV_RE); return m ? { zone: m[1], km: +m[2], fee: +m[3] } : null; }
 function encodeDelivery(zone, km, fee) { return `⟦DLV|${zone || 'pickup'}|${Math.round(km) || 0}|${Math.round(fee) || 0}⟧`; }
 /* ⟦CMP|шалтгаан|дүн⟧ — БУУЛГАЛТ (манай буруугаас өгсөн хөнгөлөлт) 2026-09-09.
@@ -23826,7 +24362,8 @@ function setCustInfo(note, ci) {
 }
 function deliveryLabel(d) {
   if (!d || d.zone === 'pickup') return '';
-  if (d.zone === 'city') return 'Хот дотор';
+  if (d.zone === 'city') return 'Хот дотор (очих+буцах)';
+  if (d.zone === 'city1') return 'Хот дотор (нэг тал)';
   if (d.zone === 'out') return `Хотоос гадна ${d.km}км (очих+буцах ${d.km * 2}км)`;
   return '';
 }
@@ -23954,7 +24491,8 @@ function openNewOrder(editOrder) {
       <div style="display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:end;">
         <label class="no-lbl">🚚 Хүргэлт<select id="no-delivzone" style="margin-top:3px;">
           <option value="pickup"${_dlv0.zone === 'pickup' ? ' selected' : ''}>🏬 Өөрөө авах (хүргэлтгүй)</option>
-          <option value="city"${_dlv0.zone === 'city' ? ' selected' : ''}>🚚 Хот дотор — 150,000₮</option>
+          <option value="city1"${_dlv0.zone === 'city1' ? ' selected' : ''}>🚚 Хот дотор, нэг тал — ${fmtMoney(tariffDeliveryCityOne())}</option>
+          <option value="city"${_dlv0.zone === 'city' ? ' selected' : ''}>🚚 Хот дотор, очих+буцах — ${fmtMoney(tariffDeliveryCity())}</option>
           <option value="out"${_dlv0.zone === 'out' ? ' selected' : ''}>🚚 Хотоос гадна (км-ээр)</option>
         </select></label>
         <label class="no-lbl" id="no-delivkm-wrap" style="${_dlv0.zone === 'out' ? '' : 'display:none;'}">Нэг тал (км)<input id="no-delivkm" type="number" min="0" value="${_dlv0.km || ''}" placeholder="0" style="margin-top:3px;"></label>
@@ -24242,7 +24780,7 @@ function openNewOrder(editOrder) {
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
     const offFee = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value) * tariffOffhoursFee();   // ажлын бус цаг (сайттай ижил)
-    const isDeliv = dlv.zone === 'city' || dlv.zone === 'out';
+    const isDeliv = isDeliveryZone(dlv.zone);
     const setupOn = dlv.zone !== 'pickup' && !!(($('#no-setup') || {}).checked);
     const setupFee = setupOn ? setupFeeForItems(items) : 0;   // суурилуулалтын хөлс — токенд хадгална, нийт дүнд нэмнэ
     const addr = $('#no-addr').value.trim();
@@ -26867,7 +27405,7 @@ function openDeliveryFeeOrders() {
   const src = (state.history && state.history.orders) || state.appOrders || [];
   const { rows, total } = deliveryFeeRows(src);
   const money = n => fmtMoney(Math.round(n));
-  const zoneLbl = z => z === 'city' ? 'Хот дотор' : (z === 'out' ? 'Хотоос гадна' : 'Очиж авах');
+  const zoneLbl = z => z === 'city' ? 'Хот дотор' : (z === 'city1' ? 'Хот дотор (нэг тал)' : (z === 'out' ? 'Хотоос гадна' : 'Очиж авах'));
   document.getElementById('hist-prod-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.id = 'hist-prod-modal'; modal.style.zIndex = '9700';
@@ -27679,18 +28217,25 @@ function adCampaignStats(rows, fromDay) {
     if (fromDay && String(r.day || '') < fromDay) return;
     const id = String(r.campaign_id || r.ad_id || '');
     const nm = String(r.campaign_name || r.ad_name || '—');
-    by[id] = by[id] || { id, name: nm, mnt: 0, imp: 0, clicks: 0, msg: 0, days: 0 };
+    by[id] = by[id] || { id, name: nm, mnt: 0, imp: 0, clicks: 0, msg: 0, rev: 0, buys: 0, days: 0 };
     const x = by[id];
     x.mnt += Number(r.spend_mnt) || 0;
     x.imp += Number(r.impressions) || 0;
     x.clicks += Number(r.clicks) || 0;
     x.msg += Number(r.messages) || 0;
+    // ⛔ Борлуулалт = Meta-гийн тулгасан захиалга (`fb_capi.py` буцаадаг).
+    //    0 гэдэг нь «зарагдаагүй» ГЭСЭН ҮГ БИШ — тулгагдаагүй ч байж болно.
+    x.rev += Number(r.revenue_mnt) || 0;
+    x.buys += Number(r.purchases) || 0;
     x.days++;
   });
   return Object.values(by)
     .map(x => Object.assign(x, {
       cat: adCatOf(x.name),
       perMsg: x.msg > 0 ? Math.round(x.mnt / x.msg) : null,
+      // Зарын мөнгө хэдэн дахин эргэж ирсэн. Тулгагдаагүй бол null — 0 гэж
+      // бичвэл «мөнгө авчраагүй» гэж уншигдана.
+      roas: x.rev > 0 && x.mnt > 0 ? x.rev / x.mnt : null,
     }))
     .sort((a, b) => b.mnt - a.mnt);
 }
@@ -27836,26 +28381,50 @@ function adsSpentInMonth(rows, month) {
 //    гэсэн ХУДАЛ тоо гарна. Татагч `Callee Answer Second > 0`-оор л тоолно.
 // ⚠ Ажлын цагийг ЭНД хатуу бичихгүй — `app_config['tariffs']`-ийн
 //    `work_start`/`work_end`-ээс ирнэ (тарифын ганц эх сурвалж).
-function pbxStats(rows, fromDay, workStart, workEnd) {
+// ⛔ ДУУДЛАГЫН ТОО = ДУУДЛАГА БҮРИЙН ЛОГООС (`pbx_calls`), цагийн нэгтгэлээс БИШ
+//    (2026-09-17). Өмнө нь `pbx_calls_hourly`-гоос тоолдог байсан тул «алдсан
+//    дуудлага» гэдэг дэлгэц бүрд ӨӨР утгатай байв: 📵 дэлгэц ажлын цаг + 13 сек
+//    дүрмээр 13 мөр харуулж байхад зарын дэлгэц «40% аваагүй» гэж бичдэг байсан —
+//    хоёулаа үнэн боловч хоёр өөр дүрэм. Цагийн нэгтгэлд дуудлагын УРТ байхгүй
+//    тул тэндээс 13 секундын дүрмийг хэрэглэх БОЛОМЖГҮЙ.
+// ⚠ Дүрэм `pbxFollowups`-тай ИЖИЛ байх ёстой — тест хоёуланг тулгана.
+//   · андуурч тасалсан (< PBX_WAIT_SEC, хариу аваагүй) → `short`, тооллогод ОРОХГҮЙ
+//   · ажлын цагийн гадна → тусад нь (`off*`), «алдсан» гэж тооцогдохгүй
+// ⚠ `rate` = АЖЛЫН ЦАГИЙН хариу авалт. Ажлын бус цагийг оруулбал хаалттай үеийн
+//   дуудлага гүйцэтгэлийг дардаг.
+function pbxStats(calls, fromDay, workStart, workEnd) {
   const w0 = Number.isFinite(Number(workStart)) ? Number(workStart) : 9;
   const w1 = Number.isFinite(Number(workEnd)) ? Number(workEnd) : 18;
-  const o = { calls: 0, answered: 0, talk: 0, bizCalls: 0, bizAns: 0, offCalls: 0, offAns: 0, days: {} };
-  (rows || []).forEach(r => {
-    if (!r) return;
-    const d = String(r.day || '').slice(0, 10);
-    if (!d || (fromDay && d < fromDay)) return;
-    const h = Number(r.hour);
-    const c = Number(r.calls) || 0;
-    const a = Number(r.answered) || 0;
-    o.calls += c; o.answered += a; o.talk += Number(r.talk_sec) || 0;
-    o.days[d] = (o.days[d] || 0) + c;
-    if (h >= w0 && h <= w1) { o.bizCalls += c; o.bizAns += a; } else { o.offCalls += c; o.offAns += a; }
+  const o = { calls: 0, answered: 0, talk: 0, bizCalls: 0, bizAns: 0,
+              offCalls: 0, offAns: 0, short: 0, days: {} };
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    if (String(c.peer || '').replace(/\D/g, '').length < 6) return;   // дотоод дугаар
+    const at = String(c.started_at || '');
+    const d = at.slice(0, 10);
+    // ⚠ Огноогүй мөрийг тоолж БОЛОХГҮЙ — ямар хугацаанд хамаарахыг мэдэхгүй тул
+    //   «7 хоног» гэж сонгосон хүнд тоо нь хаанаас гарсан нь тайлагдахгүй болно.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || (fromDay && d < fromDay)) return;
+    const a = Number(c.answer_sec) || 0;
+    // ⚠ Цаг уншигдаагүй бол ажлын цагт тооцно — чимээгүй хаяхгүй.
+    const h = _ubHour(at);
+    const off = h !== null && (h < w0 || h > w1);
+    // ⛔ Ажлын цагийн гадна дуудлагыг «андуурсан» гэж БҮҮ тоол (2026-09-17).
+    //    Амьд датаар тэдгээрийн 144/144 нь 10 секундээс богино байсан — хүн
+    //    таслаагүй, **PBX мэндчилгээгээ хэлээд өөрөө таслажээ**. Богиносгох
+    //    шүүлтийг эхэлж хэрэглэвэл тэд «андуурч залгасан» болж, хаалттай цагийн
+    //    бодит эрэлт (сард 144 хүн) харагдахаа болино.
+    if (!off && a <= 0 && (Number(c.call_sec) || 0) < PBX_WAIT_SEC) { o.short++; return; }
+    o.calls++; o.days[d] = (o.days[d] || 0) + 1;
+    if (a > 0) { o.answered++; o.talk += a; }
+    if (off) { o.offCalls++; if (a > 0) o.offAns++; }
+    else { o.bizCalls++; if (a > 0) o.bizAns++; }
   });
   o.missed = o.calls - o.answered;
   o.bizMissed = o.bizCalls - o.bizAns;
   o.offMissed = o.offCalls - o.offAns;
-  o.rate = o.calls ? Math.round(o.answered * 1000 / o.calls) / 10 : 0;
   o.bizRate = o.bizCalls ? Math.round(o.bizAns * 1000 / o.bizCalls) / 10 : 0;
+  o.rate = o.bizRate;                       // гарчгийн тоо = ажлын цагийнх
   o.dayCount = Object.keys(o.days).length;
   o.perDay = o.dayCount ? Math.round(o.calls * 10 / o.dayCount) / 10 : 0;
   return o;
@@ -27881,7 +28450,7 @@ function pbxCostPerCall(spendMnt, calls) {
 //    хөлслөх шийдвэр гаргана.
 //    Тиймээс энд ДУУДЛАГА БҮРИЙН лог (`pbxLog`) -оор л дүгнэнэ: мэндчилгээг
 //    давж хүлээсэн хүн л жинхэнэ алдагдал.
-function callAdvice(p, ws, we, log) {
+function callAdvice(p, ws, we, log, from) {
   const out = [];
   if (!p || !p.calls) return out;
   const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9;
@@ -27890,7 +28459,7 @@ function callAdvice(p, ws, we, log) {
     out.push({ kind: 'miss', sev: 1, mnt: 0,
       text: `Ажлын цагаар ${p.bizCalls} дуудлага ирээд ${p.bizMissed}-ыг нь хэн ч аваагүй (${p.bizRate}% авсан). Зарын мөнгө утас дуугартал хүргэж байгаа ч яг тэндээ алдагдаж байна — дуудлагын дараалал, ээлж, эсвэл шилжүүлэх дугаараа шалга.` });
   }
-  const off = pbxOffHoursWaited(log, w0, w1);
+  const off = pbxOffHoursWaited(log, w0, w1, from);
   if (off >= 5) {
     out.push({ kind: 'offhours', sev: 2, mnt: 0,
       text: `Ажлын цагийн ГАДНА ${off} хүн дуут мэндчилгээг сонсоод хүлээсэн ч хэн ч аваагүй (хүн ${w0}:00–${w1}:59 хооронд л авдаг). Эдгээр нь жинхэнэ сонирхсон хүмүүс — ээлжийн дугаар эсвэл «маргааш эргэж залгана» гэсэн дуут захидал нөхнө.` });
@@ -27905,14 +28474,50 @@ function _ubHour(ts) {
   if (isNaN(t)) return null;
   return new Date(t + 8 * 3600 * 1000).getUTCHours();
 }
+// UTC+8-ийн ОГНОО. ⚠ `started_at` нь UTC-ээр ирдэг тул түүхий мөрийг таславал
+// шөнийн дуудлага нэг өдрөөр эрт гарна ([[огноо UTC+8 занга]]).
+function _ubDate(ts) {
+  const t = Date.parse(ts);
+  if (isNaN(t)) return '';
+  const d = new Date(t + 8 * 3600 * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+// ⛔ ӨЧИГДӨРЧИЙГ ОВООЛЖ БОЛОХГҮЙ (CEO, 2026-09-17). 14 хоногийн жагсаалтад
+//   өчигдрийн 3 дуудлага эрэмбийн дундуур орж «хэзээ нэгэн цагт» болдог байв.
+//   Өглөөний push «Өчигдөр N хүн» гэж хэлдэг тул дэлгэц дээр ЯГ тэр бүлэг
+//   байх ёстой — эс бөгөөс мэдэгдэл дээрх тоог хаанаас хайхаа мэдэхгүй.
+//   Огноо уншигдахгүй бол «older» — шинэ рүү хийвэл хуучин мөр өдөр бүр
+//   дээд талд гацна.
+// Дуудлагын цагийг ТОО болгоно. ⛔ Цагийг МӨРӨӨР бүү харьцуул — «…Z» ба
+// «…+00:00» нь ижил мөч боловч мөрийн эрэмбээр өөр гарна. Уншигдахгүй бол 0
+// (эрэмбийн ард унана, мөр АЛГА БОЛОХГҮЙ).
+function pbxTime(ts) {
+  const t = Date.parse(String(ts || ''));
+  return isNaN(t) ? 0 : t;
+}
+// Сүүлд залгаснаар нь ЭРЭМБЭЛНЭ (шинэ нь дээр) — CEO 2026-09-17.
+const pbxByRecent = (a, b) => pbxTime(b.last) - pbxTime(a.last);
+function pbxDayBucket(lastTs, today) {
+  const d = _ubDate(lastTs);
+  if (!d) return 'older';
+  if (d >= String(today || '')) return 'today';
+  if (d === addDays(String(today || ''), -1)) return 'yesterday';
+  return 'older';
+}
 // Ажлын бус цагт мэндчилгээг ДАВЖ хүлээгээд ч хариу аваагүй дуудлагын тоо.
 // ⚠ Богино тасалсныг ОРУУЛАХГҮЙ — тэдгээр нь андуурсан дуудлага.
-function pbxOffHoursWaited(calls, ws, we) {
+// ⚠ `from` ЗААВАЛ дамжина: дэлгэцийн бусад тоо сонгосон хугацаагаар бодогддог
+//   атал энэ нь БҮХ логоор тоологддог байсан тул «7 хоног» гэж сонгоод 90
+//   хоногийн тоог уншиж болдог байв.
+function pbxOffHoursWaited(calls, ws, we, from) {
   const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9;
   const w1 = Number.isFinite(Number(we)) ? Number(we) : 18;
+  const f = String(from || '');
   let n = 0;
   (calls || []).forEach(c => {
     if (!c || String(c.direction || '') !== 'in') return;
+    if (f && String(c.started_at || '') < f) return;
     if ((Number(c.answer_sec) || 0) > 0) return;
     if ((Number(c.call_sec) || 0) < PBX_WAIT_SEC) return;
     const h = _ubHour(c.started_at);
@@ -27943,20 +28548,40 @@ function pbxOffHoursWaited(calls, ws, we) {
 //   жинхэнэ лид «андуурсан» гэж ангилагдаж алдагдана, урт болбол эсрэгээр
 //   хуурамч лид үүснэ. (Хэмжих арга: тасалсан дуудлагын секундын оргилыг хар.)
 const PBX_GREETING_SEC = 8;
-const PBX_WAIT_SEC = PBX_GREETING_SEC + 2;
-// `waited` = дор хаяж нэг удаа 13 секундээс удаан хүлээсэн. Богино тасалсан нь
+// ⛔ БОСГО = 13 СЕК (CEO-гийн шийдвэр, 2026-09-16). Мэндчилгээ 8 сек тул
+//    «мэндчилгээ + 2» нь 10 байсан — тэр нь хэтэрхий уужим байж, мэндчилгээг
+//    дөнгөж сонсоод тасалсан андуурсан дуудлагыг лид гэж тоолж байв.
+// ⚠ Мэндчилгээ УРТСВАЛ босго ч автоматаар өснө (доод хязгаар нь 13) — эс бөгөөс
+//    урт мэндчилгээ сонссон бүх хүн «лид» болно.
+const PBX_WAIT_SEC = Math.max(PBX_GREETING_SEC + 2, 13);
+// `waited` = дор хаяж нэг удаа босгоос удаан хүлээсэн. Богино тасалсан нь
 // `short` (андуурсан/сонирхолгүй) — жагсаалтад ОРОХГҮЙ, зөвхөн тоогоор.
+// ⛔ АЖЛЫН ЦАГИЙН ГАДНА = АЛДСАН ДУУДЛАГА БИШ (CEO-гийн шийдвэр, 2026-09-16).
+//    Хаалттай цагт хэн ч утас авахгүй нь хэвийн — түүнийг «алдсан» гэж тоолвол
+//    ажлын цагийн ЖИНХЭНЭ алдагдал (үдийн завсарлага, 14-18 цаг) тоонд дарагдана.
+// ⚠ ЗАВСРЫН ТОХИОЛДОЛ: нэг хүн ажлын цагт БА гадна залгасан бол зөвхөн ажлын
+//    цагийн оролдлого тоологдоно. ЗӨВХӨН гадна залгасан хүн жагсаалтад орохгүй,
+//    `out.off`-д тоологдоно — нуухгүй, тоог нь ил гаргана (тэд боломжит захиалга).
 function pbxFollowups(calls, opts) {
   const o = opts || {};
   const from = String(o.from || '');
   const minSec = Number.isFinite(Number(o.minSec)) ? Number(o.minSec) : PBX_WAIT_SEC;
-  const by = {};
+  const w0 = Number.isFinite(Number(o.ws)) ? Number(o.ws) : 9;
+  const w1 = Number.isFinite(Number(o.we)) ? Number(o.we) : 18;
+  const by = {}; const offOnly = {};
   (calls || []).forEach(c => {
     if (!c || String(c.direction || '') !== 'in') return;
     const p = String(c.peer || '');
     if (p.length < 6) return;                      // дотоод/богино дугаар — хүн биш
     const at = String(c.started_at || '');
     if (from && at < from) return;
+    // ⚠ Цаг УНШИГДААГҮЙ бол (h === null) ХАСАХГҮЙ — эс бөгөөс огнооны формат
+    //   өөрчлөгдөхөд бүх дуудлага чимээгүй алга болно. Эргэлзвэл ҮЛДЭЭНЭ.
+    const h = _ubHour(at);
+    if (h !== null && (h < w0 || h > w1)) {        // ажлын цагийн ГАДНА — алдсан гэж тооцохгүй
+      if ((Number(c.answer_sec) || 0) === 0 && (Number(c.call_sec) || 0) >= minSec) offOnly[p] = 1;
+      return;
+    }
     const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0 });
     x.tries++;
     if ((Number(c.answer_sec) || 0) > 0) x.answered++;
@@ -27965,10 +28590,50 @@ function pbxFollowups(calls, opts) {
     if (at && at > x.last) x.last = at;
   });
   const out = Object.values(by).filter(x => !x.answered && x.maxSec >= minSec)
-    .sort((a, b) => (b.tries - a.tries) || String(b.last).localeCompare(String(a.last)));
+    .sort((a, b) => (b.tries - a.tries) || pbxByRecent(a, b));
   out.short = Object.values(by).filter(x => !x.answered && x.maxSec < minSec).length;
+  out.off = Object.keys(offOnly).filter(p => !by[p]).length;
   return out;
 }
+// ── 🌙 ОРОЙН ДУУДЛАГА — МАРГААШ ЗАЛГАХ (2026-09-17) ─────────────────────────
+// Амьд датаар (90 хоног): оройд 427 хүн залгасны **373 нь (87%) ажлын цагаар
+// НЭГ Ч УДАА залгаагүй** — өөрөөр хэлбэл эргэж ирдэггүй. Оройн 441 тохиолдлын
+// ердөө 25 нь (6%) дараагийн 3 хоногт өдрөөр залгасан. Тиймээс «маргааш
+// ажлын цагаар холбогдоно уу» гэсэн хариу АЖИЛЛАХГҮЙ — бид өөрсдөө залгана.
+//
+// ⚠ Эдгээр «алдсан дуудлага» гэсэн ТООЛОЛД ОРОХГҮЙ (CEO-гийн дүрэм: хаалттай
+//   цагт утас аваагүй нь ажилтны алдаа биш). Хэмжүүр ба АЖЛЫН ЖАГСААЛТ хоёр
+//   өөр зүйл — тоололд оруулахгүйгээр буцаж залгах ажлыг нь үлдээнэ.
+// ⛔ 13 СЕКУНДЫН БОСГЫГ ЭНД ХЭРЭГЛЭХГҮЙ. Ажлын цагийн гадна PBX мэндчилгээгээ
+//   хэлээд ~9 секундэд ӨӨРӨӨ таслдаг тул амьд датаар оройн 144/144 дуудлага
+//   10 секундээс богино байсан. Босго тавибал жагсаалт ҮРГЭЛЖ ХООСОН гарна.
+//   Үүний хариу нь: андуурч залгасан хүнийг оройд ЯЛГАХ БОЛОМЖГҮЙ — дэлгэцэд
+//   ил хэлнэ.
+// ⚠ Хэзээ нэгэн цагт хүнтэй ярьж чадсан дугаар ОРОХГҮЙ (асуудал нь шийдэгдсэн).
+function pbxEvening(calls, opts) {
+  const o = opts || {};
+  const from = String(o.from || '');
+  const w0 = Number.isFinite(Number(o.ws)) ? Number(o.ws) : 9;
+  const w1 = Number.isFinite(Number(o.we)) ? Number(o.we) : 18;
+  const by = {}; const reached = {};
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    const p = String(c.peer || '');
+    if (p.replace(/\D/g, '').length < 6) return;
+    if ((Number(c.answer_sec) || 0) > 0) { reached[p] = 1; return; }
+    const at = String(c.started_at || '');
+    if (from && at < from) return;
+    const h = _ubHour(at);
+    if (h === null || (h >= w0 && h <= w1)) return;      // ажлын цагт — өөр жагсаалт
+    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0 });
+    x.tries++;
+    x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0);
+    if (at && at < x.first) x.first = at;
+    if (at && at > x.last) x.last = at;
+  });
+  return Object.values(by).filter(x => !reached[x.peer]);
+}
+
 // ── ДУУДЛАГА → ЗАХИАЛГА (2026-09-16) ────────────────────────────────────────
 // «Ирсэн дуудлагын хэдэн хувь нь борлуулалт болов?» гэдгийг дугаараар тулгаж
 // хариулна: дуудлага ирсэн дугаараас (эхний дуудлагын өдрөөс хойш) захиалга
@@ -27980,6 +28645,11 @@ function pbxFollowups(calls, opts) {
 // ⚠ Дугаар нь ЗАХИАЛГАД бичигдээгүй бол (ажилтан өөр дугаар бичсэн) энэ нь
 //   бодит хувиас ДООГУУР тоолно.
 const CALL_CONV_GRACE_D = 1;   // дуудлагаас өмнөх 1 хоногийн захиалгыг ч тооцно
+// ⛔ ДЭЭД ХИЛ ЗААВАЛ. Хязгааргүй бол нэг удаа залгасан хүн ДАРААГИЙН БҮХ
+//   захиалгадаа «хөрвөсөн» гэж тоологдож, дуудлагын түүх урт болох тусам
+//   хувь нь 100% руу хиймлээр өснө. Одоо 14 хоногийн дата тул нөлөөлөхгүй ч
+//   сар өнгөрөх тусам тоо чимээгүй гажина.
+const CALL_CONV_WINDOW_D = 30;
 function callConversion(calls, orders, opts) {
   const o = opts || {};
   const from = String(o.from || '');
@@ -28013,9 +28683,14 @@ function callConversion(calls, orders, opts) {
   Object.values(byPeer).forEach(x => {
     const g = x.talked ? grp.talked : (x.maxSec >= PBX_WAIT_SEC ? grp.missed : grp.short);
     g.callers++;
-    const lim = addDays(String(x.first).slice(0, 10), -CALL_CONV_GRACE_D);
+    const d0 = String(x.first).slice(0, 10);
+    const lim = addDays(d0, -CALL_CONV_GRACE_D);
+    const cap = addDays(d0, CALL_CONV_WINDOW_D);
     const hit = (byPhone[custPhoneKey(x.peer)] || [])
-      .filter(od => String(od.created_at || '').slice(0, 10) >= lim);
+      .filter(od => {
+        const d = String(od.created_at || '').slice(0, 10);
+        return d >= lim && d <= cap;
+      });
     if (hit.length) { g.converted++; g.sum += hit.reduce((a, od) => a + (Number(od.total_mnt) || 0), 0); }
   });
   const pct = g => (g.callers ? Math.round(g.converted * 1000 / g.callers) / 10 : 0);
@@ -28065,6 +28740,31 @@ function pbxByAgent(calls, opts) {
   })).sort((a, b) => b.answered - a.answered);
 }
 
+// ── ХАРИЛЦАГЧИЙН ДУУДЛАГЫН ТҮҮХ (2026-09-16) ────────────────────────────────
+// «Энэ хүн хэдэн удаа залгасан, сүүлд хэзээ ярьсан бэ» — худалдагч утсаа
+// авахаасаа ӨМНӨ харах ёстой мэдээлэл. Дуудлагын лог нь дугаартай, харилцагч
+// ч дугаартай тул `custPhoneKey`-ээр тулгана.
+// ⚠ Дуудлага нь ГАДААД дугаараар л таарна — байгууллагын хэд хэдэн ажилтан
+//   өөр өөр дугаараас залгасан бол зөвхөн бүртгэсэн дугаарынх нь харагдана.
+//   Тиймээс «залгаж байгаагүй» гэж ХАТУУ дүгнэхгүй.
+function custCallStats(calls, phone) {
+  const k = custPhoneKey(phone);
+  const out = { total: 0, answered: 0, missed: 0, last: '', lastTalk: '', talkSec: 0, rows: [] };
+  if (!k) return out;
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    if (custPhoneKey(c.peer) !== k) return;
+    const at = String(c.started_at || '');
+    const ans = Number(c.answer_sec) || 0;
+    out.total++;
+    if (ans > 0) { out.answered++; out.talkSec += ans; if (at > out.lastTalk) out.lastTalk = at; }
+    else out.missed++;
+    if (at > out.last) out.last = at;
+    out.rows.push({ at, ans, sec: Number(c.call_sec) || 0 });
+  });
+  out.rows.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return out;
+}
 // Дугаараар харилцагч олох — `custPhoneKey`-ээр нормчилж тулгана (нэг дугаар
 // 976/0 угтвартай ч, хоосон зайтай ч байж болно).
 function pbxCustomerOf(peer, customers) {
@@ -28072,11 +28772,158 @@ function pbxCustomerOf(peer, customers) {
   if (!k) return null;
   return (customers || []).find(c => c && custPhoneKey(c.phone) === k) || null;
 }
+// ── АЛДСАН ДУУДЛАГЫГ БУЦААЖ ЗАЛГАХ (2026-09-16) ─────────────────────────────
+// Амьд датагаар: 139 хүн хүлээгээд холбогдоогүй, буцаж залгасан нь 0. Дуудлагын
+// лог хэн залгасныг мэддэг ч «бид үүнийг шийдсэн үү» гэдгийг мэддэггүй тул
+// жагсаалт хэзээ ч богиносдоггүй байв. `pbx_callbacks` (нэг дугаар = нэг мөр)
+// түүнийг барина.
+// ⚠ ГАРААР ТЭМДЭГЛЭХ АЖИЛ БАГА БАЙХ ЁСТОЙ (CLAUDE.md: нэмэлт бичилт шаарддаг
+//   боломж үхдэг). Тиймээс ХОЁР зам өөрөө хаагдана:
+//   ① тэр хүн дахин залгаад хүн авсан  → `pbxFollowups` өөрөө хасна,
+//   ② тэр дугаараас захиалга үүссэн    → `ordered` (товч дарах шаардлагагүй).
+//   Үлдсэн тохиолдолд л нэг товч дарна.
+const PBX_CB_URL = () => `${DB_URL}/rest/v1/pbx_callbacks`;
+const PBX_CB_LABEL = { reached: '✓ Холбогдсон', no_answer: '☎ Авсангүй', dropped: '🚫 Хэрэггүй' };
+// `no_answer` нь ХААХГҮЙ — хүн утсаа аваагүй бол ажил дуусаагүй. Зөвхөн
+// холбогдсон / хэрэггүй гэж тэмдэглэсэн нь жагсаалтаас гарна.
+const PBX_CB_CLOSING = ['reached', 'dropped'];
+const MISSED_DAYS = 14;   // жагсаалтын хугацаа — 2 долоо хоногоос хуучин лид хүйтэн
+// ⛔ ПОРТАЛ ЗӨВХӨН ~90 ХОНОГ ХАДГАЛНА (2026-09-16-нд баталсан: 6-07-оос өмнөх
+//   хугацаанаас юу ч буцаадаггүй). Тиймээс татагч удаан зогсвол тэр хугацааны
+//   дуудлага МӨНХӨД алга болно — нөхөх газар байхгүй. Манай DB нь урт хугацааны
+//   цорын ганц архив тул «дата ирэхээ болисон» нь чимээгүй өнгөрч БОЛОХГҮЙ.
+// ⚠ Босго = 4 хоног. Амьд датаар дуудлагагүй байсан хамгийн урт завсар 3 хоног
+//   (амралт) байсан тул түүнээс дээгүүр — худал сэрэмжлүүлэг гаргахгүй.
+const PBX_STALE_D = 4;
+function pbxFeedAge(calls, today) {
+  let last = '';
+  (calls || []).forEach(c => { const at = String((c && c.started_at) || '').slice(0, 10); if (at > last) last = at; });
+  if (!last) return null;
+  return Math.round((new Date(String(today || todayStr())) - new Date(last)) / 86400000);
+}
+function pbxCbKey(peer) { return custPhoneKey(peer) || String(peer || '').replace(/\D/g, ''); }
+
+// ⛔ ХУУЧИРСАН ЗАРЫН ДАТА ЧИМЭЭГҮЙ ХУДАЛ ХЭЛНЭ (2026-09-17).
+//    Дэлгэц нь дата огт БАЙХГҮЙ үед л анхааруулдаг байв. Гэтэл татагч
+//    зогсоход хуучин тоо ХЭВИЙН мэт харагдана — зар үргэлжлүүлэн мөнгө
+//    зарцуулж байхад «өнөөдрийн» гэж үзсэн тоо нь хэдэн хоногийн өмнөх байна.
+//    Амьд системд болсон: Meta аппын хандалт хаагдаж бүх татагч унасан ч
+//    дэлгэц юу ч хэлээгүй. Цэвэр функц — тестлэгдэнэ.
+const ADS_STALE_D = 2;
+// ⛔ ӨДРӨӨР БИШ, ТАТАЛТААР ХЭМЖИНЭ (2026-09-17). `adsFeedAge` нь «хамгийн сүүлийн
+//    ӨДӨР» -ийг хардаг тул татагч өдөрт нэг удаа ажиллаж, өнөөдрийн мөр огт
+//    ирдэггүй байхад ҮРГЭЛЖ «1 хоног» гарч, анхааруулга хэзээ ч асдаггүй байв —
+//    хэрэглэгч «зарын үр дүн ерөөсөө шинэчлэгдэхгүй» гэж бодит байдлыг олсон.
+//    `fetched_at` нь татагч ХЭЗЭЭ ажилласныг хэлдэг цорын ганц үнэн дохио.
+const ADS_FETCH_STALE_H = 3;
+function adsFetchAge(rows, nowMs) {
+  let last = 0;
+  (rows || []).forEach(r => { const t = Date.parse((r && r.fetched_at) || ''); if (t > last) last = t; });
+  if (!last) return null;
+  return Math.max(0, Math.floor(((nowMs || Date.now()) - last) / 3600000));
+}
+// Анхааруулгын БИЧВЭР (HTML биш) — цэвэр функц, тестлэгдэнэ. Хоосон = бүх юм хэвийн.
+function adsStaleMsg(feedAge, fetchAge) {
+  if (fetchAge !== null && fetchAge !== undefined && fetchAge >= ADS_FETCH_STALE_H)
+    return `Татагч ${fetchAge} цаг ажиллаагүй — доорх тоо тэр үеийнх. `
+      + 'Зар үргэлжилж байвал зарцуулалт үүнээс ИХ. Автомат төсөв ч хуваарилагдахгүй '
+      + 'байгаа тул Ads Manager-ээс гараар шалгаарай.';
+  if (feedAge !== null && feedAge !== undefined && feedAge >= ADS_STALE_D)
+    return `Зарын дата ${feedAge} хоног шинэчлэгдээгүй — доорх бүх тоо тэр өдрийнх.`;
+  return '';
+}
+function adsFeedAge(rows, today) {
+  let last = '';
+  (rows || []).forEach(r => { const d = String((r && r.day) || '').slice(0, 10); if (d > last) last = d; });
+  if (!last) return null;
+  return Math.round((new Date(String(today || todayStr())) - new Date(last)) / 86400000);
+}
+// Нээлттэй эсэхийг шийднэ. Цэвэр функц — тестлэгдэнэ.
+//  fups   = pbxFollowups() гаралт (хүлээгээд холбогдоогүй дугаарууд)
+//  cbs    = pbx_callbacks мөрүүд
+//  orders = app_orders (дугаараар нь захиалга болсон эсэхийг хардаг)
+function pbxOpenCalls(fups, cbs, orders) {
+  const byCb = {};
+  (cbs || []).forEach(c => { const k = pbxCbKey(c && c.peer); if (k) byCb[k] = c; });
+  const lastOrd = {};
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    const k = custPhoneKey(o.phone);
+    if (!k) return;
+    const at = String(o.created_at || '').slice(0, 10);
+    if (at && (!lastOrd[k] || at > lastOrd[k])) lastOrd[k] = at;
+  });
+  return (fups || []).map(f => {
+    const k = pbxCbKey(f.peer);
+    const cb = byCb[k] || null;
+    // `upto` нь сүүлийн дуудлагаас хойш байж гэмээнэ шийдэгдсэн — дахин
+    // залгасан хүн жагсаалтад өөрөө эргэж гарна.
+    // ⚠ Цагийг МӨРӨӨР бүү харьцуул — «…+00:00» ба «…Z» хоёр ижил мөч боловч
+    //   мөрийн эрэмбээр өөр гарна. Тоо болгож тулгана.
+    const uptoT = Date.parse(String((cb && cb.upto) || ''));
+    const lastT = Date.parse(String(f.last || ''));
+    const closed = !!(cb && PBX_CB_CLOSING.includes(String(cb.status || '')) &&
+                      !isNaN(uptoT) && !isNaN(lastT) && uptoT >= lastT);
+    const od = lastOrd[custPhoneKey(f.peer)] || '';
+    const ordered = !!(od && od >= addDays(String(f.first).slice(0, 10), -CALL_CONV_GRACE_D));
+    return Object.assign({}, f, {
+      cb, ordered, done: closed || ordered,
+      cbTries: cb ? (Number(cb.tries) || 0) : 0,
+      status: cb ? String(cb.status || '') : '',
+    });
+  }).sort((a, b) => (a.done - b.done) || (a.cbTries - b.cbTries) ||
+                    pbxByRecent(a, b));
+}
+// Сайдбарын тоо — зөвхөн шийдэгдээгүй нь.
+function pbxOpenCount() {
+  if (!Array.isArray(state.pbxLog) || !Array.isArray(state.pbxCb)) return 0;
+  const f = pbxFollowups(state.pbxLog, { from: addDays(todayStr(), -MISSED_DAYS), ws: tariffWorkStart(), we: tariffWorkEnd() });
+  return pbxOpenCalls(f, state.pbxCb, state.appOrders || []).filter(x => !x.done).length;
+}
+async function loadPbxCallbacks(force) {
+  if (state.pbxCb && !force) return state.pbxCb;
+  try {
+    const r = await fetchWithTimeout(`${PBX_CB_URL()}?select=*&limit=2000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.pbxCb = await r.json();
+    return state.pbxCb;
+  } catch (e) { dataLoadFailed('Дуудлагын тэмдэглэл', e); state.pbxCb = state.pbxCb || []; return state.pbxCb; }
+}
+// Нэг дугаарын төлөв бичих. `upto` = тухайн дугаарын СҮҮЛИЙН дуудлагын цаг —
+// түүнээс хойш дахин залгавал жагсаалтад эргэж гарна.
+async function savePbxCallback(peer, status, upto, bump) {
+  const p = String(peer || '').trim();
+  if (!p) return;
+  const prev = (state.pbxCb || []).find(c => pbxCbKey(c && c.peer) === pbxCbKey(p));
+  const row = {
+    peer: p, status: String(status || 'no_answer'),
+    tries: ((prev && Number(prev.tries)) || 0) + (bump === false ? 0 : 1),
+    by_key: state.me || null,
+    upto: upto || null,
+    updated_at: new Date().toISOString(),
+  };
+  const r = await fetchWithTimeout(`${PBX_CB_URL()}?on_conflict=peer`, {
+    method: 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+               'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(row),
+  }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const rows = await r.json();
+  const got = (rows && rows[0]) || row;
+  state.pbxCb = (state.pbxCb || []).filter(c => pbxCbKey(c && c.peer) !== pbxCbKey(p)).concat([got]);
+  return got;
+}
 // Дуудлагын лог татах (pbx_calls) — дугаартай тул anon-д хаалттай.
 async function loadPbxLog(force) {
   if (state.pbxLog && !force) return state.pbxLog;
   try {
-    const from = addDays(todayStr(), -21);
+    // ⚠ 90 хоног: харилцагчийн карт дээрх дуудлагын түүх ба зарын дэлгэцийн
+    //   «90 хоног» сонголт хоёулаа үүнээс уншина (өмнө 21 байсан тул 90 хоногийн
+    //   харагдац ЧИМЭЭГҮЙ дутуу байв). Порталын хадгалах хугацаа ~90 хоног тул
+    //   үүнээс урт болгох нь ч утгагүй.
+    const from = addDays(todayStr(), -90);
     const r = await fetchWithTimeout(
       `${DB_URL}/rest/v1/pbx_calls?select=call_id,started_at,direction,peer,fwd,answer_sec,call_sec&started_at=gte.${from}&order=started_at.desc&limit=3000`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
@@ -28086,20 +28933,11 @@ async function loadPbxLog(force) {
   } catch (e) { dataLoadFailed('Дуудлагын лог', e); state.pbxLog = state.pbxLog || []; return state.pbxLog; }
 }
 
-// ── Дуудлагын дата татах (pbx_calls_hourly) ─────────────────────────────────
-// anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
-async function loadPbxCalls(force) {
-  if (state.pbxCalls && !force) return state.pbxCalls;
-  try {
-    const from = addDays(todayStr(), -90);
-    const r = await fetchWithTimeout(
-      `${DB_URL}/rest/v1/pbx_calls_hourly?select=*&day=gte.${from}&order=day.desc&limit=3000`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    state.pbxCalls = await r.json();
-    return state.pbxCalls;
-  } catch (e) { dataLoadFailed('Дуудлагын дата', e); state.pbxCalls = state.pbxCalls || []; return state.pbxCalls; }
-}
+// ⚠ `pbx_calls_hourly`-г апп УНШИХАА БОЛИВ (2026-09-17). Цагийн нэгтгэлд
+//    дуудлагын УРТ байдаггүй тул андуурч тасалсныг ялгах боломжгүй — улмаар
+//    зарын дэлгэц ба 📵 дэлгэц ХОЁР өөр «алдсан» тоо харуулдаг байв. Одоо
+//    хоёулаа `pbx_calls` (дуудлага бүрийн лог, `loadPbxLog`)-оос тоолно.
+//    Хүснэгт нь татагчид хэвээр бичигдэнэ — түүх, хурдан нэгтгэлд хэрэгтэй.
 
 // ── Зарын дата татах (fb_ads_daily) ─────────────────────────────────────────
 // anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
@@ -28116,6 +28954,37 @@ async function loadFbAds(force) {
   } catch (e) { dataLoadFailed('Зарын дата', e); state.fbAds = state.fbAds || []; return state.fbAds; }
 }
 
+// ── Google хайлтын дата татах (gsc_daily) ───────────────────────────────────
+// anon-д ОГТ нээгээгүй (өрсөлдөгч манай түлхүүр үгийг харах ёсгүй) —
+// нэвтэрсэн токеноор л ирнэ.
+async function loadGsc(force) {
+  if (state.gsc && !force) return state.gsc;
+  try {
+    const from = addDays(todayStr(), -90);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/gsc_daily?select=day,query,page,clicks,impressions,position&day=gte.${from}&order=day.desc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.gsc = await r.json();
+    return state.gsc;
+  } catch (e) { dataLoadFailed('Google хайлтын дата', e); state.gsc = state.gsc || []; return state.gsc; }
+}
+
+// ── Сайтын зочдын дата татах (ga_daily) ─────────────────────────────────────
+// anon-д ОГТ нээгээгүй — нэвтэрсэн токеноор л ирнэ.
+async function loadGa(force) {
+  if (state.ga && !force) return state.ga;
+  try {
+    const from = addDays(todayStr(), -90);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/ga_daily?select=day,channel,sessions,users,engaged,leads&day=gte.${from}&order=day.desc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.ga = await r.json();
+    return state.ga;
+  } catch (e) { dataLoadFailed('Сайтын зочдын дата', e); state.ga = state.ga || []; return state.ga; }
+}
+
 
 // ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭРИЙН БҮРТГЭЛ (2026-09-16) ──────────────────────────
 // `tools/fb_budget.py` 10 минут тутам шийдвэр гаргадаг (төсөв шилжүүлэх, зар
@@ -28127,6 +28996,7 @@ const AD_STATUS_LABEL = {
   ADSET_PAUSED: '⏸ Зогссон', DISAPPROVED: '⛔ Татгалзсан',
   PENDING_REVIEW: '⏳ Хянагдаж буй', WITH_ISSUES: '⚠ Асуудалтай',
   ARCHIVED: '📦 Архив', DELETED: '🗑 Устсан', IN_PROCESS: '⏳ Боловсруулж буй',
+  REMOVED: '🗑 Устсан',
 };
 function fmtUsd(v) { const n = Number(v); return isFinite(n) ? '$' + n.toFixed(2) : '—'; }
 // Facebook-ийн БОДИТ төлөв нь бидний тавьсан төлвөөс зөрж болно (татгалзсан зар,
@@ -28140,8 +29010,11 @@ function adIsLive(s) {
   return String((s && s.effective_status) || (s && s.status) || '').toUpperCase() === 'ACTIVE';
 }
 // Кампанит ажлууд — идэвхтэй нь эхэнд, дараа нь өдрийн төсвөөр.
+// ⛔ META-ЭЭС УСТСАН мөрийг ХАРУУЛАХГҮЙ (2026-09-17). Устгасан кампанит ажил
+//    хүснэгтэд ACTIVE хэвээр үлдэж «9 ажиллаж байна» гэж ХУДЛАА тоологдож
+//    байв — бодит нь 7. Мөр DB-д үлдэнэ (түүх), зөвхөн жагсаалтаас хасагдана.
 function adStateRows(states) {
-  return (states || []).filter(Boolean).slice().sort((a, b) =>
+  return (states || []).filter(s => s && String(s.effective_status || '').toUpperCase() !== 'REMOVED').slice().sort((a, b) =>
     (adIsLive(b) ? 1 : 0) - (adIsLive(a) ? 1 : 0) ||
     (Number(b.daily_usd) || 0) - (Number(a.daily_usd) || 0));
 }
@@ -28182,9 +29055,19 @@ function adPostDesc(s, max) {
 }
 // Барааны хуудас сайт дээр. ⚠ Шинэ хуудсууд sku-гаар (`products/m-NNN/`) —
 // нэрээр биш (нэр солигдоход холбоос тасарна).
+// ⛔ ЗАРЫН ЛИНК UTM-ГҮЙ БОЛ ХЭМЖИГДЭХГҮЙ (2026-09-17). Сайт нь `utm_source`-ыг
+//   уншиж захиалгад `⟦ADS|суваг|кампанит|хэрэгсэл⟧` токен бичдэг. Тэмдэглэгээгүй
+//   линкээр ирсэн хүн «мэдэхгүй» болж тоологдох тул «сайт руу зар явуулах нь
+//   ашигтай юу» гэдгийг ХЭЗЭЭ Ч хариулж чадахгүй.
+//   ⚠ `utm_source=facebook` нь сайтад `⟦LEAD|fb⟧`-ийг ч бичүүлнэ — лид сувгийн
+//     хамралт гараар бөглөхгүйгээр өснө.
+//   ⚠ `utm_campaign` = БАРААНЫ sku. Аль барааны пост захиалга авчирсныг заана;
+//     Facebook-ийн кампанит ажлын нэр пост үүсгэх үед хараахан байхгүй.
+const AD_UTM_MEDIUM = 'post';
 function adPostUrl(p) {
   const sku = String((p && p.sku) || '').trim().toLowerCase();
-  return sku ? `https://mevent.mn/products/${encodeURIComponent(sku)}/` : 'https://mevent.mn';
+  const q = `utm_source=facebook&utm_medium=${AD_UTM_MEDIUM}&utm_campaign=${encodeURIComponent(sku || 'mevent')}`;
+  return sku ? `https://mevent.mn/products/${encodeURIComponent(sku)}/?${q}` : `https://mevent.mn/?${q}`;
 }
 function adPostImage(p) {
   const one = String((p && p.photo) || '').trim();
@@ -28249,19 +29132,79 @@ function adPostCandidates(rev, spend, products, popularity, posts, opts) {
   });
   return out.sort((a, b) => b.share - a.share);
 }
+// ── ӨДРИЙН САНАЛ (2026-09-17) ───────────────────────────────────────────────
+// Постер үүсгэгч ажилладаг ч хүн өдөр бүр «юуг постлох вэ» гэж бодох
+// шаардлагатай байв — тэр бодол л ажлыг зогсоодог. Одоо апп өдөрт хоёр бараа
+// өөрөө сонгож, бичвэртэй нь бэлдэж тавина. Хүний үүрэг = батлах эсвэл алгасах.
+// ⚠ Алгассан нь ч БҮРТГЭГДЭНЭ (`discarded`) — дахин гарч ирэхгүй, сонголт нь
+//   давтагдахгүй. Өөрөөр хэлбэл «алгаслаа» гэдэг нь чимээгүй үнэлгээ.
+const AD_DAILY_PICKS = 2;
+const AD_REPOST_DAYS = 60;      // нэг бараа дахин постлогдох хүртэлх хугацаа
+
+function _dayNum(d) {
+  const s = String(d || '');
+  const t = Date.parse(s.slice(0, 10) + 'T00:00:00Z');
+  return isFinite(t) ? Math.floor(t / 86400000) : 0;
+}
+// Өдөр бүрийн санал. ЦЭВЭР бөгөөд ТОГТМОЛ — нэг өдөр дотор ижил үр дүн
+// (дэлгэц дахин зурагдах бүрд сонголт солигдвол хүн ажлаа алдана).
+function adDailyPicks(products, posts, popularity, today, n) {
+  const cnt = Math.max(1, Number(n) || AD_DAILY_PICKS);
+  const day = String(today || '');
+  // Саяхан постлогдсон / болисон барааг дахин санал болгохгүй.
+  const used = new Set();
+  (posts || []).forEach(x => {
+    if (!x || !x.sku) return;
+    const at = String(x.created_at || '').slice(0, 10);
+    if (!at || !day || (_dayNum(day) - _dayNum(at)) <= AD_REPOST_DAYS) used.add(String(x.sku));
+  });
+  const pop = popularity || {};
+  const ok = (products || []).filter(p => p && !p.archived
+    && (Number(p.price) || 0) > 0 && (Number(p.qty_mevent) || 0) > 0
+    && adPostImage(p) && !used.has(String(p.sku)))
+    .sort((a, b) => (Number(pop[b.sku]) || 0) - (Number(pop[a.sku]) || 0)
+      || String(a.sku || '').localeCompare(String(b.sku || '')));
+  if (!ok.length) return [];
+  const off = ((_dayNum(day) * cnt) % ok.length + ok.length) % ok.length;
+  const out = [];
+  for (let i = 0; i < Math.min(cnt, ok.length); i++) {
+    const p = ok[(off + i) % ok.length];
+    out.push({ cat: adCatOf(p.name), product: p, body: adPostText(p),
+      image: adPostImage(p), link: adPostUrl(p), daily: true });
+  }
+  return out;
+}
+
 const AD_POST_STATUS = {
   draft: '📝 Ноорог', approved: '⏳ Хүлээж буй',
   published: '✅ Нийтлэгдсэн', failed: '⚠ Амжилтгүй', discarded: '✕ Болив',
 };
 function adPostStatusLabel(s) { return AD_POST_STATUS[String(s || '')] || String(s || '—'); }
+// Постын саналын карт — өдрийн санал ба цоорхойн санал ХОЁУЛАА үүнийг ашиглана
+// (хоёр газар давтвал нэг нь өөрчлөгдөхөд нөгөө нь хоцорно).
+function _adPostCardHtml(c, why) {
+  const sku = escapeHtml((c.product && c.product.sku) || '');
+  return `<div class="ads-post">
+      ${c.image ? `<img class="ads-post-img" src="${escapeHtml(c.image)}" alt="" loading="lazy">` : ''}
+      <div class="ads-post-b">
+        <div class="ads-post-why">${escapeHtml(why)}</div>
+        <div class="ads-post-t">${escapeHtml(c.body)}</div>
+        <div class="ads-post-a">
+          <button class="btn btn-primary" data-post-ok="${sku}">✓ Батлах</button>
+          <button class="btn" data-post-no="${sku}">✕ Алгасах</button>
+        </div>
+      </div>
+    </div>`;
+}
 // Товч дарагдахад саналыг ДАХИН бодно — рендерийн үр дүнг хадгалж явбал хоёр
 // эх сурвалж болж, дата шинэчлэгдэхэд хуучирсан бичвэр батлагдана.
 function _adCandBySku(sku) {
   const days = Number(state.adsDays) || 30;
   const rev = adRevenueByCat(state.appOrders || [], addDays(todayStr(), -90));
   const spend = adSpendByCat(adCampaignStats(state.fbAds || [], addDays(todayStr(), -days)));
-  const list = adPostCandidates(rev, spend, state.products || [],
-    (state.appConfig && state.appConfig.mevent_popularity) || {}, state.adPosts || []);
+  const pop = (state.appConfig && state.appConfig.mevent_popularity) || {};
+  const list = adPostCandidates(rev, spend, state.products || [], pop, state.adPosts || [])
+    .concat(adDailyPicks(state.products || [], state.adPosts || [], pop, todayStr()));
   return list.find(c => String((c.product && c.product.sku) || '') === String(sku || '')) || null;
 }
 
@@ -28287,6 +29230,41 @@ async function loadFbActions(force) {
   }
 }
 
+// ── Conversions API — Facebook руу юу буцсан (fb_capi_sent) ─────────────────
+// ⚠ Pixel зөвхөн браузерт ажилладаг. Утсаар/биечлэн хийгдсэн захиалга Facebook-т
+//   ЗӨВХӨН энэ замаар хүрнэ. Холболт тасарсныг хэн ч мэдэхгүй байхаас сэргийлж
+//   дэлгэцэд ил гаргана.
+async function loadFbCapi(force) {
+  if (state.fbCapi && !force) return state.fbCapi;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/fb_capi_sent?select=order_id,value_usd,matched,sent_at&order=sent_at.desc&limit=500`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.fbCapi = await r.json();
+    return state.fbCapi;
+  } catch (e) {
+    dataLoadFailed('Facebook-т илгээсэн худалдан авалт', e);
+    state.fbCapi = state.fbCapi || [];
+    return state.fbCapi;
+  }
+}
+// Илгээлтийн хураангуй. Цэвэр функц — тестлэгдэнэ.
+// `strong` = зар дарсан хүнтэй ШУУД тулгагдсан (fbc). Энэ тоо өсөх тусам
+// Facebook-ийн оновчлол сайжирна; 0 бол зар нь хэнд хүрснээ мэдэхгүй хэвээр.
+function capiStats(rows, from) {
+  let n = 0, usd = 0, strong = 0, last = '';
+  (rows || []).forEach(r => {
+    const at = String((r && r.sent_at) || '');
+    if (from && at.slice(0, 10) < from) return;
+    n++; usd += Number((r && r.value_usd) || 0);
+    if (String((r && r.matched) || '').indexOf('fbc') > -1) strong++;
+    if (at > last) last = at;
+  });
+  return { n, usd: Math.round(usd * 100) / 100, strong, last,
+           strongPct: n ? Math.round(strong * 100 / n) : 0 };
+}
+
 // ── Постын дараалал татах/бичих (ads_posts) ─────────────────────────────────
 // anon-д хаалттай; DB тал дээр RLS нь зарын дэлгэц харах эрхээр хамгаалагдсан.
 async function loadAdPosts(force) {
@@ -28309,7 +29287,352 @@ async function saveAdPost(row) {
   if (!r.ok) throw new Error('HTTP ' + r.status);
 }
 
+// ── ХУУДСАНД ГАРААР НИЙТЭЛСЭН ПОСТЫГ БҮҮСТ ХИЙХ (2026-09-17) ───────────────
+// ⛔ Аппын ӨӨРИЙН нийтэлсэн постыг Facebook-ийн зарын систем ХАРДАГГҮЙ (апп
+//    Development горимд). CEO гараар нийтэлсэн пост харин бүрэн бүүстлэгддэг —
+//    амьд туршиж баталсан. Тиймээс урсгал эргэв: хүн постоо хийнэ → апп
+//    жагсаана → хүн сонгоно → VPS зар болгоно (`tools/fb_boost.py`).
+// ⚠ Жагсаалт `fb_page_posts`-оос ирнэ (VPS 15 мин тутам татна) — апп Facebook
+//   руу ШУУД ханддаггүй (токен сервер дээр, CORS ч зөвшөөрөхгүй).
+const PAGE_POST_ST = {
+  requested: { label: '⏳ Дараалалд', cls: 'pp-wait' },
+  done:      { label: '✅ Ажиллаж байна', cls: 'pp-on' },
+  error:     { label: '⚠ Бүтсэнгүй', cls: 'pp-bad' },
+};
+// Жагсаалтын мөрүүд. Цэвэр функц — тестлэгдэнэ.
+function pagePostRows(posts, limit) {
+  return (posts || [])
+    .filter(p => p && p.post_id)
+    .slice()
+    .sort((a, b) => String(b.created_time || '').localeCompare(String(a.created_time || '')))
+    .slice(0, limit || 12)
+    .map(p => {
+      const st = PAGE_POST_ST[String(p.boost || '')] || null;
+      const site = !!String(p.link_url || '').trim();
+      return {
+        id: String(p.post_id),
+        day: String(p.created_time || '').slice(5, 10),
+        msg: String(p.message || '').replace(/\s+/g, ' ').trim() || '(бичвэргүй)',
+
+        // ⚠ Холбоосгүй постыг «сайт руу» гэж бүүстлэх боломжгүй — Facebook
+        //   татгалздаг. Хүнд ЯГ юу болохыг нь хэлнэ.
+        kind: site ? 'site' : 'engage',
+        // ⚠ Зурагтай постыг ЗӨВХӨН хандалтаар бүүстлэх боломжтой — Meta нь
+        //   чат руу чиглүүлэхийг «Invalid Creative For Objective» гэж
+        //   татгалздаг (амьд туршиж баталсан). Хандалт нь таалагдсан тоо
+        //   нэмдэг ч захиалга ховор авчирдаг тул хүнд ИЛ хэлнэ — эс бөгөөс
+        //   хоёр товч ижил үнэтэй мэт харагдана.
+        kindLabel: site ? '🔗 Сайт руу' : '👁 Зөвхөн хандалт',
+        weak: !site,
+        // Аппаас нийтэлсэн пост. Facebook эдгээрийг жагсаалтдаа ОРУУЛДАГГҮЙ тул
+        // `fb_publish.py` өөрөө бүртгэдэг — хүнд аль нь болохыг ил хэлнэ.
+        fromApp: String((p && p.source) || '') === 'app',
+        state: st ? String(p.boost) : '',
+        stateLabel: st ? st.label : '',
+        stateCls: st ? st.cls : '',
+        err: String(p.error || '').slice(0, 120),
+        link: String(p.permalink || ''),
+      };
+    });
+}
+async function loadPagePosts(force) {
+  if (state.pagePosts && !force) return state.pagePosts;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/fb_page_posts?select=*&order=created_time.desc&limit=30`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.pagePosts = await r.json();
+    return state.pagePosts;
+  } catch (e) {
+    dataLoadFailed('Хуудасны пост', e);
+    state.pagePosts = state.pagePosts || [];
+    return state.pagePosts;
+  }
+}
+// Бүүстын хүсэлт тавина. VPS 10 минут тутам шалгаж зар болгоно.
+async function requestBoost(postId, kind) {
+  const r = await fetchWithTimeout(
+    `${DB_URL}/rest/v1/fb_page_posts?post_id=eq.${encodeURIComponent(postId)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ boost: 'requested', boost_kind: kind,
+                             requested_by: state.me || '', requested_at: new Date().toISOString(),
+                             error: null }),
+    }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+
+// ── НЭГ ЗАРЫГ ЗОГСООХ (2026-09-18) ──────────────────────────────────────────
+// Өмнө нь зогсоох ГАНЦ зам нь «⛔ Бүх зар зогсоо» байв — үр дүнгүй нэг бүүстыг
+// унтраахын тулд БҮХ зараа унтраах, эсвэл Ads Manager руу орох хэрэгтэй болдог
+// байсан тул хэн ч зогсоодоггүй байв.
+// ⛔ Апп Facebook руу ШУУД хандахгүй (токен VPS дээр) — хүсэлтийг DB-д
+//   тэмдэглэнэ, `fb_budget.py` 10 минут тутам биелүүлнэ.
+// ⛔ ДАХИН АСААХ зам ЗОРИУД байхгүй. Мөнгө гаргах шийдвэр Ads Manager-ээс л
+//   гарна; ингэснээр энэ товч хамгийн муудаа зар зогсооно — мөнгө үрэхгүй.
+async function requestCampaignStop(cid) {
+  const r = await fetchWithTimeout(
+    `${DB_URL}/rest/v1/fb_campaign_state?campaign_id=eq.${encodeURIComponent(cid)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ stop_req: new Date().toISOString(), stop_by: state.me || '' }),
+    }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+// Зогсоох хүсэлт тавигдсан ч хараахан биелээгүй байна уу. Цэвэр функц — тестлэгдэнэ.
+// ⚠ Биелсэн хойно `stop_req` цэвэрлэгддэг тул энэ нь зөвхөн ХҮЛЭЭЛТИЙН үе.
+function adStopPending(s) { return !!(s && s.stop_req) && adIsLive(s); }
+
 function canSeeAds() { return canAccessView('ads', () => !!state.isCEO || canSeeMarketing()); }
+
+// ── GOOGLE ХАЙЛТ — «хүн биднийг ямар үгээр хайж байна» (2026-09-17) ─────────
+// Facebook дээр бид хүн рүү өөрөө очдог; Google дээр хүн БИДНИЙГ хайж байна —
+// «асар түрээс» гэж бичсэн хүн бол хамгийн худалдан авах хүсэлтэй лид.
+// ⚠ Дата нь 2-3 хоног ХОЦОРДОГ ба property баталгаажсан өдрөөс хойшхи түүхтэй
+//   (өмнөх үе БАЙХГҮЙ). Тиймээс «Google-ээс хэн ч ирэхгүй байна» гэж дүгнэхээс
+//   өмнө хэдэн хоногийн дата байгааг хар — блок үүнийг ил бичнэ.
+const GSC_STALE_D = 5;      // 2-3 хоногийн хоцролт хэвийн; 5+ бол татагч зогссон
+const GSC_YOUNG_D = 14;     // үүнээс бага бол «дүгнэлт гаргахад эрт»
+const GSC_NEAR_MIN = 5;     // эхний хуудасны ирмэг = хамгийн хямд ялалт
+const GSC_NEAR_MAX = 20;
+const GSC_MIN_IMPR = 10;    // цөөн харагдалтаас дүгнэлт гаргахгүй
+
+// Нийт үзүүлэлт. ⛔ Дундаж байрыг ХАРАГДАЛТААР ЖИГНЭНЭ — энгийн дундаж авбал
+//   нэг удаа харагдсан үг 500 удаа харагдсантай ижил жинтэй болно.
+// ⛔ Дата байхгүй үед байр нь `null` — 0 БИШ. Google-д 0 гэдэг байр байхгүй,
+//   дэлгэцэд «0-р байр» гэж гарвал хамгийн дээд байр мэт уншигдана.
+function gscStats(rows, from) {
+  let clicks = 0, impr = 0, wpos = 0, last = '';
+  const days = new Set();
+  (rows || []).forEach(r => {
+    const d = String((r && r.day) || '').slice(0, 10);
+    if (!d || (from && d < from)) return;
+    const c = Number(r.clicks) || 0, i = Number(r.impressions) || 0;
+    clicks += c; impr += i; wpos += (Number(r.position) || 0) * i;
+    days.add(d); if (d > last) last = d;
+  });
+  return {
+    clicks, impr, last, days: days.size,
+    pos: impr ? Math.round((wpos / impr) * 10) / 10 : null,
+    ctr: impr ? Math.round((clicks / impr) * 1000) / 10 : null,
+  };
+}
+
+// Түлхүүр үгээр нэгтгэнэ (нэг үг олон хуудсаар гарч болно).
+function gscTopQueries(rows, from, n) {
+  const m = new Map();
+  (rows || []).forEach(r => {
+    const d = String((r && r.day) || '').slice(0, 10);
+    if (!d || (from && d < from)) return;
+    const q = String((r && r.query) || '').trim();
+    if (!q) return;
+    const e = m.get(q) || { q, clicks: 0, impr: 0, wpos: 0 };
+    const i = Number(r.impressions) || 0;
+    e.clicks += Number(r.clicks) || 0;
+    e.impr += i;
+    e.wpos += (Number(r.position) || 0) * i;
+    m.set(q, e);
+  });
+  return [...m.values()]
+    .map(e => ({ q: e.q, clicks: e.clicks, impr: e.impr, pos: e.impr ? Math.round((e.wpos / e.impr) * 10) / 10 : null }))
+    .sort((a, b) => b.clicks - a.clicks || b.impr - a.impr || a.q.localeCompare(b.q))
+    .slice(0, n || 12);
+}
+
+// Зөвлөгөө = ЗӨВХӨН энд (зарын `adsAdvice`-тай ижил хэв маяг) — дэлгэцэд тараахгүй.
+function gscAdvice(rows, from) {
+  const qs = gscTopQueries(rows, from, 500), out = [];
+  // ① Эхний хуудасны ирмэг дээрх үг — хуудсаа сайжруулахад л хангалттай
+  qs.filter(q => q.pos !== null && q.pos >= GSC_NEAR_MIN && q.pos <= GSC_NEAR_MAX && q.impr >= GSC_MIN_IMPR)
+    .sort((a, b) => b.impr - a.impr).slice(0, 3)
+    .forEach(q => out.push({ sev: 2, text: `Google: «${q.q}» — ${q.pos}-р байрт, ${q.impr} удаа харагдсан. Тэр үгэнд тохирох хуудсаа сайжруулбал эхний хуудсанд гарах боломжтой.` }));
+  // ② Харагдаж байгаа атлаа нэг ч дардаггүй — гарчиг/тайлбар таарахгүй байна
+  qs.filter(q => !q.clicks && q.impr >= GSC_MIN_IMPR * 3)
+    .sort((a, b) => b.impr - a.impr).slice(0, 2)
+    .forEach(q => out.push({ sev: 2, text: `Google: «${q.q}» — ${q.impr} удаа харагдсан ч нэг ч хүн дараагүй. Хайлтад гарч буй гарчиг, тайлбараа өөрчилж үзэх.` }));
+  return out;
+}
+
+function gscSectionHtml(rows, days) {
+  const from = addDays(todayStr(), -(Number(days) || 30));
+  const s = gscStats(rows, from);
+  const head = `<div class="ads-sec">Google хайлт <span class="ads-sub">(${days} хоног${s.last ? ' · сүүлийн дата ' + escapeHtml(s.last) : ''})</span></div>`;
+  if (!s.impr) {
+    return `${head}<div class="ads-note">Энэ хугацаанд Google-ийн хайлтаас харагдалт бүртгэгдээгүй.
+      Search Console 2026-09-16-нд холбогдсон тул өмнөх түүх БАЙХГҮЙ — дата өдөр бүр 07:00-д нэмэгдэнэ.</div>`;
+  }
+  const age = adsFeedAge(rows, todayStr());
+  const stale = (age !== null && age >= GSC_STALE_D)
+    ? `<div class="mc-stale">⚠ <b>Google-ийн дата ${age} хоног шинэчлэгдээгүй.</b>
+        Хэвийн хоцролт 2-3 хоног — үүнээс удвал татагч зогссон байж магадгүй.</div>` : '';
+  const kpis = `<div class="ads-kpis">
+    <div class="ads-kpi"><div class="ads-kpi-l">Хайлтаас орж ирсэн</div><div class="ads-kpi-v">${s.clicks}</div><div class="ads-kpi-s">товшилт</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Хайлтад харагдсан</div><div class="ads-kpi-v">${s.impr}</div><div class="ads-kpi-s">${s.ctr === null ? '' : s.ctr + '% нь дарсан'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Дундаж байр</div><div class="ads-kpi-v">${s.pos === null ? '—' : s.pos}</div><div class="ads-kpi-s">${s.pos === null ? '' : (s.pos <= 10 ? 'эхний хуудас' : 'хоёр дахь хуудас, цаашаа')}</div></div>
+  </div>`;
+  const top = gscTopQueries(rows, from, 12);
+  // ⚠ 4 нүд = кампанит ажлын мөртэй ЯГ ижил бүтэц: ≤620px-д `.ads-row` нь
+  //    2 багана болж [нэр | товшилт] / [харагдалт | байр] гэж эвхэгдэнэ.
+  const rowsHtml = top.map(q => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(q.q)}</span>
+      <span class="ads-sp">${q.clicks} товшилт</span>
+      <span class="ads-ms">${q.impr} харагдсан</span>
+      <b class="ads-pm">${q.pos === null ? '—' : q.pos + '-р байр'}</b>
+    </div>`).join('');
+  const young = s.days < GSC_YOUNG_D
+    ? `<div class="ads-note">⚠ Ердөө ${s.days} өдрийн дата — дүгнэлт гаргахад эрт. Google хайлтын тоо 2-3 хоног хоцорч ирдэг.</div>` : '';
+  return `${head}${stale}${kpis}
+    <div class="ads-sec">Ямар үгээр олж байна <span class="ads-sub">(товшилтоор)</span></div>
+    <div class="ads-list">${rowsHtml}</div>${young}`;
+}
+
+// ── ЗАРЫН ДЭЛГЭЦ = 4 ТАБ (2026-09-17) ───────────────────────────────────────
+// 20 гаруй блок нэг хуудсан дээр дараалж байсан тул «юу хараад юу хийхээ»
+// олдохгүй байв (хэрэглэгчийн гомдол: «бүгдийг нэг дор харуулсан тул төвөгтэй»).
+// Ажлын ТӨРЛӨӨР хуваав; өгөгдмөл нь ХИЙХ АЖИЛ — бусад нь лавлагаа.
+const ADS_TABS = [
+  { k: 'todo', label: '✅ Хийх ажил' },
+  { k: 'money', label: '💰 Мөнгө' },
+  { k: 'src', label: '🔎 Хаанаас ирсэн' },
+  { k: 'calls', label: '☎️ Утас' },
+];
+// ⛔ Блок бүр ЯГ НЭГ табд харьяалагдана. Хоёр табд тавибал аль нь шинэ болохыг
+//    хүн мэдэхгүй; хаанаас ч гаргахгүй бол блок чимээгүй алга болно. Тест
+//    хоёуланг нь шалгана — шинэ блок нэмбэл энд ч нэм.
+function adsTabParts(tab, p) {
+  if (tab === 'money') return [p.kpi, p.budget, p.camps, p.cmp, p.state, p.act];
+  if (tab === 'src') return [p.ga, p.gsc, p.attrib, p.lead, p.capi];
+  if (tab === 'calls') return [p.call, p.wd, p.conv, p.agent, p.fup];
+  return [p.advice, p.daily, p.cand, p.pubNote, p.pp, p.queue];   // 'todo' = өгөгдмөл
+}
+
+// ── ГАРАГААР — ХЭЗЭЭ ХҮН ХЭРЭГТЭЙ ВЭ (2026-09-17) ───────────────────────────
+// «Хэддэх өдөр хамгийн ачаалалтай вэ» гэдэг нь ээлжийн хуваарийн асуулт.
+// Амьд датаар (90 хоног) Мягмар хамгийн ачаалалтай (өдөрт 16.6) ч хамгийн их
+// АЛДАЖ байгаа нь Даваа (64), хамгийн муу хувьтай нь Ням (52%). Ялгаа нь
+// ачаалал биш — хүн байгаа эсэх.
+// ⚠ Гарагийг УБ-ийн цагаар (`_ubHour`-тай ижил +8) тооцно — браузерын бүсээр
+//   гулсуулбал Ням гарагийн дуудлага Бямбад унана.
+// ⚠ Өдрийн дундажийг тухайн гарагийн БОДИТ хоногийн тоонд хуваана (90 хоногт
+//   гараг бүр 12-13 удаа тохиолддог тул тэнцүү гэж үзэж болохгүй).
+// ⚠ Богино нэр (`WEEKDAY_MN`) аль хэдийн байдаг — ээлжийн хуваарь уншихад
+//   бүтэн нэр хэрэгтэй тул тусдаа.
+const WEEKDAY_FULL_MN = ['Ням', 'Даваа', 'Мягмар', 'Лхагва', 'Пүрэв', 'Баасан', 'Бямба'];
+function pbxByWeekday(calls, fromDay, workStart, workEnd) {
+  const w0 = Number.isFinite(Number(workStart)) ? Number(workStart) : 9;
+  const w1 = Number.isFinite(Number(workEnd)) ? Number(workEnd) : 18;
+  const out = WEEKDAY_FULL_MN.map((label, dw) => ({ dw, label, calls: 0, answered: 0, missed: 0, evening: 0, days: {} }));
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    if (String(c.peer || '').replace(/\D/g, '').length < 6) return;
+    const at = String(c.started_at || '');
+    const d = at.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || (fromDay && d < fromDay)) return;
+    const t = Date.parse(at);
+    if (isNaN(t)) return;
+    const ub = new Date(t + 8 * 3600 * 1000);
+    const x = out[ub.getUTCDay()];
+    const h = ub.getUTCHours();
+    const a = Number(c.answer_sec) || 0;
+    // ⚠ `dateStr` нь ЛОКАЛ огноо буцаадаг — `ub` аль хэдийн +8 болсон тул
+    //   дахин гулсуулна. UTC геттерээр (=УБ-ийн хана цаг) угсарна.
+    const p2 = n => String(n).padStart(2, '0');
+    // Өдрийн тоололд оройн дуудлага ч ордог — тэр өдөр ажилласан эсэхийг заана.
+    x.days[`${ub.getUTCFullYear()}-${p2(ub.getUTCMonth() + 1)}-${p2(ub.getUTCDate())}`] = 1;
+    if (h < w0 || h > w1) { x.evening++; return; }
+    if (a <= 0 && (Number(c.call_sec) || 0) < PBX_WAIT_SEC) return;   // андуурсан
+    x.calls++;
+    if (a > 0) x.answered++; else x.missed++;
+  });
+  out.forEach(x => {
+    const n = Object.keys(x.days).length;
+    x.dayCount = n;
+    x.perDay = n ? Math.round(x.calls * 10 / n) / 10 : 0;
+    x.rate = x.calls ? Math.round(x.answered * 100 / x.calls) : 0;
+  });
+  // Долоо хоног Даваагаар эхэлнэ (Ням сүүлд) — хуваарь ингэж уншигддаг.
+  return out.slice(1).concat(out.slice(0, 1));
+}
+
+// ── САЙТЫН ЗОЧИД (GA4) — юүлүүрийн ДЭЭД тал (2026-09-17) ───────────────────
+// GSC «ямар үгээр хайж байна» гэдгийг хэлнэ; GA4 «хэдэн хүн орж, хэд нь
+// холбоо барьсан» гэдгийг хэлнэ. Хоёул байж л «зар ажиллаж байна уу» гэдэг
+// асуултад хариулна.
+// ⚠ `leads` = GA4-д key event гэж тэмдэглэсэн үйлдэл (одоогоор `generate_lead`
+//   ганцаараа). GA4-д шинэ key event нэмбэл энэ тоо утгаа өөрчилнө.
+const GA_STALE_D = 3;       // GA4 ~48 цагт тогтворжино; 3+ хоног бол татагч зогссон
+const GA_CHANNEL_MN = {
+  'Organic Search': 'Google хайлт', 'Direct': 'Шууд орсон',
+  'Paid Social': 'Төлбөртэй зар', 'Organic Social': 'Сошиал (органик)',
+  'Referral': 'Бусад сайтаас', 'Email': 'Имэйл', 'Paid Search': 'Хайлтын зар',
+  'Unassigned': 'Тодорхойгүй', 'Organic Video': 'Видео', 'Cross-network': 'Хос сүлжээ',
+};
+function gaChannelLabel(c) { return GA_CHANNEL_MN[c] || String(c || '—'); }
+
+function gaStats(rows, from) {
+  let sessions = 0, users = 0, engaged = 0, leads = 0, last = '';
+  const days = new Set();
+  (rows || []).forEach(r => {
+    const d = String((r && r.day) || '').slice(0, 10);
+    if (!d || (from && d < from)) return;
+    sessions += Number(r.sessions) || 0;
+    users += Number(r.users) || 0;
+    engaged += Number(r.engaged) || 0;
+    leads += Number(r.leads) || 0;
+    days.add(d); if (d > last) last = d;
+  });
+  // ⛔ Хөрвөлтийг сесс БАЙХГҮЙ үед 0 гэж БҮҮ бич — «хөрвөлт 0%» нь «муу
+  //    ажиллаж байна» гэж уншигдана, үнэндээ хэмжих юм алга. null = «—».
+  return { sessions, users, engaged, leads, days: days.size, last,
+    conv: sessions ? Math.round((leads / sessions) * 1000) / 10 : null };
+}
+
+function gaChannels(rows, from) {
+  const m = new Map();
+  (rows || []).forEach(r => {
+    const d = String((r && r.day) || '').slice(0, 10);
+    if (!d || (from && d < from)) return;
+    const c = String((r && r.channel) || '').trim() || 'Unassigned';
+    const e = m.get(c) || { ch: c, sessions: 0, leads: 0 };
+    e.sessions += Number(r.sessions) || 0;
+    e.leads += Number(r.leads) || 0;
+    m.set(c, e);
+  });
+  return [...m.values()].sort((a, b) => b.sessions - a.sessions || b.leads - a.leads);
+}
+
+// `orders` = тухайн хугацаанд САЙТААР ирсэн захиалгын тоо (юүлүүрийн ёроол).
+function gaSectionHtml(rows, days, orders) {
+  const from = addDays(todayStr(), -(Number(days) || 30));
+  const s = gaStats(rows, from);
+  const head = `<div class="ads-sec">Сайтын зочид <span class="ads-sub">(${days} хоног${s.last ? ' · сүүлийн дата ' + escapeHtml(s.last) : ''})</span></div>`;
+  if (!s.sessions) {
+    return `${head}<div class="ads-note">Сайтын зочдын дата хараахан ирээгүй.
+      VPS дээрх татагч өдөр бүр 07:10-д ажиллана — эхний өдөр хоосон байх нь хэвийн.</div>`;
+  }
+  const age = adsFeedAge(rows, todayStr());
+  const stale = (age !== null && age > GA_STALE_D)
+    ? `<div class="mc-stale">⚠ <b>Сайтын зочдын дата ${age} хоног шинэчлэгдээгүй.</b>
+        GA4 хоёр хоног хоцордог нь хэвийн — үүнээс удвал татагч зогссон байж магадгүй.</div>` : '';
+  const kpis = `<div class="ads-kpis">
+    <div class="ads-kpi"><div class="ads-kpi-l">Сайтад орсон</div><div class="ads-kpi-v">${s.users}</div><div class="ads-kpi-s">${s.sessions} удаа</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Холбоо барьсан</div><div class="ads-kpi-v">${s.leads}</div><div class="ads-kpi-s">${s.conv === null ? '' : s.conv + '% нь'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Сайтаар ирсэн захиалга</div><div class="ads-kpi-v">${Number(orders) || 0}</div>
+      <div class="ads-kpi-s">${s.sessions && orders ? Math.round((orders / s.sessions) * 1000) / 10 + '% нь' : 'тэр хугацаанд'}</div></div>
+  </div>`;
+  const chRows = gaChannels(rows, from).slice(0, 8).map(c => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(gaChannelLabel(c.ch))}</span>
+      <span class="ads-sp">${c.sessions} сесс</span>
+      <span class="ads-ms">${c.leads} холбоо барив</span>
+      <b class="ads-pm">${c.sessions ? Math.round((c.leads / c.sessions) * 1000) / 10 + '%' : '—'}</b>
+    </div>`).join('');
+  return `${head}${stale}${kpis}
+    <div class="ads-sec">Хаанаас орж ирсэн <span class="ads-sub">(сессээр)</span></div>
+    <div class="ads-list">${chRows}</div>`;
+}
 
 function renderAds() {
   const rows = state.fbAds || [];
@@ -28318,19 +29641,42 @@ function renderAds() {
   const camps = adCampaignStats(rows, from);
   const rev = adRevenueByCat(state.appOrders || [], addDays(todayStr(), -90));
   const ws = tariffWorkStart(), we = tariffWorkEnd();
-  const pbx = pbxStats(state.pbxCalls || [], from, ws, we);
+  const pbx = pbxStats(state.pbxLog || [], from, ws, we);
   const spend = adSpendByCat(camps);
   const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
   const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
   const conv = callConversion(state.pbxLog || [], state.appOrders || [], { from });
-  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we, state.pbxLog || [])).concat(callConvAdvice(conv))
+  const gsc = state.gsc || [];
+  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we, state.pbxLog || [], from)).concat(callConvAdvice(conv)).concat(gscAdvice(gsc, from))
     .sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
   const lead = leadChannelStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= addDays(todayStr(), -days)), 'cash');
 
-  if (!rows.length && !pbx.calls) {
+  const gscHtml = gscSectionHtml(gsc, days);
+  // Юүлүүрийн ёроол = тэр хугацаанд САЙТААР ирсэн захиалга.
+  // ⛔ `source` нь 'm-event-website' гэж ирдэг — 'site' гэж ТҮҮХИЙГЭЭР бүү
+  //    харьцуул (эхний хувилбар яг ингэж үргэлж 0 харуулж байв).
+  const siteOrders = (state.appOrders || []).filter(o =>
+    orderSourceKey(o) === 'site' && String(o.created_at || o.starts_at || '').slice(0, 10) >= from).length;
+  const gaHtml = gaSectionHtml(state.ga || [], days, siteOrders);
+
+  if (!rows.length && !pbx.calls && !gsc.length) {
     return `<div class="ads-empty">📣 <b>Зарын дата хараахан ирээгүй.</b>
       <div>VPS дээрх татагч өдөр бүр 06:30-д ажиллана. Хэрэв 1 хоногоос удвал холболт тасарсан байж магадгүй.</div></div>`;
   }
+
+  // ⚠ Татагч зогссон бол доорх БҮХ тоо хуучирсан. Мөнгө зарцуулагдсаар
+  //   байхад «өнөөдрийн» гэж уншихаас сэргийлж ХАМГИЙН ДЭЭР нь бичнэ.
+  const feedAge = adsFeedAge(rows, todayStr());
+  const fetchAge = adsFetchAge(rows, Date.now());
+  const _staleMsg = adsStaleMsg(feedAge, fetchAge);
+  const staleHtml = _staleMsg ? `<div class="mc-stale">⚠ <b>${escapeHtml(_staleMsg)}</b></div>` : '';
+  // Хэзээ татсаныг ҮРГЭЛЖ ил бичнэ — «шинэчлэгдэж байна уу» гэдгийг тааварлахгүй.
+  let _fetchTs = 0;
+  (rows || []).forEach(r => { const t = Date.parse((r && r.fetched_at) || ''); if (t > _fetchTs) _fetchTs = t; });
+  const freshHtml = _fetchTs
+    ? `<div class="ads-fresh">🔄 Facebook-ээс сүүлд татсан: ${escapeHtml(ubStamp(new Date(_fetchTs).toISOString()))}
+        · дата ${escapeHtml(String(rows.length))} мөр</div>`
+    : '';
 
   const period = `<div class="ads-tabs">${[7, 30, 90].map(d =>
     `<button class="ads-tab${d === days ? ' on' : ''}" data-ads-days="${d}">${d} хоног</button>`).join('')}</div>`;
@@ -28363,7 +29709,8 @@ function renderAds() {
     <div class="ads-kpi"><div class="ads-kpi-l">Эхэлсэн чат</div><div class="ads-kpi-v">${totalMsg}</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">1 чатын өртөг</div><div class="ads-kpi-v">${totalMsg ? fmtMoney(Math.round(totalSpend / totalMsg)) : '—'}</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">Ирсэн дуудлага</div><div class="ads-kpi-v">${pbx.calls || '—'}</div></div>
-    <div class="ads-kpi"><div class="ads-kpi-l">Хүн авсан</div><div class="ads-kpi-v">${pbx.calls ? pbx.rate + '%' : '—'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Хүн авсан</div><div class="ads-kpi-v">${pbx.calls ? pbx.rate + '%' : '—'}</div>
+      <div class="ads-kpi-s">ажлын цагт</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">1 дуудлагын өртөг</div><div class="ads-kpi-v">${pbxCostPerCall(totalSpend, pbx.calls) === null ? '—' : fmtMoney(pbxCostPerCall(totalSpend, pbx.calls))}</div></div>
   </div>`;
 
@@ -28373,12 +29720,19 @@ function renderAds() {
     </div>` : `<div class="ads-advice"><div class="ads-h">💡 Юу хийх вэ</div>
       <div class="ads-tip ads-sev3">Тодорхой зөрүү олдсонгүй — зарын хуваарилалт борлуулалттайгаа нийцэж байна.</div></div>`;
 
+  // ⛔ ГОЛ БАГАНА = БОРЛУУЛАЛТ (2026-09-18, CEO: «хамгийн гол нь борлуулалт»).
+  //    Чат бол зорилго биш — зөвхөн борлуулалт тулгагдаагүй үеийн ойролцоо хэмжүүр.
+  const campBuys = camps.some(c => c.rev > 0);
   const campRows = camps.map(c => `<div class="ads-row">
       <span class="ads-nm">${escapeHtml(c.name)}</span>
       <span class="ads-sp">${fmtMoney(c.mnt)}</span>
-      <span class="ads-ms">${c.msg} чат</span>
-      <b class="ads-pm${c.perMsg === null ? ' ads-bad' : ''}">${c.perMsg === null ? 'чат алга' : fmtMoney(c.perMsg)}</b>
-    </div>`).join('');
+      <span class="ads-ms">${c.rev > 0 ? `${c.buys} захиалга · ${fmtMoney(c.rev)}` : `${c.msg} чат`}</span>
+      <b class="ads-pm${c.roas === null && c.perMsg === null ? ' ads-bad' : ''}">${c.roas !== null
+        ? c.roas.toFixed(1) + '×'
+        : c.perMsg === null ? 'чат алга' : fmtMoney(c.perMsg)}</b>
+    </div>`).join('') + (campBuys
+      ? '<div class="ads-note">× = зарын мөнгө хэдэн дахин эргэж ирсэн. Борлуулалт нь Facebook-ийн тулгасан захиалга — утсаар хийгдсэн нь ч ордог, гэхдээ бүгд тулгагддаггүй.</div>'
+      : '<div class="ads-note">Борлуулалт хараахан тулгагдаагүй тул чатаар хэмжиж байна. Facebook худалдан авагчийг утас/мэйлээр таньсан үед захиалга энд гарч ирнэ.</div>');
 
   // Зарын хувь ↔ борлуулалтын хувь. Зөрүү нь ЯГ энд харагдана.
   const cmpRows = AD_CATS.concat([{ k: 'other', label: 'Бусад' }]).map(c => {
@@ -28395,6 +29749,17 @@ function renderAds() {
     </div>`;
   }).join('');
 
+  // Сайтаар ирсэн захиалгын зарын суваг — note дахь ⟦ADS⟧ токеноос.
+  // ⚠ Утсаар ирсэн захиалгад энэ токен БАЙХГҮЙ (тэнд дуудлагын тулгалт ажиллана).
+  const attrib = adAttribStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= from), from, 'cash');
+  const attribHtml = !attrib.n ? '' : `<div class="ads-sec">Сайтаар ирсэн захиалга — зарын суваг <span class="ads-sub">(${days} хоног)</span></div>
+    <div class="ads-list">${attrib.rows.map(r => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(r.k)}</span>
+      <span class="ads-sp">${r.n} захиалга</span>
+      <span class="ads-ms">${r.n ? fmtMoney(Math.round(r.inc / r.n)) : '—'} дундаж</span>
+      <b class="ads-pm">${fmtMoney(r.inc)}</b>
+    </div>`).join('')}</div>`;
+
   const leadHtml = `<div class="ads-note">Захиалгын лид суваг: <b>${lead.coverage}%</b> тэмдэглэгдсэн${lead.unknown ? ` · ${lead.unknown} захиалга тэмдэглээгүй` : ''}.
     ${lead.coverage < 80 ? 'Хамралт 80%-иас дээш болмогц Facebook-ийн чат → захиалга хүртэлх холбоос гарч ирнэ.' : 'Чат → захиалгын холбоос гаргахад хангалттай дата боллоо.'}</div>`;
 
@@ -28403,12 +29768,17 @@ function renderAds() {
   const states = adStateRows(state.fbStates || []);
   const liveN = states.filter(adIsLive).length;
   const stateHtml = !states.length ? '' : `<div class="ads-sec">Идэвхтэй зар <span class="ads-sub">(${liveN} ажиллаж байна · ${states.length} нийт)</span></div>
-    <div class="ads-list">${states.map(c => `<div class="ads-row">
+    <div class="ads-list">${states.map(c => `<div class="ads-row ads-srow">
       <span class="ads-nm">${escapeHtml(c.name || '—')}</span>
       <span class="ads-sp">${escapeHtml(adStatusLabel(c.effective_status, c.status))}</span>
       <span class="ads-ms">${c.updated_at ? escapeHtml(fmtDateTimeUB(c.updated_at)) : ''}</span>
       <b class="ads-pm${adIsLive(c) ? '' : ' ads-bad'}">${adIsLive(c) ? fmtUsd(c.daily_usd) + '/өдөр' : '—'}</b>
-    </div>`).join('')}</div>`;
+      ${!adsBudgetEditable() || !adIsLive(c) ? '<span></span>' : adStopPending(c)
+        ? '<span class="ads-stopq">⏳ Зогсож байна</span>'
+        : `<button class="btn btn-danger ads-stop ui-raw" data-ads-stop="${escapeHtml(c.campaign_id)}"
+             data-ads-stop-n="${escapeHtml(c.name || '')}">⏸ Зогсоо</button>`}
+    </div>`).join('')}</div>
+    ${adsBudgetEditable() ? '<div class="ads-note">Зогсоосон зар 10 минутын дотор унтарна. Дахин асаахдаа Ads Manager ашиглана — апп зар асаадаггүй.</div>' : ''}`;
 
   // Систем юу хийсэн. ⚠ Зөвхөн ӨӨРЧЛӨЛТ бүртгэгддэг тул мөр цөөн байх нь
   // хэвийн — «юу ч болоогүй» гэдэг нь тогтвортой ажиллаж байгааг хэлнэ.
@@ -28428,17 +29798,16 @@ function renderAds() {
   const cands = adPostCandidates(rev, spend, state.products || [],
     (state.appConfig && state.appConfig.mevent_popularity) || {}, posts);
   const candHtml = !cands.length ? '' : `<div class="ads-sec">Санал болгож буй пост <span class="ads-sub">(зар дутуу ангилалд)</span></div>
-    <div class="ads-list">${cands.map(c => `<div class="ads-post">
-      ${c.image ? `<img class="ads-post-img" src="${escapeHtml(c.image)}" alt="" loading="lazy">` : ''}
-      <div class="ads-post-b">
-        <div class="ads-post-why">${escapeHtml(adCatLabel(c.cat))} — борлуулалтын ${c.share}% атлаа зар бараг алга</div>
-        <div class="ads-post-t">${escapeHtml(c.body)}</div>
-        <div class="ads-post-a">
-          <button class="btn btn-primary" data-post-ok="${escapeHtml(c.product.sku || '')}">✓ Батлах</button>
-          <button class="btn" data-post-no="${escapeHtml(c.product.sku || '')}">✕ Болих</button>
-        </div>
-      </div>
-    </div>`).join('')}</div>`;
+    <div class="ads-list">${cands.map(c =>
+      _adPostCardHtml(c, `${adCatLabel(c.cat)} — борлуулалтын ${c.share}% атлаа зар бараг алга`)).join('')}</div>`;
+
+  // Өдрийн санал — «юуг постлох вэ» гэсэн бодлыг систем хийнэ.
+  const daily = adDailyPicks(state.products || [], posts,
+    (state.appConfig && state.appConfig.mevent_popularity) || {}, todayStr())
+    .filter(d => !cands.some(c => c.product && d.product && c.product.sku === d.product.sku));
+  const dailyHtml = !daily.length ? '' : `<div class="ads-sec">Өнөөдрийн санал <span class="ads-sub">(өдөрт ${AD_DAILY_PICKS} — батлах эсвэл алгасах)</span></div>
+    <div class="ads-list">${daily.map(d =>
+      _adPostCardHtml(d, 'Удаан постлогдоогүй бараа')).join('')}</div>`;
 
   // ⚠ Нийтлэгч хараахан холбогдоогүй бол ҮҮНИЙГ ИЛ хэл — «Батлах» дарсан хүн
   //   пост явсан гэж бодоод хүлээх нь худал амлалт болно.
@@ -28447,6 +29816,26 @@ function renderAds() {
     `<div class="ads-note">⚠ Нийтлэгч хараахан холбогдоогүй — баталсан пост дараалалд хүлээнэ. Facebook хуудасны эрх тохируулмагц автоматаар нийтлэгдэж бүүст хийгдэнэ.</div>`;
 
   const queued = posts.filter(x => x && x.status !== 'discarded').slice(0, 10);
+  // ── Таны гараар нийтэлсэн пост → бүүст ──
+  const ppRows = pagePostRows(state.pagePosts || [], 12);
+  const ppHtml = !ppRows.length ? '' : `
+    <div class="ads-sec">📣 Таны постыг бүүст хийх <span class="ads-sub">(хуудсанд нийтэлсэн сүүлийн постууд)</span></div>
+    <div class="ads-list">${ppRows.map(r => `<div class="pp-row">
+      <div class="pp-b">
+        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind${r.weak ? ' pp-weak' : ''}">${escapeHtml(r.kindLabel)}</span>${
+          r.fromApp ? '<span class="pp-src">📱 Аппаас</span>' : ''}${
+          r.link ? `<a class="pp-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">Facebook дээр ↗</a>` : ''}</div>
+        <div class="pp-t">${escapeHtml(r.msg.slice(0, 90))}</div>
+        ${r.err ? `<div class="pp-err">${escapeHtml(r.err)}</div>` : ''}
+      </div>
+      <div class="pp-a">${r.state
+        ? `<span class="pp-st ${r.stateCls}">${escapeHtml(r.stateLabel)}</span>${
+            r.state === 'error' ? `<button class="btn" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">↻ Дахин</button>` : ''}`
+        : `<button class="btn${r.weak ? '' : ' btn-primary'}" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">⚡ Бүүст</button>`}</div>
+    </div>`).join('')}</div>
+    <div class="ads-note">📱 тэмдэгтэй нь аппын постер үүсгэгчээс нийтлэгдсэн пост — зураг, бичвэр, холбоос нь манай санд байгаа тул шууд бүүст хийж болно.
+      <b>Гараар нийтлэх постдоо mevent.mn-ий холбоос оруулаарай</b> — тэгвэл сайт руу хүн чиглүүлж захиалга авч болно. Холбоосгүй зураг постыг Meta зөвхөн хандалтаар бүүстлэхийг зөвшөөрдөг: таалагдсан тоо нэмнэ, захиалга ховор. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.</div>`;
+
   const queueHtml = !queued.length ? '' : `<div class="ads-sec">Постын дараалал</div>
     <div class="ads-list">${queued.map(x => `<div class="ads-row">
       <span class="ads-nm">${escapeHtml(String(x.body || '').split('\n')[0])}</span>
@@ -28460,9 +29849,46 @@ function renderAds() {
   const callHtml = !pbx.calls ? '' : `<div class="ads-sec">Утасны дуудлага <span class="ads-sub">(${pbx.dayCount} хоног · өдөрт дунджаар ${pbx.perDay})</span></div>
     <div class="ads-list">
       <div class="ads-row"><span class="ads-nm">Ажлын цагаар (${ws}:00–${we}:59)</span><span class="ads-sp">${pbx.bizCalls} ирсэн</span><span class="ads-ms">${pbx.bizAns} авсан</span><b class="ads-pm${pbx.bizRate < 70 ? ' ads-bad' : ''}">${pbx.bizRate}%</b></div>
-      <div class="ads-row"><span class="ads-nm">Ажлын цагийн гадна</span><span class="ads-sp">${pbx.offCalls} ирсэн</span><span class="ads-ms">${pbx.offAns} авсан</span><b class="ads-pm${pbx.offMissed ? ' ads-bad' : ''}">${pbx.offMissed} алдсан</b></div>
+      <div class="ads-row"><span class="ads-nm">Ажлын цагийн гадна</span><span class="ads-sp">${pbx.offCalls} ирсэн</span><span class="ads-ms">${pbx.offAns} авсан</span><b class="ads-pm">алдсанд тооцохгүй</b></div>
       <div class="ads-row"><span class="ads-nm">Нийт яриа</span><span class="ads-sp">${pbx.answered} дуудлага</span><span class="ads-ms">${Math.round(pbx.talk / 60)} минут</span><b class="ads-pm">${pbx.answered ? Math.round(pbx.talk / pbx.answered) : 0} сек дундаж</b></div>
-    </div>`;
+    </div>
+    <div class="ads-note">Тоолол нь <b>📵 Алдсан дуудлага</b> дэлгэцтэй ИЖИЛ дүрэмтэй.
+      Ажлын цагт ${PBX_WAIT_SEC} секунд хүрэхгүй тасалсан <b>${pbx.short}</b> дуудлага ороогүй — манай дугаар
+      KFC-тэй төстэй тул ихэнх нь андуурч залгасан хүмүүс.
+      Ажлын цагийн гадна залгасныг «алдсан» гэж тооцохгүй: тэнд PBX мэндчилгээгээ хэлээд өөрөө таслана.</div>`;
+
+  // ── Гараагаар — ээлжийн хуваарийн хариу ──
+  // ⚠ Хамгийн муу гараг нь хамгийн ачаалалтай нь БАЙХ албагүй: амьд датаар
+  //   Мягмар хамгийн олон дуудлагатай атлаа Даваа хоёр дахин их алддаг.
+  const wd = pbxByWeekday(state.pbxLog || [], from, ws, we);
+  const wdMax = Math.max(1, ...wd.map(x => x.calls));
+  const wdWorst = wd.slice().sort((a, b) => b.missed - a.missed)[0];
+  const wdHtml = !pbx.calls ? '' : `<div class="ads-sec">Гараагаар <span class="ads-sub">(ажлын цагт · ${days} хоног)</span></div>
+    <div class="ads-list">${wd.map(x => `<div class="ads-row wd-row">
+      <span class="ads-nm">${x.label}</span>
+      <span class="wd-bar"><i class="wd-w${Math.round(x.calls * 10 / wdMax) * 10}"></i></span>
+      <span class="ads-ms">${x.perDay}/өдөр</span>
+      <b class="ads-pm${x.missed && x === wdWorst ? ' ads-bad' : ''}">${x.missed} алдсан · ${x.rate}%</b>
+    </div>`).join('')}</div>
+    <div class="ads-note">Баганын урт = тухайн гарагийн дуудлагын тоо; «/өдөр» нь тэр гараг хэдэн удаа
+      тохиосныг тооцсон дундаж. <b>${escapeHtml(wdWorst.label)}</b> хамгийн их алдаж байна —
+      ачаалал биш, хүн байгаа эсэх нь ялгаа гаргадаг. Оройн дуудлага энд ОРООГҮЙ.</div>`;
+
+  // ── Facebook руу буцсан худалдан авалт (Conversions API) ──
+  // Хэрэглэгч «холбоо ажиллаж байна уу» гэдгийг ЭНДЭЭС л харна.
+  const capi = capiStats(state.fbCapi || [], from);
+  const capiStale = capi.last && (todayStr() > addDays(String(capi.last).slice(0, 10), 2));
+  const capiHtml = !(state.fbCapi || []).length ? '' : `
+    <div class="ads-sec">🔁 Facebook руу буцсан худалдан авалт <span class="ads-sub">(${days} хоног)</span></div>
+    <div class="ads-list">
+      <div class="ads-row"><span class="ads-nm">Илгээгдсэн захиалга</span>
+        <span class="ads-sp">${capi.n} ш</span><span class="ads-ms">$${capi.usd.toLocaleString('en-US')}</span>
+        <b class="ads-pm${capiStale ? ' ads-bad' : ''}">${capiStale ? 'холболт зогссон' : 'идэвхтэй'}</b></div>
+      <div class="ads-row"><span class="ads-nm">Зар дарсан хүнтэй тулгагдсан</span>
+        <span class="ads-sp">${capi.strong} ш</span><span class="ads-ms">үлдсэн нь утас/мэйлээр</span>
+        <b class="ads-pm">${capi.strongPct}%</b></div>
+    </div>
+    <div class="ads-note">Утсаар, биечлэн хийгдсэн захиалга Facebook-т зөвхөн энэ замаар хүрнэ — зар «ямар хүн үнэхээр мөнгө төлдөг вэ» гэдгийг үүн дээр сурна. Утас, и-мэйл нь шифрлэгдэж явдаг тул Facebook хэн болохыг харахгүй.</div>`;
 
   // ── Дуудлага → захиалга ──
   // ── Ажилтнаар — хэн хэдэн дуудлага авав ──
@@ -28493,7 +29919,7 @@ function renderAds() {
       ⚠ Ажилтан захиалгад өөр дугаар бичсэн бол энд тоологдохгүй тул бодит хувь үүнээс өндөр байж болно.</div>`;
 
   // ── Хариу аваагүй дуудлага — нэрлэсэн жагсаалт ──
-  const fups = pbxFollowups(state.pbxLog || [], { from: addDays(todayStr(), -days) });
+  const fups = pbxFollowups(state.pbxLog || [], { from: addDays(todayStr(), -days), ws, we });
   const fupHtml = !fups.length ? '' : `
     <div class="ads-sec">📵 Хариу аваагүй дуудлага <span class="ads-sub">(${fups.length} дугаар · ${days} хоног)</span></div>
     <div class="ads-list">${fups.slice(0, 40).map(f => {
@@ -28509,25 +29935,478 @@ function renderAds() {
       ${fups.short ? `Нэмэлт <b>${fups.short}</b> дугаар мэндчилгээ сонсоод шууд тасалсан (KFC-тэй андуурсан байх магадлалтай) — жагсаалтад оруулаагүй.` : ''}
       ⚠ Ажилтнууд гар утсаараа буцаж залгасан бол PBX түүнийг харахгүй — зарим нь аль хэдийн шийдэгдсэн байж болно.</div>`;
 
+  const campsHtml = `<div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
+    <div class="ads-list">${campRows}</div>`;
+  const cmpHtml = `<div class="ads-sec">Зарын хуваарилалт ↔ борлуулалт <span class="ads-sub">(борлуулалт 90 хоног)</span></div>
+    <div class="ads-list">${cmpRows}</div>`;
+
+  const tab = ADS_TABS.some(t => t.k === state._adsTab) ? state._adsTab : 'todo';
+  // Хийх ажлын тоог таб дээр гаргана — аль таб руу орохыг систем хэлж өгнө.
+  const todoN = advice.length + daily.length + cands.length + queued.length;
+  const tabsHtml = `<div class="ads-tabs">${ADS_TABS.map(t =>
+    `<button class="ads-tab${t.k === tab ? ' on' : ''}" data-ads-tab="${t.k}">${t.label}${t.k === 'todo' && todoN ? ` (${todoN})` : ''}</button>`).join('')}</div>`;
+
+  const body = adsTabParts(tab, {
+    advice: adviceHtml, daily: dailyHtml, cand: candHtml, pubNote, pp: ppHtml, queue: queueHtml,
+    kpi, budget: budgetHtml, camps: campsHtml, cmp: cmpHtml, state: stateHtml, act: actHtml,
+    ga: gaHtml, gsc: gscHtml, attrib: attribHtml, lead: leadHtml, capi: capiHtml,
+    call: callHtml, wd: wdHtml, conv: convHtml, agent: agentHtml, fup: fupHtml,
+  }).filter(x => x && String(x).trim()).join('\n');
+
   return `<h2 class="view-title">📣 Зар & үр дүн</h2>
+    ${staleHtml}
+    ${freshHtml}
+    ${tabsHtml}
     ${period}
-    ${kpi}
-    ${budgetHtml}
-    ${adviceHtml}
-    ${candHtml}
-    ${pubNote}
-    ${queueHtml}
-    ${stateHtml}
-    ${actHtml}
-    ${callHtml}
-    ${convHtml}
-    ${agentHtml}
-    ${fupHtml}
-    <div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
-    <div class="ads-list">${campRows}</div>
-    <div class="ads-sec">Зарын хуваарилалт ↔ борлуулалт <span class="ads-sub">(борлуулалт 90 хоног)</span></div>
-    <div class="ads-list">${cmpRows}</div>
-    ${leadHtml}`;
+    ${body || '<div class="ads-note">Энэ хэсэгт одоогоор харуулах зүйл алга.</div>'}`;
+}
+
+// ⛔ ДУУДЛАГЫН ЦАГ = УБ-ИЙН ЦАГ (2026-09-16). PostgREST нь `started_at`-ыг
+//   **UTC**-ээр буцаадаг (`…T05:44:00+00:00`) тул түүхий мөрийг таслаж
+//   харуулбал **8 цагаар эрт** харагдана — амьд системд «05:44-д залгасан»
+//   гэж бичигдэж байсан нь үнэндээ 13:44 байв. Огноо ч шөнийн дуудлагад
+//   нэг өдрөөр гулсана.
+// ⚠ `getHours()` БҮҮ ашигла — ажиллаж буй машины бүсээс хамаарна (`_ubHour`-ийн
+//   тэмдэглэлийг үз). UTC геттер + 8 цаг л найдвартай.
+function ubStamp(ts, withDate) {
+  const t = Date.parse(ts);
+  if (isNaN(t)) return '';
+  const d = new Date(t + 8 * 3600 * 1000);
+  const p = n => String(n).padStart(2, '0');
+  const hm = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+  if (withDate === false) return hm;
+  return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${hm}`;
+}
+// ── ЗАЛГАСАН ХҮНИЙ НЭР (2026-09-16) ─────────────────────────────────────────
+// Залгагчдын 89% нь `customers`-т БАЙХГҮЙ (1,377-оос 80 нь л бүртгэлтэй) тул
+// жагсаалт нүцгэн дугаараар дүүрч, хүн хэнийг залгахаа мэдэхгүй байв. Захиалгын
+// мөрөнд нэр УТАСТАЙГАА хамт хадгалагддаг — түүнээс нэрийг сэргээнэ.
+// ⚠ Бүртгэлтэй харилцагчийн нэр ДАВУУ (шинэчлэгдсэн байдаг); захиалгын нэр
+//   зөвхөн нөхөх үүрэгтэй.
+// ⚠ Нэр олдоогүйг ТААМАГЛАХГҮЙ — «шинэ дугаар» гэж ил бичнэ.
+function pbxNameIndex(customers, orders) {
+  const m = {};
+  const at = (o) => String(o.starts_at || o.created_at || '').slice(0, 10);
+  const mk = () => ({ name: '', orders: 0, last: '', revenue: 0 });
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    const k = custPhoneKey(o.phone);
+    if (!k) return;
+    const x = m[k] || (m[k] = mk());
+    x.orders++;
+    // ⚠ Түүхий `total_mnt` БИШ — барьцаа хасагдсан жинхэнэ орлого (CLAUDE.md).
+    x.revenue += orderRevenue(o, finBasis()) || 0;
+    if (at(o) > x.last) x.last = at(o);
+    if (!x.name && o.customer) x.name = String(o.customer).trim();
+  });
+  (customers || []).forEach(c => {
+    const k = custPhoneKey(c && c.phone);
+    if (!k) return;
+    const x = m[k] || (m[k] = mk());
+    if (c.name) x.name = String(c.name).trim();
+  });
+  return m;
+}
+function pbxWho(peer, idx) {
+  return (idx && idx[custPhoneKey(peer)]) || { name: '', orders: 0, last: '', revenue: 0 };
+}
+// ── ХЭНД ЭХЛЭЭД ЗАЛГАХ ВЭ (2026-09-16) ──────────────────────────────────────
+// «Хаа хамаагүй залгах уу?» — ҮГҮЙ. Жагсаалт өөрөө дарааллаа хэлэх ёстой.
+// Оноо нь ЗӨВХӨН бидний мэддэг дохионоос: өмнө худалдан авсан уу · хэдэн удаа
+// залгасан · хэдэн секунд хүлээсэн · хэр саяхан. Таамаг оруулахгүй.
+// ⚠ `why` нь хамгийн ХҮНД дохиог нэрлэнэ — хүн «яагаад энэ эхэнд байна?» гэдгийг
+//   эргэлзэлгүй мэдэх ёстой (оноо нь өөрөө тайлбаргүй тоо).
+function pbxPriority(r, w, today) {
+  const wh = w || { orders: 0, revenue: 0 };
+  const days = Math.max(0, Math.round(
+    (new Date(String(today || todayStr())) - new Date(String(r.last || '').slice(0, 10))) / 86400000));
+  const parts = [];
+  if (wh.orders) parts.push({ n: 1000 + Math.min(wh.revenue / 10000, 500), t: 'өмнө худалдан авсан' });
+  if ((r.tries || 0) > 1) parts.push({ n: (r.tries - 1) * 120, t: `${r.tries} удаа залгасан` });
+  if ((r.maxSec || 0) >= 30) parts.push({ n: Math.min(r.maxSec, 120), t: `${r.maxSec} сек хүлээсэн` });
+  if (days <= 2) parts.push({ n: 100 - days * 20, t: days === 0 ? 'өнөөдөр залгасан' : 'саяхан залгасан' });
+  const score = parts.reduce((a, x) => a + x.n, 0) - days;
+  const top = parts.slice().sort((a, b) => b.n - a.n)[0];
+  return { score, why: top ? top.t : '', days };
+}
+// ── БҮХ ЗАЛГАГЧ (2026-09-16) ────────────────────────────────────────────────
+// «Алдсан дуудлага» нь зөвхөн ШИЙДЭГДЭЭГҮЙ мөрийг харуулдаг тул 1,300+ залгасан
+// хүнийг хаанаас ч харах газаргүй байв. Энэ нь дугаар бүрээр нэг мөр.
+// ⚠ Дотоод/богино дугаар (3-5 орон) = PBX-ийн шат, хүн БИШ — хасна.
+// ⚠ Захиалга болсон эсэхийг `custPhoneKey`-ээр тулгана; дугаараа өөрөөр бичсэн
+//   захиалга таарахгүй тул «захиалга өгөөгүй» гэж ХАТУУ дүгнэхгүй.
+function pbxCallers(calls, orders, opts) {
+  const o = opts || {};
+  const from = String(o.from || '');
+  const by = {};
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    const p = String(c.peer || '');
+    if (p.replace(/\D/g, '').length < 6) return;
+    const at = String(c.started_at || '');
+    if (from && at < from) return;
+    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, talk: 0, first: at, last: at, maxSec: 0 });
+    x.tries++;
+    const a = Number(c.answer_sec) || 0;
+    if (a > 0) { x.answered++; x.talk += a; }
+    x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0);
+    if (at && at < x.first) x.first = at;
+    if (at && at > x.last) x.last = at;
+  });
+  const ordBy = {};
+  (orders || []).forEach(od => {
+    if (!od || !_orderActive(od)) return;
+    const k = custPhoneKey(od.phone);
+    if (!k) return;
+    ordBy[k] = (ordBy[k] || 0) + 1;
+  });
+  return Object.values(by).map(x => Object.assign(x, {
+    orders: ordBy[custPhoneKey(x.peer)] || 0,
+    missed: x.tries - x.answered,
+  })).sort((a, b) => pbxByRecent(a, b));
+}
+// Хайлт — дугаар эсвэл харилцагчийн нэрээр.
+function pbxCallerMatch(row, q, customers) {
+  const s = String(q || '').trim().toLowerCase();
+  if (!s) return true;
+  if (String(row.peer || '').toLowerCase().includes(s)) return true;
+  const cu = pbxCustomerOf(row.peer, customers);
+  return !!(cu && String(cu.name || '').toLowerCase().includes(s));
+}
+// ── ДЭЛГЭЦ: 📵 Алдсан дуудлага ──────────────────────────────────────────────
+// Өдөр тутмын ажлын жагсаалт: хэн залгаад холбогдоогүй, хэнд буцаж залгах вэ.
+// ⚠ Зарын дэлгэц дээрх жагсаалттай ижил `pbxFollowups`-оос гарна — дүрэм ХОЁР
+//   газар салбарлахгүй (тэнд зөвхөн тоймоор харагдана, ажил нь ЭНД хийгдэнэ).
+function canSeeMissedCalls() {
+  return canAccessView('missedcalls', () => !!state.isCEO || canSeeOrders());
+}
+function renderMissedCalls() {
+  if (state.pbxLog === null || state.pbxCb === null) return '<div class="mc-empty">Ачаалж байна…</div>';
+  const from = addDays(todayStr(), -MISSED_DAYS);
+  const fups = pbxFollowups(state.pbxLog || [], { from, ws: tariffWorkStart(), we: tariffWorkEnd() });
+  const rows = pbxOpenCalls(fups, state.pbxCb || [], state.appOrders || []);
+  const nameIdx0 = pbxNameIndex(state.customers || [], state.appOrders || []);
+  rows.forEach(r => { r.pri = pbxPriority(r, pbxWho(r.peer, nameIdx0), todayStr()); });
+  // ⛔ ЭРЭМБЭ = СҮҮЛД ЗАЛГАСАН (CEO, 2026-09-17). Өмнө нь `pri.score`-оор
+  //   эрэмбэлдэг байсан тул «Өмнөх өдрүүд» доторх мөр 09-14, 09-06, 09-11
+  //   гэж эмх замбараагүй гарч, хүн хаанаас уншихаа мэдэхгүй байв.
+  //   `pri.why` нь ШАЛТГААНЫГ хэлсээр байна — зөвхөн дарааллыг заахаа болив.
+  const open = rows.filter(r => !r.done).sort(pbxByRecent);
+  const done = rows.filter(r => r.done);
+
+  const nameIdx = nameIdx0;
+  const ws = tariffWorkStart(), we = tariffWorkEnd();
+  const row = (r) => {
+    const w = pbxWho(r.peer, nameIdx);
+    // Хамгийн чухал нь ХЭН гэдэг — нэр байвал тэр нь гарчиг, дугаар нь доор.
+    const head = w.name
+      ? `<div class="mc-num">${escapeHtml(w.name)}</div><div class="mc-sub">${escapeHtml(r.peer)}</div>`
+      : `<div class="mc-num">${escapeHtml(r.peer)}</div><div class="mc-sub">шинэ дугаар — өмнө захиалга өгөөгүй</div>`;
+    // ⚠ Дарааллыг СҮҮЛД ЗАЛГАСАН цаг заана; `why` нь тэр хүний хамгийн хүнд
+    //   дохиог (танил харилцагч, олон удаа залгасан г.м.) хэлнэ. Түүнийг
+    //   шошго болгож ДАВТАХГҮЙ — нэг мэдээлэл хоёр газар байвал нүд төөрнө.
+    const why = (!r.done && r.pri) ? r.pri.why : '';
+    const tags = [
+      w.orders ? { t: `🛒 ${w.orders} захиалга · ${fmtMoney(w.revenue)}${w.last ? ' · сүүлд ' + w.last : ''}`, warm: 1 } : null,
+      r.ordered ? { t: '💰 залгасныхаа дараа захиалга өгсөн', warm: 1 } : null,
+      r.tries > 1 ? { t: `${r.tries} удаа залгасан` } : null,
+      r.maxSec >= 30 ? { t: `${r.maxSec} сек хүлээсэн` } : null,
+      r.cbTries ? { t: `бид ${r.cbTries} удаа залгасан` } : null,
+      (r.status && !r.ordered) ? { t: PBX_CB_LABEL[r.status] || r.status } : null,
+    ].filter(x => x && x.t !== why)
+     .map(x => `<span class="mc-tag${x.warm ? ' mc-warm' : ''}">${escapeHtml(x.t)}</span>`).join('');
+    const acts = r.done
+      ? `<button class="mc-btn" data-mc-reopen="${escapeHtml(r.peer)}">↩ Буцаах</button>`
+      : `<a class="mc-btn call" href="tel:${escapeHtml(r.peer)}">☎ Залгах</a>
+         <button class="mc-btn ok" data-mc="reached" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">✓ Ярьсан</button>
+         <button class="mc-btn" data-mc="no_answer" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">Авсангүй</button>
+         <button class="mc-btn drop" data-mc="dropped" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}" title="Хэрэггүй — жагсаалтаас хас">🚫</button>`;
+    return `<div class="mc-row${r.done ? ' mc-done' : ''}">
+      <div class="mc-main">${head}
+        <div class="mc-meta">Сүүлд залгасан: <b>${escapeHtml(ubStamp(r.last))}</b>${
+          !r.done && r.pri && r.pri.why ? ` · <span class="mc-why">${escapeHtml(r.pri.why)}</span>` : ''}</div>
+        ${tags ? `<div class="mc-tags">${tags}</div>` : ''}</div>
+      <div class="mc-acts">${acts}</div></div>`;
+  };
+  // 🌙 Оройн дуудлага — маргааш залгах (тоололд ОРОХГҮЙ, ажлын жагсаалтад ОРНО).
+  const eveRows = pbxOpenCalls(
+    pbxEvening(state.pbxLog || [], { from, ws: tariffWorkStart(), we: tariffWorkEnd() }),
+    state.pbxCb || [], state.appOrders || []);
+  const eveOpen = eveRows.filter(r => !r.done);
+  // Бүх залгагч (90 хоног = порталын хадгалах хугацаа).
+  const allRows = pbxCallers(state.pbxLog || [], state.appOrders || [], {});
+  const tab = ['all', 'eve'].includes(state._mcTab) ? state._mcTab : 'open';
+  const q = String(state._mcQ || '');
+  // Эрэмбэ — «хаа хамаагүй залгах уу?» гэсэн асуултын хариу нь ЭНЭ.
+  const MC_SORTS = {
+    last:   { label: 'Сүүлд залгасан', fn: (a, b) => pbxByRecent(a, b) },
+    tries:  { label: 'Олон удаа залгасан', fn: (a, b) => b.tries - a.tries || pbxByRecent(a, b) },
+    money:  { label: 'Танил — худалдан авсан', fn: (a, b) => (pbxWho(b.peer, nameIdx).revenue - pbxWho(a.peer, nameIdx).revenue) || pbxByRecent(a, b) },
+    cold:   { label: 'Хэзээ ч яриагүй', fn: (a, b) => (a.answered - b.answered) || (b.tries - a.tries) },
+  };
+  const sortKey = MC_SORTS[state._mcSort] ? state._mcSort : 'last';
+  const shown = allRows.filter(r => pbxCallerMatch(r, q, state.customers || []))
+    .filter(r => sortKey !== 'money' || pbxWho(r.peer, nameIdx).orders)
+    .filter(r => sortKey !== 'cold' || !r.answered)
+    .sort(MC_SORTS[sortKey].fn);
+  const allHtml = `
+    <div class="mc-tools"><input id="mc-q" class="ui-raw mc-q" type="search"
+      placeholder="Дугаар эсвэл харилцагчийн нэр…" value="${escapeHtml(q)}"></div>
+    <div class="mc-sorts">${Object.keys(MC_SORTS).map(k =>
+      `<button class="mc-chip${k === sortKey ? ' on' : ''}" data-mc-sort="${k}">${MC_SORTS[k].label}</button>`).join('')}</div>
+    <div class="ads-sec">Залгасан хүмүүс <span class="ads-sub">(90 хоног${q ? ` · ${shown.length} олдлоо` : ''})</span></div>
+    <div class="mc-list">${shown.slice(0, 200).map(r => {
+      const w = pbxWho(r.peer, nameIdx);
+      const tags = [
+        w.orders ? `<span class="mc-tag mc-warm">🛒 ${w.orders} захиалга · ${escapeHtml(fmtMoney(w.revenue))}</span>` : '',
+        `<span class="mc-tag">${r.tries} удаа</span>`,
+        r.answered ? `<span class="mc-tag">${r.answered} ярьсан${r.talk ? ' · ' + Math.round(r.talk / 60) + ' мин' : ''}</span>`
+                   : '<span class="mc-tag">хэзээ ч яриагүй</span>',
+        r.missed ? `<span class="mc-tag">${r.missed} аваагүй</span>` : '',
+      ].filter(Boolean).join('');
+      return `<div class="mc-row${r.answered ? '' : ' mc-cold'}">
+        <div class="mc-main">
+          ${w.name ? `<div class="mc-num">${escapeHtml(w.name)}</div><div class="mc-sub">${escapeHtml(r.peer)}</div>`
+                   : `<div class="mc-num">${escapeHtml(r.peer)}</div><div class="mc-sub">шинэ дугаар</div>`}
+          <div class="mc-meta">Сүүлд залгасан: <b>${escapeHtml(ubStamp(r.last))}</b></div>
+          <div class="mc-tags">${tags}</div></div>
+        <div class="mc-acts"><a class="mc-btn call" href="tel:${escapeHtml(r.peer)}">☎ Залгах</a></div></div>`;
+    }).join('') || '<div class="mc-empty">Олдсонгүй.</div>'}</div>
+    ${shown.length > 200 ? `<div class="mc-empty">…бас ${shown.length - 200} дугаар. Хайлтаар нарийсга.</div>` : ''}`;
+  const eveDone = eveRows.filter(r => r.done);
+  const eveHtml = `
+    <div class="ads-sec">Ажлын цагийн гадна залгасан <span class="ads-sub">(${MISSED_DAYS} хоног)</span></div>
+    <div class="mc-list">${eveOpen.map(row).join('') || '<div class="mc-empty">Оройн дуудлага алга.</div>'}</div>
+    ${eveDone.length ? `<details class="mc-more"><summary>Шийдэгдсэн (${eveDone.length})</summary>
+      <div class="mc-list">${eveDone.map(row).join('')}</div></details>` : ''}
+    <div class="ads-note">Эдгээр хүн ${ws}:00–${we}:59 цагаас гадна залгасан тул PBX мэндчилгээгээ хэлээд
+      таслсан. <b>Тэд эргэж ирдэггүй:</b> амьд датаар оройн залгагчдын <b>87%</b> ажлын цагаар нэг ч удаа
+      залгаагүй. Тиймээс «маргааш залгаарай» гэж хүлээлгүй, өглөө нь бид залгана.
+      ⚠ Эдгээр «алдсан дуудлага» гэсэн тоололд ОРОХГҮЙ — хаалттай цагт утас аваагүй нь ажилтны алдаа биш.
+      ⚠ Оройд бүх дуудлага 9 секундэд тасардаг тул андуурч залгасан хүнийг ялгах <b>боломжгүй</b> —
+      жагсаалтад хэдэн андуурсан дугаар холилдож болно.</div>`;
+  const age = pbxFeedAge(state.pbxLog || [], todayStr());
+  const stale = (age !== null && age >= PBX_STALE_D)
+    ? `<div class="mc-stale">⚠ <b>Дуудлагын дата ${age} хоног шинэчлэгдээгүй.</b>
+        Татагч (CEO-гийн компьютер) зогссон байж магадгүй. Унител зөвхөн сүүлийн
+        ~90 хоногийг хадгалдаг тул удаан зогсвол тэр хугацааны дуудлага бүрмөсөн алга болно.</div>`
+    : '';
+  return `<h2 class="view-title">📵 Алдсан дуудлага</h2>
+    ${stale}
+    <div class="ads-kpis">
+      <div class="ads-kpi"><div class="ads-kpi-l">Өчигдөр</div><div class="ads-kpi-v">${
+        open.filter(r => pbxDayBucket(r.last, todayStr()) === 'yesterday').length}</div>
+        <div class="ads-kpi-s">өглөөний мэдэгдлийн тоо</div></div>
+      <div class="ads-kpi"><div class="ads-kpi-l">Шийдэгдээгүй</div><div class="ads-kpi-v">${open.length}</div></div>
+      <div class="ads-kpi"><div class="ads-kpi-l">${MISSED_DAYS} хоногт</div><div class="ads-kpi-v">${rows.length}</div></div>
+      <div class="ads-kpi"><div class="ads-kpi-l">Танил дугаар</div><div class="ads-kpi-v">${rows.filter(r => pbxWho(r.peer, nameIdx).orders).length}</div>
+        <div class="ads-kpi-s">өмнө захиалга өгсөн</div></div>
+    </div>
+    <div class="ads-tabs">
+      <button class="ads-tab${tab === 'open' ? ' on' : ''}" data-mc-tab="open">Буцаж залгах (${open.length})</button>
+      <button class="ads-tab${tab === 'eve' ? ' on' : ''}" data-mc-tab="eve">🌙 Оройн (${eveOpen.length})</button>
+      <button class="ads-tab${tab === 'all' ? ' on' : ''}" data-mc-tab="all">Бүх залгагч (${allRows.length})</button>
+    </div>
+    ${tab === 'all' ? allHtml : tab === 'eve' ? eveHtml : `
+    ${(() => {
+      // ⛔ Өчигдрийнхийг 14 хоногийн эрэмбэ дотор БҮҮ ууш — өглөөний push
+      //    «Өчигдөр N хүн» гэж хэлсэн бол дэлгэцэн дээр ЯГ тэр бүлэг байна.
+      const g = { today: [], yesterday: [], older: [] };
+      open.forEach(r => g[pbxDayBucket(r.last, todayStr())].push(r));
+      const sec = (title, list, sub) => list.length
+        ? `<div class="ads-sec">${title} <span class="ads-sub">(${list.length}${sub ? ' · ' + sub : ''})</span></div>
+           <div class="mc-list">${list.map(row).join('')}</div>`
+        : '';
+      return (sec('🔴 Өнөөдөр', g.today, 'шинэ')
+        + sec('🟠 Өчигдөр', g.yesterday, 'өнөөдөр залгах')
+        + sec('Өмнөх өдрүүд', g.older))
+        || '<div class="mc-list"><div class="mc-empty">Хариу аваагүй дуудлага алга — бүгд шийдэгдсэн.</div></div>';
+    })()}
+    ${done.length ? `<details class="mc-more"><summary>Шийдэгдсэн (${done.length})</summary>
+      <div class="mc-list">${done.map(row).join('')}</div></details>` : ''}`}
+    <div class="ads-note">Эдгээр дугаар <b>ажлын цагт</b> (${ws}:00–${we}:59) залгаж, <b>${PBX_WAIT_SEC} секундээс удаан хүлээгээд</b>
+      хүнтэй ярьж чадаагүй.
+      ${fups.short ? `Мэндчилгээг сонсоод шууд тасалсан (ихэвчлэн андуурсан) <b>${fups.short}</b> дугаарыг хассан.` : ''}
+      ${fups.off ? `Ажлын цагийн гадна залгасан <b>${fups.off}</b> дугаарыг мөн хассан — хаалттай цагт утас аваагүй нь алдаа биш.` : ''}
+      Тэр дугаараас захиалга үүсвэл эсвэл тэр хүн дахин залгаад холбогдвол мөр нь <b>өөрөө</b> хаагдана —
+      зөвхөн үлдсэнийг нь гараар тэмдэглэнэ. Хаасан дугаар <b>дахин залгавал</b> жагсаалтад эргэж гарна.
+      ⚠ Ажилтнууд гар утсаараа буцаж залгасныг PBX харахгүй тул түүнийг энд товчоор тэмдэглэнэ.</div>`;
+}
+function attachMissedCallsHandlers() {
+  const act = async (peer, st, upto, bump) => {
+    try {
+      await savePbxCallback(peer, st, upto, bump);
+      showToast(bump ? (PBX_CB_LABEL[st] || 'Тэмдэглэлээ') : 'Жагсаалтад буцаалаа', 'success');
+      render();
+    } catch (err) { showToast('Хадгалж чадсангүй: ' + err.message, 'error', 4000); }
+  };
+  document.querySelectorAll('[data-mc-tab]').forEach(b => b.onclick = () => {
+    state._mcTab = b.dataset.mcTab; render();
+  });
+  document.querySelectorAll('[data-mc-sort]').forEach(b => b.onclick = () => {
+    state._mcSort = b.dataset.mcSort; render();
+  });
+  const qEl = document.getElementById('mc-q');
+  if (qEl) {
+    // ⚠ Бичих бүрд render() дуудвал фокус алдагдана — товшилт зогсоход л шинэчилнэ.
+    qEl.oninput = () => {
+      clearTimeout(state._mcQT);
+      state._mcQT = setTimeout(() => { state._mcQ = qEl.value; render();
+        const el = document.getElementById('mc-q');
+        if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 350);
+    };
+  }
+  document.querySelectorAll('[data-mc]').forEach(b => b.onclick = () =>
+    act(b.dataset.peer, b.dataset.mc, b.dataset.upto, true));
+  // ↩ Буцаах = дахин нээх. Буцаж залгасан ТОО нэмэгдэхгүй (залгаагүй шүү дээ).
+  document.querySelectorAll('[data-mc-reopen]').forEach(b => b.onclick = () =>
+    act(b.dataset.mcReopen, 'no_answer', null, false));
+}
+// ── ДЭЛГЭЦ: 💬 Facebook чат ────────────────────────────────────────────────
+// `pages_messaging` 2026-09-17-нд нээгдсэн тул чат анх удаа харагдах боллоо.
+// Эхний хэмжилтээр 30 хоногт 195 чатын 43 нь хариугүй үлдсэн байв — алдсан
+// дуудлагатай ИЖИЛ алдагдал, зөвхөн илүү том.
+//
+// ⚠ Бүтэн яриа ЭНД БАЙХГҮЙ (хувийн мэдээлэл DB-д хуулагдаагүй). Яриа унших
+//   бол Facebook Inbox — мөр бүр дээр холбоос бий. Энд төлөв ба БОТ юу
+//   хэлснийг харна.
+const FB_CHATS_URL = () => `${DB_URL}/rest/v1/fb_chats`;
+const CHAT_DAYS = 30;
+const CHAT_WINDOW_H = 24;        // Meta-гийн чөлөөт бичвэрийн цонх
+
+function canSeeChats() {
+  return canAccessView('chats', () => !!state.isCEO || canSeeOrders());
+}
+
+async function loadFbChats(force) {
+  if (state.fbChats && !force) return state.fbChats;
+  try {
+    const r = await fetchWithTimeout(`${FB_CHATS_URL()}?select=*&order=last_at.desc&limit=600`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.fbChats = await r.json();
+    return state.fbChats;
+  } catch (e) { dataLoadFailed('Facebook чат', e); state.fbChats = state.fbChats || []; return state.fbChats; }
+}
+
+// ── Цэвэр функцууд ─────────────────────────────────────────────────────────
+// ⚠ Цагийг МӨРӨӨР бүү харьцуул — «…Z» ба «…+00:00» ижил мөч боловч мөрийн
+//   эрэмбээр өөр гарна. Бүгд `Date.parse`-аар тоо болно.
+// ⚠ Тоо (Date.now()) БА мөр хоёуланг авна. Зөвхөн мөр гэж үзвэл `Date.parse`
+//   тоог NaN болгож, цонхны тооцоо чимээгүй утгагүй болно (тест барьсан).
+function chatT(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  const t = Date.parse(String(v || ''));
+  return isNaN(t) ? 0 : t;
+}
+
+// Meta-гийн цонхонд үлдсэн цаг. Хаагдсан бол 0 — тэр чатад чөлөөт бичвэр
+// ИЛГЭЭХ БОЛОМЖГҮЙ (Meta татгалзана), хүн Inbox-оос ч бичиж чадахгүй.
+function chatWindowLeft(lastIn, now) {
+  const t = chatT(lastIn);
+  if (!t) return 0;
+  const left = CHAT_WINDOW_H - (chatT(now) - t) / 3600000;
+  return left > 0 ? Math.round(left * 10) / 10 : 0;
+}
+
+// Хариу хүлээж буй чат = харилцагч СҮҮЛД бичсэн. Цонх хаагдсаныг ч
+// ХАСАХГҮЙ — тэдгээр алдагдсан лид, тоог нь харах ёстой (`left=0` гэж
+// тэмдэглэгдэнэ). `done` нь хүний шийдвэр, жагсаалтаас гарна.
+function chatWaiting(chats, now) {
+  return (chats || []).filter(c => {
+    if (!c || c.state === 'done') return false;
+    const inT = chatT(c.last_in_at);
+    return inT > 0 && inT > chatT(c.last_out_at);
+  }).sort((a, b) => chatT(b.last_in_at) - chatT(a.last_in_at));
+}
+
+function chatStats(chats, fromDay, now) {
+  const out = { n: 0, waiting: 0, open: 0, bot: 0, human: 0, med: null };
+  const gaps = [];
+  (chats || []).forEach(c => {
+    if (!c) return;
+    const d = String(c.last_at || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || (fromDay && d < fromDay)) return;
+    out.n++;
+    if (c.state === 'human') out.human++; else if (c.state === 'bot') out.bot++;
+    const inT = chatT(c.last_in_at), outT = chatT(c.last_out_at);
+    // `done` = хүн шийдсэн. Хариугүй гэж тоолвол жагсаалт хэзээ ч богиносохгүй.
+    if (inT > 0 && inT > outT && c.state !== 'done') {
+      out.waiting++;
+      if (chatWindowLeft(c.last_in_at, now) > 0) out.open++;
+    }
+    if (outT > inT && inT > 0) gaps.push((outT - inT) / 60000);
+  });
+  gaps.sort((a, b) => a - b);
+  // ⛔ Хэмжих юм алга бол `null`, 0 БИШ — «0 минут» нь төгс ажиллаж байна гэж
+  //   уншигдана. Хоосон датаг амжилт мэт харуулах нь хамгийн муу худал.
+  if (gaps.length) out.med = Math.round(gaps[Math.floor(gaps.length / 2)]);
+  return out;
+}
+
+function chatFbLink(c) {
+  const t = String((c && c.thread_id) || '').replace(/^t_/, '');
+  return t ? `https://business.facebook.com/latest/inbox/all?selected_item_id=${encodeURIComponent(t)}` : '';
+}
+
+function renderChats() {
+  if (state.fbChats === null) return '<div class="fc-empty">Ачаалж байна…</div>';
+  const now = Date.now();
+  const chats = state.fbChats || [];
+  const st = chatStats(chats, addDays(todayStr(), -CHAT_DAYS), now);
+  const rows = chatWaiting(chats, now);
+
+  const cards = `<div class="fc-cards">
+    <div class="fc-card"><div class="fc-v">${st.n}</div><div class="fc-k">чат · ${CHAT_DAYS} хоног</div></div>
+    <div class="fc-card${st.open ? ' warn' : ''}"><div class="fc-v">${st.open}</div><div class="fc-k">одоо хариулж болно</div></div>
+    <div class="fc-card"><div class="fc-v">${st.waiting}</div><div class="fc-k">хариугүй үлдсэн</div></div>
+    <div class="fc-card"><div class="fc-v">${st.med === null ? '—' : st.med + ' мин'}</div><div class="fc-k">эхний хариулт</div></div>
+  </div>`;
+
+  const body = rows.length ? `<div class="fc-list">${rows.slice(0, 120).map(c => {
+    const left = chatWindowLeft(c.last_in_at, now);
+    // ⚠ Цонх хаагдсан чатыг НУУХГҮЙ — тэр нь алдагдсан лид. Гэхдээ «хариулж
+    //   болно» гэж хуурахгүй: Meta чөлөөт бичвэр авахаа больсныг ил хэлнэ.
+    const win = left > 0
+      ? `<span class="fc-tag ok">${left} цаг үлдсэн</span>`
+      : '<span class="fc-tag off">цонх хаагдсан — зөвхөн залгах</span>';
+    return `<div class="fc-row">
+      <div class="fc-main">
+        <div class="fc-name">${escapeHtml(c.name || 'Нэргүй')}</div>
+        <div class="fc-sub">${escapeHtml(ubStamp(c.last_in_at))} · ${Number(c.msgs_in) || 0} мессеж бичсэн</div>
+        <div class="fc-tags">${win}</div>
+      </div>
+      <div class="fc-act">
+        <a class="btn btn-sm ui-raw" href="${chatFbLink(c)}" target="_blank" rel="noopener">Inbox ↗</a>
+        <button class="btn btn-sm ui-raw" data-fc-done="${escapeHtml(c.thread_id)}">Шийдсэн</button>
+      </div>
+    </div>`;
+  }).join('')}</div>` : '<div class="fc-empty">Хариу хүлээж буй чат алга.</div>';
+
+  return `<div class="fc-wrap"><h3 class="fc-h">💬 Facebook чат</h3>
+    <div class="fc-note">Хариулах ажлыг Meta Business Agent гүйцэтгэнэ. Энэ дэлгэц нь
+      хэмжүүр: хэдэн чат хариугүй үлдэж байгааг харуулна. Бүтэн яриа Facebook Inbox дээр.</div>
+    ${cards}${body}</div>`;
+}
+
+async function saveChatState(thread, patch) {
+  const r = await fetchWithTimeout(`${FB_CHATS_URL()}?thread_id=eq.${encodeURIComponent(thread)}`, {
+    method: 'PATCH',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(patch),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+
+function attachChatsHandlers() {
+  document.querySelectorAll('[data-fc-done]').forEach(b => b.onclick = async () => {
+    try {
+      await saveChatState(b.dataset.fcDone, { state: 'done' });
+      await loadFbChats(true);
+      showToast('Шийдсэн гэж тэмдэглэлээ', 'success');
+      render();
+    } catch (err) { showToast('Хадгалж чадсангүй: ' + err.message, 'error', 4000); }
+  });
 }
 
 function attachAdsHandlers() {
@@ -28560,6 +30439,31 @@ function attachAdsHandlers() {
   document.querySelectorAll('[data-ads-days]').forEach(b => b.onclick = () => {
     state.adsDays = Number(b.dataset.adsDays) || 30; render();
   });
+  document.querySelectorAll('[data-ads-tab]').forEach(b => b.onclick = () => {
+    state._adsTab = b.dataset.adsTab; render();
+  });
+  // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна тул баталгаажуулалтгүй болохгүй.
+  // ⚠ Сайтын зар нь постын зураг+линкээс ШИНЭ зар болж угсрагдана (Facebook
+  //   зурагтай постыг постоор нь вэб зар болгодоггүй) — органик постын
+  //   таалагдсан тоо/сэтгэгдэл шилжихгүй. Баталгаажуулалтад ИЛ бичнэ.
+  document.querySelectorAll('[data-pp-boost]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.ppBoost, kind = b.dataset.ppKind || 'engage';
+    const what = kind === 'site'
+      ? 'сайт руу хүн оруулах — постын зураг, линкээр шинэ зар угсарна (таалагдсан тоо шилжихгүй)'
+      : 'зөвхөн хандалт нэмэх — захиалга ховор авчирна';
+    if (!(await showConfirm(`Энэ постыг бүүст хийх үү? Зорилго: ${what}. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.`,
+      { okText: 'Бүүст хийх' }))) return;
+    b.disabled = true;
+    try {
+      await requestBoost(id, kind);
+      await loadPagePosts(true);
+      showToast('Дараалалд орлоо — 10 минутын дотор зар болно', 'success', 4000);
+      render();
+    } catch (e) {
+      b.disabled = false;
+      showToast('Болсонгүй: ' + e.message, 'error', 5000);
+    }
+  });
   const save = async (cfg) => {
     try { await saveAppConfig(ADS_BUDGET_KEY, cfg); state.adsBudget = cfg; render(); }
     catch (e) { showToast('Хадгалагдсангүй: ' + e.message, 'error', 5000); }
@@ -28581,6 +30485,23 @@ function attachAdsHandlers() {
       { okText: 'Зогсоо', danger: true }))) return;
     await save(Object.assign({}, state.adsBudget || { month: todayStr().slice(0, 7), mnt: 0 }, { enabled: on }));
   });
+  // ⛔ Нэг зарыг зогсоох нь мөнгө хөндөх ЭРГЭЖ БУЦАШГҮЙ үйлдэл (аппаас дахин
+  //   асаах зам байхгүй) тул баталгаажуулалтгүй байж БОЛОХГҮЙ.
+  document.querySelectorAll('[data-ads-stop]').forEach(b => b.onclick = async () => {
+    const nm = b.dataset.adsStopN || 'энэ зар';
+    if (!(await showConfirm(`«${nm}» зарыг зогсоох уу? 10 минутын дотор унтарна. Дахин асаахдаа Ads Manager ашиглана — аппаас асаах боломжгүй.`,
+      { okText: 'Зогсоо', danger: true }))) return;
+    b.disabled = true;
+    try {
+      await requestCampaignStop(b.dataset.adsStop);
+      await loadFbActions(true);
+      showToast('Зогсоох хүсэлт тавигдлаа — 10 минутын дотор биелнэ', 'success', 4000);
+      render();
+    } catch (e) {
+      b.disabled = false;
+      showToast('Болсонгүй: ' + e.message, 'error', 5000);
+    }
+  });
 }
 
 // ── ЛИД СУВАГ: харилцагч биднийг ХААНААС олсон (маркетингийн атрибуци, 2026-09-16) ──
@@ -28598,6 +30519,35 @@ const LEAD_SOURCES = [
   { k: 'partner', label: '🤝 Хамтрагч / эвент зохион байгуулагч' },
   { k: 'other', label: '❓ Бусад / мэдэхгүй' },
 ];
+// ── ЗАРЫН АТРИБУЦИ — сайт ⟦ADS|суваг|кампанит|хэрэгсэл⟧ токеноор дамжуулна ──
+// (2026-09-16) Сайт нь хүн хаанаас ирснийг URL-ээс (fbclid/utm_*) автоматаар
+// барьж захиалгын note-д бичдэг. Гараар сонгуулдаг лид суваг 144 захиалгын
+// 4-д нь л бөглөгдсөн байсан тул автомат суваг нэмэгдэв.
+// ⚠ Зөвхөн САЙТААР ирсэн захиалгад байна — утсаар ирсэнд байхгүй (тэнд
+//   дуудлагын тулгалт ажилладаг). Хамралтыг ИЛ тоолно, таамаглаж дүүргэхгүй.
+const _ADS_RE = /⟦ADS\|([^⟧]*)⟧/;
+function parseAdAttrib(note) {
+  const m = String(note || '').match(_ADS_RE);
+  if (!m) return null;
+  const [src, camp, med] = String(m[1]).split('|');
+  return src ? { src, camp: camp || '', med: med || '' } : null;
+}
+// Сувгаар нэгтгэсэн захиалга/орлого. Цэвэр функц — тестлэгдэнэ.
+function adAttribStats(orders, fromDay, basis) {
+  const by = {}; let n = 0, inc = 0;
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    if (fromDay && String(o.starts_at || '').slice(0, 10) < fromDay) return;
+    const a = parseAdAttrib(o.note);
+    if (!a) return;
+    const k = a.src + (a.camp ? ' · ' + a.camp : '');
+    const amt = orderRevenue(o, basis);
+    by[k] = by[k] || { k, src: a.src, camp: a.camp, n: 0, inc: 0 };
+    by[k].n++; by[k].inc += amt;
+    n++; inc += amt;
+  });
+  return { rows: Object.values(by).sort((a, b) => b.inc - a.inc), n, inc };
+}
 const _LEAD_RE = /⟦LEAD\|([a-z]+)⟧/;
 function encodeLeadSource(k) { return LEAD_SOURCES.some(x => x.k === k) ? `⟦LEAD|${k}⟧` : ''; }
 function parseLeadSource(note) { const m = String(note || '').match(_LEAD_RE); return m ? m[1] : ''; }
@@ -29942,17 +31892,21 @@ function openAppErrorsModal() {
   document.body.appendChild(ov);
   const close = () => ov.remove();
 
+  // Алдааны цагийг ТОО болгоно (уншигдахгүй бол 0 — мөр алга болохгүй).
+  const errTime = ts => { const t = Date.parse(String(ts || '')); return isNaN(t) ? 0 : t; };
   function rowsFor(f) {
     if (f === 'active') {
       // Локал (энэ төхөөрөмж, 24ц) + сервер (шийдэгдээгүй) — шинэ нь дээр
       const srv = (Array.isArray(state.serverErrors) ? state.serverErrors : []).map(e => Object.assign({}, e, { _srv: true }));
+      // ⛔ Цагийг МӨРӨӨР бүү харьцуул — локал алдаа «…Z», серверийнх «…+00:00»
+      //   тул мөрийн эрэмбээр хоёр эх сурвалж холилдож буруу дараалалд орно.
       return recentAppErrors().concat(srv)
-        .sort((a, b) => String(b._srv ? b.last_at : b.at || '').localeCompare(String(a._srv ? a.last_at : a.at || '')));
+        .sort((a, b) => errTime(b._srv ? b.last_at : b.at) - errTime(a._srv ? a.last_at : a.at));
     }
     // Түүх — сервер, бүх төлөв (зассан/үл хамаарах орсон)
     const hist = (Array.isArray(state.serverErrorHist) ? state.serverErrorHist : []).map(e => Object.assign({}, e, { _srv: true }));
     return (f === 'fixed' ? hist.filter(e => (e.status || 'new') === 'fixed') : hist)
-      .sort((a, b) => String(b.last_at || '').localeCompare(String(a.last_at || '')));
+      .sort((a, b) => errTime(b.last_at) - errTime(a.last_at));
   }
   function renderRow(e) {
     const st = e._srv ? (e.status || 'new') : 'new';
@@ -34331,6 +36285,52 @@ function csvCell(v) {
   const s = String(v == null ? '' : v);
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
+/* ─── БАРАА / ХӨРӨНГИЙН ЭКСПОРТ (Агуулах → «📊 Excel») ───────────────────────
+   Тооллого, даатгал, аудитад бүх барааг нэг хүснэгтээр гаргана.
+   ⛔ ӨРТӨГ = ЭМЗЭГ. `products.cost` эрхгүй хүнд өртөг/нийлүүлэгч/худалдан авсан
+      огноо БАЙХГҮЙ (DB талд ч тэр баганууд хаалттай). Эрхийг энд дахин бүү
+      тодорхойл — `canProductPart('cost')` нь ганц эх сурвалж.
+   ⚠ Дэлгэц дээр ХАРАГДАЖ БУЙ (шүүсэн) жагсаалтыг татна — шүүлтийг энд давтвал
+      хүн дэлгэцэндээ нэг юм хараад файлаасаа өөр юм авна. */
+function productExportRows(list, opts) {
+  const o = opts || {};
+  const costs = o.costs || {};
+  const withCost = !!o.withCost;
+  const BR = [['mevent', '🎪 M-Event'], ['nomaad', '⛺ NOMAAD'], ['chimun', '🏢 Чимун'], ['catering', '🍽 Катеринг']];
+  const header = ['SKU', 'Нэр', 'Ангилал', 'Төрөл', 'Нийт нөөц']
+    .concat(BR.map(b => b[1]))
+    .concat(['Түрээсийн үнэ'])
+    .concat(withCost ? ['Нэгж өртөг', 'Нийт өртөг', 'Худалдан авсан', 'Нийлүүлэгч'] : [])
+    .concat(['Эхний үлдэгдэл', 'Архив']);
+  const openLbl = { done: 'Баталгаажсан', wait: 'Батлах хүлээж буй', todo: 'Шалгаагүй' };
+  const rows = (list || []).filter(Boolean).map(p => {
+    const qty = Number(p.stock) || 0;
+    const cost = Number(costs[p.sku] || p.cost) || 0;
+    const kind = isPackage(p) ? 'Багц' : (isService(p) ? 'Үйлчилгээ' : 'Бараа');
+    return [p.sku || '', p.name || '', p.category || '', kind, qty]
+      .concat(BR.map(b => branchQty(p, b[0])))
+      .concat([Number(p.price) || 0])
+      .concat(withCost ? [cost, cost * qty, String(p.purchase_date || '').slice(0, 10), p.supplier || ''] : [])
+      .concat([openLbl[openingSignState(p)] || '', p.archived ? 'Тийм' : '']);
+  });
+  return { header, rows };
+}
+function exportProductsCsv(list) {
+  const arr = Array.isArray(list) ? list : (state.products || []);
+  if (!arr.length) { showToast('Татах бараа алга', 'info', 2500); return; }
+  const { header, rows } = productExportRows(arr, {
+    costs: state.productCosts || {}, withCost: canProductPart('cost'),
+  });
+  const csv = '﻿' + header.map(csvCell).join(',') + '\n'
+            + rows.map(r => r.map(csvCell).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Чимун-бараа-хөрөнгө-${todayStr()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  showToast(`${rows.length} бараа татагдлаа`, 'success');
+}
 function exportTasksReport() {
   const statusMn = { open: 'Шинэ', in_progress: 'Хийгдэж байна', done: 'Дууссан', declined: 'Татгалзсан' };
   const prioMn = { high: 'Яаралтай', med: 'Энгийн', low: 'Чөлөөтэй', none: '—' };
@@ -35519,10 +37519,24 @@ function refreshViewData() {
   if (v === 'ads' && canSeeAds() && state.fbActions === undefined) {
     loadFbActions().then(() => { if (state.view === 'ads') render(); });
   }
-  if (v === 'ads' && canSeeAds() && state.pbxCalls === undefined) {
-    loadPbxCalls().then(() => { if (state.view === 'ads') render(); });
-    loadPbxLog().then(() => { if (state.view === 'ads') render(); });
+  if (v === 'ads' && canSeeAds() && state.pagePosts === undefined) {
+    state.pagePosts = null;
+    loadPagePosts(true).then(() => { if (state.view === 'ads') render(); });
+  }
+  if (v === 'ads' && canSeeAds() && state.fbCapi === undefined) {
+    state.fbCapi = null;
+    loadFbCapi(true).then(() => { if (state.view === 'ads') render(); });
+  }
+  // ⚠ Дата бүр ӨӨРИЙН хамгаалалттай байх ёстой. Өмнө нь дуудлагын лог
+  //    (`pbxLog`) нь цагийн тооны (`pbxCalls`) нөхцөлд багтсан тул хуучин
+  //    хувилбарт дэлгэц нээгээд байсан хүнд лог ХЭЗЭЭ Ч ачаалагддаггүй,
+  //    «Дуудлага → захиалга» хоосон харагддаг байв (хуудсаа дахин
+  //    ачаалснаар л засагддаг — хэн ч алдаа гэж мэдэхгүй).
+  if (v === 'ads' && canSeeAds()) {
+    if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'ads') render(); }); }
     if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'ads') render(); }); }
+    if (state.gsc === undefined) { state.gsc = null; loadGsc().then(() => { if (state.view === 'ads') render(); }); }
+    if (state.ga === undefined) { state.ga = null; loadGa().then(() => { if (state.view === 'ads') render(); }); }
   }
   if (v === 'ads' && canSeeAds() && state.fbAds === undefined) {
     loadFbAds().then(() => { if (state.view === 'ads') render(); });
@@ -35530,6 +37544,24 @@ function refreshViewData() {
       state.adsBudget = null;
       loadAppConfig(ADS_BUDGET_KEY).then(v => { state.adsBudget = v || null; if (state.view === 'ads') render(); });
     }
+  }
+  // Харилцагчийн картад дуудлагын түүх гаргахад лог хэрэгтэй.
+  if (v === 'customers' && canSeeCustomers() && state.pbxLog === undefined) {
+    state.pbxLog = null;
+    loadPbxLog(true).then(() => { if (state.view === 'customers') render(); });
+  }
+  // 📵 Алдсан дуудлага — лог + тэмдэглэл + харилцагч (нэр тааруулахад).
+  if (v === 'chats' && canSeeChats()) {
+    if (state.fbChats === undefined) { state.fbChats = null; loadFbChats(true).then(() => { if (state.view === 'chats') render(); }); }
+  }
+  if (v === 'missedcalls' && canSeeMissedCalls()) {
+    if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'missedcalls') render(); }); }
+    if (state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => { if (state.view === 'missedcalls') render(); }); }
+    if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'missedcalls') render(); }); }
+  }
+  if (v === 'plan' && canSeePlan()) {
+    // Дэлгэц нээх бүрд DB-ээс ШИНЭЧЛЭНЭ — өөр сессээс хаасан ажил энд харагдана.
+    loadPlan(true).then(() => { if (state.view === 'plan') render(); });
   }
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();

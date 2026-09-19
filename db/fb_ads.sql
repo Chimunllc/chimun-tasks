@@ -16,6 +16,15 @@ create table if not exists fb_ads_daily (
   clicks         bigint      not null default 0,
   messages       int         not null default 0,
   leads          int         not null default 0,
+  -- ⛔ БОРЛУУЛАЛТ (2026-09-18). Чат бол зорилго БИШ — зорилго нь захиалга.
+  --    `tools/fb_capi.py` захиалга бүрийг Meta руу буцаадаг тул Meta өөрөө
+  --    «энэ зарыг хараад худалдаж авсан» гэдгийг тулгаж буцаана. Утсаар
+  --    хийгдсэн захиалга ч энд орно (`action_source='phone_call'`).
+  -- ⚠ Тулгалт нь бүрэн БИШ: Facebook хэрэглэгчийг утас/мэйлээр таньж
+  --   чадвал л тоолно. Тиймээс 0 гэдэг нь «борлуулалт болоогүй» ГЭСЭН ҮГ БИШ.
+  purchases      int         not null default 0,
+  revenue_usd    numeric(12,2) not null default 0,
+  revenue_mnt    bigint      not null default 0,
   raw            jsonb,
   fetched_at     timestamptz not null default now(),
   primary key (day, ad_id)
@@ -25,3 +34,14 @@ create index if not exists fb_ads_daily_camp_idx on fb_ads_daily (campaign_id, d
 
 -- ⛔ anon-д ОГТ нээхгүй (зарын зарцуулалт = санхүүгийн мэдээлэл).
 grant select on fb_ads_daily to authenticated;
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on fb_ads_daily from authenticated;
+alter table fb_ads_daily add column if not exists purchases int not null default 0;
+alter table fb_ads_daily add column if not exists revenue_usd numeric(12,2) not null default 0;
+alter table fb_ads_daily add column if not exists revenue_mnt bigint not null default 0;
+notify pgrst, 'reload schema';

@@ -24,6 +24,85 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh label create "алдаа" --repo "${{ github.repository }}" --color d73a4a --description "Ажилтны утсанд гарсан алдаа (авто)" 2>/dev/null || true
 
+      # ─────── ТӨЛӨВИЙГ ӨӨРӨӨ ШИЙДНЭ (хүн товч дарахгүй) ───────
+      # Яагаад: «зассан» гэдгийг эзэн мэдэх боломжгүй — код зассан эсэхийг тэр
+      # шалгаж чадахгүй. Тиймээс товчийг хүнээс АВЧ, хоёр МЕХАНИК дүрэмд шилжүүлэв:
+      #   ① Issue хаагдсан = зассан гэж тэмдэглэнэ.
+      #   ② Тэмдэглэсний ДАРАА алдаа ДАХИН гарвал → буцаад `new`, Issue дахин нээгдэнэ.
+      # ②-гүй бол «зассан» гэдэг нь ердөө ТААМАГ байна. Дахин гарсан алдаа л
+      # засвар бүтэлгүйтсэнийг батлах цорын ганц нотолгоо.
+      # ⚠ 6 цагийн хүлээлт: хэрэглэгчийн НЭЭЛТТЭЙ таб хуучин кодоороо ажилласаар
+      #   байдаг тул засварын дараах эхний хэдэн цагийн давталт нь худал дохио.
+      - name: Төлөв шалгах — хаагдсаныг «зассан», дахин гарсныг «нээлттэй» болгох
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JWT: ${{ secrets.ERR_READ_JWT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BASE="https://n8n.nomaadcamp.com/db/rest/v1"
+          curl -sS --fail-with-body \
+            -H "apikey: $JWT" -H "Authorization: Bearer $JWT" \
+            "$BASE/v_app_errors?issue_no=not.is.null&order=last_at.desc&limit=200" \
+            -o state.json
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import { execFileSync } from "node:child_process";
+            const rows = JSON.parse(fs.readFileSync("state.json", "utf8"));
+            const BASE = "https://n8n.nomaadcamp.com/db/rest/v1";
+            const JWT = process.env.JWT, REPO = process.env.REPO;
+            const GRACE_MS = 6 * 3600 * 1000;   // нээлттэй таб хуучин кодоороо ажиллах хугацаа
+            const setState = async (fp, patch) => {
+              const res = await fetch(`${BASE}/app_error_state?on_conflict=fp`, {
+                method: "POST",
+                headers: { apikey: JWT, Authorization: `Bearer ${JWT}`,
+                  "Content-Type": "application/json",
+                  Prefer: "resolution=merge-duplicates,return=minimal" },
+                body: JSON.stringify({ fp, updated_by: "error-triage",
+                  updated_at: new Date().toISOString(), ...patch }),
+              });
+              if (!res.ok) throw new Error(`app_error_state бичигдсэнгүй: ${res.status}`);
+            };
+            let fixed = 0, reopened = 0;
+            for (const e of rows) {
+              const no = e.issue_no;
+              let issue;
+              try {
+                issue = JSON.parse(execFileSync("gh", ["api", `repos/${REPO}/issues/${no}`],
+                  { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }));
+              } catch { continue; }          // устсан Issue — алгасна
+              const decided = e.updated_at ? Date.parse(e.updated_at) : 0;
+              const last = e.last_at ? Date.parse(e.last_at) : 0;
+              // ⛔ `ignored` = «дахин бүү хэл» (гадны код, сүлжээ). Тэр нь мөн чанараараа
+              //    ДАХИН ГАРНА — дахин нээвэл үл хамаарах гэж тэмдэглэсэн нь утгагүй болно.
+              if (e.status === "ignored") continue;
+
+              // ② Дахин гарсан уу? Тэмдэглэснээс ХОЙШ (+хүлээлт) гарсан бол засвар ажиллаагүй.
+              if (e.status === "fixed" && last > decided + GRACE_MS) {
+                await setState(e.fp, { status: "new", issue_no: no,
+                  note: `Дахин гарлаа: ${e.last_at} (төлөв ${e.updated_at}-д тавигдсан)` });
+                if (issue.state === "closed") {
+                  execFileSync("gh", ["issue", "reopen", String(no), "--repo", REPO], { stdio: "ignore" });
+                }
+                execFileSync("gh", ["issue", "comment", String(no), "--repo", REPO, "--body",
+                  `⚠ **Дахин гарлаа** — ${e.last_at} (${e.hits} удаа, ${e.users} хүн). Засвар ажиллаагүй байна.`],
+                  { stdio: "ignore" });
+                console.log(`↩ #${no} дахин нээгдэв ← ${e.fp}`);
+                reopened++;
+                continue;
+              }
+
+              // ① Issue хаагдсан = зассан. Хүн товч дарах шаардлагагүй.
+              if (e.status !== "fixed" && issue.state === "closed") {
+                await setState(e.fp, { status: "fixed", issue_no: no,
+                  fixed_ver: e.last_ver || "", note: `Issue #${no} хаагдсан` });
+                console.log(`✓ ${e.fp} → fixed (#${no} хаагдсан)`);
+                fixed++;
+              }
+            }
+            console.log(`Дүн: ${fixed} зассан, ${reopened} дахин нээгдсэн.`);
+          '
+
       - name: Шинэ алдаа татаж, Issue үүсгэх
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

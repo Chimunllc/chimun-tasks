@@ -74,6 +74,7 @@ const tierKey = (t) => (t || []).map((x) => `${Number(x.min)}:${Number(x.pct)}`)
   // ── 1. Тарифын нөөц утга: апп ↔ сайт ↔ амьд тохиргоо ─────────────────────
   const checks = [
     ['Хот доторх хүргэлт', valueOf(appSrc, 'DELIVERY_CITY_FEE'), valueOf(siteSrc, 'DELIVERY_CITY_FEE'), Number(cfg.delivery_city_fee)],
+    ['Хот доторх хүргэлт (нэг тал)', valueOf(appSrc, 'DELIVERY_CITY_ONE_FEE'), valueOf(siteSrc, 'DELIVERY_CITY_ONE_FEE'), Number(cfg.delivery_city_one_fee)],
     ['Нэг км тариф', valueOf(appSrc, 'DELIVERY_PER_KM'), valueOf(siteSrc, 'DELIVERY_PER_KM'), Number(cfg.delivery_per_km)],
     ['Ажлын бус цагийн хөлс', valueOf(appSrc, 'ORDER_OFFHOURS_FEE'), valueOf(siteSrc, 'OFFHOURS_FEE'), Number(cfg.offhours_fee)],
   ];

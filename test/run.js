@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
@@ -140,6 +140,21 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   const all = (codeLines.match(/toISOString\(\)\.slice\(0, ?(?:10|7)\)/g) || []).length;
   const safe = (codeLines.match(/getTimezoneOffset\(\) \* 60000\)\.toISOString\(\)\.slice\(0, ?(?:10|7)\)/g) || []).length;
   eq(all - safe, 0, 'scan: түүхий UTC огноо байхгүй (todayStr/dateStr/monthStr ашигла)');
+}
+
+// 0e2) SCAN — ирцийн хүсэлт `app_config`-д БУЦАХГҮЙ (2026-09-18)
+// Хүсэлтүүд нэг JSON blob-д байхад: зэрэг бичилт бие биенээ дарна, `app_config`
+// нэвтэрсэн бүх ажилтанд уншигддаг тул хүн бусдын хүсэлт/тайлбарыг харна, 120
+// хоногийн дараа шийдэгдсэн хүсэлт бүрмөсөн хасагдаж «хэн батлав» гэдэг алга
+// болно. Одоо `att_requests` хүснэгт (мөр бүр өөрийн эрхтэй).
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  eq((codeLines.match(/AppConfig\('att_requests'/g) || []).length, 0,
+     'scan: ирцийн хүсэлт app_config-оор уншиж/бичихгүй (att_requests хүснэгт)');
+  ok(/rest\/v1\/att_requests\?on_conflict=id/.test(codeLines),
+     'scan: хүсэлт нэг мөрөөр upsert хийгдэнэ');
+  ok(/status\.eq\.pending/.test(codeLines),
+     'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
 }
 
 // 0f) SCAN — ажилтны картад «Хувийн мэдээлэл» блок үлдэнэ (2026-09-16)
@@ -671,6 +686,17 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   eq(F.calcDeliveryFee('city', 0), 150000, 'Хүргэлт: хот дотор 150,000');
   eq(F.calcDeliveryFee('out', 12), 120000, 'Хүргэлт: 12км × 2 × 5,000 = 120,000');
   eq(F.calcDeliveryFee('pickup', 0), 0, 'Хүргэлт: өөрөө авах 0');
+  // Хот дотор НЭГ тал — очих+буцахаас хямд байх ёстой (хоёр талыг давхар авахгүй)
+  eq(F.tariffDeliveryCityOne(), 80000, 'Тариф fallback: хот дотор нэг тал 80,000');
+  eq(F.calcDeliveryFee('city1', 0), 80000, 'Хүргэлт: хот дотор нэг тал 80,000');
+  ok(F.calcDeliveryFee('city1', 0) < F.calcDeliveryFee('city', 0), 'Хүргэлт: нэг тал < очих+буцах');
+  // ⚠ zone-д цифр бий (city1) — _DLV_RE [a-z]+ хэвээр бол токен УНШИГДАХГҮЙ, төлбөр чимээгүй алга болно
+  {
+    const d = F.parseDelivery('note ' + F.encodeDelivery('city1', 0, 80000));
+    eq(d && { zone: d.zone, fee: d.fee }, { zone: 'city1', fee: 80000 }, 'Хүргэлт токен: city1 унших');
+  }
+  eq([F.isDeliveryZone('city'), F.isDeliveryZone('city1'), F.isDeliveryZone('out'), F.isDeliveryZone('pickup')],
+     [true, true, true, false], 'Хүргэлттэй бүс: pickup-аас бусад нь тийм');
   // Буцаан олголт токен + барьцааны буцаалт төрөл (C11)
   {
     // барьцааны буцаалт — kind='dep' round-trip
@@ -2167,6 +2193,13 @@ function finish() {
   ok(noise('', ''), 'алдаа: хоосон мессеж тоохгүй');
   ok(noise('ResizeObserver loop limit exceeded', ''), 'алдаа: ResizeObserver чимээ тоохгүй');
   ok(noise('x', 'chrome-extension://abc/x.js'), 'алдаа: өргөтгөлийн алдаа тоохгүй');
+  // fp f11405417bbb — Facebook-ийн дотоод браузер өөрийн скриптээ шахаад унагадаг.
+  // Манай код БИШ, засах боломжгүй. Бүртгэвэл Issue үүсч жинхэнэ алдаа живнэ.
+  ok(noise('Uncaught SyntaxError: Unexpected end of input', 'iabjs://iab_inner_frame_ota'),
+     'алдаа: in-app браузерын шахсан кодын алдаа тоохгүй (fp f11405417bbb)');
+  ok(noise('boom', 'webkit-masked-url://hidden/'), 'алдаа: далдалсан URL тоохгүй');
+  ok(!noise('boom', 'https://mevent.mn/index.html:120'), 'алдаа: манай https байрлалыг барина');
+  ok(!noise('boom', 'app.js:17472'), 'алдаа: `app.js:1234` байрлалыг схем гэж андуурахгүй');
   ok(!noise("Cannot access 'rcPaint' before initialization", 'app.js:17472'),
      'алдаа: ЖИНХЭНЭ алдааг барина (нярвын тохиолдол)');
 
@@ -5587,6 +5620,60 @@ need(['orderCustType']);
     'scan: бичсэн зураглалаа DB-ээс баталгаажуулдаг');
 }
 
+// ── ТӨЛӨВЛӨГӨӨ — шийдвэрийн дэлгэц (2026-09-17) ────────────────────────────
+// Агент `PLAN_SEED`-д мөр нэмнэ, CEO аппад хаана. Хамгийн чухал инвариант:
+// хаасан ажил дараагийн PR-аар ДАХИН НЭЭГДЭХГҮЙ (хадгалсан төлөв ялна).
+{
+  const seed = [
+    { id: 'a', sec: 'now',  title: 'A' },
+    { id: 'b', sec: 'next', title: 'B' },
+    { id: 'c', sec: 'no',   title: 'C', why: 'болохгүй' },
+  ];
+  eq(F.planMerge(seed, []).length, 3, 'төлөвлөгөө: хоосон дээр seed бүтнээрээ орно');
+  eq(F.planMerge(seed, []).every(x => x.status === 'open'), true, 'төлөвлөгөө: seed мөр нээлттэйгээр орно');
+
+  // ИНВАРИАНТ: хаасан мөр seed-ээс дахин нээгдэхгүй
+  const stored = [{ id: 'a', sec: 'now', title: 'A', status: 'done', closed_at: '2026-09-17' }];
+  const m = F.planMerge(seed, stored);
+  eq(m.length, 3, 'төлөвлөгөө: хадгалсан + шинэ seed нийлнэ');
+  eq(m.find(x => x.id === 'a').status, 'done', 'ИНВАРИАНТ: хаасан ажил seed-ээр дахин нээгдэхгүй');
+  eq(m.find(x => x.id === 'a').closed_at, '2026-09-17', 'төлөвлөгөө: хаасан огноо хадгалагдана');
+
+  // CEO-гийн нэмсэн мөр seed-д байхгүй ч алга болохгүй
+  const withUser = F.planMerge(seed, [{ id: 'u1', sec: 'next', title: 'Миний', status: 'open' }]);
+  eq(withUser.length, 4, 'төлөвлөгөө: CEO-гийн нэмсэн мөр үлдэнэ');
+
+  // Хог мөр унагахгүй
+  eq(F.planMerge(seed, null).length, 3, 'төлөвлөгөө: stored=null үед унахгүй');
+  eq(F.planMerge(null, null).length, 0, 'төлөвлөгөө: хоосон seed → хоосон');
+  eq(F.planMerge(seed, [null, { title: 'id-гүй' }]).length, 3, 'төлөвлөгөө: id-гүй мөр алгасагдана');
+
+  // Хэсэгт хуваах
+  const sec = F.planSections(F.planMerge(seed, stored));
+  eq(sec.now.length, 0, 'төлөвлөгөө: хаасан ажил «одоо»-д тоологдохгүй');
+  eq(sec.next.length, 1, 'төлөвлөгөө: дараагийнх нь нээлттэй мөр');
+  eq(sec.no.length, 1, 'төлөвлөгөө: «хийхгүй» тусдаа');
+  eq(sec.done.length, 1, 'төлөвлөгөө: хаагдсан нь тусдаа');
+
+  // «Хийхгүй гэж шийдсэн» нь АЖИЛ БИШ — хаагдсанд ч, тоололд ч орохгүй
+  const noDone = F.planSections([{ id: 'x', sec: 'no', status: 'done', title: 'X' }]);
+  eq(noDone.done.length, 0, 'ИНВАРИАНТ: «хийхгүй» шийдвэр хаагдсан жагсаалтад орохгүй');
+  eq(noDone.no.length, 1, 'төлөвлөгөө: «хийхгүй» шийдвэр үргэлж харагдана');
+
+  // Хаагдсан нь сүүлд хаагдсанаараа эхэлнэ
+  const ord = F.planSections([
+    { id: '1', sec: 'now', status: 'done', closed_at: '2026-09-01' },
+    { id: '2', sec: 'now', status: 'done', closed_at: '2026-09-17' },
+  ]);
+  eq(ord.done[0].id, '2', 'төлөвлөгөө: хаагдсан нь шинээсээ эрэмбэлэгдэнэ');
+
+  // Seed бодитоор зөв бүтэцтэй эсэх — id давхардвал мөр чимээгүй алга болно
+  const ids = F.planSeed().map(x => x.id);
+  eq(new Set(ids).size, ids.length, 'ИНВАРИАНТ: PLAN_SEED-ийн id давхардахгүй');
+  eq(F.planSeed().every(x => ['now', 'next', 'no'].includes(x.sec)), true, 'төлөвлөгөө: seed бүрийн sec зөв');
+  eq(F.planSeed().every(x => !!x.title), true, 'төлөвлөгөө: seed бүр гарчигтай');
+}
+
 // ── АКТ — түрээслэх боломжгүй бараа (2026-09-07) ────────────────────────────
 // Хэт хуучирсан / эвдэрсэн / өгөөжгүй барааг актаар нөөцөөс гаргана. Зарж
 // болох бол зараад орлогыг нь тусад нь (түрээсийн орлогод НЭМЭЛГҮЙ) бүртгэнэ.
@@ -5993,13 +6080,13 @@ need(['orderCustType']);
 
   // ── Хариу аваагүй дуудлага ──
   const cl = [
-    { direction: 'in', peer: '88446914', started_at: '2026-09-15T02:10:00+00', answer_sec: 0, call_sec: 20 },
-    { direction: 'in', peer: '88446914', started_at: '2026-09-15T03:10:00+00', answer_sec: 0, call_sec: 25 },
-    { direction: 'in', peer: '99112233', started_at: '2026-09-14T02:00:00+00', answer_sec: 0, call_sec: 18 },
-    { direction: 'in', peer: '99112233', started_at: '2026-09-14T05:00:00+00', answer_sec: 27, call_sec: 47 },
-    { direction: 'in', peer: '4001', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 30 },
-    { direction: 'out', peer: '95000000', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 30 },
-    { direction: 'in', peer: '77009900', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 6 },
+    { direction: 'in', peer: '88446914', started_at: '2026-09-15T02:10:00Z', answer_sec: 0, call_sec: 20 },
+    { direction: 'in', peer: '88446914', started_at: '2026-09-15T03:10:00Z', answer_sec: 0, call_sec: 25 },
+    { direction: 'in', peer: '99112233', started_at: '2026-09-14T02:00:00Z', answer_sec: 0, call_sec: 18 },
+    { direction: 'in', peer: '99112233', started_at: '2026-09-14T05:00:00Z', answer_sec: 27, call_sec: 47 },
+    { direction: 'in', peer: '4001', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 30 },
+    { direction: 'out', peer: '95000000', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 30 },
+    { direction: 'in', peer: '77009900', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 6 },
   ];
   const fu = F.pbxFollowups(cl);
   eq(fu.length, 1, 'дуудлага: нэг ч удаа яриагүй дугаар л үлдэнэ');
@@ -6009,17 +6096,267 @@ need(['orderCustType']);
   ok(!fu.some(x => x.peer === '4001'), 'дуудлага: дотоод богино дугаар орохгүй');
   ok(!fu.some(x => x.peer === '95000000'), 'дуудлага: ГАРСАН дуудлага орохгүй');
   ok(!fu.some(x => x.peer === '77009900'), 'дуудлага: мэндчилгээ дуусахаас өмнө тасалсан нь лид биш (KFC андуурал)');
-  // Босго нь мэндчилгээнээс ХАМААРНА — мэндчилгээ солигдоход гар тоо үлдэхээс сэргийлнэ
-  eq(vm.runInContext('PBX_WAIT_SEC', sandbox), vm.runInContext('PBX_GREETING_SEC', sandbox) + 2,
-     'дуудлага: босго = мэндчилгээ + 2 сек (гар тоо биш)');
+  // ⛔ Босго = 13 сек (CEO-гийн шийдвэр 2026-09-16), гэхдээ мэндчилгээ уртсвал
+  //    түүнийг ДАГАЖ өснө — эс бөгөөс урт мэндчилгээ сонссон бүх хүн «лид» болно.
+  eq(vm.runInContext('PBX_WAIT_SEC', sandbox), 13, 'дуудлага: босго = 13 сек');
+  ok(vm.runInContext('PBX_WAIT_SEC', sandbox) >= vm.runInContext('PBX_GREETING_SEC', sandbox) + 2,
+     'дуудлага: босго нь мэндчилгээнээс үргэлж дээгүүр');
   eq(F.pbxFollowups([
-    { direction: 'in', peer: '88991122', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 11 },
-  ]).length, 1, 'дуудлага: мэндчилгээг сонсоод дуудалт хүлээсэн хүн = жинхэнэ лид');
+    { direction: 'in', peer: '88991122', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 14 },
+  ]).length, 1, 'дуудлага: 13 секундээс удаан хүлээсэн хүн = жинхэнэ лид');
+  eq(F.pbxFollowups([
+    { direction: 'in', peer: '88991122', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 11 },
+  ]).length, 0, 'дуудлага: 13 секунд хүрэхгүй тасалсан нь лид БИШ');
   eq(fu.short, 1, 'дуудлага: богино тасалсныг тусад нь тоолно');
   eq(F.pbxFollowups(cl, { minSec: 0 }).length, 2, 'дуудлага: босгыг 0 болговол бүгд орно');
   eq(F.pbxFollowups(cl, { from: '2026-09-15' }).length, 1, 'дуудлага: хугацаагаар шүүнэ');
   eq(F.pbxFollowups(cl, { from: '2026-09-16' }).length, 0, 'дуудлага: хугацаанаас гадуур → хоосон');
   eq(F.pbxFollowups(null).length, 0, 'дуудлага: дата байхгүй → хоосон (унахгүй)');
+
+  // ── Харилцагчийн дуудлагын түүх (2026-09-16) ──
+  {
+    const lg = [
+      { direction: 'in', peer: '99112233', started_at: '2026-09-10T02:00:00+00', answer_sec: 120, call_sec: 140 },
+      { direction: 'in', peer: '976-99112233', started_at: '2026-09-12T02:00:00+00', answer_sec: 0, call_sec: 20 },
+      { direction: 'in', peer: '88000000', started_at: '2026-09-12T02:00:00+00', answer_sec: 30, call_sec: 40 },
+      { direction: 'out', peer: '99112233', started_at: '2026-09-13T02:00:00+00', answer_sec: 60, call_sec: 70 },
+    ];
+    const st = F.custCallStats(lg, '9911-2233');
+    eq(st.total, 2, 'харилцагч: дугаарын бичлэг ялгаатай ч (976/зураас) нэг хүн гэж тоологдоно');
+    eq(st.answered, 1, 'харилцагч: ярьсан дуудлагын тоо');
+    eq(st.missed, 1, 'харилцагч: аваагүй дуудлагын тоо');
+    eq(st.lastTalk.slice(0, 10), '2026-09-10', 'харилцагч: сүүлд ярьсан огноо');
+    eq(st.rows[0].at.slice(0, 10), '2026-09-12', 'харилцагч: түүх шинэ нь эхэнд');
+    eq(F.custCallStats(lg, '').total, 0, 'харилцагч: утасгүй бол дуудлага тоологдохгүй');
+    eq(F.custCallStats(null, '99112233').total, 0, 'харилцагч: лог байхгүй → унахгүй');
+  }
+  // ⚠ Ажлын цагийн гадна тоо нь дэлгэцийн ХУГАЦААГААР шүүгдэнэ — өмнө бүх
+  //   логоор тоологдож, «7 хоног» сонгосон хүнд 90 хоногийн тоо харагддаг байв.
+  {
+    const lg = [
+      { direction: 'in', peer: '99000001', started_at: '2026-09-15T14:00:00Z', answer_sec: 0, call_sec: 30 },
+      { direction: 'in', peer: '99000002', started_at: '2026-06-15T14:00:00Z', answer_sec: 0, call_sec: 30 },
+    ];
+    eq(F.pbxOffHoursWaited(lg, 9, 18), 2, 'дуудлага: хугацаа заагаагүй бол бүгд');
+    eq(F.pbxOffHoursWaited(lg, 9, 18, '2026-09-01'), 1, 'дуудлага: ажлын цагийн гадна тоо ХУГАЦААГААР шүүгдэнэ');
+  }
+
+  // ── Дуудлагын цаг = УБ-ийн цаг (2026-09-16) ──
+  // ⛔ PostgREST нь UTC-ээр буцаадаг тул түүхий мөрийг таславал 8 цагаар эрт
+  //   харагдана — амьд системд «05:44» гэж бичигдэж байсан нь үнэндээ 13:44 байв.
+  eq(F.ubStamp('2026-09-16T05:44:00+00:00'), '09-16 13:44', 'цаг: UTC → УБ (+8)');
+  eq(F.ubStamp('2026-09-16T05:44:00+00:00', false), '13:44', 'цаг: зөвхөн цаг:минут');
+  eq(F.ubStamp('2026-09-16T17:30:00Z'), '09-17 01:30', 'цаг: шөнө дундаас хойш огноо нэмэгдэнэ');
+  eq(F.ubStamp('муу'), '', 'цаг: уншигдахгүй утга → хоосон (унахгүй)');
+  {
+    const src2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(!/String\(r\.(last|at)\)\.slice\(\s*\d/.test(src2),
+       '⛔ дуудлагын цагийг түүхийгээр таслахгүй — ubStamp() ашиглана (8 цагийн зөрүү)');
+  }
+
+  // ── Залгасан хүний нэр: захиалгаас сэргээх (2026-09-16) ──
+  // Залгагчдын 89% нь `customers`-т байхгүй тул жагсаалт нүцгэн дугаараар
+  // дүүрдэг байв. Захиалгын мөрөнд нэр утастайгаа хамт хадгалагддаг.
+  {
+    const idx = F.pbxNameIndex(
+      [{ name: 'Бүртгэлтэй нэр', phone: '99112233' }],
+      [{ phone: '99112233', customer: 'Хуучин нэр', status: 'done', starts_at: '2026-07-01' },
+       { phone: '88000000', customer: 'Зөвхөн захиалгад', status: 'done', starts_at: '2026-08-05' },
+       { phone: '88000000', customer: 'Зөвхөн захиалгад', status: 'done', starts_at: '2026-09-01' },
+       { phone: '77000000', customer: 'Больсон', status: 'deleted', starts_at: '2026-08-05' }]);
+    eq(F.pbxWho('88000000', idx).name, 'Зөвхөн захиалгад', 'нэр: бүртгэлгүй ч захиалгаас сэргээнэ');
+    eq(F.pbxWho('88000000', idx).orders, 2, 'нэр: өмнөх захиалгын тоо');
+    eq(F.pbxWho('88000000', idx).last, '2026-09-01', 'нэр: сүүлийн захиалгын огноо');
+    eq(F.pbxWho('99112233', idx).name, 'Бүртгэлтэй нэр', 'нэр: бүртгэлтэй харилцагчийн нэр ДАВУУ');
+    eq(F.pbxWho('77000000', idx).orders, 0, 'нэр: больсон захиалга тоологдохгүй');
+    eq(F.pbxWho('90000000', idx).name, '', 'нэр: олдоогүйг ТААМАГЛАХГҮЙ (хоосон)');
+  }
+
+  // ── Хэнд эхлээд залгах вэ (2026-09-16) ──
+  // «Хаа хамаагүй залгах уу?» — ҮГҮЙ. Жагсаалт дарааллаа өөрөө хэлнэ.
+  {
+    const w0 = { orders: 0, revenue: 0 };
+    const known = { orders: 2, revenue: 1800000 };
+    const base = { peer: '99000000', tries: 1, maxSec: 12, last: '2026-09-10T02:00:00Z' };
+    const p = (r, w) => F.pbxPriority(Object.assign({}, base, r), w, '2026-09-16');
+    ok(p({}, known).score > p({ tries: 5, maxSec: 120 }, w0).score,
+       'эрэмбэ: өмнө худалдан авсан хүн бусад бүх дохионоос ДЭЭГҮҮР');
+    eq(p({}, known).why, 'өмнө худалдан авсан', 'эрэмбэ: шалтгаанаа нэрлэнэ');
+    ok(p({ tries: 4 }, w0).score > p({ tries: 1 }, w0).score, 'эрэмбэ: олон удаа залгасан нь дээгүүр');
+    ok(p({ maxSec: 90 }, w0).score > p({ maxSec: 12 }, w0).score, 'эрэмбэ: удаан хүлээсэн нь дээгүүр');
+    ok(p({ last: '2026-09-16T02:00:00Z' }, w0).score > p({ last: '2026-08-01T02:00:00Z' }, w0).score,
+       'эрэмбэ: саяхан залгасан нь дээгүүр');
+    eq(p({ last: '2026-09-16T02:00:00Z' }, w0).days, 0, 'эрэмбэ: хоногийн зөрүү');
+    eq(p({ tries: 1, maxSec: 5, last: '2026-05-01T02:00:00Z' }, w0).why, '',
+       'эрэмбэ: дохио огт байхгүй бол шалтгаан ХООСОН (хоосон үг бичихгүй)');
+  }
+  // Мөнгө = `orderRevenue` (барьцаа хасагдсан) — түүхий total_mnt БИШ.
+  {
+    const idx = F.pbxNameIndex([], [
+      { phone: '88112233', customer: 'Тест', status: 'done', source: 'app',
+        starts_at: '2026-08-01', stops_at: '2026-08-02', total_mnt: 500000, paid_mnt: 500000 }]);
+    ok(F.pbxWho('88112233', idx).revenue > 0, 'мөнгө: танил дугаарын худалдан авалт тоологдоно');
+  }
+
+  // ── Гараагаар — ээлжийн хуваарийн хариу (2026-09-17) ──
+  {
+    const w = (at, ans, sec) => ({ direction: 'in', peer: '99110000', started_at: at, answer_sec: ans, call_sec: sec });
+    // 2026-09-14 = Даваа. 02:00Z → УБ 10:00 (ажлын цаг)
+    const lg = [
+      w('2026-09-14T02:00:00Z', 30, 40), w('2026-09-14T03:00:00Z', 0, 40),   // Даваа: 1 авсан, 1 алдсан
+      w('2026-09-14T04:00:00Z', 0, 5),                                        // Даваа: андуурсан
+      w('2026-09-14T12:00:00Z', 0, 40),                                       // Даваа: орой (УБ 20:00)
+      w('2026-09-15T02:00:00Z', 20, 30),                                      // Мягмар
+      // ⚠ УБ-ийн цагаар Даваа болох Ням гарагийн орой — бүсээр гулсуулбал Нямд унана
+      w('2026-09-13T17:00:00Z', 0, 40),                                       // УБ: Даваа 01:00 → орой
+    ];
+    const r = F.pbxByWeekday(lg, '', 9, 18);
+    eq(r.map(x => x.label).join(','), 'Даваа,Мягмар,Лхагва,Пүрэв,Баасан,Бямба,Ням',
+       'гараг: долоо хоног Даваагаар эхэлж Нямаар дуусна');
+    const mon = r[0];
+    eq(mon.calls, 2, 'гараг: андуурсан ба оройн дуудлага ажлын тоололд орохгүй');
+    eq(mon.answered, 1, 'гараг: авсан');
+    eq(mon.missed, 1, 'гараг: алдсан');
+    eq(mon.evening, 2, 'гараг: оройн дуудлага тусад нь (УБ цагаар Даваад унасан нь ч)');
+    eq(mon.rate, 50, 'гараг: хариу авалтын хувь');
+    eq(mon.dayCount, 1, 'гараг: тухайн гараг хэдэн удаа тохиосон');
+    eq(mon.perDay, 2, 'гараг: өдрийн дундаж = дуудлага ÷ тохиосон хоног');
+    eq(r[6].calls, 0, 'гараг: Ням — УБ цагаар тэр өдөр дуудлага байхгүй');
+    eq(F.pbxByWeekday(lg, '2026-09-15', 9, 18)[0].calls, 0, 'гараг: хугацаагаар шүүнэ');
+    eq(F.pbxByWeekday(null, '', 9, 18).length, 7, 'гараг: дата байхгүй ч 7 мөр буцаана');
+  }
+
+  // ── 🌙 Оройн дуудлага — маргааш залгах (2026-09-17) ──
+  // Амьд датаар оройн залгагчдын 87% ажлын цагаар НЭГ Ч УДАА залгаагүй — эргэж
+  // ирдэггүй тул «маргааш залгаарай» гэж хүлээж болохгүй.
+  {
+    const ev = (at, ans, sec, peer) => ({ direction: 'in', peer: peer || '99110000',
+      started_at: at, answer_sec: ans, call_sec: sec });
+    const lg = [
+      ev('2026-09-15T12:00:00Z', 0, 40, '99000001'),   // УБ 20:00 — оройн
+      ev('2026-09-15T13:30:00Z', 0, 5,  '99000002'),   // УБ 21:30, ердөө 5 сек
+      ev('2026-09-15T02:00:00Z', 0, 40, '99000003'),   // УБ 10:00 — ажлын цаг
+      ev('2026-09-15T12:00:00Z', 0, 40, '99000004'),   // оройд залгасан ч…
+      ev('2026-09-16T02:00:00Z', 30, 50, '99000004'),  // …дараа нь хүнтэй ярьсан
+      { direction: 'out', peer: '99000005', started_at: '2026-09-15T12:00:00Z', answer_sec: 0, call_sec: 40 },
+      ev('2026-09-15T12:00:00Z', 0, 40, '4008'),       // дотоод дугаар
+    ];
+    const e = F.pbxEvening(lg, { ws: 9, we: 18 });
+    eq(e.map(x => x.peer).sort().join(','), '99000001,99000002',
+       'оройн: ажлын цагийн гадна, хүнтэй ярилцаагүй дугаарууд');
+    // ⛔ ХАМГИЙН ЧУХАЛ: 13 секундын босгыг энд хэрэглэвэл жагсаалт ҮРГЭЛЖ хоосон
+    //   болно — оройд PBX бүх дуудлагыг ~9 секундэд өөрөө таслдаг.
+    ok(e.some(x => x.peer === '99000002' && x.maxSec === 5),
+       'оройн: 13 секунд хүрэхгүй дуудлага ч ОРНО (PBX өөрөө таслдаг)');
+    ok(!e.some(x => x.peer === '99000004'),
+       'оройн: хожим хүнтэй ярьж чадсан дугаар орохгүй (асуудал шийдэгдсэн)');
+    eq(F.pbxEvening(lg, { ws: 9, we: 18, from: '2026-09-16' }).length, 0, 'оройн: хугацаагаар шүүнэ');
+    eq(F.pbxEvening(null, {}).length, 0, 'оройн: дата байхгүй → хоосон (унахгүй)');
+    // ⛔ ИНВАРИАНТ: нэг дуудлага хоёр жагсаалтад ЗЭРЭГ орж болохгүй.
+    const fu = F.pbxFollowups(lg, { ws: 9, we: 18 });
+    const both = fu.filter(f => e.some(x => x.peer === f.peer));
+    eq(both.length, 0, 'ИНВАРИАНТ: оройн ба ажлын цагийн жагсаалт давхцахгүй');
+    // Оройн мөр «алдсан» тоололд ОРОХГҮЙ (CEO-гийн дүрэм).
+    eq(F.pbxStats(lg, '', 9, 18).bizMissed, 1, 'оройн: «алдсан» тоололд орохгүй');
+  }
+
+  // ── Бүх залгагчийн жагсаалт (2026-09-16) ──
+  {
+    const lg = [
+      { direction: 'in', peer: '99112233', started_at: '2026-09-10T02:00:00Z', answer_sec: 120, call_sec: 140 },
+      { direction: 'in', peer: '99112233', started_at: '2026-09-12T02:00:00Z', answer_sec: 0, call_sec: 20 },
+      { direction: 'in', peer: '88000000', started_at: '2026-09-11T02:00:00Z', answer_sec: 0, call_sec: 40 },
+      { direction: 'in', peer: '4001', started_at: '2026-09-13T02:00:00Z', answer_sec: 0, call_sec: 40 },
+      { direction: 'out', peer: '77000000', started_at: '2026-09-13T02:00:00Z', answer_sec: 10, call_sec: 20 },
+    ];
+    const cs = F.pbxCallers(lg, [{ phone: '99112233', status: 'reserved' }], {});
+    eq(cs.length, 2, 'залгагч: дотоод дугаар ба гарсан дуудлага орохгүй');
+    eq(cs[0].peer, '99112233', 'залгагч: сүүлд залгасан нь эхэнд (09-12 > 09-11)');
+    const a = cs.find(x => x.peer === '99112233');
+    eq(a.tries, 2, 'залгагч: дуудлагын тоо нэгтгэгдэнэ');
+    eq(a.answered, 1, 'залгагч: ярьсан тоо');
+    eq(a.missed, 1, 'залгагч: аваагүй тоо');
+    eq(a.orders, 1, 'залгагч: тэр дугаараар захиалга байгаа эсэх');
+    eq(cs.find(x => x.peer === '88000000').orders, 0, 'залгагч: захиалгагүй дугаар 0');
+    eq(F.pbxCallers(lg, [], { from: '2026-09-12' }).length, 1, 'залгагч: хугацаагаар шүүнэ');
+    // Хайлт — дугаараар БА нэрээр
+    const cust = [{ name: 'Болдын Сүх-Очир', phone: '99112233' }];
+    ok(F.pbxCallerMatch(a, '9911', cust), 'залгагч: дугаарын хэсгээр хайна');
+    ok(F.pbxCallerMatch(a, 'сүх', cust), 'залгагч: харилцагчийн нэрээр хайна');
+    ok(!F.pbxCallerMatch(a, 'байхгүй', cust), 'залгагч: тохирохгүй бол хасагдана');
+    ok(F.pbxCallerMatch(a, '', cust), 'залгагч: хоосон хайлт бүгдийг үзүүлнэ');
+  }
+
+  // ── Дуудлагын дата шинэчлэгдэж байна уу (2026-09-16) ──
+  // ⛔ Унител ~90 хоног л хадгалдаг тул татагч зогссоныг чимээгүй өнгөрөөж
+  //   БОЛОХГҮЙ — нөхөх газар байхгүй.
+  eq(F.pbxFeedAge([{ started_at: '2026-09-14T02:00:00+00' }], '2026-09-16'), 2,
+     'дуудлага: хамгийн сүүлийн дуудлагаас хойших хоног');
+  eq(F.pbxFeedAge([], '2026-09-16'), null, 'дуудлага: дата огт байхгүй бол хоног тооцохгүй');
+  ok(vm.runInContext('PBX_STALE_D', sandbox) > 3,
+     'дуудлага: сэрэмжлүүлгийн босго амралтын завсраас (3 хоног) дээгүүр — худал дуугарахгүй');
+
+  // ── Алдсан дуудлага: буцаж залгах жагсаалт (2026-09-16) ──
+  // ⚠ Гараар тэмдэглэх ажлыг ХАМГИЙН БАГА байлгах нь энэ дэлгэцийн амин сүнс —
+  //   өөрөө хаагддаг хоёр зам (захиалга болсон / дахин залгаад холбогдсон)
+  //   ажиллахаа больбол жагсаалт хэзээ ч богиносохгүй, хүн итгэхээ болино.
+  {
+    const fups = F.pbxFollowups(cl);                       // 88446914, сүүлд 03:10
+    const ord = [{ phone: '88446914', status: 'reserved', created_at: '2026-09-15T08:00:00+00' }];
+    const withOrd = F.pbxOpenCalls(fups, [], ord);
+    eq(withOrd[0].ordered, true, 'алдсан: тэр дугаараас захиалга үүсвэл ӨӨРӨӨ шийдэгдэнэ');
+    eq(withOrd[0].done, true, 'алдсан: захиалга болсон мөр нээлттэйд тоологдохгүй');
+    eq(F.pbxOpenCalls(fups, [], [{ phone: '88446914', status: 'deleted', created_at: '2026-09-15T08:00:00+00' }])[0].done,
+       false, 'алдсан: БОЛЬСОН захиалга шийдсэнд тооцогдохгүй');
+    eq(F.pbxOpenCalls(fups, [], [{ phone: '88446914', status: 'reserved', created_at: '2026-09-01T08:00:00+00' }])[0].ordered,
+       false, 'алдсан: дуудлагаас ӨМНӨХ хуучин захиалга тоологдохгүй');
+    // Гараар тэмдэглэх — «холбогдсон» нь хаана, «авсангүй» нь ХААХГҮЙ
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00Z' }], [])[0].done,
+       true, 'алдсан: холбогдсон гэж тэмдэглэвэл хаагдана');
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'no_answer', upto: '2026-09-15T03:10:00Z', tries: 2 }], [])[0].done,
+       false, 'алдсан: утсаа аваагүй бол ажил ДУУСААГҮЙ — жагсаалтад үлдэнэ');
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'no_answer', upto: '2026-09-15T03:10:00Z', tries: 2 }], [])[0].cbTries,
+       2, 'алдсан: бидний буцаж залгасан тоо харагдана');
+    // ⛔ ХАМГИЙН ЧУХАЛ: хаасан дугаар ДАХИН залгавал эргэж гарна
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T02:30:00Z' }], [])[0].done,
+       false, 'алдсан: хаасны ДАРАА дахин залгасан хүн жагсаалтад эргэж гарна');
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'dropped', upto: null }], [])[0].done,
+       false, 'алдсан: upto-гүй тэмдэглэл хаахгүй (хэзээний дуудлагыг шийдсэн нь тодорхойгүй)');
+    // Дугаарын бичлэг зөрж болно (976 угтвар) — нормчилж тулгана
+    eq(F.pbxOpenCalls(fups, [{ peer: '97688446914', status: 'reached', upto: '2026-09-15T03:10:00Z' }], [])[0].done,
+       true, 'алдсан: 976 угтвартай бичигдсэн дугаар ч тулгагдана');
+    // ⚠ «…Z» ба «…+00:00» нь ИЖИЛ мөч — мөрөөр харьцуулбал өөр гарна.
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00+00:00' }], [])[0].done,
+       true, 'алдсан: цагийн бичлэгийн хэлбэр ялгаатай ч ижил мөч гэж танина');
+    eq(F.pbxOpenCalls(null, null, null).length, 0, 'алдсан: дата байхгүй → хоосон (унахгүй)');
+    // Эрэмбэ: шийдэгдээгүй нь ДЭЭР
+    const two = F.pbxOpenCalls(
+      F.pbxFollowups(cl.concat([{ direction: 'in', peer: '99887766', started_at: '2026-09-15T04:00:00+00', answer_sec: 0, call_sec: 30 }])),
+      [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00Z' }], []);
+    eq(two[0].peer, '99887766', 'алдсан: шийдэгдээгүй нь эхэнд эрэмбэлэгдэнэ');
+  }
+
+  // ⛔ АЖЛЫН ЦАГИЙН ГАДНА = АЛДСАН ДУУДЛАГА БИШ (CEO, 2026-09-16).
+  //   Хаалттай цагт утас аваагүй нь алдаа биш — түүнийг тоолвол ажлын цагийн
+  //   ЖИНХЭНЭ алдагдал (үдийн завсарлага) тоонд дарагдана.
+  {
+    const lg = [
+      // 02:00Z = УБ-ийн 10:00 (ажлын цагт) · 14:00Z = УБ-ийн 22:00 (гадна)
+      { direction: 'in', peer: '99000001', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 40 },
+      { direction: 'in', peer: '99000002', started_at: '2026-09-15T14:00:00Z', answer_sec: 0, call_sec: 40 },
+      { direction: 'in', peer: '99000003', started_at: '2026-09-15T14:30:00Z', answer_sec: 0, call_sec: 40 },
+      { direction: 'in', peer: '99000003', started_at: '2026-09-15T03:00:00Z', answer_sec: 0, call_sec: 40 },
+    ];
+    const f = F.pbxFollowups(lg, { ws: 9, we: 18 });
+    eq(f.map(x => x.peer).sort().join(','), '99000001,99000003',
+       'дуудлага: ажлын цагт залгасан нь л жагсаалтад орно');
+    eq(f.find(x => x.peer === '99000003').tries, 1,
+       'дуудлага: ажлын цагийн гадна оролдлого тоологдохгүй (нэг хүн хоёуланд залгасан)');
+    eq(f.off, 1, 'дуудлага: ЗӨВХӨН гадна залгасан хүн тусад нь тоологдоно (нуухгүй)');
+    // ⚠ Цаг уншигдахгүй бол ХАСАХГҮЙ — формат өөрчлөгдөхөд бүгд алга болохоос сэргийлнэ.
+    eq(F.pbxFollowups([{ direction: 'in', peer: '99000009', started_at: 'муу', answer_sec: 0, call_sec: 40 }],
+       { ws: 9, we: 18 }).length, 1, 'дуудлага: цаг уншигдаагүй мөрийг ҮЛДЭЭНЭ (чимээгүй хасахгүй)');
+  }
 
   // ── Ажилтнаар дуудлага ──
   const ag = F.pbxByAgent([
@@ -6071,6 +6408,17 @@ need(['orderCustType']);
   eq(F.callConversion([], []).talked.rate, 0, 'хөрвөлт: дата байхгүй → 0');
   eq(F.callConversion(null, null).missed.callers, 0, 'хөрвөлт: null → унахгүй');
 
+  // ⛔ ДЭЭД ХИЛ: нэг удаа залгасан хүн ДАРААГИЙН БҮХ захиалгадаа «хөрвөсөн»
+  //   гэж тоологдож болохгүй — эс бөгөөс түүх урт болох тусам хувь 100% руу
+  //   хиймлээр өснө (одоогийн 14 хоногийн датаар мэдэгдэхгүй нүх).
+  const farCalls = [{ direction: 'in', peer: '99112233', started_at: '2026-01-05T03:00:00Z', answer_sec: 40, call_sec: 60 }];
+  const farOrders = [{ id: 'o1', phone: '99112233', total_mnt: 500000, created_at: '2026-06-20T03:00:00Z', status: 'active' }];
+  eq(F.callConversion(farCalls, farOrders).talked.converted, 0,
+     'хөрвөлт: хагас жилийн дараах захиалга тоологдохгүй');
+  const nearOrders = [{ id: 'o2', phone: '99112233', total_mnt: 500000, created_at: '2026-01-20T03:00:00Z', status: 'active' }];
+  eq(F.callConversion(farCalls, nearOrders).talked.converted, 1,
+     'хөрвөлт: цонхны дотор захиалга тоологдоно');
+
   eq(F.callConvAdvice(cc).length, 0, 'хөрвөлт: 5-аас цөөн хүнд сануулга гаргахгүй (шуугиан)');
   const big = F.callConversion(
     Array.from({ length: 12 }, (_, i) => ({ direction: 'in', peer: '9900' + String(1000 + i), started_at: '2026-09-10T02:00:00+00', answer_sec: 0, call_sec: 20 })).concat(ccCalls),
@@ -6115,6 +6463,42 @@ need(['orderCustType']);
   eq(st.rows[0].n, 2, 'лид: FB-ээс 2 захиалга');
   eq(st.rows[0].inc, 1500000, 'лид: FB-ийн орлого');
   eq(st.rows[0].avg, 750000, 'лид: дундаж дүн');
+  // ── ЗАРЫН АТРИБУЦИ (2026-09-16) — сайт ⟦ADS|…⟧ токеноор дамжуулна ──
+  eq(F.parseAdAttrib('юм ⟦ADS|facebook|asar|cpc⟧ юм').src, 'facebook', 'атрибуци: суваг');
+  eq(F.parseAdAttrib('⟦ADS|facebook|asar|cpc⟧').camp, 'asar', 'атрибуци: кампанит ажил');
+  eq(F.parseAdAttrib('⟦ADS|google||⟧').camp, '', 'атрибуци: кампанитгүй');
+  eq(F.parseAdAttrib('⟦ADS|||⟧'), null, 'атрибуци: сувгийн нэргүй → null');
+  eq(F.parseAdAttrib('токенгүй тэмдэглэл'), null, 'атрибуци: токенгүй → null');
+  eq(F.parseAdAttrib(null), null, 'атрибуци: null → унахгүй');
+  // ⚠ ⟦DLV⟧/⟦CI⟧-тэй зэрэгцэж байхад ч зөв уншина (note-д олон токен байдаг).
+  eq(F.parseAdAttrib('⟦DLV|city|5|30000⟧ ⟦ADS|facebook|asar|⟧ ⟦CI|{}⟧').src, 'facebook',
+     'атрибуци: бусад токентой зэрэгцэж уншина');
+
+  const aOrders = [
+    { id: 1, status: 'reserved', starts_at: '2026-09-10', total_mnt: 1000000, note: '⟦ADS|facebook|asar|cpc⟧', source: 'm-event-website' },
+    { id: 2, status: 'reserved', starts_at: '2026-09-11', total_mnt: 500000, note: '⟦ADS|facebook|asar|cpc⟧', source: 'm-event-website' },
+    { id: 3, status: 'reserved', starts_at: '2026-09-12', total_mnt: 300000, note: '⟦ADS|google||⟧', source: 'm-event-website' },
+    { id: 4, status: 'reserved', starts_at: '2026-09-12', total_mnt: 900000, note: 'токенгүй', source: 'app' },
+    { id: 5, status: 'deleted', starts_at: '2026-09-12', total_mnt: 900000, note: '⟦ADS|facebook|asar|cpc⟧' },
+  ];
+  const at = F.adAttribStats(aOrders, '2026-09-01', 'cash');
+  eq(at.n, 3, 'атрибуци: токентой захиалга л тоологдоно');
+  eq(at.rows.length, 2, 'атрибуци: суваг+кампанитаар бүлэглэнэ');
+  eq(at.rows[0].k, 'facebook · asar', 'атрибуци: орлогоор эрэмбэлнэ');
+  eq(at.rows[0].n, 2, 'атрибуци: нэг бүлэгт 2 захиалга');
+  eq(F.adAttribStats(aOrders, '2026-09-12', 'cash').n, 1, 'атрибуци: хугацаагаар шүүнэ');
+  eq(F.adAttribStats([], '', 'cash').n, 0, 'атрибуци: хоосон → 0');
+  eq(F.adAttribStats(null, '', 'cash').n, 0, 'атрибуци: null → унахгүй');
+
+  // ⛔ ⟦ADS⟧ токеныг формын токенуудад БҮҮ НЭМ. `stripFormTokens` нь формоос
+  //   дахин үүсдэг токенуудыг цэвэрлэдэг; ADS нь аппад ХЭЗЭЭ Ч дахин үүсдэггүй
+  //   (сайтаас ирдэг) тул жагсаалтад орвол захиалгыг нэг засах бүрд атрибуци
+  //   чимээгүй УСТАНА — өөрөөр хэлбэл сайт дээрх бүх ажил дэмий болно.
+  ok(!/⟦\(\?:[^)]*ADS/.test(src.slice(src.indexOf('const _FORM_TOKEN_RE'), src.indexOf('const _FORM_TOKEN_RE') + 200)),
+     'scan: ADS токен формын цэвэрлэгээнд ОРООГҮЙ');
+  eq((F.parseAdAttrib(F.stripFormTokens('⟦DLV|city|5|3⟧ ⟦ADS|facebook|asar|⟧ үлдсэн')) || {}).src, 'facebook',
+     'scan: захиалга засахад атрибуци үлдэнэ');
+
   eq(F.leadChannelStats([], 'cash').n, 0, 'лид: хоосон жагсаалт → 0 (унахгүй)');
   eq(F.leadChannelStats(null, 'cash').coverage, 0, 'лид: null → 0');
 }
@@ -6133,9 +6517,18 @@ need(['orderCustType']);
   eq(F.adPostDesc('нэгдугаар хоёрдугаар гуравдугаар дөрөвдүгээр', 20).indexOf('нэгдугаар'), 0,
      'пост: үгийн заагаар тасална');
 
-  eq(F.adPostUrl({ sku: 'M-007' }), 'https://mevent.mn/products/m-007/', 'пост: холбоос sku-гаар');
-  eq(F.adPostUrl({}), 'https://mevent.mn', 'пост: sku алга → нүүр хуудас');
-  eq(F.adPostUrl(null), 'https://mevent.mn', 'пост: null → унахгүй');
+  // ⛔ ЛИНК UTM-ГҮЙ БОЛ ЗАХИАЛГА ХЭМЖИГДЭХГҮЙ (2026-09-17). Сайт `utm_source`-ыг
+  //    уншиж ⟦ADS⟧ токен бичдэг; тэмдэглэгээгүй бол «мэдэхгүй» болж тоологдоно.
+  eq(F.adPostUrl({ sku: 'M-007' }),
+     'https://mevent.mn/products/m-007/?utm_source=facebook&utm_medium=post&utm_campaign=m-007',
+     'пост: холбоос sku + UTM');
+  eq(F.adPostUrl({}), 'https://mevent.mn/?utm_source=facebook&utm_medium=post&utm_campaign=mevent',
+     'пост: sku алга → нүүр хуудас, UTM хэвээр');
+  eq(F.adPostUrl(null), 'https://mevent.mn/?utm_source=facebook&utm_medium=post&utm_campaign=mevent',
+     'пост: null → унахгүй');
+  // ⚠ Сайтын parseAttrib нь `facebook`-ийг ⟦LEAD|fb⟧ гэж бичдэг — хамралт
+  //   гараар бөглөхгүйгээр өснө. Эх сурвалжийг солих нь тэр гинжийг тасална.
+  ok(/utm_source=facebook/.test(F.adPostUrl({ sku: 'x' })), 'пост: эх сурвалж facebook хэвээр');
 
   eq(F.adPostImage({ photo: ' a.jpg ' }), 'a.jpg', 'пост: үндсэн зураг');
   eq(F.adPostImage({ photos: ['', 'b.jpg'] }), 'b.jpg', 'пост: жагсаалтын эхний бодит зураг');
@@ -6197,6 +6590,183 @@ need(['orderCustType']);
   eq(F.adPostStatusLabel('шинэ_төлөв'), 'шинэ_төлөв', 'пост: танихгүй төлвийг далдлахгүй');
 }
 
+// ── ЭВЕНТИЙН ЗУРАГ (2026-09-17) ─────────────────────────────────────────────
+// Дамжлагад зураг заавал авдаг ч бүгд агуулахын зураг байсан тул маркетингд
+// ашиглах зураг байхгүй байв (190 бараанаас 31 нь л нэгээс олон зурагтай,
+// эвентийн зураг ердөө 6). Хүргэлт/суурилуулалтын шатанд «угсарсан байдал»
+// гэж ил хэлснээр НЭМЭЛТ АЖИЛГҮЙГЭЭР зураг хуримтлагдана.
+{
+  ok(F.stageIsShowcase('deliver'), 'зураг: хүргэлт = эвентийн зураг');
+  ok(F.stageIsShowcase('setup'), 'зураг: суурилуулалт = эвентийн зураг');
+  // ⛔ Агуулахын шатыг БҮҮ оруул — ачсан машин, савласан бараа постерт тохирохгүй.
+  ['clean', 'prepare', 'dispatch', 'received', 'teardown', 'archive'].forEach(k =>
+    ok(!F.stageIsShowcase(k), 'зураг: агуулахын шат оруулахгүй — ' + k));
+  ok(!F.stageIsShowcase(''), 'зураг: хоосон түлхүүр → үгүй');
+  ok(F.stagePhotoHint('deliver').length > 10, 'зураг: хүргэлтэд заавар гарна');
+  eq(F.stagePhotoHint('clean'), '', 'зураг: агуулахын шатанд заавар гарахгүй');
+
+  const os = [
+    { number: 1, stage_meta: { deliver: { at: '2026-09-10', photos: ['a.jpg', 'b.jpg'] },
+                               clean: { at: '2026-09-09', photos: ['skip.jpg'] } } },
+    { number: 2, stage_meta: { setup: { at: '2026-09-12', photos: ['c.jpg'] } } },
+    { number: 3, stage_meta: { dispatch: { at: '2026-09-13', photos: ['nope.jpg'] } } },
+    { number: 4, stage_meta: null },
+    { number: 5 },
+  ];
+  const sh = F.showcasePhotos(os);
+  eq(sh.length, 3, 'зураг: зөвхөн хүргэлт/суурилуулалтын зураг');
+  eq(sh[0].url, 'c.jpg', 'зураг: хамгийн сүүлийн нь эхэнд');
+  ok(!sh.some(x => x.url === 'skip.jpg' || x.url === 'nope.jpg'), 'зураг: агуулахын зураг орохгүй');
+  eq(sh[0].order, 2, 'зураг: захиалгын дугаар дагана');
+  eq(F.showcasePhotos(os, 2).length, 2, 'зураг: хязгаар');
+  eq(F.showcasePhotos([]).length, 0, 'зураг: хоосон → 0');
+  eq(F.showcasePhotos(null).length, 0, 'зураг: null → унахгүй');
+  // Зураггүй шат унагаахгүй.
+  eq(F.showcasePhotos([{ stage_meta: { deliver: { at: '2026-09-01' } } }]).length, 0,
+     'зураг: photos талбаргүй шат → унахгүй');
+
+  // scan: модал шатны түлхүүрээ функцээр шалгана (хатуу жагсаалт БИШ).
+  const i = src.indexOf('sa-photo-input');
+  const fn = src.slice(Math.max(0, i - 900), i + 200);
+  ok(/stageIsShowcase\(act\.key\)/.test(fn), 'scan: модал stageIsShowcase ашиглана');
+  ok(/stagePhotoHint\(act\.key\)/.test(fn), 'scan: модалд заавар гарна');
+}
+
+// ── ПОСТЕР → FACEBOOK (2026-09-17) ──────────────────────────────────────────
+// Бичвэрийг апп САНАЛ болгоод хүн засна. ⛔ ХООСОН форм биш — урьдчилан
+// бөглөгдсөн байх нь нэмэлт ажил шаардахгүй тул үхэхгүй.
+{
+  const prod = { sku: 'M-007', name: 'Асар майхан', price: 350000, qty_mevent: 4, photo: 'x.jpg' };
+  // Бараанаас хийсэн постер → зарын дэлгэцтэй ЯГ ИЖИЛ бичвэр.
+  eq(F.adPosterText({ title: 'Юу ч байсан' }, prod, {}), F.adPostText(prod),
+     'постер: бараанаас → adPostText-тэй ижил');
+
+  // Өөрийн зурагтай постер → постерын гарчиг/тайлбар + брэндийн холбоо барих.
+  const t = F.adPosterText({ title: 'Намрын хямдрал', subtitle: '20% хөнгөлөлт' },
+                           null, { phone: '9911 2233', website: 'mevent.mn' });
+  ok(t.indexOf('Намрын хямдрал') === 0, 'постер: гарчиг эхэнд');
+  ok(t.indexOf('20% хөнгөлөлт') > 0, 'постер: тайлбар орно');
+  ok(t.indexOf('9911 2233') > 0 && t.indexOf('mevent.mn') > 0, 'постер: холбоо барих орно');
+  eq(F.adPosterText({ title: 'Ганц гарчиг' }, null, {}), 'Ганц гарчиг', 'постер: зөвхөн гарчиг');
+  eq(F.adPosterText({}, null, {}), '', 'постер: гарчиг ч, тайлбар ч алга → хоосон');
+  eq(F.adPosterText(null, null, null), '', 'постер: null → унахгүй');
+
+  // ── САЙТ РУУ ЧИГЛҮҮЛЭХ (2026-09-17) ──────────────────────────────────────
+  // ⛔ Ажлын постерт ч линк ЗААВАЛ — линкгүй пост нь сайт руу зам ч өгөхгүй,
+  //    хаанаас ирснийг ч хэмжүүлэхгүй (⟦ADS⟧ токен зөвхөн utm-тэй линкээр).
+  eq(F.posterSiteUrl({ linkSku: 'M-007' }, '2026-09-17'), F.adPostUrl({ sku: 'M-007' }),
+     'постер: бараа заасан → барааны хуудас руу');
+  eq(F.posterSiteUrl({ productSku: 'M-007' }, '2026-09-17'), F.adPostUrl({ sku: 'M-007' }),
+     'постер: барааны постер → тэр барааны хуудас');
+  eq(F.posterSiteUrl({ linkSku: 'M-002', productSku: 'M-007' }, '2026-09-17'),
+     F.adPostUrl({ sku: 'M-002' }), 'постер: гараар сонгосон холбоос давуу');
+  eq(F.posterSiteUrl({}, '2026-09-17'),
+     'https://mevent.mn/?utm_source=facebook&utm_medium=post&utm_campaign=work-2026-09-17',
+     'постер: бараагүй → нүүр хуудас, огноогоор тэмдэглэнэ');
+  ok(/utm_source=facebook/.test(F.posterSiteUrl(null, '')), 'постер: null → унахгүй, utm хэвээр');
+
+  const wl = F.adPosterText({ title: 'Хурим 300 хүн', subtitle: '2026.09.14' }, null,
+    { phone: '7755 1010', website: 'mevent.mn' }, 'https://mevent.mn/?utm_campaign=work-2026-09-17');
+  ok(/👉 Дэлгэрэнгүй: https:\/\/mevent\.mn\/\?utm_campaign=work-2026-09-17$/.test(wl),
+     'постер: ажлын бичвэрийн төгсгөлд сайтын линк');
+  ok(!/🌐/.test(wl), 'постер: линктэй үед вэб хаяг ДАВХАРДАХГҮЙ');
+
+  // Хүний засварласан бичвэрийн ЗӨВХӨН линкийн мөр солигдоно.
+  eq(F.postSwapLink('Миний бичвэр\n\n👉 Дэлгэрэнгүй: https://old', 'https://new'),
+     'Миний бичвэр\n\n👉 Дэлгэрэнгүй: https://new', 'линк солих: мөр солигдоно');
+  eq(F.postSwapLink('Зөвхөн бичвэр', 'https://new'),
+     'Зөвхөн бичвэр\n\n👉 Дэлгэрэнгүй: https://new', 'линк солих: байхгүй бол нэмнэ');
+  eq(F.postSwapLink('Бичвэр\n\n👉 Захиалга: https://old', 'https://new'),
+     'Бичвэр\n\n👉 Дэлгэрэнгүй: https://new', 'линк солих: барааны линкийг ч солино');
+  eq(F.postSwapLink('Бичвэр', ''), 'Бичвэр', 'линк солих: хоосон холбоос юу ч хийхгүй');
+  eq(F.postSwapLink(null, 'https://x'), '👉 Дэлгэрэнгүй: https://x', 'линк солих: null → унахгүй');
+
+  ok(/ta\.value = P\.body \? postSwapLink\(P\.body, url\)/.test(src),
+     'scan: хүний засварласан бичвэр дэлгэц дахин зурахад алга болохгүй');
+  ok(/adPosterText\(P, prod, state\.brandKit \|\| \{\}, url\)/.test(src),
+     'scan: саналын бичвэрт сайтын линк дамжина');
+
+  const i = src.indexOf("document.getElementById('mk-publish')");
+  ok(i > 0, 'scan: постероос нийтлэх товч холбогдсон');
+  const fn = src.slice(i, i + 1800);
+  ok(/showConfirm\(/.test(fn), 'scan: постер нийтлэхийн өмнө асууна');
+  ok(/uploadPosterPng\(/.test(fn), 'scan: постер VPS рүү байршина');
+  // ⛔ Бичвэрийг товчны дотор ДАХИН угсрахгүй — textarea-гаас (хүний засвартай) авна.
+  ok(/ta && ta\.value/.test(fn), 'scan: нийтлэхэд хүний засварласан бичвэр явна');
+  // ⛔ Нийтлэгдэх пост бүр сайтын холбоостой — `link_url` нь бүүстлэх боломжийг ч
+  //    тодорхойлдог (холбоосгүй пост зөвхөн «хандалт» зар болно).
+  ok(/link_url: posterSiteUrl\(P, todayStr\(\)\)/.test(fn), 'scan: нийтлэхэд сайтын холбоос хадгалагдана');
+
+  // ⛔ Хүн засаж эхэлсэн бичвэрийг дахин зурахад ДАРАХГҮЙ — ажил нь алга болно.
+  ok(/dataset\.touched === '1'/.test(src), 'scan: гараар зассан бичвэр дарагдахгүй');
+
+  // ⛔ base64 руу fallback ХИЙХГҮЙ — Facebook зургийг URL-ээр татдаг тул data: URL
+  //   ирвэл нийтлэл чимээгүй бүтэлгүйтэнэ.
+  const j = src.indexOf('async function uploadPosterPng(');
+  const up = src.slice(j, j + 900);
+  ok(j > 0 && /throw new Error/.test(up) && !/return b64/.test(up),
+     'scan: постер байршуулалт base64 руу унахгүй, алдаа шиднэ');
+}
+
+// ── ӨДРИЙН САНАЛ (2026-09-17) ───────────────────────────────────────────────
+// «Юуг постлох вэ» гэсэн бодол л ажлыг зогсоодог. Апп өдөрт хоёр бараа өөрөө
+// сонгож бэлдэнэ; хүний үүрэг = батлах эсвэл алгасах.
+{
+  const mk = (sku, extra) => Object.assign({ sku, name: 'Асар ' + sku, price: 1000,
+    qty_mevent: 5, photo: sku + '.jpg' }, extra || {});
+  const prods = [mk('A'), mk('B'), mk('C'), mk('D'), mk('E')];
+  const pop = { A: 90, B: 80, C: 70, D: 60, E: 50 };
+
+  const d1 = F.adDailyPicks(prods, [], pop, '2026-09-17');
+  eq(d1.length, 2, 'өдрийн санал: өдөрт 2');
+  ok(d1[0].body.indexOf('Асар') >= 0, 'өдрийн санал: бичвэр бэлэн ирнэ');
+  ok(!!d1[0].image, 'өдрийн санал: зурагтай');
+
+  // ⛔ ТОГТМОЛ байх ёстой — дэлгэц дахин зурагдах бүрд сонголт солигдвол
+  //   хүн дарах гэж байгаад ажлаа алдана.
+  eq(JSON.stringify(F.adDailyPicks(prods, [], pop, '2026-09-17').map(x => x.product.sku)),
+     JSON.stringify(d1.map(x => x.product.sku)), 'өдрийн санал: нэг өдөр ижил үр дүн');
+  // Өөр өдөр өөр бараа (эргэлдэнэ).
+  const d2 = F.adDailyPicks(prods, [], pop, '2026-09-18');
+  ok(JSON.stringify(d2.map(x => x.product.sku)) !== JSON.stringify(d1.map(x => x.product.sku)),
+     'өдрийн санал: өдөр бүр эргэлдэнэ');
+
+  // Саяхан постлогдсон / алгассан бараа дахин ГАРАХГҮЙ.
+  const used = d1.map(x => ({ sku: x.product.sku, created_at: '2026-09-17', status: 'approved' }));
+  const d3 = F.adDailyPicks(prods, used, pop, '2026-09-17');
+  ok(!d3.some(x => used.some(u => u.sku === x.product.sku)), 'өдрийн санал: саяхан постлогдсоныг давтахгүй');
+  ok(!F.adDailyPicks(prods, [{ sku: 'A', created_at: '2026-09-17', status: 'discarded' }], pop, '2026-09-17')
+      .some(x => x.product.sku === 'A'), 'өдрийн санал: алгассан бараа дахин гарахгүй');
+  // ⚠ Хугацаа өнгөрвөл ДАХИН боломжтой (хязгаарлагдмал каталог хоосорч болохгүй).
+  ok(F.adDailyPicks(prods, [{ sku: 'A', created_at: '2026-01-01' }], pop, '2026-09-17')
+      .concat(F.adDailyPicks(prods, [{ sku: 'A', created_at: '2026-01-01' }], pop, '2026-09-20')).length > 0,
+     'өдрийн санал: хуучин пост дахин боломжтой');
+
+  // Зураггүй / үнэгүй / нөөцгүй / архив бараа ОРОХГҮЙ.
+  eq(F.adDailyPicks([mk('X', { photo: '' }), mk('Y', { price: 0 }),
+                     mk('Z', { qty_mevent: 0 }), mk('W', { archived: true })], [], {}, '2026-09-17').length, 0,
+     'өдрийн санал: тохиромжгүй бараа орохгүй');
+  eq(F.adDailyPicks([], [], {}, '2026-09-17').length, 0, 'өдрийн санал: бараагүй → хоосон');
+  eq(F.adDailyPicks(null, null, null, '2026-09-17').length, 0, 'өдрийн санал: null → унахгүй');
+  // Бараа цөөн бол байгаагаараа (давхардуулахгүй).
+  eq(F.adDailyPicks([mk('A')], [], {}, '2026-09-17').length, 1, 'өдрийн санал: ганц бараа → 1');
+}
+
+// scan: саналын карт ГАНЦ загвартай. Өдрийн санал ба цоорхойн санал хоёр
+// өөр газар бичигдвэл нэгийг нь зассан үед нөгөө нь хоцорно.
+{
+  const rd = src.indexOf('function renderAds(');
+  const rf = src.slice(rd, src.indexOf('\nfunction attachAdsHandlers(', rd));
+  ok(/_adPostCardHtml\(/.test(rf), 'scan: renderAds картын загварыг дуудна');
+  ok((rf.match(/data-post-ok=/g) || []).length === 0,
+     'scan: картын HTML renderAds дотор давтагдахгүй');
+  ok(/adDailyPicks\(/.test(rf), 'scan: өдрийн санал дэлгэцэд гарна');
+  // Товчны зам ч ижил функцээр — эс бөгөөс өдрийн саналыг батлахад олдохгүй.
+  const cb = src.indexOf('function _adCandBySku(');
+  ok(/adDailyPicks\(/.test(src.slice(cb, cb + 900)),
+     'scan: батлах зам өдрийн саналыг ч олно');
+}
+
 // scan: пост батлах нь баталгаажуулалтгүй байж БОЛОХГҮЙ (гадагш нийтлэгдэж
 // мөнгө зарцуулна) + пост бичих форм нэмэхгүй + санал ганц функцээс гарна.
 {
@@ -6245,12 +6815,48 @@ need(['orderCustType']);
   // ⚠ Хоёр өөр токен — хуудсанд бичихэд PAGE, зар үүсгэхэд систем хэрэглэгч.
   ok(/PAGE_ID\}\/photos[\s\S]{0,200}?PAGE_TOKEN/.test(py),
      'scan: хуудсанд нийтлэхэд PAGE токен');
-  ok(/campaigns'[\s\S]{0,300}?'access_token': TOKEN/.test(py),
-     'scan: зар үүсгэхэд систем хэрэглэгчийн токен');
+  // ⛔ `/photos`-оор ШУУД нийтлэвэл пост зургийн цомогт орж timeline дээр сул
+  //   харагдана. Зургийг нийтлэхгүйгээр байршуулаад `/feed`-д хавсаргана.
+  ok(/'published': 'false'[\s\S]{0,200}?PAGE_ID\}\/feed/.test(py),
+     'scan: зураг нийтлэхгүйгээр байршиж, feed пост үүснэ');
+  ok(/attached_media/.test(py), 'scan: зураг постод хавсаргагдана');
+  ok(!/'caption': body/.test(py), 'scan: бичвэр постын message-д (зургийн тайлбар БИШ)');
+  // ⚠ Зар үүсгэхэд ХУУДАСНЫ токен (ADS_TOKEN). Систем хэрэглэгчид M event
+  //   хуудсанд зар үүсгэх эрх алга («Insufficient Page Permission to Run Ads»)
+  //   — хуудас нь өөр бизнес багцын мэдэлд. Багц нэгдвэл системийнх рүү буцаана.
+  ok(/ADS_TOKEN = PAGE_TOKEN/.test(py), 'scan: зар үүсгэх токен тусдаа нэрлэгдсэн');
+  ok(/campaigns'[\s\S]{0,400}?'access_token': ADS_TOKEN/.test(py),
+     'scan: зар үүсгэхэд ADS_TOKEN');
+  ok(!/'access_token': TOKEN\b/.test(py),
+     'scan: систем хэрэглэгчийн токеноор зар үүсгэхийг оролдохгүй');
 
   // Алдаа мөрд үлдэнэ — аппын дараалалд «⚠ Амжилтгүй» гэж харагдана.
-  ok(/status='failed'/.test(py), 'scan: алдаа мөрд бүртгэгдэнэ');
+  ok(/else 'failed'/.test(py) && /error=\{sq\(msg/.test(py), 'scan: алдаа мөрд бүртгэгдэнэ');
+  // ⛔ Пост НИЙТЛЭГДСЭН бол «амжилтгүй» гэж бичихгүй — хэрэглэгч аппаас
+  //   харахад пост гараагүй гэж ойлгоод гараар дахин нийтэлж, хуудсан дээр
+  //   ДАВХАР пост үүснэ (2026-09-16-нд яг ийм төөрөгдөл гарсан).
+  ok(/st = 'published' if post_id else 'failed'/.test(py),
+     'scan: нийтлэгдсэн пост «амжилтгүй» гэж тэмдэглэгдэхгүй');
   ok(/--dry-run/.test(py), 'scan: туршилтын горимтой');
+  // ⛔ Бүүст ӨГӨГДМӨЛӨӨР унтраалттай. Зурагтай пост чат руу оптимизацтай зартай
+  //   нийцдэггүй тул кампанит ажил + adset үүсээд ЗАР нь үүсдэггүй — хоосон
+  //   бүрхүүл үлдэж, хуваарилагч түүнд төсөв өгч бодит зарууд бага авдаг байв.
+  ok(/BOOST = cfg\.get\('PUBLISH_BOOST', '0'\)/.test(py),
+     'scan: бүүст өгөгдмөлөөр унтраалттай');
+  ok(/if not BOOST:[\s\S]{0,300}?continue/.test(py),
+     'scan: бүүст унтраалттай бол пост нийтлээд зогсоно');
+  // ⛔ Токен хүчингүй болох нь БОДИТ тохиолдол. Скрипт бүтнээрээ унавал аппад
+  //   юу ч харагдахгүй, хэрэглэгч гараар анзаартал мэдэгдэхгүй (2026-09-17).
+  ok(/except Exception as e:[\s\S]{0,400}?note\(/.test(py),
+     'scan: холболт тасрахад аппад бүртгэгдэнэ');
+
+  // ⛔ Постын бичвэр ОЛОН МӨРТЭЙ. `psql` хариуг splitlines()-ээр уншвал нэг
+  //   бичлэг олон «мөр» болж задарч, талбарууд гулсана — 2026-09-16-нд эхний
+  //   бодит пост яг ингэж «зураггүй» гэсэн худал алдаагаар нийтлэгдээгүй.
+  ok(/json_agg/.test(py) && /json\.loads\(psql\(/.test(py),
+     'scan: батлагдсан постыг JSON-оор уншина');
+  ok(!/from ads_posts where status = 'approved'[\s\S]{0,120}splitlines\(\)/.test(py),
+     'scan: постын жагсаалтыг мөр мөрөөр уншихгүй');
 }
 
 // ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭР (2026-09-16) ────────────────────────────────────
@@ -6279,8 +6885,66 @@ need(['orderCustType']);
     { campaign_id: 'c', effective_status: 'ACTIVE', daily_usd: 7 },
   ]);
   eq(rows.map(r => r.campaign_id).join(''), 'cba', 'зар: идэвхтэй нь эхэнд, төсвөөр эрэмбэлнэ');
+  // ⛔ META-ЭЭС УСТСАН кампанит ажил ACTIVE хэвээр үлдэж «9 ажиллаж байна» гэж
+  //    ХУДЛАА тоологдож байв (бодит нь 7) — амьд датаас 2 сүнс мөр олдсон.
+  const ghost = F.adStateRows([
+    { campaign_id: 'a', name: 'Амьд', effective_status: 'ACTIVE', daily_usd: 3 },
+    { campaign_id: 'b', name: 'Устсан', effective_status: 'REMOVED', daily_usd: 3 },
+    { campaign_id: 'c', name: 'Зогссон', effective_status: 'PAUSED', daily_usd: 1 },
+  ]);
+  eq(ghost.length, 2, 'зар: устсан кампанит ажил жагсаалтад ОРОХГҮЙ');
+  eq(ghost.filter(F.adIsLive).length, 1, 'зар: «ажиллаж байна» тоо зөв');
+  eq(F.adStatusLabel('REMOVED', 'ACTIVE'), '🗑 Устсан', 'зар: устсан төлвийн шошго');
+
   eq(F.adStateRows([]).length, 0, 'зар: хоосон → унахгүй');
   eq(F.adStateRows(null).length, 0, 'зар: null → унахгүй');
+
+  // ── Нэг зарыг зогсоох хүсэлт (2026-09-18) ──
+  ok(F.adStopPending({ status: 'ACTIVE', stop_req: '2026-09-18T01:00:00Z' }),
+     'зогсоох: хүсэлт тавьсан, зар ажилласаар → хүлээлт');
+  ok(!F.adStopPending({ status: 'ACTIVE' }), 'зогсоох: хүсэлтгүй → хүлээлт алга');
+  // ⛔ Биелсэн хойно `stop_req` цэвэрлэгддэг ч Facebook-ийн төлөв хоцорч болно —
+  //   аль хэдийн зогссон зарыг «зогсож байна» гэж харуулбал хүн дахин дарна.
+  ok(!F.adStopPending({ status: 'PAUSED', stop_req: '2026-09-18T01:00:00Z' }),
+     'зогсоох: зогссон зар дээр хүлээлт харуулахгүй');
+  ok(!F.adStopPending(null), 'зогсоох: null → унахгүй');
+
+  const asrcStop = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Зогсоох нь мөнгө хөндөх бөгөөд аппаас БУЦААХ зам байхгүй тул
+  //   баталгаажуулалтгүй байж болохгүй. Хариуг ШАЛГАЖ гардаг хэлбэрийг шаардана.
+  ok(/data-ads-stop\][\s\S]{0,600}?if \(!\(await showConfirm\([\s\S]{0,400}?\)\)\) return;/.test(asrcStop),
+     'scan: зар зогсоох showConfirm-оор хаагдана');
+  // ⛔ Зар АСААХ зам аппад БАЙХГҮЙ — `status: 'ACTIVE'` гэж PATCH хийвэл
+  //   мөнгө гарна. Зөвхөн `stop_req` бичигдэнэ.
+  ok(!/fb_campaign_state[\s\S]{0,400}?status['"]?\s*:\s*['"]ACTIVE/.test(asrcStop),
+     'scan: аппаас зар асаадаггүй');
+  const budsrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_budget.py'), 'utf8');
+  // ⛔ Хүсэлт биелсний дараа `stop_req` цэвэрлэгдэхгүй бол скрипт 10 минут тутам
+  //   ижил зар руу POST явуулж, бүртгэл давхардана.
+  ok(/stop_req=null/.test(budsrc), 'scan: биелсэн хүсэлт цэвэрлэгдэнэ');
+  // ⚠ Зогсоолт нь төсвийн хуваарилалтаас ӨМНӨ — эс бөгөөс зогсоох гэж байгаа
+  //   зар руу тэр ажиллагаанд мөнгө шилжинэ.
+  ok(budsrc.indexOf('apply_stop_requests(camps)') < budsrc.indexOf('active = [c for c in camps'),
+     'scan: зогсоолт төсвийн хуваарилалтаас өмнө');
+  // ⛔ АВТОМАТ ЗОГСООЛТ (2026-09-18) — шийдвэрийн дүрэм нь `fb_budget.py`-ийн
+  //   `--selftest`-д тестлэгдэнэ; энд зөвхөн БҮТЦИЙН хамгаалалт.
+  ok(budsrc.indexOf('auto_stop(camps)') < budsrc.indexOf('active = [c for c in camps'),
+     'scan: автомат зогсоолт хуваарилалтаас өмнө');
+  // ⛔ Бүх зар зогсох нь бизнесийн шийдвэр — нэг зарын гүйцэтгэлээс гарахгүй.
+  ok(/сүүлийн идэвхтэй зар/.test(budsrc), 'scan: сүүлийн зар хамгаалагдана');
+  // ⛔ Жишиг өртөг нь ӨӨРИЙН дансны дундаж — гаднаас авсан тоо биш.
+  ok(/from fb_ads_daily where day >= /.test(budsrc), 'scan: жишиг өөрийн датанаас');
+  // ⛔ Чимээгүй зогсоолт байхгүй — push нь шүүлттэй явна.
+  ok(/notify_stop\(/.test(budsrc) && /'email': phone|email=phone/.test(budsrc),
+     'scan: зогсоолт мэдэгдэнэ, push шүүлттэй');
+  // ⛔ БОРЛУУЛАЛТ = ГОЛ ХЭМЖҮҮР (CEO, 2026-09-18). Чат бол зөвхөн борлуулалт
+  //   тулгагдаагүй үеийн ойролцоо хэмжүүр — эрэмбийг солибол мөнгө авчирч
+  //   байгаа зар «чат алга» гэдгээр нь зогсоно.
+  ok(/sum\(revenue_mnt\)/.test(budsrc), 'scan: зогсоолт борлуулалтыг уншина');
+  ok(budsrc.indexOf('① БОРЛУУЛАЛТ') < budsrc.indexOf('② Борлуулалт тулгагдаагүй'),
+     'scan: борлуулалт чатаас түрүүнд шалгагдана');
+  // ⛔ Борлуулалт тулгагдаагүйг «0 борлуулалт» гэж бүү ойлго — `roas` нь null.
+  ok(/roas: x\.rev > 0 && x\.mnt > 0/.test(asrcStop), 'scan: тулгагдаагүй бол roas null');
 
   // Шийдвэрийн бичвэр.
   eq(F.adActionLabel({ kind: 'budget', old_val: 3, new_val: 6.52 }),
@@ -6316,12 +6980,16 @@ need(['orderCustType']);
   const py = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_budget.py'), 'utf8');
   ok(/def changed\(/.test(py), 'scan: хуваарилагчид changed() байна');
   // ⚠ Хоёр САЛАА зам бий (CBO кампанит ажил ба adset). Хоёулангийнх нь
-  // api_post нь `changed(...)` хаалтын ДОТОР байх ёстой — нэгийг нь хаалтгүй
-  // орхивол тэр замаар өдөрт 144 мөр хог бүртгэгдэнэ.
-  ok(/if changed\(old, want\):\s*\n\s*api_post\(c\['id'\], \{'daily_budget'/.test(py),
-     'scan: кампанит ажлын төсөв changed() хаалтын дотор');
-  ok(/if changed\(float\(a\.get\('daily_budget'\)[\s\S]{0,80}?api_post\(a\['id'\], \{'daily_budget'/.test(py),
-     'scan: adset-ийн төсөв changed() хаалтын дотор');
+  // api_post нь хаалтын ДОТОР байх ёстой — нэгийг нь хаалтгүй орхивол тэр
+  // замаар өдөрт 144 мөр хог бүртгэгдэнэ.
+  // ⚠ 2026-09-17-нд хаалт `changed()` (1 цент) → `worth_changing()` (15% ба
+  //   өдөрт нэг удаа) болов: 1 цент нь хэт сул, өдөрт 46 утгагүй засвар
+  //   хийгдэж Meta-гийн «сурах үе» байнга дахин эхэлж байв.
+  ok(/if worth_changing\(old, want, last_h[\s\S]{0,80}?api_post\(c\['id'\], \{'daily_budget'/.test(py),
+     'scan: кампанит ажлын төсөв хаалтын дотор');
+  ok(/if changed\(float\(a\.get\('daily_budget'\)[\s\S]{0,80}?api_post\(a\['id'\], \{'daily_budget'/.test(py)
+     && /if worth_changing\(old_tot or None/.test(py),
+     'scan: adset-ийн төсөв хаалтын дотор (хоёр давхар)');
   ok(/if changed\(cap_old, cap_usd\):/.test(py), 'scan: дансны хязгаар ч өөрчлөгдсөн үед л');
   ok(/def sq\(/.test(py) && /replace\(\"'\", \"''\"\)/.test(py),
      'scan: SQL мөрийн утга хашилтаас хамгаалагдана');
@@ -6335,43 +7003,80 @@ need(['orderCustType']);
   ok(/ERR_QUIET_H/.test(py), 'scan: алдааны чимээгүй хугацаа тогтмолоор');
 }
 
-// ── УТАСНЫ ДУУДЛАГА (2026-09-16) ────────────────────────────────────────────
-// Unitel PBX-ийн CDR-ээс өдөр×цагаар татагдана. Гол занга: порталын «Answered»
-// статус нь PBX өөрөө авсныг хэлдэг — түүгээр хэмжвэл 99% гэсэн худал тоо гарна.
-// Тиймээс татагч ХҮН авсныг (`Callee Answer Second > 0`) л `answered` гэж бичнэ.
+// ── УТАСНЫ ДУУДЛАГА ─────────────────────────────────────────────────────────
+// Гол занга: порталын «Answered» статус нь PBX өөрөө авсныг хэлдэг — түүгээр
+// хэмжвэл 99% гэсэн худал тоо гарна. Татагч ХҮН авсныг л (`answer_sec > 0`) бичнэ.
+// ⛔ ДУУДЛАГА БҮРИЙН ЛОГООС тоолно (2026-09-17). Цагийн нэгтгэлд дуудлагын УРТ
+//    байдаггүй тул 13 секундын дүрэм хэрэглэгдэхгүй, улмаар зарын дэлгэц «40%
+//    аваагүй» гэж, 📵 дэлгэц «13 алдсан» гэж ХОЁР өөр үнэн хэлдэг байв.
 {
+  // 02:00Z = УБ 10:00 (ажлын цаг) · 12:00Z = УБ 20:00 (гадна)
+  const mk = (at, ans, sec, peer) => ({ direction: 'in', peer: peer || '99110000',
+    started_at: at, answer_sec: ans, call_sec: sec });
   const rows = [
-    { day: '2026-09-15', hour: 3, calls: 4, answered: 0, talk_sec: 0 },    // шөнө
-    { day: '2026-09-15', hour: 10, calls: 12, answered: 5, talk_sec: 600 },
-    { day: '2026-09-15', hour: 18, calls: 6, answered: 3, talk_sec: 300 }, // ажлын цагийн СҮҮЛЧ
-    { day: '2026-09-15', hour: 21, calls: 8, answered: 0, talk_sec: 0 },   // орой
-    { day: '2026-09-16', hour: 11, calls: 10, answered: 8, talk_sec: 900 },
-    { day: '2026-08-01', hour: 11, calls: 99, answered: 99, talk_sec: 1 }, // хугацаанаас гадуур
+    mk('2026-09-15T02:00:00Z', 30, 40),        // ажлын цагт, ярьсан
+    mk('2026-09-15T03:00:00Z', 0, 40),         // ажлын цагт, аваагүй (жинхэнэ алдагдал)
+    mk('2026-09-15T04:00:00Z', 0, 5),          // андуурч тасалсан → short
+    mk('2026-09-15T12:00:00Z', 0, 40),         // ажлын цагийн гадна
+    mk('2026-09-16T02:30:00Z', 60, 70),        // ажлын цагт, ярьсан
+    mk('2026-08-01T02:00:00Z', 0, 99),         // хугацаанаас гадуур
+    { direction: 'out', peer: '99110000', started_at: '2026-09-15T02:00:00Z', answer_sec: 10, call_sec: 20 },
+    mk('2026-09-15T02:00:00Z', 0, 40, '4001'), // дотоод дугаар — хүн биш
   ];
   const p = F.pbxStats(rows, '2026-09-01', 9, 18);
-  eq(p.calls, 40, 'дуудлага: нийт (хугацаанаас гадуурхыг хасна)');
-  eq(p.answered, 16, 'дуудлага: хүн авсан');
-  eq(p.missed, 24, 'дуудлага: алдсан');
-  eq(p.bizCalls, 28, 'дуудлага: ажлын цагаар ирсэн');
-  eq(p.bizAns, 16, 'дуудлага: ажлын цагаар авсан');
-  eq(p.offCalls, 12, 'дуудлага: ажлын цагийн гадна ирсэн');
-  eq(p.offMissed, 12, 'дуудлага: ажлын цагийн гадна алдсан');
+  eq(p.calls, 4, 'дуудлага: андуурсан/гарсан/дотоод/хугацаанаас гадуурх ОРОХГҮЙ');
+  eq(p.short, 1, 'дуудлага: андуурч тасалсныг тусад нь тоолно');
+  eq(p.answered, 2, 'дуудлага: хүн авсан');
+  eq(p.bizCalls, 3, 'дуудлага: ажлын цагаар ирсэн');
+  eq(p.bizAns, 2, 'дуудлага: ажлын цагаар авсан');
+  eq(p.bizMissed, 1, 'дуудлага: ажлын цагийн ЖИНХЭНЭ алдагдал');
+  eq(p.offCalls, 1, 'дуудлага: ажлын цагийн гадна');
+  eq(p.rate, p.bizRate, 'дуудлага: гарчгийн хувь = ажлын цагийнх');
+  eq(p.bizRate, 66.7, 'дуудлага: ажлын цагийн авсан хувь');
   eq(p.dayCount, 2, 'дуудлага: хоногийн тоо');
-  eq(p.perDay, 20, 'дуудлага: өдрийн дундаж');
-  eq(p.rate, 40, 'дуудлага: авсан хувь');
-  eq(p.bizRate, 57.1, 'дуудлага: ажлын цагийн авсан хувь');
+  eq(Math.round(p.talk / 60), 2, 'дуудлага: ярьсан минут');
 
-  // ⚠ Ажлын цагийн ТӨГСГӨЛИЙН цаг (18:00–18:59) нь ажлын цагт ОРНО — амьд датаар
-  // тэр цагт хүн утсаа авсаар байсан. `h < we` гэж бичвэл 23 дуудлага «оройн» болно.
-  eq(F.pbxStats([{ day: '2026-09-15', hour: 18, calls: 5, answered: 5 }], '', 9, 18).offCalls, 0,
+  // ⚠ 18:00–18:59 нь ажлын цагт ОРНО (`h <= we`) — амьд датаар тэр цагт утсаа авсаар байсан.
+  eq(F.pbxStats([mk('2026-09-15T10:30:00Z', 0, 40)], '', 9, 18).offCalls, 0,
      'дуудлага: 18 цаг = ажлын цаг (төгсгөлийн цагийг хасахгүй)');
-  eq(F.pbxStats([{ day: '2026-09-15', hour: 19, calls: 5, answered: 0 }], '', 9, 18).offCalls, 5,
+  eq(F.pbxStats([mk('2026-09-15T11:30:00Z', 0, 40)], '', 9, 18).offCalls, 1,
      'дуудлага: 19 цаг = ажлын цагийн гадна');
+  // ⚠ Цаг уншигдаагүй мөрийг ажлын цагт тооцно — чимээгүй хаяхгүй.
+  eq(F.pbxStats([mk('муу', 0, 40)], '', 9, 18).bizCalls, 0, 'дуудлага: огноогүй мөр огт тоологдохгүй');
+  eq(F.pbxStats([{ direction: 'in', peer: '99110000', started_at: '2026-09-15T25:99:99Z', answer_sec: 0, call_sec: 40 }],
+     '', 9, 18).bizCalls, 1, 'дуудлага: цаг уншигдаагүй ч ажлын цагт тооцно (алдагдуулахгүй)');
 
   eq(F.pbxStats([], '2026-09-01', 9, 18).calls, 0, 'дуудлага: хоосон → 0 (унахгүй)');
   eq(F.pbxStats(null, '', 9, 18).rate, 0, 'дуудлага: null → 0');
-  eq(F.pbxStats([{ day: '2026-09-15', hour: 10, calls: 3, answered: 1 }], '').bizCalls, 3,
-     'дуудлага: ажлын цаг заагаагүй бол 9–18 өгөгдмөл');
+
+  // ⛔ АЖЛЫН ЦАГИЙН ГАДНА ДУУДЛАГЫГ «АНДУУРСАН» ГЭЖ ТООЛОХГҮЙ (2026-09-17).
+  //   Амьд датаар тэдгээрийн 144/144 нь 10 сек-ээс богино байсан — хүн таслаагүй,
+  //   PBX мэндчилгээгээ хэлээд ӨӨРӨӨ таслажээ. Богиносгох шүүлтийг эхэлж
+  //   хэрэглэвэл хаалттай цагийн бодит эрэлт (сард 144 хүн) харагдахаа болино.
+  {
+    const off5 = F.pbxStats([mk('2026-09-15T12:00:00Z', 0, 5)], '', 9, 18);
+    eq(off5.offCalls, 1, 'дуудлага: ажлын цагийн гадна богино дуудлага ч тоологдоно');
+    eq(off5.short, 0, 'дуудлага: түүнийг «андуурсан» гэж БҮҮ тоол');
+    eq(off5.bizCalls, 0, 'дуудлага: ажлын цагийн тоололд орохгүй');
+    eq(off5.rate, 0, 'дуудлага: ажлын цагт дуудлага байхгүй бол хувь 0');
+    const biz5 = F.pbxStats([mk('2026-09-15T02:00:00Z', 0, 5)], '', 9, 18);
+    eq(biz5.short, 1, 'дуудлага: ажлын цагт богино тасалсан нь «андуурсан»');
+    eq(biz5.calls, 0, 'дуудлага: андуурсан нь нийтэд орохгүй');
+  }
+
+  // ⛔ ИНВАРИАНТ: зарын дэлгэцийн «алдсан» ба 📵 дэлгэцийн жагсаалт ИЖИЛ дүрэмтэй.
+  //   Хоёр газар салбарлавал хэрэглэгч хоёр өөр тоо хараад алийг нь ч итгэхгүй болно.
+  {
+    const lg = [
+      mk('2026-09-15T02:00:00Z', 0, 40, '99000001'),   // ажлын цагт хүлээсэн → хоёуланд
+      mk('2026-09-15T04:00:00Z', 0, 5,  '99000002'),   // андуурсан → хоёуланд ч ОРОХГҮЙ
+      mk('2026-09-15T12:00:00Z', 0, 40, '99000003'),   // гадна → хоёуланд ч ОРОХГҮЙ
+    ];
+    const st = F.pbxStats(lg, '', 9, 18);
+    const fu = F.pbxFollowups(lg, { ws: 9, we: 18 });
+    eq(st.bizMissed, fu.length, 'ИНВАРИАНТ: зарын «алдсан» = 📵 жагсаалтын урт');
+    eq(st.short, fu.short, 'ИНВАРИАНТ: андуурч тасалсны тоо хоёуланд ижил');
+  }
 
   // 1 дуудлагын өртөг — 0-д хуваахгүй.
   eq(F.pbxCostPerCall(400000, 40), 10000, 'өртөг: зарцуулалт ÷ дуудлага');
@@ -6390,7 +7095,14 @@ need(['orderCustType']);
     direction: 'in', answer_sec: 0, call_sec: 6,
     started_at: `2026-09-1${i % 5}T20:00:00+08:00`,
   }));
-  const tips = F.callAdvice(p, 9, 18, offLog);
+  // ⚠ Зөвлөгөө өгөх босго: bizCalls ≥ 20 ба bizRate < 70. Дээрх жижиг жишээ
+  //   түүнд хүрэхгүй тул тусдаа олон мөртэй лог угсарна.
+  const missLog = Array.from({ length: 30 }, (_, i) => ({
+    direction: 'in', peer: '9911000' + (i % 9), answer_sec: i < 10 ? 20 : 0, call_sec: 40,
+    started_at: `2026-09-1${i % 5}T02:00:00Z`,
+  }));
+  const pMiss = F.pbxStats(missLog, '', 9, 18);
+  const tips = F.callAdvice(pMiss, 9, 18, offLog);
   ok(tips.some(t => t.kind === 'miss'), 'дуудлага: ажлын цагийн алдагдлыг сануулна');
   ok(tips.some(t => t.kind === 'offhours'), 'дуудлага: орой ХҮЛЭЭСЭН хүнийг сануулна');
   ok(!F.callAdvice(p, 9, 18, kfcLog).some(t => t.kind === 'offhours'),
@@ -6442,6 +7154,637 @@ need(['orderCustType']);
   ok(!/PBX_PASS\s*=\s*['"]/.test(py), 'scan: нууц үг скриптэд хатуу бичигдээгүй');
 }
 
+// ── CAPI-ийн дэлгэцийн хураангуй ───────────────────────────────────────────
+// «Холбоо ажиллаж байна уу» гэдгийг хэрэглэгч ЭНДЭЭС л харна. Тоо буруу бол
+// тасарсан холболт «идэвхтэй» мэт харагдана.
+{
+  const rows = [
+    { order_id: 'a', value_usd: 100, matched: 'ph,em,fbp,fbc', sent_at: '2026-09-16T09:00:00Z' },
+    { order_id: 'b', value_usd: 50.5, matched: 'ph', sent_at: '2026-09-15T09:00:00Z' },
+    { order_id: 'c', value_usd: 20, matched: 'ph,fbc', sent_at: '2026-09-10T09:00:00Z' },
+    { order_id: 'd', value_usd: 999, matched: 'ph', sent_at: '2026-08-01T09:00:00Z' },  // хугацаанаас гадна
+  ];
+  const st = F.capiStats(rows, '2026-09-09');
+  eq(st.n, 3, 'capi: хугацаанд багтсан мөр л тоологдоно');
+  eq(st.usd, 170.5, 'capi: дүн нийлнэ');
+  eq(st.strong, 2, 'capi: fbc-тэй нь зар дарсан хүн');
+  eq(st.strongPct, 67, 'capi: хувь');
+  eq(st.last, '2026-09-16T09:00:00Z', 'capi: сүүлийн илгээлт');
+
+  const none = F.capiStats([], '2026-09-01');
+  eq(none.n, 0, 'capi: хоосон → 0');
+  eq(none.strongPct, 0, 'capi: хоосонд хуваагдахгүй');
+  eq(F.capiStats(null, '2026-09-01').n, 0, 'capi: null → унахгүй');
+  // ⚠ Хугацаа заагаагүй бол БҮГД тоологдоно (шүүлтгүй дуудлага).
+  eq(F.capiStats(rows, '').n, 4, 'capi: хугацаагүй бол бүгд');
+  // ⚠ Талбар дутуу мөр унагаахгүй — Meta-гийн хариу өөрчлөгдөж болно.
+  eq(F.capiStats([{ order_id: 'x' }], '').n, 1, 'capi: дутуу мөр унагаахгүй');
+}
+
+// scan: CAPI-ийн блок дэлгэцэд БАЙХ ёстой — эс бөгөөс холболт чимээгүй
+// тасарч, утсаар хийсэн бүх захиалга Facebook-т хүрэхээ болино.
+{
+  const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/capiStats\(state\.fbCapi/.test(asrc), 'scan: зарын дэлгэц CAPI-г харуулна');
+  ok(/loadFbCapi\(true\)/.test(asrc), 'scan: CAPI дата ачаалагдана');
+  ok(/capiStale/.test(asrc), 'scan: холболт зогссоныг сэрэмжлүүлнэ');
+}
+
+// ── ХУУЧИРСАН ЗАРЫН ДАТА (2026-09-17) ──────────────────────────────────────
+// Дэлгэц нь дата огт БАЙХГҮЙ үед л анхааруулдаг байв. Татагч зогсоход хуучин
+// тоо ХЭВИЙН мэт харагдана — зар мөнгө зарцуулсаар байхад. Амьд системд
+// болсон: Meta аппын хандалт хаагдаж бүх татагч унасан ч дэлгэц юу ч хэлээгүй.
+{
+  const rows = [{ day: '2026-09-15' }, { day: '2026-09-10' }];
+  eq(F.adsFeedAge(rows, '2026-09-17'), 2, 'хуучрал: 2 хоног');
+  eq(F.adsFeedAge(rows, '2026-09-15'), 0, 'хуучрал: тэр өдрийнх');
+  eq(F.adsFeedAge([], '2026-09-17'), null, 'хуучрал: дата алга → null');
+  eq(F.adsFeedAge(null, '2026-09-17'), null, 'хуучрал: null → унахгүй');
+  eq(F.adsFeedAge([{}], '2026-09-17'), null, 'хуучрал: огноогүй мөр → null');
+  // ⚠ Хамгийн СҮҮЛИЙН өдрөөр хэмжинэ (дараалал хамаарахгүй).
+  eq(F.adsFeedAge([{ day: '2026-09-01' }, { day: '2026-09-16' }], '2026-09-17'), 1,
+     'хуучрал: дарааллаас үл хамаарна');
+
+  // ⛔ ӨДРӨӨР БИШ, ТАТАЛТААР (2026-09-17). Татагч өдөрт нэг ажиллаж, өнөөдрийн
+  //    мөр ирдэггүй байхад `adsFeedAge` ҮРГЭЛЖ 1 гарч, анхааруулга хэзээ ч
+  //    асдаггүй байв — «зарын үр дүн ерөөсөө шинэчлэгдэхгүй» гомдол эндээс.
+  const NOW = Date.parse('2026-09-17T14:00:00+08:00');
+  const fr = t => ({ fetched_at: t });
+  eq(F.adsFetchAge([fr('2026-09-17T13:30:00+08:00')], NOW), 0, 'татац: саяхан → 0 цаг');
+  eq(F.adsFetchAge([fr('2026-09-17T09:00:00+08:00')], NOW), 5, 'татац: 5 цагийн өмнө');
+  eq(F.adsFetchAge([fr('2026-09-16T06:30:00+08:00'), fr('2026-09-17T12:00:00+08:00')], NOW), 2,
+     'татац: ХАМГИЙН СҮҮЛИЙН таталтаар');
+  eq(F.adsFetchAge([], NOW), null, 'татац: дата алга → null');
+  eq(F.adsFetchAge(null, NOW), null, 'татац: null → унахгүй');
+  eq(F.adsFetchAge([{}], NOW), null, 'татац: талбаргүй мөр → null');
+
+  eq(F.adsStaleMsg(0, 0), '', 'анхааруулга: бүх юм шинэ → чимээгүй');
+  eq(F.adsStaleMsg(1, 1), '', 'анхааруулга: 1 цаг/1 хоног → чимээгүй');
+  ok(/4 цаг/.test(F.adsStaleMsg(0, 4)), 'анхааруулга: татагч зогссоныг ЦАГААР хэлнэ');
+  ok(/3 хоног/.test(F.adsStaleMsg(3, 0)), 'анхааруулга: дата хуучирсныг ӨДРӨӨР хэлнэ');
+  ok(/цаг/.test(F.adsStaleMsg(5, 9)), 'анхааруулга: хоёулаа муу бол татагчийнх ДАВУУ');
+  eq(F.adsStaleMsg(null, null), '', 'анхааруулга: дата огт алга → чимээгүй');
+
+  // ── ЗАРЫН ДЭЛГЭЦИЙН 4 ТАБ (2026-09-17) ───────────────────────────────────
+  // 20 гаруй блок нэг хуудсанд дараалж «юу хараад юу хийхээ» олдохгүй байв.
+  // ⛔ Блок бүр ЯГ НЭГ табд байх ёстой: хоёр табд тавибал аль нь шинэ болохыг
+  //    хүн мэдэхгүй, хаанаас ч гаргахгүй бол блок ЧИМЭЭГҮЙ алга болно.
+  {
+    const keys = ['advice', 'daily', 'cand', 'pubNote', 'pp', 'queue', 'kpi', 'budget',
+      'camps', 'cmp', 'state', 'act', 'ga', 'gsc', 'attrib', 'lead', 'capi', 'call', 'conv', 'agent', 'fup'];
+    const parts = {}; keys.forEach(k => { parts[k] = '<' + k + '>'; });
+    const tabs = ['todo', 'money', 'src', 'calls'];
+    const seen = {};
+    tabs.forEach(t => F.adsTabParts(t, parts).forEach(x => { seen[x] = (seen[x] || 0) + 1; }));
+    eq(Object.keys(seen).filter(k => seen[k] > 1), [], 'зар: нэг блок хоёр табд давхардахгүй');
+    eq(keys.filter(k => !seen['<' + k + '>']), [], 'зар: блок бүр аль нэг табд гарна');
+    // Танихгүй таб → хийх ажил (шинэ хувилбар хуучин төлөвтэй уулзахад хоосон болохгүй)
+    eq(F.adsTabParts('xxx', parts), F.adsTabParts('todo', parts), 'зар: танихгүй таб → хийх ажил');
+    eq(F.adsTabParts(undefined, parts)[0], '<advice>', 'зар: өгөгдмөл таб = хийх ажил, эхэнд зөвлөгөө');
+
+    const asrc3 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    // ADS_TABS-ийн түлхүүр ба дээрх салаа таарах ёстой — шинэ таб нэмээд
+    // `adsTabParts`-д мартвал тэр таб МӨНХӨД хоосон харагдана.
+    const blk = (asrc3.match(/const ADS_TABS = \[([\s\S]*?)\];/) || ['', ''])[1];
+    const declared = [...blk.matchAll(/k: '([a-z]+)'/g)].map(m => m[1]);
+    eq(declared, tabs, 'зар: ADS_TABS ба хуваарилалт ижил');
+  }
+
+  // ── GOOGLE ХАЙЛТ (Search Console) — түлхүүр үгийн блок (2026-09-17) ───────
+  // Хүн БИДНИЙГ ямар үгээр хайж байна гэдэг нь зарын хамгийн хямд лид.
+  {
+    const g = [
+      // нэг үг ХОЁР хуудсаар, өөр өдрүүдэд — нэгтгэгдэх ёстой
+      { day: '2026-09-16', query: 'асар түрээс', page: '/turees/asar/', clicks: 2, impressions: 100, position: 8 },
+      { day: '2026-09-15', query: 'асар түрээс', page: '/', clicks: 0, impressions: 300, position: 12 },
+      { day: '2026-09-15', query: 'ширээ сандал түрээс', page: '/', clicks: 5, impressions: 50, position: 3 },
+      { day: '2026-08-01', query: 'хуучин үг', page: '/', clicks: 9, impressions: 900, position: 1 },
+    ];
+    const st = F.gscStats(g, '2026-09-10');
+    eq(st.clicks, 7, 'gsc: товшилт нийлнэ');
+    eq(st.impr, 450, 'gsc: харагдалт нийлнэ');
+    eq(st.days, 2, 'gsc: хэдэн өдрийн дата');
+    eq(st.last, '2026-09-16', 'gsc: сүүлийн өдөр');
+    // ⛔ ЖИГНЭСЭН дундаж: (8·100 + 12·300 + 3·50)/450 = 10.1 — энгийн дундаж 7.7 гарна
+    eq(st.pos, 10.1, 'gsc: байр харагдалтаар жигнэгдэнэ');
+    eq(st.ctr, 1.6, 'gsc: CTR хувиар');
+    // Хугацаанаас гадуурх мөр ОРОХГҮЙ (8-р сарын 9 товшилт хасагдсан)
+    eq(F.gscStats(g, '2026-01-01').clicks, 16, 'gsc: бүх хугацаа сонгоход л түүх орно');
+
+    // ⛔ Дата байхгүй бол байр нь null — 0 БИШ. «0-р байр» гэж гарвал
+    //    Google дээр хамгийн дээд байр мэт уншигдана.
+    eq(F.gscStats([], '2026-09-10').pos, null, 'gsc: дата алга → байр null');
+    eq(F.gscStats(null, null).impr, 0, 'gsc: null → унахгүй');
+
+    const top = F.gscTopQueries(g, '2026-09-10', 5);
+    eq(top.length, 2, 'gsc: үг нэгтгэгдэнэ (хуудас бүрээр задрахгүй)');
+    eq(top[0].q, 'ширээ сандал түрээс', 'gsc: товшилтоор эрэмбэлнэ');
+    eq(top[1].impr, 400, 'gsc: нэг үгийн харагдалт нийлнэ');
+    eq(top[1].pos, 11, 'gsc: үгийн байр ч жигнэгдэнэ');
+
+    // Зөвлөгөө: 5-20-р байрт олон харагдсан үг = хамгийн хямд ялалт
+    const tips = F.gscAdvice(g, '2026-09-10');
+    ok(tips.some(t => /асар түрээс/.test(t.text) && /байрт/.test(t.text)), 'gsc: ирмэг дээрх үгийг санал болгоно');
+    ok(tips.every(t => t.sev === 2), 'gsc: зөвлөгөө adsAdvice-тай ижил хэлбэртэй');
+    // Товшилтгүй атлаа их харагдсан үг = гарчиг/тайлбар таарахгүй
+    const dead = F.gscAdvice([{ day: '2026-09-16', query: 'майхан түрээс', clicks: 0, impressions: 200, position: 3 }], '2026-09-10');
+    ok(dead.some(t => /нэг ч хүн дараагүй/.test(t.text)), 'gsc: харагдаад дардаггүй үгийг хэлнэ');
+    // Цөөн харагдалтаас дүгнэлт ГАРГАХГҮЙ (одоогийн бодит байдал)
+    eq(F.gscAdvice([{ day: '2026-09-16', query: 'm event', clicks: 2, impressions: 2, position: 7 }], '2026-09-10').length, 0,
+       'gsc: цөөн датанаас зөвлөгөө гаргахгүй');
+  }
+
+  // ── САЙТЫН ЗОЧИД (GA4) — юүлүүрийн дээд тал (2026-09-17) ─────────────────
+  {
+    // ⛔ Сайтын захиалгыг `source === 'site'` гэж түүхийгээр таних нь БУРУУ —
+    //    DB-д 'm-event-website' гэж хадгалагддаг тул тоолуур үргэлж 0 гарна
+    //    (эхний хувилбарт яг ингэж гарсныг амьд датаар барьсан).
+    eq(F.orderSourceKey({ source: 'm-event-website' }), 'site', 'ga: сайтын захиалга танигдана');
+    const asrcS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    eq((asrcS.match(/source \|\| ''\) === 'site'|source === 'site'/g) || []).length, 0,
+       'scan: сайтын эх сурвалжийг түүхийгээр харьцуулахгүй (orderSourceKey ашигла)');
+  }
+  {
+    const g = [
+      { day: '2026-09-16', channel: 'Organic Search', sessions: 120, users: 95, engaged: 80, leads: 3 },
+      { day: '2026-09-15', channel: 'Organic Search', sessions: 80, users: 60, engaged: 50, leads: 1 },
+      { day: '2026-09-15', channel: 'Direct', sessions: 40, users: 38, engaged: 21, leads: 0 },
+      { day: '2026-08-01', channel: 'Direct', sessions: 900, users: 900, engaged: 900, leads: 50 },
+    ];
+    const st = F.gaStats(g, '2026-09-10');
+    eq(st.sessions, 240, 'ga: сесс нийлнэ');
+    eq(st.users, 193, 'ga: хүн нийлнэ');
+    eq(st.leads, 4, 'ga: холбоо барьсан нийлнэ');
+    eq(st.days, 2, 'ga: хэдэн өдрийн дата');
+    eq(st.last, '2026-09-16', 'ga: сүүлийн өдөр');
+    eq(st.conv, 1.7, 'ga: хөрвөлт хувиар');
+    // ⛔ Сессгүй үед хөрвөлт `null` — 0% гэвэл «муу ажиллаж байна» гэж уншигдана
+    eq(F.gaStats([], '2026-09-10').conv, null, 'ga: сесс алга → хөрвөлт null');
+    eq(F.gaStats(null, null).sessions, 0, 'ga: null → унахгүй');
+    // Хугацаанаас гадуурх 8-р сарын мөр орохгүй
+    eq(F.gaStats(g, '2026-01-01').sessions, 1140, 'ga: бүх хугацаа сонгоход л түүх орно');
+
+    const ch = F.gaChannels(g, '2026-09-10');
+    eq(ch.length, 2, 'ga: суваг нэгтгэгдэнэ');
+    eq(ch[0].ch, 'Organic Search', 'ga: сессээр эрэмбэлнэ');
+    eq(ch[0].sessions, 200, 'ga: сувгийн сесс нийлнэ');
+    eq(ch[0].leads, 4, 'ga: сувгийн lead нийлнэ');
+    eq(F.gaChannelLabel('Organic Search'), 'Google хайлт', 'ga: сувгийн нэр монголоор');
+    eq(F.gaChannelLabel('Хачин'), 'Хачин', 'ga: танихгүй суваг хэвээр');
+  }
+
+  const asrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Анхааруулга ХАМГИЙН ДЭЭР — доорх тоог уншихаас ӨМНӨ харагдана.
+  ok(/📣 Зар & үр дүн<\/h2>\s*\n\s*\$\{staleHtml\}/.test(asrc2), 'scan: хуучрлын анхааруулга дээд талд');
+  ok(/adsFeedAge\(rows, todayStr\(\)\)/.test(asrc2), 'scan: зарын дэлгэц хуучрлыг хэмжинэ');
+  ok(/adsFetchAge\(rows, Date\.now\(\)\)/.test(asrc2), 'scan: татагчийн амьд эсэхийг хэмжинэ');
+
+  // ⛔ Татагч талдаа ч цэвэрлэнэ — эс бөгөөс сүнс мөр ҮҮРД ACTIVE хэвээр үлдэнэ.
+  const bud = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_budget.py'), 'utf8');
+  ok(/set status='REMOVED', effective_status='REMOVED'/.test(bud),
+     'scan: Meta-д алга болсон кампанит ажил REMOVED болно');
+  ok(/if len\(camps\) < 100:/.test(bud),
+     'scan: бүтэн хуудас ирвэл цэвэрлэхгүй (хуудаслалтын хамгаалалт)');
+  ok(/ads-fresh/.test(asrc2), 'scan: хэзээ татсаныг ил бичнэ');
+
+  // ⛔ `date_preset=last_Nd` нь ӨНӨӨДРИЙГ ОРОЛЦУУЛДАГГҮЙ — өдөржин мөнгө
+  //    зарцуулж байхад «өнөөдөр 0» гэж харагдана.
+  const pull = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_pull.py'), 'utf8');
+  ok(!/'date_preset':/.test(pull) && /'time_range': json\.dumps\(win\(/.test(pull),
+     'scan: зарын татагч өнөөдрийг хамруулна');
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(path.join(__dirname, '..', 'tools', 'fb_pull.py'))} --selftest`,
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/PULL OK/.test(out), 'fb_pull.py: өөрийн тест — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'fb_pull.py: тест — ' + msg.trim().slice(0, 200));
+  }
+}
+
+// ── КЭШ БИЧИЛТ УНАХ ≠ ДАТА АЧААЛАГДААГҮЙ (2026-09-17) ──────────────────────
+// Утасны санах ой дүүрэхэд setItem «quota exceeded» шидэж, 12 газар
+// `dataLoadFailed()` дуудагдан «Дата ачаалагдсангүй» гэсэн ХУДАЛ анхааруулга
+// гардаг байв — дата САЙН ирсэн, зөвхөн кэшлэх нь бүтээгүй (fp 1cddeb5f6c64,
+// амьд датаар 2 ажилтан · 11 удаа).
+{
+  const real = localStorage.setItem.bind(localStorage);
+  // Хэвийн үед бичигдэнэ
+  eq(F.cacheSet('t1', 'a'), true, 'кэш: хэвийн бичилт');
+  eq(localStorage.getItem('t1'), 'a', 'кэш: утга хадгалагдана');
+
+  // Санах ой дүүрсэн ч ХУУЧИН утгыг чөлөөлөөд дахин оролдоно
+  localStorage.setItem('t2', 'хуучин');
+  let tries = 0;
+  localStorage.setItem = (k, v) => { if (++tries === 1) { const e = new Error('The quota has been exceeded.'); e.name = 'QuotaExceededError'; throw e; } real(k, v); };
+  eq(F.cacheSet('t2', 'шинэ'), true, 'кэш: чөлөөлөөд дахин оролдоно');
+  eq(localStorage.getItem('t2'), 'шинэ', 'кэш: хоёр дахь оролдлого амжилттай');
+
+  // Хоёулаа унавал ЧИМЭЭГҮЙ false — апп унахгүй, худал анхааруулга гарахгүй
+  localStorage.setItem = () => { throw new Error('The quota has been exceeded.'); };
+  eq(F.cacheSet('t3', 'x'), false, 'кэш: бүтэхгүй бол false');
+  localStorage.setItem = real;
+  localStorage.removeItem('t1'); localStorage.removeItem('t2');
+
+  // ⛔ КЭШ БИЧИЛТИЙГ `dataLoadFailed`-ЭЭР БҮҮ МЭДЭЭЛ — худал анхааруулга
+  //    болж, алдааны лог дүүрнэ. Дата үнэхээр ирээгүй үед л түүнийг ашиглана.
+  const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const bad = (asrc.match(/localStorage\.setItem[^\n]*dataLoadFailed/g) || []).length;
+  eq(bad, 0, 'scan: кэш бичилтийг dataLoadFailed-ээр мэдээлэхгүй');
+  ok(/function cacheSet\(key, value\)/.test(asrc), 'scan: cacheSet туслах байна');
+  // ⚠ Дата ачаалах ЖИНХЭНЭ алдаа хэвээр мэдээлэгдэнэ.
+  ok((asrc.match(/dataLoadFailed\(/g) || []).length > 10, 'scan: жинхэнэ алдааны мэдээлэл хэвээр');
+
+  // ⛔ СҮЛЖЭЭ ТАСАРСНЫГ СЕРВЕРТ МЭДЭЭЛЭХГҮЙ (2026-09-18) — засах код байхгүй,
+  //    алдааны логийг дүүргэж жинхэнэ алдааг живүүлдэг (fp 6a624cf9a841, 9cabaf8767a3).
+  const blip = vm.runInContext('NET_BLIP_RE', sandbox);
+  ok(blip.test('Failed to fetch'), 'сүлжээ: «Failed to fetch» тоохгүй');
+  ok(blip.test('Fetch is aborted'), 'сүлжээ: «Fetch is aborted» тоохгүй');
+  ok(blip.test('signal is aborted without reason'), 'сүлжээ: signal aborted тоохгүй');
+  ok(blip.test('The user aborted a request.'), 'сүлжээ: хэрэглэгч таслав — тоохгүй');
+  ok(blip.test('Load failed'), 'сүлжээ: Safari «Load failed» тоохгүй');
+  ok(!blip.test('PG HTTP 401'), 'сүлжээ: 401 бол ЖИНХЭНЭ алдаа — мэдээлнэ');
+  ok(!blip.test('The quota has been exceeded.'), 'сүлжээ: quota нь сүлжээний алдаа биш');
+  ok(/if \(NET_BLIP_RE\.test\([\s\S]{0,120}\) return;/.test(asrc),
+     'scan: dataLoadFailed сүлжээний тасалдлыг эрт буцаана');
+}
+
+// ── ТӨСВИЙН ШАЛГАРАЛ (2026-09-17) ──────────────────────────────────────────
+// ⛔ Өдрийн төсвийг байнга засвал зар МУУДНА. Скрипт 10 минут тутам ажилладаг
+//    бөгөөд зөрүү 1 цент байхад бичдэг байв — амьд датаар өдөрт 46 удаа,
+//    ихэнх нь $6.25→$6.23 гэх утгагүй хөдөлгөөн. Meta төсөв засах бүрд
+//    хүргэлтийн «сурах үе»-г дахин эхлүүлдэг тул үр дүнгийн өртөг өснө.
+{
+  const bud = path.join(__dirname, '..', 'tools', 'fb_budget.py');
+  const py = fs.readFileSync(bud, 'utf8');
+
+  ok(/BUDGET_MIN_PCT|worth_changing/.test(py), 'scan: төсвийн босго тогтоогдсон');
+  // ⛔ Төсөв тавихдаа `changed()` (1 цент) руу БУЦАХГҮЙ.
+  ok(/if worth_changing\(old, want, last_h/.test(py), 'scan: CBO төсөв босгоор шалгагдана');
+  ok(/if worth_changing\(old_tot or None/.test(py), 'scan: adset төсөв босгоор шалгагдана');
+  // ⛔ ЗОГСООЛТ хаалтад ОРОХГҮЙ — мөнгө хамгаалах ажил шууд хийгдэнэ.
+  ok(/def pause_all/.test(py) && !/worth_changing[\s\S]{0,200}?PAUSED/.test(py),
+     'scan: зогсоолт төсвийн хаалтад ороогүй');
+  // ⚠ Хугацааг уншиж чадахгүй бол ажиллахаа болихгүй (хаалтгүй үргэлжилнэ).
+  ok(/def last_budget_hours[\s\S]{0,600}?except Exception:/.test(py),
+     'scan: хугацаа уншигдахгүй бол унахгүй');
+
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(bud)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const budPy = fs.readFileSync(bud, 'utf8');
+  // ⛔ ЭРХГҮЙ ҮЕД ЛОГ ДҮҮРГЭХГҮЙ. Скрипт 10 минут тутам ажилладаг тул дансны
+  //    hard cap тавих эрхгүй бол өдөрт 140 гаруй удаа оролдож, жинхэнэ алдааг
+  //    дарж байв. Өдөрт нэг л удаа оролдоно; эрх өгмөгц маргааш нь ажиллана.
+  ok(/def cap_failed_today/.test(budPy) && /if not cap_failed_today\(/.test(budPy),
+     'төсөв: hard cap өдөрт нэг л удаа оролдоно');
+  // ⛔ spend_cap БИЧИХ нь бүхэл валют, УНШИХ нь цент. ×100 хийвэл хязгаар
+  //    100 дахин өндөр тавигдаж, хамгаалалт байгаа мэт харагдаад юу ч
+  //    хамгаалахгүй ($1,990 гэж зорьсон нь $199,007 болсон, амьд системд).
+  ok(/'spend_cap': int\(round\(cap_usd\)\)/.test(budPy),
+     'төсөв: hard cap бүхэл валютаар бичигдэнэ');
+  // ⛔ Бичсэнийхээ дараа уншиж тулгахгүй бол ийм алдаа чимээгүй үлдэнэ.
+  ok(/back = float\(api_get\(ACCT/.test(budPy) && /hard cap зөрүүтэй/.test(budPy),
+     'төсөв: тавьсан хязгаараа уншиж тулгана');
+    ok(/✅ BUDGET OK/.test(out), 'төсөв: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'төсөв: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
+// ── ЭРГЭЖ ИРЭЭГҮЙ ХАРИЛЦАГЧ (2026-09-17) ───────────────────────────────────
+// 183 харилцагч 2+ сар эргэж ирээгүй, 170 сая₮-ийн түүхтэй; татах зардал ТЭГ.
+{
+  eq(F.daysBetween('2026-07-01', '2026-09-17'), 78, 'хоног: тооцоо');
+  eq(F.daysBetween('2026-09-17', '2026-09-17'), 0, 'хоног: тэр өдөр');
+  eq(F.daysBetween('муу', '2026-09-17'), 0, 'хоног: буруу огноо → 0');
+
+  const stats = new Map([
+    ['a', { orders: 1, revenue: 5000000, last: '2026-05-01' }],   // том, 139 хоног
+    ['b', { orders: 3, revenue: 900000, last: '2026-06-01' }],    // давтагч, 108 хоног
+    ['c', { orders: 1, revenue: 400000, last: '2026-09-10' }],    // саяхан → орохгүй
+    ['d', { orders: 1, revenue: 800000, last: '2026-04-01' }],    // хойшлуулсан
+    ['e', { orders: 0, revenue: 0, last: '' }],                   // захиалгагүй
+  ]);
+  const cs = [
+    { id: 'a', name: 'А', phone: '99110000' },
+    { id: 'b', name: 'Б', phone: '99220000' },
+    { id: 'c', name: 'В', phone: '99330000' },
+    { id: 'd', name: 'Г', phone: '99440000', followup_until: '2026-12-01' },
+    { id: 'e', name: 'Д', phone: '99550000' },
+    { id: 'f', name: 'Е', phone: '' },                            // утасгүй
+  ];
+  const rows = F.dormantRows(cs, stats, '2026-09-17', 20);
+  eq(rows.map(r => r.id).join(','), 'a,b', 'жагсаалт: зөвхөн эргэж ирээгүй, утастай');
+  eq(rows[0].id, 'a', 'жагсаалт: орлогоор эрэмбэлэгдэнэ');
+  eq(rows[0].days, 139, 'жагсаалт: хоног бодогдоно');
+  // ⛔ ХОЙШЛУУЛСАН хүн гарахгүй — эс бөгөөс «Дараа» дарсан нь утгагүй болно.
+  ok(!rows.some(r => r.id === 'd'), 'жагсаалт: хойшлуулсан нь нуугдана');
+  // ⛔ САЯХАН захиалсан хүн ӨӨРӨӨ гарна — гараар тэмдэглэх ажил үүсгэхгүй.
+  ok(!rows.some(r => r.id === 'c'), 'жагсаалт: саяхан захиалсан нь өөрөө гарна');
+  eq(F.dormantRows([], stats, '2026-09-17').length, 0, 'жагсаалт: хоосон');
+  eq(F.dormantRows(null, stats, '2026-09-17').length, 0, 'жагсаалт: null → унахгүй');
+  eq(F.dormantRows(cs, stats, '2026-09-17', 1).length, 1, 'жагсаалт: хязгаар');
+
+  // «Яагаад энэ эхэнд байна» — ганц хамгийн хүнд шалтгаан
+  eq(F.dormantWhy({ orders: 3, revenue: 100, days: 80 }), '3 удаа захиалсан', 'шалтгаан: давтагч');
+  eq(F.dormantWhy({ orders: 1, revenue: 5000000, days: 80 }), 'том захиалга байсан', 'шалтгаан: том');
+  eq(F.dormantWhy({ orders: 1, revenue: 100, days: 80 }), '80 хоног эргэж ирээгүй', 'шалтгаан: хугацаа');
+
+  const src9 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Хайлт хийж байхад ажлын жагсаалт гарах ёсгүй — хоёр зүйл зэрэг
+  //    харагдвал аль нь хайлтын үр дүн нь мэдэгдэхгүй.
+  ok(/\$\{q \? '' : dormHtml\}/.test(src9), 'scan: хайлтад ажлын жагсаалт нуугдана');
+  ok(/followup_until/.test(src9), 'scan: хойшлуулалт хадгалагдана');
+}
+
+// ── psql-ийн ТУСГААРЛАГЧИЙГ `.strip()` ИДДЭГ (2026-09-17) ──────────────────
+// Python-д `'\x1f'.isspace()` нь TRUE тул `stdout.strip()` нь мөрийн ТӨГСГӨЛИЙН
+// тусгаарлагчийг хасдаг — сүүлийн багана ХООСОН байхад мөр нэг талбараар дутуу
+// задарна. Амьд системд «бүүстын хүсэлт алга» гэсэн ХУДАЛ хариу ингэж гарсан.
+{
+  const files = ['fb_boost.py', 'fb_capi.py', 'pbx_notify.py'];
+  for (const f of files) {
+    const fp = path.join(__dirname, '..', 'tools', f);
+    if (!fs.existsSync(fp)) continue;
+    const py = fs.readFileSync(fp, 'utf8');
+    if (!/\\x1f/.test(py)) continue;
+    ok(!/stdout\.strip\(\)\.split/.test(py), `scan: ${f} — strip() тусгаарлагчийг идэхгүй`);
+    ok(/stdout\.strip\('\\n'\)/.test(py), `scan: ${f} — зөвхөн мөр таслалт хасна`);
+  }
+}
+
+// ── ХУУДАСНЫ ПОСТЫГ БҮҮСТ ХИЙХ (2026-09-17) ────────────────────────────────
+// Аппын өөрийн нийтэлсэн постыг зарын систем ХАРДАГГҮЙ (апп Development
+// горимд); CEO гараар нийтэлсэн пост харин бүүстлэгддэг — амьд туршиж
+// баталсан. Тиймээс урсгал эргэв: хүн постлоно → апп жагсаана → хүн сонгоно.
+{
+  const posts = [
+    { post_id: 'a', created_time: '2026-09-15T05:42:29+00:00', message: 'Сайн  байна\nуу',
+      picture: 'i.jpg', link_url: '', permalink: 'p' },
+    { post_id: 'b', created_time: '2026-09-16T05:00:00+00:00', message: 'Сайт',
+      link_url: 'https://mevent.mn/', boost: 'done' },
+    { post_id: 'c', created_time: '2026-09-10T05:00:00+00:00', message: '',
+      boost: 'error', error: 'Non-Website Ad' },
+    { no_id: 1 },
+  ];
+  const rows = F.pagePostRows(posts, 10);
+  eq(rows.length, 3, 'пост: id-гүй мөр хасагдана');
+  eq(rows[0].id, 'b', 'пост: шинэ нь эхэнд');
+  // ⛔ Холбоосгүй постыг «сайт руу» гэж бүүстлэх боломжгүй — Facebook татгалздаг.
+  eq(rows[0].kind, 'site', 'пост: холбоостой → сайт');
+  eq(rows[1].kind, 'engage', 'пост: холбоосгүй → хандалт');
+  // ⛔ Зурагтай постыг чат руу бүүстлэхийг Meta ТАТГАЛЗДАГ («Invalid Creative
+  //    For Objective», амьд туршиж баталсан) тул хандалт л үлддэг. Тэр нь
+  //    захиалга ховор авчирдгийг хүнд ИЛ хэлэхгүй бол хоёр товч ижил үнэтэй
+  //    мэт харагдана.
+  eq(rows[1].weak, true, 'пост: хандалтын бүүст сул гэж тэмдэглэгдэнэ');
+  eq(rows[0].weak, false, 'пост: сайтын бүүст сул биш');
+  ok(/Зөвхөн хандалт/.test(rows[1].kindLabel), 'пост: шошго нь хязгаарыг хэлнэ');
+  eq(rows[1].msg, 'Сайн байна уу', 'пост: зай нэгтгэгдэнэ');
+  eq(rows[2].msg, '(бичвэргүй)', 'пост: бичвэргүй нь ил');
+  eq(rows[0].state, 'done', 'пост: төлөв уншигдана');
+  eq(rows[0].stateLabel, '✅ Ажиллаж байна', 'пост: төлвийн шошго');
+  eq(rows[1].state, '', 'пост: хүсэлтгүй → хоосон');
+  eq(rows[2].err, 'Non-Website Ad', 'пост: алдаа харагдана');
+  eq(rows[0].day, '09-16', 'пост: сар-өдөр');
+  // ⛔ АППААС нийтэлсэн пост — Facebook жагсаалтдаа оруулдаггүй тул
+  //    `fb_publish.py` өөрөө бүртгэнэ; хүнд аль нь болохыг ил хэлнэ.
+  const appRow = F.pagePostRows([{ post_id: 'p9', created_time: '2026-09-17T05:00:00+00:00',
+    message: 'Асар майхан', link_url: 'https://mevent.mn/products/m-007/', source: 'app' }], 5)[0];
+  eq(appRow.fromApp, true, 'пост: аппын пост тэмдэглэгдэнэ');
+  eq(appRow.kind, 'site', 'пост: аппын пост линктэй тул сайтын зар');
+  eq(F.pagePostRows([{ post_id: 'p8', source: 'page' }], 5)[0].fromApp, false,
+     'пост: гараар нийтэлсэн нь тэмдэггүй');
+  eq(F.pagePostRows([{ post_id: 'p7' }], 5)[0].fromApp, false, 'пост: эх сурвалжгүй → тэмдэггүй');
+
+  eq(F.pagePostRows([], 5).length, 0, 'пост: хоосон');
+  eq(F.pagePostRows(null, 5).length, 0, 'пост: null → унахгүй');
+  eq(F.pagePostRows(posts, 1).length, 1, 'пост: хязгаар');
+
+  const asrc3 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна — баталгаажуулалтгүй болохгүй.
+  // ⚠ Хамгаалалт нь БОДИТООР хаадаг байх ёстой — `await showConfirm(` гэсэн
+  //   мөр байгаад ч болохгүй (`false &&` нэмэхэд хэвээр таарч байв). Хүлээж
+  //   авсан хариуг ШАЛГАЖ, үгүй бол ГАРдаг хэлбэрийг шаардана.
+  ok(/data-pp-boost\][\s\S]{0,500}?if \(!\(await showConfirm\([\s\S]{0,300}?\)\)\) return;/.test(asrc3),
+     'scan: бүүст showConfirm-оор хаагдана');
+  ok(/data-pp-boost\][\s\S]{0,900}?await requestBoost\(/.test(asrc3),
+     'scan: бүүстын хүсэлт илгээгдэнэ');
+  ok(/loadPagePosts\(true\)/.test(asrc3), 'scan: постын жагсаалт ачаалагдана');
+  // ⛔ Facebook-ийн CDN нь гадны хуудсанд 403 буцаадаг — зураг харуулбал
+  //    саарал хайрцаг л гарна (амьд системд яг ингэсэн).
+  ok(!/pp-img/.test(asrc3), 'scan: Facebook зураг харуулахгүй');
+  ok(/pp-link/.test(asrc3), 'scan: оронд нь постын холбоос');
+  // ⛔ Баталгаажуулалтын бичвэр нь хандалтын хязгаарыг ч хэлнэ.
+  ok(/захиалга ховор авчирна/.test(asrc3), 'scan: баталгаажуулалт үнэнийг хэлнэ');
+
+  // ⛔ Зорилтот бүлгийн загварыг [0]-оос авахгүй — тэр нь санамсаргүй мөр,
+  //    зогссон кампанит ажлынх ч байж болно.
+  const bsrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_boost.py'), 'utf8');
+  ok(!/tpl = sets\[0\]/.test(bsrc) && /max\(sets, key=/.test(bsrc),
+     'scan: загвар нь хамгийн том төсөвтэй зар');
+  // ⛔ Зарыг ХОТООР хумивал хөдөөгийн захиалга таслагдана — тэр нь орлогын ТАЛ
+  //    (180 хоногт хот 30 захиалга = 44.1сая, хөдөө 7 захиалга = 44.1сая).
+  ok(/geo_locations/.test(bsrc) && /countries/.test(bsrc),
+     'scan: газарзүйг улс даяар барина');
+
+  // ⛔ САЙТ РУУ ЧИГЛҮҮЛСЭН ТӨЛБӨРТ ЗАР (2026-09-17). Facebook зураг+бичвэр постыг
+  //    «холбоост пост» гэж үздэггүй тул постоор нь вэб зар болгох боломжгүй
+  //    («Non-Website Ad in Website Ad Set»). Зураг+линкээс шинэ creative угсарна.
+  ok(/'object_story_spec': json\.dumps\(\{'page_id': page, 'link_data': ld\}\)/.test(bsrc),
+     'scan: сайтын зар link_data-аар угсрагдана');
+  ok(/atyp != 'share'/.test(bsrc),
+     'scan: жинхэнэ холбоост пост хуучин замаараа (постоороо) явна');
+  ok(/ad_link\(link/.test(bsrc), 'scan: зарын линк utm-ээр тэмдэглэгдэнэ');
+  ok(/AD_MEDIUM = 'cpc'/.test(bsrc),
+     'scan: төлбөрт урсгал органикаас ялгагдана');
+  ok(/upload_image\(/.test(bsrc) && /adimages/.test(bsrc),
+     'scan: постын зураг зарын санд байршина');
+  // ⛔ Алдаа нь зөвхөн HTTP биш — зураг татах/hash авахад ч гарна. Барихгүй бол
+  //    скрипт унаж, үлдсэн хүсэлтүүд дараалалдаа гацна.
+  ok(/except Exception as e:/.test(bsrc), 'scan: бүүстын алдаа бүрэн баригдана');
+
+  // ⛔ Аппын нийтэлсэн постыг Graph уншуулдаггүй («Object does not exist») тул
+  //    бүүст нь DB дэх ӨӨРИЙН зураг/бичвэрээр үргэлжилнэ — уншилт унавал зогсохгүй.
+  ok(/except Exception:\n\s*full_msg, atyp = '', ''/.test(bsrc),
+     'scan: Graph уншилт унахад DB-ийн зургаар үргэлжилнэ');
+  ok(/coalesce\(picture,''\)/.test(bsrc), 'scan: бүүст DB дэх зургийг уншина');
+  ok(/b64_msg\(msg_b64\)/.test(bsrc), 'scan: зарын бичвэр бүтнээрээ авагдана');
+
+  const fpub = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_publish.py'), 'utf8');
+  ok(/def register_page_post\(/.test(fpub) && /insert into fb_page_posts/.test(fpub),
+     'scan: аппын нийтэлсэн пост бүүстлэх жагсаалтад бүртгэгдэнэ');
+  ok(/'app'\) on conflict \(post_id\) do nothing/.test(fpub),
+     'scan: эх сурвалж app гэж тэмдэглэгдэж, давхардахгүй');
+  ok(/add column if not exists source text/.test(
+       fs.readFileSync(path.join(__dirname, '..', 'db', 'fb_page_posts.sql'), 'utf8')),
+     'scan: source багана байгаа DB дээр ч нэмэгдэнэ');
+
+  const psrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_posts_pull.py'), 'utf8');
+  ok(/msg_link\(p\.get\('message'\)\)/.test(psrc),
+     'scan: зурагтай постын линкийг бичвэрээс уншина');
+
+  // ⛔ ХҮСНЭГТ ҮҮСГЭСЭН НЬ ХАНГАЛТГҮЙ — PostgREST схемээ кэшлэдэг тул шинэ
+  //    хүснэгтэд апп 404 авна. SQL бүр өөрөө кэшийг шинэчлүүлнэ.
+  for (const f of ['fb_page_posts.sql', 'fb_capi.sql', 'gsc.sql']) {
+    const fp = path.join(__dirname, '..', 'db', f);
+    if (!fs.existsSync(fp)) continue;
+    ok(/notify pgrst, 'reload schema'/.test(fs.readFileSync(fp, 'utf8')),
+       `scan: ${f} — PostgREST кэшийг шинэчлүүлнэ`);
+  }
+
+  // Python талын цэвэр функцууд
+  for (const [f, tag] of [['fb_posts_pull.py', 'POSTS OK'], ['fb_boost.py', 'BOOST OK']]) {
+    const fp = path.join(__dirname, '..', 'tools', f);
+    const py = fs.readFileSync(fp, 'utf8');
+    try {
+      const out = require('child_process')
+        .execSync(`python3 ${JSON.stringify(fp)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      ok(out.includes(tag), `${f}: өөрийн тест — ` + out.trim());
+    } catch (e) {
+      const msg = String((e.stdout || '') + (e.stderr || ''));
+      ok(/No such file|not found|ENOENT/.test(msg) || !msg, `${f}: тест — ` + msg.trim().slice(0, 250));
+    }
+    if (f === 'fb_posts_pull.py') {
+      // ⛔ Татагч БҮҮСТЫН баганыг дарж бичвэл хүний хүсэлт чимээгүй арилна.
+      ok(/on conflict \(post_id\) do update set/.test(py) && !/do update set[\s\S]{0,300}?boost=/.test(py),
+         'scan: татагч бүүстын төлвийг дардаггүй');
+      ok(/мөр ирсэнгүй/.test(py), 'scan: татагч хоосныг чимээгүй өнгөрөөхгүй');
+    } else {
+      // ⛔ creative ба ad хоёулаа PAGE токеноор — системийнхээр «No Advertiser
+      //    Permission On Page» гэж унана (амьд туршсан).
+      ok(/FB_PAGE_TOKEN/.test(py) && !/FB_TOKEN/.test(py), 'scan: бүүст PAGE токеноор');
+      // ⛔ Алдааг бүртгэнэ — эс бөгөөс 10 мин тутам ижил алдаа давтагдана.
+      ok(/boost='error'/.test(py), 'scan: алдаа бүртгэгдэж давтагдахаа болино');
+      ok(/'status': 'PAUSED'[\s\S]{0,1200}?status.*ACTIVE/.test(py),
+         'scan: бүх хэсэг бүрдсэний дараа асаана');
+    }
+  }
+}
+
+// ── GOOGLE SEARCH CONSOLE (2026-09-16) ─────────────────────────────────────
+// Facebook дээр бид хүнд өөрөө очдог; Google дээр хүн БИДНИЙГ хайж байна.
+// Аль үгээр олдож байгаагаа мэдэхгүй бол ямар бараанд зар тавихаа мэдэхгүй.
+{
+  const gsc = path.join(__dirname, '..', 'tools', 'gsc_pull.py');
+  const py = fs.readFileSync(gsc, 'utf8');
+
+  // ⛔ Дата 2-3 хоног хоцорч, дараа нь ЗАЛРУУЛАГДДАГ — зөвхөн өчигдрийг
+  //    татвал буруу тоо хөлдөнө.
+  ok(/WINDOW = 10/.test(py) && /window_dates/.test(py), 'scan: gsc сүүлийн хоногуудыг дахин татна');
+  ok(/on conflict \(day,query,page\) do update/.test(py), 'scan: gsc залруулгыг орлуулна');
+  // ⛔ Мөр ирээгүй бол ЧИМЭЭГҮЙ 0 бичихгүй — баталгаажуулаагүй/эрх унтарсан байж болно.
+  ok(/мөр ирсэнгүй/.test(py) && /if not recs:/.test(py), 'scan: gsc хоосныг чимээгүй өнгөрөөхгүй');
+  // ⛔ Токен репод БАЙХГҮЙ.
+  ok(!/GSC_REFRESH_TOKEN\s*=\s*['"][A-Za-z0-9]/.test(py), 'scan: gsc токен хатуу бичигдээгүй');
+  ok(/GSC_SITE алга/.test(py), 'scan: gsc сайтаа заагаагүй бол зогсоно');
+
+  // ⛔ Зөвшөөрлийн туслах нь токеныг ДЭЛГЭЦЭД хэвлэхгүй (чат/лог руу алдагдана).
+  const au = fs.readFileSync(path.join(__dirname, '..', 'tools', 'gsc_auth.py'), 'utf8');
+  ok(!/print\([^)]*refresh_token[^)]*\)/.test(au), 'scan: gsc_auth токен хэвлэхгүй');
+  ok(/chmod\(OUT, 0o600\)/.test(au), 'scan: gsc_auth файлын эрх хаана');
+
+  // ⛔ ХЭРЭГЛЭСЭН МОДУЛЬ ИМПОРТЛОГДООГҮЙ = АЖИЛЛАХ ҮЕИЙН NameError (2026-09-17).
+  //    `gsc_auth.py` нь `glob.glob(...)` дууддаг атлаа `import glob` байхгүй байсан
+  //    тул хэрэглэгчийн ЭХНИЙ ажиллуулалт унасан. `python3 -m py_compile` ийм
+  //    алдааг БАРИХГҮЙ (нэр нь ажиллах үед л шалгагдана), тестийн дуудлага ч
+  //    богино холболтоор тойрч болно — тиймээс эх кодоор шалгана.
+  {
+    const dir = path.join(__dirname, '..', 'tools');
+    const mods = ['glob', 'json', 'os', 're', 'subprocess', 'sys', 'time',
+      'hashlib', 'base64', 'csv', 'secrets', 'socketserver', 'webbrowser', 'threading'];
+    const missing = [];
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.py'))) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      for (const m of mods) {
+        if (!new RegExp(`\\b${m}\\.[A-Za-z_]`).test(src)) continue;
+        if (new RegExp(`^\\s*(import|from)\\s+[^\\n]*\\b${m}\\b`, 'm').test(src)) continue;
+        missing.push(`${f}:${m}`);
+      }
+    }
+    ok(missing.length === 0, 'scan: tools/*.py импортлоогүй модуль хэрэглэхгүй' +
+      (missing.length ? ' — ' + missing.join(', ') : ''));
+  }
+
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(gsc)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ GSC OK/.test(out), 'gsc: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'gsc: Python тест — ' + msg.trim().slice(0, 300));
+  }
+
+  // GA4 татагчийн цэвэр функцууд (огноо хөрвүүлэлт, lead нэгтгэл)
+  try {
+    const gap = path.join(__dirname, '..', 'tools', 'ga_pull.py');
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(gap)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ ga_pull selftest/.test(out), 'ga: Python өөрийн тест тэнцэв — ' + out.trim());
+    const gsrc = fs.readFileSync(gap, 'utf8');
+    // ⛔ Мөр ирээгүй үед чимээгүй 0 бичихгүй (таг унтарсныг нуухгүй).
+    ok(/мөр ирсэнгүй/.test(gsrc) && /if not recs:/.test(gsrc), 'scan: ga хоосныг чимээгүй өнгөрөөхгүй');
+    // ⛔ Сүүлийн хоногуудыг ДАХИН татна — GA4 дата хожим тогтворжино.
+    ok(/WINDOW = 10/.test(gsrc) && /window_dates/.test(gsrc), 'scan: ga сүүлийн хоногуудыг дахин татна');
+    ok(/on conflict \(day,channel\) do update/.test(gsrc), 'scan: ga залруулгыг орлуулна');
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'ga: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
+// ── META CONVERSIONS API (2026-09-16) ──────────────────────────────────────
+// Pixel зөвхөн браузерт ажилладаг тул утсаар/биечлэн хийгдсэн захиалга
+// Facebook-т ОГТ хүрдэггүй. Манай захиалгын дийлэнх нь яг тэр — иймд зар
+// «ямар хүн үнэхээр мөнгө төлдөг вэ» гэдгийг сурч чадахгүй байв.
+{
+  const capi = path.join(__dirname, '..', 'tools', 'fb_capi.py');
+  const py = fs.readFileSync(capi, 'utf8');
+
+  // ⛔ ХУВИЙН МЭДЭЭЛЭЛ ТҮҮХИЙГЭЭР ЯВАХГҮЙ — утас/мэйл/нэр бүгд SHA-256.
+  ok(/def sha\(/.test(py) && /hashlib\.sha256/.test(py), 'scan: capi хэш хийдэг');
+  ok(/ud\['ph'\] = \[sha\(ph\)\]/.test(py) && /ud\['em'\] = \[sha\(em\)\]/.test(py),
+     'scan: capi утас/мэйлийг хэшлэж явуулна');
+  // ⛔ Meta ₮ (MNT) валютыг дэмждэггүй — дүн чимээгүй хаягддаг.
+  ok(/'currency': 'USD'/.test(py) && !/'MNT'/.test(py), 'scan: capi ам.доллараар явуулна');
+  // ⛔ Барьцаа орлого БИШ (орлогын ганц дүрэм).
+  ok(/def revenue_mnt/.test(py) && /deposit/.test(py), 'scan: capi барьцааг хасна');
+  // ⛔ НЭГ ЗАХИАЛГА = НЭГ PURCHASE. Давхардвал зарын үр дүн 2 дахин их харагдана.
+  ok(/left join fb_capi_sent/.test(py) && /s\.order_id is null/.test(py),
+     'scan: capi илгээсэн захиалгыг дахин илгээхгүй');
+  // ⛔ SQL-ийн ШҮҮЛТ нь `event_time`-тай ЯГ ИЖИЛ өдрөөр явна. `updated_at`-ыг
+  //    ч тооцвол 7-р сард төлөгдсөн атлаа саяхан хөндөгдсөн захиалга татагдаж,
+  //    бүгд «хэт хуучин» гэж хаягдана — `limit`-д хүрвэл ЖИНХЭНЭ шинэ
+  //    худалдан авалт шахагдаж гарна (амьд датаар 45 мөр ингэж татагдаж байв).
+  ok(!/greatest\(coalesce\(nullif\(o\.paid_date/.test(py)
+     && /and coalesce\(nullif\(o\.paid_date,''\)::date, o\.updated_at::date\) >= date/.test(py),
+     'scan: capi шүүлт event_time-тай ижил өдрөөр');
+  // ⛔ Бүртгэл нь ИЛГЭЭГДСЭНИЙ ДАРАА — эс бөгөөс алдаа гарахад давхар явна.
+  ok(py.indexOf('urlopen') < py.indexOf('insert into fb_capi_sent'),
+     'scan: capi эхлээд илгээж, дараа нь бүртгэнэ');
+  // ⛔ Алдааг БҮРТГЭХГҮЙ — дараагийн удаа дахин оролдоно.
+  ok(/HTTPError[\s\S]{0,300}?raise SystemExit\(1\)/.test(py),
+     'scan: capi алдаанд бүртгэл үлдээхгүй (дахин оролдоно)');
+  // ⛔ Токен репод БАЙХГҮЙ.
+  ok(!/FB_TOKEN\s*=\s*['"][A-Za-z0-9]/.test(py), 'scan: capi токен хатуу бичигдээгүй');
+  // ⛔ Тулгах түлхүүргүй бол илгээхгүй — Meta хэнтэй ч холбож чадахгүй.
+  ok(/тулгах түлхүүргүй/.test(py), 'scan: capi түлхүүргүй захиалгыг илгээхгүй');
+
+  // Цэвэр функцуудын өөрийн тест (сүлжээ, DB шаардахгүй).
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(capi)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ CAPI OK/.test(out), 'capi: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    // python3 байхгүй runner дээр алгасана; тестийн алдаа бол ил гаргана.
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'capi: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
 // ── УРЬДЧИЛАН ЗАХИАЛАХ ХУГАЦАА (2026-09-10) ────────────────────────────────
 // Жагсаалт зөвхөн эвентийн огноог харуулдаг тул «хэзээ ирсэн, хэдэн өдрийн
 // өмнө баталгаажсан» гэдэг харагдахгүй байв. Маркетинг/нөөц төлөвлөлтөд хэрэгтэй.
@@ -6470,6 +7813,103 @@ need(['orderCustType']);
   eq(F.leadStats([]).median, null, 'хугацаа: хоосон → null');
   eq(F.leadStats(null).n, 0, 'хугацаа: мөргүй → 0');
   eq(F.leadStats([{ created_at: '2026-01-01', starts_at: '2026-01-08' }]).median, 7, 'хугацаа: нэг мөрийн медиан');
+}
+
+// ── 💬 Facebook чат дэлгэц ─────────────────────────────────────────────────
+// Хариулах ажлыг Meta Business Agent хийнэ. Энэ дэлгэц нь ХЭМЖҮҮР —
+// Meta-гийн бот үнэхээр ажиллаж байгаа эсэхийг яг эндээс мэднэ.
+{
+  const now = Date.parse('2026-09-17T12:00:00Z');
+  const h = (n) => new Date(now - n * 3600000).toISOString();
+
+  // Цонхны үлдэгдэл — Meta 24 цагаас хойш чөлөөт бичвэр авахгүй.
+  eq(F.chatWindowLeft(h(2), now), 22, 'чат: 2 цагийн өмнөх → 22 цаг үлдсэн');
+  eq(F.chatWindowLeft(h(30), now), 0, 'чат: 30 цаг → цонх хаагдсан');
+  eq(F.chatWindowLeft(null, now), 0, 'чат: мессежгүй → 0');
+
+  const cs = [
+    { thread_id: 't1', name: 'А', state: 'open', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(3) },
+    { thread_id: 't2', name: 'Б', state: 'open', last_at: '2026-09-17', last_in_at: h(40), last_out_at: h(50) },
+    { thread_id: 't3', name: 'В', state: 'open', last_at: '2026-09-17', last_in_at: h(5), last_out_at: h(2) },
+    { thread_id: 't4', name: 'Г', state: 'done', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(9) },
+  ];
+  const w = F.chatWaiting(cs, now);
+  eq(w.map(x => x.thread_id).join(','), 't1,t2', 'чат: харилцагч сүүлд бичсэн нь л жагсана');
+  // ⛔ Цонх хаагдсан чатыг ХАСАХГҮЙ — тэр нь алдагдсан лид.
+  ok(w.some(x => x.thread_id === 't2'), 'чат: цонх хаагдсан ч жагсаалтад үлдэнэ');
+
+  const stt = F.chatStats(cs, '2026-09-01', now);
+  eq(stt.n, 4, 'чат: 30 хоногийн тоо');
+  eq(stt.waiting, 2, 'чат: хариугүй');
+  eq(stt.open, 1, 'чат: одоо хариулж болох нь');
+  // ⛔ Хэмжих юм алга бол медиан `null`, 0 БИШ — «0 мин» нь төгс гэж уншигдана.
+  eq(F.chatStats([], '2026-09-01', now).med, null, 'чат: дата алга → медиан null');
+  eq(stt.med, 180, 'чат: эхний хариултын медиан (t3 = 3 цаг)');
+
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ ДАХИН БОТ БОЛГОХГҮЙ — Meta-гийн ботын хажуугаар хоёр дахь бот
+  //    ярьж эхэлбэл харилцагч төөрнө.
+  ok(!/data-fc-ok|data-fc-no|data-fc-mode|chatBotMode|chatPending/.test(src),
+     'чат: ботын удирдлага дэлгэцэд байхгүй');
+}
+
+// ── Meta-гийн бүтээгдэхүүний каталог (tools/fb_catalog.py) ─────────────────
+// Meta Business AI нь холбогдсон каталогоос л уншдаг. Тэнд 1 бараа байсан тул
+// AI «10 гаруй төрлийн сандал» гэх мэт ЗОХИОСОН хариулт өгч байв.
+{
+  const cat = path.join(__dirname, '..', 'tools', 'fb_catalog.py');
+  const py = fs.readFileSync(cat, 'utf8');
+  const out = require('child_process')
+    .execSync(`python3 ${JSON.stringify(cat)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  ok(/fb_catalog selftest: \d+ тест OK/.test(out), 'каталог: Python өөрийн тест тэнцэв — ' + out.trim());
+
+  // ⛔ СУЛ ҮЛДЭГДЛИЙН ТООГ КАТАЛОГТ БИЧИХГҮЙ — өдөр бүр өөрчлөгддөг тул
+  //    хуучирч, AI буруу тоо хэлнэ. Зөвхөн байгаа/байхгүй төлөв.
+  ok(/def avail/.test(py) && /'in stock'/.test(py) && !/quantity_to_sell/.test(py),
+     'каталог: нөөцийн тоо явахгүй, зөвхөн төлөв');
+  // ⛔ Meta-гийн каталог ХУДАЛДААНД зориулагдсан — «түрээс» гэдгийг ил бичихгүй
+  //    бол AI «худалдаж авна» гэж ойлгоно.
+  ok(/def title_of/.test(py) && /түрээс/.test(py), 'каталог: гарчигт түрээс гэж бичигдэнэ');
+  ok(/1 хоногийн түрээсийн үнэ/.test(py), 'каталог: тайлбарт хоногийн үнэ');
+  // ⛔ Үнэгүй бараа каталогт орохгүй — «0₮» гэж харагдана.
+  ok(/if not p:\s*\n\s*return None/.test(py), 'каталог: үнэгүй бараа алгасагдана');
+  // ⛔ psql тусгаарлагчийн заншил.
+  ok(/stdout\.strip\('\\n'\)/.test(py), 'каталог: psql тусгаарлагч хамгаалагдсан');
+}
+
+// ── Messenger чатын татагч (tools/fb_chat.py) ─────────────────────────────
+// ⛔ ХАРИУЛАХ АЖИЛ ЭНД БАЙХГҮЙ (2026-09-17). Meta Business Agent тэр ажлыг
+//    хийдэг болсон тул манай ботыг хассан — хоёр бот нэг чатад хариулах нь
+//    харилцагчийг төөрүүлнэ. Энд үлдсэн нь зөвхөн ХЭМЖИЛТ.
+{
+  const chat = path.join(__dirname, '..', 'tools', 'fb_chat.py');
+  const py = fs.readFileSync(chat, 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'fb_chats.sql'), 'utf8');
+
+  const out = require('child_process')
+    .execSync(`python3 ${JSON.stringify(chat)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  ok(/fb_chat selftest: \d+ тест OK/.test(out), 'chat: Python өөрийн тест тэнцэв — ' + out.trim());
+
+  // ⛔ ДАХИН БОТ БОЛГОХГҮЙ. Хэрэв энд LLM дуудлага буцаж ирвэл Meta-гийн
+  //    ботын хажуугаар хоёр дахь бот ярьж эхэлнэ.
+  ok(!/anthropic|api\.anthropic|ANTHROPIC/i.test(py), 'chat: LLM дуудлага байхгүй');
+  ok(!/\/messages['"]?\s*,/.test(py) && !/def api_post/.test(py),
+     'chat: мессеж илгээх зам байхгүй');
+
+  // ⚠ Цонх хаагдсан чатыг тоолуураас нуувал «бүгд хариулагдсан» гэсэн худал
+  //    дүр зураг гарна.
+  ok(/def in_window/.test(py) && /def waiting/.test(py), 'chat: хүлээлт, цонх хэмжигдэнэ');
+  // ⛔ Хариулаагүйг 0 гэвэл «шууд хариулсан» гэж уншигдана.
+  ok(/def first_reply_min/.test(py) && /return None/.test(py),
+     'chat: хариулаагүй бол None');
+  // ⛔ `.strip()` нь psql-ийн тусгаарлагчийг хасдаг.
+  ok(/stdout\.strip\('\\n'\)/.test(py), 'chat: psql тусгаарлагч хамгаалагдсан');
+  // ⛔ `done` нь хүний шийдвэр — татагч дарж бичихгүй.
+  ok(/when fb_chats\.state='done' then 'done'/.test(py), 'chat: шийдсэн төлөв хадгалагдана');
+  // ⛔ Шинэ хүснэгт: anon-д нээхгүй, хатуу устгалгүй, PostgREST кэш шинэчилнэ.
+  ok(/revoke delete on fb_chats/.test(sql), 'chat: хатуу устгал хураагдсан');
+  ok(!/to anon/.test(sql), 'chat: anon-д нээгээгүй');
+  ok(/notify pgrst, 'reload schema';/.test(sql), 'chat: PostgREST кэш шинэчилнэ');
 }
 
 // ── db/ — харагдацын SQL эх бичиг репод байгаа эсэх ─────────────────────────
@@ -6512,6 +7952,28 @@ need(['orderCustType']);
   ['products', 'member_perms', 'role_perms', 'company_docs', 'product_aliases'].forEach(t => {
     ok(rlsSql.includes("'" + t + "'"), 'db: ' + t + ' устгах зам ЗӨВШӨӨРӨГДСӨН жагсаалтад');
   });
+
+  // ⛔ ШИНЭ ХҮСНЭГТ АВТОМАТААР УСТГАХ ЭРХТЭЙ ТӨРДӨГ (2026-09-16).
+  //   Эзний DEFAULT PRIVILEGES нь `authenticated`-д `arwd` олгодог тул `grant
+  //   select…` гэж бичээд орхисон шинэ хүснэгт дээр хатуу устгал НЭЭЛТТЭЙ үлддэг
+  //   (`pbx_callbacks` дээр амьд туршилтаар DELETE 204 буцааж байсныг барьсан).
+  //   `db/rls.sql` бүгдээс хураадаг ч зөвхөн ДАХИН ажиллуулахад — иймд файл бүр
+  //   дангаараа зөв байх ёстой (VPS сэргээх заавар ч мөн энэ файлууд).
+  {
+    const dbDir = path.join(__dirname, '..', 'db');
+    const okDelete = ['products', 'member_perms', 'role_perms', 'company_docs', 'product_aliases'];
+    const bad = [];
+    fs.readdirSync(dbDir).filter(f => f.endsWith('.sql') && f !== 'rls.sql').forEach(f => {
+      const sql = fs.readFileSync(path.join(dbDir, f), 'utf8');
+      (sql.match(/create table if not exists\s+([a-z0-9_]+)/g) || []).forEach(m => {
+        const t = m.split(/\s+/).pop();
+        if (okDelete.includes(t)) return;
+        if (!new RegExp('revoke delete on ' + t + '\\s+from authenticated').test(sql)) bad.push(f + ':' + t);
+      });
+      if (/grant[^;]*\bdelete\b[^;]*to authenticated/.test(sql)) bad.push(f + ': delete ОЛГОСОН');
+    });
+    eq(bad.join(', '), '', '⛔ db: шинэ хүснэгт бүр DELETE-ээ ИЛ хураана (өгөгдмөл эрх устгахыг нээдэг)');
+  }
 
   // ── Хувийн мэдээлэлтэй хүснэгт (2-р үе) ────────────────────────────────
   ['customers', 'invoices'].forEach(t => {
@@ -9673,4 +11135,200 @@ async function swFetchTests() {
   ok(!/const\s+isInactive\s*=/.test(fn), 'scan: renderHourly дотроо идэвхгүйг дахин бодохгүй');
   ok(!/банк бүртгэгдээгүй<\/span>`?\s*;/.test(fn.replace(/\s+/g, ' ')) || /bankLineReason\(/.test(fn),
      'scan: данс хоосон бол шалтгааныг bankLineReason-оор ялгана');
+}
+
+// ── БАРАА/ХӨРӨНГИЙН ЭКСПОРТ (2026-09-19) ──────────────────────────────────
+// ⛔ Өртөг эмзэг: `products.cost` эрхгүй хүнд өртөг/нийлүүлэгч/худалдан авсан
+//    огноо ФАЙЛД ОРОХГҮЙ. DB талд тэр баганууд хаалттай — экспорт нь тойрох
+//    зам болж БОЛОХГҮЙ.
+{
+  const asrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const F = vm.runInContext('({ productExportRows })', sandbox);
+  const items = [
+    { sku: 'M-001', name: 'Асар 12×20', category: 'Асар', price: 900000, cost: 5000000,
+      stock: 3, qty_mevent: 2, qty_nomaad: 1, supplier: 'taobao', purchase_date: '2026-05-04T00:00:00Z',
+      stock_opened_at: '2026-09-01', stock_approved_at: '2026-09-02' },
+    { sku: 'M-002', name: 'Хүргэлт', type: 'service', price: 50000, cost: 0, stock: 0 },
+  ];
+  const costs = { 'M-001': 5000000 };
+
+  const full = F.productExportRows(items, { costs, withCost: true });
+  ok(full.header.includes('Нэгж өртөг'), 'экспорт: эрхтэй хүнд өртөг гарна');
+  ok(full.header.includes('Нийлүүлэгч'), 'экспорт: эрхтэй хүнд нийлүүлэгч гарна');
+  eq(full.rows.length, 2, 'экспорт: мөр бүр гарна');
+
+  const ci = full.header.indexOf('Нийт өртөг');
+  eq(full.rows[0][ci], 15000000, 'экспорт: нийт өртөг = өртөг × нөөц');
+  eq(full.rows[0][full.header.indexOf('🎪 M-Event')], 2, 'экспорт: салбарын тоо');
+  eq(full.rows[0][full.header.indexOf('Эхний үлдэгдэл')], 'Баталгаажсан',
+     'экспорт: хоёр гарын үсэгтэйг «Баталгаажсан» гэнэ');
+  eq(full.rows[1][full.header.indexOf('Төрөл')], 'Үйлчилгээ', 'экспорт: үйлчилгээ ялгарна');
+  eq(full.rows[0][full.header.indexOf('Худалдан авсан')], '2026-05-04',
+     'экспорт: огноо зөвхөн өдрөөр');
+
+  // ⛔ Эрхгүй хүнд өртгийн баганууд БАЙХГҮЙ — утга нь ч файлд орохгүй.
+  const lim = F.productExportRows(items, { costs, withCost: false });
+  ok(!lim.header.some(h => /өртөг|Нийлүүлэгч|Худалдан/.test(h)),
+     'экспорт: эрхгүй хүнд өртгийн багана байхгүй');
+  ok(!lim.rows.some(r => r.some(v => String(v) === '5000000' || String(v) === 'taobao')),
+     'экспорт: эрхгүй хүнд өртгийн УТГА ч алга');
+  eq(lim.rows.length, 2, 'экспорт: эрхгүй ч бараа бүрэн гарна');
+
+  // ⚠ Дэлгэц дээр харагдаж буйг л татна — шүүлт хоёр газар бичигдэхгүй.
+  ok(/state\._prodShown = list;/.test(asrc2), 'scan: экспорт рендерийн жагсаалтыг ашиглана');
+  ok(/exportProductsCsv\(state\._prodShown\)/.test(asrc2), 'scan: товч тэр жагсаалтыг дамжуулна');
+  // ⛔ Эрхийг экспортод дахин тодорхойлохгүй — `canProductPart('cost')` ганц эх сурвалж.
+  ok(/withCost: canProductPart\('cost'\)/.test(asrc2), 'scan: экспортын эрх canProductPart-аас');
+}
+
+// ── ӨГЛӨӨНИЙ МЭДЭГДЭЛ — шөнийн агент (2026-09-18) ──────────────────────────
+// Шөнө агент алдаа зассан PR-аа өөрөө merge хийдэг болсон ч үр дүн нь зөвхөн
+// GitHub Issue-д үлддэг байв. `tools/night_notify.py` өглөө утсанд хэлнэ.
+{
+  const p = path.join(__dirname, '..', 'tools', 'night_notify.py');
+  const py = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  ok(!!py, 'шөнө: night_notify.py байна');
+
+  // ⛔ `email` шүүлтгүй илгээвэл БҮХ ажилтан мэдэгдэл авна.
+  ok(/body\['email'\]\s*=\s*phone/.test(py), 'шөнө: хүлээн авагч үргэлж заагдана');
+  ok(/if not to:/.test(py) && py.indexOf('if not to:') < py.indexOf('for phone in to'),
+     'шөнө: хүлээн авагчгүй бол илгээхгүй');
+  // ⛔ Юу ч болоогүй өдөр дуугарвал хүн мэдэгдлийг унтраана.
+  ok(/else:\s*\n\s*return None/.test(py), 'шөнө: юу ч болоогүй бол илгээхгүй');
+  // ⚠ Хүлээн авагч тохиргооноос — кодод хатуу бичигдээгүй.
+  ok(/cfg_json\('night_notify'\)/.test(py) && !/^\s*to\s*=\s*\[/m.test(py),
+     'шөнө: хүлээн авагч тохиргооноос, кодод биш');
+  // ⚠ GitHub токен VPS дээр хадгалахгүй — репо нийтийн.
+  ok(!/ghp_|GITHUB_TOKEN/.test(py), 'шөнө: GitHub токен шаардахгүй');
+
+  // ⛔ ЗАСААГҮЙГ «✅ засвар хийгдлээ» гэж БҮҮ хэл — мэдэгдэл энэ мөрөөс уншина.
+  const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'agent-night.yml'), 'utf8');
+  ok(/🔍 \\`\$\{TARGET\}\\` — засах боломжгүй/.test(wf),
+     'шөнө: засаагүй шөнө ✅ гэж бичигдэхгүй');
+
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(p)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ NIGHT NOTIFY OK/.test(out), 'шөнө: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'шөнө: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
+// ── ӨГЛӨӨНИЙ МЭДЭГДЭЛ — алдсан дуудлага (2026-09-17) ───────────────────────
+// 📵 дэлгэц дарааллыг хэлж өгдөг ч хэн ч нээхээ санадаггүй байв (буцаж
+// залгасан нь 0). `tools/pbx_notify.py` өдөр бүр өглөө утсанд нь мэдэгдэнэ.
+{
+  const p = path.join(__dirname, '..', 'tools', 'pbx_notify.py');
+  const py = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  ok(!!py, 'мэдэгдэл: pbx_notify.py байна');
+
+  // ⛔ Босго app.js-тэй ИЖИЛ. Зөрвөл апп нэг тоо, мэдэгдэл өөр тоо хэлнэ.
+  const jsWait = vm.runInContext('PBX_WAIT_SEC', sandbox);
+  const pyWait = Number((py.match(/^PBX_WAIT_SEC\s*=\s*(\d+)/m) || [])[1]);
+  eq(pyWait, jsWait, 'мэдэгдэл: босго app.js-ийн PBX_WAIT_SEC-тэй ижил');
+
+  // ⛔ `email` шүүлтгүй илгээвэл 50 ажилтан БҮГД мэдэгдэл авна.
+  ok(/body\['email'\]\s*=\s*phone/.test(py), 'мэдэгдэл: хүлээн авагч үргэлж заагдана');
+  ok(/if not to:/.test(py) && py.indexOf('if not to:') < py.indexOf('for phone in to'),
+     'мэдэгдэл: хүлээн авагчгүй бол илгээхгүй');
+
+  // ⛔ Хоосон өдөр дуугарвал хүн мэдэгдлийг унтраана — тэгвэл жинхэнэ өдөр ч хүрэхгүй.
+  ok(/if not n:\s*\n\s*return None/.test(py), 'мэдэгдэл: 0 бол юу ч илгээхгүй');
+
+  // ⚠ Ажлын цаг тарифаас — хоёр газар хатуу бичвэл зөрнө.
+  ok(/def work_hours\(tariffs\)/.test(py) && /cfg_json\('tariffs'\)/.test(py),
+     'мэдэгдэл: ажлын цаг тарифаас уншигдана');
+  // ⚠ Хүлээн авагч кодод хатуу бичигдээгүй.
+  ok(/cfg_json\('pbx_notify'\)/.test(py) && !/\b8800\d{4}\b/.test(py),
+     'мэдэгдэл: хүлээн авагч тохиргооноос, кодод биш');
+
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(p)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ PBX NOTIFY OK/.test(out), 'мэдэгдэл: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'мэдэгдэл: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
+// ── ӨЧИГДРИЙН ДУУДЛАГА ТУСДАА БҮЛЭГ (CEO, 2026-09-17) ──────────────────────
+// 14 хоногийн эрэмбэ дотор өчигдрийн 3 дуудлага дундуур орж «хэзээ нэгэн цагт»
+// болдог байв. Өглөөний push «Өчигдөр N хүн» гэдэг тул дэлгэцэн дээр ЯГ тэр
+// бүлэг байх ёстой.
+{
+  const bucket = (ts, today) => vm.runInContext(
+    `pbxDayBucket(${JSON.stringify(ts)}, ${JSON.stringify(today)})`, sandbox);
+
+  // UTC+8: 2026-09-17T01:00Z = УБ-ийн 09:00, 09-17 → өнөөдөр.
+  eq(bucket('2026-09-17T01:00:00Z', '2026-09-17'), 'today', 'бүлэг: өнөөдөр');
+  eq(bucket('2026-09-16T05:00:00Z', '2026-09-17'), 'yesterday', 'бүлэг: өчигдөр');
+  eq(bucket('2026-09-10T05:00:00Z', '2026-09-17'), 'older', 'бүлэг: өмнөх өдрүүд');
+  // ⚠ Шөнө орой залгасан нь UTC-ээр МАРГААШ болдог — түүхий мөрөөр таславал
+  //   өчигдрийнх «өнөөдөр» болно. 09-16 23:30 УБ = 09-16T15:30Z.
+  eq(bucket('2026-09-16T15:30:00Z', '2026-09-17'), 'yesterday', 'бүлэг: шөнийн дуудлага өдрөө хэвээр');
+  // ⛔ Огноо уншигдахгүй бол ШИНЭ рүү хийхгүй — эс бөгөөс өдөр бүр дээд талд гацна.
+  eq(bucket('', '2026-09-17'), 'older', 'бүлэг: огноогүй бол дээд талд гацахгүй');
+  eq(bucket('юу ч биш', '2026-09-17'), 'older', 'бүлэг: эвдэрсэн огноо дээд талд гацахгүй');
+
+  // scan: дэлгэц үнэхээр бүлэглэж байгаа эсэх (функц байгаад хэрэглэгдэхгүй бол утгагүй).
+  const i = src.indexOf('function renderMissedCalls(');
+  const fn = src.slice(i, src.indexOf('\nfunction ', i + 100));
+  ok(i > 0 && fn.length > 1000, 'scan: renderMissedCalls-ийн бие зүсэгдэв');
+  ok(/pbxDayBucket\(r\.last, todayStr\(\)\)/.test(fn), 'scan: дэлгэц өдрөөр бүлэглэнэ');
+  ok(/Өчигдөр/.test(fn), 'scan: «Өчигдөр» бүлэг нэртэйгээ байна');
+  // ⚠ Хоосон бүлэг гарчиггүй — «Өнөөдөр (0)» гэж хоосон толгой харуулахгүй.
+  ok(/list\.length[\s\S]{0,80}?ads-sec/.test(fn), 'scan: хоосон бүлгийн гарчиг гарахгүй');
+}
+
+// ── ЭРЭМБЭ = СҮҮЛД ЗАЛГАСАН (CEO, 2026-09-17) ───────────────────────────────
+// «Хамгийн сүүлд залгасанаар нь эрэмбэл — тэр чухал.» Өмнө нь `pri.score`-оор
+// эрэмбэлдэг байсан тул амьд дэлгэц дээр «Өмнөх өдрүүд» доторх мөр
+// 09-14 → 09-06 → 09-11 → 09-10 → 09-09 гэж эмх замбараагүй гарч байв.
+{
+  const T = ts => vm.runInContext(`pbxTime(${JSON.stringify(ts)})`, sandbox);
+  const sortByRecent = rows => vm.runInContext(
+    `JSON.parse(${JSON.stringify(JSON.stringify(rows))}).sort(pbxByRecent).map(r => r.peer)`, sandbox);
+
+  ok(T('2026-09-14T04:41:00Z') > T('2026-09-11T10:32:00Z'), 'эрэмбэ: шинэ цаг том тоо');
+  // ⛔ «…Z» ба «…+00:00» нь ИЖИЛ мөч — мөрөөр харьцуулбал өөр гарна.
+  eq(T('2026-09-14T04:41:00Z'), T('2026-09-14T04:41:00+00:00'), 'эрэмбэ: Z ба +00:00 ижил мөч');
+  eq(T(''), 0, 'эрэмбэ: хоосон цаг = 0');
+  eq(T('юу ч биш'), 0, 'эрэмбэ: эвдэрсэн цаг = 0');
+
+  // Дэлгэц дээр гарсан яг тэр дараалал — зассаны дараа огноогоор буурна.
+  eq(sortByRecent([
+    { peer: 'a', last: '2026-09-14T04:41:00Z' },
+    { peer: 'b', last: '2026-09-06T02:10:00Z' },
+    { peer: 'c', last: '2026-09-11T10:32:00Z' },
+    { peer: 'd', last: '2026-09-10T07:20:00Z' },
+    { peer: 'e', last: '2026-09-09T07:40:00Z' },
+  ]).join(','), 'a,c,d,e,b', 'эрэмбэ: сүүлд залгасан нь эхэнд');
+
+  // ⚠ Мөрөөр харьцуулбал ижил мөч өөр эрэмбэд орохыг батлана (хуучин алдаа).
+  eq(sortByRecent([
+    { peer: 'z', last: '2026-09-14T04:41:00+00:00' },
+    { peer: 'y', last: '2026-09-14T05:00:00Z' },
+  ]).join(','), 'y,z', 'эрэмбэ: холимог форматад ч цагаар эрэмбэлнэ');
+
+  // ⛔ Цаг уншигдахгүй мөр АЛГА БОЛОХГҮЙ — ард нь унана.
+  eq(sortByRecent([
+    { peer: 'x', last: '' },
+    { peer: 'w', last: '2026-09-01T00:00:00Z' },
+  ]).join(','), 'w,x', 'эрэмбэ: огноогүй мөр ард нь, хасагдахгүй');
+
+  // scan: нээлттэй жагсаалт үнэхээр цагаар эрэмбэлэгдэж байгаа эсэх.
+  const i = src.indexOf('function renderMissedCalls(');
+  const fn = src.slice(i, src.indexOf('\nfunction ', i + 100));
+  ok(/const open = rows\.filter\(r => !r\.done\)\.sort\(pbxByRecent\)/.test(fn),
+     'scan: нээлттэй жагсаалт сүүлд залгаснаар эрэмбэлэгдэнэ');
+  ok(!/\.sort\(\(a, b\) => b\.pri\.score - a\.pri\.score\)/.test(fn),
+     'scan: оноогоор эрэмбэлэх нь буцаж ирээгүй');
+  // ⛔ Цагийг МӨРӨӨР харьцуулах хэв маягийг бүхэлд нь хаана (CLAUDE.md дүрэм).
+  // ⚠ `custStats.last` нь «YYYY-MM-DD» тул мөрөөр зөв эрэмбэлэгдэнэ — зөвхөн
+  //   БҮТЭН ЦАГИЙН талбарыг хардаг (`.last` = дуудлагын мөч, `.last_at` = алдаа).
+  const strCmp = (src.match(/localeCompare\(String\(a\.last(_at)?\s*\)/g) || []).length;
+  eq(strCmp, 0, 'scan: цагийн талбарыг мөрөөр харьцуулах газар 0 (Date.parse-аар тулга)');
 }

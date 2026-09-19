@@ -122,3 +122,10 @@ notify pgrst, 'reload schema';
 -- ── Шалгах ──────────────────────────────────────────────────────────────
 -- select count(*) from customers;                            -- ~273
 -- select count(*) from app_orders where customer_id is null;  -- ~736 (Booqable '?')
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on customers from authenticated;

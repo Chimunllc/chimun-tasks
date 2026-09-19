@@ -28,8 +28,34 @@ create table if not exists fb_campaign_state (
   status           text,
   effective_status text,
   daily_usd        numeric,
-  updated_at       timestamptz not null default now()
+  updated_at       timestamptz not null default now(),
+  -- ⛔ НЭГ ЗАРЫГ ЗОГСООХ ХҮСЭЛТ (2026-09-18). Апп Facebook руу ШУУД хандаж
+  --    чадахгүй (токен VPS дээр) тул хүсэлтийг энд тэмдэглэнэ; `fb_budget.py`
+  --    10 минут тутам биелүүлээд талбарыг цэвэрлэнэ.
+  -- ⚠ ЗӨВХӨН ЗОГСООХ чиглэлтэй — аппаас дахин асаах зам ЗОРИУД байхгүй
+  --   (мөнгө гаргах шийдвэр Ads Manager-ээс). Тиймээс энэ талбар нь мөнгө
+  --   зарцуулах эрсдэлгүй: хамгийн муудаа зар зогсоно.
+  stop_req         timestamptz,
+  stop_by          text
 );
+alter table fb_campaign_state add column if not exists stop_req timestamptz;
+alter table fb_campaign_state add column if not exists stop_by text;
 
 -- ⛔ anon-д ОГТ нээхгүй (зарцуулалт = санхүүгийн мэдээлэл).
 grant select on fb_ad_actions, fb_campaign_state to authenticated;
+-- ⛔ БАГАНААР олгоно — нэвтэрсэн хүн зөвхөн «зогсоо» гэж хүсэж чадна, төлөв
+--    эсвэл төсвийг гараар өөрчилж ЧАДАХГҮЙ (тэдгээр нь Facebook-ийн бодит
+--    төлөв; гараар бичвэл дэлгэц худал харагдана).
+grant update (stop_req, stop_by) on fb_campaign_state to authenticated;
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on fb_ad_actions from authenticated;
+revoke delete on fb_campaign_state from authenticated;
+
+-- ⛔ Шинэ багана нэмэхэд ч PostgREST схемээ кэшлэсэн хэвээр байдаг — сэргээхгүй
+--    бол апп PATCH хийхэд «column not found» гэж унана.
+notify pgrst, 'reload schema';

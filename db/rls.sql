@@ -58,16 +58,16 @@ create table if not exists sec.role_presets (
 truncate sec.role_presets;
 insert into sec.role_presets (ord, pattern, views, actions) values
  (1, 'үйл ажиллагааны захирал|үах захирал|coo',
-     '{orders,products,nomaad,catering,reports,receivables,workload,access,history,vat,documents,marketing}',
+     '{orders,products,nomaad,catering,reports,receivables,workload,access,history,vat,documents,marketing,missedcalls}',
      '{tasks.create,tasks.delete,orders.pay,orders.prepare,orders.clean,orders.dispatch,orders.deliver,orders.setup,orders.advance,orders.skip,orders.revert,orders.cancel,products.edit,products.opening,nomaad.income,nomaad.cancel,catering.edit,documents.edit,access.delegate}'),
  (2, 'нягтлан',
      '{reports,receivables,vat,salary}',
      '{orders.pay,salary.pay,salary.edit}'),
  (3, 'эвент',
-     '{orders,workload}',
+     '{orders,workload,missedcalls}',
      '{tasks.create,tasks.delete,orders.pay,orders.clean,orders.advance}'),
  (4, 'менежер|manager',
-     '{orders,products,nomaad,reports,workload}',
+     '{orders,products,nomaad,reports,workload,missedcalls}',
      '{tasks.create,tasks.delete,orders.pay,orders.prepare,orders.clean,orders.dispatch,orders.deliver,orders.setup,orders.advance,orders.cancel,products.edit,nomaad.income}'),
  (5, 'нярав|агуулахын\s*ахлах|агуулахын\s*менежер',
      '{orders,products,hourly}',
@@ -85,7 +85,7 @@ insert into sec.role_presets (ord, pattern, views, actions) values
      '{catering,orders}',
      '{orders.clean}'),
  (10, 'маркетинг|market|дизайн|контент',
-     '{marketing}',
+     '{marketing,missedcalls}',
      '{}');
 
 -- ── 3. Эрх шалгах ──────────────────────────────────────────────────────────

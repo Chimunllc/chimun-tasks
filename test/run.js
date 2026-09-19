@@ -157,6 +157,23 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
 }
 
+// 0e3) SCAN — ЗУРАГ ХАРАХ ГАЗАР ГАНЦ: #lightbox (2026-09-19)
+// `openStagePhoto` нь `modal-bg`-ээр тусдаа харагч үүсгэдэг байв. `.modal-bg.open`
+// нь `display:block` тул дотоод flex хайрцаг дээд-зүүн буланд наалдаж зураг
+// ГОЛЛОХГҮЙ, баруун тал нь дэлгэцнээс халин гарна; дэвсгэр нь `rgba(0,0,0,.3)`
+// учир ард нь апп бүдгэрч харагдана. 390×844 браузераар хуулбарлаж баталсан.
+// #lightbox нь голлодог + аюулгүй бүсийг тооцдог — хоёр дахь харагч БАЙХГҮЙ.
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const body = (codeLines.match(/function openStagePhoto\([\s\S]*?\n\}/) || [''])[0];
+  ok(/getElementById\('lightbox-img'\)/.test(body),
+     'scan: openStagePhoto нь #lightbox-ийг ашиглана');
+  eq((body.match(/modal-bg/g) || []).length, 0,
+     'scan: openStagePhoto нь modal-bg-ээр тусдаа харагч үүсгэхгүй');
+  eq((body.match(/style="/g) || []).length, 0,
+     'scan: openStagePhoto-д inline style байхгүй');
+}
+
 // 0f) SCAN — ажилтны картад «Хувийн мэдээлэл» блок үлдэнэ (2026-09-16)
 // Яаралтай үеийн холбоо, хаяг, РД, и-мэйл, ажилд орсон огноо нь бүртгэлийн маягтаар
 // цуглуулагддаг байтал аппад ХАРАГДАХ газар огт байсангүй — CEO батлах цонхонд нэг л

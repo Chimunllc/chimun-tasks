@@ -93,7 +93,7 @@
     /* ⚠ Утгууд нь styles.css-д АЛЬ ХЭДИЙН байгаа бичиглэлтэй ЯГ ижил байх ёстой —
        tools/debt-check.js нь өнгийг утгаар биш, ТЭМДЭГТ МӨРӨӨР тоолдог тул
        ялгаатай бичвэл «шинэ өнгө» гэж тоологдоод CI унана. */
-    --scrim-strong: #000;                      /* зураг бүтэн дэлгэцээр — цэвэр хар */
+    --scrim-photo:  rgba(0,0,0,.3);            /* зураг харах давхарга — ард нь бүдгэрнэ */
     --scrim-btn:    rgba(255, 255, 255, 0.15); /* давхаргын товчны дэвсгэр */
 
     /* ── Хөдөлгөөн ── */
@@ -7493,6 +7493,8 @@ select.no-asar-len {
    цаг/зүсэлт (notch) ба доод индикаторын ДООГУУР ордог. Хатуу 20px зай
    бичвэл зургийн дээд тал цагны доор дарагдаж, «Drive дээр нээх» товч
    доод индикаторт хальтардаг (2026-09-19 утсан дээр ажиглагдсан).
+   ⚠ Дэвсгэр нь ЗОРИУД бүдгэрсэн (цэвэр хар БИШ) — хэрэглэгчийн сонголт:
+   хаанаасаа нээснээ харж байх нь чиг баримжаа өгдөг (2026-09-19).
    Тиймээс зай бүр `max(токен, env(safe-area-inset-*))` байна.
    Бусад дэлгэц styles.css даяар ингэж бичигдсэн — энэ давхарга л
    index.html дотор inline үлдсэн тул хоцорч байв. */
@@ -7501,7 +7503,9 @@ select.no-asar-len {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: var(--scrim-strong);
+  background: var(--scrim-photo);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   align-items: center;
   justify-content: center;
   cursor: zoom-out;
@@ -7517,8 +7521,7 @@ select.no-asar-len {
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-xl);
 }
-#lightbox-close,
-#lightbox-open {
+#lightbox-close {
   position: fixed;
   background: var(--scrim-btn);
   color: #fff;
@@ -7536,12 +7539,4 @@ select.no-asar-len {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-#lightbox-open {
-  bottom: max(var(--space-5), env(safe-area-inset-bottom, 0px));
-  right: max(var(--space-5), env(safe-area-inset-right, 0px));
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--r-sm);
-  text-decoration: none;
-  font-size: var(--fs-md);
 }

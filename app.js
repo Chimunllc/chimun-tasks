@@ -23208,11 +23208,22 @@ function stageMetaHtml(o) {
     return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}</div></div>`;
   }).join('')}</div>`;
 }
+// ⛔ ЗУРАГ ХАРАХ ГАЗАР ГАНЦ — #lightbox (2026-09-19).
+// Өмнө нь энд `modal-bg`-ээр ТУСДАА харагч үүсгэдэг байсан нь эвдэрсэн:
+// `.modal-bg.open` нь `display:block` тул дотоод flex хайрцаг дээд-зүүн
+// буланд наалдаж зураг ГОЛЛОХГҮЙ, баруун тал нь дэлгэцнээс халин гарч,
+// дэвсгэр нь ердөө `rgba(0,0,0,.3)` учир ард нь апп бүдгэрч харагддаг байв
+// (утсан дээр мэдээлэгдэж, 390×844 браузераар хуулбарлаж баталсан).
+// #lightbox нь голлодог, аюулгүй бүсийг тооцдог, хаах 3 зам (дэвсгэр дарах,
+// × товч, Esc) бэлэн — тиймээс хоёр дахь харагч ХЭРЭГГҮЙ.
 function openStagePhoto(url) {
-  const ov = document.createElement('div'); ov.className = 'modal-bg open'; ov.style.zIndex = '10001';
-  ov.innerHTML = `<div style="max-width:96%;max-height:94vh;display:flex;align-items:center;justify-content:center;"><img src="${escapeHtml(driveThumbUrl(url, 1400))}" referrerpolicy="no-referrer" style="max-width:100%;max-height:94vh;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.4);" /></div>`;
-  ov.onclick = () => ov.remove();
-  document.body.appendChild(ov);
+  const lb = document.getElementById('lightbox');
+  const img = document.getElementById('lightbox-img');
+  if (!lb || !img) return;
+  const open = document.getElementById('lightbox-open');
+  img.src = driveThumbUrl(url, 1600);
+  if (open) open.href = url;
+  lb.style.display = 'flex';
 }
 
 // Товч дарахад — зураг (ЗААВАЛ) + өмнөх шатны үнэлгээ (ЗААВАЛ, сэтгэгдэл заавал биш)

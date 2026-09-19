@@ -11137,6 +11137,50 @@ async function swFetchTests() {
      'scan: данс хоосон бол шалтгааныг bankLineReason-оор ялгана');
 }
 
+// ── БАРАА/ХӨРӨНГИЙН ЭКСПОРТ (2026-09-19) ──────────────────────────────────
+// ⛔ Өртөг эмзэг: `products.cost` эрхгүй хүнд өртөг/нийлүүлэгч/худалдан авсан
+//    огноо ФАЙЛД ОРОХГҮЙ. DB талд тэр баганууд хаалттай — экспорт нь тойрох
+//    зам болж БОЛОХГҮЙ.
+{
+  const asrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const F = vm.runInContext('({ productExportRows })', sandbox);
+  const items = [
+    { sku: 'M-001', name: 'Асар 12×20', category: 'Асар', price: 900000, cost: 5000000,
+      stock: 3, qty_mevent: 2, qty_nomaad: 1, supplier: 'taobao', purchase_date: '2026-05-04T00:00:00Z',
+      stock_opened_at: '2026-09-01', stock_approved_at: '2026-09-02' },
+    { sku: 'M-002', name: 'Хүргэлт', type: 'service', price: 50000, cost: 0, stock: 0 },
+  ];
+  const costs = { 'M-001': 5000000 };
+
+  const full = F.productExportRows(items, { costs, withCost: true });
+  ok(full.header.includes('Нэгж өртөг'), 'экспорт: эрхтэй хүнд өртөг гарна');
+  ok(full.header.includes('Нийлүүлэгч'), 'экспорт: эрхтэй хүнд нийлүүлэгч гарна');
+  eq(full.rows.length, 2, 'экспорт: мөр бүр гарна');
+
+  const ci = full.header.indexOf('Нийт өртөг');
+  eq(full.rows[0][ci], 15000000, 'экспорт: нийт өртөг = өртөг × нөөц');
+  eq(full.rows[0][full.header.indexOf('🎪 M-Event')], 2, 'экспорт: салбарын тоо');
+  eq(full.rows[0][full.header.indexOf('Эхний үлдэгдэл')], 'Баталгаажсан',
+     'экспорт: хоёр гарын үсэгтэйг «Баталгаажсан» гэнэ');
+  eq(full.rows[1][full.header.indexOf('Төрөл')], 'Үйлчилгээ', 'экспорт: үйлчилгээ ялгарна');
+  eq(full.rows[0][full.header.indexOf('Худалдан авсан')], '2026-05-04',
+     'экспорт: огноо зөвхөн өдрөөр');
+
+  // ⛔ Эрхгүй хүнд өртгийн баганууд БАЙХГҮЙ — утга нь ч файлд орохгүй.
+  const lim = F.productExportRows(items, { costs, withCost: false });
+  ok(!lim.header.some(h => /өртөг|Нийлүүлэгч|Худалдан/.test(h)),
+     'экспорт: эрхгүй хүнд өртгийн багана байхгүй');
+  ok(!lim.rows.some(r => r.some(v => String(v) === '5000000' || String(v) === 'taobao')),
+     'экспорт: эрхгүй хүнд өртгийн УТГА ч алга');
+  eq(lim.rows.length, 2, 'экспорт: эрхгүй ч бараа бүрэн гарна');
+
+  // ⚠ Дэлгэц дээр харагдаж буйг л татна — шүүлт хоёр газар бичигдэхгүй.
+  ok(/state\._prodShown = list;/.test(asrc2), 'scan: экспорт рендерийн жагсаалтыг ашиглана');
+  ok(/exportProductsCsv\(state\._prodShown\)/.test(asrc2), 'scan: товч тэр жагсаалтыг дамжуулна');
+  // ⛔ Эрхийг экспортод дахин тодорхойлохгүй — `canProductPart('cost')` ганц эх сурвалж.
+  ok(/withCost: canProductPart\('cost'\)/.test(asrc2), 'scan: экспортын эрх canProductPart-аас');
+}
+
 // ── ӨГЛӨӨНИЙ МЭДЭГДЭЛ — шөнийн агент (2026-09-18) ──────────────────────────
 // Шөнө агент алдаа зассан PR-аа өөрөө merge хийдэг болсон ч үр дүн нь зөвхөн
 // GitHub Issue-д үлддэг байв. `tools/night_notify.py` өглөө утсанд хэлнэ.

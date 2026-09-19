@@ -21909,6 +21909,9 @@ function renderProducts() {
       <button class="btn btn-primary ui-raw" id="prod-wo-go"${picked.length ? '' : ' disabled'}>Үргэлжлүүлэх (${picked.length})</button>
     </div>`;
   }
+  // Excel экспорт нь ХАРАГДАЖ БУЙ жагсаалтыг татна — шүүлтийн дүрмийг хоёр дахь
+  // газарт давтвал дэлгэц ба файл зөрнө (нэг эх сурвалж).
+  state._prodShown = list;
   // ── 2 ТУУЗ (урьд нь 6) ──
   // 1: хайлт · скан · шинэ бараа   2: шүүлтүүр · тоо · хөрөнгө · салбар
   // Эхний бараа хүртэлх зай утасны дэлгэцийн ~50%-иас ~20% болно.
@@ -21916,6 +21919,7 @@ function renderProducts() {
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
+      <button class="btn" id="prod-xls" title="Дэлгэц дээр харагдаж буй барааг Excel-д татах">📊 Excel</button>
       ${canEditProducts() ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
       ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
       ${canEditProducts() ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
@@ -22590,6 +22594,7 @@ function attachProductsHandlers() {
   document.getElementById('prod-fix-cats')?.addEventListener('click', () => openCategoryGroupsModal());
   // QR скан → бараа таних
   document.getElementById('prod-scan')?.addEventListener('click', () => openScanner());
+  document.getElementById('prod-xls')?.addEventListener('click', () => exportProductsCsv(state._prodShown));
 }
 
 /* ─── CEO Dashboard ───────────────────────────────────────
@@ -36279,6 +36284,52 @@ async function addProject() {
 function csvCell(v) {
   const s = String(v == null ? '' : v);
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+/* ─── БАРАА / ХӨРӨНГИЙН ЭКСПОРТ (Агуулах → «📊 Excel») ───────────────────────
+   Тооллого, даатгал, аудитад бүх барааг нэг хүснэгтээр гаргана.
+   ⛔ ӨРТӨГ = ЭМЗЭГ. `products.cost` эрхгүй хүнд өртөг/нийлүүлэгч/худалдан авсан
+      огноо БАЙХГҮЙ (DB талд ч тэр баганууд хаалттай). Эрхийг энд дахин бүү
+      тодорхойл — `canProductPart('cost')` нь ганц эх сурвалж.
+   ⚠ Дэлгэц дээр ХАРАГДАЖ БУЙ (шүүсэн) жагсаалтыг татна — шүүлтийг энд давтвал
+      хүн дэлгэцэндээ нэг юм хараад файлаасаа өөр юм авна. */
+function productExportRows(list, opts) {
+  const o = opts || {};
+  const costs = o.costs || {};
+  const withCost = !!o.withCost;
+  const BR = [['mevent', '🎪 M-Event'], ['nomaad', '⛺ NOMAAD'], ['chimun', '🏢 Чимун'], ['catering', '🍽 Катеринг']];
+  const header = ['SKU', 'Нэр', 'Ангилал', 'Төрөл', 'Нийт нөөц']
+    .concat(BR.map(b => b[1]))
+    .concat(['Түрээсийн үнэ'])
+    .concat(withCost ? ['Нэгж өртөг', 'Нийт өртөг', 'Худалдан авсан', 'Нийлүүлэгч'] : [])
+    .concat(['Эхний үлдэгдэл', 'Архив']);
+  const openLbl = { done: 'Баталгаажсан', wait: 'Батлах хүлээж буй', todo: 'Шалгаагүй' };
+  const rows = (list || []).filter(Boolean).map(p => {
+    const qty = Number(p.stock) || 0;
+    const cost = Number(costs[p.sku] || p.cost) || 0;
+    const kind = isPackage(p) ? 'Багц' : (isService(p) ? 'Үйлчилгээ' : 'Бараа');
+    return [p.sku || '', p.name || '', p.category || '', kind, qty]
+      .concat(BR.map(b => branchQty(p, b[0])))
+      .concat([Number(p.price) || 0])
+      .concat(withCost ? [cost, cost * qty, String(p.purchase_date || '').slice(0, 10), p.supplier || ''] : [])
+      .concat([openLbl[openingSignState(p)] || '', p.archived ? 'Тийм' : '']);
+  });
+  return { header, rows };
+}
+function exportProductsCsv(list) {
+  const arr = Array.isArray(list) ? list : (state.products || []);
+  if (!arr.length) { showToast('Татах бараа алга', 'info', 2500); return; }
+  const { header, rows } = productExportRows(arr, {
+    costs: state.productCosts || {}, withCost: canProductPart('cost'),
+  });
+  const csv = '﻿' + header.map(csvCell).join(',') + '\n'
+            + rows.map(r => r.map(csvCell).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Чимун-бараа-хөрөнгө-${todayStr()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  showToast(`${rows.length} бараа татагдлаа`, 'success');
 }
 function exportTasksReport() {
   const statusMn = { open: 'Шинэ', in_progress: 'Хийгдэж байна', done: 'Дууссан', declined: 'Татгалзсан' };

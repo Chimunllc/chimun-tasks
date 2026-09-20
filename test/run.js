@@ -11154,6 +11154,42 @@ async function swFetchTests() {
      'scan: данс хоосон бол шалтгааныг bankLineReason-оор ялгана');
 }
 
+// ── МАРКЕТИНГИЙН ДАТА СЕСС ДУНД ШИНЭЧЛЭГДЭНЭ (2026-09-20) ─────────────────
+// ⛔ Ачаалагчид `state.X` байвал дахин татдаггүй байсан тул апп нээлттэй байх
+//    хугацаанд тоо ХӨЛДӨЖ, «Татагч 16 цаг ажиллаагүй» гэсэн ХУДАЛ анхааруулга
+//    гарч байв — татагч 29 минутын өмнө ажилласан байсан.
+{
+  const asrc3 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const F = vm.runInContext('({ mktFresh, mktStamp, MKT_TTL_MS })', sandbox);
+
+  ok(F.MKT_TTL_MS > 0 && F.MKT_TTL_MS <= 30 * 60 * 1000,
+     'зар: шинэчлэх хугацаа 30 минутаас урт биш');
+  eq(F.mktFresh('шинэ_түлхүүр'), false, 'зар: татаагүй түлхүүр хуучин гэж тооцогдоно');
+  F.mktStamp('t1');
+  eq(F.mktFresh('t1'), true, 'зар: дөнгөж татсан нь шинэ');
+
+  // ⛔ `=== undefined` гэж шалгавал сесс дунд ХЭЗЭЭ Ч дахин татахгүй.
+  const _mi = asrc3.indexOf("if (v === 'ads' && canSeeAds())");
+  const mount = asrc3.slice(_mi, asrc3.indexOf("if (v === 'customers'", _mi));
+  ok(mount.length > 100 && mount.length < 4000, 'зар: дэлгэц нээх блок олдов');
+  ['fbAds', 'gsc', 'ga', 'pbx'].forEach(k => {
+    ok(new RegExp("mktEnsure\\('" + k + "'").test(mount), 'зар: ' + k + ' TTL-ээр шинэчлэгдэнэ');
+  });
+  ok(!/state\.fbAds === undefined/.test(mount), 'зар: fbAds нэг удаагийн шалгуургүй');
+  ok(!/state\.gsc === undefined\)\s*\{\s*state\.gsc = null; loadGsc/.test(mount),
+     'зар: gsc нэг удаагийн шалгуургүй');
+
+  // ⚠ Татсан мөчийг ТЭМДЭГЛЭХГҮЙ бол TTL хэзээ ч хуучрахгүй/үргэлж хуучин байна.
+  ['pbx', 'fbAds', 'gsc', 'ga'].forEach(k => {
+    ok(new RegExp("mktStamp\\('" + k + "'\\)").test(asrc3), 'зар: ' + k + ' татсан мөчөө тэмдэглэнэ');
+  });
+
+  // ⚠ Анхааруулга нь ОДОО үнэн: дата шинэ татагдсан ч хуучин бол татагч буруутай.
+  const SM = vm.runInContext('adsStaleMsg', sandbox);
+  ok(/Татагч 16 цаг/.test(SM(0, 16)), 'зар: хуучин татацыг цагаар нэрлэнэ');
+  eq(SM(0, 0), '', 'зар: бүх юм шинэ бол анхааруулга алга');
+}
+
 // ── БАРАА/ХӨРӨНГИЙН ЭКСПОРТ (2026-09-19) ──────────────────────────────────
 // ⛔ Өртөг эмзэг: `products.cost` эрхгүй хүнд өртөг/нийлүүлэгч/худалдан авсан
 //    огноо ФАЙЛД ОРОХГҮЙ. DB талд тэр баганууд хаалттай — экспорт нь тойрох

@@ -28925,6 +28925,30 @@ async function savePbxCallback(peer, status, upto, bump) {
   return got;
 }
 // Дуудлагын лог татах (pbx_calls) — дугаартай тул anon-д хаалттай.
+/* ⛔ МАРКЕТИНГИЙН ДАТА СЕСС ДУНД ХУУЧИРНА (2026-09-20).
+   Эдгээр ачаалагч нь `state.X` байвал дахин ТАТАХГҮЙ байсан тул апп нээлттэй
+   байх хугацаанд тоо ХӨЛДӨНӨ. 16 цаг нээлттэй байсан аппад «Татагч 16 цаг
+   ажиллаагүй» гэсэн анхааруулга гарсан нь ХУДАЛ байв — татагч 29 минутын өмнө
+   ажилласан, зөвхөн АПП дахин уншаагүй байсан.
+   ⚠ Дэлгэц нээх/дахин зурах бүрд хугацаа шалгана — хуучирсан бол ард нь шинэчилнэ.
+   ⚠ Ингэснээр «татагч зогссон» анхааруулга ҮНЭН болно: дата шинэ татагдсан
+     хэвээр хуучин бол буруу нь үнэхээр татагч. */
+const MKT_TTL_MS = 10 * 60 * 1000;
+const _mktAt = {};                      // ачаалагчийн нэр → сүүлд амжилттай татсан мөч
+function mktFresh(key) { return (Date.now() - (_mktAt[key] || 0)) < MKT_TTL_MS; }
+function mktStamp(key) { _mktAt[key] = Date.now(); }
+// Дэлгэц нээхэд/зурахад дуудна: анх удаа эсвэл хуучирсан бол ард нь татна.
+// Нэг зэрэг хоёр татахаас `_mktBusy` хамгаална (рендер олон удаа дуудагддаг).
+const _mktBusy = {};
+function mktEnsure(key, loader, view) {
+  if (mktFresh(key) || _mktBusy[key]) return;
+  _mktBusy[key] = true;
+  Promise.resolve(loader(true))
+    .then(() => { if (!view || state.view === view) render(); })
+    .catch(() => {})
+    .then(() => { _mktBusy[key] = false; });
+}
+
 async function loadPbxLog(force) {
   if (state.pbxLog && !force) return state.pbxLog;
   try {
@@ -28938,6 +28962,7 @@ async function loadPbxLog(force) {
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.pbxLog = await r.json();
+    mktStamp('pbx');
     return state.pbxLog;
   } catch (e) { dataLoadFailed('Дуудлагын лог', e); state.pbxLog = state.pbxLog || []; return state.pbxLog; }
 }
@@ -28959,6 +28984,7 @@ async function loadFbAds(force) {
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.fbAds = await r.json();
+    mktStamp('fbAds');
     return state.fbAds;
   } catch (e) { dataLoadFailed('Зарын дата', e); state.fbAds = state.fbAds || []; return state.fbAds; }
 }
@@ -28975,6 +29001,7 @@ async function loadGsc(force) {
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.gsc = await r.json();
+    mktStamp('gsc');
     return state.gsc;
   } catch (e) { dataLoadFailed('Google хайлтын дата', e); state.gsc = state.gsc || []; return state.gsc; }
 }
@@ -28990,6 +29017,7 @@ async function loadGa(force) {
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.ga = await r.json();
+    mktStamp('ga');
     return state.ga;
   } catch (e) { dataLoadFailed('Сайтын зочдын дата', e); state.ga = state.ga || []; return state.ga; }
 }
@@ -37539,13 +37567,17 @@ function refreshViewData() {
   //    «Дуудлага → захиалга» хоосон харагддаг байв (хуудсаа дахин
   //    ачаалснаар л засагддаг — хэн ч алдаа гэж мэдэхгүй).
   if (v === 'ads' && canSeeAds()) {
-    if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'ads') render(); }); }
+    // ⚠ `=== undefined` гэж шалгавал сесс дунд ХЭЗЭЭ Ч шинэчлэгдэхгүй — TTL-ээр.
+    mktEnsure('pbx', loadPbxLog, 'ads');
+    mktEnsure('gsc', loadGsc, 'ads');
+    mktEnsure('ga', loadGa, 'ads');
+    mktEnsure('fbAds', loadFbAds, 'ads');
     if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'ads') render(); }); }
-    if (state.gsc === undefined) { state.gsc = null; loadGsc().then(() => { if (state.view === 'ads') render(); }); }
-    if (state.ga === undefined) { state.ga = null; loadGa().then(() => { if (state.view === 'ads') render(); }); }
+    if (state.pbxLog === undefined) state.pbxLog = null;
+    if (state.gsc === undefined) state.gsc = null;
+    if (state.ga === undefined) state.ga = null;
   }
-  if (v === 'ads' && canSeeAds() && state.fbAds === undefined) {
-    loadFbAds().then(() => { if (state.view === 'ads') render(); });
+  if (v === 'ads' && canSeeAds()) {
     if (state.adsBudget === undefined) {
       state.adsBudget = null;
       loadAppConfig(ADS_BUDGET_KEY).then(v => { state.adsBudget = v || null; if (state.view === 'ads') render(); });

@@ -384,8 +384,29 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   // Хоосон харагдах шалтгааныг ЯЛГАНА — бүгдийг «бүртгэгдээгүй» гэж хэлэх нь худал
   runIn("state.memberPerms = { '80000001': { salary: true } }; state._staffPinsLoaded = false; state._staffPinsErr = '';");
   ok(/ачаалж байна/.test(F.staffAcctMissingHtml()), 'данс: ачаалж байхад «ачаалж байна»');
-  runIn("state._staffPinsLoaded = true; state._staffPinsErr = 'denied';");
-  ok(/эрх өгсөнгүй/.test(F.staffAcctMissingHtml()), 'данс: сервер татгалзвал «эрх өгсөнгүй»');
+  runIn("state._staffPinsLoaded = true; state._staffPinsErr = 'denied'; state._staffPinsReason = 'forbidden';");
+  ok(/эрх алга/.test(F.staffAcctMissingHtml()), 'данс: сервер татгалзвал «эрх алга»');
+  // ⛔ ШАЛТГААНЫГ ИЛ БИЧНЭ — «сервер эрх өгсөнгүй» гэсэн ганц мессеж нь хугацаа
+  //   дууссан токеныг «эрх байхгүй» мэт үзүүлж, хүн юу хийхээ мэдэхгүй сууж байв.
+  ok(/forbidden/.test(F.staffAcctMissingHtml()), 'данс: серверийн шалтгаан ил гарна');
+  // Дэлгэцийн дээд талд ҮЙЛДЭЛТЭЙ тууз — жижиг сараачлага ганцаараа хангалтгүй.
+  ok(/Дахин оролдох/.test(F.staffAcctBannerHtml()), 'данс: татгалзвал дахин оролдох товч');
+  runIn("state._staffPinsErr = 'need_login';");
+  ok(/Дахин нэвтрэх/.test(F.staffAcctBannerHtml()), 'данс: хугацаа дуусвал нэвтрэх товч');
+  runIn("state._staffPinsErr = 'retry';");
+  ok(/ачаалж байна/.test(F.staffAcctBannerHtml()), 'данс: түр алдаанд ачаалж байна');
+  runIn("state._staffPinsErr = '';");
+  eq(F.staffAcctBannerHtml(), '', 'данс: асуудалгүй бол тууз гарахгүй');
+  runIn("state._staffPinsErr = 'denied';");
+  // ⛔ SCAN: хугацаа дууссан/гарын үсэг буруу токеныг «эрх алга» гэж бүү тайлбарла —
+  //   хүн дахин нэвтрэхээ мэдэхгүй болно (амьд системд яг ингэж гацсан).
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(/\['bad_token', 'bad_sig', 'bad_payload', 'expired'\]\.includes\(why\)/.test(_src),
+       'scan: хугацаа/гарын үсэг → дахин нэвтрэх');
+    ok(/why === 'staff_unavailable'/.test(_src), 'scan: түр алдаа дахин оролдоно');
+    ok(/attachStaffAcctBanner\(\)/.test(_src), 'scan: туузны товч холбогдсон');
+  }
   runIn("state._staffPinsErr = 'need_login';");
   ok(/дахин нэвтэрнэ/.test(F.staffAcctMissingHtml()), 'данс: токен дууссан бол «дахин нэвтэрнэ үү»');
   runIn("state._staffPinsErr = '';");

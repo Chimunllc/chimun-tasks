@@ -12964,7 +12964,10 @@ const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', '
   'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  // ҮАХ захирал: «Сарын цалин»-г ХАРНА (2026-09-21) — ажилтны цалин, олголтын явц нь
+  // үйл ажиллагааны мэдээлэл. Суурь цалин тохируулах (`salary.edit`) ба олгох
+  // (`salary.pay`) нь CEO+нягтлан дээр ҮЛДЭНЭ — өөрийнхөө цалинг өөрөө тавихгүй.
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'salary', 'vat', 'documents', 'marketing', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
   [/эвент/, { views: ['orders', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],

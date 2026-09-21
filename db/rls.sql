@@ -58,7 +58,7 @@ create table if not exists sec.role_presets (
 truncate sec.role_presets;
 insert into sec.role_presets (ord, pattern, views, actions) values
  (1, 'үйл ажиллагааны захирал|үах захирал|coo',
-     '{orders,products,nomaad,catering,reports,receivables,workload,access,history,vat,documents,marketing,missedcalls}',
+     '{orders,products,nomaad,catering,reports,receivables,workload,access,history,salary,vat,documents,marketing,missedcalls}',
      '{tasks.create,tasks.delete,orders.pay,orders.prepare,orders.clean,orders.dispatch,orders.deliver,orders.setup,orders.advance,orders.skip,orders.revert,orders.cancel,products.edit,products.opening,nomaad.income,nomaad.cancel,catering.edit,documents.edit,access.delegate}'),
  (2, 'нягтлан',
      '{reports,receivables,vat,salary}',

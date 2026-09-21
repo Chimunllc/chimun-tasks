@@ -1349,6 +1349,36 @@ function finish() {
   ok(RP('Менежер').actions.includes('products.edit'), 'менежер: бараа засах эрх хэвээр');
   ok(RP('Үйл ажиллагааны захирал').actions.includes('products.edit'), 'ҮАХ захирал: хэвээр');
   ok(!RP('Эвент менежер').actions.includes('products.edit'), 'эвент менежер: /эвент/ загвар — бараа засахгүй (хэвээр)');
+
+  // ҮАХ захирал «Сарын цалин»-г ХАРНА (2026-09-21). Багцад `salary` view байхгүйгээс
+  // дэлгэц зөвхөн CEO/нягтланд гарч, захирал ажилтны цалингаа шалгаж чаддаггүй байв.
+  // ХАРАХ л нээгдэнэ — суурь цалин тохируулах/олгох нь CEO+нягтлан дээр ҮЛДЭНЭ.
+  const coo = RP('Үйл ажиллагааны захирал');
+  ok(coo && coo.views.includes('salary'), 'ҮАХ захирал: Сарын цалин ХАРНА');
+  ok(coo && !coo.actions.includes('salary.edit'), 'ҮАХ захирал: суурь цалин ЗАСАХГҮЙ');
+  ok(coo && !coo.actions.includes('salary.pay'), 'ҮАХ захирал: цалин ОЛГОХГҮЙ');
+}
+
+// 33b) Цалингийн дэлгэц ҮАХ захиралд нээгдэнэ — capValue-ийн бүтэн замаар
+{
+  const TEAM = vm.runInContext('TEAM', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const sv = { team: TEAM.slice(), me: st.me, ceo: st.isCEO, mp: st.memberPerms, rp: st.rolePerms };
+  TEAM.length = 0;
+  TEAM.push({ name: 'Захирал Тест', phone: '80000002', role: 'Үйл ажиллагааны захирал' });
+  TEAM.push({ name: 'Зөөгч Тест',   phone: '80000003', role: 'Зөөгч' });
+  st.isCEO = false; st.memberPerms = {}; st.rolePerms = {};
+
+  st.me = '80000002';
+  ok(F.canSeeSalary() === true, 'цалин: ҮАХ захирал дэлгэцийг ХАРНА');
+  ok(F.can('salary.edit') === false, 'цалин: захирал суурь цалин засахгүй');
+  ok(F.can('salary.pay') === false, 'цалин: захирал олголт бүртгэхгүй');
+
+  st.me = '80000003';
+  ok(F.canSeeSalary() === false, 'цалин: багцад ороогүй ажилтан ХАРАХГҮЙ (хэвээр)');
+
+  TEAM.length = 0; sv.team.forEach(x => TEAM.push(x));
+  st.me = sv.me; st.isCEO = sv.ceo; st.memberPerms = sv.mp; st.rolePerms = sv.rp;
 }
 
 // 34) Ажилтанд ноорог/архив/цуцалсан захиалга ӨГӨГДӨЛ дээрээ ирэхгүй

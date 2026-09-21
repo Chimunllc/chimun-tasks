@@ -1294,6 +1294,28 @@ function applyStaffPins() {
 // ⚠ ДАВТАЛТЫН ХАМГААЛАЛТ. renderSalary нь энэ функцийг дуудна. Сервер 403/500 буцаавал
 // (JSON биш → d === null) хуучин код `_staffPinsLoaded = false` болгодог тул render бүрд
 // хүсэлт дахин явж, сүлжээ дүүрнэ. Сессид 2 оролдлогоор хязгаарлана.
+// ── СЕРВЕРИЙН ТОКЕНЫ ӨӨРИЙНХ НЬ АГУУЛГА (2026-09-21) ────────────────────────
+// Сервер «forbidden» гэж татгалзахад аппын тал ЮУ Ч мэдэхгүй байв: токен хэний,
+// ямар эрхийн түвшинтэй, хэзээ дуусахыг харах арга байсангүй. Токены биеийг
+// (гарын үсгийг БИШ) задалж лог/оношилгоонд ашиглана.
+// ⛔ ГАРЫН ҮСГИЙГ ХЭЗЭЭ Ч бүү гарга — тэр нь нэвтрэх эрх өөрөө.
+function sessionClaims() {
+  try {
+    const t = localStorage.getItem('sessionToken') || '';
+    const dot = t.indexOf('.');
+    if (dot < 1) return null;
+    const json = decodeURIComponent(escape(atob(t.slice(0, dot).replace(/-/g, '+').replace(/_/g, '/'))));
+    const p = JSON.parse(json);
+    return { lvl: Number(p.lvl) || 0, exp: Number(p.exp) || 0, iat: Number(p.iat) || 0 };
+  } catch (e) { return null; }
+}
+// Токен ба аппын харж буй эрх ЗӨРЖ байна уу. Зөрөх нь «дахин нэвтрэх» дохио:
+// аппад CEO мөртлөө токен нь бага түвшинтэй бол сервер эрхийг нь өгөхгүй.
+function sessionLevelStale() {
+  const c = sessionClaims();
+  if (!c) return false;
+  return !!state.isCEO && c.lvl < 100;
+}
 let _staffPinsTries = 0;
 async function loadStaffPins() {
   if (state._staffPinsLoaded || !canSeeStaffSensitive()) return;
@@ -1329,7 +1351,16 @@ async function loadStaffPins() {
       // ⛔ ТОДОРХОЙ ТАТГАЛЗЛЫГ ЧИМЭЭГҮЙ БҮҮ ӨНГӨРҮҮЛ (2026-09-21). Ажилтны данс
       //   харагдахгүй болоход сервер талд ЮУ Ч үлддэггүй байсан тул шалтгааныг
       //   зөвхөн таамаглах боломжтой байв (амьд системд 1 өдөр алдсан).
-      if (state._staffPinsErr === 'denied') dataLoadFailed('ажилтны данс (' + (why || '?') + ')', new Error('staff-pins ' + (why || 'denied')));
+      if (state._staffPinsErr === 'denied') {
+        const c = sessionClaims();
+        // ⚠ Токены lvl нь НЭВТЭРСЭН МӨЧИД хөлдсөн — түүнээс хойш эрх өөрчлөгдвөл
+        //   сервер шинэ эрхээр биш, ХУУЧИН түвшингээр шийднэ. Логт ил гаргана.
+        const extra = c ? ` lvl=${c.lvl} exp=${c.exp ? dateStr(new Date(c.exp)) : '?'}` : ' токенгүй';
+        dataLoadFailed('ажилтны данс (' + (why || '?') + ')', new Error('staff-pins ' + (why || 'denied') + extra));
+        // Аппад CEO мөртлөө токен нь бага түвшинтэй = токен хуучирсан. Хүнд
+        // «эрх алга» гэж хэлэх нь ХУДАЛ — дахин нэвтрэх л хэрэгтэй.
+        if (why === 'forbidden' && sessionLevelStale()) state._staffPinsErr = 'need_login';
+      }
       if (netErr) state._staffPinsLoaded = false;   // түр алдаа — дараагийн render-д дахин оролдоно (render дуудахгүй тул давталт үүсэхгүй)
       else if (typeof render === 'function') render();
       return;

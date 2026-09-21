@@ -417,6 +417,24 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   // ⛔ Төлөв хараахан тодорхойгүй (анх ачаалж байгаа) үед ХУДАЛ анхааруулга гаргахгүй.
   runIn("delete state._staffPinsErr;");
   eq(F.staffAcctBannerHtml(), '', 'данс: ачаалагдаагүй үед тууз гарахгүй');
+  // Токены агуулга — гарын үсэг ОГТ орохгүй, задарч чадахгүй бол null.
+  runIn("state.isCEO = true; localStorage.setItem('sessionToken', 'not-a-token');");
+  eq(F.sessionClaims(), null, 'токен: буруу хэлбэр → null');
+  eq(F.sessionLevelStale(), false, 'токен: задарсангүй бол «хуучирсан» гэж дүгнэхгүй');
+  {
+    const mk = (o) => Buffer.from(JSON.stringify(o)).toString('base64url') + '.sig';
+    runIn(`localStorage.setItem('sessionToken', ${JSON.stringify(mk({ ph: '80000001', lvl: 40, exp: 4102444800000 }))});`);
+    eq(F.sessionClaims().lvl, 40, 'токен: эрхийн түвшин уншигдана');
+    // ⛔ Аппад CEO мөртлөө токен нь бага түвшинтэй = ХУУЧИРСАН нэвтрэлт.
+    //   «Эрх алга» гэж хэлэх нь худал — дахин нэвтрэх л хэрэгтэй.
+    ok(F.sessionLevelStale(), 'токен: CEO мөртлөө lvl бага → хуучирсан');
+    runIn(`localStorage.setItem('sessionToken', ${JSON.stringify(mk({ ph: '80000001', lvl: 100, exp: 4102444800000 }))});`);
+    ok(!F.sessionLevelStale(), 'токен: lvl 100 бол хуучраагүй');
+    runIn("state.isCEO = false;");
+    ok(!F.sessionLevelStale(), 'токен: CEO биш хүнд дүрэм хамаарахгүй');
+  }
+  runIn("state.isCEO = false; localStorage.removeItem('sessionToken');");
+
   runIn("state._staffPinsErr = 'denied';");
   // ⛔ SCAN: хугацаа дууссан/гарын үсэг буруу токеныг «эрх алга» гэж бүү тайлбарла —
   //   хүн дахин нэвтрэхээ мэдэхгүй болно (амьд системд яг ингэж гацсан).
@@ -428,8 +446,11 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
     ok(/attachStaffAcctBanner\(\)/.test(_src), 'scan: туузны товч холбогдсон');
     // ⛔ Сервер тодорхой татгалзвал алдааны логт үлдэнэ — эс бөгөөс шалтгааныг
     //   зөвхөн таамаглах болно (данс алга болоход сервер талд ул мөр үлддэггүй байв).
-    ok(/_staffPinsErr === 'denied'\) dataLoadFailed\(/.test(_src),
+    ok(/_staffPinsErr === 'denied'\) \{[\s\S]{0,600}?dataLoadFailed\(/.test(_src),
        'scan: татгалзал алдааны логт бүртгэгдэнэ');
+    // ⛔ Токены ГАРЫН ҮСГИЙГ хэзээ ч логт бүү бич — зөвхөн биеийн талбарууд.
+    ok(/sessionClaims\(\)/.test(_src) && !/sessionToken[^\n]{0,40}dataLoadFailed/.test(_src),
+       'scan: логт зөвхөн токены агуулга, гарын үсэг БИШ');
   }
   runIn("state._staffPinsErr = 'need_login';");
   ok(/дахин нэвтэрнэ/.test(F.staffAcctMissingHtml()), 'данс: токен дууссан бол «дахин нэвтэрнэ үү»');

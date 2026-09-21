@@ -1335,12 +1335,31 @@ async function n8nUnauthorized(r) {
   // n8n нь Code node-ийн `throw` -г 500-аар буцаадаг тул биеийг нь хардаг.
   try { return /unauthorized/i.test(await r.clone().text()); } catch (e) { return false; }
 }
-function noteAuthFailure(where) {
+async function noteAuthFailure(where) {
   if (state.sessionExpired) return;              // нэг сесст нэг удаа
   state.sessionExpired = true;
   state.sessionExpiredAt = String(where || '');
   try { dataLoadFailed('нэвтрэлт (' + (where || '-') + ')', new Error('n8n unauthorized')); } catch (e) {}
   if (typeof render === 'function') render();
+  // ⛔ ТУУЗ ХАНГАЛТГҮЙ — хүн үл тоомсорлож, мэдэгдэлгүй хоногоор явдаг.
+  //   Токеныг сервер ҮНЭХЭЭР хүчингүй гэж хэлбэл нэвтрэх дэлгэц рүү ХҮЧЭЭР буцаана.
+  // ⚠ Зөвхөн СЕРВЕР баталсан үед. Сүлжээгүй (null) үед гаргавал офлайн ажиллаж
+  //   байгаа хүнийг ажлынх нь дундаас хөөнө — тэр үед зөвхөн тууз үлдэнэ.
+  try {
+    const t = localStorage.getItem('sessionToken') || '';
+    if (!t) return;
+    const v = await serverVerifyToken(t);
+    if (v && v.valid === false) forceRelogin();
+  } catch (e) { /* шалгалт өөрөө унавал тууз хэвээр */ }
+}
+// Сесс цэвэрлээд нэвтрэх дэлгэц рүү. Хүн PIN-ээ оруулснаар бүх суваг сэргэнэ.
+function forceRelogin() {
+  ['sessionToken', 'pgrstToken', 'userEmail', 'userLoginAt'].forEach(k => {
+    try { localStorage.removeItem(k); } catch (e) {}
+  });
+  try { showToast('Нэвтрэлт дууссан — PIN-ээ дахин оруулна уу', 'warn', 4000); } catch (e) {}
+  clearAlive();   // зориудын дахин ачаалалт — «гэнэт үхсэн» гэж бүртгэгдэхгүй
+  setTimeout(() => location.reload(), 1500);
 }
 function sessionExpiredBannerHtml() {
   if (!state.sessionExpired) return '';

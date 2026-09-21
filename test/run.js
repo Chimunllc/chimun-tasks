@@ -452,6 +452,15 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
        'scan: мэдэгдлийн бүртгэл унавал мэдэгдэнэ');
     ok(/\$\{sessionExpiredBannerHtml\(\)\}/.test(_src), 'scan: тууз Тойм дэлгэцэд гарна');
     ok(/attachSessionBanner\(\)/.test(_src), 'scan: туузны товч холбогдсон');
+    // ⛔ Тууз ганцаараа хангалтгүй — сервер токеныг хүчингүй гэж БАТАЛСАН үед
+    //   нэвтрэх дэлгэц рүү хүчээр буцаана (хүн тоомсорлохгүй өнгөрдөг).
+    ok(/v\.valid === false\) forceRelogin\(\)/.test(_src), 'scan: баталгаатай үед хүчээр гаргана');
+    // ⚠ Сүлжээгүй (null) үед ХӨӨХГҮЙ — офлайн ажиллаж байгаа хүнийг тасалдуулна.
+    ok(!/serverVerifyToken[\s\S]{0,200}?if \(!v\) forceRelogin/.test(_src),
+       'scan: сүлжээгүй үед хөөхгүй');
+    // ⛔ Зориудын дахин ачаалалт «гэнэт үхсэн» гэж бүртгэгдэх ёсгүй.
+    ok(/clearAlive\(\);[\s\S]{0,160}?location\.reload\(\)/.test(_src),
+       'scan: reload-ийн өмнө clearAlive');
   }
 
   runIn("state._staffPinsErr = 'denied';");

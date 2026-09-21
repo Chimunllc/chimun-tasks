@@ -1219,7 +1219,12 @@ async function loadTeamFromAPI() {
       cache: 'no-store',
       headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
     });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) {
+      // ⛔ 401/403/«Unauthorized» = сесс дууссан. Кэш рүү чимээгүй унавал ажилтан
+      //   шинэ мэдээлэл аваагүйгээ МЭДЭХГҮЙ (шинэ ажилтан, албан тушаал гарахгүй).
+      if (await n8nUnauthorized(r)) noteAuthFailure('ажилтны жагсаалт');
+      throw new Error('HTTP ' + r.status);
+    }
     const data = await r.json();
     const fresh = Array.isArray(data?.team) ? data.team : null;
     if (!fresh || !fresh.length) throw new Error('empty team response');
@@ -1316,6 +1321,34 @@ function sessionLevelStale() {
   if (!c) return false;
   return !!state.isCEO && c.lvl < 100;
 }
+// ── СЕСС ДУУССАНЫГ ЧИМЭЭГҮЙ ӨНГӨРҮҮЛЭХГҮЙ (2026-09-21) ──────────────────────
+// 2026-09-18-нд серверийн хуучин нийтийн нэвтрэлт өөрөө хаагдсан. Түүнээс хойш
+// ХУУЧИРСАН сесстэй төхөөрөмж бүрийн дуудлага «Unauthorized» болсон атлаа апп
+// бүгдийг чимээгүй залгиж, КЭШЭЭ харуулсаар байв: 14 хоногт ажилтны жагсаалт
+// 42, мэдэгдлийн бүртгэл 56 удаа унасныг хэн ч мэдээгүй. Ажилтан «бүх юм хэвийн»
+// гэж хараад мэдэгдэл авахаа больдог.
+// ⛔ Тиймээс нэвтрэлтийн бүтэлгүйтлийг ГАНЦ газар цуглуулж, дэлгэцэд ил гаргана.
+async function n8nUnauthorized(r) {
+  if (!r) return false;
+  if (r.status === 401 || r.status === 403) return true;
+  if (r.status < 500) return false;
+  // n8n нь Code node-ийн `throw` -г 500-аар буцаадаг тул биеийг нь хардаг.
+  try { return /unauthorized/i.test(await r.clone().text()); } catch (e) { return false; }
+}
+function noteAuthFailure(where) {
+  if (state.sessionExpired) return;              // нэг сесст нэг удаа
+  state.sessionExpired = true;
+  state.sessionExpiredAt = String(where || '');
+  try { dataLoadFailed('нэвтрэлт (' + (where || '-') + ')', new Error('n8n unauthorized')); } catch (e) {}
+  if (typeof render === 'function') render();
+}
+function sessionExpiredBannerHtml() {
+  if (!state.sessionExpired) return '';
+  return `<div class="staff-pin-banner">🔒 <b>Нэвтрэлт дууссан.</b> Дата шинэчлэгдэхгүй, мэдэгдэл ирэхгүй байна${state.sessionExpiredAt ? ` (${escapeHtml(state.sessionExpiredAt)})` : ''} — дахин нэвтэрнэ үү. <button class="btn btn-primary ui-raw" id="sess-relogin">Дахин нэвтрэх</button></div>`;
+}
+function attachSessionBanner(root) {
+  (root || document).querySelector('#sess-relogin')?.addEventListener('click', () => { logout(); });
+}
 let _staffPinsTries = 0;
 async function loadStaffPins() {
   if (state._staffPinsLoaded || !canSeeStaffSensitive()) return;
@@ -1361,6 +1394,7 @@ async function loadStaffPins() {
         // «эрх алга» гэж хэлэх нь ХУДАЛ — дахин нэвтрэх л хэрэгтэй.
         if (why === 'forbidden' && sessionLevelStale()) state._staffPinsErr = 'need_login';
       }
+      if (state._staffPinsErr === 'need_login') noteAuthFailure('ажилтны данс');
       if (netErr) state._staffPinsLoaded = false;   // түр алдаа — дараагийн render-д дахин оролдоно (render дуудахгүй тул давталт үүсэхгүй)
       else if (typeof render === 'function') render();
       return;
@@ -4466,6 +4500,7 @@ function renderTaskList() {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderDashboard, 'Тойм');
+    attachSessionBanner();   // «Нэвтрэлт дууссан» туузны товч
     // Dashboard action товчнууд
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
@@ -33523,6 +33558,7 @@ function renderDashboard() {
 
   return `
     <div class="dashboard">
+      ${sessionExpiredBannerHtml()}
       ${isCEO ? ceoNowStrip() : ''}
       <div class="dashboard-actions">
         <button class="btn" id="dash-export-csv">
@@ -37592,6 +37628,9 @@ async function ensurePushSubscription() {
       localStorage.setItem('pushSubLastSent', subStr + '::' + state.me + '::' + today);
       return true;
     }
+    // ⛔ Мэдэгдлийн бүртгэл унавал ажилтан push авахаа БҮРМӨСӨН больдог ч
+    //   дэлгэц дээр ямар ч ялгаа гардаггүй — тиймээс ил хэлнэ.
+    if (await n8nUnauthorized(r)) noteAuthFailure('мэдэгдэл бүртгэх');
     return false;
   } catch(e) {
     console.warn('Push subscribe failed:', e);

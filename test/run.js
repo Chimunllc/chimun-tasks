@@ -435,6 +435,25 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   }
   runIn("state.isCEO = false; localStorage.removeItem('sessionToken');");
 
+  // ── Сесс дууссаныг ил гаргах (2026-09-21) ──
+  runIn("state.sessionExpired = false;");
+  eq(F.sessionExpiredBannerHtml(), '', 'сесс: асуудалгүй бол тууз гарахгүй');
+  runIn("state.sessionExpired = true; state.sessionExpiredAt = 'мэдэгдэл бүртгэх';");
+  ok(/Дахин нэвтрэх/.test(F.sessionExpiredBannerHtml()), 'сесс: дууссан бол нэвтрэх товч');
+  ok(/мэдэгдэл бүртгэх/.test(F.sessionExpiredBannerHtml()), 'сесс: хаана унасныг хэлнэ');
+  runIn("state.sessionExpired = false; state.sessionExpiredAt = '';");
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    // ⛔ Нэвтрэлтийн бүтэлгүйтлийг чимээгүй кэш рүү унагаж БОЛОХГҮЙ — 14 хоногт
+    //   ажилтны жагсаалт 42, мэдэгдлийн бүртгэл 56 удаа чимээгүй унасан.
+    ok(/n8nUnauthorized\(r\)\) noteAuthFailure\('ажилтны жагсаалт'\)/.test(_src),
+       'scan: ажилтны жагсаалт унавал мэдэгдэнэ');
+    ok(/n8nUnauthorized\(r\)\) noteAuthFailure\('мэдэгдэл бүртгэх'\)/.test(_src),
+       'scan: мэдэгдлийн бүртгэл унавал мэдэгдэнэ');
+    ok(/\$\{sessionExpiredBannerHtml\(\)\}/.test(_src), 'scan: тууз Тойм дэлгэцэд гарна');
+    ok(/attachSessionBanner\(\)/.test(_src), 'scan: туузны товч холбогдсон');
+  }
+
   runIn("state._staffPinsErr = 'denied';");
   // ⛔ SCAN: хугацаа дууссан/гарын үсэг буруу токеныг «эрх алга» гэж бүү тайлбарла —
   //   хүн дахин нэвтрэхээ мэдэхгүй болно (амьд системд яг ингэж гацсан).

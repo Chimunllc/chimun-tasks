@@ -1326,6 +1326,10 @@ async function loadStaffPins() {
       state._staffPinsReason = why;               // оношилгоонд ил гарна
       state._staffPinsErr = relogin ? 'need_login' : (netErr || temp) ? 'retry' : 'denied';
       if (temp) { state._staffPinsLoaded = false; _staffPinsTries = Math.min(_staffPinsTries, 1); }
+      // ⛔ ТОДОРХОЙ ТАТГАЛЗЛЫГ ЧИМЭЭГҮЙ БҮҮ ӨНГӨРҮҮЛ (2026-09-21). Ажилтны данс
+      //   харагдахгүй болоход сервер талд ЮУ Ч үлддэггүй байсан тул шалтгааныг
+      //   зөвхөн таамаглах боломжтой байв (амьд системд 1 өдөр алдсан).
+      if (state._staffPinsErr === 'denied') dataLoadFailed('ажилтны данс (' + (why || '?') + ')', new Error('staff-pins ' + (why || 'denied')));
       if (netErr) state._staffPinsLoaded = false;   // түр алдаа — дараагийн render-д дахин оролдоно (render дуудахгүй тул давталт үүсэхгүй)
       else if (typeof render === 'function') render();
       return;
@@ -15254,7 +15258,7 @@ function staffAcctMissingHtml() {
 //    мөрөнд «данс — сервер эрх өгсөнгүй» гэж 14 удаа бичигдэхээс өөр юу ч болдоггүй
 //    байв: хүн юу хийхээ мэдэхгүй. Цалингийн дэлгэцийн ДЭЭД талд нэг тууз + ТОВЧ.
 function staffAcctBannerHtml() {
-  if (!canSeeStaffSensitive() || state._staffPinsErr === '') return '';
+  if (!canSeeStaffSensitive() || !state._staffPinsErr) return '';   // ⚠ ачаалагдаагүй үед ХУДАЛ анхааруулга гаргахгүй
   if (state._staffPinsErr === 'need_login')
     return `<div class="staff-pin-banner">🔒 Ажилтны <b>данс</b> харагдахгүй байна — нэвтрэлтийн хугацаа дууссан. <button class="btn btn-primary ui-raw" id="sal-acct-relogin">Дахин нэвтрэх</button></div>`;
   if (state._staffPinsErr === 'retry')

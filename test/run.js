@@ -414,6 +414,9 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   ok(/ачаалж байна/.test(F.staffAcctBannerHtml()), 'данс: түр алдаанд ачаалж байна');
   runIn("state._staffPinsErr = '';");
   eq(F.staffAcctBannerHtml(), '', 'данс: асуудалгүй бол тууз гарахгүй');
+  // ⛔ Төлөв хараахан тодорхойгүй (анх ачаалж байгаа) үед ХУДАЛ анхааруулга гаргахгүй.
+  runIn("delete state._staffPinsErr;");
+  eq(F.staffAcctBannerHtml(), '', 'данс: ачаалагдаагүй үед тууз гарахгүй');
   runIn("state._staffPinsErr = 'denied';");
   // ⛔ SCAN: хугацаа дууссан/гарын үсэг буруу токеныг «эрх алга» гэж бүү тайлбарла —
   //   хүн дахин нэвтрэхээ мэдэхгүй болно (амьд системд яг ингэж гацсан).
@@ -423,6 +426,10 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
        'scan: хугацаа/гарын үсэг → дахин нэвтрэх');
     ok(/why === 'staff_unavailable'/.test(_src), 'scan: түр алдаа дахин оролдоно');
     ok(/attachStaffAcctBanner\(\)/.test(_src), 'scan: туузны товч холбогдсон');
+    // ⛔ Сервер тодорхой татгалзвал алдааны логт үлдэнэ — эс бөгөөс шалтгааныг
+    //   зөвхөн таамаглах болно (данс алга болоход сервер талд ул мөр үлддэггүй байв).
+    ok(/_staffPinsErr === 'denied'\) dataLoadFailed\(/.test(_src),
+       'scan: татгалзал алдааны логт бүртгэгдэнэ');
   }
   runIn("state._staffPinsErr = 'need_login';");
   ok(/дахин нэвтэрнэ/.test(F.staffAcctMissingHtml()), 'данс: токен дууссан бол «дахин нэвтэрнэ үү»');

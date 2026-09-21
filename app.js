@@ -1313,14 +1313,24 @@ async function loadStaffPins() {
       // bad_token = токен хүчингүй → дахин нэвтрэх. Сүлжээ/HTTP алдаа (d === null) = түр, дахин оролдоно.
       // ⚠ Сервер JSON-оор ok:false гэж хариулсан бол ШИЙДВЭРЭЭ гаргасан (эрх алга г.м.) —
       //   дахин оролдох нь утгагүй бөгөөд render бүрд хүсэлт явуулах давталт үүсгэнэ.
-      const badTok = d && d.reason === 'bad_token';
+      // ⛔ СЕРВЕРИЙН ШАЛТГААНЫГ БҮГДИЙГ «эрх алга» ГЭЖ БҮҮ НЭГТГЭ (2026-09-21).
+      //    Сервер 6 өөр шалтгаан буцаадаг (bad_token · bad_sig · bad_payload ·
+      //    expired · forbidden · staff_unavailable) атлаа апп бүгдийг «сервер эрх
+      //    өгсөнгүй» гэж харуулдаг байв — иймд ХУГАЦАА ДУУССАН токеныг хүн
+      //    «эрх байхгүй» гэж ойлгож, дахин нэвтрэхээ мэдэхгүй сууж байв.
+      //    Гарын үсэг/хугацаа = ДАХИН НЭВТРЭХ; staff_unavailable = түр, дахин оролдоно.
+      const why = String((d && d.reason) || '');
+      const relogin = ['bad_token', 'bad_sig', 'bad_payload', 'expired'].includes(why);
+      const temp = why === 'staff_unavailable';
       const netErr = !d && _staffPinsTries < 2;   // 2 оролдлогоос цааш барихгүй — доорх давталтын хамгаалалт
-      state._staffPinsErr = badTok ? 'need_login' : netErr ? 'retry' : 'denied';
+      state._staffPinsReason = why;               // оношилгоонд ил гарна
+      state._staffPinsErr = relogin ? 'need_login' : (netErr || temp) ? 'retry' : 'denied';
+      if (temp) { state._staffPinsLoaded = false; _staffPinsTries = Math.min(_staffPinsTries, 1); }
       if (netErr) state._staffPinsLoaded = false;   // түр алдаа — дараагийн render-д дахин оролдоно (render дуудахгүй тул давталт үүсэхгүй)
       else if (typeof render === 'function') render();
       return;
     }
-    state._staffPinsErr = '';
+    state._staffPinsErr = ''; state._staffPinsReason = '';
     const byPhone = {}, bySens = {};
     d.team.forEach(x => {
       const p = String(x.phone || '').replace(/\D/g, ''); if (!p) return;
@@ -15235,10 +15245,30 @@ function salaryStaff() {
 function staffAcctMissingHtml() {
   const warn = t => `<div style="font-size:11px;color:var(--muted);margin-top:2px;">🏦 ${t}</div>`;
   if (!canSeeStaffSensitive()) return warn('данс — харах эрх алга');
-  if (state._staffPinsErr === 'denied') return warn('данс — сервер эрх өгсөнгүй');
+  if (state._staffPinsErr === 'denied') return warn('данс — эрх алга' + (state._staffPinsReason ? ` (${state._staffPinsReason})` : ''));
   if (state._staffPinsErr === 'need_login') return warn('данс — дахин нэвтэрнэ үү');
   if (!state._staffPinsLoaded || state._staffPinsErr === 'retry') return warn('данс ачаалж байна…');
   return `<div style="font-size:11px;color:var(--danger);margin-top:2px;">🏦 данс бүртгэгдээгүй</div>`;
+}
+// ⛔ БҮТЭЛГҮЙТЭЛ ЗӨВХӨН ЖИЖИГ САРААГАР ХЭЛЭГДЭЖ БОЛОХГҮЙ (2026-09-21). 14 ажилтны
+//    мөрөнд «данс — сервер эрх өгсөнгүй» гэж 14 удаа бичигдэхээс өөр юу ч болдоггүй
+//    байв: хүн юу хийхээ мэдэхгүй. Цалингийн дэлгэцийн ДЭЭД талд нэг тууз + ТОВЧ.
+function staffAcctBannerHtml() {
+  if (!canSeeStaffSensitive() || state._staffPinsErr === '') return '';
+  if (state._staffPinsErr === 'need_login')
+    return `<div class="staff-pin-banner">🔒 Ажилтны <b>данс</b> харагдахгүй байна — нэвтрэлтийн хугацаа дууссан. <button class="btn btn-primary ui-raw" id="sal-acct-relogin">Дахин нэвтрэх</button></div>`;
+  if (state._staffPinsErr === 'retry')
+    return `<div class="staff-pin-banner">⏳ Ажилтны данс ачаалж байна… <button class="btn ui-raw" id="sal-acct-retry">🔄 Дахин оролдох</button></div>`;
+  return `<div class="staff-pin-banner">⚠ Ажилтны данс серверээс ирсэнгүй${state._staffPinsReason ? ` — <b>${escapeHtml(state._staffPinsReason)}</b>` : ''}. <button class="btn ui-raw" id="sal-acct-retry">🔄 Дахин оролдох</button></div>`;
+}
+function attachStaffAcctBanner(root) {
+  const el = root || document;
+  el.querySelector('#sal-acct-relogin')?.addEventListener('click', () => { logout(); });
+  el.querySelector('#sal-acct-retry')?.addEventListener('click', () => {
+    state._staffPinsLoaded = false; state._staffPinsErr = ''; state._staffPinsReason = ''; _staffPinsTries = 0;
+    if (typeof showToast === 'function') showToast('Ажилтны данс дахин ачаалж байна…', 'info', 1800);
+    loadStaffPins();
+  });
 }
 function payrollTabBar(canSal, canHr) {
   const tab = (key, label) => `<button data-payroll-tab="${key}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${state.payrollTab === key ? 'var(--primary)' : 'transparent'};background:none;color:${state.payrollTab === key ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${label}</button>`;
@@ -15337,10 +15367,11 @@ function renderSalary() {
       </div>
     </div>`;
   }).join('');
-  return `<div style="padding:4px;">${head}${kpis}${ratesBar}${schedule}${searchBar}<div class="sal-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
+  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${kpis}${ratesBar}${schedule}${searchBar}<div class="sal-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
 }
 
 function attachSalaryHandlers() {
+  attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
   document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('sal-search');

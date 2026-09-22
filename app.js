@@ -5235,6 +5235,20 @@ function openingSignBlock(p, me, canApprove) {
   return '';
 }
 
+/* ЭХНИЙ ҮЛДЭГДЭЛ ДЭЭР ЭВДРЭЛИЙГ ЯЛГАНА (2026-09-22).
+   Тоолох үед «106 ш» гэдэг нь 106 нь БҮТЭН гэсэн үг биш — дунд нь эвдэрсэн,
+   засварт байх нь бий. Ялгаж бүртгэхгүй бол суурь нь «бүгд бүтэн» гэж
+   хөлдөж, боломжит нөөц хэтрэн харагдана (давхар захиалгын эх үүсвэр).
+   ⛔ Эвдэрсэн нь НИЙТ тооны ДОТОР — хасах биш. Барааг агуулахад байгаа
+     нийт тоогоор нь бүртгээд, эвдэрсэн хэсгийг нь засварын бүртгэлээр
+     тэмдэглэнэ (боломжит нөөц = нийт − эвдэрсэн − засварт).
+   Цэвэр функц — тестлэгдэнэ. */
+function openingCountSplit(total, damaged) {
+  const t = Math.max(0, Math.round(Number(total) || 0));
+  const d = Math.min(t, Math.max(0, Math.round(Number(damaged) || 0)));
+  return { total: t, damaged: d, good: t - d };
+}
+
 /* ↩ БУЦААХ — буруу дарсныг засах зам (2026-09-22).
    Өмнө нь гарын үсэг нэг чиглэлтэй байв: буруу дарсан батлалтыг ч, буруу
    тоолсныг ч эргүүлэх UI БАЙХГҮЙ. Хүн дарж амжаад «дахин өөрчилж чадахгүй»
@@ -5552,7 +5566,7 @@ async function saveStockCount({ sessionId, sku, systemQty, countedQty, repairQty
    «шалгасан, зөв байсан» гэдэг нь суурийг итгэл хүлээхүйц болгодог мэдээлэл.
    ⚠ Бичилт зөвхөн `saveProduct`-аар: нөөцийн дэвтэр, кэш, сонголттой баганын
      хамгаалалт бүгд тэнд. Тусад нь бичих зам гаргахгүй (scan-тест хаана). */
-async function confirmOpeningStock(sku, countedQty) {
+async function confirmOpeningStock(sku, countedQty, damagedQty) {
   if (!canProductPart('stock')) { showToast('Танд нөөц засах эрх алга', 'warn', 3000); return false; }
   const p = productBySku(sku);
   if (!p) { showToast('Бараа олдсонгүй', 'error', 3000); return false; }
@@ -5566,6 +5580,15 @@ async function confirmOpeningStock(sku, countedQty) {
   await saveProduct({ ...p, stock: Math.max(0, cur + d), qty_mevent: nm, qty_chimun: nc,
     stock_opened_at: new Date().toISOString(), stock_opened_by: state.me || '',
     _moveReason: 'opening', _moveNote: d ? 'эхний үлдэгдэл — зөрүү залруулав' : 'эхний үлдэгдэл баталгаажив' });
+  // 🔧 Эвдэрсэн хэсэг — засварын бүртгэлээр тэмдэглэнэ (боломжит нөөцөөс хасагдана).
+  // ⚠ `ensureRepairRecord` нь ижил бараанд байгаа хүлээгдэж буй бичлэгийг
+  //   ШИНЭЧИЛНЭ (шинийг нэмэхгүй) тул дахин тоолоход давхардахгүй.
+  const dmg = openingCountSplit(q, damagedQty).damaged;
+  if (dmg > 0) {
+    await ensureRepairRecord({ sku: p.sku, name: p.name || '', qty: dmg, orderNumber: 0,
+      note: 'Эхний үлдэгдэл — тоолоход эвдэрсэн', by: state.me || '' });
+    await loadRepairs();
+  }
   return true;
 }
 
@@ -5583,6 +5606,57 @@ async function approveOpeningStock(sku) {
   await saveProduct({ ...p,
     stock_approved_at: new Date().toISOString(), stock_approved_by: state.me || '' });
   return true;
+}
+
+/* Тоолох цонх — нийт ба «үүнээс эвдэрсэн». Товч дарахад шууд бүртгэхгүй,
+   эвдрэлийг асууна: тоолж байгаа хүн яг тэр мөчид л мэддэг. */
+function openOpeningCountModal(sku, preQty) {
+  const p = productBySku(sku);
+  if (!p) { showToast('Бараа олдсонгүй', 'error', 3000); return; }
+  document.getElementById('op-count-modal')?.remove();
+  const total = Math.max(0, Math.round(Number(preQty) || 0));
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'op-count-modal';
+  modal.innerHTML = `
+    <div class="modal opc-modal">
+      <h2>${escapeHtml(p.name || sku)}</h2>
+      <p class="opc-hint">Агуулахад БАЙГАА нийт тоог бичнэ — эвдэрсэн нь ч тоонд орно.
+        Эвдэрсэн хэсгийг нь доор ялгавал боломжит нөөцөөс хасагдана.</p>
+      <label class="opc-l">Нийт тоолсон</label>
+      <input id="opc-total" type="number" min="0" class="ui-raw" value="${total}">
+      <label class="opc-l">Үүнээс эвдэрсэн / засвартай</label>
+      <input id="opc-dmg" type="number" min="0" class="ui-raw" value="0">
+      <div id="opc-sum" class="opc-sum"></div>
+      <div class="modal-actions opc-act">
+        <button class="btn" id="opc-cancel">Болих</button>
+        <button class="btn btn-primary" id="opc-save">✓ Бүртгэх</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const $t = modal.querySelector('#opc-total'), $d = modal.querySelector('#opc-dmg');
+  const sync = () => {
+    const r = openingCountSplit($t.value, $d.value);
+    // ⚠ Эвдэрсэн нь нийтээс их бичигдвэл ЧИМЭЭГҮЙ тайрахгүй — хүнд ил хэлнэ.
+    const over = Math.round(Number($d.value) || 0) > r.total;
+    modal.querySelector('#opc-sum').innerHTML = over
+      ? `<span class="opc-bad">⚠ Эвдэрсэн нь нийтээс их байна — ${r.damaged} ш болгож тоолно.</span>`
+      : `Бүтэн <b>${r.good}</b> ш${r.damaged ? ` · 🔧 эвдэрсэн <b>${r.damaged}</b> ш` : ''}`;
+  };
+  $t.addEventListener('input', sync); $d.addEventListener('input', sync); sync();
+  const close = () => modal.remove();
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#opc-cancel').onclick = close;
+  modal.querySelector('#opc-save').onclick = async (e) => {
+    const r = openingCountSplit($t.value, $d.value);
+    const btn = e.currentTarget; btn.disabled = true;
+    try {
+      const okd = await confirmOpeningStock(sku, r.total, r.damaged);
+      if (okd) { close(); showToast(r.damaged ? `✓ Баталгаажлаа · 🔧 ${r.damaged} ш засварт` : '✓ Баталгаажлаа', 'success', 2200); render(); }
+      else btn.disabled = false;
+    } catch (err) { showToast('⚠ Хадгалагдсангүй: ' + err.message, 'error', 5000); btn.disabled = false; }
+  };
+  setTimeout(() => $t.focus(), 30);
 }
 
 /* ↩ Батлалтыг буцаана — бараа «батлах хүлээж буй» төлөв рүү эргэнэ.
@@ -20973,10 +21047,9 @@ function attachStockCountHandlers() {
       if (!Number.isFinite(q) || q < 0) { showToast('Тоо буруу байна', 'warn', 2500); return; }
       btn.disabled = true;
       try {
-        const okd = await confirmOpeningStock(sku, q);
-        if (okd) { showToast('✓ Баталгаажлаа', 'success', 1800); render(); }
-        else btn.disabled = false;
-      } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
+        openOpeningCountModal(sku, q);
+        btn.disabled = false;
+      } catch (e) { showToast('⚠ Нээгдсэнгүй: ' + e.message, 'error', 5000); btn.disabled = false; }
     });
   });
   // ↩ Буруу дарсныг засах. ⛔ Баталгаажуулалтгүй байж болохгүй — нэг товшилтоор

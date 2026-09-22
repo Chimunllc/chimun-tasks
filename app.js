@@ -25282,12 +25282,18 @@ function openNewOrder(editOrder) {
        ба нуугдсан үед шаардлага ажиллавал гацаадаг байв. Цонх нь ҮРГЭЛЖ гарч
        ирнэ — CSS, байрлал, нуултаас ОГТ хамаарахгүй. Захиалгын засварын
        шалтгаантай ИЖИЛ урсгал — хүн нэг замыг сурна. */
+    /* ━━━ ШАЛТГААН = ЗААВАЛ БИШ (2026-09-22, CEO гомдол) ━━━━━━━━━━━━━━━━
+       ⛔ АЖЛЫГ ЗОГСООХГҮЙ. Анх шалтгаангүй бол хадгалахгүй байсан — хөнгөлөлт
+       өгөх гэсэн хүн захиалгаа хадгалж чадахгүй болж амьд системд ажил зогссон.
+       CLAUDE.md: «Гараар нэмэлт бичүүлдэг боломж ҮХДЭГ» — бүртгэл ажлын
+       урсгалыг зогсоох ёсгүй. Цонх гарна, хоосон үлдээвэл Ч ХАДГАЛАГДАНА. */
     let _discWhy = isEdit ? orderDiscountReason(editOrder) : '';
     if (_manualDiscUsed) {
       const _ans = await showPrompt(
-        `Авто хоногийн хөнгөлөлтөөс ИЛҮҮ ${fmtMoney(discount)} хөнгөлж байна.\n\nЯагаад хямдруулсан бэ?`,
+        `Авто хоногийн хөнгөлөлтөөс ИЛҮҮ ${fmtMoney(discount)} хөнгөлж байна.\n\nЯагаад хямдруулсан бэ? (заавал биш)`,
         { title: '🏷 Хөнгөлөлтийн шалтгаан', placeholder: 'ж: тогтмол харилцагч / харилцагчтай тохирсон', okText: 'Хадгалах', defaultValue: _discWhy });
-      if (!String(_ans || '').trim()) { showToast('Хөнгөлөлтийн шалтгаан бичээгүй — хадгалаагүй', 'warn', 4500); return; }
+      // Цуцлах (null) = хадгалахаа больсон; хоосон бичвэр = шалтгаангүй хадгална
+      if (_ans === null) return;
       _discWhy = String(_ans).trim();
     }
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
@@ -25317,7 +25323,7 @@ function openNewOrder(editOrder) {
       _sm.notes = appendOrderNote(isEdit ? orderNotesOf(editOrder) : [], _noteTxt, state.me || '');
     }
     // Хөнгөлөлтийн бичлэг — шалтгаантайгаа. Гар хөнгөлөлт арилвал бичлэг ч арилна.
-    if (_manualDiscUsed) {
+    if (_manualDiscUsed && _discWhy) {
       _sm = Object.assign({}, (_sm && typeof _sm === 'object' && !Array.isArray(_sm)) ? _sm : {});
       _sm.discount = { at: new Date().toISOString(), by: state.me || '', amount: discount, reason: _discWhy.slice(0, 200) };
     } else if (isEdit && orderDiscountReason(editOrder)) {

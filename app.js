@@ -6589,6 +6589,28 @@ function orderDiscountAmount(subtotal, days, dtype, dval) {
   const manualDisc = dtype === 'pct' ? Math.round(subtotal * Math.min(100, Number(dval) || 0) / 100) : Math.min(subtotal, Number(dval) || 0);
   return Math.min(subtotal, Math.max(autoDisc, manualDisc));
 }
+/* ━━━ «ТОХИРСОН ЭЦСИЙН ДҮН» → ХӨНГӨЛӨЛТИЙН ДҮН (2026-09-22) ━━━━━━━━━━━━━━
+   Наймаа ЭЦСИЙН ДҮНГЭЭР явдаг («12 саягаар тохирлоо»), хөнгөлөлтийн дүнгээр
+   БИШ. Хүн зөрүүг бодож байх шаардлагагүй — систем урвуу бодно.
+   Захиалга 1532: авто 20% (2,630,600₮) илүү байсан тул гараар бичсэн 196,280₮
+   ЧИМЭЭГҮЙ хаягдсан (`orderDiscountAmount` = max(авто, гар)) — дүн өөрчлөгдөхгүй,
+   харилцагч 12 сая төлөөд 196,280₮ «дутуу» гэж үлдсэн.
+   ⚠ `fixed` = барьцаа + хүргэлт + ажлын бус цаг + суурилуулалт (хөнгөлөгдөхгүй хэсэг).
+   ⚠ НӨАТ хөнгөлөлт нь ХӨНГӨЛСӨН түрээсээс 5% тул урвуу бодолт хуваах үйлдэлтэй;
+     бөөрөнхийлөлтөөс 1₮ зөрөх тул дээр/доор 1 нэгжээр шалгаж ЯГ таарахыг авна. */
+function discountForFinal(subtotal, finalAmt, vatOn, fixed) {
+  subtotal = Math.max(0, Number(subtotal) || 0);
+  const F = Math.max(0, Number(finalAmt) || 0);
+  const fx = Math.max(0, Number(fixed) || 0);
+  const net = F - fx;                       // түрээсийн хэсэг (НӨАТ хасагдсаны дараах)
+  if (net <= 0) return subtotal;            // бүх түрээсийг хөнгөлнө
+  let rentalNet = vatOn ? Math.round(net / 0.95) : net;
+  for (const c of [rentalNet, rentalNet - 1, rentalNet + 1]) {
+    const v = vatOn ? Math.round(c * 0.05) : 0;
+    if (Math.max(0, c - v) + fx === F) { rentalNet = c; break; }
+  }
+  return Math.min(subtotal, Math.max(0, subtotal - rentalNet));
+}
 // Байнгын үйлчлүүлэгчийн хөнгөлөлт (%). app_config['loyalty_pct'] байвал түүгээр, эс бол 10.
 function loyaltyPct() { const v = Number(state.appConfig && state.appConfig.loyalty_pct); return (v > 0 && v <= 50) ? v : 10; }
 // Тухайн имэйл/утас ӨМНӨ захиалга хийж байсан эсэх (M-Event app_orders + Booqable түүх). draft/цуцлалт тооцохгүй.
@@ -24832,6 +24854,8 @@ function openNewOrder(editOrder) {
   const isEdit = !!editOrder;
   const items = isEdit ? (editOrder.items || []).map(x => ({ ...x })) : [];
   let depositManual = isEdit;   // засварт хадгалсан барьцаа хэвээр; шинэд авто
+  let _discNow = 0;   // сүүлд бодогдсон хөнгөлөлтийн ДҮН (recalc бичнэ) — хадгалахад дахин бодохгүй
+  let _manualDiscUsed = false;   // гар хөнгөлөлт ҮНЭХЭЭР хэрэглэгдсэн үү (шалтгаан шаардах эсэх)
   const depLog = isEdit ? (editOrder.deposit_log || []).slice() : [];
   const today = todayStr();
   const _t0 = (isEdit ? parseOrderTimes(editOrder.note) : null) || { sh: 9, eh: 9 };   // эхлэх/дуусах цаг (default 09:00)
@@ -24937,7 +24961,9 @@ function openNewOrder(editOrder) {
     <div class="no-col no-col-c">
     ${_sec('Төлбөр')}
     <div class="no-fields" style="margin-bottom:10px;">
-      <label class="no-lbl">Хөнгөлөлт<div class="no-inline"><select id="no-disctype" style="flex:0 0 58px;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0"></div></label>
+      <label class="no-lbl">Хөнгөлөлт<div class="no-inline"><select id="no-disctype" style="flex:0 0 118px;"><option value="amount">₮ хөнгөлөлт</option><option value="pct">% хөнгөлөлт</option><option value="final">= Тохирсон дүн</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0"></div>
+      <div id="no-disc-hint" class="no-disc-hint"></div>
+      <input id="no-disc-why" class="ui-raw no-disc-why" type="text" placeholder="Хөнгөлөлтийн шалтгаан (заавал)" value="${isEdit ? escapeHtml(orderDiscountReason(editOrder)) : ''}" hidden></label>
       <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
       ${isEdit ? `<label class="no-lbl no-wide">Төлсөн (банкны баримт)
         <div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:var(--fs-base);">${fmtMoney(editOrder.paid_mnt || 0)}${editOrder.paid_date ? ` <span style="font-weight:400;font-size:var(--fs-xs);color:var(--muted);">· ${escapeHtml(String(editOrder.paid_date).slice(0, 10))}</span>` : ''}</div>
@@ -25090,10 +25116,7 @@ function openNewOrder(editOrder) {
     const days = currentDays();
     const subtotal = perDay * days;   // түрээс = өдрийн дүн × хоног
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
-    const discount = orderDiscountAmount(subtotal, days, dtype, dval);   // C3: авто-хоног ба гар хямдралын их нь (сувгаар парити)
-    const rentalNet = Math.max(0, subtotal - discount);
     const vatOff = !!$('#no-vat')?.checked;
-    const vatDisc = vatOff ? Math.round(rentalNet * 0.05) : 0;   // НӨАТ хасалт — хямдарсан түрээсээс 5% (барьцаа/хүргэлтээс хасагдахгүй)
     const autoDep = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.deposit) || 0), 0);   // барьцаа = нэг удаагийн (хоногоор үржихгүй)
     if (!depositManual) depEl.value = moneyFmtInput(autoDep);
     const deposit = moneyVal(depEl);
@@ -25102,12 +25125,43 @@ function openNewOrder(editOrder) {
     const offFee = offN * tariffOffhoursFee();   // ажлын бус цаг (09:00–18:00-аас гадуур) авах/өгөх бүрт (сайттай ижил)
     const setupOn = dlv.zone !== 'pickup' && !!(($('#no-setup') || {}).checked);
     const setupFee = setupOn ? setupFeeForItems(items) : 0;   // суурилуулалт: бараа бүрийн тоо × нэгж хөлс, доод хязгаартай
+    // «Тохирсон дүн» горим — бичсэн эцсийн дүнгээс хөнгөлөлтийг УРВУУ бодно
+    const _fixed = deposit + dlv.fee + offFee + setupFee;
+    const _fromFinal = dtype === 'final' ? discountForFinal(subtotal, dval, vatOff, _fixed) : null;
+    const discount = _fromFinal == null
+      ? orderDiscountAmount(subtotal, days, dtype, dval)   // C3: авто-хоног ба гар хямдралын их нь (сувагаар парити)
+      : orderDiscountAmount(subtotal, days, 'amount', _fromFinal);
+    const rentalNet = Math.max(0, subtotal - discount);
+    const vatDisc = vatOff ? Math.round(rentalNet * 0.05) : 0;   // НӨАТ хасалт — хямдарсан түрээсээс 5% (барьцаа/хүргэлтээс хасагдахгүй)
+    _discNow = discount;   // ХАДГАЛАХАД ДАХИН БОДОХГҮЙ — дэлгэц дээр харсан тоо хадгалагдана
     const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee + offFee + setupFee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ + АЖЛЫН БУС ЦАГ + СУУРИЛУУЛАЛТ
     $('#no-perday').textContent = fmtMoney(perDay);
     $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
     $('#no-disc').textContent = '−' + fmtMoney(discount);
     { const _t = rentalDiscount(days); const _dl = $('#no-disc-lbl'); if (_dl) _dl.textContent = _t.pct > 0 ? `Хөнгөлөлт · ${days} хоног авто −${Math.round(_t.pct * 100)}%` : 'Хөнгөлөлт'; }   // C3: авто-хоногийн хямдрал ил
+    /* ХӨНГӨЛӨЛТ АЖИЛЛАЖ БАЙНА УУ — ИЛ ХЭЛНЭ (2026-09-22).
+       Захиалга 1532: авто 20% илүү байсан тул гараар бичсэн 196,280₮ ЧИМЭЭГҮЙ хаягдсан.
+       Ажилтан хөнгөлөв гэж бодоод явсан, дүн өөрчлөгдөөгүй — мөнгө дутах шалтгаан болсон. */
+    {
+      const _hint = $('#no-disc-hint'), _why = $('#no-disc-why');
+      const _autoD = Math.round(subtotal * (rentalDiscount(days).pct || 0));
+      const _wanted = _fromFinal != null ? _fromFinal
+        : (dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval));
+      const _manualUsed = dval > 0 && _wanted > _autoD;   // гар хөнгөлөлт ҮНЭХЭЭР хэрэглэгдсэн үү
+      if (_hint) {
+        _hint.hidden = !(dval > 0);
+        _hint.className = 'no-disc-hint' + (dval > 0 && !_manualUsed ? ' warn' : '');
+        _hint.textContent = dval <= 0 ? ''
+          : !_manualUsed
+            ? `⚠ Авто хөнгөлөлт ${fmtMoney(_autoD)} илүү тул таны бичсэн ${fmtMoney(_wanted)} ХЭРЭГЛЭГДЭХГҮЙ. Доош буулгах бол «= Тохирсон дүн»-ээр эцсийн дүнгээ бичнэ үӝ.`
+            : dtype === 'final'
+              ? `✓ Тохирсон ${fmtMoney(dval)} — хөнгөлөлт ${fmtMoney(discount)} (авто ${fmtMoney(_autoD)} + нэмэлт ${fmtMoney(Math.max(0, discount - _autoD))})`
+              : `✓ Хөнгөлөлт ${fmtMoney(discount)} хэрэглэгдэнэ (авто ${fmtMoney(_autoD)})`;
+      }
+      if (_why) _why.hidden = !_manualUsed;   // шалтгаан зөвхөн ГАР хөнгөлөлт хэрэглэгдсэн үед
+      _manualDiscUsed = _manualUsed;
+    }
     $('#no-vatrow').style.display = vatOff ? 'flex' : 'none';
     $('#no-vat-amt').textContent = '−' + fmtMoney(vatDisc);
     $('#no-dep').textContent = fmtMoney(deposit);
@@ -25195,7 +25249,9 @@ function openNewOrder(editOrder) {
     const days = currentDays();
     const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) * days;
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
-    const discount = orderDiscountAmount(subtotal, days, dtype, dval);   // C3: авто-хоног ба гар хямдралын их нь (сувгаар парити)
+    // ХӨНГӨЛӨЛТ = recalc дээр БОДОГДСОН ДҮН (`_discNow`) — дэлгэц дээр харсан тоо
+    // ЯГ тэр чигээр хадгалагдана. «Тохирсон дүн» горим дахин бодогдвол зөрөх эрсдэлтэй.
+    const discount = _discNow;
     const vatOff = !!$('#no-vat')?.checked;
     const vatDisc = vatOff ? Math.round(Math.max(0, subtotal - discount) * 0.05) : 0;
     const total = Math.max(0, subtotal - discount - vatDisc);
@@ -25220,6 +25276,15 @@ function openNewOrder(editOrder) {
     }
     const prevDep = isEdit ? Number(editOrder.deposit_mnt) || 0 : 0;
     if (deposit !== prevDep) depLog.push({ by: state.me, at: new Date().toISOString(), from: prevDep, to: deposit });
+    /* ━━━ ГАР ХӨНГӨЛӨЛТ → ШАЛТГААН ЗААВАЛ (2026-09-22) ━━━━━━━━━━━━━━━━
+       «Яагаад хямдруулсан бэ?» гэдэг нь ашгийн шинжилгээний цорын ганц хариулт. Авто
+       хоногийн хөнгөлөлтөөс ИЛҮҮ өгсөн үед Л асууна — авто нь тарифын дүрэм, шалтгаангүй. */
+    const _discWhy = String((($('#no-disc-why') || {}).value) || '').trim();
+    if (_manualDiscUsed && !_discWhy) {
+      showToast('Хөнгөлөлтийн шалтгаан бичнэ үӝ — хадгалаагүй', 'warn', 4500);
+      $('#no-disc-why')?.focus();
+      return;
+    }
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
     const _ci = {
       ctype: ($('#no-ctype')?.value === 'org') ? 'org' : 'person',
@@ -25246,6 +25311,14 @@ function openNewOrder(editOrder) {
       _sm = Object.assign({}, (_sm && typeof _sm === 'object' && !Array.isArray(_sm)) ? _sm : {});
       _sm.notes = appendOrderNote(isEdit ? orderNotesOf(editOrder) : [], _noteTxt, state.me || '');
     }
+    // Хөнгөлөлтийн бичлэг — шалтгаантайгаа. Гар хөнгөлөлт арилвал бичлэг ч арилна.
+    if (_manualDiscUsed) {
+      _sm = Object.assign({}, (_sm && typeof _sm === 'object' && !Array.isArray(_sm)) ? _sm : {});
+      _sm.discount = { at: new Date().toISOString(), by: state.me || '', amount: discount, reason: _discWhy.slice(0, 200) };
+    } else if (isEdit && orderDiscountReason(editOrder)) {
+      _sm = Object.assign({}, (_sm && typeof _sm === 'object' && !Array.isArray(_sm)) ? _sm : {});
+      delete _sm.discount;
+    }
     if (isEdit && _newSt !== editOrder.status) {
       const _lbl = k => (BQ_STATUS[k] || {}).label || k;
       _sm = Object.assign({}, (_sm && typeof _sm === 'object' && !Array.isArray(_sm)) ? _sm : {});
@@ -25259,7 +25332,11 @@ function openNewOrder(editOrder) {
       customer, phone: $('#no-phone').value.trim(), email: $('#no-email').value.trim(), delivery_address: isDeliv ? addr : '',
       status: _newSt, stage_meta: _sm,
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
-      items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: (dtype === 'pct' ? Math.min(100, dval) : dval),   // C9: pct-ыг 100%-аар кэплэж хадгална
+      items, subtotal_mnt: subtotal,
+      // ⛔ «final» бол ЗӨВХӨН ОРОЛТЫН горим — DB-д БАЙХГҮЙ. Бодогдсон хөнгөлөлтийг
+      // `amount` болгож хадгална; эс бөгөөс карт/тайлан/үнийн санал танихгүй төрлөөр буруу бодно.
+      discount_type: (dtype === 'final' ? (discount > 0 ? 'amount' : null) : (dval ? dtype : null)),
+      discount_value: (dtype === 'final' ? discount : (dtype === 'pct' ? Math.min(100, dval) : dval)),   // C9: pct-ыг 100%-аар кэплэж хадгална
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: _paidNow,
       note: setCustInfo(((isEdit ? stripFormTokens(_noteNow) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + ' ' + encodeLeadSource(_lead)).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
@@ -25572,6 +25649,8 @@ function bqOrderCard(o) {
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
+    ${(() => { const _dr = orderDiscountReason(o); const _dm = o.stage_meta && o.stage_meta.discount;
+      return _dr ? `<div class="order-meta order-disc">🏷 Хөнгөлөлт${_dm && _dm.amount ? ' −' + fmtMoney(_dm.amount) : ''}: ${escapeHtml(_dr)}${_dm && _dm.by ? ` <span class="order-note-by">— ${escapeHtml(memberName(_dm.by) || _dm.by)}</span>` : ''}</div>` : ''; })()}
     ${(() => { const _e = orderEditsOf(o); if (!_e.length) return ''; const _l = _e[_e.length - 1];
       return `<div class="order-meta order-edits" title="${escapeHtml(_e.map(x => `${String(x.at || '').slice(0, 10)} · ${memberName(x.by) || x.by || '?'} — ${x.reason || ''}`).join('\n'))}">✎ Засварласан: ${escapeHtml(String(_l.reason || ''))} <span class="order-note-by">— ${escapeHtml(memberName(_l.by) || _l.by || '?')} · ${escapeHtml(String(_l.at || '').slice(0, 10))}${_e.length > 1 ? ` · +${_e.length - 1}` : ''}</span></div>`; })()}
     ${(() => { const _n = lastOrderNote(o); if (!_n) return ''; const _cnt = orderNotesOf(o).length; return `<div class="order-meta order-note">📝 ${escapeHtml(_n.text)} <span class="order-note-by">— ${escapeHtml(memberName(_n.by) || _n.by || '?')} · ${escapeHtml(String(_n.at || '').slice(0, 10))}${_cnt > 1 ? ` · +${_cnt - 1}` : ''}</span></div>`; })()}
@@ -31182,6 +31261,13 @@ function appendOrderNote(list, text, by, at) {
    шалтгаантайгаа `stage_meta.edits`-д үлдэнэ. Түгжээг авсаны хариу — засвар
    чөлөөтэй болсон тул «хэн юуг яагаад» гэдэг мөрдөгдөх ёстой.
    ⛔ Append-only — хуучин бичлэгийг ХЭЗЭЭ Ч дарж бичихгүй. */
+/* ХӨНГӨЛӨЛТИЙН ШАЛТГААН (2026-09-22) — `stage_meta.discount`.
+   Гар хөнгөлөлт ҮНЭХЭЭР хэрэглэгдсэн үед заавал — «яагаад хямдруулсан бэ?»
+   гэдэг ашгийн шинжилгээний цорын ганц хариулт. */
+function orderDiscountReason(o) {
+  const d = o && o.stage_meta && o.stage_meta.discount;
+  return (d && typeof d === 'object') ? String(d.reason || '') : '';
+}
 function orderEditsOf(o) {
   const e = o && o.stage_meta && o.stage_meta.edits;
   return Array.isArray(e) ? e.filter(x => x && typeof x === 'object') : [];

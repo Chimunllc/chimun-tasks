@@ -27669,36 +27669,43 @@ function attachReceivablesHandlers() {
   document.querySelectorAll('.ar-wrap [data-nomaad-income]').forEach(b => b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome)));
 }
 
-// CEO "Яг одоо" тууз (Тойм дээд талд) — энэ сарын орлого · нийт авлага · ойртож буй хүргэлт/буцаалт.
+/* ━━━ ОЙРЫН 7 ХОНОГ — цэвэр функц (2026-09-22) ━━━━━━━━━━━━━━━━━━━
+   Гарах (эхлэх огноотой, бэлтгэлийн шатанд) ба буцах (гарсан, дуусах огноотой)
+   захиалгын тоо. Өмнө `ceoNowStrip` дотор inline байсан тул тестлэгдэхгүй байв. */
+function ceoNowCounts(appOrders, nomaadOrders, today, days) {
+  const t = String(today || '');
+  const end = (t && typeof addDays === 'function') ? addDays(t, Number(days) || 7) : '';
+  const inWin = (x) => !!x && !!t && !!end && x >= t && x <= end;
+  let deliveries = 0, returns = 0;
+  (Array.isArray(appOrders) ? appOrders : []).forEach(o => {
+    const st = String((o && o.status) || '');
+    if (['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering'].includes(st)
+        && inWin(String((o && o.starts_at) || '').slice(0, 10))) deliveries++;
+    if (['started', 'rented', 'returning'].includes(st)
+        && inWin(String((o && o.stops_at) || '').slice(0, 10))) returns++;
+  });
+  (Array.isArray(nomaadOrders) ? nomaadOrders : []).forEach(o => {
+    if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return;
+    if (inWin(String((o && o.date_start) || '').slice(0, 10))) deliveries++;
+  });
+  return { deliveries, returns };
+}
+
+/* CEO «Яг одоо» тууз (Тойм дээд талд) = ХОЁР КАРТ (2026-09-22, CEO).
+   Өмнө 4 байсан: орлого · авлага · хүргэлт · буцаалт. Гурав нь ДАРАГДАХГҮЙ,
+   үйлдэл төрүүлэхгүй тоо байв; орлого нь Санхүү → Тайланд бүрэн задаргаатай (давхардал).
+   ⛔ Тойм дээр ТОО БИШ, АЖИЛ байна — карт бүр ДАРАГДАЖ ажлын дэлгэц рүү хөтлөнө.
+      Дарагдахгүй тоо нэмэх бол түүнийг ХААНААС харахыг эхлээд бод. Scan-тест хаана. */
 function ceoNowStrip() {
   if (state.appOrders === undefined && typeof loadAppOrders === 'function') loadAppOrders();   // орлого — амьд захиалгаас
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') loadNomaadOrders();
   if (!state.bqOrders && !state._bqOrdersLoading) loadOrdersData(); // захиалгууд (авлага/ойртож буй) — lazy
   const loadingBq = state.appOrders === undefined || state.nomaadOrders === undefined || !state.bqOrders;
-  const ym = todayStr().slice(0, 7);
-
-  // Энэ сарын орлого — Тайлангийн P&L-ийн ЯГ ижил функцээр (C6: нэг эх сурвалж). Захиалга (M-Event)
-  // + NOMAAD, суурь = finBasis() (Тайлантай ижил, toggle дагана). Өмнө CEO самбар түүхэн snapshot
-  // (_histCompute, accrual-хатуу + нэрийн шүүлт), Тайлан амьд appOrders (basis toggle, шүүлтгүй)
-  // гэсэн 2 өөр замаар тооцож зөрдөг байв.
-  const monthTotal = (finBranchPnl(ym, finBasis()).rows || []).reduce((s, r) => s + (Number(r.inc) || 0), 0);
-
-  // Нийт авлага
+  // Нийт авлага — ХҮН ЗАЛГАЖ авах ёстой мөнгө (үйлдэл төрүүлнэ)
   const ar = receivablesData();
   const arTotal = ar.bqTotal + ar.nomaadTotal;
   const overdueCnt = ar.items.filter(i => i.overdue).length;
-
-  // Ойртож буй 7 хоног
-  const today = todayStr();
-  const d7 = new Date(); d7.setDate(d7.getDate() + 7); const in7 = dateStr(d7);
-  const inWin = (s) => s && s >= today && s <= in7;
-  let deliveries = 0, returns = 0;
-  (state.appOrders || []).forEach(o => {
-    const st = String(o.status || '');
-    if (['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering'].includes(st) && inWin(String(o.starts_at || '').slice(0, 10))) deliveries++;
-    if (['started', 'rented', 'returning'].includes(st) && inWin(String(o.stops_at || '').slice(0, 10))) returns++;
-  });
-  (state.nomaadOrders || []).forEach(o => { if (!nomaadIsCancelled(o) && inWin(String(o.date_start || '').slice(0, 10))) deliveries++; });
+  const { deliveries, returns } = ceoNowCounts(state.appOrders, state.nomaadOrders, todayStr(), 7);
 
   const cell = (label, val, col, sub, view) => `<div ${view ? `data-ceo-now="${view}" ` : ''}style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:10px 12px;${view ? 'cursor:pointer;' : ''}">
     <div style="font-size:10.5px;color:var(--muted);">${label}</div>
@@ -27706,11 +27713,10 @@ function ceoNowStrip() {
     ${sub ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;">${sub}</div>` : ''}
   </div>`;
 
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px;">
-    ${cell('💰 Энэ сарын орлого', loadingBq ? '…' : fmtMoney(monthTotal), 'var(--ok)', ym)}
-    ${cell('📥 Нийт авлага', loadingBq ? '…' : fmtMoney(arTotal), 'var(--warn)', `${ar.items.length} захиалга${overdueCnt ? ` · ⚠${overdueCnt} хэтэрсэн` : ''}`, 'receivables')}
-    ${cell('🚚 Ойртож буй хүргэлт', loadingBq ? '…' : String(deliveries), deliveries ? 'var(--text)' : 'var(--muted)', '7 хоногт')}
-    ${cell('↩ Ойртож буй буцаалт', loadingBq ? '…' : String(returns), returns ? 'var(--text)' : 'var(--muted)', '7 хоногт')}
+  const _upcoming = deliveries + returns;
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px;">
+    ${cell('📥 Авах үлдсэн төлбөр', loadingBq ? '…' : fmtMoney(arTotal), 'var(--warn)', `${ar.items.length} захиалга${overdueCnt ? ` · ⚠${overdueCnt} хэтэрсэн` : ''}`, 'receivables')}
+    ${cell('🚚 Ойрын 7 хоног', loadingBq ? '…' : String(_upcoming), _upcoming ? 'var(--text)' : 'var(--muted)', `${deliveries} хүргэлт · ${returns} буцаалт`, 'orders')}
   </div>`;
 }
 

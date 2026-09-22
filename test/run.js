@@ -9235,6 +9235,71 @@ need(['orderCustType']);
      '⛔ барьцаа буцаасны дараа хиймэл «илүү төлөлт» гарахгүй');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ТӨЛБӨР ТӨЛСӨНИЙ ДАРАА ЗАСАГДАХ (2026-09-22, CEO шийдвэр)
+//
+// 79 идэвхтэй захиалгын 78 нь «гарсан есвэл төлөгдсөн» тул түгжээтэй байв —
+// түгжээ нь онцгой тохиолдол биш, үндсэн төлөв. Одоо хориг = ХААСАН САР Л.
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const chg = sandbox.orderMoneyChanged;
+  const dif = sandbox.orderEditDiff;
+  const eds = sandbox.orderEditsOf;
+  ok([chg, dif, eds].every(f => typeof f === 'function'), 'засвар: 3 туслах функц бий');
+
+  const I = (sku, qty, price) => ({ sku, name: sku, qty, price });
+  const base = { total_mnt: 500000, deposit_mnt: 150000, items: [I('M-204', 25, 5500), I('M-202', 5, 33000)] };
+
+  eq(chg(base, base), false, 'өөрчлөлтгүй: шалтгаан асуухгүй');
+  eq(chg(base, Object.assign({}, base, { items: [I('M-204', 3, 5500), I('M-202', 5, 33000)] })), true,
+     'сандал 25→ 3: өөрчлөгдсөн гэж илэрнэ');
+  eq(chg(base, Object.assign({}, base, { total_mnt: 379000 })), true, 'дүн буурвал: өөрчлөгдсөн');
+  eq(chg(base, Object.assign({}, base, { deposit_mnt: 0 })), true, 'барьцаа өөрчлөгдвөл: илэрнэ');
+  // ⛔ Барааны ДАРААЛАЛ өөрчлөгдсөн нь өөрчлөлт БИШ — худал шалтгаан асуухгүй
+  eq(chg(base, Object.assign({}, base, { items: [I('M-202', 5, 33000), I('M-204', 25, 5500)] })), false,
+     '⛔ зөвхөн дараалал солигдсон: шалтгаан асуухгүй');
+  // ҮНЭ өөрчлөгдвөл дүн ижил байсан ч илэрнэ (хөнгөлөлт нуухаас сэргийлнэ)
+  eq(chg(base, Object.assign({}, base, { items: [I('M-204', 25, 4000), I('M-202', 5, 33000)] })), true,
+     'үнэ өөрчлөгдвөл дүн ижил байсан ч илэрнэ');
+  eq(chg({}, {}), false, 'хог оролт: унахгүй');
+
+  // Зөрүү нь ХҮНД УНШИГДАХААР гарна
+  const d = dif(base, Object.assign({}, base, { total_mnt: 379000, items: [I('M-204', 3, 5500), I('M-202', 5, 33000)] }));
+  ok(d.some(x => x.k === 'Нийт дүн' && x.from === 500000 && x.to === 379000), 'зөрүү: нийт дүнгийн өөрчлөлт');
+  ok(d.some(x => x.k === 'M-204' && x.from === '25ш' && x.to === '3ш'), 'зөрүү: сандал 25ш → 3ш');
+  // Бараа хасах / нэмэх
+  const d2 = dif(base, Object.assign({}, base, { items: [I('M-202', 5, 33000), I('M-999', 2, 1000)] }));
+  ok(d2.some(x => x.k === 'M-204' && /хасав/.test(String(x.to))), 'зөрүү: хассан бараа ил');
+  ok(d2.some(x => x.k === 'M-999' && /нэмэв/.test(String(x.to))), 'зөрүү: нэмсэн бараа ил');
+
+  // Түүх нь append-only (хог оролтод хоосон)
+  eq(eds(null).length, 0, 'засварын түүх: хог оролтод хоосон');
+  eq(eds({ stage_meta: { edits: [{ at: 'x', reason: 'y' }, 'хог'] } }).length, 1, 'засварын түүх: зөвхөн объект');
+}
+
+// ━━━ SCAN: ТҮГЖЭЭ БУЦАЖ ИРЭХГҮЙ (2026-09-22) ━━━
+{
+  const at = src.indexOf('function openNewOrder');
+  ok(at > 0, 'scan: openNewOrder олдов');
+  const fn = src.slice(at, at + 56000);
+  ok(/const _locked = !!_lockedMonth/.test(fn),
+     'scan: түгжээ = ХААСАН САР л (статус/төлөлтөөр ТҮГЖИХГҮЙ)');
+  ok(!/_paidFull/.test(src),
+     '⛔ scan: «бүрэн төлөгдсөн → түгжих» буцаж ирээгүй (79-ийн 78 захиалга түгжигддэг байв)');
+  ok(!/\['rented', 'returning', 'returned', 'stopped', 'archived'\]\.includes\(String\(editOrder\.status/.test(src),
+     '⛔ scan: гарсан төлөвөөр түгжих буцаж ирээгүй');
+  // Шалтгаангүй бол ХАДГАЛАХГҮЙ — түгжээг авсаны хариу энэ
+  ok(/orderMoneyChanged\(editOrder, ord\)/.test(fn), 'scan: мөнгөн нөхцөлийн өөрчлөлт шалгагдана');
+  ok(/stage_meta\.edits = orderEditsOf\(editOrder\)\.concat/.test(fn),
+     'scan: засварын түүх append-only (хуучныг дарахгүй)');
+  // Мөнгө хөндөх зам тул сарын түгжээг АМЬДААР шалгана
+  const mc = fn.indexOf('orderMoneyChanged(editOrder, ord)');
+  ok(/loadClosedMonths\(true\)/.test(fn.slice(mc, mc + 600)),
+     'scan: засварын өмнө хаалтыг АМЬДААР шинэчлэнэ');
+  ok(/orderLockedMonth\(editOrder\) \|\| orderLockedMonth\(ord\)/.test(fn),
+     'scan: хаасан сарын захиалгын мөнгө өөрчлөгдөхгүй');
+}
+
 // SCAN — түүхий `total_mnt − paid_mnt` үлдэгдэл БУЦАЖ ИРЭХГҮЙ
 // Баримт мартагддаг; энэ тест мартагддаггүй.
 {

@@ -7595,3 +7595,17 @@ select.no-asar-len {
 .ocal-day { font-weight:800; margin-bottom:var(--space-2); }
 .ocal-sec { font-size:var(--fs-sm); font-weight:700; color:var(--muted); margin:var(--space-2) 0; }
 .ocal-hint { color:var(--muted); font-size:var(--fs-sm); text-align:center; padding:var(--space-4) 0; }
+
+/* Дүн шинжилгээ — «агуулахаас цагтаа гарсан» өдрийн задаргаа */
+.dsp-days { display:flex; flex-direction:column; gap:var(--space-1); margin-top:var(--space-2); }
+.dsp-day { display:grid; grid-template-columns:auto 1fr auto; gap:var(--space-2); align-items:center;
+  font-size:var(--fs-sm); }
+.dsp-day-d { color:var(--muted); font-variant-numeric:tabular-nums; }
+.dsp-day-bar { height:8px; border-radius:999px; background:var(--danger-soft); overflow:hidden; }
+.dsp-day-fill { display:block; height:100%; background:var(--ok); }
+.dsp-day-n { font-variant-numeric:tabular-nums; color:var(--muted); }
+.dsp-day-o { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:var(--space-1); }
+.dsp-chip { border:1px solid var(--border); border-radius:999px; background:var(--panel);
+  color:var(--danger); font:inherit; font-size:var(--fs-xs); font-weight:700;
+  padding:1px var(--space-2); cursor:pointer; }
+.rsrc-pct.ok { color:var(--ok); } .rsrc-pct.warn { color:var(--warn); } .rsrc-pct.bad { color:var(--danger); }

@@ -23500,6 +23500,23 @@ function reviewBlockHtml(orders) {
     ${show.map(row).join('')}
   </div>`;
 }
+// Сарын өдөр бүрийн задаргаа. Цэвэр функц — тестлэгдэнэ.
+// ⚠ Зөвхөн хэмжигдсэн өдрийг буцаана (dispatch тамгатай) — «өнөөдөр 0 захиалга»
+//   гэсэн хоосон мөрөөр тайланг дүүргэхгүй.
+function dispatchDayRows(orders, ym) {
+  const by = {};
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    const day = String(o.starts_at || '').slice(0, 10);
+    if (!day || day.slice(0, 7) !== ym) return;
+    const r = orderDispatchLate(o);
+    if (!r || r.wild) return;
+    const d = by[day] || (by[day] = { day, n: 0, late: 0, orders: [] });
+    d.n++;
+    if (!r.ok) { d.late++; d.orders.push({ number: o.number, customer: String(o.customer || ''), lateH: r.lateH }); }
+  });
+  return Object.values(by).sort((a, b) => a.day.localeCompare(b.day));
+}
 // Тоймын блок — «цагтаа гарсан уу». ⛔ Үнэлгээний картын ДЭРГЭД байрлана:
 // хоцролт нь муу үнэлгээний ШАЛТГААН тул хоёрыг тусад нь харуулбал хүн
 // холбохгүй. Ажил нь захиалгын карт дээр (🚚 шошго) — энд зөвхөн ХЭМЖҮҮР.
@@ -23512,17 +23529,17 @@ function dispatchBlockHtml(orders) {
   return `<div class="rv-card">
     <div class="rv-head">🚚 Агуулахаас цагтаа гарсан
       <span class="rv-sum">${DISPATCH_STAT_DAYS} хоног · ${st.n} захиалга</span></div>
-    <div class="dsp-pct ${cls}">${st.pct}%<span class="dsp-sub">${st.late ? `${st.late} хоцорсон · дунджаар ${st.avgLate} цаг` : 'бүгд цагтаа'}</span></div>
-    ${st.worst.map(w => `<div class="rv-row bad" data-rv-open="${escapeHtml(String(w.number ?? ''))}">
-      <span class="rv-st">${w.lateH} ц</span>
-      <span class="rv-nm">#${escapeHtml(String(w.number ?? '—'))} ${escapeHtml(w.customer)}</span>
-      <span class="rv-tx">хоцорч гарсан</span>
-      <span class="rv-at">${escapeHtml(w.day)}</span>
-    </div>`).join('')}
+    <div class="dsp-pct ${cls}">${st.pct}%<span class="dsp-sub">${st.late ? `${st.late} хоцорсон · дунджаар ${st.avgLate} цаг` : 'бүгд цагтаа'}</span>
+      <button class="btn btn-sm" id="dsp-more">Дэлгэрэнгүй →</button></div>
     ${(st.skipped || st.wild) ? `<div class="rv-note">⚠ ${st.skipped + st.wild} захиалга хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
   </div>`;
 }
 function attachReviewBlock(root) {
+  // ⛔ Хамгийн муу захиалгын ЖАГСААЛТ Тойм дээр БАЙХГҮЙ — зөвхөн Дүн шинжилгээнд.
+  //    Нэг жагсаалт хоёр газар байвал аль нь бүтэн болох нь мэдэгдэхгүй.
+  (root || document).querySelector('#dsp-more')?.addEventListener('click', () => {
+    state.view = 'reports'; state.reportsTab = 'reports'; render();
+  });
   (root || document).querySelectorAll('[data-rv-open]').forEach(el => el.addEventListener('click', () => {
     if (!canSeeOrders()) return;
     state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.rvOpen; render();
@@ -32001,10 +32018,42 @@ function renderReports() {
       <div class="rsrc-note">Харилцагч биднийг хаанаас олсон — захиалга бичих үед тэмдэглэгддэг. Зарын зарцуулалттай холбогдмогц суваг бүрийн өртөг гарна.</div>
     </div>`;
   })();
+  // ── АГУУЛАХААС ЦАГТАА ГАРСАН УУ — сараар, өдрөөр (2026-09-22) ──
+  // Тойм дээр зөвхөн хувь харагдана; ЗАДАРГАА нь энд. Хоёулаа `dispatchStats`
+  // -ээс гардаг тул тоо хэзээ ч зөрөхгүй.
+  const dispatchPanel = (() => {
+    if (!canSeeOrders()) return '';
+    const from = month + '-01';
+    const to = month + '-31';
+    const inMonth = (state.appOrders || []).filter(o => {
+      const d = String(o && o.starts_at || '').slice(0, 10);
+      return d >= from && d <= to;
+    });
+    const st = dispatchStats(inMonth, from);
+    const days = dispatchDayRows(inMonth, month);
+    if (!st.n && !st.skipped) return '';
+    const cls = st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';
+    const dayRow = d => `<div class="dsp-day${d.late ? ' bad' : ''}">
+      <span class="dsp-day-d">${escapeHtml(d.day.slice(5))}</span>
+      <span class="dsp-day-bar"><span class="dsp-day-fill" style="width:${Math.round((d.n - d.late) * 100 / d.n)}%"></span></span>
+      <span class="dsp-day-n">${d.n - d.late}/${d.n}</span>
+      <span class="dsp-day-o">${d.orders.map(o => `<button class="dsp-chip" data-rv-open="${escapeHtml(String(o.number ?? ''))}" title="${escapeHtml(o.customer)} — ${o.lateH} цаг хоцорсон">#${escapeHtml(String(o.number ?? '—'))} ${o.lateH}ц</button>`).join('')}</span>
+    </div>`;
+    return `<div class="rsrc-panel">
+      <div class="rsrc-title">🚚 Агуулахаас цагтаа гарсан · ${escapeHtml(month)}
+        <span class="rsrc-pct ${cls}">${st.pct === null ? '—' : st.pct + '%'}</span></div>
+      <div class="rsrc-note">${st.n} захиалга хэмжигдсэн${st.late ? ` · ${st.late} хоцорсон · дунджаар ${st.avgLate} цаг` : ' · бүгд цагтаа'}.
+        Хугацаа = ачих 1ц + зам (км÷60, хотод доод тал 1ц) + угсралттай бол 1ц + нөөц 30мин.</div>
+      ${days.length ? `<div class="dsp-days">${days.map(dayRow).join('')}</div>` : ''}
+      ${(st.skipped || st.wild) ? `<div class="rsrc-warn">⚠ ${st.skipped + st.wild} захиалга хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан. Тоо бодит байдлаас муу харагдаж болно.</div>` : ''}
+    </div>`;
+  })();
+
   return pnl
     + insightsBanner
     + ceoSections
     + trendChart
+    + dispatchPanel
     + srcPanel
     + leadPanel
     + incomeSections
@@ -32014,6 +32063,7 @@ function renderReports() {
     + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">${cards}</div>`;
 }
 function attachReportsHandlers() {
+  attachReviewBlock();   // 🚚 хоцорсон захиалгын чип → тэр захиалга руу үсэрнэ
   document.querySelectorAll('[data-report-month]').forEach(b => b.onclick = () => {
     const [y, m] = (state.reportMonth || todayStr().slice(0, 7)).split('-').map(Number);
     const d = new Date(y, m - 1 + Number(b.dataset.reportMonth), 1);

@@ -7117,6 +7117,14 @@ select.no-asar-len {
 .rv-nm { font-weight:700; white-space:nowrap; }
 .rv-tx { color:var(--text-soft); min-width:0; }
 .rv-at { color:var(--muted); font-size:var(--fs-xs); white-space:nowrap; }
+.dsp-pct { font-size:var(--fs-2xl); font-weight:800; margin-top:var(--space-2);
+  display:flex; align-items:baseline; gap:var(--space-3); flex-wrap:wrap; }
+.dsp-pct.ok { color:var(--ok); } .dsp-pct.warn { color:var(--warn); } .dsp-pct.bad { color:var(--danger); }
+.dsp-sub { font-size:var(--fs-sm); font-weight:600; color:var(--muted); }
+.rv-note { margin-top:var(--space-2); font-size:var(--fs-xs); color:var(--muted); }
+.dep-badge.dsp-late { color:var(--danger); }
+.dep-badge.dsp-ok { color:var(--ok); }
+.dep-badge.dsp-need { color:var(--muted); }
 @media (max-width: 620px) {
   .rv-row { grid-template-columns:auto 1fr; }
   .rv-tx { grid-column:1 / -1; }

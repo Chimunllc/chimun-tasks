@@ -23280,6 +23280,96 @@ function hasStageRecord(o) {
 // Дууссанд тооцогдох төлвүүд — эдгээрт дамжлагагүйгээр шилжихийг хориглоно.
 const ORDER_DONE_STATUSES = ['rented', 'returned', 'stopped', 'archived'];
 
+// ── ГАРАХ ЁСТОЙ ЦАГ (2026-09-22) ────────────────────────────────────────────
+// 1★ гомдол (захиалга дугаар 1526) нь хожимдлоос гарсан: эвент 13:00-д эхлэх
+// байтал бэлтгэл 13:01-д ЭХЭЛСЭН. Амьд датаар (07-01-ээс хойш хэмжигдэх 47
+// захиалга) бараа дунджаар эхлэхээс ердөө 0.4 цагийн өмнө агуулахаас гарч,
+// 19 нь эхэлсэн ХОЙНО гарсан.
+// ⛔ НЭГ ТОО БҮХ ЗАХИАЛГАД ТОХИРОХГҮЙ — 220 км явдаг захиалга дан замдаа
+//   4 цаг. Тиймээс зайнаас нь хамаарсан томьёо:
+//     ачих 1ц + зам (км ÷ 60, хотод доод тал нь 1ц) + угсралттай бол 1ц + нөөц 30мин.
+//   Хот = 2.5ц · 40 км = 2.7ц · 220 км = 5.2ц (угсралттай бол +1ц).
+// ⚠ `dispatch.at` нь ТОВЧ ДАРСАН цаг — бодит гарсан цаг биш. Хожуу дарсан
+//   бичлэг хоцролтыг хэтрүүлж харуулна (амьд датад −79 цаг гэсэн мөр байсан)
+//   тул `DISPATCH_WILD_H`-аас хэтэрсэн зөрүүг «бүртгэл алдаатай» гэж ялгана.
+const DISPATCH_LOAD_H = 1;      // ачих/угсрахад бэлдэх
+const DISPATCH_SETUP_H = 1;     // газар дээр угсрах
+const DISPATCH_BUFFER_H = 0.5;  // нөөц
+const DISPATCH_KMH = 60;        // замын дундаж хурд
+const DISPATCH_CITY_H = 1;      // хот доторх нэг хүргэлтийн доод зам (км нь 0 гэж бичигддэг)
+const DISPATCH_WILD_H = 24;     // үүнээс том зөрүү = товч хожуу дарсан, тоололд орохгүй
+
+// Тухайн захиалга агуулахаас ХЭЗЭЭ гарах ёстой вэ. Цэвэр функц — тестлэгдэнэ.
+// Буцаах: null (цаг тодорхойгүй) эсвэл { startMs, needMs, hours, km, setup }.
+function orderDispatchPlan(o) {
+  if (!o) return null;
+  const day = String(o.starts_at || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const t = parseOrderTimes(o.note);
+  if (!t) return null;                       // эхлэх цаггүй бол ТААМАГЛАХГҮЙ
+  const dlv = parseDelivery(o.note);
+  const deliver = !!(dlv && isDeliveryZone(dlv.zone));
+  const km = deliver ? (Number(dlv.km) || 0) : 0;
+  // ⛔ ХОТЫН ЗАХИАЛГАД км нь 0 гэж бичигддэг — түүнийг «зам байхгүй» гэж
+  //   уншвал хотын хүргэлт 0 минутын замтай болно. Хот доторх нэг хүргэлт
+  //   түгжрэлтэй ~1 цаг тул доод хэмжээ тавина.
+  const driveH = deliver ? Math.max(km / DISPATCH_KMH, DISPATCH_CITY_H) : 0;
+  const setup = setupFlagOf(o.note) === true;
+  const hours = DISPATCH_LOAD_H + driveH
+    + (setup ? DISPATCH_SETUP_H : 0) + DISPATCH_BUFFER_H;
+  // Эвентийн эхлэх мөч — УБ цаг (+08:00). Браузерын бүсээс хамаарахгүй.
+  const startMs = Date.parse(`${day}T${String(t.sh).padStart(2, '0')}:00:00+08:00`);
+  if (isNaN(startMs)) return null;
+  return { startMs, needMs: startMs - hours * 3600000, hours: Math.round(hours * 10) / 10, km, setup };
+}
+// Бодит гарсан (товч дарсан) цагтай тулгана. Буцаах: null | {lateH, ok, wild}.
+function orderDispatchLate(o) {
+  const plan = orderDispatchPlan(o);
+  if (!plan) return null;
+  const at = o && o.stage_meta && o.stage_meta.dispatch && o.stage_meta.dispatch.at;
+  const ms = Date.parse(String(at || ''));
+  if (!at || isNaN(ms)) return null;
+  const lateH = Math.round(((ms - plan.needMs) / 3600000) * 10) / 10;
+  return { lateH, ok: lateH <= 0, wild: Math.abs(lateH) > DISPATCH_WILD_H, plan };
+}
+// Захиалгын карт дээрх шошго. Хоцорсон бол улаан — ажилтан ШАЛТГААНЫГ нь
+// мэдэхийн тулд «гарах ёстой байсан цаг»-ийг ч харуулна.
+function dispatchChipHtml(o) {
+  const plan = orderDispatchPlan(o);
+  if (!plan) return '';
+  const need = ubStamp(new Date(plan.needMs).toISOString(), false);
+  const late = orderDispatchLate(o);
+  if (late && !late.wild && !late.ok) {
+    return `<span class="dep-badge dsp-late" title="Агуулахаас ${escapeHtml(need)} гэхэд гарах ёстой байсан (ачих ${DISPATCH_LOAD_H}ц + зам ${plan.km} км${plan.setup ? ' + угсралт' : ''} + нөөц)">⚠ ${late.lateH} ц хоцорсон</span>`;
+  }
+  if (late && late.ok) return `<span class="dep-badge dsp-ok" title="Агуулахаас цагтаа гарсан">🚚 цагтаа</span>`;
+  return `<span class="dep-badge dsp-need" title="Ачих ${DISPATCH_LOAD_H}ц + зам ${plan.km} км${plan.setup ? ' + угсралт 1ц' : ''} + нөөц 30мин">🚚 ${escapeHtml(need)} гэхэд гарна</span>`;
+}
+// Нэгтгэл — «хэдэн хувь нь цагтаа гарсан бэ». Цэвэр функц.
+// ⚠ Хэмжигдэхгүй захиалгыг (цаггүй, dispatch тамгагүй) ил тоолно — «100% цагтаа»
+//   гэсэн худал дүр зургаас сэргийлнэ.
+function dispatchStats(orders, fromDay) {
+  let n = 0, late = 0, wild = 0, skipped = 0, sumLate = 0;
+  const worst = [];
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    const day = String(o.starts_at || '').slice(0, 10);
+    if (fromDay && day < fromDay) return;
+    const r = orderDispatchLate(o);
+    if (!r) { if (o.stage_meta && o.stage_meta.dispatch) skipped++; return; }
+    if (r.wild) { wild++; return; }
+    n++;
+    if (!r.ok) { late++; sumLate += r.lateH; worst.push({ number: o.number, customer: String(o.customer || ''), lateH: r.lateH, day }); }
+  });
+  worst.sort((a, b) => b.lateH - a.lateH);
+  return {
+    n, late, wild, skipped,
+    pct: n ? Math.round((n - late) * 100 / n) : null,   // ⚠ хэмжих юмгүй бол null, 0 БИШ
+    avgLate: late ? Math.round((sumLate / late) * 10) / 10 : 0,
+    worst: worst.slice(0, 5),
+  };
+}
+
 // ── Хэрэглэгчийн үнэлгээ ────────────────────────────────────────────────────
 // Захиалга хаагдахад явдаг имэйл дэх «★ Үнэлнэ үү» холбоос нь n8n-ий
 // /webhook/order-review хуудсыг нээж, хариуг ЭНЭ захиалгын stage_meta.review-д
@@ -23318,6 +23408,28 @@ function reviewBlockHtml(orders) {
       <span class="rv-sum">${st.avg} дундаж · ${st.n} хариулт</span></div>
     ${st.bad.length ? `<div class="rv-warn">${st.bad.length} хүн сэтгэл дундуур байна — залгаж уучлал хүс.</div>` : ''}
     ${show.map(row).join('')}
+  </div>`;
+}
+// Тоймын блок — «цагтаа гарсан уу». ⛔ Үнэлгээний картын ДЭРГЭД байрлана:
+// хоцролт нь муу үнэлгээний ШАЛТГААН тул хоёрыг тусад нь харуулбал хүн
+// холбохгүй. Ажил нь захиалгын карт дээр (🚚 шошго) — энд зөвхөн ХЭМЖҮҮР.
+const DISPATCH_STAT_DAYS = 60;
+function dispatchBlockHtml(orders) {
+  if (!canSeeOrders()) return '';
+  const st = dispatchStats(orders, addDays(todayStr(), -DISPATCH_STAT_DAYS));
+  if (!st.n) return '';
+  const cls = st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';
+  return `<div class="rv-card">
+    <div class="rv-head">🚚 Агуулахаас цагтаа гарсан
+      <span class="rv-sum">${DISPATCH_STAT_DAYS} хоног · ${st.n} захиалга</span></div>
+    <div class="dsp-pct ${cls}">${st.pct}%<span class="dsp-sub">${st.late ? `${st.late} хоцорсон · дунджаар ${st.avgLate} цаг` : 'бүгд цагтаа'}</span></div>
+    ${st.worst.map(w => `<div class="rv-row bad" data-rv-open="${escapeHtml(String(w.number ?? ''))}">
+      <span class="rv-st">${w.lateH} ц</span>
+      <span class="rv-nm">#${escapeHtml(String(w.number ?? '—'))} ${escapeHtml(w.customer)}</span>
+      <span class="rv-tx">хоцорч гарсан</span>
+      <span class="rv-at">${escapeHtml(w.day)}</span>
+    </div>`).join('')}
+    ${(st.skipped || st.wild) ? `<div class="rv-note">⚠ ${st.skipped + st.wild} захиалга хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
   </div>`;
 }
 function attachReviewBlock(root) {
@@ -25276,7 +25388,7 @@ function bqOrderCard(o) {
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
@@ -33631,6 +33743,7 @@ function renderDashboard() {
     <div class="dashboard">
       ${sessionExpiredBannerHtml()}
       ${reviewBlockHtml(state.appOrders || [])}
+      ${dispatchBlockHtml(state.appOrders || [])}
       ${isCEO ? ceoNowStrip() : ''}
       <div class="dashboard-actions">
         <button class="btn" id="dash-export-csv">

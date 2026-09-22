@@ -9542,6 +9542,84 @@ function safeViewHtml(fn, name) {
   }
 }
 
+// ── ЗАХИАЛГЫН КАЛЕНДАРЬ (2026-09-22) ────────────────────────────────────────
+// «Энэ өдөр юу гарах, юу буцаж ирэх вэ» гэдгийг жагсаалтаас уншиж болдоггүй
+// байв — өдөр бүрийн ачааллыг хүн толгойдоо угсардаг. Календарь нь ХОЁР л
+// зүйл хэлнэ: 🔵 гарах (starts_at) · 🟢 буцах (stops_at).
+// ⚠ Олон өдрийн захиалгыг ДУНД өдрүүдэд ДАВТАХГҮЙ — зөвхөн гарах ба буцах
+//   өдөрт нэг удаа. Эс бөгөөс 10 хоногийн түрээс календарийг дүүргэж,
+//   бодит ачаалал (гараад ирэх өдөр) живнэ.
+function ordersCalendarData(orders, ym) {
+  const out = {}, back = {};
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    const s = String(o.starts_at || '').slice(0, 10);
+    const e = String(o.stops_at || '').slice(0, 10) || s;
+    if (s.slice(0, 7) === ym) (out[s] = out[s] || []).push(o);
+    if (e && e.slice(0, 7) === ym) (back[e] = back[e] || []).push(o);
+  });
+  return { out, back };
+}
+// Сарын нүднүүд — эхний мөрийг ДАВААгаар эхлүүлнэ (Монголд долоо хоног Даваагаар).
+function calendarCells(ym) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+  if (!m) return [];
+  const y = +m[1], mo = +m[2];
+  const first = new Date(Date.UTC(y, mo - 1, 1));
+  const lead = (first.getUTCDay() + 6) % 7;            // Ням=0 → Даваа=0 болгоно
+  const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push(`${ym}-${String(d).padStart(2, '0')}`);
+  while (cells.length % 7) cells.push(null);
+  return cells;
+}
+function ordersCalendarHtml(orders) {
+  const ym = state.ordersCalYm || todayStr().slice(0, 7);
+  const data = ordersCalendarData(orders, ym);
+  const sel = state.ordersCalDay || '';
+  const wd = ['Да', 'Мя', 'Лха', 'Пү', 'Ба', 'Бя', 'Ня'];
+  const cells = calendarCells(ym).map(day => {
+    if (!day) return '<div class="ocal-c ocal-pad"></div>';
+    const o = (data.out[day] || []).length, b = (data.back[day] || []).length;
+    const cls = [day === todayStr() ? 'today' : '', day === sel ? 'on' : ''].filter(Boolean).join(' ');
+    return `<button class="ocal-c ${cls}" data-ocal-day="${day}">
+      <span class="ocal-d">${+day.slice(8)}</span>
+      <span class="ocal-dots">${o ? `<span class="ocal-b out">${o}</span>` : ''}${b ? `<span class="ocal-b back">${b}</span>` : ''}</span>
+    </button>`;
+  }).join('');
+  const list = sel
+    ? (() => {
+        const o = data.out[sel] || [], b = (data.back[sel] || []).filter(x => !o.includes(x));
+        if (!o.length && !b.length) return '<div class="orders-empty"><div class="icon">📭</div><div>Энэ өдөр захиалга алга.</div></div>';
+        return `<div class="ocal-day">${escapeHtml(sel)}</div>`
+          + (o.length ? `<div class="ocal-sec">🔵 Гарах (${o.length})</div>` + o.map(bqOrderCard).join('') : '')
+          + (b.length ? `<div class="ocal-sec">🟢 Буцах (${b.length})</div>` + b.map(bqOrderCard).join('') : '');
+      })()
+    : '<div class="ocal-hint">Өдөр дээр дарж тэр өдрийн захиалгыг хараарай.</div>';
+  return `<div class="ocal">
+    <div class="ocal-head">
+      <button class="btn btn-sm" data-ocal-mv="-1">‹</button>
+      <b>${escapeHtml(ym)}</b>
+      <button class="btn btn-sm" data-ocal-mv="1">›</button>
+      <span class="ocal-leg"><span class="ocal-b out">●</span> гарах <span class="ocal-b back">●</span> буцах</span>
+    </div>
+    <div class="ocal-grid">${wd.map(d => `<div class="ocal-wd">${d}</div>`).join('')}${cells}</div>
+    ${list}
+  </div>`;
+}
+function attachOrdersCalendar(root) {
+  const el = root || document;
+  el.querySelectorAll('[data-ocal-mv]').forEach(b => b.addEventListener('click', () => {
+    const ym = state.ordersCalYm || todayStr().slice(0, 7);
+    const d = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + Number(b.dataset.ocalMv), 1));
+    state.ordersCalYm = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    state.ordersCalDay = ''; render();
+  }));
+  el.querySelectorAll('[data-ocal-day]').forEach(b => b.addEventListener('click', () => {
+    state.ordersCalDay = state.ordersCalDay === b.dataset.ocalDay ? '' : b.dataset.ocalDay; render();
+  }));
+}
 function renderOrders() {
   // Захиалга = нэгдсэн (app_orders). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
   // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders
@@ -9571,6 +9649,7 @@ function renderOrders() {
   const head = `<div class="orders-head">
     ${canSeeOrderMoney() ? `<button class="btn btn-sm" id="orders-report-btn" title="Дууссан захиалгыг огноогоор харах + татах">📥 Дууссан</button>` : ''}
     ${state.isCEO ? `<button class="btn btn-sm${state.ordersSelect ? ' on' : ''}" id="orders-manage-btn">${state.ordersSelect ? '✕ Болих' : '☑ Удирдах'}</button>` : ''}
+    <button class="btn btn-sm${state.ordersCal ? ' on' : ''}" id="orders-cal-btn" title="Өдөр бүр юу гарах, юу буцаж ирэхийг харах">${state.ordersCal ? '📋 Жагсаалт' : '📅 Календарь'}</button>
     <button class="btn btn-sm btn-primary" id="new-order-btn">+ Шинэ захиалга</button>
   </div>`;
 
@@ -9722,6 +9801,11 @@ function renderOrders() {
       </div>`;
     }
   }
+  // Календарь = жагсаалтын ОРОН СУУЦ (хажууд нь биш) — хоёуланг зэрэг харуулбал
+  // аль нь идэвхтэйг хүн мэдэхгүй, дэлгэц ч хоёр дахин урт болно.
+  if (state.ordersCal) {
+    return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${ordersCalendarHtml(state.appOrders || [])}</div></div>`;
+  }
   return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${archBar}${body}</div></div>`;
 }
 
@@ -9868,6 +9952,12 @@ function attachOrdersHandlers() {
   }));
 
   // Банкны тулгалт — горим солих, хуулга оруулах, зөрүүтэй мөрөөс захиалга нээх
+  document.getElementById('orders-cal-btn')?.addEventListener('click', () => {
+    state.ordersCal = !state.ordersCal;
+    if (state.ordersCal && !state.ordersCalYm) state.ordersCalYm = todayStr().slice(0, 7);
+    render();
+  });
+  attachOrdersCalendar();
   document.getElementById('orders-recon-toggle')?.addEventListener('click', () => { state.ordersRecon = !state.ordersRecon; render(); });
   const reconFile = document.getElementById('recon-file');
   if (reconFile) reconFile.addEventListener('change', async (e) => {

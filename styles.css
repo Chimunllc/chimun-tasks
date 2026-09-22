@@ -7568,3 +7568,27 @@ select.no-asar-len {
   align-items: center;
   justify-content: center;
 }
+
+/* ── ЗАХИАЛГЫН КАЛЕНДАРЬ (2026-09-22) ──────────────────────────────────────
+   Өдөр бүр юу гарах (🔵) ба юу буцаж ирэх (🟢) вэ. Нүд дарахад тэр өдрийн
+   захиалга доор жагсана. */
+.ocal-head { display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-3); flex-wrap:wrap; }
+.ocal-leg { margin-left:auto; font-size:var(--fs-xs); color:var(--muted); display:flex; align-items:center; gap:var(--space-1); }
+.ocal-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:var(--space-1); margin-bottom:var(--space-3); }
+.ocal-wd { text-align:center; font-size:var(--fs-xs); color:var(--muted); padding-bottom:var(--space-1); }
+.ocal-c { display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:2px;
+  min-height:52px; padding:var(--space-2) 0; border:1px solid var(--border); border-radius:var(--r-md);
+  background:var(--panel); color:var(--text); font:inherit; cursor:pointer; }
+.ocal-c.ocal-pad { border-color:transparent; background:none; cursor:default; }
+.ocal-c.today { border-color:var(--primary); }
+.ocal-c.on { background:var(--panel-hover); border-color:var(--primary); }
+.ocal-d { font-size:var(--fs-sm); font-weight:700; }
+.ocal-dots { display:flex; gap:3px; }
+.ocal-b { min-width:16px; height:16px; line-height:16px; border-radius:999px; font-size:var(--fs-xs);
+  font-weight:800; color:#fff; padding:0 4px; }
+.ocal-b.out { background:var(--primary); }
+.ocal-b.back { background:var(--ok); }
+.ocal-leg .ocal-b { color:transparent; }
+.ocal-day { font-weight:800; margin-bottom:var(--space-2); }
+.ocal-sec { font-size:var(--fs-sm); font-weight:700; color:var(--muted); margin:var(--space-2) 0; }
+.ocal-hint { color:var(--muted); font-size:var(--fs-sm); text-align:center; padding:var(--space-4) 0; }

@@ -7585,9 +7585,12 @@ select.no-asar-len {
 .ocal-d { font-size:var(--fs-sm); font-weight:700; }
 .ocal-dots { display:flex; gap:3px; }
 .ocal-b { min-width:16px; height:16px; line-height:16px; border-radius:999px; font-size:var(--fs-xs);
-  font-weight:800; color:#fff; padding:0 4px; }
-.ocal-b.out { background:var(--primary); }
-.ocal-b.back { background:var(--ok); }
+  font-weight:800; padding:0 4px; }
+/* Гарах = улбар шар (анхаарал татах — тэр өдөр ачаа явна), буцах = ногоон.
+   ⚠ Улбар шар дээр цагаан бичиг уншигдахгүй (контраст ~2.9:1) тул шар талбайг
+   бараан болгож бичнэ — token-оос гаргаж авна, шинэ хатуу өнгө нэмэхгүй. */
+.ocal-b.out  { background:var(--warn); color:color-mix(in srgb, var(--warn) 25%, black); }
+.ocal-b.back { background:var(--ok);   color:color-mix(in srgb, var(--ok) 25%, black); }
 .ocal-leg .ocal-b { color:transparent; }
 .ocal-day { font-weight:800; margin-bottom:var(--space-2); }
 .ocal-sec { font-size:var(--fs-sm); font-weight:700; color:var(--muted); margin:var(--space-2) 0; }

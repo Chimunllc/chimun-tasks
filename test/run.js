@@ -4792,6 +4792,31 @@ need(['orderCustType']);
   eq(R({ stage_meta: { review: { stars: -3 } } }), null, 'үнэлгээ: сөрөг = үнэлгээгүй');
   // Ажилтны дотоод үнэлгээ (шатны rate) -тэй ХУТГАЛДАХГҮЙ
   eq(R({ stage_meta: { clean: { by: '99', rate: 5 } } }), null, 'үнэлгээ: шатны rate нь хэрэглэгчийнх БИШ');
+
+  // ── Нэгтгэл (2026-09-22) ──
+  const mk = (num, stars, at, text) => ({ id: 'o' + num, number: num, customer: 'Х', status: 'archived',
+    stage_meta: { review: { stars, text: text || '', at } } });
+  const st = F.reviewStats([
+    mk(1, 5, '2026-09-10'), mk(2, 1, '2026-09-16', 'Хүргэлт хоцорсон'),
+    mk(3, 4, '2026-09-12'), { id: 'x', number: 4, status: 'archived', stage_meta: {} },
+  ]);
+  eq(st.n, 3, 'үнэлгээ: хариултын тоо');
+  eq(st.avg, 3.3, 'үнэлгээ: дундаж');
+  eq(st.bad.length, 1, 'үнэлгээ: муу нь тусад нь');
+  eq(st.bad[0].number, 2, 'үнэлгээ: муугийн дугаар');
+  eq(st.rows[0].at, '2026-09-16', 'үнэлгээ: шинэ нь эхэнд');
+  // ⛔ Хариултгүй бол дундаж null — 0 гэж бичвэл «маш муу» гэж уншигдана.
+  eq(F.reviewStats([]).avg, null, 'үнэлгээ: хариултгүй бол дундаж null');
+  eq(F.reviewStats(null).n, 0, 'үнэлгээ: null → унахгүй');
+  // ⛔ Устгасан/цуцалсан захиалгын үнэлгээ тоологдохгүй.
+  eq(F.reviewStats([Object.assign(mk(5, 1, '2026-09-18'), { status: 'deleted' })]).n, 0,
+     'үнэлгээ: больсон захиалга тоологдохгүй');
+
+  const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Муу үнэлгээ ЗӨВХӨН захиалгын картад үлдэж БОЛОХГҮЙ — амьд системд 1★
+  //   гомдол 6 хоног хэн ч хараагүй хэвтсэн. Тойм дээр гарна.
+  ok(/\$\{reviewBlockHtml\(state\.appOrders \|\| \[\]\)\}/.test(_src), 'scan: үнэлгээ Тоймд гарна');
+  ok(/attachReviewBlock\(\)/.test(_src), 'scan: үнэлгээний мөр дарагдана');
 }
 
 // SCAN — тайлан ба ROI хоёулаа багцыг задлана (2026-09-07)

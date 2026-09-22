@@ -4520,6 +4520,7 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderDashboard, 'Тойм');
     attachSessionBanner();   // «Нэвтрэлт дууссан» туузны товч
+    attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
     // Dashboard action товчнууд
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
@@ -23292,6 +23293,57 @@ function orderReview(o) {
   if (!stars) return null;
   return { stars, text: String(r.text || '').trim(), at: String(r.at || '').slice(0, 10) };
 }
+// Бүх захиалгын үнэлгээг нэгтгэнэ. Цэвэр функц — тестлэгдэнэ.
+// ⛔ ДУНДАЖИЙГ «САЙН БАЙНА» ГЭЖ УНШУУЛАХГҮЙ: хариулт цөөхөн үед дундаж нь
+//   утгагүй (нэг 5★ нь 100% болно). `n`-г ҮРГЭЛЖ хамт харуулна.
+// ⚠ Муу үнэлгээ = 1-2★. Тэр нь ТООЛОЛТ биш, ХИЙХ АЖИЛ — хүн залгаж эвлэрүүлэх
+//   ёстой тул жагсаалтын эхэнд, шинэ нь дээр гарна.
+const REVIEW_BAD_MAX = 2;
+// Тоймын блок. ⛔ ЗӨВХӨН ЗАХИАЛГЫН КАРТАД харуулах нь ХАНГАЛТГҮЙ байв: 1★
+//   гомдол 6 хоног хэн ч хардаггүй нэг картан дээр хэвтсэн (амьд систем,
+//   захиалга #1526). Муу үнэлгээ бол ажил — Тойм дээр эхэнд гарна.
+function reviewBlockHtml(orders) {
+  if (!canSeeOrders()) return '';
+  const st = reviewStats(orders);
+  if (!st.n) return '';
+  const row = r => `<div class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">
+      <span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
+      <span class="rv-nm">#${escapeHtml(String(r.number ?? '—'))} ${escapeHtml(r.customer || '')}</span>
+      <span class="rv-tx">${r.text ? escapeHtml(r.text) : 'сэтгэгдэл бичээгүй'}</span>
+      <span class="rv-at">${escapeHtml(r.at || '')}</span>
+    </div>`;
+  const show = st.bad.length ? st.bad : st.rows.slice(0, 3);
+  return `<div class="rv-card">
+    <div class="rv-head">★ Хэрэглэгчийн үнэлгээ
+      <span class="rv-sum">${st.avg} дундаж · ${st.n} хариулт</span></div>
+    ${st.bad.length ? `<div class="rv-warn">${st.bad.length} хүн сэтгэл дундуур байна — залгаж уучлал хүс.</div>` : ''}
+    ${show.map(row).join('')}
+  </div>`;
+}
+function attachReviewBlock(root) {
+  (root || document).querySelectorAll('[data-rv-open]').forEach(el => el.addEventListener('click', () => {
+    if (!canSeeOrders()) return;
+    state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.rvOpen; render();
+  }));
+}
+function reviewStats(orders) {
+  const rows = [];
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    const r = orderReview(o);
+    if (!r) return;
+    rows.push({ id: o.id, number: o.number, customer: String(o.customer || ''), stars: r.stars, text: r.text, at: r.at });
+  });
+  rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  const n = rows.length;
+  const sum = rows.reduce((t, x) => t + x.stars, 0);
+  return {
+    n,
+    avg: n ? Math.round((sum / n) * 10) / 10 : null,   // ⚠ хариултгүй бол null, 0 БИШ
+    bad: rows.filter(x => x.stars <= REVIEW_BAD_MAX),
+    rows,
+  };
+}
 function orderReviewHtml(o) {
   const r = orderReview(o);
   if (!r) return '';
@@ -33578,6 +33630,7 @@ function renderDashboard() {
   return `
     <div class="dashboard">
       ${sessionExpiredBannerHtml()}
+      ${reviewBlockHtml(state.appOrders || [])}
       ${isCEO ? ceoNowStrip() : ''}
       <div class="dashboard-actions">
         <button class="btn" id="dash-export-csv">

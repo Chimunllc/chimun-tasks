@@ -7102,6 +7102,26 @@ select.no-asar-len {
 .order-review.bad  .orv-stars { color:var(--danger); }
 .order-review .orv-text { color:var(--text-soft); }
 .order-review .orv-dim { font-style:italic; opacity:.7; }
+/* Тоймын үнэлгээний блок — муу үнэлгээ бол ажил, эхэнд нь улаанаар */
+.rv-card { border:1px solid var(--border); border-radius:var(--r-lg); background:var(--panel);
+  padding:var(--space-3); margin-bottom:var(--space-3); }
+.rv-head { font-weight:800; font-size:var(--fs-md); display:flex; flex-wrap:wrap;
+  align-items:baseline; gap:var(--space-2); }
+.rv-sum { font-weight:600; font-size:var(--fs-sm); color:var(--muted); }
+.rv-warn { margin-top:var(--space-2); font-size:var(--fs-sm); color:var(--danger); font-weight:700; }
+.rv-row { display:grid; grid-template-columns:auto auto 1fr auto; gap:var(--space-2);
+  align-items:baseline; padding:var(--space-2) 0; border-top:1px solid var(--border);
+  font-size:var(--fs-sm); cursor:pointer; }
+.rv-row .rv-st { letter-spacing:1px; color:var(--ok); white-space:nowrap; }
+.rv-row.bad .rv-st { color:var(--danger); }
+.rv-nm { font-weight:700; white-space:nowrap; }
+.rv-tx { color:var(--text-soft); min-width:0; }
+.rv-at { color:var(--muted); font-size:var(--fs-xs); white-space:nowrap; }
+@media (max-width: 620px) {
+  .rv-row { grid-template-columns:auto 1fr; }
+  .rv-tx { grid-column:1 / -1; }
+  .rv-at { grid-column:2; text-align:right; }
+}
 .fin-actions { display: flex; justify-content: flex-end; flex-wrap: wrap;
   gap: var(--space-2); margin-bottom: var(--space-2); }
 /* ── ДАРААГИЙН АЛХАМ (2026-09-11) ───────────────────────────────────────────

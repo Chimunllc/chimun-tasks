@@ -25159,7 +25159,14 @@ function openNewOrder(editOrder) {
               ? `✓ Тохирсон ${fmtMoney(dval)} — хөнгөлөлт ${fmtMoney(discount)} (авто ${fmtMoney(_autoD)} + нэмэлт ${fmtMoney(Math.max(0, discount - _autoD))})`
               : `✓ Хөнгөлөлт ${fmtMoney(discount)} хэрэглэгдэнэ (авто ${fmtMoney(_autoD)})`;
       }
-      if (_why) _why.hidden = !_manualUsed;   // шалтгаан зөвхөн ГАР хөнгөлөлт хэрэглэгдсэн үед
+      // ⛔ ТАЛБАР ХӨНГӨЛӨЛТ БАЙВАЛ ҮРГЭЛЖ ХАРАГДАНА. Анх зөвхөн `_manualUsed`
+      // үед харуулдаг байсан — хэрэв талбар олдохгүй эсвэл нуугдсан байхад
+      // шалтгаан шаардвал ХҮН ГАЦНА (бичих газаргүй, хадгалах боломжгүй).
+      if (_why) {
+        _why.hidden = !(dval > 0);
+        _why.required = _manualUsed;
+        _why.placeholder = _manualUsed ? 'Хөнгөлөлтийн шалтгаан (заавал)' : 'Хөнгөлөлтийн шалтгаан';
+      }
       _manualDiscUsed = _manualUsed;
     }
     $('#no-vatrow').style.display = vatOff ? 'flex' : 'none';
@@ -25279,12 +25286,18 @@ function openNewOrder(editOrder) {
     /* ━━━ ГАР ХӨНГӨЛӨЛТ → ШАЛТГААН ЗААВАЛ (2026-09-22) ━━━━━━━━━━━━━━━━
        «Яагаад хямдруулсан бэ?» гэдэг нь ашгийн шинжилгээний цорын ганц хариулт. Авто
        хоногийн хөнгөлөлтөөс ИЛҮҮ өгсөн үед Л асууна — авто нь тарифын дүрэм, шалтгаангүй. */
-    const _discWhy = String((($('#no-disc-why') || {}).value) || '').trim();
-    if (_manualDiscUsed && !_discWhy) {
-      showToast('Хөнгөлөлтийн шалтгаан бичнэ үӝ — хадгалаагүй', 'warn', 4500);
-      $('#no-disc-why')?.focus();
+    const _whyEl = $('#no-disc-why');
+    const _discWhy = String((_whyEl && _whyEl.value) || '').trim();
+    // ⛔ БИЧИХ ГАЗАРГҮЙ БАЙХАД ШААРДАХГҮЙ — талбар олдохгүй/нуугдсан байхад
+    // шалтгаан шаардвал захиалга ХЭЗЭЭ Ч хадгалагдахгүй болно (гарцгүй байдал).
+    if (_manualDiscUsed && !_discWhy && _whyEl && !_whyEl.hidden) {
+      showToast('Доорх улаан талбарт хөнгөлөлтийн шалтгаанаа бичнэ үӝ', 'warn', 5000);
+      _whyEl.classList.add('field-bad');
+      try { _whyEl.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {}
+      _whyEl.focus();
       return;
     }
+    _whyEl?.classList.remove('field-bad');
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
     const _ci = {
       ctype: ($('#no-ctype')?.value === 'org') ? 'org' : 'person',

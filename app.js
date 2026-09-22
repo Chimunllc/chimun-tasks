@@ -5235,6 +5235,20 @@ function openingSignBlock(p, me, canApprove) {
   return '';
 }
 
+/* ↩ БУЦААХ — буруу дарсныг засах зам (2026-09-22).
+   Өмнө нь гарын үсэг нэг чиглэлтэй байв: буруу дарсан батлалтыг ч, буруу
+   тоолсныг ч эргүүлэх UI БАЙХГҮЙ. Хүн дарж амжаад «дахин өөрчилж чадахгүй»
+   болдог тул суурь тогтоох ажил тэндээ зогсдог.
+   ⛔ Тоог ХӨНДӨХГҮЙ — зөвхөн гарын үсгийг арилгана. Нөөцийн тоо нь тусдаа
+     баримт (тооллогоор засагдана), гарын үсэг нь ЗӨВШӨӨРӨЛ.
+   Буцаах эрх = батлах эрхтэй хүн (ҮАХ захирал/CEO). */
+function openingUndoBlock(p, me, canApprove, kind) {
+  if (!p) return 'Бараа олдсонгүй';
+  if (!canApprove) return 'Танд эхний үлдэгдэл батлах эрх алга';
+  if (kind === 'approve') return stockApproved(p) ? '' : 'Батлагдаагүй байна';
+  return stockCounted(p) ? '' : 'Тоолоогүй байна';
+}
+
 /* Барааг ӨРТГӨӨР эрэмбэлж, хуримтлагдсан хувийг өгнө — «юуг эхэлж тоолох вэ»
    гэдгийг систем хэлэх ёстой, хүн таамаглах ёсгүй. 49 бараа = хөрөнгийн 80%. */
 function openingRows(products, costOf) {
@@ -5568,6 +5582,27 @@ async function approveOpeningStock(sku) {
   //   (`stockMoveRows` тэгш зөрүүг алгасдаг). Баталгааны мөр нь `stock_approved_*`.
   await saveProduct({ ...p,
     stock_approved_at: new Date().toISOString(), stock_approved_by: state.me || '' });
+  return true;
+}
+
+/* ↩ Батлалтыг буцаана — бараа «батлах хүлээж буй» төлөв рүү эргэнэ.
+   ⚠ Тоо, няравын гарын үсэг ХЭВЭЭР — зөвхөн 2 дахь гарын үсэг арилна. */
+async function undoOpeningApproval(sku) {
+  const p = productBySku(sku);
+  const why = openingUndoBlock(p, state.me, canApproveOpening(), 'approve');
+  if (why) { showToast(why, 'warn', 3500); return false; }
+  await saveProduct({ ...p, stock_approved_at: null, stock_approved_by: null });
+  return true;
+}
+/* ↩ Няравын тоололтыг татгалзана — бараа «тоолох» жагсаалт руу эргэнэ.
+   ⚠ Батлагдсан байсан бол ХОЁУЛАНГ нь арилгана («батлагдсан атлаа тоолоогүй»
+     гэсэн зөрчилтэй төлөв үүсэхээс сэргийлнэ). */
+async function rejectOpeningCount(sku) {
+  const p = productBySku(sku);
+  const why = openingUndoBlock(p, state.me, canApproveOpening(), 'count');
+  if (why) { showToast(why, 'warn', 3500); return false; }
+  await saveProduct({ ...p, stock_opened_at: null, stock_opened_by: null,
+    stock_approved_at: null, stock_approved_by: null });
   return true;
 }
 
@@ -20754,6 +20789,7 @@ function openingBlockHtml(canManage) {
       <span class="stc-open-q">тоолсон <b>${x.qty}</b></span>
       ${why ? `<span class="stc-open-why">${escapeHtml(why)}</span>`
             : `<button class="btn stc-open-ok" data-op-ap="${escapeHtml(x.sku)}">Батлах</button>`}
+      ${canApprove ? `<button class="btn stc-open-no" data-op-rej="${escapeHtml(x.sku)}" title="Тоолсон тоо буруу — няравт буцааж дахин тоолуулна">↩ Татгалзах</button>` : ''}
     </div>`; }).join('')}</div>
     ${oSt.wait > oWait.length ? `<div class="stc-open-m">…бас ${oSt.wait - oWait.length} бараа батлах хүлээж байна.</div>` : ''}` : '';
 
@@ -20763,6 +20799,7 @@ function openingBlockHtml(canManage) {
     <div class="stc-open-list">${oDone.map(x => `<div class="stc-open-row">
       <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · батлав: ${escapeHtml(memberName(x.apBy) || x.apBy || '—')}${x.apAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.apAt)) : ''}</span></span>
       <span class="stc-open-q">${x.qty} ш${money(x.value)}</span>
+      ${canApprove ? `<button class="btn stc-open-no" data-op-un="${escapeHtml(x.sku)}" title="Буруу дарсан бол батлалтыг буцаана — тоо хөндөгдөхгүй">↩ Буцаах</button>` : ''}
     </div>`).join('')}</div>
     ${oSt.done > oDone.length ? `<div class="stc-open-m">…бас ${oSt.done - oDone.length} бараа. Сүүлд баталсныг нь эхэнд гаргалаа.</div>` : ''}
   </details>` : '';
@@ -20938,6 +20975,34 @@ function attachStockCountHandlers() {
       try {
         const okd = await confirmOpeningStock(sku, q);
         if (okd) { showToast('✓ Баталгаажлаа', 'success', 1800); render(); }
+        else btn.disabled = false;
+      } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
+    });
+  });
+  // ↩ Буруу дарсныг засах. ⛔ Баталгаажуулалтгүй байж болохгүй — нэг товшилтоор
+  //   няравын ажил буцаж, дэвшил хойш явна.
+  document.querySelectorAll('[data-op-rej]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const p = productBySku(btn.dataset.opRej);
+      if (!(await showConfirm(`«${(p && p.name) || btn.dataset.opRej}» — тоолсныг татгалзах уу?\nБараа «тоолох» жагсаалт руу буцаж, нярав дахин тоолно. Нөөцийн тоо хөндөгдөхгүй.`,
+        { okText: 'Татгалзах', danger: true }))) return;
+      btn.disabled = true;
+      try {
+        const okd = await rejectOpeningCount(btn.dataset.opRej);
+        if (okd) { showToast('↩ Няравт буцаалаа', 'success', 2200); render(); }
+        else btn.disabled = false;
+      } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
+    });
+  });
+  document.querySelectorAll('[data-op-un]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const p = productBySku(btn.dataset.opUn);
+      if (!(await showConfirm(`«${(p && p.name) || btn.dataset.opUn}» — батлалтыг буцаах уу?\nБараа «батлах хүлээж буй» төлөв рүү эргэнэ. Тоо хөндөгдөхгүй.`,
+        { okText: 'Буцаах', danger: true }))) return;
+      btn.disabled = true;
+      try {
+        const okd = await undoOpeningApproval(btn.dataset.opUn);
+        if (okd) { showToast('↩ Батлалт буцаалаа', 'success', 2200); render(); }
         else btn.disabled = false;
       } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
     });

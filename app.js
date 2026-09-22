@@ -24851,10 +24851,19 @@ function openNewOrder(editOrder) {
   // хүний нэр → хувь хүн). Хэрэглэгч сонгогчоор шууд солино.
   const _ctype0 = isEdit ? orderCustType(editOrder)
     : orderCustType({ customer: '', note: setCustInfo('', { company: _autoCompany, reg: _autoReg }) });
-  // Гарсан (rented+) ЭСВЭЛ бүрэн төлөгдсөн захиалга → мөнгөний БҮХ нөхцөл ТҮГЖИНЭ (бараа/үнэ/эхлэх огноо/
-  // хөнгөлөлт/НӨАТ/барьцаа) — төлсөн дүнтэй зөрөхөөс сэргийлнэ. Засагдах: холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл.
-  const _paidFull = isEdit && (Number(editOrder.paid_mnt) || 0) > 0 && (Number(editOrder.paid_mnt) || 0) + 0.5 >= (Number(editOrder.total_mnt) || 0) && (Number(editOrder.total_mnt) || 0) > 0;
-  const _locked = isEdit && (['rented', 'returning', 'returned', 'stopped', 'archived'].includes(String(editOrder.status || '')) || _paidFull);
+  /* ━━━ ТҮГЖЭЭ = ХААСАН САР Л (2026-09-22, CEO шийдвэр) ━━━━━━━━━━━━━━━
+     Өмнө нь «гарсан ЕСВЭЛ бүрэн төлөгдсөн» захиалгын бараа/үнэ/барьцаа түгжигддэг байв.
+     Амьд датаар 79 идэвхтэй захиалгын 78 нь түгжээтэй — түгжээ нь онцгой тохиолдол
+     биш, ҮНДСЭН ТӨЛӨВ байв. Гэтэл бодит өөрчлөлт (сандал дутуу авсан, нэмж авсан)
+     ЯГ тэр үед гардаг тул захиалга худал хэвээр үлдэж, мөнгө нь гараар буцаагдаж,
+     тоо хоорондоо зөрдөг байв (захиалга 1476).
+     ⛔ Статус эсвэл төлөлтөөр ТҮГЖИХГҮЙ. Жинхэнэ хориг = ХААСАН САР (тэр сарын тоо
+        хөдлөх ёсгүй). Оронд нь төлбөртэй захиалгын мөнгөн нөхцөл өөрчлөхөд ШАЛТГААН
+        заавал — хэн юуг хэдээс хэд болгосон нь `stage_meta.edits`-д үлдэнэ. */
+  const _lockedMonth = isEdit ? orderLockedMonth(editOrder) : '';
+  const _locked = !!_lockedMonth;
+  // Төлбөр бүртгэгдсэн үү — шалтгаан асуух эсэхийг энэ шийднэ (ноорогт асуухгүй)
+  const _hadPay = isEdit && (Number(editOrder.paid_mnt) || 0) > 0;
   const _quotes0 = (isEdit && editOrder.stage_meta && Array.isArray(editOrder.stage_meta.quotes)) ? editOrder.stage_meta.quotes : [];   // илгээсэн үнийн саналуудын түүх
   const _notes0 = isEdit ? orderNotesOf(editOrder) : [];   // захиалгын тэмдэглэлийн лог (append-only)
   const _lead0 = isEdit ? leadSourceOf(editOrder) : '';   // лид суваг (маркетингийн атрибуци)
@@ -24870,7 +24879,8 @@ function openNewOrder(editOrder) {
       <button class="btn" id="no-close" style="padding:5px 10px;">✕</button>
     </div>
     <div class="no-hint">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
-    ${_locked ? `<div class="no-lock">🔒 Гарсан/төлөгдсөн — <b>мөнгөний нөхцөл түгжсэн</b> (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо). Холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл засагдана.</div>` : ''}
+    ${_locked ? `<div class="no-lock">🔒 <b>${escapeHtml(_lockedMonth)} сар хаагдсан</b> — мөнгөний нөхцөл (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо) өөрчлөгдөхгүй. Холбоо/РД/дуусах огноо/тэмдэглэл засагдана. Засах шаардлагатай бол CEO сарыг нээнэ.</div>`
+      : (_hadPay ? `<div class="no-editwarn">✎ Төлбөр бүртгэгдсэн захиалга. Бараа/үнэ/барьцаа өөрчлөвөл <b>шалтгаан асууна</b> ба түүхэнд үлдэнэ.</div>` : '')}
     <div class="no-grid">
     <div class="no-col no-col-a">
     ${_sec('Харилцагч')}
@@ -25255,6 +25265,28 @@ function openNewOrder(editOrder) {
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
+    /* ━━━ МӨНГӨН НӨХЦӨЛ ӨӨРЧЛӨГДВӨЛ ШАЛТГААН ЗААВАЛ (2026-09-22) ━━━━━━━
+       Түгжээ авсаны хариу: төлбөртэй захиалгын дүн/бараа/барьцаа өөрчлөгдөхөд
+       хэн юуг яагаад гэдэг түүхэнд үлдэнэ. Шалтгаан бичээгүй бол ХАДГАЛАХГҮЙ. */
+    // 🔒 ХААСАН САР — UI түгжээгийн ДАРААХ хамгаалалт (дарагдсан талбар өөрөөр өөрчлөгдвөл).
+    // Түгжээ үүссэнээс хойш ӨӨР сессээс сар хаагдсан байж болзошгүй — амьдаар шинэчлэнэ.
+    if (isEdit && orderMoneyChanged(editOrder, ord)) {
+      try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр */ }
+      const _lk = orderLockedMonth(editOrder) || orderLockedMonth(ord);
+      if (_lk) { showToast(`🔒 ${_lk} сар хаагдсан — мөнгөний нөхцөл өөрчлөгдөхгүй. CEO сарыг нээж болно.`, 'error', 7000); return; }
+    }
+    if (isEdit && _hadPay && orderMoneyChanged(editOrder, ord)) {
+      const _diff = orderEditDiff(editOrder, ord);
+      const _why = await showPrompt(
+        `Төлбөр бүртгэгдсэн захиалгын мөнгөн нөхцөл өөрчлөгдсөн:\n\n${orderEditDiffText(_diff) || 'барааны жагсаалт'}\n\nЯагаад өөрчлөв?`,
+        { title: '✎ Засварын шалтгаан', placeholder: 'ж: эвент дээр сандал 22ш аваагүй', okText: 'Хадгалах' });
+      if (!String(_why || '').trim()) { showToast('Шалтгаан бичээгүй тул хадгалаагүй', 'warn', 4000); return; }
+      // Append-only — хуучин засварын бичлэг ДАРАГДАХГҮЙ
+      ord.stage_meta = Object.assign({}, (ord.stage_meta && typeof ord.stage_meta === 'object' && !Array.isArray(ord.stage_meta)) ? ord.stage_meta : {});
+      ord.stage_meta.edits = orderEditsOf(editOrder).concat([{
+        at: new Date().toISOString(), by: state.me || '', reason: String(_why).trim().slice(0, 300), diff: _diff,
+      }]);
+    }
     btn.disabled = true;
     try {
       await saveAppOrder(ord);
@@ -25540,6 +25572,8 @@ function bqOrderCard(o) {
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
+    ${(() => { const _e = orderEditsOf(o); if (!_e.length) return ''; const _l = _e[_e.length - 1];
+      return `<div class="order-meta order-edits" title="${escapeHtml(_e.map(x => `${String(x.at || '').slice(0, 10)} · ${memberName(x.by) || x.by || '?'} — ${x.reason || ''}`).join('\n'))}">✎ Засварласан: ${escapeHtml(String(_l.reason || ''))} <span class="order-note-by">— ${escapeHtml(memberName(_l.by) || _l.by || '?')} · ${escapeHtml(String(_l.at || '').slice(0, 10))}${_e.length > 1 ? ` · +${_e.length - 1}` : ''}</span></div>`; })()}
     ${(() => { const _n = lastOrderNote(o); if (!_n) return ''; const _cnt = orderNotesOf(o).length; return `<div class="order-meta order-note">📝 ${escapeHtml(_n.text)} <span class="order-note-by">— ${escapeHtml(memberName(_n.by) || _n.by || '?')} · ${escapeHtml(String(_n.at || '').slice(0, 10))}${_cnt > 1 ? ` · +${_cnt - 1}` : ''}</span></div>`; })()}
     ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span style="color:var(--muted);">(орлогоос хасагдсан)</span></div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
@@ -31142,6 +31176,46 @@ function appendOrderNote(list, text, by, at) {
   const base = Array.isArray(list) ? list.slice() : [];
   base.push({ at: at || new Date().toISOString(), by: String(by || ''), text: t.slice(0, ORDER_NOTE_MAX) });
   return base;
+}
+/* ━━━ ЗАХИАЛГЫН ЗАСВАРЫН ТҮҮХ (2026-09-22) ━━━━━━━━━━━━━━━━━━━━━━━━
+   Төлбөр бүртгэгдсэн захиалгын МӨНГӨН нөхцөл (дүн/бараа/барьцаа) өөрчлөгдвөл
+   шалтгаантайгаа `stage_meta.edits`-д үлдэнэ. Түгжээг авсаны хариу — засвар
+   чөлөөтэй болсон тул «хэн юуг яагаад» гэдэг мөрдөгдөх ёстой.
+   ⛔ Append-only — хуучин бичлэгийг ХЭЗЭЭ Ч дарж бичихгүй. */
+function orderEditsOf(o) {
+  const e = o && o.stage_meta && o.stage_meta.edits;
+  return Array.isArray(e) ? e.filter(x => x && typeof x === 'object') : [];
+}
+/* МӨНГӨН НӨХЦӨЛ ӨӨРЧЛӨГДСӨН ҮҮ — цэвэр функц, тестлэгдэнэ.
+   Дүн БА барааны жагсаалт хоёуланг харна: нэг барааг өөрөөр солиход дүн өөрчлөгдөхгүй
+   ч нөөц/агуулах зөрнө. Барьцаа мөн адил (буцаах үүрэг өөрчлөгдөнө). */
+function orderMoneyChanged(before, after) {
+  const N = x => Math.round(Number(x) || 0);
+  if (N(before && before.total_mnt) !== N(after && after.total_mnt)) return true;
+  if (N(before && before.deposit_mnt) !== N(after && after.deposit_mnt)) return true;
+  const key = (list) => (Array.isArray(list) ? list : []).map(it =>
+    `${it && (it.sku || it.name) || ''}|${N(it && it.qty)}|${N(it && it.price)}`).sort().join(';');
+  return key(before && before.items) !== key(after && after.items);
+}
+/* Өөрчлөлтийг хүнд уншигдах мөрөөр буцаана (шалтгаан асуухад ба түүхэнд). */
+function orderEditDiff(before, after) {
+  const N = x => Math.round(Number(x) || 0);
+  const out = [];
+  if (N(before.total_mnt) !== N(after.total_mnt)) out.push({ k: 'Нийт дүн', from: N(before.total_mnt), to: N(after.total_mnt), money: true });
+  if (N(before.deposit_mnt) !== N(after.deposit_mnt)) out.push({ k: 'Барьцаа', from: N(before.deposit_mnt), to: N(after.deposit_mnt), money: true });
+  const map = (list) => { const m = new Map(); (Array.isArray(list) ? list : []).forEach(it => { const k = (it && (it.sku || it.name)) || ''; if (k) m.set(k, { name: (it.name || k), qty: N(it.qty), price: N(it.price) }); }); return m; };
+  const a = map(before.items), b = map(after.items);
+  for (const [k, v] of a) {
+    const n = b.get(k);
+    if (!n) out.push({ k: v.name, from: v.qty + 'ш', to: '— хасав' });
+    else if (n.qty !== v.qty) out.push({ k: v.name, from: v.qty + 'ш', to: n.qty + 'ш' });
+    else if (n.price !== v.price) out.push({ k: v.name + ' (үнэ)', from: v.price, to: n.price, money: true });
+  }
+  for (const [k, v] of b) if (!a.has(k)) out.push({ k: v.name, from: '—', to: v.qty + 'ш нэмэв' });
+  return out;
+}
+function orderEditDiffText(diff) {
+  return (diff || []).map(d => `${d.k}: ${d.money ? fmtMoney(d.from) : d.from} → ${d.money ? fmtMoney(d.to) : d.to}`).join(' · ');
 }
 // Картан дээр харуулах хамгийн сүүлийн тэмдэглэл (байхгүй бол null).
 function lastOrderNote(o) { const n = orderNotesOf(o); return n.length ? n[n.length - 1] : null; }

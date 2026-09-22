@@ -4771,6 +4771,7 @@ body.role-daily #add-project { display: none !important; }
 .op-val { font-size: 14.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 .order-pay.owe .op-bal { color: var(--danger); }
 .order-pay.paid .op-bal { color: var(--ok, #16a34a); }
+.op-over { font-size: var(--fs-sm); color: var(--danger); font-weight: 600; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
 .op-receipt { font-size: 11px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-receipt.clickable { cursor: pointer; }
 .op-receipt.clickable:hover { color: var(--text); }
@@ -6961,6 +6962,11 @@ select.no-asar-len {
 .dep-acct { font-family: inherit; font-size: var(--fs-sm); color: var(--text); background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-full); padding: 3px 11px; cursor: pointer; }
 .dep-acct-none { font-size: var(--fs-xs); color: var(--muted); margin: 4px 0 2px; }
 .rf-diff { font-size: var(--fs-xs); color: var(--warn); margin-top: var(--space-1); font-weight: 600; }
+.rf-split { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-top: var(--space-3); background: var(--panel-hover); }
+.rf-split-t { font-size: var(--fs-xs); color: var(--muted); line-height: 1.6; margin-bottom: var(--space-2); }
+.rf-rest { font-size: var(--fs-sm); color: var(--text); margin-top: var(--space-2); line-height: 1.7; }
+.rf-rest-w { display: block; color: var(--warn); font-size: var(--fs-xs); font-weight: 600; margin-top: 3px; }
+
 .ofilt-tool { font-size: var(--fs-sm); padding: 6px var(--space-3); white-space: nowrap; }
 
 /* Баримт задлагчийн оношилгоо */

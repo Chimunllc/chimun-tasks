@@ -4844,15 +4844,17 @@ function encodeBrokenRec(note, recMap) {
 // (paid_mnt-аас хасагдсан). Төрөл='dep' бол БАРЬЦААНЫ буцаалт (C11: badge үүнийг уншиж «✓ Барьцаа
 // буцаасан» болно — ерөнхий буцаалтыг барьцаа гэж андуурахгүй). Шалтгаанд | тэмдэгт орохгүй (цэвэрлэдэг).
 function parseRefund(note) {
-  const m = String(note || '').match(/⟦RF\|(\d+)(?:\|([^⟧|]*))?(?:\|([a-z]+))?⟧/);
-  return m ? { amount: Number(m[1]) || 0, note: m[2] || '', kind: m[3] || '' } : null;
+  const m = String(note || '').match(/⟦RF\|(\d+)(?:\|([^⟧|]*))?(?:\|([a-z]+))?(?:\|(\d+))?⟧/);
+  return m ? { amount: Number(m[1]) || 0, note: m[2] || '', kind: m[3] || '', dep: Number(m[4]) || 0 } : null;
 }
-function encodeRefundNote(note, totalAmount, rf, kind) {
+function encodeRefundNote(note, totalAmount, rf, kind, depAmount) {
   const base = String(note || '').replace(/⟦RF\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').trim();
   if (!totalAmount) return base;
   const dn = String(rf || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
   const kd = /^[a-z]+$/.test(String(kind || '')) ? String(kind) : '';
-  const tok = `⟦RF|${Math.round(totalAmount)}${(dn || kd) ? '|' + dn : ''}${kd ? '|' + kd : ''}⟧`;
+  // Барьцааны хэсэг — зөвхөн kind='dep' үед, нийтээс хэтрэхгүй
+  const dp = (kd === 'dep') ? Math.max(0, Math.min(Math.round(Number(depAmount) || 0), Math.round(totalAmount))) : 0;
+  const tok = `⟦RF|${Math.round(totalAmount)}${(dn || kd) ? '|' + dn : ''}${kd ? '|' + kd : ''}${dp ? '|' + dp : ''}⟧`;
   return base ? base + ' ' + tok : tok;
 }
 
@@ -4876,7 +4878,17 @@ function orderRefundedDeposit(o) {
   if (dep <= 0) return 0;
   const rf = parseRefund(o && o.note);
   if (!rf || rf.kind !== 'dep') return 0;
-  return Math.min(dep, Math.max(0, Number(rf.amount) || 0));
+  // НЭГ буцаалтад ХОЁР зүйл ордог: барьцаа + захиалга багассаны зөрүү (өргөөр
+  // нэг гүйлгээгээр явдаг). Токений 5-р талбар = барьцааны ХЭСЭГ.
+  // Байхгүй бол хуучин токен — бүхэлдээ барьцаа гэж үзээд барьцаагаар таглана.
+  const part = Number(rf.dep) > 0 ? Number(rf.dep) : Math.max(0, Number(rf.amount) || 0);
+  return Math.min(dep, Math.max(0, part));
+}
+/* «Илүү төлсөн — буцаах ёстой мөнгө». Захиалгын дүн буурахад (бараа хассан,
+   цуцалсан) төлсөн мөнгө илүү гарна. `orderOwed` нь 0-гоор тагладаг тул илүү
+   төлөлт ХААНА Ч харагдахгүй байв — үйлчлүүлэгчийн мөнгө чимээгүй үлдэнэ. */
+function orderOverpaid(o) {
+  return Math.max(0, (Number(o && o.paid_mnt) || 0) - orderBilled(o));
 }
 /* Авах ёстой НИЙТ дүн — буцаагдсан барьцаа хасагдсан. */
 function orderBilled(o) {
@@ -25244,7 +25256,20 @@ function openNewOrder(editOrder) {
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
     btn.disabled = true;
-    try { await saveAppOrder(ord); close(); showToast(isEdit ? 'Захиалга шинэчлэгдлээ' : `Захиалга #${ord.number} үүслээ`, 'success', 2800); }
+    try {
+      await saveAppOrder(ord);
+      close();
+      showToast(isEdit ? 'Захиалга шинэчлэгдлээ' : `Захиалга #${ord.number} үүслээ`, 'success', 2800);
+      // ⭐ БАГАССАН ЗАХИАЛГА → ИЛҮҮ ТӨЛӨЛТ. Бараа хасах (жиш. сандал аваагүй) бол
+      // төлсөн мөнгө илүү гарна. Хүн тасархай санах шаардлагагүй — систем өөрөө заана.
+      const _ov = orderOverpaid(ord);
+      if (isEdit && _ov > 0 && (can('orders.pay') || state.isCEO)) {
+        const go = await showConfirm(
+          `Захиалгын дүн буурсан тул үйлчлүүлэгч ${fmtMoney(_ov)} илүү төлсөн байна.\n\nЭнэ мөнгөг одоо буцаах уу?`,
+          { title: '⚠ Илүү төлөлт үүслээ', okText: '↩ Буцаан олгох', cancelText: 'Дараа' });
+        if (go) openRefundModal(ord.id);
+      }
+    }
     catch (err) { btn.disabled = false; }
   };
 }
@@ -25401,12 +25426,15 @@ function bqOrderCard(o) {
   const _payReceipt = (paid > 0 && o.paid_ref && st !== 'canceled')
     ? (() => { const _rc = (typeof parsePaidRef === 'function') ? parsePaidRef(o.paid_ref) : []; const _snd = _rc.map(r => r.sender).filter(Boolean).join(', ') || String(o.paid_ref).replace(/\s+/g, ' ').slice(0, 44); return `<div class="op-receipt clickable" role="button" tabindex="0" data-order-receipt="${id}" title="Дарж эх PDF баримт харах">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}${_snd ? ' · ' + escapeHtml(_snd) : ''}${_rc.length > 1 ? ` (${_rc.length})` : ''} <span class="op-receipt-view">Харах ›</span></div>`; })()
     : '';
+  // ⚠ ИЛҮҮ ТӨЛСӨН — захиалга багассан бол төлсөн мөнгө илүү гарна. Хүнд хэлэхгүй бол
+  // үйлчлүүлэгчийн мөнгө чимээгүй үлдэнэ — шууд буцаах товч руу заана.
+  const _over = orderOverpaid(o);
   const payPanel = (total > 0 && st !== 'canceled')
     ? `<div class="order-pay ${bal > 0 ? 'owe' : 'paid'}">
         <div class="op-grid">
           <div class="op-cell"><span class="op-lbl">Төлсөн</span><span class="op-val">${fmtMoney(paid)}</span></div>
           <div class="op-cell"><span class="op-lbl">Үлдэгдэл</span><span class="op-val op-bal">${bal > 0 ? fmtMoney(bal) : 'Бүрэн ✓'}</span></div>
-        </div>${_payReceipt}
+        </div>${_over > 0 ? `<div class="op-over">⚠ Илүү төлсөн <b>${fmtMoney(_over)}</b> — үйлчлүүлэгчид буцаах ёстой</div>` : ''}${_payReceipt}
       </div>`
     : '';
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/FB/Viber/газрын зураг) — зөвхөн менежерт харагдана
@@ -25443,7 +25471,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-invoice="${id}" style="padding:5px 11px;font-size:12px;" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : ''}${cxHtml}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-invoice="${id}" style="padding:5px 11px;font-size:12px;" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : ''}${cxHtml}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -26845,6 +26873,9 @@ function openRefundModal(oid) {
   if (!o) { showToast('Зөвхөн шинэ (app) захиалгад буцаан олголт бүртгэнэ', 'warn', 3000); return; }
   if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буцаан олгох эрх олгогдоогүй', 'warn', 3000); return; }
   const paid = Number(o.paid_mnt) || 0;
+  const depTotal = Number(o.deposit_mnt) || 0;
+  const overAmt = orderOverpaid(o);          // захиалга багассанаас үүссэн илүү төлөлт
+  const depLeft = Math.max(0, depTotal - orderRefundedDeposit(o));   // буцаагаагүй барьцаа
   const prevRf = parseRefund(o.note);
   // ⭐ Мөнгө ХААНААС ирсэн — орлогын PDF задлахад шилжүүлэгчийн данс `paid_ref`-д
   // хадгалагдсан байдаг ([#id] нэр · данс · утга). Барьцааг ЯГ ТЭР данс руу буцаах нь
@@ -26866,7 +26897,12 @@ function openRefundModal(oid) {
     <label class="dmg-amt-l">Буцаах дүн (₮)</label>
     <input id="rf-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="0">
     <div id="rf-diff" class="rf-diff" hidden></div>
-    ${(Number(o.deposit_mnt) || 0) > 0 ? `<label class="no-lbl" style="display:flex;align-items:center;gap:8px;margin:9px 0 2px;cursor:pointer;"><input type="checkbox" id="rf-isdep" class="ui-raw" style="width:16px;height:16px;flex:0 0 auto;"><span>🔒 Энэ нь <b>барьцааны буцаалт</b> (${fmtMoney(Number(o.deposit_mnt))}) — картад «✓ Барьцаа буцаасан» болж, 🔒 тэмдэг арилна</span></label>` : ''}
+    ${depLeft > 0 ? `<div class="rf-split">
+      <div class="rf-split-t">Энэ дүнгийн <b>үүнээс хэд нь барьцаа вэ?</b> — барьцаа нь өр биш, зөрүү төлбөр нь өрөөс хасагдана</div>
+      <label class="dmg-amt-l" for="rf-dep">🔒 Үүнээс барьцаа (₮) · захиалгад ${fmtMoney(depLeft)}</label>
+      <input id="rf-dep" type="text" inputmode="numeric" class="ui-raw money-input" value="0">
+      <div id="rf-rest" class="rf-rest"></div>
+    </div>` : ''}
     <label for="rf-pdf" class="rf-drop">📄 <b>Гарах гүйлгээний баримт (PDF)</b>
       <input id="rf-pdf" type="file" accept="application/pdf,.pdf" hidden>
       <div id="rf-pdf-status" class="rf-drop-status">Чимунээс үйлчлүүлэгч рүү шилжүүлсэн баримт хавсаргана (нотолгоо)</div>
@@ -26888,9 +26924,27 @@ function openRefundModal(oid) {
     diffEl.hidden = !bad;
     if (bad) diffEl.textContent = `⚠ Баримт дээр ${fmtMoney(modal._pdfAmt)} байна — зөрүү ${fmtMoney(Math.abs(moneyVal(amtEl) - modal._pdfAmt))}`;
   };
-  amtEl.addEventListener('input', syncDiff);
-  // Барьцааны буцаалт чагтлахад дүнг барьцаагаар авто-бөглөнө (гараар засаж болно) — C11
-  modal.querySelector('#rf-isdep')?.addEventListener('change', (e) => { if (e.target.checked && moneyVal(amtEl) <= 0) amtEl.value = moneyFmtInput(Number(o.deposit_mnt) || 0); });
+  const depEl = modal.querySelector('#rf-dep');
+  const restEl = modal.querySelector('#rf-rest');
+  // НИЙТ − БАРЬЦАА = зөрүү/илүү төлөлт. Хоёрын ялгааг ХАРУУЛНА — нэг
+  // гүйлгээгээр хоёуланг нь илгээсэн тохиолдолд хүн буруу бичвэл өр чимээгүй үлдэнэ.
+  const syncSplit = () => {
+    if (!depEl) return;
+    const tot = moneyVal(amtEl), dp = Math.min(moneyVal(depEl), depLeft, tot);
+    if (moneyVal(depEl) > dp) depEl.value = moneyFmtInput(dp);
+    const rest = Math.max(0, tot - dp);
+    restEl.innerHTML = tot <= 0 ? ''
+      : `🔒 Барьцаа: <b>${fmtMoney(dp)}</b> · ↩ Зөрүү/илүү төлөлт: <b>${fmtMoney(rest)}</b>`
+        + (rest > 0 && overAmt <= 0 ? ` <span class="rf-rest-w">⚠ Захиалга дээр илүү төлөлт алга — бараа хассан бол урьд «✎ Засах»-аар захиалгын дүнг бууруулна</span>` : '');
+  };
+  amtEl.addEventListener('input', () => { amtEl.dataset.touched = '1'; syncDiff(); syncSplit(); });
+  depEl?.addEventListener('input', syncSplit);
+  // Авто-бөглөлт: барьцаа + илүү төлөлтийн нийлбэр гаргаж өгнө — хүн засаж болно
+  if (depLeft > 0 || overAmt > 0) {
+    amtEl.value = moneyFmtInput(Math.min(paid, depLeft + overAmt));
+    if (depEl) depEl.value = moneyFmtInput(depLeft);
+    syncSplit();
+  }
   modal.querySelector('#rf-pdf').addEventListener('change', async (e) => {
     const f = (e.target.files || [])[0]; e.target.value = ''; if (!f) return;
     modal._file = f;
@@ -26899,7 +26953,8 @@ function openRefundModal(oid) {
     try {
       const d = parseBankReceipt(await extractPdfText(f));
       modal._pdfAmt = Number(d.amount) || 0;   // баримтын дүн — хадгалахын өмнө гараар бичсэнтэй тулгана
-      if (d.amount && moneyVal(amtEl) <= 0) amtEl.value = moneyFmtInput(d.amount);   // авто-бөглөх (гараар засаж болно)
+      // Баримтын дүн = БОДИТ явсан мөнгө — хүн гараар засаагүй бол түүнийг авна
+      if (d.amount && !amtEl.dataset.touched) { amtEl.value = moneyFmtInput(d.amount); syncSplit(); }
       const okSender = /чимун/i.test(d.senderName || '');
       // Хүлээн авагчийн данс нь орлого орсон данстай таарч байна уу (сануулга — хаахгүй)
       const rcv = refundAcctDigits(d.receiverAcct);
@@ -26942,8 +26997,12 @@ function openRefundModal(oid) {
     const newPaid = Math.max(0, basePaid - refundAmt);
     const prevRf = parseRefund(baseNote) || {};
     const prevRfTot = prevRf.amount || 0;
-    const isDep = !!modal.querySelector('#rf-isdep')?.checked || prevRf.kind === 'dep';   // C11: барьцааны буцаалт гэж тэмдэглэсэн эсэх
-    const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote, isDep ? 'dep' : '');
+    // БАРЬЦААНЫ ХЭСЭГ — нийт буцаасанаас хэд нь барьцаа вэ. Өмнөх буцаалтын барьцаагаар
+    // дээр нэмэгдэнэ (токен нь үргэлж НИЙТ дүнг хадгалдаг).
+    const prevDepPart = prevRf.kind === 'dep' ? (Number(prevRf.dep) > 0 ? Number(prevRf.dep) : (Number(prevRf.amount) || 0)) : 0;
+    const depPart = Math.min(depEl ? moneyVal(depEl) : 0, refundAmt) + prevDepPart;
+    const isDep = depPart > 0;
+    const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote, isDep ? 'dep' : '', depPart);
     // PDF-ийг нотолгоо болгон хадгална (арын гүйлгээ, гацаахгүй)
     uploadReceiptFileOrWarn('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: todayStr(), usedIn: 'refund:#' + (o.number ?? '') }, 'буцаалт #' + (o.number ?? ''));
     const prevPaid = o.paid_mnt, prevNote = o.note;

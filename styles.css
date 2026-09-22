@@ -7629,3 +7629,12 @@ select.no-asar-len {
 
 /* Эхний үлдэгдэл — ↩ буцаах/татгалзах (буруу дарсныг засах зам) */
 .stc-open-no { font-size:var(--fs-xs); padding:2px var(--space-2); color:var(--danger); }
+
+/* Эхний үлдэгдэл — тоолох цонх (нийт ба эвдэрсэн) */
+.opc-modal { max-width: 360px; }
+.opc-hint { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; margin-bottom: var(--space-3); }
+.opc-l { display: block; font-size: var(--fs-sm); font-weight: 700; margin-top: var(--space-2); }
+.opc-sum { margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--muted); }
+.opc-sum b { color: var(--text); }
+.opc-bad { color: var(--danger); font-weight: 700; }
+.opc-act { margin-top: var(--space-4); }

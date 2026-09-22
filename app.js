@@ -25591,7 +25591,37 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-invoice="${id}" style="padding:5px 11px;font-size:12px;" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : ''}${cxHtml}</div>`
+    ? (() => {
+        /* ━━━ ТОВЧ = «ОДОО ХИЙХ» + «⋯ Бусад» (2026-09-22, CEO) ━━━━━━━━━━━━━━━━
+           Урьд 12 товч нэг эгнээнд сууж, аль нь одоо хэрэгтэйг хүн мэдэхгүй байв
+           (санхүүгийн дэлгэцтэй яг ижил гомдол). Одоо `orderPrimaryActions` нь
+           тухайн захиалгад ОДОО хийх ёстой 2-4 товчийг л гаргаж, үлдсэнийг
+           эвхэгдсэн «⋯ Бусад» дотор нуудаг. Товч НЭГ Л газар гарна — давхардвал
+           аль нь ажилласан нь мэдэгдэхгүй (scan-тест хаана). */
+        const PRI = new Set(orderPrimaryActions(o, {
+          next, owed: appBal, canPay: appCanPay, over: _over,
+          // ⚠ `_depOpen` нь ЭНЭ МӨРӨӨС ДООР тодорхойлогддог тул энд ШУУД бодно (TDZ).
+          depOpen: (Number(o.deposit_mnt) || 0) > 0 && !depositReturnState(o),
+          editable: appEditable,
+        }));
+        const rows = { pri: [], more: [] };
+        const add = (k, html) => { if (html) rows[PRI.has(k) ? 'pri' : 'more'].push(html); };
+        add('pay', appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : '');
+        add('advance', advBtn);
+        add('scan', ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : '');
+        add('damage', ['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : '');
+        add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
+        add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : '');
+        add('note', `<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>`);
+        add('contract', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : '');
+        add('edit', appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : '');
+        add('quote', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : '');
+        add('invoice', st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-invoice="${id}" style="padding:5px 11px;font-size:12px;" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : '');
+        add('cancel', cxHtml);   // ⛔ цуцлах/устгах ҮРГЭЛЖ «Бусад» дотор — санамсаргүй дарагдахгүй
+        return `<div class="order-foot">${rows.pri.join('')}${rows.more.length
+          ? `<details class="ord-more"><summary class="ord-more-s">⋯ Бусад (${rows.more.length})</summary><div class="ord-more-row">${rows.more.join('')}</div></details>`
+          : ''}</div>`;
+      })()
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -31275,6 +31305,24 @@ function appendOrderNote(list, text, by, at) {
 /* ХӨНГӨЛӨЛТИЙН ШАЛТГААН (2026-09-22) — `stage_meta.discount`.
    Гар хөнгөлөлт ҮНЭХЭЭР хэрэглэгдсэн үед заавал — «яагаад хямдруулсан бэ?»
    гэдэг ашгийн шинжилгээний цорын ганц хариулт. */
+/* ━━━ ЗАХИАЛГЫН КАРТЫН ТОВЧ — «ОДОО ХИЙХ» НЬ ЭГНЭЭНД (2026-09-22) ━━━
+   12 товч нэг дор суухад аль нь одоо хэрэгтэйг хүн мэдэхгүй байв — санхүүгийн
+   дэлгэцтэй яг ижил гомдол (CEO). Энэ нь тухайн захиалгад ОДОО хийх ёстой
+   товчнуудын түлхүүрийг буцаана; үлдсэн нь «⋯ Бусад» дотор эвхэгдэнэ.
+   ⛔ Цуцлах/устгах ХЭЗЭЭ Ч үндсэн эгнээнд гарахгүй — санамсаргүй дарагдах ёсгүй.
+   ⚠ Цэвэр функц — тестлэгдэнэ. */
+const ORDER_DONE_ST = new Set(['returned', 'stopped', 'archived', 'done']);
+function orderPrimaryActions(o, ctx) {
+  ctx = ctx || {};
+  const out = [];
+  if (ctx.next) out.push('advance');                       // дараагийн шат = хамгийн чухал
+  if (ctx.canPay && (Number(ctx.owed) || 0) > 0) out.push('pay');
+  // Буцаалт: илүү төлөлт байвал ШУУД, эсвэл захиалга дууссан байхад барьцаа үлдсэн бол
+  if ((Number(ctx.over) || 0) > 0) out.push('refund');
+  else if (ctx.depOpen && ORDER_DONE_ST.has(String((o && o.status) || ''))) out.push('refund');
+  if (ctx.editable) out.push('edit');
+  return out;
+}
 function orderDiscountReason(o) {
   const d = o && o.stage_meta && o.stage_meta.discount;
   return (d && typeof d === 'object') ? String(d.reason || '') : '';

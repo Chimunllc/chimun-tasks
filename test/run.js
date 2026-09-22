@@ -9236,6 +9236,62 @@ need(['orderCustType']);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ЗАХИАЛГЫН ТОВЧ — «ОДОО ХИЙХ» НЬ ЭГНЭЭНД (2026-09-22, CEO)
+//
+// 12 товч нэг дор суухад аль нь одоо хэрэгтэйг хүн мэдэхгүй — санхүүгийн
+// дэлгэцтэй яг ижил гомдол. Цуцлах товч үндсэн эгнээнд ГАРАХГҮЙ.
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const pa = sandbox.orderPrimaryActions;
+  ok(typeof pa === 'function', 'товч: orderPrimaryActions бий');
+  const O = (st) => ({ status: st });
+
+  // Шинэ захиалга — дараагийн шат + төлбөр + засах
+  eq(pa(O('reserved'), { next: { to: 'prepare' }, canPay: true, owed: 500000, editable: true }),
+     ['advance', 'pay', 'edit'], 'шинэ захиалга: шат + төлбөр + засах');
+  // Төлөгдсөн — төлбөрийн товч ГАРАХГҮЙ
+  eq(pa(O('rented'), { next: { to: 'return' }, canPay: true, owed: 0, editable: true }),
+     ['advance', 'edit'], 'бүрэн төлсөн: төлбөрийн товч гарахгүй');
+  // Илүү төлөлт — буцаалт ҮНДСЭН болно
+  ok(pa(O('rented'), { over: 121000, editable: true }).includes('refund'),
+     'илүү төлөлт: буцаалт үндсэн эгнээнд');
+  // Захиалга ДУУССАН + барьцаа үлдсэн — буцаалт үндсэн
+  ok(pa(O('returned'), { depOpen: true, editable: true }).includes('refund'),
+     'буцаагдсан + барьцаа үлдсэн: буцаалт үндсэн');
+  // … гэхдээ ДУУСААГҮЙ байхад БИШ (эвент яваагүй байхад барьцаа буцаахгүй)
+  ok(!pa(O('reserved'), { depOpen: true, editable: true }).includes('refund'),
+     '⛔ эвент яваагүй: барьцааны буцаалт үндсэн эгнээнд гарахгүй');
+  // ⛔ Цуцлах/устгах ХЭЗЭЭ Ч үндсэн эгнээнд байхгүй
+  for (const st of ['draft', 'reserved', 'rented', 'returned', 'archived']) {
+    const keys = pa(O(st), { next: { to: 'x' }, canPay: true, owed: 1, over: 1, depOpen: true, editable: true });
+    ok(!keys.includes('cancel'), `⛔ ${st}: цуцлах товч үндсэн эгнээнд байхгүй`);
+    ok(keys.length <= 4, `${st}: үндсэн товч 4-өөс хэтрэхгүй (${keys.length})`);
+  }
+  // Засах боломжгүй (архив) — засах товч гарахгүй
+  ok(!pa(O('archived'), { editable: false }).includes('edit'), 'архив: засах товч гарахгүй');
+  eq(pa(null, {}), [], 'хог оролт: хоосон');
+}
+
+// ━━━ SCAN: ТОВЧ НЭГ Л ГАЗАР (2026-09-22) ━━━
+{
+  const at = src.indexOf('const foot = isApp');
+  ok(at > 0, 'scan: захиалгын товчны блок олдов');
+  // ЗӨВХӨН аппын салбар (booqable түүхийн товч тусдаа — тэнд давхардал гэж тоологдохгүй)
+  const fn = src.slice(at, src.indexOf('})()', at) + 4);
+  ok(/orderPrimaryActions\(o, \{/.test(fn), 'scan: товч эрэмбэ ганц функцаар');
+  ok(/ord-more/.test(fn), 'scan: үлдсэн товч «⋯ Бусад» дотор эвхэгдэнэ');
+  // ⛔ Товч бүр ЯГ НЭГ УДАА — давхардвал аль нь ажилласан нь мэдэгдэхгүй
+  for (const d of ['data-bq-pay', 'data-app-edit', 'data-app-refund', 'data-app-invoice', 'data-app-quote']) {
+    const n = (fn.match(new RegExp(d, 'g')) || []).length;
+    eq(n, 1, `⛔ scan: ${d} товч ЯГ НЭГ удаа бичигдсэн`);
+  }
+  // Цуцлах нь 'cancel' түлхүүртэй — orderPrimaryActions түүнийг ХЭЗЭЭ Ч буцаахгүй
+  ok(/add\('cancel', cxHtml\)/.test(fn), 'scan: цуцлах товч cancel түлхүүртэй');
+  const helper = src.slice(src.indexOf('function orderPrimaryActions'), src.indexOf('function orderPrimaryActions') + 900);
+  ok(!/'cancel'/.test(helper), '⛔ scan: orderPrimaryActions цуцлахыг үндсэн болгохгүй');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // «ТОХИРСОН ЭЦСИЙН ДҮН» → ХӨНГӨЛӨЛТ (2026-09-22, захиалга 1532)
 //
 // 1532: subtotal 13,153,000 · 2 хоног → авто 20% = 2,630,600. Ажилтан нэмж

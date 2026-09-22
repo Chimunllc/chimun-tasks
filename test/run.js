@@ -1726,6 +1726,32 @@ function finish() {
     ok(SB(only1, '99', false).includes('эрх'), 'хориг: эрхгүй хүнд шалтгаан хэлнэ');
     ok(SB({ sku: 'Y' }, '99', true).includes('нярав'), 'хориг: тоолоогүй бол эхлээд нярав');
     ok(SB(prods[1], '99', true).includes('батлагдсан'), 'хориг: давхар батлахыг хаана');
+
+    // ↩ БУЦААХ (2026-09-22) — буруу дарсныг засах зам. Гарын үсэг нэг
+    //   чиглэлтэй байсан тул хүн «дахин өөрчилж чадахгүй» болдог байв.
+    const UB = vm.runInContext('openingUndoBlock', sandbox);
+    eq(UB(prods[1], '99', true, 'approve'), '', 'буцаах: батлагдсаныг буцаана');
+    eq(UB(only1, '99', true, 'count'), '', 'буцаах: тоолсныг татгалзана');
+    // ⛔ Батлагдаагүйг «буцаах» нь утгагүй.
+    ok(UB(only1, '99', true, 'approve') !== '', 'буцаах: батлагдаагүйг буцаахгүй');
+    ok(UB({ sku: 'Y' }, '99', true, 'count') !== '', 'буцаах: тоолоогүйг татгалзахгүй');
+    // ⛔ Эрхгүй хүн буцааж ЧАДАХГҮЙ — эс бөгөөс нярав өөрийн ажлаа дарж болно.
+    ok(UB(prods[1], '99', false, 'approve').includes('эрх'), 'буцаах: эрхгүй бол хаана');
+    ok(UB(null, '99', true, 'approve') !== '', 'буцаах: хоосон → унахгүй');
+  }
+
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    // ⛔ Буцаалт нь ТОО ХӨНДӨХГҮЙ — зөвхөн гарын үсгийг арилгана.
+    ok(/stock_approved_at: null, stock_approved_by: null \}\);/.test(_src),
+       'scan: батлалт буцаахад зөвхөн гарын үсэг арилна');
+    ok(/stock_opened_at: null, stock_opened_by: null,/.test(_src),
+       'scan: татгалзахад няравын гарын үсэг арилна');
+    // ⛔ Нэг товшилтоор няравын ажил буцдаг тул баталгаажуулалт ЗААВАЛ.
+    ok(/data-op-rej\][\s\S]{0,700}?if \(!\(await showConfirm\([\s\S]{0,400}?\)\)\) return;/.test(_src),
+       'scan: татгалзал showConfirm-оор хаагдана');
+    ok(/data-op-un\][\s\S]{0,700}?if \(!\(await showConfirm\([\s\S]{0,400}?\)\)\) return;/.test(_src),
+       'scan: батлалт буцаах showConfirm-оор хаагдана');
   }
 
   const rows = OR(prods, cost);

@@ -114,6 +114,11 @@ jobs:
             node test/run.js 2>/dev/null | grep -o 'нийт [0-9]*' | tail -1 \
               | grep -o '[0-9]*' > /tmp/tests-before.txt || echo 0 > /tmp/tests-before.txt
             cat /tmp/tests-before.txt
+            # ⛔ ЭНЭ МӨРИЙГ БҮҮ ХАС — доорх PR алхам /tmp/debt-before.json-г
+            #    уншдаг. Алдаа засах горимд үүсгэхгүй бол агент алдааг зассан
+            #    ч PR нээх алхам ENOENT-ээр УНАНА (2026-09-21-нд #545 дээр
+            #    яг ингэж унаж, «шөнийн агент унасан» гэж худал бүртгэгдсэн).
+            node tools/debt-check.js --json > /tmp/debt-before.json || echo '{}' > /tmp/debt-before.json
             exit 0
           fi
           echo "mode=debt" >> "$GITHUB_OUTPUT"
@@ -308,8 +313,10 @@ jobs:
           node tools/debt-check.js --json > /tmp/debt-after.json
           SUMMARY=$(node -e '
             const fs = require("node:fs");
-            const b = JSON.parse(fs.readFileSync("/tmp/debt-before.json", "utf8"));
-            const a = JSON.parse(fs.readFileSync("/tmp/debt-after.json", "utf8"));
+            const read = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
+            const b = read("/tmp/debt-before.json");
+            const a = read("/tmp/debt-after.json");
+            if (!b || !a) { console.log("| — | — | — | тоо уншигдсангүй |"); process.exit(0); }
             const rows = Object.keys(b)
               .filter((k) => a[k] !== b[k])
               .map((k) => `| ${k} | ${b[k]} | ${a[k]} | ${a[k] - b[k] > 0 ? "+" : ""}${a[k] - b[k]} |`);

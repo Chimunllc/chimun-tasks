@@ -1726,6 +1726,20 @@ function finish() {
     ok(SB(only1, '99', false).includes('эрх'), 'хориг: эрхгүй хүнд шалтгаан хэлнэ');
     ok(SB({ sku: 'Y' }, '99', true).includes('нярав'), 'хориг: тоолоогүй бол эхлээд нярав');
     ok(SB(prods[1], '99', true).includes('батлагдсан'), 'хориг: давхар батлахыг хаана');
+
+    // ↩ БУЦААХ (2026-09-22) — буруу дарсныг засах зам. Гарын үсэг нэг
+    //   чиглэлтэй байсан тул хүн «дахин өөрчилж чадахгүй» болдог байв.
+    const UB = vm.runInContext('openingUndoBlock', sandbox);
+    eq(UB(prods[1], '99', true, 'approve'), '', 'буцаах: батлагдсаныг буцаана');
+    eq(UB(only1, '99', true, 'count'), '', 'буцаах: тоолсныг татгалзана');
+    // ⛔ Батлагдаагүйг «буцаах» нь утгагүй — товч байсан ч серверт хүрэхгүй.
+    ok(UB(only1, '99', true, 'approve') !== '', 'буцаах: батлагдаагүйг буцаахгүй');
+    ok(UB({ sku: 'Y' }, '99', true, 'count') !== '', 'буцаах: тоолоогүйг татгалзахгүй');
+    // ⛔ Эрхгүй хүн буцааж ЧАДАХГҮЙ — эс бөгөөс нярав өөрийн ажлаа дарж болно.
+    ok(UB(prods[1], '99', false, 'approve').includes('эрх'), 'буцаах: эрхгүй бол хаана');
+    ok(UB(null, '99', true, 'approve') !== '', 'буцаах: хоосон → унахгүй');
+    // ⚠ Тоолсон ХҮН өөрөө буцаахыг хаахгүй: буруу дарсныг засах нь батлах
+    //   эрхтэй хүний ажил, «өөрийгөө шалгах» асуудал энд үүсэхгүй (тоо хөндөгдөхгүй).
   }
 
   const rows = OR(prods, cost);
@@ -9236,6 +9250,59 @@ need(['orderCustType']);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ТОЙМЫН ТУУЗ = ХОЁР ДАРАГДДАГ КАРТ (2026-09-22, CEO)
+//
+// Өмнө 4 карт байсан боловч 3 нь ДАРАГДАХГҮЙ тоо: орлого (Санхүүд бүрэн
+// задаргаатай), хүргэлт, буцаалт. Тойм дээр ТОО БИШ, АЖИЛ байна.
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const cnt = sandbox.ceoNowCounts;
+  ok(typeof cnt === 'function', 'тууз: ceoNowCounts бий');
+  const T = '2026-09-22';
+
+  // Гарах байгаа (бэлтгэлийн шат) → хүргэлт; гарсан → буцаалт
+  const r = cnt([
+    { status: 'reserved',  starts_at: '2026-09-24' },   // хүргэлт ✓
+    { status: 'delivering', starts_at: '2026-09-22' },  // өнөөдөр ✓
+    { status: 'rented',    stops_at:  '2026-09-25' },   // буцаалт ✓
+    { status: 'reserved',  starts_at: '2026-10-05' },   // цонхны гадна ✗
+    { status: 'archived',  starts_at: '2026-09-23' },   // дууссан ✗
+  ], [], T, 7);
+  eq({ d: r.deliveries, r: r.returns }, { d: 2, r: 1 }, 'ойрын 7 хоног: 2 хүргэлт · 1 буцаалт');
+
+  // ⛔ ӨНӨӨДРИЙГ ОРОЛЦУУЛНА (хасвал өнөөдрийн ажил дэлгэцээс алга болно)
+  eq(cnt([{ status: 'ready', starts_at: T }], [], T, 7).deliveries, 1,
+     '⛔ өнөөдрийн хүргэлт тоологдоно');
+  // Өнгөрсөн огноо тоологдохгүй
+  eq(cnt([{ status: 'ready', starts_at: '2026-09-21' }], [], T, 7).deliveries, 0,
+     'өнгөрсөн огноо: тоологдохгүй');
+  // NOMAAD цуцалсан нь ОРОХГҮЙ
+  eq(cnt([], [{ date_start: '2026-09-24' }], T, 7).deliveries, 1, 'NOMAAD эвент тоологдоно');
+  // Хог оролт
+  eq(cnt(null, null, T, 7), { deliveries: 0, returns: 0 }, 'хог оролт: 0');
+  eq(cnt([{ status: 'ready', starts_at: '2026-09-24' }], [], '', 7).deliveries, 0,
+     'огноогүй: 0 (буруу тоо гаргахгүй)');
+}
+
+// ━━━ SCAN: ТОЙМЫН КАРТ ДАРАГДАЖ АЖИЛ РУУ ХӨТЛӨНӨ ━━━
+{
+  const at = src.indexOf('function ceoNowStrip');
+  ok(at > 0, 'scan: ceoNowStrip олдов');
+  const fn = src.slice(at, at + 3000);
+  // ⛔ Орлогын карт буцаж ирээгүй — Санхүү → Тайланд бүрэн задаргаатай
+  ok(!/Энэ сарын орлого/.test(fn),
+     '⛔ scan: Тоймын туузанд орлогын карт буцаж ирээгүй (Санхүүд бий)');
+  // ⛔ КАРТ БҮР ДАРАГДАНА — `cell(...)` дуудалт бүрд view аргумент байна
+  const calls = fn.match(/\$\{cell\(/g) || [];
+  eq(calls.length, 2, 'тууз: ЯГ 2 карт');
+  for (const v of ["'receivables')", "'orders')"]) {
+    ok(fn.includes(v), `⛔ scan: карт ${v.slice(1, -2)} дэлгэц рүү дарагдана`);
+  }
+  ok(/ceoNowCounts\(state\.appOrders/.test(fn),
+     'scan: ойрын 7 хоног цэвэр функцаар бодогдоно');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ЗАХИАЛГЫН ТОВЧ — «ОДОО ХИЙХ» НЬ ЭГНЭЭНД (2026-09-22, CEO)
 //
 // 12 товч нэг дор суухад аль нь одоо хэрэгтэйг хүн мэдэхгүй — санхүүгийн
@@ -11538,6 +11605,19 @@ async function swFetchTests() {
   const i = src.indexOf('async function approveOpeningStock(');
   ok(i > 0, 'scan: approveOpeningStock олдов');
   const fn = src.slice(i, src.indexOf('async function applyStockCount(', i));
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    // ⛔ Буцаалт нь ТОО ХӨНДӨХГҮЙ — зөвхөн гарын үсгийг арилгана.
+    ok(/stock_approved_at: null, stock_approved_by: null \}\);/.test(_src),
+       'scan: батлалт буцаахад зөвхөн гарын үсэг арилна');
+    ok(/stock_opened_at: null, stock_opened_by: null,/.test(_src),
+       'scan: татгалзахад няравын гарын үсэг арилна');
+    // ⛔ Нэг товшилтоор няравын ажил буцдаг тул баталгаажуулалт ЗААВАЛ.
+    ok(/data-op-rej\][\s\S]{0,700}?if \(!\(await showConfirm\([\s\S]{0,400}?\)\)\) return;/.test(_src),
+       'scan: татгалзал showConfirm-оор хаагдана');
+    ok(/data-op-un\][\s\S]{0,700}?if \(!\(await showConfirm\([\s\S]{0,400}?\)\)\) return;/.test(_src),
+       'scan: батлалт буцаах showConfirm-оор хаагдана');
+  }
   ok(/openingSignBlock\(/.test(fn),
      '⛔ scan: батлахын өмнө `openingSignBlock` шалгагдана (өөрийгөө батлахыг хаадаг)');
   ok(/saveProduct\(\{/.test(fn) && !/rest\/v1\/products/.test(fn),

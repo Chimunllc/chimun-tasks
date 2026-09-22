@@ -7626,3 +7626,6 @@ select.no-asar-len {
   color:var(--danger); font:inherit; font-size:var(--fs-xs); font-weight:700;
   padding:1px var(--space-2); cursor:pointer; }
 .rsrc-pct.ok { color:var(--ok); } .rsrc-pct.warn { color:var(--warn); } .rsrc-pct.bad { color:var(--danger); }
+
+/* Эхний үлдэгдэл — ↩ буцаах/татгалзах (буруу дарсныг засах зам) */
+.stc-open-no { font-size:var(--fs-xs); padding:2px var(--space-2); color:var(--danger); }

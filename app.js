@@ -24962,8 +24962,7 @@ function openNewOrder(editOrder) {
     ${_sec('Төлбөр')}
     <div class="no-fields" style="margin-bottom:10px;">
       <label class="no-lbl">Хөнгөлөлт<div class="no-inline"><select id="no-disctype" style="flex:0 0 118px;"><option value="amount">₮ хөнгөлөлт</option><option value="pct">% хөнгөлөлт</option><option value="final">= Тохирсон дүн</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0"></div>
-      <div id="no-disc-hint" class="no-disc-hint"></div>
-      <input id="no-disc-why" class="ui-raw no-disc-why" type="text" placeholder="Хөнгөлөлтийн шалтгаан (заавал)" value="${isEdit ? escapeHtml(orderDiscountReason(editOrder)) : ''}" hidden></label>
+      <div id="no-disc-hint" class="no-disc-hint"></div></label>
       <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
       ${isEdit ? `<label class="no-lbl no-wide">Төлсөн (банкны баримт)
         <div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:var(--fs-base);">${fmtMoney(editOrder.paid_mnt || 0)}${editOrder.paid_date ? ` <span style="font-weight:400;font-size:var(--fs-xs);color:var(--muted);">· ${escapeHtml(String(editOrder.paid_date).slice(0, 10))}</span>` : ''}</div>
@@ -25144,7 +25143,7 @@ function openNewOrder(editOrder) {
        Захиалга 1532: авто 20% илүү байсан тул гараар бичсэн 196,280₮ ЧИМЭЭГҮЙ хаягдсан.
        Ажилтан хөнгөлөв гэж бодоод явсан, дүн өөрчлөгдөөгүй — мөнгө дутах шалтгаан болсон. */
     {
-      const _hint = $('#no-disc-hint'), _why = $('#no-disc-why');
+      const _hint = $('#no-disc-hint');
       const _autoD = Math.round(subtotal * (rentalDiscount(days).pct || 0));
       const _wanted = _fromFinal != null ? _fromFinal
         : (dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval));
@@ -25158,14 +25157,6 @@ function openNewOrder(editOrder) {
             : dtype === 'final'
               ? `✓ Тохирсон ${fmtMoney(dval)} — хөнгөлөлт ${fmtMoney(discount)} (авто ${fmtMoney(_autoD)} + нэмэлт ${fmtMoney(Math.max(0, discount - _autoD))})`
               : `✓ Хөнгөлөлт ${fmtMoney(discount)} хэрэглэгдэнэ (авто ${fmtMoney(_autoD)})`;
-      }
-      // ⛔ ТАЛБАР ХӨНГӨЛӨЛТ БАЙВАЛ ҮРГЭЛЖ ХАРАГДАНА. Анх зөвхөн `_manualUsed`
-      // үед харуулдаг байсан — хэрэв талбар олдохгүй эсвэл нуугдсан байхад
-      // шалтгаан шаардвал ХҮН ГАЦНА (бичих газаргүй, хадгалах боломжгүй).
-      if (_why) {
-        _why.hidden = !(dval > 0);
-        _why.required = _manualUsed;
-        _why.placeholder = _manualUsed ? 'Хөнгөлөлтийн шалтгаан (заавал)' : 'Хөнгөлөлтийн шалтгаан';
       }
       _manualDiscUsed = _manualUsed;
     }
@@ -25286,18 +25277,19 @@ function openNewOrder(editOrder) {
     /* ━━━ ГАР ХӨНГӨЛӨЛТ → ШАЛТГААН ЗААВАЛ (2026-09-22) ━━━━━━━━━━━━━━━━
        «Яагаад хямдруулсан бэ?» гэдэг нь ашгийн шинжилгээний цорын ганц хариулт. Авто
        хоногийн хөнгөлөлтөөс ИЛҮҮ өгсөн үед Л асууна — авто нь тарифын дүрэм, шалтгаангүй. */
-    const _whyEl = $('#no-disc-why');
-    const _discWhy = String((_whyEl && _whyEl.value) || '').trim();
-    // ⛔ БИЧИХ ГАЗАРГҮЙ БАЙХАД ШААРДАХГҮЙ — талбар олдохгүй/нуугдсан байхад
-    // шалтгаан шаардвал захиалга ХЭЗЭЭ Ч хадгалагдахгүй болно (гарцгүй байдал).
-    if (_manualDiscUsed && !_discWhy && _whyEl && !_whyEl.hidden) {
-      showToast('Доорх улаан талбарт хөнгөлөлтийн шалтгаанаа бичнэ үӝ', 'warn', 5000);
-      _whyEl.classList.add('field-bad');
-      try { _whyEl.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {}
-      _whyEl.focus();
-      return;
+    /* ━━━ ШАЛТГААН = ЦОНХООР (2026-09-22) ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       Өмнө нь модал доторх нуугдах талбар байсан — хэрэглэгчид ОЛДОХГҮЙ байсан
+       ба нуугдсан үед шаардлага ажиллавал гацаадаг байв. Цонх нь ҮРГЭЛЖ гарч
+       ирнэ — CSS, байрлал, нуултаас ОГТ хамаарахгүй. Захиалгын засварын
+       шалтгаантай ИЖИЛ урсгал — хүн нэг замыг сурна. */
+    let _discWhy = isEdit ? orderDiscountReason(editOrder) : '';
+    if (_manualDiscUsed) {
+      const _ans = await showPrompt(
+        `Авто хоногийн хөнгөлөлтөөс ИЛҮҮ ${fmtMoney(discount)} хөнгөлж байна.\n\nЯагаад хямдруулсан бэ?`,
+        { title: '🏷 Хөнгөлөлтийн шалтгаан', placeholder: 'ж: тогтмол харилцагч / харилцагчтай тохирсон', okText: 'Хадгалах', defaultValue: _discWhy });
+      if (!String(_ans || '').trim()) { showToast('Хөнгөлөлтийн шалтгаан бичээгүй — хадгалаагүй', 'warn', 4500); return; }
+      _discWhy = String(_ans).trim();
     }
-    _whyEl?.classList.remove('field-bad');
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
     const _ci = {
       ctype: ($('#no-ctype')?.value === 'org') ? 'org' : 'person',

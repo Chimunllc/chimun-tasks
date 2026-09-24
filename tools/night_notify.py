@@ -142,8 +142,30 @@ def gh(path):
         return json.loads(r.read().decode())
 
 
+def merge_summaries(rows):
+    """Нэг шөнийн ОЛОН мөрийг нэг болгоно.
+
+    ⛔ СҮҮЛИЙН МӨРИЙГ ГАНЦААР АВЧ БОЛОХГҮЙ (2026-09-24). Шөнө хоёр зам
+       (алдаа · өр) ЗЭРЭГ явдаг тул сэтгэгдэл 2 болсон. Аль нь сүүлд
+       бичигдэх нь санамсаргүй — «өр зассан» мөр «алдаа засаагүй» мөрөөр
+       дарагдвал утсанд ажил хийгдээгүй мэт мэдэгдэнэ.
+    Хамгийн сүүлийн ӨДРИЙН бүх мөрийг нэгтгэнэ: аль нэг нь амжилттай бол
+    амжилттай, аль нэг нь унасан бол унасан гэж тэмдэглэнэ."""
+    rows = [r for r in rows if r]
+    if not rows:
+        return None
+    day = rows[-1]['day']
+    same = [r for r in rows if r['day'] == day]
+    return {
+        'day': day,
+        'ok': any(r.get('ok') for r in same),
+        'fail': any(r.get('fail') for r in same),
+        'text': ' · '.join(r['text'] for r in same if r.get('text')),
+    }
+
+
 def last_summary():
-    """Түүхийн Issue-ийн СҮҮЛИЙН сэтгэгдэл. Байхгүй бол None."""
+    """Түүхийн Issue-ийн ХАМГИЙН СҮҮЛИЙН ӨДРИЙН бүх мөр. Байхгүй бол None."""
     issues = gh(f'/repos/{REPO}/issues?labels={urllib.parse.quote(HIST_LABEL)}&state=open&per_page=1')
     if not issues:
         return None
@@ -152,7 +174,7 @@ def last_summary():
     cs = gh(f'/repos/{REPO}/issues/{num}/comments?per_page=100')
     if not cs:
         return parse_summary(issues[0].get('body'))
-    return parse_summary(cs[-1].get('body'))
+    return merge_summaries([parse_summary(c.get('body')) for c in cs[-6:]])
 
 
 def open_error_count():
@@ -221,12 +243,30 @@ def selftest():
     eq('урт бичвэр хураагдана', len(short('a' * 300)), 110)
     eq('markdown цэвэрлэгдэнэ', short('`foo` **bar**'), 'foo bar')
 
+    # ⛔ Хоёр зам зэрэг явдаг тул нэг шөнө 2 мөр бичигдэнэ. Сүүлийн мөр нь
+    #    «засаагүй» байхад нөгөө зам ажил хийсэн бол АМЖИЛТ гэж тоологдоно.
+    two = merge_summaries([
+        parse_summary('**2026-09-24** · 🎨 өр · ✅ `foo` — PR #12 · merge хийгдсэн'),
+        parse_summary('**2026-09-24** · 🐞 алдаа · 🔍 засах боломжгүй гэж үзэв'),
+    ])
+    eq('хоёр замын нэг амжилт хангалттай', (two or {}).get('ok'), True)
+    eq('хоёр мөр нэг өдөр болж нэгдэнэ', (two or {}).get('day'), '2026-09-24')
+    eq('хоёр мөрийн бичвэр хоёулаа үлдэнэ',
+       'foo' in (two or {}).get('text', '') and 'боломжгүй' in (two or {}).get('text', ''), True)
+    old_day = merge_summaries([
+        parse_summary('**2026-09-23** · 🎨 өр · ✅ өчигдөр'),
+        parse_summary('**2026-09-24** · 🐞 алдаа · ❌ Унасан'),
+    ])
+    eq('өчигдрийн амжилт өнөөдрийнх болохгүй', (old_day or {}).get('ok'), False)
+    eq('өнөөдрийн уналт танигдана', (old_day or {}).get('fail'), True)
+    eq('хоосон жагсаалт None', merge_summaries([None, None]), None)
+
     if f:
         print('❌ NIGHT NOTIFY FAIL')
         for x in f:
             print('   ·', x)
         raise SystemExit(1)
-    print('✅ NIGHT NOTIFY OK — 16 тест')
+    print('✅ NIGHT NOTIFY OK — 22 тест')
 
 
 def main():

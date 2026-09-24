@@ -32131,12 +32131,12 @@ async function openFinDupAudit() {
   const row = (it, i) => {
     const r = it.r;
     const tag = it.dup
-      ? '<span style="font-size:10px;font-weight:700;color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent);padding:1px 6px;border-radius:6px;white-space:nowrap;">🟢 хуулгад бий</span>'
-      : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);padding:1px 6px;border-radius:6px;white-space:nowrap;">🟡 хуулгад алга</span>';
-    return `<label style="display:flex;align-items:center;gap:9px;font-size:12px;padding:7px 9px;border-bottom:1px solid var(--border);cursor:pointer;">
-      <input type="checkbox" class="fd-chk" data-i="${i}" data-amt="${Number(r.amount) || 0}" checked style="width:16px;height:16px;flex:0 0 auto;">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(nmeShort(r))} <span style="color:var(--muted);">· ${escapeHtml(String(r.purpose || '').replace(/^Цагийн цалин · /, ''))}</span></span>
-      ${tag}<b style="white-space:nowrap;">${fmtMoney(r.amount)}</b></label>`;
+      ? '<span class="fd-tag">🟢 хуулгад бий</span>'
+      : '<span class="fd-tag miss">🟡 хуулгад алга</span>';
+    return `<label class="fd-row">
+      <input type="checkbox" class="fd-chk" data-i="${i}" data-amt="${Number(r.amount) || 0}" checked>
+      <span class="fd-nm">${escapeHtml(nmeShort(r))} <span class="fd-sub">· ${escapeHtml(String(r.purpose || '').replace(/^Цагийн цалин · /, ''))}</span></span>
+      ${tag}<b>${fmtMoney(r.amount)}</b></label>`;
   };
   function nmeShort(r) { const p = String(r.purpose || '').split('·'); return (p[1] || '').trim() || r.beneficiary || ''; }
   const list = items.map(row).join('');

@@ -87,7 +87,8 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
-  'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
+  'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
+  'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -12078,4 +12079,100 @@ async function swFetchTests() {
   //   БҮТЭН ЦАГИЙН талбарыг хардаг (`.last` = дуудлагын мөч, `.last_at` = алдаа).
   const strCmp = (src.match(/localeCompare\(String\(a\.last(_at)?\s*\)/g) || []).length;
   eq(strCmp, 0, 'scan: цагийн талбарыг мөрөөр харьцуулах газар 0 (Date.parse-аар тулга)');
+}
+
+// ═══ ЭЛЭГДЭЛ — түрээсийн бараа хуучирна, тэр нь зардал (2026-09-24) ═══
+// Өмнө нь худалдан авалт 6000 «хөрөнгө» ангиллаар салбарын зардлаас БҮРЭН хасагдаж
+// байсан тул салбарын ашиг элэгдлийн хэмжээгээр хиймлээр өндөр гарч, COO-гийн
+// ашгийн эрх (30%) бодит ашгийн ~55% болж байв.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const { deprecYearsFor, deprecByBranch } = F;
+
+  // ── Ангиллын нас — ДАРААЛАЛ чухал ────────────────────────────────────────
+  eq(deprecYearsFor('Асар 10м:20м').years, 8, 'элэгдэл: асар 8 жил');
+  eq(deprecYearsFor('Өвлийн Майхан 6-8 хүн').years, 8, 'элэгдэл: майхан 8 жил');
+  // ⛔ «Ширээний бүтээлэг» нь ШИРЭЭ гэсэн үг агуулдаг тул даавууны дүрэм
+  //   сандал/ширээнээс ӨМНӨ байх ЁСТОЙ — эс бөгөөс даавуу 5 жилээр элэгдэж,
+  //   жилийн элэгдэл дутуу гарна.
+  eq(deprecYearsFor('Ширээний бүтээлэг 182×76 Цагаан').years, 2, 'элэгдэл: бүтээлэг 2 жил (ширээ БИШ)');
+  eq(deprecYearsFor('Гэрэлт хөшиг 3×5 м').years, 2, 'элэгдэл: хөшиг 2 жил');
+  // ⛔ «Тайзны электрон оч шүршигч» нь ТАЙЗ гэсэн үг агуулдаг ч техник —
+  //   техникийн дүрэм тайзнаас ӨМНӨ байна.
+  eq(deprecYearsFor('Тайзны электрон оч шүршигч').years, 4, 'элэгдэл: оч шүршигч техник 4 жил');
+  eq(deprecYearsFor('LED гэрэлтэй шал, тайз').years, 4, 'элэгдэл: LED шал техник 4 жил');
+  eq(deprecYearsFor('Тайз каркас 1 метр').years, 10, 'элэгдэл: карказ 10 жил');
+  eq(deprecYearsFor('Цагаан Ширээ 180*74см').years, 5, 'элэгдэл: ширээ 5 жил');
+  eq(deprecYearsFor('Эвхэгддэг сандал Цагаан').years, 5, 'элэгдэл: сандал 5 жил');
+  eq(deprecYearsFor('Тодорхойгүй шинэ бараа').years, 5, 'элэгдэл: ангиллаас гадуур 5 жил (өгөгдмөл)');
+
+  // ── Сан (pool) дээрх тооцоо — нэгж бүрийг хөөхгүй ────────────────────────
+  const P = [
+    { name: 'Цагаан Ширээ 180*74см', cost: 120000, qty_mevent: 10 },          // 5ж → 120000/60 × 10 = 20,000
+    { name: 'Асар 10м:20м',          cost: 9600000, qty_mevent: 1 },          // 8ж → 9,600,000/96 = 100,000
+    { name: 'Аяны ор',               cost: 240000, qty_nomaad: 5 },           // 5ж → 240000/60 × 5 = 20,000
+  ];
+  const d = deprecByBranch(P);
+  eq(Math.round(d['ИВЕНТ']), 120000, 'элэгдэл: M-Event сарын элэгдэл (ширээ 20к + асар 100к)');
+  eq(Math.round(d['КЕМП']), 20000, 'элэгдэл: NOMAAD сарын элэгдэл');
+  eq(Math.round(d.total), 140000, 'элэгдэл: нийт = салбаруудын нийлбэр');
+
+  // Нэг бараа ХОЁР салбарт хуваарилагдсан бол элэгдэл нь ч хуваагдана (давхардахгүй).
+  const d2 = deprecByBranch([{ name: 'Цагаан Ширээ', cost: 120000, qty_mevent: 6, qty_nomaad: 4 }]);
+  eq(Math.round(d2['ИВЕНТ']), 12000, 'элэгдэл: салбарын тоогоор хуваарилагдана (M-Event)');
+  eq(Math.round(d2['КЕМП']), 8000, 'элэгдэл: салбарын тоогоор хуваарилагдана (NOMAAD)');
+  eq(Math.round(d2.total), 20000, 'элэгдэл: хуваарилалт нийтийг өсгөхгүй');
+
+  // Хасагдах бараа: архивласан · үйлчилгээ · багц. Өртөггүй нь ил тоологдоно.
+  const d3 = deprecByBranch([
+    { name: 'Хуучин ширээ', cost: 120000, qty_mevent: 10, archived: true },
+    { name: 'Хүргэлт', cost: 120000, qty_mevent: 10, type: 'service' },
+    { name: 'Өвлийн багц', cost: 120000, qty_mevent: 10, type: 'package' },
+    { name: 'Шинэ сандал', cost: 0, qty_mevent: 50 },
+  ]);
+  eq(d3.total, 0, 'элэгдэл: архивласан/үйлчилгээ/багц ОРОХГҮЙ');
+  eq(d3.noCost, 1, 'элэгдэл: өртөггүй бараа чимээгүй алгасагдахгүй — тоологдоно');
+
+  // ── Шилжилтийн сар — ӨНГӨРСӨН (хаасан) сарын ашиг ХӨДӨЛӨХГҮЙ ─────────────
+  // Элэгдэл ОДООГИЙН нөөцөөс бодогддог тул бүх сард хэрэглэвэл нөөц хөдлөх бүрд
+  // хаасан сарын ашиг, тэр дундаа COO-гийн ашгийн эрх чимээгүй өөрчлөгдөнө.
+  const save = runIn('[state.products, state.appConfig, state.financeRequests, state.appOrders, state.nomaadOrders, state.vatReceipts]');
+  runIn('state.products = ' + JSON.stringify(P) + ';');
+  runIn("state.appConfig = Object.assign({}, state.appConfig, { deprec: { start: '2026-10' } });");
+  eq(F.deprecStartMonth(), '2026-10', 'элэгдэл: шилжилтийн сар тохиргооноос');
+  ok(F.deprecForMonth('2026-09').active === false, 'элэгдэл: шилжилтээс ӨМНӨХ сард зардал болохгүй');
+  ok(F.deprecForMonth('2026-09').total > 0, 'элэгдэл: өмнөх сард ЛАВЛАГАА тоо харагдана');
+  ok(F.deprecForMonth('2026-10').active === true, 'элэгдэл: шилжилтийн сараас зардал болно');
+  ok(F.deprecForMonth('2026-11').active === true, 'элэгдэл: дараагийн сард ч зардал');
+
+  // ── ИНВАРИАНТ: салбарын ашгийн тайланд элэгдэл ҮНЭХЭЭР хасагдана ─────────
+  runIn('state.financeRequests = []; state.appOrders = []; state.nomaadOrders = []; state.vatReceipts = [];');
+  const before = runIn("finBranchPnl('2026-09', 'cash')");
+  const after = runIn("finBranchPnl('2026-10', 'cash')");
+  const mev = (pnl) => (pnl.rows.find(r => r.k === 'M-Event') || {}).exp || 0;
+  eq(Math.round(mev(before)), 0, 'ИНВАРИАНТ: шилжилтээс өмнөх сарын зардалд элэгдэл ОРОХГҮЙ');
+  eq(Math.round(mev(after)), 120000, 'ИНВАРИАНТ: шилжилтээс хойш M-Event зардалд элэгдэл нэмэгдэнэ');
+  ok(Math.round((after.dep && after.dep.total) || 0) === 140000, 'ИНВАРИАНТ: тайлан элэгдлийн дүнг буцаана (дэлгэцэд харуулах)');
+
+  runIn('state.products = ' + JSON.stringify(save[0] || []) + ';');
+  runIn('state.appConfig = ' + JSON.stringify(save[1] || {}) + ';');
+  runIn('state.financeRequests = ' + JSON.stringify(save[2] || []) + ';');
+  runIn('state.appOrders = ' + JSON.stringify(save[3] || []) + ';');
+  runIn('state.nomaadOrders = ' + JSON.stringify(save[4] || []) + ';');
+  runIn('state.vatReceipts = ' + JSON.stringify(save[5] || []) + ';');
+
+  // ── SCAN: элэгдлийг дахин бодох/унтраах хэв маягийг хаана ────────────────
+  const pnl = src.slice(src.indexOf('function finBranchPnl('), src.indexOf('function finReceivables('));
+  ok(/const dep = deprecForMonth\(month\)/.test(pnl),
+     'scan: finBranchPnl элэгдлийг deprecForMonth-аас авна');
+  ok(/if \(dep\.active\)[\s\S]{0,120}exp\[b\] \+= dep\[b\]/.test(pnl),
+     'scan: элэгдэл салбарын зардал дээр нэмэгдэнэ');
+  ok(/dep,/.test(pnl), 'scan: элэгдлийн дүн тайлангаас буцна (дэлгэцэд ил гарна)');
+  // Насыг өөр газар хатуу бичих = хоёр эх сурвалж болж зөрнө.
+  eq((src.match(/DEPREC_LIVES/g) || []).length, 2,
+     'scan: ангиллын нас ЗӨВХӨН DEPREC_LIVES-д (тодорхойлолт + fallback дуудалт)');
+  // Каталог ачаалагдаагүй бол элэгдэл чимээгүй 0 болно (НӨАТ-тай ижил занга).
+  ok((src.match(/ensureProductsLoaded\(\)/g) || []).length >= 3,
+     'scan: тайлан/COO элэгдлийн эх датаг ачаалахыг баталгаажуулна');
+  ok(/bp\.dep/.test(src), 'scan: салбар задаргаанд элэгдлийн мөр харагдана');
 }

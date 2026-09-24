@@ -1,7 +1,12 @@
-# ШӨНИЙН АГЕНТ — өдөрт нэг удаа, нэг тодорхой ажил.
+# ШӨНИЙН АГЕНТ — өдөрт нэг удаа, ХОЁР ЗАМ ЗЭРЭГ.
 #
-# ЭРЭМБЭ: нээлттэй `[алдаа]` Issue байвал ТҮҮНИЙГ зална; байхгүй бол
-# дизайны өрийг бууруулна. Ажилтны утсан дээр гарсан алдаа үргэлж чухал.
+# ⛔ ЭРЭМБЭ БАЙХГҮЙ (2026-09-24). Өмнө нь «алдаа байвал зөвхөн түүнийг зас»
+# байсан тул ЗАСАГДАХГҮЙ нэг алдаа бүх автоматыг зогсоодог байв: 09-21-ээс
+# 09-24 хүртэл 4 шөнө дараалан #565 (Facebook-ийн in-app браузер) дээр гацаж,
+# дизайны өр ч хийгдээгүй. Одоо `lane` матрицаар хоёр зам ЗЭРЭГ явна —
+# нэг зам гацсан нь нөгөөг зогсоохгүй. Тус тусдаа PR, тус тусдаа шалгуур.
+#   · `error` — ажилтны утсан дээр гарсан алдаа (хаалт: тестийн тоо ӨСӨХ)
+#   · `debt`  — дизайны өр (хаалт: өрийн тоо БУУРАХ)
 #
 # ⛔ АЛДАА ЗАСАХ ГОРИМЫН ЦОРЫН ГАНЦ ХААЛТ = ТЕСТИЙН ТОО ӨСӨХ. Нөхөн
 # үзүүлэх тест бичээгүй бол агент алдааг ойлгоогүй буюу таамагласан —
@@ -64,6 +69,12 @@ jobs:
   improve:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # ⛔ `fail-fast: false` — нэг зам унахад нөгөөг БҮҮ цуцал. Тэр нь яг
+    #    л бидний зассан гацаа (нэг зам бүгдийг зогсоох) руу буцах зам.
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [error, debt]
     steps:
       - name: Түлхүүр шалгах
         id: key
@@ -96,14 +107,51 @@ jobs:
         if: steps.key.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LANE: ${{ matrix.lane }}
         run: |
           set -euo pipefail
-          # ─── ЭХЛЭЭД АЛДАА, ДАРАА НЬ ӨР ───
-          # Ажилтны утсан дээр гарсан алдаа дизайны өрөөс ҮРГЭЛЖ чухал.
-          # Нээлттэй `[алдаа]` Issue байвал өнөө шөнө ТҮҮНИЙГ засна.
-          ISSUE=$(gh issue list --label "алдаа" --state open --limit 1 \
-                    --json number --jq '.[0].number // empty' 2>/dev/null || true)
-          if [ -n "$ISSUE" ]; then
+          # ─── ЭНЭ ЗАМ ЮУ ХИЙХ ВЭ ───
+          # Зам нь матрицаар тогтоогддог: `error` эсвэл `debt`. Хийх ажил
+          # байхгүй бол ТЭР ЗАМ л алгасна (нөгөө зам хэвийн явна).
+          if [ "$LANE" != "error" ]; then
+            echo "mode=debt" >> "$GITHUB_OUTPUT"
+          else
+          # Шошго байхгүй бол `--add-label` унадаг тул заавал үүсгэнэ.
+          gh label create "засагдахгүй" --color ededed \
+            --description "Шөнийн агент засаж чадаагүй — сонголтоос хасагдана" 2>/dev/null || true
+          gh label create "сайт" --color 1d76db \
+            --description "mevent.mn сайтын алдаа — ӨӨР репод засагдана" 2>/dev/null || true
+
+          # ⛔ ХАМГИЙН ХУУЧНААС (өмнө хамгийн ШИНЭЭС авдаг байсан тул шинэ
+          #    засагдахгүй алдаа гарах бүрд жижүүр дахин тэр дээрээ гацдаг байв).
+          # Хоёр төрөл сонголтоос хасагдана:
+          #  · `засагдахгүй` — агент өмнө нь оролдож чадаагүй. Хүн шошгыг авбал
+          #    дахин эргэлтэд орно (хаалт хүнд, механикад биш).
+          #  · `сайт` — mevent.mn нь ӨӨР РЕПО (CLAUDE.md). Энд засах код БАЙХГҮЙ
+          #    тул агент шөнө бүр «боломжгүй» гэж дуусах л болно.
+          CANDS=$(gh issue list --state open --limit 20 --json number --jq '.[].number' \
+                    --search 'label:"алдаа" -label:"засагдахгүй" -label:"сайт" sort:created-asc' \
+                    2>/dev/null || true)
+          ISSUE=''
+          for N in $CANDS; do
+            BODY=$(gh issue view "$N" --json body --jq .body 2>/dev/null || true)
+            # Сайтын алдааг ӨӨРӨӨ таньж шошголно — дараагийн шөнө дахин уншихгүй.
+            # Таних тэмдэг нь triage-ийн бичдэг «хувилбар: site» / «Дэлгэц: mevent.mn».
+            if printf '%s' "$BODY" | grep -qE 'хувилбар:\*\* `site`|Дэлгэц:\*\* `mevent\.mn`'; then
+              echo "#$N нь сайтын алдаа — хасав."
+              gh issue edit "$N" --add-label "сайт" >/dev/null 2>&1 || true
+              gh issue comment "$N" --body "🌙 Энэ нь **mevent.mn сайтын** алдаа — сайт нь \`Chimunllc/m-event-website-ready\` репод, энэ репод засах код байхгүй. Шөнийн агентын сонголтоос хасав (\`сайт\` шошго)." >/dev/null 2>&1 || true
+              continue
+            fi
+            ISSUE="$N"
+            break
+          done
+          if [ -z "$ISSUE" ]; then
+            echo "::notice::Засах алдаа алга — алдааны зам өнөө шөнө ажиллахгүй."
+            echo "mode=error" >> "$GITHUB_OUTPUT"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
             echo "mode=error" >> "$GITHUB_OUTPUT"
             echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -121,7 +169,6 @@ jobs:
             node tools/debt-check.js --json > /tmp/debt-before.json || echo '{}' > /tmp/debt-before.json
             exit 0
           fi
-          echo "mode=debt" >> "$GITHUB_OUTPUT"
           node tools/debt-check.js || true
           echo '--- санал ---'
           node tools/debt-check.js --suggest
@@ -279,6 +326,8 @@ jobs:
           TARGET: ${{ steps.task.outputs.target }}
           MODE: ${{ steps.task.outputs.mode }}
           ISSUE: ${{ steps.task.outputs.issue }}
+          # Issue-ийн шошго/сэтгэгдэлд — NIGHT_PAT-д Issues эрх байхгүй байж болно.
+          ISSUE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -288,6 +337,14 @@ jobs:
           if [ -z "$(git status --porcelain)" ]; then
             if [ "$MODE" = "error" ]; then
               echo "::notice::Агент энэ алдааг засах боломжгүй гэж үзэв — #$ISSUE хүнд үлдэв."
+              # ⛔ ШОШГО ЗААВАЛ — эс бөгөөс дараагийн шөнө ДАХИН ижил алдааг авч
+              #    дахин «боломжгүй» гэж дуусна (09-21…09-24-нд 4 шөнө ингэж
+              #    үрэгдсэн). Хүн шошгыг авбал алдаа эргэлтэд буцаж орно.
+              # ⚠ GITHUB_TOKEN-оор — NIGHT_PAT-д Issues эрх байхгүй байж болно.
+              GH_TOKEN="$ISSUE_TOKEN" gh issue edit "$ISSUE" \
+                --add-label "засагдахгүй" >/dev/null 2>&1 || true
+              GH_TOKEN="$ISSUE_TOKEN" gh issue comment "$ISSUE" --body \
+                "🌙 Шөнийн агент энэ алдааг засах боломжгүй гэж үзэв — манай талд засах код олдсонгүй (гадны код, сүлжээ, эсвэл өөр репо). Сонголтоос хасав. Дахин оролдуулах бол \`засагдахгүй\` шошгыг ав." >/dev/null 2>&1 || true
               echo "nofix=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -323,7 +380,9 @@ jobs:
             console.log(rows.length ? rows.join("\n") : "| — | — | — | өөрчлөлтгүй |");
           ')
 
-          BR="claude/night-$(date -u +%Y%m%d-%H%M)"
+          # ⚠ Замын нэр ЗААВАЛ орно — хоёр зам зэрэг явдаг тул нэг минутад
+          #   хоёр push хийвэл ижил салбарын нэр дээр мөргөлдөнө.
+          BR="claude/night-$MODE-$(date -u +%Y%m%d-%H%M)"
           git config user.name  "chimun-night-agent"
           git config user.email "noreply@anthropic.com"
           git switch -c "$BR"
@@ -463,9 +522,17 @@ jobs:
 
           # ⑤ CI ногоон болтол хүлээнэ. Улаан бол merge ХИЙХГҮЙ.
           if gh pr checks "$NUM" --watch --fail-fast --interval 15; then
-            gh pr merge "$NUM" --squash --delete-branch
-            echo "::notice::#$NUM merge хийгдлээ. Буцаах харуул 20 мин тутам хянана."
-            echo "state=merge хийгдсэн" >> "$GITHUB_OUTPUT"
+            # ⚠ Хоёр зам зэрэг явдаг тул нэг шөнө хоёр PR `app.js`-ийг хөндөж
+            #   МӨРГӨЛДӨЖ болно. Тэр нь эвдрэл БИШ — PR нээлттэй үлдэнэ, өглөө
+            #   хүн нэг дарж шийднэ. Улаан болговол жинхэнэ эвдрэл живнэ.
+            if gh pr merge "$NUM" --squash --delete-branch; then
+              echo "::notice::#$NUM merge хийгдлээ. Буцаах харуул 20 мин тутам хянана."
+              echo "state=merge хийгдсэн" >> "$GITHUB_OUTPUT"
+            else
+              gh pr comment "$NUM" --body "⚠ CI ногоон байсан ч merge хийгдсэнгүй — нөгөө замын PR-тай мөргөлдсөн байж магадгүй. ХҮН шалгана."
+              echo "::warning::merge хийгдсэнгүй (мөргөлдөөн?) — #$NUM нээлттэй."
+              echo "state=merge хийгдээгүй — мөргөлдсөн байж магадгүй, PR нээлттэй" >> "$GITHUB_OUTPUT"
+            fi
           else
             gh pr comment "$NUM" --body "⚠ CI унасан — автоматаар merge хийгдээгүй. ХҮН шалгана."
             echo "::error::CI улаан — merge хийсэнгүй."
@@ -485,6 +552,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET: ${{ steps.task.outputs.target }}
           NOWORK: ${{ steps.task.outputs.skip }}
+          LANE: ${{ matrix.lane }}
+          TESTS: ${{ steps.pr.outputs.tests }}
           PR_NUM: ${{ steps.pr.outputs.num }}
           MERGE_STATE: ${{ steps.merge.outputs.state }}
           JOB_STATUS: ${{ job.status }}
@@ -495,14 +564,24 @@ jobs:
             --description "Шөнийн агентын түүх (авто)" 2>/dev/null || true
 
           DAY=$(date -u -d '+8 hours' +%Y-%m-%d)   # УБ цаг
+          # Зам бүр өөрийн мөрийг бичнэ (шөнөд 2 мөр). Тэмдэггүй бол өглөө
+          # нь аль зам юу хийснийг ялгах аргагүй болно.
+          if [ "$LANE" = "error" ]; then ICON='🐞 алдаа'; else ICON='🎨 өр'; fi
+          # ⛔ Алдаа алга бол ЮУ Ч БИЧИХГҮЙ — «алдаа байхгүй» гэж шөнө бүр
+          #   бичвэл түүх нь хоосон мөрөөр дүүрч, жинхэнэ ажил живнэ.
+          #   (Өрийн зам харин бичнэ — хүрээ дуусах нь мэдэх ёстой зүйл.)
+          if [ "$NOWORK" = "true" ] && [ "$LANE" = "error" ]; then
+            echo "Засах алдаа алга — түүхэнд мөр бичихгүй."
+            exit 0
+          fi
           if [ "$NOWORK" = "true" ]; then
-            LINE="**$DAY** · Хүрээнд ажил үлдээгүй — агент ажиллаагүй. \`tools/debt-check.js --suggest\`-ээр шалга."
+            LINE="**$DAY** · $ICON · Хүрээнд ажил үлдээгүй — агент ажиллаагүй. \`tools/debt-check.js --suggest\`-ээр шалга."
           elif [ "$JOB_STATUS" != "success" ]; then
-            LINE="**$DAY** · ❌ Унасан (бай: \`${TARGET:-?}\`). [Лог]($RUN_URL) — \`num_turns\`, \`permission_denials_count\`-ыг хар."
+            LINE="**$DAY** · $ICON · ❌ Унасан (бай: \`${TARGET:-?}\`). [Лог]($RUN_URL) — \`num_turns\`, \`permission_denials_count\`-ыг хар."
           elif [ "${MERGE_STATE:-}" = "засах боломжгүй гэж үзэв (Issue хүнд үлдэв)" ]; then
             # ⛔ ЗАСААГҮЙГ ✅ ГЭЖ БИЧИХГҮЙ. Өглөөний мэдэгдэл энэ мөрөөс уншдаг тул
             #   «засвар хийгдлээ» гэсэн ХУДАЛ мэдээлэл утсанд очиж байв (2026-09-18).
-            LINE="**$DAY** · 🔍 \`${TARGET}\` — засах боломжгүй гэж үзэв, Issue хүнд үлдэв."
+            LINE="**$DAY** · $ICON · 🔍 \`${TARGET}\` — засах боломжгүй гэж үзэв, \`засагдахгүй\` шошго тавигдав."
           else
             DELTA=$(node -e '
               const fs = require("node:fs");
@@ -514,7 +593,11 @@ jobs:
                 console.log(r.join(" · ") || "өөрчлөлтгүй");
               } catch { console.log("тоо уншигдсангүй"); }
             ')
-            LINE="**$DAY** · ✅ \`${TARGET}\` — $DELTA · PR #${PR_NUM:-?} · ${MERGE_STATE:-төлөв тодорхойгүй}"
+            # Зам бүр ӨӨРИЙН нотолгоогоо бичнэ: алдаанд тестийн тоо,
+            # өрд хэмжигдэхүүний зөрүү. Нөгөөгийнхийг бичвэл утгагүй
+            # («өөрчлөлтгүй» гэж бичигдээд ажил хийгдээгүй мэт харагдана).
+            if [ "$LANE" = "error" ]; then DELTA="тест ${TESTS:-?}"; fi
+            LINE="**$DAY** · $ICON · ✅ \`${TARGET}\` — $DELTA · PR #${PR_NUM:-?} · ${MERGE_STATE:-төлөв тодорхойгүй}"
           fi
           echo "$LINE"
 

@@ -5562,6 +5562,35 @@ body.role-daily #add-project { display: none !important; }
 /* Нарийн модал (скан г.м.) — өмнө нь inline style="max-width:400px" байсан */
 .modal.modal-sm { max-width: 400px; }
 
+/* ── 🧾 Банкны баримтын дэлгэрэнгүй (openPaidReceiptDetail) ──
+   Угтвар `prc-`. Өмнө нь 13 inline style= байсныг класс болгов (2026-09-24).
+   ⚠ h2 нь класс АВАХГҮЙ — `.modal h2` дүрэм хэмжээ/захыг аль хэдийн хүчээр
+     тогтоодог тул хуучин inline style ямар ч нөлөөгүй байсан (класс нэмбэл
+     шууд дарагдах үхмэл дүрэм болно).
+   ⚠ Шинэ угтвар авахын өмнө давхцлыг шалга: grep -o '^\.xx-[a-z-]*' styles.css */
+.prc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); margin-bottom: var(--space-3);
+}
+.prc-body { font-size: var(--fs-md); line-height: 1.5; }
+/* Нэр ↔ утга мөр: нэр зүүнд хумигдахгүй, утга баруун талд мөрөөрөө бууна */
+.prc-kv {
+  display: flex; justify-content: space-between; gap: var(--space-4);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border);
+}
+.prc-k { flex: none; color: var(--muted); }
+.prc-v { text-align: right; word-break: break-word; }
+/* Зөрүүний сэрэмжлүүлэг — 3 өөр тохиолдолд ЯГ ИЖИЛ харагдана */
+.prc-warn {
+  margin: var(--space-2) 0; padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-md); background: var(--warn-soft); color: var(--warn);
+  font-size: var(--fs-sm); line-height: 1.45;
+}
+.prc-note { margin-top: var(--space-3); font-size: var(--fs-xs); color: var(--muted); }
+/* Товчны эгнээ нарийн дэлгэцэд 3 товчийг багтаахын тулд бууна */
+.prc-acts { flex-wrap: wrap; }
+.prc-pdf { color: var(--accent, #7c3aed); }
+
 /* ── НӨАТ задаргаа — мөр дарахад баримтууд гарна ──
    Угтвар `vat-click` / `vatl-`. Шинэ угтвар авахын өмнө давхцлыг шалга
    (`grep -o '^\.xx-[a-z-]*' styles.css`) — 2026-09-04-нд `sc-` давхцаж эвдэрсэн. */

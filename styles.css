@@ -6703,6 +6703,21 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .di-row input { width: 16px; height: 16px; flex: 0 0 auto; }
 .di-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .di-row b { white-space: nowrap; color: var(--danger); }
+/* Цалингийн давхцал аудитын мөр (openFinDupAudit) — «хуулгад бий/алга» шошготой.
+   ⚠ `.modal label` нь `display:block` тавьдаг тул сонгогч нь ХОЁР класстай байх
+   ёстой (`.modal .fd-row`) — эс бөгөөс мөр эвдэрч чагт нь тусдаа мөр болно. */
+.modal .fd-row { display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--fs-sm); padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border); cursor: pointer; }
+.modal .fd-row input { width: 16px; height: 16px; flex: 0 0 auto; }
+.fd-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fd-sub { color: var(--muted); }
+.fd-row b { white-space: nowrap; }
+/* Шошго: ногоон = хуулгад бий (баталгаатай давхцал), шар = хуулгад алга */
+.fd-tag { font-size: var(--fs-xs); font-weight: 700; white-space: nowrap;
+  padding: 1px var(--space-2); border-radius: var(--r-sm);
+  color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.fd-tag.miss { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .stmt-drop-g { border-top: 1px solid var(--border); padding: var(--space-1) 0; }
 .stmt-drop-g > summary { cursor: pointer; color: var(--text-soft);
   padding: var(--space-1) 0; font-size: var(--fs-sm); }

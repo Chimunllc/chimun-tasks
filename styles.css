@@ -7667,3 +7667,8 @@ select.no-asar-len {
 .opc-sum b { color: var(--text); }
 .opc-bad { color: var(--danger); font-weight: 700; }
 .opc-act { margin-top: var(--space-4); }
+
+/* Салбар задаргааны доорх тайлбар мөр (НӨАТ, элэгдэл) — inline style-гүй */
+.pnl-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); line-height: 1.5; }
+.pnl-note b { color: var(--text); }
+.pnl-note.is-ref { color: var(--warn); }

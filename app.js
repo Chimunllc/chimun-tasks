@@ -27614,6 +27614,7 @@ function renderCooSalary() {
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { loadNomaadOrders(); }
   if (state.financeRequests === undefined && typeof loadFinanceRequests === 'function') loadFinanceRequests();
   ensureVatLoaded();   // цэвэр ашиг НӨАТ хассан байна
+  ensureProductsLoaded();   // элэгдэл каталогоос бодогдоно
 
   const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
   // meCeo — доорх «⚙️ Тохиргоо» блок ЗӨВХӨН CEO-д (COO өөрөө өөрийн хувиа өөрчилж болохгүй).
@@ -28543,6 +28544,88 @@ function warehouseCapital(products, branchKey) {
   });
   return { capital, withCost, noCost, verified, verifiedN,
            verifiedPct: capital > 0 ? verified / capital : 0 };
+}
+
+/* ЭЛЭГДЭЛ — түрээсийн бараа хуучирна, тэр нь ЗАРДАЛ (2026-09-24, CEO шийдвэр).
+   Өмнө нь худалдан авалт 6000 ангиллаар «хөрөнгө» болж салбарын зардлаас БҮРЭН
+   хасагддаг байсан тул салбарын ашиг элэгдлийн хэмжээгээр хиймлээр өндөр гарч,
+   COO-гийн ашгийн эрх тэр өндөр тооноос бодогдож байв (30% гэж тохирсон нь
+   бодит ашгийн ~55% болж байсныг амьд датаар тооцов).
+   ⛔ **ГАРЦААР БИШ, ШУЛУУН ШУГАМААР** — түрээсийн салбарын жишиг (Rentman/InTempo).
+     Гарцаар элэгдүүлэх нь теорийн хувьд зөв ч нэгж бүрийн гарцыг бүртгэхийг
+     шаардана; нас нь ангиллаар тогтоогддог тул нэг механизмаар бүх бараа хамрагдана.
+   ⛔ **НАСЫГ КОДОД БҮҮ ХАТУУ БИЧ** — `app_config['deprec']` нь ганц эх сурвалж
+     (тарифтай ижил дүрэм). Доорх const зөвхөн fallback.
+   ⛔ **ШИЛЖИЛТИЙН САР (`start`) ХЭРЭГТЭЙ** — элэгдэл ОДООГИЙН нөөцөөс бодогддог тул
+     хэрэв бүх сард хэрэглэвэл нөөц хөдлөх бүрд ӨНГӨРСӨН сарын ашиг (тэр дундаа
+     ХААСАН сарын) чимээгүй өөрчлөгдөнө. Тиймээс `start`-аас хойш Л зардал болно;
+     түүнээс өмнөх сард зөвхөн ЛАВЛАГАА тоо харагдана (`active:false`). */
+const DEPREC_LIVES = [
+  { re: /асар|майхан|bell|сүүдрэвч/i,                                              years: 8,  label: 'Асар, майхан' },
+  { re: /бүтээлэг|углаа|хөшиг|дэвсгэр|зүлэг/i,                                     years: 2,  label: 'Даавуу' },
+  { re: /гэрэл|лазер|strobe|par |cob|дэлгэц|хөгжим|спикер|микрофон|машин|шүршигч/i, years: 4,  label: 'Техник' },
+  { re: /тайз|карказ|каркас/i,                                                     years: 10, label: 'Тайз, карказ' },
+  { re: /сандал|ширээ/i,                                                           years: 5,  label: 'Сандал, ширээ' },
+];
+const DEPREC_DEFAULT_YEARS = 5;      // ангиллаас гадуур бараа
+const DEPREC_START_DEFAULT = '2026-10';
+function _deprecCfg() { return (state.appConfig && typeof state.appConfig.deprec === 'object' && state.appConfig.deprec) || {}; }
+function deprecStartMonth() { const s = String(_deprecCfg().start || ''); return /^\d{4}-\d{2}$/.test(s) ? s : DEPREC_START_DEFAULT; }
+// Ангиллын нас — тохиргоо байвал түүнээс (нэрээр тааруулсан regex мөр), эс бол fallback.
+function deprecLives() {
+  const l = _deprecCfg().lives;
+  if (!Array.isArray(l) || !l.length) return DEPREC_LIVES;
+  return l.map(x => {
+    let re = null; try { re = new RegExp(String(x.re || ''), 'i'); } catch (e) { re = null; }
+    return { re, years: Number(x.years) || DEPREC_DEFAULT_YEARS, label: String(x.label || '') };
+  }).filter(x => x.re);
+}
+function deprecYearsFor(name, lives) {
+  const n = String(name || '');
+  const L = lives || deprecLives();
+  for (const x of L) if (x.re && x.re.test(n)) return { years: x.years, label: x.label };
+  return { years: DEPREC_DEFAULT_YEARS, label: 'Бусад' };
+}
+/* Сарын элэгдэл САЛБАРААР — хөрөнгийн сан (pool) дээр. Цэвэр функц, тестлэгдэнэ.
+   ⚠ Нэгж бүрийг хөөх ШААРДЛАГАГҮЙ: нөөцийн нийт өртөг ÷ нас = сарын элэгдэл.
+   ⚠ Үйлчилгээ/багц ба архивласан бараа ОРОХГҮЙ (warehouseCapital-тай ижил дүрэм). */
+function deprecByBranch(products, lives) {
+  const out = { 'ИВЕНТ': 0, 'КЕМП': 0, 'КАТЕРИНГ': 0, 'ХХК': 0, total: 0, byCat: {}, noCost: 0 };
+  const L = lives || deprecLives();
+  const B = [['qty_mevent', 'ИВЕНТ'], ['qty_nomaad', 'КЕМП'], ['qty_catering', 'КАТЕРИНГ'], ['qty_chimun', 'ХХК']];
+  (products || []).forEach(p => {
+    if (!p || p.archived) return;
+    if (typeof isService === 'function' && isService(p)) return;
+    if (typeof isPackage === 'function' && isPackage(p)) return;
+    const cost = Number(p.cost) || 0;
+    const qty = B.reduce((s, b) => s + (Number(p[b[0]]) || 0), 0);
+    if (qty > 0 && cost <= 0) { out.noCost++; return; }
+    if (cost <= 0) return;
+    const { years, label } = deprecYearsFor(p.name, L);
+    const perUnitMonth = cost / (Math.max(1, years) * 12);
+    B.forEach(([f, k]) => {
+      const q = Number(p[f]) || 0; if (q <= 0) return;
+      const amt = perUnitMonth * q;
+      out[k] += amt; out.total += amt;
+      out.byCat[label] = (out.byCat[label] || 0) + amt;
+    });
+  });
+  return out;
+}
+/* Тухайн сарын элэгдэл — шилжилтийн сараас хойш Л зардал болно (`active`). */
+function deprecForMonth(month) {
+  const d = deprecByBranch(state.products, deprecLives());
+  d.active = String(month || '') >= deprecStartMonth();
+  d.start = deprecStartMonth();
+  return d;
+}
+/* Тайлан элэгдлийг хасдаг тул каталог ачаалагдсан байх ЁСТОЙ — эс бөгөөс элэгдэл
+   чимээгүй 0 болж ашиг хиймлээр өндөр харагдана (НӨАТ-ийн ensureVatLoaded-тай ижил занга). */
+function ensureProductsLoaded() {
+  if (state._prodLoadStarted || typeof loadProductsCatalog !== 'function') return;
+  if (state.products && state.products.length) return;
+  state._prodLoadStarted = true;
+  loadProductsCatalog().then(() => render()).catch(() => {});
 }
 
 function renderHistory() {
@@ -31865,6 +31948,10 @@ function finBranchPnl(month, basis) {
   // Ноогдуулсан НӨАТ — салбар бүрийн зардал дээр нэмэгдэнэ.
   const vat = vatByBranchMonth(vatReceiptsActive(), month);
   ['ИВЕНТ', 'КЕМП', 'ХХК'].forEach(b => { exp[b] += vat[b] || 0; });
+  // Элэгдэл — түрээсийн бараа хуучирна (зардал). Шилжилтийн сараас хойш Л хасагдана;
+  // түүнээс өмнөх сард `dep` нь ЗӨВХӨН лавлагаа (active:false) — хаасан сарын ашиг хөдлөхгүй.
+  const dep = deprecForMonth(month);
+  if (dep.active) ['ИВЕНТ', 'КЕМП', 'КАТЕРИНГ', 'ХХК'].forEach(b => { exp[b] += dep[b] || 0; });
   return {
     rows: [
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
@@ -31872,7 +31959,7 @@ function finBranchPnl(month, basis) {
       ...(exp['КАТЕРИНГ'] ? [{ k: 'Катеринг', inc: 0, exp: exp['КАТЕРИНГ'] }] : []),
       { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
       ...(exp['ЗАХ'] ? [{ k: '⚠ Салбар тодорхойгүй', inc: 0, exp: exp['ЗАХ'], unknown: true, n: unkN }] : []),
-    ], ownerLoan, depReturn, vat, vatPaid, unknownExp: exp['ЗАХ'], unknownN: unkN,
+    ], ownerLoan, depReturn, vat, vatPaid, dep, unknownExp: exp['ЗАХ'], unknownN: unkN,
   };
 }
 // Авлага = баталгаажсан гэрээ − цуглуулсан (бүх хугацаа, point-in-time)
@@ -32180,6 +32267,7 @@ function renderReports() {
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { state.nomaadOrders = []; setTimeout(loadNomaadOrders, 0); }
   if (!state.products || !state.products.length) loadProductsCatalog();
   ensureVatLoaded();   // НӨАТ зардалд хасагдана — баримт заавал ачаалагдсан байх
+  ensureProductsLoaded();   // элэгдэл каталогоос бодогдоно (ачаалагдаагүй бол чимээгүй 0)
   // P&L: салбар лензээр (Бүгд / Кемп / M-Event). Зардал = тухайн салбарын батлагдсан хүсэлт.
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);          // null=бүгд, 'КЕМП', 'ИВЕНТ', 'ХХК'
@@ -32374,6 +32462,13 @@ function renderReports() {
         </tbody>
       </table>
       ${bp.vat && bp.vat.total ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">🧾 Зардалд багтсан НӨАТ: <b style="color:var(--text);">${fmtSaya(bp.vat.total)}</b> (M-Event ${fmtSaya(bp.vat['ИВЕНТ'])} · NOMAAD ${fmtSaya(bp.vat['КЕМП'])}${bp.vat['ХХК'] ? ` · тулгагдаагүй ${fmtSaya(bp.vat['ХХК'])}` : ''})${bp.vatPaid ? ` — банкаар төлсөн ${fmtSaya(bp.vatPaid)} нь давхар тоологдохгүй` : ''}</div>` : ''}
+      ${(() => { const d = bp.dep; if (!d || !d.total) return '';
+        const cats = Object.keys(d.byCat).sort((a, b) => d.byCat[b] - d.byCat[a]).slice(0, 3)
+          .map(k => `${k} ${fmtSaya(d.byCat[k])}`).join(' · ');
+        return d.active
+          ? `<div class="pnl-note">📉 Зардалд багтсан <b>элэгдэл: ${fmtSaya(d.total)}</b>/сар (M-Event ${fmtSaya(d['ИВЕНТ'])} · NOMAAD ${fmtSaya(d['КЕМП'])}) — ${cats}${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй тул ороогүй` : ''}</div>`
+          : `<div class="pnl-note is-ref">📉 Элэгдэл <b>${fmtSaya(d.total)}/сар</b> — ЛАВЛАГАА, ${d.start}-аас зардал болж хасагдана (өмнөх сарын ашиг/COO-гийн тоо хөдлөхгүйн тулд)${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}</div>`;
+      })()}
       ${bp.unknownExp ? `<div style="font-size:11px;color:var(--warn);margin-top:8px;">⚠ <b>${bp.unknownN} гүйлгээ (${fmtSaya(bp.unknownExp)})</b> салбаргүй эсвэл танихгүй кодтой. Өмнө нь Чимун ХХК-д чимээгүй нэмэгддэг байв — салбарыг нь заавал сонгоно уу.</div>` : ''}
       ${bp.ownerLoan ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">↩ Зардал БИШ мөнгөн хөдөлгөөн — эзний зээл, зээлийн үндсэн төлбөр, дотоод шилжүүлэг (69xx): ${fmtSaya(bp.ownerLoan)}</div>` : ''}</div>`;
     const stat = (icon, label, val, col, sub, view) => `<button ${view ? `data-go-view="${view}"` : 'disabled'} style="text-align:left;border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:14px 16px;cursor:${view ? 'pointer' : 'default'};min-width:0;">
@@ -33503,6 +33598,7 @@ function renderVatView(wrap) {
 
 function renderFinanceReport(wrap) {
   ensureVatLoaded();   // салбар задаргаанд НӨАТ зардал орно
+  ensureProductsLoaded();   // ба элэгдэл
   if (state.writeoffs === undefined) { state.writeoffs = woCacheRead(); loadWriteoffs().then(() => render()); }   // хөрөнгө зарсан орлого
   const curMonth = todayStr().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;

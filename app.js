@@ -24805,7 +24805,7 @@ function openPaidReceiptDetail(oid, idx) {
   if (!o) return;
   const list = parsePaidRef(o.paid_ref);
   const r = list[idx]; if (!r) return;
-  const row = (lbl, val) => val ? `<div style="display:flex;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid var(--border);"><span style="color:var(--muted);flex:none;">${lbl}</span><b style="text-align:right;word-break:break-word;">${escapeHtml(String(val))}</b></div>` : '';
+  const row = (lbl, val) => val ? `<div class="prc-kv"><span class="prc-k">${lbl}</span><b class="prc-v">${escapeHtml(String(val))}</b></div>` : '';
   // Баримтын ЖИНХЭНЭ дүн — хурууны хээнд шифрлэгдсэн (FP-<дүн>-<огноо>-<нэр>); эс бол r.amount / нэг баримт бол paid_mnt.
   const fpAmt = (() => { const m = String(r.id || '').match(/^FP-(\d+)-/); return m ? Number(m[1]) : 0; })();
   const rcAmt = fpAmt || Number(r.amount) || (list.length === 1 ? (Number(o.paid_mnt) || 0) : 0);
@@ -24821,21 +24821,21 @@ function openPaidReceiptDetail(oid, idx) {
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
   modal.innerHTML = `<div class="modal modal-sm">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">🧾 Банкны гүйлгээ</h2><button class="btn" id="prc-x" style="padding:5px 10px;">✕</button></div>
-    <div style="font-size:13px;line-height:1.5;">
+    <div class="prc-head"><h2>🧾 Банкны гүйлгээ</h2><button class="btn btn-sm" id="prc-x">✕</button></div>
+    <div class="prc-body">
       ${rcAmt ? row('Дүн (энэ баримт)', fmtMoney(rcAmt)) : ''}
       ${list.length > 1 ? row(`Нийт төлсөн (${list.length} баримт)`, fmtMoney(totalPaid)) : ''}
-      ${multiGap ? `<div style="margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:12px;line-height:1.45;">⚠ ${list.length} баримтын нийлбэр <b>${fmtMoney(sumRc)}</b> нь захиалгад бүртгэсэн <b>${fmtMoney(totalPaid)}</b>-тэй тохирохгүй (зөрүү ${fmtMoney(Math.abs(multiGap))}).</div>` : ''}
-      ${gap > 0 ? `<div style="margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:12px;line-height:1.45;">⚠ Захиалгад <b>${fmtMoney(totalPaid)}</b> бүрэн төлсөн гэж бүртгэсэн ч банкны энэ баримт <b>${fmtMoney(rcAmt)}</b> — зөрүү <b>${fmtMoney(gap)}</b> банкны хуулгаар баталгаажаагүй (өөр гүйлгээ/бэлэн/дутуу).</div>` : ''}
-      ${gap < 0 ? `<div style="margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:12px;line-height:1.45;">⚠ Энэ баримтын дүн захиалгад бүртгэснээс их байна (${fmtMoney(-gap)} илүү).</div>` : ''}
+      ${multiGap ? `<div class="prc-warn">⚠ ${list.length} баримтын нийлбэр <b>${fmtMoney(sumRc)}</b> нь захиалгад бүртгэсэн <b>${fmtMoney(totalPaid)}</b>-тэй тохирохгүй (зөрүү ${fmtMoney(Math.abs(multiGap))}).</div>` : ''}
+      ${gap > 0 ? `<div class="prc-warn">⚠ Захиалгад <b>${fmtMoney(totalPaid)}</b> бүрэн төлсөн гэж бүртгэсэн ч банкны энэ баримт <b>${fmtMoney(rcAmt)}</b> — зөрүү <b>${fmtMoney(gap)}</b> банкны хуулгаар баталгаажаагүй (өөр гүйлгээ/бэлэн/дутуу).</div>` : ''}
+      ${gap < 0 ? `<div class="prc-warn">⚠ Энэ баримтын дүн захиалгад бүртгэснээс их байна (${fmtMoney(-gap)} илүү).</div>` : ''}
       ${row('Огноо', o.paid_date ? String(o.paid_date).slice(0, 10) : '')}
       ${row('Илгээгч', r.sender)}
       ${acctIsMemo ? row('Гүйлгээний утга', acctVal) : row('Данс', acctVal)}
       ${acctIsMemo ? (r.memo ? row('Нэмэлт', r.memo) : '') : row('Гүйлгээний утга', r.memo)}
       ${row('Баримтын дугаар', r.id)}
     </div>
-    <p style="font-size:11px;color:var(--muted);margin-top:12px;">Задлан авсан мэдээлэл. Эх PDF хадгалагдсан бол доор дарж үзнэ.</p>
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">${(r.id && state.isCEO) ? `<button class="btn btn-revert" id="prc-rev" title="Буруу захиалгад бүртгэсэн бол хасаж, баримтыг чөлөөлнө">↩ Буруу бүртгэсэн</button>` : ''}${r.id ? `<button class="btn" id="prc-pdf" style="color:var(--accent,#7c3aed);">📄 Эх баримт харах</button>` : ''}<button class="btn btn-primary" id="prc-close">Хаах</button></div>
+    <p class="prc-note">Задлан авсан мэдээлэл. Эх PDF хадгалагдсан бол доор дарж үзнэ.</p>
+    <div class="modal-actions prc-acts">${(r.id && state.isCEO) ? `<button class="btn btn-revert" id="prc-rev" title="Буруу захиалгад бүртгэсэн бол хасаж, баримтыг чөлөөлнө">↩ Буруу бүртгэсэн</button>` : ''}${r.id ? `<button class="btn prc-pdf" id="prc-pdf">📄 Эх баримт харах</button>` : ''}<button class="btn btn-primary" id="prc-close">Хаах</button></div>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();

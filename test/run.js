@@ -12216,3 +12216,53 @@ async function swFetchTests() {
   ok(/deprecForProduct\(p\)/.test(pane), 'scan: өртгийн хэсэгт элэгдлийн тайлбар бий');
   ok(!/DEPREC_LIVES|\/ *12 *\)/.test(pane), 'scan: карт насыг өөрөө бодохгүй (ганц функцээс)');
 }
+
+// ═══ Элэгдэл: насаа дуусгасан бараа ЭЛЭГДЭХГҮЙ (2026-09-24) ═══
+// Элэгдэл нь өртгийг хуваарилах үйлдэл. Өртөг дууссаны дараа зардал бичих нь
+// хөрөнгийг ХОЁР удаа зардалд бичихтэй ижил — ашиг мөнхөд дутуу харагдана.
+{
+  const { deprecForProduct, deprecByBranch } = F;
+
+  // 2015-д авсан ширээ (5 жил) → 2020-д дууссан.
+  const old = deprecForProduct({ name: 'Ширээ', cost: 120000, qty_mevent: 10, purchase_date: '2015-03-14' });
+  eq(old.perUnitMonth, 0, 'элэгдэл: насаа дуусгасан бараа элэгдэхгүй');
+  eq(old.totalMonth, 0, 'элэгдэл: дуусгасан барааны нийт 0');
+  eq(old.doneYm, '2020-03', 'элэгдэл: дууссан сар хэлэгдэнэ');
+
+  // Саяхан авсан нь элэгдсээр байна.
+  const fresh = deprecForProduct({ name: 'Ширээ', cost: 120000, qty_mevent: 10, purchase_date: '2026-01-10' });
+  eq(Math.round(fresh.totalMonth), 20000, 'элэгдэл: наснаас дотор бол элэгдсээр');
+  eq(fresh.doneYm, '', 'элэгдэл: дуусаагүй бол дууссан сар хоосон');
+
+  // ⚠ Огноогүй бол ТААМАГЛАХГҮЙ — элэгдүүлсээр байж, тоо нь ил гарна.
+  const nd = deprecForProduct({ name: 'Ширээ', cost: 120000, qty_mevent: 10 });
+  eq(Math.round(nd.totalMonth), 20000, 'элэгдэл: огноогүй бол элэгдүүлсээр (зардал чимээгүй алга болохгүй)');
+  ok(nd.noDate === true, 'элэгдэл: огноогүй нь тэмдэглэгдэнэ');
+
+  // ИНВАРИАНТ: тайлан ч ижил дүрмээр — дуусгасан нь тайланд ОРОХГҮЙ.
+  const d = deprecByBranch([
+    { name: 'Ширээ', cost: 120000, qty_mevent: 10, purchase_date: '2015-03-14' },
+    { name: 'Ширээ 2', cost: 120000, qty_mevent: 10, purchase_date: '2026-01-10' },
+    { name: 'Ширээ 3', cost: 120000, qty_mevent: 10 },
+  ]);
+  eq(Math.round(d.total), 40000, 'ИНВАРИАНТ: тайлангаас дуусгасан бараа хасагдана');
+  eq(d.doneN, 1, 'элэгдэл: дуусгасан барааны тоо тайланд ил');
+  eq(Math.round(d.doneCapital), 1200000, 'элэгдэл: дуусгасан барааны өртөг ил');
+  eq(d.noDateN, 1, 'элэгдэл: огноогүй барааны тоо тайланд ил');
+  eq(Math.round(d.noDateMonth), 20000, 'элэгдэл: огноогүйгээс гарсан дүн ил');
+
+  // ИНВАРИАНТ: карт ба тайлан ижил (нас хязгаарласны дараа ч).
+  const P = [
+    { name: 'Ширээ', cost: 120000, qty_mevent: 10, purchase_date: '2015-03-14' },
+    { name: 'Асар', cost: 9600000, qty_mevent: 1, purchase_date: '2025-06-01' },
+    { name: 'Аяны ор', cost: 240000, qty_nomaad: 5 },
+  ];
+  eq(Math.round(P.reduce((s2, x) => s2 + deprecForProduct(x).totalMonth, 0)),
+     Math.round(deprecByBranch(P).total),
+     'ИНВАРИАНТ: карт = тайлан (насны хязгаартай ч)');
+
+  // scan: тайлан насны дүрмийг ӨӨРӨӨ бодохгүй — deprecForProduct-аас авна.
+  const fn = src.slice(src.indexOf('function deprecByBranch('), src.indexOf('function deprecForProduct('));
+  ok(/deprecForProduct\(p, L\)/.test(fn), 'scan: тайлан барааны элэгдлийг ганц функцээс авна');
+  ok(!/cost \/ \(Math\.max\(1, years\) \* 12\)/.test(fn), 'scan: тайлан элэгдлийг дахин бодохгүй');
+}

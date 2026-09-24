@@ -22510,10 +22510,12 @@ function openProductModal(p, opts) {
         ${(() => {   // ЭЛЭГДЭЛ — «яаж бодогдсон» нь картан дээрээ ил байна (тайлангийн тоо эндээс гарна)
           const d = deprecForProduct(p);
           if (d.skip) return `<div class="pm-hint">📉 Элэгдэл тооцогдохгүй — ${escapeHtml(d.skip)}.</div>`;
+          if (d.doneYm) return `<div class="pm-hint">📉 <b>Бүрэн элэгдсэн</b> (${escapeHtml(d.label)} → ${d.years} жил, ${d.endYm}-д дууссан) — зардалд ОРОХГҮЙ.
+            Өртөг нь бүрэн хуваарилагдсан; бараа ажиллаж байгаа нь ашиг.</div>`;
           return `<div class="pm-hint">📉 <b>Элэгдэл:</b> ${escapeHtml(d.label)} → <b>${d.years} жил</b> ·
             ${fmtMoneyShort(d.cost)} ÷ (${d.years}×12) = <b>${fmtMoneyShort(Math.round(d.perUnitMonth))}/сар</b> нэг ширхэг
             ${d.qty > 1 ? `· нөөц ${d.qty}ш → <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b> (${fmtMoneyShort(Math.round(d.totalYear))}/жил)` : ''}
-            ${d.endYm ? `<br>Бүрэн элэгдэх: <b>${d.endYm}</b>` : '<br>Худалдан авсан огноо байхгүй тул бүрэн элэгдэх хугацаа тодорхойгүй.'}
+            ${d.endYm ? `<br>Бүрэн элэгдэх: <b>${d.endYm}</b>` : '<br>⚠ Худалдан авсан огноо байхгүй — насаа дуусгасан эсэхийг мэдэх аргагүй тул элэгдүүлсээр байна. Огноог бөглөвөл зогсоно.'}
             <br>Насыг ангиллаар тогтооно (Санхүү → Тайлан → Салбар задаргаа дахь элэгдлийн мөр эндээс нийлбэрлэгдэнэ).</div>`;
         })()}
         ${isEdit && !_isPkg0 && !asPkg ? `<div class="pm-buy">
@@ -28599,7 +28601,8 @@ function deprecYearsFor(name, lives) {
    ⚠ Нэгж бүрийг хөөх ШААРДЛАГАГҮЙ: нөөцийн нийт өртөг ÷ нас = сарын элэгдэл.
    ⚠ Үйлчилгээ/багц ба архивласан бараа ОРОХГҮЙ (warehouseCapital-тай ижил дүрэм). */
 function deprecByBranch(products, lives) {
-  const out = { 'ИВЕНТ': 0, 'КЕМП': 0, 'КАТЕРИНГ': 0, 'ХХК': 0, total: 0, byCat: {}, noCost: 0 };
+  const out = { 'ИВЕНТ': 0, 'КЕМП': 0, 'КАТЕРИНГ': 0, 'ХХК': 0, total: 0, byCat: {}, noCost: 0,
+                doneN: 0, doneCapital: 0, noDateN: 0, noDateMonth: 0 };
   const L = lives || deprecLives();
   const B = [['qty_mevent', 'ИВЕНТ'], ['qty_nomaad', 'КЕМП'], ['qty_catering', 'КАТЕРИНГ'], ['qty_chimun', 'ХХК']];
   (products || []).forEach(p => {
@@ -28610,8 +28613,12 @@ function deprecByBranch(products, lives) {
     const qty = B.reduce((s, b) => s + (Number(p[b[0]]) || 0), 0);
     if (qty > 0 && cost <= 0) { out.noCost++; return; }
     if (cost <= 0) return;
-    const { years, label } = deprecYearsFor(p.name, L);
-    const perUnitMonth = cost / (Math.max(1, years) * 12);
+    // ⚠ Нэг дүрэм — барааны карт ба тайлан ИЖИЛ функцээр бодогдоно (ИНВАРИАНТ тест).
+    const d1 = deprecForProduct(p, L);
+    const { years, label } = { years: d1.years, label: d1.label };
+    const perUnitMonth = d1.perUnitMonth;
+    if (d1.doneYm) { out.doneN++; out.doneCapital += cost * qty; return; }   // насаа дуусгасан
+    if (d1.noDate) { out.noDateN++; out.noDateMonth += perUnitMonth * qty; }  // огноогүй — элэгдүүлсээр
     B.forEach(([f, k]) => {
       const q = Number(p[f]) || 0; if (q <= 0) return;
       const amt = perUnitMonth * q;
@@ -28633,7 +28640,6 @@ function deprecForProduct(p, lives) {
     : (typeof isService === 'function' && isService(p)) ? 'үйлчилгээ'
     : (typeof isPackage === 'function' && isPackage(p)) ? 'багц — бүрэлдэхүүн бүр дээрээ'
     : cost <= 0 ? 'өртөг оруулаагүй' : '';
-  const perUnitMonth = skip ? 0 : cost / (Math.max(1, years) * 12);
   // Хэзээ бүрэн элэгдэх — худалдан авсан огноотой бол л (таамаглахгүй).
   let endYm = '';
   const pd = String((p && p.purchase_date) || '').slice(0, 10);
@@ -28641,7 +28647,14 @@ function deprecForProduct(p, lives) {
     const y = Number(pd.slice(0, 4)) + years, m = pd.slice(5, 7);
     endYm = y + '-' + m;
   }
-  return { years, label, qty, cost, skip, perUnitMonth,
+  // ⛔ НАСАА ДУУСГАСАН БАРАА ЭЛЭГДЭХГҮЙ. Элэгдэл нь өртгийг хуваарилах үйлдэл —
+  //   өртөг дууссаны дараа зардал бичих нь хөрөнгийг ХОЁР удаа зардалд бичихтэй ижил.
+  //   Өнөөдөр жижиг (4.7 сая₮/жил) ч бараа хуучрах тусам гол алдаа болно.
+  // ⚠ Огноогүй бол ЭЛЭГДҮҮЛСЭЭР БАЙНА (хамгаалалтын тал руу) — насаа дуусгасан
+  //   гэж таамаглавал зардал чимээгүй алга болно. Тоо нь дэлгэцэд ил гарна.
+  const doneYm = (!skip && endYm && endYm <= (typeof monthStr === 'function' ? monthStr(new Date()) : '')) ? endYm : '';
+  const perUnitMonth = (skip || doneYm) ? 0 : cost / (Math.max(1, years) * 12);
+  return { years, label, qty, cost, skip, perUnitMonth, doneYm, noDate: !skip && !endYm,
            totalMonth: perUnitMonth * qty, totalYear: perUnitMonth * qty * 12, endYm };
 }
 /* Тухайн сарын элэгдэл — шилжилтийн сараас хойш Л зардал болно (`active`). */
@@ -32498,7 +32511,7 @@ function renderReports() {
         const cats = Object.keys(d.byCat).sort((a, b) => d.byCat[b] - d.byCat[a]).slice(0, 3)
           .map(k => `${k} ${fmtSaya(d.byCat[k])}`).join(' · ');
         return d.active
-          ? `<div class="pnl-note">📉 Зардалд багтсан <b>элэгдэл: ${fmtSaya(d.total)}</b>/сар (M-Event ${fmtSaya(d['ИВЕНТ'])} · NOMAAD ${fmtSaya(d['КЕМП'])}) — ${cats}${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй тул ороогүй` : ''}</div>`
+          ? `<div class="pnl-note">📉 Зардалд багтсан <b>элэгдэл: ${fmtSaya(d.total)}</b>/сар (M-Event ${fmtSaya(d['ИВЕНТ'])} · NOMAAD ${fmtSaya(d['КЕМП'])}) — ${cats}${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}${d.doneN ? `<br>✓ ${d.doneN} бараа бүрэн элэгдсэн (${fmtSaya(d.doneCapital)} өртөг) — зардалд орохоо больсон` : ''}${d.noDateN ? `<br>⚠ ${d.noDateN} бараа худалдан авсан огноогүй (${fmtSaya(d.noDateMonth)}/сар) — насаа дуусгасан эсэх нь тодорхойгүй` : ''}</div>`
           : `<div class="pnl-note is-ref">📉 Элэгдэл <b>${fmtSaya(d.total)}/сар</b> — ЛАВЛАГАА, ${d.start}-аас зардал болж хасагдана (өмнөх сарын ашиг/COO-гийн тоо хөдлөхгүйн тулд)${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}</div>`;
       })()}
       ${bp.unknownExp ? `<div style="font-size:11px;color:var(--warn);margin-top:8px;">⚠ <b>${bp.unknownN} гүйлгээ (${fmtSaya(bp.unknownExp)})</b> салбаргүй эсвэл танихгүй кодтой. Өмнө нь Чимун ХХК-д чимээгүй нэмэгддэг байв — салбарыг нь заавал сонгоно уу.</div>` : ''}

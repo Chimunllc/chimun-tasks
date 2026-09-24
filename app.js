@@ -1314,12 +1314,28 @@ function sessionClaims() {
     return { lvl: Number(p.lvl) || 0, exp: Number(p.exp) || 0, iat: Number(p.iat) || 0 };
   } catch (e) { return null; }
 }
+// staff-pins суваг (данс/РД/PIN) серверт шаардагддаг эрхийн түвшин.
+const STAFF_PINS_MIN_LVL = 100;
 // Токен ба аппын харж буй эрх ЗӨРЖ байна уу. Зөрөх нь «дахин нэвтрэх» дохио:
 // аппад CEO мөртлөө токен нь бага түвшинтэй бол сервер эрхийг нь өгөхгүй.
 function sessionLevelStale() {
   const c = sessionClaims();
   if (!c) return false;
-  return !!state.isCEO && c.lvl < 100;
+  return !!state.isCEO && c.lvl < STAFF_PINS_MIN_LVL;
+}
+// ⛔ ХҮЛЭЭГДСЭН ТАТГАЛЗЛЫГ СЕРВЕРТ БҮҮ МЭДЭЭЛ (2026-09-24, fp df890c31d5f3).
+//   staff-pins нь lvl>=100 токен шаарддаг. «Цалин» эрхтэй ч түвшин нь доогуур
+//   (lvl=80) хүн бүрийн сесс бүрд «forbidden» ирнэ — энэ нь ЭВДРЭЛ БИШ,
+//   серверийн бодлого. Түүнийг `app_errors`-т бичих нь ЗАСАХ КОД БАЙХГҮЙ
+//   алдааг давтан бүртгэж, жинхэнэ алдааг живүүлнэ (сүлжээний тасалдал,
+//   кэшийн бичилттэй ижил дүрэм). Хэрэглэгч дэлгэцэн дээрээ шалтгааныг
+//   ХАРСАН хэвээр — зөвхөн серверт мэдээлэхгүй.
+// ⚠ Токен нь ХАНГАЛТТАЙ түвшинтэй атлаа татгалзвал энэ нь ЖИНХЭНЭ асуудал
+//   (сервер талын эвдрэл) — мэдэгдэнэ. Токен уншигдаагүй үед ч мэдэгдэнэ.
+function staffPinsDenyExpected(why, claims) {
+  if (why !== 'forbidden') return false;            // танихгүй шалтгаан = үргэлж мэдэгдэнэ
+  const lvl = claims ? Number(claims.lvl) || 0 : 0;
+  return lvl > 0 && lvl < STAFF_PINS_MIN_LVL;
 }
 // ── СЕСС ДУУССАНЫГ ЧИМЭЭГҮЙ ӨНГӨРҮҮЛЭХГҮЙ (2026-09-21) ──────────────────────
 // 2026-09-18-нд серверийн хуучин нийтийн нэвтрэлт өөрөө хаагдсан. Түүнээс хойш
@@ -1408,7 +1424,9 @@ async function loadStaffPins() {
         // ⚠ Токены lvl нь НЭВТЭРСЭН МӨЧИД хөлдсөн — түүнээс хойш эрх өөрчлөгдвөл
         //   сервер шинэ эрхээр биш, ХУУЧИН түвшингээр шийднэ. Логт ил гаргана.
         const extra = c ? ` lvl=${c.lvl} exp=${c.exp ? dateStr(new Date(c.exp)) : '?'}` : ' токенгүй';
-        dataLoadFailed('ажилтны данс (' + (why || '?') + ')', new Error('staff-pins ' + (why || 'denied') + extra));
+        // Хүлээгдсэн татгалзал (эрхийн түвшин хүрэхгүй) серверт мэдээлэгдэхгүй — дээрх тайлбарыг үз.
+        if (!staffPinsDenyExpected(why, c))
+          dataLoadFailed('ажилтны данс (' + (why || '?') + ')', new Error('staff-pins ' + (why || 'denied') + extra));
         // Аппад CEO мөртлөө токен нь бага түвшинтэй = токен хуучирсан. Хүнд
         // «эрх алга» гэж хэлэх нь ХУДАЛ — дахин нэвтрэх л хэрэгтэй.
         if (why === 'forbidden' && sessionLevelStale()) state._staffPinsErr = 'need_login';
@@ -15582,6 +15600,12 @@ function staffAcctBannerHtml() {
     return `<div class="staff-pin-banner">🔒 Ажилтны <b>данс</b> харагдахгүй байна — нэвтрэлтийн хугацаа дууссан. <button class="btn btn-primary ui-raw" id="sal-acct-relogin">Дахин нэвтрэх</button></div>`;
   if (state._staffPinsErr === 'retry')
     return `<div class="staff-pin-banner">⏳ Ажилтны данс ачаалж байна… <button class="btn ui-raw" id="sal-acct-retry">🔄 Дахин оролдох</button></div>`;
+  // ⛔ ДАХИН ОРОЛДОХ ТОВЧ ХУДАЛ АМЛАЛТ БОЛЖ БОЛОХГҮЙ (2026-09-24). Эрхийн түвшин
+  //    хүрэхгүй үед дахин оролдоход ҮРГЭЛЖ ижил хариу ирнэ — хүн дарж л суудаг.
+  //    Тийм үед юу хийхийг нь шууд хэлнэ.
+  const _c = sessionClaims();
+  if (staffPinsDenyExpected(state._staffPinsReason, _c))
+    return `<div class="staff-pin-banner">🔒 Ажилтны <b>данс</b> харагдахгүй — таны нэвтрэлтийн эрхийн түвшин (${_c.lvl}) хүрэхгүй байна. Цалин шилжүүлэхэд данс хэрэгтэй бол CEO-д хандана уу.</div>`;
   return `<div class="staff-pin-banner">⚠ Ажилтны данс серверээс ирсэнгүй${state._staffPinsReason ? ` — <b>${escapeHtml(state._staffPinsReason)}</b>` : ''}. <button class="btn ui-raw" id="sal-acct-retry">🔄 Дахин оролдох</button></div>`;
 }
 function attachStaffAcctBanner(root) {

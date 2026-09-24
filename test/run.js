@@ -5240,6 +5240,71 @@ need(['orderCustType']);
   eq(F.attReqPrune(null, T), {}, 'хусалт: хоосон оролт → хоосон');
 }
 
+// ── ХҮЛЭЭГДСЭН ТАТГАЛЗАЛ = АЛДАА БИШ (2026-09-24, fp df890c31d5f3) ──────────
+// staff-pins суваг нь lvl>=100 (CEO) токен шаарддаг. «Цалин» эрхтэй ч эрхийн
+// түвшин нь доогуур (lvl=80) хүний сесс бүрд сервер «forbidden» гэж хариулдаг —
+// энэ нь ЭВДРЭЛ БИШ, серверийн бодлого. Гэтэл апп түүнийг «Дата ачаалагдсангүй»
+// гэж серверт мэдээлж, GitHub дээр Issue үүсгэж, засах код БАЙХГҮЙ алдаагаар
+// логийг дүүргэж байв (сүлжээний тасалдал, кэшийн бичилттэй ижил дүрэм).
+// ⚠ Токен нь ХАНГАЛТТАЙ түвшинтэй атлаа татгалзвал энэ нь ЖИНХЭНЭ алдаа — мэдэгдэнэ.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('[state.isCEO, state.me, state.memberPerms, state._staffPinsLoaded, state._staffPinsErr, state._staffPinsReason]');
+  const mk = (lvl) => Buffer.from(JSON.stringify({ ph: '80000001', lvl, exp: 4102444800000 }))
+    .toString('base64url') + '.sig';
+
+  // Сервер «forbidden» гэж хариулахад юу серверт мэдээлэгдэхийг барина.
+  runIn(`globalThis.__rep = [];
+    globalThis.__origReport = _reportErrToServer;
+    globalThis.__origRender = render;
+    globalThis.__origFetch = fetchWithTimeout;
+    _reportErrToServer = function (msg, src) { globalThis.__rep.push(String(src)); };
+    render = function () {};
+    fetchWithTimeout = function () {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: false, reason: 'forbidden' }) });
+    };`);
+
+  const denyRun = async (lvl) => {
+    runIn(`state.isCEO = false; state.me = '80000001';
+      state.memberPerms = { '80000001': { salary: true } };
+      state._staffPinsLoaded = false; state._staffPinsErr = ''; state._staffPinsReason = '';
+      _staffPinsTries = 0; globalThis.__rep = [];
+      localStorage.setItem('sessionToken', ${JSON.stringify(mk(lvl))});`);
+    await runIn('loadStaffPins()');
+    return { rep: runIn('globalThis.__rep.slice()'), err: runIn('state._staffPinsErr') };
+  };
+
+  try {
+    const low = await denyRun(80);
+    eq(low.err, 'denied', 'данс/лог: lvl бага хүнд «denied» төлөв тавигдана');
+    eq(low.rep, [], 'данс/лог: lvl бага хүний хүлээгдсэн татгалзал серверт мэдээлэгдэхгүй');
+
+    // Токен нь ХАНГАЛТТАЙ түвшинтэй атлаа татгалзсан = серверийн жинхэнэ асуудал.
+    const high = await denyRun(100);
+    eq(high.err, 'denied', 'данс/лог: эрхтэй токен ч татгалзвал «denied»');
+    ok(high.rep.some(s => /load:ажилтны данс/.test(s)),
+       'данс/лог: хангалттай эрхтэй атлаа татгалзвал ЖИНХЭНЭ алдаа гэж мэдэгдэнэ');
+  } catch (e) {
+    ok(false, 'данс/лог — алдаа гарлаа: ' + e.message);
+  }
+
+  // ⛔ «Дахин оролдох» товч ХУДАЛ АМЛАЛТ болж болохгүй: эрхийн түвшин хүрэхгүй
+  //   үед дарах бүрд ижил хариу ирнэ. Тууз юу хийхийг нь шууд хэлнэ.
+  runIn(`state._staffPinsErr = 'denied'; state._staffPinsReason = 'forbidden';
+    localStorage.setItem('sessionToken', ${JSON.stringify(mk(80))});`);
+  {
+    const b = String(runIn('staffAcctBannerHtml()'));
+    ok(/CEO-д хандана/.test(b), 'данс/тууз: эрх хүрэхгүй бол юу хийхийг хэлнэ');
+    ok(/80/.test(b), 'данс/тууз: өөрийн эрхийн түвшин ил гарна');
+    ok(!/Дахин оролдох/.test(b), 'данс/тууз: ажиллахгүй «дахин оролдох» товч гарахгүй');
+  }
+
+  runIn(`_reportErrToServer = globalThis.__origReport; render = globalThis.__origRender;
+    fetchWithTimeout = globalThis.__origFetch;
+    localStorage.removeItem('sessionToken'); _staffPinsTries = 0;`);
+  vm.runInContext('state.isCEO = __s2[0]; state.me = __s2[1]; state.memberPerms = __s2[2]; state._staffPinsLoaded = __s2[3]; state._staffPinsErr = __s2[4]; state._staffPinsReason = __s2[5];',
+    Object.assign(sandbox, { __s2: save }));
+}
 
   await swFetchTests();   // sw.js — файлын төгсгөлд тодорхойлогдсон (hoisted)
   finish();

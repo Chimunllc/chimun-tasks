@@ -88,7 +88,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
-  'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl']);
+  'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -12175,4 +12175,44 @@ async function swFetchTests() {
   ok((src.match(/ensureProductsLoaded\(\)/g) || []).length >= 3,
      'scan: тайлан/COO элэгдлийн эх датаг ачаалахыг баталгаажуулна');
   ok(/bp\.dep/.test(src), 'scan: салбар задаргаанд элэгдлийн мөр харагдана');
+}
+
+// ═══ Барааны картын элэгдэл — «яаж бодогдсон» нь ил байна (2026-09-24) ═══
+{
+  const { deprecForProduct, deprecByBranch } = F;
+
+  const t = deprecForProduct({ name: 'Цагаан Ширээ 180*74см', cost: 120000, qty_mevent: 10, purchase_date: '2025-03-14' });
+  eq(t.years, 5, 'карт: ширээ 5 жил');
+  eq(Math.round(t.perUnitMonth), 2000, 'карт: нэг ширээ 2,000₮/сар');
+  eq(Math.round(t.totalMonth), 20000, 'карт: нөөц 10ш → 20,000₮/сар');
+  eq(Math.round(t.totalYear), 240000, 'карт: жилийн элэгдэл');
+  eq(t.endYm, '2030-03', 'карт: бүрэн элэгдэх сар = авсан огноо + нас');
+
+  // ⚠ Огноо байхгүй бол ТААМАГЛАХГҮЙ — хоосон.
+  eq(deprecForProduct({ name: 'Ширээ', cost: 120000, qty_mevent: 1 }).endYm, '', 'карт: огноогүй бол хугацаа таамаглахгүй');
+
+  // Тооцогдохгүй тохиолдол бүр ШАЛТГААНАА хэлнэ — унтраасан тоо хүнд юу ч хэлдэггүй.
+  eq(deprecForProduct({ name: 'Ширээ', cost: 0, qty_mevent: 5 }).skip, 'өртөг оруулаагүй', 'карт: өртөггүй — шалтгаан');
+  eq(deprecForProduct({ name: 'Ширээ', cost: 100, archived: true }).skip, 'архивласан', 'карт: архивласан — шалтгаан');
+  eq(deprecForProduct({ name: 'Хүргэлт', cost: 100, type: 'service' }).skip, 'үйлчилгээ', 'карт: үйлчилгээ — шалтгаан');
+  ok(/багц/.test(deprecForProduct({ name: 'Багц', cost: 100, type: 'package' }).skip), 'карт: багц — шалтгаан');
+  eq(deprecForProduct({ name: 'Ширээ', cost: 0, qty_mevent: 5 }).perUnitMonth, 0, 'карт: тооцогдохгүй бол 0');
+
+  // ── ИНВАРИАНТ: картын тоо ба тайлангийн тоо ИЖИЛ эх сурвалжаас ──
+  // Зөрвөл хүн картаас харсан тоогоо тайлангаас олохгүй, аль нь зөв нь мэдэгдэхгүй.
+  const P = [
+    { name: 'Цагаан Ширээ 180*74см', cost: 120000, qty_mevent: 10 },
+    { name: 'Асар 10м:20м', cost: 9600000, qty_mevent: 1 },
+    { name: 'Аяны ор', cost: 240000, qty_nomaad: 5 },
+    { name: 'Ширээний бүтээлэг 182×76 Цагаан', cost: 8800, qty_mevent: 58 },
+  ];
+  const sumCards = P.reduce((s, p) => s + deprecForProduct(p).totalMonth, 0);
+  eq(Math.round(sumCards), Math.round(deprecByBranch(P).total),
+     'ИНВАРИАНТ: картуудын элэгдлийн нийлбэр = тайлангийн элэгдэл');
+
+  // scan: карт нь өөрөө насыг бодохгүй, ганц функцээс авна.
+  const i = src.indexOf('data-pmpane="cost"');
+  const pane = src.slice(i, src.indexOf('data-pmpane="stock"', i));
+  ok(/deprecForProduct\(p\)/.test(pane), 'scan: өртгийн хэсэгт элэгдлийн тайлбар бий');
+  ok(!/DEPREC_LIVES|\/ *12 *\)/.test(pane), 'scan: карт насыг өөрөө бодохгүй (ганц функцээс)');
 }

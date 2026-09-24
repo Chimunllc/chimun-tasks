@@ -22507,6 +22507,15 @@ function openProductModal(p, opts) {
           return br ? `<div class="pm-hint">🔗 Худалдан авалт: <b>${escapeHtml(br.date)}</b> · ${escapeHtml(br.supplier || '—')} · ${escapeHtml(fmtMoney(br.amount))}<br>Өртөг, огноо, нийлүүлэгч энэ банкны мөрөөс бөглөгдсөн.</div>`
                     : '<div class="pm-hint">🔗 Холбосон худалдан авалтын мөр олдсонгүй (санхүүгийн бүртгэл ачаалагдаагүй байж болно).</div>';
         })()}
+        ${(() => {   // ЭЛЭГДЭЛ — «яаж бодогдсон» нь картан дээрээ ил байна (тайлангийн тоо эндээс гарна)
+          const d = deprecForProduct(p);
+          if (d.skip) return `<div class="pm-hint">📉 Элэгдэл тооцогдохгүй — ${escapeHtml(d.skip)}.</div>`;
+          return `<div class="pm-hint">📉 <b>Элэгдэл:</b> ${escapeHtml(d.label)} → <b>${d.years} жил</b> ·
+            ${fmtMoneyShort(d.cost)} ÷ (${d.years}×12) = <b>${fmtMoneyShort(Math.round(d.perUnitMonth))}/сар</b> нэг ширхэг
+            ${d.qty > 1 ? `· нөөц ${d.qty}ш → <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b> (${fmtMoneyShort(Math.round(d.totalYear))}/жил)` : ''}
+            ${d.endYm ? `<br>Бүрэн элэгдэх: <b>${d.endYm}</b>` : '<br>Худалдан авсан огноо байхгүй тул бүрэн элэгдэх хугацаа тодорхойгүй.'}
+            <br>Насыг ангиллаар тогтооно (Санхүү → Тайлан → Салбар задаргаа дахь элэгдлийн мөр эндээс нийлбэрлэгдэнэ).</div>`;
+        })()}
         ${isEdit && !_isPkg0 && !asPkg ? `<div class="pm-buy">
           <button type="button" class="btn ui-raw pm-buy-open" id="pm-buy-open">+ Нэмж авсан</button>
           <div class="pm-buy-form" id="pm-buy-form" hidden>
@@ -28611,6 +28620,29 @@ function deprecByBranch(products, lives) {
     });
   });
   return out;
+}
+/* НЭГ барааны элэгдэл — картад «хэрхэн бодогдсоныг» харуулахад. Цэвэр функц.
+   ⚠ `deprecByBranch`-тай ИЖИЛ насны хүснэгтээс бодогдоно (хоёр тоо зөрөхгүй) —
+     тест хоёрыг тулгана. */
+function deprecForProduct(p, lives) {
+  const cost = Number(p && p.cost) || 0;
+  const { years, label } = deprecYearsFor(p && p.name, lives || deprecLives());
+  const qty = ['qty_mevent', 'qty_nomaad', 'qty_catering', 'qty_chimun']
+    .reduce((s, f) => s + (Number(p && p[f]) || 0), 0);
+  const skip = !!(p && p.archived) ? 'архивласан'
+    : (typeof isService === 'function' && isService(p)) ? 'үйлчилгээ'
+    : (typeof isPackage === 'function' && isPackage(p)) ? 'багц — бүрэлдэхүүн бүр дээрээ'
+    : cost <= 0 ? 'өртөг оруулаагүй' : '';
+  const perUnitMonth = skip ? 0 : cost / (Math.max(1, years) * 12);
+  // Хэзээ бүрэн элэгдэх — худалдан авсан огноотой бол л (таамаглахгүй).
+  let endYm = '';
+  const pd = String((p && p.purchase_date) || '').slice(0, 10);
+  if (!skip && /^\d{4}-\d{2}/.test(pd)) {
+    const y = Number(pd.slice(0, 4)) + years, m = pd.slice(5, 7);
+    endYm = y + '-' + m;
+  }
+  return { years, label, qty, cost, skip, perUnitMonth,
+           totalMonth: perUnitMonth * qty, totalYear: perUnitMonth * qty * 12, endYm };
 }
 /* Тухайн сарын элэгдэл — шилжилтийн сараас хойш Л зардал болно (`active`). */
 function deprecForMonth(month) {

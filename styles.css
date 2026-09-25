@@ -6604,14 +6604,25 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .rec-warn-box { font-size:12.5px; line-height:1.5; padding:9px 12px; margin:6px 0 9px; border-radius:9px;
   background:rgba(220,38,38,.09); border:1px solid rgba(220,38,38,.32); }
 
-/* ── Үнийн шинжилгээ ─────────────────────────────────────────────────────── */
+/* ── Үнийн шинжилгээ ───────────────────────────────────────────────────────
+   Угтвар `pr-`. `openPricingReport`-ийн `draw()`-д байсан 6 inline style-ыг
+   класс болгов (2026-09-25).
+   ⚠ h2 класс АВАХГҮЙ — `.modal h2` нь хэмжээ/захыг хүчээр (чухал тэмдэглэгээтэй)
+     тогтоодог тул хуучин inline margin/хэмжээ ямар ч нөлөөгүй байсан.
+   ⚠ Хоосон мөрийн нүд нь `.pr-table td` (0,2,0)-г давах ёстой тул сонгогч
+     `.pr-table td.pr-empty` байх ёстой — дан `.pr-empty` бичвэл padding дарагдана. */
 .pr-modal { max-width:1180px; width:97%; max-height:93vh; overflow:auto; }
+.pr-head { display:flex; justify-content:space-between; align-items:center;
+  gap:var(--space-3); flex-wrap:wrap; margin-bottom:var(--space-2); }
+.pr-tools { display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap; }
+.pr-x { padding:var(--space-1) var(--space-2); }
 .pr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); margin-bottom:8px; }
 .pr-chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:9px; }
 .pr-chip { font-size:12px; padding:5px 11px; }
 .pr-chip-on { background:var(--primary) !important; color:#fff !important; border-color:var(--primary) !important; }
 .pr-sum { display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; padding:8px 11px; margin-bottom:10px;
   background:var(--panel-2,rgba(127,127,127,.07)); border:1px solid var(--border); border-radius:9px; }
+.pr-sum .pr-idle-v { color:var(--danger); }
 .pr-wrap { overflow-x:auto; }
 .pr-table { width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap; }
 .pr-table th { text-align:right; color:var(--muted); font-size:10.5px; font-weight:600;
@@ -6619,6 +6630,7 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .pr-table th:first-child, .pr-table td.pr-nm { text-align:left; }
 .pr-table td { padding:6px; border-bottom:1px solid var(--border); }
 .pr-table td.pr-n { text-align:right; }
+.pr-table td.pr-empty { padding:var(--space-5); text-align:center; color:var(--muted); }
 .pr-nm { max-width:280px; white-space:normal; }
 .pr-code { display:block; font-size:10px; color:var(--muted); }
 .pr-hot { color:#16A34A; font-weight:700; }

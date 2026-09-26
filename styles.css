@@ -6606,6 +6606,13 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 
 /* ── Үнийн шинжилгээ ─────────────────────────────────────────────────────── */
 .pr-modal { max-width:1180px; width:97%; max-height:93vh; overflow:auto; }
+/* Гарчгийн эгнээ ба түүний товчны хэсэг — ижил flex зан төлөв, зөвхөн зай өөр */
+.pr-head, .pr-acts { display:flex; align-items:center; flex-wrap:wrap; }
+.pr-head { justify-content:space-between; gap:var(--space-3); margin-bottom:var(--space-2); }
+.pr-acts { gap:var(--space-2); }
+.pr-title { margin:0; font-size:var(--fs-lg); }
+.pr-idle-v { color:var(--danger); }
+.pr-table td.pr-empty { padding:var(--space-5); text-align:center; color:var(--muted); }
 .pr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); margin-bottom:8px; }
 .pr-chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:9px; }
 .pr-chip { font-size:12px; padding:5px 11px; }

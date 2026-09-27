@@ -6516,13 +6516,13 @@ function openPricingReport() {
       </tr>`;
     }).join('');
     const chip = (k, label) => `<button type="button" class="btn pr-chip${state.priceFilter === k ? ' pr-chip-on' : ''}" data-pf="${k}">${label}</button>`;
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-        <h2 style="margin:0;font-size:17px;">💰 Үнийн шинжилгээ</h2>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+    return `<div class="pr-head">
+        <h2 class="pr-title">💰 Үнийн шинжилгээ</h2>
+        <div class="pr-tools">
           <select id="pr-period" class="rec-pick">${[['6', 'Сүүлийн 6 сар'], ['12', 'Сүүлийн 12 сар'], ['24', 'Сүүлийн 24 сар']].map(([k, l]) => `<option value="${k}"${state.pricePeriod === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           <select id="pr-sort" class="rec-pick">${[['revenue', 'Орлогоор ↓'], ['turns', 'Эргэлтээр ↓'], ['real', 'Үнийн биелэлтээр ↓'], ['roi', 'ROI-гоор ↓'], ['capital', 'Хөрөнгөөр ↓']].map(([k, l]) => `<option value="${k}"${state.priceSort === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           <button class="btn" id="pr-csv">⬇ Excel</button>
-          <button class="btn" id="pr-close" style="padding:5px 10px;">✕</button>
+          <button class="btn pr-x" id="pr-close">✕</button>
         </div>
       </div>
       <div class="pr-legend">
@@ -6541,14 +6541,14 @@ function openPricingReport() {
       <div class="pr-sum">
         <span>Түрээсийн орлого <b>${fmtMoney(totals.revenue)}</b></span>
         <span>Хөрөнгө <b>${fmtMoney(totals.capital)}</b></span>
-        <span>Зогсонги <b style="color:var(--danger);">${fmtMoney(totals.idleCapital)}</b> (${totals.idleCount} бараа)</span>
+        <span>Зогсонги <b class="pr-idle-v">${fmtMoney(totals.idleCapital)}</b> (${totals.idleCount} бараа)</span>
       </div>
       <div class="pr-wrap"><table class="pr-table">
         <thead><tr>
           <th>Бараа</th><th>Нөөц</th><th>Ширхэг</th><th>Эргэлт</th><th>Дүүрсэн</th>
           <th>Жагсаалт</th><th>Бодит</th><th>Биелэлт</th><th>Орлого</th><th>ROI</th><th>Дүгнэлт</th>
         </tr></thead>
-        <tbody>${body || '<tr><td colspan="11" style="padding:20px;text-align:center;color:var(--muted);">Энэ шүүлтэд бараа алга</td></tr>'}</tbody>
+        <tbody>${body || '<tr><td colspan="11" class="pr-empty">Энэ шүүлтэд бараа алга</td></tr>'}</tbody>
       </table></div>
       <div class="pr-note">ROI = хугацааны орлого ÷ худалдан авалтын өртөг (нөөцөөр үржүүлсэн). Үйлчилгээ (хүргэлт, суурилуулалт) орсонгүй.</div>`;
   };
@@ -9276,10 +9276,10 @@ function openReconcileModal() {
   const ov = document.createElement('div'); ov.id = 'recon-modal'; ov.className = 'modal-bg';
   document.body.appendChild(ov);
   const draw = () => {
-    ov.innerHTML = `<div class="modal recon-modal" style="max-width:640px;max-height:88vh;overflow:auto;">
-      <button class="modal-x ui-raw" data-recon-close style="position:absolute;top:10px;right:12px;background:none;border:0;font-size:20px;color:var(--muted);cursor:pointer;">✕</button>
-      <h2 style="margin:0 0 4px;">📊 Орлого тулгалт</h2>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Банкны орлогыг төлсөн захиалгатай тулгана. Дотоод шилжүүлэг автоматаар хасагдана.</div>
+    ov.innerHTML = `<div class="modal recon-modal">
+      <button class="modal-x ui-raw recon-x" data-recon-close>✕</button>
+      <h2 class="recon-title">📊 Орлого тулгалт</h2>
+      <div class="recon-sub">Банкны орлогыг төлсөн захиалгатай тулгана. Дотоод шилжүүлэг автоматаар хасагдана.</div>
       ${renderReconcilePanel()}</div>`;
     // Модал доторх handler-ууд (render() дуудвал модал хаагдана тул зөвхөн draw()-оор шинэчилнэ)
     ov.querySelector('[data-recon-close]')?.addEventListener('click', () => ov.remove());

@@ -5552,9 +5552,16 @@ async function loadStockCounts(sessionId) {
     if (r.status === 404 || r.status === 406) { state._countTableMissing = true; state.scRows = []; return []; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state._countTableMissing = false;
+    state._scLoadErr = false;
     state.scRows = await r.json();
     return state.scRows;
-  } catch (e) { console.warn('loadStockCounts', e); state.scRows = state.scRows || []; return state.scRows; }
+  } catch (e) {
+    // ⛔ ЧИМЭЭГҮЙ ЗАЛГИХГҮЙ (2026-09-27). Унавал дэлгэц «0 тоолсон» гэж харуулдаг тул
+    // нярав тоолсон бараагаа дахин тоолдог байв (амьд сессид 15 бичлэгийн 4 нь давхардал).
+    dataLoadFailed('loadStockCounts', e);
+    state._scLoadErr = true;
+    state.scRows = state.scRows || []; return state.scRows;
+  }
 }
 
 // Тоолсныг бүртгэнэ. Нөөцийг ХӨНДӨХГҮЙ — зөвхөн бичилт.
@@ -21011,7 +21018,13 @@ function renderStockCount() {
   }).join('');
   const chip = (k, lbl, cnt) => `<button type="button" class="stc-chip ui-raw${state.scFilter === k ? ' on' : ''}" data-scfilter="${k}">${lbl} ${cnt}</button>`;
 
+  // Бичлэг ачаалагдаагүйг НУУХГҮЙ — эс бөгөөс «тоолсон нь бүртгэгдээгүй» гэж
+  // ойлгож дахин тоолно (тоо хоёр дахин бүртгэгдэх эрсдэл).
+  const loadWarn = state._scLoadErr
+    ? '<div class="stc-loss">⚠ Тоолсон бичлэг ачаалагдсангүй — дэлгэц дүүрэн биш байж магадгүй. Дахин ачаална уу.</div>' : '';
+
   return `
+    ${loadWarn}
     <div class="stc-head">
       <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(cfg.active.id))} · ${escapeHtml(countScopeLabel(cfg.active.scope))}</span></div>
       <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${st.rep ? ` · <span class="stc-dmg-t">🔧 ${st.rep} ш засварт</span>` : ''}${st.wo ? ` · <span class="stc-dmg-t">🗑 ${st.wo} ш актлах</span>` : ''}${cfg.active.started_at ? ` · ${escapeHtml(String(cfg.active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>

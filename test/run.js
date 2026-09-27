@@ -8,6 +8,9 @@
  * UI (товч дарах) тест ХИЙХГҮЙ — зөвхөн тооцоо/задлан авах логик.
  */
 'use strict';
+// Ирээдүйн огноо — тестийг огноогоор хуучрахаас хамгаална (2026-09-27).
+function _soon(n) { const d = new Date(); d.setDate(d.getDate() + Number(n || 0));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -3117,7 +3120,22 @@ need(['orderCustType']);
     sandbox.fetch = savedFetch; st.attendanceToday = savedAtt; st._attLastScan = savedLast;
   }
 
-  // ── Тулгалтын хяналт: аль толь хэр их дүн дааж байгааг илрүүлэх ──
+  // ТООЛЛОГО — бичлэг ачаалагдаагүйг чимээгүй өнгөрүүлэхгүй (2026-09-27)
+// Амьд сессид нэг барааг 2-3 удаа тоолсон давхардал гарсан: жагсаалт «тоолоогүй»
+// гэж харуулсаар байсан тул нярав дахин тоолсон. Унавал ил хэлэх ёстой.
+{
+  const fn = src.slice(src.indexOf('async function loadStockCounts('));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  ok(/dataLoadFailed\('loadStockCounts'/.test(body), 'тооллого: бичлэг унавал серверт мэдэгдэнэ');
+  ok(body.indexOf("console.warn('loadStockCounts'") === -1, 'тооллого: чимээгүй catch байхгүй');
+  ok(/state\._scLoadErr = true/.test(body), 'тооллого: унасан төлөв тэмдэглэгдэнэ');
+  ok(/state\._scLoadErr = false/.test(body), 'тооллого: амжилттай үед төлөв цэвэрлэгдэнэ');
+  const rn = src.slice(src.indexOf('function renderStockCount('));
+  ok(/_scLoadErr[\s\S]{0,200}ачаалагдсангүй/.test(rn.slice(0, rn.indexOf('\n}\n'))),
+     'тооллого: дэлгэцэд анхааруулга гарна');
+}
+
+// ── Тулгалтын хяналт: аль толь хэр их дүн дааж байгааг илрүүлэх ──
   {
     const ctx = { bySku: { 'M-235': { sku: 'M-235' } }, byName: {},
       aliases: { ['name:' + F.normItemKey('Бараа')]: 'M-235',
@@ -8486,25 +8504,29 @@ need(['orderCustType']);
   const saved = { p: st.products, o: st.appOrders };
   st.products = [{ id: 'dr-1', sku: 'M-777', name: 'Шилэн сандал', stock: 10 }];
   const line = [{ sku: 'M-777', name: 'Шилэн сандал', qty: 10 }];
+  // ⛔ ОГНООГ ХАТУУ БҮҮ БИЧ (2026-09-27). Төлбөргүй ноорог нь эвентийн өдөр
+  // өнгөрөхөд `deleted` болдог тул хатуу огноо тэр өдрийг хүрмэгц тест ӨӨРӨӨ
+  // унаж CI улаан болно (2026-09-24-нд бичсэн 3 тест 09-25-нд унасан).
+  const DAY = _soon(3);
 
   st.appOrders = [{ number: 9001, status: 'draft', paid_mnt: 0, source: 'm-event-website',
-                    starts_at: '2026-09-24', stops_at: '2026-09-24', items: line }];
-  eq(BQR('Шилэн сандал', '2026-09-24', '2026-09-24'), 10,
+                    starts_at: DAY, stops_at: DAY, items: line }];
+  eq(BQR('Шилэн сандал', DAY, DAY), 10,
      'нөөц: САЙТААС ирсэн ноорог нөөц ЭЗЭЛНЭ (давхар зарахаас хамгаална)');
 
   st.appOrders = [{ number: 9002, status: 'draft', paid_mnt: 0, source: 'app',
-                    starts_at: '2026-09-24', stops_at: '2026-09-24', items: line }];
-  eq(BQR('Шилэн сандал', '2026-09-24', '2026-09-24'), 0,
+                    starts_at: DAY, stops_at: DAY, items: line }];
+  eq(BQR('Шилэн сандал', DAY, DAY), 0,
      'нөөц: ДОТООД ноорог (ажилтны үнийн санал) нөөц ЭЗЛЭХГҮЙ');
 
   // Төлбөргүй `reserved` нь canon-оор `draft` болдог — эх сурвалж нь шийднэ.
   st.appOrders = [{ number: 9003, status: 'reserved', paid_mnt: 0, source: 'm-event-website',
-                    starts_at: '2026-09-24', stops_at: '2026-09-24', items: line }];
-  eq(BQR('Шилэн сандал', '2026-09-24', '2026-09-24'), 10,
+                    starts_at: DAY, stops_at: DAY, items: line }];
+  eq(BQR('Шилэн сандал', DAY, DAY), 10,
      'нөөц: сайтын төлбөргүй reserved ч нөөц эзэлнэ');
 
   st.appOrders = [{ number: 9004, status: 'canceled', paid_mnt: 0, source: 'm-event-website',
-                    starts_at: '2026-09-24', stops_at: '2026-09-24', items: line }];
+                    starts_at: DAY, stops_at: DAY, items: line }];
   eq(BQR('Шилэн сандал', '2026-09-24', '2026-09-24'), 0,
      'нөөц: цуцалсан сайтын захиалга эзлэхгүй');
 
@@ -9375,7 +9397,8 @@ need(['orderCustType']);
      '⛔ өнөөдрийн хүргэлт тоологдоно');
   eq(cnt([{ status: 'ready', starts_at: '2026-09-21' }], [], T, 7).deliveries, 0,
      'өнгөрсөн огноо: тоологдохгүй');
-  eq(cnt([], [{ date_start: '2026-09-24' }], T, 7).deliveries, 1, 'NOMAAD эвент тоологдоно');
+  // ⚠ NOMAAD мөрийг `nomaadExpiredLead` ЖИНХЭНЭ өнөөдрөөр шүүдэг тул огноо ирээдүй байх ёстой.
+  eq(cnt([], [{ date_start: _soon(2) }], _soon(0), 7).deliveries, 1, 'NOMAAD эвент тоологдоно');
   eq(cnt(null, null, T, 7), { deliveries: 0, returns: 0 }, 'хог оролт: 0');
   eq(cnt([{ status: 'ready', starts_at: '2026-09-24' }], [], '', 7).deliveries, 0,
      'огноогүй: 0 (буруу тоо гаргахгүй)');

@@ -5714,6 +5714,14 @@ body.role-daily #add-project { display: none !important; }
 .hist-roi-row.svc-r { cursor: pointer; border-radius: var(--r-sm); padding: 1px var(--space-1); }
 /* Ганц мөртэй бүлэг — эвхэгдэхгүй, дүн нь юу болох нь шууд харагдана. */
 .svc-one { margin: 0 0 var(--space-2) var(--space-4); }
+/* Ашиглалтын мөр — өмнө app.js-д inline style-аар (дизайны гэрээ: класс). */
+.usg-row { display: flex; align-items: center; gap: var(--space-2); margin: 5px 0; font-size: var(--fs-sm); }
+.usg-n { flex: 0 0 42%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usg-sub { color: var(--muted); font-size: var(--fs-xs); }
+.usg-bar { flex: 1; background: var(--panel-hover); border-radius: 5px; height: 14px; overflow: hidden; }
+.usg-fill { height: 100%; background: var(--warn); border-radius: 5px; }
+.usg-v { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.usg-none { color: var(--muted); }
 .svc-unalloc { margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px dashed var(--border);
   border-radius: var(--r-sm); font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .svc-det > summary { font-size: var(--fs-xs); color: var(--muted); cursor: pointer; padding: var(--space-1) 0; list-style: none; }

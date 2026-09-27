@@ -29012,14 +29012,21 @@ function renderHistory() {
       // НЭГ үйлчилгээ = НЭГ мөр. Нэрийн хувилбарууд («2 талдаа Хүргэлт», «Хүргэлт 1 талдаа»,
       // «1 талдаа хүргэлт (ван)» …) эвхээстэй задаргаанд үлдэнэ — тайлан уншигдахуйц болно.
       const gMax = Math.max(1, ...bd.groups.map(g => g.total));
+      const _tokAttr = (k) => k === 'dlv' ? 'data-hist-dlv="1"' : k === 'set' ? 'data-hist-set="1"' : k === 'oh' ? 'data-hist-oh="1"' : '';
+      const _isTok = (k) => !!_tokAttr(k);
+      const rowHtml = (r) => `<div class="hist-roi-row svc-r" ${_isTok(r.kind) ? _tokAttr(r.kind) : `data-hist-prod="${escapeHtml(r.name)}"`} title="Дарж захиалгуудыг харах">
+            ${bqBar(r.name + ' 🔍', r.revenue, mx, _isTok(r.kind) ? 'var(--warn,#D97706)' : 'var(--primary)', `${r.times}× · ${r.qty.toLocaleString('mn-MN')}ш`)}
+          </div>`;
       const inner = bd.groups.map(g => `
         <div class="hist-roi-row svc-g" data-hist-svc="${escapeHtml(g.key)}" title="Дарж захиалгуудыг харах">
           ${bqBar(g.label + ' 🔍', g.total, gMax, g.key === 'delivery' ? 'var(--warn,#D97706)' : 'var(--primary)', `${g.times}× · ${g.qty.toLocaleString('mn-MN')}ш`)}
         </div>
         ${g.rows.length > 1 ? `<details class="svc-det"><summary>${g.rows.length} нэрээр задлах</summary>
-          ${g.rows.map(r => `<div class="hist-roi-row" ${r.kind === 'dlv' ? 'data-hist-dlv="1"' : r.kind === 'set' ? 'data-hist-set="1"' : r.kind === 'oh' ? 'data-hist-oh="1"' : `data-hist-prod="${escapeHtml(r.name)}"`} style="cursor:pointer;border-radius:7px;padding:1px 4px;" title="Дарж захиалгуудыг харах">
-            ${bqBar(r.name + ' 🔍', r.revenue, mx, (r.kind === 'dlv' || r.kind === 'set' || r.kind === 'oh') ? 'var(--warn,#D97706)' : 'var(--primary)', `${r.times}× · ${r.qty.toLocaleString('mn-MN')}ш`)}
-          </div>`).join('')}</details>` : ''}`).join('');
+          ${g.rows.map(rowHtml).join('')}</details>`
+          /* ⛔ ГАНЦ мөртэй бүлгийг ЭВХЭХГҮЙ (2026-09-27). Өмнө нь зөвхөн 2+ мөртэй
+             бүлгийн задаргаа гардаг байсан тул «🛠 Бусад үйлчилгээ — 480,000₮» гэж
+             гарч, тэр мөнгө ЮУ болох нь хаанаас ч мэдэгдэхгүй байв. */
+          : g.rows.length === 1 ? `<div class="svc-one">${rowHtml(g.rows[0])}</div>` : ''}`).join('');
       return card(`🛠 Үйлчилгээ — ${fmtMoneyShort(bd.total)}`, inner,
         'Бараа биш үйлчилгээ — орлогод багтана, ROI/нөөцөд тооцохгүй. Мөр дарж захиалгуудыг харна.');
     };
@@ -29253,9 +29260,14 @@ function attachHistoryHandlers() {
   // Нэгтгэсэн үйлчилгээний мөр — бүлгийн БҮХ нэрийн захиалгыг нэг дор
   document.querySelectorAll('[data-hist-svc]').forEach(b => b.addEventListener('click', () => {
     const g = (state._svcGroups || []).find(x => x.key === b.dataset.histSvc); if (!g) return;
-    // Мөргүй бүлэг = зөвхөн токеноор бүртгэгдсэн хөлс. АЛЬ нь болохыг түлхүүрээр
-    // ялгана — өмнө нь бүгдийг хүргэлтийн цонх руу явуулдаг байв.
-    if (!g.names.length) { if (g.key === 'setup') openSetupFeeOrders(); else openDeliveryFeeOrders(); return; }
+    // Мөргүй бүлэг = зөвхөн токеноор бүртгэгдсэн хөлс. АЛЬ токен болохыг МӨРӨӨС
+    // нь ав — бүлгийн түлхүүрээр таавал «Бусад» бүлэг дэх ажлын бус цагийн хөлс
+    // хүргэлтийн цонх нээдэг байв.
+    if (!g.names.length) {
+      const k = ((g.rows || []).find(r => r && r.kind) || {}).kind;
+      openFeeOrders(k === 'set' ? 'set' : k === 'oh' ? 'oh' : 'dlv');
+      return;
+    }
     openHistProductOrders(g.names, { title: g.label.replace(/^\S+\s/, ''),
       note: g.dlvTotal > 0 ? `⚠ Аппаас автоматаар бодогдсон хүргэлтийн төлбөр (${fmtMoneyShort(g.dlvTotal)}) нь захиалгын мөр биш тул ЭНЭ жагсаалтад ороогүй — задаргаанаас тусад нь харна.` : '' });
   }));

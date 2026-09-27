@@ -5710,6 +5710,10 @@ body.role-daily #add-project { display: none !important; }
 .hist-roi-row.svc-g { cursor: pointer; border-radius: var(--r-sm); padding: var(--space-1) var(--space-2); margin-top: var(--space-3); background: var(--panel-hover); }
 .hist-roi-row.svc-g span, .hist-roi-row.svc-g b { font-weight: 600; }
 .svc-det { margin: 0 0 var(--space-2) var(--space-4); }
+/* Үйлчилгээний мөр — өмнө app.js-д inline style-аар (дизайны гэрээ: класс). */
+.hist-roi-row.svc-r { cursor: pointer; border-radius: var(--r-sm); padding: 1px var(--space-1); }
+/* Ганц мөртэй бүлэг — эвхэгдэхгүй, дүн нь юу болох нь шууд харагдана. */
+.svc-one { margin: 0 0 var(--space-2) var(--space-4); }
 .svc-det > summary { font-size: var(--fs-xs); color: var(--muted); cursor: pointer; padding: var(--space-1) 0; list-style: none; }
 .svc-det > summary::before { content: '▸ '; }
 .svc-det[open] > summary::before { content: '▾ '; }

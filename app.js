@@ -29027,7 +29027,20 @@ function renderHistory() {
              бүлгийн задаргаа гардаг байсан тул «🛠 Бусад үйлчилгээ — 480,000₮» гэж
              гарч, тэр мөнгө ЮУ болох нь хаанаас ч мэдэгдэхгүй байв. */
           : g.rows.length === 1 ? `<div class="svc-one">${rowHtml(g.rows[0])}</div>` : ''}`).join('');
-      return card(`🛠 Үйлчилгээ — ${fmtMoneyShort(bd.total)}`, inner,
+      /* ⛔ ЗАДАРГАА НИЙТ ОРЛОГОТОЙ ТААРАХГҮЙ — үүнийг НУУХГҮЙ (2026-09-27, CEO).
+         Захиалгын ДҮН ба түүний МӨРҮҮДИЙН нийлбэр ихэнхдээ таардаггүй (хуучин
+         Booqable мөр нь хоногийн үнэ эсвэл дутуу; хөнгөлөлт мөрд тархдаг ч
+         хөлсөнд тархдаггүй). Тиймээс «нийт − үйлчилгээ = түрээс» гэж БОДОЖ
+         БОЛОХГҮЙ. Зөрүүг тоогоор ил гаргавал хүн хэр найдвартайг нь мэдэнэ. */
+      const _net = Number((bq.summary || {}).net_revenue_mnt) || 0;
+      const _alloc = (roi || []).reduce((a, x) => a + (Number(x.revenue_mnt) || 0), 0)
+                   + (list || []).reduce((a, x) => a + (Number(x.revenue_mnt) || 0), 0)
+                   + _dlv.total + _set.total + _oh.total;
+      const _un = _net - _alloc;
+      const unRow = (_net > 0 && Math.abs(_un) / _net > 0.01)
+        ? `<div class="svc-unalloc">⚠ Задаргаанд <b>${fmtMoneyShort(Math.abs(_un))}</b> ${_un > 0 ? 'тархаагүй' : 'илүү гарсан'} (нийт орлогын ${Math.round(Math.abs(_un) / _net * 100)}%) — захиалгын дүн ба мөрүүдийн нийлбэр таардаггүй тул <b>«нийт − үйлчилгээ = түрээс» гэж бодож болохгүй</b>.</div>`
+        : '';
+      return card(`🛠 Үйлчилгээ — ${fmtMoneyShort(bd.total)}`, inner + unRow,
         'Бараа биш үйлчилгээ — орлогод багтана, ROI/нөөцөд тооцохгүй. Мөр дарж захиалгуудыг харна.');
     };
     if (roi.length) {

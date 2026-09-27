@@ -28847,7 +28847,11 @@ function renderHistory() {
     // ⟦DLV⟧ хүргэлтийн төлбөр нь захиалгын мөр БИШ тул тусад нь нэмнэ — эс бөгөөс
     // 2026 оны хүргэлтийн орлого хаана ч харагдахгүй.
     const svcCard = (list) => {
-      const _dlv = deliveryFeeRows((state.history && state.history.orders) || []);
+      // ⛔ `state.history.orders` (ШҮҮГДЭЭГҮЙ бүх хугацаа) БҮҮ УНШ (2026-09-27).
+      // Мөрөөр бүртгэгдсэн үйлчилгээ нь сонгосон хугацаагаар тооцогддог тул
+      // токеноор бүртгэгдсэн хүргэлт бүх хугацаагаар нэмэгдэж, «Хүргэлт, тээвэр»
+      // бүлэг сар сонгосон ч ХЭЗЭЭ Ч буудаггүй байв. `bq.orders` = шүүгдсэн олонлог.
+      const _dlv = deliveryFeeRows((bq && bq.orders) || []);
       const bd = serviceBreakdown(list, _dlv);
       if (!bd.groups.length) return '';
       state._svcGroups = bd.groups;   // мөр дархад бүлгийн нэрсийг олоход (handler)

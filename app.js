@@ -5659,6 +5659,9 @@ function openOpeningCountModal(sku, preQty) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  // ⛔ `.modal-bg` нь өгөгдмөл `display:none` — `.open` класс нэмэхгүй бол модал
+  //   үүсч БАЙГААД ХАРАГДАХГҮЙ, товч «дарагдахгүй» мэт болно (2026-09-27).
+  requestAnimationFrame(() => modal.classList.add('open'));
   const $t = modal.querySelector('#opc-total'), $d = modal.querySelector('#opc-dmg');
   const sync = () => {
     const r = openingCountSplit($t.value, $d.value);
@@ -21678,6 +21681,7 @@ function openCustomerCard(id) {
     <div class="modal-actions"><button class="btn" id="cu-cancel">Болих</button><button class="btn btn-primary" id="cu-save">Хадгалах</button></div>
   </div>`;
   document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('open'));
   const close = () => modal.remove();
   modal.querySelector('#cu-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });

@@ -178,6 +178,28 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: openStagePhoto-д inline style байхгүй');
 }
 
+// 0e4) SCAN — динамик модал ЗААВАЛ `.open` класстай нээгдэнэ (2026-09-27)
+// `.modal-bg` нь styles.css дээр өгөгдмөл `display:none`; `.modal-bg.open` л
+// харагдана. Тиймээс модалыг үүсгээд `classList.add('open')` хийхгүй бол модал
+// DOM-д БАЙГААД дэлгэцэд ГАРАХГҮЙ — хэрэглэгчид «товч дарагдахгүй» мэт санагдана
+// (алдаа ч шидэгдэхгүй тул хэн ч мэдэхгүй). Тооллогын «Тоолсон» товч яг ингэж
+// үхмэл байсан: openOpeningCountModal модалаа нээдэг ч `.open` нэмдэггүй байв.
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const re = /(\w+)\.className = 'modal-bg'/g;
+  const missing = [];
+  let m;
+  while ((m = re.exec(codeLines))) {
+    const varName = m[1];
+    const rest = codeLines.slice(m.index);
+    // Тухайн функцийн төгсгөл = дараагийн дээд түвшний функцийн эхлэл
+    const end = rest.search(/\n(?:async )?function /);
+    const body = end > 0 ? rest.slice(0, end) : rest;
+    if (!body.includes(varName + ".classList.add('open')")) missing.push(varName + '@' + m.index);
+  }
+  eq(missing.length, 0, 'scan: modal-bg үүсгэсэн бүрд .open класс нэмэгдэнэ (' + missing.join(', ') + ')');
+}
+
 // 0f) SCAN — ажилтны картад «Хувийн мэдээлэл» блок үлдэнэ (2026-09-16)
 // Яаралтай үеийн холбоо, хаяг, РД, и-мэйл, ажилд орсон огноо нь бүртгэлийн маягтаар
 // цуглуулагддаг байтал аппад ХАРАГДАХ газар огт байсангүй — CEO батлах цонхонд нэг л

@@ -24143,7 +24143,6 @@ async function _loadAppOrdersImpl() {
   } catch (e) { console.warn('loadAppOrders active', e); }
   state.appOrders = state.appOrders || [];
   sweepStageTasks();          // идэвхтэй захиалга бүрд дамжлагын ажлыг баталгаажуулах (хуучин захиалга ажилтай болно)
-  autoCleanExpiredOrders();   // хугацаа хэтэрсэн биелээгүй захиалгыг авто устгах (сессэд нэг удаа)
   autoFillOrderCompany();     // банкны баримтын төлөгчөөс байгууллагын нэрийг авто бүртгэх (хоосон бол)
   loadUsedReceipts();   // нэгдсэн баримтын ledger (давхцал шалгах)
   // 2-р шат: архив/цуцалсан түүх — сессэд нэг л удаа (ховор өөрчлөгдөнө; аппын үйлдэл optimistic)
@@ -24161,27 +24160,6 @@ async function _loadAppOrdersImpl() {
     } catch (e) { console.warn('loadAppOrders archive', e); }
     state._archiveLoading = false;
   }
-}
-// Хугацаа хэтэрсэн захиалгыг "Устгасан" төлөв рүү АВТО зөөх (устгахгүй — "Устгасан" хэсэгт харагдана).
-// Нөхцөл: эвентийн огноо ӨНГӨРСӨН + биелээгүй (draft/reserved) + ТӨЛБӨРГҮЙ.
-// Төлбөр төлсөн = жинхэнэ захиалга → ХӨНДӨХГҮЙ (зөвхөн гараар цуцлана). Сессэд нэг л удаа.
-async function autoCleanExpiredOrders() {
-  if (state._expiredCleaned) return;
-  state._expiredCleaned = true;
-  const t = new Date();
-  const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
-  const dead = (state.appOrders || []).filter(o => {
-    const st = String(o.status || 'reserved');
-    if (st !== 'draft' && st !== 'reserved') return false;   // зөвхөн биелээгүй эрт төлөв
-    const end = String(o.stops_at || o.starts_at || '').slice(0, 10);
-    if (!end || end >= today) return false;                  // огноогүй / ирээдүй / өнөөдөр → үлдээ
-    return (Number(o.paid_mnt) || 0) <= 0;                    // төлбөртэй бол ХӨНДӨХГҮЙ
-  });
-  if (!dead.length) return;
-  dead.forEach(o => { o.status = 'deleted'; });               // optimistic — "Устгасан" төлөв
-  if (typeof render === 'function') render();
-  for (const o of dead) { try { await saveAppOrder(o); } catch (e) { console.warn('autoClean move', e); } }
-  if (typeof showToast === 'function') showToast(`🚫 Хугацаа хэтэрсэн ${dead.length} төлбөргүй захиалгыг «Больсон» руу шилжүүлэв`, 'info', 4500);
 }
 // Байгууллагын нэр + РД-г захиалгад авто бүртгэх (⟦CI⟧ note token). Эх сурвалж:
 //   1) НӨАТ (ebarimt) баримт — buyer_name + buyer_reg (ХАМГИЙН ЗӨВ: нэр БА регистр).
@@ -25773,7 +25751,9 @@ function bqOrderCard(o) {
       else if (can('orders.cancel')) { cxHtml = `<button class="btn" data-cx-request="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseAction(o) === 'deleted' ? '🗑 Устгах хүсэлт' : '✕ Цуцлах хүсэлт'}</button>`; }
     }
   }
-  const appCanPay = st !== 'canceled' && st !== 'deleted' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
+  // ⚠ «Больсон» (deleted)-д ч төлбөр бүртгэнэ — мөнгө орсон нь «хэлцэл больсон» гэдэг БУРУУ байсны
+  //   цорын ганц нотолгоо. Бүртгэмэгц захиалга ажлын жагсаалтад буцаж орно (orderReviveStatus).
+  const appCanPay = st !== 'canceled' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
   // Дараагийн шатны товч — шат бүрт өөр эрх (нярав/цэвэрлэгч/хүргэгч). Эрхгүй бол ИДЭВХГҮЙ харагдана (Алтансүх).
   const advCap = next ? (next.cap || 'orders.advance') : null;
   const advOk = next ? canStage(advCap) : false;
@@ -26022,6 +26002,16 @@ function orderStatusTouchesMoney(from, to) {
 // Захиалгын мөнгө аль сард сууж байна (мөнгөн ба гүйцэтгэлийн суурь ХОЁУЛАА) — түгжээг шалгахад.
 function orderLockedMonth(o) {
   return [orderIncomeMonth(o, 'cash'), orderIncomeMonth(o, 'accrual')].find(m => m && monthLocked(m)) || '';
+}
+/* «Больсон» захиалгад ТӨЛБӨР бүртгэхэд аль төлөв рүү сэргэх вэ.
+   Мөнгө орсон = хэлцэл больсон нь БУРУУ байсан гэсэн үг — захиалга ажлын жагсаалтад буцаж орно.
+   Эвентийн огноо өнгөрсөн бол «Дууссан», ирээдүйд бол «Захиалсан».
+   ⚠ Огноогүй бол «Захиалсан» — хүн хараад шийднэ (чимээгүй «Дууссан» болгож нуухгүй).
+   Цэвэр функц (тестлэгдэнэ). */
+function orderReviveStatus(o, today) {
+  const t = today || todayStr();
+  const end = String((o && (o.stops_at || o.starts_at)) || '').slice(0, 10);
+  return (end && end < t) ? 'returned' : 'reserved';
 }
 async function bqUpdateStatus(oid, to, opts = {}) {
   // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.
@@ -27374,9 +27364,18 @@ async function submitBqPayment(oid, modal, btn) {
   const isApp = !bqO;
   const receipts = (modal._receipts || []).slice();
   if (!receipts.length) { showToast('Банкны баримт (PDF) оруулна уу', 'warn'); return; }
-  // 🔒 Хаасан сар — тэр сарын орлого хөдөлж болохгүй (баримтын огноогоор шалгана)
+  // 🔒 Хаасан сар — мөнгө хөндөх үйлдэл тул түгжээг СЕРВЕРЭЭС шинэчилж шалгана
+  // (өөр сессээс тавигдсан хаалтыг хуучирсан кэшээр алгасахгүй).
+  try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр шалгана */ }
   const _lockM = receipts.map(r => String(r.date || '').slice(0, 7)).filter(Boolean).find(m => monthLocked(m));
   if (_lockM) { showToast(`🔒 ${_lockM} сар хаагдсан — тэр сарын төлбөр бүртгэх боломжгүй. CEO сарыг нээнэ.`, 'error', 6000); return; }
+  // «Больсон» захиалгад төлбөр орох = хэлцэл больсон нь буруу байжээ → орлогод БУЦААЖ оруулна.
+  // Төлөв солих нь мөнгө хөндөх тул bqUpdateStatus-тай ИЖИЛ түгжээгээр шалгана.
+  const _revive = isApp && String(o.status) === 'deleted';
+  if (_revive && orderStatusTouchesMoney(o.status, orderReviveStatus(o))) {
+    const _lk = orderLockedMonth(o);
+    if (_lk) { showToast(`🔒 ${_lk} сар хаагдсан — #${o.number} «Больсон» захиалгыг сэргээх нь тэр сарын орлогыг хөдөлгөнө. CEO сарыг нээнэ.`, 'error', 7000); return; }
+  }
   const method = modal.querySelector('#bqp-method')?.value || 'bank';
   btn.disabled = true;
   // Баримт БҮРИЙГ нэгдсэн ledger-т эзэмших (давхцвал тухайныг алгасна)
@@ -27407,7 +27406,7 @@ async function submitBqPayment(oid, modal, btn) {
   }
   const newPaid = basePaid + amount;
   const ref = [baseRef.trim(), newRef].filter(Boolean).join('  |  ');
-  const newStatus = o.status === 'draft' ? 'reserved' : o.status;
+  const newStatus = _revive ? orderReviveStatus(o) : (o.status === 'draft' ? 'reserved' : o.status);
   const prevPaid = o.paid_mnt, prevStatus = o.status, prevRef = o.paid_ref, prevMethod = o.paid_method, prevDate = o.paid_date;
   o.paid_mnt = newPaid; o.status = newStatus; o.paid_ref = ref; o.paid_method = method; o.paid_date = date;   // optimistic
   try {
@@ -27431,7 +27430,7 @@ async function submitBqPayment(oid, modal, btn) {
       }, 15000);
     } catch (e2) { console.warn('bq payment record', e2); }
     modal.remove();
-    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}${okR.length > 1 ? ` (${okR.length} баримт)` : ''}${newStatus !== prevStatus ? ' · Захиалсан' : ''}`, 'success', 2800);
+    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}${okR.length > 1 ? ` (${okR.length} баримт)` : ''}${newStatus !== prevStatus ? ' · ' + ((BQ_STATUS[newStatus] || {}).label || newStatus) : ''}`, 'success', 2800);
     // Төлбөр → Захиалсан болмогц эхний дамжлагын ажил (Бэлтгэх) хариуцагчид автоматаар үүснэ
     if (isApp && newStatus === 'reserved') { try { ensureStageTask(o); } catch (e4) { console.warn('ensureStageTask pay', e4); } }
     render();

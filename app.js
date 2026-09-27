@@ -28169,7 +28169,13 @@ function serviceKind(name) {
 function deliveryFeeRows(orders) {
   const out = [];
   (orders || []).forEach(o => {
-    if (!o || ['draft', 'canceled', 'deleted'].includes(String(o.status))) return;
+    // ⛔ ТҮҮХИЙ `status`-аар БҮҮ шүү (2026-09-27). Төлбөргүй `reserved` нь каноноор
+    // `draft`, эвентийн өдөр өнгөрсөн төлбөргүй ноорог нь `deleted` болдог — түүхийгээр
+    // шүүвэл тайлан орлогод тоолохгүй захиалгын хүргэлтийг тоолж, «Хүргэлт» бүлэг
+    // нийт борлуулалттай тулахаа болино.
+    if (!o) return;
+    const cst = (typeof orderCanonStatus === 'function') ? orderCanonStatus(o) : String(o.status || '');
+    if (['draft', 'canceled', 'deleted'].includes(cst)) return;
     const d = (typeof parseDelivery === 'function') ? parseDelivery(o.note) : null;
     const fee = d ? (Number(d.fee) || 0) : 0;
     if (!d || fee <= 0) return;

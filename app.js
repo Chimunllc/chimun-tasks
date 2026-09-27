@@ -10021,8 +10021,13 @@ function attachOrdersHandlers() {
   document.getElementById('bulk-delete')?.addEventListener('click', async () => {
     const ids = [...(state.ordersSelected || [])];
     if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
-    if (!(await showConfirm(`${ids.length} захиалгыг «Больсон» гэж бүртгэх уу?\n\nДата УСТАХГҮЙ — «Больсон» бүлэгт үлдэж, «↩ Сэргээх»-ээр буцаж болно.`, { okText: 'Больсон', danger: true }))) return;
-    try { await bulkDeleteOrders(ids); } catch (e) { return; }   // амжилтгүйд bulkDeleteOrders өөрөө сэргээж toast гаргана
+    // ⚠ Шалтгаан ЗААВАЛ — багцаар ч адил. Өмнө нь энэ товч шалтгаан асуудаггүй тул
+    //   «Больсон»-ы 30 захиалга яагаад болсон нь хаана ч үлдээгүй байв.
+    const _sum = (state.appOrders || []).filter(o => ids.map(String).includes(String(o.id)))
+      .reduce((a, o) => a + (Number(o.total_mnt) || 0), 0);
+    const reason = await pickCancelReason(`${ids.length} захиалга`, true, { total_mnt: _sum });
+    if (!reason) return;
+    try { await bulkDeleteOrders(ids, reason); } catch (e) { return; }   // амжилтгүйд bulkDeleteOrders өөрөө сэргээж toast гаргана
     state.ordersSelected = new Set();
     showToast(`${ids.length} захиалга устгалаа`, 'success', 2800); render();
   });
@@ -24265,14 +24270,14 @@ function openTestCleanupModal() {
     if (!(await showConfirm(`${ids.length} тест захиалгыг хасах уу? («Больсон» бүлэгт шилжинэ — дараа сэргээж болно)`, { okText: 'Хасах', danger: true }))) return;
     e.currentTarget.disabled = true;
     let ok = 0;
-    for (const id of ids) { try { await deleteAppOrder(id); ok++; } catch (err) { console.warn('test del', err); } }
+    for (const id of ids) { try { await deleteAppOrder(id, 'Тест захиалга'); ok++; } catch (err) { console.warn('test del', err); } }
     close();
     showToast(`${ok} тест захиалга устгалаа`, 'success', 2800);
     if (typeof render === 'function') render();
   });
 }
 // CEO бөөн үйлдэл — сонгосон захиалгыг устгах/сэргээх (PostgREST id=in.() багцаар)
-async function bulkDeleteOrders(ids) {
+async function bulkDeleteOrders(ids, reason) {
   // ЗӨӨЛӨН устгал — мөрийг DB-ээс устгахгүй, зөвхөн status='deleted' болгоно ⟹ "Устгасан" бүлэгт үлдэж,
   // «Сэргээх»-ээр буцаана. Дата хэзээ ч эргэлт буцалтгүй алдагдахгүй.
   try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр */ }
@@ -24284,21 +24289,29 @@ async function bulkDeleteOrders(ids) {
     if (!ids.length) return;
   }
   const idSet = new Set(ids.map(String));
-  const prev = new Map();   // амжилтгүйд төлөвийг буцаах
-  (state.appOrders || []).forEach(o => { if (idSet.has(String(o.id))) { prev.set(String(o.id), o.status); o.status = 'deleted'; } });   // optimistic
+  const prev = new Map();   // амжилтгүйд төлөв+тэмдэглэлийг буцаах
+  // ⚠ ШАЛТГААН нь захиалга БҮРИЙН note-д суух тул нэг багц PATCH хийж болохгүй —
+  //   note мөр бүрт өөр. Багц устгал ховор тул нэг нэгээр нь бичнэ.
+  const targets = (state.appOrders || []).filter(o => idSet.has(String(o.id)));
+  targets.forEach(o => {
+    prev.set(String(o.id), { status: o.status, note: o.note });
+    o.status = 'deleted';
+    if (reason) o.note = setCancelReason(o.note, reason);   // optimistic
+  });
   if (typeof render === 'function') render();
   if (!DB_ANON_KEY) return;
   let failed = false;
-  for (let i = 0; i < ids.length; i += 80) {
-    const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
+  for (const o of targets) {
+    const body = { status: 'deleted', updated_at: new Date().toISOString() };
+    if (reason) body.note = o.note;
     try {
-      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
-        { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'deleted', updated_at: new Date().toISOString() }) }, 30000);
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(String(o.id))}`,
+        { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(body) }, 30000);
       if (!r.ok) failed = true;
     } catch (e) { console.warn('bulkDelete(soft)', e); failed = true; }
   }
   if (failed) {
-    (state.appOrders || []).forEach(o => { if (prev.has(String(o.id))) o.status = prev.get(String(o.id)); });   // төлөв буцаана
+    (state.appOrders || []).forEach(o => { const p = prev.get(String(o.id)); if (p) { o.status = p.status; o.note = p.note; } });   // төлөв+тэмдэглэл буцаана
     if (typeof render === 'function') render();
     showToast('⚠ Серверт бүрэн хийгдсэнгүй — төлөвийг буцаалаа, дахин оролдоно уу', 'error', 6000);
     throw new Error('bulkDelete fail');
@@ -24398,7 +24411,7 @@ async function archiveDoneMonth(ym) {
   showToast(ok ? `🗄 ${list.length} захиалга архивлалаа` : '⚠ Хэсэгчлэн архивлагдав — дахин оролдоно уу', ok ? 'success' : 'warn', 4500);
   render();
 }
-async function deleteAppOrder(id) {
+async function deleteAppOrder(id, reason) {
   // ЗӨӨЛӨН устгал — мөр устгахгүй, status='deleted' (сэргээж болно). Хатуу устгал = буцалтгүй алдагдал тул хийхгүй.
   const o = (state.appOrders || []).find(x => x.id === id);
   // 🔒 Хаасан сарын захиалгыг устгавал тэр сарын орлого чимээгүй буурна
@@ -24408,13 +24421,19 @@ async function deleteAppOrder(id) {
     if (lk) { showToast(`🔒 ${lk} сар хаагдсан — #${o.number} захиалгыг устгах боломжгүй`, 'error', 6000); return; }
   }
   const prevStatus = o ? o.status : null;
-  if (o) o.status = 'deleted';
+  // ⚠ ШАЛТГААНГҮЙ «Больсон» = «яагаад алдаж байна» гэдгийг хэзээ ч тоолж чадахгүй.
+  //   Амьд датаар 54 больсоны 30 нь шалтгаангүй байсан нь яг эндээс төрсөн.
+  const _note = (o && reason) ? setCancelReason(o.note, reason) : null;
+  const prevNote = o ? o.note : null;
+  if (o) { o.status = 'deleted'; if (_note != null) o.note = _note; }
   if (typeof render === 'function') render();
   if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'deleted', updated_at: new Date().toISOString() }) }, 15000);
+    const _body = { status: 'deleted', updated_at: new Date().toISOString() };
+    if (_note != null) _body.note = _note;
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(_body) }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-  } catch (e) { console.warn('deleteAppOrder(soft)', e); if (o && prevStatus != null) { o.status = prevStatus; if (typeof render === 'function') render(); } }
+  } catch (e) { console.warn('deleteAppOrder(soft)', e); if (o && prevStatus != null) { o.status = prevStatus; o.note = prevNote; if (typeof render === 'function') render(); } }
 }
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
@@ -25963,7 +25982,7 @@ function pickCancelReason(num, isDel, o) {
     const amt = Number(o && o.total_mnt) || 0;
     modal.innerHTML = `<div class="modal" style="max-width:430px;">
       <h2>${isDel ? '🚫 Захиалга больсон' : '✕ Захиалга цуцлах'}</h2>
-      <p class="amo-hint">#${escapeHtml(String(num))}${o && o.customer ? ' · ' + escapeHtml(o.customer) : ''}${amt ? ` · ${fmtMoney(amt)}` : ''}<br>
+      <p class="amo-hint">${/^\d+$/.test(String(num)) ? '#' : ''}${escapeHtml(String(num))}${o && o.customer ? ' · ' + escapeHtml(o.customer) : ''}${amt ? ` · ${fmtMoney(amt)}` : ''}<br>
         Шалтгааныг СОНГОНО уу — ингэснээр «яагаад захиалга алдаж байна» гэдгийг тоолж харна.</p>
       <div class="cx-opts">${ORDER_CX_REASONS.map((r, i) => `<button type="button" class="cx-opt${r.admin ? ' admin' : ''}" data-cx="${i}">${escapeHtml(r.k)}</button>`).join('')}</div>
       <label class="fld">Нэмэлт тайлбар <span style="font-weight:400;color:var(--muted);">(сонголт)</span><input id="cx-note" placeholder="Ж: 20%-иар хямд санал авсан"></label>

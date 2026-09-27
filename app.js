@@ -28203,6 +28203,45 @@ function openHistProductOrders(name, opts) {
 //     эсрэг тохиолдолд мөрийн ӨӨРИЙН дүнг авна — өсгөхгүй.
 //   • net-ийг ЗААВАЛ orderRevenue()-ээр ав: Booqable захиалгад барьцаа нь total_mnt-д
 //     ОРООГҮЙ (568/571 баталгаажсан) тул дахин хасвал 114.7сая₮ дутуу гарна.
+/* ── АШИГЛАЛТЫН ХУВЬ (2026-09-27) ───────────────────────────────────────────
+   «Бараа-өдөр» гэсэн ТҮҮХИЙ тоо нь зөвхөн ХЭДИЙГ ЭЗЭМШДЭГИЙГ хэмждэг: 717
+   сандал 703 бараа-өдөр гаргаад эхэнд зогсдог ч эзэмшлийнхээ ердөө 3%-ийг л
+   ажиллуулсан байдаг. Харин 2 ширхэг бамбар гэрэл 40% ажилласан байна.
+   «Юуг нэмж авах, юуг актлах» гэдэгт хариулдаг нь ХУВЬ.
+   ⚠ Цэвэр функц (state уншихгүй) — тестлэгдэнэ. */
+function usageUtilization(rows, periodDays, ownedOf) {
+  const d = Math.max(1, Math.round(Number(periodDays) || 0));
+  return (rows || []).map(r => {
+    const owned = Math.max(0, Math.round(Number(
+      (ownedOf ? ownedOf(r) : (r && r.owned_qty)) || 0)));
+    const days = Math.max(0, Number(r && r.item_days_out) || 0);
+    const cap = owned * d;
+    // Эзэмшлийн тоо мэдэгдэхгүй бол ХУВЬ ГАРГАХГҮЙ (null) — 0 гэж бичвэл
+    // «огт ашиглагдаагүй» гэж уншигдана.
+    return Object.assign({}, r, { util_pct: cap > 0 ? days / cap * 100 : null, owned_qty: owned });
+  });
+}
+const LAPSED_DAYS = 120;   // эргэж ирээгүй гэж үзэх хязгаар (хоног)
+/* ── ЭРГЭЖ ИРЭЭГҮЙ ХАРИЛЦАГЧ (2026-09-27) ───────────────────────────────────
+   `latest_order_at` тооцогддог атлаа ХААНА Ч ХЭРЭГЛЭГДЭХГҮЙ байв. Амьд датаар
+   134 харилцагч (өмнө нь 143 сая₮ авчирсан) 3-6 сар эргэж ирээгүй.
+   ⚠ БҮХ түүхээс бодогдоно, сонгосон хугацаанаас БИШ — «сүүлийн сар» сонговол
+     бүгд «эргэж ирээгүй» болж жагсаалт утгагүй болно. */
+function lapsedCustomers(customers, today, days, minOrders) {
+  const t = String(today || '');
+  const cut = (t && typeof addDays === 'function') ? addDays(t, -Math.max(1, Number(days) || 120)) : '';
+  if (!cut) return [];
+  const mo = Math.max(1, Number(minOrders) || 1);
+  return (customers || [])
+    .filter(c => c && (Number(c.order_count) || 0) >= mo
+      && String(c.latest_order_at || '') && String(c.latest_order_at) < cut)
+    .map(c => Object.assign({}, c, { days_ago: _daysBetween(String(c.latest_order_at), t) }))
+    .sort((a, b) => (Number(b.revenue_mnt) || 0) - (Number(a.revenue_mnt) || 0));
+}
+function _daysBetween(a, b) {
+  const x = Date.parse(a + 'T00:00:00Z'), y = Date.parse(b + 'T00:00:00Z');
+  return (isFinite(x) && isFinite(y)) ? Math.max(0, Math.round((y - x) / 86400000)) : 0;
+}
 /* Татвар/барьцааны мөр — бараа ч биш, үйлчилгээ ч биш. Хуваарилалтын
    ХУВААРЬТ Ч орохгүй (2026-09-27): эс бөгөөс тэдний ногдох хэсэг хаашаа ч
    очихгүй алга болж, задаргаа нийт орлоготой тэнцэхээ болино. */
@@ -29194,23 +29233,54 @@ function renderHistory() {
       (c.length ? c.map(x => bqBar(x.customer || '—', N(x.revenue_mnt), maxRev, 'var(--primary)',
         `${N(x.order_count)} захиалга${N(x.order_count) > 1 ? ` · дунд ${fmtMoneyShort(N(x.avg_order_mnt))}` : ''}`)).join('') + unknownNote
         : '<span style="color:var(--muted);">дата алга</span>'),
-      'Захиалгын нэхэмжилсэн дүнгээр (нэрээр нэгтгэсэн, давхардал арилгасан). Дээд KPI-тай нэг эх сурвалж.');
+      'Захиалгын нэхэмжилсэн дүнгээр (нэрээр нэгтгэсэн, давхардал арилгасан). Дээд KPI-тай нэг эх сурвалж.')
+      /* ⚠ БҮХ түүхээс — сонгосон хугацаанаас БИШ. «Сүүлийн сар» сонговол бүгд
+         «эргэж ирээгүй» болж жагсаалт утгагүй болно. */
+      + (() => {
+        const all = (state.history && state.history.customers) || [];
+        const lap = lapsedCustomers(all, todayStr(), LAPSED_DAYS, 2).slice(0, 20);
+        if (!lap.length) return '';
+        const mx = Math.max(1, ...lap.map(x => N(x.revenue_mnt)));
+        return card(`⏳ Эргэж ирээгүй харилцагч (${lap.length})`,
+          lap.map(x => bqBar(x.customer || '—', N(x.revenue_mnt), mx, 'var(--warn)',
+            `${N(x.order_count)} захиалга · сүүлд ${escapeHtml(String(x.latest_order_at || ''))} (${N(x.days_ago)} хоног)`)).join(''),
+          `Хоёроос дээш удаа захиалж байсан ч ${LAPSED_DAYS} хоногоос дээш эргэж ирээгүй. Давтан үйлчлүүлэгч авах нь шинийг олохоос хямд — залгах жагсаалт.`);
+      })();
 
   } else if (tab === 'usage') {
-    const uAll = bq.usage || [];
-    const u = uAll;
+    /* ⛔ ТҮҮХИЙ «бараа-өдөр»-өөр эрэмбэлэх нь ЭЗЭМШЛИЙН ТООГ хэмждэг (2026-09-27).
+       717 сандал эхэнд зогсдог ч эзэмшлийнхээ 3%-ийг л ажиллуулсан байдаг.
+       Тиймээс ХУВЬ-ийг өгөгдмөл болгов — «юуг нэмж авах, юуг актлах» гэдэгт
+       хариулдаг нь тэр. Түүхий тоо чипээр хэвээр. */
+    const _pDays = Math.max(1, ((bq._days || []).length) || 1);
+    const uAll = usageUtilization(bq.usage || [], _pDays, (r) => {
+      const p = (bq.roi || []).find(x => x && x.product === r.product);
+      return p ? p.owned_qty : 0;
+    });
+    state.usageSort = state.usageSort === 'days' ? 'days' : 'pct';
+    const byPct = state.usageSort === 'pct';
+    const u = uAll.slice().sort((a, b) => byPct
+      ? ((b.util_pct == null ? -1 : b.util_pct) - (a.util_pct == null ? -1 : a.util_pct))
+      : (N(b.item_days_out) - N(a.item_days_out)));
     const maxDays = Math.max(1, ...u.map(x => N(x.item_days_out)));
-    body = kpis + card(`Барааны ашиглалт (бараа-өдөр гадаа) (${uAll.length})`,
+    const maxPct = Math.max(1, ...u.map(x => Number(x.util_pct) || 0));
+    const chip = (k, lbl) => `<button type="button" class="stc-chip ui-raw${state.usageSort === k ? ' on' : ''}" data-usort="${k}">${lbl}</button>`;
+    body = kpis + card(`Барааны ашиглалт (${uAll.length})`,
+      `<div class="stc-chips">${chip('pct', '% Ашиглалт')}${chip('days', 'Бараа-өдөр')}</div>` +
       (u.length ? u.map(x => {
-        const days = N(x.item_days_out);
-        const pct = maxDays > 0 ? Math.max(2, Math.round(days / maxDays * 100)) : 0;
-        return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;">
-          <div style="flex:0 0 42%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(x.product || '')}">${escapeHtml(x.product || '—')}<span style="color:var(--muted);font-size:10.5px;"> · ${N(x.bookings)} удаа</span></div>
-          <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--warn);border-radius:5px;"></div></div>
-          <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${days.toLocaleString('mn-MN')} ө</div>
+        const days = N(x.item_days_out), up = x.util_pct;
+        const pct = byPct
+          ? (up == null ? 2 : Math.max(2, Math.round(up / maxPct * 100)))
+          : Math.max(2, Math.round(days / maxDays * 100));
+        const val = byPct ? (up == null ? '—' : Math.round(up * 10) / 10 + '%') : days.toLocaleString('mn-MN') + ' ө';
+        const sub = `${N(x.bookings)} удаа${x.owned_qty ? ' · ' + x.owned_qty + 'ш' : ''}${byPct ? ` · ${days.toLocaleString('mn-MN')} ө` : (up == null ? '' : ` · ${Math.round(up * 10) / 10}%`)}`;
+        return `<div class="usg-row">
+          <div class="usg-n" title="${escapeHtml(x.product || '')}">${escapeHtml(x.product || '—')}<span class="usg-sub"> · ${escapeHtml(sub)}</span></div>
+          <div class="usg-bar"><div class="usg-fill" style="width:${pct}%"></div></div>
+          <div class="usg-v">${val}</div>
         </div>`;
-      }).join('') : '<span style="color:var(--muted);">дата алга</span>'),
-      'Бараа-өдөр = захиалгын түрээсийн хоног × тоо ширхэг. Хамгийн их эргэлттэй хөрөнгийг харуулна.');
+      }).join('') : '<span class="usg-none">дата алга</span>'),
+      `Ашиглалт = бараа-өдөр ÷ (эзэмшсэн тоо × ${_pDays} хоног). Эзэмшлийнхээ хэдэн хувийг ажиллуулж байгааг харуулна — эзэмшлийн тоо мэдэгдэхгүй бараанд «—».`);
 
   } else if (tab === 'branch') {
     // Компанийн орлого 2 салбараар (ТУСДАА — давхар тоолохгүй): Эвент(түүхэн) + Кемп(NOMAAD)
@@ -29281,6 +29351,9 @@ function attachHistoryHandlers() {
   document.querySelectorAll('[data-bq-tab]').forEach(b => b.addEventListener('click', () => {
     state.bqTab = b.dataset.bqTab;
     render();
+  }));
+  document.querySelectorAll('[data-usort]').forEach(b => b.addEventListener('click', () => {
+    state.usageSort = b.dataset.usort; render();
   }));
   document.querySelectorAll('[data-histperiod]').forEach(b => b.addEventListener('click', () => {
     state.histPeriod = b.dataset.histperiod; render();

@@ -3194,6 +3194,50 @@ need(['orderCustType']);
      'scan: гурван хөлс хоёулаа нэг хугацааны олонлогоос');
 }
 
+// АШИГЛАЛТЫН ХУВЬ — «бараа-өдөр» нь зөвхөн эзэмшлийн тоог хэмждэг (2026-09-27)
+{
+  const uu = sandbox.usageUtilization;
+  const rows = [
+    { product: 'Сандал', item_days_out: 703, owned_qty: 717 },
+    { product: 'Бамбар', item_days_out: 24, owned_qty: 2 },
+    { product: 'Тодорхойгүй', item_days_out: 10, owned_qty: 0 },
+  ];
+  const r = uu(rows, 30);
+  ok(Math.abs(r[0].util_pct - 3.27) < 0.05, 'ашиглалт: 717ш × 30 хоногийн 703 = 3.3%');
+  ok(Math.abs(r[1].util_pct - 40) < 0.01, 'ашиглалт: 2ш × 30 хоногийн 24 = 40%');
+  // ⛔ Эзэмшил мэдэгдэхгүй бол 0 БИШ null — 0 нь «огт ашиглагдаагүй» гэж уншигдана.
+  eq(r[2].util_pct, null, '⛔ ашиглалт: эзэмшил мэдэгдэхгүй бол null');
+  // Түүхий тоогоор сандал эхэнд, хувиар бамбар эхэнд — эрэмбэ ӨӨР.
+  ok(r[1].util_pct > r[0].util_pct && rows[0].item_days_out > rows[1].item_days_out,
+     'ашиглалт: хувь ба түүхий тоо ӨӨР эрэмбэ өгнө');
+  eq(uu(null, 30).length, 0, 'ашиглалт: хог оролт');
+  eq(uu(rows, 0)[0].util_pct != null, true, 'ашиглалт: хугацаа 0 бол ядаж 1 хоног');
+  ok(/data-usort/.test(src), 'scan: ашиглалтын эрэмбийн сонголт бий');
+  ok(/state\.usageSort === 'days' \? 'days' : 'pct'/.test(src),
+     'scan: өгөгдмөл эрэмбэ = ХУВЬ (түүхий тоо биш)');
+}
+
+// ЭРГЭЖ ИРЭЭГҮЙ ХАРИЛЦАГЧ — `latest_order_at` хэрэглэгдэхгүй байв (2026-09-27)
+{
+  const lc = sandbox.lapsedCustomers;
+  const cs = [
+    { customer: 'А', order_count: 4, revenue_mnt: 4433360, latest_order_at: '2026-05-28' },
+    { customer: 'Б', order_count: 1, revenue_mnt: 9000000, latest_order_at: '2026-01-01' },
+    { customer: 'В', order_count: 3, revenue_mnt: 1903000, latest_order_at: '2026-09-20' },
+    { customer: 'Г', order_count: 2, revenue_mnt: 2550000, latest_order_at: '2026-04-21' },
+  ];
+  const r = lc(cs, '2026-09-27', 120, 2);
+  eq(r.map(x => x.customer), ['А', 'Г'], 'эргэж ирээгүй: 2+ захиалгатай, 120 хоног өнгөрсөн нь');
+  ok(!r.some(x => x.customer === 'Б'), '⛔ нэг удаа захиалсан нь орохгүй (давтан БИШ)');
+  ok(!r.some(x => x.customer === 'В'), 'саяхан захиалсан нь орохгүй');
+  eq(r[0].days_ago, 122, 'эргэж ирээгүй: хэдэн хоног болсныг хэлнэ');
+  ok(r[0].revenue_mnt >= r[1].revenue_mnt, 'эргэж ирээгүй: өмнөх орлогоор эрэмбэлнэ');
+  eq(lc(cs, '', 120, 2).length, 0, 'эргэж ирээгүй: огноогүй бол хоосон');
+  // ⛔ БҮХ түүхээс — сонгосон хугацаанаас БИШ.
+  ok(/state\.history && state\.history\.customers/.test(src),
+     'scan: эргэж ирээгүй жагсаалт бүх түүхээс бодогдоно');
+}
+
 // ⭐ ИНВАРИАНТ: задаргаа = нийт орлого (2026-09-27, CEO-гийн асуултаас)
 // «Нийт орлогоос үйлчилгээг хасахад барааны түрээс гарах уу?» — одоо ТИЙМ.
 // Бараа + үйлчилгээний мөр + гурван хөлс = цэвэр орлого, төгрөг хүртэл.

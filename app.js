@@ -6392,7 +6392,7 @@ function pricingStats(orders, products, opts) {
       // Мөрийн ЖАГСААЛТЫН дүн биш, БОДИТ орлого — захиалгад хөнгөлөлт байвал
       // харьцангуйгаар буурна. Эс бөгөөс «үнийн биелэлт» хиймлээр өндөр гарч,
       // хөнгөлж зарж буй бараанд «үнэ өсгө» гэж буруу зөвлөнө.
-      const amt = histLineRevenue(qty * (Number(it.price) || 0), grossAll, _net);
+      const amt = histLineRevenue(qty * (Number(it.price) || 0), grossAll, _net, orderTokenFees(ord));
       // ── БАГЦ = бүтээгдэхүүн БИШ, бүтээгдэхүүний НИЙЛБЭР ────────────────────
       // Багцын орлого/тоог бүрэлдэхүүн рүү задална. Эс бөгөөс өртөггүй багц мөр
       // болж эргэлт/ROI худал гарч, бодит хөрөнгө (майхан, ор, чанга яригч)
@@ -28112,7 +28112,7 @@ function histProductOrders(orders, productName) {
   const rows = [];
   (orders || []).forEach(o => {
     const items = Array.isArray(o.items) ? o.items : [];
-    const grossAll = items.reduce((s2, i) => s2 + N(i.qty) * N(i.price), 0);
+    const grossAll = items.reduce((s2, i) => s2 + (HIST_TAX_RE.test(String(i.name || '')) ? 0 : N(i.qty) * N(i.price)), 0);
     const total = N(o.total_mnt);
     const net = (typeof orderRevenue === 'function') ? orderRevenue(o, 'accrual') : Math.max(0, total - N(o.deposit_mnt));
     const days = (typeof _orderDays === 'function') ? _orderDays(o) : 1;
@@ -28123,7 +28123,7 @@ function histProductOrders(orders, productName) {
         id: o.id, number: o.number, customer: String(o.customer || '').trim() || '—',
         starts_at: String(o.starts_at || '').slice(0, 10), status: o.status,
         qty: N(i.qty), price: N(i.price), gross, days,
-        rev: histLineRevenue(gross, grossAll, net),
+        rev: histLineRevenue(gross, grossAll, net, orderTokenFees(o)),
         orderTotal: total, deposit: N(o.deposit_mnt), grossAll,
       });
     });
@@ -28203,10 +28203,37 @@ function openHistProductOrders(name, opts) {
 //     эсрэг тохиолдолд мөрийн ӨӨРИЙН дүнг авна — өсгөхгүй.
 //   • net-ийг ЗААВАЛ orderRevenue()-ээр ав: Booqable захиалгад барьцаа нь total_mnt-д
 //     ОРООГҮЙ (568/571 баталгаажсан) тул дахин хасвал 114.7сая₮ дутуу гарна.
-function histLineRevenue(gross, grossAll, net) {
-  const g = Number(gross) || 0, ga = Number(grossAll) || 0, n = Math.max(0, Number(net) || 0);
-  if (ga <= 0 || n <= 0) return 0;
-  return n < ga ? n * g / ga : g;
+/* Татвар/барьцааны мөр — бараа ч биш, үйлчилгээ ч биш. Хуваарилалтын
+   ХУВААРЬТ Ч орохгүй (2026-09-27): эс бөгөөс тэдний ногдох хэсэг хаашаа ч
+   очихгүй алга болж, задаргаа нийт орлоготой тэнцэхээ болино. */
+const HIST_TAX_RE = /нөат|vat|барьцаа|deposit/i;
+/* Захиалгын токен хөлсний нийлбэр — мөрд ТАРААХГҮЙ мөнгө (2026-09-27).
+   ⟦DLV⟧ хүргэлт + ⟦SET⟧ суурилуулалт + ⟦RT⟧-ийн ажлын бус цаг. Эдгээр нь
+   `total_mnt`-д ордог ч барааны мөр БИШ тул мөрийн орлогоос салгана. */
+function orderTokenFees(o) {
+  if (!o) return 0;
+  const d = (typeof parseDelivery === 'function') ? parseDelivery(o.note) : null;
+  const dlv = d ? (Number(d.fee) || 0) : 0;
+  const set = (typeof setupFeeOf === 'function') ? (Number(setupFeeOf(o.note)) || 0) : 0;
+  const oh = (typeof orderOffHoursFee === 'function') ? (Number(orderOffHoursFee(o)) || 0) : 0;
+  return dlv + set + oh;
+}
+/* ── МӨРД ОРЛОГО ХУВААРИЛАХ (2026-09-27-нд ЗАСАВ) ───────────────────────────
+   ⛔ ӨМНӨХ ДҮРЭМ БУРУУ БАЙВ: `net > grossAll` бол мөр «өсөхгүй» гэж мөрийн
+   жагсаалтын дүнг л өгдөг байсан. Гэтэл манай захиалгын дүн =
+   МӨРИЙН НИЙЛБЭР × ХОНОГ × (1−хөнгөлөлт) + хөлс — өөрөөр хэлбэл `net > grossAll`
+   гэдэг нь ихэнхдээ «нэмэлт төлбөр» биш, «олон хоногийн түрээс». Тиймээс
+   3 хоногийн түрээсийн зөвхөн 1 хоног нь бараанд оногдож, үлдсэн 2 хоног нь
+   хаана ч харагдахгүй алга болдог байв (9 сард 28.1 сая₮ = орлогын 29%).
+   ⚠ Амьд захиалгаар БАТАЛСАН: #1466 795,300×3+150,000 = 2,535,900 (яг таарна),
+     #1508 6,408,000×4×0.8+300,000 = 20,805,600 (яг таарна).
+   ОДОО: хөлсийг ТУСАД НЬ салгаад (тэдгээр өөрийн мөртэй), үлдсэнийг мөрүүдэд
+   ХАРЬЦАНГУЙГААР тараана. Ингэснээр мөр + хөлс = цэвэр орлого ҮРГЭЛЖ тэнцэнэ. */
+function histLineRevenue(gross, grossAll, net, fees) {
+  const g = Number(gross) || 0, ga = Number(grossAll) || 0;
+  const base = Math.max(0, (Number(net) || 0) - (Number(fees) || 0));
+  if (ga <= 0 || base <= 0) return 0;
+  return base * g / ga;
 }
 /* ── ҮЙЛЧИЛГЭЭНИЙ ЗАДАРГАА (хүргэлт / угсралт-суурилуулалт / бусад) ──────────
    Үйлчилгээний орлого ХОЁР өөр газар бүртгэгддэг тул нэг дор нэгтгэж харуулна:
@@ -28405,7 +28432,7 @@ function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
   const RES = (typeof resolveItem === 'function') ? resolveItem : (() => ({ sku: '', name: '' }));
   const itemKey = (nm) => (typeof normItemKey === 'function' && normItemKey(nm)) || normP(nm);
   const rlook = (sku, name) => (sku && rfix.bySku && rfix.bySku[String(sku).trim()]) || (rfix.byName && rfix.byName[normP(name)]) || null;
-  const TAX = /нөат|vat|барьцаа|deposit/i;
+  const TAX = HIST_TAX_RE;
   const SELF = /nomaad|кемп|\bcamp\b|чимун/i;   // компанийн ӨӨРИЙН салбар — харилцагч БИШ, хасна
   const custs = {}, prods = {}, svcs = {};
   let unknownRev = 0, unknownCnt = 0;
@@ -28443,13 +28470,16 @@ function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
     }
     // ── мөрүүд (бараа/үйлчилгээ) ──
     const items = Array.isArray(o.items) ? o.items : [];
-    const grossAll = items.reduce((s, i) => s + N(i.qty) * N(i.price), 0);
+    // ⚠ ХУВААРЬ = зөвхөн ЖИНХЭНЭ мөрүүд (татвар/барьцаа хасагдана) — эс бөгөөс
+    // тэдний ногдох хэсэг алга болж, мөр + хөлс ≠ цэвэр орлого болно.
+    const grossAll = items.reduce((s, i) => s + (HIST_TAX_RE.test(String(i.name || '')) ? 0 : N(i.qty) * N(i.price)), 0);
+    const tokFees = orderTokenFees(o);   // хүргэлт/суурилуулалт/ажлын бус цаг — мөрд тарахгүй
     const days = (typeof _orderDays === 'function') ? _orderDays(o) : 1;
     items.forEach(i => {
       const nm = String(i.name || '').trim();
       if (!nm || TAX.test(nm)) return;                    // татвар/барьцаа — бараа биш
       const gross = N(i.qty) * N(i.price);
-      const rev = histLineRevenue(gross, grossAll, netRev);   // барьцаа/хүргэлт хасагдана
+      const rev = histLineRevenue(gross, grossAll, netRev, tokFees);   // барьцаа/хөлс хасагдана
       const isSvc = bqIsService(nm);
       const bucket = isSvc ? svcs : prods;
       const skuT = (i.sku != null && String(i.sku).trim()) ? String(i.sku).trim() : '';

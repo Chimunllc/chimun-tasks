@@ -3147,6 +3147,11 @@ need(['orderCustType']);
   eq(dfr([mk('reserved', 0)]).total, 0, '⛔ хүргэлт: төлбөргүй reserved (=ноорог) тоологдохгүй');
   eq(dfr([mk('returned', 0)]).total, 150000, 'хүргэлт: буцаагдсан захиалга тоологдоно');
   eq(dfr([mk('deleted', 150000)]).total, 0, 'хүргэлт: больсон захиалга тоологдохгүй');
+  // ⛔ Хугацааны шүүлт — токеноор бүртгэгдсэн хүргэлт СОНГОСОН хугацаагаар тооцогдоно.
+  ok(!/deliveryFeeRows\(\(state\.history/.test(src),
+     'scan: хүргэлт шүүгдээгүй бүх хугацаанаас тооцогдохгүй (bq.orders)');
+  ok(/const _dlv = deliveryFeeRows\(\(bq && bq\.orders\)/.test(src),
+     'scan: хүргэлт шүүгдсэн захиалгын олонлогоос тооцогдоно');
   const fnb = src.slice(src.indexOf('function deliveryFeeRows('));
   ok(/orderCanonStatus/.test(fnb.slice(0, fnb.indexOf('\n}'))),
      'scan: хүргэлт каноник төлөвөөр шүүгдэнэ');

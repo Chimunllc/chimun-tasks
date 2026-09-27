@@ -28221,6 +28221,66 @@ function usageUtilization(rows, periodDays, ownedOf) {
     return Object.assign({}, r, { util_pct: cap > 0 ? days / cap * 100 : null, owned_qty: owned });
   });
 }
+/* ── ДАВТАН ҮЙЛЧЛҮҮЛЭГЧ (2026-09-27) ────────────────────────────────────────
+   Хамгийн том бизнесийн дохио нь хаана ч хэмжигдэхгүй байв: нэр бүхий 270
+   харилцагчийн ердөө 27 нь (10%) хоёр дахь удаагаа захиалсан. Шинэ харилцагч
+   олох нь буцааж авчрахаас хэд дахин үнэтэй тул энэ хувь хөдлөх нь
+   маркетингийн мөнгө хаашаа явахыг шийднэ.
+   ⚠ ХАМРАЛТ: түүхэн Booqable захиалгын нэр «?» тул тэдгээр ОРОХГҮЙ — хувийг
+     бүхэл бизнесийнх гэж уншуулахгүйн тулд хамралтыг ил буцаана.
+   ⚠ Цэвэр функц (state уншихгүй) — тестлэгдэнэ. */
+function custKeyOf(o) {
+  if (!o) return '';
+  const cid = String(o.customer_id == null ? '' : o.customer_id).trim();
+  if (cid) return 'c:' + cid;
+  const nm = String(o.customer || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!nm || nm === '?' || nm === '-' || nm === '—') return '';
+  return 'n:' + nm;
+}
+function repeatStats(orders, today, months) {
+  const nMon = Math.max(1, Math.round(Number(months) || 12));
+  const rev = (o) => (typeof orderRevenue === 'function') ? (Number(orderRevenue(o, 'accrual')) || 0)
+    : Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.deposit_mnt) || 0));
+  const byCust = new Map();
+  let unknownN = 0, unknownRev = 0;
+  (orders || []).forEach(o => {
+    if (!o) return;
+    const st = (typeof orderCanonStatus === 'function') ? orderCanonStatus(o) : String(o.status || '');
+    if (['draft', 'canceled', 'deleted'].includes(st)) return;
+    const d = String(o.starts_at || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    const k = custKeyOf(o);
+    if (!k) { unknownN++; unknownRev += rev(o); return; }
+    const a = byCust.get(k) || []; a.push({ d, r: rev(o) }); byCust.set(k, a);
+  });
+  let repeatC = 0, repeatRev = 0, onceRev = 0, gapSum = 0, gapN = 0;
+  const monthly = new Map();
+  byCust.forEach(list => {
+    list.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+    const many = list.length >= 2;
+    if (many) repeatC++;
+    list.forEach((x, i) => {
+      if (many) repeatRev += x.r; else onceRev += x.r;
+      if (i > 0) { gapSum += _daysBetween(list[i - 1].d, x.d); gapN++; }
+      const ym = x.d.slice(0, 7);
+      const m = monthly.get(ym) || { ym, newC: 0, retC: 0, newRev: 0, retRev: 0 };
+      // Тухайн захиалга нь ТЭР ХАРИЛЦАГЧИЙН анхных уу — өмнөх захиалга байвал «буцаж ирсэн».
+      if (i === 0) { m.newC++; m.newRev += x.r; } else { m.retC++; m.retRev += x.r; }
+      monthly.set(ym, m);
+    });
+  });
+  const cut = (today && typeof addDays === 'function') ? String(addDays(String(today), -nMon * 31)).slice(0, 7) : '';
+  const rows = [...monthly.values()].filter(m => !cut || m.ym >= cut).sort((a, b) => a.ym < b.ym ? -1 : 1);
+  const total = byCust.size;
+  return {
+    customers: total, repeat: repeatC,
+    repeatPct: total > 0 ? repeatC / total * 100 : null,
+    repeatRev: Math.round(repeatRev), onceRev: Math.round(onceRev),
+    repeatRevPct: (repeatRev + onceRev) > 0 ? repeatRev / (repeatRev + onceRev) * 100 : null,
+    avgGapDays: gapN > 0 ? Math.round(gapSum / gapN) : null,
+    monthly: rows, unknownOrders: unknownN, unknownRev: Math.round(unknownRev),
+  };
+}
 const LAPSED_DAYS = 120;   // эргэж ирээгүй гэж үзэх хязгаар (хоног)
 /* ── ЭРГЭЖ ИРЭЭГҮЙ ХАРИЛЦАГЧ (2026-09-27) ───────────────────────────────────
    `latest_order_at` тооцогддог атлаа ХААНА Ч ХЭРЭГЛЭГДЭХГҮЙ байв. Амьд датаар
@@ -29236,6 +29296,35 @@ function renderHistory() {
       'Захиалгын нэхэмжилсэн дүнгээр (нэрээр нэгтгэсэн, давхардал арилгасан). Дээд KPI-тай нэг эх сурвалж.')
       /* ⚠ БҮХ түүхээс — сонгосон хугацаанаас БИШ. «Сүүлийн сар» сонговол бүгд
          «эргэж ирээгүй» болж жагсаалт утгагүй болно. */
+      /* 🔁 Давтан үйлчлүүлэгч — БҮХ түүхээс (хугацааны шүүлтээс ХАМААРАХГҮЙ):
+         «өмнө захиалж байсан уу» гэдгийг мэдэхийн тулд бүтэн түүх хэрэгтэй. */
+      + (() => {
+        const rs = repeatStats((state.history && state.history.orders) || [], todayStr(), 12);
+        if (!rs.customers) return '';
+        const mx = Math.max(1, ...rs.monthly.map(m => m.newC + m.retC));
+        const bars = rs.monthly.slice(-12).map(m => {
+          const tot = m.newC + m.retC;
+          const w = Math.max(2, Math.round(tot / mx * 100));
+          const rp = tot > 0 ? Math.round(m.retC / tot * 100) : 0;
+          return `<div class="usg-row">
+            <div class="usg-n">${escapeHtml(m.ym)}<span class="usg-sub"> · ${tot} харилцагч</span></div>
+            <div class="usg-bar"><div class="usg-fill rep-fill" style="width:${w}%"><i style="width:${rp}%"></i></div></div>
+            <div class="usg-v">${m.retC ? `🔁 ${m.retC}` : '—'}</div>
+          </div>`;
+        }).join('');
+        const pct = rs.repeatPct == null ? '—' : Math.round(rs.repeatPct * 10) / 10 + '%';
+        const rpct = rs.repeatRevPct == null ? '—' : Math.round(rs.repeatRevPct) + '%';
+        const cov = rs.unknownOrders
+          ? `<div class="svc-unalloc">⚠ Нэр бүртгэгдээгүй <b>${rs.unknownOrders.toLocaleString('mn-MN')}</b> захиалга (${fmtMoneyShort(rs.unknownRev)}) энэ тооцоонд ОРООГҮЙ — түүхэн Booqable дата. Хувь нь нэртэй захиалгын хүрээнд үнэн.</div>`
+          : '';
+        return card(`🔁 Давтан үйлчлүүлэгч — ${pct}`,
+          `<div class="rep-kpi">
+             <span>Давтан <b>${rs.repeat.toLocaleString('mn-MN')}</b> / ${rs.customers.toLocaleString('mn-MN')} харилцагч</span>
+             <span>Орлогын <b>${rpct}</b> нь давтанаас</span>
+             ${rs.avgGapDays == null ? '' : `<span>Дахин ирэх дундаж <b>${rs.avgGapDays}</b> хоног</span>`}
+           </div>${bars}${cov}`,
+          'Сар бүрийн багана: нийт захиалсан харилцагч, дотор нь бараан хэсэг = буцаж ирсэн нь. Шинэ харилцагч олох нь буцааж авчрахаас үнэтэй тул энэ хувь өсөх ёстой.');
+      })()
       + (() => {
         const all = (state.history && state.history.customers) || [];
         const lap = lapsedCustomers(all, todayStr(), LAPSED_DAYS, 2).slice(0, 20);

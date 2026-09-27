@@ -3157,6 +3157,34 @@ need(['orderCustType']);
      'тооллого: дэлгэцэд анхааруулга гарна');
 }
 
+// АЖЛЫН БУС ЦАГИЙН ХӨЛС — ⟦RT⟧-ийн цагаас бодогддог 3 дахь «харагдахгүй» орлого
+// (2026-09-27). Тусдаа токенгүй тул хамгийн амархан мартагддаг.
+{
+  const ofr = sandbox.offHoursFeeRows, sbd = sandbox.serviceBreakdown;
+  const DAY = _soon(6);
+  const mk = (st, paid, note) => ({ id: 'z', number: 9, status: st, paid_mnt: paid,
+    starts_at: DAY, stops_at: DAY, note });
+  eq(ofr([mk('returned', 1, '⟦RT|7|20⟧')]).total, 40000, 'ажлын бус цаг: хоёр тал = 2 × 20,000₮');
+  eq(ofr([mk('returned', 1, '⟦RT|9|18⟧')]).total, 0, 'ажлын бус цаг: ажлын цагт хөлсгүй');
+  eq(ofr([mk('returned', 1, '⟦RT|7|18⟧')]).total, 20000, 'ажлын бус цаг: нэг тал = 20,000₮');
+  eq(ofr([mk('deleted', 1, '⟦RT|7|20⟧')]).total, 0, 'ажлын бус цаг: больсон захиалга тоологдохгүй');
+  eq(ofr([mk('reserved', 0, '⟦RT|7|20⟧')]).total, 0,
+     '⛔ ажлын бус цаг: төлбөргүй reserved (=ноорог) тоологдохгүй');
+  ok(/7:00 . 20:00/.test(ofr([mk('returned', 1, '⟦RT|7|20⟧')]).rows[0].when),
+     'ажлын бус цаг: аль цаг болох нь харагдана');
+
+  const bd = sbd([], null, null, { rows: [{ fee: 20000 }], total: 20000 });
+  const g = bd.groups.find(x => x.key === 'other');
+  eq(g.total, 20000, 'ажлын бус цаг: «Бусад үйлчилгээ» бүлэгт орно');
+  eq(g.rows[0].kind, 'oh', 'ажлын бус цаг: токен мөр нь oh төрөлтэй');
+  ok(/data-hist-oh/.test(src), 'scan: ажлын бус цагийн мөр дарагдана');
+  ok(/openOffHoursFeeOrders\(\) \{ openFeeOrders\('oh'\); \}/.test(src),
+     'scan: ажлын бус цагийн цонх нэгдсэн openFeeOrders-оос');
+  // ⛔ Гурван хөлс ИЖИЛ шүүгдсэн олонлогоос — нэгийг нь мартвал тоо зөрнө.
+  ok(/deliveryFeeRows\(_rng\), _set = setupFeeRows\(_rng\), _oh = offHoursFeeRows\(_rng\)/.test(src),
+     'scan: гурван хөлс хоёулаа нэг хугацааны олонлогоос');
+}
+
 // СУУРИЛУУЛАЛТЫН ХӨЛС — ⟦SET⟧ токен тайланд ГАРНА (2026-09-27)
 // 2026-09-01-нд нэмсэн хөлс нь `total_mnt`-д ордог тул нийт орлогод тоологддог ч
 // «🔧 Угсралт, суурилуулалт» бүлэгт ОГТ харагддаггүй байв (хүргэлттэй ижил нүх).
@@ -3182,9 +3210,8 @@ need(['orderCustType']);
   ok(/data-hist-set/.test(src), 'scan: суурилуулалтын мөр дарагдана');
   ok(/openSetupFeeOrders\(\)/.test(src), 'scan: суурилуулалтын задаргааны цонх бий');
   {
-    const md = src.slice(src.indexOf('function openSetupFeeOrders('));
-    const body = md.slice(0, md.indexOf('\n}'));
-    ok(/histRangeOrders\(\)/.test(body), 'scan: суурилуулалтын цонх хугацаагаар шүүгдэнэ');
+    ok(/openSetupFeeOrders\(\) \{ openFeeOrders\('set'\); \}/.test(src),
+       'scan: суурилуулалтын цонх нэгдсэн openFeeOrders-оос (гурав давтагдахгүй)');
   }
   // ⛔ Мөргүй бүлэг дарахад АЛЬ токеных болохыг ялгана (өмнө бүгд хүргэлт рүү явдаг байв).
   ok(/g\.key === 'setup'\) openSetupFeeOrders\(\)/.test(src),
@@ -3210,7 +3237,7 @@ need(['orderCustType']);
   ok(/const _rng = histRangeOrders\(\);[\s\S]{0,160}deliveryFeeRows\(_rng\)[\s\S]{0,60}setupFeeRows\(_rng\)/.test(src),
      'scan: хүргэлт ба суурилуулалт хоёул ИЖИЛ шүүгдсэн олонлогоос');
   {
-    const md = src.slice(src.indexOf('function openDeliveryFeeOrders('));
+    const md = src.slice(src.indexOf('function openFeeOrders('));
     const body = md.slice(0, md.indexOf('\n}'));
     ok(/histRangeOrders\(\)/.test(body), 'scan: дэлгэрэнгүй цонх ч histRangeOrders()-оос');
     ok(/histRangeLabel\(\)/.test(body), 'scan: цонхонд ямар хугацаа болох нь ил бичигдэнэ');

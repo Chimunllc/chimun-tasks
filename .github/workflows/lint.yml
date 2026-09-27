@@ -99,8 +99,13 @@ jobs:
         run: |
           set -uo pipefail
           num() { grep -oP 'Тест: \K[0-9]+' | head -1; }
-          HEAD_N=$(node test/run.js 2>/dev/null | num)
-          BASE_N=$( (cd "$RUNNER_TEMP/base" && node test/run.js 2>/dev/null) | num )
+          # ⛔ Унасан суите нь харуулыг АЛАХ ЁСГҮЙ (2026-09-27). `bash -e` +
+          # pipefail дор `node test/run.js` унавал команд орлуулалт бүхэл
+          # алхмыг унагаадаг байв — суурь салбар улаан байхад түүнийг ЗАСАХ
+          # PR-ын CI ч улаан болж гарц үгүй болно. Харуул нь ТООГ хэмждэг;
+          # суите ногоон эсэхийг «Unit tests» алхам тусад нь шалгана.
+          HEAD_N=$( { node test/run.js || true; } 2>/dev/null | num )
+          BASE_N=$( { cd "$RUNNER_TEMP/base" && node test/run.js || true; } 2>/dev/null | num )
           echo "Суурь: ${BASE_N:-?} → энэ PR: ${HEAD_N:-?}"
           if [ -z "${BASE_N:-}" ] || [ -z "${HEAD_N:-}" ]; then
             echo "::notice::Тестийн тоо уншигдсангүй — храповик алгасав."

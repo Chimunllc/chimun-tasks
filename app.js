@@ -28112,9 +28112,9 @@ function openHistProductOrders(name, opts) {
       <td class="hp-n"><b>${money(r.rev)}</b></td>
     </tr>`).join('');
   modal.innerHTML = `<div class="modal hp-modal">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
-      <h2 style="margin:0;font-size:16px;">📦 ${escapeHtml(title)}</h2>
-      <div style="display:flex;gap:6px;"><button class="btn" id="hp-csv">⬇ Excel</button><button class="btn" id="hp-close" style="padding:5px 10px;">✕</button></div>
+    <div class="hp-head">
+      <h2>📦 ${escapeHtml(title)}</h2>
+      <div style="display:flex;gap:6px;"><button class="btn" id="hp-csv">⬇ Excel</button><button class="btn hp-x" id="hp-close">✕</button></div>
     </div>
     <div class="hp-sum">
       <span>Захиалга <b>${totals.orders}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}
@@ -28277,17 +28277,17 @@ function openSetupFeeOrders() {
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.id = 'hist-prod-modal'; modal.style.zIndex = '9700';
   modal.innerHTML = `<div class="modal hp-modal">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
-      <h2 style="margin:0;font-size:16px;">🔧 Суурилуулалтын хөлс (аппаас)</h2>
-      <button class="btn" id="hp-close" style="padding:5px 10px;">✕</button>
+    <div class="hp-head">
+      <h2>🔧 Суурилуулалтын хөлс (аппаас)</h2>
+      <button class="btn hp-x" id="hp-close">✕</button>
     </div>
-    <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}<span>Нийт <b style="color:var(--ok);">${money(total)}</b></span></div>
+    <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}<span>Нийт <b class="hp-tot">${money(total)}</b></span></div>
     <div class="hp-hint">Захиалгын мөр биш — барааны суурилуулалтын хөлсөөс автоматаар бодогдож захиалгын дүнд нэмэгддэг.</div>
     <div class="pr-wrap"><table class="pr-table hp-table">
       <thead><tr><th>Захиалга</th><th>Огноо</th><th>Харилцагч</th><th>Хөлс</th></tr></thead>
       <tbody>${rows.map(r => `<tr><td class="hp-no">#${r.number ?? '—'}</td><td>${escapeHtml(r.starts_at)}</td>
         <td class="hp-cust">${escapeHtml(r.customer)}</td><td class="hp-n"><b>${money(r.fee)}</b></td></tr>`).join('')
-        || '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted);">Байхгүй</td></tr>'}</tbody>
+        || '<tr><td colspan="4" class="hp-empty">Байхгүй</td></tr>'}</tbody>
     </table></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#hp-close').onclick = () => modal.remove();
@@ -28304,18 +28304,18 @@ function openDeliveryFeeOrders() {
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.id = 'hist-prod-modal'; modal.style.zIndex = '9700';
   modal.innerHTML = `<div class="modal hp-modal">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
-      <h2 style="margin:0;font-size:16px;">🚚 Хүргэлтийн төлбөр (аппаас)</h2>
-      <button class="btn" id="hp-close" style="padding:5px 10px;">✕</button>
+    <div class="hp-head">
+      <h2>🚚 Хүргэлтийн төлбөр (аппаас)</h2>
+      <button class="btn hp-x" id="hp-close">✕</button>
     </div>
-    <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}<span>Нийт <b style="color:var(--ok);">${money(total)}</b></span></div>
+    <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}<span>Нийт <b class="hp-tot">${money(total)}</b></span></div>
     <div class="hp-hint">Эдгээр нь захиалгын мөр биш — байршлаар автоматаар бодогдож захиалгын дүнд нэмэгддэг. Тиймээс барааны тайланд харагддаггүй.</div>
     <div class="pr-wrap"><table class="pr-table hp-table">
       <thead><tr><th>Захиалга</th><th>Огноо</th><th>Харилцагч</th><th>Бүс</th><th>км</th><th>Төлбөр</th></tr></thead>
       <tbody>${rows.map(r => `<tr><td class="hp-no">#${r.number ?? '—'}</td><td>${escapeHtml(r.starts_at)}</td>
         <td class="hp-cust">${escapeHtml(r.customer)}</td><td>${zoneLbl(r.zone)}</td>
         <td class="hp-n">${r.km || '—'}</td><td class="hp-n"><b>${money(r.fee)}</b></td></tr>`).join('')
-        || '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);">Байхгүй</td></tr>'}</tbody>
+        || '<tr><td colspan="6" class="hp-empty">Байхгүй</td></tr>'}</tbody>
     </table></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#hp-close').onclick = () => modal.remove();

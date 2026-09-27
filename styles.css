@@ -74,6 +74,9 @@
     /* NOMAAD бэлтгэлийн модалын «хүн сонгох» товчны доод өргөн — нэр багтах өргөн */
     --na-pick-w: 140px;
 
+    /* Орлого тулгалтын модалын өргөн — нэг баганатай жагсаалт, өргөсгөх шаардлагагүй */
+    --recon-modal-w: 640px;
+
     /* ── РАДИУС ── */
     --r-sm: 6px;
     --r-md: 8px;
@@ -6651,6 +6654,22 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .pv-ok { background:#E0F2FE; color:#0369A1; }
 .pv-none { background:transparent; color:var(--muted); }
 .pr-note { font-size:11px; color:var(--muted); padding-top:9px; line-height:1.5; }
+/* Толгой: гарчиг зүүн, хэрэгслүүд баруун. Нарийн дэлгэцэд өөрөө мөр дамжина. */
+.pr-head { display:flex; justify-content:space-between; align-items:center;
+  gap:var(--space-2); flex-wrap:wrap; margin-bottom:var(--space-2); }
+.pr-title { margin:0; font-size:var(--fs-lg); }
+.pr-tools { display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; }
+.pr-x { padding:var(--space-1) var(--space-2); }
+.pr-idle-v { color:var(--danger); }
+.pr-empty { padding:var(--space-4); text-align:center; color:var(--muted); }
+
+/* ── Орлого тулгалтын модал ──────────────────────────────────────────────── */
+.recon-modal { max-width:var(--recon-modal-w); max-height:88vh; overflow:auto; }
+/* `ui-raw` тул мобайлын `.modal button {…}` flatten дүрэм үүнд хүрэхгүй. */
+.recon-x { position:absolute; top:var(--space-2); right:var(--space-3);
+  background:none; border:0; font-size:var(--fs-xl); color:var(--muted); cursor:pointer; }
+.recon-title { margin:0 0 var(--space-1); }
+.recon-sub { font-size:var(--fs-sm); color:var(--muted); margin-bottom:var(--space-3); }
 
 /* ── Барааны задаргаа (Түрээсийн түүх) ───────────────────────────────────── */
 .hist-roi-row:hover { background:var(--panel-hover); }

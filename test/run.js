@@ -3157,6 +3157,40 @@ need(['orderCustType']);
      'тооллого: дэлгэцэд анхааруулга гарна');
 }
 
+// СУУРИЛУУЛАЛТЫН ХӨЛС — ⟦SET⟧ токен тайланд ГАРНА (2026-09-27)
+// 2026-09-01-нд нэмсэн хөлс нь `total_mnt`-д ордог тул нийт орлогод тоологддог ч
+// «🔧 Угсралт, суурилуулалт» бүлэгт ОГТ харагддаггүй байв (хүргэлттэй ижил нүх).
+{
+  const sfr = sandbox.setupFeeRows, sbd = sandbox.serviceBreakdown;
+  const DAY = _soon(5);
+  const mk = (st, paid, note) => ({ id: 'y', number: 7, status: st, paid_mnt: paid,
+    starts_at: DAY, stops_at: DAY, note });
+  eq(sfr([mk('returned', 1, '⟦SET|1|50000⟧')]).total, 50000, 'суурилуулалт: хөлс тоологдоно');
+  eq(sfr([mk('returned', 1, '⟦SET|0⟧')]).total, 0, 'суурилуулалт: хөлсгүй бол 0');
+  eq(sfr([mk('deleted', 1, '⟦SET|1|50000⟧')]).total, 0, 'суурилуулалт: больсон захиалга тоологдохгүй');
+  eq(sfr([mk('reserved', 0, '⟦SET|1|50000⟧')]).total, 0,
+     '⛔ суурилуулалт: төлбөргүй reserved (=ноорог) тоологдохгүй');
+
+  const bd = sbd([], { rows: [], total: 0 }, { rows: [{ fee: 50000 }], total: 50000 });
+  const g = bd.groups.find(x => x.key === 'setup');
+  eq(g.total, 50000, 'суурилуулалт: «Угсралт» бүлэгт дүн орно');
+  eq(g.rows[0].kind, 'set', 'суурилуулалт: токен мөр нь set төрөлтэй');
+  // Хүргэлтийн бүлэг рүү ЯВАХГҮЙ — хоёр өөр үйлчилгээ.
+  eq((bd.groups.find(x => x.key === 'delivery') || { total: 0 }).total, 0,
+     '⛔ суурилуулалт хүргэлтийн бүлэгт орохгүй');
+
+  ok(/data-hist-set/.test(src), 'scan: суурилуулалтын мөр дарагдана');
+  ok(/openSetupFeeOrders\(\)/.test(src), 'scan: суурилуулалтын задаргааны цонх бий');
+  {
+    const md = src.slice(src.indexOf('function openSetupFeeOrders('));
+    const body = md.slice(0, md.indexOf('\n}'));
+    ok(/histRangeOrders\(\)/.test(body), 'scan: суурилуулалтын цонх хугацаагаар шүүгдэнэ');
+  }
+  // ⛔ Мөргүй бүлэг дарахад АЛЬ токеных болохыг ялгана (өмнө бүгд хүргэлт рүү явдаг байв).
+  ok(/g\.key === 'setup'\) openSetupFeeOrders\(\)/.test(src),
+     'scan: «Угсралт» бүлэг дарахад суурилуулалтын цонх нээгдэнэ');
+}
+
 // ХҮРГЭЛТ — тайлан каноник төлөвөөр шүүнэ (2026-09-27)
 // Төлбөргүй `reserved` нь каноноор `draft`. Түүхий статусаар шүүвэл орлогод
 // тоологдохгүй захиалгын хүргэлт «Хүргэлт, тээвэр» бүлэгт гарч тайлан зөрнө.
@@ -3173,8 +3207,8 @@ need(['orderCustType']);
   // Тус тусад нь шүүвэл дүн зөв гарч, дарж ороход өөр сарын захиалга харагдана.
   ok(!/deliveryFeeRows\(\(state\.history/.test(src),
      'scan: хүргэлт шүүгдээгүй бүх хугацаанаас тооцогдохгүй');
-  ok(/const _dlv = deliveryFeeRows\(histRangeOrders\(\)\)/.test(src),
-     'scan: бүлгийн дүн histRangeOrders()-оос');
+  ok(/const _rng = histRangeOrders\(\);[\s\S]{0,160}deliveryFeeRows\(_rng\)[\s\S]{0,60}setupFeeRows\(_rng\)/.test(src),
+     'scan: хүргэлт ба суурилуулалт хоёул ИЖИЛ шүүгдсэн олонлогоос');
   {
     const md = src.slice(src.indexOf('function openDeliveryFeeOrders('));
     const body = md.slice(0, md.indexOf('\n}'));

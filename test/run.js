@@ -11104,6 +11104,37 @@ testFinBasisDefault();
   }
 }
 
+// ═══ «БОЛЬСОН»-ООС БУЦААХ ЗАМ (2026-09-27) ═══════════════════════════════════
+// Төлбөр орвол сэргэдэг болсон ч БҮРЭН ТӨЛӨГДСӨН захиалга гацдаг байв: үлдэгдэл 0
+// тул төлбөрийн товч гарахгүй, картан дээр «Сэргээх» ч байхгүй — цорын ганц зам нь
+// жагсаалтын багц-сонголт байв (амьд датаар #1559 яг ингэж гацсан). Түүнчлэн
+// `bulkRestoreOrders` нь БҮГДИЙГ 'reserved' болгодог тул өнгөрсөн эвент ажлын
+// жагсаалтад мөнхөд үлдэж, хаасан сарын түгжээ ч огт шалгагддаггүй байв.
+{
+  need(['orderReviveStatus', 'bulkRestoreOrders', 'restoreOneOrder']);
+  const fn = src.slice(src.indexOf('async function bulkRestoreOrders'),
+                       src.indexOf('async function bulkRestoreOrders') + 2200);
+
+  // ── ① Сэргээх нь мөнгө хөндөнө → устгахтай ИЖИЛ түгжээ ──
+  ok(/orderLockedMonth\(o\)/.test(fn), 'scan: сэргээхэд хаасан сарын түгжээ шалгагдана');
+  ok(fn.indexOf('loadClosedMonths(true)') < fn.indexOf('orderLockedMonth'),
+     'scan: түгжээ шалгахын өмнө серверээс шинэчилнэ');
+
+  // ── ② Зорилтот төлөв = orderReviveStatus, хатуу 'reserved' БИШ ──
+  ok(/orderReviveStatus\(o\)/.test(fn), 'scan: сэргээх төлөв orderReviveStatus-аас');
+  eq(/status: 'reserved'/.test(fn), false,
+     'scan: бүгдийг хатуугаар «Захиалсан» болгохгүй (өнгөрсөн эвент Дууссан руу)');
+
+  // ── ③ Картан дээр буцаах товч — багц-сонголтгүйгээр ──
+  ok(/data-app-restore=/.test(src), 'scan: «Больсон» картад ↩ Сэргээх товч бий');
+  ok(/\[data-app-restore\]/.test(src), 'scan: тэр товч холбогдсон');
+  // Ганц сэргээлт нь багцын ижил функцийг дуудна (дүрэм хоёр газар салбарлахгүй)
+  const one = src.slice(src.indexOf('async function restoreOneOrder'),
+                        src.indexOf('async function restoreOneOrder') + 700);
+  ok(/bulkRestoreOrders\(/.test(one), 'scan: ганц сэргээлт багцын дүрмийг дуудна');
+  ok(/showConfirm\(/.test(one), 'scan: сэргээхийн өмнө баталгаажуулна');
+}
+
 // ═══════════════ SERVICE WORKER — «апп харагдана ч юу ч дарагдахгүй» (2026-09-11) ═══
 // Хэрэглэгчийн гомдол: «Апп юу ч дарагдахгүй апп хөдлөхгүй байна».
 // Шалтгаан: `fetch` нь 404/503-д reject ХИЙДЭГГҮЙ — resolve болдог. sw.js тэр хариуг

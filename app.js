@@ -28245,9 +28245,28 @@ function setupFeeRows(orders) {
   out.sort((a, b) => b.fee - a.fee);
   return { rows: out, total: out.reduce((s, r) => s + r.fee, 0) };
 }
+/* ⟦RT⟧-ийн цагаас бодогддог АЖЛЫН БУС ЦАГИЙН хөлс (2026-09-27).
+   Тусдаа токенгүй — авах/өгөх цаг нь ажлын цагаас гадуур байвал автоматаар
+   нэмэгддэг. Иймд хүргэлт/суурилуулалттай ижил «харагдахгүй орлого» байв. */
+function offHoursFeeRows(orders) {
+  const out = [];
+  (orders || []).forEach(o => {
+    if (!o) return;
+    const cst = (typeof orderCanonStatus === 'function') ? orderCanonStatus(o) : String(o.status || '');
+    if (['draft', 'canceled', 'deleted'].includes(cst)) return;
+    const fee = (typeof orderOffHoursFee === 'function') ? (Number(orderOffHoursFee(o)) || 0) : 0;
+    if (fee <= 0) return;
+    const t = (typeof parseOrderTimes === 'function') ? parseOrderTimes(o.note) : null;
+    out.push({ id: o.id, number: o.number, customer: String(o.customer || '').trim() || '—',
+      starts_at: String(o.starts_at || '').slice(0, 10),
+      when: t ? `${t.sh}:00 → ${t.eh}:00` : '', fee });
+  });
+  out.sort((a, b) => b.fee - a.fee);
+  return { rows: out, total: out.reduce((s, r) => s + r.fee, 0) };
+}
 // Үйлчилгээг төрлөөр нь бүлэглэнэ. svcList = _histCompute-ийн services (нэрээр нэгтгэсэн),
 // dlvTotal/dlvCount = ⟦DLV⟧-ийн нийлбэр (хүргэлтийн бүлэгт тусдаа мөр болж орно).
-function serviceBreakdown(svcList, dlv, setup) {
+function serviceBreakdown(svcList, dlv, setup, offh) {
   const groups = SERVICE_KINDS.map(k => ({ key: k.key, label: k.label, rows: [], total: 0 }));
   const byKey = {}; groups.forEach(g => { byKey[g.key] = g; });
   (svcList || []).forEach(x => {
@@ -28259,6 +28278,9 @@ function serviceBreakdown(svcList, dlv, setup) {
   }
   if (setup && setup.total > 0) {
     byKey.setup.rows.push({ name: 'Суурилуулалтын хөлс (аппаас, авто)', revenue: setup.total, times: setup.rows.length, qty: setup.rows.length, kind: 'set' });
+  }
+  if (offh && offh.total > 0) {
+    byKey.other.rows.push({ name: 'Ажлын бус цагийн хөлс (аппаас, авто)', revenue: offh.total, times: offh.rows.length, qty: offh.rows.length, kind: 'oh' });
   }
   // НЭГТГЭСЭН дүн — нэг үйлчилгээ 8 өөр нэрээр бичигдсэн байдаг («2 талдаа Хүргэлт»,
   // «Хүргэлт 1 талдаа», «1 талдаа хүргэлт (ван)» …). Тайланд эдгээрийг нэг мөр болгож
@@ -28300,60 +28322,56 @@ function histRangeLabel() {
   const at = (i) => days[Math.max(0, Math.min(hiIx, Math.round(i)))] || '';
   return `${at(r.lo)} – ${at(r.hi)}`;
 }
-// ⟦SET⟧ суурилуулалтын хөлсний задаргааны цонх — хүргэлтийнхтэй ижил зам.
-function openSetupFeeOrders() {
+/* ── ТОКЕНООР БҮРТГЭГДСЭН ХӨЛСНИЙ ЗАДАРГАА — ГАНЦ ЦОНХ (2026-09-27) ──────────
+   Хүргэлт, суурилуулалт, ажлын бус цаг гурвуулаа ижил шинжтэй: захиалгын мөр
+   БИШ, `total_mnt`-д автоматаар нэмэгддэг тул барааны тайланд харагддаггүй.
+   Гурван тусдаа цонх бичвэл хугацааны шүүлт/толгойн засвар бүрийг гурав давтана
+   (хүргэлтийнх 2026-09-27-нд яг ингэж засагдаж, нөгөө нь хоцорсон). */
+const FEE_KINDS = {
+  dlv: { title: '🚚 Хүргэлтийн төлбөр (аппаас)', rows: (o) => deliveryFeeRows(o),
+    hint: 'Эдгээр нь захиалгын мөр биш — байршлаар автоматаар бодогдож захиалгын дүнд нэмэгддэг. Тиймээс барааны тайланд харагддаггүй.',
+    cols: ['Бүс', 'км'],
+    cells: (r, zoneLbl) => `<td>${zoneLbl(r.zone)}</td><td class="hp-n">${r.km || '—'}</td>` },
+  set: { title: '🔧 Суурилуулалтын хөлс (аппаас)', rows: (o) => setupFeeRows(o),
+    hint: 'Захиалгын мөр биш — барааны суурилуулалтын хөлсөөс автоматаар бодогдож захиалгын дүнд нэмэгддэг.',
+    cols: [], cells: () => '' },
+  oh: { title: '🌙 Ажлын бус цагийн хөлс (аппаас)', rows: (o) => offHoursFeeRows(o),
+    hint: 'Ажлын цагаас гадуур авах/өгөх бүрт автоматаар нэмэгддэг. Захиалгын мөр биш тул барааны тайланд харагддаггүй.',
+    cols: ['Цаг'],
+    cells: (r) => `<td>${escapeHtml(r.when || '')}</td>` },
+};
+function openFeeOrders(kind) {
+  const spec = FEE_KINDS[kind] || FEE_KINDS.dlv;
   const src = (state.history && state.history.orders) ? histRangeOrders() : (state.appOrders || []);
-  const { rows, total } = setupFeeRows(src);
-  const _rngLbl = (typeof histRangeLabel === 'function') ? histRangeLabel() : '';
-  const money = n => fmtMoney(Math.round(n));
-  document.getElementById('hist-prod-modal')?.remove();
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg open'; modal.id = 'hist-prod-modal'; modal.style.zIndex = '9700';
-  modal.innerHTML = `<div class="modal hp-modal">
-    <div class="hp-head">
-      <h2>🔧 Суурилуулалтын хөлс (аппаас)</h2>
-      <button class="btn hp-x" id="hp-close">✕</button>
-    </div>
-    <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}<span>Нийт <b class="hp-tot">${money(total)}</b></span></div>
-    <div class="hp-hint">Захиалгын мөр биш — барааны суурилуулалтын хөлсөөс автоматаар бодогдож захиалгын дүнд нэмэгддэг.</div>
-    <div class="pr-wrap"><table class="pr-table hp-table">
-      <thead><tr><th>Захиалга</th><th>Огноо</th><th>Харилцагч</th><th>Хөлс</th></tr></thead>
-      <tbody>${rows.map(r => `<tr><td class="hp-no">#${r.number ?? '—'}</td><td>${escapeHtml(r.starts_at)}</td>
-        <td class="hp-cust">${escapeHtml(r.customer)}</td><td class="hp-n"><b>${money(r.fee)}</b></td></tr>`).join('')
-        || '<tr><td colspan="4" class="hp-empty">Байхгүй</td></tr>'}</tbody>
-    </table></div>`;
-  document.body.appendChild(modal);
-  modal.querySelector('#hp-close').onclick = () => modal.remove();
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-// ⟦DLV⟧ хүргэлтийн задаргааны цонх — түүхээс гаралгүй
-function openDeliveryFeeOrders() {
-  const src = (state.history && state.history.orders) ? histRangeOrders() : (state.appOrders || []);
-  const { rows, total } = deliveryFeeRows(src);
+  const { rows, total } = spec.rows(src);
   const _rngLbl = (typeof histRangeLabel === 'function') ? histRangeLabel() : '';
   const money = n => fmtMoney(Math.round(n));
   const zoneLbl = z => z === 'city' ? 'Хот дотор' : (z === 'city1' ? 'Хот дотор (нэг тал)' : (z === 'out' ? 'Хотоос гадна' : 'Очиж авах'));
+  const nCol = 4 + spec.cols.length;
   document.getElementById('hist-prod-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.id = 'hist-prod-modal'; modal.style.zIndex = '9700';
   modal.innerHTML = `<div class="modal hp-modal">
     <div class="hp-head">
-      <h2>🚚 Хүргэлтийн төлбөр (аппаас)</h2>
+      <h2>${spec.title}</h2>
       <button class="btn hp-x" id="hp-close">✕</button>
     </div>
     <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}<span>Нийт <b class="hp-tot">${money(total)}</b></span></div>
-    <div class="hp-hint">Эдгээр нь захиалгын мөр биш — байршлаар автоматаар бодогдож захиалгын дүнд нэмэгддэг. Тиймээс барааны тайланд харагддаггүй.</div>
+    <div class="hp-hint">${spec.hint}</div>
     <div class="pr-wrap"><table class="pr-table hp-table">
-      <thead><tr><th>Захиалга</th><th>Огноо</th><th>Харилцагч</th><th>Бүс</th><th>км</th><th>Төлбөр</th></tr></thead>
+      <thead><tr><th>Захиалга</th><th>Огноо</th><th>Харилцагч</th>${spec.cols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}<th>Төлбөр</th></tr></thead>
       <tbody>${rows.map(r => `<tr><td class="hp-no">#${r.number ?? '—'}</td><td>${escapeHtml(r.starts_at)}</td>
-        <td class="hp-cust">${escapeHtml(r.customer)}</td><td>${zoneLbl(r.zone)}</td>
-        <td class="hp-n">${r.km || '—'}</td><td class="hp-n"><b>${money(r.fee)}</b></td></tr>`).join('')
-        || '<tr><td colspan="6" class="hp-empty">Байхгүй</td></tr>'}</tbody>
+        <td class="hp-cust">${escapeHtml(r.customer)}</td>${spec.cells(r, zoneLbl)}
+        <td class="hp-n"><b>${money(r.fee)}</b></td></tr>`).join('')
+        || `<tr><td colspan="${nCol}" class="hp-empty">Байхгүй</td></tr>`}</tbody>
     </table></div>`;
   document.body.appendChild(modal);
   modal.querySelector('#hp-close').onclick = () => modal.remove();
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
+function openDeliveryFeeOrders() { openFeeOrders('dlv'); }
+function openSetupFeeOrders() { openFeeOrders('set'); }
+function openOffHoursFeeOrders() { openFeeOrders('oh'); }
 
 function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
   const CAT = bySku || {};
@@ -28967,8 +28985,8 @@ function renderHistory() {
       // токеноор бүртгэгдсэн хүргэлт бүх хугацаагаар нэмэгдэж, «Хүргэлт, тээвэр»
       // бүлэг сар сонгосон ч ХЭЗЭЭ Ч буудаггүй байв. `bq.orders` = шүүгдсэн олонлог.
       const _rng = histRangeOrders();
-      const _dlv = deliveryFeeRows(_rng), _set = setupFeeRows(_rng);
-      const bd = serviceBreakdown(list, _dlv, _set);
+      const _dlv = deliveryFeeRows(_rng), _set = setupFeeRows(_rng), _oh = offHoursFeeRows(_rng);
+      const bd = serviceBreakdown(list, _dlv, _set, _oh);
       if (!bd.groups.length) return '';
       state._svcGroups = bd.groups;   // мөр дархад бүлгийн нэрсийг олоход (handler)
       const mx = Math.max(1, ...bd.groups.flatMap(g => g.rows.map(r => r.revenue)));
@@ -28980,8 +28998,8 @@ function renderHistory() {
           ${bqBar(g.label + ' 🔍', g.total, gMax, g.key === 'delivery' ? 'var(--warn,#D97706)' : 'var(--primary)', `${g.times}× · ${g.qty.toLocaleString('mn-MN')}ш`)}
         </div>
         ${g.rows.length > 1 ? `<details class="svc-det"><summary>${g.rows.length} нэрээр задлах</summary>
-          ${g.rows.map(r => `<div class="hist-roi-row" ${r.kind === 'dlv' ? 'data-hist-dlv="1"' : r.kind === 'set' ? 'data-hist-set="1"' : `data-hist-prod="${escapeHtml(r.name)}"`} style="cursor:pointer;border-radius:7px;padding:1px 4px;" title="Дарж захиалгуудыг харах">
-            ${bqBar(r.name + ' 🔍', r.revenue, mx, (r.kind === 'dlv' || r.kind === 'set') ? 'var(--warn,#D97706)' : 'var(--primary)', `${r.times}× · ${r.qty.toLocaleString('mn-MN')}ш`)}
+          ${g.rows.map(r => `<div class="hist-roi-row" ${r.kind === 'dlv' ? 'data-hist-dlv="1"' : r.kind === 'set' ? 'data-hist-set="1"' : r.kind === 'oh' ? 'data-hist-oh="1"' : `data-hist-prod="${escapeHtml(r.name)}"`} style="cursor:pointer;border-radius:7px;padding:1px 4px;" title="Дарж захиалгуудыг харах">
+            ${bqBar(r.name + ' 🔍', r.revenue, mx, (r.kind === 'dlv' || r.kind === 'set' || r.kind === 'oh') ? 'var(--warn,#D97706)' : 'var(--primary)', `${r.times}× · ${r.qty.toLocaleString('mn-MN')}ш`)}
           </div>`).join('')}</details>` : ''}`).join('');
       return card(`🛠 Үйлчилгээ — ${fmtMoneyShort(bd.total)}`, inner,
         'Бараа биш үйлчилгээ — орлогод багтана, ROI/нөөцөд тооцохгүй. Мөр дарж захиалгуудыг харна.');
@@ -29206,6 +29224,7 @@ function attachHistoryHandlers() {
   }));
   document.querySelectorAll('[data-hist-dlv]').forEach(b => b.addEventListener('click', () => openDeliveryFeeOrders()));
   document.querySelectorAll('[data-hist-set]').forEach(b => b.addEventListener('click', () => openSetupFeeOrders()));
+  document.querySelectorAll('[data-hist-oh]').forEach(b => b.addEventListener('click', () => openOffHoursFeeOrders()));
   // «Өртөг оруулаагүй» → Бараа хуудсанд тэр шүүлттэйгээр шууд очно (гараар хайх шаардлагагүй)
   document.getElementById('hist-nocost')?.addEventListener('click', () => {
     state.view = 'products'; state.prodMissing = 'nocost'; state.prodCategory = 'all'; state.productSearch = '';

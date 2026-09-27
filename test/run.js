@@ -3169,11 +3169,47 @@ need(['orderCustType']);
   eq(dfr([mk('reserved', 0)]).total, 0, '⛔ хүргэлт: төлбөргүй reserved (=ноорог) тоологдохгүй');
   eq(dfr([mk('returned', 0)]).total, 150000, 'хүргэлт: буцаагдсан захиалга тоологдоно');
   eq(dfr([mk('deleted', 150000)]).total, 0, 'хүргэлт: больсон захиалга тоологдохгүй');
-  // ⛔ Хугацааны шүүлт — токеноор бүртгэгдсэн хүргэлт СОНГОСОН хугацаагаар тооцогдоно.
+  // ⛔ Хугацааны шүүлт — ДҮН ба ЦОНХ хоёулаа НЭГ олонлогоос (2026-09-27).
+  // Тус тусад нь шүүвэл дүн зөв гарч, дарж ороход өөр сарын захиалга харагдана.
   ok(!/deliveryFeeRows\(\(state\.history/.test(src),
-     'scan: хүргэлт шүүгдээгүй бүх хугацаанаас тооцогдохгүй (bq.orders)');
-  ok(/const _dlv = deliveryFeeRows\(\(bq && bq\.orders\)/.test(src),
-     'scan: хүргэлт шүүгдсэн захиалгын олонлогоос тооцогдоно');
+     'scan: хүргэлт шүүгдээгүй бүх хугацаанаас тооцогдохгүй');
+  ok(/const _dlv = deliveryFeeRows\(histRangeOrders\(\)\)/.test(src),
+     'scan: бүлгийн дүн histRangeOrders()-оос');
+  {
+    const md = src.slice(src.indexOf('function openDeliveryFeeOrders('));
+    const body = md.slice(0, md.indexOf('\n}'));
+    ok(/histRangeOrders\(\)/.test(body), 'scan: дэлгэрэнгүй цонх ч histRangeOrders()-оос');
+    ok(/histRangeLabel\(\)/.test(body), 'scan: цонхонд ямар хугацаа болох нь ил бичигдэнэ');
+  }
+  // ⛔ Барааны задаргааны цонх ч ИЖИЛ дүрмээр (2026-09-27) — нэг цонх зассан ч
+  // нөгөө нь хуучин хэвээр үлдвэл алдаа өөр товчноос буцаж гарна.
+  {
+    const md = src.slice(src.indexOf('function openHistProductOrders('));
+    const body = md.slice(0, md.indexOf('\n}'));
+    ok(/histRangeOrders\(\)/.test(body), 'scan: барааны цонх ч histRangeOrders()-оос');
+    ok(/histRangeLabel\(\)/.test(body), 'scan: барааны цонхонд хугацаа ил бичигдэнэ');
+  }
+  // Хугацааны шүүлт бодитоор ажиллана: бүх хугацаа = бүгд, муж = зөвхөн багтсан нь.
+  {
+    const st = vm.runInContext('state', sandbox);
+    const hro = sandbox.histRangeOrders, hrl = sandbox.histRangeLabel;
+    const savedH = st.history, savedR = st.histRange;
+    const O = (n, d) => ({ number: n, status: 'returned', paid_mnt: 1, starts_at: d, stops_at: d,
+                           note: '⟦DLV|city|0|150000⟧', items: [] });
+    st.history = { _fns: {}, orders: [O(1, '2026-07-10'), O(2, '2026-08-10'), O(3, '2026-09-10')] };
+    st.histRange = null;
+    eq(hro().length, 3, 'хугацаа: муж сонгоогүй бол бүх захиалга');
+    eq(hrl(), '', 'хугацаа: бүх хугацаанд шошго хоосон');
+    // ⚠ `histDayList` нь эхний/сүүлийн өдрийн ХООРОНДОХ БҮХ хоногийг буцаадаг
+    // (захиалгын тоо БИШ) — индексийг тэндээс авна.
+    const days = sandbox.histDayList(st.history.orders);
+    const ix = (d) => days.indexOf(d);
+    st.histRange = { lo: ix('2026-09-01'), hi: ix('2026-09-10'), _hi: days.length - 1 };
+    eq(hro().map(o => o.number), [3], 'хугацаа: сонгосон мужийн захиалга Л буцна');
+    eq(dfr(hro()).total, 150000, 'хугацаа: дүн ч тэр мужаас бодогдоно');
+    ok(/2026-09-01 . 2026-09-10/.test(hrl()), 'хугацаа: шошго сонгосон мужийг харуулна');
+    st.history = savedH; st.histRange = savedR;
+  }
   const fnb = src.slice(src.indexOf('function deliveryFeeRows('));
   ok(/orderCanonStatus/.test(fnb.slice(0, fnb.indexOf('\n}'))),
      'scan: хүргэлт каноник төлөвөөр шүүгдэнэ');

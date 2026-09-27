@@ -28087,10 +28087,15 @@ function histProductOrders(orders, productName) {
       itemDays: rows.reduce((s2, r) => s2 + r.qty * r.days, 0),
     },
   };
-}// Барааны задаргааны цонх — Түрээсийн түүхээс ГАРАЛГҮЙ нээгдэнэ.
+}
+// Барааны задаргааны цонх — Түрээсийн түүхээс ГАРАЛГҮЙ нээгдэнэ.
+// ⛔ Хугацааны шүүлтийг АЛГАСАХГҮЙ (2026-09-27) — мөрийн дүн сонгосон хугацаагаар
+// бодогддог тул цонх нь бүх хугацааг харуулбал хоёр тоо зөрж, хэрэглэгч аль нь
+// үнэн болохыг мэдэхгүй болно. `histRangeOrders()` = ганц эх сурвалж.
 function openHistProductOrders(name, opts) {
-  const src = (state.history && state.history.orders) || state.appOrders || [];
+  const src = (state.history && state.history.orders) ? histRangeOrders() : (state.appOrders || []);
   const { rows, totals } = histProductOrders(src, name);
+  const _rngLbl = (typeof histRangeLabel === 'function') ? histRangeLabel() : '';
   const title = (opts && opts.title) || (Array.isArray(name) ? name.join(', ') : name);
   const money = n => fmtMoney(Math.round(n));
   document.getElementById('hist-prod-modal')?.remove();
@@ -28112,7 +28117,7 @@ function openHistProductOrders(name, opts) {
       <div style="display:flex;gap:6px;"><button class="btn" id="hp-csv">⬇ Excel</button><button class="btn" id="hp-close" style="padding:5px 10px;">✕</button></div>
     </div>
     <div class="hp-sum">
-      <span>Захиалга <b>${totals.orders}</b></span>
+      <span>Захиалга <b>${totals.orders}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}
       <span>Ширхэг <b>${totals.qty.toLocaleString('mn-MN')}</b></span>
       <span>Бараа-өдөр <b>${Math.round(totals.itemDays).toLocaleString('mn-MN')}</b></span>
       <span>Мөрийн дүн <b>${money(totals.gross)}</b></span>
@@ -28216,10 +28221,36 @@ function serviceBreakdown(svcList, dlv) {
   const total = groups.reduce((s, g) => s + g.total, 0);
   return { groups: groups.filter(g => g.rows.length), total };
 }
+/* Сонгосон хугацаанд багтах захиалга — ГАНЦ эх сурвалж (2026-09-27).
+   Бүлгийн ДҮН ба дэлгэрэнгүй ЦОНХ хоёр өөр олонлогоос тооцогдож байв: дүн нь
+   шүүгдсэн, цонх нь бүх хугацааных. Иймд «Сүүлийн сар» сонгоод дүнг зөв хараад,
+   дарж ороход өөр сарын захиалгууд гарч ирдэг байв. Хоёулаа эндээс уншина. */
+function histRangeOrders() {
+  const bq = state.history;
+  const all = (bq && bq.orders) || [];
+  if (!bq || bq.error || !bq._fns) return all;
+  const days = histDayList(all);
+  const hiIx = Math.max(0, days.length - 1);
+  const r = state.histRange;
+  if (!r || r._hi !== hiIx || (r.lo <= 0 && r.hi >= hiIx)) return all;   // бүх хугацаа
+  return histFilterOrders(all, days, r.lo, r.hi);
+}
+// Сонгосон хугацааны шошго («2026-09/01 – 2026-09/30»). Бүх хугацаа бол хоосон.
+function histRangeLabel() {
+  const bq = state.history;
+  const all = (bq && bq.orders) || [];
+  const days = histDayList(all);
+  const hiIx = Math.max(0, days.length - 1);
+  const r = state.histRange;
+  if (!r || r._hi !== hiIx || (r.lo <= 0 && r.hi >= hiIx)) return '';
+  const at = (i) => days[Math.max(0, Math.min(hiIx, Math.round(i)))] || '';
+  return `${at(r.lo)} – ${at(r.hi)}`;
+}
 // ⟦DLV⟧ хүргэлтийн задаргааны цонх — түүхээс гаралгүй
 function openDeliveryFeeOrders() {
-  const src = (state.history && state.history.orders) || state.appOrders || [];
+  const src = (state.history && state.history.orders) ? histRangeOrders() : (state.appOrders || []);
   const { rows, total } = deliveryFeeRows(src);
+  const _rngLbl = (typeof histRangeLabel === 'function') ? histRangeLabel() : '';
   const money = n => fmtMoney(Math.round(n));
   const zoneLbl = z => z === 'city' ? 'Хот дотор' : (z === 'city1' ? 'Хот дотор (нэг тал)' : (z === 'out' ? 'Хотоос гадна' : 'Очиж авах'));
   document.getElementById('hist-prod-modal')?.remove();
@@ -28230,7 +28261,7 @@ function openDeliveryFeeOrders() {
       <h2 style="margin:0;font-size:16px;">🚚 Хүргэлтийн төлбөр (аппаас)</h2>
       <button class="btn" id="hp-close" style="padding:5px 10px;">✕</button>
     </div>
-    <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span><span>Нийт <b style="color:var(--ok);">${money(total)}</b></span></div>
+    <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span>${_rngLbl ? `<span>📅 ${escapeHtml(_rngLbl)}</span>` : ''}<span>Нийт <b style="color:var(--ok);">${money(total)}</b></span></div>
     <div class="hp-hint">Эдгээр нь захиалгын мөр биш — байршлаар автоматаар бодогдож захиалгын дүнд нэмэгддэг. Тиймээс барааны тайланд харагддаггүй.</div>
     <div class="pr-wrap"><table class="pr-table hp-table">
       <thead><tr><th>Захиалга</th><th>Огноо</th><th>Харилцагч</th><th>Бүс</th><th>км</th><th>Төлбөр</th></tr></thead>
@@ -28855,7 +28886,7 @@ function renderHistory() {
       // Мөрөөр бүртгэгдсэн үйлчилгээ нь сонгосон хугацаагаар тооцогддог тул
       // токеноор бүртгэгдсэн хүргэлт бүх хугацаагаар нэмэгдэж, «Хүргэлт, тээвэр»
       // бүлэг сар сонгосон ч ХЭЗЭЭ Ч буудаггүй байв. `bq.orders` = шүүгдсэн олонлог.
-      const _dlv = deliveryFeeRows((bq && bq.orders) || []);
+      const _dlv = deliveryFeeRows(histRangeOrders());
       const bd = serviceBreakdown(list, _dlv);
       if (!bd.groups.length) return '';
       state._svcGroups = bd.groups;   // мөр дархад бүлгийн нэрсийг олоход (handler)

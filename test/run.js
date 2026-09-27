@@ -11196,6 +11196,65 @@ testFinBasisDefault();
   ok(/showConfirm\(/.test(one), 'scan: сэргээхийн өмнө баталгаажуулна');
 }
 
+// ═══ «БОЛЬСОН» БОЛГОХ БҮХ ЗАМ ШАЛТГААН БИЧНЭ (2026-09-27) ═══════════════════
+// Картын товч шалтгаан асуудаг байтал БАГЦ товч ба тест-цэвэрлэгээ асуудаггүй
+// байв — амьд датаар 54 «Больсон»-ы 30 нь шалтгаангүй, «яагаад захиалга алдаж
+// байна» гэдгийг тоолж чадахгүй байв (#1559 ч яг ингэж ороод гацсан).
+{
+  need(['setCancelReason', 'cxReasonKey', 'bulkDeleteOrders', 'deleteAppOrder']);
+
+  // ── ① Багц устгал шалтгааныг захиалга БҮРД бичнэ ──
+  {
+    const fn = src.slice(src.indexOf('async function bulkDeleteOrders'),
+                         src.indexOf('async function bulkDeleteOrders') + 2400);
+    ok(/async function bulkDeleteOrders\(ids, reason\)/.test(src),
+       'scan: багц устгал шалтгаан хүлээж авна');
+    ok(/setCancelReason\(o\.note, reason\)/.test(fn),
+       'scan: шалтгаан захиалга бүрийн тэмдэглэлд бичигдэнэ');
+    // note мөр бүрт өөр тул НЭГ багц PATCH-аар бичиж БОЛОХГҮЙ
+    eq(/id=in\.\(/.test(fn), false,
+       'scan: багц PATCH БИШ — note мөр бүрт өөр тул нэг нэгээр бичнэ');
+  }
+
+  // ── ② Багц товч шалтгаан АСУУНА ──
+  {
+    const at = src.indexOf("getElementById('bulk-delete')");
+    ok(at > 0, 'scan: багц «Больсон» товч олдов');
+    const h = src.slice(at, at + 1200);
+    ok(/pickCancelReason\(/.test(h), 'scan: багц «Больсон» шалтгаан асууна');
+    ok(/if \(!reason\) return;/.test(h), 'scan: шалтгаангүй бол устгахгүй');
+    ok(h.indexOf('pickCancelReason') < h.indexOf('bulkDeleteOrders'),
+       'scan: шалтгааныг устгахаас ӨМНӨ асууна');
+  }
+
+  // ── ③ Ганц зөөлөн устгал ч шалтгаантай; тест-цэвэрлэгээ нь админ шалтгаанаар ──
+  {
+    ok(/async function deleteAppOrder\(id, reason\)/.test(src),
+       'scan: deleteAppOrder шалтгаан хүлээж авна');
+    const fn = src.slice(src.indexOf('async function deleteAppOrder'),
+                         src.indexOf('async function deleteAppOrder') + 1800);
+    ok(/setCancelReason\(o\.note, reason\)/.test(fn), 'scan: шалтгаан note-д бичигдэнэ');
+    ok(/deleteAppOrder\(id, 'Тест захиалга'\)/.test(src),
+       'scan: тест-цэвэрлэгээ «Тест захиалга» гэж бүртгэгдэнэ');
+  }
+
+  // ── ④ «Тест захиалга» = админ шалтгаан → алдагдлын шинжилгээнд ОРОХГҮЙ ──
+  eq(F.cxReasonKey(F.setCancelReason('', 'Тест захиалга')), 'Тест захиалга',
+     'шалтгаан: тэмдэглэлд бичээд буцааж уншина');
+  eq(F.cxIsAdmin(F.setCancelReason('', 'Тест захиалга')), true,
+     'шалтгаан: «Тест захиалга» = админ (алдсан борлуулалтад тоологдохгүй)');
+  eq(F.cxIsAdmin(F.setCancelReason('', 'Өөр компаниас авсан')), false,
+     'шалтгаан: жинхэнэ алдагдал админ БИШ');
+  // Токен бичихэд захиалгын бусад токен эвдэрдэггүй
+  {
+    const before = '⟦DLV|city|0|150000⟧ ⟦LEAD|repeat⟧';
+    const after = F.setCancelReason(before, 'Арга хэмжээ болсонгүй');
+    ok(after.includes('⟦DLV|city|0|150000⟧') && after.includes('⟦LEAD|repeat⟧'),
+       'шалтгаан: бусад токен эвдрэхгүй');
+    eq(F.cxReasonKey(after), 'Арга хэмжээ болсонгүй', 'шалтгаан: буцааж уншигдана');
+  }
+}
+
 // ═══════════════ SERVICE WORKER — «апп харагдана ч юу ч дарагдахгүй» (2026-09-11) ═══
 // Хэрэглэгчийн гомдол: «Апп юу ч дарагдахгүй апп хөдлөхгүй байна».
 // Шалтгаан: `fetch` нь 404/503-д reject ХИЙДЭГГҮЙ — resolve болдог. sw.js тэр хариуг

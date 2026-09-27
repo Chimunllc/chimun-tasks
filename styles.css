@@ -5714,6 +5714,8 @@ body.role-daily #add-project { display: none !important; }
 .hist-roi-row.svc-r { cursor: pointer; border-radius: var(--r-sm); padding: 1px var(--space-1); }
 /* Ганц мөртэй бүлэг — эвхэгдэхгүй, дүн нь юу болох нь шууд харагдана. */
 .svc-one { margin: 0 0 var(--space-2) var(--space-4); }
+.svc-unalloc { margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px dashed var(--border);
+  border-radius: var(--r-sm); font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .svc-det > summary { font-size: var(--fs-xs); color: var(--muted); cursor: pointer; padding: var(--space-1) 0; list-style: none; }
 .svc-det > summary::before { content: '▸ '; }
 .svc-det[open] > summary::before { content: '▾ '; }

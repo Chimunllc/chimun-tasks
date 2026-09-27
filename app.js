@@ -10029,7 +10029,7 @@ function attachOrdersHandlers() {
   document.getElementById('bulk-restore')?.addEventListener('click', async () => {
     const ids = [...(state.ordersSelected || [])];
     if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
-    if (!(await showConfirm(`${ids.length} захиалгыг сэргээх (Захиалсан идэвхтэй болгох) уу?`, { okText: 'Сэргээх' }))) return;
+    if (!(await showConfirm(`${ids.length} захиалгыг сэргээх үү?\n\nӨнгөрсөн эвент «Дууссан», ирээдүйнх «Захиалсан» бүлэгт буцаж орно.`, { okText: 'Сэргээх' }))) return;
     await bulkRestoreOrders(ids);
     state.ordersSelected = new Set();
     showToast(`${ids.length} захиалга сэргээлээ`, 'success', 2800); render();
@@ -10038,6 +10038,7 @@ function attachOrdersHandlers() {
     const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appEdit)); if (ao) openNewOrder(ao);
   }));
   document.querySelectorAll('[data-app-del]').forEach(b => b.addEventListener('click', () => cancelOrderWithReason(b.dataset.appDel)));
+  document.querySelectorAll('[data-app-restore]').forEach(b => b.addEventListener('click', () => restoreOneOrder(b.dataset.appRestore)));
   document.querySelectorAll('[data-app-contract]').forEach(b => b.addEventListener('click', () => openMeventContract(b.dataset.appContract)));
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
   document.querySelectorAll('[data-app-invoice]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); issueInvoice(b.dataset.appInvoice, b); }));
@@ -24303,17 +24304,47 @@ async function bulkDeleteOrders(ids) {
     throw new Error('bulkDelete fail');
   }
 }
+/* Ганц захиалгыг «Больсон»-оос буцаах (картын ↩ товч). Багц-сэргээлтийн ИЖИЛ
+   дүрмийг дуудна — түгжээ, зорилтот төлөв хоёр газар салбарлахгүй. */
+async function restoreOneOrder(oid) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  const to = orderReviveStatus(o);
+  const lbl = (BQ_STATUS[to] || {}).label || to;
+  if (!(await showConfirm(`#${o.number} захиалгыг сэргээх үү?\n\n«${lbl}» бүлэгт буцаж орно.`, { okText: 'Сэргээх' }))) return;
+  await bulkRestoreOrders([String(o.id)]);
+  showToast(`#${o.number} сэргээлээ · ${lbl}`, 'success', 2800);
+}
 async function bulkRestoreOrders(ids) {
+  // 🔒 Сэргээх нь захиалгыг орлогод БУЦААЖ оруулна — устгахтай ижил түгжээ (bulkDeleteOrders).
+  try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр */ }
+  const _lockedIds = (state.appOrders || []).filter(o => ids.map(String).includes(String(o.id)) && orderLockedMonth(o)).map(o => String(o.id));
+  if (_lockedIds.length) {
+    ids = ids.filter(id => !_lockedIds.includes(String(id)));
+    showToast(`🔒 ${_lockedIds.length} захиалга хаасан сард байсан тул алгасагдав`, 'warn', 6000);
+    if (!ids.length) return;
+  }
+  // ⚠ БҮГДИЙГ «Захиалсан» руу сэргээвэл өнгөрсөн эвент ажлын жагсаалтад мөнхөд
+  //   үлдэж, хэзээ ч дуусахгүй. `orderReviveStatus` = төлбөрийн замтай ИЖИЛ дүрэм.
   const idSet = new Set(ids.map(String));
-  (state.appOrders || []).forEach(o => { if (idSet.has(String(o.id))) o.status = 'reserved'; });
+  const byTarget = new Map();   // төлөв → id[]
+  (state.appOrders || []).forEach(o => {
+    if (!idSet.has(String(o.id))) return;
+    const to = orderReviveStatus(o);
+    o.status = to;                                        // optimistic
+    if (!byTarget.has(to)) byTarget.set(to, []);
+    byTarget.get(to).push(String(o.id));
+  });
   if (typeof render === 'function') render();
   if (!DB_ANON_KEY) return;
-  for (let i = 0; i < ids.length; i += 80) {
-    const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
-    try {
-      await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
-        { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'reserved', updated_at: new Date().toISOString() }) }, 30000);
-    } catch (e) { console.warn('bulkRestore', e); }
+  for (const [to, group] of byTarget) {
+    for (let i = 0; i < group.length; i += 80) {
+      const inList = group.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
+      try {
+        await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
+          { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: to, updated_at: new Date().toISOString() }) }, 30000);
+      } catch (e) { console.warn('bulkRestore', e); }
+    }
   }
 }
 // ── ДУУССАН ЗАХИАЛГЫГ САРААР АРХИВЛАХ (2026-09-10) ─────────────────────────
@@ -25743,6 +25774,9 @@ function bqOrderCard(o) {
     // Ноорог = шууд устгана. Бусад идэвхтэй захиалгад товчны НЭР төлбөрөөр шийдэгдэнэ
     // (эрх/батлуулах урсгал хэвээр — мөнгөгүй ч баталгаажсан захиалгыг дур мэдэн хаахгүй).
     if (st === 'draft') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseLabel(o)}</button>` : ''; }
+    // «Больсон» = буцаах боломжтой байх ЁСТОЙ. Өмнө нь зөвхөн жагсаалтын багц-сонголтоор
+    // сэргээдэг байсан тул бүрэн ТӨЛӨГДСӨН захиалга (төлбөрийн товч гарахгүй) гацдаг байв.
+    else if (st === 'deleted') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-restore="${id}" style="padding:5px 11px;font-size:12px;">↩ Сэргээх</button>` : ''; }
     else if (st !== 'canceled' && st !== 'deleted' && appActive) {
       if (req) {
         cxHtml = `<span style="font-size:11.5px;color:#9a6a00;font-weight:700;">⏳ Цуцлах хүсэлт${req.by ? ' · ' + escapeHtml(memberName(req.by) || req.by) : ''}${req.reason ? ' — ' + escapeHtml(req.reason) : ''}</span>`;

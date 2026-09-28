@@ -29217,15 +29217,12 @@ function renderHistory() {
         return p ? deprecForProduct(p, _lives) : null;
       };
       const roiP = _catReady ? productProfitRows(roi, _depMo, _depOf) : roi.map(r => Object.assign({}, r, { profit_mnt: null, profit_why: 'каталог ачаалагдаагүй' }));
-      const _byName = new Map(roiP.map(r => [r.product, r]));
-      // Ашгийн бичвэр — мэдэгдэхгүй бол ШАЛТГААНЫГ нь хэлнэ (хоосон орхивол
-      // «ашиггүй» гэж уншигдана).
-      const _profTxt = (x) => x.profit_mnt == null
-        ? (x.profit_why ? ` · <span class="pf-na">ашиг ? (${escapeHtml(x.profit_why)})</span>` : '')
-        : ` · <span class="${x.profit_mnt >= 0 ? 'pf-ok' : 'pf-bad'}">ашиг ${x.profit_mnt >= 0 ? '+' : '−'}${fmtMoneyShort(Math.abs(x.profit_mnt))}</span>`;
+      /* ⛔ МӨР БҮР ДЭЭР «ашиг» БИЧИХГҮЙ (2026-09-28, CEO). Ихэнх бараанд элэгдэл
+         нь орлоготой харьцуулахад бага тул ашгийн тоо баруун талын орлогын дүнтэй
+         ЯГ ИЖИЛ харагдаж, мөрийг уншихад саад болж байв. Ашгийн мэдээлэл нь
+         «💸 Элэгдлийн дараах ашиг» картад — тэнд л шийдвэр гаргуулна. */
       const maxRev = Math.max(1, ...roi.map(x => N(x.revenue_mnt)));
-      const roiRow = (x0) => {
-        const x = _byName.get(x0.product) || x0;
+      const roiRow = (x) => {
         const rev = N(x.revenue_mnt), owned = N(x.owned_qty), tot = N(x.total_cost_mnt), rx = (x.roi_x == null ? null : N(x.roi_x)), days = N(x.item_days_out);
         const pct = maxRev > 0 ? Math.max(2, Math.round(rev / maxRev * 100)) : 0;
         const badge = (tot <= 0 || rx == null) ? `<span style="color:var(--muted);">өртөг ?</span>`
@@ -29242,7 +29239,7 @@ function renderHistory() {
           ${thumb}
           <div style="flex:0 0 38%;min-width:0;">
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(x.product || '—')} <span style="color:var(--muted);font-size:10px;">🔍</span></div>
-            <div style="font-size:10px;color:var(--muted);">${badge} · ${costStr} · ${days.toLocaleString('mn-MN')}ө гадаа${_profTxt(x)}</div>
+            <div style="font-size:10px;color:var(--muted);">${badge} · ${costStr} · ${days.toLocaleString('mn-MN')}ө гадаа</div>
           </div>
           <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:5px;"></div></div>
           <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(rev)}</div>

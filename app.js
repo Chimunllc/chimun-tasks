@@ -28221,6 +28221,38 @@ function usageUtilization(rows, periodDays, ownedOf) {
     return Object.assign({}, r, { util_pct: cap > 0 ? days / cap * 100 : null, owned_qty: owned });
   });
 }
+/* ── БАРААНЫ АШИГ = ОРЛОГО − ЭЛЭГДЭЛ (2026-09-28) ───────────────────────────
+   Тайлан бараа бүрийн ОРЛОГЫГ л харуулдаг байсан тул «энэ бараа өөрийгөө
+   нөхөж байна уу» гэдэгт хариулдаггүй байв. ROI (орлого ÷ хөрөнгө) нь БҮХ
+   ЦАГИЙН хэмжүүр — тухайн хугацаанд ашигтай эсэхийг хэлдэггүй.
+   ⚠ ЗАСВАРЫН ЗАРДАЛ ОРООГҮЙ — `repairs` хүснэгтэд өртгийн багана БАЙХГҮЙ
+     (засварын тоо л бүртгэгддэг). Тиймээс энэ нь ашгийн ДЭЭД тал.
+   ⚠ Өртөг оруулаагүй бараанд элэгдэл бодогдохгүй тул ашиг нь `null` —
+     0 гэж бичвэл «бүрэн ашигтай» гэж уншигдана.
+   ⚠ Цэвэр функц (state уншихгүй) — тестлэгдэнэ. */
+function deprecMonthsIn(days, startYm) {
+  // `days` = хугацааны өдрийн жагсаалт (histDayList). Элэгдэл нь шилжилтийн
+  // сараас хойш Л зардал болдог тул түүнээс өмнөх өдрүүд тоологдохгүй.
+  const st = String(startYm || '');
+  const n = (days || []).filter(d => !st || String(d).slice(0, 7) >= st).length;
+  return n > 0 ? n / 30.44 : 0;
+}
+function productProfitRows(rows, months, deprecOf) {
+  const mo = Math.max(0, Number(months) || 0);
+  return (rows || []).map(r => {
+    const rev = Number(r && r.revenue_mnt) || 0;
+    const d = deprecOf ? deprecOf(r) : null;
+    // Элэгдэл бодогдохгүй бол (өртөг алга / насаа дуусгасан / үйлчилгээ) ашиг МЭДЭГДЭХГҮЙ.
+    const per = d ? (Number(d.totalMonth) || 0) : 0;
+    const known = !!(d && !d.skip && per > 0);
+    const dep = known ? per * mo : 0;
+    return Object.assign({}, r, {
+      deprec_mnt: known ? Math.round(dep) : null,
+      profit_mnt: known ? Math.round(rev - dep) : null,
+      profit_why: !d ? 'каталогт олдсонгүй' : (d.skip || (per <= 0 ? (d.doneYm ? 'элэгдэж дууссан' : 'өртөг оруулаагүй') : '')),
+    });
+  });
+}
 /* ── ДАВТАН ҮЙЛЧЛҮҮЛЭГЧ (2026-09-27) ────────────────────────────────────────
    Хамгийн том бизнесийн дохио нь хаана ч хэмжигдэхгүй байв: нэр бүхий 270
    харилцагчийн ердөө 27 нь (10%) хоёр дахь удаагаа захиалсан. Шинэ харилцагч
@@ -29173,8 +29205,27 @@ function renderHistory() {
         'Бараа биш үйлчилгээ — орлогод багтана, ROI/нөөцөд тооцохгүй. Мөр дарж захиалгуудыг харна.');
     };
     if (roi.length) {
+      /* 💸 АШИГ = орлого − элэгдэл (2026-09-28). Элэгдэл нь шилжилтийн сараас
+         хойших өдрүүдэд Л ноогдоно; каталог ачаалагдаагүй бол чимээгүй 0 болно
+         (НӨАТ-ийн ensureVatLoaded-тай ижил занга) тул тэрийг ил хэлнэ. */
+      const _pDaysP = (bq._days || []);
+      const _depMo = deprecMonthsIn(_pDaysP, (typeof deprecStartMonth === 'function') ? deprecStartMonth() : '');
+      const _catReady = !!(state.products && state.products.length);
+      const _lives = (typeof deprecLives === 'function') ? deprecLives() : null;
+      const _depOf = (r) => {
+        const p = r && r.sku ? (typeof productBySku === 'function' ? productBySku(r.sku) : null) : null;
+        return p ? deprecForProduct(p, _lives) : null;
+      };
+      const roiP = _catReady ? productProfitRows(roi, _depMo, _depOf) : roi.map(r => Object.assign({}, r, { profit_mnt: null, profit_why: 'каталог ачаалагдаагүй' }));
+      const _byName = new Map(roiP.map(r => [r.product, r]));
+      // Ашгийн бичвэр — мэдэгдэхгүй бол ШАЛТГААНЫГ нь хэлнэ (хоосон орхивол
+      // «ашиггүй» гэж уншигдана).
+      const _profTxt = (x) => x.profit_mnt == null
+        ? (x.profit_why ? ` · <span class="pf-na">ашиг ? (${escapeHtml(x.profit_why)})</span>` : '')
+        : ` · <span class="${x.profit_mnt >= 0 ? 'pf-ok' : 'pf-bad'}">ашиг ${x.profit_mnt >= 0 ? '+' : '−'}${fmtMoneyShort(Math.abs(x.profit_mnt))}</span>`;
       const maxRev = Math.max(1, ...roi.map(x => N(x.revenue_mnt)));
-      const roiRow = (x) => {
+      const roiRow = (x0) => {
+        const x = _byName.get(x0.product) || x0;
         const rev = N(x.revenue_mnt), owned = N(x.owned_qty), tot = N(x.total_cost_mnt), rx = (x.roi_x == null ? null : N(x.roi_x)), days = N(x.item_days_out);
         const pct = maxRev > 0 ? Math.max(2, Math.round(rev / maxRev * 100)) : 0;
         const badge = (tot <= 0 || rx == null) ? `<span style="color:var(--muted);">өртөг ?</span>`
@@ -29191,7 +29242,7 @@ function renderHistory() {
           ${thumb}
           <div style="flex:0 0 38%;min-width:0;">
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(x.product || '—')} <span style="color:var(--muted);font-size:10px;">🔍</span></div>
-            <div style="font-size:10px;color:var(--muted);">${badge} · ${costStr} · ${days.toLocaleString('mn-MN')}ө гадаа</div>
+            <div style="font-size:10px;color:var(--muted);">${badge} · ${costStr} · ${days.toLocaleString('mn-MN')}ө гадаа${_profTxt(x)}</div>
           </div>
           <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:5px;"></div></div>
           <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(rev)}</div>
@@ -29206,6 +29257,26 @@ function renderHistory() {
         ⚠ <b>${_guessN}</b> / ${_totN} мөрийн ангилал <b>таамаглалаар</b> тодорхойлогдсон —
         захиалгын нэр каталогтой таараагүй. Агуулах → <b>тулгах</b> хэсгээс холбовол ангилал зөв болно.
       </div>` : '';
+      /* ⚠ Энэ хугацаанд элэгдлээ нөхөөгүй бараа — ЯГ ОДОО алдагдалтай хөрөнгө.
+         ROI («бүх цагийн») нь энэ асуултад хариулдаггүй. */
+      const losers = roiP.filter(x => x.profit_mnt != null && x.profit_mnt < 0)
+        .sort((a, b) => a.profit_mnt - b.profit_mnt);
+      const lossTot = losers.reduce((a, x) => a + x.profit_mnt, 0);
+      const profTot = roiP.reduce((a, x) => a + (x.profit_mnt == null ? 0 : x.profit_mnt), 0);
+      const naN = roiP.filter(x => x.profit_mnt == null).length;
+      const lossCard = (_depMo > 0 && (losers.length || profTot))
+        ? card(`💸 Элэгдлийн дараах ашиг — ${profTot >= 0 ? '+' : '−'}${fmtMoneyShort(Math.abs(profTot))}`,
+            (losers.length
+              ? `<div class="pf-head">Элэгдлээ нөхөөгүй <b>${losers.length}</b> бараа · нийт <b class="pf-bad">−${fmtMoneyShort(Math.abs(lossTot))}</b></div>`
+                + losers.slice(0, 20).map(x => `<div class="hist-roi-row svc-r" data-hist-prod="${escapeHtml(x.product || '')}" title="Дарж захиалгуудыг харах">
+                    ${bqBar(x.product + ' 🔍', Math.abs(x.profit_mnt), Math.max(1, Math.abs(losers[0].profit_mnt)), 'var(--danger)',
+                      `орлого ${fmtMoneyShort(N(x.revenue_mnt))} · элэгдэл ${fmtMoneyShort(N(x.deprec_mnt))}`)}
+                  </div>`).join('')
+              : '<div class="pf-head">Бүх бараа элэгдлээ нөхсөн.</div>')
+            + (naN ? `<div class="svc-unalloc">⚠ <b>${naN}</b> барааны ашиг тооцоогүй — өртөг оруулаагүй, элэгдэж дууссан, эсвэл каталогт таараагүй.</div>` : '')
+            + `<div class="svc-unalloc">⚠ Засварын зардал ОРООГҮЙ (бүртгэлд өртгийн талбар алга) — жинхэнэ ашиг үүнээс БАГА.</div>`,
+            `Сонгосон хугацааны (${Math.round(_depMo * 10) / 10} сар) элэгдлийг орлогоос хассан. Элэгдэл нь ${(typeof deprecStartMonth === 'function' ? deprecStartMonth() : '')}-аас хойш Л зардал болно.`)
+        : '';
       const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
       // ── 💰 Хөрөнгийн нөхөлт — АГУУЛАХЫН бүх хөрөнгө vs олсон орлого ──
       const _lens = (typeof effectiveBranchLens === 'function') ? effectiveBranchLens() : 'all';
@@ -29272,7 +29343,7 @@ function renderHistory() {
       </div>`).join('');
       const histDonut = card('🍩 Ямар ангилал хамгийн эрэлттэй (орлогын хувиар)',
         `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;"><div style="flex:0 0 auto;">${donutSvg}</div><div style="flex:1;min-width:180px;">${legend}</div></div>`);
-      body = kpis + catWarn + portfolio + histDonut
+      body = kpis + catWarn + portfolio + lossCard + histDonut
         + card(`Орлого × ROI — ангиллаар (${roi.length} бараа)`, cats.map(catSection).join(''),
             'ROI× = нэхэмжилсэн орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй. Бүлгийн толгойг дарж хумина.')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,

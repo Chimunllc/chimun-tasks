@@ -5723,6 +5723,12 @@ body.role-daily #add-project { display: none !important; }
 .usg-v { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
 .usg-none { color: var(--muted); }
 /* Давтан үйлчлүүлэгч — багана дотор бараан хэсэг = буцаж ирсэн харилцагч. */
+/* Барааны ашиг — орлого − элэгдэл. */
+.pf-ok { color: var(--ok); font-weight: 600; }
+.pf-bad { color: var(--danger); font-weight: 600; }
+.pf-na { color: var(--muted); }
+.pf-head { font-size: var(--fs-sm); color: var(--muted); padding-bottom: var(--space-2); }
+.pf-head b { color: var(--text); }
 .rep-kpi { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--fs-sm);
   padding: var(--space-2) 0 var(--space-3); color: var(--muted); }
 .rep-kpi b { color: var(--text); }

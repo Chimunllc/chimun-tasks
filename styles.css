@@ -7739,3 +7739,23 @@ select.no-asar-len {
 .pnl-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); line-height: 1.5; }
 .pnl-note b { color: var(--text); }
 .pnl-note.is-ref { color: var(--warn); }
+
+/* NOMAAD «🧹 Цэгцлэх» — засах шаардлагатай захиалгын жагсаалт (inline style-гүй) */
+.ncl-load { padding: var(--space-6); text-align: center; color: var(--muted); }
+.ncl-ok { padding: var(--space-6) var(--space-4); text-align: center; }
+.ncl-ok-ico { font-size: var(--fs-2xl); }
+.ncl-ok-t { font-weight: 700; margin-top: var(--space-2); }
+.ncl-ok-s { font-size: var(--fs-sm); color: var(--muted); margin-top: var(--space-1); }
+.ncl-wrap { padding: var(--space-1); }
+.ncl-h { font-weight: 800; font-size: var(--fs-base); }
+.ncl-sub { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-1) 0 var(--space-4); }
+.ncl-card { border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: var(--space-3) var(--space-4); margin-bottom: var(--space-2);
+  cursor: pointer; background: var(--panel); }
+.ncl-hd { display: flex; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+.ncl-name { font-weight: 700; font-size: var(--fs-md); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ncl-meta { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.ncl-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-2); }
+.ncl-tag { font-size: var(--fs-xs); background: var(--warn-soft); color: var(--warn);
+  border-radius: var(--r-sm); padding: 2px var(--space-2); }

@@ -17084,20 +17084,20 @@ function nomaadCleanupRows() {
   return rows.sort((a, b) => b.issues.length - a.issues.length);
 }
 function renderNomaadCleanup() {
-  if (!state.nomaadOrders) { setTimeout(loadNomaadOrders, 0); return '<div style="padding:40px;text-align:center;color:var(--muted);">Ачаалж байна…</div>'; }
+  if (!state.nomaadOrders) { setTimeout(loadNomaadOrders, 0); return '<div class="ncl-load">Ачаалж байна…</div>'; }
   const rows = nomaadCleanupRows();
   const total = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o)).length;
-  if (!rows.length) return `<div style="padding:36px 16px;text-align:center;"><div style="font-size:34px;">✅</div><div style="font-weight:700;margin-top:8px;">Бүх захиалга цэгцтэй</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">${total} идэвхтэй захиалга — засах зүйл алга</div></div>`;
-  const body = rows.map(({ o, issues }) => `<div data-cleanup-open="${escapeHtml(o.quote_no || '')}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:9px;cursor:pointer;background:var(--panel);">
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-        <div style="font-weight:700;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.company || o.quote_no || '—')}</div>
-        <div style="font-size:11px;color:var(--muted);white-space:nowrap;">#${escapeHtml(o.quote_no || '')} · ${escapeHtml(String(o.date_start || '').slice(0, 10))}</div>
+  if (!rows.length) return `<div class="ncl-ok"><div class="ncl-ok-ico">✅</div><div class="ncl-ok-t">Бүх захиалга цэгцтэй</div><div class="ncl-ok-s">${total} идэвхтэй захиалга — засах зүйл алга</div></div>`;
+  const body = rows.map(({ o, issues }) => `<div class="ncl-card" data-cleanup-open="${escapeHtml(o.quote_no || '')}">
+      <div class="ncl-hd">
+        <div class="ncl-name">${escapeHtml(o.company || o.quote_no || '—')}</div>
+        <div class="ncl-meta">#${escapeHtml(o.quote_no || '')} · ${escapeHtml(String(o.date_start || '').slice(0, 10))}</div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;">${issues.map(i => `<span style="font-size:11px;background:var(--warn-soft,#fef3e2);color:var(--warn,#b45309);border-radius:6px;padding:2px 8px;">⚠ ${escapeHtml(i)}</span>`).join('')}</div>
+      <div class="ncl-tags">${issues.map(i => `<span class="ncl-tag">⚠ ${escapeHtml(i)}</span>`).join('')}</div>
     </div>`).join('');
-  return `<div style="padding:2px;">
-    <div style="font-weight:800;font-size:15px;">🧹 Цэгцлэх — ${rows.length} захиалга</div>
-    <div style="font-size:11.5px;color:var(--muted);margin:2px 0 14px;">Кемп/Багц стандарт бус, хүн 0, үндсэн багц алга, ангилаагүй нэмэлттэй. Дарж нээгээд зас.</div>
+  return `<div class="ncl-wrap">
+    <div class="ncl-h">🧹 Цэгцлэх — ${rows.length} захиалга</div>
+    <div class="ncl-sub">Кемп/Багц стандарт бус, хүн 0, үндсэн багц алга, ангилаагүй нэмэлттэй. Дарж нээгээд зас.</div>
     ${body}</div>`;
 }
 /* ── NOMAAD түүх (2023–2025) — апп нэвтрэхээс ӨМНӨХ борлуулалт ────────────────

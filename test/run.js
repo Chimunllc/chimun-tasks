@@ -1188,6 +1188,34 @@ eq(F.docTitleFromFile('01. Гэрээ загвар.docx'), '01. Гэрээ за�
 eq(F.docTitleFromFile('гэрээ.pdf'),             'гэрээ',            'гарчиг: энгийн нэр');
 eq(F.docTitleFromFile('.pdf'),                  'Нэргүй',           'гарчиг: зөвхөн өргөтгөл → Нэргүй');
 
+// 22b) Хавтсаар оруулах — систем файл, тохирохгүй төрлийг шалтгаантай алгасна
+need(['docBulkSkip', 'docBulkRows', 'docBulkSkipSummary', 'docExt']);
+eq(F.docExt('Гэрээ.PDF'), 'pdf', 'өргөтгөл: том үсэг жижиг болно');
+eq(F.docExt('нэргүй'), '', 'өргөтгөл: цэггүй нэр → хоосон');
+eq(F.docBulkSkip('Гэрээ/2026/түрээс.pdf', 1024), null, 'хавтас доторх pdf → орно');
+eq(F.docBulkSkip('Гэрээ/.DS_Store', 6148), 'junk', 'macOS-ийн .DS_Store → систем файл');
+eq(F.docBulkSkip('Thumbs.db', 4096), 'junk', 'Windows-ийн Thumbs.db → систем файл');
+eq(F.docBulkSkip('~$Гэрээ.docx', 162), 'junk', 'Word-ийн түр файл (~$) → систем файл');
+eq(F.docBulkSkip('__MACOSX/Гэрээ/x.pdf', 900), 'junk', '__MACOSX хавтас → систем файл');
+eq(F.docBulkSkip('видео.mp4', 5000), 'type', 'дэмжигдээгүй төрөл → алгасна');
+eq(F.docBulkSkip('хоосон.pdf', 0), 'empty', '0 байт файл → хоосон');
+eq(F.docBulkSkip('том.pdf', 9 * 1024 * 1024), 'big', '8MB-аас том → хэт том');
+// Ангилал ЗАМААР таамаглагдана — хавтсын нэр файлын нэрээс илүү мэдээлэлтэй
+{
+  const rows = F.docBulkRows([
+    { name: 'scan_001.pdf', path: 'Гэрээнүүд/scan_001.pdf', size: 2048 },
+    { name: '.DS_Store', path: 'Гэрээнүүд/.DS_Store', size: 6148 },
+    { name: 'лого.png', path: 'Брэнд/лого.png', size: 4096 },
+  ]);
+  eq(rows.length, 3, 'мөр бүр үлдэнэ (алгасахыг ч харуулна)');
+  eq(rows[0].cat, 'contract', 'ангилал: хавтсын нэрээр («Гэрээнүүд/scan_001.pdf»)');
+  eq(rows[0].title, 'scan_001', 'гарчиг: файлын нэрээс, замгүй');
+  eq(rows[1].skip, 'junk', 'систем файл тэмдэглэгдэнэ');
+  eq(rows[2].skip, null, 'зураг орно');
+  eq(F.docBulkSkipSummary(rows), '1 систем файл', 'хураангуй: шалтгаанаар бүлэглэнэ');
+  eq(F.docBulkSkipSummary([]), '', 'хураангуй: алгасах юм алга → хоосон');
+}
+
 // ═══════════════════ ДҮН ═══════════════════
 function finish() {
   console.log('');

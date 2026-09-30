@@ -12444,6 +12444,80 @@ function workNormMins() { return workNormDays() * 8 * 60; }
 // ── Жолооны нэмэгдэл — хүргэлттэй захиалгад ХҮРГЭЖ ӨГСӨН (delivering→rented) + ХҮРГЭЛТЭЭР
 // БУЦААН АВСАН (rented→returning) үйлдэл бүрд 10,000₮ (тухайн үйлдлийг хийсэн жолоочид). stage_meta-гаас автомат.
 const DRIVER_BONUS_EACH = 10000;
+/* ─── ШАТНЫ ХӨЛС — дамжлагын ажлыг барааны ТООГООР төлнө (2026-09-30) ────────
+   ⛔ ЦАГААР БҮҮ ТӨЛ. Эвент, шөнийн хүргэлттэй ажлын цагийг хязгаарлах боломжгүй
+     (амьд датаар 163–283 ц/сар) тул цагаар төлбөл суугаад цаг нөхцөөх нь ШАГНАГДАНА
+     — 9 сард 256 цаг ажиллаж НЭГ Ч шат удирдаагүй хүн байсан. Гарц нь хуурамчлагдахгүй:
+     шат нь зурагтай, захиалгад холбогдсон.
+   ⛔ ХАВТГАЙ ХӨЛС БУРУУ. Нэг захиалга 1 бараа, нөгөө нь 345 (дундаж 12) — хавтгайгаар
+     бол жолооч сарын хамгийн том 2 ачааг (345 ба 179 бараа) татаад 20,000₮ авч байв.
+   ⛔ Зөвхөн шат ДАРСАН хүнд төлж болохгүй — 345 сандлыг 4 хүн ачдаг. Хамтрагчид
+     `STAGE_FEE_HELPER_SHARE`-ийн санг хуваан авна; `STAGE_FEE_HELPER_MAX` нь
+     хуурамч хамтрагч нэмж сан цайруулахыг хаана.
+   ⚠ Мөнгө болдог тул тохиргоо `app_config['stage_pay']`-аас (кодын утга = зөвхөн нөөц). */
+const STAGE_FEE_BANDS = [[5, 2000], [20, 4000], [60, 7000], [150, 12000], [Infinity, 20000]];
+const STAGE_FEE_HELPER_SHARE = 0.30;
+const STAGE_FEE_HELPER_MAX = 4;
+// Биеийн хүчний шатууд. ⛔ `discount`/`revert` мэт бичиг цаасны шат ОРОХГҮЙ — ачаа зөөгөөгүй.
+const STAGE_FEE_STAGES = ['clean', 'prepare', 'dispatch', 'deliver', 'setup', 'teardown', 'retstart', 'received'];
+function _stagePayCfg() { return (state.appConfig && typeof state.appConfig.stage_pay === 'object' && state.appConfig.stage_pay) || {}; }
+function stageFeeBands() {
+  const b = _stagePayCfg().bands;
+  if (!Array.isArray(b) || !b.length) return STAGE_FEE_BANDS;
+  const out = b.map(x => [Number(x[0]) || 0, Number(x[1]) || 0]).filter(x => x[1] > 0).sort((a, z) => a[0] - z[0]);
+  if (!out.length) return STAGE_FEE_BANDS;
+  out[out.length - 1][0] = Infinity;   // хамгийн дээд шатлал ҮРГЭЛЖ хязгааргүй — эс бол том захиалга 0₮ болно
+  return out;
+}
+function stageHelperShare() { const v = Number(_stagePayCfg().helper_share); return (v >= 0 && v <= 1) ? v : STAGE_FEE_HELPER_SHARE; }
+function stageHelperMax() { const v = Number(_stagePayCfg().helper_max); return (v >= 1) ? Math.floor(v) : STAGE_FEE_HELPER_MAX; }
+// Барааны тоогоор шатлалын хөлс. Тоо нь 0 (бараагүй захиалга) бол хамгийн доод шатлал.
+function stageFeeForQty(qty, bands) {
+  const q = Math.max(0, Number(qty) || 0);
+  const B = bands || stageFeeBands();
+  for (const [lim, fee] of B) if (q <= lim) return fee;
+  return B[B.length - 1][1];
+}
+// Захиалгын барааны НИЙТ тоо ширхэг (мөрийн тоо БИШ — ачаа зөөх хөдөлмөр нь тоогоор).
+function orderItemQty(o) {
+  return ((o && Array.isArray(o.items)) ? o.items : []).reduce((t, it) => t + (Number(it && it.qty) || 0), 0);
+}
+/* Сарын шатны хөлс — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
+   Буцаах: { key: {led, helped, qty, ledFee, helperFee, total} } */
+function stagePayByPerson(orders, month) {
+  const bands = stageFeeBands(), share = stageHelperShare(), hmax = stageHelperMax();
+  const out = {};
+  const bump = (k, f, fld, cntFld) => {
+    if (!k) return;
+    const r = out[k] || (out[k] = { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, total: 0 });
+    r[fld] += f; r[cntFld] += 1; r.total = r.ledFee + r.helperFee;
+  };
+  for (const o of (orders || [])) {
+    const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    const qty = orderItemQty(o);
+    for (const key of Object.keys(sm)) {
+      const e = sm[key];
+      if (!e || typeof e !== 'object') continue;
+      if (STAGE_FEE_STAGES.indexOf(key) < 0) continue;
+      if (month && String(e.at || '').slice(0, 7) !== month) continue;
+      const fee = stageFeeForQty(qty, bands);
+      const by = e.by ? String(e.by) : '';
+      if (by) { bump(by, fee, 'ledFee', 'led'); out[by].qty += qty; }
+      const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String).filter(Boolean).slice(0, hmax);
+      if (hs.length && share > 0) {
+        const each = fee * share / hs.length;
+        hs.forEach(h => bump(h, each, 'helperFee', 'helped'));
+      }
+    }
+  }
+  Object.keys(out).forEach(k => { const r = out[k]; r.total = Math.round(r.ledFee + r.helperFee); r.ledFee = Math.round(r.ledFee); r.helperFee = Math.round(r.helperFee); });
+  return out;
+}
+// Нэг хүний сарын шатны хөлс (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
+function stagePayFor(key, month, orders) {
+  const all = stagePayByPerson(orders || state.appOrders || [], month);
+  return all[String(key)] || { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, total: 0 };
+}
 function driverBonus(key, month, orders) {
   let deliveries = 0, pickups = 0; const trips = [];
   for (const o of (orders || state.appOrders || [])) {
@@ -12487,6 +12561,10 @@ function renderAttendanceMonth(month) {
   }).sort((a, b) => b.mins - a.mins);
   const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · Сарын норм <b style="color:var(--text)">${normDays}×8=${normDays * 8}ц</b> · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
   let anyDriver = false;
+  // ⚠ Шатны хөлсийг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
+  //   рендер бүрд мянган давталт болно. Нэг удаа бодож, мөр бүрд уншина.
+  const spAll = stagePayByPerson(state.appOrders || [], month);
+  let spTotal = 0;
   const list = rows.map(r => {
     const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
     const pctColor = pct >= 100 ? 'var(--ok)' : pct >= 80 ? 'var(--text-soft)' : 'var(--warn)';
@@ -12497,15 +12575,19 @@ function renderAttendanceMonth(month) {
       ? `<div class="att-noout-line">⚠ <b>${r.noOutDays.length}</b> өдөр гарах бүртгэлгүй (0 цаг тоологдсон): ${r.noOutDays.map(d => `<button class="ui-raw att-noout-day" data-att-day="${escapeHtml(d)}">${escapeHtml(d.slice(8))}</button>`).join(' ')}</div>`
       : '';
     const driverLine = db.count ? `<div style="font-size:12px;color:var(--ok);margin-top:2px;">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span style="color:var(--muted);">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
+    const sp = spAll[r.k];
+    if (sp && sp.total) spTotal += sp.total;
+    const stageLine = (sp && sp.total) ? `<div class="sp-line">📦 Шатны хөлс: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span></div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
       <div style="display:flex;align-items:center;gap:12px;">
       <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
       <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр · <b style="color:${pctColor};">${pct}%</b></div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)} <span style="font-weight:400;color:var(--muted);font-size:11px;">/ ${normDays * 8}ц</span></div></div>
-      </div>${noOutLine}${driverLine}</div>`;
+      </div>${noOutLine}${driverLine}${stageLine}</div>`;
   }).join('');
   const liabilityNote = anyDriver ? `<div style="margin-top:14px;padding:11px 13px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12.5px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
-  return head + `<div>${list}</div>${liabilityNote}`;
+  const spFoot = spTotal ? `<div class="sp-foot">📦 Шатны хөлс нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил хөлс болохгүй.</span></div>` : '';
+  return head + `<div>${list}</div>${spFoot}${liabilityNote}`;
 }
 // CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
 function openWorkStartModal() {
@@ -12666,6 +12748,16 @@ function renderMyAttend() {
         <span style="color:var(--muted);flex-shrink:0;">${escapeHtml(t.date)}</span></div>`).join('')}</div>
       <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
     </div>` : ''; })()}
+    ${(() => {
+      const sp = stagePayFor(personKey(me) || state.me, today.slice(0, 7));
+      if (!sp.total) return '';
+      return `<div class="sp-card">
+        <div class="sp-card-t">📦 Шатны хөлс (энэ сар)</div>
+        <div class="sp-card-v">${fmtMoney(sp.total)}</div>
+        <div class="sp-card-s">Удирдсан <b>${sp.led}</b> шат${sp.helped ? ` · хамтрагчаар <b>${sp.helped}</b>` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''}</div>
+        <div class="sp-card-n">Хөлс нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил хөлс болохгүй.</div>
+      </div>`;
+    })()}
     <button class="ui-raw myreq-new" id="my-att-req">🙋 Бүртгүүлж амжаагүй өдөр мэдүүлэх</button>
     ${dayKeys.length || otherReqs ? `<div style="font-size:13px;font-weight:700;color:var(--muted);margin:6px 2px 4px;">Энэ сарын ирц</div><div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 12px;">${dayList}${otherReqs}</div>` : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">Энэ сард ирц бүртгэгдээгүй байна.</div>'}
   </div>`;

@@ -7772,3 +7772,25 @@ select.no-asar-len {
 .ncl-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-2); }
 .ncl-tag { font-size: var(--fs-xs); background: var(--warn-soft); color: var(--warn);
   border-radius: var(--r-sm); padding: 2px var(--space-2); }
+
+/* ─── Шатны хөлс (дамжлагын ажлын хөлс, барааны тоогоор) ─── */
+.sp-line {
+  margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--ok); line-height: 1.6;
+}
+.sp-sub { color: var(--muted); font-weight: 400; }
+.sp-foot {
+  margin-top: var(--space-3); padding: var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel);
+  font-size: var(--fs-md); color: var(--text-soft); line-height: 1.5;
+}
+.sp-card {
+  background: var(--panel); border: 1px solid var(--ok); border-radius: var(--r-xl);
+  padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3);
+}
+.sp-card-t { font-size: var(--fs-sm); color: var(--muted); }
+.sp-card-v { font-size: var(--fs-xl); font-weight: 800; color: var(--ok); margin-top: var(--space-1); }
+.sp-card-s { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
+.sp-card-n {
+  font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2);
+  padding-top: var(--space-2); border-top: 1px solid var(--line); line-height: 1.5;
+}

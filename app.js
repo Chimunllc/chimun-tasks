@@ -14114,6 +14114,47 @@ const DOC_CATS = [
 ];
 const DOC_MAX_BYTES = 8 * 1024 * 1024;   // base64 нь ~33% томордог тул серверт ~11MB
 function docCat(k) { return DOC_CATS.find(c => c.key === k) || DOC_CATS[DOC_CATS.length - 1]; }
+
+/* ─── ХАВТАС — тусдаа хүснэгтгүй, зөвхөн замын мөр («Гэрээнүүд/2026») ───
+   Хавтас нь эзэмшигч, эрх, түүхгүй зүйл — зөвхөн бүлэглэх хэрэгсэл. Хүснэгт
+   болговол хоосон хавтас, устгах дараалал, RLS гэсэн гурван шинэ асуудал
+   төрнө. Баримтын `folder` хоосон бол «үндсэн хавтас». */
+function docFolderNorm(s) { return String(s || '').split('/').map(x => x.trim()).filter(Boolean).join('/'); }
+// «Гэрээнүүд/2026/x.pdf» → «Гэрээнүүд/2026»
+function docFolderFromPath(path) { const a = String(path || '').split('/'); a.pop(); return docFolderNorm(a.join('/')); }
+/* Тухайн хавтсанд ШУУД харьяалагдах дэд хавтаснууд.
+   Тоолол нь дэд дэд хавтасныхыг ч агуулна — эс бөгөөс «0» гэж харагдаад хүн
+   дотогш ороход нь баримт гарч ирэх тул итгэл алдагдана. */
+function docFolderChildren(docs, cur) {
+  const base = docFolderNorm(cur);
+  const pref = base ? base + '/' : '';
+  const m = new Map();
+  (docs || []).forEach(d => {
+    const f = docFolderNorm(d.folder);
+    if (!f || f === base) return;
+    if (base && !f.startsWith(pref)) return;
+    const name = f.slice(pref.length).split('/')[0];
+    if (name) m.set(name, (m.get(name) || 0) + 1);
+  });
+  return Array.from(m, ([name, n]) => ({ name, n, path: pref + name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'mn'));
+}
+// Тухайн хавтсанд ШУУД байгаа баримт (дэд хавтасныхыг оруулахгүй)
+function docsInFolder(docs, cur) { const base = docFolderNorm(cur); return (docs || []).filter(d => docFolderNorm(d.folder) === base); }
+// Замын мөр → breadcrumb хэсгүүд
+function docFolderCrumbs(cur) {
+  const parts = docFolderNorm(cur).split('/').filter(Boolean);
+  return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }));
+}
+// Байгаа бүх хавтас (дэд хавтас бүрийг тусад нь) — засах модалын саналд
+function docAllFolders(docs) {
+  const set = new Set();
+  (docs || []).forEach(d => {
+    const f = docFolderNorm(d.folder); if (!f) return;
+    const a = f.split('/'); for (let i = 1; i <= a.length; i++) set.add(a.slice(0, i).join('/'));
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'mn'));
+}
 function canSeeDocuments() { return canAccessView('documents', () => state.isCEO); }
 function fmtBytes(n) {
   const b = Number(n) || 0;
@@ -14127,7 +14168,7 @@ async function loadCompanyDocs(force) {
   if (state.companyDocs && !force) return;
   try {
     // data (base64 биет) СОНГОХГҮЙ — зөвхөн нээх үедээ ганцаарчлан татна.
-    const sel = 'id,title,category,doc_no,doc_date,counterparty,note,mime,file_name,size_bytes,uploaded_by,created_at';
+    const sel = 'id,title,category,folder,doc_no,doc_date,counterparty,note,mime,file_name,size_bytes,uploaded_by,created_at';
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?select=${sel}&order=created_at.desc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     state.companyDocs = r.ok ? await r.json() : [];
@@ -14526,14 +14567,19 @@ function openDocBulkModal() {
 
   const setPicked = (list) => {   // list: [{file, path}]
     const rows = docBulkRows(list.map(x => ({ name: x.file.name, path: x.path, size: x.file.size })));
-    picked = rows.map((r, i) => Object.assign({}, r, { file: list[i].file }));
+    // Чирсэн хавтас нь ОДООГИЙН хавтсан ДООР орно: «Брэнд» дотор «Лого» хавтас тавихад «Брэнд/Лого»
+    const root = docFolderNorm(state.docsFolder);
+    picked = rows.map((r, i) => Object.assign({}, r, {
+      file: list[i].file,
+      folder: [root, docFolderFromPath(r.path)].filter(Boolean).join('/'),
+    }));
     const okN = picked.filter(p => !p.skip).length;
     const skipped = docBulkSkipSummary(picked);
     $('#db-sum').textContent = picked.length
       ? `${okN} файл орно${skipped ? ` · алгасна: ${skipped}` : ''}`
       : '';
     $('#db-list').innerHTML = picked.map((p, i) => `<div class="doc-bulk-row${p.skip ? ' too-big' : ''}">
-      <span class="db-nm" title="${escapeHtml(p.path)}">${escapeHtml(p.title)}</span>
+      <span class="db-nm" title="${escapeHtml(p.path)}">${p.folder ? `<span class="db-fold">📁 ${escapeHtml(p.folder)}/</span>` : ''}${escapeHtml(p.title)}</span>
       <span class="db-sz">${fmtBytes(p.size)}</span>
       ${p.skip ? `<span class="db-skip">${escapeHtml(DOC_SKIP_LABEL[p.skip] || p.skip)}</span>`
         : `<select class="db-cat" data-i="${i}">${DOC_CATS.map(c => `<option value="${c.key}"${c.key === p.cat ? ' selected' : ''}>${c.icon} ${escapeHtml(c.label)}</option>`).join('')}</select>`}
@@ -14573,7 +14619,7 @@ function openDocBulkModal() {
         const durl = await fileToDataUrl(p.file);
         const ok = await saveCompanyDoc({
           id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'doc-' + crypto.randomUUID() : 'doc-' + Date.now() + '-' + done,
-          title: p.title, category: p.cat, uploaded_by: state.me,
+          title: p.title, category: p.cat, folder: p.folder || null, uploaded_by: state.me,
           data: String(durl).slice(String(durl).indexOf(',') + 1),
           mime: p.file.type || 'application/octet-stream', file_name: p.name, size_bytes: p.size,
         });
@@ -14595,14 +14641,21 @@ function renderDocuments() {
   const editable = can('documents.edit');
   const match = (d) => (!cat || d.category === cat)
     && (!q || [d.title, d.doc_no, d.counterparty, d.note, d.file_name].some(v => String(v || '').toLowerCase().includes(q)));
-  const shown = docs.filter(match);
+  /* Хайлт эсвэл ангилал сонгосон бол ХАВТАСГҮЙ — бүх хавтаснаас нэг жагсаалт.
+     Эс бөгөөс «хайлаа, олдсонгүй» гэж бодоод өөр хавтсанд байгаа баримтаа
+     олохгүй өнгөрнө. Тэр үед мөр бүр дээр хавтсаа бичиж харуулна. */
+  const flat = !!(q || cat);
+  const cur = flat ? '' : docFolderNorm(state.docsFolder);
+  const subFolders = flat ? [] : docFolderChildren(docs, cur);
+  const shown = flat ? docs.filter(match) : docsInFolder(docs, cur).filter(match);
   const tabs = [{ key: '', label: 'Бүгд', icon: '🗂' }].concat(DOC_CATS).map(c => {
     const n = c.key ? docs.filter(d => d.category === c.key).length : docs.length;
     return `<button class="otab${cat === c.key ? ' on' : ''}" data-dcat="${c.key}">${c.icon} ${escapeHtml(c.label)}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>`;
   }).join('');
   const row = (d) => {
     const c = docCat(d.category);
-    const meta = [d.doc_no ? '№ ' + d.doc_no : '', d.doc_date ? fmtDate(d.doc_date) : '', d.counterparty || '', fmtBytes(d.size_bytes)]
+    const meta = [flat && docFolderNorm(d.folder) ? '📁 ' + docFolderNorm(d.folder) : '',
+      d.doc_no ? '№ ' + d.doc_no : '', d.doc_date ? fmtDate(d.doc_date) : '', d.counterparty || '', fmtBytes(d.size_bytes)]
       .filter(Boolean).map(escapeHtml).join(' · ');
     return `<div class="doc-row" data-doc="${escapeHtml(d.id)}">
       <span class="doc-ico">${c.icon}</span>
@@ -14632,10 +14685,24 @@ function renderDocuments() {
       <span class="doc-cat">Загвар</span>
       <span class="doc-act"><span class="doc-open">Нээх ›</span></span>
     </div>`).join('')}</div>` : '';
+  const folderRow = (f) => `<div class="doc-row doc-folder" data-folder="${escapeHtml(f.path)}">
+      <span class="doc-ico">📁</span>
+      <span class="doc-main">
+        <span class="doc-title">${escapeHtml(f.name)}</span>
+        <span class="doc-meta">${f.n} баримт</span>
+      </span>
+      <span class="doc-cat">Хавтас</span>
+      <span class="doc-act"><span class="doc-open">Нээх ›</span></span>
+    </div>`;
+  const crumbs = docFolderCrumbs(cur);
+  const crumbBar = (!flat && (crumbs.length || subFolders.length)) ? `<div class="doc-crumbs">
+      <button class="doc-crumb" data-folder="">🗂 Бүгд</button>
+      ${crumbs.map(c => `<span class="doc-crumb-sep">›</span><button class="doc-crumb${c.path === cur ? ' on' : ''}" data-folder="${escapeHtml(c.path)}">${escapeHtml(c.name)}</button>`).join('')}
+    </div>` : '';
+  const listHtml = (!flat ? subFolders.map(folderRow).join('') : '') + shown.map(row).join('');
   const body = !state.companyDocs
     ? '<div class="doc-empty">Ачаалж байна…</div>'
-    : (shown.length ? shown.map(row).join('')
-      : `<div class="doc-empty">${tplBlock ? '' : '<div class="icon">🗂</div>'}<div>${docs.length ? 'Энэ шүүлтэд баримт алга.' : 'Байршуулсан баримт хараахан алга.'}</div></div>`);
+    : (listHtml || `<div class="doc-empty">${tplBlock ? '' : '<div class="icon">🗂</div>'}<div>${cur ? 'Энэ хавтас хоосон байна.' : (docs.length ? 'Энэ шүүлтэд баримт алга.' : 'Байршуулсан баримт хараахан алга.')}</div></div>`);
   return `<div class="doc-wrap">
     <div class="doc-head">
       <div>
@@ -14648,6 +14715,7 @@ function renderDocuments() {
     <div class="doc-search">🔍<input type="search" id="doc-search" placeholder="Нэр, дугаар, байгууллага" value="${escapeHtml(state.docsSearch || '')}" /></div>
     ${tplBlock}
     ${tplBlock ? '<div class="doc-tpl-head">📁 Байршуулсан баримт</div>' : ''}
+    ${crumbBar}
     <div class="doc-list">${body}</div>
   </div>`;
 }
@@ -14674,6 +14742,12 @@ function attachDocumentsHandlers() {
     if (!confirm(`«${d.title || d.file_name}» баримтыг устгах уу? Файл бүрмөсөн устана.`)) return;
     if (await deleteCompanyDoc(d.id)) { showToast('Устгагдлаа', 'success'); await loadCompanyDocs(true); render(); }
   }));
+  // Хавтас руу орох / breadcrumb-аар буцах
+  document.querySelectorAll('[data-folder]').forEach(el => el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.docsFolder = docFolderNorm(el.dataset.folder);
+    render();
+  }));
   document.querySelectorAll('[data-doc-tpl]').forEach(r => r.addEventListener('click', () => openDocTemplate(r.dataset.docTpl)));
   document.querySelectorAll('.doc-row[data-doc]').forEach(r => r.addEventListener('click', () => openCompanyDoc(r.dataset.doc)));
 }
@@ -14694,6 +14768,9 @@ function openDocEditModal(id) {
       <div><label class="doc-lbl">Бичгийн дугаар</label><input id="dc-no" type="text" value="${escapeHtml(d ? (d.doc_no || '') : '')}" placeholder="1/234" /></div>
       <div><label class="doc-lbl">Огноо</label><input id="dc-date" type="date" value="${escapeHtml(d ? (d.doc_date || '') : '')}" /></div>
     </div>
+    <label class="doc-lbl">Хавтас <span class="doc-lbl-hint">(хоосон = үндсэн; «Гэрээ/2026» гэж давхарлаж болно)</span></label>
+    <input id="dc-folder" type="text" list="dc-folder-list" value="${escapeHtml(d ? docFolderNorm(d.folder) : docFolderNorm(state.docsFolder))}" placeholder="Гэрээнүүд" />
+    <datalist id="dc-folder-list">${docAllFolders(state.companyDocs).map(f => `<option value="${escapeHtml(f)}"></option>`).join('')}</datalist>
     <label class="doc-lbl">Хэнээс / хэнд</label>
     <input id="dc-cp" type="text" value="${escapeHtml(d ? (d.counterparty || '') : '')}" placeholder="Байгууллагын нэр" />
     <label class="doc-lbl">Тэмдэглэл</label>
@@ -14730,6 +14807,7 @@ function openDocEditModal(id) {
       id: d ? d.id : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? 'doc-' + crypto.randomUUID() : 'doc-' + Date.now()),
       title,
       category: $('#dc-cat').value,
+      folder: docFolderNorm($('#dc-folder').value) || null,
       doc_no: $('#dc-no').value.trim() || null,
       doc_date: $('#dc-date').value || null,
       counterparty: $('#dc-cp').value.trim() || null,

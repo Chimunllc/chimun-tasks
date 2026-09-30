@@ -1216,6 +1216,29 @@ eq(F.docBulkSkip('том.pdf', 9 * 1024 * 1024), 'big', '8MB-аас том → �
   eq(F.docBulkSkipSummary([]), '', 'хураангуй: алгасах юм алга → хоосон');
 }
 
+// 22c) Хавтас — тусдаа хүснэгтгүй, зөвхөн замын мөр
+need(['docFolderNorm', 'docFolderFromPath', 'docFolderChildren', 'docsInFolder', 'docFolderCrumbs', 'docAllFolders']);
+eq(F.docFolderNorm('/Гэрээ//2026/'), 'Гэрээ/2026', 'зам: илүү зураас, хоосон хэсэг цэвэрлэгдэнэ');
+eq(F.docFolderNorm('  Гэрээ  '), 'Гэрээ', 'зам: захын зай хасагдана');
+eq(F.docFolderNorm(null), '', 'зам: хоосон → үндсэн хавтас');
+eq(F.docFolderFromPath('Гэрээнүүд/2026/x.pdf'), 'Гэрээнүүд/2026', 'файлын замаас хавтас');
+eq(F.docFolderFromPath('x.pdf'), '', 'дээд түвшний файл → үндсэн хавтас');
+{
+  const docs = [
+    { id: '1', folder: 'Гэрээ' }, { id: '2', folder: 'Гэрээ/2026' }, { id: '3', folder: 'Гэрээ/2025' },
+    { id: '4', folder: 'Брэнд' }, { id: '5', folder: null }, { id: '6', folder: '' },
+  ];
+  const root = F.docFolderChildren(docs, '');
+  eq(root.map(x => x.name).join(','), 'Брэнд,Гэрээ', 'үндсэн: дэд хавтас цагаан толгойгоор');
+  eq(root.find(x => x.name === 'Гэрээ').n, 3, 'тоолол: дэд дэд хавтасны баримт ЭЦЭГ хавтсанд тоологдоно');
+  eq(F.docsInFolder(docs, '').map(d => d.id).join(','), '5,6', 'үндсэн хавтсанд: folder хоосон баримтууд');
+  eq(F.docsInFolder(docs, 'Гэрээ').map(d => d.id).join(','), '1', 'хавтсанд ШУУД байгаа нь л — дэд хавтасных орохгүй');
+  eq(F.docFolderChildren(docs, 'Гэрээ').map(x => x.path).join(','), 'Гэрээ/2025,Гэрээ/2026', 'дэд хавтасны бүтэн зам');
+  eq(F.docFolderCrumbs('Гэрээ/2026').map(c => c.path).join(' | '), 'Гэрээ | Гэрээ/2026', 'breadcrumb: шатлан бүтэн зам');
+  eq(F.docFolderCrumbs('').length, 0, 'breadcrumb: үндсэн хавтсанд хоосон');
+  eq(F.docAllFolders(docs).join(','), 'Брэнд,Гэрээ,Гэрээ/2025,Гэрээ/2026', 'бүх хавтас — дэд түвшин бүрээр');
+}
+
 // ═══════════════════ ДҮН ═══════════════════
 function finish() {
   console.log('');

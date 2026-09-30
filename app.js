@@ -11825,7 +11825,7 @@ function attHandleScan(data) {
   (state.attendanceToday = state.attendanceToday || []).push(rec);
   attToast((kind === 'in' ? '✅ ' : '👋 ') + (mem.name || phone) + ' · ' + (kind === 'in' ? 'Ирлээ' : 'Явлаа') + ' ' + attTimeUB(nowIso), kind === 'in' ? 'ok' : 'out');
   attBeep();
-  const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
+  const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: memberBranch1(mem) };
   attSaveScanRecord(body, rec, mem.name || phone).then(saved => {
     // «Маргааш хэдэн цагт ирэх вэ?» — ЗӨВХӨН серверт хадгалагдсаны дараа. Хадгалагдаагүй
     // ирцийн дараа цаг асуувал бүртгэгдсэн мэт төөрөгдөнө.
@@ -12095,7 +12095,7 @@ function openManualOutModal(memberKey, name, day, inTs) {
       await attSaveManualOut({
         member_key: memberKey, member_name: (mem && mem.name) || name || '', member_phone: memberKey,
         kind: 'out', ts, day, token: 'manual', source: 'manual',
-        branch: mem ? (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) : null,
+        branch: mem ? memberBranch1(mem) : null,
       }, nextDay);   // маргаашийн бол `day`-г заавал ээлжийн өдрөөр бичнэ (эс бол хос сална)
     } catch (err) {
       btn.disabled = false; errEl.textContent = '⚠ Хадгалагдсангүй: ' + err.message; errEl.hidden = false; return;
@@ -12205,7 +12205,7 @@ async function attReqApprove(k) {
   const base = {
     member_key: req.key, member_name: mem.name || req.name || '', member_phone: req.key,
     day: req.day, token: 'request', source: 'request',
-    branch: Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null),
+    branch: memberBranch1(mem),
   };
   try {
     if (v.newIn) await attSaveManualOut(Object.assign({}, base, { kind: 'in', ts: v.inTs }), true);
@@ -13789,6 +13789,15 @@ function memberBranchesOf(m) {
   const ov = state.memberBranches && state.memberBranches[pk];
   if (Array.isArray(ov)) return ov;
   return Array.isArray(m.branches) ? m.branches : [];
+}
+/* Нэг салбар (эхнийх) — ирц бичих/нэвтрэх зэрэг ГАНЦ утга хэрэгтэй газарт.
+   ⛔ `m.branches[0]`-ыг ШУУД БҮҮ УНШ — `member_branches` override-ийг тойрно.
+     2026-09-30-нд яг тэрнээс болж ирцийн киоск M-Event ажилтныг «camp» гэж
+     бүртгэж, салбарын дүн шинжилгээ бүхэлдээ буруу гарсан. */
+function memberBranch1(m) {
+  const bs = memberBranchesOf(m);
+  if (Array.isArray(bs) && bs.length) return bs[0];
+  return (m && (m.branch || (typeof m.group === 'string' ? m.group : ''))) || null;
 }
 // Override устгах (default role руу буцаах) — PostgREST DELETE.
 async function clearMemberPerms(personKey) {
@@ -36107,7 +36116,8 @@ function ageFromRD(rd) {
 }
 function staffBranchLabel(m) {
   if (m.worker_type === 'daily') return 'Цагийн ажилтан';
-  const bs = (Array.isArray(m.branches) ? m.branches.join(' ') : String(m.group || m.branch || '')).toLowerCase();
+  const _b = memberBranchesOf(m);
+  const bs = (_b.length ? _b.join(' ') : String(m.group || m.branch || '')).toLowerCase();
   const hasE = /m-event|event|ивент|эвент/.test(bs);
   const hasC = /camp|кемп|номаад|nomaad/.test(bs);
   if (hasE && hasC) return 'Нэгдсэн';
@@ -39111,8 +39121,9 @@ function setUser(member, profile, auth) {
   state.isCEO = (_lvl >= 100) || _fullAccess;
   state.myLevel = _fullAccess ? 100 : _lvl;
   // Constrain branch to one the user actually belongs to
-  if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
-    state.branch = member.branches[0];
+  const _mbs = memberBranchesOf(member);
+  if (_mbs.length && !_mbs.includes(state.branch)) {
+    state.branch = _mbs[0];
   }
   // Persist a lightweight session — утас/email/нэрийн түлхүүрээр
   localStorage.setItem('userEmail', personKey(member));
@@ -39754,8 +39765,9 @@ function tryRestoreSession() {
   const _fullAccess = isFullAccessMember(member);
   state.isCEO = ((member.level || 0) >= 100) || _fullAccess;
   state.myLevel = _fullAccess ? 100 : (member.level || 0);
-  if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
-    state.branch = member.branches[0];
+  const _mbs = memberBranchesOf(member);
+  if (_mbs.length && !_mbs.includes(state.branch)) {
+    state.branch = _mbs[0];
   }
   return true;
 }

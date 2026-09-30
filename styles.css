@@ -7827,3 +7827,25 @@ select.no-asar-len {
 /* Нөөцийн алдагдал — ашгийн тайлангийн тэмдэглэл */
 .pnl-note.is-loss { color: var(--danger); }
 .pnl-note.is-pend { color: var(--warn); }
+
+/* ─── Хүргэлтэд цагтаа гарсан — хялбаршуулсан харагдац ─── */
+.dsp-late-list { margin-top: var(--space-3); }
+.dsp-late-row {
+  display: grid; grid-template-columns: 3.5rem 1fr 3rem 3rem; gap: var(--space-2);
+  align-items: center; width: 100%; text-align: left; cursor: pointer;
+  padding: var(--space-2); border: none; border-bottom: 1px solid var(--line);
+  background: transparent; color: var(--text); font-size: var(--fs-sm); font-family: inherit;
+}
+.dsp-late-row:hover { background: var(--panel-hover); }
+.dsp-lr-n { font-weight: 700; }
+.dsp-lr-c { color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsp-lr-d { color: var(--muted); font-size: var(--fs-xs); }
+.dsp-lr-h { color: var(--danger); font-weight: 700; text-align: right; }
+.dsp-det { margin-top: var(--space-3); }
+.dsp-det > summary {
+  cursor: pointer; font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0;
+}
+/* Өдрийн баганын өргөн 10%-ийн алхмаар — inline style нэмэхгүй (дизайны гэрээ) */
+.dsp-w0 { width: 0; } .dsp-w10 { width: 10%; } .dsp-w20 { width: 20%; } .dsp-w30 { width: 30%; }
+.dsp-w40 { width: 40%; } .dsp-w50 { width: 50%; } .dsp-w60 { width: 60%; } .dsp-w70 { width: 70%; }
+.dsp-w80 { width: 80%; } .dsp-w90 { width: 90%; } .dsp-w100 { width: 100%; }

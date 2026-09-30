@@ -7826,3 +7826,4 @@ select.no-asar-len {
 
 /* Нөөцийн алдагдал — ашгийн тайлангийн тэмдэглэл */
 .pnl-note.is-loss { color: var(--danger); }
+.pnl-note.is-pend { color: var(--warn); }

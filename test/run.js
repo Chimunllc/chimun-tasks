@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -13141,4 +13141,64 @@ async function swFetchTests() {
   // ⛔ Орлуулах үнээр биш ӨРТГӨӨР — эс бөгөөс ашгийн марж зардал руу орж алдагдал хөөрөгдөнө
   const mf = src.slice(src.indexOf('function missingItemsCost'), src.indexOf('function finBranchPnl'));
   ok(/countUnitCost/.test(mf) && !/\bprice\b/.test(mf), 'scan: алдагдал ӨРТГӨӨР бодогдоно (үнээр биш)');
+}
+
+// ═══ ТООЛЛОГЫН АЛДАГДАЛ = САЛБАРЫН ЗАРДАЛ (2026-09-30) ═══
+// Буцаан авахад дутсаныг missingItemsCost барина; тавиур дээрээс чимээгүй алга
+// болсон барааг зөвхөн ТООЛЛОГО олдог — тэр нь ашгийн тайланд ороогүй байв.
+{
+  const { countShrinkCost } = F;
+  vm.runInContext("state.products = [{sku:'M-1',cost:49000},{sku:'M-2',cost:175000},{sku:'M-3',cost:0}];", sandbox);
+  vm.runInContext("state.productCosts = {};", sandbox);
+  const row = (o) => ({ sku: 'M-1', counted_at: '2026-09-10T06:00:00Z', system_qty: 10, counted_qty: 10, applied: false, note: '', ...o });
+
+  // Хэрэгжүүлсэн сөрөг зөрүү → зардал
+  const a = countShrinkCost('2026-09', [row({ counted_qty: 7, applied: true })]);
+  eq(a.qty, 3, 'тооллого: 3 ширхэг дутсан');
+  eq(a.cost, 147000, 'тооллого: 3 × 49,000 = 147,000₮');
+  eq(a.pendingQty, 0, 'тооллого: хэрэгжүүлсэн бол хүлээгдэхгүй');
+
+  // ⛔ ХЭРЭГЖҮҮЛЭЭГҮЙ зөрүү зардал БОЛОХГҮЙ — дахин тоолоход залруулагдаж болно
+  const b = countShrinkCost('2026-09', [row({ counted_qty: 7, applied: false })]);
+  eq(b.cost, 0, 'тооллого: хэрэгжүүлээгүй бол зардал 0');
+  eq(b.pendingQty, 3, 'тооллого: хүлээгдэж буй тоо тусад нь гарна');
+  eq(b.pendingCost, 147000, 'тооллого: хүлээгдэж буй өртөг ил гарна');
+
+  // ⛔ ЭЕРЭГ зөрүү (илүү олдсон) ашиг БИШ — 0-ээр таглана
+  const c = countShrinkCost('2026-09', [row({ counted_qty: 14, applied: true })]);
+  eq(c.cost, 0, 'тооллого: илүү олдсон нь ашиг болохгүй');
+  eq(c.qty, 0, 'тооллого: эерэг зөрүү тоологдохгүй');
+  // Сөрөг ба эерэг хамт — эерэг нь сөрөгийг НӨХӨХГҮЙ
+  const d = countShrinkCost('2026-09', [row({ counted_qty: 7, applied: true }),
+                                        row({ sku: 'M-2', counted_qty: 14, applied: true })]);
+  eq(d.cost, 147000, 'тооллого: эерэг зөрүү сөрөгийг нөхөхгүй');
+
+  // Актлахаар тэмдэглэсэн эвдрэл (⟦DMG|засвар|актлах⟧) — тоонд байгаа тул зөрүүд орохгүй
+  const e = countShrinkCost('2026-09', [row({ applied: true, note: '⟦DMG|1|2⟧' })]);
+  eq(e.qty, 0, 'тооллого: зөрүүгүй бол дутагдал 0');
+  eq(e.dmgQty, 2, 'тооллого: актлах 2 ширхэг тусад нь');
+  eq(e.dmgCost, 98000, 'тооллого: актлах өртөг 2 × 49,000');
+  eq(e.total, 98000, 'тооллого: нийт = дутагдал + актлах');
+  // Засварт гэж тэмдэглэсэн нь зардал БОЛОХГҮЙ (материал банкны хуулгаар аль хэдийн орсон)
+  eq(countShrinkCost('2026-09', [row({ applied: true, note: '⟦DMG|5|0⟧' })]).total, 0,
+     'тооллого: засварын тоо зардал болохгүй (материал хуулгаар орсон)');
+
+  // Сарын шүүлт
+  eq(countShrinkCost('2026-08', [row({ counted_qty: 7, applied: true })]).cost, 0, 'тооллого: өөр сар тоологдохгүй');
+  // Өртөггүй бараа — тоо гарна, өртөг 0
+  const g = countShrinkCost('2026-09', [row({ sku: 'M-3', counted_qty: 6, applied: true })]);
+  eq(g.qty, 4, 'тооллого: өртөггүй барааны тоо гарна');
+  eq(g.cost, 0, 'тооллого: өртөггүй бол 0₮');
+
+  vm.runInContext("state.products = []; state.productCosts = {}; state.scRows = [];", sandbox);
+}
+
+// ═══ SCAN: тооллогын алдагдлыг ашгаас хасахыг хаана ═══
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function finBranchPnl'), src.indexOf('function finReceivables'));
+  ok(/countShrinkCost\(month\)/.test(fn), 'scan: finBranchPnl тооллогын алдагдлыг бодно');
+  ok(/exp\['ИВЕНТ'\]\s*\+=\s*cnt\.total/.test(fn), 'scan: тооллогын алдагдал ИВЕНТ-д нэмэгдэнэ');
+  // ⛔ Хэрэгжүүлээгүй зөрүү ИЛ гарна — эс бөгөөс «хэрэгжүүлэхгүй байж зайлсхийх» нүх үлдэнэ
+  ok(/bp\.cnt && bp\.cnt\.pendingQty/.test(src), 'scan: хэрэгжүүлээгүй зөрүү тайланд ил гарна');
 }

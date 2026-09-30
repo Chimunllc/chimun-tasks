@@ -32872,6 +32872,39 @@ function missingItemsCost(month, orders) {
   }
   return { qty, cost: Math.round(cost), lines };
 }
+/* ─── ТООЛЛОГЫН АЛДАГДАЛ = САЛБАРЫН ЗАРДАЛ (2026-09-30) ──────────────────────
+   Буцаан авахад дутсаныг `missingItemsCost` барина — гэхдээ тавиур дээрээс
+   чимээгүй алга болсон бараа тэнд гарахгүй. Түүнийг зөвхөн ТООЛЛОГО олдог.
+   ⛔ Зөвхөн ХЭРЭГЖҮҮЛСЭН (`applied`) тооллого зардал болно — нөөц үнэхээр
+     залруулагдсан мөч нь алдагдлыг хүлээн зөвшөөрсөн мөч. Хэрэгжүүлээгүй
+     тооллого нь дахин тоолоход залруулагдаж болох тул зардал болгохгүй
+     (нэг удаагийн тооллогын алдаа мөнхөд ашгаас хасагдахаас сэргийлнэ).
+   ⚠ Хэрэгжүүлээгүй СӨРӨГ зөрүү нь `pendingQty/pendingCost`-оор тусад нь гарна —
+     тайланд ил бичигдэнэ. Эс бөгөөс «хэрэгжүүлэхгүй байж зардлаас зайлсхийх»
+     нүх үлдэнэ.
+   ⚠ ЭЕРЭГ зөрүү (илүү олдсон) нь ашиг БИШ — 0-ээр таглана. Илүү олдсон бараа
+     нь өмнөх тооллогын алдаа, шинэ хөрөнгө биш.
+   ⚠ Актлах гэж тэмдэглэсэн эвдрэл (⟦DMG|засвар|актлах⟧) нь тоолсон тоонд
+     БАЙГАА (тавиур дээр байгаа) тул зөрүүгээр баригдахгүй — тусад нь нэмнэ. */
+function countShrinkCost(month, rows) {
+  let qty = 0, cost = 0, lines = 0, pendingQty = 0, pendingCost = 0, dmgQty = 0, dmgCost = 0;
+  for (const r of (rows || state.scRows || [])) {
+    if (!r || !r.sku) continue;
+    if (month && String(r.counted_at || '').slice(0, 7) !== month) continue;
+    const unit = (typeof countUnitCost === 'function') ? countUnitCost(r.sku) : 0;
+    const d = (typeof countDiff === 'function') ? countDiff(r) : 0;
+    if (d < 0) {
+      const q = -d;
+      if (r.applied) { qty += q; cost += q * unit; lines++; }
+      else { pendingQty += q; pendingCost += q * unit; }
+    }
+    // Актлахаар тэмдэглэсэн эвдрэл — тавиур дээр байгаа тул зөрүүд орохгүй
+    const dm = (typeof countDamage === 'function') ? countDamage(r) : { wo: 0 };
+    if (r.applied && dm.wo > 0) { dmgQty += dm.wo; dmgCost += dm.wo * unit; }
+  }
+  return { qty, cost: Math.round(cost), lines, pendingQty, pendingCost: Math.round(pendingCost),
+           dmgQty, dmgCost: Math.round(dmgCost), total: Math.round(cost + dmgCost) };
+}
 function finBranchPnl(month, basis) {
   const _mi = finMonthIncome(month, basis);
   const evInc = _mi.evInc, noInc = _mi.noInc;
@@ -32903,6 +32936,9 @@ function finBranchPnl(month, basis) {
   // COO-гийн ашгийн эрх алдагдлын 30%-ийг автоматаар үүрнэ.
   const miss = missingItemsCost(month);
   exp['ИВЕНТ'] += miss.cost;
+  // Тооллогоор илэрсэн алдагдал — тавиур дээрээс чимээгүй алга болсон бараа.
+  const cnt = countShrinkCost(month);
+  exp['ИВЕНТ'] += cnt.total;
   return {
     rows: [
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
@@ -32910,7 +32946,7 @@ function finBranchPnl(month, basis) {
       ...(exp['КАТЕРИНГ'] ? [{ k: 'Катеринг', inc: 0, exp: exp['КАТЕРИНГ'] }] : []),
       { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
       ...(exp['ЗАХ'] ? [{ k: '⚠ Салбар тодорхойгүй', inc: 0, exp: exp['ЗАХ'], unknown: true, n: unkN }] : []),
-    ], ownerLoan, depReturn, vat, vatPaid, dep, miss, unknownExp: exp['ЗАХ'], unknownN: unkN,
+    ], ownerLoan, depReturn, vat, vatPaid, dep, miss, cnt, unknownExp: exp['ЗАХ'], unknownN: unkN,
   };
 }
 // Авлага = баталгаажсан гэрээ − цуглуулсан (бүх хугацаа, point-in-time)
@@ -33421,6 +33457,8 @@ function renderReports() {
           : `<div class="pnl-note is-ref">📉 Элэгдэл <b>${fmtSaya(d.total)}/сар</b> — ЛАВЛАГАА, ${d.start}-аас зардал болж хасагдана (өмнөх сарын ашиг/COO-гийн тоо хөдлөхгүйн тулд)${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}</div>`;
       })()}
       ${bp.miss && bp.miss.qty ? `<div class="pnl-note is-loss">📦 Зардалд багтсан <b>нөөцийн алдагдал: ${fmtSaya(bp.miss.cost)}</b> — буцаан авахад дутсан <b>${bp.miss.qty}</b> ширхэг (${bp.miss.lines} мөр), M-Event-ийн зардал. Ашгийн хувь авдаг захирал алдагдлын хувийг автоматаар үүрнэ.</div>` : ''}
+      ${bp.cnt && bp.cnt.total ? `<div class="pnl-note is-loss">📋 Зардалд багтсан <b>тооллогын алдагдал: ${fmtSaya(bp.cnt.total)}</b>${bp.cnt.qty ? ` — дутсан <b>${bp.cnt.qty}</b> ширхэг` : ''}${bp.cnt.dmgQty ? ` · актлахаар тэмдэглэсэн <b>${bp.cnt.dmgQty}</b> ширхэг` : ''}</div>` : ''}
+      ${bp.cnt && bp.cnt.pendingQty ? `<div class="pnl-note is-pend">⏳ <b>${bp.cnt.pendingQty}</b> ширхэг (${fmtSaya(bp.cnt.pendingCost)}) тооллогоор дутсан ч <b>хэрэгжүүлээгүй</b> — нөөц залруулагдаагүй тул зардалд ОРООГҮЙ. Агуулах → Тооллогоос баталгаажуулна уу.</div>` : ''}
       ${bp.unknownExp ? `<div style="font-size:11px;color:var(--warn);margin-top:8px;">⚠ <b>${bp.unknownN} гүйлгээ (${fmtSaya(bp.unknownExp)})</b> салбаргүй эсвэл танихгүй кодтой. Өмнө нь Чимун ХХК-д чимээгүй нэмэгддэг байв — салбарыг нь заавал сонгоно уу.</div>` : ''}
       ${bp.ownerLoan ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">↩ Зардал БИШ мөнгөн хөдөлгөөн — эзний зээл, зээлийн үндсэн төлбөр, дотоод шилжүүлэг (69xx): ${fmtSaya(bp.ownerLoan)}</div>` : ''}</div>`;
     const stat = (icon, label, val, col, sub, view) => `<button ${view ? `data-go-view="${view}"` : 'disabled'} style="text-align:left;border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:14px 16px;cursor:${view ? 'pointer' : 'default'};min-width:0;">

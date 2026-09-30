@@ -12397,6 +12397,38 @@ function renderAttReqPanel() {
         </div></div>`;
     }).join('')}</div>`;
 }
+/* «Хэдэн хүн хэрэгтэй вэ» карт — Ирц дэлгэцийн дээд талд.
+   ⛔ Өдрийн тоог ГОЛ тоо болгож БҮҮ харуул — нэг өдрийн нарийвчлал r=0.44 (худал
+     нарийвчлал). 7 хоногийн дүн r=0.77 тул тэр нь гол тоо; өдрийн мөр нь чиглэл. */
+function dayLoadCardHtml() {
+  const rows = dayLoadForecast(state.appOrders || [], todayStr(), 7);
+  const tTouch = rows.reduce((t, r) => t + r.touches, 0);
+  if (!tTouch) return '';
+  const tHours = Math.round(rows.reduce((t, r) => t + r.hours, 0));
+  const shift = loadShiftHours();
+  const manDays = Math.ceil(tHours / shift);
+  const max = Math.max(1, ...rows.map(r => r.touches));
+  const day = rows.map((r, i) => {
+    const wd = _MN_WD[new Date(r.date + 'T00:00:00').getDay()];
+    const pct = Math.round(r.touches / max * 100);
+    const lbl = i === 0 ? 'Өнөөдөр' : i === 1 ? 'Маргааш' : `${r.date.slice(5)} ${wd}`;
+    const note = [r.out.length ? `${r.out.length} гарах` : '', r.back.length ? `${r.back.length} буцах` : '',
+                  r.recv.length ? `${r.recv.length} хүлээн авах` : ''].filter(Boolean).join(' · ');
+    return `<div class="dl-row${r.touches ? '' : ' dl-zero'}">
+      <span class="dl-day">${escapeHtml(lbl)}</span>
+      <span class="dl-bar"><i style="width:${pct}%"></i></span>
+      <span class="dl-n">${r.touches ? `~${r.people} хүн` : '—'}</span>
+      <span class="dl-note">${escapeHtml(note || 'ажил алга')}</span>
+    </div>`;
+  }).join('');
+  return `<div class="dl-card">
+    <div class="dl-t">👥 Ирэх 7 хоногийн ачаалал</div>
+    <div class="dl-big">${manDays} <span>хүн-өдөр</span></div>
+    <div class="dl-sub">${fmtMoneyShort ? '' : ''}${tHours} цагийн ажил · ${rows.reduce((t, r) => t + r.out.length + r.back.length, 0)} захиалгын хөдөлгөөн</div>
+    <div class="dl-list">${day}</div>
+    <div class="dl-warn">⚠ Өдрийн тоо нь <b>чиглэл</b> — баг эвентийн хуваарийг чанд дагадаггүй тул нэг өдрийн таамаг ойролцоо (бодит датагаар шалгахад 7 хоногийн дүн найдвартай, өдрийнх ойролцоо). Төлөвлөхдөө 7 хоногийн дүнг ашигла.</div>
+  </div>`;
+}
 function renderAttendance() {
   const day = state.attViewDay || todayStr();
   const isToday = day === todayStr();
@@ -12413,6 +12445,7 @@ function renderAttendance() {
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
+  const loadCard = (isToday && !monthMode) ? dayLoadCardHtml() : '';
   const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
       <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
       <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
@@ -12434,7 +12467,7 @@ function renderAttendance() {
     </div>`;
   const body = monthMode ? renderAttendanceMonth(day.slice(0, 7)) : renderAttendanceRows();
   return `<div style="max-width:720px;margin:0 auto;padding-bottom:20px;">
-    ${scanCard}${renderAttReqPanel()}${dateBar}
+    ${loadCard}${scanCard}${renderAttReqPanel()}${dateBar}
     <div id="att-list">${body}</div>
   </div>`;
 }
@@ -23536,6 +23569,60 @@ const _DELIVERY_ITEM_RE = /хүргэл|тээвэр|достав|deliver/i;
 function orderHasDeliveryItem(o) {
   const items = (o && o.items) || [];
   return Array.isArray(items) && items.some(it => _DELIVERY_ITEM_RE.test(String((it && (it.name || it.title || it.product)) || '')));
+}
+/* ─── ӨДРИЙН АЧААЛАЛ — «маргааш хэдэн хүн хэрэгтэй вэ» (2026-09-30) ──────────
+   Захиалгын эвентийн огнооноос ажлын хэмжээг урьдчилж тооцно. Шатын хугацааг
+   9 сарын 373 бодит шатаар хэмжиж тогтоов (медиан зөрүү):
+     clean/prepare/dispatch/deliver/setup → эвент ЭХЛЭХ өдөр (starts_at)
+     retstart/teardown                   → эвент ДУУСАХ өдөр (stops_at)
+     received                            → дуусахын МАРГААШ (stops_at + 1)
+   ⚠ ӨДРИЙН тоо нь ТААМАГ. Бодит датагаар тулгахад нэг өдрийн нарийвчлал r=0.44
+     (баг эвентийн хуваарийг чанд дагадаггүй), 7 хоногийн нийлбэр r=0.77.
+     Тиймээс UI нь 7 ХОНОГИЙН дүнг гол тоо болгож, өдрийн тоог «чиглэл» гэж заана.
+     ⛔ Өдрийн тоог «яг ийм хүн хэрэгтэй» гэж БҮҮ харуул — худал нарийвчлал болно.
+   ⚠ Хурд (`LOAD_MIN_PER_TOUCH`) нь ЗАВГҮЙ өдрүүдээс тооцогдсон (400+ бараатай
+     10 өдөр: 882 цаг / 8,005 хүрэлт = 6.6 мин). Сарын дундаж 11.3 мин боловч тэр нь
+     сул зогсолтыг агуулдаг тул төлөвлөлтөд хэт өндөр тоо гаргана. */
+const LOAD_MIN_PER_TOUCH = 6.6;   // нэг барааны нэг шатны дундаж хугацаа (минут)
+const LOAD_SHIFT_HOURS = 9;       // нэг хүний ажлын өдөр (цаг)
+function _loadCfg() { return (state.appConfig && typeof state.appConfig.day_load === 'object' && state.appConfig.day_load) || {}; }
+function loadMinPerTouch() { const v = Number(_loadCfg().min_per_touch); return v > 0 ? v : LOAD_MIN_PER_TOUCH; }
+function loadShiftHours() { const v = Number(_loadCfg().shift_hours); return v > 0 ? v : LOAD_SHIFT_HOURS; }
+// Нэг захиалга тухайн өдөр хэдэн ШАТ үүсгэх вэ (гарах / буцах / хүлээн авах тал)
+function orderStagesOnDay(o, iso) {
+  const s = String((o && o.starts_at) || '').slice(0, 10);
+  const e = String((o && o.stops_at) || '').slice(0, 10);
+  const dlv = typeof isDeliveryOrder === 'function' ? isDeliveryOrder(o) : false;
+  const set = dlv && typeof orderNeedsSetup === 'function' ? !!orderNeedsSetup(o) : false;
+  let n = 0, kind = '';
+  if (s && s === iso) { n += 3 + (dlv ? 1 : 0) + (set ? 1 : 0); kind = 'out'; }      // цэвэрлэх+бэлдэх+гаргах(+хүргэх)(+суурилуулах)
+  if (e && e === iso) { n += 1 + (set ? 1 : 0); kind = kind || 'back'; }             // буцаан авах (+буулгах)
+  if (e && e === addDays(iso, -1)) { n += 1; kind = kind || 'recv'; }                // агуулахад хүлээн авах
+  return { stages: n, kind };
+}
+/* Өдөр бүрийн ачаалал. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
+   Буцаах: [{ date, touches, hours, people, out:[], back:[], recv:[] }] */
+function dayLoadForecast(orders, fromIso, days) {
+  const out = [];
+  const minPer = loadMinPerTouch(), shift = loadShiftHours();
+  for (let i = 0; i < (days || 7); i++) {
+    const iso = addDays(fromIso, i);
+    const row = { date: iso, touches: 0, hours: 0, people: 0, out: [], back: [], recv: [] };
+    for (const o of (orders || [])) {
+      const st = String((o && o.status) || '').toLowerCase();
+      if (st === 'draft' || st === 'deleted' || st === 'canceled' || st === 'cancelled') continue;
+      const q = orderItemQty(o);
+      if (q <= 0) continue;
+      const g = orderStagesOnDay(o, iso);
+      if (!g.stages) continue;
+      row.touches += q * g.stages;
+      (row[g.kind] || row.out).push({ number: o.number, customer: o.customer || '', qty: q });
+    }
+    row.hours = Math.round(row.touches * minPer / 60 * 10) / 10;
+    row.people = row.hours > 0 ? Math.ceil(row.hours / shift) : 0;
+    out.push(row);
+  }
+  return out;
 }
 function isDeliveryOrder(o) {
   const d = (typeof parseDelivery === 'function') ? parseDelivery(o && o.note) : null;

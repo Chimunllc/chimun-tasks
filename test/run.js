@@ -161,6 +161,23 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
 }
 
+/* 0e3) SCAN — өөрийн данс/яаралтай холбоог УНШИХ зам (2026-09-30)
+   `bank_account` нь /webhook/staff-аас буцаагддаггүй эмзэг талбар тул TEAM-д
+   байхгүй. Иймээс ажилтан дансаа бүртгэсэн ч дараагийн ачаалалтад «⚠ Данс
+   бүртгэгдээгүй» гэж ДАХИН шаардаж байв. `get_my_profile` RPC үүнийг хаана.
+   ⛔ RPC-д УТАС дамжуулж БОЛОХГҮЙ — сервер токеноосоо л авна. Дамжуулбал
+      хэн ч хэний ч данс, РД, хаягийг уншиж болох нүх болно. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/rpc\/get_my_profile/.test(codeLines), 'scan: өөрийн профайлыг get_my_profile RPC-ээр уншина');
+  const call = codeLines.slice(codeLines.indexOf('rpc/get_my_profile'), codeLines.indexOf('rpc/get_my_profile') + 500);
+  eq(/p_phone|phone:/.test(call), false, 'scan: get_my_profile-д УТАС дамжуулахгүй (токеноос авна)');
+  ok(/renderMyAttend\(\)[\s\S]{0,260}loadMyProfile\(/.test(codeLines),
+     'scan: «Миний ирц» нээхэд өөрийн данс татагдана');
+  ok(/loadMyProfile\(true\)/.test(codeLines),
+     'scan: профайл хадгалсны дараа серверээс ДАХИН уншиж батална');
+}
+
 // 0e3) SCAN — ЗУРАГ ХАРАХ ГАЗАР ГАНЦ: #lightbox (2026-09-19)
 // `openStagePhoto` нь `modal-bg`-ээр тусдаа харагч үүсгэдэг байв. `.modal-bg.open`
 // нь `display:block` тул дотоод flex хайрцаг дээд-зүүн буланд наалдаж зураг

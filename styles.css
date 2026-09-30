@@ -6434,7 +6434,7 @@ body.role-daily #add-project { display: none !important; }
 .doc-bulk-drop .db-drop-t { font-size: var(--fs-md); color: var(--muted); }
 .doc-bulk-drop .db-drop-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
 .doc-bulk-sum { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-2); min-height: 16px; }
-@media (max-width: 420px) { .doc-bulk-drop { padding: 14px 10px; } .doc-bulk-drop .db-drop-btns { width: 100%; flex-direction: column; } .doc-bulk-drop .db-drop-btns .btn { width: 100%; } }
+@media (max-width: 480px) { .doc-bulk-drop { padding: 14px 10px; } .doc-bulk-drop .db-drop-btns { width: 100%; flex-direction: column; } .doc-bulk-drop .db-drop-btns .btn { width: 100%; } }
 .doc-bulk-list { max-height: 44vh; overflow-y: auto; margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
 .doc-bulk-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 12.5px; padding: 5px 8px; border-radius: 7px; background: var(--panel-hover); }
 .doc-bulk-row.too-big { opacity: .55; }

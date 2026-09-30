@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -12990,4 +12990,77 @@ async function swFetchTests() {
   // Ажилтны жагсаалтын шошго ч override-оор
   const lbl = src.slice(src.indexOf('function staffBranchLabel'), src.indexOf('function staffBranchLabel') + 600);
   ok(/memberBranchesOf\(m\)/.test(lbl), 'scan: staffBranchLabel override-оор уншина');
+}
+
+// ═══ ӨДРИЙН АЧААЛАЛ — «хэдэн хүн хэрэгтэй вэ» (2026-09-30) ═══
+// Шатын хугацааг 9 сарын 373 бодит шатаар хэмжив (медиан зөрүү эвентийн огнооноос):
+// гарах тал = starts_at, буцах = stops_at, хүлээн авах = stops_at+1.
+{
+  const { orderStagesOnDay, dayLoadForecast } = F;
+  vm.runInContext("state.appConfig = {};", sandbox);
+
+  // Хүргэлтгүй (очиж авах), суурилуулалтгүй: цэвэрлэх+бэлдэх+гаргах = 3 шат
+  const pick = { starts_at: '2026-10-05', stops_at: '2026-10-06', items: [{ qty: 10 }], note: '' };
+  eq(orderStagesOnDay(pick, '2026-10-05').stages, 3, 'ачаалал: очиж авах — эхлэх өдөр 3 шат');
+  eq(orderStagesOnDay(pick, '2026-10-06').stages, 1, 'ачаалал: дуусах өдөр буцаан авах 1 шат');
+  eq(orderStagesOnDay(pick, '2026-10-07').stages, 1, 'ачаалал: маргааш нь агуулахад хүлээн авах');
+  eq(orderStagesOnDay(pick, '2026-10-08').stages, 0, 'ачаалал: дараа нь ажил алга');
+
+  // Хүргэлттэй (⟦DLV⟧) — деливери нэмэгдэнэ
+  const dlv = { starts_at: '2026-10-05', stops_at: '2026-10-06', items: [{ qty: 10 }], note: '⟦DLV|city|0|30000⟧' };
+  eq(orderStagesOnDay(dlv, '2026-10-05').stages, 4, 'ачаалал: хүргэлттэй — эхлэх өдөр 4 шат');
+
+  // Хүргэлт + суурилуулалт (⟦SET|1⟧) — суурилуулах ба буулгах нэмэгдэнэ
+  const setp = { starts_at: '2026-10-05', stops_at: '2026-10-06', items: [{ qty: 10 }], note: '⟦DLV|city|0|30000⟧⟦SET|1⟧' };
+  eq(orderStagesOnDay(setp, '2026-10-05').stages, 5, 'ачаалал: суурилуулалттай — эхлэх өдөр 5 шат');
+  eq(orderStagesOnDay(setp, '2026-10-06').stages, 2, 'ачаалал: дуусах өдөр буцаах + буулгах');
+  // ⛔ Суурилуулалт нь ХҮРГЭЛТТЭЙ үед л гарна (дамжлагын дүрэмтэй нийцнэ)
+  const setNoDlv = { starts_at: '2026-10-05', stops_at: '2026-10-06', items: [{ qty: 10 }], note: '⟦SET|1⟧' };
+  eq(orderStagesOnDay(setNoDlv, '2026-10-05').stages, 3, 'ачаалал: хүргэлтгүй бол суурилуулалт тоологдохгүй');
+
+  // Нэг өдөрт эхлээд дуусдаг захиалга — хоёр тал НЭМЭГДЭНЭ
+  const same = { starts_at: '2026-10-05', stops_at: '2026-10-05', items: [{ qty: 4 }], note: '' };
+  eq(orderStagesOnDay(same, '2026-10-05').stages, 4, 'ачаалал: нэг өдрийн захиалга — гарах 3 + буцах 1');
+
+  // Таамаглал: бараа × шат = хүрэлт, цаг ба хүн бодогдоно
+  const fc = dayLoadForecast([dlv], '2026-10-05', 7);
+  eq(fc.length, 7, 'таамаг: 7 өдөр буцаана');
+  eq(fc[0].date, '2026-10-05', 'таамаг: эхний өдөр');
+  eq(fc[0].touches, 40, 'таамаг: 10 бараа × 4 шат = 40 хүрэлт');
+  ok(Math.abs(fc[0].hours - 4.4) < 0.05, 'таамаг: 40 × 6.6 мин = 4.4 цаг');
+  eq(fc[0].people, 1, 'таамаг: 4.4 цаг → 1 хүн (9 цагийн ээлж)');
+  eq(fc[0].out.length, 1, 'таамаг: гарах захиалга жагсаана');
+  eq(fc[2].touches, 10, 'таамаг: 3 дахь өдөр агуулахад хүлээн авна');
+
+  // ⛔ Ноорог/устгасан/цуцалсан захиалга ачаалалд ОРОХГҮЙ
+  for (const st of ['draft', 'deleted', 'canceled', 'cancelled']) {
+    const d2 = dayLoadForecast([{ ...dlv, status: st }], '2026-10-05', 3);
+    eq(d2[0].touches, 0, `таамаг: ${st} захиалга ачаалалд орохгүй`);
+  }
+  // Бараагүй захиалга ч орохгүй (хүргэлтийн мөр г.м.)
+  eq(dayLoadForecast([{ ...dlv, items: [] }], '2026-10-05', 3)[0].touches, 0, 'таамаг: бараагүй захиалга орохгүй');
+
+  // Хүн тооцоолол: 9 цагийн ээлж дүүрэхэд 2 хүн
+  const big = { starts_at: '2026-10-05', stops_at: '2026-10-06', items: [{ qty: 200 }], note: '' };
+  const fb = dayLoadForecast([big], '2026-10-05', 2);
+  eq(fb[0].touches, 600, 'таамаг: 200 бараа × 3 шат');
+  eq(fb[0].people, Math.ceil(600 * 6.6 / 60 / 9), 'таамаг: хүний тоо = цаг ÷ ээлж, дээш бөөрөнхийлнө');
+
+  // Тохиргооноос хурд/ээлж уншина
+  vm.runInContext("state.appConfig = { day_load: { min_per_touch: 12, shift_hours: 6 } };", sandbox);
+  const fcCfg = dayLoadForecast([dlv], '2026-10-05', 1);
+  ok(Math.abs(fcCfg[0].hours - 8) < 0.05, 'тохиргоо: 40 × 12 мин = 8 цаг');
+  eq(fcCfg[0].people, 2, 'тохиргоо: 8 цаг ÷ 6 цагийн ээлж = 2 хүн');
+  vm.runInContext("state.appConfig = {};", sandbox);
+}
+
+// ═══ SCAN: өдрийн таамгийг «яг» гэж харуулахыг хаана ═══
+// Нэг өдрийн нарийвчлал r=0.44 — баг эвентийн хуваарийг чанд дагадаггүй.
+// 7 хоногийн дүн (r=0.77) нь гол тоо; өдрийн мөр нь чиглэл гэж ил бичигдэнэ.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const card = src.slice(src.indexOf('function dayLoadCardHtml'), src.indexOf('function renderAttendance() {'));
+  ok(/чиглэл/.test(card), 'scan: өдрийн тоо «чиглэл» гэж тэмдэглэгдэнэ');
+  ok(/7 хоног/.test(card), 'scan: 7 хоногийн дүн гол тоо болж харагдана');
+  ok(/~\$\{r\.people\}/.test(card), 'scan: өдрийн хүний тоо «~» тэмдэгтэй (ойролцоо)');
 }

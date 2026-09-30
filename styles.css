@@ -7794,3 +7794,32 @@ select.no-asar-len {
   font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2);
   padding-top: var(--space-2); border-top: 1px solid var(--line); line-height: 1.5;
 }
+
+/* ─── Өдрийн ачаалал — «хэдэн хүн хэрэгтэй вэ» ─── */
+.dl-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl);
+  padding: var(--space-4); margin-bottom: var(--space-4);
+}
+.dl-t { font-size: var(--fs-sm); color: var(--muted); }
+.dl-big { font-size: var(--fs-2xl); font-weight: 800; color: var(--primary); line-height: 1.1; margin-top: var(--space-1); }
+.dl-big span { font-size: var(--fs-base); font-weight: 600; color: var(--text-soft); }
+.dl-sub { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
+.dl-list { margin-top: var(--space-3); }
+.dl-row {
+  display: grid; grid-template-columns: 4.5rem 1fr 4rem; gap: var(--space-2);
+  align-items: center; padding: var(--space-2) 0; border-top: 1px solid var(--line);
+}
+.dl-day { font-size: var(--fs-sm); font-weight: 600; }
+.dl-bar { background: var(--panel-hover); border-radius: var(--r-full); height: 8px; overflow: hidden; }
+.dl-bar i { display: block; height: 100%; background: var(--primary); border-radius: var(--r-full); }
+/* Баганын өргөн 10%-ийн алхмаар — динамик утгыг inline style-гүйгээр (дизайны гэрээ) */
+.dl-w0 { width: 2%; } .dl-w10 { width: 10%; } .dl-w20 { width: 20%; } .dl-w30 { width: 30%; }
+.dl-w40 { width: 40%; } .dl-w50 { width: 50%; } .dl-w60 { width: 60%; } .dl-w70 { width: 70%; }
+.dl-w80 { width: 80%; } .dl-w90 { width: 90%; } .dl-w100 { width: 100%; }
+.dl-n { font-size: var(--fs-sm); font-weight: 700; text-align: right; }
+.dl-note { grid-column: 2 / -1; font-size: var(--fs-xs); color: var(--muted); }
+.dl-zero .dl-n { color: var(--muted); font-weight: 400; }
+.dl-warn {
+  margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--line);
+  font-size: var(--fs-xs); color: var(--muted); line-height: 1.5;
+}

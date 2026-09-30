@@ -32840,6 +32840,38 @@ function finMonthIncome(month, basis) {
   });
   return { evInc, evN: evList.length, noInc, noN, evList };
 }
+/* ─── НӨӨЦИЙН АЛДАГДАЛ = САЛБАРЫН ЗАРДАЛ (2026-09-30) ───────────────────────
+   Буцаан авахад дутсан бараа нөөцөөс хасагддаг ч ашгийн тайланд ХААНА Ч
+   гардаггүй байв — 7–9 сард 12 ширхэг (840,000₮) алга болсон атлаа салбарын
+   ашиг нэг ч төгрөгөөр буураагүй. Улмаар COO-гийн 30%-ийн ашгийн эрх
+   алдагдлаас БҮРЭН тусгаарлагдсан байсан: агуулахыг удирддаг хүн нөөц
+   алдагдахад санхүүгийн үр дагаваргүй.
+   ⛔ Энэ нь хариуцлагын ГЭРЭЭ, цалингийн зохицуулалт, торгуулийг ОРЛУУЛНА —
+     тоо нь өөрөө хариуцлага үүсгэнэ, гараар бичих зүйл байхгүй.
+   ⚠ ӨРТГӨӨР бодно (`countUnitCost`), орлуулах үнээр БИШ — орлуулах үнэ нь
+     ашгийн маржийг зардал руу оруулж, алдагдлыг хиймлээр өсгөнө.
+   ⚠ Илэрсэн САРААР зардал болно (шатны `at`), захиалгын сараар БИШ — хаасан
+     сарын ашиг хожим хөдлөх ёсгүй.
+   ⚠ Өртөггүй бараа 0-ээр тооцогдоно (нуухгүй, тоо нь дэлгэцэд ил гарна). */
+function missingItemsCost(month, orders) {
+  let qty = 0, cost = 0, lines = 0;
+  for (const o of (orders || state.appOrders || [])) {
+    const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    for (const k of Object.keys(sm)) {
+      const e = sm[k];
+      if (!e || typeof e !== 'object' || !Array.isArray(e.items)) continue;
+      if (month && String(e.at || '').slice(0, 7) !== month) continue;
+      for (const it of e.items) {
+        if (!it || it.got == null) continue;   // тоо тулгаагүй мөр — дутагдал мэдэгдэхгүй
+        const short = (Number(it.qty) || 0) - (Number(it.got) || 0);
+        if (short <= 0) continue;
+        qty += short; lines++;
+        cost += short * (typeof countUnitCost === 'function' ? countUnitCost(it.sku) : 0);
+      }
+    }
+  }
+  return { qty, cost: Math.round(cost), lines };
+}
 function finBranchPnl(month, basis) {
   const _mi = finMonthIncome(month, basis);
   const evInc = _mi.evInc, noInc = _mi.noInc;
@@ -32867,6 +32899,10 @@ function finBranchPnl(month, basis) {
   // түүнээс өмнөх сард `dep` нь ЗӨВХӨН лавлагаа (active:false) — хаасан сарын ашиг хөдлөхгүй.
   const dep = deprecForMonth(month);
   if (dep.active) ['ИВЕНТ', 'КЕМП', 'КАТЕРИНГ', 'ХХК'].forEach(b => { exp[b] += dep[b] || 0; });
+  // Нөөцийн алдагдал — дамжлага нь M-Event-ийнх тул ИВЕНТ салбарт. Ингэснээр
+  // COO-гийн ашгийн эрх алдагдлын 30%-ийг автоматаар үүрнэ.
+  const miss = missingItemsCost(month);
+  exp['ИВЕНТ'] += miss.cost;
   return {
     rows: [
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
@@ -32874,7 +32910,7 @@ function finBranchPnl(month, basis) {
       ...(exp['КАТЕРИНГ'] ? [{ k: 'Катеринг', inc: 0, exp: exp['КАТЕРИНГ'] }] : []),
       { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
       ...(exp['ЗАХ'] ? [{ k: '⚠ Салбар тодорхойгүй', inc: 0, exp: exp['ЗАХ'], unknown: true, n: unkN }] : []),
-    ], ownerLoan, depReturn, vat, vatPaid, dep, unknownExp: exp['ЗАХ'], unknownN: unkN,
+    ], ownerLoan, depReturn, vat, vatPaid, dep, miss, unknownExp: exp['ЗАХ'], unknownN: unkN,
   };
 }
 // Авлага = баталгаажсан гэрээ − цуглуулсан (бүх хугацаа, point-in-time)
@@ -33384,6 +33420,7 @@ function renderReports() {
           ? `<div class="pnl-note">📉 Зардалд багтсан <b>элэгдэл: ${fmtSaya(d.total)}</b>/сар (M-Event ${fmtSaya(d['ИВЕНТ'])} · NOMAAD ${fmtSaya(d['КЕМП'])}) — ${cats}${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}${d.doneN ? `<br>✓ ${d.doneN} бараа бүрэн элэгдсэн (${fmtSaya(d.doneCapital)} өртөг) — зардалд орохоо больсон` : ''}${d.noDateN ? `<br>⚠ ${d.noDateN} бараа худалдан авсан огноогүй (${fmtSaya(d.noDateMonth)}/сар) — насаа дуусгасан эсэх нь тодорхойгүй` : ''}</div>`
           : `<div class="pnl-note is-ref">📉 Элэгдэл <b>${fmtSaya(d.total)}/сар</b> — ЛАВЛАГАА, ${d.start}-аас зардал болж хасагдана (өмнөх сарын ашиг/COO-гийн тоо хөдлөхгүйн тулд)${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}</div>`;
       })()}
+      ${bp.miss && bp.miss.qty ? `<div class="pnl-note is-loss">📦 Зардалд багтсан <b>нөөцийн алдагдал: ${fmtSaya(bp.miss.cost)}</b> — буцаан авахад дутсан <b>${bp.miss.qty}</b> ширхэг (${bp.miss.lines} мөр), M-Event-ийн зардал. Ашгийн хувь авдаг захирал алдагдлын хувийг автоматаар үүрнэ.</div>` : ''}
       ${bp.unknownExp ? `<div style="font-size:11px;color:var(--warn);margin-top:8px;">⚠ <b>${bp.unknownN} гүйлгээ (${fmtSaya(bp.unknownExp)})</b> салбаргүй эсвэл танихгүй кодтой. Өмнө нь Чимун ХХК-д чимээгүй нэмэгддэг байв — салбарыг нь заавал сонгоно уу.</div>` : ''}
       ${bp.ownerLoan ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">↩ Зардал БИШ мөнгөн хөдөлгөөн — эзний зээл, зээлийн үндсэн төлбөр, дотоод шилжүүлэг (69xx): ${fmtSaya(bp.ownerLoan)}</div>` : ''}</div>`;
     const stat = (icon, label, val, col, sub, view) => `<button ${view ? `data-go-view="${view}"` : 'disabled'} style="text-align:left;border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:14px 16px;cursor:${view ? 'pointer' : 'default'};min-width:0;">

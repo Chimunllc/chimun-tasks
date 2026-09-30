@@ -12965,3 +12965,29 @@ async function swFetchTests() {
   const mo = src.slice(src.indexOf('function renderAttendanceMonth'), src.indexOf('function openWorkStartModal'));
   eq((mo.match(/stagePayByPerson\(/g) || []).length, 1, 'scan: сарын хүснэгт хөлсийг нэг удаа бодно');
 }
+
+// ═══ SCAN: салбарыг `m.branches`-ээс ШУУД уншихыг хаана (2026-09-30) ═══
+// Салбарын ЖИНХЭНЭ утга = `member_branches` override (аппын карт тэндээс уншина);
+// `employees.branches` нь суурь бөгөөд хоцрогдож болно. Амьд системд 9 ажилтны
+// хоёр утга зөрсөн байсан — Э.Очбаяр/Э.Шинэбаяр/Р.Түмэнжаргал нар картан дээр
+// M-Event атлаа суурь баганад «camp» байв. Ирцийн киоск суурь баганаас уншдаг тул
+// 3 сарын ирц буруу салбараар бүртгэгдэж, салбарын дүн шинжилгээ бүхэлдээ гажсан.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  // memberBranchesOf-ийн ӨӨРИЙН биеийг (зөвшөөрөгдсөн fallback) хасч үлдсэнийг шалгана
+  const mbStart = src.indexOf('function memberBranchesOf');
+  const rest = src.slice(0, mbStart) + src.slice(src.indexOf('}', src.indexOf('return Array.isArray(m.branches)', mbStart)));
+  // `mem.branches` / `m.branches` / `member.branches` гэсэн ГИШҮҮНИЙ объектоос уншсаныг барина
+  // (35443-ийн `branches.map(...)` мэт өөр утгатай локал хувьсагчийг оруулахгүй).
+  const lines = rest.split('\n').filter(l =>
+    /\b(m|mem|member|x|u)\.branches\b/.test(l)
+    && !/memberBranchesOf|memberBranch1|member_branches|memberBranches\[|person_key/.test(l)
+    && !/^\s*(\/\/|\*)/.test(l));
+  eq(lines.length, 0, 'scan: салбарыг memberBranchesOf/memberBranch1-ээр л уншина');
+
+  // Ирц бичих зам нэг утга авахдаа memberBranch1 ашиглана
+  ok(/branch:\s*memberBranch1\(mem\)/.test(src), 'scan: ирцийн бичилт memberBranch1 ашиглана');
+  // Ажилтны жагсаалтын шошго ч override-оор
+  const lbl = src.slice(src.indexOf('function staffBranchLabel'), src.indexOf('function staffBranchLabel') + 600);
+  ok(/memberBranchesOf\(m\)/.test(lbl), 'scan: staffBranchLabel override-оор уншина');
+}

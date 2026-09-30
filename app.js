@@ -12693,6 +12693,33 @@ function loadQRCodeJs() {
   });
   return window.__qrgenLoading;
 }
+/* ӨӨРИЙН цалингийн данс / яаралтай холбоог татна.
+   ⚠ Эдгээр талбар `/webhook/staff`-аас БУЦААГДДАГГҮЙ (эмзэг) тул TEAM-д байхгүй.
+   Иймээс ажилтан дансаа бүртгэсэн ч дараагийн ачаалалтад «⚠ Данс бүртгэгдээгүй»
+   гэж ДАХИН шаардаж, өөрийнхөө бүртгэлийг батлах ямар ч арга байхгүй байв.
+   RPC нь утсыг ЗӨВХӨН токеноос авдаг тул өөрийнхөөс өөрийг уншихгүй. */
+async function loadMyProfile(force) {
+  if (!DB_ANON_KEY || !state.me) return;
+  if (state._myProfileLoaded && !force) return;
+  state._myProfileLoaded = true;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/get_my_profile`, {
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
+      body: '{}',
+    }, 15000);
+    if (!r.ok) { state._myProfileLoaded = false; dataLoadFailed('миний профайл', new Error('HTTP ' + r.status)); return; }
+    const rows = await r.json();
+    const p = Array.isArray(rows) ? rows[0] : rows;
+    if (!p) return;
+    state.myProfile = p;
+    // TEAM дэх өөрийн мөрөнд наана — дэлгэц бүр findMember()-ээс уншдаг
+    const m = findMember(state.me);
+    if (m) ['bank', 'bank_account', 'bank_holder', 'emergency_name', 'emergency_phone', 'address']
+      .forEach(k => { if (p[k] !== undefined && p[k] !== null && p[k] !== '') m[k] = p[k]; });
+    if (typeof render === 'function') render();
+  } catch (e) { state._myProfileLoaded = false; dataLoadFailed('миний профайл', e); }
+}
+
 async function loadMyAttendance() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=${encodeURIComponent(pgrstInList(keyVariants(state.me)))}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts,source`,
@@ -12703,6 +12730,7 @@ async function loadMyAttendance() {
 }
 function renderMyAttend() {
   const me = findMember(state.me) || {};
+  if (!state._myProfileLoaded) loadMyProfile();   // данс TEAM-д байхгүй — өөрийн токеноор татна
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta
   const recs = state.myAttendance || [];
@@ -39591,6 +39619,9 @@ function openProfileModal() {
     clearBtn.style.display = 'none';
   }
   // Цалин/данс + яаралтай холбоо + үнэмлэх (TEAM member-ээс)
+  // ⚠ Эдгээр эмзэг талбар TEAM-д байхгүй байж болно — өөрийн токеноор татаад
+  //   дахин бөглөнө, эс бөгөөс хадгалсан данс нь хоосон харагдана.
+  if (!state._myProfileLoaded) loadMyProfile().then(() => { if (document.getElementById('profile-modal')?.classList.contains('open')) openProfileModal(); });
   const meM = findMember(state.me) || {};
   const banks = (typeof MONGOLIAN_BANKS !== 'undefined' ? MONGOLIAN_BANKS : ['Хаан банк', 'Голомт банк', 'Худалдаа хөгжлийн банк', 'Хас банк', 'Төрийн банк']);
   const bankSel = document.getElementById('profile-bank');
@@ -39738,6 +39769,7 @@ function setupProfileModal() {
         }, 15000);
         if (!rp.ok) throw new Error('HTTP ' + rp.status);
         if (member) Object.assign(member, { bank: _bank, bank_account: _acct, bank_holder: gv('profile-holder'), emergency_name: gv('profile-emg-name'), emergency_phone: gv('profile-emg-phone'), address: gv('profile-address') });
+        loadMyProfile(true);   // серверээс дахин уншиж локал хуулбарыг батална
       } catch (e) { _profileOk = false; console.warn('update_my_profile', e); }
       const _doc = state._pendingDoc;
       if (_doc) {

@@ -1239,6 +1239,23 @@ eq(F.docFolderFromPath('x.pdf'), '', 'дээд түвшний файл → үн�
   eq(F.docAllFolders(docs).join(','), 'Брэнд,Гэрээ,Гэрээ/2025,Гэрээ/2026', 'бүх хавтас — дэд түвшин бүрээр');
 }
 
+/* Ангилал сонгоход хавтас НУУГДАХГҮЙ — шүүсэн баримтаас хавтас гарна.
+   Амьд системд «Бусад» табаар орж ирэхэд хавтас алга болж байсан алдаа. */
+{
+  const docs = [
+    { id: 'a', folder: 'Logo CAMP', category: 'other' },
+    { id: 'b', folder: 'Logo CAMP', category: 'other' },
+    { id: 'c', folder: 'Гэрээ', category: 'contract' },
+    { id: 'd', folder: '', category: 'other' },
+  ];
+  const pool = docs.filter(d => d.category === 'other');   // «Бусад» таб
+  const fs = F.docFolderChildren(pool, '');
+  eq(fs.length, 1, 'ангилал шүүхэд тохирох хавтас л гарна');
+  eq(fs[0].name, 'Logo CAMP', 'хавтас ангилал сонгосон ч харагдана');
+  eq(fs[0].n, 2, 'тоолол нь ШҮҮГДСЭН баримтаар — 2 (гэрээ орохгүй)');
+  eq(F.docsInFolder(pool, '').map(d => d.id).join(','), 'd', 'үндсэн хавтсанд шүүгдсэн баримт');
+}
+
 // ═══════════════════ ДҮН ═══════════════════
 function finish() {
   console.log('');

@@ -14641,13 +14641,17 @@ function renderDocuments() {
   const editable = can('documents.edit');
   const match = (d) => (!cat || d.category === cat)
     && (!q || [d.title, d.doc_no, d.counterparty, d.note, d.file_name].some(v => String(v || '').toLowerCase().includes(q)));
-  /* Хайлт эсвэл ангилал сонгосон бол ХАВТАСГҮЙ — бүх хавтаснаас нэг жагсаалт.
-     Эс бөгөөс «хайлаа, олдсонгүй» гэж бодоод өөр хавтсанд байгаа баримтаа
-     олохгүй өнгөрнө. Тэр үед мөр бүр дээр хавтсаа бичиж харуулна. */
-  const flat = !!(q || cat);
+  /* ЗӨВХӨН ХАЙЛТ нь хавтсыг түр татан буулгана — бүх хавтаснаас нэг жагсаалт,
+     мөр бүрд хавтсыг нь бичнэ. Эс бөгөөс «олдсонгүй» гээд өөр хавтсанд байгаа
+     баримтаа олохгүй өнгөрнө.
+     ⛔ Ангилал сонгоход хавтсыг НУУХГҮЙ: ангилалын таб бол хүний ердийн зам тул
+     нуувал хавтас бараг хэзээ ч харагдахгүй болно. Ангилал нь хавтасны ДОТОР
+     шүүнэ — хавтасны тоолол ч шүүгдсэнээр гарна. */
+  const flat = !!q;
   const cur = flat ? '' : docFolderNorm(state.docsFolder);
-  const subFolders = flat ? [] : docFolderChildren(docs, cur);
-  const shown = flat ? docs.filter(match) : docsInFolder(docs, cur).filter(match);
+  const pool = docs.filter(match);
+  const subFolders = flat ? [] : docFolderChildren(pool, cur);
+  const shown = flat ? pool : docsInFolder(pool, cur);
   const tabs = [{ key: '', label: 'Бүгд', icon: '🗂' }].concat(DOC_CATS).map(c => {
     const n = c.key ? docs.filter(d => d.category === c.key).length : docs.length;
     return `<button class="otab${cat === c.key ? ' on' : ''}" data-dcat="${c.key}">${c.icon} ${escapeHtml(c.label)}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>`;

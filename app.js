@@ -24021,11 +24021,16 @@ function orderDispatchPlan(o) {
   if (!t) return null;                       // эхлэх цаггүй бол ТААМАГЛАХГҮЙ
   const dlv = parseDelivery(o.note);
   const deliver = !!(dlv && isDeliveryZone(dlv.zone));
-  const km = deliver ? (Number(dlv.km) || 0) : 0;
+  // ⛔ ОЧИЖ АВАХ захиалгыг ХЭМЖИХГҮЙ (2026-09-30, CEO). Харилцагч өөрөө хэдэн
+  //   цагт ирэхээ шийддэг — манай агуулах «хоцорсон» гэж тооцогдох ёсгүй.
+  //   Өмнө нь очиж авах захиалгад ч төлөвлөгөө үүсч (замын цаг 0), 8 сарын
+  //   дотор 34 захиалга — хэмжигдсэний 38% — худал хоцролтод тоологдож байв.
+  if (!deliver) return null;
+  const km = Number(dlv.km) || 0;
   // ⛔ ХОТЫН ЗАХИАЛГАД км нь 0 гэж бичигддэг — түүнийг «зам байхгүй» гэж
   //   уншвал хотын хүргэлт 0 минутын замтай болно. Хот доторх нэг хүргэлт
   //   түгжрэлтэй ~1 цаг тул доод хэмжээ тавина.
-  const driveH = deliver ? Math.max(km / DISPATCH_KMH, DISPATCH_CITY_H) : 0;
+  const driveH = Math.max(km / DISPATCH_KMH, DISPATCH_CITY_H);
   const setup = setupFlagOf(o.note) === true;
   const hours = DISPATCH_LOAD_H + driveH
     + (setup ? DISPATCH_SETUP_H : 0) + DISPATCH_BUFFER_H;
@@ -24061,12 +24066,16 @@ function dispatchChipHtml(o) {
 // ⚠ Хэмжигдэхгүй захиалгыг (цаггүй, dispatch тамгагүй) ил тоолно — «100% цагтаа»
 //   гэсэн худал дүр зургаас сэргийлнэ.
 function dispatchStats(orders, fromDay) {
-  let n = 0, late = 0, wild = 0, skipped = 0, sumLate = 0;
+  let n = 0, late = 0, wild = 0, skipped = 0, sumLate = 0, pickup = 0;
   const worst = [];
   (orders || []).forEach(o => {
     if (!o || !_orderActive(o)) return;
     const day = String(o.starts_at || '').slice(0, 10);
     if (fromDay && day < fromDay) return;
+    // Очиж авах — хэмжүүрээс ГАДНА. «Хэмжигдээгүй» гэж тоолвол хүн «бид
+    // хэмжиж чадаагүй» гэж уншина; үнэндээ хэмжих ЁСГҮЙ захиалга.
+    const _d = parseDelivery(o.note);
+    if (!(_d && isDeliveryZone(_d.zone))) { if (o.stage_meta && o.stage_meta.dispatch) pickup++; return; }
     const r = orderDispatchLate(o);
     if (!r) { if (o.stage_meta && o.stage_meta.dispatch) skipped++; return; }
     if (r.wild) { wild++; return; }
@@ -24075,7 +24084,7 @@ function dispatchStats(orders, fromDay) {
   });
   worst.sort((a, b) => b.lateH - a.lateH);
   return {
-    n, late, wild, skipped,
+    n, late, wild, skipped, pickup,
     pct: n ? Math.round((n - late) * 100 / n) : null,   // ⚠ хэмжих юмгүй бол null, 0 БИШ
     avgLate: late ? Math.round((sumLate / late) * 10) / 10 : 0,
     worst: worst.slice(0, 5),
@@ -33564,19 +33573,32 @@ function renderReports() {
     const days = dispatchDayRows(inMonth, month);
     if (!st.n && !st.skipped) return '';
     const cls = st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';
+    /* ⛔ ӨДӨР БҮРИЙН мөрийг нээлттэй БҮҮ харуул — 29 мөр, ихэнх нь хоцролтгүй
+       тул хүн уншихаа болино (CEO, 2026-09-30). Гол тоо + ХОЦОРСОН захиалгын
+       жагсаалт л нээлттэй; өдрийн задаргаа `<details>` дотор. */
+    const lateRows = days.filter(d => d.late).sort((a, z) => z.late - a.late);
+    const lateList = lateRows.flatMap(d => d.orders.map(o => ({ ...o, day: d.day })))
+      .sort((a, z) => z.lateH - a.lateH);
     const dayRow = d => `<div class="dsp-day${d.late ? ' bad' : ''}">
       <span class="dsp-day-d">${escapeHtml(d.day.slice(5))}</span>
-      <span class="dsp-day-bar"><span class="dsp-day-fill" style="width:${Math.round((d.n - d.late) * 100 / d.n)}%"></span></span>
+      <span class="dsp-day-bar"><span class="dsp-day-fill dsp-w${Math.round((d.n - d.late) * 10 / d.n) * 10}"></span></span>
       <span class="dsp-day-n">${d.n - d.late}/${d.n}</span>
-      <span class="dsp-day-o">${d.orders.map(o => `<button class="dsp-chip" data-rv-open="${escapeHtml(String(o.number ?? ''))}" title="${escapeHtml(o.customer)} — ${o.lateH} цаг хоцорсон">#${escapeHtml(String(o.number ?? '—'))} ${o.lateH}ц</button>`).join('')}</span>
     </div>`;
     return `<div class="rsrc-panel">
-      <div class="rsrc-title">🚚 Агуулахаас цагтаа гарсан · ${escapeHtml(month)}
+      <div class="rsrc-title">🚚 Хүргэлтэд цагтаа гарсан · ${escapeHtml(month)}
         <span class="rsrc-pct ${cls}">${st.pct === null ? '—' : st.pct + '%'}</span></div>
-      <div class="rsrc-note">${st.n} захиалга хэмжигдсэн${st.late ? ` · ${st.late} хоцорсон · дунджаар ${st.avgLate} цаг` : ' · бүгд цагтаа'}.
-        Хугацаа = ачих 1ц + зам (км÷60, хотод доод тал 1ц) + угсралттай бол 1ц + нөөц 30мин.</div>
-      ${days.length ? `<div class="dsp-days">${days.map(dayRow).join('')}</div>` : ''}
-      ${(st.skipped || st.wild) ? `<div class="rsrc-warn">⚠ ${st.skipped + st.wild} захиалга хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан. Тоо бодит байдлаас муу харагдаж болно.</div>` : ''}
+      <div class="rsrc-note">${st.n} хүргэлт хэмжигдсэн${st.late ? ` · <b>${st.late} хоцорсон</b> · дунджаар ${st.avgLate} цаг` : ' · бүгд цагтаа'}.
+        ${st.pickup ? `<br>Очиж авах ${st.pickup} захиалга хэмжигдээгүй — харилцагч өөрөө цагаа сонгодог.` : ''}</div>
+      ${lateList.length ? `<div class="dsp-late-list">${lateList.map(o => `<button class="dsp-late-row" data-rv-open="${escapeHtml(String(o.number ?? ''))}">
+        <span class="dsp-lr-n">#${escapeHtml(String(o.number ?? '—'))}</span>
+        <span class="dsp-lr-c">${escapeHtml(String(o.customer || '').slice(0, 22))}</span>
+        <span class="dsp-lr-d">${escapeHtml(o.day.slice(5))}</span>
+        <span class="dsp-lr-h">${o.lateH}ц</span></button>`).join('')}</div>` : ''}
+      <details class="dsp-det"><summary>Өдрөөр харах (${days.length} өдөр) · тооцооны журам</summary>
+        <div class="rsrc-note">Гарах ёстой цаг = эвент эхлэх − (ачих 1ц + зам км÷60, хотод доод тал 1ц + угсралттай бол 1ц + нөөц 30мин).</div>
+        ${days.length ? `<div class="dsp-days">${days.map(dayRow).join('')}</div>` : ''}
+      </details>
+      ${(st.skipped || st.wild) ? `<div class="rsrc-warn">⚠ ${st.skipped + st.wild} хүргэлт хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
     </div>`;
   })();
 

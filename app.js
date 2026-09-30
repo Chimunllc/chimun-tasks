@@ -22784,9 +22784,9 @@ function openProductModal(p, opts) {
   modal.className = 'modal-bg';
   modal.id = 'prod-modal';
   modal.innerHTML = `
-    <div class="modal" style="max-width:540px;">
+    <div class="modal pm-modal">
       <h2>${isEdit ? (isPackage(p) ? 'Багц засах' : 'Бараа засах') : (asPkg ? 'Шинэ багц' : 'Шинэ бараа')}</h2>
-      ${isEdit && (u.orders || (cost && !isPackage(p))) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost && !isPackage(p) ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b style="color:${roi >= 100 ? 'var(--ok)' : 'var(--warn)'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
+      ${isEdit && (u.orders || (cost && !isPackage(p))) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost && !isPackage(p) ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b class="pm-roi ${roi >= 100 ? 'ok' : 'warn'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
       <div class="pm-menu" data-pmpane="menu">
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="cat"><span class="pm-menu-i">📷</span><span class="pm-menu-t">Каталог<em>${escapeHtml(p && p.category || 'ангилал сонгоогүй')}${_nImg ? ` · ${_nImg} зураг` : ' · зураггүй'}</em></span>${_pcanHtml('catalog')}</button>
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="price"><span class="pm-menu-i">🏷</span><span class="pm-menu-t">Түрээсийн үнэ<em>${Number(p && p.price) > 0 ? `${fmtMoneyShort(Number(p.price))}/өдөр` : 'үнэ оруулаагүй'}</em></span>${_pcanHtml('price')}</button>
@@ -22803,31 +22803,31 @@ function openProductModal(p, opts) {
         <div class="pm-lock" data-lockhint="cat" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
         <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
-        <label class="pm-wide">Англи нэр <span style="color:var(--muted);font-weight:400;">(үнийн саналын EN хувилбарт)</span><input id="pm-nameen" value="${v('name_en')}" placeholder="${escapeHtml(p && p.name ? enText(p.name) : 'English name')}"></label>
+        <label class="pm-wide">Англи нэр <span class="pm-sub">(үнийн саналын EN хувилбарт)</span><input id="pm-nameen" value="${v('name_en')}" placeholder="${escapeHtml(p && p.name ? enText(p.name) : 'English name')}"></label>
         <label>Ангилал<select id="pm-cat">${catSelectOpts(p && p.category)}</select></label>
-        <label>Код <span style="color:var(--muted);font-weight:400;">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly style="background:var(--panel-hover);color:var(--text-soft,#666);cursor:not-allowed;"></label>
+        <label>Код <span class="pm-sub">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" class="pm-ro" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly></label>
         <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
-        <label class="pm-wide">🔗 Гарал үүсэл (хаанаас авсан)${/^https?:\/\//.test((p && (p.source_url || p.supplier)) || '') ? ` <a href="${escapeHtml(p.source_url || p.supplier)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${escapeHtml((p && (p.source_url || p.supplier)) || '')}" placeholder="ж: taobao/1688 линк, дэлгүүр, Монголоос г.м."></label>
-        <label class="pm-wide">🎬 Бичлэг/зураг үзэх холбоос${/^https?:\/\//.test((p && p.media_url) || '') ? ` <a href="${escapeHtml(p.media_url)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-media" value="${escapeHtml((p && p.media_url) || '')}" placeholder="ж: YouTube линк, эсвэл доор видео файл оруулна">
-          <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
-            <button type="button" id="pm-media-upload" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:7px 13px;border:1px solid var(--border-strong,#ccc);border-radius:8px;background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;">📤 Видео файл оруулах</button>
-            <input type="file" id="pm-media-file" accept="video/*" style="display:none;">
-            <span id="pm-media-status" style="font-size:12px;color:var(--muted,#888);"></span>
+        <label class="pm-wide">🔗 Гарал үүсэл (хаанаас авсан)${/^https?:\/\//.test((p && (p.source_url || p.supplier)) || '') ? ` <a class="pm-link" href="${escapeHtml(p.source_url || p.supplier)}" target="_blank" rel="noopener">нээх ↗</a>` : ''}<input id="pm-source" value="${escapeHtml((p && (p.source_url || p.supplier)) || '')}" placeholder="ж: taobao/1688 линк, дэлгүүр, Монголоос г.м."></label>
+        <label class="pm-wide">🎬 Бичлэг/зураг үзэх холбоос${/^https?:\/\//.test((p && p.media_url) || '') ? ` <a class="pm-link" href="${escapeHtml(p.media_url)}" target="_blank" rel="noopener">нээх ↗</a>` : ''}<input id="pm-media" value="${escapeHtml((p && p.media_url) || '')}" placeholder="ж: YouTube линк, эсвэл доор видео файл оруулна">
+          <div class="pm-media-row">
+            <button type="button" class="pm-up-btn" id="pm-media-upload">📤 Видео файл оруулах</button>
+            <input type="file" id="pm-media-file" accept="video/*" hidden>
+            <span class="pm-media-st" id="pm-media-status"></span>
           </div>
-          <div style="font-size:11px;color:var(--muted,#888);margin-top:3px;">Өөрсдийн бичлэг оруулбал сайтад цэвэрхэн (YouTube-гүй) тоглоно. Богино клип (15-30 сек), 80MB-аас бага.</div>
+          <div class="pm-media-note">Өөрсдийн бичлэг оруулбал сайтад цэвэрхэн (YouTube-гүй) тоглоно. Богино клип (15-30 сек), 80MB-аас бага.</div>
         </label>
         </div>
-      <div class="pm-block">Зураг <span style="color:var(--muted);font-weight:400;">(эхнийх = нүүр зураг, сайтад gallery)</span>
+      <div class="pm-block">Зураг <span class="pm-sub">(эхнийх = нүүр зураг, сайтад gallery)</span>
         <div id="pm-gallery" class="pm-gallery"></div>
         <div class="pm-gallery-actions">
           <label class="btn pnf-upbtn" for="pm-photo-file">📷 Зураг нэмэх</label>
           <input type="file" id="pm-photo-file" accept="image/*" multiple hidden>
         </div>
       </div>
-      <label class="pm-block">Тайлбар <span style="color:var(--muted);font-weight:400;">(сайтад харагдана)</span>
+      <label class="pm-block">Тайлбар <span class="pm-sub">(сайтад харагдана)</span>
         <textarea id="pm-desc" rows="3" placeholder="Барааны тайлбар...">${v('description')}</textarea>
       </label>
-      ${isEdit && p.sku ? `<div class="pm-block">QR шошго <span style="color:var(--muted);font-weight:400;">(хэвлэж бараандаа наа → камераар сканнердана)</span><div id="pm-qr" class="pm-qr">QR…</div></div>` : ''}
+      ${isEdit && p.sku ? `<div class="pm-block">QR шошго <span class="pm-sub">(хэвлэж бараандаа наа → камераар сканнердана)</span><div id="pm-qr" class="pm-qr">QR…</div></div>` : ''}
       </div>
       <div class="pm-pane" data-pmpane="price" data-pmlock="price" hidden>
         <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
@@ -22836,7 +22836,7 @@ function openProductModal(p, opts) {
         <div class="pm-grid">
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
-        <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span style="color:var(--muted);font-weight:400;">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
+        <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span class="pm-sub">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
         </div>
       <label class="pm-rentable">
         <input type="checkbox" id="pm-ispackage" ${isPackage(p) || asPkg ? 'checked' : ''}>
@@ -22860,7 +22860,7 @@ function openProductModal(p, opts) {
         <div class="pm-grid">
         <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
         <label>Зах зээлийн үнэлгээ (₮) <span class="pm-hint">— гэрээнд нөхөн төлбөрийн дүн болно</span><input id="pm-market" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput((p && p.market_value) || 0)}"></label>
-        <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
+        <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span class="pm-sub">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
         </div>
         ${(() => {   // Холбосон хөрөнгийн зардлын мөр — өртөг/огноо хаанаас гарсны БАРИМТ
           const ref = String((p && p.purchase_ref) || '').trim(); if (!ref) return '';
@@ -22908,7 +22908,7 @@ function openProductModal(p, opts) {
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
         <div class="pm-branch-head">🏢 Салбарын хуваарилалт${isEdit ? '' : ' *'} <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
-        ${isEdit ? '' : `<div class="pm-branch-pick" id="pm-branch-pick" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">
+        ${isEdit ? '' : `<div class="pm-branch-pick" id="pm-branch-pick">
           <button type="button" class="f-link-type" data-brpick="m">🎪 M-Event</button>
           <button type="button" class="f-link-type" data-brpick="c">🏢 Чимун дотоод</button>
           <button type="button" class="f-link-type" data-brpick="n">⛺ NOMAAD</button>
@@ -22923,7 +22923,7 @@ function openProductModal(p, opts) {
       </div>
       ${isEdit ? '<div class="smv" id="pm-moves"></div>' : ''}
       </div>
-      <div class="modal-actions" style="margin-top:16px;">
+      <div class="modal-actions">
         <button class="btn" id="pm-cancel">Болих</button>
         <button class="btn btn-primary" id="pm-save">${isEdit ? '💾 Хадгалах' : 'Нэмэх'}</button>
       </div>

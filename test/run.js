@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -12860,4 +12860,108 @@ async function swFetchTests() {
   eq(deprecYearsFor('Тайз каркас 1 метр').years, 10, 'нас: карказ 10 жил хэвээр');
   eq(deprecYearsFor('Эвхэгддэг сандал Цагаан').years, 5, 'нас: сандал 5 жил хэвээр');
   eq(deprecYearsFor('Аяны ор').years, 5, 'нас: ангиллаас гадуур 5 жил (өгөгдмөл)');
+}
+
+// ═══ ШАТНЫ ХӨЛС — барааны тоогоор, хамтрагчид хувьтай (2026-09-30) ═══
+// Амьд датагаар шийдсэн: 9 сарын захиалга 1–345 бараатай (дундаж 12) тул хавтгай
+// хөлс бол сарын хамгийн том 2 ачааг татсан жолооч 20,000₮ авч байв.
+{
+  const { stageFeeForQty, orderItemQty, stagePayByPerson } = F;
+
+  // Шатлалын хил — ЯГ хил дээрх утга доод шатлалд орно (≤)
+  eq(stageFeeForQty(0), 2000, 'шатлал: бараагүй захиалга доод шатлал');
+  eq(stageFeeForQty(1), 2000, 'шатлал: 1 бараа = 2,000₮');
+  eq(stageFeeForQty(5), 2000, 'шатлал: 5 бараа = 2,000₮ (хил)');
+  eq(stageFeeForQty(6), 4000, 'шатлал: 6 бараа = 4,000₮');
+  eq(stageFeeForQty(20), 4000, 'шатлал: 20 бараа (хил)');
+  eq(stageFeeForQty(21), 7000, 'шатлал: 21 бараа = 7,000₮');
+  eq(stageFeeForQty(60), 7000, 'шатлал: 60 бараа (хил)');
+  eq(stageFeeForQty(61), 12000, 'шатлал: 61 бараа = 12,000₮');
+  eq(stageFeeForQty(150), 12000, 'шатлал: 150 бараа (хил)');
+  eq(stageFeeForQty(151), 20000, 'шатлал: 151 бараа = 20,000₮');
+  eq(stageFeeForQty(345), 20000, 'шатлал: 345 бараа (амьд дата, сарын хамгийн том) = 20,000₮');
+  // ⛔ Хамгийн дээд шатлал ХЯЗГААРГҮЙ байх ёстой — эс бөгөөс том захиалга 0₮ болно
+  ok(stageFeeForQty(100000) === 20000, 'шатлал: хязгааргүй том захиалга ч дээд шатлалаар');
+  /* ⛔ ТОХИРГООНЫ зам = жинхэнэ эрсдэл: CEO хязгаартай дээд шатлал бичвэл (жиш. [200, 9000])
+     345 бараатай захиалга ямар ч шатлалд таарахгүй болж хөлс 0₮ болно.
+     Хоёр ДАВХАРДСАН хамгаалалт бий: (а) stageFeeBands() дээд хилийг Infinity болгоно,
+     (б) stageFeeForQty төгсгөлд дээд шатлалын хөлсийг нөөцөөр буцаана. Аль нэг нь
+     байхад л хамгаалагдана — доорх тест ХОЁУЛАНГ хассан үед унана (зориуд туршив).
+     Хоёуланг нь ЗЭРЭГ бүү хас. */
+  vm.runInContext("state.appConfig = { stage_pay: { bands: [[5,1000],[20,2000],[200,9000]] } };", sandbox);
+  eq(stageFeeForQty(3), 1000, 'тохиргоо: шатлал app_config-оос уншигдана');
+  eq(stageFeeForQty(345), 9000, 'тохиргоо: хилээс давсан захиалга ч дээд шатлалаар (хил→Infinity)');
+  eq(stageFeeForQty(100000), 9000, 'тохиргоо: хязгааргүй том ч дээд шатлалаар');
+  // Хамтрагчийн хувь/тоог ч тохиргооноос
+  vm.runInContext("state.appConfig = { stage_pay: { helper_share: 0.5, helper_max: 2 } };", sandbox);
+  const cfgR = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B','C','D'] } } }], '2026-09');
+  eq(cfgR.B.helperFee, 500, 'тохиргоо: хамтрагчийн хувь 50%, 2 хүнд → 2000×0.5÷2 = 500₮');
+  ok(!cfgR.D, 'тохиргоо: helper_max 2 → 3 дахь хамтрагч хөлсгүй');
+  vm.runInContext("state.appConfig = {};", sandbox);
+  eq(stageFeeForQty(345), 20000, 'тохиргоо цэвэрлэгдвэл кодын нөөц утга');
+
+  // Барааны тоо = qty-гийн НИЙЛБЭР (мөрийн тоо БИШ — ачаа зөөх хөдөлмөр тоогоор)
+  eq(orderItemQty({ items: [{ qty: 10 }, { qty: 33 }, { qty: 11 }] }), 54, 'тоо: qty нийлбэр (54)');
+  eq(orderItemQty({ items: [] }), 0, 'тоо: хоосон = 0');
+  eq(orderItemQty({}), 0, 'тоо: items байхгүй = 0');
+  eq(orderItemQty({ items: [{ qty: '7' }, { qty: null }] }), 7, 'тоо: мөр текст/хоосон байсан ч бодогдоно');
+
+  // Нэг шат: удирдсан хүн бүтэн, хамтрагчид 30%-ийг ХУВААНА
+  const ords = [{ items: [{ qty: 30 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B', 'C'] } } }];
+  const r1 = stagePayByPerson(ords, '2026-09');
+  eq(r1.A.ledFee, 7000, 'хөлс: 30 бараа → удирдсан A 7,000₮');
+  eq(r1.A.led, 1, 'хөлс: A удирдсан 1 шат');
+  eq(r1.B.helperFee, 1050, 'хөлс: хамтрагч B = 7000×30%÷2 = 1,050₮');
+  eq(r1.C.helperFee, 1050, 'хөлс: хамтрагч C ижил');
+  eq(r1.B.ledFee, 0, 'хөлс: хамтрагч удирдсаны хөлс авахгүй');
+
+  // ⛔ Бичиг цаасны шат (discount/revert) ачаа зөөгөөгүй → хөлс БАЙХГҮЙ
+  const paper = [{ items: [{ qty: 300 }], stage_meta: {
+    discount: { by: 'A', at: '2026-09-05T02:00:00Z' },
+    revert:   { by: 'A', at: '2026-09-06T02:00:00Z' } } }];
+  eq(Object.keys(stagePayByPerson(paper, '2026-09')).length, 0, 'хөлс: discount/revert шат хөлсгүй');
+
+  // ⛔ Хуурамч хамтрагч нэмж сан цайруулахыг хаана — дээд тал 4
+  const many = [{ items: [{ qty: 3 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B','C','D','E','F','G'] } } }];
+  const rm = stagePayByPerson(many, '2026-09');
+  const paidHelpers = ['B','C','D','E','F','G'].filter(h => rm[h] && rm[h].helperFee > 0);
+  eq(paidHelpers.length, 4, 'хөлс: хамтрагч дээд тал 4 хүнд хуваагдана');
+  eq(rm.B.helperFee, 150, 'хөлс: 2000×30%÷4 = 150₮');
+
+  // Сар шүүлт — өөр сарын шат тоологдохгүй
+  const twom = [{ items: [{ qty: 10 }], stage_meta: {
+    clean:   { by: 'A', at: '2026-09-05T02:00:00Z' },
+    prepare: { by: 'A', at: '2026-08-05T02:00:00Z' } } }];
+  eq(stagePayByPerson(twom, '2026-09').A.led, 1, 'хөлс: зөвхөн тухайн сарын шат');
+  eq(stagePayByPerson(twom, '2026-08').A.led, 1, 'хөлс: 8 сарын шат тусад нь');
+
+  // ИНВАРИАНТ: нийт = удирдсаны хөлс + хамтрагчийн хөлс (мөнгө алдагдахгүй/төрөхгүй)
+  const inv = [
+    { items: [{ qty: 345 }], stage_meta: { clean: { by: 'A', at: '2026-09-01T02:00:00Z', helpers: ['B'] } } },
+    { items: [{ qty: 2 }],   stage_meta: { deliver: { by: 'B', at: '2026-09-02T02:00:00Z', helpers: ['A','C'] } } },
+  ];
+  const ri = stagePayByPerson(inv, '2026-09');
+  const sumTotal = Object.keys(ri).reduce((t, k) => t + ri[k].total, 0);
+  const sumParts = Object.keys(ri).reduce((t, k) => t + ri[k].ledFee + ri[k].helperFee, 0);
+  eq(sumTotal, sumParts, 'ИНВАРИАНТ: нийт хөлс = удирдсан + хамтрагч');
+  eq(ri.A.ledFee + ri.B.ledFee, 22000, 'ИНВАРИАНТ: удирдсаны хөлс = 20,000 + 2,000');
+
+  // Хамтрагчгүй шат — 30%-ийн сан хэнд ч ХУВААГДАХГҮЙ (сүйрэхгүй)
+  const solo = [{ items: [{ qty: 8 }], stage_meta: { clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }];
+  eq(stagePayByPerson(solo, '2026-09').A.total, 4000, 'хөлс: хамтрагчгүй бол зөвхөн удирдсаны хөлс');
+}
+
+// ═══ SCAN: шатны хөлсийг ЦАГААР бодохыг хаана ═══
+// Цагаар төлбөл суугаад цаг нөхцөөх нь шагнагдана — амьд датаар 256 цаг ажиллаж
+// НЭГ Ч шат удирдаагүй хүн байсан. Хөлс нь ЗӨВХӨН гарцаас (шат × барааны тоо).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function stagePayByPerson'), src.indexOf('function stagePayFor'));
+  ok(!/\bmins\b|\bhours\b|attendance|attMonth/.test(fn), 'scan: шатны хөлс ирц/цагаас хамаарахгүй');
+  // Мөр бүрд ДАХИН бодвол рендер удааширна — сарын хүснэгт нэг удаа бодно
+  const mo = src.slice(src.indexOf('function renderAttendanceMonth'), src.indexOf('function openWorkStartModal'));
+  eq((mo.match(/stagePayByPerson\(/g) || []).length, 1, 'scan: сарын хүснэгт хөлсийг нэг удаа бодно');
 }

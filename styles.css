@@ -77,6 +77,9 @@
     /* Орлого тулгалтын модалын өргөн — нэг баганатай жагсаалт, өргөсгөх шаардлагагүй */
     --recon-modal-w: 640px;
 
+    /* Барааны модалын өргөн — 4 хэсэгт менюгээр хуваагдсан тул нарийн байж болно */
+    --prod-modal-w: 540px;
+
     /* ── РАДИУС ── */
     --r-sm: 6px;
     --r-md: 8px;
@@ -5561,6 +5564,30 @@ body.role-daily #add-project { display: none !important; }
 .pm-locked .pm-grid, .pm-locked .pm-block, .pm-locked .pm-branch,
 .pm-locked .pm-rentable, .pm-locked .pm-bundle { opacity: .62; }
 .pm-locked .btn, .pm-locked label.pnf-upbtn { pointer-events: none; }
+
+/* ── Барааны модалын жижиг эрдэнэсүүд (openProductModal) ──
+   Өмнө нь 19 inline style= байсныг класс болгов (2026-09-30). Бүгд `pm-` угтвартай.
+   ⚠ `.modal input.pm-ro` нь ХОЁР классаар — `.modal input { background … }`-аас
+   давах ёстой (шинэ чангаруулагч бичихгүй). Мобайлын flatten дүрмүүд нь өмнө
+   inline style-ыг дардаг байсан ЧИГЭЭРЭЭ үлдэнэ.
+   ⚠ `.pm-sub` нь `.pm-hint` БИШ — тайлбар нь label-ийн хэмжээг хальдана,
+   `.pm-hint` бол жижигрүүлдэг (өөр зорилготой). */
+.modal.pm-modal { max-width: var(--prod-modal-w); }   /* хоёр класс = мобайлын `.modal { max-width:100% }`-аас давна */
+.pm-sub { color: var(--muted); font-weight: 400; }
+.pm-link { font-weight: 400; }
+.pm-roi.ok { color: var(--ok); }
+.pm-roi.warn { color: var(--warn); }
+.modal input.pm-ro { background: var(--panel-hover); color: var(--text-soft); cursor: not-allowed; }
+.pm-media-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
+.pm-up-btn {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  font-size: var(--fs-sm); font-weight: 600; color: var(--text); cursor: pointer;
+}
+.pm-media-st { font-size: var(--fs-sm); color: var(--muted); }
+.pm-media-note { margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--muted); }
+.pm-branch-pick { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0; }
 
 /* Нарийн модал (скан г.м.) — өмнө нь inline style="max-width:400px" байсан */
 .modal.modal-sm { max-width: 400px; }

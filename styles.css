@@ -7823,3 +7823,6 @@ select.no-asar-len {
   margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--line);
   font-size: var(--fs-xs); color: var(--muted); line-height: 1.5;
 }
+
+/* Нөөцийн алдагдал — ашгийн тайлангийн тэмдэглэл */
+.pnl-note.is-loss { color: var(--danger); }

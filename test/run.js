@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -13080,4 +13080,65 @@ async function swFetchTests() {
   ok(/чиглэл/.test(card), 'scan: өдрийн тоо «чиглэл» гэж тэмдэглэгдэнэ');
   ok(/7 хоног/.test(card), 'scan: 7 хоногийн дүн гол тоо болж харагдана');
   ok(/~\$\{r\.people\}/.test(card), 'scan: өдрийн хүний тоо «~» тэмдэгтэй (ойролцоо)');
+}
+
+// ═══ НӨӨЦИЙН АЛДАГДАЛ = САЛБАРЫН ЗАРДАЛ (2026-09-30) ═══
+// Буцаан авахад дутсан бараа нөөцөөс хасагддаг ч ашгийн тайланд гардаггүй байв —
+// 7–9 сард 840,000₮ алга болсон атлаа COO-гийн 30%-ийн эрх огт хөдлөөгүй.
+{
+  const { missingItemsCost } = F;
+  vm.runInContext("state.products = [{sku:'M-1',cost:49000},{sku:'M-2',cost:175000},{sku:'M-3',cost:0}];", sandbox);
+  vm.runInContext("state.productCosts = {};", sandbox);
+
+  const ord = (at, items) => ({ stage_meta: { received: { by: 'A', at, items } } });
+  // Үндсэн тохиолдол: 10 ширхэг × 49,000
+  const r1 = missingItemsCost('2026-09', [ord('2026-09-16T05:00:00Z', [{ sku: 'M-1', qty: 33, got: 23 }])]);
+  eq(r1.qty, 10, 'алдагдал: 10 ширхэг дутсан');
+  eq(r1.cost, 490000, 'алдагдал: 10 × 49,000 = 490,000₮');
+  eq(r1.lines, 1, 'алдагдал: 1 мөр');
+
+  // Бүрэн буцсан мөр тоологдохгүй
+  eq(missingItemsCost('2026-09', [ord('2026-09-16T05:00:00Z',
+    [{ sku: 'M-1', qty: 10, got: 10 }])]).qty, 0, 'алдагдал: бүрэн буцсан бол 0');
+  // Илүү буцсан (got > qty) нь алдагдал БИШ, сөрөг тоо гаргахгүй
+  eq(missingItemsCost('2026-09', [ord('2026-09-16T05:00:00Z',
+    [{ sku: 'M-1', qty: 10, got: 12 }])]).qty, 0, 'алдагдал: илүү буцсан сөрөг болохгүй');
+  // ⛔ Тоо ТУЛГААГҮЙ мөр (got байхгүй) — дутагдал мэдэгдэхгүй тул тоолохгүй
+  eq(missingItemsCost('2026-09', [ord('2026-09-16T05:00:00Z',
+    [{ sku: 'M-1', qty: 10 }])]).qty, 0, 'алдагдал: got байхгүй бол тоолохгүй');
+
+  // ⚠ ИЛЭРСЭН сараар — захиалгын сараар БИШ (хаасан сарын ашиг хожим хөдлөхгүй)
+  const o2 = ord('2026-08-30T05:00:00Z', [{ sku: 'M-1', qty: 5, got: 0 }]);
+  eq(missingItemsCost('2026-09', [o2]).qty, 0, 'алдагдал: өөр сарын шат тоологдохгүй');
+  eq(missingItemsCost('2026-08', [o2]).qty, 5, 'алдагдал: илэрсэн сард тоологдоно');
+
+  // Өртөггүй бараа — тоо гарна, өртөг 0 (нуухгүй)
+  const r3 = missingItemsCost('2026-09', [ord('2026-09-16T05:00:00Z', [{ sku: 'M-3', qty: 4, got: 1 }])]);
+  eq(r3.qty, 3, 'алдагдал: өртөггүй барааны ТОО гарна');
+  eq(r3.cost, 0, 'алдагдал: өртөггүй бол 0₮ (таамаглахгүй)');
+
+  // Олон шат, олон мөр нэмэгдэнэ
+  const many = { stage_meta: {
+    received: { by: 'A', at: '2026-09-16T05:00:00Z', items: [{ sku: 'M-1', qty: 33, got: 23 }] },
+    retstart: { by: 'B', at: '2026-09-14T05:00:00Z', items: [{ sku: 'M-2', qty: 4, got: 2 }] } } };
+  const r4 = missingItemsCost('2026-09', [many]);
+  eq(r4.qty, 12, 'алдагдал: олон шатнаас нийлбэр (10+2)');
+  eq(r4.cost, 840000, 'алдагдал: 490,000 + 350,000 = 840,000₮ (амьд 9 сарын тоо)');
+
+  vm.runInContext("state.products = []; state.productCosts = {};", sandbox);
+}
+
+// ═══ SCAN: алдагдлыг ашгийн тайлангаас ХАСАХЫГ хаана ═══
+// Алдагдал зардал болохоо болих нь COO-гийн ашгийн эрхийг алдагдлаас тусгаарлана —
+// агуулахыг удирддаг хүн нөөц алга болоход санхүүгийн үр дагаваргүй болно.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function finBranchPnl'), src.indexOf('function finReceivables'));
+  ok(/missingItemsCost\(month\)/.test(fn), 'scan: finBranchPnl нөөцийн алдагдлыг бодно');
+  ok(/exp\['ИВЕНТ'\]\s*\+=\s*miss\.cost/.test(fn), 'scan: алдагдал ИВЕНТ-ийн зардалд нэмэгдэнэ');
+  // Тайланд ИЛ гарна — нуугдмал зардал байж болохгүй
+  ok(/bp\.miss && bp\.miss\.qty/.test(src), 'scan: алдагдал тайланд ил харагдана');
+  // ⛔ Орлуулах үнээр биш ӨРТГӨӨР — эс бөгөөс ашгийн марж зардал руу орж алдагдал хөөрөгдөнө
+  const mf = src.slice(src.indexOf('function missingItemsCost'), src.indexOf('function finBranchPnl'));
+  ok(/countUnitCost/.test(mf) && !/\bprice\b/.test(mf), 'scan: алдагдал ӨРТГӨӨР бодогдоно (үнээр биш)');
 }

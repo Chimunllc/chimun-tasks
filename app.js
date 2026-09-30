@@ -14428,16 +14428,83 @@ function guessDocCategory(name) {
 // Файлын нэрээс өргөтгөлийг хасаж гарчиг болгоно ("01. Гэрээ загвар.docx" → "01. Гэрээ загвар")
 function docTitleFromFile(name) { return String(name || '').replace(/\.[^.]+$/, '').trim() || 'Нэргүй'; }
 
+/* ─── Хавтсаар оруулах — систем файл, тохирохгүй төрлийг ЧИМЭЭГҮЙ хаяхгүй, ТООЛНО ───
+   Хавтас чирэхэд .DS_Store, Thumbs.db, түр файл заавал орж ирдэг. Тэднийг хаяхгүй бол
+   жагсаалт хогоор дүүрч хүн уншихаа болино; чимээгүй хаявал «яагаад 3 файл дутуу орсон»
+   гэдгийг хэн ч мэдэхгүй. Тиймээс шалтгаан бүрийг нэрлэж, тоогоор нь харуулна. */
+const DOC_JUNK_RE = /^(\.|~\$)|^(thumbs\.db|desktop\.ini)$/i;
+const DOC_OK_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt'];
+const DOC_SKIP_LABEL = { junk: 'систем файл', type: 'төрөл тохирохгүй', empty: 'хоосон', big: 'хэт том' };
+function docExt(name) { const m = String(name || '').match(/\.([^.]+)$/); return m ? m[1].toLowerCase() : ''; }
+// null = оруулна, эс бөгөөс алгасах шалтгаан
+function docBulkSkip(path, size) {
+  const base = String(path || '').split('/').pop();
+  if (!base || DOC_JUNK_RE.test(base)) return 'junk';
+  if (String(path).includes('__MACOSX')) return 'junk';
+  if (!DOC_OK_EXT.includes(docExt(base))) return 'type';
+  if (!(Number(size) > 0)) return 'empty';
+  if (Number(size) > DOC_MAX_BYTES) return 'big';
+  return null;
+}
+/* Хавтсаар сонгоход ангилалыг ЗАМААР таамаглана — «Гэрээнүүд/2026/xxx.pdf» гэх мэт
+   хавтсын нэр файлын нэрээс илүү мэдээлэлтэй байдаг. */
+function docBulkRows(files) {
+  return (files || []).map(f => {
+    const path = String(f.path || f.name || '');
+    const base = path.split('/').pop();
+    return { name: base, path, size: Number(f.size) || 0, title: docTitleFromFile(base), cat: guessDocCategory(path), skip: docBulkSkip(path, f.size) };
+  });
+}
+// Алгасагдсаныг шалтгаанаар бүлэглэж «2 систем файл · 1 хэт том» гэж бичнэ
+function docBulkSkipSummary(rows) {
+  const m = {};
+  (rows || []).forEach(r => { if (r.skip) m[r.skip] = (m[r.skip] || 0) + 1; });
+  return Object.keys(m).map(k => `${m[k]} ${DOC_SKIP_LABEL[k] || k}`).join(' · ');
+}
+// Чирж тавьсан хавтсыг давхраагаар задлана. readEntries нэг удаад 100 хүртэл буцаадаг
+// тул хоосон болтол нь давтана — эс бөгөөс том хавтсын эхний 100 файл л орно.
+async function dropItemsToFiles(items, max = 800) {
+  const out = [];
+  const readDir = (reader) => new Promise(res => reader.readEntries(res, () => res([])));
+  const walk = async (entry, prefix) => {
+    if (!entry || out.length >= max) return;
+    if (entry.isFile) {
+      const file = await new Promise(res => entry.file(res, () => res(null)));
+      if (file) out.push({ file, path: prefix + file.name });
+      return;
+    }
+    if (entry.isDirectory) {
+      const reader = entry.createReader();
+      for (;;) {
+        const batch = await readDir(reader);
+        if (!batch.length) break;
+        for (const e of batch) await walk(e, prefix + entry.name + '/');
+      }
+    }
+  };
+  const roots = Array.from(items || []).map(it => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null)).filter(Boolean);
+  for (const r of roots) await walk(r, '');
+  return out;
+}
+
 function openDocBulkModal() {
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
   modal.style.zIndex = '10001';
   modal.innerHTML = `<div class="modal doc-bulk-modal">
     <h2>⇪ Олноор оруулах</h2>
-    <p class="doc-bulk-hint">Google Drive-аас хавтсаа компьютер дээрээ татаад бүх файлыг нэг дор сонгоно уу.
-      Ангилалыг файлын нэрээр таамаглана — мөр бүрд засаж болно.
-      ${Math.round(DOC_MAX_BYTES / 1048576)}MB-аас том файл алгасагдана.</p>
-    <input id="db-files" type="file" multiple accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx" />
+    <p class="doc-bulk-hint">Хавтсыг бүтнээр нь сонгож эсвэл чирж тавина. Ангилалыг хавтас, файлын нэрээр
+      таамаглана — мөр бүрд засаж болно. ${Math.round(DOC_MAX_BYTES / 1048576)}MB-аас том файл алгасагдана.</p>
+    <div class="doc-bulk-drop" id="db-drop">
+      <div class="db-drop-t">Файл эсвэл хавтсаа энд чирж тавь</div>
+      <div class="db-drop-btns">
+        <button type="button" class="btn btn-sm" id="db-pick-files">📄 Файлууд сонгох</button>
+        <button type="button" class="btn btn-sm" id="db-pick-dir" hidden>📁 Хавтас сонгох</button>
+      </div>
+      <input id="db-files" type="file" multiple accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden />
+      <input id="db-dir" type="file" multiple webkitdirectory hidden />
+    </div>
+    <div id="db-sum" class="doc-bulk-sum"></div>
     <div id="db-list" class="doc-bulk-list"></div>
     <div id="db-prog" class="doc-bulk-prog"></div>
     <div class="modal-actions">
@@ -14451,25 +14518,51 @@ function openDocBulkModal() {
   $('#db-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
 
-  let picked = [];   // [{file, cat, title, tooBig}]
-  $('#db-files').addEventListener('change', (e) => {
-    picked = Array.from(e.target.files || []).map(f => ({
-      file: f, cat: guessDocCategory(f.name), title: docTitleFromFile(f.name), tooBig: f.size > DOC_MAX_BYTES,
-    }));
-    const okN = picked.filter(p => !p.tooBig).length;
-    $('#db-list').innerHTML = picked.map((p, i) => `<div class="doc-bulk-row${p.tooBig ? ' too-big' : ''}">
-      <span class="db-nm" title="${escapeHtml(p.file.name)}">${escapeHtml(p.title)}</span>
-      <span class="db-sz">${fmtBytes(p.file.size)}</span>
-      ${p.tooBig ? '<span class="db-skip">хэт том — алгасна</span>'
+  let picked = [];   // [{file, path, cat, title, skip}]
+  // Хавтас сонгох нь зөвхөн компьютерийн хөтчид бий — утсанд товчийг огт харуулахгүй
+  if ('webkitdirectory' in document.createElement('input')) $('#db-pick-dir').hidden = false;
+  $('#db-pick-files').onclick = () => $('#db-files').click();
+  $('#db-pick-dir').onclick = () => $('#db-dir').click();
+
+  const setPicked = (list) => {   // list: [{file, path}]
+    const rows = docBulkRows(list.map(x => ({ name: x.file.name, path: x.path, size: x.file.size })));
+    picked = rows.map((r, i) => Object.assign({}, r, { file: list[i].file }));
+    const okN = picked.filter(p => !p.skip).length;
+    const skipped = docBulkSkipSummary(picked);
+    $('#db-sum').textContent = picked.length
+      ? `${okN} файл орно${skipped ? ` · алгасна: ${skipped}` : ''}`
+      : '';
+    $('#db-list').innerHTML = picked.map((p, i) => `<div class="doc-bulk-row${p.skip ? ' too-big' : ''}">
+      <span class="db-nm" title="${escapeHtml(p.path)}">${escapeHtml(p.title)}</span>
+      <span class="db-sz">${fmtBytes(p.size)}</span>
+      ${p.skip ? `<span class="db-skip">${escapeHtml(DOC_SKIP_LABEL[p.skip] || p.skip)}</span>`
         : `<select class="db-cat" data-i="${i}">${DOC_CATS.map(c => `<option value="${c.key}"${c.key === p.cat ? ' selected' : ''}>${c.icon} ${escapeHtml(c.label)}</option>`).join('')}</select>`}
     </div>`).join('');
     $('#db-list').querySelectorAll('.db-cat').forEach(sel => sel.addEventListener('change', () => { picked[Number(sel.dataset.i)].cat = sel.value; }));
     $('#db-go').disabled = !okN;
     $('#db-go').textContent = okN ? `Оруулах (${okN})` : 'Оруулах';
+  };
+  // Хавтсаар сонгоход webkitRelativePath нь «хавтас/дэд/файл.pdf» гэж ирдэг — ангилал түүгээр таамаглагдана
+  const fromInput = (e) => setPicked(Array.from(e.target.files || []).map(f => ({ file: f, path: f.webkitRelativePath || f.name })));
+  $('#db-files').addEventListener('change', fromInput);
+  $('#db-dir').addEventListener('change', fromInput);
+
+  const drop = $('#db-drop');
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('on'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove('on')));
+  drop.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const dt = e.dataTransfer; if (!dt) return;
+    $('#db-sum').textContent = 'Уншиж байна…';
+    let list = [];
+    try { list = await dropItemsToFiles(dt.items); } catch (_) { list = []; }
+    // Хавтас задлах боломжгүй хөтөч дээр энгийн файлын жагсаалт руу ухарна
+    if (!list.length) list = Array.from(dt.files || []).map(f => ({ file: f, path: f.name }));
+    setPicked(list);
   });
 
   $('#db-go').onclick = async (e) => {
-    const list = picked.filter(p => !p.tooBig);
+    const list = picked.filter(p => !p.skip);
     if (!list.length) return;
     e.currentTarget.disabled = true;
     $('#db-cancel').disabled = true;
@@ -14482,7 +14575,7 @@ function openDocBulkModal() {
           id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'doc-' + crypto.randomUUID() : 'doc-' + Date.now() + '-' + done,
           title: p.title, category: p.cat, uploaded_by: state.me,
           data: String(durl).slice(String(durl).indexOf(',') + 1),
-          mime: p.file.type || 'application/octet-stream', file_name: p.file.name, size_bytes: p.file.size,
+          mime: p.file.type || 'application/octet-stream', file_name: p.name, size_bytes: p.size,
         });
         if (ok) done++; else failed++;
       } catch (_) { failed++; }

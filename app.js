@@ -12410,13 +12410,14 @@ function dayLoadCardHtml() {
   const max = Math.max(1, ...rows.map(r => r.touches));
   const day = rows.map((r, i) => {
     const wd = _MN_WD[new Date(r.date + 'T00:00:00').getDay()];
+    // ⚠ 10%-ийн алхмаар КЛАСС болгоно — inline style нэмэхгүй (дизайны гэрээ, CI шалгана)
     const pct = Math.round(r.touches / max * 100);
     const lbl = i === 0 ? 'Өнөөдөр' : i === 1 ? 'Маргааш' : `${r.date.slice(5)} ${wd}`;
     const note = [r.out.length ? `${r.out.length} гарах` : '', r.back.length ? `${r.back.length} буцах` : '',
                   r.recv.length ? `${r.recv.length} хүлээн авах` : ''].filter(Boolean).join(' · ');
     return `<div class="dl-row${r.touches ? '' : ' dl-zero'}">
       <span class="dl-day">${escapeHtml(lbl)}</span>
-      <span class="dl-bar"><i style="width:${pct}%"></i></span>
+      <span class="dl-bar"><i class="dl-w${Math.round(pct / 10) * 10}"></i></span>
       <span class="dl-n">${r.touches ? `~${r.people} хүн` : '—'}</span>
       <span class="dl-note">${escapeHtml(note || 'ажил алга')}</span>
     </div>`;

@@ -7812,6 +7812,10 @@ select.no-asar-len {
 .dl-day { font-size: var(--fs-sm); font-weight: 600; }
 .dl-bar { background: var(--panel-hover); border-radius: var(--r-full); height: 8px; overflow: hidden; }
 .dl-bar i { display: block; height: 100%; background: var(--primary); border-radius: var(--r-full); }
+/* Баганын өргөн 10%-ийн алхмаар — динамик утгыг inline style-гүйгээр (дизайны гэрээ) */
+.dl-w0 { width: 2%; } .dl-w10 { width: 10%; } .dl-w20 { width: 20%; } .dl-w30 { width: 30%; }
+.dl-w40 { width: 40%; } .dl-w50 { width: 50%; } .dl-w60 { width: 60%; } .dl-w70 { width: 70%; }
+.dl-w80 { width: 80%; } .dl-w90 { width: 90%; } .dl-w100 { width: 100%; }
 .dl-n { font-size: var(--fs-sm); font-weight: 700; text-align: right; }
 .dl-note { grid-column: 2 / -1; font-size: var(--fs-xs); color: var(--muted); }
 .dl-zero .dl-n { color: var(--muted); font-weight: 400; }

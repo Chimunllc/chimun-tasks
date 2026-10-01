@@ -5756,17 +5756,17 @@ function openRepairFinishModal(id, to) {
   const title = isOff ? '🗑 Актлах' : '✓ Зассан';
   const m = document.createElement('div');
   m.className = 'modal-bg open'; m.style.zIndex = '9600';
-  m.innerHTML = `<div class="modal" style="max-width:460px;">
+  m.innerHTML = `<div class="modal rf-modal">
     <div class="modal-head"><b>${title} · ${escapeHtml(r.product_name || r.sku)} ×${Number(r.qty) || 0}</b><button class="modal-x" id="rf-x">✕</button></div>
     <div class="modal-body">
-      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 ${isOff ? 'Актлах барааны зураг' : 'Зассаны дараах зураг'} <span style="color:var(--danger);">*</span></div>
-      <div id="rf-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-bottom:6px;"></div>
-      <label class="btn" for="rf-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
+      <div class="rf-l">📷 ${isOff ? 'Актлах барааны зураг' : 'Зассаны дараах зураг'} <span class="rf-req">*</span></div>
+      <div id="rf-photos" class="rf-photos"></div>
+      <label class="btn rf-pick" for="rf-input">📷 Зураг оруулах / авах</label>
       <input id="rf-input" type="file" accept="image/*" capture="environment" hidden>
-      <div id="rf-status" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
-      <textarea id="rf-note" rows="2" placeholder="${isOff ? 'Яагаад засах боломжгүй вэ?' : 'Юу зассан бэ? (заавал биш)'}" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;"></textarea>
+      <div id="rf-status" class="rf-status"></div>
+      <textarea id="rf-note" class="rf-note" rows="2" placeholder="${isOff ? 'Яагаад засах боломжгүй вэ?' : 'Юу зассан бэ? (заавал биш)'}"></textarea>
     </div>
-    <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;">
+    <div class="modal-foot rf-foot">
       <button class="btn" id="rf-cancel">Болих</button>
       <button class="btn btn-primary" id="rf-ok" disabled>${title}</button>
     </div>
@@ -5776,18 +5776,24 @@ function openRepairFinishModal(id, to) {
   const photos = [];
   const close = () => m.remove();
   const validate = () => { $('#rf-ok').disabled = photos.length === 0; };
+  // Төлвийн мөр: бичвэр + өнгө нь КЛАСС-аар (is-ok / is-bad) — inline style нэмэхгүй.
+  const setStatus = (text, cls) => {
+    const el = $('#rf-status');
+    el.textContent = text;
+    el.className = 'rf-status' + (cls ? ' ' + cls : '');
+  };
   const paint = () => {
-    $('#rf-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-rm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
+    $('#rf-photos').innerHTML = photos.map((u, i) => `<div class="rf-thumb"><img src="${escapeHtml(driveThumbUrl(u, 200))}"><button data-rm="${i}" type="button" class="rf-rm">×</button></div>`).join('');
     $('#rf-photos').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.rm, 1); paint(); validate(); });
   };
   $('#rf-input').onchange = async (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
-    $('#rf-status').textContent = '⏳ Илгээж байна...'; $('#rf-status').style.color = 'var(--muted)';
+    setStatus('⏳ Илгээж байна...');
     try {
       const url = await uploadReceipt(f, r.id, 'repair', `Засвар ${r.product_name || r.sku}`);
-      if (url) { photos.push(url); paint(); $('#rf-status').textContent = `✓ ${photos.length} зураг`; $('#rf-status').style.color = 'var(--ok)'; validate(); }
-      else { $('#rf-status').textContent = '⚠ Хадгалж чадсангүй'; $('#rf-status').style.color = 'var(--danger)'; }
-    } catch (err) { $('#rf-status').textContent = '⚠ ' + err.message; $('#rf-status').style.color = 'var(--danger)'; }
+      if (url) { photos.push(url); paint(); setStatus(`✓ ${photos.length} зураг`, 'is-ok'); validate(); }
+      else setStatus('⚠ Хадгалж чадсангүй', 'is-bad');
+    } catch (err) { setStatus('⚠ ' + err.message, 'is-bad'); }
   };
   $('#rf-x').onclick = close; $('#rf-cancel').onclick = close;
   m.addEventListener('click', (e) => { if (e.target === m) close(); });

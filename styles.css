@@ -80,6 +80,11 @@
     /* Барааны модалын өргөн — 4 хэсэгт менюгээр хуваагдсан тул нарийн байж болно */
     --prod-modal-w: 540px;
 
+    /* Засварын «✓ Зассан / 🗑 Актлах» цонх — өргөн, зургийн эскиз, × товч */
+    --rf-modal-w: 460px;
+    --rf-thumb-min: 72px;
+    --rf-rm: 20px;
+
     /* ── РАДИУС ── */
     --r-sm: 6px;
     --r-md: 8px;
@@ -101,6 +106,7 @@
        ялгаатай бичвэл «шинэ өнгө» гэж тоологдоод CI унана. */
     --scrim-photo:  rgba(0,0,0,.3);            /* зураг харах давхарга — ард нь бүдгэрнэ */
     --scrim-btn:    rgba(255, 255, 255, 0.15); /* давхаргын товчны дэвсгэр */
+    --scrim-del:    rgba(0,0,0,.5);            /* зураг дээрх × товч — тод байх ёстой */
 
     /* ── Хөдөлгөөн ── */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -7876,3 +7882,45 @@ select.no-asar-len {
 .dsp-w0 { width: 0; } .dsp-w10 { width: 10%; } .dsp-w20 { width: 20%; } .dsp-w30 { width: 30%; }
 .dsp-w40 { width: 40%; } .dsp-w50 { width: 50%; } .dsp-w60 { width: 60%; } .dsp-w70 { width: 70%; }
 .dsp-w80 { width: 80%; } .dsp-w90 { width: 90%; } .dsp-w100 { width: 100%; }
+
+/* ─── Засвар: «✓ Зассан / 🗑 Актлах» цонх (зураг ЗААВАЛ) ───────────────────
+   Бүх хэв маяг класс болов (inline style-гүй), шинэ хүчит дүрэм нэмээгүй —
+   мобайлын `.modal button/textarea` flatten дүрмүүд өмнө нь inline style-ыг ч
+   дардаг байсан тул харагдах байдал ижил хэвээр.
+   ⚠ `.modal .rf-*` гэж бичигдсэн нь ЗОРИУД: `.modal label` / `.modal textarea`
+   (0,1,1) дүрмийг давах specificity (0,2,0) — өмнө inline давдаг байсныг хадгална. */
+/* Хоёр класс = мобайлын `.modal { max-width:100% }`-аас давна (pm-modal-тай ижил арга) */
+.modal.rf-modal { max-width: var(--rf-modal-w); }
+.rf-l { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-1); }
+.rf-req { color: var(--danger); }
+.rf-photos {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--rf-thumb-min), 1fr));
+  gap: var(--space-2); margin-bottom: var(--space-2);
+}
+.rf-thumb {
+  position: relative; aspect-ratio: 1; border-radius: var(--r-md);
+  overflow: hidden; border: 1px solid var(--border);
+}
+.rf-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.modal .rf-rm {
+  position: absolute; top: 2px; right: 2px;
+  width: var(--rf-rm); height: var(--rf-rm);
+  border: none; border-radius: var(--r-full);
+  background: var(--scrim-del); color: var(--on-primary);
+  cursor: pointer; line-height: 1;
+}
+/* Зураг оруулах талбар — тасархай хүрээтэй, бүтэн өргөн */
+.modal .rf-pick {
+  display: block; text-align: center; cursor: pointer;
+  border: 2px dashed var(--accent-purple); border-radius: var(--r-lg);
+  padding: var(--space-3); margin-bottom: var(--space-1);
+}
+.rf-status { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--space-3); }
+.rf-status.is-ok { color: var(--ok); }
+.rf-status.is-bad { color: var(--danger); }
+.modal .rf-note {
+  width: 100%; box-sizing: border-box; padding: var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--panel); color: var(--text); font-size: var(--fs-md);
+}
+.rf-foot { display: flex; gap: var(--space-2); justify-content: flex-end; }

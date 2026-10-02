@@ -178,7 +178,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      ⚠ `psDeprecSummary` нь `psDeprecLine`-ААС ӨМНӨ тодорхойлогддог тул зүсэлт
        түүнээс эхлэх ёстой — эс бөгөөс гурван шалгуур худал унана. */
   const dl = codeLines.slice(codeLines.indexOf('function psDeprecSummary'), codeLines.indexOf('function renderProductSheet'));
-  ok(/deprecForProduct\(p\)/.test(dl), 'scan: мөр нь deprecForProduct-аас (тайлангийн ижил эх сурвалж)');
+  ok(/const d = deprecForProduct\(p\);/.test(dl), 'scan: мөр нь deprecForProduct-аас (тайлангийн ижил эх сурвалж)');
   ok(/deprecByBranch\(state\.products/.test(dl), 'scan: нийлбэр нь deprecByBranch-аас');
   eq((dl.match(/\/\s*\(\s*years\s*\*\s*12\s*\)/g) || []).length, 0,
      'scan: элэгдлийг дэлгэцэд ДАХИН бодохгүй');

@@ -14321,3 +14321,76 @@ async function swFetchTests() {
   ok(/ДАРАГДАНА/.test(mo), 'scan: дарагдах цалинг ил сануулна');
   ok(/can\('salary\.edit'\)/.test(mo), 'scan: эрхгүй хүн засахгүй');
 }
+
+// ═══ SCAN: цалингийн мөр МЕХАНИК давтагдахгүй (2026-10-02) ═══════════════
+// Хүн бүр 8 мөртэй, үүний 4 нь ИЖИЛ тоог давтдаг байв (цэвэр суурь = нийт олгох =
+// урьдчилгаа + үлдэгдэл) тул 20 ажилтны жагсаалт уншигдахаа больсон.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rs = src.slice(src.indexOf('const rows = calc.map'), src.indexOf('const spFoot = T.sp'));
+  ok(rs.length > 800, 'scan: цалингийн мөрийн блок олдов');
+  // Хураангуй мөр нь үргэлж харагдана, задаргаа нь нээгддэг
+  ok(/<details class="ac-row pb-card"/.test(rs), 'scan: мөр нь нээгддэг (<details>) хэлбэртэй');
+  ok(/<summary class="pb-sum">/.test(rs), 'scan: хураангуй мөртэй');
+  ok(/pb-sum-v/.test(rs) && /fmtMoney\(b\.total\)/.test(rs), 'scan: хураангуйд НИЙТ ОЛГОХ дүн гарна');
+  // ⛔ Утгагүй мөр нөхцөлгүйгээр бичигдэхгүй
+  ok(/hasParts/.test(rs), 'scan: суутгал/нэмэгдэлгүй үед задаргааны мөр бичигдэхгүй');
+  eq((rs.match(/line\('= Цэвэр суурь'|line\('Цэвэр суурь'/g) || []).length, 0,
+     'scan: «цэвэр суурь» нь «нийт олгох»-ыг давтахгүй');
+  // Төлөв нь БҮТЭН МӨР биш, НЭГ чип
+  ok(/pb-chip/.test(rs), 'scan: олголтын төлөв чипээр');
+  eq((rs.match(/'олголт бүртгэгдээгүй'/g) || []).length, 0,
+     'scan: «олголт бүртгэгдээгүй» бүтэн мөр хүн бүрд давтагдахгүй');
+  // ⛔ УРЬДЧИЛГАА/ХУВААРЬ ОГТ ХАРАГДАХГҮЙ (CEO шийдвэр) — цалин автоматаар
+  //   бодогдож, олголт нь банкны хуулгаас автоматаар бүртгэгддэг тул аппад
+  //   хагас сарын хуваарилалтыг давтах зүйл алга (хүн бүрд 2 илүү мөр байв).
+  eq((rs.match(/Урьдчилгаа|SAL_ADV_TAG|SAL_REM_TAG|salaryCyclePaid|salaryLastAdvance/g) || []).length, 0,
+     'scan: цалингийн мөрөнд урьдчилгаа/хуваарь байхгүй');
+  ok(/owed > 0 \?/.test(rs), 'scan: үлдэгдэл зөвхөн дутуу үед гарна');
+}
+
+// ═══ ЦАЛИНГИЙН САМБАР ҮНЭХЭЭР ЗУРАГДАНА (2026-10-02) ════════════════════
+// ⚠ Scan-тест нь ХЭВ МАЯГ хардаг, АЖИЛЛАХ эсэхийг хардаггүй. 2026-10-02-нд
+// `memoBtn` зарлахаасаа ӨМНӨ ашиглагдаж (TDZ) дэлгэц бүхэлдээ УНАХ байсныг
+// scan-тест ч, нэгж тест ч барьсангүй — зөвхөн гараар зурж үзэхэд илэрсэн.
+// Тиймээс самбарыг ҮНЭХЭЭР дуудаж, HTML буцааж байгааг шалгана.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('JSON.stringify([state.salaries, state.salaryPayments, state.attMonthKey, state.salaryYM])');
+  runIn(`
+    state.isCEO = true; state._salLoaded = true; state._staffPinsLoaded = true;
+    state.salaryYM = '2026-09'; state.appConfig = state.appConfig || {};
+    state.salaries = { '88000001': 2000000, '88000002': 1800000, '88000777': 500000 };
+    state.salaryDeduct = { '88000002': false };
+    state.salaryPayments = [{ person_key: '88000001', ym: '2026-09', amount: 700000, note: 'EB-цалин', paid_at: '2026-09-20T05:00:00Z' }];
+    TEAM.length = 0;
+    TEAM.push({ name: 'А.Сарнай', phone: '88000001', role: 'Менежер', worker_type: 'permanent', status: 'идэвхтэй', bank: 'Хаан', bank_account: '5000000001' });
+    TEAM.push({ name: 'Б.Очир', phone: '88000002', role: 'Жолооч', worker_type: 'daily', status: 'идэвхтэй' });
+    TEAM.push({ name: 'В.Цэрэн', phone: '88000003', role: 'Туслах', worker_type: 'daily', status: 'идэвхтэй' });
+    state.attMonthKey = '2026-09';
+    state.attMonthRecs = [
+      { member_key: '88000001', member_name: 'А.Сарнай', day: '2026-09-01', kind: 'in',  ts: '2026-09-01T01:00:00.000Z' },
+      { member_key: '88000001', member_name: 'А.Сарнай', day: '2026-09-01', kind: 'out', ts: '2026-09-01T13:00:00.000Z' },
+      { member_key: '88000003', member_name: 'В.Цэрэн',  day: '2026-09-02', kind: 'in',  ts: '2026-09-02T01:00:00.000Z' },
+    ];
+    state.appOrders = [];
+  `);
+  let html = '', err = '';
+  try { html = runIn('renderSalary()'); } catch (e) { err = e.message; }
+  eq(err, '', 'самбар: renderSalary алдаагүй ажиллана');
+  ok(html.length > 500, 'самбар: HTML буцаана');
+  ok(html.includes('А.Сарнай') && html.includes('Б.Очир'), 'самбар: цалинтай хүмүүс гарна');
+  ok(html.includes('В.Цэрэн'), 'самбар: ирцтэй атлаа цалингүй хүн гарна');
+  ok(html.includes('88000777'), 'самбар: эзэнгүй цалин ил гарна');
+  ok(html.includes('<summary'), 'самбар: хураангуй мөртэй');
+  eq(html.indexOf('Урьдчилгаа'), -1, 'самбар: урьдчилгааны хуваарь ХАРАГДАХГҮЙ');
+
+  // Ажилтны өөрийн карт ч ажиллана (ижил тооцооны эх сурвалж)
+  runIn("state.me = '88000001'; state.myPayMonth = '2026-09'; state.myPayRecs = { '2026-09': state.attMonthRecs };");
+  let card = '', cerr = '';
+  try { card = runIn('myPayCardHtml(findMember(state.me) || {})'); } catch (e) { cerr = e.message; }
+  eq(cerr, '', 'карт: myPayCardHtml алдаагүй ажиллана');
+  ok(card.includes('Миний цалин'), 'карт: гарчигтай');
+
+  runIn(`(function(){ const s = ${save}; state.salaries = s[0]; state.salaryPayments = s[1]; state.attMonthKey = s[2]; state.salaryYM = s[3]; })()`);
+}

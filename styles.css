@@ -7896,8 +7896,37 @@ select.no-asar-len {
 .pb-rates-n { flex-basis: 100%; font-size: var(--fs-xs); opacity: .85; }
 .pb-sched { font-size: var(--fs-sm); color: var(--muted); background: var(--panel-hover);
   border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); }
+/* Хураангуй мөр нь үргэлж харагдана; задаргаа нь дарахад нээгдэнэ (<details>).
+   ⛔ Хүн бүрд ижил урт блок бичихгүй — 20 ажилтны жагсаалт уншигдахгүй болно. */
 .pb-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
-  padding: var(--space-3); margin-bottom: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
+  margin-bottom: 6px; overflow: hidden; }
+.pb-card[open] { border-color: var(--primary); }
+/* ⚠ Шинэ breakpoint нэмэхгүй: нэр нь 150px-ээс нарийсвал ӨӨРӨӨ дээд мөрөнд
+   гарна (320px-д нэр · цаг · төлөв · дүн нэг мөрөнд багтдаггүй). */
+.pb-sum {
+  display: flex; align-items: center; gap: var(--space-2); cursor: pointer;
+  padding: var(--space-2) var(--space-3); list-style: none; user-select: none;
+  flex-wrap: wrap;
+}
+.pb-sum::-webkit-details-marker { display: none; }
+.pb-sum:hover { background: var(--panel-hover); }
+.pb-sum-n { flex: 1 1 150px; min-width: 0; font-size: var(--fs-md); display: flex;
+  flex-direction: column; line-height: 1.3; }
+.pb-sum-n .pb-role { font-size: var(--fs-xs); color: var(--muted); }
+.pb-sum-h { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-soft);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-ot { color: var(--ok); }
+.pb-sum-v { flex: 0 0 auto; margin-left: auto; font-weight: 800; font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums; text-align: right; }
+.pb-chip { flex: 0 0 auto; font-size: var(--fs-xs); border-radius: 999px;
+  padding: 1px 8px; white-space: nowrap; }
+.pb-st-ok { background: var(--ok-soft); color: var(--ok); }
+.pb-st-part { background: var(--warn-soft); color: var(--warn); }
+.pb-st-no { background: var(--panel-hover); color: var(--muted); }
+.pb-st-none { background: transparent; color: var(--muted); }
+.pb-body { padding: 0 var(--space-3) var(--space-3); display: flex;
+  flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--line); padding-top: var(--space-2); }
+.pb-noout-l { font-size: var(--fs-xs); color: var(--warn); margin-top: 2px; }
 .pb-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .pb-who { min-width: 160px; flex: 1; font-size: var(--fs-md); }
 .pb-role { font-size: var(--fs-xs); color: var(--muted); }

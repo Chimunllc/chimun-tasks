@@ -161,6 +161,34 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
 }
 
+/* 0e2c) SCAN — ТЭНЦЛИЙН ТӨЛӨВ хоёр газар салбарлахгүй (2026-10-02)
+   «Хэдэн данснаас хэд нь тэнцсэн» нь ГАНЦ функцээс (`balanceStats`) гарна: карт
+   болон сар хаах хоёул түүнээс уншина. Хоёр газар бодвол дэлгэц «4/4 тэнцсэн»
+   гэж байхад сар хаах «зөрүүтэй» гэж хориглож, хүн алийг нь ч эрх мэдэлтэй
+   гэж мэдэхгүй болно. Мөн ТУСДАА ЦОНХ үүсгэхгүй — хэн ч нээдэггүй дэлгэц үхдэг. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function balanceStats\(/.test(codeLines), 'scan: тэнцлийн тоолол ганц функцээс');
+  // closeMonthBlockers нь өөрөө ДАХИН бодохгүй — balanceStats дуудна
+  const cb = codeLines.slice(codeLines.indexOf('function closeMonthBlockers'),
+                             codeLines.indexOf('function finNextSteps'));
+  ok(/balanceStats\(stmts, regAccts, month\)/.test(cb),
+     'scan: сар хаах нь balanceStats-аас уншина');
+  eq((cb.match(/stmtBalanceCheck\(/g) || []).length, 0,
+     'scan: closeMonthBlockers тэнцлийг ДАХИН бодохгүй (бүгд balanceStats-аар)');
+  // ⛔ Тэнцлийн зөрүү «залгаа» гэж нэрлэгдэхгүй — хүнд өөр ажил заана
+  ok(/flags\.filter\(g => g\.kind !== 'balance'\)/.test(cb),
+     'scan: тэнцлийн зөрүү залгааны блокероос ХАСАГДСАН');
+  ok(/kind: 'balance'/.test(cb), 'scan: тэнцэл нь өөрийн нэртэй блокер');
+  // Карт нь тэнцлийн мөрийг ҮРГЭЛЖ гаргана (зөв үед ч N/M)
+  ok(/key: 'balance', done: true[\s\S]{0,260}данс тэнцсэн/.test(codeLines),
+     'scan: зөв үед ч «N/M данс тэнцсэн» гэж батална');
+  ok(/balance: balanceStats\(state\.bankStatements, companyAcctList\(\), month\)/.test(codeLines),
+     'scan: дэлгэц картад тэнцлийн төлөв дамжуулна');
+  ok(/const blocked = miss\.length \|\| oi\.n \|\| chain \|\| balBad/.test(codeLines),
+     'scan: тэнцэл зөрвөл сар хаах ХҮЛЭЭНЭ');
+}
+
 /* 0e2b) SCAN — НЭРГҮЙ хуулгын экспортыг импортод ИЛ хэлнэ (2026-10-02)
    Голомт хоёр хэлбэрээр экспортолдог: харилцагчийн НЭРИЙН баганатай, ба
    зөвхөн «Харьцсан данс»-тай (7 багана). Нэргүйг оруулахад мөрийн тоо, дүн,
@@ -10271,7 +10299,7 @@ need(['orderCustType']);
 {
   need(['stmtPeriodDates', 'stmtIdOf', 'stmtIncomeKey', 'stmtIncomeFp', 'buildStatementImport',
     'stmtBalanceCheck', 'stmtChainCheck', 'incomeOpenStats', 'stmtMonthMissingAccts',
-    'stmtNoPayerNames',
+    'stmtNoPayerNames', 'balanceStats',
     'receiptFpIndex', 'receiptMatchFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner']);
 
   // ── хугацаа: толгойд бичигдсэн бол түүнээс, эс бол мөрүүдээс ──
@@ -10939,8 +10967,14 @@ function testFinNextSteps() {
   // ① Бүх ажил үлдсэн — эрэмбэ нь хамаарлын дараалал
   const all = F.finNextSteps({ month: '2026-09', isCEO: true,
     missingAccts: ['Голомт', 'Хаан'], pendExpenses: 7,
-    openIncome: { n: 12, sum: 4200000 }, chainBreaks: 2 });
-  eq(keys(all).join('>'), 'stmt>expense>income>chain>close', 'алхмын эрэмбэ: хуулга→ангилах→тулгах→залгаа→хаах');
+    openIncome: { n: 12, sum: 4200000 }, chainBreaks: 2,
+    balance: { total: 4, ok: 2, bad: 1, unver: 1, badAccts: ['504'], unverAccts: ['300'] } });
+  eq(keys(all).join('>'), 'stmt>expense>income>balance>chain>close',
+     'алхмын эрэмбэ: хуулга→ангилах→тулгах→тэнцэл→залгаа→хаах');
+  eq(byKey(all, 'balance').n, 2, 'тэнцэл: зөрүүтэй + шалгагдаагүй дансыг нийлүүлж тоолно');
+  ok(/504/.test(byKey(all, 'balance').hint) && /300/.test(byKey(all, 'balance').hint),
+     'тэнцэл: АЛЬ данс гэдгийг нэрлэнэ');
+  eq(byKey(all, 'balance').act, 'recon', 'тэнцлийн алхам → тулгалтын цонх');
   eq(byKey(all, 'stmt').n, 2, 'хуулга дутуу дансны тоо');
   eq(byKey(all, 'stmt').act, 'classify', 'хуулгын алхам → оруулах модал');
   eq(byKey(all, 'income').sum, 4200000, 'хаагдаагүй орлогын дүн харагдана');
@@ -10951,9 +10985,24 @@ function testFinNextSteps() {
 
   // ② Бүгд цэвэр — хаах нь идэвхтэй, бусад нь ✓
   const clean = F.finNextSteps({ month: '2026-09', isCEO: true,
-    missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 }, chainBreaks: 0 });
-  eq(keys(clean).join('>'), 'stmt>expense>income>close', 'цэвэр үед залгааны алхам гарахгүй');
-  ok(clean.slice(0, 3).every(x => x.done), 'цэвэр үед эхний 3 алхам ✓');
+    missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 4, ok: 4, bad: 0, unver: 0, badAccts: [], unverAccts: [] } });
+  eq(keys(clean).join('>'), 'stmt>expense>income>balance>close', 'цэвэр үед залгааны алхам гарахгүй');
+  ok(clean.slice(0, 4).every(x => x.done), 'цэвэр үед эхний 4 алхам ✓');
+  /* ⭐ ЗӨВ БАЙХАД Ч ХАРАГДАНА — «хэдэн данснаас хэд нь тэнцсэн» гэдэг нь шалгалт
+     үнэхээр ажилласныг батлах цорын ганц дохио. Зөрүү байхад л гарч ирдэг мөр
+     бол шалгалт чимээгүй унасныг хэн ч мэдэхгүй. */
+  eq(byKey(clean, 'balance').hint, '4/4 данс тэнцсэн', 'тэнцэл: зөв үед ч N/M тоо харагдана');
+  eq(byKey(clean, 'balance').act, undefined, 'тэнцэл: зөв үед товчгүй');
+  eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 0,
+    openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 0, ok: 0, bad: 0, unver: 0 } }).find(x => x.key === 'balance').hint,
+     'Шалгах хуулга алга', 'тэнцэл: хуулга байхгүй бол «0/0» гэж төөрөгдүүлэхгүй');
+  /* ⛔ ТЭНЦЭЛ ЗӨРВӨЛ САР ХААГДАХГҮЙ — эс бөгөөс зөрүүтэй сар хөлдөж, засах зам хаагдана. */
+  eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 0,
+    openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 2, ok: 1, bad: 1, unver: 0, badAccts: ['504'], unverAccts: [] } })
+    .find(x => x.key === 'close').wait, true, 'тэнцэл зөрвөл сар хаах ХҮЛЭЭНЭ');
   eq(byKey(clean, 'close').act, 'close', 'цэвэр үед сар хаах идэвхтэй');
 
   // ③ CEO биш → хаах алхам огт байхгүй
@@ -10971,7 +11020,7 @@ function testFinNextSteps() {
 
   // ⑤ HTML — тоолол, товч, «хийх N зүйл» толгой
   const h = F.finNextStepsHtml(all, '2026-09');
-  ok(/2026-09 сард хийх 4 зүйл/.test(h), 'толгойд үлдсэн ажлын тоо (хаах нь тоологдохгүй)');
+  ok(/2026-09 сард хийх 5 зүйл/.test(h), 'толгойд үлдсэн ажлын тоо (хаах нь тоологдохгүй)');
   ok(/data-ns-act="classify"/.test(h) && /data-ns-act="recon"/.test(h), 'товчнууд үйлдлээ авч явна');
   ok(!/data-ns-act="close"/.test(h), 'хүлээж буй сар хаах товчгүй');
   ok(/✓ 2026-09 сар цэгцтэй/.test(F.finNextStepsHtml(
@@ -11080,8 +11129,13 @@ testFinBasisDefault();
 
     // Тэнцлийн зөрүү — тухайн сарын хуулганд
     const bad = [{ ...stmts[0], closing_calc: 90 }];
-    eq(F.closeMonthBlockers(bad, [], ['504'], '2026-08').map(x => x.kind), ['chain'],
-       'хаах: хуулгын тэнцэл зөрвөл саад');
+    /* ⛔ ТЭНЦЛИЙН ЗӨРҮҮ нь «ЗАЛГАА» БИШ (2026-10-02) — хоёр нь хоёр өөр ажил:
+       залгаа тасарсан бол ДУТУУ ХУУЛГА оруулна, тэнцэл зөрсөн бол оруулсан
+       хуулгын МӨР дутуу уншигдсан. Нэг нэрээр нэрлэвэл хүнд буруу заавар хүрнэ. */
+    eq(F.closeMonthBlockers(bad, [], ['504'], '2026-08').map(x => x.kind), ['balance'],
+       'хаах: хуулгын тэнцэл зөрвөл саад (залгаа БИШ, тэнцэл гэж нэрлэгдэнэ)');
+    eq(F.closeMonthBlockers(bad, [], ['504'], '2026-08')[0].accts, ['504'],
+       'хаах: аль дансны тэнцэл зөрснийг нэрлэнэ');
 
     /* ⭐ ХУВИЙН дансны зөрүү сар хаахыг БЛОКЛОХГҮЙ. `regAccts` = компанийн данс
        (`companyAcctList()` хувийн дансыг хасдаг) тул залгааны шалгуур ч түүгээр
@@ -11091,7 +11145,7 @@ testFinBasisDefault();
       period_from: '2026-08-01', period_to: '2026-08-31', opening: 0, closing_stated: 100, closing_calc: -434583 }];
     eq(F.closeMonthBlockers(prsn, [], ['504'], '2026-08'), [],
        'хаах: хувийн дансны тэнцлийн зөрүү сар хаахыг блоклохгүй');
-    eq(F.closeMonthBlockers(prsn, [], ['504', '9911223344'], '2026-08').map(x => x.kind), ['chain'],
+    eq(F.closeMonthBlockers(prsn, [], ['504', '9911223344'], '2026-08').map(x => x.kind), ['balance'],
        'хаах: тэр данс КОМПАНИЙНХ бол дахин саад болно');
     // ӨӨР сарын эвдрэл нь энэ сарыг хаахад саад БОЛОХГҮЙ
     const other = [{ ...stmts[0], id: '504|2026-06-01|2026-06-30', period_from: '2026-06-01', period_to: '2026-06-30', closing_calc: 90 }];
@@ -13398,6 +13452,54 @@ async function swFetchTests() {
   const b = CC([mk('2026-09-01', '2026-09-30', 100, 500),
                 { ...mk('2026-09-20', '2026-09-21', 300, 400), closing_calc: 999 }]);
   eq(b.filter(x => x.kind === 'balance').length, 1, 'залгаа: багтсан хуулгын ТЭНЦЭЛ шалгагдсан хэвээр');
+}
+
+/* ═══ ⚖️ «ХЭДЭН ДАНСНААС ХЭД НЬ ТЭНЦСЭН» = `balanceStats` (2026-10-02) ═══
+   Тэнцлийн төлөв өмнө нь ЗӨВХӨН «Сар хаах» дарахад харагддаг байв. Одоо «дараагийн
+   алхам» картад мөр болж үргэлж гарна; `closeMonthBlockers` МӨН үүнээс уншина. */
+{
+  const BS = vm.runInContext('balanceStats', sandbox);
+  const CB = vm.runInContext('closeMonthBlockers', sandbox);
+  const st = (acct, op, stated, calc, ccy, from, to) => ({
+    id: `${acct}|${from || '2026-09-01'}|${to || '2026-09-30'}`, acct, ccy: ccy || 'MNT',
+    period_from: from || '2026-09-01', period_to: to || '2026-09-30',
+    opening: op, closing_stated: stated, closing_calc: calc, credit_total: 100, debit_total: 100 });
+
+  // ── ДАНСААР тоолно, хуулгаар БИШ: нэг данс 3 хуулгатай ч НЭГ л данс ──
+  const three = [st('504', 0, 100, 100, 'MNT', '2026-09-01', '2026-09-10'),
+                 st('504', 100, 200, 200, 'MNT', '2026-09-10', '2026-09-20'),
+                 st('504', 200, 300, 300, 'MNT', '2026-09-20', '2026-09-30')];
+  eq([BS(three, ['504'], '2026-09').total, BS(three, ['504'], '2026-09').ok], [1, 1],
+     'тэнцэл: нэг данс олон хуулгатай ч НЭГ данс гэж тоологдоно');
+
+  // ── ХАМГИЙН ХҮНД ДОХИО ЯЛНА: нэг зөв хуулга зөрүүг НУУХГҮЙ ──
+  const mixed = [st('504', 0, 100, 100), { ...st('504', 100, 200, 999), id: '504|2026-09-11|2026-09-20',
+    period_from: '2026-09-11', period_to: '2026-09-20' }];
+  eq([BS(mixed, ['504'], '2026-09').bad, BS(mixed, ['504'], '2026-09').ok], [1, 0],
+     'тэнцэл: дансны ямар нэг хуулга зөрвөл тэр данс «зөрүүтэй»');
+  // зөрүүгүй ч шалгагдаагүй нь байвал «шалгагдаагүй» (зөв гэж тоологдохгүй)
+  const unv = [st('504', 0, 100, 100), { ...st('504', 0, 0, 0), id: '504|2026-09-11|2026-09-20',
+    period_from: '2026-09-11', period_to: '2026-09-20' }];
+  eq([BS(unv, ['504'], '2026-09').unver, BS(unv, ['504'], '2026-09').ok], [1, 0],
+     'тэнцэл: шалгагдаагүй хуулгатай данс «тэнцсэн» гэж тоологдохгүй');
+
+  // ── Валют данс ба бүртгэлгүй данс тоололд ОГТ ОРОХГҮЙ ──
+  eq(BS([st('504', 500, 600, 500, 'USD')], ['504'], '2026-09').total, 0,
+     'тэнцэл: валют данс тоололд орохгүй (мөр нь ₮ болж хөрвүүлэгддэг)');
+  eq(BS([st('999', 0, 100, 100)], ['504'], '2026-09').total, 0,
+     'тэнцэл: бүртгэгдээгүй (хувийн) данс тоололд орохгүй');
+  eq(BS([st('504', 0, 100, 100, 'MNT', '2026-08-01', '2026-08-31')], ['504'], '2026-09').total, 0,
+     'тэнцэл: өөр сарын хуулга тоологдохгүй');
+
+  /* ⭐ ИНВАРИАНТ — карт ба сар хаах ИЖИЛ тоо. Дүрэм хоёр газар салбарлавал
+     дэлгэц «4/4 тэнцсэн» гэж байхад сар хаах «зөрүүтэй» гэж хориглоно. */
+  const inv = [st('504', 0, 100, 999), st('300', 0, 0, 0, 'MNT', '2026-09-01', '2026-09-30')];
+  const bs = BS(inv, ['504', '300'], '2026-09');
+  const blk = CB(inv, [], ['504', '300'], '2026-09');
+  eq((blk.find(b => b.kind === 'balance') || {}).n, bs.bad,
+     'ИНВАРИАНТ: сар хаахын «зөрүүтэй» тоо = картын тоо');
+  eq((blk.find(b => b.kind === 'unverified') || {}).n, bs.unver,
+     'ИНВАРИАНТ: сар хаахын «шалгагдаагүй» тоо = картын тоо');
 }
 
 // ═══ «ШАЛГАЖ ЧАДСАНГҮЙ» нь «ЗӨВ» БИШ (2026-10-02) ═══

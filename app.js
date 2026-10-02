@@ -8948,6 +8948,40 @@ function assertMonthOpen(month, what) {
 }
 /* Сар хаахад БЭЛЭН эсэх — шалтгаанын жагсаалт. Хоосон = бэлэн. Цэвэр функц (тестлэгдэнэ).
    CEO эдгээрийг үл хэрэгсэж хааж ч болно (зориудаар — шалтгаан нь бичлэгт үлдэнэ). */
+/* ⚖️ «ХЭДЭН ДАНСНААС ХЭД НЬ ТЭНЦСЭН» = `balanceStats`, ГАНЦ эх сурвалж (2026-10-02).
+   Тэнцлийн төлөв өмнө нь ЗӨВХӨН «Сар хаах» дарахад харагддаг байв — тэр үед хэтэрхий
+   орой. Одоо «дараагийн алхам» картад мөр болж ҮРГЭЛЖ харагдана (зөв байхад ч «N/M
+   данс тэнцсэн» гэж батална), ба `closeMonthBlockers` МӨН үүнээс уншина — хоёр тоо
+   хэзээ ч зөрөхгүй (ИНВАРИАНТ тест тулгана).
+   ⛔ **ДАНСААР тоолно, хуулгаар БИШ.** Нэг данс нэг сард олон хуулгатай байж болно
+      (амьд датаар нэг данс 6 хуулгатай) тул хуулгаар тоовол «12/14 тэнцсэн» гэсэн
+      тоо хүнд юу ч хэлэхгүй — хүн данс мэддэг, хуулгын мөр мэддэггүй.
+   ⛔ **ХАМГИЙН ХҮНД ДОХИО ЯЛНА:** дансны ямар нэг хуулга зөрвөл тэр данс «зөрүүтэй»;
+      зөрүүгүй ч шалгагдаагүй нь байвал «шалгагдаагүй». Эс бөгөөс нэг зөв хуулга
+      зөрүүг нуана.
+   ⚠ Валют данс ба хоосон хуулга тоололд ОГТ ОРОХГҮЙ — тэд шалгагдах ёсгүй
+     (мөр нь ₮ болж хөрвүүлэгддэг тул валют үлдэгдэлтэй тэнцэхгүй нь зүй ёсных).
+     «Шалгагдаагүй» гэж тоовол анхааруулга мөнхөд асаалттай болно. */
+function balanceStats(stmts, regAccts, month) {
+  const want = (regAccts || []).map(a => String(a || '').replace(/\D/g, '').slice(-10)).filter(Boolean);
+  const m = String(month || '');
+  const by = new Map();   // данс → {ok, bad, unver}
+  (stmts || []).forEach(st => {
+    if (!st || !st.acct) return;
+    if (want.length && !want.includes(String(st.acct).replace(/\D/g, '').slice(-10))) return;
+    if (String(st.period_from || '').slice(0, 7) !== m && String(st.period_to || '').slice(0, 7) !== m) return;
+    const b = stmtBalanceCheck(st);
+    if (b.skip === 'валют данс' || b.skip === 'хоосон') return;   // шалгагдах ёсгүй
+    const k = String(st.acct);
+    const g = by.get(k) || { ok: 0, bad: 0, unver: 0 };
+    if (b.skip) g.unver++; else if (b.ok) g.ok++; else g.bad++;
+    by.set(k, g);
+  });
+  const badAccts = [], unverAccts = [];
+  let ok = 0;
+  by.forEach((g, k) => { if (g.bad) badAccts.push(k); else if (g.unver) unverAccts.push(k); else ok++; });
+  return { total: by.size, ok, bad: badAccts.length, unver: unverAccts.length, badAccts, unverAccts };
+}
 function closeMonthBlockers(stmts, income, regAccts, month) {
   const out = [];
   const miss = stmtMonthMissingAccts(stmts, month, regAccts);
@@ -8959,7 +8993,12 @@ function closeMonthBlockers(stmts, income, regAccts, month) {
     const p = String(g.id || '').split('|');   // id = данс|эхлэх|дуусах
     return String(p[1] || '').slice(0, 7) === month || String(p[2] || '').slice(0, 7) === month;
   };
-  const gaps = (stmtChainCheck(stmts, regAccts) || []).filter(inMonth);
+  /* ⛔ ТЭНЦЛИЙН ЗӨРҮҮГ «ЗАЛГАА ЭВДЭРСЭН» ГЭЖ БҮҮ НЭРЛЭ (2026-10-02). Хоёр нь
+     ХОЁР ӨӨР ажил: залгаа тасарсан бол ДУТУУ ХУУЛГА оруулна, тэнцэл зөрсөн бол
+     оруулсан хуулгын МӨР дутуу уншигдсан. Өмнө нь хоёуланг «залгаа» гэж нэг
+     блокер болгодог тул хүнд БУРУУ зааварчилгаа хүрч байв. */
+  const flags = (stmtChainCheck(stmts, regAccts) || []).filter(inMonth);
+  const gaps = flags.filter(g => g.kind !== 'balance');
   if (gaps.length) out.push({ kind: 'chain', n: gaps.length, why: `${gaps.length} хуулгын залгаа эвдэрсэн` });
   /* ⛔ «ШАЛГАЖ ЧАДСАНГҮЙ» нь «ЗӨВ БАЙНА» БИШ (2026-10-02). `stmtBalanceCheck` нь
      үлдэгдэл уншигдаагүй үед `{ok:true, skip:…}` буцаадаг — тэр нь ХУДАЛ
@@ -8968,17 +9007,11 @@ function closeMonthBlockers(stmts, income, regAccts, month) {
      шалгагдалгүй өнгөрсөн — тэдний нэгд 534,683₮-ийн зөрүү байсан.
      ⚠ Валют данс нь ЗАКОНЫ ЁСООР шалгагдахгүй (мөр нь ₮ болж хөрвүүлэгддэг тул
        валют үлдэгдэлтэй тэнцэхгүй) — түүнийг анхааруулгад ОРУУЛАХГҮЙ. */
-  const want = (regAccts || []).map(a => String(a || '').replace(/\D/g, '').slice(-10)).filter(Boolean);
-  const unver = (stmts || []).filter(s => {
-    if (!s || !s.acct) return false;
-    if (want.length && !want.includes(String(s.acct).replace(/\D/g, '').slice(-10))) return false;
-    if (String(s.period_from || '').slice(0, 7) !== month && String(s.period_to || '').slice(0, 7) !== month) return false;
-    const b = stmtBalanceCheck(s);
-    return !!b.skip && b.skip !== 'валют данс' && b.skip !== 'хоосон';
-  });
-  if (unver.length) out.push({ kind: 'unverified', n: unver.length,
-    accts: [...new Set(unver.map(s => String(s.acct)))],
-    why: `${unver.length} хуулгын тэнцэл шалгагдаагүй — үлдэгдэл уншигдаагүй` });
+  const bs = balanceStats(stmts, regAccts, month);
+  if (bs.bad) out.push({ kind: 'balance', n: bs.bad, accts: bs.badAccts,
+    why: `${bs.bad} дансны тэнцэл зөрж байна` });
+  if (bs.unver) out.push({ kind: 'unverified', n: bs.unver, accts: bs.unverAccts,
+    why: `${bs.unver} дансны тэнцэл шалгагдаагүй — үлдэгдэл уншигдаагүй` });
   return out;
 }
 /* ═══════ ДАРААГИЙН АЛХАМ (2026-09-11) ═════════════════════════════════════════
@@ -9014,10 +9047,25 @@ function finNextSteps(ctx) {
   steps.push(oi.n
     ? { key: 'income', n: oi.n, sum: oi.sum, icon: '💰', title: 'Орлого тулгах', hint: 'Аль захиалгынх нь тодорхойгүй орсон мөнгө', act: 'recon', btn: 'Тулгах' }
     : { key: 'income', done: true, icon: '💰', title: 'Орлого тулгах', hint: 'Орсон мөнгө бүгд захиалгадаа холбогдсон' });
+  /* ⚖️ ТЭНЦЭЛ = ҮРГЭЛЖ харагдах мөр (2026-10-02). «Хэдэн данснаас хэд нь тэнцсэн»
+     гэдгийг хүн ХАРАХ ёстой — зөрүү байхад л гарч ирдэг мөр нь «шалгалт ажиллаж
+     байгаа» гэдгийг хэлдэггүй, улмаар шалгалт чимээгүй унасныг хэн ч мэдэхгүй.
+     Тусдаа цонх ҮҮСГЭХГҮЙ — хэн ч нээдэггүй дэлгэц үхдэг (CLAUDE.md-ийн дүрэм),
+     тиймээс хүн аль хэдийн хардаг картан дээр мөр болж суна. */
+  const bal = c.balance || { total: 0, ok: 0, bad: 0, unver: 0, badAccts: [], unverAccts: [] };
+  const balBad = (bal.bad || 0) + (bal.unver || 0);
+  const balHint = [
+    bal.bad ? `${bal.bad} данс зөрүүтэй: ${(bal.badAccts || []).join(', ')}` : '',
+    bal.unver ? `${bal.unver} данс шалгагдаагүй (үлдэгдэл уншигдаагүй): ${(bal.unverAccts || []).join(', ')}` : '',
+  ].filter(Boolean).join(' · ');
+  steps.push(balBad
+    ? { key: 'balance', n: balBad, icon: '⚖️', title: 'Тэнцэл шалгах', hint: balHint, act: 'recon', btn: 'Харах' }
+    : { key: 'balance', done: true, icon: '⚖️', title: 'Тэнцэл шалгах',
+        hint: bal.total ? `${bal.ok}/${bal.total} данс тэнцсэн` : 'Шалгах хуулга алга' });
   const chain = Number(c.chainBreaks) || 0;
-  if (chain) steps.push({ key: 'chain', n: chain, icon: '🔗', title: 'Хуулгын завсар нөхөх', hint: 'Үлдэгдэл заваарсан — дутуу хуулга бий', act: 'recon', btn: 'Харах' });
+  if (chain) steps.push({ key: 'chain', n: chain, icon: '🔗', title: 'Хуулгын завсар нөхөх', hint: 'Хуулга хооронд завсар бий — дутуу хуулга оруулна', act: 'recon', btn: 'Харах' });
   if (c.isCEO) {
-    const blocked = miss.length || oi.n || chain;
+    const blocked = miss.length || oi.n || chain || balBad;
     steps.push(blocked
       ? { key: 'close', icon: '🔒', title: 'Сар хаах', hint: 'Дээрх цэгцэрсний дараа', wait: true }
       : { key: 'close', icon: '🔒', title: 'Сар хаах', hint: month + ' сарын тоог хөлдөөнө — дараа нь засагдахгүй', act: 'close', btn: 'Хаах' });
@@ -34790,6 +34838,7 @@ function renderFinanceReport(wrap) {
         openIncome: incomeOpenStats(state.bankIncome, month),
         chainBreaks: (closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), month)
           .find(b => b.kind === 'chain') || {}).n || 0,
+        balance: balanceStats(state.bankStatements, companyAcctList(), month),
       });
       const card = document.createElement('div');
       card.innerHTML = finNextStepsHtml(_ns, month);

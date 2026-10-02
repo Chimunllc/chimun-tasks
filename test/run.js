@@ -161,6 +161,37 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
 }
 
+/* 0e2d) SCAN — БОДОЛТЫГ ДАХИН БОДОХГҮЙ, залгааны тулгуур ГАНЦ газар (2026-10-02)
+   `stmtBalanceCheck` = тэнцлийн ганц шүүгч (валют данс, уншигдаагүй үлдэгдэл,
+   ±1₮ тоймлолт бүгд тэнд). Дэлгэц өөрөө «эхний + орлого − зарлага» бодож
+   харьцуулбал тэр онцгой тохиолдлууд алдагдаж, дэлгэц ба шалгуур зөрнө.
+   Багтсан хуулгыг хасах дүрэм ч ганц газар (`stmtChainSpine`) — хоёр газар
+   бичвэл залгаа ба дэлгэц өөр хуулгыг «тулгуур» гэж үзнэ. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function stmtChainSpine\(/.test(codeLines), 'scan: залгааны тулгуур ганц функцээс');
+  ok(/function stmtDetail\(/.test(codeLines), 'scan: хуулгын бодолт ганц функцээс');
+  // stmtChainCheck өөрөө эрэмбэлж/шүүхгүй — stmtChainSpine дуудна
+  const cc = codeLines.slice(codeLines.indexOf('function stmtChainCheck'),
+                             codeLines.indexOf('function stmtManualIncome') > 0
+                               ? codeLines.indexOf('function stmtManualIncome') : codeLines.indexOf('function incomeManualRows'));
+  ok(/stmtChainSpine\(all\)/.test(cc), 'scan: залгааны шалгуур тулгуурыг ганц функцээс авна');
+  eq((cc.match(/period_from\)\.localeCompare/g) || []).length, 0,
+     'scan: stmtChainCheck дотор эрэмбэлэх/багтсаныг шүүх код ДАВХАРДААГҮЙ');
+  // stmtDetail нь зөрүүг ӨӨРӨӨ бодохгүй — stmtBalanceCheck-ээс авна
+  const sd = codeLines.slice(codeLines.indexOf('function stmtDetail'),
+                             codeLines.indexOf('function stmtChainCheck'));
+  ok(/stmtBalanceCheck\(s\)/.test(sd), 'scan: бодолт тэнцлийн шүүгчээс уншина');
+  eq((sd.match(/closing_calc\s*\)?\s*-/g) || []).length, 0,
+     'scan: stmtDetail зөрүүг ДАХИН бодохгүй');
+  // Шалгагдаагүй үед зөрүү нь null — 0 бол «зөв» гэж уншигдана
+  ok(/diff: b\.skip \? null :/.test(sd), 'scan: шалгагдаагүй үед зөрүү null');
+  // Дэлгэц: бодолтын мөрүүд + эх файл харагдана
+  ok(/= Бодсон эцсийн/.test(codeLines) && /Хуулгад бичсэн/.test(codeLines),
+     'scan: «бодсон» ба «хуулгад бичсэн» хоёр мөр ЗЭРЭГ харагдана');
+  ok(/stmt-lad/.test(codeLines), 'scan: бодолт өөрийн класстай (inline style биш)');
+}
+
 /* 0e2c) SCAN — ТЭНЦЛИЙН ТӨЛӨВ хоёр газар салбарлахгүй (2026-10-02)
    «Хэдэн данснаас хэд нь тэнцсэн» нь ГАНЦ функцээс (`balanceStats`) гарна: карт
    болон сар хаах хоёул түүнээс уншина. Хоёр газар бодвол дэлгэц «4/4 тэнцсэн»
@@ -10299,7 +10330,7 @@ need(['orderCustType']);
 {
   need(['stmtPeriodDates', 'stmtIdOf', 'stmtIncomeKey', 'stmtIncomeFp', 'buildStatementImport',
     'stmtBalanceCheck', 'stmtChainCheck', 'incomeOpenStats', 'stmtMonthMissingAccts',
-    'stmtNoPayerNames', 'balanceStats',
+    'stmtNoPayerNames', 'balanceStats', 'stmtChainSpine', 'stmtDetail',
     'receiptFpIndex', 'receiptMatchFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner']);
 
   // ── хугацаа: толгойд бичигдсэн бол түүнээс, эс бол мөрүүдээс ──
@@ -13452,6 +13483,59 @@ async function swFetchTests() {
   const b = CC([mk('2026-09-01', '2026-09-30', 100, 500),
                 { ...mk('2026-09-20', '2026-09-21', 300, 400), closing_calc: 999 }]);
   eq(b.filter(x => x.kind === 'balance').length, 1, 'залгаа: багтсан хуулгын ТЭНЦЭЛ шалгагдсан хэвээр');
+}
+
+/* ═══ ⚖️ ХУУЛГЫН БОДОЛТ ИЛ — `stmtDetail` + `stmtChainSpine` (2026-10-02) ═══
+   «✓ тэнцэв» гэдэг дангаараа шалгалт ЮУГ харьцуулсныг хэлдэггүй. Хуулга бүрийг
+   нээхэд «эхний + орлого − зарлага = эцсийн», хуулгад бичсэнтэй тулгасан зөрүү,
+   өмнөх хуулгатай залгасан холбоос, ямар файлаас орсон нь гарна. */
+{
+  const SP = vm.runInContext('stmtChainSpine', sandbox);
+  const SD = vm.runInContext('stmtDetail', sandbox);
+  const st = (o) => ({ id: `${o.a || '504'}|${o.f}|${o.t}`, acct: o.a || '504', ccy: o.ccy || 'MNT',
+    period_from: o.f, period_to: o.t, opening: o.op, closing_stated: o.cs, closing_calc: o.cc,
+    credit_total: o.cr, debit_total: o.db, row_count: o.n, file_name: o.file, imported_at: o.at });
+
+  // ── ТУЛГУУР: багтсан хуулга хасагдаж, ИЛ гарна ──
+  const whole = st({ f: '2026-09-01', t: '2026-09-30', op: 0, cs: 100, cc: 100 });
+  const part = st({ f: '2026-09-01', t: '2026-09-11', op: 0, cs: 50, cc: 50 });
+  const sp = SP([part, whole]);
+  eq([sp.spine.length, sp.dropped.length], [1, 1], 'тулгуур: багтсан хуулга тулгуураас хасагдана');
+  eq(sp.spine[0].period_to, '2026-09-30', 'тулгуур: БҮТЭН хуулга тулгуурт үлдэнэ');
+  eq(sp.dropped[0].period_to, '2026-09-11', 'тулгуур: багтсан нь «dropped»-д ИЛ гарна (нуугдахгүй)');
+  eq(SP([]).spine.length, 0, 'тулгуур: хоосон жагсаалт унахгүй');
+  // Огноогүй хуулга тулгуурт орохгүй (эрэмбэлэх боломжгүй)
+  eq(SP([{ id: 'x', acct: '504' }, whole]).spine.length, 1, 'тулгуур: хугацаагүй хуулга орохгүй');
+
+  // ── БОДОЛТ: эхний + орлого − зарлага = эцсийн ──
+  const d = SD(st({ f: '2026-09-01', t: '2026-09-30', op: 88542, cs: 15316644, cc: 15316644,
+    cr: 107470202, db: 92242100, n: 145, file: '1180d.xlsx', at: '2026-10-02T04:00:00Z' }));
+  eq([d.opening, d.credit, d.debit, d.calc, d.stated], [88542, 107470202, 92242100, 15316644, 15316644],
+     'бодолт: эхний · орлого · зарлага · бодсон · хуулгад бичсэн');
+  eq([d.diff, d.ok, d.skip], [0, true, ''], 'бодолт: тэнцсэн хуулга зөрүү 0');
+  eq([d.rows, d.file, d.at], [145, '1180d.xlsx', '2026-10-02'], 'бодолт: мөрийн тоо + эх файл + огноо');
+
+  // ── Зөрүүтэй: тоо нь `stmtBalanceCheck`-ээс, ДАХИН бодогдохгүй ──
+  const bad = SD(st({ f: '2026-09-01', t: '2026-09-30', op: 0, cs: 100, cc: 90, cr: 100, db: 10 }));
+  eq([bad.diff, bad.ok], [-10, false], 'бодолт: зөрүү = бодсон − хуулгад бичсэн');
+  // ⚠ Шалгагдаагүй үед зөрүү нь 0 БИШ `null` — «0 зөрүү» нь «зөв» гэж уншигдана
+  eq(SD(st({ f: '2026-09-01', t: '2026-09-30', op: 0, cs: 0, cc: 0, cr: 500, db: 100 })).diff, null,
+     'бодолт: шалгагдаагүй үед зөрүү null (0 гэж бичвэл «зөв» гэж уншигдана)');
+  eq(SD(st({ f: '2026-09-01', t: '2026-09-30', op: 500, cs: 600, cc: 500, ccy: 'USD' })).skip, 'валют данс',
+     'бодолт: валют дансны шалтгаан ил бичигдэнэ');
+
+  // ── ЗАЛГААНЫ ХОЛБООС: өмнөх эцсийн ↔ энэ эхний ──
+  const p1 = st({ f: '2026-08-01', t: '2026-08-31', op: 0, cs: 141028, cc: 141028 });
+  const c1 = st({ f: '2026-09-01', t: '2026-09-26', op: 141028, cs: 133565, cc: 133565 });
+  eq(SD(c1, p1).link, { to: '2026-08-31', closing: 141028, diff: 0, ok: true },
+     'залгаа: өмнөх эцсийн = энэ эхний → ✓');
+  eq(SD(st({ f: '2026-09-01', t: '2026-09-26', op: 999999, cs: 1, cc: 1 }), p1).link.ok, false,
+     'залгаа: үлдэгдэл таарахгүй бол ⚠');
+  /* ⛔ ХЭСЭГЧЛЭН ДАВХЦСАН бол холбоос ГАРГАХГҮЙ — давхцсан хугацаанд гүйлгээ
+     хоёуланд нь орсон тул «өмнөхийн эцсийн» нь «энэ эхний»-гийн мөч БИШ. */
+  eq(SD(c1, st({ f: '2026-08-01', t: '2026-09-11', op: 0, cs: 7, cc: 7 })).link, null,
+     'залгаа: давхцсан хуулгатай тулгахгүй (худал зөрүү төрүүлэхгүй)');
+  eq(SD(c1, null).link, null, 'залгаа: өмнөх хуулга байхгүй бол холбоосгүй');
 }
 
 /* ═══ ⚖️ «ХЭДЭН ДАНСНААС ХЭД НЬ ТЭНЦСЭН» = `balanceStats` (2026-10-02) ═══

@@ -382,6 +382,31 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   })();
 }
 
+/* 0e2m) SCAN — ТҮГЖЭЭНИЙ АУДИТ: products-ийн БҮХ бичих зам (2026-10-02)
+   CEO «ийм төрлийн алдаа маш их байна» гэснээр бүх бичих замыг тоолов.
+   `products`-д 9 бичих зам байхад түгжээ зөвхөн `saveProduct`-д байв:
+   · `removeProductRow` (DELETE) — эцэслэгдсэн суурийг ХАТУУ УСТГАНА
+   · `setProductArchived` — архивласан бараа элэгдлээс ЧИМЭЭГҮЙ гарна
+   (`saveBranchTransfer`/`bulkReturnBranch` нь `product_transfers`-д мөр
+   үлдээдэг хяналттай зам тул зориуд нээлттэй.) */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const rm = codeLines.slice(codeLines.indexOf('async function removeProductRow'),
+                             codeLines.indexOf('async function setProductArchived'));
+  ok(/if \(stockSealed\(_p\)\) throw new Error\(/.test(rm),
+     'scan: эцэслэгдсэн барааг ХАТУУ УСТГАХГҮЙ');
+  ok(/const _p = \(state\.products[\s\S]{0,200}archivedProducts/.test(rm),
+     'scan: архивлагдсан жагсаалтаас ч хайна (устгахын өмнө)');
+  const ar = codeLines.slice(codeLines.indexOf('async function setProductArchived'),
+                             codeLines.indexOf('async function runAsarModuleSetup'));
+  ok(/val && stockSealed\(/.test(ar), 'scan: эцэслэгдсэнийг архивлахад баталгаажуулалт');
+  ok(/await showConfirm\(/.test(ar) && /return false;/.test(ar),
+     'scan: баталгаажуулалтын хариуг ШАЛГАЖ буцдаг');
+  // ⚠ Архивлахыг ХОРИГЛОХГҮЙ — актлах нь жинхэнэ хэрэгцээ, зөвхөн чимээгүй болгохгүй
+  eq(/throw new Error\('Эцэслэгдсэн[^']*архив/.test(ar), false,
+     'scan: архивлахыг бүрэн хориглохгүй (актлах хэрэгцээтэй)');
+}
+
 /* 0e2l) SCAN — түгжээ ГАНЦ БИЧИХ ЦЭГТ, нэгтгэхээс ӨМНӨ (2026-10-02)
    Хориг нь `state.products[idx]` нэгтгэхээс ХОЙШ байвал ӨМНӨХ утга аль хэдийн
    дарагдсан байх тул «хөдөлсөн эсэх» нь ҮРГЭЛЖ худал гарч, түгжээ ажиллахгүй. */

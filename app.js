@@ -13075,7 +13075,10 @@ function renderAttendanceMonth(month) {
     const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
     const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount) : null;
-    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · шатны хөлс ОРООГҮЙ' : ''})</span></div>` : '';
+    const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
+    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · шатны хөлс ОРООГҮЙ' : ''})</span>`
+      + (rPaid ? ` <span class="sp-sub">— олгосон ${fmtMoney(rPaid)} · үлдэгдэл <b>${fmtMoney(Math.max(0, pb.total - rPaid))}</b></span>` : ' <span class="sp-sub">— олгоогүй</span>')
+      + `</div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
       <div style="display:flex;align-items:center;gap:12px;">
       <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
@@ -13260,9 +13263,18 @@ function myPayCardHtml(me) {
     ? `<div class="pay-note">📦 Шатны хөлс <b>${fmtMoney(sp.total)}</b> — энэ дүнд <b>ОРООГҮЙ</b>, тусдаа тооцогдоно.</div>` : '';
   const noOutNote = w.noOut
     ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул илүү цаг дутуу байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
-  const paidRow = paid > 0
-    ? row('✓ Олгосон', `${fmtMoney(paid)}`, 'pay-paid') + row('Үлдэгдэл', `<b>${fmtMoney(Math.max(0, b.total - paid))}</b>`, 'pay-left')
+  // Олголтын МӨР бүрийг ил жагсаана — «олгосон 600,000₮» гэсэн ганц тоо нь хэзээ,
+  // хэдэн удаа, ямар утгаар орсныг хэлдэггүй тул ажилтан данс нь шалгаж чаддаггүй байв.
+  const pays = salaryPaymentsFor(state.salaryPayments, key, month);
+  const payList = pays.length
+    ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
+        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`
     : '';
+  const paidRow = paid > 0
+    ? row(`✓ Олгосон · ${pays.length} удаа`, `${fmtMoney(paid)}`, 'pay-paid') + payList
+      + row('Үлдэгдэл', `<b>${fmtMoney(Math.max(0, b.total - paid))}</b>`, 'pay-left')
+    : row('✓ Олгосон', 'энэ сард олголт бүртгэгдээгүй', 'pay-zero');
   return `<div class="pay-card">${head}
     <div class="pay-total">${fmtMoney(b.total)}</div>
     <div class="pay-total-s">${escapeHtml(month)} · гарт очих дүн</div>
@@ -16441,7 +16453,28 @@ async function paySalary(personKey, ym, amount, note) {
 }
 // Тухайн хүний тухайн сард олгосон нийт
 function salaryPaidFor(personKey, ym) {
-  return (state.salaryPayments || []).filter(p => p.person_key === personKey && p.ym === ym).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  return salaryPaymentsFor(state.salaryPayments, personKey, ym).reduce((s, p) => s + p.amount, 0);
+}
+/* Тухайн сард олгосон МӨР бүр (огноо өсөхөөр). ЦЭВЭР функц тул тестлэгдэнэ.
+   ⛔ Нийлбэр ба жагсаалт ХОЁР ӨӨР шүүлтээр гарч болохгүй — `salaryPaidFor` ч үүнийг
+     дуудна. Эс бөгөөс картад «олгосон 600,000₮» гэж бичээд доор нь 3 мөр 750,000₮
+     гарч, аль нь үнэн болохыг хэн ч мэдэхгүй болно. ИНВАРИАНТ тест хоёрыг тулгана. */
+function salaryPaymentsFor(rows, personKey, ym) {
+  return (rows || [])
+    .filter(p => p && p.person_key === personKey && p.ym === ym)
+    .map(p => ({ amount: Number(p.amount) || 0, at: p.paid_at || '', note: p.note || '', label: salaryPayLabel(p.note) }))
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+/* Олголтын мөрийн тайлбар. Цикл тэмдэг (⟦УР⟧/⟦ҮЛ⟧) байвал түүнийг, эс бөгөөс
+   хуулгын гүйлгээний утгыг цэвэрлэж өгнө (хээ `[#...]` нь хүнд юу ч хэлэхгүй).
+   ⚠ Хуулгаас автоматаар бүртгэгддэг тул цалин БИШ мөр (зогсоолын төлбөр г.м.)
+     орж ирж болно — НУУХГҮЙ, утгыг нь ил харуулна: ажилтан буруу бол хэлнэ. */
+function salaryPayLabel(note) {
+  const t = String(note || '');
+  if (t.includes(SAL_ADV_TAG)) return 'урьдчилгаа';
+  if (t.includes(SAL_REM_TAG)) return 'үлдэгдэл';
+  return t.replace(/\[#[^\]]+\]/g, '').replace(/⟦[^⟧]*⟧/g, '')
+    .replace(/^\s*Хуулгаар баталгаажсан\s*·?\s*/i, '').replace(/\s+/g, ' ').trim();
 }
 // ── Хагас сарын цикл: Урьдчилгаа (20-нд, 1–15) + Үлдэгдэл (дараа сарын 5-нд, 16–эцэс) ──
 const SAL_ADV_TAG = '⟦УР⟧', SAL_REM_TAG = '⟦ҮЛ⟧';
@@ -16690,8 +16723,8 @@ function openSalaryHistory(personKey) {
   const m = findMember(personKey);
   const ps = (state.salaryPayments || []).filter(p => p.person_key === personKey).sort((a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')));
   const total = ps.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-  const cyc = note => String(note || '').includes(SAL_ADV_TAG) ? '· урьдчилгаа' : String(note || '').includes(SAL_REM_TAG) ? '· үлдэгдэл' : '';
-  const clean = note => String(note || '').replace(SAL_ADV_TAG, '').replace(SAL_REM_TAG, '').replace(/\[#[^\]]+\]/g, '').replace(/\s+/g, ' ').trim();
+  const cyc = note => { const l = salaryPayLabel(note); return (l === 'урьдчилгаа' || l === 'үлдэгдэл') ? '· ' + l : ''; };
+  const clean = note => { const l = salaryPayLabel(note); return (l === 'урьдчилгаа' || l === 'үлдэгдэл') ? '' : l; };
   const rows = ps.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
       <div style="min-width:0;"><b style="font-variant-numeric:tabular-nums;">${fmtMoney(p.amount)}</b> <span style="color:var(--muted);">${escapeHtml(p.ym || '')} ${cyc(p.note)}</span>${clean(p.note) ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(clean(p.note))}</div>` : ''}</div>
       <div style="text-align:right;color:var(--muted);font-size:11px;white-space:nowrap;">${escapeHtml(String(p.paid_at || '').slice(0, 10))}<br>${escapeHtml(memberName(p.paid_by) || '')}</div>

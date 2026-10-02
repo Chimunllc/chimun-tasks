@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryPayLabel', 'salaryPaidFor', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -14034,4 +14034,56 @@ async function swFetchTests() {
   // Суутгалын хувь = app_config (ажилтан ба CEO ижил тоо харна)
   const rates = src.slice(src.indexOf('function salaryRates'), src.indexOf('function salaryNet'));
   ok(/appConfig\.salary_rates/.test(rates), 'scan: суутгалын хувь app_config-оос (localStorage зөвхөн нөөц)');
+}
+
+// ═══ САРД ОЛГОСОН ЦАЛИН — мөр бүрээр (2026-10-02) ════════════════════════
+// «Олгосон 600,000₮» гэсэн ганц тоо нь хэзээ, хэдэн удаа, ямар утгаар орсныг
+// хэлдэггүй тул ажилтан дансаа тулгаж чаддаггүй байв.
+{
+  const { salaryPaymentsFor, salaryPayLabel } = F;
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const rows = [
+    { person_key: '88001122', ym: '2026-09', amount: 300000, note: '⟦УР⟧ [#abc] Цалин урьдчилгаа', paid_at: '2026-09-20T05:00:00Z' },
+    { person_key: '88001122', ym: '2026-09', amount: 200000, note: 'Хуулгаар баталгаажсан · EB-цалин: Э.Очбаяр', paid_at: '2026-09-26T03:00:00Z' },
+    { person_key: '88001122', ym: '2026-09', amount: 100000, note: '⟦ҮЛ⟧ үлдэгдэл', paid_at: '2026-10-05T04:00:00Z' },
+    { person_key: '88001122', ym: '2026-08', amount: 999999, note: '', paid_at: '2026-08-20T05:00:00Z' },   // өөр сар
+    { person_key: '90000000', ym: '2026-09', amount: 777777, note: '', paid_at: '2026-09-20T05:00:00Z' },   // өөр хүн
+  ];
+  const ps = salaryPaymentsFor(rows, '88001122', '2026-09');
+  eq(ps.length, 3, 'олголт: зөвхөн тухайн хүний тухайн сар');
+  eq(ps.map(x => x.amount).join(','), '300000,200000,100000', 'олголт: огноо ӨСӨХӨӨР эрэмбэлэгдэнэ');
+  eq(ps[0].label, 'урьдчилгаа', 'олголт: ⟦УР⟧ → урьдчилгаа');
+  eq(ps[2].label, 'үлдэгдэл', 'олголт: ⟦ҮЛ⟧ → үлдэгдэл');
+  eq(ps[1].label, 'EB-цалин: Э.Очбаяр', 'олголт: хуулгын утга цэвэрлэгдэнэ');
+
+  // ⛔ Хээ (`[#...]`) ба токен хүнд юу ч хэлэхгүй — харагдахгүй
+  eq(salaryPayLabel('[#deadbeef] ⟦SAL|x⟧ Цалин'), 'Цалин', 'олголт: хээ/токен шошгонд орохгүй');
+  eq(salaryPayLabel(''), '', 'олголт: хоосон тэмдэглэл хоосон шошго');
+  eq(salaryPayLabel(null), '', 'олголт: null тэмдэглэл унахгүй');
+
+  // ── ИНВАРИАНТ: нийлбэр ба жагсаалт ИЖИЛ шүүлтээс гарна ──
+  runIn("state.salaryPayments = " + JSON.stringify(rows) + ";");
+  eq(F.salaryPaidFor('88001122', '2026-09'), 600000, 'олголт: нийт = 300k+200k+100k');
+  eq(F.salaryPaidFor('88001122', '2026-09'),
+     salaryPaymentsFor(rows, '88001122', '2026-09').reduce((s, x) => s + x.amount, 0),
+     'ИНВАРИАНТ: олгосон нийлбэр = жагсаалтын нийлбэр');
+  eq(F.salaryPaidFor('88001122', '2026-07'), 0, 'олголт: олголтгүй сар → 0');
+  runIn("state.salaryPayments = [];");
+}
+
+// ═══ SCAN: олголтын нийлбэр ба жагсаалт ХОЁР ӨӨР шүүлтээр гарахгүй ═══════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const sum = src.slice(src.indexOf('function salaryPaidFor'), src.indexOf('function salaryPaymentsFor'));
+  ok(/salaryPaymentsFor\(/.test(sum), 'scan: salaryPaidFor нь salaryPaymentsFor-оос тооцогдоно');
+  eq((sum.match(/\.filter\(/g) || []).length, 0, 'scan: нийлбэр өөрийн шүүлт давхардуулахгүй');
+
+  const card = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
+  ok(/salaryPaymentsFor\(/.test(card), 'scan: карт олголтыг мөрөөр жагсаана');
+  ok(/олголт бүртгэгдээгүй/.test(card), 'scan: олголтгүй сард ч мөр гарч ил хэлнэ');
+
+  // Олголтын шошгын дүрэм ГАНЦ газар — түүхийн модал ч түүнийг дуудна
+  const hist = src.slice(src.indexOf('function openSalaryHistory'), src.indexOf('function openSalaryHistory') + 1400);
+  ok(/salaryPayLabel\(/.test(hist), 'scan: түүхийн модал ижил шошгын дүрэм ашиглана');
+  eq((hist.match(/SAL_ADV_TAG\)/g) || []).length, 0, 'scan: түүхийн модал токеныг өөрөө задлахгүй');
 }

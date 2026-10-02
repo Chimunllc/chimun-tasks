@@ -9121,8 +9121,13 @@ function balanceStats(stmts, regAccts, month) {
   return { total: ok + badAccts.length + unverAccts.length, ok,
     bad: badAccts.length, unver: unverAccts.length, badAccts, unverAccts, why };
 }
-function closeMonthBlockers(stmts, income, regAccts, month) {
+function closeMonthBlockers(stmts, income, regAccts, month, pendN) {
   const out = [];
+  /* ⛔ Ангилаагүй зардал нь `9500`-аар салбарын зардалд ордог тул салбарын ашиг,
+     COO-гийн 30% гажна — хаавал тэр гажсан тоо хөлдөнө. Баталгаажуулах цонхонд
+     ил бичигдэнэ (CEO үл хэрэгсэж хааж ч болно, шалтгаан бичлэгт үлдэнэ). */
+  const pn = Number(pendN) || 0;
+  if (pn) out.push({ kind: 'pending', n: pn, why: `${pn} гүйлгээ ангилаагүй` });
   const miss = stmtMonthMissingAccts(stmts, month, regAccts);
   if (miss.length) out.push({ kind: 'stmt', n: miss.length, accts: miss, why: `${miss.length} дансны хуулга ороогүй` });
   const os = incomeOpenStats(income, month);
@@ -9208,7 +9213,13 @@ function finNextSteps(ctx) {
   const chain = Number(c.chainBreaks) || 0;
   if (chain) steps.push({ key: 'chain', n: chain, icon: '🔗', title: 'Хуулгын завсар нөхөх', hint: 'Хуулга хооронд завсар бий — дутуу хуулга оруулна', act: 'recon', btn: 'Харах' });
   if (c.isCEO) {
-    const blocked = miss.length || oi.n || chain || balBad;
+    /* ⛔ АНГИЛААГҮЙ ЗАРДАЛ САР ХААХЫГ ХОРИНО (2026-10-02, CEO барив).
+       Ангилаагүй мөр нь `9500` ангиллаар салбарын зардалд ОРДОГ (салбар нь
+       тодорхойгүй бол «Захиргаа» руу унана) тул салбарын ашиг, улмаар COO-гийн
+       30% гажна. Сар хаах нь тэр гажсан тоог ХӨЛДӨӨНӨ — дараа нь засагдахгүй.
+       Өмнө нь `pend` энэ жагсаалтад БАЙХГҮЙ байсан тул 62 гүйлгээ ангилаагүй
+       байхад «Хаах» товч идэвхтэй болж байв. */
+    const blocked = miss.length || pend || oi.n || chain || balBad;
     steps.push(blocked
       ? { key: 'close', icon: '🔒', title: 'Сар хаах', hint: 'Дээрх цэгцэрсний дараа', wait: true }
       : { key: 'close', icon: '🔒', title: 'Сар хаах', hint: month + ' сарын тоог хөлдөөнө — дараа нь засагдахгүй', act: 'close', btn: 'Хаах' });
@@ -9302,7 +9313,8 @@ async function toggleMonthClose(month) {
   const all = await showConfirm(
     `Хаах хүрээг сонгоно уу.\n\n«${m} ба өмнөх БҮГД» = шилжилтийн хаалт: түүх хөлдөж, дараагийн сараас цэвэр эхэлнэ. Сар бүрийг нэг бүрчлэн хаах шаардлагагүй.\n\n«Зөвхөн ${m}» = тухайн нэг сар л хаагдана.`,
     { title: '🔒 Хаах хүрээ', okText: `${m} ба өмнөх БҮГД`, cancelText: `Зөвхөн ${m}` });
-  const bl = closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), m);
+  const _pendM = allPendingCardExpenses().filter(r => String(r.requested_at || '').slice(0, 7) === m).length;
+  const bl = closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), m, _pendM);
   const why = bl.map(b => b.why).join(' · ');
   const warn = bl.length ? `⚠ Бэлэн БИШ:\n${bl.map(b => '· ' + b.why).join('\n')}\n\n` : '';
   if (all) {
@@ -35073,7 +35085,7 @@ function renderFinanceReport(wrap) {
           .map(d => { const i = bankAcctInfo(d); return (i && (i.name || i.bank)) || d; }),
         pendExpenses: allPendingCardExpenses().filter(r => String(r.requested_at || '').slice(0, 7) === month).length,
         openIncome: incomeOpenStats(state.bankIncome, month),
-        chainBreaks: (closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), month)
+        chainBreaks: (closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), month, 0)
           .find(b => b.kind === 'chain') || {}).n || 0,
         balance: balanceStats(state.bankStatements, companyAcctList(), month),
       });

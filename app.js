@@ -12716,7 +12716,9 @@ async function loadAttendanceMonthFull(month) {
     else state.attMonthErr = { month, msg: (r.status === 401 || r.status === 403) ? 'эрх хүрэхгүй — дахин нэвтэрнэ үү' : 'сервер алдаа (' + r.status + ')' };
   } catch (e) { state.attMonthErr = { month, msg: 'сүлжээ холбогдсонгүй' }; }
   state._attMonthBusy = null;
-  if (typeof render === 'function' && state.view === 'attendance') render();
+  // ⚠ Цалингийн самбар ч энэ датаг илүү цаг бодоход ашигладаг — зөвхөн ирцийн дэлгэц
+  //   дээр render хийвэл цалин «ачаалж байна» гэж мөнхөд үлдэнэ.
+  if (typeof render === 'function' && (state.view === 'attendance' || state.view === 'salary')) render();
 }
 // Цалингийн холбоос: энэ сарын ирцээс ажилтан бүрийн ажилласан ӨДРИЙН тоог (in бичлэгтэй ялгаатай өдөр).
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
@@ -16625,96 +16627,184 @@ function payrollTabBar(canSal, canHr) {
 function attachPayrollTabs() {
   document.querySelectorAll('[data-payroll-tab]').forEach(b => b.addEventListener('click', () => { state.payrollTab = b.dataset.payrollTab; render(); }));
 }
+/* ─── ЦАЛИНГИЙН САМБАР — бүх цалингийн тоо НЭГ дэлгэцэд (2026-10-02) ────────
+   Цалингийн мэдээлэл 5 дэлгэцэд тарсан байв: суурь цалин «Цалин»-д, ажилласан
+   цаг/илүү цаг/хүргэлт «Ирц»-д, олголт банкны хуулгад, цагийн ажилтан тусдаа
+   табд, ажилтны өөрийн карт бас өөр. CEO «хэн хэдэн төгрөг авах вэ» гэдгийг нэг
+   дороос харж чаддаггүй байв.
+   ⛔ `worker_type`-аар ШҮҮЖ БОЛОХГҮЙ. Амьд системд сарын цалинтай 4 ажилтан
+     алдаатайгаар 'daily' гэж тэмдэглэгдсэн тул цалингийн дэлгэцээс ОГТ алга
+     болсон — яг тэд нь хамгийн их илүү цаг гаргасан хүмүүс байв (291ц/сар).
+     Жагсаалт нь ДАТА-гаар бүрдэнэ: цалинтай ЭСВЭЛ ирцтэй ЭСВЭЛ олголттой. */
+function payrollRoster(team, salaries, attKeys, paidKeys) {
+  const sal = salaries || {}, att = attKeys || new Set(), paid = paidKeys || new Set();
+  const has = (s, k) => (typeof s.has === 'function') ? s.has(k) : !!s[k];
+  const out = [];
+  for (const m of (team || [])) {
+    const k = personKey(m);
+    if (!k) continue;
+    const left = String(m.status || '') === 'гарсан';
+    const amount = Number(sal[k]) || 0;
+    const hasAtt = has(att, k), hasPaid = has(paid, k);
+    // Ажлаас гарсан хүн ЗӨВХӨН тэр сард ирц/олголттой бол гарна (түүх таслагдахгүй).
+    if (left && !hasAtt && !hasPaid) continue;
+    // Идэвхтэй: цалинтай ЭСВЭЛ ирцтэй ЭСВЭЛ олголттой ЭСВЭЛ сарын ажилтан.
+    if (!left && !amount && !hasAtt && !hasPaid && String(m.worker_type || '') === 'daily') continue;
+    out.push({ k, m, amount, hasAtt, hasPaid, left, noSalary: !amount, noAtt: !hasAtt });
+  }
+  return out.sort((a, b) => (b.amount - a.amount) || String(a.m.name || '').localeCompare(String(b.m.name || ''), 'mn'));
+}
+/* Эзэнгүй цалин/олголт — ямар ч ажилтантай холбогдохгүй түлхүүр. ЦЭВЭР функц.
+   ⚠ НУУХГҮЙ: амьд системд 2 цалингийн мөр (2.5сая ба 1.8сая) эзэнгүй байсныг
+     хэн ч мэдэхгүй байв. Утас солигдоход ийм мөр үлддэг. */
+function payrollOrphans(team, salaries, paidRows, ym) {
+  const known = new Set((team || []).map(m => personKey(m)).filter(Boolean));
+  const out = {};
+  Object.keys(salaries || {}).forEach(k => {
+    const a = Number(salaries[k]) || 0;
+    if (a > 0 && !known.has(k)) (out[k] = out[k] || { key: k, amount: 0, paid: 0 }).amount = a;
+  });
+  (paidRows || []).forEach(p => {
+    const k = p && p.person_key;
+    if (!k || known.has(k) || (ym && p.ym !== ym)) return;
+    (out[k] = out[k] || { key: k, amount: 0, paid: 0 }).paid += Number(p.amount) || 0;
+  });
+  return Object.keys(out).map(k => out[k]).sort((a, b) => (b.amount + b.paid) - (a.amount + a.paid));
+}
+/* Сарын ирцээс хүн бүрийн ажилласан минут. ЦЭВЭР функц (`attCanonKey`-ээр бүлэглэнэ). */
+function payrollAttMins(recs) {
+  const byM = {};
+  (recs || []).forEach(r => { const k = attCanonKey(r); (byM[k] = byM[k] || []).push(r); });
+  const out = {};
+  Object.keys(byM).forEach(k => {
+    const byDay = {};
+    byM[k].forEach(r => { (byDay[r.day] = byDay[r.day] || []).push(r); });
+    let mins = 0, noOut = 0;
+    Object.keys(byDay).forEach(d => {
+      const sm = attMemberSummary(byDay[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === todayStr());
+      mins += sm.mins; if (sm.noOut) noOut++;
+    });
+    out[k] = { mins, days: Object.keys(byDay).length, noOut };
+  });
+  return out;
+}
 function renderSalary() {
   if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
   // Данс/РД нь эмзэг сувгаар ирдэг. Өмнө нь зөвхөн «Ажилчид» хуудсаар татагддаг байсан тул
   // шууд Цалин руу орвол бүх данс «бүртгэгдээгүй» харагддаг байв. Эрхийг loadStaffPins шалгана.
   if (!state._staffPinsLoaded) loadStaffPins();
-  const ym = state.salaryYM || todayStr().slice(0, 7);
-  const q = (state.salarySearch || '').toLowerCase().trim();
-  const brAll = salaryStaff().filter(m => _inHubBranch(m, effectiveBranchLens() || 'all'));   // толгойн глобал салбар-сонгогчоор
-  const staff = brAll
-    .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
-    .sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
-  const allStaff = brAll;
-  const totalBase = allStaff.reduce((s, m) => s + (Number((state.salaries || {})[personKey(m)]) || 0), 0);
-  const paidThis = allStaff.reduce((s, m) => s + salaryPaidFor(personKey(m), ym), 0);
-  const unpaidCnt = allStaff.filter(m => { const base = Number((state.salaries || {})[personKey(m)]) || 0; return base > 0 && salaryPaidFor(personKey(m), ym) <= 0; }).length;
-  const editable = can('salary.edit'), payable = can('salary.pay');
-  const rt = salaryRates();
-  const totalNet = allStaff.reduce((s, m) => s + salaryNet(Number((state.salaries || {})[personKey(m)]) || 0, salaryDeductOn(personKey(m))).net, 0);
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // хүргэлт/шатны хөлсөнд stage_meta
+  const ym = state.salaryYM || payMonthDefault(todayStr());
+  // Илүү цаг бодоход тухайн САРЫН ирц заавал хэрэгтэй (ирцийн дэлгэцтэй ижил эх сурвалж).
+  if (state.attMonthKey !== ym && state._attMonthBusy !== ym && !(state.attMonthErr && state.attMonthErr.month === ym)) setTimeout(() => loadAttendanceMonthFull(ym), 0);
+  const attReady = state.attMonthKey === ym && Array.isArray(state.attMonthRecs);
+  const attMins = attReady ? payrollAttMins(state.attMonthRecs) : {};
+  const normMins = workNormMins(), normH = workNormDays() * 8;
+  const spAll = stagePayByPerson(state.appOrders || [], ym);
+  const payRows = (state.salaryPayments || []).filter(p => p && p.ym === ym);
+  const attSet = new Set(Object.keys(attMins)), paidSet = new Set(payRows.map(p => p.person_key));
 
-  const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
-      <div><div style="font-weight:800;font-size:16px;">💵 Сарын цалин</div><div style="font-size:11px;color:var(--muted);">Суурь → суутгал → цэвэр гарт өгөх + хагас сарын олголт</div></div>
-      <div style="display:flex;gap:8px;align-items:center;"><input type="month" id="sal-ym" value="${ym}" style="padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;"><button class="btn" data-sal-refresh style="padding:6px 12px;font-size:12px;">↻</button></div>
+  const q = (state.salarySearch || '').toLowerCase().trim();
+  const lens = effectiveBranchLens() || 'all';
+  const roster = payrollRoster(TEAM || [], state.salaries || {}, attSet, paidSet).filter(r => _inHubBranch(r.m, lens));
+  const orphans = payrollOrphans(TEAM || [], state.salaries || {}, state.salaryPayments || [], ym);
+  const editable = can('salary.edit'), payable = can('salary.pay'), rt = salaryRates();
+
+  // Мөр бүрийн бүтэн тооцоо — ГАНЦ газар бодогдоно (карт ба нийлбэр ижил тоо).
+  const calc = roster.map(r => {
+    const w = attMins[r.k] || { mins: 0, days: 0, noOut: 0 };
+    const db = driverBonus(r.k, ym);
+    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), w.mins, normMins, db.amount);
+    return { ...r, w, db, b, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
+  });
+  const T = calc.reduce((t, c) => ({
+    total: t.total + c.b.total, paid: t.paid + c.paid, ot: t.ot + c.b.otPay,
+    dlv: t.dlv + c.b.delivery, sp: t.sp + (c.sp ? c.sp.total : 0),
+  }), { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0 });
+
+  const kpi = (label, val, col, sub) => `<div class="pb-kpi"><div class="pb-kpi-l">${label}</div><div class="pb-kpi-v" style="color:${col || 'var(--text)'};">${val}</div>${sub ? `<div class="pb-kpi-s">${sub}</div>` : ''}</div>`;
+  const head = `<div class="pb-head">
+      <div><div class="pb-title">💵 Цалингийн самбар</div><div class="pb-sub">Ажилласан цаг · илүү цаг · хүргэлт · суутгал · олголт — бүгд энд</div></div>
+      <div class="pb-head-r"><input type="month" class="ui-raw pay-ym" id="sal-ym" value="${ym}" max="${todayStr().slice(0, 7)}"><button class="btn" data-sal-refresh>↻</button></div>
     </div>`;
-  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px;">
-    ${kpi('Нийт цалин (нийт)', fmtMoney(totalBase), 'var(--text)', `${allStaff.length} ажилтан`)}
-    ${kpi('Цэвэр олгох', fmtMoney(totalNet), 'var(--primary)', 'суутгалын дараа')}
-    ${kpi('Энэ сар олгосон', fmtMoney(paidThis), 'var(--ok)', ym)}
-    ${kpi('Олгоогүй', fmtMoney(Math.max(0, totalNet - paidThis)), unpaidCnt ? 'var(--warn)' : 'var(--muted)', `${unpaidCnt} хүн`)}
+  const kpis = `<div class="pb-kpis">
+    ${kpi('Нийт олгох', fmtMoney(T.total), 'var(--primary)', `${calc.length} ажилтан`)}
+    ${kpi('Олгосон', fmtMoney(T.paid), 'var(--ok)', ym)}
+    ${kpi('Үлдэгдэл', fmtMoney(Math.max(0, T.total - T.paid)), T.total - T.paid > 0 ? 'var(--warn)' : 'var(--muted)')}
+    ${kpi('Үүнээс илүү цаг', fmtMoney(T.ot), 'var(--text)', T.dlv ? `хүргэлт ${fmtMoney(T.dlv)}` : '')}
   </div>`;
-  const ratesBar = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);background:var(--panel-hover);border-radius:8px;padding:8px 11px;margin-bottom:10px;">
-      ✂️ Суутгал:
-      <label style="display:inline-flex;align-items:center;gap:4px;">НДШ <input type="number" step="0.1" id="sal-ndsh" value="${rt.ndsh}" ${editable ? '' : 'disabled'} style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px;text-align:right;">%</label>
-      <label style="display:inline-flex;align-items:center;gap:4px;">ХХОАТ <input type="number" step="0.1" id="sal-pit" value="${rt.pit}" ${editable ? '' : 'disabled'} style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px;text-align:right;">%</label>
-      <span style="opacity:.8;">${editable ? 'хувийг өөрчилж болно' : ''}</span>
+
+  // ⚠ Чимээгүй цоорхойг ИЛ хэлнэ — «бүгд харагдахгүй байна» гэсэн гомдол эндээс гарсан.
+  const noSal = calc.filter(c => c.noSalary && c.hasAtt);
+  const noAtt = calc.filter(c => c.noAtt && c.amount > 0);
+  const warnBits = [];
+  if (!attReady) warnBits.push(state.attMonthErr && state.attMonthErr.month === ym
+    ? `<div class="pb-warn">⚠ Сарын ирц ачаалж чадсангүй (${escapeHtml(state.attMonthErr.msg)}) — <b>илүү цаг тооцогдоогүй</b> байна.</div>`
+    : `<div class="pb-note">⏳ Сарын ирц ачаалж байна — илүү цаг дүүрэх хүртэл дүн дутуу.</div>`);
+  if (orphans.length) warnBits.push(`<div class="pb-warn">⚠ <b>${orphans.length}</b> цалин/олголт ямар ч ажилтантай холбогдохгүй байна (утас зөрсөн): ${orphans.map(o => `${escapeHtml(o.key)} — ${fmtMoney(o.amount || o.paid)}`).join(' · ')}</div>`);
+  if (noSal.length) warnBits.push(`<div class="pb-warn">⚠ <b>${noSal.length}</b> хүн энэ сард ажилласан атлаа суурь цалин тохируулаагүй: ${noSal.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
+  if (noAtt.length) warnBits.push(`<div class="pb-note">🕗 <b>${noAtt.length}</b> цалинтай хүн энэ сард ирц бүртгүүлээгүй: ${noAtt.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
+
+  const ratesBar = `<div class="pb-rates">✂️ Суутгал:
+      <label>НДШ <input type="number" step="0.1" id="sal-ndsh" value="${rt.ndsh}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
+      <label>ХХОАТ <input type="number" step="0.1" id="sal-pit" value="${rt.pit}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
+      <span class="pb-rates-n">Суутгал зөвхөн СУУРЬ цалингаас — илүү цаг, хүргэлт бүтнээрээ гарт очно.</span>
     </div>`;
-  const schedule = `<div style="font-size:11.5px;color:var(--muted);background:var(--panel-hover);border-radius:8px;padding:8px 11px;margin-bottom:12px;">📅 Хуваарь: <b style="color:var(--text);">Урьдчилгаа 20-нд</b> (1–15) · <b style="color:var(--text);">Үлдэгдэл дараа сарын 5-нд</b> (16–эцэс) · 5 хоногийн зайтай</div>`;
+  const schedule = `<div class="pb-sched">📅 <b>Урьдчилгаа 20-нд</b> (1–15) · <b>Үлдэгдэл дараа сарын 5-нд</b> (16–эцэс)</div>`;
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="sal-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.salarySearch || '')}" /></div>`;
-  const today = todayStr();
-  const advDue = `${ym}-20`, remDue = `${salaryNextYm(ym)}-05`;
-  const rows = staff.map(m => {
-    const key = personKey(m);
-    const base = Number((state.salaries || {})[key]) || 0;   // суурь = нийт (gross)
-    const dOn = salaryDeductOn(key);                         // суутгалтай эсэх (default тийм)
-    const ded = salaryNet(base, dOn);                        // { ndsh, pit, net }
-    const net = ded.net;                                     // цэвэр гарт өгөх — цикл үүн дээр суурилна
-    const advPaid = salaryCyclePaid(key, ym, SAL_ADV_TAG);
-    const remPaid = salaryCyclePaid(key, ym, SAL_REM_TAG);
-    const advAmt = advPaid > 0 ? advPaid : (salaryLastAdvance(key) || Math.round(net / 2));
-    const remAmt = Math.max(0, net - advAmt);   // үлдэгдэл = цэвэр − урьдчилгаа (нийлбэр нь цэвэртэй тэнцэнэ)
+  const today = todayStr(), advDue = `${ym}-20`, remDue = `${salaryNextYm(ym)}-05`;
+
+  const rows = calc.map(c => {
+    const { k, m, b, w, db, sp, paid, pays } = c;
+    const dOn = salaryDeductOn(k);
+    const advPaid = salaryCyclePaid(k, ym, SAL_ADV_TAG), remPaid = salaryCyclePaid(k, ym, SAL_REM_TAG);
+    const advAmt = advPaid > 0 ? advPaid : (salaryLastAdvance(k) || Math.round(b.total / 2));
+    const remAmt = Math.max(0, b.total - advAmt);
     const baseCell = editable
-      ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(key)}" value="${base ? moneyFmtInput(base) : ''}" placeholder="0" style="width:120px;box-sizing:border-box;padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;text-align:right;">`
-      : `<b style="font-size:13px;">${fmtMoney(base)}</b>`;
-    const dedChk = editable
-      ? `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--muted);"><input type="checkbox" class="sal-deduct" data-sal-person="${escapeHtml(key)}" ${dOn ? 'checked' : ''} style="cursor:pointer;">Суутгалтай</label>`
-      : '';
-    const dedLine = base > 0
-      ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;">Цэвэр: <b style="color:var(--primary);">${fmtMoney(net)}</b>${dOn ? ` <span style="opacity:.8;">(НДШ −${fmtMoney(ded.ndsh)} · ХХОАТ −${fmtMoney(ded.pit)})</span>` : ` <span style="opacity:.8;">(суутгалгүй)</span>`}${dedChk}</div>`
-      : (dedChk ? `<div style="margin-top:3px;text-align:right;">${dedChk}</div>` : '');
-    const histN = (state.salaryPayments || []).filter(p => p.person_key === key).length;
-    const histBtn = histN ? `<button class="btn" data-sal-hist="${escapeHtml(key)}" style="padding:1px 8px;font-size:10.5px;margin-left:6px;">📜 Түүх (${histN})</button>` : '';
+      ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(k)}" value="${c.amount ? moneyFmtInput(c.amount) : ''}" placeholder="0">`
+      : `<b>${fmtMoney(c.amount)}</b>`;
+    const dedChk = editable ? `<label class="pb-ded"><input type="checkbox" class="sal-deduct" data-sal-person="${escapeHtml(k)}" ${dOn ? 'checked' : ''}>Суутгалтай</label>` : '';
+    const histN = (state.salaryPayments || []).filter(p => p.person_key === k).length;
+    const histBtn = histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 ${histN}</button>` : '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
     const bankLine = (m.bank || m.bank_account)
-      ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b style="font-weight:600;color:var(--text);">' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn" data-sal-copy="${escapeHtml(acct)}" style="padding:1px 7px;font-size:10px;">Хуулах</button>` : ''}</div>`
+      ? `<div class="pb-bank">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b>' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn pb-copy" data-sal-copy="${escapeHtml(acct)}">Хуулах</button>` : ''}</div>`
       : staffAcctMissingHtml();
-    const slot = (label, sub, due, amt, paid, tag) => {
-      const over = !paid && base > 0 && today > due;
-      const right = paid > 0
-        ? `<span style="color:var(--ok);font-size:12px;font-weight:600;">✓ ${fmtMoney(paid)}</span>`
-        : (payable && amt > 0 ? `<button class="btn" data-sal-memo="${escapeHtml(key)}" data-sal-cyc="${tag}" title="Гүйлгээний утга хуулах — банкаараа шилжүүл" style="padding:4px 11px;font-size:11.5px;">⧉ Утга</button>` : `<span style="color:var(--muted);font-size:11px;">${base > 0 ? 'олгоогүй' : '—'}</span>`);
-      return `<div style="display:flex;align-items:center;gap:8px;">
-        <span style="min-width:118px;font-size:11.5px;color:var(--muted);">${label} <span style="opacity:.75;">· ${sub}</span>${over ? ' <b style="color:var(--danger);">🔴 хоцорсон</b>' : ''}</span>
-        <b style="flex:1;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(amt)}</b>
-        <div style="min-width:92px;text-align:right;">${right}</div>
-      </div>`;
+    const line = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
+    const worked = `<div class="pb-worked">${w.days ? `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр` : '<span class="pb-noatt">ирц бүртгэгдээгүй</span>'}${w.noOut ? ` · <span class="pb-noout">⚠ ${w.noOut} өдөр гараагүй</span>` : ''}</div>`;
+    const payList = pays.length ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
+        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>` : '';
+    const money = c.amount || b.total ? `<div class="pay-rows pb-rows">
+      ${line('Цэвэр суурь', `<b>${fmtMoney(b.netBase)}</b>`, 'pay-sub')}
+      ${b.otMins ? line(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : ''}
+      ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}
+      ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
+      ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList + line('Үлдэгдэл', `<b>${fmtMoney(Math.max(0, b.total - paid))}</b>`, 'pay-left')
+                 : line('✓ Олгосон', 'олголт бүртгэгдээгүй', 'pay-zero')}
+    </div>` : `<div class="pb-nosal">⚠ Суурь цалин тохируулаагүй — илүү цаг тооцогдохгүй.</div>`;
+    const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Шатны хөлс ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ, тусдаа</span></div>` : '';
+    const slot = (label, sub, due, amt, pd, tag) => {
+      const over = !pd && b.total > 0 && today > due;
+      const right = pd > 0 ? `<span class="pb-ok">✓ ${fmtMoney(pd)}</span>`
+        : (payable && amt > 0 ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" data-sal-cyc="${tag}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : `<span class="pb-dim">${b.total > 0 ? 'олгоогүй' : '—'}</span>`);
+      return `<div class="pb-slot"><span class="pb-slot-l">${label} <span class="pb-dim">· ${sub}</span>${over ? ' <b class="pb-late">🔴 хоцорсон</b>' : ''}</span>
+        <b class="pb-slot-v">${fmtMoney(amt)}</b><span class="pb-slot-r">${right}</span></div>`;
     };
-    return `<div class="ac-row" data-sal-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;display:flex;flex-direction:column;gap:9px;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div style="min-width:160px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span>${histBtn}${bankLine}</div>
-        <div style="text-align:right;"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><span style="font-size:10.5px;color:var(--muted);">Нийт цалин</span>${baseCell}</div>${dedLine}</div>
+    return `<div class="ac-row pb-card" data-sal-haystack="${escapeHtml(((m.name || '') + ' ' + (m.role || '')).toLowerCase())}">
+      <div class="pb-top">
+        <div class="pb-who"><b>${escapeHtml(m.name || '?')}</b> <span class="pb-role">${escapeHtml(m.role || '')}</span>${c.left ? ' <span class="pb-left">гарсан</span>' : ''}${histBtn}${bankLine}${worked}</div>
+        <div class="pb-base"><div class="pb-base-r"><span class="pb-dim">Суурь цалин</span>${baseCell}</div>
+          ${c.amount ? `<div class="pb-ded-l">${dOn ? `НДШ −${fmtMoney(b.ndsh)} · ХХОАТ −${fmtMoney(b.pit)}` : 'суутгалгүй'} ${dedChk}</div>` : (dedChk ? `<div class="pb-ded-l">${dedChk}</div>` : '')}</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--border);padding-top:8px;">
-        ${slot('Урьдчилгаа', '20-нд', advDue, advAmt, advPaid, SAL_ADV_TAG)}
-        ${slot('Үлдэгдэл', 'дараа сар 5', remDue, remAmt, remPaid, SAL_REM_TAG)}
-      </div>
+      ${money}${spLine}
+      <div class="pb-slots">${slot('Урьдчилгаа', '20-нд', advDue, advAmt, advPaid, SAL_ADV_TAG)}${slot('Үлдэгдэл', 'дараа сар 5', remDue, remAmt, remPaid, SAL_REM_TAG)}</div>
     </div>`;
   }).join('');
-  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${kpis}${ratesBar}${schedule}${searchBar}<div class="sal-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
+  const spFoot = T.sp ? `<div class="sp-foot">📦 Шатны хөлс нийт <b>${fmtMoney(T.sp)}</b> — дамжлагын ажлын урамшуулал, дээрх цалинд ОРООГҮЙ.</div>` : '';
+  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${kpis}${warnBits.join('')}${ratesBar}${schedule}${searchBar}
+    <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${spFoot}</div>`;
 }
-
 function attachSalaryHandlers() {
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });

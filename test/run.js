@@ -263,6 +263,44 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'хөлдөөгүй бол буцаах зам нээлттэй хэвээр');
 }
 
+/* ═══ ⛔ CEO-гийн ШҮХЭР ҮҮРЭГ ТУСГААРЛАЛТЫГ ЗАДАЛДАГ (2026-10-02) ═══
+   `capValue` нь CEO-д ҮРГЭЛЖ `true` буцаадаг. Иймд `canOpenCount` -ийг
+   `capValue`-ээр бичихэд эрхийг нь хассан мөртөө CEO-д «Тоолсон» товч
+   харагдсаар байв — амьд дэлгэцээс барив.
+   ⚠ Scan-тест нь ДҮРСИЙГ шалгадаг (функцийн биед `state.isCEO` байхгүй) тул
+     үүнийг БАРЬЖ ЧАДААГҮЙ — зан чанарын тест заавал хэрэгтэй. */
+{
+  const st = vm.runInContext('state', sandbox);
+  const COC = vm.runInContext('canOpenCount', sandbox);
+  const CAO = vm.runInContext('canApproveOpening', sandbox);
+  const CV = vm.runInContext('capValue', sandbox);
+  const saved = { ceo: st.isCEO, me: st.me, mp: st.memberPerms, rp: st.rolePerms };
+  st.memberPerms = {}; st.rolePerms = {};
+
+  // ── CEO, ил олгосон эрхгүй → тоолох ч, хянах ч БОЛОХГҮЙ ──
+  st.isCEO = true; st.me = '88006790';
+  eq(COC(), false, 'ЗАН: CEO ил эрхгүй бол эхний үлдэгдэл ТООЛОХГҮЙ');
+  eq(CAO(), false, 'ЗАН: CEO ил эрхгүй бол ХЯНАХГҮЙ');
+  eq(CV('products.count'), true, 'ЗАН: харин capValue нь CEO-д true хэвээр (бусад эрхэд хэрэгтэй)');
+
+  // ── Нярав: ил олгосон эрхтэй → тоолно, хянахгүй ──
+  st.isCEO = false; st.me = '99285468';
+  st.memberPerms = { '99285468': { 'products.count': true, 'products.opening': false } };
+  eq([COC(), CAO()], [true, false], 'ЗАН: нярав тоолно, хянахгүй');
+
+  // ── ҮАХ захирал: хянана, тоолохгүй ──
+  st.me = '86657676';
+  st.memberPerms = { '86657676': { 'products.opening': true, 'products.count': false } };
+  eq([COC(), CAO()], [false, true], 'ЗАН: ҮАХ захирал хянана, тоолохгүй');
+
+  /* ⚠ `products.edit` ШҮХЭР эдгээрийг НЭЭХГҮЙ — энэ нь анхны алдааны мөн чанар
+     (амьд системд 5 хүн тоолж чаддаг байв). */
+  st.me = 'x'; st.memberPerms = { x: { 'products.edit': true } };
+  eq([COC(), CAO()], [false, false], 'ЗАН: products.edit шүхэр тоолох/хянах эрх ӨГӨХГҮЙ');
+
+  st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
+}
+
 /* 0e2j) SCAN — ГУРВАН АЛХАМ = ГУРВАН ӨӨР ЭРХ (2026-10-02, CEO барив)
    Өмнө нь ТООЛОХ нь `products.edit` шүхэр дор явдаг байсан тул амьд системд
    5 хүн (нярав 2, ҮАХ захирал, захиалгын ажилтан, дууны инженер) бүгд
@@ -272,10 +310,13 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
    мухардалд орно. */
 {
   const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
-  ok(/function canOpenCount\(\)\s*\{ return capValue\('products\.count'\) === true; \}/.test(codeLines),
-     'scan: тоолох эрх = зөвхөн ил олгосон products.count');
-  ok(/function canApproveOpening\(\) \{ return capValue\('products\.opening'\) === true; \}/.test(codeLines),
-     'scan: хянах эрх = зөвхөн ил олгосон products.opening');
+  /* ⛔ `capValue` БИШ `capResolved` — `capValue` нь CEO-д ҮРГЭЛЖ true буцаадаг
+     тул үүрэг тусгаарлалт ажиллахгүй (амьд дэлгэцэд CEO-д «Тоолсон» товч
+     харагдсаар байв). */
+  ok(/function canOpenCount\(\)\s*\{ return capResolved\('products\.count'\) === true; \}/.test(codeLines),
+     'scan: тоолох эрх = capResolved (CEO шүхэр тойрсон)');
+  ok(/function canApproveOpening\(\) \{ return capResolved\('products\.opening'\) === true; \}/.test(codeLines),
+     'scan: хянах эрх = capResolved (CEO шүхэр тойрсон)');
   // ⛔ CEO эдгээр хоёр алхамд БАЙХГҮЙ — мухардал үүснэ
   const g = codeLines.slice(codeLines.indexOf('function canOpenCount'), codeLines.indexOf('function canSeeStockCount'));
   eq(/state\.isCEO/.test(g), false, 'scan: CEO тоолох/хянах эрхэд ОРОХГҮЙ (мухардал үүснэ)');
@@ -12704,8 +12745,8 @@ async function swFetchTests() {
   ok(k > 0, 'scan: canApproveOpening олдов');
   ok(!/canEditProducts\(\)/.test(src.slice(k, k + 220)),
      '⛔ scan: батлах эрх `products.edit` шүхэрт ОРОХГҮЙ');
-  ok(/capValue\('products\.opening'\) === true/.test(src.slice(k, k + 220)),
-     'scan: батлах эрх ЗӨВХӨН ил олгосон үед');
+  ok(/capResolved\('products\.opening'\) === true/.test(src.slice(k, k + 220)),
+     'scan: батлах эрх ЗӨВХӨН ил олгосон үед (CEO шүхэр тойрсон)');
   ok(/DENY_DEFAULT_ACTIONS[\s\S]{0,400}?'products\.opening'/.test(src),
      'scan: `products.opening` өгөгдмөлөөрөө ХОРИГЛОГДСОН');
   // Тооллогын дэлгэц дээр хоёр ажил ХОЁР товчоор — нэг товчоор хоёуланг хийвэл

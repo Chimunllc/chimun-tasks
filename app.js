@@ -14144,6 +14144,16 @@ const DAILY_ROLE_KEY = 'цагийн ажилтан';
 //   ХОРИГЛОНО — least privilege) → албан тушаалын загвар → undefined.
 function capValue(key) {
   if (state.isCEO) return true;
+  return capResolved(key);
+}
+/* ⛔ CEO-гийн ШҮХРИЙГ ТОЙРЧ ил тохируулсан эрхийг л уншина (2026-10-02).
+   `capValue` нь CEO-д ҮРГЭЛЖ `true` буцаадаг тул ҮҮРЭГ ТУСГААРЛАХ шалгуурт
+   (эхний үлдэгдлийг хэн тоолох/хянах) тохирохгүй — CEO бүх товчийг хардаг
+   хэвээр үлдэнэ. Амьд дэлгэцэд яг ингэж гарсан: эрхийг нь хассан мөртөө
+   «Тоолсон» товч CEO-д харагдсаар байв.
+   ⚠ Зөвхөн CEO-гийн богино холболтыг л алгасна — үлдсэн дараалал (хувь хүний
+     онцгой эрх → цагийн ажилтан → ролийн загвар → албан тушаалын багц) ХЭВЭЭР. */
+function capResolved(key) {
   const ov = state.memberPerms && state.memberPerms[state.me];   // хувь хүний онцгой эрх (бусдыг дарна)
   if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
   if (isDailyWorker()) {   // цагийн ажилтан: зөвхөн бүлгийн загварт зөвшөөрснийг л, үлдсэн нь хориглоно
@@ -14205,8 +14215,8 @@ function canCountStock() { return canEditProducts() || capValue('products.count'
    ⛔ CEO энэ ХОЁР алхамд ОРОЛЦОХГҮЙ — эцэслэх нь зөвхөн CEO-гийнх бөгөөд
    «гурван өөр хүн» дүрэмтэй тул CEO тоолсон/хянасан бараа ХЭЗЭЭ Ч эцэслэгдэхгүй
    болж, мухардалд орно. Тиймээс эрхээс нь ЗОРИУД хасав. */
-function canOpenCount()     { return capValue('products.count') === true; }
-function canApproveOpening() { return capValue('products.opening') === true; }
+function canOpenCount()     { return capResolved('products.count') === true; }
+function canApproveOpening() { return capResolved('products.opening') === true; }
 function canSeeStockCount() { return canAccessView('stockcount', () => canCountStock()); }
 // Хэсэг бүр ЭЗЭМШИХ талбарууд — эрхгүй хэсгийн утгыг эх бичлэгээс сэргээхэд ашиглана.
 // Функц (const биш) — тестийн vm sandbox-д const нь global болдоггүй.

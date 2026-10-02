@@ -7691,7 +7691,10 @@ async function openStatementClassifyModal() {
         <button class="stmt-prsn-btn ui-raw" data-prsn-all="none">Бүгдийг хувийн</button>
       </div>
       <div class="stmt-prsn-note">Зөвхөн «компанийн» мөр зардал болно. Компани хувийн данс руу буцаан төлсөн шилжүүлэг нь зардал БИШ — өрөөс хасагдана.</div></div>` : '';
-    const warnBanner = prsnBanner + salBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
+    // Нэргүй экспорт — тоо зөв тул өөр ямар ч шалгуур барихгүй (stmtNoPayerNames).
+    const noName = stmtQueue.filter(q => stmtNoPayerNames(q.parsed) > 0);
+    const nameBanner = noName.length ? `<div class="stmt-warn">🏷 <b>${noName.map(q => escapeHtml(q.fileName)).join(', ')}</b> — харилцагчийн <b>нэрний багана байхгүй</b> хэлбэр. Дүн, тэнцэл зөв боловч орлогын мөр «хэн төлсөн» нь хоосон орно. Банкнаас <b>нэртэй</b> хуулгаа дахин татаж оруулбал тулгалт хөнгөн болно.</div>` : '';
+    const warnBanner = prsnBanner + salBanner + nameBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
     const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 сарын цалин ${nSal}` : ''}${nHrl ? ` · ⏱ цагийн цалин ${nHrl}` : ''}${nFee ? ` · 🏦 шимтгэл ${nFee} (авто)` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
@@ -8657,6 +8660,20 @@ function buildStatementImport(parsed, meta, opts) {
     credit_total: credit, debit_total: debit, row_count: rows.length,
   };
   return { stmt, incomes };
+}
+/* ⛔ ХУУЛГЫГ ХОЁР ХЭЛБЭРЭЭР ЭКСПОРТОЛДОГ — НЭРГҮЙГ БҮҮ ОРУУЛ (2026-10-02).
+   Голомтын нэг экспорт харилцагчийн НЭРИЙН баганатай, нөгөө нь зөвхөн
+   «Харьцсан данс»-тай (7 багана). Нэргүйг оруулбал орлогын мөр бүрийн
+   «хэн төлсөн» ХООСОН болж, тулгалт нүцгэн дансаар үлдэнэ. Дүн, тэнцэл,
+   мөрийн тоо нь БҮРЭН ЗӨВ тул ямар ч шалгуур дуугарахгүй — чимээгүй
+   доройтол. Тиймээс орлоготой мөр байж нэр нэг ч алга бол импортод ил
+   хэлнэ (ижил хуулгын нэртэй хувилбарыг дахин татна).
+   ⚠ Нэр ЗАРИМ мөрд алга байх нь ХЭВИЙН (банк хоорондын шилжүүлэг) — зөвхөн
+     БҮГД хоосон байхыг барина, эс бөгөөс анхааруулга байнга дуугарч мулзарна. */
+function stmtNoPayerNames(parsed) {
+  const inc = ((parsed && parsed.rows) || []).filter(r => Number(r.credit) > 0);
+  if (!inc.length) return 0;
+  return inc.some(r => String(r.name || '').trim()) ? 0 : inc.length;
 }
 // Хуулгын дотоод тэнцэл: эхний үлдэгдэл + орлого − зарлага = эцсийн үлдэгдэл.
 // ⚠ Валют дансны мөр ₮ болж хөрвүүлэгддэг тул толгойн (валют) үлдэгдэлтэй тэнцэхгүй → шалгахгүй.

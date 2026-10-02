@@ -22074,6 +22074,37 @@ function psPatchOf(p, row) {
   }
   return patch;
 }
+/* 📉 Жагсаалтын ДЭЭД талд нийлбэр — тайлан дахь тоотой ТУЛГАХ цэг. Доорх мөрүүд
+   бараа бүрээр задарсан, энэ нь тэдгээрийн нийлбэр: хоёр тоо таарч байвал
+   тайлангийн элэгдэл зөв гэдэг нь нотлогдоно. ⚠ Тоог ДАХИН бодохгүй —
+   `deprecByBranch` (тайлангийн ижил эх сурвалж). */
+function psDeprecSummary() {
+  if (typeof deprecByBranch !== 'function') return '';
+  const d = deprecByBranch(state.products || []);
+  if (!d || !d.total) return '';
+  const br = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК']]
+    .filter(b => d[b[0]] > 0).map(b => `${b[1]} ${fmtMoneyShort(Math.round(d[b[0]]))}`).join(' · ');
+  return `<div class="ps-dep-sum">📉 Элэгдэл нийт <b>${fmtMoneyShort(Math.round(d.total))}/сар</b>`
+    + (br ? ` — ${escapeHtml(br)}` : '')
+    + (d.noCost ? ` · <span class="ps-dep-warn">⚠ ${d.noCost} бараа өртөггүй</span>` : '')
+    + (d.noDateN ? ` · <span class="ps-dep-warn">⚠ ${d.noDateN} бараа авсан огноогүй</span>` : '')
+    + (d.doneN ? ` · ✓ ${d.doneN} бүрэн элэгдсэн` : '')
+    + `<br><span class="mut">Санхүү → Тайлан дахь элэгдлийн мөр нь ЯГ энэ тоо. Доорх бараа бүрийн мөр үүнийг бүрдүүлнэ.</span></div>`;
+}
+/* 📉 ЭЛЭГДЛИЙГ ЖАГСААЛТАД ИЛ БИЧНЭ (2026-10-02, CEO «тооцоолол зөв эсэхийг хаанаас
+   харах вэ?» гэж асуув). Өмнө нь зөвхөн барааны ЦОНХ дотор байсан тул 281 барааг
+   нэг бүрчлэн нээхээс өөр шалгах арга байгаагүй — тайлан дахь 14.3сая/сар гэсэн
+   тоог хэн ч тулгаж чаддаггүй байв. Одоо «Өртөг ба хөрөнгө» жагсаалтын мөр бүрт
+   ямар дүрмээр, хэдэн жилээр, сард хэд болохыг бичнэ.
+   ⚠ Тоог ДАХИН БОДОХГҮЙ — `deprecForProduct` (тайлангийн ижил эх сурвалж). */
+function psDeprecLine(p) {
+  if (typeof deprecForProduct !== 'function') return '';
+  const d = deprecForProduct(p);
+  if (d.skip) return `<span class="ps-dep mut">📉 ${escapeHtml(d.skip)}</span>`;
+  if (d.doneYm) return `<span class="ps-dep ps-dep-done">📉 ${escapeHtml(d.label)} · ${d.years}ж · бүрэн элэгдсэн (${escapeHtml(d.endYm)})</span>`;
+  return `<span class="ps-dep">📉 ${escapeHtml(d.label)} · ${d.years}ж · <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>`
+    + (d.noDate ? ' · <span class="ps-dep-warn">⚠ авсан огноогүй</span>' : '') + '</span>';
+}
 function renderProductSheet(mode) {
   const cfg = PSHEET[mode];
   if (!cfg) return '';
@@ -22102,7 +22133,8 @@ function renderProductSheet(mode) {
       <label class="ps-f"><span>Нэгж өртөг</span><input class="ps-in money-input ui-raw" ${d('cost')} value="${money(psVal(p, 'cost'))}" inputmode="numeric"></label>
       <label class="ps-f"><span>Авсан огноо</span><input class="ps-in ui-raw" type="date" ${d('purchase_date')} value="${escapeHtml(String(psVal(p, 'purchase_date') || '').slice(0, 10))}"></label>
       <label class="ps-f"><span>Нийлүүлэгч</span><input class="ps-in ui-raw" ${d('supplier')} value="${escapeHtml(psVal(p, 'supplier') || '')}" placeholder="—"></label>
-      <span class="ps-tot">${total > 0 ? fmtMoney(total) : '—'}</span>`;
+      <span class="ps-tot">${total > 0 ? fmtMoney(total) : '—'}</span>
+      ${psDeprecLine(p)}`;
     }
     return `
       <label class="ps-f"><span>🎪 M-Event</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_mevent')} value="${Number(psVal(p, 'qty_mevent')) || 0}"></label>
@@ -22118,7 +22150,7 @@ function renderProductSheet(mode) {
     </div>`;
   return `<div class="ps-wrap">
     <div class="ps-head">
-      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${mode === 'catalog' ? ' <b>Нэр, ангилал нь mevent.mn сайтад ч шууд өөрчлөгдөнө.</b>' : ''}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div></div>
+      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${mode === 'catalog' ? ' <b>Нэр, ангилал нь mevent.mn сайтад ч шууд өөрчлөгдөнө.</b>' : ''}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div>${mode === 'cost' ? psDeprecSummary() : ''}</div>
       <input id="ps-q" class="ps-q ui-raw" value="${escapeHtml(q)}" placeholder="Хайх (нэр, ангилал, код)…" aria-label="Хайх">
     </div>
 

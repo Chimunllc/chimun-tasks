@@ -11613,6 +11613,21 @@ async function saveProduct(product) {
   //   шинэ утгаар нэгтгэдэг тул дараа нь уншвал ШИНЭ тоо гарч, хөдөлгөөн
   //   үргэлж 0 болно (дэвтэр утгагүй болно).
   const _qBefore = idx >= 0 ? stockQtySnapshot(state.products[idx]) : null;
+  /* ⛔ ЭЦЭСЛЭГДСЭН БАРААНЫ ТООГ ФОРМООР ЗАСАХГҮЙ (2026-10-02, CEO барив:
+     «эцэслэсэн байхад шууд энд ингээд сольж болж байхад эцэслэх ямар хэрэгтэй гэж?»).
+     Урсгал БҮРИЙГ тус тусад нь хаах нь буруу арга байв — барааны засах цонх нь
+     `stock`/`qty_*`-г чөлөөтэй өөрчилдөг тул эцэслэл чимэг болж байв.
+     Хориг нь бичилтийн ГАНЦ цэгт: хяналттай зам бүр `_moveReason` дамжуулдаг
+     (эхний үлдэгдэл · тооллого · эвдрэл · акт · салбар хоорондын шилжүүлэг),
+     форм дамжуулдаггүй. Тиймээс эцэслэгдсэн + тоо хөдөлсөн + шалтгаангүй =
+     ТАТГАЛЗАНА. Шинэ дэлгэц нэмэгдсэн ч энэ цэг дамжих тул өөрөө хаагдана. */
+  if (idx >= 0 && stockSealed(state.products[idx]) && !product._moveReason) {
+    const b = state.products[idx];
+    const n = (v) => Math.round(Number(v) || 0);
+    const moved = STOCK_BRANCHES.some(x => product['qty_' + x] != null && n(product['qty_' + x]) !== n(b['qty_' + x]))
+      || (product.stock != null && n(product.stock) !== n(b.stock));
+    if (moved) throw new Error('Эцэслэгдсэн барааны тоог гараар засах боломжгүй — залруулга тооллогоор хийнэ');
+  }
   if (idx >= 0) state.products[idx] = { ...state.products[idx], ...product };
   else state.products.unshift(product);
   if (product.cost != null) {
@@ -23683,6 +23698,11 @@ function openProductModal(p, opts) {
   // Багцын нөөц DB-д хадгалагддаггүй — бүрэлдэхүүнээс тухайн агшинд бодно.
   const _isPkg0 = isEdit && isPackage(p);
   const _st0 = _isPkg0 ? packageStock(p) : (isEdit ? (Number(p.stock) || 0) : 1);
+  /* 🔒 Эцэслэгдсэн бараа — тоон талбарууд ТҮГЖИГДЭНЭ. Хориг нь `saveProduct`-д
+     (ганц бичих цэг) байгаа ч хүн бичээд дарсны ДАРАА алдаа харахаас илүү
+     эхнээс нь түгжсэн нь дээр. */
+  const _sealed = !!(isEdit && p && stockSealed(p));
+  const _sealDis = _sealed ? ' disabled' : '';
   const _pkgDis = (_isPkg0 || asPkg) ? ' disabled' : '';
   let _qm0, _qc0, _qn0, _qk0;
   if (isEdit && (p.qty_mevent != null || p.qty_chimun != null || p.qty_nomaad != null || p.qty_catering != null)) {
@@ -23816,24 +23836,25 @@ function openProductModal(p, opts) {
         <div class="pm-pane-t">📦 Нөөц ба салбар</div>
         <div class="pm-lock" data-lockhint="stock" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
         ${(_isPkg0 || asPkg) ? '<div class="pm-hint">📦 Багцын нөөц гараар тохируулагддаггүй — бүрэлдэхүүн бүрийн нөөцөөс тухайн агшинд бодогдоно.</div>' : ''}
+        ${_sealed ? '<div class="pm-hint pm-hint-lock">🔒 Эхний үлдэгдэл эцэслэгдсэн — тоог гараар засах боломжгүй. Залруулга <b>тооллогоор</b> хийгдэнэ (хэн хэзээ юуг хэд болгосон нь мөрөөр үлдэнэ).</div>' : ''}
         <div class="pm-grid">
-        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${_st0}"${_pkgDis}></label>
+        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${_st0}"${_pkgDis || _sealDis}></label>
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"${_pkgDis}></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"${_pkgDis}></label>
         </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
-        <div class="pm-branch-head">🏢 Салбарын хуваарилалт${isEdit ? '' : ' *'} <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
+        <div class="pm-branch-head">🏢 Салбарын хуваарилалт${isEdit ? '' : ' *'}${_sealed ? ' <b>🔒 эцэслэгдсэн</b>' : ''} <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
         ${isEdit ? '' : `<div class="pm-branch-pick" id="pm-branch-pick">
           <button type="button" class="f-link-type" data-brpick="m">🎪 M-Event</button>
           <button type="button" class="f-link-type" data-brpick="c">🏢 Чимун дотоод</button>
           <button type="button" class="f-link-type" data-brpick="n">⛺ NOMAAD</button>
         </div>`}
         <div class="pm-branch-grid">
-          <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"${_pkgDis}></label>
-          <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"${_pkgDis}></label>
-          <label>⛺ NOMAAD<input type="number" min="0" id="pm-qn" value="${_qn0}"${_pkgDis}></label>
-          <label>🍽 Катеринг<input type="number" min="0" id="pm-qk" value="${_qk0}"${_pkgDis}></label>
+          <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"${_pkgDis || _sealDis}></label>
+          <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"${_pkgDis || _sealDis}></label>
+          <label>⛺ NOMAAD<input type="number" min="0" id="pm-qn" value="${_qn0}"${_pkgDis || _sealDis}></label>
+          <label>🍽 Катеринг<input type="number" min="0" id="pm-qk" value="${_qk0}"${_pkgDis || _sealDis}></label>
         </div>
         <div class="pm-branch-status" id="pm-branch-status"></div>
       </div>

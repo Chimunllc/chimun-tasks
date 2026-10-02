@@ -8151,3 +8151,5 @@ select.no-asar-len {
   background: var(--warn-soft); color: var(--warn); border-radius: var(--r-md);
   font-size: var(--fs-sm); line-height: 1.5;
 }
+/* 🔒 Эцэслэгдсэн барааны тоо түгжээтэй (2026-10-02). */
+.pm-hint-lock { background: var(--warn-soft); color: var(--warn); }

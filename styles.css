@@ -7968,3 +7968,7 @@ select.no-asar-len {
   white-space: normal; overflow-wrap: anywhere;
 }
 .stmt-lad .sl-full.sl-bad { color: var(--warn); }
+
+/* Элэгдлийн дэд мөр — зардлын мөрийн доор бүдэг (2026-10-02). «14 сая хаанаас
+   гарч ирсэн бэ» гэсэн асуулт нь зардал задрахгүй байснаас төрсөн. */
+.coo-cmp .coo-sub-row { font-size: var(--fs-xs); color: var(--muted); }

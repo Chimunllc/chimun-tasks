@@ -28460,15 +28460,22 @@ function cooSalaryPaid(rows, name, fromMonth, toMonth, acct) {
 // basis: 'cash' = бодитоор орсон/гарсан (ашгийн эрхийн ҮНДЭС) · 'accrual' = гүйцэтгэсэн
 // сард ноогдуулах (лавлагаа). Дуудагч хоёуланг ил дамжуулна — энд өгөгдмөл байхгүй.
 // ⚠ Хоёр суурь ЗӨРНӨ: хураагдаагүй авлага ноогдохд орно, орсон мөнгөнд ОРОХГҮЙ.
+/* ⚠ Салбарын нэр → элэгдлийн хайрцгийн нэр. `finBranchPnl.rows` нь «M-Event»,
+   `dep` нь «ИВЕНТ» гэж түлхүүрлэгддэг тул шууд тулгавал ҮРГЭЛЖ 0 гарна. */
+const COO_DEP_KEY = { 'M-Event': 'ИВЕНТ', 'NOMAAD': 'КЕМП', 'Катеринг': 'КАТЕРИНГ', 'Чимун ХХК': 'ХХК' };
 function cooNetForMonths(months, branch, basis) {
   const want = branch || cooBranch();
   const bs = basis === 'cash' ? 'cash' : 'accrual';
-  let inc = 0, exp = 0;
+  const dk = COO_DEP_KEY[want] || '';
+  let inc = 0, exp = 0, dep = 0;
   (months || []).forEach(m => {
     const p = (typeof finBranchPnl === 'function') ? finBranchPnl(m, bs) : { rows: [] };
     (p.rows || []).filter(r => r && r.k === want).forEach(r => { inc += Number(r.inc) || 0; exp += Number(r.exp) || 0; });
+    /* ⚠ Зөвхөн ИДЭВХТЭЙ (эхлэх сараас хойшхи) элэгдэл зардалд ордог — өмнөх
+       сард `dep` нь лавлагаа тоо тул энд нэмбэл зардалтай зөрнө. */
+    if (dk && p.dep && p.dep.active) dep += Number(p.dep[dk]) || 0;
   });
-  return { inc, exp, net: inc - exp };
+  return { inc, exp, dep, net: inc - exp };
 }
 // Оны эхнээс сонгосон сар хүртэлх сарууд (YTD).
 /* ⚠ COO-гийн ашиг ЭХЛЭХ САР (2026-09-10). 2026-06-ээс ӨМНӨ зардлыг бүрэн
@@ -28539,6 +28546,11 @@ function renderCooSalary() {
       + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">✓ Орсон мөнгө</div><div class="coo-hd coo-hd-ref">Ноогдох</div>`
       + _r2('Орлого (барьцаа хассан)', d.ca.inc, d.ac.inc, 'coo-inc')
       + _r2('− Үйл ажиллагааны зардал', -d.ca.exp, -d.ac.exp)
+      /* ⚠ ЭЛЭГДЛИЙГ ИЛ ЗАДАЛНА (2026-10-02, CEO «14 саяын зардал хаанаас гарч
+         ирсэн юм бэ?» гэж асуув). Элэгдэл нь сарын эхэнд БҮТНЭЭР суудаг тул
+         сар дөнгөж эхлэхэд 2 хоногийн орлоготой харьцуулагдаж, зардал гэнэт
+         томорсон мэт харагдана. Мөнгө гарсан зардал БИШ гэдгийг ил хэлнэ. */
+      + (d.ca.dep || d.ac.dep ? _r2('<span class="mut">үүнээс элэгдэл (мөнгө гараагүй)</span>', -(d.ca.dep || 0), -(d.ac.dep || 0), 'coo-sub-row') : '')
       + _r2('= Цэвэр ашиг', d.ca.net, d.ac.net, 'coo-net')
       + _r2(`COO цалин (${pct}%)`, sc, sa, 'coo-share')
       + `</div>`

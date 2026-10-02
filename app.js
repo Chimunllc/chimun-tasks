@@ -8983,6 +8983,56 @@ function assertMonthOpen(month, what) {
 }
 /* Сар хаахад БЭЛЭН эсэх — шалтгаанын жагсаалт. Хоосон = бэлэн. Цэвэр функц (тестлэгдэнэ).
    CEO эдгээрийг үл хэрэгсэж хааж ч болно (зориудаар — шалтгаан нь бичлэгт үлдэнэ). */
+/* Сарын СҮҮЛЧИЙН өдөр. ⚠ Түүхий `Date`-ээр бодвол UTC+8-д нэг өдөр гулсана —
+   `addDays` (огнооны ганц эх сурвалж) -ээр дараа сарын 1-ээс нэг хоног хасна. */
+function monthEndDay(month) {
+  const m = String(month || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(m)) return '';
+  const y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7));
+  if (mo < 1 || mo > 12) return '';
+  const nxt = mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, '0')}-01`;
+  return addDays(nxt, -1);
+}
+/* ⚖️ САР БҮРИЙН ТЭНЦЭЛ = `monthSeal(stmts, acct, month)` (2026-10-02, CEO шийдвэр).
+   Бусад БҮХ зүйл сараар явдаг (сар хаах · P&L · COO-гийн 30%) тул тэнцэл ч сараар
+   л утгатай. Өмнө нь хуулгын ЭКСПОРТЫН ЦОНХООР шалгадаг байсан нь хоёр нүхтэй:
+   ① сарын хил давсан хуулга (08-01…09-11) ХОЁР сард тоологдож, нэг дутуу файл
+      хоёр сарыг зэрэг блоклоно · ② 09-01…10-02 гэж «өнөөдөр хүртэл» татсан хуулганд
+   09-30-ны үлдэгдэл БАЙХГҮЙ тул тэр сар үнэндээ батлагдаагүй атал «тэнцсэн» гэж
+   харагдана. Амьд датаар 23 хуулгын ердөө 2 нь сартай яг тохирч байв.
+   ⛔ **САР БАТЛАГДАХ = сарын 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга тэнцсэн
+      байх.** Сарын эцсийн үлдэгдэл нь банкны өөрийнх нь хэлсэн тоо — бидний
+      бодсон тоо биш. Эцсийн үлдэгдэл байхгүй бол «батлагдсан» гэж ХЭЗЭЭ Ч бүү
+      бич: батлахын оронд ЯМАР хуулга татахыг хэл (`why`).
+   ⚠ Валют данс нь мөр нь ₮ болж хөрвүүлэгддэг тул тоололд ОГТ орохгүй.
+   Төлөв: `sealed` батлагдсан · `diff` зөрүүтэй · `noend` сарын эцсийн үлдэгдэл алга ·
+          `noflow` үлдэгдэл мэдэгдэх ч сарыг бүтэн хамарсан хуулга алга ·
+          `none` хуулга огт ороогүй · `ccy` валют данс. */
+function monthSeal(stmts, acct, month) {
+  const m = String(month || '').slice(0, 7), key = String(acct || '');
+  const end = monthEndDay(m), first = m + '-01';
+  if (!end) return { state: 'none', why: 'сар буруу' };
+  const mine = (stmts || []).filter(s => s && String(s.acct) === key && s.period_from && s.period_to
+    && String(s.period_from) <= end && String(s.period_to) >= first);
+  if (!mine.length) return { state: 'none', why: `${m} сарын хуулга ороогүй` };
+  if (mine.every(s => String(s.ccy || 'MNT').toUpperCase() !== 'MNT')) return { state: 'ccy', why: 'валют данс — шалгагдахгүй' };
+  const ender = mine.find(s => String(s.period_to) === end && s.closing_stated != null);
+  if (!ender) {
+    const last = mine.map(s => String(s.period_to)).sort().pop();
+    return { state: 'noend', closing: null, last,
+      why: `${end}-ны эцсийн үлдэгдэл алга (хуулга ${last}-нд дуусдаг) — ${first}…${end} хуулга татаж оруул` };
+  }
+  const exact = mine.find(s => String(s.period_from) === first && String(s.period_to) === end
+    && s.opening != null && s.closing_stated != null);
+  const closing = Number(ender.closing_stated);
+  if (!exact) return { state: 'noflow', closing, why: `${end}-ны үлдэгдэл мэдэгдэх ч ${first}…${end} бүтэн хуулга алга` };
+  const b = stmtBalanceCheck(exact);
+  const base = { opening: Number(exact.opening), closing, credit: Number(exact.credit_total) || 0,
+    debit: Number(exact.debit_total) || 0, id: exact.id };
+  if (b.skip) return { ...base, state: 'noflow', why: b.skip };
+  return b.ok ? { ...base, state: 'sealed', diff: 0 }
+    : { ...base, state: 'diff', diff: b.diff, why: gapBalanceWhy(b.diff) };
+}
 /* ⚖️ «ХЭДЭН ДАНСНААС ХЭД НЬ ТЭНЦСЭН» = `balanceStats`, ГАНЦ эх сурвалж (2026-10-02).
    Тэнцлийн төлөв өмнө нь ЗӨВХӨН «Сар хаах» дарахад харагддаг байв — тэр үед хэтэрхий
    орой. Одоо «дараагийн алхам» картад мөр болж ҮРГЭЛЖ харагдана (зөв байхад ч «N/M
@@ -8999,23 +9049,22 @@ function assertMonthOpen(month, what) {
      «Шалгагдаагүй» гэж тоовол анхааруулга мөнхөд асаалттай болно. */
 function balanceStats(stmts, regAccts, month) {
   const want = (regAccts || []).map(a => String(a || '').replace(/\D/g, '').slice(-10)).filter(Boolean);
-  const m = String(month || '');
-  const by = new Map();   // данс → {ok, bad, unver}
-  (stmts || []).forEach(st => {
-    if (!st || !st.acct) return;
-    if (want.length && !want.includes(String(st.acct).replace(/\D/g, '').slice(-10))) return;
-    if (String(st.period_from || '').slice(0, 7) !== m && String(st.period_to || '').slice(0, 7) !== m) return;
-    const b = stmtBalanceCheck(st);
-    if (b.skip === 'валют данс' || b.skip === 'хоосон') return;   // шалгагдах ёсгүй
-    const k = String(st.acct);
-    const g = by.get(k) || { ok: 0, bad: 0, unver: 0 };
-    if (b.skip) g.unver++; else if (b.ok) g.ok++; else g.bad++;
-    by.set(k, g);
-  });
-  const badAccts = [], unverAccts = [];
+  const m = String(month || '').slice(0, 7), end = monthEndDay(m), first = m + '-01';
+  const accts = [...new Set((stmts || []).filter(st => st && st.acct && st.period_from && st.period_to
+    && String(st.period_from) <= end && String(st.period_to) >= first
+    && (!want.length || want.includes(String(st.acct).replace(/\D/g, '').slice(-10))))
+    .map(st => String(st.acct)))].sort();
+  const badAccts = [], unverAccts = [], why = {};
   let ok = 0;
-  by.forEach((g, k) => { if (g.bad) badAccts.push(k); else if (g.unver) unverAccts.push(k); else ok++; });
-  return { total: by.size, ok, bad: badAccts.length, unver: unverAccts.length, badAccts, unverAccts };
+  accts.forEach(a => {
+    const r = monthSeal(stmts, a, m);
+    if (r.state === 'ccy' || r.state === 'none') return;   // тоололд орохгүй
+    if (r.state === 'sealed') { ok++; return; }
+    why[a] = r.why || '';
+    (r.state === 'diff' ? badAccts : unverAccts).push(a);
+  });
+  return { total: ok + badAccts.length + unverAccts.length, ok,
+    bad: badAccts.length, unver: unverAccts.length, badAccts, unverAccts, why };
 }
 function closeMonthBlockers(stmts, income, regAccts, month) {
   const out = [];
@@ -9089,14 +9138,18 @@ function finNextSteps(ctx) {
      тиймээс хүн аль хэдийн хардаг картан дээр мөр болж суна. */
   const bal = c.balance || { total: 0, ok: 0, bad: 0, unver: 0, badAccts: [], unverAccts: [] };
   const balBad = (bal.bad || 0) + (bal.unver || 0);
+  /* ⚠ Дансны ДУГААР дангаараа хүнд юу ч хэлдэггүй — «юу хийх» нь шалтгаанд бий
+     («09-30-ны эцсийн үлдэгдэл алга — 09-01…09-30 хуулга татаж оруул»). */
+  const balWhy = bal.why || {};
+  const balList = (arr) => (arr || []).map(a => `${a}${balWhy[a] ? ` — ${balWhy[a]}` : ''}`).join(' · ');
   const balHint = [
-    bal.bad ? `${bal.bad} данс зөрүүтэй: ${(bal.badAccts || []).join(', ')}` : '',
-    bal.unver ? `${bal.unver} данс шалгагдаагүй (үлдэгдэл уншигдаагүй): ${(bal.unverAccts || []).join(', ')}` : '',
+    bal.bad ? balList(bal.badAccts) : '',
+    bal.unver ? balList(bal.unverAccts) : '',
   ].filter(Boolean).join(' · ');
   steps.push(balBad
     ? { key: 'balance', n: balBad, icon: '⚖️', title: 'Тэнцэл шалгах', hint: balHint, act: 'recon', btn: 'Харах' }
     : { key: 'balance', done: true, icon: '⚖️', title: 'Тэнцэл шалгах',
-        hint: bal.total ? `${bal.ok}/${bal.total} данс тэнцсэн` : 'Шалгах хуулга алга' });
+        hint: bal.total ? `${bal.ok}/${bal.total} данс сарын эцсийн үлдэгдлээр батлагдсан` : 'Шалгах хуулга алга' });
   const chain = Number(c.chainBreaks) || 0;
   if (chain) steps.push({ key: 'chain', n: chain, icon: '🔗', title: 'Хуулгын завсар нөхөх', hint: 'Хуулга хооронд завсар бий — дутуу хуулга оруулна', act: 'recon', btn: 'Харах' });
   if (c.isCEO) {
@@ -9448,7 +9501,31 @@ function renderStmtLedger() {
         <button class="btn ui-raw inc-btn" data-inc-set="personal" data-inc-fp="${escapeHtml(r.fp)}" title="Хувийн — компанийн орлого биш">🙍</button>
         <button class="btn ui-raw inc-btn" data-inc-set="notincome" data-inc-fp="${escapeHtml(r.fp)}" title="Орлого биш (зээл / хөрөнгө оруулалт)">🚫</button>
       </span></div>`).join('');
-  return `<div class="recon-sec${gaps.length ? ' warn' : ''}">
+  /* ⚖️ САРЫН ШАТ — бусад БҮХ зүйл сараар явдаг (сар хаах · P&L · COO-гийн 30%) тул
+     тэнцэл ч сараар л утгатай. Хуулгын экспортын цонх нь дурын (09-01…10-02) тул
+     тэндээс «сар тэнцсэн» гэж дүгнэж болохгүй — сарын ЭЦСИЙН үлдэгдэл л баталгаа. */
+  const seenM = [...new Set((list || []).flatMap(st => [String(st.period_from || '').slice(0, 7),
+    String(st.period_to || '').slice(0, 7)]).filter(x => /^\d{4}-\d{2}$/.test(x)))].sort().slice(-3).reverse();
+  const sealAccts = [...new Set((list || []).map(st => String(st.acct || '')).filter(Boolean))];
+  const sealRows = seenM.map(mm => {
+    const rows = sealAccts.map(a => ({ a, r: monthSeal(list, a, mm) })).filter(x => x.r.state !== 'none' && x.r.state !== 'ccy');
+    if (!rows.length) return '';
+    const okN = rows.filter(x => x.r.state === 'sealed').length;
+    const body = rows.sort((x, y) => acctLabel(x.a).localeCompare(acctLabel(y.a))).map(({ a, r }) => {
+      const v = r.state === 'sealed' ? `<span class="recon-ok">✓ ${fmtMoney(r.closing)}</span>`
+        : r.state === 'diff' ? `<span class="recon-bad">⚠ ${fmtMoney(r.closing)} · зөрүү ${fmtMoney(r.diff)}</span>`
+        : `<span class="mut">⃝ ${escapeHtml(r.why || 'шалгагдаагүй')}</span>`;
+      return `<div class="recon-row"><span class="recon-l">${isPersonalAcct(a) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(a))}</span><span class="recon-amt">${v}</span></div>`;
+    }).join('');
+    return `<div class="stmt-acct"><div class="recon-row stmt-acct-h"><span class="recon-l">${escapeHtml(mm)} сарын эцэс <span class="mut">${escapeHtml(monthEndDay(mm))}</span></span>`
+      + `<span class="recon-amt">${okN === rows.length ? `<span class="recon-ok">✓ ${okN}/${rows.length} батлагдсан</span>` : `<span class="recon-bad">${okN}/${rows.length} батлагдсан</span>`}</span></div>${body}</div>`;
+  }).filter(Boolean).join('');
+  return `<div class="recon-sec">
+      <div class="recon-sec-h">⚖️ Сарын эцсийн үлдэгдэл</div>
+      ${sealRows || '<div class="recon-empty">Хуулга оруулаагүй байна</div>'}
+      <div class="recon-summary-sub">Сар батлагдах = тэр сарын 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга тэнцсэн байх. «01…өнөөдөр» гэж татсан хуулганд сарын эцсийн үлдэгдэл байдаггүй тул сарыг батлахгүй.</div>
+    </div>
+    <div class="recon-sec${gaps.length ? ' warn' : ''}">
       <div class="recon-sec-h">📚 Оруулсан хуулга <span class="recon-n">${(list || []).length}</span></div>
       ${gaps.length ? `<div class="recon-rows">${gaps.map(gapRow).join('')}</div>` : '<div class="recon-empty recon-ok">✓ Цоорхой алга — бүх хуулга залгаатай</div>'}
       ${stmtRows ? `<div class="recon-rows">${stmtRows}</div>` : '<div class="recon-empty">Хуулга оруулаагүй байна</div>'}

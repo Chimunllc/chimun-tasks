@@ -8704,6 +8704,55 @@ function gapBalanceWhy(diff) {
     : v < 0 ? `${fmtMoney(Math.abs(v))}-ийн ОРЛОГО уншигдаагүй (орлого дутуу бүртгэгдсэн)`
     : 'хуулгын тэнцэл зөрж байна';
 }
+/* ⛔ ДАВХЦСАН ХУУЛГЫГ ЗАЛГАА ГЭЖ ТУЛГАЖ БОЛОХГҮЙ (2026-10-02, амьд датаар олов).
+   Нэг хугацааг дахин экспортлоход ШИНЭ бичлэг үүсдэг: 5222003015 данс дээр
+   2026-09-01-ээс эхэлсэн ЗУРГААН хуулга (дуусах өдөр нь л өөр) байв. Дараалан
+   тулгахад «09-10-ны эцсийн 1,516,605» ба «09-11-ний эхний 446,582» харьцуулагдаж
+   1,070,023₮-ийн ХУДАЛ «залгаа тасарсан» төрдөг — үнэндээ ижил хугацааны хоёр
+   хувилбар. Амьд датаар 14 алдааны 13 нь ийм гаралтай байв.
+   Дүрэм: бусад хуулгад БҮРЭН багтсан хуулгыг залгааны ТУЛГУУРААС хасна.
+   ⚠ Тэнцлийн шалгуур нь БҮГДЭД хэвээр — дутуу экспорт ч өөрөө тэнцэх ёстой.
+   Буцаана: `{spine, dropped}` — `dropped` нь дэлгэцэд «багтсан» гэж ил гарна,
+   эс бөгөөс хүн 6 хуулгаа хараад аль нь залгааг бүрдүүлж байгааг мэдэхгүй. */
+function stmtChainSpine(all) {
+  const rows = (all || []).filter(s => s && s.period_from && s.period_to).slice().sort((x, y) =>
+    String(x.period_from).localeCompare(String(y.period_from))
+    || String(y.period_to).localeCompare(String(x.period_to)));
+  const keep = rows.filter((s, i, arr) => !arr.some((o, j) => j !== i
+    && String(o.period_from) <= String(s.period_from)
+    && String(o.period_to) >= String(s.period_to)
+    && (String(o.period_from) !== String(s.period_from) || String(o.period_to) !== String(s.period_to) || j < i)));
+  const ids = new Set(keep.map(s => String(s.id)));
+  return { spine: keep, dropped: rows.filter(s => !ids.has(String(s.id))) };
+}
+/* ⚖️ ХУУЛГЫН БОДОЛТ ИЛ — «тэнцэв» гэдэг нь дангаараа ХЭРЭГГҮЙ (2026-10-02).
+   Хүн «эхний хэд байсан, хэд орж хэд гарсан, эцсийн хэд болсон» гэдгийг хармаар
+   байдаг: тэр бол хуулгыг нүдээрээ тулгах цорын ганц зам. Өмнө нь зөвхөн «✓ тэнцэв»
+   гэсэн шошго байсан тул шалгалт ЮУГ харьцуулсан нь нуугдмал байв.
+   ⚠ Дүнг ДАХИН БОДОХГҮЙ — `stmtBalanceCheck` нь ганц шүүгч (валют данс, уншигдаагүй
+     үлдэгдэл, ±1₮ тоймлолт бүгд тэнд). Энэ функц зөвхөн ХАРУУЛАХ хэлбэрт хувиргана.
+   `prev` = тухайн дансны ӨМНӨХ (залгааны тулгуур дээрх) хуулга — байвал «өмнөх
+   эцсийн ↔ энэ эхний» холбоос гарна. Хэсэгчлэн давхцсан бол холбоос ГАРГАХГҮЙ
+   (давхцсан хугацаанд гүйлгээ хоёуланд нь орсон тул тулгах нь утгагүй). */
+function stmtDetail(s, prev) {
+  const b = stmtBalanceCheck(s);
+  const n = (v) => (v == null || v === '' ? null : Number(v));
+  const d = {
+    opening: n(s && s.opening), credit: n(s && s.credit_total), debit: n(s && s.debit_total),
+    calc: n(s && s.closing_calc), stated: n(s && s.closing_stated), rows: n(s && s.row_count),
+    ccy: String((s && s.ccy) || 'MNT').toUpperCase(),
+    skip: b.skip || '', ok: !b.skip && !!b.ok,
+    diff: b.skip ? null : (Number(b.diff) || 0),
+    file: String((s && s.file_name) || ''), at: String((s && s.imported_at) || '').slice(0, 10),
+    by: String((s && s.imported_by) || ''), link: null,
+  };
+  if (prev && prev.closing_stated != null && d.opening != null
+      && String(prev.period_to || '') < String((s && s.period_from) || '')) {
+    const ld = Math.round(d.opening) - Math.round(Number(prev.closing_stated));
+    d.link = { to: String(prev.period_to), closing: Number(prev.closing_stated), diff: ld, ok: Math.abs(ld) <= 1 };
+  }
+  return d;
+}
 /* Дансны хуулгын ЗАЛГАА. Дутуу хуулга = мөнгө чимээгүй алга болох цорын ганц бодит
    эрсдэл, тиймээс цэвэр функц болгож тестлэв. Буцаана: {acct, kind, …}[]
    kind: 'balance' = хуулгын дотоод тэнцэл зөрүүтэй (мөр дутуу уншигдсан)
@@ -8727,21 +8776,7 @@ function stmtChainCheck(list, onlyAccts) {
   });
   Object.keys(byAcct).sort().forEach(a => {
     const all = byAcct[a].filter(s => s.period_from && s.period_to);
-    /* ⛔ ДАВХЦСАН ХУУЛГЫГ ЗАЛГАА ГЭЖ ТУЛГАЖ БОЛОХГҮЙ (2026-10-02, амьд датаар олов).
-       Нэг хугацааг дахин экспортлоход шинэ бичлэг үүсдэг: 5222003015 данс дээр
-       2026-09-01-ээс эхэлсэн ЗУРГААН хуулга (дуусах өдөр нь л өөр) байв. Дараалан
-       тулгахад «09-10-ны эцсийн 1,516,605» ба «09-11-ний эхний 446,582» харьцуулагдаж
-       1,070,023₮-ийн ХУДАЛ «залгаа тасарсан» төрдөг — тэр нь үнэндээ ижил хугацааны
-       хоёр хувилбар. Амьд датаар 14 алдааны 13 нь ийм гаралтай байв.
-       Дүрэм: бусад хуулгад БҮРЭН багтсан хуулгыг залгаанаас хасна (тэнцлийн шалгуур
-       нь БҮГДЭД хэвээр — дутуу экспорт ч өөрөө тэнцэх ёстой). */
-    const rows = all.slice().sort((x, y) =>
-      String(x.period_from).localeCompare(String(y.period_from))
-      || String(y.period_to).localeCompare(String(x.period_to)))
-      .filter((s, i, arr) => !arr.some((o, j) => j !== i
-        && String(o.period_from) <= String(s.period_from)
-        && String(o.period_to) >= String(s.period_to)
-        && (String(o.period_from) !== String(s.period_from) || String(o.period_to) !== String(s.period_to) || j < i)));
+    const { spine: rows } = stmtChainSpine(all);
     all.forEach(s => { const b = stmtBalanceCheck(s); if (!b.ok) out.push({ acct: a, kind: 'balance', id: s.id, diff: b.diff }); });
     for (let i = 1; i < rows.length; i++) {
       const p = rows[i - 1], c = rows[i];
@@ -9347,13 +9382,62 @@ function renderStmtLedger() {
     const amt = g.kind === 'gap' ? '' : `<span class="recon-amt">${fmtMoney(g.diff)}</span>`;
     return `<div class="recon-row warn-row${prsn ? ' prsn-row' : ''}"><span class="recon-l">${body}${tail}</span>${amt}</div>`;
   };
-  const stmtRows = (list || []).slice(0, 24).map(s => {
-    const b = stmtBalanceCheck(s);
-    // «—» нь юу ч хэлдэггүй: шалгагдаагүй шалтгааныг ил бичнэ (үлдэгдэл алга /
-    // уншигдаагүй / валют данс). Эс бөгөөс «яагаад ✓ биш юм бол» гэж эргэлзэнэ.
-    const mark = b.skip ? `<span class="mut" title="Тэнцэл шалгагдаагүй">⃝ ${escapeHtml(b.skip)}</span>`
-      : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);
-    return `<div class="recon-row"><span class="recon-l">${isPersonalAcct(s.acct) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(s.acct))} · ${escapeHtml(String(s.period_from || '?'))} … ${escapeHtml(String(s.period_to || '?'))}${s.ccy && s.ccy !== 'MNT' ? ' · ' + escapeHtml(s.ccy) : ''}</span><span class="recon-amt">+${fmtMoney(s.credit_total)} / −${fmtMoney(s.debit_total)} · ${mark}</span></div>`;
+  /* ⚖️ БОДОЛТ ИЛ — «✓ тэнцэв» гэдэг дангаараа хэрэггүй (2026-10-02, CEO).
+     Хуулга бүрийг нээхэд «эхний + орлого − зарлага = эцсийн» бодолт, хуулгад
+     бичсэн дүнтэй тулгасан зөрүү, өмнөх хуулгатай залгасан холбоос, ямар файлаас
+     хэзээ орсон нь гарна. Данс бүрээр бүлэглэнэ — нэг данс нэг сард 6 хуулгатай
+     байж болох тул жагсаалтыг хольж харуулбал хүн уншиж чадахгүй. */
+  const _lad = (k, v, cls) => `<div class="sl-k">${k}</div><div class="sl-v${cls ? ' ' + cls : ''}">${v}</div>`;
+  const stmtDetHtml = (st, prev) => {
+    const d = stmtDetail(st, prev);
+    const money = (v) => v == null ? '<span class="mut">—</span>' : fmtMoney(v);
+    const L = [];
+    /* ⚠ Хугацааг шошгон дотор ДАВТАХГҮЙ — дээрх мөрөнд аль хэдийн бичээстэй, бас
+       320px-д «2026-08-» / «01» гэж дундуураа тасарч байв. Нэг мэдээлэл нэг газар. */
+    L.push(_lad('Эхний үлдэгдэл', money(d.opening)));
+    L.push(_lad(`+ Орлого${d.rows ? ` <span class="mut">· ${d.rows} мөр</span>` : ''}`, money(d.credit)));
+    L.push(_lad('− Зарлага', money(d.debit)));
+    L.push(_lad('= Бодсон эцсийн', money(d.calc), 'sl-sum'));
+    L.push(_lad('Хуулгад бичсэн', money(d.stated)));
+    L.push(d.skip
+      ? _lad('Зөрүү', `<span class="mut">⃝ ${escapeHtml(d.skip)}</span>`)
+      : _lad('Зөрүү', d.ok ? '✓ 0' : `⚠ ${fmtMoney(d.diff)}`, d.ok ? 'sl-ok' : 'sl-bad'));
+    if (!d.ok && !d.skip) L.push(`<div class="sl-full sl-bad">${escapeHtml(gapBalanceWhy(d.diff))}</div>`);
+    /* Залгаа нь ТОО биш ӨГҮҮЛБЭР — «өмнөх хуулга хэзээ хэдээр дууссан, таарч байна уу».
+       Тоон баганад шахвал шошго нь хоёр мөр болж уншигдахаа болино (320px). */
+    if (d.link) L.push(`<div class="sl-full${d.link.ok ? '' : ' sl-bad'}">🔗 Өмнөх хуулга ${escapeHtml(d.link.to)}-нд `
+      + `${fmtMoney(d.link.closing)}-өөр дууссан — ${d.link.ok ? 'таарч байна' : `энэ хуулга ${fmtMoney(d.link.diff)} зөрүүтэй эхэлсэн`}</div>`);
+    /* ⚠ Файлын нэрэнд ЗАЙ байдаггүй тул ТООН БАГАНАД БҮҮ тавь — багана нарийсаж
+       шошго үсэг тус бүрээр босоо таслагдана (375px-д баталсан). Бүтэн мөр. */
+    if (d.file || d.at) L.push(`<div class="sl-full">📄 ${escapeHtml(d.file)}${d.at ? ' · ' + escapeHtml(d.at) : ''}${d.by ? ' · ' + escapeHtml(memberName(d.by) || d.by) : ''}</div>`);
+    return `<div class="stmt-lad">${L.join('')}</div>`;
+  };
+  const byA = {};
+  (list || []).forEach(st => { if (st && st.acct) (byA[String(st.acct)] || (byA[String(st.acct)] = [])).push(st); });
+  const stmtRows = Object.keys(byA).sort((x, y) => acctLabel(x).localeCompare(acctLabel(y))).map(a => {
+    const { spine, dropped } = stmtChainSpine(byA[a]);
+    const seq = spine.concat(dropped.map(d => ({ ...d, _contained: true })));
+    const marks = spine.map(st => stmtBalanceCheck(st));
+    const nBad = marks.filter(m => !m.skip && !m.ok).length;
+    const nSkip = marks.filter(m => m.skip && m.skip !== 'валют данс' && m.skip !== 'хоосон').length;
+    const head = nBad ? `<span class="recon-bad">⚠ ${nBad} хуулгын тэнцэл зөрүүтэй</span>`
+      : nSkip ? `<span class="mut">⃝ ${nSkip} хуулга шалгагдаагүй</span>`
+      : `<span class="recon-ok">✓ ${spine.length} хуулга тэнцэв</span>`;
+    const rows = seq.map((st, i) => {
+      const b = stmtBalanceCheck(st);
+      const mark = st._contained ? '<span class="mut" title="Бусад хуулгад бүрэн багтсан — залгаанд тоологдохгүй">⊂ багтсан</span>'
+        : b.skip ? `<span class="mut" title="Тэнцэл шалгагдаагүй">⃝ ${escapeHtml(b.skip)}</span>`
+        : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);
+      const prev = st._contained ? null : spine[spine.indexOf(st) - 1];
+      return `<details class="stmt-det"><summary class="recon-row">`
+        + `<span class="recon-l">${escapeHtml(String(st.period_from || '?'))} … ${escapeHtml(String(st.period_to || '?'))}`
+        + `${st.ccy && st.ccy !== 'MNT' ? ' · ' + escapeHtml(st.ccy) : ''}</span>`
+        + `<span class="recon-amt">+${fmtMoney(st.credit_total)} / −${fmtMoney(st.debit_total)} · ${mark}</span>`
+        + `</summary>${stmtDetHtml(st, prev)}</details>`;
+    }).join('');
+    return `<div class="stmt-acct"><div class="recon-row stmt-acct-h">`
+      + `<span class="recon-l">${isPersonalAcct(a) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(a))} <span class="mut">${escapeHtml(a)}</span></span>`
+      + `<span class="recon-amt">${head}</span></div>${rows}</div>`;
   }).join('');
   const openRows = open.slice(0, 40).map(r => `<div class="recon-row">
       <span class="recon-l">${escapeHtml(String(r.dt || ''))} · ${escapeHtml(r.payer || '')} · <span class="mut">${escapeHtml(String(r.memo || '').slice(0, 40))}</span></span>

@@ -341,6 +341,68 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   ok(/олдсонгүй/.test(CBR(null)), 'тооллого: бараагүй бол хаалттай');
 }
 
+/* ═══ ⛔ ЭЦЭСЛЭГДСЭН ТООГ ФОРМООР ЗАСАХГҮЙ — ГАНЦ БИЧИХ ЦЭГТ (2026-10-02) ═══
+   CEO барив: «эцэслэсэн байхад шууд энд ингээд сольж болж байхад эцэслэх ямар
+   хэрэгтэй гэж? ийм төрлийн алдаа маш их байна». Урсгал БҮРИЙГ тус тусад нь
+   хаах нь буруу арга байв — барааны засах цонх `stock`/`qty_*`-г чөлөөтэй
+   өөрчилдөг тул эцэслэл чимэг болж байв.
+   Шийдэл: хориг нь `saveProduct` (ГАНЦ бичих цэг) дээр. Хяналттай зам бүр
+   `_moveReason` дамжуулдаг, форм дамжуулдаггүй. ⭐ Шинэ дэлгэц нэмэгдсэн ч
+   энэ цэгээр дамжих тул ӨӨРӨӨ хаагдана — тэр нь энэ аргын гол давуу тал. */
+{
+  const SP = vm.runInContext('saveProduct', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const saved = st.products;
+  const base = () => ({ sku: 'SEAL1', id: 'SEAL1', name: 'Түгжээтэй', stock: 10, qty_mevent: 10,
+    qty_nomaad: 0, qty_catering: 0, qty_chimun: 0, stock_locked_at: '2026-10-01T00:00:00Z' });
+  const open = () => ({ ...base(), sku: 'OPEN1', id: 'OPEN1', stock_locked_at: null });
+  /* ⚠ `saveProduct` нь ОПТИМИСТ — амжилттай дуудлага `state.products`-ыг
+     өөрчилдөг тул шалгуур бүрийн ӨМНӨ фикстурыг сэргээнэ. Эс бөгөөс өмнөх
+     дуудлагын үлдэц дараагийнхыг худал унагана. */
+  const err = async (patch) => {
+    st.products = [base(), open()];
+    try { await SP(patch); return ''; } catch (e) { return e.message; }
+  };
+
+  (async () => {
+    // ⛔ Форм (шалтгаангүй) + эцэслэгдсэн + тоо хөдөлсөн → ТАТГАЛЗАНА
+    ok(/гараар засах боломжгүй/.test(await err({ ...base(), qty_mevent: 3 })),
+       'түгжээ: эцэслэгдсэн барааны салбарын тоог формоор засахгүй');
+    ok(/гараар засах боломжгүй/.test(await err({ ...base(), stock: 99 })),
+       'түгжээ: нийт нөөцийг ч формоор засахгүй');
+    // ✅ Хяналттай зам (_moveReason-тэй) — ЗӨВШӨӨРНӨ
+    eq(await err({ ...base(), qty_mevent: 3, _moveReason: 'count' }), '',
+       'түгжээ: тооллогын зам (_moveReason) нээлттэй');
+    // ✅ Тоо ХӨДӨЛӨӨГҮЙ бол бусад талбар засагдана (нэр, үнэ…)
+    eq(await err({ ...base(), name: 'Шинэ нэр' }), '',
+       'түгжээ: тоо хөдлөөгүй бол нэр/үнэ засагдана');
+    // ✅ Эцэслээгүй бараа — хуучнаараа чөлөөтэй
+    eq(await err({ ...open(), qty_mevent: 3 }), '', 'түгжээ: эцэслээгүй бараа чөлөөтэй хэвээр');
+    st.products = saved;
+  })();
+}
+
+/* 0e2l) SCAN — түгжээ ГАНЦ БИЧИХ ЦЭГТ, нэгтгэхээс ӨМНӨ (2026-10-02)
+   Хориг нь `state.products[idx]` нэгтгэхээс ХОЙШ байвал ӨМНӨХ утга аль хэдийн
+   дарагдсан байх тул «хөдөлсөн эсэх» нь ҮРГЭЛЖ худал гарч, түгжээ ажиллахгүй. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const i = codeLines.indexOf('async function saveProduct(');
+  const fn = codeLines.slice(i, i + 2400);
+  const guardAt = fn.indexOf('stockSealed(state.products[idx]) && !product._moveReason');
+  const mergeAt = fn.indexOf('state.products[idx] = { ...state.products[idx], ...product }');
+  ok(guardAt > 0, 'scan: эцэслэлийн түгжээ saveProduct дотор');
+  ok(guardAt < mergeAt, 'scan: түгжээ state нэгтгэхээс ӨМНӨ (эс бол өмнөх утга дарагдана)');
+  ok(/throw new Error\('Эцэслэгдсэн барааны тоог гараар засах боломжгүй/.test(fn),
+     'scan: татгалзах нь ТОДОРХОЙ мессежтэй');
+  // ⛔ Хяналттай зам нь `_moveReason`-оор ялгардаг — тэр нөхцөлийг хасвал бүх зам хаагдана
+  ok(/!product\._moveReason/.test(fn), 'scan: хяналттай зам (_moveReason) нээлттэй үлдэнэ');
+  // Дэлгэцэд ч түгжээ харагдана
+  ok(/const _sealed = !!\(isEdit && p && stockSealed\(p\)\);/.test(codeLines),
+     'scan: засах цонх эцэслэлийг мэднэ');
+  ok(/\$\{_pkgDis \|\| _sealDis\}/.test(codeLines), 'scan: тоон талбарууд түгжигдэнэ');
+}
+
 /* 0e2k) SCAN — тооллогын хориг БҮХ замд (2026-10-02)
    Бүртгэх зам нээлттэй үлдвэл батлагдаагүй суурьтай зөрүү DB-д хуримтлагдана;
    ХЭРЭГЖҮҮЛЭХ зам нээлттэй үлдвэл тэр зөрүү нөөц ба МӨНГӨНД хүрнэ. */
@@ -5505,7 +5567,7 @@ need(['orderCustType']);
   ok(/stats/.test(body), 'scan: таамаглалын тоог гаргана (чимээгүй буруу ангилахгүй)');
   // Бараа зассаны дараа тайлангийн кэш хүчингүй болох ёстой
   const sp = src.slice(src.indexOf('async function saveProduct('));
-  ok(/state\.history = null/.test(sp.slice(0, 6000)),
+  ok(/state\.history = null/.test(sp.slice(0, 7500)),
      'scan: saveProduct тайлангийн кэшийг хүчингүй болгоно');
   // `зүлэг` тоглоомын түлхүүр үгэнд БУЦАЖ ОРОХГҮЙ
   const kw = src.slice(src.indexOf('const _HIST_CAT_KW'), src.indexOf('function _histNormAgg'));
@@ -12589,13 +12651,13 @@ async function swFetchTests() {
 // Эс бөгөөс `state.products[idx]` шинэ утгаар дарагдаж, delta ҮРГЭЛЖ 0 болно.
 {
   const i = src.indexOf('async function saveProduct(');
-  const fn = src.slice(i, i + 900);
+  const fn = src.slice(i, i + 2400);
   const snapAt = fn.indexOf('stockQtySnapshot(state.products[idx])');
   const mergeAt = fn.indexOf('state.products[idx] = { ...state.products[idx], ...product }');
   ok(snapAt > 0, 'scan: нөөцийн хормын хуулбар авдаг');
   ok(mergeAt > 0, 'scan: state нэгтгэл олдов');
   ok(snapAt < mergeAt, 'scan: хормын хуулбар state нэгтгэхээс ӨМНӨ (эс бол delta үргэлж 0)');
-  ok(/logStockMoves\(stockMoveRows/.test(src.slice(i, i + 6000)), 'scan: saveProduct дэвтэрт бичнэ');
+  ok(/logStockMoves\(stockMoveRows/.test(src.slice(i, i + 7500)), 'scan: saveProduct дэвтэрт бичнэ');
 }
 
 // ── ХУДАЛДАН АВАЛТ (2026-09-13) ─────────────────────────────────────────

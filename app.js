@@ -26089,8 +26089,27 @@ function setOrderCmpNote(note, reason, amount, receipt, date) {
 function orderCmpAmount(o) { const c = parseOrderCmp(o && o.note); return c ? c.amount : 0; }
 // Захиалгын талбар засах (PATCH). `note` бичихийн ӨМНӨ DB-ээс шинэчилж уншина —
 // өөр хүн зэрэг шат ахиулсан бол түүний бичсэн токеныг дарж бичихгүй.
+/* ⛔ МӨНГӨНИЙ ТАЛБАР ДАМЖВАЛ ХААСАН САР ШАЛГАГДАНА (2026-10-02 аудит).
+   `patchOrderFields` нь захиалгын ДУРЫН талбарыг PATCH хийдэг ерөнхий зам —
+   одоогийн дуудагчид `note`/`paid_ref`/`stage_meta` л дамжуулдаг тул идэвхтэй
+   нүх биш байв. Гэхдээ хэн нэгэн ирээдүйд `total_mnt` дамжуулбал ХААСАН сарын
+   орлого чимээгүй өөрчлөгдөнө — тэр нь «хаасан сарын тоо хөдөлөхгүй» гэдэг гол
+   дүрмийг зөрчинө. Тиймээс хоригийг ЭНД, бичих цэгт нь тавина: шинэ дуудагч
+   нэмэгдсэн ч өөрөө хаагдана.
+   ⚠ Жагсаалт нь `orderMoneyChanged`-ийн баридаг талбаруудтай нийцнэ
+     (дүн · барьцаа · барааны мөр) + орлогын САР тодорхойлдог талбарууд
+     (`paid_date`, `starts_at`, `status`) — тэдгээр нь мөнгийг өөр сар руу
+     зөөдөг тул адил аюултай. */
+const ORDER_MONEY_FIELDS = ['total_mnt', 'paid_mnt', 'deposit_mnt', 'items', 'paid_date', 'starts_at', 'status'];
 async function patchOrderFields(o, fields) {
   const oid = o && o.id; if (!oid) throw new Error('id алга');
+  const _money = ORDER_MONEY_FIELDS.filter(k => fields && Object.prototype.hasOwnProperty.call(fields, k));
+  if (_money.length) {
+    // ⚠ Түгжээг СЕРВЭРЭЭС шинэчилж шалгана — өөр сессээс тавигдсан хаалтыг ч барина.
+    try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр шалгана */ }
+    const _lk = orderLockedMonth(o) || orderLockedMonth({ ...o, ...fields });
+    if (_lk) throw new Error(`${_lk} сар хаалттай — захиалгын мөнгөн талбар (${_money.join(', ')}) засагдахгүй`);
+  }
   const body = { ...fields, updated_at: new Date().toISOString() };
   if (Object.prototype.hasOwnProperty.call(fields, 'note')) {
     try {

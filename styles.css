@@ -7828,6 +7828,48 @@ select.no-asar-len {
   padding-top: var(--space-2); border-top: 1px solid var(--line); line-height: 1.5;
 }
 
+/* ─── 💵 Миний цалин (ажилтан өөрөө харна) ─── */
+.pay-card {
+  background: var(--panel); border: 1px solid var(--primary); border-radius: var(--r-xl);
+  padding: var(--space-4); margin-bottom: var(--space-3);
+}
+.pay-hd { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.pay-hd-t { font-size: var(--fs-md); font-weight: 700; color: var(--text); }
+.pay-ym {
+  padding: 4px var(--space-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm);
+}
+.pay-total { font-size: var(--fs-2xl); font-weight: 800; color: var(--primary); margin-top: var(--space-2); line-height: 1.15; }
+.pay-total-s { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; }
+.pay-rows { margin-top: var(--space-3); border-top: 1px solid var(--line); }
+.pay-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  padding: 6px 0; font-size: var(--fs-md); border-bottom: 1px solid var(--line);
+}
+.pay-lbl { color: var(--text-soft); min-width: 0; }
+.pay-val { font-variant-numeric: tabular-nums; text-align: right; flex-shrink: 0; }
+.pay-minus .pay-val { color: var(--danger); }
+.pay-plus .pay-val { color: var(--ok); }
+.pay-zero, .pay-zero .pay-val { color: var(--muted); }
+.pay-sub .pay-val, .pay-sum .pay-val { color: var(--text); }
+.pay-sum { border-bottom: none; border-top: 1px solid var(--border); padding-top: var(--space-2); font-size: var(--fs-base); }
+.pay-paid .pay-val { color: var(--ok); }
+.pay-left .pay-val { color: var(--warn); }
+.pay-worked { border-bottom: none; color: var(--muted); }
+.pay-note {
+  font-size: var(--fs-sm); color: var(--muted); margin-top: var(--space-2);
+  padding-top: var(--space-2); border-top: 1px solid var(--line); line-height: 1.5;
+}
+.pay-warn {
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
+  color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
+}
+.pay-fine { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); line-height: 1.5; }
+/* Ирцийн сарын жагсаалт — хүн бүрийн доорх илүү цаг / цалингийн мөр */
+.pay-line { margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--text-soft); line-height: 1.6; }
+.pay-line-sum { color: var(--primary); font-weight: 600; }
+
 /* ─── Өдрийн ачаалал — «хэдэн хүн хэрэгтэй вэ» ─── */
 .dl-card {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl);

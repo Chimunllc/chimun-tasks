@@ -12975,6 +12975,50 @@ function driverBonus(key, month, orders) {
 }
 // Жолоочийн хариуцлагын сануулга (улаан) — ирц/жолооны нэмэгдэл дээр харуулна.
 const DRIVER_LIABILITY_NOTE = 'Та жолоо барьж байгаад торгуульсан, торгууль нь жолоочийн буруугаас бол торгууль болон хохирлыг жолооч өөрөө хариуцна.';
+/* ─── САРЫН ЦАЛИН — ажилтан ӨӨРӨӨ харна (2026-10-02, CEO шийдвэр) ───────────
+   Гарт очих = суурь цалин (суутгалын дараа) + ИЛҮҮ ЦАГ + ХҮРГЭЛТИЙН НЭМЭГДЭЛ.
+   ⛔ ШАТНЫ ХӨЛС ЭНД ОРОХГҮЙ — тусдаа карт болж харагдана. Нэмбэл шатны хөлс
+     цалин болж, дамжлагын урамшуулал гэдэг утгаа алдана. Scan-тест хаана.
+   ⛔ ИЛҮҮ ЦАГ = САРЫН нийт цаг − норм (23×8=184ц), ӨДРӨӨР БИШ. Өдрөөр бодвол
+     богино өдрүүд нөхөгдөхгүй тул нэг хүний илүү цаг 2 дахин хүртэл өснө.
+   ⛔ ХУВЬ = 1.0 (энгийн цагийн хөлс, `OVERTIME_RATE`). Цагийн хөлс = суурь
+     цалин ÷ нормын цаг. ⚠ Хөдөлмөрийн хуулийн доод хэмжээ 1.5 — өөрчлөх бол
+     кодыг БИШ `app_config['overtime'].rate`-ийг зас.
+   ⛔ НЭМЭГДЭЛД СУУТГАЛ ТООЦОХГҮЙ (CEO шийдвэр) — НДШ/ХХОАТ зөвхөн СУУРЬ
+     цалингаас. Нэмэгдэл бүтнээрээ гарт очно.
+   ⚠ Гарах бүртгэлгүй өдөр 0 цаг тоологддог тул илүү цаг ДУТУУ гарна — картад
+     ил бичигдэнэ (нуувал ажилтан «цаг минийх алга» гэж гомдоно). */
+const OVERTIME_RATE = 1.0;
+function overtimeRate() {
+  const v = Number((state.appConfig && state.appConfig.overtime || {}).rate);
+  return (v >= 0 && v <= 5) ? v : OVERTIME_RATE;
+}
+/* Нэг хүний сарын цалингийн задаргаа. ЦЭВЭР функц (нормыг гаднаас өгч болно) тул тестлэгдэнэ.
+   Буцаах: { base, ndsh, pit, netBase, otMins, hourly, otRate, otPay, delivery, total } */
+function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate) {
+  base = Math.max(0, Number(base) || 0);
+  const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins();
+  const d = salaryNet(base, deduct);                       // суутгал ЗӨВХӨН суурьд
+  const otMins = Math.max(0, Math.round((Number(workedMins) || 0) - norm));
+  const hourly = norm > 0 ? base / (norm / 60) : 0;
+  const r = (rate === undefined || rate === null) ? overtimeRate() : (Number(rate) || 0);
+  const otPay = Math.round(otMins / 60 * hourly * r);
+  const delivery = Math.max(0, Math.round(Number(deliveryAmt) || 0));
+  return {
+    base, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
+    otMins, hourly: Math.round(hourly), otRate: r, otPay,
+    delivery, total: d.net + otPay + delivery,
+  };
+}
+/* Аль сарын цалинг анхдагчаар харуулах вэ. Үлдэгдэл дараа сарын 5-нд олгогддог тул
+   сарын эхээр хүн ӨМНӨХ сарынхаа цалинг хардаг — 10-02-нд «9 сар» нээгдэнэ. */
+function payMonthDefault(todayIso) {
+  const t = String(todayIso || todayStr());
+  const ym = t.slice(0, 7), day = Number(t.slice(8, 10)) || 1;
+  if (day > 5) return ym;
+  const p = ym.split('-').map(Number);
+  return p[1] <= 1 ? `${p[0] - 1}-12` : `${p[0]}-${String(p[1] - 1).padStart(2, '0')}`;
+}
 // Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг + нормын хувь
 function renderAttendanceMonth(month) {
   if (state.attMonthErr && state.attMonthErr.month === month) {
@@ -13005,6 +13049,9 @@ function renderAttendanceMonth(month) {
   //   рендер бүрд мянган давталт болно. Нэг удаа бодож, мөр бүрд уншина.
   const spAll = stagePayByPerson(state.appOrders || [], month);
   let spTotal = 0;
+  // Цалингийн мөр — хүн бүрийн доор. Мөнгө нь зөвхөн эрхтэйд; ИЛҮҮ ЦАГ нь бүгдэд (цаг = мөнгө биш).
+  const payVis = canSeeSalary();
+  if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
   const list = rows.map(r => {
     const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
     const pctColor = pct >= 100 ? 'var(--ok)' : pct >= 80 ? 'var(--text-soft)' : 'var(--warn)';
@@ -13018,12 +13065,18 @@ function renderAttendanceMonth(month) {
     const sp = spAll[r.k];
     if (sp && sp.total) spTotal += sp.total;
     const stageLine = (sp && sp.total) ? `<div class="sp-line">📦 Шатны хөлс: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span></div>` : '';
+    // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ШАТНЫ ХӨЛС ОРОХГҮЙ.
+    const otMins = Math.max(0, r.mins - normMins);
+    const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
+    const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
+    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount) : null;
+    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · шатны хөлс ОРООГҮЙ' : ''})</span></div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
       <div style="display:flex;align-items:center;gap:12px;">
       <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
       <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр · <b style="color:${pctColor};">${pct}%</b></div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)} <span style="font-weight:400;color:var(--muted);font-size:11px;">/ ${normDays * 8}ц</span></div></div>
-      </div>${noOutLine}${driverLine}${stageLine}</div>`;
+      </div>${noOutLine}${otLine}${driverLine}${stageLine}${payLine}</div>`;
   }).join('');
   const liabilityNote = anyDriver ? `<div style="margin-top:14px;padding:11px 13px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12.5px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
   const spFoot = spTotal ? `<div class="sp-foot">📦 Шатны хөлс нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил хөлс болохгүй.</span></div>` : '';
@@ -13134,11 +13187,103 @@ async function loadMyAttendance() {
     else dataLoadFailed('loadMyAttendance', new Error('HTTP ' + r.status));
   } catch (e) { dataLoadFailed('loadMyAttendance', e); }
 }
+// Цалингийн САР-ын өөрийн ирц (сонгосон сар нь энэ сар байх албагүй — 10-02-нд 9 сар).
+// ⚠ Сар бүрийг тусад нь кэшлэнэ; алдааг ЗААВАЛ хэлнэ (чимээгүй хоосон цалин харуулахгүй).
+async function loadMyPayMonth(month) {
+  state.myPayRecs = state.myPayRecs || {};
+  if (state._myPayBusy === month) return;
+  state._myPayBusy = month;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=${encodeURIComponent(pgrstInList(keyVariants(state.me)))}&day=gte.${month}-01&day=lt.${nextMonthStr(month)}-01&order=ts.asc&select=day,kind,ts,source`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
+    if (r.ok) { state.myPayRecs[month] = await r.json(); state.myPayErr = null; }
+    else { state.myPayErr = { month, msg: (r.status === 401 || r.status === 403) ? 'эрх хүрэхгүй — дахин нэвтэрнэ үү' : 'сервер алдаа (' + r.status + ')' }; dataLoadFailed('loadMyPayMonth', new Error('HTTP ' + r.status)); }
+  } catch (e) { state.myPayErr = { month, msg: 'сүлжээ холбогдсонгүй' }; dataLoadFailed('loadMyPayMonth', e); }
+  state._myPayBusy = null;
+  if (typeof render === 'function' && state.view === 'myattend') render();
+}
+// Сонгосон сарын ирцээс ажилласан нийт минут (өнгөрсөн сар тул нээлттэй сесс тоологдохгүй).
+function payMonthMins(recs, month) {
+  const byDay = {};
+  (recs || []).forEach(r => { (byDay[r.day] = byDay[r.day] || []).push(r); });
+  let mins = 0, noOut = 0;
+  Object.keys(byDay).forEach(d => {
+    const sm = attMemberSummary(byDay[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === todayStr());
+    mins += sm.mins; if (sm.noOut) noOut++;
+  });
+  return { mins, days: Object.keys(byDay).length, noOut };
+}
+/* 💵 «Миний цалин» карт — ажилтан ӨӨРИЙН сарын цалингаа бүтнээр нь харна.
+   ⛔ Шатны хөлс ЭНД НЭМЭГДЭХГҮЙ (доор тусдаа карт) — scan-тест хаана.
+   ⚠ Суурь цалин серверээс (`staff_salary`, RLS: өөрийн мөр) ирнэ. Ирээгүй бол
+     0 гэж ХУДАЛ харуулахгүй — «бүртгэгдээгүй» гэж ил хэлнэ. */
+function myPayCardHtml(me) {
+  const key = personKey(me) || state.me;
+  const month = state.myPayMonth || payMonthDefault(todayStr());
+  const recs = (state.myPayRecs || {})[month];
+  const picker = `<input type="month" class="ui-raw pay-ym" id="my-pay-ym" value="${escapeHtml(month)}" max="${escapeHtml(todayStr().slice(0, 7))}">`;
+  const head = `<div class="pay-hd"><span class="pay-hd-t">💵 Миний цалин</span>${picker}</div>`;
+  if (state.myPayErr && state.myPayErr.month === month)
+    return `<div class="pay-card">${head}<div class="pay-warn">⚠ Ирц ачаалж чадсангүй — ${escapeHtml(state.myPayErr.msg)}</div></div>`;
+  if (!Array.isArray(recs)) return `<div class="pay-card">${head}<div class="pay-note">Ачаалж байна…</div></div>`;
+
+  const w = payMonthMins(recs, month);
+  const base = Number((state.salaries || {})[key]) || 0;
+  const db = driverBonus(key, month);
+  const b = monthPayBreakdown(base, salaryDeductOn(key), w.mins, workNormMins(), db.amount);
+  const normH = workNormDays() * 8;
+  const paid = salaryPaidFor(key, month);
+  const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
+
+  if (!base) {
+    return `<div class="pay-card">${head}
+      <div class="pay-note">Суурь цалин бүртгэгдээгүй байна — удирдлагадаа хэлнэ үү.</div>
+      ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`)}
+      ${db.count ? row('🚗 Хүргэлтийн нэмэгдэл', `<b>${fmtMoney(db.amount)}</b>`) : ''}</div>`;
+  }
+  const dedRows = (b.ndsh || b.pit)
+    ? row('− НДШ', `−${fmtMoney(b.ndsh)}`, 'pay-minus') + row('− ХХОАТ', `−${fmtMoney(b.pit)}`, 'pay-minus')
+    : row('Суутгал', 'суутгалгүй', 'pay-minus');
+  const otRow = b.otMins > 0
+    ? row(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus')
+    : row('⏱ Илүү цаг', `нормоос ${attHM(Math.max(0, workNormMins() - w.mins))} дутуу`, 'pay-zero');
+  const dlvRow = db.count
+    ? row(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus')
+    : '';
+  const sp = stagePayFor(key, month);
+  const spNote = sp.total
+    ? `<div class="pay-note">📦 Шатны хөлс <b>${fmtMoney(sp.total)}</b> — энэ дүнд <b>ОРООГҮЙ</b>, тусдаа тооцогдоно.</div>` : '';
+  const noOutNote = w.noOut
+    ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул илүү цаг дутуу байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
+  const paidRow = paid > 0
+    ? row('✓ Олгосон', `${fmtMoney(paid)}`, 'pay-paid') + row('Үлдэгдэл', `<b>${fmtMoney(Math.max(0, b.total - paid))}</b>`, 'pay-left')
+    : '';
+  return `<div class="pay-card">${head}
+    <div class="pay-total">${fmtMoney(b.total)}</div>
+    <div class="pay-total-s">${escapeHtml(month)} · гарт очих дүн</div>
+    <div class="pay-rows">
+      ${row('Суурь цалин', fmtMoney(b.base))}
+      ${dedRows}
+      ${row('= Цэвэр суурь', `<b>${fmtMoney(b.netBase)}</b>`, 'pay-sub')}
+      ${otRow}
+      ${dlvRow}
+      ${row('Нийт гарт очих', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
+      ${paidRow}
+    </div>
+    ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`, 'pay-worked')}
+    ${noOutNote}${spNote}
+    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. Нэмэгдэлд суутгал тооцохгүй.</div>
+  </div>`;
+}
 function renderMyAttend() {
   const me = findMember(state.me) || {};
   if (!state._myProfileLoaded) loadMyProfile();   // данс TEAM-д байхгүй — өөрийн токеноор татна
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta
+  // Цалингийн карт: суурь цалин + олголт (RLS нь ӨӨРИЙН мөрийг л өгнө) + сонгосон сарын ирц.
+  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
+  const payM = state.myPayMonth || payMonthDefault(todayStr());
+  if (!Array.isArray((state.myPayRecs || {})[payM]) && !(state.myPayErr && state.myPayErr.month === payM)) setTimeout(() => loadMyPayMonth(payM), 0);
   const recs = state.myAttendance || [];
   const today = todayStr();
   const byDay = {};
@@ -13206,9 +13351,10 @@ function renderMyAttend() {
         <div style="font-size:17px;font-weight:800;color:var(--primary);margin-top:2px;">${attHM(monthMins)}</div>
         <div style="font-size:11px;color:var(--text-soft);">${dayKeys.length} өдөр ажилласан</div></div>
     </div>
-    ${(() => { const db = driverBonus(personKey(me) || state.me, today.slice(0, 7)); return db.count ? `
+    ${myPayCardHtml(me)}
+    ${(() => { const db = driverBonus(personKey(me) || state.me, payM); return db.count ? `
     <div style="background:var(--panel);border:1px solid var(--ok);border-radius:14px;padding:14px 16px;margin-bottom:14px;">
-      <div style="font-size:12px;color:var(--muted);">🚗 Жолооны нэмэгдэл (энэ сар)</div>
+      <div style="font-size:12px;color:var(--muted);">🚗 Жолооны нэмэгдэл · ${escapeHtml(payM)}</div>
       <div style="font-size:19px;font-weight:800;color:var(--ok);margin-top:3px;">${fmtMoney(db.amount)}</div>
       <div style="font-size:11.5px;color:var(--text-soft);margin-top:2px;">${db.count} удаа × ${fmtMoney(DRIVER_BONUS_EACH)} · хүргэсэн ${db.deliveries} · авсан ${db.pickups}</div>
       <div style="margin-top:10px;border-top:1px solid var(--line);">${db.trips.map(t => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line);">
@@ -13217,10 +13363,10 @@ function renderMyAttend() {
       <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
     </div>` : ''; })()}
     ${(() => {
-      const sp = stagePayFor(personKey(me) || state.me, today.slice(0, 7));
+      const sp = stagePayFor(personKey(me) || state.me, payM);
       if (!sp.total) return '';
       return `<div class="sp-card">
-        <div class="sp-card-t">📦 Шатны хөлс (энэ сар)</div>
+        <div class="sp-card-t">📦 Шатны хөлс · ${escapeHtml(payM)} <span class="sp-sub">(цалинд ороогүй)</span></div>
         <div class="sp-card-v">${fmtMoney(sp.total)}</div>
         <div class="sp-card-s">Удирдсан <b>${sp.led}</b> шат${sp.helped ? ` · хамтрагчаар <b>${sp.helped}</b>` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''}</div>
         <div class="sp-card-n">Хөлс нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил хөлс болохгүй.</div>
@@ -13234,6 +13380,11 @@ function attachMyAttendHandlers() {
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
+  document.getElementById('my-pay-ym')?.addEventListener('change', (e) => {
+    const v = String(e.target.value || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(v)) return;
+    state.myPayMonth = v; state.myPayErr = null; render();
+  });
   document.querySelectorAll('[data-my-areq]').forEach(b => b.addEventListener('click', () => openAttRequestModal(b.dataset.myAreq)));
   loadQRCodeJs().then(() => {
     const box = document.getElementById('my-qr'); if (!box || !phone) return;
@@ -16299,7 +16450,14 @@ function salaryLastAdvance(personKey) {
   return ps.length ? (Number(ps[0].amount) || 0) : 0;
 }
 // ── Суутгал → цэвэр цалин (НДШ + ХХОАТ, хялбар хувилбар, хувь нь тохируулгатай) ──
+// ⛔ СУУТГАЛЫН ХУВЬ = `app_config['salary_rates']`, localStorage БИШ (2026-10-02).
+//    Ажилтан өөрийн цалингаа хардаг болсон тул хувь нь зөвхөн CEO-гийн браузерт
+//    байвал ажилтан ӨӨР цэвэр дүн харна — нэг цалин хоёр тоотой болно.
+//    localStorage нь зөвхөн нөөц (тохиргоо ачаалагдаагүй үеийн).
 function salaryRates() {
+  const c = state.appConfig && state.appConfig.salary_rates;
+  if (c && typeof c === 'object' && (Number.isFinite(Number(c.ndsh)) || Number.isFinite(Number(c.pit))))
+    return { ndsh: Number(c.ndsh) || 0, pit: Number(c.pit) || 0 };
   if (!state.salaryRates) {
     try { state.salaryRates = JSON.parse(localStorage.getItem('salaryRates') || 'null'); } catch (_) {}
     if (!state.salaryRates) state.salaryRates = { ndsh: 11.5, pit: 10 };   // НДШ 11.5%, ХХОАТ 10% (default)
@@ -16513,6 +16671,9 @@ function attachSalaryHandlers() {
     const nd = parseFloat(document.getElementById('sal-ndsh')?.value), pt = parseFloat(document.getElementById('sal-pit')?.value);
     state.salaryRates = { ndsh: isNaN(nd) ? 0 : nd, pit: isNaN(pt) ? 0 : pt };
     try { localStorage.setItem('salaryRates', JSON.stringify(state.salaryRates)); } catch (_) {}
+    // Ажилтан ч өөрийн цэвэр цалингаа хардаг тул хувь нь СЕРВЕРТ очно (ганц эх сурвалж).
+    state.appConfig = state.appConfig || {}; state.appConfig.salary_rates = state.salaryRates;
+    saveAppConfig('salary_rates', state.salaryRates).catch(e => showToast('Хувь хадгалах алдаа: ' + e.message, 'error', 4000));
     render();
   };
   document.getElementById('sal-ndsh')?.addEventListener('change', saveRate);

@@ -190,6 +190,12 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   // Хуулга импортод сараар задарна — эс бөгөөс гаргаж авах дата хэзээ ч үүсэхгүй
   ok(/months: stmtMonthSplit\(rows, opening\)/.test(codeLines),
      'scan: импортод хуулга сараар задарч хадгалагдана');
+  /* ⛔ ЖИНХЭНЭ хаах зам (toggleMonthClose) ч ангилаагүй зардлыг тоолж дамжуулна —
+     зөвхөн картын товчийг унтраавал CEO цонхноос шууд хааж өнгөрнө. */
+  ok(/allPendingCardExpenses\(\)\.filter\(r => String\(r\.requested_at \|\| ''\)\.slice\(0, 7\) === m\)\.length/.test(codeLines),
+     'scan: хаах зам ангилаагүй зардлыг тоолно');
+  ok(/closeMonthBlockers\(state\.bankStatements, state\.bankIncome, companyAcctList\(\), m, _pendM\)/.test(codeLines),
+     'scan: тэр тоо блокеруудад дамжина');
   // Бүтэн сар = 1-нээс сүүлчийн өдөр хүртэл
   ok(/String\(s\.period_from\) === first && String\(s\.period_to\) === end/.test(ms),
      'scan: сар батлагдах нөхцөл = 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга');
@@ -263,8 +269,10 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: зөв үед ч «N/M данс сарын эцсийн үлдэгдлээр батлагдсан» гэж батална');
   ok(/balance: balanceStats\(state\.bankStatements, companyAcctList\(\), month\)/.test(codeLines),
      'scan: дэлгэц картад тэнцлийн төлөв дамжуулна');
-  ok(/const blocked = miss\.length \|\| oi\.n \|\| chain \|\| balBad/.test(codeLines),
-     'scan: тэнцэл зөрвөл сар хаах ХҮЛЭЭНЭ');
+  /* ⛔ Сар хаахыг хоридог бүх нөхцөл НЭГ мөрөнд — аль нэгийг нь чимээгүй хасвал
+     тэр дутагдалтайгаар сар хаагдаж, гажсан тоо МӨНХӨД хөлдөнө. */
+  ok(/const blocked = miss\.length \|\| pend \|\| oi\.n \|\| chain \|\| balBad/.test(codeLines),
+     'scan: дутуу хуулга · АНГИЛААГҮЙ ЗАРДАЛ · хаагдаагүй орлого · залгаа · тэнцэл — бүгд сар хаахыг хорино');
 }
 
 /* 0e2b) SCAN — НЭРГҮЙ хуулгын экспортыг импортод ИЛ хэлнэ (2026-10-02)
@@ -11077,6 +11085,17 @@ function testFinNextSteps() {
     openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
     balance: { total: 0, ok: 0, bad: 0, unver: 0 } }).find(x => x.key === 'balance').hint,
      'Шалгах хуулга алга', 'тэнцэл: хуулга байхгүй бол «0/0» гэж төөрөгдүүлэхгүй');
+  /* ⛔ АНГИЛААГҮЙ ЗАРДАЛ САР ХААХЫГ ХОРИНО (2026-10-02, амьд дэлгэцээс барив).
+     Ангилаагүй мөр `9500`-аар салбарын зардалд ордог тул салбарын ашиг ба
+     COO-гийн 30% гажна; хаавал тэр гажсан тоо хөлдөнө. */
+  eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 62,
+    openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 4, ok: 4, bad: 0, unver: 0 } }).find(x => x.key === 'close').wait, true,
+     'ангилаагүй зардал байхад сар хаах ХҮЛЭЭНЭ');
+  eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 0,
+    openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 4, ok: 4, bad: 0, unver: 0 } }).find(x => x.key === 'close').act, 'close',
+     'бүгд цэгцэрсэн үед л сар хаах идэвхтэй');
   /* ⛔ ТЭНЦЭЛ ЗӨРВӨЛ САР ХААГДАХГҮЙ — эс бөгөөс зөрүүтэй сар хөлдөж, засах зам хаагдана. */
   eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 0,
     openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
@@ -11197,6 +11216,12 @@ testFinBasisDefault();
       { fp: 'i3', dt: '2026-07-06', amount: 900000, status: 'open' }];
 
     eq(F.closeMonthBlockers(stmts, [], ['504'], '2026-08'), [], 'хаах: хуулга бүрэн, хаагдаагүй мөр алга → бэлэн');
+    // ⛔ Ангилаагүй зардал нь баталгаажуулах цонхонд ИЛ бичигдэнэ
+    eq(F.closeMonthBlockers(stmts, [], ['504'], '2026-08', 62).map(x => x.kind), ['pending'],
+       'хаах: ангилаагүй зардал саад болно');
+    eq((F.closeMonthBlockers(stmts, [], ['504'], '2026-08', 62).find(b => b.kind === 'pending') || {}).n, 62,
+       'хаах: хэдэн гүйлгээ ангилаагүйг хэлнэ');
+    eq(F.closeMonthBlockers(stmts, [], ['504'], '2026-08', 0), [], 'хаах: ангилаагүй 0 бол саад биш');
 
     const b1 = F.closeMonthBlockers(stmts, income, ['504'], '2026-08');
     eq(b1.map(x => x.kind), ['income'], 'хаах: хаагдаагүй орлого нь саад');

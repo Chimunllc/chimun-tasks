@@ -5262,6 +5262,14 @@ function countUnitCost(sku) {
 function stockCounted(p)  { return !!(p && p.stock_opened_at); }
 function stockApproved(p) { return !!(p && p.stock_approved_at); }
 function stockOpened(p)   { return stockCounted(p) && stockApproved(p); }
+/* 🔒 ГУРАВ ДАХЬ ГАРЫН ҮСЭГ = CEO-гийн эцсийн баталгаа (2026-10-02, CEO шийдвэр).
+   Урсгал: нярав тоолно → ҮАХ захирал хянана → CEO баталгаажуулна → суурь ХӨЛДӨНӨ.
+   ⛔ Хөлдсөний дараа эхний үлдэгдлийг ДАХИН тоолж/батлаж/буцаах БОЛОМЖГҮЙ.
+   Залруулга нь ЗӨВХӨН тооллогоор (`stock_counts` → `applyStockCount`) — тэнд хэн
+   хэзээ юуг хэд болгосон нь мөрөөр үлддэг тул суурь чимээгүй хөдлөхгүй.
+   ЯАГААД түгжээг «нээх» товч БАЙХГҮЙ вэ: залруулах зам аль хэдийн бий (тооллого),
+   тиймээс нээх товч нь зөвхөн АУДИТЫН МӨРГҮЙ засах нүх болно. */
+function stockSealed(p) { return !!(p && p.stock_locked_at); }
 // 'todo' тоолоогүй · 'wait' тоолсон, батлах хүлээж буй · 'done' хоёр гарын үсэгтэй
 function openingSignState(p) {
   if (stockOpened(p)) return 'done';
@@ -5271,6 +5279,7 @@ function openingSignState(p) {
    (хоосон мөр = зөвшөөрнө). Чимээгүй унтраасан товч нь хүнд юу буруу байгааг
    хэлдэггүй тул мессежийг энд төрүүлж UI-д ил гаргана. */
 function openingSignBlock(p, me, canApprove) {
+  if (stockSealed(p)) return 'Эцэслэн баталгаажсан — өөрчлөх боломжгүй';
   if (!stockCounted(p)) return 'Эхлээд нярав тоолж бүртгэнэ';
   if (stockApproved(p)) return 'Аль хэдийн батлагдсан';
   if (!canApprove) return 'Танд эхний үлдэгдэл батлах эрх алга';
@@ -5282,6 +5291,20 @@ function openingSignBlock(p, me, canApprove) {
   return '';
 }
 
+/* 🔒 CEO эцэслэх эсэх — хориг бүр ШАЛТГААНАА буцаана (унтраасан товч юу
+   буруугийн хэлдэггүй). ⛔ ГУРВАН ӨӨР ХҮН: тоолсон ≠ хянасан ≠ эцэслэсэн.
+   Нэг хүн хоёр үүрэг гүйцэтгэвэл гурван гарын үсэг нэг болж хумигдана. */
+function openingSealBlock(p, me, isCEO) {
+  if (!p) return 'Бараа олдсонгүй';
+  if (stockSealed(p)) return 'Аль хэдийн эцэслэгдсэн';
+  if (!stockCounted(p)) return 'Эхлээд нярав тоолно';
+  if (!stockApproved(p)) return 'Эхлээд ҮАХ захирал хянана';
+  if (!isCEO) return 'Зөвхөн CEO эцэслэн баталгаажуулна';
+  const m = String(me || '').trim();
+  if (m && m === String(p.stock_opened_by || '').trim()) return 'Та тоолсон тул эцэслэх эрхгүй';
+  if (m && m === String(p.stock_approved_by || '').trim()) return 'Та хянасан тул эцэслэх эрхгүй';
+  return '';
+}
 /* ЭХНИЙ ҮЛДЭГДЭЛ ДЭЭР ЭВДРЭЛИЙГ ЯЛГАНА (2026-09-22).
    Тоолох үед «106 ш» гэдэг нь 106 нь БҮТЭН гэсэн үг биш — дунд нь эвдэрсэн,
    засварт байх нь бий. Ялгаж бүртгэхгүй бол суурь нь «бүгд бүтэн» гэж
@@ -5305,6 +5328,8 @@ function openingCountSplit(total, damaged) {
    Буцаах эрх = батлах эрхтэй хүн (ҮАХ захирал/CEO). */
 function openingUndoBlock(p, me, canApprove, kind) {
   if (!p) return 'Бараа олдсонгүй';
+  // ⛔ Хөлдсөн суурийг буцаах зам БАЙХГҮЙ — залруулга тооллогоор явна.
+  if (stockSealed(p)) return 'Эцэслэн баталгаажсан — буцаах боломжгүй. Залруулга тооллогоор.';
   if (!canApprove) return 'Танд эхний үлдэгдэл батлах эрх алга';
   if (kind === 'approve') return stockApproved(p) ? '' : 'Батлагдаагүй байна';
   return stockCounted(p) ? '' : 'Тоолоогүй байна';
@@ -5320,7 +5345,9 @@ function openingRows(products, costOf) {
              cost: cost(p.sku), value: cost(p.sku) * qty,
              opened: stockOpened(p), sign: openingSignState(p),
              at: (p && p.stock_opened_at) || '', by: (p && p.stock_opened_by) || '',
-             apAt: (p && p.stock_approved_at) || '', apBy: (p && p.stock_approved_by) || '' };
+             apAt: (p && p.stock_approved_at) || '', apBy: (p && p.stock_approved_by) || '',
+             sealed: !!(p && p.stock_locked_at),
+             lkAt: (p && p.stock_locked_at) || '', lkBy: (p && p.stock_locked_by) || '' };
   }).sort((a, b) => b.value - a.value || String(a.sku).localeCompare(String(b.sku)));
   const total = list.reduce((n, x) => n + x.value, 0);
   let acc = 0;
@@ -5339,8 +5366,12 @@ function openingStats(rows) {
   // эс бөгөөс нярав тоолсон 19 бараа хаана ч харагдахгүй гацна.
   const wait = list.filter(x => x.sign === 'wait');
   const valueWait = wait.reduce((n, x) => n + (Number(x.value) || 0), 0);
+  /* 🔒 ЭЦЭСЛЭГДСЭН = CEO-гийн 3 дахь гарын үсэг. Хоёр гарын үсэг нь «суурь
+     бүрдсэн», гурав дахь нь «суурь ХӨЛДСӨН» — хоёр өөр төлөв, тусад нь тоологдоно. */
+  const sealed = list.filter(x => x.sealed);
+  const valueSealed = sealed.reduce((n, x) => n + (Number(x.value) || 0), 0);
   return { done: done.length, total: list.length, left: list.length - done.length,
-           wait: wait.length, valueWait,
+           wait: wait.length, valueWait, sealed: sealed.length, valueSealed,
            valueDone, valueTotal, pct: valueTotal ? valueDone / valueTotal : 0 };
 }
 // Актыг PDF болгож татна. ⚠ html2canvas нь position:fixed элементийг ХООСОН
@@ -5624,6 +5655,8 @@ async function confirmOpeningStock(sku, countedQty, damagedQty) {
   if (!canProductPart('stock')) { showToast('Танд нөөц засах эрх алга', 'warn', 3000); return false; }
   const p = productBySku(sku);
   if (!p) { showToast('Бараа олдсонгүй', 'error', 3000); return false; }
+  /* ⛔ ХӨЛДСӨН СУУРЬ ДАХИН ТООЛОГДОХГҮЙ — залруулга тооллогоор (аудитын мөртэй). */
+  if (stockSealed(p)) { showToast('Эцэслэн баталгаажсан — залруулга тооллогоор хийнэ', 'warn', 4000); return false; }
   const cur = Number(p.stock) || 0;
   const q = Math.max(0, Math.round(Number(countedQty)));
   const d = q - cur;
@@ -5718,6 +5751,15 @@ function openOpeningCountModal(sku, preQty) {
 
 /* ↩ Батлалтыг буцаана — бараа «батлах хүлээж буй» төлөв рүү эргэнэ.
    ⚠ Тоо, няравын гарын үсэг ХЭВЭЭР — зөвхөн 2 дахь гарын үсэг арилна. */
+/* 🔒 CEO эцэслэнэ — үүний дараа эхний үлдэгдэл ХЭЗЭЭ Ч өөрчлөгдөхгүй.
+   ⚠ `_moveReason` өгөхгүй — тоо хөдлөхгүй тул нөөцийн дэвтэрт мөр үүсэхгүй. */
+async function sealOpeningStock(sku) {
+  const p = productBySku(sku);
+  const why = openingSealBlock(p, state.me, !!state.isCEO);
+  if (why) { showToast(why, 'warn', 3500); return false; }
+  await saveProduct({ ...p, stock_locked_at: new Date().toISOString(), stock_locked_by: state.me || '' });
+  return true;
+}
 async function undoOpeningApproval(sku) {
   const p = productBySku(sku);
   const why = openingUndoBlock(p, state.me, canApproveOpening(), 'approve');
@@ -21823,18 +21865,23 @@ function openingBlockHtml(canManage) {
     <div class="stc-open-list">${oDone.map(x => `<div class="stc-open-row">
       <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · батлав: ${escapeHtml(memberName(x.apBy) || x.apBy || '—')}${x.apAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.apAt)) : ''}</span></span>
       <span class="stc-open-q">${x.qty} ш${money(x.value)}</span>
-      ${canApprove ? `<button class="btn stc-open-no" data-op-un="${escapeHtml(x.sku)}" title="Буруу дарсан бол батлалтыг буцаана — тоо хөндөгдөхгүй">↩ Буцаах</button>` : ''}
+      ${x.sealed
+        ? `<span class="stc-open-sealed">🔒 Эцэслэсэн${x.lkBy ? ' · ' + escapeHtml(memberName(x.lkBy) || x.lkBy) : ''}${x.lkAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.lkAt)) : ''}</span>`
+        : `${(() => { const w = openingSealBlock(productBySku(x.sku), state.me, !!state.isCEO);
+             return w ? (state.isCEO ? `<span class="stc-open-why">${escapeHtml(w)}</span>` : '')
+                      : `<button class="btn stc-open-seal" data-op-seal="${escapeHtml(x.sku)}" title="CEO эцэслэнэ — үүний дараа эхний үлдэгдэл өөрчлөгдөхгүй">🔒 Эцэслэх</button>`; })()}
+           ${canApprove ? `<button class="btn stc-open-no" data-op-un="${escapeHtml(x.sku)}" title="Буруу дарсан бол батлалтыг буцаана — тоо хөндөгдөхгүй">↩ Буцаах</button>` : ''}`}
     </div>`).join('')}</div>
     ${oSt.done > oDone.length ? `<div class="stc-open-m">…бас ${oSt.done - oDone.length} бараа. Сүүлд баталсныг нь эхэнд гаргалаа.</div>` : ''}
   </details>` : '';
 
   return `<div class="stc-open">
     <div class="stc-open-h">
-      <div><b>Эхний үлдэгдэл</b><span>Нярав тоолж бүртгэнэ, ҮАХ захирал батална. Хоёулангийн гарын үсэгтэй байж суурь хүчинтэй.</span></div>
+      <div><b>Эхний үлдэгдэл</b><span>Нярав тоолно → ҮАХ захирал хянана → CEO эцэслэнэ. Эцэслэсний дараа суурь ХӨЛДӨНӨ — залруулга зөвхөн тооллогоор.</span></div>
       <div class="stc-open-n">${oPct}%</div>
     </div>
     <div class="stc-bar"><div style="width:${oPct}%"></div></div>
-    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа бүрэн баталгаажсан${oSt.wait ? ` · ${oSt.wait} батлах хүлээж буй` : ''}${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
+    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа хоёр гарын үсэгтэй${oSt.wait ? ` · ${oSt.wait} батлах хүлээж буй` : ''}${oSt.sealed ? ` · 🔒 ${oSt.sealed} эцэслэгдсэн` : ''}${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
     ${oSt.left ? waitList + (oWait.length ? '<div class="stc-open-sub">📋 Тоолох</div>' : '') + countList
       : '<div class="stc-open-m">✓ Бүх бараа хоёр гарын үсгээр баталгаажсан. Одоо тооллого утгатай.</div>'}
     ${doneList}
@@ -22021,6 +22068,21 @@ function attachStockCountHandlers() {
         if (okd) { showToast('↩ Няравт буцаалаа', 'success', 2200); render(); }
         else btn.disabled = false;
       } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
+    });
+  });
+  /* 🔒 CEO эцэслэх — ЭРГЭЖ БУЦААХГҮЙ тул showConfirm ЗААВАЛ, бас юу болохыг
+     тодорхой хэлнэ (залруулга цаашид зөвхөн тооллогоор). */
+  document.querySelectorAll('[data-op-seal]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const sku = btn.dataset.opSeal, p = productBySku(sku);
+      if (!(await showConfirm(`«${(p && p.name) || sku}» — эхний үлдэгдлийг ЭЦЭСЛЭН баталгаажуулах уу?\n\nҮүний дараа энэ барааны эхний үлдэгдэл ДАХИН ӨӨРЧЛӨГДӨХГҮЙ. Залруулга хийх бол зөвхөн тооллогоор — тэнд хэн хэзээ юу өөрчилсөн нь мөрөөр үлдэнэ.`,
+        { title: '🔒 Эцэслэн баталгаажуулах', okText: 'Эцэслэх', danger: true }))) return;
+      btn.disabled = true;
+      try {
+        const okd = await sealOpeningStock(sku);
+        if (okd) { showToast('🔒 Эцэслэгдлээ', 'success', 2400); render(); }
+        else btn.disabled = false;
+      } catch (e) { showToast('Алдаа: ' + e.message, 'error', 4500); btn.disabled = false; }
     });
   });
   document.querySelectorAll('[data-op-un]').forEach(btn => {

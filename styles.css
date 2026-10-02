@@ -8026,3 +8026,7 @@ select.no-asar-len {
   background: var(--panel-hover); border-radius: var(--r-md);
   font-size: var(--fs-sm); color: var(--text-soft);
 }
+
+/* 🔒 Эхний үлдэгдлийн 3 дахь гарын үсэг — CEO эцэслэнэ (2026-10-02). */
+.stc-open-seal { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+.stc-open-sealed { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }

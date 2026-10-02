@@ -7865,6 +7865,73 @@ select.no-asar-len {
   border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
   color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
 }
+/* ─── 💵 Цалингийн самбар (бүх цалингийн тоо нэг дэлгэцэд) ─── */
+.pb-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin: 2px 0 var(--space-3); }
+.pb-title { font-weight: 800; font-size: var(--fs-lg); }
+.pb-sub { font-size: var(--fs-xs); color: var(--muted); }
+.pb-head-r { display: flex; gap: var(--space-2); align-items: center; }
+.pb-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); }
+.pb-kpi { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); }
+.pb-kpi-l { font-size: var(--fs-xs); color: var(--muted); }
+.pb-kpi-v { font-weight: 800; font-size: var(--fs-lg); margin-top: 2px; }
+.pb-kpi-s { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.pb-warn {
+  margin-bottom: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
+  color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
+}
+.pb-note {
+  margin-bottom: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel-hover);
+  color: var(--text-soft); font-size: var(--fs-sm); line-height: 1.5;
+}
+.pb-rates {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  font-size: var(--fs-sm); color: var(--muted); background: var(--panel-hover);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);
+}
+.pb-rates label { display: inline-flex; align-items: center; gap: 4px; }
+.pb-rate { width: 56px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: right; }
+.pb-rates-n { flex-basis: 100%; font-size: var(--fs-xs); opacity: .85; }
+.pb-sched { font-size: var(--fs-sm); color: var(--muted); background: var(--panel-hover);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); }
+.pb-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
+  padding: var(--space-3); margin-bottom: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
+.pb-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.pb-who { min-width: 160px; flex: 1; font-size: var(--fs-md); }
+.pb-role { font-size: var(--fs-xs); color: var(--muted); }
+.pb-left { font-size: var(--fs-xs); color: var(--danger); border: 1px solid var(--danger);
+  border-radius: var(--r-sm); padding: 0 5px; }
+.pb-hist, .pb-copy, .pb-memo { padding: 1px 8px; font-size: var(--fs-xs); margin-left: 5px; }
+.pb-bank { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; display: flex;
+  align-items: center; gap: 5px; flex-wrap: wrap; }
+.pb-worked { font-size: var(--fs-sm); color: var(--text-soft); margin-top: 3px; }
+.pb-noatt { color: var(--muted); }
+.pb-noout { color: var(--warn); }
+.pb-base { text-align: right; min-width: 0; }
+.pb-base-r { display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end; }
+.pb-base-r .money-input { width: 118px; max-width: 100%; box-sizing: border-box; padding: 6px var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel);
+  color: var(--text); font-size: var(--fs-md); text-align: right; }
+.pb-ded-l { font-size: var(--fs-xs); color: var(--muted); margin-top: 3px; display: flex;
+  align-items: center; gap: var(--space-2); justify-content: flex-end; flex-wrap: wrap; }
+.pb-ded { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.pb-rows { margin-top: 0; border-top: 1px dashed var(--border); }
+.pb-nosal { font-size: var(--fs-sm); color: var(--warn); border-top: 1px dashed var(--border); padding-top: var(--space-2); }
+.pb-sp { font-size: var(--fs-sm); color: var(--ok); }
+.pb-slots { display: flex; flex-direction: column; gap: 5px; border-top: 1px dashed var(--border); padding-top: var(--space-2); }
+/* ⚠ 320px-д гурван тогтмол өргөнтэй хэсэг багтдаггүй тул МӨР НЬ ЭВХРЭНЭ — таслагдвал
+   «олгоогүй/⧉ Утга» товч дэлгэцийн гадна үлдэж дарагдахгүй болно. */
+.pb-slot { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); flex-wrap: wrap; }
+.pb-slot-l { flex: 1 1 auto; min-width: 0; color: var(--muted); }
+.pb-slot-v { flex: 0 0 auto; margin-left: auto; font-variant-numeric: tabular-nums; }
+.pb-slot-r { flex: 0 0 auto; min-width: 86px; text-align: right; }
+.pb-ok { color: var(--ok); font-weight: 600; }
+.pb-dim { color: var(--muted); }
+.pb-late { color: var(--danger); }
+.pb-empty { text-align: center; color: var(--muted); padding: 30px 0; }
+
 /* Сард олгосон мөр бүр — «олгосон N₮» гэсэн ганц тоог задалж харуулна */
 .pay-plist { padding: var(--space-1) 0 var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }
 .pay-pitem {

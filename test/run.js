@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryPayLabel', 'salaryPaidFor', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryPayLabel', 'salaryPaidFor', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -14150,4 +14150,82 @@ async function swFetchTests() {
   const hist = src.slice(src.indexOf('function openSalaryHistory'), src.indexOf('function openSalaryHistory') + 1400);
   ok(/salaryPayLabel\(/.test(hist), 'scan: түүхийн модал ижил шошгын дүрэм ашиглана');
   eq((hist.match(/SAL_ADV_TAG\)/g) || []).length, 0, 'scan: түүхийн модал токеныг өөрөө задлахгүй');
+}
+
+// ═══ ЦАЛИНГИЙН САМБАР — ХЭН гарах вэ (2026-10-02) ════════════════════════
+// ⛔ `worker_type`-аар шүүвэл амьд системд сарын цалинтай 4 ажилтан (яг хамгийн
+//   их илүү цаг гаргасан хүмүүс) цалингийн дэлгэцээс ОГТ алга болж байв.
+{
+  const { payrollRoster, payrollOrphans, payrollAttMins } = F;
+  const T = [
+    { name: 'А.Сарнай', phone: '88000001', worker_type: 'permanent', status: 'идэвхтэй' },
+    { name: 'Б.Очир',   phone: '88000002', worker_type: 'daily',     status: 'идэвхтэй' },   // цалинтай, буруу тэмдэглэгдсэн
+    { name: 'В.Цэрэн',  phone: '88000003', worker_type: 'daily',     status: 'идэвхтэй' },   // ирцтэй, цалингүй
+    { name: 'Г.Дорж',   phone: '88000004', worker_type: 'daily',     status: 'идэвхтэй' },   // жинхэнэ цагийн — гарахгүй
+    { name: 'Д.Болд',   phone: '88000005', worker_type: 'permanent', status: 'гарсан' },     // гарсан, мөргүй
+    { name: 'Е.Нар',    phone: '88000006', worker_type: 'permanent', status: 'гарсан' },     // гарсан, ОЛГОЛТТОЙ
+  ];
+  const sal = { '88000001': 1800000, '88000002': 2200000, '88000009': 500000 };   // 09 = эзэнгүй
+  const att = new Set(['88000003']);
+  const paid = new Set(['88000006']);
+  const got = payrollRoster(T, sal, att, paid).map(r => r.m.name);
+  ok(got.includes('Б.Очир'), 'самбар: цалинтай «daily» ажилтан ГАРНА (worker_type-аар шүүхгүй)');
+  ok(got.includes('В.Цэрэн'), 'самбар: ирцтэй атлаа цалингүй хүн гарна');
+  ok(got.includes('Е.Нар'), 'самбар: гарсан ч олголттой бол гарна (түүх таслагдахгүй)');
+  ok(!got.includes('Г.Дорж'), 'самбар: цалин/ирц/олголтгүй цагийн ажилтан гарахгүй');
+  ok(!got.includes('Д.Болд'), 'самбар: гарсан бөгөөд мөргүй хүн гарахгүй');
+  eq(got[0], 'Б.Очир', 'самбар: цалингийн дүнгээр буурахаар эрэмбэлэгдэнэ');
+  // Тугууд — анхааруулга эдгээрээс гарна
+  const byName = {}; payrollRoster(T, sal, att, paid).forEach(r => { byName[r.m.name] = r; });
+  const flag = (n, f) => !!(byName[n] && byName[n][f]);   // ⚠ алга болсон хүн дээр унахгүй — УЛААН болно
+  ok(flag('В.Цэрэн', 'noSalary') && flag('В.Цэрэн', 'hasAtt'), 'самбар: «ажилласан ч цалингүй» тэмдэглэгдэнэ');
+  ok(flag('Б.Очир', 'noAtt'), 'самбар: «цалинтай ч ирцгүй» тэмдэглэгдэнэ');
+
+  // ── Эзэнгүй цалин/олголт НУУГДАХГҮЙ ──
+  const orph = payrollOrphans(T, sal, [
+    { person_key: '88000077', ym: '2026-09', amount: 150000 },
+    { person_key: '88000001', ym: '2026-09', amount: 900000 },   // эзэнтэй — орохгүй
+    { person_key: '88000077', ym: '2026-08', amount: 999999 },   // өөр сар — орохгүй
+  ], '2026-09');
+  eq(orph.length, 2, 'эзэнгүй: цалингийн мөр + олголт хоёулаа баригдана');
+  eq(orph.map(o => o.key).sort().join(','), '88000009,88000077', 'эзэнгүй: зөв түлхүүрүүд');
+  eq(orph.find(o => o.key === '88000077').paid, 150000, 'эзэнгүй: зөвхөн тухайн сарын олголт');
+  eq(payrollOrphans(T, {}, [], '2026-09').length, 0, 'эзэнгүй: цэвэр үед хоосон');
+
+  // ── Ирцээс хүн бүрийн минут ──
+  const rec = (key, day, kind, hh) => ({ member_key: key, member_name: key, day, kind, ts: `${day}T${String(hh - 8).padStart(2, '0')}:00:00.000Z` });
+  const am = payrollAttMins([
+    rec('88000001', '2026-09-01', 'in', 9), rec('88000001', '2026-09-01', 'out', 18),
+    rec('88000001', '2026-09-02', 'in', 9),                                   // гараагүй
+    rec('88000003', '2026-09-01', 'in', 10), rec('88000003', '2026-09-01', 'out', 20),
+  ]);
+  eq(am['88000001'].mins, 9 * 60, 'ирц: хүн бүрээр тусад нь тоологдоно');
+  eq(am['88000001'].noOut, 1, 'ирц: гараагүй өдөр тоологдоно');
+  eq(am['88000003'].mins, 10 * 60, 'ирц: хоёр дахь хүн зөв');
+  eq(Object.keys(am).length, 2, 'ирц: зөвхөн бичлэгтэй хүн');
+}
+
+// ═══ SCAN: цалингийн самбар хүнийг чимээгүй АЛГАСАХГҮЙ ═══════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(rs.length > 1000, 'scan: renderSalary олдов');
+  // ⛔ worker_type-аар шүүхийг хаана (salaryStaff нь яг үүнийг хийдэг)
+  eq((rs.match(/worker_type|salaryStaff\(/g) || []).length, 0,
+     'scan: самбар worker_type-аар хүн шүүхгүй');
+  ok(/payrollRoster\(/.test(rs), 'scan: жагсаалт payrollRoster-оос гарна');
+  // Чимээгүй цоорхойг ИЛ хэлнэ
+  ok(/payrollOrphans\(/.test(rs), 'scan: эзэнгүй цалин/олголтыг ил хэлнэ');
+  ok(/суурь цалин тохируулаагүй/.test(rs), 'scan: ажилласан ч цалингүй хүнийг ил хэлнэ');
+  ok(/ирц бүртгүүлээгүй/.test(rs), 'scan: цалинтай ч ирцгүй хүнийг ил хэлнэ');
+  // ⛔ Ирц ачаалагдаагүй үед «илүү цаг 0» гэж ЧИМЭЭГҮЙ харуулахгүй
+  ok(/attReady/.test(rs) && /илүү цаг тооцогдоогүй|ачаалж байна/.test(rs),
+     'scan: ирц ачаалагдаагүйг ил хэлнэ (чимээгүй 0 илүү цаг гаргахгүй)');
+  // Тоог ДАХИН бодохгүй — ижил эх сурвалж
+  ok(/monthPayBreakdown\(/.test(rs), 'scan: самбар monthPayBreakdown ашиглана');
+  ok(/salaryPaymentsFor\(/.test(rs), 'scan: самбар олголтыг мөрөөр жагсаана');
+
+  // Сарын ирц ачаалахад цалингийн дэлгэц ч дахин зурагдана
+  const ld = src.slice(src.indexOf('async function loadAttendanceMonthFull'), src.indexOf('function attMonthStart'));
+  ok(/state\.view === 'salary'/.test(ld), 'scan: ирц ирэхэд цалингийн самбар дахин зурагдана');
 }

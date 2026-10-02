@@ -8455,6 +8455,24 @@ function statementMeta(matrix) {
     // Данс: «Дансны дугаар» label-ын дараах эхний тоо агуулсан нүд (label→утга хооронд хоосон нүд байж болно)
     const j = cells.findIndex(c => /дансны дугаар/i.test(c));
     if (j >= 0 && !acct) { for (let i = j + 1; i < cells.length; i++) { const v = cells[i].replace(/\s*\[.*$/, '').trim(); if (/^\d{6,}$/.test(v.replace(/\s/g, ''))) { acct = v; break; } } }
+    /* ⛔ ХААН «Дансны дугаар» ГЭСЭН ШОШГО БИЧДЭГГҮЙ — зөвхөн IBAN (2026-10-02,
+       амьд файлаар олов). Данс хоосон үлдэхэд хуулгын id нь `?|эхлэх|дуусах`
+       болж: (а) ижил хугацааны ХОЁР ДАНС бие биенээ дарж бичнэ, (б) `stmtChainCheck`
+       данснаас бүлэглэдэг тул бүх ХААН хуулга нэг `?` дансанд нийлж ХУДАЛ
+       «залгаа тасарсан» гарна, (в) `closeMonthBlockers` бүртгэлтэй данстай
+       тулгадаг тул `?` аль ч дансанд таарахгүй, сар хаах шалгуураас чимээгүй унана.
+       Дүрэм: IBAN-ы эхний 8 тэмдэгт (MN + шалгах 2 + банкны код 4) -ийг хаяж,
+       урдах тэгийг арилгана. Хоёр банкны амьд файлаар баталсан:
+         MN670005005222003015 → 5222003015 (ХААН)
+         MN790015003675118079 → 3675118079 (Голомт) */
+    if (!acct) {
+      for (const c of cells) {
+        const ib = c.replace(/\s/g, '').match(/^MN\d{18}$/i);
+        if (!ib) continue;
+        const a = ib[0].slice(8).replace(/^0+/, '');
+        if (a.length >= 6) { acct = a; break; }
+      }
+    }
     // Хугацаа: «Гүйлгээний огноо» label-ын дараах эхний «YYYY-MM-DD - YYYY-MM-DD» нүд
     const k = cells.findIndex(c => /гүйлгээний огноо/i.test(c));
     if (k >= 0 && !period) { for (let i = k + 1; i < cells.length; i++) { if (/\d{4}-\d{2}-\d{2}\s*-\s*\d{4}-\d{2}-\d{2}/.test(cells[i])) { period = cells[i].replace(/\s+/g, ' '); break; } } }
@@ -8691,13 +8709,30 @@ function stmtChainCheck(list, onlyAccts) {
     (byAcct[a] || (byAcct[a] = [])).push(s);
   });
   Object.keys(byAcct).sort().forEach(a => {
-    const rows = byAcct[a].filter(s => s.period_from && s.period_to)
-      .sort((x, y) => String(x.period_from).localeCompare(String(y.period_from)));
-    rows.forEach(s => { const b = stmtBalanceCheck(s); if (!b.ok) out.push({ acct: a, kind: 'balance', id: s.id, diff: b.diff }); });
+    const all = byAcct[a].filter(s => s.period_from && s.period_to);
+    /* ⛔ ДАВХЦСАН ХУУЛГЫГ ЗАЛГАА ГЭЖ ТУЛГАЖ БОЛОХГҮЙ (2026-10-02, амьд датаар олов).
+       Нэг хугацааг дахин экспортлоход шинэ бичлэг үүсдэг: 5222003015 данс дээр
+       2026-09-01-ээс эхэлсэн ЗУРГААН хуулга (дуусах өдөр нь л өөр) байв. Дараалан
+       тулгахад «09-10-ны эцсийн 1,516,605» ба «09-11-ний эхний 446,582» харьцуулагдаж
+       1,070,023₮-ийн ХУДАЛ «залгаа тасарсан» төрдөг — тэр нь үнэндээ ижил хугацааны
+       хоёр хувилбар. Амьд датаар 14 алдааны 13 нь ийм гаралтай байв.
+       Дүрэм: бусад хуулгад БҮРЭН багтсан хуулгыг залгаанаас хасна (тэнцлийн шалгуур
+       нь БҮГДЭД хэвээр — дутуу экспорт ч өөрөө тэнцэх ёстой). */
+    const rows = all.slice().sort((x, y) =>
+      String(x.period_from).localeCompare(String(y.period_from))
+      || String(y.period_to).localeCompare(String(x.period_to)))
+      .filter((s, i, arr) => !arr.some((o, j) => j !== i
+        && String(o.period_from) <= String(s.period_from)
+        && String(o.period_to) >= String(s.period_to)
+        && (String(o.period_from) !== String(s.period_from) || String(o.period_to) !== String(s.period_to) || j < i)));
+    all.forEach(s => { const b = stmtBalanceCheck(s); if (!b.ok) out.push({ acct: a, kind: 'balance', id: s.id, diff: b.diff }); });
     for (let i = 1; i < rows.length; i++) {
       const p = rows[i - 1], c = rows[i];
       const next = addDays(String(p.period_to), 1);
       if (String(c.period_from) > next) { out.push({ acct: a, kind: 'gap', from: next, to: addDays(String(c.period_from), -1) }); continue; }
+      // Хэсэгчлэн давхцсан бол үлдэгдэл тулгахгүй — өмнөхийн эцсийн нь дараагийнхын
+      // эхлэлийн мөч БИШ (давхцсан хугацаанд гүйлгээ хоёуланд нь орсон).
+      if (String(c.period_from) <= String(p.period_to)) continue;
       if (p.closing_stated != null && c.opening != null && Math.abs(Number(p.closing_stated) - Number(c.opening)) > 1) {
         out.push({ acct: a, kind: 'jump', id: c.id, diff: Number(c.opening) - Number(p.closing_stated) });
       }
@@ -8909,6 +8944,24 @@ function closeMonthBlockers(stmts, income, regAccts, month) {
   };
   const gaps = (stmtChainCheck(stmts, regAccts) || []).filter(inMonth);
   if (gaps.length) out.push({ kind: 'chain', n: gaps.length, why: `${gaps.length} хуулгын залгаа эвдэрсэн` });
+  /* ⛔ «ШАЛГАЖ ЧАДСАНГҮЙ» нь «ЗӨВ БАЙНА» БИШ (2026-10-02). `stmtBalanceCheck` нь
+     үлдэгдэл уншигдаагүй үед `{ok:true, skip:…}` буцаадаг — тэр нь ХУДАЛ
+     анхааруулгаас хамгаалах зөв шийдэл боловч, шалгалт огт ажиллаагүйг хэн ч
+     мэдэхгүй өнгөрдөг байв. Амьд датаар 2 данс (557 ба 104 мөр) ингэж чимээгүй
+     шалгагдалгүй өнгөрсөн — тэдний нэгд 534,683₮-ийн зөрүү байсан.
+     ⚠ Валют данс нь ЗАКОНЫ ЁСООР шалгагдахгүй (мөр нь ₮ болж хөрвүүлэгддэг тул
+       валют үлдэгдэлтэй тэнцэхгүй) — түүнийг анхааруулгад ОРУУЛАХГҮЙ. */
+  const want = (regAccts || []).map(a => String(a || '').replace(/\D/g, '').slice(-10)).filter(Boolean);
+  const unver = (stmts || []).filter(s => {
+    if (!s || !s.acct) return false;
+    if (want.length && !want.includes(String(s.acct).replace(/\D/g, '').slice(-10))) return false;
+    if (String(s.period_from || '').slice(0, 7) !== month && String(s.period_to || '').slice(0, 7) !== month) return false;
+    const b = stmtBalanceCheck(s);
+    return !!b.skip && b.skip !== 'валют данс' && b.skip !== 'хоосон';
+  });
+  if (unver.length) out.push({ kind: 'unverified', n: unver.length,
+    accts: [...new Set(unver.map(s => String(s.acct)))],
+    why: `${unver.length} хуулгын тэнцэл шалгагдаагүй — үлдэгдэл уншигдаагүй` });
   return out;
 }
 /* ═══════ ДАРААГИЙН АЛХАМ (2026-09-11) ═════════════════════════════════════════

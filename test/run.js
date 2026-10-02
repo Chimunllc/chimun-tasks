@@ -221,6 +221,69 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: хаалттай сар зурагнаасаа уншина (одоогийн нөөцөөс БИШ)');
 }
 
+/* ═══ 🔒 ЭХНИЙ ҮЛДЭГДЭЛ — ГУРАВ ДАХЬ ГАРЫН ҮСЭГ (2026-10-02, CEO шийдвэр) ═══
+   Нярав тоолно → ҮАХ захирал хянана → CEO эцэслэнэ → суурь ХӨЛДӨНӨ.
+   Эцэслэсний дараа дахин тоолох/батлах/буцаах БОЛОМЖГҮЙ; залруулга зөвхөн
+   тооллогоор (аудитын мөртэй). */
+{
+  const SB = vm.runInContext('openingSealBlock', sandbox);
+  const SS = vm.runInContext('stockSealed', sandbox);
+  const SIGN = vm.runInContext('openingSignBlock', sandbox);
+  const UNDO = vm.runInContext('openingUndoBlock', sandbox);
+  const mk = (o) => ({ sku: 'A', name: 'Сандал', stock_opened_at: o.c ? '2026-10-01T00:00:00Z' : null,
+    stock_opened_by: o.cby || null, stock_approved_at: o.a ? '2026-10-01T01:00:00Z' : null,
+    stock_approved_by: o.aby || null, stock_locked_at: o.s ? '2026-10-01T02:00:00Z' : null,
+    stock_locked_by: o.sby || null });
+
+  eq(SS(mk({ c: 1, a: 1 })), false, 'эцэслэл: батлагдсан ч эцэслээгүй');
+  eq(SS(mk({ c: 1, a: 1, s: 1 })), true, 'эцэслэл: эцэслэгдсэн');
+
+  // ── Дараалал: тоолох → батлах → эцэслэх ──
+  ok(/нярав тоолно/i.test(SB(mk({}), 'ceo', true)), 'эцэслэл: тоолоогүй бол эхлээд нярав');
+  ok(/ҮАХ захирал хянана/.test(SB(mk({ c: 1, cby: 'n' }), 'ceo', true)), 'эцэслэл: батлагдаагүй бол эхлээд захирал');
+  eq(SB(mk({ c: 1, cby: 'n', a: 1, aby: 'alt' }), 'ceo', true), '', 'эцэслэл: гурав дахь хүн эцэслэж чадна');
+  ok(/Зөвхөн CEO/.test(SB(mk({ c: 1, cby: 'n', a: 1, aby: 'alt' }), 'alt', false)), 'эцэслэл: зөвхөн CEO');
+
+  /* ⛔ ГУРВАН ӨӨР ХҮН — нэг хүн хоёр үүрэг гүйцэтгэвэл гурван гарын үсэг нэг
+     болж хумигдана (хоёр гарын үсгийн дүрэмтэй ижил зарчим). */
+  ok(/Та тоолсон/.test(SB(mk({ c: 1, cby: 'ceo', a: 1, aby: 'alt' }), 'ceo', true)),
+     'эцэслэл: тоолсон хүн эцэслэж чадахгүй');
+  ok(/Та хянасан/.test(SB(mk({ c: 1, cby: 'n', a: 1, aby: 'ceo' }), 'ceo', true)),
+     'эцэслэл: хянасан хүн эцэслэж чадахгүй');
+  ok(/Аль хэдийн/.test(SB(mk({ c: 1, cby: 'n', a: 1, aby: 'alt', s: 1 }), 'ceo', true)),
+     'эцэслэл: давхар эцэслэхгүй');
+
+  /* ⛔ ХӨЛДСӨНИЙ ДАРАА БҮХ ЗАМ ХААЛТТАЙ — дахин батлах ч, буцаах ч боломжгүй. */
+  const sealed = mk({ c: 1, cby: 'n', a: 1, aby: 'alt', s: 1, sby: 'ceo' });
+  ok(/өөрчлөх боломжгүй/.test(SIGN(sealed, 'alt', true)), 'хөлдөөлт: дахин батлах зам хаалттай');
+  ok(/буцаах боломжгүй/.test(UNDO(sealed, 'alt', true, 'approve')), 'хөлдөөлт: батлалт буцаах зам хаалттай');
+  ok(/буцаах боломжгүй/.test(UNDO(sealed, 'alt', true, 'count')), 'хөлдөөлт: тоолол буцаах зам ч хаалттай');
+  // ⚠ Хөлдөөгүй бол хуучнаараа ажиллана
+  eq(UNDO(mk({ c: 1, cby: 'n', a: 1, aby: 'alt' }), 'alt', true, 'approve'), '',
+     'хөлдөөгүй бол буцаах зам нээлттэй хэвээр');
+}
+
+/* 0e2i) SCAN — эцэслэлийн хориг БҮХ бичих замд (2026-10-02)
+   Нэг замыг нь онгорхой орхивол хөлдсөн суурь чимээгүй өөрчлөгдөж, гурван
+   гарын үсэг утгагүй болно. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function stockSealed\(/.test(codeLines) && /function openingSealBlock\(/.test(codeLines),
+     'scan: эцэслэлийн функцууд байна');
+  ok(/if \(stockSealed\(p\)\) return 'Эцэслэн баталгаажсан — өөрчлөх боломжгүй';/.test(codeLines),
+     'scan: дахин батлах зам хаагдсан');
+  ok(/if \(stockSealed\(p\)\) return 'Эцэслэн баталгаажсан — буцаах боломжгүй/.test(codeLines),
+     'scan: буцаах зам хаагдсан');
+  ok(/if \(stockSealed\(p\)\) \{ showToast\('Эцэслэн баталгаажсан/.test(codeLines),
+     'scan: дахин ТООЛОХ зам ч хаагдсан');
+  // ⛔ Эцэслэх нь буцаах боломжгүй тул баталгаажуулалтгүй байж БОЛОХГҮЙ
+  const h = codeLines.slice(codeLines.indexOf("data-op-seal]"), codeLines.indexOf("data-op-un]"));
+  ok(/if \(!\(await showConfirm\(/.test(h), 'scan: эцэслэхийн өмнө баталгаажуулалт асууна');
+  // ⛔ «Нээх» товч БАЙХГҮЙ — залруулга тооллогоор, аудитын мөртэй
+  eq((codeLines.match(/data-op-unseal/g) || []).length, 0,
+     'scan: эцэслэлийг НЭЭХ товч БАЙХГҮЙ (залруулга тооллогоор)');
+}
+
 /* 0e2g) SCAN — ЭЛЭГДЛИЙГ ШАЛГАХ ГАЗАР байна (2026-10-02)
    «Тооцоолол зөв эсэхийг хаанаас харах вэ?» — өмнө нь зөвхөн барааны ЦОНХ дотор
    байсан тул 281 барааг нэг бүрчлэн нээхээс өөр арга байгаагүй, тайлан дахь
@@ -10508,6 +10571,7 @@ need(['orderCustType']);
   need(['stmtPeriodDates', 'stmtIdOf', 'stmtIncomeKey', 'stmtIncomeFp', 'buildStatementImport',
     'stmtBalanceCheck', 'stmtChainCheck', 'incomeOpenStats', 'stmtMonthMissingAccts',
     'stmtNoPayerNames', 'balanceStats', 'stmtChainSpine', 'stmtDetail', 'monthSeal', 'monthEndDay', 'stmtMonthSplit',
+    'stockSealed', 'openingSealBlock',
     'receiptFpIndex', 'receiptMatchFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner']);
 
   // ── хугацаа: толгойд бичигдсэн бол түүнээс, эс бол мөрүүдээс ──

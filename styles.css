@@ -7946,6 +7946,19 @@ select.no-asar-len {
 .stmt-lad .sl-sum { border-top: 1px solid var(--border-strong); padding-top: var(--space-1); color: var(--text); font-weight: 600; }
 .stmt-lad .sl-ok { color: var(--ok); }
 .stmt-lad .sl-bad { color: var(--warn); }
+/* ⛔ Дансны НЭРИЙГ тайлбарт БҮҮ ДАРУУЛ (2026-10-02, амьд дэлгэцэд гарсан алдаа).
+   `.recon-l` нь `nowrap + ellipsis` тул урт тайлбарыг нэг эгнээнд тавихад нэр
+   бүрмөсөн шахагдаж «○ 2026-09-30-ны эцсийн үлдэгдэл алга…» гэж ДАНСГҮЙ мөр
+   үлдэж байв. Нэр + богино дүгнэлт эхний эгнээнд, тайлбар нь ДООРХ мөрөнд. */
+.seal-row { flex-wrap: wrap; }
+.seal-row .seal-l { flex: 1 1 auto; min-width: 0; }
+.seal-row .seal-why {
+  flex: 1 0 100%; color: var(--muted); font-size: var(--fs-xs);
+  white-space: normal; overflow-wrap: anywhere; margin-top: var(--space-1);
+}
+.recon-sec-h .recon-amt { margin-left: auto; }
+.recon-sec-h { display: flex; align-items: baseline; gap: var(--space-2); }
+
 /* ⛔ Чөлөөт бичвэр (файлын нэр, шалтгаан) нь ТООН БАГАНАД ОРОХГҮЙ — БҮТЭН мөр.
    Файлын нэрэнд зай байдаггүй (C000051740_7137…xlsx) тул тоон баганад тавиад
    `anywhere`-ээр таслахад багана нарийсаж, ШОШГО нь үсэг тус бүрээр босоо

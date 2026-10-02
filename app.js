@@ -11405,6 +11405,13 @@ function asarPurgePlan(rows, aliases) {
   return { go, skip };
 }
 async function removeProductRow(sku) {
+  /* ⛔ ЭЦЭСЛЭГДСЭН БАРААГ ХАТУУ УСТГАХГҮЙ (2026-10-02 аудит). Эхний үлдэгдлийн
+     суурь нь гурван гарын үсгээр хөлдсөн — устгавал тэр баталгаа мөрөөрөө алга
+     болж, элэгдэл ба хөрөнгийн дүн чимээгүй буурна. Хэрэглэхээ больсон бол
+     АРХИВЛАНА (дата үлдэнэ). */
+  const _p = (state.products || []).find(x => x && x.sku === sku)
+    || (state.archivedProducts || []).find(x => x && x.sku === sku);
+  if (stockSealed(_p)) throw new Error('Эхний үлдэгдэл эцэслэгдсэн бараа устгагдахгүй — архивлана уу');
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`,
     { method: 'DELETE', headers: pgWrite({ Prefer: 'return=minimal' }) }, 15000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -11500,6 +11507,14 @@ async function loadArchivedProducts() {
 }
 // Барааг архивлах — saveProduct нь `archived` талбарыг бичдэггүй тул тусад нь PATCH.
 async function setProductArchived(sku, val) {
+  /* ⚠ Архивласан бараа `deprecByBranch`-д ОРОХГҮЙ тул эцэслэгдсэн барааг
+     архивлах нь элэгдлийг чимээгүй бууруулж, салбарын ашиг ба COO-гийн 30%-ийг
+     өсгөнө. Хориглохгүй (актлах нь жинхэнэ хэрэгцээ) — гэхдээ ЧИМЭЭГҮЙ
+     болгохгүй: хүн юу болохыг мэдэж байж батлана. */
+  if (val && stockSealed((state.products || []).find(x => x && x.sku === sku))
+      && typeof showConfirm === 'function'
+      && !(await showConfirm('Энэ барааны эхний үлдэгдэл ЭЦЭСЛЭГДСЭН.\n\nАрхивлавал элэгдлийн тооцооноос гарч, салбарын зардал буурч, COO-гийн ашгийн эрх нэмэгдэнэ. Актлах бол «Акт» дэлгэцээр хийвэл түүх үлдэнэ.\n\nҮргэлжлүүлэх үү?',
+        { title: '🔒 Эцэслэгдсэн барааг архивлах', okText: 'Архивла', danger: true }))) return false;
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`,
     { method: 'PATCH', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify({ archived: !!val }) }, 15000);
   if (!r.ok) throw new Error('HTTP ' + r.status);

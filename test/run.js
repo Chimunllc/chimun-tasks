@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -13250,4 +13250,40 @@ async function swFetchTests() {
   // Дэлгэц: өдөр бүрийн мөр нээлттэй БАЙХГҮЙ — <details> дотор
   ok(/<details class="dsp-det">/.test(src), 'scan: өдрийн задаргаа details дотор');
   ok(/dsp-late-row/.test(src), 'scan: хоцорсон захиалга жагсаалтаар харагдана');
+}
+
+// ═══ ХУУЛГААС ОРСОН МӨРД ЦАГ ХАРУУЛАХГҮЙ (2026-10-02) ═══
+// Хуулгын задлагч зөвхөн огноог уншдаг; код `T12:00:00.000Z` (үд дунд UTC)
+// залгадаг нь САНААТАЙ (огноо гулсахгүй). Гэвч дэлгэцэд тэр нь УБ-гийн 20:00
+// болж гарч, хэрэглэгч «гүйлгээ 20:00-д болсон» гэж уншдаг байв —
+// банкны хуулгад 13:40 гэж бичээстэй атал.
+{
+  const { fmtDateTimeUB, isDateOnlyStamp } = F;
+  ok(isDateOnlyStamp('2026-10-01T12:00:00.000Z'), 'цаг: үд дундын орлуулга танигдана');
+  ok(isDateOnlyStamp('2026-10-01T12:00:00Z'), 'цаг: миллисекундгүй хэлбэр ч танигдана');
+  ok(!isDateOnlyStamp('2026-10-01T13:40:12.000Z'), 'цаг: бодит цаг орлуулга БИШ');
+  ok(!isDateOnlyStamp('2026-10-01T12:00:00+08:00'), 'цаг: офсеттэй утга орлуулга БИШ');
+  ok(!isDateOnlyStamp(''), 'цаг: хоосон утга');
+
+  // Орлуулга → ЗӨВХӨН огноо
+  eq(fmtDateTimeUB('2026-10-01T12:00:00.000Z'), '10/01', 'цаг: хуулгын мөрд цаг харуулахгүй');
+  // ⛔ 20:00 гэж харуулахыг хаана (УБ = UTC+8)
+  ok(!/20:00/.test(fmtDateTimeUB('2026-10-01T12:00:00.000Z')), 'цаг: 20:00 гэж гарахгүй');
+  // Бодит цагтай утга ХЭВЭЭР цагаа харуулна
+  eq(fmtDateTimeUB('2026-10-01T05:40:12.000Z'), '10/01 13:40', 'цаг: бодит цаг УБ-аар харагдана');
+  // Шөнө дунд орчмын бодит цаг — өдөр зөв гулсана (UTC+8)
+  eq(fmtDateTimeUB('2026-10-01T18:30:00.000Z'), '10/02 02:30', 'цаг: UTC+8 хөрвүүлэлт зөв');
+  eq(fmtDateTimeUB(''), '', 'цаг: хоосон → хоосон');
+  eq(fmtDateTimeUB('буруу'), '', 'цаг: уншигдахгүй утга → хоосон');
+}
+
+// ═══ SCAN: хуулгын огнооны ОРЛУУЛГЫГ хадгалалт дээр засахыг хаана ═══
+// `finExpMonth` нь мөрийг ШУУД таслаж сар гаргадаг. Бодит цагийг +08:00
+// офсеттэй бичвэл шөнө дунд орчмын гүйлгээ ӨМНӨХ сар руу гулсана.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/T12:00:00\.000Z/.test(src), 'scan: хуулгын огноо үд дундын UTC-ээр хадгалагдсан хэвээр');
+  const fem = src.slice(src.indexOf('function finExpMonth'), src.indexOf('function finExpMonth') + 240);
+  ok(/slice\(0, 7\)/.test(fem), 'scan: finExpMonth мөрийг таслаж сар гаргадаг (орлуулга шаардлагатай)');
+  ok(/isDateOnlyStamp/.test(src), 'scan: орлуулгыг таних шалгуур бий');
 }

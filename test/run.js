@@ -184,9 +184,18 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   ok(/String\(s\.period_from\) === first && String\(s\.period_to\) === end/.test(ms),
      'scan: сар батлагдах нөхцөл = 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга');
   // Тулгалтын цонхонд сарын шат байна
-  ok(/recon-sec-h">⚖️ Сарын эцсийн үлдэгдэл</.test(codeLines),
-     'scan: тулгалтын цонхонд сарын шатны БЛОК гарна (тайлбар биш, бодит markup)');
-  ok(/monthSeal\(list, a, mm\)/.test(codeLines), 'scan: сарын шат ч ижил функцээс (дүрэм салбарлахгүй)');
+  ok(/recon-sec-h">⚖️ \$\{escapeHtml\(sealMonth\)\} сарын эцсийн үлдэгдэл/.test(codeLines),
+     'scan: тулгалтын цонхонд сарын блок гарна (тайлбар биш, бодит markup)');
+  ok(/monthSeal\(list, a, sealMonth\)/.test(codeLines), 'scan: сарын шат ч ижил функцээс (дүрэм салбарлахгүй)');
+  /* ⛔ ЗӨВХӨН СОНГОСОН САР — бүх сарыг дараалуулбал «9 сар сонгосон атал яагаад
+     10 сар улаан байна» гэж хүн төөрнө (амьд дэлгэцэд гарсан гомдол). */
+  ok(/const sealMonth = String\(state\.finReportMonth/.test(codeLines),
+     'scan: сарын блок нь СОНГОСОН сараар (бүх сар дараалахгүй)');
+  // ⛔ Дансны нэр тайлбарт дарагдахгүй — тайлбар нь ӨӨРИЙН мөрөнд
+  ok(/seal-why/.test(codeLines), 'scan: шалтгаан нь дансны нэрийг шахахгүй, доорх мөрөнд');
+  // Мөр дарахад бодолт нээгдэнэ
+  ok(/<details class="stmt-det"><summary class="recon-row seal-row">/.test(codeLines),
+     'scan: сарын мөр дарахад бодолт нээгдэнэ');
 }
 
 /* 0e2d) SCAN — БОДОЛТЫГ ДАХИН БОДОХГҮЙ, залгааны тулгуур ГАНЦ газар (2026-10-02)

@@ -9501,29 +9501,40 @@ function renderStmtLedger() {
         <button class="btn ui-raw inc-btn" data-inc-set="personal" data-inc-fp="${escapeHtml(r.fp)}" title="Хувийн — компанийн орлого биш">🙍</button>
         <button class="btn ui-raw inc-btn" data-inc-set="notincome" data-inc-fp="${escapeHtml(r.fp)}" title="Орлого биш (зээл / хөрөнгө оруулалт)">🚫</button>
       </span></div>`).join('');
-  /* ⚖️ САРЫН ШАТ — бусад БҮХ зүйл сараар явдаг (сар хаах · P&L · COO-гийн 30%) тул
-     тэнцэл ч сараар л утгатай. Хуулгын экспортын цонх нь дурын (09-01…10-02) тул
-     тэндээс «сар тэнцсэн» гэж дүгнэж болохгүй — сарын ЭЦСИЙН үлдэгдэл л баталгаа. */
-  const seenM = [...new Set((list || []).flatMap(st => [String(st.period_from || '').slice(0, 7),
-    String(st.period_to || '').slice(0, 7)]).filter(x => /^\d{4}-\d{2}$/.test(x)))].sort().slice(-3).reverse();
+  /* ⚖️ САРЫН ТЭНЦЭЛ — ЗӨВХӨН СОНГОСОН САР (2026-10-02, CEO).
+     Бүх сарыг дараалуулж харуулахад хүн «би 9 сар сонгосон атал яагаад 10 сар
+     улаан байна» гэж төөрнө. Санхүүгийн дэлгэц дээрх сарын сонголт
+     (`finReportMonth`) нь энэ цонхонд ч хүчинтэй.
+     ⛔ Нэрийг тайлбарт ДАРУУЛАХГҮЙ: `.recon-l` нь `nowrap + ellipsis` тул урт
+        тайлбарыг нэг эгнээнд тавихад дансны НЭР бүрмөсөн шахагдаж алга болж байв
+        (амьд дэлгэцэд ингэж гарсан). Нэр + богино дүгнэлт эхний мөрөнд, бүтэн
+        тайлбар нь ДООРХ мөрөнд. */
+  const sealMonth = String(state.finReportMonth || todayStr().slice(0, 7)).slice(0, 7);
   const sealAccts = [...new Set((list || []).map(st => String(st.acct || '')).filter(Boolean))];
-  const sealRows = seenM.map(mm => {
-    const rows = sealAccts.map(a => ({ a, r: monthSeal(list, a, mm) })).filter(x => x.r.state !== 'none' && x.r.state !== 'ccy');
-    if (!rows.length) return '';
-    const okN = rows.filter(x => x.r.state === 'sealed').length;
-    const body = rows.sort((x, y) => acctLabel(x.a).localeCompare(acctLabel(y.a))).map(({ a, r }) => {
-      const v = r.state === 'sealed' ? `<span class="recon-ok">✓ ${fmtMoney(r.closing)}</span>`
-        : r.state === 'diff' ? `<span class="recon-bad">⚠ ${fmtMoney(r.closing)} · зөрүү ${fmtMoney(r.diff)}</span>`
-        : `<span class="mut">⃝ ${escapeHtml(r.why || 'шалгагдаагүй')}</span>`;
-      return `<div class="recon-row"><span class="recon-l">${isPersonalAcct(a) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(a))}</span><span class="recon-amt">${v}</span></div>`;
-    }).join('');
-    return `<div class="stmt-acct"><div class="recon-row stmt-acct-h"><span class="recon-l">${escapeHtml(mm)} сарын эцэс <span class="mut">${escapeHtml(monthEndDay(mm))}</span></span>`
-      + `<span class="recon-amt">${okN === rows.length ? `<span class="recon-ok">✓ ${okN}/${rows.length} батлагдсан</span>` : `<span class="recon-bad">${okN}/${rows.length} батлагдсан</span>`}</span></div>${body}</div>`;
-  }).filter(Boolean).join('');
-  return `<div class="recon-sec">
-      <div class="recon-sec-h">⚖️ Сарын эцсийн үлдэгдэл</div>
-      ${sealRows || '<div class="recon-empty">Хуулга оруулаагүй байна</div>'}
-      <div class="recon-summary-sub">Сар батлагдах = тэр сарын 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга тэнцсэн байх. «01…өнөөдөр» гэж татсан хуулганд сарын эцсийн үлдэгдэл байдаггүй тул сарыг батлахгүй.</div>
+  const sealSeq = sealAccts.map(a => ({ a, r: monthSeal(list, a, sealMonth) }))
+    .filter(x => x.r.state !== 'none' && x.r.state !== 'ccy')
+    .sort((x, y) => acctLabel(x.a).localeCompare(acctLabel(y.a)));
+  const sealOk = sealSeq.filter(x => x.r.state === 'sealed').length;
+  const sealRows = sealSeq.map(({ a, r }) => {
+    const sealed = r.state === 'sealed', bad = r.state === 'diff';
+    const tag = sealed ? `<span class="recon-ok">✓ ${fmtMoney(r.closing)}</span>`
+      : bad ? `<span class="recon-bad">⚠ зөрүү ${fmtMoney(r.diff)}</span>`
+      : '<span class="mut">⃝ батлагдаагүй</span>';
+    // Батлагдсан/зөрүүтэй бол бодолт НЭЭГДЭНЭ — «яаж тэнцсэн» нь хаалттай байх ёсгүй.
+    const src = (list || []).find(st => String(st.id) === String(r.id));
+    const body = src ? stmtDetHtml(src, null)
+      : `<div class="stmt-lad"><div class="sl-full">${escapeHtml(r.why || '')}</div></div>`;
+    return `<details class="stmt-det"><summary class="recon-row seal-row">`
+      + `<span class="recon-l seal-l">${isPersonalAcct(a) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(a))}</span>`
+      + `<span class="recon-amt">${tag}</span>`
+      + (r.why ? `<span class="seal-why">${escapeHtml(r.why)}</span>` : '')
+      + `</summary>${body}</details>`;
+  }).join('');
+  return `<div class="recon-sec${sealSeq.length && sealOk < sealSeq.length ? ' warn' : ''}">
+      <div class="recon-sec-h">⚖️ ${escapeHtml(sealMonth)} сарын эцсийн үлдэгдэл <span class="mut">${escapeHtml(monthEndDay(sealMonth))}</span>
+        <span class="recon-amt">${sealSeq.length ? (sealOk === sealSeq.length ? `<span class="recon-ok">✓ ${sealOk}/${sealSeq.length} батлагдсан</span>` : `<span class="recon-bad">${sealOk}/${sealSeq.length} батлагдсан</span>`) : ''}</span></div>
+      ${sealRows || `<div class="recon-empty">${escapeHtml(sealMonth)} сард хуулга ороогүй байна</div>`}
+      <div class="recon-summary-sub">Сар батлагдах = тэр сарын 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга тэнцсэн байх. «01…өнөөдөр» гэж татсан хуулганд сарын эцсийн үлдэгдэл байдаггүй тул сарыг батлахгүй. Мөр дарж бодолтыг үз.</div>
     </div>
     <div class="recon-sec${gaps.length ? ' warn' : ''}">
       <div class="recon-sec-h">📚 Оруулсан хуулга <span class="recon-n">${(list || []).length}</span></div>

@@ -161,6 +161,66 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
 }
 
+/* ═══ ⛔ ХААСАН САРЫН ЭЛЭГДЭЛ ХӨЛДӨНӨ (2026-10-02) ═══
+   `deprecByBranch` нь ОДООГИЙН нөөцөөс бодогддог бөгөөд `month` нь зөвхөн
+   асаах/унтраах үүрэгтэй байв. Сар хаасны ДАРАА бараа салбар хооронд шилжихэд
+   ХААСАН сарын элэгдэл → ашиг → COO-гийн 30% чимээгүй өөрчлөгддөг байв. */
+{
+  const DSO = vm.runInContext('deprecSnapshotOf', sandbox);
+  const DFM = vm.runInContext('deprecForMonth', sandbox);
+  const DSN = vm.runInContext('deprecSnapshotNow', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const savedCm = st.closedMonths, savedP = st.products;
+  const prod = (q) => ([{ sku: 'A', name: 'Сандал', cost: 1200000, qty_mevent: q, qty_nomaad: 100 - q,
+    purchase_date: '2026-09-01', archived: false, type: 'rental' }]);
+
+  st.products = prod(100);
+  const snap = DSN('2026-10');
+  ok(snap && snap.total > 0, 'хөлдөөлт: хаахад зураг үүснэ');
+  const mev0 = snap['ИВЕНТ'];
+  ok(mev0 > 0 && snap['КЕМП'] === 0, 'хөлдөөлт: зураг нь салбарын хуваарилалтыг барина');
+
+  // Сар ХААГДСАН + зурагтай → нөөц хөдөлсөн ч тоо ХЭВЭЭР
+  st.closedMonths = { '2026-10': { at: '2026-11-01T00:00:00Z', by: 'x', dep: snap } };
+  st.products = prod(0);   // БҮХ сандал NOMAAD руу шилжив
+  eq(DFM('2026-10')['ИВЕНТ'], mev0, 'ХӨЛДӨӨЛТ: хаасны дараа нөөц шилжсэн ч хаасан сарын элэгдэл ХЭВЭЭР');
+  eq(DFM('2026-10').frozen, true, 'хөлдөөлт: хаалттай сар «хөлдсөн» гэж тэмдэглэгдэнэ');
+  ok(DSO('2026-10'), 'хөлдөөлт: зураг олдоно');
+
+  // НЭЭЛТТЭЙ сар нь одоогийн нөөцөөс — шилжилт шууд тусна
+  st.closedMonths = {};
+  eq(DFM('2026-10')['ИВЕНТ'], 0, 'нээлттэй сар: нөөц шилжихэд элэгдэл шууд дагана');
+  ok(!DFM('2026-10').frozen, 'нээлттэй сар хөлдөөгүй');
+
+  /* ⚠ Зураггүй хаалттай сар (шилжилтийн хаалт, эсвэл энэ засвараас ӨМНӨ хаасан)
+     нь хуучнаараа бодогдоно — тоог чимээгүй 0 болгохоос дээр. */
+  st.closedMonths = { '2026-10': { at: '2026-11-01T00:00:00Z', by: 'x' } };
+  st.products = prod(100);
+  eq(DFM('2026-10')['ИВЕНТ'], mev0, 'зураггүй хаалттай сар: хуучнаар бодогдоно (0 болгохгүй)');
+  eq(DSO('2026-10'), null, 'зураггүй сард зураг null');
+
+  // Элэгдэл эхлэхээс ӨМНӨХ сард зураг авахгүй (утгагүй)
+  eq(DSN('2026-08'), null, 'хөлдөөлт: элэгдэл идэвхгүй сард зураг авахгүй');
+  st.closedMonths = savedCm; st.products = savedP;
+}
+
+/* 0e2h) SCAN — хаахад элэгдлийн зураг ЗААВАЛ авна (2026-10-02)
+   Зураг авахгүй бол хаалттай сар одоогийн нөөцөөс дахин бодогдож, бараа салбар
+   хооронд шилжих бүрд ХААСАН сарын ашиг ба COO-гийн 30% чимээгүй өөрчлөгдөнө —
+   «хаасан сарын тоо хөдөлөхгүй» гэдэг гол дүрэм зөрчигдөнө. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function deprecSnapshotNow\(/.test(codeLines) && /function deprecSnapshotOf\(/.test(codeLines),
+     'scan: элэгдлийн зургийн функцууд байна');
+  ok(/const dep = deprecSnapshotNow\(m\);/.test(codeLines),
+     'scan: сар хаахад элэгдлийн зураг авагдана');
+  ok(/\.\.\.\(dep \? \{ dep \} : \{\}\)/.test(codeLines),
+     'scan: зураг хаалтын бичлэгт хадгалагдана');
+  const dm = codeLines.slice(codeLines.indexOf('function deprecForMonth'), codeLines.indexOf('function ensureProductsLoaded'));
+  ok(/const snap = deprecSnapshotOf\(month\);/.test(dm),
+     'scan: хаалттай сар зурагнаасаа уншина (одоогийн нөөцөөс БИШ)');
+}
+
 /* 0e2g) SCAN — ЭЛЭГДЛИЙГ ШАЛГАХ ГАЗАР байна (2026-10-02)
    «Тооцоолол зөв эсэхийг хаанаас харах вэ?» — өмнө нь зөвхөн барааны ЦОНХ дотор
    байсан тул 281 барааг нэг бүрчлэн нээхээс өөр арга байгаагүй, тайлан дахь

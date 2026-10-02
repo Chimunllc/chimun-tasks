@@ -5652,7 +5652,7 @@ async function saveStockCount({ sessionId, sku, systemQty, countedQty, repairQty
    ⚠ Бичилт зөвхөн `saveProduct`-аар: нөөцийн дэвтэр, кэш, сонголттой баганын
      хамгаалалт бүгд тэнд. Тусад нь бичих зам гаргахгүй (scan-тест хаана). */
 async function confirmOpeningStock(sku, countedQty, damagedQty) {
-  if (!canProductPart('stock')) { showToast('Танд нөөц засах эрх алга', 'warn', 3000); return false; }
+  if (!canOpenCount()) { showToast('Эхний үлдэгдлийг зөвхөн нярав тоолно', 'warn', 3500); return false; }
   const p = productBySku(sku);
   if (!p) { showToast('Бараа олдсонгүй', 'error', 3000); return false; }
   /* ⛔ ХӨЛДСӨН СУУРЬ ДАХИН ТООЛОГДОХГҮЙ — залруулга тооллогоор (аудитын мөртэй). */
@@ -14196,7 +14196,17 @@ function canCountStock() { return canEditProducts() || capValue('products.count'
    нярав ихэвчлэн `products.edit`-тэй байдаг тул шүхэрт оруулбал тоолсон хүн
    өөрөө батлах эрхтэй болж, хоёр гарын үсгийн утга алга болно. Зөвхөн ил
    олгосон эрх ба CEO. */
-function canApproveOpening() { return !!state.isCEO || capValue('products.opening') === true; }
+/* ⛔ ЭХНИЙ ҮЛДЭГДЛИЙН ГУРВАН АЛХАМ = ГУРВАН ӨӨР ЭРХ (2026-10-02, CEO барив).
+   Өмнө нь ТООЛОХ нь `canProductPart('stock')`-ээр явдаг байсан тул
+   `products.edit` ШҮХЭР дор 5 хүн (нярав 2, ҮАХ захирал, захиалгын ажилтан,
+   дууны инженер) бүгд «Тоолсон» дарж чаддаг байв — гурван гарын үсэг нэг
+   болж хумигдана. CLAUDE.md-ийн «батлах эрхийг products.edit шүхэрт бүү
+   оруул» дүрэм тоолох талдаа хэрэгжээгүй байсан.
+   ⛔ CEO энэ ХОЁР алхамд ОРОЛЦОХГҮЙ — эцэслэх нь зөвхөн CEO-гийнх бөгөөд
+   «гурван өөр хүн» дүрэмтэй тул CEO тоолсон/хянасан бараа ХЭЗЭЭ Ч эцэслэгдэхгүй
+   болж, мухардалд орно. Тиймээс эрхээс нь ЗОРИУД хасав. */
+function canOpenCount()     { return capValue('products.count') === true; }
+function canApproveOpening() { return capValue('products.opening') === true; }
 function canSeeStockCount() { return canAccessView('stockcount', () => canCountStock()); }
 // Хэсэг бүр ЭЗЭМШИХ талбарууд — эрхгүй хэсгийн утгыг эх бичлэгээс сэргээхэд ашиглана.
 // Функц (const биш) — тестийн vm sandbox-д const нь global болдоггүй.
@@ -21988,7 +21998,11 @@ async function openCountScanner() {
    тооллого 09-06-наас нээлттэй байсан тул блок ХЭЗЭЭ Ч харагдаагүй. Суурь
    тогтоох нь тооллогын УРЬДЧИЛСАН нөхцөл — тооллого явж байхад ч хэрэгтэй.
    Scan-тест хоёр дуудалтыг шалгана. */
+/* ⚠ `canManage` (нөөц засах) нь эхний үлдэгдэл ТООЛОХ эрх БИШ — тооллого
+   нээх/хаахад хэрэглэгдэнэ. Тоолох товч нь `canOpenCount()`-оор л гарна,
+   эс бөгөөс `products.edit` шүхэртэй хүмүүс бүгд тоолж чадна. */
 function openingBlockHtml(canManage) {
+  const canOpen = canOpenCount();
   const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p)), countUnitCost);
   const oSt = openingStats(oRows);
   const showMoney = canProductPart('cost');
@@ -22012,7 +22026,7 @@ function openingBlockHtml(canManage) {
   const countList = oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
       <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
       <span class="stc-open-q">системд <b>${x.qty}</b></span>
-      ${canManage ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
+      ${canOpen ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
       <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Тоолсон</button>` : ''}
     </div>`).join('')}</div>
     ${oSt.left - oSt.wait > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oSt.wait - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
@@ -22054,7 +22068,7 @@ function openingBlockHtml(canManage) {
 
   return `<div class="stc-open">
     <div class="stc-open-h">
-      <div><b>Эхний үлдэгдэл</b><span>Нярав тоолно → ҮАХ захирал хянана → CEO эцэслэнэ. Эцэслэсний дараа суурь ХӨЛДӨНӨ — залруулга зөвхөн тооллогоор.</span></div>
+      <div><b>Эхний үлдэгдэл</b><span>Нярав тоолно → ҮАХ захирал хянана → CEO эцэслэнэ. Алхам бүр ӨӨР эрхтэй — нэг хүн хоёрыг нь хийж чадахгүй. Эцэслэсний дараа суурь ХӨЛДӨНӨ, залруулга зөвхөн тооллогоор.</span></div>
       <div class="stc-open-n">${oPct}%</div>
     </div>
     <div class="stc-bar"><div style="width:${oPct}%"></div></div>

@@ -326,6 +326,39 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: тоолох оролт нь canOpen-оор хаалттай');
 }
 
+/* ═══ ⛔ ЭЦЭСЛЭЭГҮЙ БАРААГ ТООЛОХГҮЙ (2026-10-02, CEO барив) ═══
+   «Тооллого хийгээд байна» — суурь нь баталгаажаагүй бол зөрүү юутай ч
+   харьцуулагдахгүй. Улмаар зөрүү нь нөөцийг засаж, алдагдлын ЗАРДАЛ болж
+   салбарын ашиг ба COO-гийн 30%-д хүрнэ. */
+{
+  const CBR = vm.runInContext('countBlockReason', sandbox);
+  const mk = (o) => ({ sku: 'A', stock_opened_at: o.c ? 't' : null, stock_approved_at: o.a ? 't' : null,
+    stock_locked_at: o.s ? 't' : null });
+  eq(CBR(mk({ c: 1, a: 1, s: 1 })), '', 'тооллого: эцэслэгдсэн бараа тоологдоно');
+  ok(/тоологдоогүй/.test(CBR(mk({}))), 'тооллого: тоолоогүй суурьтай бол хаалттай');
+  ok(/хянагдаагүй/.test(CBR(mk({ c: 1 }))), 'тооллого: хянагдаагүй суурьтай бол хаалттай');
+  ok(/эцэслээгүй/.test(CBR(mk({ c: 1, a: 1 }))), 'тооллого: хоёр гарын үсэгтэй ч эцэслээгүй бол хаалттай');
+  ok(/олдсонгүй/.test(CBR(null)), 'тооллого: бараагүй бол хаалттай');
+}
+
+/* 0e2k) SCAN — тооллогын хориг БҮХ замд (2026-10-02)
+   Бүртгэх зам нээлттэй үлдвэл батлагдаагүй суурьтай зөрүү DB-д хуримтлагдана;
+   ХЭРЭГЖҮҮЛЭХ зам нээлттэй үлдвэл тэр зөрүү нөөц ба МӨНГӨНД хүрнэ. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function countBlockReason\(/.test(codeLines), 'scan: тооллогын хоригийн шалтгаан ганц функцээс');
+  const _sv0 = codeLines.indexOf('async function saveStockCount');
+  const sv = codeLines.slice(_sv0, _sv0 + 900);
+  ok(/const _blk = countBlockReason\(productBySku\(sku\)\);[\s\S]{0,60}throw new Error\(_blk\)/.test(sv),
+     'scan: БҮРТГЭХ зам хаалттай');
+  const _ap0 = codeLines.indexOf('async function applyStockCount');
+  const ap = codeLines.slice(_ap0, _ap0 + 900);
+  ok(/const _blk = countBlockReason\(p\);[\s\S]{0,60}throw new Error\(_blk\)/.test(ap),
+     'scan: ХЭРЭГЖҮҮЛЭХ зам (мөнгөний зам) хаалттай');
+  ok(/const actBlk = act \? countBlockReason\(act\) : '';/.test(codeLines),
+     'scan: дэлгэцэд шалтгаан ил гарна');
+}
+
 /* 0e2i) SCAN — эцэслэлийн хориг БҮХ бичих замд (2026-10-02)
    Нэг замыг нь онгорхой орхивол хөлдсөн суурь чимээгүй өөрчлөгдөж, гурван
    гарын үсэг утгагүй болно. */

@@ -91,7 +91,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
-  'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
+  'ownerCapital', 'ownerCapitalRows', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -477,7 +477,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   ok(/function psDeprecLine\(/.test(codeLines) && /function psDeprecSummary\(/.test(codeLines),
      'scan: элэгдлийн мөр ба нийлбэр функцууд байна');
   ok(/\$\{psDeprecLine\(p\)\}/.test(codeLines), 'scan: бараа бүрийн мөрөнд элэгдэл бичигдэнэ');
-  ok(/mode === 'cost' \? psDeprecSummary\(\) : ''/.test(codeLines),
+  ok(/mode === 'cost' \? psDeprecSummary\(\)/.test(codeLines),
      'scan: нийлбэр нь «Өртөг ба хөрөнгө» дэлгэцийн толгойд');
   /* ⛔ ТООГ ДАХИН БОДОХГҮЙ — тайлантай ижил эх сурвалжаас. Дахин бодвол
      жагсаалт ба тайлан хоёр өөр тоо харуулж, тулгалт утгагүй болно.
@@ -14513,4 +14513,89 @@ async function swFetchTests() {
   ok(card.includes('Миний цалин'), 'карт: гарчигтай');
 
   runIn(`(function(){ const s = ${save}; state.salaries = s[0]; state.salaryPayments = s[1]; state.attMonthKey = s[2]; state.salaryYM = s[3]; })()`);
+}
+
+// ═══ ЭЗНИЙ ХӨРӨНГӨ ОРУУЛАЛТ (2026-10-02) ════════════════════════════════
+// «Компани өөрөө төлснөө нотолж чадахгүй хөрөнгө = эзэн оруулсан».
+// 6 жилийн түүхийг санах шаардлагагүй — нотлох баримтаас эсрэгээр нь бодно.
+{
+  const { ownerCapital, ownerCapitalRows } = F;
+  const P = (sku, cost, qty, opened, approved) => ({
+    sku, id: sku, name: 'Бараа ' + sku, cost, stock: qty, qty_mevent: qty, archived: false,
+    stock_opened_at: opened ? '2026-09-10' : null, stock_opened_by: opened ? '900' : null,
+    stock_approved_at: approved ? '2026-09-11' : null, stock_approved_by: approved ? '800' : null,
+  });
+  const prods = [
+    P('A', 1000, 100, true, true),     // 100,000 — баталгаажсан
+    P('B', 2000, 200, true, true),     // 400,000 — баталгаажсан
+    P('C', 5000, 100, true, false),    // 500,000 — ЗӨВХӨН тоолсон (1 гарын үсэг)
+    P('D', 3000, 100, false, false),   // 300,000 — огт тоологдоогүй
+  ];
+  const fin = [
+    { status: 'done', decision: 'approved', category: '6100', amount: 50000 },   // хөрөнгө авалт
+    { status: 'done', decision: 'approved', category: '6700', amount: 30000 },   // хөрөнгө авалт
+    { status: 'done', decision: 'approved', category: '6900', amount: 120000 },  // эзэн рүү гарсан
+    { status: 'done', decision: 'approved', category: '6950', amount: 99999 },   // зээлийн төлбөр — ОРОХГҮЙ
+    { status: 'done', decision: 'approved', category: '7100', amount: 99999 },   // цалин — ОРОХГҮЙ
+    { status: 'deleted', decision: 'approved', category: '6100', amount: 99999 },// устгасан — ОРОХГҮЙ
+    { status: 'done', decision: 'pending', category: '6100', amount: 99999 },    // батлаагүй — ОРОХГҮЙ
+  ];
+  const oc = ownerCapital(prods, fin);
+  eq(oc.invTotal, 1300000, 'эзэн: агуулахын нийт өртөг');
+  eq(oc.invVerified, 500000, 'эзэн: ЗӨВХӨН 2 гарын үсэгтэй нь баталгаажсан');
+  eq(oc.invUnverified, 800000, 'эзэн: баталгаажаагүй үлдэл');
+  eq(oc.coBuy, 80000, 'эзэн: компанийн хөрөнгө авалт (61xx–67xx)');
+  eq(oc.coOut, 120000, 'эзэн: компанийн данснаас эзэн рүү гарсан (6900)');
+  eq(oc.funded, 200000, 'эзэн: компанийн санхүүжилт нийт');
+
+  // ⛔ Эзэн рүү гарсан мөнгийг ЗААВАЛ хасна — эс бөгөөс нэг хөрөнгө хоёр удаа тоологдоно
+  eq(oc.ownerVerified, 300000, 'эзэн: баталгаажсан 500k − санхүүжилт 200k = 300k');
+  eq(oc.ownerTotal, 1100000, 'эзэн: тооллого дуусвал 1,300k − 200k = 1,100k');
+  eq(oc.gap, 800000, 'эзэн: тооллого дуусгахын үнэ цэн');
+
+  // ⛔ 6950 (зээлийн үндсэн төлбөр) хасагдахгүй — тэр нь хөрөнгө авдаггүй
+  eq(ownerCapital(prods, fin.filter(f => f.category !== '6950')).ownerVerified, 300000,
+     'эзэн: 6950 тооцоонд огт нөлөөлөхгүй');
+
+  // ⛔ СӨРӨГ БОЛОХГҮЙ — компанийн мөнгө их бол «эзэн юу ч оруулаагүй» (0)
+  const big = ownerCapital(prods, [{ status: 'done', decision: 'approved', category: '6100', amount: 9000000 }]);
+  eq(big.ownerVerified, 0, 'эзэн: сөрөг гарахгүй (0-оор тагласан)');
+  eq(big.ownerTotal, 0, 'эзэн: нийт нь ч сөрөг болохгүй');
+
+  // ── Актын мөрүүд: ЗӨВХӨН баталгаажсан, өртөгтэй, үлдэгдэлтэй ──
+  const rows = ownerCapitalRows(prods);
+  eq(rows.length, 2, 'акт: зөвхөн 2 гарын үсэгтэй бараа');
+  eq(rows.map(r => r.sku).join(','), 'B,A', 'акт: дүнгээр буурахаар эрэмбэлэгдэнэ');
+  eq(rows[0].sum, 400000, 'акт: мөрийн дүн = өртөг × тоо');
+  eq(ownerCapitalRows([P('Z', 0, 50, true, true)]).length, 0, 'акт: өртөггүй бараа орохгүй');
+  eq(ownerCapitalRows([P('Y', 100, 0, true, true)]).length, 0, 'акт: үлдэгдэлгүй бараа орохгүй');
+
+  // ИНВАРИАНТ: актын мөрүүдийн нийлбэр = баталгаажсан агуулахын өртөг
+  eq(rows.reduce((s, r) => s + r.sum, 0), oc.invVerified,
+     'ИНВАРИАНТ: актын жагсаалтын нийлбэр = баталгаажсан өртөг');
+}
+
+// ═══ SCAN: эзний хөрөнгийн тооцоо ганц газар, актад баталгаажсан нь л орно ═══
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function ownerCapital('), src.indexOf('function ownerCapitalRows'));
+  ok(fn.length > 300, 'scan: ownerCapital олдов');
+  // ⛔ Эзэн рүү гарсан мөнгө (6900) ЗААВАЛ хасагдана
+  ok(/'6900'/.test(fn) && /coOut/.test(fn), 'scan: 6900 хасагдана (хоёр удаа тоологдохгүй)');
+  // ⛔ Сөрөг болохгүй
+  eq((fn.match(/Math\.max\(0,/g) || []).length >= 3, true, 'scan: сөрөг дүн 0-оор тагласан');
+  // ⛔ Баталгаажсан нь `warehouseCapital`-ийн `verified` (2 гарын үсэг) — дахин бодохгүй
+  ok(/warehouseCapital\(/.test(fn), 'scan: баталгаажсан дүнг warehouseCapital-аас авна');
+  eq((fn.match(/stock_approved_at/g) || []).length, 0, 'scan: гарын үсгийн дүрмийг дахин бичихгүй');
+
+  const card = src.slice(src.indexOf('function psOwnerCapitalHtml'), src.indexOf('function openOwnerCapitalAct'));
+  ok(/state\.isCEO/.test(card), 'scan: эзний өглөг зөвхөн CEO-д');
+  ok(/ownerVerified/.test(card) && /oc\.gap/.test(card), 'scan: картад баталгаажсан дүн ба цоорхой');
+
+  const act = src.slice(src.indexOf('function openOwnerCapitalAct'), src.indexOf('function renderProductSheet'));
+  ok(/ownerCapitalRows\(/.test(act), 'scan: акт баталгаажсан жагсаалтаас гарна');
+  ok(/window\.open\(/.test(act), 'scan: акт ШИНЭ ЦОНХОНД (харагдах элементээс PDF)');
+  // ⚠ Тайлбарт дурдах нь зүгээр — ОПЦИ болгож дамжуулахыг хаана (элементийн өргөнтэй зөрвөл тасарна)
+  eq((act.match(/windowWidth\s*:/g) || []).length, 0, 'scan: windowWidth опци дамжуулахгүй — баримт тасарна');
+  ok(/ОРООГҮЙ/.test(act), 'scan: баталгаажаагүй хөрөнгө актад ороогүйг ил бичнэ');
 }

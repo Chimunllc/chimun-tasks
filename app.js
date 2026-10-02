@@ -8658,6 +8658,7 @@ function buildStatementImport(parsed, meta, opts) {
     opening, closing_stated: (meta && meta.closing != null) ? Math.round(meta.closing) : null,
     closing_calc: opening != null ? opening + credit - debit : null,
     credit_total: credit, debit_total: debit, row_count: rows.length,
+    months: stmtMonthSplit(rows, opening),
   };
   return { stmt, incomes };
 }
@@ -8983,6 +8984,34 @@ function assertMonthOpen(month, what) {
 }
 /* Сар хаахад БЭЛЭН эсэх — шалтгаанын жагсаалт. Хоосон = бэлэн. Цэвэр функц (тестлэгдэнэ).
    CEO эдгээрийг үл хэрэгсэж хааж ч болно (зориудаар — шалтгаан нь бичлэгт үлдэнэ). */
+/* ⚖️ ХУУЛГЫГ САРААР ЗАДЛАХ = `stmtMonthSplit(rows, opening)` (2026-10-02).
+   ЯАГААД: «01…өнөөдөр» гэж татсан хуулганд (09-01…10-02) 9 сарын дата БҮРЭН
+   байдаг — задлагч мөр бүрийн огноо/дүнг мэддэг атлаа зөвхөн НИЙТ дүнг
+   хадгалдаг тул тэр сарыг батлах боломжгүй болж, хүнээс ШИНЭ хуулга татахыг
+   шаарддаг байв. Гараар нэмэлт ажил шаардсан боломж үхдэг (CLAUDE.md дүрэм).
+   Буцаана: `{"2026-09": {c, d, end}, …}` — `end` нь тухайн сарын сүүлчийн
+   гүйлгээний дараах үлдэгдэл.
+   ⚠ Эхний үлдэгдэл уншигдаагүй бол `end` нь **null** (0 гэж бичвэл «тэр сар
+     тэглэгдсэн» гэж уншигдана) — урсгал (c/d) нь хэвээр тоологдоно. */
+function stmtMonthSplit(rows, opening) {
+  const by = new Map();
+  (rows || []).forEach(r => {
+    const m = String((r && r.date) || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(m)) return;
+    const g = by.get(m) || { c: 0, d: 0 };
+    g.c += Math.abs(Number(r.credit) || 0);
+    g.d += Math.abs(Number(r.debit) || 0);
+    by.set(m, g);
+  });
+  const out = {};
+  let run = opening == null ? null : Math.round(Number(opening) || 0);
+  [...by.keys()].sort().forEach(m => {
+    const g = by.get(m);
+    if (run != null) run = Math.round(run + g.c - g.d);
+    out[m] = { c: Math.round(g.c), d: Math.round(g.d), end: run };
+  });
+  return out;
+}
 /* Сарын СҮҮЛЧИЙН өдөр. ⚠ Түүхий `Date`-ээр бодвол UTC+8-д нэг өдөр гулсана —
    `addDays` (огнооны ганц эх сурвалж) -ээр дараа сарын 1-ээс нэг хоног хасна. */
 function monthEndDay(month) {
@@ -9016,22 +9045,48 @@ function monthSeal(stmts, acct, month) {
     && String(s.period_from) <= end && String(s.period_to) >= first);
   if (!mine.length) return { state: 'none', why: `${m} сарын хуулга ороогүй` };
   if (mine.every(s => String(s.ccy || 'MNT').toUpperCase() !== 'MNT')) return { state: 'ccy', why: 'валют данс — шалгагдахгүй' };
-  const ender = mine.find(s => String(s.period_to) === end && s.closing_stated != null);
-  if (!ender) {
-    const last = mine.map(s => String(s.period_to)).sort().pop();
-    return { state: 'noend', closing: null, last,
-      why: `${end}-ны эцсийн үлдэгдэл алга (хуулга ${last}-нд дуусдаг) — ${first}…${end} хуулга татаж оруул` };
-  }
+  // ① ХАМГИЙН ХҮЧТЭЙ: яг тэр сарын бүтэн хуулга (банк өөрөө сарын эцсийг хэлсэн)
   const exact = mine.find(s => String(s.period_from) === first && String(s.period_to) === end
     && s.opening != null && s.closing_stated != null);
-  const closing = Number(ender.closing_stated);
-  if (!exact) return { state: 'noflow', closing, why: `${end}-ны үлдэгдэл мэдэгдэх ч ${first}…${end} бүтэн хуулга алга` };
-  const b = stmtBalanceCheck(exact);
-  const base = { opening: Number(exact.opening), closing, credit: Number(exact.credit_total) || 0,
-    debit: Number(exact.debit_total) || 0, id: exact.id };
-  if (b.skip) return { ...base, state: 'noflow', why: b.skip };
-  return b.ok ? { ...base, state: 'sealed', diff: 0 }
-    : { ...base, state: 'diff', diff: b.diff, why: gapBalanceWhy(b.diff) };
+  if (exact) {
+    const b = stmtBalanceCheck(exact);
+    const base = { opening: Number(exact.opening), closing: Number(exact.closing_stated),
+      credit: Number(exact.credit_total) || 0, debit: Number(exact.debit_total) || 0, id: exact.id };
+    if (!b.skip) {
+      return b.ok ? { ...base, state: 'sealed', diff: 0 }
+        : { ...base, state: 'diff', diff: b.diff, why: gapBalanceWhy(b.diff) };
+    }
+  }
+  /* ② САРЫГ БҮРЭН ХАМАРСАН, ӨӨРӨӨ ТЭНЦСЭН хуулгаас ГАРГАЖ АВНА (2026-10-02, CEO).
+     «09-01…10-02» хуулганд 9 сарын дата БҮРЭН байдаг — шинэ хуулга татуулах нь
+     утгагүй нэмэлт ажил (гараар ажил шаардсан боломж үхдэг). Тэр хуулга ӨӨРӨӨ
+     тэнцсэн = банкны хэлсэн эцсийн үлдэгдэлтэй таарсан гэсэн үг тул түүний
+     дотоод сарын зүсэлт нь БАТЛАГДСАН датан дээрх арифметик.
+     ⛔ ТЭНЦЭЭГҮЙ эсвэл ШАЛГАГДААГҮЙ хуулгаас ГАРГАЖ АВАХГҮЙ — батлагдаагүй
+        тооноос гаргасан зүсэлт батлагдаагүй хэвээр. */
+  const host = mine.find(s => String(s.period_from) <= first && String(s.period_to) >= end
+    && s.months && s.months[m] && s.months[m].end != null
+    && (() => { const b = stmtBalanceCheck(s); return b.ok && !b.skip; })());
+  if (host) {
+    const g = host.months[m];
+    const prevK = Object.keys(host.months).filter(k => k < m).sort().pop();
+    const op = prevK ? host.months[prevK].end
+      : (String(host.period_from) === first && host.opening != null ? Number(host.opening) : null);
+    return { state: 'sealed', diff: 0, opening: op == null ? null : Number(op), closing: Number(g.end),
+      credit: Number(g.c) || 0, debit: Number(g.d) || 0, id: host.id,
+      from: `${host.period_from}…${host.period_to}` };
+  }
+  // ③ Сарын эцсийн үлдэгдэл мэдэгдэх ч сарыг бүтэн хамарсан хуулга алга
+  const ender = mine.find(s => String(s.period_to) === end && s.closing_stated != null);
+  if (ender) return { state: 'noflow', closing: Number(ender.closing_stated),
+    why: `${end}-ны үлдэгдэл мэдэгдэх ч ${first}…${end} бүтэн хуулга алга` };
+  // ④ Сарын эцсийн үлдэгдэл огт алга
+  const last = mine.map(s => String(s.period_to)).sort().pop();
+  const hasHost = mine.some(s => String(s.period_from) <= first && String(s.period_to) >= end);
+  return { state: 'noend', closing: null, last,
+    why: hasHost
+      ? `${end}-ны эцсийн үлдэгдэл гарган авах боломжгүй — ${last}-нд дуусдаг хуулгыг ДАХИН оруулбал сараар задарна`
+      : `${end}-ны эцсийн үлдэгдэл алга (хуулга ${last}-нд дуусдаг) — ${first}…${end} хуулга татаж оруул` };
 }
 /* ⚖️ «ХЭДЭН ДАНСНААС ХЭД НЬ ТЭНЦСЭН» = `balanceStats`, ГАНЦ эх сурвалж (2026-10-02).
    Тэнцлийн төлөв өмнө нь ЗӨВХӨН «Сар хаах» дарахад харагддаг байв — тэр үед хэтэрхий
@@ -9521,8 +9576,18 @@ function renderStmtLedger() {
       : bad ? `<span class="recon-bad">⚠ зөрүү ${fmtMoney(r.diff)}</span>`
       : '<span class="mut">⃝ батлагдаагүй</span>';
     // Батлагдсан/зөрүүтэй бол бодолт НЭЭГДЭНЭ — «яаж тэнцсэн» нь хаалттай байх ёсгүй.
+    /* ⚠ Сарын дүн нь ӨРГӨН хуулгаас ГАРГАЖ АВСАН бол түүнийг ИЛ хэлнэ — «15,316,644₮»
+       гэсэн тоо хаанаас гарсныг мэдэхгүй бол хүн итгэхгүй. */
     const src = (list || []).find(st => String(st.id) === String(r.id));
-    const body = src ? stmtDetHtml(src, null)
+    const body = r.from
+      ? `<div class="stmt-lad">`
+        + `<div class="sl-k">Эхний үлдэгдэл</div><div class="sl-v">${r.opening == null ? '<span class="mut">—</span>' : fmtMoney(r.opening)}</div>`
+        + `<div class="sl-k">+ Орлого</div><div class="sl-v">${fmtMoney(r.credit)}</div>`
+        + `<div class="sl-k">− Зарлага</div><div class="sl-v">${fmtMoney(r.debit)}</div>`
+        + `<div class="sl-k sl-sum">= ${escapeHtml(sealMonth)}-ны эцсийн үлдэгдэл</div><div class="sl-v sl-sum">${fmtMoney(r.closing)}</div>`
+        + `<div class="sl-full">📄 ${escapeHtml(r.from)} хуулгаас гаргаж авав (тэр хуулга өөрөө тэнцсэн)</div>`
+        + `</div>`
+      : src ? stmtDetHtml(src, null)
       : `<div class="stmt-lad"><div class="sl-full">${escapeHtml(r.why || '')}</div></div>`;
     return `<details class="stmt-det"><summary class="recon-row seal-row">`
       + `<span class="recon-l seal-l">${isPersonalAcct(a) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(a))}</span>`

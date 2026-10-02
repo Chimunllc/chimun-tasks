@@ -2707,7 +2707,17 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
   // Тулгалтын хуулгаас нөхөж бүртгэх горим — банкнаас аль хэдийн гарсан зарлага тул
   // CEO/нягтлан үүсгэмэгц ШУУД Дууссан (батлах/гүйцэтгэх шат давхардуулахгүй).
   if (state._finBackfill && (state.isCEO || state.me === getFinanceExecutorEmail())) {
-    const bfDate = `${state._finBackfill.date}T12:00:00.000Z`;
+    /* Гүйлгээний БОДИТ ЦАГ байвал УБ-гийн офсеттэй (+08:00) бичнэ — мөрийн эхлэл
+       нь УБ-гийн огноо хэвээр үлдэх тул `finExpMonth`-ийн `slice(0,7)` зөв сар
+       өгнө, дэлгэц ч жинхэнэ цаг харуулна.
+       ⛔ `Z`-ээр (UTC болгон хөрвүүлж) БҮҮ бич — шөнө дунд орчмын гүйлгээ мөрөндөө
+         өмнөх өдөр болж, сарын зааг дээр өмнөх сарын зардал болно.
+       ⚠ Цаггүй банк/мөрд үд дундын UTC орлуулга хэвээр (огноо гулсахгүй) —
+         `isDateOnlyStamp` түүнийг таниад дэлгэцэд цаг харуулахгүй. */
+    const _bfT = String(state._finBackfill.time || '');
+    const bfDate = /^\d{2}:\d{2}:\d{2}$/.test(_bfT)
+      ? `${state._finBackfill.date}T${_bfT}+08:00`
+      : `${state._finBackfill.date}T12:00:00.000Z`;
     // Зардлын огноо = ГҮЙЛГЭЭ гарсан өдөр. Өмнө нь requested_at нь ИМПОРТ хийсэн
     // мөч байсан тул мөнгөн суурьтай тайлан (finExpMonth 'cash' = requested_at)
     // 8 сарын хуулгыг 9 сард оруулбал бүх зардлыг 9 сард тоолж, 8 сар дутуу гардаг байв.
@@ -6996,6 +7006,10 @@ function parseStatement(matrix) {
     let dm = dc.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
     let dateStr = dm ? `${dm[1]}-${pad2(dm[2])}-${pad2(dm[3])}` : '';
     if (!dateStr) { dm = dc.match(/(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})/); if (dm) dateStr = `${dm[3]}-${pad2(dm[2])}-${pad2(dm[1])}`; }
+    // Гүйлгээний БОДИТ ЦАГ — ХААН «2026-09-01 09:39:50», Голомт «2026-09-01T09:32:57».
+    // Огноогоо олсны ДАРАА хайна (эс бөгөөс утган дотор байгаа картын цаг оногдоно).
+    const tm = dateStr ? dc.slice(dc.indexOf(dm[0]) + dm[0].length).match(/^[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?/) : null;
+    const timeStr = tm ? `${pad2(tm[1])}:${tm[2]}:${tm[3] || '00'}` : '';
     if (!dateStr) {
       // Ихэнх огноогүй мөр = footer ("Нийт", "Эцсийн үлдэгдэл") → чимээгүй алгасна.
       // Гэхдээ УТГА + ЗАРЛАГЫН ДҮНТЭЙ мөр огноогоо алдвал бодит зардал чимээгүй алга
@@ -7005,7 +7019,7 @@ function parseStatement(matrix) {
       continue;
     }
     // Хаан дебитээ СӨРӨГ тоогоор бичдэг (-180000), Голомт эерэгээр — abs() хоёуланд зөв
-    rows.push({ date: dateStr, memo: cell(r, cols.memo), name: cell(r, cols.name),
+    rows.push({ date: dateStr, time: timeStr, memo: cell(r, cols.memo), name: cell(r, cols.name),
       account: cell(r, cols.account), credit: cols.credit >= 0 ? Math.abs(num(r[cols.credit])) : 0, debit: cols.debit >= 0 ? Math.abs(num(r[cols.debit])) : 0,
       _rate: cols.rate >= 0 ? Math.abs(num(r[cols.rate])) : 0 });
   }
@@ -7888,7 +7902,7 @@ async function openStatementClassifyModal() {
             hrl++; r.done = true; n++; continue;
           }
           const hbr = salaryBranchOf(r.memo, r.hourlyEmp.key);   // тодорхойгүй бол ХООСОН (КЕМП рүү буулгахгүй)
-          state._finBackfill = { date: r.date };
+          state._finBackfill = { date: r.date, time: r.time || '' };
           const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
             justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}] ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(), category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
           state._finBackfill = null;
@@ -7897,7 +7911,7 @@ async function openStatementClassifyModal() {
         }
         // Сарын цалин — хуулгаас шууд баталгаажна (тусдаа урсгал), ангилалд явуулахгүй.
         if (r.salaryEmp) {
-          state._finBackfill = { date: r.date };
+          state._finBackfill = { date: r.date, time: r.time || '' };
           const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
             justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}] ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(), category: '7100', deptBranch: salaryBranchOf(r.memo, r.salaryEmp, branchOf(srcKeyOf(r))), linkType: 'general', priority: 'low' });
           state._finBackfill = null;
@@ -7914,7 +7928,7 @@ async function openStatementClassifyModal() {
         const _alB = acctLearnOf(_acctDigits(r.account));   // ДАНС-суурьтай суралцлага (ижил данс руу шилжүүлэг)
         const brCode = (brValid ? brOwn : '') || (_alB && _alB.branch) || guessBranch(r.memo, routeOwner) || '';
         const cat = (r.depMatch ? '5810' : (r.cmpMatch ? '5800' : r.cat)) || CARD_PEND_CAT;   // барьцаа→5810, буулгалт→5800(захиалгад холбогдоно, зардал биш)
-        state._finBackfill = { date: r.date };
+        state._finBackfill = { date: r.date, time: r.time || '' };
         // Барьцаа буцаалт таарсан бол захиалгад ШУУД холбоно (⟦LNK|order⟧) → захиалга «✓ Барьцаа буцаасан» болно
         const _dm = r.depMatch || r.cmpMatch;   // барьцаа буцаалт эсвэл буулгалт → захиалгад холбоно
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,

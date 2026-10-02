@@ -22613,6 +22613,108 @@ function psDeprecLine(p) {
   return `<span class="ps-dep">📉 ${escapeHtml(d.label)} · ${d.years}ж · <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>`
     + (d.noDate ? ' · <span class="ps-dep-warn">⚠ авсан огноогүй</span>' : '') + '</span>';
 }
+/* 💼 Эзний хөрөнгө оруулалтын карт — «Өртөг ба хөрөнгө» дэлгэцэд.
+   ⛔ Тусдаа цэс үүсгэхгүй (хэн ч нээдэггүй дэлгэц үхдэг) — хөрөнгийн үнэ цэн
+     харагддаг яг тэр дэлгэц дээр суулгана. */
+function psOwnerCapitalHtml() {
+  if (!state.isCEO) return '';                                  // эзний өглөг — зөвхөн CEO
+  const oc = ownerCapital(state.products || [], state.financeRequests || []);
+  if (!oc.invTotal) return '';
+  const row = (l, v, cls) => `<div class="oc-row${cls ? ' ' + cls : ''}"><span>${l}</span><b>${v}</b></div>`;
+  return `<div class="oc-card">
+    <div class="oc-hd">💼 Эзний хөрөнгө оруулалт</div>
+    <div class="oc-v">${fmtMoney(oc.ownerVerified)}</div>
+    <div class="oc-s">баталгаажсан — балансад энэ тоо орно</div>
+    <div class="oc-rows">
+      ${row('Агуулахын өртөг (2 гарын үсэгтэй)', fmtMoney(oc.invVerified))}
+      ${row('− Компанийн данснаас хөрөнгө авалт', '−' + fmtMoney(oc.coBuy), 'oc-minus')}
+      ${row('− Компанийн данснаас эзэн рүү гарсан', '−' + fmtMoney(oc.coOut), 'oc-minus')}
+      ${row('= Эзний оруулсан', fmtMoney(oc.ownerVerified), 'oc-sum')}
+    </div>
+    ${oc.gap ? `<div class="oc-gap">📦 Тооллого дуусаагүй: <b>${fmtMoney(oc.invUnverified)}</b> баталгаажаагүй.
+      Дуусгавал эзний оруулалт <b>${fmtMoney(oc.ownerTotal)}</b> болж <b>${fmtMoney(oc.gap)}</b>-аар нэмэгдэнэ.
+      <button class="btn oc-go" data-oc-count>📋 Тооллого руу</button></div>` : ''}
+    <div class="oc-note">Зарчим: компани өөрөө төлснөө нотолж чадахгүй хөрөнгө = эзэн оруулсан.
+      Эзэн рүү гарсан мөнгийг хасдаг нь — тэр мөнгөөр авсан бараа компанийх, хоёр удаа тоологдохгүй.</div>
+    <div class="oc-act"><button class="btn btn-primary" data-oc-act>📄 Акт бэлдэх</button>
+      <span class="oc-dim">${oc.verifiedN} бараа · гарын үсэг зурж баримтжуулна</span></div>
+  </div>`;
+}
+/* Акт — ШИНЭ ЦОНХОНД (харагдах элементээс PDF; нуугдмал элемент баримтыг таслана).
+   ⚠ ӨНГӨ НЬ ЗОРИУД ХАТУУ — энэ нь аппын дэлгэц БИШ, ХЭВЛЭХ баримт. Аппын
+     токен (var(--text) г.м.) ашиглавал харанхуй горимд цаас хар болж хэвлэгдэнэ.
+     Дизайны өрийн харуул үүнийг тоолдог тул PR-д «дизайны-өр-өсөхийг-зөвшөөрөв»
+     шошго хэрэгтэй — нэхэмжлэхийн баримт ч яг ийм шалтгаанаар хатуу өнгөтэй. */
+function openOwnerCapitalAct() {
+  const oc = ownerCapital(state.products || [], state.financeRequests || []);
+  const rows = ownerCapitalRows(state.products || []);
+  if (!oc.ownerVerified) { showToast('Баталгаажсан хөрөнгө алга — эхлээд тооллогоо дуусгана уу', 'warn', 4000); return; }
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
+  const L = CHIMUN_LEGAL, today = todayStr();
+  const esc = (t) => escapeHtml(String(t == null ? '' : t));
+  const body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.sku)}</td><td class="l">${esc(r.name)}</td>
+    <td class="n">${r.qty}</td><td class="n">${fmtMoney(r.cost)}</td><td class="n">${fmtMoney(r.sum)}</td></tr>`).join('');
+  w.document.write(`<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Хөрөнгийн акт ${esc(today)}</title>
+<style>
+ body{font:13px/1.55 system-ui,'Segoe UI',sans-serif;color:#111;background:#eceae4;margin:0;padding:18px;}
+ .bar{max-width:800px;margin:0 auto 12px;display:flex;gap:8px;}
+ .bar button{padding:9px 16px;border:1px solid #c9c6bd;background:#fff;border-radius:8px;font:inherit;font-weight:600;cursor:pointer;}
+ .bar .main{background:#2f6df6;border-color:#2f6df6;color:#fff;}
+ .sheet{max-width:800px;margin:0 auto;background:#fff;padding:34px 38px;box-sizing:border-box;}
+ h1{font-size:19px;margin:0 0 4px;text-align:center;letter-spacing:.3px;}
+ .sub{text-align:center;color:#666;font-size:12px;margin-bottom:18px;}
+ .p{margin:9px 0;}
+ table{width:100%;border-collapse:collapse;margin-top:12px;font-size:11.5px;}
+ th,td{border:1px solid #d4d1c9;padding:4px 6px;text-align:center;}
+ th{background:#f3f1ec;}
+ td.l{text-align:left;} td.n{text-align:right;font-variant-numeric:tabular-nums;}
+ .calc{margin:14px 0;border:1px solid #d4d1c9;}
+ .calc div{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eceae4;}
+ .calc div:last-child{border-bottom:none;background:#f3f1ec;font-weight:700;}
+ .sig{display:flex;gap:40px;margin-top:34px;}
+ .sig div{flex:1;}
+ .ln{border-bottom:1px solid #111;height:34px;margin-bottom:4px;}
+ .fine{font-size:11px;color:#666;margin-top:16px;line-height:1.5;}
+</style></head><body>
+<div class="bar"><button class="main" onclick="dl()">📄 PDF татах</button><button onclick="window.print()">🖨 Хэвлэх</button></div>
+<div class="sheet" id="sheet">
+ <h1>ХӨРӨНГИЙН АКТ</h1>
+ <div class="sub">Эзэмшигчийн оруулсан хөрөнгийг компанийн балансад бүртгэх тухай · ${esc(today)}</div>
+ <p class="p"><b>Хүлээн авагч:</b> ${esc(L.name)} (РД ${esc(L.reg)}), ${esc(L.address)}</p>
+ <p class="p"><b>Хөрөнгө оруулагч:</b> ${esc(L.director)}, ${esc(L.directorTitle)}</p>
+ <p class="p">Доорх хөрөнгийг эзэмшигч өөрийн хөрөнгөөр худалдан авч компанийн үйл ажиллагаанд ашиглуулсан болохыг тогтоов. Хөрөнгийн үнэлгээг <b>худалдан авсан өртгөөр</b> тооцов. Уг дүн компанийн эзэмшигчийн өмнө хүлээх <b>өглөг</b> болно.</p>
+ <div class="calc">
+  <div><span>Агуулахын хөрөнгө — тоологдож баталгаажсан (${rows.length} нэр төрөл)</span><b>${fmtMoney(oc.invVerified)}</b></div>
+  <div><span>Хасах: компанийн данснаас худалдан авсан хөрөнгө</span><b>−${fmtMoney(oc.coBuy)}</b></div>
+  <div><span>Хасах: компанийн данснаас эзэмшигчид шилжүүлсэн</span><b>−${fmtMoney(oc.coOut)}</b></div>
+  <div><span>ЭЗЭМШИГЧИЙН ОРУУЛСАН ХӨРӨНГӨ</span><b>${fmtMoney(oc.ownerVerified)}</b></div>
+ </div>
+ <p class="p"><b>Нийт дүн үсгээр:</b> ${esc(typeof mnNumToWords === 'function' ? mnNumToWords(Math.round(oc.ownerVerified)) + ' төгрөг' : '')}</p>
+ <table><thead><tr><th>№</th><th>Код</th><th>Хөрөнгийн нэр</th><th>Тоо</th><th>Нэгж өртөг</th><th>Дүн</th></tr></thead><tbody>${body}</tbody></table>
+ <div class="sig">
+  <div><div class="ln"></div>Хөрөнгө оруулагч: ${esc(L.director)}</div>
+  <div><div class="ln"></div>Хүлээн авсан: ${esc(L.name)}</div>
+ </div>
+ <p class="fine">Акт нь аппын тооллогын бүртгэлд үндэслэв. Жагсаалтад зөвхөн нярав тоолж, ҮАХ-ийн захирал баталгаажуулсан хөрөнгө орсон болно. Баталгаажаагүй ${fmtMoney(oc.invUnverified)}-ийн хөрөнгө энэ актад ОРООГҮЙ.</p>
+</div>
+<script>
+function h2p(){return new Promise(function(res,rej){if(window.html2pdf)return res();
+ var s=document.createElement('script');
+ s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+ s.onload=function(){res();};s.onerror=function(){rej(new Error('x'));};document.head.appendChild(s);});}
+function dl(){var el=document.getElementById('sheet');
+ h2p().then(function(){return (document.fonts&&document.fonts.ready)?document.fonts.ready.catch(function(){}):0;})
+  .then(function(){
+    // ⚠ ХАРАГДАХ элементээс рендэрлэж байгаа тул windowWidth заахгүй.
+    return window.html2pdf().set({filename:'khorongiin-akt-${esc(today)}.pdf',margin:[10,10,12,10],
+      image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},
+      jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}}).from(el).save();})
+  .catch(function(){alert('PDF үүсгэгч татагдсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});
+}
+<\/script></body></html>`);
+  w.document.close();
+}
 function renderProductSheet(mode) {
   const cfg = PSHEET[mode];
   if (!cfg) return '';
@@ -22658,7 +22760,7 @@ function renderProductSheet(mode) {
     </div>`;
   return `<div class="ps-wrap">
     <div class="ps-head">
-      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${mode === 'catalog' ? ' <b>Нэр, ангилал нь mevent.mn сайтад ч шууд өөрчлөгдөнө.</b>' : ''}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div>${mode === 'cost' ? psDeprecSummary() : ''}</div>
+      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${mode === 'catalog' ? ' <b>Нэр, ангилал нь mevent.mn сайтад ч шууд өөрчлөгдөнө.</b>' : ''}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div>${mode === 'cost' ? psDeprecSummary() + psOwnerCapitalHtml() : ''}</div>
       <input id="ps-q" class="ps-q ui-raw" value="${escapeHtml(q)}" placeholder="Хайх (нэр, ангилал, код)…" aria-label="Хайх">
     </div>
 
@@ -22687,6 +22789,8 @@ async function psSaveAll() {
   render();
 }
 function attachProductSheetHandlers(mode) {
+  document.querySelector('[data-oc-act]')?.addEventListener('click', openOwnerCapitalAct);
+  document.querySelector('[data-oc-count]')?.addEventListener('click', () => { state.view = 'stockcount'; render(); });
   const list = document.getElementById('ps-list');
   if (list && state._psScroll) { list.scrollTop = state._psScroll; state._psScroll = 0; }
   const qEl = document.getElementById('ps-q');
@@ -30252,6 +30356,59 @@ function warehouseCapital(products, branchKey) {
   });
   return { capital, withCost, noCost, verified, verifiedN,
            verifiedPct: capital > 0 ? verified / capital : 0 };
+}
+
+/* ─── ЭЗНИЙ ХӨРӨНГӨ ОРУУЛАЛТ (2026-10-02, CEO шийдвэр) ──────────────────────
+   Зорилго: 6 жилийн турш хувийн мөнгө ба компанийн ашиг ХОЛИЛДОЖ хөрөнгө
+   авсан тул аль нь алийг нь санах боломжгүй. Тиймээс ТҮҮХИЙГ ухахгүй, эсрэгээр
+   нь нотлох баримтаас бодно:
+
+     Эзний оруулсан = Агуулахын өртөг − компанийн мөнгөөр авсан нь
+
+   ⛔ КОМПАНИЙН ДАНСНААС ЭЗЭН РҮҮ ГАРСАН МӨНГИЙГ (6900) ЗААВАЛ ХАСНА. Тэр мөнгө
+     компаниас ГАРСАН тул түүгээр авсан бараа компанийх — хоёуланг нь тоолвол
+     нэг хөрөнгө хоёр удаа бүртгэгдэж, эзний өглөг хиймлээр хоёр дахин өснө.
+   ⛔ БАЛАНСАД ЗӨВХӨН БАТАЛГААЖСАН (2 гарын үсэгтэй) ХӨРӨНГӨ ОРНО. Тооллогоор
+     баталгаажаагүй тоо нь Booqable/гараас ирсэн, хэн ч биечлэн шалгаагүй —
+     түүн дээр өглөг үүсгэвэл татварын шалгалтад нотлох баримтгүй үлдэнэ.
+     `ownerTotal` нь зөвхөн «тооллого дуусвал хэд болох вэ» гэсэн ЛАВЛАГАА.
+   ⛔ СӨРӨГ БОЛОХГҮЙ — компанийн мөнгө агуулахын өртгөөс их бол эзэн юу ч
+     оруулаагүй гэсэн үг (0), компани эзэнд өртэй гэсэн үг БИШ.
+   ⚠ Аппын бүртгэл саяхнаас эхэлсэн тул өмнөх жилүүдэд компанийн ашгаар авсан
+     хөрөнгийн ул мөр БАЙХГҮЙ — энэ томьёо тэр бүгдийг эзний оруулалт гэж үзнэ.
+     Эзэнд ашигтай тул АКТ-аар баримтжуулах нь зайлшгүй. */
+function ownerCapital(products, finance, branchKey) {
+  const w = (typeof warehouseCapital === 'function')
+    ? warehouseCapital(products, branchKey)
+    : { capital: 0, verified: 0, verifiedN: 0, withCost: 0, noCost: 0 };
+  let coBuy = 0, coOut = 0;
+  (finance || []).forEach(r => {
+    if (!r || r.status === 'deleted' || r.decision !== 'approved') return;
+    const c = String(r.category || ''), a = Number(r.amount) || 0;
+    if (/^6[1-7]/.test(c)) coBuy += a;          // компанийн данснаас хөрөнгө авсан
+    else if (c === '6900') coOut += a;          // компанийн данснаас эзэн рүү гарсан
+  });
+  const funded = coBuy + coOut;
+  return {
+    invTotal: w.capital, invVerified: w.verified,
+    invUnverified: Math.max(0, w.capital - w.verified),
+    verifiedN: w.verifiedN, withCost: w.withCost, noCost: w.noCost,
+    coBuy, coOut, funded,
+    ownerVerified: Math.max(0, w.verified - funded),   // ← балансад орох тоо
+    ownerTotal: Math.max(0, w.capital - funded),       // ← тооллого дуусвал
+    get gap() { return Math.max(0, this.ownerTotal - this.ownerVerified); },
+  };
+}
+/* Актад орох мөрүүд — ЗӨВХӨН баталгаажсан, өртөгтэй бараа. Өртгөөр буурахаар. */
+function ownerCapitalRows(products) {
+  return (products || []).filter(p => p && !p.archived
+      && !(typeof isService === 'function' && isService(p))
+      && !(typeof isPackage === 'function' && isPackage(p))
+      && (Number(p.cost) || 0) > 0 && (Number(p.stock) || 0) > 0
+      && (typeof stockOpened === 'function' && stockOpened(p)))
+    .map(p => ({ sku: p.sku || p.id || '', name: p.name || '', qty: Number(p.stock) || 0,
+                 cost: Number(p.cost) || 0, sum: (Number(p.cost) || 0) * (Number(p.stock) || 0) }))
+    .sort((a, b) => b.sum - a.sum);
 }
 
 /* ЭЛЭГДЭЛ — түрээсийн бараа хуучирна, тэр нь ЗАРДАЛ (2026-09-24, CEO шийдвэр).

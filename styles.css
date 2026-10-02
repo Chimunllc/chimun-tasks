@@ -8142,3 +8142,12 @@ select.no-asar-len {
 /* 🔒 Эхний үлдэгдлийн 3 дахь гарын үсэг — CEO эцэслэнэ (2026-10-02). */
 .stc-open-seal { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
 .stc-open-sealed { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }
+
+/* 🔒 Эцэслээгүй бараа — тооллого хаалттай (2026-10-02). Суурь нь баталгаажаагүй
+   бол зөрүү юутай ч харьцуулагдахгүй. */
+.stc-active-blk { border-color: var(--warn); }
+.stc-blk {
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  background: var(--warn-soft); color: var(--warn); border-radius: var(--r-md);
+  font-size: var(--fs-sm); line-height: 1.5;
+}

@@ -5270,6 +5270,20 @@ function stockOpened(p)   { return stockCounted(p) && stockApproved(p); }
    ЯАГААД түгжээг «нээх» товч БАЙХГҮЙ вэ: залруулах зам аль хэдийн бий (тооллого),
    тиймээс нээх товч нь зөвхөн АУДИТЫН МӨРГҮЙ засах нүх болно. */
 function stockSealed(p) { return !!(p && p.stock_locked_at); }
+/* ⛔ ЭЦЭСЛЭЭГҮЙ БАРААГ ТООЛОХ УТГАГҮЙ (2026-10-02, CEO барив — «тооллого хийгээд
+   байна»). Тооллого нь «системд хэд байна» гэдэгтэй харьцуулдаг; суурь нь
+   баталгаажаагүй бол тэр тоо нь ӨӨРӨӨ эргэлзээтэй учир зөрүү нь юу ч хэлэхгүй.
+   Улмаар зөрүү нь нөөцийг засаж, алдагдлын ЗАРДАЛ болж салбарын ашиг, COO-гийн
+   30%-д хүрнэ — батлагдаагүй суурь дээр мөнгөний шийдвэр гарна.
+   ⚠ БАРАА ТУС БҮРЭЭР — 51 бараа аль хэдийн эцэслэгдсэн тул тэднийг тоолж болно.
+     Бүгдийг хүлээвэл ажил зогсоно. */
+function countBlockReason(p) {
+  if (!p) return 'Бараа олдсонгүй';
+  if (stockSealed(p)) return '';
+  if (!stockCounted(p)) return 'Эхний үлдэгдэл тоологдоогүй — эхлээд суурь тогтооно';
+  if (!stockApproved(p)) return 'Эхний үлдэгдэл хянагдаагүй — ҮАХ захирал хянана';
+  return 'Эхний үлдэгдэл эцэслээгүй — CEO эцэслэсний дараа тоолно';
+}
 // 'todo' тоолоогүй · 'wait' тоолсон, батлах хүлээж буй · 'done' хоёр гарын үсэгтэй
 function openingSignState(p) {
   if (stockOpened(p)) return 'done';
@@ -5626,6 +5640,9 @@ async function loadStockCounts(sessionId) {
 
 // Тоолсныг бүртгэнэ. Нөөцийг ХӨНДӨХГҮЙ — зөвхөн бичилт.
 async function saveStockCount({ sessionId, sku, systemQty, countedQty, repairQty, writeoffQty }) {
+  // ⛔ Эцэслээгүй суурьтай барааг тоолж БИЧИХГҮЙ — зөрүү нь юутай ч харьцуулагдахгүй.
+  const _blk = countBlockReason(productBySku(sku));
+  if (_blk) throw new Error(_blk);
   const cnt = Number(countedQty) || 0;
   // Эвдэрсэн нь тоолсноос их байж болохгүй — үлдсэн зайд нь багтаана (актлахыг эхэлж).
   const wo = Math.min(Math.max(0, Math.round(Number(writeoffQty) || 0)), cnt);
@@ -5782,6 +5799,11 @@ async function rejectOpeningCount(sku) {
 async function applyStockCount(row) {
   const p = productBySku(row.sku);
   if (!p) throw new Error('Бараа олдсонгүй: ' + row.sku);
+  /* ⛔ МӨНГӨНИЙ ЗАМ — энд зөрүү нь нөөцийг засаж, алдагдлын зардал болж
+     салбарын ашиг ба COO-гийн 30%-д хүрнэ. Эцэслээгүй суурь дээр хэрэгжүүлбэл
+     батлагдаагүй тоонд тулгуурласан мөнгөний шийдвэр гарна. */
+  const _blk = countBlockReason(p);
+  if (_blk) throw new Error(_blk);
   const d = countDiff(row);
   if (!d) return;
   // Салбарын хуваарилалт: зөрүүг M-Event дээр залруулна (нөөцийн үндсэн салбар),
@@ -22150,7 +22172,14 @@ function renderStockCount() {
   const actOk = Math.max(0, actCnt - actRep - actWo);
   const dmgOver = (actRep + actWo) > actCnt;   // тоолсноос их эвдрэл = буруу оролт
 
-  const actCard = act ? `<div class="stc-active">
+  /* ⛔ Эцэслээгүй бараа сонгогдвол ТООЛОХ хэсгийг огт гаргахгүй — шалтгааныг
+     нь ил бичнэ. Унтраасан товч юу буруугийн хэлдэггүй. */
+  const actBlk = act ? countBlockReason(act) : '';
+  const actCard = act && actBlk ? `<div class="stc-active stc-active-blk">
+      <div class="stc-active-n">${escapeHtml(act.name || '')}</div>
+      <div class="stc-active-m">${escapeHtml(act.code || act.sku || '')}</div>
+      <div class="stc-blk">🔒 ${escapeHtml(actBlk)}.<br>Тооллого нь «системд хэд байна» гэдэгтэй харьцуулдаг — суурь нь баталгаажаагүй бол зөрүү юу ч хэлэхгүй.</div>
+    </div>` : act ? `<div class="stc-active">
       <div class="stc-active-n">${escapeHtml(act.name || '')}</div>
       <div class="stc-active-m">${escapeHtml(act.code || act.sku || '')}${act.category ? ' · ' + escapeHtml(act.category) : ''}</div>
       <div class="stc-active-row">

@@ -37751,7 +37751,7 @@ function openStaffCardModal(key) {
         ${isActive ? `<label class="staff-finperm"><input type="checkbox" data-sc-finperm ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''}/>🏦 Санхүү: салбар засах эрх</label>` : ''}
         <div class="sc-row2"><button class="btn" data-sc-doc>📄 Үнэмлэх харах</button>
           <span class="sc-pin">🔑 <b data-sc-pinval>${m.pin ? '••••' : '—'}</b>${m.pin ? ' <button class="staff-pin-show" data-sc-pinshow>харах</button>' : ''}</span></div>
-        ${isActive ? `<div class="sc-row2"><button class="btn" data-sc-contract style="border-color:var(--primary);color:var(--primary);">📄 Хөдөлмөрийн гэрээ бэлдэх</button></div>` : ''}` : ''}
+        ${isActive ? `<div class="sc-row2"><button class="btn sc-contract-btn" data-sc-contract>📄 Хөдөлмөрийн гэрээ бэлдэх</button></div>` : ''}` : ''}
         ${canStatus ? `<div class="sc-row2">${isActive ? `<button class="btn btn-danger" data-sc-status="leave">🚪 Гарсан гэж тэмдэглэх</button>` : `<button class="btn" data-sc-status="restore">↩ Сэргээх</button>`}</div>` : ''}
       </div>` : '';
     // ── Юу хийж чадах (энгийн үгээр — албан тушаалын багцаас) ──
@@ -37762,9 +37762,9 @@ function openStaffCardModal(key) {
       const tags = [..._cs.views.map(l => `<span class="sc-cap-tag">${escapeHtml(l)}</span>`),
                     ..._cs.actions.map(l => `<span class="sc-cap-tag sc-cap-act">✎ ${escapeHtml(l)}</span>`)].join('');
       capBox = `<div class="sc-sec"><div class="sc-sec-t">🔓 Юу хийж чадах</div>
-        ${isFullS ? '<div style="font-size:12.5px;">Бүх эрх — хязгааргүй (удирдлага).</div>'
-          : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Албан тушаал <b style="color:var(--text);">${escapeHtml(m.role || '—')}</b>-д ногдох бэлэн эрх. Өөрчлөх бол «⚙️ Ажилтан удирдах»-аас албан тушаалыг нь солино; онцгой тохиолдолд доорх «🔑 Нарийвчилсан эрх».</div>
-            ${tags ? `<div class="sc-caps">${tags}</div>` : '<div style="font-size:12px;color:var(--muted);">Үндсэн ажил — Тойм · Миний ажил · Ирц. Захиалга/бусад цэс нээхгүй (ажлаа даалгавраар авна).</div>'}`}
+        ${isFullS ? '<div class="sc-note sc-note-b">Бүх эрх — хязгааргүй (удирдлага).</div>'
+          : `<div class="sc-note-xs">Албан тушаал <b class="sc-note-b">${escapeHtml(m.role || '—')}</b>-д ногдох бэлэн эрх. Өөрчлөх бол «⚙️ Ажилтан удирдах»-аас албан тушаалыг нь солино; онцгой тохиолдолд доорх «🔑 Нарийвчилсан эрх».</div>
+            ${tags ? `<div class="sc-caps">${tags}</div>` : '<div class="sc-note">Үндсэн ажил — Тойм · Миний ажил · Ирц. Захиалга/бусад цэс нээхгүй (ажлаа даалгавраар авна).</div>'}`}
       </div>`;
     }
     // ── Эрх хэсэг ──
@@ -37775,25 +37775,25 @@ function openStaffCardModal(key) {
       const hasOv = pov && Object.keys(pov).length > 0;
       const isFull = (m.level || 0) >= 100 || isFullAccessMember(m);
       perms = isFull
-        ? `<div class="sc-sec"><div class="sc-sec-t">🔑 Эрх</div><div style="font-size:12px;color:var(--muted);">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div></div>`
+        ? `<div class="sc-sec"><div class="sc-sec-t">🔑 Эрх</div><div class="sc-note">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div></div>`
         : `<div class="sc-sec"><details class="sc-adv"${hasOv ? ' open' : ''}>
-            <summary class="sc-sec-t sc-adv-sum">🔑 Нарийвчилсан эрх засах <span style="font-weight:400;color:var(--muted);font-size:11px;">— онцгой тохиолдол${amCeo ? '' : ' (доорхи хүн)'}</span></summary>
-            <div style="margin-top:10px;">
-              <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Ихэвчлэн хэрэггүй — <b style="color:var(--text);">албан тушаал</b> өөрчилвөл эрхийн багц бүхэлдээ солигдоно. Энэ нь зөвхөн нэг хүнд багцаас гадуур эрх нэмэх/хасах онцгой тохиолдолд.</div>
+            <summary class="sc-sec-t sc-adv-sum">🔑 Нарийвчилсан эрх засах <span class="sc-adv-tag">— онцгой тохиолдол${amCeo ? '' : ' (доорхи хүн)'}</span></summary>
+            <div class="sc-adv-body">
+              <div class="sc-note-xs">Ихэвчлэн хэрэггүй — <b class="sc-note-b">албан тушаал</b> өөрчилвөл эрхийн багц бүхэлдээ солигдоно. Энэ нь зөвхөн нэг хүнд багцаас гадуур эрх нэмэх/хасах онцгой тохиолдолд.</div>
               ${capMatrixHtml('sc-cap', key, (k, kind) => effectiveCapForMember(m, k, kind), grantFn)}
-              ${hasOv ? `<div style="margin-top:8px;"><button class="btn" data-sc-permreset style="padding:4px 11px;font-size:11px;">↺ Албан тушаалын эрхэд буцаах</button></div>` : ''}
+              ${hasOv ? `<div class="sc-row2"><button class="btn sc-reset-btn" data-sc-permreset>↺ Албан тушаалын эрхэд буцаах</button></div>` : ''}
             </div>
           </details></div>`;
     }
     ov.innerHTML = `<div class="org-modal sc-modal">
       <div class="sc-head">
         <span class="staff-avatar sc-ava">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
-        <div style="min-width:0;flex:1;"><div class="sc-name">${escapeHtml(m.name || '?')}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
+        <div class="sc-head-main"><div class="sc-name">${escapeHtml(m.name || '?')}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
           <div class="sc-meta">${escapeHtml(m.role || '—')}${_age != null ? ' · ' + _age + ' нас' : ''}${m.phone ? ' · ' + escapeHtml(m.phone) : ''}</div></div>
         <span class="staff-status status-${isActive ? 'active' : (status === 'хүлээж буй' ? 'pending' : 'left')}">${isActive ? 'Идэвхтэй' : (status === 'хүлээж буй' ? '⏳' : 'Гарсан')}</span>
         <button class="sc-x" data-sc-close>✕</button>
       </div>
-      <div class="sc-body">${info}${admin}${capBox}${perms}${(!info && !admin && !capBox && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
+      <div class="sc-body">${info}${admin}${capBox}${perms}${(!info && !admin && !capBox && !perms) ? '<div class="sc-empty">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
     </div>`;
     attachHandlers();
   }

@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -13842,4 +13842,110 @@ async function swFetchTests() {
   // ⚠ Бүртгэгдээгүй (хувийн) данс сар хаахыг блоклохгүй
   ok(!kinds(CB([s('999', 'MNT', 0, 0)], [], ['111'], '2026-09')).includes('unverified'),
      'шалгуур: бүртгэлгүй данс блоклохгүй');
+}
+
+// ═══ САРЫН ЦАЛИН — ажилтан өөрөө харна (2026-10-02) ═══════════════════════
+// Гарт очих = цэвэр суурь + ИЛҮҮ ЦАГ + ХҮРГЭЛТ. ШАТНЫ ХӨЛС ОРОХГҮЙ (CEO шийдвэр).
+// Илүү цаг нь САРААР (нийт − 184ц), хувь 1.0, нэмэгдэлд суутгал ТООЦОХГҮЙ.
+{
+  const { monthPayBreakdown, payMonthDefault, payMonthMins } = F;
+  const H = h => h * 60;
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  runIn("state.salaryRates = { ndsh: 11.5, pit: 10 }; state.appConfig = state.appConfig || {}; delete state.appConfig.salary_rates; delete state.appConfig.overtime;");
+  const NORM = H(184);
+
+  // ── Суутгал ЗӨВХӨН суурь цалингаас ──
+  const b1 = monthPayBreakdown(1840000, true, NORM, NORM, 0, 1);
+  eq(b1.ndsh, 211600, 'цалин: НДШ 11.5% суурьтаас');
+  eq(b1.pit, 162840, 'цалин: ХХОАТ (суурь−НДШ)-ээс');
+  eq(b1.netBase, 1840000 - 211600 - 162840, 'цалин: цэвэр суурь');
+  eq(b1.otMins, 0, 'цалин: норм яг хүрвэл илүү цаг 0');
+  eq(b1.total, b1.netBase, 'цалин: нэмэгдэлгүй бол нийт = цэвэр суурь');
+
+  // ── Илүү цаг = САРААР, 1.0 дахин. Цагийн хөлс = суурь ÷ 184 ──
+  const b2 = monthPayBreakdown(1840000, true, H(200), NORM, 0, 1);
+  eq(b2.hourly, 10000, 'цалин: цагийн хөлс = суурь ÷ нормын цаг');
+  eq(b2.otMins, H(16), 'цалин: илүү цаг = 200 − 184');
+  eq(b2.otPay, 160000, 'цалин: 16ц × 10,000 = 160,000');
+  eq(b2.total, b1.netBase + 160000, 'цалин: илүү цаг БҮТНЭЭР нэмэгдэнэ (суутгалгүй)');
+  // ⛔ НЭМЭГДЭЛД СУУТГАЛ ТООЦОХГҮЙ — суутгал суурьтайгаа л тэнцүү үлдэнэ
+  eq(b2.ndsh, b1.ndsh, 'цалин: илүү цаг НДШ-ийг өсгөхгүй');
+  eq(b2.pit, b1.pit, 'цалин: илүү цаг ХХОАТ-ыг өсгөхгүй');
+
+  // ── Хүргэлтийн нэмэгдэл бүтнээр ──
+  const b3 = monthPayBreakdown(1840000, true, H(200), NORM, 120000, 1);
+  eq(b3.delivery, 120000, 'цалин: хүргэлтийн нэмэгдэл бүтнээр');
+  eq(b3.total, b1.netBase + 160000 + 120000, 'цалин: нийт = цэвэр суурь + илүү цаг + хүргэлт');
+
+  // ── Нормоос дутуу ажиллавал илүү цаг 0 (СӨРӨГ болохгүй) ──
+  eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otMins, 0, 'цалин: илүү цаг сөрөг болохгүй');
+  eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otPay, 0, 'цалин: нормоос доош → илүү цаг 0₮');
+
+  // ── Суутгалгүй ажилтан ──
+  const b4 = monthPayBreakdown(1000000, false, NORM, NORM, 0, 1);
+  eq(b4.ndsh + b4.pit, 0, 'цалин: суутгалгүй ажилтанд суутгал 0');
+  eq(b4.total, 1000000, 'цалин: суутгалгүй → нийт = суурь');
+
+  // ── Суурь цалин 0 бол илүү цаг ч 0₮ (хуваах алдаа гаргахгүй) ──
+  const b5 = monthPayBreakdown(0, true, H(300), NORM, 50000, 1);
+  eq(b5.otPay, 0, 'цалин: суурь 0 → илүү цаг 0₮');
+  eq(b5.total, 50000, 'цалин: суурь 0 ч хүргэлтийн нэмэгдэл үлдэнэ');
+
+  // ── Хувь тохируулгатай (app_config['overtime'].rate) ──
+  runIn("state.appConfig.overtime = { rate: 1.5 };");
+  eq(F.overtimeRate(), 1.5, 'цалин: илүү цагийн хувь тохиргооноос');
+  eq(monthPayBreakdown(1840000, true, H(200), NORM, 0).otPay, 240000, 'цалин: 1.5 хувиар 16ц = 240,000');
+  runIn("delete state.appConfig.overtime;");
+  eq(F.overtimeRate(), 1, 'цалин: тохиргоогүй бол 1.0 (нөөц утга)');
+
+  // ── Суутгалын хувь = app_config (ажилтан ба CEO ижил тоо харна) ──
+  runIn("state.appConfig.salary_rates = { ndsh: 0, pit: 0 };");
+  eq(monthPayBreakdown(1000000, true, NORM, NORM, 0, 1).total, 1000000, 'цалин: хувь app_config-оос уншигдана');
+  runIn("delete state.appConfig.salary_rates;");
+
+  // ── Цалингийн САР: үлдэгдэл дараа сарын 5-нд тул 5 хүртэл ӨМНӨХ сар ──
+  eq(payMonthDefault('2026-10-02'), '2026-09', 'цалингийн сар: 10-02 → 9 сар');
+  eq(payMonthDefault('2026-10-05'), '2026-09', 'цалингийн сар: 10-05 → 9 сар (олголтын өдөр)');
+  eq(payMonthDefault('2026-10-06'), '2026-10', 'цалингийн сар: 10-06 → 10 сар');
+  eq(payMonthDefault('2026-01-03'), '2025-12', 'цалингийн сар: оны эхэнд өмнөх он руу шилжинэ');
+
+  // ── payMonthMins: in/out хосоор, гараагүй өдөр 0 цаг бөгөөд ИЛ тоологдоно ──
+  const rec = (day, kind, hh) => ({ day, kind, ts: `${day}T${String(hh - 8).padStart(2, '0')}:00:00.000Z` });
+  const w = payMonthMins([
+    rec('2026-09-01', 'in', 9), rec('2026-09-01', 'out', 18),
+    rec('2026-09-02', 'in', 9), rec('2026-09-02', 'out', 21),
+    rec('2026-09-03', 'in', 9),                                   // гарах бүртгэлгүй
+  ], '2026-09');
+  eq(w.mins, H(9) + H(12), 'ирц: in/out хосоор л тоологдоно');
+  eq(w.days, 3, 'ирц: өдрийн тоо');
+  eq(w.noOut, 1, 'ирц: гарах бүртгэлгүй өдөр тоологдоно (илүү цаг дутуу гарна)');
+}
+
+// ═══ SCAN: ШАТНЫ ХӨЛС ЦАЛИНД НЭМЭГДЭХГҮЙ (2026-10-02, CEO шийдвэр) ═══════
+// Шатны хөлс нь дамжлагын урамшуулал — цалингийн нийт дүнд орвол утгаа алдана.
+// «Нэмэгдэлд суутгал тооцохгүй» гэдэг нь суутгал ЗӨВХӨН суурьтаас бодогдоно гэсэн үг:
+// нэмэгдлийг нэмсний ДАРАА salaryNet дуудвал татвар чимээгүй өснө.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const body = src.slice(src.indexOf('function monthPayBreakdown'), src.indexOf('function payMonthDefault'));
+  ok(body.length > 200, 'scan: monthPayBreakdown олдов');
+  eq((body.match(/stagePay|sp\.total|STAGE_FEE/g) || []).length, 0,
+     'scan: цалингийн тооцоонд шатны хөлс ОРОХГҮЙ');
+  eq((body.match(/salaryNet\(/g) || []).length, 1, 'scan: salaryNet нэг л удаа дуудагдана');
+  ok(/salaryNet\(base,/.test(body), 'scan: суутгал ЗӨВХӨН суурь цалингаас бодогдоно');
+  ok(/-\s*norm\b/.test(body), 'scan: илүү цаг = сарын нийт − норм (өдрөөр биш)');
+
+  // Картын нийт дүн нь monthPayBreakdown-аас л гарна (дэлгэцэд дахин бодохгүй)
+  const card = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
+  ok(card.length > 400, 'scan: myPayCardHtml олдов');
+  ok(/monthPayBreakdown\(/.test(card), 'scan: карт нийт дүнг monthPayBreakdown-аас авна');
+  eq((card.match(/sp\.total\s*\+|\+\s*sp\.total/g) || []).length, 0,
+     'scan: картад шатны хөлс нийт дүн дээр нэмэгдэхгүй');
+  ok(/ОРООГҮЙ/.test(card), 'scan: шатны хөлс цалинд ороогүйг ил бичнэ');
+  // Гарах бүртгэлгүй өдрийг НУУХГҮЙ — тэр нь илүү цаг дутуу гарах цорын ганц шалтгаан
+  ok(/w\.noOut/.test(card), 'scan: гарах бүртгэлгүй өдрийг картад ил хэлнэ');
+
+  // Суутгалын хувь = app_config (ажилтан ба CEO ижил тоо харна)
+  const rates = src.slice(src.indexOf('function salaryRates'), src.indexOf('function salaryNet'));
+  ok(/appConfig\.salary_rates/.test(rates), 'scan: суутгалын хувь app_config-оос (localStorage зөвхөн нөөц)');
 }

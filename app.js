@@ -3823,10 +3823,29 @@ function fmtDate(s) {
   return d.toLocaleDateString('mn-MN', { month: 'short', day: 'numeric' });
 }
 // Огноо + цаг — Улаанбаатарын цагаар, монгол дараалал САР/ӨДӨР цаг:мин (06/19 17:41)
+/* ⛔ ХУУЛГААС ОРСОН МӨРД ЦАГ БАЙХГҮЙ (2026-10-02). Хуулгын задлагч зөвхөн
+   ОГНООГ уншдаг (цагийн багана нь банк бүрд өөр), дараа нь код `T12:00:00.000Z`
+   (үд дунд UTC) залгадаг — энэ нь САНААТАЙ: үд дунд UTC нь ямар ч цагийн бүсэд
+   ижил хуанлийн өдөр хэвээр үлдэх тул огноо гулсахгүй.
+   ⛔ Тэр орлуулгыг ЦАГ мэт харуулж БОЛОХГҮЙ — УБ-д 20:00 болж гарч, хэрэглэгч
+     «гүйлгээ 20:00-д болсон» гэж уншина (банкны хуулгад 13:40 гэж бичээстэй).
+   ⛔ Хадгалалтыг засах гэж БҮҮ оролд: `finExpMonth` нь мөрийг ШУУД таслаж сар
+     гаргадаг тул бодит цаг (+08:00 офсеттэй) бичвэл шөнө дунд орчмын гүйлгээ
+     өмнөх сар руу гулсана. Орлуулга нь зөв шийдэл — зөвхөн дэлгэц буруу байв. */
+const _NOON_UTC_RE = /T12:00:00(\.000)?Z$/;
+function isDateOnlyStamp(val) { return _NOON_UTC_RE.test(String(val || '')); }
 function fmtDateTimeUB(val) {
   if (!val) return '';
   const d = new Date(val);
   if (isNaN(d.getTime())) return '';
+  // Огноо л мэдэгдэх бол ЦАГ ХАРУУЛАХГҮЙ — худал нарийвчлал гаргахаас дээр
+  if (isDateOnlyStamp(val)) {
+    try {
+      const p0 = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ulaanbaatar', month: '2-digit', day: '2-digit' }).formatToParts(d);
+      const g0 = t => (p0.find(x => x.type === t) || {}).value || '';
+      return `${g0('month')}/${g0('day')}`;
+    } catch (e) { return String(val).slice(5, 10); }
+  }
   try {
     const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ulaanbaatar', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
     const g = t => (p.find(x => x.type === t) || {}).value || '';

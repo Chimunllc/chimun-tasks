@@ -263,6 +263,28 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'хөлдөөгүй бол буцаах зам нээлттэй хэвээр');
 }
 
+/* 0e2j) SCAN — ГУРВАН АЛХАМ = ГУРВАН ӨӨР ЭРХ (2026-10-02, CEO барив)
+   Өмнө нь ТООЛОХ нь `products.edit` шүхэр дор явдаг байсан тул амьд системд
+   5 хүн (нярав 2, ҮАХ захирал, захиалгын ажилтан, дууны инженер) бүгд
+   «Тоолсон» дарж чаддаг байв — гурван гарын үсэг нэг болж хумигдана.
+   ⛔ CEO тоолох/хянах алхамд ОРОЛЦОХГҮЙ: эцэслэх нь зөвхөн CEO-гийнх бөгөөд
+   «гурван өөр хүн» дүрэмтэй тул CEO тоолсон бараа ХЭЗЭЭ Ч эцэслэгдэхгүй болж
+   мухардалд орно. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function canOpenCount\(\)\s*\{ return capValue\('products\.count'\) === true; \}/.test(codeLines),
+     'scan: тоолох эрх = зөвхөн ил олгосон products.count');
+  ok(/function canApproveOpening\(\) \{ return capValue\('products\.opening'\) === true; \}/.test(codeLines),
+     'scan: хянах эрх = зөвхөн ил олгосон products.opening');
+  // ⛔ CEO эдгээр хоёр алхамд БАЙХГҮЙ — мухардал үүснэ
+  const g = codeLines.slice(codeLines.indexOf('function canOpenCount'), codeLines.indexOf('function canSeeStockCount'));
+  eq(/state\.isCEO/.test(g), false, 'scan: CEO тоолох/хянах эрхэд ОРОХГҮЙ (мухардал үүснэ)');
+  // Тоолох ТОВЧ ч ижил эрхээр
+  ok(/const canOpen = canOpenCount\(\);/.test(codeLines), 'scan: тоолох товч ижил эрхээр гарна');
+  ok(/\$\{canOpen \? `<input class="ui-raw stc-open-in"/.test(codeLines),
+     'scan: тоолох оролт нь canOpen-оор хаалттай');
+}
+
 /* 0e2i) SCAN — эцэслэлийн хориг БҮХ бичих замд (2026-10-02)
    Нэг замыг нь онгорхой орхивол хөлдсөн суурь чимээгүй өөрчлөгдөж, гурван
    гарын үсэг утгагүй болно. */
@@ -12650,7 +12672,10 @@ async function swFetchTests() {
   const fn = src.slice(i, src.indexOf('async function applyStockCount(', i));
   ok(/saveProduct\(\{/.test(fn), 'scan: эхний үлдэгдэл saveProduct-аар бичигдэнэ');
   ok(!/rest\/v1\/products/.test(fn), 'scan: эхний үлдэгдэл ШУУД PostgREST рүү бичихгүй');
-  ok(/canProductPart\('stock'\)/.test(fn), 'scan: баталгаажуулахад нөөцийн эрх шалгагдана');
+  ok(/canOpenCount\(\)/.test(fn),
+     'scan: тоолоход ТУСДАА эрх шалгагдана (products.edit шүхэр БИШ)');
+  eq(/canProductPart\('stock'\)/.test(fn), false,
+     'scan: нөөцийн шүхэр эрхээр эхний үлдэгдэл тоологдохгүй');
   ok(/_moveReason: 'opening'/.test(fn), 'scan: дэвтэрт «эхний үлдэгдэл» шалтгаанаар бичигдэнэ');
   // ⚠ Тоо ТААРСАН ч тэмдэг тавигдана — «шалгасан, зөв байсан» гэдэг нь мэдээлэл.
   //   `applyStockCount` нь diff=0 үед шууд гардаг тул тэрийг ашиглаж БОЛОХГҮЙ.

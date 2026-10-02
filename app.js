@@ -16764,59 +16764,80 @@ function renderSalary() {
       <label>ХХОАТ <input type="number" step="0.1" id="sal-pit" value="${rt.pit}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
       <span class="pb-rates-n">Суутгал зөвхөн СУУРЬ цалингаас — илүү цаг, хүргэлт бүтнээрээ гарт очно.</span>
     </div>`;
-  const schedule = `<div class="pb-sched">📅 <b>Урьдчилгаа 20-нд</b> (1–15) · <b>Үлдэгдэл дараа сарын 5-нд</b> (16–эцэс)</div>`;
+  // ⛔ Олголтын хуваарь ХАРУУЛАХГҮЙ — цалин автоматаар бодогдож, олголт нь банкны
+  //   хуулгаас автоматаар бүртгэгддэг тул аппад давтах зүйл алга.
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="sal-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.salarySearch || '')}" /></div>`;
-  const today = todayStr(), advDue = `${ym}-20`, remDue = `${salaryNextYm(ym)}-05`;
 
+  /* ⛔ ХҮН БҮРД ИЖИЛ УРТ БЛОК БИЧИХГҮЙ (2026-10-02, CEO «механик байдлыг болиул»).
+     Өмнө нь хүн бүр 8 мөртэй, үүний 4 нь ижил тоог давтдаг байв (цэвэр суурь =
+     нийт олгох = урьдчилгаа + үлдэгдэл) тул 20 ажилтны жагсаалт уншигдахаа больсон.
+     Дүрэм: ХУРААНГУЙ мөр нь үргэлж харагдана (нэр · цаг · төлөв · НИЙТ ОЛГОХ),
+     задаргаа нь дарахад нээгдэнэ; утгагүй мөр ОГТ бичигдэхгүй. */
   const rows = calc.map(c => {
     const { k, m, b, w, db, sp, paid, pays } = c;
     const dOn = salaryDeductOn(k);
-    const advPaid = salaryCyclePaid(k, ym, SAL_ADV_TAG), remPaid = salaryCyclePaid(k, ym, SAL_REM_TAG);
-    const advAmt = advPaid > 0 ? advPaid : (salaryLastAdvance(k) || Math.round(b.total / 2));
-    const remAmt = Math.max(0, b.total - advAmt);
+    const owed = Math.max(0, b.total - paid);
+    // Төлөв НЭГ чипээр — «олголт бүртгэгдээгүй» гэсэн бүтэн мөр хүн бүрд давтагдахгүй.
+    const st = !b.total ? ['pb-st-none', '—']
+      : paid <= 0 ? ['pb-st-no', 'олгоогүй']
+      : owed > 0 ? ['pb-st-part', `дутуу ${fmtMoneyShort(owed)}`]
+      : ['pb-st-ok', '✓ олгосон'];
+    const hrs = w.days
+      ? `${attHM(w.mins)}<span class="pb-dim"> / ${normH}ц</span>${b.otMins ? ` <b class="pb-ot">+${attHM(b.otMins)}</b>` : ''}`
+      : '<span class="pb-dim">ирцгүй</span>';
+    const sum = `<summary class="pb-sum">
+      <span class="pb-sum-n"><b>${escapeHtml(m.name || '?')}</b><span class="pb-role">${escapeHtml(m.role || '')}</span></span>
+      <span class="pb-sum-h">${hrs}</span>
+      <span class="pb-chip ${st[0]}">${st[1]}</span>
+      <span class="pb-sum-v">${fmtMoney(b.total)}</span></summary>`;
+
+    const line = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
     const baseCell = editable
       ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(k)}" value="${c.amount ? moneyFmtInput(c.amount) : ''}" placeholder="0">`
       : `<b>${fmtMoney(c.amount)}</b>`;
     const dedChk = editable ? `<label class="pb-ded"><input type="checkbox" class="sal-deduct" data-sal-person="${escapeHtml(k)}" ${dOn ? 'checked' : ''}>Суутгалтай</label>` : '';
-    const histN = (state.salaryPayments || []).filter(p => p.person_key === k).length;
-    const histBtn = histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 ${histN}</button>` : '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
     const bankLine = (m.bank || m.bank_account)
       ? `<div class="pb-bank">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b>' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn pb-copy" data-sal-copy="${escapeHtml(acct)}">Хуулах</button>` : ''}</div>`
       : staffAcctMissingHtml();
-    const line = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
-    const worked = `<div class="pb-worked">${w.days ? `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр` : '<span class="pb-noatt">ирц бүртгэгдээгүй</span>'}${w.noOut ? ` · <span class="pb-noout">⚠ ${w.noOut} өдөр гараагүй</span>` : ''}</div>`;
+    const histN = (state.salaryPayments || []).filter(p => p.person_key === k).length;
     const payList = pays.length ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
         <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
         <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>` : '';
-    const money = c.amount || b.total ? `<div class="pay-rows pb-rows">
-      ${line('Цэвэр суурь', `<b>${fmtMoney(b.netBase)}</b>`, 'pay-sub')}
-      ${b.otMins ? line(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : ''}
-      ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}
-      ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
-      ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList + line('Үлдэгдэл', `<b>${fmtMoney(Math.max(0, b.total - paid))}</b>`, 'pay-left')
-                 : line('✓ Олгосон', 'олголт бүртгэгдээгүй', 'pay-zero')}
-    </div>` : `<div class="pb-nosal">⚠ Суурь цалин тохируулаагүй — илүү цаг тооцогдохгүй.</div>`;
-    const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Шатны хөлс ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ, тусдаа</span></div>` : '';
-    const slot = (label, sub, due, amt, pd, tag) => {
-      const over = !pd && b.total > 0 && today > due;
-      const right = pd > 0 ? `<span class="pb-ok">✓ ${fmtMoney(pd)}</span>`
-        : (payable && amt > 0 ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" data-sal-cyc="${tag}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : `<span class="pb-dim">${b.total > 0 ? 'олгоогүй' : '—'}</span>`);
-      return `<div class="pb-slot"><span class="pb-slot-l">${label} <span class="pb-dim">· ${sub}</span>${over ? ' <b class="pb-late">🔴 хоцорсон</b>' : ''}</span>
-        <b class="pb-slot-v">${fmtMoney(amt)}</b><span class="pb-slot-r">${right}</span></div>`;
-    };
-    return `<div class="ac-row pb-card" data-sal-haystack="${escapeHtml(((m.name || '') + ' ' + (m.role || '')).toLowerCase())}">
-      <div class="pb-top">
-        <div class="pb-who"><b>${escapeHtml(m.name || '?')}</b> <span class="pb-role">${escapeHtml(m.role || '')}</span>${c.left ? ' <span class="pb-left">гарсан</span>' : ''}${histBtn}${bankLine}${worked}</div>
-        <div class="pb-base"><div class="pb-base-r"><span class="pb-dim">Суурь цалин</span>${baseCell}</div>
-          ${c.amount ? `<div class="pb-ded-l">${dOn ? `НДШ −${fmtMoney(b.ndsh)} · ХХОАТ −${fmtMoney(b.pit)}` : 'суутгалгүй'} ${dedChk}</div>` : (dedChk ? `<div class="pb-ded-l">${dedChk}</div>` : '')}</div>
+    /* ⛔ УРЬДЧИЛГАА/ҮЛДЭГДЛИЙН ХУВААРЬ ХАРАГДАХГҮЙ (2026-10-02, CEO шийдвэр).
+       Цалин нь ирц + хүргэлтээс АВТОМАТААР бодогдоно; олголт нь банкны хуулгаас
+       автоматаар бүртгэгдэнэ. Хагас сарын хуваарилалтыг аппад харуулах нь хүн бүрд
+       2 нэмэлт мөр үүсгээд, тоо нь зүгээр л нийт дүнгийн хуваалт байсан — шинэ
+       мэдээлэл өгдөггүй. Үлдсэн дүн дээр ГАНЦ «⧉ Утга» товч хангалттай. */
+    const memoBtn = (payable && owed > 0) ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : '';
+    // ⛔ Утгагүй мөр БИЧИХГҮЙ: суутгалгүй бөгөөд нэмэгдэлгүй бол «цэвэр суурь» нь
+    //   «нийт олгох»-той ЯГ ижил тоо — хоёуланг бичих нь нүдийг л төөрүүлнэ.
+    const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery;
+    const money = !c.amount ? `<div class="pb-nosal">⚠ Суурь цалин тохируулаагүй — илүү цаг тооцогдохгүй.</div>` : `
+      <div class="pay-rows pb-rows">
+        ${hasParts ? line('Суурь цалин', fmtMoney(b.base)) : ''}
+        ${(dOn && (b.ndsh || b.pit)) ? line('− НДШ · ХХОАТ', `−${fmtMoney(b.ndsh + b.pit)}`, 'pay-minus') : ''}
+        ${b.otMins ? line(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : ''}
+        ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}
+        ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
+        ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList : ''}
+        ${owed > 0 ? line('Үлдэгдэл', `<b>${fmtMoney(owed)}</b> ${memoBtn}`, 'pay-left') : ''}
+      </div>`;
+    const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Шатны хөлс ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ</span></div>` : '';
+    const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг, илүү цаг дутуу.</div>` : '';
+    return `<details class="ac-row pb-card" data-sal-haystack="${escapeHtml(((m.name || '') + ' ' + (m.role || '')).toLowerCase())}">
+      ${sum}
+      <div class="pb-body">
+        <div class="pb-top">
+          <div class="pb-who">${bankLine}${noOut}${histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 Бүх олголт (${histN})</button>` : ''}</div>
+          <div class="pb-base"><div class="pb-base-r"><span class="pb-dim">Суурь цалин</span>${baseCell}</div>${dedChk ? `<div class="pb-ded-l">${dedChk}</div>` : ''}</div>
+        </div>
+        ${money}${spLine}
       </div>
-      ${money}${spLine}
-      <div class="pb-slots">${slot('Урьдчилгаа', '20-нд', advDue, advAmt, advPaid, SAL_ADV_TAG)}${slot('Үлдэгдэл', 'дараа сар 5', remDue, remAmt, remPaid, SAL_REM_TAG)}</div>
-    </div>`;
+    </details>`;
   }).join('');
   const spFoot = T.sp ? `<div class="sp-foot">📦 Шатны хөлс нийт <b>${fmtMoney(T.sp)}</b> — дамжлагын ажлын урамшуулал, дээрх цалинд ОРООГҮЙ.</div>` : '';
-  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${kpis}${warnBits.join('')}${ratesBar}${schedule}${searchBar}
+  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${kpis}${warnBits.join('')}${ratesBar}${searchBar}
     <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${spFoot}</div>`;
 }
 function attachSalaryHandlers() {
@@ -16838,8 +16859,7 @@ function attachSalaryHandlers() {
   document.querySelectorAll('[data-sal-memo]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation();
     const mm = findMember(b.dataset.salMemo);
-    const cyc = b.dataset.salCyc === SAL_ADV_TAG ? 'урьдчилгаа' : b.dataset.salCyc === SAL_REM_TAG ? 'үлдэгдэл' : '';
-    const memo = `Зарлага: Цалин ${cyc} ${(mm && mm.name) || ''}`.replace(/\s+/g, ' ').trim();
+    const memo = `Зарлага: Цалин ${(mm && mm.name) || ''}`.replace(/\s+/g, ' ').trim();
     copyText(memo, 'Утга хууллаа');
   }));
   document.querySelectorAll('[data-sal-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.salCopy, 'Данс хууллаа'); }));

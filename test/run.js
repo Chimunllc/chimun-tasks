@@ -161,6 +161,24 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
 }
 
+/* 0e2b) SCAN — НЭРГҮЙ хуулгын экспортыг импортод ИЛ хэлнэ (2026-10-02)
+   Голомт хоёр хэлбэрээр экспортолдог: харилцагчийн НЭРИЙН баганатай, ба
+   зөвхөн «Харьцсан данс»-тай (7 багана). Нэргүйг оруулахад мөрийн тоо, дүн,
+   тэнцэл БҮГД ЗӨВ гардаг тул өөр ямар ч шалгуур дуугардаггүй — орлогын мөр
+   бүрийн «хэн төлсөн» чимээгүй хоосон орно. Анхааруулга нь зардлыг ангилах
+   цонхны нэг л газраас гарна; хасагдвал буруу хэлбэр дахин орж мэднэ. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function stmtNoPayerNames\(/.test(codeLines),
+     'scan: нэргүй экспортын шалгуур ганц функцээс (stmtNoPayerNames)');
+  ok(/stmtQueue\.filter\(q => stmtNoPayerNames\(q\.parsed\) > 0\)/.test(codeLines),
+     'scan: импортын цонх хуулга бүрийг нэргүй эсэхээр шалгана');
+  ok(/nameBanner[\s\S]{0,400}нэрний багана байхгүй/.test(codeLines),
+     'scan: нэргүй бол хэрэглэгчид ил анхааруулга гарна');
+  ok(/warnBanner = prsnBanner \+ salBanner \+ nameBanner/.test(codeLines),
+     'scan: тэр анхааруулга анхааруулгын туузанд УГСАРСАН (харагдана)');
+}
+
 /* 0e3) SCAN — өөрийн данс/яаралтай холбоог УНШИХ зам (2026-09-30)
    `bank_account` нь /webhook/staff-аас буцаагддаггүй эмзэг талбар тул TEAM-д
    байхгүй. Иймээс ажилтан дансаа бүртгэсэн ч дараагийн ачаалалтад «⚠ Данс
@@ -10253,6 +10271,7 @@ need(['orderCustType']);
 {
   need(['stmtPeriodDates', 'stmtIdOf', 'stmtIncomeKey', 'stmtIncomeFp', 'buildStatementImport',
     'stmtBalanceCheck', 'stmtChainCheck', 'incomeOpenStats', 'stmtMonthMissingAccts',
+    'stmtNoPayerNames',
     'receiptFpIndex', 'receiptMatchFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner']);
 
   // ── хугацаа: толгойд бичигдсэн бол түүнээс, эс бол мөрүүдээс ──
@@ -10316,6 +10335,18 @@ need(['orderCustType']);
   eq(F.stmtBalanceCheck({ ccy: 'MNT', opening: 100, closing_stated: 300, closing_calc: 250 }).diff, -50, 'тэнцэл: зөрүү гарна (мөр дутуу уншигдсан)');
   eq(F.stmtBalanceCheck({ ccy: 'USD', opening: 100, closing_stated: 300, closing_calc: 999 }).ok, true, 'тэнцэл: валют данс шалгагдахгүй (мөр ₮ болж хөрвүүлэгдсэн)');
   eq(F.stmtBalanceCheck({ ccy: 'MNT', opening: null, closing_stated: null }).ok, true, 'тэнцэл: үлдэгдэл хуулгад алга → шалгахгүй');
+
+  // ── НЭРГҮЙ ЭКСПОРТ: дүн зөв байж нэр алга бол ил хэлнэ (2026-10-02) ──
+  // Голомт хоёр хэлбэрээр экспортолдог; нэргүйг оруулбал «хэн төлсөн» хоосон орно.
+  eq(F.stmtNoPayerNames({ rows: [{ credit: 100, name: 'СИНЭФФЭКТ' }, { credit: 200, name: '' }] }), 0,
+     'нэргүй экспорт: ЗАРИМ мөрд нэр байвал анхааруулахгүй (банк хоорондын шилжүүлэг хэвийн)');
+  eq(F.stmtNoPayerNames({ rows: [{ credit: 100, name: '' }, { credit: 200 }, { debit: 50 }] }), 2,
+     'нэргүй экспорт: орлогын мөр бүрд нэр алга бол тоогоо буцаана');
+  eq(F.stmtNoPayerNames({ rows: [{ debit: 50 }, { debit: 70 }] }), 0,
+     'нэргүй экспорт: орлогын мөр огт байхгүй бол анхааруулахгүй');
+  eq(F.stmtNoPayerNames({ rows: [{ credit: 100, name: '   ' }] }), 1,
+     'нэргүй экспорт: зөвхөн зайнаас тогтсон нэр = нэр биш');
+  eq(F.stmtNoPayerNames(null), 0, 'нэргүй экспорт: хоосон хуулга → 0');
 
   /* ⛔ ХУДАЛ АНХААРУУЛГА (2026-09-11, амьд датаар олсон). ХААН дансны хуулганд
      opening=0, closing_stated=0 байтал 16.8сая орж 15.7сая гарсан — задлагч

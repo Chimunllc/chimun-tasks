@@ -16741,7 +16741,11 @@ function renderSalary() {
   if (!attReady) warnBits.push(state.attMonthErr && state.attMonthErr.month === ym
     ? `<div class="pb-warn">⚠ Сарын ирц ачаалж чадсангүй (${escapeHtml(state.attMonthErr.msg)}) — <b>илүү цаг тооцогдоогүй</b> байна.</div>`
     : `<div class="pb-note">⏳ Сарын ирц ачаалж байна — илүү цаг дүүрэх хүртэл дүн дутуу.</div>`);
-  if (orphans.length) warnBits.push(`<div class="pb-warn">⚠ <b>${orphans.length}</b> цалин/олголт ямар ч ажилтантай холбогдохгүй байна (утас зөрсөн): ${orphans.map(o => `${escapeHtml(o.key)} — ${fmtMoney(o.amount || o.paid)}`).join(' · ')}</div>`);
+  // ⚠ Анхааруулга нь ҮЙЛДЭЛГҮЙ бол хүн юу ч хийж чадахгүй — мөр бүрд засах товч.
+  if (orphans.length) warnBits.push(`<div class="pb-warn">⚠ <b>${orphans.length}</b> цалин/олголт ямар ч ажилтантай холбогдохгүй байна (ажилтны дугаар засагдсан байж болно):
+    ${orphans.map(o => `<div class="pb-orph"><span>${escapeHtml(o.key)} — <b>${fmtMoney(o.amount || o.paid)}</b>${o.amount && o.paid ? ` (цалин ${fmtMoney(o.amount)} · олголт ${fmtMoney(o.paid)})` : ''}</span>${
+      o.amount > 0 && editable ? `<button class="btn pb-orph-b" data-orph-fix="${escapeHtml(o.key)}" data-orph-amt="${o.amount}">🔗 Хэнийх вэ?</button>`
+        : '<span class="pb-dim">олголтын мөр — хуулгаас ирсэн, энд засагдахгүй</span>'}</div>`).join('')}</div>`);
   if (noSal.length) warnBits.push(`<div class="pb-warn">⚠ <b>${noSal.length}</b> хүн энэ сард ажилласан атлаа суурь цалин тохируулаагүй: ${noSal.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
   if (noAtt.length) warnBits.push(`<div class="pb-note">🕗 <b>${noAtt.length}</b> цалинтай хүн энэ сард ирц бүртгүүлээгүй: ${noAtt.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
 
@@ -16830,6 +16834,7 @@ function attachSalaryHandlers() {
   }));
   document.querySelectorAll('[data-sal-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.salCopy, 'Данс хууллаа'); }));
   document.querySelectorAll('[data-sal-hist]').forEach(b => b.addEventListener('click', () => openSalaryHistory(b.dataset.salHist)));
+  document.querySelectorAll('[data-orph-fix]').forEach(b => b.addEventListener('click', () => openOrphanSalaryModal(b.dataset.orphFix, Number(b.dataset.orphAmt) || 0)));
   document.querySelectorAll('.sal-deduct').forEach(cb => cb.addEventListener('change', () => {
     if (!can('salary.edit')) { showToast('Танд цалин тохируулах эрх алга', 'warn', 3000); render(); return; }
     saveSalaryDeduct(cb.dataset.salPerson, cb.checked);
@@ -16850,6 +16855,55 @@ function attachSalaryHandlers() {
   document.getElementById('sal-pit')?.addEventListener('change', saveRate);
 }
 
+/* ЭЗЭНГҮЙ ЦАЛИН — засах зам (2026-10-02). Самбар эзэнгүй мөрийг ИЛ хэлдэг болсон ч
+   хүн юу ч хийж чаддаггүй байв: цалингийн мөр нь зөвхөн утас+дүн хадгалдаг тул
+   НЭР огт үлддэггүй (ажилтны дугаар DB дээр засагдвал мөр нь хуучин дугаартаа үлдэнэ).
+   ⛔ ХАТУУ УСТГАХГҮЙ — дүнг 0 болгоно (`staff_salary`-д DELETE эрх ЗОРИУД алга).
+   ⚠ Шилжүүлэхэд зорилтот хүний ОДОО байгаа цалин дарагдана — дүнг нь ил хэлж асууна. */
+async function openOrphanSalaryModal(key, amount) {
+  if (!can('salary.edit')) { showToast('Танд цалин тохируулах эрх алга', 'warn', 3000); return; }
+  const amt = Number(amount) || 0;
+  const staff = (TEAM || []).filter(m => String(m.status || '') !== 'гарсан' && personKey(m))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
+  document.getElementById('orph-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'orph-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h2>🔗 Эзэнгүй цалин</h2>
+    <p class="dmg-hint">Дугаар <b>${escapeHtml(key)}</b> · <b>${fmtMoney(amt)}</b>. Энэ мөр ямар ч ажилтантай холбогдохгүй байна — ажилтны дугаар засагдахад хуучин дугаартаа үлдсэн байж болно. <b>Нэр хадгалагддаггүй</b> тул аль ажилтных болохыг та сонгоно.</p>
+    <label class="orph-l">Хэнд шилжүүлэх вэ?</label>
+    <select id="orph-to" class="ui-raw orph-sel">
+      <option value="">— ажилтан сонгох —</option>
+      ${staff.map(m => { const k = personKey(m); const cur = Number((state.salaries || {})[k]) || 0;
+        return `<option value="${escapeHtml(k)}">${escapeHtml(m.name || k)}${m.role ? ' · ' + escapeHtml(m.role) : ''}${cur ? ` (одоо ${fmtMoney(cur)})` : ' (цалингүй)'}</option>`; }).join('')}
+    </select>
+    <div class="modal-actions" style="margin-top:14px;flex-wrap:wrap;gap:8px;">
+      <button class="btn" id="orph-cancel">Болих</button>
+      <button class="btn btn-danger" id="orph-clear">✖ Мөрийг хаах</button>
+      <button class="btn btn-primary" id="orph-move">↔ Шилжүүлэх</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#orph-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#orph-clear').onclick = async () => {
+    if (!await showConfirm(`${escapeHtml(key)} дугаарын ${fmtMoney(amt)} цалинг хаах уу? Дүн 0 болно (мөр устахгүй, буцааж тавьж болно).`, { title: 'Эзэнгүй мөрийг хаах', okText: 'Хаах', danger: true })) return;
+    await saveSalary(key, 0);
+    showToast('Мөрийг хаалаа', 'success', 1800); close(); render();
+  };
+  modal.querySelector('#orph-move').onclick = async () => {
+    const to = modal.querySelector('#orph-to').value;
+    if (!to) { showToast('Ажилтнаа сонгоно уу', 'warn', 2500); return; }
+    const m = findMember(to) || {}; const cur = Number((state.salaries || {})[to]) || 0;
+    const warn = cur ? `\n\n⚠ ${m.name || to}-ийн одоогийн ${fmtMoney(cur)} цалин ДАРАГДАНА.` : '';
+    if (!await showConfirm(`${fmtMoney(amt)}-г ${m.name || to} руу шилжүүлэх үү?${warn}`, { title: 'Цалин шилжүүлэх', okText: 'Шилжүүлэх', danger: !!cur })) return;
+    await saveSalary(to, amt);
+    await saveSalary(key, 0);
+    showToast(`${m.name || to} руу шилжүүллээ`, 'success', 2200); close(); render();
+  };
+  modal.classList.add('open');
+}
 // Цалин олгосон түүх — тухайн ажилтны бүх олголт (огноо, сар, цикл, дүн, олгосон хүн)
 function openSalaryHistory(personKey) {
   const m = findMember(personKey);

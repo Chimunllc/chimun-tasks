@@ -14229,3 +14229,29 @@ async function swFetchTests() {
   const ld = src.slice(src.indexOf('async function loadAttendanceMonthFull'), src.indexOf('function attMonthStart'));
   ok(/state\.view === 'salary'/.test(ld), 'scan: ирц ирэхэд цалингийн самбар дахин зурагдана');
 }
+
+// ═══ SCAN: эзэнгүй цалин — АНХААРУУЛГА БИШ, ЗАСАХ ЗАМ (2026-10-02) ═══════
+// Цалингийн мөр нь зөвхөн утас+дүн хадгалдаг тул НЭР огт үлддэггүй: ажилтны дугаар
+// DB дээр засагдахад мөр нь хуучин дугаартаа үлдэнэ. Амьд системд 2 мөр (1.8сая,
+// 2.5сая) ингэж эзэнгүй болсон бөгөөд CEO юу ч хийж чаддаггүй байв.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(/data-orph-fix=/.test(rs), 'scan: эзэнгүй мөр бүрд засах ТОВЧ гарна');
+  const h = src.slice(src.indexOf('function attachSalaryHandlers'), src.indexOf('function openOrphanSalaryModal'));
+  ok(/data-orph-fix\]/.test(h), 'scan: засах товч холбогдсон');
+
+  const mo = src.slice(src.indexOf('function openOrphanSalaryModal'), src.indexOf('// Цалин олгосон түүх'));
+  ok(mo.length > 500, 'scan: openOrphanSalaryModal олдов');
+  // ⛔ Хатуу устгахгүй — дүнг 0 болгоно (staff_salary-д DELETE эрх зориуд алга)
+  eq((mo.match(/method:\s*'DELETE'|\.delete\(/g) || []).length, 0, 'scan: эзэнгүй мөрийг ХАТУУ устгахгүй');
+  ok(/saveSalary\(key, 0\)/.test(mo), 'scan: хаах нь дүнг 0 болгоно');
+  // ⛔ Хоёр үйлдэл хоёулаа БАТАЛГААЖУУЛАЛТТАЙ (мөнгө дарж бичнэ)
+  // ⛔ «showConfirm дуудсан» нь ХАНГАЛТГҮЙ — ХАРИУГ нь шалгаж буцдаг байх ёстой
+  //   (`false && await showConfirm(...)` гэж бичвэл эхний хэлбэр таарсаар байна).
+  eq((mo.match(/if \(!await showConfirm\([\s\S]*?\)\)\s*return;/g) || []).length, 2,
+     'scan: хаах БА шилжүүлэх хоёулаа showConfirm-ийн ХАРИУГ шалгаж буцна');
+  // ⛔ Зорилтот хүний одоогийн цалин дарагдахыг ИЛ хэлнэ
+  ok(/ДАРАГДАНА/.test(mo), 'scan: дарагдах цалинг ил сануулна');
+  ok(/can\('salary\.edit'\)/.test(mo), 'scan: эрхгүй хүн засахгүй');
+}

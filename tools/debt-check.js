@@ -27,6 +27,16 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const BASELINE = path.join(__dirname, 'debt-baseline.json');
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+/* ⛔ БИЕ ДААСАН ХЭВЛЭХ БАРИМТЫГ ХЭМЖИХГҮЙ (2026-10-02).
+   `app.js` дотор 11 бүтэн HTML баримт (гэрээ · нэхэмжлэх · үнийн санал · акт …)
+   попап цонхонд нээгдэж PDF болдог. Тэдгээр нь ӨӨРИЙН баримт учир `styles.css`-ийн
+   CSS токен ХҮРДЭГГҮЙ — тэнд хатуу өнгө бичих нь ГАНЦ боломж. Тэднийг тоолох нь
+   худал эерэг: PR #631 актын баримт нэмэхэд 17 «шинэ хатуу өнгө» гэж тоологдож,
+   escape-hatch шошго авсан ч суурь шинэчлэгдээгүйгээс main улаан болж БҮХ PR
+   хаагдсан. Хасаад тоолоход суурь 762→607 болж ЧАНГАРНА — аппын жинхэнэ UI-г л
+   хэмжинэ. ⚠ Аппын UI кодыг doctype блок дотор бичвэл хэмжигдэхгүй болно —
+   тийм зүйл хийхгүй (бие даасан баримт л тэнд байна). */
+const stripDocs = (s) => String(s).replace(/<!doctype html[\s\S]*?<\/html>/gi, '');
 
 const COLOR_RE = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g;
 
@@ -61,7 +71,7 @@ const METRICS = {
 };
 
 function files() {
-  return { js: read('app.js'), css: read('styles.css') };
+  return { js: stripDocs(read('app.js')), css: read('styles.css') };
 }
 
 function measure() {

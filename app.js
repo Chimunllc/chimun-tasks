@@ -9279,7 +9279,12 @@ async function setMonthClosed(month, closed, note) {
   const m = String(month || '').slice(0, 7);
   if (!m) return false;
   const cur = { ...closedMonths() };
-  if (closed) cur[m] = { at: new Date().toISOString(), by: state.me, note: String(note || '').slice(0, 200) };
+  if (closed) {
+    /* ⚠ Зургийг хаахын ЯГ тэр мөчид авна — дараа нь нөөц хөдөлсөн ч энэ сарын
+       элэгдэл, ашиг, COO-гийн эрх хөдлөхгүй. */
+    const dep = deprecSnapshotNow(m);
+    cur[m] = { at: new Date().toISOString(), by: state.me, note: String(note || '').slice(0, 200), ...(dep ? { dep } : {}) };
+  }
   else delete cur[m];
   await saveAppConfig(CLOSED_M_KEY, cur);
   state.closedMonths = cur;
@@ -29854,11 +29859,37 @@ function deprecForProduct(p, lives) {
            totalMonth: perUnitMonth * qty, totalYear: perUnitMonth * qty * 12, endYm };
 }
 /* Тухайн сарын элэгдэл — шилжилтийн сараас хойш Л зардал болно (`active`). */
+/* ⛔ ХААСАН САРЫН ЭЛЭГДЭЛ ХӨЛДӨНӨ (2026-10-02).
+   `deprecByBranch` нь ОДООГИЙН нөөцөөс бодогддог бөгөөд `month` нь зөвхөн
+   асаах/унтраах үүрэгтэй байв. Иймд сар хаасны ДАРАА 50 сандлыг M-Event-ээс
+   NOMAAD руу шилжүүлэхэд ХААСАН сарын элэгдэл, улмаар ашиг ба COO-гийн 30%
+   чимээгүй өөрчлөгддөг байв — «хаасан сарын тоо хөдөлөхгүй» гэдэг гол дүрэм
+   зөрчигдөж байсан. Одоо хаахад тухайн сарын элэгдлийг ЗУРАГ болгон хадгалж,
+   хаалттай сард түүнийг л буцаана.
+   ⚠ Зураггүй хаалттай сар (шилжилтийн хаалт, эсвэл энэ засвараас өмнө хаасан)
+     нь хуучнаараа одоогийн нөөцөөс бодогдоно — тоо чимээгүй 0 болгохоос дээр. */
+function deprecSnapshotOf(month) {
+  const i = (typeof monthCloseInfo === 'function') ? monthCloseInfo(closedMonths(), month) : null;
+  const d = i && i.kind === 'month' && i.dep;
+  return (d && typeof d === 'object' && Number(d.total) >= 0) ? d : null;
+}
 function deprecForMonth(month) {
-  const d = deprecByBranch(state.products, deprecLives());
+  const snap = deprecSnapshotOf(month);
+  const d = snap ? { ...snap, byCat: snap.byCat || {}, frozen: true }
+                 : deprecByBranch(state.products, deprecLives());
   d.active = String(month || '') >= deprecStartMonth();
   d.start = deprecStartMonth();
   return d;
+}
+/* Хаахад хадгалах зураг — ЗӨВХӨН салбарын дүн ба тоолол (бүх барааг хадгалахгүй:
+   `app_config` мөр хэт томорно). Элэгдэл идэвхгүй сард зураг авах утгагүй. */
+function deprecSnapshotNow(month) {
+  if (String(month || '') < deprecStartMonth()) return null;
+  const d = deprecByBranch(state.products, deprecLives());
+  if (!d || !d.total) return null;
+  return { 'ИВЕНТ': d['ИВЕНТ'], 'КЕМП': d['КЕМП'], 'КАТЕРИНГ': d['КАТЕРИНГ'], 'ХХК': d['ХХК'],
+    total: d.total, byCat: d.byCat, noCost: d.noCost, doneN: d.doneN, doneCapital: d.doneCapital,
+    noDateN: d.noDateN, noDateMonth: d.noDateMonth, at: new Date().toISOString() };
 }
 /* Тайлан элэгдлийг хасдаг тул каталог ачаалагдсан байх ЁСТОЙ — эс бөгөөс элэгдэл
    чимээгүй 0 болж ашиг хиймлээр өндөр харагдана (НӨАТ-ийн ensureVatLoaded-тай ижил занга). */

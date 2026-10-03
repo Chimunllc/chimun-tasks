@@ -4252,6 +4252,7 @@ function render() {
   // Ажилчид view бүгдэд нээлттэй (Бүтэц таб универсал). Эрхгүй бол зөвхөн Бүтэц таб харагдана.
   if (state.view === 'access' && !canAccessView('access', () => state.isCEO) && !canDelegatePerms()) state.hubTab = 'org';
   if (state.view === 'salary' && !canSeeSalary()) state.view = 'mine';
+  if (state.view === 'acct' && !canSeeReports()) state.view = 'mine';   // Нягтлан = санхүүгийн тайлангийн эрхээр
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
   // View СОЛИГДОХОД тухайн view-ийн датаг шинээр татна → бусад төхөөрөмж дээр хийсэн
@@ -4476,6 +4477,9 @@ function renderSidebar() {
     if (state.cooShare === undefined) { state.cooShare = null; if (typeof loadAppConfig === 'function') loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
     cooNav.style.display = canSeeCooSalary() ? '' : 'none';
   }
+  // Нягтлан (журнал/дэвтэр/баланс/P&L) — санхүүгийн тайлан хардаг хүнд.
+  const acctNav = document.getElementById('nav-acct');
+  if (acctNav) acctNav.style.display = canSeeReports() ? '' : 'none';
   // Баримт бичиг — эрхийн системээр (тохируулаагүй бол CEO).
   const docNav = document.getElementById('nav-documents');
   if (docNav) {
@@ -4488,7 +4492,7 @@ function renderSidebar() {
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-chats', 'nav-missedcalls', 'nav-orders', 'nav-nomaad', 'nav-catering']);
   _setGrp('nav-group-inventory', ['nav-purchases', 'nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
-  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
+  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary', 'nav-acct']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
   _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
@@ -4535,6 +4539,7 @@ function renderTitle() {
     myattend: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>', 'Миний ирц', 'QR-аа менежерт харуулж ирцээ бүртгүүл · ажилласан цаг'],
     accounts:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>', 'Данс & Карт', 'Компанийн банкны данс, карт — эзэн, зориулалт, зарцуулалт'],
     coosalary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>', 'COO цалин', 'Үйл ажиллагааны захирлын цалин — цэвэр ашгаас хувиар'],
+    acct: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 9v12"/></svg>', 'Нягтлан', 'Журнал · ерөнхий дэвтэр · баланс · орлогын тайлан'],
     marketing: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>', 'Постер & брэнд', 'Постер зохиох ба имэйл маркетинг'],
     myexpenses: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/></svg>', 'Миний зардал', 'Картаар хийсэн зарлагаа ангилах — баримт хавсаргах'],
     catering:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 0 0 2-2V2M5 2v20M17 2v9c0 1 .5 2 2 2h1V2M20 13v9"/></svg>', 'Катеринг', 'Хоол хүнсний үйлчилгээ — арга хэмжээ бүрд цэс + үйлчлэх цаг төлөвлөнө'],
@@ -4685,6 +4690,12 @@ function renderTaskList() {
     wrap.innerHTML = safeViewHtml(renderReceivables, 'Авлага');
     attachReceivablesHandlers();
     return;
+  } else if (state.view === 'acct') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderAccounting, 'Нягтлан');
+    attachAccountingHandlers();
+    return;
   } else if (state.view === 'coosalary') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
@@ -4741,14 +4752,13 @@ function renderTaskList() {
     if (canSeeReports()) _rTabs.push({ k: 'reports', label: '📊 Тайлан' });
     if (canSeeWorkload()) _rTabs.push({ k: 'workload', label: '👥 Багийн ачаалал' });
     if (canSeeHistory()) _rTabs.push({ k: 'history', label: '📈 Түрээсийн түүх' });
-    if (canSeeReports()) _rTabs.push({ k: 'acct', label: '📒 Нягтлан' });
     if (!_rTabs.some(t => t.k === state.reportsTab)) state.reportsTab = (_rTabs[0] || {}).k || 'reports';
     const _rt = state.reportsTab;
     const _rbar = _rTabs.length > 1 ? `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">${_rTabs.map(t => `<button data-reports-tab="${t.k}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${t.k === _rt ? 'var(--primary)' : 'transparent'};background:none;color:${t.k === _rt ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${t.label}</button>`).join('')}</div>` : '';
     wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'history' ? renderHistory()
-      : _rt === 'acct' ? safeViewHtml(renderAccounting, 'Нягтлан') : renderReports());
+      : renderReports());
     if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'history') attachHistoryHandlers();
-    else if (_rt === 'acct') attachAccountingHandlers(); else attachReportsHandlers();
+    else attachReportsHandlers();
     document.querySelectorAll('[data-reports-tab]').forEach(b => b.addEventListener('click', () => { state.reportsTab = b.dataset.reportsTab; render(); }));
     return;
   } else if (state.view === 'performance') {
@@ -14143,6 +14153,7 @@ const PERM_MENUS = [
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
   { key: 'coosalary',   label: 'COO цалин',       actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
+  { key: 'acct',        label: 'Нягтлан (журнал · дэвтэр · баланс)', actions: [] },
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
   { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },

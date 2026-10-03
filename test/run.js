@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -1736,7 +1736,8 @@ ok(F.vatNameMatch('Түшиг', 'Өөр Компани') === false, 'vatNameMatc
     eq(short.lunch, 0, 'цай: богино өдөр хасагдахгүй');
     eq(short.mins, 120, 'цай: богино өдөр бүтнээрээ');
     // ⛔ Эхлэх өдрөөс ӨМНӨ хасагдахгүй (9 сарын цалин аль хэдийн бодогдсон)
-    eq(D('2026-09-30', '01:00', '10:04').lunch, 0, 'цай: 9 сард хасагдахгүй');
+    eq(D('2026-09-30', '01:00', '10:04').lunch, 60, 'цай: 9 сард ч хасагдана (тооцоо тэр сараас эхэлсэн)');
+    eq(D('2026-08-31', '01:00', '10:04').lunch, 0, 'цай: 8 сар (түүх) хасагдахгүй');
     // ⛔ `day` дутвал ЧИМЭЭГҮЙ 0 болно — тиймээс татах select-д заавал байна
     eq(D(undefined, '01:00', '10:04').lunch, 0, 'цай: өдөргүй бол хасагдахгүй (select-д day заавал)');
   }
@@ -14690,12 +14691,13 @@ async function swFetchTests() {
     rec('2026-09-02', 'in', 9), rec('2026-09-02', 'out', 21),
     rec('2026-09-03', 'in', 9),                                   // гарах бүртгэлгүй
   ], '2026-09');
-  eq(w.mins, H(9) + H(12), 'ирц: in/out хосоор л тоологдоно');
+  // ⚠ 9 сараас цайны цаг хасагдана: 9ц→8ц, 12ц→11ц
+  eq(w.mins, H(8) + H(11), 'ирц: in/out хосоор л тоологдоно (цай хассан)');
   eq(w.days, 3, 'ирц: өдрийн тоо');
   eq(w.noOut, 1, 'ирц: гарах бүртгэлгүй өдөр тоологдоно (илүү цаг дутуу гарна)');
 }
 
-// ═══ ЦАЙНЫ ЦАГ — 10 сараас ирцээс автоматаар хасна (2026-10-03, CEO) ═══════════
+// ═══ ЦАЙНЫ ЦАГ — 9 сараас ирцээс автоматаар хасна (2026-10-03, CEO) ═══════════
 {
   const runIn = (c) => vm.runInContext(c, sandbox);
   runIn('state.appConfig = state.appConfig || {}; delete state.appConfig.lunch;');
@@ -14710,9 +14712,15 @@ async function swFetchTests() {
   let prev = -1, mono = true;
   for (let g = 0; g <= 12 * 60; g += 5) { const net = g - LM('2026-10-05', g); if (net < prev) mono = false; prev = net; }
   ok(mono, 'цай: ажилласан цаг нийт цагаас хэзээ ч буурахгүй (5ц59м < 6ц гажиггүй)');
-  // ⛔ 10 сараас ӨМНӨ хасахгүй — 9 сарын цалин аль хэдийн бодогдсон
-  eq(LM('2026-09-30', 9 * 60), 0, 'цай: 9 сард хасахгүй');
-  eq(LM('2026-10-01', 9 * 60), 60, 'цай: 10-01-нээс хасна');
+  /* ⛔ ЭХЛЭХ ӨДӨР = 2026-09-01 — цалингийн тооцоо эхэлсэн сартай ИЖИЛ.
+     Эс бөгөөс аппын бодож буй ПЕРВЫЙ сар (9 сар) цайгүй, 10 сар цайтай гэсэн
+     ХОЁР өөр дүрмээр бодогдоно. 8 сар ба өмнөх нь ТҮҮХ (гараар тооцсон). */
+  eq(LM('2026-08-31', 9 * 60), 0, 'цай: 8 сар (түүх) хасагдахгүй');
+  eq(LM('2026-09-01', 9 * 60), 60, 'цай: 9 сарын эхнээс хасна');
+  eq(LM('2026-09-30', 9 * 60), 60, 'цай: 9 сард хасагдана');
+  eq(LM('2026-10-01', 9 * 60), 60, 'цай: 10 сард ч хасна');
+  // ⛔ Цайны ЭХЛЭХ сар = цалингийн тооцооны эхлэх сар (хоёр дүрэм зөрөх ёсгүй)
+  eq(F.lunchCfg().from.slice(0, 7), F.payrollStartMonth(), 'ИНВАРИАНТ: цай ба цалингийн эхлэл ижил сар');
   eq(LM('', 9 * 60), 0, 'цай: өдөр мэдэгдэхгүй бол хасахгүй');
   // Тохиргоо: mins=0 → унтарна
   runIn("state.appConfig.lunch = { mins: 0 };");
@@ -14728,7 +14736,8 @@ async function swFetchTests() {
   eq(sOct.gross, 540, 'цай: нийт байсан цаг хэвээр (9ц)');
   eq(sOct.lunch, 60, 'цай: хассан цаг ил');
   eq(sOct.mins, 480, 'цай: 09–18 → 8ц ажилласан');
-  eq(F.attMemberSummary([rec('2026-09-29', 'in', 9), rec('2026-09-29', 'out', 18)], false).mins, 540, 'цай: 9 сарын өдөр хэвээр 9ц');
+  eq(F.attMemberSummary([rec('2026-09-29', 'in', 9), rec('2026-09-29', 'out', 18)], false).mins, 480, 'цай: 9 сарын өдөр ч 8ц');
+  eq(F.attMemberSummary([rec('2026-08-29', 'in', 9), rec('2026-08-29', 'out', 18)], false).mins, 540, 'цай: 8 сар (түүх) хэвээр 9ц');
   // Цалин руу ДАМЖИНА: 23 өдөр 09–18 = 184ц = норм яг (илүү цаггүй)
   const days = []; for (let d = 1; d <= 23; d++) { const day = `2026-10-${String(d).padStart(2, '0')}`; days.push(rec(day, 'in', 9), rec(day, 'out', 18)); }
   eq(F.payMonthMins(days, '2026-10').mins, 23 * 480, 'цай: сарын нийлбэрт цай хасагдсан');
@@ -14874,9 +14883,9 @@ async function swFetchTests() {
     rec('88000001', '2026-09-02', 'in', 9),                                   // гараагүй
     rec('88000003', '2026-09-01', 'in', 10), rec('88000003', '2026-09-01', 'out', 20),
   ]);
-  eq(am['88000001'].mins, 9 * 60, 'ирц: хүн бүрээр тусад нь тоологдоно');
+  eq(am['88000001'].mins, 8 * 60, 'ирц: хүн бүрээр тусад нь тоологдоно (цай хассан)');
   eq(am['88000001'].noOut, 1, 'ирц: гараагүй өдөр тоологдоно');
-  eq(am['88000003'].mins, 10 * 60, 'ирц: хоёр дахь хүн зөв');
+  eq(am['88000003'].mins, 9 * 60, 'ирц: хоёр дахь хүн зөв (цай хассан)');
   eq(Object.keys(am).length, 2, 'ирц: зөвхөн бичлэгтэй хүн');
 }
 

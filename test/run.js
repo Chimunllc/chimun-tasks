@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -2083,7 +2083,7 @@ function finish() {
   const BQS = vm.runInContext('BQ_STATUS', sandbox);
   ok(SLL.prepared.indexOf('Бэлдсэн') > -1, 'шошго: SL лог prepared = Бэлдсэн (төлвийн нэртэй нийцнэ)');
   eq(BQS.prepared.label, 'Цэвэрлэсэн', 'шошго: prepared төлвийн нэр Цэвэрлэсэн (шинэ дараалал)');
-  ok(SML.prepare.indexOf('Бэлдсэн') > -1, 'шошго: stage_meta prepare = Бэлдсэн');
+  ok(SML.prepare.indexOf('Баглаж/ачсан') > -1, 'шошго: stage_meta prepare = Баглаж/ачсан');
   ok(SLL.prepared.indexOf('Цэвэрлэсэн') === -1, 'шошго: prepared нь Цэвэрлэсэн ГЭЖ нэрлэгдэхээ болив');
 }
 
@@ -3932,7 +3932,10 @@ need(['orderCustType']);
         'canceled', 'deleted', 'ямар_ч_биш', ''];
       let same = 0, diff = [];
       ALL.forEach(st => [false, true].forEach(dlv => [false, true].forEach(setup => {
-        const a = ref(st, dlv, setup), b = F.pipelineNext(st, { dlv, setup });
+        /* ⚠ ЗӨВХӨН ЗАН ЧАНАР (to + cap) тулгана — НЭР нь 2026-10-03-нд шинэ
+           нэр томьёогоор солигдсон (дамжлагын жинтэй хамт). */
+        const _k = (x) => x ? { to: x.to, cap: x.cap } : null;
+        const a = _k(ref(st, dlv, setup)), b = _k(F.pipelineNext(st, { dlv, setup }));
         if (JSON.stringify(a) === JSON.stringify(b)) same++;
         else diff.push(`${st}/dlv=${dlv}/setup=${setup}: ${JSON.stringify(a)} ≠ ${JSON.stringify(b)}`);
       })));
@@ -13926,7 +13929,8 @@ async function swFetchTests() {
   vm.runInContext("state.appConfig = { stage_pay: { helper_share: 0.5, helper_max: 2 } };", sandbox);
   const cfgR = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B','C','D'] } } }], '2026-09');
-  eq(cfgR.B.helperFee, 500, 'тохиргоо: хамтрагчийн хувь 50%, 2 хүнд → 2000×0.5÷2 = 500₮');
+  eq(cfgR.B.helperPts, 0.25, 'тохиргоо: хамтрагчийн хувь 50%, 2 хүнд → 1 оноо×0.5÷2 = 0.25');
+  eq(cfgR.B.helperFee, Math.round(0.25 * 1350), 'тохиргоо: оноо ханшаар төгрөг болно');
   ok(!cfgR.D, 'тохиргоо: helper_max 2 → 3 дахь хамтрагч хөлсгүй');
   vm.runInContext("state.appConfig = {};", sandbox);
   eq(stageFeeForQty(345), 20000, 'тохиргоо цэвэрлэгдвэл кодын нөөц утга');
@@ -13941,10 +13945,12 @@ async function swFetchTests() {
   const ords = [{ items: [{ qty: 30 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B', 'C'] } } }];
   const r1 = stagePayByPerson(ords, '2026-09');
-  eq(r1.A.ledFee, 7000, 'хөлс: 30 бараа → удирдсан A 7,000₮');
+  // 30 бараа = 3.5 оноо, Цэвэрлэх жин 1 → 3.5 оноо × 1,350₮
+  eq(r1.A.ledPts, 3.5, 'бонус: 30 бараа → удирдсан A 3.5 оноо');
+  eq(r1.A.ledFee, Math.round(3.5 * 1350), 'бонус: оноо ханшаар төгрөг болно');
   eq(r1.A.led, 1, 'хөлс: A удирдсан 1 шат');
-  eq(r1.B.helperFee, 1050, 'хөлс: хамтрагч B = 7000×30%÷2 = 1,050₮');
-  eq(r1.C.helperFee, 1050, 'хөлс: хамтрагч C ижил');
+  eq(r1.B.helperPts, 3.5 * 0.3 / 2, 'бонус: хамтрагч B = 3.5 оноо×30%÷2');
+  eq(r1.C.helperPts, 3.5 * 0.3 / 2, 'бонус: хамтрагч C ижил');
   eq(r1.B.ledFee, 0, 'хөлс: хамтрагч удирдсаны хөлс авахгүй');
 
   // ⛔ Бичиг цаасны шат (discount/revert) ачаа зөөгөөгүй → хөлс БАЙХГҮЙ
@@ -13959,7 +13965,7 @@ async function swFetchTests() {
   const rm = stagePayByPerson(many, '2026-09');
   const paidHelpers = ['B','C','D','E','F','G'].filter(h => rm[h] && rm[h].helperFee > 0);
   eq(paidHelpers.length, 4, 'хөлс: хамтрагч дээд тал 4 хүнд хуваагдана');
-  eq(rm.B.helperFee, 150, 'хөлс: 2000×30%÷4 = 150₮');
+  eq(rm.B.helperPts, 1 * 0.3 / 4, 'бонус: 1 оноо×30%÷4');
 
   // Сар шүүлт — өөр сарын шат тоологдохгүй
   const twom = [{ items: [{ qty: 10 }], stage_meta: {
@@ -13977,11 +13983,12 @@ async function swFetchTests() {
   const sumTotal = Object.keys(ri).reduce((t, k) => t + ri[k].total, 0);
   const sumParts = Object.keys(ri).reduce((t, k) => t + ri[k].ledFee + ri[k].helperFee, 0);
   eq(sumTotal, sumParts, 'ИНВАРИАНТ: нийт хөлс = удирдсан + хамтрагч');
-  eq(ri.A.ledFee + ri.B.ledFee, 22000, 'ИНВАРИАНТ: удирдсаны хөлс = 20,000 + 2,000');
+  // Цэвэрлэх(345 бараа) = 10 оноо × жин 1; Талбарт буулгах(2 бараа) = 1 оноо × жин 1.5
+  eq(ri.A.ledPts + ri.B.ledPts, 10 + 1.5, 'ИНВАРИАНТ: удирдсаны оноо = 10 + 1.5');
 
   // Хамтрагчгүй шат — 30%-ийн сан хэнд ч ХУВААГДАХГҮЙ (сүйрэхгүй)
   const solo = [{ items: [{ qty: 8 }], stage_meta: { clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }];
-  eq(stagePayByPerson(solo, '2026-09').A.total, 4000, 'хөлс: хамтрагчгүй бол зөвхөн удирдсаны хөлс');
+  eq(stagePayByPerson(solo, '2026-09').A.total, Math.round(2 * 1350), 'бонус: хамтрагчгүй бол зөвхөн удирдсаны оноо');
 }
 
 // ═══ SCAN: дамжлагын бонусыг ЦАГААР бодохыг хаана ═══
@@ -15133,6 +15140,41 @@ async function swFetchTests() {
   ok(/Дамжлагын бонус/.test(src), 'scan: шинэ нэр хэрэглэгдэнэ');
 }
 
+// ═══ ОНОО → ТӨГРӨГ, ХАНШ НЭГ ГАЗАР (2026-10-03, CEO) ═══════════════════
+{
+  const { stagePtsForQty, stageWeight, stagePayByPerson } = F;
+  // Барааны тоо → оноо (хөлстэй ижил шатлал)
+  eq(stagePtsForQty(3), 1, 'оноо: 1–5 бараа = 1');
+  eq(stagePtsForQty(12), 2, 'оноо: 6–20 бараа = 2');
+  eq(stagePtsForQty(30), 3.5, 'оноо: 21–60 бараа = 3.5');
+  eq(stagePtsForQty(100), 6, 'оноо: 61–150 бараа = 6');
+  eq(stagePtsForQty(345), 10, 'оноо: 151+ бараа = 10');
+  eq(stagePtsForQty(0), 1, 'оноо: бараагүй захиалга доод шатлалаар');
+  ok(stagePtsForQty(100000) === 10, 'оноо: хязгааргүй том ч дээд шатлалаар');
+  // Дамжлагын жин — CEO-гийн тогтоосон (PIPELINE-аас)
+  eq(stageWeight('clean'), 1, 'жин: Цэвэрлэх 1');
+  eq(stageWeight('prepare'), 1.5, 'жин: Баглаж/ачих 1.5');
+  eq(stageWeight('dispatch'), 1, 'жин: Бүртгэж гаргах 1');
+  eq(stageWeight('deliver'), 1.5, 'жин: Талбарт буулгах 1.5');
+  eq(stageWeight('setup'), 2, 'жин: Суурилуулах 2');
+  eq(stageWeight('teardown'), 1.5, 'жин: Задлах 1.5');
+  eq(stageWeight('retstart'), 1.5, 'жин: Ачиж буцах 1.5');
+  eq(stageWeight('received'), 1, 'жин: Бүртгэж хүлээн авах 1');
+  // ⛔ Танихгүй дамжлага чимээгүй 0 болохгүй (шинэ дамжлага нэмэхэд бонус алга болно)
+  eq(stageWeight('шинэ_дамжлага'), 1, 'жин: танихгүй дамжлага 1 (чимээгүй 0 болохгүй)');
+  // Оноо × жин — суурилуулалт цэвэрлэгээнээс ХОЁР дахин
+  const one = (key) => stagePayByPerson([{ items: [{ qty: 12 }], stage_meta: {
+    [key]: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09').A;
+  eq(one('clean').pts, 2, 'оноо: 12 бараа × Цэвэрлэх = 2');
+  eq(one('setup').pts, 4, 'оноо: 12 бараа × Суурилуулах = 4');
+  eq(one('prepare').pts, 3, 'оноо: 12 бараа × Баглаж/ачих = 3');
+  // ⛔ ХАНШ НЭГ ГАЗАР — тохиргоо өөрчлөхөд БҮХ дүн дагаж хөдөлнө
+  vm.runInContext("state.appConfig = { stage_pay: { rate: 2000 } };", sandbox);
+  eq(one('clean').total, 4000, 'ханш: тохиргооны ханшаар бодогдоно');
+  vm.runInContext("state.appConfig = {};", sandbox);
+  eq(one('clean').total, 2 * 1350, 'ханш: тохиргоо авахад кодын нөөц ханш');
+}
+
 // ═══ SCAN: урсгал жагсаалтаас ажиллана ═════════════════════════════════
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
@@ -15143,6 +15185,15 @@ async function swFetchTests() {
   const pn = src.slice(src.indexOf('function pipelineNext'), src.indexOf('function orderNextStep'));
   ok(/r\.dlv !== undefined/.test(pn) && /r\.setup !== undefined/.test(pn), 'scan: нөхцөл заагаагүй мөр хоёуланд тохирно');
   ok(/return null/.test(pn), 'scan: танихгүй төлөвт дамжлага зохиохгүй');
+  // ⛔ ХАНШ НЭГ ГАЗАР — хоёр газар бичвэл нэг дамжлага хоёр үнэтэй болно
+  eq((src.match(/const STAGE_PT_RATE = /g) || []).length, 1, 'scan: ханш нэг л газар зарлагдана');
+  const sp = src.slice(src.indexOf('function stagePayByPerson'), src.indexOf('function stagePayFor'));
+  ok(/stagePtsForQty\(qty, bands\) \* stageWeight\(key\)/.test(sp), 'scan: оноо = шатлал × жин');
+  ok(/if \(pts <= 0\) continue/.test(sp), 'scan: 0 оноотой дамжлага (жолоо) бонус авахгүй');
+  ok(/stagePointRate\(\)/.test(sp), 'scan: төгрөг нь ханшаар, нэг газраас');
+  // ⛔ Жин нь PIPELINE-аас — хоёр дахь жагсаалт үүсгэхгүй
+  const sw = src.slice(src.indexOf('function stageWeight'), src.indexOf('function stageWeight') + 300);
+  ok(/for \(const r of PIPELINE\)/.test(sw), 'scan: жин PIPELINE-аас (давхардсан жагсаалтгүй)');
 }
 
 // ═══ SCAN: тохиргоо үнэхээр ачаалагддаг ════════════════════════════════

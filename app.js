@@ -9237,6 +9237,8 @@ function closeMonthBlockers(stmts, income, regAccts, month, pendN) {
      ⑤ бүгд цэвэрсэн үед л сар хаана.
    done:true алхам нь ЖАГСААЛТААС ГАРАХГҮЙ — «би үүнийг хийчихсэн» гэдэг нь
    «хийх шаардлагагүй байсан»-аас өөр мэдээлэл. */
+// Хийгдсэн алхам бүр ХААШАА буцаж харахыг заана (товч нь «Харах»).
+const FIN_STEP_REVIEW = { stmt: 'recon', expense: 'expenses', income: 'recon', balance: 'recon' };
 function finNextSteps(ctx) {
   const c = ctx || {};
   const month = String(c.month || '');
@@ -9291,6 +9293,15 @@ function finNextSteps(ctx) {
       ? { key: 'close', icon: '🔒', title: 'Сар хаах', hint: 'Дээрх цэгцэрсний дараа', wait: true }
       : { key: 'close', icon: '🔒', title: 'Сар хаах', hint: month + ' сарын тоог хөлдөөнө — дараа нь засагдахгүй', act: 'close', btn: 'Хаах' });
   }
+  /* ⛔ ХИЙГДСЭН АЛХАМ Ч НЭЭГДЭНЭ (2026-10-03, CEO барив: «орлого тулгах хэсэг
+     шууд ингээд дахин өөрчлөх боломжгүй хаагдах нь зөв үү, би ямар орлогууд
+     тулгасныг ч харж чадахгүй байна»).
+     ✓ тэмдэг нь «ажил дууссан» гэсэн үг — «буцаж харах эрхгүй» гэсэн үг БИШ.
+     Буруу тулгасан мөрийг засах зам (тулгалтын цонхны ↩ буцаах) аль хэдийн
+     байсан; зүгээр л тийш хүрэх хаалга хаагдсан байв. */
+  steps.forEach(st => {
+    if (st.done && !st.act && FIN_STEP_REVIEW[st.key]) { st.act = FIN_STEP_REVIEW[st.key]; st.btn = 'Харах'; }
+  });
   return steps;
 }
 /* Дараагийн алхмын карт. Хийгдсэн алхам бүдгэрч, хийх ёстой нь товчтой.
@@ -9307,7 +9318,9 @@ function finNextStepsHtml(steps, month) {
       + `<div class="ns-hint">${escapeHtml(st.hint || '')}</div></div>`
       + cnt + btn + `</div>`;
   }).join('');
-  const left = (steps || []).filter(st => st.act && st.key !== 'close').length;
+  // ⚠ ХАРАХ товч нь «хийх ажил» БИШ — тоололд орохгүй, эс бөгөөс бүх зүйл
+  //   цэгцтэй байхад «сард хийх 4 зүйл» гэж худал бичигдэнэ.
+  const left = (steps || []).filter(st => st.act && !st.done && st.key !== 'close').length;
   const head = (steps || []).length === 1 && steps[0].key === 'locked'
     ? ''
     : `<div class="ns-head">${left ? `${month} сард хийх ${left} зүйл` : `✓ ${month} сар цэгцтэй`}</div>`;

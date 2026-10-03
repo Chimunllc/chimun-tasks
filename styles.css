@@ -7321,6 +7321,8 @@ select.no-asar-len {
 .ns-btn-lock { color: var(--ok); border-color: var(--ok); }
 .ns-done .ns-mark { background: var(--ok); }
 .ns-done .ns-title, .ns-done .ns-hint { color: var(--muted); }
+/* «Харах» нь хийх ажил биш — товч нь чимээгүй, хийх ёстой алхмуудаас ялгарна */
+.ns-done .ns-btn { background: none; border-color: var(--border); color: var(--muted); }
 .ns-wait .ns-mark { background: var(--border); color: var(--muted); }
 .ns-wait .ns-title, .ns-wait .ns-hint { color: var(--muted); }
 @media (max-width: 620px) {

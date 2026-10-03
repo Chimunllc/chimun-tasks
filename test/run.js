@@ -14571,7 +14571,8 @@ async function swFetchTests() {
   eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otPay, 0, 'цалин: нормоос доош → илүү цаг 0₮');
 
   // ── ⛔ НОРМД ХҮРЭЭГҮЙ → СУУРЬ АЖИЛЛАСАН ЦАГААР (2026-10-03, CEO; Ц.Бат эрдэнэ 129.6ц/184ц) ──
-  const bs = monthPayBreakdown(1840000, true, H(92), NORM, 0, 1);
+  const OCT = '2026-10';
+  const bs = monthPayBreakdown(1840000, true, H(92), NORM, 0, 1, OCT);
   eq(bs.shortMins, H(92), 'цалин: нормоос дутуу цаг');
   eq(bs.earned, 920000, 'цалин: 92/184ц → суурийн тал');
   eq(bs.base, 1840000, 'цалин: гэрээний суурь хэвээр харагдана');
@@ -14579,16 +14580,21 @@ async function swFetchTests() {
   eq(bs.pit, 81420, 'цалин: ХХОАТ цагаар бодсон суурьаас');
   eq(bs.total, 920000 - 105800 - 81420, 'цалин: нийт = цагаар бодсон цэвэр суурь');
   // Цагийн хөлс ижил — дутуу ба илүү цаг ТЭГШ хэмтэй
-  eq(monthPayBreakdown(1840000, false, H(174), NORM, 0, 1).earned, 1840000 - 10 * 10000, 'цалин: 10ц дутуу = 10 × цагийн хөлс хасагдана');
-  eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
-  eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
+  eq(monthPayBreakdown(1840000, false, H(174), NORM, 0, 1, OCT).earned, 1840000 - 10 * 10000, 'цалин: 10ц дутуу = 10 × цагийн хөлс хасагдана');
+  eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1, OCT).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
+  eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1, OCT).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
+  // ⛔ 10 САРААС — «9 сард хэлж амжаагүй учраас 9 сарынхад хэрэгжүүлж болохгүй» (CEO)
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09').earned, 1840000, 'цалин: 9 сард дутуу цагаар ХАСАХГҮЙ (урьдчилан мэдэгдээгүй)');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09').shortMins, 0, 'цалин: 9 сард дутуу цаг тэмдэглэгдэхгүй');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1).earned, 1840000, 'цалин: сар мэдэгдэхгүй бол хасахгүй (эргэлзвэл бүтэн)');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-11').earned, 920000, 'цалин: 11 сард ч хэрэгжинэ');
   // ⛔ Цаг МЭДЭГДЭХГҮЙ (ирц ачаалагдаагүй / огт бүртгэлгүй) → ТЭГЛЭХГҮЙ
-  const bu = monthPayBreakdown(1840000, false, null, NORM, 0, 1);
+  const bu = monthPayBreakdown(1840000, false, null, NORM, 0, 1, OCT);
   eq(bu.earned, 1840000, 'цалин: цаг мэдэгдэхгүй (null) бол бүтэн суурь — тэглэхгүй');
   eq(bu.shortMins, 0, 'цалин: цаг мэдэгдэхгүй бол дутуу цаг 0');
-  eq(monthPayBreakdown(1840000, false, undefined, NORM, 0, 1).earned, 1840000, 'цалин: undefined ч мэдэгдэхгүй гэж үзнэ');
+  eq(monthPayBreakdown(1840000, false, undefined, NORM, 0, 1, OCT).earned, 1840000, 'цалин: undefined ч мэдэгдэхгүй гэж үзнэ');
   // Хүргэлт цагаас үл хамааран бүтнээр
-  eq(monthPayBreakdown(1840000, false, H(92), NORM, 50000, 1).total, 920000 + 50000, 'цалин: дутуу цагтай ч хүргэлт бүтнээр');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 50000, 1, OCT).total, 920000 + 50000, 'цалин: дутуу цагтай ч хүргэлт бүтнээр');
 
   // ── Суутгалгүй ажилтан ──
   const b4 = monthPayBreakdown(1000000, false, NORM, NORM, 0, 1);
@@ -14630,6 +14636,50 @@ async function swFetchTests() {
   eq(w.noOut, 1, 'ирц: гарах бүртгэлгүй өдөр тоологдоно (илүү цаг дутуу гарна)');
 }
 
+// ═══ ЦАЙНЫ ЦАГ — 10 сараас ирцээс автоматаар хасна (2026-10-03, CEO) ═══════════
+{
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  runIn('state.appConfig = state.appConfig || {}; delete state.appConfig.lunch;');
+  const LM = (d, m) => runIn(`lunchMinsFor(${JSON.stringify(d)}, ${m})`);
+  // Томьёо: min(60, max(0, нийт − 5ц)) — 5ц хүртэл 0, 6ц-аас дээш бүтэн 1ц
+  eq(LM('2026-10-05', 9 * 60), 60, 'цай: 9ц байсан өдөр 1ц хасагдана');
+  eq(LM('2026-10-05', 6 * 60), 60, 'цай: яг 6ц → бүтэн 1ц');
+  eq(LM('2026-10-05', 5 * 60 + 30), 30, 'цай: 5ц30м → 30м (хатуу босгогүй)');
+  eq(LM('2026-10-05', 5 * 60), 0, 'цай: 5ц хүртэл хасахгүй');
+  eq(LM('2026-10-05', 3 * 60), 0, 'цай: богино ээлжинд хасахгүй');
+  // ⛔ Шулуун томьёо: ИЛҮҮ байсан хүн хэзээ ч БАГА цаг авахгүй (хатуу босгын гажиг)
+  let prev = -1, mono = true;
+  for (let g = 0; g <= 12 * 60; g += 5) { const net = g - LM('2026-10-05', g); if (net < prev) mono = false; prev = net; }
+  ok(mono, 'цай: ажилласан цаг нийт цагаас хэзээ ч буурахгүй (5ц59м < 6ц гажиггүй)');
+  // ⛔ 10 сараас ӨМНӨ хасахгүй — 9 сарын цалин аль хэдийн бодогдсон
+  eq(LM('2026-09-30', 9 * 60), 0, 'цай: 9 сард хасахгүй');
+  eq(LM('2026-10-01', 9 * 60), 60, 'цай: 10-01-нээс хасна');
+  eq(LM('', 9 * 60), 0, 'цай: өдөр мэдэгдэхгүй бол хасахгүй');
+  // Тохиргоо: mins=0 → унтарна
+  runIn("state.appConfig.lunch = { mins: 0 };");
+  eq(LM('2026-10-05', 9 * 60), 0, 'цай: тохиргоогоор унтарна');
+  runIn("state.appConfig.lunch = { from: '2026-11-01', mins: 30, after: 240 };");
+  eq(LM('2026-10-05', 9 * 60), 0, 'цай: тохиргооны эхлэх өдрөөс өмнө хасахгүй');
+  eq(LM('2026-11-05', 9 * 60), 30, 'цай: тохиргооны хугацаа/босго');
+  runIn('delete state.appConfig.lunch;');
+
+  // attMemberSummary — ГАНЦ хасах цэг: mins = цай хассан, gross = нийт
+  const rec = (day, kind, hh) => ({ day, kind, ts: `${day}T${String(hh - 8).padStart(2, '0')}:00:00.000Z` });
+  const sOct = F.attMemberSummary([rec('2026-10-05', 'in', 9), rec('2026-10-05', 'out', 18)], false);
+  eq(sOct.gross, 540, 'цай: нийт байсан цаг хэвээр (9ц)');
+  eq(sOct.lunch, 60, 'цай: хассан цаг ил');
+  eq(sOct.mins, 480, 'цай: 09–18 → 8ц ажилласан');
+  eq(F.attMemberSummary([rec('2026-09-29', 'in', 9), rec('2026-09-29', 'out', 18)], false).mins, 540, 'цай: 9 сарын өдөр хэвээр 9ц');
+  // Цалин руу ДАМЖИНА: 23 өдөр 09–18 = 184ц = норм яг (илүү цаггүй)
+  const days = []; for (let d = 1; d <= 23; d++) { const day = `2026-10-${String(d).padStart(2, '0')}`; days.push(rec(day, 'in', 9), rec(day, 'out', 18)); }
+  eq(F.payMonthMins(days, '2026-10').mins, 23 * 480, 'цай: сарын нийлбэрт цай хасагдсан');
+  eq(F.monthPayBreakdown(1840000, false, F.payMonthMins(days, '2026-10').mins, 184 * 60, 0, 1).otMins, 0, 'цай: 09–18 × 23 өдөр = норм, илүү цаг 0');
+
+  // SCAN: цайг ГАНЦ газар хасна — өөр газар дахин хасвал давхар хасагдана
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  eq((src.match(/lunchMinsFor\(/g) || []).length, 2, 'scan: цай зөвхөн attMemberSummary-д хасагдана (тодорхойлолт + 1 дуудалт)');
+}
+
 // ═══ SCAN: ШАТНЫ ХӨЛС ЦАЛИНД НЭМЭГДЭХГҮЙ (2026-10-02, CEO шийдвэр) ═══════
 // Шатны хөлс нь дамжлагын урамшуулал — цалингийн нийт дүнд орвол утгаа алдана.
 // «Нэмэгдэлд суутгал тооцохгүй» гэдэг нь суутгал ЗӨВХӨН суурьтаас бодогдоно гэсэн үг:
@@ -14645,6 +14695,9 @@ async function swFetchTests() {
   // ⛔ Цаг мэдэгдэхгүйг 0 цаг гэж үзвэл цалин тэглэгдэнэ — дуудагч бүр null дамжуулна
   const rsB = src.slice(src.indexOf('function renderSalary('), src.indexOf('function attachSalaryHandlers('));
   ok(/\(attReady && attMins\[r\.k\]\) \? w\.mins : null/.test(rsB), 'scan: самбар ирц ачаалагдаагүй үед цагийг null дамжуулна');
+  // ⛔ Сар дамжуулаагүй дуудагч цагаар ХЭЗЭЭ Ч хасахгүй — тиймээс бүгд сараа өгнө
+  const callers = (src.match(/monthPayBreakdown\([^\n]*\)/g) || []).filter(x => !/deliveryAmt, rate, month/.test(x));   // тодорхойлолтыг хасна
+  ok(callers.length >= 3 && callers.every(x => /undefined, (month|ym)\)/.test(x)), 'scan: цалингийн дуудагч бүр сараа дамжуулна');
   ok(/-\s*norm\b/.test(body), 'scan: илүү цаг = сарын нийт − норм (өдрөөр биш)');
 
   // Картын нийт дүн нь monthPayBreakdown-аас л гарна (дэлгэцэд дахин бодохгүй)

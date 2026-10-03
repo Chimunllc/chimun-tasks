@@ -425,6 +425,57 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   ok(/if \(_money\.length\) \{/.test(pf), 'scan: зөвхөн мөнгөний талбар дамжсан үед шалгана');
 }
 
+/* ═══ 🔎 САМБАРЫН ШҮҮЛТҮҮР (2026-10-03, CEO «нийлүүлэгчгүй, огноогүй гэх мэт») ═══
+   281 барааг нүдээр хөөх боломжгүй — дутуу талбарыг шүүж өгнө. Амьд датаар:
+   огноогүй 169 · нийлүүлэгчгүй 212 · барьцаагүй 82 · эцэслээгүй 230. */
+{
+  const AF = vm.runInContext('psApplyFilter', sandbox);
+  const F = vm.runInContext('PSHEET_FILTERS', sandbox);
+  const P = [
+    { sku: 'A', category: 'Асар', photo: 'x', price: 100, deposit: 50, cost: 10, purchase_date: '2026-01-01', supplier: 'Нэг', qty_mevent: 5, stock_locked_at: 't' },
+    { sku: 'B', category: '', photo: '', price: 0, deposit: 0, cost: 0, purchase_date: '', supplier: '', qty_mevent: 0, stock_locked_at: null },
+    { sku: 'C', category: 'Техник', photo: 'y', price: 200, deposit: 0, cost: 5, purchase_date: null, supplier: '  ', qty_nomaad: 3, stock_locked_at: null },
+  ];
+  const k = (mode, key) => AF(P, mode, key).map(x => x.sku).join('');
+  eq(k('cost', 'nodate'), 'BC', 'шүүлт: авсан огноогүй (null ба хоосон мөр хоёулаа)');
+  eq(k('cost', 'nosup'), 'BC', 'шүүлт: нийлүүлэгчгүй (зөвхөн зайнаас тогтсон нь ч)');
+  eq(k('cost', 'nocost'), 'B', 'шүүлт: өртөггүй');
+  eq(k('price', 'noprice'), 'B', 'шүүлт: үнэгүй');
+  eq(k('price', 'nodep'), 'BC', 'шүүлт: барьцаагүй');
+  eq(k('catalog', 'nocat'), 'B', 'шүүлт: ангилалгүй');
+  eq(k('catalog', 'nophoto'), 'B', 'шүүлт: зураггүй');
+  eq(k('stock', 'zero'), 'B', 'шүүлт: нөөцгүй (бүх салбарын нийлбэр 0)');
+  eq(k('stock', 'unsealed'), 'BC', 'шүүлт: эцэслээгүй');
+  /* ⚠ Танихгүй түлхүүр → БҮГД. Хоосон дэлгэц гаргавал хүн «бараа алга» гэж
+     андуурна (хуучин шүүлттэй үлдсэн төлөв рүү буцаж орохыг ч барина). */
+  eq(k('cost', 'байхгүй'), 'ABC', 'шүүлт: танихгүй түлхүүр БҮГДИЙГ гаргана');
+  eq(k('cost', ''), 'ABC', 'шүүлт: хоосон түлхүүр = бүгд');
+  eq(AF(null, 'cost', 'nodate'), [], 'шүүлт: хоосон жагсаалт унахгүй');
+  // ⚠ `test` унавал мөр ХАСАГДана, бүх дэлгэц унахгүй
+  eq(AF([{ sku: 'X', get supplier() { throw new Error('x'); } }], 'cost', 'nosup').length, 0,
+     'шүүлт: алдаатай мөр дэлгэцийг унагахгүй');
+  // Самбар бүр өөрийн шүүлтүүртэй
+  ['catalog', 'price', 'cost', 'stock'].forEach(m => ok((F[m] || []).length > 0, 'шүүлт: ' + m + ' самбар шүүлтүүртэй'));
+}
+
+/* 0e2p) SCAN — шүүлтүүр нэг газраас, тоотой (2026-10-03) */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/const PSHEET_FILTERS = \{/.test(codeLines), 'scan: шүүлтүүр нэг тодорхойлолтоос');
+  ok(/function psApplyFilter\(/.test(codeLines), 'scan: хэрэглэх нь ганц функц');
+  ok(/psApplyFilter\(_all, mode, state\.psF\)/.test(codeLines), 'scan: жагсаалтад хэрэглэгдэнэ');
+  /* ⛔ Чип бүр ТООТОЙ — тоогүй бол хүн аль нь ажилтайг мэдэхгүй, дарж үзэх
+     болно. Тоо нь ажил хаана байгааг систем хэлэх цорын ганц зам. */
+  ok(/data-ps-f2="\$\{escapeHtml\(k\)\}">\$\{escapeHtml\(lb\)\}<b>\$\{n\}<\/b>/.test(codeLines),
+     'scan: чип бүр тоотой');
+  // ⚠ Тоо нь ШҮҮГДСЭН биш, ХАЙЛТААР шүүгдсэн бүх мөрөөс — эс бөгөөс шүүлт
+  //   идэвхжихэд бусад чипийн тоо 0 болж утгагүй болно.
+  ok(/_all\.filter\(x => \{ try \{ return !!f\.test\(x\); \}/.test(codeLines),
+     'scan: чипийн тоо нь шүүлтээс ӨМНӨХ жагсаалтаас');
+  ok(/state\.psF === k \|\| !k\) \? '' : k/.test(codeLines),
+     'scan: дахин дарвал БҮГД рүү буцна');
+}
+
 /* 0e2o) SCAN — «Нөөц ба салбар» самбар: ШИЛЖҮҮЛЭГ үндсэн үйлдэл (2026-10-03)
    CEO: «бараа шилжихгүй, ойлгомжгүй». 4 тоог тусад нь нэмж хасуулах нь
    шилжүүлэг БИШ — нийлбэр санамсаргүй өөрчлөгдөх нүх үлдээдэг. ⇄ товч нь

@@ -22133,16 +22133,30 @@ function openingBlockHtml(canManage) {
   // Хоёр ажил ХОЁР жагсаалт. Нэг жагсаалтад хольвол нярав батлах товч,
   // захирал тоолох талбар харж, аль нь өөрийнх нь ажил болох нь мэдэгдэхгүй.
   // Хоёуланг ӨРТГӨӨР эрэмбэлнэ — «юуг эхэлж хийх вэ» гэдгийг систем хэлнэ.
-  const oLeft = oRows.filter(x => x.sign === 'todo' && x.value > 0).slice(0, 40);
-  const oWait = oRows.filter(x => x.sign === 'wait').slice(0, 40);
+  /* ⛔ 40-гоор таслаад «…бас 126 бараа» гэж бичихэд ҮЛДСЭНИЙГ ХАРАХ ЗАМ ОГТ
+     БАЙГААГҮЙ (2026-10-03, CEO барив). Өртгөөр эрэмбэлэх нь «юуг эхэлж тоолох
+     вэ» гэдгийг хэлдэг зөв шийдэл — гэхдээ ажил дуусахын тулд бүгдийг нь харах
+     хэрэгтэй. Одоо дарж задарна. */
+  const expand = state.openExpand || (state.openExpand = {});
+  /* Гурван жагсаалт гурвуулаа таслагддаг тул задлах арга нь НЭГ газар.
+     Тус бүр өөрийн түлхүүртэй — батлагдсаныг задлахад тоолох жагсаалт
+     хамт томорвол дэлгэц дахин уншигдахгүй болно. */
+  const oCap = (arr, key, n) => (expand[key] ? arr : arr.slice(0, n));
+  const oMore = (all, shown, key, word) => all.length > shown.length
+    ? `<button class="btn stc-open-more" data-op-more="${key}">…бас ${all.length - shown.length} ${word} — бүгдийг харах ↓</button>`
+    : (expand[key] ? `<button class="btn stc-open-more" data-op-more="${key}">↑ Хураах</button>` : '');
+  const oTodoAll = oRows.filter(x => x.sign === 'todo' && x.value > 0);
+  const oLeft = oCap(oTodoAll, 'todo', 40);
+  const oWaitAll = oRows.filter(x => x.sign === 'wait');
+  const oWait = oCap(oWaitAll, 'wait', 40);
   /* ⛔ Баталгаажсан бараа ХААНА ХАРАГДАХ вэ (2026-09-14). Анх хоёр гарын үсэг
      бүрдмэгц бараа хоёр жагсаалтаас ХОЁУЛАНГААС нь гардаг байв — зөвхөн хувь
      өсдөг, ХЭН тоолж ХЭН баталсан нь хаана ч харагддаггүй. Хоёр гарын үсгийн
      БҮХ УТГА нь хариуцлага мөрдөгдөх явдал тул харагдахгүй гарын үсэг нь
      гарын үсэг биш. Эрэмбэ = сүүлд баталсан нь дээр («юу дөнгөж боллоо»). */
-  const oDone = oRows.filter(x => x.sign === 'done')
-    .sort((a, b) => String(b.apAt).localeCompare(String(a.apAt)))
-    .slice(0, 60);
+  const oDoneAll = oRows.filter(x => x.sign === 'done')
+    .sort((a, b) => String(b.apAt).localeCompare(String(a.apAt)));
+  const oDone = oCap(oDoneAll, 'done', 60);
 
   const countList = oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
       <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
@@ -22150,7 +22164,8 @@ function openingBlockHtml(canManage) {
       ${canOpen ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
       <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Тоолсон</button>` : ''}
     </div>`).join('')}</div>
-    ${oSt.left - oSt.wait > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oSt.wait - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
+    ${oMore(oTodoAll, oLeft, 'todo', 'бараа')}
+    ${oSt.left - oSt.wait > oTodoAll.length ? `<div class="stc-open-m">Өртөггүй ${oSt.left - oSt.wait - oTodoAll.length} бараа доорх жагсаалтад.</div>` : ''}`
     : '<div class="stc-open-m">✓ Бүгдийг тоолсон.</div>';
 
   /* ⛔ БАТЛАХ ХҮЛЭЭЖ БУЙ нь ЭХЭНД (2026-09-14). Анх тоолох жагсаалтын ДООР
@@ -22169,7 +22184,7 @@ function openingBlockHtml(canManage) {
             : `<button class="btn stc-open-ok" data-op-ap="${escapeHtml(x.sku)}">Батлах</button>`}
       ${canApprove ? `<button class="btn stc-open-no" data-op-rej="${escapeHtml(x.sku)}" title="Тоолсон тоо буруу — няравт буцааж дахин тоолуулна">↩ Татгалзах</button>` : ''}
     </div>`; }).join('')}</div>
-    ${oSt.wait > oWait.length ? `<div class="stc-open-m">…бас ${oSt.wait - oWait.length} бараа батлах хүлээж байна.</div>` : ''}` : '';
+    ${oMore(oWaitAll, oWait, 'wait', 'бараа')}` : '';
 
   // Эвхэгддэг — ажил биш, ТҮҮХ. Дэлгэц дүүргэхгүй, гэхдээ үргэлж нэг дарахад бий.
   const doneList = oSt.done ? `<details class="stc-open-done">
@@ -22184,7 +22199,7 @@ function openingBlockHtml(canManage) {
                       : `<button class="btn stc-open-seal" data-op-seal="${escapeHtml(x.sku)}" title="CEO эцэслэнэ — үүний дараа эхний үлдэгдэл өөрчлөгдөхгүй">🔒 Эцэслэх</button>`; })()}
            ${canApprove ? `<button class="btn stc-open-no" data-op-un="${escapeHtml(x.sku)}" title="Буруу дарсан бол батлалтыг буцаана — тоо хөндөгдөхгүй">↩ Буцаах</button>` : ''}`}
     </div>`).join('')}</div>
-    ${oSt.done > oDone.length ? `<div class="stc-open-m">…бас ${oSt.done - oDone.length} бараа. Сүүлд баталсныг нь эхэнд гаргалаа.</div>` : ''}
+    ${oMore(oDoneAll, oDone, 'done', 'бараа')}
   </details>` : '';
 
   return `<div class="stc-open">
@@ -22359,6 +22374,12 @@ function renderStockCountIdle(cfg, canManage) {
 
 function attachStockCountHandlers() {
   const $ = (id) => document.getElementById(id);
+  document.querySelectorAll('[data-op-more]').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.opMore;
+    state.openExpand = state.openExpand || {};
+    state.openExpand[k] = !state.openExpand[k];
+    render();
+  }));
   document.querySelectorAll('[data-op-ok]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const sku = btn.dataset.opOk;

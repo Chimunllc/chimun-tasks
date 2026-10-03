@@ -5680,6 +5680,8 @@ body.role-daily #add-project { display: none !important; }
 .stc-open-n { font-size: var(--fs-xl); font-weight: 700; color: var(--primary);
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stc-open-m { font-size: var(--fs-xs); color: var(--muted); }
+/* Үлдсэнийг задлах товч — жагсаалтын төгсгөлд, бүтэн өргөнөөр (утсанд хүрэхэд амар) */
+.stc-open-more { width: 100%; margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--primary); }
 .stc-open-list { display: flex; flex-direction: column; border: 1px solid var(--border);
   border-radius: var(--r-md); overflow: hidden; margin-top: var(--space-1); }
 .stc-open-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;

@@ -7875,7 +7875,7 @@ select.no-asar-len {
 .ncl-tag { font-size: var(--fs-xs); background: var(--warn-soft); color: var(--warn);
   border-radius: var(--r-sm); padding: 2px var(--space-2); }
 
-/* ─── Шатны хөлс (дамжлагын ажлын хөлс, барааны тоогоор) ─── */
+/* ─── Дамжлагын бонус (барааны тоогоор) ─── */
 .sp-line {
   margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--ok); line-height: 1.6;
 }

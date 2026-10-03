@@ -13167,7 +13167,7 @@ function workNormMins(ym) { return workNormDays(ym) * 8 * 60; }
 // ── Жолооны нэмэгдэл — хүргэлттэй захиалгад ХҮРГЭЖ ӨГСӨН (delivering→rented) + ХҮРГЭЛТЭЭР
 // БУЦААН АВСАН (rented→returning) үйлдэл бүрд 10,000₮ (тухайн үйлдлийг хийсэн жолоочид). stage_meta-гаас автомат.
 const DRIVER_BONUS_EACH = 10000;
-/* ─── ШАТНЫ ХӨЛС — дамжлагын ажлыг барааны ТООГООР төлнө (2026-09-30) ────────
+/* ─── ДАМЖЛАГЫН БОНУС — дамжлагын ажлыг барааны ТООГООР төлнө (2026-09-30) ────────
    ⛔ ЦАГААР БҮҮ ТӨЛ. Эвент, шөнийн хүргэлттэй ажлын цагийг хязгаарлах боломжгүй
      (амьд датаар 163–283 ц/сар) тул цагаар төлбөл суугаад цаг нөхцөөх нь ШАГНАГДАНА
      — 9 сард 256 цаг ажиллаж НЭГ Ч шат удирдаагүй хүн байсан. Гарц нь хуурамчлагдахгүй:
@@ -13205,7 +13205,7 @@ function stageFeeForQty(qty, bands) {
 function orderItemQty(o) {
   return ((o && Array.isArray(o.items)) ? o.items : []).reduce((t, it) => t + (Number(it && it.qty) || 0), 0);
 }
-/* Сарын шатны хөлс — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
+/* Сарын дамжлагын бонус — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
    Буцаах: { key: {led, helped, qty, ledFee, helperFee, total} } */
 function stagePayByPerson(orders, month) {
   const bands = stageFeeBands(), share = stageHelperShare(), hmax = stageHelperMax();
@@ -13236,7 +13236,7 @@ function stagePayByPerson(orders, month) {
   Object.keys(out).forEach(k => { const r = out[k]; r.total = Math.round(r.ledFee + r.helperFee); r.ledFee = Math.round(r.ledFee); r.helperFee = Math.round(r.helperFee); });
   return out;
 }
-// Нэг хүний сарын шатны хөлс (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
+// Нэг хүний сарын дамжлагын бонус (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
 function stagePayFor(key, month, orders) {
   const all = stagePayByPerson(orders || state.appOrders || [], month);
   return all[String(key)] || { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, total: 0 };
@@ -13260,7 +13260,7 @@ function driverBonus(key, month, orders) {
 const DRIVER_LIABILITY_NOTE = 'Та жолоо барьж байгаад торгуульсан, торгууль нь жолоочийн буруугаас бол торгууль болон хохирлыг жолооч өөрөө хариуцна.';
 /* ─── САРЫН ЦАЛИН — ажилтан ӨӨРӨӨ харна (2026-10-02, CEO шийдвэр) ───────────
    Гарт очих = суурь цалин (суутгалын дараа) + ИЛҮҮ ЦАГ + ХҮРГЭЛТИЙН НЭМЭГДЭЛ.
-   ⛔ ШАТНЫ ХӨЛС ЭНД ОРОХГҮЙ — тусдаа карт болж харагдана. Нэмбэл шатны хөлс
+   ⛔ ДАМЖЛАГЫН БОНУС ЭНД ОРОХГҮЙ — тусдаа карт болж харагдана. Нэмбэл дамжлагын бонус
      цалин болж, дамжлагын урамшуулал гэдэг утгаа алдана. Scan-тест хаана.
    ⛔ ИЛҮҮ ЦАГ = САРЫН нийт цаг − норм (23×8=184ц), ӨДРӨӨР БИШ. Өдрөөр бодвол
      богино өдрүүд нөхөгдөхгүй тул нэг хүний илүү цаг 2 дахин хүртэл өснө.
@@ -13467,7 +13467,7 @@ function renderAttendanceMonth(month) {
   }).sort((a, b) => b.mins - a.mins);
   const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · Сарын норм <b style="color:var(--text)">${normDays}×8=${normDays * 8}ц</b> · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
   let anyDriver = false;
-  // ⚠ Шатны хөлсийг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
+  // ⚠ Дамжлагын бонусыг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
   //   рендер бүрд мянган давталт болно. Нэг удаа бодож, мөр бүрд уншина.
   const spAll = stagePayByPerson(state.appOrders || [], month);
   let spTotal = 0;
@@ -13486,8 +13486,8 @@ function renderAttendanceMonth(month) {
     const driverLine = db.count ? `<div style="font-size:12px;color:var(--ok);margin-top:2px;">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span style="color:var(--muted);">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
     const sp = spAll[r.k];
     if (sp && sp.total) spTotal += sp.total;
-    const stageLine = (sp && sp.total) ? `<div class="sp-line">📦 Шатны хөлс: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span></div>` : '';
-    // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ШАТНЫ ХӨЛС ОРОХГҮЙ.
+    const stageLine = (sp && sp.total) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span></div>` : '';
+    // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ДАМЖЛАГЫН БОНУС ОРОХГҮЙ.
     const otMins = Math.max(0, r.mins - normMins);
     const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
@@ -13495,7 +13495,7 @@ function renderAttendanceMonth(month) {
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
     const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
     const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
-    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · шатны хөлс ОРООГҮЙ' : ''})</span>`
+    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · дамжлагын бонус ОРООГҮЙ' : ''})</span>`
       + ((rPaid || rCarry.amount) ? ` <span class="sp-sub">— ${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)} · ${rBal.over > 0 ? `илүү <b>${fmtMoney(rBal.over)}</b> (дараа сард)` : `үлдэгдэл <b>${fmtMoney(rBal.owed)}</b>`}</span>` : ' <span class="sp-sub">— олгоогүй</span>')
       + `</div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
@@ -13506,7 +13506,7 @@ function renderAttendanceMonth(month) {
       </div>${noOutLine}${otLine}${driverLine}${stageLine}${payLine}</div>`;
   }).join('');
   const liabilityNote = anyDriver ? `<div style="margin-top:14px;padding:11px 13px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12.5px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
-  const spFoot = spTotal ? `<div class="sp-foot">📦 Шатны хөлс нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил хөлс болохгүй.</span></div>` : '';
+  const spFoot = spTotal ? `<div class="sp-foot">📦 Дамжлагын бонус нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил бонус болохгүй.</span></div>` : '';
   return head + `<div>${list}</div>${spFoot}${liabilityNote}`;
 }
 // CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
@@ -13641,7 +13641,7 @@ function payMonthMins(recs, month) {
   return { mins, days: Object.keys(byDay).length, noOut };
 }
 /* 💵 «Миний цалин» карт — ажилтан ӨӨРИЙН сарын цалингаа бүтнээр нь харна.
-   ⛔ Шатны хөлс ЭНД НЭМЭГДЭХГҮЙ (доор тусдаа карт) — scan-тест хаана.
+   ⛔ Дамжлагын бонус ЭНД НЭМЭГДЭХГҮЙ (доор тусдаа карт) — scan-тест хаана.
    ⚠ Суурь цалин серверээс (`staff_salary`, RLS: өөрийн мөр) ирнэ. Ирээгүй бол
      0 гэж ХУДАЛ харуулахгүй — «бүртгэгдээгүй» гэж ил хэлнэ. */
 function myPayCardHtml(me) {
@@ -13700,7 +13700,7 @@ function myPayCardHtml(me) {
     : '';
   const sp = stagePayFor(key, month);
   const spNote = sp.total
-    ? `<div class="pay-note">📦 Шатны хөлс <b>${fmtMoney(sp.total)}</b> — энэ дүнд <b>ОРООГҮЙ</b>, тусдаа тооцогдоно.</div>` : '';
+    ? `<div class="pay-note">📦 Дамжлагын бонус <b>${fmtMoney(sp.total)}</b> — энэ дүнд <b>ОРООГҮЙ</b>, тусдаа тооцогдоно.</div>` : '';
   const noOutNote = w.noOut
     ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул ${b.shortMins ? '<b>цалин дутуу бодогдсон</b>' : 'илүү цаг дутуу'} байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
   // Олголтын МӨР бүрийг ил жагсаана — «олгосон 600,000₮» гэсэн ганц тоо нь хэзээ,
@@ -13840,14 +13840,14 @@ function renderMyAttend() {
       <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
     </div>` : ''; })()}
     ${(() => {
-      if (payrollHistOnly(payM)) return '';            // ⛔ түүх сард шатны хөлс гаргахгүй
+      if (payrollHistOnly(payM)) return '';            // ⛔ түүх сард дамжлагын бонус гаргахгүй
       const sp = stagePayFor(personKey(me) || state.me, payM);
       if (!sp.total) return '';
       return `<div class="sp-card">
-        <div class="sp-card-t">📦 Шатны хөлс · ${escapeHtml(payM)} <span class="sp-sub">(цалинд ороогүй)</span></div>
+        <div class="sp-card-t">📦 Дамжлагын бонус · ${escapeHtml(payM)} <span class="sp-sub">(цалинд ороогүй)</span></div>
         <div class="sp-card-v">${fmtMoney(sp.total)}</div>
         <div class="sp-card-s">Удирдсан <b>${sp.led}</b> шат${sp.helped ? ` · хамтрагчаар <b>${sp.helped}</b>` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''}</div>
-        <div class="sp-card-n">Хөлс нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил хөлс болохгүй.</div>
+        <div class="sp-card-n">Бонус нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил бонус болохгүй.</div>
       </div>`;
     })()}
     <button class="ui-raw myreq-new" id="my-att-req">🙋 Бүртгүүлж амжаагүй өдөр мэдүүлэх</button>
@@ -17574,7 +17574,7 @@ function renderSalary() {
   // шууд Цалин руу орвол бүх данс «бүртгэгдээгүй» харагддаг байв. Эрхийг loadStaffPins шалгана.
   if (!state._staffPinsLoaded) loadStaffPins();
   ensurePayrollCfg();   // цалингийн тооцоо аль сараас эхлэх (app_config['payroll'])
-  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // хүргэлт/шатны хөлсөнд stage_meta
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // хүргэлт/дамжлагын бонусд stage_meta
   const ym = state.salaryYM || payMonthDefault(todayStr());
   /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ. Бодсон «Нийт олгох»/«Үлдэгдэл» гаргахгүй —
      хуучин сард аппын тооцоо ХУДАЛ (суурь цалингийн түүх хадгалагддаггүй).
@@ -17746,10 +17746,10 @@ function renderSalary() {
         ${owed > 0 ? line('Үлдэгдэл', `<b>${fmtMoney(owed)}</b> ${memoBtn}`, 'pay-left') : ''}
         ${over > 0 ? line(`⚠ Илүү олгосон → ${escapeHtml(nextMonthStr(ym))} сард шилжинэ`, `<b>${fmtMoney(over)}</b>`, 'pay-over') : ''}
       </div>`;
-    const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Шатны хөлс ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ</span></div>` : '';
+    const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Дамжлагын бонус ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ</span></div>` : '';
     const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг тоологдсон${b.shortMins ? ', <b>цалин дутуу бодогдсон</b>' : ', илүү цаг дутуу'}. «🙋 Цаг гаргуулах»-аар засна.</div>` : '';
     /* ⛔ ТҮҮХ САРД ЗӨВХӨН ОЛГОЛТ. Суурь цалингийн талбар (тэр үеийн цалин биш,
-       ОДООГИЙНХ), «гарах бүртгэлгүй» анхааруулга, шатны хөлс — бүгд тэр сард
+       ОДООГИЙНХ), «гарах бүртгэлгүй» анхааруулга, дамжлагын бонус — бүгд тэр сард
        хэрэгжээгүй зүйл тул гаргахгүй. */
     const body = histOnly
       ? `<div class="pb-body">${money}</div>`
@@ -17764,7 +17764,7 @@ function renderSalary() {
       ${sum}${body}
     </details>`;
   }).join('');
-  const spFoot = T.sp ? `<div class="sp-foot">📦 Шатны хөлс нийт <b>${fmtMoney(T.sp)}</b> — дамжлагын ажлын урамшуулал, дээрх цалинд ОРООГҮЙ.</div>` : '';
+  const spFoot = T.sp ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> — дамжлагын ажлын урамшуулал, дээрх цалинд ОРООГҮЙ.</div>` : '';
   return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar}${searchBar}
     <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${histOnly ? '' : spFoot}</div>`;
 }

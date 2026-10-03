@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -2925,6 +2925,23 @@ function finish() {
     eq(F.cooSalaryPaid(null, 'Алтансүх', '2026-06', '2026-08').total, 0, 'цалин: null → 0 (унахгүй)');
     eq(F.cooSalaryPaid([_pay({})], '', '2026-06', '2026-08').total, 0, 'цалин: нэргүй бол ЮУ Ч тоолохгүй (сохроор нэмэхгүй)');
     eq(F.cooSalaryPaid([_pay({})], 'Алтансүх').total, 1000000, 'цалин: хугацаа заахгүй бол бүгд');
+
+    // ── САР БҮРИЙН ДЭВТЭР (2026-10-03, CEO: «сараар нь, авсан нь хасагдаад явдаг») ──
+    const L = vm.runInContext('cooLedger', sandbox);
+    const M3 = ['2026-06', '2026-07', '2026-08'];
+    const led = L(M3, { '2026-06': 10000000, '2026-07': -2000000, '2026-08': 5000000 },
+      [{ d: '2026-06-15', amount: 1000000 }, { d: '2026-08-20', amount: 2000000 }, { d: '2026-05-30', amount: 9 }], 30);
+    eq(led.map(x => x.due), [3000000, -600000, 1500000], 'COO дэвтэр: сарын эрх = ХУРИМТЛАГДСАН эрхийн өсөлт (алдагдалтай сар бууруулна)');
+    eq(led.map(x => x.paid), [1000000, 0, 2000000], 'COO дэвтэр: авсан нь мөнгө гарсан сараар (хүрээнээс гадуурх орохгүй)');
+    eq(led.map(x => x.bal), [2000000, 1400000, 900000], 'COO дэвтэр: үлдэгдэл сар бүр гүйнэ');
+    // ИНВАРИАНТ: сарын эрхийн нийлбэр = хуримтлагдсан ашгийн хувь; сүүлийн үлдэгдэл = нийт эрх − нийт авсан
+    eq(led.reduce((t, x) => t + x.due, 0), F.cooShareAmount(13000000, 30), 'ИНВАРИАНТ: сарын эрхийн нийлбэр = хуримтлагдсан эрх');
+    eq(led[2].bal, F.cooShareAmount(13000000, 30) - 3000000, 'ИНВАРИАНТ: сүүлийн үлдэгдэл = нийт эрх − нийт авсан');
+    // Эхний сар алдагдалтай — эрх сөрөг болохгүй (хуримтлагдсан нь 0-оос доош бол 0)
+    const l2 = L(['2026-06', '2026-07'], { '2026-06': -5000000, '2026-07': 8000000 }, [], 30);
+    eq(l2.map(x => x.due), [0, 900000], 'COO дэвтэр: алдагдлыг дараагийн ашгаас НӨХНӨ');
+    eq(L([], {}, [], 30).length, 0, 'COO дэвтэр: хоосон → хоосон (унахгүй)');
+    eq(L(['2026-06'], null, null, 30)[0].bal, 0, 'COO дэвтэр: null дата → 0 (унахгүй)');
 
     // ── ДАНСААР тулгах: хуулгаас ирсэн мөрд хүлээн авагч нь НЭР биш ДАНС ──
     eq(F.cooAcctDigits('5009711612'), '5009711612', 'цалин: дансны цифр');
@@ -11837,8 +11854,12 @@ function testFinBasisDefault() {
   }
   ok(/_r2\(`COO цалин \(\$\{pct\}%\)`, sc, sa,/.test(src),
      'scan: COO цалингийн мөрөнд ч орсон мөнгө эхэнд');
-  ok(/= Үлдэгдэл<\/div><div class="coo-v coo-share \$\{_bcol\(_balCa\)\}/.test(src),
+  // Үлдэгдэл нь сар бүрийн дэвтрийн «Нийт» мөрөнд — ОРСОН МӨНГӨӨР (_balCa);
+  // ноогдох (_balAc) нь зөвхөн «лавлагаа» гэсэн бүдэг мөрөнд.
+  ok(/coo-led-bal \$\{_bcol\(_balCa\)\}">\$\{fmtMoney\(_balCa\)\}/.test(src),
      'scan: олгосон цалингийн үлдэгдэл ч орсон мөнгөний суурьтай');
+  ok(/coo-led-ref">Ноогдохоор бодвол \(лавлагаа\)[^`]*_balAc/.test(src),
+     'scan: ноогдохоор бодсон үлдэгдэл зөвхөн лавлагаа мөрөнд');
 }
 testFinBasisDefault();
 
@@ -14549,6 +14570,26 @@ async function swFetchTests() {
   eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otMins, 0, 'цалин: илүү цаг сөрөг болохгүй');
   eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otPay, 0, 'цалин: нормоос доош → илүү цаг 0₮');
 
+  // ── ⛔ НОРМД ХҮРЭЭГҮЙ → СУУРЬ АЖИЛЛАСАН ЦАГААР (2026-10-03, CEO; Ц.Бат эрдэнэ 129.6ц/184ц) ──
+  const bs = monthPayBreakdown(1840000, true, H(92), NORM, 0, 1);
+  eq(bs.shortMins, H(92), 'цалин: нормоос дутуу цаг');
+  eq(bs.earned, 920000, 'цалин: 92/184ц → суурийн тал');
+  eq(bs.base, 1840000, 'цалин: гэрээний суурь хэвээр харагдана');
+  eq(bs.ndsh, 105800, 'цалин: НДШ ЦАГААР БОДСОН суурьаас (олгоогүй мөнгөнөөс суутгахгүй)');
+  eq(bs.pit, 81420, 'цалин: ХХОАТ цагаар бодсон суурьаас');
+  eq(bs.total, 920000 - 105800 - 81420, 'цалин: нийт = цагаар бодсон цэвэр суурь');
+  // Цагийн хөлс ижил — дутуу ба илүү цаг ТЭГШ хэмтэй
+  eq(monthPayBreakdown(1840000, false, H(174), NORM, 0, 1).earned, 1840000 - 10 * 10000, 'цалин: 10ц дутуу = 10 × цагийн хөлс хасагдана');
+  eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
+  eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
+  // ⛔ Цаг МЭДЭГДЭХГҮЙ (ирц ачаалагдаагүй / огт бүртгэлгүй) → ТЭГЛЭХГҮЙ
+  const bu = monthPayBreakdown(1840000, false, null, NORM, 0, 1);
+  eq(bu.earned, 1840000, 'цалин: цаг мэдэгдэхгүй (null) бол бүтэн суурь — тэглэхгүй');
+  eq(bu.shortMins, 0, 'цалин: цаг мэдэгдэхгүй бол дутуу цаг 0');
+  eq(monthPayBreakdown(1840000, false, undefined, NORM, 0, 1).earned, 1840000, 'цалин: undefined ч мэдэгдэхгүй гэж үзнэ');
+  // Хүргэлт цагаас үл хамааран бүтнээр
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 50000, 1).total, 920000 + 50000, 'цалин: дутуу цагтай ч хүргэлт бүтнээр');
+
   // ── Суутгалгүй ажилтан ──
   const b4 = monthPayBreakdown(1000000, false, NORM, NORM, 0, 1);
   eq(b4.ndsh + b4.pit, 0, 'цалин: суутгалгүй ажилтанд суутгал 0');
@@ -14600,12 +14641,16 @@ async function swFetchTests() {
   eq((body.match(/stagePay|sp\.total|STAGE_FEE/g) || []).length, 0,
      'scan: цалингийн тооцоонд шатны хөлс ОРОХГҮЙ');
   eq((body.match(/salaryNet\(/g) || []).length, 1, 'scan: salaryNet нэг л удаа дуудагдана');
-  ok(/salaryNet\(base,/.test(body), 'scan: суутгал ЗӨВХӨН суурь цалингаас бодогдоно');
+  ok(/salaryNet\(earned,/.test(body), 'scan: суутгал ЗӨВХӨН (цагаар бодсон) суурь цалингаас бодогдоно');
+  // ⛔ Цаг мэдэгдэхгүйг 0 цаг гэж үзвэл цалин тэглэгдэнэ — дуудагч бүр null дамжуулна
+  const rsB = src.slice(src.indexOf('function renderSalary('), src.indexOf('function attachSalaryHandlers('));
+  ok(/\(attReady && attMins\[r\.k\]\) \? w\.mins : null/.test(rsB), 'scan: самбар ирц ачаалагдаагүй үед цагийг null дамжуулна');
   ok(/-\s*norm\b/.test(body), 'scan: илүү цаг = сарын нийт − норм (өдрөөр биш)');
 
   // Картын нийт дүн нь monthPayBreakdown-аас л гарна (дэлгэцэд дахин бодохгүй)
   const card = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
   ok(card.length > 400, 'scan: myPayCardHtml олдов');
+  ok(/w\.days \? w\.mins : null/.test(card), 'scan: карт ирцгүй сард цагийг null дамжуулна');
   ok(/monthPayBreakdown\(/.test(card), 'scan: карт нийт дүнг monthPayBreakdown-аас авна');
   eq((card.match(/sp\.total\s*\+|\+\s*sp\.total/g) || []).length, 0,
      'scan: картад шатны хөлс нийт дүн дээр нэмэгдэхгүй');
@@ -15617,6 +15662,60 @@ async function swFetchTests() {
   eq(salaryPaidFor(K, '2026-08'), 1000000, 'ИНВАРИАНТ: 8 сарын нийлбэр');
   eq(salaryPaidFor(K, '2026-09'), 1750000, 'ИНВАРИАНТ: 9 сарын нийлбэр');
   vm.runInContext('state.salaryPayments = []; state.financeRequests = [];', sandbox);
+
+  /* ⛔ САНХҮҮ ХААЛТТАЙ ХҮН (нярав) — 2026-10-03, амьд датаар яг давтагдсан алдаа.
+     Бүрэн санхүүгийн бүртгэл зөвхөн CEO/нягтланд ирдэг тул нярав цалингийн самбарыг
+     нээхэд «8 сар 2р хагас» 9 сард орж, хуулгаас орсон 9/21-ний олголт алга болж байв.
+     Одоо `v_salary_fin`-ийн цалингийн мөрөөс уншина (`salaryFinSource`). */
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  runIn('state.salaryPayments = ' + JSON.stringify(pays) + '; state.financeRequests = []; state.finGated = true; state.salaryFinRows = undefined; state._acctOwners = null;');
+  // Цалингийн мөргүй үед — хадгалсан сар (хуучин алдааны төлөв, давтагдана)
+  eq(salaryPaidFor(K, '2026-08'), 0, 'санхүүгүй: цалингийн мөр ирээгүй бол 8 сар хоосон (алдааны төлөвийг давтав)');
+  runIn('state.salaryFinRows = ' + JSON.stringify(fin) + '; state._acctOwners = null;');
+  eq(salaryPaidFor(K, '2026-08'), 1000000, 'санхүүгүй: v_salary_fin-ээр «8 сар 2р хагас» 8 сард');
+  eq(salaryPaidFor(K, '2026-09'), 1750000, 'санхүүгүй: 9 сарын олголт зөв');
+  // Бүрэн бүртгэл байвал ТҮҮНИЙГ авна (локал засвар шууд тусна)
+  runIn("state.finGated = false; state.financeRequests = [{ id: 'X' }];");
+  eq(F.salaryFinSource().length, 1, 'эх сурвалж: бүрэн санхүү байвал түүнийг авна');
+  runIn('state.finGated = true;');
+  eq(F.salaryFinSource().length, 3, 'эх сурвалж: санхүү хаалттай бол цалингийн харагдац');
+  runIn('state.salaryPayments = []; state.financeRequests = []; state.finGated = false; state.salaryFinRows = undefined; state._acctOwners = null;');
+}
+
+// ═══ COO дэлгэц ҮНЭХЭЭР зурагдана + сар бүрийн дэвтэр (2026-10-03) ══════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rc = src.slice(src.indexOf('function renderCooSalary('), src.indexOf('function attachCooSalaryHandlers('));
+  ok(/cooLedger\(_ytdM,/.test(rc), 'scan: COO дэлгэц сар бүрийн дэвтэр зурна');
+  ok(/coo-led-t[^`]*\$\{fmtMoney\(_balCa\)\}/.test(rc), 'scan: дэвтрийн «Нийт» үлдэгдэл = хуримтлагдсан мөнгөн үлдэгдэл (нэг тоо)');
+  // Хуримтлагдсан мөнгөн дүн нь сарын дүнгийн НИЙЛБЭР — finBranchPnl-ийг 2 удаа дуудахгүй
+  eq((rc.match(/cooNetForMonths\(_ytdM, _cooBr, 'cash'\)/g) || []).length, 0, 'scan: хуримтлагдсан мөнгөн ашгийг дахин бодохгүй');
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  runIn("state.cooShare = { key: '86657676', pct: 30, acct: '5009711612', name: 'И.Алтансүх', start: '2026-06', branch: 'M-Event' }; state.cooMonth = '2026-09';");
+  let html = '', err = '';
+  try { html = runIn('state.isCEO = true; renderCooSalary()'); } catch (e) { err = e.message; }
+  eq(err, '', 'COO дэлгэц: зурахад алдаа гарахгүй');
+  ok(/coo-led/.test(html) || /Энэ мэдээлэл зөвхөн удирдлагад/.test(html), 'COO дэлгэц: дэвтэр (эсвэл эрхийн мэдэгдэл) буцаана');
+  runIn('delete state.cooMonth;');
+}
+
+// ═══ SCAN: цалингийн тулгалт санхүүгийн бүрэн бүртгэлийг ШУУД уншихгүй ══════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fns = ['function salaryPaymentsFor(', 'function empAcctOwnersCached(', 'function empAcctsForPerson('];
+  fns.forEach(fn => {
+    const i = src.indexOf(fn), body = src.slice(i, src.indexOf('\n}', i));
+    ok(i > 0 && /salaryFinSource\(\)/.test(body), `scan: ${fn.slice(9, -1)} нь salaryFinSource ашиглана`);
+    ok(!/state\.financeRequests/.test(body), `scan: ${fn.slice(9, -1)} state.financeRequests-ийг шууд уншихгүй`);
+  });
+  // Олголт ачаалах БҮХ газарт цалингийн мөр ч ачаална — эс бөгөөс тэр дэлгэцэд алдаа буцна
+  const a = (src.match(/loadSalaryPayments\(\);/g) || []).length, b = (src.match(/loadSalaryPayments\(\); loadSalaryFinRows\(\);/g) || []).length;
+  ok(a > 0 && a === b, 'scan: олголт ачаалах бүх газарт цалингийн санхүүгийн мөр ч ачаална');
+  const sql = require('fs').readFileSync(require('path').join(__dirname, '..', 'db', 'salary_fin.sql'), 'utf8');
+  ok(/category ~ '\^7\[1236\]00'/.test(sql), 'scan: v_salary_fin ЗӨВХӨН цалингийн ангилал (6900/7700 орохгүй)');
+  ok(/revoke all on public\.v_salary_fin from public, anon/.test(sql), 'scan: v_salary_fin anon-д ХААЛТТАЙ');
+  ok(/sec\.can\('salary'\)/.test(sql) && /sec\.phone\(\)/.test(sql), 'scan: v_salary_fin = salary эрх ЭСВЭЛ өөрийн мөр');
+  ok(/notify pgrst, 'reload schema';/.test(sql), 'scan: v_salary_fin PostgREST кэш шинэчилнэ');
 }
 
 // ═══ SCAN: цалингийн олголт банкны огноогоор шүүгдэхгүй ════════════════

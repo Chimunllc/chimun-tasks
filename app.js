@@ -4742,13 +4742,16 @@ function renderTaskList() {
     if (canSeeWorkload()) _rTabs.push({ k: 'workload', label: '👥 Багийн ачаалал' });
     if (canSeeHistory()) _rTabs.push({ k: 'history', label: '📈 Түрээсийн түүх' });
     if (canSeeReports()) _rTabs.push({ k: 'opening', label: '⚖️ Нээлтийн баланс' });
+    if (canSeeReports()) _rTabs.push({ k: 'journal', label: '📒 Журнал' });
     if (!_rTabs.some(t => t.k === state.reportsTab)) state.reportsTab = (_rTabs[0] || {}).k || 'reports';
     const _rt = state.reportsTab;
     const _rbar = _rTabs.length > 1 ? `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">${_rTabs.map(t => `<button data-reports-tab="${t.k}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${t.k === _rt ? 'var(--primary)' : 'transparent'};background:none;color:${t.k === _rt ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${t.label}</button>`).join('')}</div>` : '';
     wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'history' ? renderHistory()
-      : _rt === 'opening' ? safeViewHtml(renderOpeningBalance, 'Нээлтийн баланс') : renderReports());
+      : _rt === 'opening' ? safeViewHtml(renderOpeningBalance, 'Нээлтийн баланс')
+      : _rt === 'journal' ? safeViewHtml(renderJournal, 'Журнал') : renderReports());
     if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'history') attachHistoryHandlers();
-    else if (_rt === 'opening') attachOpeningBalanceHandlers(); else attachReportsHandlers();
+    else if (_rt === 'opening') attachOpeningBalanceHandlers();
+    else if (_rt === 'journal') attachJournalHandlers(); else attachReportsHandlers();
     document.querySelectorAll('[data-reports-tab]').forEach(b => b.addEventListener('click', () => { state.reportsTab = b.dataset.reportsTab; render(); }));
     return;
   } else if (state.view === 'performance') {
@@ -29078,6 +29081,120 @@ function openingBalanceGaps() {
   g.push('🧾 Татвар, нийгмийн даатгалын өглөгийг апп мэдэхгүй — гараар нэмнэ.');
   return g;
 }
+/* ─── ЖУРНАЛ — давхар бичилтийн дэвтэр (2026-10-02) ─────────────────────────
+   Гүйлгээ бүр ХОЁР талтай: мөнгө хаанаас гарч хаашаа орсон. Хоёр тал үргэлж
+   тэнцүү тул баланс өөрөө тэнцэнэ, тоо бүр мөрдөгдөнө.
+
+   ⛔ ГАРААР ЖУРНАЛ БИЧҮҮЛЭХГҮЙ — бичилт нь аппад АЛЬ ХЭДИЙН байгаа үйл явдлаас
+     (хуулгын мөр, захиалга, нээлтийн үлдэгдэл) ӨӨРӨӨ үүснэ. Гараар бичүүлдэг
+     бүртгэл энэ компанид үхдэг нь батлагдсан.
+   ⛔ НЭГ ҮЙЛ ЯВДАЛ = НЭГ БИЧИЛТ. Захиалгын орлогыг баталгаажихад (Авлага/Орлого),
+     төлбөрийг хуулгаар (Банк/Авлага) бичнэ — хоёулаа Орлого руу бичвэл орлого
+     хоёр дахин харагдана.
+   ⛔ ДОТООД ШИЛЖҮҮЛЭГ (6960) БИЧИГДЭХГҮЙ — банкнаас банк руу, цэвэр нөлөө тэг;
+     бичвэл журнал утгагүй мөрөөр дүүрнэ.
+   ⚠ Энэ нь албан ёсны дэвтэр БИШ — нягтлан бодогчид өгөх оролт ба дотоод хяналт. */
+const JRN_ACC = {
+  bank:    { label: 'Банк',                   type: 'asset' },
+  recv:    { label: 'Авлага',                 type: 'asset' },
+  inv:     { label: 'Бараа материал',         type: 'asset' },
+  owner:   { label: 'Эзэмшигчид өглөх',       type: 'liab' },
+  deposit: { label: 'Харилцагчийн барьцаа',   type: 'liab' },
+  loan:    { label: 'Зээл',                   type: 'liab' },
+  tax:     { label: 'Татварын өглөг',         type: 'liab' },
+  equity:  { label: 'Өмч',                    type: 'equity' },
+  revenue: { label: 'Түрээсийн орлого',       type: 'revenue' },
+  expense: { label: 'Зардал',                 type: 'expense' },
+  suspense:{ label: 'Тодорхойгүй',            type: 'asset' },
+};
+function jrnAccLabel(k) { return (JRN_ACC[k] || {}).label || String(k || '?'); }
+/* Зарлагын мөр АЛЬ данс руу бичигдэх вэ — ангиллаар.
+   ⚠ Бүх зарлага «зардал» БИШ: эзэнд өгсөн, зээл төлсөн, барьцаа буцаасан нь
+     ӨР ТӨЛБӨРИЙГ буурууулдаг (зардал биш). Үүнийг андуурвал ашиг гажна. */
+function jrnDebitFor(cat) {
+  const c = String(cat || '');
+  if (/^6960/.test(c)) return null;        // дотоод шилжүүлэг — бичигдэхгүй
+  if (/^6900/.test(c)) return 'owner';     // эзэнд өгсөн → өглөг буурна
+  if (/^6950/.test(c)) return 'loan';      // зээлийн үндсэн төлбөр
+  if (/^5810/.test(c)) return 'deposit';   // барьцаа буцаасан
+  if (/^(5100|5200|5300|5400|5500)/.test(c)) return 'tax';   // татвар/НД төлсөн
+  if (/^6[1-7]/.test(c)) return 'inv';     // хөрөнгө авсан → бараа материал
+  return 'expense';
+}
+/* Орлогын мөр АЛЬ данс руу кредитлэгдэх вэ — хуулгын мөрийн төлвөөр. */
+function jrnCreditFor(status) {
+  const s = String(status || '');
+  if (s === 'order') return 'recv';        // захиалгын төлбөр → авлага хаагдана
+  if (s === 'nomaad') return 'revenue';
+  if (s === 'internal' || s === 'personal') return null;   // компанийн орлого биш
+  return 'suspense';                       // open/other — ИЛ үлдэнэ, нуугдахгүй
+}
+/* Тухайн сарын бичилтүүд. ЦЭВЭР функц (оролтыг гаднаас өгнө) тул тестлэгдэнэ.
+   ctx: { finance, income, orders, opening, basis }  →  [{date, text, lines:[{acc,dr,cr}], src}] */
+function journalEntries(ctx, month) {
+  const out = [];
+  const inM = (d) => !month || String(d || '').slice(0, 7) === month;
+  const push = (date, text, src, lines) => {
+    const ls = lines.filter(l => l && l.acc && (Number(l.dr) || Number(l.cr)));
+    if (ls.length < 2) return;
+    out.push({ date: String(date || '').slice(0, 10), text, src, lines: ls });
+  };
+  // ① Нээлтийн үлдэгдэл — сарын эхний бичилт (зөвхөн тэр сард)
+  const ob = ctx && ctx.opening;
+  if (ob && inM(ob.date) && Array.isArray(ob.rows)) {
+    const lines = [];
+    ob.rows.forEach(r => {
+      const amt = Math.round(Number(r.amount) || 0); if (!amt) return;
+      const acc = r.acc || (r.side === 'asset' ? 'inv' : 'tax');
+      lines.push(r.side === 'asset' ? { acc, dr: amt } : { acc, cr: amt });
+    });
+    const eq = Math.round(Number((ob.totals || {}).equity) || 0);
+    if (eq) lines.push(eq > 0 ? { acc: 'equity', cr: eq } : { acc: 'equity', dr: -eq });
+    push(ob.date, 'Нээлтийн үлдэгдэл', 'opening', lines);
+  }
+  // ② Захиалгын орлого — баталгаажсан дүн авлага болж бүртгэгдэнэ
+  (ctx && ctx.orders || []).forEach(o => {
+    if (!o) return;
+    const m = (typeof orderIncomeMonth === 'function') ? orderIncomeMonth(o, (ctx.basis || 'accrual')) : '';
+    if (!inM(m + '-01')) return;
+    const rev = Math.round(Number(typeof orderRevenue === 'function' ? orderRevenue(o, ctx.basis) : 0) || 0);
+    const dep = Math.round(Number(o.deposit_mnt) || 0);
+    if (!rev && !dep) return;
+    push((o.starts_at || m + '-01'), `Захиалга №${o.number ?? '—'} · ${o.customer || ''}`.trim(), 'order:' + o.id,
+      [{ acc: 'recv', dr: rev + dep }, rev ? { acc: 'revenue', cr: rev } : null, dep ? { acc: 'deposit', cr: dep } : null]);
+  });
+  // ③ Хуулгын ЗАРЛАГА — зардал/өглөг буурах
+  (ctx && ctx.finance || []).forEach(t => {
+    if (!t || t.status === 'deleted' || t.decision !== 'approved') return;
+    if (!inM(t.requested_at)) return;
+    const amt = Math.round(Number(t.amount) || 0); if (!amt) return;
+    const dr = jrnDebitFor(t.category); if (!dr) return;
+    push(t.requested_at, (t.purpose || jrnAccLabel(dr)), 'fin:' + t.id,
+      [{ acc: dr, dr: amt, cat: String(t.category || '') }, { acc: 'bank', cr: amt }]);
+  });
+  // ④ Хуулгын ОРЛОГО — банк нэмэгдэж, авлага/орлого хаагдана
+  (ctx && ctx.income || []).forEach(r => {
+    if (!r || !inM(r.dt)) return;
+    const amt = Math.round(Number(r.amount) || 0); if (!amt) return;
+    const cr = jrnCreditFor(r.status); if (!cr) return;
+    push(r.dt, (r.payer || r.memo || 'Орлого'), 'inc:' + (r.fp || r.dt),
+      [{ acc: 'bank', dr: amt }, { acc: cr, cr: amt }]);
+  });
+  return out.sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.src).localeCompare(String(b.src)));
+}
+/* Нийлбэр ба тэнцэл. Дебет = Кредит байх ёстой — зөрвөл бичилт дутуу. */
+function journalTotals(entries) {
+  let dr = 0, cr = 0; const byAcc = {};
+  (entries || []).forEach(e => (e.lines || []).forEach(l => {
+    const d = Math.round(Number(l.dr) || 0), c = Math.round(Number(l.cr) || 0);
+    dr += d; cr += c;
+    const a = (byAcc[l.acc] = byAcc[l.acc] || { acc: l.acc, dr: 0, cr: 0 });
+    a.dr += d; a.cr += c;
+  }));
+  const accs = Object.keys(byAcc).map(k => ({ ...byAcc[k], net: byAcc[k].dr - byAcc[k].cr }))
+    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  return { dr, cr, diff: dr - cr, balanced: dr === cr, n: (entries || []).length, accs };
+}
 /* Ноорог (гараар нэмсэн мөр + огноо) — хөлдөөхөөс өмнөх ажлын хувилбар. */
 const OB_DRAFT_KEY = 'opening_balance_draft';
 function obDraft() {
@@ -29090,6 +29207,76 @@ async function obSaveDraft(patch) {
   state.appConfig = state.appConfig || {}; state.appConfig[OB_DRAFT_KEY] = next;
   await saveAppConfig(OB_DRAFT_KEY, next);
   render();
+}
+const JRN_LIMIT = 150;
+function jrnCtx() {
+  return { finance: state.financeRequests || [], income: state.bankIncome || [],
+           orders: (state.appOrders || []).filter(o => typeof _orderActive === 'function' ? _orderActive(o) : true),
+           /* ⛔ ЖУРНАЛ ҮРГЭЛЖ ГҮЙЦЭТГЭЛИЙН СУУРЬТАЙ — давхар бичилт нь мөн чанараараа
+              тийм. Мөнгөн суурь хэрэглэвэл төлөгдөөгүй захиалгын орлого 0 болж,
+              «Дебет Авлага / Кредит Орлого» бичилт утгагүй болно (амьд жишээ:
+              21.3сая төлөгдөөгүй захиалга 0₮ орлоготой гарч байв). Мөнгөн дүр
+              зураг нь банкны мөрүүдээс өөрөө гарна. */
+           opening: obFrozen(), basis: 'accrual' };
+}
+function renderJournal() {
+  // Журнал нь хуулгын орлогын мөрөөс хамаарна — ачаалагдаагүй бол ЧИМЭЭГҮЙ дутуу харуулахгүй.
+  if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()); }
+  const month = state.jrnMonth || todayStr().slice(0, 7);
+  const tab = state.jrnTab === 'accounts' ? 'accounts' : 'entries';
+  const filt = state.jrnAcc || '';
+  const all = journalEntries(jrnCtx(), month);
+  const T = journalTotals(all);
+  const shown = filt ? all.filter(e => e.lines.some(l => l.acc === filt)) : all;
+  const m = (n) => fmtMoney(Math.round(n || 0));
+
+  const bal = T.balanced
+    ? `<div class="jr-ok">✓ Тэнцсэн — Дебет <b>${m(T.dr)}</b> = Кредит <b>${m(T.cr)}</b> · ${T.n} бичилт</div>`
+    : `<div class="jr-bad">⚠ ТЭНЦЭЭГҮЙ — Дебет ${m(T.dr)} ≠ Кредит ${m(T.cr)} (зөрүү ${m(T.diff)}). Бичилт дутуу байна.</div>`;
+  const head = `<div class="jr-top">
+      <div><div class="jr-title">📒 Журнал</div><div class="jr-sub">Гүйлгээ бүр хоёр талаар — мөнгө хаанаас гарч хаашаа орсон</div></div>
+      <input type="month" class="ui-raw ob-i" id="jr-month" value="${escapeHtml(month)}" max="${escapeHtml(todayStr().slice(0, 7))}">
+    </div>`;
+  const legend = `<div class="jr-leg"><b>Дебет</b> = тэр данс руу орсон · <b>Кредит</b> = тэр данснаас гарсан.
+    Хоёр тал үргэлж тэнцүү тул баланс өөрөө тэнцэнэ.</div>`;
+  const tabs = `<div class="jr-tabs">
+      <button class="jr-tb${tab === 'entries' ? ' on' : ''}" data-jr-tab="entries">📝 Бичилтүүд</button>
+      <button class="jr-tb${tab === 'accounts' ? ' on' : ''}" data-jr-tab="accounts">📊 Дансаар (гүйлгээний баланс)</button>
+    </div>`;
+  const chips = `<div class="jr-chips"><button class="jr-chip${!filt ? ' on' : ''}" data-jr-acc="">Бүгд</button>
+    ${T.accs.map(a => `<button class="jr-chip${filt === a.acc ? ' on' : ''}" data-jr-acc="${escapeHtml(a.acc)}">${escapeHtml(jrnAccLabel(a.acc))}</button>`).join('')}</div>`;
+
+  if (tab === 'accounts') {
+    const grp = { asset: 'ХӨРӨНГӨ', liab: 'ӨР ТӨЛБӨР', equity: 'ӨМЧ', revenue: 'ОРЛОГО', expense: 'ЗАРДАЛ' };
+    const body = Object.keys(grp).map(g => {
+      const rows = T.accs.filter(a => ((JRN_ACC[a.acc] || {}).type) === g);
+      if (!rows.length) return '';
+      return `<div class="jr-grp">${grp[g]}</div>` + rows.map(a => `<div class="jr-arow">
+        <span class="jr-al">${escapeHtml(jrnAccLabel(a.acc))}</span>
+        <span class="jr-av">${m(a.dr)}</span><span class="jr-av">${m(a.cr)}</span>
+        <b class="jr-av ${a.net < 0 ? 'jr-neg' : ''}">${m(Math.abs(a.net))}${a.net < 0 ? ' Кр' : ' Дб'}</b></div>`).join('');
+    }).join('');
+    return `<div class="jr-wrap">${head}${bal}${legend}${tabs}
+      <div class="jr-ahead"><span class="jr-al">Данс</span><span class="jr-av">Дебет</span><span class="jr-av">Кредит</span><span class="jr-av">Үлдэгдэл</span></div>
+      ${body}<div class="jr-note">«Үлдэгдэл» нь аль тал давснаар нь (Дб = дебет, Кр = кредит). Нийт дебет ба кредит тэнцсэн бол бичилт бүрэн.</div></div>`;
+  }
+
+  const list = shown.slice(0, JRN_LIMIT).map(e => `<div class="jr-e">
+      <div class="jr-eh"><span class="jr-ed">${escapeHtml(e.date.slice(5))}</span><span class="jr-et">${escapeHtml(e.text)}</span></div>
+      ${e.lines.map(l => `<div class="jr-l">
+        <span class="jr-ls">${l.dr ? 'Дебет' : 'Кредит'}</span>
+        <span class="jr-ln">${escapeHtml(jrnAccLabel(l.acc))}${l.cat ? `<span class="jr-cat">${escapeHtml(l.cat)}</span>` : ''}</span>
+        <span class="jr-lv ${l.dr ? 'jr-dr' : 'jr-cr'}">${m(l.dr || l.cr)}</span></div>`).join('')}
+    </div>`).join('');
+  const more = shown.length > JRN_LIMIT ? `<div class="jr-note">${shown.length} бичилтээс эхний ${JRN_LIMIT} харагдав — данс сонгож нарийсгана уу.</div>` : '';
+  return `<div class="jr-wrap">${head}${bal}${legend}${tabs}${chips}
+    ${shown.length ? list + more : '<div class="jr-empty">Энэ сард бичилт алга.</div>'}
+    <div class="jr-note">Бичилт бүр аппад байгаа үйл явдлаас (хуулга, захиалга, нээлтийн үлдэгдэл) ӨӨРӨӨ үүснэ — гараар бичдэггүй.</div></div>`;
+}
+function attachJournalHandlers() {
+  document.getElementById('jr-month')?.addEventListener('change', (e) => { state.jrnMonth = e.target.value; render(); });
+  document.querySelectorAll('[data-jr-tab]').forEach(b => b.addEventListener('click', () => { state.jrnTab = b.dataset.jrTab; render(); }));
+  document.querySelectorAll('[data-jr-acc]').forEach(b => b.addEventListener('click', () => { state.jrnAcc = b.dataset.jrAcc; render(); }));
 }
 function renderOpeningBalance() {
   const fr = obFrozen();

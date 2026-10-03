@@ -11512,7 +11512,17 @@ function testFinNextSteps() {
      бол шалгалт чимээгүй унасныг хэн ч мэдэхгүй. */
   eq(byKey(clean, 'balance').hint, '4/4 данс сарын эцсийн үлдэгдлээр батлагдсан',
      'тэнцэл: зөв үед ч N/M тоо харагдана (сарын эцсийн үлдэгдлээр)');
-  eq(byKey(clean, 'balance').act, undefined, 'тэнцэл: зөв үед товчгүй');
+  /* ⛔ ХИЙГДСЭН АЛХАМ Ч НЭЭГДЭНЭ (2026-10-03, CEO барив: «орлого тулгах хэсэг
+     дахин өөрчлөх боломжгүй хаагдах нь зөв үү, ямар орлогууд тулгасныг ч харж
+     чадахгүй байна»). ✓ нь «ажил дууссан», «буцаж харах эрхгүй» гэсэн үг БИШ. */
+  eq(byKey(clean, 'income').act, 'recon', 'тулгасан орлогыг буцаж ХАРАХ зам үлдэнэ');
+  eq(byKey(clean, 'income').btn, 'Харах', 'хийгдсэн алхмын товч «Харах»');
+  eq(byKey(clean, 'balance').act, 'recon', 'тэнцэл: зөв үед ч харах зам үлдэнэ');
+  eq(byKey(clean, 'expense').act, 'expenses', 'ангилсан зардлыг буцаж харна');
+  eq(byKey(clean, 'stmt').act, 'recon', 'оруулсан хуулгыг буцаж харна');
+  // ⚠ «Харах» нь хийх ажил БИШ — толгойн тоололд орохгүй
+  ok(/✓ 2026-09 сар цэгцтэй/.test(F.finNextStepsHtml(clean, '2026-09')),
+     'бүгд ✓ үед толгой «цэгцтэй» хэвээр (Харах товч тоологдохгүй)');
   eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 0,
     openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
     balance: { total: 0, ok: 0, bad: 0, unver: 0 } }).find(x => x.key === 'balance').hint,

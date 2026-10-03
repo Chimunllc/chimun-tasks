@@ -12509,6 +12509,37 @@ function attCanonKey(r) {
   const m = findMember(r.member_key) || findMember(r.member_name);
   return m ? personKey(m) : (r.member_key || r.member_name || '?');
 }
+/* ЦАЙНЫ ЦАГ — ирцийн цагаас АВТОМАТААР хасна (2026-10-03, CEO; 10 сараас).
+   Өдөр бүр: min(1ц, max(0, нийт − 5ц)) — 5ц хүртэл хасахгүй, 6ц-аас дээш бүтэн 1ц.
+   ⛔ Хатуу босго («6ц-аас дээш бол 1ц») тавихгүй — тэгвэл 5ц59м байсан хүн 6ц
+     байснаас ИЛҮҮ цаг авна. Шулуун томьёо тэр гажгийг арилгана.
+   ⛔ ЭХЛЭХ ӨДРӨӨС ӨМНӨ ХАСАХГҮЙ — 9 сарын цалин аль хэдийн бодогдсон.
+   ⛔ ГАНЦ газар (`attMemberSummary`) хасна — ирцийн дэлгэц, «Миний ирц», цалингийн
+     самбар, илүү цаг бүгд үүнээс уншина. Өөр газар дахин бүү хас (давхар хасагдана).
+   ⚠ Өдрийн хөлстэй ажилтанд нөлөөгүй — тэдний цалин ӨДРӨӨР бодогддог.
+   ⚠ Тохиргоо `app_config['lunch']` = {from, mins, after} (mins=0 → унтарна);
+     кодын утга нь нөөц. */
+const LUNCH_DEFAULT = { from: '2026-10-01', mins: 60, after: 300 };
+function lunchCfg() {
+  const c = (state.appConfig && typeof state.appConfig.lunch === 'object' && state.appConfig.lunch) || {};
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(c.from || '')) ? String(c.from) : LUNCH_DEFAULT.from;
+  const mins = (Number(c.mins) >= 0 && Number(c.mins) <= 180 && c.mins !== undefined && c.mins !== null && c.mins !== '') ? Number(c.mins) : LUNCH_DEFAULT.mins;
+  const after = (Number(c.after) >= 0 && Number(c.after) <= 720 && c.after !== undefined && c.after !== null && c.after !== '') ? Number(c.after) : LUNCH_DEFAULT.after;
+  return { from, mins, after };
+}
+// «1ц 0м» биш «1ц» — цайны цаг ихэвчлэн бүтэн цаг
+function lunchHM(mins) { const m = Math.round(Number(mins) || 0); return m % 60 ? attHM(m) : (m / 60) + 'ц'; }
+// Тайлбарын ГАНЦ бичвэр — карт, самбар ижил үгээр хэлнэ
+function lunchNote() {
+  const c = lunchCfg();
+  if (!(c.mins > 0)) return '';
+  return `${c.from.slice(0, 7)}-аас эхлэн ${Math.round(c.after / 60)} цагаас урт өдөр цайны ${lunchHM(c.mins)} хасагдана.`;
+}
+function lunchMinsFor(day, grossMins) {
+  const c = lunchCfg();
+  if (!day || String(day).slice(0, 10) < c.from || !(c.mins > 0)) return 0;
+  return Math.min(c.mins, Math.max(0, Math.round(Number(grossMins) || 0) - c.after));
+}
 function attMemberSummary(recs, live) {
   live = live !== false;
   let mins = 0, openIn = null, lastEvent = null;
@@ -12518,7 +12549,9 @@ function attMemberSummary(recs, live) {
     lastEvent = r.ts;
   });
   if (openIn && live) mins += (Date.now() - new Date(openIn)) / 60000;   // зөвхөн өнөөдрийн үргэлжилж буй сесс
-  return { firstIn: recs[0] ? recs[0].ts : null, mins: Math.max(0, Math.round(mins)), open: !!openIn && live, noOut: !!openIn && !live, openTs: openIn, lastEvent };
+  const gross = Math.max(0, Math.round(mins));
+  const lunch = lunchMinsFor(recs[0] && recs[0].day, gross);   // `mins` = ажилласан (цай хассан)
+  return { firstIn: recs[0] ? recs[0].ts : null, mins: gross - lunch, gross, lunch, open: !!openIn && live, noOut: !!openIn && !live, openTs: openIn, lastEvent };
 }
 // ── ГАРАХАА БҮРТГҮҮЛЭЭГҮЙ ӨДӨР — удирдлага гарсан цагийг гараар оруулна (2026-09-06) ──
 // Ажилтан QR-аа уншуулж «явлаа» гэж бүртгүүлээгүй бол тэр өдрийн нээлттэй сесс
@@ -13001,7 +13034,7 @@ function renderAttendanceRows() {
     const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}${r.scanned ? '' : ' <span title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн" style="color:var(--warn);font-size:11.5px;font-weight:600;">⚠ уншуулаагүй</span>'}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div>${fixBtn}${tmrBadge}</div></div>`;
+      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}${r.s.lunch ? `<span class="att-lunch" title="Цайны цаг хасагдсан (нийт ${attHM(r.s.gross)})">цай −${lunchHM(r.s.lunch)}</span>` : ''}</div>${fixBtn}${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;
 }
@@ -13522,7 +13555,7 @@ function myPayCardHtml(me) {
     </div>
     ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`, 'pay-worked')}
     ${noOutNote}${spNote}
-    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. Нэмэгдэлд суутгал тооцохгүй.</div>
+    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. ${lunchNote()} Нэмэгдэлд суутгал тооцохгүй.</div>
   </div>`;
 }
 function renderMyAttend() {
@@ -17408,7 +17441,7 @@ function renderSalary() {
   const ratesBar = `<div class="pb-rates">✂️ Суутгал:
       <label>НДШ <input type="number" step="0.1" id="sal-ndsh" value="${rt.ndsh}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
       <label>ХХОАТ <input type="number" step="0.1" id="sal-pit" value="${rt.pit}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
-      <span class="pb-rates-n">Суутгал зөвхөн СУУРЬ цалингаас — илүү цаг, хүргэлт бүтнээрээ гарт очно.</span>
+      <span class="pb-rates-n">Суутгал зөвхөн СУУРЬ цалингаас — илүү цаг, хүргэлт бүтнээрээ гарт очно. ${lunchNote()}</span>
     </div>`;
   // ⛔ Олголтын хуваарь ХАРУУЛАХГҮЙ — цалин автоматаар бодогдож, олголт нь банкны
   //   хуулгаас автоматаар бүртгэгддэг тул аппад давтах зүйл алга.

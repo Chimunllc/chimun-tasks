@@ -8364,10 +8364,18 @@ select.no-asar-len {
    ШАХАГДДАГ, хуваарилалт нь доор нэг мөрөнд. ⚠ Суурь `.ps-row` нь flex тул
    grid болгож БОЛОХГҮЙ — хүүхдийн flex дүрмүүд зөрчилдөж бүтэц задарна
    (375px-д нэр бүрмөсөн алга болохыг хэмжиж баталсан). */
-.ps-row-stock { flex-wrap: wrap; row-gap: var(--space-1); }
-.ps-row-stock .ps-nm { flex: 1 1 140px; }
-.ps-row-stock .ps-fields { flex: 1 1 100%; flex-wrap: nowrap; align-items: center; }
+/* ⛔ `.ps-nm` 210px ТОГТМОЛ нь БҮХ самбарт адил асуудал үүсгэдэг: 375px-д
+   зураг(56) + нэр(210) багтахгүй тул зураг ГАНЦААРАА мөр эзэлж, нэг бараа
+   173–231px болдог (каталог 178 · үнэ 173 · өртөг 231 — хэмжсэн).
+   Нэрийг ШАХАГДДАГ болгоход зураг хажууд нь ороод талбарууд доор нэг мөрөнд
+   жагсана. ⚠ Суурь `.ps-row` нь flex — grid болгож БОЛОХГҮЙ (хүүхдийн flex
+   дүрмүүд зөрчилдөж нэр алга болохыг 2026-10-03-нд хэмжиж баталсан). */
+.ps-row { flex-wrap: wrap; row-gap: var(--space-1); }
+.ps-row .ps-nm { flex: 1 1 140px; }
+.ps-row .ps-fields { flex: 1 1 100%; }
 @media (min-width: 721px) {
-  .ps-row-stock .ps-nm { flex: 0 0 240px; }
-  .ps-row-stock .ps-fields { flex: 1 1 auto; }
+  .ps-row .ps-nm { flex: 0 0 240px; }
+  .ps-row .ps-fields { flex: 1 1 auto; }
 }
+/* Нөөцийн самбар: хуваарилалтын чипүүд нэг эгнээнд таслагдахгүй. */
+.ps-row-stock .ps-fields { flex-wrap: nowrap; align-items: center; }

@@ -7698,6 +7698,17 @@ async function openStatementClassifyModal() {
   const empByAcct = {};
   (typeof salaryStaff === 'function' ? salaryStaff() : (TEAM || [])).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a) empByAcct[a] = { key: personKey(mm), name: mm.name || '', type: 'monthly', m: mm }; });
   (typeof hourlyWorkers === 'function' ? hourlyWorkers() : []).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a && !empByAcct[a]) empByAcct[a] = { key: personKey(mm), name: mm.name || '', type: 'hourly', m: mm }; });
+  /* ⛔ ДАНСЫГ ЯГ ТЭНЦҮҮГЭЭР БҮҮ ХАЙ — профайлд банкны УРТ хэлбэр (18 орон),
+     хуулгад ЦӨМ нь (10 орон) байдаг. Яг тэнцүүгээр хайсанаас болж бүртгэлтэй
+     ажилтны цалин «эзэнгүй» болж, цалингийн самбараас хасагдаж байв.
+     ⚠ Хоёр ажилтан таарвал ЮУ Ч буцаахгүй (хэнийх нь мэдэгдэхгүй). */
+  const empForAcct = (acct) => {
+    const d = String(acct || '').replace(/\D/g, '');
+    if (!d) return null;
+    if (empByAcct[d]) return empByAcct[d];
+    const ks = Object.keys(empByAcct).filter(a => acctSame(a, d));
+    return ks.length === 1 ? empByAcct[ks[0]] : null;
+  };
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулга оруулах</div>
@@ -7880,7 +7891,7 @@ async function openStatementClassifyModal() {
           const fp = expenseFp(r);
           const cat = classifyExpense(r.memo, r.account);
           const cAcct = String(r.account || '').replace(/\D/g, '');
-          const emp = empByAcct[cAcct];
+          const emp = empForAcct(cAcct);
           // ЦАЛИН таних = УТГА-СУУРЬТАЙ (данс таарсан нь дангаараа ХАНГАЛТГҮЙ). Ажилтны данс руу
           // шатхуун/түлш/бараа зөөлт шилжүүлбэл цалин БИШ → утгаараа ангилж эзэн баталгаажуулна
           // (авто баталахгүй). Зөвхөн гүйлгээний утга цалин гэж заасан үед данс→аль ажилтан гэдгийг таьна.
@@ -16927,40 +16938,86 @@ function _salNameKey(s) { return String(s || '').replace(/[\s.·,]/g, '').toUppe
    ⛔ **Нэг данс хоёр өөр нэрээр таарвал ХАЯНА** (хэнийх нь мэдэгдэхгүй).
    ⚠ Таасан дансыг UI-д «хуулгын утгаар» гэж ИЛ тэмдэглэнэ — нуувал буруу
      тулгалтыг хэн ч барихгүй. */
+/* ⛔ ДАНС ХОЁР ХЭЛБЭРЭЭР БИЧИГДДЭГ — ЯГ ТЭНЦҮҮГЭЭР ТУЛГАЖ БОЛОХГҮЙ (2026-10-03).
+   Ажилтан «Профайл»-д дансаа БАНКНЫ УРТ хэлбэрээр бичдэг
+   (`880004000434123912`, 18 орон) атал банкны хуулгад зөвхөн ЦӨМ нь гардаг
+   (`434123912`). Яг тэнцүүгээр тулгаснаас болж БҮРТГЭЛТЭЙ ажилтны цалин
+   «эзэнгүй» болж байв — амьд датаар Б.Хонгорзул 600,000₮, Т.Эрдэнэзул 90,000₮.
+   Амьд 163 дансны урт = 9/10/12/18 орон; суффиксээр тулгахад давхцал **0**.
+   ⚠ `ACCT_MATCH_MIN` = 9 (хамгийн богино бодит данс). Доошлуулбал өөр хүний
+     данс санамсаргүй таарч болно. */
+const ACCT_MATCH_MIN = 9;
+function acctSame(a, b) {
+  const x = String(a || '').replace(/\D/g, ''), y = String(b || '').replace(/\D/g, '');
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (x.length < ACCT_MATCH_MIN || y.length < ACCT_MATCH_MIN) return false;
+  return x.endsWith(y) || y.endsWith(x);
+}
+// Нэрийн ИНИЦИАЛ + цөм («Э.Шинэбаяр» → ЭШИНЭБАЯ). Зөвхөн цөмөөр тулгахад
+// «Э.Шинэбаяр» ба «Т.Шинэбаяр» ялгагддаггүй — инициал нь тэр хоёрыг салгана.
+function empNameFullKey(name) {
+  const core = (typeof cooNameKey === 'function' ? cooNameKey(name) : '');
+  const ini = String(name || '').match(/^\s*([А-ЯӨҮЁA-Z])/i);
+  return (core && ini) ? ini[1].toUpperCase() + core : '';
+}
 function empAcctOwners(team, finRows) {
   const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
-  const reg = {}, byName = {};
+  const reg = {}, regList = [], byName = {}, byFull = {};
   tm.forEach(m => {
     const k = (typeof personKey === 'function' ? personKey(m) : ''); if (!k) return;
     const a = String(m.bank_account || '').replace(/\D/g, '');
-    if (a) reg[a] = k;
+    if (a) { reg[a] = k; if (!regList.some(x => x.a === a && x.k === k)) regList.push({ a, k }); }
     const nk = (typeof cooNameKey === 'function' ? cooNameKey(m.name) : '');
     if (nk) { (byName[nk] = byName[nk] || []); if (!byName[nk].includes(k)) byName[nk].push(k); }
+    const fk = empNameFullKey(m.name);
+    if (fk) { (byFull[fk] = byFull[fk] || []); if (!byFull[fk].includes(k)) byFull[fk].push(k); }
   });
+  /* Бүртгэлтэй эзнийг олох: ЯГ тэнцүү нь ҮРГЭЛЖ ялна, эс бол суффиксээр.
+     ⛔ Хоёр ажилтан таарвал ЮУ Ч буцаахгүй — амьд датаар хоёр хүний профайлд
+       ИЖИЛ данс бичигдсэн байсан (нэг нь буруу); таавал цалин өөр хүнд очно. */
+  const regOwner = (acct) => {
+    const d = String(acct || '').replace(/\D/g, ''); if (!d) return '';
+    // ⚠ ЯГ тэнцүү мөрийг ч ТООЛНО — хоёр ажилтны профайлд ижил данс бичигдсэн
+    //   байхад `reg[acct]` нь сүүлийнхийг л үзүүлж, БУРУУ эзэн ялж байв.
+    const exact = {}; regList.forEach(x => { if (x.a === d) exact[x.k] = 1; });
+    const ek = Object.keys(exact);
+    if (ek.length) return ek.length === 1 ? ek[0] : '';
+    const hit = {}; regList.forEach(x => { if (acctSame(x.a, d)) hit[x.k] = 1; });
+    const ks = Object.keys(hit);
+    return ks.length === 1 ? ks[0] : '';
+  };
   const ambiguous = Object.keys(byName).filter(nk => byName[nk].length > 1);
-  const nks = Object.keys(byName);
+  const nks = Object.keys(byName), fks = Object.keys(byFull);
   const guess = {}, bad = {};
   (finRows || []).forEach(r => {
     if (!r || r.status === 'deleted') return;
     if (!/^7[12]00/.test(String(r.category || ''))) return;
     const acct = String(r.beneficiary || '').replace(/\D/g, '');
-    if (acct.length < 6 || reg[acct]) return;        // бүртгэлтэй данс — таахгүй
+    if (acct.length < 6 || regOwner(acct)) return;    // бүртгэлтэй данс — таахгүй
     const memo = _salNameKey(r.purpose);
-    /* ⛔ ТААРСАН БҮХ нэрийн цөмийн ХҮМҮҮСИЙГ нэгтгэж, ЯГ НЭГ хүн гарвал л таана.
-       Нэг нэр нөгөөгийнхөө ДОТОР байж болно: «Б.ХОНГОРЗУЛ» гэсэн утгад
-       «Ц.Хонгор» (ХОНГОР) ба «Б.Хонгорзул» (ХОНГОРЗ) ХОЁУЛАА таардаг. Хоёрдмол
-       цөмийг зүгээр хасвал ҮЛДСЭН нэг нь (буруу хүн) ялж байв — амьд датаар
-       600,000₮ өөр хүнд тоологдож байсныг ингэж барив. */
-    const hits = {};
-    for (const nk of nks) { if (memo.includes(nk)) byName[nk].forEach(k => { hits[k] = 1; }); }
-    const ks = Object.keys(hits);
-    if (ks.length !== 1) return;
-    const hit = ks[0];
+    /* ① ИНИЦИАЛ + нэрээр («Б.ХОНГОРЗУЛ») — хамгийн нарийн.
+       ② Нэрийн цөмөөр — таарсан БҮХ цөмийн ХҮМҮҮСИЙГ нэгтгэж, ЯГ НЭГ гарвал л.
+       ⛔ Нэг нэр нөгөөгийнхөө ДОТОР байж болно: «Б.ХОНГОРЗУЛ» утганд «Ц.Хонгор»
+         (ХОНГОР) ба «Б.Хонгорзул» (ХОНГОРЗ) ХОЁУЛАА таардаг. Хоёрдмол цөмийг
+         зүгээр хасвал ҮЛДСЭН БУРУУ хүн ялж байв (600,000₮ ингэж өөр хүнд тоологдсон). */
+    let hit = '';
+    const fh = {};
+    for (const fk of fks) { if (memo.includes(fk)) byFull[fk].forEach(k => { fh[k] = 1; }); }
+    const fks1 = Object.keys(fh);
+    if (fks1.length === 1) hit = fks1[0];
+    else if (fks1.length === 0) {
+      const hits = {};
+      for (const nk of nks) { if (memo.includes(nk)) byName[nk].forEach(k => { hits[k] = 1; }); }
+      const ks = Object.keys(hits);
+      if (ks.length === 1) hit = ks[0];
+    }
+    if (!hit) return;
     if (guess[acct] && guess[acct] !== hit) { bad[acct] = 1; return; }
     guess[acct] = hit;
   });
   Object.keys(bad).forEach(a => { delete guess[a]; });
-  return { reg, guess, ambiguous };
+  return { reg, guess, ambiguous, regOwner };
 }
 // Рендер бүрд 150 нэр × 1,400 гүйлгээ дахин тулгахгүй — дата өөрчлөгдөхөд л дахин бодно.
 function empAcctOwnersCached(finRows) {
@@ -16982,11 +17039,17 @@ function empAcctsForPerson(key, team, finRows) {
   const own = empAcctOwners(tm, fin);
   const mm = tm.find(x => (typeof personKey === 'function' ? personKey(x) : '') === key);
   const cur = String((mm && mm.bank_account) || '').replace(/\D/g, '');
-  const map = new Map();
+  /* ⚠ НЭГ данс ХОЁР хэлбэрээр гарч ХОЁР мөр болохгүй — профайлд урт (18 орон),
+     хуулгад цөм (10 орон) байдаг. `acctSame`-ээр нэгтгэж, УРТ хэлбэрийг
+     (бүртгэлийнхийг) харуулна. */
+  const list = [];
   const touch = (acct, reg) => {
     if (!acct) return null;
-    if (!map.has(acct)) map.set(acct, { acct, reg: !!reg, current: acct === cur, n: 0, sum: 0, lastDay: '' });
-    const e = map.get(acct); if (reg) e.reg = true; return e;
+    let e = list.find(x => acctSame(x.acct, acct));
+    if (!e) { e = { acct, reg: !!reg, current: !!(cur && acctSame(acct, cur)), n: 0, sum: 0, lastDay: '' }; list.push(e); }
+    if (reg) e.reg = true;
+    if (acct.length > e.acct.length) e.acct = acct;
+    return e;
   };
   if (cur) touch(cur, true);
   Object.keys(own.guess).forEach(a => { if (own.guess[a] === key) touch(a, false); });
@@ -16994,11 +17057,13 @@ function empAcctsForPerson(key, team, finRows) {
     if (!r || r.status === 'deleted') return;
     if (!/^7[12]00/.test(String(r.category || ''))) return;
     const a = String(r.beneficiary || '').replace(/\D/g, '');
-    const e = a && map.has(a) ? map.get(a) : null; if (!e) return;
+    const an = String(r.account_number || '').replace(/\D/g, '');
+    const e = list.find(x => (a && acctSame(x.acct, a)) || (an && acctSame(x.acct, an))); if (!e) return;
     e.n++; e.sum += Number(r.amount) || 0;
     const d = String(r.requested_at || '').slice(0, 10);
     if (d > e.lastDay) e.lastDay = d;   // ⚠ ОГНОО-ЗӨВХӨН мөр (YYYY-MM-DD) — мөрөөр тулгах нь зөв
   });
+  const map = new Map(list.map(e => [e.acct, e]));
   return [...map.values()].sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0) || String(b.lastDay).localeCompare(String(a.lastDay)));
 }
 function salaryFinPayments(finRows, key, ym, paidRows, team, owners) {
@@ -17021,8 +17086,10 @@ function salaryFinPayments(finRows, key, ym, paidRows, team, owners) {
        IBAN хэлбэрээр `account_number`-д байдаг (MN41…5029853564) — beneficiary-ээр
        л тулгавал 4,000,000₮-ийн олголт самбараас алга болж байв. */
     const ad = String(r.account_number || '').replace(/\D/g, '');
-    const acctHit = acct && ((bd && bd === acct) || (ad && (ad === acct || ad.endsWith(acct))));
-    if (!(acctHit || (nm && _salNameKey(b) === nm) || (bd && own.guess[bd] === key))) continue;
+    // ⚠ Данс нь урт/цөм хоёр хэлбэртэй тул `acctSame` (суффикс) -ээр тулгана.
+    const acctHit = acct && ((bd && acctSame(bd, acct)) || (ad && acctSame(ad, acct)));
+    const guessHit = (bd && own.guess[bd] === key) || (ad && own.guess[ad] === key);
+    if (!(acctHit || (nm && _salNameKey(b) === nm) || guessHit)) continue;
     const fp = salaryPayFp(r.justification);
     if (fp && have.has(fp)) continue;
     if ((typeof finAccrualMonth === 'function' ? finAccrualMonth(r) : '') !== ym) continue;

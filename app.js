@@ -18457,12 +18457,12 @@ function capMatrixHtml(dataAttr, holderKey, getVal, canGrant) {
     if (lock) return `<span class="ac-chip${on ? ' on' : ' act-off'} cap-locked" title="Танд энэ эрх байхгүй тул олгож чадахгүй">🔒 ${label}</span>`;
     return `<label class="ac-chip${on ? ' on' : ' act-off'}"><input type="checkbox" data-${dataAttr}="${escapeHtml(holderKey)}" data-cap-key="${escapeHtml(key)}" data-cap-kind="${kind}" ${on ? 'checked' : ''}>${label}</label>`;
   };
-  return `<div style="margin-top:8px;">` + PERM_MENUS.map(menu => {
+  return `<div class="cap-mx">` + PERM_MENUS.map(menu => {
     const viewChip = menu.core
       ? `<span class="ac-chip on locked" title="Үндсэн цэс — бүгдэд нээлттэй">✓ Харах</span>`
       : chip(menu.key, 'view', '👁 Харах', getVal(menu.key, 'view'));
     const actChips = menu.actions.map(a => chip(a.key, 'action', escapeHtml(a.label), getVal(a.key, 'action'))).join('');
-    return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(үндсэн)</span>' : ''}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${viewChip}${actChips}</div></div>`;
+    return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span class="ac-menu-hint">(үндсэн)</span>' : ''}</div><div class="ac-chips">${viewChip}${actChips}</div></div>`;
   }).join('') + `</div>`;
 }
 function renderAccessByPerson() {
@@ -18521,7 +18521,7 @@ function renderAccessByPerson() {
     // 🏢 Салбар — дата ХАМРАХ ХҮРЭЭ. Нэг салбар сонговол тухайн хүн зөвхөн түүнийг л хардаг (захиалга/санхүү/ажилтан…). Хоосон=бүгд.
     const bs = memberBranchesOf(m);
     const brChip = (val, label) => `<label class="ac-chip${bs.includes(val) ? ' on' : ' act-off'}"><input type="checkbox" data-branch-cap="${escapeHtml(pk)}" data-branch-val="${val}" ${bs.includes(val) ? 'checked' : ''}>${label}</label>`;
-    const branchPick = amCeo ? `<div class="ac-menu"><div class="ac-menu-name">🏢 Салбар <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(харах дата — нэг салбар сонговол зөвхөн түүнийг л хардаг; хоосон=бүгд)</span></div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${brChip('m-event', '⛺ M-Event')}${brChip('camp', '🏔 NOMAAD')}</div></div>` : '';
+    const branchPick = amCeo ? `<div class="ac-menu"><div class="ac-menu-name">🏢 Салбар <span class="ac-menu-hint">(харах дата — нэг салбар сонговол зөвхөн түүнийг л хардаг; хоосон=бүгд)</span></div><div class="ac-chips">${brChip('m-event', '⛺ M-Event')}${brChip('camp', '🏔 NOMAAD')}</div></div>` : '';
     const grantFn = amCeo ? null : editorCanGrant;
     return wrap(summary + branchPick + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind), grantFn) + reset);
   }).join('');
@@ -19925,7 +19925,7 @@ function renderNomaadAnalytics() {
     <input type="range" class="na-dmin" min="${lo}" max="${hi}" step="${step}" value="${vLo}">
     <input type="range" class="na-dmax" min="${lo}" max="${hi}" step="${step}" value="${vHi}">
   </div>`;
-  const chip = (active, val, label, attr) => `<button ${attr}="${escapeHtml(val)}" style="padding:5px 11px;font-size:12px;border:1px solid var(--border);border-radius:20px;cursor:pointer;white-space:nowrap;${active ? 'background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;' : 'background:var(--panel);color:var(--text);'}">${escapeHtml(label)}</button>`;
+  const chip = (active, val, label, attr) => `<button ${attr}="${escapeHtml(val)}" class="naa-chip${active ? ' on' : ''}">${escapeHtml(label)}</button>`;
   const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:1px;">${sub}</div>` : ''}</div>`;
   return `<style>
     .na-dual input[type=range]{position:absolute;top:9px;left:0;width:100%;height:12px;margin:0;background:none;pointer-events:none;-webkit-appearance:none;appearance:none;}
@@ -37214,25 +37214,25 @@ function openAppErrorsModal() {
   let filter = 'active';                                   // active | fixed | all
   const ov = document.createElement('div');
   ov.className = 'modal-bg open'; ov.style.zIndex = '10002';
-  const chip = (k, t) => `<button class="btn ui-raw" data-err-f="${k}" style="font-size:12px;padding:5px 11px;">${t}</button>`;
-  ov.innerHTML = `<div class="modal" style="max-width:560px;width:96%;max-height:88vh;overflow:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <h2 id="err-h" style="margin:0;font-size:16px;">⚠ Аппын алдаа</h2>
-      <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
-    <div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap;">
+  const chip = (k, t) => `<button class="btn ui-raw aerr-chip" data-err-f="${k}">${t}</button>`;
+  ov.innerHTML = `<div class="modal aerr-modal">
+    <div class="aerr-head">
+      <h2 id="err-h" class="aerr-t">⚠ Аппын алдаа</h2>
+      <button class="btn aerr-x" data-err-x>✕</button></div>
+    <div class="aerr-tabs">
       ${chip('active', '⚠ Идэвхтэй')}${chip('fixed', '✅ Зассан')}${chip('all', '📜 Бүгд')}</div>
-    ${(state.isCEO && state.ciInfo) ? `<div style="font-size:12px;color:var(--muted);margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    ${(state.isCEO && state.ciInfo) ? `<div class="aerr-note aerr-ci">
       <span>Систем шалгалт: Апп ${state.ciInfo.app === 'ok' ? '🟢' : state.ciInfo.app === 'run' ? '🟡' : '🔴'} · Сайт ${state.ciInfo.site === 'ok' ? '🟢' : state.ciInfo.site === 'run' ? '🟡' : '🔴'}</span>
-      ${state.ciInfo.url ? `<button class="btn ui-raw" data-err-gh style="font-size:11px;padding:3px 9px;">🔗 GitHub Actions</button>` : ''}</div>` : ''}
+      ${state.ciInfo.url ? `<button class="btn ui-raw aerr-mini" data-err-gh>🔗 GitHub Actions</button>` : ''}</div>` : ''}
     ${(state.isCEO && state.ciInfo && state.ciInfo.fail) ? `<div class="ci-fail-detail">
       <b>🔴 ${escapeHtml(state.ciInfo.fail.name)}</b> унасан${state.ciInfo.at ? ' · ' + escapeHtml(String(state.ciInfo.at).slice(0, 16).replace('T', ' ')) : ''}
       ${state.ciInfo.fail.msg ? `<br>${escapeHtml(state.ciInfo.fail.msg)}` : ''}
       <br>Шалтгааныг «🔗 GitHub Actions» дотроос уншина.</div>` : ''}
-    <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+    <div class="aerr-note">
       🧑 = бүх ажилтнаас цуглуулсан (давтамжаар бүлэглэсэн) · бусад нь зөвхөн энэ төхөөрөмжийнх.<br>
       «Зассан»/«Үл хамаарах» тэмдэглэсэн нь идэвхтэйгээс гарч <b>«Зассан»/«Бүгд»</b> табд түүх болж үлдэнэ.</div>
     <div id="err-list"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+    <div class="aerr-foot">
       <button class="btn" data-err-clear>Энэ төхөөрөмжийн лог цэвэрлэх</button>
       <button class="btn btn-primary" data-err-x>Хаах</button></div>
   </div>`;

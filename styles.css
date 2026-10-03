@@ -77,6 +77,9 @@
     /* Орлого тулгалтын модалын өргөн — нэг баганатай жагсаалт, өргөсгөх шаардлагагүй */
     --recon-modal-w: 640px;
 
+    /* Аппын алдааны цонх — нэг баганатай жагсаалт + табууд */
+    --aerr-modal-w: 560px;
+
     /* Барааны модалын өргөн — 4 хэсэгт менюгээр хуваагдсан тул нарийн байж болно */
     --prod-modal-w: 540px;
 
@@ -8498,3 +8501,35 @@ select.no-asar-len {
   font-size: var(--fs-sm); }
 .kt-pay-tot { text-align: right; font-size: var(--fs-md); margin: var(--space-2) 0; }
 .kt-money-f[hidden], .kt-money-nm[hidden] { display: none; }
+
+/* ── Эрхийн матриц (capMatrixHtml) — inline style-аас хөрвүүлсэн ──
+   `.ac-chips` нь HTML-д байсан ч CSS-д ТОДОРХОЙЛОГДООГҮЙ байсан: бүх зохион
+   байгуулалтыг inline style барьдаг тул чагтны эгнээг нэг газраас засах
+   боломжгүй байв. Одоо хоёр газар (эрхийн матриц ба 🏢 Салбар) ижил класс. */
+.cap-mx { margin-top: var(--space-2); }
+.ac-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* Цэсний нэрний хажуугийн бүдэг тайлбар — «(үндсэн)», «(харах дата …)» */
+.ac-menu-hint { font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
+
+/* ── NOMAAD дүн шинжилгээний шүүлтүүрийн чип ── */
+.naa-chip { padding: var(--space-1) var(--space-3); font-size: var(--fs-sm);
+  border: 1px solid var(--border); border-radius: var(--r-full); cursor: pointer;
+  white-space: nowrap; background: var(--panel); color: var(--text); }
+.naa-chip.on { background: var(--primary); color: var(--on-primary);
+  border-color: var(--primary); font-weight: 600; }
+
+/* ── Аппын алдааны цонх (openAppErrorsModal) ──
+   ⚠ Эдгээр нь мобайл/десктопын `.modal` flatten дүрмүүдийг (хүчтэй тугтай)
+   ДАВАХГҮЙ — inline style ч давдаггүй байсан тул зан чанар ижил. */
+.aerr-modal { max-width: var(--aerr-modal-w); width: 96%; max-height: 88vh; overflow: auto; }
+.aerr-head { display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--space-2); }
+.aerr-t { margin: 0; font-size: var(--fs-lg); }
+.aerr-x { padding: var(--space-1) var(--space-2); }
+.aerr-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.aerr-chip { font-size: var(--fs-sm); padding: var(--space-1) var(--space-3); }
+.aerr-mini { font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); }
+.aerr-note { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5;
+  margin-bottom: var(--space-2); }
+.aerr-ci { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.aerr-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }

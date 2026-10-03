@@ -15308,3 +15308,50 @@ async function swFetchTests() {
   const nl = src.slice(src.indexOf('function jrnNomaadList'), src.indexOf('function jrnCtx'));
   ok(/nomaadIncomeMonth\(o, ym, 'accrual'\)/.test(nl), 'scan: NOMAAD орлого nomaadIncomeMonth-оор');
 }
+
+// ═══ БУУЛГАЛТ = ЗАРДАЛ БИШ (2026-10-03, амьд тулгалтаар илэрсэн) ════════
+// Манай буруугаас өгсөн хөнгөлөлт аль хэдийн `orderRevenue`-ээс хасагдсан тул
+// банкны буцаалтыг дахин зардал гэж бичвэл НЭГ мөнгө ХОЁР удаа хасагдана.
+{
+  const { journalEntries, incomeStatement, jrnDebitFor } = F;
+  const base = { basis: 'accrual', opening: null, orders: [], income: [], deprec: [], extra: [], nomaad: [] };
+  const refund = { id: 'r1', status: 'done', decision: 'approved', category: '5800',
+    amount: 843000, requested_at: '2026-09-26', purpose: 'Буулгалт №1501',
+    justification: '⟦CMP|хоцорсон|843000⟧', link_type: 'order', link_id: '1501' };
+  // ⚠ `finIsCustomerRefund` нь захиалгад ХОЛБОГДСОН 5800-г таних тул мөр бүхэлдээ өгнө
+  const isRef = (typeof F.finIsCustomerRefund === 'function') && F.finIsCustomerRefund(refund);
+  if (isRef) {
+    eq(jrnDebitFor('5800', refund), 'recv', 'буулгалт: авлага руу (зардал БИШ)');
+    const e = journalEntries({ ...base, finance: [refund] }, '2026-09');
+    eq(incomeStatement(e).totalExpense, 0, 'буулгалт: зардалд ОРОХГҮЙ');
+    eq(((e[0] && e[0].lines || []).find(l => l.acc === 'recv') || {}).dr || 0, 843000,
+       'буулгалт: авлагыг бууруулна');
+  }
+  // Захиалгад ХОЛБООГҮЙ 5800 (торгууль) нь ЖИНХЭНЭ зардал хэвээр
+  const fine = { id: 'f9', status: 'done', decision: 'approved', category: '5800',
+    amount: 200000, requested_at: '2026-09-27', purpose: 'Торгууль' };
+  eq(jrnDebitFor('5800', fine), 'expense', 'торгууль: зардал хэвээр');
+  eq(jrnDebitFor('5800'), 'expense', 'мөргүй дуудлага: зардал (буцах нийцтэй)');
+}
+
+// ═══ SCAN: буулгалт журналд зардал болохгүй ════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const d = src.slice(src.indexOf('function jrnDebitFor'), src.indexOf('function jrnCreditFor'));
+  ok(/finIsCustomerRefund\(row\)/.test(d), 'scan: буулгалт танигдана');
+  ok(/return 'recv'/.test(d), 'scan: буулгалт авлага руу');
+  const je = src.slice(src.indexOf('function journalEntries'), src.indexOf('function journalTotals'));
+  ok(/jrnDebitFor\(t\.category, t\)/.test(je), 'scan: мөр бүхэлдээ дамжуулагдана');
+}
+
+// ⚠ Нягтлангийн дэлгэц өөрт хэрэгтэй БҮХ датаг ачаална — эс бөгөөс орлого/зардал
+//   чимээгүй 0 болно (амьд тулгалтад журнал «−55сая алдагдал» гэж харуулсан).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const ra = src.slice(src.indexOf('function renderAccounting'), src.indexOf('function attachAccountingHandlers'));
+  ok(/loadAppOrders/.test(ra), 'scan: нягтлангийн дэлгэц захиалгыг ачаална');
+  ok(/loadNomaadOrders/.test(ra), 'scan: NOMAAD захиалгыг ачаална');
+  ok(/ensureVatLoaded/.test(ra) && /loadStockCountsAll/.test(ra), 'scan: НӨАТ ба тооллого');
+  ok(/loadBankIncome/.test(src.slice(src.indexOf('function renderJournal'), src.indexOf('function attachJournalHandlers'))),
+     'scan: хуулгын орлого');
+}

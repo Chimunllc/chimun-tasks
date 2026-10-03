@@ -4741,17 +4741,14 @@ function renderTaskList() {
     if (canSeeReports()) _rTabs.push({ k: 'reports', label: '📊 Тайлан' });
     if (canSeeWorkload()) _rTabs.push({ k: 'workload', label: '👥 Багийн ачаалал' });
     if (canSeeHistory()) _rTabs.push({ k: 'history', label: '📈 Түрээсийн түүх' });
-    if (canSeeReports()) _rTabs.push({ k: 'opening', label: '⚖️ Нээлтийн баланс' });
-    if (canSeeReports()) _rTabs.push({ k: 'journal', label: '📒 Журнал' });
+    if (canSeeReports()) _rTabs.push({ k: 'acct', label: '📒 Нягтлан' });
     if (!_rTabs.some(t => t.k === state.reportsTab)) state.reportsTab = (_rTabs[0] || {}).k || 'reports';
     const _rt = state.reportsTab;
     const _rbar = _rTabs.length > 1 ? `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">${_rTabs.map(t => `<button data-reports-tab="${t.k}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${t.k === _rt ? 'var(--primary)' : 'transparent'};background:none;color:${t.k === _rt ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${t.label}</button>`).join('')}</div>` : '';
     wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'history' ? renderHistory()
-      : _rt === 'opening' ? safeViewHtml(renderOpeningBalance, 'Нээлтийн баланс')
-      : _rt === 'journal' ? safeViewHtml(renderJournal, 'Журнал') : renderReports());
+      : _rt === 'acct' ? safeViewHtml(renderAccounting, 'Нягтлан') : renderReports());
     if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'history') attachHistoryHandlers();
-    else if (_rt === 'opening') attachOpeningBalanceHandlers();
-    else if (_rt === 'journal') attachJournalHandlers(); else attachReportsHandlers();
+    else if (_rt === 'acct') attachAccountingHandlers(); else attachReportsHandlers();
     document.querySelectorAll('[data-reports-tab]').forEach(b => b.addEventListener('click', () => { state.reportsTab = b.dataset.reportsTab; render(); }));
     return;
   } else if (state.view === 'performance') {
@@ -29105,7 +29102,10 @@ const JRN_ACC = {
   equity:  { label: 'Өмч',                    type: 'equity' },
   revenue: { label: 'Түрээсийн орлого',       type: 'revenue' },
   expense: { label: 'Зардал',                 type: 'expense' },
-  suspense:{ label: 'Тодорхойгүй',            type: 'asset' },
+  /* ⚠ Тодорхойгүй = ӨР ТӨЛБӨР, хөрөнгө БИШ. Хэнийх нь мэдэгдэхгүй мөнгө бол
+     тулгагдтал бидний эзэмшил биш. Хөрөнгө гэвэл балансад СӨРӨГ хөрөнгө болж
+     гарч, уншигдахгүй болно. */
+  suspense:{ label: 'Тодорхойгүй',            type: 'liab' },
 };
 function jrnAccLabel(k) { return (JRN_ACC[k] || {}).label || String(k || '?'); }
 /* Зарлагын мөр АЛЬ данс руу бичигдэх вэ — ангиллаар.
@@ -29208,6 +29208,65 @@ async function obSaveDraft(patch) {
   await saveAppConfig(OB_DRAFT_KEY, next);
   render();
 }
+/* ─── ЕРӨНХИЙ ДЭВТЭР ба БАЛАНС (2026-10-02) ─────────────────────────────────
+   Журнал = дарааллаар. Ерөнхий дэвтэр = ТЭР ЖЕ бичилтийг данс тус бүрээр нь
+   бүлэглэж, явцын үлдэгдэлтэй нь. Баланс = дэвтрийн эцсийн үлдэгдлүүд.
+   ⛔ ГУРВУУЛАА НЭГ эх сурвалжаас (`journalEntries`) — дахин бодвол гурван өөр
+     тоо гарч аль нь үнэн болохыг хэн ч мэдэхгүй болно. */
+
+/* Нэг дансны хөдөлгөөн, явцын үлдэгдэлтэй. ЦЭВЭР функц.
+   ⚠ Үлдэгдлийн ТЭМДЭГ нь дансны төрлөөс хамаарна: хөрөнгө/зардал дебетээр өснө,
+     өр/өмч/орлого кредитээр өснө. Нэг томьёогоор бодвол тал нь сөрөг харагдана. */
+function ledgerLines(entries, acc) {
+  const t = (JRN_ACC[acc] || {}).type || 'asset';
+  const debitSide = (t === 'asset' || t === 'expense');
+  let bal = 0;
+  const out = [];
+  (entries || []).forEach(e => (e.lines || []).forEach(l => {
+    if (l.acc !== acc) return;
+    const dr = Math.round(Number(l.dr) || 0), cr = Math.round(Number(l.cr) || 0);
+    bal += debitSide ? (dr - cr) : (cr - dr);
+    out.push({ date: e.date, text: e.text, src: e.src, cat: l.cat || '', dr, cr, bal });
+  }));
+  return { acc, type: t, debitSide, lines: out, balance: bal,
+           dr: out.reduce((s, x) => s + x.dr, 0), cr: out.reduce((s, x) => s + x.cr, 0) };
+}
+/* Баланс — дэвтрийн эцсийн үлдэгдлүүд. ЦЭВЭР функц.
+   ⛔ ӨМЧ = нээлтийн өмч + ТАЙЛАНТ ҮЕИЙН АШИГ (орлого − зардал). Орлого/зардлын
+     данс нь түр зуурынх, үе дуусахад өмч рүү хаагддаг — үүнийг оруулахгүй бол
+     баланс ХЭЗЭЭ Ч тэнцэхгүй (яг тэр дүнгээр зөрнө). */
+function balanceSheetAt(entries) {
+  const net = {};
+  (entries || []).forEach(e => (e.lines || []).forEach(l => {
+    const d = Math.round(Number(l.dr) || 0), c = Math.round(Number(l.cr) || 0);
+    net[l.acc] = (net[l.acc] || 0) + d - c;          // дебет − кредит
+  }));
+  const pick = (type, signFlip) => Object.keys(net)
+    .filter(k => ((JRN_ACC[k] || {}).type) === type)
+    .map(k => ({ acc: k, label: jrnAccLabel(k), amount: signFlip ? -net[k] : net[k] }))
+    .filter(r => r.amount !== 0)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+  const assets = pick('asset', false);
+  const liabs = pick('liab', true);
+  const openEq = pick('equity', true);
+  const revenue = Object.keys(net).filter(k => ((JRN_ACC[k] || {}).type) === 'revenue')
+    .reduce((s, k) => s - net[k], 0);
+  const expense = Object.keys(net).filter(k => ((JRN_ACC[k] || {}).type) === 'expense')
+    .reduce((s, k) => s + net[k], 0);
+  const profit = revenue - expense;
+  const totalAssets = assets.reduce((s, r) => s + r.amount, 0);
+  const totalLiabs = liabs.reduce((s, r) => s + r.amount, 0);
+  const totalEquity = openEq.reduce((s, r) => s + r.amount, 0) + profit;
+  return { assets, liabs, openEq, revenue, expense, profit,
+           totalAssets, totalLiabs, totalEquity,
+           diff: totalAssets - (totalLiabs + totalEquity),
+           balanced: totalAssets === (totalLiabs + totalEquity) };
+}
+/* Тухайн огноо хүртэлх бүх бичилт (баланс нь ХУРИМТЛАГДСАН дүн). */
+function entriesUpTo(ctx, asOf) {
+  const all = journalEntries(ctx, null);
+  return asOf ? all.filter(e => String(e.date) <= String(asOf)) : all;
+}
 const JRN_LIMIT = 150;
 function jrnCtx() {
   return { finance: state.financeRequests || [], income: state.bankIncome || [],
@@ -29218,6 +29277,101 @@ function jrnCtx() {
               21.3сая төлөгдөөгүй захиалга 0₮ орлоготой гарч байв). Мөнгөн дүр
               зураг нь банкны мөрүүдээс өөрөө гарна. */
            opening: obFrozen(), basis: 'accrual' };
+}
+/* ─── 📒 НЯГТЛАН — журнал · дэвтэр · баланс · нээлтийн үлдэгдэл нэг дор ──────
+   ⛔ Тус тусдаа таб болговол толгойн эгнээ 7 табтай болж аль нь юу болох нь
+     мэдэгдэхгүй болно. Нягтлангийн 4 дэлгэц нь НЭГ ажлын урсгал тул дэд табаар. */
+const ACCT_TABS = [
+  { k: 'journal', label: '📝 Журнал',           hint: 'Гүйлгээ бүр хоёр талаар, дарааллаар' },
+  { k: 'ledger',  label: '📘 Ерөнхий дэвтэр',   hint: 'Данс тус бүрийн хөдөлгөөн, явцын үлдэгдэлтэй' },
+  { k: 'balance', label: '⚖️ Баланс',           hint: 'Тодорхой өдрийн хөрөнгө · өр төлбөр · өмч' },
+  { k: 'opening', label: '🔒 Нээлтийн үлдэгдэл', hint: 'Бүртгэлийн эхлэлийн цэг' },
+];
+function renderAccounting() {
+  const t = ACCT_TABS.some(x => x.k === state.acctTab) ? state.acctTab : 'journal';
+  const bar = `<div class="ac-tabs">${ACCT_TABS.map(x =>
+    `<button class="ac-tb${x.k === t ? ' on' : ''}" data-acct-tab="${x.k}" title="${escapeHtml(x.hint)}">${x.label}</button>`).join('')}</div>`;
+  const body = t === 'ledger' ? renderLedger() : t === 'balance' ? renderBalanceSheet()
+    : t === 'opening' ? renderOpeningBalance() : renderJournal();
+  return bar + body;
+}
+function attachAccountingHandlers() {
+  document.querySelectorAll('[data-acct-tab]').forEach(b => b.addEventListener('click', () => { state.acctTab = b.dataset.acctTab; render(); }));
+  const t = state.acctTab;
+  if (t === 'ledger') attachLedgerHandlers();
+  else if (t === 'balance') attachBalanceHandlers();
+  else if (t === 'opening') attachOpeningBalanceHandlers();
+  else attachJournalHandlers();
+}
+/* 📘 ЕРӨНХИЙ ДЭВТЭР — данс сонгоод хөдөлгөөнийг нь явцын үлдэгдэлтэй харна. */
+function renderLedger() {
+  if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()); }
+  const asOf = state.lgDate || todayStr();
+  const ctx = jrnCtx();
+  const all = entriesUpTo(ctx, asOf);
+  const T = journalTotals(all);
+  const acc = state.lgAcc && JRN_ACC[state.lgAcc] ? state.lgAcc : (T.accs[0] || {}).acc;
+  const m = (n) => fmtMoney(Math.round(n || 0));
+  if (!acc) return `<div class="jr-wrap"><div class="jr-empty">Бичилт алга.</div></div>`;
+  const L = ledgerLines(all, acc);
+  const chips = T.accs.map(a => `<button class="jr-chip${a.acc === acc ? ' on' : ''}" data-lg-acc="${escapeHtml(a.acc)}">${escapeHtml(jrnAccLabel(a.acc))}</button>`).join('');
+  const rows = L.lines.slice(-200).map(x => `<div class="lg-r">
+      <span class="lg-d">${escapeHtml(String(x.date).slice(5))}</span>
+      <span class="lg-t">${escapeHtml(x.text)}${x.cat ? `<span class="jr-cat">${escapeHtml(x.cat)}</span>` : ''}</span>
+      <span class="lg-v jr-dr">${x.dr ? m(x.dr) : ''}</span>
+      <span class="lg-v jr-cr">${x.cr ? m(x.cr) : ''}</span>
+      <b class="lg-v">${m(x.bal)}</b></div>`).join('');
+  const more = L.lines.length > 200 ? `<div class="jr-note">${L.lines.length} мөрөөс сүүлийн 200 харагдав.</div>` : '';
+  return `<div class="jr-wrap">
+    <div class="jr-top"><div><div class="jr-title">📘 Ерөнхий дэвтэр</div>
+      <div class="jr-sub">Данс тус бүрийн хөдөлгөөн — явцын үлдэгдэлтэй</div></div>
+      <label class="ob-dl">хүртэл <input type="date" class="ui-raw ob-i" id="lg-date" value="${escapeHtml(asOf)}"></label></div>
+    <div class="jr-chips">${chips}</div>
+    <div class="lg-card">
+      <div class="lg-h"><b>${escapeHtml(jrnAccLabel(acc))}</b>
+        <span class="jr-sub">${L.debitSide ? 'дебетээр өсдөг данс' : 'кредитээр өсдөг данс'} · ${L.lines.length} хөдөлгөөн</span>
+        <b class="lg-bal ${L.balance < 0 ? 'jr-neg' : ''}">${m(L.balance)}</b></div>
+      <div class="lg-r lg-head"><span class="lg-d">Огноо</span><span class="lg-t">Гүйлгээ</span>
+        <span class="lg-v">Дебет</span><span class="lg-v">Кредит</span><span class="lg-v">Үлдэгдэл</span></div>
+      ${rows || '<div class="jr-empty">Хөдөлгөөн алга.</div>'}
+    </div>${more}
+    <div class="jr-note">Үлдэгдэл нь дансны мөн чанараар бодогдоно: хөрөнгө/зардал дебетээр, өр/өмч/орлого кредитээр өснө.</div></div>`;
+}
+function attachLedgerHandlers() {
+  document.getElementById('lg-date')?.addEventListener('change', (e) => { state.lgDate = e.target.value; render(); });
+  document.querySelectorAll('[data-lg-acc]').forEach(b => b.addEventListener('click', () => { state.lgAcc = b.dataset.lgAcc; render(); }));
+}
+/* ⚖️ БАЛАНС — тодорхой өдрийн байдлаар. Хөрөнгө = Өр төлбөр + Өмч байх ЁСТОЙ. */
+function renderBalanceSheet() {
+  if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()); }
+  const asOf = state.bsDate || todayStr();
+  const B = balanceSheetAt(entriesUpTo(jrnCtx(), asOf));
+  const m = (n) => fmtMoney(Math.round(n || 0));
+  const chk = B.balanced
+    ? `<div class="jr-ok">✓ Тэнцсэн — Хөрөнгө <b>${m(B.totalAssets)}</b> = Өр төлбөр <b>${m(B.totalLiabs)}</b> + Өмч <b>${m(B.totalEquity)}</b></div>`
+    : `<div class="jr-bad">⚠ ТЭНЦЭЭГҮЙ — зөрүү ${m(B.diff)}. Журналд дутуу бичилт байна.</div>`;
+  const rows = (list) => list.length ? list.map(r => `<div class="ob-row"><span class="ob-l">${escapeHtml(r.label)}</span><b class="ob-v">${m(r.amount)}</b></div>`).join('')
+    : '<div class="ob-empty">мөр алга</div>';
+  return `<div class="ob-wrap">
+    <div class="ob-top"><div><div class="ob-title">⚖️ Баланс</div>
+      <div class="ob-sub">${escapeHtml(asOf)}-ний байдлаар · журналаас хуримтлагдсан</div></div>
+      <label class="ob-dl">огноо <input type="date" class="ui-raw ob-i" id="bs-date" value="${escapeHtml(asOf)}"></label></div>
+    ${chk}
+    <div class="ob-cols">
+      <div class="ob-side"><div class="ob-hd ob-a">ХӨРӨНГӨ</div>${rows(B.assets)}
+        <div class="ob-row ob-total"><span class="ob-l">Нийт хөрөнгө</span><b class="ob-v">${m(B.totalAssets)}</b></div></div>
+      <div class="ob-side"><div class="ob-hd ob-b">ӨР ТӨЛБӨР</div>${rows(B.liabs)}
+        <div class="ob-row ob-total"><span class="ob-l">Нийт өр төлбөр</span><b class="ob-v">${m(B.totalLiabs)}</b></div>
+        <div class="ob-hd ob-a">ӨМЧ</div>${rows(B.openEq)}
+        <div class="ob-row"><span class="ob-l">Тайлант үеийн ашиг<span class="ob-n">орлого ${m(B.revenue)} − зардал ${m(B.expense)}</span></span>
+          <b class="ob-v ${B.profit < 0 ? 'ob-neg' : ''}">${m(B.profit)}</b></div>
+        <div class="ob-row ob-total"><span class="ob-l">Нийт өмч</span><b class="ob-v">${m(B.totalEquity)}</b></div></div>
+    </div>
+    <div class="ob-note">Баланс нь журналын бичилтээс хуримтлагдаж гарна — гараар тохируулдаггүй.
+      Орлого ба зардал нь түр зуурын данс тул «тайлант үеийн ашиг» болж өмчид нэгдэнэ.</div></div>`;
+}
+function attachBalanceHandlers() {
+  document.getElementById('bs-date')?.addEventListener('change', (e) => { state.bsDate = e.target.value; render(); });
 }
 function renderJournal() {
   // Журнал нь хуулгын орлогын мөрөөс хамаарна — ачаалагдаагүй бол ЧИМЭЭГҮЙ дутуу харуулахгүй.

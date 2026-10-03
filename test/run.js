@@ -91,7 +91,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
-  'ownerCapital', 'ownerCapitalRows', 'openingBalanceCalc', 'journalEntries', 'journalTotals', 'jrnDebitFor', 'jrnCreditFor', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
+  'ownerCapital', 'ownerCapitalRows', 'openingBalanceCalc', 'journalEntries', 'journalTotals', 'jrnDebitFor', 'jrnCreditFor', 'ledgerLines', 'balanceSheetAt', 'entriesUpTo', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -14825,4 +14825,92 @@ async function swFetchTests() {
   ok(!!o, 'журнал: төлөгдөөгүй захиалга ч бичигдэнэ');
   eq(o.lines.find(l => l.acc === 'revenue').cr, 20805600, 'журнал: төлөгдөөгүй ч бүтэн орлого');
   eq(o.lines.find(l => l.acc === 'recv').dr, 21305600, 'журнал: авлага = орлого + барьцаа');
+}
+
+// ═══ ЕРӨНХИЙ ДЭВТЭР ба БАЛАНС (2026-10-02) ═════════════════════════════
+// ⛔ Хөрөнгө = Өр төлбөр + Өмч байх нь балансын цорын ганц үнэний шалгуур.
+//   Орлого/зардлыг «тайлант үеийн ашиг» болгож өмчид нэмэхгүй бол ХЭЗЭЭ Ч тэнцэхгүй.
+{
+  const { ledgerLines, balanceSheetAt, entriesUpTo, journalEntries } = F;
+  const ctx = {
+    basis: 'accrual',
+    opening: { date: '2026-09-01', totals: { equity: 600000 },
+               rows: [{ amount: 1000000, side: 'asset', acc: 'bank' },
+                      { amount: 400000, side: 'liab', acc: 'owner' }] },
+    orders: [{ id: 'o1', number: 1, customer: 'Т', starts_at: '2026-09-10',
+               total_mnt: 1500000, deposit_mnt: 200000, paid_mnt: 0, status: 'returned', source: 'app', items: [] }],
+    finance: [{ id: 'f1', status: 'done', decision: 'approved', category: '7100',
+                amount: 300000, requested_at: '2026-09-20', purpose: 'Цалин' }],
+    income: [{ fp: 'i1', dt: '2026-09-25', amount: 900000, status: 'order', payer: 'Т' }],
+  };
+  const all = journalEntries(ctx, null);
+
+  // ── Ерөнхий дэвтэр: явцын үлдэгдэл, дансны мөн чанараар ──
+  const bank = ledgerLines(all, 'bank');
+  ok(bank.debitSide, 'дэвтэр: банк дебетээр өсдөг данс');
+  eq(bank.balance, 1000000 - 300000 + 900000, 'дэвтэр: банкны эцсийн үлдэгдэл');
+  eq(bank.lines[bank.lines.length - 1].bal, bank.balance, 'дэвтэр: сүүлийн мөрийн явцын үлдэгдэл = нийт');
+
+  const owner = ledgerLines(all, 'owner');
+  ok(!owner.debitSide, 'дэвтэр: өглөг КРЕДИТЭЭР өсдөг данс');
+  eq(owner.balance, 400000, 'дэвтэр: кредит данс эерэг үлдэгдэлтэй (сөрөг харагдахгүй)');
+
+  // ── Баланс: тэнцэнэ ──
+  const B = balanceSheetAt(all);
+  ok(B.balanced, 'баланс: Хөрөнгө = Өр + Өмч');
+  eq(B.diff, 0, 'баланс: зөрүү 0');
+  eq(B.revenue, 1300000, 'баланс: орлого (барьцаа хасагдсан)');
+  eq(B.expense, 300000, 'баланс: зардал');
+  eq(B.profit, 1000000, 'баланс: ашиг = орлого − зардал');
+  eq(B.totalEquity, 600000 + 1000000, 'баланс: өмч = нээлтийн өмч + тайлант ашиг');
+
+  // ⛔ Ашгийг оруулахгүй бол тэнцэхгүй гэдгийг БАТАЛНА
+  eq(B.totalAssets, B.totalLiabs + B.totalEquity, 'ИНВАРИАНТ: хөрөнгө = өр + өмч');
+  ok(B.totalAssets !== B.totalLiabs + (B.totalEquity - B.profit),
+     'баланс: ашиггүй бол тэнцэхгүй (яг ашгийн дүнгээр зөрнө)');
+
+  // ── Огноогоор таслах: хуримтлагдсан ──
+  const early = entriesUpTo(ctx, '2026-09-15');
+  ok(early.length < all.length, 'баланс: огноогоор таслагдана');
+  ok(balanceSheetAt(early).balanced, 'баланс: дунд огноонд ч тэнцэнэ');
+  eq(ledgerLines(early, 'bank').balance, 1000000, 'дэвтэр: 09-15-ны байдлаар банк (зарлага хараахан болоогүй)');
+
+  // Хоосон
+  const E = balanceSheetAt([]);
+  eq(E.totalAssets + E.totalLiabs + E.totalEquity, 0, 'баланс: хоосон үед бүгд 0');
+  ok(E.balanced, 'баланс: хоосон ч тэнцсэн');
+}
+
+// ═══ SCAN: дэвтэр/баланс нь журналаас л гарна ══════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const bs = src.slice(src.indexOf('function balanceSheetAt'), src.indexOf('function entriesUpTo'));
+  ok(/profit/.test(bs) && /totalEquity/.test(bs), 'scan: өмчид тайлант үеийн ашиг нэмэгдэнэ');
+  ok(/revenue - expense/.test(bs), 'scan: ашиг = орлого − зардал');
+
+  const lg = src.slice(src.indexOf('function ledgerLines'), src.indexOf('function balanceSheetAt'));
+  ok(/debitSide/.test(lg), 'scan: үлдэгдэл дансны мөн чанараар бодогдоно');
+
+  const r = src.slice(src.indexOf('function renderBalanceSheet'), src.indexOf('function attachBalanceHandlers'));
+  ok(/balanceSheetAt\(entriesUpTo\(/.test(r), 'scan: баланс журналаас хуримтлагдана (дахин бодохгүй)');
+  ok(/ТЭНЦЭЭГҮЙ/.test(r), 'scan: тэнцээгүйг ил хэлнэ');
+  eq((r.match(/data-bs-edit|Засах/g) || []).length, 0, 'scan: балансыг гараар тохируулдаггүй');
+
+  const lr = src.slice(src.indexOf('function renderLedger'), src.indexOf('function attachLedgerHandlers'));
+  ok(/ledgerLines\(all, acc\)/.test(lr), 'scan: дэвтэр ledgerLines-аас');
+
+  // Нягтлангийн 4 дэлгэц НЭГ табын дор (толгойн эгнээ 7 таб болохгүй)
+  const rt = src.slice(src.indexOf("_rTabs.push({ k: 'reports'"), src.indexOf("if (!_rTabs.some"));
+  eq((rt.match(/_rTabs\.push/g) || []).length, 4, 'scan: тайлангийн таб 4-өөс хэтрэхгүй');
+  ok(/k: 'acct'/.test(rt), 'scan: нягтлангийн дэлгэцүүд нэг табын дор');
+}
+
+// ⚠ «Тодорхойгүй» нь ӨР ТӨЛБӨР — хэнийх нь мэдэгдэхгүй мөнгө бидний эзэмшил биш.
+// Хөрөнгө гэвэл балансад СӨРӨГ хөрөнгө болж гарч уншигдахгүй болно.
+{
+  const B = F.balanceSheetAt([{ date: '2026-09-01', text: 't', src: 's',
+    lines: [{ acc: 'bank', dr: 120000 }, { acc: 'suspense', cr: 120000 }] }]);
+  eq(B.assets.find(r => r.acc === 'suspense'), undefined, 'баланс: тодорхойгүй нь хөрөнгө БИШ');
+  eq((B.liabs.find(r => r.acc === 'suspense') || {}).amount, 120000, 'баланс: тодорхойгүй = өр төлбөр, ЭЕРЭГ');
+  ok(B.balanced, 'баланс: тодорхойгүйтэй ч тэнцэнэ');
 }

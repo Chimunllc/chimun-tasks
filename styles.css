@@ -7875,6 +7875,23 @@ select.no-asar-len {
   border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
   color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
 }
+/* ─── 📒 Нягтлангийн дэд таб + ерөнхий дэвтэр ─── */
+.ac-tabs { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-bottom: var(--space-3);
+  background: var(--panel-hover); border-radius: var(--r-lg); padding: 4px; }
+.ac-tb { padding: 7px var(--space-3); font-size: var(--fs-sm); font-weight: 600; border: none;
+  border-radius: var(--r-md); background: none; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.ac-tb.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.lg-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
+.lg-h { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3); background: var(--panel-hover); border-bottom: 1px solid var(--line); }
+.lg-bal { margin-left: auto; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; color: var(--primary); }
+.lg-r { display: flex; gap: var(--space-2); align-items: baseline; padding: 5px var(--space-3);
+  font-size: var(--fs-sm); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.lg-head { color: var(--muted); font-size: var(--fs-xs); background: var(--panel); }
+.lg-d { flex: 0 0 42px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg-t { flex: 1 1 140px; min-width: 0; color: var(--text-soft); overflow-wrap: anywhere; }
+.lg-v { flex: 0 0 88px; text-align: right; font-variant-numeric: tabular-nums; }
+
 /* ─── 📒 Журнал (давхар бичилт) ─── */
 .jr-wrap { padding: var(--space-1); }
 .jr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2);

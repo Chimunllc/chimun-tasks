@@ -12550,6 +12550,10 @@ function attMemberSummary(recs, live) {
   });
   if (openIn && live) mins += (Date.now() - new Date(openIn)) / 60000;   // зөвхөн өнөөдрийн үргэлжилж буй сесс
   const gross = Math.max(0, Math.round(mins));
+  /* ⛔ ӨДӨР ДУТВАЛ ЦАЙНЫ ЦАГ ЧИМЭЭГҮЙ 0 БОЛНО (2026-10-03). Өдрийн ирцийн
+     жагсаалт `day`-г татдаггүй байсан тул дэлгэцэд цай хасагдаагүй БҮТЭН цаг
+     гарч, сарын тооцоотой зөрж байв («хасагдаагүй л харагдаад байна»). Татах
+     `select` бүрд `day` ЗААВАЛ — scan-тест шалгана. */
   const lunch = lunchMinsFor(recs[0] && recs[0].day, gross);   // `mins` = ажилласан (цай хассан)
   return { firstIn: recs[0] ? recs[0].ts : null, mins: gross - lunch, gross, lunch, open: !!openIn && live, noOut: !!openIn && !live, openTs: openIn, lastEvent };
 }
@@ -12893,7 +12897,7 @@ async function attReqReject(k) {
 async function loadAttendanceToday() {
   try {
     const d = todayStr();
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,day,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { dataLoadFailed('loadAttendanceToday', e); }
@@ -12902,7 +12906,7 @@ async function loadAttendanceToday() {
 async function loadAttendanceView() {
   const d = state.attViewDay || todayStr();
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,day,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) { dataLoadFailed('loadAttendanceView', e); }

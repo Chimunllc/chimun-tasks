@@ -6892,6 +6892,13 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .fin-grp-neutral .fin-grp-s { font-weight: 600; }
 .fin-grp-neutral.fin-grp-1 { border-left-style: dashed; border-left-color: var(--border-strong); }
 .fin-grp-neutral.fin-grp-2 { border-left-style: dashed; border-left-color: var(--border); }
+/* ⇄ Банкны сар ≠ ноогдох сар. Зардал нь ноогдох сард тоологддог тул мөр
+   «өөр сарын» огноотой харагдана — ялгааг нуухгүй, тэмдэгээр хэлнэ. */
+.fin-shift {
+  white-space: nowrap; font-size: var(--fs-xs); font-weight: 700;
+  padding: 2px 7px; border-radius: 20px; color: var(--muted);
+  border: 1px dashed var(--border-strong);
+}
 .fin-grp-neutral .fin-grp-l::after {
   content: 'зардалд ОРОХГҮЙ'; margin-left: var(--space-2);
   font-size: var(--fs-xs); font-weight: 600; letter-spacing: .03em;

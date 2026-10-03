@@ -2380,6 +2380,12 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
 async function saveFinanceRequest(r, deleted = false) {
   // 🔒 Хаасан сар — зардал ЗАСАГДАХГҮЙ (кэш бичихээс ӨМНӨ шалгана)
   assertMonthOpen(String((r && r.requested_at) || '').slice(0, 7), deleted ? 'зардал устгах' : 'зардлын бичилт');
+  /* Зардал нь НООГДОХ сард тоологддог (finExpMonth) тул устгахад тэр сарыг ч
+     шалгана — эс бөгөөс 9-д гарсан, 8-д ноогдсон мөрийг устгаж ХААСАН 8 сарын
+     зардлыг чимээгүй бууруулж болно. ⚠ Зөвхөн УСТГАХАД: хуулга импортлох үед
+     мөр бүр энэ замаар бичигддэг тул бичилтэд тавибал шилжилтийн сарын импорт
+     бүхэлдээ зогсоно (хуулгын мөр нь ҮРГЭЛЖ бичигдэх ёстой). */
+  if (deleted && typeof finAccrualMonth === 'function') assertMonthOpen(finAccrualMonth(r), 'зардал устгах');
   // localStorage кэш
   saveFinanceCache();
   if (!state.config.financeUrl) return;
@@ -8287,13 +8293,24 @@ function openExpenseModal(id) {
     modal.querySelector('#ex-save').onclick = async () => {
       const sub = subSel.value; if (!sub) { showToast('Дэд ангиллаа сонгоно уу', 'warn', 2500); return; }
       const br = brSel.value; if (!br && !isAssetCat(sub)) { showToast('Салбар сонгоно уу', 'warn', 3000); return; }
+      const accChosen = modal.querySelector('#ex-accr').value;
+      /* 🔒 Зардлын САР нь мөнгийг хөдөлгөнө (тайлан, салбарын ашиг, COO-гийн 30%)
+         тул ХУУЧИН ба ШИНЭ сарыг ХОЁУЛАНГ нь шалгана — эс бөгөөс хаасан сараас
+         зардлыг гаргах/оруулах зам нээлттэй үлдэнэ. */
+      const accPrev = finAccrualMonth(r);
+      try { await loadClosedMonths(true); } catch (e) {}   // сүлжээ унасан нь хадгалахыг БҮҮ зогсоо
+      try {
+        if (accChosen !== accPrev) { assertMonthOpen(accPrev, 'зардлын сар солих'); assertMonthOpen(accChosen, 'зардлын сар солих'); }
+      } catch (e) { showToast(e.message || 'Сар хаагдсан', 'warn', 6000); return; }
       const btn = modal.querySelector('#ex-save'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
       r.category = sub; r.dept_branch = isAssetCat(sub) ? 'ХХК' : br;
       if (t) { const base = stripCardToken(r.justification); r.justification = `${base} ${encodeCardToken(t.last4, t.ownerKey || state.me, false)}`.trim(); }
-      // Гүйцэтгэлийн сар: сонгосон нь ухаалаг default-аас өөр бол л токен хадгална (цэвэр байлгах)
-      const accChosen = modal.querySelector('#ex-accr').value;
+      /* ⛔ Сонгосон сарыг ҮРГЭЛЖ токеноор хадгална (2026-10-03). Өмнө нь «ухаалаг
+         default-аас өөр бол л» бичдэг байсан тул (а) хүний сонголт хадгалагдаагүй
+         бол ангилал солихоор сар ЧИМЭЭГҮЙ хөдөлдөг, (б) 7700 шиг таамаг ажилладаггүй
+         ангиллын сонголт огт үлддэггүй байв. Хүний сонголт > таамаг. */
       r.justification = stripAccrualToken(r.justification);
-      if (accChosen && accChosen !== finAccrualAuto(r.category, r.requested_at)) r.justification = `${r.justification} ⟦ACCR|${accChosen}⟧`.trim();
+      if (/^\d{4}-\d{2}$/.test(accChosen)) r.justification = `${r.justification} ⟦ACCR|${accChosen}⟧`.trim();
       saveExpenseLearn(r.purpose || r.beneficiary || '', { cat: sub, branch: isAssetCat(sub) ? '' : br });
       saveAcctLearn(expRecAcct(r), { cat: sub, branch: isAssetCat(sub) ? '' : br });   // ДАНС-суурьтай суралцлага
       try { await saveFinanceRequest(r); showToast('Хадгаллаа ✓', 'success', 1800); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
@@ -34981,9 +34998,17 @@ function finIsRealExpense(t) {
   return !!t && t.decision === 'approved' && !finPendingStmt(t)
     && !finIsNonExpense(t.category) && !finIsDepositReturn(t) && !finIsCustomerRefund(t);
 }
-// Зардал аль сард тоологдох вэ — basis-аар: 'cash'=гүйлгээ гарсан огноо(requested_at), 'accrual'=ноогдох сар.
+/* Зардал АЛЬ САРД тоологдох вэ — ⛔ ҮРГЭЛЖ ГҮЙЦЭТГЭЛИЙН (ноогдох) САРААР,
+   «Мөнгөн/Гүйцэтгэл» сонголтоос ХАМААРАХГҮЙ (2026-10-03, CEO шийдвэр:
+   «гүйлгээ бус гүйцэтгэлээр боддог болгох хэрэгтэй, Монгол Улсын хуулийн хүрээнд»).
+   ЯАГААД: өмнө нь cash суурьд `requested_at` байсан тул 8-р сарын цалинг 9-д
+   төлөхөд 9 сарын зардал болж, гүйлгээн дээр «8 сар» гэж сонгосон нь ЮУ Ч
+   өөрчилдөггүй байв (амьд системд 17 гүйлгээ ингэж буруу сард сууж байсан).
+   ⚠ Банктай тулгалт нь ЭНД БИШ — хуулгын залгаа/тэнцэл нь `bank_statements`
+   дээр, гүйлгээ гарсан огноогоороо шалгагддаг. Зардлын САР нь нягтлан бодох
+   ойлголт, банкны огноотой заавал таарах албагүй. Scan-тест буцахыг хаана. */
 function finExpMonth(t, basis) {
-  return basis === 'cash' ? String((t && t.requested_at) || '').slice(0, 7) : finAccrualMonth(t);
+  return finAccrualMonth(t);
 }
 // Тухайн сарын захиалгын орлого — эвент (M-Event) + NOMAAD, суурьаар. finBranchPnl ба Тайлан толгой
 // ХОЁУЛАН энэ ГАНЦ функцийг дуудна (C8: орлогын логикийг 2 газар давхардуулж, засвар-зөрүү гаргахгүй).
@@ -35485,14 +35510,15 @@ function renderReports() {
     </div>`;
   const inputs = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
       ${kpi(incomeLabel, fmtBig(income), 'var(--ok)', incomeSub)}
-      ${kpi(basis === 'cash' ? 'Зарлага (гүйлгээгээр)' : 'Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + (vatExp > 0 ? ` · 🧾 НӨАТ ${fmtBig(vatExp)}` : '') + (basis === 'cash' ? ' · Санхүүтэй таарна' : ''))}
+      ${kpi('Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + (vatExp > 0 ? ` · 🧾 НӨАТ ${fmtBig(vatExp)}` : '') + ' · Санхүүтэй таарна')}
     </div>`;
-  // Орлогын суурь солих товч
+  /* Суурь солих товч нь ЗӨВХӨН ОРЛОГЫГ хөдөлгөнө. Зардал нь ҮРГЭЛЖ ноогдох
+     сараар (finExpMonth) — Монгол Улсын НББ-ийн хуулийн дагуу (2026-10-03 CEO). */
   const bt = (v, lbl) => `<button data-fin-basis="${v}" style="padding:6px 14px;font-size:12px;border:1px solid var(--border);cursor:pointer;font-weight:600;${basis === v ? 'background:var(--primary);color:#fff;border-color:var(--primary);' : 'background:var(--panel);color:var(--muted);'}">${lbl}</button>`;
   const basisToggle = `<div style="display:flex;justify-content:center;margin:0 0 6px;">
       <div style="display:inline-flex;border-radius:10px;overflow:hidden;">${bt('cash', 'Мөнгөн гүйлгээ')}${bt('accrual', 'Гүйцэтгэл')}</div>
     </div>
-    <div style="text-align:center;font-size:var(--fs-xs);color:var(--muted);margin-bottom:12px;line-height:1.4;">${basis === 'cash' ? '✓ Үндсэн — орлого: мөнгө орсон өдрөөр · зардал: гүйлгээ гарсан огноогоор. Банкны хуулгатай тулгагдана.' : '⚠ Лавлагаа — орлого: эвент болсон сараар · зардал: ноогдох сараар. Мөнгө хөдлөөгүй дүн орсон тул банкны хуулгатай ТААРАХГҮЙ.'}</div>`;
+    <div style="text-align:center;font-size:var(--fs-xs);color:var(--muted);margin-bottom:12px;line-height:1.4;">Зардал ҮРГЭЛЖ <b>ноогдох сараар</b> (8-р сарын цалинг 9-д төлсөн ч 8 сарын зардал). Товч нь зөвхөн <b>орлогыг</b> сольдог: ${basis === 'cash' ? '✓ мөнгө орсон өдрөөр (үндсэн).' : '⚠ эвент болсон сараар — хураагдаагүй дүн ордог тул лавлагаа.'}</div>`;
   const pnl = `
     ${monthNav}
     ${basisToggle}
@@ -35505,7 +35531,7 @@ function renderReports() {
   const incomeSections = mi ? renderIncomeSections(month, mi) : '';
   // ── 📊 Зардлын задаргаа (график) — ангилалаар (түлш, шууд зардал, цалин г.м.) ──
   const expItems = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
-    .filter(t => finAccrualMonth(t) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
+    .filter(t => finExpMonth(t, basis) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
   const byCat = {}; const txByCat = {};
   expItems.forEach(t => { const c = finSubName(t.category) || 'Ангилалгүй'; byCat[c] = (byCat[c] || 0) + (Number(t.amount) || 0); (txByCat[c] = txByCat[c] || []).push(t); });
   const catRows = Object.entries(byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
@@ -35533,12 +35559,14 @@ function renderReports() {
     ${catRows.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);"><span>Нийт зардал</span><span>${fmtSaya(expTotal)}</span></div>` : ''}
   </div>`;
   // ── 🔁 Сар хооронд шилжсэн зардал (accrual reclass) — ил тод байдал ──
-  // «Гүйцэтгэл» горимд зардал ноогдох сараар тоологддог тул төлсөн сараас зөрдөг.
-  // Энэ панел тухайн сартай холбоотой шилжилтийг ил гаргана (жишээ: 8-д төлсөн цалин 7-р сард).
+  // Зардал ноогдох сараар тоологддог тул төлсөн сараас зөрдөг.
+  // Энэ панел тухайн сартай холбоотой шилжилтийг ил гаргана (жишээ: 9-д төлсөн цалин 8-р сард).
   const _shRows = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
     .filter(t => finIsRealExpense(t) && (!wantBr || finEffBranch(t) === wantBr));
   const shiftOut = [], shiftIn = [];
-  if (basis === 'accrual') _shRows.forEach(t => {
+  /* ⛔ Суурьаас ХАМААРАХГҮЙ харагдана — зардал одоо ҮРГЭЛЖ ноогдох сараар
+     тоологддог тул шилжилт нь «Мөнгөн» горимд ч бодитой болсон. */
+  _shRows.forEach(t => {
     const pay = String(t.requested_at || '').slice(0, 7), acc = finAccrualMonth(t);
     if (!pay || !acc || pay === acc) return;
     if (pay === month) shiftOut.push({ t, other: acc });   // энэ сард төлсөн → өөр сард ноогдсон (эндээс хасагдсан)
@@ -35566,7 +35594,7 @@ function renderReports() {
           <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${shiftOut.length + shiftIn.length} гүйлгээ</span>
         </div>
         <div data-shift-detail style="display:none;margin-top:6px;">
-          <div style="font-size:11px;color:var(--muted);line-height:1.55;">«Гүйцэтгэл» горимд зардал <b style="color:var(--text);">ноогдох сараар</b> тоологддог (цалин ажилласан сард) тул мөнгө гарсан сараас зөрж болно. ${month} сартай холбоотой шилжилтүүд:</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.55;">Зардал <b style="color:var(--text);">ноогдох сараар</b> тоологддог (цалин ажилласан сард) тул мөнгө гарсан сараас зөрж болно. Гүйлгээ бүрийн сарыг «Аль сарын зардал» талбараас солино. ${month} сартай холбоотой шилжилтүүд:</div>
           ${sec('➡️ Энэ сард төлсөн → өөр сард ноогдсон', shiftOut, '→', month + '-д мөнгө гарсан ч энэ сарын зардалд ОРООГҮЙ — доорх сард шилжсэн.')}
           ${sec('⬅️ Өөр сард төлсөн → энэ сард ноогдсон', shiftIn, '←', 'Мөнгө өөр сард гарсан ч ' + month + '-ын зардалд НЭМЭГДСЭН.')}
         </div>
@@ -36825,7 +36853,11 @@ function renderFinanceReport(wrap) {
 
   const groupBy = (arr, k) => arr.reduce((o, t) => { const x = k(t); (o[x] = o[x] || []).push(t); return o; }, {});
   const sumOf = arr => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-  const monthList = base.filter(t => (t.requested_at || '').slice(0, 7) === month);
+  /* ⛔ ЖАГСААЛТ = НООГДОХ САРААР (`finExpMonth`), банкны огноогоор БИШ (2026-10-03).
+     Гүйлгээн дээр «аль сарын зардал» гэж сонгосон нь ЭНД харагдахгүй бол
+     тэр сонголт хүний хувьд ОГТ байхгүйтэй адил. Банкны огноо нь мөр бүрт
+     ⇄ тэмдэгээр ил гарна. */
+  const monthList = base.filter(t => finExpMonth(t, finBasis()) === month);
 
   // ── Тулгалт + Excel татах ──
   const bar = document.createElement('div');
@@ -36901,7 +36933,7 @@ function renderFinanceReport(wrap) {
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
   head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
     + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month} <span style="font-size:11px;font-weight:600;color:var(--muted);">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
-    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал${(() => {
+    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал <span style="font-size:11px;">(ноогдох сараар)</span>${(() => {
         const ol = sumOf(monthList.filter(t => finIsNonExpense(t.category)));
         const dr = sumOf(monthList.filter(finIsDepositReturn));
         const pd = sumOf(monthList.filter(t => finPendingStmt(t)));
@@ -37200,12 +37232,17 @@ function renderFinanceReport(wrap) {
       ? `<span style="color:var(--warn);"> · «${escapeHtml(t.close_note)}»</span>` : '';
     const titleAttr = t.close_note ? ` title="${escapeHtml(t.close_note)}"` : '';
     const timeHtml = t.requested_at ? `<span style="white-space:nowrap;color:var(--muted);font-size:11px;">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>` : '';
+    /* ⇄ Банкны сар ≠ ноогдох сар. Мөрийг нуухгүй, ЯЛГААГ ил хэлнэ — эс бөгөөс
+       «яагаад 9-р сарын гүйлгээ 8-р сард байна вэ» гэж хүн гайхна. */
+    const _bankYm = String(t.requested_at || '').slice(0, 7);
+    const shiftHtml = (_bankYm && _bankYm !== month)
+      ? `<span class="fin-shift" title="Банкнаас ${escapeHtml(_bankYm)}-д гарсан · ${escapeHtml(month)} сарын зардал">⇄ ${escapeHtml(_bankYm)}</span>` : '';
     // Шилжүүлгийн баримт — мөрөнд ШУУД thumbnail (дарвал томруулна, модал нээхгүй)
     const proofHtml = (t.payment_proof_url && /^http/.test(t.payment_proof_url))
       ? `<button type="button" class="fin-proof-thumb" data-lightbox="${escapeHtml(driveThumbUrl(t.payment_proof_url, 1600))}" title="Шилжүүлгийн баримт — томруулж харах"><img src="${escapeHtml(driveThumbUrl(t.payment_proof_url, 200))}" alt="баримт" loading="lazy"></button>` : '';
     d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"${titleAttr}>`
       + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
-      + `${classBadge(t)}${timeHtml}${proofHtml}`
+      + `${classBadge(t)}${shiftHtml}${timeHtml}${proofHtml}`
       + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
     d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openExpenseModal(t.id); });
     return d;
@@ -37281,7 +37318,8 @@ function exportFinanceReportExcel() {
   if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
   const stKey = state.finReportStatus || 'all';
   const stPred = stKey === 'all' ? () => true : (t => finStage(t).key === stKey);
-  let rows = base.filter(t => (t.requested_at || '').slice(0, 7) === month && stPred(t));
+  // Дэлгэцтэй ИЖИЛ дүрэм — ноогдох сараар (эс бөгөөс татсан Excel дэлгэцээс зөрнө)
+  let rows = base.filter(t => finExpMonth(t, finBasis()) === month && stPred(t));
   if (!rows.length) { showToast('Татах гүйлгээ алга', 'warn'); return; }
   const amt = t => Number(t.amount) || 0;
   const sumOf = arr => arr.reduce((s, t) => s + amt(t), 0);

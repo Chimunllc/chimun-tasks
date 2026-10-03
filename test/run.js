@@ -1720,6 +1720,26 @@ ok(F.vatNameMatch('Түшиг', 'Өөр Компани') === false, 'vatNameMatc
   const past = F.attMemberSummary([{ kind: 'in', ts: inTs }], false);
   ok(past.mins === 0, 'attMemberSummary: өнгөрсөн өдрийн нээлттэй сесс = 0 мин (172ц алдаа засав)');
   ok(past.noOut === true && past.open === false, 'attMemberSummary: өнгөрсөн нээлттэй = noOut, open биш');
+  /* ⛔ ЦАЙНЫ ЦАГ ЧИМЭЭГҮЙ 0 БОЛДОГ БАЙВ (2026-10-03). Өдрийн ирцийн жагсаалт
+     `day` талбарыг ТАТДАГГҮЙ байсан тул `lunchMinsFor(undefined, …)` = 0 болж,
+     дэлгэцэд цай хасагдаагүй БҮТЭН цаг гарч, сарын тооцоотой зөрж байв
+     (CEO: «хасагдаагүй л харагдаад байна»). */
+  {
+    const D = (day, a, b) => F.attMemberSummary([
+      { kind: 'in', day, ts: `2026-10-01T${a}:00.000Z` },
+      { kind: 'out', day, ts: `2026-10-01T${b}:00.000Z` }], false);
+    const full = D('2026-10-01', '01:00', '10:04');     // 9ц 4м
+    eq(full.gross, 544, 'цай: нийт байсан цаг');
+    eq(full.lunch, 60, 'цай: 5ц-аас урт өдөр 1ц хасагдана');
+    eq(full.mins, 484, 'цай: ажилласан = нийт − цай');
+    const short = D('2026-10-01', '01:00', '03:00');    // 2ц
+    eq(short.lunch, 0, 'цай: богино өдөр хасагдахгүй');
+    eq(short.mins, 120, 'цай: богино өдөр бүтнээрээ');
+    // ⛔ Эхлэх өдрөөс ӨМНӨ хасагдахгүй (9 сарын цалин аль хэдийн бодогдсон)
+    eq(D('2026-09-30', '01:00', '10:04').lunch, 0, 'цай: 9 сард хасагдахгүй');
+    // ⛔ `day` дутвал ЧИМЭЭГҮЙ 0 болно — тиймээс татах select-д заавал байна
+    eq(D(undefined, '01:00', '10:04').lunch, 0, 'цай: өдөргүй бол хасагдахгүй (select-д day заавал)');
+  }
   const closed = F.attMemberSummary([{ kind: 'in', ts: '2026-08-20T01:00:00.000Z' }, { kind: 'out', ts: '2026-08-20T09:00:00.000Z' }], false);
   ok(closed.mins === 480, 'attMemberSummary: хаагдсан сесс = 8ц (480 мин)');
 }
@@ -15014,6 +15034,19 @@ async function swFetchTests() {
   ok(c8.includes('олгосон дүн'), 'түүх сар: ажилтанд олгосон дүн харагдана');
 
   runIn(`(function(){ const s = ${save}; state.salaries = s[0]; state.salaryPayments = s[1]; state.attMonthKey = s[2]; state.salaryYM = s[3]; })()`);
+}
+
+// ═══ SCAN: ирцийн select бүрд `day` байна ═══════════════════════════════
+// ⛔ `attMemberSummary` цайны цагийг `recs[0].day`-ээр шийддэг тул талбар
+//    дутвал хасалт ЧИМЭЭГҮЙ 0 болно (дэлгэц ба цалин зөрнө).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const sels = src.match(/rest\/v1\/attendance\?[^`]*select=[^&`]*/g) || [];
+  ok(sels.length >= 5, 'scan: ирцийн select-үүд олдов');
+  sels.forEach((u, i) => {
+    const cols = (u.match(/select=([^&`]*)/) || [])[1] || '';
+    ok(cols.split(',').indexOf('day') >= 0, `scan: ирцийн select #${i + 1}-д day багтана`);
+  });
 }
 
 // ═══ SCAN: норм сар бүрээр бодогдоно ════════════════════════════════════

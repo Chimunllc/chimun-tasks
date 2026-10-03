@@ -26437,19 +26437,24 @@ function custInfoOf(note) { const m = String(note || '').match(_CI_RE); if (!m) 
    автоматаар бөглөгдсөн ХҮНИЙ нэр энд тоологдохгүй (2026-09-04-ний хамгаалалт хэвээр).
    Хувь хүний гэрээ үнэхээр хэрэгтэй бол байгууллагын талбарыг ХООСЛОНО — байгууллага
    гэрээний тал биш бол тэнд бичигдэх ч ёсгүй. */
-function _orgProofFrom(ci, no) {
+/* ④ ХАРИЛЦАГЧИЙН нэрэн дэх хуулийн хэлбэр — ажилтан байгууллагын нэрийг «Харилцагч»
+   талбарт бичиж «Байгууллага»-г хоосон орхидог (амьд жишээ 1409 «Капитрон банк»,
+   1415 «Эвэнт хонх ххк» — хоёулаа «хувь хүн» гэж харагдаж байв). */
+function _orgProofFrom(ci, no, cust) {
   const reg = String((ci && ci.reg) || '').replace(/\s/g, '');
   if (/^\d{7}$/.test(reg)) return 'РД ' + reg;
   const vreg = vatOrgRegFor(no);
   if (vreg) return 'НӨАТ-ын баримт · РД ' + vreg;
   const co = String((ci && ci.company) || '').trim();
   if (_ORG_SUFFIX_RE.test(co)) return co;
+  const cu = String(cust || '').trim();
+  if (_ORG_SUFFIX_RE.test(cu)) return cu;
   return '';
 }
-function orderOrgProof(o) { return _orgProofFrom(custInfoOf(o && o.note), o && o.number); }
+function orderOrgProof(o) { return _orgProofFrom(custInfoOf(o && o.note), o && o.number, o && o.customer); }
 function orderCustType(o) {
   const ci = custInfoOf(o && o.note);
-  if (_orgProofFrom(ci, o && o.number)) return 'org';
+  if (_orgProofFrom(ci, o && o.number, o && o.customer)) return 'org';
   if (ci.ctype === 'org' || ci.ctype === 'person') return ci.ctype;
   return 'person';                                        // хувь хүний РД (2 үсэг+8 орон) эсвэл тодорхойгүй = хувь хүн
 }
@@ -27145,9 +27150,9 @@ function openNewOrder(editOrder) {
   {
     const _ctSync = () => {
       const _ct = $('#no-ctype'); if (!_ct) return;
-      const _rg = $('#no-reg'), _co = $('#no-company');
+      const _rg = $('#no-reg'), _co = $('#no-company'), _cu = $('#no-customer');
       const proof = _orgProofFrom({ reg: (_rg && _rg.value) || '', company: (_co && _co.value) || '' },
-        isEdit ? editOrder.number : null);
+        isEdit ? editOrder.number : null, (_cu && _cu.value) || '');
       if (proof) _ct.value = 'org';
       _ct.disabled = !!proof;
       const org = _ct.value === 'org';
@@ -27166,6 +27171,7 @@ function openNewOrder(editOrder) {
     { const _ct = $('#no-ctype'); if (_ct) _ct.addEventListener('change', _ctSync); }
     { const _rg = $('#no-reg'); if (_rg) _rg.addEventListener('input', _ctSync); }
     { const _co = $('#no-company'); if (_co) _co.addEventListener('input', _ctSync); }
+    { const _cu = $('#no-customer'); if (_cu) _cu.addEventListener('input', _ctSync); }
     _ctSync();
   }
   $('#no-delivkm').addEventListener('input', recalc);

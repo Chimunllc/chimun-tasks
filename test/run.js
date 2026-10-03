@@ -15195,3 +15195,68 @@ async function swFetchTests() {
   // ⛔ scRows (НЭГ сесс) ашиглавал бусад сар чимээгүй 0 болно
   eq((ex.match(/state\.scRows/g) || []).length, 0, 'scan: журнал нэг сессийн мөрөөр бодохгүй');
 }
+
+// ═══ ЗАРДАЛ НООГДОХ САРД, БАНК ТӨЛСӨН ОГНООНД (2026-10-03) ══════════════
+// ⛔ Журналын огноог ЗӨӨХГҮЙ — банкны мөр жинхэнэ огноондоо үлдэнэ (эс бөгөөс
+//   дэвтэр хуулгатай таарахаа болино). Сар зөрвөл ХОЁР бичилт, дунд нь өглөг.
+{
+  const { journalEntries, incomeStatement, balanceSheetAt, entriesBetween, ledgerLines } = F;
+  const base = { basis: 'accrual', orders: [], income: [], deprec: [], extra: [], opening: null };
+  // 10-05-нд төлсөн 9 сарын цалин (finAccrualAuto: 1-10-нд төлсөн цалин → өмнөх сар)
+  const ctx = { ...base, finance: [{ id: 's1', status: 'done', decision: 'approved',
+    category: '7100', amount: 13400000, requested_at: '2026-10-05', purpose: 'Цалин үлдэгдэл' }] };
+  const all = journalEntries(ctx, null);
+  const acr = all.find(e => e.src === 'acr:s1');
+  const pay = all.find(e => e.src === 'fin:s1');
+  const ln = (e, acc, side) => ((e && e.lines || []).find(l => l.acc === acc) || {})[side] || 0;
+
+  ok(!!acr, 'хуримтлал: ноогдох бичилт үүснэ');
+  ok(!!pay, 'хуримтлал: төлөлтийн бичилт үүснэ');
+  eq(acr && acr.date, '2026-09-30', 'хуримтлал: зардал 9 сарын ЭЦЭСТ');
+  eq(pay && pay.date, '2026-10-05', 'хуримтлал: банк ЖИНХЭНЭ огноондоо үлдэнэ');
+  eq(ln(acr, 'expense', 'dr'), 13400000, 'хуримтлал: зардал ноогдох сард');
+  eq(ln(acr, 'payable', 'cr'), 13400000, 'хуримтлал: өглөг үүснэ');
+  eq(ln(pay, 'payable', 'dr'), 13400000, 'хуримтлал: төлөхөд өглөг хаагдана');
+  eq(ln(pay, 'bank', 'cr'), 13400000, 'хуримтлал: банкнаас гарна');
+
+  // ⛔ Зардал 9 сард, банкны хөдөлгөөн 10 сард
+  eq(incomeStatement(entriesBetween(ctx, '2026-09-01', '2026-09-30')).totalExpense, 13400000,
+     'хуримтлал: 9 сарын зардалд орно');
+  eq(incomeStatement(entriesBetween(ctx, '2026-10-01', '2026-10-31')).totalExpense, 0,
+     'хуримтлал: 10 сард зардал ДАХИН орохгүй');
+  eq(ledgerLines(entriesBetween(ctx, '2026-10-01', '2026-10-31'), 'bank').balance, -13400000,
+     'хуримтлал: банк 10 сард хөдөлнө');
+
+  // ⛔ Өглөг 9 сарын эцэст балансад ГАРНА, төлсний дараа 0 болно
+  eq((balanceSheetAt(entriesBetween(ctx, null, '2026-09-30')).liabs.find(r => r.acc === 'payable') || {}).amount,
+     13400000, 'баланс: 9 сарын эцэст цалингийн өглөг харагдана');
+  eq((balanceSheetAt(all).liabs.find(r => r.acc === 'payable') || {}).amount, undefined,
+     'баланс: төлсний дараа өглөг хаагдана');
+  ok(balanceSheetAt(all).balanced, 'баланс: хуримтлалтай ч тэнцэнэ');
+
+  // ⛔ Сар ТААРВАЛ нэг бичилт (хоёр болж хуваагдахгүй)
+  const same = journalEntries({ ...base, finance: [{ id: 's2', status: 'done', decision: 'approved',
+    category: '1800', amount: 350000, requested_at: '2026-09-22', purpose: 'Шатахуун' }] }, null);
+  eq(same.length, 1, 'хуримтлал: сар таарвал нэг бичилт');
+  eq(same[0].src, 'fin:s2', 'хуримтлал: энгийн зарлагын бичилт');
+
+  // ⛔ ЗАРДАЛ БИШ мөр ХЭЗЭЭ Ч хуваагдахгүй — балансын хөдөлгөөн төлсөн огноонд
+  ['6900', '6950', '5810', '5300', '6100'].forEach(cat => {
+    const r = journalEntries({ ...base, finance: [{ id: 'x' + cat, status: 'done', decision: 'approved',
+      category: cat, amount: 500000, requested_at: '2026-10-05', purpose: 'Тест' }] }, null);
+    eq(r.length, 1, `хуримтлал: ${cat} хуваагдахгүй (зардал биш)`);
+    eq(r[0].date, '2026-10-05', `хуримтлал: ${cat} төлсөн огноондоо`);
+  });
+}
+
+// ═══ SCAN: журналын огноо зөөгдөхгүй ═══════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const je = src.slice(src.indexOf('function journalEntries'), src.indexOf('function journalTotals'));
+  ok(/payable/.test(je), 'scan: хуримтлуулсан өглөгийн данс ашиглагдана');
+  ok(/finAccrualMonth\(t\)/.test(je), 'scan: ноогдох сар finAccrualMonth-оос (тайлантай ижил дүрэм)');
+  // ⛔ Зөвхөн ЗАРДАЛ хуваагдана
+  ok(/dr === 'expense' && typeof finAccrualMonth/.test(je), 'scan: зөвхөн зардал хуваагдана');
+  // ⛔ Төлөлтийн бичилт ҮРГЭЛЖ requested_at огноонд
+  ok(/push\(t\.requested_at, `\$\{label\} · төлөлт`/.test(je), 'scan: банкны мөр жинхэнэ огноондоо');
+}

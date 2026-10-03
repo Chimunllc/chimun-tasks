@@ -10019,7 +10019,7 @@ function timeGroupKey(o, todayStr) {
 const ORDER_BUCKETS = [
   { key: 'draft',    label: 'Ноорог',      icon: '📝', dot: '#6B7280', st: ['draft'] },
   { key: 'active',   label: 'Захиалсан',   icon: '📋', dot: '#D97706', st: ['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering', 'installing', 'started', 'rented', 'teardown', 'returning'] },
-  { key: 'done',     label: 'Дууссан',     icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
+  { key: 'done',     label: 'Дууссан',     icon: '✅', dot: '#16A34A', st: ['returned', 'stowed', 'stopped'] },
   { key: 'archived', label: 'Архивласан',  icon: '🗄', dot: '#475569', st: ['archived'] },
   { key: 'canceled', label: 'Цуцалсан',    icon: '✕', dot: '#DC2626', st: ['canceled'] },
   { key: 'deleted',  label: 'Больсон',     icon: '🚫', dot: '#9CA3AF', st: ['deleted'] },
@@ -13200,7 +13200,7 @@ const STAGE_FEE_BANDS = [[5, 2000], [20, 4000], [60, 7000], [150, 12000], [Infin
 const STAGE_FEE_HELPER_SHARE = 0.30;
 const STAGE_FEE_HELPER_MAX = 4;
 // Биеийн хүчний шатууд. ⛔ `discount`/`revert` мэт бичиг цаасны шат ОРОХГҮЙ — ачаа зөөгөөгүй.
-const STAGE_FEE_STAGES = ['clean', 'prepare', 'dispatch', 'deliver', 'setup', 'teardown', 'retstart', 'received'];
+const STAGE_FEE_STAGES = ['clean', 'prepare', 'dispatch', 'deliver', 'setup', 'teardown', 'retstart', 'received', 'stow'];
 function _stagePayCfg() { return (state.appConfig && typeof state.appConfig.stage_pay === 'object' && state.appConfig.stage_pay) || {}; }
 function stageFeeBands() {
   const b = _stagePayCfg().bands;
@@ -14542,7 +14542,7 @@ const PERM_MENUS = [
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
       { key: 'orders.clean',    label: '🧹 Цэвэрлэсэн' },
       { key: 'orders.prepare',  label: '📦 Баглаж/ачсан' },
-      { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан' },
+      { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан / 🏬 Буулгаж байршуулсан' },
       { key: 'orders.deliver',  label: '🏗 Талбарт буулгасан / 🚚 Ачиж буцсан' },
       { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Задалсан' },
       { key: 'orders.advance',  label: '🗄 Архивлах' },
@@ -19127,7 +19127,7 @@ function canSeeOrderMoney() {
     || can('orders.pay');
 }
 // Гүйцэтгэгч ажилтанд харуулах захиалгын төлвүүд — ноорог/архив/цуцалсан/устгасан хэрэггүй.
-const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned'];
+const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned', 'stowed'];
 
 function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }
 function nomaadCardHtml(o) {
@@ -25803,7 +25803,8 @@ const BQ_STATUS = {
   installing:  { label: 'Хүргэсэн',       dot: '#EA580C', bg: '#FFEDD5', tx: '#9A3412' },
   teardown:    { label: 'Буулгасан',      dot: '#A16207', bg: '#FEF9C3', tx: '#854D0E' },
   returning:   { label: 'Хүргэлтээр авсан', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
-  returned:    { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  returned:    { label: 'Хүлээн авсан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  stowed:      { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
   canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
   deleted:     { label: 'Больсон',       dot: '#9CA3AF', bg: '#F3F4F6', tx: '#6B7280' },
@@ -25813,7 +25814,7 @@ const BQ_STATUS = {
   started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned', 'stowed', 'stopped', 'archived', 'canceled', 'deleted'];
 // Хуучин/хассан (legacy) төлөвийг одоогийн урсгалын төлөв рүү буулгана — эс бол тэдгээр захиалга
 // ямар ч табд таарахгүй зөвхөн "Бүгд"-д харагдана. delivering/returning-г хассан (зам-дундын микро-төлөв).
 const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', started: 'rented' };
@@ -25975,7 +25976,8 @@ const PIPELINE = [
   { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: false },
   { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Ачиж буцсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo' },
   { key: 'received', from: ['returning'],  to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count' },
-  { key: 'archive',  from: ['returned', 'stopped'], to: 'archived', label: '🗄 Архивлах',    cap: 'orders.advance',  pts: 0 },
+  { key: 'stow',     from: ['returned'],   to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.dispatch', pts: 1.5, ev: 'photo' },
+  { key: 'archive',  from: ['stowed', 'returned', 'stopped'], to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance', pts: 0 },
 ];
 // Захиалгын нөхцөл — урсгалын салаалалт үүгээр шийдэгдэнэ (ЦЭВЭР тулгалтад тестлэгдэнэ).
 function orderPipelineCtx(o) {
@@ -26141,6 +26143,8 @@ const STAGE_ACTION = {
   'started>returning':    { key: 'retstart', label: 'Ачиж буцсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
   'started>returned':     { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
   'returning>returned':   { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
+  'returned>stowed':      { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, зөв тоологдсон уу?' },
+  'stowed>archived':      { key: 'archive',  label: 'Архивлах',              q: null },
   'returned>archived':    { key: 'archive',  label: 'Архивлах',              q: null },
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
@@ -26182,7 +26186,7 @@ function showcasePhotos(orders, limit) {
   out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return limit ? out.slice(0, limit) : out;
 }
-const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '📦 Баглаж/ачсан', dispatch: '📋 Бүртгэж гаргасан', deliver: '🏗 Талбарт буулгасан', setup: '🔧 Суурилуулсан', teardown: '🧱 Задалсан', retstart: '🚚 Ачиж буцсан', received: '📋 Бүртгэж хүлээн авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '📦 Баглаж/ачсан', dispatch: '📋 Бүртгэж гаргасан', deliver: '🏗 Талбарт буулгасан', setup: '🔧 Суурилуулсан', teardown: '🧱 Задалсан', retstart: '🚚 Ачиж буцсан', received: '📋 Бүртгэж хүлээн авсан', stow: '🏬 Буулгаж байршуулсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
 // Хамтрагч асуух текст — шат бүрд ТОДОРХОЙ («хамтарсан хүн байсан уу?» гэдэг
@@ -26231,7 +26235,7 @@ function hasStageRecord(o) {
   });
 }
 // Дууссанд тооцогдох төлвүүд — эдгээрт дамжлагагүйгээр шилжихийг хориглоно.
-const ORDER_DONE_STATUSES = ['rented', 'returned', 'stopped', 'archived'];
+const ORDER_DONE_STATUSES = ['rented', 'returned', 'stowed', 'stopped', 'archived'];
 
 // ── ГАРАХ ЁСТОЙ ЦАГ (2026-09-22) ────────────────────────────────────────────
 // 1★ гомдол (захиалга дугаар 1526) нь хожимдлоос гарсан: эвент 13:00-д эхлэх
@@ -27034,7 +27038,7 @@ async function bulkRestoreOrders(ids) {
 // хийнэ. Архивлах нь ЗӨӨЛӨН — status='archived', дата хэвээр, сэргээж болно.
 // Архивласан захиалга орлогод ХЭВЭЭР тоологдоно (_orderActive нь archived-ыг
 // хасдаггүй) — зөвхөн ажлын жагсаалтаас хальж, «Архивласан» бүлэгт үлдэнэ.
-const ORDER_ARCHIVABLE = ['returned', 'stopped', 'rented'];
+const ORDER_ARCHIVABLE = ['stowed', 'returned', 'stopped', 'rented'];
 // Архивлах гэж байгаа захиалгуудын дундах ТӨЛБӨР ДУТУУ нь. Архивлах нь өрийг тэглэдэггүй
 // (авлага хэвээр) — гэхдээ хэрэглэгч архивлахаасаа ӨМНӨ мэдэх ёстой тул тоо + дүн гаргана.
 function archUnpaid(list) {
@@ -35782,7 +35786,7 @@ function appendOrderNote(list, text, by, at) {
    товчнуудын түлхүүрийг буцаана; үлдсэн нь «⋯ Бусад» дотор эвхэгдэнэ.
    ⛔ Цуцлах/устгах ХЭЗЭЭ Ч үндсэн эгнээнд гарахгүй — санамсаргүй дарагдах ёсгүй.
    ⚠ Цэвэр функц — тестлэгдэнэ. */
-const ORDER_DONE_ST = new Set(['returned', 'stopped', 'archived', 'done']);
+const ORDER_DONE_ST = new Set(['returned', 'stowed', 'stopped', 'archived', 'done']);
 function orderPrimaryActions(o, ctx) {
   ctx = ctx || {};
   const out = [];

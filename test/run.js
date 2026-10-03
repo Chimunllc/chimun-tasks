@@ -2336,7 +2336,8 @@ function finish() {
   eq(NS(DLV('delivering')).to, 'rented',     'хүргэлт 4: Агуулахаас гарсан → Хүргэж өгсөн');
   eq(NS(DLV('rented')).to,     'returning',  'хүргэлт 5: Хүргэж өгсөн → Хүргэлтээр авсан');
   eq(NS(DLV('returning')).to,  'returned',   'хүргэлт 6: Хүргэлтээр авсан → Агуулахад хүлээн авсан');
-  eq(NS(DLV('returned')).to,   'archived',   'хүргэлт: дараа нь архив');
+  eq(NS(DLV('returned')).to,   'stowed',     'хүргэлт 7: Хүлээн авсан → Буулгаж байршуулах');
+  eq(NS(DLV('stowed')).to,     'archived',   'хүргэлт: дараа нь архив');
 
   // Очиж авах: 4, 5-р шат ГАРАХГҮЙ
   eq(NS(PICK('ready')).to,  'rented',   'очиж авах: Цэвэрлэсэн → шууд Олгосон');
@@ -3923,12 +3924,15 @@ need(['orderCustType']);
                   : { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
           case 'teardown': return { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' };
           case 'returning': return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
-          case 'returned': case 'stopped': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
+          /* 2026-10-03: «Буулгаж байршуулах» дамжлага НЭМЭГДСЭН — буцаж ирсэн
+             бараа агуулахад байрандаа тавигдах нь тусдаа ажил (CEO). */
+          case 'returned': return { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.dispatch' };
+          case 'stowed': case 'stopped': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
           default: return null;
         }
       };
       const ALL = ['draft', 'reserved', 'preparation', 'cleaning', 'prepared', 'ready', 'delivering',
-        'installing', 'rented', 'started', 'teardown', 'returning', 'returned', 'stopped', 'archived',
+        'installing', 'rented', 'started', 'teardown', 'returning', 'returned', 'stowed', 'stopped', 'archived',
         'canceled', 'deleted', 'ямар_ч_биш', ''];
       let same = 0, diff = [];
       ALL.forEach(st => [false, true].forEach(dlv => [false, true].forEach(setup => {
@@ -3941,6 +3945,15 @@ need(['orderCustType']);
       })));
       eq(diff.join(' | '), '', 'урсгал: жагсаалт нь хуучин дүрэмтэй ЯГ ижил');
       eq(same, ALL.length * 4, 'урсгал: бүх хослол шалгагдав');
+      eq(F.pipelineNext('stowed', {}).to, 'archived', 'урсгал: байршуулсны дараа архив');
+      /* ⛔ «Буулгаж байршуулах» нь ХҮРГЭЛТЭЭС ҮЛ ХАМААРНА — очиж авсан захиалгын
+         бараа ч агуулахад байрандаа тавигдана. */
+      eq(F.pipelineNext('returned', { dlv: false }).to, 'stowed', 'урсгал: очиж авсан захиалгад ч байршуулна');
+      eq(F.stageWeight('stow'), 1.5, 'оноо: Буулгаж байршуулах 1.5');
+      eq(F.stageEvidence('stow'), 'photo', 'нотолгоо: Буулгаж байршуулах = зураг');
+      // ⚠ Нөөц эзлэх төлөвт ОРОХГҮЙ — бараа аль хэдийн агуулахад ирсэн
+      ok(vm.runInContext('_ORDER_OCCUPYING', sandbox).indexOf('stowed') < 0,
+         'нөөц: байршуулж буй захиалга нөөц эзлэхгүй (DB харагдац хөндөгдөхгүй)');
       // ⛔ Танихгүй төлөв → null (дамжлага ЗОХИОХГҮЙ)
       eq(F.pipelineNext('ямар_ч_биш', { dlv: true, setup: true }), null, 'урсгал: танихгүй төлөвт дамжлага алга');
       // Нөхцөл — суурилуулалт зөвхөн хүргэлттэй захиалгад
@@ -3995,7 +4008,7 @@ need(['orderCustType']);
       ['reserved', 'orders.clean'], ['prepared', 'orders.prepare'],
       ['ready', 'orders.dispatch'], ['delivering', 'orders.deliver'],
       ['installing', 'orders.setup'], ['rented', 'orders.setup'],
-      ['returned', 'orders.advance'],
+      ['returned', 'orders.dispatch'], ['stowed', 'orders.advance'],
     ];
     for (const [st, cap] of pairs) {
       const b = btn(setO, st);

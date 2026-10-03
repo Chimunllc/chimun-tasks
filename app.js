@@ -29273,7 +29273,11 @@ function jrnDebitFor(cat) {
 function jrnCreditFor(status) {
   const s = String(status || '');
   if (s === 'order') return 'recv';        // захиалгын төлбөр → авлага хаагдана
-  if (s === 'nomaad') return 'revenue';
+  /* ⛔ NOMAAD төлбөр = АВЛАГА хаагдах (орлого БИШ). Орлого гэж бичвэл мөнгө
+     орсон сард бүртгэгдэж, журнал бүхэлдээ гүйцэтгэлийн суурьтай байхад NOMAAD
+     ганцаараа мөнгөн суурьтай болно — амьд датаар 9 сард 19сая ингэж илүү
+     бүртгэгдэж байв. Орлогыг нь `ctx.nomaad` сараар тусад нь хүлээн зөвшөөрнө. */
+  if (s === 'nomaad') return 'recv';
   if (s === 'internal' || s === 'personal') return null;   // компанийн орлого биш
   return 'suspense';                       // open/other — ИЛ үлдэнэ, нуугдахгүй
 }
@@ -29353,6 +29357,13 @@ function journalEntries(ctx, month) {
     const amt = Math.round(Number(d.amount) || 0); if (!amt) return;
     push(jrnMonthEnd(d.ym), `Элэгдэл · ${d.ym}`, 'dep:' + d.ym,
       [{ acc: 'expense', dr: amt, cat: 'ЭЛЭГДЭЛ' }, { acc: 'accdep', cr: amt }]);
+  });
+  // ⑦ NOMAAD-ийн орлого — сараар (эвентийн сард), төлбөр нь авлагыг хаана
+  (ctx && ctx.nomaad || []).forEach(n => {
+    if (!n || !inM(String(n.ym) + '-01')) return;
+    const amt = Math.round(Number(n.amount) || 0); if (!amt) return;
+    push(jrnMonthEnd(n.ym), `NOMAAD орлого · ${n.ym}`, 'nmd:' + n.ym,
+      [{ acc: 'recv', dr: amt }, { acc: 'revenue', cr: amt }]);
   });
   // ⑥ НӨАТ ба НӨӨЦИЙН АЛДАГДАЛ — бодит зардал, сарын эцэст
   (ctx && ctx.extra || []).forEach(x => {
@@ -29479,11 +29490,22 @@ function jrnDeprecList() {
    ⛔ НӨАТ нь `tax` өглөг рүү кредитлэгдэнэ — дараа нь 5100 төлөлт (Dr tax / Cr банк)
      түүнийг хаана. Иймд давхар тоологдохгүй.
    ⛔ Алдагдал нь `inv` (бараа материал) -аас хасагдана — алга болсон бараа нөөцөөс гарна. */
+/* ⛔ ЭХЛЭХ САР нь `deprecStartMonth()` БИШ. НӨАТ ба нөөцийн алдагдал нь элэгдлийн
+   эхлэх сартай ямар ч хамаагүй — амьд системд `deprecStart` нь 2026-10 байсан тул
+   9 сарын НӨАТ (7.7сая) журналд ОГТ бичигдэхгүй байв. Бүртгэлийн эхлэлээс
+   (нээлтийн үлдэгдэл, эс бөгөөс хамгийн эртний НӨАТ-ын баримт) эхэлнэ. */
+function jrnExtraStart() {
+  const ob = obFrozen();
+  const cands = [];
+  if (ob && ob.date) cands.push(String(ob.date).slice(0, 7));
+  (vatReceiptsActive() || []).forEach(r => { const m = String(r && r.dt || '').slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) cands.push(m); });
+  if (!cands.length) { const d = new Date(); d.setMonth(d.getMonth() - 12); return monthStr(d); }
+  return cands.sort()[0];
+}
 function jrnExtraList() {
   const out = [];
-  if (typeof deprecStartMonth !== 'function') return out;
   const end = todayStr().slice(0, 7);
-  let ym = deprecStartMonth();
+  let ym = jrnExtraStart();
   for (let i = 0; i < 120 && ym <= end; i++) {
     // ⚠ ЗААВАЛ `vatReceiptsActive()` — буцаасан баримт давхар тоологдохгүй (scan-тест).
     const vat = state.vatReceipts ? Math.round(vatByBranchMonth(vatReceiptsActive(), ym).total || 0) : 0;
@@ -29496,6 +29518,20 @@ function jrnExtraList() {
   }
   return out;
 }
+/* NOMAAD-ийн сарын орлого — `nomaadIncomeMonth` (тайлангийн ИЖИЛ дүрэм). */
+function jrnNomaadList() {
+  if (typeof nomaadIncomeMonth !== 'function') return [];
+  const end = todayStr().slice(0, 7);
+  const out = [];
+  let ym = jrnExtraStart();
+  for (let i = 0; i < 120 && ym <= end; i++) {
+    let sum = 0;
+    (state.nomaadOrders || []).forEach(o => { sum += Number(nomaadIncomeMonth(o, ym, 'accrual')) || 0; });
+    if (sum) out.push({ ym, amount: Math.round(sum) });
+    ym = nextMonthStr(ym);
+  }
+  return out;
+}
 function jrnCtx() {
   return { finance: state.financeRequests || [], income: state.bankIncome || [],
            orders: (state.appOrders || []).filter(o => typeof _orderActive === 'function' ? _orderActive(o) : true),
@@ -29504,7 +29540,7 @@ function jrnCtx() {
               «Дебет Авлага / Кредит Орлого» бичилт утгагүй болно (амьд жишээ:
               21.3сая төлөгдөөгүй захиалга 0₮ орлоготой гарч байв). Мөнгөн дүр
               зураг нь банкны мөрүүдээс өөрөө гарна. */
-           opening: obFrozen(), basis: 'accrual', deprec: jrnDeprecList(), extra: jrnExtraList() };
+           opening: obFrozen(), basis: 'accrual', deprec: jrnDeprecList(), extra: jrnExtraList(), nomaad: jrnNomaadList() };
 }
 /* ─── 📒 НЯГТЛАН — журнал · дэвтэр · баланс · нээлтийн үлдэгдэл нэг дор ──────
    ⛔ Тус тусдаа таб болговол толгойн эгнээ 7 табтай болж аль нь юу болох нь
@@ -29521,6 +29557,7 @@ function renderAccounting() {
   //   ашиг хиймлээр өндөр гарна (тайлангийн дэлгэцийн `ensureVatLoaded`-тай ижил дүрэм).
   if (typeof ensureVatLoaded === 'function') ensureVatLoaded();
   if (state.scAllRows === undefined) { state.scAllRows = null; loadStockCountsAll().then(() => render()); }
+  if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { state.nomaadOrders = []; loadNomaadOrders().then(() => render()).catch(() => {}); }
   const t = ACCT_TABS.some(x => x.k === state.acctTab) ? state.acctTab : 'journal';
   const bar = `<div class="ac-tabs">${ACCT_TABS.map(x =>
     `<button class="ac-tb${x.k === t ? ' on' : ''}" data-acct-tab="${x.k}" title="${escapeHtml(x.hint)}">${x.label}</button>`).join('')}</div>`;

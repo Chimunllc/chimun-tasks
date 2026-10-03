@@ -29250,6 +29250,10 @@ const JRN_ACC = {
      'asset', үлдэгдэл нь СӨРӨГ. Өр төлбөр болговол баланс тэнцсэн ч «компани
      хэнд юу өртэй» гэдэг худал уншигдана. */
   accdep:  { label: 'Хуримтлагдсан элэгдэл', type: 'asset' },
+  /* Хуримтлуулсан өглөг — зардал ГАРСАН сар ба мөнгө ТӨЛСӨН сар зөрөхөд хоёрыг
+     холбоно (ихэвчлэн цалин: ажилласан сар ≠ олгосон сар). ⚠ Урьдчилж төлсөн
+     тохиолдолд СӨРӨГ болж болно — тэр нь урьдчилгаа, алдаа БИШ. */
+  payable: { label: 'Хуримтлуулсан өглөг',  type: 'liab' },
 };
 function jrnAccLabel(k) { return (JRN_ACC[k] || {}).label || String(k || '?'); }
 /* Зарлагын мөр АЛЬ данс руу бичигдэх вэ — ангиллаар.
@@ -29314,14 +29318,33 @@ function journalEntries(ctx, month) {
     push((o.starts_at || m + '-01'), `Захиалга №${o.number ?? '—'} · ${o.customer || ''}`.trim(), 'order:' + o.id,
       [{ acc: 'recv', dr: rev + dep }, rev ? { acc: 'revenue', cr: rev } : null, dep ? { acc: 'deposit', cr: dep } : null]);
   });
-  // ③ Хуулгын ЗАРЛАГА — зардал/өглөг буурах
+  /* ③ Хуулгын ЗАРЛАГА.
+     ⛔ ОГНООГ ЗӨӨХГҮЙ — банкны мөр жинхэнэ огноондоо үлдэнэ (эс бөгөөс дэвтэр
+       хуулгатай таарахаа болино). Харин ЗАРДАЛ нь ноогдох сард очих ёстой
+       (цалин: ажилласан сар ≠ олгосон сар). Тиймээс сар зөрвөл ХОЁР бичилт:
+         ① ноогдох сарын эцэст  Dr Зардал      / Cr Хуримтлуулсан өглөг
+         ② төлсөн огноонд       Dr Хуримтлуулсан өглөг / Cr Банк
+       Ингэснээр журналын ашиг удирдлагын тайлантай таарна.
+     ⚠ Зөвхөн ЗАРДАЛ ингэж хуваагдана. Эзэнд өгсөн, зээл, татвар, барьцаа,
+       хөрөнгө авалт нь балансын хөдөлгөөн тул ҮРГЭЛЖ төлсөн огноонд. */
   (ctx && ctx.finance || []).forEach(t => {
     if (!t || t.status === 'deleted' || t.decision !== 'approved') return;
-    if (!inM(t.requested_at)) return;
     const amt = Math.round(Number(t.amount) || 0); if (!amt) return;
     const dr = jrnDebitFor(t.category); if (!dr) return;
-    push(t.requested_at, (t.purpose || jrnAccLabel(dr)), 'fin:' + t.id,
-      [{ acc: dr, dr: amt, cat: String(t.category || '') }, { acc: 'bank', cr: amt }]);
+    const payYm = String(t.requested_at || '').slice(0, 7);
+    const accYm = (dr === 'expense' && typeof finAccrualMonth === 'function')
+      ? (finAccrualMonth(t) || payYm) : payYm;
+    const label = t.purpose || jrnAccLabel(dr);
+    if (accYm === payYm) {
+      if (!inM(t.requested_at)) return;
+      push(t.requested_at, label, 'fin:' + t.id,
+        [{ acc: dr, dr: amt, cat: String(t.category || '') }, { acc: 'bank', cr: amt }]);
+      return;
+    }
+    if (inM(String(accYm) + '-01')) push(jrnMonthEnd(accYm), `${label} · ${accYm}-д ноогдох`, 'acr:' + t.id,
+      [{ acc: dr, dr: amt, cat: String(t.category || '') }, { acc: 'payable', cr: amt }]);
+    if (inM(t.requested_at)) push(t.requested_at, `${label} · төлөлт`, 'fin:' + t.id,
+      [{ acc: 'payable', dr: amt }, { acc: 'bank', cr: amt }]);
   });
   // ⑤ ЭЛЭГДЭЛ — сар бүрийн эцэст. Журналд бичигдэхгүй бол баланс хөрөнгийг
   //    мөнхөд бүтэн өртгөөр барьж, ашиг элэгдлийн хэмжээгээр ХЭТЭРНЭ.

@@ -16684,13 +16684,101 @@ function salaryPaymentsFor(rows, personKey, ym, finRows) {
    ⚠ Давхардлыг `[#fp]`-ээр хаана: олголтын бичлэг аль хэдийн байвал АВАХГҮЙ. */
 const SALARY_FIN_CAT = '7100';
 function _salNameKey(s) { return String(s || '').replace(/[\s.·,]/g, '').toUpperCase(); }
-function salaryFinPayments(finRows, key, ym, paidRows, team) {
+/* ── АЖИЛТНЫ ДАНС = ОДООГИЙН + ХУУЛГААР ТАНИГДСАН (2026-10-03) ──────────────
+   `employees.bank_account` нь ЗӨВХӨН одоогийн данс — ажилтан дансаа «Профайл»-аас
+   сольход хуучин нь ДАРАГДАЖ алга болдог. Тэр данс руу явсан цалингийн гүйлгээ
+   «хэнийх нь мэдэгдэхгүй» болж цалингийн самбараас хасагдана. Ажилчид данс
+   байнга солидог тул хуулгын гүйлгээний УТГА дахь НЭРЭЭР нь таана — шинэ
+   хүснэгт, гараар бичих ажил шаардахгүй («өөрөө үүсдэг» дүрэм).
+   ⛔ **ХОЁРДМОЛ НЭРИЙГ ТААХГҮЙ.** Амьд датаар 169 ажилтны **15** нэрийн цөм
+     давхардсан («Ц.Бат эрдэнэ» ба «Э.Оюун-Эрдэнэ» → ЭРДЭНЭ; «Ч.Билгүүн» ба
+     «Б.Билгүүн»). Давхардсан нэрээр таавал цалин ӨӨР ХҮНД тоологдоно.
+   ⛔ **Бүртгэлтэй данс ҮРГЭЛЖ ЯЛНА** — утгаар таах нь зөвхөн эзэнгүй дансанд.
+   ⛔ **Нэг данс хоёр өөр нэрээр таарвал ХАЯНА** (хэнийх нь мэдэгдэхгүй).
+   ⚠ Таасан дансыг UI-д «хуулгын утгаар» гэж ИЛ тэмдэглэнэ — нуувал буруу
+     тулгалтыг хэн ч барихгүй. */
+function empAcctOwners(team, finRows) {
+  const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
+  const reg = {}, byName = {};
+  tm.forEach(m => {
+    const k = (typeof personKey === 'function' ? personKey(m) : ''); if (!k) return;
+    const a = String(m.bank_account || '').replace(/\D/g, '');
+    if (a) reg[a] = k;
+    const nk = (typeof cooNameKey === 'function' ? cooNameKey(m.name) : '');
+    if (nk) { (byName[nk] = byName[nk] || []); if (!byName[nk].includes(k)) byName[nk].push(k); }
+  });
+  const ambiguous = Object.keys(byName).filter(nk => byName[nk].length > 1);
+  const nks = Object.keys(byName);
+  const guess = {}, bad = {};
+  (finRows || []).forEach(r => {
+    if (!r || r.status === 'deleted') return;
+    if (!/^7[12]00/.test(String(r.category || ''))) return;
+    const acct = String(r.beneficiary || '').replace(/\D/g, '');
+    if (acct.length < 6 || reg[acct]) return;        // бүртгэлтэй данс — таахгүй
+    const memo = _salNameKey(r.purpose);
+    /* ⛔ ТААРСАН БҮХ нэрийн цөмийн ХҮМҮҮСИЙГ нэгтгэж, ЯГ НЭГ хүн гарвал л таана.
+       Нэг нэр нөгөөгийнхөө ДОТОР байж болно: «Б.ХОНГОРЗУЛ» гэсэн утгад
+       «Ц.Хонгор» (ХОНГОР) ба «Б.Хонгорзул» (ХОНГОРЗ) ХОЁУЛАА таардаг. Хоёрдмол
+       цөмийг зүгээр хасвал ҮЛДСЭН нэг нь (буруу хүн) ялж байв — амьд датаар
+       600,000₮ өөр хүнд тоологдож байсныг ингэж барив. */
+    const hits = {};
+    for (const nk of nks) { if (memo.includes(nk)) byName[nk].forEach(k => { hits[k] = 1; }); }
+    const ks = Object.keys(hits);
+    if (ks.length !== 1) return;
+    const hit = ks[0];
+    if (guess[acct] && guess[acct] !== hit) { bad[acct] = 1; return; }
+    guess[acct] = hit;
+  });
+  Object.keys(bad).forEach(a => { delete guess[a]; });
+  return { reg, guess, ambiguous };
+}
+// Рендер бүрд 150 нэр × 1,400 гүйлгээ дахин тулгахгүй — дата өөрчлөгдөхөд л дахин бодно.
+function empAcctOwnersCached(finRows) {
+  const tm = (typeof TEAM !== 'undefined' ? TEAM : []) || [];
+  const fin = finRows || state.financeRequests || [];
+  const sig = tm.length + '|' + fin.length;
+  if (!state._acctOwners || state._acctOwnersSig !== sig) {
+    state._acctOwners = empAcctOwners(tm, fin); state._acctOwnersSig = sig;
+  }
+  return state._acctOwners;
+}
+/* Тухайн хүний БҮХ данс — бүртгэсэн нь + хуулгаар цалин явсан нь (шинэ нь эхэнд).
+   Ажилтны картад харуулна: «аль данс руу хэзээ хэд явсан» гэдэг нь данс солигдсоныг
+   хэлдэг цорын ганц баримт (хуучин дансыг хаана ч хадгалдаггүй). */
+function empAcctsForPerson(key, team, finRows) {
+  if (!key) return [];
+  const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
+  const fin = finRows || state.financeRequests || [];
+  const own = empAcctOwners(tm, fin);
+  const mm = tm.find(x => (typeof personKey === 'function' ? personKey(x) : '') === key);
+  const cur = String((mm && mm.bank_account) || '').replace(/\D/g, '');
+  const map = new Map();
+  const touch = (acct, reg) => {
+    if (!acct) return null;
+    if (!map.has(acct)) map.set(acct, { acct, reg: !!reg, current: acct === cur, n: 0, sum: 0, lastDay: '' });
+    const e = map.get(acct); if (reg) e.reg = true; return e;
+  };
+  if (cur) touch(cur, true);
+  Object.keys(own.guess).forEach(a => { if (own.guess[a] === key) touch(a, false); });
+  fin.forEach(r => {
+    if (!r || r.status === 'deleted') return;
+    if (!/^7[12]00/.test(String(r.category || ''))) return;
+    const a = String(r.beneficiary || '').replace(/\D/g, '');
+    const e = a && map.has(a) ? map.get(a) : null; if (!e) return;
+    e.n++; e.sum += Number(r.amount) || 0;
+    const d = String(r.requested_at || '').slice(0, 10);
+    if (d > e.lastDay) e.lastDay = d;   // ⚠ ОГНОО-ЗӨВХӨН мөр (YYYY-MM-DD) — мөрөөр тулгах нь зөв
+  });
+  return [...map.values()].sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0) || String(b.lastDay).localeCompare(String(a.lastDay)));
+}
+function salaryFinPayments(finRows, key, ym, paidRows, team, owners) {
   if (!key) return [];
   const list = finRows || [];
   const paid = paidRows || state.salaryPayments || [];
   const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
   const mm = tm.find(x => (typeof personKey === 'function' ? personKey(x) : '') === key);
   if (!mm) return [];
+  const own = owners || (team ? empAcctOwners(tm, list) : empAcctOwnersCached(list));
   const acct = String(mm.bank_account || '').replace(/\D/g, '');
   const nm = _salNameKey(mm.name);
   const have = new Set(paid.map(p => salaryPayFp(p && p.note)).filter(Boolean));
@@ -16699,7 +16787,7 @@ function salaryFinPayments(finRows, key, ym, paidRows, team) {
     if (!r || r.status === 'deleted') continue;
     if (String(r.category || '').slice(0, 4) !== SALARY_FIN_CAT) continue;
     const b = String(r.beneficiary || ''), bd = b.replace(/\D/g, '');
-    if (!((acct && bd && bd === acct) || (nm && _salNameKey(b) === nm))) continue;
+    if (!((acct && bd && bd === acct) || (nm && _salNameKey(b) === nm) || (bd && own.guess[bd] === key))) continue;
     const fp = salaryPayFp(r.justification);
     if (fp && have.has(fp)) continue;
     if ((typeof finAccrualMonth === 'function' ? finAccrualMonth(r) : '') !== ym) continue;
@@ -38912,6 +39000,30 @@ function openStaffCardModal(key) {
         ? '<div class="sc-hint">☎️ Яаралтай үеийн холбоо бүртгэгдээгүй — ажилтан «Профайл»-аасаа нэмнэ.</div>' : '';
       if (rows || noEmg) info = `<div class="sc-sec"><div class="sc-sec-t">ℹ️ Хувийн мэдээлэл</div>${rows}${noEmg}</div>`;
     }
+    /* ── 🏦 ДАНС — одоогийн + хуулгаар цалин явсан бүх данс ──────────────────
+       Ажилчид данс байнга солидог; `employees.bank_account` зөвхөн ОДООГИЙНХ
+       тул хуучин нь дарагдаад алга болдог. Хуулгын гүйлгээнээс нь сэргээнэ
+       («аль данс руу хэзээ хэд явсан» = данс солигдсоны цорын ганц баримт).
+       ⚠ Эмзэг мэдээлэл тул `canSeeStaffSensitive()` (CEO / «Цалин» эрх) л харна. */
+    let bankBox = '';
+    if (typeof canSeeStaffSensitive === 'function' && canSeeStaffSensitive()) {
+      const accts = empAcctsForPerson(key);
+      const items = accts.map(a => {
+        const tag = a.current ? '<span class="sc-acct-tag">бүртгэсэн</span>'
+          : '<span class="sc-acct-tag sc-acct-guess">хуулгын утгаар</span>';
+        const used = a.n ? `<span class="sc-acct-used">${a.n} удаа · ${fmtMoney(a.sum)}${a.lastDay ? ' · сүүлд ' + escapeHtml(a.lastDay) : ''}</span>` : '';
+        return `<div class="sc-acct"><b>${escapeHtml(a.acct)}</b>${tag}${used}
+          <button class="btn sc-acct-copy" data-copy-text="${escapeHtml(a.acct)}" data-copy-label="Дансны дугаар">⧉</button></div>`;
+      }).join('');
+      const curAcct = accts.find(a => a.current);
+      const hint = !curAcct
+        ? (accts.length
+            ? '<div class="sc-hint">⚠ Бүртгэсэн данс алга — доорх нь хуулгын гүйлгээний утгаар танигдсан. Ажилтан «Профайл»-аасаа дансаа бүртгэвэл цалин нь зөв тулгагдана.</div>'
+            : '<div class="sc-hint">⚠ Данс бүртгэгдээгүй, хуулгаас ч танигдсангүй. Ажилтан «Профайл»-аасаа нэмнэ.</div>')
+        : (accts.length > 1 ? '<div class="sc-hint">Нэгээс олон данс — ажилтан данс сольсон. Цалингийн тулгалт бүгдийг нь тооцно.</div>' : '');
+      bankBox = `<div class="sc-sec"><div class="sc-sec-t">🏦 Банк${m.bank ? ' · ' + escapeHtml(m.bank) : ''}</div>
+        ${items}${hint}</div>`;
+    }
     // ── Удирдах хэсэг ──
     const gBtn = (val, label) => `<button class="staff-gbtn${m.gender === val ? ' on' : ''}" data-sc-gender="${val}">${label}</button>`;
     const brBtn = (val, label) => `<button class="staff-gbtn${bs.includes(val) ? ' on' : ''}" data-sc-br="${val}">${label}</button>`;
@@ -38970,7 +39082,7 @@ function openStaffCardModal(key) {
         <span class="staff-status status-${isActive ? 'active' : (status === 'хүлээж буй' ? 'pending' : 'left')}">${isActive ? 'Идэвхтэй' : (status === 'хүлээж буй' ? '⏳' : 'Гарсан')}</span>
         <button class="sc-x" data-sc-close>✕</button>
       </div>
-      <div class="sc-body">${info}${admin}${capBox}${perms}${(!info && !admin && !capBox && !perms) ? '<div class="sc-empty">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
+      <div class="sc-body">${info}${bankBox}${admin}${capBox}${perms}${(!info && !bankBox && !admin && !capBox && !perms) ? '<div class="sc-empty">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
     </div>`;
     attachHandlers();
   }
@@ -38992,6 +39104,10 @@ function openStaffCardModal(key) {
     ov.querySelector('[data-sc-finperm]')?.addEventListener('change', (e) => { saveFinanceBranchPerm(key, (findMember(key) || {}).name || '', e.target.checked); });
     ov.querySelector('[data-sc-doc]')?.addEventListener('click', () => { const m = findMember(key); openEmployeeDocModal(key, (m && m.name) || ''); });
     ov.querySelector('[data-sc-contract]')?.addEventListener('click', () => { close(); openEmployeeContract(key); });
+    // ⚠ Модал нь динамик тул глобал `[data-copy-text]` холбогч хүрэхгүй — энд холбоно.
+    ov.querySelectorAll('[data-copy-text]').forEach(b => b.addEventListener('click', (e) => {
+      e.stopPropagation(); copyText(b.dataset.copyText, b.dataset.copyLabel || 'Хууллаа');
+    }));
     ov.querySelector('[data-sc-pinshow]')?.addEventListener('click', () => { const m = findMember(key); const el = ov.querySelector('[data-sc-pinval]'); const btn = ov.querySelector('[data-sc-pinshow]'); if (!m || !el) return; if (btn.textContent === 'нуух') { el.textContent = '••••'; btn.textContent = 'харах'; } else { el.textContent = String(m.pin || '—'); btn.textContent = 'нуух'; } });
     // PIN хараахан ачаалагдаагүй үед карт нээгдвэл — татаж дуусмагц «••••» + «харах» товчийг картад нэмнэ
     if (state.isCEO && !(findMember(key) || {}).pin) {

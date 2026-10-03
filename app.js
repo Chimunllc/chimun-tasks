@@ -13402,7 +13402,7 @@ function myPayCardHtml(me) {
   const pays = salaryPaymentsFor(state.salaryPayments, key, month);
   const payList = pays.length
     ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
-        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.shifted ? ` <span class="pay-pshift" title="Банкнаас ${escapeHtml(x.bankYm)}-д гарсан, ${escapeHtml(month)}-д ноогдуулсан">⇄</span>` : ''}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
         <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`
     : '';
   const paidRow = paid > 0
@@ -16610,14 +16610,46 @@ async function paySalary(personKey, ym, amount, note) {
 function salaryPaidFor(personKey, ym) {
   return salaryPaymentsFor(state.salaryPayments, personKey, ym).reduce((s, p) => s + p.amount, 0);
 }
+/* Олголт АЛЬ САРЫН цалин вэ — ГҮЙЦЭТГЭЛЭЭР (2026-10-03, CEO шийдвэр).
+   ⛔ БАНКНЫ ОГНООГООР БОДОХГҮЙ. 9-06-нд төлсөн «8 сар 2р хагас» нь 8 сарын
+     цалин; 9 сарын олголт гэж харуулбал 8 сар дутуу, 9 сар илүү харагдана.
+   ⛔ СОХОР ДҮРЭМ (өдөр ≤10 → өмнөх сар) Ч БОЛОХГҮЙ — амьд датаар 9-06-нд
+     ХОЁУЛАА байсан: «8 сар 2р хагас» ба «9сар урьдчилгаа». Тиймээс гүйлгээн
+     дээр хүний тохируулсан НООГДОХ САР (`⟦ACCR|YYYY-MM⟧` / `accrual_month`)
+     ялна; тохируулаагүй бол `finAccrualAuto`-гийн ухаалаг таамаг.
+   ⚠ Холбоос = олголтын тэмдэглэл дэх `[#fp]` → санхүүгийн мөр. Олдохгүй бол
+     хадгалсан `ym` хэвээр (хуучин бичлэг эвдрэхгүй). */
+function salaryPayFp(note) {
+  const m = String(note || '').match(/\[#([^\]]+)\]/);
+  return m ? m[1] : '';
+}
+function salaryPayMonth(p, finRows) {
+  if (!p) return '';
+  const fp = salaryPayFp(p.note);
+  if (fp) {
+    const row = (finRows || []).find(r => r && r.status !== 'deleted' && salaryPayFp(r.justification) === fp);
+    if (row && typeof finAccrualMonth === 'function') {
+      const m = finAccrualMonth(row);
+      if (/^\d{4}-\d{2}$/.test(m || '')) return m;
+    }
+  }
+  return String(p.ym || '');
+}
 /* Тухайн сард олгосон МӨР бүр (огноо өсөхөөр). ЦЭВЭР функц тул тестлэгдэнэ.
    ⛔ Нийлбэр ба жагсаалт ХОЁР ӨӨР шүүлтээр гарч болохгүй — `salaryPaidFor` ч үүнийг
      дуудна. Эс бөгөөс картад «олгосон 600,000₮» гэж бичээд доор нь 3 мөр 750,000₮
      гарч, аль нь үнэн болохыг хэн ч мэдэхгүй болно. ИНВАРИАНТ тест хоёрыг тулгана. */
-function salaryPaymentsFor(rows, personKey, ym) {
+function salaryPaymentsFor(rows, personKey, ym, finRows) {
+  const fin = finRows || state.financeRequests || [];
   return (rows || [])
-    .filter(p => p && p.person_key === personKey && p.ym === ym)
-    .map(p => ({ amount: Number(p.amount) || 0, at: p.paid_at || '', note: p.note || '', label: salaryPayLabel(p.note) }))
+    .filter(p => p && p.person_key === personKey && salaryPayMonth(p, fin) === ym)
+    .map(p => {
+      const bankYm = String(p.paid_at || '').slice(0, 7);
+      return { amount: Number(p.amount) || 0, at: p.paid_at || '', note: p.note || '',
+               label: salaryPayLabel(p.note), bankYm,
+               // Банкны сар ≠ ноогдох сар бол ИЛ тэмдэглэнэ (хүн яагаад гэдгийг асуухгүй)
+               shifted: !!bankYm && bankYm !== ym };
+    })
     .sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
 /* Олголтын мөрийн тайлбар. Цикл тэмдэг (⟦УР⟧/⟦ҮЛ⟧) байвал түүнийг, эс бөгөөс
@@ -16903,7 +16935,7 @@ function renderSalary() {
       : staffAcctMissingHtml();
     const histN = (state.salaryPayments || []).filter(p => p.person_key === k).length;
     const payList = pays.length ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
-        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.shifted ? ` <span class="pay-pshift" title="Банкнаас ${escapeHtml(x.bankYm)}-д гарсан, ${escapeHtml(ym)}-д ноогдуулсан">⇄</span>` : ''}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
         <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>` : '';
     /* ⛔ УРЬДЧИЛГАА/ҮЛДЭГДЛИЙН ХУВААРЬ ХАРАГДАХГҮЙ (2026-10-02, CEO шийдвэр).
        Цалин нь ирц + хүргэлтээс АВТОМАТААР бодогдоно; олголт нь банкны хуулгаас

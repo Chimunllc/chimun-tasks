@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryPayLabel', 'salaryPaidFor', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15354,4 +15354,73 @@ async function swFetchTests() {
   ok(/ensureVatLoaded/.test(ra) && /loadStockCountsAll/.test(ra), 'scan: НӨАТ ба тооллого');
   ok(/loadBankIncome/.test(src.slice(src.indexOf('function renderJournal'), src.indexOf('function attachJournalHandlers'))),
      'scan: хуулгын орлого');
+}
+
+// ═══ ЦАЛИН АЛЬ САРЫНХ — ГҮЙЦЭТГЭЛЭЭР (2026-10-03, CEO) ═════════════════
+// ⛔ Банкны огноогоор бодвол 9-06-нд төлсөн «8 сар 2р хагас» 9 сарын олголт
+//   болж, 8 сар дутуу · 9 сар илүү харагдана.
+// ⛔ Сохор дүрэм (өдөр ≤10 → өмнөх сар) ч болохгүй — амьд датаар 9-06-нд
+//   «8 сар 2р хагас» ба «9сар урьдчилгаа» ХОЁУЛАА байсан.
+{
+  const { salaryPaymentsFor, salaryPayMonth, salaryPayFp, salaryPaidFor } = F;
+  eq(salaryPayFp('Хуулгаар · Цалин [#EXP-100-20260906-abc] х'), 'EXP-100-20260906-abc', 'олголт: fp задарна');
+  eq(salaryPayFp('тэмдэглэлгүй'), '', 'олголт: fp байхгүй бол хоосон');
+
+  const K = '86042460';
+  const pays = [
+    // 9-06-нд төлсөн 8 САРЫН цалин — гүйлгээнд ⟦ACCR|2026-08⟧ тохируулсан
+    { person_key: K, ym: '2026-09', amount: 1000000, paid_at: '2026-09-06T05:00:00Z',
+      note: 'EB-Зарлага: Цалин Сайнжаргал 8 сар 2р хагас [#EXP-A]' },
+    // 9-06-нд төлсөн 9 САРЫН урьдчилгаа — ⟦ACCR|2026-09⟧
+    { person_key: K, ym: '2026-09', amount: 500000, paid_at: '2026-09-06T05:00:00Z',
+      note: 'EB-Цалин 9сар урьдчилгаа [#EXP-B]' },
+    // 9-21-нд төлсөн, тохиргоогүй — хэвээр 9 сар
+    { person_key: K, ym: '2026-09', amount: 1250000, paid_at: '2026-09-21T05:00:00Z',
+      note: 'EB-урьдчилгаа [#EXP-C]' },
+  ];
+  const fin = [
+    { id: 'A', status: 'done', decision: 'approved', category: '7100', amount: 1000000,
+      requested_at: '2026-09-06', justification: '[#EXP-A] ⟦ACCR|2026-08⟧' },
+    { id: 'B', status: 'done', decision: 'approved', category: '7100', amount: 500000,
+      requested_at: '2026-09-06', justification: '[#EXP-B] ⟦ACCR|2026-09⟧' },
+    { id: 'C', status: 'done', decision: 'approved', category: '7100', amount: 1250000,
+      requested_at: '2026-09-21', justification: '[#EXP-C]' },
+  ];
+  eq(salaryPayMonth(pays[0], fin), '2026-08', 'цалин: гүйлгээнд 8 сар гэж тохируулсан нь 8 сард');
+  eq(salaryPayMonth(pays[1], fin), '2026-09', 'цалин: ижил өдөр ч 9 сарын урьдчилгаа 9 сард ҮЛДЭНЭ');
+  eq(salaryPayMonth(pays[2], fin), '2026-09', 'цалин: 9-21 тохиргоогүй → 9 сар');
+
+  // ⚠ Холбоос олдохгүй бол хадгалсан ym хэвээр (хуучин бичлэг эвдрэхгүй)
+  eq(salaryPayMonth({ ym: '2026-07', paid_at: '2026-08-02T00:00:00Z', note: 'тэмдэглэлгүй' }, fin),
+     '2026-07', 'цалин: холбоосгүй бол хадгалсан сар хэвээр');
+
+  // Жагсаалт ба нийлбэр
+  const aug = salaryPaymentsFor(pays, K, '2026-08', fin);
+  const sep = salaryPaymentsFor(pays, K, '2026-09', fin);
+  // ⚠ Мөр алга бол УНАХ ёстой, CRASH болох ёсгүй (crash нь аль тест унасныг хэлдэггүй)
+  const a0 = aug[0] || {};
+  eq(aug.length, 1, 'цалин: 8 сард 1 олголт');
+  eq(a0.amount, 1000000, 'цалин: 8 сарын дүн');
+  ok(!!a0.shifted, 'цалин: банкны сар зөрснийг ИЛ тэмдэглэнэ');
+  eq(a0.bankYm, '2026-09', 'цалин: банкнаас гарсан сар үлдэнэ');
+  eq(sep.length, 2, 'цалин: 9 сард 2 олголт');
+  eq(sep.reduce((s, x) => s + x.amount, 0), 1750000, 'цалин: 9 сарын нийт');
+  ok(!sep.some(x => x.shifted), 'цалин: зөрөөгүй олголт тэмдэглэгдэхгүй');
+
+  // ИНВАРИАНТ: нийлбэр нь жагсаалттай таарна (аль ч сард)
+  vm.runInContext('state.salaryPayments = ' + JSON.stringify(pays) + '; state.financeRequests = ' + JSON.stringify(fin) + ';', sandbox);
+  eq(salaryPaidFor(K, '2026-08'), 1000000, 'ИНВАРИАНТ: 8 сарын нийлбэр');
+  eq(salaryPaidFor(K, '2026-09'), 1750000, 'ИНВАРИАНТ: 9 сарын нийлбэр');
+  vm.runInContext('state.salaryPayments = []; state.financeRequests = [];', sandbox);
+}
+
+// ═══ SCAN: цалингийн олголт банкны огноогоор шүүгдэхгүй ════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const f = src.slice(src.indexOf('function salaryPaymentsFor'), src.indexOf('/* Олголтын мөрийн тайлбар'));
+  ok(/salaryPayMonth\(p, fin\) === ym/.test(f), 'scan: олголт НООГДОХ сараар шүүгдэнэ');
+  eq((f.match(/p\.ym === ym/g) || []).length, 0, 'scan: банкны сараар шүүхгүй');
+  const m = src.slice(src.indexOf('function salaryPayMonth'), src.indexOf('/* Тухайн сард олгосон МӨР'));
+  ok(/finAccrualMonth\(row\)/.test(m), 'scan: гүйлгээн дээрх ноогдох сар ялна');
+  ok(/return String\(p\.ym \|\| ''\)/.test(m), 'scan: холбоосгүй бол хадгалсан сар (буцах нийцтэй)');
 }

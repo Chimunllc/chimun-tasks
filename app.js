@@ -8607,6 +8607,7 @@ function reconReceiptOwnerLabel(usedIn) {
   const s = String(usedIn || '');
   let m = s.match(/mevent:#?(\S+)/i); if (m) return '#' + m[1];
   m = s.match(/nomaad:(\S+)/i); if (m) return m[1];
+  m = s.match(/catering:(\S+)/i); if (m) return 'Катеринг';
   m = s.match(/fin:(\S+)/i); if (m) return 'Санхүү';
   return s || '';
 }
@@ -8675,7 +8676,7 @@ function reconcileByReceipts(stmtRows, opts) {
    ⚠ Эдгээр хүснэгт нь ТАЙЛАНГИЙН орлогыг ОДООХОНДОО хөндөхгүй — тайлан хэвээр
      `orderRevenue`-аас бодогдоно. Энэ бол бүртгэл + бүрэн бүтэн байдлын шалгуур. */
 const INCOME_STATUS_LABEL = {
-  open: '🔓 Хаагдаагүй', order: '🎪 Захиалга', nomaad: '⛺ NOMAAD',
+  open: '🔓 Хаагдаагүй', order: '🎪 Захиалга', nomaad: '⛺ NOMAAD', catering: '🍽 Катеринг',
   internal: '↔ Дотоод шилжүүлэг', other: '📦 Бусад орлого',
   personal: '🙍 Хувийн (компанийн бус)', notincome: '🚫 Орлого биш (зээл/хөрөнгө)',
 };
@@ -8701,12 +8702,14 @@ function incomeStatusOfOwner(owner) {
   const s = String(owner || '');
   if (/^nomaad:/i.test(s)) return 'nomaad';
   if (/^mevent:/i.test(s)) return 'order';
+  if (/^catering:/i.test(s)) return 'catering';
   return 'other';   // fin:/хоосон — баримт бүртгэгдсэн ч захиалгын орлого биш
 }
 function incomeLinkOfOwner(owner) {
   const s = String(owner || '');
   let m = s.match(/^mevent:#?(\S+)/i); if (m) return { type: 'order', id: m[1] };
   m = s.match(/^nomaad:(\S+)/i); if (m) return { type: 'nomaad', id: m[1] };
+  m = s.match(/^catering:(\S+)/i); if (m) return { type: 'catering', id: m[1] };
   return { type: '', id: '' };
 }
 /* Хуулга → {stmt, incomes}. ЦЭВЭР функц (тестлэгдэнэ): DB/state хөндөхгүй, бүх
@@ -9006,7 +9009,7 @@ function incomeRelinkPlan(rows, usedFps, fpOwners) {
     const hit = receiptMatchFor({ credit: x.amount, date: String(x.dt || '').slice(0, 10), name: x.payer }, idx, fpOwners, taken);
     if (!hit) return;
     const status = incomeStatusOfOwner(hit.owner);
-    if (status !== 'order' && status !== 'nomaad') { taken.delete(hit.fp); return; }
+    if (status !== 'order' && status !== 'nomaad' && status !== 'catering') { taken.delete(hit.fp); return; }
     const link = incomeLinkOfOwner(hit.owner);
     out.push({ fp: x.fp, status, link_type: link.type, link_id: link.id, note: 'баримт ' + hit.fp + ' (дараа бүртгэсэн)' });
   });
@@ -9543,7 +9546,7 @@ function incomeReportHtml(res) {
   const prevYm = (() => { if (!ym) return ''; let [y, m] = ym.split('-').map(Number); m--; if (m < 1) { m = 12; y--; } return y + '-' + String(m).padStart(2, '0'); })();
   // «Бүртгэсэн орлого» = мөнгөн суурийн орлого. ⭐ Санхүү тайлантай ИЖИЛ функцээр
   // бодогдоно (finMonthIncome) — өмнө нь энд өөрийн дүрэм байсан тул хоёр дэлгэц зөрдөг байв.
-  const recInc = (yy) => { if (!yy) return 0; const m = finMonthIncome(yy, 'cash'); return m.evInc + m.noInc; };
+  const recInc = (yy) => { if (!yy) return 0; const m = finMonthIncome(yy, 'cash'); return m.evInc + m.noInc + (m.ktInc || 0); };
   const thisRec = recInc(ym), prevRec = recInc(prevYm);
   const growth = prevRec > 0 ? Math.round((thisRec - prevRec) / prevRec * 100) : null;
   // Салбарын орлого = данс бүрийн бүртгэсэн салбараар (Орлого Nomaad→NOMAAD, Орлого Mevent→M-Event, бусад→Бусад)
@@ -14768,6 +14771,43 @@ function _ktGroupDishesByCat(dishes) {
   return order.map(c => ({ cat: _KT_CAT_SHORT[c] || c, items: by[c] }));
 }
 const CATERING_STATUS = { planned: ['📋 Төлөвлөсөн', '#b45309', 'rgba(217,119,6,.12)'], confirmed: ['✓ Баталгаажсан', '#0f7a3d', 'rgba(16,163,74,.12)'], done: ['🏁 Дууссан', '#4338ca', 'rgba(79,70,229,.12)'], cancelled: ['✕ Цуцалсан', '#b91c1c', 'rgba(220,38,38,.12)'] };
+/* ═══ КАТЕРИНГИЙН МӨНГӨ (2026-10-03, CEO: «яг mevent шиг, орлогоо PDF-ээр») ═══
+   Ажил = захиалга: нийт дүн (`total_mnt`) + PDF баримтаар бүртгэсэн төлбөр
+   (`paid_mnt`/`paid_ref`/`paid_date`). Тайлан, тренд, журнал БҮГД доорх 3
+   функцээс уншина — дүрэм хоёр газар салбарлахгүй.
+   ⛔ NOMAAD-аас татсан ажлын мөнгө NOMAAD-ийн үнийн саналд аль хэдийн багтсан
+     тул ОРЛОГОД ОРОХГҮЙ (давхар тоологдоно), дүн оруулах талбар ч гарахгүй.
+   ⚠ Цуцалсан ажил: гэрээний дүн орлого БИШ, харин ОРСОН мөнгө орлого хэвээр
+     (NOMAAD-тай ижил дүрэм) — буцаавал зардлын «буцаалт»-аар хасагдана. */
+function cateringHasMoney(j) { return !!j && j.source !== 'nomaad'; }
+function cateringCancelled(j) { return String((j && j.status) || '') === 'cancelled'; }
+function cateringOwed(j) {
+  if (!cateringHasMoney(j) || cateringCancelled(j)) return 0;
+  return Math.max(0, (Number(j.total_mnt) || 0) - (Number(j.paid_mnt) || 0));
+}
+function cateringIncomeMonth(j, basis) {
+  if (!j) return '';
+  const ev = String(j.event_date || j.created_at || '').slice(0, 7);
+  const pd = String(j.paid_date || '').slice(0, 7);
+  if (basis === 'cash' || cateringCancelled(j)) return pd || ev;
+  return ev;
+}
+function cateringRevenue(j, basis) {
+  if (!cateringHasMoney(j)) return 0;
+  const total = Number(j.total_mnt) || 0, paid = Number(j.paid_mnt) || 0;
+  if (cateringCancelled(j)) return paid;
+  if (basis === 'cash') return total > 0 ? Math.min(paid, total) : paid;
+  return total;
+}
+function cateringMonthIncome(jobs, month, basis) {
+  let sum = 0, n = 0;
+  (jobs || []).forEach(j => {
+    if (cateringIncomeMonth(j, basis) !== month) return;
+    const v = cateringRevenue(j, basis);
+    if (v) { sum += v; n++; }
+  });
+  return { sum, n };
+}
 function canSeeCatering() {
   if (state.isCEO) return true;
   const m = (typeof findMember === 'function') ? findMember(state.me) : null;
@@ -14789,7 +14829,8 @@ async function loadCateringJobs(force) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.cateringJobs = r.ok ? await r.json() : [];
-    if (typeof render === 'function' && state.view === 'catering') render();
+    // Тайлан/нягтлан ч катерингийн орлогыг уншдаг тул АЛЬ ч дэлгэцэд дахин зурна.
+    if (typeof render === 'function') render();
   } catch (e) { console.warn('loadCateringJobs', e); state.cateringJobs = state.cateringJobs || []; }
 }
 async function saveCateringMenuItem(it) {
@@ -14823,7 +14864,7 @@ function renderCatering() {
   if (!state.nomaadOrders && typeof loadNomaadOrders === 'function') loadNomaadOrders();
   const tab = state.cateringTab || 'jobs';
   const menu = state.cateringMenu || [];
-  const jobs = (state.cateringJobs || []).filter(j => j.status !== 'cancelled');
+  const jobs = (state.cateringJobs || []).filter(j => j.status !== 'cancelled' || (Number(j.paid_mnt) || 0) > 0);
   const tabBtn = (k, label) => `<button class="btn${tab === k ? ' btn-primary' : ''}" data-kt-tab="${k}" style="padding:6px 16px;font-size:13px;">${label}</button>`;
   // Гарчиг/дэд гарчиг нь дэлгэцийн толгойд (renderTitle → titles.catering) — энд давхардуулахгүй.
   const header = `<div style="display:flex;gap:8px;margin:6px 0 14px;flex-wrap:wrap;">${tabBtn('jobs', '📋 Ажлууд')}${tabBtn('menu', '🍲 Цэс')}
@@ -14886,12 +14927,29 @@ function renderCatering() {
         </div>
         <div style="border-top:1px solid var(--border);padding-top:6px;">${servHtml}</div>
         ${j.note ? `<div style="margin-top:8px;font-size:12px;color:var(--text-soft);background:var(--panel-hover);border-radius:8px;padding:7px 10px;">📝 ${escapeHtml(j.note)}</div>` : ''}
+        ${cateringMoneyHtml(j)}
       </div>`;
     }).join('');
   }
   return `<div style="max-width:720px;margin:0 auto;padding:4px 2px 40px;">${header}${body}</div>`;
 }
+/* Картын мөнгөний мөр — дүн · төлсөн · үлдэгдэл + PDF төлбөрийн товч.
+   NOMAAD-аас татсан ажилд мөнгө БАЙХГҮЙ (NOMAAD-ийн үнийн саналд багтсан) — ил хэлнэ. */
+function canPayCatering() { return !!(state.isCEO || can('orders.pay') || can('catering.edit')); }
+function cateringMoneyHtml(j) {
+  if (!cateringHasMoney(j)) return `<div class="kt-money kt-money-nm">💰 Төлбөр нь NOMAAD-ийн захиалгад багтсан</div>`;
+  const total = Number(j.total_mnt) || 0, paid = Number(j.paid_mnt) || 0, owed = cateringOwed(j);
+  const st = cateringCancelled(j) ? '' : !total ? '<span class="kt-m-warn">⚠ Дүн оруулаагүй</span>'
+    : owed > 0 ? `<span class="kt-m-owe">Үлдэгдэл <b>${fmtMoney(owed)}</b></span>` : '<span class="kt-m-ok">✓ Бүрэн төлсөн</span>';
+  const btn = (canPayCatering() && !cateringCancelled(j)) ? `<button type="button" class="btn kt-pay-btn" data-kt-pay="${escapeHtml(j.id)}">💵 Төлбөр (PDF)</button>` : '';
+  return `<div class="kt-money">
+    <span class="kt-m-no">№${escapeHtml(String(j.number || ''))}</span>
+    <span>Дүн <b>${fmtMoney(total)}</b></span>
+    <span>Төлсөн <b class="kt-m-paid">${fmtMoney(paid)}</b></span>
+    ${st}${btn}</div>`;
+}
 function attachCateringHandlers() {
+  document.querySelectorAll('[data-kt-pay]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openCateringPaymentModal(b.dataset.ktPay); }));
   document.querySelectorAll('[data-kt-tab]').forEach(b => b.addEventListener('click', () => { state.cateringTab = b.dataset.ktTab; render(); }));
   document.getElementById('kt-new-job')?.addEventListener('click', () => openCateringJobModal());
   document.getElementById('kt-new-dish')?.addEventListener('click', () => openCateringMenuModal());
@@ -15000,6 +15058,11 @@ function openCateringJobModal(job) {
       <label class="fld" style="flex:1;">Байршил<input id="kt-loc" value="${escapeHtml(job.location || '')}" placeholder="сонголт"></label>
       <label class="fld" style="width:150px;">Төлөв<select id="kt-status">${stOpts}</select></label>
     </div>
+    <div class="kt-money-f" id="kt-money-f"${job.source === 'nomaad' ? ' hidden' : ''}>
+      <label class="fld">Утас<input id="kt-phone" inputmode="tel" value="${escapeHtml(job.phone || '')}" placeholder="99112233"></label>
+      <label class="fld">Нийт дүн (₮)<input id="kt-total" type="text" inputmode="numeric" class="money-input" value="${job.total_mnt ? moneyFmtInput(job.total_mnt) : ''}" placeholder="0"></label>
+    </div>
+    <div class="kt-money-nm" id="kt-money-nm"${job.source === 'nomaad' ? '' : ' hidden'}>💰 NOMAAD-аас татсан — төлбөр нь NOMAAD-ийн үнийн саналд багтсан тул энд дүн оруулахгүй.</div>
     <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">🍲 Цэс ба үйлчлэх цаг</div>
     <div id="kt-servings"></div>
     <button type="button" class="btn" id="kt-add-serving" style="width:100%;padding:8px;font-size:12.5px;margin-top:2px;">+ Хоол / цаг нэмэх</button>
@@ -15016,6 +15079,9 @@ function openCateringJobModal(job) {
   modal.querySelector('#kt-add-serving').onclick = () => { state._ktServings.push({ slot: '', date: modal.querySelector('#kt-date').value || '', time: '', portions: Number(modal.querySelector('#kt-guests').value) || 0, dishes: [] }); _renderCateringServings(modal); };
   // NOMAAD-аас татах — компани/огноо/зочны тоо/гарчиг автоматаар нөхнө.
   modal.querySelector('#kt-nomaad').onchange = (e) => {
+    const fromNo = !!e.target.value;
+    modal.querySelector('#kt-money-f').hidden = fromNo;
+    modal.querySelector('#kt-money-nm').hidden = !fromNo;
     const o = noOrders.find(x => x.quote_no === e.target.value); if (!o) return;
     modal.querySelector('#kt-company').value = o.company || '';
     modal.querySelector('#kt-date').value = String(o.date_start || '').slice(0, 10);
@@ -15027,6 +15093,13 @@ function openCateringJobModal(job) {
     const title = g('#kt-title'), company = g('#kt-company');
     if (!title && !company) { showToast('Гарчиг эсвэл байгууллага оруулна уу', 'warn', 2800); return; }
     const qno = modal.querySelector('#kt-nomaad').value;
+    const total = qno ? 0 : moneyVal(modal.querySelector('#kt-total'));
+    /* 🔒 Дүн нь гүйцэтгэлийн орлогыг хөдөлгөнө — тэр сар хаагдсан бол засахгүй. */
+    if (total !== (Number(job.total_mnt) || 0)) {
+      try { await loadClosedMonths(true); } catch (_) {}
+      const lockM = String(g('#kt-date') || job.event_date || '').slice(0, 7);
+      if (lockM && monthLocked(lockM)) { showToast(`🔒 ${lockM} сар хаагдсан — дүн өөрчлөх боломжгүй`, 'error', 5000); return; }
+    }
     const rec = {
       id: isNew ? ('KT-' + Date.now()) : job.id,
       title, company, quote_no: qno, source: qno ? 'nomaad' : (job.source || 'manual'),
@@ -15034,6 +15107,7 @@ function openCateringJobModal(job) {
       status: modal.querySelector('#kt-status').value,
       menu_json: JSON.stringify((state._ktServings || []).filter(sv => sv.slot || sv.time || (sv.dishes && sv.dishes.length))),
       note: g('#kt-note'), created_by: isNew ? state.me : (job.created_by || state.me),
+      phone: qno ? (job.phone || '') : g('#kt-phone').replace(/\D/g, ''), total_mnt: total,
     };
     modal.querySelector('#kt-save').disabled = true;
     if (await saveCateringJob(rec)) { close(); await loadCateringJobs(true); showToast('Катеринг ажил хадгаллаа', 'success', 2000); }
@@ -15041,10 +15115,106 @@ function openCateringJobModal(job) {
   };
   modal.querySelector('#kt-del').onclick = async () => {
     if (isNew) return;
-    if (!(await showConfirm(`Энэ катеринг ажлыг цуцлах уу?`, { okText: 'Цуцлах', danger: true }))) return;
+    const _paid = Number(job.paid_mnt) || 0;
+    if (!(await showConfirm(`Энэ катеринг ажлыг цуцлах уу?${_paid ? `\n\n${fmtMoney(_paid)} төлбөр орсон — орлого хэвээр үлдэнэ. Буцааж өгвөл зардлын «буцаалт»-аар бүртгэнэ.` : ''}`, { okText: 'Цуцлах', danger: true }))) return;
     if (await saveCateringJob({ ...job, status: 'cancelled', menu_json: job.menu_json || '[]' })) { close(); await loadCateringJobs(true); showToast('Цуцаллаа', 'success', 1800); }
   };
   modal.classList.add('open');
+}
+/* 💵 Катерингийн төлбөр — PDF баримтаар (M-Event-тэй ИЖИЛ шалгуур `readIncomeReceipt`).
+   Гараар дүн бичих зам БАЙХГҮЙ: банкны баримт = мөнгө орсны нотолгоо. */
+function openCateringPaymentModal(id) {
+  const j = (state.cateringJobs || []).find(x => x.id === id);
+  if (!j || !cateringHasMoney(j)) return;
+  if (!canPayCatering()) { showToast('Танд төлбөр бүртгэх эрх алга', 'warn', 3000); return; }
+  loadUsedReceipts(); loadClosedMonths();
+  document.getElementById('kt-pay-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'kt-pay-modal';
+  modal._receipts = [];
+  const total = Number(j.total_mnt) || 0, paid = Number(j.paid_mnt) || 0;
+  const prev = parsePaidRef(j.paid_ref || '');
+  modal.innerHTML = `<div class="modal kt-pay">
+    <h2>💵 Төлбөр — Катеринг №${escapeHtml(String(j.number || ''))}</h2>
+    <div class="kt-pay-sum">
+      <div>${escapeHtml(j.title || j.company || '')}</div>
+      <div>Нийт дүн: <b>${fmtMoney(total)}</b> · Өмнө төлсөн: <b>${fmtMoney(paid)}</b> · Үлдэгдэл: <b>${fmtMoney(cateringOwed(j))}</b></div>
+    </div>
+    ${prev.length ? `<div class="kt-pay-prev">${prev.map(r => `<div>✓ ${escapeHtml([r.sender, r.acct].filter(Boolean).join(' · ') || r.id || '')}</div>`).join('')}</div>` : ''}
+    <label for="ktp-pdf" class="kt-pay-drop">📄 <b>Банкны баримт (PDF) оруулах</b> — олон файл сонгож болно
+      <input id="ktp-pdf" type="file" accept="application/pdf,.pdf" multiple hidden>
+      <div id="ktp-status" class="kt-pay-st">Дүн · огноо · шилжүүлэгч автоматаар. Гараар бүртгэх боломжгүй.</div>
+    </label>
+    <div id="ktp-list"></div>
+    <div class="modal-actions"><button class="btn" id="ktp-cancel">Болих</button><button class="btn btn-primary" id="ktp-save" disabled>Бүртгэх</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#ktp-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const listEl = modal.querySelector('#ktp-list'), saveBtn = modal.querySelector('#ktp-save'), st = modal.querySelector('#ktp-status');
+  const draw = () => {
+    const sum = modal._receipts.reduce((a, r) => a + r.amount, 0);
+    listEl.innerHTML = modal._receipts.map((r, i) => `<div class="kt-pay-row"><span><b>${fmtMoney(r.amount)}</b> · ${escapeHtml(r.date || '')} · ${escapeHtml(r.senderName || '—')}${r.warn ? ` · ⚠ ${escapeHtml(r.warn)}` : ''}</span><button type="button" class="btn" data-ktp-rm="${i}">✕</button></div>`).join('')
+      + (modal._receipts.length ? `<div class="kt-pay-tot">Нийт: <b>${fmtMoney(sum)}</b></div>` : '');
+    saveBtn.disabled = !modal._receipts.length;
+    listEl.querySelectorAll('[data-ktp-rm]').forEach(b => b.onclick = () => { modal._receipts.splice(+b.dataset.ktpRm, 1); draw(); });
+  };
+  modal.querySelector('#ktp-pdf').addEventListener('change', async (e) => {
+    const files = [...(e.target.files || [])]; e.target.value = '';
+    for (const f of files) {
+      st.textContent = `📄 ${f.name} уншиж байна…`;
+      try { modal._receipts.push(await readIncomeReceipt(f, modal._receipts)); st.textContent = `✓ ${f.name}`; }
+      catch (err) { st.textContent = '⚠ ' + err.message; }
+    }
+    draw();
+  });
+  saveBtn.onclick = () => submitCateringPayment(id, modal, saveBtn);
+  modal.classList.add('open');
+}
+async function submitCateringPayment(id, modal, btn) {
+  const j = (state.cateringJobs || []).find(x => x.id === id);
+  const receipts = (modal._receipts || []).slice();
+  if (!j || !receipts.length) return;
+  // 🔒 Мөнгө хөндөх тул түгжээг СЕРВЕРЭЭС шинэчилж шалгана
+  try { await loadClosedMonths(true); } catch (_) {}
+  const lockM = receipts.map(r => String(r.date || '').slice(0, 7)).find(m => m && monthLocked(m));
+  if (lockM) { showToast(`🔒 ${lockM} сар хаагдсан — тэр сарын төлбөр бүртгэх боломжгүй`, 'error', 6000); return; }
+  btn.disabled = true;
+  const okR = [];
+  for (const rc of receipts) {
+    const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'catering:' + j.id });
+    if (rr === 'err') { showToast(`Баримтын давхцал шалгагдсангүй — алгаслаа (${fmtMoney(rc.amount)})`, 'error', 4500); continue; }
+    if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
+    okR.push(rc);
+  }
+  if (!okR.length) { btn.disabled = false; showToast('Бүртгэх баримт үлдсэнгүй', 'error', 4000); return; }
+  const amount = okR.reduce((a, r) => a + r.amount, 0);
+  const date = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
+  const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.bank && ('банк:' + r.bank), r.ref].filter(Boolean).join(' · ')).join('  |  ');
+  okR.forEach(r => { if (r._file) uploadReceiptFileOrWarn(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'catering:' + j.id }, 'катеринг №' + (j.number || '')); });
+  // Серверийн СҮҮЛИЙН дүн дээр нэмнэ — зэрэгцээ бүртгэл бие биенээ дарахгүй
+  let basePaid = Number(j.paid_mnt) || 0, baseRef = String(j.paid_ref || '');
+  try {
+    const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?id=eq.${encodeURIComponent(id)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
+    if (gr.ok) { const rr = await gr.json(); if (rr && rr[0]) { basePaid = Number(rr[0].paid_mnt) || 0; baseRef = String(rr[0].paid_ref || ''); } }
+  } catch (_) {}
+  const body = { paid_mnt: basePaid + amount, paid_ref: [baseRef.trim(), newRef].filter(Boolean).join('  |  '), paid_date: date, updated_at: new Date().toISOString() };
+  if (j.status === 'planned') body.status = 'confirmed';
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    Object.assign(j, body);
+    modal.remove();
+    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}`, 'success', 2800);
+    // Банкны хуулгын орлогын мөр баримттай өөрөө холбогдоно
+    if (Array.isArray(state.bankIncome)) relinkIncomeFromReceipts().catch(() => {});
+    render();
+  } catch (e) { btn.disabled = false; showToast('Алдаа: ' + e.message, 'error', 4500); }
 }
 /* ========================== КАТЕРИНГ модуль төгсгөл ========================== */
 const _PURPOSE_BADGE = { 'орлого': ['#0f7a3d', 'rgba(16,163,74,.12)'], 'зарлага': ['#b45309', 'rgba(217,119,6,.12)'], 'валют': ['#4338ca', 'rgba(79,70,229,.12)'], 'цалин': ['#9333ea', 'rgba(147,51,234,.12)'], 'татвар': ['#be123c', 'rgba(225,29,72,.12)'] };
@@ -29205,17 +29375,7 @@ function openBqPaymentModal(oid) {
     for (const file of files) {
       status.textContent = `📄 ${file.name} уншиж байна…`; status.style.color = 'var(--muted)';
       try {
-        const d = parseBankReceipt(await extractPdfText(file));
-        if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
-        if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
-        // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
-        if (!/чимун/i.test(d.receiverName || '')) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'})`);
-        const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
-        const reason = receiptDupReason(refKey, fpKey);
-        if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
-        if (modal._receipts.some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
-        const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
-        modal._receipts.push({ amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', bank: d.bank || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
+        modal._receipts.push(await readIncomeReceipt(file, modal._receipts));
         status.textContent = `✓ ${file.name}`; status.style.color = 'var(--ok)';
       } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
     }
@@ -29385,6 +29545,21 @@ function openRefundModal(oid) {
   modal.classList.add('open');
 }
 
+/* Орлогын PDF баримт уншиж шалгана — M-Event ба катеринг ХОЁУЛАА үүнийг дуудна
+   (шалгуур хоёр газар салбарлахгүй). Алдаа бол ТОДОРХОЙ мессежтэй шиднэ. */
+async function readIncomeReceipt(file, existing) {
+  const d = parseBankReceipt(await extractPdfText(file));
+  if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
+  if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
+  // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
+  if (!/чимун/i.test(d.receiverName || '')) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'})`);
+  const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
+  const reason = receiptDupReason(refKey, fpKey);
+  if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
+  if ((existing || []).some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
+  const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
+  return { amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', bank: d.bank || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file };
+}
 // Төлбөр бүртгэх — bq_orders.total_paid шинэчлэх + bq_payments-д бичих (audit). Ноорог→Захиалсан.
 async function submitBqPayment(oid, modal, btn) {
   const bqO = (state.bqOrders || []).find(x => String(x.id) === String(oid));
@@ -29640,6 +29815,7 @@ function jrnCreditFor(status) {
      ганцаараа мөнгөн суурьтай болно — амьд датаар 9 сард 19сая ингэж илүү
      бүртгэгдэж байв. Орлогыг нь `ctx.nomaad` сараар тусад нь хүлээн зөвшөөрнө. */
   if (s === 'nomaad') return 'recv';
+  if (s === 'catering') return 'recv';     // катерингийн төлбөр — орлого нь `ctx.catering`-аар
   if (s === 'internal' || s === 'personal') return null;   // компанийн орлого биш
   return 'suspense';                       // open/other — ИЛ үлдэнэ, нуугдахгүй
 }
@@ -29725,6 +29901,13 @@ function journalEntries(ctx, month) {
     if (!n || !inM(String(n.ym) + '-01')) return;
     const amt = Math.round(Number(n.amount) || 0); if (!amt) return;
     push(jrnMonthEnd(n.ym), `NOMAAD орлого · ${n.ym}`, 'nmd:' + n.ym,
+      [{ acc: 'recv', dr: amt }, { acc: 'revenue', cr: amt }]);
+  });
+  // ⑧ Катерингийн орлого — сараар (`cateringRevenue`, тайлангийн ИЖИЛ дүрэм)
+  (ctx && ctx.catering || []).forEach(n => {
+    if (!n || !inM(String(n.ym) + '-01')) return;
+    const amt = Math.round(Number(n.amount) || 0); if (!amt) return;
+    push(jrnMonthEnd(n.ym), `Катерингийн орлого · ${n.ym}`, 'ktr:' + n.ym,
       [{ acc: 'recv', dr: amt }, { acc: 'revenue', cr: amt }]);
   });
   // ⑥ НӨАТ ба НӨӨЦИЙН АЛДАГДАЛ — бодит зардал, сарын эцэст
@@ -29894,6 +30077,15 @@ function jrnNomaadList() {
   }
   return out;
 }
+/* Катерингийн сарын орлого — гүйцэтгэлийн суурь (журнал үргэлж accrual). */
+function jrnCateringList() {
+  const by = {};
+  (state.cateringJobs || []).forEach(j => {
+    const ym = cateringIncomeMonth(j, 'accrual'), v = cateringRevenue(j, 'accrual');
+    if (/^\d{4}-\d{2}$/.test(ym) && v) by[ym] = (by[ym] || 0) + v;
+  });
+  return Object.keys(by).sort().map(ym => ({ ym, amount: Math.round(by[ym]) }));
+}
 function jrnCtx() {
   return { finance: state.financeRequests || [], income: state.bankIncome || [],
            orders: (state.appOrders || []).filter(o => typeof _orderActive === 'function' ? _orderActive(o) : true),
@@ -29902,7 +30094,7 @@ function jrnCtx() {
               «Дебет Авлага / Кредит Орлого» бичилт утгагүй болно (амьд жишээ:
               21.3сая төлөгдөөгүй захиалга 0₮ орлоготой гарч байв). Мөнгөн дүр
               зураг нь банкны мөрүүдээс өөрөө гарна. */
-           opening: obFrozen(), basis: 'accrual', deprec: jrnDeprecList(), extra: jrnExtraList(), nomaad: jrnNomaadList() };
+           opening: obFrozen(), basis: 'accrual', deprec: jrnDeprecList(), extra: jrnExtraList(), nomaad: jrnNomaadList(), catering: jrnCateringList() };
 }
 /* ─── 📒 НЯГТЛАН — журнал · дэвтэр · баланс · нээлтийн үлдэгдэл нэг дор ──────
    ⛔ Тус тусдаа таб болговол толгойн эгнээ 7 табтай болж аль нь юу болох нь
@@ -29923,6 +30115,7 @@ function renderAccounting() {
   // ⚠ Захиалга ачаалагдаагүй бол ОРЛОГО чимээгүй 0 болж ашиг сөрөг харагдана
   //   (амьд тулгалтад яг ийм болсон: журнал «−55сая алдагдал» гэж харуулсан).
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
+  if (!state.cateringJobs && !state._ktLoading) { state._ktLoading = true; setTimeout(loadCateringJobs, 0); }
   const t = ACCT_TABS.some(x => x.k === state.acctTab) ? state.acctTab : 'journal';
   const bar = `<div class="ac-tabs">${ACCT_TABS.map(x =>
     `<button class="ac-tb${x.k === t ? ' on' : ''}" data-acct-tab="${x.k}" title="${escapeHtml(x.hint)}">${x.label}</button>`).join('')}</div>`;
@@ -35203,6 +35396,12 @@ function finAddOrderIncome(inc, wantBr, basis) {
       if (v) inc[mo] = (inc[mo] || 0) + v;
     });
   }
+  if (!wantBr || wantBr === 'КАТЕРИНГ') {
+    (state.cateringJobs || []).forEach(j => {
+      const mo = cateringIncomeMonth(j, basis), v = cateringRevenue(j, basis);
+      if (/^\d{4}-\d{2}$/.test(mo) && v) inc[mo] = (inc[mo] || 0) + v;
+    });
+  }
 }
 // Салбар бүрийн орлого/зардал/ашиг (тухайн сар, суурьаар) — CEO төвлөрсөн харагдац
 // "Хуулга батлаагүй" авто цалин (⟦PENDST⟧) — зардлын ДҮНД оруулахгүй. Банкны хуулга орж
@@ -35284,7 +35483,9 @@ function finMonthIncome(month, basis) {
     const m = nomaadIncomeMonth(o, month, basis);
     if (m > 0) { noInc += m; noN++; }
   });
-  return { evInc, evN: evList.length, noInc, noN, evList };
+  // Катеринг — `cateringMonthIncome` (тренд, журналтай ИЖИЛ дүрэм)
+  const kt = cateringMonthIncome(state.cateringJobs || [], month, basis);
+  return { evInc, evN: evList.length, noInc, noN, evList, ktInc: kt.sum, ktN: kt.n };
 }
 /* ─── НӨӨЦИЙН АЛДАГДАЛ = САЛБАРЫН ЗАРДАЛ (2026-09-30) ───────────────────────
    Буцаан авахад дутсан бараа нөөцөөс хасагддаг ч ашгийн тайланд ХААНА Ч
@@ -35389,7 +35590,7 @@ function finBranchPnl(month, basis) {
     rows: [
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
       { k: 'NOMAAD', inc: noInc, exp: exp['КЕМП'] },
-      ...(exp['КАТЕРИНГ'] ? [{ k: 'Катеринг', inc: 0, exp: exp['КАТЕРИНГ'] }] : []),
+      ...((exp['КАТЕРИНГ'] || _mi.ktInc) ? [{ k: 'Катеринг', inc: _mi.ktInc || 0, exp: exp['КАТЕРИНГ'] }] : []),
       { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
       ...(exp['ЗАХ'] ? [{ k: '⚠ Салбар тодорхойгүй', inc: 0, exp: exp['ЗАХ'], unknown: true, n: unkN }] : []),
     ], ownerLoan, depReturn, vat, vatPaid, dep, miss, cnt, unknownExp: exp['ЗАХ'], unknownN: unkN,
@@ -35698,6 +35899,8 @@ function renderReports() {
   // Тайланд шаардлагатай дата (захиалга/бараа/өртөг) — байхгүй бол анх удаа татна
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { state.nomaadOrders = []; setTimeout(loadNomaadOrders, 0); }
+  // ⚠ Катерингийн орлого — ачаалагдаагүй бол чимээгүй 0 болно
+  if (!state.cateringJobs && !state._ktLoading) { state._ktLoading = true; setTimeout(loadCateringJobs, 0); }
   if (!state.products || !state.products.length) loadProductsCatalog();
   ensureVatLoaded();   // НӨАТ зардалд хасагдана — баримт заавал ачаалагдсан байх
   ensureProductsLoaded();   // элэгдэл каталогоос бодогдоно (ачаалагдаагүй бол чимээгүй 0)
@@ -35711,13 +35914,16 @@ function renderReports() {
   const inclNo = !wantBr || wantBr === 'КЕМП';    // NOMAAD
   const _mi = finMonthIncome(month, basis);   // C8: finBranchPnl-тэй НЭГ эх сурвалж (орлогын логик давхардуулахгүй)
   const evInc = _mi.evInc, noInc = _mi.noInc, noN = _mi.noN, evN = _mi.evN;
-  let income = (inclEv ? evInc : 0) + (inclNo ? noInc : 0);
-  let incomeN = (inclEv ? evN : 0) + (inclNo ? noN : 0);
+  const inclKt = !wantBr || wantBr === 'КАТЕРИНГ';   // Катеринг (2026-10-03)
+  const ktInc = _mi.ktInc || 0, ktN = _mi.ktN || 0;
+  let income = (inclEv ? evInc : 0) + (inclNo ? noInc : 0) + (inclKt ? ktInc : 0);
+  let incomeN = (inclEv ? evN : 0) + (inclNo ? noN : 0) + (inclKt ? ktN : 0);
   const bl = basis === 'accrual' ? 'гүйцэтгэл' : 'мөнгө';
   let incomeLabel, incomeSub, mi = null;
   if (wantBr === 'КЕМП') { incomeLabel = `Орлого (NOMAAD · ${bl})`; incomeSub = noN + ' эвент'; }
   else if (wantBr === 'ИВЕНТ') { mi = meventIncome(month); incomeLabel = `Орлого (M-Event · ${bl})`; incomeSub = evN + ' захиалга'; }
-  else if (!wantBr) { mi = meventIncome(month); incomeLabel = `Орлого (нийт · ${bl})`; incomeSub = 'M-Event + NOMAAD'; }
+  else if (wantBr === 'КАТЕРИНГ') { incomeLabel = `Орлого (Катеринг · ${bl})`; incomeSub = ktN + ' захиалга'; }
+  else if (!wantBr) { mi = meventIncome(month); incomeLabel = `Орлого (нийт · ${bl})`; incomeSub = ktInc ? 'M-Event + NOMAAD + Катеринг' : 'M-Event + NOMAAD'; }
   else { incomeLabel = 'Орлого'; incomeSub = 'энэ салбарт захиалгын орлого бүртгэгддэггүй'; }
   let expense = 0, expN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {

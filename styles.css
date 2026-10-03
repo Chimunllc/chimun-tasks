@@ -8424,3 +8424,30 @@ select.no-asar-len {
 .ps-fc.is-on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .ps-fc.is-on b { color: var(--on-primary); }
 .ps-fc.is-empty { opacity: .45; }
+
+/* ═══ Катерингийн захиалга — мөнгө (2026-10-03) ═══ */
+.kt-money { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px dashed var(--border);
+  font-size: var(--fs-sm); color: var(--muted); }
+.kt-money b { color: var(--text); font-variant-numeric: tabular-nums; }
+.kt-money .kt-m-paid { color: var(--ok); }
+.kt-m-no { font-weight: 700; color: var(--text-soft); }
+.kt-m-owe b { color: var(--warn); }
+.kt-m-ok { color: var(--ok); font-weight: 700; }
+.kt-m-warn { color: var(--warn); font-weight: 700; }
+.kt-money-nm { font-size: var(--fs-sm); color: var(--muted); }
+.kt-pay-btn { margin-left: auto; font-size: var(--fs-sm); }
+.kt-money-f { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.kt-pay { max-width: 440px; }
+.kt-pay-sum { background: var(--panel-hover); border-radius: 10px; padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3); font-size: var(--fs-md); line-height: 1.7; }
+.kt-pay-prev { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-3); }
+.kt-pay-drop { display: block; margin-bottom: var(--space-3); font-size: var(--fs-md); text-align: center;
+  border: 2px dashed var(--primary); border-radius: 10px; padding: var(--space-3); cursor: pointer;
+  background: var(--panel-hover); }
+.kt-pay-st { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
+.kt-pay-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2);
+  padding: var(--space-2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: var(--space-1);
+  font-size: var(--fs-sm); }
+.kt-pay-tot { text-align: right; font-size: var(--fs-md); margin: var(--space-2) 0; }
+.kt-money-f[hidden], .kt-money-nm[hidden] { display: none; }

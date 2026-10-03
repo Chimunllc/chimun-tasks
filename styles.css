@@ -8151,6 +8151,8 @@ select.no-asar-len {
 }
 .pay-pwhen { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pay-pnote { color: var(--text-soft); }
+/* Банкны сар ≠ ноогдох сар — яагаад өөр сард харагдаж байгааг ил хэлнэ */
+.pay-pshift { color: var(--primary); font-weight: 700; cursor: help; }
 .pay-pamt { font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--ok); }
 .pay-fine { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); line-height: 1.5; }
 /* Ирцийн сарын жагсаалт — хүн бүрийн доорх илүү цаг / цалингийн мөр */

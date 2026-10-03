@@ -13131,9 +13131,35 @@ function renderAttendance() {
     <div id="att-list">${body}</div>
   </div>`;
 }
-// Сарын ажлын норм: өдрийн тоо (app_config['work_norm_days'], default 23) × 8 цаг.
-function workNormDays() { const v = Number(state.appConfig && state.appConfig.work_norm_days); return (v >= 1 && v <= 31) ? v : 23; }
-function workNormMins() { return workNormDays() * 8 * 60; }
+/* ─── САРЫН НОРМ = ТЭР САРЫН АЖЛЫН ӨДӨР × 8 ЦАГ (2026-10-03, CEO) ───────────
+   Өмнө нь 23 өдөр (184 цаг) гэж ХАТУУ тавигдсан байв. Бодит ажлын өдөр 20–23
+   хооронд хэлбэлздэг тул 184 нь ихэнх сард ХЭТРҮҮЛСЭН: нормоо бүтэн ажилласан
+   хүний суурь цалин `ажилласан ÷ норм`-оор хасагдаж, 2 сард 160÷184 = **87%**
+   болж байв (бүтэн ажилласан цагийн төлөө гэрээний цалингаас хасах нь зөрчил).
+   ⛔ **БАЯРЫН ӨДӨР ХАСАГДАХГҮЙ** (CEO шийдвэр) — зөвхөн бямба/ням хасна.
+   ⚠ Огноог UTC геттерээр угсарна — локал цагаар бодвол UTC+8-д сар гулсана.
+   ⚠ `app_config['work_norm_days']` тохируулбал тэр ТОГТМОЛ тоо ялна (онцгой
+     тохиолдол, жишээ 6 хоногийн ажлын хуваарь). */
+function monthWorkdays(ym) {
+  const mm = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+  const now = new Date();
+  const y = mm ? Number(mm[1]) : now.getFullYear();
+  const mo = mm ? Number(mm[2]) - 1 : now.getMonth();
+  let n = 0;
+  for (let d = 1; d <= 31; d++) {
+    const t = new Date(Date.UTC(y, mo, d));
+    if (t.getUTCMonth() !== mo) break;
+    const w = t.getUTCDay();
+    if (w !== 0 && w !== 6) n++;
+  }
+  return n;
+}
+function workNormDays(ym) {
+  const v = Number(state.appConfig && state.appConfig.work_norm_days);
+  if (v >= 1 && v <= 31) return v;
+  return monthWorkdays(ym);
+}
+function workNormMins(ym) { return workNormDays(ym) * 8 * 60; }
 // ── Жолооны нэмэгдэл — хүргэлттэй захиалгад ХҮРГЭЖ ӨГСӨН (delivering→rented) + ХҮРГЭЛТЭЭР
 // БУЦААН АВСАН (rented→returning) үйлдэл бүрд 10,000₮ (тухайн үйлдлийг хийсэн жолоочид). stage_meta-гаас автомат.
 const DRIVER_BONUS_EACH = 10000;
@@ -13270,7 +13296,7 @@ function payProrateFrom() {
    `today`-г тест дамжуулна; дуудагч дамжуулахгүй (өнөөдөр). */
 function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today) {
   base = Math.max(0, Number(base) || 0);
-  const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins();
+  const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins(month);   // ⚠ норм = тэр сарын хуанли
   const known = workedMins !== null && workedMins !== undefined && isFinite(Number(workedMins));
   const worked = known ? Math.max(0, Number(workedMins)) : 0;
   const curM = String(today || todayStr()).slice(0, 7);
@@ -13357,7 +13383,7 @@ function salaryCarryIn(key, ym, minsOf) {
   for (const m of months) {
     const mins = minsOf(m);
     if (mins === undefined) return { amount: 0, ready: false, from: '' };
-    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, workNormMins(), driverBonus(key, m).amount, undefined, m);
+    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, workNormMins(m), driverBonus(key, m).amount, undefined, m);
     rows.push({ m, total: b.total, paid: salaryPaidFor(key, m) });
   }
   const ch = payCarryChain(rows);
@@ -13421,7 +13447,7 @@ function renderAttendanceMonth(month) {
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
   const recs = state.attMonthRecs;
   if (!recs.length) return `<div style="text-align:center;color:var(--muted);padding:30px;">${month} сард ирц бүртгэгдээгүй.</div>`;
-  const normDays = workNormDays(), normMins = workNormMins();
+  const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
   const byM = {};
   recs.forEach(r => { const ck = attCanonKey(r); const m = (byM[ck] = byM[ck] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
   const rows = Object.keys(byM).map(k => {
@@ -13628,8 +13654,8 @@ function myPayCardHtml(me) {
   const base = Number((state.salaries || {})[key]) || 0;
   const db = driverBonus(key, month);
   // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
-  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(), db.amount, undefined, month);
-  const normH = workNormDays() * 8;
+  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(month), db.amount, undefined, month);
+  const normH = workNormDays(month) * 8;
   const paid = salaryPaidFor(key, month);
   const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
   const myPays = salaryPaymentsFor(state.salaryPayments, key, month);
@@ -17555,7 +17581,7 @@ function renderSalary() {
   if (!histOnly && state.attMonthKey !== ym && state._attMonthBusy !== ym && !(state.attMonthErr && state.attMonthErr.month === ym)) setTimeout(() => loadAttendanceMonthFull(ym), 0);
   const attReady = !histOnly && state.attMonthKey === ym && Array.isArray(state.attMonthRecs);
   const attMins = attReady ? payrollAttMins(state.attMonthRecs) : {};
-  const normMins = workNormMins(), normH = workNormDays() * 8;
+  const normMins = workNormMins(ym), normH = workNormDays(ym) * 8;   // ⚠ норм САР БҮРЭЭР
   const spAll = stagePayByPerson(state.appOrders || [], ym);
   const payRows = (state.salaryPayments || []).filter(p => p && p.ym === ym);
   const attSet = new Set(Object.keys(attMins)), paidSet = new Set(payRows.map(p => p.person_key));

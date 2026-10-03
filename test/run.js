@@ -11434,7 +11434,7 @@ function testFinanceCacheThrottle() {
 
   // SCAN: assertMonthOpen нь кэш бичилтээс ӨМНӨ хэвээр (хаасан сар хамгаалагдана)
   const at = src.indexOf('async function saveFinanceRequest');
-  const body = src.slice(at, at + 700);
+  const body = src.slice(at, at + 1400);
   const aAt = body.indexOf('assertMonthOpen('), cAt = body.indexOf('saveFinanceCache(');
   ok(aAt > 0 && cAt > 0 && aAt < cAt, 'scan: assertMonthOpen нь saveFinanceCache-ээс ӨМНӨ хэвээр');
 }
@@ -11875,7 +11875,7 @@ testFinBasisDefault();
     gate('async function submitBqPayment', 'monthLocked');
     gate('async function clearMonthExpenses', 'monthLocked');
     // Кэш бичихээс ӨМНӨ шалгана — эс бөгөөс локал кэш хаасан сарыг дарна
-    const sf = src.slice(src.indexOf('async function saveFinanceRequest'), src.indexOf('async function saveFinanceRequest') + 600);
+    const sf = src.slice(src.indexOf('async function saveFinanceRequest'), src.indexOf('async function saveFinanceRequest') + 1400);
     ok(sf.indexOf('assertMonthOpen') < sf.indexOf('saveFinanceCache'),
        'scan: түгжээ нь localStorage кэш бичихээс ӨМНӨ шалгагдана');
     // Эхлэхэд ачаалагдана — эс бөгөөс түгжээ «нээлттэй» гэж андуурна
@@ -14086,8 +14086,10 @@ async function swFetchTests() {
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   ok(/T12:00:00\.000Z/.test(src), 'scan: хуулгын огноо үд дундын UTC-ээр хадгалагдсан хэвээр');
-  const fem = src.slice(src.indexOf('function finExpMonth'), src.indexOf('function finExpMonth') + 240);
-  ok(/slice\(0, 7\)/.test(fem), 'scan: finExpMonth мөрийг таслаж сар гаргадаг (орлуулга шаардлагатай)');
+  /* `finExpMonth` 2026-10-03-нд `finAccrualMonth` руу шилжсэн тул таслалт нь
+     `finAccrualAuto`-д байна — орлуулгын шаардлага ТЭНД хэвээр. */
+  const faa = src.slice(src.indexOf('function finAccrualAuto'), src.indexOf('function finAccrualAuto') + 400);
+  ok(/slice\(0, 7\)/.test(faa), 'scan: finAccrualAuto мөрийг таслаж сар гаргадаг (орлуулга шаардлагатай)');
   ok(/isDateOnlyStamp/.test(src), 'scan: орлуулгыг таних шалгуур бий');
 }
 
@@ -15410,6 +15412,65 @@ async function swFetchTests() {
   ok(/ensureVatLoaded/.test(ra) && /loadStockCountsAll/.test(ra), 'scan: НӨАТ ба тооллого');
   ok(/loadBankIncome/.test(src.slice(src.indexOf('function renderJournal'), src.indexOf('function attachJournalHandlers'))),
      'scan: хуулгын орлого');
+}
+
+/* ═══ ЗАРДАЛ = НООГДОХ САР, СУУРЬААС ХАМААРАХГҮЙ (2026-10-03, CEO) ═══════════
+   ⛔ Өмнө нь cash суурьд `requested_at` байсан тул 8-р сарын цалинг 9-д төлөхөд
+      9 сарын зардал болж, гүйлгээн дээр «8 сар» гэж сонгосон нь ЮУ Ч өөрчилдөггүй
+      байв. Амьд датаар 9-06-ны 17 гүйлгээ («8 сар» гэсэн утгатай) 9 сард сууж байв.
+   CEO: «гүйлгээ бус гүйцэтгэлээр боддог болгох хэрэгтэй, Монгол Улсын хуулийн
+   хүрээнд». Зардал ҮРГЭЛЖ ноогдох сараар; суурь нь зөвхөн ОРЛОГЫГ сольдог. */
+{
+  const { finExpMonth, finAccrualMonth, finAccrualAuto } = F;
+  // ① Гараар тохируулсан сар ЯЛНА — ХОЁУЛАН суурьд
+  const manual = { category: '7700', requested_at: '2026-09-06', amount: 1000000,
+                   justification: 'EB-цалин 8сар ⟦ACCR|2026-08⟧' };
+  eq(finExpMonth(manual, 'cash'), '2026-08', 'зардал: мөнгөн суурьд ч тохируулсан сар ялна');
+  eq(finExpMonth(manual, 'accrual'), '2026-08', 'зардал: гүйцэтгэлийн суурьд ч ижил');
+  // ② 7700 (ашгийн урамшуулал) нь ЦАЛИНГИЙН ангилал БИШ — таамаг ажиллахгүй,
+  //    тиймээс гараар тохируулаагүй бол банкны сар хэвээр (худал зөөхгүй).
+  eq(finAccrualAuto('7700', '2026-09-06'), '2026-09', 'зардал: 7700-д таамаг ажиллахгүй');
+  eq(finExpMonth({ category: '7700', requested_at: '2026-09-06' }, 'cash'), '2026-09',
+     'зардал: тохируулаагүй 7700 → банкны сар');
+  // ③ Цалингийн ангилал (71xx) сарын эхэнд төлөгдвөл таамаг өмнөх сар руу
+  eq(finExpMonth({ category: '7100', requested_at: '2026-09-06' }, 'cash'), '2026-08',
+     'зардал: 9-06-ны цалин → 8 сар (таамаг)');
+  eq(finExpMonth({ category: '7100', requested_at: '2026-09-21' }, 'cash'), '2026-09',
+     'зардал: 9-21-ний цалин → 9 сар');
+  // ④ Энгийн зардал хөдлөхгүй
+  eq(finExpMonth({ category: '4100', requested_at: '2026-09-15' }, 'cash'), '2026-09',
+     'зардал: энгийн зардал банкны сартайгаа үлдэнэ');
+  // ⑤ ИНВАРИАНТ: finExpMonth ≡ finAccrualMonth (хоёр дүрэм салбарлахгүй)
+  [manual, { category: '7100', requested_at: '2026-09-06' }, { category: '4100', requested_at: '2026-10-02' }]
+    .forEach((r, i) => eq(finExpMonth(r, 'cash'), finAccrualMonth(r), 'ИНВАРИАНТ: finExpMonth = finAccrualMonth #' + i));
+}
+
+// ═══ SCAN: зардлын сар буцаж банкны огноо руу орохыг хаана ═══════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fem = src.slice(src.indexOf('function finExpMonth(t, basis)'), src.indexOf('function finMonthIncome'));
+  eq((fem.match(/requested_at/g) || []).length, 0, 'scan: finExpMonth банкны огноо уншихгүй');
+  eq((fem.match(/basis ===/g) || []).length, 0, 'scan: finExpMonth суурьаас хамаарахгүй');
+  ok(/finAccrualMonth\(t\)/.test(fem), 'scan: finExpMonth = finAccrualMonth');
+  // Гүйлгээний жагсаалт ч ижил дүрмээр — эс бөгөөс сонголт хүнд ХАРАГДАХГҮЙ
+  const rf = src.slice(src.indexOf('function renderFinanceReport'), src.indexOf('function renderFinanceReport') + 4000);
+  ok(/const monthList = base\.filter\(t => finExpMonth\(t, finBasis\(\)\) === month\)/.test(rf),
+     'scan: Гүйлгээ жагсаалт ноогдох сараар');
+  eq((rf.match(/monthList = base\.filter\(t => \(t\.requested_at/g) || []).length, 0,
+     'scan: жагсаалт банкны огноогоор шүүхгүй');
+  // Банкны сар зөрсөн мөр ⇄ тэмдэгтэй — нуугдахгүй
+  ok(/class="fin-shift"/.test(src), 'scan: зөрсөн сар ⇄ тэмдэгээр ил гарна');
+  // Модалын хадгалалт: сонголт ҮРГЭЛЖ хадгалагдана + хуучин/шинэ сар хоёулаа түгжээтэй
+  const ex = src.slice(src.indexOf("modal.querySelector('#ex-save').onclick"), src.indexOf("modal.querySelector('#ex-del')"));
+  eq((ex.match(/accChosen !== finAccrualAuto/g) || []).length, 0,
+     'scan: сонгосон сар нөхцөлгүйгээр хадгалагдана');
+  ok(/\u27E6ACCR\|\$\{accChosen\}\u27E7/.test(ex), 'scan: ⟦ACCR⟧ токен бичигдэнэ');
+  ok(/assertMonthOpen\(accPrev/.test(ex) && /assertMonthOpen\(accChosen/.test(ex),
+     'scan: хуучин БА шинэ сар хоёулаа түгжээтэй');
+  ok(/loadClosedMonths\(true\)/.test(ex), 'scan: түгжээг серверээс шинэчилж шалгана');
+  // Устгахад ч ноогдох сар шалгагдана
+  const sf = src.slice(src.indexOf('async function saveFinanceRequest'), src.indexOf('async function saveFinanceRequest') + 1400);
+  ok(/deleted && typeof finAccrualMonth/.test(sf), 'scan: устгахад ноогдох сар шалгагдана');
 }
 
 // ═══ ЦАЛИН АЛЬ САРЫНХ — ГҮЙЦЭТГЭЛЭЭР (2026-10-03, CEO) ═════════════════

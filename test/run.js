@@ -14633,8 +14633,14 @@ async function swFetchTests() {
   eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1, OCT, DONE).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
   eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1, OCT, DONE).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
   // ⛔ 10 САРААС — «9 сард хэлж амжаагүй учраас 9 сарынхад хэрэгжүүлж болохгүй» (CEO)
-  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09', DONE).earned, 1840000, 'цалин: 9 сард дутуу цагаар ХАСАХГҮЙ (урьдчилан мэдэгдээгүй)');
-  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09', DONE).shortMins, 0, 'цалин: 9 сард дутуу цаг тэмдэглэгдэхгүй');
+  // ⛔ 9 САРААС (цалингийн тооцооны эхлэх сар) — CEO: «цагтаа хүрээгүй хүнд бүтэн цалин
+  //   өгөх нь буруу». 8 сар ба өмнөх нь ТҮҮХ (гараар тооцсон) — хасахгүй.
+  vm.runInContext("state.payrollCfg = { start: '2026-09' };", sandbox);
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09', DONE).earned, 920000, 'цалин: 9 сард дутуу цагаар ХАСНА (цалингийн тооцооны эхний сар)');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09', DONE).shortMins, H(92), 'цалин: 9 сард дутуу цаг ил');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-08', DONE).earned, 1840000, 'цалин: 8 сар (түүх) хасахгүй');
+  ok(/function payProrateFrom\(\) \{ return payrollStartMonth\(\); \}/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8')),
+     'scan: дутуу цагийн хасалт цалингийн тооцоотой ИЖИЛ сараас (тусдаа эхлэх сар байхгүй)');
   eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1).earned, 1840000, 'цалин: сар мэдэгдэхгүй бол хасахгүй (эргэлзвэл бүтэн)');
   // ⛔ ЯВЖ БУЙ САРД ХАСАХГҮЙ — 10-03-нд 2 хоногийн ирцээр суурь 10% болж «илүү авсан» гэж худал гарч байв
   eq(monthPayBreakdown(1840000, false, H(14), NORM, 0, 1, OCT, '2026-10-03').earned, 1840000, 'цалин: явж буй сард дутуу цагаар хасахгүй');

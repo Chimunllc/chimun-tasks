@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'empAcctOwners', 'empAcctsForPerson', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15719,6 +15719,72 @@ async function swFetchTests() {
   ok(/pay-over/.test(rs), 'scan: илүү олголтын мөр');
   const mc = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function myPayCardHtml') + 6000);
   eq((mc.match(/Math\.max\(0, b\.total - paid\)/g) || []).length, 0, 'scan: ажилтны карт илүү олголтыг тэглэхгүй');
+}
+
+// ═══ КАТЕРИНГИЙН ЗАХИАЛГА = МӨНГӨ (2026-10-03, CEO) ══════════════════════
+// 9 сард 18,375,000₮ катерингийн орлого банкинд орсон атлаа тайланд ОГТ ороогүй.
+// Одоо катерингийн ажил дүнтэй, PDF-ээр төлөгддөг, тайлан/тренд/журнал НЭГ дүрмээр.
+{
+  const { cateringRevenue, cateringIncomeMonth, cateringOwed, cateringMonthIncome, jrnCateringList,
+          jrnCreditFor, incomeStatusOfOwner, incomeLinkOfOwner, finMonthIncome, finAddOrderIncome, renderCatering } = F;
+  const man = { id: 'KT-1', number: 7, source: 'manual', status: 'confirmed', event_date: '2026-09-27',
+                total_mnt: 18375000, paid_mnt: 18375000, paid_date: '2026-09-28', title: 'Үйлдвэрчний эвлэл' };
+  const part = { id: 'KT-2', source: 'manual', status: 'confirmed', event_date: '2026-09-30',
+                 total_mnt: 5000000, paid_mnt: 2000000, paid_date: '2026-10-01' };
+  const nm = { id: 'KT-3', source: 'nomaad', status: 'confirmed', event_date: '2026-09-20', total_mnt: 9000000, paid_mnt: 9000000, paid_date: '2026-09-15' };
+  const cx = { id: 'KT-4', source: 'manual', status: 'cancelled', event_date: '2026-10-10', total_mnt: 3000000, paid_mnt: 300000, paid_date: '2026-09-05' };
+  eq(cateringRevenue(man, 'cash'), 18375000, 'катеринг: мөнгөн суурь = төлсөн');
+  eq(cateringRevenue(part, 'cash'), 2000000, 'катеринг: хэсэгчилсэн төлбөр');
+  eq(cateringRevenue(part, 'accrual'), 5000000, 'катеринг: гүйцэтгэл = гэрээний дүн');
+  eq(cateringIncomeMonth(part, 'cash'), '2026-10', 'катеринг: мөнгө орсон сар');
+  eq(cateringIncomeMonth(part, 'accrual'), '2026-09', 'катеринг: эвентийн сар');
+  // ⛔ NOMAAD-аас татсан ажлын мөнгө NOMAAD-д багтсан — ДАВХАР орохгүй
+  eq(cateringRevenue(nm, 'cash'), 0, 'катеринг: NOMAAD ажил орлогод орохгүй (cash)');
+  eq(cateringRevenue(nm, 'accrual'), 0, 'катеринг: NOMAAD ажил орлогод орохгүй (accrual)');
+  // Цуцалсан: гэрээ орлого БИШ, орсон мөнгө хэвээр
+  eq(cateringRevenue(cx, 'accrual'), 300000, 'катеринг: цуцалсан — орсон мөнгө л');
+  eq(cateringIncomeMonth(cx, 'accrual'), '2026-09', 'катеринг: цуцалсан — мөнгө орсон сар');
+  eq(cateringOwed(cx), 0, 'катеринг: цуцалсанд авлага үүсэхгүй');
+  eq(cateringOwed(part), 3000000, 'катеринг: үлдэгдэл');
+  eq(cateringMonthIncome([man, part, nm, cx], '2026-09', 'cash').sum, 18675000, 'катеринг: 9 сарын мөнгөн орлого');
+
+  // ИНВАРИАНТ: Тайлан (finMonthIncome) = Тренд (finAddOrderIncome) катерингийн лензэд
+  vm.runInContext('state.cateringJobs = ' + JSON.stringify([man, part, nm, cx]) + '; state.appOrders = []; state.nomaadOrders = [];', sandbox);
+  for (const basis of ['cash', 'accrual']) {
+    const tr = {}; finAddOrderIncome(tr, 'КАТЕРИНГ', basis);
+    for (const m of ['2026-09', '2026-10']) eq(tr[m] || 0, finMonthIncome(m, basis).ktInc, `ИНВАРИАНТ: катеринг Тайлан = Тренд (${basis} ${m})`);
+  }
+  // ИНВАРИАНТ: журнал = гүйцэтгэлийн тайлан
+  const jl = jrnCateringList();
+  for (const m of ['2026-09', '2026-10']) eq((jl.find(x => x.ym === m) || {}).amount || 0, finMonthIncome(m, 'accrual').ktInc, `ИНВАРИАНТ: журнал = тайлан (${m})`);
+  // Дэлгэц ҮНЭХЭЭР зурагдана (TDZ/синтакс алдаа барих)
+  const html = renderCatering();
+  ok(/Үйлдвэрчний эвлэл/.test(html) && /kt-money/.test(html), 'катеринг: картад мөнгөний мөр');
+  ok(/NOMAAD-ийн захиалгад багтсан/.test(html), 'катеринг: NOMAAD ажилд дүн оруулахгүйг хэлнэ');
+  vm.runInContext('state.cateringJobs = undefined;', sandbox);
+
+  // Банкны мөр ↔ баримт
+  eq(incomeStatusOfOwner('catering:KT-1'), 'catering', 'катеринг: баримтын эзэн → төлөв');
+  eq(incomeLinkOfOwner('catering:KT-1'), { type: 'catering', id: 'KT-1' }, 'катеринг: холбоос');
+  eq(jrnCreditFor('catering'), 'recv', 'катеринг: төлбөр авлагыг хаана (орлого давхардахгүй)');
+  const plan = F.incomeRelinkPlan([{ fp: 'Z', status: 'other', amount: 18375000, dt: '2026-09-28', payer: 'ҮЙЛДВЭРЧНИЙ ЭВЛЭЛ' }],
+    new Set(['FP-18375000-20260928-ҮЙЛДВЭРЧНИЙЭВЛЭЛ']), new Map([['FP-18375000-20260928-ҮЙЛДВЭРЧНИЙЭВЛЭЛ', 'catering:KT-1']]));
+  eq((plan[0] || {}).status, 'catering', 'relink: «бусад» мөр катерингийн баримтаар хаагдана');
+}
+// ═══ SCAN: катерингийн мөнгөний хамгаалалт ═══════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const sp = src.slice(src.indexOf('async function submitCateringPayment'), src.indexOf('/* ========================== КАТЕРИНГ модуль төгсгөл'));
+  ok(/loadClosedMonths\(true\)/.test(sp) && /monthLocked\(/.test(sp), 'scan: катерингийн төлбөр хаасан сарыг шалгана');
+  ok(/reserveReceipt\(/.test(sp) && /usedIn: 'catering:'/.test(sp), 'scan: баримт давхардлын ledger-т эзэмшигдэнэ');
+  ok(/rr === 'err'/.test(sp), 'scan: сүлжээ унахад давхардлын хамгаалалт чимээгүй унтрахгүй');
+  eq((sp.match(/method: 'DELETE'/g) || []).length, 0, 'scan: катерингт хатуу устгал алга');
+  // PDF шалгуур НЭГ газар (M-Event ба катеринг)
+  eq((src.match(/Чимунд ирээгүй гүйлгээ \(/g) || []).length, 1, 'scan: M-Event/катерингийн PDF шалгуур нэг газар');
+  ok(/readIncomeReceipt\(file, modal\._receipts\)/.test(src), 'scan: M-Event төлбөр нийтлэг уншигчийг ашиглана');
+  // NOMAAD ажилд мөнгө орохгүй дүрэм ганц функцэд
+  ok(/function cateringHasMoney\(j\) \{ return !!j && j\.source !== 'nomaad'; \}/.test(src), 'scan: NOMAAD ажил давхар орлого болохгүй');
+  ok(/catering: jrnCateringList\(\)/.test(src), 'scan: журнал катерингийн орлогыг авна');
 }
 
 // ═══ ХОЖИМ БҮРТГЭСЭН БАРИМТ ОРЛОГЫН МӨРИЙГ ХААНА (2026-10-03) ═══════════

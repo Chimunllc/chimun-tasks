@@ -91,7 +91,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
-  'ownerCapital', 'ownerCapitalRows', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
+  'ownerCapital', 'ownerCapitalRows', 'openingBalanceCalc', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -14598,4 +14598,68 @@ async function swFetchTests() {
   // ⚠ Тайлбарт дурдах нь зүгээр — ОПЦИ болгож дамжуулахыг хаана (элементийн өргөнтэй зөрвөл тасарна)
   eq((act.match(/windowWidth\s*:/g) || []).length, 0, 'scan: windowWidth опци дамжуулахгүй — баримт тасарна');
   ok(/ОРООГҮЙ/.test(act), 'scan: баталгаажаагүй хөрөнгө актад ороогүйг ил бичнэ');
+}
+
+// ═══ НЭЭЛТИЙН БАЛАНС (2026-10-02) ═══════════════════════════════════════
+// ⛔ ӨМЧ НЬ ҮЛДЭГДЛЭЭР гарна (хөрөнгө − өр) — гараар бичигдэхгүй, тиймээс
+//   баланс ҮРГЭЛЖ тэнцэнэ. Тэнцээгүй баланс нь баланс биш.
+{
+  const { openingBalanceCalc } = F;
+  const auto = [
+    { key: 'cash', label: 'Банк', amount: 14953276, side: 'asset' },
+    { key: 'inv', label: 'Агуулах', amount: 744468853, side: 'asset' },
+    { key: 'owner', label: 'Эзэнд өглөх', amount: 153670534, side: 'liab' },
+    { key: 'dep', label: 'Барьцаа', amount: 1603260, side: 'liab' },
+    { key: 'zero', label: 'Тэг мөр', amount: 0, side: 'asset' },      // ⛔ орохгүй
+  ];
+  const c = openingBalanceCalc(auto, [{ label: 'НД-ийн өглөг', amount: 24000000, side: 'liab' }]);
+  eq(c.assets.length, 2, 'баланс: тэг дүнтэй мөр ОРОХГҮЙ');
+  eq(c.totalAssets, 759422129, 'баланс: хөрөнгийн нийлбэр');
+  eq(c.totalLiabs, 179273794, 'баланс: өр төлбөрийн нийлбэр (гараар нэмсэнтэй)');
+  eq(c.equity, 759422129 - 179273794, 'баланс: өмч = хөрөнгө − өр');
+
+  // ИНВАРИАНТ: хөрөнгө = өр + өмч (тэнцэл үргэлж хангагдана)
+  eq(c.totalAssets, c.totalLiabs + c.equity, 'ИНВАРИАНТ: хөрөнгө = өр төлбөр + өмч');
+
+  // Гараар нэмсэн мөр нь auto туггүй — зөвхөн тэр нь устгагдана
+  eq(c.liabs.filter(r => !r.auto).length, 1, 'баланс: гараар нэмсэн мөр ялгагдана');
+  eq(c.liabs.filter(r => r.auto).length, 2, 'баланс: автомат мөр тугтай');
+
+  // Талыг буруу бичвэл ӨР тал руу (өмчийг хиймлээр өсгөхгүй)
+  eq(openingBalanceCalc([], [{ label: 'x', amount: 100, side: 'ямарч' }]).liabs.length, 1,
+     'баланс: танихгүй тал → өр төлбөр (өмч хөөрөгдөхгүй)');
+
+  // Хоосон
+  const e = openingBalanceCalc([], []);
+  eq(e.totalAssets + e.totalLiabs + e.equity, 0, 'баланс: хоосон үед бүгд 0');
+
+  // Өр нь хөрөнгөөс их бол өмч СӨРӨГ гарна (нуухгүй)
+  eq(openingBalanceCalc([{ label: 'a', amount: 100, side: 'asset' }],
+                        [{ label: 'b', amount: 300, side: 'liab' }]).equity, -200,
+     'баланс: сөрөг өмч нуугдахгүй');
+}
+
+// ═══ SCAN: нээлтийн баланс — хөлдсөн бол дахин бодохгүй ═════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const calc = src.slice(src.indexOf('function openingBalanceCalc'), src.indexOf('function openingBalanceAuto'));
+  ok(/totalAssets - totalLiabs/.test(calc), 'scan: өмч = хөрөнгө − өр (гараар бичигдэхгүй)');
+  eq((calc.match(/equity\s*:\s*Number|equity\s*=\s*manual/g) || []).length, 0, 'scan: өмч гаднаас орж ирэхгүй');
+
+  const auto = src.slice(src.indexOf('function openingBalanceAuto'), src.indexOf('function openingBalanceGaps'));
+  // ⛔ Агуулах нь ЗӨВХӨН баталгаажсанаар (ownerCapital-тай ижил дүрэм)
+  ok(/w\.verified/.test(auto), 'scan: агуулах зөвхөн баталгаажсан өртгөөр');
+  eq((auto.match(/w\.capital/g) || []).length, 0, 'scan: баталгаажаагүй агуулах балансад орохгүй');
+  // ⛔ Эзний дүнг дахин бодохгүй — ownerCapital ганц эх сурвалж
+  ok(/ownerCapital\(/.test(auto), 'scan: эзний өглөг ownerCapital-аас');
+  // ⛔ Мэдэхгүй зүйлээ 0 гэж бичихгүй — мөр огт гарахгүй
+  ok(/if \(cash\)/.test(auto) && /if \(recTotal\)/.test(auto), 'scan: тэг мөр гаргахгүй');
+
+  const r = src.slice(src.indexOf('function renderOpeningBalance'), src.indexOf('function attachOpeningBalanceHandlers'));
+  ok(/fr\s*\n?\s*\?\s*openingBalanceCalc\(fr\.rows/.test(r.replace(/\s+/g, ' ').replace(/ \? /g, ' ? ')) || /openingBalanceCalc\(fr\.rows/.test(r),
+     'scan: ХӨЛДСӨН бол хадгалсан мөрөөс, ДАХИН бодохгүй');
+  const h = src.slice(src.indexOf('function attachOpeningBalanceHandlers'), src.indexOf('function receivablesData'));
+  // ⛔ Хөлдөөх ба нээх хоёулаа баталгаажуулалтын ХАРИУГ шалгана
+  eq((h.match(/if \(!await showConfirm\([\s\S]*?\)\)\s*return;/g) || []).length, 2,
+     'scan: хөлдөөх БА нээх хоёулаа showConfirm-ийн хариуг шалгана');
 }

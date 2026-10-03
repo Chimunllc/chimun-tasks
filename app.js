@@ -4741,11 +4741,14 @@ function renderTaskList() {
     if (canSeeReports()) _rTabs.push({ k: 'reports', label: '📊 Тайлан' });
     if (canSeeWorkload()) _rTabs.push({ k: 'workload', label: '👥 Багийн ачаалал' });
     if (canSeeHistory()) _rTabs.push({ k: 'history', label: '📈 Түрээсийн түүх' });
+    if (canSeeReports()) _rTabs.push({ k: 'opening', label: '⚖️ Нээлтийн баланс' });
     if (!_rTabs.some(t => t.k === state.reportsTab)) state.reportsTab = (_rTabs[0] || {}).k || 'reports';
     const _rt = state.reportsTab;
     const _rbar = _rTabs.length > 1 ? `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">${_rTabs.map(t => `<button data-reports-tab="${t.k}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${t.k === _rt ? 'var(--primary)' : 'transparent'};background:none;color:${t.k === _rt ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${t.label}</button>`).join('')}</div>` : '';
-    wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'history' ? renderHistory() : renderReports());
-    if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'history') attachHistoryHandlers(); else attachReportsHandlers();
+    wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'history' ? renderHistory()
+      : _rt === 'opening' ? safeViewHtml(renderOpeningBalance, 'Нээлтийн баланс') : renderReports());
+    if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'history') attachHistoryHandlers();
+    else if (_rt === 'opening') attachOpeningBalanceHandlers(); else attachReportsHandlers();
     document.querySelectorAll('[data-reports-tab]').forEach(b => b.addEventListener('click', () => { state.reportsTab = b.dataset.reportsTab; render(); }));
     return;
   } else if (state.view === 'performance') {
@@ -28966,6 +28969,202 @@ async function submitBqPayment(oid, modal, btn) {
 // ⚠ ҮРГЭЛЖ БҮХ салбарын авлагыг тооцно (лензээр НУУХГҮЙ) — нэгдсэн "Нийт авлага" тоо
 // (CEO тууз + sidebar badge) салбар лензээс хамаарч бууж, мөнгө нүднээс далдлагдахаас сэргийлнэ.
 // Салбар фокус нь renderReceivables-ийн ӨӨРИЙН таб (Бүгд/Эвент/NOMAAD)-аар хийгдэнэ.
+/* ─── НЭЭЛТИЙН БАЛАНС (2026-10-02) ──────────────────────────────────────────
+   Нягтлан бодох бүртгэл эхлүүлэхэд ХАМГИЙН ТҮРҮҮНД нээлтийн үлдэгдэл хэрэгтэй:
+   «тодорхой өдөр компани юу эзэмшиж, хэнд өртэй вэ». Үүнгүйгээр баланс гарахгүй.
+
+   ⛔ ТООГ ГАРААР БИЧҮҮЛЭХГҮЙ — апп аль хэдийн мэддэг зүйлээ өөрөө бодно
+     (банкны үлдэгдэл, авлага, агуулах, барьцаа, эзний оруулалт). Гараар нэмэх нь
+     ЗӨВХӨН аппад огт байхгүй зүйл (татварын өглөг г.м.).
+   ⛔ ӨМЧ НЬ ҮЛДЭГДЛЭЭР ГАРНА (хөрөнгө − өр), гараар бичигдэхгүй. Эс бөгөөс
+     баланс тэнцэхгүй байж болох бөгөөд тэнцээгүй баланс нь баланс биш.
+   ⛔ АГУУЛАХЫГ ӨРТГӨӨР, ЗӨВХӨН БАТАЛГААЖСАНААР (2 гарын үсэг). Баталгаажаагүйг
+     оруулбал нотлох баримтгүй тоо балансад орно (`ownerCapital`-тай ижил дүрэм).
+   ⚠ ХӨЛДӨӨСНИЙ ДАРАА ӨӨРЧЛӨГДӨХГҮЙ — `app_config['opening_balance']`-д хадгална.
+     Нээлтийн үлдэгдэл хөдөлвөл түүнээс хойших БҮХ тайлан утгаа алдана. */
+const OB_KEY = 'opening_balance';
+function obFrozen() {
+  const v = state.appConfig && state.appConfig[OB_KEY];
+  return (v && typeof v === 'object' && v.at) ? v : null;
+}
+function obDefaultDate() { const f = obFrozen(); return (f && f.date) || '2026-10-01'; }
+/* Балансын мөрүүдийг нийлбэрлэнэ. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
+   auto — аппаас бодсон {key: {label, amount, side, note}} ; manual — гараар нэмсэн мөр. */
+function openingBalanceCalc(auto, manual) {
+  const rows = [];
+  (auto || []).forEach(r => { if (r && Number(r.amount)) rows.push({ ...r, auto: true }); });
+  (manual || []).forEach(r => {
+    const a = Number(r && r.amount) || 0;
+    // ⛔ Танихгүй тал → ӨР ТӨЛБӨР. Хөрөнгө болговол эвдэрсэн утга ӨМЧИЙГ чимээгүй
+    //   өсгөнө; өр тал руу унагаавал буруу нь ил харагдана (болгоомжтой тал).
+    if (a) rows.push({ label: String(r.label || '—'), amount: a, side: r.side === 'asset' ? 'asset' : 'liab', auto: false });
+  });
+  const assets = rows.filter(r => r.side === 'asset');
+  const liabs = rows.filter(r => r.side === 'liab');
+  const totalAssets = assets.reduce((s, r) => s + r.amount, 0);
+  const totalLiabs = liabs.reduce((s, r) => s + r.amount, 0);
+  return { assets, liabs, totalAssets, totalLiabs, equity: totalAssets - totalLiabs };
+}
+/* Аппаас автоматаар мэдэгдэх мөрүүд. ⚠ Мэдэхгүй зүйлээ 0 гэж БИЧИХГҮЙ —
+   мөрөө огт гаргахгүй, оронд нь «дутуу» анхааруулга гарна. */
+function openingBalanceAuto() {
+  const out = [];
+  // 1) Мөнгөн хөрөнгө — компанийн ₮ данс бүрийн СҮҮЛИЙН мэдэгдсэн эцсийн үлдэгдэл
+  const own = new Set((typeof companyAcctList === 'function' ? companyAcctList() : []).map(String));
+  const last = {};
+  (state.bankStatements || []).forEach(s => {
+    if (!s || String(s.ccy || 'MNT') !== 'MNT') return;
+    const a = String(s.acct || ''); if (!own.has(a)) return;
+    if (!last[a] || String(s.period_to || '') > String(last[a].period_to || '')) last[a] = s;
+  });
+  const cashAccts = Object.keys(last);
+  const cash = cashAccts.reduce((s, a) => s + (Number(last[a].closing_stated) || 0), 0);
+  if (cash) out.push({ key: 'cash', label: '🏦 Мөнгөн хөрөнгө (банк)', amount: cash, side: 'asset',
+    note: `${cashAccts.length} данс · сүүлийн хуулгын эцсийн үлдэгдэл` });
+  // 2) Авлага
+  const rec = (typeof receivablesData === 'function' ? receivablesData() : null);
+  const recTotal = rec ? Number(rec.total) || (rec.items || []).reduce((s, x) => s + (Number(x.balance) || 0), 0) : 0;
+  if (recTotal) out.push({ key: 'recv', label: '📄 Авлага (харилцагчаас)', amount: recTotal, side: 'asset',
+    note: `${(rec && rec.items ? rec.items.length : 0)} захиалга` });
+  // 3) Бараа материал — ЗӨВХӨН баталгаажсан өртөг
+  const w = (typeof warehouseCapital === 'function' ? warehouseCapital(state.products || []) : null);
+  if (w && w.verified) out.push({ key: 'inv', label: '📦 Бараа материал (өртгөөр)', amount: w.verified, side: 'asset',
+    note: `${w.verifiedN} нэр төрөл · 2 гарын үсгээр баталгаажсан` });
+  // 4) Харилцагчийн барьцаа — буцаах мөнгө тул ӨР
+  let dep = 0;
+  (state.appOrders || []).forEach(o => {
+    if (!o || typeof orderCanonStatus !== 'function') return;
+    if (!RECEIVABLE_ORDER_ST.has(orderCanonStatus(o))) return;
+    const d = Number(o.deposit_mnt) || 0;
+    if (d > 0 && !(typeof orderRefundedDeposit === 'function' && orderRefundedDeposit(o) >= d)) dep += d;
+  });
+  if (dep) out.push({ key: 'dep', label: '🔒 Харилцагчийн барьцаа (буцаах)', amount: dep, side: 'liab',
+    note: 'идэвхтэй захиалгад, буцаагаагүй' });
+  // 5) Эзэнд өглөх — `ownerCapital`-ийн баталгаажсан дүн (ганц эх сурвалж)
+  const oc = (typeof ownerCapital === 'function' ? ownerCapital(state.products || [], state.financeRequests || []) : null);
+  if (oc && oc.ownerVerified) out.push({ key: 'owner', label: '👤 Эзэмшигчид өглөх', amount: oc.ownerVerified, side: 'liab',
+    note: 'акт: компани төлснөө нотолж чадахгүй хөрөнгө' });
+  return out;
+}
+/* Юуг мэдэхгүй байгааг ИЛ хэлнэ — «дутуу» нь «тэг» БИШ. */
+function openingBalanceGaps() {
+  const g = [];
+  const w = (typeof warehouseCapital === 'function' ? warehouseCapital(state.products || []) : null);
+  if (w && w.capital > w.verified) g.push(`📦 Агуулахын ${fmtMoney(w.capital - w.verified)} баталгаажаагүй — балансад ОРООГҮЙ. Тооллого дуусгавал нэмэгдэнэ.`);
+  if (w && w.noCost) g.push(`📦 ${w.noCost} бараа өртөггүй — үнэ цэн тооцогдоогүй.`);
+  const own = new Set((typeof companyAcctList === 'function' ? companyAcctList() : []).map(String));
+  const seen = new Set((state.bankStatements || []).filter(s => s && String(s.ccy || 'MNT') === 'MNT').map(s => String(s.acct || '')));
+  const miss = [...own].filter(a => !seen.has(a));
+  if (miss.length) g.push(`🏦 ${miss.length} дансны хуулга огт ороогүй — мөнгөн хөрөнгө дутуу.`);
+  g.push('🧾 Татвар, нийгмийн даатгалын өглөгийг апп мэдэхгүй — гараар нэмнэ.');
+  return g;
+}
+/* Ноорог (гараар нэмсэн мөр + огноо) — хөлдөөхөөс өмнөх ажлын хувилбар. */
+const OB_DRAFT_KEY = 'opening_balance_draft';
+function obDraft() {
+  const v = state.appConfig && state.appConfig[OB_DRAFT_KEY];
+  return (v && typeof v === 'object') ? v : {};
+}
+function obManual() { const d = obDraft(); return Array.isArray(d.manual) ? d.manual : []; }
+async function obSaveDraft(patch) {
+  const next = { ...obDraft(), ...patch };
+  state.appConfig = state.appConfig || {}; state.appConfig[OB_DRAFT_KEY] = next;
+  await saveAppConfig(OB_DRAFT_KEY, next);
+  render();
+}
+function renderOpeningBalance() {
+  const fr = obFrozen();
+  const date = fr ? fr.date : (obDraft().date || obDefaultDate());
+  const auto = openingBalanceAuto();
+  const calc = fr
+    ? openingBalanceCalc(fr.rows || [], [])          // ⛔ ХӨЛДСӨН бол ДАХИН бодохгүй
+    : openingBalanceCalc(auto, obManual());
+  const live = fr ? openingBalanceCalc(auto, obManual()) : null;   // зөрүүг харуулахад
+  const canEdit = !!state.isCEO;
+  const m = (n) => fmtMoney(Math.round(n || 0));
+  const row = (r, i) => `<div class="ob-row">
+    <span class="ob-l">${escapeHtml(r.label)}${r.note ? `<span class="ob-n">${escapeHtml(r.note)}</span>` : ''}</span>
+    <b class="ob-v">${m(r.amount)}</b>
+    ${(!fr && canEdit && !r.auto) ? `<button class="btn ob-x" data-ob-del="${i}" title="Устгах">✕</button>` : ''}
+  </div>`;
+  const side = (title, rows, total, cls) => `<div class="ob-side">
+    <div class="ob-hd ${cls}">${title}</div>
+    ${rows.length ? rows.map((r, i) => row(r, calc.assets.concat(calc.liabs).indexOf(r))).join('') : '<div class="ob-empty">мөр алга</div>'}
+    <div class="ob-row ob-total"><span class="ob-l">Нийт</span><b class="ob-v">${m(total)}</b></div>
+  </div>`;
+
+  const gaps = fr ? [] : openingBalanceGaps();
+  const gapHtml = gaps.length ? `<div class="ob-gaps"><b>⚠ Дутуу байгаа зүйлс</b>${gaps.map(g => `<div>${escapeHtml(g)}</div>`).join('')}</div>` : '';
+  const manualAdd = (!fr && canEdit) ? `<div class="ob-add">
+      <input type="text" id="ob-lbl" class="ui-raw ob-i" placeholder="Мөрийн нэр (ж: НД-ийн өглөг)">
+      <input type="text" inputmode="numeric" id="ob-amt" class="ui-raw ob-i money-input" placeholder="Дүн">
+      <select id="ob-side" class="ui-raw ob-i"><option value="liab">Өр төлбөр</option><option value="asset">Хөрөнгө</option></select>
+      <button class="btn" id="ob-add">+ Нэмэх</button>
+    </div>` : '';
+  const drift = (fr && live) ? (() => {
+    const d = live.equity - calc.equity;
+    return d ? `<div class="ob-drift">📊 Өнөөдрийн тоогоор өмч <b>${m(live.equity)}</b> (хөлдөөснөөс ${d > 0 ? '+' : ''}${m(d)} зөрүүтэй). Нээлтийн үлдэгдэл нь ХӨЛДСӨН хэвээр — зөрүү нь түүнээс хойших үйл ажиллагаа.</div>` : '';
+  })() : '';
+  const act = fr
+    ? `<div class="ob-froz">🔒 <b>${escapeHtml(String(fr.date))}</b>-ний байдлаар хөлдөөсөн · ${escapeHtml(String(fr.at || '').slice(0, 10))}${fr.by ? ' · ' + escapeHtml(memberName(fr.by) || String(fr.by)) : ''}
+        ${canEdit ? '<button class="btn btn-danger ob-unfreeze" id="ob-unfreeze">🔓 Нээх</button>' : ''}</div>`
+    : (canEdit ? `<div class="ob-act">
+        <label class="ob-dl">Огноо <input type="date" id="ob-date" class="ui-raw ob-i" value="${escapeHtml(date)}"></label>
+        <button class="btn btn-primary" id="ob-freeze">🔒 Нээлтийн үлдэгдэл болгож хөлдөөх</button></div>` : '');
+
+  return `<div class="ob-wrap">
+    <div class="ob-top"><div><div class="ob-title">⚖️ Нээлтийн баланс</div>
+      <div class="ob-sub">${escapeHtml(date)}-ний байдлаар · нягтлан бодох бүртгэлийн эхлэл</div></div></div>
+    ${gapHtml}
+    <div class="ob-cols">
+      ${side('ХӨРӨНГӨ', calc.assets, calc.totalAssets, 'ob-a')}
+      ${side('ӨР ТӨЛБӨР', calc.liabs, calc.totalLiabs, 'ob-b')}
+    </div>
+    <div class="ob-eq"><span>ӨМЧ <span class="ob-n">хөрөнгө − өр төлбөр · үлдэгдлээр гарна</span></span>
+      <b class="${calc.equity < 0 ? 'ob-neg' : ''}">${m(calc.equity)}</b></div>
+    ${manualAdd}${act}${drift}
+    <div class="ob-note">Агуулах нь ЗӨВХӨН 2 гарын үсгээр баталгаажсан өртгөөр орсон. Өмч нь үлдэгдлээр гардаг тул баланс үргэлж тэнцэнэ.</div>
+  </div>`;
+}
+function attachOpeningBalanceHandlers() {
+  document.getElementById('ob-add')?.addEventListener('click', async () => {
+    const lbl = (document.getElementById('ob-lbl')?.value || '').trim();
+    const amt = moneyVal(document.getElementById('ob-amt'));
+    const sd = document.getElementById('ob-side')?.value === 'asset' ? 'asset' : 'liab';
+    if (!lbl || !amt) { showToast('Нэр ба дүнг бөглөнө үү', 'warn', 2500); return; }
+    await obSaveDraft({ manual: obManual().concat([{ label: lbl, amount: amt, side: sd }]) });
+  });
+  document.querySelectorAll('[data-ob-del]').forEach(b => b.addEventListener('click', async () => {
+    const all = openingBalanceCalc(openingBalanceAuto(), obManual());
+    const r = all.assets.concat(all.liabs)[Number(b.dataset.obDel)];
+    if (!r || r.auto) return;
+    await obSaveDraft({ manual: obManual().filter(x => !(x.label === r.label && Number(x.amount) === r.amount)) });
+  }));
+  document.getElementById('ob-date')?.addEventListener('change', (e) => obSaveDraft({ date: e.target.value }));
+  document.getElementById('ob-freeze')?.addEventListener('click', async () => {
+    const date = document.getElementById('ob-date')?.value || obDefaultDate();
+    const c = openingBalanceCalc(openingBalanceAuto(), obManual());
+    if (!c.totalAssets) { showToast('Хөрөнгийн мөр алга — хөлдөөх утгагүй', 'warn', 3000); return; }
+    // ⚠ Буцаах боломжтой ч түүнээс хойших бүх тайлан үүн дээр суурилна — ЗААВАЛ баталгаажуулна.
+    if (!await showConfirm(`${date}-ний байдлаар нээлтийн үлдэгдлийг хөлдөөх үү?\n\nХөрөнгө ${fmtMoney(c.totalAssets)} · Өр ${fmtMoney(c.totalLiabs)} · Өмч ${fmtMoney(c.equity)}\n\nЭнэ тоо нягтлан бодох бүртгэлийн ЭХЛЭЛ болно. Дараа нь нээж засаж болно, гэхдээ түүнээс хойших бүх тайлан өөрчлөгдөнө.`,
+      { title: 'Нээлтийн үлдэгдэл', okText: 'Хөлдөөх' })) return;
+    const rec = { at: new Date().toISOString(), by: state.me, date,
+                  rows: c.assets.concat(c.liabs).map(r => ({ label: r.label, amount: r.amount, side: r.side, note: r.note || '', auto: !!r.auto })),
+                  totals: { assets: c.totalAssets, liabs: c.totalLiabs, equity: c.equity } };
+    state.appConfig = state.appConfig || {}; state.appConfig[OB_KEY] = rec;
+    try { await saveAppConfig(OB_KEY, rec); showToast('Нээлтийн үлдэгдэл хөлдөлөө', 'success', 2500); }
+    catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
+    render();
+  });
+  document.getElementById('ob-unfreeze')?.addEventListener('click', async () => {
+    if (!await showConfirm('Нээлтийн үлдэгдлийг нээх үү?\n\nТүүнээс хойших БҮХ тайлангийн суурь өөрчлөгдөнө.',
+      { title: 'Нээлтийн үлдэгдэл', okText: 'Нээх', danger: true })) return;
+    state.appConfig = state.appConfig || {}; state.appConfig[OB_KEY] = null;
+    try { await saveAppConfig(OB_KEY, null); showToast('Нээлээ', 'success', 2000); }
+    catch (e) { showToast('Алдаа: ' + e.message, 'error', 4000); }
+    render();
+  });
+}
 function receivablesData() {
   const today = todayStr();
   const items = [];

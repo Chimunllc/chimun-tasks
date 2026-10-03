@@ -7865,6 +7865,49 @@ select.no-asar-len {
   border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
   color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
 }
+/* ─── ⚖️ Нээлтийн баланс ─── */
+.ob-wrap { padding: var(--space-1); }
+.ob-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2);
+  flex-wrap: wrap; margin-bottom: var(--space-3); }
+.ob-title { font-weight: 800; font-size: var(--fs-lg); }
+.ob-sub { font-size: var(--fs-xs); color: var(--muted); }
+.ob-gaps { border: 1px solid var(--warn); background: var(--warn-soft); color: var(--warn);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3);
+  font-size: var(--fs-sm); line-height: 1.7; }
+.ob-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: var(--space-3); }
+.ob-side { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
+.ob-hd { padding: var(--space-2) var(--space-3); font-weight: 700; font-size: var(--fs-sm);
+  letter-spacing: .4px; border-bottom: 1px solid var(--line); }
+.ob-a { color: var(--primary); }
+.ob-b { color: var(--warn); }
+.ob-row { display: flex; align-items: baseline; gap: var(--space-2); padding: 8px var(--space-3);
+  border-bottom: 1px solid var(--line); font-size: var(--fs-md); }
+.ob-l { flex: 1; min-width: 0; color: var(--text-soft); display: flex; flex-direction: column; }
+.ob-n { font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
+.ob-v { font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--text); }
+.ob-total { border-bottom: none; border-top: 1px solid var(--border); background: var(--panel-hover);
+  font-size: var(--fs-base); }
+.ob-total .ob-l { color: var(--text); font-weight: 700; }
+.ob-empty { padding: var(--space-3); color: var(--muted); font-size: var(--fs-sm); text-align: center; }
+.ob-x { padding: 0 7px; font-size: var(--fs-xs); flex-shrink: 0; }
+.ob-eq { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3);
+  margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--primary);
+  border-radius: var(--r-lg); background: var(--panel); font-size: var(--fs-base); font-weight: 700; }
+.ob-eq b { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; color: var(--primary); }
+.ob-eq .ob-neg { color: var(--danger); }
+.ob-add { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
+.ob-i { padding: 7px var(--space-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--panel); color: var(--text); font-size: var(--fs-md); }
+.ob-add #ob-lbl { flex: 2 1 180px; } .ob-add #ob-amt { flex: 1 1 110px; text-align: right; }
+.ob-act { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-top: var(--space-3); }
+.ob-dl { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.ob-froz { margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--ok);
+  border-radius: var(--r-md); background: var(--ok-soft); color: var(--ok); font-size: var(--fs-sm);
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ob-unfreeze { padding: 2px 10px; font-size: var(--fs-xs); }
+.ob-drift { margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--text-soft); line-height: 1.6; }
+.ob-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-3); line-height: 1.5; }
+
 /* ─── 💼 Эзний хөрөнгө оруулалт (Өртөг ба хөрөнгө дэлгэц) ─── */
 .oc-card { background: var(--panel); border: 1px solid var(--primary); border-radius: var(--r-xl);
   padding: var(--space-4); margin-top: var(--space-3); }

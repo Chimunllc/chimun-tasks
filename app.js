@@ -13215,17 +13215,29 @@ function overtimeRate() {
 }
 /* Нэг хүний сарын цалингийн задаргаа. ЦЭВЭР функц (нормыг гаднаас өгч болно) тул тестлэгдэнэ.
    Буцаах: { base, ndsh, pit, netBase, otMins, hourly, otRate, otPay, delivery, total } */
+/* ⛔ НОРМД ХҮРЭЭГҮЙ БОЛ СУУРЬ ЦАЛИН АЖИЛЛАСАН ЦАГААР (2026-10-03, CEO: «184ц болзол
+   хангаагүй байгаа ч үндсэн цалингаар бодогдсон — ажилласан цагаар нь гаргаж өгнө үү»).
+   Норм = бүтэн суурь цалингийн НӨХЦӨЛ. Дутуу бол суурь × ажилласан ÷ норм — илүү
+   цагтай ТЭГШ хэмтэй: хоёулаа ижил цагийн хөлсөөр (суурь ÷ норм).
+   ⛔ Цаг МЭДЭГДЭХГҮЙ (`workedMins` = null: ирц ачаалагдаагүй, эсвэл тэр сард огт
+     бүртгэлгүй) бол ХАСАХГҮЙ — мэдэхгүйг 0 цаг гэж үзвэл цалин чимээгүй тэглэгдэнэ.
+     Ирц бүртгүүлдэггүй цалинтай хүн «ирц бүртгүүлээгүй» анхааруулгаар ил гарна.
+   ⚠ Суутгал нь ЦАГААР БОДСОН суурьаас — олгоогүй мөнгөнөөс татвар суутгахгүй. */
 function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate) {
   base = Math.max(0, Number(base) || 0);
   const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins();
-  const d = salaryNet(base, deduct);                       // суутгал ЗӨВХӨН суурьд
-  const otMins = Math.max(0, Math.round((Number(workedMins) || 0) - norm));
+  const known = workedMins !== null && workedMins !== undefined && isFinite(Number(workedMins));
+  const worked = known ? Math.max(0, Number(workedMins)) : 0;
+  const shortMins = known ? Math.max(0, Math.round(norm - worked)) : 0;
+  const earned = shortMins > 0 ? Math.round(base * worked / norm) : base;
+  const d = salaryNet(earned, deduct);                     // суутгал ЗӨВХӨН (цагаар бодсон) суурьд
+  const otMins = known ? Math.max(0, Math.round(worked - norm)) : 0;
   const hourly = norm > 0 ? base / (norm / 60) : 0;
   const r = (rate === undefined || rate === null) ? overtimeRate() : (Number(rate) || 0);
   const otPay = Math.round(otMins / 60 * hourly * r);
   const delivery = Math.max(0, Math.round(Number(deliveryAmt) || 0));
   return {
-    base, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
+    base, earned, shortMins, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
     otMins, hourly: Math.round(hourly), otRate: r, otPay,
     delivery, total: d.net + otPay + delivery,
   };
@@ -13271,7 +13283,7 @@ function renderAttendanceMonth(month) {
   let spTotal = 0;
   // Цалингийн мөр — хүн бүрийн доор. Мөнгө нь зөвхөн эрхтэйд; ИЛҮҮ ЦАГ нь бүгдэд (цаг = мөнгө биш).
   const payVis = canSeeSalary();
-  if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
+  if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   const list = rows.map(r => {
     const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
     const pctColor = pct >= 100 ? 'var(--ok)' : pct >= 80 ? 'var(--text-soft)' : 'var(--warn)';
@@ -13291,7 +13303,7 @@ function renderAttendanceMonth(month) {
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
     const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
-    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · шатны хөлс ОРООГҮЙ' : ''})</span>`
+    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · шатны хөлс ОРООГҮЙ' : ''})</span>`
       + (rPaid ? ` <span class="sp-sub">— олгосон ${fmtMoney(rPaid)} · үлдэгдэл <b>${fmtMoney(Math.max(0, pb.total - rPaid))}</b></span>` : ' <span class="sp-sub">— олгоогүй</span>')
       + `</div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
@@ -13453,7 +13465,8 @@ function myPayCardHtml(me) {
   const w = payMonthMins(recs, month);
   const base = Number((state.salaries || {})[key]) || 0;
   const db = driverBonus(key, month);
-  const b = monthPayBreakdown(base, salaryDeductOn(key), w.mins, workNormMins(), db.amount);
+  // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
+  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(), db.amount);
   const normH = workNormDays() * 8;
   const paid = salaryPaidFor(key, month);
   const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
@@ -13467,9 +13480,11 @@ function myPayCardHtml(me) {
   const dedRows = (b.ndsh || b.pit)
     ? row('− НДШ', `−${fmtMoney(b.ndsh)}`, 'pay-minus') + row('− ХХОАТ', `−${fmtMoney(b.pit)}`, 'pay-minus')
     : row('Суутгал', 'суутгалгүй', 'pay-minus');
+  // Нормоос дутуу бол суурь нь ажилласан цагаар буурна — ИЛ мөр болж харагдана
+  const shortRow = b.shortMins > 0
+    ? row(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.base - b.earned)}`, 'pay-minus') : '';
   const otRow = b.otMins > 0
-    ? row(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus')
-    : row('⏱ Илүү цаг', `нормоос ${attHM(Math.max(0, workNormMins() - w.mins))} дутуу`, 'pay-zero');
+    ? row(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : '';
   const dlvRow = db.count
     ? row(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus')
     : '';
@@ -13477,7 +13492,7 @@ function myPayCardHtml(me) {
   const spNote = sp.total
     ? `<div class="pay-note">📦 Шатны хөлс <b>${fmtMoney(sp.total)}</b> — энэ дүнд <b>ОРООГҮЙ</b>, тусдаа тооцогдоно.</div>` : '';
   const noOutNote = w.noOut
-    ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул илүү цаг дутуу байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
+    ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул ${b.shortMins ? '<b>цалин дутуу бодогдсон</b>' : 'илүү цаг дутуу'} байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
   // Олголтын МӨР бүрийг ил жагсаана — «олгосон 600,000₮» гэсэн ганц тоо нь хэзээ,
   // хэдэн удаа, ямар утгаар орсныг хэлдэггүй тул ажилтан данс нь шалгаж чаддаггүй байв.
   const pays = salaryPaymentsFor(state.salaryPayments, key, month);
@@ -13497,6 +13512,7 @@ function myPayCardHtml(me) {
     <div class="pay-total-s">${escapeHtml(month)} · гарт очих дүн</div>
     <div class="pay-rows">
       ${row('Суурь цалин', fmtMoney(b.base))}
+      ${shortRow}
       ${dedRows}
       ${row('= Цэвэр суурь', `<b>${fmtMoney(b.netBase)}</b>`, 'pay-sub')}
       ${otRow}
@@ -13506,7 +13522,7 @@ function myPayCardHtml(me) {
     </div>
     ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`, 'pay-worked')}
     ${noOutNote}${spNote}
-    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. Нэмэгдэлд суутгал тооцохгүй.</div>
+    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. Нэмэгдэлд суутгал тооцохгүй.</div>
   </div>`;
 }
 function renderMyAttend() {
@@ -13515,7 +13531,7 @@ function renderMyAttend() {
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta
   // Цалингийн карт: суурь цалин + олголт (RLS нь ӨӨРИЙН мөрийг л өгнө) + сонгосон сарын ирц.
-  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
+  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   const payM = state.myPayMonth || payMonthDefault(todayStr());
   if (!Array.isArray((state.myPayRecs || {})[payM]) && !(state.myPayErr && state.myPayErr.month === payM)) setTimeout(() => loadMyPayMonth(payM), 0);
   const recs = state.myAttendance || [];
@@ -16830,6 +16846,33 @@ async function loadSalaryPayments() {
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadSalaryPayments', e); }
 }
+/* ЦАЛИНГИЙН ТУЛГАЛТЫН САНХҮҮГИЙН МӨР — ГАНЦ эх сурвалж (2026-10-03).
+   Олголт аль сарынх (`[#fp]` → ноогдох сар) ба хуулгаас шууд орсон олголт (7100)
+   хоёулаа санхүүгийн мөрөөс уншигдана. Бүрэн бүртгэл (`state.financeRequests`) нь
+   ЗӨВХӨН CEO/нягтланд ирдэг тул цалин хардаг бусад хүнд (нярав) хоосон байж,
+   «8 сар 2р хагас» 9 сард орж, 9/21-ний олголт огт харагдахгүй байв — ажилтны
+   өөрийн карт ч мөн адил. `v_salary_fin` (db/salary_fin.sql) цалингийн мөрийг л
+   эрхтэй хүнд (эсвэл ӨӨРИЙНХИЙГ ажилтанд) өгнө.
+   ⛔ Цалингийн тулгалтад `state.financeRequests`-ийг ШУУД бүү уншаа — энийг дууд.
+   ⚠ Бүрэн бүртгэл байвал ТҮҮНИЙГ авна: локал засвар (ноогдох сар сольсон г.м.)
+     тэнд шууд тусдаг, харагдац дараагийн ачааллыг хүлээнэ. */
+function salaryFinSource() {
+  const fr = state.financeRequests;
+  if (!state.finGated && Array.isArray(fr) && fr.length) return fr;
+  if (Array.isArray(state.salaryFinRows)) return state.salaryFinRows;
+  return Array.isArray(fr) ? fr : [];
+}
+async function loadSalaryFinRows() {
+  if (!DB_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/v_salary_fin?select=*&order=requested_at.desc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.salaryFinRows = (await r.json()).map(normalizeFinance);
+    state._acctOwners = null;   // дансны эзний кэш шинэ мөрөөр дахин бодогдоно
+    if (typeof render === 'function') render();
+  } catch (e) { dataLoadFailed('salary-fin', e); }
+}
 async function saveSalary(personKey, amount) {
   if (!personKey) return;
   state.salaries = state.salaries || {}; state.salaries[personKey] = Number(amount) || 0;
@@ -16899,7 +16942,7 @@ function salaryPayMonth(p, finRows) {
      дуудна. Эс бөгөөс картад «олгосон 600,000₮» гэж бичээд доор нь 3 мөр 750,000₮
      гарч, аль нь үнэн болохыг хэн ч мэдэхгүй болно. ИНВАРИАНТ тест хоёрыг тулгана. */
 function salaryPaymentsFor(rows, personKey, ym, finRows) {
-  const fin = finRows || state.financeRequests || [];
+  const fin = finRows || salaryFinSource();
   const own = (rows || [])
     .filter(p => p && p.person_key === personKey && salaryPayMonth(p, fin) === ym)
     .map(p => {
@@ -17022,7 +17065,7 @@ function empAcctOwners(team, finRows) {
 // Рендер бүрд 150 нэр × 1,400 гүйлгээ дахин тулгахгүй — дата өөрчлөгдөхөд л дахин бодно.
 function empAcctOwnersCached(finRows) {
   const tm = (typeof TEAM !== 'undefined' ? TEAM : []) || [];
-  const fin = finRows || state.financeRequests || [];
+  const fin = finRows || salaryFinSource();
   const sig = tm.length + '|' + fin.length;
   if (!state._acctOwners || state._acctOwnersSig !== sig) {
     state._acctOwners = empAcctOwners(tm, fin); state._acctOwnersSig = sig;
@@ -17035,7 +17078,7 @@ function empAcctOwnersCached(finRows) {
 function empAcctsForPerson(key, team, finRows) {
   if (!key) return [];
   const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
-  const fin = finRows || state.financeRequests || [];
+  const fin = finRows || salaryFinSource();
   const own = empAcctOwners(tm, fin);
   const mm = tm.find(x => (typeof personKey === 'function' ? personKey(x) : '') === key);
   const cur = String((mm && mm.bank_account) || '').replace(/\D/g, '');
@@ -17280,7 +17323,7 @@ function payrollAttMins(recs) {
   return out;
 }
 function renderSalary() {
-  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
+  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   // Данс/РД нь эмзэг сувгаар ирдэг. Өмнө нь зөвхөн «Ажилчид» хуудсаар татагддаг байсан тул
   // шууд Цалин руу орвол бүх данс «бүртгэгдээгүй» харагддаг байв. Эрхийг loadStaffPins шалгана.
   if (!state._staffPinsLoaded) loadStaffPins();
@@ -17305,7 +17348,8 @@ function renderSalary() {
   const calc = roster.map(r => {
     const w = attMins[r.k] || { mins: 0, days: 0, noOut: 0 };
     const db = driverBonus(r.k, ym);
-    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), w.mins, normMins, db.amount);
+    // ⛔ Ирц ачаалагдаагүй / тэр сард огт бүртгэлгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 биш
+    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, normMins, db.amount);
     return { ...r, w, db, b, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
   });
   /* Үлдэгдэл ба илүү олголтыг ХҮН БҮРЭЭР нийлбэрлэнэ — нийт олгохоос нийт
@@ -17397,10 +17441,11 @@ function renderSalary() {
     const memoBtn = (payable && owed > 0) ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : '';
     // ⛔ Утгагүй мөр БИЧИХГҮЙ: суутгалгүй бөгөөд нэмэгдэлгүй бол «цэвэр суурь» нь
     //   «нийт олгох»-той ЯГ ижил тоо — хоёуланг бичих нь нүдийг л төөрүүлнэ.
-    const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery;
+    const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery || b.shortMins;
     const money = !c.amount ? `<div class="pb-nosal">⚠ Суурь цалин тохируулаагүй — илүү цаг тооцогдохгүй.</div>` : `
       <div class="pay-rows pb-rows">
         ${hasParts ? line('Суурь цалин', fmtMoney(b.base)) : ''}
+        ${b.shortMins ? line(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.base - b.earned)}`, 'pay-minus') : ''}
         ${(dOn && (b.ndsh || b.pit)) ? line('− НДШ · ХХОАТ', `−${fmtMoney(b.ndsh + b.pit)}`, 'pay-minus') : ''}
         ${b.otMins ? line(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : ''}
         ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}
@@ -17410,7 +17455,7 @@ function renderSalary() {
         ${over > 0 ? line('⚠ Илүү олгосон', `<b>${fmtMoney(over)}</b>`, 'pay-over') : ''}
       </div>`;
     const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Шатны хөлс ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ</span></div>` : '';
-    const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг, илүү цаг дутуу.</div>` : '';
+    const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг тоологдсон${b.shortMins ? ', <b>цалин дутуу бодогдсон</b>' : ', илүү цаг дутуу'}. «🙋 Цаг гаргуулах»-аар засна.</div>` : '';
     return `<details class="ac-row pb-card" data-sal-haystack="${escapeHtml(((m.name || '') + ' ' + (m.role || '')).toLowerCase())}">
       ${sum}
       <div class="pb-body">
@@ -17429,7 +17474,7 @@ function renderSalary() {
 function attachSalaryHandlers() {
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
-  document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); showToast('Шинэчилж байна…', 'info', 1200); });
+  document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('sal-search');
   if (se) se.addEventListener('input', () => {
     state.salarySearch = se.value;
@@ -30693,6 +30738,26 @@ function cooMonthsYtd(month, start) {
   }
   return out;
 }
+/* COO-гийн САР БҮРИЙН ДЭВТЭР (2026-10-03, CEO: «сараар нь гаргаад авсан нь хасагдаад
+   явдаг байхаар»). ЦЭВЭР функц — тестлэгдэнэ.
+   ⛔ Эрх нь ХУРИМТЛАГДСАН ашгаас (алдагдалтай сар өмнөх ашгийг бууруулна) тул сарын
+     эрх = хуримтлагдсан эрхийн ӨСӨЛТ: share(Σашиг..M) − share(Σашиг..M−1). Сар бүрийн
+     ашгаас тусад нь бодвол алдагдлыг үл тоож эрх хиймлээр өснө. Ингэснээр сарын
+     эрхийн нийлбэр = хуримтлагдсан эрх ЯГ (ИНВАРИАНТ тест).
+   ⚠ Авсан = мөнгө ГАРСАН сараар (банкны огноо) — «авсан нь хасагдаад явна». Сүүлийн
+     мөрийн үлдэгдэл нь хуримтлагдсан самбарын «= Үлдэгдэл»-тэй ЯГ ижил. */
+function cooLedger(months, netByMonth, paidList, pct) {
+  let cumNet = 0, cumDue = 0, cumPaid = 0;
+  return (months || []).map(m => {
+    const net = Number((netByMonth || {})[m]) || 0;
+    cumNet += net;
+    const dueNow = cooShareAmount(cumNet, pct);
+    const due = dueNow - cumDue; cumDue = dueNow;
+    const paid = (paidList || []).filter(x => String(x.d || '').slice(0, 7) === m).reduce((t, x) => t + (Number(x.amount) || 0), 0);
+    cumPaid += paid;
+    return { m, net, due, paid, bal: cumDue - cumPaid };
+  });
+}
 function renderCooSalary() {
   // Тохиргоо + дата lazy ачаалал
   if (state.cooShare === undefined) { state.cooShare = null; loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
@@ -30717,7 +30782,11 @@ function renderCooSalary() {
   const _zero = { inc: 0, exp: 0, net: 0 };
   const _ytdM = cooMonthsYtd(month, _cooSt);
   const cur = { ac: _before ? _zero : cooNetForMonths([month], _cooBr, 'accrual'), ca: _before ? _zero : cooNetForMonths([month], _cooBr, 'cash') };
-  const ytd = { ac: cooNetForMonths(_ytdM, _cooBr, 'accrual'), ca: cooNetForMonths(_ytdM, _cooBr, 'cash') };
+  // Сар бүрийн мөнгөн ашиг — дэвтэрт хэрэгтэй; хуримтлагдсан нь ЭДГЭЭРИЙН нийлбэр
+  // (`cooNetForMonths` сараар нэмэгддэг тул ижил тоо, finBranchPnl 2 удаа дуудагдахгүй).
+  const _perM = _ytdM.map(m => ({ m, r: cooNetForMonths([m], _cooBr, 'cash') }));
+  const _caSum = _perM.reduce((t, x) => ({ inc: t.inc + x.r.inc, exp: t.exp + x.r.exp, dep: t.dep + (x.r.dep || 0) }), { inc: 0, exp: 0, dep: 0 });
+  const ytd = { ac: cooNetForMonths(_ytdM, _cooBr, 'accrual'), ca: { ..._caSum, net: _caSum.inc - _caSum.exp } };
   const cooName = cooKey ? ((typeof memberName === 'function' && memberName(cooKey)) || cfg.name || cooKey) : '—';
   const dataReady = (state.appOrders && state.appOrders.length != null) && (state.financeRequests !== undefined);
 
@@ -30777,21 +30846,31 @@ function renderCooSalary() {
     const _dueAc = cooShareAmount(ytd.ac.net, pct), _dueCa = cooShareAmount(ytd.ca.net, pct);
     const _balAc = _dueAc - _paid.total, _balCa = _dueCa - _paid.total;
     const _bcol = v => v > 0 ? 'coo-bal-due' : v < 0 ? 'coo-bal-over' : '';
+    const _led = cooLedger(_ytdM, Object.fromEntries(_perM.map(x => [x.m, x.r.net])), _paid.list, pct);
+    const _nowM = todayStr().slice(0, 7);
+    const _sg = v => v > 0 ? '+' + fmtMoney(v) : v < 0 ? fmtMoney(v) : '—';
+    const ledger = (cooKey || _cooAcct) && _led.length ? `<div class="coo-led">`
+      + `<div class="coo-led-h coo-led-hm">Сар</div><div class="coo-led-h">Эрх (${pct}%)</div><div class="coo-led-h">Авсан</div><div class="coo-led-h">Үлдэгдэл</div>`
+      + _led.map(x => `<div class="coo-led-m">${escapeHtml(x.m)}${x.m === _nowM ? ' <span class="coo-led-now">явж буй</span>' : ''}<span class="coo-led-net">ашиг ${fmtMoney(x.net)}</span></div>`
+        + `<div class="coo-led-v ${x.due < 0 ? 'coo-led-neg' : 'coo-led-pos'}">${_sg(x.due)}</div>`
+        + `<div class="coo-led-v">${x.paid ? fmtMoney(-x.paid) : '—'}</div>`
+        + `<div class="coo-led-v coo-led-bal ${_bcol(x.bal)}">${fmtMoney(x.bal)}</div>`).join('')
+      + `<div class="coo-led-m coo-led-t">Нийт</div><div class="coo-led-v coo-led-t">${fmtMoney(_dueCa)}</div><div class="coo-led-v coo-led-t">${fmtMoney(-_paid.total)}</div><div class="coo-led-v coo-led-t coo-led-bal ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div>`
+      + `</div>` : '';
     h += `<div class="coo-panel">`
-      + `<div class="coo-panel-h">💵 Олгосон цалин · ${escapeHtml(_cooSt)} → ${escapeHtml(month)}</div>`
+      + `<div class="coo-panel-h">💵 Сар бүрээр · эрх − авсан = үлдэгдэл</div>`
       + (!cooKey && !_cooAcct
         ? `<div class="coo-paid-none">⚙️ COO ажилтан сонгоогүй байна — доорх <b>Тохиргоо</b>-оос ажилтныг сонгож (мөн дансны дугаарыг бичиж) <b>Хадгалах</b> дарна уу. Түүний дараа олгосон цалин, үлдэгдэл харагдана.</div>`
         : '')
+      + ledger
+      /* Гүйлгээ бүрээр — дэвтрийн «Авсан» баганын задаргаа. Эвхэгдсэн: тоо нь дээр
+         аль хэдийн байгаа тул нээлттэй жагсаалт нь давхардана. */
       + (_paid.list.length
-        ? `<div class="coo-paid">${_paid.list.map(x => `<div class="coo-paid-d">${escapeHtml(x.d.slice(5))}</div><div class="coo-paid-m">${escapeHtml(x.memo || '—')}</div><div class="coo-paid-a">${fmtMoney(x.amount)}</div>`).join('')}`
-          + `<div class="coo-paid-d coo-paid-t"></div><div class="coo-paid-m coo-paid-t">Нийт олгосон · ${_paid.list.length} гүйлгээ</div><div class="coo-paid-a coo-paid-t">${fmtMoney(_paid.total)}</div></div>`
+        ? `<details class="coo-paid-det"><summary>Авсан гүйлгээ бүрээр · ${_paid.list.length}</summary><div class="coo-paid">${_paid.list.map(x => `<div class="coo-paid-d">${escapeHtml(x.d.slice(5))}</div><div class="coo-paid-m">${escapeHtml(x.memo || '—')}</div><div class="coo-paid-a">${fmtMoney(x.amount)}</div>`).join('')}`
+          + `<div class="coo-paid-d coo-paid-t"></div><div class="coo-paid-m coo-paid-t">Нийт авсан</div><div class="coo-paid-a coo-paid-t">${fmtMoney(_paid.total)}</div></div></details>`
         : ((cooKey || _cooAcct) ? `<div class="coo-paid-none">Энэ хугацаанд цалин олгоогүй.</div>` : ''))
-      + `<div class="coo-cmp coo-bal">`
-      + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">✓ Орсон мөнгөөр</div><div class="coo-hd coo-hd-ref">Ноогдохоор</div>`
-      + `<div class="coo-lbl">Ашгийн эрх (${pct}%)</div><div class="coo-v">${fmtMoney(_dueCa)}</div><div class="coo-v">${fmtMoney(_dueAc)}</div>`
-      + `<div class="coo-lbl">− Олгосон</div><div class="coo-v">${fmtMoney(-_paid.total)}</div><div class="coo-v">${fmtMoney(-_paid.total)}</div>`
-      + `<div class="coo-lbl coo-share">= Үлдэгдэл</div><div class="coo-v coo-share ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div><div class="coo-v coo-share ${_bcol(_balAc)}">${fmtMoney(_balAc)}</div>`
-      + `</div>`
+      // Ноогдох суурь — ЗӨВХӨН лавлагаа (ашгийн эрхийн үндэс нь орсон мөнгө)
+      + ((cooKey || _cooAcct) ? `<div class="coo-led-ref">Ноогдохоор бодвол (лавлагаа): эрх ${fmtMoney(_dueAc)} · үлдэгдэл <b class="${_bcol(_balAc)}">${fmtMoney(_balAc)}</b></div>` : '')
       + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон гүйлгээ — цалин (7100 г.м.) БА ашгийн урамшуулал (<b>7700</b>, эсвэл 6900), мөнгө гарсан сараар. Нэрээр ба ${_cooAcct ? `<b>данс ${escapeHtml(_cooAcct)}</b>-аар` : 'дансаар'} тулгана — хуулгаас ирсэн мөрд нэр биш дансны дугаар бичигддэг. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлнэ — 5-р сарын цалинг 6-д олгосон мөр энд орсон байвал гараар хасч тооцно уу.</div>`
       + `</div>`;
   }
@@ -42210,7 +42289,7 @@ async function bootApp() {
   loadBankAccounts();   // Данс & Карт бүртгэл (хуулгаар ангилах нь эндээс данс→салбарыг таьнна)
   loadExpenseLearn();   // Хуваалцсан суралцлага (худалдагч→салбар+ангилал, бүх компанид)
   loadClosedMonths();   // 🔒 Хаасан сар — түгжээ нь бичих БҮХ замд (төлбөр/зардал/хуулга) ажиллах ёстой
-  if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); }   // Сарын цалин (CEO/нягтлан)
+  if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }   // Сарын цалин (CEO/нягтлан)
   state._initialLoading = false;
   generateNotifications();
   render();

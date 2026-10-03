@@ -16924,6 +16924,13 @@ function salaryPaymentsFor(rows, personKey, ym, finRows) {
      энд оруулбал тэр олголт ХОЁР газар тоологдоно.
    ⚠ Давхардлыг `[#fp]`-ээр хаана: олголтын бичлэг аль хэдийн байвал АВАХГҮЙ. */
 const SALARY_FIN_CAT = '7100';
+/* ⛔ ЗЭЭЛ = ЦАЛИНГИЙН ОЛГОЛТ БИШ (2026-10-03). Амьд датаар «Цалингийн зээл»
+   6,000,000₮ нь 7100 ангиллаар бүртгэгдсэн — олголт гэж тоолбол тэр сарын цалин
+   бүрэн төлөгдсөн, бүр ИЛҮҮ төлөгдсөн мэт харагдана (зээл нь хожим эргэж
+   төлөгдөх өр). Ангиллаар нь ялгах боломжгүй тул УТГААР шүүнэ.
+   ⚠ Зээлийн суутгал (цалингаас хасах) бол ӨӨР ойлголт — энд хамаарахгүй. */
+const SALARY_LOAN_RE = /зээл/i;
+function salaryIsLoan(purpose) { return SALARY_LOAN_RE.test(String(purpose || '')); }
 function _salNameKey(s) { return String(s || '').replace(/[\s.·,]/g, '').toUpperCase(); }
 /* ── АЖИЛТНЫ ДАНС = ОДООГИЙН + ХУУЛГААР ТАНИГДСАН (2026-10-03) ──────────────
    `employees.bank_account` нь ЗӨВХӨН одоогийн данс — ажилтан дансаа «Профайл»-аас
@@ -16963,15 +16970,16 @@ function empNameFullKey(name) {
 }
 function empAcctOwners(team, finRows) {
   const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
-  const reg = {}, regList = [], byName = {}, byFull = {};
+  const reg = {}, regList = [], byName = {}, byFull = {}, byWhole = {};
+  const put = (bag, kk, k) => { if (!kk) return; (bag[kk] = bag[kk] || []); if (!bag[kk].includes(k)) bag[kk].push(k); };
   tm.forEach(m => {
     const k = (typeof personKey === 'function' ? personKey(m) : ''); if (!k) return;
     const a = String(m.bank_account || '').replace(/\D/g, '');
     if (a) { reg[a] = k; if (!regList.some(x => x.a === a && x.k === k)) regList.push({ a, k }); }
-    const nk = (typeof cooNameKey === 'function' ? cooNameKey(m.name) : '');
-    if (nk) { (byName[nk] = byName[nk] || []); if (!byName[nk].includes(k)) byName[nk].push(k); }
-    const fk = empNameFullKey(m.name);
-    if (fk) { (byFull[fk] = byFull[fk] || []); if (!byFull[fk].includes(k)) byFull[fk].push(k); }
+    put(byName, (typeof cooNameKey === 'function' ? cooNameKey(m.name) : ''), k);
+    put(byFull, empNameFullKey(m.name), k);
+    const wk = _salNameKey(m.name);
+    if (wk.length >= 6) put(byWhole, wk, k);   // «ЦБАТЭРДЭНЭ» — бүтэн нэр
   });
   /* Бүртгэлтэй эзнийг олох: ЯГ тэнцүү нь ҮРГЭЛЖ ялна, эс бол суффиксээр.
      ⛔ Хоёр ажилтан таарвал ЮУ Ч буцаахгүй — амьд датаар хоёр хүний профайлд
@@ -16988,36 +16996,38 @@ function empAcctOwners(team, finRows) {
     return ks.length === 1 ? ks[0] : '';
   };
   const ambiguous = Object.keys(byName).filter(nk => byName[nk].length > 1);
-  const nks = Object.keys(byName), fks = Object.keys(byFull);
+  /* ⛔ БИЧВЭРЭЭС ЭЗНИЙГ ОЛОХ = ГУРВАН ШАТ, нарийнаас уруудна. Шат бүрд таарсан
+     БҮХ хүнийг нэгтгэж, ЯГ НЭГ гарвал л таана; хоёр гарвал ДООШ ЯВАХГҮЙ (ЗОГСОНО).
+     ① бүтэн нэр («ЦБАТЭРДЭНЭ») ② инициал + цөм («БХОНГОРЗ») ③ цөм («ХИШИГТО»).
+     ⛔ Нэг нэр нөгөөгийнхөө ДОТОР байж болно: «Б.ХОНГОРЗУЛ» бичвэрт «Ц.Хонгор»
+       (ХОНГОР) ба «Б.Хонгорзул» (ХОНГОРЗ) ХОЁУЛАА таардаг. Хоёрдмол цөмийг зүгээр
+       хасвал ҮЛДСЭН БУРУУ хүн ялж байв (600,000₮ ингэж өөр хүнд тоологдсон). */
+  const tiers = [byWhole, byFull, byName].map(bag => ({ bag, keys: Object.keys(bag) }));
+  const nameOwner = (text) => {
+    const memo = _salNameKey(text);
+    if (!memo) return '';
+    for (const t of tiers) {
+      const hit = {};
+      for (const kk of t.keys) { if (memo.includes(kk)) t.bag[kk].forEach(k => { hit[k] = 1; }); }
+      const ks = Object.keys(hit);
+      if (ks.length === 1) return ks[0];
+      if (ks.length > 1) return '';   // хоёрдмол — доош уруудвал БУРУУ хүн ялна
+    }
+    return '';
+  };
   const guess = {}, bad = {};
   (finRows || []).forEach(r => {
     if (!r || r.status === 'deleted') return;
     if (!/^7[12]00/.test(String(r.category || ''))) return;
     const acct = String(r.beneficiary || '').replace(/\D/g, '');
     if (acct.length < 6 || regOwner(acct)) return;    // бүртгэлтэй данс — таахгүй
-    const memo = _salNameKey(r.purpose);
-    /* ① ИНИЦИАЛ + нэрээр («Б.ХОНГОРЗУЛ») — хамгийн нарийн.
-       ② Нэрийн цөмөөр — таарсан БҮХ цөмийн ХҮМҮҮСИЙГ нэгтгэж, ЯГ НЭГ гарвал л.
-       ⛔ Нэг нэр нөгөөгийнхөө ДОТОР байж болно: «Б.ХОНГОРЗУЛ» утганд «Ц.Хонгор»
-         (ХОНГОР) ба «Б.Хонгорзул» (ХОНГОРЗ) ХОЁУЛАА таардаг. Хоёрдмол цөмийг
-         зүгээр хасвал ҮЛДСЭН БУРУУ хүн ялж байв (600,000₮ ингэж өөр хүнд тоологдсон). */
-    let hit = '';
-    const fh = {};
-    for (const fk of fks) { if (memo.includes(fk)) byFull[fk].forEach(k => { fh[k] = 1; }); }
-    const fks1 = Object.keys(fh);
-    if (fks1.length === 1) hit = fks1[0];
-    else if (fks1.length === 0) {
-      const hits = {};
-      for (const nk of nks) { if (memo.includes(nk)) byName[nk].forEach(k => { hits[k] = 1; }); }
-      const ks = Object.keys(hits);
-      if (ks.length === 1) hit = ks[0];
-    }
+    const hit = nameOwner(r.purpose);
     if (!hit) return;
     if (guess[acct] && guess[acct] !== hit) { bad[acct] = 1; return; }
     guess[acct] = hit;
   });
   Object.keys(bad).forEach(a => { delete guess[a]; });
-  return { reg, guess, ambiguous, regOwner };
+  return { reg, guess, ambiguous, regOwner, nameOwner };
 }
 // Рендер бүрд 150 нэр × 1,400 гүйлгээ дахин тулгахгүй — дата өөрчлөгдөхөд л дахин бодно.
 function empAcctOwnersCached(finRows) {
@@ -17081,6 +17091,7 @@ function salaryFinPayments(finRows, key, ym, paidRows, team, owners) {
   for (const r of list) {
     if (!r || r.status === 'deleted') continue;
     if (String(r.category || '').slice(0, 4) !== SALARY_FIN_CAT) continue;
+    if (salaryIsLoan(r.purpose)) continue;   // ЗЭЭЛ = олголт БИШ (доорх тайлбарыг үз)
     const b = String(r.beneficiary || ''), bd = b.replace(/\D/g, '');
     /* ⚠ Хуулгаас ирсэн мөрд хүлээн авагч нь НЭР («ЭНЭБИШ НИНЖДОЛГОР»), данс нь
        IBAN хэлбэрээр `account_number`-д байдаг (MN41…5029853564) — beneficiary-ээр
@@ -17089,7 +17100,14 @@ function salaryFinPayments(finRows, key, ym, paidRows, team, owners) {
     // ⚠ Данс нь урт/цөм хоёр хэлбэртэй тул `acctSame` (суффикс) -ээр тулгана.
     const acctHit = acct && ((bd && acctSame(bd, acct)) || (ad && acctSame(ad, acct)));
     const guessHit = (bd && own.guess[bd] === key) || (ad && own.guess[ad] === key);
-    if (!(acctHit || (nm && _salNameKey(b) === nm) || guessHit)) continue;
+    /* ⛔ ХҮЛЭЭН АВАГЧ НЭРЭЭР БИЧИГДСЭН МӨРИЙГ АЛДАЖ БОЛОХГҮЙ (2026-10-03).
+       Гараар бүртгэсэн олголтын `beneficiary` нь «Хишигтогтох» гэж инициалгүй
+       бичигддэг атал ажилтны нэр «Б.Хишигтогтох» — ЯГ ТЭНЦҮҮГЭЭР тулгаснаас
+       болж 5–7 сарын олголт (урьдчилгаа ч) самбарт ОГТ гарахгүй байв.
+       `nameOwner` нь бүтэн нэр → инициал+цөм → цөм гэсэн 3 шатаар, хоёрдмол бол
+       ТААХГҮЙ. ⚠ Зөвхөн ДАНС БИШ (нэр) хүлээн авагчид — дансыг дээр тулгасан. */
+    const nameHit = !bd && (own.nameOwner ? own.nameOwner(b) === key : (nm && _salNameKey(b) === nm));
+    if (!(acctHit || nameHit || guessHit)) continue;
     const fp = salaryPayFp(r.justification);
     if (fp && have.has(fp)) continue;
     if ((typeof finAccrualMonth === 'function' ? finAccrualMonth(r) : '') !== ym) continue;

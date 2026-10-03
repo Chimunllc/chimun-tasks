@@ -7875,6 +7875,31 @@ select.no-asar-len {
   border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
   color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
 }
+/* ─── 📈 Орлогын тайлан ─── */
+.is-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-2); margin-bottom: var(--space-3); }
+.is-h { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
+  padding: var(--space-3); }
+.is-hl { font-size: var(--fs-xs); color: var(--muted); }
+.is-hv { font-weight: 800; font-size: var(--fs-xl); margin-top: 2px; font-variant-numeric: tabular-nums;
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.is-hs { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.is-rev { color: var(--primary); } .is-exp { color: var(--warn); } .is-pf { color: var(--ok); }
+.is-d { font-size: var(--fs-xs); font-weight: 600; }
+.is-up { color: var(--ok); } .is-dn { color: var(--danger); }
+.is-r { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  padding: 7px var(--space-3); border-bottom: 1px solid var(--line); font-size: var(--fs-md); }
+.is-l { flex: 1; min-width: 0; color: var(--text-soft); display: flex; flex-direction: column;
+  overflow-wrap: anywhere; }
+.is-v { font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--text); }
+.is-gh { background: var(--panel-hover); font-weight: 700; }
+.is-gh .is-l { color: var(--text); }
+.is-sub { padding-left: var(--space-5, 26px); font-size: var(--fs-sm); }
+.is-sub .is-v { color: var(--muted); }
+.is-tot { border-bottom: none; border-top: 1px solid var(--border); background: var(--panel-hover);
+  font-size: var(--fs-base); }
+.is-tot .is-l { color: var(--text); font-weight: 700; }
+
 /* ─── 📒 Нягтлангийн дэд таб + ерөнхий дэвтэр ─── */
 .ac-tabs { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-bottom: var(--space-3);
   background: var(--panel-hover); border-radius: var(--r-lg); padding: 4px; }

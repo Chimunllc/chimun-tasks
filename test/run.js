@@ -91,7 +91,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
-  'ownerCapital', 'ownerCapitalRows', 'openingBalanceCalc', 'journalEntries', 'journalTotals', 'jrnDebitFor', 'jrnCreditFor', 'ledgerLines', 'balanceSheetAt', 'entriesUpTo', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
+  'ownerCapital', 'ownerCapitalRows', 'openingBalanceCalc', 'journalEntries', 'journalTotals', 'jrnDebitFor', 'jrnCreditFor', 'ledgerLines', 'balanceSheetAt', 'entriesUpTo', 'incomeStatement', 'entriesBetween', 'jrnMonthEnd', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -14933,4 +14933,75 @@ async function swFetchTests() {
   eq(B.assets.find(r => r.acc === 'suspense'), undefined, 'баланс: тодорхойгүй нь хөрөнгө БИШ');
   eq((B.liabs.find(r => r.acc === 'suspense') || {}).amount, 120000, 'баланс: тодорхойгүй = өр төлбөр, ЭЕРЭГ');
   ok(B.balanced, 'баланс: тодорхойгүйтэй ч тэнцэнэ');
+}
+
+// ═══ ОРЛОГЫН ТАЙЛАН + ЭЛЭГДЭЛ ЖУРНАЛД (2026-10-02) ══════════════════════
+// ⛔ Орлогын тайлангийн ашиг нь БАЛАНСЫН «тайлант үеийн ашиг»-тай ЯГ таарах ёстой.
+{
+  const { incomeStatement, entriesBetween, balanceSheetAt, journalEntries, jrnMonthEnd } = F;
+  eq(jrnMonthEnd('2026-09'), '2026-09-30', 'сарын эцэс: 9 сар 30');
+  eq(jrnMonthEnd('2026-02'), '2026-02-28', 'сарын эцэс: 2 сар 28');
+  eq(jrnMonthEnd('2024-02'), '2024-02-29', 'сарын эцэс: өндөр жил 29');
+
+  const ctx = {
+    basis: 'accrual', opening: null,
+    orders: [{ id: 'o1', number: 1, customer: 'Т', starts_at: '2026-09-10',
+               total_mnt: 5000000, deposit_mnt: 1000000, paid_mnt: 0, status: 'returned', source: 'app', items: [] }],
+    finance: [
+      { id: 'f1', status: 'done', decision: 'approved', category: '7100', amount: 900000, requested_at: '2026-09-20', purpose: 'Цалин' },
+      { id: 'f2', status: 'done', decision: 'approved', category: '1800', amount: 100000, requested_at: '2026-09-21', purpose: 'Шатахуун' },
+      { id: 'f3', status: 'done', decision: 'approved', category: '6900', amount: 700000, requested_at: '2026-09-22', purpose: 'Эзэнд' },
+      { id: 'f4', status: 'done', decision: 'approved', category: '6950', amount: 200000, requested_at: '2026-09-23', purpose: 'Зээл' },
+    ],
+    income: [], deprec: [{ ym: '2026-09', amount: 500000 }],
+  };
+  const sep = entriesBetween(ctx, '2026-09-01', '2026-09-30');
+  const P = incomeStatement(sep);
+
+  eq(P.totalRevenue, 4000000, 'тайлан: орлого (барьцаа хасагдсан)');
+  // ⛔ Эзэнд өгсөн ба зээлийн төлбөр нь ЗАРДАЛ БИШ — тайланд орохгүй
+  eq(P.totalExpense, 900000 + 100000 + 500000, 'тайлан: зардал = цалин + шатахуун + ЭЛЭГДЭЛ');
+  eq(P.profit, 4000000 - 1500000, 'тайлан: ашиг');
+  eq(Math.round(P.margin * 100), 63, 'тайлан: марж %');
+
+  // ⛔ ЭЛЭГДЭЛ заавал зардалд орно — журналд бичигдэхгүй бол ашиг хэтэрнэ
+  const hasDep = sep.some(e => e.src === 'dep:2026-09');
+  ok(hasDep, 'журнал: элэгдлийн бичилт үүснэ');
+  const depRow = P.expenses.flatMap(g => g.rows).find(r => r.cat === 'ЭЛЭГДЭЛ');
+  eq((depRow || {}).amount, 500000, 'тайлан: элэгдэл зардлын мөрөнд');
+
+  // ⛔ ИНВАРИАНТ: тайлангийн ашиг = балансын тайлант үеийн ашиг
+  eq(P.profit, balanceSheetAt(sep).profit, 'ИНВАРИАНТ: тайлангийн ашиг = балансын ашиг');
+  ok(balanceSheetAt(sep).balanced, 'баланс: элэгдэлтэй ч тэнцэнэ');
+
+  // Элэгдэл нь хөрөнгийг бууруулна (contra-asset, СӨРӨГ)
+  const B = balanceSheetAt(sep);
+  eq((B.assets.find(r => r.acc === 'accdep') || {}).amount, -500000, 'баланс: хуримтлагдсан элэгдэл сөрөг хөрөнгө');
+
+  // Зардал ҮНДСЭН бүлгээр задарна
+  ok(P.expenses.length >= 2, 'тайлан: зардал бүлгээр задарна');
+  ok(P.expenses.every(g => g.rows.length), 'тайлан: бүлэг бүр дэд мөртэй');
+
+  // Хоосон хугацаа
+  const E = incomeStatement([]);
+  eq(E.totalRevenue + E.totalExpense + E.profit, 0, 'тайлан: хоосон үед 0');
+  eq(E.margin, null, 'тайлан: орлогогүй бол марж null (0% БИШ)');
+}
+
+// ═══ SCAN: орлогын тайлан журналаас, элэгдэл журналд ════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const r = src.slice(src.indexOf('function renderIncomeStatement'), src.indexOf('function attachIncomeStatementHandlers'));
+  ok(/incomeStatement\(entriesBetween\(/.test(r), 'scan: тайлан журналаас гарна (дахин бодохгүй)');
+  eq((r.match(/finMonthIncome|finBranchPnl|orderRevenue\(/g) || []).length, 0,
+     'scan: тайлан өөр эх сурвалжаас тоо авахгүй');
+  const je = src.slice(src.indexOf('function journalEntries'), src.indexOf('function journalTotals'));
+  ok(/ctx\.deprec/.test(je), 'scan: элэгдэл журналд бичигдэнэ');
+  ok(/accdep/.test(je), 'scan: хуримтлагдсан элэгдлийн данс руу кредит');
+  const is = src.slice(src.indexOf('function incomeStatement'), src.indexOf('function entriesBetween'));
+  ok(/margin: totalRevenue > 0 \? profit \/ totalRevenue : null/.test(is),
+     'scan: орлогогүй үед марж null (0% гэж худал харуулахгүй)');
+  // Элэгдлийн сарын эцсийн огноо — түүхий toISOString ашиглахгүй
+  const me = src.slice(src.indexOf('function jrnMonthEnd'), src.indexOf('function journalEntries'));
+  eq((me.match(/toISOString/g) || []).length, 0, 'scan: сарын эцсийг toISOString-гүй бодно');
 }

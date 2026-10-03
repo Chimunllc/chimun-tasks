@@ -4053,6 +4053,32 @@ need(['orderCustType']);
     sandbox.fetch = savedFetch; st.attendanceToday = savedAtt; st._attLastScan = savedLast;
   }
 
+  /* ═══ ТОХИРГОО СЕРВЕРЭЭС АЧААЛАГДАНА (2026-10-03) ═══════════════════════
+     ⛔ `state.appConfig`-ийг ачаалдаг код ОГТ байгаагүй тул «тохиргооноос
+        уншина» гэсэн БҮХ дүрэм (ажлын норм, илүү цаг, цай, дамжлагын оноо,
+        элэгдлийн нас, суутгалын хувь) чимээгүй кодын нөөц утгаар ажиллаж байв. */
+  {
+    const runIn = (c) => vm.runInContext(c, sandbox);
+    const savedFetch = sandbox.fetch;
+    const savedCfg = runIn('JSON.stringify(state.appConfig || null)');
+    const load = runIn('loadAppConfigAll');
+    runIn("state.appConfig = { salary_rates: { ndsh: 1, pit: 2 } };");
+    sandbox.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([
+      { key: 'work_norm_days', value: 21 },
+      { key: 'salary_rates', value: { ndsh: 99, pit: 99 } },   // ⚠ СЕССИЙН утгыг дарахгүй
+    ]) });
+    await load();
+    eq(runIn('state.appConfig.work_norm_days'), 21, 'тохиргоо: серверийн утга бууна');
+    eq(runIn('state.appConfig.salary_rates.ndsh'), 1, 'тохиргоо: сессийн утгыг ДАРАХГҮЙ');
+    ok(runIn('state._appConfigLoaded') === true, 'тохиргоо: ачаалагдсан төлөв тэмдэглэгдэнэ');
+    // ⛔ Унавал хуучин утгыг ХООСЛОХГҮЙ
+    sandbox.fetch = () => Promise.resolve({ ok: false, status: 500 });
+    await load();
+    eq(runIn('state.appConfig.work_norm_days'), 21, 'тохиргоо: унасан ч хуучин утга үлдэнэ');
+    sandbox.fetch = savedFetch;
+    runIn('state.appConfig = ' + (savedCfg === 'null' ? 'null' : savedCfg) + ';');
+  }
+
   // ТООЛЛОГО — бичлэг ачаалагдаагүйг чимээгүй өнгөрүүлэхгүй (2026-09-27)
 // Амьд сессид нэг барааг 2-3 удаа тоолсон давхардал гарсан: жагсаалт «тоолоогүй»
 // гэж харуулсаар байсан тул нярав дахин тоолсон. Унавал ил хэлэх ёстой.
@@ -15058,6 +15084,21 @@ async function swFetchTests() {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   eq((src.match(/Шатны хөлс|шатны хөлс/g) || []).length, 0, 'scan: хуучин «шатны хөлс» нэр буцаж ирээгүй');
   ok(/Дамжлагын бонус/.test(src), 'scan: шинэ нэр хэрэглэгдэнэ');
+}
+
+// ═══ SCAN: тохиргоо үнэхээр ачаалагддаг ════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/async function loadAppConfigAll\(/.test(src), 'scan: бөөн ачаалагч бий');
+  ok(/loadAppConfigAll\(\);\s*\/\/ ⚙️/.test(src), 'scan: эхлэхэд дуудагдана');
+  const f = src.slice(src.indexOf('async function loadAppConfigAll'), src.indexOf('async function loadAppConfig(key)'));
+  ok(/!\(x\.key in cfg\)/.test(f), 'scan: сессийн утгыг дарахгүй');
+  ok(/dataLoadFailed\('loadAppConfigAll'/.test(f), 'scan: унавал чимээгүй залгихгүй');
+  // ⛔ Эмзэг түлхүүр бөөн татацад ОРОХГҮЙ (RLS-ээр хаалттай, тусдаа ачаалагчтай)
+  const keys = (src.match(/const APP_CONFIG_KEYS = \[[^\]]*\]/) || [''])[0];
+  ok(keys.indexOf('coo_share') < 0, 'scan: coo_share бөөн татацад орохгүй');
+  ok(keys.indexOf('personal_settlements') < 0, 'scan: personal_settlements орохгүй');
+  ok(keys.indexOf('closed_months') < 0, 'scan: хаасан сар тусдаа ачаалагчтай хэвээр');
 }
 
 // ═══ SCAN: ирцийн select бүрд `day` байна ═══════════════════════════════

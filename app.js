@@ -22760,6 +22760,36 @@ function attachPerformanceHandlers() {
 }
 
 // ── app_config (VPS Postgres, PostgREST anon) key-value тохиргоо — сайттай хуваалцана ──
+/* ⛔ `state.appConfig`-ИЙГ СЕРВЕРЭЭС АЧААЛДАГ КОД ОГТ БАЙГААГҮЙ (2026-10-03).
+   12 газарт `state.appConfig.X` уншдаг атал тэр объектыг зөвхөн ТУХАЙН СЕССИЙН
+   бичилт дүүргэдэг байв — өөрөөр хэлбэл DB дэх тохиргоо ХЭЗЭЭ Ч хүрэхгүй,
+   чимээгүй кодын нөөц утгаар ажиллана. «Тохиргооноос уншина» гэсэн баримт
+   бүхэлдээ ХУДАЛ байсан (ажлын норм, илүү цагийн хувь, дамжлагын оноо,
+   элэгдлийн нас, суутгалын хувь, цайны цаг…).
+   ⛔ Энд БҮХ түлхүүрийг татахгүй — `coo_share`, `personal_settlements` зэрэг
+     эмзэг түлхүүр RLS-ээр хаалттай, мөн тус тусдаа ачаалагчтай. Жагсаалтад
+     зөвхөн `state.appConfig`-ээс уншигддаг түлхүүрүүд.
+   ⚠ Серверийн утга ТУХАЙН СЕССИЙН бичилтийг ДАРАХГҮЙ — хэрэглэгч аль хэдийн
+     өөрчилсөн байж болно (жишээ суутгалын хувь). Тиймээс зөвхөн ОДОО БАЙХГҮЙ
+     түлхүүрийг бичнэ.
+   ⚠ Унавал `state.appConfig`-ийг ХООСЛОХГҮЙ — хуучин утга хэвээр үлдэнэ. */
+const APP_CONFIG_KEYS = ['work_norm_days', 'overtime', 'salary_rates', 'lunch', 'stage_pay',
+  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft'];
+async function loadAppConfigAll(keys) {
+  if (!DB_ANON_KEY) return;
+  const list = (keys && keys.length) ? keys : APP_CONFIG_KEYS;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/app_config?key=in.(${list.map(encodeURIComponent).join(',')})&select=key,value`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    const cfg = state.appConfig = state.appConfig || {};
+    rows.forEach(x => { if (x && x.key && !(x.key in cfg)) cfg[x.key] = x.value; });
+    state._appConfigLoaded = true;
+    if (typeof render === 'function') render();
+  } catch (e) { dataLoadFailed('loadAppConfigAll', e); }
+}
 async function loadAppConfig(key) {
   if (!DB_ANON_KEY) return null;
   try {
@@ -42590,6 +42620,7 @@ async function bootApp() {
   loadWorkerTypeOverrides(); // Цагийн⇄Үндсэн ажилтны төрөл (app_config override)
   loadBankAccounts();   // Данс & Карт бүртгэл (хуулгаар ангилах нь эндээс данс→салбарыг таьнна)
   loadExpenseLearn();   // Хуваалцсан суралцлага (худалдагч→салбар+ангилал, бүх компанид)
+  loadAppConfigAll();   // ⚙️ Тохиргоо (ажлын норм, илүү цаг, цай, дамжлагын оноо…) — өмнө нь ОГТ ачаалагддаггүй байв
   loadClosedMonths();   // 🔒 Хаасан сар — түгжээ нь бичих БҮХ замд (төлбөр/зардал/хуулга) ажиллах ёстой
   if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }   // Сарын цалин (CEO/нягтлан)
   state._initialLoading = false;

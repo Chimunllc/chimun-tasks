@@ -425,6 +425,26 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   ok(/if \(_money\.length\) \{/.test(pf), 'scan: зөвхөн мөнгөний талбар дамжсан үед шалгана');
 }
 
+/* 0e2o) SCAN — «Нөөц ба салбар» самбар: ШИЛЖҮҮЛЭГ үндсэн үйлдэл (2026-10-03)
+   CEO: «бараа шилжихгүй, ойлгомжгүй». 4 тоог тусад нь нэмж хасуулах нь
+   шилжүүлэг БИШ — нийлбэр санамсаргүй өөрчлөгдөх нүх үлдээдэг. ⇄ товч нь
+   одоо байгаа `openTransferModal`-ыг дуудаж `product_transfers`-д мөр
+   үлдээдэг бөгөөд нийлбэрийг БАРЬДАГ. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/data-ps-mv="\$\{escapeHtml\(p\.sku\)\}"/.test(codeLines), 'scan: мөр бүрт ⇄ шилжүүлэх товч');
+  ok(/data-ps-mv\]'\)\.forEach[\s\S]{0,220}openTransferModal\(b\.dataset\.psMv\)/.test(codeLines),
+     'scan: ⇄ нь одоо байгаа шилжүүлэх модалыг дуудна (шинэ зам үүсгэхгүй)');
+  // Эцэслэгдсэн бараа: гар засвар түгжээтэй, ШИЛЖҮҮЛЭГ нээлттэй
+  ok(/_sld \? ' disabled' : ''/.test(codeLines), 'scan: эцэслэгдсэн барааны тоон талбар түгжээтэй');
+  ok(/ps-row-stock/.test(codeLines), 'scan: нөөцийн мөр өөрийн бүтэцтэй (нягт байрлал)');
+  // ⛔ Хадгалах тууз `display:flex` тул `hidden` ажиллахгүй байв — «0 бараа
+  //    өөрчлөгдсөн» гэж ҮРГЭЛЖ харагдаж мөр халхалдаг байсан.
+  const _css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  ok(/\.ps-savebar\[hidden\]\s*\{\s*display:\s*none/.test(_css),
+     'scan: хадгалах тууз ҮНЭХЭЭР нуугдана (display:flex-ийг дарна)');
+}
+
 /* 0e2m) SCAN — ТҮГЖЭЭНИЙ АУДИТ: products-ийн БҮХ бичих зам (2026-10-02)
    CEO «ийм төрлийн алдаа маш их байна» гэснээр бүх бичих замыг тоолов.
    `products`-д 9 бичих зам байхад түгжээ зөвхөн `saveProduct`-д байв:

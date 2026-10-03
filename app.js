@@ -22482,7 +22482,7 @@ const PSHEET = {
   catalog: { label: 'Каталог', icon: '📷', perm: 'products.catalog', hint: 'Нэр, ангилал. Зураг/тайлбарыг барааны цонхноос засна.' },
   price:   { label: 'Түрээсийн үнэ', icon: '🏷', perm: 'products.price', hint: 'Түрээсийн үнэ, барьцаа, суурилуулалтын хөлс.' },
   cost:    { label: 'Өртөг ба хөрөнгө', icon: '💰', perm: 'products.cost', hint: 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч.' },
-  stock:   { label: 'Нөөц ба салбар', icon: '📦', perm: 'products.stock', hint: 'Салбар бүрийн тоо. Нийт нөөц нь салбаруудын нийлбэр.' },
+  stock:   { label: 'Нөөц ба салбар', icon: '📦', perm: 'products.stock', hint: 'Мөр дарж хуваарилалтыг засна. ⇄ дарж салбар хооронд зөөвөл нийт тоо хэвээр үлдэж, түүхэнд бүртгэгдэнэ.' },
 };
 // Сайт (mevent.mn) ангиллыг бүлгээр харуулдаг. Бүлэгт ороогүй ангилал сайтад
 // «Бусад» болж унадаг тул каталог засахад ил сануулна.
@@ -22749,14 +22749,36 @@ function renderProductSheet(mode) {
       <span class="ps-tot">${total > 0 ? fmtMoney(total) : '—'}</span>
       ${psDeprecLine(p)}`;
     }
+    /* 📦 НӨӨЦ = ХУВААРИЛАЛТ, 4 ТУСДАА ТОО БИШ (2026-10-03, CEO: «бараа шилжихгүй,
+       ойлгомжгүй»). Хүний хийдэг үйлдэл нь «A-гаас B руу N ширхэг зөөх» — 4 тоог
+       тусад нь нэмж хасуулах нь толгойн тооцоо үүрүүлж, нийт дүн санамсаргүй
+       өөрчлөгдөх нүх үлдээдэг (шилжүүлэг нь нийлбэрийг ХАДГАЛАХ ёстой).
+       Тиймээс ⇄ Шилжүүлэх нь ҮНДСЭН үйлдэл — `product_transfers`-д мөр үлдээдэг,
+       нийлбэрийг барьдаг. Гар засвар нь ЭВХЭГДСЭН (шинэ барааны анхны
+       хуваарилалтад л хэрэгтэй).
+       ⚠ Эцэслэгдсэн бараа: гар засвар түгжээтэй (saveProduct хаана), гэхдээ
+         ШИЛЖҮҮЛЭГ нээлттэй — тэр нь аудитын мөртэй хяналттай зам. */
+    const _tot = PS_QTY_FIELDS.reduce((t, k) => t + (Number(psVal(p, k)) || 0), 0);
+    const _sld = typeof stockSealed === 'function' && stockSealed(p);
+    const _chip = (f, ic, nm) => { const q = Number(psVal(p, f)) || 0;
+      return `<span class="ps-chip${q ? '' : ' is-0'}" title="${nm}">${ic} ${q}</span>`; };
     return `
-      <label class="ps-f"><span>🎪 M-Event</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_mevent')} value="${Number(psVal(p, 'qty_mevent')) || 0}"></label>
-      <label class="ps-f"><span>🏢 Чимун</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_chimun')} value="${Number(psVal(p, 'qty_chimun')) || 0}"></label>
-      <label class="ps-f"><span>⛺ NOMAAD</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_nomaad')} value="${Number(psVal(p, 'qty_nomaad')) || 0}"></label>
-      <label class="ps-f"><span>🍽 Катеринг</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_catering')} value="${Number(psVal(p, 'qty_catering')) || 0}"></label>
-      <span class="ps-tot">${PS_QTY_FIELDS.reduce((t, k) => t + (Number(psVal(p, k)) || 0), 0)}ш</span>`;
+      <details class="ps-dist">
+        <summary class="ps-dist-s">
+          ${_chip('qty_mevent', '🎪', 'M-Event')}${_chip('qty_chimun', '🏢', 'Чимун дотоод')}${_chip('qty_nomaad', '⛺', 'NOMAAD')}${_chip('qty_catering', '🍽', 'Катеринг')}
+          <b class="ps-tot">${_tot}ш</b>${_sld ? '<span class="ps-sld" title="Эхний үлдэгдэл эцэслэгдсэн — гараар засагдахгүй">🔒</span>' : ''}
+        </summary>
+        <div class="ps-dist-g">
+          ${_sld ? '<div class="ps-dist-lock">🔒 Эцэслэгдсэн — тоо гараар засагдахгүй. Зөөх бол <b>⇄ Шилжүүлэх</b>.</div>' : ''}
+          <label class="ps-f"><span>🎪 M-Event</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_mevent', _sld ? ' disabled' : '')} value="${Number(psVal(p, 'qty_mevent')) || 0}"></label>
+          <label class="ps-f"><span>🏢 Чимун</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_chimun', _sld ? ' disabled' : '')} value="${Number(psVal(p, 'qty_chimun')) || 0}"></label>
+          <label class="ps-f"><span>⛺ NOMAAD</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_nomaad', _sld ? ' disabled' : '')} value="${Number(psVal(p, 'qty_nomaad')) || 0}"></label>
+          <label class="ps-f"><span>🍽 Катеринг</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_catering', _sld ? ' disabled' : '')} value="${Number(psVal(p, 'qty_catering')) || 0}"></label>
+        </div>
+      </details>
+      <button type="button" class="ps-mv ui-raw" data-ps-mv="${escapeHtml(p.sku)}" title="Салбар хооронд зөөх — нийт тоо хэвээр, түүхэнд үлдэнэ">⇄</button>`;
   };
-  const row = (p) => `<div class="ps-row${psDirty()[p.sku] ? ' ps-dirty' : ''}" data-ps-row="${escapeHtml(p.sku)}">
+  const row = (p) => `<div class="ps-row${mode === 'stock' ? ' ps-row-stock' : ''}${psDirty()[p.sku] ? ' ps-dirty' : ''}" data-ps-row="${escapeHtml(p.sku)}">
       <button type="button" class="ps-img ui-raw" data-ps-open="${escapeHtml(p.sku)}" title="Барааны бүх мэдээлэл">${p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 96))}" alt="" loading="lazy">` : '📦'}</button>
       <div class="ps-nm">${mode === 'catalog' ? '' : escapeHtml(p.name || '')}<em>${escapeHtml(p.code || p.sku)}</em></div>
       <div class="ps-fields">${cell(p)}</div>
@@ -22798,6 +22820,13 @@ function attachProductSheetHandlers(mode) {
   if (list && state._psScroll) { list.scrollTop = state._psScroll; state._psScroll = 0; }
   const qEl = document.getElementById('ps-q');
   if (qEl) qEl.addEventListener('input', (e) => { state.psQ = e.target.value; clearTimeout(state._psT); state._psT = setTimeout(() => render(), 220); });
+  /* ⇄ ҮНДСЭН ҮЙЛДЭЛ — одоо байгаа шилжүүлэх модалыг дуудна (`product_transfers`-д
+     мөр үлдээж, нийт тоог ХАДГАЛНА). Гар засвараас ялгаатай нь: хаанаас хаашаа
+     хэд гэдгийг асууж, нийлбэр хэзээ ч санамсаргүй өөрчлөгдөхгүй. */
+  document.querySelectorAll('[data-ps-mv]').forEach(b => b.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof openTransferModal === 'function') openTransferModal(b.dataset.psMv);
+  }));
   document.querySelectorAll('[data-ps-open]').forEach(b => b.addEventListener('click', () => {
     const p = (state.products || []).find(x => x && x.sku === b.dataset.psOpen);
     if (p && typeof openProductModal === 'function') openProductModal(p);

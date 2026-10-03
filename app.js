@@ -25794,37 +25794,49 @@ function orderNeedsSetup(o) {
 //                → Хүргэлтээр авсан → Агуулахад хүлээн авсан
 //   Очиж авах:   Бэлдсэн → Цэвэрлэсэн → Олгосон → Агуулахад хүлээн авсан
 // (4, 5-р шат зөвхөн хүргэлттэй захиалгад гарна.)
-function orderNextStep(o) {
-  const st = String((o && o.status) || '');
+/* ─── УРСГАЛЫН ТОДОРХОЙЛОЛТ = ЖАГСААЛТ, КОД БИШ (2026-10-03) ────────────────
+   Өмнө нь `switch`-ээр бичигдсэн байсан тул дамжлага нэмэх/хасах, оноо тавих,
+   зураглал гаргах бүр кодын бүтцийг дахин бичихийг шаарддаг байв. Одоо мөр
+   бүр = НЭГ дамжлага: хаанаас · хаашаа · нэр · эрх · ямар үед гарах.
+   ⛔ **ЭХНИЙ ТААРСАН МӨР ЯЛНА — ДАРААЛАЛ НЬ ДҮРЭМ.** Нарийн нөхцөлтэй мөр
+     (`setup`) нь өргөнөөс ДЭЭГҮҮР байна, эс бөгөөс суурилуулалттай захиалга
+     энгийн замаар явна. Тест бүх төлөв × хүргэлт × суурилуулалтыг тулгана.
+   ⚠ `dlv`/`setup` талбар байхгүй = «хамаарахгүй» (хоёуланд нь тохирно).
+   ⚠ Суурилуулалт зөвхөн ХҮРГЭЛТТЭЙ захиалгад (`orderPipelineCtx`) — очиж
+     авсан бараанд бид угсрахгүй. */
+const PIPELINE = [
+  { from: ['reserved', 'preparation', 'cleaning'], to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' },
+  { from: ['prepared'],   to: 'ready',       label: '🧰 Бэлдсэн',             cap: 'orders.prepare' },
+  { from: ['ready'],      to: 'delivering',  label: '📦 Агуулахаас гаргасан', cap: 'orders.dispatch', dlv: true },
+  { from: ['ready'],      to: 'rented',      label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch', dlv: false },
+  { from: ['delivering'], to: 'installing',  label: '🚚 Хүргэж өгсөн',        cap: 'orders.deliver', setup: true },
+  { from: ['delivering'], to: 'rented',      label: '🚚 Хүргэж өгсөн',        cap: 'orders.deliver', setup: false },
+  // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
+  { from: ['installing'], to: 'rented',      label: '🔧 Суурилуулсан',        cap: 'orders.setup' },
+  { from: ['rented', 'started'], to: 'teardown',  label: '🧱 Буулгасан',         cap: 'orders.setup',    setup: true },
+  { from: ['rented', 'started'], to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver',  dlv: true },
+  { from: ['rented', 'started'], to: 'returned',  label: '📥 Агуулахад авсан',  cap: 'orders.dispatch', dlv: false },
+  { from: ['teardown'],   to: 'returning',   label: '↩️ Хүргэлтээс авсан',    cap: 'orders.deliver' },
+  { from: ['returning'],  to: 'returned',    label: '📥 Агуулахад авсан',     cap: 'orders.dispatch' },
+  { from: ['returned', 'stopped'], to: 'archived', label: '🗄 Архивлах',      cap: 'orders.advance' },
+];
+// Захиалгын нөхцөл — урсгалын салаалалт үүгээр шийдэгдэнэ (ЦЭВЭР тулгалтад тестлэгдэнэ).
+function orderPipelineCtx(o) {
   const dlv = (typeof isDeliveryOrder === 'function') ? isDeliveryOrder(o) : false;
-  // Суурилуулалт зөвхөн ХҮРГЭЛТТЭЙ захиалгад — очиж авсан бараанд бид угсрахгүй.
-  const setup = dlv && (typeof orderNeedsSetup === 'function') && orderNeedsSetup(o);
-  switch (st) {
-    case 'reserved':
-    case 'preparation':
-    case 'cleaning':    return { to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' };
-    case 'prepared':    return { to: 'ready',    label: '🧰 Бэлдсэн',    cap: 'orders.prepare' };
-    case 'ready':       return dlv
-      ? { to: 'delivering', label: '📦 Агуулахаас гаргасан',  cap: 'orders.dispatch' }
-      : { to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch' };
-    case 'delivering':  return setup
-      ? { to: 'installing', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' }
-      : { to: 'rented',     label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
-    // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
-    case 'installing':  return { to: 'rented', label: '🔧 Суурилуулсан', cap: 'orders.setup' };
-    case 'rented':
-    case 'started':     return setup
-      ? { to: 'teardown',  label: '🧱 Буулгасан',          cap: 'orders.setup' }
-      : dlv
-      ? { to: 'returning', label: '↩️ Хүргэлтээс авсан',   cap: 'orders.deliver' }
-      : { to: 'returned',  label: '📥 Агуулахад авсан',    cap: 'orders.dispatch' };
-    case 'teardown':    return { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' };
-    case 'returning':   return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
-    case 'returned':
-    case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
-    default: return null;
-  }
+  return { dlv, setup: !!(dlv && typeof orderNeedsSetup === 'function' && orderNeedsSetup(o)) };
 }
+// ЦЭВЭР функц — төлөв + нөхцөлөөс дараагийн дамжлага. Тестэд шууд дуудагдана.
+function pipelineNext(status, ctx) {
+  const st = String(status || ''), c = ctx || {};
+  for (const r of PIPELINE) {
+    if (r.from.indexOf(st) < 0) continue;
+    if (r.dlv !== undefined && r.dlv !== !!c.dlv) continue;
+    if (r.setup !== undefined && r.setup !== !!c.setup) continue;
+    return { to: r.to, label: r.label, cap: r.cap };
+  }
+  return null;
+}
+function orderNextStep(o) { return pipelineNext((o && o.status) || '', orderPipelineCtx(o)); }
 // Хуучин статик map (легаси/bq картын fallback) — orderNextStep-ийн хүргэлт хувилбар
 const BQ_NEXT = {
   reserved:    { to: 'cleaning', label: '🧰 Бэлтгэх' },

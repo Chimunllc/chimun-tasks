@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'empAcctOwners', 'empAcctsForPerson', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15665,4 +15665,83 @@ async function swFetchTests() {
   ok(/status === 'deleted'/.test(f), 'scan: больсон мөр орохгүй');
   const spf = src.slice(src.indexOf('function salaryPaymentsFor'), src.indexOf('/* ОЛГОЛТ `salary_payments`'));
   ok(/salaryFinPayments\(/.test(spf), 'scan: самбарын ганц эх сурвалж гүйлгээг ч нэгтгэнэ');
+}
+
+// ═══ АЖИЛТНЫ ДАНС = ОДООГИЙН + ХУУЛГААР ТАНИГДСАН (2026-10-03) ══════════════
+// Ажилчид данс байнга солидог; `employees.bank_account` зөвхөн ОДООГИЙНХ тул
+// хуучин нь дарагдаад алга болдог → тэр данс руу явсан цалин «хэнийх нь
+// мэдэгдэхгүй» болно. Хуулгын гүйлгээний УТГА дахь нэрээр нь таана.
+{
+  const { empAcctOwners, empAcctsForPerson, salaryFinPayments } = F;
+  const team = [
+    { name: 'Э.Нинждолгор', phone: '99285468' },                          // данс бүртгээгүй
+    { name: 'Б.Байгалмаа', phone: '88627550', bank_account: '5720418321' },
+    { name: 'Ч.Билгүүн', phone: '80001111' },                             // нэр давхардсан
+    { name: 'Б.Билгүүн', phone: '80002222' },
+    // ⛔ ДОТОРЛОСОН нэр: «ХОНГОР» нь «ХОНГОРЗУЛ»-ын дотор байна
+    { name: 'Ц.Хонгор', phone: '80003333' },
+    { name: 'Б.Хонгорзул', phone: '80004444' },
+  ];
+  const fin = [
+    { id: '1', status: 'done', category: '7100', amount: 500000, beneficiary: '5029853564',
+      requested_at: '2026-08-31', purpose: 'EB-цалин: Э.Нинждолгор. 8сар цалин 2', justification: '[#E1]' },
+    { id: '2', status: 'done', category: '7100', amount: 300000, beneficiary: '5029853564',
+      requested_at: '2026-09-06', purpose: 'EB-Цалин Э.Нинждолгор 8 сар 2р хагас', justification: '[#E2]' },
+    // ⛔ Давхардсан нэр — ТААХГҮЙ (цалин өөр хүнд тоологдох эрсдэл)
+    { id: '3', status: 'done', category: '7100', amount: 700000, beneficiary: '5111111111',
+      requested_at: '2026-09-10', purpose: 'EB-Цалин Билгүүн 9 сар', justification: '[#E3]' },
+    // ⛔ Нэг данс ХОЁР өөр нэрээр → хаягдана
+    { id: '4', status: 'done', category: '7100', amount: 100000, beneficiary: '5222222222',
+      requested_at: '2026-09-11', purpose: 'EB-Цалин Нинждолгор', justification: '[#E4]' },
+    { id: '5', status: 'done', category: '7100', amount: 100000, beneficiary: '5222222222',
+      requested_at: '2026-09-12', purpose: 'EB-Цалин Байгалмаа', justification: '[#E5]' },
+    // Бүртгэлтэй данс — утгаар таахгүй (нэр нь өөр хүний ч байсан)
+    { id: '6', status: 'done', category: '7100', amount: 200000, beneficiary: '5720418321',
+      requested_at: '2026-09-15', purpose: 'EB-Цалин Ш.Байгалмаа 9р сар', justification: '[#E6]' },
+  ];
+  fin.push({ id: '7', status: 'done', category: '7200', amount: 600000, beneficiary: '5333333333',
+             requested_at: '2026-09-13', purpose: 'EB-ЗАРЛАГА: ӨДРИЙН ЦАЛИН Б.ХОНГОРЗУЛ', justification: '[#E7]' });
+  const own = empAcctOwners(team, fin);
+  eq(own.guess['5029853564'], '99285468', 'данс: хуулгын утгаар эзэн танигдана');
+  eq(own.guess['5111111111'], undefined, 'данс: ХОЁРДМОЛ нэрээр таахгүй');
+  ok(own.ambiguous.indexOf('БИЛГҮҮН') >= 0, 'данс: давхардсан нэрийн цөм тэмдэглэгдэнэ');
+  eq(own.guess['5222222222'], undefined, 'данс: нэг данс хоёр нэрээр таарвал хаягдана');
+  // ⛔ «Б.ХОНГОРЗУЛ» утганд «Ц.Хонгор» ч таардаг — хоёрдмол тул ТААХГҮЙ
+  //   (амьд датаар 600,000₮ өөр хүнд тоологдож байсныг ингэж барив).
+  eq(own.guess['5333333333'], undefined, 'данс: нэр нөгөөгийнхөө дотор байвал таахгүй');
+  eq(own.reg['5720418321'], '88627550', 'данс: бүртгэсэн данс эзэнтэйгээ');
+  ok(!Object.prototype.hasOwnProperty.call(own.guess, '5720418321'), 'данс: бүртгэлтэй дансыг утгаар таахгүй');
+
+  // Нинждолгорын цалин одоо тоологдоно (данс бүртгэгдээгүй ч)
+  const nj = salaryFinPayments(fin, '99285468', '2026-08', [], team);
+  eq(nj.length, 2, 'данс: бүртгэлгүй дансны цалин ноогдох сардаа тоологдоно');
+  eq(nj.reduce((s, x) => s + x.amount, 0), 800000, 'данс: дүн нийлнэ');
+
+  // Картын жагсаалт — бүртгэсэн нь эхэнд, хэрэглээний тоо/дүн/сүүлийн огноо
+  const la = empAcctsForPerson('88627550', team, fin);
+  eq(la.length, 1, 'данс: Байгалмаад 1 данс');
+  ok(la[0].current && la[0].reg, 'данс: бүртгэсэн данс «одоогийн» гэж тэмдэглэгдэнэ');
+  eq(la[0].n, 1, 'данс: хэрэглээний тоо');
+  eq(la[0].lastDay, '2026-09-15', 'данс: сүүлд хэрэглэсэн огноо');
+  const lb = empAcctsForPerson('99285468', team, fin);
+  eq(lb.length, 1, 'данс: Нинждолгорт хуулгаас 1 данс');
+  ok(!lb[0].current, 'данс: хуулгаар танигдсан нь «бүртгэсэн» БИШ');
+  eq(empAcctsForPerson('80001111', team, fin).length, 0, 'данс: хоёрдмол нэрт хүнд данс таахгүй');
+}
+
+// ═══ SCAN: дансны таамаглалын хамгаалалт ════════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const f = src.slice(src.indexOf('function empAcctOwners('), src.indexOf('function empAcctOwnersCached'));
+  ok(f.length > 100, 'scan: empAcctOwners-ийн бие олдов');
+  ok(/ks\.length !== 1/.test(f), 'scan: таарсан БҮХ нэрээс ЯГ НЭГ хүн гарвал л таана');
+  ok(/byName\[nk\]\.forEach/.test(f), 'scan: хоёрдмол цөмийн хүмүүс ч нэгтгэгдэнэ (хасагдахгүй)');
+  ok(/reg\[acct\]/.test(f), 'scan: бүртгэлтэй данс утгаар таахаас ДАВУУ');
+  ok(/bad\[acct\]/.test(f), 'scan: нэг данс хоёр нэрээр таарвал хаягдана');
+  ok(/cooNameKey/.test(f), 'scan: нэрийн цөм ганц функцээр гарна');
+  // Ажилтны картад данс нь ЭМЗЭГ мэдээллийн эрхээр хаагдана
+  const card = src.slice(src.indexOf('let bankBox = '), src.indexOf('// ── Удирдах хэсэг ──'));
+  ok(/canSeeStaffSensitive\(\)/.test(card), 'scan: данс зөвхөн эрхтэйд харагдана');
+  ok(/empAcctsForPerson\(/.test(card), 'scan: карт дансыг ганц эх сурвалжаас авна');
+  ok(/хуулгын утгаар/.test(card), 'scan: таасан дансыг ИЛ тэмдэглэнэ (нуухгүй)');
 }

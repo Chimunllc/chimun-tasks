@@ -6149,6 +6149,8 @@ body.role-daily #add-project { display: none !important; }
 /* 7 оронтой РД бичигдсэн үед «Төрөл» сонгогч түгжигдэх шалтгаан (untraasan товч юу
    буруугийн хэлдэггүй тул ил бичигдэнэ) */
 .no-ct-lock { color: var(--ok); font-weight: 600; }
+/* Байгууллагын захиалгын толгойд төлөөлөх хүн — гэрээний «Төлөөлөх хүн»-тэй ижил утга */
+.order-rep { color: var(--muted); font-weight: 400; }
 .no-lock { font-size: var(--fs-sm); color: var(--warn); background: var(--warn-soft); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-2) 11px; margin: var(--space-2) 0 var(--space-1); }
 .no-sec { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: var(--space-4) 2px 7px; }
 .no-col > .no-sec:first-child { margin-top: var(--space-2); }

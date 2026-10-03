@@ -13264,12 +13264,17 @@ function payProrateFrom() {
   const v = String((state.appConfig && state.appConfig.overtime || {}).prorate_from || '');
   return /^\d{4}-\d{2}$/.test(v) ? v : PAY_PRORATE_FROM;
 }
-function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month) {
+/* ⛔ ЯВЖ БУЙ САРД ДУТУУ ЦАГААР ХАСАХГҮЙ (2026-10-03). Сар дуусаагүй бол ирц ДУТУУ
+   (10-03-нд 2 хоногийн ирц) — норммоос «дутуу» нь хасалт биш, ердөө эрт. Өмнө нь
+   суурь 10% болж урьдчилгаа авсан хүн «2.2 сая илүү авсан» гэж ХУДАЛ харагдаж байв.
+   `today`-г тест дамжуулна; дуудагч дамжуулахгүй (өнөөдөр). */
+function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today) {
   base = Math.max(0, Number(base) || 0);
   const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins();
   const known = workedMins !== null && workedMins !== undefined && isFinite(Number(workedMins));
   const worked = known ? Math.max(0, Number(workedMins)) : 0;
-  const prorate = /^\d{4}-\d{2}$/.test(String(month || '')) && String(month) >= payProrateFrom();
+  const curM = String(today || todayStr()).slice(0, 7);
+  const prorate = /^\d{4}-\d{2}$/.test(String(month || '')) && String(month) >= payProrateFrom() && String(month) < curM;
   const shortMins = (known && prorate) ? Math.max(0, Math.round(norm - worked)) : 0;
   const earned = shortMins > 0 ? Math.round(base * worked / norm) : base;
   const d = salaryNet(earned, deduct);                     // суутгал ЗӨВХӨН (цагаар бодсон) суурьд
@@ -13314,6 +13319,85 @@ function ensurePayrollCfg() {
 function payrollHistOnly(ym, start) {
   const s = start || payrollStartMonth();
   return /^\d{4}-\d{2}$/.test(String(ym || '')) && String(ym) < s;
+}
+/* ── ИЛҮҮ ОЛГОЛТ ДАРААГИЙН САРД ШИЛЖИНЭ (2026-10-03, CEO) ─────────────────────
+   Сард олгосон нь тэр сарын «нийт олгох»-оос их бол илүү нь ДАРААГИЙН сарын олгох
+   дүнгээс хасагдана (урьдчилж авсан цалин г.м.). Гинж нь цалингийн тооцооны эхлэх
+   сараас (`payrollStartMonth`) эхэлнэ — түүнээс өмнөх сар ТҮҮХ, бодолтгүй.
+   ⛔ ЗӨВХӨН СУУРЬ ЦАЛИНТАЙ хүнд. Суурь цалингүй хүний «илүү» нь цалингийн илүү биш
+     (COO-гийн ашгийн урамшуулал, нэрээр тулгагдсан зардал) — шилжүүлбэл дараа сард
+     ЗОХИОМОЛ өр үүснэ. Амьд датаар 9 сарын 3 «илүү»-гийн 2 нь яг ийм байв.
+   ⛔ Өмнөх сарын ирц ачаалагдаагүй бол `ready:false` — 0 гэж үзвэл үлдэгдэл хиймлээр
+     өсч хүн ДАХИН олгоно. Дэлгэц ил хэлнэ.
+   ⚠ ДУТУУ (үлдэгдэл) шилжихгүй — тэр нь тухайн сарын үлдэгдэл хэвээр (дараа сарын
+     5-нд олгоход ноогдох сараараа тэр сард бүртгэгдэнэ).
+   ⚠ Өмнөх сарыг ОДООГИЙН суурь цалингаар бодно (`staff_salary` түүх хадгалдаггүй). */
+function payCarryMonths(ym, start) {
+  const s = start || payrollStartMonth(), out = [];
+  if (!/^\d{4}-\d{2}$/.test(String(ym || '')) || !/^\d{4}-\d{2}$/.test(String(s || ''))) return out;
+  for (let m = s; m < ym && out.length < 60; m = nextMonthStr(m)) out.push(m);
+  return out;
+}
+// ЦЭВЭР: [{total, paid}] сараар → мөр бүрт carryIn (өмнөх сарын илүү), owed, over
+function payCarryChain(rows) {
+  let carry = 0;
+  return (rows || []).map(r => {
+    const carryIn = carry;
+    const b = payBalance(r.total, (Number(r.paid) || 0) + carryIn);
+    carry = b.over;
+    return Object.assign({}, r, { carryIn, owed: b.owed, over: b.over });
+  });
+}
+// minsOf(сар) → тэр сарын ажилласан минут · null = ирцгүй · undefined = ачаалагдаагүй
+function salaryCarryIn(key, ym, minsOf) {
+  const base = Number((state.salaries || {})[key]) || 0;
+  const months = payCarryMonths(ym);
+  if (!base || !months.length) return { amount: 0, ready: true, from: '' };
+  const rows = [];
+  for (const m of months) {
+    const mins = minsOf(m);
+    if (mins === undefined) return { amount: 0, ready: false, from: '' };
+    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, workNormMins(), driverBonus(key, m).amount, undefined, m);
+    rows.push({ m, total: b.total, paid: salaryPaidFor(key, m) });
+  }
+  const ch = payCarryChain(rows);
+  return { amount: ch[ch.length - 1].over, ready: true, from: months[months.length - 1] };
+}
+/* Өмнөх сарын ирц — ЗӨВХӨН шилжүүлэлт бодоход. Сонгосон сарын `attMonthRecs`-ийг
+   ХӨНДӨХГҮЙ (эс бөгөөс самбар өөр сарын ирцээр зурагдана). */
+async function loadAttMonthCache(month) {
+  state.attMonthCache = state.attMonthCache || {};
+  state._attCacheBusy = state._attCacheBusy || {};
+  if (Array.isArray(state.attMonthCache[month]) || state._attCacheBusy[month]) return;
+  state._attCacheBusy[month] = true;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${month}-01&day=lt.${nextMonthStr(month)}-01&select=member_key,member_name,kind,ts,day&order=ts.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.attMonthCache[month] = await r.json();
+  } catch (e) { (state.attCacheErr = state.attCacheErr || {})[month] = true; dataLoadFailed('att-month-cache', e); }
+  delete state._attCacheBusy[month];
+  if (typeof render === 'function' && (state.view === 'salary' || state.view === 'attendance')) render();
+}
+// Тухайн сарын хүн бүрийн минут. undefined = ачаалагдаагүй (ачаалж эхэлнэ)
+function payrollMinsMap(month) {
+  const recs = (state.attMonthKey === month && Array.isArray(state.attMonthRecs)) ? state.attMonthRecs
+    : (state.attMonthCache && state.attMonthCache[month]);
+  if (!Array.isArray(recs)) {
+    if (!(state.attCacheErr && state.attCacheErr[month])) setTimeout(() => loadAttMonthCache(month), 0);
+    return undefined;
+  }
+  const memo = state._payMinsMemo || (state._payMinsMemo = {});
+  if (!memo[month] || memo[month].src !== recs) memo[month] = { src: recs, map: payrollAttMins(recs) };
+  return memo[month].map;
+}
+// Самбар ба ирцийн хүснэгтийн шилжүүлэлт — ГАНЦ газар
+function payrollCarryIn(key, ym) {
+  return salaryCarryIn(key, ym, m => {
+    const mp = payrollMinsMap(m);
+    if (mp === undefined) return undefined;
+    return mp[key] ? mp[key].mins : null;
+  });
 }
 /* Аль сарын цалинг анхдагчаар харуулах вэ. Үлдэгдэл дараа сарын 5-нд олгогддог тул
    сарын эхээр хүн ӨМНӨХ сарынхаа цалинг хардаг — 10-02-нд «9 сар» нээгдэнэ.
@@ -13379,8 +13463,10 @@ function renderAttendanceMonth(month) {
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
     const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
+    const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
+    const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
     const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · шатны хөлс ОРООГҮЙ' : ''})</span>`
-      + (rPaid ? ` <span class="sp-sub">— олгосон ${fmtMoney(rPaid)} · үлдэгдэл <b>${fmtMoney(Math.max(0, pb.total - rPaid))}</b></span>` : ' <span class="sp-sub">— олгоогүй</span>')
+      + ((rPaid || rCarry.amount) ? ` <span class="sp-sub">— ${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)} · ${rBal.over > 0 ? `илүү <b>${fmtMoney(rBal.over)}</b> (дараа сард)` : `үлдэгдэл <b>${fmtMoney(rBal.owed)}</b>`}</span>` : ' <span class="sp-sub">— олгоогүй</span>')
       + `</div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
       <div style="display:flex;align-items:center;gap:12px;">
@@ -13595,12 +13681,27 @@ function myPayCardHtml(me) {
         <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.shifted ? ` <span class="pay-pshift" title="Банкнаас ${escapeHtml(x.bankYm)}-д гарсан, ${escapeHtml(month)}-д ноогдуулсан">⇄</span>` : ''}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
         <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`
     : '';
-  const paidRow = paid > 0
-    ? row(`✓ Олгосон · ${pays.length} удаа`, `${fmtMoney(paid)}`, 'pay-paid') + payList
-      + (payBalance(b.total, paid).over > 0
-        ? row('⚠ Илүү олгосон', `<b>${fmtMoney(payBalance(b.total, paid).over)}</b>`, 'pay-over')
-        : row('Үлдэгдэл', `<b>${fmtMoney(payBalance(b.total, paid).owed)}</b>`, 'pay-left'))
-    : row('✓ Олгосон', 'энэ сард олголт бүртгэгдээгүй', 'pay-zero');
+  // ↪ Өмнөх сарын илүү олголт энэ сараас хасагдана — самбартай ИЖИЛ дүрэм (`salaryCarryIn`).
+  //   Өмнөх сарын ирцийг нэг л удаа татна (алдаа гарвал давталтгүй).
+  const carry = salaryCarryIn(key, month, m => {
+    const rr = (state.myPayRecs || {})[m];
+    if (!Array.isArray(rr)) {
+      const tried = state._myPayTried || (state._myPayTried = {});
+      if (!tried[m]) { tried[m] = true; setTimeout(() => loadMyPayMonth(m), 0); }
+      return undefined;
+    }
+    const w2 = payMonthMins(rr, m);
+    return w2.days ? w2.mins : null;
+  });
+  const bal = payBalance(b.total, paid + carry.amount);
+  const carryRow = carry.amount ? row(`↪ ${escapeHtml(carry.from)} сард илүү олгосон`, `−${fmtMoney(carry.amount)}`, 'pay-minus') : '';
+  const balRow = bal.over > 0
+    ? row(`⚠ Илүү олгосон → ${escapeHtml(nextMonthStr(month))} сард шилжинэ`, `<b>${fmtMoney(bal.over)}</b>`, 'pay-over')
+    : row('Үлдэгдэл', `<b>${fmtMoney(bal.owed)}</b>`, 'pay-left');
+  const paidRow = carryRow + (paid > 0
+    ? row(`✓ Олгосон · ${pays.length} удаа`, `${fmtMoney(paid)}`, 'pay-paid') + payList + balRow
+    : row('✓ Олгосон', 'энэ сард олголт бүртгэгдээгүй', 'pay-zero') + (carry.amount ? balRow : ''))
+    + (carry.ready ? '' : `<div class="pay-note">⏳ Өмнөх сарын илүү олголтыг тооцож байна…</div>`);
   return `<div class="pay-card">${head}
     <div class="pay-total">${fmtMoney(b.total)}</div>
     <div class="pay-total-s">${escapeHtml(month)} · гарт очих дүн</div>
@@ -17481,15 +17582,22 @@ function renderSalary() {
     const db = driverBonus(r.k, ym);
     // ⛔ Ирц ачаалагдаагүй / тэр сард огт бүртгэлгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 биш
     const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, normMins, db.amount, undefined, ym);
-    return { ...r, w, db, b, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
+    // ↪ Өмнөх сарын илүү олголт — энэ сарын олгохоос хасагдана (түүх сард шилжүүлэлтгүй)
+    const carry = payrollHistOnly(ym) ? { amount: 0, ready: true, from: '' } : payrollCarryIn(r.k, ym);
+    return { ...r, w, db, b, carry, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
   });
   /* Үлдэгдэл ба илүү олголтыг ХҮН БҮРЭЭР нийлбэрлэнэ — нийт олгохоос нийт
      олгосныг хасвал нэг хүний илүү олголт нөгөөгийн дутууг «нөхөж» харагдана. */
-  const T = calc.reduce((t, c) => { const pb = payBalance(c.b.total, c.paid); return {
+  /* ⛔ «Илүү олгосон» = ЗӨВХӨН суурь цалинтай хүнд (шилжүүлэлттэй ИЖИЛ хил). Суурь
+     цалингүй хүний олголт (COO-гийн урамшуулал, нэрээр тулгагдсан зардал) «илүү» биш —
+     тоолбол «3 хүн илүү» гэж харагдаад 1-ийнх нь л дараа сард шилжиж, тоо зөрнө. */
+  const T = calc.reduce((t, c) => { const pb0 = payBalance(c.b.total, c.paid + c.carry.amount);
+    const pb = c.amount > 0 ? pb0 : { owed: pb0.owed, over: 0 }; return {
     total: t.total + c.b.total, paid: t.paid + c.paid, ot: t.ot + c.b.otPay,
     dlv: t.dlv + c.b.delivery, sp: t.sp + (c.sp ? c.sp.total : 0),
     owed: t.owed + pb.owed, over: t.over + pb.over, overN: t.overN + (pb.over > 0 ? 1 : 0),
-  }; }, { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0, owed: 0, over: 0, overN: 0 });
+    carry: t.carry + c.carry.amount, carryWait: t.carryWait || !c.carry.ready,
+  }; }, { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0, owed: 0, over: 0, overN: 0, carry: 0, carryWait: false });
 
   const kpi = (label, val, col, sub) => `<div class="pb-kpi"><div class="pb-kpi-l">${label}</div><div class="pb-kpi-v" style="color:${col || 'var(--text)'};">${val}</div>${sub ? `<div class="pb-kpi-s">${sub}</div>` : ''}</div>`;
   const head = `<div class="pb-head">
@@ -17501,7 +17609,7 @@ function renderSalary() {
     : `<div class="pb-kpis">
     ${kpi('Нийт олгох', fmtMoney(T.total), 'var(--primary)', `${calc.length} ажилтан`)}
     ${kpi('Олгосон', fmtMoney(T.paid), 'var(--ok)', ym)}
-    ${kpi('Үлдэгдэл', fmtMoney(T.owed), T.owed > 0 ? 'var(--warn)' : 'var(--muted)', T.over > 0 ? `⚠ илүү олгосон ${fmtMoney(T.over)} · ${T.overN} хүн` : '')}
+    ${kpi('Үлдэгдэл', fmtMoney(T.owed), T.owed > 0 ? 'var(--warn)' : 'var(--muted)', [T.carry > 0 ? `↪ өмнөх сарын илүү ${fmtMoney(T.carry)} хасагдсан` : '', T.over > 0 ? `⚠ илүү олгосон ${fmtMoney(T.over)} · ${T.overN} хүн` : ''].filter(Boolean).join(' · '))}
     ${kpi('Үүнээс илүү цаг', fmtMoney(T.ot), 'var(--text)', T.dlv ? `хүргэлт ${fmtMoney(T.dlv)}` : '')}
   </div>`;
   // ⚠ ЯАГААД гэдгийг ИЛ хэлнэ — эс бөгөөс «тоо алга болсон» гэж хүн гайхна.
@@ -17522,6 +17630,10 @@ function renderSalary() {
       o.amount > 0 && editable ? `<button class="btn pb-orph-b" data-orph-fix="${escapeHtml(o.key)}" data-orph-amt="${o.amount}">🔗 Хэнийх вэ?</button>`
         : '<span class="pb-dim">олголтын мөр — хуулгаас ирсэн, энд засагдахгүй</span>'}</div>`).join('')}</div>`);
   if (noSal.length) warnBits.push(`<div class="pb-warn">⚠ <b>${noSal.length}</b> хүн энэ сард ажилласан атлаа суурь цалин тохируулаагүй: ${noSal.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
+  // ⛔ Шилжүүлэлт мэдэгдэхгүй үед ЧИМЭЭГҮЙ 0 гэж харуулахгүй — үлдэгдэл хиймлээр өснө
+  // Явж буй сард нормоос дутуу цаг хасагдахгүй — яагаад гэдгийг нэг мөрөөр
+  if (!histOnly && ym >= todayStr().slice(0, 7) && ym >= payProrateFrom()) warnBits.push(`<div class="pb-note">⏳ ${escapeHtml(ym)} сар дуусаагүй — ${normH}ц-д хүрээгүй цагийн хасалт сар дуусахад тооцогдоно.</div>`);
+  if (T.carryWait) warnBits.push(`<div class="pb-note">⏳ Өмнөх сарын илүү олголтыг тооцож байна — тэр хүртэл үлдэгдэл <b>өндөр</b> харагдаж болно.</div>`);
   if (noAtt.length) warnBits.push(`<div class="pb-note">🕗 <b>${noAtt.length}</b> цалинтай хүн энэ сард ирц бүртгүүлээгүй: ${noAtt.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
 
   const ratesBar = `<div class="pb-rates">✂️ Суутгал:
@@ -17539,13 +17651,14 @@ function renderSalary() {
      Дүрэм: ХУРААНГУЙ мөр нь үргэлж харагдана (нэр · цаг · төлөв · НИЙТ ОЛГОХ),
      задаргаа нь дарахад нээгдэнэ; утгагүй мөр ОГТ бичигдэхгүй. */
   const rows = calc.map(c => {
-    const { k, m, b, w, db, sp, paid, pays } = c;
+    const { k, m, b, w, db, sp, paid, pays, carry } = c;
     const dOn = salaryDeductOn(k);
-    const { owed, over } = payBalance(b.total, paid);
+    const { owed, over } = payBalance(b.total, paid + carry.amount);
     // Төлөв НЭГ чипээр — «олголт бүртгэгдээгүй» гэсэн бүтэн мөр хүн бүрд давтагдахгүй.
     const st = histOnly ? (paid > 0 ? ['pb-st-ok', 'олгосон'] : ['pb-st-none', '—'])
+      : !c.amount ? (paid > 0 ? ['pb-st-none', `олгосон ${fmtMoneyShort(paid)}`] : ['pb-st-none', '—'])   // суурьгүй — «илүү» гэж үнэлэхгүй
       : !b.total ? (paid > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`] : ['pb-st-none', '—'])
-      : paid <= 0 ? ['pb-st-no', 'олгоогүй']
+      : (paid <= 0 && !carry.amount) ? ['pb-st-no', 'олгоогүй']
       : over > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`]
       : owed > 0 ? ['pb-st-part', `дутуу ${fmtMoneyShort(owed)}`]
       : ['pb-st-ok', '✓ олгосон'];
@@ -17598,9 +17711,10 @@ function renderSalary() {
         ${b.otMins ? line(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : ''}
         ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}
         ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
+        ${carry.amount ? line(`↪ ${escapeHtml(carry.from)} сард илүү олгосон`, `−${fmtMoney(carry.amount)}`, 'pay-minus') : ''}
         ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList : ''}
         ${owed > 0 ? line('Үлдэгдэл', `<b>${fmtMoney(owed)}</b> ${memoBtn}`, 'pay-left') : ''}
-        ${over > 0 ? line('⚠ Илүү олгосон', `<b>${fmtMoney(over)}</b>`, 'pay-over') : ''}
+        ${over > 0 ? line(`⚠ Илүү олгосон → ${escapeHtml(nextMonthStr(ym))} сард шилжинэ`, `<b>${fmtMoney(over)}</b>`, 'pay-over') : ''}
       </div>`;
     const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Шатны хөлс ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ</span></div>` : '';
     const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг тоологдсон${b.shortMins ? ', <b>цалин дутуу бодогдсон</b>' : ', илүү цаг дутуу'}. «🙋 Цаг гаргуулах»-аар засна.</div>` : '';

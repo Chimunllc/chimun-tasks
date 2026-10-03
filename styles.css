@@ -6636,6 +6636,9 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .sc-acct-tag.sc-acct-guess { background: var(--panel-hover); border-color: var(--border); color: var(--muted); }
 .sc-acct-used { font-size: var(--fs-xs); color: var(--muted); }
 .sc-acct-copy { padding:2px 8px; font-size: var(--fs-xs); }
+/* Жолоочийн сонголт — ҮРГЭЛЖ яг нэг хүн (дамжлагын цонх) */
+.sa-drv-chip { cursor:pointer; font-size: var(--fs-sm); padding:5px 10px; border:1px solid var(--border); border-radius:999px; background: var(--panel); user-select:none; }
+.sa-drv-chip.on { background: var(--primary); border-color: var(--primary); color:#fff; }
 .sc-head-main { min-width:0; flex:1; }
 .sc-contract-btn { border-color: var(--primary); color: var(--primary); }
 .sc-adv-tag { font-weight:400; font-size: var(--fs-xs); color: var(--muted); }

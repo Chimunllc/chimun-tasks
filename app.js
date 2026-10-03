@@ -13239,6 +13239,16 @@ function stagePtsForQty(qty, bands) {
 /* Дамжлагын ЖИН — «энэ ажил хэр хүнд вэ» (CEO, 2026-10-03). `PIPELINE`-ийн
    мөрөөс уншина; тэнд байхгүй бол 1 (шинэ дамжлага чимээгүй 0 болохгүй).
    ⛔ Жолоо = 0 — жолооч 10,000₮-ийн нэмэгдэл ТУСДАА авдаг (давхар төлөхгүй). */
+/* Дамжлагын НОТОЛГОО — 'photo' (зураг) эсвэл 'count' (тоо тулгалт).
+   ⛔ Бүртгэх дамжлагад (гаргах/хүлээн авах) зураг шаардахгүй — нярав тоолж
+     бүртгэх ажил хийдэг, зураг нь нэмэлт дэмий алхам (CEO, 2026-10-03).
+     ГЭХДЭЭ орлуулах нотолгоо ЗААВАЛ: зураг нь дамжлагыг хуурамчлахаас
+     хамгаалдаг цорын ганц зүйл байсан тул ТОО нь түүнийг орлоно.
+   ⚠ Танихгүй дамжлага → 'photo' (хамгаалалт сулрахгүй). */
+function stageEvidence(key) {
+  for (const r of PIPELINE) if (r.key === key && r.ev) return r.ev;
+  return key === 'archive' ? '' : 'photo';
+}
 function stageWeight(key) {
   for (const r of PIPELINE) if (r.key === key && r.pts !== undefined) return Number(r.pts) || 0;
   return 1;
@@ -13295,7 +13305,11 @@ function driverBonus(key, month, orders) {
   for (const o of (orders || state.appOrders || [])) {
     if (typeof isDeliveryOrder === 'function' && !isDeliveryOrder(o)) continue;   // зөвхөн хүргэлттэй захиалга
     const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
-    const mine = (e) => e && String(e.by) === String(key) && (!month || String(e.at || '').slice(0, 7) === month);
+    /* ⛔ ЖОЛООЧ = `e.driver`, дамжлага дарсан хүн БИШ (2026-10-03, CEO).
+       Хүргэлтэд жолооч жолоодож, бусад нь ачаа буулгадаг — өмнө нь нэг хүн
+       дамжлагын оноо БА 10,000₮-ийн нэмэгдэл ХОЁУЛАНГ авдаг байв.
+       ⚠ Хуучин бичлэгт `driver` талбар БАЙХГҮЙ тул `by` руу унана (түүх эвдрэхгүй). */
+    const mine = (e) => e && String(e.driver || e.by) === String(key) && (!month || String(e.at || '').slice(0, 7) === month);
     const addr = o.delivery_address || o.customer_address || o.customer || o.company || '';
     // stage_meta нь act.key-ээр хадгалагдана: delivering→rented='deliver', rented→returning='retstart'
     if (mine(sm.deliver)) { deliveries++; trips.push({ number: o.number, date: String(sm.deliver.at || '').slice(0, 10), type: 'Хүргэсэн', addr }); }
@@ -26402,7 +26416,8 @@ function receiveShortfalls(items, got) {
 function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const act = stageActionFor(String(o.status || ''), to);
-  const needPhoto = act.key !== 'archive';
+  const _ev = stageEvidence(act.key);
+  const needPhoto = _ev === 'photo';
   // ── Үнэлгээний зорилтууд (rateTargets) — хяналтын цэг тус бүр өмнөх ажлыг үнэлнэ ──
   // «Агуулахаас гаргасан» (dispatch) = нярав ЦЭВЭРЛЭГЧ + БЭЛДЭГЧ ХОЁУЛАНГ үнэлнэ (2 ★).
   // Бусад шат = өмнөх нэг шатыг үнэлнэ. Эхний шат (цэвэрлэх) = үнэлгээгүй.
@@ -26422,10 +26437,13 @@ function openStageAdvanceModal(oid, to) {
   // Анхдагчаар бүгд бүрэн гэж тооцно; ажилтан зөвхөн ЗӨРҮҮТЭЙГ нь засна (50 мөрийг
   // гараар оруулах нь удаан бөгөөд яаравал хуурамч тоо цуглана).
   // Тоо ширхэгийн хяналт — pickup (жолооч хэрэглэгчээс авах) БА received (нярав агуулахад авах) хоёуланд.
-  const _isReceive = act.key === 'received' || act.key === 'retstart';
+  // Тоо тулгалт — бүртгэх дамжлага (гаргах/хүлээн авах) БА жолоочийн авалт.
+  const _isDispatch = act.key === 'dispatch';
+  const _isReceive = act.key === 'received' || act.key === 'retstart' || _isDispatch;
   const _isPickup = act.key === 'retstart';
   // received дээр «хүлээгдэх тоо» = жолоочийн ХЭРЭГЛЭГЧЭЭС АВСАН тоо (retstart.got); эс бол захиалгын тоо.
   const _prevPick = (act.key === 'received' && _smNow.retstart && Array.isArray(_smNow.retstart.items)) ? _smNow.retstart.items : null;
+  // ⚠ Гаргахад «хүлээгдэх» нь захиалгын тоо; буцаалтын тулгалт ҮҮНТЭЙ харьцуулагдана.
   const _rcItems = _isReceive ? (o.items || []).filter(it => it && it.name).map(it => {
     const p = productOf(it);   // sku → id → нэр (сайт id-г sku болгож илгээдэг)
     const sku = p ? p.sku : (it.sku || '');
@@ -26437,13 +26455,16 @@ function openStageAdvanceModal(oid, to) {
   // Хамтрагч — олон хүн ажилласныг харуулах (сонголттой). Идэвхтэй ажилчид, өөрийгөө хасна.
   // Зөвхөн ҮНДСЭН ажилтан — цагийн ажилтан дамжлагын хамтрагчаар бүртгэгдэхгүй
   // (KPI/цалин нь өөр журмаар тооцогддог тул хольж болохгүй).
+  // ⛔ ЖОЛООЧ — хүргэх/буцаах дамжлагад ХЭН ЖОЛОО БАРЬСАН нь тусад нь бүртгэгдэнэ.
+  //   Дамжлагын оноо нь ачаа буулгасан хүнд, 10,000₮-ийн нэмэгдэл нь жолоочид.
+  const _needDriver = act.key === 'deliver' || act.key === 'retstart';
   const _helpStaff = (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !isDailyMember(m) && String(personKey(m)) !== String(state.me))
     .map(m => ({ k: personKey(m), name: m.name || '' })).filter(x => x.k && x.name)
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'mn'));
   const _rcHtml = _isReceive && _rcItems.length ? `
-    <div style="font-size:12.5px;font-weight:700;margin:2px 0 6px;">📦 ${_isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?'} <span style="color:var(--danger);">*</span></div>
+    <div style="font-size:12.5px;font-weight:700;margin:2px 0 6px;">📦 ${_isDispatch ? 'Агуулахаас хэдэн ширхэг гарсан бэ?' : _isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?'} <span style="color:var(--danger);">*</span></div>
     ${!_isPickup && _prevPick ? `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.</div>` : ''}
-    <div style="display:flex;gap:8px;margin-bottom:8px;"><button type="button" class="btn btn-primary" id="rc-all" style="flex:1;">✓ Бүгд бүрэн ${_isPickup ? 'авсан' : 'ирсэн'}</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;"><button type="button" class="btn btn-primary" id="rc-all" style="flex:1;">✓ Бүгд бүрэн ${_isDispatch ? 'гарсан' : _isPickup ? 'авсан' : 'ирсэн'}</button></div>
     <div id="rc-list" class="rc-list">${_rcItems.map((x, i) => `
       <div class="rc-row" data-rc="${i}">
         <span class="rc-name">${escapeHtml(x.name)}</span>
@@ -26470,6 +26491,13 @@ function openStageAdvanceModal(oid, to) {
       <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">👥 ${escapeHtml(stageHelpQuestion(act.key))} <span style="color:var(--muted);font-weight:400;font-size:11px;">— байвал дарж нэмнэ</span></div>
       <input id="sa-help-search" placeholder="Нэрээр хайх…" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12.5px;margin-bottom:6px;">
       <div id="sa-help-list" style="display:flex;flex-wrap:wrap;gap:6px;max-height:132px;overflow:auto;margin-bottom:12px;">${_helpStaff.map(s => `<span class="sa-help-chip" data-hk="${escapeHtml(String(s.k))}" data-hn="${escapeHtml(s.name.toLowerCase())}" style="cursor:pointer;font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);user-select:none;">${escapeHtml(s.name)}</span>`).join('')}</div>
+    </div>` : ''}
+    ${_needDriver ? `<div style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">🚗 Жолоо хэн барьсан бэ? <span style="color:var(--muted);font-weight:400;font-size:11px;">— нэмэгдэл түүнд очно</span></div>
+      <div id="sa-drv-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+        <span class="sa-drv-chip on" data-dk="${escapeHtml(String(state.me))}">${escapeHtml(memberName(state.me) || 'Би')}</span>
+        ${_helpStaff.map(s2 => `<span class="sa-drv-chip" data-dk="${escapeHtml(String(s2.k))}">${escapeHtml(s2.name)}</span>`).join('')}
+      </div>
     </div>` : ''}
     ${canSkipStage() ? `<div id="sa-skip-wrap" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
       <button type="button" class="btn" id="sa-skip-open" style="width:100%;font-size:12.5px;">⏭ Шалтгаантай алгасах</button>
@@ -26584,6 +26612,12 @@ function openStageAdvanceModal(oid, to) {
     if (helpers.has(k)) { helpers.delete(k); ch.style.background = 'var(--panel)'; ch.style.color = 'var(--text)'; ch.style.borderColor = 'var(--border)'; }
     else { helpers.add(k); ch.style.background = 'var(--primary)'; ch.style.color = '#fff'; ch.style.borderColor = 'var(--primary)'; }
   });
+  // Жолоочийн сонголт — ҮРГЭЛЖ яг НЭГ хүн (өгөгдмөл нь дарсан хүн)
+  let driverKey = String(state.me);
+  modal.querySelectorAll('.sa-drv-chip').forEach(ch => ch.onclick = () => {
+    driverKey = String(ch.dataset.dk);
+    modal.querySelectorAll('.sa-drv-chip').forEach(x => x.classList.toggle('on', x === ch));
+  });
   const _hSearch = modal.querySelector('#sa-help-search');
   if (_hSearch) _hSearch.oninput = () => { const qq = _hSearch.value.toLowerCase().trim(); modal.querySelectorAll('.sa-help-chip').forEach(ch => { ch.style.display = (!qq || (ch.dataset.hn || '').includes(qq)) ? '' : 'none'; }); };
   $('#sa-submit').onclick = async () => {
@@ -26593,6 +26627,7 @@ function openStageAdvanceModal(oid, to) {
     const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
     if (needPhoto) entry.photos = photos.slice();
     if (helpers.size) entry.helpers = [...helpers]; else delete entry.helpers;   // хамтарсан хүмүүс
+    if (_needDriver) entry.driver = driverKey;   // 🚗 нэмэгдэл ЭНЭ хүнд (дамжлагын оноо нь дарсан хүнд)
     if (rateTargets.length && ratings.every(r => r > 0)) {
       entry.comment = (($('#sa-comment') || {}).value || '').trim();
       // Үнэлгээ бүрийг тухайн ажилтанд холбоно (олон зорилт = олон handoffRating)
@@ -26604,10 +26639,16 @@ function openStageAdvanceModal(oid, to) {
     let _shortLines = [];
     if (_isReceive && _rcItems.length) {
       entry.items = _rcItems.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: rcGot[i] }));
-      _shortLines = rcShort();
-      entry.missing = _shortLines.reduce((a, x) => a + x.miss, 0);
+      /* ⛔ ГАРГАХ дамжлагад дутуу тоо нь АЛДАГДАЛ БИШ — зүгээр л цөөн бараа
+         гарсан гэсэн үг. Нөөцөөс хасаж засварын бичлэг үүсгэвэл гараагүй
+         бараа «эвдэрсэн» болж, нөөц ба ашиг хоёулаа гажна. Буцаалтын тулгалт
+         нь ЭНЭ тоотой (`dispatch.items[].got`) харьцуулагдана. */
+      if (!_isDispatch) {
+        _shortLines = rcShort();
+        entry.missing = _shortLines.reduce((a, x) => a + x.miss, 0);
+      }
       // Received дээр авсан тоотой тулгаж дутвал = жолоочийн замд алдсан хариуцлага
-      if (!_isPickup && _prevPick && entry.missing > 0 && _driverBy) entry.liableDriver = _driverBy;
+      if (!_isPickup && !_isDispatch && _prevPick && entry.missing > 0 && _driverBy) entry.liableDriver = _driverBy;
     }
     sm2[act.key] = entry;
     close();

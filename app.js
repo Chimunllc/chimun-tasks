@@ -22571,6 +22571,35 @@ function psSiteCats() {
 }
 function canSeeSheet(mode) { return !!PSHEET[mode] && canAccessView('ps_' + mode, () => !!state.isCEO || can(PSHEET[mode].perm)); }
 // Хуудсанд харагдах бараа — хайлтаар шүүнэ. Цэвэр функц (тестлэгдэнэ).
+/* 🔎 САМБАРЫН ШҮҮЛТҮҮР (2026-10-03, CEO «нийлүүлэгчгүй, авсан огноогүй гэх мэт»).
+   281 барааг нүдээр хөөх боломжгүй — дутуу талбарыг ШҮҮЖ өгөх ёстой. Чип бүр
+   ТООТОЙ: ажил хаана байгааг систем хэлнэ, хүн таамаглахгүй.
+   ⚠ Самбар бүр ӨӨР дутагдалтай тул шүүлтүүр нь тэр самбарын талбаруудаар.
+   ⚠ `test` нь ЦЭВЭР функц — тестлэгдэнэ. Шинэ шүүлтүүр нэмэхэд энд л нэмнэ. */
+const PSHEET_FILTERS = {
+  catalog: [
+    { key: 'nocat', label: 'Ангилалгүй', test: (p) => !String(p.category || '').trim() },
+    { key: 'nophoto', label: 'Зураггүй', test: (p) => !String(p.photo || '').trim() },
+  ],
+  price: [
+    { key: 'noprice', label: 'Үнэгүй', test: (p) => !(Number(p.price) > 0) },
+    { key: 'nodep', label: 'Барьцаагүй', test: (p) => !(Number(p.deposit) > 0) },
+  ],
+  cost: [
+    { key: 'nocost', label: 'Өртөггүй', test: (p) => !(Number(p.cost) > 0) },
+    { key: 'nodate', label: 'Авсан огноогүй', test: (p) => !String(p.purchase_date || '').trim() },
+    { key: 'nosup', label: 'Нийлүүлэгчгүй', test: (p) => !String(p.supplier || '').trim() },
+  ],
+  stock: [
+    { key: 'zero', label: 'Нөөцгүй', test: (p) => !PS_QTY_FIELDS.reduce((t, k) => t + (Number(p[k]) || 0), 0) },
+    { key: 'unsealed', label: 'Эцэслээгүй', test: (p) => !(typeof stockSealed === 'function' && stockSealed(p)) },
+  ],
+};
+/* Идэвхтэй шүүлтүүрийг хэрэглэнэ. Танихгүй түлхүүр → БҮГД (хоосон дэлгэц гаргахгүй). */
+function psApplyFilter(list, mode, key) {
+  const f = (PSHEET_FILTERS[mode] || []).find(x => x.key === key);
+  return f ? (list || []).filter(p => { try { return !!f.test(p); } catch (_) { return false; } }) : (list || []);
+}
 function psFilter(list, q) {
   const s = String(q || '').trim().toLowerCase();
   const rows = (list || []).filter(p => p && p.sku && p.type !== 'service');
@@ -22761,7 +22790,8 @@ function renderProductSheet(mode) {
   if (mode === 'catalog' && state.appCatGroups === undefined) { state.appCatGroups = null; loadAppConfig('mevent_category_groups').then(v => { state.appCatGroups = Array.isArray(v) ? v : []; render(); }); }
   const ro = !(state.isCEO || can(cfg.perm));
   const q = state.psQ || '';
-  const rows = psFilter(state.products, q).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const _all = psFilter(state.products, q);
+  const rows = psApplyFilter(_all, mode, state.psF).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const money = (v) => moneyFmtInput(Number(v) || 0);
   const cell = (p) => {
@@ -22825,7 +22855,14 @@ function renderProductSheet(mode) {
       <input id="ps-q" class="ps-q ui-raw" value="${escapeHtml(q)}" placeholder="Хайх (нэр, ангилал, код)…" aria-label="Хайх">
     </div>
 
-    <div class="ps-count">${rows.length} бараа</div>
+    ${(() => {
+      const fs2 = PSHEET_FILTERS[mode] || []; if (!fs2.length) return '';
+      const chip = (k, lb, n, on) => `<button type="button" class="ps-fc${on ? ' is-on' : ''}${!n && k ? ' is-empty' : ''}" data-ps-f2="${escapeHtml(k)}">${escapeHtml(lb)}<b>${n}</b></button>`;
+      return `<div class="ps-fbar">${chip('', 'Бүгд', _all.length, !state.psF)}`
+        + fs2.map(f => chip(f.key, f.label, _all.filter(x => { try { return !!f.test(x); } catch (_) { return false; } }).length,
+            state.psF === f.key)).join('') + '</div>';
+    })()}
+    <div class="ps-count">${rows.length} бараа${state.psF ? ' <span class="mut">(шүүсэн)</span>' : ''}</div>
     <div class="ps-list" id="ps-list">${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🔍</div>Хайлтад тохирох бараа алга.</div>'}</div>
     <div class="ps-savebar" id="ps-savebar"${psDirtyCount() ? '' : ' hidden'}>
       <span><b id="ps-dirty-n">${psDirtyCount()}</b> бараа өөрчлөгдсөн — хадгалаагүй байна</span>
@@ -22855,6 +22892,11 @@ function attachProductSheetHandlers(mode) {
   const list = document.getElementById('ps-list');
   if (list && state._psScroll) { list.scrollTop = state._psScroll; state._psScroll = 0; }
   const qEl = document.getElementById('ps-q');
+  document.querySelectorAll('[data-ps-f2]').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.psF2 || '';
+    state.psF = (state.psF === k || !k) ? '' : k;   // дахин дарвал БҮГД рүү буцна
+    render();
+  }));
   if (qEl) qEl.addEventListener('input', (e) => { state.psQ = e.target.value; clearTimeout(state._psT); state._psT = setTimeout(() => render(), 220); });
   /* ⇄ ҮНДСЭН ҮЙЛДЭЛ — одоо байгаа шилжүүлэх модалыг дуудна (`product_transfers`-д
      мөр үлдээж, нийт тоог ХАДГАЛНА). Гар засвараас ялгаатай нь: хаанаас хаашаа

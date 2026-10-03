@@ -8385,3 +8385,17 @@ select.no-asar-len {
 }
 /* Нөөцийн самбар: хуваарилалтын чипүүд нэг эгнээнд таслагдахгүй. */
 .ps-row-stock .ps-fields { flex-wrap: nowrap; align-items: center; }
+
+/* 🔎 Самбарын шүүлтүүрийн чипүүд — тоо нь ажил хаана байгааг хэлнэ (2026-10-03). */
+.ps-fbar { display: flex; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2) 0 0; }
+.ps-fc {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-1) var(--space-3); border-radius: var(--r-full);
+  border: 1px solid var(--border); background: var(--panel);
+  color: var(--text-soft); font-size: var(--fs-sm); cursor: pointer; white-space: nowrap;
+}
+.ps-fc b { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ps-fc:hover { border-color: var(--border-strong); }
+.ps-fc.is-on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.ps-fc.is-on b { color: var(--on-primary); }
+.ps-fc.is-empty { opacity: .45; }

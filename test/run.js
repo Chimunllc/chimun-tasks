@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15175,6 +15175,33 @@ async function swFetchTests() {
   eq(one('clean').total, 2 * 1350, 'ханш: тохиргоо авахад кодын нөөц ханш');
 }
 
+// ═══ ЖОЛООЧ ТУСДАА · БҮРТГЭХ ДАМЖЛАГАД ТОО (2026-10-03, CEO) ═══════════
+{
+  const { driverBonus, stageEvidence } = F;
+  // Нотолгоо — бүртгэх дамжлагад зураг БИШ тоо
+  eq(stageEvidence('dispatch'), 'count', 'нотолгоо: Бүртгэж гаргах = тоо');
+  eq(stageEvidence('received'), 'count', 'нотолгоо: Бүртгэж хүлээн авах = тоо');
+  eq(stageEvidence('clean'), 'photo', 'нотолгоо: Цэвэрлэх = зураг');
+  eq(stageEvidence('deliver'), 'photo', 'нотолгоо: Талбарт буулгах = зураг');
+  eq(stageEvidence('archive'), '', 'нотолгоо: Архивлахад шаардлагагүй');
+  // ⛔ Танихгүй дамжлага → зураг (хамгаалалт сулрахгүй)
+  eq(stageEvidence('шинэ_дамжлага'), 'photo', 'нотолгоо: танихгүй дамжлага зурагтай');
+
+  /* ⛔ ЖОЛООНЫ НЭМЭГДЭЛ = `driver`, дамжлага дарсан хүн БИШ. Өмнө нь нэг хүн
+     дамжлагын оноо БА 10,000₮-ийг ХОЁУЛАНГ авдаг байв. */
+  const ords = [{ number: 1, delivery_address: 'СБД', stage_meta: {
+    deliver:  { by: 'A', driver: 'B', at: '2026-09-05T02:00:00Z' },
+    retstart: { by: 'A', driver: 'B', at: '2026-09-07T02:00:00Z' },
+  } }];
+  eq(driverBonus('B', '2026-09', ords).count, 2, 'жолоо: нэмэгдэл ЖОЛООЧИД');
+  eq(driverBonus('B', '2026-09', ords).amount, 20000, 'жолоо: 2 чиглэл × 10,000₮');
+  eq(driverBonus('A', '2026-09', ords).count, 0, 'жолоо: дамжлага дарсан хүнд нэмэгдэл ОЧИХГҮЙ');
+  // ⚠ Хуучин бичлэгт `driver` байхгүй — `by` руу унана (түүх эвдрэхгүй)
+  const old = [{ number: 2, delivery_address: 'СБД', stage_meta: {
+    deliver: { by: 'C', at: '2026-08-05T02:00:00Z' } } }];
+  eq(driverBonus('C', '2026-08', old).count, 1, 'жолоо: хуучин бичлэгт `by` нь жолооч');
+}
+
 // ═══ SCAN: урсгал жагсаалтаас ажиллана ═════════════════════════════════
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
@@ -15194,6 +15221,14 @@ async function swFetchTests() {
   // ⛔ Жин нь PIPELINE-аас — хоёр дахь жагсаалт үүсгэхгүй
   const sw = src.slice(src.indexOf('function stageWeight'), src.indexOf('function stageWeight') + 300);
   ok(/for \(const r of PIPELINE\)/.test(sw), 'scan: жин PIPELINE-аас (давхардсан жагсаалтгүй)');
+  // ⛔ Гаргах дамжлагад дутуу тоо нь АЛДАГДАЛ БИШ — нөөцөөс хасаж засвар үүсгэхгүй
+  const md = src.slice(src.indexOf('function openStageAdvanceModal'), src.indexOf('function bqStatusBadge'));
+  ok(/if \(!_isDispatch\) \{/.test(md), 'scan: гаргахад дутагдал тоологдохгүй');
+  ok(/!_isPickup && !_isDispatch && _prevPick/.test(md), 'scan: гаргахад жолоочийн хариуцлага үүсэхгүй');
+  ok(/const needPhoto = _ev === 'photo'/.test(md), 'scan: зураг нь нотолгооны төрлөөс');
+  ok(/entry\.driver = driverKey/.test(md), 'scan: жолооч тусдаа хадгалагдана');
+  const db = src.slice(src.indexOf('function driverBonus'), src.indexOf('const DRIVER_LIABILITY_NOTE'));
+  ok(/e\.driver \|\| e\.by/.test(db), 'scan: нэмэгдэл жолоочид, хуучин бичлэгт by руу унана');
 }
 
 // ═══ SCAN: тохиргоо үнэхээр ачаалагддаг ════════════════════════════════

@@ -8273,3 +8273,48 @@ select.no-asar-len {
 }
 /* 🔒 Эцэслэгдсэн барааны тоо түгжээтэй (2026-10-02). */
 .pm-hint-lock { background: var(--warn-soft); color: var(--warn); }
+
+/* 📦 «Нөөц ба салбар» — хуваарилалт нэг мөрөнд, шилжүүлэг үндсэн үйлдэл (2026-10-03).
+   Өмнө нь 4 тоон талбар задгай зогсож нэг бараа ~350px эзэлдэг тул 281 бараа
+   уншигдахгүй байв; шилжүүлэх товч огт байгаагүй тул хүн 2 тоог гараар нэмж
+   хасдаг (нийлбэр санамсаргүй өөрчлөгдөх нүх). */
+.ps-dist { flex: 1; min-width: 0; }
+.ps-dist > summary {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  cursor: pointer; list-style: none; padding: var(--space-1) 0;
+}
+.ps-dist > summary::-webkit-details-marker { display: none; }
+.ps-dist > summary::after { content: '✎'; color: var(--muted); font-size: var(--fs-xs); margin-left: var(--space-1); }
+.ps-dist[open] > summary::after { content: '▴'; }
+.ps-dist > summary:hover { color: var(--text); }
+.ps-chip {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px var(--space-2);
+  border-radius: var(--r-full); background: var(--panel-hover); color: var(--text-soft);
+  font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ps-chip.is-0 { color: var(--muted-soft); background: transparent; }
+.ps-dist .ps-tot { margin-left: auto; color: var(--text); font-size: var(--fs-sm); white-space: nowrap; }
+.ps-sld { color: var(--ok); font-size: var(--fs-sm); }
+.ps-dist-g { display: flex; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2) 0 var(--space-1); }
+.ps-dist-lock { flex: 1 0 100%; font-size: var(--fs-xs); color: var(--warn); }
+.ps-mv {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: var(--r-md);
+  border: 1px solid var(--border-strong); background: var(--panel);
+  color: var(--primary); font-size: var(--fs-lg); cursor: pointer;
+}
+.ps-mv:hover { background: var(--primary-soft); border-color: var(--primary); }
+/* ⛔ `.ps-savebar` нь `display:flex` тул `hidden` ажиллахгүй байв — тууз
+   «0 бараа өөрчлөгдсөн» гэж ҮРГЭЛЖ харагдаж, мөр халхалдаг байсан. */
+.ps-savebar[hidden] { display: none; }
+/* ⛔ `.ps-nm` нь 210px ТОГТМОЛ тул нарийн дэлгэцэд зураг/нэр/талбар давхарлаж
+   нэг бараа ~177px эзэлдэг — 281 бараа уншигдахгүй. Нөөцийн самбарт нэр нь
+   ШАХАГДДАГ, хуваарилалт нь доор нэг мөрөнд. ⚠ Суурь `.ps-row` нь flex тул
+   grid болгож БОЛОХГҮЙ — хүүхдийн flex дүрмүүд зөрчилдөж бүтэц задарна
+   (375px-д нэр бүрмөсөн алга болохыг хэмжиж баталсан). */
+.ps-row-stock { flex-wrap: wrap; row-gap: var(--space-1); }
+.ps-row-stock .ps-nm { flex: 1 1 140px; }
+.ps-row-stock .ps-fields { flex: 1 1 100%; flex-wrap: nowrap; align-items: center; }
+@media (min-width: 721px) {
+  .ps-row-stock .ps-nm { flex: 0 0 240px; }
+  .ps-row-stock .ps-fields { flex: 1 1 auto; }
+}

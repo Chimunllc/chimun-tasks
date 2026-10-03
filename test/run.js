@@ -382,6 +382,49 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   })();
 }
 
+/* ═══ ⛔ ЕРӨНХИЙ PATCH-Д МӨНГӨНИЙ ТҮГЖЭЭ (2026-10-02 аудит) ═══
+   `patchOrderFields` нь захиалгын ДУРЫН талбарыг PATCH хийдэг. Одоогийн
+   дуудагчид мөнгө хөнддөггүй ч шинэ дуудагч `total_mnt` дамжуулбал ХААСАН
+   сарын орлого чимээгүй өөрчлөгдөнө. */
+{
+  const PF = vm.runInContext('patchOrderFields', sandbox);
+  const MF = vm.runInContext('ORDER_MONEY_FIELDS', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const saved = st.closedMonths;
+  // ⚠ Мөнгийг өөр САР руу зөөдөг талбарууд ч жагсаалтад байх ЁСТОЙ
+  ['total_mnt', 'paid_mnt', 'deposit_mnt', 'items', 'paid_date', 'starts_at', 'status']
+    .forEach(k => ok(MF.includes(k), 'мөнгөний талбар жагсаалтад: ' + k));
+
+  (async () => {
+    st.closedMonths = { '2026-08': { at: 'x', by: 'y' } };
+    const o = { id: 'O1', paid_date: '2026-08-15', starts_at: '2026-08-20' };
+    const err = async (f) => { try { await PF(o, f); return ''; } catch (e) { return e.message; } };
+    ok(/сар хаалттай/.test(await err({ total_mnt: 5 })), 'PATCH: хаасан сарын дүн засагдахгүй');
+    ok(/сар хаалттай/.test(await err({ items: [] })), 'PATCH: хаасан сарын барааны мөр засагдахгүй');
+    ok(/сар хаалттай/.test(await err({ status: 'deleted' })), 'PATCH: хаасан сарын төлөв засагдахгүй');
+    /* ⚠ Мөнгөний БИШ талбар нээлттэй хэвээр — эс бөгөөс тэмдэглэл, дамжлагын
+       зураг зэрэг хаасан сарын захиалгад бичигдэхээ болино (мөнгө хөнддөггүй). */
+    eq(/сар хаалттай/.test(await err({ note: 'тэмдэглэл' })), false, 'PATCH: тэмдэглэл хаалттай сард ч бичигдэнэ');
+    eq(/сар хаалттай/.test(await err({ stage_meta: {} })), false, 'PATCH: дамжлагын мэдээлэл бичигдэнэ');
+    st.closedMonths = {};
+    eq(/сар хаалттай/.test(await err({ total_mnt: 5 })), false, 'PATCH: нээлттэй сард мөнгө засагдана');
+    st.closedMonths = saved;
+  })();
+}
+
+/* 0e2n) SCAN — ерөнхий PATCH-ийн мөнгөн түгжээ (2026-10-02) */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const _i = codeLines.indexOf('async function patchOrderFields');
+  const pf = codeLines.slice(_i, _i + 1200);
+  ok(/const _money = ORDER_MONEY_FIELDS\.filter\(/.test(pf), 'scan: мөнгөний талбарыг шүүнэ');
+  ok(/await loadClosedMonths\(true\)/.test(pf), 'scan: түгжээг СЕРВЭРЭЭС шинэчилнэ');
+  ok(/orderLockedMonth\(o\) \|\| orderLockedMonth\(\{ \.\.\.o, \.\.\.fields \}\)/.test(pf),
+     'scan: ӨМНӨХ ба ШИНЭ сар ХОЁУЛАА шалгагдана (өөр сар руу зөөхийг барина)');
+  ok(/throw new Error\(`\$\{_lk\} сар хаалттай/.test(pf), 'scan: тодорхой мессежтэй татгалзана');
+  ok(/if \(_money\.length\) \{/.test(pf), 'scan: зөвхөн мөнгөний талбар дамжсан үед шалгана');
+}
+
 /* 0e2m) SCAN — ТҮГЖЭЭНИЙ АУДИТ: products-ийн БҮХ бичих зам (2026-10-02)
    CEO «ийм төрлийн алдаа маш их байна» гэснээр бүх бичих замыг тоолов.
    `products`-д 9 бичих зам байхад түгжээ зөвхөн `saveProduct`-д байв:

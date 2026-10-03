@@ -6607,6 +6607,16 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .sc-val { font-size: var(--fs-sm); color: var(--text); flex:1; min-width:0; overflow-wrap:anywhere; }
 .sc-tel, .tel-link { color: var(--primary); text-decoration:none; font-weight:600; }
 .sc-hint { font-size: var(--fs-xs); color: var(--muted); line-height:1.5; margin-top:4px; }
+/* Картын тайлбар текст — хоёр хэмжээ, нэг өнгө. `.sc-note-b` нь өнгийг үндсэн текст болгоно. */
+.sc-note { font-size: var(--fs-sm); color: var(--muted); }
+.sc-note-xs { font-size: var(--fs-xs); color: var(--muted); line-height:1.5; margin-bottom: var(--space-2); }
+.sc-note-b { color: var(--text); }
+.sc-empty { padding: var(--space-5); text-align:center; font-size: var(--fs-sm); color: var(--muted); }
+.sc-head-main { min-width:0; flex:1; }
+.sc-contract-btn { border-color: var(--primary); color: var(--primary); }
+.sc-adv-tag { font-weight:400; font-size: var(--fs-xs); color: var(--muted); }
+.sc-adv-body { margin-top: var(--space-3); }
+.sc-reset-btn { padding: var(--space-1) var(--space-3); font-size: var(--fs-xs); }
 
 /* Ажилтны карт popup — доторх агуулга гүйдэг болгоно (толгой тогтмол) */
 .sc-modal { display:flex; flex-direction:column; max-height:85vh; }

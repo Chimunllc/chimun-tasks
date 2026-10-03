@@ -14571,8 +14571,8 @@ async function swFetchTests() {
   eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otPay, 0, 'цалин: нормоос доош → илүү цаг 0₮');
 
   // ── ⛔ НОРМД ХҮРЭЭГҮЙ → СУУРЬ АЖИЛЛАСАН ЦАГААР (2026-10-03, CEO; Ц.Бат эрдэнэ 129.6ц/184ц) ──
-  const OCT = '2026-10';
-  const bs = monthPayBreakdown(1840000, true, H(92), NORM, 0, 1, OCT);
+  const OCT = '2026-10', DONE = '2026-12-15';   // DONE = 10, 11 сар ДУУССАН өдөр
+  const bs = monthPayBreakdown(1840000, true, H(92), NORM, 0, 1, OCT, DONE);
   eq(bs.shortMins, H(92), 'цалин: нормоос дутуу цаг');
   eq(bs.earned, 920000, 'цалин: 92/184ц → суурийн тал');
   eq(bs.base, 1840000, 'цалин: гэрээний суурь хэвээр харагдана');
@@ -14580,21 +14580,24 @@ async function swFetchTests() {
   eq(bs.pit, 81420, 'цалин: ХХОАТ цагаар бодсон суурьаас');
   eq(bs.total, 920000 - 105800 - 81420, 'цалин: нийт = цагаар бодсон цэвэр суурь');
   // Цагийн хөлс ижил — дутуу ба илүү цаг ТЭГШ хэмтэй
-  eq(monthPayBreakdown(1840000, false, H(174), NORM, 0, 1, OCT).earned, 1840000 - 10 * 10000, 'цалин: 10ц дутуу = 10 × цагийн хөлс хасагдана');
-  eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1, OCT).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
-  eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1, OCT).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
+  eq(monthPayBreakdown(1840000, false, H(174), NORM, 0, 1, OCT, DONE).earned, 1840000 - 10 * 10000, 'цалин: 10ц дутуу = 10 × цагийн хөлс хасагдана');
+  eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1, OCT, DONE).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
+  eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1, OCT, DONE).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
   // ⛔ 10 САРААС — «9 сард хэлж амжаагүй учраас 9 сарынхад хэрэгжүүлж болохгүй» (CEO)
-  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09').earned, 1840000, 'цалин: 9 сард дутуу цагаар ХАСАХГҮЙ (урьдчилан мэдэгдээгүй)');
-  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09').shortMins, 0, 'цалин: 9 сард дутуу цаг тэмдэглэгдэхгүй');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09', DONE).earned, 1840000, 'цалин: 9 сард дутуу цагаар ХАСАХГҮЙ (урьдчилан мэдэгдээгүй)');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09', DONE).shortMins, 0, 'цалин: 9 сард дутуу цаг тэмдэглэгдэхгүй');
   eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1).earned, 1840000, 'цалин: сар мэдэгдэхгүй бол хасахгүй (эргэлзвэл бүтэн)');
-  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-11').earned, 920000, 'цалин: 11 сард ч хэрэгжинэ');
+  // ⛔ ЯВЖ БУЙ САРД ХАСАХГҮЙ — 10-03-нд 2 хоногийн ирцээр суурь 10% болж «илүү авсан» гэж худал гарч байв
+  eq(monthPayBreakdown(1840000, false, H(14), NORM, 0, 1, OCT, '2026-10-03').earned, 1840000, 'цалин: явж буй сард дутуу цагаар хасахгүй');
+  eq(monthPayBreakdown(1840000, false, H(14), NORM, 0, 1, OCT, '2026-11-01').earned, 140000, 'цалин: сар дуусмагц хасалт тооцогдоно');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-11', DONE).earned, 920000, 'цалин: 11 сард ч хэрэгжинэ');
   // ⛔ Цаг МЭДЭГДЭХГҮЙ (ирц ачаалагдаагүй / огт бүртгэлгүй) → ТЭГЛЭХГҮЙ
-  const bu = monthPayBreakdown(1840000, false, null, NORM, 0, 1, OCT);
+  const bu = monthPayBreakdown(1840000, false, null, NORM, 0, 1, OCT, DONE);
   eq(bu.earned, 1840000, 'цалин: цаг мэдэгдэхгүй (null) бол бүтэн суурь — тэглэхгүй');
   eq(bu.shortMins, 0, 'цалин: цаг мэдэгдэхгүй бол дутуу цаг 0');
-  eq(monthPayBreakdown(1840000, false, undefined, NORM, 0, 1, OCT).earned, 1840000, 'цалин: undefined ч мэдэгдэхгүй гэж үзнэ');
+  eq(monthPayBreakdown(1840000, false, undefined, NORM, 0, 1, OCT, DONE).earned, 1840000, 'цалин: undefined ч мэдэгдэхгүй гэж үзнэ');
   // Хүргэлт цагаас үл хамааран бүтнээр
-  eq(monthPayBreakdown(1840000, false, H(92), NORM, 50000, 1, OCT).total, 920000 + 50000, 'цалин: дутуу цагтай ч хүргэлт бүтнээр');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 50000, 1, OCT, DONE).total, 920000 + 50000, 'цалин: дутуу цагтай ч хүргэлт бүтнээр');
 
   // ── Суутгалгүй ажилтан ──
   const b4 = monthPayBreakdown(1000000, false, NORM, NORM, 0, 1);
@@ -14705,7 +14708,7 @@ async function swFetchTests() {
   ok(/\(attReady && attMins\[r\.k\]\) \? w\.mins : null/.test(rsB), 'scan: самбар ирц ачаалагдаагүй үед цагийг null дамжуулна');
   // ⛔ Сар дамжуулаагүй дуудагч цагаар ХЭЗЭЭ Ч хасахгүй — тиймээс бүгд сараа өгнө
   const callers = (src.match(/monthPayBreakdown\([^\n]*\)/g) || []).filter(x => !/deliveryAmt, rate, month/.test(x));   // тодорхойлолтыг хасна
-  ok(callers.length >= 3 && callers.every(x => /undefined, (month|ym)\)/.test(x)), 'scan: цалингийн дуудагч бүр сараа дамжуулна');
+  ok(callers.length >= 3 && callers.every(x => /undefined, (month|ym|m)\)/.test(x)), 'scan: цалингийн дуудагч бүр сараа дамжуулна');
   ok(/-\s*norm\b/.test(body), 'scan: илүү цаг = сарын нийт − норм (өдрөөр биш)');
 
   // Картын нийт дүн нь monthPayBreakdown-аас л гарна (дэлгэцэд дахин бодохгүй)
@@ -15907,11 +15910,60 @@ async function swFetchTests() {
   eq(payBalance(2000000, 1500000), { owed: 500000, over: 0 }, 'дутуу хэвээр');
   eq(payBalance(2000000, 2000000), { owed: 0, over: 0 }, 'тэнцүү');
 }
+// ═══ ИЛҮҮ ОЛГОЛТ ДАРААГИЙН САРД ШИЛЖИНЭ (2026-10-03, CEO) ═══════════════════
+{
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  const chain = (rows) => runIn(`payCarryChain(${JSON.stringify(rows)})`);
+  // Амьд жишээ: Э.Нинждолгор 9 сард 1,633,000 олгох атал 2,000,000 урьдчилж авсан
+  const c1 = chain([{ m: '2026-09', total: 1633000, paid: 2000000 }, { m: '2026-10', total: 2040000, paid: 0 }]);
+  eq(c1.map(x => x.carryIn), [0, 367000], 'шилжүүлэлт: 9 сарын илүү 10 сард орно');
+  eq(c1.map(x => x.over), [367000, 0], 'шилжүүлэлт: 9 сард илүү харагдана');
+  eq(c1[1].owed, 2040000 - 367000, 'шилжүүлэлт: 10 сарын үлдэгдлээс хасагдана');
+  // Илүү нь дараа сарын олгохоос их бол ЦААШ шилжинэ
+  const c2 = chain([{ total: 1000000, paid: 3500000 }, { total: 1000000, paid: 0 }, { total: 1000000, paid: 0 }]);
+  eq(c2.map(x => x.carryIn), [0, 2500000, 1500000], 'шилжүүлэлт: том урьдчилгаа олон сард хуваагдана');
+  eq(c2[2].over, 500000, 'шилжүүлэлт: үлдсэн илүү дахин шилжинэ');
+  // ДУТУУ шилжихгүй — тухайн сарын үлдэгдэл хэвээр
+  const c3 = chain([{ total: 2000000, paid: 1000000 }, { total: 2000000, paid: 0 }]);
+  eq(c3.map(x => x.carryIn), [0, 0], 'шилжүүлэлт: дутуу (үлдэгдэл) дараа сард шилжихгүй');
+  eq(c3[0].owed, 1000000, 'шилжүүлэлт: дутуу нь тэр сардаа үлдэнэ');
+  // Сарын гинж = цалингийн тооцооны эхлэх сараас
+  eq(runIn("payCarryMonths('2026-10', '2026-09')"), ['2026-09'], 'шилжүүлэлт: 10 сард 9 сараас');
+  eq(runIn("payCarryMonths('2026-09', '2026-09')"), [], 'шилжүүлэлт: эхлэх сард өмнөх сар байхгүй (түүхээс шилжихгүй)');
+  eq(runIn("payCarryMonths('2027-01', '2026-11')"), ['2026-11', '2026-12'], 'шилжүүлэлт: он дамжина');
+  eq(runIn("payCarryMonths('xx', '2026-09')"), [], 'шилжүүлэлт: буруу сар → хоосон (давталтгүй)');
+
+  // salaryCarryIn: ⛔ суурь цалингүй хүнд ШИЛЖИХГҮЙ (COO-гийн урамшуулал, зардал)
+  const save = runIn('[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct, state.payrollCfg]');
+  runIn(`state.payrollCfg = { start: '2026-09' }; state.salaryDeduct = { '88001': false, '88002': false };
+    state.salaries = { '88001': 1000000 }; state.financeRequests = [];
+    state.salaryPayments = [{ person_key: '88001', ym: '2026-09', amount: 1400000, paid_at: '2026-09-26T00:00:00Z', note: 'урьдчилгаа' },
+                            { person_key: '88002', ym: '2026-09', amount: 3000000, paid_at: '2026-09-26T00:00:00Z', note: 'урьдчилгаа' }];`);
+  const ci = (k, mins) => runIn(`salaryCarryIn('${k}', '2026-10', () => ${mins === undefined ? 'undefined' : mins})`);
+  eq(ci('88001', 'null').amount, 400000, 'шилжүүлэлт: ирцгүй сард бүтэн суурьтай харьцуулж илүүг шилжүүлнэ');
+  eq(ci('88002', 'null').amount, 0, 'шилжүүлэлт: суурь цалингүй хүний «илүү» шилжихгүй (зохиомол өр үүсгэхгүй)');
+  const nr = ci('88001', undefined);
+  ok(nr.ready === false && nr.amount === 0, 'шилжүүлэлт: өмнөх сарын ирц ачаалагдаагүй бол ready:false (чимээгүй 0 биш)');
+  runIn(`[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct, state.payrollCfg] = ${JSON.stringify(save)};`);
+
+  // SCAN: самбар, карт, ирцийн хүснэгт гурвуулаа шилжүүлэлттэй ижил дүрмээр
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const card = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
+  ok(/salaryCarryIn\(key, month,/.test(card) && /payBalance\(b\.total, paid \+ carry\.amount\)/.test(card), 'scan: ажилтны карт шилжүүлэлттэй');
+  const am = src.slice(src.indexOf('function renderAttendanceMonth('), src.indexOf('function renderAttendanceMonth(') + 9000);
+  ok(/payrollCarryIn\(r\.k, month\)/.test(am) && !/Math\.max\(0, pb\.total - rPaid\)/.test(am), 'scan: ирцийн хүснэгт шилжүүлэлттэй');
+  ok(/T\.carryWait/.test(src), 'scan: шилжүүлэлт мэдэгдэхгүй үед самбар ил хэлнэ');
+  // «Илүү олгосон» KPI нь шилжүүлэлттэй ИЖИЛ хил — суурьгүй хүний олголт тоологдохгүй
+  const rsx = src.slice(src.indexOf('function renderSalary('), src.indexOf('function attachSalaryHandlers('));
+  ok(/c\.amount > 0 \? pb0 : \{ owed: pb0\.owed, over: 0 \}/.test(rsx), 'scan: суурьгүй хүний олголт «илүү олгосон»-д орохгүй');
+}
+
 // ═══ SCAN: илүү олголт нуугдахгүй ═══════════════════════════════════════
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
-  ok(/payBalance\(b\.total, paid\)/.test(rs), 'scan: самбар payBalance-аар');
+  // Олгосон + өмнөх сараас шилжсэн илүү олголт хоёулаа тооцогдоно (2026-10-03)
+  ok(/payBalance\(b\.total, paid \+ carry\.amount\)/.test(rs), 'scan: самбар payBalance-аар (шилжүүлэлттэй)');
   eq((rs.match(/Math\.max\(0, b\.total - paid\)/g) || []).length, 0, 'scan: самбар илүү олголтыг тэглэхгүй');
   eq((rs.match(/Math\.max\(0, T\.total - T\.paid\)/g) || []).length, 0, 'scan: нийт үлдэгдэл хүнээр нийлбэрлэгдэнэ');
   ok(/pay-over/.test(rs), 'scan: илүү олголтын мөр');

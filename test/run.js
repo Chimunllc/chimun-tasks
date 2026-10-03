@@ -14865,7 +14865,10 @@ async function swFetchTests() {
   eq(jrnDebitFor('6960'), null,      'журнал: дотоод шилжүүлэг БИЧИГДЭХГҮЙ');
 
   eq(jrnCreditFor('order'),    'recv',     'журнал: захиалгын төлбөр → авлага хаагдана');
-  eq(jrnCreditFor('nomaad'),   'revenue',  'журнал: NOMAAD төлбөр → орлого');
+  // ⛔ NOMAAD төлбөр = АВЛАГА хаагдах, орлого БИШ. Орлого гэж бичвэл мөнгө орсон
+  //   сард бүртгэгдэж, журнал бүхэлдээ гүйцэтгэлийн суурьтай байхад NOMAAD
+  //   ганцаараа мөнгөн суурьтай болно (амьд датаар 9 сард 19сая илүү бүртгэгдсэн).
+  eq(jrnCreditFor('nomaad'),   'recv',     'журнал: NOMAAD төлбөр → авлага хаагдана (орлого БИШ)');
   eq(jrnCreditFor('internal'), null,       'журнал: дотоод шилжүүлэг орлого биш');
   eq(jrnCreditFor('personal'), null,       'журнал: хувийн орлого компанийн биш');
   eq(jrnCreditFor('open'),     'suspense', 'журнал: хаагдаагүй мөр ИЛ үлдэнэ (нуугдахгүй)');
@@ -15266,4 +15269,42 @@ async function swFetchTests() {
   ok(/dr === 'expense' && typeof finAccrualMonth/.test(je), 'scan: зөвхөн зардал хуваагдана');
   // ⛔ Төлөлтийн бичилт ҮРГЭЛЖ requested_at огноонд
   ok(/push\(t\.requested_at, `\$\{label\} · төлөлт`/.test(je), 'scan: банкны мөр жинхэнэ огноондоо');
+}
+
+// ═══ ЖУРНАЛЫН ХОЁР АЛДАА — амьд тулгалтаар илэрсэн (2026-10-03) ═════════
+{
+  const { journalEntries, incomeStatement } = F;
+  const base = { basis: 'accrual', opening: null, orders: [], finance: [], deprec: [], extra: [], nomaad: [] };
+
+  // ① NOMAAD төлбөр ОРЛОГО болж бүртгэгдэж байв → 9 сард 19сая илүү
+  const paid = journalEntries({ ...base,
+    income: [{ fp: 'n1', dt: '2026-09-25', amount: 19000000, status: 'nomaad', payer: 'NOMAAD' }] }, '2026-09');
+  eq(incomeStatement(paid).totalRevenue, 0, 'NOMAAD: төлбөр нь ОРЛОГО үүсгэхгүй');
+  eq(((paid[0] && paid[0].lines || []).find(l => l.acc === 'recv') || {}).cr || 0, 19000000,
+     'NOMAAD: төлбөр авлагыг хаана');
+
+  // Орлого нь ЭВЕНТИЙН сард, тусад нь хүлээн зөвшөөрөгдөнө
+  const rec = journalEntries({ ...base, income: [], nomaad: [{ ym: '2026-08', amount: 19000000 }] }, '2026-08');
+  eq(incomeStatement(rec).totalRevenue, 19000000, 'NOMAAD: орлого эвентийн сард');
+  eq(rec[0].date, '2026-08-31', 'NOMAAD: орлого сарын эцэст');
+  eq(((rec[0].lines || []).find(l => l.acc === 'recv') || {}).dr || 0, 19000000, 'NOMAAD: авлага үүснэ');
+
+  // ② НӨАТ-ын мөр огт үүсэхгүй байсан — эхлэх сар элэгдлийнхээс хамаардаг байв
+  const vat = journalEntries({ ...base, extra: [{ ym: '2026-09', vat: 7724239, loss: 0 }] }, '2026-09');
+  eq(incomeStatement(vat).totalExpense, 7724239, 'НӨАТ: 9 сард зардалд орно');
+}
+
+// ═══ SCAN: НӨАТ-ын эхлэх сар элэгдлээс ХАМААРАХГҮЙ ═════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const st = src.slice(src.indexOf('function jrnExtraStart'), src.indexOf('function jrnExtraList'));
+  ok(st.length > 100, 'scan: jrnExtraStart олдов');
+  eq((st.match(/deprecStartMonth/g) || []).length, 0,
+     'scan: НӨАТ/алдагдлын эхлэл элэгдлийн эхлэлээс ХАМААРАХГҮЙ');
+  ok(/obFrozen\(\)/.test(st), 'scan: бүртгэлийн эхлэлээс (нээлтийн үлдэгдэл)');
+  const el = src.slice(src.indexOf('function jrnExtraList'), src.indexOf('function jrnNomaadList'));
+  eq((el.match(/deprecStartMonth/g) || []).length, 0, 'scan: jrnExtraList ч элэгдлээс хамаарахгүй');
+  // NOMAAD орлого нь тайлангийн ижил дүрмээр
+  const nl = src.slice(src.indexOf('function jrnNomaadList'), src.indexOf('function jrnCtx'));
+  ok(/nomaadIncomeMonth\(o, ym, 'accrual'\)/.test(nl), 'scan: NOMAAD орлого nomaadIncomeMonth-оор');
 }

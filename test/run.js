@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -3899,6 +3899,53 @@ need(['orderCustType']);
     ok(F.orderNeedsSetup(byItem) === true, 'setup: «суурилуулалт» бараа мөрөөр авто танина');
     ok(F.orderNeedsSetup(offFlag) === false, 'setup: гараар унтраасан нь бараа мөрөөс ДАВУУ');
     ok(F.orderNeedsSetup(plain) === false, 'setup: энгийн захиалгад шат гарахгүй');
+
+    /* ═══ УРСГАЛ = ЖАГСААЛТ, КОД БИШ (2026-10-03) ══════════════════════════
+       `switch`-ийг `PIPELINE` жагсаалт болгосон. Энэ тест нь ХУУЧИН дүрмийг
+       лавлагаа болгон бичиж, БҮХ төлөв × хүргэлт × суурилуулалт хослолыг
+       тулгана — refactor зан чанарыг өөрчилсөн бол ЭНД барина. */
+    {
+      const ref = (st, dlv, setup) => {   // ← хуучин switch-ийн яг хуулбар
+        switch (st) {
+          case 'reserved': case 'preparation': case 'cleaning':
+            return { to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' };
+          case 'prepared': return { to: 'ready', label: '🧰 Бэлдсэн', cap: 'orders.prepare' };
+          case 'ready': return dlv
+            ? { to: 'delivering', label: '📦 Агуулахаас гаргасан', cap: 'orders.dispatch' }
+            : { to: 'rented', label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch' };
+          case 'delivering': return setup
+            ? { to: 'installing', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' }
+            : { to: 'rented', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
+          case 'installing': return { to: 'rented', label: '🔧 Суурилуулсан', cap: 'orders.setup' };
+          case 'rented': case 'started': return setup
+            ? { to: 'teardown', label: '🧱 Буулгасан', cap: 'orders.setup' }
+            : dlv ? { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' }
+                  : { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
+          case 'teardown': return { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' };
+          case 'returning': return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
+          case 'returned': case 'stopped': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
+          default: return null;
+        }
+      };
+      const ALL = ['draft', 'reserved', 'preparation', 'cleaning', 'prepared', 'ready', 'delivering',
+        'installing', 'rented', 'started', 'teardown', 'returning', 'returned', 'stopped', 'archived',
+        'canceled', 'deleted', 'ямар_ч_биш', ''];
+      let same = 0, diff = [];
+      ALL.forEach(st => [false, true].forEach(dlv => [false, true].forEach(setup => {
+        const a = ref(st, dlv, setup), b = F.pipelineNext(st, { dlv, setup });
+        if (JSON.stringify(a) === JSON.stringify(b)) same++;
+        else diff.push(`${st}/dlv=${dlv}/setup=${setup}: ${JSON.stringify(a)} ≠ ${JSON.stringify(b)}`);
+      })));
+      eq(diff.join(' | '), '', 'урсгал: жагсаалт нь хуучин дүрэмтэй ЯГ ижил');
+      eq(same, ALL.length * 4, 'урсгал: бүх хослол шалгагдав');
+      // ⛔ Танихгүй төлөв → null (дамжлага ЗОХИОХГҮЙ)
+      eq(F.pipelineNext('ямар_ч_биш', { dlv: true, setup: true }), null, 'урсгал: танихгүй төлөвт дамжлага алга');
+      // Нөхцөл — суурилуулалт зөвхөн хүргэлттэй захиалгад
+      const ctx = F.orderPipelineCtx({ note: '⟦SET|1⟧', delivery_address: 'СБД 1-р хороо', items: [] });
+      ok(ctx.dlv && ctx.setup, 'урсгал: хүргэлт + суурилуулалт танигдана');
+      const ctx2 = F.orderPipelineCtx({ note: '⟦SET|1⟧', items: [] });
+      ok(!ctx2.dlv && !ctx2.setup, 'урсгал: очиж авахад суурилуулалт гарахгүй');
+    }
 
     const step = (o, st) => F.orderNextStep(Object.assign({}, o, { status: st }));
     // Суурилуулалттай: Хүргэсэн → 🔧 Суурилуулах → түрээс → 🧱 Буулгах → буцаан авах
@@ -15084,6 +15131,18 @@ async function swFetchTests() {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   eq((src.match(/Шатны хөлс|шатны хөлс/g) || []).length, 0, 'scan: хуучин «шатны хөлс» нэр буцаж ирээгүй');
   ok(/Дамжлагын бонус/.test(src), 'scan: шинэ нэр хэрэглэгдэнэ');
+}
+
+// ═══ SCAN: урсгал жагсаалтаас ажиллана ═════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/const PIPELINE = \[/.test(src), 'scan: урсгалын жагсаалт бий');
+  const fn = src.slice(src.indexOf('function orderNextStep'), src.indexOf('function orderNextStep') + 400);
+  ok(/return pipelineNext\(/.test(fn), 'scan: orderNextStep жагсаалтаас уншина');
+  eq((fn.match(/switch \(/g) || []).length, 0, 'scan: switch буцаж ирээгүй');
+  const pn = src.slice(src.indexOf('function pipelineNext'), src.indexOf('function orderNextStep'));
+  ok(/r\.dlv !== undefined/.test(pn) && /r\.setup !== undefined/.test(pn), 'scan: нөхцөл заагаагүй мөр хоёуланд тохирно');
+  ok(/return null/.test(pn), 'scan: танихгүй төлөвт дамжлага зохиохгүй');
 }
 
 // ═══ SCAN: тохиргоо үнэхээр ачаалагддаг ════════════════════════════════

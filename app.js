@@ -13250,8 +13250,27 @@ function stageEvidence(key) {
   return key === 'archive' ? '' : 'photo';
 }
 function stageWeight(key) {
+  // Тохиргооны override ЭХЛЭЭД (аппаас засдаг), эс бол PIPELINE-ийн анхдагч жин.
+  const w = _stagePayCfg().weights;
+  if (w && typeof w === 'object' && w[key] !== undefined && w[key] !== null && w[key] !== '') {
+    const v = Number(w[key]);
+    if (isFinite(v) && v >= 0) return v;
+  }
   for (const r of PIPELINE) if (r.key === key && r.pts !== undefined) return Number(r.pts) || 0;
   return 1;
+}
+/* Тохиргооны дэлгэцэд харуулах ДАМЖЛАГУУД — `PIPELINE`-аас давхардалгүй, дараалалтай.
+   ⚠ Жагсаалт нь ГАНЦ эх сурвалжаас — тусдаа жагсаалт бичвэл шинэ дамжлага
+     тохиргооны дэлгэцэд гарахгүй үлдэнэ. */
+function stageDefs() {
+  const seen = new Set(), out = [];
+  for (const r of PIPELINE) {
+    if (!r.key || seen.has(r.key)) continue;
+    seen.add(r.key);
+    out.push({ key: r.key, label: String(r.label || r.key).replace(/^[^\p{L}]+/u, '').trim(),
+               cap: r.cap, ev: stageEvidence(r.key), pts: stageWeight(r.key), base: r.pts });
+  }
+  return out;
 }
 // Захиалгын барааны НИЙТ тоо ширхэг (мөрийн тоо БИШ — ачаа зөөх хөдөлмөр нь тоогоор).
 function orderItemQty(o) {
@@ -17686,10 +17705,10 @@ function renderSalary() {
   const T = calc.reduce((t, c) => { const pb0 = payBalance(c.b.total, c.paid + c.carry.amount);
     const pb = c.amount > 0 ? pb0 : { owed: pb0.owed, over: 0 }; return {
     total: t.total + c.b.total, paid: t.paid + c.paid, ot: t.ot + c.b.otPay,
-    dlv: t.dlv + c.b.delivery, sp: t.sp + (c.sp ? c.sp.total : 0),
+    dlv: t.dlv + c.b.delivery, sp: t.sp + (c.sp ? c.sp.total : 0), spPts: t.spPts + (c.sp ? (c.sp.pts || 0) : 0),
     owed: t.owed + pb.owed, over: t.over + pb.over, overN: t.overN + (pb.over > 0 ? 1 : 0),
     carry: t.carry + c.carry.amount, carryWait: t.carryWait || !c.carry.ready,
-  }; }, { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0, owed: 0, over: 0, overN: 0, carry: 0, carryWait: false });
+  }; }, { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0, spPts: 0, owed: 0, over: 0, overN: 0, carry: 0, carryWait: false });
 
   const kpi = (label, val, col, sub) => `<div class="pb-kpi"><div class="pb-kpi-l">${label}</div><div class="pb-kpi-v" style="color:${col || 'var(--text)'};">${val}</div>${sub ? `<div class="pb-kpi-s">${sub}</div>` : ''}</div>`;
   const head = `<div class="pb-head">
@@ -17826,13 +17845,94 @@ function renderSalary() {
       ${sum}${body}
     </details>`;
   }).join('');
-  const spFoot = T.sp ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> — дамжлагын ажлын урамшуулал, дээрх цалинд ОРООГҮЙ.</div>` : '';
+  /* ⚙️ Тохиргооны товч нь бонусын мөрийн ДЭРГЭД — тоог хараад шууд тохируулна.
+     Тусдаа цэс үүсгэвэл хэн ч олохгүй («өөрөө үүсдэг» дүрэм). CEO-д л. */
+  const spCfgBtn = state.isCEO ? ` <button class="btn sp-cfg-btn" data-stage-pay-cfg>⚙️ Оноо тохируулах</button>` : '';
+  const spFoot = T.sp
+    ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> · ${(T.spPts || 0).toFixed(1)} оноо × ${fmtMoney(stagePointRate())} — цалинд ОРООГҮЙ.${spCfgBtn}</div>`
+    : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
   return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar}${searchBar}
     <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${histOnly ? '' : spFoot}</div>`;
+}
+/* ⚙️ ДАМЖЛАГЫН ОНООНЫ ТОХИРГОО (2026-10-03, CEO) ───────────────────────────
+   Дамжлага бүрийн ЖИН («энэ ажил хэр хүнд вэ») ба ХАНШ («оноо хэдэн төгрөг вэ»)
+   -ийг аппаас засна. Хоёр нь өөр шийдвэр: жин нь жилд нэг, ханш нь сараар.
+   ⛔ **ХАДГАЛСНЫ ДАРАА БОДОГДОХ БҮХ ДҮН ХӨДӨЛНӨ** — хаасан сарын тоо ч дагана.
+     Хаалттай сарыг хөлдөөх нь ТУСДАА ажил (элэгдлийн зурагтай ижил) — дэлгэцэд
+     ил сануулна, чимээгүй өөрчлөхгүй.
+   ⚠ Жагсаалт нь `stageDefs()`-ээс (= `PIPELINE`) — шинэ дамжлага нэмэхэд
+     тохиргооны дэлгэцэд ӨӨРӨӨ гарна. */
+function openStagePayModal() {
+  if (!state.isCEO) { showToast('Зөвхөн захирал тохируулна', 'warn', 2500); return; }
+  const defs = stageDefs().filter(d => d.key !== 'archive');
+  const bands = stagePtBands(), rate = stagePointRate();
+  const share = Math.round(stageHelperShare() * 100), hmax = stageHelperMax();
+  const bandRow = (lim, pts, i) => `<div class="sp-cfg-row">
+      <span class="sp-cfg-l">${lim === Infinity ? '151+ бараа' : `≤ ${lim} бараа`}</span>
+      <input class="ui-raw sp-cfg-in" type="number" step="0.5" min="0" data-band="${i}" value="${pts}"> оноо</div>`;
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.style.zIndex = '9400';
+  modal.innerHTML = `<div class="modal sp-cfg">
+    <div class="sp-cfg-hd"><h2>⚙️ Дамжлагын оноо</h2><button class="btn" data-x>✕</button></div>
+    <div class="sp-cfg-note">Бонус = <b>барааны тооны оноо × дамжлагын жин × ханш</b>. Жин нь ажлын хүндийг, ханш нь мөнгийг заана — тусад нь тохируулна.</div>
+
+    <div class="sp-cfg-t">Дамжлага бүрийн жин</div>
+    ${defs.map(d => `<div class="sp-cfg-row">
+      <span class="sp-cfg-l">${escapeHtml(d.label)}<span class="sp-cfg-ev">${d.ev === 'count' ? '🔢 тоо' : '📷 зураг'}</span></span>
+      <input class="ui-raw sp-cfg-in" type="number" step="0.5" min="0" data-w="${escapeHtml(d.key)}" value="${d.pts}"> ×</div>`).join('')}
+
+    <div class="sp-cfg-t">Барааны тооны оноо</div>
+    ${bands.map((b, i) => bandRow(b[0], b[1], i)).join('')}
+
+    <div class="sp-cfg-t">Ханш ба хуваарилалт</div>
+    <div class="sp-cfg-row"><span class="sp-cfg-l">1 оноо</span><input class="ui-raw sp-cfg-in" type="number" step="50" min="1" id="sp-rate" value="${rate}"> ₮</div>
+    <div class="sp-cfg-row"><span class="sp-cfg-l">Хамтрагчийн сан</span><input class="ui-raw sp-cfg-in" type="number" step="5" min="0" max="100" id="sp-share" value="${share}"> %</div>
+    <div class="sp-cfg-row"><span class="sp-cfg-l">Хамтрагчийн дээд тоо</span><input class="ui-raw sp-cfg-in" type="number" step="1" min="1" max="10" id="sp-hmax" value="${hmax}"> хүн</div>
+
+    <div class="sp-cfg-prev" id="sp-prev"></div>
+    <div class="sp-cfg-warn">⚠ Хадгалахад <b>бүх сарын</b> бонус шинэ тоогоор дахин бодогдоно — хаасан сар ч мөн адил.</div>
+    <div class="sp-cfg-act"><button class="btn" data-x>Болих</button><button class="btn btn-primary" id="sp-save">💾 Хадгалах</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelectorAll('[data-x]').forEach(b => b.onclick = close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const num = (sel) => Number((modal.querySelector(sel) || {}).value) || 0;
+  // Амьд урьдчилан харалт — 12 бараатай (медиан) захиалгын жишээ
+  const prev = () => {
+    const r = num('#sp-rate');
+    const bi = bands.findIndex(b => 12 <= b[0]);
+    const bp = Number((modal.querySelector(`[data-band="${bi < 0 ? bands.length - 1 : bi}"]`) || {}).value) || 0;
+    modal.querySelector('#sp-prev').innerHTML = defs.map(d => {
+      const w = Number((modal.querySelector(`[data-w="${d.key}"]`) || {}).value) || 0;
+      return `<div class="sp-cfg-prow"><span>${escapeHtml(d.label)}</span><b>${fmtMoney(Math.round(bp * w * r))}</b></div>`;
+    }).join('') + `<div class="sp-cfg-pnote">12 бараатай захиалгын нэг дамжлага (сарын медиан)</div>`;
+  };
+  modal.querySelectorAll('input').forEach(i => i.oninput = prev);
+  prev();
+  modal.querySelector('#sp-save').onclick = async () => {
+    const weights = {};
+    defs.forEach(d => { weights[d.key] = Number((modal.querySelector(`[data-w="${d.key}"]`) || {}).value) || 0; });
+    const pt_bands = bands.map((b, i) => [b[0] === Infinity ? 999999 : b[0], Number((modal.querySelector(`[data-band="${i}"]`) || {}).value) || 0]);
+    const cfg = Object.assign({}, _stagePayCfg(), {
+      weights, pt_bands, rate: num('#sp-rate'),
+      helper_share: Math.min(1, Math.max(0, num('#sp-share') / 100)), helper_max: Math.max(1, num('#sp-hmax')),
+    });
+    if (!(cfg.rate > 0)) { showToast('Ханш 0-ээс их байх ёстой', 'warn', 3000); return; }
+    const ok = await showConfirm(`Шинэ ханш ${fmtMoney(cfg.rate)}/оноо.\nБүх сарын бонус дахин бодогдоно. Хадгалах уу?`,
+      { title: 'Дамжлагын оноо', okText: 'Хадгалах' });
+    if (!ok) return;
+    try {
+      await saveAppConfig('stage_pay', cfg);
+      state.appConfig = state.appConfig || {}; state.appConfig.stage_pay = cfg;
+      showToast('Хадгаллаа', 'success'); close(); render();
+    } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
+  };
 }
 function attachSalaryHandlers() {
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
+  document.querySelector('[data-stage-pay-cfg]')?.addEventListener('click', openStagePayModal);
   document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('sal-search');
   if (se) se.addEventListener('input', () => {

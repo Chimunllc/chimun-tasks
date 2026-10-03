@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15096,6 +15096,24 @@ async function swFetchTests() {
   eq(cerr, '', 'карт: myPayCardHtml алдаагүй ажиллана');
   ok(card.includes('Миний цалин'), 'карт: гарчигтай');
 
+  /* ⚠ Scan-тест нь ХЭВ МАЯГ хардаг, АЖИЛЛАХ эсэхийг хардаггүй — тохиргооны
+     цонхыг ҮНЭХЭЭР дуудаж HTML үүсч байгааг шалгана. */
+  ok(html.includes('data-stage-pay-cfg'), 'самбар: CEO-д ⚙️ тохиргооны товч гарна');
+  // ⚠ DOM нь stub тул агуулгыг унших боломжгүй — HTML угсрах үед ШИДЭГДЭХ
+  //   алдааг (TDZ, тодорхойлогдоогүй функц) барихад л хангалттай. Нэмж
+  //   `document.body.appendChild` дуудагдсаныг тоолж цонх үүссэнийг батална.
+  let cfgErr = '', added = 0;
+  const _body = runIn('document.body'), _origAppend = _body.appendChild;
+  _body.appendChild = function (x) { added++; return _origAppend ? _origAppend.call(this, x) : x; };
+  try { runIn('openStagePayModal()'); } catch (e) { cfgErr = e.message; }
+  eq(cfgErr, '', 'тохиргоо: цонх алдаагүй нээгдэнэ');
+  eq(added, 1, 'тохиргоо: цонх үүсч хуудсанд нэмэгдэнэ');
+  // ⛔ Зөвхөн захирал — эрхгүй хүнд цонх ОГТ үүсэхгүй
+  added = 0; runIn('state.isCEO = false;');
+  try { runIn('openStagePayModal()'); } catch (e) { cfgErr = e.message; }
+  eq(added, 0, 'тохиргоо: эрхгүй хүнд цонх үүсэхгүй');
+  runIn('state.isCEO = true;'); _body.appendChild = _origAppend;
+
   /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ (2026-10-03, CEO). 8 сар ба өмнөхийг
      өдөр/цаг/нэмэгдлээр ГАРААР тооцож олгосон; аппын бодолт одоогийн суурь
      цалингаар явдаг тул ХУДАЛ «Үлдэгдэл» гарч, ДАХИН олгох эрсдэл үүснэ. */
@@ -15202,6 +15220,31 @@ async function swFetchTests() {
   eq(driverBonus('C', '2026-08', old).count, 1, 'жолоо: хуучин бичлэгт `by` нь жолооч');
 }
 
+// ═══ ДАМЖЛАГЫН ОНООГ АППААС ЗАСНА (2026-10-03) ═════════════════════════
+{
+  const { stageDefs, stageWeight, stagePointRate, stagePayByPerson } = F;
+  const defs = stageDefs();
+  ok(defs.length >= 8, 'тохиргоо: бүх дамжлага жагсаалтад');
+  ok(defs.some(d => d.key === 'clean' && d.pts === 1), 'тохиргоо: Цэвэрлэх 1 оноо');
+  ok(defs.some(d => d.key === 'dispatch' && d.ev === 'count'), 'тохиргоо: нотолгооны төрөл харагдана');
+  eq(defs.filter(d => d.key === 'dispatch').length, 1, 'тохиргоо: давхардсан дамжлага НЭГ мөр');
+  // ⛔ Аппаас тавьсан жин PIPELINE-ийн анхдагчийг ДАРНА
+  vm.runInContext("state.appConfig = { stage_pay: { weights: { clean: 3 }, rate: 2000 } };", sandbox);
+  eq(stageWeight('clean'), 3, 'тохиргоо: аппаас тавьсан жин ялна');
+  eq(stageWeight('setup'), 2, 'тохиргоо: тавиагүй дамжлага анхдагчаараа');
+  eq(stagePointRate(), 2000, 'тохиргоо: ханш аппаас');
+  const r = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09').A;
+  eq(r.pts, 3, 'тохиргоо: 1 оноо × жин 3');
+  eq(r.total, 6000, 'тохиргоо: 3 оноо × 2,000₮');
+  // ⛔ 0 жин = бонусгүй (жолоо)
+  vm.runInContext("state.appConfig = { stage_pay: { weights: { clean: 0 } } };", sandbox);
+  eq(Object.keys(stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09')).length, 0, 'тохиргоо: 0 жин → бонусгүй');
+  vm.runInContext("state.appConfig = {};", sandbox);
+  eq(stageWeight('clean'), 1, 'тохиргоо: цэвэрлэгдвэл анхдагч руу буцна');
+}
+
 // ═══ SCAN: урсгал жагсаалтаас ажиллана ═════════════════════════════════
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
@@ -15219,8 +15262,11 @@ async function swFetchTests() {
   ok(/if \(pts <= 0\) continue/.test(sp), 'scan: 0 оноотой дамжлага (жолоо) бонус авахгүй');
   ok(/stagePointRate\(\)/.test(sp), 'scan: төгрөг нь ханшаар, нэг газраас');
   // ⛔ Жин нь PIPELINE-аас — хоёр дахь жагсаалт үүсгэхгүй
-  const sw = src.slice(src.indexOf('function stageWeight'), src.indexOf('function stageWeight') + 300);
+  const sw = src.slice(src.indexOf('function stageWeight'), src.indexOf('function stageDefs'));
   ok(/for \(const r of PIPELINE\)/.test(sw), 'scan: жин PIPELINE-аас (давхардсан жагсаалтгүй)');
+  ok(/_stagePayCfg\(\)\.weights/.test(sw), 'scan: тохиргооны override эхлээд');
+  const sd = src.slice(src.indexOf('function stageDefs'), src.indexOf('function stageDefs') + 600);
+  ok(/for \(const r of PIPELINE\)/.test(sd), 'scan: тохиргооны жагсаалт ч PIPELINE-аас');
   // ⛔ Гаргах дамжлагад дутуу тоо нь АЛДАГДАЛ БИШ — нөөцөөс хасаж засвар үүсгэхгүй
   const md = src.slice(src.indexOf('function openStageAdvanceModal'), src.indexOf('function bqStatusBadge'));
   ok(/if \(!_isDispatch\) \{/.test(md), 'scan: гаргахад дутагдал тоологдохгүй');
@@ -15229,6 +15275,12 @@ async function swFetchTests() {
   ok(/entry\.driver = driverKey/.test(md), 'scan: жолооч тусдаа хадгалагдана');
   const db = src.slice(src.indexOf('function driverBonus'), src.indexOf('const DRIVER_LIABILITY_NOTE'));
   ok(/e\.driver \|\| e\.by/.test(db), 'scan: нэмэгдэл жолоочид, хуучин бичлэгт by руу унана');
+  // ⛔ Тохиргоо хадгалахад БАТАЛГААЖУУЛАЛТ (бүх сарын бонус дахин бодогдоно)
+  const spm = src.slice(src.indexOf('function openStagePayModal'), src.indexOf('function attachSalaryHandlers'));
+  ok(/const ok = await showConfirm\(/.test(spm) && /if \(!ok\) return/.test(spm), 'scan: хадгалахын өмнө баталгаажуулна');
+  ok(/saveAppConfig\('stage_pay'/.test(spm), 'scan: тохиргоо DB-д хадгалагдана');
+  ok(/state\.isCEO/.test(spm), 'scan: зөвхөн захирал тохируулна');
+  ok(/stageDefs\(\)/.test(spm), 'scan: жагсаалт ганц эх сурвалжаас');
 }
 
 // ═══ SCAN: тохиргоо үнэхээр ачаалагддаг ════════════════════════════════

@@ -35939,6 +35939,22 @@ function vatCandidateOrders() {
       amount: vatNum(o.total_mnt || o.grand_total || o.total), date: o.starts_at || o.created_at || '' }); });
   return out.filter(c => c.no != null && c.no !== '');
 }
+/* Баримт ба саналын хоорондох хоногийн зөрүү. Мэдэгдэхгүй бол null. */
+function vatCandGap(rec, c) {
+  const a = Date.parse((rec && rec.dt) || ''), b = Date.parse((c && c.date) || '');
+  if (!isFinite(a) || !isFinite(b)) return null;
+  return Math.round(Math.abs(a - b) / 86400000);
+}
+const VAT_GAP_WARN = 45;   // 1.5 сар — НӨАТ хожуу шивэгдэх нь хэвийн, түүнээс хол бол эргэлзээтэй
+/* ⛔ ХОЛЫН САНАЛЫГ ДУУГҮЙ ӨНГӨРӨӨХГҮЙ (2026-10-03, CEO барив: «энэ таамаг нь
+   хаа байсан 4 сарыхыг санал болгоод байна, нягтлан он сар харахгүй бол алдаж
+   дарах магадлал их»). Дүн таарсан гэдэг дангаараа хангалтгүй — 4 сарын өмнөх
+   өөр харилцагчийн захиалга ижил дүнтэй байж болно. Зөрүүг ҮГЭЭР хэлнэ. */
+function vatGapNote(d) {
+  if (d == null || d <= VAT_GAP_WARN) return '';
+  const m = Math.round(d / 30);
+  return m >= 2 ? `⚠ ${m} сарын зөрүү` : `⚠ ${d} хоногийн зөрүү`;
+}
 function vatAutoScore(rec, c) {
   let s = 0;
   // РД (регистр) яг таарвал хамгийн хүчтэй дохио — эхлээд үүгээр тулгана
@@ -35948,7 +35964,10 @@ function vatAutoScore(rec, c) {
   if (rn && cn) { if (rn === cn) s += 5; else { const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' ')); const ov = rt.filter(t => ct.has(t)).length; if (ov) s += 2 + Math.min(ov, 3); } }
   const amt = c.amount || 0;
   if (amt > 0) { const near = (a, b) => Math.round(a) === Math.round(b); if (near(rec.total, amt) || near(rec.net, amt)) s += 5; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
-  if (rec.dt && c.date) { const dd = Math.abs(new Date(rec.dt) - new Date(c.date)) / 86400000; if (isFinite(dd)) { if (dd <= 7) s += 2; else if (dd <= 45) s += 1; } }
+  // Ойр огноо нэмэр, ХОЛ огноо ХАСНА — эс бөгөөс зөвхөн дүн таарсан хуучин
+  // захиалга «санал болгосон» ногоон чип болж эхний байрт сууна.
+  { const dd = vatCandGap(rec, c);
+    if (dd != null) { if (dd <= 7) s += 2; else if (dd <= VAT_GAP_WARN) s += 1; else if (dd > 120) s -= 3; else s -= 1; } }
   return s;
 }
 // Нэр таарч байгаа эсэх — ХАТУУ (нэг ерөнхий үг давхацсанаар таарсан гэхгүй):
@@ -36163,7 +36182,13 @@ async function openVatReportModal() {
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
           const nameOk = vatNameMatch(r.buyer_name, c.name);
           const lbl = (c.name || c.no) + ' · ' + fmtMoney(c.amount);
-          return `<button data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}" style="text-align:left;border:1px solid ${i === 0 ? '#1e7a55' : 'var(--border,#ddd)'};background:${i === 0 ? '#e8f2ec' : '#fff'};color:${i === 0 ? '#1e7a55' : 'var(--text,#333)'};border-radius:8px;padding:4px 9px;font-size:11.5px;font-weight:${i === 0 ? '700' : '500'};cursor:pointer;white-space:nowrap;">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b style="color:#0d7a3f;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;">✓дүн</b>' : ''}${nameOk ? ' <b style="color:#2563EB;">✓нэр</b>' : ''} <span style="color:var(--muted);">${escapeHtml(String(c.date || '').slice(5, 10))}</span></button>`;
+          /* Огноо нь БҮТНЭЭР (он-сар-өдөр) — «04-05» гэж зөвхөн сар-өдрөөр
+             харуулахад нягтлан аль оных болохыг мэдэхгүй дарж байв. Зөрүү их
+             бол ногоон «санал болгосон» өнгөөр БУДАХГҮЙ — ногоон нь «аюулгүй
+             дарж болно» гэж уншигддаг. */
+          const gapNote = vatGapNote(vatCandGap(r, c));
+          const hot = i === 0 && !gapNote;
+          return `<button class="vat-chip${hot ? ' on' : ''}${gapNote ? ' warn' : ''}" data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b class="vat-ok-reg">✓РД</b>' : ''}${amtOk ? ' <b class="vat-ok-amt">✓дүн</b>' : ''}${nameOk ? ' <b class="vat-ok-name">✓нэр</b>' : ''} <span class="vat-chip-date">${escapeHtml(String(c.date || '').slice(0, 10))}</span>${gapNote ? ` <span class="vat-chip-warn">${escapeHtml(gapNote)}</span>` : ''}</button>`;
         }).join('');
         matchCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">${chips || '<span style="color:var(--muted);font-size:11.5px;">таарах санал алга</span>'}<button data-vpicker="${escapeHtml(r.id)}" style="border:none;background:none;color:var(--accent,#2563EB);font-size:11px;cursor:pointer;padding:2px 0;">🔍 Бусад захиалга хайх</button></div>`;
       }

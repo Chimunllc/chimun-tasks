@@ -8982,7 +8982,56 @@ async function loadBankIncome(force) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.bankIncome = await r.json();
   } catch (e) { dataLoadFailed('loadBankIncome', e); state.bankIncome = state.bankIncome || []; }
+  try { await relinkIncomeFromReceipts(); } catch (e) { console.warn('relinkIncomeFromReceipts', e); }
   return state.bankIncome;
+}
+/* ⭐ ХОЖИМ БҮРТГЭСЭН PDF БАРИМТ ОРЛОГЫН МӨРИЙГ ӨӨРӨӨ ХААНА (2026-10-03).
+   Орлогын мөрийг баримттай тулгах нь ЗӨВХӨН хуулга импортлох мөчид болдог байв.
+   Хуулга ЭХЭЛЖ орж, PDF баримт ДАРАА нь захиалгад бүртгэгдвэл мөр «хаагдаагүй»
+   хэвээр үлдэж, хүн түүнийг «бусад орлого» гэж гараар хаадаг — тэгвэл захиалгын
+   орлого хоёр газар өөр төлөвтэй болно (амьд датаар: Майнс Ап 3,960,000₮ ба
+   Гранд Нова 725,000₮). Одоо орлогын мөр ачаалах бүрд тулгалт дахин ажиллана.
+   ⛔ Зөвхөн `open`/`other` мөрийг хөндөнө, зөвхөн захиалга/NOMAAD руу ахиулна —
+     `internal`/`personal`/`notincome` нь хүний шийдвэр, баримт түүнийг дарахгүй.
+   ⛔ НЭГ БАРИМТ = НЭГ МӨР: өөр мөрийн тэмдэглэлд аль хэдийн байгаа баримтыг хасна.
+   ⚠ Хаасан сарын мөр хөдлөхгүй. */
+function incomeRelinkPlan(rows, usedFps, fpOwners) {
+  const list = rows || [];
+  const idx = receiptFpIndex(usedFps instanceof Set ? usedFps : new Set(usedFps || []));
+  const taken = new Set();
+  list.forEach(x => { const m = String((x && x.note) || '').match(/FP-\d+-\d{8}-\S+/); if (m) taken.add(m[0]); });
+  const out = [];
+  list.forEach(x => {
+    if (!x || (x.status !== 'open' && x.status !== 'other')) return;
+    const hit = receiptMatchFor({ credit: x.amount, date: String(x.dt || '').slice(0, 10), name: x.payer }, idx, fpOwners, taken);
+    if (!hit) return;
+    const status = incomeStatusOfOwner(hit.owner);
+    if (status !== 'order' && status !== 'nomaad') { taken.delete(hit.fp); return; }
+    const link = incomeLinkOfOwner(hit.owner);
+    out.push({ fp: x.fp, status, link_type: link.type, link_id: link.id, note: 'баримт ' + hit.fp + ' (дараа бүртгэсэн)' });
+  });
+  return out;
+}
+async function relinkIncomeFromReceipts() {
+  if (!DB_ANON_KEY || !Array.isArray(state.bankIncome) || !state.bankIncome.length) return 0;
+  if (typeof canSeeAllFinance === 'function' && !canSeeAllFinance()) return 0;
+  if (!(state.usedFps instanceof Set)) await loadUsedReceipts();
+  const plan = incomeRelinkPlan(state.bankIncome, state.usedFps, state.fpOwners)
+    .filter(p => { const row = state.bankIncome.find(x => x.fp === p.fp); return row && !monthLocked(String(row.dt || '').slice(0, 7)); });
+  let n = 0;
+  for (const p of plan) {
+    const body = { status: p.status, link_type: p.link_type, link_id: p.link_id, note: p.note, decided_at: new Date().toISOString() };
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_income?fp=eq.${encodeURIComponent(p.fp)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) continue;
+    const row = state.bankIncome.find(x => x.fp === p.fp);
+    if (row) Object.assign(row, body);
+    n++;
+  }
+  return n;
 }
 /* Хуулга + орлогын мөрийг DB-д бичнэ.
    ⚠ Орлогын мөр ХЭЗЭЭ Ч ДАРЖ БИЧИГДЭХГҮЙ (`ignore-duplicates`) — хүн гараар хаасан
@@ -13425,7 +13474,9 @@ function myPayCardHtml(me) {
     : '';
   const paidRow = paid > 0
     ? row(`✓ Олгосон · ${pays.length} удаа`, `${fmtMoney(paid)}`, 'pay-paid') + payList
-      + row('Үлдэгдэл', `<b>${fmtMoney(Math.max(0, b.total - paid))}</b>`, 'pay-left')
+      + (payBalance(b.total, paid).over > 0
+        ? row('⚠ Илүү олгосон', `<b>${fmtMoney(payBalance(b.total, paid).over)}</b>`, 'pay-over')
+        : row('Үлдэгдэл', `<b>${fmtMoney(payBalance(b.total, paid).owed)}</b>`, 'pay-left'))
     : row('✓ Олгосон', 'энэ сард олголт бүртгэгдээгүй', 'pay-zero');
   return `<div class="pay-card">${head}
     <div class="pay-total">${fmtMoney(b.total)}</div>
@@ -16624,6 +16675,15 @@ async function paySalary(personKey, ym, amount, note) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
   } catch (e) { showToast('Олголт хадгалах алдаа: ' + e.message, 'error', 4000); }
 }
+/* Олгох ↔ олгосон → ҮЛДЭГДЭЛ эсвэл ИЛҮҮ ОЛГОЛТ (2026-10-03, CEO).
+   ⛔ Илүү олголтыг 0 болгож НУУХГҮЙ. Өмнө нь `max(0, нийт − олгосон)` гэж бодож
+     «✓ олгосон» гэж харуулдаг байсан тул 2 сарын урьдчилгаа авсан хүний илүү
+     олголт хаана ч харагддаггүй байв. ЦЭВЭР функц — самбар ба ажилтны карт
+     ХОЁУЛАА үүнийг дуудна. */
+function payBalance(total, paid) {
+  const t = Math.round(Number(total) || 0), p = Math.round(Number(paid) || 0);
+  return { owed: Math.max(0, t - p), over: Math.max(0, p - t) };
+}
 // Тухайн хүний тухайн сард олгосон нийт
 function salaryPaidFor(personKey, ym) {
   return salaryPaymentsFor(state.salaryPayments, personKey, ym).reduce((s, p) => s + p.amount, 0);
@@ -16787,7 +16847,12 @@ function salaryFinPayments(finRows, key, ym, paidRows, team, owners) {
     if (!r || r.status === 'deleted') continue;
     if (String(r.category || '').slice(0, 4) !== SALARY_FIN_CAT) continue;
     const b = String(r.beneficiary || ''), bd = b.replace(/\D/g, '');
-    if (!((acct && bd && bd === acct) || (nm && _salNameKey(b) === nm) || (bd && own.guess[bd] === key))) continue;
+    /* ⚠ Хуулгаас ирсэн мөрд хүлээн авагч нь НЭР («ЭНЭБИШ НИНЖДОЛГОР»), данс нь
+       IBAN хэлбэрээр `account_number`-д байдаг (MN41…5029853564) — beneficiary-ээр
+       л тулгавал 4,000,000₮-ийн олголт самбараас алга болж байв. */
+    const ad = String(r.account_number || '').replace(/\D/g, '');
+    const acctHit = acct && ((bd && bd === acct) || (ad && (ad === acct || ad.endsWith(acct))));
+    if (!(acctHit || (nm && _salNameKey(b) === nm) || (bd && own.guess[bd] === key))) continue;
     const fp = salaryPayFp(r.justification);
     if (fp && have.has(fp)) continue;
     if ((typeof finAccrualMonth === 'function' ? finAccrualMonth(r) : '') !== ym) continue;
@@ -17006,10 +17071,13 @@ function renderSalary() {
     const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), w.mins, normMins, db.amount);
     return { ...r, w, db, b, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
   });
-  const T = calc.reduce((t, c) => ({
+  /* Үлдэгдэл ба илүү олголтыг ХҮН БҮРЭЭР нийлбэрлэнэ — нийт олгохоос нийт
+     олгосныг хасвал нэг хүний илүү олголт нөгөөгийн дутууг «нөхөж» харагдана. */
+  const T = calc.reduce((t, c) => { const pb = payBalance(c.b.total, c.paid); return {
     total: t.total + c.b.total, paid: t.paid + c.paid, ot: t.ot + c.b.otPay,
     dlv: t.dlv + c.b.delivery, sp: t.sp + (c.sp ? c.sp.total : 0),
-  }), { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0 });
+    owed: t.owed + pb.owed, over: t.over + pb.over, overN: t.overN + (pb.over > 0 ? 1 : 0),
+  }; }, { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0, owed: 0, over: 0, overN: 0 });
 
   const kpi = (label, val, col, sub) => `<div class="pb-kpi"><div class="pb-kpi-l">${label}</div><div class="pb-kpi-v" style="color:${col || 'var(--text)'};">${val}</div>${sub ? `<div class="pb-kpi-s">${sub}</div>` : ''}</div>`;
   const head = `<div class="pb-head">
@@ -17019,7 +17087,7 @@ function renderSalary() {
   const kpis = `<div class="pb-kpis">
     ${kpi('Нийт олгох', fmtMoney(T.total), 'var(--primary)', `${calc.length} ажилтан`)}
     ${kpi('Олгосон', fmtMoney(T.paid), 'var(--ok)', ym)}
-    ${kpi('Үлдэгдэл', fmtMoney(Math.max(0, T.total - T.paid)), T.total - T.paid > 0 ? 'var(--warn)' : 'var(--muted)')}
+    ${kpi('Үлдэгдэл', fmtMoney(T.owed), T.owed > 0 ? 'var(--warn)' : 'var(--muted)', T.over > 0 ? `⚠ илүү олгосон ${fmtMoney(T.over)} · ${T.overN} хүн` : '')}
     ${kpi('Үүнээс илүү цаг', fmtMoney(T.ot), 'var(--text)', T.dlv ? `хүргэлт ${fmtMoney(T.dlv)}` : '')}
   </div>`;
 
@@ -17055,10 +17123,11 @@ function renderSalary() {
   const rows = calc.map(c => {
     const { k, m, b, w, db, sp, paid, pays } = c;
     const dOn = salaryDeductOn(k);
-    const owed = Math.max(0, b.total - paid);
+    const { owed, over } = payBalance(b.total, paid);
     // Төлөв НЭГ чипээр — «олголт бүртгэгдээгүй» гэсэн бүтэн мөр хүн бүрд давтагдахгүй.
-    const st = !b.total ? ['pb-st-none', '—']
+    const st = !b.total ? (paid > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`] : ['pb-st-none', '—'])
       : paid <= 0 ? ['pb-st-no', 'олгоогүй']
+      : over > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`]
       : owed > 0 ? ['pb-st-part', `дутуу ${fmtMoneyShort(owed)}`]
       : ['pb-st-ok', '✓ олгосон'];
     const hrs = w.days
@@ -17101,6 +17170,7 @@ function renderSalary() {
         ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
         ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList : ''}
         ${owed > 0 ? line('Үлдэгдэл', `<b>${fmtMoney(owed)}</b> ${memoBtn}`, 'pay-left') : ''}
+        ${over > 0 ? line('⚠ Илүү олгосон', `<b>${fmtMoney(over)}</b>`, 'pay-over') : ''}
       </div>`;
     const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Шатны хөлс ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ</span></div>` : '';
     const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг, илүү цаг дутуу.</div>` : '';

@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15591,4 +15591,68 @@ async function swFetchTests() {
   const m = src.slice(src.indexOf('function salaryPayMonth'), src.indexOf('/* Тухайн сард олгосон МӨР'));
   ok(/finAccrualMonth\(row\)/.test(m), 'scan: гүйлгээн дээрх ноогдох сар ялна');
   ok(/return String\(p\.ym \|\| ''\)/.test(m), 'scan: холбоосгүй бол хадгалсан сар (буцах нийцтэй)');
+}
+
+// ═══ ОЛГОЛТ `salary_payments`-д БИЧИГДЭЭГҮЙ БАЙЖ БОЛНО (2026-10-03) ═══════════
+// Хуулга оруулахад цалингийн гүйлгээг ажилтанд холбох ГАНЦ дохио = бүртгэсэн ДАНС.
+// Данс бүртгэгдэхээс ӨМНӨ импортлогдсон мөр «дансны дугаар» хүлээн авагчтай зардал
+// болж үлдэж, цалингийн самбарт ХЭЗЭЭ Ч харагдахгүй байв (амьд датаар 85 мөр).
+{
+  const { salaryFinPayments, salaryPaymentsFor, salaryPaidFor } = F;
+  const K = '88627550';
+  const team = [{ name: 'Б.Байгалмаа', phone: K, bank_account: '5720418321' }];
+  const fin = [
+    // (1) данс хүлээн авагчтай, олголтын бичлэггүй → ЭНД нэмэгдэнэ
+    { id: 'F1', status: 'done', category: '7100', amount: 200000, beneficiary: '5720418321',
+      requested_at: '2026-09-15', purpose: 'EB-Цалин Ш.Байгалмаа 9р сар урьдчилгаа',
+      justification: 'Хуулгаар баталгаажсан · цалин [#EXP-A]' },
+    // (2) нэрээр холбогдсон, олголтын бичлэгтэй → ДАВХАРДАХГҮЙ
+    { id: 'F2', status: 'done', category: '7100', amount: 1000000, beneficiary: 'Б.Байгалмаа',
+      requested_at: '2026-09-21', purpose: 'EB-Цалин: 9р сар урьдчилгаа',
+      justification: 'Хуулгаар баталгаажсан · цалин [#EXP-B]' },
+    // (3) 7200 = цагийн/өдрийн цалингийн модулийнх → цалингийн самбарт ОРОХГҮЙ
+    { id: 'F3', status: 'done', category: '7200', amount: 240000, beneficiary: '5720418321',
+      requested_at: '2026-09-18', purpose: 'EB-Өдрийн цалин 2х', justification: '[#EXP-C]' },
+    // (4) өөр хүний данс → хамаарахгүй
+    { id: 'F4', status: 'done', category: '7100', amount: 900000, beneficiary: '5076410048',
+      requested_at: '2026-09-21', purpose: 'EB-Цалин өөр хүн', justification: '[#EXP-D]' },
+    // (5) больсон мөр → орохгүй
+    { id: 'F5', status: 'deleted', category: '7100', amount: 700000, beneficiary: '5720418321',
+      requested_at: '2026-09-19', purpose: 'EB-буруу', justification: '[#EXP-E]' },
+  ];
+  const pays = [{ person_key: K, ym: '2026-09', amount: 1000000, paid_at: '2026-09-21T08:10:12Z',
+                  note: 'Хуулгаар баталгаажсан · EB-Цалин: 9р сар урьдчилгаа [#EXP-B] \u27e6\u0423\u0420\u27e7' }];
+  const got = salaryFinPayments(fin, K, '2026-09', pays, team);
+  eq(got.length, 1, 'олголт: данс бүртгэгдэхээс өмнөх цалингийн гүйлгээ нэмэгдэнэ');
+  eq((got[0] || {}).amount, 200000, 'олголт: дүн гүйлгээнээс');
+  ok((got[0] || {}).fromFin, 'олголт: санхүүгийн мөрөөс гарсныг тэмдэглэнэ');
+  eq(salaryFinPayments(fin, K, '2026-08', pays, team).length, 0, 'олголт: өөр сард орохгүй');
+  // ⛔ Олголтын бичлэг аль хэдийн байвал ХОЁР удаа тоологдохгүй
+  ok(!got.some(x => x.amount === 1000000), 'олголт: [#fp] таарсан мөр давхардахгүй');
+  // Бүртгэлгүй хүн (данс ч, нэр ч таарахгүй) → хоосон
+  eq(salaryFinPayments(fin, '99999999', '2026-09', pays, team).length, 0, 'олголт: багт байхгүй хүнд юу ч нэмэхгүй');
+
+  // ИНВАРИАНТ: самбарын нийлбэр = бичлэг + санхүүгийн мөр
+  const TEAM = vm.runInContext('TEAM', sandbox);
+  const saved = TEAM.slice();
+  TEAM.length = 0; team.forEach(x => TEAM.push(x));
+  vm.runInContext('state.salaryPayments = ' + JSON.stringify(pays) + '; state.financeRequests = ' + JSON.stringify(fin) + ';', sandbox);
+  eq(salaryPaymentsFor(pays, K, '2026-09', fin).length, 2, 'ИНВАРИАНТ: 9 сард 2 олголт (бичлэг + гүйлгээ)');
+  eq(salaryPaidFor(K, '2026-09'), 1200000, 'ИНВАРИАНТ: нийлбэр гүйлгээг ч тоолно');
+  vm.runInContext('state.salaryPayments = []; state.financeRequests = [];', sandbox);
+  TEAM.length = 0; saved.forEach(x => TEAM.push(x));
+}
+
+// ═══ SCAN: санхүүгийн мөрөөс гарсан олголтын хамгаалалт ════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const f = src.slice(src.indexOf('function salaryFinPayments'), src.indexOf('function salaryPayLabel'));
+  ok(f.length > 100, 'scan: salaryFinPayments-ийн бие олдов');
+  ok(/have\.has\(fp\)/.test(f), 'scan: [#fp]-ээр давхардал хаагдана');
+  ok(/SALARY_FIN_CAT/.test(f), 'scan: зөвхөн үндсэн цалингийн ангилал');
+  eq((src.match(/const SALARY_FIN_CAT = '7100'/g) || []).length, 1, 'scan: ангилал ганц газар');
+  ok(/finAccrualMonth\(r\)/.test(f), 'scan: ноогдох сараар шүүгдэнэ (банкны огноогоор биш)');
+  ok(/status === 'deleted'/.test(f), 'scan: больсон мөр орохгүй');
+  const spf = src.slice(src.indexOf('function salaryPaymentsFor'), src.indexOf('/* ОЛГОЛТ `salary_payments`'));
+  ok(/salaryFinPayments\(/.test(spf), 'scan: самбарын ганц эх сурвалж гүйлгээг ч нэгтгэнэ');
 }

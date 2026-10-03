@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15651,6 +15651,75 @@ async function swFetchTests() {
   eq(salaryPaidFor(K, '2026-09'), 1200000, 'ИНВАРИАНТ: нийлбэр гүйлгээг ч тоолно');
   vm.runInContext('state.salaryPayments = []; state.financeRequests = [];', sandbox);
   TEAM.length = 0; saved.forEach(x => TEAM.push(x));
+}
+
+// ═══ IBAN ДАНСААР ТУЛГАЛТ + ИЛҮҮ ОЛГОЛТ (2026-10-03, CEO) ═══════════════
+// Хуулгын мөрд хүлээн авагч НЭР («ЭНЭБИШ НИНЖДОЛГОР»), данс IBAN-аар account_number-д
+// байдаг тул 4,000,000₮-ийн урьдчилгаа цалингийн самбараас алга байв. Илүү олголт
+// `max(0, …)`-аар нуугдаж «✓ олгосон» гэж харагдаж байв.
+{
+  const { salaryFinPayments, payBalance } = F;
+  const K = '99285468';
+  const team = [{ name: 'Э.Нинждолгор', phone: K, bank_account: '5029853564' }];
+  const fin = [
+    { id: 'N1', status: 'done', category: '7100', amount: 2000000, beneficiary: 'ЭНЭБИШ НИНЖДОЛГОР',
+      account_number: 'MN410005005029853564', requested_at: '2026-09-26T06:43:44Z',
+      purpose: '2САРЫН ЦАЛИН УРЬДЧИЛЖ АВАВ (9 сар)', justification: '[#EXP-4000000-20260917-X] ⟦ACCR|2026-09⟧' },
+    { id: 'N2', status: 'done', category: '7100', amount: 2000000, beneficiary: 'ЭНЭБИШ НИНЖДОЛГОР',
+      account_number: 'MN410005005029853564', requested_at: '2026-09-26T06:43:44Z',
+      purpose: '2САРЫН ЦАЛИН УРЬДЧИЛЖ АВАВ (10 сар)', justification: '[#EXP-4000000-20260917-X~2] ⟦ACCR|2026-10⟧' },
+    // өөр хүний IBAN — хамаарахгүй
+    { id: 'N3', status: 'done', category: '7100', amount: 500000, beneficiary: 'ӨӨР ХҮН',
+      account_number: 'MN410005005029853599', requested_at: '2026-09-20', purpose: 'x', justification: '[#EXP-Z]' },
+  ];
+  const sep = salaryFinPayments(fin, K, '2026-09', [], team);
+  const oct = salaryFinPayments(fin, K, '2026-10', [], team);
+  eq(sep.length, 1, 'IBAN: 9 сард нэг хэсэг');
+  eq((sep[0] || {}).amount, 2000000, 'IBAN: 9 сарын хэсэг 2сая');
+  eq(oct.length, 1, 'IBAN: 10 сарын хэсэг тусдаа');
+  ok(!sep.some(x => x.amount === 500000), 'IBAN: өөр дансны мөр орохгүй');
+  eq(payBalance(1700000, 2000000), { owed: 0, over: 300000 }, 'илүү олголт ил гарна');
+  eq(payBalance(2000000, 1500000), { owed: 500000, over: 0 }, 'дутуу хэвээр');
+  eq(payBalance(2000000, 2000000), { owed: 0, over: 0 }, 'тэнцүү');
+}
+// ═══ SCAN: илүү олголт нуугдахгүй ═══════════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(/payBalance\(b\.total, paid\)/.test(rs), 'scan: самбар payBalance-аар');
+  eq((rs.match(/Math\.max\(0, b\.total - paid\)/g) || []).length, 0, 'scan: самбар илүү олголтыг тэглэхгүй');
+  eq((rs.match(/Math\.max\(0, T\.total - T\.paid\)/g) || []).length, 0, 'scan: нийт үлдэгдэл хүнээр нийлбэрлэгдэнэ');
+  ok(/pay-over/.test(rs), 'scan: илүү олголтын мөр');
+  const mc = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function myPayCardHtml') + 6000);
+  eq((mc.match(/Math\.max\(0, b\.total - paid\)/g) || []).length, 0, 'scan: ажилтны карт илүү олголтыг тэглэхгүй');
+}
+
+// ═══ ХОЖИМ БҮРТГЭСЭН БАРИМТ ОРЛОГЫН МӨРИЙГ ХААНА (2026-10-03) ═══════════
+// Хуулга эхэлж орж, PDF дараа нь захиалгад бүртгэгдвэл мөр «хаагдаагүй» эсвэл гараар
+// «бусад орлого» болж үлддэг байв (Майнс Ап 3.96сая, Гранд Нова 725мян).
+{
+  const { incomeRelinkPlan } = F;
+  const used = new Set(['FP-3960000-20260911-МАЙНСАПХХК', 'FP-725000-20260925-ГРАНДНОВАГРЭЙТ', 'FP-50000-20260912-ХҮН', 'FP-90000-20260913-ФИН']);
+  const owners = new Map([['FP-3960000-20260911-МАЙНСАПХХК', 'mevent:#1601'], ['FP-725000-20260925-ГРАНДНОВАГРЭЙТ', 'mevent:#1602'],
+                          ['FP-50000-20260912-ХҮН', 'nomaad:NC-1'], ['FP-90000-20260913-ФИН', 'fin:abc']]);
+  const rows = [
+    { fp: 'A', status: 'other', amount: 3960000, dt: '2026-09-11', payer: 'МАЙНС АП ХХК' },
+    { fp: 'B', status: 'open', amount: 725000, dt: '2026-09-25', payer: 'ГРАНД НОВА ГРЭЙТ' },
+    { fp: 'C', status: 'personal', amount: 50000, dt: '2026-09-12', payer: 'ХҮН' },          // хүний шийдвэр — хөндөхгүй
+    { fp: 'D', status: 'open', amount: 90000, dt: '2026-09-13', payer: 'ФИН' },              // fin: эзэн — орлого биш
+    { fp: 'E', status: 'order', amount: 725000, dt: '2026-09-25', payer: 'ГРАНД НОВА ГРЭЙТ', note: '' },
+  ];
+  const plan = incomeRelinkPlan(rows, used, owners);
+  const by = Object.fromEntries(plan.map(x => [x.fp, x]));
+  eq((by.A || {}).status, 'order', 'relink: гараар «бусад» болсон ч баримттай бол захиалга');
+  eq((by.A || {}).link_id, '1601', 'relink: захиалгын дугаар');
+  eq((by.B || {}).link_id, '1602', 'relink: хаагдаагүй мөр холбогдоно');
+  ok(!by.C, 'relink: хувийн гэж шийдсэнийг хөндөхгүй');
+  ok(!by.D, 'relink: захиалга бус баримт ахиулахгүй');
+  ok(!by.E, 'relink: аль хэдийн хаагдсан мөрийг хөндөхгүй');
+  // НЭГ БАРИМТ = НЭГ МӨР: өөр мөрийн тэмдэглэлд байвал дахин ашиглахгүй
+  const plan2 = incomeRelinkPlan([{ fp: 'X', status: 'order', note: 'баримт FP-725000-20260925-ГРАНДНОВАГРЭЙТ' }, rows[1]], used, owners);
+  eq(plan2.length, 0, 'relink: эзэмшсэн баримт давхар ашиглагдахгүй');
 }
 
 // ═══ SCAN: санхүүгийн мөрөөс гарсан олголтын хамгаалалт ════════════════════

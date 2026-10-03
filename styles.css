@@ -7890,6 +7890,7 @@ select.no-asar-len {
 .pay-sum { border-bottom: none; border-top: 1px solid var(--border); padding-top: var(--space-2); font-size: var(--fs-base); }
 .pay-paid .pay-val { color: var(--ok); }
 .pay-left .pay-val { color: var(--warn); }
+.pay-over .pay-val { color: var(--danger); }
 .pay-worked { border-bottom: none; color: var(--muted); }
 .pay-note {
   font-size: var(--fs-sm); color: var(--muted); margin-top: var(--space-2);
@@ -8109,6 +8110,8 @@ select.no-asar-len {
   padding: 1px 8px; white-space: nowrap; }
 .pb-st-ok { background: var(--ok-soft); color: var(--ok); }
 .pb-st-part { background: var(--warn-soft); color: var(--warn); }
+/* Илүү олголт — урьдчилгаа авсан эсвэл буруу олгосон. Дутуугаас ЯЛГАРАХ ёстой. */
+.pb-st-over { background: var(--danger-soft); color: var(--danger); }
 .pb-st-no { background: var(--panel-hover); color: var(--muted); }
 .pb-st-none { background: transparent; color: var(--muted); }
 .pb-body { padding: 0 var(--space-3) var(--space-3); display: flex;

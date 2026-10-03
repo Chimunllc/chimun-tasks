@@ -3504,8 +3504,10 @@ need(['orderCustType']);
      чимээгүй буцаана (зан нь өөрчлөгдөнө, дүрс нь зөв хэвээр) — тиймээс эх кодоор барина. */
   {
     const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-    const body = (_src.match(/function orderCustType\(o\) \{[\s\S]*?\n\}/) || [''])[0];
-    ok(body.length > 50, 'scan: orderCustType-ийн бие олдов');
+    const body = (_src.match(/function _custTypeFrom\(ci, no, cust\) \{[\s\S]*?\n\}/) || [''])[0];
+    ok(body.length > 50, 'scan: _custTypeFrom-ийн бие олдов');
+    ok(/function orderCustType\(o\) \{ return _custTypeFrom\(/.test(_src), 'scan: orderCustType нь ганц дүрмийг дуудна');
+    ok(/_custTypeFrom\(\{ company, reg, ctype/.test(_src), 'scan: нэхэмжлэх ижил дүрмийг дуудна');
     const iPr = body.indexOf('_orgProofFrom('), iCt = body.indexOf("ci.ctype === 'org'");
     ok(iPr > -1 && iCt > -1, 'scan: хоёр шалгалт хоёулаа бий');
     ok(iPr < iCt, 'scan: нотолгооны шалгалт `ctype`-аас ӨМНӨ (сонголтыг дарна)');
@@ -3517,7 +3519,7 @@ need(['orderCustType']);
     ok(/vatOrgRegFor\(/.test(pb), 'scan: нотолгоонд НӨАТ-ын баримтын РД бий');
     ok(/_ORG_SUFFIX_RE/.test(pb), 'scan: нотолгоонд хуулийн хэлбэрийн тэмдэг бий');
     ok(/_ORG_SUFFIX_RE\.test\(cu\)/.test(pb), 'scan: нотолгоонд харилцагчийн нэр бий');
-    ok(/_orgProofFrom\(ci, o && o\.number, o && o\.customer\)/.test(body), 'scan: orderCustType харилцагчийн нэрийг дамжуулна');
+    ok(/_custTypeFrom\(custInfoOf\(o && o\.note\), o && o\.number, o && o\.customer\)/.test(_src), 'scan: orderCustType харилцагчийн нэрийг дамжуулна');
   }
 }
 
@@ -12697,6 +12699,31 @@ async function swFetchTests() {
   eq(b3.name, 'Д.Сараа', 'нэхэмжлэх: хувь хүний нэр');
   eq(b3.person, '', 'нэхэмжлэх: хувь хүнд төлөөлөгч давхардахгүй');
   ok(!b3.isOrg, 'нэхэмжлэх: хувь хүн байгууллага биш');
+  // ⛔ ГАНЦ ДҮРЭМ (2026-10-03): нэхэмжлэх нь жагсаалт/гэрээтэй ИЖИЛ тал руу бичигдэнэ.
+  // (а) «Хувь хүн» сонгосон, байгууллагын талбарт автоматаар орсон ХҮНИЙ нэр — хувь хүн
+  const b4 = NB({ customer: 'Батбаяр', note: setCI('', { company: 'МӨНХСАЙХАН ЗАНАБАЗАР', ctype: 'person' }) }, null);
+  eq(b4.name, 'Батбаяр', 'нэхэмжлэх: «хувь хүн» сонголттой бол хүний нэрийн талбар байгууллага болохгүй');
+  ok(!b4.isOrg, 'нэхэмжлэх: гэрээтэй ижил — хувь хүн');
+  // (б) «Хувь хүн» сонгосон ч ХХК нэртэй — байгууллага (захиалга 1539)
+  const b5 = NB({ customer: 'Эрдэнэбулган', note: setCI('', { company: 'ДИЖИТАЛ БҮТЭЭЛЧ ӨСӨЛТ ХХК', ctype: 'person' }) }, null);
+  eq(b5.name, 'ДИЖИТАЛ БҮТЭЭЛЧ ӨСӨЛТ ХХК', 'нэхэмжлэх: ХХК нэртэй бол байгууллага');
+  eq(b5.person, 'Эрдэнэбулган', 'нэхэмжлэх: хүн нь төлөөлөгч');
+  // (в) Бүртгэлд байгууллага — захиалга өөрөөр заагаагүй бол байгууллага (хуучин зан)
+  const b6 = NB({ customer: 'Хүн' }, { company: 'Алтан гэр', name: 'Хүн' });
+  ok(b6.isOrg && b6.name === 'Алтан гэр', 'нэхэмжлэх: бүртгэлийн байгууллага хэвээр байгууллага');
+  // (г) Захиалга «хувь хүн» гэвэл бүртгэлийн хуулийн хэлбэргүй нэрийг дарна
+  const b7 = NB({ customer: 'Хүн', note: setCI('', { ctype: 'person' }) }, { company: 'Алтан гэр', name: 'Хүн' });
+  ok(!b7.isOrg && b7.name === 'Хүн', 'нэхэмжлэх: захиалгын «хувь хүн» сонголт бүртгэлийг дарна');
+  // (д) РД алга — тулгагдсан НӨАТ-ын баримтын байгууллагын РД (захиалга 1562)
+  {
+    const runIn = (code) => vm.runInContext(code, sandbox);
+    const sv = runIn('state.vatReceipts');
+    runIn('state.vatReceipts = ' + JSON.stringify([{ id: 'x1', matched_type: 'event', matched_id: '1562', buyer_reg: '6191592', total: 1 }]) + '; _vatOrgRev++;');
+    const b8 = NB({ number: 1562, customer: 'Б.Тулга', note: setCI('', { company: 'МАКСИМУС ДИСТРИБЬЮШН', ctype: 'person' }) }, null);
+    ok(b8.isOrg, 'нэхэмжлэх: НӨАТ-ын РД-тэй бол байгууллага');
+    eq(b8.reg, '6191592', 'нэхэмжлэх: РД алга бол НӨАТ-ын баримтынхыг авна');
+    runIn('state.vatReceipts = ' + JSON.stringify(sv === undefined ? null : sv) + '; _vatOrgRev++;');
+  }
 
   // Дүн — orderMoneyBreakdown-той ИЖИЛ байх ёстой
   const MB = vm.runInContext('orderMoneyBreakdown', sandbox);

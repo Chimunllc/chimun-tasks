@@ -20115,19 +20115,30 @@ function sessionTokenForSend() {
 // Худалдан авагч — ГАНЦ дүрэм. Дараалал: захиалгын ⟦CI⟧ токен (тухайн хэлцлийн
 // үед бичсэн) → харилцагчийн бүртгэл → захиалгын түүхий нэр.
 // Байгууллага бол нэр = байгууллага, төлөөлөгч нь тусдаа мөрөнд гарна.
+/* ⛔ ТӨРӨЛ = `_custTypeFrom` — жагсаалт, карт, гэрээтэй ИЖИЛ дүрэм (2026-10-03).
+   Өмнө нь «байгууллагын талбар дүүрэн = байгууллага» гэсэн ӨӨР дүрэмтэй байсан тул
+   ажилтан «хувь хүн» сонгосон, НӨАТ/төлөгчөөс хүний нэр автоматаар орсон захиалгын
+   нэхэмжлэх тэр хүний нэрийг «байгууллага» болгож гаргадаг байв — гэрээ хүнтэй атал.
+   Бүртгэлд байгууллага бичигдсэн нь ажилтны ЗОРИУДЫН оруулга тул захиалга өөрөөр
+   заагаагүй бол байгууллага гэж үзнэ (хуучин зан хэвээр).
+   РД: байгууллагад 7 оронтой РД байхгүй бол тулгагдсан НӨАТ-ын баримтынхыг авна. */
 function invoiceBuyer(o, customer) {
   const ci = (typeof custInfoOf === 'function' ? custInfoOf(o && o.note) : null) || {};
   const c = customer || {};
-  const org = String(ci.company || c.company || '').trim();
+  const company = String(ci.company || c.company || '').trim();
   const person = String((o && o.customer) || c.name || '').trim();
+  const no = o && o.number;
+  let reg = String(ci.reg || c.rd || '').trim();
+  const isOrg = _custTypeFrom({ company, reg, ctype: ci.ctype || (c.company ? 'org' : '') }, no, person) === 'org';
+  if (isOrg && !/^\d{7}$/.test(reg.replace(/\s/g, ''))) { const v = vatOrgRegFor(no); if (v) reg = v; }
   return {
-    name: org || person || '—',
-    person: (org && person && org.toLowerCase() !== person.toLowerCase()) ? person : '',
-    reg: String(ci.reg || c.rd || '').trim(),
+    name: (isOrg ? (company || person) : person) || '—',
+    person: (isOrg && company && person && company.toLowerCase() !== person.toLowerCase()) ? person : '',
+    reg,
     phone: String((o && o.phone) || c.phone || '').trim(),
     email: String((o && o.email) || c.email || '').trim(),
     address: String((o && o.delivery_address) || c.address || '').trim(),
-    isOrg: !!org,
+    isOrg,
   };
 }
 
@@ -26492,12 +26503,14 @@ function _orgProofFrom(ci, no, cust) {
   return '';
 }
 function orderOrgProof(o) { return _orgProofFrom(custInfoOf(o && o.note), o && o.number, o && o.customer); }
-function orderCustType(o) {
-  const ci = custInfoOf(o && o.note);
-  if (_orgProofFrom(ci, o && o.number, o && o.customer)) return 'org';
-  if (ci.ctype === 'org' || ci.ctype === 'person') return ci.ctype;
+// Төрлийн ГАНЦ дүрэм: нотолгоо → хүний сонголт → хувь хүн. Захиалга (`orderCustType`) ба
+// нэхэмжлэх (`invoiceBuyer`) хоёул ҮҮНИЙГ дуудна — дараалал хоёр газар бичигдэхгүй.
+function _custTypeFrom(ci, no, cust) {
+  if (_orgProofFrom(ci, no, cust)) return 'org';
+  if (ci && (ci.ctype === 'org' || ci.ctype === 'person')) return ci.ctype;
   return 'person';                                        // хувь хүний РД (2 үсэг+8 орон) эсвэл тодорхойгүй = хувь хүн
 }
+function orderCustType(o) { return _custTypeFrom(custInfoOf(o && o.note), o && o.number, o && o.customer); }
 /* НӨАТ-ын баримтаас байгууллагын РД — захиалгын дугаараар. ИНДЕКС ЗААВАЛ: эс бөгөөс
    жагсаалтын мөр бүрд 181 баримт шүүгдэнэ (`vatCandidateOrders`-тэй ижил шалтгаан).
    Кэш нь ачаалалт БА гар тулгалт/буцаалтын дараа өөрөө шинэчлэгдэнэ (`_vatOrgRev`). */

@@ -14956,10 +14956,9 @@ async function swFetchTests() {
   const lr = src.slice(src.indexOf('function renderLedger'), src.indexOf('function attachLedgerHandlers'));
   ok(/ledgerLines\(all, acc\)/.test(lr), 'scan: дэвтэр ledgerLines-аас');
 
-  // Нягтлангийн 4 дэлгэц НЭГ табын дор (толгойн эгнээ 7 таб болохгүй)
-  const rt = src.slice(src.indexOf("_rTabs.push({ k: 'reports'"), src.indexOf("if (!_rTabs.some"));
-  eq((rt.match(/_rTabs\.push/g) || []).length, 4, 'scan: тайлангийн таб 4-өөс хэтрэхгүй');
-  ok(/k: 'acct'/.test(rt), 'scan: нягтлангийн дэлгэцүүд нэг табын дор');
+  // Нягтлангийн дэлгэцүүд НЭГ дэд-таб бүлэгт (`renderAccounting`), харин өөрөө
+  // хажуугийн цэсний тусдаа мөр — доорх «тусдаа цэс» scan-тест үүнийг барина.
+  ok(/ACCT_TABS/.test(src), 'scan: нягтлангийн дэлгэцүүд нэг дэд-таб бүлэгт');
 }
 
 // ⚠ «Тодорхойгүй» нь ӨР ТӨЛБӨР — хэнийх нь мэдэгдэхгүй мөнгө бидний эзэмшил биш.
@@ -15041,4 +15040,22 @@ async function swFetchTests() {
   // Элэгдлийн сарын эцсийн огноо — түүхий toISOString ашиглахгүй
   const me = src.slice(src.indexOf('function jrnMonthEnd'), src.indexOf('function journalEntries'));
   eq((me.match(/toISOString/g) || []).length, 0, 'scan: сарын эцсийг toISOString-гүй бодно');
+}
+
+// ═══ SCAN: Нягтлан = тусдаа цэс, хоёр давхар нуугдахгүй (2026-10-03) ═════
+// ⛔ Хажуугийн цэс → Дүн шинжилгээ → Нягтлан → Журнал гэсэн ГУРВАН даралт нь
+//   дэлгэцийг үхүүлнэ («хэн ч нээдэггүй дэлгэц үхдэг»). Санхүү бүлэгт тусдаа мөр.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const idx = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
+  ok(/data-view="acct" id="nav-acct"/.test(idx), 'scan: Нягтлан хажуугийн цэсэнд');
+  ok(/'nav-coosalary', 'nav-acct'/.test(src), 'scan: Нягтлан САНХҮҮ бүлэгт');
+  ok(/state\.view === 'acct'/.test(src), 'scan: acct view маршруттай');
+  ok(/state\.view === 'acct' && !canSeeReports\(\)/.test(src), 'scan: acct эрхээр хамгаалагдсан');
+  // ⛔ Дүн шинжилгээний таб болж БУЦАЖ ОРОХГҮЙ
+  const rt = src.slice(src.indexOf("_rTabs.push({ k: 'reports'"), src.indexOf("if (!_rTabs.some"));
+  eq((rt.match(/k: 'acct'/g) || []).length, 0, 'scan: Нягтлан тайлангийн таб БИШ');
+  eq((rt.match(/_rTabs\.push/g) || []).length, 3, 'scan: тайлангийн таб 3 болов');
+  // Эрхийн жагсаалтад бүртгэгдсэн (эс бөгөөс эрх олгох боломжгүй)
+  ok(/key: 'acct',\s*label: 'Нягтлан/.test(src), 'scan: acct эрхийн жагсаалтад');
 }

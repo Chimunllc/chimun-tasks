@@ -13242,14 +13242,48 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
     delivery, total: d.net + otPay + delivery,
   };
 }
+/* ⛔ ЦАЛИНГИЙН ТООЦОО 2026-09-ААС ЭХЭЛНЭ (2026-10-03, CEO шийдвэр) ───────────
+   8 сар ба түүнээс өмнөх цалинг өдөр/цаг/нэмэгдлээр нь ГАРААР тооцож олгосон.
+   Аппын тооцоо нь ОДООГИЙН суурь цалинг (`staff_salary` — ганц утга, түүх
+   хадгалдаггүй) тэр сарын ирцэд хэрэглэдэг тул хуучин сард ХУДАЛ «Үлдэгдэл»
+   гаргадаг — хүн түүнийг хараад ДАХИН олгож мэднэ. Тиймээс эхлэх сараас
+   ӨМНӨХ сард зөвхөн ОЛГОСОН түүх харагдана: бодсон «Нийт олгох», «Үлдэгдэл»,
+   «Илүү олгосон» ОГТ гарахгүй.
+   ⚠ Эхлэх сар = `app_config['payroll'].start`; кодын утга зөвхөн нөөц.
+   ⛔ **`state.appConfig`-ЭЭС БҮҮ УНШ** — тэр объектыг серверээс ачаалдаг код
+     ОГТ БАЙХГҮЙ (зөвхөн тухайн сессийн бичилтээр дүүрдэг) тул DB-ийн утга
+     ХЭЗЭЭ Ч хүрэхгүй. Ажилладаг хэв маяг = `coo_share`-ийнх: тусдаа state
+     талбар + `loadAppConfig(түлхүүр)`. */
+const PAYROLL_START_DEFAULT = '2026-09';
+function payrollStartMonth() {
+  const c = state.payrollCfg;
+  const s = (c && typeof c === 'object') ? String(c.start || '') : '';
+  return /^\d{4}-\d{2}$/.test(s) ? s : PAYROLL_START_DEFAULT;
+}
+// Тохиргоог нэг л удаа татна. Ачаалагдтал кодын нөөц утга ажиллана (ижил тул
+// дэлгэц анивчихгүй), ирмэгц `render()` дуудагдана.
+function ensurePayrollCfg() {
+  if (state.payrollCfg !== undefined) return;
+  state.payrollCfg = null;
+  if (typeof loadAppConfig !== 'function') return;
+  loadAppConfig('payroll').then(v => { state.payrollCfg = (v && typeof v === 'object') ? v : {}; if (typeof render === 'function') render(); });
+}
+// Тухайн сар ТҮҮХ үү (тооцоо хийхгүй, зөвхөн олгосон дүн)?
+function payrollHistOnly(ym, start) {
+  const s = start || payrollStartMonth();
+  return /^\d{4}-\d{2}$/.test(String(ym || '')) && String(ym) < s;
+}
 /* Аль сарын цалинг анхдагчаар харуулах вэ. Үлдэгдэл дараа сарын 5-нд олгогддог тул
-   сарын эхээр хүн ӨМНӨХ сарынхаа цалинг хардаг — 10-02-нд «9 сар» нээгдэнэ. */
-function payMonthDefault(todayIso) {
+   сарын эхээр хүн ӨМНӨХ сарынхаа цалинг хардаг — 10-02-нд «9 сар» нээгдэнэ.
+   ⚠ Эхлэх сараас ӨМНӨ гулсуулахгүй — тэр нь түүх, нээхэд хоосон харагдана. */
+function payMonthDefault(todayIso, start) {
   const t = String(todayIso || todayStr());
   const ym = t.slice(0, 7), day = Number(t.slice(8, 10)) || 1;
-  if (day > 5) return ym;
   const p = ym.split('-').map(Number);
-  return p[1] <= 1 ? `${p[0] - 1}-12` : `${p[0]}-${String(p[1] - 1).padStart(2, '0')}`;
+  const prev = p[1] <= 1 ? `${p[0] - 1}-12` : `${p[0]}-${String(p[1] - 1).padStart(2, '0')}`;
+  const want = day > 5 ? ym : prev;
+  const s = start || (typeof payrollStartMonth === 'function' ? payrollStartMonth() : PAYROLL_START_DEFAULT);
+  return want < s ? s : want;
 }
 // Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг + нормын хувь
 function renderAttendanceMonth(month) {
@@ -13470,6 +13504,24 @@ function myPayCardHtml(me) {
   const normH = workNormDays() * 8;
   const paid = salaryPaidFor(key, month);
   const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
+  const myPays = salaryPaymentsFor(state.salaryPayments, key, month);
+  const myPayList = myPays.length
+    ? `<div class="pay-plist">${myPays.map(x => `<div class="pay-pitem">
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
+        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`
+    : '';
+  /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ (CEO шийдвэр). Тэр цалинг гараар тооцож
+     олгосон тул аппын бодолт ХУДАЛ үлдэгдэл үзүүлнэ — ажилтан «надад дутуу
+     олгосон» гэж гомдоно. Зөвхөн олгосон дүнг харуулна. */
+  if (payrollHistOnly(month)) {
+    return `<div class="pay-card">${head}
+      <div class="pay-total">${fmtMoney(paid)}</div>
+      <div class="pay-total-s">${escapeHtml(month)} · олгосон дүн</div>
+      ${paid > 0 ? `<div class="pay-rows">${row(`✓ Олгосон · ${myPays.length} удаа`, fmtMoney(paid), 'pay-paid')}${myPayList}</div>`
+        : `<div class="pay-note">Энэ сард олголт бүртгэгдээгүй.</div>`}
+      <div class="pay-fine">${escapeHtml(payrollStartMonth())}-аас өмнөх цалинг өдөр/цаг/нэмэгдлээр нь гараар тооцож олгосон. Тиймээс энд зөвхөн олгосон түүх харагдана — бодолт, үлдэгдэл гаргахгүй.</div>
+    </div>`;
+  }
 
   if (!base) {
     return `<div class="pay-card">${head}
@@ -13526,6 +13578,7 @@ function myPayCardHtml(me) {
   </div>`;
 }
 function renderMyAttend() {
+  ensurePayrollCfg();   // «Миний цалин» карт түүх сарыг зөв таних
   const me = findMember(state.me) || {};
   if (!state._myProfileLoaded) loadMyProfile();   // данс TEAM-д байхгүй — өөрийн токеноор татна
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
@@ -17345,6 +17398,7 @@ function renderSalary() {
   // Данс/РД нь эмзэг сувгаар ирдэг. Өмнө нь зөвхөн «Ажилчид» хуудсаар татагддаг байсан тул
   // шууд Цалин руу орвол бүх данс «бүртгэгдээгүй» харагддаг байв. Эрхийг loadStaffPins шалгана.
   if (!state._staffPinsLoaded) loadStaffPins();
+  ensurePayrollCfg();   // цалингийн тооцоо аль сараас эхлэх (app_config['payroll'])
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // хүргэлт/шатны хөлсөнд stage_meta
   const ym = state.salaryYM || payMonthDefault(todayStr());
   // Илүү цаг бодоход тухайн САРЫН ирц заавал хэрэгтэй (ирцийн дэлгэцтэй ижил эх сурвалж).
@@ -17378,17 +17432,26 @@ function renderSalary() {
     owed: t.owed + pb.owed, over: t.over + pb.over, overN: t.overN + (pb.over > 0 ? 1 : 0),
   }; }, { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0, owed: 0, over: 0, overN: 0 });
 
+  /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ. Бодсон «Нийт олгох»/«Үлдэгдэл» гаргахгүй —
+     хуучин сард аппын тооцоо ХУДАЛ (суурь цалингийн түүх хадгалагддаггүй). */
+  const histOnly = payrollHistOnly(ym);
   const kpi = (label, val, col, sub) => `<div class="pb-kpi"><div class="pb-kpi-l">${label}</div><div class="pb-kpi-v" style="color:${col || 'var(--text)'};">${val}</div>${sub ? `<div class="pb-kpi-s">${sub}</div>` : ''}</div>`;
   const head = `<div class="pb-head">
       <div><div class="pb-title">💵 Цалингийн самбар</div><div class="pb-sub">Ажилласан цаг · илүү цаг · хүргэлт · суутгал · олголт — бүгд энд</div></div>
       <div class="pb-head-r"><input type="month" class="ui-raw pay-ym" id="sal-ym" value="${ym}" max="${todayStr().slice(0, 7)}"><button class="btn" data-sal-refresh>↻</button></div>
     </div>`;
-  const kpis = `<div class="pb-kpis">
+  const kpis = histOnly
+    ? `<div class="pb-kpis">${kpi('Олгосон', fmtMoney(T.paid), 'var(--ok)', `${ym} · ${calc.filter(c => c.paid > 0).length} хүнд`)}</div>`
+    : `<div class="pb-kpis">
     ${kpi('Нийт олгох', fmtMoney(T.total), 'var(--primary)', `${calc.length} ажилтан`)}
     ${kpi('Олгосон', fmtMoney(T.paid), 'var(--ok)', ym)}
     ${kpi('Үлдэгдэл', fmtMoney(T.owed), T.owed > 0 ? 'var(--warn)' : 'var(--muted)', T.over > 0 ? `⚠ илүү олгосон ${fmtMoney(T.over)} · ${T.overN} хүн` : '')}
     ${kpi('Үүнээс илүү цаг', fmtMoney(T.ot), 'var(--text)', T.dlv ? `хүргэлт ${fmtMoney(T.dlv)}` : '')}
   </div>`;
+  // ⚠ ЯАГААД гэдгийг ИЛ хэлнэ — эс бөгөөс «тоо алга болсон» гэж хүн гайхна.
+  const histNote = histOnly
+    ? `<div class="pb-note">📜 <b>${escapeHtml(ym)}</b> нь цалингийн тооцоо эхлэхээс (<b>${escapeHtml(payrollStartMonth())}</b>) өмнөх сар — тэр цалинг өдөр/цаг/нэмэгдлээр нь гараар тооцож олгосон. Тиймээс энд <b>зөвхөн олгосон түүх</b> харагдана: бодсон дүн, үлдэгдэл гаргахгүй (аппын тооцоо хуучин сард худал үлдэгдэл үзүүлж, дахин олгох эрсдэлтэй).</div>`
+    : '';
 
   // ⚠ Чимээгүй цоорхойг ИЛ хэлнэ — «бүгд харагдахгүй байна» гэсэн гомдол эндээс гарсан.
   const noSal = calc.filter(c => c.noSalary && c.hasAtt);
@@ -17424,7 +17487,8 @@ function renderSalary() {
     const dOn = salaryDeductOn(k);
     const { owed, over } = payBalance(b.total, paid);
     // Төлөв НЭГ чипээр — «олголт бүртгэгдээгүй» гэсэн бүтэн мөр хүн бүрд давтагдахгүй.
-    const st = !b.total ? (paid > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`] : ['pb-st-none', '—'])
+    const st = histOnly ? (paid > 0 ? ['pb-st-ok', 'олгосон'] : ['pb-st-none', '—'])
+      : !b.total ? (paid > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`] : ['pb-st-none', '—'])
       : paid <= 0 ? ['pb-st-no', 'олгоогүй']
       : over > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`]
       : owed > 0 ? ['pb-st-part', `дутуу ${fmtMoneyShort(owed)}`]
@@ -17436,7 +17500,7 @@ function renderSalary() {
       <span class="pb-sum-n"><b>${escapeHtml(m.name || '?')}</b><span class="pb-role">${escapeHtml(m.role || '')}</span></span>
       <span class="pb-sum-h">${hrs}</span>
       <span class="pb-chip ${st[0]}">${st[1]}</span>
-      <span class="pb-sum-v">${fmtMoney(b.total)}</span></summary>`;
+      <span class="pb-sum-v">${fmtMoney(histOnly ? paid : b.total)}</span></summary>`;
 
     const line = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
     const baseCell = editable
@@ -17456,11 +17520,17 @@ function renderSalary() {
        автоматаар бүртгэгдэнэ. Хагас сарын хуваарилалтыг аппад харуулах нь хүн бүрд
        2 нэмэлт мөр үүсгээд, тоо нь зүгээр л нийт дүнгийн хуваалт байсан — шинэ
        мэдээлэл өгдөггүй. Үлдсэн дүн дээр ГАНЦ «⧉ Утга» товч хангалттай. */
-    const memoBtn = (payable && owed > 0) ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : '';
+    const memoBtn = (payable && owed > 0 && !histOnly) ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : '';
     // ⛔ Утгагүй мөр БИЧИХГҮЙ: суутгалгүй бөгөөд нэмэгдэлгүй бол «цэвэр суурь» нь
     //   «нийт олгох»-той ЯГ ижил тоо — хоёуланг бичих нь нүдийг л төөрүүлнэ.
     const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery || b.shortMins;
-    const money = !c.amount ? `<div class="pb-nosal">⚠ Суурь цалин тохируулаагүй — илүү цаг тооцогдохгүй.</div>` : `
+    /* ⛔ ТҮҮХ САРД ЗӨВХӨН ОЛГОСОН МӨР. Бодолтын мөрүүд (суурь · суутгал · илүү
+       цаг · нийт олгох · үлдэгдэл) ОГТ гарахгүй — тэр тоо хуучин сард худал. */
+    const money = histOnly
+      ? (paid > 0
+          ? `<div class="pay-rows pb-rows">${line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid')}${payList}</div>`
+          : `<div class="pb-note">Энэ сард олголт бүртгэгдээгүй.</div>`)
+      : !c.amount ? `<div class="pb-nosal">⚠ Суурь цалин тохируулаагүй — илүү цаг тооцогдохгүй.</div>` : `
       <div class="pay-rows pb-rows">
         ${hasParts ? line('Суурь цалин', fmtMoney(b.base)) : ''}
         ${b.shortMins ? line(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.base - b.earned)}`, 'pay-minus') : ''}
@@ -17486,8 +17556,8 @@ function renderSalary() {
     </details>`;
   }).join('');
   const spFoot = T.sp ? `<div class="sp-foot">📦 Шатны хөлс нийт <b>${fmtMoney(T.sp)}</b> — дамжлагын ажлын урамшуулал, дээрх цалинд ОРООГҮЙ.</div>` : '';
-  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${kpis}${warnBits.join('')}${ratesBar}${searchBar}
-    <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${spFoot}</div>`;
+  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar}${searchBar}
+    <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${histOnly ? '' : spFoot}</div>`;
 }
 function attachSalaryHandlers() {
   attachStaffAcctBanner();

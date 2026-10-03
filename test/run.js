@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -14616,7 +14616,15 @@ async function swFetchTests() {
   eq(payMonthDefault('2026-10-02'), '2026-09', 'цалингийн сар: 10-02 → 9 сар');
   eq(payMonthDefault('2026-10-05'), '2026-09', 'цалингийн сар: 10-05 → 9 сар (олголтын өдөр)');
   eq(payMonthDefault('2026-10-06'), '2026-10', 'цалингийн сар: 10-06 → 10 сар');
-  eq(payMonthDefault('2026-01-03'), '2025-12', 'цалингийн сар: оны эхэнд өмнөх он руу шилжинэ');
+  eq(payMonthDefault('2026-01-03', '2025-01'), '2025-12', 'цалингийн сар: оны эхэнд өмнөх он руу шилжинэ');
+  /* ⛔ ЭХЛЭХ САРААС ӨМНӨ ГУЛСАХГҮЙ — тэр нь түүх, нээхэд бодолт байхгүй тул
+     хүн «цалин алга» гэж гайхна. Эхлэх сар = 2026-09 (CEO, 2026-10-03). */
+  eq(payMonthDefault('2026-09-03', '2026-09'), '2026-09', 'цалингийн сар: эхлэх сараас өмнө гулсахгүй');
+  eq(payMonthDefault('2026-01-03', '2026-09'), '2026-09', 'цалингийн сар: эхлэх сар руу хавчуулна');
+  ok(F.payrollHistOnly('2026-08', '2026-09'), 'цалин: 8 сар = түүх');
+  ok(!F.payrollHistOnly('2026-09', '2026-09'), 'цалин: эхлэх сар өөрөө түүх БИШ');
+  ok(!F.payrollHistOnly('2026-10', '2026-09'), 'цалин: шинэ сар түүх биш');
+  ok(!F.payrollHistOnly('', '2026-09'), 'цалин: хоосон сар түүх биш (бодолт зогсохгүй)');
 
   // ── payMonthMins: in/out хосоор, гараагүй өдөр 0 цаг бөгөөд ИЛ тоологдоно ──
   const rec = (day, kind, hh) => ({ day, kind, ts: `${day}T${String(hh - 8).padStart(2, '0')}:00:00.000Z` });
@@ -14889,7 +14897,45 @@ async function swFetchTests() {
   eq(cerr, '', 'карт: myPayCardHtml алдаагүй ажиллана');
   ok(card.includes('Миний цалин'), 'карт: гарчигтай');
 
+  /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ (2026-10-03, CEO). 8 сар ба өмнөхийг
+     өдөр/цаг/нэмэгдлээр ГАРААР тооцож олгосон; аппын бодолт одоогийн суурь
+     цалингаар явдаг тул ХУДАЛ «Үлдэгдэл» гарч, ДАХИН олгох эрсдэл үүснэ. */
+  runIn("state.salaryYM = '2026-08'; state.attMonthKey = '2026-08'; state.myPayMonth = '2026-08'; state.myPayRecs = { '2026-08': [] };");
+  runIn("state.salaryPayments = [{ person_key: '88000001', ym: '2026-08', amount: 1500000, note: 'EB-Цалин 8 сар', paid_at: '2026-08-20T05:00:00Z' }];");
+  let h8 = '', e8 = '';
+  try { h8 = runIn('renderSalary()'); } catch (e) { e8 = e.message; }
+  eq(e8, '', 'түүх сар: renderSalary алдаагүй');
+  ok(h8.includes('гараар тооцож олгосон'), 'түүх сар: ЯАГААД гэдгийг ил хэлнэ');
+  eq(h8.indexOf('Үлдэгдэл'), -1, 'түүх сар: үлдэгдэл ОГТ гарахгүй');
+  eq(h8.indexOf('Нийт олгох'), -1, 'түүх сар: бодсон дүн гарахгүй');
+  eq(h8.indexOf('Илүү олгосон'), -1, 'түүх сар: илүү олголт гарахгүй');
+  ok(h8.includes('Олгосон'), 'түүх сар: олгосон түүх харагдана');
+  let c8 = '', ce8 = '';
+  try { c8 = runIn('myPayCardHtml(findMember(state.me) || {})'); } catch (e) { ce8 = e.message; }
+  eq(ce8, '', 'түүх сар: ажилтны карт алдаагүй');
+  eq(c8.indexOf('Үлдэгдэл'), -1, 'түүх сар: ажилтанд үлдэгдэл харуулахгүй');
+  ok(c8.includes('олгосон дүн'), 'түүх сар: ажилтанд олгосон дүн харагдана');
+
   runIn(`(function(){ const s = ${save}; state.salaries = s[0]; state.salaryPayments = s[1]; state.attMonthKey = s[2]; state.salaryYM = s[3]; })()`);
+}
+
+// ═══ SCAN: цалингийн эхлэх сарын хамгаалалт ═════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/const PAYROLL_START_DEFAULT = '2026-09'/.test(src), 'scan: эхлэх сарын нөөц утга бий');
+  const f = src.slice(src.indexOf('function payrollStartMonth'), src.indexOf('function payMonthDefault'));
+  /* ⛔ `state.appConfig`-ээс уншиж БОЛОХГҮЙ — тэр объектыг серверээс ачаалдаг
+     код ОГТ байхгүй тул DB-ийн утга хэзээ ч хүрэхгүй (чимээгүй нөөц утга). */
+  ok(/state\.payrollCfg/.test(f), 'scan: эхлэх сар тусдаа state талбараас');
+  eq((f.match(/state\.appConfig/g) || []).length, 0, 'scan: state.appConfig-ээс уншихгүй (ачаалагддаггүй)');
+  ok(/loadAppConfig\('payroll'\)/.test(src), 'scan: тохиргоо үнэхээр татагдана');
+  ok(/ensurePayrollCfg\(\);\s*\/\/ цалингийн тооцоо/.test(src), 'scan: самбар тохиргоог ачаална');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(/const histOnly = payrollHistOnly\(ym\)/.test(rs), 'scan: самбар түүх сарыг таьна');
+  ok(/histOnly \? '' : warnBits/.test(rs), 'scan: түүх сард анхааруулга/суутгалын мөр гарахгүй');
+  ok(/fmtMoney\(histOnly \? paid : b\.total\)/.test(rs), 'scan: түүх сард хураангуйд ОЛГОСОН дүн гарна');
+  const mp = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
+  ok(/payrollHistOnly\(month\)/.test(mp), 'scan: ажилтны карт ч түүх сарыг таьна');
 }
 
 // ═══ ЭЗНИЙ ХӨРӨНГӨ ОРУУЛАЛТ (2026-10-02) ════════════════════════════════

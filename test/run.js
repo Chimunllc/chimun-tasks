@@ -432,15 +432,21 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
    үлдээдэг бөгөөд нийлбэрийг БАРЬДАГ. */
 {
   const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const _css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   ok(/data-ps-mv="\$\{escapeHtml\(p\.sku\)\}"/.test(codeLines), 'scan: мөр бүрт ⇄ шилжүүлэх товч');
   ok(/data-ps-mv\]'\)\.forEach[\s\S]{0,220}openTransferModal\(b\.dataset\.psMv\)/.test(codeLines),
      'scan: ⇄ нь одоо байгаа шилжүүлэх модалыг дуудна (шинэ зам үүсгэхгүй)');
   // Эцэслэгдсэн бараа: гар засвар түгжээтэй, ШИЛЖҮҮЛЭГ нээлттэй
   ok(/_sld \? ' disabled' : ''/.test(codeLines), 'scan: эцэслэгдсэн барааны тоон талбар түгжээтэй');
   ok(/ps-row-stock/.test(codeLines), 'scan: нөөцийн мөр өөрийн бүтэцтэй (нягт байрлал)');
+  /* ⛔ `.ps-nm` ТОГТМОЛ өргөнтэй бол 375px-д зураг ганцаараа мөр эзэлж, БҮХ
+     самбарын мөр 173–231px болдог. Нэр ШАХАГДДАГ байх ёстой. */
+  ok(/\.ps-row \.ps-nm \{ flex: 1 1 140px; \}/.test(_css),
+     'scan: нэр шахагддаг (бүх самбарт нягт мөр)');
+  ok(/\.ps-row \.ps-fields \{ flex: 1 1 100%; \}/.test(_css),
+     'scan: талбарууд нарийн дэлгэцэд өөрийн мөрөнд');
   // ⛔ Хадгалах тууз `display:flex` тул `hidden` ажиллахгүй байв — «0 бараа
   //    өөрчлөгдсөн» гэж ҮРГЭЛЖ харагдаж мөр халхалдаг байсан.
-  const _css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   ok(/\.ps-savebar\[hidden\]\s*\{\s*display:\s*none/.test(_css),
      'scan: хадгалах тууз ҮНЭХЭЭР нуугдана (display:flex-ийг дарна)');
 }

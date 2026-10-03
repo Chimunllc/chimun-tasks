@@ -16659,7 +16659,7 @@ function salaryPayMonth(p, finRows) {
      гарч, аль нь үнэн болохыг хэн ч мэдэхгүй болно. ИНВАРИАНТ тест хоёрыг тулгана. */
 function salaryPaymentsFor(rows, personKey, ym, finRows) {
   const fin = finRows || state.financeRequests || [];
-  return (rows || [])
+  const own = (rows || [])
     .filter(p => p && p.person_key === personKey && salaryPayMonth(p, fin) === ym)
     .map(p => {
       const bankYm = String(p.paid_at || '').slice(0, 7);
@@ -16667,8 +16667,48 @@ function salaryPaymentsFor(rows, personKey, ym, finRows) {
                label: salaryPayLabel(p.note), bankYm,
                // Банкны сар ≠ ноогдох сар бол ИЛ тэмдэглэнэ (хүн яагаад гэдгийг асуухгүй)
                shifted: !!bankYm && bankYm !== ym };
-    })
+    });
+  return own.concat(salaryFinPayments(fin, personKey, ym, rows))
     .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+/* ОЛГОЛТ `salary_payments`-д БИЧИГДЭЭГҮЙ БАЙЖ БОЛНО (2026-10-03, амьд датаар 85 мөр).
+   Хуулга оруулахад цалингийн гүйлгээг ажилтанд холбох ГАНЦ дохио нь ажилтны
+   бүртгэсэн ДАНС (`empByAcct`). Данс аппад бүртгэгдэхээс ӨМНӨ импортлогдсон мөр
+   «хэнийх нь мэдэгдэхгүй» зардал болж бичигдэж (`beneficiary` = дансны дугаар),
+   дараа нь данс бүртгэгдсэн ч ДАХИН ХЭЗЭЭ Ч тулгагддаггүй байв — цалингийн
+   самбарт олголт дутуу харагдана (Б.Байгалмаа: 200,000₮).
+   ⛔ Импортыг дахин ажиллуулж залруулахгүй — ТУЛГАЛТЫГ ХАРУУЛАХ ҮЕД хийнэ,
+     тэгвэл данс бүртгэгдмэгц хуучин мөр ӨӨРӨӨ холбогдоно (гараар хийх ажил 0).
+   ⛔ ЗӨВХӨН 7100 (үндсэн цалин) — 7200 нь цагийн/өдрийн цалингийн модулийнх,
+     энд оруулбал тэр олголт ХОЁР газар тоологдоно.
+   ⚠ Давхардлыг `[#fp]`-ээр хаана: олголтын бичлэг аль хэдийн байвал АВАХГҮЙ. */
+const SALARY_FIN_CAT = '7100';
+function _salNameKey(s) { return String(s || '').replace(/[\s.·,]/g, '').toUpperCase(); }
+function salaryFinPayments(finRows, key, ym, paidRows, team) {
+  if (!key) return [];
+  const list = finRows || [];
+  const paid = paidRows || state.salaryPayments || [];
+  const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
+  const mm = tm.find(x => (typeof personKey === 'function' ? personKey(x) : '') === key);
+  if (!mm) return [];
+  const acct = String(mm.bank_account || '').replace(/\D/g, '');
+  const nm = _salNameKey(mm.name);
+  const have = new Set(paid.map(p => salaryPayFp(p && p.note)).filter(Boolean));
+  const out = [];
+  for (const r of list) {
+    if (!r || r.status === 'deleted') continue;
+    if (String(r.category || '').slice(0, 4) !== SALARY_FIN_CAT) continue;
+    const b = String(r.beneficiary || ''), bd = b.replace(/\D/g, '');
+    if (!((acct && bd && bd === acct) || (nm && _salNameKey(b) === nm))) continue;
+    const fp = salaryPayFp(r.justification);
+    if (fp && have.has(fp)) continue;
+    if ((typeof finAccrualMonth === 'function' ? finAccrualMonth(r) : '') !== ym) continue;
+    const bankYm = String(r.requested_at || '').slice(0, 7);
+    out.push({ amount: Number(r.amount) || 0, at: r.requested_at || '', note: r.purpose || '',
+               label: salaryPayLabel(r.purpose), bankYm,
+               shifted: !!bankYm && bankYm !== ym, fromFin: true });
+  }
+  return out;
 }
 /* Олголтын мөрийн тайлбар. Цикл тэмдэг (⟦УР⟧/⟦ҮЛ⟧) байвал түүнийг, эс бөгөөс
    хуулгын гүйлгээний утгыг цэвэрлэж өгнө (хээ `[#...]` нь хүнд юу ч хэлэхгүй).

@@ -36002,7 +36002,13 @@ function vatCandidateOrders() {
     const regM = cust.match(/\b(\d{7})\b/);
     out.push({ type: 'event', no: o.number, name: cust, reg: regM ? regM[1] : vatRegNorm(o.register || o.reg_no),
       amount: vatNum(o.total_mnt || o.grand_total || o.total), date: o.starts_at || o.created_at || '' }); });
-  return out.filter(c => c.no != null && c.no !== '');
+  /* Шивэгдсэн дүнг НЭГ УДАА индекслэнэ — захиалга бүрд `vatForOrder` дуудвал
+     181 баримт × 400 захиалга болж модал мэдэгдэхүйц удаашрана. */
+  const invBy = new Map();
+  vatReceiptsActive().forEach(v => { if (!v.matched_id) return; const k = String(v.matched_id);
+    invBy.set(k, (invBy.get(k) || 0) + (Number(v.total) || 0)); });
+  return out.filter(c => c.no != null && c.no !== '')
+    .map(c => Object.assign({}, c, { remain: vatCandRemain(c, invBy.get(String(c.no)) || 0) }));
 }
 /* Баримт ба саналын хоорондох хоногийн зөрүү. Мэдэгдэхгүй бол null. */
 function vatCandGap(rec, c) {
@@ -36028,7 +36034,11 @@ function vatAutoScore(rec, c) {
   const rn = vatNorm(rec.name), cn = vatNorm(c.name);
   if (rn && cn) { if (rn === cn) s += 5; else { const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' ')); const ov = rt.filter(t => ct.has(t)).length; if (ov) s += 2 + Math.min(ov, 3); } }
   const amt = c.amount || 0;
-  if (amt > 0) { const near = (a, b) => Math.round(a) === Math.round(b); if (near(rec.total, amt) || near(rec.net, amt)) s += 5; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
+  const nearAmt = (a, b) => Math.round(a) === Math.round(b);
+  if (amt > 0) { if (nearAmt(rec.total, amt) || nearAmt(rec.net, amt)) s += 5; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
+  // Хэсэгчилсэн шивэгдсэн захиалгын ҮЛДЭГДЭЛТЭЙ таарвал мөн адил хүчтэй дохио
+  const rem = Number(c.remain) || 0;
+  if (rem > 0 && (nearAmt(rec.total, rem) || nearAmt(rec.net, rem))) s += 5;
   // Ойр огноо нэмэр, ХОЛ огноо ХАСНА — эс бөгөөс зөвхөн дүн таарсан хуучин
   // захиалга «санал болгосон» ногоон чип болж эхний байрт сууна.
   { const dd = vatCandGap(rec, c);
@@ -36064,6 +36074,18 @@ function vatForOrder(orderNo) {
 }
 // Дүүрэн шивсэн бол ногоон, дутуу бол шар badge
 // Захиалга бүрэн НӨАТ шивэгдсэн үү (нэмэлт баримт орох зайгүй) — тийм бол саналаас хасна
+/* Захиалгын ҮЛДЭГДЭЛ — нэхэмжлэгдэх ёстой атал шивэгдээгүй хэсэг.
+   ⛔ Хэсэгчилсэн баримтыг таних ЦОРЫН ГАНЦ дохио. Өмнө нь санал нь зөвхөн
+      захиалгын БҮТЭН дүнтэй тулгадаг байсан тул «урьдчилгаа + үлдэгдэл» гэж
+      хоёр баримт болсон захиалга «таарах санал алга» болж, нягтлан гараар
+      хайхаас өөр аргагүй байв (амьд жишээ: захиалга 2,656,500 = 1,551,000
+      шивэгдсэн + 1,105,500 тулгаагүй баримт, хоёулаа нэг РД-тэй). */
+function vatCandRemain(c, invoiced) {
+  const amt = Number((c && c.amount) || 0), inv = Number(invoiced) || 0;
+  if (amt <= 0 || inv <= 0) return 0;
+  const r = amt - inv;
+  return r > 0.5 ? r : 0;
+}
 function vatCandFull(c) {
   const amt = Number(c.amount) || 0;
   if (amt <= 0) return false;   // дүнгүй бол хасахгүй
@@ -36207,7 +36229,7 @@ async function openVatReportModal() {
     const filterTabs = `<div style="display:flex;gap:7px;padding:0 18px 10px;flex-wrap:wrap;">${tabBtn('todo', 'Тулгаагүй', nTodo)}${tabBtn('done', 'Тулгагдсан', nDone)}${tabBtn('all', 'Бүгд', listAll.length)}${retList.length ? tabBtn('ret', '↩ Буцаасан', retList.length) : ''}</div>`;
     // Санал төрлөөр шүүх (РД/дүн/нэр таарсан захиалга байгаа эсэх)
     const near2 = (a, b) => b > 0 && Math.round(a) === Math.round(b);
-    const flagsFor = (r) => { let reg = false, amt = false, name = false; for (const c of cands) { if (!reg && r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg) reg = true; if (!amt && (near2(r.total, c.amount) || near2(r.net, c.amount))) amt = true; if (!name && vatNameMatch(r.buyer_name, c.name)) name = true; if (reg && amt && name) break; } return { reg, amt, name }; };
+    const flagsFor = (r) => { let reg = false, amt = false, name = false; for (const c of cands) { if (!reg && r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg) reg = true; if (!amt && (near2(r.total, c.amount) || near2(r.net, c.amount) || near2(r.total, c.remain) || near2(r.net, c.remain))) amt = true; if (!name && vatNameMatch(r.buyer_name, c.name)) name = true; if (reg && amt && name) break; } return { reg, amt, name }; };
     const flagged = list.map(r => ({ r, f: flagsFor(r) }));
     const cReg = flagged.filter(x => x.f.reg).length, cAmt = flagged.filter(x => x.f.amt).length, cName = flagged.filter(x => x.f.name).length, cNone = flagged.filter(x => !x.f.reg && !x.f.amt && !x.f.name).length;
     const shown = mfilter === 'reg' ? flagged.filter(x => x.f.reg) : mfilter === 'amt' ? flagged.filter(x => x.f.amt) : mfilter === 'name' ? flagged.filter(x => x.f.name) : mfilter === 'none' ? flagged.filter(x => !x.f.reg && !x.f.amt && !x.f.name) : flagged;
@@ -36236,14 +36258,16 @@ async function openVatReportModal() {
       } else {
         const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
         // Зөвхөн бодит таарсан (дүн ЯГ таарсан / РД / нэр) саналыг л харуулна — өөр дүнтэйг үзүүлэхгүй
+        const remOkOf = (c) => (Number(c.remain) || 0) > 0 && (near(r.total, c.remain) || near(r.net, c.remain));
         const tops = cands.map(c => {
           const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
           const nameOk = vatNameMatch(r.buyer_name, c.name);
-          return { c, ok: amtOk || regOk || nameOk, s: vatAutoScore(r, c) };
+          return { c, ok: amtOk || regOk || nameOk || remOkOf(c), s: vatAutoScore(r, c) };
         }).filter(x => x.ok && !vatCandFull(x.c)).sort((a, b) => b.s - a.s).slice(0, 3);
         const chips = tops.map((t, i) => {
           const c = t.c; const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
+          const remOk = !amtOk && remOkOf(c);   // яагаад таарсныг ИЛ хэлнэ — «дүн» гэвэл хүн бүтэн дүн гэж ойлгоно
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
           const nameOk = vatNameMatch(r.buyer_name, c.name);
           const lbl = (c.name || c.no) + ' · ' + fmtMoney(c.amount);
@@ -36253,7 +36277,7 @@ async function openVatReportModal() {
              дарж болно» гэж уншигддаг. */
           const gapNote = vatGapNote(vatCandGap(r, c));
           const hot = i === 0 && !gapNote;
-          return `<button class="vat-chip${hot ? ' on' : ''}${gapNote ? ' warn' : ''}" data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b class="vat-ok-reg">✓РД</b>' : ''}${amtOk ? ' <b class="vat-ok-amt">✓дүн</b>' : ''}${nameOk ? ' <b class="vat-ok-name">✓нэр</b>' : ''} <span class="vat-chip-date">${escapeHtml(String(c.date || '').slice(0, 10))}</span>${gapNote ? ` <span class="vat-chip-warn">${escapeHtml(gapNote)}</span>` : ''}</button>`;
+          return `<button class="vat-chip${hot ? ' on' : ''}${gapNote ? ' warn' : ''}" data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b class="vat-ok-reg">✓РД</b>' : ''}${amtOk ? ' <b class="vat-ok-amt">✓дүн</b>' : ''}${remOk ? ' <b class="vat-ok-amt">✓үлдэгдэл</b>' : ''}${nameOk ? ' <b class="vat-ok-name">✓нэр</b>' : ''} <span class="vat-chip-date">${escapeHtml(String(c.date || '').slice(0, 10))}</span>${gapNote ? ` <span class="vat-chip-warn">${escapeHtml(gapNote)}</span>` : ''}</button>`;
         }).join('');
         matchCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">${chips || '<span style="color:var(--muted);font-size:11.5px;">таарах санал алга</span>'}<button data-vpicker="${escapeHtml(r.id)}" style="border:none;background:none;color:var(--accent,#2563EB);font-size:11px;cursor:pointer;padding:2px 0;">🔍 Бусад захиалга хайх</button></div>`;
       }

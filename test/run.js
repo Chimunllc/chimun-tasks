@@ -1114,6 +1114,50 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
        'scan: reload-ийн өмнө clearAlive');
   }
 
+  // ⛔ SCAN: `await`-ийн ДАРАА `e.currentTarget` УНШИХГҮЙ (fp 99731bced2c1, 2026-10-03).
+  //   Браузер нь үйл явдал дамжуулж дуусмагц `currentTarget`-ыг **null** болгодог тул
+  //   async handler-д await-ийн дараа түүнийг уншвал «null is not an object» гэж унана.
+  //   Амьд системд PIN шинэчлэх товч: код буруу оруулахад товч мөнхөд «Шинэчилж байна…»
+  //   гэж гацаж, хүн дахин оролдож чаддаггүй байв. Товчийг handler-ийн ЭХЭНД хувьсагчид
+  //   ав (`const btn = e.currentTarget`) — тэр лавлагаа await-ийн дараа ч хүчинтэй.
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    // Тайлбарыг зайгаар дүүргэнэ (УРТ хэвээр — мөрийн дугаар зөв үлдэнэ): эс бөгөөс
+    // тайлбар дотор бичсэн «await» гэдэг үг кодын await мэт уншигдаж ХУДАЛ зөрчил гаргана.
+    const noCmt = (s) => s
+      .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+      .split('\n').map(l => {
+        const i = l.indexOf('//');
+        if (i < 0 || l[i - 1] === ':') return l;   // `https://…` нь тайлбар БИШ
+        return l.slice(0, i) + ' '.repeat(l.length - i);
+      }).join('\n');
+    const late = [];
+    const hre = /async\s*(?:\(\s*(\w+)\s*\)|(\w+))\s*=>\s*\{/g;
+    let hm;
+    while ((hm = hre.exec(_src))) {
+      const p = hm[1] || hm[2];
+      const open = _src.indexOf('{', hm.index + hm[0].length - 1);
+      let depth = 0, end = -1;
+      for (let i = open; i < _src.length; i++) {
+        const c = _src[i];
+        if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end < 0) continue;
+      const body = noCmt(_src.slice(open, end));
+      const aw = body.search(/\bawait\b/);
+      if (aw < 0) continue;
+      const rest = body.slice(aw);
+      const cre = new RegExp('\\b' + p + '\\.currentTarget\\b', 'g');
+      let cm;
+      while ((cm = cre.exec(rest))) {
+        const line = _src.slice(0, open + aw + cm.index).split('\n').length;
+        if (!late.includes(line)) late.push(line);
+      }
+    }
+    eq(late, [], 'scan: await-ийн дараа e.currentTarget уншихгүй (null болсон байдаг)');
+  }
+
   runIn("state._staffPinsErr = 'denied';");
   // ⛔ SCAN: хугацаа дууссан/гарын үсэг буруу токеныг «эрх алга» гэж бүү тайлбарла —
   //   хүн дахин нэвтрэхээ мэдэхгүй болно (амьд системд яг ингэж гацсан).

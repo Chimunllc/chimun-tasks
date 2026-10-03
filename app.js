@@ -22635,10 +22635,22 @@ function psDeprecSummary() {
 function psDeprecLine(p) {
   if (typeof deprecForProduct !== 'function') return '';
   const d = deprecForProduct(p);
+  /* ⚠ ЭВХЭГДЭНЭ, ГЭХДЭЭ САРЫН ДҮН ХАРАГДАНА (2026-10-03, CEO «эвхэж болох уу»).
+     Бүрэн нуувал энэ мөрийн ЗОРИЛГО (элэгдлийг бараагаар тулгах) алдагдана —
+     хүн 281 барааг нэг бүрчлэн нээх болно. Тиймээс товчлол нь мөрөнд үлдэж,
+     ЯАЖ бодогдсон нь задарна. Товчилсон тул өртөгийн мөр 139px → ~65px. */
   if (d.skip) return `<span class="ps-dep mut">📉 ${escapeHtml(d.skip)}</span>`;
-  if (d.doneYm) return `<span class="ps-dep ps-dep-done">📉 ${escapeHtml(d.label)} · ${d.years}ж · бүрэн элэгдсэн (${escapeHtml(d.endYm)})</span>`;
-  return `<span class="ps-dep">📉 ${escapeHtml(d.label)} · ${d.years}ж · <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>`
-    + (d.noDate ? ' · <span class="ps-dep-warn">⚠ авсан огноогүй</span>' : '') + '</span>';
+  if (d.doneYm) return `<details class="ps-dep"><summary>📉 <b class="ps-dep-done">✓ бүрэн элэгдсэн</b></summary>`
+    + `<div class="ps-dep-x">${escapeHtml(d.label)} → ${d.years} жил · ${escapeHtml(String(d.endYm))}-д дууссан.`
+    + ` Өртөг бүрэн хуваарилагдсан тул зардалд ОРОХГҮЙ; бараа ажиллаж байгаа нь ашиг.</div></details>`;
+  return `<details class="ps-dep"><summary>📉 <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>`
+    + (d.noDate ? ' <span class="ps-dep-warn" title="Худалдан авсан огноогүй — насаа дуусгасан эсэхийг мэдэх аргагүй тул элэгдүүлсээр байна">⚠</span>' : '')
+    + `</summary><div class="ps-dep-x">${escapeHtml(d.label)} → <b>${d.years} жил</b> · `
+    + `${fmtMoneyShort(d.cost)} ÷ (${d.years}×12) = ${fmtMoneyShort(Math.round(d.perUnitMonth))}/сар нэг ширхэг`
+    + (d.qty > 1 ? ` · нөөц ${d.qty}ш → <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>` : '')
+    + (d.endYm ? ` · бүрэн элэгдэх: ${escapeHtml(d.endYm)}`
+               : ' · <span class="ps-dep-warn">⚠ худалдан авсан огноо байхгүй — огноог бөглөвөл элэгдэл өөрөө зогсоно</span>')
+    + '</div></details>';
 }
 /* 💼 Эзний хөрөнгө оруулалтын карт — «Өртөг ба хөрөнгө» дэлгэцэд.
    ⛔ Тусдаа цэс үүсгэхгүй (хэн ч нээдэггүй дэлгэц үхдэг) — хөрөнгийн үнэ цэн

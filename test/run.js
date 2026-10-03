@@ -15069,3 +15069,60 @@ async function swFetchTests() {
   // Эрхийн жагсаалтад бүртгэгдсэн (эс бөгөөс эрх олгох боломжгүй)
   ok(/key: 'acct',\s*label: 'Нягтлан/.test(src), 'scan: acct эрхийн жагсаалтад');
 }
+
+// ═══ НӨАТ ба НӨӨЦИЙН АЛДАГДАЛ журналд (2026-10-03) ══════════════════════
+// Эдгээр нь БОДИТ зардал мөртлөө журналд бичигдэхгүй байсан тул журналын ашиг
+// удирдлагын тайлангаас ~20сая зөрж байв.
+{
+  const { journalEntries, incomeStatement, balanceSheetAt, entriesBetween } = F;
+  const ctx = {
+    basis: 'accrual', opening: null, orders: [], finance: [], income: [], deprec: [],
+    extra: [{ ym: '2026-09', vat: 7724239, loss: 840000 }],
+  };
+  const e = journalEntries(ctx, '2026-09');
+  const vat = e.find(x => x.src === 'vat:2026-09');
+  const loss = e.find(x => x.src === 'loss:2026-09');
+  ok(!!vat, 'журнал: НӨАТ-ын бичилт үүснэ');
+  ok(!!loss, 'журнал: нөөцийн алдагдлын бичилт үүснэ');
+  // ⚠ Бичилт алга бол УНАХ ёстой, CRASH болох ёсгүй — тийм тест улаанаа харуулдаггүй
+  const ln = (en, acc, side) => ((en && en.lines || []).find(l => l.acc === acc) || {})[side] || 0;
+  eq(vat && vat.date, '2026-09-30', 'журнал: НӨАТ сарын ЭЦЭСТ');
+
+  // ⛔ НӨАТ нь ТАТВАРЫН ӨГЛӨГ рүү — дараа нь 5100 төлөлт түүнийг хаана (давхар биш)
+  eq(ln(vat, 'tax', 'cr'), 7724239, 'журнал: НӨАТ → татварын өглөг');
+  eq(ln(vat, 'expense', 'dr'), 7724239, 'журнал: НӨАТ → зардал');
+  // ⛔ Алдагдал нь БАРАА МАТЕРИАЛААС хасагдана (алга болсон бараа нөөцөөс гарна)
+  eq(ln(loss, 'inv', 'cr'), 840000, 'журнал: алдагдал → бараа материал буурна');
+
+  const P = incomeStatement(e);
+  eq(P.totalExpense, 7724239 + 840000, 'тайлан: НӨАТ ба алдагдал зардалд орно');
+  const cats = P.expenses.flatMap(g => g.rows).map(r => r.cat);
+  ok(cats.includes('НӨАТ') && cats.includes('АЛДАГДАЛ'), 'тайлан: тусдаа мөрөөр харагдана');
+  ok(balanceSheetAt(e).balanced, 'баланс: НӨАТ/алдагдалтай ч тэнцэнэ');
+
+  // 5100 НӨАТ төлөлт нь ЗАРДАЛ БИШ — өглөгийг хаана (давхар тоологдохгүй)
+  const paid = journalEntries({ basis: 'accrual', orders: [], income: [], deprec: [], extra: [],
+    finance: [{ id: 'v', status: 'done', decision: 'approved', category: '5100',
+                amount: 7724239, requested_at: '2026-09-15', purpose: 'НӨАТ төлөв' }] }, '2026-09');
+  eq(incomeStatement(paid).totalExpense, 0, 'тайлан: НӨАТ-ын ТӨЛӨЛТ зардал БИШ');
+  eq(((paid[0] && paid[0].lines || []).find(l => l.acc === 'tax') || {}).dr || 0, 7724239,
+     'журнал: НӨАТ төлөлт өглөгийг хаана');
+
+  // Тэг сар бичилт үүсгэхгүй
+  eq(journalEntries({ basis: 'accrual', orders: [], finance: [], income: [], deprec: [],
+    extra: [{ ym: '2026-09', vat: 0, loss: 0 }] }, '2026-09').length, 0, 'журнал: тэг сар бичилтгүй');
+}
+
+// ═══ SCAN: НӨАТ/тооллого ачаалагдаагүй бол чимээгүй 0 болохгүй ══════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const ra = src.slice(src.indexOf('function renderAccounting'), src.indexOf('function attachAccountingHandlers'));
+  ok(/ensureVatLoaded\(\)/.test(ra), 'scan: нягтлангийн дэлгэц НӨАТ-ыг ачаална');
+  ok(/loadStockCountsAll\(\)/.test(ra), 'scan: нягтлангийн дэлгэц тооллогыг ачаална');
+  const ex = src.slice(src.indexOf('function jrnExtraList'), src.indexOf('function jrnCtx'));
+  // ⛔ Ачаалагдаагүй үед 0 бичихгүй — мөр огт үүсэхгүй (`state.vatReceipts` шалгана)
+  ok(/state\.vatReceipts \?/.test(ex), 'scan: НӨАТ ачаалагдаагүй бол тооцохгүй');
+  ok(/state\.scAllRows/.test(ex), 'scan: тооллого ачаалагдаагүй бол тооцохгүй');
+  // ⛔ scRows (НЭГ сесс) ашиглавал бусад сар чимээгүй 0 болно
+  eq((ex.match(/state\.scRows/g) || []).length, 0, 'scan: журнал нэг сессийн мөрөөр бодохгүй');
+}

@@ -5630,6 +5630,18 @@ async function closeStockCount(stats) {
   state.scCfg = next; state.scSession = ''; state.scRows = [];
 }
 
+/* Журналд зориулж БҮХ сессийн хэрэгжүүлсэн тооллогын мөр. ⚠ `state.scRows` нь
+   нэг сессийнх тул журнал түүгээр бодвол бусад сар ЧИМЭЭГҮЙ 0 болно. */
+async function loadStockCountsAll() {
+  if (state.scAllRows) return state.scAllRows;
+  try {
+    const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?applied=is.true&select=*&order=counted_at.asc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.scAllRows = await r.json();
+  } catch (e) { dataLoadFailed('loadStockCountsAll', e); state.scAllRows = state.scAllRows || []; }
+  return state.scAllRows;
+}
 async function loadStockCounts(sessionId) {
   if (!sessionId) { state.scRows = []; return []; }
   try {
@@ -29256,6 +29268,16 @@ function journalEntries(ctx, month) {
     push(jrnMonthEnd(d.ym), `Элэгдэл · ${d.ym}`, 'dep:' + d.ym,
       [{ acc: 'expense', dr: amt, cat: 'ЭЛЭГДЭЛ' }, { acc: 'accdep', cr: amt }]);
   });
+  // ⑥ НӨАТ ба НӨӨЦИЙН АЛДАГДАЛ — бодит зардал, сарын эцэст
+  (ctx && ctx.extra || []).forEach(x => {
+    if (!x || !inM(String(x.ym) + '-01')) return;
+    const d = jrnMonthEnd(x.ym);
+    const vat = Math.round(Number(x.vat) || 0), loss = Math.round(Number(x.loss) || 0);
+    if (vat) push(d, `Борлуулалтын НӨАТ · ${x.ym}`, 'vat:' + x.ym,
+      [{ acc: 'expense', dr: vat, cat: 'НӨАТ' }, { acc: 'tax', cr: vat }]);
+    if (loss) push(d, `Нөөцийн алдагдал · ${x.ym}`, 'loss:' + x.ym,
+      [{ acc: 'expense', dr: loss, cat: 'АЛДАГДАЛ' }, { acc: 'inv', cr: loss }]);
+  });
   // ④ Хуулгын ОРЛОГО — банк нэмэгдэж, авлага/орлого хаагдана
   (ctx && ctx.income || []).forEach(r => {
     if (!r || !inM(r.dt)) return;
@@ -29366,6 +29388,28 @@ function jrnDeprecList() {
   }
   return out;
 }
+/* НӨАТ ба нөөцийн алдагдал — сар бүрээр. Эдгээр нь БОДИТ зардал мөртлөө журналд
+   бичигдэхгүй байсан тул журналын ашиг удирдлагын тайлангаас ~20сая зөрж байв.
+   ⛔ НӨАТ нь `tax` өглөг рүү кредитлэгдэнэ — дараа нь 5100 төлөлт (Dr tax / Cr банк)
+     түүнийг хаана. Иймд давхар тоологдохгүй.
+   ⛔ Алдагдал нь `inv` (бараа материал) -аас хасагдана — алга болсон бараа нөөцөөс гарна. */
+function jrnExtraList() {
+  const out = [];
+  if (typeof deprecStartMonth !== 'function') return out;
+  const end = todayStr().slice(0, 7);
+  let ym = deprecStartMonth();
+  for (let i = 0; i < 120 && ym <= end; i++) {
+    // ⚠ ЗААВАЛ `vatReceiptsActive()` — буцаасан баримт давхар тоологдохгүй (scan-тест).
+    const vat = state.vatReceipts ? Math.round(vatByBranchMonth(vatReceiptsActive(), ym).total || 0) : 0;
+    const miss = (typeof missingItemsCost === 'function')
+      ? Math.round((missingItemsCost(ym, state.appOrders || []) || {}).cost || 0) : 0;
+    const shr = (typeof countShrinkCost === 'function' && state.scAllRows)
+      ? Math.round((countShrinkCost(ym, state.scAllRows) || {}).cost || 0) : 0;
+    if (vat || miss || shr) out.push({ ym, vat, loss: miss + shr });
+    ym = nextMonthStr(ym);
+  }
+  return out;
+}
 function jrnCtx() {
   return { finance: state.financeRequests || [], income: state.bankIncome || [],
            orders: (state.appOrders || []).filter(o => typeof _orderActive === 'function' ? _orderActive(o) : true),
@@ -29374,7 +29418,7 @@ function jrnCtx() {
               «Дебет Авлага / Кредит Орлого» бичилт утгагүй болно (амьд жишээ:
               21.3сая төлөгдөөгүй захиалга 0₮ орлоготой гарч байв). Мөнгөн дүр
               зураг нь банкны мөрүүдээс өөрөө гарна. */
-           opening: obFrozen(), basis: 'accrual', deprec: jrnDeprecList() };
+           opening: obFrozen(), basis: 'accrual', deprec: jrnDeprecList(), extra: jrnExtraList() };
 }
 /* ─── 📒 НЯГТЛАН — журнал · дэвтэр · баланс · нээлтийн үлдэгдэл нэг дор ──────
    ⛔ Тус тусдаа таб болговол толгойн эгнээ 7 табтай болж аль нь юу болох нь
@@ -29387,6 +29431,10 @@ const ACCT_TABS = [
   { k: 'opening', label: '🔒 Нээлтийн үлдэгдэл', hint: 'Бүртгэлийн эхлэлийн цэг' },
 ];
 function renderAccounting() {
+  // ⚠ НӨАТ ба тооллогын мөр ачаалагдаагүй бол тэдгээр зардал ЧИМЭЭГҮЙ 0 болж
+  //   ашиг хиймлээр өндөр гарна (тайлангийн дэлгэцийн `ensureVatLoaded`-тай ижил дүрэм).
+  if (typeof ensureVatLoaded === 'function') ensureVatLoaded();
+  if (state.scAllRows === undefined) { state.scAllRows = null; loadStockCountsAll().then(() => render()); }
   const t = ACCT_TABS.some(x => x.k === state.acctTab) ? state.acctTab : 'journal';
   const bar = `<div class="ac-tabs">${ACCT_TABS.map(x =>
     `<button class="ac-tb${x.k === t ? ' on' : ''}" data-acct-tab="${x.k}" title="${escapeHtml(x.hint)}">${x.label}</button>`).join('')}</div>`;

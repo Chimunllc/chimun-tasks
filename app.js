@@ -13184,6 +13184,18 @@ const DRIVER_BONUS_EACH = 10000;
      `STAGE_FEE_HELPER_SHARE`-ийн санг хуваан авна; `STAGE_FEE_HELPER_MAX` нь
      хуурамч хамтрагч нэмж сан цайруулахыг хаана.
    ⚠ Мөнгө болдог тул тохиргоо `app_config['stage_pay']`-аас (кодын утга = зөвхөн нөөц). */
+/* ─── ОНОО → ТӨГРӨГ (2026-10-03, CEO) ───────────────────────────────────────
+   Бонус нь ШУУД төгрөгөөр биш, ОНООГООР бодогдоно; оноог НЭГ газар (ханш)
+   төгрөг болгоно. ЯАГААД: дамжлагын жин («энэ ажил хэр хүнд вэ») нь үйл
+   ажиллагааны шийдвэр, жилд нэг л өөрчлөгдөнө; ханш («оноо хэдэн төгрөг вэ»)
+   нь санхүүгийн шийдвэр, сараар тохирч болно. Хоёрыг салгаснаар төсөв
+   өөрчлөхөд дамжлага бүрийг дахин маргах шаардлагагүй.
+   ⚠ Ажилчид ажлыг ажилтай харьцуулна (оноогоор), төгрөгөөр биш — хямд
+     дамжлагыг зайлсхийх шалтгаан алга.
+   ⛔ **ХАНШ НЭГ ГАЗАР** — `stagePointRate()`. Хоёр газар бичвэл нэг дамжлага
+     хоёр үнэтэй болно. Scan-тест хаана. */
+const STAGE_PT_RATE = 1350;   // ₮/оноо — 9 сарын зардлыг хуучин системтэй тэнцүү байлгана
+const STAGE_PT_BANDS = [[5, 1], [20, 2], [60, 3.5], [150, 6], [Infinity, 10]];
 const STAGE_FEE_BANDS = [[5, 2000], [20, 4000], [60, 7000], [150, 12000], [Infinity, 20000]];
 const STAGE_FEE_HELPER_SHARE = 0.30;
 const STAGE_FEE_HELPER_MAX = 4;
@@ -13207,6 +13219,30 @@ function stageFeeForQty(qty, bands) {
   for (const [lim, fee] of B) if (q <= lim) return fee;
   return B[B.length - 1][1];
 }
+// ₮/оноо — тохиргооноос, кодын утга нөөц.
+function stagePointRate() { const v = Number(_stagePayCfg().rate); return (v > 0) ? v : STAGE_PT_RATE; }
+function stagePtBands() {
+  const b = _stagePayCfg().pt_bands;
+  if (!Array.isArray(b) || !b.length) return STAGE_PT_BANDS;
+  const out = b.map(x => [Number(x[0]) || 0, Number(x[1]) || 0]).filter(x => x[1] > 0).sort((a, z) => a[0] - z[0]);
+  if (!out.length) return STAGE_PT_BANDS;
+  out[out.length - 1][0] = Infinity;   // дээд шатлал ҮРГЭЛЖ хязгааргүй — эс бол том захиалга 0 оноо болно
+  return out;
+}
+// Барааны тоогоор ОНОО (хөлстэй ижил шатлал, зөвхөн нэгж нь оноо).
+function stagePtsForQty(qty, bands) {
+  const q = Math.max(0, Number(qty) || 0);
+  const B = bands || stagePtBands();
+  for (const [lim, pts] of B) if (q <= lim) return pts;
+  return B[B.length - 1][1];
+}
+/* Дамжлагын ЖИН — «энэ ажил хэр хүнд вэ» (CEO, 2026-10-03). `PIPELINE`-ийн
+   мөрөөс уншина; тэнд байхгүй бол 1 (шинэ дамжлага чимээгүй 0 болохгүй).
+   ⛔ Жолоо = 0 — жолооч 10,000₮-ийн нэмэгдэл ТУСДАА авдаг (давхар төлөхгүй). */
+function stageWeight(key) {
+  for (const r of PIPELINE) if (r.key === key && r.pts !== undefined) return Number(r.pts) || 0;
+  return 1;
+}
 // Захиалгын барааны НИЙТ тоо ширхэг (мөрийн тоо БИШ — ачаа зөөх хөдөлмөр нь тоогоор).
 function orderItemQty(o) {
   return ((o && Array.isArray(o.items)) ? o.items : []).reduce((t, it) => t + (Number(it && it.qty) || 0), 0);
@@ -13214,12 +13250,12 @@ function orderItemQty(o) {
 /* Сарын дамжлагын бонус — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
    Буцаах: { key: {led, helped, qty, ledFee, helperFee, total} } */
 function stagePayByPerson(orders, month) {
-  const bands = stageFeeBands(), share = stageHelperShare(), hmax = stageHelperMax();
+  const bands = stagePtBands(), share = stageHelperShare(), hmax = stageHelperMax(), rate = stagePointRate();
   const out = {};
-  const bump = (k, f, fld, cntFld) => {
+  const bump = (k, p, fld, cntFld) => {
     if (!k) return;
-    const r = out[k] || (out[k] = { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, total: 0 });
-    r[fld] += f; r[cntFld] += 1; r.total = r.ledFee + r.helperFee;
+    const r = out[k] || (out[k] = { led: 0, helped: 0, qty: 0, ledPts: 0, helperPts: 0, pts: 0, ledFee: 0, helperFee: 0, total: 0 });
+    r[fld] += p; r[cntFld] += 1;
   };
   for (const o of (orders || [])) {
     const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
@@ -13229,17 +13265,24 @@ function stagePayByPerson(orders, month) {
       if (!e || typeof e !== 'object') continue;
       if (STAGE_FEE_STAGES.indexOf(key) < 0) continue;
       if (month && String(e.at || '').slice(0, 7) !== month) continue;
-      const fee = stageFeeForQty(qty, bands);
+      // ⛔ ОНООГООР бодно: барааны тооны шатлал × дамжлагын жин. ₮ нь ТӨГСГӨЛД ганц ханшаар.
+      const pts = stagePtsForQty(qty, bands) * stageWeight(key);
+      if (pts <= 0) continue;   // жолоо г.м. бонусгүй дамжлага
       const by = e.by ? String(e.by) : '';
-      if (by) { bump(by, fee, 'ledFee', 'led'); out[by].qty += qty; }
+      if (by) { bump(by, pts, 'ledPts', 'led'); out[by].qty += qty; }
       const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String).filter(Boolean).slice(0, hmax);
       if (hs.length && share > 0) {
-        const each = fee * share / hs.length;
-        hs.forEach(h => bump(h, each, 'helperFee', 'helped'));
+        const each = pts * share / hs.length;
+        hs.forEach(h => bump(h, each, 'helperPts', 'helped'));
       }
     }
   }
-  Object.keys(out).forEach(k => { const r = out[k]; r.total = Math.round(r.ledFee + r.helperFee); r.ledFee = Math.round(r.ledFee); r.helperFee = Math.round(r.helperFee); });
+  Object.keys(out).forEach(k => {
+    const r = out[k];
+    r.pts = Math.round((r.ledPts + r.helperPts) * 100) / 100;
+    r.ledFee = Math.round(r.ledPts * rate); r.helperFee = Math.round(r.helperPts * rate);
+    r.total = r.ledFee + r.helperFee;
+  });
   return out;
 }
 // Нэг хүний сарын дамжлагын бонус (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
@@ -14465,10 +14508,10 @@ const PERM_MENUS = [
       // Товчны нэрийг өөрчилвөл ЭНДХИЙГ ч хамт өөрчил (ordersStageCapOrder тест хамгаална).
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
       { key: 'orders.clean',    label: '🧹 Цэвэрлэсэн' },
-      { key: 'orders.prepare',  label: '🧰 Бэлдсэн' },
-      { key: 'orders.dispatch', label: '📦 Агуулахаас гаргасан / 📥 Агуулахад авсан' },
-      { key: 'orders.deliver',  label: '🚚 Хүргэж өгсөн / ↩️ Хүргэлтээс авсан' },
-      { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Буулгасан' },
+      { key: 'orders.prepare',  label: '📦 Баглаж/ачсан' },
+      { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан' },
+      { key: 'orders.deliver',  label: '🏗 Талбарт буулгасан / 🚚 Ачиж буцсан' },
+      { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Задалсан' },
       { key: 'orders.advance',  label: '🗄 Архивлах' },
       { key: 'orders.skip',     label: '⏭ Шат алгасах (шалтгаантай)' },
       { key: 'orders.revert',   label: '↩ Шат буцаах' },
@@ -25805,20 +25848,20 @@ function orderNeedsSetup(o) {
    ⚠ Суурилуулалт зөвхөн ХҮРГЭЛТТЭЙ захиалгад (`orderPipelineCtx`) — очиж
      авсан бараанд бид угсрахгүй. */
 const PIPELINE = [
-  { from: ['reserved', 'preparation', 'cleaning'], to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' },
-  { from: ['prepared'],   to: 'ready',       label: '🧰 Бэлдсэн',             cap: 'orders.prepare' },
-  { from: ['ready'],      to: 'delivering',  label: '📦 Агуулахаас гаргасан', cap: 'orders.dispatch', dlv: true },
-  { from: ['ready'],      to: 'rented',      label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch', dlv: false },
-  { from: ['delivering'], to: 'installing',  label: '🚚 Хүргэж өгсөн',        cap: 'orders.deliver', setup: true },
-  { from: ['delivering'], to: 'rented',      label: '🚚 Хүргэж өгсөн',        cap: 'orders.deliver', setup: false },
+  { key: 'clean',    from: ['reserved', 'preparation', 'cleaning'], to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean',  pts: 1,   ev: 'photo' },
+  { key: 'prepare',  from: ['prepared'],   to: 'ready',      label: '📦 Баглаж/ачсан',       cap: 'orders.prepare',  pts: 1.5, ev: 'photo' },
+  { key: 'dispatch', from: ['ready'],      to: 'delivering', label: '📋 Бүртгэж гаргасан',   cap: 'orders.dispatch', pts: 1,   ev: 'count', dlv: true },
+  { key: 'dispatch', from: ['ready'],      to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch', pts: 1,  ev: 'count', dlv: false },
+  { key: 'deliver',  from: ['delivering'], to: 'installing', label: '🏗 Талбарт буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: true },
+  { key: 'deliver',  from: ['delivering'], to: 'rented',     label: '🏗 Талбарт буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: false },
   // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
-  { from: ['installing'], to: 'rented',      label: '🔧 Суурилуулсан',        cap: 'orders.setup' },
-  { from: ['rented', 'started'], to: 'teardown',  label: '🧱 Буулгасан',         cap: 'orders.setup',    setup: true },
-  { from: ['rented', 'started'], to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver',  dlv: true },
-  { from: ['rented', 'started'], to: 'returned',  label: '📥 Агуулахад авсан',  cap: 'orders.dispatch', dlv: false },
-  { from: ['teardown'],   to: 'returning',   label: '↩️ Хүргэлтээс авсан',    cap: 'orders.deliver' },
-  { from: ['returning'],  to: 'returned',    label: '📥 Агуулахад авсан',     cap: 'orders.dispatch' },
-  { from: ['returned', 'stopped'], to: 'archived', label: '🗄 Архивлах',      cap: 'orders.advance' },
+  { key: 'setup',    from: ['installing'], to: 'rented',     label: '🔧 Суурилуулсан',       cap: 'orders.setup',    pts: 2,   ev: 'photo' },
+  { key: 'teardown', from: ['rented', 'started'], to: 'teardown',  label: '🧱 Задалсан',    cap: 'orders.setup',    pts: 1.5, ev: 'photo', setup: true },
+  { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Ачиж буцсан', cap: 'orders.deliver',  pts: 1.5, ev: 'photo', dlv: true },
+  { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: false },
+  { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Ачиж буцсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo' },
+  { key: 'received', from: ['returning'],  to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count' },
+  { key: 'archive',  from: ['returned', 'stopped'], to: 'archived', label: '🗄 Архивлах',    cap: 'orders.advance',  pts: 0 },
 ];
 // Захиалгын нөхцөл — урсгалын салаалалт үүгээр шийдэгдэнэ (ЦЭВЭР тулгалтад тестлэгдэнэ).
 function orderPipelineCtx(o) {
@@ -25968,22 +26011,22 @@ const STAGE_ACTION = {
   'ready>prepared':       { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
   'reserved>cleaning':    { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
   'preparation>cleaning': { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
-  'cleaning>ready':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
-  'prepared>ready':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
-  'ready>delivering':     { key: 'dispatch', label: 'Агуулахаас гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'cleaning>ready':       { key: 'prepare',  label: 'Баглаж/ачсан',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
+  'prepared>ready':       { key: 'prepare',  label: 'Баглаж/ачсан',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
+  'ready>delivering':     { key: 'dispatch', label: 'Бүртгэж гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'ready>rented':         { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'prepared>delivering':  { key: 'dispatch', label: 'Бүртгэж гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'prepared>rented':      { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
-  'delivering>installing':{ key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'delivering>rented':    { key: 'deliver',  label: 'Талбарт буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'delivering>installing':{ key: 'deliver',  label: 'Талбарт буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
   'installing>rented':    { key: 'setup',    label: 'Суурилуулсан',          q: 'Ачаа бүрэн, эвдрэлгүй ирсэн үү?' },
-  'rented>teardown':      { key: 'teardown', label: 'Буулгасан',             q: null },
-  'teardown>returning':   { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Буулгалт эмх цэгцтэй хийгдсэн үү?' },
-  'rented>returning':     { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
-  'rented>returned':      { key: 'received', label: 'Агуулахад авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'started>returning':    { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
-  'started>returned':     { key: 'received', label: 'Агуулахад авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'returning>returned':   { key: 'received', label: 'Агуулахад авсан',       q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
+  'rented>teardown':      { key: 'teardown', label: 'Задалсан',             q: null },
+  'teardown>returning':   { key: 'retstart', label: 'Ачиж буцсан',      q: 'Буулгалт эмх цэгцтэй хийгдсэн үү?' },
+  'rented>returning':     { key: 'retstart', label: 'Ачиж буцсан',      q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
+  'rented>returned':      { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'started>returning':    { key: 'retstart', label: 'Ачиж буцсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
+  'started>returned':     { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'returning>returned':   { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
   'returned>archived':    { key: 'archive',  label: 'Архивлах',              q: null },
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
@@ -26025,7 +26068,7 @@ function showcasePhotos(orders, limit) {
   out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return limit ? out.slice(0, limit) : out;
 }
-const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гаргасан', deliver: '🚚 Хүргэж өгсөн', setup: '🔧 Суурилуулсан', teardown: '🧱 Буулгасан', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '📦 Баглаж/ачсан', dispatch: '📋 Бүртгэж гаргасан', deliver: '🏗 Талбарт буулгасан', setup: '🔧 Суурилуулсан', teardown: '🧱 Задалсан', retstart: '🚚 Ачиж буцсан', received: '📋 Бүртгэж хүлээн авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
 // Хамтрагч асуух текст — шат бүрд ТОДОРХОЙ («хамтарсан хүн байсан уу?» гэдэг

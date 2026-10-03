@@ -1520,10 +1520,13 @@ function openPinResetModal(prefillId) {
     $$('#pr-sent-msg').innerHTML = 'Хэрэв <b>' + escapeHtml(id) + '</b> бүртгэлтэй, имэйлтэй бол код илгээгдлээ. Имэйлээ (спам хавтас ч) шалгаад доор оруулна уу. Код 15 минут хүчинтэй.';
   };
   $$('#pr-verify').onclick = async (e) => {
+    // ⚠ Товчийг ЭНД ав — браузер нь үйл явдал дамжиж дуусмагц `currentTarget`-ыг null
+    //   болгодог тул await-ийн дараа уншвал унана (товч мөнхөд «Шинэчилж байна…» гэж гацна).
+    const btn = e.currentTarget;
     const code = $$('#pr-code').value.replace(/\D/g, ''); const pin = $$('#pr-pin').value.replace(/\D/g, '');
     if (!/^\d{6}$/.test(code)) { err('6 оронтой код оруулна уу'); return; }
     if (!/^\d{4,6}$/.test(pin)) { err('Шинэ PIN 4-6 оронтой тоо байх ёстой'); return; }
-    e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Шинэчилж байна…';
+    btn.disabled = true; err(''); btn.textContent = 'Шинэчилж байна…';
     const ok = await serverResetVerify(modal._id, code, pin);
     if (ok) {
       close();
@@ -1539,7 +1542,7 @@ function openPinResetModal(prefillId) {
       }
       showToast('✅ PIN шинэчлэгдлээ. Шинэ PIN-ээрээ нэвтэрнэ үү.', 'success', 4500);
     }
-    else { e.currentTarget.disabled = false; e.currentTarget.textContent = 'PIN шинэчлэх'; err('Код буруу эсвэл хугацаа дуссан. Дахин "Код авах"-аас эхэлнэ үү.'); }
+    else { btn.disabled = false; btn.textContent = 'PIN шинэчлэх'; err('Код буруу эсвэл хугацаа дуссан. Дахин "Код авах"-аас эхэлнэ үү.'); }
   };
 }
 function currentProjects() {
@@ -16268,12 +16271,15 @@ function openDocEditModal(id) {
     if (!$('#dc-title').value.trim()) $('#dc-title').value = f.name.replace(/\.[^.]+$/, '');
   });
   $('#dc-save').onclick = async (e) => {
+    // ⚠ Товчийг ЭНД ав — `currentTarget` нь await-ийн дараа null болдог (доор файл
+    //   уншиж, хадгалсны ДАРАА товчийг дахин нээдэг тул заавал хувьсагчид барина).
+    const btn = e.currentTarget;
     const title = $('#dc-title').value.trim();
     if (!title) { showToast('Нэрээ оруулна уу', 'warn'); return; }
     const f = fileEl.files && fileEl.files[0];
     if (!d && !f) { showToast('Файл сонгоно уу', 'warn'); return; }
     if (f && f.size > DOC_MAX_BYTES) { showToast(`Файл хэт том — ${Math.round(DOC_MAX_BYTES / 1048576)}MB-аас бага байх ёстой`, 'error', 4500); return; }
-    e.currentTarget.disabled = true; e.currentTarget.textContent = 'Хадгалж байна…';
+    btn.disabled = true; btn.textContent = 'Хадгалж байна…';
     const doc = {
       id: d ? d.id : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? 'doc-' + crypto.randomUUID() : 'doc-' + Date.now()),
       title,
@@ -16293,11 +16299,11 @@ function openDocEditModal(id) {
         doc.file_name = f.name;
         doc.size_bytes = f.size;
       } catch (_) {
-        showToast('Файл уншиж чадсангүй', 'error'); e.currentTarget.disabled = false; e.currentTarget.textContent = 'Хадгалах'; return;
+        showToast('Файл уншиж чадсангүй', 'error'); btn.disabled = false; btn.textContent = 'Хадгалах'; return;
       }
     }
     const ok = await saveCompanyDoc(doc);
-    if (!ok) { e.currentTarget.disabled = false; e.currentTarget.textContent = 'Хадгалах'; return; }
+    if (!ok) { btn.disabled = false; btn.textContent = 'Хадгалах'; return; }
     close();
     showToast('✅ Хадгалагдлаа', 'success');
     await loadCompanyDocs(true);
@@ -26938,10 +26944,12 @@ function openTestCleanupModal() {
   const updateN = () => { const el = modal.querySelector('#tc-n'); if (el) el.textContent = modal.querySelectorAll('.tc-cb:checked').length; };
   modal.querySelectorAll('.tc-cb').forEach(cb => cb.addEventListener('change', updateN));
   modal.querySelector('#tc-del')?.addEventListener('click', async (e) => {
+    // ⚠ Товчийг ЭНД ав — баталгаажуулалтын await-ийн дараа `currentTarget` null болно.
+    const btn = e.currentTarget;
     const ids = [...modal.querySelectorAll('.tc-cb:checked')].map(cb => cb.dataset.id);
     if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
     if (!(await showConfirm(`${ids.length} тест захиалгыг хасах уу? («Больсон» бүлэгт шилжинэ — дараа сэргээж болно)`, { okText: 'Хасах', danger: true }))) return;
-    e.currentTarget.disabled = true;
+    btn.disabled = true;
     let ok = 0;
     for (const id of ids) { try { await deleteAppOrder(id, 'Тест захиалга'); ok++; } catch (err) { console.warn('test del', err); } }
     close();

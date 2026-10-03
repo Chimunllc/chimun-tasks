@@ -26397,14 +26397,22 @@ function encodeVat(amt) { return `⟦VAT|${Math.round(amt) || 0}⟧`; }
 const _CI_RE = /⟦CI\|([^⟧]*)⟧/;
 function custInfoOf(note) { const m = String(note || '').match(_CI_RE); if (!m) return {}; try { return JSON.parse(m[1]) || {}; } catch (e) { return {}; } }
 // Харилцагчийн төрөл — байгууллага эсвэл хувь хүн. Филтер БА гэрээний тал (хэнтэй байгуулах).
-// ⭐ ХҮНИЙ СОНГОЛТ ЭХЭНД: захиалгын формын «Төрөл» сонголт (⟦CI⟧.ctype) байвал ТҮҮНИЙГ дагана.
-// Таамаглал (нэр/РД-ээс) нь зөвхөн сонголтгүй ХУУЧИН захиалгад хэрэглэгдэнэ — өмнө нь
-// байгууллагын талбарт хүний нэр бичсэн захиалга гэрээнд «байгууллага» болж сонин гарч байв.
+/* ⛔ 7 ОРОНТОЙ РД НЬ ХҮНИЙ СОНГОЛТООС ДЭЭГҮҮР (2026-10-03, CEO барив).
+   Монголд 7 оронтой регистр = ХУУЛИЙН ЭТГЭЭД (хувь хүн нь 2 үсэг + 8 орон) тул энэ нь
+   таамаг БИШ, БАРИМТ. Харин формын «Төрөл» сонгогч нь өгөгдмөлөөрөө «хувь хүн» тул
+   ажилтан дарахаа мартвал хадгалагддаг — өгөгдмөл нь шийдвэр БИШ.
+   Амьд жишээ (захиалга 1588): НӨАТ-ын баримт байгууллагын РД 7 оронтойгоор хоёр удаа
+   шивэгдсэн, ⟦CI⟧-д ч тэр РД + байгууллагын нэр бүртгэгдсэн атал `ctype:'person'`
+   үлдсэн тул гэрээ/нэхэмжлэх/филтер гурвуулаа «хувь хүн» гэж харуулж байв.
+   `autoFillOrderCompany()` нь НӨАТ баримтын `buyer_reg`-ийг ⟦CI⟧.reg-д өөрөө бичдэг
+   тул «НӨАТ бүртгэгдсэн бол байгууллага болно» гэдэг энэ дүрмээр хэрэгжинэ.
+   ⚠ Байгууллагын НЭР харин сонголтоос ДООГУУР хэвээр — тэр талбар НӨАТ-ын худалдан
+     авагч / банкны төлөгчийн нэрээр автоматаар бөглөгддөг тул ХҮНИЙ нэр орох нь бий. */
 function orderCustType(o) {
   const ci = custInfoOf(o && o.note);
-  if (ci.ctype === 'org' || ci.ctype === 'person') return ci.ctype;
   const reg = String(ci.reg || '').replace(/\s/g, '');
-  if (/^\d{7}$/.test(reg)) return 'org';                 // компанийн регистр = 7 орон
+  if (/^\d{7}$/.test(reg)) return 'org';                 // компанийн регистр = 7 орон (сонголтыг дардаг)
+  if (ci.ctype === 'org' || ci.ctype === 'person') return ci.ctype;
   // Байгууллагын талбар дангаараа хангалтгүй: НӨАТ-ын «худалдан авагч» эсвэл төлөгчийн
   // нэрээр автоматаар бөглөгддөг тул тэнд ХҮНИЙ нэр орсон захиалга «байгууллага» болж
   // гэрээ хүний нэр дээр байгууллага мэт үүсдэг байв. Хуулийн хэлбэрийн тэмдэг шаардана.
@@ -26783,7 +26791,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Имэйл <span class="no-req">*</span><input id="no-email" type="email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"><label class="no-noemail"><input type="checkbox" id="no-email-none"${isEdit && !(editOrder.email || '') ? ' checked' : ''}> Имэйлгүй</label></label>
       <label class="no-lbl">Төрөл<select id="no-ctype"><option value="person"${_ctype0 === 'org' ? '' : ' selected'}>👤 Хувь хүн</option><option value="org"${_ctype0 === 'org' ? ' selected' : ''}>🏢 Байгууллага</option></select></label>
       <label class="no-lbl" id="no-company-wrap"${_ctype0 === 'org' ? '' : ' style="display:none;"'}>Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
-      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="${_ctype0 === 'org' ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД'}"></label>
+      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="${_ctype0 === 'org' ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД'}"><span class="no-hint no-ct-lock" id="no-ctype-lock" hidden>🏢 7 оронтой РД = байгууллага. Хувь хүн болгох бол РД-г хас.</span></label>
       <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
       <label class="no-lbl no-wide">Хаанаас ирсэн <span class="no-req">*</span><select id="no-lead"><option value="">— сонгоно уу —</option>${LEAD_SOURCES.map(x => `<option value="${x.k}"${x.k === _lead0 ? ' selected' : ''}>${x.label}</option>`).join('')}</select><span class="no-hint">Харилцагч биднийг хаанаас олсон бэ — маркетингийн төсөв энэ тоон дээр хуваарилагдана</span></label>
     </div>
@@ -27055,13 +27063,25 @@ function openNewOrder(editOrder) {
   // Төрөл → «Байгууллага» талбар зөвхөн байгууллагад. Хувь хүн сонгоход утга нь
   // ХАДГАЛАГДАНА (буцааж сольвол буцаж гарна) — гэрээ ⟦CI⟧.ctype-ыг дагадаг тул
   // нуугдсан утга баримтад ГАРАХГҮЙ.
+  /* ⛔ 7 ОРОНТОЙ РД БИЧВЭЛ СОНГОГЧ ТҮГЖИГДЭНЭ (2026-10-03).
+     `orderCustType` нь РД-г сонголтоос ДЭЭГҮҮР үздэг тул формд «хувь хүн» харуулаад
+     хадгалахад захиалга чимээгүй «байгууллага» болно — дүрэм нь оролтын цэгтээ ИЛ
+     байх ёстой. Унтраасан сонгогч юу буруугийн хэлдэггүй тул шалтгаан хажууд бичигдэнэ. */
   {
-    const _ct = $('#no-ctype');
-    if (_ct) _ct.addEventListener('change', () => {
+    const _ctSync = () => {
+      const _ct = $('#no-ctype'); if (!_ct) return;
+      const _rg = $('#no-reg');
+      const regOrg = /^\d{7}$/.test(String((_rg && _rg.value) || '').replace(/\s/g, ''));
+      if (regOrg) _ct.value = 'org';
+      _ct.disabled = regOrg;
       const org = _ct.value === 'org';
       const _cw = $('#no-company-wrap'); if (_cw) _cw.style.display = org ? '' : 'none';
-      const _rg = $('#no-reg'); if (_rg) _rg.placeholder = org ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД';
-    });
+      if (_rg) _rg.placeholder = org ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД';
+      const _lk = $('#no-ctype-lock'); if (_lk) _lk.hidden = !regOrg;
+    };
+    { const _ct = $('#no-ctype'); if (_ct) _ct.addEventListener('change', _ctSync); }
+    { const _rg = $('#no-reg'); if (_rg) _rg.addEventListener('input', _ctSync); }
+    _ctSync();
   }
   $('#no-delivkm').addEventListener('input', recalc);
   $('#no-discval').addEventListener('input', recalc);

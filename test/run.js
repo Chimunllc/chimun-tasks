@@ -91,7 +91,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
-  'ownerCapital', 'ownerCapitalRows', 'openingBalanceCalc', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
+  'ownerCapital', 'ownerCapitalRows', 'openingBalanceCalc', 'journalEntries', 'journalTotals', 'jrnDebitFor', 'jrnCreditFor', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -14705,4 +14705,124 @@ async function swFetchTests() {
   // ⛔ Хөлдөөх ба нээх хоёулаа баталгаажуулалтын ХАРИУГ шалгана
   eq((h.match(/if \(!await showConfirm\([\s\S]*?\)\)\s*return;/g) || []).length, 2,
      'scan: хөлдөөх БА нээх хоёулаа showConfirm-ийн хариуг шалгана');
+}
+
+// ═══ ЖУРНАЛ — давхар бичилт (2026-10-02) ════════════════════════════════
+// ⛔ ДЕБЕТ = КРЕДИТ байх нь журналын цорын ганц үнэний шалгуур. Зөрвөл бичилт дутуу.
+{
+  const { journalEntries, journalTotals, jrnDebitFor, jrnCreditFor } = F;
+
+  // ── Ангилал → данс: бүх зарлага «зардал» БИШ ──
+  eq(jrnDebitFor('7100'), 'expense', 'журнал: цалин → зардал');
+  eq(jrnDebitFor('6900'), 'owner',   'журнал: эзэнд өгсөн → өглөг буурна (зардал БИШ)');
+  eq(jrnDebitFor('6950'), 'loan',    'журнал: зээлийн үндсэн төлбөр → зээл');
+  eq(jrnDebitFor('5810'), 'deposit', 'журнал: барьцаа буцаалт → барьцаа');
+  eq(jrnDebitFor('5300'), 'tax',     'журнал: НДШ төлөлт → татварын өглөг');
+  eq(jrnDebitFor('6100'), 'inv',     'журнал: хөрөнгө авалт → бараа материал');
+  eq(jrnDebitFor('6960'), null,      'журнал: дотоод шилжүүлэг БИЧИГДЭХГҮЙ');
+
+  eq(jrnCreditFor('order'),    'recv',     'журнал: захиалгын төлбөр → авлага хаагдана');
+  eq(jrnCreditFor('nomaad'),   'revenue',  'журнал: NOMAAD төлбөр → орлого');
+  eq(jrnCreditFor('internal'), null,       'журнал: дотоод шилжүүлэг орлого биш');
+  eq(jrnCreditFor('personal'), null,       'журнал: хувийн орлого компанийн биш');
+  eq(jrnCreditFor('open'),     'suspense', 'журнал: хаагдаагүй мөр ИЛ үлдэнэ (нуугдахгүй)');
+
+  // ── Бичилт үүсэх ──
+  const ctx = {
+    basis: 'accrual',
+    opening: { date: '2026-09-01', totals: { equity: 600000 },
+               rows: [{ label: 'Банк', amount: 1000000, side: 'asset', acc: 'bank' },
+                      { label: 'Эзэнд', amount: 400000, side: 'liab', acc: 'owner' }] },
+    orders: [{ id: 'o1', number: 1501, customer: 'Ган', starts_at: '2026-09-10',
+               total_mnt: 1500000, deposit_mnt: 200000, paid_mnt: 0, status: 'returned', source: 'app', items: [] }],
+    finance: [
+      { id: 'f1', status: 'done', decision: 'approved', category: '7100', amount: 300000, requested_at: '2026-09-20', purpose: 'Цалин' },
+      { id: 'f2', status: 'done', decision: 'approved', category: '6960', amount: 999999, requested_at: '2026-09-21', purpose: 'Данс хооронд' },
+      { id: 'f3', status: 'deleted', decision: 'approved', category: '7100', amount: 777, requested_at: '2026-09-22' },
+      { id: 'f4', status: 'done', decision: 'approved', category: '7100', amount: 555, requested_at: '2026-08-20' },  // өөр сар
+    ],
+    income: [
+      { fp: 'i1', dt: '2026-09-25', amount: 900000, status: 'order', payer: 'Ган' },
+      { fp: 'i2', dt: '2026-09-26', amount: 500000, status: 'internal', payer: 'Өөрийн данс' },
+      { fp: 'i3', dt: '2026-09-27', amount: 120000, status: 'open', payer: '?' },
+    ],
+  };
+  const e = journalEntries(ctx, '2026-09');
+  const texts = e.map(x => x.src);
+  ok(texts.includes('opening'), 'журнал: нээлтийн үлдэгдэл эхний бичилт');
+  ok(texts.includes('fin:f1'), 'журнал: цалингийн зарлага бичигдэнэ');
+  ok(!texts.includes('fin:f2'), 'журнал: дотоод шилжүүлэг бичигдэхгүй');
+  ok(!texts.includes('fin:f3'), 'журнал: устгасан мөр бичигдэхгүй');
+  ok(!texts.includes('fin:f4'), 'журнал: өөр сарын мөр орохгүй');
+  ok(!texts.includes('inc:i2'), 'журнал: дотоод орлого бичигдэхгүй');
+  ok(texts.includes('inc:i3'), 'журнал: хаагдаагүй орлого ИЛ бичигдэнэ');
+
+  // ⛔ ИНВАРИАНТ: бичилт бүр дотроо тэнцэнэ
+  e.forEach(x => {
+    const d = x.lines.reduce((s, l) => s + (Number(l.dr) || 0), 0);
+    const c = x.lines.reduce((s, l) => s + (Number(l.cr) || 0), 0);
+    eq(d, c, `ИНВАРИАНТ: «${x.text}» бичилт дотроо тэнцэнэ`);
+  });
+  // ⛔ ИНВАРИАНТ: нийт дебет = нийт кредит
+  const T = journalTotals(e);
+  eq(T.dr, T.cr, 'ИНВАРИАНТ: нийт дебет = нийт кредит');
+  ok(T.balanced, 'журнал: тэнцсэн гэж тэмдэглэгдэнэ');
+
+  // Захиалгын бичилт: авлага = орлого + барьцаа
+  const ord = e.find(x => x.src === 'order:o1');
+  ok(!!ord, 'журнал: захиалгын бичилт үүснэ');
+  eq(ord.lines.find(l => l.acc === 'recv').dr, 1500000, 'журнал: авлага = нийт дүн');
+  eq(ord.lines.find(l => l.acc === 'deposit').cr, 200000, 'журнал: барьцаа тусдаа кредит');
+  eq(ord.lines.find(l => l.acc === 'revenue').cr, 1300000, 'журнал: орлого = дүн − барьцаа');
+
+  // Дансаар нэгтгэл
+  const bank = T.accs.find(a => a.acc === 'bank');
+  eq(bank.dr, 1000000 + 900000 + 120000, 'журнал: банкны дебет (нээлт + орлого)');
+  eq(bank.cr, 300000, 'журнал: банкны кредит (зарлага)');
+
+  // Тэнцээгүй үед ил гарна
+  const bad = journalTotals([{ lines: [{ acc: 'bank', dr: 100 }, { acc: 'recv', cr: 90 }] }]);
+  ok(!bad.balanced && bad.diff === 10, 'журнал: тэнцээгүйг нуухгүй');
+
+  // Хоосон сар
+  eq(journalEntries(ctx, '2026-01').length, 0, 'журнал: бичилтгүй сар хоосон');
+}
+
+// ═══ SCAN: журнал гараар бичигддэггүй, тэнцэл ил ═══════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const je = src.slice(src.indexOf('function journalEntries'), src.indexOf('function journalTotals'));
+  ok(je.length > 600, 'scan: journalEntries олдов');
+  // ⛔ Нэг талтай бичилт гарч болохгүй (хамгийн багадаа 2 мөр)
+  ok(/ls\.length < 2/.test(je), 'scan: нэг талтай бичилт бичигдэхгүй');
+  // ⛔ Дотоод шилжүүлэг хасагдана
+  ok(/6960/.test(src.slice(src.indexOf('function jrnDebitFor'), src.indexOf('function jrnCreditFor'))),
+     'scan: дотоод шилжүүлэг данс оноогдохгүй');
+  const r = src.slice(src.indexOf('function renderJournal'), src.indexOf('function attachJournalHandlers'));
+  ok(/T\.balanced/.test(r), 'scan: тэнцлийн төлөв дэлгэцэд ил');
+  ok(/ТЭНЦЭЭГҮЙ/.test(r), 'scan: тэнцээгүйг ил хэлнэ');
+  // ⛔ Гараар бичих форм БАЙХГҮЙ — бичилт үйл явдлаас үүснэ
+  eq((r.match(/data-jr-new|jr-add|Шинэ бичилт/g) || []).length, 0, 'scan: гараар журнал бичих форм байхгүй');
+  ok(/ӨӨРӨӨ үүснэ/.test(r), 'scan: автоматаар үүсдэгийг ил бичнэ');
+  // ⚠ Орлогын мөр ачаалагдаагүй бол чимээгүй дутуу харуулахгүй
+  ok(/loadBankIncome\(\)/.test(r), 'scan: хуулгын орлогын мөрийг ачаална');
+}
+
+// ═══ SCAN: журнал ҮРГЭЛЖ гүйцэтгэлийн суурьтай (2026-10-02) ═════════════
+// Мөнгөн суурь хэрэглэвэл төлөгдөөгүй захиалгын орлого 0 болж «Дебет Авлага /
+// Кредит Орлого» бичилт утгагүй болно (21.3сая захиалга 0₮ орлоготой гарч байв).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const ctx = src.slice(src.indexOf('function jrnCtx'), src.indexOf('function renderJournal'));
+  ok(/basis:\s*'accrual'/.test(ctx), 'scan: журнал гүйцэтгэлийн суурьтай');
+  eq((ctx.match(/finBasis\(\)/g) || []).length, 0, 'scan: журнал дэлгэцийн суурьаас хамаарахгүй');
+
+  // Төлөгдөөгүй захиалга ч бүтэн орлого бичигдэнэ
+  const e = F.journalEntries({ basis: 'accrual', orders: [{ id: 'x', number: 9, customer: 'Т',
+    starts_at: '2026-09-05', total_mnt: 21305600, deposit_mnt: 500000, paid_mnt: 0,
+    status: 'returned', source: 'app', items: [] }], finance: [], income: [] }, '2026-09');
+  const o = e.find(x => x.src === 'order:x');
+  ok(!!o, 'журнал: төлөгдөөгүй захиалга ч бичигдэнэ');
+  eq(o.lines.find(l => l.acc === 'revenue').cr, 20805600, 'журнал: төлөгдөөгүй ч бүтэн орлого');
+  eq(o.lines.find(l => l.acc === 'recv').dr, 21305600, 'журнал: авлага = орлого + барьцаа');
 }

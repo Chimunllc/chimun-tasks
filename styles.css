@@ -7875,6 +7875,52 @@ select.no-asar-len {
   border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
   color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
 }
+/* ─── 📒 Журнал (давхар бичилт) ─── */
+.jr-wrap { padding: var(--space-1); }
+.jr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2);
+  flex-wrap: wrap; margin-bottom: var(--space-3); }
+.jr-title { font-weight: 800; font-size: var(--fs-lg); }
+.jr-sub { font-size: var(--fs-xs); color: var(--muted); }
+.jr-ok { border: 1px solid var(--ok); background: var(--ok-soft); color: var(--ok);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); font-size: var(--fs-sm); }
+.jr-bad { border: 1px solid var(--danger); background: var(--danger-soft); color: var(--danger);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); font-size: var(--fs-sm); }
+.jr-leg { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-2) 0; line-height: 1.6; }
+.jr-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border); margin-bottom: var(--space-2); flex-wrap: wrap; }
+.jr-tb { padding: 7px var(--space-3); font-size: var(--fs-sm); font-weight: 600; border: none;
+  border-bottom: 2.5px solid transparent; background: none; color: var(--muted); cursor: pointer; }
+.jr-tb.on { color: var(--text); border-bottom-color: var(--primary); }
+.jr-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: var(--space-3); }
+.jr-chip { padding: 2px 10px; font-size: var(--fs-xs); border: 1px solid var(--border);
+  border-radius: 999px; background: var(--panel); color: var(--text-soft); cursor: pointer; }
+.jr-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.jr-e { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel);
+  margin-bottom: 6px; overflow: hidden; }
+.jr-eh { display: flex; gap: var(--space-2); align-items: baseline; padding: 7px var(--space-3);
+  background: var(--panel-hover); font-size: var(--fs-sm); }
+.jr-ed { font-variant-numeric: tabular-nums; color: var(--muted); flex-shrink: 0; }
+.jr-et { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jr-l { display: flex; gap: var(--space-2); align-items: baseline; padding: 5px var(--space-3);
+  font-size: var(--fs-sm); border-top: 1px solid var(--line); }
+.jr-ls { flex: 0 0 52px; color: var(--muted); font-size: var(--fs-xs); }
+.jr-ln { flex: 1; min-width: 0; color: var(--text-soft); }
+.jr-cat { color: var(--muted); font-size: var(--fs-xs); margin-left: 5px; }
+.jr-lv { font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.jr-dr { color: var(--primary); } .jr-cr { color: var(--ok); }
+/* ⚠ 390px-д нэр + 3 тоон багана багтдаггүй тул мөр нь ЭВХРЭНЭ (нэр дээд мөрөнд
+   бүтнээр). Эс бөгөөс нэр тоон дээр давхарлаж уншигдахгүй болно. */
+.jr-ahead, .jr-arow { display: flex; gap: var(--space-2); padding: 6px var(--space-3);
+  font-size: var(--fs-sm); flex-wrap: wrap; }
+.jr-ahead { color: var(--muted); font-size: var(--fs-xs); border-bottom: 1px solid var(--border); }
+.jr-arow { border-bottom: 1px solid var(--line); }
+.jr-al { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.jr-av { flex: 0 0 92px; text-align: right; font-variant-numeric: tabular-nums; }
+.jr-neg { color: var(--ok); }
+.jr-grp { margin-top: var(--space-3); font-size: var(--fs-xs); font-weight: 700; color: var(--muted);
+  letter-spacing: .4px; }
+.jr-empty { text-align: center; color: var(--muted); padding: 30px 0; font-size: var(--fs-sm); }
+.jr-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-3); line-height: 1.5; }
+
 /* ─── ⚖️ Нээлтийн баланс ─── */
 .ob-wrap { padding: var(--space-1); }
 .ob-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2);

@@ -29259,8 +29259,13 @@ function jrnAccLabel(k) { return (JRN_ACC[k] || {}).label || String(k || '?'); }
 /* Зарлагын мөр АЛЬ данс руу бичигдэх вэ — ангиллаар.
    ⚠ Бүх зарлага «зардал» БИШ: эзэнд өгсөн, зээл төлсөн, барьцаа буцаасан нь
      ӨР ТӨЛБӨРИЙГ буурууулдаг (зардал биш). Үүнийг андуурвал ашиг гажна. */
-function jrnDebitFor(cat) {
+function jrnDebitFor(cat, row) {
   const c = String(cat || '');
+  /* ⛔ ХАРИЛЦАГЧИД БУЦААСАН БУУЛГАЛТ = ЗАРДАЛ БИШ (2026-10-03, амьд тулгалт).
+     Манай буруугаас өгсөн хөнгөлөлт нь аль хэдийн `orderRevenue`-ээс хасагдсан;
+     банкны буцаалтыг дахин зардал гэж бичвэл НЭГ мөнгө ХОЁР удаа хасагдана
+     (9 сард 843,000₮ ингэж давхардаж байв). Авлагыг бууруулна. */
+  if (row && typeof finIsCustomerRefund === 'function' && finIsCustomerRefund(row)) return 'recv';
   if (/^6960/.test(c)) return null;        // дотоод шилжүүлэг — бичигдэхгүй
   if (/^6900/.test(c)) return 'owner';     // эзэнд өгсөн → өглөг буурна
   if (/^6950/.test(c)) return 'loan';      // зээлийн үндсэн төлбөр
@@ -29334,7 +29339,7 @@ function journalEntries(ctx, month) {
   (ctx && ctx.finance || []).forEach(t => {
     if (!t || t.status === 'deleted' || t.decision !== 'approved') return;
     const amt = Math.round(Number(t.amount) || 0); if (!amt) return;
-    const dr = jrnDebitFor(t.category); if (!dr) return;
+    const dr = jrnDebitFor(t.category, t); if (!dr) return;
     const payYm = String(t.requested_at || '').slice(0, 7);
     const accYm = (dr === 'expense' && typeof finAccrualMonth === 'function')
       ? (finAccrualMonth(t) || payYm) : payYm;
@@ -29558,6 +29563,9 @@ function renderAccounting() {
   if (typeof ensureVatLoaded === 'function') ensureVatLoaded();
   if (state.scAllRows === undefined) { state.scAllRows = null; loadStockCountsAll().then(() => render()); }
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { state.nomaadOrders = []; loadNomaadOrders().then(() => render()).catch(() => {}); }
+  // ⚠ Захиалга ачаалагдаагүй бол ОРЛОГО чимээгүй 0 болж ашиг сөрөг харагдана
+  //   (амьд тулгалтад яг ийм болсон: журнал «−55сая алдагдал» гэж харуулсан).
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   const t = ACCT_TABS.some(x => x.k === state.acctTab) ? state.acctTab : 'journal';
   const bar = `<div class="ac-tabs">${ACCT_TABS.map(x =>
     `<button class="ac-tb${x.k === t ? ' on' : ''}" data-acct-tab="${x.k}" title="${escapeHtml(x.hint)}">${x.label}</button>`).join('')}</div>`;

@@ -26412,16 +26412,50 @@ function custInfoOf(note) { const m = String(note || '').match(_CI_RE); if (!m) 
    тул «НӨАТ бүртгэгдсэн бол байгууллага болно» гэдэг энэ дүрмээр хэрэгжинэ.
    ⚠ Байгууллагын НЭР харин сонголтоос ДООГУУР хэвээр — тэр талбар НӨАТ-ын худалдан
      авагч / банкны төлөгчийн нэрээр автоматаар бөглөгддөг тул ХҮНИЙ нэр орох нь бий. */
+/* НОТОЛГОО = юу нь «байгууллага» гэж хэлж байгаа вэ. Хоосон мөр = нотолгоогүй.
+   Гурван эх сурвалж, аль нь ч ХҮНИЙ СОНГОЛТООС дээгүүр:
+     ① ⟦CI⟧-ийн 7 оронтой РД  ② захиалгад тулгагдсан НӨАТ-ын баримтын байгууллагын РД
+     ③ байгууллагын нэрэн дэх ХУУЛИЙН ХЭЛБЭР (ХХК/LLC/банк…)
+   ③ нь нэр боловч нотолгоо мөн: `_ORG_SUFFIX_RE` хуулийн хэлбэрийн тэмдэг ШААРДАНА тул
+   автоматаар бөглөгдсөн ХҮНИЙ нэр энд тоологдохгүй (2026-09-04-ний хамгаалалт хэвээр).
+   Хувь хүний гэрээ үнэхээр хэрэгтэй бол байгууллагын талбарыг ХООСЛОНО — байгууллага
+   гэрээний тал биш бол тэнд бичигдэх ч ёсгүй. */
+function _orgProofFrom(ci, no) {
+  const reg = String((ci && ci.reg) || '').replace(/\s/g, '');
+  if (/^\d{7}$/.test(reg)) return 'РД ' + reg;
+  const vreg = vatOrgRegFor(no);
+  if (vreg) return 'НӨАТ-ын баримт · РД ' + vreg;
+  const co = String((ci && ci.company) || '').trim();
+  if (_ORG_SUFFIX_RE.test(co)) return co;
+  return '';
+}
+function orderOrgProof(o) { return _orgProofFrom(custInfoOf(o && o.note), o && o.number); }
 function orderCustType(o) {
   const ci = custInfoOf(o && o.note);
-  const reg = String(ci.reg || '').replace(/\s/g, '');
-  if (/^\d{7}$/.test(reg)) return 'org';                 // компанийн регистр = 7 орон (сонголтыг дардаг)
+  if (_orgProofFrom(ci, o && o.number)) return 'org';
   if (ci.ctype === 'org' || ci.ctype === 'person') return ci.ctype;
-  // Байгууллагын талбар дангаараа хангалтгүй: НӨАТ-ын «худалдан авагч» эсвэл төлөгчийн
-  // нэрээр автоматаар бөглөгддөг тул тэнд ХҮНИЙ нэр орсон захиалга «байгууллага» болж
-  // гэрээ хүний нэр дээр байгууллага мэт үүсдэг байв. Хуулийн хэлбэрийн тэмдэг шаардана.
-  if (_ORG_SUFFIX_RE.test(String(ci.company || ''))) return 'org';
   return 'person';                                        // хувь хүний РД (2 үсэг+8 орон) эсвэл тодорхойгүй = хувь хүн
+}
+/* НӨАТ-ын баримтаас байгууллагын РД — захиалгын дугаараар. ИНДЕКС ЗААВАЛ: эс бөгөөс
+   жагсаалтын мөр бүрд 181 баримт шүүгдэнэ (`vatCandidateOrders`-тэй ижил шалтгаан).
+   Кэш нь ачаалалт БА гар тулгалт/буцаалтын дараа өөрөө шинэчлэгдэнэ (`_vatOrgRev`). */
+let _vatOrgIdx = null, _vatOrgRev = 0, _vatOrgIdxRev = -1;
+function vatOrgIndex() {
+  if (_vatOrgIdx && _vatOrgIdxRev === _vatOrgRev) return _vatOrgIdx;
+  const m = new Map();
+  if (Array.isArray(state.vatReceipts)) {
+    vatReceiptsActive().forEach(v => {
+      if (!v.matched_id) return;
+      const r = String(v.buyer_reg || '').replace(/\s/g, '');
+      if (/^\d{7}$/.test(r) && !m.has(String(v.matched_id))) m.set(String(v.matched_id), r);
+    });
+  }
+  _vatOrgIdx = m; _vatOrgIdxRev = _vatOrgRev;
+  return m;
+}
+function vatOrgRegFor(no) {
+  if (no == null || no === '') return '';
+  return vatOrgIndex().get(String(no)) || '';
 }
 /* ХАРАГДАХ НЭР = гэрээний ТАЛ (2026-10-03, CEO барив: «чимгээ гэж гараад байна»).
    Байгууллагын захиалгад харилцагч нь БАЙГУУЛЛАГА, `o.customer` нь түүнийг төлөөлж
@@ -26813,7 +26847,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Имэйл <span class="no-req">*</span><input id="no-email" type="email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"><label class="no-noemail"><input type="checkbox" id="no-email-none"${isEdit && !(editOrder.email || '') ? ' checked' : ''}> Имэйлгүй</label></label>
       <label class="no-lbl">Төрөл<select id="no-ctype"><option value="person"${_ctype0 === 'org' ? '' : ' selected'}>👤 Хувь хүн</option><option value="org"${_ctype0 === 'org' ? ' selected' : ''}>🏢 Байгууллага</option></select></label>
       <label class="no-lbl" id="no-company-wrap"${_ctype0 === 'org' ? '' : ' style="display:none;"'}>Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
-      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="${_ctype0 === 'org' ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД'}"><span class="no-hint no-ct-lock" id="no-ctype-lock" hidden>🏢 7 оронтой РД = байгууллага. Хувь хүн болгох бол РД-г хас.</span></label>
+      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="${_ctype0 === 'org' ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД'}"><span class="no-hint no-ct-lock" id="no-ctype-lock" hidden></span></label>
       <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
       <label class="no-lbl no-wide">Хаанаас ирсэн <span class="no-req">*</span><select id="no-lead"><option value="">— сонгоно уу —</option>${LEAD_SOURCES.map(x => `<option value="${x.k}"${x.k === _lead0 ? ' selected' : ''}>${x.label}</option>`).join('')}</select><span class="no-hint">Харилцагч биднийг хаанаас олсон бэ — маркетингийн төсөв энэ тоон дээр хуваарилагдана</span></label>
     </div>
@@ -27085,24 +27119,36 @@ function openNewOrder(editOrder) {
   // Төрөл → «Байгууллага» талбар зөвхөн байгууллагад. Хувь хүн сонгоход утга нь
   // ХАДГАЛАГДАНА (буцааж сольвол буцаж гарна) — гэрээ ⟦CI⟧.ctype-ыг дагадаг тул
   // нуугдсан утга баримтад ГАРАХГҮЙ.
-  /* ⛔ 7 ОРОНТОЙ РД БИЧВЭЛ СОНГОГЧ ТҮГЖИГДЭНЭ (2026-10-03).
-     `orderCustType` нь РД-г сонголтоос ДЭЭГҮҮР үздэг тул формд «хувь хүн» харуулаад
-     хадгалахад захиалга чимээгүй «байгууллага» болно — дүрэм нь оролтын цэгтээ ИЛ
-     байх ёстой. Унтраасан сонгогч юу буруугийн хэлдэггүй тул шалтгаан хажууд бичигдэнэ. */
+  /* ⛔ НОТОЛГОО БАЙВАЛ СОНГОГЧ ТҮГЖИГДЭНЭ (2026-10-03).
+     `orderCustType` нь нотолгоог (`_orgProofFrom` — РД · НӨАТ баримт · ХХК нэр) сонголтоос
+     ДЭЭГҮҮР үздэг тул формд «хувь хүн» харуулаад хадгалахад захиалга чимээгүй
+     «байгууллага» болно — дүрэм оролтын цэгтээ ИЛ байх ёстой. Шалгуур нь ТЭР Л функц
+     (формын талбарын утгаар) — хоёр газар өөрөөр бичвэл форм ба жагсаалт зөрнө.
+     Унтраасан сонгогч юу буруугийн хэлдэггүй тул ЯМАР нотолгоо гэдгийг хажууд нь бичнэ. */
   {
     const _ctSync = () => {
       const _ct = $('#no-ctype'); if (!_ct) return;
-      const _rg = $('#no-reg');
-      const regOrg = /^\d{7}$/.test(String((_rg && _rg.value) || '').replace(/\s/g, ''));
-      if (regOrg) _ct.value = 'org';
-      _ct.disabled = regOrg;
+      const _rg = $('#no-reg'), _co = $('#no-company');
+      const proof = _orgProofFrom({ reg: (_rg && _rg.value) || '', company: (_co && _co.value) || '' },
+        isEdit ? editOrder.number : null);
+      if (proof) _ct.value = 'org';
+      _ct.disabled = !!proof;
       const org = _ct.value === 'org';
       const _cw = $('#no-company-wrap'); if (_cw) _cw.style.display = org ? '' : 'none';
       if (_rg) _rg.placeholder = org ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД';
-      const _lk = $('#no-ctype-lock'); if (_lk) _lk.hidden = !regOrg;
+      const _lk = $('#no-ctype-lock');
+      if (_lk) {
+        _lk.hidden = !proof;
+        // НӨАТ-ын баримт бол формын талбар хассан ч түгжээ тайлагдахгүй — ЗӨВ заавар өгнө
+        const how = /^НӨАТ/.test(proof)
+          ? 'Баримт буруу захиалгад тулгагдсан бол НӨАТ тайлангаас тулгалтыг зас.'
+          : 'Хувь хүн болгох бол РД ба байгууллагын нэрийг хас.';
+        _lk.textContent = proof ? `🏢 Байгууллага — ${proof}. ${how}` : '';
+      }
     };
     { const _ct = $('#no-ctype'); if (_ct) _ct.addEventListener('change', _ctSync); }
     { const _rg = $('#no-reg'); if (_rg) _rg.addEventListener('input', _ctSync); }
+    { const _co = $('#no-company'); if (_co) _co.addEventListener('input', _ctSync); }
     _ctSync();
   }
   $('#no-delivkm').addEventListener('input', recalc);
@@ -35936,6 +35982,7 @@ async function vatSetReturned(id, on) {
     headers: { ...VAT_HDR, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(patch) }, 15000);
   if (!r.ok) throw new Error('Буцаалт тэмдэглэх алдаа (' + r.status + ')');
   const rec = (state.vatReceipts || []).find(x => x.id === id); if (rec) Object.assign(rec, patch);
+  _vatOrgRev++;   // байгууллагын РД-ийн индекс хуучирлаа
 }
 
 // ebarimt xlsx 2D массиваас баримтын мөр гаргана (толгойг нэрээр ононо)
@@ -35970,7 +36017,7 @@ function parseVatMatrix(matrix) {
 async function loadVatReceipts() {
   try {
     const r = await fetchWithTimeout(`${VAT_URL}?select=*&order=dt.desc`, { headers: VAT_HDR }, 15000);
-    if (r.ok) { state.vatReceipts = await r.json(); return state.vatReceipts; }
+    if (r.ok) { state.vatReceipts = await r.json(); _vatOrgRev++; return state.vatReceipts; }
   } catch (e) { console.warn('loadVatReceipts fail', e.message); }
   state.vatReceipts = state.vatReceipts || [];
   return state.vatReceipts;
@@ -36193,6 +36240,7 @@ async function vatSetMatch(id, match) {
     headers: { ...VAT_HDR, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(patch) }, 15000);
   if (!r.ok) throw new Error('Тулгалт хадгалах алдаа (' + r.status + ')');
   const rec = (state.vatReceipts || []).find(x => x.id === id); if (rec) Object.assign(rec, patch);
+  _vatOrgRev++;   // байгууллагын РД-ийн индекс хуучирлаа
 }
 
 // Тулгах захиалгууд: NOMAAD + Эвент(түүхэн) — нэгдсэн хэлбэрт

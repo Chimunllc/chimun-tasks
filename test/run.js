@@ -14571,7 +14571,8 @@ async function swFetchTests() {
   eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otPay, 0, 'цалин: нормоос доош → илүү цаг 0₮');
 
   // ── ⛔ НОРМД ХҮРЭЭГҮЙ → СУУРЬ АЖИЛЛАСАН ЦАГААР (2026-10-03, CEO; Ц.Бат эрдэнэ 129.6ц/184ц) ──
-  const bs = monthPayBreakdown(1840000, true, H(92), NORM, 0, 1);
+  const OCT = '2026-10';
+  const bs = monthPayBreakdown(1840000, true, H(92), NORM, 0, 1, OCT);
   eq(bs.shortMins, H(92), 'цалин: нормоос дутуу цаг');
   eq(bs.earned, 920000, 'цалин: 92/184ц → суурийн тал');
   eq(bs.base, 1840000, 'цалин: гэрээний суурь хэвээр харагдана');
@@ -14579,16 +14580,21 @@ async function swFetchTests() {
   eq(bs.pit, 81420, 'цалин: ХХОАТ цагаар бодсон суурьаас');
   eq(bs.total, 920000 - 105800 - 81420, 'цалин: нийт = цагаар бодсон цэвэр суурь');
   // Цагийн хөлс ижил — дутуу ба илүү цаг ТЭГШ хэмтэй
-  eq(monthPayBreakdown(1840000, false, H(174), NORM, 0, 1).earned, 1840000 - 10 * 10000, 'цалин: 10ц дутуу = 10 × цагийн хөлс хасагдана');
-  eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
-  eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
+  eq(monthPayBreakdown(1840000, false, H(174), NORM, 0, 1, OCT).earned, 1840000 - 10 * 10000, 'цалин: 10ц дутуу = 10 × цагийн хөлс хасагдана');
+  eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1, OCT).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
+  eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1, OCT).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
+  // ⛔ 10 САРААС — «9 сард хэлж амжаагүй учраас 9 сарынхад хэрэгжүүлж болохгүй» (CEO)
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09').earned, 1840000, 'цалин: 9 сард дутуу цагаар ХАСАХГҮЙ (урьдчилан мэдэгдээгүй)');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09').shortMins, 0, 'цалин: 9 сард дутуу цаг тэмдэглэгдэхгүй');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1).earned, 1840000, 'цалин: сар мэдэгдэхгүй бол хасахгүй (эргэлзвэл бүтэн)');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-11').earned, 920000, 'цалин: 11 сард ч хэрэгжинэ');
   // ⛔ Цаг МЭДЭГДЭХГҮЙ (ирц ачаалагдаагүй / огт бүртгэлгүй) → ТЭГЛЭХГҮЙ
-  const bu = monthPayBreakdown(1840000, false, null, NORM, 0, 1);
+  const bu = monthPayBreakdown(1840000, false, null, NORM, 0, 1, OCT);
   eq(bu.earned, 1840000, 'цалин: цаг мэдэгдэхгүй (null) бол бүтэн суурь — тэглэхгүй');
   eq(bu.shortMins, 0, 'цалин: цаг мэдэгдэхгүй бол дутуу цаг 0');
-  eq(monthPayBreakdown(1840000, false, undefined, NORM, 0, 1).earned, 1840000, 'цалин: undefined ч мэдэгдэхгүй гэж үзнэ');
+  eq(monthPayBreakdown(1840000, false, undefined, NORM, 0, 1, OCT).earned, 1840000, 'цалин: undefined ч мэдэгдэхгүй гэж үзнэ');
   // Хүргэлт цагаас үл хамааран бүтнээр
-  eq(monthPayBreakdown(1840000, false, H(92), NORM, 50000, 1).total, 920000 + 50000, 'цалин: дутуу цагтай ч хүргэлт бүтнээр');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 50000, 1, OCT).total, 920000 + 50000, 'цалин: дутуу цагтай ч хүргэлт бүтнээр');
 
   // ── Суутгалгүй ажилтан ──
   const b4 = monthPayBreakdown(1000000, false, NORM, NORM, 0, 1);
@@ -14689,6 +14695,9 @@ async function swFetchTests() {
   // ⛔ Цаг мэдэгдэхгүйг 0 цаг гэж үзвэл цалин тэглэгдэнэ — дуудагч бүр null дамжуулна
   const rsB = src.slice(src.indexOf('function renderSalary('), src.indexOf('function attachSalaryHandlers('));
   ok(/\(attReady && attMins\[r\.k\]\) \? w\.mins : null/.test(rsB), 'scan: самбар ирц ачаалагдаагүй үед цагийг null дамжуулна');
+  // ⛔ Сар дамжуулаагүй дуудагч цагаар ХЭЗЭЭ Ч хасахгүй — тиймээс бүгд сараа өгнө
+  const callers = (src.match(/monthPayBreakdown\([^\n]*\)/g) || []).filter(x => !/deliveryAmt, rate, month/.test(x));   // тодорхойлолтыг хасна
+  ok(callers.length >= 3 && callers.every(x => /undefined, (month|ym)\)/.test(x)), 'scan: цалингийн дуудагч бүр сараа дамжуулна');
   ok(/-\s*norm\b/.test(body), 'scan: илүү цаг = сарын нийт − норм (өдрөөр биш)');
 
   // Картын нийт дүн нь monthPayBreakdown-аас л гарна (дэлгэцэд дахин бодохгүй)

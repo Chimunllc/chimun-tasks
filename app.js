@@ -13255,13 +13255,22 @@ function overtimeRate() {
    ⛔ Цаг МЭДЭГДЭХГҮЙ (`workedMins` = null: ирц ачаалагдаагүй, эсвэл тэр сард огт
      бүртгэлгүй) бол ХАСАХГҮЙ — мэдэхгүйг 0 цаг гэж үзвэл цалин чимээгүй тэглэгдэнэ.
      Ирц бүртгүүлдэггүй цалинтай хүн «ирц бүртгүүлээгүй» анхааруулгаар ил гарна.
-   ⚠ Суутгал нь ЦАГААР БОДСОН суурьаас — олгоогүй мөнгөнөөс татвар суутгахгүй. */
-function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate) {
+   ⚠ Суутгал нь ЦАГААР БОДСОН суурьаас — олгоогүй мөнгөнөөс татвар суутгахгүй.
+   ⛔ 10 САРААС (`PAY_PRORATE_FROM`) — CEO: «9 сард хэлж амжаагүй учраас 9 сарынхад
+     хэрэгжүүлж болохгүй». Ажилтанд урьдчилан мэдэгдээгүй дүрмээр цалин хасахгүй.
+     Сар мэдэгдэхгүй (`month` дамжуулаагүй) бол ХАСАХГҮЙ — эргэлзвэл бүтэн суурь. */
+const PAY_PRORATE_FROM = '2026-10';
+function payProrateFrom() {
+  const v = String((state.appConfig && state.appConfig.overtime || {}).prorate_from || '');
+  return /^\d{4}-\d{2}$/.test(v) ? v : PAY_PRORATE_FROM;
+}
+function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month) {
   base = Math.max(0, Number(base) || 0);
   const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins();
   const known = workedMins !== null && workedMins !== undefined && isFinite(Number(workedMins));
   const worked = known ? Math.max(0, Number(workedMins)) : 0;
-  const shortMins = known ? Math.max(0, Math.round(norm - worked)) : 0;
+  const prorate = /^\d{4}-\d{2}$/.test(String(month || '')) && String(month) >= payProrateFrom();
+  const shortMins = (known && prorate) ? Math.max(0, Math.round(norm - worked)) : 0;
   const earned = shortMins > 0 ? Math.round(base * worked / norm) : base;
   const d = salaryNet(earned, deduct);                     // суутгал ЗӨВХӨН (цагаар бодсон) суурьд
   const otMins = known ? Math.max(0, Math.round(worked - norm)) : 0;
@@ -13334,7 +13343,7 @@ function renderAttendanceMonth(month) {
     const otMins = Math.max(0, r.mins - normMins);
     const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
-    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount) : null;
+    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
     const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · шатны хөлс ОРООГҮЙ' : ''})</span>`
       + (rPaid ? ` <span class="sp-sub">— олгосон ${fmtMoney(rPaid)} · үлдэгдэл <b>${fmtMoney(Math.max(0, pb.total - rPaid))}</b></span>` : ' <span class="sp-sub">— олгоогүй</span>')
@@ -13499,7 +13508,7 @@ function myPayCardHtml(me) {
   const base = Number((state.salaries || {})[key]) || 0;
   const db = driverBonus(key, month);
   // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
-  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(), db.amount);
+  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(), db.amount, undefined, month);
   const normH = workNormDays() * 8;
   const paid = salaryPaidFor(key, month);
   const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
@@ -13555,7 +13564,7 @@ function myPayCardHtml(me) {
     </div>
     ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`, 'pay-worked')}
     ${noOutNote}${spNote}
-    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. ${lunchNote()} Нэмэгдэлд суутгал тооцохгүй.</div>
+    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${payProrateFrom()}-аас эхлэн ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. ${lunchNote()} Нэмэгдэлд суутгал тооцохгүй.</div>
   </div>`;
 }
 function renderMyAttend() {
@@ -17400,7 +17409,7 @@ function renderSalary() {
     const w = attMins[r.k] || { mins: 0, days: 0, noOut: 0 };
     const db = driverBonus(r.k, ym);
     // ⛔ Ирц ачаалагдаагүй / тэр сард огт бүртгэлгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 биш
-    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, normMins, db.amount);
+    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, normMins, db.amount, undefined, ym);
     return { ...r, w, db, b, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
   });
   /* Үлдэгдэл ба илүү олголтыг ХҮН БҮРЭЭР нийлбэрлэнэ — нийт олгохоос нийт

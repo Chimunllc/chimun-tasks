@@ -8302,7 +8302,13 @@ select.no-asar-len {
 
 /* 📉 Элэгдлийн мөр «Өртөг ба хөрөнгө» жагсаалтад (2026-10-02) — тайлангийн
    нийт дүнг бараа бүрээр тулгах цорын ганц зам. */
-.ps-dep { flex: 1 0 100%; font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
+.ps-dep { flex: 0 1 auto; font-size: var(--fs-xs); color: var(--muted); }
+.ps-dep[open] { flex: 1 0 100%; }
+.ps-dep > summary { cursor: pointer; list-style: none; white-space: nowrap; }
+.ps-dep > summary::-webkit-details-marker { display: none; }
+.ps-dep > summary::after { content: '▸'; margin-left: 3px; color: var(--muted-soft); }
+.ps-dep[open] > summary::after { content: '▾'; }
+.ps-dep-x { padding-top: var(--space-1); white-space: normal; line-height: 1.5; }
 .ps-dep b { color: var(--text-soft); }
 .ps-dep-done { color: var(--ok); }
 .ps-dep-warn { color: var(--warn); }

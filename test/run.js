@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -14535,6 +14535,34 @@ async function swFetchTests() {
 
 // ═══ САРЫН ЦАЛИН — ажилтан өөрөө харна (2026-10-02) ═══════════════════════
 // Гарт очих = цэвэр суурь + ИЛҮҮ ЦАГ + ХҮРГЭЛТ. ШАТНЫ ХӨЛС ОРОХГҮЙ (CEO шийдвэр).
+// ═══ САРЫН НОРМ = ТЭР САРЫН АЖЛЫН ӨДӨР × 8 (2026-10-03, CEO) ═══════════════
+// 23 өдөр (184ц) гэж хатуу тавигдсанаас болж нормоо БҮТЭН ажилласан хүний
+// суурь цалин `ажилласан ÷ норм`-оор хасагдаж, 2 сард 160÷184 = 87% болж байв.
+{
+  const { monthWorkdays, workNormDays, workNormMins } = F;
+  // 2026 оны ажлын өдөр (бямба/ням хассан) — хуанлиар шалгасан
+  const exp = { '2026-01': 22, '2026-02': 20, '2026-03': 22, '2026-04': 22, '2026-05': 21,
+                '2026-06': 22, '2026-07': 23, '2026-08': 21, '2026-09': 22, '2026-10': 22,
+                '2026-11': 21, '2026-12': 23 };
+  Object.keys(exp).forEach(m => eq(monthWorkdays(m), exp[m], `норм: ${m} = ${exp[m]} ажлын өдөр`));
+  eq(workNormMins('2026-09'), 22 * 8 * 60, 'норм: 9 сар = 176 цаг');
+  eq(workNormMins('2026-02'), 20 * 8 * 60, 'норм: 2 сар = 160 цаг');
+  /* ⛔ БАЯРЫН ӨДӨР ХАСАГДАХГҮЙ (CEO) — 7 сард Наадам 5 хоног байхад 23 өдөр
+     хэвээр. Хасвал норм бага болж, илүү цаг хиймлээр өснө. */
+  eq(monthWorkdays('2026-07'), 23, 'норм: Наадамтай 7 сар ч 23 өдөр (баяр хасагдахгүй)');
+  eq(monthWorkdays('2026-01'), 22, 'норм: Шинэ жилтэй 1 сар ч 22 өдөр');
+  // ⚠ Оны хил: 12 сар 31 хоногтой, 2 сар 28 — хоёуланг барина
+  eq(monthWorkdays('2025-12'), 23, 'норм: 2025-12 = 23 өдөр');
+  eq(monthWorkdays('2024-02'), 21, 'норм: 2024-02 (өрсөн жил, 29 хоног) = 21 өдөр');
+  // Танихгүй сар → өнөөдрийн сар (бодолт зогсохгүй)
+  ok(monthWorkdays('') >= 19 && monthWorkdays('') <= 23, 'норм: сар дамжуулаагүй бол өнөөдрийн сараар');
+  // Тохиргоо тавибал тогтмол тоо ялна (онцгой тохиолдол)
+  vm.runInContext("state.appConfig = state.appConfig || {}; state.appConfig.work_norm_days = 26;", sandbox);
+  eq(workNormDays('2026-02'), 26, 'норм: тохиргооны тогтмол тоо ялна');
+  vm.runInContext("delete state.appConfig.work_norm_days;", sandbox);
+  eq(workNormDays('2026-02'), 20, 'норм: тохиргоо авахад хуанли руу буцна');
+}
+
 // Илүү цаг нь САРААР (нийт − 184ц), хувь 1.0, нэмэгдэлд суутгал ТООЦОХГҮЙ.
 {
   const { monthPayBreakdown, payMonthDefault, payMonthMins } = F;
@@ -14986,6 +15014,19 @@ async function swFetchTests() {
   ok(c8.includes('олгосон дүн'), 'түүх сар: ажилтанд олгосон дүн харагдана');
 
   runIn(`(function(){ const s = ${save}; state.salaries = s[0]; state.salaryPayments = s[1]; state.attMonthKey = s[2]; state.salaryYM = s[3]; })()`);
+}
+
+// ═══ SCAN: норм сар бүрээр бодогдоно ════════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Сар дамжуулахгүй дуудвал ӨНӨӨДРИЙН сарын норм хуучин сард хэрэглэгдэнэ
+  eq((src.match(/workNormMins\(\)/g) || []).length, 0, 'scan: workNormMins сар дамжуулалгүй дуудагдахгүй');
+  eq((src.match(/workNormDays\(\)/g) || []).length, 0, 'scan: workNormDays сар дамжуулалгүй дуудагдахгүй');
+  const f = src.slice(src.indexOf('function monthWorkdays'), src.indexOf('function workNormDays'));
+  ok(/getUTCDay\(\)/.test(f), 'scan: гарагийг UTC геттерээр (бүсээр гулсуулахгүй)');
+  ok(/Date\.UTC\(/.test(f), 'scan: огноог Date.UTC-ээр угсарна');
+  // ⛔ Баярын өдрийн жагсаалт БАЙХГҮЙ (CEO: баяр хасагдахгүй)
+  eq((f.match(/holiday|баяр|Наадам/gi) || []).length, 0, 'scan: баярын өдөр хасагдахгүй');
 }
 
 // ═══ SCAN: цалингийн эхлэх сарын хамгаалалт ═════════════════════════════

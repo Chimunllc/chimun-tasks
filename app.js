@@ -10079,9 +10079,10 @@ function orderListRow(e, k, todayStr) {
   const _chips = (_money ? [depWarn, vatChip, quoteChip, cxReasonChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
   // Нэг сав дотор — утсанд шошгууд БҮГД доод мөрөнд бууж, харилцагчийн нэр бүтэн өргөн авна
   const chips = _chips.length ? `<span class="br-chips">${_chips.join('')}</span>` : '';
+  const _custNm = orderCustName(o);   // байгууллагын захиалгад = байгууллага (гэрээний тал)
   return `<details class="olist-row${_money ? '' : ' compact'} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${chips}</span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(_custNm)}">${escapeHtml(_avInitials(_custNm))}</span><span class="br-cust">${escapeHtml(_custNm || '?')}</span>${chips}</span>
     ${statusCell}
     <span class="br-dates"${(() => {
       const ld = orderLeadDays(o);
@@ -10169,7 +10170,7 @@ function openCompletedReport() {
         return `<div style="display:flex;gap:8px;align-items:center;font-size:11.5px;padding:3px 0;border-top:1px solid var(--border);">
           <span style="font-weight:700;flex:0 0 52px;">#${o.number ?? ''}</span>
           <span style="flex:0 0 78px;color:var(--muted);">${escapeHtml(_crDate(e))}</span>
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '—')}</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(orderCustName(o) || '—')}</span>
           <span style="flex:0 0 auto;color:var(--muted);">${escapeHtml((BQ_STATUS[o.status] || {}).label || o.status || '')}</span>
           <span style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoney(e.total)}</span>
         </div>`;
@@ -26075,6 +26076,7 @@ function unifiedOrders() {
     // мөн ижил helper ашигладаг тул харагдац ↔ логик зөрөхгүй (төлбөргүй reserved→'draft' г.м.).
     const raw = orderCanonStatus(ao);
     const o = { ...ao, status: raw, item_count: (ao.items || []).length, _app: true };
+    const _ciHay = custInfoOf(ao.note);   // байгууллагын нэр/РД — хайлтад заавал
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
       ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',
       total: orderBilled(o),   // буцаагдсан барьцаа хасагдсан — payOf шүүлт ч үүнийг уншина
@@ -26083,7 +26085,9 @@ function unifiedOrders() {
       rev: (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : (Number(ao.total_mnt) || 0)),
       // Хайлт: дугаар + нэр + утас (форматтай БА зөвхөн цифр — 9911-2233↔99112233 хоёул олдоно)
       // + имэйл + гэрээний дугаар. Placeholder «Нэр, утас, имэйл, дугаар»-тай нийцнэ.
-      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${String(ao.phone || '').replace(/\D/g, '')} ${ao.email || ''} ${ao.contract_no || ''}`.toLowerCase() };
+      // ⚠ Байгууллагын нэр/РД ЗААВАЛ — жагсаалт байгууллагын нэрээр харагддаг тул
+      //   түүгээрээ хайхад олдохгүй бол хүн «захиалга алга» гэж дүгнэнэ.
+      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${_ciHay.company || ''} ${_ciHay.reg || ''} ${ao.phone || ''} ${String(ao.phone || '').replace(/\D/g, '')} ${ao.email || ''} ${ao.contract_no || ''}`.toLowerCase() };
   });
 }
 
@@ -26418,6 +26422,24 @@ function orderCustType(o) {
   // гэрээ хүний нэр дээр байгууллага мэт үүсдэг байв. Хуулийн хэлбэрийн тэмдэг шаардана.
   if (_ORG_SUFFIX_RE.test(String(ci.company || ''))) return 'org';
   return 'person';                                        // хувь хүний РД (2 үсэг+8 орон) эсвэл тодорхойгүй = хувь хүн
+}
+/* ХАРАГДАХ НЭР = гэрээний ТАЛ (2026-10-03, CEO барив: «чимгээ гэж гараад байна»).
+   Байгууллагын захиалгад харилцагч нь БАЙГУУЛЛАГА, `o.customer` нь түүнийг төлөөлж
+   байгаа ХҮН. Жагсаалт/картад хүний нэрийг толгойд тавихад гэрээ, нэхэмжлэх, НӨАТ-ын
+   баримт гурвуулаа байгууллагын нэртэй атал дэлгэц ганцаараа хүний нэр хэлж байв
+   (захиалга 1496: толгойд «Чимгээ», баримт дээр «ЭБЕРДИГММОНГОЛ»).
+   ⛔ `o.customer`-ыг ШУУД бүү хэвлэ — `orderCustName(o)` ашигла.
+   ⚠ Тулгалт (НӨАТ, банк, харилцагчийн бүртгэл) нь ТҮҮХИЙ `o.customer`-оор л явна —
+     тэнд гэрээний тал биш, бичигдсэн нэр хэрэгтэй. */
+function orderCustName(o) {
+  const co = String((custInfoOf(o && o.note).company) || '').trim();
+  if (co && orderCustType(o) === 'org') return co;
+  return String((o && o.customer) || '').trim();
+}
+// Байгууллагын захиалгад төлөөлөх хүн (нэр нь толгойд ороогүй бол), эс бөгөөс ''
+function orderCustPerson(o) {
+  const nm = String((o && o.customer) || '').trim();
+  return (nm && nm !== orderCustName(o)) ? nm : '';
 }
 // Хуулийн этгээдийн хэлбэр — байгууллагын нэрэнд байх ёстой тэмдэг.
 // ⚠ JS-ийн `\b` нь ASCII үсгээр тодорхойлогддог тул кирилл үгэнд АЖИЛЛАХГҮЙ —
@@ -27449,8 +27471,11 @@ function bqOrderCard(o) {
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/FB/Viber/газрын зураг) — зөвхөн менежерт харагдана
   const _ci = isApp ? custInfoOf(o.note) : {};
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
-  const ciHtml = (isApp && (_ci.company || _ci.reg || _ciContact || _ci.maps))
-    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ci.company ? `🏢 ${escapeHtml(_ci.company)}` : ''}${_ci.reg ? `${_ci.company ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
+  const _custPerson = isApp ? orderCustPerson(o) : '';
+  // Байгууллагын нэр толгойд гарсан бол энд ДАВТАХГҮЙ (нэг мэдээлэл хоёр газар = нүд төөрнө)
+  const _ciCo = (_ci.company && _ci.company !== orderCustName(o)) ? _ci.company : '';
+  const ciHtml = (isApp && (_ciCo || _ci.reg || _ciContact || _ci.maps))
+    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ciCo ? `🏢 ${escapeHtml(_ciCo)}` : ''}${_ci.reg ? `${_ciCo ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = orderOwed(o);
@@ -27568,7 +27593,7 @@ function bqOrderCard(o) {
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
-    <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
+    <div class="order-cust"><b>${escapeHtml(orderCustName(o) || '?')}</b>${_custPerson ? ` · <span class="order-rep">👤 ${escapeHtml(_custPerson)}</span>` : ''}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}

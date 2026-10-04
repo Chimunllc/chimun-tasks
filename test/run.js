@@ -2152,7 +2152,9 @@ function finish() {
   eq(SAF('prepared', 'ready').key, 'prepare', 'дамжлага: prepared→ready нь prepare түлхүүртэй');
   eq(SAF('ready', 'rented').key,   'dispatch','дамжлага: ready→rented нь dispatch');
 
-  eq(BQS.ready.label, 'Бэлдсэн', 'төлөв: ready = Бэлдсэн');
+  /* ⛔ Картын шошго нь ТОВЧНЫ нэртэй ИЖИЛ үгтэй байна (2026-10-04) — ажилтан
+     «Баглаж/ачсан» дараад карт нь «Бэлдсэн» гэж өөр үг хэлдэг байв. */
+  eq(BQS.ready.label, 'Баглаж/ачсан', 'төлөв: ready = Баглаж/ачсан');
   ok(!LEG.ready, 'төлөв: ready legacy зураглалаас гарсан (жинхэнэ төлөв боллоо)');
   ok(ORD.indexOf('ready') > ORD.indexOf('prepared'), 'төлөв: ready нь prepared-ийн ДАРАА эрэмбэлэгдэнэ');
   ok(ORD.indexOf('ready') < ORD.indexOf('rented'),   'төлөв: ready нь rented-ээс ӨМНӨ');
@@ -2304,7 +2306,6 @@ function finish() {
 {
   const ON  = vm.runInContext('STAGE_AUTOTASK_ENABLED', sandbox);
   const PSI = vm.runInContext('prevStageInfo', sandbox);
-  const PSQ = vm.runInContext('prevStageQuestion', sandbox);
   const st  = vm.runInContext('state', sandbox);
 
   eq(ON, false, 'авто ажил: дамжлагын ажил автоматаар үүсэхээ болив');
@@ -2327,17 +2328,9 @@ function finish() {
   const pa = PSA(o);
   eq(pa && pa.key, 'clean', 'prevStageInfoAny: сүүлийн шат (хэн ч бай)');
 
-  // Асуулт нь шатдаа тохирсон, ерөнхий биш
-  const qClean = PSQ({ by: 'B', key: 'clean' });
-  ok(/цэвэрлэгээ/i.test(qClean), 'асуулт: цэвэрлэгээний тухай тодорхой');
-  ok(qClean.indexOf('хүлээлгэж өгсөн ажлыг үнэлнэ') === -1, 'асуулт: ерөнхий томьёолол ашиглахаа болив');
-  const qPrep = PSQ({ by: 'A', key: 'prepare' });
-  ok(qPrep.indexOf('бүрэн') > -1, 'асуулт: бэлтгэл бүрэн эсэхийг асууна');
-  ok(PSQ({ by: 'A', key: 'deliver' }).indexOf('цаг хугацаа') > -1, 'асуулт: хүргэлт цаг хугацааны тухай');
-  ok(PSQ({ by: 'A', key: 'received' }).indexOf('эвдрэлгүй') > -1, 'асуулт: буцаан авалт эвдрэлийн тухай');
-  eq(PSQ(null), null, 'асуулт: өмнөх шат байхгүй бол null');
-  ok(PSQ({ by: 'A', key: 'танихгүй_шат' }).length > 0, 'асуулт: танигдаагүй шатад ерөнхий асуулт');
-
+  /* ⛔ ★-ийн асуултын тест УСТГАГДСАН (2026-10-04) — ★ бүх дамжлагаас
+     хасагдаж `prevStageQuestion` дуудагчгүй үлдсэн тул код нь ч, тест нь ч
+     хог болсон. Хуучин ★ ТҮҮХИЙГ уншдаг тест доор хэвээр. */
   // Олон үнэлгээ (handoffRatings массив — Агуулахаас гарах дээр цэвэрлэгч+бэлдэгч)
   const HQS = vm.runInContext('handoffQualityScore', sandbox);
   vm.runInContext('state.appOrders = ' + JSON.stringify([
@@ -2402,8 +2395,10 @@ function finish() {
   // Төлөв жинхэнэ болсон эсэх
   ok(!LEG.delivering, 'төлөв: delivering legacy зураглалаас гарсан');
   ok(!LEG.returning,  'төлөв: returning legacy зураглалаас гарсан');
-  eq(BQS.delivering.label, 'Агуулахаас гаргасан', 'нэр: delivering');
-  eq(BQS.returning.label,  'Хүргэлтээр авсан',  'нэр: returning');
+  eq(BQS.delivering.label, 'Агуулахаас гарсан', 'нэр: delivering');
+  eq(BQS.returning.label,  'Ачиж буцсан',  'нэр: returning');
+  eq(BQS.installing.label, 'Талбарт буулгасан', 'нэр: installing');
+  eq(BQS.teardown.label,   'Задалсан', 'нэр: teardown');
   ok(STF.includes('delivering') && STF.includes('returning'), 'ажилтан: шинэ шатууд харагдана');
 }
 
@@ -4032,7 +4027,6 @@ need(['orderCustType']);
     ok(G('STAGE_ACTION')['rented>teardown'].key === 'teardown', 'teardown: STAGE_ACTION зураглал');
     ok(!!G('STAGE_META_LABEL').setup && !!G('STAGE_META_LABEL').teardown, 'setup: түүхийн нэр бий');
     ok(F.stageHelpQuestion('setup').includes('Суурилуулалт'), 'setup: хамтрагчийн асуулт тодорхой');
-    ok(!!G('STAGE_PREV_Q').setup && !!G('STAGE_PREV_Q').teardown, 'setup: үнэлгээний асуулт бий');
     const _ss = G('ORDER_STAFF_STATUSES');
     ok(_ss.includes('installing') && _ss.includes('teardown'), 'setup: шинэ төлөв ажилтанд харагдана');
     ok(F.bucketOf('installing') === 'active' && F.bucketOf('teardown') === 'active',

@@ -6657,20 +6657,6 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .sm-def { font-size: var(--fs-xs); color: var(--warn); margin-top:2px; }
 .sm-def.sm-def-ok { color: var(--muted); }
 /* ⚙️ Дамжлагын онооны тохиргоо */
-.sp-cfg { max-width:420px; width:96%; max-height:92vh; overflow:auto; }
-.sp-cfg-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom: var(--space-2); }
-.sp-cfg-hd h2 { margin:0; font-size: var(--fs-lg); }
-.sp-cfg-note { font-size: var(--fs-sm); color: var(--muted); line-height:1.5; margin-bottom: var(--space-3); }
-.sp-cfg-t { font-size: var(--fs-sm); font-weight:700; margin: var(--space-3) 0 var(--space-2); border-top:1px dashed var(--border); padding-top: var(--space-2); }
-.sp-cfg-row { display:flex; align-items:center; gap: var(--space-2); margin-bottom: var(--space-2); font-size: var(--fs-sm); }
-.sp-cfg-l { flex:1; min-width:0; }
-.sp-cfg-ev { font-size: var(--fs-xs); color: var(--muted); margin-left: var(--space-2); }
-.modal .sp-cfg-in { width:86px; flex:none; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align:right; }
-.sp-cfg-prev { background: var(--panel-hover); border:1px solid var(--border); border-radius:10px; padding: var(--space-3); margin-top: var(--space-3); }
-.sp-cfg-prow { display:flex; justify-content:space-between; font-size: var(--fs-sm); margin-bottom:3px; }
-.sp-cfg-pnote { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }
-.sp-cfg-warn { font-size: var(--fs-xs); color: var(--warn); line-height:1.5; margin-top: var(--space-3); }
-.sp-cfg-act { display:flex; gap: var(--space-2); justify-content:flex-end; margin-top: var(--space-3); }
 .sp-cfg-btn { padding:3px 9px; font-size: var(--fs-xs); margin-left: var(--space-2); }
 .sc-head-main { min-width:0; flex:1; }
 .sc-contract-btn { border-color: var(--primary); color: var(--primary); }
@@ -8637,6 +8623,16 @@ select.no-asar-len {
 .modal-x { flex: none; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: var(--r-md); padding: 4px 10px; cursor: pointer; font-size: var(--fs-base); }
 .modal-foot { margin-top: var(--space-3); }
 /* Дамжлагын нэр засах мөр + схемийн толгойн товч */
-.modal .sp-cfg-nm { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-sm); }
 .pm-hd-act { display: flex; align-items: center; gap: var(--space-2); flex: none; }
 .pm-cfg { padding: 4px 10px; font-size: var(--fs-sm); }
+/* Схем дотор шууд засах (CEO) — тусдаа тохиргооны цонх байхгүй */
+.pm-st.ed { border-color: var(--primary); border-width: 2px; background: var(--panel); }
+.modal .pm-nm { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); font-weight: 650; }
+.modal .pm-w { width: 56px; flex: none; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: right; }
+.pm-ok { flex: none; padding: 4px 8px; }
+.pm-gen { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-2); }
+.pm-gen summary { cursor: pointer; font-size: var(--fs-sm); font-weight: 650; }
+.pm-grow { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); font-size: var(--fs-sm); }
+.pm-grow span:first-child { flex: 1; min-width: 0; }
+.modal .pm-in { width: 86px; flex: none; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: right; }
+.pm-gsave { width: 100%; margin-top: var(--space-3); }

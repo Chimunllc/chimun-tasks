@@ -17914,7 +17914,7 @@ function renderSalary() {
      Тусдаа цэс үүсгэвэл хэн ч олохгүй («өөрөө үүсдэг» дүрэм). CEO-д л. */
   // 📊 Урсгалын схем — БҮХ хүнд (ажилтан бүтэн дарааллыг хаанаас ч хардаггүй байв)
   const spMapBtn = ` <button class="btn sp-cfg-btn" data-pipeline-map>📊 Урсгал харах</button>`;
-  const spCfgBtn = spMapBtn + (state.isCEO ? ` <button class="btn sp-cfg-btn" data-stage-pay-cfg>⚙️ Оноо тохируулах</button>` : '');
+  const spCfgBtn = spMapBtn;   // ⚙️ тохиргоо нь СХЕМ дотроо (хоёр цонх байхгүй)
   const spFoot = T.sp
     ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> · ${(T.spPts || 0).toFixed(1)} оноо × ${fmtMoney(stagePointRate())} — цалинд ОРООГҮЙ.${spCfgBtn}</div>`
     : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
@@ -17929,90 +17929,13 @@ function renderSalary() {
      ил сануулна, чимээгүй өөрчлөхгүй.
    ⚠ Жагсаалт нь `stageDefs()`-ээс (= `PIPELINE`) — шинэ дамжлага нэмэхэд
      тохиргооны дэлгэцэд ӨӨРӨӨ гарна. */
-function openStagePayModal() {
-  if (!state.isCEO) { showToast('Зөвхөн захирал тохируулна', 'warn', 2500); return; }
-  const defs = stageDefs().filter(d => d.key !== 'archive');
-  // ⚠ НЭР нь МӨРӨӨР (нэг түлхүүр хоёр нэртэй байж болно), ЖИН нь түлхүүрээр
-  const rows = PIPELINE.filter(r => r.key && r.key !== 'archive');
-  const bands = stagePtBands(), rate = stagePointRate();
-  const share = Math.round(stageHelperShare() * 100), hmax = stageHelperMax();
-  const bandRow = (lim, pts, i) => `<div class="sp-cfg-row">
-      <span class="sp-cfg-l">${lim === Infinity ? '151+ бараа' : `≤ ${lim} бараа`}</span>
-      <input class="ui-raw sp-cfg-in" type="number" step="0.5" min="0" data-band="${i}" value="${pts}"> оноо</div>`;
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg open'; modal.style.zIndex = '9400';
-  modal.innerHTML = `<div class="modal sp-cfg">
-    <div class="sp-cfg-hd"><h2>⚙️ Дамжлагын оноо</h2><button class="btn" data-x>✕</button></div>
-    <div class="sp-cfg-note">Бонус = <b>барааны тооны оноо × дамжлагын жин × ханш</b>. Жин нь ажлын хүндийг, ханш нь мөнгийг заана — тусад нь тохируулна.</div>
-
-    <div class="sp-cfg-t">Дамжлага бүрийн жин</div>
-    ${defs.map(d => `<div class="sp-cfg-row">
-      <span class="sp-cfg-l">${escapeHtml(d.label)}<span class="sp-cfg-ev">${d.ev === 'count' ? '🔢 тоо' : '📷 зураг'}</span></span>
-      <input class="ui-raw sp-cfg-in" type="number" step="0.5" min="0" data-w="${escapeHtml(d.key)}" value="${d.pts}"> ×</div>`).join('')}
-
-    <div class="sp-cfg-t">Дамжлагын нэр <span class="sp-cfg-ev">— ажилчдад харагдах үг</span></div>
-    ${rows.map(r => `<div class="sp-cfg-row">
-      <input class="ui-raw sp-cfg-nm" type="text" maxlength="40" data-nm="${escapeHtml(stageLabelKey(r))}" value="${escapeHtml(stageLabel(r))}"></div>`).join('')}
-
-    <div class="sp-cfg-t">Барааны тооны оноо</div>
-    ${bands.map((b, i) => bandRow(b[0], b[1], i)).join('')}
-
-    <div class="sp-cfg-t">Ханш ба хуваарилалт</div>
-    <div class="sp-cfg-row"><span class="sp-cfg-l">1 оноо</span><input class="ui-raw sp-cfg-in" type="number" step="50" min="1" id="sp-rate" value="${rate}"> ₮</div>
-    <div class="sp-cfg-row"><span class="sp-cfg-l">Хамтрагчийн сан</span><input class="ui-raw sp-cfg-in" type="number" step="5" min="0" max="100" id="sp-share" value="${share}"> %</div>
-    <div class="sp-cfg-row"><span class="sp-cfg-l">Хамтрагчийн дээд тоо</span><input class="ui-raw sp-cfg-in" type="number" step="1" min="1" max="10" id="sp-hmax" value="${hmax}"> хүн</div>
-
-    <div class="sp-cfg-prev" id="sp-prev"></div>
-    <div class="sp-cfg-warn">⚠ Хадгалахад <b>бүх сарын</b> бонус шинэ тоогоор дахин бодогдоно — хаасан сар ч мөн адил.</div>
-    <div class="sp-cfg-act"><button class="btn" data-x>Болих</button><button class="btn btn-primary" id="sp-save">💾 Хадгалах</button></div>
-  </div>`;
-  document.body.appendChild(modal);
-  const close = () => modal.remove();
-  modal.querySelectorAll('[data-x]').forEach(b => b.onclick = close);
-  modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const num = (sel) => Number((modal.querySelector(sel) || {}).value) || 0;
-  // Амьд урьдчилан харалт — 12 бараатай (медиан) захиалгын жишээ
-  const prev = () => {
-    const r = num('#sp-rate');
-    const bi = bands.findIndex(b => 12 <= b[0]);
-    const bp = Number((modal.querySelector(`[data-band="${bi < 0 ? bands.length - 1 : bi}"]`) || {}).value) || 0;
-    modal.querySelector('#sp-prev').innerHTML = defs.map(d => {
-      const w = Number((modal.querySelector(`[data-w="${d.key}"]`) || {}).value) || 0;
-      return `<div class="sp-cfg-prow"><span>${escapeHtml(stageHistLabel(d.key))}</span><b>${fmtMoney(Math.round(bp * w * r))}</b></div>`;
-    }).join('') + `<div class="sp-cfg-pnote">12 бараатай захиалгын нэг дамжлага (сарын медиан)</div>`;
-  };
-  modal.querySelectorAll('input').forEach(i => i.oninput = prev);
-  prev();
-  modal.querySelector('#sp-save').onclick = async () => {
-    const weights = {};
-    defs.forEach(d => { weights[d.key] = Number((modal.querySelector(`[data-w="${d.key}"]`) || {}).value) || 0; });
-    const pt_bands = bands.map((b, i) => [b[0] === Infinity ? 999999 : b[0], Number((modal.querySelector(`[data-band="${i}"]`) || {}).value) || 0]);
-    /* Нэр — ӨӨРЧЛӨГДСӨНИЙГ Л хадгална. Анхдагчтай ижил бол бичихгүй: эс
-       бөгөөс код дахь нэр хожим сайжрахад тохиргоо нь хуучныг барина. */
-    const labels = {};
-    rows.forEach(r => {
-      const v = String((modal.querySelector(`[data-nm="${stageLabelKey(r)}"]`) || {}).value || '').trim();
-      if (v && v !== String(r.label)) labels[stageLabelKey(r)] = v;
-    });
-    const cfg = Object.assign({}, _stagePayCfg(), {
-      weights, pt_bands, labels, rate: num('#sp-rate'),
-      helper_share: Math.min(1, Math.max(0, num('#sp-share') / 100)), helper_max: Math.max(1, num('#sp-hmax')),
-    });
-    if (!(cfg.rate > 0)) { showToast('Ханш 0-ээс их байх ёстой', 'warn', 3000); return; }
-    const ok = await showConfirm(`Шинэ ханш ${fmtMoney(cfg.rate)}/оноо.\nБүх сарын бонус дахин бодогдоно. Хадгалах уу?`,
-      { title: 'Дамжлагын оноо', okText: 'Хадгалах' });
-    if (!ok) return;
-    try {
-      await saveAppConfig('stage_pay', cfg);
-      state.appConfig = state.appConfig || {}; state.appConfig.stage_pay = cfg;
-      showToast('Хадгаллаа', 'success'); close(); render();
-    } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
-  };
-}
+/* ⛔ `openStagePayModal` УСТГАГДСАН (2026-10-04, CEO: «хоёр байх хэрэггүй»).
+   Тохиргоо нь СХЕМ дотроо: мөр дээр дарж нэр/оноог засаад 💾. Ханш, шатлал,
+   хамтрагчийн сан нь схемийн хөлийн «⚙️ Ханш ба хуваарилалт» эвхэгдэх хэсэгт.
+   Хоёр цонх байх нь «аль нь жинхэнэ вэ» гэсэн эргэлзээ төрүүлдэг. */
 function attachSalaryHandlers() {
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
-  document.querySelector('[data-stage-pay-cfg]')?.addEventListener('click', openStagePayModal);
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
   document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('sal-search');
@@ -26127,35 +26050,96 @@ function pipelineSteps(ctx) {
 function openPipelineMapModal() {
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9400';
-  const draw = (fk) => {
-    const fl = PMAP_FLOWS.find(x => x.k === fk) || PMAP_FLOWS[0];
+  let flow = 'dlv', edit = '';            // edit = засагдаж буй мөрийн `key|to`
+  const can = () => !!state.isCEO;        // засах эрх — зөвхөн захирал
+  const row = (r, i) => {
+    const lk = stageLabelKey(r), on = can() && edit === lk, ctl = r.ev === 'count';
+    return `<div class="pm-st${ctl ? ' ctl' : ''}${on ? ' ed' : ''}" data-lk="${escapeHtml(lk)}">
+      <span class="pm-n">${i + 1}</span>
+      <span class="pm-b">${on
+        ? `<input class="ui-raw pm-nm" type="text" maxlength="40" value="${escapeHtml(stageLabel(r))}">`
+        : `<span class="pm-l">${escapeHtml(stageLabel(r))}</span>`}
+        <span class="pm-m">${escapeHtml(PMAP_WHO[r.cap] || r.cap)} · ${ctl ? '🔢 тоо' : '📷 зураг'}</span></span>
+      ${on
+        ? `<input class="ui-raw pm-w" type="number" step="0.5" min="0" value="${stageWeight(r.key)}"><button class="btn pm-ok">💾</button>`
+        : `<span class="pm-p">${stageWeight(r.key)}</span>`}</div>`;
+  };
+  const draw = () => {
+    const fl = PMAP_FLOWS.find(x => x.k === flow) || PMAP_FLOWS[0];
     const steps = pipelineSteps(fl.ctx);
-    const pts = steps.reduce((a, r) => a + (Number(r.pts) || 0), 0);
-    return `<div class="pm-chips">${PMAP_FLOWS.map(f => `<span class="pm-chip${f.k === fk ? ' on' : ''}" data-pm="${f.k}">${escapeHtml(f.t)}</span>`).join('')}</div>
-      <div class="pm-sum">${steps.length} дамжлага · <b>${pts}</b> оноо${stagePointRate() ? ` · ${fmtMoney(pts * stagePointRate())}` : ''} <span class="pm-dim">(1 ширхэг бараатай захиалгад)</span></div>
-      <div class="pm-list">${steps.map((r, i) => {
-        const ctl = r.ev === 'count';
-        return `<div class="pm-st${ctl ? ' ctl' : ''}">
-          <span class="pm-n">${i + 1}</span>
-          <span class="pm-b"><span class="pm-l">${escapeHtml(stageLabel(r))}</span><span class="pm-m">${escapeHtml(PMAP_WHO[r.cap] || r.cap)} · ${r.ev === 'count' ? '🔢 тоо' : '📷 зураг'}</span></span>
-          <span class="pm-p">${r.pts}</span></div>`;
-      }).join('<div class="pm-ar">↓</div>')}</div>
-      <div class="pm-leg">Хүрээтэй нь <b>няравын хяналтын цэг</b> — өмнөх ажлуудыг тоогоор шалгана.<br>Жолоо дамжлага биш: буулгах/ачих цонхонд жолоочийг сонгоно (${fmtMoney(DRIVER_BONUS_EACH)}).</div>`;
+    const pts = steps.reduce((a, r) => a + stageWeight(r.key), 0);
+    const bands = stagePtBands();
+    modal.querySelector('#pm-body').innerHTML = `
+      <div class="pm-chips">${PMAP_FLOWS.map(f => `<span class="pm-chip${f.k === flow ? ' on' : ''}" data-pm="${f.k}">${escapeHtml(f.t)}</span>`).join('')}</div>
+      <div class="pm-sum">${steps.length} дамжлага · <b>${pts}</b> оноо · ${fmtMoney(pts * stagePointRate())} <span class="pm-dim">(1 ширхэг бараатай захиалгад)</span></div>
+      <div class="pm-list">${steps.map(row).join('<div class="pm-ar">↓</div>')}</div>
+      ${can() ? `<details class="pm-gen"><summary>⚙️ Ханш ба хуваарилалт</summary>
+        <div class="pm-grow"><span>1 оноо</span><input class="ui-raw pm-in" type="number" step="50" min="1" id="pm-rate" value="${stagePointRate()}"> ₮</div>
+        ${bands.map((b, i) => `<div class="pm-grow"><span>${b[0] === Infinity ? `${bands.length > 1 ? bands[bands.length - 2][0] + 1 : 1}+ бараа` : `≤ ${b[0]} бараа`}</span><input class="ui-raw pm-in" type="number" step="0.5" min="0" data-band="${i}" value="${b[1]}"> оноо</div>`).join('')}
+        <div class="pm-grow"><span>Хамтрагчийн сан</span><input class="ui-raw pm-in" type="number" step="5" min="0" max="100" id="pm-share" value="${Math.round(stageHelperShare() * 100)}"> %</div>
+        <div class="pm-grow"><span>Хамтрагчийн дээд тоо</span><input class="ui-raw pm-in" type="number" step="1" min="1" max="10" id="pm-hmax" value="${stageHelperMax()}"> хүн</div>
+        <button class="btn btn-primary pm-gsave" id="pm-gsave">💾 Хадгалах</button></details>` : ''}
+      <div class="pm-leg">Хүрээтэй нь <b>няравын хяналтын цэг</b> — өмнөх ажлуудыг тоогоор шалгана.<br>
+        Жолоо дамжлага биш: буулгах/ачих цонхонд жолоочийг сонгоно (${fmtMoney(DRIVER_BONUS_EACH)}).
+        ${can() ? '<br>Мөр дээр дарж <b>нэр, оноог</b> засна. Дараалал нь төлвийн гинж тул энд солигддоггүй.' : ''}</div>`;
+    wire();
+  };
+  /* ⛔ ХАДГАЛАХ = ГАНЦ ЗАМ. Жин/ханш өөрчлөгдвөл БҮХ сарын бонус дахин
+     бодогдоно (хаасан сар ч) тул баталгаажуулна; зөвхөн НЭР сольсон бол
+     асуухгүй — мөнгө хөдлөхгүй. */
+  const save = async (patch, moneyMoved) => {
+    const cfg = Object.assign({}, _stagePayCfg(), patch);
+    if (!(Number(cfg.rate || stagePointRate()) > 0)) { showToast('Ханш 0-ээс их байх ёстой', 'warn', 3000); return false; }
+    if (moneyMoved) {
+      const ok = await showConfirm('Бүх сарын бонус шинэ тоогоор дахин бодогдоно — хаасан сар ч мөн адил. Хадгалах уу?',
+        { title: 'Дамжлагын оноо', okText: 'Хадгалах' });
+      if (!ok) return false;
+    }
+    try {
+      await saveAppConfig('stage_pay', cfg);
+      state.appConfig = state.appConfig || {}; state.appConfig.stage_pay = cfg;
+      showToast('Хадгаллаа', 'success'); return true;
+    } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); return false; }
+  };
+  const wire = () => {
+    modal.querySelectorAll('[data-pm]').forEach(c => c.onclick = () => { flow = c.dataset.pm; edit = ''; draw(); });
+    modal.querySelectorAll('.pm-st').forEach(el => el.onclick = (e) => {
+      if (!can() || e.target.closest('input, button')) return;
+      edit = (edit === el.dataset.lk) ? '' : el.dataset.lk; draw();
+    });
+    const okb = modal.querySelector('.pm-ok');
+    if (okb) okb.onclick = async () => {
+      const el = okb.closest('.pm-st'), lk = el.dataset.lk, key = lk.split('|')[0];
+      const r = PIPELINE.find(x => stageLabelKey(x) === lk); if (!r) return;
+      const nm = String(el.querySelector('.pm-nm').value || '').trim();
+      const w = Number(el.querySelector('.pm-w').value);
+      const labels = Object.assign({}, _stagePayCfg().labels || {});
+      // Анхдагчтай ижил нэрийг ХАДГАЛАХГҮЙ — код сайжрахад тохиргоо хуучныг барихгүй
+      if (nm && nm !== String(r.label)) labels[lk] = nm; else delete labels[lk];
+      const weights = Object.assign({}, _stagePayCfg().weights || {});
+      const moved = isFinite(w) && w >= 0 && w !== stageWeight(key);
+      if (moved) weights[key] = w;
+      if (await save({ labels, weights }, moved)) { edit = ''; draw(); render(); }
+    };
+    const gs = modal.querySelector('#pm-gsave');
+    if (gs) gs.onclick = async () => {
+      const bands = stagePtBands();
+      const pt_bands = bands.map((b, i) => [b[0] === Infinity ? 999999 : b[0],
+        Number((modal.querySelector(`[data-band="${i}"]`) || {}).value) || 0]);
+      const num = (sel) => Number((modal.querySelector(sel) || {}).value) || 0;
+      if (await save({ pt_bands, rate: num('#pm-rate'), helper_share: Math.min(1, Math.max(0, num('#pm-share') / 100)),
+                       helper_max: Math.max(1, num('#pm-hmax')) }, true)) { draw(); render(); }
+    };
   };
   modal.innerHTML = `<div class="modal pm-modal">
-    <div class="modal-head"><b>📊 Захиалгын урсгал</b><span class="pm-hd-act">${state.isCEO ? '<button class="btn pm-cfg" id="pm-cfg">⚙️ Тохируулах</button>' : ''}<button class="modal-x" id="pm-x">✕</button></span></div>
-    <div class="modal-body" id="pm-body">${draw('dlv')}</div>
+    <div class="modal-head"><b>📊 Захиалгын урсгал</b><button class="modal-x" id="pm-x">✕</button></div>
+    <div class="modal-body" id="pm-body"></div>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
   modal.querySelector('#pm-x').onclick = close;
-  // ⚙️ Нэр, жин, ханшийг ЭНД ЭХЛҮҮЛНЭ — схемийг хараад шууд засах зам (CEO)
-  modal.querySelector('#pm-cfg')?.addEventListener('click', () => { close(); openStagePayModal(); });
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const wire = () => modal.querySelectorAll('[data-pm]').forEach(c => c.onclick = () => {
-    modal.querySelector('#pm-body').innerHTML = draw(c.dataset.pm); wire();
-  });
-  wire();
+  draw();
 }
 
 // ── Дамжлагын АВТОМАТ ажил — эрх эзэмшигчид даалгавар үүсгэж, зургаар баталгаажуулна ──

@@ -15168,20 +15168,21 @@ async function swFetchTests() {
 
   /* ⚠ Scan-тест нь ХЭВ МАЯГ хардаг, АЖИЛЛАХ эсэхийг хардаггүй — тохиргооны
      цонхыг ҮНЭХЭЭР дуудаж HTML үүсч байгааг шалгана. */
-  ok(html.includes('data-stage-pay-cfg'), 'самбар: CEO-д ⚙️ тохиргооны товч гарна');
+  ok(html.includes('data-pipeline-map'), 'самбар: 📊 урсгалын товч гарна (тохиргоо нь дотроо)');
   // ⚠ DOM нь stub тул агуулгыг унших боломжгүй — HTML угсрах үед ШИДЭГДЭХ
   //   алдааг (TDZ, тодорхойлогдоогүй функц) барихад л хангалттай. Нэмж
   //   `document.body.appendChild` дуудагдсаныг тоолж цонх үүссэнийг батална.
   let cfgErr = '', added = 0;
   const _body = runIn('document.body'), _origAppend = _body.appendChild;
   _body.appendChild = function (x) { added++; return _origAppend ? _origAppend.call(this, x) : x; };
-  try { runIn('openStagePayModal()'); } catch (e) { cfgErr = e.message; }
-  eq(cfgErr, '', 'тохиргоо: цонх алдаагүй нээгдэнэ');
-  eq(added, 1, 'тохиргоо: цонх үүсч хуудсанд нэмэгдэнэ');
-  // ⛔ Зөвхөн захирал — эрхгүй хүнд цонх ОГТ үүсэхгүй
+  try { runIn('openPipelineMapModal()'); } catch (e) { cfgErr = e.message; }
+  eq(cfgErr, '', 'схем: цонх алдаагүй нээгдэнэ');
+  eq(added, 1, 'схем: цонх үүсч хуудсанд нэмэгдэнэ');
+  /* ⚠ Схемийг БҮХ хүн харна (ажилтан урсгалаа ойлгох ёстой) — ЗАСАХ эрх нь
+     зөвхөн захиралд (`can()`). Цонх өөрөө эрхгүй хүнд ч нээгдэнэ. */
   added = 0; runIn('state.isCEO = false;');
-  try { runIn('openStagePayModal()'); } catch (e) { cfgErr = e.message; }
-  eq(added, 0, 'тохиргоо: эрхгүй хүнд цонх үүсэхгүй');
+  try { runIn('openPipelineMapModal()'); } catch (e) { cfgErr = e.message; }
+  eq(added, 1, 'схем: ажилтан ч харна');
   runIn('state.isCEO = true;'); _body.appendChild = _origAppend;
 
   /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ (2026-10-03, CEO). 8 сар ба өмнөхийг
@@ -15423,7 +15424,7 @@ async function swFetchTests() {
    хажуугийн шошго үсэг тус бүрээр босоо тасарна (2026-10-04 амьд дэлгэцэд). */
 {
   const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
-  ['sa-def-in', 'sp-cfg-in'].forEach(cls => {
+  ['sa-def-in', 'pm-w', 'pm-in'].forEach(cls => {
     // Мөрийн эхэнд ганцаараа бичигдсэн дүрэм = угтваргүй (дарагдана)
     ok(!new RegExp('^\\s*\\.' + cls + '\\s*\\{', 'm').test(css), `scan: .${cls} нь .modal угтваргүй бичигдээгүй`);
     ok(new RegExp('\\.modal\\s+\\.' + cls + '\\s*\\{').test(css), `scan: .modal .${cls} дүрэм бий`);
@@ -15501,11 +15502,13 @@ async function swFetchTests() {
   const db = src.slice(src.indexOf('function driverBonus'), src.indexOf('const DRIVER_LIABILITY_NOTE'));
   ok(/e\.driver \|\| e\.by/.test(db), 'scan: нэмэгдэл жолоочид, хуучин бичлэгт by руу унана');
   // ⛔ Тохиргоо хадгалахад БАТАЛГААЖУУЛАЛТ (бүх сарын бонус дахин бодогдоно)
-  const spm = src.slice(src.indexOf('function openStagePayModal'), src.indexOf('function attachSalaryHandlers'));
+  const spm = src.slice(src.indexOf('function openPipelineMapModal'), src.indexOf('// ── Дамжлагын АВТОМАТ ажил'));
   ok(/const ok = await showConfirm\(/.test(spm) && /if \(!ok\) return/.test(spm), 'scan: хадгалахын өмнө баталгаажуулна');
   ok(/saveAppConfig\('stage_pay'/.test(spm), 'scan: тохиргоо DB-д хадгалагдана');
   ok(/state\.isCEO/.test(spm), 'scan: зөвхөн захирал тохируулна');
-  ok(/stageDefs\(\)/.test(spm), 'scan: жагсаалт ганц эх сурвалжаас');
+  ok(/pipelineSteps\(/.test(spm), 'scan: жагсаалт ганц эх сурвалжаас');
+  // ⛔ ХОЁР тохиргооны цонх байхгүй — «аль нь жинхэнэ вэ» гэсэн эргэлзээ төрүүлнэ
+  eq((src.match(/function openStagePayModal/g) || []).length, 0, 'scan: тусдаа тохиргооны цонх буцаж ирээгүй');
 }
 
 // ═══ SCAN: тохиргоо үнэхээр ачаалагддаг ════════════════════════════════

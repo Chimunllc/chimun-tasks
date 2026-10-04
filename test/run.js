@@ -3995,7 +3995,7 @@ need(['orderCustType']);
       /* ⛔ «Буулгаж байршуулах» нь ХҮРГЭЛТЭЭС ҮЛ ХАМААРНА — очиж авсан захиалгын
          бараа ч агуулахад байрандаа тавигдана. */
       eq(F.pipelineNext('returned', { dlv: false }).to, 'stowed', 'урсгал: очиж авсан захиалгад ч байршуулна');
-      eq(F.stageWeight('stow'), 1.5, 'оноо: Буулгаж байршуулах 1.5');
+      eq(F.stageWeight('stow'), 15, 'оноо: Буулгаж байршуулах 15');
       eq(F.stageEvidence('stow'), 'photo', 'нотолгоо: Буулгаж байршуулах = зураг');
       /* ⛔ БИЕИЙН ХҮЧНИЙ ДАМЖЛАГА → `orders.prepare` (агуулахын БҮХ ажилтанд),
          `orders.dispatch` БИШ (зөвхөн 4 нярав/ахлахад — хүнд ажил хийх ёсгүй
@@ -4022,7 +4022,7 @@ need(['orderCustType']);
        дамжлага ОГТ гарахгүй болж, хоёр төрлийн захиалга өөр бүтэцтэй болно. */
     ok(step(withSet, 'delivering').to === 'installing', 'setup: хүргэсний дараа installing');
     ok(step(withSet, 'delivering').cap === 'orders.deliver', 'буулгах: суурилуулалттайд ч хүргэлтийн эрхээр');
-    eq(F.stageWeight('setup'), 2, 'суурилуулах: 2 оноо (буулгахтай НЭГДЭЭГҮЙ)');
+    eq(F.stageWeight('setup'), 20, 'суурилуулах: 20 оноо (буулгахтай НЭГДЭЭГҮЙ)');
     ok(step(withSet, 'installing').to === 'rented', 'setup: суурилуулсны дараа түрээс');
     ok(step(withSet, 'installing').cap === 'orders.setup', 'setup: суурилуулах эрх = orders.setup');
     ok(step(withSet, 'rented').to === 'teardown', 'setup: түрээсийн дараа буулгах');
@@ -13999,7 +13999,7 @@ async function swFetchTests() {
   vm.runInContext("state.appConfig = { stage_pay: { helper_share: 0.5, helper_max: 2 } };", sandbox);
   const cfgR = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B','C','D'] } } }], '2026-09');
-  eq(cfgR.B.helperPts, 0.25, 'тохиргоо: хамтрагчийн хувь 50%, 2 хүнд → 1 оноо×0.5÷2 = 0.25');
+  eq(cfgR.B.helperPts, 2.5, 'тохиргоо: хамтрагчийн хувь 50%, 2 хүнд → 10 оноо×0.5÷2 = 2.5');
   eq(cfgR.B.helperFee, Math.round(0.25 * 1350), 'тохиргоо: оноо ханшаар төгрөг болно');
   ok(!cfgR.D, 'тохиргоо: helper_max 2 → 3 дахь хамтрагч хөлсгүй');
   vm.runInContext("state.appConfig = {};", sandbox);
@@ -14016,11 +14016,11 @@ async function swFetchTests() {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B', 'C'] } } }];
   const r1 = stagePayByPerson(ords, '2026-09');
   // 30 бараа = 3.5 оноо, Цэвэрлэх жин 1 → 3.5 оноо × 1,350₮
-  eq(r1.A.ledPts, 3.5, 'бонус: 30 бараа → удирдсан A 3.5 оноо');
+  eq(r1.A.ledPts, 35, 'бонус: 30 бараа → удирдсан A 35 оноо');
   eq(r1.A.ledFee, Math.round(3.5 * 1350), 'бонус: оноо ханшаар төгрөг болно');
   eq(r1.A.led, 1, 'хөлс: A удирдсан 1 шат');
-  eq(r1.B.helperPts, 3.5 * 0.3 / 2, 'бонус: хамтрагч B = 3.5 оноо×30%÷2');
-  eq(r1.C.helperPts, 3.5 * 0.3 / 2, 'бонус: хамтрагч C ижил');
+  eq(r1.B.helperPts, 35 * 0.3 / 2, 'бонус: хамтрагч B = 35 оноо×30%÷2');
+  eq(r1.C.helperPts, 35 * 0.3 / 2, 'бонус: хамтрагч C ижил');
   eq(r1.B.ledFee, 0, 'хөлс: хамтрагч удирдсаны хөлс авахгүй');
 
   // ⛔ Бичиг цаасны шат (discount/revert) ачаа зөөгөөгүй → хөлс БАЙХГҮЙ
@@ -14035,7 +14035,7 @@ async function swFetchTests() {
   const rm = stagePayByPerson(many, '2026-09');
   const paidHelpers = ['B','C','D','E','F','G'].filter(h => rm[h] && rm[h].helperFee > 0);
   eq(paidHelpers.length, 4, 'хөлс: хамтрагч дээд тал 4 хүнд хуваагдана');
-  eq(rm.B.helperPts, 1 * 0.3 / 4, 'бонус: 1 оноо×30%÷4');
+  eq(rm.B.helperPts, 10 * 0.3 / 4, 'бонус: 10 оноо×30%÷4');
 
   // Сар шүүлт — өөр сарын шат тоологдохгүй
   const twom = [{ items: [{ qty: 10 }], stage_meta: {
@@ -14054,7 +14054,7 @@ async function swFetchTests() {
   const sumParts = Object.keys(ri).reduce((t, k) => t + ri[k].ledFee + ri[k].helperFee, 0);
   eq(sumTotal, sumParts, 'ИНВАРИАНТ: нийт хөлс = удирдсан + хамтрагч');
   // Цэвэрлэх(345 бараа) = 10 оноо × жин 1; Талбайд буулгах(2 бараа) = 1 оноо × жин 1.5
-  eq(ri.A.ledPts + ri.B.ledPts, 10 + 1.5, 'ИНВАРИАНТ: удирдсаны оноо = 10 + 1.5');
+  eq(ri.A.ledPts + ri.B.ledPts, 100 + 15, 'ИНВАРИАНТ: удирдсаны оноо = 100 + 15');
 
   // Хамтрагчгүй шат — 30%-ийн сан хэнд ч ХУВААГДАХГҮЙ (сүйрэхгүй)
   const solo = [{ items: [{ qty: 8 }], stage_meta: { clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }];
@@ -15241,27 +15241,27 @@ async function swFetchTests() {
   eq(stagePtsForQty(0), 1, 'оноо: бараагүй захиалга доод шатлалаар');
   ok(stagePtsForQty(100000) === 10, 'оноо: хязгааргүй том ч дээд шатлалаар');
   // Дамжлагын жин — CEO-гийн тогтоосон (PIPELINE-аас)
-  eq(stageWeight('clean'), 1, 'жин: Цэвэрлэх 1');
-  eq(stageWeight('prepare'), 1.5, 'жин: Баглаж/ачих 1.5');
-  eq(stageWeight('dispatch'), 1, 'жин: Бүртгэж гаргах 1');
-  eq(stageWeight('deliver'), 1.5, 'жин: Талбайд буулгах 1.5');
-  eq(stageWeight('setup'), 2, 'жин: Суурилуулах 2');
-  eq(stageWeight('teardown'), 1.5, 'жин: Задлах 1.5');
-  eq(stageWeight('retstart'), 1.5, 'жин: Талбайгаас ачих 1.5');
-  eq(stageWeight('received'), 1, 'жин: Бүртгэж хүлээн авах 1');
+  eq(stageWeight('clean'), 10, 'жин: Цэвэрлэх 10');
+  eq(stageWeight('prepare'), 15, 'жин: Баглаж/ачих 15');
+  eq(stageWeight('dispatch'), 10, 'жин: Бүртгэж гаргах 10');
+  eq(stageWeight('deliver'), 15, 'жин: Талбайд буулгах 15');
+  eq(stageWeight('setup'), 20, 'жин: Суурилуулах 20');
+  eq(stageWeight('teardown'), 15, 'жин: Задлах 15');
+  eq(stageWeight('retstart'), 15, 'жин: Талбайгаас ачих 15');
+  eq(stageWeight('received'), 10, 'жин: Бүртгэж хүлээн авах 10');
   // ⛔ Танихгүй дамжлага чимээгүй 0 болохгүй (шинэ дамжлага нэмэхэд бонус алга болно)
   eq(stageWeight('шинэ_дамжлага'), 1, 'жин: танихгүй дамжлага 1 (чимээгүй 0 болохгүй)');
   // Оноо × жин — суурилуулалт цэвэрлэгээнээс ХОЁР дахин
   const one = (key) => stagePayByPerson([{ items: [{ qty: 12 }], stage_meta: {
     [key]: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09').A;
-  eq(one('clean').pts, 2, 'оноо: 12 бараа × Цэвэрлэх = 2');
-  eq(one('setup').pts, 4, 'оноо: 12 бараа × Суурилуулах = 4');
-  eq(one('prepare').pts, 3, 'оноо: 12 бараа × Баглаж/ачих = 3');
+  eq(one('clean').pts, 20, 'оноо: 12 бараа × Цэвэрлэх = 20');
+  eq(one('setup').pts, 40, 'оноо: 12 бараа × Суурилуулах = 40');
+  eq(one('prepare').pts, 30, 'оноо: 12 бараа × Баглаж/ачих = 30');
   // ⛔ ХАНШ НЭГ ГАЗАР — тохиргоо өөрчлөхөд БҮХ дүн дагаж хөдөлнө
   vm.runInContext("state.appConfig = { stage_pay: { rate: 2000 } };", sandbox);
-  eq(one('clean').total, 4000, 'ханш: тохиргооны ханшаар бодогдоно');
+  eq(one('clean').total, 40000, 'ханш: тохиргооны ханшаар бодогдоно');
   vm.runInContext("state.appConfig = {};", sandbox);
-  eq(one('clean').total, 2 * 1350, 'ханш: тохиргоо авахад кодын нөөц ханш');
+  eq(one('clean').total, 20 * 135, 'ханш: тохиргоо авахад кодын нөөц ханш');
 }
 
 // ═══ АЖЛЫН ЧАНАР = АЛДААНЫ ХАРЬЦАА, ★ БИШ (2026-10-04, CEO) ════════════
@@ -15333,7 +15333,7 @@ async function swFetchTests() {
   eq(set[set.length - 1].key, 'received', 'схем: суурилуулалттайд ч сүүлд тоолно');
   // ⚠ Очиж авахад ЭСРЭГ — харилцагч байхад тоолж, дараа нь байршуулна
   eq(pick[pick.length - 1].key, 'stow', 'схем: очиж авахад сүүлд байршуулна');
-  eq(dlv.reduce((a, r) => a + r.pts, 0), 9, 'схем: хүргэлтийн нийт оноо');
+  eq(dlv.reduce((a, r) => a + r.pts, 0), 90, 'схем: хүргэлтийн нийт оноо (бүхэл тоо, ханш ÷10)');
   // Архив нь ажил биш — схемд орохгүй
   ok(!dlv.some(r => r.key === 'archive'), 'схем: архив дамжлага биш');
   ok(dlv.every(r => r.label && r.cap && r.ev), 'схем: мөр бүр нэр/эрх/нотолгоотой');
@@ -15398,13 +15398,13 @@ async function swFetchTests() {
   const { stageDefs, stageWeight, stagePointRate, stagePayByPerson } = F;
   const defs = stageDefs();
   ok(defs.length >= 8, 'тохиргоо: бүх дамжлага жагсаалтад');
-  ok(defs.some(d => d.key === 'clean' && d.pts === 1), 'тохиргоо: Цэвэрлэх 1 оноо');
+  ok(defs.some(d => d.key === 'clean' && d.pts === 10), 'тохиргоо: Цэвэрлэх 10 оноо');
   ok(defs.some(d => d.key === 'dispatch' && d.ev === 'count'), 'тохиргоо: нотолгооны төрөл харагдана');
   eq(defs.filter(d => d.key === 'dispatch').length, 1, 'тохиргоо: давхардсан дамжлага НЭГ мөр');
   // ⛔ Аппаас тавьсан жин PIPELINE-ийн анхдагчийг ДАРНА
   vm.runInContext("state.appConfig = { stage_pay: { weights: { clean: 3 }, rate: 2000 } };", sandbox);
   eq(stageWeight('clean'), 3, 'тохиргоо: аппаас тавьсан жин ялна');
-  eq(stageWeight('setup'), 2, 'тохиргоо: тавиагүй дамжлага анхдагчаараа');
+  eq(stageWeight('setup'), 20, 'тохиргоо: тавиагүй дамжлага анхдагчаараа');
   eq(stagePointRate(), 2000, 'тохиргоо: ханш аппаас');
   const r = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09').A;
@@ -15415,7 +15415,7 @@ async function swFetchTests() {
   eq(Object.keys(stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09')).length, 0, 'тохиргоо: 0 жин → бонусгүй');
   vm.runInContext("state.appConfig = {};", sandbox);
-  eq(stageWeight('clean'), 1, 'тохиргоо: цэвэрлэгдвэл анхдагч руу буцна');
+  eq(stageWeight('clean'), 10, 'тохиргоо: цэвэрлэгдвэл анхдагч руу буцна');
 }
 
 // ═══ SCAN: модал доторх нарийн тоон талбар `.modal` угтвартай ══════════
@@ -15503,7 +15503,11 @@ async function swFetchTests() {
   ok(/e\.driver \|\| e\.by/.test(db), 'scan: нэмэгдэл жолоочид, хуучин бичлэгт by руу унана');
   // ⛔ Тохиргоо хадгалахад БАТАЛГААЖУУЛАЛТ (бүх сарын бонус дахин бодогдоно)
   const spm = src.slice(src.indexOf('function openPipelineMapModal'), src.indexOf('// ── Дамжлагын АВТОМАТ ажил'));
-  ok(/const ok = await showConfirm\(/.test(spm) && /if \(!ok\) return/.test(spm), 'scan: хадгалахын өмнө баталгаажуулна');
+  /* ⛔ БАТАЛГААЖУУЛАХ ЦОНХ ХАСАГДСАН (2026-10-04, CEO: «дахин баталгаажуулалт
+     асуухгүй»). Оронд нь анхааруулга ХӨЛД ИЛ үлдэнэ — мөнгө хөдөлж байгааг
+     хүн мэдэх ёстой, зөвхөн зогсоохоо больсон. */
+  ok(!/showConfirm\(/.test(spm), 'scan: хадгалахад цонх асуухгүй');
+  ok(/pm-warn/.test(spm), 'scan: мөнгө хөдлөх анхааруулга ил үлдсэн');
   ok(/saveAppConfig\('stage_pay'/.test(spm), 'scan: тохиргоо DB-д хадгалагдана');
   ok(/state\.isCEO/.test(spm), 'scan: зөвхөн захирал тохируулна');
   ok(/pipelineSteps\(/.test(spm), 'scan: жагсаалт ганц эх сурвалжаас');

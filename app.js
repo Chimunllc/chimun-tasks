@@ -13197,7 +13197,9 @@ const DRIVER_BONUS_EACH = 10000;
      дамжлагыг зайлсхийх шалтгаан алга.
    ⛔ **ХАНШ НЭГ ГАЗАР** — `stagePointRate()`. Хоёр газар бичвэл нэг дамжлага
      хоёр үнэтэй болно. Scan-тест хаана. */
-const STAGE_PT_RATE = 1350;   // ₮/оноо — 9 сарын зардлыг хуучин системтэй тэнцүү байлгана
+/* ⚠ ЖИН ×10 → ХАНШ ÷10. Бүхэл тоогоор ажиллах нь CEO-гийн шийдвэр
+   (2026-10-04); мөнгө ХЭВЭЭР (1 × 1350 = 10 × 135). */
+const STAGE_PT_RATE = 135;   // ₮/оноо — 9 сарын зардлыг хуучин системтэй тэнцүү байлгана
 const STAGE_PT_BANDS = [[5, 1], [20, 2], [60, 3.5], [150, 6], [Infinity, 10]];
 const STAGE_FEE_BANDS = [[5, 2000], [20, 4000], [60, 7000], [150, 12000], [Infinity, 20000]];
 const STAGE_FEE_HELPER_SHARE = 0.30;
@@ -25960,18 +25962,18 @@ function orderNeedsSetup(o) {
    ⚠ Суурилуулалт зөвхөн ХҮРГЭЛТТЭЙ захиалгад (`orderPipelineCtx`) — очиж
      авсан бараанд бид угсрахгүй. */
 const PIPELINE = [
-  { key: 'clean',    from: ['reserved', 'preparation', 'cleaning'], to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean',  pts: 1,   ev: 'photo' },
-  { key: 'prepare',  from: ['prepared'],   to: 'ready',      label: '📦 Баглаж/ачсан',       cap: 'orders.prepare',  pts: 1.5, ev: 'photo' },
-  { key: 'dispatch', from: ['ready'],      to: 'delivering', label: '📋 Бүртгэж гаргасан',   cap: 'orders.dispatch', pts: 1,   ev: 'count', dlv: true },
-  { key: 'dispatch', from: ['ready'],      to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch', pts: 1,  ev: 'count', dlv: false },
-  { key: 'deliver',  from: ['delivering'], to: 'installing', label: '🏗 Талбайд буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: true },
-  { key: 'deliver',  from: ['delivering'], to: 'rented',     label: '🏗 Талбайд буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: false },
+  { key: 'clean',    from: ['reserved', 'preparation', 'cleaning'], to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean',  pts: 10,   ev: 'photo' },
+  { key: 'prepare',  from: ['prepared'],   to: 'ready',      label: '📦 Баглаж/ачсан',       cap: 'orders.prepare',  pts: 15, ev: 'photo' },
+  { key: 'dispatch', from: ['ready'],      to: 'delivering', label: '📋 Бүртгэж гаргасан',   cap: 'orders.dispatch', pts: 10,   ev: 'count', dlv: true },
+  { key: 'dispatch', from: ['ready'],      to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch', pts: 10,  ev: 'count', dlv: false },
+  { key: 'deliver',  from: ['delivering'], to: 'installing', label: '🏗 Талбайд буулгасан',  cap: 'orders.deliver',  pts: 15, ev: 'photo', setup: true },
+  { key: 'deliver',  from: ['delivering'], to: 'rented',     label: '🏗 Талбайд буулгасан',  cap: 'orders.deliver',  pts: 15, ev: 'photo', setup: false },
   // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
-  { key: 'setup',    from: ['installing'], to: 'rented',     label: '🔧 Суурилуулсан',       cap: 'orders.setup',    pts: 2,   ev: 'photo' },
-  { key: 'teardown', from: ['rented', 'started'], to: 'teardown',  label: '🧱 Задалсан',    cap: 'orders.setup',    pts: 1.5, ev: 'photo', setup: true },
-  { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Талбайгаас ачсан', cap: 'orders.deliver',  pts: 1.5, ev: 'photo', dlv: true },
-  { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: false },
-  { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Талбайгаас ачсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo' },
+  { key: 'setup',    from: ['installing'], to: 'rented',     label: '🔧 Суурилуулсан',       cap: 'orders.setup',    pts: 20,   ev: 'photo' },
+  { key: 'teardown', from: ['rented', 'started'], to: 'teardown',  label: '🧱 Задалсан',    cap: 'orders.setup',    pts: 15, ev: 'photo', setup: true },
+  { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Талбайгаас ачсан', cap: 'orders.deliver',  pts: 15, ev: 'photo', dlv: true },
+  { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 10, ev: 'count', dlv: false },
+  { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Талбайгаас ачсан',        cap: 'orders.deliver',  pts: 15, ev: 'photo' },
   /* ⛔ ХҮРГЭЛТЭД: ЭХЛЭЭД БАЙРШУУЛНА, ДАРАА НЬ ТООЛНО (2026-10-04, CEO барив).
      Өмнө нь нярав эхэлж тоолдог байсан тул «Буулгаж байршуулах» нь сүүлчийн
      дамжлага болж ХЭН Ч ХЯНАХГҮЙ үлддэг байв. Одоо хоёр тал ижил бүтэцтэй:
@@ -25979,8 +25981,8 @@ const PIPELINE = [
      эсэхийг БА байрандаа тавигдсан эсэхийг нэг дор шалгана.
      ⚠ Замд алдагдсан нь алдагдахгүй — ЖОЛООЧ талбай дээр тоолсон тоо
        («Талбайгаас ачсан») аль хэдийн бүртгэгддэг, няравынх түүнтэй тулгагдана. */
-  { key: 'stow',     from: ['returning'],  to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare',  pts: 1.5, ev: 'photo' },
-  { key: 'received', from: ['stowed'],     to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: true },
+  { key: 'stow',     from: ['returning'],  to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare',  pts: 15, ev: 'photo' },
+  { key: 'received', from: ['stowed'],     to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 10, ev: 'count', dlv: true },
   /* ⛔ БИЕИЙН ХҮЧНИЙ АЖИЛ → `orders.prepare` (агуулахын БҮХ ажилтанд бий),
      `orders.dispatch` БИШ (тэр нь зөвхөн 4 нярав/ахлахад — яг хүнд ажил хийх
      ёсгүй хүмүүс). Буруу эрхэнд тавибал товчийг дарах хүн байхгүй болж
@@ -25988,7 +25990,7 @@ const PIPELINE = [
   /* ⚠ ОЧИЖ АВАХ захиалгад дараалал ЭСРЭГ: харилцагч бараагаа авчирсан мөчид
      нь тоолох ёстой (явсных нь дараа дутуу илэрвэл барих хүн алга). Тиймээс
      тэнд тоолох нь ЭХЭЛЖ, байршуулах нь ДАРАА. `dlv` нөхцөл хоёуланг ялгана. */
-  { key: 'stow',     from: ['returned'],   to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare', pts: 1.5, ev: 'photo', dlv: false },
+  { key: 'stow',     from: ['returned'],   to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare', pts: 15, ev: 'photo', dlv: false },
   { key: 'archive',  from: ['stowed', 'returned', 'stopped'], to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance', pts: 0 },
 ];
 // Захиалгын нөхцөл — урсгалын салаалалт үүгээр шийдэгдэнэ (ЦЭВЭР тулгалтад тестлэгдэнэ).
@@ -26061,7 +26063,7 @@ function openPipelineMapModal() {
         : `<span class="pm-l">${escapeHtml(stageLabel(r))}</span>`}
         <span class="pm-m">${escapeHtml(PMAP_WHO[r.cap] || r.cap)} · ${ctl ? '🔢 тоо' : '📷 зураг'}</span></span>
       ${on
-        ? `<input class="ui-raw pm-w" type="number" step="0.5" min="0" value="${stageWeight(r.key)}"><button class="btn pm-ok">💾</button>`
+        ? `<input class="ui-raw pm-w" type="number" step="1" min="0" value="${stageWeight(r.key)}"><button class="btn pm-ok">💾</button>`
         : `<span class="pm-p">${stageWeight(r.key)}</span>`}</div>`;
   };
   const draw = () => {
@@ -26075,26 +26077,22 @@ function openPipelineMapModal() {
       <div class="pm-list">${steps.map(row).join('<div class="pm-ar">↓</div>')}</div>
       ${can() ? `<details class="pm-gen"><summary>⚙️ Ханш ба хуваарилалт</summary>
         <div class="pm-grow"><span>1 оноо</span><input class="ui-raw pm-in" type="number" step="50" min="1" id="pm-rate" value="${stagePointRate()}"> ₮</div>
-        ${bands.map((b, i) => `<div class="pm-grow"><span>${b[0] === Infinity ? `${bands.length > 1 ? bands[bands.length - 2][0] + 1 : 1}+ бараа` : `≤ ${b[0]} бараа`}</span><input class="ui-raw pm-in" type="number" step="0.5" min="0" data-band="${i}" value="${b[1]}"> оноо</div>`).join('')}
+        ${bands.map((b, i) => `<div class="pm-grow"><span>${b[0] === Infinity ? `${bands.length > 1 ? bands[bands.length - 2][0] + 1 : 1}+ бараа` : `≤ ${b[0]} бараа`}</span><input class="ui-raw pm-in" type="number" step="1" min="0" data-band="${i}" value="${b[1]}"> оноо</div>`).join('')}
         <div class="pm-grow"><span>Хамтрагчийн сан</span><input class="ui-raw pm-in" type="number" step="5" min="0" max="100" id="pm-share" value="${Math.round(stageHelperShare() * 100)}"> %</div>
         <div class="pm-grow"><span>Хамтрагчийн дээд тоо</span><input class="ui-raw pm-in" type="number" step="1" min="1" max="10" id="pm-hmax" value="${stageHelperMax()}"> хүн</div>
         <button class="btn btn-primary pm-gsave" id="pm-gsave">💾 Хадгалах</button></details>` : ''}
       <div class="pm-leg">Хүрээтэй нь <b>няравын хяналтын цэг</b> — өмнөх ажлуудыг тоогоор шалгана.<br>
         Жолоо дамжлага биш: буулгах/ачих цонхонд жолоочийг сонгоно (${fmtMoney(DRIVER_BONUS_EACH)}).
-        ${can() ? '<br>Мөр дээр дарж <b>нэр, оноог</b> засна. Дараалал нь төлвийн гинж тул энд солигддоггүй.' : ''}</div>`;
+        ${can() ? '<br>Мөр дээр дарж <b>нэр, оноог</b> засна. Дараалал нь төлвийн гинж тул энд солигддоггүй.<br><b class="pm-warn">⚠ Оноо/ханш өөрчилмөгц бүх сарын бонус дахин бодогдоно — хаасан сар ч мөн адил.</b>' : ''}</div>`;
     wire();
   };
-  /* ⛔ ХАДГАЛАХ = ГАНЦ ЗАМ. Жин/ханш өөрчлөгдвөл БҮХ сарын бонус дахин
-     бодогдоно (хаасан сар ч) тул баталгаажуулна; зөвхөн НЭР сольсон бол
-     асуухгүй — мөнгө хөдлөхгүй. */
-  const save = async (patch, moneyMoved) => {
+  /* ⛔ БАТАЛГААЖУУЛАХ ЦОНХ ХАСАГДСАН (2026-10-04, CEO: «дахин баталгаажуулалт
+     асуухгүй»). Тохиргоог ээлж дараалан засдаг тул цонх бүрд асуух нь ажлыг
+     удаашруулдаг байв. ⚠ Анхааруулга нь ХӨЛД ИЛ үлдэнэ — мөнгө хөдөлж
+     байгааг хүн мэдэх ёстой, зөвхөн зогсоохоо больсон. */
+  const save = async (patch) => {
     const cfg = Object.assign({}, _stagePayCfg(), patch);
     if (!(Number(cfg.rate || stagePointRate()) > 0)) { showToast('Ханш 0-ээс их байх ёстой', 'warn', 3000); return false; }
-    if (moneyMoved) {
-      const ok = await showConfirm('Бүх сарын бонус шинэ тоогоор дахин бодогдоно — хаасан сар ч мөн адил. Хадгалах уу?',
-        { title: 'Дамжлагын оноо', okText: 'Хадгалах' });
-      if (!ok) return false;
-    }
     try {
       await saveAppConfig('stage_pay', cfg);
       state.appConfig = state.appConfig || {}; state.appConfig.stage_pay = cfg;
@@ -26112,23 +26110,22 @@ function openPipelineMapModal() {
       const el = okb.closest('.pm-st'), lk = el.dataset.lk, key = lk.split('|')[0];
       const r = PIPELINE.find(x => stageLabelKey(x) === lk); if (!r) return;
       const nm = String(el.querySelector('.pm-nm').value || '').trim();
-      const w = Number(el.querySelector('.pm-w').value);
+      const w = Math.round(Number(el.querySelector('.pm-w').value));   // ⚠ оноо БҮХЭЛ тоо (CEO)
       const labels = Object.assign({}, _stagePayCfg().labels || {});
       // Анхдагчтай ижил нэрийг ХАДГАЛАХГҮЙ — код сайжрахад тохиргоо хуучныг барихгүй
       if (nm && nm !== String(r.label)) labels[lk] = nm; else delete labels[lk];
       const weights = Object.assign({}, _stagePayCfg().weights || {});
-      const moved = isFinite(w) && w >= 0 && w !== stageWeight(key);
-      if (moved) weights[key] = w;
-      if (await save({ labels, weights }, moved)) { edit = ''; draw(); render(); }
+      if (isFinite(w) && w >= 0) weights[key] = w;
+      if (await save({ labels, weights })) { edit = ''; draw(); render(); }
     };
     const gs = modal.querySelector('#pm-gsave');
     if (gs) gs.onclick = async () => {
       const bands = stagePtBands();
       const pt_bands = bands.map((b, i) => [b[0] === Infinity ? 999999 : b[0],
-        Number((modal.querySelector(`[data-band="${i}"]`) || {}).value) || 0]);
+        Math.round(Number((modal.querySelector(`[data-band="${i}"]`) || {}).value) || 0)]);
       const num = (sel) => Number((modal.querySelector(sel) || {}).value) || 0;
       if (await save({ pt_bands, rate: num('#pm-rate'), helper_share: Math.min(1, Math.max(0, num('#pm-share') / 100)),
-                       helper_max: Math.max(1, num('#pm-hmax')) }, true)) { draw(); render(); }
+                       helper_max: Math.max(1, num('#pm-hmax')) })) { draw(); render(); }
     };
   };
   modal.innerHTML = `<div class="modal pm-modal">

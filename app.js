@@ -10672,7 +10672,7 @@ function attachOrdersHandlers() {
     const oid = b.dataset.bqAdvance;
     const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
     // app захиалга бол — зураг + өмнөх шатны үнэлгээ модал (архивлахаас бусад)
-    if (o && stageActionFor(String(o.status || ''), to).key !== 'archive') { openStageAdvanceModal(oid, to); return; }
+    if (o && stageActionFor(String(o.status || ''), to, o).key !== 'archive') { openStageAdvanceModal(oid, to); return; }
     const actLabel = (b.textContent || '').trim() || (BQ_STATUS[to] || {}).label || to;
     bqUpdateStatus(oid, to, { confirm: `#${o ? (o.number ?? '') : ''} — «${actLabel}» гэж тэмдэглэх үү?`, okText: actLabel, toast: `${actLabel} ✓` });
   }));
@@ -14587,7 +14587,7 @@ const PERM_MENUS = [
       { key: 'orders.prepare',  label: '📦 Баглаж/ачсан / 🏬 Буулгаж байршуулсан' },
       { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан' },
       { key: 'orders.deliver',  label: '🏗 Талбарт буулгасан / 🚚 Ачиж буцсан' },
-      { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Задалсан' },
+      { key: 'orders.setup',    label: '🏗 Буулгаж суурилуулсан / 🔧 Суурилуулсан / 🧱 Задалсан' },
       { key: 'orders.advance',  label: '🗄 Архивлах' },
       { key: 'orders.skip',     label: '⏭ Шат алгасах (шалтгаантай)' },
       { key: 'orders.revert',   label: '↩ Шат буцаах' },
@@ -26006,14 +26006,20 @@ const PIPELINE = [
   { key: 'prepare',  from: ['prepared'],   to: 'ready',      label: '📦 Баглаж/ачсан',       cap: 'orders.prepare',  pts: 1.5, ev: 'photo' },
   { key: 'dispatch', from: ['ready'],      to: 'delivering', label: '📋 Бүртгэж гаргасан',   cap: 'orders.dispatch', pts: 1,   ev: 'count', dlv: true },
   { key: 'dispatch', from: ['ready'],      to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch', pts: 1,  ev: 'count', dlv: false },
-  { key: 'deliver',  from: ['delivering'], to: 'installing', label: '🏗 Талбарт буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: true },
-  { key: 'deliver',  from: ['delivering'], to: 'rented',     label: '🏗 Талбарт буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: false },
-  // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
+  /* ⛔ БУУЛГАХ + СУУРИЛУУЛАХ = НЭГ ДАМЖЛАГА (2026-10-04, CEO: «хүргэж өгөөд
+     буулгаад ШУУД суурилуулдаг»). Хоёр товч нь нэг тасралтгүй ажлыг хуваадаг
+     байв. ⚠ Бүртгэлийн ЦАГААР нь бүү дүгн — товч хожуу дарагддаг тул
+     «буулгах→суурилуулах 4 цаг» гэсэн ЗӨРҮҮ харагдана; тэр нь бодит
+     хугацаа БИШ. Оноо нь нийлбэр: 1.5 + 2 = 3.5.
+     ⚠ `drv: true` — энэ дамжлага машинаар очдог тул ЖОЛООЧ асуугдана. */
+  { key: 'setup',    from: ['delivering'], to: 'rented',     label: '🏗 Буулгаж суурилуулсан', cap: 'orders.setup',  pts: 3.5, ev: 'photo', setup: true, drv: true },
+  { key: 'deliver',  from: ['delivering'], to: 'rented',     label: '🏗 Талбарт буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: false, drv: true },
+  // Хуучин бичлэг: `installing` төлөвт гацсан захиалга (амьд датаар 0) — зам нээлттэй үлдээнэ
   { key: 'setup',    from: ['installing'], to: 'rented',     label: '🔧 Суурилуулсан',       cap: 'orders.setup',    pts: 2,   ev: 'photo' },
   { key: 'teardown', from: ['rented', 'started'], to: 'teardown',  label: '🧱 Задалсан',    cap: 'orders.setup',    pts: 1.5, ev: 'photo', setup: true },
-  { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Ачиж буцсан', cap: 'orders.deliver',  pts: 1.5, ev: 'photo', dlv: true },
+  { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Ачиж буцсан', cap: 'orders.deliver',  pts: 1.5, ev: 'photo', dlv: true, drv: true },
   { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: false },
-  { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Ачиж буцсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo' },
+  { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Ачиж буцсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo', drv: true },
   { key: 'received', from: ['returning'],  to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count' },
   /* ⛔ БИЕИЙН ХҮЧНИЙ АЖИЛ → `orders.prepare` (агуулахын БҮХ ажилтанд бий),
      `orders.dispatch` БИШ (тэр нь зөвхөн 4 нярав/ахлахад — яг хүнд ажил хийх
@@ -26028,15 +26034,19 @@ function orderPipelineCtx(o) {
   return { dlv, setup: !!(dlv && typeof orderNeedsSetup === 'function' && orderNeedsSetup(o)) };
 }
 // ЦЭВЭР функц — төлөв + нөхцөлөөс дараагийн дамжлага. Тестэд шууд дуудагдана.
-function pipelineNext(status, ctx) {
+function pipelineRow(status, ctx) {
   const st = String(status || ''), c = ctx || {};
   for (const r of PIPELINE) {
     if (r.from.indexOf(st) < 0) continue;
     if (r.dlv !== undefined && r.dlv !== !!c.dlv) continue;
     if (r.setup !== undefined && r.setup !== !!c.setup) continue;
-    return { to: r.to, label: r.label, cap: r.cap };
+    return r;
   }
   return null;
+}
+function pipelineNext(status, ctx) {
+  const r = pipelineRow(status, ctx);
+  return r ? { to: r.to, label: r.label, cap: r.cap } : null;
 }
 function orderNextStep(o) { return pipelineNext((o && o.status) || '', orderPipelineCtx(o)); }
 // Хуучин статик map (легаси/bq картын fallback) — orderNextStep-ийн хүргэлт хувилбар
@@ -26151,7 +26161,7 @@ async function advanceOrderFromTask(task) {
   if (String(o.status) === p.toStatus) return;              // аль хэдийн шилжсэн
   const next = orderNextStep(o); if (!next || next.to !== p.toStatus) return;   // зөвхөн зөв дараагийн алхам
   // Ажлын зургийг захиалгын stage_meta-д хуулж бүх ажилтанд харагдуулна
-  const act = stageActionFor(String(o.status || ''), p.toStatus);
+  const act = stageActionFor(String(o.status || ''), p.toStatus, o);
   const sm = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
   const photos = (task.completion_photos || []).filter(Boolean);
   // by/at-г ҮРГЭЛЖ бичнэ (Гарц KPI нь by-гээр тоолдог) — зураг байвал нэмнэ.
@@ -26176,6 +26186,7 @@ const STAGE_ACTION = {
   'ready>rented':         { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'prepared>delivering':  { key: 'dispatch', label: 'Бүртгэж гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'prepared>rented':      { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
+  // ⚠ Суурилуулалттай бол PIPELINE нь `setup` («Буулгаж суурилуулсан») болгож дарна — `stageActionFor(…, o)`
   'delivering>rented':    { key: 'deliver',  label: 'Талбарт буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
   'delivering>installing':{ key: 'deliver',  label: 'Талбарт буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
   'installing>rented':    { key: 'setup',    label: 'Суурилуулсан',          q: 'Ачаа бүрэн, эвдрэлгүй ирсэн үү?' },
@@ -26191,7 +26202,18 @@ const STAGE_ACTION = {
   'returned>archived':    { key: 'archive',  label: 'Архивлах',              q: null },
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
-function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
+/* ⛔ `from>to` ГАНЦААРАА ХҮРЭЛЦЭХГҮЙ (2026-10-04). Буулгах+суурилуулах
+   нэгдсэнээс хойш `delivering>rented` нь ХОЁР өөр дамжлага болсон:
+   суурилуулалттай бол `setup` (3.5 оноо), эс бол `deliver` (1.5). Захиалга
+   дамжуулбал PIPELINE-ийн мөрөөр (нөхцөлийг мэддэг) шийднэ; дамжуулаагүй
+   бол хуучин map. Эс бөгөөс суурилуулалтын оноо чимээгүй 1.5 болно. */
+function stageActionFor(from, to, o) {
+  const base = STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null };
+  if (!o) return base;
+  const r = pipelineRow(from, orderPipelineCtx(o));
+  if (!r || r.to !== to) return base;
+  return { key: r.key, label: r.label.replace(/^\S+\s/, ''), q: base.q, drv: !!r.drv };
+}
 
 // ── ЭВЕНТИЙН ЗУРАГ (2026-09-17) ─────────────────────────────────────────────
 // Дамжлага шат бүрд зураг аль хэдийн ЗААВАЛ авдаг ч бүгд агуулахын зураг
@@ -26229,7 +26251,7 @@ function showcasePhotos(orders, limit) {
   out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return limit ? out.slice(0, limit) : out;
 }
-const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '📦 Баглаж/ачсан', dispatch: '📋 Бүртгэж гаргасан', deliver: '🏗 Талбарт буулгасан', setup: '🔧 Суурилуулсан', teardown: '🧱 Задалсан', retstart: '🚚 Ачиж буцсан', received: '📋 Бүртгэж хүлээн авсан', stow: '🏬 Буулгаж байршуулсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '📦 Баглаж/ачсан', dispatch: '📋 Бүртгэж гаргасан', deliver: '🏗 Талбарт буулгасан', setup: '🏗 Буулгаж суурилуулсан', teardown: '🧱 Задалсан', retstart: '🚚 Ачиж буцсан', received: '📋 Бүртгэж хүлээн авсан', stow: '🏬 Буулгаж байршуулсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
 // Хамтрагч асуух текст — шат бүрд ТОДОРХОЙ («хамтарсан хүн байсан уу?» гэдэг
@@ -26240,7 +26262,7 @@ const STAGE_HELP_Q = {
   dispatch: 'Ачих/гаргахад хамт ажилласан хүн байсан уу?',
   handover: 'Хүлээлгэж өгөхөд хамт ажилласан хүн байсан уу?',
   deliver:  'Хүргэлтэд хамт явсан хүн байсан уу?',
-  setup:    'Суурилуулалтад хамт ажилласан хүн байсан уу?',
+  setup:    'Буулгаж суурилуулахад хамт ажилласан хүн байсан уу?',
   teardown: 'Буулгалтад хамт ажилласан хүн байсан уу?',
   retstart: 'Буцаан авахад хамт явсан хүн байсан уу?',
   received: 'Хүлээн авахад хамт ажилласан хүн байсан уу?',
@@ -26570,7 +26592,7 @@ function receiveShortfalls(items, got) {
 
 function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
-  const act = stageActionFor(String(o.status || ''), to);
+  const act = stageActionFor(String(o.status || ''), to, o);
   const _ev = stageEvidence(act.key);
   const needPhoto = _ev === 'photo';
   // ── Үнэлгээний зорилтууд (rateTargets) — хяналтын цэг тус бүр өмнөх ажлыг үнэлнэ ──
@@ -26620,7 +26642,7 @@ function openStageAdvanceModal(oid, to) {
   // (KPI/цалин нь өөр журмаар тооцогддог тул хольж болохгүй).
   // ⛔ ЖОЛООЧ — хүргэх/буцаах дамжлагад ХЭН ЖОЛОО БАРЬСАН нь тусад нь бүртгэгдэнэ.
   //   Дамжлагын оноо нь ачаа буулгасан хүнд, 10,000₮-ийн нэмэгдэл нь жолоочид.
-  const _needDriver = act.key === 'deliver' || act.key === 'retstart';
+  const _needDriver = act.drv !== undefined ? !!act.drv : (act.key === 'deliver' || act.key === 'retstart');
   /* ⛔ ТООЛОХ ДАМЖЛАГАД ХАМТРАГЧ АСУУХГҮЙ (2026-10-04, CEO).
      Бүртгэж гаргах/хүлээн авах нь няравын ТООЛОХ ажил — ачааг өмнөх
      («Баглаж/ачих») ба дараах («Буулгаж байршуулах») дамжлагад хийдэг.

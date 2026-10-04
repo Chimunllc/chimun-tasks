@@ -3953,10 +3953,8 @@ need(['orderCustType']);
           case 'ready': return dlv
             ? { to: 'delivering', label: '📦 Агуулахаас гаргасан', cap: 'orders.dispatch' }
             : { to: 'rented', label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch' };
-          /* 2026-10-04: буулгах + суурилуулах НЭГ дамжлага болов (CEO:
-             «хүргэж өгөөд буулгаад шууд суурилуулдаг»). */
           case 'delivering': return setup
-            ? { to: 'rented', label: '🏗 Буулгаж суурилуулсан', cap: 'orders.setup' }
+            ? { to: 'installing', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' }
             : { to: 'rented', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
           case 'installing': return { to: 'rented', label: '🔧 Суурилуулсан', cap: 'orders.setup' };
           case 'rented': case 'started': return setup
@@ -4011,12 +4009,15 @@ need(['orderCustType']);
 
     const step = (o, st) => F.orderNextStep(Object.assign({}, o, { status: st }));
     // Суурилуулалттай: Хүргэсэн → 🔧 Суурилуулах → түрээс → 🧱 Буулгах → буцаан авах
-    /* ⛔ Буулгах+суурилуулах НЭГ ДАРАЛТ (2026-10-04) — `installing` төлөв
-       шинэ урсгалд ҮҮСЭХГҮЙ, зөвхөн хуучин бичлэгийн зам болж үлдсэн. */
-    ok(step(withSet, 'delivering').to === 'rented', 'setup: буулгаж суурилуулаад шууд түрээс');
-    ok(step(withSet, 'delivering').cap === 'orders.setup', 'setup: нэгдсэн дамжлагын эрх = orders.setup');
-    ok(step(withSet, 'delivering').label.includes('Буулгаж суурилуулсан'), 'setup: нэгдсэн нэр');
-    ok(step(withSet, 'installing').to === 'rented', 'setup: хуучин installing зам нээлттэй');
+    /* ⛔ БУУЛГАХ БА СУУРИЛУУЛАХ ТУСДАА (2026-10-04, CEO — нэгтгэж үзээд
+       буцаасан). «Суурилуулсан»/«Задалсан» нь ЗӨВХӨН суурилуулалттай
+       захиалгад гардаг тул нэгтгэвэл тийм захиалгад «Талбарт буулгасан»
+       дамжлага ОГТ гарахгүй болж, хоёр төрлийн захиалга өөр бүтэцтэй болно. */
+    ok(step(withSet, 'delivering').to === 'installing', 'setup: хүргэсний дараа installing');
+    ok(step(withSet, 'delivering').cap === 'orders.deliver', 'буулгах: суурилуулалттайд ч хүргэлтийн эрхээр');
+    eq(F.stageWeight('setup'), 2, 'суурилуулах: 2 оноо (буулгахтай НЭГДЭЭГҮЙ)');
+    ok(step(withSet, 'installing').to === 'rented', 'setup: суурилуулсны дараа түрээс');
+    ok(step(withSet, 'installing').cap === 'orders.setup', 'setup: суурилуулах эрх = orders.setup');
     ok(step(withSet, 'rented').to === 'teardown', 'setup: түрээсийн дараа буулгах');
     ok(step(withSet, 'teardown').to === 'returning', 'setup: буулгасны дараа буцаан авах');
     // Суурилуулалтгүй хүргэлт — хуучин урсгал хэвээр
@@ -4031,7 +4032,7 @@ need(['orderCustType']);
     ok(G('STAGE_ACTION')['installing>rented'].key === 'setup', 'setup: STAGE_ACTION зураглал');
     ok(G('STAGE_ACTION')['rented>teardown'].key === 'teardown', 'teardown: STAGE_ACTION зураглал');
     ok(!!G('STAGE_META_LABEL').setup && !!G('STAGE_META_LABEL').teardown, 'setup: түүхийн нэр бий');
-    ok(F.stageHelpQuestion('setup').includes('суурилуулах'), 'setup: хамтрагчийн асуулт тодорхой');
+    ok(F.stageHelpQuestion('setup').includes('Суурилуулалт'), 'setup: хамтрагчийн асуулт тодорхой');
     const _ss = G('ORDER_STAFF_STATUSES');
     ok(_ss.includes('installing') && _ss.includes('teardown'), 'setup: шинэ төлөв ажилтанд харагдана');
     ok(F.bucketOf('installing') === 'active' && F.bucketOf('teardown') === 'active',
@@ -4054,7 +4055,7 @@ need(['orderCustType']);
     const setO = { note: '⟦DLV|city|0|150000⟧ ⟦SET|1⟧', items: [] };
     const pairs = [
       ['reserved', 'orders.clean'], ['prepared', 'orders.prepare'],
-      ['ready', 'orders.dispatch'], ['delivering', 'orders.setup'],
+      ['ready', 'orders.dispatch'], ['delivering', 'orders.deliver'],
       ['installing', 'orders.setup'], ['rented', 'orders.setup'],
       ['returned', 'orders.prepare'], ['stowed', 'orders.advance'],
     ];
@@ -15235,7 +15236,7 @@ async function swFetchTests() {
   eq(stageWeight('prepare'), 1.5, 'жин: Баглаж/ачих 1.5');
   eq(stageWeight('dispatch'), 1, 'жин: Бүртгэж гаргах 1');
   eq(stageWeight('deliver'), 1.5, 'жин: Талбарт буулгах 1.5');
-  eq(stageWeight('setup'), 3.5, 'жин: Буулгаж суурилуулах 3.5 (1.5 + 2)');
+  eq(stageWeight('setup'), 2, 'жин: Суурилуулах 2');
   eq(stageWeight('teardown'), 1.5, 'жин: Задлах 1.5');
   eq(stageWeight('retstart'), 1.5, 'жин: Ачиж буцах 1.5');
   eq(stageWeight('received'), 1, 'жин: Бүртгэж хүлээн авах 1');
@@ -15245,7 +15246,7 @@ async function swFetchTests() {
   const one = (key) => stagePayByPerson([{ items: [{ qty: 12 }], stage_meta: {
     [key]: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09').A;
   eq(one('clean').pts, 2, 'оноо: 12 бараа × Цэвэрлэх = 2');
-  eq(one('setup').pts, 7, 'оноо: 12 бараа × Буулгаж суурилуулах = 7');
+  eq(one('setup').pts, 4, 'оноо: 12 бараа × Суурилуулах = 4');
   eq(one('prepare').pts, 3, 'оноо: 12 бараа × Баглаж/ачих = 3');
   // ⛔ ХАНШ НЭГ ГАЗАР — тохиргоо өөрчлөхөд БҮХ дүн дагаж хөдөлнө
   vm.runInContext("state.appConfig = { stage_pay: { rate: 2000 } };", sandbox);
@@ -15350,7 +15351,7 @@ async function swFetchTests() {
   // ⛔ Аппаас тавьсан жин PIPELINE-ийн анхдагчийг ДАРНА
   vm.runInContext("state.appConfig = { stage_pay: { weights: { clean: 3 }, rate: 2000 } };", sandbox);
   eq(stageWeight('clean'), 3, 'тохиргоо: аппаас тавьсан жин ялна');
-  eq(stageWeight('setup'), 3.5, 'тохиргоо: тавиагүй дамжлага анхдагчаараа');
+  eq(stageWeight('setup'), 2, 'тохиргоо: тавиагүй дамжлага анхдагчаараа');
   eq(stagePointRate(), 2000, 'тохиргоо: ханш аппаас');
   const r = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09').A;
@@ -15385,7 +15386,7 @@ async function swFetchTests() {
   const fn = src.slice(src.indexOf('function orderNextStep'), src.indexOf('function orderNextStep') + 400);
   ok(/return pipelineNext\(/.test(fn), 'scan: orderNextStep жагсаалтаас уншина');
   eq((fn.match(/switch \(/g) || []).length, 0, 'scan: switch буцаж ирээгүй');
-  const pn = src.slice(src.indexOf('function pipelineRow'), src.indexOf('function orderNextStep'));
+  const pn = src.slice(src.indexOf('function pipelineNext'), src.indexOf('function orderNextStep'));
   ok(/r\.dlv !== undefined/.test(pn) && /r\.setup !== undefined/.test(pn), 'scan: нөхцөл заагаагүй мөр хоёуланд тохирно');
   ok(/return null/.test(pn), 'scan: танихгүй төлөвт дамжлага зохиохгүй');
   // ⛔ ХАНШ НЭГ ГАЗАР — хоёр газар бичвэл нэг дамжлага хоёр үнэтэй болно

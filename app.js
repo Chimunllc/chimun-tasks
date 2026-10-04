@@ -27685,7 +27685,7 @@ async function openOrderCmpModal(id) {
   const cur = parseOrderCmp(o.note);
   const total = Number(o.total_mnt) || 0;
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:460px;">
+  modal.innerHTML = `<div class="modal cmp-modal">
     <h2>↩️ Буулгалт бүртгэх</h2>
     <p class="amo-hint">#${escapeHtml(String(o.number || ''))} · ${escapeHtml(o.customer || '')} · нийт <b>${fmtMoney(total)}</b><br>
       Манай буруугаас өгсөн хөнгөлөлт. Энэ нь <b>зардал биш, орлогын бууралт</b>.<br>
@@ -27698,9 +27698,9 @@ async function openOrderCmpModal(id) {
       <div id="cmp-st">Дүн, огноо автоматаар уншигдана. Чимунээс ГАРСАН гүйлгээ байх ёстой.</div>
     </label>
     <div id="cmp-got"></div>
-    <div class="modal-actions" style="justify-content:space-between;">
-      <button class="btn" id="cmp-clear"${cur ? '' : ' hidden'} style="color:var(--danger);">Буулгалт хасах</button>
-      <span style="display:flex;gap:8px;"><button class="btn" id="cmp-cancel">Болих</button><button class="btn btn-primary" id="cmp-save" disabled style="opacity:.45;cursor:not-allowed;">Хадгалах</button></span>
+    <div class="modal-actions">
+      <button class="btn cmp-clear"${cur ? '' : ' hidden'} id="cmp-clear">Буулгалт хасах</button>
+      <span class="cmp-btns"><button class="btn" id="cmp-cancel">Болих</button><button class="btn btn-primary cmp-save" id="cmp-save" disabled>Хадгалах</button></span>
     </div></div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
@@ -27708,7 +27708,8 @@ async function openOrderCmpModal(id) {
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const saveBtn = modal.querySelector('#cmp-save'), st = modal.querySelector('#cmp-st'), got = modal.querySelector('#cmp-got');
   let rec = null;
-  const enable = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
+  // Идэвхгүй төрх = `.cmp-save:disabled` (CSS), JS-ээс style бичихгүй — `.bqp-save` -тай ижил арга.
+  const enable = (on) => { saveBtn.disabled = !on; };
   modal.querySelector('#cmp-pdf').addEventListener('change', async (e) => {
     const file = (e.target.files || [])[0]; e.target.value = ''; if (!file) return;
     st.textContent = `📄 ${file.name} уншиж байна…`; st.style.color = 'var(--muted)';
@@ -27953,10 +27954,10 @@ function openOrderReceipts(oid) {
   if (list.length === 1) { openPaidReceiptDetail(oid, 0); return; }
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
-  modal.innerHTML = `<div class="modal" style="max-width:420px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">🧾 Банкны баримтууд (${list.length})</h2><button class="btn" id="orc-x" style="padding:5px 10px;">✕</button></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Нийт төлсөн ${fmtMoney(o.paid_mnt || 0)} — ${list.length} гүйлгээгээр. Аль нэгийг дарж эх PDF-ийг харна.</div>
-    <div style="display:flex;flex-direction:column;gap:6px;">${list.map((r, i) => `<div class="paid-rcpt-row clickable" data-orc-open="${i}" role="button" tabindex="0" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || ('Баримт ' + (i + 1)))}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>
+  modal.innerHTML = `<div class="modal orc-modal">
+    <div class="prc-head"><h2>🧾 Банкны баримтууд (${list.length})</h2><button class="btn btn-sm" id="orc-x">✕</button></div>
+    <div class="orc-sub">Нийт төлсөн ${fmtMoney(o.paid_mnt || 0)} — ${list.length} гүйлгээгээр. Аль нэгийг дарж эх PDF-ийг харна.</div>
+    <div class="orc-list">${list.map((r, i) => `<div class="paid-rcpt-row clickable" data-orc-open="${i}" role="button" tabindex="0"><span class="prr-name">🧾 ${escapeHtml(r.sender || ('Баримт ' + (i + 1)))}${r.memo ? ` · <span class="prr-memo">${escapeHtml(r.memo)}</span>` : ''}</span><span class="prr-go">Харах ›</span></div>`).join('')}</div>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
@@ -30375,7 +30376,7 @@ function openRefundModal(oid) {
   modal.className = 'modal-bg';
   modal.id = 'bq-refund-modal';
   modal._file = null;
-  modal.innerHTML = `<div class="modal" style="max-width:430px;">
+  modal.innerHTML = `<div class="modal rfd-modal">
     <h2>↩ Буцаан олгох — #${o.number ?? ''}</h2>
     <div class="rf-sum"><div>Төлсөн дүн: <b>${fmtMoney(paid)}</b></div>${prevRf ? `<div>Өмнө буцаасан: ${fmtMoney(prevRf.amount)}</div>` : ''}</div>
     ${srcAccts.length ? `<div class="rf-src">
@@ -30397,7 +30398,7 @@ function openRefundModal(oid) {
     </label>
     <label class="dmg-amt-l">Тэмдэглэл (шалтгаан)</label>
     <textarea id="rf-note" class="ui-raw" rows="2" placeholder="ж: захиалга цуцлагдсан, илүү төлөлт буцаав"></textarea>
-    <div class="modal-actions" style="margin-top:16px;">
+    <div class="modal-actions">
       <button class="btn" id="rf-cancel">Болих</button>
       <button class="btn btn-primary" id="rf-save">↩ Буцаан олгосныг бүртгэх</button>
     </div>
@@ -36165,7 +36166,7 @@ async function openOrderNoteModal(id) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
   const notes = orderNotesOf(o);
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:480px;">
+  modal.innerHTML = `<div class="modal onote-modal">
     <h2>📝 Тэмдэглэл</h2>
     <p class="amo-hint">#${escapeHtml(String(o.number || ''))} · ${escapeHtml(o.customer || '')}<br>
       Бичсэн хүн, огноо автоматаар хадгалагдана. Хуучин тэмдэглэл дарагдахгүй.</p>

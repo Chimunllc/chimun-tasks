@@ -88,6 +88,13 @@
     --rf-thumb-min: 72px;
     --rf-rm: 20px;
 
+    /* Захиалгын нарийн цонхнууд — өмнө нь inline style="max-width:…" байв.
+       ⚠ Хэрэглэхдээ ХОЁР класс (`.modal.xxx-modal`) — мобайлын `.modal` дүрмээс давна. */
+    --cmp-modal-w: 460px;     /* ↩️ Буулгалт бүртгэх */
+    --orc-modal-w: 420px;     /* 🧾 Банкны баримтуудын жагсаалт */
+    --rfd-modal-w: 430px;     /* ↩ Буцаан олгох */
+    --onote-modal-w: 480px;   /* 📝 Захиалгын тэмдэглэл */
+
     /* ── РАДИУС ── */
     --r-sm: 6px;
     --r-md: 8px;
@@ -5630,6 +5637,24 @@ body.role-daily #add-project { display: none !important; }
 .prc-acts { flex-wrap: wrap; }
 .prc-pdf { color: var(--accent, #7c3aed); }
 
+/* ── 🧾 Олон баримтын СОНГОЛТ (openOrderReceipts) ──
+   Толгой нь `.prc-head`-ийг ДАХИН ашиглана (ижил бүтэц — гарчиг + ✕ товч),
+   шинэ угтвар үүсгэхгүй. Мөрийн төрх нь `.paid-rcpt-row` дээр (хоёр газар
+   хуваалцдаг hook тул угтварыг `prr-` гэж нэрлэв). */
+.modal.orc-modal { max-width: var(--orc-modal-w); }
+.orc-sub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-2); }
+.orc-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.paid-rcpt-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--panel); font-size: var(--fs-sm); cursor: pointer;
+}
+/* Илгээгчийн нэр нэг эгнээнд — урт нэр ✕ «Харах ›»-ийг түлхэхгүй */
+.prr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prr-memo { color: var(--muted); }
+.prr-go { color: var(--accent, #7c3aed); flex-shrink: 0; }
+
 /* ── НӨАТ задаргаа — мөр дарахад баримтууд гарна ──
    Угтвар `vat-click` / `vatl-`. Шинэ угтвар авахын өмнө давхцлыг шалга
    (`grep -o '^\.xx-[a-z-]*' styles.css`) — 2026-09-04-нд `sc-` давхцаж эвдэрсэн. */
@@ -7131,6 +7156,19 @@ select.no-asar-len {
 .cmp-drop #cmp-st { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; line-height: 1.5; }
 .cmp-got { border: 1px solid var(--warn); border-radius: 9px; padding: 9px 11px; font-size: var(--fs-md); margin-bottom: var(--space-3); line-height: 1.6; }
 .cmp-prev { color: var(--muted); font-size: var(--fs-sm); }
+/* Буулгалтын цонх — өмнө нь 5 inline style= байсныг класс болгов (2026-10-04).
+   ⚠ «Буулгалт хасах» товч нь `.modal-actions`-ийн хүчлэгдсэн
+     `justify-content:flex-end`-ээс болж ҮРГЭЛЖ баруун талд байсан — хуучин
+     inline `justify-content:space-between` ҮХМЭЛ байсан тул зүгээр хасав
+     (класс болгож дахин бичвэл хүчлэгч шаардана — тэр нь хориотой). */
+.modal.cmp-modal { max-width: var(--cmp-modal-w); }
+.cmp-clear { color: var(--danger); }
+.cmp-btns { display: flex; gap: var(--space-2); }
+.cmp-save:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Буцаан олгох ба захиалгын тэмдэглэлийн цонхны өргөн */
+.modal.rfd-modal { max-width: var(--rfd-modal-w); }
+.modal.onote-modal { max-width: var(--onote-modal-w); }
 
 
 .sum-lead { color: var(--muted); }

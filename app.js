@@ -13202,7 +13202,14 @@ const DRIVER_BONUS_EACH = 10000;
 const STAGE_PT_RATE = 135;   // ₮/оноо — 9 сарын зардлыг хуучин системтэй тэнцүү байлгана
 const STAGE_PT_BANDS = [[5, 1], [20, 2], [60, 3.5], [150, 6], [Infinity, 10]];
 const STAGE_FEE_BANDS = [[5, 2000], [20, 4000], [60, 7000], [150, 12000], [Infinity, 20000]];
-const STAGE_FEE_HELPER_SHARE = 0.30;
+/* ⛔ ДАМЖЛАГЫН САН ТОГТМОЛ, ДОТРОО ХУВААГДАНА (2026-10-04, CEO: «нийт
+   өөрчлөгдөхгүй, харин хүн бүр өөр өөр байх ёстой»). Өмнө нь хамтрагчийн
+   30% нь НЭМЭЛТ байсан тул нэг л ажил хэдэн хүн бүртгэснээс хамаарч өөр
+   үнэтэй болдог байв — 30 бараа баглах нь 1 хүнтэй 7,088₮, 2 хүнтэй 9,214₮.
+   Одоо: сан = дамжлагын оноо (хэвээр), хариуцсан хүн 1.3 нэгж, бусад 1.0.
+   ⚠ СУЛ ТАЛ: хамтрагчаа НУУВАЛ дарсан хүн бүтэн санг авна. Үүнийг барих нь
+     ажилтанд өөрийн оноог харуулж, орхигдсоныг мэдээлүүлэх зам. */
+const STAGE_LEAD_WEIGHT = 1.3;
 const STAGE_FEE_HELPER_MAX = 4;
 // Биеийн хүчний шатууд. ⛔ `discount`/`revert` мэт бичиг цаасны шат ОРОХГҮЙ — ачаа зөөгөөгүй.
 const STAGE_FEE_STAGES = ['clean', 'prepare', 'dispatch', 'deliver', 'setup', 'teardown', 'retstart', 'received', 'stow'];
@@ -13215,7 +13222,7 @@ function stageFeeBands() {
   out[out.length - 1][0] = Infinity;   // хамгийн дээд шатлал ҮРГЭЛЖ хязгааргүй — эс бол том захиалга 0₮ болно
   return out;
 }
-function stageHelperShare() { const v = Number(_stagePayCfg().helper_share); return (v >= 0 && v <= 1) ? v : STAGE_FEE_HELPER_SHARE; }
+function stageLeadWeight() { const v = Number(_stagePayCfg().lead_weight); return (v >= 1 && v <= 5) ? v : STAGE_LEAD_WEIGHT; }
 function stageHelperMax() { const v = Number(_stagePayCfg().helper_max); return (v >= 1) ? Math.floor(v) : STAGE_FEE_HELPER_MAX; }
 // Барааны тоогоор шатлалын хөлс. Тоо нь 0 (бараагүй захиалга) бол хамгийн доод шатлал.
 function stageFeeForQty(qty, bands) {
@@ -13341,7 +13348,7 @@ function defectStats(orders, month) {
 /* Сарын дамжлагын бонус — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
    Буцаах: { key: {led, helped, qty, ledFee, helperFee, total} } */
 function stagePayByPerson(orders, month) {
-  const bands = stagePtBands(), share = stageHelperShare(), hmax = stageHelperMax(), rate = stagePointRate();
+  const bands = stagePtBands(), lead = stageLeadWeight(), hmax = stageHelperMax(), rate = stagePointRate();
   const out = {};
   const bump = (k, p, fld, cntFld) => {
     if (!k) return;
@@ -13360,12 +13367,14 @@ function stagePayByPerson(orders, month) {
       const pts = stagePtsForQty(qty, bands) * stageWeight(key);
       if (pts <= 0) continue;   // жолоо г.м. бонусгүй дамжлага
       const by = e.by ? String(e.by) : '';
-      if (by) { bump(by, pts, 'ledPts', 'led'); out[by].qty += qty; }
-      const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String).filter(Boolean).slice(0, hmax);
-      if (hs.length && share > 0) {
-        const each = pts * share / hs.length;
-        hs.forEach(h => bump(h, each, 'helperPts', 'helped'));
-      }
+      const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String).filter(Boolean)
+        .filter(h => h !== by).slice(0, hmax);
+      /* Сан ТОГТМОЛ: нэгж = хариуцсан 1.3 + хамтрагч тус бүр 1.0. Хүн олшрох
+         тусам хүн бүрийн хувь буурна, НИЙТ дүн хөдлөхгүй. */
+      const units = (by ? lead : 0) + hs.length;
+      if (units <= 0) continue;
+      if (by) { bump(by, pts * lead / units, 'ledPts', 'led'); out[by].qty += qty; }
+      hs.forEach(h => bump(h, pts / units, 'helperPts', 'helped'));
     }
   }
   Object.keys(out).forEach(k => {
@@ -26078,7 +26087,7 @@ function openPipelineMapModal() {
       ${can() ? `<details class="pm-gen"><summary>⚙️ Ханш ба хуваарилалт</summary>
         <div class="pm-grow"><span>1 оноо</span><input class="ui-raw pm-in" type="number" step="50" min="1" id="pm-rate" value="${stagePointRate()}"> ₮</div>
         ${bands.map((b, i) => `<div class="pm-grow"><span>${b[0] === Infinity ? `${bands.length > 1 ? bands[bands.length - 2][0] + 1 : 1}+ бараа` : `≤ ${b[0]} бараа`}</span><input class="ui-raw pm-in" type="number" step="1" min="0" data-band="${i}" value="${b[1]}"> оноо</div>`).join('')}
-        <div class="pm-grow"><span>Хамтрагчийн сан</span><input class="ui-raw pm-in" type="number" step="5" min="0" max="100" id="pm-share" value="${Math.round(stageHelperShare() * 100)}"> %</div>
+        <div class="pm-grow"><span>Хариуцсан хүний жин</span><input class="ui-raw pm-in" type="number" step="0.1" min="1" max="5" id="pm-lead" value="${stageLeadWeight()}"> ×</div>
         <div class="pm-grow"><span>Хамтрагчийн дээд тоо</span><input class="ui-raw pm-in" type="number" step="1" min="1" max="10" id="pm-hmax" value="${stageHelperMax()}"> хүн</div>
         <button class="btn btn-primary pm-gsave" id="pm-gsave">💾 Хадгалах</button></details>` : ''}
       <div class="pm-leg">Хүрээтэй нь <b>няравын хяналтын цэг</b> — өмнөх ажлуудыг тоогоор шалгана.<br>
@@ -26124,7 +26133,7 @@ function openPipelineMapModal() {
       const pt_bands = bands.map((b, i) => [b[0] === Infinity ? 999999 : b[0],
         Math.round(Number((modal.querySelector(`[data-band="${i}"]`) || {}).value) || 0)]);
       const num = (sel) => Number((modal.querySelector(sel) || {}).value) || 0;
-      if (await save({ pt_bands, rate: num('#pm-rate'), helper_share: Math.min(1, Math.max(0, num('#pm-share') / 100)),
+      if (await save({ pt_bands, rate: num('#pm-rate'), lead_weight: Math.min(5, Math.max(1, num('#pm-lead'))),
                        helper_max: Math.max(1, num('#pm-hmax')) })) { draw(); render(); }
     };
   };

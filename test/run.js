@@ -2396,8 +2396,8 @@ function finish() {
   ok(!LEG.delivering, 'төлөв: delivering legacy зураглалаас гарсан');
   ok(!LEG.returning,  'төлөв: returning legacy зураглалаас гарсан');
   eq(BQS.delivering.label, 'Агуулахаас гарсан', 'нэр: delivering');
-  eq(BQS.returning.label,  'Ачиж буцсан',  'нэр: returning');
-  eq(BQS.installing.label, 'Талбарт буулгасан', 'нэр: installing');
+  eq(BQS.returning.label,  'Талбайгаас ачсан',  'нэр: returning');
+  eq(BQS.installing.label, 'Талбайд буулгасан', 'нэр: installing');
   eq(BQS.teardown.label,   'Задалсан', 'нэр: teardown');
   ok(STF.includes('delivering') && STF.includes('returning'), 'ажилтан: шинэ шатууд харагдана');
 }
@@ -4011,7 +4011,7 @@ need(['orderCustType']);
     // Суурилуулалттай: Хүргэсэн → 🔧 Суурилуулах → түрээс → 🧱 Буулгах → буцаан авах
     /* ⛔ БУУЛГАХ БА СУУРИЛУУЛАХ ТУСДАА (2026-10-04, CEO — нэгтгэж үзээд
        буцаасан). «Суурилуулсан»/«Задалсан» нь ЗӨВХӨН суурилуулалттай
-       захиалгад гардаг тул нэгтгэвэл тийм захиалгад «Талбарт буулгасан»
+       захиалгад гардаг тул нэгтгэвэл тийм захиалгад «Талбайд буулгасан»
        дамжлага ОГТ гарахгүй болж, хоёр төрлийн захиалга өөр бүтэцтэй болно. */
     ok(step(withSet, 'delivering').to === 'installing', 'setup: хүргэсний дараа installing');
     ok(step(withSet, 'delivering').cap === 'orders.deliver', 'буулгах: суурилуулалттайд ч хүргэлтийн эрхээр');
@@ -14045,7 +14045,7 @@ async function swFetchTests() {
   const sumTotal = Object.keys(ri).reduce((t, k) => t + ri[k].total, 0);
   const sumParts = Object.keys(ri).reduce((t, k) => t + ri[k].ledFee + ri[k].helperFee, 0);
   eq(sumTotal, sumParts, 'ИНВАРИАНТ: нийт хөлс = удирдсан + хамтрагч');
-  // Цэвэрлэх(345 бараа) = 10 оноо × жин 1; Талбарт буулгах(2 бараа) = 1 оноо × жин 1.5
+  // Цэвэрлэх(345 бараа) = 10 оноо × жин 1; Талбайд буулгах(2 бараа) = 1 оноо × жин 1.5
   eq(ri.A.ledPts + ri.B.ledPts, 10 + 1.5, 'ИНВАРИАНТ: удирдсаны оноо = 10 + 1.5');
 
   // Хамтрагчгүй шат — 30%-ийн сан хэнд ч ХУВААГДАХГҮЙ (сүйрэхгүй)
@@ -15235,10 +15235,10 @@ async function swFetchTests() {
   eq(stageWeight('clean'), 1, 'жин: Цэвэрлэх 1');
   eq(stageWeight('prepare'), 1.5, 'жин: Баглаж/ачих 1.5');
   eq(stageWeight('dispatch'), 1, 'жин: Бүртгэж гаргах 1');
-  eq(stageWeight('deliver'), 1.5, 'жин: Талбарт буулгах 1.5');
+  eq(stageWeight('deliver'), 1.5, 'жин: Талбайд буулгах 1.5');
   eq(stageWeight('setup'), 2, 'жин: Суурилуулах 2');
   eq(stageWeight('teardown'), 1.5, 'жин: Задлах 1.5');
-  eq(stageWeight('retstart'), 1.5, 'жин: Ачиж буцах 1.5');
+  eq(stageWeight('retstart'), 1.5, 'жин: Талбайгаас ачих 1.5');
   eq(stageWeight('received'), 1, 'жин: Бүртгэж хүлээн авах 1');
   // ⛔ Танихгүй дамжлага чимээгүй 0 болохгүй (шинэ дамжлага нэмэхэд бонус алга болно)
   eq(stageWeight('шинэ_дамжлага'), 1, 'жин: танихгүй дамжлага 1 (чимээгүй 0 болохгүй)');
@@ -15320,7 +15320,7 @@ async function swFetchTests() {
   eq(stageEvidence('dispatch'), 'count', 'нотолгоо: Бүртгэж гаргах = тоо');
   eq(stageEvidence('received'), 'count', 'нотолгоо: Бүртгэж хүлээн авах = тоо');
   eq(stageEvidence('clean'), 'photo', 'нотолгоо: Цэвэрлэх = зураг');
-  eq(stageEvidence('deliver'), 'photo', 'нотолгоо: Талбарт буулгах = зураг');
+  eq(stageEvidence('deliver'), 'photo', 'нотолгоо: Талбайд буулгах = зураг');
   eq(stageEvidence('archive'), '', 'нотолгоо: Архивлахад шаардлагагүй');
   // ⛔ Танихгүй дамжлага → зураг (хамгаалалт сулрахгүй)
   eq(stageEvidence('шинэ_дамжлага'), 'photo', 'нотолгоо: танихгүй дамжлага зурагтай');

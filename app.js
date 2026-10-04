@@ -14586,7 +14586,7 @@ const PERM_MENUS = [
       { key: 'orders.clean',    label: '🧹 Цэвэрлэсэн' },
       { key: 'orders.prepare',  label: '📦 Баглаж/ачсан / 🏬 Буулгаж байршуулсан' },
       { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан' },
-      { key: 'orders.deliver',  label: '🏗 Талбарт буулгасан / 🚚 Ачиж буцсан' },
+      { key: 'orders.deliver',  label: '🏗 Талбайд буулгасан / 🚚 Талбайгаас ачсан' },
       { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Задалсан' },
       { key: 'orders.advance',  label: '🗄 Архивлах' },
       { key: 'orders.skip',     label: '⏭ Шат алгасах (шалтгаантай)' },
@@ -25838,9 +25838,9 @@ const BQ_STATUS = {
   ready:       { label: 'Баглаж/ачсан',  dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
   delivering:  { label: 'Агуулахаас гарсан', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
-  installing:  { label: 'Талбарт буулгасан', dot: '#EA580C', bg: '#FFEDD5', tx: '#9A3412' },
+  installing:  { label: 'Талбайд буулгасан', dot: '#EA580C', bg: '#FFEDD5', tx: '#9A3412' },
   teardown:    { label: 'Задалсан',       dot: '#A16207', bg: '#FEF9C3', tx: '#854D0E' },
-  returning:   { label: 'Ачиж буцсан',    dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
+  returning:   { label: 'Талбайгаас ачсан',    dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
   returned:    { label: 'Хүлээн авсан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   stowed:      { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
@@ -25858,8 +25858,8 @@ const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering',
 const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', started: 'rented' };
 // Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
-// Хүргэлттэй: Захиалсан→[Цэвэрлэсэн]→[Баглаж/ачсан]→[Бүртгэж гаргасан]→[Талбарт буулгасан]
-//   →(Суурилуулсан)→Түрээсэнд→(Задалсан)→[Ачиж буцсан]→[Бүртгэж хүлээн авсан]→[Буулгаж байршуулсан]→Архив
+// Хүргэлттэй: Захиалсан→[Цэвэрлэсэн]→[Баглаж/ачсан]→[Бүртгэж гаргасан]→[Талбайд буулгасан]
+//   →(Суурилуулсан)→Түрээсэнд→(Задалсан)→[Талбайгаас ачсан]→[Бүртгэж хүлээн авсан]→[Буулгаж байршуулсан]→Архив
 // Очиж авах:   … Гарахад бэлэн→[Олгосон]→Дууссан
 // Хуучин захиалгад хүргэлт нь ТУСДАА бараа мөр болж орсон (⟦DLV⟧ token/хаяггүй).
 // Нэрээр таниж эдгээрийг ч хүргэлттэй гэж үзнэ (зөвхөн хүргэлт/тээвэр — суурилуулалт/оператор БИШ).
@@ -26006,14 +26006,14 @@ const PIPELINE = [
   { key: 'prepare',  from: ['prepared'],   to: 'ready',      label: '📦 Баглаж/ачсан',       cap: 'orders.prepare',  pts: 1.5, ev: 'photo' },
   { key: 'dispatch', from: ['ready'],      to: 'delivering', label: '📋 Бүртгэж гаргасан',   cap: 'orders.dispatch', pts: 1,   ev: 'count', dlv: true },
   { key: 'dispatch', from: ['ready'],      to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch', pts: 1,  ev: 'count', dlv: false },
-  { key: 'deliver',  from: ['delivering'], to: 'installing', label: '🏗 Талбарт буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: true },
-  { key: 'deliver',  from: ['delivering'], to: 'rented',     label: '🏗 Талбарт буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: false },
+  { key: 'deliver',  from: ['delivering'], to: 'installing', label: '🏗 Талбайд буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: true },
+  { key: 'deliver',  from: ['delivering'], to: 'rented',     label: '🏗 Талбайд буулгасан',  cap: 'orders.deliver',  pts: 1.5, ev: 'photo', setup: false },
   // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
   { key: 'setup',    from: ['installing'], to: 'rented',     label: '🔧 Суурилуулсан',       cap: 'orders.setup',    pts: 2,   ev: 'photo' },
   { key: 'teardown', from: ['rented', 'started'], to: 'teardown',  label: '🧱 Задалсан',    cap: 'orders.setup',    pts: 1.5, ev: 'photo', setup: true },
-  { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Ачиж буцсан', cap: 'orders.deliver',  pts: 1.5, ev: 'photo', dlv: true },
+  { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Талбайгаас ачсан', cap: 'orders.deliver',  pts: 1.5, ev: 'photo', dlv: true },
   { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: false },
-  { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Ачиж буцсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo' },
+  { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Талбайгаас ачсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo' },
   { key: 'received', from: ['returning'],  to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count' },
   /* ⛔ БИЕИЙН ХҮЧНИЙ АЖИЛ → `orders.prepare` (агуулахын БҮХ ажилтанд бий),
      `orders.dispatch` БИШ (тэр нь зөвхөн 4 нярав/ахлахад — яг хүнд ажил хийх
@@ -26176,14 +26176,14 @@ const STAGE_ACTION = {
   'ready>rented':         { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'prepared>delivering':  { key: 'dispatch', label: 'Бүртгэж гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'prepared>rented':      { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'delivering>rented':    { key: 'deliver',  label: 'Талбарт буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
-  'delivering>installing':{ key: 'deliver',  label: 'Талбарт буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'delivering>rented':    { key: 'deliver',  label: 'Талбайд буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'delivering>installing':{ key: 'deliver',  label: 'Талбайд буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
   'installing>rented':    { key: 'setup',    label: 'Суурилуулсан',          q: 'Ачаа бүрэн, эвдрэлгүй ирсэн үү?' },
   'rented>teardown':      { key: 'teardown', label: 'Задалсан',             q: null },
-  'teardown>returning':   { key: 'retstart', label: 'Ачиж буцсан',      q: 'Буулгалт эмх цэгцтэй хийгдсэн үү?' },
-  'rented>returning':     { key: 'retstart', label: 'Ачиж буцсан',      q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
+  'teardown>returning':   { key: 'retstart', label: 'Талбайгаас ачсан',      q: 'Буулгалт эмх цэгцтэй хийгдсэн үү?' },
+  'rented>returning':     { key: 'retstart', label: 'Талбайгаас ачсан',      q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
   'rented>returned':      { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'started>returning':    { key: 'retstart', label: 'Ачиж буцсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
+  'started>returning':    { key: 'retstart', label: 'Талбайгаас ачсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
   'started>returned':     { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
   'returning>returned':   { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
   'returned>stowed':      { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, зөв тоологдсон уу?' },
@@ -26229,7 +26229,7 @@ function showcasePhotos(orders, limit) {
   out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return limit ? out.slice(0, limit) : out;
 }
-const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '📦 Баглаж/ачсан', dispatch: '📋 Бүртгэж гаргасан', deliver: '🏗 Талбарт буулгасан', setup: '🔧 Суурилуулсан', teardown: '🧱 Задалсан', retstart: '🚚 Ачиж буцсан', received: '📋 Бүртгэж хүлээн авсан', stow: '🏬 Буулгаж байршуулсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '📦 Баглаж/ачсан', dispatch: '📋 Бүртгэж гаргасан', deliver: '🏗 Талбайд буулгасан', setup: '🔧 Суурилуулсан', teardown: '🧱 Задалсан', retstart: '🚚 Талбайгаас ачсан', received: '📋 Бүртгэж хүлээн авсан', stow: '🏬 Буулгаж байршуулсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
 // Хамтрагч асуух текст — шат бүрд ТОДОРХОЙ («хамтарсан хүн байсан уу?» гэдэг

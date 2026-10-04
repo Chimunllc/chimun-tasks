@@ -15386,6 +15386,10 @@ async function swFetchTests() {
   /* ⛔ Тоолох дамжлагад хамтрагч асуухгүй — ачааг өмнөх/дараах дамжлагад
      хийдэг тул нэг ачилт хоёр удаа шагнагдаж байв (9 сард 51-ийн 30). */
   ok(/_helpAsk = stageEvidence\(act\.key\) !== 'count'/.test(md), 'scan: тоолох дамжлагад хамтрагч асуухгүй');
+  /* ⛔ Асуулт бүр ДУГААРТАЙ хэсэг — шинэ блокийг зураасаар наавал
+     ажилтан хэдэн зүйл бөглөхөө дахин мэдэхгүй болно (2026-10-04 CEO). */
+  ok((md.match(/_sec\('/g) || []).length >= 5, 'scan: цонхны блокууд _sec()-ээр угсарна');
+  ok(!/border-top:1px dashed var\(--border\)/.test(md), 'scan: тасархай зураасан тусгаарлагч буцаж ирээгүй');
   ok(/_helpStaff = !_helpAsk \?/.test(md), 'scan: хамтрагчийн жагсаалт түүгээр хаагдана');
   ok(!/rateTargets\.push\(\{ ratee: _smNow\.clean\.by/.test(md), 'scan: цэвэрлэгээнд ★ буцаж ирээгүй');
   const ds = src.slice(src.indexOf('function defectStats'), src.indexOf('/* Сарын дамжлагын бонус'));

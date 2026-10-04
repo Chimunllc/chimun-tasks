@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15303,6 +15303,36 @@ async function swFetchTests() {
   eq(Object.keys(defectStats([mk(true, undefined)], '2026-08')).length, 0, 'чанар: өөр сар тоологдохгүй');
 }
 
+// ═══ «БИ Ч ОРОЛЦСОН» МЭДҮҮЛЭГ (2026-10-04, CEO) ════════════════════════
+{
+  const { pendingStageClaims, stageClaims, stageHasPerson } = F;
+  eq(stageClaims(null).length, 0, 'мэдүүлэг: байхгүй бол хоосон');
+  eq(stageClaims({ claims: ['A', '', null, 'B'] }).join(','), 'A,B', 'мэдүүлэг: хоосон утга шүүгдэнэ');
+  // Аль хэдийн тоологдсон эсэх — by/driver/helpers гурвууланг хардаг
+  ok(stageHasPerson({ by: 'A' }, 'A'), 'тоологдсон: дарсан хүн');
+  ok(stageHasPerson({ by: 'X', driver: 'A' }, 'A'), 'тоологдсон: жолооч');
+  ok(stageHasPerson({ by: 'X', helpers: ['B', 'A'] }, 'A'), 'тоологдсон: хамтрагч');
+  ok(!stageHasPerson({ by: 'X', helpers: ['B'] }, 'A'), 'тоологдоогүй: гаднын хүн');
+  const ords = [
+    { id: 1, number: 11, stage_meta: { prepare: { by: 'X', at: '2026-09-02T02:00:00Z', claims: ['A'] } } },
+    /* ⛔ Аль хэдийн тоологдсон хүний мэдүүлэг жагсаалтад ГАРАХГҮЙ — баталгаажсаны
+       дараа `claims` цэвэрлэгддэг ч хуучин бичлэгт үлдэж болно. */
+    { id: 2, number: 12, stage_meta: { clean: { by: 'B', at: '2026-09-03T02:00:00Z', helpers: ['A'], claims: ['A'] } } },
+    { id: 3, number: 13, stage_meta: { quotes: [{ to: 'x' }] } },
+  ];
+  const pend = pendingStageClaims(ords);
+  eq(pend.length, 1, 'мэдүүлэг: зөвхөн шийдэгдээгүй нь');
+  eq(pend[0].who, 'A', 'мэдүүлэг: хэн мэдүүлсэн');
+  eq(pend[0].key, 'prepare', 'мэдүүлэг: аль дамжлага');
+  eq(pend[0].number, 11, 'мэдүүлэг: захиалгын дугаар');
+  eq(pendingStageClaims([]).length, 0, 'мэдүүлэг: захиалгагүй бол хоосон');
+  /* ⛔ МЭДҮҮЛЭГ ӨӨРӨӨ МӨНГӨ БОЛОХГҮЙ — зөвхөн `helpers`-т орсны дараа. */
+  const pay = F.stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
+    clean: { by: 'X', at: '2026-09-02T02:00:00Z', claims: ['A'] } } }], '2026-09');
+  ok(!pay.A, 'мэдүүлэг: баталгаажаагүй бол бонус үүсэхгүй');
+  eq(pay.X.ledPts, 10, 'мэдүүлэг: дарсан хүн бүтэн санг хэвээр авна');
+}
+
 // ═══ ДАМЖЛАГЫН НЭР = ТОХИРГООНООС (2026-10-04, CEO) ════════════════════
 {
   const st = vm.runInContext('state', sandbox);
@@ -15480,6 +15510,15 @@ async function swFetchTests() {
   /* ⛔ ★ БҮХ ДАМЖЛАГААС ХАСАГДСАН — үнэлэгчээс хамаарсан дүлий зурвас
      (3.0–3.9) гаргахын төлөө сард ~500 албадсан даралт болж байв. */
   ok(!/_sec\('⭐'/.test(md), 'scan: ★ хэсэг цонхонд байхгүй');
+  /* ⛔ Мэдүүлэг нь `helpers`-т ШУУД орохгүй — тэгвэл хүн өөртөө бонус бичнэ. */
+  {
+    const i0 = src.indexOf('async function claimStageWork');
+    let i = src.indexOf('{', i0), d = 0, j = i;
+    for (; j < src.length; j++) { const c = src[j]; if (c === '{') d++; else if (c === '}') { d--; if (!d) break; } }
+    const body = src.slice(i0, j);
+    ok(/claims:/.test(body), 'scan: мэдүүлэг claims талбарт бичигдэнэ');
+    ok(!/helpers:/.test(body), 'scan: мэдүүлэг helpers-т шууд ОРОХГҮЙ');
+  }
   /* ⛔ Схем нь PIPELINE-аас угсарна — гараар жагсаалт бичвэл шинэ дамжлага
      нэмэхэд схем чимээгүй хуучирна. */
   {

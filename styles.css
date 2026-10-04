@@ -8637,3 +8637,16 @@ select.no-asar-len {
 .modal .pm-in { width: 86px; flex: none; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: right; }
 .pm-gsave { width: 100%; margin-top: var(--space-3); }
 .pm-warn { color: var(--warn); }
+
+/* ✋ «Би ч оролцсон» мэдүүлэг (2026-10-04) */
+.sm-claim { font-size: var(--fs-xs); color: var(--warn); margin-top: 2px; }
+.sm-claim-w { color: var(--muted); }
+.sm-claim-btn { margin-top: var(--space-2); padding: 3px 9px; font-size: var(--fs-xs); }
+.clm-box { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--r-md); padding: var(--space-3); margin-bottom: var(--space-3); }
+.clm-t { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-2); }
+.clm-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.clm-l { flex: 1; min-width: 0; }
+.clm-o { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.clm-ok, .clm-no { flex: none; padding: 4px 10px; font-size: var(--fs-xs); }
+.clm-no { color: var(--danger); }
+.clm-n { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }

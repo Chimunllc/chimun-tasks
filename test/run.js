@@ -13996,11 +13996,13 @@ async function swFetchTests() {
   eq(stageFeeForQty(345), 9000, 'тохиргоо: хилээс давсан захиалга ч дээд шатлалаар (хил→Infinity)');
   eq(stageFeeForQty(100000), 9000, 'тохиргоо: хязгааргүй том ч дээд шатлалаар');
   // Хамтрагчийн хувь/тоог ч тохиргооноос
-  vm.runInContext("state.appConfig = { stage_pay: { helper_share: 0.5, helper_max: 2 } };", sandbox);
+  vm.runInContext("state.appConfig = { stage_pay: { lead_weight: 2, helper_max: 2 } };", sandbox);
   const cfgR = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B','C','D'] } } }], '2026-09');
-  eq(cfgR.B.helperPts, 2.5, 'тохиргоо: хамтрагчийн хувь 50%, 2 хүнд → 10 оноо×0.5÷2 = 2.5');
-  eq(cfgR.B.helperFee, Math.round(0.25 * 1350), 'тохиргоо: оноо ханшаар төгрөг болно');
+  // 10 оноо, нэгж = 2 (хариуцсан) + 2 (хамтрагч) = 4 → A 5, B/C 2.5 тус бүр
+  eq(cfgR.A.ledPts, 5, 'тохиргоо: хариуцсан хүний жин 2 → 10×2/4');
+  eq(cfgR.B.helperPts, 2.5, 'тохиргоо: хамтрагч 10×1/4');
+  eq(Math.round(cfgR.A.ledPts + cfgR.B.helperPts + cfgR.C.helperPts), 10, 'ИНВАРИАНТ: нийт = дамжлагын оноо');
   ok(!cfgR.D, 'тохиргоо: helper_max 2 → 3 дахь хамтрагч хөлсгүй');
   vm.runInContext("state.appConfig = {};", sandbox);
   eq(stageFeeForQty(345), 20000, 'тохиргоо цэвэрлэгдвэл кодын нөөц утга');
@@ -14011,16 +14013,20 @@ async function swFetchTests() {
   eq(orderItemQty({}), 0, 'тоо: items байхгүй = 0');
   eq(orderItemQty({ items: [{ qty: '7' }, { qty: null }] }), 7, 'тоо: мөр текст/хоосон байсан ч бодогдоно');
 
-  // Нэг шат: удирдсан хүн бүтэн, хамтрагчид 30%-ийг ХУВААНА
+  /* ⛔ САН ТОГТМОЛ, ДОТРОО ХУВААГДАНА (2026-10-04, CEO). 30 бараа = 3.5 ×
+     Цэвэрлэх 10 = 35 оноо. Нэгж = 1.3 + 2 = 3.3 → A 13.79, B/C 10.61. */
   const ords = [{ items: [{ qty: 30 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B', 'C'] } } }];
   const r1 = stagePayByPerson(ords, '2026-09');
-  // 30 бараа = 3.5 оноо, Цэвэрлэх жин 1 → 3.5 оноо × 1,350₮
-  eq(r1.A.ledPts, 35, 'бонус: 30 бараа → удирдсан A 35 оноо');
-  eq(r1.A.ledFee, Math.round(3.5 * 1350), 'бонус: оноо ханшаар төгрөг болно');
+  eq(Math.round(r1.A.ledPts * 100) / 100, 13.79, 'бонус: хариуцсан A = 35×1.3/3.3');
   eq(r1.A.led, 1, 'хөлс: A удирдсан 1 шат');
-  eq(r1.B.helperPts, 35 * 0.3 / 2, 'бонус: хамтрагч B = 35 оноо×30%÷2');
-  eq(r1.C.helperPts, 35 * 0.3 / 2, 'бонус: хамтрагч C ижил');
+  eq(Math.round(r1.B.helperPts * 100) / 100, 10.61, 'бонус: хамтрагч B = 35×1/3.3');
+  eq(Math.round(r1.C.helperPts * 100) / 100, 10.61, 'бонус: хамтрагч C ижил');
+  // ⛔ НИЙТ нь хүний тооноос ХАМААРАХГҮЙ — ажил нь ажил
+  eq(Math.round(r1.A.ledPts + r1.B.helperPts + r1.C.helperPts), 35, 'ИНВАРИАНТ: нийт = 35 оноо (хүний тооноос үл хамаарна)');
+  const solo2 = stagePayByPerson([{ items: [{ qty: 30 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09');
+  eq(solo2.A.ledPts, 35, 'ИНВАРИАНТ: ганцаараа хийсэн ч ижил 35 оноо');
   eq(r1.B.ledFee, 0, 'хөлс: хамтрагч удирдсаны хөлс авахгүй');
 
   // ⛔ Бичиг цаасны шат (discount/revert) ачаа зөөгөөгүй → хөлс БАЙХГҮЙ
@@ -14035,7 +14041,7 @@ async function swFetchTests() {
   const rm = stagePayByPerson(many, '2026-09');
   const paidHelpers = ['B','C','D','E','F','G'].filter(h => rm[h] && rm[h].helperFee > 0);
   eq(paidHelpers.length, 4, 'хөлс: хамтрагч дээд тал 4 хүнд хуваагдана');
-  eq(rm.B.helperPts, 10 * 0.3 / 4, 'бонус: 10 оноо×30%÷4');
+  eq(Math.round(rm.B.helperPts * 100) / 100, Math.round(10 / 5.3 * 100) / 100, 'бонус: 10 оноо ÷ (1.3+4) нэгж');
 
   // Сар шүүлт — өөр сарын шат тоологдохгүй
   const twom = [{ items: [{ qty: 10 }], stage_meta: {
@@ -14054,11 +14060,13 @@ async function swFetchTests() {
   const sumParts = Object.keys(ri).reduce((t, k) => t + ri[k].ledFee + ri[k].helperFee, 0);
   eq(sumTotal, sumParts, 'ИНВАРИАНТ: нийт хөлс = удирдсан + хамтрагч');
   // Цэвэрлэх(345 бараа) = 10 оноо × жин 1; Талбайд буулгах(2 бараа) = 1 оноо × жин 1.5
-  eq(ri.A.ledPts + ri.B.ledPts, 100 + 15, 'ИНВАРИАНТ: удирдсаны оноо = 100 + 15');
+  // Нэгж: 1-р шат 1.3+1 = 2.3 · 2-р шат 1.3+2 = 3.3
+  eq(Math.round((ri.A.ledPts + ri.B.ledPts) * 100) / 100,
+     Math.round((100 * 1.3 / 2.3 + 15 * 1.3 / 3.3) * 100) / 100, 'ИНВАРИАНТ: хариуцсаны оноо');
 
   // Хамтрагчгүй шат — 30%-ийн сан хэнд ч ХУВААГДАХГҮЙ (сүйрэхгүй)
   const solo = [{ items: [{ qty: 8 }], stage_meta: { clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }];
-  eq(stagePayByPerson(solo, '2026-09').A.total, Math.round(2 * 1350), 'бонус: хамтрагчгүй бол зөвхөн удирдсаны оноо');
+  eq(stagePayByPerson(solo, '2026-09').A.total, Math.round(20 * 135), 'бонус: хамтрагчгүй бол бүтэн сан дарсан хүнд');
 }
 
 // ═══ SCAN: дамжлагын бонусыг ЦАГААР бодохыг хаана ═══

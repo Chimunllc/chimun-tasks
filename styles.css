@@ -8589,3 +8589,27 @@ select.no-asar-len {
 .sa-help-chip { cursor: pointer; font-size: var(--fs-sm); padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); user-select: none; }
 .sa-help-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 .sa-help-chip.sa-help-on { border-color: var(--primary); }
+
+/* ─── Төлбөр бүртгэх цонх (2026-10-04) — дамжлагын цонхтой ижил хэл ──────
+   Inline загвар, хатуу px фонт бүгд класс/токен болов. */
+.bqp-modal { max-width: 430px; }
+.bqp-sum { background: var(--panel-hover); border-radius: 10px; padding: 10px 12px; margin-bottom: var(--space-4); font-size: var(--fs-md); line-height: 1.8; }
+.bqp-bal.bad { color: var(--danger); }
+.bqp-bal.ok { color: var(--ok); }
+.bqp-drop { display: block; margin-bottom: var(--space-4); font-size: var(--fs-md); border: 2px dashed var(--primary); border-radius: 10px; padding: var(--space-4); text-align: center; cursor: pointer; background: var(--panel-hover); }
+.bqp-drop-sub { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+.bqp-drop-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
+.bqp-drop-note.ok { color: var(--ok); }
+.bqp-drop-note.bad { color: var(--danger); }
+.bqp-list { margin-bottom: var(--space-4); }
+.bqp-draft { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--space-3); }
+.bqp-save:disabled { opacity: .45; cursor: not-allowed; }
+.bqp-rc { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r-md); margin-bottom: var(--space-2); font-size: var(--fs-sm); background: var(--panel); }
+.bqp-rc-m { min-width: 0; flex: 1; }
+.bqp-rc-amt { color: var(--ok); font-size: var(--fs-base); }
+.bqp-rc-dim { color: var(--muted); }
+.bqp-rc-who { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bqp-rc-warn { color: var(--warn); }
+.bqp-rc-view { padding: 2px 9px; color: var(--primary); flex-shrink: 0; }
+.bqp-rc-x { padding: 2px 8px; color: var(--danger); flex-shrink: 0; }
+.bqp-rc-sum { display: flex; justify-content: space-between; font-weight: 700; padding: 8px 10px 2px; font-size: var(--fs-base); }

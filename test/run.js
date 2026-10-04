@@ -15419,6 +15419,16 @@ async function swFetchTests() {
   /* ⛔ ★ БҮХ ДАМЖЛАГААС ХАСАГДСАН — үнэлэгчээс хамаарсан дүлий зурвас
      (3.0–3.9) гаргахын төлөө сард ~500 албадсан даралт болж байв. */
   ok(!/_sec\('⭐'/.test(md), 'scan: ★ хэсэг цонхонд байхгүй');
+  /* ⛔ Төлбөрийн цонх ч ИЖИЛ хэлээр — inline загвар буцаж ирэхийг хаана
+     (2026-10-04). Функцийн биеийг хаалт тоолж таслана. */
+  {
+    const i0 = src.indexOf('function openBqPaymentModal');
+    let i = src.indexOf('{', i0), d = 0, j = i;
+    for (; j < src.length; j++) { const c = src[j]; if (c === '{') d++; else if (c === '}') { d--; if (!d) break; } }
+    const body = src.slice(i0, j);
+    eq((body.match(/style="/g) || []).length, 0, 'scan: төлбөрийн цонхонд inline загвар алга');
+    eq((body.match(/\.style\.(color|opacity|cursor)/g) || []).length, 0, 'scan: төлбөрийн цонх өнгийг JS-ээс бичихгүй');
+  }
   ok(!/rateTargets\.push\(/.test(md), 'scan: ★ зорилт огт үүсэхгүй');
   ok(/_needNoteSec = _isReceive \|\| _defTargets\.length/.test(md), 'scan: тэмдэглэл зөвхөн асуудалтай дамжлагад');
   ok(!/border-top:1px dashed var\(--border\)/.test(md), 'scan: тасархай зураасан тусгаарлагч буцаж ирээгүй');

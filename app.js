@@ -26014,12 +26014,23 @@ const PIPELINE = [
   { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Талбайгаас ачсан', cap: 'orders.deliver',  pts: 1.5, ev: 'photo', dlv: true },
   { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: false },
   { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Талбайгаас ачсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo' },
-  { key: 'received', from: ['returning'],  to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count' },
+  /* ⛔ ХҮРГЭЛТЭД: ЭХЛЭЭД БАЙРШУУЛНА, ДАРАА НЬ ТООЛНО (2026-10-04, CEO барив).
+     Өмнө нь нярав эхэлж тоолдог байсан тул «Буулгаж байршуулах» нь сүүлчийн
+     дамжлага болж ХЭН Ч ХЯНАХГҮЙ үлддэг байв. Одоо хоёр тал ижил бүтэцтэй:
+     ажил → ажил → нярав тоолно. Нярав тавиур дээрх барааг тоолж, дутуу
+     эсэхийг БА байрандаа тавигдсан эсэхийг нэг дор шалгана.
+     ⚠ Замд алдагдсан нь алдагдахгүй — ЖОЛООЧ талбай дээр тоолсон тоо
+       («Талбайгаас ачсан») аль хэдийн бүртгэгддэг, няравынх түүнтэй тулгагдана. */
+  { key: 'stow',     from: ['returning'],  to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare',  pts: 1.5, ev: 'photo' },
+  { key: 'received', from: ['stowed'],     to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: true },
   /* ⛔ БИЕИЙН ХҮЧНИЙ АЖИЛ → `orders.prepare` (агуулахын БҮХ ажилтанд бий),
      `orders.dispatch` БИШ (тэр нь зөвхөн 4 нярав/ахлахад — яг хүнд ажил хийх
      ёсгүй хүмүүс). Буруу эрхэнд тавибал товчийг дарах хүн байхгүй болж
      захиалга «Хүлээн авсан» дээр гацна (2026-10-04, CEO барив). */
-  { key: 'stow',     from: ['returned'],   to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare', pts: 1.5, ev: 'photo' },
+  /* ⚠ ОЧИЖ АВАХ захиалгад дараалал ЭСРЭГ: харилцагч бараагаа авчирсан мөчид
+     нь тоолох ёстой (явсных нь дараа дутуу илэрвэл барих хүн алга). Тиймээс
+     тэнд тоолох нь ЭХЭЛЖ, байршуулах нь ДАРАА. `dlv` нөхцөл хоёуланг ялгана. */
+  { key: 'stow',     from: ['returned'],   to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare', pts: 1.5, ev: 'photo', dlv: false },
   { key: 'archive',  from: ['stowed', 'returned', 'stopped'], to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance', pts: 0 },
 ];
 // Захиалгын нөхцөл — урсгалын салаалалт үүгээр шийдэгдэнэ (ЦЭВЭР тулгалтад тестлэгдэнэ).
@@ -26185,6 +26196,9 @@ const STAGE_ACTION = {
   'rented>returned':      { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
   'started>returning':    { key: 'retstart', label: 'Талбайгаас ачсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
   'started>returned':     { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'returning>stowed':     { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, байрандаа тавигдсан уу?' },
+  'stowed>returned':      { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Тавиур дээрх бараа бүрэн, зөв тоологдсон уу?' },
+  // Хуучин бичлэг: шууд тоолоод дууссан захиалгууд (шинэ урсгалд үүсэхгүй)
   'returning>returned':   { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
   'returned>stowed':      { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, зөв тоологдсон уу?' },
   'stowed>archived':      { key: 'archive',  label: 'Архивлах',              q: null },

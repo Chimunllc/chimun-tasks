@@ -2372,9 +2372,9 @@ function finish() {
   eq(NS(DLV('ready')).to,      'delivering', 'хүргэлт 3: Цэвэрлэсэн → Агуулахаас гарсан');
   eq(NS(DLV('delivering')).to, 'rented',     'хүргэлт 4: Агуулахаас гарсан → Хүргэж өгсөн');
   eq(NS(DLV('rented')).to,     'returning',  'хүргэлт 5: Хүргэж өгсөн → Хүргэлтээр авсан');
-  eq(NS(DLV('returning')).to,  'returned',   'хүргэлт 6: Хүргэлтээр авсан → Агуулахад хүлээн авсан');
-  eq(NS(DLV('returned')).to,   'stowed',     'хүргэлт 7: Хүлээн авсан → Буулгаж байршуулах');
-  eq(NS(DLV('stowed')).to,     'archived',   'хүргэлт: дараа нь архив');
+  eq(NS(DLV('returning')).to,  'stowed',     'хүргэлт 6: Талбайгаас ачсан → Буулгаж байршуулах');
+  eq(NS(DLV('stowed')).to,     'returned',   'хүргэлт 7: Байршуулсны ДАРАА нярав тоолно');
+  eq(NS(DLV('returned')).to,   'archived',   'хүргэлт: тоолсны дараа архив');
 
   // Очиж авах: 4, 5-р шат ГАРАХГҮЙ
   eq(NS(PICK('ready')).to,  'rented',   'очиж авах: Цэвэрлэсэн → шууд Олгосон');
@@ -2384,7 +2384,8 @@ function finish() {
   eq(NS(DLV('ready')).cap,      'orders.dispatch', 'эрх: агуулахаас гаргах нь нярав');
   eq(NS(DLV('delivering')).cap, 'orders.deliver',  'эрх: хүргэж өгөх нь жолооч');
   eq(NS(DLV('rented')).cap,     'orders.deliver',  'эрх: хүргэлтээр авах нь жолооч');
-  eq(NS(DLV('returning')).cap,  'orders.dispatch', 'эрх: агуулахад хүлээн авах нь нярав');
+  eq(NS(DLV('returning')).cap,  'orders.prepare', 'эрх: байршуулах нь агуулахын ажилтан');
+  eq(NS(DLV('stowed')).cap,     'orders.dispatch', 'эрх: тавиур дээр тоолох нь нярав');
 
   // Шатны түлхүүр — зураг/үнэлгээ тус тусдаа хадгалагдана
   eq(SAF('ready', 'delivering').key,   'dispatch', 'түлхүүр: агуулахаас гаргах');
@@ -3962,11 +3963,17 @@ need(['orderCustType']);
             : dlv ? { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' }
                   : { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
           case 'teardown': return { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' };
-          case 'returning': return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
-          /* 2026-10-03: «Буулгаж байршуулах» дамжлага НЭМЭГДСЭН — буцаж ирсэн
-             бараа агуулахад байрандаа тавигдах нь тусдаа ажил (CEO). */
-          case 'returned': return { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
-          case 'stowed': case 'stopped': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
+          /* 2026-10-04: ХҮРГЭЛТЭД эхлээд БАЙРШУУЛНА, дараа нь нярав ТООЛНО —
+             сүүлчийн дамжлага хяналтгүй үлдэхгүйн тулд (CEO). Очиж авахад
+             дараалал ЭСРЭГ: харилцагч байхад нь тоолох ёстой. */
+          case 'returning': return { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
+          case 'stowed': return dlv
+            ? { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' }
+            : { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
+          case 'returned': return dlv
+            ? { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' }
+            : { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
+          case 'stopped': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
           default: return null;
         }
       };
@@ -4057,7 +4064,8 @@ need(['orderCustType']);
       ['reserved', 'orders.clean'], ['prepared', 'orders.prepare'],
       ['ready', 'orders.dispatch'], ['delivering', 'orders.deliver'],
       ['installing', 'orders.setup'], ['rented', 'orders.setup'],
-      ['returned', 'orders.prepare'], ['stowed', 'orders.advance'],
+      // ⚠ setO = ХҮРГЭЛТТЭЙ тул: байршуулсны дараа нярав тоолж, дараа нь архив
+      ['returning', 'orders.prepare'], ['stowed', 'orders.dispatch'], ['returned', 'orders.advance'],
     ];
     for (const [st, cap] of pairs) {
       const b = btn(setO, st);

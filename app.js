@@ -13419,9 +13419,10 @@ function driverBonus(key, month, orders) {
 // Жолоочийн хариуцлагын сануулга (улаан) — ирц/жолооны нэмэгдэл дээр харуулна.
 const DRIVER_LIABILITY_NOTE = 'Та жолоо барьж байгаад торгуульсан, торгууль нь жолоочийн буруугаас бол торгууль болон хохирлыг жолооч өөрөө хариуцна.';
 /* ─── САРЫН ЦАЛИН — ажилтан ӨӨРӨӨ харна (2026-10-02, CEO шийдвэр) ───────────
-   Гарт очих = суурь цалин (суутгалын дараа) + ИЛҮҮ ЦАГ + ХҮРГЭЛТИЙН НЭМЭГДЭЛ.
-   ⛔ ДАМЖЛАГЫН БОНУС ЭНД ОРОХГҮЙ — тусдаа карт болж харагдана. Нэмбэл дамжлагын бонус
-     цалин болж, дамжлагын урамшуулал гэдэг утгаа алдана. Scan-тест хаана.
+   Гарт очих = суурь цалин (суутгалын дараа) + ИЛҮҮ ЦАГ + ХҮРГЭЛТ + ДАМЖЛАГЫН БОНУС.
+   ⚠ 2026-10-04: бонус нийт олгоход ОРСОН (CEO). Өмнө нь тусдаа байсан —
+     ажилтан хоёр тоо харж, аль нь гарт очихыг мэдэхгүй байв. Суутгал нь
+     ЗӨВХӨН суурь цалингаас хэвээр (илүү цаг, хүргэлттэй ижил).
    ⛔ ИЛҮҮ ЦАГ = САРЫН нийт цаг − норм (23×8=184ц), ӨДРӨӨР БИШ. Өдрөөр бодвол
      богино өдрүүд нөхөгдөхгүй тул нэг хүний илүү цаг 2 дахин хүртэл өснө.
    ⛔ ХУВЬ = 1.0 (энгийн цагийн хөлс, `OVERTIME_RATE`). Цагийн хөлс = суурь
@@ -13457,7 +13458,7 @@ function payProrateFrom() { return payrollStartMonth(); }
    (10-03-нд 2 хоногийн ирц) — норммоос «дутуу» нь хасалт биш, ердөө эрт. Өмнө нь
    суурь 10% болж урьдчилгаа авсан хүн «2.2 сая илүү авсан» гэж ХУДАЛ харагдаж байв.
    `today`-г тест дамжуулна; дуудагч дамжуулахгүй (өнөөдөр). */
-function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today) {
+function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today, stageBonus) {
   base = Math.max(0, Number(base) || 0);
   const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins(month);   // ⚠ норм = тэр сарын хуанли
   const known = workedMins !== null && workedMins !== undefined && isFinite(Number(workedMins));
@@ -13472,10 +13473,14 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
   const r = (rate === undefined || rate === null) ? overtimeRate() : (Number(rate) || 0);
   const otPay = Math.round(otMins / 60 * hourly * r);
   const delivery = Math.max(0, Math.round(Number(deliveryAmt) || 0));
+  /* ⛔ ДАМЖЛАГЫН БОНУС НИЙТ ОЛГОХОД ОРНО (2026-10-04, CEO шийдвэр —
+     2026-10-02-ны «орохгүй» шийдвэрийг СОЛИВ). ⚠ СУУТГАЛ ТООЦОХГҮЙ:
+     илүү цаг, хүргэлттэй ижил — НДШ/ХХОАТ зөвхөн суурь цалингаас. */
+  const bonus = Math.max(0, Math.round(Number(stageBonus) || 0));
   return {
     base, earned, shortMins, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
     otMins, hourly: Math.round(hourly), otRate: r, otPay,
-    delivery, total: d.net + otPay + delivery,
+    delivery, bonus, total: d.net + otPay + delivery + bonus,
   };
 }
 /* ⛔ ЦАЛИНГИЙН ТООЦОО 2026-09-ААС ЭХЭЛНЭ (2026-10-03, CEO шийдвэр) ───────────
@@ -13546,7 +13551,7 @@ function salaryCarryIn(key, ym, minsOf) {
   for (const m of months) {
     const mins = minsOf(m);
     if (mins === undefined) return { amount: 0, ready: false, from: '' };
-    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, workNormMins(m), driverBonus(key, m).amount, undefined, m);
+    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, workNormMins(m), driverBonus(key, m).amount, undefined, m, undefined, stagePayFor(key, m).total);
     rows.push({ m, total: b.total, paid: salaryPaidFor(key, m) });
   }
   const ch = payCarryChain(rows);
@@ -13650,11 +13655,11 @@ function renderAttendanceMonth(month) {
     const otMins = Math.max(0, r.mins - normMins);
     const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
-    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month) : null;
+    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month, undefined, (sp && sp.total) || 0) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
     const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
     const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
-    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${sp && sp.total ? ' · дамжлагын бонус ОРООГҮЙ' : ''})</span>`
+    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''})</span>`
       + ((rPaid || rCarry.amount) ? ` <span class="sp-sub">— ${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)} · ${rBal.over > 0 ? `илүү <b>${fmtMoney(rBal.over)}</b> (дараа сард)` : `үлдэгдэл <b>${fmtMoney(rBal.owed)}</b>`}</span>` : ' <span class="sp-sub">— олгоогүй</span>')
       + `</div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
@@ -13817,7 +13822,7 @@ function myPayCardHtml(me) {
   const base = Number((state.salaries || {})[key]) || 0;
   const db = driverBonus(key, month);
   // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
-  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(month), db.amount, undefined, month);
+  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(month), db.amount, undefined, month, undefined, stagePayFor(key, month).total);
   const normH = workNormDays(month) * 8;
   const paid = salaryPaidFor(key, month);
   const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
@@ -13859,7 +13864,7 @@ function myPayCardHtml(me) {
     : '';
   const sp = stagePayFor(key, month);
   const spNote = sp.total
-    ? `<div class="pay-note">📦 Дамжлагын бонус <b>${fmtMoney(sp.total)}</b> — энэ дүнд <b>ОРООГҮЙ</b>, тусдаа тооцогдоно.</div>` : '';
+    ? `<div class="pay-note">📦 Дамжлагын бонус <b>${fmtMoney(sp.total)}</b> — нийт олгоход <b>ОРСОН</b>. Суутгал тооцогдохгүй.</div>` : '';
   const noOutNote = w.noOut
     ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул ${b.shortMins ? '<b>цалин дутуу бодогдсон</b>' : 'илүү цаг дутуу'} байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
   // Олголтын МӨР бүрийг ил жагсаана — «олгосон 600,000₮» гэсэн ганц тоо нь хэзээ,
@@ -17779,7 +17784,7 @@ function renderSalary() {
     const w = attMins[r.k] || { mins: 0, days: 0, noOut: 0 };
     const db = driverBonus(r.k, ym);
     // ⛔ Ирц ачаалагдаагүй / тэр сард огт бүртгэлгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 биш
-    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, normMins, db.amount, undefined, ym);
+    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, normMins, db.amount, undefined, ym, undefined, ((spAll[r.k] || {}).total) || 0);
     // ↪ Өмнөх сарын илүү олголт — энэ сарын олгохоос хасагдана (түүх сард шилжүүлэлтгүй)
     const carry = payrollHistOnly(ym) ? { amount: 0, ready: true, from: '' } : payrollCarryIn(r.k, ym);
     return { ...r, w, db, b, carry, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
@@ -17914,7 +17919,7 @@ function renderSalary() {
         ${owed > 0 ? line('Үлдэгдэл', `<b>${fmtMoney(owed)}</b> ${memoBtn}`, 'pay-left') : ''}
         ${over > 0 ? line(`⚠ Илүү олгосон → ${escapeHtml(nextMonthStr(ym))} сард шилжинэ`, `<b>${fmtMoney(over)}</b>`, 'pay-over') : ''}
       </div>`;
-    const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Дамжлагын бонус ${fmtMoney(sp.total)} <span class="sp-sub">— цалинд ОРООГҮЙ</span></div>` : '';
+    const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Дамжлагын бонус ${fmtMoney(sp.total)} <span class="sp-sub">— нийт олгоход ОРСОН</span></div>` : '';
     const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг тоологдсон${b.shortMins ? ', <b>цалин дутуу бодогдсон</b>' : ', илүү цаг дутуу'}. «🙋 Цаг гаргуулах»-аар засна.</div>` : '';
     /* ⛔ ТҮҮХ САРД ЗӨВХӨН ОЛГОЛТ. Суурь цалингийн талбар (тэр үеийн цалин биш,
        ОДООГИЙНХ), «гарах бүртгэлгүй» анхааруулга, дамжлагын бонус — бүгд тэр сард
@@ -17938,7 +17943,7 @@ function renderSalary() {
   const spMapBtn = ` <button class="btn sp-cfg-btn" data-pipeline-map>📊 Урсгал харах</button>`;
   const spCfgBtn = spMapBtn;   // ⚙️ тохиргоо нь СХЕМ дотроо (хоёр цонх байхгүй)
   const spFoot = T.sp
-    ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> · ${(T.spPts || 0).toFixed(1)} оноо × ${fmtMoney(stagePointRate())} — цалинд ОРООГҮЙ.${spCfgBtn}</div>`
+    ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> · ${(T.spPts || 0).toFixed(1)} оноо × ${fmtMoney(stagePointRate())} — нийт олгоход ОРСОН.${spCfgBtn}</div>`
     : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
   /* ✋ Хүлээгдэж буй мэдүүлэг — ЦАЛИН хардаг хүнд ИЛ. Хамтрагчаа нуух нүхийг
      барих цорын ганц хүч нь орхигдсон хүн өөрөө; түүний дуу хоосон өрөөнд

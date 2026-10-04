@@ -14918,10 +14918,20 @@ async function swFetchTests() {
 // нэмэгдлийг нэмсний ДАРАА salaryNet дуудвал татвар чимээгүй өснө.
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
-  const body = src.slice(src.indexOf('function monthPayBreakdown'), src.indexOf('function payMonthDefault'));
+  /* ⚠ ЗӨВХӨН функцийн бие — `payMonthDefault` хүртэл зүсвэл хооронд нь
+     орших `payrollCarryIn` ч багтаж, дамжлагын бонусын дуудлагыг худлаа
+     барина (2026-10-04). Хаалт тоолж таслана. */
+  const _mb0 = src.indexOf('function monthPayBreakdown');
+  const body = (() => { let i = src.indexOf('{', _mb0), d = 0, j = i;
+    for (; j < src.length; j++) { const c = src[j]; if (c === '{') d++; else if (c === '}') { d--; if (!d) break; } }
+    return src.slice(_mb0, j + 1); })();
   ok(body.length > 200, 'scan: monthPayBreakdown олдов');
-  eq((body.match(/stagePay|sp\.total|STAGE_FEE/g) || []).length, 0,
-     'scan: цалингийн тооцоонд дамжлагын бонус ОРОХГҮЙ');
+  /* ⚠ 2026-10-04: бонус нийт олгоход ОРСОН (CEO). Гэхдээ дотор нь ДАХИН
+     бодогдохгүй — дуудагч тооцсон дүнг параметрээр дамжуулна. */
+  ok(/stageBonus/.test(body), 'scan: бонус параметрээр дамжина');
+  eq((body.match(/stagePayByPerson\(|stagePayFor\(/g) || []).length, 0,
+     'scan: цалингийн тооцоо бонусыг ДОТРОО дахин бодохгүй');
+  ok(/total: d\.net \+ otPay \+ delivery \+ bonus/.test(body), 'scan: бонус нийт олгоход нэмэгдэнэ');
   eq((body.match(/salaryNet\(/g) || []).length, 1, 'scan: salaryNet нэг л удаа дуудагдана');
   ok(/salaryNet\(earned,/.test(body), 'scan: суутгал ЗӨВХӨН (цагаар бодсон) суурь цалингаас бодогдоно');
   // ⛔ Цаг мэдэгдэхгүйг 0 цаг гэж үзвэл цалин тэглэгдэнэ — дуудагч бүр null дамжуулна
@@ -14929,7 +14939,9 @@ async function swFetchTests() {
   ok(/\(attReady && attMins\[r\.k\]\) \? w\.mins : null/.test(rsB), 'scan: самбар ирц ачаалагдаагүй үед цагийг null дамжуулна');
   // ⛔ Сар дамжуулаагүй дуудагч цагаар ХЭЗЭЭ Ч хасахгүй — тиймээс бүгд сараа өгнө
   const callers = (src.match(/monthPayBreakdown\([^\n]*\)/g) || []).filter(x => !/deliveryAmt, rate, month/.test(x));   // тодорхойлолтыг хасна
-  ok(callers.length >= 3 && callers.every(x => /undefined, (month|ym|m)\)/.test(x)), 'scan: цалингийн дуудагч бүр сараа дамжуулна');
+  ok(callers.length >= 3 && callers.every(x => /undefined, (month|ym|m)[,)]/.test(x)), 'scan: цалингийн дуудагч бүр сараа дамжуулна');
+  // ⚠ 2026-10-04: бонус нь СҮҮЛИЙН параметр — дуудагч бүр түүнийг ч өгнө
+  ok(callers.every(x => /stagePayFor|spAll|\.total/.test(x)), 'scan: дуудагч бүр дамжлагын бонусыг дамжуулна');
   ok(/-\s*norm\b/.test(body), 'scan: илүү цаг = сарын нийт − норм (өдрөөр биш)');
 
   // Картын нийт дүн нь monthPayBreakdown-аас л гарна (дэлгэцэд дахин бодохгүй)
@@ -14937,9 +14949,11 @@ async function swFetchTests() {
   ok(card.length > 400, 'scan: myPayCardHtml олдов');
   ok(/w\.days \? w\.mins : null/.test(card), 'scan: карт ирцгүй сард цагийг null дамжуулна');
   ok(/monthPayBreakdown\(/.test(card), 'scan: карт нийт дүнг monthPayBreakdown-аас авна');
+  /* ⛔ Картад бонусыг ГАРААР нэмэхгүй — `monthPayBreakdown`-ийн `total` дотор
+     аль хэдийн орсон. Хоёр газар нэмбэл ДАВХАР тоологдоно. */
   eq((card.match(/sp\.total\s*\+|\+\s*sp\.total/g) || []).length, 0,
-     'scan: картад дамжлагын бонус нийт дүн дээр нэмэгдэхгүй');
-  ok(/ОРООГҮЙ/.test(card), 'scan: дамжлагын бонус цалинд ороогүйг ил бичнэ');
+     'scan: картад бонус нийт дүн дээр ДАХИН нэмэгдэхгүй');
+  ok(/ОРСОН/.test(card), 'scan: дамжлагын бонус нийт олгоход орсныг ил бичнэ');
   // Гарах бүртгэлгүй өдрийг НУУХГҮЙ — тэр нь илүү цаг дутуу гарах цорын ганц шалтгаан
   ok(/w\.noOut/.test(card), 'scan: гарах бүртгэлгүй өдрийг картад ил хэлнэ');
 

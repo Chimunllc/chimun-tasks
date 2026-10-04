@@ -8583,3 +8583,9 @@ select.no-asar-len {
 .sa-def-ctl .sa-def-who { flex: 1; min-width: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sa-def-u { font-size: var(--fs-xs); color: var(--muted); }
 .sa-def-n.ok { color: var(--ok); }
+/* Энэ захиалгад аль хэдийн ажилласан хүн — эхэнд, бага зэрэг тодруулна */
+/* ⛔ Суурь загвар ЗААВАЛ — өмнөх засварт inline загварыг класс болгоход `.sa-help-chip`
+   дүрэм бичигдээгүй үлдэж, чип нь нүцгэн бичвэр болж байв (390px-д барив). */
+.sa-help-chip { cursor: pointer; font-size: var(--fs-sm); padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); user-select: none; }
+.sa-help-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.sa-help-chip.sa-help-on { border-color: var(--primary); }

@@ -8636,3 +8636,4 @@ select.no-asar-len {
 .pm-grow span:first-child { flex: 1; min-width: 0; }
 .modal .pm-in { width: 86px; flex: none; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: right; }
 .pm-gsave { width: 100%; margin-top: var(--space-3); }
+.pm-warn { color: var(--warn); }

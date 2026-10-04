@@ -8547,3 +8547,39 @@ select.no-asar-len {
   margin-bottom: var(--space-2); }
 .aerr-ci { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .aerr-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
+
+/* ─── Дамжлагын цонх: асуулт бүр ДУГААРТАЙ хэсэг (2026-10-04, CEO) ────────
+   Өмнө нь бүх блок тасархай зураасаар тусгаарлагдсан хавтгай жагсаалт
+   байсан тул ажилтан хэдэн зүйл бөглөхөө мэдэхгүй, заавал бөглөхийг
+   нь ялгадаггүй байв. */
+.sa-sec { background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-3); margin-bottom: var(--space-3); }
+.sa-sec-h { display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); }
+.sa-sec-n { flex: none; width: 19px; height: 19px; margin-top: 1px; border-radius: 50%; background: var(--primary); color: #fff; font-size: var(--fs-xs); font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.sa-sec-t { font-size: var(--fs-md); font-weight: 700; line-height: 1.35; }
+.sa-sec-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; margin-bottom: var(--space-2); }
+.sa-req { color: var(--danger); }
+.sa-all-btn { width: 100%; margin-bottom: var(--space-2); }
+.sa-ph-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-2); }
+.sa-ph-btn { display: block; text-align: center; border: 2px dashed var(--primary); border-radius: 10px; padding: 11px; cursor: pointer; }
+.sa-ph-status { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }
+.sa-chip-wrap { display: flex; flex-wrap: wrap; gap: var(--space-2); max-height: 132px; overflow: auto; }
+.modal .sa-help-search { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-sm); margin-bottom: var(--space-2); }
+.modal .sa-note { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-md); font-family: inherit; }
+.sa-rate-q { font-size: var(--fs-sm); font-weight: 600; line-height: 1.4; }
+.sa-rate-who { display: block; font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
+.sa-stars { font-size: var(--fs-2xl); letter-spacing: 5px; margin: 2px 0 var(--space-3); user-select: none; }
+.sa-stars span { cursor: pointer; color: var(--border-strong); }
+.sa-skip { margin-bottom: var(--space-3); }
+.sa-skip-open { width: 100%; font-size: var(--fs-sm); }
+.sa-skip-box { margin-top: var(--space-2); }
+.sa-skip-box[hidden] { display: none; }
+.sa-skip-go { width: 100%; margin-top: var(--space-2); border-color: var(--danger); color: var(--danger); }
+.rc-warn[hidden] { display: none; }
+/* Алдааны тоо — асуулт дээр, хяналт доор (урт асуултыг шахахгүй) */
+.sa-def-item { padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+.sa-def-item:last-of-type { border-bottom: none; }
+.sa-def-q { font-size: var(--fs-sm); line-height: 1.4; margin-bottom: var(--space-2); }
+.sa-def-ctl { display: flex; align-items: center; gap: var(--space-2); }
+.sa-def-ctl .sa-def-who { flex: 1; min-width: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-def-u { font-size: var(--fs-xs); color: var(--muted); }
+.sa-def-n.ok { color: var(--ok); }

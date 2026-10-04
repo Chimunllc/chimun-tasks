@@ -26636,10 +26636,20 @@ function openStageAdvanceModal(oid, to) {
   const _helpStaff = !_helpAsk ? [] : (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !isDailyMember(m) && String(personKey(m)) !== String(state.me))
     .map(m => ({ k: personKey(m), name: m.name || '' })).filter(x => x.k && x.name)
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'mn'));
-  const _rcHtml = _isReceive && _rcItems.length ? `
-    <div style="font-size:12.5px;font-weight:700;margin:2px 0 6px;">📦 ${_isDispatch ? 'Агуулахаас хэдэн ширхэг гарсан бэ?' : _isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?'} <span style="color:var(--danger);">*</span></div>
-    ${!_isPickup && _prevPick ? `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.</div>` : ''}
-    <div style="display:flex;gap:8px;margin-bottom:8px;"><button type="button" class="btn btn-primary" id="rc-all" style="flex:1;">✓ Бүгд бүрэн ${_isDispatch ? 'гарсан' : _isPickup ? 'авсан' : 'ирсэн'}</button></div>
+  /* ⛔ АСУУЛТ БҮР ДУГААРТАЙ ХЭСЭГ (2026-10-04, CEO: «харагдах байдал
+     ойлгомжтой байдлыг сайжруул»). Өмнө нь бүх блок тасархай зураасаар
+     тусгаарлагдсан хавтгай жагсаалт байсан тул ажилтан хэдэн зүйл
+     бөглөхөө мэдэхгүй, аль нь заавал болохыг ялгадаггүй байв.
+     ⚠ Дугаар нь ГАРЧ ИРСЭН хэсгүүдээр л явна (дамжлага болгонд өөр) —
+       хатуу бичвэл зураг асуудаггүй дамжлагад «2»-оос эхэлнэ. */
+  let _secN = 0;
+  const _sec = (icon, title, req, hint, body) => (++_secN, `<div class="sa-sec">
+    <div class="sa-sec-h"><span class="sa-sec-n">${_secN}</span><span class="sa-sec-t">${icon} ${escapeHtml(title)}${req ? ' <span class="sa-req">*</span>' : ''}</span></div>
+    ${hint ? `<div class="sa-sec-hint">${escapeHtml(hint)}</div>` : ''}${body}</div>`);
+  const _rcHtml = (_isReceive && _rcItems.length) ? _sec('📦',
+    _isDispatch ? 'Агуулахаас хэдэн ширхэг гарсан бэ?' : _isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?',
+    true, (!_isPickup && _prevPick) ? 'Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.' : '', `
+    <button type="button" class="btn btn-primary sa-all-btn" id="rc-all">✓ Бүгд бүрэн ${_isDispatch ? 'гарсан' : _isPickup ? 'авсан' : 'ирсэн'}</button>
     <div id="rc-list" class="rc-list">${_rcItems.map((x, i) => `
       <div class="rc-row" data-rc="${i}">
         <span class="rc-name">${escapeHtml(x.name)}</span>
@@ -26647,46 +26657,43 @@ function openStageAdvanceModal(oid, to) {
         <input class="rc-got" type="number" inputmode="numeric" min="0" max="${x.qty}" value="${x.qty}" data-rci="${i}">
         <span class="rc-diff" data-rcd="${i}"></span>
       </div>`).join('')}</div>
-    <div id="rc-warn" class="rc-warn" style="display:none;"></div>` : '';
+    <div id="rc-warn" class="rc-warn" hidden></div>`) : '';
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">${escapeHtml(act.label)} · #${o.number ?? ''}</h2><button class="btn" id="sa-close" style="padding:5px 10px;">✕</button></div>
-    ${needPhoto ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 ${stageIsShowcase(act.key) ? 'Угсарсан байдлын зураг' : 'Гүйцэтгэлийн зураг'} <span style="color:var(--danger);">*</span></div>
-      ${stagePhotoHint(act.key) ? `<div class="sa-hint">${escapeHtml(stagePhotoHint(act.key))}</div>` : ''}
-      <div id="sa-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-bottom:6px;"></div>
-      <label class="btn" for="sa-photo-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
+    ${needPhoto ? _sec('📷', stageIsShowcase(act.key) ? 'Угсарсан байдлын зураг' : 'Гүйцэтгэлийн зураг', true, stagePhotoHint(act.key), `
+      <div id="sa-photos" class="sa-ph-grid"></div>
+      <label class="btn sa-ph-btn" for="sa-photo-input">📷 Зураг оруулах / авах</label>
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
-      <div id="sa-photo-status" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>` : ''}
+      <div id="sa-photo-status" class="sa-ph-status"></div>`) : ''}
     ${_rcHtml}
-    ${_defTargets.length ? `<div class="sa-def-wrap">
-      <div class="sa-def-t">🔎 Өмнөх ажлын алдаа <span class="sa-def-s">— байхгүй бол 0 үлдээнэ</span></div>
-      ${_defTargets.map((d, i) => `<div class="sa-def-row">
-        <span class="sa-def-l">${escapeHtml(d.q)}<span class="sa-def-who">${escapeHtml((typeof memberName === 'function' ? memberName(d.ratee) : '') || '')}</span></span>
-        <input class="ui-raw sa-def-in" type="number" inputmode="numeric" min="0" step="1" data-def="${i}" value="0"> ш</div>`).join('')}
-      <div class="sa-def-n" id="sa-def-note"></div>
-    </div>` : ''}
-    ${rateTargets.length ? rateTargets.map((rt, i) => `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(rt.q)}${rateTargets.length > 1 ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">— ${escapeHtml((typeof memberName === 'function' ? memberName(rt.ratee) : '') || '')}</span>` : ''} <span style="color:var(--danger);">*</span></div>
-      <div class="sa-stars" data-si="${i}" style="font-size:34px;letter-spacing:5px;margin:2px 0 8px;user-select:none;">${[1, 2, 3, 4, 5].map(s => `<span data-star="${s}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>`).join('')
-      + `<textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
-    ${_helpStaff.length ? `<div style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
-      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">👥 ${escapeHtml(stageHelpQuestion(act.key))} <span style="color:var(--muted);font-weight:400;font-size:11px;">— байвал дарж нэмнэ</span></div>
-      <input id="sa-help-search" placeholder="Нэрээр хайх…" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12.5px;margin-bottom:6px;">
-      <div id="sa-help-list" style="display:flex;flex-wrap:wrap;gap:6px;max-height:132px;overflow:auto;margin-bottom:12px;">${_helpStaff.map(s => `<span class="sa-help-chip" data-hk="${escapeHtml(String(s.k))}" data-hn="${escapeHtml(s.name.toLowerCase())}" style="cursor:pointer;font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);user-select:none;">${escapeHtml(s.name)}</span>`).join('')}</div>
-    </div>` : ''}
-    ${_needDriver ? `<div style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
-      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">🚗 Жолоо хэн барьсан бэ? <span style="color:var(--muted);font-weight:400;font-size:11px;">— нэмэгдэл түүнд очно</span></div>
-      <div id="sa-drv-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+    ${_defTargets.length ? _sec('🔎', 'Өмнөх ажлын алдаа', false, 'Алдаа байхгүй бол 0 үлдээнэ.', `
+      ${_defTargets.map((d, i) => `<div class="sa-def-item">
+        <div class="sa-def-q">${escapeHtml(d.q)}</div>
+        <div class="sa-def-ctl">
+          <span class="sa-def-who">${escapeHtml((typeof memberName === 'function' ? memberName(d.ratee) : '') || '')}</span>
+          <input class="ui-raw sa-def-in" type="number" inputmode="numeric" min="0" step="1" data-def="${i}" value="0"><span class="sa-def-u">ш</span>
+        </div></div>`).join('')}
+      <div class="sa-def-n ok" id="sa-def-note">✓ Алдаагүй</div>`) : ''}
+    ${rateTargets.length ? _sec('⭐', 'Өмнөх ажлыг үнэлнэ үү', true, '', rateTargets.map((rt, i) => `
+      <div class="sa-rate-q">${escapeHtml(rt.q)}${rateTargets.length > 1 ? `<span class="sa-rate-who">${escapeHtml((typeof memberName === 'function' ? memberName(rt.ratee) : '') || '')}</span>` : ''}</div>
+      <div class="sa-stars" data-si="${i}">${[1, 2, 3, 4, 5].map(st => `<span data-star="${st}">★</span>`).join('')}</div>`).join('')
+      + `<textarea id="sa-comment" class="ui-raw sa-note" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)"></textarea>`) : ''}
+    ${_helpStaff.length ? _sec('👥', stageHelpQuestion(act.key), false, 'Хамт ажилласан хүнээ дарж нэмнэ — бонусын 30% тэдэнд хуваагдана.', `
+      <input id="sa-help-search" class="ui-raw sa-help-search" placeholder="Нэрээр хайх…">
+      <div id="sa-help-list" class="sa-chip-wrap">${_helpStaff.map(s2 => `<span class="sa-help-chip" data-hk="${escapeHtml(String(s2.k))}" data-hn="${escapeHtml(s2.name.toLowerCase())}">${escapeHtml(s2.name)}</span>`).join('')}</div>`) : ''}
+    ${_needDriver ? _sec('🚗', 'Жолоо хэн барьсан бэ?', false, 'Жолооны нэмэгдэл зөвхөн энэ хүнд очно.', `
+      <div id="sa-drv-list" class="sa-chip-wrap">
         <span class="sa-drv-chip on" data-dk="${escapeHtml(String(state.me))}">${escapeHtml(memberName(state.me) || 'Би')}</span>
         ${_helpStaff.map(s2 => `<span class="sa-drv-chip" data-dk="${escapeHtml(String(s2.k))}">${escapeHtml(s2.name)}</span>`).join('')}
-      </div>
-    </div>` : ''}
-    ${canSkipStage() ? `<div id="sa-skip-wrap" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
-      <button type="button" class="btn" id="sa-skip-open" style="width:100%;font-size:12.5px;">⏭ Шалтгаантай алгасах</button>
-      <div id="sa-skip-box" style="display:none;margin-top:7px;">
-        <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:6px;">Зураг, үнэлгээгүйгээр дараагийн шатанд шилжүүлнэ. Хэн, яагаад алгассан нь захиалгад үлдэнэ.</div>
-        <textarea id="sa-skip-why" rows="2" placeholder="Яагаад алгасах шаардлагатай вэ? (заавал)" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;"></textarea>
-        <button type="button" class="btn" id="sa-skip-go" disabled style="width:100%;margin-top:6px;border-color:var(--danger);color:var(--danger);">⏭ Алгасаад үргэлжлүүлэх</button>
+      </div>`) : ''}
+    ${canSkipStage() ? `<div id="sa-skip-wrap" class="sa-skip">
+      <button type="button" class="btn sa-skip-open" id="sa-skip-open">⏭ Шалтгаантай алгасах</button>
+      <div id="sa-skip-box" class="sa-skip-box" hidden>
+        <div class="sa-sec-hint">Зураг, үнэлгээгүйгээр дараагийн дамжлагад шилжүүлнэ. Хэн, яагаад алгассан нь захиалгад үлдэнэ.</div>
+        <textarea id="sa-skip-why" class="ui-raw sa-note" rows="2" placeholder="Яагаад алгасах шаардлагатай вэ? (заавал)"></textarea>
+        <button type="button" class="btn sa-skip-go" id="sa-skip-go" disabled>⏭ Алгасаад үргэлжлүүлэх</button>
       </div>
     </div>` : ''}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;"><button class="btn" id="sa-cancel">Болих</button><button class="btn btn-primary" id="sa-submit" disabled>✓ Баталгаажуулах</button></div>
@@ -26701,8 +26708,8 @@ function openStageAdvanceModal(oid, to) {
   if (_skipOpen) {
     _skipOpen.onclick = () => {
       const box = $('#sa-skip-box');
-      const on = box.style.display === 'none';
-      box.style.display = on ? '' : 'none';
+      const on = box.hidden;          // `hidden` атрибут — inline display БИШ
+      box.hidden = !on;
       _skipOpen.textContent = on ? '✕ Алгасахаа болих' : '⏭ Шалтгаантай алгасах';
       if (on) $('#sa-skip-why').focus();
     };
@@ -26739,7 +26746,7 @@ function openStageAdvanceModal(oid, to) {
     const sh = rcShort();
     const w = modal.querySelector('#rc-warn');
     if (w) {
-      w.style.display = sh.length ? '' : 'none';
+      w.hidden = !sh.length;
       const _liable = (!_isPickup && _prevPick && _driverBy) ? `<br><span style="font-weight:700;">🔴 Замд дутсан/эвдэрсэн — жолооч <b>${escapeHtml((typeof memberName === 'function' ? memberName(_driverBy) : '') || _driverBy)}</b> хариуцна.</span>` : '';
       w.innerHTML = sh.length
         ? `⚠ <b>${sh.reduce((a, x) => a + x.miss, 0)}ш</b> дутуу / эвдэрсэн: ${sh.map(x => escapeHtml(x.name) + '×' + x.miss).join(', ')}${_liable}<br><span style="font-weight:400;">Эдгээр нөөцөөс хасагдаж, засварын жагсаалтад орно. Доор <b>шалтгаан бичнэ үү</b>.</span>`
@@ -26805,7 +26812,12 @@ function openStageAdvanceModal(oid, to) {
     const el = modal.querySelector('#sa-def-note'); if (!el) return;
     const tot = _rcItems.reduce((t, x, i) => t + (rcGot[i] != null ? rcGot[i] : x.qty), 0);
     const sum = [...modal.querySelectorAll('[data-def]')].reduce((t, i2) => t + (Number(i2.value) || 0), 0);
-    el.textContent = (sum > 0 && tot > 0) ? `${sum} / ${tot}ш — ${(100 * sum / tot).toFixed(0)}% дахин ажиллах шаардлагатай` : '';
+    /* ⛔ 0 үед ХООСОН БИШ, «✓ Алдаагүй» гэж бичнэ — хоосон мөр нь «шалгасан
+       уу, үгүй юу» гэдгийг хэлдэггүй (түүх дэх ялгаатай ижил зарчим). */
+    el.textContent = (sum > 0 && tot > 0)
+      ? `⚠ ${sum} / ${tot}ш — ${(100 * sum / tot).toFixed(0)}% дахин ажиллана`
+      : '✓ Алдаагүй';
+    el.className = 'sa-def-n' + (sum > 0 ? '' : ' ok');
   };
   modal.querySelectorAll('[data-def]').forEach(i2 => i2.oninput = _defPaint);
   const _hSearch = modal.querySelector('#sa-help-search');

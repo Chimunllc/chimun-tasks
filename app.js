@@ -13279,6 +13279,46 @@ function stageDefs() {
 function orderItemQty(o) {
   return ((o && Array.isArray(o.items)) ? o.items : []).reduce((t, it) => t + (Number(it && it.qty) || 0), 0);
 }
+/* ─── АЖЛЫН ЧАНАР = АЛДААНЫ ХАРЬЦАА (2026-10-04, CEO) ───────────────────────
+   ★ нь үнэлэгчээс хамаардаг (амьд датаар нэг нярав дундаж 4.87, нөгөө нь 2.91
+   өгдөг) тул ижил ажил хэнд таарснаас шалтгаалж өөр оноо авч байв. Алдааны
+   ШИРХЭГ хүн болгонд ижил утгатай бөгөөд дахин ажиллах зардал болж хувирна.
+   Чанар = 1 − (алдаатай ширхэг ÷ тухайн хүний гаргасан нийт ширхэг).
+   ⛔ **ШАЛГААГҮЙГ «АЛДААГҮЙ» ГЭЖ ТООЛОХГҮЙ** — зөвхөн `defChecked` тэмдэгтэй
+     бүртгэлээс тоолно. Эс бөгөөс шалгалт хийгээгүй бүх захиалга «төгс» болж,
+     хэмжүүр чимээгүй утгаа алдана.
+   ⚠ ЦЭВЭР функц — тестлэгдэнэ. Захиалгын жагсаалт + сар дамжуулна. */
+function defectStats(orders, month) {
+  const out = {};
+  const add = (k, items, bad) => {
+    if (!k) return;
+    const r = out[k] || (out[k] = { items: 0, defects: 0, checked: 0, rate: null });
+    r.items += items; r.defects += bad; r.checked += 1;
+  };
+  for (const o of (orders || [])) {
+    const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    const d = sm.dispatch;
+    if (!d || typeof d !== 'object' || !d.defChecked) continue;
+    if (month && String(d.at || '').slice(0, 7) !== month) continue;
+    // Нийт = гарсан тоо (бүртгэгдээгүй бол захиалгын тоо)
+    const tot = Array.isArray(d.items) && d.items.length
+      ? d.items.reduce((t, x) => t + (Number(x.got != null ? x.got : x.qty) || 0), 0)
+      : orderItemQty(o);
+    if (tot <= 0) continue;
+    const defs = Array.isArray(d.defects) ? d.defects : [];
+    ['clean', 'prepare'].forEach(k => {
+      const e = sm[k];
+      if (!e || typeof e !== 'object' || !e.by) return;
+      const bad = defs.filter(x => x && x.stage === k).reduce((t, x) => t + (Number(x.n) || 0), 0);
+      add(String(e.by), tot, bad);
+    });
+  }
+  Object.keys(out).forEach(k => {
+    const r = out[k];
+    r.rate = r.items > 0 ? Math.max(0, 1 - r.defects / r.items) : null;
+  });
+  return out;
+}
 /* Сарын дамжлагын бонус — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
    Буцаах: { key: {led, helped, qty, ledFee, helperFee, total} } */
 function stagePayByPerson(orders, month) {
@@ -26482,7 +26522,15 @@ function stageMetaHtml(o) {
     const _head = `<div class="sm-head">${_skip}${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${_helpers}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
     const _cmt = e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>`
       : (e.skipped && e.reason ? `<div class="sm-comment">⏭ ${escapeHtml(e.reason)}</div>` : '');
-    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}</div></div>`;
+    /* Өмнөх ажлын алдаа — ХЭНИЙ алдаа болохыг нэрлэнэ (нуухгүй). Шалгасан ч
+       алдаагүй бол «✓ шалгасан» гэж бичнэ: «алдаагүй» ба «шалгаагүй» хоёр
+       ялгагдах ёстой. */
+    const _def = (k === 'dispatch' && e.defChecked)
+      ? (Array.isArray(e.defects) && e.defects.length
+          ? `<div class="sm-def">⚠ ${e.defects.map(x => `${escapeHtml(STAGE_META_LABEL[x.stage] || x.stage)}: <b>${Number(x.n) || 0}ш</b>${x.ratee ? ` · ${escapeHtml(memberName(x.ratee) || x.ratee)}` : ''}`).join(' · ')}</div>`
+          : '<div class="sm-def sm-def-ok">✓ Өмнөх ажил шалгагдсан — алдаагүй</div>')
+      : '';
+    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}${_def}</div></div>`;
   }).join('')}</div>`;
 }
 // ⛔ ЗУРАГ ХАРАХ ГАЗАР ГАНЦ — #lightbox (2026-09-19).
@@ -26537,9 +26585,15 @@ function openStageAdvanceModal(oid, to) {
   // Бусад шат = өмнөх нэг шатыг үнэлнэ. Эхний шат (цэвэрлэх) = үнэлгээгүй.
   const _smNow = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
   let rateTargets = [];
+  /* ⛔ «БҮРТГЭЖ ГАРГАХ» дээр ★ БИШ, АЛДААНЫ ТОО (2026-10-04, CEO) ─────────────
+     ★ нь үнэлэгчээс хамаардаг: амьд датаар нэг нярав дундаж 4.87, нөгөө нь
+     2.91 өгдөг — ижил ажил хэнд таарснаас шалтгаалж өөр оноо авч байв.
+     Ширхэгийн тоо хүн болгонд ижил утгатай, дахин цэвэрлэх зардал болж
+     хувирдаг. Өгөгдмөл 0 тул хэвийн үед НЭМЭЛТ АЖИЛ ҮҮСЭХГҮЙ. */
+  const _defTargets = [];
   if (act.key === 'dispatch') {
-    if (_smNow.clean && _smNow.clean.by) rateTargets.push({ ratee: _smNow.clean.by, q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' });
-    if (_smNow.prepare && _smNow.prepare.by) rateTargets.push({ ratee: _smNow.prepare.by, q: 'Бэлтгэл бүрэн, зөв бэлдэгдсэн үү?' });
+    if (_smNow.clean && _smNow.clean.by) _defTargets.push({ k: 'clean', ratee: _smNow.clean.by, q: 'Цэвэрлэгдээгүй / дахин цэвэрлэх ширхэг' });
+    if (_smNow.prepare && _smNow.prepare.by) _defTargets.push({ k: 'prepare', ratee: _smNow.prepare.by, q: 'Дутуу / буруу баглагдсан ширхэг' });
   } else if (act.key === 'retstart') {
     // Хүргэлтээс авах (жолооч) = зөвхөн ТОО ШИРХЭГ (хэрэглэгчээс); ★ БАЙХГҮЙ (өөрийн хүргэлтээ үнэлэхгүй).
   } else {
@@ -26598,6 +26652,13 @@ function openStageAdvanceModal(oid, to) {
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
       <div id="sa-photo-status" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>` : ''}
     ${_rcHtml}
+    ${_defTargets.length ? `<div class="sa-def-wrap">
+      <div class="sa-def-t">🔎 Өмнөх ажлын алдаа <span class="sa-def-s">— байхгүй бол 0 үлдээнэ</span></div>
+      ${_defTargets.map((d, i) => `<div class="sa-def-row">
+        <span class="sa-def-l">${escapeHtml(d.q)}<span class="sa-def-who">${escapeHtml((typeof memberName === 'function' ? memberName(d.ratee) : '') || '')}</span></span>
+        <input class="ui-raw sa-def-in" type="number" inputmode="numeric" min="0" step="1" data-def="${i}" value="0"> ш</div>`).join('')}
+      <div class="sa-def-n" id="sa-def-note"></div>
+    </div>` : ''}
     ${rateTargets.length ? rateTargets.map((rt, i) => `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(rt.q)}${rateTargets.length > 1 ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">— ${escapeHtml((typeof memberName === 'function' ? memberName(rt.ratee) : '') || '')}</span>` : ''} <span style="color:var(--danger);">*</span></div>
       <div class="sa-stars" data-si="${i}" style="font-size:34px;letter-spacing:5px;margin:2px 0 8px;user-select:none;">${[1, 2, 3, 4, 5].map(s => `<span data-star="${s}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>`).join('')
       + `<textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
@@ -26732,6 +26793,14 @@ function openStageAdvanceModal(oid, to) {
     driverKey = String(ch.dataset.dk);
     modal.querySelectorAll('.sa-drv-chip').forEach(x => x.classList.toggle('on', x === ch));
   });
+  // Алдааны тоо оруулахад нийт гарсан тоотой харьцуулж хувийг ил хэлнэ
+  const _defPaint = () => {
+    const el = modal.querySelector('#sa-def-note'); if (!el) return;
+    const tot = _rcItems.reduce((t, x, i) => t + (rcGot[i] != null ? rcGot[i] : x.qty), 0);
+    const sum = [...modal.querySelectorAll('[data-def]')].reduce((t, i2) => t + (Number(i2.value) || 0), 0);
+    el.textContent = (sum > 0 && tot > 0) ? `${sum} / ${tot}ш — ${(100 * sum / tot).toFixed(0)}% дахин ажиллах шаардлагатай` : '';
+  };
+  modal.querySelectorAll('[data-def]').forEach(i2 => i2.oninput = _defPaint);
   const _hSearch = modal.querySelector('#sa-help-search');
   if (_hSearch) _hSearch.oninput = () => { const qq = _hSearch.value.toLowerCase().trim(); modal.querySelectorAll('.sa-help-chip').forEach(ch => { ch.style.display = (!qq || (ch.dataset.hn || '').includes(qq)) ? '' : 'none'; }); };
   $('#sa-submit').onclick = async () => {
@@ -26742,6 +26811,16 @@ function openStageAdvanceModal(oid, to) {
     if (needPhoto) entry.photos = photos.slice();
     if (helpers.size) entry.helpers = [...helpers]; else delete entry.helpers;   // хамтарсан хүмүүс
     if (_needDriver) entry.driver = driverKey;   // 🚗 нэмэгдэл ЭНЭ хүнд (дамжлагын оноо нь дарсан хүнд)
+    /* Өмнөх ажлын АЛДААНЫ ТОО — хүн бүрт нь холбож хадгална. 0 бол бичихгүй
+       (хоосон түүх үүсгэхгүй), гэхдээ «шалгасан» гэдгийг `defChecked`-ээр
+       тэмдэглэнэ — эс бөгөөс «алдаагүй» ба «шалгаагүй» хоёр ялгагдахгүй. */
+    if (_defTargets.length) {
+      const ds = _defTargets.map((d, i) => ({ stage: d.k, ratee: d.ratee,
+        n: Math.max(0, Number((modal.querySelector(`[data-def="${i}"]`) || {}).value) || 0) }));
+      entry.defChecked = true;
+      const bad = ds.filter(x => x.n > 0);
+      if (bad.length) entry.defects = bad; else delete entry.defects;
+    }
     if (rateTargets.length && ratings.every(r => r > 0)) {
       entry.comment = (($('#sa-comment') || {}).value || '').trim();
       // Үнэлгээ бүрийг тухайн ажилтанд холбоно (олон зорилт = олон handoffRating)

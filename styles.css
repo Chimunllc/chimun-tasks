@@ -6642,6 +6642,17 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 /* Жолоочийн сонголт — ҮРГЭЛЖ яг нэг хүн (дамжлагын цонх) */
 .sa-drv-chip { cursor:pointer; font-size: var(--fs-sm); padding:5px 10px; border:1px solid var(--border); border-radius:999px; background: var(--panel); user-select:none; }
 .sa-drv-chip.on { background: var(--primary); border-color: var(--primary); color:#fff; }
+/* Өмнөх ажлын алдааны тоо (бүртгэж гаргах дамжлага) */
+.sa-def-wrap { border-top:1px dashed var(--border); margin-top: var(--space-2); padding-top: var(--space-3); margin-bottom: var(--space-3); }
+.sa-def-t { font-size: var(--fs-sm); font-weight:700; margin-bottom: var(--space-2); }
+.sa-def-s { font-weight:400; color: var(--muted); font-size: var(--fs-xs); }
+.sa-def-row { display:flex; align-items:center; gap: var(--space-2); margin-bottom: var(--space-2); font-size: var(--fs-sm); }
+.sa-def-l { flex:1; min-width:0; }
+.sa-def-who { display:block; font-size: var(--fs-xs); color: var(--muted); }
+.sa-def-in { width:74px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align:right; }
+.sa-def-n { font-size: var(--fs-xs); color: var(--warn); min-height:14px; }
+.sm-def { font-size: var(--fs-xs); color: var(--warn); margin-top:2px; }
+.sm-def.sm-def-ok { color: var(--muted); }
 /* ⚙️ Дамжлагын онооны тохиргоо */
 .sp-cfg { max-width:420px; width:96%; max-height:92vh; overflow:auto; }
 .sp-cfg-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom: var(--space-2); }

@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15255,6 +15255,37 @@ async function swFetchTests() {
   eq(one('clean').total, 2 * 1350, 'ханш: тохиргоо авахад кодын нөөц ханш');
 }
 
+// ═══ АЖЛЫН ЧАНАР = АЛДААНЫ ХАРЬЦАА, ★ БИШ (2026-10-04, CEO) ════════════
+{
+  const { defectStats } = F;
+  const mk = (defChecked, defects, got) => ({ items: [{ qty: 10 }], stage_meta: {
+    clean:   { by: 'A', at: '2026-09-01T02:00:00Z' },
+    prepare: { by: 'B', at: '2026-09-01T03:00:00Z' },
+    dispatch: { by: 'N', at: '2026-09-01T04:00:00Z', defChecked, defects,
+                items: [{ sku: 'X', name: 'Бараа', qty: 10, got: got != null ? got : 10 }] },
+  } });
+  // Алдаа 2ш цэвэрлэгчид, 1ш баглагчид
+  const r = defectStats([mk(true, [{ stage: 'clean', ratee: 'A', n: 2 }, { stage: 'prepare', ratee: 'B', n: 1 }])], '2026-09');
+  eq(r.A.items, 10, 'чанар: нийт ширхэг гарсан тооноос');
+  eq(r.A.defects, 2, 'чанар: цэвэрлэгчийн алдаа');
+  eq(r.A.rate, 0.8, 'чанар: 1 − 2/10');
+  eq(r.B.defects, 1, 'чанар: баглагчийн алдаа тусад нь');
+  eq(r.B.rate, 0.9, 'чанар: 1 − 1/10');
+  // Алдаагүй шалгалт — чанар 100%
+  const ok0 = defectStats([mk(true, undefined)], '2026-09');
+  eq(ok0.A.rate, 1, 'чанар: алдаагүй бол 100%');
+  eq(ok0.A.checked, 1, 'чанар: шалгасан тоо');
+  /* ⛔ ШАЛГААГҮЙГ «алдаагүй» гэж тоолохгүй — эс бөгөөс шалгалт хийгээгүй бүх
+     захиалга «төгс» болж хэмжүүр чимээгүй утгаа алдана. */
+  eq(Object.keys(defectStats([mk(false, [{ stage: 'clean', ratee: 'A', n: 5 }])], '2026-09')).length, 0,
+     'чанар: defChecked-гүй бүртгэл тоологдохгүй');
+  // ⚠ Нийт нь ГАРСАН тооноос (захиалгын тооноос БИШ) — дутуу гарсан бол хувь нь гажихгүй
+  eq(defectStats([mk(true, [{ stage: 'clean', ratee: 'A', n: 1 }], 5)], '2026-09').A.items, 5,
+     'чанар: нийт = гарсан тоо');
+  // Сарын шүүлт
+  eq(Object.keys(defectStats([mk(true, undefined)], '2026-08')).length, 0, 'чанар: өөр сар тоологдохгүй');
+}
+
 // ═══ ЖОЛООЧ ТУСДАА · БҮРТГЭХ ДАМЖЛАГАД ТОО (2026-10-03, CEO) ═══════════
 {
   const { driverBonus, stageEvidence } = F;
@@ -15335,6 +15366,12 @@ async function swFetchTests() {
   ok(/!_isPickup && !_isDispatch && _prevPick/.test(md), 'scan: гаргахад жолоочийн хариуцлага үүсэхгүй');
   ok(/const needPhoto = _ev === 'photo'/.test(md), 'scan: зураг нь нотолгооны төрлөөс');
   ok(/entry\.driver = driverKey/.test(md), 'scan: жолооч тусдаа хадгалагдана');
+  // ⛔ «Бүртгэж гаргах» дээр ★ БИШ, алдааны ТОО
+  ok(/_defTargets/.test(md), 'scan: алдааны тоо асуудаг');
+  ok(/entry\.defChecked = true/.test(md), 'scan: шалгасан эсэх тэмдэглэгдэнэ');
+  ok(!/rateTargets\.push\(\{ ratee: _smNow\.clean\.by/.test(md), 'scan: цэвэрлэгээнд ★ буцаж ирээгүй');
+  const ds = src.slice(src.indexOf('function defectStats'), src.indexOf('/* Сарын дамжлагын бонус'));
+  ok(/!d\.defChecked\) continue/.test(ds), 'scan: шалгаагүйг алдаагүй гэж тоолохгүй');
   const db = src.slice(src.indexOf('function driverBonus'), src.indexOf('const DRIVER_LIABILITY_NOTE'));
   ok(/e\.driver \|\| e\.by/.test(db), 'scan: нэмэгдэл жолоочид, хуучин бичлэгт by руу унана');
   // ⛔ Тохиргоо хадгалахад БАТАЛГААЖУУЛАЛТ (бүх сарын бонус дахин бодогдоно)

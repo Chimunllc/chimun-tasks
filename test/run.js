@@ -15383,6 +15383,10 @@ async function swFetchTests() {
   // ⛔ «Бүртгэж гаргах» дээр ★ БИШ, алдааны ТОО
   ok(/_defTargets/.test(md), 'scan: алдааны тоо асуудаг');
   ok(/entry\.defChecked = true/.test(md), 'scan: шалгасан эсэх тэмдэглэгдэнэ');
+  /* ⛔ Тоолох дамжлагад хамтрагч асуухгүй — ачааг өмнөх/дараах дамжлагад
+     хийдэг тул нэг ачилт хоёр удаа шагнагдаж байв (9 сард 51-ийн 30). */
+  ok(/_helpAsk = stageEvidence\(act\.key\) !== 'count'/.test(md), 'scan: тоолох дамжлагад хамтрагч асуухгүй');
+  ok(/_helpStaff = !_helpAsk \?/.test(md), 'scan: хамтрагчийн жагсаалт түүгээр хаагдана');
   ok(!/rateTargets\.push\(\{ ratee: _smNow\.clean\.by/.test(md), 'scan: цэвэрлэгээнд ★ буцаж ирээгүй');
   const ds = src.slice(src.indexOf('function defectStats'), src.indexOf('/* Сарын дамжлагын бонус'));
   ok(/!d\.defChecked\) continue/.test(ds), 'scan: шалгаагүйг алдаагүй гэж тоолохгүй');

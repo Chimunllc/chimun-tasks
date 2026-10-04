@@ -26626,7 +26626,14 @@ function openStageAdvanceModal(oid, to) {
   // ⛔ ЖОЛООЧ — хүргэх/буцаах дамжлагад ХЭН ЖОЛОО БАРЬСАН нь тусад нь бүртгэгдэнэ.
   //   Дамжлагын оноо нь ачаа буулгасан хүнд, 10,000₮-ийн нэмэгдэл нь жолоочид.
   const _needDriver = act.key === 'deliver' || act.key === 'retstart';
-  const _helpStaff = (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !isDailyMember(m) && String(personKey(m)) !== String(state.me))
+  /* ⛔ ТООЛОХ ДАМЖЛАГАД ХАМТРАГЧ АСУУХГҮЙ (2026-10-04, CEO).
+     Бүртгэж гаргах/хүлээн авах нь няравын ТООЛОХ ажил — ачааг өмнөх
+     («Баглаж/ачих») ба дараах («Буулгаж байршуулах») дамжлагад хийдэг.
+     Амьд датаар 9 сард гаргахад бүртгэгдсэн 51 хамтрагчийн **30** нь
+     баглахад АЛЬ ХЭДИЙН бүртгэгдсэн хүн байв — нэг ачилт ХОЁР удаа
+     шагнагдаж, нярав 12 нэрийн жагсаалтыг дэмий гүйлгэдэг байв. */
+  const _helpAsk = stageEvidence(act.key) !== 'count';
+  const _helpStaff = !_helpAsk ? [] : (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !isDailyMember(m) && String(personKey(m)) !== String(state.me))
     .map(m => ({ k: personKey(m), name: m.name || '' })).filter(x => x.k && x.name)
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'mn'));
   const _rcHtml = _isReceive && _rcItems.length ? `

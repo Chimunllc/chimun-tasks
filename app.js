@@ -10663,6 +10663,13 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openBqPaymentModal(b.dataset.bqPay); }));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
   document.querySelectorAll('[data-stagephoto]').forEach(img => img.addEventListener('click', () => openStagePhoto(img.dataset.stagephoto)));
+  // ✋ «Би ч оролцсон» — мэдүүлэг нэмнэ (мөнгө ШУУД болохгүй, баталгаажуулалт хүлээнэ)
+  document.querySelectorAll('[data-claim]').forEach(b2 => b2.addEventListener('click', (e) => {
+    e.stopPropagation(); e.preventDefault();
+    if (b2.dataset.busy === '1') return;
+    b2.dataset.busy = '1'; setTimeout(() => { b2.dataset.busy = ''; }, 1500);
+    claimStageWork(b2.dataset.claim, b2.dataset.claimK);
+  }));
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); e.preventDefault();
     if (b.dataset.busy === '1') return;                                  // давхар дарахаас хамгаалах
@@ -14012,6 +14019,10 @@ function attachMyAttendHandlers() {
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
+  document.querySelectorAll('[data-clm-ok]').forEach(b2 => b2.addEventListener('click', () =>
+    resolveStageClaim(b2.dataset.clmOk, b2.dataset.clmK, b2.dataset.clmW, true)));
+  document.querySelectorAll('[data-clm-no]').forEach(b2 => b2.addEventListener('click', () =>
+    resolveStageClaim(b2.dataset.clmNo, b2.dataset.clmK, b2.dataset.clmW, false)));
   document.getElementById('my-pay-ym')?.addEventListener('change', (e) => {
     const v = String(e.target.value || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(v)) return;
@@ -17929,7 +17940,18 @@ function renderSalary() {
   const spFoot = T.sp
     ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> · ${(T.spPts || 0).toFixed(1)} оноо × ${fmtMoney(stagePointRate())} — цалинд ОРООГҮЙ.${spCfgBtn}</div>`
     : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
-  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar}${searchBar}
+  /* ✋ Хүлээгдэж буй мэдүүлэг — ЦАЛИН хардаг хүнд ИЛ. Хамтрагчаа нуух нүхийг
+     барих цорын ганц хүч нь орхигдсон хүн өөрөө; түүний дуу хоосон өрөөнд
+     биш, цалин баталдаг хүний нүдэн дээр гарна. */
+  const _claims = (can('salary.edit') || state.isCEO) ? pendingStageClaims(state.appOrders || []) : [];
+  const claimBox = _claims.length ? `<div class="clm-box">
+    <div class="clm-t">✋ ${_claims.length} хүн «би ч оролцсон» гэж мэдүүлсэн</div>
+    ${_claims.slice(0, 20).map(c => `<div class="clm-row">
+      <span class="clm-l"><b>${escapeHtml(memberName(c.who) || c.who)}</b> — ${escapeHtml(stageHistLabel(c.key))}<span class="clm-o">#${escapeHtml(String(c.number ?? ''))} · ${escapeHtml(String(c.at || '').slice(0, 10))}</span></span>
+      <button class="btn clm-no" data-clm-no="${escapeHtml(String(c.oid))}" data-clm-k="${escapeHtml(c.key)}" data-clm-w="${escapeHtml(c.who)}">✕</button>
+      <button class="btn btn-primary clm-ok" data-clm-ok="${escapeHtml(String(c.oid))}" data-clm-k="${escapeHtml(c.key)}" data-clm-w="${escapeHtml(c.who)}">✓ Тийм</button></div>`).join('')}
+    <div class="clm-n">Баталгаажуулбал тэр дамжлагын бонус дахин хуваагдана.</div></div>` : '';
+  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar + claimBox}${searchBar}
     <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${histOnly ? '' : spFoot}</div>`;
 }
 /* ⚙️ ДАМЖЛАГЫН ОНООНЫ ТОХИРГОО (2026-10-03, CEO) ───────────────────────────
@@ -26593,6 +26615,37 @@ function orderReviewHtml(o) {
     ${r.text ? `<span class="orv-text">${escapeHtml(r.text)}</span>` : '<span class="orv-text orv-dim">сэтгэгдэл бичээгүй</span>'}
   </div>`;
 }
+/* ─── «БИ Ч ОРОЛЦСОН» МЭДҮҮЛЭГ (2026-10-04, CEO) ───────────────────────────
+   Сан тогтмол болсноор хамтрагчаа НУУВАЛ дарсан хүн бүтэн санг авдаг нүх
+   үүссэн. Үүнийг барих цорын ганц бодит хүч нь орхигдсон хүн өөрөө — тэд
+   хэн ажилласныг мэднэ. Тиймээс дамжлагын түүхэн дээр нэг товчоор мэдүүлнэ.
+   ⛔ МЭДҮҮЛЭГ НЬ ӨӨРӨӨ МӨНГӨ БОЛОХГҮЙ — зөвхөн баталгаажсаны дараа
+     `helpers`-т орно. Эс бөгөөс хүн өөрөө өөртөө бонус бичнэ. */
+function stageClaims(e) { return (e && Array.isArray(e.claims)) ? e.claims.filter(Boolean).map(String) : []; }
+// Тухайн хүн энэ дамжлагад АЛЬ ХЭДИЙН тоологдсон уу (мэдүүлэх шаардлагагүй)
+function stageHasPerson(e, key) {
+  if (!e || typeof e !== 'object' || !key) return false;
+  const k = String(key);
+  if (String(e.by || '') === k || String(e.driver || '') === k) return true;
+  return (Array.isArray(e.helpers) ? e.helpers : []).map(String).includes(k);
+}
+// Бүх захиалгаас хүлээгдэж буй мэдүүлэг — ЦЭВЭР функц (тестлэгдэнэ)
+function pendingStageClaims(orders) {
+  const out = [];
+  for (const o of (orders || [])) {
+    const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : null;
+    if (!sm) continue;
+    for (const k of Object.keys(sm)) {
+      const e = sm[k];
+      if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
+      stageClaims(e).forEach(who => {
+        if (stageHasPerson(e, who)) return;   // аль хэдийн тоологдсоныг харуулахгүй
+        out.push({ oid: o.id, number: o.number, key: k, who, at: e.at || '' });
+      });
+    }
+  }
+  return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
   if (!sm || typeof sm !== 'object') return '';
@@ -26625,7 +26678,16 @@ function stageMetaHtml(o) {
           ? `<div class="sm-def">⚠ ${e.defects.map(x => `${escapeHtml(stageHistLabel(x.stage))}: <b>${Number(x.n) || 0}ш</b>${x.ratee ? ` · ${escapeHtml(memberName(x.ratee) || x.ratee)}` : ''}`).join(' · ')}</div>`
           : '<div class="sm-def sm-def-ok">✓ Өмнөх ажил шалгагдсан — алдаагүй</div>')
       : '';
-    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}${_def}</div></div>`;
+    /* ✋ Мэдүүлэх товч — ЗӨВХӨН өөрөө тоологдоогүй, ачаа зөөдөг дамжлагад.
+       Мэдүүлсэн бол «хүлээгдэж буй» гэж ил харагдана (нуугдахгүй). */
+    const _cl = stageClaims(e).filter(w => !stageHasPerson(e, w));
+    const _clHtml = _cl.length
+      ? `<div class="sm-claim">✋ Мэдүүлсэн: ${escapeHtml(_cl.map(w => memberName(w) || w).join(', '))} <span class="sm-claim-w">— баталгаажаагүй</span></div>` : '';
+    const _canClaim = STAGE_FEE_STAGES.indexOf(k) >= 0 && state.me && !stageHasPerson(e, state.me)
+      && !_cl.includes(String(state.me)) && !e.skipped;
+    const _clBtn = _canClaim
+      ? `<button class="btn sm-claim-btn" data-claim="${escapeHtml(String(o.id))}" data-claim-k="${escapeHtml(k)}">✋ Би ч оролцсон</button>` : '';
+    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}${_def}${_clHtml}${_clBtn}</div></div>`;
   }).join('')}</div>`;
 }
 // ⛔ ЗУРАГ ХАРАХ ГАЗАР ГАНЦ — #lightbox (2026-09-19).
@@ -27538,6 +27600,43 @@ function orderCmpAmount(o) { const c = parseOrderCmp(o && o.note); return c ? c.
      (`paid_date`, `starts_at`, `status`) — тэдгээр нь мөнгийг өөр сар руу
      зөөдөг тул адил аюултай. */
 const ORDER_MONEY_FIELDS = ['total_mnt', 'paid_mnt', 'deposit_mnt', 'items', 'paid_date', 'starts_at', 'status'];
+/* ✋ Мэдүүлэг нэмэх — `stage_meta.<key>.claims` массивт нэр нэмнэ.
+   ⛔ `helpers`-т ШУУД нэмэхгүй — тэгвэл хүн өөртөө бонус бичнэ. Баталгаажсаны
+     дараа л орно (`approveStageClaim`). */
+async function claimStageWork(oid, key) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o || !key || !state.me) return;
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  const e = sm[key];
+  if (!e || typeof e !== 'object') return;
+  if (stageHasPerson(e, state.me)) { showToast('Та энэ дамжлагад аль хэдийн тоологдсон байна', 'warn', 3000); return; }
+  const cl = stageClaims(e);
+  if (cl.includes(String(state.me))) { showToast('Мэдүүлэг аль хэдийн илгээгдсэн', 'warn', 2500); return; }
+  const next = Object.assign({}, sm, { [key]: Object.assign({}, e, { claims: cl.concat(String(state.me)) }) });
+  try {
+    await patchOrderFields(o, { stage_meta: next });
+    o.stage_meta = next;
+    showToast('Мэдүүлэг илгээгдлээ — захирал баталгаажуулна', 'success', 3000); render();
+  } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); }
+}
+/* Баталгаажуулах/татгалзах — ЗӨВХӨН цалин хардаг хүн (нярав/захирал).
+   Баталгаажвал `helpers`-т орж бонус дахин хуваагдана. */
+async function resolveStageClaim(oid, key, who, accept) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  const e = sm[key]; if (!e || typeof e !== 'object') return;
+  const cl = stageClaims(e).filter(w => String(w) !== String(who));
+  const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String);
+  const nextE = Object.assign({}, e, { claims: cl });
+  if (accept && !hs.includes(String(who))) nextE.helpers = hs.concat(String(who));
+  const next = Object.assign({}, sm, { [key]: nextE });
+  try {
+    await patchOrderFields(o, { stage_meta: next });
+    o.stage_meta = next;
+    showToast(accept ? 'Баталгаажлаа — бонус дахин хуваагдана' : 'Татгалзлаа', 'success'); render();
+  } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); }
+}
 async function patchOrderFields(o, fields) {
   const oid = o && o.id; if (!oid) throw new Error('id алга');
   const _money = ORDER_MONEY_FIELDS.filter(k => fields && Object.prototype.hasOwnProperty.call(fields, k));

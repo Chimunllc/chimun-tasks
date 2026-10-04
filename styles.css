@@ -6647,9 +6647,12 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .sa-def-t { font-size: var(--fs-sm); font-weight:700; margin-bottom: var(--space-2); }
 .sa-def-s { font-weight:400; color: var(--muted); font-size: var(--fs-xs); }
 .sa-def-row { display:flex; align-items:center; gap: var(--space-2); margin-bottom: var(--space-2); font-size: var(--fs-sm); }
-.sa-def-l { flex:1; min-width:0; }
+.sa-def-l { flex:1; min-width:0; overflow-wrap:anywhere; }
 .sa-def-who { display:block; font-size: var(--fs-xs); color: var(--muted); }
-.sa-def-in { width:74px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align:right; }
+/* ⚠ `.modal` угтвар ЗААВАЛ — `.modal input { width:100% }` (styles.css:713) нь
+   ангиас ИЛҮҮ онцлогтой тул угтваргүй бол тоон талбар бүтэн өргөнөөр тэлж,
+   шошгыг үсэг тус бүрээр босоо тасардаг болгоно (амьд дэлгэцэд гарсан). */
+.modal .sa-def-in { width:74px; flex:none; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align:right; }
 .sa-def-n { font-size: var(--fs-xs); color: var(--warn); min-height:14px; }
 .sm-def { font-size: var(--fs-xs); color: var(--warn); margin-top:2px; }
 .sm-def.sm-def-ok { color: var(--muted); }
@@ -6662,7 +6665,7 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .sp-cfg-row { display:flex; align-items:center; gap: var(--space-2); margin-bottom: var(--space-2); font-size: var(--fs-sm); }
 .sp-cfg-l { flex:1; min-width:0; }
 .sp-cfg-ev { font-size: var(--fs-xs); color: var(--muted); margin-left: var(--space-2); }
-.sp-cfg-in { width:86px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align:right; }
+.modal .sp-cfg-in { width:86px; flex:none; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align:right; }
 .sp-cfg-prev { background: var(--panel-hover); border:1px solid var(--border); border-radius:10px; padding: var(--space-3); margin-top: var(--space-3); }
 .sp-cfg-prow { display:flex; justify-content:space-between; font-size: var(--fs-sm); margin-bottom:3px; }
 .sp-cfg-pnote { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }

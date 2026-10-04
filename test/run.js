@@ -15338,6 +15338,20 @@ async function swFetchTests() {
   eq(stageWeight('clean'), 1, 'тохиргоо: цэвэрлэгдвэл анхдагч руу буцна');
 }
 
+// ═══ SCAN: модал доторх нарийн тоон талбар `.modal` угтвартай ══════════
+/* ⛔ `.modal input { width:100% }` (styles.css) нь ангиас ИЛҮҮ онцлогтой тул
+   `.xxx-in { width:74px }` гэж бичвэл ДАРАГДАНА — талбар бүтэн өргөнөөр тэлж,
+   хажуугийн шошго үсэг тус бүрээр босоо тасарна (2026-10-04 амьд дэлгэцэд). */
+{
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+  ['sa-def-in', 'sp-cfg-in'].forEach(cls => {
+    // Мөрийн эхэнд ганцаараа бичигдсэн дүрэм = угтваргүй (дарагдана)
+    ok(!new RegExp('^\\s*\\.' + cls + '\\s*\\{', 'm').test(css), `scan: .${cls} нь .modal угтваргүй бичигдээгүй`);
+    ok(new RegExp('\\.modal\\s+\\.' + cls + '\\s*\\{').test(css), `scan: .modal .${cls} дүрэм бий`);
+    ok(new RegExp('\\.modal\\s+\\.' + cls + '[^}]*flex\\s*:\\s*none').test(css), `scan: .${cls} тэлэхгүй (flex:none)`);
+  });
+}
+
 // ═══ SCAN: урсгал жагсаалтаас ажиллана ═════════════════════════════════
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');

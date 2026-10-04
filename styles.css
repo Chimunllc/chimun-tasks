@@ -8613,3 +8613,26 @@ select.no-asar-len {
 .bqp-rc-view { padding: 2px 9px; color: var(--primary); flex-shrink: 0; }
 .bqp-rc-x { padding: 2px 8px; color: var(--danger); flex-shrink: 0; }
 .bqp-rc-sum { display: flex; justify-content: space-between; font-weight: 700; padding: 8px 10px 2px; font-size: var(--fs-base); }
+
+/* ─── Дамжлагын схем (зөвхөн харах) 2026-10-04 ────────────────────────── */
+.pm-modal { max-width: 440px; }
+.pm-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.pm-chip { cursor: pointer; font-size: var(--fs-sm); padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); user-select: none; }
+.pm-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pm-sum { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-3); }
+.pm-dim { color: var(--muted-soft, var(--muted)); }
+.pm-st { display: flex; align-items: center; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; background: var(--panel-hover); }
+.pm-st.ctl { border-color: var(--primary); border-width: 2px; background: var(--panel); }
+.pm-n { flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--border-strong); color: var(--panel); font-size: var(--fs-xs); font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.pm-st.ctl .pm-n { background: var(--primary); color: #fff; }
+.pm-b { flex: 1; min-width: 0; }
+.pm-l { display: block; font-weight: 650; font-size: var(--fs-sm); }
+.pm-m { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.pm-p { flex: none; font-weight: 700; font-size: var(--fs-sm); color: var(--ok); }
+.pm-ar { text-align: center; color: var(--border-strong); font-size: var(--fs-xs); line-height: 1; margin: 2px 0; }
+.pm-leg { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--muted); line-height: 1.6; }
+/* ⛔ `.modal-head`/`.modal-x` нь ЗАГВАРГҮЙ байв — засварын цонх ч ижил
+   бүтэцтэй тул урт гарчиг дээр ✕ товч НААЛДАЖ байв (390px-д барив). */
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--fs-lg); }
+.modal-x { flex: none; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: var(--r-md); padding: 4px 10px; cursor: pointer; font-size: var(--fs-base); }
+.modal-foot { margin-top: var(--space-3); }

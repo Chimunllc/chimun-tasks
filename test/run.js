@@ -4009,7 +4009,13 @@ need(['orderCustType']);
 
     const step = (o, st) => F.orderNextStep(Object.assign({}, o, { status: st }));
     // Суурилуулалттай: Хүргэсэн → 🔧 Суурилуулах → түрээс → 🧱 Буулгах → буцаан авах
+    /* ⛔ БУУЛГАХ БА СУУРИЛУУЛАХ ТУСДАА (2026-10-04, CEO — нэгтгэж үзээд
+       буцаасан). «Суурилуулсан»/«Задалсан» нь ЗӨВХӨН суурилуулалттай
+       захиалгад гардаг тул нэгтгэвэл тийм захиалгад «Талбарт буулгасан»
+       дамжлага ОГТ гарахгүй болж, хоёр төрлийн захиалга өөр бүтэцтэй болно. */
     ok(step(withSet, 'delivering').to === 'installing', 'setup: хүргэсний дараа installing');
+    ok(step(withSet, 'delivering').cap === 'orders.deliver', 'буулгах: суурилуулалттайд ч хүргэлтийн эрхээр');
+    eq(F.stageWeight('setup'), 2, 'суурилуулах: 2 оноо (буулгахтай НЭГДЭЭГҮЙ)');
     ok(step(withSet, 'installing').to === 'rented', 'setup: суурилуулсны дараа түрээс');
     ok(step(withSet, 'installing').cap === 'orders.setup', 'setup: суурилуулах эрх = orders.setup');
     ok(step(withSet, 'rented').to === 'teardown', 'setup: түрээсийн дараа буулгах');

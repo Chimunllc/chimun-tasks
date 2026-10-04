@@ -30093,26 +30093,25 @@ function openBqPaymentModal(oid) {
   modal.className = 'modal-bg';
   modal.id = 'bq-pay-modal';
   const CHIMUN_ACCT = '3635185058';   // Чимун ХХК Голомт данс — баримтын хүлээн авагчтай тулгах
-  const rowCss = 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px solid var(--border);';
-  modal.innerHTML = `<div class="modal" style="max-width:430px;">
+  modal.innerHTML = `<div class="modal bqp-modal">
     <h2>💵 Төлбөр бүртгэх — #${o.number}</h2>
-    <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.8;">
+    <div class="bqp-sum">
       <div>Нийт дүн: <b>${fmtMoney(total)}</b></div>
       <div>Өмнө төлсөн: ${fmtMoney(paid)}</div>
-      <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--danger)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
+      <div>Үлдэгдэл: <b class="bqp-bal ${bal > 0 ? 'bad' : 'ok'}">${fmtMoney(bal)}</b></div>
     </div>
-    <label for="bqp-pdf" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
-      📄 <b>Банкны баримт (PDF) оруулах</b> <span style="font-weight:400;color:var(--muted);font-size:11px;">— олон файл сонгож болно</span>
+    <label for="bqp-pdf" class="bqp-drop">
+      📄 <b>Банкны баримт (PDF) оруулах</b> <span class="bqp-drop-sub">— олон файл сонгож болно</span>
       <input id="bqp-pdf" type="file" accept="application/pdf,.pdf" multiple hidden>
-      <div id="bqp-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Дүн · огноо · шилжүүлэгч автоматаар. Олон гүйлгээ = олон PDF сонго. <b>Гараар бүртгэх боломжгүй.</b></div>
+      <div id="bqp-pdf-status" class="bqp-drop-note">Дүн · огноо · шилжүүлэгч автоматаар. Олон гүйлгээ = олон PDF сонго. <b>Гараар бүртгэх боломжгүй.</b></div>
     </label>
     <div id="bqp-hist" class="payh"></div>
-    <div id="bqp-list" style="margin-bottom:14px;"></div>
+    <div id="bqp-list" class="bqp-list"></div>
     <input type="hidden" id="bqp-method" value="bank">
-    ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
+    ${o.status === 'draft' ? `<div class="bqp-draft">Төлбөр бүртгэмэгц захиалга <b>«Захиалсан»</b> болно.</div>` : ''}
+    <div class="modal-actions">
       <button class="btn" id="bqp-cancel">Болих</button>
-      <button class="btn btn-primary" id="bqp-save" disabled style="opacity:.45;cursor:not-allowed;">Бүртгэх</button>
+      <button class="btn btn-primary bqp-save" id="bqp-save" disabled>Бүртгэх</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -30124,18 +30123,18 @@ function openBqPaymentModal(oid) {
   // Зөрүү гарвал ил хэлнэ: `paid_mnt` нь дүнгийн эх сурвалж ХЭВЭЭР, энд зөвхөн тулгана.
   renderPaymentHistory(o, modal);
   const saveBtn = modal.querySelector('#bqp-save');
-  const enableSave = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
+  const enableSave = (on) => { saveBtn.disabled = !on; };   // төрх нь `.bqp-save:disabled`-д
   // Банкны баримт PDF (ОЛОН) → тус бүрийг автомат задалж жагсаалтад нэмнэ. Гараар бүртгэх боломжгүй.
   modal._receipts = [];
   const listEl = modal.querySelector('#bqp-list');
   function renderReceipts() {
     if (!modal._receipts.length) { listEl.innerHTML = ''; enableSave(false); return; }
     const sum = modal._receipts.reduce((s, r) => s + r.amount, 0);
-    listEl.innerHTML = modal._receipts.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;background:var(--panel);">
-      <div style="min-width:0;flex:1;"><b style="color:var(--ok);font-size:14px;">${fmtMoney(r.amount)}</b> <span style="color:var(--muted);">· ${escapeHtml(r.date || '')}</span><div style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.senderName || '—')}${r.warn ? ` · <span style="color:var(--warn);">⚠ ${escapeHtml(r.warn)}</span>` : ''}</div></div>
-      ${r._file ? `<button type="button" data-rrview="${i}" class="btn" style="padding:2px 9px;color:var(--accent);flex-shrink:0;">👁 Харах</button>` : ''}
-      <button type="button" data-rrm="${i}" class="btn" style="padding:2px 8px;color:var(--danger);flex-shrink:0;">✕</button>
-    </div>`).join('') + `<div style="display:flex;justify-content:space-between;font-weight:700;padding:8px 10px 2px;font-size:14px;"><span>Нийт төлбөр (${modal._receipts.length})</span><b style="color:var(--ok);">${fmtMoney(sum)}</b></div>`;
+    listEl.innerHTML = modal._receipts.map((r, i) => `<div class="bqp-rc">
+      <div class="bqp-rc-m"><b class="bqp-rc-amt">${fmtMoney(r.amount)}</b> <span class="bqp-rc-dim">· ${escapeHtml(r.date || '')}</span><div class="bqp-rc-who">${escapeHtml(r.senderName || '—')}${r.warn ? ` · <span class="bqp-rc-warn">⚠ ${escapeHtml(r.warn)}</span>` : ''}</div></div>
+      ${r._file ? `<button type="button" data-rrview="${i}" class="btn bqp-rc-view">👁 Харах</button>` : ''}
+      <button type="button" data-rrm="${i}" class="btn bqp-rc-x">✕</button>
+    </div>`).join('') + `<div class="bqp-rc-sum"><span>Нийт төлбөр (${modal._receipts.length})</span><b class="bqp-rc-amt">${fmtMoney(sum)}</b></div>`;
     enableSave(true);
   }
   listEl.addEventListener('click', (e) => {
@@ -30147,11 +30146,11 @@ function openBqPaymentModal(oid) {
     const files = [...(e.target.files || [])]; e.target.value = ''; if (!files.length) return;
     const status = modal.querySelector('#bqp-pdf-status');
     for (const file of files) {
-      status.textContent = `📄 ${file.name} уншиж байна…`; status.style.color = 'var(--muted)';
+      status.textContent = `📄 ${file.name} уншиж байна…`; status.className = 'bqp-drop-note';
       try {
         modal._receipts.push(await readIncomeReceipt(file, modal._receipts));
-        status.textContent = `✓ ${file.name}`; status.style.color = 'var(--ok)';
-      } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
+        status.textContent = `✓ ${file.name}`; status.className = 'bqp-drop-note ok';
+      } catch (err) { status.textContent = '⚠ ' + err.message; status.className = 'bqp-drop-note bad'; }
     }
     renderReceipts();
   });

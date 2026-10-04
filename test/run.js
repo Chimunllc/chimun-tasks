@@ -3970,7 +3970,7 @@ need(['orderCustType']);
           case 'returning': return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
           /* 2026-10-03: «Буулгаж байршуулах» дамжлага НЭМЭГДСЭН — буцаж ирсэн
              бараа агуулахад байрандаа тавигдах нь тусдаа ажил (CEO). */
-          case 'returned': return { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.dispatch' };
+          case 'returned': return { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
           case 'stowed': case 'stopped': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
           default: return null;
         }
@@ -3995,6 +3995,11 @@ need(['orderCustType']);
       eq(F.pipelineNext('returned', { dlv: false }).to, 'stowed', 'урсгал: очиж авсан захиалгад ч байршуулна');
       eq(F.stageWeight('stow'), 1.5, 'оноо: Буулгаж байршуулах 1.5');
       eq(F.stageEvidence('stow'), 'photo', 'нотолгоо: Буулгаж байршуулах = зураг');
+      /* ⛔ БИЕИЙН ХҮЧНИЙ ДАМЖЛАГА → `orders.prepare` (агуулахын БҮХ ажилтанд),
+         `orders.dispatch` БИШ (зөвхөн 4 нярав/ахлахад — хүнд ажил хийх ёсгүй
+         хүмүүс). Буруу эрхэнд тавибал товч дарах хүн байхгүй болж захиалга
+         гацна (амьд эрхээр баталсан, 2026-10-04). */
+      eq(F.pipelineNext('returned', {}).cap, 'orders.prepare', 'эрх: байршуулах нь агуулахын ажилтны эрхээр');
       // ⚠ Нөөц эзлэх төлөвт ОРОХГҮЙ — бараа аль хэдийн агуулахад ирсэн
       ok(vm.runInContext('_ORDER_OCCUPYING', sandbox).indexOf('stowed') < 0,
          'нөөц: байршуулж буй захиалга нөөц эзлэхгүй (DB харагдац хөндөгдөхгүй)');
@@ -4052,7 +4057,7 @@ need(['orderCustType']);
       ['reserved', 'orders.clean'], ['prepared', 'orders.prepare'],
       ['ready', 'orders.dispatch'], ['delivering', 'orders.deliver'],
       ['installing', 'orders.setup'], ['rented', 'orders.setup'],
-      ['returned', 'orders.dispatch'], ['stowed', 'orders.advance'],
+      ['returned', 'orders.prepare'], ['stowed', 'orders.advance'],
     ];
     for (const [st, cap] of pairs) {
       const b = btn(setO, st);

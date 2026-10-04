@@ -14544,8 +14544,8 @@ const PERM_MENUS = [
       // Товчны нэрийг өөрчилвөл ЭНДХИЙГ ч хамт өөрчил (ordersStageCapOrder тест хамгаална).
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
       { key: 'orders.clean',    label: '🧹 Цэвэрлэсэн' },
-      { key: 'orders.prepare',  label: '📦 Баглаж/ачсан' },
-      { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан / 🏬 Буулгаж байршуулсан' },
+      { key: 'orders.prepare',  label: '📦 Баглаж/ачсан / 🏬 Буулгаж байршуулсан' },
+      { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан' },
       { key: 'orders.deliver',  label: '🏗 Талбарт буулгасан / 🚚 Ачиж буцсан' },
       { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Задалсан' },
       { key: 'orders.advance',  label: '🗄 Архивлах' },
@@ -25982,7 +25982,11 @@ const PIPELINE = [
   { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count', dlv: false },
   { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Ачиж буцсан',        cap: 'orders.deliver',  pts: 1.5, ev: 'photo' },
   { key: 'received', from: ['returning'],  to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 1, ev: 'count' },
-  { key: 'stow',     from: ['returned'],   to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.dispatch', pts: 1.5, ev: 'photo' },
+  /* ⛔ БИЕИЙН ХҮЧНИЙ АЖИЛ → `orders.prepare` (агуулахын БҮХ ажилтанд бий),
+     `orders.dispatch` БИШ (тэр нь зөвхөн 4 нярав/ахлахад — яг хүнд ажил хийх
+     ёсгүй хүмүүс). Буруу эрхэнд тавибал товчийг дарах хүн байхгүй болж
+     захиалга «Хүлээн авсан» дээр гацна (2026-10-04, CEO барив). */
+  { key: 'stow',     from: ['returned'],   to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare', pts: 1.5, ev: 'photo' },
   { key: 'archive',  from: ['stowed', 'returned', 'stopped'], to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance', pts: 0 },
 ];
 // Захиалгын нөхцөл — урсгалын салаалалт үүгээр шийдэгдэнэ (ЦЭВЭР тулгалтад тестлэгдэнэ).

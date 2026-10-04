@@ -22667,8 +22667,15 @@ function prevStageOwner(o, meKey) {
   }
   return best ? best.by : null;
 }
-// Хүн бүрийн хүлээлцэх чанар — дараагийн хүн түүнд өгсөн ★ дундаж (сараар). stage_meta-гаас автомат, backend-гүй.
+/* Хүн бүрийн хүлээлцэх чанар. ⛔ ЭХЛЭЭД АЛДААНЫ ТОО (2026-10-04) — ★ нь
+   үнэлэгчээс хамаардаг тул бүх дамжлагаас хасагдсан. Алдааны бүртгэл
+   хангалттай бол түүгээр, эс бөгөөс ХУУЧИН ★ түүхээр (сарын тоо алга
+   болохоос сэргийлнэ). Хоёулаа 1–5 масштабтай: чанар 1.0 = 5.0 ★. */
 function handoffQualityScore(key, month) {
+  const _d = (typeof defectStats === 'function') ? defectStats(state.appOrders || [], month)[String(key)] : null;
+  if (_d && _d.checked >= HANDOFF_MIN && _d.rate != null) {
+    return { avg: Math.round(_d.rate * 5 * 10) / 10, count: _d.checked, src: 'defect' };
+  }
   let sum = 0, n = 0;
   for (const o of (state.appOrders || [])) {
     const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
@@ -26594,12 +26601,14 @@ function openStageAdvanceModal(oid, to) {
   if (act.key === 'dispatch') {
     if (_smNow.clean && _smNow.clean.by) _defTargets.push({ k: 'clean', ratee: _smNow.clean.by, q: 'Цэвэрлэгээ хийгдээгүй, дутуу цэвэрлэсэн бүтээгдэхүүн хэд байсан бэ?' });
     if (_smNow.prepare && _smNow.prepare.by) _defTargets.push({ k: 'prepare', ratee: _smNow.prepare.by, q: 'Ачихад зурагдах, эвдрэх эрсдэлтэй байсан бүтээгдэхүүн хэд байсан бэ?' });
-  } else if (act.key === 'retstart') {
-    // Хүргэлтээс авах (жолооч) = зөвхөн ТОО ШИРХЭГ (хэрэглэгчээс); ★ БАЙХГҮЙ (өөрийн хүргэлтээ үнэлэхгүй).
-  } else {
-    const _prev = prevStageInfoAny(o);
-    if (_prev) rateTargets.push({ ratee: _prev.by, q: prevStageQuestion(_prev) });
   }
+  /* ⛔ ★ БҮХ ДАМЖЛАГААС ХАСАГДСАН (2026-10-04, CEO: «илүү зүйлсийг хас»).
+     Өмнө нь 7 дамжлага бүрд өмнөх хүнийг ЗААВАЛ ★-аар үнэлүүлдэг байв —
+     сард ~500 албадсан даралт, гарц нь 3.0–3.9 хоорондох дүлий зурвас
+     (үнэлэгчээс хамаарсан: нэг нярав дундаж 4.87, нөгөө нь 2.91).
+     Чанар одоо АЛДААНЫ ТООГООР хэмжигдэнэ (`defectStats`), `handoffQualityScore`
+     түүнийг уншина. `rateTargets` хоосон хэвээр — доод урсгалын шалгуур,
+     хадгалалт өөрөө унтарна; ХУУЧИН ★ түүх уншигдсаар байна. */
   const q = rateTargets.length ? rateTargets[0].q : null;   // (нэг ★ үед хэвийн)
   // ── Агуулахад хүлээн авах шат — бараа бүрэн буцаж ирсэн эсэхийг ТООГООР баталгаажуулна.
   // Анхдагчаар бүгд бүрэн гэж тооцно; ажилтан зөвхөн ЗӨРҮҮТЭЙГ нь засна (50 мөрийг
@@ -26633,9 +26642,20 @@ function openStageAdvanceModal(oid, to) {
      баглахад АЛЬ ХЭДИЙН бүртгэгдсэн хүн байв — нэг ачилт ХОЁР удаа
      шагнагдаж, нярав 12 нэрийн жагсаалтыг дэмий гүйлгэдэг байв. */
   const _helpAsk = stageEvidence(act.key) !== 'count';
+  // Тэмдэглэлийн хэсэг нь АСУУДАЛ ГАРЧ БОЛОХ дамжлагад л (тоо тулгах, алдаа
+  // бүртгэх). Зураг хийгээд дарах дамжлагад хоосон талбар нэмэх нь хог.
+  const _needNoteSec = _isReceive || _defTargets.length > 0;
+  /* ЭНЭ ЗАХИАЛГАД аль хэдийн ажилласан хүн ЭХЭНД — 12 нэрийг цагаан
+     толгойн дарааллаар гүйлгэж хайх нь ажлын гол саад байв. */
+  const _onOrder = new Set();
+  Object.values(_smNow).forEach(e => {
+    if (!e || typeof e !== 'object') return;
+    [e.by, e.driver].forEach(x => { if (x) _onOrder.add(String(x)); });
+    (Array.isArray(e.helpers) ? e.helpers : []).forEach(x => { if (x) _onOrder.add(String(x)); });
+  });
   const _helpStaff = !_helpAsk ? [] : (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !isDailyMember(m) && String(personKey(m)) !== String(state.me))
-    .map(m => ({ k: personKey(m), name: m.name || '' })).filter(x => x.k && x.name)
-    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'mn'));
+    .map(m => ({ k: personKey(m), name: m.name || '', on: _onOrder.has(String(personKey(m))) })).filter(x => x.k && x.name)
+    .sort((a, b) => (b.on - a.on) || String(a.name).localeCompare(String(b.name), 'mn'));
   /* ⛔ АСУУЛТ БҮР ДУГААРТАЙ ХЭСЭГ (2026-10-04, CEO: «харагдах байдал
      ойлгомжтой байдлыг сайжруул»). Өмнө нь бүх блок тасархай зураасаар
      тусгаарлагдсан хавтгай жагсаалт байсан тул ажилтан хэдэн зүйл
@@ -26676,13 +26696,11 @@ function openStageAdvanceModal(oid, to) {
           <input class="ui-raw sa-def-in" type="number" inputmode="numeric" min="0" step="1" data-def="${i}" value="0"><span class="sa-def-u">ш</span>
         </div></div>`).join('')}
       <div class="sa-def-n ok" id="sa-def-note">✓ Алдаагүй</div>`) : ''}
-    ${rateTargets.length ? _sec('⭐', 'Өмнөх ажлыг үнэлнэ үү', true, '', rateTargets.map((rt, i) => `
-      <div class="sa-rate-q">${escapeHtml(rt.q)}${rateTargets.length > 1 ? `<span class="sa-rate-who">${escapeHtml((typeof memberName === 'function' ? memberName(rt.ratee) : '') || '')}</span>` : ''}</div>
-      <div class="sa-stars" data-si="${i}">${[1, 2, 3, 4, 5].map(st => `<span data-star="${st}">★</span>`).join('')}</div>`).join('')
-      + `<textarea id="sa-comment" class="ui-raw sa-note" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)"></textarea>`) : ''}
+    ${_needNoteSec ? _sec('📝', 'Тэмдэглэл', false, 'Дутуу / эвдэрсэн бараа байвал ЯАГААД гэдгийг энд бич.', `
+      <textarea id="sa-comment" class="ui-raw sa-note" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)"></textarea>`) : ''}
     ${_helpStaff.length ? _sec('👥', stageHelpQuestion(act.key), false, 'Хамт ажилласан хүнээ дарж нэмнэ — бонусын 30% тэдэнд хуваагдана.', `
       <input id="sa-help-search" class="ui-raw sa-help-search" placeholder="Нэрээр хайх…">
-      <div id="sa-help-list" class="sa-chip-wrap">${_helpStaff.map(s2 => `<span class="sa-help-chip" data-hk="${escapeHtml(String(s2.k))}" data-hn="${escapeHtml(s2.name.toLowerCase())}">${escapeHtml(s2.name)}</span>`).join('')}</div>`) : ''}
+      <div id="sa-help-list" class="sa-chip-wrap">${_helpStaff.map(s2 => `<span class="sa-help-chip${s2.on ? ' sa-help-on' : ''}" data-hk="${escapeHtml(String(s2.k))}" data-hn="${escapeHtml(s2.name.toLowerCase())}">${s2.on ? '· ' : ''}${escapeHtml(s2.name)}</span>`).join('')}</div>`) : ''}
     ${_needDriver ? _sec('🚗', 'Жолоо хэн барьсан бэ?', false, 'Жолооны нэмэгдэл зөвхөн энэ хүнд очно.', `
       <div id="sa-drv-list" class="sa-chip-wrap">
         <span class="sa-drv-chip on" data-dk="${escapeHtml(String(state.me))}">${escapeHtml(memberName(state.me) || 'Би')}</span>
@@ -26798,8 +26816,10 @@ function openStageAdvanceModal(oid, to) {
   const helpers = new Set();
   modal.querySelectorAll('.sa-help-chip').forEach(ch => ch.onclick = () => {
     const k = ch.dataset.hk;
-    if (helpers.has(k)) { helpers.delete(k); ch.style.background = 'var(--panel)'; ch.style.color = 'var(--text)'; ch.style.borderColor = 'var(--border)'; }
-    else { helpers.add(k); ch.style.background = 'var(--primary)'; ch.style.color = '#fff'; ch.style.borderColor = 'var(--primary)'; }
+    // ⚠ Сонголтыг КЛАСС-аар — inline өнгө бичих нь суурь загварыг (хүрээ,
+    //   дугуй булан) дарж, чипийг дөрвөлжин толбо болгож байв.
+    if (helpers.has(k)) helpers.delete(k); else helpers.add(k);
+    ch.classList.toggle('on', helpers.has(k));
   });
   // Жолоочийн сонголт — ҮРГЭЛЖ яг НЭГ хүн (өгөгдмөл нь дарсан хүн)
   let driverKey = String(state.me);

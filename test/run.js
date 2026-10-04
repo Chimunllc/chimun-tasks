@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15286,6 +15286,33 @@ async function swFetchTests() {
   eq(Object.keys(defectStats([mk(true, undefined)], '2026-08')).length, 0, 'чанар: өөр сар тоологдохгүй');
 }
 
+// ═══ ХҮЛЭЭЛЦЭХ ЧАНАР = АЛДААНЫ ТОО, ★ нь НӨӨЦ (2026-10-04, CEO) ════════
+{
+  const st = vm.runInContext('state', sandbox);
+  const mk = (n) => ({ items: [{ qty: 10 }], stage_meta: {
+    clean:    { by: 'A', at: '2026-09-01T02:00:00Z' },
+    dispatch: { by: 'N', at: '2026-09-01T04:00:00Z', defChecked: true,
+                items: [{ sku: 'X', name: 'Б', qty: 10, got: 10 }],
+                defects: n ? [{ stage: 'clean', ratee: 'A', n }] : undefined } } });
+  const old = st.appOrders;
+  // 3 шалгалт (HANDOFF_MIN) — алдаа нийт 2/30 → чанар 0.933 → ★ 4.7
+  st.appOrders = [mk(1), mk(1), mk(0)];
+  const r = F.handoffQualityScore('A', '2026-09');
+  eq(r.src, 'defect', 'чанар: алдааны тоогоор бодогдоно');
+  eq(r.count, 3, 'чанар: шалгасан тоо');
+  eq(r.avg, 4.7, 'чанар: 1 − 2/30 = 0.933 → 4.7★');
+  /* ⚠ Цөөн шалгалттай үед ХУУЧИН ★ түүх рүү унана — сарын тоо чимээгүй
+     алга болохоос сэргийлнэ (★ шинээр цуглахаа больсон ч түүх уншигдана). */
+  st.appOrders = [mk(1), { stage_meta: { prepare: { by: 'X', at: '2026-09-02T02:00:00Z',
+    handoffRatings: [{ ratee: 'A', rating: 4 }, { ratee: 'A', rating: 2 }] } } },
+    { stage_meta: { deliver: { by: 'Y', at: '2026-09-03T02:00:00Z', handoffRating: 3, handoffRatee: 'A' } } }];
+  const r2 = F.handoffQualityScore('A', '2026-09');
+  eq(r2.src, undefined, 'чанар: цөөн шалгалттай бол ★ руу унана');
+  eq(r2.count, 3, 'чанар: хуучин ★ тоологдоно');
+  eq(r2.avg, 3, 'чанар: (4+2+3)/3');
+  st.appOrders = old;
+}
+
 // ═══ ЖОЛООЧ ТУСДАА · БҮРТГЭХ ДАМЖЛАГАД ТОО (2026-10-03, CEO) ═══════════
 {
   const { driverBonus, stageEvidence } = F;
@@ -15389,6 +15416,11 @@ async function swFetchTests() {
   /* ⛔ Асуулт бүр ДУГААРТАЙ хэсэг — шинэ блокийг зураасаар наавал
      ажилтан хэдэн зүйл бөглөхөө дахин мэдэхгүй болно (2026-10-04 CEO). */
   ok((md.match(/_sec\('/g) || []).length >= 5, 'scan: цонхны блокууд _sec()-ээр угсарна');
+  /* ⛔ ★ БҮХ ДАМЖЛАГААС ХАСАГДСАН — үнэлэгчээс хамаарсан дүлий зурвас
+     (3.0–3.9) гаргахын төлөө сард ~500 албадсан даралт болж байв. */
+  ok(!/_sec\('⭐'/.test(md), 'scan: ★ хэсэг цонхонд байхгүй');
+  ok(!/rateTargets\.push\(/.test(md), 'scan: ★ зорилт огт үүсэхгүй');
+  ok(/_needNoteSec = _isReceive \|\| _defTargets\.length/.test(md), 'scan: тэмдэглэл зөвхөн асуудалтай дамжлагад');
   ok(!/border-top:1px dashed var\(--border\)/.test(md), 'scan: тасархай зураасан тусгаарлагч буцаж ирээгүй');
   ok(/_helpStaff = !_helpAsk \?/.test(md), 'scan: хамтрагчийн жагсаалт түүгээр хаагдана');
   ok(!/rateTargets\.push\(\{ ratee: _smNow\.clean\.by/.test(md), 'scan: цэвэрлэгээнд ★ буцаж ирээгүй');

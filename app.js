@@ -13252,6 +13252,23 @@ function stageEvidence(key) {
   for (const r of PIPELINE) if (r.key === key && r.ev) return r.ev;
   return key === 'archive' ? '' : 'photo';
 }
+/* ─── ДАМЖЛАГЫН НЭР = ТОХИРГООНООС (2026-10-04, CEO) ───────────────────────
+   Нэр нь үйл ажиллагааны үг — аппаас солигддог байх ёстой, код засах биш.
+   ⛔ ТҮЛХҮҮР нь `key|to` — нэг түлхүүр ХОЁР нэртэй байж болно («Бүртгэж
+     гаргасан» ба «Үйлчлүүлэгчид өгсөн» хоёул `dispatch`). Зөвхөн `key`-ээр
+     хадгалбал нэгийг нь сольход нөгөө нь ч солигдоно. */
+function stageLabelKey(row) { return String(row.key) + '|' + String(row.to); }
+function stageLabel(row) {
+  if (!row) return '';
+  const L = _stagePayCfg().labels;
+  const v = L && typeof L === 'object' ? L[stageLabelKey(row)] : null;
+  return (v && String(v).trim()) ? String(v).trim() : String(row.label || row.key || '');
+}
+// Түүхийн нэр — түлхүүрээр (эхний таарсан мөрийн нэр)
+function stageHistLabel(key) {
+  const r = PIPELINE.find(x => x.key === key);
+  return r ? stageLabel(r) : (STAGE_META_LABEL[key] || key);
+}
 function stageWeight(key) {
   // Тохиргооны override ЭХЛЭЭД (аппаас засдаг), эс бол PIPELINE-ийн анхдагч жин.
   const w = _stagePayCfg().weights;
@@ -17915,6 +17932,8 @@ function renderSalary() {
 function openStagePayModal() {
   if (!state.isCEO) { showToast('Зөвхөн захирал тохируулна', 'warn', 2500); return; }
   const defs = stageDefs().filter(d => d.key !== 'archive');
+  // ⚠ НЭР нь МӨРӨӨР (нэг түлхүүр хоёр нэртэй байж болно), ЖИН нь түлхүүрээр
+  const rows = PIPELINE.filter(r => r.key && r.key !== 'archive');
   const bands = stagePtBands(), rate = stagePointRate();
   const share = Math.round(stageHelperShare() * 100), hmax = stageHelperMax();
   const bandRow = (lim, pts, i) => `<div class="sp-cfg-row">
@@ -17930,6 +17949,10 @@ function openStagePayModal() {
     ${defs.map(d => `<div class="sp-cfg-row">
       <span class="sp-cfg-l">${escapeHtml(d.label)}<span class="sp-cfg-ev">${d.ev === 'count' ? '🔢 тоо' : '📷 зураг'}</span></span>
       <input class="ui-raw sp-cfg-in" type="number" step="0.5" min="0" data-w="${escapeHtml(d.key)}" value="${d.pts}"> ×</div>`).join('')}
+
+    <div class="sp-cfg-t">Дамжлагын нэр <span class="sp-cfg-ev">— ажилчдад харагдах үг</span></div>
+    ${rows.map(r => `<div class="sp-cfg-row">
+      <input class="ui-raw sp-cfg-nm" type="text" maxlength="40" data-nm="${escapeHtml(stageLabelKey(r))}" value="${escapeHtml(stageLabel(r))}"></div>`).join('')}
 
     <div class="sp-cfg-t">Барааны тооны оноо</div>
     ${bands.map((b, i) => bandRow(b[0], b[1], i)).join('')}
@@ -17955,7 +17978,7 @@ function openStagePayModal() {
     const bp = Number((modal.querySelector(`[data-band="${bi < 0 ? bands.length - 1 : bi}"]`) || {}).value) || 0;
     modal.querySelector('#sp-prev').innerHTML = defs.map(d => {
       const w = Number((modal.querySelector(`[data-w="${d.key}"]`) || {}).value) || 0;
-      return `<div class="sp-cfg-prow"><span>${escapeHtml(d.label)}</span><b>${fmtMoney(Math.round(bp * w * r))}</b></div>`;
+      return `<div class="sp-cfg-prow"><span>${escapeHtml(stageHistLabel(d.key))}</span><b>${fmtMoney(Math.round(bp * w * r))}</b></div>`;
     }).join('') + `<div class="sp-cfg-pnote">12 бараатай захиалгын нэг дамжлага (сарын медиан)</div>`;
   };
   modal.querySelectorAll('input').forEach(i => i.oninput = prev);
@@ -17964,8 +17987,15 @@ function openStagePayModal() {
     const weights = {};
     defs.forEach(d => { weights[d.key] = Number((modal.querySelector(`[data-w="${d.key}"]`) || {}).value) || 0; });
     const pt_bands = bands.map((b, i) => [b[0] === Infinity ? 999999 : b[0], Number((modal.querySelector(`[data-band="${i}"]`) || {}).value) || 0]);
+    /* Нэр — ӨӨРЧЛӨГДСӨНИЙГ Л хадгална. Анхдагчтай ижил бол бичихгүй: эс
+       бөгөөс код дахь нэр хожим сайжрахад тохиргоо нь хуучныг барина. */
+    const labels = {};
+    rows.forEach(r => {
+      const v = String((modal.querySelector(`[data-nm="${stageLabelKey(r)}"]`) || {}).value || '').trim();
+      if (v && v !== String(r.label)) labels[stageLabelKey(r)] = v;
+    });
     const cfg = Object.assign({}, _stagePayCfg(), {
-      weights, pt_bands, rate: num('#sp-rate'),
+      weights, pt_bands, labels, rate: num('#sp-rate'),
       helper_share: Math.min(1, Math.max(0, num('#sp-share') / 100)), helper_max: Math.max(1, num('#sp-hmax')),
     });
     if (!(cfg.rate > 0)) { showToast('Ханш 0-ээс их байх ёстой', 'warn', 3000); return; }
@@ -26050,7 +26080,7 @@ function pipelineNext(status, ctx) {
     if (r.from.indexOf(st) < 0) continue;
     if (r.dlv !== undefined && r.dlv !== !!c.dlv) continue;
     if (r.setup !== undefined && r.setup !== !!c.setup) continue;
-    return { to: r.to, label: r.label, cap: r.cap };
+    return { to: r.to, label: stageLabel(r), cap: r.cap };
   }
   return null;
 }
@@ -26107,18 +26137,20 @@ function openPipelineMapModal() {
         const ctl = r.ev === 'count';
         return `<div class="pm-st${ctl ? ' ctl' : ''}">
           <span class="pm-n">${i + 1}</span>
-          <span class="pm-b"><span class="pm-l">${escapeHtml(r.label)}</span><span class="pm-m">${escapeHtml(PMAP_WHO[r.cap] || r.cap)} · ${r.ev === 'count' ? '🔢 тоо' : '📷 зураг'}</span></span>
+          <span class="pm-b"><span class="pm-l">${escapeHtml(stageLabel(r))}</span><span class="pm-m">${escapeHtml(PMAP_WHO[r.cap] || r.cap)} · ${r.ev === 'count' ? '🔢 тоо' : '📷 зураг'}</span></span>
           <span class="pm-p">${r.pts}</span></div>`;
       }).join('<div class="pm-ar">↓</div>')}</div>
       <div class="pm-leg">Хүрээтэй нь <b>няравын хяналтын цэг</b> — өмнөх ажлуудыг тоогоор шалгана.<br>Жолоо дамжлага биш: буулгах/ачих цонхонд жолоочийг сонгоно (${fmtMoney(DRIVER_BONUS_EACH)}).</div>`;
   };
   modal.innerHTML = `<div class="modal pm-modal">
-    <div class="modal-head"><b>📊 Захиалгын урсгал</b><button class="modal-x" id="pm-x">✕</button></div>
+    <div class="modal-head"><b>📊 Захиалгын урсгал</b><span class="pm-hd-act">${state.isCEO ? '<button class="btn pm-cfg" id="pm-cfg">⚙️ Тохируулах</button>' : ''}<button class="modal-x" id="pm-x">✕</button></span></div>
     <div class="modal-body" id="pm-body">${draw('dlv')}</div>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
   modal.querySelector('#pm-x').onclick = close;
+  // ⚙️ Нэр, жин, ханшийг ЭНД ЭХЛҮҮЛНЭ — схемийг хараад шууд засах зам (CEO)
+  modal.querySelector('#pm-cfg')?.addEventListener('click', () => { close(); openStagePayModal(); });
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const wire = () => modal.querySelectorAll('[data-pm]').forEach(c => c.onclick = () => {
     modal.querySelector('#pm-body').innerHTML = draw(c.dataset.pm); wire();
@@ -26592,7 +26624,7 @@ function stageMetaHtml(o) {
     const _ph = photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : '';
     const _skip = e.skipped ? `<span class="sm-skip" title="${escapeHtml(e.reason || '')}">⏭ алгассан</span> ` : '';
     const _helpers = (Array.isArray(e.helpers) && e.helpers.length) ? ` <span style="color:var(--muted);font-weight:400;" title="${escapeHtml(e.helpers.map(h => memberName(h) || h).join(', '))}">🤝 +${e.helpers.length} (${escapeHtml(e.helpers.map(h => memberName(h) || h).join(', ')).slice(0, 40)})</span>` : '';
-    const _head = `<div class="sm-head">${_skip}${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${_helpers}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
+    const _head = `<div class="sm-head">${_skip}${stageHistLabel(k)}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${_helpers}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
     const _cmt = e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>`
       : (e.skipped && e.reason ? `<div class="sm-comment">⏭ ${escapeHtml(e.reason)}</div>` : '');
     /* Өмнөх ажлын алдаа — ХЭНИЙ алдаа болохыг нэрлэнэ (нуухгүй). Шалгасан ч
@@ -26600,7 +26632,7 @@ function stageMetaHtml(o) {
        ялгагдах ёстой. */
     const _def = (k === 'dispatch' && e.defChecked)
       ? (Array.isArray(e.defects) && e.defects.length
-          ? `<div class="sm-def">⚠ ${e.defects.map(x => `${escapeHtml(STAGE_META_LABEL[x.stage] || x.stage)}: <b>${Number(x.n) || 0}ш</b>${x.ratee ? ` · ${escapeHtml(memberName(x.ratee) || x.ratee)}` : ''}`).join(' · ')}</div>`
+          ? `<div class="sm-def">⚠ ${e.defects.map(x => `${escapeHtml(stageHistLabel(x.stage))}: <b>${Number(x.n) || 0}ш</b>${x.ratee ? ` · ${escapeHtml(memberName(x.ratee) || x.ratee)}` : ''}`).join(' · ')}</div>`
           : '<div class="sm-def sm-def-ok">✓ Өмнөх ажил шалгагдсан — алдаагүй</div>')
       : '';
     return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}${_def}</div></div>`;

@@ -8636,3 +8636,7 @@ select.no-asar-len {
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--fs-lg); }
 .modal-x { flex: none; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: var(--r-md); padding: 4px 10px; cursor: pointer; font-size: var(--fs-base); }
 .modal-foot { margin-top: var(--space-3); }
+/* Дамжлагын нэр засах мөр + схемийн толгойн товч */
+.modal .sp-cfg-nm { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-sm); }
+.pm-hd-act { display: flex; align-items: center; gap: var(--space-2); flex: none; }
+.pm-cfg { padding: 4px 10px; font-size: var(--fs-sm); }

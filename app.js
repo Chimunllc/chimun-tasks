@@ -13972,6 +13972,7 @@ function renderMyAttend() {
         <div class="sp-card-v">${fmtMoney(sp.total)}</div>
         <div class="sp-card-s">Удирдсан <b>${sp.led}</b> шат${sp.helped ? ` · хамтрагчаар <b>${sp.helped}</b>` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''}</div>
         <div class="sp-card-n">Бонус нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил бонус болохгүй.</div>
+        <button class="btn sp-cfg-btn" data-pipeline-map>📊 Урсгал харах</button>
       </div>`;
     })()}
     <button class="ui-raw myreq-new" id="my-att-req">🙋 Бүртгүүлж амжаагүй өдөр мэдүүлэх</button>
@@ -13982,6 +13983,7 @@ function attachMyAttendHandlers() {
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
+  document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
   document.getElementById('my-pay-ym')?.addEventListener('change', (e) => {
     const v = String(e.target.value || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(v)) return;
@@ -17893,7 +17895,9 @@ function renderSalary() {
   }).join('');
   /* ⚙️ Тохиргооны товч нь бонусын мөрийн ДЭРГЭД — тоог хараад шууд тохируулна.
      Тусдаа цэс үүсгэвэл хэн ч олохгүй («өөрөө үүсдэг» дүрэм). CEO-д л. */
-  const spCfgBtn = state.isCEO ? ` <button class="btn sp-cfg-btn" data-stage-pay-cfg>⚙️ Оноо тохируулах</button>` : '';
+  // 📊 Урсгалын схем — БҮХ хүнд (ажилтан бүтэн дарааллыг хаанаас ч хардаггүй байв)
+  const spMapBtn = ` <button class="btn sp-cfg-btn" data-pipeline-map>📊 Урсгал харах</button>`;
+  const spCfgBtn = spMapBtn + (state.isCEO ? ` <button class="btn sp-cfg-btn" data-stage-pay-cfg>⚙️ Оноо тохируулах</button>` : '');
   const spFoot = T.sp
     ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> · ${(T.spPts || 0).toFixed(1)} оноо × ${fmtMoney(stagePointRate())} — цалинд ОРООГҮЙ.${spCfgBtn}</div>`
     : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
@@ -17979,6 +17983,7 @@ function attachSalaryHandlers() {
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
   document.querySelector('[data-stage-pay-cfg]')?.addEventListener('click', openStagePayModal);
+  document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
   document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('sal-search');
   if (se) se.addEventListener('input', () => {
@@ -26059,6 +26064,67 @@ const BQ_NEXT = {
   started:     { to: 'stopped',  label: '🚚 Хүргэж өгөх' },
   stopped:     { to: 'archived', label: '🗄 Архивлах' },
 };
+
+/* ─── ДАМЖЛАГЫН СХЕМ — зөвхөн ХАРАХ цонх (2026-10-04, CEO) ─────────────────
+   Ажилтан бүтэн урсгалыг хэзээ ч хардаггүй байв: карт нь «одоо хаана», товч
+   нь «дараа нь юу» гэдгийг л хэлнэ. Шинэ хүн системийг бүтнээр ойлгох
+   газаргүй байсан.
+   ⛔ ЖАГСААЛТЫГ ГАРААР БҮҮ БИЧ — `PIPELINE`-аас өөрөө угсарна. Эс бөгөөс
+     шинэ дамжлага нэмэхэд схем чимээгүй хуучирна. Scan-тест хаана. */
+const PMAP_FLOWS = [
+  { k: 'dlv',  t: '🚚 Хүргэлт',               ctx: { dlv: true,  setup: false } },
+  { k: 'set',  t: '🔧 Хүргэлт + суурилуулалт', ctx: { dlv: true,  setup: true } },
+  { k: 'pick', t: '🤝 Өөрөө ирж авах',         ctx: { dlv: false, setup: false } },
+];
+const PMAP_WHO = {
+  'orders.clean': 'цэвэрлэгч', 'orders.prepare': 'агуулахын ажилтан',
+  'orders.dispatch': 'нярав', 'orders.deliver': 'хүргэлтийн баг',
+  'orders.setup': 'угсрах баг', 'orders.advance': '—',
+};
+// ЦЭВЭР функц — нөхцөлөөс бүтэн урсгалын мөрүүд. Тестэд шууд дуудагдана.
+function pipelineSteps(ctx) {
+  const out = []; let st = 'reserved';
+  for (let i = 0; i < 24; i++) {
+    const nx = pipelineNext(st, ctx); if (!nx) break;
+    const row = PIPELINE.find(r => r.from.indexOf(st) >= 0
+      && (r.dlv === undefined || r.dlv === !!(ctx || {}).dlv)
+      && (r.setup === undefined || r.setup === !!(ctx || {}).setup));
+    if (row && row.key !== 'archive') out.push(row);
+    st = nx.to; if (st === 'archived') break;
+  }
+  return out;
+}
+function openPipelineMapModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.style.zIndex = '9400';
+  const draw = (fk) => {
+    const fl = PMAP_FLOWS.find(x => x.k === fk) || PMAP_FLOWS[0];
+    const steps = pipelineSteps(fl.ctx);
+    const pts = steps.reduce((a, r) => a + (Number(r.pts) || 0), 0);
+    return `<div class="pm-chips">${PMAP_FLOWS.map(f => `<span class="pm-chip${f.k === fk ? ' on' : ''}" data-pm="${f.k}">${escapeHtml(f.t)}</span>`).join('')}</div>
+      <div class="pm-sum">${steps.length} дамжлага · <b>${pts}</b> оноо${stagePointRate() ? ` · ${fmtMoney(pts * stagePointRate())}` : ''} <span class="pm-dim">(1 ширхэг бараатай захиалгад)</span></div>
+      <div class="pm-list">${steps.map((r, i) => {
+        const ctl = r.ev === 'count';
+        return `<div class="pm-st${ctl ? ' ctl' : ''}">
+          <span class="pm-n">${i + 1}</span>
+          <span class="pm-b"><span class="pm-l">${escapeHtml(r.label)}</span><span class="pm-m">${escapeHtml(PMAP_WHO[r.cap] || r.cap)} · ${r.ev === 'count' ? '🔢 тоо' : '📷 зураг'}</span></span>
+          <span class="pm-p">${r.pts}</span></div>`;
+      }).join('<div class="pm-ar">↓</div>')}</div>
+      <div class="pm-leg">Хүрээтэй нь <b>няравын хяналтын цэг</b> — өмнөх ажлуудыг тоогоор шалгана.<br>Жолоо дамжлага биш: буулгах/ачих цонхонд жолоочийг сонгоно (${fmtMoney(DRIVER_BONUS_EACH)}).</div>`;
+  };
+  modal.innerHTML = `<div class="modal pm-modal">
+    <div class="modal-head"><b>📊 Захиалгын урсгал</b><button class="modal-x" id="pm-x">✕</button></div>
+    <div class="modal-body" id="pm-body">${draw('dlv')}</div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#pm-x').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const wire = () => modal.querySelectorAll('[data-pm]').forEach(c => c.onclick = () => {
+    modal.querySelector('#pm-body').innerHTML = draw(c.dataset.pm); wire();
+  });
+  wire();
+}
 
 // ── Дамжлагын АВТОМАТ ажил — эрх эзэмшигчид даалгавар үүсгэж, зургаар баталгаажуулна ──
 // Шат бүрд ажил хийх эрх (cap) + fallback роль + үйлдлийн нэр. Захиалга шат руу орох бүрд ажил үүснэ.

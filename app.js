@@ -26592,8 +26592,8 @@ function openStageAdvanceModal(oid, to) {
      хувирдаг. Өгөгдмөл 0 тул хэвийн үед НЭМЭЛТ АЖИЛ ҮҮСЭХГҮЙ. */
   const _defTargets = [];
   if (act.key === 'dispatch') {
-    if (_smNow.clean && _smNow.clean.by) _defTargets.push({ k: 'clean', ratee: _smNow.clean.by, q: 'Цэвэрлэгдээгүй / дахин цэвэрлэх ширхэг' });
-    if (_smNow.prepare && _smNow.prepare.by) _defTargets.push({ k: 'prepare', ratee: _smNow.prepare.by, q: 'Дутуу / буруу баглагдсан ширхэг' });
+    if (_smNow.clean && _smNow.clean.by) _defTargets.push({ k: 'clean', ratee: _smNow.clean.by, q: 'Цэвэрлэгээ хийгдээгүй, дутуу цэвэрлэсэн бүтээгдэхүүн хэд байсан бэ?' });
+    if (_smNow.prepare && _smNow.prepare.by) _defTargets.push({ k: 'prepare', ratee: _smNow.prepare.by, q: 'Ачихад зурагдах, эвдрэх эрсдэлтэй байсан бүтээгдэхүүн хэд байсан бэ?' });
   } else if (act.key === 'retstart') {
     // Хүргэлтээс авах (жолооч) = зөвхөн ТОО ШИРХЭГ (хэрэглэгчээс); ★ БАЙХГҮЙ (өөрийн хүргэлтээ үнэлэхгүй).
   } else {

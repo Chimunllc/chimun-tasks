@@ -8570,3 +8570,7 @@ select.no-asar-len {
 .mc-tl-r.ok { color: var(--ok); }
 .mc-tl-t { color: var(--muted); font-variant-numeric: tabular-nums; }
 .mc-tl-more { font-size: var(--fs-xs); color: var(--muted); }
+
+/* Хуулга импортын анхааруулга — толгой/багана танигдаагүйг ил хэлнэ */
+.sc-warn { color: var(--warn); font-size: var(--fs-sm); margin-top: var(--space-1); }
+.sc-muted { color: var(--muted); }

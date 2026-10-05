@@ -17106,17 +17106,14 @@ async function swFetchTests() {
 // холбогдсон байсан — ✕/✓ дарахад юу ч болдоггүй байв (CEO барив).
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
-  const att = src.slice(src.indexOf('function attachSalaryHandlers'), src.indexOf('function attachSalaryHandlers') + 300);
-  ok(/attachClaimHandlers\(\)/.test(att), 'мэдүүлэг: цалингийн самбарт товч холбогдоно');
   const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
-  ok(/claimBoxHtml\(/.test(rs), 'мэдүүлэг: хайрцаг цалингийн самбарт зурагдана (CEO нөөц)');
+  // ⛔ Цалингийн самбарт хайрцаг БАЙХГҮЙ — зөвхөн ахлагч батална (CEO-гийн самбарт гарч байсныг хассан)
+  ok(!/claimBoxHtml\(|pendingStageClaims\(/.test(rs), 'мэдүүлэг: цалингийн самбарт батлах хайрцаг ГАРАХГҮЙ');
   const cb = src.slice(src.indexOf('function claimBoxHtml'), src.indexOf('function stageMetaHtml'));
   ok(/data-clm-ok=/.test(cb) && /data-clm-no=/.test(cb), 'мэдүүлэг: хайрцагт ✓/✕ товч');
   const ch = src.slice(src.indexOf('function attachClaimHandlers'), src.indexOf('function attachSalaryHandlers'));
   ok(/bind\('\[data-clm-ok\]', true\)/.test(ch) && /bind\('\[data-clm-no\]', false\)/.test(ch) && /resolveStageClaim\(/.test(ch), 'мэдүүлэг: баталгаажуулах ба татгалзах хоёулаа холбогдсон');
-  /* ⛔ БАТЛАХ = АХЛАГЧ (2026-10-05, CEO). Цалингийн самбарт зөвхөн CEO-д нөөц;
-     `salary.edit` (нярав) батлахгүй — ажил дээр байгаагүй. Ахлагч «Миний ирц» дээр. */
-  ok(/const _claims = state\.isCEO \?/.test(rs) && !/salary\.edit'\) \|\| state\.isCEO\) \? pendingStageClaims/.test(rs), 'мэдүүлэг: цалингийн самбарт зөвхөн CEO (нярав батлахгүй)');
+  /* ⛔ БАТЛАХ = ЗӨВХӨН АХЛАГЧ (2026-10-05, CEO). Ахлагч «Миний ирц» дээр. */
   const ma = src.slice(src.indexOf('function renderMyAttend'), src.indexOf('function attachMyAttendHandlers'));
   ok(/pendingStageClaims\(state\.appOrders \|\| \[\], personKey\(me\)/.test(ma), 'мэдүүлэг: ахлагч «Миний ирц» дээрээ өөрийн ахалсан ажлын мэдүүлгийг харна');
   const mah = src.slice(src.indexOf('function attachMyAttendHandlers'), src.indexOf('function attachMyAttendHandlers') + 200);
@@ -17124,10 +17121,9 @@ async function swFetchTests() {
   const cw = src.slice(src.indexOf('async function claimStageWork'), src.indexOf('async function resolveStageClaim'));
   ok(/pushBroadcast\(String\(e\.by\)/.test(cw), 'мэдүүлэг: ахлагчид мэдэгдэл очно');
   // Зан чанар: ахлагч эсвэл CEO л шийднэ
-  eq(F.claimCanResolve({ by: 'A' }, 'A', false), true, 'мэдүүлэг: ахлагч батална');
-  eq(F.claimCanResolve({ by: 'A' }, 'C', false), false, 'мэдүүлэг: өөр ажилтан батлахгүй');
-  eq(F.claimCanResolve({ by: 'A' }, 'C', true), true, 'мэдүүлэг: CEO нөөц болж шийднэ');
-  eq(F.claimCanResolve({}, 'C', false), false, 'мэдүүлэг: ахлагчгүй бол зөвхөн CEO');
+  eq(F.claimCanResolve({ by: 'A' }, 'A'), true, 'мэдүүлэг: ахлагч батална');
+  eq(F.claimCanResolve({ by: 'A' }, 'C'), false, 'мэдүүлэг: өөр ажилтан батлахгүй');
+  eq(F.claimCanResolve({}, 'C'), false, 'мэдүүлэг: ахлагчгүй бол хэн ч батлахгүй');
   const lp = F.pendingStageClaims([{ id: 7, number: 70, stage_meta: { clean: { by: 'A', claims: ['B'] }, prepare: { by: 'X', claims: ['B'] } } }], 'A');
   eq(lp.map(c => c.key), ['clean'], 'мэдүүлэг: ахлагчид зөвхөн өөрийн ахалсан дамжлага');
   eq(lp[0].lead, 'A', 'мэдүүлэг: ахлагч нь мөрөнд');
@@ -17143,9 +17139,9 @@ async function swFetchTests() {
     try { return vm.runInContext(expr, sandbox); } finally { st.me = m0; st.isCEO = c0; st.appOrders = a0; } };
   const restore = () => { sandbox.fetch = origFetch; st.appOrders = saved; };
   // ⛔ Ахлагч биш, CEO биш хүн дарвал ЮУ Ч өөрчлөгдөхгүй
-  const p1 = asWho('C', false, "resolveStageClaim('clm1', 'retstart', 'B', true)");
+  const p1 = asWho('C', true, "resolveStageClaim('clm1', 'retstart', 'B', true)");   // CEO ч ахлагч биш бол батлахгүй
   Promise.resolve(p1).then(() => {
-    eq(o.stage_meta.retstart.claims, ['B'], 'мэдүүлэг: ахлагч бус хүн батлах боломжгүй');
+    eq(o.stage_meta.retstart.claims, ['B'], 'мэдүүлэг: ахлагч бус хүн (CEO ч) батлах боломжгүй');
     ok(!(o.stage_meta.retstart.helpers || []).includes('B'), 'мэдүүлэг: ахлагч бус хүн дарахад хамтрагч нэмэгдэхгүй');
     return asWho('A', false, "resolveStageClaim('clm1', 'retstart', 'B', false)");
   }).then(() => {

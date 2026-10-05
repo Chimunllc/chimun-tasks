@@ -12840,6 +12840,20 @@ testFinBasisDefault();
     _T.length = 0; save.forEach(x => _T.push(x));
     vm.runInContext("state.finBranchPerms = undefined;", sandbox);
   }
+  // Утас солигдоход бүх холбоос шилжинэ — db/person_rekey.sql (2026-10-05, CEO: «дахин дахин таарч байна»)
+  {
+    const fs_ = require('fs'), path_ = require('path');
+    const rk = fs_.readFileSync(path_.join(__dirname, '..', 'db', 'person_rekey.sql'), 'utf8');
+    ok(/create trigger employees_rekey_trg after update of phone, merged_into on employees/.test(rk),
+       'person_rekey: утас солих/нэгтгэх үед trigger ажиллана');
+    // Апп утсаар хүн холбодог гол хүснэгтүүд жагсаалтад заавал байна — нэгийг мартвал тэр нь хоцорно
+    const must = ['staff_salary', 'salary_payments', 'member_perms', 'member_branches', 'attendance',
+                  'push_subscriptions', 'employee_docs', 'fin_branch_perm', 'stage_meta', 'app_config', 'att_requests', 'evaluations'];
+    const miss = must.filter(x => rk.indexOf(x) < 0);
+    eq(miss.join(','), '', 'person_rekey: утсаар холбогддог гол хүснэгт бүгд хамрагдсан');
+    ok(!/'customers'\s*,\s*'phone'|\('app_orders'\s*,\s*'phone'\)|\('pbx_calls'/.test(rk),
+       'person_rekey: харилцагчийн утас ба дуудлагын лог хөндөгдөхгүй');
+  }
   // «Больсон» болгох цорын ганц бичих зам = bulkDeleteOrders (шалтгаантай). Шалтгаангүй
   // ганц-устгах зам (deleteAppOrder) ба тест-цэвэрлэгээний цонх 2026-10-05-нд хасагдсан.
   ok(!/function deleteAppOrder|function openTestCleanupModal/.test(src),

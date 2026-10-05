@@ -2143,7 +2143,7 @@ function finish() {
   eq(NS({ status: 'reserved' }).to, 'prepared', 'урсгал: Захиалсан → Цэвэрлэсэн');
   eq(NS({ status: 'prepared' }).to, 'ready',    'урсгал: Цэвэрлэсэн → Бэлдсэн (ШИНЭ дараалал)');
   eq(NS({ status: 'ready' }).to,    'rented',   'урсгал: Бэлдсэн → Гаргах');
-  eq(NS({ status: 'rented' }).to,   'returned', 'урсгал: Гарсан → Буцаан авах');
+  eq(NS({ status: 'rented' }).to,   'stowed',   'урсгал: Гарсан → Буулгаж байршуулах (нярав сүүлд тоолно)');
 
   eq(NS({ status: 'reserved' }).cap, 'orders.clean',    'эрх: эхний алхам (цэвэрлэх) orders.clean');
   eq(NS({ status: 'prepared' }).cap, 'orders.prepare',  'эрх: 2 дахь алхам (бэлдэх) orders.prepare');
@@ -2378,7 +2378,8 @@ function finish() {
 
   // Очиж авах: 4, 5-р шат ГАРАХГҮЙ
   eq(NS(PICK('ready')).to,  'rented',   'очиж авах: Цэвэрлэсэн → шууд Олгосон');
-  eq(NS(PICK('rented')).to, 'returned', 'очиж авах: Олгосон → шууд Агуулахад хүлээн авсан');
+  eq(NS(PICK('rented')).to, 'stowed',   'очиж авах: Олгосон → эхлээд байршуулна');
+  eq(NS(PICK('stowed')).to, 'returned', 'очиж авах: байршуулсны ДАРАА нярав тоолно');
 
   // Эрх — шат бүр зөв хүнд
   eq(NS(DLV('ready')).cap,      'orders.dispatch', 'эрх: агуулахаас гаргах нь нярав');
@@ -3958,21 +3959,19 @@ need(['orderCustType']);
             ? { to: 'installing', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' }
             : { to: 'rented', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
           case 'installing': return { to: 'rented', label: '🔧 Суурилуулсан', cap: 'orders.setup' };
+          /* 2026-10-05 (CEO): очиж авахад ч нярав ХАМГИЙН СҮҮЛД тоолно —
+             эхлээд байршуулна, дараа нь хүлээн авна (хүргэлттэй ижил). */
           case 'rented': case 'started': return setup
             ? { to: 'teardown', label: '🧱 Буулгасан', cap: 'orders.setup' }
             : dlv ? { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' }
-                  : { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
+                  : { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
           case 'teardown': return { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' };
           /* 2026-10-04: ХҮРГЭЛТЭД эхлээд БАЙРШУУЛНА, дараа нь нярав ТООЛНО —
              сүүлчийн дамжлага хяналтгүй үлдэхгүйн тулд (CEO). Очиж авахад
              дараалал ЭСРЭГ: харилцагч байхад нь тоолох ёстой. */
           case 'returning': return { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
-          case 'stowed': return dlv
-            ? { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' }
-            : { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
-          case 'returned': return dlv
-            ? { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' }
-            : { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
+          case 'stowed': return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
+          case 'returned': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
           case 'stopped': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
           default: return null;
         }
@@ -3991,17 +3990,23 @@ need(['orderCustType']);
       })));
       eq(diff.join(' | '), '', 'урсгал: жагсаалт нь хуучин дүрэмтэй ЯГ ижил');
       eq(same, ALL.length * 4, 'урсгал: бүх хослол шалгагдав');
-      eq(F.pipelineNext('stowed', {}).to, 'archived', 'урсгал: байршуулсны дараа архив');
+      eq(F.pipelineNext('stowed', {}).to, 'returned', 'урсгал: байршуулсны дараа нярав хүлээн авна');
+      // Хуучин урсгалаар аль хэдийн хүлээн авсан (дараа нь байршуулсан) захиалгыг ДАХИН тоолуулахгүй
+      eq(F.pipelineNext('stowed', { rcvd: true }).to, 'archived', 'урсгал: хуучин хүлээн авсан захиалга шууд архив');
+      eq(F.orderPipelineCtx({ stage_meta: { received: { at: '2026-10-03' } }, items: [] }).rcvd, true, 'урсгал: хүлээн авсан эсэх stage_meta-аас');
       /* ⛔ «Буулгаж байршуулах» нь ХҮРГЭЛТЭЭС ҮЛ ХАМААРНА — очиж авсан захиалгын
          бараа ч агуулахад байрандаа тавигдана. */
-      eq(F.pipelineNext('returned', { dlv: false }).to, 'stowed', 'урсгал: очиж авсан захиалгад ч байршуулна');
+      eq(F.pipelineNext('rented', { dlv: false }).to, 'stowed', 'урсгал: очиж авсанд эхлээд байршуулна');
+      eq(F.pipelineNext('returned', { dlv: false }).to, 'archived', 'урсгал: очиж авсанд хүлээн авсны дараа архив');
+      eq(vm.runInContext("stageActionFor('rented','stowed').key", sandbox), 'stow', 'урсгал: очиж авсны байршуулалт stow түлхүүрээр хадгалагдана');
       eq(F.stageWeight('stow'), 15, 'оноо: Буулгаж байршуулах 15');
       eq(F.stageEvidence('stow'), 'photo', 'нотолгоо: Буулгаж байршуулах = зураг');
       /* ⛔ БИЕИЙН ХҮЧНИЙ ДАМЖЛАГА → `orders.prepare` (агуулахын БҮХ ажилтанд),
          `orders.dispatch` БИШ (зөвхөн 4 нярав/ахлахад — хүнд ажил хийх ёсгүй
          хүмүүс). Буруу эрхэнд тавибал товч дарах хүн байхгүй болж захиалга
          гацна (амьд эрхээр баталсан, 2026-10-04). */
-      eq(F.pipelineNext('returned', {}).cap, 'orders.prepare', 'эрх: байршуулах нь агуулахын ажилтны эрхээр');
+      eq(F.pipelineNext('rented', { dlv: false }).cap, 'orders.prepare', 'эрх: байршуулах нь агуулахын ажилтны эрхээр');
+      eq(F.pipelineNext('stowed', {}).cap, 'orders.dispatch', 'эрх: сүүлийн хүлээн авалт нь няравын эрхээр');
       // ⚠ Нөөц эзлэх төлөвт ОРОХГҮЙ — бараа аль хэдийн агуулахад ирсэн
       ok(vm.runInContext('_ORDER_OCCUPYING', sandbox).indexOf('stowed') < 0,
          'нөөц: байршуулж буй захиалга нөөц эзлэхгүй (DB харагдац хөндөгдөхгүй)');
@@ -15484,8 +15489,8 @@ async function swFetchTests() {
      шалгахгүй үлдэнэ. */
   eq(dlv[dlv.length - 1].key, 'received', 'схем: хүргэлтийн сүүлчийнх = нярав тоолно');
   eq(set[set.length - 1].key, 'received', 'схем: суурилуулалттайд ч сүүлд тоолно');
-  // ⚠ Очиж авахад ЭСРЭГ — харилцагч байхад тоолж, дараа нь байршуулна
-  eq(pick[pick.length - 1].key, 'stow', 'схем: очиж авахад сүүлд байршуулна');
+  // ⛔ Очиж авахад ч нярав СҮҮЛД тоолно (2026-10-05, CEO)
+  eq(pick[pick.length - 1].key, 'received', 'схем: очиж авахад ч сүүлд нярав тоолно');
   eq(dlv.reduce((a, r) => a + r.pts, 0), 90, 'схем: хүргэлтийн нийт оноо (бүхэл тоо, ханш ÷10)');
   // Архив нь ажил биш — схемд орохгүй
   ok(!dlv.some(r => r.key === 'archive'), 'схем: архив дамжлага биш');
@@ -15592,7 +15597,7 @@ async function swFetchTests() {
   const fn = src.slice(src.indexOf('function orderNextStep'), src.indexOf('function orderNextStep') + 400);
   ok(/return pipelineNext\(/.test(fn), 'scan: orderNextStep жагсаалтаас уншина');
   eq((fn.match(/switch \(/g) || []).length, 0, 'scan: switch буцаж ирээгүй');
-  const pn = src.slice(src.indexOf('function pipelineNext'), src.indexOf('function orderNextStep'));
+  const pn = src.slice(src.indexOf('function pipelineRow'), src.indexOf('function orderNextStep'));
   ok(/r\.dlv !== undefined/.test(pn) && /r\.setup !== undefined/.test(pn), 'scan: нөхцөл заагаагүй мөр хоёуланд тохирно');
   ok(/return null/.test(pn), 'scan: танихгүй төлөвт дамжлага зохиохгүй');
   // ⛔ ХАНШ НЭГ ГАЗАР — хоёр газар бичвэл нэг дамжлага хоёр үнэтэй болно
@@ -16471,11 +16476,11 @@ async function swFetchTests() {
     O(1, 'reserved', '2026-10-03', '2026-10-06'),            // цэвэрлэх — эхлэх өдрөөс 2 хоног хоцорсон
     O(2, 'reserved', '2026-10-05', '2026-10-06'),            // өнөөдөр эхэлнэ — ХЭВИЙН
     O(3, 'rented', '2026-10-01', '2026-10-04'),              // очиж авах: хүлээн авах — дуусахын маргааш (10-05) — хэвийн
-    O(4, 'rented', '2026-10-01', '2026-10-02'),              // хүлээн авах — 10-03 хүртэл, одоо 2 хоног
-    O(5, 'stowed', '2026-09-01', '2026-09-02'),              // архивлах — ОРОХГҮЙ
+    O(4, 'rented', '2026-10-01', '2026-10-02'),              // очиж авах: байршуулах — 10-03 хүртэл, одоо 2 хоног
+    O(5, 'stowed', '2026-09-01', '2026-09-02', { stage_meta: { received: { at: '2026-09-02' } } }),   // хуучин: аль хэдийн хүлээн авсан → архивлах — ОРОХГҮЙ
     O(6, 'reserved', '', ''),                                // огноогүй — ОРОХГҮЙ
-    O(7, 'returned', '2026-09-10', '2026-09-12'),            // байршуулах — дамжлага нэмэгдэхээс өмнө — ОРОХГҮЙ
-    O(8, 'returned', '2026-10-02', '2026-10-03'),            // байршуулах — 10-04 хүртэл, одоо 1 хоног
+    O(7, 'rented', '2026-09-10', '2026-09-12'),              // байршуулах — дамжлага нэмэгдэхээс өмнө — ОРОХГҮЙ
+    O(8, 'rented', '2026-10-02', '2026-10-03'),              // байршуулах — 10-04 хүртэл, одоо 1 хоног
     O(9, 'deleted', '2026-09-01', '2026-09-02'),             // больсон — ОРОХГҮЙ
   ];
   const r = stuck(list, T);
@@ -16483,7 +16488,7 @@ async function swFetchTests() {
   eq((by[1] || {}).late, 2, 'гацсан: эхлэх өдрөөс хоцорсон гарах алхам');
   ok(!by[2], 'гацсан: тэр өдөртөө дарагдах нь хэвийн');
   ok(!by[3], 'гацсан: хүлээн авах нь дуусахын маргааш хүртэл хэвийн');
-  eq((by[4] || {}).late, 2, 'гацсан: хүлээн авалт хоцорсон');
+  eq((by[4] || {}).late, 2, 'гацсан: буцах талын алхам хоцорсон');
   ok(!by[5], 'гацсан: архивлах алхам тоологдохгүй');
   ok(!by[6], 'гацсан: огноогүй захиалга таамаглахгүй');
   ok(!by[7], 'гацсан: шинэ дамжлага хуучин захиалгыг гацсан болгохгүй');

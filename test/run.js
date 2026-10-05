@@ -16424,14 +16424,18 @@ async function swFetchTests() {
       clean:   { by: 'C', at: '2026-09-11T03:00:00Z' },
       prepare: { by: 'C', at: '2026-10-02T03:00:00Z' } } },
   ];
-  const sep = top(ords, '2026-09', 5);
+  const sep = top(ords, '2026-09', []);
   const all = sp(ords, '2026-09');
   ok(sep.length > 0, 'шилдэг: 9 сарын оноотой хүмүүс гарна');
   ok(sep.every((r, i) => i === 0 || sep[i - 1].pts >= r.pts), 'шилдэг: оноогоор буурахаар эрэмбэлэгдэнэ');
   ok(sep.every(r => r.pts === all[r.key].pts), 'ИНВАРИАНТ: шилдгийн оноо = бонусын оноо');
-  ok(!top(ords, '2026-10', 5).some(r => r.key === 'A'), 'шилдэг: өөр сарын дамжлага орохгүй');
-  eq(top(ords, '2026-09', 1).length, 1, 'шилдэг: тоо хязгаарлагдана');
-  eq(top([], '2026-09', 5).length, 0, 'шилдэг: дамжлагагүй сард хоосон');
+  ok(!top(ords, '2026-10', []).some(r => r.key === 'A'), 'шилдэг: өөр сарын дамжлага орохгүй');
+  eq(top([], '2026-09', []).length, 0, 'шилдэг: ростергүй, дамжлагагүй бол хоосон');
+  // ⛔ Бүх үндсэн ажилтан гарна — оноогүй нь ч (0-ээр, доод талд)
+  const withRoster = top(ords, '2026-09', ['A', 'Z']);
+  ok(withRoster.some(r => r.key === 'Z' && r.pts === 0), 'шилдэг: оноогүй ажилтан ч жагсаалтад');
+  eq(withRoster[withRoster.length - 1].key, 'Z', 'шилдэг: оноогүй нь доод талд');
+  ok(withRoster.some(r => r.key === 'C'), 'шилдэг: ростерт байхгүй ч оноотой хүн орно');
   // ⛔ Тоймыг ҮНЭХЭЭР зурж шалгана — хассан хувьсагч өөр газар үлдвэл дэлгэц бүхэлдээ унана
   vm.runInContext('state.appOrders = ' + JSON.stringify(ords) + '; state.dashTopYm = "2026-09";', sandbox);
   let html = '', err = '';

@@ -13373,12 +13373,14 @@ function stagePayByPerson(orders, month) {
 }
 /* Сарын шилдэг гүйцэтгэгч — дамжлагын оноогоор эрэмбэлсэн (Тойм). ЦЭВЭР функц.
    Оноо нь бонусын ИЖИЛ бодолтоос (`stagePayByPerson`) — дүрэм хоёр газар салбарлахгүй. */
-function stageTopPerformers(orders, month, n) {
+/* ⛔ `roster` дахь хүн ОНООГҮЙ ч ЖАГСААЛТАД ГАРНА (2026-10-05, CEO: «бүх үндсэн
+   ажилтан гардаг байх ёстой») — 0 оноо нь «энэ сард дамжлагад оролцоогүй» гэсэн
+   мэдээлэл, нуух ёсгүй. Ростерт байхгүй ч оноотой хүн (цагийн ажилтан г.м.) ч орно. */
+function stageTopPerformers(orders, month, roster) {
   const all = stagePayByPerson(orders || [], month);
-  return Object.keys(all).map(k => ({ key: k, pts: all[k].pts || 0, led: all[k].led || 0, helped: all[k].helped || 0 }))
-    .filter(r => r.pts > 0)
-    .sort((a, b) => b.pts - a.pts || b.led - a.led)
-    .slice(0, n || 5);
+  const keys = new Set([...(roster || []).map(String), ...Object.keys(all).filter(k => (all[k].pts || 0) > 0)]);
+  return [...keys].map(k => { const r = all[k] || {}; return { key: k, pts: r.pts || 0, led: r.led || 0, helped: r.helped || 0 }; })
+    .sort((a, b) => b.pts - a.pts || b.led - a.led);
 }
 // Нэг хүний сарын дамжлагын бонус (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
 function stagePayFor(key, month, orders) {
@@ -39061,7 +39063,9 @@ function renderDashboard() {
        сурвалжаас (`stagePayByPerson`) — хоёр өөр «шилдэг» гарахгүй. */
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   const topYm = state.dashTopYm || todayStr().slice(0, 7);
-  const topPerformers = stageTopPerformers(state.appOrders || [], topYm, 5);
+  // Ростер = «Үндсэн ажилтны ачаалал» карттай ИЖИЛ (доор бодогдоно — тиймээс энд дахин бодно)
+  const topRoster = TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && memberInDashBranch(m) && m.worker_type !== 'daily').map(personKey).filter(Boolean);
+  const topPerformers = stageTopPerformers(state.appOrders || [], topYm, topRoster);
 
   return `
     <div class="dashboard">
@@ -39121,16 +39125,19 @@ function renderDashboard() {
             <span class="dash-top-sub">M-Event дамжлагын оноогоор</span>
             <input type="month" class="ui-raw dash-top-ym" id="dash-top-ym" value="${escapeHtml(topYm)}" max="${todayStr().slice(0, 7)}">
           </div>
-          ${topPerformers.length === 0 ? '<div class="dash-empty">Энэ сард дамжлагын оноо алга</div>' : topPerformers.map((r, i) => {
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-            const w = Math.max(4, Math.round(r.pts / topPerformers[0].pts * 100));
+          <div class="dash-staff-scroll">
+          ${topPerformers.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : topPerformers.map((r, i) => {
+            const top = topPerformers[0].pts || 1;
+            const medal = r.pts <= 0 ? '' : i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : `${i + 1}. `;
+            const w = r.pts > 0 ? Math.max(4, Math.round(r.pts / top * 100)) : 0;
             return `
-              <div class="dash-bar-row" title="Хариуцсан ${r.led} · хамтарсан ${r.helped} дамжлага">
-                <div class="dash-bar-label">${medal} ${escapeHtml(memberName(r.key))}</div>
+              <div class="dash-bar-row${r.pts > 0 ? '' : ' is-free'}" title="Хариуцсан ${r.led} · хамтарсан ${r.helped} дамжлага">
+                <div class="dash-bar-label">${medal}${escapeHtml(memberName(r.key))}</div>
                 <div class="dash-bar-track"><div class="dash-bar-fill dash-top-fill" style="width:${w}%"></div></div>
                 <div class="dash-bar-count dash-top-n">${Math.round(r.pts)}</div>
               </div>`;
           }).join('')}
+          </div>
         </div>
       </div>
     </div>

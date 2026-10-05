@@ -14209,6 +14209,52 @@ async function swFetchTests() {
   eq(Math.round(mev(after)), 120000, 'ИНВАРИАНТ: шилжилтээс хойш M-Event зардалд элэгдэл нэмэгдэнэ');
   ok(Math.round((after.dep && after.dep.total) || 0) === 140000, 'ИНВАРИАНТ: тайлан элэгдлийн дүнг буцаана (дэлгэцэд харуулах)');
 
+  // ── ИНВАРИАНТ: ЗАРДЛЫН ШАТ — Гүйлгээ / Дүн шинжилгээ / COO нэг тоо (2026-10-05) ──
+  {
+    const acc = '⟦ACCR|2026-10⟧';
+    const fr = (id, amount, category, dept_branch, extra) => Object.assign({ id, amount, category, dept_branch,
+      decision: 'approved', status: 'done', requested_at: '2026-10-05T10:00:00+08:00', executed_at: '2026-10-05T10:00:00+08:00',
+      justification: acc, purpose: 'x' }, extra || {});
+    const rows = [
+      fr('e1', 1000, '1100', 'ИВЕНТ'),
+      fr('e2', 200, '5810', 'ИВЕНТ'),                                            // барьцаа буцаалт
+      fr('e3', 300, '5800', 'ИВЕНТ', { justification: acc + ' ⟦LNK|order|7⟧' }),  // захиалгын буцаалт
+      fr('e4', 400, '6900', 'ИВЕНТ'),                                            // эзний зээл
+      fr('e5', 50, '1100', 'ИВЕНТ', { decision: 'pending' }),                    // хүлээгдэж буй
+      fr('e6', 70, '5100', 'ИВЕНТ'),                                             // НӨАТ төлөлт
+      fr('k1', 500, '1100', 'КЕМП'),
+      fr('h1', 600, '6100', 'ИВЕНТ'),                                            // хөрөнгө → Чимун ХХК
+    ];
+    runIn('state.financeRequests = ' + JSON.stringify(rows) + '; state.appOrders = []; state.scAllRows = [];');
+    runIn("state.vatReceipts = [{ id: 'v1', dt: '2026-10-03', vat: 90, matched_type: 'event' }];");
+    const L = runIn("expenseLadderFor('2026-10', null)");
+    eq(L.gross.amt, 3120, 'зардлын шат: нийт гарсан мөнгө = бүх мөр');
+    eq(L.gross.amt, L.txn.amt + L.deposit.amt + L.refund.amt + L.loan.amt + L.pending.amt,
+       'ИНВАРИАНТ: гарсан мөнгө = гүйлгээний зардал + зардлаас гадуур мөр бүр (нуугдсан зүйлгүй)');
+    const realSum = runIn("state.financeRequests.map(financeAsTask).filter(finIsRealExpense).reduce((a, t) => a + Number(t.amount), 0)");
+    eq(L.txn.amt, realSum, 'ИНВАРИАНТ: гүйлгээний зардал = finIsRealExpense (Гүйлгээ толгойтой ижил)');
+    const pnl = runIn("finBranchPnl('2026-10', 'cash')");
+    const rowExp = k => (pnl.rows.find(r => r.k === k) || {}).exp || 0;
+    eq(Math.round(L.pnl), Math.round(pnl.rows.reduce((a, r) => a + r.exp, 0)),
+       'ИНВАРИАНТ: Дүн шинжилгээний зардал (бүгд) = салбарын ашгийн тооцоо (COO/сар хаах)');
+    eq(Math.round(runIn("expenseLadderFor('2026-10', 'ИВЕНТ')").pnl), Math.round(rowExp('M-Event')),
+       'ИНВАРИАНТ: M-Event-ийн зардал Дүн шинжилгээ = COO (НӨАТ + элэгдэл + алдагдал багтана)');
+    eq(Math.round(runIn("expenseLadderFor('2026-10', 'КЕМП')").pnl), Math.round(rowExp('NOMAAD')),
+       'ИНВАРИАНТ: NOMAAD-ийн зардал Дүн шинжилгээ = COO');
+    eq(Math.round(runIn("expenseLadderFor('2026-10', 'Чимун ХХК')").pnl), Math.round(rowExp('Чимун ХХК')),
+       'ИНВАРИАНТ: ХХК-ийн зардал Дүн шинжилгээ = COO');
+    const LE = runIn("expenseLadderFor('2026-10', 'ИВЕНТ')");
+    eq(LE.vatPaid.amt, 70, 'зардлын шат: НӨАТ төлөлт тусдаа (ноогдуулсан НӨАТ-аар орлуулна)');
+    eq(LE.vatAcc, 90, 'зардлын шат: ноогдуулсан НӨАТ салбарын зардалд');
+    ok(LE.dep > 0, 'зардлын шат: элэгдэл (идэвхтэй сард) ашгийн зардалд орно');
+    // Дэлгэцүүд шатаас уншина — дахин бодохгүй
+    ok(/const _L = expenseLadderFor\(month, wantBr\)/.test(src) && !/Санхүүтэй таарна/.test(src),
+       'scan: Дүн шинжилгээ зардлыг шатаас авна, «Санхүүтэй таарна» гэсэн худал бичиг алга');
+    ok(/const _LD = expenseLadderOf\(monthList\)/.test(src), 'scan: Гүйлгээ толгой шатаас авна');
+    ok(/мөр зардлаас гадуур/.test(src), 'scan: Гүйлгээ толгой зардлаас гадуур мөрийг нэрлэнэ');
+    runIn('state.scAllRows = undefined;');
+  }
+
   runIn('state.products = ' + JSON.stringify(save[0] || []) + ';');
   runIn('state.appConfig = ' + JSON.stringify(save[1] || {}) + ';');
   runIn('state.financeRequests = ' + JSON.stringify(save[2] || []) + ';');
@@ -14775,7 +14821,7 @@ async function swFetchTests() {
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   const fn = src.slice(src.indexOf('function finBranchPnl'), src.indexOf('function finReceivables'));
-  ok(/countShrinkCost\(month\)/.test(fn), 'scan: finBranchPnl тооллогын алдагдлыг бодно');
+  ok(/countShrinkCost\(month, state\.scAllRows/.test(fn), 'scan: finBranchPnl тооллогын алдагдлыг БҮХ сессээр бодно');
   ok(/exp\['ИВЕНТ'\]\s*\+=\s*cnt\.total/.test(fn), 'scan: тооллогын алдагдал ИВЕНТ-д нэмэгдэнэ');
   // ⛔ Хэрэгжүүлээгүй зөрүү ИЛ гарна — эс бөгөөс «хэрэгжүүлэхгүй байж зайлсхийх» нүх үлдэнэ
   ok(/bp\.cnt && bp\.cnt\.pendingQty/.test(src), 'scan: хэрэгжүүлээгүй зөрүү тайланд ил гарна');

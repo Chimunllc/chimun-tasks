@@ -12519,13 +12519,12 @@ testFinBasisDefault();
     ok(/state\._closedMonthsAt = Date\.now\(\)/.test(fn), 'түгжээ: ачаалсан цаг тэмдэглэгдэнэ');
   }
 
-  // ── SCAN: устгах 3 замд түгжээ тавигдсан ──
+  // ── SCAN: устгах 2 замд түгжээ тавигдсан ──
   {
     const gate = (fn, needle) => {
       const at = src.indexOf(fn); ok(at > 0, 'scan: ' + fn + ' олдов');
       ok(new RegExp(needle).test(src.slice(at, at + 1500)), `scan: ${fn} — хаасан сарын түгжээ бий`);
     };
-    gate('async function deleteAppOrder', 'orderLockedMonth');
     gate('async function bulkDeleteOrders', 'orderLockedMonth');
     gate('async function bqUpdateStatus', 'orderStatusTouchesMoney');
     // Түгжээг шалгахын ӨМНӨ серверээс шинэчилнэ (хуучирсан кэшээр гаргахгүй)
@@ -12628,7 +12627,11 @@ testFinBasisDefault();
 // байв — амьд датаар 54 «Больсон»-ы 30 нь шалтгаангүй, «яагаад захиалга алдаж
 // байна» гэдгийг тоолж чадахгүй байв (#1559 ч яг ингэж ороод гацсан).
 {
-  need(['setCancelReason', 'cxReasonKey', 'bulkDeleteOrders', 'deleteAppOrder']);
+  need(['setCancelReason', 'cxReasonKey', 'bulkDeleteOrders']);
+  // «Больсон» болгох цорын ганц бичих зам = bulkDeleteOrders (шалтгаантай). Шалтгаангүй
+  // ганц-устгах зам (deleteAppOrder) ба тест-цэвэрлэгээний цонх 2026-10-05-нд хасагдсан.
+  ok(!/function deleteAppOrder|function openTestCleanupModal/.test(src),
+     'scan: шалтгаангүй устгах хуучин зам буцаж ирэхгүй');
 
   // ── ① Багц устгал шалтгааныг захиалга БҮРД бичнэ ──
   {
@@ -12652,17 +12655,6 @@ testFinBasisDefault();
     ok(/if \(!reason\) return;/.test(h), 'scan: шалтгаангүй бол устгахгүй');
     ok(h.indexOf('pickCancelReason') < h.indexOf('bulkDeleteOrders'),
        'scan: шалтгааныг устгахаас ӨМНӨ асууна');
-  }
-
-  // ── ③ Ганц зөөлөн устгал ч шалтгаантай; тест-цэвэрлэгээ нь админ шалтгаанаар ──
-  {
-    ok(/async function deleteAppOrder\(id, reason\)/.test(src),
-       'scan: deleteAppOrder шалтгаан хүлээж авна');
-    const fn = src.slice(src.indexOf('async function deleteAppOrder'),
-                         src.indexOf('async function deleteAppOrder') + 1800);
-    ok(/setCancelReason\(o\.note, reason\)/.test(fn), 'scan: шалтгаан note-д бичигдэнэ');
-    ok(/deleteAppOrder\(id, 'Тест захиалга'\)/.test(src),
-       'scan: тест-цэвэрлэгээ «Тест захиалга» гэж бүртгэгдэнэ');
   }
 
   // ── ④ «Тест захиалга» = админ шалтгаан → алдагдлын шинжилгээнд ОРОХГҮЙ ──

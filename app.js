@@ -4805,15 +4805,6 @@ function renderTaskList() {
   }
 }
 
-/* ─── M-Event Захиалга ─────────────────────────────────────
-   Сайтаас ирсэн түрээсийн захиалгыг харах + статус удирдах.
-   Backend: n8n /webhook/mevent-orders (GET унших, POST шинэчлэх) → MEVENT_Orders_DB Sheet.
-   Зөвхөн CEO. */
-// Захиалгын дамжлага (queue). Шат бүр тодорхой role/хүнд хамаарна.
-// «Баталсан» хасагдсан (2026-06-23) — төлбөр авах = захиалга батлах нэг алхам болов.
-// Хуучин дата дахь «Баталсан» нь normalizeOrder-т «Төлбөр авсан» болж буудаг.
-const ORDER_STATUSES = ['Шинэ', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн', 'Буцаан ирсэн', 'Дууссан', 'Цуцалсан'];
-
 // Дамжлагын чиглүүлэлт: захиалга тухайн статустай байх үед ХЭН харж, ХӨГ үйлдэл хийх вэ.
 //   role: 'manager' = зөвхөн менежер/CEO. Бусад нь ажилтны role-д тааруулах regex.
 //   next: дараагийн статус (тухайн хүн "дуусгах" товч дармагц). label: товчны бичиг.
@@ -4832,29 +4823,6 @@ const ORDER_FLOW = {
   'Дууссан':        { role: 'manager',                          next: null,             label: null },
   'Цуцалсан':       { role: 'manager',                          next: null,             label: null },
 };
-function orderStage(status) { return ORDER_FLOW[status || 'Шинэ'] || ORDER_FLOW['Шинэ']; }
-// Төлбөрийн мета — одоогоор note дотор кодлоно (backend багана нэмэгдвэл шууд тэндээс уншина).
-const PAY_TYPE_LABEL = { full: 'Бүтэн төлбөр', advance: 'Урьдчилгаа' };
-const PAY_METHOD_LABEL = { data: 'Данс', cash: 'Бэлэн', card: 'Карт' };
-function parsePayment(note) {
-  const m = String(note || '').match(/⟦PAY\|([^⟧]*)⟧/);
-  if (!m) return null;
-  const parts = m[1].split('|');
-  const [amount, type, method, date] = parts;
-  const ref = parts.slice(4).join('|') || '';   // гүйлгээний утга (банкнаас хуулсан) — сүүлд
-  return { amount: Number(amount) || 0, type: type || 'full', method: method || 'data', date: date || '', ref };
-}
-function stripPaymentNote(note) {
-  return String(note || '').replace(/⟦PAY\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '').trim();
-}
-function encodePaymentNote(note, pay) {
-  const base = stripPaymentNote(note);
-  if (!pay || !pay.amount) return base;
-  // ref-д токены тусгай тэмдэгт орохоос сэргийлж цэвэрлэнэ.
-  const ref = String(pay.ref || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
-  const tok = `⟦PAY|${Math.round(pay.amount)}|${pay.type || 'full'}|${pay.method || 'data'}|${pay.date || ''}|${ref}⟧`;
-  return base ? base + ' ' + tok : tok;
-}
 // Буцаалтын эвдрэл/гээгдэл — барьцаанаас хасах дүн + тэмдэглэл (note-д ⟦DMG|дүн|тэмдэглэл⟧).
 function parseDamage(note) {
   const m = String(note || '').match(/⟦DMG\|([^⟧]*)⟧/);
@@ -5834,7 +5802,6 @@ async function applyStockCount(row) {
   if (i >= 0) state.scRows[i] = { ...state.scRows[i], applied: true, applied_by: state.me || '' };
 }
 
-
 // Ижил барааг ӨӨР ҮНЭЭР дахин авахад ганц `cost` талбар хоёр үнийг барьж чадахгүй.
 // Хуучныг үлдээвэл хөрөнгө дутуу, шинээр дарвал илүү гарна — ЖИГНЭСЭН дундаж нь
 // цорын ганц зөв хариу. Цэвэр функц (state уншихгүй) тул тестлэгдэнэ.
@@ -6787,31 +6754,6 @@ function openOrderDamageModal(oid) {
 
 // [Устгасан] openOrderPaymentModal/submitOrderPayment — гараар төлбөр бичдэг үхсэн legacy код (PDF-only submitBqPayment-ээр орлуулагдсан).
 
-function orderStatusClass(s) {
-  return ({
-    'Шинэ': 'os-new',
-    'Баталсан': 'os-ok',
-    'Төлбөр авсан': 'os-ok',
-    'Цэвэрлэгээ': 'os-prep',
-    'Түрээс бэлдсэн': 'os-prep',
-    'Гаргасан': 'os-prep',
-    'Хүргэсэн': 'os-ok',
-    'Буцаан ирсэн': 'os-prep',
-    'Дууссан': 'os-done',
-    'Цуцалсан': 'os-cancel',
-  })[s] || 'os-new';
-}
-
-// Note-оос автомат хямдрал/НӨАТ мөрийг арилгаж зөвхөн хүний бичсэнийг үлдээнэ.
-function cleanOrderNote(note) {
-  return String(note || '')
-    .replace(/⟦PAY\|[^⟧]*⟧/g, '')
-    .replace(/⟦DMG\|[^⟧]*⟧/g, '')
-    .replace(/·?\s*\d+\s*хоногийн хямдрал[^·]*/g, '')
-    .replace(/·?\s*НӨАТ хасав[^·]*/g, '')
-    .replace(/·?\s*Хямдрал \(гар\):[^·]*/g, '')
-    .replace(/^\s*·\s*/, '').replace(/\s*·\s*$/, '').trim();
-}
 // Түрээсийн хугацааны хямдралын ШАТ — урт түрээслэх тусам хямд. Засах бол энэ массивыг.
 // ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн RENTAL_TIERS-тэй ЯГ ИЖИЛ байх ёстой
 // (аппын форм авто-хямдрал орно — C3). Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас. [[tariff_two_repos_sync]]
@@ -6876,54 +6818,6 @@ function isReturningCustomer(email, phone, excludeNumber) {
   const skip = new Set(['canceled', 'cancelled', 'deleted', 'draft']);
   if ((state.appOrders || []).some(o => !skip.has(String(o.status || '').toLowerCase()) && match(o))) return true;
   return (state.bqOrders || []).some(match);   // Booqable түүх = бүх өнгөрсөн захиалга
-}
-
-// Захиалгын үнийг items + хоногоор ДАХИН тооцоолно (хадгалагдсан дүн хуучин/буруу байж болзошгүй тул).
-// Түрээс = (үнэ×тоо)×хоног, дараа нь хугацааны шатлалын хямдрал, НӨАТ (note-д байвал) −5%, дээр нь барьцаа.
-function computeOrderPricing(o) {
-  const days = Math.max(1, Number(o.days) || 1);
-  const daily = (o.items || []).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
-  const rental = daily * days;
-  const tier = rentalDiscount(days);
-  const multiDayDiscount = Math.round(rental * tier.pct);
-  const afterMd = rental - multiDayDiscount;
-  const hasVat = /НӨАТ/i.test(String(o.note || ''));
-  const vatDiscount = hasVat ? Math.round(afterMd * 0.05) : 0;
-  const dm = String(o.note || '').match(/Хямдрал \(гар\):\s*−?\s*([\d,]+)/);
-  const manualDiscount = dm ? (parseInt(dm[1].replace(/\D/g, ''), 10) || 0) : 0;
-  const deposit = Number(o.deposit) || 0;
-  const total = Math.max(0, afterMd - vatDiscount - manualDiscount) + deposit;
-  // Буцаалтын эвдрэл/гээгдэл → барьцаанаас хасаж буцаана.
-  const dmg = parseDamage(o.note);
-  const damage = dmg ? Math.min(deposit, Math.max(0, dmg.amount)) : 0;
-  const depositReturn = deposit - damage;
-  return { days, rental, multiDayDiscount, multiDayPct: tier.pct, multiDayLabel: tier.label, vatDiscount, manualDiscount, hasVat, deposit, total, damage, depositReturn, damageNote: dmg ? dmg.note : '' };
-}
-
-/* ─── Захиалгын самбар — UI туслахууд ──────────────────────── */
-// Шатуудыг 4 үе шатанд бүлэглэнэ (шүүлтүүр таб + board багана).
-const ORDER_PHASES = [
-  { key: 'new',     label: 'Шинэ',     statuses: ['Шинэ'] },
-  { key: 'prep',    label: 'Бэлтгэлд', statuses: ['Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан'] },
-  { key: 'deliver', label: 'Хүргэлт',  statuses: ['Хүргэсэн', 'Буцаан ирсэн'] },
-  { key: 'done',    label: 'Дууссан',  statuses: ['Дууссан'] },
-];
-function orderPhaseKey(status) {
-  for (const p of ORDER_PHASES) if (p.statuses.includes(status)) return p.key;
-  if (status === 'Цуцалсан') return 'cancelled';
-  return 'new';
-}
-
-function orderMatchesSearch(o, q) {
-  if (!q) return true;
-  return `${o.order_no} ${o.customer_name} ${o.company} ${o.phone} ${o.email || ''}`.toLowerCase().includes(q);
-}
-
-// Захиалгатай холбоотой даалгаврууд (confirmOrderPayment үүсгэсэн) — тоо + хариуцагчид.
-function orderLinkedTasks(o) {
-  const ts = (state.tasks || []).filter(t => t.order_no && t.order_no === o.order_no);
-  const names = [...new Set(ts.map(t => findMember(t.assignee)?.name).filter(Boolean))];
-  return { count: ts.length, names };
 }
 
 /* ─── Банкны тулгалт (Голомт дансны хуулга ↔ бүртгэсэн төлбөр) ───
@@ -7340,15 +7234,7 @@ function classifyExpense(memo, account) {
   }
   return '';
 }
-function learnAcctCat(account, cat) { if (!account || !cat) return; const l = _acctCatLearn(); l[account] = cat; try { localStorage.setItem('acctCatLearn', JSON.stringify(l)); } catch (_) {} }
 function expenseFp(r) { return 'EXP-' + Math.round(r.debit) + '-' + String(r.date).replace(/-/g, '') + '-' + _normFp(r.account || r.memo).slice(0, 22); }
-function _catOptions(sel) {
-  let opts = '<option value="">— сонгох —</option>';
-  Object.keys(FINANCE_SUB_CATEGORIES).forEach(main => (FINANCE_SUB_CATEGORIES[main] || []).forEach(s => {
-    opts += `<option value="${s.code}"${s.code === sel ? ' selected' : ''}>${s.code} ${escapeHtml(s.name)}</option>`;
-  }));
-  return opts;
-}
 // ── 2-түвшин ангилал (үндсэн → дэд) ─────────────────────────────────────────────
 function mainOfSub(subCode) { const s = String(subCode || ''); return s ? (s[0] + '000') : ''; }
 function subCatName(code) { for (const m of Object.keys(FINANCE_SUB_CATEGORIES)) { const hit = (FINANCE_SUB_CATEGORIES[m] || []).find(s => s.code === code); if (hit) return hit.name; } return ''; }
@@ -7598,9 +7484,7 @@ function detectStatementAccount(matrix) {
   return '';
 }
 function _cardOwners() { if (!state.cardOwners) { try { state.cardOwners = JSON.parse(localStorage.getItem('cardOwners') || '{}'); } catch (_) { state.cardOwners = {}; } } return state.cardOwners; }
-function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners(); o[acct] = ownerKey; try { localStorage.setItem('cardOwners', JSON.stringify(o)); } catch (_) {} }
 function _cardBranch() { if (!state.cardBranch) { try { state.cardBranch = JSON.parse(localStorage.getItem('cardBranch') || '{}'); } catch (_) { state.cardBranch = {}; } } return state.cardBranch; }
-function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o[acct] = br; try { localStorage.setItem('cardBranch', JSON.stringify(o)); } catch (_) {} }
 // Зардлын салбар = 3 үйл ажиллагааны салбар + Чимун ХХК (толгой — хөрөнгө оруулалт, удирдлагын
 // түвшний зардал). Захиргаа катч-олл хасагдсан. Хөрөнгө (6000) авто Чимун ХХК-д орно.
 const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК']];
@@ -7608,7 +7492,6 @@ function detectCardLast4(memo) {
   const m = String(memo || '').match(/(\d{6})\*{2,}(\d{4})/) || String(memo || '').match(/(\d{4})\*{2,}(\d{4})/);
   return m ? m[2] : '';
 }
-function cardByLast4(l4) { return l4 ? (state.bankCards || []).find(c => c.active !== false && String(c.last4) === String(l4)) : null; }
 // Компанийн ӨӨРИЙН бүх дансны дугаарын багц (Данс & Карт бүртгэлээс). Дотоод шилжүүлэг таних.
 function ownAcctSet() {
   const s = new Set();
@@ -7650,7 +7533,6 @@ function stmtDropWhy(x, acctLabel) {
 }
 // Картын default зарцуулалтын зорилго (ангилал) — тухайн картын бүх мөрд өгөгдмөл болгоно.
 function _cardDefCat() { if (!state.cardDefCat) { try { state.cardDefCat = JSON.parse(localStorage.getItem('cardDefCat') || '{}'); } catch (_) { state.cardDefCat = {}; } } return state.cardDefCat; }
-function setCardDefCat(key, cat) { if (!key) return; const o = _cardDefCat(); o[key] = cat; try { localStorage.setItem('cardDefCat', JSON.stringify(o)); } catch (_) {} }
 // Сарын бүх зардлыг цэвэрлэх (аппын өөрийн устгах замаар — хуулгаар дахин оруулахын өмнө)
 async function clearMonthExpenses(month) {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
@@ -10793,70 +10675,6 @@ function attachOrdersHandlers() {
     });
   }
 
-
-
-
-}
-
-/* Монгол хэлтэй огнооны календар — readonly input дээр дарахад inline panel нээгдэнэ.
-   hiddenEl.value = YYYY-MM-DD (логикт), displayEl нь монголоор харуулна. */
-function mountCalendar(displayEl, hiddenEl, popEl, onChange, initial) {
-  const WD = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
-  const today = new Date();
-  let view = new Date(today.getFullYear(), today.getMonth(), 1);
-  let selected = null;
-  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const human = (d) => `${d.getFullYear()} оны ${d.getMonth() + 1}-р сарын ${d.getDate()}`;
-  if (initial && /^\d{4}-\d{2}-\d{2}/.test(initial)) {
-    const p = initial.slice(0, 10).split('-').map(Number);
-    selected = new Date(p[0], p[1] - 1, p[2]);
-    view = new Date(p[0], p[1] - 1, 1);
-    hiddenEl.value = iso(selected);
-    displayEl.value = human(selected);
-  }
-  function render() {
-    const y = view.getFullYear(), mo = view.getMonth();
-    const startOff = (new Date(y, mo, 1).getDay() + 6) % 7; // Даваа = 0
-    const days = new Date(y, mo + 1, 0).getDate();
-    let cells = '';
-    for (let i = 0; i < startOff; i++) cells += '<div class="mc-cell empty"></div>';
-    for (let d = 1; d <= days; d++) {
-      const cur = new Date(y, mo, d);
-      const wknd = [0, 6].includes(cur.getDay());
-      const cls = ['mc-cell', 'day', wknd ? 'weekend' : '', iso(cur) === iso(today) ? 'today' : '', selected && iso(cur) === iso(selected) ? 'sel' : ''].filter(Boolean).join(' ');
-      cells += `<div class="${cls}" data-d="${d}">${d}</div>`;
-    }
-    popEl.innerHTML = `
-      <div class="mc-head">
-        <button type="button" class="mc-nav" data-nav="-1">‹</button>
-        <span class="mc-title">${y} оны ${mo + 1}-р сар</span>
-        <button type="button" class="mc-nav" data-nav="1">›</button>
-      </div>
-      <div class="mc-grid">${WD.map(w => `<div class="mc-cell wd">${w}</div>`).join('')}</div>
-      <div class="mc-grid">${cells}</div>`;
-  }
-  displayEl.addEventListener('click', () => {
-    const open = popEl.style.display !== 'none';
-    document.querySelectorAll('.mc-pop').forEach(p => { p.style.display = 'none'; });
-    if (!open) { render(); popEl.style.display = 'block'; }
-  });
-  popEl.addEventListener('click', (e) => {
-    const nav = e.target.closest('.mc-nav');
-    if (nav) { view.setMonth(view.getMonth() + Number(nav.dataset.nav)); render(); return; }
-    const cell = e.target.closest('.mc-cell.day');
-    if (cell) {
-      selected = new Date(view.getFullYear(), view.getMonth(), Number(cell.dataset.d));
-      hiddenEl.value = iso(selected);
-      displayEl.value = human(selected);
-      popEl.style.display = 'none';
-      if (typeof onChange === 'function') onChange();
-    }
-  });
-  document.addEventListener('mousedown', (e) => {
-    if (!popEl.parentElement) return; // modal хаагдсан
-    if (popEl.style.display === 'none') return;
-    if (!e.target.closest('.mcal')) popEl.style.display = 'none';
-  });
 }
 
 /* Вэбсайт шиг бүрэн захиалга гараар үүсгэх (үйлчлүүлэгч + бараа + дүн) →
@@ -11369,17 +11187,6 @@ async function openOrderScanModal(oid) {
   modal.querySelector('#oscan-done').onclick = cleanup;
   modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
   startQRScan(modal.querySelector('#oscan-video'), modal.querySelector('#oscan-status'), onCode).then(s => { stop = s; });
-}
-
-// Бараа хадгалах → VPS Postgres upsert (sku=PK). Шинэ барааны sku/id хоосон бол үүсгэнэ.
-// Дараагийн чөлөөт SKU — одоо байгаа CH_NNN дугааруудын max+1 (ж: CH_250)
-function nextProductSKU() {
-  let max = 0;
-  (state.products || []).forEach(p => {
-    const m = /^CH[_-]?(\d+)$/.exec(String(p.sku || '').trim());
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  });
-  return 'CH_' + String(max + 1).padStart(3, '0');
 }
 
 // Шинэ бараанд дараагийн M-код (M-<max+1>) — үйлчлүүлэгчийн нүүр код (утсаар захиалах)
@@ -14588,15 +14395,6 @@ function isFullAccessMember(m) {
 // member_perms (Postgres, PostgREST anon) хүснэгтэд person_key → {orders:true,...} JSON.
 // override байвал тухайн хүний default role-эрхийг ДАРНА (нээх ч, хаах ч).
 // ─────────────────────────────────────────────────────────────
-const PERM_VIEWS = [
-  { key: 'orders',      label: 'M event захиалга' },
-  { key: 'receivables', label: 'Авлага' },
-  { key: 'history',    label: 'Түрээсийн түүх' },
-  { key: 'products',    label: 'Бараа & хөрөнгө' },
-  { key: 'reports',     label: 'Дүн шинжилгээ' },
-  { key: 'nomaad',      label: 'NOMAAD' },
-  { key: 'hourly',      label: 'Цагийн цалин' },
-];
 // Бүх удирдах боломжтой эрх (меню + үйлдэл) — Эрх самбарын матрицад.
 // Бүх цэс (sidebar нэрээрээ) + цэс тус бүрийн нарийн үйлдэл — Эрх удирдах матрицын бүтэц.
 // core:true = үндсэн цэс (бүгдэд үргэлж нээлттэй, нуухгүй). Бусдын харах эрхийг роль/CEO удирдана.
@@ -17610,27 +17408,6 @@ function salaryNet(gross, deduct) {
   const pit = Math.round(Math.max(0, gross - ndsh) * (Number(r.pit) || 0) / 100);
   return { ndsh, pit, net: Math.max(0, gross - ndsh - pit) };
 }
-// Цалин олгомогц ТООЛОГДОХГҮЙ тэмдэглэл (⟦PENDST⟧) үүсгэнэ — цагийн цалинтай адил зардал зөвхөн
-// банкны хуулгаас орно (давхар тоологдохгүй). Хуулга орж баталгаажмагц тоологдоно. Давхардлаас ⟦SAL⟧-аар хамгаална.
-async function createSalaryExpense(m, ym, amount, cycName) {
-  const tag = `⟦SAL|${personKey(m)}|${ym}|${cycName}⟧`;
-  if ((state.financeRequests || []).some(x => x.status !== 'deleted' && String(x.justification || '').includes(tag))) return;
-  const bs = (typeof memberBranchesOf === 'function' ? memberBranchesOf(m) : (m.branches || [])) || [];
-  const brCode = bs.includes('m-event') ? 'ИВЕНТ' : bs.includes('camp') ? 'КЕМП' : bs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
-  state._finBackfill = { date: `${ym}-${/рьдчил/.test(cycName) ? '20' : '05'}` };
-  const fr = await createFinanceRequest({
-    amount, beneficiary: m.name || '', bank: m.bank || '', accountNumber: m.bank_account || '',
-    purpose: `${ym} ${cycName} цалин · ${m.name || ''}`, justification: `${tag} ⟦PENDST⟧`,
-    category: '7100', deptBranch: brCode, linkType: 'salary', priority: 'med',
-  });
-  state._finBackfill = null;   // аюулгүй: дараагийн хүсэлтэд санамсаргүй үлдэхээс сэргийлнэ
-  if (fr && fr.status !== 'done') {   // payer нь CEO/executor биш байлаа ч цалин = шийдэгдсэн зардал
-    const now = new Date().toISOString();
-    fr.decision = 'approved'; fr.decision_at = now; fr.decision_by = state.me;
-    fr.executed_at = now; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'цалин';
-    fr.close_note = 'Цалингийн олголтоос автоматаар'; await saveFinanceRequest(fr);
-  }
-}
 // Сарын цалин авах ажилтнууд (өдрийн/цагийн ажилтнаас бусад идэвхтэй)
 function salaryStaff() {
   return (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && String(m.worker_type || '') !== 'daily');
@@ -18889,13 +18666,6 @@ function nomaadDatePlain(dateStr) {
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const dow = ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'][d.getDay()];
   return `${dateStr} (${dow})`;
-}
-function nomaadCampLabel(o) {
-  const c = String(o.camp || '').toLowerCase();
-  if (c.includes('summit')) return 'NOMAAD Summit';
-  if (c.includes('meadow')) return 'NOMAAD Meadow';
-  if (c.includes('grove'))  return 'NOMAAD Grove';
-  return (o.camp || '').trim() || 'Бусад';
 }
 function nomaadCountdownBadge(days) {
   if (days == null) return `<span class="nomaad-cd nomaad-cd-none">огноогүй</span>`;
@@ -22643,16 +22413,6 @@ function prevStageInfoAny(o) {
     if (!best || String(e.at || '') > String(best.at || '')) { best = e; bestKey = k; }
   }
   return best ? { by: best.by, key: bestKey } : null;
-}
-function prevStageOwner(o, meKey) {
-  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
-  let best = null;
-  for (const k of Object.keys(sm)) {
-    const e = sm[k];
-    if (!e || !e.by || String(e.by) === String(meKey)) continue;
-    if (!best || String(e.at || '') > String(best.at || '')) best = e;
-  }
-  return best ? best.by : null;
 }
 /* Хүн бүрийн хүлээлцэх чанар. ⛔ ЭХЛЭЭД АЛДААНЫ ТОО (2026-10-04) — ★ нь
    үнэлэгчээс хамаардаг тул бүх дамжлагаас хасагдсан. Алдааны бүртгэл
@@ -27316,13 +27076,6 @@ function bqStatusBadge(raw) {
   return `<span class="bq-badge" style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.7;background:${s.bg};color:${s.tx};white-space:nowrap;">
     <span style="width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:${s.dot};"></span>${escapeHtml(s.label)}</span>`;
 }
-// M-Event төлвийг 6 төлвийн аль нэгэнд буулгана (нэгдсэн шүүлтэд)
-function meStatusKey(st) {
-  if (st === 'Цуцалсан') return 'canceled';
-  if (st === 'Дууссан') return 'stopped';
-  if (st === 'Шинэ') return 'reserved';
-  return 'started';   // Төлбөр авсан/Цэвэрлэгээ/Түрээс бэлдсэн/Гаргасан/Хүргэсэн/Буцаан ирсэн
-}
 
 // Захиалгын жагсаалт — түүхэн нь цорын ганц эх (M-Event давхарга 2026-06-28-нд цуцлагдсан).
 // ── App-д үүсгэсэн захиалга (app_orders — түүхэн түүхээс ТУСДАА, refresh устгахгүй) ──
@@ -27447,49 +27200,6 @@ async function saveAppOrder(ord) {
     showToast(msg, 'error', 5000);
     throw new Error('save fail');
   }
-}
-// Тест захиалга цэвэрлэх (ЗӨВХӨН CEO) — нэрэнд test/тест/demo орсныг сонгож бүрмөсөн устгана
-const _TEST_ORDER_RE = /\btest\b|тест|demo|туршил|жишээ|sample/i;
-function openTestCleanupModal() {
-  if (!state.isCEO) { showToast('Зөвхөн CEO энэ үйлдлийг хийнэ', 'warn', 3000); return; }
-  const cands = (state.appOrders || []).filter(o => _TEST_ORDER_RE.test(o.customer || ''));
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg open'; modal.style.zIndex = '9600';
-  modal.innerHTML = `<div class="modal" style="max-width:480px;width:96%;max-height:88vh;overflow:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h2 style="margin:0;font-size:16px;">🧪 Тест захиалга устгах</h2><button class="btn" id="tc-close" style="padding:5px 10px;">✕</button></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Нэрэнд «test / тест / demo» орсон захиалгууд. Устгавал БҮРМӨСӨН арилна (буцаах боломжгүй).</div>
-    ${cands.length ? `<div id="tc-list">${cands.map(o => `<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer;">
-      <input type="checkbox" class="tc-cb" data-id="${escapeHtml(String(o.id))}" checked style="width:auto;margin:0;">
-      <b>#${o.number ?? '—'}</b>
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '?')}</span>
-      <span style="color:var(--muted);font-size:11px;">${escapeHtml((BQ_STATUS[o.status] || {}).label || o.status || '')}</span>
-      <b style="font-variant-numeric:tabular-nums;">${fmtMoney(o.total_mnt || 0)}</b>
-    </label>`).join('')}</div>
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
-      <button class="btn" id="tc-cancel">Болих</button>
-      <button class="btn" id="tc-del" style="background:var(--danger);color:#fff;border-color:var(--danger);">🗑 Устгах (<span id="tc-n">${cands.length}</span>)</button>
-    </div>` : `<div style="text-align:center;color:var(--muted);padding:24px;">Тест захиалга олдсонгүй ✓</div>`}
-  </div>`;
-  document.body.appendChild(modal);
-  const close = () => modal.remove();
-  modal.querySelector('#tc-close').onclick = close;
-  modal.querySelector('#tc-cancel')?.addEventListener('click', close);
-  modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const updateN = () => { const el = modal.querySelector('#tc-n'); if (el) el.textContent = modal.querySelectorAll('.tc-cb:checked').length; };
-  modal.querySelectorAll('.tc-cb').forEach(cb => cb.addEventListener('change', updateN));
-  modal.querySelector('#tc-del')?.addEventListener('click', async (e) => {
-    // ⚠ Товчийг ЭНД ав — баталгаажуулалтын await-ийн дараа `currentTarget` null болно.
-    const btn = e.currentTarget;
-    const ids = [...modal.querySelectorAll('.tc-cb:checked')].map(cb => cb.dataset.id);
-    if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
-    if (!(await showConfirm(`${ids.length} тест захиалгыг хасах уу? («Больсон» бүлэгт шилжинэ — дараа сэргээж болно)`, { okText: 'Хасах', danger: true }))) return;
-    btn.disabled = true;
-    let ok = 0;
-    for (const id of ids) { try { await deleteAppOrder(id, 'Тест захиалга'); ok++; } catch (err) { console.warn('test del', err); } }
-    close();
-    showToast(`${ok} тест захиалга устгалаа`, 'success', 2800);
-    if (typeof render === 'function') render();
-  });
 }
 // CEO бөөн үйлдэл — сонгосон захиалгыг устгах/сэргээх (PostgREST id=in.() багцаар)
 async function bulkDeleteOrders(ids, reason) {
@@ -27625,30 +27335,6 @@ async function archiveDoneMonth(ym) {
   const ok = await bulkArchiveOrders(list.map(o => o.id));
   showToast(ok ? `🗄 ${list.length} захиалга архивлалаа` : '⚠ Хэсэгчлэн архивлагдав — дахин оролдоно уу', ok ? 'success' : 'warn', 4500);
   render();
-}
-async function deleteAppOrder(id, reason) {
-  // ЗӨӨЛӨН устгал — мөр устгахгүй, status='deleted' (сэргээж болно). Хатуу устгал = буцалтгүй алдагдал тул хийхгүй.
-  const o = (state.appOrders || []).find(x => x.id === id);
-  // 🔒 Хаасан сарын захиалгыг устгавал тэр сарын орлого чимээгүй буурна
-  if (o) {
-    try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр */ }
-    const lk = orderLockedMonth(o);
-    if (lk) { showToast(`🔒 ${lk} сар хаагдсан — #${o.number} захиалгыг устгах боломжгүй`, 'error', 6000); return; }
-  }
-  const prevStatus = o ? o.status : null;
-  // ⚠ ШАЛТГААНГҮЙ «Больсон» = «яагаад алдаж байна» гэдгийг хэзээ ч тоолж чадахгүй.
-  //   Амьд датаар 54 больсоны 30 нь шалтгаангүй байсан нь яг эндээс төрсөн.
-  const _note = (o && reason) ? setCancelReason(o.note, reason) : null;
-  const prevNote = o ? o.note : null;
-  if (o) { o.status = 'deleted'; if (_note != null) o.note = _note; }
-  if (typeof render === 'function') render();
-  if (!DB_ANON_KEY) return;
-  try {
-    const _body = { status: 'deleted', updated_at: new Date().toISOString() };
-    if (_note != null) _body.note = _note;
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(_body) }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-  } catch (e) { console.warn('deleteAppOrder(soft)', e); if (o && prevStatus != null) { o.status = prevStatus; o.note = prevNote; if (typeof render === 'function') render(); } }
 }
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
@@ -28978,7 +28664,6 @@ function openNewOrder(editOrder) {
     catch (err) { btn.disabled = false; }
   };
 }
-
 
 // ── Бараа сонгох popup (захиалгын модалаас) — бүх дэлгэцийг ашиглаж, том дүрс + ангиллын шүүлт +
 // тоо ширхэгийг картан дээр нь шууд оруулна. Жижиг inline каталогоос олон бараа сонгоход хурдан. ──
@@ -34663,7 +34348,6 @@ async function loadGa(force) {
   } catch (e) { dataLoadFailed('Сайтын зочдын дата', e); state.ga = state.ga || []; return state.ga; }
 }
 
-
 // ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭРИЙН БҮРТГЭЛ (2026-09-16) ──────────────────────────
 // `tools/fb_budget.py` 10 минут тутам шийдвэр гаргадаг (төсөв шилжүүлэх, зар
 // зогсоох) ч энэ нь VPS-ийн лог файлд л үлддэг байв — хэрэглэгч «систем юу
@@ -34711,7 +34395,6 @@ function adActionLabel(a) {
   return k || '—';
 }
 function adActionIsBad(a) { return String((a && a.kind) || '') === 'error'; }
-
 
 // ── ПОСТ БЭЛДЭХ (2026-09-16) ────────────────────────────────────────────────
 // Апп зар дутуу ангиллыг аль хэдийн олдог (`adsAdvice` ①-р дүрэм). Дараагийн
@@ -37648,7 +37331,6 @@ function openVatReceiptsModal(title, sub, rows) {
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 }
 
-
 // Ачаалсан файлаас алга болсон баримтыг ол.
 // ⚠ ЗӨВХӨН файлд орсон саруудыг харна — эс бөгөөс нэг сарын файл ачаалахад
 // бусад бүх сарын баримт «буцаасан» болно.
@@ -38249,7 +37931,6 @@ async function openVatReportModal() {
         : vfilter === 'todo' ? '🎉 Бүх баримт тулгагдсан!' : vfilter === 'done' ? 'Тулгагдсан баримт алга.' : vfilter === 'ret' ? 'Буцаасан баримт алга.' : 'Баримт алга.';
       rowsHtml = `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--muted);">${emptyMsg}</td></tr>`;
     }
-
 
     card.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border,#eee);">

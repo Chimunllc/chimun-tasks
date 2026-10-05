@@ -4583,17 +4583,6 @@ function renderTaskList() {
     attachSessionBanner();   // «Нэвтрэлт дууссан» туузны товч
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
     document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
-    // Ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг жагсаалтаар харах
-    wrap.querySelectorAll('.dash-staff-clickable').forEach(row => {
-      row.addEventListener('click', () => {
-        const email = row.dataset.staffEmail;
-        if (!email) return;
-        state.view = 'staff:' + email;
-        state.statusFilter = 'all';
-        state._taskListLimit = null;
-        render();
-      });
-    });
     document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
     // "Яг одоо" тууз — авлага нүд дээр дарж Авлага view руу
     wrap.querySelectorAll('[data-ceo-now]').forEach(c => c.addEventListener('click', () => { state.view = c.dataset.ceoNow; render(); }));
@@ -39041,21 +39030,13 @@ function exportAllReports() {
 }
 
 function renderDashboard() {
-  // ─── Глобал салбар ленз (толгойн сонгогч) — доорх БҮХ тоо үүгээр шүүгдэнэ. Нэгдсэн (shared) хоёуланд. ───
-  const dashBranch = effectiveBranchLens();
-  const wantFinBr = finLensBranch(dashBranch);
-  const memberInDashBranch = (m) => memberInLens(m);   // НЭГДСЭН дүрэм (override-aware, 'shared'-ыг зөв авна)
-  const tasks = (state.tasks || []).filter(t => t.status !== 'deleted' && !isOrderAutoTask(t) && branchInLens(taskBranch(t)));   // устгасан + захиалгын авто-ажил хасна (жагсаалттай нийцүүлнэ)
-  const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted'
-    && (dashBranch === 'all' || finEffBranch(r) === wantFinBr));
   const today = todayStr();
   const isCEO = !!state.isCEO;
   const me = state.me;
 
   // ─── Хувийн KPI (бүх ажилтанд) ───
   // ⚠ Ленз ХАМААРАХГҮЙ — өөрт нь оноосон ажил нь тэр хүнийх, салбар нь хамаагүй.
-  //   Компанийн тоонууд (дээрх `tasks`) урьдын адил лензээр шүүгдэнэ; зөвхөн ХУВИЙН
-  //   блок бүтэн байна. Эс бөгөөс нэг салбартай ажилтан «0 ажил» гэсэн худал тоо хардаг.
+  //   Эс бөгөөс нэг салбартай ажилтан «0 ажил» гэсэн худал тоо хардаг.
   const myBase = (state.tasks || []).filter(t => t.status !== 'deleted' && !isOrderAutoTask(t));
   const mineTasks = myBase.filter(t => t.assignee === me);
   const myDone = mineTasks.filter(t => t.status === 'done').length;
@@ -39071,116 +39052,16 @@ function renderDashboard() {
   }));
   const myMax = Math.max(1, ...my7.map(x => x.count));
 
-  // 1) Status breakdown
-  const byStatus = { open: 0, in_progress: 0, done: 0, declined: 0 };
-  tasks.forEach(t => { byStatus[t.status || 'open'] = (byStatus[t.status || 'open'] || 0) + 1; });
-  const totalTasks = tasks.length || 1;
-
-  // 2) Per-staff active load — БҮХ идэвхтэй ажилтныг 0-ээс эхлүүлнэ (ачаалалгүй/чөлөөтэй
-  //    хүмүүс ч харагдана — CEO хэнд ажил оноох боломжтойг шууд харна).
-  const staffLoad = {};
-  TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && memberInDashBranch(m)).forEach(m => { staffLoad[personKey(m)] = 0; });
-  tasks.filter(t => t.status !== 'done' && t.assignee).forEach(t => {
-    staffLoad[t.assignee] = (staffLoad[t.assignee] || 0) + 1;
-  });
-  const topStaff = Object.entries(staffLoad).sort((a,b)=>b[1]-a[1]); // бүгд, ачаалалаар (чөлөөтэй нь доор)
-  const maxLoad = Math.max(1, ...topStaff.map(([,n]) => n));
-  // Үндсэн ба цагийн ажилтныг тойм дээр тусад нь харуулна.
-  const isDailyKey = (id) => { const m = findMember(id); return !!(m && m.worker_type === 'daily'); };
-  const permStaff  = topStaff.filter(([id]) => !isDailyKey(id));
-  const dailyStaff = topStaff.filter(([id]) =>  isDailyKey(id));
-  const maxPermLoad = Math.max(1, ...permStaff.map(([,n]) => n));
-
-  // 3) Финансын зардал — сүүлийн 30 хоног. Finance-ийн ts талбар нь `requested_at` —
-  // өмнөх кодонд `created_at || ts` гэж буруу нэр хайж байсан тул хоосон гарч байсан.
-  const cutoff = Date.now() - 30 * 86400 * 1000;
-  const financeTs = r => {
-    const raw = r.requested_at || r.updated || r.decision_at || r.created_at || r.ts;
-    if (!raw) return 0;
-    const t = new Date(raw).getTime();
-    return Number.isFinite(t) ? t : 0;
-  };
-  const recentFinance = fr.filter(r => financeTs(r) > cutoff);
-  // Хуулга суурьтай: нийт зардал + ангилаагүй (эзэн ангилахыг хүлээж буй).
-  const totalSpent = recentFinance.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const _finUnclas = (r) => { const tok = (typeof parseCardToken === 'function') ? parseCardToken(r.justification || '') : null; return (tok && tok.pend) || String(r.category || '') === (typeof CARD_PEND_CAT !== 'undefined' ? CARD_PEND_CAT : '9500') || !String(r.category || '').trim(); };
-  const unclasList = recentFinance.filter(_finUnclas);
-  const totalUnclassified = unclasList.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-
-  // 4) Хоцорсон
-  const overdueCount = tasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
-  const todayCount = tasks.filter(t => t.due === today && t.status !== 'done').length;
-  // 5) Хүлээж буй ажилтны бүртгэл (CEO action хэрэгтэй)
+  // Хүлээж буй ажилтны бүртгэл (CEO-гийн хийх ажил)
   const pendingRegCount = TEAM.filter(m => (m.status || '') === 'хүлээж буй').length;
 
-  // 6) Trend: сүүлийн 14 хоногийн task үүсгэх vs дуусгах
-  const trendDays = 14;
-  const dayMs = 86400 * 1000;
-  const createdByDay = new Array(trendDays).fill(0);
-  const doneByDay = new Array(trendDays).fill(0);
-  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  const trendStart = startOfToday.getTime() - (trendDays - 1) * dayMs;
-  for (const t of tasks) {
-    const cMs = typeof t.created === 'number' ? t.created : new Date(t.created || 0).getTime();
-    if (cMs >= trendStart) {
-      const idx = Math.floor((cMs - trendStart) / dayMs);
-      if (idx >= 0 && idx < trendDays) createdByDay[idx]++;
-    }
-    if (t.status === 'done') {
-      const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
-      if (dMs >= trendStart) {
-        const idx = Math.floor((dMs - trendStart) / dayMs);
-        if (idx >= 0 && idx < trendDays) doneByDay[idx]++;
-      }
-    }
-  }
-
-  /* 7) Шилдэг гүйцэтгэгч = M-Event-ийн ДАМЖЛАГЫН ОНОО, сонгосон САРААР (2026-10-05, CEO).
+  /* Шилдэг гүйцэтгэгч = M-Event-ийн ДАМЖЛАГЫН ОНОО, сонгосон САРААР (2026-10-05, CEO).
      ⛔ Даалгаврын тоогоор БҮҮ буцаа — даалгавар цөөхөн хүнд л оноогддог тул карт
        ихэнхдээ «Дуусгасан ажил алга» гэж хоосон байв. Оноо нь бонустай ИЖИЛ эх
        сурвалжаас (`stagePayByPerson`) — хоёр өөр «шилдэг» гарахгүй. */
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   const topYm = state.dashTopYm || todayStr().slice(0, 7);
   const topPerformers = stageTopPerformers(state.appOrders || [], topYm, 5);
-
-  // 8) Дундаж дуусгах хугацаа (created → completed_at, сүүлийн 30 хоног)
-  const completionCutoff = Date.now() - 30 * dayMs;
-  const durations = [];
-  for (const t of tasks) {
-    if (t.status !== 'done') continue;
-    const cMs = typeof t.created === 'number' ? t.created : new Date(t.created || 0).getTime();
-    const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
-    if (!cMs || !dMs || dMs < completionCutoff) continue;
-    const days = (dMs - cMs) / dayMs;
-    if (days >= 0 && days < 365) durations.push(days);
-  }
-  const avgCompletionDays = durations.length ? (durations.reduce((s,d)=>s+d, 0) / durations.length) : 0;
-
-  // SVG donut for status
-  const donut = (() => {
-    const cx = 60, cy = 60, r = 48;
-    const C = 2 * Math.PI * r;
-    const colors = {
-      open: '#f59e0b', in_progress: '#3b82f6',
-      done: '#10b981', declined: '#ef4444'
-    };
-    let offset = 0;
-    const segments = ['done', 'in_progress', 'open', 'declined'].map(k => {
-      const n = byStatus[k] || 0;
-      const frac = n / totalTasks;
-      const dash = `${C * frac} ${C}`;
-      const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${colors[k]}" stroke-width="14" stroke-dasharray="${dash}" stroke-dashoffset="${-offset * C}" transform="rotate(-90 ${cx} ${cy})"/>`;
-      offset += frac;
-      return seg;
-    }).join('');
-    return `
-      <svg viewBox="0 0 120 120" width="120" height="120">
-        ${segments}
-        <text x="60" y="58" text-anchor="middle" font-size="22" font-weight="700" fill="var(--text)">${tasks.length}</text>
-        <text x="60" y="76" text-anchor="middle" font-size="10" fill="var(--muted)">нийт</text>
-      </svg>
-    `;
-  })();
 
   return `
     <div class="dashboard">
@@ -39226,28 +39107,6 @@ function renderDashboard() {
           </div>
         </div>
 
-        <!-- ─── Компанийн тойм (бүх ажилтанд) ─── -->
-        <div class="dash-section-title" style="grid-column: span 4; font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:12px; margin-bottom:-4px;">Компанийн тойм</div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Хоцорсон</div>
-          <div class="dash-kpi-value danger">${overdueCount}</div>
-          <div class="dash-kpi-sub">эцсийн хугацаа өнгөрсөн</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Өнөөдөр</div>
-          <div class="dash-kpi-value warn">${todayCount}</div>
-          <div class="dash-kpi-sub">дуусах ёстой</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Хүлээгдэж буй</div>
-          <div class="dash-kpi-value primary">${recentFinance.filter(r => (r.decision||'pending')==='pending').length}</div>
-          <div class="dash-kpi-sub">санхүүгийн хүсэлт</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Идэвхтэй</div>
-          <div class="dash-kpi-value ok">${byStatus.open + byStatus.in_progress}</div>
-          <div class="dash-kpi-sub">ажилтнуудад</div>
-        </div>
         ${isCEO && pendingRegCount > 0 ? `
         <div class="dash-card dash-kpi dash-kpi-clickable" id="dash-pending-reg-card" style="grid-column: span 4;cursor:pointer;border:2px solid var(--accent-amber);">
           <div class="dash-kpi-label" style="color:var(--accent-amber);">⏳ Хүлээж буй бүртгэлийн хүсэлт</div>
@@ -39255,101 +39114,8 @@ function renderDashboard() {
           <div class="dash-kpi-sub">Энд дарж хянах →</div>
         </div>` : ''}
 
-        <!-- Status donut -->
-        <div class="dash-card dash-chart">
-          <div class="dash-card-title">Ажлын статус</div>
-          <div class="dash-donut">
-            ${donut}
-            <div class="dash-legend">
-              <div><span class="dot" style="background:#10b981"></span> Дууссан <strong>${byStatus.done}</strong></div>
-              <div><span class="dot" style="background:#3b82f6"></span> Хийгдэж байна <strong>${byStatus.in_progress}</strong></div>
-              <div><span class="dot" style="background:#f59e0b"></span> Шинэ <strong>${byStatus.open}</strong></div>
-              <div><span class="dot" style="background:#ef4444"></span> Татгалзсан <strong>${byStatus.declined}</strong></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Finance summary (CEO only — sensitive amounts) -->
-        ${isCEO ? `
-        <div class="dash-card dash-finance">
-          <div class="dash-card-title">Сүүлийн 30 хоног — Зардал</div>
-          <div class="dash-finance-row">
-            <div class="dash-finance-label">Нийт зардал</div>
-            <div class="dash-finance-value">${totalSpent.toLocaleString('mn-MN')}₮</div>
-          </div>
-          ${totalUnclassified > 0 ? `
-          <div class="dash-finance-row">
-            <div class="dash-finance-label">Ангилаагүй</div>
-            <div class="dash-finance-value warn">${totalUnclassified.toLocaleString('mn-MN')}₮ <span style="color:var(--muted);font-weight:400;font-size:11px;">(${unclasList.length})</span></div>
-          </div>` : ''}
-          <div class="dash-finance-row">
-            <div class="dash-finance-label">Гүйлгээ</div>
-            <div class="dash-finance-value">${recentFinance.length}${fr.length > recentFinance.length ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">(нийт ${fr.length})</span>` : ''}</div>
-          </div>
-        </div>` : ''}
-
-        <!-- Үндсэн ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг харна -->
-        <div class="dash-card dash-staff">
-          <div class="dash-card-title">Үндсэн ажилтны ачаалал (идэвхтэй ажил)</div>
-          <div class="dash-staff-scroll">
-          ${permStaff.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : permStaff.map(([id, n]) => `
-            <div class="dash-bar-row dash-staff-clickable${n === 0 ? ' is-free' : ''}" data-staff-email="${escapeHtml(id)}" title="Дарж ${escapeHtml(memberName(id))}-ийн ажлуудыг харах">
-              <div class="dash-bar-label">${escapeHtml(memberName(id))}</div>
-              <div class="dash-bar-track">
-                <div class="dash-bar-fill" style="width:${(n/maxPermLoad)*100}%"></div>
-              </div>
-              <div class="dash-bar-count">${n === 0 ? '<span class="dash-free">чөлөөтэй</span>' : n}</div>
-            </div>
-          `).join('')}
-          </div>
-        </div>
-
-        <!-- Цагийн (өдрийн) ажилтан — тусад нь. Нийт шилжүүлсэн цалин. -->
-        <div class="dash-card dash-staff">
-          <div class="dash-card-title">Цагийн ажилтан (${dailyStaff.length})</div>
-          <div class="dash-staff-scroll">
-          ${dailyStaff.length === 0 ? '<div class="dash-empty">Цагийн ажилтан алга</div>' : dailyStaff.map(([id]) => {
-            const m = findMember(id) || {};
-            const paid = hourlyPayouts(m).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-            return `
-            <div class="dash-bar-row dash-staff-clickable" data-staff-email="${escapeHtml(id)}" title="Дарж ${escapeHtml(memberName(id))}-ийн ажлуудыг харах">
-              <div class="dash-bar-label">${escapeHtml(memberName(id))}<span style="font-size:10px;color:var(--muted);margin-left:6px;">${escapeHtml(m.role || '')}</span></div>
-              <div style="flex:1;text-align:right;font-size:11px;color:var(--muted);white-space:nowrap;">${paid > 0 ? 'Цалин: ' + fmtMoney(paid) : '—'}</div>
-            </div>`;
-          }).join('')}
-          </div>
-        </div>
-
-        <!-- Сүүлийн 14 хоног — үүсгэх vs дуусгах trend (inline SVG sparkline) -->
-        <div class="dash-card dash-staff" style="grid-column: span 4;">
-          <div class="dash-card-title">Сүүлийн 14 хоног — даалгаврын урсгал</div>
-          ${(() => {
-            const maxV = Math.max(1, ...createdByDay, ...doneByDay);
-            const W = 600, H = 80, pad = 8;
-            const stepX = (W - 2*pad) / (trendDays - 1);
-            const yFor = v => H - pad - (v / maxV) * (H - 2*pad);
-            const ptsCreated = createdByDay.map((v, i) => `${pad + i*stepX},${yFor(v)}`).join(' ');
-            const ptsDone = doneByDay.map((v, i) => `${pad + i*stepX},${yFor(v)}`).join(' ');
-            const totalCreated = createdByDay.reduce((s,v)=>s+v,0);
-            const totalDone = doneByDay.reduce((s,v)=>s+v,0);
-            return `
-              <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">
-                <polyline points="${ptsCreated}" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round"/>
-                <polyline points="${ptsDone}"    fill="none" stroke="#10b981" stroke-width="2" stroke-linejoin="round"/>
-                ${createdByDay.map((v, i) => `<circle cx="${pad + i*stepX}" cy="${yFor(v)}" r="2.5" fill="#f59e0b"/>`).join('')}
-                ${doneByDay.map((v, i) => `<circle cx="${pad + i*stepX}" cy="${yFor(v)}" r="2.5" fill="#10b981"/>`).join('')}
-              </svg>
-              <div style="display:flex; gap:16px; font-size:12px; margin-top:6px; color:var(--muted);">
-                <span><span class="dot" style="background:#f59e0b;"></span> Үүсгэсэн <strong style="color:var(--text);">${totalCreated}</strong></span>
-                <span><span class="dot" style="background:#10b981;"></span> Дуусгасан <strong style="color:var(--text);">${totalDone}</strong></span>
-                <span style="margin-left:auto;">Дундаж дуусгах хугацаа: <strong style="color:var(--text);">${avgCompletionDays.toFixed(1)} өдөр</strong></span>
-              </div>
-            `;
-          })()}
-        </div>
-
         <!-- Шилдэг гүйцэтгэгч — дамжлагын оноо, сараар -->
-        <div class="dash-card dash-staff" style="grid-column: span 2;">
+        <div class="dash-card dash-top">
           <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч</div>
           <div class="dash-top-head">
             <span class="dash-top-sub">M-Event дамжлагын оноогоор</span>
@@ -39365,36 +39131,6 @@ function renderDashboard() {
                 <div class="dash-bar-count dash-top-n">${Math.round(r.pts)}</div>
               </div>`;
           }).join('')}
-        </div>
-
-        <!-- Салбараар ажлын статистик -->
-        <div class="dash-card dash-staff" style="grid-column: span 2;">
-          <div class="dash-card-title">Салбараар ажлын тоо</div>
-          ${(() => {
-            const byBranch = {};
-            BRANCHES.forEach(b => { byBranch[b.id] = { name: b.name, total: 0, done: 0, active: 0 }; });
-            tasks.forEach(t => {
-              const b = t.branch || 'shared';
-              if (!byBranch[b]) byBranch[b] = { name: b, total: 0, done: 0, active: 0 };
-              byBranch[b].total++;
-              if (t.status === 'done') byBranch[b].done++;
-              else byBranch[b].active++;
-            });
-            const branches = Object.values(byBranch).filter(b => b.total > 0);
-            if (branches.length === 0) return '<div class="dash-empty">Ажил алга</div>';
-            const maxTotal = Math.max(1, ...branches.map(b => b.total));
-            return branches.map(b => `
-              <div class="dash-bar-row">
-                <div class="dash-bar-label">${escapeHtml(b.name)}</div>
-                <div class="dash-bar-track" style="position:relative;">
-                  <div class="dash-bar-fill" style="width:${(b.total/maxTotal)*100}%;background:linear-gradient(90deg,var(--accent-green),var(--accent-blue));"></div>
-                </div>
-                <div class="dash-bar-count" style="width:auto;min-width:70px;text-align:right;font-size:12px;">
-                  <span style="color:var(--accent-green);">${b.done}</span> / <span>${b.total}</span>
-                </div>
-              </div>
-            `).join('');
-          })()}
         </div>
       </div>
     </div>

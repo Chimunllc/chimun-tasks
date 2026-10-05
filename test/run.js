@@ -16578,7 +16578,7 @@ async function swFetchTests() {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   const idx = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
   ok(/data-view="acct" id="nav-acct"/.test(idx), 'scan: Нягтлан хажуугийн цэсэнд');
-  ok(/'nav-coosalary', 'nav-acct'/.test(src), 'scan: Нягтлан САНХҮҮ бүлэгт');
+  ok(/_setGrp\('nav-group-finance', \[[^\]]*'nav-acct'/.test(src), 'scan: Нягтлан САНХҮҮ бүлэгт');
   ok(/state\.view === 'acct'/.test(src), 'scan: acct view маршруттай');
   ok(/state\.view === 'acct' && !canSeeReports\(\)/.test(src), 'scan: acct эрхээр хамгаалагдсан');
   // ⛔ Дүн шинжилгээний таб болж БУЦАЖ ОРОХГҮЙ
@@ -16855,6 +16855,41 @@ async function swFetchTests() {
   ok(/deleted && typeof finAccrualMonth/.test(sf), 'scan: устгахад ноогдох сар шалгагдана');
 }
 
+
+// ═══ ЦЭСНИЙ ДАРААЛАЛ = ДҮРЭМ (2026-10-05, CEO) ═══════════════════════════
+// Бүлэг: Ажил (хувийн) → Борлуулалт → Агуулах → Санхүү → Маркетинг → Хүн →
+// Тайлан → Бичиг хэрэг. Бүлэг дотор: өдөр бүрийн ажил → үе үе → ТОХИРГОО сүүлд.
+// ⛔ Шинэ цэс нэмэхэд энэ тест УНАНА — NAV_LAYOUT-д ЗӨВ байранд нь нэмж батал
+//    (төгсгөлд залгах нь буруу). index.html ба `_setGrp` хоёулаа тулгагдана.
+{
+  const NAV_LAYOUT = [
+    ['work', ['dashboard', 'mine', 'myattend', 'myexpenses', 'delegated']],
+    ['nav-group-sales', ['orders', 'nomaad', 'catering', 'missedcalls', 'customers']],
+    ['nav-group-inventory', ['products', 'ps_stock', 'stockcount', 'purchases', 'writeoff', 'ps_catalog', 'ps_price', 'ps_cost']],
+    ['nav-group-finance', ['finance', 'receivables', 'vat', 'acct', 'coosalary', 'accounts']],
+    ['nav-group-marketing', ['ads', 'marketing']],
+    ['nav-group-hr', ['attendance', 'salary', 'performance', 'access']],
+    ['nav-group-analytics', ['reports', 'plan']],
+    ['nav-group-docs', ['documents']],
+  ];
+  const fs2 = require('fs'), p2 = require('path');
+  const idx = fs2.readFileSync(p2.join(__dirname, '..', 'index.html'), 'utf8');
+  const src = fs2.readFileSync(p2.join(__dirname, '..', 'app.js'), 'utf8');
+  const side = idx.slice(idx.indexOf('<aside class="sidebar">'), idx.indexOf('</aside>'));
+  // Цэсийг дарааллаар нь уншина: бүлгийн шошго ба мөрүүд
+  const got = []; let cur = null;
+  side.replace(/<div class="section-label"(?: id="([a-z-]+)")?>|data-view="([a-z_]+)"/g, (m, g, v) => {
+    if (m.startsWith('<div')) { cur = [g || 'work', []]; got.push(cur); } else if (cur) cur[1].push(v);
+    return m;
+  });
+  eq(JSON.stringify(got), JSON.stringify(NAV_LAYOUT), 'цэс: бүлэг ба мөрийн дараалал дүрмийн дагуу');
+  // Бүлгийн шошго харагдах эсэх нь `_setGrp`-ийн жагсаалтаас — зөрвөл шошго буруу нуугдана
+  NAV_LAYOUT.filter(([g]) => g !== 'work').forEach(([g, vs]) => {
+    const m = src.match(new RegExp(`_setGrp\\('${g}', \\[([^\\]]*)\\]\\)`));
+    const list = m ? [...m[1].matchAll(/'nav-([a-z_]+)'/g)].map(x => x[1]) : null;
+    eq(JSON.stringify(list), JSON.stringify(vs), `цэс: ${g} бүлгийн шошго бүх мөрөө хардаг`);
+  });
+}
 
 // ═══ ТОЙМЫН ДАРААЛАЛ (2026-10-05, CEO) ═════════════════════════════════
 {

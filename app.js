@@ -4497,14 +4497,13 @@ function renderSidebar() {
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
-  _setGrp('nav-group-sales', ['nav-missedcalls', 'nav-orders', 'nav-nomaad', 'nav-catering']);
-  _setGrp('nav-group-inventory', ['nav-purchases', 'nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
-  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary', 'nav-acct']);
-  _setGrp('nav-group-marketing', ['nav-marketing']);
-  _setGrp('nav-group-docs', ['nav-documents']);
-  _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
+  _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering', 'nav-missedcalls', 'nav-customers']);
+  _setGrp('nav-group-inventory', ['nav-products', 'nav-ps_stock', 'nav-stockcount', 'nav-purchases', 'nav-writeoff', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost']);
+  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-vat', 'nav-acct', 'nav-coosalary', 'nav-accounts']);
+  _setGrp('nav-group-marketing', ['nav-ads', 'nav-marketing']);
+  _setGrp('nav-group-hr', ['nav-attendance', 'nav-salary', 'nav-performance', 'nav-access']);
   _setGrp('nav-group-analytics', ['nav-reports', 'nav-plan']);
-  _setGrp('nav-group-my', ['nav-myattend', 'nav-myexpenses']);
+  _setGrp('nav-group-docs', ['nav-documents']);
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.

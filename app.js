@@ -1520,10 +1520,13 @@ function openPinResetModal(prefillId) {
     $$('#pr-sent-msg').innerHTML = 'Хэрэв <b>' + escapeHtml(id) + '</b> бүртгэлтэй, имэйлтэй бол код илгээгдлээ. Имэйлээ (спам хавтас ч) шалгаад доор оруулна уу. Код 15 минут хүчинтэй.';
   };
   $$('#pr-verify').onclick = async (e) => {
+    // ⚠ Товчийг ЭНД ав — браузер нь үйл явдал дамжиж дуусмагц `currentTarget`-ыг null
+    //   болгодог тул await-ийн дараа уншвал унана (товч мөнхөд «Шинэчилж байна…» гэж гацна).
+    const btn = e.currentTarget;
     const code = $$('#pr-code').value.replace(/\D/g, ''); const pin = $$('#pr-pin').value.replace(/\D/g, '');
     if (!/^\d{6}$/.test(code)) { err('6 оронтой код оруулна уу'); return; }
     if (!/^\d{4,6}$/.test(pin)) { err('Шинэ PIN 4-6 оронтой тоо байх ёстой'); return; }
-    e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Шинэчилж байна…';
+    btn.disabled = true; err(''); btn.textContent = 'Шинэчилж байна…';
     const ok = await serverResetVerify(modal._id, code, pin);
     if (ok) {
       close();
@@ -1539,7 +1542,7 @@ function openPinResetModal(prefillId) {
       }
       showToast('✅ PIN шинэчлэгдлээ. Шинэ PIN-ээрээ нэвтэрнэ үү.', 'success', 4500);
     }
-    else { e.currentTarget.disabled = false; e.currentTarget.textContent = 'PIN шинэчлэх'; err('Код буруу эсвэл хугацаа дуссан. Дахин "Код авах"-аас эхэлнэ үү.'); }
+    else { btn.disabled = false; btn.textContent = 'PIN шинэчлэх'; err('Код буруу эсвэл хугацаа дуссан. Дахин "Код авах"-аас эхэлнэ үү.'); }
   };
 }
 function currentProjects() {
@@ -2380,6 +2383,12 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
 async function saveFinanceRequest(r, deleted = false) {
   // 🔒 Хаасан сар — зардал ЗАСАГДАХГҮЙ (кэш бичихээс ӨМНӨ шалгана)
   assertMonthOpen(String((r && r.requested_at) || '').slice(0, 7), deleted ? 'зардал устгах' : 'зардлын бичилт');
+  /* Зардал нь НООГДОХ сард тоологддог (finExpMonth) тул устгахад тэр сарыг ч
+     шалгана — эс бөгөөс 9-д гарсан, 8-д ноогдсон мөрийг устгаж ХААСАН 8 сарын
+     зардлыг чимээгүй бууруулж болно. ⚠ Зөвхөн УСТГАХАД: хуулга импортлох үед
+     мөр бүр энэ замаар бичигддэг тул бичилтэд тавибал шилжилтийн сарын импорт
+     бүхэлдээ зогсоно (хуулгын мөр нь ҮРГЭЛЖ бичигдэх ёстой). */
+  if (deleted && typeof finAccrualMonth === 'function') assertMonthOpen(finAccrualMonth(r), 'зардал устгах');
   // localStorage кэш
   saveFinanceCache();
   if (!state.config.financeUrl) return;
@@ -2707,7 +2716,17 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
   // Тулгалтын хуулгаас нөхөж бүртгэх горим — банкнаас аль хэдийн гарсан зарлага тул
   // CEO/нягтлан үүсгэмэгц ШУУД Дууссан (батлах/гүйцэтгэх шат давхардуулахгүй).
   if (state._finBackfill && (state.isCEO || state.me === getFinanceExecutorEmail())) {
-    const bfDate = `${state._finBackfill.date}T12:00:00.000Z`;
+    /* Гүйлгээний БОДИТ ЦАГ байвал УБ-гийн офсеттэй (+08:00) бичнэ — мөрийн эхлэл
+       нь УБ-гийн огноо хэвээр үлдэх тул `finExpMonth`-ийн `slice(0,7)` зөв сар
+       өгнө, дэлгэц ч жинхэнэ цаг харуулна.
+       ⛔ `Z`-ээр (UTC болгон хөрвүүлж) БҮҮ бич — шөнө дунд орчмын гүйлгээ мөрөндөө
+         өмнөх өдөр болж, сарын зааг дээр өмнөх сарын зардал болно.
+       ⚠ Цаггүй банк/мөрд үд дундын UTC орлуулга хэвээр (огноо гулсахгүй) —
+         `isDateOnlyStamp` түүнийг таниад дэлгэцэд цаг харуулахгүй. */
+    const _bfT = String(state._finBackfill.time || '');
+    const bfDate = /^\d{2}:\d{2}:\d{2}$/.test(_bfT)
+      ? `${state._finBackfill.date}T${_bfT}+08:00`
+      : `${state._finBackfill.date}T12:00:00.000Z`;
     // Зардлын огноо = ГҮЙЛГЭЭ гарсан өдөр. Өмнө нь requested_at нь ИМПОРТ хийсэн
     // мөч байсан тул мөнгөн суурьтай тайлан (finExpMonth 'cash' = requested_at)
     // 8 сарын хуулгыг 9 сард оруулбал бүх зардлыг 9 сард тоолж, 8 сар дутуу гардаг байв.
@@ -3823,10 +3842,29 @@ function fmtDate(s) {
   return d.toLocaleDateString('mn-MN', { month: 'short', day: 'numeric' });
 }
 // Огноо + цаг — Улаанбаатарын цагаар, монгол дараалал САР/ӨДӨР цаг:мин (06/19 17:41)
+/* ⛔ ХУУЛГААС ОРСОН МӨРД ЦАГ БАЙХГҮЙ (2026-10-02). Хуулгын задлагч зөвхөн
+   ОГНООГ уншдаг (цагийн багана нь банк бүрд өөр), дараа нь код `T12:00:00.000Z`
+   (үд дунд UTC) залгадаг — энэ нь САНААТАЙ: үд дунд UTC нь ямар ч цагийн бүсэд
+   ижил хуанлийн өдөр хэвээр үлдэх тул огноо гулсахгүй.
+   ⛔ Тэр орлуулгыг ЦАГ мэт харуулж БОЛОХГҮЙ — УБ-д 20:00 болж гарч, хэрэглэгч
+     «гүйлгээ 20:00-д болсон» гэж уншина (банкны хуулгад 13:40 гэж бичээстэй).
+   ⛔ Хадгалалтыг засах гэж БҮҮ оролд: `finExpMonth` нь мөрийг ШУУД таслаж сар
+     гаргадаг тул бодит цаг (+08:00 офсеттэй) бичвэл шөнө дунд орчмын гүйлгээ
+     өмнөх сар руу гулсана. Орлуулга нь зөв шийдэл — зөвхөн дэлгэц буруу байв. */
+const _NOON_UTC_RE = /T12:00:00(\.000)?Z$/;
+function isDateOnlyStamp(val) { return _NOON_UTC_RE.test(String(val || '')); }
 function fmtDateTimeUB(val) {
   if (!val) return '';
   const d = new Date(val);
   if (isNaN(d.getTime())) return '';
+  // Огноо л мэдэгдэх бол ЦАГ ХАРУУЛАХГҮЙ — худал нарийвчлал гаргахаас дээр
+  if (isDateOnlyStamp(val)) {
+    try {
+      const p0 = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ulaanbaatar', month: '2-digit', day: '2-digit' }).formatToParts(d);
+      const g0 = t => (p0.find(x => x.type === t) || {}).value || '';
+      return `${g0('month')}/${g0('day')}`;
+    } catch (e) { return String(val).slice(5, 10); }
+  }
   try {
     const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ulaanbaatar', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
     const g = t => (p.find(x => x.type === t) || {}).value || '';
@@ -4223,6 +4261,7 @@ function render() {
   // Ажилчид view бүгдэд нээлттэй (Бүтэц таб универсал). Эрхгүй бол зөвхөн Бүтэц таб харагдана.
   if (state.view === 'access' && !canAccessView('access', () => state.isCEO) && !canDelegatePerms()) state.hubTab = 'org';
   if (state.view === 'salary' && !canSeeSalary()) state.view = 'mine';
+  if (state.view === 'acct' && !canSeeReports()) state.view = 'mine';   // Нягтлан = санхүүгийн тайлангийн эрхээр
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
   // View СОЛИГДОХОД тухайн view-ийн датаг шинээр татна → бусад төхөөрөмж дээр хийсэн
@@ -4447,6 +4486,9 @@ function renderSidebar() {
     if (state.cooShare === undefined) { state.cooShare = null; if (typeof loadAppConfig === 'function') loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
     cooNav.style.display = canSeeCooSalary() ? '' : 'none';
   }
+  // Нягтлан (журнал/дэвтэр/баланс/P&L) — санхүүгийн тайлан хардаг хүнд.
+  const acctNav = document.getElementById('nav-acct');
+  if (acctNav) acctNav.style.display = canSeeReports() ? '' : 'none';
   // Баримт бичиг — эрхийн системээр (тохируулаагүй бол CEO).
   const docNav = document.getElementById('nav-documents');
   if (docNav) {
@@ -4459,7 +4501,7 @@ function renderSidebar() {
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-chats', 'nav-missedcalls', 'nav-orders', 'nav-nomaad', 'nav-catering']);
   _setGrp('nav-group-inventory', ['nav-purchases', 'nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
-  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
+  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary', 'nav-acct']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
   _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
@@ -4506,6 +4548,7 @@ function renderTitle() {
     myattend: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>', 'Миний ирц', 'QR-аа менежерт харуулж ирцээ бүртгүүл · ажилласан цаг'],
     accounts:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>', 'Данс & Карт', 'Компанийн банкны данс, карт — эзэн, зориулалт, зарцуулалт'],
     coosalary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>', 'COO цалин', 'Үйл ажиллагааны захирлын цалин — цэвэр ашгаас хувиар'],
+    acct: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 9v12"/></svg>', 'Нягтлан', 'Журнал · ерөнхий дэвтэр · баланс · орлогын тайлан'],
     marketing: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>', 'Постер & брэнд', 'Постер зохиох ба имэйл маркетинг'],
     myexpenses: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/></svg>', 'Миний зардал', 'Картаар хийсэн зарлагаа ангилах — баримт хавсаргах'],
     catering:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 0 0 2-2V2M5 2v20M17 2v9c0 1 .5 2 2 2h1V2M20 13v9"/></svg>', 'Катеринг', 'Хоол хүнсний үйлчилгээ — арга хэмжээ бүрд цэс + үйлчлэх цаг төлөвлөнө'],
@@ -4539,31 +4582,8 @@ function renderTaskList() {
     wrap.innerHTML = safeViewHtml(renderDashboard, 'Тойм');
     attachSessionBanner();   // «Нэвтрэлт дууссан» туузны товч
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
-    // Dashboard action товчнууд
-    document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
-    document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
-    document.getElementById('dash-print')?.addEventListener('click', () => window.print());
-    document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
-    document.getElementById('dash-staff')?.addEventListener('click', () => { if (!canAccessView('access', () => state.isCEO)) return; state.view = 'access'; state.hubTab = 'people'; render(); });
-    document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
-    // Ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг жагсаалтаар харах
-    wrap.querySelectorAll('.dash-staff-clickable').forEach(row => {
-      row.addEventListener('click', () => {
-        const email = row.dataset.staffEmail;
-        if (!email) return;
-        state.view = 'staff:' + email;
-        state.statusFilter = 'all';
-        state._taskListLimit = null;
-        render();
-      });
-    });
-    // "Яг одоо" тууз — авлага нүд дээр дарж Авлага view руу
-    wrap.querySelectorAll('[data-ceo-now]').forEach(c => c.addEventListener('click', () => { state.view = c.dataset.ceoNow; render(); }));
-    // CEO бус хэрэглэгчид permissions/staff/email digest нуух
-    if (!state.isCEO) {
-      document.getElementById('dash-email-digest')?.style.setProperty('display', 'none');
-      document.getElementById('dash-staff')?.style.setProperty('display', 'none');
-    }
+    attachOrdersCalendar(wrap, { go: true });   // захиалгын календарь — өдөр дарахад захиалга руу
+    document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
     return;
   } else if (state.view === 'orders') {
     if (tableHead) tableHead.style.display = 'none';
@@ -4656,6 +4676,12 @@ function renderTaskList() {
     wrap.innerHTML = safeViewHtml(renderReceivables, 'Авлага');
     attachReceivablesHandlers();
     return;
+  } else if (state.view === 'acct') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderAccounting, 'Нягтлан');
+    attachAccountingHandlers();
+    return;
   } else if (state.view === 'coosalary') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
@@ -4715,8 +4741,10 @@ function renderTaskList() {
     if (!_rTabs.some(t => t.k === state.reportsTab)) state.reportsTab = (_rTabs[0] || {}).k || 'reports';
     const _rt = state.reportsTab;
     const _rbar = _rTabs.length > 1 ? `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">${_rTabs.map(t => `<button data-reports-tab="${t.k}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${t.k === _rt ? 'var(--primary)' : 'transparent'};background:none;color:${t.k === _rt ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${t.label}</button>`).join('')}</div>` : '';
-    wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'history' ? renderHistory() : renderReports());
-    if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'history') attachHistoryHandlers(); else attachReportsHandlers();
+    wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'history' ? renderHistory()
+      : renderReports());
+    if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'history') attachHistoryHandlers();
+    else attachReportsHandlers();
     document.querySelectorAll('[data-reports-tab]').forEach(b => b.addEventListener('click', () => { state.reportsTab = b.dataset.reportsTab; render(); }));
     return;
   } else if (state.view === 'performance') {
@@ -4777,15 +4805,6 @@ function renderTaskList() {
   }
 }
 
-/* ─── M-Event Захиалга ─────────────────────────────────────
-   Сайтаас ирсэн түрээсийн захиалгыг харах + статус удирдах.
-   Backend: n8n /webhook/mevent-orders (GET унших, POST шинэчлэх) → MEVENT_Orders_DB Sheet.
-   Зөвхөн CEO. */
-// Захиалгын дамжлага (queue). Шат бүр тодорхой role/хүнд хамаарна.
-// «Баталсан» хасагдсан (2026-06-23) — төлбөр авах = захиалга батлах нэг алхам болов.
-// Хуучин дата дахь «Баталсан» нь normalizeOrder-т «Төлбөр авсан» болж буудаг.
-const ORDER_STATUSES = ['Шинэ', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн', 'Буцаан ирсэн', 'Дууссан', 'Цуцалсан'];
-
 // Дамжлагын чиглүүлэлт: захиалга тухайн статустай байх үед ХЭН харж, ХӨГ үйлдэл хийх вэ.
 //   role: 'manager' = зөвхөн менежер/CEO. Бусад нь ажилтны role-д тааруулах regex.
 //   next: дараагийн статус (тухайн хүн "дуусгах" товч дармагц). label: товчны бичиг.
@@ -4804,29 +4823,6 @@ const ORDER_FLOW = {
   'Дууссан':        { role: 'manager',                          next: null,             label: null },
   'Цуцалсан':       { role: 'manager',                          next: null,             label: null },
 };
-function orderStage(status) { return ORDER_FLOW[status || 'Шинэ'] || ORDER_FLOW['Шинэ']; }
-// Төлбөрийн мета — одоогоор note дотор кодлоно (backend багана нэмэгдвэл шууд тэндээс уншина).
-const PAY_TYPE_LABEL = { full: 'Бүтэн төлбөр', advance: 'Урьдчилгаа' };
-const PAY_METHOD_LABEL = { data: 'Данс', cash: 'Бэлэн', card: 'Карт' };
-function parsePayment(note) {
-  const m = String(note || '').match(/⟦PAY\|([^⟧]*)⟧/);
-  if (!m) return null;
-  const parts = m[1].split('|');
-  const [amount, type, method, date] = parts;
-  const ref = parts.slice(4).join('|') || '';   // гүйлгээний утга (банкнаас хуулсан) — сүүлд
-  return { amount: Number(amount) || 0, type: type || 'full', method: method || 'data', date: date || '', ref };
-}
-function stripPaymentNote(note) {
-  return String(note || '').replace(/⟦PAY\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '').trim();
-}
-function encodePaymentNote(note, pay) {
-  const base = stripPaymentNote(note);
-  if (!pay || !pay.amount) return base;
-  // ref-д токены тусгай тэмдэгт орохоос сэргийлж цэвэрлэнэ.
-  const ref = String(pay.ref || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
-  const tok = `⟦PAY|${Math.round(pay.amount)}|${pay.type || 'full'}|${pay.method || 'data'}|${pay.date || ''}|${ref}⟧`;
-  return base ? base + ' ' + tok : tok;
-}
 // Буцаалтын эвдрэл/гээгдэл — барьцаанаас хасах дүн + тэмдэглэл (note-д ⟦DMG|дүн|тэмдэглэл⟧).
 function parseDamage(note) {
   const m = String(note || '').match(/⟦DMG\|([^⟧]*)⟧/);
@@ -5233,6 +5229,28 @@ function countUnitCost(sku) {
 function stockCounted(p)  { return !!(p && p.stock_opened_at); }
 function stockApproved(p) { return !!(p && p.stock_approved_at); }
 function stockOpened(p)   { return stockCounted(p) && stockApproved(p); }
+/* 🔒 ГУРАВ ДАХЬ ГАРЫН ҮСЭГ = CEO-гийн эцсийн баталгаа (2026-10-02, CEO шийдвэр).
+   Урсгал: нярав тоолно → ҮАХ захирал хянана → CEO баталгаажуулна → суурь ХӨЛДӨНӨ.
+   ⛔ Хөлдсөний дараа эхний үлдэгдлийг ДАХИН тоолж/батлаж/буцаах БОЛОМЖГҮЙ.
+   Залруулга нь ЗӨВХӨН тооллогоор (`stock_counts` → `applyStockCount`) — тэнд хэн
+   хэзээ юуг хэд болгосон нь мөрөөр үлддэг тул суурь чимээгүй хөдлөхгүй.
+   ЯАГААД түгжээг «нээх» товч БАЙХГҮЙ вэ: залруулах зам аль хэдийн бий (тооллого),
+   тиймээс нээх товч нь зөвхөн АУДИТЫН МӨРГҮЙ засах нүх болно. */
+function stockSealed(p) { return !!(p && p.stock_locked_at); }
+/* ⛔ ЭЦЭСЛЭЭГҮЙ БАРААГ ТООЛОХ УТГАГҮЙ (2026-10-02, CEO барив — «тооллого хийгээд
+   байна»). Тооллого нь «системд хэд байна» гэдэгтэй харьцуулдаг; суурь нь
+   баталгаажаагүй бол тэр тоо нь ӨӨРӨӨ эргэлзээтэй учир зөрүү нь юу ч хэлэхгүй.
+   Улмаар зөрүү нь нөөцийг засаж, алдагдлын ЗАРДАЛ болж салбарын ашиг, COO-гийн
+   30%-д хүрнэ — батлагдаагүй суурь дээр мөнгөний шийдвэр гарна.
+   ⚠ БАРАА ТУС БҮРЭЭР — 51 бараа аль хэдийн эцэслэгдсэн тул тэднийг тоолж болно.
+     Бүгдийг хүлээвэл ажил зогсоно. */
+function countBlockReason(p) {
+  if (!p) return 'Бараа олдсонгүй';
+  if (stockSealed(p)) return '';
+  if (!stockCounted(p)) return 'Эхний үлдэгдэл тоологдоогүй — эхлээд суурь тогтооно';
+  if (!stockApproved(p)) return 'Эхний үлдэгдэл хянагдаагүй — ҮАХ захирал хянана';
+  return 'Эхний үлдэгдэл эцэслээгүй — CEO эцэслэсний дараа тоолно';
+}
 // 'todo' тоолоогүй · 'wait' тоолсон, батлах хүлээж буй · 'done' хоёр гарын үсэгтэй
 function openingSignState(p) {
   if (stockOpened(p)) return 'done';
@@ -5242,6 +5260,7 @@ function openingSignState(p) {
    (хоосон мөр = зөвшөөрнө). Чимээгүй унтраасан товч нь хүнд юу буруу байгааг
    хэлдэггүй тул мессежийг энд төрүүлж UI-д ил гаргана. */
 function openingSignBlock(p, me, canApprove) {
+  if (stockSealed(p)) return 'Эцэслэн баталгаажсан — өөрчлөх боломжгүй';
   if (!stockCounted(p)) return 'Эхлээд нярав тоолж бүртгэнэ';
   if (stockApproved(p)) return 'Аль хэдийн батлагдсан';
   if (!canApprove) return 'Танд эхний үлдэгдэл батлах эрх алга';
@@ -5253,6 +5272,20 @@ function openingSignBlock(p, me, canApprove) {
   return '';
 }
 
+/* 🔒 CEO эцэслэх эсэх — хориг бүр ШАЛТГААНАА буцаана (унтраасан товч юу
+   буруугийн хэлдэггүй). ⛔ ГУРВАН ӨӨР ХҮН: тоолсон ≠ хянасан ≠ эцэслэсэн.
+   Нэг хүн хоёр үүрэг гүйцэтгэвэл гурван гарын үсэг нэг болж хумигдана. */
+function openingSealBlock(p, me, isCEO) {
+  if (!p) return 'Бараа олдсонгүй';
+  if (stockSealed(p)) return 'Аль хэдийн эцэслэгдсэн';
+  if (!stockCounted(p)) return 'Эхлээд нярав тоолно';
+  if (!stockApproved(p)) return 'Эхлээд ҮАХ захирал хянана';
+  if (!isCEO) return 'Зөвхөн CEO эцэслэн баталгаажуулна';
+  const m = String(me || '').trim();
+  if (m && m === String(p.stock_opened_by || '').trim()) return 'Та тоолсон тул эцэслэх эрхгүй';
+  if (m && m === String(p.stock_approved_by || '').trim()) return 'Та хянасан тул эцэслэх эрхгүй';
+  return '';
+}
 /* ЭХНИЙ ҮЛДЭГДЭЛ ДЭЭР ЭВДРЭЛИЙГ ЯЛГАНА (2026-09-22).
    Тоолох үед «106 ш» гэдэг нь 106 нь БҮТЭН гэсэн үг биш — дунд нь эвдэрсэн,
    засварт байх нь бий. Ялгаж бүртгэхгүй бол суурь нь «бүгд бүтэн» гэж
@@ -5276,6 +5309,8 @@ function openingCountSplit(total, damaged) {
    Буцаах эрх = батлах эрхтэй хүн (ҮАХ захирал/CEO). */
 function openingUndoBlock(p, me, canApprove, kind) {
   if (!p) return 'Бараа олдсонгүй';
+  // ⛔ Хөлдсөн суурийг буцаах зам БАЙХГҮЙ — залруулга тооллогоор явна.
+  if (stockSealed(p)) return 'Эцэслэн баталгаажсан — буцаах боломжгүй. Залруулга тооллогоор.';
   if (!canApprove) return 'Танд эхний үлдэгдэл батлах эрх алга';
   if (kind === 'approve') return stockApproved(p) ? '' : 'Батлагдаагүй байна';
   return stockCounted(p) ? '' : 'Тоолоогүй байна';
@@ -5291,7 +5326,9 @@ function openingRows(products, costOf) {
              cost: cost(p.sku), value: cost(p.sku) * qty,
              opened: stockOpened(p), sign: openingSignState(p),
              at: (p && p.stock_opened_at) || '', by: (p && p.stock_opened_by) || '',
-             apAt: (p && p.stock_approved_at) || '', apBy: (p && p.stock_approved_by) || '' };
+             apAt: (p && p.stock_approved_at) || '', apBy: (p && p.stock_approved_by) || '',
+             sealed: !!(p && p.stock_locked_at),
+             lkAt: (p && p.stock_locked_at) || '', lkBy: (p && p.stock_locked_by) || '' };
   }).sort((a, b) => b.value - a.value || String(a.sku).localeCompare(String(b.sku)));
   const total = list.reduce((n, x) => n + x.value, 0);
   let acc = 0;
@@ -5310,8 +5347,12 @@ function openingStats(rows) {
   // эс бөгөөс нярав тоолсон 19 бараа хаана ч харагдахгүй гацна.
   const wait = list.filter(x => x.sign === 'wait');
   const valueWait = wait.reduce((n, x) => n + (Number(x.value) || 0), 0);
+  /* 🔒 ЭЦЭСЛЭГДСЭН = CEO-гийн 3 дахь гарын үсэг. Хоёр гарын үсэг нь «суурь
+     бүрдсэн», гурав дахь нь «суурь ХӨЛДСӨН» — хоёр өөр төлөв, тусад нь тоологдоно. */
+  const sealed = list.filter(x => x.sealed);
+  const valueSealed = sealed.reduce((n, x) => n + (Number(x.value) || 0), 0);
   return { done: done.length, total: list.length, left: list.length - done.length,
-           wait: wait.length, valueWait,
+           wait: wait.length, valueWait, sealed: sealed.length, valueSealed,
            valueDone, valueTotal, pct: valueTotal ? valueDone / valueTotal : 0 };
 }
 // Актыг PDF болгож татна. ⚠ html2canvas нь position:fixed элементийг ХООСОН
@@ -5543,6 +5584,18 @@ async function closeStockCount(stats) {
   state.scCfg = next; state.scSession = ''; state.scRows = [];
 }
 
+/* Журналд зориулж БҮХ сессийн хэрэгжүүлсэн тооллогын мөр. ⚠ `state.scRows` нь
+   нэг сессийнх тул журнал түүгээр бодвол бусад сар ЧИМЭЭГҮЙ 0 болно. */
+async function loadStockCountsAll() {
+  if (state.scAllRows) return state.scAllRows;
+  try {
+    const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?applied=is.true&select=*&order=counted_at.asc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.scAllRows = await r.json();
+  } catch (e) { dataLoadFailed('loadStockCountsAll', e); state.scAllRows = state.scAllRows || []; }
+  return state.scAllRows;
+}
 async function loadStockCounts(sessionId) {
   if (!sessionId) { state.scRows = []; return []; }
   try {
@@ -5566,6 +5619,9 @@ async function loadStockCounts(sessionId) {
 
 // Тоолсныг бүртгэнэ. Нөөцийг ХӨНДӨХГҮЙ — зөвхөн бичилт.
 async function saveStockCount({ sessionId, sku, systemQty, countedQty, repairQty, writeoffQty }) {
+  // ⛔ Эцэслээгүй суурьтай барааг тоолж БИЧИХГҮЙ — зөрүү нь юутай ч харьцуулагдахгүй.
+  const _blk = countBlockReason(productBySku(sku));
+  if (_blk) throw new Error(_blk);
   const cnt = Number(countedQty) || 0;
   // Эвдэрсэн нь тоолсноос их байж болохгүй — үлдсэн зайд нь багтаана (актлахыг эхэлж).
   const wo = Math.min(Math.max(0, Math.round(Number(writeoffQty) || 0)), cnt);
@@ -5592,9 +5648,11 @@ async function saveStockCount({ sessionId, sku, systemQty, countedQty, repairQty
    ⚠ Бичилт зөвхөн `saveProduct`-аар: нөөцийн дэвтэр, кэш, сонголттой баганын
      хамгаалалт бүгд тэнд. Тусад нь бичих зам гаргахгүй (scan-тест хаана). */
 async function confirmOpeningStock(sku, countedQty, damagedQty) {
-  if (!canProductPart('stock')) { showToast('Танд нөөц засах эрх алга', 'warn', 3000); return false; }
+  if (!canOpenCount()) { showToast('Эхний үлдэгдлийг зөвхөн нярав тоолно', 'warn', 3500); return false; }
   const p = productBySku(sku);
   if (!p) { showToast('Бараа олдсонгүй', 'error', 3000); return false; }
+  /* ⛔ ХӨЛДСӨН СУУРЬ ДАХИН ТООЛОГДОХГҮЙ — залруулга тооллогоор (аудитын мөртэй). */
+  if (stockSealed(p)) { showToast('Эцэслэн баталгаажсан — залруулга тооллогоор хийнэ', 'warn', 4000); return false; }
   const cur = Number(p.stock) || 0;
   const q = Math.max(0, Math.round(Number(countedQty)));
   const d = q - cur;
@@ -5689,6 +5747,15 @@ function openOpeningCountModal(sku, preQty) {
 
 /* ↩ Батлалтыг буцаана — бараа «батлах хүлээж буй» төлөв рүү эргэнэ.
    ⚠ Тоо, няравын гарын үсэг ХЭВЭЭР — зөвхөн 2 дахь гарын үсэг арилна. */
+/* 🔒 CEO эцэслэнэ — үүний дараа эхний үлдэгдэл ХЭЗЭЭ Ч өөрчлөгдөхгүй.
+   ⚠ `_moveReason` өгөхгүй — тоо хөдлөхгүй тул нөөцийн дэвтэрт мөр үүсэхгүй. */
+async function sealOpeningStock(sku) {
+  const p = productBySku(sku);
+  const why = openingSealBlock(p, state.me, !!state.isCEO);
+  if (why) { showToast(why, 'warn', 3500); return false; }
+  await saveProduct({ ...p, stock_locked_at: new Date().toISOString(), stock_locked_by: state.me || '' });
+  return true;
+}
 async function undoOpeningApproval(sku) {
   const p = productBySku(sku);
   const why = openingUndoBlock(p, state.me, canApproveOpening(), 'approve');
@@ -5711,6 +5778,11 @@ async function rejectOpeningCount(sku) {
 async function applyStockCount(row) {
   const p = productBySku(row.sku);
   if (!p) throw new Error('Бараа олдсонгүй: ' + row.sku);
+  /* ⛔ МӨНГӨНИЙ ЗАМ — энд зөрүү нь нөөцийг засаж, алдагдлын зардал болж
+     салбарын ашиг ба COO-гийн 30%-д хүрнэ. Эцэслээгүй суурь дээр хэрэгжүүлбэл
+     батлагдаагүй тоонд тулгуурласан мөнгөний шийдвэр гарна. */
+  const _blk = countBlockReason(p);
+  if (_blk) throw new Error(_blk);
   const d = countDiff(row);
   if (!d) return;
   // Салбарын хуваарилалт: зөрүүг M-Event дээр залруулна (нөөцийн үндсэн салбар),
@@ -5729,7 +5801,6 @@ async function applyStockCount(row) {
   const i = (state.scRows || []).findIndex(x => String(x.id) === String(row.id));
   if (i >= 0) state.scRows[i] = { ...state.scRows[i], applied: true, applied_by: state.me || '' };
 }
-
 
 // Ижил барааг ӨӨР ҮНЭЭР дахин авахад ганц `cost` талбар хоёр үнийг барьж чадахгүй.
 // Хуучныг үлдээвэл хөрөнгө дутуу, шинээр дарвал илүү гарна — ЖИГНЭСЭН дундаж нь
@@ -5756,17 +5827,17 @@ function openRepairFinishModal(id, to) {
   const title = isOff ? '🗑 Актлах' : '✓ Зассан';
   const m = document.createElement('div');
   m.className = 'modal-bg open'; m.style.zIndex = '9600';
-  m.innerHTML = `<div class="modal" style="max-width:460px;">
+  m.innerHTML = `<div class="modal rf-modal">
     <div class="modal-head"><b>${title} · ${escapeHtml(r.product_name || r.sku)} ×${Number(r.qty) || 0}</b><button class="modal-x" id="rf-x">✕</button></div>
     <div class="modal-body">
-      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 ${isOff ? 'Актлах барааны зураг' : 'Зассаны дараах зураг'} <span style="color:var(--danger);">*</span></div>
-      <div id="rf-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-bottom:6px;"></div>
-      <label class="btn" for="rf-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
+      <div class="rf-l">📷 ${isOff ? 'Актлах барааны зураг' : 'Зассаны дараах зураг'} <span class="rf-req">*</span></div>
+      <div id="rf-photos" class="rf-photos"></div>
+      <label class="btn rf-pick" for="rf-input">📷 Зураг оруулах / авах</label>
       <input id="rf-input" type="file" accept="image/*" capture="environment" hidden>
-      <div id="rf-status" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
-      <textarea id="rf-note" rows="2" placeholder="${isOff ? 'Яагаад засах боломжгүй вэ?' : 'Юу зассан бэ? (заавал биш)'}" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;"></textarea>
+      <div id="rf-status" class="rf-status"></div>
+      <textarea id="rf-note" class="rf-note" rows="2" placeholder="${isOff ? 'Яагаад засах боломжгүй вэ?' : 'Юу зассан бэ? (заавал биш)'}"></textarea>
     </div>
-    <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;">
+    <div class="modal-foot rf-foot">
       <button class="btn" id="rf-cancel">Болих</button>
       <button class="btn btn-primary" id="rf-ok" disabled>${title}</button>
     </div>
@@ -5776,18 +5847,24 @@ function openRepairFinishModal(id, to) {
   const photos = [];
   const close = () => m.remove();
   const validate = () => { $('#rf-ok').disabled = photos.length === 0; };
+  // Төлвийн мөр: бичвэр + өнгө нь КЛАСС-аар (is-ok / is-bad) — inline style нэмэхгүй.
+  const setStatus = (text, cls) => {
+    const el = $('#rf-status');
+    el.textContent = text;
+    el.className = 'rf-status' + (cls ? ' ' + cls : '');
+  };
   const paint = () => {
-    $('#rf-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-rm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
+    $('#rf-photos').innerHTML = photos.map((u, i) => `<div class="rf-thumb"><img src="${escapeHtml(driveThumbUrl(u, 200))}"><button data-rm="${i}" type="button" class="rf-rm">×</button></div>`).join('');
     $('#rf-photos').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.rm, 1); paint(); validate(); });
   };
   $('#rf-input').onchange = async (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
-    $('#rf-status').textContent = '⏳ Илгээж байна...'; $('#rf-status').style.color = 'var(--muted)';
+    setStatus('⏳ Илгээж байна...');
     try {
       const url = await uploadReceipt(f, r.id, 'repair', `Засвар ${r.product_name || r.sku}`);
-      if (url) { photos.push(url); paint(); $('#rf-status').textContent = `✓ ${photos.length} зураг`; $('#rf-status').style.color = 'var(--ok)'; validate(); }
-      else { $('#rf-status').textContent = '⚠ Хадгалж чадсангүй'; $('#rf-status').style.color = 'var(--danger)'; }
-    } catch (err) { $('#rf-status').textContent = '⚠ ' + err.message; $('#rf-status').style.color = 'var(--danger)'; }
+      if (url) { photos.push(url); paint(); setStatus(`✓ ${photos.length} зураг`, 'is-ok'); validate(); }
+      else setStatus('⚠ Хадгалж чадсангүй', 'is-bad');
+    } catch (err) { setStatus('⚠ ' + err.message, 'is-bad'); }
   };
   $('#rf-x').onclick = close; $('#rf-cancel').onclick = close;
   m.addEventListener('click', (e) => { if (e.target === m) close(); });
@@ -6677,31 +6754,6 @@ function openOrderDamageModal(oid) {
 
 // [Устгасан] openOrderPaymentModal/submitOrderPayment — гараар төлбөр бичдэг үхсэн legacy код (PDF-only submitBqPayment-ээр орлуулагдсан).
 
-function orderStatusClass(s) {
-  return ({
-    'Шинэ': 'os-new',
-    'Баталсан': 'os-ok',
-    'Төлбөр авсан': 'os-ok',
-    'Цэвэрлэгээ': 'os-prep',
-    'Түрээс бэлдсэн': 'os-prep',
-    'Гаргасан': 'os-prep',
-    'Хүргэсэн': 'os-ok',
-    'Буцаан ирсэн': 'os-prep',
-    'Дууссан': 'os-done',
-    'Цуцалсан': 'os-cancel',
-  })[s] || 'os-new';
-}
-
-// Note-оос автомат хямдрал/НӨАТ мөрийг арилгаж зөвхөн хүний бичсэнийг үлдээнэ.
-function cleanOrderNote(note) {
-  return String(note || '')
-    .replace(/⟦PAY\|[^⟧]*⟧/g, '')
-    .replace(/⟦DMG\|[^⟧]*⟧/g, '')
-    .replace(/·?\s*\d+\s*хоногийн хямдрал[^·]*/g, '')
-    .replace(/·?\s*НӨАТ хасав[^·]*/g, '')
-    .replace(/·?\s*Хямдрал \(гар\):[^·]*/g, '')
-    .replace(/^\s*·\s*/, '').replace(/\s*·\s*$/, '').trim();
-}
 // Түрээсийн хугацааны хямдралын ШАТ — урт түрээслэх тусам хямд. Засах бол энэ массивыг.
 // ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн RENTAL_TIERS-тэй ЯГ ИЖИЛ байх ёстой
 // (аппын форм авто-хямдрал орно — C3). Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас. [[tariff_two_repos_sync]]
@@ -6766,54 +6818,6 @@ function isReturningCustomer(email, phone, excludeNumber) {
   const skip = new Set(['canceled', 'cancelled', 'deleted', 'draft']);
   if ((state.appOrders || []).some(o => !skip.has(String(o.status || '').toLowerCase()) && match(o))) return true;
   return (state.bqOrders || []).some(match);   // Booqable түүх = бүх өнгөрсөн захиалга
-}
-
-// Захиалгын үнийг items + хоногоор ДАХИН тооцоолно (хадгалагдсан дүн хуучин/буруу байж болзошгүй тул).
-// Түрээс = (үнэ×тоо)×хоног, дараа нь хугацааны шатлалын хямдрал, НӨАТ (note-д байвал) −5%, дээр нь барьцаа.
-function computeOrderPricing(o) {
-  const days = Math.max(1, Number(o.days) || 1);
-  const daily = (o.items || []).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
-  const rental = daily * days;
-  const tier = rentalDiscount(days);
-  const multiDayDiscount = Math.round(rental * tier.pct);
-  const afterMd = rental - multiDayDiscount;
-  const hasVat = /НӨАТ/i.test(String(o.note || ''));
-  const vatDiscount = hasVat ? Math.round(afterMd * 0.05) : 0;
-  const dm = String(o.note || '').match(/Хямдрал \(гар\):\s*−?\s*([\d,]+)/);
-  const manualDiscount = dm ? (parseInt(dm[1].replace(/\D/g, ''), 10) || 0) : 0;
-  const deposit = Number(o.deposit) || 0;
-  const total = Math.max(0, afterMd - vatDiscount - manualDiscount) + deposit;
-  // Буцаалтын эвдрэл/гээгдэл → барьцаанаас хасаж буцаана.
-  const dmg = parseDamage(o.note);
-  const damage = dmg ? Math.min(deposit, Math.max(0, dmg.amount)) : 0;
-  const depositReturn = deposit - damage;
-  return { days, rental, multiDayDiscount, multiDayPct: tier.pct, multiDayLabel: tier.label, vatDiscount, manualDiscount, hasVat, deposit, total, damage, depositReturn, damageNote: dmg ? dmg.note : '' };
-}
-
-/* ─── Захиалгын самбар — UI туслахууд ──────────────────────── */
-// Шатуудыг 4 үе шатанд бүлэглэнэ (шүүлтүүр таб + board багана).
-const ORDER_PHASES = [
-  { key: 'new',     label: 'Шинэ',     statuses: ['Шинэ'] },
-  { key: 'prep',    label: 'Бэлтгэлд', statuses: ['Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан'] },
-  { key: 'deliver', label: 'Хүргэлт',  statuses: ['Хүргэсэн', 'Буцаан ирсэн'] },
-  { key: 'done',    label: 'Дууссан',  statuses: ['Дууссан'] },
-];
-function orderPhaseKey(status) {
-  for (const p of ORDER_PHASES) if (p.statuses.includes(status)) return p.key;
-  if (status === 'Цуцалсан') return 'cancelled';
-  return 'new';
-}
-
-function orderMatchesSearch(o, q) {
-  if (!q) return true;
-  return `${o.order_no} ${o.customer_name} ${o.company} ${o.phone} ${o.email || ''}`.toLowerCase().includes(q);
-}
-
-// Захиалгатай холбоотой даалгаврууд (confirmOrderPayment үүсгэсэн) — тоо + хариуцагчид.
-function orderLinkedTasks(o) {
-  const ts = (state.tasks || []).filter(t => t.order_no && t.order_no === o.order_no);
-  const names = [...new Set(ts.map(t => findMember(t.assignee)?.name).filter(Boolean))];
-  return { count: ts.length, names };
 }
 
 /* ─── Банкны тулгалт (Голомт дансны хуулга ↔ бүртгэсэн төлбөр) ───
@@ -6971,6 +6975,10 @@ function parseStatement(matrix) {
     let dm = dc.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
     let dateStr = dm ? `${dm[1]}-${pad2(dm[2])}-${pad2(dm[3])}` : '';
     if (!dateStr) { dm = dc.match(/(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})/); if (dm) dateStr = `${dm[3]}-${pad2(dm[2])}-${pad2(dm[1])}`; }
+    // Гүйлгээний БОДИТ ЦАГ — ХААН «2026-09-01 09:39:50», Голомт «2026-09-01T09:32:57».
+    // Огноогоо олсны ДАРАА хайна (эс бөгөөс утган дотор байгаа картын цаг оногдоно).
+    const tm = dateStr ? dc.slice(dc.indexOf(dm[0]) + dm[0].length).match(/^[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?/) : null;
+    const timeStr = tm ? `${pad2(tm[1])}:${tm[2]}:${tm[3] || '00'}` : '';
     if (!dateStr) {
       // Ихэнх огноогүй мөр = footer ("Нийт", "Эцсийн үлдэгдэл") → чимээгүй алгасна.
       // Гэхдээ УТГА + ЗАРЛАГЫН ДҮНТЭЙ мөр огноогоо алдвал бодит зардал чимээгүй алга
@@ -6980,7 +6988,7 @@ function parseStatement(matrix) {
       continue;
     }
     // Хаан дебитээ СӨРӨГ тоогоор бичдэг (-180000), Голомт эерэгээр — abs() хоёуланд зөв
-    rows.push({ date: dateStr, memo: cell(r, cols.memo), name: cell(r, cols.name),
+    rows.push({ date: dateStr, time: timeStr, memo: cell(r, cols.memo), name: cell(r, cols.name),
       account: cell(r, cols.account), credit: cols.credit >= 0 ? Math.abs(num(r[cols.credit])) : 0, debit: cols.debit >= 0 ? Math.abs(num(r[cols.debit])) : 0,
       _rate: cols.rate >= 0 ? Math.abs(num(r[cols.rate])) : 0 });
   }
@@ -7226,15 +7234,7 @@ function classifyExpense(memo, account) {
   }
   return '';
 }
-function learnAcctCat(account, cat) { if (!account || !cat) return; const l = _acctCatLearn(); l[account] = cat; try { localStorage.setItem('acctCatLearn', JSON.stringify(l)); } catch (_) {} }
 function expenseFp(r) { return 'EXP-' + Math.round(r.debit) + '-' + String(r.date).replace(/-/g, '') + '-' + _normFp(r.account || r.memo).slice(0, 22); }
-function _catOptions(sel) {
-  let opts = '<option value="">— сонгох —</option>';
-  Object.keys(FINANCE_SUB_CATEGORIES).forEach(main => (FINANCE_SUB_CATEGORIES[main] || []).forEach(s => {
-    opts += `<option value="${s.code}"${s.code === sel ? ' selected' : ''}>${s.code} ${escapeHtml(s.name)}</option>`;
-  }));
-  return opts;
-}
 // ── 2-түвшин ангилал (үндсэн → дэд) ─────────────────────────────────────────────
 function mainOfSub(subCode) { const s = String(subCode || ''); return s ? (s[0] + '000') : ''; }
 function subCatName(code) { for (const m of Object.keys(FINANCE_SUB_CATEGORIES)) { const hit = (FINANCE_SUB_CATEGORIES[m] || []).find(s => s.code === code); if (hit) return hit.name; } return ''; }
@@ -7484,9 +7484,7 @@ function detectStatementAccount(matrix) {
   return '';
 }
 function _cardOwners() { if (!state.cardOwners) { try { state.cardOwners = JSON.parse(localStorage.getItem('cardOwners') || '{}'); } catch (_) { state.cardOwners = {}; } } return state.cardOwners; }
-function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners(); o[acct] = ownerKey; try { localStorage.setItem('cardOwners', JSON.stringify(o)); } catch (_) {} }
 function _cardBranch() { if (!state.cardBranch) { try { state.cardBranch = JSON.parse(localStorage.getItem('cardBranch') || '{}'); } catch (_) { state.cardBranch = {}; } } return state.cardBranch; }
-function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o[acct] = br; try { localStorage.setItem('cardBranch', JSON.stringify(o)); } catch (_) {} }
 // Зардлын салбар = 3 үйл ажиллагааны салбар + Чимун ХХК (толгой — хөрөнгө оруулалт, удирдлагын
 // түвшний зардал). Захиргаа катч-олл хасагдсан. Хөрөнгө (6000) авто Чимун ХХК-д орно.
 const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК']];
@@ -7494,7 +7492,6 @@ function detectCardLast4(memo) {
   const m = String(memo || '').match(/(\d{6})\*{2,}(\d{4})/) || String(memo || '').match(/(\d{4})\*{2,}(\d{4})/);
   return m ? m[2] : '';
 }
-function cardByLast4(l4) { return l4 ? (state.bankCards || []).find(c => c.active !== false && String(c.last4) === String(l4)) : null; }
 // Компанийн ӨӨРИЙН бүх дансны дугаарын багц (Данс & Карт бүртгэлээс). Дотоод шилжүүлэг таних.
 function ownAcctSet() {
   const s = new Set();
@@ -7536,7 +7533,6 @@ function stmtDropWhy(x, acctLabel) {
 }
 // Картын default зарцуулалтын зорилго (ангилал) — тухайн картын бүх мөрд өгөгдмөл болгоно.
 function _cardDefCat() { if (!state.cardDefCat) { try { state.cardDefCat = JSON.parse(localStorage.getItem('cardDefCat') || '{}'); } catch (_) { state.cardDefCat = {}; } } return state.cardDefCat; }
-function setCardDefCat(key, cat) { if (!key) return; const o = _cardDefCat(); o[key] = cat; try { localStorage.setItem('cardDefCat', JSON.stringify(o)); } catch (_) {} }
 // Сарын бүх зардлыг цэвэрлэх (аппын өөрийн устгах замаар — хуулгаар дахин оруулахын өмнө)
 async function clearMonthExpenses(month) {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
@@ -7564,6 +7560,17 @@ async function openStatementClassifyModal() {
   const empByAcct = {};
   (typeof salaryStaff === 'function' ? salaryStaff() : (TEAM || [])).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a) empByAcct[a] = { key: personKey(mm), name: mm.name || '', type: 'monthly', m: mm }; });
   (typeof hourlyWorkers === 'function' ? hourlyWorkers() : []).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a && !empByAcct[a]) empByAcct[a] = { key: personKey(mm), name: mm.name || '', type: 'hourly', m: mm }; });
+  /* ⛔ ДАНСЫГ ЯГ ТЭНЦҮҮГЭЭР БҮҮ ХАЙ — профайлд банкны УРТ хэлбэр (18 орон),
+     хуулгад ЦӨМ нь (10 орон) байдаг. Яг тэнцүүгээр хайсанаас болж бүртгэлтэй
+     ажилтны цалин «эзэнгүй» болж, цалингийн самбараас хасагдаж байв.
+     ⚠ Хоёр ажилтан таарвал ЮУ Ч буцаахгүй (хэнийх нь мэдэгдэхгүй). */
+  const empForAcct = (acct) => {
+    const d = String(acct || '').replace(/\D/g, '');
+    if (!d) return null;
+    if (empByAcct[d]) return empByAcct[d];
+    const ks = Object.keys(empByAcct).filter(a => acctSame(a, d));
+    return ks.length === 1 ? empByAcct[ks[0]] : null;
+  };
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулга оруулах</div>
@@ -7652,7 +7659,10 @@ async function openStatementClassifyModal() {
         <button class="stmt-prsn-btn ui-raw" data-prsn-all="none">Бүгдийг хувийн</button>
       </div>
       <div class="stmt-prsn-note">Зөвхөн «компанийн» мөр зардал болно. Компани хувийн данс руу буцаан төлсөн шилжүүлэг нь зардал БИШ — өрөөс хасагдана.</div></div>` : '';
-    const warnBanner = prsnBanner + salBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
+    // Нэргүй экспорт — тоо зөв тул өөр ямар ч шалгуур барихгүй (stmtNoPayerNames).
+    const noName = stmtQueue.filter(q => stmtNoPayerNames(q.parsed) > 0);
+    const nameBanner = noName.length ? `<div class="stmt-warn">🏷 <b>${noName.map(q => escapeHtml(q.fileName)).join(', ')}</b> — харилцагчийн <b>нэрний багана байхгүй</b> хэлбэр. Дүн, тэнцэл зөв боловч орлогын мөр «хэн төлсөн» нь хоосон орно. Банкнаас <b>нэртэй</b> хуулгаа дахин татаж оруулбал тулгалт хөнгөн болно.</div>` : '';
+    const warnBanner = prsnBanner + salBanner + nameBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
     const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 сарын цалин ${nSal}` : ''}${nHrl ? ` · ⏱ цагийн цалин ${nHrl}` : ''}${nFee ? ` · 🏦 шимтгэл ${nFee} (авто)` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
@@ -7743,7 +7753,7 @@ async function openStatementClassifyModal() {
           const fp = expenseFp(r);
           const cat = classifyExpense(r.memo, r.account);
           const cAcct = String(r.account || '').replace(/\D/g, '');
-          const emp = empByAcct[cAcct];
+          const emp = empForAcct(cAcct);
           // ЦАЛИН таних = УТГА-СУУРЬТАЙ (данс таарсан нь дангаараа ХАНГАЛТГҮЙ). Ажилтны данс руу
           // шатхуун/түлш/бараа зөөлт шилжүүлбэл цалин БИШ → утгаараа ангилж эзэн баталгаажуулна
           // (авто баталахгүй). Зөвхөн гүйлгээний утга цалин гэж заасан үед данс→аль ажилтан гэдгийг таьна.
@@ -7863,7 +7873,7 @@ async function openStatementClassifyModal() {
             hrl++; r.done = true; n++; continue;
           }
           const hbr = salaryBranchOf(r.memo, r.hourlyEmp.key);   // тодорхойгүй бол ХООСОН (КЕМП рүү буулгахгүй)
-          state._finBackfill = { date: r.date };
+          state._finBackfill = { date: r.date, time: r.time || '' };
           const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
             justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}] ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(), category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
           state._finBackfill = null;
@@ -7872,7 +7882,7 @@ async function openStatementClassifyModal() {
         }
         // Сарын цалин — хуулгаас шууд баталгаажна (тусдаа урсгал), ангилалд явуулахгүй.
         if (r.salaryEmp) {
-          state._finBackfill = { date: r.date };
+          state._finBackfill = { date: r.date, time: r.time || '' };
           const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
             justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}] ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(), category: '7100', deptBranch: salaryBranchOf(r.memo, r.salaryEmp, branchOf(srcKeyOf(r))), linkType: 'general', priority: 'low' });
           state._finBackfill = null;
@@ -7889,7 +7899,7 @@ async function openStatementClassifyModal() {
         const _alB = acctLearnOf(_acctDigits(r.account));   // ДАНС-суурьтай суралцлага (ижил данс руу шилжүүлэг)
         const brCode = (brValid ? brOwn : '') || (_alB && _alB.branch) || guessBranch(r.memo, routeOwner) || '';
         const cat = (r.depMatch ? '5810' : (r.cmpMatch ? '5800' : r.cat)) || CARD_PEND_CAT;   // барьцаа→5810, буулгалт→5800(захиалгад холбогдоно, зардал биш)
-        state._finBackfill = { date: r.date };
+        state._finBackfill = { date: r.date, time: r.time || '' };
         // Барьцаа буцаалт таарсан бол захиалгад ШУУД холбоно (⟦LNK|order⟧) → захиалга «✓ Барьцаа буцаасан» болно
         const _dm = r.depMatch || r.cmpMatch;   // барьцаа буцаалт эсвэл буулгалт → захиалгад холбоно
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
@@ -8156,13 +8166,24 @@ function openExpenseModal(id) {
     modal.querySelector('#ex-save').onclick = async () => {
       const sub = subSel.value; if (!sub) { showToast('Дэд ангиллаа сонгоно уу', 'warn', 2500); return; }
       const br = brSel.value; if (!br && !isAssetCat(sub)) { showToast('Салбар сонгоно уу', 'warn', 3000); return; }
+      const accChosen = modal.querySelector('#ex-accr').value;
+      /* 🔒 Зардлын САР нь мөнгийг хөдөлгөнө (тайлан, салбарын ашиг, COO-гийн 30%)
+         тул ХУУЧИН ба ШИНЭ сарыг ХОЁУЛАНГ нь шалгана — эс бөгөөс хаасан сараас
+         зардлыг гаргах/оруулах зам нээлттэй үлдэнэ. */
+      const accPrev = finAccrualMonth(r);
+      try { await loadClosedMonths(true); } catch (e) {}   // сүлжээ унасан нь хадгалахыг БҮҮ зогсоо
+      try {
+        if (accChosen !== accPrev) { assertMonthOpen(accPrev, 'зардлын сар солих'); assertMonthOpen(accChosen, 'зардлын сар солих'); }
+      } catch (e) { showToast(e.message || 'Сар хаагдсан', 'warn', 6000); return; }
       const btn = modal.querySelector('#ex-save'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
       r.category = sub; r.dept_branch = isAssetCat(sub) ? 'ХХК' : br;
       if (t) { const base = stripCardToken(r.justification); r.justification = `${base} ${encodeCardToken(t.last4, t.ownerKey || state.me, false)}`.trim(); }
-      // Гүйцэтгэлийн сар: сонгосон нь ухаалаг default-аас өөр бол л токен хадгална (цэвэр байлгах)
-      const accChosen = modal.querySelector('#ex-accr').value;
+      /* ⛔ Сонгосон сарыг ҮРГЭЛЖ токеноор хадгална (2026-10-03). Өмнө нь «ухаалаг
+         default-аас өөр бол л» бичдэг байсан тул (а) хүний сонголт хадгалагдаагүй
+         бол ангилал солихоор сар ЧИМЭЭГҮЙ хөдөлдөг, (б) 7700 шиг таамаг ажилладаггүй
+         ангиллын сонголт огт үлддэггүй байв. Хүний сонголт > таамаг. */
       r.justification = stripAccrualToken(r.justification);
-      if (accChosen && accChosen !== finAccrualAuto(r.category, r.requested_at)) r.justification = `${r.justification} ⟦ACCR|${accChosen}⟧`.trim();
+      if (/^\d{4}-\d{2}$/.test(accChosen)) r.justification = `${r.justification} ⟦ACCR|${accChosen}⟧`.trim();
       saveExpenseLearn(r.purpose || r.beneficiary || '', { cat: sub, branch: isAssetCat(sub) ? '' : br });
       saveAcctLearn(expRecAcct(r), { cat: sub, branch: isAssetCat(sub) ? '' : br });   // ДАНС-суурьтай суралцлага
       try { await saveFinanceRequest(r); showToast('Хадгаллаа ✓', 'success', 1800); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
@@ -8416,6 +8437,24 @@ function statementMeta(matrix) {
     // Данс: «Дансны дугаар» label-ын дараах эхний тоо агуулсан нүд (label→утга хооронд хоосон нүд байж болно)
     const j = cells.findIndex(c => /дансны дугаар/i.test(c));
     if (j >= 0 && !acct) { for (let i = j + 1; i < cells.length; i++) { const v = cells[i].replace(/\s*\[.*$/, '').trim(); if (/^\d{6,}$/.test(v.replace(/\s/g, ''))) { acct = v; break; } } }
+    /* ⛔ ХААН «Дансны дугаар» ГЭСЭН ШОШГО БИЧДЭГГҮЙ — зөвхөн IBAN (2026-10-02,
+       амьд файлаар олов). Данс хоосон үлдэхэд хуулгын id нь `?|эхлэх|дуусах`
+       болж: (а) ижил хугацааны ХОЁР ДАНС бие биенээ дарж бичнэ, (б) `stmtChainCheck`
+       данснаас бүлэглэдэг тул бүх ХААН хуулга нэг `?` дансанд нийлж ХУДАЛ
+       «залгаа тасарсан» гарна, (в) `closeMonthBlockers` бүртгэлтэй данстай
+       тулгадаг тул `?` аль ч дансанд таарахгүй, сар хаах шалгуураас чимээгүй унана.
+       Дүрэм: IBAN-ы эхний 8 тэмдэгт (MN + шалгах 2 + банкны код 4) -ийг хаяж,
+       урдах тэгийг арилгана. Хоёр банкны амьд файлаар баталсан:
+         MN670005005222003015 → 5222003015 (ХААН)
+         MN790015003675118079 → 3675118079 (Голомт) */
+    if (!acct) {
+      for (const c of cells) {
+        const ib = c.replace(/\s/g, '').match(/^MN\d{18}$/i);
+        if (!ib) continue;
+        const a = ib[0].slice(8).replace(/^0+/, '');
+        if (a.length >= 6) { acct = a; break; }
+      }
+    }
     // Хугацаа: «Гүйлгээний огноо» label-ын дараах эхний «YYYY-MM-DD - YYYY-MM-DD» нүд
     const k = cells.findIndex(c => /гүйлгээний огноо/i.test(c));
     if (k >= 0 && !period) { for (let i = k + 1; i < cells.length; i++) { if (/\d{4}-\d{2}-\d{2}\s*-\s*\d{4}-\d{2}-\d{2}/.test(cells[i])) { period = cells[i].replace(/\s+/g, ' '); break; } } }
@@ -8441,6 +8480,7 @@ function reconReceiptOwnerLabel(usedIn) {
   const s = String(usedIn || '');
   let m = s.match(/mevent:#?(\S+)/i); if (m) return '#' + m[1];
   m = s.match(/nomaad:(\S+)/i); if (m) return m[1];
+  m = s.match(/catering:(\S+)/i); if (m) return 'Катеринг';
   m = s.match(/fin:(\S+)/i); if (m) return 'Санхүү';
   return s || '';
 }
@@ -8509,7 +8549,7 @@ function reconcileByReceipts(stmtRows, opts) {
    ⚠ Эдгээр хүснэгт нь ТАЙЛАНГИЙН орлогыг ОДООХОНДОО хөндөхгүй — тайлан хэвээр
      `orderRevenue`-аас бодогдоно. Энэ бол бүртгэл + бүрэн бүтэн байдлын шалгуур. */
 const INCOME_STATUS_LABEL = {
-  open: '🔓 Хаагдаагүй', order: '🎪 Захиалга', nomaad: '⛺ NOMAAD',
+  open: '🔓 Хаагдаагүй', order: '🎪 Захиалга', nomaad: '⛺ NOMAAD', catering: '🍽 Катеринг',
   internal: '↔ Дотоод шилжүүлэг', other: '📦 Бусад орлого',
   personal: '🙍 Хувийн (компанийн бус)', notincome: '🚫 Орлого биш (зээл/хөрөнгө)',
 };
@@ -8535,12 +8575,14 @@ function incomeStatusOfOwner(owner) {
   const s = String(owner || '');
   if (/^nomaad:/i.test(s)) return 'nomaad';
   if (/^mevent:/i.test(s)) return 'order';
+  if (/^catering:/i.test(s)) return 'catering';
   return 'other';   // fin:/хоосон — баримт бүртгэгдсэн ч захиалгын орлого биш
 }
 function incomeLinkOfOwner(owner) {
   const s = String(owner || '');
   let m = s.match(/^mevent:#?(\S+)/i); if (m) return { type: 'order', id: m[1] };
   m = s.match(/^nomaad:(\S+)/i); if (m) return { type: 'nomaad', id: m[1] };
+  m = s.match(/^catering:(\S+)/i); if (m) return { type: 'catering', id: m[1] };
   return { type: '', id: '' };
 }
 /* Хуулга → {stmt, incomes}. ЦЭВЭР функц (тестлэгдэнэ): DB/state хөндөхгүй, бүх
@@ -8598,8 +8640,23 @@ function buildStatementImport(parsed, meta, opts) {
     opening, closing_stated: (meta && meta.closing != null) ? Math.round(meta.closing) : null,
     closing_calc: opening != null ? opening + credit - debit : null,
     credit_total: credit, debit_total: debit, row_count: rows.length,
+    months: stmtMonthSplit(rows, opening),
   };
   return { stmt, incomes };
+}
+/* ⛔ ХУУЛГЫГ ХОЁР ХЭЛБЭРЭЭР ЭКСПОРТОЛДОГ — НЭРГҮЙГ БҮҮ ОРУУЛ (2026-10-02).
+   Голомтын нэг экспорт харилцагчийн НЭРИЙН баганатай, нөгөө нь зөвхөн
+   «Харьцсан данс»-тай (7 багана). Нэргүйг оруулбал орлогын мөр бүрийн
+   «хэн төлсөн» ХООСОН болж, тулгалт нүцгэн дансаар үлдэнэ. Дүн, тэнцэл,
+   мөрийн тоо нь БҮРЭН ЗӨВ тул ямар ч шалгуур дуугарахгүй — чимээгүй
+   доройтол. Тиймээс орлоготой мөр байж нэр нэг ч алга бол импортод ил
+   хэлнэ (ижил хуулгын нэртэй хувилбарыг дахин татна).
+   ⚠ Нэр ЗАРИМ мөрд алга байх нь ХЭВИЙН (банк хоорондын шилжүүлэг) — зөвхөн
+     БҮГД хоосон байхыг барина, эс бөгөөс анхааруулга байнга дуугарч мулзарна. */
+function stmtNoPayerNames(parsed) {
+  const inc = ((parsed && parsed.rows) || []).filter(r => Number(r.credit) > 0);
+  if (!inc.length) return 0;
+  return inc.some(r => String(r.name || '').trim()) ? 0 : inc.length;
 }
 // Хуулгын дотоод тэнцэл: эхний үлдэгдэл + орлого − зарлага = эцсийн үлдэгдэл.
 // ⚠ Валют дансны мөр ₮ болж хөрвүүлэгддэг тул толгойн (валют) үлдэгдэлтэй тэнцэхгүй → шалгахгүй.
@@ -8630,6 +8687,55 @@ function gapBalanceWhy(diff) {
     : v < 0 ? `${fmtMoney(Math.abs(v))}-ийн ОРЛОГО уншигдаагүй (орлого дутуу бүртгэгдсэн)`
     : 'хуулгын тэнцэл зөрж байна';
 }
+/* ⛔ ДАВХЦСАН ХУУЛГЫГ ЗАЛГАА ГЭЖ ТУЛГАЖ БОЛОХГҮЙ (2026-10-02, амьд датаар олов).
+   Нэг хугацааг дахин экспортлоход ШИНЭ бичлэг үүсдэг: 5222003015 данс дээр
+   2026-09-01-ээс эхэлсэн ЗУРГААН хуулга (дуусах өдөр нь л өөр) байв. Дараалан
+   тулгахад «09-10-ны эцсийн 1,516,605» ба «09-11-ний эхний 446,582» харьцуулагдаж
+   1,070,023₮-ийн ХУДАЛ «залгаа тасарсан» төрдөг — үнэндээ ижил хугацааны хоёр
+   хувилбар. Амьд датаар 14 алдааны 13 нь ийм гаралтай байв.
+   Дүрэм: бусад хуулгад БҮРЭН багтсан хуулгыг залгааны ТУЛГУУРААС хасна.
+   ⚠ Тэнцлийн шалгуур нь БҮГДЭД хэвээр — дутуу экспорт ч өөрөө тэнцэх ёстой.
+   Буцаана: `{spine, dropped}` — `dropped` нь дэлгэцэд «багтсан» гэж ил гарна,
+   эс бөгөөс хүн 6 хуулгаа хараад аль нь залгааг бүрдүүлж байгааг мэдэхгүй. */
+function stmtChainSpine(all) {
+  const rows = (all || []).filter(s => s && s.period_from && s.period_to).slice().sort((x, y) =>
+    String(x.period_from).localeCompare(String(y.period_from))
+    || String(y.period_to).localeCompare(String(x.period_to)));
+  const keep = rows.filter((s, i, arr) => !arr.some((o, j) => j !== i
+    && String(o.period_from) <= String(s.period_from)
+    && String(o.period_to) >= String(s.period_to)
+    && (String(o.period_from) !== String(s.period_from) || String(o.period_to) !== String(s.period_to) || j < i)));
+  const ids = new Set(keep.map(s => String(s.id)));
+  return { spine: keep, dropped: rows.filter(s => !ids.has(String(s.id))) };
+}
+/* ⚖️ ХУУЛГЫН БОДОЛТ ИЛ — «тэнцэв» гэдэг нь дангаараа ХЭРЭГГҮЙ (2026-10-02).
+   Хүн «эхний хэд байсан, хэд орж хэд гарсан, эцсийн хэд болсон» гэдгийг хармаар
+   байдаг: тэр бол хуулгыг нүдээрээ тулгах цорын ганц зам. Өмнө нь зөвхөн «✓ тэнцэв»
+   гэсэн шошго байсан тул шалгалт ЮУГ харьцуулсан нь нуугдмал байв.
+   ⚠ Дүнг ДАХИН БОДОХГҮЙ — `stmtBalanceCheck` нь ганц шүүгч (валют данс, уншигдаагүй
+     үлдэгдэл, ±1₮ тоймлолт бүгд тэнд). Энэ функц зөвхөн ХАРУУЛАХ хэлбэрт хувиргана.
+   `prev` = тухайн дансны ӨМНӨХ (залгааны тулгуур дээрх) хуулга — байвал «өмнөх
+   эцсийн ↔ энэ эхний» холбоос гарна. Хэсэгчлэн давхцсан бол холбоос ГАРГАХГҮЙ
+   (давхцсан хугацаанд гүйлгээ хоёуланд нь орсон тул тулгах нь утгагүй). */
+function stmtDetail(s, prev) {
+  const b = stmtBalanceCheck(s);
+  const n = (v) => (v == null || v === '' ? null : Number(v));
+  const d = {
+    opening: n(s && s.opening), credit: n(s && s.credit_total), debit: n(s && s.debit_total),
+    calc: n(s && s.closing_calc), stated: n(s && s.closing_stated), rows: n(s && s.row_count),
+    ccy: String((s && s.ccy) || 'MNT').toUpperCase(),
+    skip: b.skip || '', ok: !b.skip && !!b.ok,
+    diff: b.skip ? null : (Number(b.diff) || 0),
+    file: String((s && s.file_name) || ''), at: String((s && s.imported_at) || '').slice(0, 10),
+    by: String((s && s.imported_by) || ''), link: null,
+  };
+  if (prev && prev.closing_stated != null && d.opening != null
+      && String(prev.period_to || '') < String((s && s.period_from) || '')) {
+    const ld = Math.round(d.opening) - Math.round(Number(prev.closing_stated));
+    d.link = { to: String(prev.period_to), closing: Number(prev.closing_stated), diff: ld, ok: Math.abs(ld) <= 1 };
+  }
+  return d;
+}
 /* Дансны хуулгын ЗАЛГАА. Дутуу хуулга = мөнгө чимээгүй алга болох цорын ганц бодит
    эрсдэл, тиймээс цэвэр функц болгож тестлэв. Буцаана: {acct, kind, …}[]
    kind: 'balance' = хуулгын дотоод тэнцэл зөрүүтэй (мөр дутуу уншигдсан)
@@ -8652,13 +8758,16 @@ function stmtChainCheck(list, onlyAccts) {
     (byAcct[a] || (byAcct[a] = [])).push(s);
   });
   Object.keys(byAcct).sort().forEach(a => {
-    const rows = byAcct[a].filter(s => s.period_from && s.period_to)
-      .sort((x, y) => String(x.period_from).localeCompare(String(y.period_from)));
-    rows.forEach(s => { const b = stmtBalanceCheck(s); if (!b.ok) out.push({ acct: a, kind: 'balance', id: s.id, diff: b.diff }); });
+    const all = byAcct[a].filter(s => s.period_from && s.period_to);
+    const { spine: rows } = stmtChainSpine(all);
+    all.forEach(s => { const b = stmtBalanceCheck(s); if (!b.ok) out.push({ acct: a, kind: 'balance', id: s.id, diff: b.diff }); });
     for (let i = 1; i < rows.length; i++) {
       const p = rows[i - 1], c = rows[i];
       const next = addDays(String(p.period_to), 1);
       if (String(c.period_from) > next) { out.push({ acct: a, kind: 'gap', from: next, to: addDays(String(c.period_from), -1) }); continue; }
+      // Хэсэгчлэн давхцсан бол үлдэгдэл тулгахгүй — өмнөхийн эцсийн нь дараагийнхын
+      // эхлэлийн мөч БИШ (давхцсан хугацаанд гүйлгээ хоёуланд нь орсон).
+      if (String(c.period_from) <= String(p.period_to)) continue;
       if (p.closing_stated != null && c.opening != null && Math.abs(Number(p.closing_stated) - Number(c.opening)) > 1) {
         out.push({ acct: a, kind: 'jump', id: c.id, diff: Number(c.opening) - Number(p.closing_stated) });
       }
@@ -8749,7 +8858,56 @@ async function loadBankIncome(force) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.bankIncome = await r.json();
   } catch (e) { dataLoadFailed('loadBankIncome', e); state.bankIncome = state.bankIncome || []; }
+  try { await relinkIncomeFromReceipts(); } catch (e) { console.warn('relinkIncomeFromReceipts', e); }
   return state.bankIncome;
+}
+/* ⭐ ХОЖИМ БҮРТГЭСЭН PDF БАРИМТ ОРЛОГЫН МӨРИЙГ ӨӨРӨӨ ХААНА (2026-10-03).
+   Орлогын мөрийг баримттай тулгах нь ЗӨВХӨН хуулга импортлох мөчид болдог байв.
+   Хуулга ЭХЭЛЖ орж, PDF баримт ДАРАА нь захиалгад бүртгэгдвэл мөр «хаагдаагүй»
+   хэвээр үлдэж, хүн түүнийг «бусад орлого» гэж гараар хаадаг — тэгвэл захиалгын
+   орлого хоёр газар өөр төлөвтэй болно (амьд датаар: Майнс Ап 3,960,000₮ ба
+   Гранд Нова 725,000₮). Одоо орлогын мөр ачаалах бүрд тулгалт дахин ажиллана.
+   ⛔ Зөвхөн `open`/`other` мөрийг хөндөнө, зөвхөн захиалга/NOMAAD руу ахиулна —
+     `internal`/`personal`/`notincome` нь хүний шийдвэр, баримт түүнийг дарахгүй.
+   ⛔ НЭГ БАРИМТ = НЭГ МӨР: өөр мөрийн тэмдэглэлд аль хэдийн байгаа баримтыг хасна.
+   ⚠ Хаасан сарын мөр хөдлөхгүй. */
+function incomeRelinkPlan(rows, usedFps, fpOwners) {
+  const list = rows || [];
+  const idx = receiptFpIndex(usedFps instanceof Set ? usedFps : new Set(usedFps || []));
+  const taken = new Set();
+  list.forEach(x => { const m = String((x && x.note) || '').match(/FP-\d+-\d{8}-\S+/); if (m) taken.add(m[0]); });
+  const out = [];
+  list.forEach(x => {
+    if (!x || (x.status !== 'open' && x.status !== 'other')) return;
+    const hit = receiptMatchFor({ credit: x.amount, date: String(x.dt || '').slice(0, 10), name: x.payer }, idx, fpOwners, taken);
+    if (!hit) return;
+    const status = incomeStatusOfOwner(hit.owner);
+    if (status !== 'order' && status !== 'nomaad' && status !== 'catering') { taken.delete(hit.fp); return; }
+    const link = incomeLinkOfOwner(hit.owner);
+    out.push({ fp: x.fp, status, link_type: link.type, link_id: link.id, note: 'баримт ' + hit.fp + ' (дараа бүртгэсэн)' });
+  });
+  return out;
+}
+async function relinkIncomeFromReceipts() {
+  if (!DB_ANON_KEY || !Array.isArray(state.bankIncome) || !state.bankIncome.length) return 0;
+  if (typeof canSeeAllFinance === 'function' && !canSeeAllFinance()) return 0;
+  if (!(state.usedFps instanceof Set)) await loadUsedReceipts();
+  const plan = incomeRelinkPlan(state.bankIncome, state.usedFps, state.fpOwners)
+    .filter(p => { const row = state.bankIncome.find(x => x.fp === p.fp); return row && !monthLocked(String(row.dt || '').slice(0, 7)); });
+  let n = 0;
+  for (const p of plan) {
+    const body = { status: p.status, link_type: p.link_type, link_id: p.link_id, note: p.note, decided_at: new Date().toISOString() };
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_income?fp=eq.${encodeURIComponent(p.fp)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) continue;
+    const row = state.bankIncome.find(x => x.fp === p.fp);
+    if (row) Object.assign(row, body);
+    n++;
+  }
+  return n;
 }
 /* Хуулга + орлогын мөрийг DB-д бичнэ.
    ⚠ Орлогын мөр ХЭЗЭЭ Ч ДАРЖ БИЧИГДЭХГҮЙ (`ignore-duplicates`) — хүн гараар хаасан
@@ -8857,8 +9015,150 @@ function assertMonthOpen(month, what) {
 }
 /* Сар хаахад БЭЛЭН эсэх — шалтгаанын жагсаалт. Хоосон = бэлэн. Цэвэр функц (тестлэгдэнэ).
    CEO эдгээрийг үл хэрэгсэж хааж ч болно (зориудаар — шалтгаан нь бичлэгт үлдэнэ). */
-function closeMonthBlockers(stmts, income, regAccts, month) {
+/* ⚖️ ХУУЛГЫГ САРААР ЗАДЛАХ = `stmtMonthSplit(rows, opening)` (2026-10-02).
+   ЯАГААД: «01…өнөөдөр» гэж татсан хуулганд (09-01…10-02) 9 сарын дата БҮРЭН
+   байдаг — задлагч мөр бүрийн огноо/дүнг мэддэг атлаа зөвхөн НИЙТ дүнг
+   хадгалдаг тул тэр сарыг батлах боломжгүй болж, хүнээс ШИНЭ хуулга татахыг
+   шаарддаг байв. Гараар нэмэлт ажил шаардсан боломж үхдэг (CLAUDE.md дүрэм).
+   Буцаана: `{"2026-09": {c, d, end}, …}` — `end` нь тухайн сарын сүүлчийн
+   гүйлгээний дараах үлдэгдэл.
+   ⚠ Эхний үлдэгдэл уншигдаагүй бол `end` нь **null** (0 гэж бичвэл «тэр сар
+     тэглэгдсэн» гэж уншигдана) — урсгал (c/d) нь хэвээр тоологдоно. */
+function stmtMonthSplit(rows, opening) {
+  const by = new Map();
+  (rows || []).forEach(r => {
+    const m = String((r && r.date) || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(m)) return;
+    const g = by.get(m) || { c: 0, d: 0 };
+    g.c += Math.abs(Number(r.credit) || 0);
+    g.d += Math.abs(Number(r.debit) || 0);
+    by.set(m, g);
+  });
+  const out = {};
+  let run = opening == null ? null : Math.round(Number(opening) || 0);
+  [...by.keys()].sort().forEach(m => {
+    const g = by.get(m);
+    if (run != null) run = Math.round(run + g.c - g.d);
+    out[m] = { c: Math.round(g.c), d: Math.round(g.d), end: run };
+  });
+  return out;
+}
+/* Сарын СҮҮЛЧИЙН өдөр. ⚠ Түүхий `Date`-ээр бодвол UTC+8-д нэг өдөр гулсана —
+   `addDays` (огнооны ганц эх сурвалж) -ээр дараа сарын 1-ээс нэг хоног хасна. */
+function monthEndDay(month) {
+  const m = String(month || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(m)) return '';
+  const y = Number(m.slice(0, 4)), mo = Number(m.slice(5, 7));
+  if (mo < 1 || mo > 12) return '';
+  const nxt = mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, '0')}-01`;
+  return addDays(nxt, -1);
+}
+/* ⚖️ САР БҮРИЙН ТЭНЦЭЛ = `monthSeal(stmts, acct, month)` (2026-10-02, CEO шийдвэр).
+   Бусад БҮХ зүйл сараар явдаг (сар хаах · P&L · COO-гийн 30%) тул тэнцэл ч сараар
+   л утгатай. Өмнө нь хуулгын ЭКСПОРТЫН ЦОНХООР шалгадаг байсан нь хоёр нүхтэй:
+   ① сарын хил давсан хуулга (08-01…09-11) ХОЁР сард тоологдож, нэг дутуу файл
+      хоёр сарыг зэрэг блоклоно · ② 09-01…10-02 гэж «өнөөдөр хүртэл» татсан хуулганд
+   09-30-ны үлдэгдэл БАЙХГҮЙ тул тэр сар үнэндээ батлагдаагүй атал «тэнцсэн» гэж
+   харагдана. Амьд датаар 23 хуулгын ердөө 2 нь сартай яг тохирч байв.
+   ⛔ **САР БАТЛАГДАХ = сарын 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга тэнцсэн
+      байх.** Сарын эцсийн үлдэгдэл нь банкны өөрийнх нь хэлсэн тоо — бидний
+      бодсон тоо биш. Эцсийн үлдэгдэл байхгүй бол «батлагдсан» гэж ХЭЗЭЭ Ч бүү
+      бич: батлахын оронд ЯМАР хуулга татахыг хэл (`why`).
+   ⚠ Валют данс нь мөр нь ₮ болж хөрвүүлэгддэг тул тоололд ОГТ орохгүй.
+   Төлөв: `sealed` батлагдсан · `diff` зөрүүтэй · `noend` сарын эцсийн үлдэгдэл алга ·
+          `noflow` үлдэгдэл мэдэгдэх ч сарыг бүтэн хамарсан хуулга алга ·
+          `none` хуулга огт ороогүй · `ccy` валют данс. */
+function monthSeal(stmts, acct, month) {
+  const m = String(month || '').slice(0, 7), key = String(acct || '');
+  const end = monthEndDay(m), first = m + '-01';
+  if (!end) return { state: 'none', why: 'сар буруу' };
+  const mine = (stmts || []).filter(s => s && String(s.acct) === key && s.period_from && s.period_to
+    && String(s.period_from) <= end && String(s.period_to) >= first);
+  if (!mine.length) return { state: 'none', why: `${m} сарын хуулга ороогүй` };
+  if (mine.every(s => String(s.ccy || 'MNT').toUpperCase() !== 'MNT')) return { state: 'ccy', why: 'валют данс — шалгагдахгүй' };
+  // ① ХАМГИЙН ХҮЧТЭЙ: яг тэр сарын бүтэн хуулга (банк өөрөө сарын эцсийг хэлсэн)
+  const exact = mine.find(s => String(s.period_from) === first && String(s.period_to) === end
+    && s.opening != null && s.closing_stated != null);
+  if (exact) {
+    const b = stmtBalanceCheck(exact);
+    const base = { opening: Number(exact.opening), closing: Number(exact.closing_stated),
+      credit: Number(exact.credit_total) || 0, debit: Number(exact.debit_total) || 0, id: exact.id };
+    if (!b.skip) {
+      return b.ok ? { ...base, state: 'sealed', diff: 0 }
+        : { ...base, state: 'diff', diff: b.diff, why: gapBalanceWhy(b.diff) };
+    }
+  }
+  /* ② САРЫГ БҮРЭН ХАМАРСАН, ӨӨРӨӨ ТЭНЦСЭН хуулгаас ГАРГАЖ АВНА (2026-10-02, CEO).
+     «09-01…10-02» хуулганд 9 сарын дата БҮРЭН байдаг — шинэ хуулга татуулах нь
+     утгагүй нэмэлт ажил (гараар ажил шаардсан боломж үхдэг). Тэр хуулга ӨӨРӨӨ
+     тэнцсэн = банкны хэлсэн эцсийн үлдэгдэлтэй таарсан гэсэн үг тул түүний
+     дотоод сарын зүсэлт нь БАТЛАГДСАН датан дээрх арифметик.
+     ⛔ ТЭНЦЭЭГҮЙ эсвэл ШАЛГАГДААГҮЙ хуулгаас ГАРГАЖ АВАХГҮЙ — батлагдаагүй
+        тооноос гаргасан зүсэлт батлагдаагүй хэвээр. */
+  const host = mine.find(s => String(s.period_from) <= first && String(s.period_to) >= end
+    && s.months && s.months[m] && s.months[m].end != null
+    && (() => { const b = stmtBalanceCheck(s); return b.ok && !b.skip; })());
+  if (host) {
+    const g = host.months[m];
+    const prevK = Object.keys(host.months).filter(k => k < m).sort().pop();
+    const op = prevK ? host.months[prevK].end
+      : (String(host.period_from) === first && host.opening != null ? Number(host.opening) : null);
+    return { state: 'sealed', diff: 0, opening: op == null ? null : Number(op), closing: Number(g.end),
+      credit: Number(g.c) || 0, debit: Number(g.d) || 0, id: host.id,
+      from: `${host.period_from}…${host.period_to}` };
+  }
+  // ③ Сарын эцсийн үлдэгдэл мэдэгдэх ч сарыг бүтэн хамарсан хуулга алга
+  const ender = mine.find(s => String(s.period_to) === end && s.closing_stated != null);
+  if (ender) return { state: 'noflow', closing: Number(ender.closing_stated),
+    why: `${end}-ны үлдэгдэл мэдэгдэх ч ${first}…${end} бүтэн хуулга алга` };
+  // ④ Сарын эцсийн үлдэгдэл огт алга
+  const last = mine.map(s => String(s.period_to)).sort().pop();
+  const hasHost = mine.some(s => String(s.period_from) <= first && String(s.period_to) >= end);
+  return { state: 'noend', closing: null, last,
+    why: hasHost
+      ? `${end}-ны эцсийн үлдэгдэл гарган авах боломжгүй — ${last}-нд дуусдаг хуулгыг ДАХИН оруулбал сараар задарна`
+      : `${end}-ны эцсийн үлдэгдэл алга (хуулга ${last}-нд дуусдаг) — ${first}…${end} хуулга татаж оруул` };
+}
+/* ⚖️ «ХЭДЭН ДАНСНААС ХЭД НЬ ТЭНЦСЭН» = `balanceStats`, ГАНЦ эх сурвалж (2026-10-02).
+   Тэнцлийн төлөв өмнө нь ЗӨВХӨН «Сар хаах» дарахад харагддаг байв — тэр үед хэтэрхий
+   орой. Одоо «дараагийн алхам» картад мөр болж ҮРГЭЛЖ харагдана (зөв байхад ч «N/M
+   данс тэнцсэн» гэж батална), ба `closeMonthBlockers` МӨН үүнээс уншина — хоёр тоо
+   хэзээ ч зөрөхгүй (ИНВАРИАНТ тест тулгана).
+   ⛔ **ДАНСААР тоолно, хуулгаар БИШ.** Нэг данс нэг сард олон хуулгатай байж болно
+      (амьд датаар нэг данс 6 хуулгатай) тул хуулгаар тоовол «12/14 тэнцсэн» гэсэн
+      тоо хүнд юу ч хэлэхгүй — хүн данс мэддэг, хуулгын мөр мэддэггүй.
+   ⛔ **ХАМГИЙН ХҮНД ДОХИО ЯЛНА:** дансны ямар нэг хуулга зөрвөл тэр данс «зөрүүтэй»;
+      зөрүүгүй ч шалгагдаагүй нь байвал «шалгагдаагүй». Эс бөгөөс нэг зөв хуулга
+      зөрүүг нуана.
+   ⚠ Валют данс ба хоосон хуулга тоололд ОГТ ОРОХГҮЙ — тэд шалгагдах ёсгүй
+     (мөр нь ₮ болж хөрвүүлэгддэг тул валют үлдэгдэлтэй тэнцэхгүй нь зүй ёсных).
+     «Шалгагдаагүй» гэж тоовол анхааруулга мөнхөд асаалттай болно. */
+function balanceStats(stmts, regAccts, month) {
+  const want = (regAccts || []).map(a => String(a || '').replace(/\D/g, '').slice(-10)).filter(Boolean);
+  const m = String(month || '').slice(0, 7), end = monthEndDay(m), first = m + '-01';
+  const accts = [...new Set((stmts || []).filter(st => st && st.acct && st.period_from && st.period_to
+    && String(st.period_from) <= end && String(st.period_to) >= first
+    && (!want.length || want.includes(String(st.acct).replace(/\D/g, '').slice(-10))))
+    .map(st => String(st.acct)))].sort();
+  const badAccts = [], unverAccts = [], why = {};
+  let ok = 0;
+  accts.forEach(a => {
+    const r = monthSeal(stmts, a, m);
+    if (r.state === 'ccy' || r.state === 'none') return;   // тоололд орохгүй
+    if (r.state === 'sealed') { ok++; return; }
+    why[a] = r.why || '';
+    (r.state === 'diff' ? badAccts : unverAccts).push(a);
+  });
+  return { total: ok + badAccts.length + unverAccts.length, ok,
+    bad: badAccts.length, unver: unverAccts.length, badAccts, unverAccts, why };
+}
+function closeMonthBlockers(stmts, income, regAccts, month, pendN) {
   const out = [];
+  /* ⛔ Ангилаагүй зардал нь `9500`-аар салбарын зардалд ордог тул салбарын ашиг,
+     COO-гийн 30% гажна — хаавал тэр гажсан тоо хөлдөнө. Баталгаажуулах цонхонд
+     ил бичигдэнэ (CEO үл хэрэгсэж хааж ч болно, шалтгаан бичлэгт үлдэнэ). */
+  const pn = Number(pendN) || 0;
+  if (pn) out.push({ kind: 'pending', n: pn, why: `${pn} гүйлгээ ангилаагүй` });
   const miss = stmtMonthMissingAccts(stmts, month, regAccts);
   if (miss.length) out.push({ kind: 'stmt', n: miss.length, accts: miss, why: `${miss.length} дансны хуулга ороогүй` });
   const os = incomeOpenStats(income, month);
@@ -8868,8 +9168,25 @@ function closeMonthBlockers(stmts, income, regAccts, month) {
     const p = String(g.id || '').split('|');   // id = данс|эхлэх|дуусах
     return String(p[1] || '').slice(0, 7) === month || String(p[2] || '').slice(0, 7) === month;
   };
-  const gaps = (stmtChainCheck(stmts, regAccts) || []).filter(inMonth);
+  /* ⛔ ТЭНЦЛИЙН ЗӨРҮҮГ «ЗАЛГАА ЭВДЭРСЭН» ГЭЖ БҮҮ НЭРЛЭ (2026-10-02). Хоёр нь
+     ХОЁР ӨӨР ажил: залгаа тасарсан бол ДУТУУ ХУУЛГА оруулна, тэнцэл зөрсөн бол
+     оруулсан хуулгын МӨР дутуу уншигдсан. Өмнө нь хоёуланг «залгаа» гэж нэг
+     блокер болгодог тул хүнд БУРУУ зааварчилгаа хүрч байв. */
+  const flags = (stmtChainCheck(stmts, regAccts) || []).filter(inMonth);
+  const gaps = flags.filter(g => g.kind !== 'balance');
   if (gaps.length) out.push({ kind: 'chain', n: gaps.length, why: `${gaps.length} хуулгын залгаа эвдэрсэн` });
+  /* ⛔ «ШАЛГАЖ ЧАДСАНГҮЙ» нь «ЗӨВ БАЙНА» БИШ (2026-10-02). `stmtBalanceCheck` нь
+     үлдэгдэл уншигдаагүй үед `{ok:true, skip:…}` буцаадаг — тэр нь ХУДАЛ
+     анхааруулгаас хамгаалах зөв шийдэл боловч, шалгалт огт ажиллаагүйг хэн ч
+     мэдэхгүй өнгөрдөг байв. Амьд датаар 2 данс (557 ба 104 мөр) ингэж чимээгүй
+     шалгагдалгүй өнгөрсөн — тэдний нэгд 534,683₮-ийн зөрүү байсан.
+     ⚠ Валют данс нь ЗАКОНЫ ЁСООР шалгагдахгүй (мөр нь ₮ болж хөрвүүлэгддэг тул
+       валют үлдэгдэлтэй тэнцэхгүй) — түүнийг анхааруулгад ОРУУЛАХГҮЙ. */
+  const bs = balanceStats(stmts, regAccts, month);
+  if (bs.bad) out.push({ kind: 'balance', n: bs.bad, accts: bs.badAccts,
+    why: `${bs.bad} дансны тэнцэл зөрж байна` });
+  if (bs.unver) out.push({ kind: 'unverified', n: bs.unver, accts: bs.unverAccts,
+    why: `${bs.unver} дансны тэнцэл шалгагдаагүй — үлдэгдэл уншигдаагүй` });
   return out;
 }
 /* ═══════ ДАРААГИЙН АЛХАМ (2026-09-11) ═════════════════════════════════════════
@@ -8884,6 +9201,8 @@ function closeMonthBlockers(stmts, income, regAccts, month) {
      ⑤ бүгд цэвэрсэн үед л сар хаана.
    done:true алхам нь ЖАГСААЛТААС ГАРАХГҮЙ — «би үүнийг хийчихсэн» гэдэг нь
    «хийх шаардлагагүй байсан»-аас өөр мэдээлэл. */
+// Хийгдсэн алхам бүр ХААШАА буцаж харахыг заана (товч нь «Харах»).
+const FIN_STEP_REVIEW = { stmt: 'recon', expense: 'expenses', income: 'recon', balance: 'recon' };
 function finNextSteps(ctx) {
   const c = ctx || {};
   const month = String(c.month || '');
@@ -8905,14 +9224,48 @@ function finNextSteps(ctx) {
   steps.push(oi.n
     ? { key: 'income', n: oi.n, sum: oi.sum, icon: '💰', title: 'Орлого тулгах', hint: 'Аль захиалгынх нь тодорхойгүй орсон мөнгө', act: 'recon', btn: 'Тулгах' }
     : { key: 'income', done: true, icon: '💰', title: 'Орлого тулгах', hint: 'Орсон мөнгө бүгд захиалгадаа холбогдсон' });
+  /* ⚖️ ТЭНЦЭЛ = ҮРГЭЛЖ харагдах мөр (2026-10-02). «Хэдэн данснаас хэд нь тэнцсэн»
+     гэдгийг хүн ХАРАХ ёстой — зөрүү байхад л гарч ирдэг мөр нь «шалгалт ажиллаж
+     байгаа» гэдгийг хэлдэггүй, улмаар шалгалт чимээгүй унасныг хэн ч мэдэхгүй.
+     Тусдаа цонх ҮҮСГЭХГҮЙ — хэн ч нээдэггүй дэлгэц үхдэг (CLAUDE.md-ийн дүрэм),
+     тиймээс хүн аль хэдийн хардаг картан дээр мөр болж суна. */
+  const bal = c.balance || { total: 0, ok: 0, bad: 0, unver: 0, badAccts: [], unverAccts: [] };
+  const balBad = (bal.bad || 0) + (bal.unver || 0);
+  /* ⚠ Дансны ДУГААР дангаараа хүнд юу ч хэлдэггүй — «юу хийх» нь шалтгаанд бий
+     («09-30-ны эцсийн үлдэгдэл алга — 09-01…09-30 хуулга татаж оруул»). */
+  const balWhy = bal.why || {};
+  const balList = (arr) => (arr || []).map(a => `${a}${balWhy[a] ? ` — ${balWhy[a]}` : ''}`).join(' · ');
+  const balHint = [
+    bal.bad ? balList(bal.badAccts) : '',
+    bal.unver ? balList(bal.unverAccts) : '',
+  ].filter(Boolean).join(' · ');
+  steps.push(balBad
+    ? { key: 'balance', n: balBad, icon: '⚖️', title: 'Тэнцэл шалгах', hint: balHint, act: 'recon', btn: 'Харах' }
+    : { key: 'balance', done: true, icon: '⚖️', title: 'Тэнцэл шалгах',
+        hint: bal.total ? `${bal.ok}/${bal.total} данс сарын эцсийн үлдэгдлээр батлагдсан` : 'Шалгах хуулга алга' });
   const chain = Number(c.chainBreaks) || 0;
-  if (chain) steps.push({ key: 'chain', n: chain, icon: '🔗', title: 'Хуулгын завсар нөхөх', hint: 'Үлдэгдэл заваарсан — дутуу хуулга бий', act: 'recon', btn: 'Харах' });
+  if (chain) steps.push({ key: 'chain', n: chain, icon: '🔗', title: 'Хуулгын завсар нөхөх', hint: 'Хуулга хооронд завсар бий — дутуу хуулга оруулна', act: 'recon', btn: 'Харах' });
   if (c.isCEO) {
-    const blocked = miss.length || oi.n || chain;
+    /* ⛔ АНГИЛААГҮЙ ЗАРДАЛ САР ХААХЫГ ХОРИНО (2026-10-02, CEO барив).
+       Ангилаагүй мөр нь `9500` ангиллаар салбарын зардалд ОРДОГ (салбар нь
+       тодорхойгүй бол «Захиргаа» руу унана) тул салбарын ашиг, улмаар COO-гийн
+       30% гажна. Сар хаах нь тэр гажсан тоог ХӨЛДӨӨНӨ — дараа нь засагдахгүй.
+       Өмнө нь `pend` энэ жагсаалтад БАЙХГҮЙ байсан тул 62 гүйлгээ ангилаагүй
+       байхад «Хаах» товч идэвхтэй болж байв. */
+    const blocked = miss.length || pend || oi.n || chain || balBad;
     steps.push(blocked
       ? { key: 'close', icon: '🔒', title: 'Сар хаах', hint: 'Дээрх цэгцэрсний дараа', wait: true }
       : { key: 'close', icon: '🔒', title: 'Сар хаах', hint: month + ' сарын тоог хөлдөөнө — дараа нь засагдахгүй', act: 'close', btn: 'Хаах' });
   }
+  /* ⛔ ХИЙГДСЭН АЛХАМ Ч НЭЭГДЭНЭ (2026-10-03, CEO барив: «орлого тулгах хэсэг
+     шууд ингээд дахин өөрчлөх боломжгүй хаагдах нь зөв үү, би ямар орлогууд
+     тулгасныг ч харж чадахгүй байна»).
+     ✓ тэмдэг нь «ажил дууссан» гэсэн үг — «буцаж харах эрхгүй» гэсэн үг БИШ.
+     Буруу тулгасан мөрийг засах зам (тулгалтын цонхны ↩ буцаах) аль хэдийн
+     байсан; зүгээр л тийш хүрэх хаалга хаагдсан байв. */
+  steps.forEach(st => {
+    if (st.done && !st.act && FIN_STEP_REVIEW[st.key]) { st.act = FIN_STEP_REVIEW[st.key]; st.btn = 'Харах'; }
+  });
   return steps;
 }
 /* Дараагийн алхмын карт. Хийгдсэн алхам бүдгэрч, хийх ёстой нь товчтой.
@@ -8929,7 +9282,9 @@ function finNextStepsHtml(steps, month) {
       + `<div class="ns-hint">${escapeHtml(st.hint || '')}</div></div>`
       + cnt + btn + `</div>`;
   }).join('');
-  const left = (steps || []).filter(st => st.act && st.key !== 'close').length;
+  // ⚠ ХАРАХ товч нь «хийх ажил» БИШ — тоололд орохгүй, эс бөгөөс бүх зүйл
+  //   цэгцтэй байхад «сард хийх 4 зүйл» гэж худал бичигдэнэ.
+  const left = (steps || []).filter(st => st.act && !st.done && st.key !== 'close').length;
   const head = (steps || []).length === 1 && steps[0].key === 'locked'
     ? ''
     : `<div class="ns-head">${left ? `${month} сард хийх ${left} зүйл` : `✓ ${month} сар цэгцтэй`}</div>`;
@@ -8968,7 +9323,12 @@ async function setMonthClosed(month, closed, note) {
   const m = String(month || '').slice(0, 7);
   if (!m) return false;
   const cur = { ...closedMonths() };
-  if (closed) cur[m] = { at: new Date().toISOString(), by: state.me, note: String(note || '').slice(0, 200) };
+  if (closed) {
+    /* ⚠ Зургийг хаахын ЯГ тэр мөчид авна — дараа нь нөөц хөдөлсөн ч энэ сарын
+       элэгдэл, ашиг, COO-гийн эрх хөдлөхгүй. */
+    const dep = deprecSnapshotNow(m);
+    cur[m] = { at: new Date().toISOString(), by: state.me, note: String(note || '').slice(0, 200), ...(dep ? { dep } : {}) };
+  }
   else delete cur[m];
   await saveAppConfig(CLOSED_M_KEY, cur);
   state.closedMonths = cur;
@@ -9002,7 +9362,8 @@ async function toggleMonthClose(month) {
   const all = await showConfirm(
     `Хаах хүрээг сонгоно уу.\n\n«${m} ба өмнөх БҮГД» = шилжилтийн хаалт: түүх хөлдөж, дараагийн сараас цэвэр эхэлнэ. Сар бүрийг нэг бүрчлэн хаах шаардлагагүй.\n\n«Зөвхөн ${m}» = тухайн нэг сар л хаагдана.`,
     { title: '🔒 Хаах хүрээ', okText: `${m} ба өмнөх БҮГД`, cancelText: `Зөвхөн ${m}` });
-  const bl = closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), m);
+  const _pendM = allPendingCardExpenses().filter(r => String(r.requested_at || '').slice(0, 7) === m).length;
+  const bl = closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), m, _pendM);
   const why = bl.map(b => b.why).join(' · ');
   const warn = bl.length ? `⚠ Бэлэн БИШ:\n${bl.map(b => '· ' + b.why).join('\n')}\n\n` : '';
   if (all) {
@@ -9058,7 +9419,7 @@ function incomeReportHtml(res) {
   const prevYm = (() => { if (!ym) return ''; let [y, m] = ym.split('-').map(Number); m--; if (m < 1) { m = 12; y--; } return y + '-' + String(m).padStart(2, '0'); })();
   // «Бүртгэсэн орлого» = мөнгөн суурийн орлого. ⭐ Санхүү тайлантай ИЖИЛ функцээр
   // бодогдоно (finMonthIncome) — өмнө нь энд өөрийн дүрэм байсан тул хоёр дэлгэц зөрдөг байв.
-  const recInc = (yy) => { if (!yy) return 0; const m = finMonthIncome(yy, 'cash'); return m.evInc + m.noInc; };
+  const recInc = (yy) => { if (!yy) return 0; const m = finMonthIncome(yy, 'cash'); return m.evInc + m.noInc + (m.ktInc || 0); };
   const thisRec = recInc(ym), prevRec = recInc(prevYm);
   const growth = prevRec > 0 ? Math.round((thisRec - prevRec) / prevRec * 100) : null;
   // Салбарын орлого = данс бүрийн бүртгэсэн салбараар (Орлого Nomaad→NOMAAD, Орлого Mevent→M-Event, бусад→Бусад)
@@ -9190,13 +9551,62 @@ function renderStmtLedger() {
     const amt = g.kind === 'gap' ? '' : `<span class="recon-amt">${fmtMoney(g.diff)}</span>`;
     return `<div class="recon-row warn-row${prsn ? ' prsn-row' : ''}"><span class="recon-l">${body}${tail}</span>${amt}</div>`;
   };
-  const stmtRows = (list || []).slice(0, 24).map(s => {
-    const b = stmtBalanceCheck(s);
-    // «—» нь юу ч хэлдэггүй: шалгагдаагүй шалтгааныг ил бичнэ (үлдэгдэл алга /
-    // уншигдаагүй / валют данс). Эс бөгөөс «яагаад ✓ биш юм бол» гэж эргэлзэнэ.
-    const mark = b.skip ? `<span class="mut" title="Тэнцэл шалгагдаагүй">⃝ ${escapeHtml(b.skip)}</span>`
-      : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);
-    return `<div class="recon-row"><span class="recon-l">${isPersonalAcct(s.acct) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(s.acct))} · ${escapeHtml(String(s.period_from || '?'))} … ${escapeHtml(String(s.period_to || '?'))}${s.ccy && s.ccy !== 'MNT' ? ' · ' + escapeHtml(s.ccy) : ''}</span><span class="recon-amt">+${fmtMoney(s.credit_total)} / −${fmtMoney(s.debit_total)} · ${mark}</span></div>`;
+  /* ⚖️ БОДОЛТ ИЛ — «✓ тэнцэв» гэдэг дангаараа хэрэггүй (2026-10-02, CEO).
+     Хуулга бүрийг нээхэд «эхний + орлого − зарлага = эцсийн» бодолт, хуулгад
+     бичсэн дүнтэй тулгасан зөрүү, өмнөх хуулгатай залгасан холбоос, ямар файлаас
+     хэзээ орсон нь гарна. Данс бүрээр бүлэглэнэ — нэг данс нэг сард 6 хуулгатай
+     байж болох тул жагсаалтыг хольж харуулбал хүн уншиж чадахгүй. */
+  const _lad = (k, v, cls) => `<div class="sl-k">${k}</div><div class="sl-v${cls ? ' ' + cls : ''}">${v}</div>`;
+  const stmtDetHtml = (st, prev) => {
+    const d = stmtDetail(st, prev);
+    const money = (v) => v == null ? '<span class="mut">—</span>' : fmtMoney(v);
+    const L = [];
+    /* ⚠ Хугацааг шошгон дотор ДАВТАХГҮЙ — дээрх мөрөнд аль хэдийн бичээстэй, бас
+       320px-д «2026-08-» / «01» гэж дундуураа тасарч байв. Нэг мэдээлэл нэг газар. */
+    L.push(_lad('Эхний үлдэгдэл', money(d.opening)));
+    L.push(_lad(`+ Орлого${d.rows ? ` <span class="mut">· ${d.rows} мөр</span>` : ''}`, money(d.credit)));
+    L.push(_lad('− Зарлага', money(d.debit)));
+    L.push(_lad('= Бодсон эцсийн', money(d.calc), 'sl-sum'));
+    L.push(_lad('Хуулгад бичсэн', money(d.stated)));
+    L.push(d.skip
+      ? _lad('Зөрүү', `<span class="mut">⃝ ${escapeHtml(d.skip)}</span>`)
+      : _lad('Зөрүү', d.ok ? '✓ 0' : `⚠ ${fmtMoney(d.diff)}`, d.ok ? 'sl-ok' : 'sl-bad'));
+    if (!d.ok && !d.skip) L.push(`<div class="sl-full sl-bad">${escapeHtml(gapBalanceWhy(d.diff))}</div>`);
+    /* Залгаа нь ТОО биш ӨГҮҮЛБЭР — «өмнөх хуулга хэзээ хэдээр дууссан, таарч байна уу».
+       Тоон баганад шахвал шошго нь хоёр мөр болж уншигдахаа болино (320px). */
+    if (d.link) L.push(`<div class="sl-full${d.link.ok ? '' : ' sl-bad'}">🔗 Өмнөх хуулга ${escapeHtml(d.link.to)}-нд `
+      + `${fmtMoney(d.link.closing)}-өөр дууссан — ${d.link.ok ? 'таарч байна' : `энэ хуулга ${fmtMoney(d.link.diff)} зөрүүтэй эхэлсэн`}</div>`);
+    /* ⚠ Файлын нэрэнд ЗАЙ байдаггүй тул ТООН БАГАНАД БҮҮ тавь — багана нарийсаж
+       шошго үсэг тус бүрээр босоо таслагдана (375px-д баталсан). Бүтэн мөр. */
+    if (d.file || d.at) L.push(`<div class="sl-full">📄 ${escapeHtml(d.file)}${d.at ? ' · ' + escapeHtml(d.at) : ''}${d.by ? ' · ' + escapeHtml(memberName(d.by) || d.by) : ''}</div>`);
+    return `<div class="stmt-lad">${L.join('')}</div>`;
+  };
+  const byA = {};
+  (list || []).forEach(st => { if (st && st.acct) (byA[String(st.acct)] || (byA[String(st.acct)] = [])).push(st); });
+  const stmtRows = Object.keys(byA).sort((x, y) => acctLabel(x).localeCompare(acctLabel(y))).map(a => {
+    const { spine, dropped } = stmtChainSpine(byA[a]);
+    const seq = spine.concat(dropped.map(d => ({ ...d, _contained: true })));
+    const marks = spine.map(st => stmtBalanceCheck(st));
+    const nBad = marks.filter(m => !m.skip && !m.ok).length;
+    const nSkip = marks.filter(m => m.skip && m.skip !== 'валют данс' && m.skip !== 'хоосон').length;
+    const head = nBad ? `<span class="recon-bad">⚠ ${nBad} хуулгын тэнцэл зөрүүтэй</span>`
+      : nSkip ? `<span class="mut">⃝ ${nSkip} хуулга шалгагдаагүй</span>`
+      : `<span class="recon-ok">✓ ${spine.length} хуулга тэнцэв</span>`;
+    const rows = seq.map((st, i) => {
+      const b = stmtBalanceCheck(st);
+      const mark = st._contained ? '<span class="mut" title="Бусад хуулгад бүрэн багтсан — залгаанд тоологдохгүй">⊂ багтсан</span>'
+        : b.skip ? `<span class="mut" title="Тэнцэл шалгагдаагүй">⃝ ${escapeHtml(b.skip)}</span>`
+        : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);
+      const prev = st._contained ? null : spine[spine.indexOf(st) - 1];
+      return `<details class="stmt-det"><summary class="recon-row">`
+        + `<span class="recon-l">${escapeHtml(String(st.period_from || '?'))} … ${escapeHtml(String(st.period_to || '?'))}`
+        + `${st.ccy && st.ccy !== 'MNT' ? ' · ' + escapeHtml(st.ccy) : ''}</span>`
+        + `<span class="recon-amt">+${fmtMoney(st.credit_total)} / −${fmtMoney(st.debit_total)} · ${mark}</span>`
+        + `</summary>${stmtDetHtml(st, prev)}</details>`;
+    }).join('');
+    return `<div class="stmt-acct"><div class="recon-row stmt-acct-h">`
+      + `<span class="recon-l">${isPersonalAcct(a) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(a))} <span class="mut">${escapeHtml(a)}</span></span>`
+      + `<span class="recon-amt">${head}</span></div>${rows}</div>`;
   }).join('');
   const openRows = open.slice(0, 40).map(r => `<div class="recon-row">
       <span class="recon-l">${escapeHtml(String(r.dt || ''))} · ${escapeHtml(r.payer || '')} · <span class="mut">${escapeHtml(String(r.memo || '').slice(0, 40))}</span></span>
@@ -9207,7 +9617,52 @@ function renderStmtLedger() {
         <button class="btn ui-raw inc-btn" data-inc-set="personal" data-inc-fp="${escapeHtml(r.fp)}" title="Хувийн — компанийн орлого биш">🙍</button>
         <button class="btn ui-raw inc-btn" data-inc-set="notincome" data-inc-fp="${escapeHtml(r.fp)}" title="Орлого биш (зээл / хөрөнгө оруулалт)">🚫</button>
       </span></div>`).join('');
-  return `<div class="recon-sec${gaps.length ? ' warn' : ''}">
+  /* ⚖️ САРЫН ТЭНЦЭЛ — ЗӨВХӨН СОНГОСОН САР (2026-10-02, CEO).
+     Бүх сарыг дараалуулж харуулахад хүн «би 9 сар сонгосон атал яагаад 10 сар
+     улаан байна» гэж төөрнө. Санхүүгийн дэлгэц дээрх сарын сонголт
+     (`finReportMonth`) нь энэ цонхонд ч хүчинтэй.
+     ⛔ Нэрийг тайлбарт ДАРУУЛАХГҮЙ: `.recon-l` нь `nowrap + ellipsis` тул урт
+        тайлбарыг нэг эгнээнд тавихад дансны НЭР бүрмөсөн шахагдаж алга болж байв
+        (амьд дэлгэцэд ингэж гарсан). Нэр + богино дүгнэлт эхний мөрөнд, бүтэн
+        тайлбар нь ДООРХ мөрөнд. */
+  const sealMonth = String(state.finReportMonth || todayStr().slice(0, 7)).slice(0, 7);
+  const sealAccts = [...new Set((list || []).map(st => String(st.acct || '')).filter(Boolean))];
+  const sealSeq = sealAccts.map(a => ({ a, r: monthSeal(list, a, sealMonth) }))
+    .filter(x => x.r.state !== 'none' && x.r.state !== 'ccy')
+    .sort((x, y) => acctLabel(x.a).localeCompare(acctLabel(y.a)));
+  const sealOk = sealSeq.filter(x => x.r.state === 'sealed').length;
+  const sealRows = sealSeq.map(({ a, r }) => {
+    const sealed = r.state === 'sealed', bad = r.state === 'diff';
+    const tag = sealed ? `<span class="recon-ok">✓ ${fmtMoney(r.closing)}</span>`
+      : bad ? `<span class="recon-bad">⚠ зөрүү ${fmtMoney(r.diff)}</span>`
+      : '<span class="mut">⃝ батлагдаагүй</span>';
+    // Батлагдсан/зөрүүтэй бол бодолт НЭЭГДЭНЭ — «яаж тэнцсэн» нь хаалттай байх ёсгүй.
+    /* ⚠ Сарын дүн нь ӨРГӨН хуулгаас ГАРГАЖ АВСАН бол түүнийг ИЛ хэлнэ — «15,316,644₮»
+       гэсэн тоо хаанаас гарсныг мэдэхгүй бол хүн итгэхгүй. */
+    const src = (list || []).find(st => String(st.id) === String(r.id));
+    const body = r.from
+      ? `<div class="stmt-lad">`
+        + `<div class="sl-k">Эхний үлдэгдэл</div><div class="sl-v">${r.opening == null ? '<span class="mut">—</span>' : fmtMoney(r.opening)}</div>`
+        + `<div class="sl-k">+ Орлого</div><div class="sl-v">${fmtMoney(r.credit)}</div>`
+        + `<div class="sl-k">− Зарлага</div><div class="sl-v">${fmtMoney(r.debit)}</div>`
+        + `<div class="sl-k sl-sum">= ${escapeHtml(sealMonth)}-ны эцсийн үлдэгдэл</div><div class="sl-v sl-sum">${fmtMoney(r.closing)}</div>`
+        + `<div class="sl-full">📄 ${escapeHtml(r.from)} хуулгаас гаргаж авав (тэр хуулга өөрөө тэнцсэн)</div>`
+        + `</div>`
+      : src ? stmtDetHtml(src, null)
+      : `<div class="stmt-lad"><div class="sl-full">${escapeHtml(r.why || '')}</div></div>`;
+    return `<details class="stmt-det"><summary class="recon-row seal-row">`
+      + `<span class="recon-l seal-l">${isPersonalAcct(a) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(a))}</span>`
+      + `<span class="recon-amt">${tag}</span>`
+      + (r.why ? `<span class="seal-why">${escapeHtml(r.why)}</span>` : '')
+      + `</summary>${body}</details>`;
+  }).join('');
+  return `<div class="recon-sec${sealSeq.length && sealOk < sealSeq.length ? ' warn' : ''}">
+      <div class="recon-sec-h">⚖️ ${escapeHtml(sealMonth)} сарын эцсийн үлдэгдэл <span class="mut">${escapeHtml(monthEndDay(sealMonth))}</span>
+        <span class="recon-amt">${sealSeq.length ? (sealOk === sealSeq.length ? `<span class="recon-ok">✓ ${sealOk}/${sealSeq.length} батлагдсан</span>` : `<span class="recon-bad">${sealOk}/${sealSeq.length} батлагдсан</span>`) : ''}</span></div>
+      ${sealRows || `<div class="recon-empty">${escapeHtml(sealMonth)} сард хуулга ороогүй байна</div>`}
+      <div class="recon-summary-sub">Сар батлагдах = тэр сарын 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга тэнцсэн байх. «01…өнөөдөр» гэж татсан хуулганд сарын эцсийн үлдэгдэл байдаггүй тул сарыг батлахгүй. Мөр дарж бодолтыг үз.</div>
+    </div>
+    <div class="recon-sec${gaps.length ? ' warn' : ''}">
       <div class="recon-sec-h">📚 Оруулсан хуулга <span class="recon-n">${(list || []).length}</span></div>
       ${gaps.length ? `<div class="recon-rows">${gaps.map(gapRow).join('')}</div>` : '<div class="recon-empty recon-ok">✓ Цоорхой алга — бүх хуулга залгаатай</div>'}
       ${stmtRows ? `<div class="recon-rows">${stmtRows}</div>` : '<div class="recon-empty">Хуулга оруулаагүй байна</div>'}
@@ -9426,7 +9881,7 @@ function timeGroupKey(o, todayStr) {
 const ORDER_BUCKETS = [
   { key: 'draft',    label: 'Ноорог',      icon: '📝', dot: '#6B7280', st: ['draft'] },
   { key: 'active',   label: 'Захиалсан',   icon: '📋', dot: '#D97706', st: ['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering', 'installing', 'started', 'rented', 'teardown', 'returning'] },
-  { key: 'done',     label: 'Дууссан',     icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
+  { key: 'done',     label: 'Дууссан',     icon: '✅', dot: '#16A34A', st: ['returned', 'stowed', 'stopped'] },
   { key: 'archived', label: 'Архивласан',  icon: '🗄', dot: '#475569', st: ['archived'] },
   { key: 'canceled', label: 'Цуцалсан',    icon: '✕', dot: '#DC2626', st: ['canceled'] },
   { key: 'deleted',  label: 'Больсон',     icon: '🚫', dot: '#9CA3AF', st: ['deleted'] },
@@ -9566,9 +10021,10 @@ function orderListRow(e, k, todayStr) {
   const _chips = (_money ? [depWarn, vatChip, quoteChip, cxReasonChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
   // Нэг сав дотор — утсанд шошгууд БҮГД доод мөрөнд бууж, харилцагчийн нэр бүтэн өргөн авна
   const chips = _chips.length ? `<span class="br-chips">${_chips.join('')}</span>` : '';
+  const _custNm = orderCustName(o);   // байгууллагын захиалгад = байгууллага (гэрээний тал)
   return `<details class="olist-row${_money ? '' : ' compact'} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${chips}</span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(_custNm)}">${escapeHtml(_avInitials(_custNm))}</span><span class="br-cust">${escapeHtml(_custNm || '?')}</span>${chips}</span>
     ${statusCell}
     <span class="br-dates"${(() => {
       const ld = orderLeadDays(o);
@@ -9656,7 +10112,7 @@ function openCompletedReport() {
         return `<div style="display:flex;gap:8px;align-items:center;font-size:11.5px;padding:3px 0;border-top:1px solid var(--border);">
           <span style="font-weight:700;flex:0 0 52px;">#${o.number ?? ''}</span>
           <span style="flex:0 0 78px;color:var(--muted);">${escapeHtml(_crDate(e))}</span>
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '—')}</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(orderCustName(o) || '—')}</span>
           <span style="flex:0 0 auto;color:var(--muted);">${escapeHtml((BQ_STATUS[o.status] || {}).label || o.status || '')}</span>
           <span style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoney(e.total)}</span>
         </div>`;
@@ -9745,10 +10201,17 @@ function calendarCells(ym) {
   while (cells.length % 7) cells.push(null);
   return cells;
 }
-function ordersCalendarHtml(orders) {
+// Захиалгын бүтэн самбар (жагсаалт + календарь) харах эрх — захиалгын дэлгэц ба Тойм ИЖИЛ дүрэм.
+function canSeeOrderBoard() {
+  return canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true;
+}
+// `compact` = Тойм дээрх хувилбар: зөвхөн сарын тор. Өдөр дарахад захиалгын дэлгэц
+// рүү шилжинэ — картын товчнууд зөвхөн тэнд ажилладаг тул жагсаалтыг энд ЗУРАХГҮЙ.
+function ordersCalendarHtml(orders, opts) {
+  const compact = !!(opts && opts.compact);
   const ym = state.ordersCalYm || todayStr().slice(0, 7);
   const data = ordersCalendarData(orders, ym);
-  const sel = state.ordersCalDay || '';
+  const sel = compact ? '' : (state.ordersCalDay || '');
   const wd = ['Да', 'Мя', 'Лха', 'Пү', 'Ба', 'Бя', 'Ня'];
   const cells = calendarCells(ym).map(day => {
     if (!day) return '<div class="ocal-c ocal-pad"></div>';
@@ -9759,7 +10222,9 @@ function ordersCalendarHtml(orders) {
       <span class="ocal-dots">${o ? `<span class="ocal-b out">${o}</span>` : ''}${b ? `<span class="ocal-b back">${b}</span>` : ''}</span>
     </button>`;
   }).join('');
-  const list = sel
+  const list = compact
+    ? '<div class="ocal-hint">Өдөр дээр дарж тэр өдрийн захиалгыг нээнэ.</div>'
+    : sel
     ? (() => {
         const o = data.out[sel] || [], b = (data.back[sel] || []).filter(x => !o.includes(x));
         if (!o.length && !b.length) return '<div class="orders-empty"><div class="icon">📭</div><div>Энэ өдөр захиалга алга.</div></div>';
@@ -9779,8 +10244,9 @@ function ordersCalendarHtml(orders) {
     ${list}
   </div>`;
 }
-function attachOrdersCalendar(root) {
+function attachOrdersCalendar(root, opts) {
   const el = root || document;
+  const go = !!(opts && opts.go);   // Тойм: өдөр дарахад захиалгын календарь руу
   el.querySelectorAll('[data-ocal-mv]').forEach(b => b.addEventListener('click', () => {
     const ym = state.ordersCalYm || todayStr().slice(0, 7);
     const d = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + Number(b.dataset.ocalMv), 1));
@@ -9788,6 +10254,7 @@ function attachOrdersCalendar(root) {
     state.ordersCalDay = ''; render();
   }));
   el.querySelectorAll('[data-ocal-day]').forEach(b => b.addEventListener('click', () => {
+    if (go) { state.view = 'orders'; state.ordersCal = true; state.ordersCalDay = b.dataset.ocalDay; render(); return; }
     state.ordersCalDay = state.ordersCalDay === b.dataset.ocalDay ? '' : b.dataset.ocalDay; render();
   }));
 }
@@ -9795,7 +10262,7 @@ function renderOrders() {
   // Захиалга = нэгдсэн (app_orders). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
   // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders
   // байсан тул ҮАХ захирал зэрэг хүн хоосон харж байв.)
-  const canManage = canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true;
+  const canManage = canSeeOrderBoard();
 
   // ── Захиалга харах эрхтэй (менежер биш) ажилтан — түүхэн жагсаалтыг харна (энгийн, read) ──
   if (!canManage) {
@@ -10066,6 +10533,13 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openBqPaymentModal(b.dataset.bqPay); }));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
   document.querySelectorAll('[data-stagephoto]').forEach(img => img.addEventListener('click', () => openStagePhoto(img.dataset.stagephoto)));
+  // ✋ «Би ч оролцсон» — мэдүүлэг нэмнэ (мөнгө ШУУД болохгүй, баталгаажуулалт хүлээнэ)
+  document.querySelectorAll('[data-claim]').forEach(b2 => b2.addEventListener('click', (e) => {
+    e.stopPropagation(); e.preventDefault();
+    if (b2.dataset.busy === '1') return;
+    b2.dataset.busy = '1'; setTimeout(() => { b2.dataset.busy = ''; }, 1500);
+    claimStageWork(b2.dataset.claim, b2.dataset.claimK);
+  }));
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); e.preventDefault();
     if (b.dataset.busy === '1') return;                                  // давхар дарахаас хамгаалах
@@ -10201,70 +10675,6 @@ function attachOrdersHandlers() {
     });
   }
 
-
-
-
-}
-
-/* Монгол хэлтэй огнооны календар — readonly input дээр дарахад inline panel нээгдэнэ.
-   hiddenEl.value = YYYY-MM-DD (логикт), displayEl нь монголоор харуулна. */
-function mountCalendar(displayEl, hiddenEl, popEl, onChange, initial) {
-  const WD = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
-  const today = new Date();
-  let view = new Date(today.getFullYear(), today.getMonth(), 1);
-  let selected = null;
-  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const human = (d) => `${d.getFullYear()} оны ${d.getMonth() + 1}-р сарын ${d.getDate()}`;
-  if (initial && /^\d{4}-\d{2}-\d{2}/.test(initial)) {
-    const p = initial.slice(0, 10).split('-').map(Number);
-    selected = new Date(p[0], p[1] - 1, p[2]);
-    view = new Date(p[0], p[1] - 1, 1);
-    hiddenEl.value = iso(selected);
-    displayEl.value = human(selected);
-  }
-  function render() {
-    const y = view.getFullYear(), mo = view.getMonth();
-    const startOff = (new Date(y, mo, 1).getDay() + 6) % 7; // Даваа = 0
-    const days = new Date(y, mo + 1, 0).getDate();
-    let cells = '';
-    for (let i = 0; i < startOff; i++) cells += '<div class="mc-cell empty"></div>';
-    for (let d = 1; d <= days; d++) {
-      const cur = new Date(y, mo, d);
-      const wknd = [0, 6].includes(cur.getDay());
-      const cls = ['mc-cell', 'day', wknd ? 'weekend' : '', iso(cur) === iso(today) ? 'today' : '', selected && iso(cur) === iso(selected) ? 'sel' : ''].filter(Boolean).join(' ');
-      cells += `<div class="${cls}" data-d="${d}">${d}</div>`;
-    }
-    popEl.innerHTML = `
-      <div class="mc-head">
-        <button type="button" class="mc-nav" data-nav="-1">‹</button>
-        <span class="mc-title">${y} оны ${mo + 1}-р сар</span>
-        <button type="button" class="mc-nav" data-nav="1">›</button>
-      </div>
-      <div class="mc-grid">${WD.map(w => `<div class="mc-cell wd">${w}</div>`).join('')}</div>
-      <div class="mc-grid">${cells}</div>`;
-  }
-  displayEl.addEventListener('click', () => {
-    const open = popEl.style.display !== 'none';
-    document.querySelectorAll('.mc-pop').forEach(p => { p.style.display = 'none'; });
-    if (!open) { render(); popEl.style.display = 'block'; }
-  });
-  popEl.addEventListener('click', (e) => {
-    const nav = e.target.closest('.mc-nav');
-    if (nav) { view.setMonth(view.getMonth() + Number(nav.dataset.nav)); render(); return; }
-    const cell = e.target.closest('.mc-cell.day');
-    if (cell) {
-      selected = new Date(view.getFullYear(), view.getMonth(), Number(cell.dataset.d));
-      hiddenEl.value = iso(selected);
-      displayEl.value = human(selected);
-      popEl.style.display = 'none';
-      if (typeof onChange === 'function') onChange();
-    }
-  });
-  document.addEventListener('mousedown', (e) => {
-    if (!popEl.parentElement) return; // modal хаагдсан
-    if (popEl.style.display === 'none') return;
-    if (!e.target.closest('.mcal')) popEl.style.display = 'none';
-  });
 }
 
 /* Вэбсайт шиг бүрэн захиалга гараар үүсгэх (үйлчлүүлэгч + бараа + дүн) →
@@ -10779,17 +11189,6 @@ async function openOrderScanModal(oid) {
   startQRScan(modal.querySelector('#oscan-video'), modal.querySelector('#oscan-status'), onCode).then(s => { stop = s; });
 }
 
-// Бараа хадгалах → VPS Postgres upsert (sku=PK). Шинэ барааны sku/id хоосон бол үүсгэнэ.
-// Дараагийн чөлөөт SKU — одоо байгаа CH_NNN дугааруудын max+1 (ж: CH_250)
-function nextProductSKU() {
-  let max = 0;
-  (state.products || []).forEach(p => {
-    const m = /^CH[_-]?(\d+)$/.exec(String(p.sku || '').trim());
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  });
-  return 'CH_' + String(max + 1).padStart(3, '0');
-}
-
 // Шинэ бараанд дараагийн M-код (M-<max+1>) — үйлчлүүлэгчийн нүүр код (утсаар захиалах)
 // ⚠ `code` БА `sku` ХОЁУЛАНГААС үзнэ. Зөвхөн `code`-оос үзвэл код нь хоосон
 // (жиш. автоматаар үүсгэсэн) бараатай дугаар давхцаж, шинэ бараа хуучныг ДАРЖ БИЧНЭ
@@ -10930,6 +11329,13 @@ function asarPurgePlan(rows, aliases) {
   return { go, skip };
 }
 async function removeProductRow(sku) {
+  /* ⛔ ЭЦЭСЛЭГДСЭН БАРААГ ХАТУУ УСТГАХГҮЙ (2026-10-02 аудит). Эхний үлдэгдлийн
+     суурь нь гурван гарын үсгээр хөлдсөн — устгавал тэр баталгаа мөрөөрөө алга
+     болж, элэгдэл ба хөрөнгийн дүн чимээгүй буурна. Хэрэглэхээ больсон бол
+     АРХИВЛАНА (дата үлдэнэ). */
+  const _p = (state.products || []).find(x => x && x.sku === sku)
+    || (state.archivedProducts || []).find(x => x && x.sku === sku);
+  if (stockSealed(_p)) throw new Error('Эхний үлдэгдэл эцэслэгдсэн бараа устгагдахгүй — архивлана уу');
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`,
     { method: 'DELETE', headers: pgWrite({ Prefer: 'return=minimal' }) }, 15000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -11025,6 +11431,14 @@ async function loadArchivedProducts() {
 }
 // Барааг архивлах — saveProduct нь `archived` талбарыг бичдэггүй тул тусад нь PATCH.
 async function setProductArchived(sku, val) {
+  /* ⚠ Архивласан бараа `deprecByBranch`-д ОРОХГҮЙ тул эцэслэгдсэн барааг
+     архивлах нь элэгдлийг чимээгүй бууруулж, салбарын ашиг ба COO-гийн 30%-ийг
+     өсгөнө. Хориглохгүй (актлах нь жинхэнэ хэрэгцээ) — гэхдээ ЧИМЭЭГҮЙ
+     болгохгүй: хүн юу болохыг мэдэж байж батлана. */
+  if (val && stockSealed((state.products || []).find(x => x && x.sku === sku))
+      && typeof showConfirm === 'function'
+      && !(await showConfirm('Энэ барааны эхний үлдэгдэл ЭЦЭСЛЭГДСЭН.\n\nАрхивлавал элэгдлийн тооцооноос гарч, салбарын зардал буурч, COO-гийн ашгийн эрх нэмэгдэнэ. Актлах бол «Акт» дэлгэцээр хийвэл түүх үлдэнэ.\n\nҮргэлжлүүлэх үү?',
+        { title: '🔒 Эцэслэгдсэн барааг архивлах', okText: 'Архивла', danger: true }))) return false;
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`,
     { method: 'PATCH', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify({ archived: !!val }) }, 15000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -11138,6 +11552,21 @@ async function saveProduct(product) {
   //   шинэ утгаар нэгтгэдэг тул дараа нь уншвал ШИНЭ тоо гарч, хөдөлгөөн
   //   үргэлж 0 болно (дэвтэр утгагүй болно).
   const _qBefore = idx >= 0 ? stockQtySnapshot(state.products[idx]) : null;
+  /* ⛔ ЭЦЭСЛЭГДСЭН БАРААНЫ ТООГ ФОРМООР ЗАСАХГҮЙ (2026-10-02, CEO барив:
+     «эцэслэсэн байхад шууд энд ингээд сольж болж байхад эцэслэх ямар хэрэгтэй гэж?»).
+     Урсгал БҮРИЙГ тус тусад нь хаах нь буруу арга байв — барааны засах цонх нь
+     `stock`/`qty_*`-г чөлөөтэй өөрчилдөг тул эцэслэл чимэг болж байв.
+     Хориг нь бичилтийн ГАНЦ цэгт: хяналттай зам бүр `_moveReason` дамжуулдаг
+     (эхний үлдэгдэл · тооллого · эвдрэл · акт · салбар хоорондын шилжүүлэг),
+     форм дамжуулдаггүй. Тиймээс эцэслэгдсэн + тоо хөдөлсөн + шалтгаангүй =
+     ТАТГАЛЗАНА. Шинэ дэлгэц нэмэгдсэн ч энэ цэг дамжих тул өөрөө хаагдана. */
+  if (idx >= 0 && stockSealed(state.products[idx]) && !product._moveReason) {
+    const b = state.products[idx];
+    const n = (v) => Math.round(Number(v) || 0);
+    const moved = STOCK_BRANCHES.some(x => product['qty_' + x] != null && n(product['qty_' + x]) !== n(b['qty_' + x]))
+      || (product.stock != null && n(product.stock) !== n(b.stock));
+    if (moved) throw new Error('Эцэслэгдсэн барааны тоог гараар засах боломжгүй — залруулга тооллогоор хийнэ');
+  }
   if (idx >= 0) state.products[idx] = { ...state.products[idx], ...product };
   else state.products.unshift(product);
   if (product.cost != null) {
@@ -11885,6 +12314,43 @@ function attCanonKey(r) {
   const m = findMember(r.member_key) || findMember(r.member_name);
   return m ? personKey(m) : (r.member_key || r.member_name || '?');
 }
+/* ЦАЙНЫ ЦАГ — ирцийн цагаас АВТОМАТААР хасна (2026-10-03, CEO).
+   Өдөр бүр: min(1ц, max(0, нийт − 5ц)) — 5ц хүртэл хасахгүй, 6ц-аас дээш бүтэн 1ц.
+   ⛔ Хатуу босго («6ц-аас дээш бол 1ц») тавихгүй — тэгвэл 5ц59м байсан хүн 6ц
+     байснаас ИЛҮҮ цаг авна. Шулуун томьёо тэр гажгийг арилгана.
+   ⛔ **ЭХЛЭХ ӨДӨР = 2026-09-01**, цалингийн тооцоо эхэлсэн сартай ИЖИЛ
+     (`payrollStartMonth`). Эхэндээ 10-01 гэж тавьсан нь алдаа байв: 9 сар бол
+     аппын бодож буй ПЕРВЫЙ сар тул цайны цаг хасагдаагүй үлдвэл нэг сарын
+     цалин хоёр өөр дүрмээр бодогдоно (CEO барив). Амьд датаар 9 сард 249
+     ажилласан өдөр · **235 цаг** хасагдана — илүү цагаас, нормд хүрэхгүй бол
+     суурь цалингаас (нормоос дутуугийн хасалт ч 9 сараас, `payProrateFrom`).
+   ⛔ ЭХЛЭХ ӨДРӨӨС ӨМНӨ ХАСАХГҮЙ — 8 сар ба өмнөх нь ТҮҮХ (гараар тооцсон).
+   ⛔ ГАНЦ газар (`attMemberSummary`) хасна — ирцийн дэлгэц, «Миний ирц», цалингийн
+     самбар, илүү цаг бүгд үүнээс уншина. Өөр газар дахин бүү хас (давхар хасагдана).
+   ⚠ Өдрийн хөлстэй ажилтанд нөлөөгүй — тэдний цалин ӨДРӨӨР бодогддог.
+   ⚠ Тохиргоо `app_config['lunch']` = {from, mins, after} (mins=0 → унтарна);
+     кодын утга нь нөөц. */
+const LUNCH_DEFAULT = { from: '2026-09-01', mins: 60, after: 300 };
+function lunchCfg() {
+  const c = (state.appConfig && typeof state.appConfig.lunch === 'object' && state.appConfig.lunch) || {};
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(c.from || '')) ? String(c.from) : LUNCH_DEFAULT.from;
+  const mins = (Number(c.mins) >= 0 && Number(c.mins) <= 180 && c.mins !== undefined && c.mins !== null && c.mins !== '') ? Number(c.mins) : LUNCH_DEFAULT.mins;
+  const after = (Number(c.after) >= 0 && Number(c.after) <= 720 && c.after !== undefined && c.after !== null && c.after !== '') ? Number(c.after) : LUNCH_DEFAULT.after;
+  return { from, mins, after };
+}
+// «1ц 0м» биш «1ц» — цайны цаг ихэвчлэн бүтэн цаг
+function lunchHM(mins) { const m = Math.round(Number(mins) || 0); return m % 60 ? attHM(m) : (m / 60) + 'ц'; }
+// Тайлбарын ГАНЦ бичвэр — карт, самбар ижил үгээр хэлнэ
+function lunchNote() {
+  const c = lunchCfg();
+  if (!(c.mins > 0)) return '';
+  return `${c.from.slice(0, 7)}-аас эхлэн ${Math.round(c.after / 60)} цагаас урт өдөр цайны ${lunchHM(c.mins)} хасагдана.`;
+}
+function lunchMinsFor(day, grossMins) {
+  const c = lunchCfg();
+  if (!day || String(day).slice(0, 10) < c.from || !(c.mins > 0)) return 0;
+  return Math.min(c.mins, Math.max(0, Math.round(Number(grossMins) || 0) - c.after));
+}
 function attMemberSummary(recs, live) {
   live = live !== false;
   let mins = 0, openIn = null, lastEvent = null;
@@ -11894,7 +12360,13 @@ function attMemberSummary(recs, live) {
     lastEvent = r.ts;
   });
   if (openIn && live) mins += (Date.now() - new Date(openIn)) / 60000;   // зөвхөн өнөөдрийн үргэлжилж буй сесс
-  return { firstIn: recs[0] ? recs[0].ts : null, mins: Math.max(0, Math.round(mins)), open: !!openIn && live, noOut: !!openIn && !live, openTs: openIn, lastEvent };
+  const gross = Math.max(0, Math.round(mins));
+  /* ⛔ ӨДӨР ДУТВАЛ ЦАЙНЫ ЦАГ ЧИМЭЭГҮЙ 0 БОЛНО (2026-10-03). Өдрийн ирцийн
+     жагсаалт `day`-г татдаггүй байсан тул дэлгэцэд цай хасагдаагүй БҮТЭН цаг
+     гарч, сарын тооцоотой зөрж байв («хасагдаагүй л харагдаад байна»). Татах
+     `select` бүрд `day` ЗААВАЛ — scan-тест шалгана. */
+  const lunch = lunchMinsFor(recs[0] && recs[0].day, gross);   // `mins` = ажилласан (цай хассан)
+  return { firstIn: recs[0] ? recs[0].ts : null, mins: gross - lunch, gross, lunch, open: !!openIn && live, noOut: !!openIn && !live, openTs: openIn, lastEvent };
 }
 // ── ГАРАХАА БҮРТГҮҮЛЭЭГҮЙ ӨДӨР — удирдлага гарсан цагийг гараар оруулна (2026-09-06) ──
 // Ажилтан QR-аа уншуулж «явлаа» гэж бүртгүүлээгүй бол тэр өдрийн нээлттэй сесс
@@ -12236,7 +12708,7 @@ async function attReqReject(k) {
 async function loadAttendanceToday() {
   try {
     const d = todayStr();
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,day,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { dataLoadFailed('loadAttendanceToday', e); }
@@ -12245,7 +12717,7 @@ async function loadAttendanceToday() {
 async function loadAttendanceView() {
   const d = state.attViewDay || todayStr();
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,day,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) { dataLoadFailed('loadAttendanceView', e); }
@@ -12263,7 +12735,9 @@ async function loadAttendanceMonthFull(month) {
     else state.attMonthErr = { month, msg: (r.status === 401 || r.status === 403) ? 'эрх хүрэхгүй — дахин нэвтэрнэ үү' : 'сервер алдаа (' + r.status + ')' };
   } catch (e) { state.attMonthErr = { month, msg: 'сүлжээ холбогдсонгүй' }; }
   state._attMonthBusy = null;
-  if (typeof render === 'function' && state.view === 'attendance') render();
+  // ⚠ Цалингийн самбар ч энэ датаг илүү цаг бодоход ашигладаг — зөвхөн ирцийн дэлгэц
+  //   дээр render хийвэл цалин «ачаалж байна» гэж мөнхөд үлдэнэ.
+  if (typeof render === 'function' && (state.view === 'attendance' || state.view === 'salary')) render();
 }
 // Цалингийн холбоос: энэ сарын ирцээс ажилтан бүрийн ажилласан ӨДРИЙН тоог (in бичлэгтэй ялгаатай өдөр).
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
@@ -12375,7 +12849,7 @@ function renderAttendanceRows() {
     const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}${r.scanned ? '' : ' <span title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн" style="color:var(--warn);font-size:11.5px;font-weight:600;">⚠ уншуулаагүй</span>'}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div>${fixBtn}${tmrBadge}</div></div>`;
+      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}${r.s.lunch ? `<span class="att-lunch" title="Цайны цаг хасагдсан (нийт ${attHM(r.s.gross)})">цай −${lunchHM(r.s.lunch)}</span>` : ''}</div>${fixBtn}${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;
 }
@@ -12472,13 +12946,39 @@ function renderAttendance() {
     <div id="att-list">${body}</div>
   </div>`;
 }
-// Сарын ажлын норм: өдрийн тоо (app_config['work_norm_days'], default 23) × 8 цаг.
-function workNormDays() { const v = Number(state.appConfig && state.appConfig.work_norm_days); return (v >= 1 && v <= 31) ? v : 23; }
-function workNormMins() { return workNormDays() * 8 * 60; }
+/* ─── САРЫН НОРМ = ТЭР САРЫН АЖЛЫН ӨДӨР × 8 ЦАГ (2026-10-03, CEO) ───────────
+   Өмнө нь 23 өдөр (184 цаг) гэж ХАТУУ тавигдсан байв. Бодит ажлын өдөр 20–23
+   хооронд хэлбэлздэг тул 184 нь ихэнх сард ХЭТРҮҮЛСЭН: нормоо бүтэн ажилласан
+   хүний суурь цалин `ажилласан ÷ норм`-оор хасагдаж, 2 сард 160÷184 = **87%**
+   болж байв (бүтэн ажилласан цагийн төлөө гэрээний цалингаас хасах нь зөрчил).
+   ⛔ **БАЯРЫН ӨДӨР ХАСАГДАХГҮЙ** (CEO шийдвэр) — зөвхөн бямба/ням хасна.
+   ⚠ Огноог UTC геттерээр угсарна — локал цагаар бодвол UTC+8-д сар гулсана.
+   ⚠ `app_config['work_norm_days']` тохируулбал тэр ТОГТМОЛ тоо ялна (онцгой
+     тохиолдол, жишээ 6 хоногийн ажлын хуваарь). */
+function monthWorkdays(ym) {
+  const mm = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+  const now = new Date();
+  const y = mm ? Number(mm[1]) : now.getFullYear();
+  const mo = mm ? Number(mm[2]) - 1 : now.getMonth();
+  let n = 0;
+  for (let d = 1; d <= 31; d++) {
+    const t = new Date(Date.UTC(y, mo, d));
+    if (t.getUTCMonth() !== mo) break;
+    const w = t.getUTCDay();
+    if (w !== 0 && w !== 6) n++;
+  }
+  return n;
+}
+function workNormDays(ym) {
+  const v = Number(state.appConfig && state.appConfig.work_norm_days);
+  if (v >= 1 && v <= 31) return v;
+  return monthWorkdays(ym);
+}
+function workNormMins(ym) { return workNormDays(ym) * 8 * 60; }
 // ── Жолооны нэмэгдэл — хүргэлттэй захиалгад ХҮРГЭЖ ӨГСӨН (delivering→rented) + ХҮРГЭЛТЭЭР
 // БУЦААН АВСАН (rented→returning) үйлдэл бүрд 10,000₮ (тухайн үйлдлийг хийсэн жолоочид). stage_meta-гаас автомат.
 const DRIVER_BONUS_EACH = 10000;
-/* ─── ШАТНЫ ХӨЛС — дамжлагын ажлыг барааны ТООГООР төлнө (2026-09-30) ────────
+/* ─── ДАМЖЛАГЫН БОНУС — дамжлагын ажлыг барааны ТООГООР төлнө (2026-09-30) ────────
    ⛔ ЦАГААР БҮҮ ТӨЛ. Эвент, шөнийн хүргэлттэй ажлын цагийг хязгаарлах боломжгүй
      (амьд датаар 163–283 ц/сар) тул цагаар төлбөл суугаад цаг нөхцөөх нь ШАГНАГДАНА
      — 9 сард 256 цаг ажиллаж НЭГ Ч шат удирдаагүй хүн байсан. Гарц нь хуурамчлагдахгүй:
@@ -12489,11 +12989,32 @@ const DRIVER_BONUS_EACH = 10000;
      `STAGE_FEE_HELPER_SHARE`-ийн санг хуваан авна; `STAGE_FEE_HELPER_MAX` нь
      хуурамч хамтрагч нэмж сан цайруулахыг хаана.
    ⚠ Мөнгө болдог тул тохиргоо `app_config['stage_pay']`-аас (кодын утга = зөвхөн нөөц). */
+/* ─── ОНОО → ТӨГРӨГ (2026-10-03, CEO) ───────────────────────────────────────
+   Бонус нь ШУУД төгрөгөөр биш, ОНООГООР бодогдоно; оноог НЭГ газар (ханш)
+   төгрөг болгоно. ЯАГААД: дамжлагын жин («энэ ажил хэр хүнд вэ») нь үйл
+   ажиллагааны шийдвэр, жилд нэг л өөрчлөгдөнө; ханш («оноо хэдэн төгрөг вэ»)
+   нь санхүүгийн шийдвэр, сараар тохирч болно. Хоёрыг салгаснаар төсөв
+   өөрчлөхөд дамжлага бүрийг дахин маргах шаардлагагүй.
+   ⚠ Ажилчид ажлыг ажилтай харьцуулна (оноогоор), төгрөгөөр биш — хямд
+     дамжлагыг зайлсхийх шалтгаан алга.
+   ⛔ **ХАНШ НЭГ ГАЗАР** — `stagePointRate()`. Хоёр газар бичвэл нэг дамжлага
+     хоёр үнэтэй болно. Scan-тест хаана. */
+/* ⚠ ЖИН ×10 → ХАНШ ÷10. Бүхэл тоогоор ажиллах нь CEO-гийн шийдвэр
+   (2026-10-04); мөнгө ХЭВЭЭР (1 × 1350 = 10 × 135). */
+const STAGE_PT_RATE = 135;   // ₮/оноо — 9 сарын зардлыг хуучин системтэй тэнцүү байлгана
+const STAGE_PT_BANDS = [[5, 1], [20, 2], [60, 3.5], [150, 6], [Infinity, 10]];
 const STAGE_FEE_BANDS = [[5, 2000], [20, 4000], [60, 7000], [150, 12000], [Infinity, 20000]];
-const STAGE_FEE_HELPER_SHARE = 0.30;
+/* ⛔ ДАМЖЛАГЫН САН ТОГТМОЛ, ДОТРОО ХУВААГДАНА (2026-10-04, CEO: «нийт
+   өөрчлөгдөхгүй, харин хүн бүр өөр өөр байх ёстой»). Өмнө нь хамтрагчийн
+   30% нь НЭМЭЛТ байсан тул нэг л ажил хэдэн хүн бүртгэснээс хамаарч өөр
+   үнэтэй болдог байв — 30 бараа баглах нь 1 хүнтэй 7,088₮, 2 хүнтэй 9,214₮.
+   Одоо: сан = дамжлагын оноо (хэвээр), хариуцсан хүн 1.3 нэгж, бусад 1.0.
+   ⚠ СУЛ ТАЛ: хамтрагчаа НУУВАЛ дарсан хүн бүтэн санг авна. Үүнийг барих нь
+     ажилтанд өөрийн оноог харуулж, орхигдсоныг мэдээлүүлэх зам. */
+const STAGE_LEAD_WEIGHT = 1.3;
 const STAGE_FEE_HELPER_MAX = 4;
 // Биеийн хүчний шатууд. ⛔ `discount`/`revert` мэт бичиг цаасны шат ОРОХГҮЙ — ачаа зөөгөөгүй.
-const STAGE_FEE_STAGES = ['clean', 'prepare', 'dispatch', 'deliver', 'setup', 'teardown', 'retstart', 'received'];
+const STAGE_FEE_STAGES = ['clean', 'prepare', 'dispatch', 'deliver', 'setup', 'teardown', 'retstart', 'received', 'stow'];
 function _stagePayCfg() { return (state.appConfig && typeof state.appConfig.stage_pay === 'object' && state.appConfig.stage_pay) || {}; }
 function stageFeeBands() {
   const b = _stagePayCfg().bands;
@@ -12503,7 +13024,92 @@ function stageFeeBands() {
   out[out.length - 1][0] = Infinity;   // хамгийн дээд шатлал ҮРГЭЛЖ хязгааргүй — эс бол том захиалга 0₮ болно
   return out;
 }
-function stageHelperShare() { const v = Number(_stagePayCfg().helper_share); return (v >= 0 && v <= 1) ? v : STAGE_FEE_HELPER_SHARE; }
+/* ─── ХАСАХ ОНОО = чанаргүй / хоцорсон ажил (2026-10-05, CEO) ──────────────
+   «Бонус шагнал өгч байгаа бол буцаагаад торгууль байх ёстой — ингэж байж
+   хоёр тал зөв ажиллана.» Зарчим: САЙН хийсэн хэсэг +оноо, МУУ хийсэн хэсэг
+   ТЭР ХЭМЖЭЭГЭЭР −оноо.
+   · ХОЦОРСОН (`orderArrivalLate` — арга хэмжээ эхлэхэд бэлэн биш): тэр
+     захиалгын ГАРАХ ТАЛЫН дамжлага (баглах · бүртгэж гаргах · буулгах ·
+     суурилуулах) бүхэлдээ муу → оноо нь хасах оноо болно. Нэг баг — хэн
+     удаашруулсныг товчны цагаар тогтоох найдваргүй (бүртгэлийг багцаар дардаг).
+   · ЧАНАРГҮЙ (`dispatch.defects` — нярав тоолсон алдаатай ширхэг): цэвэрлэх /
+     баглах дамжлагын муу хувь = алдаа ÷ гарсан нийт ширхэг.
+   ⛔ Товчоо 24 цагаас хожуу дарсан (хэмжээгүй) нь «хоцорсон» гэж тооцогдоно —
+     цагтаа гэдгийг нотлох зүйлгүй бол торгуулиас мултрах нүх болно.
+   ⛔ Сарын бонус 0-ээс доош ОРОХГҮЙ — суурь цалингаас хасахгүй (хөдөлмөрийн
+     хуулиар цалингаас дур мэдэн суутгал хийж болохгүй).
+   ⛔ `from`-оос өмнөх сард ХЭРЭГЛЭГДЭХГҮЙ (9 сар хэвээр — CEO, 2026-10-05).
+   Тохиргоо `app_config['stage_pay'].penalty` = {from, late_grace_min}. */
+const STAGE_PENALTY_DEFAULT = { from: '2026-10', late_grace_min: 15 };
+const STAGE_LATE_CHAIN = ['prepare', 'dispatch', 'deliver', 'setup'];
+function stagePenaltyCfg() {
+  const c = _stagePayCfg().penalty;
+  const o = (c && typeof c === 'object') ? c : {};
+  const from = /^\d{4}-\d{2}$/.test(String(o.from || '')) ? String(o.from) : STAGE_PENALTY_DEFAULT.from;
+  const g = Number(o.late_grace_min);
+  return { from, graceMin: (g >= 0 && g <= 240) ? g : STAGE_PENALTY_DEFAULT.late_grace_min, off: o.off === true };
+}
+// Нэг захиалгын «хоцорсон уу» — ганц удаа бодогдоно. Цэвэр функц.
+function orderLateForPenalty(o, graceMin) {
+  const r = orderArrivalLate(o);
+  if (!r) return null;                                   // хэмжих боломжгүй (очиж авах, цаггүй) → хасахгүй
+  // ⛔ +24ц (хожуу дарсан) ч хоцорсонд орно. Эхлэх/бэлэн болсон цагийг ажилтанд ИЛ хэлэхийн тулд хадгална.
+  return r.lateH * 60 > graceMin ? { lateH: r.lateH, startMs: r.plan.startMs, at: r.at, src: r.src, setup: r.plan.setup } : null;
+}
+// Тухайн дамжлагын МУУ хувь (0..1) ба шалтгаан. Цэвэр функц — тестлэгдэнэ.
+function stageBadShare(o, key, late) {
+  if (late && STAGE_LATE_CHAIN.indexOf(key) >= 0) return { share: 1, why: 'late' };
+  if (key === 'clean' || key === 'prepare') {
+    const d = o && o.stage_meta && o.stage_meta.dispatch;
+    if (d && d.defChecked && Array.isArray(d.defects)) {
+      const bad = d.defects.filter(x => x && x.stage === key).reduce((t, x) => t + (Number(x.n) || 0), 0);
+      if (bad > 0) {
+        const tot = Array.isArray(d.items) && d.items.length
+          ? d.items.reduce((t, x) => t + (Number(x.got != null ? x.got : x.qty) || 0), 0) : orderItemQty(o);
+        if (tot > 0) return { share: Math.min(1, bad / tot), why: 'defect', n: bad, tot };
+      }
+    }
+  }
+  return null;
+}
+/* Нэг дамжлагын оноо: нийт · сайн · муу (хасах). ГАНЦ бодолт — бонусын нэгтгэл
+   (`stagePayByPerson`) ба дамжлагын түүхийн шошго хоёул үүнийг дуудна, тоо зөрөхгүй.
+   `ctx` = {bands, pen, lateOf(o)} — хоцролтыг захиалга бүрд НЭГ удаа бодно.
+   Буцаах: null (оноогүй дамжлага) эсвэл {pts, good, badPts, bad, late}. */
+function stageEntryPts(o, key, e, ctx) {
+  if (!e || typeof e !== 'object' || STAGE_FEE_STAGES.indexOf(key) < 0) return null;
+  const pts = stagePtsForQty(orderItemQty(o), ctx.bands) * stageWeight(key);
+  if (pts <= 0) return null;   // жолоо г.м. бонусгүй дамжлага
+  const ym = String(e.at || '').slice(0, 7), pen = ctx.pen, on = !pen.off && ym >= pen.from;
+  /* ⛔ АЛГАССАН дамжлага (`skipped`) оноо АВАХГҮЙ — ажил аппад хийгдээгүй, зураггүй.
+     Амьд датаар хуучин захиалгыг хожим оруулахдаа 8 дамжлагыг 30 секундэд
+     «алгасаж» бонус авч байв. 9 сар хэвээр (`from`). */
+  if (e.skipped && on) return null;
+  const late = on ? ctx.lateOf(o) : null;
+  const bad = on ? stageBadShare(o, key, late) : null;
+  const good = pts * (1 - (bad ? bad.share : 0));
+  return { pts, good, badPts: pts - good, bad, late };
+}
+function stagePtsCtx() {
+  const pen = stagePenaltyCfg(), memo = new Map();
+  return { bands: stagePtBands(), pen, lateOf: o => {
+    if (!memo.has(o)) memo.set(o, orderLateForPenalty(o, pen.graceMin));
+    return memo.get(o);
+  } };
+}
+// Хасах онооны ШАЛТГААН — ажилтан «аан, ийм алдаа хийсэн юм байна» гэж ойлгох үгээр.
+function stagePenReason(bad, key) {
+  if (!bad) return '';
+  if (bad.why === 'defect') {
+    return `Нярав ${bad.tot}-аас ${bad.n} барааг ${key === 'clean' ? 'цэвэрлэгээгүй' : 'ачихад эвдрэх эрсдэлтэй'} гэж бүртгэсэн`;
+  }
+  const lt = bad.late || {};
+  if (lt.lateH > DISPATCH_WILD_H) return `Товчийг ${Math.round(lt.lateH)}ц хожуу дарсан — цагтаа очсоныг нотлох зүйлгүй`;
+  const st = lt.startMs ? ubStamp(new Date(lt.startMs).toISOString(), false) : '';
+  const at = lt.at ? ubStamp(lt.at, false) : '';
+  return `Арга хэмжээ ${st}-д эхлэх байсан, ${lt.setup ? 'суурилуулалт' : 'бараа'} ${at}-д бэлэн болсон — ${lt.lateH}ц хоцорсон`;
+}
+function stageLeadWeight() { const v = Number(_stagePayCfg().lead_weight); return (v >= 1 && v <= 5) ? v : STAGE_LEAD_WEIGHT; }
 function stageHelperMax() { const v = Number(_stagePayCfg().helper_max); return (v >= 1) ? Math.floor(v) : STAGE_FEE_HELPER_MAX; }
 // Барааны тоогоор шатлалын хөлс. Тоо нь 0 (бараагүй захиалга) бол хамгийн доод шатлал.
 function stageFeeForQty(qty, bands) {
@@ -12512,52 +13118,229 @@ function stageFeeForQty(qty, bands) {
   for (const [lim, fee] of B) if (q <= lim) return fee;
   return B[B.length - 1][1];
 }
+// ₮/оноо — тохиргооноос, кодын утга нөөц.
+function stagePointRate() { const v = Number(_stagePayCfg().rate); return (v > 0) ? v : STAGE_PT_RATE; }
+function stagePtBands() {
+  const b = _stagePayCfg().pt_bands;
+  if (!Array.isArray(b) || !b.length) return STAGE_PT_BANDS;
+  const out = b.map(x => [Number(x[0]) || 0, Number(x[1]) || 0]).filter(x => x[1] > 0).sort((a, z) => a[0] - z[0]);
+  if (!out.length) return STAGE_PT_BANDS;
+  out[out.length - 1][0] = Infinity;   // дээд шатлал ҮРГЭЛЖ хязгааргүй — эс бол том захиалга 0 оноо болно
+  return out;
+}
+// Барааны тоогоор ОНОО (хөлстэй ижил шатлал, зөвхөн нэгж нь оноо).
+function stagePtsForQty(qty, bands) {
+  const q = Math.max(0, Number(qty) || 0);
+  const B = bands || stagePtBands();
+  for (const [lim, pts] of B) if (q <= lim) return pts;
+  return B[B.length - 1][1];
+}
+/* Дамжлагын ЖИН — «энэ ажил хэр хүнд вэ» (CEO, 2026-10-03). `PIPELINE`-ийн
+   мөрөөс уншина; тэнд байхгүй бол 1 (шинэ дамжлага чимээгүй 0 болохгүй).
+   ⛔ Жолоо = 0 — жолооч 10,000₮-ийн нэмэгдэл ТУСДАА авдаг (давхар төлөхгүй). */
+/* Дамжлагын НОТОЛГОО — 'photo' (зураг) эсвэл 'count' (тоо тулгалт).
+   ⛔ Бүртгэх дамжлагад (гаргах/хүлээн авах) зураг шаардахгүй — нярав тоолж
+     бүртгэх ажил хийдэг, зураг нь нэмэлт дэмий алхам (CEO, 2026-10-03).
+     ГЭХДЭЭ орлуулах нотолгоо ЗААВАЛ: зураг нь дамжлагыг хуурамчлахаас
+     хамгаалдаг цорын ганц зүйл байсан тул ТОО нь түүнийг орлоно.
+   ⚠ Танихгүй дамжлага → 'photo' (хамгаалалт сулрахгүй). */
+function stageEvidence(key) {
+  for (const r of PIPELINE) if (r.key === key && r.ev) return r.ev;
+  return key === 'archive' ? '' : 'photo';
+}
+/* ─── ДАМЖЛАГЫН НЭР = ТОХИРГООНООС (2026-10-04, CEO) ───────────────────────
+   Нэр нь үйл ажиллагааны үг — аппаас солигддог байх ёстой, код засах биш.
+   ⛔ ТҮЛХҮҮР нь `key|to` — нэг түлхүүр ХОЁР нэртэй байж болно («Бүртгэж
+     гаргасан» ба «Үйлчлүүлэгчид өгсөн» хоёул `dispatch`). Зөвхөн `key`-ээр
+     хадгалбал нэгийг нь сольход нөгөө нь ч солигдоно. */
+function stageLabelKey(row) { return String(row.key) + '|' + String(row.to); }
+function stageLabel(row) {
+  if (!row) return '';
+  const L = _stagePayCfg().labels;
+  const v = L && typeof L === 'object' ? L[stageLabelKey(row)] : null;
+  return (v && String(v).trim()) ? String(v).trim() : String(row.label || row.key || '');
+}
+// Түүхийн нэр — түлхүүрээр (эхний таарсан мөрийн нэр)
+function stageHistLabel(key) {
+  const r = PIPELINE.find(x => x.key === key);
+  return r ? stageLabel(r) : (STAGE_META_LABEL[key] || key);
+}
+function stageWeight(key) {
+  // Тохиргооны override ЭХЛЭЭД (аппаас засдаг), эс бол PIPELINE-ийн анхдагч жин.
+  const w = _stagePayCfg().weights;
+  if (w && typeof w === 'object' && w[key] !== undefined && w[key] !== null && w[key] !== '') {
+    const v = Number(w[key]);
+    if (isFinite(v) && v >= 0) return v;
+  }
+  for (const r of PIPELINE) if (r.key === key && r.pts !== undefined) return Number(r.pts) || 0;
+  return 1;
+}
+/* Тохиргооны дэлгэцэд харуулах ДАМЖЛАГУУД — `PIPELINE`-аас давхардалгүй, дараалалтай.
+   ⚠ Жагсаалт нь ГАНЦ эх сурвалжаас — тусдаа жагсаалт бичвэл шинэ дамжлага
+     тохиргооны дэлгэцэд гарахгүй үлдэнэ. */
+function stageDefs() {
+  const seen = new Set(), out = [];
+  for (const r of PIPELINE) {
+    if (!r.key || seen.has(r.key)) continue;
+    seen.add(r.key);
+    out.push({ key: r.key, label: String(r.label || r.key).replace(/^[^\p{L}]+/u, '').trim(),
+               cap: r.cap, ev: stageEvidence(r.key), pts: stageWeight(r.key), base: r.pts });
+  }
+  return out;
+}
 // Захиалгын барааны НИЙТ тоо ширхэг (мөрийн тоо БИШ — ачаа зөөх хөдөлмөр нь тоогоор).
 function orderItemQty(o) {
   return ((o && Array.isArray(o.items)) ? o.items : []).reduce((t, it) => t + (Number(it && it.qty) || 0), 0);
 }
-/* Сарын шатны хөлс — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
+/* ─── АЖЛЫН ЧАНАР = АЛДААНЫ ХАРЬЦАА (2026-10-04, CEO) ───────────────────────
+   ★ нь үнэлэгчээс хамаардаг (амьд датаар нэг нярав дундаж 4.87, нөгөө нь 2.91
+   өгдөг) тул ижил ажил хэнд таарснаас шалтгаалж өөр оноо авч байв. Алдааны
+   ШИРХЭГ хүн болгонд ижил утгатай бөгөөд дахин ажиллах зардал болж хувирна.
+   Чанар = 1 − (алдаатай ширхэг ÷ тухайн хүний гаргасан нийт ширхэг).
+   ⛔ **ШАЛГААГҮЙГ «АЛДААГҮЙ» ГЭЖ ТООЛОХГҮЙ** — зөвхөн `defChecked` тэмдэгтэй
+     бүртгэлээс тоолно. Эс бөгөөс шалгалт хийгээгүй бүх захиалга «төгс» болж,
+     хэмжүүр чимээгүй утгаа алдана.
+   ⚠ ЦЭВЭР функц — тестлэгдэнэ. Захиалгын жагсаалт + сар дамжуулна. */
+function defectStats(orders, month) {
+  const out = {};
+  const add = (k, items, bad) => {
+    if (!k) return;
+    const r = out[k] || (out[k] = { items: 0, defects: 0, checked: 0, rate: null });
+    r.items += items; r.defects += bad; r.checked += 1;
+  };
+  for (const o of (orders || [])) {
+    const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    const d = sm.dispatch;
+    if (!d || typeof d !== 'object' || !d.defChecked) continue;
+    if (month && String(d.at || '').slice(0, 7) !== month) continue;
+    // Нийт = гарсан тоо (бүртгэгдээгүй бол захиалгын тоо)
+    const tot = Array.isArray(d.items) && d.items.length
+      ? d.items.reduce((t, x) => t + (Number(x.got != null ? x.got : x.qty) || 0), 0)
+      : orderItemQty(o);
+    if (tot <= 0) continue;
+    const defs = Array.isArray(d.defects) ? d.defects : [];
+    ['clean', 'prepare'].forEach(k => {
+      const e = sm[k];
+      if (!e || typeof e !== 'object' || !e.by) return;
+      const bad = defs.filter(x => x && x.stage === k).reduce((t, x) => t + (Number(x.n) || 0), 0);
+      add(String(e.by), tot, bad);
+    });
+  }
+  Object.keys(out).forEach(k => {
+    const r = out[k];
+    r.rate = r.items > 0 ? Math.max(0, 1 - r.defects / r.items) : null;
+  });
+  return out;
+}
+/* Сарын дамжлагын бонус — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
    Буцаах: { key: {led, helped, qty, ledFee, helperFee, total} } */
 function stagePayByPerson(orders, month) {
-  const bands = stageFeeBands(), share = stageHelperShare(), hmax = stageHelperMax();
+  const bands = stagePtBands(), lead = stageLeadWeight(), hmax = stageHelperMax(), rate = stagePointRate();
+  const ctx = stagePtsCtx();
   const out = {};
-  const bump = (k, f, fld, cntFld) => {
-    if (!k) return;
-    const r = out[k] || (out[k] = { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, total: 0 });
-    r[fld] += f; r[cntFld] += 1; r.total = r.ledFee + r.helperFee;
-  };
+  const get = k => out[k] || (out[k] = { led: 0, helped: 0, qty: 0, ledPts: 0, helperPts: 0, penPts: 0, pts: 0,
+    ledFee: 0, helperFee: 0, penFee: 0, total: 0, lateN: 0, defN: 0, penOrders: [] });
   for (const o of (orders || [])) {
     const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
     const qty = orderItemQty(o);
     for (const key of Object.keys(sm)) {
       const e = sm[key];
       if (!e || typeof e !== 'object') continue;
-      if (STAGE_FEE_STAGES.indexOf(key) < 0) continue;
       if (month && String(e.at || '').slice(0, 7) !== month) continue;
-      const fee = stageFeeForQty(qty, bands);
+      // ⛔ ОНООГООР бодно: барааны тооны шатлал × дамжлагын жин. ₮ нь ТӨГСГӨЛД ганц ханшаар.
+      const sp = stageEntryPts(o, key, e, ctx);
+      if (!sp) continue;
       const by = e.by ? String(e.by) : '';
-      if (by) { bump(by, fee, 'ledFee', 'led'); out[by].qty += qty; }
-      const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String).filter(Boolean).slice(0, hmax);
-      if (hs.length && share > 0) {
-        const each = fee * share / hs.length;
-        hs.forEach(h => bump(h, each, 'helperFee', 'helped'));
-      }
+      const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String).filter(Boolean)
+        .filter(h => h !== by).slice(0, hmax);
+      /* Сан ТОГТМОЛ: нэгж = хариуцсан 1.3 + хамтрагч тус бүр 1.0. Хүн олшрох
+         тусам хүн бүрийн хувь буурна, НИЙТ дүн хөдлөхгүй. */
+      const units = (by ? lead : 0) + hs.length;
+      if (units <= 0) continue;
+      // Хасах оноо — сайн хэсэг +, муу хэсэг ТЭР ХЭМЖЭЭГЭЭР − (хамтрагч ч хувиа үүрнэ)
+      const good = sp.good, badPts = sp.badPts, bad = sp.bad ? { ...sp.bad, late: sp.late } : null;
+      const share = (k, w, fld, cnt) => {
+        const r = get(k);
+        r[fld] += good * w / units; r[cnt] += 1;
+        if (badPts > 0) {
+          r.penPts += badPts * w / units;
+          if (bad.why === 'late') r.lateN += 1; else r.defN += 1;
+          r.penOrders.push({ number: o.number, key, why: bad.why, lateH: sp.late ? sp.late.lateH : null, n: bad.n || 0,
+            text: stagePenReason(bad, key), pts: badPts * w / units });
+        }
+      };
+      if (by) { share(by, lead, 'ledPts', 'led'); out[by].qty += qty; }
+      hs.forEach(h => share(h, 1, 'helperPts', 'helped'));
     }
   }
-  Object.keys(out).forEach(k => { const r = out[k]; r.total = Math.round(r.ledFee + r.helperFee); r.ledFee = Math.round(r.ledFee); r.helperFee = Math.round(r.helperFee); });
+  Object.keys(out).forEach(k => {
+    const r = out[k];
+    r.pts = Math.round((r.ledPts + r.helperPts - r.penPts) * 100) / 100;
+    r.ledFee = Math.round(r.ledPts * rate); r.helperFee = Math.round(r.helperPts * rate);
+    r.penFee = Math.round(r.penPts * rate);
+    // ⛔ Сарын бонус 0-ээс доош БИШ — суурь цалингаас хасахгүй. Хасалт нь олсон бонусаар хязгаарлагдана.
+    r.penApplied = Math.min(r.penFee, r.ledFee + r.helperFee);
+    r.total = r.ledFee + r.helperFee - r.penApplied;
+    r.penOrders.forEach(x => { x.fee = Math.round(x.pts * rate); });
+  });
   return out;
 }
-// Нэг хүний сарын шатны хөлс (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
+/* Сарын шилдэг гүйцэтгэгч — дамжлагын оноогоор эрэмбэлсэн (Тойм). ЦЭВЭР функц.
+   Оноо нь бонусын ИЖИЛ бодолтоос (`stagePayByPerson`) — дүрэм хоёр газар салбарлахгүй. */
+/* ⛔ `roster` дахь хүн ОНООГҮЙ ч ЖАГСААЛТАД ГАРНА (2026-10-05, CEO: «бүх үндсэн
+   ажилтан гардаг байх ёстой») — 0 оноо нь «энэ сард дамжлагад оролцоогүй» гэсэн
+   мэдээлэл, нуух ёсгүй. Ростерт байхгүй ч оноотой хүн (цагийн ажилтан г.м.) ч орно. */
+function stageTopPerformers(orders, month, roster) {
+  const all = stagePayByPerson(orders || [], month);
+  const keys = new Set([...(roster || []).map(String), ...Object.keys(all).filter(k => (all[k].pts || 0) > 0)]);
+  return [...keys].map(k => { const r = all[k] || {}; return { key: k, pts: r.pts || 0, led: r.led || 0, helped: r.helped || 0 }; })
+    .sort((a, b) => b.pts - a.pts || b.led - a.led);
+}
+// Нэг хүний сарын дамжлагын бонус (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
+/* Бонусын мөр(үүд): олсон + хасалт. Нийлбэр нь `b.bonus` (= sp.total)-тэй ЯГ
+   таарна — нийлбэрээс өмнө тавигдана. Карт ба самбар хоёул үүнийг дуудна. */
+function stagePenWhy(sp) {
+  const po = (sp && sp.penOrders) || [];
+  const lateN = new Set(po.filter(x => x.why === 'late').map(x => x.number)).size;
+  const defN = po.filter(x => x.why === 'defect').length;
+  return [lateN ? `${lateN} захиалга хоцорсон` : '', defN ? `${defN} ажил чанаргүй` : ''].filter(Boolean).join(' · ');
+}
+function stageBonusRowsHtml(sp, bonus, lineFn, label) {
+  const earned = sp ? (sp.ledFee || 0) + (sp.helperFee || 0) : 0;
+  const pen = sp ? (sp.penApplied || 0) : 0;
+  if (!pen) return bonus ? lineFn(label, `+${fmtMoney(bonus)}`, 'pay-plus') : '';
+  return (earned ? lineFn(label, `+${fmtMoney(earned)}`, 'pay-plus') : '')
+    + lineFn(`⚠ Хасах оноо · ${stagePenWhy(sp)}`, `−${fmtMoney(pen)}`, 'pay-minus');
+}
+// Аль ажлаас хасагдсан — захиалгаар бүлэглэсэн жагсаалт. ⛔ НЭЭЛТТЭЙ, шалтгаан нь
+// бүтэн өгүүлбэрээр — ажилтан «аан, ийм алдаа хийсэн юм байна» гэж ойлгох ёстой (CEO).
+function stagePenListHtml(sp) {
+  const by = {};
+  ((sp && sp.penOrders) || []).forEach(x => {
+    const g = by[x.number + '|' + x.why] || (by[x.number + '|' + x.why] = { number: x.number, text: x.text, keys: [], pts: 0, fee: 0 });
+    g.keys.push(stageHistLabel(x.key)); g.pts += x.pts || 0; g.fee += x.fee || 0;
+  });
+  const rows = Object.values(by).sort((a, z) => z.fee - a.fee);
+  if (!rows.length) return '';
+  return `<details class="sp-pen-det" open><summary>Аль ажлаас хасагдсан бэ (${rows.length})</summary>${rows.map(g => `<div class="sp-pen-row">
+      <span class="sp-pen-n">#${escapeHtml(String(g.number ?? '—'))}</span>
+      <span class="sp-pen-w">${escapeHtml(g.text || '')}<span class="sp-pen-k">${escapeHtml(g.keys.join(', '))}</span></span>
+      <span class="sp-pen-f">−${Math.round(g.pts * 10) / 10} оноо<small>−${fmtMoney(g.fee)}</small></span></div>`).join('')}</details>`;
+}
 function stagePayFor(key, month, orders) {
   const all = stagePayByPerson(orders || state.appOrders || [], month);
-  return all[String(key)] || { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, total: 0 };
+  return all[String(key)] || { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, penFee: 0, penApplied: 0, total: 0, lateN: 0, defN: 0, penOrders: [] };
 }
 function driverBonus(key, month, orders) {
   let deliveries = 0, pickups = 0; const trips = [];
   for (const o of (orders || state.appOrders || [])) {
     if (typeof isDeliveryOrder === 'function' && !isDeliveryOrder(o)) continue;   // зөвхөн хүргэлттэй захиалга
     const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
-    const mine = (e) => e && String(e.by) === String(key) && (!month || String(e.at || '').slice(0, 7) === month);
+    /* ⛔ ЖОЛООЧ = `e.driver`, дамжлага дарсан хүн БИШ (2026-10-03, CEO).
+       Хүргэлтэд жолооч жолоодож, бусад нь ачаа буулгадаг — өмнө нь нэг хүн
+       дамжлагын оноо БА 10,000₮-ийн нэмэгдэл ХОЁУЛАНГ авдаг байв.
+       ⚠ Хуучин бичлэгт `driver` талбар БАЙХГҮЙ тул `by` руу унана (түүх эвдрэхгүй). */
+    const mine = (e) => e && String(e.driver || e.by) === String(key) && (!month || String(e.at || '').slice(0, 7) === month);
     const addr = o.delivery_address || o.customer_address || o.customer || o.company || '';
     // stage_meta нь act.key-ээр хадгалагдана: delivering→rented='deliver', rented→returning='retstart'
     if (mine(sm.deliver)) { deliveries++; trips.push({ number: o.number, date: String(sm.deliver.at || '').slice(0, 10), type: 'Хүргэсэн', addr }); }
@@ -12569,6 +13352,193 @@ function driverBonus(key, month, orders) {
 }
 // Жолоочийн хариуцлагын сануулга (улаан) — ирц/жолооны нэмэгдэл дээр харуулна.
 const DRIVER_LIABILITY_NOTE = 'Та жолоо барьж байгаад торгуульсан, торгууль нь жолоочийн буруугаас бол торгууль болон хохирлыг жолооч өөрөө хариуцна.';
+/* ─── САРЫН ЦАЛИН — ажилтан ӨӨРӨӨ харна (2026-10-02, CEO шийдвэр) ───────────
+   Гарт очих = суурь цалин (суутгалын дараа) + ИЛҮҮ ЦАГ + ХҮРГЭЛТ + ДАМЖЛАГЫН БОНУС.
+   ⚠ 2026-10-04: бонус нийт олгоход ОРСОН (CEO). Өмнө нь тусдаа байсан —
+     ажилтан хоёр тоо харж, аль нь гарт очихыг мэдэхгүй байв. Суутгал нь
+     ЗӨВХӨН суурь цалингаас хэвээр (илүү цаг, хүргэлттэй ижил).
+   ⛔ ИЛҮҮ ЦАГ = САРЫН нийт цаг − норм (23×8=184ц), ӨДРӨӨР БИШ. Өдрөөр бодвол
+     богино өдрүүд нөхөгдөхгүй тул нэг хүний илүү цаг 2 дахин хүртэл өснө.
+   ⛔ ХУВЬ = 1.0 (энгийн цагийн хөлс, `OVERTIME_RATE`). Цагийн хөлс = суурь
+     цалин ÷ нормын цаг. ⚠ Хөдөлмөрийн хуулийн доод хэмжээ 1.5 — өөрчлөх бол
+     кодыг БИШ `app_config['overtime'].rate`-ийг зас.
+   ⛔ НЭМЭГДЭЛД СУУТГАЛ ТООЦОХГҮЙ (CEO шийдвэр) — НДШ/ХХОАТ зөвхөн СУУРЬ
+     цалингаас. Нэмэгдэл бүтнээрээ гарт очно.
+   ⚠ Гарах бүртгэлгүй өдөр 0 цаг тоологддог тул илүү цаг ДУТУУ гарна — картад
+     ил бичигдэнэ (нуувал ажилтан «цаг минийх алга» гэж гомдоно). */
+const OVERTIME_RATE = 1.0;
+function overtimeRate() {
+  const v = Number((state.appConfig && state.appConfig.overtime || {}).rate);
+  return (v >= 0 && v <= 5) ? v : OVERTIME_RATE;
+}
+/* Нэг хүний сарын цалингийн задаргаа. ЦЭВЭР функц (нормыг гаднаас өгч болно) тул тестлэгдэнэ.
+   Буцаах: { base, ndsh, pit, netBase, otMins, hourly, otRate, otPay, delivery, total } */
+/* ⛔ НОРМД ХҮРЭЭГҮЙ БОЛ СУУРЬ ЦАЛИН АЖИЛЛАСАН ЦАГААР (2026-10-03, CEO: «184ц болзол
+   хангаагүй байгаа ч үндсэн цалингаар бодогдсон — ажилласан цагаар нь гаргаж өгнө үү»).
+   Норм = бүтэн суурь цалингийн НӨХЦӨЛ. Дутуу бол суурь × ажилласан ÷ норм — илүү
+   цагтай ТЭГШ хэмтэй: хоёулаа ижил цагийн хөлсөөр (суурь ÷ норм).
+   ⛔ Цаг МЭДЭГДЭХГҮЙ (`workedMins` = null: ирц ачаалагдаагүй, эсвэл тэр сард огт
+     бүртгэлгүй) бол ХАСАХГҮЙ — мэдэхгүйг 0 цаг гэж үзвэл цалин чимээгүй тэглэгдэнэ.
+     Ирц бүртгүүлдэггүй цалинтай хүн «ирц бүртгүүлээгүй» анхааруулгаар ил гарна.
+   ⚠ Суутгал нь ЦАГААР БОДСОН суурьаас — олгоогүй мөнгөнөөс татвар суутгахгүй.
+   ⛔ ЦАЛИНГИЙН ТООЦООНЫ ЭХЛЭХ САРААС (`payrollStartMonth` = 9 сар) — CEO 2026-10-03:
+     «цагтаа хүрээгүй хүнд бүтэн цалин өгөх нь буруу шүү дээ». ⚠ Өмнө нь 10 сараас
+     гэж тавьсан нь «9 сард хэлж амжаагүй» гэсэн үгийг ЭНЭ дүрэмд буруу хамааруулсан
+     алдаа байв — тэр үг цайны цагийн тухай байсан. Тусдаа эхлэх сар ТАВИХГҮЙ:
+     нэг сарын цалин хоёр өөр дүрмээр бодогдохгүй.
+     Сар мэдэгдэхгүй (`month` дамжуулаагүй) бол ХАСАХГҮЙ — эргэлзвэл бүтэн суурь. */
+function payProrateFrom() { return payrollStartMonth(); }
+/* ⛔ ЯВЖ БУЙ САРД ДУТУУ ЦАГААР ХАСАХГҮЙ (2026-10-03). Сар дуусаагүй бол ирц ДУТУУ
+   (10-03-нд 2 хоногийн ирц) — норммоос «дутуу» нь хасалт биш, ердөө эрт. Өмнө нь
+   суурь 10% болж урьдчилгаа авсан хүн «2.2 сая илүү авсан» гэж ХУДАЛ харагдаж байв.
+   `today`-г тест дамжуулна; дуудагч дамжуулахгүй (өнөөдөр). */
+function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today, stageBonus) {
+  base = Math.max(0, Number(base) || 0);
+  const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins(month);   // ⚠ норм = тэр сарын хуанли
+  const known = workedMins !== null && workedMins !== undefined && isFinite(Number(workedMins));
+  const worked = known ? Math.max(0, Number(workedMins)) : 0;
+  const curM = String(today || todayStr()).slice(0, 7);
+  const prorate = /^\d{4}-\d{2}$/.test(String(month || '')) && String(month) >= payProrateFrom() && String(month) < curM;
+  const shortMins = (known && prorate) ? Math.max(0, Math.round(norm - worked)) : 0;
+  const earned = shortMins > 0 ? Math.round(base * worked / norm) : base;
+  const d = salaryNet(earned, deduct);                     // суутгал ЗӨВХӨН (цагаар бодсон) суурьд
+  const otMins = known ? Math.max(0, Math.round(worked - norm)) : 0;
+  const hourly = norm > 0 ? base / (norm / 60) : 0;
+  const r = (rate === undefined || rate === null) ? overtimeRate() : (Number(rate) || 0);
+  const otPay = Math.round(otMins / 60 * hourly * r);
+  const delivery = Math.max(0, Math.round(Number(deliveryAmt) || 0));
+  /* ⛔ ДАМЖЛАГЫН БОНУС НИЙТ ОЛГОХОД ОРНО (2026-10-04, CEO шийдвэр —
+     2026-10-02-ны «орохгүй» шийдвэрийг СОЛИВ). ⚠ СУУТГАЛ ТООЦОХГҮЙ:
+     илүү цаг, хүргэлттэй ижил — НДШ/ХХОАТ зөвхөн суурь цалингаас. */
+  const bonus = Math.max(0, Math.round(Number(stageBonus) || 0));
+  return {
+    base, earned, shortMins, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
+    otMins, hourly: Math.round(hourly), otRate: r, otPay,
+    delivery, bonus, total: d.net + otPay + delivery + bonus,
+  };
+}
+/* ⛔ ЦАЛИНГИЙН ТООЦОО 2026-09-ААС ЭХЭЛНЭ (2026-10-03, CEO шийдвэр) ───────────
+   8 сар ба түүнээс өмнөх цалинг өдөр/цаг/нэмэгдлээр нь ГАРААР тооцож олгосон.
+   Аппын тооцоо нь ОДООГИЙН суурь цалинг (`staff_salary` — ганц утга, түүх
+   хадгалдаггүй) тэр сарын ирцэд хэрэглэдэг тул хуучин сард ХУДАЛ «Үлдэгдэл»
+   гаргадаг — хүн түүнийг хараад ДАХИН олгож мэднэ. Тиймээс эхлэх сараас
+   ӨМНӨХ сард зөвхөн ОЛГОСОН түүх харагдана: бодсон «Нийт олгох», «Үлдэгдэл»,
+   «Илүү олгосон» ОГТ гарахгүй.
+   ⚠ Эхлэх сар = `app_config['payroll'].start`; кодын утга зөвхөн нөөц.
+   ⛔ **`state.appConfig`-ЭЭС БҮҮ УНШ** — тэр объектыг серверээс ачаалдаг код
+     ОГТ БАЙХГҮЙ (зөвхөн тухайн сессийн бичилтээр дүүрдэг) тул DB-ийн утга
+     ХЭЗЭЭ Ч хүрэхгүй. Ажилладаг хэв маяг = `coo_share`-ийнх: тусдаа state
+     талбар + `loadAppConfig(түлхүүр)`. */
+const PAYROLL_START_DEFAULT = '2026-09';
+function payrollStartMonth() {
+  const c = state.payrollCfg;
+  const s = (c && typeof c === 'object') ? String(c.start || '') : '';
+  return /^\d{4}-\d{2}$/.test(s) ? s : PAYROLL_START_DEFAULT;
+}
+// Тохиргоог нэг л удаа татна. Ачаалагдтал кодын нөөц утга ажиллана (ижил тул
+// дэлгэц анивчихгүй), ирмэгц `render()` дуудагдана.
+function ensurePayrollCfg() {
+  if (state.payrollCfg !== undefined) return;
+  state.payrollCfg = null;
+  if (typeof loadAppConfig !== 'function') return;
+  loadAppConfig('payroll').then(v => { state.payrollCfg = (v && typeof v === 'object') ? v : {}; if (typeof render === 'function') render(); });
+}
+// Тухайн сар ТҮҮХ үү (тооцоо хийхгүй, зөвхөн олгосон дүн)?
+function payrollHistOnly(ym, start) {
+  const s = start || payrollStartMonth();
+  return /^\d{4}-\d{2}$/.test(String(ym || '')) && String(ym) < s;
+}
+/* ── ИЛҮҮ ОЛГОЛТ ДАРААГИЙН САРД ШИЛЖИНЭ (2026-10-03, CEO) ─────────────────────
+   Сард олгосон нь тэр сарын «нийт олгох»-оос их бол илүү нь ДАРААГИЙН сарын олгох
+   дүнгээс хасагдана (урьдчилж авсан цалин г.м.). Гинж нь цалингийн тооцооны эхлэх
+   сараас (`payrollStartMonth`) эхэлнэ — түүнээс өмнөх сар ТҮҮХ, бодолтгүй.
+   ⛔ ЗӨВХӨН СУУРЬ ЦАЛИНТАЙ хүнд. Суурь цалингүй хүний «илүү» нь цалингийн илүү биш
+     (COO-гийн ашгийн урамшуулал, нэрээр тулгагдсан зардал) — шилжүүлбэл дараа сард
+     ЗОХИОМОЛ өр үүснэ. Амьд датаар 9 сарын 3 «илүү»-гийн 2 нь яг ийм байв.
+   ⛔ Өмнөх сарын ирц ачаалагдаагүй бол `ready:false` — 0 гэж үзвэл үлдэгдэл хиймлээр
+     өсч хүн ДАХИН олгоно. Дэлгэц ил хэлнэ.
+   ⚠ ДУТУУ (үлдэгдэл) шилжихгүй — тэр нь тухайн сарын үлдэгдэл хэвээр (дараа сарын
+     5-нд олгоход ноогдох сараараа тэр сард бүртгэгдэнэ).
+   ⚠ Өмнөх сарыг ОДООГИЙН суурь цалингаар бодно (`staff_salary` түүх хадгалдаггүй). */
+function payCarryMonths(ym, start) {
+  const s = start || payrollStartMonth(), out = [];
+  if (!/^\d{4}-\d{2}$/.test(String(ym || '')) || !/^\d{4}-\d{2}$/.test(String(s || ''))) return out;
+  for (let m = s; m < ym && out.length < 60; m = nextMonthStr(m)) out.push(m);
+  return out;
+}
+// ЦЭВЭР: [{total, paid}] сараар → мөр бүрт carryIn (өмнөх сарын илүү), owed, over
+function payCarryChain(rows) {
+  let carry = 0;
+  return (rows || []).map(r => {
+    const carryIn = carry;
+    const b = payBalance(r.total, (Number(r.paid) || 0) + carryIn);
+    carry = b.over;
+    return Object.assign({}, r, { carryIn, owed: b.owed, over: b.over });
+  });
+}
+// minsOf(сар) → тэр сарын ажилласан минут · null = ирцгүй · undefined = ачаалагдаагүй
+function salaryCarryIn(key, ym, minsOf) {
+  const base = Number((state.salaries || {})[key]) || 0;
+  const months = payCarryMonths(ym);
+  if (!base || !months.length) return { amount: 0, ready: true, from: '' };
+  const rows = [];
+  for (const m of months) {
+    const mins = minsOf(m);
+    if (mins === undefined) return { amount: 0, ready: false, from: '' };
+    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, workNormMins(m), driverBonus(key, m).amount, undefined, m, undefined, stagePayFor(key, m).total);
+    rows.push({ m, total: b.total, paid: salaryPaidFor(key, m) });
+  }
+  const ch = payCarryChain(rows);
+  return { amount: ch[ch.length - 1].over, ready: true, from: months[months.length - 1] };
+}
+/* Өмнөх сарын ирц — ЗӨВХӨН шилжүүлэлт бодоход. Сонгосон сарын `attMonthRecs`-ийг
+   ХӨНДӨХГҮЙ (эс бөгөөс самбар өөр сарын ирцээр зурагдана). */
+async function loadAttMonthCache(month) {
+  state.attMonthCache = state.attMonthCache || {};
+  state._attCacheBusy = state._attCacheBusy || {};
+  if (Array.isArray(state.attMonthCache[month]) || state._attCacheBusy[month]) return;
+  state._attCacheBusy[month] = true;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${month}-01&day=lt.${nextMonthStr(month)}-01&select=member_key,member_name,kind,ts,day&order=ts.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.attMonthCache[month] = await r.json();
+  } catch (e) { (state.attCacheErr = state.attCacheErr || {})[month] = true; dataLoadFailed('att-month-cache', e); }
+  delete state._attCacheBusy[month];
+  if (typeof render === 'function' && (state.view === 'salary' || state.view === 'attendance')) render();
+}
+// Тухайн сарын хүн бүрийн минут. undefined = ачаалагдаагүй (ачаалж эхэлнэ)
+function payrollMinsMap(month) {
+  const recs = (state.attMonthKey === month && Array.isArray(state.attMonthRecs)) ? state.attMonthRecs
+    : (state.attMonthCache && state.attMonthCache[month]);
+  if (!Array.isArray(recs)) {
+    if (!(state.attCacheErr && state.attCacheErr[month])) setTimeout(() => loadAttMonthCache(month), 0);
+    return undefined;
+  }
+  const memo = state._payMinsMemo || (state._payMinsMemo = {});
+  if (!memo[month] || memo[month].src !== recs) memo[month] = { src: recs, map: payrollAttMins(recs) };
+  return memo[month].map;
+}
+// Самбар ба ирцийн хүснэгтийн шилжүүлэлт — ГАНЦ газар
+function payrollCarryIn(key, ym) {
+  return salaryCarryIn(key, ym, m => {
+    const mp = payrollMinsMap(m);
+    if (mp === undefined) return undefined;
+    return mp[key] ? mp[key].mins : null;
+  });
+}
+/* Аль сарын цалинг анхдагчаар харуулах вэ. Үлдэгдэл дараа сарын 5-нд олгогддог тул
+   сарын эхээр хүн ӨМНӨХ сарынхаа цалинг хардаг — 10-02-нд «9 сар» нээгдэнэ.
+   ⚠ Эхлэх сараас ӨМНӨ гулсуулахгүй — тэр нь түүх, нээхэд хоосон харагдана. */
+function payMonthDefault(todayIso, start) {
+  const t = String(todayIso || todayStr());
+  const ym = t.slice(0, 7), day = Number(t.slice(8, 10)) || 1;
+  const p = ym.split('-').map(Number);
+  const prev = p[1] <= 1 ? `${p[0] - 1}-12` : `${p[0]}-${String(p[1] - 1).padStart(2, '0')}`;
+  const want = day > 5 ? ym : prev;
+  const s = start || (typeof payrollStartMonth === 'function' ? payrollStartMonth() : PAYROLL_START_DEFAULT);
+  return want < s ? s : want;
+}
 // Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг + нормын хувь
 function renderAttendanceMonth(month) {
   if (state.attMonthErr && state.attMonthErr.month === month) {
@@ -12579,7 +13549,7 @@ function renderAttendanceMonth(month) {
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
   const recs = state.attMonthRecs;
   if (!recs.length) return `<div style="text-align:center;color:var(--muted);padding:30px;">${month} сард ирц бүртгэгдээгүй.</div>`;
-  const normDays = workNormDays(), normMins = workNormMins();
+  const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
   const byM = {};
   recs.forEach(r => { const ck = attCanonKey(r); const m = (byM[ck] = byM[ck] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
   const rows = Object.keys(byM).map(k => {
@@ -12595,10 +13565,13 @@ function renderAttendanceMonth(month) {
   }).sort((a, b) => b.mins - a.mins);
   const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · Сарын норм <b style="color:var(--text)">${normDays}×8=${normDays * 8}ц</b> · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
   let anyDriver = false;
-  // ⚠ Шатны хөлсийг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
+  // ⚠ Дамжлагын бонусыг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
   //   рендер бүрд мянган давталт болно. Нэг удаа бодож, мөр бүрд уншина.
   const spAll = stagePayByPerson(state.appOrders || [], month);
   let spTotal = 0;
+  // Цалингийн мөр — хүн бүрийн доор. Мөнгө нь зөвхөн эрхтэйд; ИЛҮҮ ЦАГ нь бүгдэд (цаг = мөнгө биш).
+  const payVis = canSeeSalary();
+  if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   const list = rows.map(r => {
     const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
     const pctColor = pct >= 100 ? 'var(--ok)' : pct >= 80 ? 'var(--text-soft)' : 'var(--warn)';
@@ -12611,16 +13584,27 @@ function renderAttendanceMonth(month) {
     const driverLine = db.count ? `<div style="font-size:12px;color:var(--ok);margin-top:2px;">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span style="color:var(--muted);">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
     const sp = spAll[r.k];
     if (sp && sp.total) spTotal += sp.total;
-    const stageLine = (sp && sp.total) ? `<div class="sp-line">📦 Шатны хөлс: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span></div>` : '';
+    const stageLine = (sp && (sp.total || sp.penApplied)) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span>${sp.penApplied ? ` <span class="sp-pen-tag">⚠ −${fmtMoney(sp.penApplied)} · ${escapeHtml(stagePenWhy(sp))}</span>` : ''}</div>` : '';
+    // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ДАМЖЛАГЫН БОНУС ОРОХГҮЙ.
+    const otMins = Math.max(0, r.mins - normMins);
+    const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
+    const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
+    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month, undefined, (sp && sp.total) || 0) : null;
+    const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
+    const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
+    const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
+    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''})</span>`
+      + ((rPaid || rCarry.amount) ? ` <span class="sp-sub">— ${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)} · ${rBal.over > 0 ? `илүү <b>${fmtMoney(rBal.over)}</b> (дараа сард)` : `үлдэгдэл <b>${fmtMoney(rBal.owed)}</b>`}</span>` : ' <span class="sp-sub">— олгоогүй</span>')
+      + `</div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
       <div style="display:flex;align-items:center;gap:12px;">
       <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
       <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр · <b style="color:${pctColor};">${pct}%</b></div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)} <span style="font-weight:400;color:var(--muted);font-size:11px;">/ ${normDays * 8}ц</span></div></div>
-      </div>${noOutLine}${driverLine}${stageLine}</div>`;
+      </div>${noOutLine}${otLine}${driverLine}${stageLine}${payLine}</div>`;
   }).join('');
   const liabilityNote = anyDriver ? `<div style="margin-top:14px;padding:11px 13px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12.5px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
-  const spFoot = spTotal ? `<div class="sp-foot">📦 Шатны хөлс нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил хөлс болохгүй.</span></div>` : '';
+  const spFoot = spTotal ? `<div class="sp-foot">📦 Дамжлагын бонус нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил бонус болохгүй.</span></div>` : '';
   return head + `<div>${list}</div>${spFoot}${liabilityNote}`;
 }
 // CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
@@ -12728,11 +13712,155 @@ async function loadMyAttendance() {
     else dataLoadFailed('loadMyAttendance', new Error('HTTP ' + r.status));
   } catch (e) { dataLoadFailed('loadMyAttendance', e); }
 }
+// Цалингийн САР-ын өөрийн ирц (сонгосон сар нь энэ сар байх албагүй — 10-02-нд 9 сар).
+// ⚠ Сар бүрийг тусад нь кэшлэнэ; алдааг ЗААВАЛ хэлнэ (чимээгүй хоосон цалин харуулахгүй).
+async function loadMyPayMonth(month) {
+  state.myPayRecs = state.myPayRecs || {};
+  if (state._myPayBusy === month) return;
+  state._myPayBusy = month;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=${encodeURIComponent(pgrstInList(keyVariants(state.me)))}&day=gte.${month}-01&day=lt.${nextMonthStr(month)}-01&order=ts.asc&select=day,kind,ts,source`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
+    if (r.ok) { state.myPayRecs[month] = await r.json(); state.myPayErr = null; }
+    else { state.myPayErr = { month, msg: (r.status === 401 || r.status === 403) ? 'эрх хүрэхгүй — дахин нэвтэрнэ үү' : 'сервер алдаа (' + r.status + ')' }; dataLoadFailed('loadMyPayMonth', new Error('HTTP ' + r.status)); }
+  } catch (e) { state.myPayErr = { month, msg: 'сүлжээ холбогдсонгүй' }; dataLoadFailed('loadMyPayMonth', e); }
+  state._myPayBusy = null;
+  if (typeof render === 'function' && state.view === 'myattend') render();
+}
+// Сонгосон сарын ирцээс ажилласан нийт минут (өнгөрсөн сар тул нээлттэй сесс тоологдохгүй).
+function payMonthMins(recs, month) {
+  const byDay = {};
+  (recs || []).forEach(r => { (byDay[r.day] = byDay[r.day] || []).push(r); });
+  let mins = 0, noOut = 0;
+  Object.keys(byDay).forEach(d => {
+    const sm = attMemberSummary(byDay[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === todayStr());
+    mins += sm.mins; if (sm.noOut) noOut++;
+  });
+  return { mins, days: Object.keys(byDay).length, noOut };
+}
+/* 💵 «Миний цалин» карт — ажилтан ӨӨРИЙН сарын цалингаа бүтнээр нь харна.
+   ⛔ Дамжлагын бонус ЭНД НЭМЭГДЭХГҮЙ (доор тусдаа карт) — scan-тест хаана.
+   ⚠ Суурь цалин серверээс (`staff_salary`, RLS: өөрийн мөр) ирнэ. Ирээгүй бол
+     0 гэж ХУДАЛ харуулахгүй — «бүртгэгдээгүй» гэж ил хэлнэ. */
+function myPayCardHtml(me) {
+  const key = personKey(me) || state.me;
+  const month = state.myPayMonth || payMonthDefault(todayStr());
+  const recs = (state.myPayRecs || {})[month];
+  const picker = `<input type="month" class="ui-raw pay-ym" id="my-pay-ym" value="${escapeHtml(month)}" max="${escapeHtml(todayStr().slice(0, 7))}">`;
+  const head = `<div class="pay-hd"><span class="pay-hd-t">💵 Миний цалин</span>${picker}</div>`;
+  if (state.myPayErr && state.myPayErr.month === month)
+    return `<div class="pay-card">${head}<div class="pay-warn">⚠ Ирц ачаалж чадсангүй — ${escapeHtml(state.myPayErr.msg)}</div></div>`;
+  if (!Array.isArray(recs)) return `<div class="pay-card">${head}<div class="pay-note">Ачаалж байна…</div></div>`;
+
+  const w = payMonthMins(recs, month);
+  const base = Number((state.salaries || {})[key]) || 0;
+  const db = driverBonus(key, month);
+  // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
+  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(month), db.amount, undefined, month, undefined, stagePayFor(key, month).total);
+  const normH = workNormDays(month) * 8;
+  const paid = salaryPaidFor(key, month);
+  const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
+  const myPays = salaryPaymentsFor(state.salaryPayments, key, month);
+  const myPayList = myPays.length
+    ? `<div class="pay-plist">${myPays.map(x => `<div class="pay-pitem">
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
+        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`
+    : '';
+  /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ (CEO шийдвэр). Тэр цалинг гараар тооцож
+     олгосон тул аппын бодолт ХУДАЛ үлдэгдэл үзүүлнэ — ажилтан «надад дутуу
+     олгосон» гэж гомдоно. Зөвхөн олгосон дүнг харуулна. */
+  if (payrollHistOnly(month)) {
+    return `<div class="pay-card">${head}
+      <div class="pay-total">${fmtMoney(paid)}</div>
+      <div class="pay-total-s">${escapeHtml(month)} · олгосон дүн</div>
+      ${paid > 0 ? `<div class="pay-rows">${row(`✓ Олгосон · ${myPays.length} удаа`, fmtMoney(paid), 'pay-paid')}${myPayList}</div>`
+        : `<div class="pay-note">Энэ сард олголт бүртгэгдээгүй.</div>`}
+      <div class="pay-fine">${escapeHtml(payrollStartMonth())}-аас өмнөх цалинг өдөр/цаг/нэмэгдлээр нь гараар тооцож олгосон. Тиймээс энд зөвхөн олгосон түүх харагдана — бодолт, үлдэгдэл гаргахгүй.</div>
+    </div>`;
+  }
+
+  if (!base) {
+    return `<div class="pay-card">${head}
+      <div class="pay-note">Суурь цалин бүртгэгдээгүй байна — удирдлагадаа хэлнэ үү.</div>
+      ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`)}
+      ${db.count ? row('🚗 Хүргэлтийн нэмэгдэл', `<b>${fmtMoney(db.amount)}</b>`) : ''}</div>`;
+  }
+  const dedRows = (b.ndsh || b.pit)
+    ? row('− НДШ', `−${fmtMoney(b.ndsh)}`, 'pay-minus') + row('− ХХОАТ', `−${fmtMoney(b.pit)}`, 'pay-minus')
+    : row('Суутгал', 'суутгалгүй', 'pay-minus');
+  // Нормоос дутуу бол суурь нь ажилласан цагаар буурна — ИЛ мөр болж харагдана
+  const shortRow = b.shortMins > 0
+    ? row(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.base - b.earned)}`, 'pay-minus') : '';
+  const otRow = b.otMins > 0
+    ? row(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : '';
+  const dlvRow = db.count
+    ? row(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus')
+    : '';
+  const sp = stagePayFor(key, month);
+  /* ⛔ Бонус нь НИЙЛБЭРЭЭС ӨМНӨХ мөр — тэмдэглэл болгож доор нь тавибал
+     мөрүүд нийлбэртэйгээ таарахгүй харагдана (2026-10-05, CEO барив). */
+  const spRow = stageBonusRowsHtml(sp, b.bonus, row, `📦 Дамжлагын бонус · ${sp.led || 0} удирдсан${sp.helped ? ` · ${sp.helped} хамтрагч` : ''}`);
+  const spNote = '';
+  const noOutNote = w.noOut
+    ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул ${b.shortMins ? '<b>цалин дутуу бодогдсон</b>' : 'илүү цаг дутуу'} байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
+  // Олголтын МӨР бүрийг ил жагсаана — «олгосон 600,000₮» гэсэн ганц тоо нь хэзээ,
+  // хэдэн удаа, ямар утгаар орсныг хэлдэггүй тул ажилтан данс нь шалгаж чаддаггүй байв.
+  const pays = salaryPaymentsFor(state.salaryPayments, key, month);
+  const payList = pays.length
+    ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.shifted ? ` <span class="pay-pshift" title="Банкнаас ${escapeHtml(x.bankYm)}-д гарсан, ${escapeHtml(month)}-д ноогдуулсан">⇄</span>` : ''}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
+        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`
+    : '';
+  // ↪ Өмнөх сарын илүү олголт энэ сараас хасагдана — самбартай ИЖИЛ дүрэм (`salaryCarryIn`).
+  //   Өмнөх сарын ирцийг нэг л удаа татна (алдаа гарвал давталтгүй).
+  const carry = salaryCarryIn(key, month, m => {
+    const rr = (state.myPayRecs || {})[m];
+    if (!Array.isArray(rr)) {
+      const tried = state._myPayTried || (state._myPayTried = {});
+      if (!tried[m]) { tried[m] = true; setTimeout(() => loadMyPayMonth(m), 0); }
+      return undefined;
+    }
+    const w2 = payMonthMins(rr, m);
+    return w2.days ? w2.mins : null;
+  });
+  const bal = payBalance(b.total, paid + carry.amount);
+  const carryRow = carry.amount ? row(`↪ ${escapeHtml(carry.from)} сард илүү олгосон`, `−${fmtMoney(carry.amount)}`, 'pay-minus') : '';
+  const balRow = bal.over > 0
+    ? row(`⚠ Илүү олгосон → ${escapeHtml(nextMonthStr(month))} сард шилжинэ`, `<b>${fmtMoney(bal.over)}</b>`, 'pay-over')
+    : row('Үлдэгдэл', `<b>${fmtMoney(bal.owed)}</b>`, 'pay-left');
+  const paidRow = carryRow + (paid > 0
+    ? row(`✓ Олгосон · ${pays.length} удаа`, `${fmtMoney(paid)}`, 'pay-paid') + payList + balRow
+    : row('✓ Олгосон', 'энэ сард олголт бүртгэгдээгүй', 'pay-zero') + (carry.amount ? balRow : ''))
+    + (carry.ready ? '' : `<div class="pay-note">⏳ Өмнөх сарын илүү олголтыг тооцож байна…</div>`);
+  return `<div class="pay-card">${head}
+    <div class="pay-total">${fmtMoney(b.total)}</div>
+    <div class="pay-total-s">${escapeHtml(month)} · гарт очих дүн</div>
+    <div class="pay-rows">
+      ${row('Суурь цалин', fmtMoney(b.base))}
+      ${shortRow}
+      ${dedRows}
+      ${row('= Цэвэр суурь', `<b>${fmtMoney(b.netBase)}</b>`, 'pay-sub')}
+      ${otRow}
+      ${dlvRow}
+      ${spRow}
+      ${row('Нийт гарт очих', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
+      ${paidRow}
+    </div>
+    ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`, 'pay-worked')}
+    ${noOutNote}${spNote}
+    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${payProrateFrom()}-аас эхлэн ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. ${lunchNote()} Нэмэгдэлд суутгал тооцохгүй.</div>
+  </div>`;
+}
 function renderMyAttend() {
+  ensurePayrollCfg();   // «Миний цалин» карт түүх сарыг зөв таних
   const me = findMember(state.me) || {};
   if (!state._myProfileLoaded) loadMyProfile();   // данс TEAM-д байхгүй — өөрийн токеноор татна
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta
+  // Цалингийн карт: суурь цалин + олголт (RLS нь ӨӨРИЙН мөрийг л өгнө) + сонгосон сарын ирц.
+  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
+  const payM = state.myPayMonth || payMonthDefault(todayStr());
+  if (!Array.isArray((state.myPayRecs || {})[payM]) && !(state.myPayErr && state.myPayErr.month === payM)) setTimeout(() => loadMyPayMonth(payM), 0);
   const recs = state.myAttendance || [];
   const today = todayStr();
   const byDay = {};
@@ -12800,9 +13928,11 @@ function renderMyAttend() {
         <div style="font-size:17px;font-weight:800;color:var(--primary);margin-top:2px;">${attHM(monthMins)}</div>
         <div style="font-size:11px;color:var(--text-soft);">${dayKeys.length} өдөр ажилласан</div></div>
     </div>
-    ${(() => { const db = driverBonus(personKey(me) || state.me, today.slice(0, 7)); return db.count ? `
+    ${myPayCardHtml(me)}
+    ${(() => { if (payrollHistOnly(payM)) return '';   // ⛔ түүх сард хэрэгжээгүй нэмэгдэл гаргахгүй
+      const db = driverBonus(personKey(me) || state.me, payM); return db.count ? `
     <div style="background:var(--panel);border:1px solid var(--ok);border-radius:14px;padding:14px 16px;margin-bottom:14px;">
-      <div style="font-size:12px;color:var(--muted);">🚗 Жолооны нэмэгдэл (энэ сар)</div>
+      <div style="font-size:12px;color:var(--muted);">🚗 Жолооны нэмэгдэл · ${escapeHtml(payM)}</div>
       <div style="font-size:19px;font-weight:800;color:var(--ok);margin-top:3px;">${fmtMoney(db.amount)}</div>
       <div style="font-size:11.5px;color:var(--text-soft);margin-top:2px;">${db.count} удаа × ${fmtMoney(DRIVER_BONUS_EACH)} · хүргэсэн ${db.deliveries} · авсан ${db.pickups}</div>
       <div style="margin-top:10px;border-top:1px solid var(--line);">${db.trips.map(t => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line);">
@@ -12811,13 +13941,16 @@ function renderMyAttend() {
       <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
     </div>` : ''; })()}
     ${(() => {
-      const sp = stagePayFor(personKey(me) || state.me, today.slice(0, 7));
-      if (!sp.total) return '';
+      if (payrollHistOnly(payM)) return '';            // ⛔ түүх сард дамжлагын бонус гаргахгүй
+      const sp = stagePayFor(personKey(me) || state.me, payM);
+      if (!sp.total && !sp.penApplied) return '';
       return `<div class="sp-card">
-        <div class="sp-card-t">📦 Шатны хөлс (энэ сар)</div>
+        <div class="sp-card-t">📦 Дамжлагын бонус · ${escapeHtml(payM)} <span class="sp-sub">(нийт олгоход орсон)</span></div>
         <div class="sp-card-v">${fmtMoney(sp.total)}</div>
         <div class="sp-card-s">Удирдсан <b>${sp.led}</b> шат${sp.helped ? ` · хамтрагчаар <b>${sp.helped}</b>` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''}</div>
-        <div class="sp-card-n">Хөлс нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил хөлс болохгүй.</div>
+        ${sp.penApplied ? `<div class="sp-card-pen">⚠ Хасах оноо: <b>−${fmtMoney(sp.penApplied)}</b> · ${escapeHtml(stagePenWhy(sp))}</div>${stagePenListHtml(sp)}` : ''}
+        <div class="sp-card-n">Бонус нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил бонус болохгүй. <b>Хоцорсон</b> (арга хэмжээ эхлэхэд бэлэн биш) эсвэл <b>чанаргүй</b> ажлын оноо хасагдана.</div>
+        <button class="btn sp-cfg-btn" data-pipeline-map>📊 Урсгал харах</button>
       </div>`;
     })()}
     <button class="ui-raw myreq-new" id="my-att-req">🙋 Бүртгүүлж амжаагүй өдөр мэдүүлэх</button>
@@ -12828,6 +13961,16 @@ function attachMyAttendHandlers() {
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
+  document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
+  document.querySelectorAll('[data-clm-ok]').forEach(b2 => b2.addEventListener('click', () =>
+    resolveStageClaim(b2.dataset.clmOk, b2.dataset.clmK, b2.dataset.clmW, true)));
+  document.querySelectorAll('[data-clm-no]').forEach(b2 => b2.addEventListener('click', () =>
+    resolveStageClaim(b2.dataset.clmNo, b2.dataset.clmK, b2.dataset.clmW, false)));
+  document.getElementById('my-pay-ym')?.addEventListener('change', (e) => {
+    const v = String(e.target.value || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(v)) return;
+    state.myPayMonth = v; state.myPayErr = null; render();
+  });
   document.querySelectorAll('[data-my-areq]').forEach(b => b.addEventListener('click', () => openAttRequestModal(b.dataset.myAreq)));
   loadQRCodeJs().then(() => {
     const box = document.getElementById('my-qr'); if (!box || !phone) return;
@@ -13380,15 +14523,6 @@ function isFullAccessMember(m) {
 // member_perms (Postgres, PostgREST anon) хүснэгтэд person_key → {orders:true,...} JSON.
 // override байвал тухайн хүний default role-эрхийг ДАРНА (нээх ч, хаах ч).
 // ─────────────────────────────────────────────────────────────
-const PERM_VIEWS = [
-  { key: 'orders',      label: 'M event захиалга' },
-  { key: 'receivables', label: 'Авлага' },
-  { key: 'history',    label: 'Түрээсийн түүх' },
-  { key: 'products',    label: 'Бараа & хөрөнгө' },
-  { key: 'reports',     label: 'Дүн шинжилгээ' },
-  { key: 'nomaad',      label: 'NOMAAD' },
-  { key: 'hourly',      label: 'Цагийн цалин' },
-];
 // Бүх удирдах боломжтой эрх (меню + үйлдэл) — Эрх самбарын матрицад.
 // Бүх цэс (sidebar нэрээрээ) + цэс тус бүрийн нарийн үйлдэл — Эрх удирдах матрицын бүтэц.
 // core:true = үндсэн цэс (бүгдэд үргэлж нээлттэй, нуухгүй). Бусдын харах эрхийг роль/CEO удирдана.
@@ -13425,10 +14559,10 @@ const PERM_MENUS = [
       // Товчны нэрийг өөрчилвөл ЭНДХИЙГ ч хамт өөрчил (ordersStageCapOrder тест хамгаална).
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
       { key: 'orders.clean',    label: '🧹 Цэвэрлэсэн' },
-      { key: 'orders.prepare',  label: '🧰 Бэлдсэн' },
-      { key: 'orders.dispatch', label: '📦 Агуулахаас гаргасан / 📥 Агуулахад авсан' },
-      { key: 'orders.deliver',  label: '🚚 Хүргэж өгсөн / ↩️ Хүргэлтээс авсан' },
-      { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Буулгасан' },
+      { key: 'orders.prepare',  label: '📦 Баглаж/ачсан / 🏬 Буулгаж байршуулсан' },
+      { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан' },
+      { key: 'orders.deliver',  label: '🏗 Талбайд буулгасан / 🚚 Талбайгаас ачсан' },
+      { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Задалсан' },
       { key: 'orders.advance',  label: '🗄 Архивлах' },
       { key: 'orders.skip',     label: '⏭ Шат алгасах (шалтгаантай)' },
       { key: 'orders.revert',   label: '↩ Шат буцаах' },
@@ -13457,6 +14591,7 @@ const PERM_MENUS = [
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
   { key: 'coosalary',   label: 'COO цалин',       actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
+  { key: 'acct',        label: 'Нягтлан (журнал · дэвтэр · баланс)', actions: [] },
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
   { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },
@@ -13526,6 +14661,16 @@ const DAILY_ROLE_KEY = 'цагийн ажилтан';
 //   ХОРИГЛОНО — least privilege) → албан тушаалын загвар → undefined.
 function capValue(key) {
   if (state.isCEO) return true;
+  return capResolved(key);
+}
+/* ⛔ CEO-гийн ШҮХРИЙГ ТОЙРЧ ил тохируулсан эрхийг л уншина (2026-10-02).
+   `capValue` нь CEO-д ҮРГЭЛЖ `true` буцаадаг тул ҮҮРЭГ ТУСГААРЛАХ шалгуурт
+   (эхний үлдэгдлийг хэн тоолох/хянах) тохирохгүй — CEO бүх товчийг хардаг
+   хэвээр үлдэнэ. Амьд дэлгэцэд яг ингэж гарсан: эрхийг нь хассан мөртөө
+   «Тоолсон» товч CEO-д харагдсаар байв.
+   ⚠ Зөвхөн CEO-гийн богино холболтыг л алгасна — үлдсэн дараалал (хувь хүний
+     онцгой эрх → цагийн ажилтан → ролийн загвар → албан тушаалын багц) ХЭВЭЭР. */
+function capResolved(key) {
   const ov = state.memberPerms && state.memberPerms[state.me];   // хувь хүний онцгой эрх (бусдыг дарна)
   if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
   if (isDailyWorker()) {   // цагийн ажилтан: зөвхөн бүлгийн загварт зөвшөөрснийг л, үлдсэн нь хориглоно
@@ -13578,7 +14723,17 @@ function canCountStock() { return canEditProducts() || capValue('products.count'
    нярав ихэвчлэн `products.edit`-тэй байдаг тул шүхэрт оруулбал тоолсон хүн
    өөрөө батлах эрхтэй болж, хоёр гарын үсгийн утга алга болно. Зөвхөн ил
    олгосон эрх ба CEO. */
-function canApproveOpening() { return !!state.isCEO || capValue('products.opening') === true; }
+/* ⛔ ЭХНИЙ ҮЛДЭГДЛИЙН ГУРВАН АЛХАМ = ГУРВАН ӨӨР ЭРХ (2026-10-02, CEO барив).
+   Өмнө нь ТООЛОХ нь `canProductPart('stock')`-ээр явдаг байсан тул
+   `products.edit` ШҮХЭР дор 5 хүн (нярав 2, ҮАХ захирал, захиалгын ажилтан,
+   дууны инженер) бүгд «Тоолсон» дарж чаддаг байв — гурван гарын үсэг нэг
+   болж хумигдана. CLAUDE.md-ийн «батлах эрхийг products.edit шүхэрт бүү
+   оруул» дүрэм тоолох талдаа хэрэгжээгүй байсан.
+   ⛔ CEO энэ ХОЁР алхамд ОРОЛЦОХГҮЙ — эцэслэх нь зөвхөн CEO-гийнх бөгөөд
+   «гурван өөр хүн» дүрэмтэй тул CEO тоолсон/хянасан бараа ХЭЗЭЭ Ч эцэслэгдэхгүй
+   болж, мухардалд орно. Тиймээс эрхээс нь ЗОРИУД хасав. */
+function canOpenCount()     { return capResolved('products.count') === true; }
+function canApproveOpening() { return capResolved('products.opening') === true; }
 function canSeeStockCount() { return canAccessView('stockcount', () => canCountStock()); }
 // Хэсэг бүр ЭЗЭМШИХ талбарууд — эрхгүй хэсгийн утгыг эх бичлэгээс сэргээхэд ашиглана.
 // Функц (const биш) — тестийн vm sandbox-д const нь global болдоггүй.
@@ -13970,6 +15125,43 @@ function _ktGroupDishesByCat(dishes) {
   return order.map(c => ({ cat: _KT_CAT_SHORT[c] || c, items: by[c] }));
 }
 const CATERING_STATUS = { planned: ['📋 Төлөвлөсөн', '#b45309', 'rgba(217,119,6,.12)'], confirmed: ['✓ Баталгаажсан', '#0f7a3d', 'rgba(16,163,74,.12)'], done: ['🏁 Дууссан', '#4338ca', 'rgba(79,70,229,.12)'], cancelled: ['✕ Цуцалсан', '#b91c1c', 'rgba(220,38,38,.12)'] };
+/* ═══ КАТЕРИНГИЙН МӨНГӨ (2026-10-03, CEO: «яг mevent шиг, орлогоо PDF-ээр») ═══
+   Ажил = захиалга: нийт дүн (`total_mnt`) + PDF баримтаар бүртгэсэн төлбөр
+   (`paid_mnt`/`paid_ref`/`paid_date`). Тайлан, тренд, журнал БҮГД доорх 3
+   функцээс уншина — дүрэм хоёр газар салбарлахгүй.
+   ⛔ NOMAAD-аас татсан ажлын мөнгө NOMAAD-ийн үнийн саналд аль хэдийн багтсан
+     тул ОРЛОГОД ОРОХГҮЙ (давхар тоологдоно), дүн оруулах талбар ч гарахгүй.
+   ⚠ Цуцалсан ажил: гэрээний дүн орлого БИШ, харин ОРСОН мөнгө орлого хэвээр
+     (NOMAAD-тай ижил дүрэм) — буцаавал зардлын «буцаалт»-аар хасагдана. */
+function cateringHasMoney(j) { return !!j && j.source !== 'nomaad'; }
+function cateringCancelled(j) { return String((j && j.status) || '') === 'cancelled'; }
+function cateringOwed(j) {
+  if (!cateringHasMoney(j) || cateringCancelled(j)) return 0;
+  return Math.max(0, (Number(j.total_mnt) || 0) - (Number(j.paid_mnt) || 0));
+}
+function cateringIncomeMonth(j, basis) {
+  if (!j) return '';
+  const ev = String(j.event_date || j.created_at || '').slice(0, 7);
+  const pd = String(j.paid_date || '').slice(0, 7);
+  if (basis === 'cash' || cateringCancelled(j)) return pd || ev;
+  return ev;
+}
+function cateringRevenue(j, basis) {
+  if (!cateringHasMoney(j)) return 0;
+  const total = Number(j.total_mnt) || 0, paid = Number(j.paid_mnt) || 0;
+  if (cateringCancelled(j)) return paid;
+  if (basis === 'cash') return total > 0 ? Math.min(paid, total) : paid;
+  return total;
+}
+function cateringMonthIncome(jobs, month, basis) {
+  let sum = 0, n = 0;
+  (jobs || []).forEach(j => {
+    if (cateringIncomeMonth(j, basis) !== month) return;
+    const v = cateringRevenue(j, basis);
+    if (v) { sum += v; n++; }
+  });
+  return { sum, n };
+}
 function canSeeCatering() {
   if (state.isCEO) return true;
   const m = (typeof findMember === 'function') ? findMember(state.me) : null;
@@ -13991,7 +15183,8 @@ async function loadCateringJobs(force) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.cateringJobs = r.ok ? await r.json() : [];
-    if (typeof render === 'function' && state.view === 'catering') render();
+    // Тайлан/нягтлан ч катерингийн орлогыг уншдаг тул АЛЬ ч дэлгэцэд дахин зурна.
+    if (typeof render === 'function') render();
   } catch (e) { console.warn('loadCateringJobs', e); state.cateringJobs = state.cateringJobs || []; }
 }
 async function saveCateringMenuItem(it) {
@@ -14025,7 +15218,7 @@ function renderCatering() {
   if (!state.nomaadOrders && typeof loadNomaadOrders === 'function') loadNomaadOrders();
   const tab = state.cateringTab || 'jobs';
   const menu = state.cateringMenu || [];
-  const jobs = (state.cateringJobs || []).filter(j => j.status !== 'cancelled');
+  const jobs = (state.cateringJobs || []).filter(j => j.status !== 'cancelled' || (Number(j.paid_mnt) || 0) > 0);
   const tabBtn = (k, label) => `<button class="btn${tab === k ? ' btn-primary' : ''}" data-kt-tab="${k}" style="padding:6px 16px;font-size:13px;">${label}</button>`;
   // Гарчиг/дэд гарчиг нь дэлгэцийн толгойд (renderTitle → titles.catering) — энд давхардуулахгүй.
   const header = `<div style="display:flex;gap:8px;margin:6px 0 14px;flex-wrap:wrap;">${tabBtn('jobs', '📋 Ажлууд')}${tabBtn('menu', '🍲 Цэс')}
@@ -14088,12 +15281,29 @@ function renderCatering() {
         </div>
         <div style="border-top:1px solid var(--border);padding-top:6px;">${servHtml}</div>
         ${j.note ? `<div style="margin-top:8px;font-size:12px;color:var(--text-soft);background:var(--panel-hover);border-radius:8px;padding:7px 10px;">📝 ${escapeHtml(j.note)}</div>` : ''}
+        ${cateringMoneyHtml(j)}
       </div>`;
     }).join('');
   }
   return `<div style="max-width:720px;margin:0 auto;padding:4px 2px 40px;">${header}${body}</div>`;
 }
+/* Картын мөнгөний мөр — дүн · төлсөн · үлдэгдэл + PDF төлбөрийн товч.
+   NOMAAD-аас татсан ажилд мөнгө БАЙХГҮЙ (NOMAAD-ийн үнийн саналд багтсан) — ил хэлнэ. */
+function canPayCatering() { return !!(state.isCEO || can('orders.pay') || can('catering.edit')); }
+function cateringMoneyHtml(j) {
+  if (!cateringHasMoney(j)) return `<div class="kt-money kt-money-nm">💰 Төлбөр нь NOMAAD-ийн захиалгад багтсан</div>`;
+  const total = Number(j.total_mnt) || 0, paid = Number(j.paid_mnt) || 0, owed = cateringOwed(j);
+  const st = cateringCancelled(j) ? '' : !total ? '<span class="kt-m-warn">⚠ Дүн оруулаагүй</span>'
+    : owed > 0 ? `<span class="kt-m-owe">Үлдэгдэл <b>${fmtMoney(owed)}</b></span>` : '<span class="kt-m-ok">✓ Бүрэн төлсөн</span>';
+  const btn = (canPayCatering() && !cateringCancelled(j)) ? `<button type="button" class="btn kt-pay-btn" data-kt-pay="${escapeHtml(j.id)}">💵 Төлбөр (PDF)</button>` : '';
+  return `<div class="kt-money">
+    <span class="kt-m-no">№${escapeHtml(String(j.number || ''))}</span>
+    <span>Дүн <b>${fmtMoney(total)}</b></span>
+    <span>Төлсөн <b class="kt-m-paid">${fmtMoney(paid)}</b></span>
+    ${st}${btn}</div>`;
+}
 function attachCateringHandlers() {
+  document.querySelectorAll('[data-kt-pay]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openCateringPaymentModal(b.dataset.ktPay); }));
   document.querySelectorAll('[data-kt-tab]').forEach(b => b.addEventListener('click', () => { state.cateringTab = b.dataset.ktTab; render(); }));
   document.getElementById('kt-new-job')?.addEventListener('click', () => openCateringJobModal());
   document.getElementById('kt-new-dish')?.addEventListener('click', () => openCateringMenuModal());
@@ -14202,6 +15412,11 @@ function openCateringJobModal(job) {
       <label class="fld" style="flex:1;">Байршил<input id="kt-loc" value="${escapeHtml(job.location || '')}" placeholder="сонголт"></label>
       <label class="fld" style="width:150px;">Төлөв<select id="kt-status">${stOpts}</select></label>
     </div>
+    <div class="kt-money-f" id="kt-money-f"${job.source === 'nomaad' ? ' hidden' : ''}>
+      <label class="fld">Утас<input id="kt-phone" inputmode="tel" value="${escapeHtml(job.phone || '')}" placeholder="99112233"></label>
+      <label class="fld">Нийт дүн (₮)<input id="kt-total" type="text" inputmode="numeric" class="money-input" value="${job.total_mnt ? moneyFmtInput(job.total_mnt) : ''}" placeholder="0"></label>
+    </div>
+    <div class="kt-money-nm" id="kt-money-nm"${job.source === 'nomaad' ? '' : ' hidden'}>💰 NOMAAD-аас татсан — төлбөр нь NOMAAD-ийн үнийн саналд багтсан тул энд дүн оруулахгүй.</div>
     <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">🍲 Цэс ба үйлчлэх цаг</div>
     <div id="kt-servings"></div>
     <button type="button" class="btn" id="kt-add-serving" style="width:100%;padding:8px;font-size:12.5px;margin-top:2px;">+ Хоол / цаг нэмэх</button>
@@ -14218,6 +15433,9 @@ function openCateringJobModal(job) {
   modal.querySelector('#kt-add-serving').onclick = () => { state._ktServings.push({ slot: '', date: modal.querySelector('#kt-date').value || '', time: '', portions: Number(modal.querySelector('#kt-guests').value) || 0, dishes: [] }); _renderCateringServings(modal); };
   // NOMAAD-аас татах — компани/огноо/зочны тоо/гарчиг автоматаар нөхнө.
   modal.querySelector('#kt-nomaad').onchange = (e) => {
+    const fromNo = !!e.target.value;
+    modal.querySelector('#kt-money-f').hidden = fromNo;
+    modal.querySelector('#kt-money-nm').hidden = !fromNo;
     const o = noOrders.find(x => x.quote_no === e.target.value); if (!o) return;
     modal.querySelector('#kt-company').value = o.company || '';
     modal.querySelector('#kt-date').value = String(o.date_start || '').slice(0, 10);
@@ -14229,6 +15447,13 @@ function openCateringJobModal(job) {
     const title = g('#kt-title'), company = g('#kt-company');
     if (!title && !company) { showToast('Гарчиг эсвэл байгууллага оруулна уу', 'warn', 2800); return; }
     const qno = modal.querySelector('#kt-nomaad').value;
+    const total = qno ? 0 : moneyVal(modal.querySelector('#kt-total'));
+    /* 🔒 Дүн нь гүйцэтгэлийн орлогыг хөдөлгөнө — тэр сар хаагдсан бол засахгүй. */
+    if (total !== (Number(job.total_mnt) || 0)) {
+      try { await loadClosedMonths(true); } catch (_) {}
+      const lockM = String(g('#kt-date') || job.event_date || '').slice(0, 7);
+      if (lockM && monthLocked(lockM)) { showToast(`🔒 ${lockM} сар хаагдсан — дүн өөрчлөх боломжгүй`, 'error', 5000); return; }
+    }
     const rec = {
       id: isNew ? ('KT-' + Date.now()) : job.id,
       title, company, quote_no: qno, source: qno ? 'nomaad' : (job.source || 'manual'),
@@ -14236,6 +15461,7 @@ function openCateringJobModal(job) {
       status: modal.querySelector('#kt-status').value,
       menu_json: JSON.stringify((state._ktServings || []).filter(sv => sv.slot || sv.time || (sv.dishes && sv.dishes.length))),
       note: g('#kt-note'), created_by: isNew ? state.me : (job.created_by || state.me),
+      phone: qno ? (job.phone || '') : g('#kt-phone').replace(/\D/g, ''), total_mnt: total,
     };
     modal.querySelector('#kt-save').disabled = true;
     if (await saveCateringJob(rec)) { close(); await loadCateringJobs(true); showToast('Катеринг ажил хадгаллаа', 'success', 2000); }
@@ -14243,10 +15469,106 @@ function openCateringJobModal(job) {
   };
   modal.querySelector('#kt-del').onclick = async () => {
     if (isNew) return;
-    if (!(await showConfirm(`Энэ катеринг ажлыг цуцлах уу?`, { okText: 'Цуцлах', danger: true }))) return;
+    const _paid = Number(job.paid_mnt) || 0;
+    if (!(await showConfirm(`Энэ катеринг ажлыг цуцлах уу?${_paid ? `\n\n${fmtMoney(_paid)} төлбөр орсон — орлого хэвээр үлдэнэ. Буцааж өгвөл зардлын «буцаалт»-аар бүртгэнэ.` : ''}`, { okText: 'Цуцлах', danger: true }))) return;
     if (await saveCateringJob({ ...job, status: 'cancelled', menu_json: job.menu_json || '[]' })) { close(); await loadCateringJobs(true); showToast('Цуцаллаа', 'success', 1800); }
   };
   modal.classList.add('open');
+}
+/* 💵 Катерингийн төлбөр — PDF баримтаар (M-Event-тэй ИЖИЛ шалгуур `readIncomeReceipt`).
+   Гараар дүн бичих зам БАЙХГҮЙ: банкны баримт = мөнгө орсны нотолгоо. */
+function openCateringPaymentModal(id) {
+  const j = (state.cateringJobs || []).find(x => x.id === id);
+  if (!j || !cateringHasMoney(j)) return;
+  if (!canPayCatering()) { showToast('Танд төлбөр бүртгэх эрх алга', 'warn', 3000); return; }
+  loadUsedReceipts(); loadClosedMonths();
+  document.getElementById('kt-pay-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'kt-pay-modal';
+  modal._receipts = [];
+  const total = Number(j.total_mnt) || 0, paid = Number(j.paid_mnt) || 0;
+  const prev = parsePaidRef(j.paid_ref || '');
+  modal.innerHTML = `<div class="modal kt-pay">
+    <h2>💵 Төлбөр — Катеринг №${escapeHtml(String(j.number || ''))}</h2>
+    <div class="kt-pay-sum">
+      <div>${escapeHtml(j.title || j.company || '')}</div>
+      <div>Нийт дүн: <b>${fmtMoney(total)}</b> · Өмнө төлсөн: <b>${fmtMoney(paid)}</b> · Үлдэгдэл: <b>${fmtMoney(cateringOwed(j))}</b></div>
+    </div>
+    ${prev.length ? `<div class="kt-pay-prev">${prev.map(r => `<div>✓ ${escapeHtml([r.sender, r.acct].filter(Boolean).join(' · ') || r.id || '')}</div>`).join('')}</div>` : ''}
+    <label for="ktp-pdf" class="kt-pay-drop">📄 <b>Банкны баримт (PDF) оруулах</b> — олон файл сонгож болно
+      <input id="ktp-pdf" type="file" accept="application/pdf,.pdf" multiple hidden>
+      <div id="ktp-status" class="kt-pay-st">Дүн · огноо · шилжүүлэгч автоматаар. Гараар бүртгэх боломжгүй.</div>
+    </label>
+    <div id="ktp-list"></div>
+    <div class="modal-actions"><button class="btn" id="ktp-cancel">Болих</button><button class="btn btn-primary" id="ktp-save" disabled>Бүртгэх</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#ktp-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const listEl = modal.querySelector('#ktp-list'), saveBtn = modal.querySelector('#ktp-save'), st = modal.querySelector('#ktp-status');
+  const draw = () => {
+    const sum = modal._receipts.reduce((a, r) => a + r.amount, 0);
+    listEl.innerHTML = modal._receipts.map((r, i) => `<div class="kt-pay-row"><span><b>${fmtMoney(r.amount)}</b> · ${escapeHtml(r.date || '')} · ${escapeHtml(r.senderName || '—')}${r.warn ? ` · ⚠ ${escapeHtml(r.warn)}` : ''}</span><button type="button" class="btn" data-ktp-rm="${i}">✕</button></div>`).join('')
+      + (modal._receipts.length ? `<div class="kt-pay-tot">Нийт: <b>${fmtMoney(sum)}</b></div>` : '');
+    saveBtn.disabled = !modal._receipts.length;
+    listEl.querySelectorAll('[data-ktp-rm]').forEach(b => b.onclick = () => { modal._receipts.splice(+b.dataset.ktpRm, 1); draw(); });
+  };
+  modal.querySelector('#ktp-pdf').addEventListener('change', async (e) => {
+    const files = [...(e.target.files || [])]; e.target.value = '';
+    for (const f of files) {
+      st.textContent = `📄 ${f.name} уншиж байна…`;
+      try { modal._receipts.push(await readIncomeReceipt(f, modal._receipts)); st.textContent = `✓ ${f.name}`; }
+      catch (err) { st.textContent = '⚠ ' + err.message; }
+    }
+    draw();
+  });
+  saveBtn.onclick = () => submitCateringPayment(id, modal, saveBtn);
+  modal.classList.add('open');
+}
+async function submitCateringPayment(id, modal, btn) {
+  const j = (state.cateringJobs || []).find(x => x.id === id);
+  const receipts = (modal._receipts || []).slice();
+  if (!j || !receipts.length) return;
+  // 🔒 Мөнгө хөндөх тул түгжээг СЕРВЕРЭЭС шинэчилж шалгана
+  try { await loadClosedMonths(true); } catch (_) {}
+  const lockM = receipts.map(r => String(r.date || '').slice(0, 7)).find(m => m && monthLocked(m));
+  if (lockM) { showToast(`🔒 ${lockM} сар хаагдсан — тэр сарын төлбөр бүртгэх боломжгүй`, 'error', 6000); return; }
+  btn.disabled = true;
+  const okR = [];
+  for (const rc of receipts) {
+    const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'catering:' + j.id });
+    if (rr === 'err') { showToast(`Баримтын давхцал шалгагдсангүй — алгаслаа (${fmtMoney(rc.amount)})`, 'error', 4500); continue; }
+    if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
+    okR.push(rc);
+  }
+  if (!okR.length) { btn.disabled = false; showToast('Бүртгэх баримт үлдсэнгүй', 'error', 4000); return; }
+  const amount = okR.reduce((a, r) => a + r.amount, 0);
+  const date = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
+  const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.bank && ('банк:' + r.bank), r.ref].filter(Boolean).join(' · ')).join('  |  ');
+  okR.forEach(r => { if (r._file) uploadReceiptFileOrWarn(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'catering:' + j.id }, 'катеринг №' + (j.number || '')); });
+  // Серверийн СҮҮЛИЙН дүн дээр нэмнэ — зэрэгцээ бүртгэл бие биенээ дарахгүй
+  let basePaid = Number(j.paid_mnt) || 0, baseRef = String(j.paid_ref || '');
+  try {
+    const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?id=eq.${encodeURIComponent(id)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
+    if (gr.ok) { const rr = await gr.json(); if (rr && rr[0]) { basePaid = Number(rr[0].paid_mnt) || 0; baseRef = String(rr[0].paid_ref || ''); } }
+  } catch (_) {}
+  const body = { paid_mnt: basePaid + amount, paid_ref: [baseRef.trim(), newRef].filter(Boolean).join('  |  '), paid_date: date, updated_at: new Date().toISOString() };
+  if (j.status === 'planned') body.status = 'confirmed';
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    Object.assign(j, body);
+    modal.remove();
+    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}`, 'success', 2800);
+    // Банкны хуулгын орлогын мөр баримттай өөрөө холбогдоно
+    if (Array.isArray(state.bankIncome)) relinkIncomeFromReceipts().catch(() => {});
+    render();
+  } catch (e) { btn.disabled = false; showToast('Алдаа: ' + e.message, 'error', 4500); }
 }
 /* ========================== КАТЕРИНГ модуль төгсгөл ========================== */
 const _PURPOSE_BADGE = { 'орлого': ['#0f7a3d', 'rgba(16,163,74,.12)'], 'зарлага': ['#b45309', 'rgba(217,119,6,.12)'], 'валют': ['#4338ca', 'rgba(79,70,229,.12)'], 'цалин': ['#9333ea', 'rgba(147,51,234,.12)'], 'татвар': ['#be123c', 'rgba(225,29,72,.12)'] };
@@ -14964,12 +16286,15 @@ function openDocEditModal(id) {
     if (!$('#dc-title').value.trim()) $('#dc-title').value = f.name.replace(/\.[^.]+$/, '');
   });
   $('#dc-save').onclick = async (e) => {
+    // ⚠ Товчийг ЭНД ав — `currentTarget` нь await-ийн дараа null болдог (доор файл
+    //   уншиж, хадгалсны ДАРАА товчийг дахин нээдэг тул заавал хувьсагчид барина).
+    const btn = e.currentTarget;
     const title = $('#dc-title').value.trim();
     if (!title) { showToast('Нэрээ оруулна уу', 'warn'); return; }
     const f = fileEl.files && fileEl.files[0];
     if (!d && !f) { showToast('Файл сонгоно уу', 'warn'); return; }
     if (f && f.size > DOC_MAX_BYTES) { showToast(`Файл хэт том — ${Math.round(DOC_MAX_BYTES / 1048576)}MB-аас бага байх ёстой`, 'error', 4500); return; }
-    e.currentTarget.disabled = true; e.currentTarget.textContent = 'Хадгалж байна…';
+    btn.disabled = true; btn.textContent = 'Хадгалж байна…';
     const doc = {
       id: d ? d.id : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? 'doc-' + crypto.randomUUID() : 'doc-' + Date.now()),
       title,
@@ -14989,11 +16314,11 @@ function openDocEditModal(id) {
         doc.file_name = f.name;
         doc.size_bytes = f.size;
       } catch (_) {
-        showToast('Файл уншиж чадсангүй', 'error'); e.currentTarget.disabled = false; e.currentTarget.textContent = 'Хадгалах'; return;
+        showToast('Файл уншиж чадсангүй', 'error'); btn.disabled = false; btn.textContent = 'Хадгалах'; return;
       }
     }
     const ok = await saveCompanyDoc(doc);
-    if (!ok) { e.currentTarget.disabled = false; e.currentTarget.textContent = 'Хадгалах'; return; }
+    if (!ok) { btn.disabled = false; btn.textContent = 'Хадгалах'; return; }
     close();
     showToast('✅ Хадгалагдлаа', 'success');
     await loadCompanyDocs(true);
@@ -15851,6 +17176,33 @@ async function loadSalaryPayments() {
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadSalaryPayments', e); }
 }
+/* ЦАЛИНГИЙН ТУЛГАЛТЫН САНХҮҮГИЙН МӨР — ГАНЦ эх сурвалж (2026-10-03).
+   Олголт аль сарынх (`[#fp]` → ноогдох сар) ба хуулгаас шууд орсон олголт (7100)
+   хоёулаа санхүүгийн мөрөөс уншигдана. Бүрэн бүртгэл (`state.financeRequests`) нь
+   ЗӨВХӨН CEO/нягтланд ирдэг тул цалин хардаг бусад хүнд (нярав) хоосон байж,
+   «8 сар 2р хагас» 9 сард орж, 9/21-ний олголт огт харагдахгүй байв — ажилтны
+   өөрийн карт ч мөн адил. `v_salary_fin` (db/salary_fin.sql) цалингийн мөрийг л
+   эрхтэй хүнд (эсвэл ӨӨРИЙНХИЙГ ажилтанд) өгнө.
+   ⛔ Цалингийн тулгалтад `state.financeRequests`-ийг ШУУД бүү уншаа — энийг дууд.
+   ⚠ Бүрэн бүртгэл байвал ТҮҮНИЙГ авна: локал засвар (ноогдох сар сольсон г.м.)
+     тэнд шууд тусдаг, харагдац дараагийн ачааллыг хүлээнэ. */
+function salaryFinSource() {
+  const fr = state.financeRequests;
+  if (!state.finGated && Array.isArray(fr) && fr.length) return fr;
+  if (Array.isArray(state.salaryFinRows)) return state.salaryFinRows;
+  return Array.isArray(fr) ? fr : [];
+}
+async function loadSalaryFinRows() {
+  if (!DB_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/v_salary_fin?select=*&order=requested_at.desc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.salaryFinRows = (await r.json()).map(normalizeFinance);
+    state._acctOwners = null;   // дансны эзний кэш шинэ мөрөөр дахин бодогдоно
+    if (typeof render === 'function') render();
+  } catch (e) { dataLoadFailed('salary-fin', e); }
+}
 async function saveSalary(personKey, amount) {
   if (!personKey) return;
   state.salaries = state.salaries || {}; state.salaries[personKey] = Number(amount) || 0;
@@ -15877,9 +17229,278 @@ async function paySalary(personKey, ym, amount, note) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
   } catch (e) { showToast('Олголт хадгалах алдаа: ' + e.message, 'error', 4000); }
 }
+/* Олгох ↔ олгосон → ҮЛДЭГДЭЛ эсвэл ИЛҮҮ ОЛГОЛТ (2026-10-03, CEO).
+   ⛔ Илүү олголтыг 0 болгож НУУХГҮЙ. Өмнө нь `max(0, нийт − олгосон)` гэж бодож
+     «✓ олгосон» гэж харуулдаг байсан тул 2 сарын урьдчилгаа авсан хүний илүү
+     олголт хаана ч харагддаггүй байв. ЦЭВЭР функц — самбар ба ажилтны карт
+     ХОЁУЛАА үүнийг дуудна. */
+function payBalance(total, paid) {
+  const t = Math.round(Number(total) || 0), p = Math.round(Number(paid) || 0);
+  return { owed: Math.max(0, t - p), over: Math.max(0, p - t) };
+}
 // Тухайн хүний тухайн сард олгосон нийт
 function salaryPaidFor(personKey, ym) {
-  return (state.salaryPayments || []).filter(p => p.person_key === personKey && p.ym === ym).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  return salaryPaymentsFor(state.salaryPayments, personKey, ym).reduce((s, p) => s + p.amount, 0);
+}
+/* Олголт АЛЬ САРЫН цалин вэ — ГҮЙЦЭТГЭЛЭЭР (2026-10-03, CEO шийдвэр).
+   ⛔ БАНКНЫ ОГНООГООР БОДОХГҮЙ. 9-06-нд төлсөн «8 сар 2р хагас» нь 8 сарын
+     цалин; 9 сарын олголт гэж харуулбал 8 сар дутуу, 9 сар илүү харагдана.
+   ⛔ СОХОР ДҮРЭМ (өдөр ≤10 → өмнөх сар) Ч БОЛОХГҮЙ — амьд датаар 9-06-нд
+     ХОЁУЛАА байсан: «8 сар 2р хагас» ба «9сар урьдчилгаа». Тиймээс гүйлгээн
+     дээр хүний тохируулсан НООГДОХ САР (`⟦ACCR|YYYY-MM⟧` / `accrual_month`)
+     ялна; тохируулаагүй бол `finAccrualAuto`-гийн ухаалаг таамаг.
+   ⚠ Холбоос = олголтын тэмдэглэл дэх `[#fp]` → санхүүгийн мөр. Олдохгүй бол
+     хадгалсан `ym` хэвээр (хуучин бичлэг эвдрэхгүй). */
+function salaryPayFp(note) {
+  const m = String(note || '').match(/\[#([^\]]+)\]/);
+  return m ? m[1] : '';
+}
+function salaryPayMonth(p, finRows) {
+  if (!p) return '';
+  const fp = salaryPayFp(p.note);
+  if (fp) {
+    const row = (finRows || []).find(r => r && r.status !== 'deleted' && salaryPayFp(r.justification) === fp);
+    if (row && typeof finAccrualMonth === 'function') {
+      const m = finAccrualMonth(row);
+      if (/^\d{4}-\d{2}$/.test(m || '')) return m;
+    }
+  }
+  return String(p.ym || '');
+}
+/* Тухайн сард олгосон МӨР бүр (огноо өсөхөөр). ЦЭВЭР функц тул тестлэгдэнэ.
+   ⛔ Нийлбэр ба жагсаалт ХОЁР ӨӨР шүүлтээр гарч болохгүй — `salaryPaidFor` ч үүнийг
+     дуудна. Эс бөгөөс картад «олгосон 600,000₮» гэж бичээд доор нь 3 мөр 750,000₮
+     гарч, аль нь үнэн болохыг хэн ч мэдэхгүй болно. ИНВАРИАНТ тест хоёрыг тулгана. */
+function salaryPaymentsFor(rows, personKey, ym, finRows) {
+  const fin = finRows || salaryFinSource();
+  const own = (rows || [])
+    .filter(p => p && p.person_key === personKey && salaryPayMonth(p, fin) === ym)
+    .map(p => {
+      const bankYm = String(p.paid_at || '').slice(0, 7);
+      return { amount: Number(p.amount) || 0, at: p.paid_at || '', note: p.note || '',
+               label: salaryPayLabel(p.note), bankYm,
+               // Банкны сар ≠ ноогдох сар бол ИЛ тэмдэглэнэ (хүн яагаад гэдгийг асуухгүй)
+               shifted: !!bankYm && bankYm !== ym };
+    });
+  return own.concat(salaryFinPayments(fin, personKey, ym, rows))
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+/* ОЛГОЛТ `salary_payments`-д БИЧИГДЭЭГҮЙ БАЙЖ БОЛНО (2026-10-03, амьд датаар 85 мөр).
+   Хуулга оруулахад цалингийн гүйлгээг ажилтанд холбох ГАНЦ дохио нь ажилтны
+   бүртгэсэн ДАНС (`empByAcct`). Данс аппад бүртгэгдэхээс ӨМНӨ импортлогдсон мөр
+   «хэнийх нь мэдэгдэхгүй» зардал болж бичигдэж (`beneficiary` = дансны дугаар),
+   дараа нь данс бүртгэгдсэн ч ДАХИН ХЭЗЭЭ Ч тулгагддаггүй байв — цалингийн
+   самбарт олголт дутуу харагдана (Б.Байгалмаа: 200,000₮).
+   ⛔ Импортыг дахин ажиллуулж залруулахгүй — ТУЛГАЛТЫГ ХАРУУЛАХ ҮЕД хийнэ,
+     тэгвэл данс бүртгэгдмэгц хуучин мөр ӨӨРӨӨ холбогдоно (гараар хийх ажил 0).
+   ⛔ ЗӨВХӨН 7100 (үндсэн цалин) — 7200 нь цагийн/өдрийн цалингийн модулийнх,
+     энд оруулбал тэр олголт ХОЁР газар тоологдоно.
+   ⚠ Давхардлыг `[#fp]`-ээр хаана: олголтын бичлэг аль хэдийн байвал АВАХГҮЙ. */
+const SALARY_FIN_CAT = '7100';
+/* ⛔ ЗЭЭЛ = ЦАЛИНГИЙН ОЛГОЛТ БИШ (2026-10-03). Амьд датаар «Цалингийн зээл»
+   6,000,000₮ нь 7100 ангиллаар бүртгэгдсэн — олголт гэж тоолбол тэр сарын цалин
+   бүрэн төлөгдсөн, бүр ИЛҮҮ төлөгдсөн мэт харагдана (зээл нь хожим эргэж
+   төлөгдөх өр). Ангиллаар нь ялгах боломжгүй тул УТГААР шүүнэ.
+   ⚠ Зээлийн суутгал (цалингаас хасах) бол ӨӨР ойлголт — энд хамаарахгүй. */
+const SALARY_LOAN_RE = /зээл/i;
+function salaryIsLoan(purpose) { return SALARY_LOAN_RE.test(String(purpose || '')); }
+function _salNameKey(s) { return String(s || '').replace(/[\s.·,]/g, '').toUpperCase(); }
+/* ── АЖИЛТНЫ ДАНС = ОДООГИЙН + ХУУЛГААР ТАНИГДСАН (2026-10-03) ──────────────
+   `employees.bank_account` нь ЗӨВХӨН одоогийн данс — ажилтан дансаа «Профайл»-аас
+   сольход хуучин нь ДАРАГДАЖ алга болдог. Тэр данс руу явсан цалингийн гүйлгээ
+   «хэнийх нь мэдэгдэхгүй» болж цалингийн самбараас хасагдана. Ажилчид данс
+   байнга солидог тул хуулгын гүйлгээний УТГА дахь НЭРЭЭР нь таана — шинэ
+   хүснэгт, гараар бичих ажил шаардахгүй («өөрөө үүсдэг» дүрэм).
+   ⛔ **ХОЁРДМОЛ НЭРИЙГ ТААХГҮЙ.** Амьд датаар 169 ажилтны **15** нэрийн цөм
+     давхардсан («Ц.Бат эрдэнэ» ба «Э.Оюун-Эрдэнэ» → ЭРДЭНЭ; «Ч.Билгүүн» ба
+     «Б.Билгүүн»). Давхардсан нэрээр таавал цалин ӨӨР ХҮНД тоологдоно.
+   ⛔ **Бүртгэлтэй данс ҮРГЭЛЖ ЯЛНА** — утгаар таах нь зөвхөн эзэнгүй дансанд.
+   ⛔ **Нэг данс хоёр өөр нэрээр таарвал ХАЯНА** (хэнийх нь мэдэгдэхгүй).
+   ⚠ Таасан дансыг UI-д «хуулгын утгаар» гэж ИЛ тэмдэглэнэ — нуувал буруу
+     тулгалтыг хэн ч барихгүй. */
+/* ⛔ ДАНС ХОЁР ХЭЛБЭРЭЭР БИЧИГДДЭГ — ЯГ ТЭНЦҮҮГЭЭР ТУЛГАЖ БОЛОХГҮЙ (2026-10-03).
+   Ажилтан «Профайл»-д дансаа БАНКНЫ УРТ хэлбэрээр бичдэг
+   (`880004000434123912`, 18 орон) атал банкны хуулгад зөвхөн ЦӨМ нь гардаг
+   (`434123912`). Яг тэнцүүгээр тулгаснаас болж БҮРТГЭЛТЭЙ ажилтны цалин
+   «эзэнгүй» болж байв — амьд датаар Б.Хонгорзул 600,000₮, Т.Эрдэнэзул 90,000₮.
+   Амьд 163 дансны урт = 9/10/12/18 орон; суффиксээр тулгахад давхцал **0**.
+   ⚠ `ACCT_MATCH_MIN` = 9 (хамгийн богино бодит данс). Доошлуулбал өөр хүний
+     данс санамсаргүй таарч болно. */
+const ACCT_MATCH_MIN = 9;
+function acctSame(a, b) {
+  const x = String(a || '').replace(/\D/g, ''), y = String(b || '').replace(/\D/g, '');
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (x.length < ACCT_MATCH_MIN || y.length < ACCT_MATCH_MIN) return false;
+  return x.endsWith(y) || y.endsWith(x);
+}
+// Нэрийн ИНИЦИАЛ + цөм («Э.Шинэбаяр» → ЭШИНЭБАЯ). Зөвхөн цөмөөр тулгахад
+// «Э.Шинэбаяр» ба «Т.Шинэбаяр» ялгагддаггүй — инициал нь тэр хоёрыг салгана.
+function empNameFullKey(name) {
+  const core = (typeof cooNameKey === 'function' ? cooNameKey(name) : '');
+  const ini = String(name || '').match(/^\s*([А-ЯӨҮЁA-Z])/i);
+  return (core && ini) ? ini[1].toUpperCase() + core : '';
+}
+function empAcctOwners(team, finRows) {
+  const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
+  const reg = {}, regList = [], byName = {}, byFull = {}, byWhole = {};
+  const put = (bag, kk, k) => { if (!kk) return; (bag[kk] = bag[kk] || []); if (!bag[kk].includes(k)) bag[kk].push(k); };
+  tm.forEach(m => {
+    const k = (typeof personKey === 'function' ? personKey(m) : ''); if (!k) return;
+    const a = String(m.bank_account || '').replace(/\D/g, '');
+    if (a) { reg[a] = k; if (!regList.some(x => x.a === a && x.k === k)) regList.push({ a, k }); }
+    put(byName, (typeof cooNameKey === 'function' ? cooNameKey(m.name) : ''), k);
+    put(byFull, empNameFullKey(m.name), k);
+    const wk = _salNameKey(m.name);
+    if (wk.length >= 6) put(byWhole, wk, k);   // «ЦБАТЭРДЭНЭ» — бүтэн нэр
+  });
+  /* Бүртгэлтэй эзнийг олох: ЯГ тэнцүү нь ҮРГЭЛЖ ялна, эс бол суффиксээр.
+     ⛔ Хоёр ажилтан таарвал ЮУ Ч буцаахгүй — амьд датаар хоёр хүний профайлд
+       ИЖИЛ данс бичигдсэн байсан (нэг нь буруу); таавал цалин өөр хүнд очно. */
+  const regOwner = (acct) => {
+    const d = String(acct || '').replace(/\D/g, ''); if (!d) return '';
+    // ⚠ ЯГ тэнцүү мөрийг ч ТООЛНО — хоёр ажилтны профайлд ижил данс бичигдсэн
+    //   байхад `reg[acct]` нь сүүлийнхийг л үзүүлж, БУРУУ эзэн ялж байв.
+    const exact = {}; regList.forEach(x => { if (x.a === d) exact[x.k] = 1; });
+    const ek = Object.keys(exact);
+    if (ek.length) return ek.length === 1 ? ek[0] : '';
+    const hit = {}; regList.forEach(x => { if (acctSame(x.a, d)) hit[x.k] = 1; });
+    const ks = Object.keys(hit);
+    return ks.length === 1 ? ks[0] : '';
+  };
+  const ambiguous = Object.keys(byName).filter(nk => byName[nk].length > 1);
+  /* ⛔ БИЧВЭРЭЭС ЭЗНИЙГ ОЛОХ = ГУРВАН ШАТ, нарийнаас уруудна. Шат бүрд таарсан
+     БҮХ хүнийг нэгтгэж, ЯГ НЭГ гарвал л таана; хоёр гарвал ДООШ ЯВАХГҮЙ (ЗОГСОНО).
+     ① бүтэн нэр («ЦБАТЭРДЭНЭ») ② инициал + цөм («БХОНГОРЗ») ③ цөм («ХИШИГТО»).
+     ⛔ Нэг нэр нөгөөгийнхөө ДОТОР байж болно: «Б.ХОНГОРЗУЛ» бичвэрт «Ц.Хонгор»
+       (ХОНГОР) ба «Б.Хонгорзул» (ХОНГОРЗ) ХОЁУЛАА таардаг. Хоёрдмол цөмийг зүгээр
+       хасвал ҮЛДСЭН БУРУУ хүн ялж байв (600,000₮ ингэж өөр хүнд тоологдсон). */
+  const tiers = [byWhole, byFull, byName].map(bag => ({ bag, keys: Object.keys(bag) }));
+  const nameOwner = (text) => {
+    const memo = _salNameKey(text);
+    if (!memo) return '';
+    for (const t of tiers) {
+      const hit = {};
+      for (const kk of t.keys) { if (memo.includes(kk)) t.bag[kk].forEach(k => { hit[k] = 1; }); }
+      const ks = Object.keys(hit);
+      if (ks.length === 1) return ks[0];
+      if (ks.length > 1) return '';   // хоёрдмол — доош уруудвал БУРУУ хүн ялна
+    }
+    return '';
+  };
+  const guess = {}, bad = {};
+  (finRows || []).forEach(r => {
+    if (!r || r.status === 'deleted') return;
+    if (!/^7[12]00/.test(String(r.category || ''))) return;
+    const acct = String(r.beneficiary || '').replace(/\D/g, '');
+    if (acct.length < 6 || regOwner(acct)) return;    // бүртгэлтэй данс — таахгүй
+    const hit = nameOwner(r.purpose);
+    if (!hit) return;
+    if (guess[acct] && guess[acct] !== hit) { bad[acct] = 1; return; }
+    guess[acct] = hit;
+  });
+  Object.keys(bad).forEach(a => { delete guess[a]; });
+  return { reg, guess, ambiguous, regOwner, nameOwner };
+}
+// Рендер бүрд 150 нэр × 1,400 гүйлгээ дахин тулгахгүй — дата өөрчлөгдөхөд л дахин бодно.
+function empAcctOwnersCached(finRows) {
+  const tm = (typeof TEAM !== 'undefined' ? TEAM : []) || [];
+  const fin = finRows || salaryFinSource();
+  const sig = tm.length + '|' + fin.length;
+  if (!state._acctOwners || state._acctOwnersSig !== sig) {
+    state._acctOwners = empAcctOwners(tm, fin); state._acctOwnersSig = sig;
+  }
+  return state._acctOwners;
+}
+/* Тухайн хүний БҮХ данс — бүртгэсэн нь + хуулгаар цалин явсан нь (шинэ нь эхэнд).
+   Ажилтны картад харуулна: «аль данс руу хэзээ хэд явсан» гэдэг нь данс солигдсоныг
+   хэлдэг цорын ганц баримт (хуучин дансыг хаана ч хадгалдаггүй). */
+function empAcctsForPerson(key, team, finRows) {
+  if (!key) return [];
+  const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
+  const fin = finRows || salaryFinSource();
+  const own = empAcctOwners(tm, fin);
+  const mm = tm.find(x => (typeof personKey === 'function' ? personKey(x) : '') === key);
+  const cur = String((mm && mm.bank_account) || '').replace(/\D/g, '');
+  /* ⚠ НЭГ данс ХОЁР хэлбэрээр гарч ХОЁР мөр болохгүй — профайлд урт (18 орон),
+     хуулгад цөм (10 орон) байдаг. `acctSame`-ээр нэгтгэж, УРТ хэлбэрийг
+     (бүртгэлийнхийг) харуулна. */
+  const list = [];
+  const touch = (acct, reg) => {
+    if (!acct) return null;
+    let e = list.find(x => acctSame(x.acct, acct));
+    if (!e) { e = { acct, reg: !!reg, current: !!(cur && acctSame(acct, cur)), n: 0, sum: 0, lastDay: '' }; list.push(e); }
+    if (reg) e.reg = true;
+    if (acct.length > e.acct.length) e.acct = acct;
+    return e;
+  };
+  if (cur) touch(cur, true);
+  Object.keys(own.guess).forEach(a => { if (own.guess[a] === key) touch(a, false); });
+  fin.forEach(r => {
+    if (!r || r.status === 'deleted') return;
+    if (!/^7[12]00/.test(String(r.category || ''))) return;
+    const a = String(r.beneficiary || '').replace(/\D/g, '');
+    const an = String(r.account_number || '').replace(/\D/g, '');
+    const e = list.find(x => (a && acctSame(x.acct, a)) || (an && acctSame(x.acct, an))); if (!e) return;
+    e.n++; e.sum += Number(r.amount) || 0;
+    const d = String(r.requested_at || '').slice(0, 10);
+    if (d > e.lastDay) e.lastDay = d;   // ⚠ ОГНОО-ЗӨВХӨН мөр (YYYY-MM-DD) — мөрөөр тулгах нь зөв
+  });
+  const map = new Map(list.map(e => [e.acct, e]));
+  return [...map.values()].sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0) || String(b.lastDay).localeCompare(String(a.lastDay)));
+}
+function salaryFinPayments(finRows, key, ym, paidRows, team, owners) {
+  if (!key) return [];
+  const list = finRows || [];
+  const paid = paidRows || state.salaryPayments || [];
+  const tm = team || (typeof TEAM !== 'undefined' ? TEAM : []) || [];
+  const mm = tm.find(x => (typeof personKey === 'function' ? personKey(x) : '') === key);
+  if (!mm) return [];
+  const own = owners || (team ? empAcctOwners(tm, list) : empAcctOwnersCached(list));
+  const acct = String(mm.bank_account || '').replace(/\D/g, '');
+  const nm = _salNameKey(mm.name);
+  const have = new Set(paid.map(p => salaryPayFp(p && p.note)).filter(Boolean));
+  const out = [];
+  for (const r of list) {
+    if (!r || r.status === 'deleted') continue;
+    if (String(r.category || '').slice(0, 4) !== SALARY_FIN_CAT) continue;
+    if (salaryIsLoan(r.purpose)) continue;   // ЗЭЭЛ = олголт БИШ (доорх тайлбарыг үз)
+    const b = String(r.beneficiary || ''), bd = b.replace(/\D/g, '');
+    /* ⚠ Хуулгаас ирсэн мөрд хүлээн авагч нь НЭР («ЭНЭБИШ НИНЖДОЛГОР»), данс нь
+       IBAN хэлбэрээр `account_number`-д байдаг (MN41…5029853564) — beneficiary-ээр
+       л тулгавал 4,000,000₮-ийн олголт самбараас алга болж байв. */
+    const ad = String(r.account_number || '').replace(/\D/g, '');
+    // ⚠ Данс нь урт/цөм хоёр хэлбэртэй тул `acctSame` (суффикс) -ээр тулгана.
+    const acctHit = acct && ((bd && acctSame(bd, acct)) || (ad && acctSame(ad, acct)));
+    const guessHit = (bd && own.guess[bd] === key) || (ad && own.guess[ad] === key);
+    /* ⛔ ХҮЛЭЭН АВАГЧ НЭРЭЭР БИЧИГДСЭН МӨРИЙГ АЛДАЖ БОЛОХГҮЙ (2026-10-03).
+       Гараар бүртгэсэн олголтын `beneficiary` нь «Хишигтогтох» гэж инициалгүй
+       бичигддэг атал ажилтны нэр «Б.Хишигтогтох» — ЯГ ТЭНЦҮҮГЭЭР тулгаснаас
+       болж 5–7 сарын олголт (урьдчилгаа ч) самбарт ОГТ гарахгүй байв.
+       `nameOwner` нь бүтэн нэр → инициал+цөм → цөм гэсэн 3 шатаар, хоёрдмол бол
+       ТААХГҮЙ. ⚠ Зөвхөн ДАНС БИШ (нэр) хүлээн авагчид — дансыг дээр тулгасан. */
+    const nameHit = !bd && (own.nameOwner ? own.nameOwner(b) === key : (nm && _salNameKey(b) === nm));
+    if (!(acctHit || nameHit || guessHit)) continue;
+    const fp = salaryPayFp(r.justification);
+    if (fp && have.has(fp)) continue;
+    if ((typeof finAccrualMonth === 'function' ? finAccrualMonth(r) : '') !== ym) continue;
+    const bankYm = String(r.requested_at || '').slice(0, 7);
+    out.push({ amount: Number(r.amount) || 0, at: r.requested_at || '', note: r.purpose || '',
+               label: salaryPayLabel(r.purpose), bankYm,
+               shifted: !!bankYm && bankYm !== ym, fromFin: true });
+  }
+  return out;
+}
+/* Олголтын мөрийн тайлбар. Цикл тэмдэг (⟦УР⟧/⟦ҮЛ⟧) байвал түүнийг, эс бөгөөс
+   хуулгын гүйлгээний утгыг цэвэрлэж өгнө (хээ `[#...]` нь хүнд юу ч хэлэхгүй).
+   ⚠ Хуулгаас автоматаар бүртгэгддэг тул цалин БИШ мөр (зогсоолын төлбөр г.м.)
+     орж ирж болно — НУУХГҮЙ, утгыг нь ил харуулна: ажилтан буруу бол хэлнэ. */
+function salaryPayLabel(note) {
+  const t = String(note || '');
+  if (t.includes(SAL_ADV_TAG)) return 'урьдчилгаа';
+  if (t.includes(SAL_REM_TAG)) return 'үлдэгдэл';
+  return t.replace(/\[#[^\]]+\]/g, '').replace(/⟦[^⟧]*⟧/g, '')
+    .replace(/^\s*Хуулгаар баталгаажсан\s*·?\s*/i, '').replace(/\s+/g, ' ').trim();
 }
 // ── Хагас сарын цикл: Урьдчилгаа (20-нд, 1–15) + Үлдэгдэл (дараа сарын 5-нд, 16–эцэс) ──
 const SAL_ADV_TAG = '⟦УР⟧', SAL_REM_TAG = '⟦ҮЛ⟧';
@@ -15893,7 +17514,14 @@ function salaryLastAdvance(personKey) {
   return ps.length ? (Number(ps[0].amount) || 0) : 0;
 }
 // ── Суутгал → цэвэр цалин (НДШ + ХХОАТ, хялбар хувилбар, хувь нь тохируулгатай) ──
+// ⛔ СУУТГАЛЫН ХУВЬ = `app_config['salary_rates']`, localStorage БИШ (2026-10-02).
+//    Ажилтан өөрийн цалингаа хардаг болсон тул хувь нь зөвхөн CEO-гийн браузерт
+//    байвал ажилтан ӨӨР цэвэр дүн харна — нэг цалин хоёр тоотой болно.
+//    localStorage нь зөвхөн нөөц (тохиргоо ачаалагдаагүй үеийн).
 function salaryRates() {
+  const c = state.appConfig && state.appConfig.salary_rates;
+  if (c && typeof c === 'object' && (Number.isFinite(Number(c.ndsh)) || Number.isFinite(Number(c.pit))))
+    return { ndsh: Number(c.ndsh) || 0, pit: Number(c.pit) || 0 };
   if (!state.salaryRates) {
     try { state.salaryRates = JSON.parse(localStorage.getItem('salaryRates') || 'null'); } catch (_) {}
     if (!state.salaryRates) state.salaryRates = { ndsh: 11.5, pit: 10 };   // НДШ 11.5%, ХХОАТ 10% (default)
@@ -15907,27 +17535,6 @@ function salaryNet(gross, deduct) {
   const ndsh = Math.round(gross * (Number(r.ndsh) || 0) / 100);
   const pit = Math.round(Math.max(0, gross - ndsh) * (Number(r.pit) || 0) / 100);
   return { ndsh, pit, net: Math.max(0, gross - ndsh - pit) };
-}
-// Цалин олгомогц ТООЛОГДОХГҮЙ тэмдэглэл (⟦PENDST⟧) үүсгэнэ — цагийн цалинтай адил зардал зөвхөн
-// банкны хуулгаас орно (давхар тоологдохгүй). Хуулга орж баталгаажмагц тоологдоно. Давхардлаас ⟦SAL⟧-аар хамгаална.
-async function createSalaryExpense(m, ym, amount, cycName) {
-  const tag = `⟦SAL|${personKey(m)}|${ym}|${cycName}⟧`;
-  if ((state.financeRequests || []).some(x => x.status !== 'deleted' && String(x.justification || '').includes(tag))) return;
-  const bs = (typeof memberBranchesOf === 'function' ? memberBranchesOf(m) : (m.branches || [])) || [];
-  const brCode = bs.includes('m-event') ? 'ИВЕНТ' : bs.includes('camp') ? 'КЕМП' : bs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
-  state._finBackfill = { date: `${ym}-${/рьдчил/.test(cycName) ? '20' : '05'}` };
-  const fr = await createFinanceRequest({
-    amount, beneficiary: m.name || '', bank: m.bank || '', accountNumber: m.bank_account || '',
-    purpose: `${ym} ${cycName} цалин · ${m.name || ''}`, justification: `${tag} ⟦PENDST⟧`,
-    category: '7100', deptBranch: brCode, linkType: 'salary', priority: 'med',
-  });
-  state._finBackfill = null;   // аюулгүй: дараагийн хүсэлтэд санамсаргүй үлдэхээс сэргийлнэ
-  if (fr && fr.status !== 'done') {   // payer нь CEO/executor биш байлаа ч цалин = шийдэгдсэн зардал
-    const now = new Date().toISOString();
-    fr.decision = 'approved'; fr.decision_at = now; fr.decision_by = state.me;
-    fr.executed_at = now; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'цалин';
-    fr.close_note = 'Цалингийн олголтоос автоматаар'; await saveFinanceRequest(fr);
-  }
 }
 // Сарын цалин авах ажилтнууд (өдрийн/цагийн ажилтнаас бусад идэвхтэй)
 function salaryStaff() {
@@ -15981,100 +17588,305 @@ function payrollTabBar(canSal, canHr) {
 function attachPayrollTabs() {
   document.querySelectorAll('[data-payroll-tab]').forEach(b => b.addEventListener('click', () => { state.payrollTab = b.dataset.payrollTab; render(); }));
 }
+/* ─── ЦАЛИНГИЙН САМБАР — бүх цалингийн тоо НЭГ дэлгэцэд (2026-10-02) ────────
+   Цалингийн мэдээлэл 5 дэлгэцэд тарсан байв: суурь цалин «Цалин»-д, ажилласан
+   цаг/илүү цаг/хүргэлт «Ирц»-д, олголт банкны хуулгад, цагийн ажилтан тусдаа
+   табд, ажилтны өөрийн карт бас өөр. CEO «хэн хэдэн төгрөг авах вэ» гэдгийг нэг
+   дороос харж чаддаггүй байв.
+   ⛔ `worker_type`-аар ШҮҮЖ БОЛОХГҮЙ. Амьд системд сарын цалинтай 4 ажилтан
+     алдаатайгаар 'daily' гэж тэмдэглэгдсэн тул цалингийн дэлгэцээс ОГТ алга
+     болсон — яг тэд нь хамгийн их илүү цаг гаргасан хүмүүс байв (291ц/сар).
+     Жагсаалт нь ДАТА-гаар бүрдэнэ: цалинтай ЭСВЭЛ ирцтэй ЭСВЭЛ олголттой. */
+function payrollRoster(team, salaries, attKeys, paidKeys) {
+  const sal = salaries || {}, att = attKeys || new Set(), paid = paidKeys || new Set();
+  const has = (s, k) => (typeof s.has === 'function') ? s.has(k) : !!s[k];
+  const out = [];
+  for (const m of (team || [])) {
+    const k = personKey(m);
+    if (!k) continue;
+    const left = String(m.status || '') === 'гарсан';
+    const amount = Number(sal[k]) || 0;
+    const hasAtt = has(att, k), hasPaid = has(paid, k);
+    // Ажлаас гарсан хүн ЗӨВХӨН тэр сард ирц/олголттой бол гарна (түүх таслагдахгүй).
+    if (left && !hasAtt && !hasPaid) continue;
+    // Идэвхтэй: цалинтай ЭСВЭЛ ирцтэй ЭСВЭЛ олголттой ЭСВЭЛ сарын ажилтан.
+    if (!left && !amount && !hasAtt && !hasPaid && String(m.worker_type || '') === 'daily') continue;
+    out.push({ k, m, amount, hasAtt, hasPaid, left, noSalary: !amount, noAtt: !hasAtt });
+  }
+  return out.sort((a, b) => (b.amount - a.amount) || String(a.m.name || '').localeCompare(String(b.m.name || ''), 'mn'));
+}
+/* Эзэнгүй цалин/олголт — ямар ч ажилтантай холбогдохгүй түлхүүр. ЦЭВЭР функц.
+   ⚠ НУУХГҮЙ: амьд системд 2 цалингийн мөр (2.5сая ба 1.8сая) эзэнгүй байсныг
+     хэн ч мэдэхгүй байв. Утас солигдоход ийм мөр үлддэг. */
+function payrollOrphans(team, salaries, paidRows, ym) {
+  const known = new Set((team || []).map(m => personKey(m)).filter(Boolean));
+  const out = {};
+  Object.keys(salaries || {}).forEach(k => {
+    const a = Number(salaries[k]) || 0;
+    if (a > 0 && !known.has(k)) (out[k] = out[k] || { key: k, amount: 0, paid: 0 }).amount = a;
+  });
+  (paidRows || []).forEach(p => {
+    const k = p && p.person_key;
+    if (!k || known.has(k) || (ym && p.ym !== ym)) return;
+    (out[k] = out[k] || { key: k, amount: 0, paid: 0 }).paid += Number(p.amount) || 0;
+  });
+  return Object.keys(out).map(k => out[k]).sort((a, b) => (b.amount + b.paid) - (a.amount + a.paid));
+}
+/* Сарын ирцээс хүн бүрийн ажилласан минут. ЦЭВЭР функц (`attCanonKey`-ээр бүлэглэнэ). */
+function payrollAttMins(recs) {
+  const byM = {};
+  (recs || []).forEach(r => { const k = attCanonKey(r); (byM[k] = byM[k] || []).push(r); });
+  const out = {};
+  Object.keys(byM).forEach(k => {
+    const byDay = {};
+    byM[k].forEach(r => { (byDay[r.day] = byDay[r.day] || []).push(r); });
+    let mins = 0, noOut = 0;
+    Object.keys(byDay).forEach(d => {
+      const sm = attMemberSummary(byDay[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === todayStr());
+      mins += sm.mins; if (sm.noOut) noOut++;
+    });
+    out[k] = { mins, days: Object.keys(byDay).length, noOut };
+  });
+  return out;
+}
 function renderSalary() {
-  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
+  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   // Данс/РД нь эмзэг сувгаар ирдэг. Өмнө нь зөвхөн «Ажилчид» хуудсаар татагддаг байсан тул
   // шууд Цалин руу орвол бүх данс «бүртгэгдээгүй» харагддаг байв. Эрхийг loadStaffPins шалгана.
   if (!state._staffPinsLoaded) loadStaffPins();
-  const ym = state.salaryYM || todayStr().slice(0, 7);
-  const q = (state.salarySearch || '').toLowerCase().trim();
-  const brAll = salaryStaff().filter(m => _inHubBranch(m, effectiveBranchLens() || 'all'));   // толгойн глобал салбар-сонгогчоор
-  const staff = brAll
-    .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
-    .sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
-  const allStaff = brAll;
-  const totalBase = allStaff.reduce((s, m) => s + (Number((state.salaries || {})[personKey(m)]) || 0), 0);
-  const paidThis = allStaff.reduce((s, m) => s + salaryPaidFor(personKey(m), ym), 0);
-  const unpaidCnt = allStaff.filter(m => { const base = Number((state.salaries || {})[personKey(m)]) || 0; return base > 0 && salaryPaidFor(personKey(m), ym) <= 0; }).length;
-  const editable = can('salary.edit'), payable = can('salary.pay');
-  const rt = salaryRates();
-  const totalNet = allStaff.reduce((s, m) => s + salaryNet(Number((state.salaries || {})[personKey(m)]) || 0, salaryDeductOn(personKey(m))).net, 0);
+  ensurePayrollCfg();   // цалингийн тооцоо аль сараас эхлэх (app_config['payroll'])
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // хүргэлт/дамжлагын бонусд stage_meta
+  const ym = state.salaryYM || payMonthDefault(todayStr());
+  /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ. Бодсон «Нийт олгох»/«Үлдэгдэл» гаргахгүй —
+     хуучин сард аппын тооцоо ХУДАЛ (суурь цалингийн түүх хадгалагддаггүй).
+     ⚠ ИРЦ Ч ТАТАХГҮЙ: тэр сард цаг бүртгэл хэрэгжээгүй байсан тул «ирцгүй»,
+       «0 / 184ц» гэсэн мөр гаргах нь хийгдээгүй зүйлийг хийсэн мэт үзүүлнэ. */
+  const histOnly = payrollHistOnly(ym);
+  // Илүү цаг бодоход тухайн САРЫН ирц заавал хэрэгтэй (ирцийн дэлгэцтэй ижил эх сурвалж).
+  if (!histOnly && state.attMonthKey !== ym && state._attMonthBusy !== ym && !(state.attMonthErr && state.attMonthErr.month === ym)) setTimeout(() => loadAttendanceMonthFull(ym), 0);
+  const attReady = !histOnly && state.attMonthKey === ym && Array.isArray(state.attMonthRecs);
+  const attMins = attReady ? payrollAttMins(state.attMonthRecs) : {};
+  const normMins = workNormMins(ym), normH = workNormDays(ym) * 8;   // ⚠ норм САР БҮРЭЭР
+  const spAll = stagePayByPerson(state.appOrders || [], ym);
+  const payRows = (state.salaryPayments || []).filter(p => p && p.ym === ym);
+  const attSet = new Set(Object.keys(attMins)), paidSet = new Set(payRows.map(p => p.person_key));
 
-  const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
-      <div><div style="font-weight:800;font-size:16px;">💵 Сарын цалин</div><div style="font-size:11px;color:var(--muted);">Суурь → суутгал → цэвэр гарт өгөх + хагас сарын олголт</div></div>
-      <div style="display:flex;gap:8px;align-items:center;"><input type="month" id="sal-ym" value="${ym}" style="padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;"><button class="btn" data-sal-refresh style="padding:6px 12px;font-size:12px;">↻</button></div>
+  const q = (state.salarySearch || '').toLowerCase().trim();
+  const lens = effectiveBranchLens() || 'all';
+  /* ⚠ ТҮҮХ сард жагсаалт = тэр сард МӨНГӨ АВСАН хүмүүс.
+     ⛔ `paidSet` нь `salary_payments`-ээс л бүрддэг тул хуучин сард ХООСОН
+       (тэр үед олголтыг бүртгэдэггүй байсан, мөр нь санхүүгийн гүйлгээнээс
+       гардаг) — түүгээр шүүвэл БҮХ түүх алга болно. Тиймээс `salaryPaidFor`
+       (= гүйлгээг ч тоолдог ганц эх сурвалж) -ээр шүүнэ. */
+  const roster = histOnly
+    ? (TEAM || []).map(m => ({ k: personKey(m), m })).filter(r => r.k && _inHubBranch(r.m, lens))
+        .map(r => ({ ...r, amount: Number((state.salaries || {})[r.k]) || 0, paidSum: salaryPaidFor(r.k, ym) }))
+        .filter(r => r.paidSum > 0)
+        .sort((a, b) => b.paidSum - a.paidSum)
+    : payrollRoster(TEAM || [], state.salaries || {}, attSet, paidSet).filter(r => _inHubBranch(r.m, lens));
+  const orphans = payrollOrphans(TEAM || [], state.salaries || {}, state.salaryPayments || [], ym);
+  const editable = can('salary.edit'), payable = can('salary.pay'), rt = salaryRates();
+
+  // Мөр бүрийн бүтэн тооцоо — ГАНЦ газар бодогдоно (карт ба нийлбэр ижил тоо).
+  const calc = roster.map(r => {
+    const w = attMins[r.k] || { mins: 0, days: 0, noOut: 0 };
+    const db = driverBonus(r.k, ym);
+    // ⛔ Ирц ачаалагдаагүй / тэр сард огт бүртгэлгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 биш
+    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, normMins, db.amount, undefined, ym, undefined, ((spAll[r.k] || {}).total) || 0);
+    // ↪ Өмнөх сарын илүү олголт — энэ сарын олгохоос хасагдана (түүх сард шилжүүлэлтгүй)
+    const carry = payrollHistOnly(ym) ? { amount: 0, ready: true, from: '' } : payrollCarryIn(r.k, ym);
+    return { ...r, w, db, b, carry, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
+  });
+  /* Үлдэгдэл ба илүү олголтыг ХҮН БҮРЭЭР нийлбэрлэнэ — нийт олгохоос нийт
+     олгосныг хасвал нэг хүний илүү олголт нөгөөгийн дутууг «нөхөж» харагдана. */
+  /* ⛔ «Илүү олгосон» = ЗӨВХӨН суурь цалинтай хүнд (шилжүүлэлттэй ИЖИЛ хил). Суурь
+     цалингүй хүний олголт (COO-гийн урамшуулал, нэрээр тулгагдсан зардал) «илүү» биш —
+     тоолбол «3 хүн илүү» гэж харагдаад 1-ийнх нь л дараа сард шилжиж, тоо зөрнө. */
+  const T = calc.reduce((t, c) => { const pb0 = payBalance(c.b.total, c.paid + c.carry.amount);
+    const pb = c.amount > 0 ? pb0 : { owed: pb0.owed, over: 0 }; return {
+    total: t.total + c.b.total, paid: t.paid + c.paid, ot: t.ot + c.b.otPay,
+    dlv: t.dlv + c.b.delivery, sp: t.sp + (c.sp ? c.sp.total : 0), spPts: t.spPts + (c.sp ? (c.sp.pts || 0) : 0),
+    owed: t.owed + pb.owed, over: t.over + pb.over, overN: t.overN + (pb.over > 0 ? 1 : 0),
+    carry: t.carry + c.carry.amount, carryWait: t.carryWait || !c.carry.ready,
+  }; }, { total: 0, paid: 0, ot: 0, dlv: 0, sp: 0, spPts: 0, owed: 0, over: 0, overN: 0, carry: 0, carryWait: false });
+
+  const kpi = (label, val, col, sub) => `<div class="pb-kpi"><div class="pb-kpi-l">${label}</div><div class="pb-kpi-v" style="color:${col || 'var(--text)'};">${val}</div>${sub ? `<div class="pb-kpi-s">${sub}</div>` : ''}</div>`;
+  const head = `<div class="pb-head">
+      <div><div class="pb-title">💵 Цалингийн самбар</div><div class="pb-sub">Ажилласан цаг · илүү цаг · хүргэлт · суутгал · олголт — бүгд энд</div></div>
+      <div class="pb-head-r"><input type="month" class="ui-raw pay-ym" id="sal-ym" value="${ym}" max="${todayStr().slice(0, 7)}"><button class="btn" data-sal-refresh>↻</button></div>
     </div>`;
-  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px;">
-    ${kpi('Нийт цалин (нийт)', fmtMoney(totalBase), 'var(--text)', `${allStaff.length} ажилтан`)}
-    ${kpi('Цэвэр олгох', fmtMoney(totalNet), 'var(--primary)', 'суутгалын дараа')}
-    ${kpi('Энэ сар олгосон', fmtMoney(paidThis), 'var(--ok)', ym)}
-    ${kpi('Олгоогүй', fmtMoney(Math.max(0, totalNet - paidThis)), unpaidCnt ? 'var(--warn)' : 'var(--muted)', `${unpaidCnt} хүн`)}
+  const kpis = histOnly
+    ? `<div class="pb-kpis">${kpi('Олгосон', fmtMoney(T.paid), 'var(--ok)', `${ym} · ${calc.filter(c => c.paid > 0).length} хүнд`)}</div>`
+    : `<div class="pb-kpis">
+    ${kpi('Нийт олгох', fmtMoney(T.total), 'var(--primary)', `${calc.length} ажилтан`)}
+    ${kpi('Олгосон', fmtMoney(T.paid), 'var(--ok)', ym)}
+    ${kpi('Үлдэгдэл', fmtMoney(T.owed), T.owed > 0 ? 'var(--warn)' : 'var(--muted)', [T.carry > 0 ? `↪ өмнөх сарын илүү ${fmtMoney(T.carry)} хасагдсан` : '', T.over > 0 ? `⚠ илүү олгосон ${fmtMoney(T.over)} · ${T.overN} хүн` : ''].filter(Boolean).join(' · '))}
+    ${kpi('Үүнээс илүү цаг', fmtMoney(T.ot), 'var(--text)', T.dlv ? `хүргэлт ${fmtMoney(T.dlv)}` : '')}
   </div>`;
-  const ratesBar = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);background:var(--panel-hover);border-radius:8px;padding:8px 11px;margin-bottom:10px;">
-      ✂️ Суутгал:
-      <label style="display:inline-flex;align-items:center;gap:4px;">НДШ <input type="number" step="0.1" id="sal-ndsh" value="${rt.ndsh}" ${editable ? '' : 'disabled'} style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px;text-align:right;">%</label>
-      <label style="display:inline-flex;align-items:center;gap:4px;">ХХОАТ <input type="number" step="0.1" id="sal-pit" value="${rt.pit}" ${editable ? '' : 'disabled'} style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px;text-align:right;">%</label>
-      <span style="opacity:.8;">${editable ? 'хувийг өөрчилж болно' : ''}</span>
+  // ⚠ ЯАГААД гэдгийг ИЛ хэлнэ — эс бөгөөс «тоо алга болсон» гэж хүн гайхна.
+  const histNote = histOnly
+    ? `<div class="pb-note">📜 <b>${escapeHtml(ym)}</b> нь цалингийн тооцоо эхлэхээс (<b>${escapeHtml(payrollStartMonth())}</b>) өмнөх сар — тэр цалинг өдөр/цаг/нэмэгдлээр нь гараар тооцож олгосон. Тиймээс энд <b>зөвхөн олгосон түүх</b> харагдана: бодсон дүн, үлдэгдэл гаргахгүй (аппын тооцоо хуучин сард худал үлдэгдэл үзүүлж, дахин олгох эрсдэлтэй).</div>`
+    : '';
+
+  // ⚠ Чимээгүй цоорхойг ИЛ хэлнэ — «бүгд харагдахгүй байна» гэсэн гомдол эндээс гарсан.
+  const noSal = calc.filter(c => c.noSalary && c.hasAtt);
+  const noAtt = calc.filter(c => c.noAtt && c.amount > 0);
+  const warnBits = [];
+  if (!attReady) warnBits.push(state.attMonthErr && state.attMonthErr.month === ym
+    ? `<div class="pb-warn">⚠ Сарын ирц ачаалж чадсангүй (${escapeHtml(state.attMonthErr.msg)}) — <b>илүү цаг тооцогдоогүй</b> байна.</div>`
+    : `<div class="pb-note">⏳ Сарын ирц ачаалж байна — илүү цаг дүүрэх хүртэл дүн дутуу.</div>`);
+  // ⚠ Анхааруулга нь ҮЙЛДЭЛГҮЙ бол хүн юу ч хийж чадахгүй — мөр бүрд засах товч.
+  if (orphans.length) warnBits.push(`<div class="pb-warn">⚠ <b>${orphans.length}</b> цалин/олголт ямар ч ажилтантай холбогдохгүй байна (ажилтны дугаар засагдсан байж болно):
+    ${orphans.map(o => `<div class="pb-orph"><span>${escapeHtml(o.key)} — <b>${fmtMoney(o.amount || o.paid)}</b>${o.amount && o.paid ? ` (цалин ${fmtMoney(o.amount)} · олголт ${fmtMoney(o.paid)})` : ''}</span>${
+      o.amount > 0 && editable ? `<button class="btn pb-orph-b" data-orph-fix="${escapeHtml(o.key)}" data-orph-amt="${o.amount}">🔗 Хэнийх вэ?</button>`
+        : '<span class="pb-dim">олголтын мөр — хуулгаас ирсэн, энд засагдахгүй</span>'}</div>`).join('')}</div>`);
+  if (noSal.length) warnBits.push(`<div class="pb-warn">⚠ <b>${noSal.length}</b> хүн энэ сард ажилласан атлаа суурь цалин тохируулаагүй: ${noSal.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
+  // ⛔ Шилжүүлэлт мэдэгдэхгүй үед ЧИМЭЭГҮЙ 0 гэж харуулахгүй — үлдэгдэл хиймлээр өснө
+  // Явж буй сард нормоос дутуу цаг хасагдахгүй — яагаад гэдгийг нэг мөрөөр
+  if (!histOnly && ym >= todayStr().slice(0, 7) && ym >= payProrateFrom()) warnBits.push(`<div class="pb-note">⏳ ${escapeHtml(ym)} сар дуусаагүй — ${normH}ц-д хүрээгүй цагийн хасалт сар дуусахад тооцогдоно.</div>`);
+  if (T.carryWait) warnBits.push(`<div class="pb-note">⏳ Өмнөх сарын илүү олголтыг тооцож байна — тэр хүртэл үлдэгдэл <b>өндөр</b> харагдаж болно.</div>`);
+  if (noAtt.length) warnBits.push(`<div class="pb-note">🕗 <b>${noAtt.length}</b> цалинтай хүн энэ сард ирц бүртгүүлээгүй: ${noAtt.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
+
+  const ratesBar = `<div class="pb-rates">✂️ Суутгал:
+      <label>НДШ <input type="number" step="0.1" id="sal-ndsh" value="${rt.ndsh}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
+      <label>ХХОАТ <input type="number" step="0.1" id="sal-pit" value="${rt.pit}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
+      <span class="pb-rates-n">Суутгал зөвхөн СУУРЬ цалингаас — илүү цаг, хүргэлт бүтнээрээ гарт очно. ${lunchNote()}</span>
     </div>`;
-  const schedule = `<div style="font-size:11.5px;color:var(--muted);background:var(--panel-hover);border-radius:8px;padding:8px 11px;margin-bottom:12px;">📅 Хуваарь: <b style="color:var(--text);">Урьдчилгаа 20-нд</b> (1–15) · <b style="color:var(--text);">Үлдэгдэл дараа сарын 5-нд</b> (16–эцэс) · 5 хоногийн зайтай</div>`;
+  // ⛔ Олголтын хуваарь ХАРУУЛАХГҮЙ — цалин автоматаар бодогдож, олголт нь банкны
+  //   хуулгаас автоматаар бүртгэгддэг тул аппад давтах зүйл алга.
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="sal-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.salarySearch || '')}" /></div>`;
-  const today = todayStr();
-  const advDue = `${ym}-20`, remDue = `${salaryNextYm(ym)}-05`;
-  const rows = staff.map(m => {
-    const key = personKey(m);
-    const base = Number((state.salaries || {})[key]) || 0;   // суурь = нийт (gross)
-    const dOn = salaryDeductOn(key);                         // суутгалтай эсэх (default тийм)
-    const ded = salaryNet(base, dOn);                        // { ndsh, pit, net }
-    const net = ded.net;                                     // цэвэр гарт өгөх — цикл үүн дээр суурилна
-    const advPaid = salaryCyclePaid(key, ym, SAL_ADV_TAG);
-    const remPaid = salaryCyclePaid(key, ym, SAL_REM_TAG);
-    const advAmt = advPaid > 0 ? advPaid : (salaryLastAdvance(key) || Math.round(net / 2));
-    const remAmt = Math.max(0, net - advAmt);   // үлдэгдэл = цэвэр − урьдчилгаа (нийлбэр нь цэвэртэй тэнцэнэ)
+
+  /* ⛔ ХҮН БҮРД ИЖИЛ УРТ БЛОК БИЧИХГҮЙ (2026-10-02, CEO «механик байдлыг болиул»).
+     Өмнө нь хүн бүр 8 мөртэй, үүний 4 нь ижил тоог давтдаг байв (цэвэр суурь =
+     нийт олгох = урьдчилгаа + үлдэгдэл) тул 20 ажилтны жагсаалт уншигдахаа больсон.
+     Дүрэм: ХУРААНГУЙ мөр нь үргэлж харагдана (нэр · цаг · төлөв · НИЙТ ОЛГОХ),
+     задаргаа нь дарахад нээгдэнэ; утгагүй мөр ОГТ бичигдэхгүй. */
+  const rows = calc.map(c => {
+    const { k, m, b, w, db, sp, paid, pays, carry } = c;
+    const dOn = salaryDeductOn(k);
+    const { owed, over } = payBalance(b.total, paid + carry.amount);
+    // Төлөв НЭГ чипээр — «олголт бүртгэгдээгүй» гэсэн бүтэн мөр хүн бүрд давтагдахгүй.
+    const st = histOnly ? (paid > 0 ? ['pb-st-ok', 'олгосон'] : ['pb-st-none', '—'])
+      : !c.amount ? (paid > 0 ? ['pb-st-none', `олгосон ${fmtMoneyShort(paid)}`] : ['pb-st-none', '—'])   // суурьгүй — «илүү» гэж үнэлэхгүй
+      : !b.total ? (paid > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`] : ['pb-st-none', '—'])
+      : (paid <= 0 && !carry.amount) ? ['pb-st-no', 'олгоогүй']
+      : over > 0 ? ['pb-st-over', `илүү ${fmtMoneyShort(over)}`]
+      : owed > 0 ? ['pb-st-part', `дутуу ${fmtMoneyShort(owed)}`]
+      : ['pb-st-ok', '✓ олгосон'];
+    /* ⛔ ТҮҮХ САРД ЦАГИЙН МӨР ГАРАХГҮЙ — тэр үед цаг бүртгэл хэрэгжээгүй тул
+       «ирцгүй» эсвэл «0 / 184ц» гэж бичих нь хийгдээгүй зүйлийг хийсэн мэт
+       үзүүлж, хүнийг төөрүүлнэ (CEO: «хэрэгжүүлж байгаагүй зүйлс харагдаад байна»). */
+    const hrs = histOnly ? ''
+      : w.days
+      ? `${attHM(w.mins)}<span class="pb-dim"> / ${normH}ц</span>${b.otMins ? ` <b class="pb-ot">+${attHM(b.otMins)}</b>` : ''}`
+      : '<span class="pb-dim">ирцгүй</span>';
+    const sum = `<summary class="pb-sum">
+      <span class="pb-sum-n"><b>${escapeHtml(m.name || '?')}</b><span class="pb-role">${escapeHtml(m.role || '')}</span></span>
+      <span class="pb-sum-h">${hrs}</span>
+      <span class="pb-chip ${st[0]}">${st[1]}</span>
+      <span class="pb-sum-v">${fmtMoney(histOnly ? paid : b.total)}</span></summary>`;
+
+    const line = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
     const baseCell = editable
-      ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(key)}" value="${base ? moneyFmtInput(base) : ''}" placeholder="0" style="width:120px;box-sizing:border-box;padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;text-align:right;">`
-      : `<b style="font-size:13px;">${fmtMoney(base)}</b>`;
-    const dedChk = editable
-      ? `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--muted);"><input type="checkbox" class="sal-deduct" data-sal-person="${escapeHtml(key)}" ${dOn ? 'checked' : ''} style="cursor:pointer;">Суутгалтай</label>`
-      : '';
-    const dedLine = base > 0
-      ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;">Цэвэр: <b style="color:var(--primary);">${fmtMoney(net)}</b>${dOn ? ` <span style="opacity:.8;">(НДШ −${fmtMoney(ded.ndsh)} · ХХОАТ −${fmtMoney(ded.pit)})</span>` : ` <span style="opacity:.8;">(суутгалгүй)</span>`}${dedChk}</div>`
-      : (dedChk ? `<div style="margin-top:3px;text-align:right;">${dedChk}</div>` : '');
-    const histN = (state.salaryPayments || []).filter(p => p.person_key === key).length;
-    const histBtn = histN ? `<button class="btn" data-sal-hist="${escapeHtml(key)}" style="padding:1px 8px;font-size:10.5px;margin-left:6px;">📜 Түүх (${histN})</button>` : '';
+      ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(k)}" value="${c.amount ? moneyFmtInput(c.amount) : ''}" placeholder="0">`
+      : `<b>${fmtMoney(c.amount)}</b>`;
+    const dedChk = editable ? `<label class="pb-ded"><input type="checkbox" class="sal-deduct" data-sal-person="${escapeHtml(k)}" ${dOn ? 'checked' : ''}>Суутгалтай</label>` : '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
     const bankLine = (m.bank || m.bank_account)
-      ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b style="font-weight:600;color:var(--text);">' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn" data-sal-copy="${escapeHtml(acct)}" style="padding:1px 7px;font-size:10px;">Хуулах</button>` : ''}</div>`
+      ? `<div class="pb-bank">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b>' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn pb-copy" data-sal-copy="${escapeHtml(acct)}">Хуулах</button>` : ''}</div>`
       : staffAcctMissingHtml();
-    const slot = (label, sub, due, amt, paid, tag) => {
-      const over = !paid && base > 0 && today > due;
-      const right = paid > 0
-        ? `<span style="color:var(--ok);font-size:12px;font-weight:600;">✓ ${fmtMoney(paid)}</span>`
-        : (payable && amt > 0 ? `<button class="btn" data-sal-memo="${escapeHtml(key)}" data-sal-cyc="${tag}" title="Гүйлгээний утга хуулах — банкаараа шилжүүл" style="padding:4px 11px;font-size:11.5px;">⧉ Утга</button>` : `<span style="color:var(--muted);font-size:11px;">${base > 0 ? 'олгоогүй' : '—'}</span>`);
-      return `<div style="display:flex;align-items:center;gap:8px;">
-        <span style="min-width:118px;font-size:11.5px;color:var(--muted);">${label} <span style="opacity:.75;">· ${sub}</span>${over ? ' <b style="color:var(--danger);">🔴 хоцорсон</b>' : ''}</span>
-        <b style="flex:1;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(amt)}</b>
-        <div style="min-width:92px;text-align:right;">${right}</div>
+    const histN = (state.salaryPayments || []).filter(p => p.person_key === k).length;
+    const payList = pays.length ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.shifted ? ` <span class="pay-pshift" title="Банкнаас ${escapeHtml(x.bankYm)}-д гарсан, ${escapeHtml(ym)}-д ноогдуулсан">⇄</span>` : ''}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
+        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>` : '';
+    /* ⛔ УРЬДЧИЛГАА/ҮЛДЭГДЛИЙН ХУВААРЬ ХАРАГДАХГҮЙ (2026-10-02, CEO шийдвэр).
+       Цалин нь ирц + хүргэлтээс АВТОМАТААР бодогдоно; олголт нь банкны хуулгаас
+       автоматаар бүртгэгдэнэ. Хагас сарын хуваарилалтыг аппад харуулах нь хүн бүрд
+       2 нэмэлт мөр үүсгээд, тоо нь зүгээр л нийт дүнгийн хуваалт байсан — шинэ
+       мэдээлэл өгдөггүй. Үлдсэн дүн дээр ГАНЦ «⧉ Утга» товч хангалттай. */
+    const memoBtn = (payable && owed > 0 && !histOnly) ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : '';
+    // ⛔ Утгагүй мөр БИЧИХГҮЙ: суутгалгүй бөгөөд нэмэгдэлгүй бол «цэвэр суурь» нь
+    //   «нийт олгох»-той ЯГ ижил тоо — хоёуланг бичих нь нүдийг л төөрүүлнэ.
+    const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery || b.shortMins;
+    /* ⛔ ТҮҮХ САРД ЗӨВХӨН ОЛГОСОН МӨР. Бодолтын мөрүүд (суурь · суутгал · илүү
+       цаг · нийт олгох · үлдэгдэл) ОГТ гарахгүй — тэр тоо хуучин сард худал. */
+    const money = histOnly
+      ? (paid > 0
+          ? `<div class="pay-rows pb-rows">${line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid')}${payList}</div>`
+          : `<div class="pb-note">Энэ сард олголт бүртгэгдээгүй.</div>`)
+      : !c.amount ? `<div class="pb-nosal">⚠ Суурь цалин тохируулаагүй — илүү цаг тооцогдохгүй.</div>` : `
+      <div class="pay-rows pb-rows">
+        ${hasParts ? line('Суурь цалин', fmtMoney(b.base)) : ''}
+        ${b.shortMins ? line(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.base - b.earned)}`, 'pay-minus') : ''}
+        ${(dOn && (b.ndsh || b.pit)) ? line('− НДШ · ХХОАТ', `−${fmtMoney(b.ndsh + b.pit)}`, 'pay-minus') : ''}
+        ${b.otMins ? line(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : ''}
+        ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}
+        ${/* ⛔ БОНУС НИЙЛБЭРЭЭС ӨМНӨ — доор нь тавибал мөрүүд нийлбэртэйгээ
+             таарахгүй, хүн «дүн буруу» гэж уншина (2026-10-05, CEO барив). */''
+        }${stageBonusRowsHtml(sp, b.bonus, line, `📦 Дамжлагын бонус · ${(sp && sp.led) || 0} удирдсан${(sp && sp.helped) ? ` · ${sp.helped} хамтрагч` : ''}`)}
+        ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
+        ${carry.amount ? line(`↪ ${escapeHtml(carry.from)} сард илүү олгосон`, `−${fmtMoney(carry.amount)}`, 'pay-minus') : ''}
+        ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList : ''}
+        ${owed > 0 ? line('Үлдэгдэл', `<b>${fmtMoney(owed)}</b> ${memoBtn}`, 'pay-left') : ''}
+        ${over > 0 ? line(`⚠ Илүү олгосон → ${escapeHtml(nextMonthStr(ym))} сард шилжинэ`, `<b>${fmtMoney(over)}</b>`, 'pay-over') : ''}
       </div>`;
-    };
-    return `<div class="ac-row" data-sal-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;display:flex;flex-direction:column;gap:9px;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div style="min-width:160px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span>${histBtn}${bankLine}</div>
-        <div style="text-align:right;"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><span style="font-size:10.5px;color:var(--muted);">Нийт цалин</span>${baseCell}</div>${dedLine}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--border);padding-top:8px;">
-        ${slot('Урьдчилгаа', '20-нд', advDue, advAmt, advPaid, SAL_ADV_TAG)}
-        ${slot('Үлдэгдэл', 'дараа сар 5', remDue, remAmt, remPaid, SAL_REM_TAG)}
-      </div>
-    </div>`;
+    const spLine = '';   // бонус нь дээрх мөрүүдийн дунд — доор давтахгүй
+    const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг тоологдсон${b.shortMins ? ', <b>цалин дутуу бодогдсон</b>' : ', илүү цаг дутуу'}. «🙋 Цаг гаргуулах»-аар засна.</div>` : '';
+    /* ⛔ ТҮҮХ САРД ЗӨВХӨН ОЛГОЛТ. Суурь цалингийн талбар (тэр үеийн цалин биш,
+       ОДООГИЙНХ), «гарах бүртгэлгүй» анхааруулга, дамжлагын бонус — бүгд тэр сард
+       хэрэгжээгүй зүйл тул гаргахгүй. */
+    const body = histOnly
+      ? `<div class="pb-body">${money}</div>`
+      : `<div class="pb-body">
+        <div class="pb-top">
+          <div class="pb-who">${bankLine}${noOut}${histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 Бүх олголт (${histN})</button>` : ''}</div>
+          <div class="pb-base"><div class="pb-base-r"><span class="pb-dim">Суурь цалин</span>${baseCell}</div>${dedChk ? `<div class="pb-ded-l">${dedChk}</div>` : ''}</div>
+        </div>
+        ${money}${spLine}
+      </div>`;
+    return `<details class="ac-row pb-card" data-sal-haystack="${escapeHtml(((m.name || '') + ' ' + (m.role || '')).toLowerCase())}">
+      ${sum}${body}
+    </details>`;
   }).join('');
-  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${kpis}${ratesBar}${schedule}${searchBar}<div class="sal-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
+  /* ⚙️ Тохиргооны товч нь бонусын мөрийн ДЭРГЭД — тоог хараад шууд тохируулна.
+     Тусдаа цэс үүсгэвэл хэн ч олохгүй («өөрөө үүсдэг» дүрэм). CEO-д л. */
+  // 📊 Урсгалын схем — БҮХ хүнд (ажилтан бүтэн дарааллыг хаанаас ч хардаггүй байв)
+  const spMapBtn = ` <button class="btn sp-cfg-btn" data-pipeline-map>📊 Урсгал харах</button>`;
+  const spCfgBtn = spMapBtn;   // ⚙️ тохиргоо нь СХЕМ дотроо (хоёр цонх байхгүй)
+  const spFoot = T.sp
+    ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> · ${(T.spPts || 0).toFixed(1)} оноо × ${fmtMoney(stagePointRate())} — нийт олгоход ОРСОН.${spCfgBtn}</div>`
+    : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
+  /* ✋ Хүлээгдэж буй мэдүүлэг — ЦАЛИН хардаг хүнд ИЛ. Хамтрагчаа нуух нүхийг
+     барих цорын ганц хүч нь орхигдсон хүн өөрөө; түүний дуу хоосон өрөөнд
+     биш, цалин баталдаг хүний нүдэн дээр гарна. */
+  const _claims = (can('salary.edit') || state.isCEO) ? pendingStageClaims(state.appOrders || []) : [];
+  const claimBox = _claims.length ? `<div class="clm-box">
+    <div class="clm-t">✋ ${_claims.length} хүн «би ч оролцсон» гэж мэдүүлсэн</div>
+    ${_claims.slice(0, 20).map(c => `<div class="clm-row">
+      <span class="clm-l"><b>${escapeHtml(memberName(c.who) || c.who)}</b> — ${escapeHtml(stageHistLabel(c.key))}<span class="clm-o">#${escapeHtml(String(c.number ?? ''))} · ${escapeHtml(String(c.at || '').slice(0, 10))}</span></span>
+      <button class="btn clm-no" data-clm-no="${escapeHtml(String(c.oid))}" data-clm-k="${escapeHtml(c.key)}" data-clm-w="${escapeHtml(c.who)}">✕</button>
+      <button class="btn btn-primary clm-ok" data-clm-ok="${escapeHtml(String(c.oid))}" data-clm-k="${escapeHtml(c.key)}" data-clm-w="${escapeHtml(c.who)}">✓ Тийм</button></div>`).join('')}
+    <div class="clm-n">Баталгаажуулбал тэр дамжлагын бонус дахин хуваагдана.</div></div>` : '';
+  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar + claimBox}${searchBar}
+    <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${histOnly ? '' : spFoot}</div>`;
 }
-
+/* ⚙️ ДАМЖЛАГЫН ОНООНЫ ТОХИРГОО (2026-10-03, CEO) ───────────────────────────
+   Дамжлага бүрийн ЖИН («энэ ажил хэр хүнд вэ») ба ХАНШ («оноо хэдэн төгрөг вэ»)
+   -ийг аппаас засна. Хоёр нь өөр шийдвэр: жин нь жилд нэг, ханш нь сараар.
+   ⛔ **ХАДГАЛСНЫ ДАРАА БОДОГДОХ БҮХ ДҮН ХӨДӨЛНӨ** — хаасан сарын тоо ч дагана.
+     Хаалттай сарыг хөлдөөх нь ТУСДАА ажил (элэгдлийн зурагтай ижил) — дэлгэцэд
+     ил сануулна, чимээгүй өөрчлөхгүй.
+   ⚠ Жагсаалт нь `stageDefs()`-ээс (= `PIPELINE`) — шинэ дамжлага нэмэхэд
+     тохиргооны дэлгэцэд ӨӨРӨӨ гарна. */
+/* ⛔ `openStagePayModal` УСТГАГДСАН (2026-10-04, CEO: «хоёр байх хэрэггүй»).
+   Тохиргоо нь СХЕМ дотроо: мөр дээр дарж нэр/оноог засаад 💾. Ханш, шатлал,
+   хамтрагчийн сан нь схемийн хөлийн «⚙️ Ханш ба хуваарилалт» эвхэгдэх хэсэгт.
+   Хоёр цонх байх нь «аль нь жинхэнэ вэ» гэсэн эргэлзээ төрүүлдэг. */
 function attachSalaryHandlers() {
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
-  document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); showToast('Шинэчилж байна…', 'info', 1200); });
+  document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
+  document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('sal-search');
   if (se) se.addEventListener('input', () => {
     state.salarySearch = se.value;
@@ -16090,12 +17902,12 @@ function attachSalaryHandlers() {
   document.querySelectorAll('[data-sal-memo]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation();
     const mm = findMember(b.dataset.salMemo);
-    const cyc = b.dataset.salCyc === SAL_ADV_TAG ? 'урьдчилгаа' : b.dataset.salCyc === SAL_REM_TAG ? 'үлдэгдэл' : '';
-    const memo = `Зарлага: Цалин ${cyc} ${(mm && mm.name) || ''}`.replace(/\s+/g, ' ').trim();
+    const memo = `Зарлага: Цалин ${(mm && mm.name) || ''}`.replace(/\s+/g, ' ').trim();
     copyText(memo, 'Утга хууллаа');
   }));
   document.querySelectorAll('[data-sal-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.salCopy, 'Данс хууллаа'); }));
   document.querySelectorAll('[data-sal-hist]').forEach(b => b.addEventListener('click', () => openSalaryHistory(b.dataset.salHist)));
+  document.querySelectorAll('[data-orph-fix]').forEach(b => b.addEventListener('click', () => openOrphanSalaryModal(b.dataset.orphFix, Number(b.dataset.orphAmt) || 0)));
   document.querySelectorAll('.sal-deduct').forEach(cb => cb.addEventListener('change', () => {
     if (!can('salary.edit')) { showToast('Танд цалин тохируулах эрх алга', 'warn', 3000); render(); return; }
     saveSalaryDeduct(cb.dataset.salPerson, cb.checked);
@@ -16107,19 +17919,71 @@ function attachSalaryHandlers() {
     const nd = parseFloat(document.getElementById('sal-ndsh')?.value), pt = parseFloat(document.getElementById('sal-pit')?.value);
     state.salaryRates = { ndsh: isNaN(nd) ? 0 : nd, pit: isNaN(pt) ? 0 : pt };
     try { localStorage.setItem('salaryRates', JSON.stringify(state.salaryRates)); } catch (_) {}
+    // Ажилтан ч өөрийн цэвэр цалингаа хардаг тул хувь нь СЕРВЕРТ очно (ганц эх сурвалж).
+    state.appConfig = state.appConfig || {}; state.appConfig.salary_rates = state.salaryRates;
+    saveAppConfig('salary_rates', state.salaryRates).catch(e => showToast('Хувь хадгалах алдаа: ' + e.message, 'error', 4000));
     render();
   };
   document.getElementById('sal-ndsh')?.addEventListener('change', saveRate);
   document.getElementById('sal-pit')?.addEventListener('change', saveRate);
 }
 
+/* ЭЗЭНГҮЙ ЦАЛИН — засах зам (2026-10-02). Самбар эзэнгүй мөрийг ИЛ хэлдэг болсон ч
+   хүн юу ч хийж чаддаггүй байв: цалингийн мөр нь зөвхөн утас+дүн хадгалдаг тул
+   НЭР огт үлддэггүй (ажилтны дугаар DB дээр засагдвал мөр нь хуучин дугаартаа үлдэнэ).
+   ⛔ ХАТУУ УСТГАХГҮЙ — дүнг 0 болгоно (`staff_salary`-д DELETE эрх ЗОРИУД алга).
+   ⚠ Шилжүүлэхэд зорилтот хүний ОДОО байгаа цалин дарагдана — дүнг нь ил хэлж асууна. */
+async function openOrphanSalaryModal(key, amount) {
+  if (!can('salary.edit')) { showToast('Танд цалин тохируулах эрх алга', 'warn', 3000); return; }
+  const amt = Number(amount) || 0;
+  const staff = (TEAM || []).filter(m => String(m.status || '') !== 'гарсан' && personKey(m))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
+  document.getElementById('orph-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'orph-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h2>🔗 Эзэнгүй цалин</h2>
+    <p class="dmg-hint">Дугаар <b>${escapeHtml(key)}</b> · <b>${fmtMoney(amt)}</b>. Энэ мөр ямар ч ажилтантай холбогдохгүй байна — ажилтны дугаар засагдахад хуучин дугаартаа үлдсэн байж болно. <b>Нэр хадгалагддаггүй</b> тул аль ажилтных болохыг та сонгоно.</p>
+    <label class="orph-l">Хэнд шилжүүлэх вэ?</label>
+    <select id="orph-to" class="ui-raw orph-sel">
+      <option value="">— ажилтан сонгох —</option>
+      ${staff.map(m => { const k = personKey(m); const cur = Number((state.salaries || {})[k]) || 0;
+        return `<option value="${escapeHtml(k)}">${escapeHtml(m.name || k)}${m.role ? ' · ' + escapeHtml(m.role) : ''}${cur ? ` (одоо ${fmtMoney(cur)})` : ' (цалингүй)'}</option>`; }).join('')}
+    </select>
+    <div class="modal-actions" style="margin-top:14px;flex-wrap:wrap;gap:8px;">
+      <button class="btn" id="orph-cancel">Болих</button>
+      <button class="btn btn-danger" id="orph-clear">✖ Мөрийг хаах</button>
+      <button class="btn btn-primary" id="orph-move">↔ Шилжүүлэх</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#orph-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#orph-clear').onclick = async () => {
+    if (!await showConfirm(`${escapeHtml(key)} дугаарын ${fmtMoney(amt)} цалинг хаах уу? Дүн 0 болно (мөр устахгүй, буцааж тавьж болно).`, { title: 'Эзэнгүй мөрийг хаах', okText: 'Хаах', danger: true })) return;
+    await saveSalary(key, 0);
+    showToast('Мөрийг хаалаа', 'success', 1800); close(); render();
+  };
+  modal.querySelector('#orph-move').onclick = async () => {
+    const to = modal.querySelector('#orph-to').value;
+    if (!to) { showToast('Ажилтнаа сонгоно уу', 'warn', 2500); return; }
+    const m = findMember(to) || {}; const cur = Number((state.salaries || {})[to]) || 0;
+    const warn = cur ? `\n\n⚠ ${m.name || to}-ийн одоогийн ${fmtMoney(cur)} цалин ДАРАГДАНА.` : '';
+    if (!await showConfirm(`${fmtMoney(amt)}-г ${m.name || to} руу шилжүүлэх үү?${warn}`, { title: 'Цалин шилжүүлэх', okText: 'Шилжүүлэх', danger: !!cur })) return;
+    await saveSalary(to, amt);
+    await saveSalary(key, 0);
+    showToast(`${m.name || to} руу шилжүүллээ`, 'success', 2200); close(); render();
+  };
+  modal.classList.add('open');
+}
 // Цалин олгосон түүх — тухайн ажилтны бүх олголт (огноо, сар, цикл, дүн, олгосон хүн)
 function openSalaryHistory(personKey) {
   const m = findMember(personKey);
   const ps = (state.salaryPayments || []).filter(p => p.person_key === personKey).sort((a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')));
   const total = ps.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-  const cyc = note => String(note || '').includes(SAL_ADV_TAG) ? '· урьдчилгаа' : String(note || '').includes(SAL_REM_TAG) ? '· үлдэгдэл' : '';
-  const clean = note => String(note || '').replace(SAL_ADV_TAG, '').replace(SAL_REM_TAG, '').replace(/\[#[^\]]+\]/g, '').replace(/\s+/g, ' ').trim();
+  const cyc = note => { const l = salaryPayLabel(note); return (l === 'урьдчилгаа' || l === 'үлдэгдэл') ? '· ' + l : ''; };
+  const clean = note => { const l = salaryPayLabel(note); return (l === 'урьдчилгаа' || l === 'үлдэгдэл') ? '' : l; };
   const rows = ps.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
       <div style="min-width:0;"><b style="font-variant-numeric:tabular-nums;">${fmtMoney(p.amount)}</b> <span style="color:var(--muted);">${escapeHtml(p.ym || '')} ${cyc(p.note)}</span>${clean(p.note) ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(clean(p.note))}</div>` : ''}</div>
       <div style="text-align:right;color:var(--muted);font-size:11px;white-space:nowrap;">${escapeHtml(String(p.paid_at || '').slice(0, 10))}<br>${escapeHtml(memberName(p.paid_by) || '')}</div>
@@ -16540,12 +18404,12 @@ function capMatrixHtml(dataAttr, holderKey, getVal, canGrant) {
     if (lock) return `<span class="ac-chip${on ? ' on' : ' act-off'} cap-locked" title="Танд энэ эрх байхгүй тул олгож чадахгүй">🔒 ${label}</span>`;
     return `<label class="ac-chip${on ? ' on' : ' act-off'}"><input type="checkbox" data-${dataAttr}="${escapeHtml(holderKey)}" data-cap-key="${escapeHtml(key)}" data-cap-kind="${kind}" ${on ? 'checked' : ''}>${label}</label>`;
   };
-  return `<div style="margin-top:8px;">` + PERM_MENUS.map(menu => {
+  return `<div class="cap-mx">` + PERM_MENUS.map(menu => {
     const viewChip = menu.core
       ? `<span class="ac-chip on locked" title="Үндсэн цэс — бүгдэд нээлттэй">✓ Харах</span>`
       : chip(menu.key, 'view', '👁 Харах', getVal(menu.key, 'view'));
     const actChips = menu.actions.map(a => chip(a.key, 'action', escapeHtml(a.label), getVal(a.key, 'action'))).join('');
-    return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(үндсэн)</span>' : ''}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${viewChip}${actChips}</div></div>`;
+    return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span class="ac-menu-hint">(үндсэн)</span>' : ''}</div><div class="ac-chips">${viewChip}${actChips}</div></div>`;
   }).join('') + `</div>`;
 }
 function renderAccessByPerson() {
@@ -16604,7 +18468,7 @@ function renderAccessByPerson() {
     // 🏢 Салбар — дата ХАМРАХ ХҮРЭЭ. Нэг салбар сонговол тухайн хүн зөвхөн түүнийг л хардаг (захиалга/санхүү/ажилтан…). Хоосон=бүгд.
     const bs = memberBranchesOf(m);
     const brChip = (val, label) => `<label class="ac-chip${bs.includes(val) ? ' on' : ' act-off'}"><input type="checkbox" data-branch-cap="${escapeHtml(pk)}" data-branch-val="${val}" ${bs.includes(val) ? 'checked' : ''}>${label}</label>`;
-    const branchPick = amCeo ? `<div class="ac-menu"><div class="ac-menu-name">🏢 Салбар <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(харах дата — нэг салбар сонговол зөвхөн түүнийг л хардаг; хоосон=бүгд)</span></div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${brChip('m-event', '⛺ M-Event')}${brChip('camp', '🏔 NOMAAD')}</div></div>` : '';
+    const branchPick = amCeo ? `<div class="ac-menu"><div class="ac-menu-name">🏢 Салбар <span class="ac-menu-hint">(харах дата — нэг салбар сонговол зөвхөн түүнийг л хардаг; хоосон=бүгд)</span></div><div class="ac-chips">${brChip('m-event', '⛺ M-Event')}${brChip('camp', '🏔 NOMAAD')}</div></div>` : '';
     const grantFn = amCeo ? null : editorCanGrant;
     return wrap(summary + branchPick + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind), grantFn) + reset);
   }).join('');
@@ -16931,13 +18795,6 @@ function nomaadDatePlain(dateStr) {
   const dow = ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'][d.getDay()];
   return `${dateStr} (${dow})`;
 }
-function nomaadCampLabel(o) {
-  const c = String(o.camp || '').toLowerCase();
-  if (c.includes('summit')) return 'NOMAAD Summit';
-  if (c.includes('meadow')) return 'NOMAAD Meadow';
-  if (c.includes('grove'))  return 'NOMAAD Grove';
-  return (o.camp || '').trim() || 'Бусад';
-}
 function nomaadCountdownBadge(days) {
   if (days == null) return `<span class="nomaad-cd nomaad-cd-none">огноогүй</span>`;
   if (days < 0)  return `<span class="nomaad-cd nomaad-cd-past">дууссан</span>`;
@@ -17216,7 +19073,7 @@ function canSeeOrderMoney() {
     || can('orders.pay');
 }
 // Гүйцэтгэгч ажилтанд харуулах захиалгын төлвүүд — ноорог/архив/цуцалсан/устгасан хэрэггүй.
-const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned'];
+const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned', 'stowed'];
 
 function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }
 function nomaadCardHtml(o) {
@@ -18008,7 +19865,7 @@ function renderNomaadAnalytics() {
     <input type="range" class="na-dmin" min="${lo}" max="${hi}" step="${step}" value="${vLo}">
     <input type="range" class="na-dmax" min="${lo}" max="${hi}" step="${step}" value="${vHi}">
   </div>`;
-  const chip = (active, val, label, attr) => `<button ${attr}="${escapeHtml(val)}" style="padding:5px 11px;font-size:12px;border:1px solid var(--border);border-radius:20px;cursor:pointer;white-space:nowrap;${active ? 'background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;' : 'background:var(--panel);color:var(--text);'}">${escapeHtml(label)}</button>`;
+  const chip = (active, val, label, attr) => `<button ${attr}="${escapeHtml(val)}" class="naa-chip${active ? ' on' : ''}">${escapeHtml(label)}</button>`;
   const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:1px;">${sub}</div>` : ''}</div>`;
   return `<style>
     .na-dual input[type=range]{position:absolute;top:9px;left:0;width:100%;height:12px;margin:0;background:none;pointer-events:none;-webkit-appearance:none;appearance:none;}
@@ -19103,19 +20960,30 @@ function sessionTokenForSend() {
 // Худалдан авагч — ГАНЦ дүрэм. Дараалал: захиалгын ⟦CI⟧ токен (тухайн хэлцлийн
 // үед бичсэн) → харилцагчийн бүртгэл → захиалгын түүхий нэр.
 // Байгууллага бол нэр = байгууллага, төлөөлөгч нь тусдаа мөрөнд гарна.
+/* ⛔ ТӨРӨЛ = `_custTypeFrom` — жагсаалт, карт, гэрээтэй ИЖИЛ дүрэм (2026-10-03).
+   Өмнө нь «байгууллагын талбар дүүрэн = байгууллага» гэсэн ӨӨР дүрэмтэй байсан тул
+   ажилтан «хувь хүн» сонгосон, НӨАТ/төлөгчөөс хүний нэр автоматаар орсон захиалгын
+   нэхэмжлэх тэр хүний нэрийг «байгууллага» болгож гаргадаг байв — гэрээ хүнтэй атал.
+   Бүртгэлд байгууллага бичигдсэн нь ажилтны ЗОРИУДЫН оруулга тул захиалга өөрөөр
+   заагаагүй бол байгууллага гэж үзнэ (хуучин зан хэвээр).
+   РД: байгууллагад 7 оронтой РД байхгүй бол тулгагдсан НӨАТ-ын баримтынхыг авна. */
 function invoiceBuyer(o, customer) {
   const ci = (typeof custInfoOf === 'function' ? custInfoOf(o && o.note) : null) || {};
   const c = customer || {};
-  const org = String(ci.company || c.company || '').trim();
+  const company = String(ci.company || c.company || '').trim();
   const person = String((o && o.customer) || c.name || '').trim();
+  const no = o && o.number;
+  let reg = String(ci.reg || c.rd || '').trim();
+  const isOrg = _custTypeFrom({ company, reg, ctype: ci.ctype || (c.company ? 'org' : '') }, no, person) === 'org';
+  if (isOrg && !/^\d{7}$/.test(reg.replace(/\s/g, ''))) { const v = vatOrgRegFor(no); if (v) reg = v; }
   return {
-    name: org || person || '—',
-    person: (org && person && org.toLowerCase() !== person.toLowerCase()) ? person : '',
-    reg: String(ci.reg || c.rd || '').trim(),
+    name: (isOrg ? (company || person) : person) || '—',
+    person: (isOrg && company && person && company.toLowerCase() !== person.toLowerCase()) ? person : '',
+    reg,
     phone: String((o && o.phone) || c.phone || '').trim(),
     email: String((o && o.email) || c.email || '').trim(),
     address: String((o && o.delivery_address) || c.address || '').trim(),
-    isOrg: !!org,
+    isOrg,
   };
 }
 
@@ -20660,24 +22528,9 @@ function prevStageInfo(o, meKey) {
 // Өмнөх шат тус бүрд ТОДОРХОЙ асуулт — «бүрэн үү, эвдрэлгүй юу» гэх мэт хариулж
 // болохуйц зүйл асууна. Ерөнхий асуулт бүгд 5★ авахад хүргэдэг.
 // Өмнөх шат бүрийн ТОДОРХОЙ асуулт — тухайн шатнаас гарсан бараа/ажлын чанарыг асууна (нэргүй суурь).
-const STAGE_PREV_Q = {
-  prepare:  'Бэлтгэсэн захиалга бүрэн үү? Дутуу, буруу бараа байсан уу?',
-  clean:    'Цэвэрлэгээ чанартай хийгдсэн үү? Бохир, эвдэрсэн бараа байсан уу?',
-  dispatch: 'Агуулахаас гаргасан ачаа бүрэн, эвдрэлгүй байсан уу?',
-  handover: 'Хүлээлгэж өгсөн бараа бүрэн байсан уу?',
-  deliver:  'Хүргэлт цаг хугацаандаа, бүрэн хийгдсэн үү?',
-  setup:    'Суурилуулалт/угсралт бүрэн, аюулгүй хийгдсэн үү?',
-  teardown: 'Буулгалт эмх цэгцтэй, бараа гэмтээгүй хийгдсэн үү?',
-  retstart: 'Хүргэлтээс буцаан авсан бараа бүрэн бүтэн байсан уу?',
-  received: 'Хүлээн авсан бараа бүрэн, эвдрэлгүй байсан уу?',
-};
-function prevStageQuestion(prev) {
-  if (!prev) return null;
-  const base = STAGE_PREV_Q[prev.key] || 'Өмнөх шатны ажлыг үнэлнэ үү';
-  if (String(prev.by) === String(state.me)) return base;   // өөрийнхөө өмнөх ажлыг — нэргүй
-  const n = (typeof memberName === 'function' ? memberName(prev.by) : '') || prev.by;
-  return n ? `«${n}»: ${base}` : base;
-}
+/* ⛔ ★-ИЙН АСУУЛТЫН ЖАГСААЛТ УСТГАГДСАН (2026-10-04). `STAGE_PREV_Q` ·
+   `prevStageQuestion` нь зөвхөн дамжлагын ★-д хэрэглэгддэг байв; ★ бүрмөсөн
+   хасагдсан тул дуудагчгүй үлдэв. Хуучин ★ ТҮҮХ `stage_meta`-д хэвээр. */
 // Өмнөх шат — хэн хийснээс үл хамааран хамгийн сүүлд гүйцэтгэсэн шат (асуулт нь ҮҮГЭЭР тодорхойлогдоно).
 function prevStageInfoAny(o) {
   const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
@@ -20689,18 +22542,15 @@ function prevStageInfoAny(o) {
   }
   return best ? { by: best.by, key: bestKey } : null;
 }
-function prevStageOwner(o, meKey) {
-  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
-  let best = null;
-  for (const k of Object.keys(sm)) {
-    const e = sm[k];
-    if (!e || !e.by || String(e.by) === String(meKey)) continue;
-    if (!best || String(e.at || '') > String(best.at || '')) best = e;
-  }
-  return best ? best.by : null;
-}
-// Хүн бүрийн хүлээлцэх чанар — дараагийн хүн түүнд өгсөн ★ дундаж (сараар). stage_meta-гаас автомат, backend-гүй.
+/* Хүн бүрийн хүлээлцэх чанар. ⛔ ЭХЛЭЭД АЛДААНЫ ТОО (2026-10-04) — ★ нь
+   үнэлэгчээс хамаардаг тул бүх дамжлагаас хасагдсан. Алдааны бүртгэл
+   хангалттай бол түүгээр, эс бөгөөс ХУУЧИН ★ түүхээр (сарын тоо алга
+   болохоос сэргийлнэ). Хоёулаа 1–5 масштабтай: чанар 1.0 = 5.0 ★. */
 function handoffQualityScore(key, month) {
+  const _d = (typeof defectStats === 'function') ? defectStats(state.appOrders || [], month)[String(key)] : null;
+  if (_d && _d.checked >= HANDOFF_MIN && _d.rate != null) {
+    return { avg: Math.round(_d.rate * 5 * 10) / 10, count: _d.checked, src: 'defect' };
+  }
   let sum = 0, n = 0;
   for (const o of (state.appOrders || [])) {
     const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
@@ -20995,6 +22845,36 @@ function attachPerformanceHandlers() {
 }
 
 // ── app_config (VPS Postgres, PostgREST anon) key-value тохиргоо — сайттай хуваалцана ──
+/* ⛔ `state.appConfig`-ИЙГ СЕРВЕРЭЭС АЧААЛДАГ КОД ОГТ БАЙГААГҮЙ (2026-10-03).
+   12 газарт `state.appConfig.X` уншдаг атал тэр объектыг зөвхөн ТУХАЙН СЕССИЙН
+   бичилт дүүргэдэг байв — өөрөөр хэлбэл DB дэх тохиргоо ХЭЗЭЭ Ч хүрэхгүй,
+   чимээгүй кодын нөөц утгаар ажиллана. «Тохиргооноос уншина» гэсэн баримт
+   бүхэлдээ ХУДАЛ байсан (ажлын норм, илүү цагийн хувь, дамжлагын оноо,
+   элэгдлийн нас, суутгалын хувь, цайны цаг…).
+   ⛔ Энд БҮХ түлхүүрийг татахгүй — `coo_share`, `personal_settlements` зэрэг
+     эмзэг түлхүүр RLS-ээр хаалттай, мөн тус тусдаа ачаалагчтай. Жагсаалтад
+     зөвхөн `state.appConfig`-ээс уншигддаг түлхүүрүүд.
+   ⚠ Серверийн утга ТУХАЙН СЕССИЙН бичилтийг ДАРАХГҮЙ — хэрэглэгч аль хэдийн
+     өөрчилсөн байж болно (жишээ суутгалын хувь). Тиймээс зөвхөн ОДОО БАЙХГҮЙ
+     түлхүүрийг бичнэ.
+   ⚠ Унавал `state.appConfig`-ийг ХООСЛОХГҮЙ — хуучин утга хэвээр үлдэнэ. */
+const APP_CONFIG_KEYS = ['work_norm_days', 'overtime', 'salary_rates', 'lunch', 'stage_pay',
+  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft'];
+async function loadAppConfigAll(keys) {
+  if (!DB_ANON_KEY) return;
+  const list = (keys && keys.length) ? keys : APP_CONFIG_KEYS;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/app_config?key=in.(${list.map(encodeURIComponent).join(',')})&select=key,value`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    const cfg = state.appConfig = state.appConfig || {};
+    rows.forEach(x => { if (x && x.key && !(x.key in cfg)) cfg[x.key] = x.value; });
+    state._appConfigLoaded = true;
+    if (typeof render === 'function') render();
+  } catch (e) { dataLoadFailed('loadAppConfigAll', e); }
+}
 async function loadAppConfig(key) {
   if (!DB_ANON_KEY) return null;
   try {
@@ -21197,7 +23077,11 @@ async function openCountScanner() {
    тооллого 09-06-наас нээлттэй байсан тул блок ХЭЗЭЭ Ч харагдаагүй. Суурь
    тогтоох нь тооллогын УРЬДЧИЛСАН нөхцөл — тооллого явж байхад ч хэрэгтэй.
    Scan-тест хоёр дуудалтыг шалгана. */
+/* ⚠ `canManage` (нөөц засах) нь эхний үлдэгдэл ТООЛОХ эрх БИШ — тооллого
+   нээх/хаахад хэрэглэгдэнэ. Тоолох товч нь `canOpenCount()`-оор л гарна,
+   эс бөгөөс `products.edit` шүхэртэй хүмүүс бүгд тоолж чадна. */
 function openingBlockHtml(canManage) {
+  const canOpen = canOpenCount();
   const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p)), countUnitCost);
   const oSt = openingStats(oRows);
   const showMoney = canProductPart('cost');
@@ -21207,24 +23091,39 @@ function openingBlockHtml(canManage) {
   // Хоёр ажил ХОЁР жагсаалт. Нэг жагсаалтад хольвол нярав батлах товч,
   // захирал тоолох талбар харж, аль нь өөрийнх нь ажил болох нь мэдэгдэхгүй.
   // Хоёуланг ӨРТГӨӨР эрэмбэлнэ — «юуг эхэлж хийх вэ» гэдгийг систем хэлнэ.
-  const oLeft = oRows.filter(x => x.sign === 'todo' && x.value > 0).slice(0, 40);
-  const oWait = oRows.filter(x => x.sign === 'wait').slice(0, 40);
+  /* ⛔ 40-гоор таслаад «…бас 126 бараа» гэж бичихэд ҮЛДСЭНИЙГ ХАРАХ ЗАМ ОГТ
+     БАЙГААГҮЙ (2026-10-03, CEO барив). Өртгөөр эрэмбэлэх нь «юуг эхэлж тоолох
+     вэ» гэдгийг хэлдэг зөв шийдэл — гэхдээ ажил дуусахын тулд бүгдийг нь харах
+     хэрэгтэй. Одоо дарж задарна. */
+  const expand = state.openExpand || (state.openExpand = {});
+  /* Гурван жагсаалт гурвуулаа таслагддаг тул задлах арга нь НЭГ газар.
+     Тус бүр өөрийн түлхүүртэй — батлагдсаныг задлахад тоолох жагсаалт
+     хамт томорвол дэлгэц дахин уншигдахгүй болно. */
+  const oCap = (arr, key, n) => (expand[key] ? arr : arr.slice(0, n));
+  const oMore = (all, shown, key, word) => all.length > shown.length
+    ? `<button class="btn stc-open-more" data-op-more="${key}">…бас ${all.length - shown.length} ${word} — бүгдийг харах ↓</button>`
+    : (expand[key] ? `<button class="btn stc-open-more" data-op-more="${key}">↑ Хураах</button>` : '');
+  const oTodoAll = oRows.filter(x => x.sign === 'todo' && x.value > 0);
+  const oLeft = oCap(oTodoAll, 'todo', 40);
+  const oWaitAll = oRows.filter(x => x.sign === 'wait');
+  const oWait = oCap(oWaitAll, 'wait', 40);
   /* ⛔ Баталгаажсан бараа ХААНА ХАРАГДАХ вэ (2026-09-14). Анх хоёр гарын үсэг
      бүрдмэгц бараа хоёр жагсаалтаас ХОЁУЛАНГААС нь гардаг байв — зөвхөн хувь
      өсдөг, ХЭН тоолж ХЭН баталсан нь хаана ч харагддаггүй. Хоёр гарын үсгийн
      БҮХ УТГА нь хариуцлага мөрдөгдөх явдал тул харагдахгүй гарын үсэг нь
      гарын үсэг биш. Эрэмбэ = сүүлд баталсан нь дээр («юу дөнгөж боллоо»). */
-  const oDone = oRows.filter(x => x.sign === 'done')
-    .sort((a, b) => String(b.apAt).localeCompare(String(a.apAt)))
-    .slice(0, 60);
+  const oDoneAll = oRows.filter(x => x.sign === 'done')
+    .sort((a, b) => String(b.apAt).localeCompare(String(a.apAt)));
+  const oDone = oCap(oDoneAll, 'done', 60);
 
   const countList = oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
       <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
       <span class="stc-open-q">системд <b>${x.qty}</b></span>
-      ${canManage ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
+      ${canOpen ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
       <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Тоолсон</button>` : ''}
     </div>`).join('')}</div>
-    ${oSt.left - oSt.wait > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oSt.wait - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
+    ${oMore(oTodoAll, oLeft, 'todo', 'бараа')}
+    ${oSt.left - oSt.wait > oTodoAll.length ? `<div class="stc-open-m">Өртөггүй ${oSt.left - oSt.wait - oTodoAll.length} бараа доорх жагсаалтад.</div>` : ''}`
     : '<div class="stc-open-m">✓ Бүгдийг тоолсон.</div>';
 
   /* ⛔ БАТЛАХ ХҮЛЭЭЖ БУЙ нь ЭХЭНД (2026-09-14). Анх тоолох жагсаалтын ДООР
@@ -21243,7 +23142,7 @@ function openingBlockHtml(canManage) {
             : `<button class="btn stc-open-ok" data-op-ap="${escapeHtml(x.sku)}">Батлах</button>`}
       ${canApprove ? `<button class="btn stc-open-no" data-op-rej="${escapeHtml(x.sku)}" title="Тоолсон тоо буруу — няравт буцааж дахин тоолуулна">↩ Татгалзах</button>` : ''}
     </div>`; }).join('')}</div>
-    ${oSt.wait > oWait.length ? `<div class="stc-open-m">…бас ${oSt.wait - oWait.length} бараа батлах хүлээж байна.</div>` : ''}` : '';
+    ${oMore(oWaitAll, oWait, 'wait', 'бараа')}` : '';
 
   // Эвхэгддэг — ажил биш, ТҮҮХ. Дэлгэц дүүргэхгүй, гэхдээ үргэлж нэг дарахад бий.
   const doneList = oSt.done ? `<details class="stc-open-done">
@@ -21251,18 +23150,23 @@ function openingBlockHtml(canManage) {
     <div class="stc-open-list">${oDone.map(x => `<div class="stc-open-row">
       <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · батлав: ${escapeHtml(memberName(x.apBy) || x.apBy || '—')}${x.apAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.apAt)) : ''}</span></span>
       <span class="stc-open-q">${x.qty} ш${money(x.value)}</span>
-      ${canApprove ? `<button class="btn stc-open-no" data-op-un="${escapeHtml(x.sku)}" title="Буруу дарсан бол батлалтыг буцаана — тоо хөндөгдөхгүй">↩ Буцаах</button>` : ''}
+      ${x.sealed
+        ? `<span class="stc-open-sealed">🔒 Эцэслэсэн${x.lkBy ? ' · ' + escapeHtml(memberName(x.lkBy) || x.lkBy) : ''}${x.lkAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.lkAt)) : ''}</span>`
+        : `${(() => { const w = openingSealBlock(productBySku(x.sku), state.me, !!state.isCEO);
+             return w ? (state.isCEO ? `<span class="stc-open-why">${escapeHtml(w)}</span>` : '')
+                      : `<button class="btn stc-open-seal" data-op-seal="${escapeHtml(x.sku)}" title="CEO эцэслэнэ — үүний дараа эхний үлдэгдэл өөрчлөгдөхгүй">🔒 Эцэслэх</button>`; })()}
+           ${canApprove ? `<button class="btn stc-open-no" data-op-un="${escapeHtml(x.sku)}" title="Буруу дарсан бол батлалтыг буцаана — тоо хөндөгдөхгүй">↩ Буцаах</button>` : ''}`}
     </div>`).join('')}</div>
-    ${oSt.done > oDone.length ? `<div class="stc-open-m">…бас ${oSt.done - oDone.length} бараа. Сүүлд баталсныг нь эхэнд гаргалаа.</div>` : ''}
+    ${oMore(oDoneAll, oDone, 'done', 'бараа')}
   </details>` : '';
 
   return `<div class="stc-open">
     <div class="stc-open-h">
-      <div><b>Эхний үлдэгдэл</b><span>Нярав тоолж бүртгэнэ, ҮАХ захирал батална. Хоёулангийн гарын үсэгтэй байж суурь хүчинтэй.</span></div>
+      <div><b>Эхний үлдэгдэл</b><span>Нярав тоолно → ҮАХ захирал хянана → CEO эцэслэнэ. Алхам бүр ӨӨР эрхтэй — нэг хүн хоёрыг нь хийж чадахгүй. Эцэслэсний дараа суурь ХӨЛДӨНӨ, залруулга зөвхөн тооллогоор.</span></div>
       <div class="stc-open-n">${oPct}%</div>
     </div>
     <div class="stc-bar"><div style="width:${oPct}%"></div></div>
-    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа бүрэн баталгаажсан${oSt.wait ? ` · ${oSt.wait} батлах хүлээж буй` : ''}${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
+    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа хоёр гарын үсэгтэй${oSt.wait ? ` · ${oSt.wait} батлах хүлээж буй` : ''}${oSt.sealed ? ` · 🔒 ${oSt.sealed} эцэслэгдсэн` : ''}${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
     ${oSt.left ? waitList + (oWait.length ? '<div class="stc-open-sub">📋 Тоолох</div>' : '') + countList
       : '<div class="stc-open-m">✓ Бүх бараа хоёр гарын үсгээр баталгаажсан. Одоо тооллого утгатай.</div>'}
     ${doneList}
@@ -21310,7 +23214,14 @@ function renderStockCount() {
   const actOk = Math.max(0, actCnt - actRep - actWo);
   const dmgOver = (actRep + actWo) > actCnt;   // тоолсноос их эвдрэл = буруу оролт
 
-  const actCard = act ? `<div class="stc-active">
+  /* ⛔ Эцэслээгүй бараа сонгогдвол ТООЛОХ хэсгийг огт гаргахгүй — шалтгааныг
+     нь ил бичнэ. Унтраасан товч юу буруугийн хэлдэггүй. */
+  const actBlk = act ? countBlockReason(act) : '';
+  const actCard = act && actBlk ? `<div class="stc-active stc-active-blk">
+      <div class="stc-active-n">${escapeHtml(act.name || '')}</div>
+      <div class="stc-active-m">${escapeHtml(act.code || act.sku || '')}</div>
+      <div class="stc-blk">🔒 ${escapeHtml(actBlk)}.<br>Тооллого нь «системд хэд байна» гэдэгтэй харьцуулдаг — суурь нь баталгаажаагүй бол зөрүү юу ч хэлэхгүй.</div>
+    </div>` : act ? `<div class="stc-active">
       <div class="stc-active-n">${escapeHtml(act.name || '')}</div>
       <div class="stc-active-m">${escapeHtml(act.code || act.sku || '')}${act.category ? ' · ' + escapeHtml(act.category) : ''}</div>
       <div class="stc-active-row">
@@ -21421,6 +23332,12 @@ function renderStockCountIdle(cfg, canManage) {
 
 function attachStockCountHandlers() {
   const $ = (id) => document.getElementById(id);
+  document.querySelectorAll('[data-op-more]').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.opMore;
+    state.openExpand = state.openExpand || {};
+    state.openExpand[k] = !state.openExpand[k];
+    render();
+  }));
   document.querySelectorAll('[data-op-ok]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const sku = btn.dataset.opOk;
@@ -21449,6 +23366,21 @@ function attachStockCountHandlers() {
         if (okd) { showToast('↩ Няравт буцаалаа', 'success', 2200); render(); }
         else btn.disabled = false;
       } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
+    });
+  });
+  /* 🔒 CEO эцэслэх — ЭРГЭЖ БУЦААХГҮЙ тул showConfirm ЗААВАЛ, бас юу болохыг
+     тодорхой хэлнэ (залруулга цаашид зөвхөн тооллогоор). */
+  document.querySelectorAll('[data-op-seal]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const sku = btn.dataset.opSeal, p = productBySku(sku);
+      if (!(await showConfirm(`«${(p && p.name) || sku}» — эхний үлдэгдлийг ЭЦЭСЛЭН баталгаажуулах уу?\n\nҮүний дараа энэ барааны эхний үлдэгдэл ДАХИН ӨӨРЧЛӨГДӨХГҮЙ. Залруулга хийх бол зөвхөн тооллогоор — тэнд хэн хэзээ юу өөрчилсөн нь мөрөөр үлдэнэ.`,
+        { title: '🔒 Эцэслэн баталгаажуулах', okText: 'Эцэслэх', danger: true }))) return;
+      btn.disabled = true;
+      try {
+        const okd = await sealOpeningStock(sku);
+        if (okd) { showToast('🔒 Эцэслэгдлээ', 'success', 2400); render(); }
+        else btn.disabled = false;
+      } catch (e) { showToast('Алдаа: ' + e.message, 'error', 4500); btn.disabled = false; }
     });
   });
   document.querySelectorAll('[data-op-un]').forEach(btn => {
@@ -21565,7 +23497,7 @@ const PSHEET = {
   catalog: { label: 'Каталог', icon: '📷', perm: 'products.catalog', hint: 'Нэр, ангилал. Зураг/тайлбарыг барааны цонхноос засна.' },
   price:   { label: 'Түрээсийн үнэ', icon: '🏷', perm: 'products.price', hint: 'Түрээсийн үнэ, барьцаа, суурилуулалтын хөлс.' },
   cost:    { label: 'Өртөг ба хөрөнгө', icon: '💰', perm: 'products.cost', hint: 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч.' },
-  stock:   { label: 'Нөөц ба салбар', icon: '📦', perm: 'products.stock', hint: 'Салбар бүрийн тоо. Нийт нөөц нь салбаруудын нийлбэр.' },
+  stock:   { label: 'Нөөц ба салбар', icon: '📦', perm: 'products.stock', hint: 'Мөр дарж хуваарилалтыг засна. ⇄ дарж салбар хооронд зөөвөл нийт тоо хэвээр үлдэж, түүхэнд бүртгэгдэнэ.' },
 };
 // Сайт (mevent.mn) ангиллыг бүлгээр харуулдаг. Бүлэгт ороогүй ангилал сайтад
 // «Бусад» болж унадаг тул каталог засахад ил сануулна.
@@ -21630,6 +23562,35 @@ function psSiteCats() {
 }
 function canSeeSheet(mode) { return !!PSHEET[mode] && canAccessView('ps_' + mode, () => !!state.isCEO || can(PSHEET[mode].perm)); }
 // Хуудсанд харагдах бараа — хайлтаар шүүнэ. Цэвэр функц (тестлэгдэнэ).
+/* 🔎 САМБАРЫН ШҮҮЛТҮҮР (2026-10-03, CEO «нийлүүлэгчгүй, авсан огноогүй гэх мэт»).
+   281 барааг нүдээр хөөх боломжгүй — дутуу талбарыг ШҮҮЖ өгөх ёстой. Чип бүр
+   ТООТОЙ: ажил хаана байгааг систем хэлнэ, хүн таамаглахгүй.
+   ⚠ Самбар бүр ӨӨР дутагдалтай тул шүүлтүүр нь тэр самбарын талбаруудаар.
+   ⚠ `test` нь ЦЭВЭР функц — тестлэгдэнэ. Шинэ шүүлтүүр нэмэхэд энд л нэмнэ. */
+const PSHEET_FILTERS = {
+  catalog: [
+    { key: 'nocat', label: 'Ангилалгүй', test: (p) => !String(p.category || '').trim() },
+    { key: 'nophoto', label: 'Зураггүй', test: (p) => !String(p.photo || '').trim() },
+  ],
+  price: [
+    { key: 'noprice', label: 'Үнэгүй', test: (p) => !(Number(p.price) > 0) },
+    { key: 'nodep', label: 'Барьцаагүй', test: (p) => !(Number(p.deposit) > 0) },
+  ],
+  cost: [
+    { key: 'nocost', label: 'Өртөггүй', test: (p) => !(Number(p.cost) > 0) },
+    { key: 'nodate', label: 'Авсан огноогүй', test: (p) => !String(p.purchase_date || '').trim() },
+    { key: 'nosup', label: 'Нийлүүлэгчгүй', test: (p) => !String(p.supplier || '').trim() },
+  ],
+  stock: [
+    { key: 'zero', label: 'Нөөцгүй', test: (p) => !PS_QTY_FIELDS.reduce((t, k) => t + (Number(p[k]) || 0), 0) },
+    { key: 'unsealed', label: 'Эцэслээгүй', test: (p) => !(typeof stockSealed === 'function' && stockSealed(p)) },
+  ],
+};
+/* Идэвхтэй шүүлтүүрийг хэрэглэнэ. Танихгүй түлхүүр → БҮГД (хоосон дэлгэц гаргахгүй). */
+function psApplyFilter(list, mode, key) {
+  const f = (PSHEET_FILTERS[mode] || []).find(x => x.key === key);
+  return f ? (list || []).filter(p => { try { return !!f.test(p); } catch (_) { return false; } }) : (list || []);
+}
 function psFilter(list, q) {
   const s = String(q || '').trim().toLowerCase();
   const rows = (list || []).filter(p => p && p.sku && p.type !== 'service');
@@ -21668,6 +23629,151 @@ function psPatchOf(p, row) {
   }
   return patch;
 }
+/* 📉 Жагсаалтын ДЭЭД талд нийлбэр — тайлан дахь тоотой ТУЛГАХ цэг. Доорх мөрүүд
+   бараа бүрээр задарсан, энэ нь тэдгээрийн нийлбэр: хоёр тоо таарч байвал
+   тайлангийн элэгдэл зөв гэдэг нь нотлогдоно. ⚠ Тоог ДАХИН бодохгүй —
+   `deprecByBranch` (тайлангийн ижил эх сурвалж). */
+function psDeprecSummary() {
+  if (typeof deprecByBranch !== 'function') return '';
+  const d = deprecByBranch(state.products || []);
+  if (!d || !d.total) return '';
+  const br = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК']]
+    .filter(b => d[b[0]] > 0).map(b => `${b[1]} ${fmtMoneyShort(Math.round(d[b[0]]))}`).join(' · ');
+  return `<div class="ps-dep-sum">📉 Элэгдэл нийт <b>${fmtMoneyShort(Math.round(d.total))}/сар</b>`
+    + (br ? ` — ${escapeHtml(br)}` : '')
+    + (d.noCost ? ` · <span class="ps-dep-warn">⚠ ${d.noCost} бараа өртөггүй</span>` : '')
+    + (d.noDateN ? ` · <span class="ps-dep-warn">⚠ ${d.noDateN} бараа авсан огноогүй</span>` : '')
+    + (d.doneN ? ` · ✓ ${d.doneN} бүрэн элэгдсэн` : '')
+    + `<br><span class="mut">Санхүү → Тайлан дахь элэгдлийн мөр нь ЯГ энэ тоо. Доорх бараа бүрийн мөр үүнийг бүрдүүлнэ.</span></div>`;
+}
+/* 📉 ЭЛЭГДЛИЙГ ЖАГСААЛТАД ИЛ БИЧНЭ (2026-10-02, CEO «тооцоолол зөв эсэхийг хаанаас
+   харах вэ?» гэж асуув). Өмнө нь зөвхөн барааны ЦОНХ дотор байсан тул 281 барааг
+   нэг бүрчлэн нээхээс өөр шалгах арга байгаагүй — тайлан дахь 14.3сая/сар гэсэн
+   тоог хэн ч тулгаж чаддаггүй байв. Одоо «Өртөг ба хөрөнгө» жагсаалтын мөр бүрт
+   ямар дүрмээр, хэдэн жилээр, сард хэд болохыг бичнэ.
+   ⚠ Тоог ДАХИН БОДОХГҮЙ — `deprecForProduct` (тайлангийн ижил эх сурвалж). */
+function psDeprecLine(p) {
+  if (typeof deprecForProduct !== 'function') return '';
+  const d = deprecForProduct(p);
+  /* ⚠ ЭВХЭГДЭНЭ, ГЭХДЭЭ САРЫН ДҮН ХАРАГДАНА (2026-10-03, CEO «эвхэж болох уу»).
+     Бүрэн нуувал энэ мөрийн ЗОРИЛГО (элэгдлийг бараагаар тулгах) алдагдана —
+     хүн 281 барааг нэг бүрчлэн нээх болно. Тиймээс товчлол нь мөрөнд үлдэж,
+     ЯАЖ бодогдсон нь задарна. Товчилсон тул өртөгийн мөр 139px → ~65px. */
+  if (d.skip) return `<span class="ps-dep mut">📉 ${escapeHtml(d.skip)}</span>`;
+  if (d.doneYm) return `<details class="ps-dep"><summary>📉 <b class="ps-dep-done">✓ бүрэн элэгдсэн</b></summary>`
+    + `<div class="ps-dep-x">${escapeHtml(d.label)} → ${d.years} жил · ${escapeHtml(String(d.endYm))}-д дууссан.`
+    + ` Өртөг бүрэн хуваарилагдсан тул зардалд ОРОХГҮЙ; бараа ажиллаж байгаа нь ашиг.</div></details>`;
+  return `<details class="ps-dep"><summary>📉 <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>`
+    + (d.noDate ? ' <span class="ps-dep-warn" title="Худалдан авсан огноогүй — насаа дуусгасан эсэхийг мэдэх аргагүй тул элэгдүүлсээр байна">⚠</span>' : '')
+    + `</summary><div class="ps-dep-x">${escapeHtml(d.label)} → <b>${d.years} жил</b> · `
+    + `${fmtMoneyShort(d.cost)} ÷ (${d.years}×12) = ${fmtMoneyShort(Math.round(d.perUnitMonth))}/сар нэг ширхэг`
+    + (d.qty > 1 ? ` · нөөц ${d.qty}ш → <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>` : '')
+    + (d.endYm ? ` · бүрэн элэгдэх: ${escapeHtml(d.endYm)}`
+               : ' · <span class="ps-dep-warn">⚠ худалдан авсан огноо байхгүй — огноог бөглөвөл элэгдэл өөрөө зогсоно</span>')
+    + '</div></details>';
+}
+/* 💼 Эзний хөрөнгө оруулалтын карт — «Өртөг ба хөрөнгө» дэлгэцэд.
+   ⛔ Тусдаа цэс үүсгэхгүй (хэн ч нээдэггүй дэлгэц үхдэг) — хөрөнгийн үнэ цэн
+     харагддаг яг тэр дэлгэц дээр суулгана. */
+function psOwnerCapitalHtml() {
+  if (!state.isCEO) return '';                                  // эзний өглөг — зөвхөн CEO
+  const oc = ownerCapital(state.products || [], state.financeRequests || []);
+  if (!oc.invTotal) return '';
+  const row = (l, v, cls) => `<div class="oc-row${cls ? ' ' + cls : ''}"><span>${l}</span><b>${v}</b></div>`;
+  return `<div class="oc-card">
+    <div class="oc-hd">💼 Эзний хөрөнгө оруулалт</div>
+    <div class="oc-v">${fmtMoney(oc.ownerVerified)}</div>
+    <div class="oc-s">баталгаажсан — балансад энэ тоо орно</div>
+    <div class="oc-rows">
+      ${row('Агуулахын өртөг (2 гарын үсэгтэй)', fmtMoney(oc.invVerified))}
+      ${row('− Компанийн данснаас хөрөнгө авалт', '−' + fmtMoney(oc.coBuy), 'oc-minus')}
+      ${row('− Компанийн данснаас эзэн рүү гарсан', '−' + fmtMoney(oc.coOut), 'oc-minus')}
+      ${row('= Эзний оруулсан', fmtMoney(oc.ownerVerified), 'oc-sum')}
+    </div>
+    ${oc.gap ? `<div class="oc-gap">📦 Тооллого дуусаагүй: <b>${fmtMoney(oc.invUnverified)}</b> баталгаажаагүй.
+      Дуусгавал эзний оруулалт <b>${fmtMoney(oc.ownerTotal)}</b> болж <b>${fmtMoney(oc.gap)}</b>-аар нэмэгдэнэ.
+      <button class="btn oc-go" data-oc-count>📋 Тооллого руу</button></div>` : ''}
+    <div class="oc-note">Зарчим: компани өөрөө төлснөө нотолж чадахгүй хөрөнгө = эзэн оруулсан.
+      Эзэн рүү гарсан мөнгийг хасдаг нь — тэр мөнгөөр авсан бараа компанийх, хоёр удаа тоологдохгүй.</div>
+    <div class="oc-act"><button class="btn btn-primary" data-oc-act>📄 Акт бэлдэх</button>
+      <span class="oc-dim">${oc.verifiedN} бараа · гарын үсэг зурж баримтжуулна</span></div>
+  </div>`;
+}
+/* Акт — ШИНЭ ЦОНХОНД (харагдах элементээс PDF; нуугдмал элемент баримтыг таслана).
+   ⚠ ӨНГӨ НЬ ЗОРИУД ХАТУУ — энэ нь аппын дэлгэц БИШ, ХЭВЛЭХ баримт. Аппын
+     токен (var(--text) г.м.) ашиглавал харанхуй горимд цаас хар болж хэвлэгдэнэ.
+     Дизайны өрийн харуул үүнийг тоолдог тул PR-д «дизайны-өр-өсөхийг-зөвшөөрөв»
+     шошго хэрэгтэй — нэхэмжлэхийн баримт ч яг ийм шалтгаанаар хатуу өнгөтэй. */
+function openOwnerCapitalAct() {
+  const oc = ownerCapital(state.products || [], state.financeRequests || []);
+  const rows = ownerCapitalRows(state.products || []);
+  if (!oc.ownerVerified) { showToast('Баталгаажсан хөрөнгө алга — эхлээд тооллогоо дуусгана уу', 'warn', 4000); return; }
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
+  const L = CHIMUN_LEGAL, today = todayStr();
+  const esc = (t) => escapeHtml(String(t == null ? '' : t));
+  const body = rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.sku)}</td><td class="l">${esc(r.name)}</td>
+    <td class="n">${r.qty}</td><td class="n">${fmtMoney(r.cost)}</td><td class="n">${fmtMoney(r.sum)}</td></tr>`).join('');
+  w.document.write(`<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Хөрөнгийн акт ${esc(today)}</title>
+<style>
+ body{font:13px/1.55 system-ui,'Segoe UI',sans-serif;color:#111;background:#eceae4;margin:0;padding:18px;}
+ .bar{max-width:800px;margin:0 auto 12px;display:flex;gap:8px;}
+ .bar button{padding:9px 16px;border:1px solid #c9c6bd;background:#fff;border-radius:8px;font:inherit;font-weight:600;cursor:pointer;}
+ .bar .main{background:#2f6df6;border-color:#2f6df6;color:#fff;}
+ .sheet{max-width:800px;margin:0 auto;background:#fff;padding:34px 38px;box-sizing:border-box;}
+ h1{font-size:19px;margin:0 0 4px;text-align:center;letter-spacing:.3px;}
+ .sub{text-align:center;color:#666;font-size:12px;margin-bottom:18px;}
+ .p{margin:9px 0;}
+ table{width:100%;border-collapse:collapse;margin-top:12px;font-size:11.5px;}
+ th,td{border:1px solid #d4d1c9;padding:4px 6px;text-align:center;}
+ th{background:#f3f1ec;}
+ td.l{text-align:left;} td.n{text-align:right;font-variant-numeric:tabular-nums;}
+ .calc{margin:14px 0;border:1px solid #d4d1c9;}
+ .calc div{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #eceae4;}
+ .calc div:last-child{border-bottom:none;background:#f3f1ec;font-weight:700;}
+ .sig{display:flex;gap:40px;margin-top:34px;}
+ .sig div{flex:1;}
+ .ln{border-bottom:1px solid #111;height:34px;margin-bottom:4px;}
+ .fine{font-size:11px;color:#666;margin-top:16px;line-height:1.5;}
+</style></head><body>
+<div class="bar"><button class="main" onclick="dl()">📄 PDF татах</button><button onclick="window.print()">🖨 Хэвлэх</button></div>
+<div class="sheet" id="sheet">
+ <h1>ХӨРӨНГИЙН АКТ</h1>
+ <div class="sub">Эзэмшигчийн оруулсан хөрөнгийг компанийн балансад бүртгэх тухай · ${esc(today)}</div>
+ <p class="p"><b>Хүлээн авагч:</b> ${esc(L.name)} (РД ${esc(L.reg)}), ${esc(L.address)}</p>
+ <p class="p"><b>Хөрөнгө оруулагч:</b> ${esc(L.director)}, ${esc(L.directorTitle)}</p>
+ <p class="p">Доорх хөрөнгийг эзэмшигч өөрийн хөрөнгөөр худалдан авч компанийн үйл ажиллагаанд ашиглуулсан болохыг тогтоов. Хөрөнгийн үнэлгээг <b>худалдан авсан өртгөөр</b> тооцов. Уг дүн компанийн эзэмшигчийн өмнө хүлээх <b>өглөг</b> болно.</p>
+ <div class="calc">
+  <div><span>Агуулахын хөрөнгө — тоологдож баталгаажсан (${rows.length} нэр төрөл)</span><b>${fmtMoney(oc.invVerified)}</b></div>
+  <div><span>Хасах: компанийн данснаас худалдан авсан хөрөнгө</span><b>−${fmtMoney(oc.coBuy)}</b></div>
+  <div><span>Хасах: компанийн данснаас эзэмшигчид шилжүүлсэн</span><b>−${fmtMoney(oc.coOut)}</b></div>
+  <div><span>ЭЗЭМШИГЧИЙН ОРУУЛСАН ХӨРӨНГӨ</span><b>${fmtMoney(oc.ownerVerified)}</b></div>
+ </div>
+ <p class="p"><b>Нийт дүн үсгээр:</b> ${esc(typeof mnNumToWords === 'function' ? mnNumToWords(Math.round(oc.ownerVerified)) + ' төгрөг' : '')}</p>
+ <table><thead><tr><th>№</th><th>Код</th><th>Хөрөнгийн нэр</th><th>Тоо</th><th>Нэгж өртөг</th><th>Дүн</th></tr></thead><tbody>${body}</tbody></table>
+ <div class="sig">
+  <div><div class="ln"></div>Хөрөнгө оруулагч: ${esc(L.director)}</div>
+  <div><div class="ln"></div>Хүлээн авсан: ${esc(L.name)}</div>
+ </div>
+ <p class="fine">Акт нь аппын тооллогын бүртгэлд үндэслэв. Жагсаалтад зөвхөн нярав тоолж, ҮАХ-ийн захирал баталгаажуулсан хөрөнгө орсон болно. Баталгаажаагүй ${fmtMoney(oc.invUnverified)}-ийн хөрөнгө энэ актад ОРООГҮЙ.</p>
+</div>
+<script>
+function h2p(){return new Promise(function(res,rej){if(window.html2pdf)return res();
+ var s=document.createElement('script');
+ s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+ s.onload=function(){res();};s.onerror=function(){rej(new Error('x'));};document.head.appendChild(s);});}
+function dl(){var el=document.getElementById('sheet');
+ h2p().then(function(){return (document.fonts&&document.fonts.ready)?document.fonts.ready.catch(function(){}):0;})
+  .then(function(){
+    // ⚠ ХАРАГДАХ элементээс рендэрлэж байгаа тул windowWidth заахгүй.
+    return window.html2pdf().set({filename:'khorongiin-akt-${esc(today)}.pdf',margin:[10,10,12,10],
+      image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},
+      jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}}).from(el).save();})
+  .catch(function(){alert('PDF үүсгэгч татагдсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});
+}
+<\/script></body></html>`);
+  w.document.close();
+}
 function renderProductSheet(mode) {
   const cfg = PSHEET[mode];
   if (!cfg) return '';
@@ -21675,7 +23781,8 @@ function renderProductSheet(mode) {
   if (mode === 'catalog' && state.appCatGroups === undefined) { state.appCatGroups = null; loadAppConfig('mevent_category_groups').then(v => { state.appCatGroups = Array.isArray(v) ? v : []; render(); }); }
   const ro = !(state.isCEO || can(cfg.perm));
   const q = state.psQ || '';
-  const rows = psFilter(state.products, q).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const _all = psFilter(state.products, q);
+  const rows = psApplyFilter(_all, mode, state.psF).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const money = (v) => moneyFmtInput(Number(v) || 0);
   const cell = (p) => {
@@ -21696,27 +23803,57 @@ function renderProductSheet(mode) {
       <label class="ps-f"><span>Нэгж өртөг</span><input class="ps-in money-input ui-raw" ${d('cost')} value="${money(psVal(p, 'cost'))}" inputmode="numeric"></label>
       <label class="ps-f"><span>Авсан огноо</span><input class="ps-in ui-raw" type="date" ${d('purchase_date')} value="${escapeHtml(String(psVal(p, 'purchase_date') || '').slice(0, 10))}"></label>
       <label class="ps-f"><span>Нийлүүлэгч</span><input class="ps-in ui-raw" ${d('supplier')} value="${escapeHtml(psVal(p, 'supplier') || '')}" placeholder="—"></label>
-      <span class="ps-tot">${total > 0 ? fmtMoney(total) : '—'}</span>`;
+      <span class="ps-tot">${total > 0 ? fmtMoney(total) : '—'}</span>
+      ${psDeprecLine(p)}`;
     }
+    /* 📦 НӨӨЦ = ХУВААРИЛАЛТ, 4 ТУСДАА ТОО БИШ (2026-10-03, CEO: «бараа шилжихгүй,
+       ойлгомжгүй»). Хүний хийдэг үйлдэл нь «A-гаас B руу N ширхэг зөөх» — 4 тоог
+       тусад нь нэмж хасуулах нь толгойн тооцоо үүрүүлж, нийт дүн санамсаргүй
+       өөрчлөгдөх нүх үлдээдэг (шилжүүлэг нь нийлбэрийг ХАДГАЛАХ ёстой).
+       Тиймээс ⇄ Шилжүүлэх нь ҮНДСЭН үйлдэл — `product_transfers`-д мөр үлдээдэг,
+       нийлбэрийг барьдаг. Гар засвар нь ЭВХЭГДСЭН (шинэ барааны анхны
+       хуваарилалтад л хэрэгтэй).
+       ⚠ Эцэслэгдсэн бараа: гар засвар түгжээтэй (saveProduct хаана), гэхдээ
+         ШИЛЖҮҮЛЭГ нээлттэй — тэр нь аудитын мөртэй хяналттай зам. */
+    const _tot = PS_QTY_FIELDS.reduce((t, k) => t + (Number(psVal(p, k)) || 0), 0);
+    const _sld = typeof stockSealed === 'function' && stockSealed(p);
+    const _chip = (f, ic, nm) => { const q = Number(psVal(p, f)) || 0;
+      return `<span class="ps-chip${q ? '' : ' is-0'}" title="${nm}">${ic} ${q}</span>`; };
     return `
-      <label class="ps-f"><span>🎪 M-Event</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_mevent')} value="${Number(psVal(p, 'qty_mevent')) || 0}"></label>
-      <label class="ps-f"><span>🏢 Чимун</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_chimun')} value="${Number(psVal(p, 'qty_chimun')) || 0}"></label>
-      <label class="ps-f"><span>⛺ NOMAAD</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_nomaad')} value="${Number(psVal(p, 'qty_nomaad')) || 0}"></label>
-      <label class="ps-f"><span>🍽 Катеринг</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_catering')} value="${Number(psVal(p, 'qty_catering')) || 0}"></label>
-      <span class="ps-tot">${PS_QTY_FIELDS.reduce((t, k) => t + (Number(psVal(p, k)) || 0), 0)}ш</span>`;
+      <details class="ps-dist">
+        <summary class="ps-dist-s">
+          ${_chip('qty_mevent', '🎪', 'M-Event')}${_chip('qty_chimun', '🏢', 'Чимун дотоод')}${_chip('qty_nomaad', '⛺', 'NOMAAD')}${_chip('qty_catering', '🍽', 'Катеринг')}
+          <b class="ps-tot">${_tot}ш</b>${_sld ? '<span class="ps-sld" title="Эхний үлдэгдэл эцэслэгдсэн — гараар засагдахгүй">🔒</span>' : ''}
+        </summary>
+        <div class="ps-dist-g">
+          ${_sld ? '<div class="ps-dist-lock">🔒 Эцэслэгдсэн — тоо гараар засагдахгүй. Зөөх бол <b>⇄ Шилжүүлэх</b>.</div>' : ''}
+          <label class="ps-f"><span>🎪 M-Event</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_mevent', _sld ? ' disabled' : '')} value="${Number(psVal(p, 'qty_mevent')) || 0}"></label>
+          <label class="ps-f"><span>🏢 Чимун</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_chimun', _sld ? ' disabled' : '')} value="${Number(psVal(p, 'qty_chimun')) || 0}"></label>
+          <label class="ps-f"><span>⛺ NOMAAD</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_nomaad', _sld ? ' disabled' : '')} value="${Number(psVal(p, 'qty_nomaad')) || 0}"></label>
+          <label class="ps-f"><span>🍽 Катеринг</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_catering', _sld ? ' disabled' : '')} value="${Number(psVal(p, 'qty_catering')) || 0}"></label>
+        </div>
+      </details>
+      <button type="button" class="ps-mv ui-raw" data-ps-mv="${escapeHtml(p.sku)}" title="Салбар хооронд зөөх — нийт тоо хэвээр, түүхэнд үлдэнэ">⇄</button>`;
   };
-  const row = (p) => `<div class="ps-row${psDirty()[p.sku] ? ' ps-dirty' : ''}" data-ps-row="${escapeHtml(p.sku)}">
+  const row = (p) => `<div class="ps-row${mode === 'stock' ? ' ps-row-stock' : ''}${psDirty()[p.sku] ? ' ps-dirty' : ''}" data-ps-row="${escapeHtml(p.sku)}">
       <button type="button" class="ps-img ui-raw" data-ps-open="${escapeHtml(p.sku)}" title="Барааны бүх мэдээлэл">${p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 96))}" alt="" loading="lazy">` : '📦'}</button>
       <div class="ps-nm">${mode === 'catalog' ? '' : escapeHtml(p.name || '')}<em>${escapeHtml(p.code || p.sku)}</em></div>
       <div class="ps-fields">${cell(p)}</div>
     </div>`;
   return `<div class="ps-wrap">
     <div class="ps-head">
-      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${mode === 'catalog' ? ' <b>Нэр, ангилал нь mevent.mn сайтад ч шууд өөрчлөгдөнө.</b>' : ''}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div></div>
+      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${mode === 'catalog' ? ' <b>Нэр, ангилал нь mevent.mn сайтад ч шууд өөрчлөгдөнө.</b>' : ''}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div>${mode === 'cost' ? psDeprecSummary() + psOwnerCapitalHtml() : ''}</div>
       <input id="ps-q" class="ps-q ui-raw" value="${escapeHtml(q)}" placeholder="Хайх (нэр, ангилал, код)…" aria-label="Хайх">
     </div>
 
-    <div class="ps-count">${rows.length} бараа</div>
+    ${(() => {
+      const fs2 = PSHEET_FILTERS[mode] || []; if (!fs2.length) return '';
+      const chip = (k, lb, n, on) => `<button type="button" class="ps-fc${on ? ' is-on' : ''}${!n && k ? ' is-empty' : ''}" data-ps-f2="${escapeHtml(k)}">${escapeHtml(lb)}<b>${n}</b></button>`;
+      return `<div class="ps-fbar">${chip('', 'Бүгд', _all.length, !state.psF)}`
+        + fs2.map(f => chip(f.key, f.label, _all.filter(x => { try { return !!f.test(x); } catch (_) { return false; } }).length,
+            state.psF === f.key)).join('') + '</div>';
+    })()}
+    <div class="ps-count">${rows.length} бараа${state.psF ? ' <span class="mut">(шүүсэн)</span>' : ''}</div>
     <div class="ps-list" id="ps-list">${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🔍</div>Хайлтад тохирох бараа алга.</div>'}</div>
     <div class="ps-savebar" id="ps-savebar"${psDirtyCount() ? '' : ' hidden'}>
       <span><b id="ps-dirty-n">${psDirtyCount()}</b> бараа өөрчлөгдсөн — хадгалаагүй байна</span>
@@ -21741,10 +23878,24 @@ async function psSaveAll() {
   render();
 }
 function attachProductSheetHandlers(mode) {
+  document.querySelector('[data-oc-act]')?.addEventListener('click', openOwnerCapitalAct);
+  document.querySelector('[data-oc-count]')?.addEventListener('click', () => { state.view = 'stockcount'; render(); });
   const list = document.getElementById('ps-list');
   if (list && state._psScroll) { list.scrollTop = state._psScroll; state._psScroll = 0; }
   const qEl = document.getElementById('ps-q');
+  document.querySelectorAll('[data-ps-f2]').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.psF2 || '';
+    state.psF = (state.psF === k || !k) ? '' : k;   // дахин дарвал БҮГД рүү буцна
+    render();
+  }));
   if (qEl) qEl.addEventListener('input', (e) => { state.psQ = e.target.value; clearTimeout(state._psT); state._psT = setTimeout(() => render(), 220); });
+  /* ⇄ ҮНДСЭН ҮЙЛДЭЛ — одоо байгаа шилжүүлэх модалыг дуудна (`product_transfers`-д
+     мөр үлдээж, нийт тоог ХАДГАЛНА). Гар засвараас ялгаатай нь: хаанаас хаашаа
+     хэд гэдгийг асууж, нийлбэр хэзээ ч санамсаргүй өөрчлөгдөхгүй. */
+  document.querySelectorAll('[data-ps-mv]').forEach(b => b.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (typeof openTransferModal === 'function') openTransferModal(b.dataset.psMv);
+  }));
   document.querySelectorAll('[data-ps-open]').forEach(b => b.addEventListener('click', () => {
     const p = (state.products || []).find(x => x && x.sku === b.dataset.psOpen);
     if (p && typeof openProductModal === 'function') openProductModal(p);
@@ -22767,6 +24918,11 @@ function openProductModal(p, opts) {
   // Багцын нөөц DB-д хадгалагддаггүй — бүрэлдэхүүнээс тухайн агшинд бодно.
   const _isPkg0 = isEdit && isPackage(p);
   const _st0 = _isPkg0 ? packageStock(p) : (isEdit ? (Number(p.stock) || 0) : 1);
+  /* 🔒 Эцэслэгдсэн бараа — тоон талбарууд ТҮГЖИГДЭНЭ. Хориг нь `saveProduct`-д
+     (ганц бичих цэг) байгаа ч хүн бичээд дарсны ДАРАА алдаа харахаас илүү
+     эхнээс нь түгжсэн нь дээр. */
+  const _sealed = !!(isEdit && p && stockSealed(p));
+  const _sealDis = _sealed ? ' disabled' : '';
   const _pkgDis = (_isPkg0 || asPkg) ? ' disabled' : '';
   let _qm0, _qc0, _qn0, _qk0;
   if (isEdit && (p.qty_mevent != null || p.qty_chimun != null || p.qty_nomaad != null || p.qty_catering != null)) {
@@ -22900,24 +25056,25 @@ function openProductModal(p, opts) {
         <div class="pm-pane-t">📦 Нөөц ба салбар</div>
         <div class="pm-lock" data-lockhint="stock" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
         ${(_isPkg0 || asPkg) ? '<div class="pm-hint">📦 Багцын нөөц гараар тохируулагддаггүй — бүрэлдэхүүн бүрийн нөөцөөс тухайн агшинд бодогдоно.</div>' : ''}
+        ${_sealed ? '<div class="pm-hint pm-hint-lock">🔒 Эхний үлдэгдэл эцэслэгдсэн — тоог гараар засах боломжгүй. Залруулга <b>тооллогоор</b> хийгдэнэ (хэн хэзээ юуг хэд болгосон нь мөрөөр үлдэнэ).</div>' : ''}
         <div class="pm-grid">
-        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${_st0}"${_pkgDis}></label>
+        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${_st0}"${_pkgDis || _sealDis}></label>
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"${_pkgDis}></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"${_pkgDis}></label>
         </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
-        <div class="pm-branch-head">🏢 Салбарын хуваарилалт${isEdit ? '' : ' *'} <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
+        <div class="pm-branch-head">🏢 Салбарын хуваарилалт${isEdit ? '' : ' *'}${_sealed ? ' <b>🔒 эцэслэгдсэн</b>' : ''} <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
         ${isEdit ? '' : `<div class="pm-branch-pick" id="pm-branch-pick">
           <button type="button" class="f-link-type" data-brpick="m">🎪 M-Event</button>
           <button type="button" class="f-link-type" data-brpick="c">🏢 Чимун дотоод</button>
           <button type="button" class="f-link-type" data-brpick="n">⛺ NOMAAD</button>
         </div>`}
         <div class="pm-branch-grid">
-          <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"${_pkgDis}></label>
-          <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"${_pkgDis}></label>
-          <label>⛺ NOMAAD<input type="number" min="0" id="pm-qn" value="${_qn0}"${_pkgDis}></label>
-          <label>🍽 Катеринг<input type="number" min="0" id="pm-qk" value="${_qk0}"${_pkgDis}></label>
+          <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"${_pkgDis || _sealDis}></label>
+          <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"${_pkgDis || _sealDis}></label>
+          <label>⛺ NOMAAD<input type="number" min="0" id="pm-qn" value="${_qn0}"${_pkgDis || _sealDis}></label>
+          <label>🍽 Катеринг<input type="number" min="0" id="pm-qk" value="${_qk0}"${_pkgDis || _sealDis}></label>
         </div>
         <div class="pm-branch-status" id="pm-branch-status"></div>
       </div>
@@ -23568,29 +25725,31 @@ const BQ_STATUS = {
   draft:       { label: 'Ноорог',        dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
   reserved:    { label: 'Захиалсан',     dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
   prepared:    { label: 'Цэвэрлэсэн',    dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
-  ready:       { label: 'Бэлдсэн',       dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
-  delivering:  { label: 'Агуулахаас гаргасан', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
+  ready:       { label: 'Баглаж/ачсан',  dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
+  delivering:  { label: 'Агуулахаас гарсан', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
-  installing:  { label: 'Хүргэсэн',       dot: '#EA580C', bg: '#FFEDD5', tx: '#9A3412' },
-  teardown:    { label: 'Буулгасан',      dot: '#A16207', bg: '#FEF9C3', tx: '#854D0E' },
-  returning:   { label: 'Хүргэлтээр авсан', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
-  returned:    { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  installing:  { label: 'Талбайд буулгасан', dot: '#EA580C', bg: '#FFEDD5', tx: '#9A3412' },
+  teardown:    { label: 'Задалсан',       dot: '#A16207', bg: '#FEF9C3', tx: '#854D0E' },
+  returning:   { label: 'Талбайгаас ачсан',    dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
+  returned:    { label: 'Хүлээн авсан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  stowed:      { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
   canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
   deleted:     { label: 'Больсон',       dot: '#9CA3AF', bg: '#F3F4F6', tx: '#6B7280' },
   // Хуучин төлөв (түүхэн захиалга рендерлэхэд)
   preparation: { label: 'Бэлтгэл',       dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
-  cleaning:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
+  cleaning:    { label: 'Цэвэрлэсэн',    dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
   started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned', 'stowed', 'stopped', 'archived', 'canceled', 'deleted'];
 // Хуучин/хассан (legacy) төлөвийг одоогийн урсгалын төлөв рүү буулгана — эс бол тэдгээр захиалга
 // ямар ч табд таарахгүй зөвхөн "Бүгд"-д харагдана. delivering/returning-г хассан (зам-дундын микро-төлөв).
 const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', started: 'rented' };
 // Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
-// Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гаргасан]→Гарсан→[Хүргэж өгсөн]→Дууссан
+// Хүргэлттэй: Захиалсан→[Цэвэрлэсэн]→[Баглаж/ачсан]→[Бүртгэж гаргасан]→[Талбайд буулгасан]
+//   →(Суурилуулсан)→Түрээсэнд→(Задалсан)→[Талбайгаас ачсан]→[Бүртгэж хүлээн авсан]→[Буулгаж байршуулсан]→Архив
 // Очиж авах:   … Гарахад бэлэн→[Олгосон]→Дууссан
 // Хуучин захиалгад хүргэлт нь ТУСДАА бараа мөр болж орсон (⟦DLV⟧ token/хаяггүй).
 // Нэрээр таниж эдгээрийг ч хүргэлттэй гэж үзнэ (зөвхөн хүргэлт/тээвэр — суурилуулалт/оператор БИШ).
@@ -23722,37 +25881,75 @@ function orderNeedsSetup(o) {
 //                → Хүргэлтээр авсан → Агуулахад хүлээн авсан
 //   Очиж авах:   Бэлдсэн → Цэвэрлэсэн → Олгосон → Агуулахад хүлээн авсан
 // (4, 5-р шат зөвхөн хүргэлттэй захиалгад гарна.)
-function orderNextStep(o) {
-  const st = String((o && o.status) || '');
+/* ─── УРСГАЛЫН ТОДОРХОЙЛОЛТ = ЖАГСААЛТ, КОД БИШ (2026-10-03) ────────────────
+   Өмнө нь `switch`-ээр бичигдсэн байсан тул дамжлага нэмэх/хасах, оноо тавих,
+   зураглал гаргах бүр кодын бүтцийг дахин бичихийг шаарддаг байв. Одоо мөр
+   бүр = НЭГ дамжлага: хаанаас · хаашаа · нэр · эрх · ямар үед гарах.
+   ⛔ **ЭХНИЙ ТААРСАН МӨР ЯЛНА — ДАРААЛАЛ НЬ ДҮРЭМ.** Нарийн нөхцөлтэй мөр
+     (`setup`) нь өргөнөөс ДЭЭГҮҮР байна, эс бөгөөс суурилуулалттай захиалга
+     энгийн замаар явна. Тест бүх төлөв × хүргэлт × суурилуулалтыг тулгана.
+   ⚠ `dlv`/`setup` талбар байхгүй = «хамаарахгүй» (хоёуланд нь тохирно).
+   ⚠ Суурилуулалт зөвхөн ХҮРГЭЛТТЭЙ захиалгад (`orderPipelineCtx`) — очиж
+     авсан бараанд бид угсрахгүй. */
+const PIPELINE = [
+  { key: 'clean',    from: ['reserved', 'preparation', 'cleaning'], to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean',  pts: 10,   ev: 'photo' },
+  { key: 'prepare',  from: ['prepared'],   to: 'ready',      label: '📦 Баглаж/ачсан',       cap: 'orders.prepare',  pts: 15, ev: 'photo' },
+  { key: 'dispatch', from: ['ready'],      to: 'delivering', label: '📋 Бүртгэж гаргасан',   cap: 'orders.dispatch', pts: 10,   ev: 'count', dlv: true },
+  { key: 'dispatch', from: ['ready'],      to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch', pts: 10,  ev: 'count', dlv: false },
+  { key: 'deliver',  from: ['delivering'], to: 'installing', label: '🏗 Талбайд буулгасан',  cap: 'orders.deliver',  pts: 15, ev: 'photo', setup: true },
+  { key: 'deliver',  from: ['delivering'], to: 'rented',     label: '🏗 Талбайд буулгасан',  cap: 'orders.deliver',  pts: 15, ev: 'photo', setup: false },
+  // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
+  { key: 'setup',    from: ['installing'], to: 'rented',     label: '🔧 Суурилуулсан',       cap: 'orders.setup',    pts: 20,   ev: 'photo' },
+  { key: 'teardown', from: ['rented', 'started'], to: 'teardown',  label: '🧱 Задалсан',    cap: 'orders.setup',    pts: 15, ev: 'photo', setup: true },
+  { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Талбайгаас ачсан', cap: 'orders.deliver',  pts: 15, ev: 'photo', dlv: true },
+  /* ⛔ ОЧИЖ АВАХ захиалгад ч НЯРАВ ХАМГИЙН СҮҮЛД тоолно (2026-10-05, CEO:
+     «нярав ахлах хамгийн сүүлд хүлээн авна»). Өмнө нь очиж авахад эхэлж
+     тоолж, байршуулалт сүүлд хяналтгүй үлддэг байв. Одоо хоёр урсгал ижил:
+     буулгаж байршуулна → нярав тоолж хүлээн авна. */
+  { key: 'stow',     from: ['rented', 'started'], to: 'stowed',    label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare', pts: 15, ev: 'photo', dlv: false },
+  { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Талбайгаас ачсан',        cap: 'orders.deliver',  pts: 15, ev: 'photo' },
+  /* ⛔ ХҮРГЭЛТЭД: ЭХЛЭЭД БАЙРШУУЛНА, ДАРАА НЬ ТООЛНО (2026-10-04, CEO барив).
+     Өмнө нь нярав эхэлж тоолдог байсан тул «Буулгаж байршуулах» нь сүүлчийн
+     дамжлага болж ХЭН Ч ХЯНАХГҮЙ үлддэг байв. Одоо хоёр тал ижил бүтэцтэй:
+     ажил → ажил → нярав тоолно. Нярав тавиур дээрх барааг тоолж, дутуу
+     эсэхийг БА байрандаа тавигдсан эсэхийг нэг дор шалгана.
+     ⚠ Замд алдагдсан нь алдагдахгүй — ЖОЛООЧ талбай дээр тоолсон тоо
+       («Талбайгаас ачсан») аль хэдийн бүртгэгддэг, няравынх түүнтэй тулгагдана. */
+  { key: 'stow',     from: ['returning'],  to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare',  pts: 15, ev: 'photo' },
+  /* ⚠ `rcvd: false` — хуучин урсгалаар (2026-10-05-аас өмнө) очиж авсан захиалга
+     ЭХЛЭЭД тоологдож дараа нь байршуулагдсан тул «stowed» дээр аль хэдийн
+     хүлээн авагдсан байна. Тэдгээрийг ДАХИН тоолуулахгүй — шууд архив руу. */
+  { key: 'received', from: ['stowed'],     to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 10, ev: 'count', rcvd: false },
+  /* ⛔ БИЕИЙН ХҮЧНИЙ АЖИЛ → `orders.prepare` (агуулахын БҮХ ажилтанд бий),
+     `orders.dispatch` БИШ (тэр нь зөвхөн 4 нярав/ахлахад — яг хүнд ажил хийх
+     ёсгүй хүмүүс). Буруу эрхэнд тавибал товчийг дарах хүн байхгүй болж
+     захиалга «Хүлээн авсан» дээр гацна (2026-10-04, CEO барив). */
+  { key: 'archive',  from: ['stowed', 'returned', 'stopped'], to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance', pts: 0 },
+];
+// Захиалгын нөхцөл — урсгалын салаалалт үүгээр шийдэгдэнэ (ЦЭВЭР тулгалтад тестлэгдэнэ).
+function orderPipelineCtx(o) {
   const dlv = (typeof isDeliveryOrder === 'function') ? isDeliveryOrder(o) : false;
-  // Суурилуулалт зөвхөн ХҮРГЭЛТТЭЙ захиалгад — очиж авсан бараанд бид угсрахгүй.
-  const setup = dlv && (typeof orderNeedsSetup === 'function') && orderNeedsSetup(o);
-  switch (st) {
-    case 'reserved':
-    case 'preparation':
-    case 'cleaning':    return { to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' };
-    case 'prepared':    return { to: 'ready',    label: '🧰 Бэлдсэн',    cap: 'orders.prepare' };
-    case 'ready':       return dlv
-      ? { to: 'delivering', label: '📦 Агуулахаас гаргасан',  cap: 'orders.dispatch' }
-      : { to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch' };
-    case 'delivering':  return setup
-      ? { to: 'installing', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' }
-      : { to: 'rented',     label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
-    // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
-    case 'installing':  return { to: 'rented', label: '🔧 Суурилуулсан', cap: 'orders.setup' };
-    case 'rented':
-    case 'started':     return setup
-      ? { to: 'teardown',  label: '🧱 Буулгасан',          cap: 'orders.setup' }
-      : dlv
-      ? { to: 'returning', label: '↩️ Хүргэлтээс авсан',   cap: 'orders.deliver' }
-      : { to: 'returned',  label: '📥 Агуулахад авсан',    cap: 'orders.dispatch' };
-    case 'teardown':    return { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' };
-    case 'returning':   return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
-    case 'returned':
-    case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
-    default: return null;
-  }
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  return { dlv, setup: !!(dlv && typeof orderNeedsSetup === 'function' && orderNeedsSetup(o)), rcvd: !!sm.received };
 }
+// Төлөв + нөхцөлд тохирох PIPELINE мөр — ЭХНИЙ таарсан нь ялна. ГАНЦ газар (pipelineNext ба схем хоёулаа).
+function pipelineRow(status, ctx) {
+  const st = String(status || ''), c = ctx || {};
+  for (const r of PIPELINE) {
+    if (r.from.indexOf(st) < 0) continue;
+    if (r.dlv !== undefined && r.dlv !== !!c.dlv) continue;
+    if (r.setup !== undefined && r.setup !== !!c.setup) continue;
+    if (r.rcvd !== undefined && r.rcvd !== !!c.rcvd) continue;
+    return r;
+  }
+  return null;
+}
+// ЦЭВЭР функц — төлөв + нөхцөлөөс дараагийн дамжлага. Тестэд шууд дуудагдана.
+function pipelineNext(status, ctx) {
+  const r = pipelineRow(status, ctx);
+  return r ? { key: r.key, to: r.to, label: stageLabel(r), cap: r.cap } : null;
+}
+function orderNextStep(o) { return pipelineNext((o && o.status) || '', orderPipelineCtx(o)); }
 // Хуучин статик map (легаси/bq картын fallback) — orderNextStep-ийн хүргэлт хувилбар
 const BQ_NEXT = {
   reserved:    { to: 'cleaning', label: '🧰 Бэлтгэх' },
@@ -23762,6 +25959,123 @@ const BQ_NEXT = {
   started:     { to: 'stopped',  label: '🚚 Хүргэж өгөх' },
   stopped:     { to: 'archived', label: '🗄 Архивлах' },
 };
+
+/* ─── ДАМЖЛАГЫН СХЕМ — зөвхөн ХАРАХ цонх (2026-10-04, CEO) ─────────────────
+   Ажилтан бүтэн урсгалыг хэзээ ч хардаггүй байв: карт нь «одоо хаана», товч
+   нь «дараа нь юу» гэдгийг л хэлнэ. Шинэ хүн системийг бүтнээр ойлгох
+   газаргүй байсан.
+   ⛔ ЖАГСААЛТЫГ ГАРААР БҮҮ БИЧ — `PIPELINE`-аас өөрөө угсарна. Эс бөгөөс
+     шинэ дамжлага нэмэхэд схем чимээгүй хуучирна. Scan-тест хаана. */
+const PMAP_FLOWS = [
+  { k: 'dlv',  t: '🚚 Хүргэлт',               ctx: { dlv: true,  setup: false } },
+  { k: 'set',  t: '🔧 Хүргэлт + суурилуулалт', ctx: { dlv: true,  setup: true } },
+  { k: 'pick', t: '🤝 Өөрөө ирж авах',         ctx: { dlv: false, setup: false } },
+];
+const PMAP_WHO = {
+  'orders.clean': 'цэвэрлэгч', 'orders.prepare': 'агуулахын ажилтан',
+  'orders.dispatch': 'нярав', 'orders.deliver': 'хүргэлтийн баг',
+  'orders.setup': 'угсрах баг', 'orders.advance': '—',
+};
+// ЦЭВЭР функц — нөхцөлөөс бүтэн урсгалын мөрүүд. Тестэд шууд дуудагдана.
+function pipelineSteps(ctx) {
+  const out = []; let st = 'reserved';
+  for (let i = 0; i < 24; i++) {
+    const nx = pipelineNext(st, ctx); if (!nx) break;
+    const row = pipelineRow(st, ctx);
+    if (row && row.key !== 'archive') out.push(row);
+    st = nx.to; if (st === 'archived') break;
+  }
+  return out;
+}
+function openPipelineMapModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.style.zIndex = '9400';
+  let flow = 'dlv', edit = '';            // edit = засагдаж буй мөрийн `key|to`
+  const can = () => !!state.isCEO;        // засах эрх — зөвхөн захирал
+  const row = (r, i) => {
+    const lk = stageLabelKey(r), on = can() && edit === lk, ctl = r.ev === 'count';
+    return `<div class="pm-st${ctl ? ' ctl' : ''}${on ? ' ed' : ''}" data-lk="${escapeHtml(lk)}">
+      <span class="pm-n">${i + 1}</span>
+      <span class="pm-b">${on
+        ? `<input class="ui-raw pm-nm" type="text" maxlength="40" value="${escapeHtml(stageLabel(r))}">`
+        : `<span class="pm-l">${escapeHtml(stageLabel(r))}</span>`}
+        <span class="pm-m">${escapeHtml(PMAP_WHO[r.cap] || r.cap)} · ${ctl ? '🔢 тоо' : '📷 зураг'}</span></span>
+      ${on
+        ? `<input class="ui-raw pm-w" type="number" step="1" min="0" value="${stageWeight(r.key)}"><button class="btn pm-ok">💾</button>`
+        : `<span class="pm-p">${stageWeight(r.key)}</span>`}</div>`;
+  };
+  const draw = () => {
+    const fl = PMAP_FLOWS.find(x => x.k === flow) || PMAP_FLOWS[0];
+    const steps = pipelineSteps(fl.ctx);
+    const pts = steps.reduce((a, r) => a + stageWeight(r.key), 0);
+    const bands = stagePtBands();
+    modal.querySelector('#pm-body').innerHTML = `
+      <div class="pm-chips">${PMAP_FLOWS.map(f => `<span class="pm-chip${f.k === flow ? ' on' : ''}" data-pm="${f.k}">${escapeHtml(f.t)}</span>`).join('')}</div>
+      <div class="pm-sum">${steps.length} дамжлага · <b>${pts}</b> оноо · ${fmtMoney(pts * stagePointRate())} <span class="pm-dim">(1 ширхэг бараатай захиалгад)</span></div>
+      <div class="pm-list">${steps.map(row).join('<div class="pm-ar">↓</div>')}</div>
+      ${can() ? `<details class="pm-gen"><summary>⚙️ Ханш ба хуваарилалт</summary>
+        <div class="pm-grow"><span>1 оноо</span><input class="ui-raw pm-in" type="number" step="50" min="1" id="pm-rate" value="${stagePointRate()}"> ₮</div>
+        ${bands.map((b, i) => `<div class="pm-grow"><span>${b[0] === Infinity ? `${bands.length > 1 ? bands[bands.length - 2][0] + 1 : 1}+ бараа` : `≤ ${b[0]} бараа`}</span><input class="ui-raw pm-in" type="number" step="1" min="0" data-band="${i}" value="${b[1]}"> оноо</div>`).join('')}
+        <div class="pm-grow"><span>Хариуцсан хүний жин</span><input class="ui-raw pm-in" type="number" step="0.1" min="1" max="5" id="pm-lead" value="${stageLeadWeight()}"> ×</div>
+        <div class="pm-grow"><span>Хамтрагчийн дээд тоо</span><input class="ui-raw pm-in" type="number" step="1" min="1" max="10" id="pm-hmax" value="${stageHelperMax()}"> хүн</div>
+        <button class="btn btn-primary pm-gsave" id="pm-gsave">💾 Хадгалах</button></details>` : ''}
+      <div class="pm-leg">Хүрээтэй нь <b>няравын хяналтын цэг</b> — өмнөх ажлуудыг тоогоор шалгана.<br>
+        Жолоо дамжлага биш: буулгах/ачих цонхонд жолоочийг сонгоно (${fmtMoney(DRIVER_BONUS_EACH)}).
+        ${can() ? '<br>Мөр дээр дарж <b>нэр, оноог</b> засна. Дараалал нь төлвийн гинж тул энд солигддоггүй.<br><b class="pm-warn">⚠ Оноо/ханш өөрчилмөгц бүх сарын бонус дахин бодогдоно — хаасан сар ч мөн адил.</b>' : ''}</div>`;
+    wire();
+  };
+  /* ⛔ БАТАЛГААЖУУЛАХ ЦОНХ ХАСАГДСАН (2026-10-04, CEO: «дахин баталгаажуулалт
+     асуухгүй»). Тохиргоог ээлж дараалан засдаг тул цонх бүрд асуух нь ажлыг
+     удаашруулдаг байв. ⚠ Анхааруулга нь ХӨЛД ИЛ үлдэнэ — мөнгө хөдөлж
+     байгааг хүн мэдэх ёстой, зөвхөн зогсоохоо больсон. */
+  const save = async (patch) => {
+    const cfg = Object.assign({}, _stagePayCfg(), patch);
+    if (!(Number(cfg.rate || stagePointRate()) > 0)) { showToast('Ханш 0-ээс их байх ёстой', 'warn', 3000); return false; }
+    try {
+      await saveAppConfig('stage_pay', cfg);
+      state.appConfig = state.appConfig || {}; state.appConfig.stage_pay = cfg;
+      showToast('Хадгаллаа', 'success'); return true;
+    } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); return false; }
+  };
+  const wire = () => {
+    modal.querySelectorAll('[data-pm]').forEach(c => c.onclick = () => { flow = c.dataset.pm; edit = ''; draw(); });
+    modal.querySelectorAll('.pm-st').forEach(el => el.onclick = (e) => {
+      if (!can() || e.target.closest('input, button')) return;
+      edit = (edit === el.dataset.lk) ? '' : el.dataset.lk; draw();
+    });
+    const okb = modal.querySelector('.pm-ok');
+    if (okb) okb.onclick = async () => {
+      const el = okb.closest('.pm-st'), lk = el.dataset.lk, key = lk.split('|')[0];
+      const r = PIPELINE.find(x => stageLabelKey(x) === lk); if (!r) return;
+      const nm = String(el.querySelector('.pm-nm').value || '').trim();
+      const w = Math.round(Number(el.querySelector('.pm-w').value));   // ⚠ оноо БҮХЭЛ тоо (CEO)
+      const labels = Object.assign({}, _stagePayCfg().labels || {});
+      // Анхдагчтай ижил нэрийг ХАДГАЛАХГҮЙ — код сайжрахад тохиргоо хуучныг барихгүй
+      if (nm && nm !== String(r.label)) labels[lk] = nm; else delete labels[lk];
+      const weights = Object.assign({}, _stagePayCfg().weights || {});
+      if (isFinite(w) && w >= 0) weights[key] = w;
+      if (await save({ labels, weights })) { edit = ''; draw(); render(); }
+    };
+    const gs = modal.querySelector('#pm-gsave');
+    if (gs) gs.onclick = async () => {
+      const bands = stagePtBands();
+      const pt_bands = bands.map((b, i) => [b[0] === Infinity ? 999999 : b[0],
+        Math.round(Number((modal.querySelector(`[data-band="${i}"]`) || {}).value) || 0)]);
+      const num = (sel) => Number((modal.querySelector(sel) || {}).value) || 0;
+      if (await save({ pt_bands, rate: num('#pm-rate'), lead_weight: Math.min(5, Math.max(1, num('#pm-lead'))),
+                       helper_max: Math.max(1, num('#pm-hmax')) })) { draw(); render(); }
+    };
+  };
+  modal.innerHTML = `<div class="modal pm-modal">
+    <div class="modal-head"><b>📊 Захиалгын урсгал</b><button class="modal-x" id="pm-x">✕</button></div>
+    <div class="modal-body" id="pm-body"></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#pm-x').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  draw();
+}
 
 // ── Дамжлагын АВТОМАТ ажил — эрх эзэмшигчид даалгавар үүсгэж, зургаар баталгаажуулна ──
 // Шат бүрд ажил хийх эрх (cap) + fallback роль + үйлдлийн нэр. Захиалга шат руу орох бүрд ажил үүснэ.
@@ -23884,22 +26198,31 @@ const STAGE_ACTION = {
   'ready>prepared':       { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
   'reserved>cleaning':    { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
   'preparation>cleaning': { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
-  'cleaning>ready':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
-  'prepared>ready':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
-  'ready>delivering':     { key: 'dispatch', label: 'Агуулахаас гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'cleaning>ready':       { key: 'prepare',  label: 'Баглаж/ачсан',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
+  'prepared>ready':       { key: 'prepare',  label: 'Баглаж/ачсан',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
+  'ready>delivering':     { key: 'dispatch', label: 'Бүртгэж гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'ready>rented':         { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'prepared>delivering':  { key: 'dispatch', label: 'Бүртгэж гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'prepared>rented':      { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
-  'delivering>installing':{ key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'delivering>rented':    { key: 'deliver',  label: 'Талбайд буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'delivering>installing':{ key: 'deliver',  label: 'Талбайд буулгасан',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
   'installing>rented':    { key: 'setup',    label: 'Суурилуулсан',          q: 'Ачаа бүрэн, эвдрэлгүй ирсэн үү?' },
-  'rented>teardown':      { key: 'teardown', label: 'Буулгасан',             q: null },
-  'teardown>returning':   { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Буулгалт эмх цэгцтэй хийгдсэн үү?' },
-  'rented>returning':     { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
-  'rented>returned':      { key: 'received', label: 'Агуулахад авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'started>returning':    { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
-  'started>returned':     { key: 'received', label: 'Агуулахад авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'returning>returned':   { key: 'received', label: 'Агуулахад авсан',       q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
+  'rented>teardown':      { key: 'teardown', label: 'Задалсан',             q: null },
+  'teardown>returning':   { key: 'retstart', label: 'Талбайгаас ачсан',      q: 'Буулгалт эмх цэгцтэй хийгдсэн үү?' },
+  'rented>returning':     { key: 'retstart', label: 'Талбайгаас ачсан',      q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
+  'rented>returned':      { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'started>returning':    { key: 'retstart', label: 'Талбайгаас ачсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
+  'started>returned':     { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'returning>stowed':     { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, байрандаа тавигдсан уу?' },
+  // Очиж авах (2026-10-05): харилцагч авчирсан барааг эхлээд байршуулна, нярав СҮҮЛД тоолно.
+  // ⛔ Зураглалгүй бол шат `stowed` түлхүүрээр хадгалагдаж бонус, түүх, гацсан жагсаалтаас алга болно.
+  'rented>stowed':        { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, байрандаа тавигдсан уу?' },
+  'started>stowed':       { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, байрандаа тавигдсан уу?' },
+  'stowed>returned':      { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Тавиур дээрх бараа бүрэн, зөв тоологдсон уу?' },
+  // Хуучин бичлэг: шууд тоолоод дууссан захиалгууд (шинэ урсгалд үүсэхгүй)
+  'returning>returned':   { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
+  'returned>stowed':      { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, зөв тоологдсон уу?' },
+  'stowed>archived':      { key: 'archive',  label: 'Архивлах',              q: null },
   'returned>archived':    { key: 'archive',  label: 'Архивлах',              q: null },
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
@@ -23941,7 +26264,7 @@ function showcasePhotos(orders, limit) {
   out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return limit ? out.slice(0, limit) : out;
 }
-const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гаргасан', deliver: '🚚 Хүргэж өгсөн', setup: '🔧 Суурилуулсан', teardown: '🧱 Буулгасан', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '📦 Баглаж/ачсан', dispatch: '📋 Бүртгэж гаргасан', deliver: '🏗 Талбайд буулгасан', setup: '🔧 Суурилуулсан', teardown: '🧱 Задалсан', retstart: '🚚 Талбайгаас ачсан', received: '📋 Бүртгэж хүлээн авсан', stow: '🏬 Буулгаж байршуулсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
 // Хамтрагч асуух текст — шат бүрд ТОДОРХОЙ («хамтарсан хүн байсан уу?» гэдэг
@@ -23990,7 +26313,7 @@ function hasStageRecord(o) {
   });
 }
 // Дууссанд тооцогдох төлвүүд — эдгээрт дамжлагагүйгээр шилжихийг хориглоно.
-const ORDER_DONE_STATUSES = ['rented', 'returned', 'stopped', 'archived'];
+const ORDER_DONE_STATUSES = ['rented', 'returned', 'stowed', 'stopped', 'archived'];
 
 // ── ГАРАХ ЁСТОЙ ЦАГ (2026-09-22) ────────────────────────────────────────────
 // 1★ гомдол (захиалга дугаар 1526) нь хожимдлоос гарсан: эвент 13:00-д эхлэх
@@ -24039,45 +26362,147 @@ function orderDispatchPlan(o) {
   if (isNaN(startMs)) return null;
   return { startMs, needMs: startMs - hours * 3600000, hours: Math.round(hours * 10) / 10, km, setup };
 }
-// Бодит гарсан (товч дарсан) цагтай тулгана. Буцаах: null | {lateH, ok, wild}.
-function orderDispatchLate(o) {
+/* ── ЗУРАГ АВСАН ЦАГ = EXIF (2026-10-05, CEO) ─────────────────────────────
+   Ажилтан газар дээр нь утсаараа зураг аваад, аппад ХОЖИМ оруулдаг. Тэгвэл
+   дамжлагын товч дарсан цаг хоцорсон мэт харагдана. Утасны JPEG файлд зураг
+   авсан цаг (DateTimeOriginal) бичигддэг — апп зургийг ШАХАХААС ӨМНӨ уншина
+   (шахалт нь canvas-аар дахин кодлодог тул EXIF бүрмөсөн устдаг; Drive дахь
+   хуучин зургаас ГАРГАЖ АВАХ БОЛОМЖГҮЙ).
+   ⚠ Цагийн бүс заагаагүй бол +08:00 (УБ) — ажилчдын утас УБ-ийн цагтай.
+   ⚠ Messenger/Viber-ээр дамжсан зураг, дэлгэцийн зураг EXIF-гүй → null. */
+function exifTakenAt(bytes) {
+  try {
+    const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+    if (b.length < 4 || b[0] !== 0xFF || b[1] !== 0xD8) return null;
+    let p = 2;
+    while (p + 4 <= b.length) {
+      if (b[p] !== 0xFF) return null;
+      const mk = b[p + 1];
+      if (mk === 0xDA || mk === 0xD9) return null;      // зургийн өгөгдөл эхэлсэн — EXIF алга
+      const len = (b[p + 2] << 8) | b[p + 3];
+      if (mk === 0xE1 && b[p + 4] === 0x45 && b[p + 5] === 0x78 && b[p + 6] === 0x69 && b[p + 7] === 0x66) {
+        return _exifTiffTime(b, p + 10, Math.min(b.length, p + 2 + len));
+      }
+      p += 2 + len;
+    }
+  } catch (_) { /* эвдэрсэн файл — цаггүй гэж үзнэ */ }
+  return null;
+}
+function _exifTiffTime(b, t, end) {
+  const le = b[t] === 0x49;   // «II» = little-endian, «MM» = big-endian
+  const u16 = o => (o < t || o + 2 > end) ? NaN : (le ? b[o] | (b[o + 1] << 8) : (b[o] << 8) | b[o + 1]);
+  const u32 = o => (o < t || o + 4 > end) ? NaN
+    : (le ? (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16)) + b[o + 3] * 16777216
+          : b[o] * 16777216 + ((b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]));
+  const str = (o, n) => { let x = ''; for (let i = 0; i < n && o + i < end; i++) { const c = b[o + i]; if (!c) break; x += String.fromCharCode(c); } return x; };
+  const ifd = off => {
+    const out = {}, n = u16(t + off);
+    if (!(n > 0 && n < 512)) return out;
+    for (let i = 0; i < n; i++) {
+      const e = t + off + 2 + i * 12, tag = u16(e), type = u16(e + 2), cnt = u32(e + 4);
+      if (type === 2) out[tag] = str(cnt <= 4 ? e + 8 : t + u32(e + 8), cnt);
+      else if (type === 4) out[tag] = u32(e + 8);
+    }
+    return out;
+  };
+  const i0 = ifd(u32(t + 4));
+  const ex = i0[0x8769] ? ifd(i0[0x8769]) : {};
+  const raw = ex[0x9003] || ex[0x9004] || i0[0x0132] || '';
+  const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(raw);
+  if (!m || m[1] === '0000') return null;
+  const off = /^[+-]\d{2}:\d{2}$/.test(ex[0x9011] || '') ? ex[0x9011] : '+08:00';
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${off}`;
+  return isNaN(Date.parse(iso)) ? null : iso;
+}
+async function photoTakenAt(file) {
+  try {
+    if (!file || !/^image\//i.test(file.type || '')) return null;
+    return exifTakenAt(new Uint8Array(await file.slice(0, 262144).arrayBuffer()));
+  } catch (_) { return null; }
+}
+/* Дамжлагын БОДИТ цаг: зураг авсан цаг (хүчинтэй бол), эс бөгөөс товч дарсан цаг.
+   ⛔ Зургийн цагийг СОХРООР итгэхгүй — өмнөх эвентийн зураг оруулж «цагтаа»
+     болгох нүх. Хүчинтэй = `floor`-оос (өмнөх дамжлага, жиш. агуулахаас
+     бүртгэж гаргасан) ХОЙШ, товч дарснаас ӨМНӨ (утасны цагийн зөрүү 10 мин).
+     Хүчингүй бол товчны цаг — хоцорсон мэт харагдах нь хуурамчаар
+     «цагтаа» харагдахаас дээр.
+   ⚠ `latest` — суурилуулалт: ДУУССАН байдлыг сүүлийн зураг харуулна;
+     буулгалт: ирсэн мөчийг ЭХНИЙ зураг харуулна. */
+const PHOTO_CLOCK_SKEW_MS = 10 * 60000;
+function stageDoneAt(stage, floorIso, latest) {
+  const pressMs = Date.parse(String((stage && stage.at) || ''));
+  if (isNaN(pressMs)) return null;
+  const floorMs = Date.parse(String(floorIso || ''));
+  const lo = isNaN(floorMs) ? pressMs - DISPATCH_WILD_H * 3600000 : floorMs;
+  const ok = (Array.isArray(stage.shots) ? stage.shots : [])
+    .map(x => Date.parse(String(x || '')))
+    .filter(ms => !isNaN(ms) && ms >= lo && ms <= pressMs + PHOTO_CLOCK_SKEW_MS);
+  if (!ok.length) return { at: stage.at, src: 'press' };
+  const ms = Math.min(latest ? Math.max(...ok) : Math.min(...ok), pressMs);
+  return { at: new Date(ms).toISOString(), src: 'photo' };
+}
+/* ── ЦАГТАА ХҮРСЭН ҮҮ = АРГА ХЭМЖЭЭ ЭХЛЭХ ЦАГТАЙ тулгана (2026-10-05, CEO) ──
+   Харилцагчид бараа БЭЛЭН болсон мөч: суурилуулалттай бол «Суурилуулсан»,
+   үгүй бол «Талбайд буулгасан» дамжлагын цаг. Түүнийг эвент эхлэх цагтай
+   (⟦RT⟧) харьцуулна. Буцаах: null | {lateH, ok, wild, plan, at}.
+   ⛔ «Бүртгэж гаргасан» (агуулахаас) цагаар БҮҮ хэмж. Тэр нь бүртгэл хийсэн
+     цаг, машин гарсан цаг БИШ: амьд датаар нярав 4 захиалгыг 2 минутад
+     бүртгэсэн; олон цэгтэй маршрутад сүүлийн цэг хэдэн цагийн дараа очдог. 10
+     сард тэр хэмжүүр 2 хоцролт харуулж байхад харилцагчид 4 нь хоцорч очсон
+     (09:00-д эхлэх эвентэд 11:14-д буулгасан нь «цагтаа» гэж тоологдож байв).
+   ⛔ Суурилуулалттай захиалгад БУУЛГАСАН цагаар хэмжихгүй — суурилуулж
+     дуусаагүй бол харилцагчид бэлэн биш.
+   ⚠ Товчийг хожуу дарвал хоцорсон мэт харагдана — DISPATCH_WILD_H-аас их
+     зөрүүг «бүртгэл алдаатай» гэж хасна (ил тоолно). */
+function orderArrivalLate(o) {
   const plan = orderDispatchPlan(o);
   if (!plan) return null;
-  const at = o && o.stage_meta && o.stage_meta.dispatch && o.stage_meta.dispatch.at;
-  const ms = Date.parse(String(at || ''));
-  if (!at || isNaN(ms)) return null;
-  const lateH = Math.round(((ms - plan.needMs) / 3600000) * 10) / 10;
-  return { lateH, ok: lateH <= 0, wild: Math.abs(lateH) > DISPATCH_WILD_H, plan };
+  const sm = (o && o.stage_meta) || {};
+  // Ачаа агуулахаас гарсны ДАРАА авсан зураг л тоологдоно; суурилуулалтын зураг
+  // нь буулгасны ДАРАА (буулгалтын бодит цаг нь өөрөө зургаас байж болно).
+  // ⛔ АЛГАССАН дамжлагын цаг = товч дарсан цаг, ирсэн цаг БИШ → хэмжихгүй
+  const dlv = sm.deliver && sm.deliver.at && !sm.deliver.skipped ? stageDoneAt(sm.deliver, sm.dispatch && sm.dispatch.at, false) : null;
+  const r = plan.setup
+    ? (sm.setup && sm.setup.at && !sm.setup.skipped ? stageDoneAt(sm.setup, dlv ? dlv.at : (sm.dispatch && sm.dispatch.at), true) : null)
+    : dlv;
+  if (!r) return null;
+  const ms = Date.parse(r.at);
+  const lateH = Math.round(((ms - plan.startMs) / 3600000) * 10) / 10;
+  return { lateH, ok: lateH <= 0, wild: Math.abs(lateH) > DISPATCH_WILD_H, plan, at: r.at, src: r.src };
 }
-// Захиалгын карт дээрх шошго. Хоцорсон бол улаан — ажилтан ШАЛТГААНЫГ нь
-// мэдэхийн тулд «гарах ёстой байсан цаг»-ийг ч харуулна.
+// Захиалгын карт дээрх шошго. Хүрээгүй байхад «HH:MM гэхэд гарна» гэсэн
+// ТӨЛӨВЛӨГӨӨ (ажилтанд чиглэл), хүрсний дараа ҮР ДҮН (цагтаа / N ц хоцорсон).
 function dispatchChipHtml(o) {
   const plan = orderDispatchPlan(o);
   if (!plan) return '';
-  const need = ubStamp(new Date(plan.needMs).toISOString(), false);
-  const late = orderDispatchLate(o);
-  if (late && !late.wild && !late.ok) {
-    return `<span class="dep-badge dsp-late" title="Агуулахаас ${escapeHtml(need)} гэхэд гарах ёстой байсан (ачих ${DISPATCH_LOAD_H}ц + зам ${plan.km} км${plan.setup ? ' + угсралт' : ''} + нөөц)">⚠ ${late.lateH} ц хоцорсон</span>`;
+  const r = orderArrivalLate(o);
+  if (r && !r.wild && !r.ok) {
+    return `<span class="dep-badge dsp-late" title="Арга хэмжээ ${escapeHtml(ubStamp(new Date(plan.startMs).toISOString(), false))}-д эхлэх байсан, ${plan.setup ? 'суурилуулж дууссан' : 'талбайд буулгасан'} нь ${escapeHtml(ubStamp(r.at, false))}${r.src === 'photo' ? ' (зураг авсан цагаар)' : ' (товч дарсан цагаар)'}">⚠ ${r.lateH} ц хоцорсон</span>`;
   }
-  if (late && late.ok) return `<span class="dep-badge dsp-ok" title="Агуулахаас цагтаа гарсан">🚚 цагтаа</span>`;
+  if (r && r.ok) return `<span class="dep-badge dsp-ok" title="Арга хэмжээ эхлэхээс өмнө ${plan.setup ? 'суурилуулж дууссан' : 'хүргэгдсэн'}">🚚 цагтаа</span>`;
+  const need = ubStamp(new Date(plan.needMs).toISOString(), false);
   return `<span class="dep-badge dsp-need" title="Ачих ${DISPATCH_LOAD_H}ц + зам ${plan.km} км${plan.setup ? ' + угсралт 1ц' : ''} + нөөц 30мин">🚚 ${escapeHtml(need)} гэхэд гарна</span>`;
 }
-// Нэгтгэл — «хэдэн хувь нь цагтаа гарсан бэ». Цэвэр функц.
+// Нэгтгэл — «хэдэн хувь нь цагтаа хүрсэн бэ». Цэвэр функц.
 // ⚠ Хэмжигдэхгүй захиалгыг (цаггүй, dispatch тамгагүй) ил тоолно — «100% цагтаа»
 //   гэсэн худал дүр зургаас сэргийлнэ.
-function dispatchStats(orders, fromDay) {
+// `ym` (YYYY-MM) өгвөл ЗӨВХӨН тэр сар — Тойм ба Дүн шинжилгээ ИЖИЛ дуудалтаар.
+function dispatchStats(orders, fromDay, ym) {
   let n = 0, late = 0, wild = 0, skipped = 0, sumLate = 0, pickup = 0;
   const worst = [];
   (orders || []).forEach(o => {
     if (!o || !_orderActive(o)) return;
     const day = String(o.starts_at || '').slice(0, 10);
     if (fromDay && day < fromDay) return;
+    if (ym && day.slice(0, 7) !== ym) return;
     // Очиж авах — хэмжүүрээс ГАДНА. «Хэмжигдээгүй» гэж тоолвол хүн «бид
     // хэмжиж чадаагүй» гэж уншина; үнэндээ хэмжих ЁСГҮЙ захиалга.
     const _d = parseDelivery(o.note);
     if (!(_d && isDeliveryZone(_d.zone))) { if (o.stage_meta && o.stage_meta.dispatch) pickup++; return; }
-    const r = orderDispatchLate(o);
-    if (!r) { if (o.stage_meta && o.stage_meta.dispatch) skipped++; return; }
+    const r = orderArrivalLate(o);
+    // Хүргэгдсэн атлаа хэмжиж чадаагүй (цаггүй, суурилуулалтыг алгассан) = ил тоолно.
+    // ⚠ Суурилуулалт хүлээж буй (installing) захиалга ХАРААХАН дуусаагүй — тоолохгүй.
+    if (!r) { if (o.stage_meta && o.stage_meta.deliver && o.status !== 'installing') skipped++; return; }
     if (r.wild) { wild++; return; }
     n++;
     if (!r.ok) { late++; sumLate += r.lateH; worst.push({ number: o.number, customer: String(o.customer || ''), lateH: r.lateH, day }); }
@@ -24117,13 +26542,20 @@ function reviewBlockHtml(orders) {
   if (!canSeeOrders()) return '';
   const st = reviewStats(orders);
   if (!st.n) return '';
-  const row = r => `<div class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">
-      <span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
+  /* ⛔ БҮХ ҮНЭЛГЭЭ, ГЭХДЭЭ НЭГ МӨРӨӨР (2026-10-05, CEO). Өмнө нь сэтгэгдлийн
+     бүтэн бичвэр мөрөнд наалддаг тул НЭГ үнэлгээ дэлгэцийн тал хувийг эзэлж,
+     үлдсэнийг нь харахын тулд гүйлгэх ч шаардлагагүй — ердөө 3-ыг л гаргадаг
+     байв. Одоо: бүгд нэг мөрөөр, сэтгэгдлийг дарж нээнэ. */
+  const head = r => `<span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
       <span class="rv-nm">#${escapeHtml(String(r.number ?? '—'))} ${escapeHtml(r.customer || '')}</span>
-      <span class="rv-tx">${r.text ? escapeHtml(r.text) : 'сэтгэгдэл бичээгүй'}</span>
-      <span class="rv-at">${escapeHtml(r.at || '')}</span>
-    </div>`;
-  const show = st.bad.length ? st.bad : st.rows.slice(0, 3);
+      <span class="rv-at">${escapeHtml(r.at || '')}</span>`;
+  const row = r => r.text
+    ? `<details class="rv-item"><summary class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}">${head(r)}<span class="rv-more">💬</span></summary>
+        <div class="rv-tx">${escapeHtml(r.text)}</div>
+        <button type="button" class="btn rv-go" data-rv-open="${escapeHtml(String(r.number ?? ''))}">→ Захиалга нээх</button></details>`
+    : `<div class="rv-row rv-plain${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">${head(r)}</div>`;
+  // Муу үнэлгээ нь АЖИЛ — эхэнд. Бусад нь шинээр нь.
+  const show = [...st.bad, ...st.rows.filter(r => r.stars > REVIEW_BAD_MAX)];
   return `<div class="rv-card">
     <div class="rv-head">★ Хэрэглэгчийн үнэлгээ
       <span class="rv-sum">${st.avg} дундаж · ${st.n} хариулт</span></div>
@@ -24140,7 +26572,7 @@ function dispatchDayRows(orders, ym) {
     if (!o || !_orderActive(o)) return;
     const day = String(o.starts_at || '').slice(0, 10);
     if (!day || day.slice(0, 7) !== ym) return;
-    const r = orderDispatchLate(o);
+    const r = orderArrivalLate(o);
     if (!r || r.wild) return;
     const d = by[day] || (by[day] = { day, n: 0, late: 0, orders: [] });
     d.n++;
@@ -24148,29 +26580,137 @@ function dispatchDayRows(orders, ym) {
   });
   return Object.values(by).sort((a, b) => a.day.localeCompare(b.day));
 }
-// Тоймын блок — «цагтаа гарсан уу». ⛔ Үнэлгээний картын ДЭРГЭД байрлана:
+// Тоймын блок — «цагтаа хүрсэн үү». ⛔ Үнэлгээний картын ДЭРГЭД байрлана:
 // хоцролт нь муу үнэлгээний ШАЛТГААН тул хоёрыг тусад нь харуулбал хүн
 // холбохгүй. Ажил нь захиалгын карт дээр (🚚 шошго) — энд зөвхөн ХЭМЖҮҮР.
-const DISPATCH_STAT_DAYS = 60;
+/* ⛔ САРААР, «сүүлийн 60 хоног» БИШ (2026-10-05, CEO: «тухайн сарын хоцролт
+   ба өмнөх сараас ахисан/муудсаныг харуулдаг график л байхад болно»).
+   Гулсдаг цонх нь Дүн шинжилгээний сарын задаргаатай хэзээ ч таарахгүй
+   (60 хоног ≠ аль ч сар) — карт дарахад өөр тоо гарч хүн төөрнө. Одоо
+   хоёулаа `dispatchStats(…, null, сар)` — ИЖИЛ тоо.
+   ⛔ Сар бүрийн багана ЦӨӨН хүргэлттэй бол (`DSP_THIN_N`-ээс доош) бүдэг —
+   7 сарын «100%» нь 2 хүргэлт; бүтэн өндрөөр зурвал «муудсан» гэсэн худал
+   дүр зураг гарна. Тоо нь `title`-д.
+   ⚠ Баганыг дарахад тэр сар сонгогдоно (тусдаа сар сонгогч БАЙХГҮЙ).
+   ⚠ Хэмжигдээгүйн тоо ҮЛДЭНЭ (нуувал «100% цагтаа» гэсэн худал дүр зураг). */
+const DSP_CHART_MONTHS = 6;
+const DSP_THIN_N = 5;
+function dspMonthLabel(ym, cur) {
+  const [y, m] = String(ym || '').split('-');
+  return String(cur || '').slice(0, 4) === y ? `${Number(m)} сар` : `${y}-${m}`;
+}
+function dspMonthShift(ym, k) {
+  const [y, m] = String(ym).split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + k, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+// Сүүлийн N сарын цуваа — ЭХНИЙ хэмжигдсэн сараас эхэлнэ (хоосон сараар
+// графикийг дүүргэхгүй). Цэвэр функц — тестлэгдэнэ.
+function dispatchMonthSeries(orders, cur, count) {
+  const out = [];
+  for (let k = (count || DSP_CHART_MONTHS) - 1; k >= 0; k--) {
+    const ym = dspMonthShift(cur, -k);
+    const s = dispatchStats(orders, null, ym);
+    if (!out.length && !s.n && ym !== cur) continue;
+    out.push({ ym, pct: s.pct, n: s.n, late: s.late });
+  }
+  return out;
+}
+const _dspCls = pct => pct === null ? '' : pct >= 90 ? 'ok' : pct >= 70 ? 'warn' : 'bad';
+/* ═══ ГАЦСАН ЗАХИАЛГА — Тойм (2026-10-05, CEO) ═══════════════════════════
+   Дараагийн дамжлага нь ЭВЕНТИЙН ОГНООНООС хоцорсон захиалга. Хугацаа нь
+   `dayLoadForecast`-ийн хэмжсэн медиантай ИЖИЛ: гарах тал → эхлэх өдөр,
+   задлах/ачих → дуусах өдөр, хүлээн авах/байршуулах → дуусахын маргааш.
+   Тэр өдрөө дарагдах нь ХЭВИЙН — маргаашаас нь л «гацсан».
+   ⛔ «Архивлах» ОРОХГҮЙ — бичиг хэргийн алхам, ажил зогсоохгүй.
+   ⛔ Огноогүй захиалга ОРОХГҮЙ — хугацаагүй бол хоцролт тодорхойгүй (таамаглахгүй).
+   ЦЭВЭР функц — тестлэгдэнэ. */
+const STUCK_DUE = { clean: 0, prepare: 0, dispatch: 0, deliver: 0, setup: 0, teardown: 1, retstart: 1, received: 2, stow: 2 };
+/* ⛔ ШИНЭ ДАМЖЛАГА ХУУЧИН ЗАХИАЛГЫГ «ГАЦСАН» БОЛГОХГҮЙ. «Буулгаж байршуулах»
+   2026-10-03-нд нэмэгдсэн тул түүнээс өмнө буцаж ирсэн захиалга тэр алхамгүйгээр
+   дууссан — амьд датаар 8-ийн 5 нь ийм худал дохио байв. Шинэ дамжлага нэмбэл
+   энд огноог нь бич. */
+const STUCK_SINCE = { stow: '2026-10-03' };   // received-ийн байрлал 10-05-нд өөрчлөгдсөн ч rcvd нөхцөл хуучныг хамгаална
+function stuckOrders(orders, today) {
+  const t = String(today || '').slice(0, 10);
+  const out = [];
+  (orders || []).forEach(o => {
+    if (!o) return;
+    const st = String(o.status || '').toLowerCase();
+    if (['draft', 'deleted', 'canceled', 'cancelled', 'archived'].includes(st)) return;
+    const step = pipelineNext(st, orderPipelineCtx(o));
+    if (!step || !(step.key in STUCK_DUE)) return;
+    const kind = STUCK_DUE[step.key];
+    const base = String((kind === 0 ? o.starts_at : o.stops_at) || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return;
+    const due = kind === 2 ? addDays(base, 1) : base;
+    if (STUCK_SINCE[step.key] && due < STUCK_SINCE[step.key]) return;
+    const late = daysBetween(due, t);
+    if (late < 1) return;
+    out.push({ id: o.id, number: o.number, customer: String(o.customer || ''), key: step.key, label: step.label, due, late });
+  });
+  return out.sort((a, b) => b.late - a.late || String(a.number).localeCompare(String(b.number)));
+}
+function stuckBlockHtml(orders) {
+  if (!canSeeOrders()) return '';
+  const list = stuckOrders(orders, todayStr());
+  if (!list.length) return `<div class="rv-card stk-card stk-ok">✓ Гацсан захиалга алга — бүх дамжлага хугацаандаа</div>`;
+  const rows = list.map(r => `<button type="button" class="stk-row ui-raw" data-rv-open="${escapeHtml(String(r.number ?? ''))}">
+      <span class="stk-no">#${escapeHtml(String(r.number ?? ''))}</span>
+      <span class="stk-main"><span class="stk-cust">${escapeHtml(r.customer || '—')}</span><span class="stk-step">хүлээж буй: ${escapeHtml(r.label)}</span></span>
+      <span class="stk-late">${r.late} хоног</span></button>`).join('');
+  return `<div class="rv-card stk-card">
+    <div class="rv-head">⏳ Гацсан захиалга <span class="rv-sum">${list.length} · дараагийн алхам хугацаанаасаа хоцорсон</span></div>
+    <div class="stk-list">${rows}</div>
+  </div>`;
+}
 function dispatchBlockHtml(orders) {
   if (!canSeeOrders()) return '';
-  const st = dispatchStats(orders, addDays(todayStr(), -DISPATCH_STAT_DAYS));
-  if (!st.n) return '';
-  const cls = st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';
-  return `<div class="rv-card">
-    <div class="rv-head">🚚 Агуулахаас цагтаа гарсан
-      <span class="rv-sum">${DISPATCH_STAT_DAYS} хоног · ${st.n} захиалга</span></div>
-    <div class="dsp-pct ${cls}">${st.pct}%<span class="dsp-sub">${st.late ? `${st.late} хоцорсон · дунджаар ${st.avgLate} цаг` : 'бүгд цагтаа'}</span>
-      <button class="btn btn-sm" id="dsp-more">Дэлгэрэнгүй →</button></div>
-    ${(st.skipped || st.wild) ? `<div class="rv-note">⚠ ${st.skipped + st.wild} захиалга хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
+  const cur = todayStr().slice(0, 7);
+  const series = dispatchMonthSeries(orders, cur);
+  const want = String(state.dspMonth || '');
+  const ym = series.some(m => m.ym === want) ? want : cur;
+  const st = dispatchStats(orders, null, ym);
+  const unm = st.skipped + st.wild;
+  const cls = _dspCls(st.pct);
+  const unmTxt = unm ? `<span class="dsp-unm" title="Эхлэх цаг тэмдэглээгүй, суурилуулалтыг алгассан эсвэл дамжлагын товч хожуу дарсан">${unm} хэмжигдээгүй</span>` : '';
+  // Өмнөх сартай харьцуулалт — өмнөх сар ХАНГАЛТТАЙ хүргэлттэй үед л
+  // (3 хүргэлттэй сартай харьцуулбал «−24 нэгж» гэсэн дуу чимээ гарна)
+  const prev = series.find(m => m.ym === dspMonthShift(ym, -1));
+  const d = (st.pct !== null && prev && prev.pct !== null && prev.n >= DSP_THIN_N) ? st.pct - prev.pct : null;
+  const delta = d === null ? ''
+    : `<span class="dsp-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '▲ +' : d < 0 ? '▼ −' : '= '}${Math.abs(d)} нэгж · ${escapeHtml(dspMonthLabel(prev.ym, cur))} ${prev.pct}%</span>`;
+  const body = st.n
+    ? `<div class="dsp-row"><span class="dsp-big ${cls}">${st.pct}%</span>
+        <span class="dsp-meta">${delta}<span>${st.late ? `${st.late}/${st.n} хоцорсон · дундаж ${st.avgLate}ц` : `${st.n} хүргэлт · бүгд цагтаа`}${unm ? ' · ' + unmTxt : ''}</span></span></div>`
+    : `<div class="dsp-empty">Энэ сард хэмжигдсэн хүргэлт алга${unm ? ' · ' + unmTxt : ''}</div>`;
+  const chart = series.length < 2 ? '' : `<div class="dsp-chart" role="group" aria-label="Сар бүрийн цагтаа хүрсэн хувь">${series.map(m => {
+      const h = m.pct === null ? 0 : Math.round(m.pct / 10) * 10;
+      const tip = m.n ? `${dspMonthLabel(m.ym, cur)}: ${m.n - m.late}/${m.n} цагтаа${m.n < DSP_THIN_N ? ' — цөөн хүргэлт' : ''}${m.ym === cur ? ' (явж буй сар)' : ''}` : `${dspMonthLabel(m.ym, cur)}: хэмжигдсэн хүргэлт алга`;
+      return `<button type="button" class="dsp-col ui-raw${m.ym === ym ? ' on' : ''}${m.n && m.n < DSP_THIN_N ? ' thin' : ''}" data-dsp-pick="${escapeHtml(m.ym)}" title="${escapeHtml(tip)}">
+        <span class="dsp-cv">${m.pct === null ? '—' : m.pct + '%'}</span>
+        <span class="dsp-bar"><span class="dsp-fill ${_dspCls(m.pct)} dsp-h${h}"></span></span>
+        <span class="dsp-cm">${escapeHtml(dspMonthLabel(m.ym, cur))}</span></button>`;
+    }).join('')}</div>`;
+  return `<div class="rv-card dsp-card" id="dsp-card" role="button" tabindex="0" data-dsp-ym="${escapeHtml(ym)}">
+    <div class="dsp-top"><span class="dsp-ttl">🚚 Цагтаа хүрсэн · ${escapeHtml(dspMonthLabel(ym, cur))}</span><span class="dsp-go" aria-hidden="true">›</span></div>
+    ${body}
+    ${chart}
   </div>`;
 }
 function attachReviewBlock(root) {
   // ⛔ Хамгийн муу захиалгын ЖАГСААЛТ Тойм дээр БАЙХГҮЙ — зөвхөн Дүн шинжилгээнд.
   //    Нэг жагсаалт хоёр газар байвал аль нь бүтэн болох нь мэдэгдэхгүй.
-  (root || document).querySelector('#dsp-more')?.addEventListener('click', () => {
-    state.view = 'reports'; state.reportsTab = 'reports'; render();
-  });
+  // Баганыг дарахад тэр сар — картын дарцаас ТУСДАА (stopPropagation)
+  (root || document).querySelectorAll('[data-dsp-pick]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.dspMonth = b.dataset.dspPick; render();
+  }));
+  // Картыг дарахад ТЭР САРЫН задаргаа (Дүн шинжилгээ) — тоо нь ижил
+  const _dspCard = (root || document).querySelector('#dsp-card');
+  const _dspGo = () => { state.reportMonth = (_dspCard && _dspCard.dataset.dspYm) || todayStr().slice(0, 7); state.view = 'reports'; state.reportsTab = 'reports'; render(); };
+  _dspCard?.addEventListener('click', _dspGo);
+  _dspCard?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _dspGo(); } });
   (root || document).querySelectorAll('[data-rv-open]').forEach(el => el.addEventListener('click', () => {
     if (!canSeeOrders()) return;
     state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.rvOpen; render();
@@ -24203,6 +26743,37 @@ function orderReviewHtml(o) {
     ${r.text ? `<span class="orv-text">${escapeHtml(r.text)}</span>` : '<span class="orv-text orv-dim">сэтгэгдэл бичээгүй</span>'}
   </div>`;
 }
+/* ─── «БИ Ч ОРОЛЦСОН» МЭДҮҮЛЭГ (2026-10-04, CEO) ───────────────────────────
+   Сан тогтмол болсноор хамтрагчаа НУУВАЛ дарсан хүн бүтэн санг авдаг нүх
+   үүссэн. Үүнийг барих цорын ганц бодит хүч нь орхигдсон хүн өөрөө — тэд
+   хэн ажилласныг мэднэ. Тиймээс дамжлагын түүхэн дээр нэг товчоор мэдүүлнэ.
+   ⛔ МЭДҮҮЛЭГ НЬ ӨӨРӨӨ МӨНГӨ БОЛОХГҮЙ — зөвхөн баталгаажсаны дараа
+     `helpers`-т орно. Эс бөгөөс хүн өөрөө өөртөө бонус бичнэ. */
+function stageClaims(e) { return (e && Array.isArray(e.claims)) ? e.claims.filter(Boolean).map(String) : []; }
+// Тухайн хүн энэ дамжлагад АЛЬ ХЭДИЙН тоологдсон уу (мэдүүлэх шаардлагагүй)
+function stageHasPerson(e, key) {
+  if (!e || typeof e !== 'object' || !key) return false;
+  const k = String(key);
+  if (String(e.by || '') === k || String(e.driver || '') === k) return true;
+  return (Array.isArray(e.helpers) ? e.helpers : []).map(String).includes(k);
+}
+// Бүх захиалгаас хүлээгдэж буй мэдүүлэг — ЦЭВЭР функц (тестлэгдэнэ)
+function pendingStageClaims(orders) {
+  const out = [];
+  for (const o of (orders || [])) {
+    const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : null;
+    if (!sm) continue;
+    for (const k of Object.keys(sm)) {
+      const e = sm[k];
+      if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
+      stageClaims(e).forEach(who => {
+        if (stageHasPerson(e, who)) return;   // аль хэдийн тоологдсоныг харуулахгүй
+        out.push({ oid: o.id, number: o.number, key: k, who, at: e.at || '' });
+      });
+    }
+  }
+  return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
   if (!sm || typeof sm !== 'object') return '';
@@ -24218,16 +26789,45 @@ function stageMetaHtml(o) {
   const found = Object.keys(sm).filter(has);
   const keys = [...ORDER.filter(k => found.includes(k)), ...found.filter(k => !ORDER.includes(k))];
   if (!keys.length) return '';
+  /* ⭐ ДАМЖЛАГА БҮРИЙН ОНОО + ХАСАЛТЫН ШАЛТГААН (2026-10-05, CEO): ажилтан
+     захиалга дээрээ «яагаад оноогоо авч чадаагүй вэ» гэдгийг харна. Тоо нь
+     бонусын нэгтгэлтэй ИЖИЛ бодолтоос (`stageEntryPts`). */
+  const _ptsCtx = stagePtsCtx();
   return `<div class="order-stagemeta">${keys.map(k => {
     const e = sm[k]; const photos = (e.photos || []).filter(Boolean);
     const stars = e.rating ? `<span class="sm-stars" title="${e.ratedBy ? escapeHtml((memberName(e.ratedBy) || e.ratedBy) + ' үнэлэв') : ''}">${'★'.repeat(e.rating)}<span style="color:var(--border-strong);">${'★'.repeat(5 - e.rating)}</span></span>` : '';
     const _ph = photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : '';
     const _skip = e.skipped ? `<span class="sm-skip" title="${escapeHtml(e.reason || '')}">⏭ алгассан</span> ` : '';
     const _helpers = (Array.isArray(e.helpers) && e.helpers.length) ? ` <span style="color:var(--muted);font-weight:400;" title="${escapeHtml(e.helpers.map(h => memberName(h) || h).join(', '))}">🤝 +${e.helpers.length} (${escapeHtml(e.helpers.map(h => memberName(h) || h).join(', ')).slice(0, 40)})</span>` : '';
-    const _head = `<div class="sm-head">${_skip}${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${_helpers}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
+    const _head = `<div class="sm-head">${_skip}${stageHistLabel(k)}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${_helpers}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
     const _cmt = e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>`
       : (e.skipped && e.reason ? `<div class="sm-comment">⏭ ${escapeHtml(e.reason)}</div>` : '');
-    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}</div></div>`;
+    /* Өмнөх ажлын алдаа — ХЭНИЙ алдаа болохыг нэрлэнэ (нуухгүй). Шалгасан ч
+       алдаагүй бол «✓ шалгасан» гэж бичнэ: «алдаагүй» ба «шалгаагүй» хоёр
+       ялгагдах ёстой. */
+    const _def = (k === 'dispatch' && e.defChecked)
+      ? (Array.isArray(e.defects) && e.defects.length
+          ? `<div class="sm-def">⚠ ${e.defects.map(x => `${escapeHtml(stageHistLabel(x.stage))}: <b>${Number(x.n) || 0}ш</b>${x.ratee ? ` · ${escapeHtml(memberName(x.ratee) || x.ratee)}` : ''}`).join(' · ')}</div>`
+          : '<div class="sm-def sm-def-ok">✓ Өмнөх ажил шалгагдсан — алдаагүй</div>')
+      : '';
+    /* ✋ Мэдүүлэх товч — ЗӨВХӨН өөрөө тоологдоогүй, ачаа зөөдөг дамжлагад.
+       Мэдүүлсэн бол «хүлээгдэж буй» гэж ил харагдана (нуугдахгүй). */
+    const _cl = stageClaims(e).filter(w => !stageHasPerson(e, w));
+    const _clHtml = _cl.length
+      ? `<div class="sm-claim">✋ Мэдүүлсэн: ${escapeHtml(_cl.map(w => memberName(w) || w).join(', '))} <span class="sm-claim-w">— баталгаажаагүй</span></div>` : '';
+    const _canClaim = STAGE_FEE_STAGES.indexOf(k) >= 0 && state.me && !stageHasPerson(e, state.me)
+      && !_cl.includes(String(state.me)) && !e.skipped;
+    const _clBtn = _canClaim
+      ? `<button class="btn sm-claim-btn" data-claim="${escapeHtml(String(o.id))}" data-claim-k="${escapeHtml(k)}">✋ Би ч оролцсон</button>` : '';
+    const _sp = stageEntryPts(o, k, e, _ptsCtx);
+    const _r1 = n => Math.round(n * 10) / 10;
+    const _sgn = n => n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '0';
+    const _ptsTag = _sp ? (_sp.badPts > 0
+        ? `<span class="sm-pts bad">${_sgn(_r1(_sp.good - _sp.badPts))} оноо</span>`
+        : `<span class="sm-pts">+${_r1(_sp.pts)} оноо</span>`) : '';
+    const _penHtml = (_sp && _sp.badPts > 0)
+      ? `<div class="sm-pen">⚠ ${escapeHtml(stagePenReason(_sp.bad ? { ..._sp.bad, late: _sp.late } : null, k))}. ${_sp.bad && _sp.bad.why === 'late' ? 'Цагтаа' : 'Алдаагүй'} бол <b>+${_r1(_sp.pts)} оноо</b> авах байсан.</div>` : '';
+    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_ptsTag}${_penHtml}${_cmt}${_def}${_clHtml}${_clBtn}</div></div>`;
   }).join('')}</div>`;
 }
 // ⛔ ЗУРАГ ХАРАХ ГАЗАР ГАНЦ — #lightbox (2026-09-19).
@@ -24275,30 +26875,42 @@ function receiveShortfalls(items, got) {
 function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const act = stageActionFor(String(o.status || ''), to);
-  const needPhoto = act.key !== 'archive';
+  const _ev = stageEvidence(act.key);
+  const needPhoto = _ev === 'photo';
   // ── Үнэлгээний зорилтууд (rateTargets) — хяналтын цэг тус бүр өмнөх ажлыг үнэлнэ ──
   // «Агуулахаас гаргасан» (dispatch) = нярав ЦЭВЭРЛЭГЧ + БЭЛДЭГЧ ХОЁУЛАНГ үнэлнэ (2 ★).
   // Бусад шат = өмнөх нэг шатыг үнэлнэ. Эхний шат (цэвэрлэх) = үнэлгээгүй.
   const _smNow = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
   let rateTargets = [];
+  /* ⛔ «БҮРТГЭЖ ГАРГАХ» дээр ★ БИШ, АЛДААНЫ ТОО (2026-10-04, CEO) ─────────────
+     ★ нь үнэлэгчээс хамаардаг: амьд датаар нэг нярав дундаж 4.87, нөгөө нь
+     2.91 өгдөг — ижил ажил хэнд таарснаас шалтгаалж өөр оноо авч байв.
+     Ширхэгийн тоо хүн болгонд ижил утгатай, дахин цэвэрлэх зардал болж
+     хувирдаг. Өгөгдмөл 0 тул хэвийн үед НЭМЭЛТ АЖИЛ ҮҮСЭХГҮЙ. */
+  const _defTargets = [];
   if (act.key === 'dispatch') {
-    if (_smNow.clean && _smNow.clean.by) rateTargets.push({ ratee: _smNow.clean.by, q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' });
-    if (_smNow.prepare && _smNow.prepare.by) rateTargets.push({ ratee: _smNow.prepare.by, q: 'Бэлтгэл бүрэн, зөв бэлдэгдсэн үү?' });
-  } else if (act.key === 'retstart') {
-    // Хүргэлтээс авах (жолооч) = зөвхөн ТОО ШИРХЭГ (хэрэглэгчээс); ★ БАЙХГҮЙ (өөрийн хүргэлтээ үнэлэхгүй).
-  } else {
-    const _prev = prevStageInfoAny(o);
-    if (_prev) rateTargets.push({ ratee: _prev.by, q: prevStageQuestion(_prev) });
+    if (_smNow.clean && _smNow.clean.by) _defTargets.push({ k: 'clean', ratee: _smNow.clean.by, q: 'Цэвэрлэгээ хийгдээгүй, дутуу цэвэрлэсэн бүтээгдэхүүн хэд байсан бэ?' });
+    if (_smNow.prepare && _smNow.prepare.by) _defTargets.push({ k: 'prepare', ratee: _smNow.prepare.by, q: 'Ачихад зурагдах, эвдрэх эрсдэлтэй байсан бүтээгдэхүүн хэд байсан бэ?' });
   }
+  /* ⛔ ★ БҮХ ДАМЖЛАГААС ХАСАГДСАН (2026-10-04, CEO: «илүү зүйлсийг хас»).
+     Өмнө нь 7 дамжлага бүрд өмнөх хүнийг ЗААВАЛ ★-аар үнэлүүлдэг байв —
+     сард ~500 албадсан даралт, гарц нь 3.0–3.9 хоорондох дүлий зурвас
+     (үнэлэгчээс хамаарсан: нэг нярав дундаж 4.87, нөгөө нь 2.91).
+     Чанар одоо АЛДААНЫ ТООГООР хэмжигдэнэ (`defectStats`), `handoffQualityScore`
+     түүнийг уншина. `rateTargets` хоосон хэвээр — доод урсгалын шалгуур,
+     хадгалалт өөрөө унтарна; ХУУЧИН ★ түүх уншигдсаар байна. */
   const q = rateTargets.length ? rateTargets[0].q : null;   // (нэг ★ үед хэвийн)
   // ── Агуулахад хүлээн авах шат — бараа бүрэн буцаж ирсэн эсэхийг ТООГООР баталгаажуулна.
   // Анхдагчаар бүгд бүрэн гэж тооцно; ажилтан зөвхөн ЗӨРҮҮТЭЙГ нь засна (50 мөрийг
   // гараар оруулах нь удаан бөгөөд яаравал хуурамч тоо цуглана).
   // Тоо ширхэгийн хяналт — pickup (жолооч хэрэглэгчээс авах) БА received (нярав агуулахад авах) хоёуланд.
-  const _isReceive = act.key === 'received' || act.key === 'retstart';
+  // Тоо тулгалт — бүртгэх дамжлага (гаргах/хүлээн авах) БА жолоочийн авалт.
+  const _isDispatch = act.key === 'dispatch';
+  const _isReceive = act.key === 'received' || act.key === 'retstart' || _isDispatch;
   const _isPickup = act.key === 'retstart';
   // received дээр «хүлээгдэх тоо» = жолоочийн ХЭРЭГЛЭГЧЭЭС АВСАН тоо (retstart.got); эс бол захиалгын тоо.
   const _prevPick = (act.key === 'received' && _smNow.retstart && Array.isArray(_smNow.retstart.items)) ? _smNow.retstart.items : null;
+  // ⚠ Гаргахад «хүлээгдэх» нь захиалгын тоо; буцаалтын тулгалт ҮҮНТЭЙ харьцуулагдана.
   const _rcItems = _isReceive ? (o.items || []).filter(it => it && it.name).map(it => {
     const p = productOf(it);   // sku → id → нэр (сайт id-г sku болгож илгээдэг)
     const sku = p ? p.sku : (it.sku || '');
@@ -24310,13 +26922,44 @@ function openStageAdvanceModal(oid, to) {
   // Хамтрагч — олон хүн ажилласныг харуулах (сонголттой). Идэвхтэй ажилчид, өөрийгөө хасна.
   // Зөвхөн ҮНДСЭН ажилтан — цагийн ажилтан дамжлагын хамтрагчаар бүртгэгдэхгүй
   // (KPI/цалин нь өөр журмаар тооцогддог тул хольж болохгүй).
-  const _helpStaff = (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !isDailyMember(m) && String(personKey(m)) !== String(state.me))
-    .map(m => ({ k: personKey(m), name: m.name || '' })).filter(x => x.k && x.name)
-    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'mn'));
-  const _rcHtml = _isReceive && _rcItems.length ? `
-    <div style="font-size:12.5px;font-weight:700;margin:2px 0 6px;">📦 ${_isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?'} <span style="color:var(--danger);">*</span></div>
-    ${!_isPickup && _prevPick ? `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.</div>` : ''}
-    <div style="display:flex;gap:8px;margin-bottom:8px;"><button type="button" class="btn btn-primary" id="rc-all" style="flex:1;">✓ Бүгд бүрэн ${_isPickup ? 'авсан' : 'ирсэн'}</button></div>
+  // ⛔ ЖОЛООЧ — хүргэх/буцаах дамжлагад ХЭН ЖОЛОО БАРЬСАН нь тусад нь бүртгэгдэнэ.
+  //   Дамжлагын оноо нь ачаа буулгасан хүнд, 10,000₮-ийн нэмэгдэл нь жолоочид.
+  const _needDriver = act.key === 'deliver' || act.key === 'retstart';
+  /* ⛔ ТООЛОХ ДАМЖЛАГАД ХАМТРАГЧ АСУУХГҮЙ (2026-10-04, CEO).
+     Бүртгэж гаргах/хүлээн авах нь няравын ТООЛОХ ажил — ачааг өмнөх
+     («Баглаж/ачих») ба дараах («Буулгаж байршуулах») дамжлагад хийдэг.
+     Амьд датаар 9 сард гаргахад бүртгэгдсэн 51 хамтрагчийн **30** нь
+     баглахад АЛЬ ХЭДИЙН бүртгэгдсэн хүн байв — нэг ачилт ХОЁР удаа
+     шагнагдаж, нярав 12 нэрийн жагсаалтыг дэмий гүйлгэдэг байв. */
+  const _helpAsk = stageEvidence(act.key) !== 'count';
+  // Тэмдэглэлийн хэсэг нь АСУУДАЛ ГАРЧ БОЛОХ дамжлагад л (тоо тулгах, алдаа
+  // бүртгэх). Зураг хийгээд дарах дамжлагад хоосон талбар нэмэх нь хог.
+  const _needNoteSec = _isReceive || _defTargets.length > 0;
+  /* ЭНЭ ЗАХИАЛГАД аль хэдийн ажилласан хүн ЭХЭНД — 12 нэрийг цагаан
+     толгойн дарааллаар гүйлгэж хайх нь ажлын гол саад байв. */
+  const _onOrder = new Set();
+  Object.values(_smNow).forEach(e => {
+    if (!e || typeof e !== 'object') return;
+    [e.by, e.driver].forEach(x => { if (x) _onOrder.add(String(x)); });
+    (Array.isArray(e.helpers) ? e.helpers : []).forEach(x => { if (x) _onOrder.add(String(x)); });
+  });
+  const _helpStaff = !_helpAsk ? [] : (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !isDailyMember(m) && String(personKey(m)) !== String(state.me))
+    .map(m => ({ k: personKey(m), name: m.name || '', on: _onOrder.has(String(personKey(m))) })).filter(x => x.k && x.name)
+    .sort((a, b) => (b.on - a.on) || String(a.name).localeCompare(String(b.name), 'mn'));
+  /* ⛔ АСУУЛТ БҮР ДУГААРТАЙ ХЭСЭГ (2026-10-04, CEO: «харагдах байдал
+     ойлгомжтой байдлыг сайжруул»). Өмнө нь бүх блок тасархай зураасаар
+     тусгаарлагдсан хавтгай жагсаалт байсан тул ажилтан хэдэн зүйл
+     бөглөхөө мэдэхгүй, аль нь заавал болохыг ялгадаггүй байв.
+     ⚠ Дугаар нь ГАРЧ ИРСЭН хэсгүүдээр л явна (дамжлага болгонд өөр) —
+       хатуу бичвэл зураг асуудаггүй дамжлагад «2»-оос эхэлнэ. */
+  let _secN = 0;
+  const _sec = (icon, title, req, hint, body) => (++_secN, `<div class="sa-sec">
+    <div class="sa-sec-h"><span class="sa-sec-n">${_secN}</span><span class="sa-sec-t">${icon} ${escapeHtml(title)}${req ? ' <span class="sa-req">*</span>' : ''}</span></div>
+    ${hint ? `<div class="sa-sec-hint">${escapeHtml(hint)}</div>` : ''}${body}</div>`);
+  const _rcHtml = (_isReceive && _rcItems.length) ? _sec('📦',
+    _isDispatch ? 'Агуулахаас хэдэн ширхэг гарсан бэ?' : _isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?',
+    true, (!_isPickup && _prevPick) ? 'Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.' : '', `
+    <button type="button" class="btn btn-primary sa-all-btn" id="rc-all">✓ Бүгд бүрэн ${_isDispatch ? 'гарсан' : _isPickup ? 'авсан' : 'ирсэн'}</button>
     <div id="rc-list" class="rc-list">${_rcItems.map((x, i) => `
       <div class="rc-row" data-rc="${i}">
         <span class="rc-name">${escapeHtml(x.name)}</span>
@@ -24324,32 +26967,45 @@ function openStageAdvanceModal(oid, to) {
         <input class="rc-got" type="number" inputmode="numeric" min="0" max="${x.qty}" value="${x.qty}" data-rci="${i}">
         <span class="rc-diff" data-rcd="${i}"></span>
       </div>`).join('')}</div>
-    <div id="rc-warn" class="rc-warn" style="display:none;"></div>` : '';
+    <div id="rc-warn" class="rc-warn" hidden></div>`) : '';
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">${escapeHtml(act.label)} · #${o.number ?? ''}</h2><button class="btn" id="sa-close" style="padding:5px 10px;">✕</button></div>
-    ${needPhoto ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 ${stageIsShowcase(act.key) ? 'Угсарсан байдлын зураг' : 'Гүйцэтгэлийн зураг'} <span style="color:var(--danger);">*</span></div>
-      ${stagePhotoHint(act.key) ? `<div class="sa-hint">${escapeHtml(stagePhotoHint(act.key))}</div>` : ''}
-      <div id="sa-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-bottom:6px;"></div>
-      <label class="btn" for="sa-photo-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
+    ${needPhoto ? _sec('📷', stageIsShowcase(act.key) ? 'Угсарсан байдлын зураг' : 'Гүйцэтгэлийн зураг', true, stagePhotoHint(act.key), `
+      <div id="sa-photos" class="sa-ph-grid"></div>
+      <div class="sa-ph-row">
+        <label class="btn sa-ph-btn ui-raw" for="sa-photo-input">📷 Камер</label>
+        <label class="btn sa-ph-btn ui-raw" for="sa-photo-gallery">🖼 Галерей</label>
+      </div>
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
-      <div id="sa-photo-status" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>` : ''}
+      <input id="sa-photo-gallery" type="file" accept="image/*" hidden>
+      <div id="sa-photo-status" class="sa-ph-status"></div>`) : ''}
     ${_rcHtml}
-    ${rateTargets.length ? rateTargets.map((rt, i) => `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(rt.q)}${rateTargets.length > 1 ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">— ${escapeHtml((typeof memberName === 'function' ? memberName(rt.ratee) : '') || '')}</span>` : ''} <span style="color:var(--danger);">*</span></div>
-      <div class="sa-stars" data-si="${i}" style="font-size:34px;letter-spacing:5px;margin:2px 0 8px;user-select:none;">${[1, 2, 3, 4, 5].map(s => `<span data-star="${s}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>`).join('')
-      + `<textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
-    ${_helpStaff.length ? `<div style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
-      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">👥 ${escapeHtml(stageHelpQuestion(act.key))} <span style="color:var(--muted);font-weight:400;font-size:11px;">— байвал дарж нэмнэ</span></div>
-      <input id="sa-help-search" placeholder="Нэрээр хайх…" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12.5px;margin-bottom:6px;">
-      <div id="sa-help-list" style="display:flex;flex-wrap:wrap;gap:6px;max-height:132px;overflow:auto;margin-bottom:12px;">${_helpStaff.map(s => `<span class="sa-help-chip" data-hk="${escapeHtml(String(s.k))}" data-hn="${escapeHtml(s.name.toLowerCase())}" style="cursor:pointer;font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);user-select:none;">${escapeHtml(s.name)}</span>`).join('')}</div>
-    </div>` : ''}
-    ${canSkipStage() ? `<div id="sa-skip-wrap" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
-      <button type="button" class="btn" id="sa-skip-open" style="width:100%;font-size:12.5px;">⏭ Шалтгаантай алгасах</button>
-      <div id="sa-skip-box" style="display:none;margin-top:7px;">
-        <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:6px;">Зураг, үнэлгээгүйгээр дараагийн шатанд шилжүүлнэ. Хэн, яагаад алгассан нь захиалгад үлдэнэ.</div>
-        <textarea id="sa-skip-why" rows="2" placeholder="Яагаад алгасах шаардлагатай вэ? (заавал)" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;"></textarea>
-        <button type="button" class="btn" id="sa-skip-go" disabled style="width:100%;margin-top:6px;border-color:var(--danger);color:var(--danger);">⏭ Алгасаад үргэлжлүүлэх</button>
+    ${_defTargets.length ? _sec('🔎', 'Өмнөх ажлын алдаа', false, 'Алдаа байхгүй бол 0 үлдээнэ.', `
+      ${_defTargets.map((d, i) => `<div class="sa-def-item">
+        <div class="sa-def-q">${escapeHtml(d.q)}</div>
+        <div class="sa-def-ctl">
+          <span class="sa-def-who">${escapeHtml((typeof memberName === 'function' ? memberName(d.ratee) : '') || '')}</span>
+          <input class="ui-raw sa-def-in" type="number" inputmode="numeric" min="0" step="1" data-def="${i}" value="0"><span class="sa-def-u">ш</span>
+        </div></div>`).join('')}
+      <div class="sa-def-n ok" id="sa-def-note">✓ Алдаагүй</div>`) : ''}
+    ${_needNoteSec ? _sec('📝', 'Тэмдэглэл', false, 'Дутуу / эвдэрсэн бараа байвал ЯАГААД гэдгийг энд бич.', `
+      <textarea id="sa-comment" class="ui-raw sa-note" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)"></textarea>`) : ''}
+    ${_helpStaff.length ? _sec('👥', stageHelpQuestion(act.key), false, 'Хамт ажилласан хүнээ дарж нэмнэ — бонусын 30% тэдэнд хуваагдана.', `
+      <input id="sa-help-search" class="ui-raw sa-help-search" placeholder="Нэрээр хайх…">
+      <div id="sa-help-list" class="sa-chip-wrap">${_helpStaff.map(s2 => `<span class="sa-help-chip${s2.on ? ' sa-help-on' : ''}" data-hk="${escapeHtml(String(s2.k))}" data-hn="${escapeHtml(s2.name.toLowerCase())}">${s2.on ? '· ' : ''}${escapeHtml(s2.name)}</span>`).join('')}</div>`) : ''}
+    ${_needDriver ? _sec('🚗', 'Жолоо хэн барьсан бэ?', false, 'Жолооны нэмэгдэл зөвхөн энэ хүнд очно.', `
+      <div id="sa-drv-list" class="sa-chip-wrap">
+        <span class="sa-drv-chip on" data-dk="${escapeHtml(String(state.me))}">${escapeHtml(memberName(state.me) || 'Би')}</span>
+        ${_helpStaff.map(s2 => `<span class="sa-drv-chip" data-dk="${escapeHtml(String(s2.k))}">${escapeHtml(s2.name)}</span>`).join('')}
+      </div>`) : ''}
+    ${canSkipStage() ? `<div id="sa-skip-wrap" class="sa-skip">
+      <button type="button" class="btn sa-skip-open" id="sa-skip-open">⏭ Шалтгаантай алгасах</button>
+      <div id="sa-skip-box" class="sa-skip-box" hidden>
+        <div class="sa-sec-hint">Зураг, үнэлгээгүйгээр дараагийн дамжлагад шилжүүлнэ. Хэн, яагаад алгассан нь захиалгад үлдэнэ.</div>
+        <textarea id="sa-skip-why" class="ui-raw sa-note" rows="2" placeholder="Яагаад алгасах шаардлагатай вэ? (заавал)"></textarea>
+        <button type="button" class="btn sa-skip-go" id="sa-skip-go" disabled>⏭ Алгасаад үргэлжлүүлэх</button>
       </div>
     </div>` : ''}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;"><button class="btn" id="sa-cancel">Болих</button><button class="btn btn-primary" id="sa-submit" disabled>✓ Баталгаажуулах</button></div>
@@ -24364,8 +27020,8 @@ function openStageAdvanceModal(oid, to) {
   if (_skipOpen) {
     _skipOpen.onclick = () => {
       const box = $('#sa-skip-box');
-      const on = box.style.display === 'none';
-      box.style.display = on ? '' : 'none';
+      const on = box.hidden;          // `hidden` атрибут — inline display БИШ
+      box.hidden = !on;
       _skipOpen.textContent = on ? '✕ Алгасахаа болих' : '⏭ Шалтгаантай алгасах';
       if (on) $('#sa-skip-why').focus();
     };
@@ -24385,7 +27041,7 @@ function openStageAdvanceModal(oid, to) {
     };
   }
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const photos = []; const ratings = new Array(rateTargets.length).fill(0);
+  const photos = []; const shots = []; const ratings = new Array(rateTargets.length).fill(0);
   // Буцаан авалтын зөрүү — дутсан бол шалтгаан ЗААВАЛ (эс бөгөөс алдагдал мөрдөгдөхгүй)
   const rcGot = _rcItems.map(x => x.qty);
   const rcShort = () => receiveShortfalls(_rcItems, rcGot);
@@ -24402,7 +27058,7 @@ function openStageAdvanceModal(oid, to) {
     const sh = rcShort();
     const w = modal.querySelector('#rc-warn');
     if (w) {
-      w.style.display = sh.length ? '' : 'none';
+      w.hidden = !sh.length;
       const _liable = (!_isPickup && _prevPick && _driverBy) ? `<br><span style="font-weight:700;">🔴 Замд дутсан/эвдэрсэн — жолооч <b>${escapeHtml((typeof memberName === 'function' ? memberName(_driverBy) : '') || _driverBy)}</b> хариуцна.</span>` : '';
       w.innerHTML = sh.length
         ? `⚠ <b>${sh.reduce((a, x) => a + x.miss, 0)}ш</b> дутуу / эвдэрсэн: ${sh.map(x => escapeHtml(x.name) + '×' + x.miss).join(', ')}${_liable}<br><span style="font-weight:400;">Эдгээр нөөцөөс хасагдаж, засварын жагсаалтад орно. Доор <b>шалтгаан бичнэ үү</b>.</span>`
@@ -24436,14 +27092,30 @@ function openStageAdvanceModal(oid, to) {
   if (needPhoto) {
     const renderPhotos = () => {
       $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
-      $('#sa-photos').querySelectorAll('[data-prm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.prm, 1); renderPhotos(); validate(); });
+      $('#sa-photos').querySelectorAll('[data-prm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.prm, 1); shots.splice(+b.dataset.prm, 1); renderPhotos(); validate(); });
     };
-    $('#sa-photo-input').onchange = async (e) => {
+    /* ⛔ ХОЁР ТОВЧ (2026-10-05, CEO): `capture` нь утсанд КАМЕРЫГ ШУУД нээдэг
+       (iPhone, Android хоёулаа) — газар дээр нь аваад ХОЖИМ оруулах боломжгүй
+       байв. «Галерейгаас» товч нь өмнө авсан зургийг сонгуулна; зураг авсан
+       цаг (EXIF) нь хоцролтыг бодоход товч дарсан цагийг орлоно.
+       Хуучин эвентийн зураг хэмжүүрт тооцогдохгүй (`stageDoneAt`-ын хил). */
+    const _onPhoto = async (e) => {
       const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
-      $('#sa-photo-status').textContent = '⏳ Илгээж байна...'; $('#sa-photo-status').style.color = 'var(--muted)';
-      try { const url = await uploadReceipt(f, o.id, 'completion', `Захиалга #${o.number} ${act.label}`); if (url) { photos.push(url); renderPhotos(); $('#sa-photo-status').textContent = `✓ ${photos.length} зураг`; $('#sa-photo-status').style.color = 'var(--ok)'; validate(); } else { $('#sa-photo-status').textContent = '⚠ Хадгалж чадсангүй'; $('#sa-photo-status').style.color = 'var(--danger)'; } }
-      catch (err) { $('#sa-photo-status').textContent = '⚠ ' + err.message; $('#sa-photo-status').style.color = 'var(--danger)'; }
+      const st = $('#sa-photo-status');
+      st.className = 'sa-ph-status'; st.textContent = '⏳ Илгээж байна...';
+      // ⛔ Зураг авсан цагийг ШАХАХААС ӨМНӨ — шахалт EXIF-ийг устгадаг
+      const _shot = await photoTakenAt(f);
+      try {
+        const url = await uploadReceipt(f, o.id, 'completion', `Захиалга #${o.number} ${act.label}`);
+        if (!url) { st.className = 'sa-ph-status bad'; st.textContent = '⚠ Хадгалж чадсангүй'; return; }
+        photos.push(url); shots.push(_shot); renderPhotos();
+        st.className = 'sa-ph-status ok';
+        st.textContent = `✓ ${photos.length} зураг` + (_shot ? ` · ${ubStamp(_shot, true)}-д авсан` : ' · авсан цаг уншигдсангүй');
+        validate();
+      } catch (err) { st.className = 'sa-ph-status bad'; st.textContent = '⚠ ' + err.message; }
     };
+    $('#sa-photo-input').onchange = _onPhoto;
+    $('#sa-photo-gallery').onchange = _onPhoto;
   }
   modal.querySelectorAll('.sa-stars').forEach(row => {
     const si = +row.dataset.si;
@@ -24454,9 +27126,30 @@ function openStageAdvanceModal(oid, to) {
   const helpers = new Set();
   modal.querySelectorAll('.sa-help-chip').forEach(ch => ch.onclick = () => {
     const k = ch.dataset.hk;
-    if (helpers.has(k)) { helpers.delete(k); ch.style.background = 'var(--panel)'; ch.style.color = 'var(--text)'; ch.style.borderColor = 'var(--border)'; }
-    else { helpers.add(k); ch.style.background = 'var(--primary)'; ch.style.color = '#fff'; ch.style.borderColor = 'var(--primary)'; }
+    // ⚠ Сонголтыг КЛАСС-аар — inline өнгө бичих нь суурь загварыг (хүрээ,
+    //   дугуй булан) дарж, чипийг дөрвөлжин толбо болгож байв.
+    if (helpers.has(k)) helpers.delete(k); else helpers.add(k);
+    ch.classList.toggle('on', helpers.has(k));
   });
+  // Жолоочийн сонголт — ҮРГЭЛЖ яг НЭГ хүн (өгөгдмөл нь дарсан хүн)
+  let driverKey = String(state.me);
+  modal.querySelectorAll('.sa-drv-chip').forEach(ch => ch.onclick = () => {
+    driverKey = String(ch.dataset.dk);
+    modal.querySelectorAll('.sa-drv-chip').forEach(x => x.classList.toggle('on', x === ch));
+  });
+  // Алдааны тоо оруулахад нийт гарсан тоотой харьцуулж хувийг ил хэлнэ
+  const _defPaint = () => {
+    const el = modal.querySelector('#sa-def-note'); if (!el) return;
+    const tot = _rcItems.reduce((t, x, i) => t + (rcGot[i] != null ? rcGot[i] : x.qty), 0);
+    const sum = [...modal.querySelectorAll('[data-def]')].reduce((t, i2) => t + (Number(i2.value) || 0), 0);
+    /* ⛔ 0 үед ХООСОН БИШ, «✓ Алдаагүй» гэж бичнэ — хоосон мөр нь «шалгасан
+       уу, үгүй юу» гэдгийг хэлдэггүй (түүх дэх ялгаатай ижил зарчим). */
+    el.textContent = (sum > 0 && tot > 0)
+      ? `⚠ ${sum} / ${tot}ш — ${(100 * sum / tot).toFixed(0)}% дахин ажиллана`
+      : '✓ Алдаагүй';
+    el.className = 'sa-def-n' + (sum > 0 ? '' : ' ok');
+  };
+  modal.querySelectorAll('[data-def]').forEach(i2 => i2.oninput = _defPaint);
   const _hSearch = modal.querySelector('#sa-help-search');
   if (_hSearch) _hSearch.oninput = () => { const qq = _hSearch.value.toLowerCase().trim(); modal.querySelectorAll('.sa-help-chip').forEach(ch => { ch.style.display = (!qq || (ch.dataset.hn || '').includes(qq)) ? '' : 'none'; }); };
   $('#sa-submit').onclick = async () => {
@@ -24464,8 +27157,22 @@ function openStageAdvanceModal(oid, to) {
     const sm2 = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
     const nowD = new Date().toISOString();
     const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
-    if (needPhoto) entry.photos = photos.slice();
+    if (needPhoto) {
+      entry.photos = photos.slice();
+      if (shots.some(Boolean)) entry.shots = shots.slice(); else delete entry.shots;   // зураг авсан цаг (EXIF)
+    }
     if (helpers.size) entry.helpers = [...helpers]; else delete entry.helpers;   // хамтарсан хүмүүс
+    if (_needDriver) entry.driver = driverKey;   // 🚗 нэмэгдэл ЭНЭ хүнд (дамжлагын оноо нь дарсан хүнд)
+    /* Өмнөх ажлын АЛДААНЫ ТОО — хүн бүрт нь холбож хадгална. 0 бол бичихгүй
+       (хоосон түүх үүсгэхгүй), гэхдээ «шалгасан» гэдгийг `defChecked`-ээр
+       тэмдэглэнэ — эс бөгөөс «алдаагүй» ба «шалгаагүй» хоёр ялгагдахгүй. */
+    if (_defTargets.length) {
+      const ds = _defTargets.map((d, i) => ({ stage: d.k, ratee: d.ratee,
+        n: Math.max(0, Number((modal.querySelector(`[data-def="${i}"]`) || {}).value) || 0) }));
+      entry.defChecked = true;
+      const bad = ds.filter(x => x.n > 0);
+      if (bad.length) entry.defects = bad; else delete entry.defects;
+    }
     if (rateTargets.length && ratings.every(r => r > 0)) {
       entry.comment = (($('#sa-comment') || {}).value || '').trim();
       // Үнэлгээ бүрийг тухайн ажилтанд холбоно (олон зорилт = олон handoffRating)
@@ -24477,10 +27184,16 @@ function openStageAdvanceModal(oid, to) {
     let _shortLines = [];
     if (_isReceive && _rcItems.length) {
       entry.items = _rcItems.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: rcGot[i] }));
-      _shortLines = rcShort();
-      entry.missing = _shortLines.reduce((a, x) => a + x.miss, 0);
+      /* ⛔ ГАРГАХ дамжлагад дутуу тоо нь АЛДАГДАЛ БИШ — зүгээр л цөөн бараа
+         гарсан гэсэн үг. Нөөцөөс хасаж засварын бичлэг үүсгэвэл гараагүй
+         бараа «эвдэрсэн» болж, нөөц ба ашиг хоёулаа гажна. Буцаалтын тулгалт
+         нь ЭНЭ тоотой (`dispatch.items[].got`) харьцуулагдана. */
+      if (!_isDispatch) {
+        _shortLines = rcShort();
+        entry.missing = _shortLines.reduce((a, x) => a + x.miss, 0);
+      }
       // Received дээр авсан тоотой тулгаж дутвал = жолоочийн замд алдсан хариуцлага
-      if (!_isPickup && _prevPick && entry.missing > 0 && _driverBy) entry.liableDriver = _driverBy;
+      if (!_isPickup && !_isDispatch && _prevPick && entry.missing > 0 && _driverBy) entry.liableDriver = _driverBy;
     }
     sm2[act.key] = entry;
     close();
@@ -24496,20 +27209,46 @@ function openStageAdvanceModal(oid, to) {
       showToast(`⚠ ${entry.missing}ш дутуу — нөөцөөс хасаж засварын жагсаалтад нэмлээ`, 'warn', 4500);
     }
     await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${(BQ_STATUS[to] || {}).label || act.label} ✓` });
+    try { stagePenaltyNotify({ ...o, stage_meta: sm2 }, act.key, entry); } catch (_) { /* мэдэгдэл бүтэлгүйтсэн нь хадгалалтыг эвдэхгүй */ }
   };
+}
+/* ⭐ ХАСАЛТЫГ ТЭР ДАРУЙ ХЭЛНЭ (2026-10-05, CEO): сарын эцэст цалингаас олж
+   мэдэх нь хэтэрхий хожуу — алдаа гарсан мөчид хэлбэл дараагийн удаа засна.
+   · «Талбайд буулгасан»/«Суурилуулсан» дарахад хоцорсон бол → дарсан хүнд
+     анхааруулга + гарах талын дамжлагын бүх хүнд push.
+   · Нярав алдаатай бараа бүртгэвэл → цэвэрлэгч/баглагчид push.
+   ⚠ Мэдэгдлийн бичвэр = `stagePenReason` (бонусын жагсаалттай ИЖИЛ үг). */
+function stagePenaltyNotify(o, key, entry) {
+  const pen = stagePenaltyCfg();
+  if (pen.off || String((entry && entry.at) || '').slice(0, 7) < pen.from) return;
+  const sm = o.stage_meta || {};
+  const people = keys => {
+    const set = new Set();
+    keys.forEach(k => { const e = sm[k]; if (!e || e.skipped) return;
+      if (e.by) set.add(String(e.by)); (Array.isArray(e.helpers) ? e.helpers : []).forEach(h => h && set.add(String(h))); });
+    return [...set];
+  };
+  if (key === 'deliver' || key === 'setup') {
+    const lt = orderLateForPenalty(o, pen.graceMin);
+    if (!lt) return;
+    const why = stagePenReason({ why: 'late', late: lt }, key);
+    showToast(`⚠ #${o.number}: ${why}. Энэ захиалгын баглах, бүртгэх, буулгах, суурилуулах дамжлагын оноо хасагдана.`, 'warn', 9000);
+    people(STAGE_LATE_CHAIN).forEach(k => pushBroadcast(k, { kind: 'orders', title: `⚠ #${o.number} хоцорсон — оноо хасагдлаа`, body: why, url: './' }));
+  }
+  if (key === 'dispatch' && Array.isArray(entry && entry.defects)) {
+    entry.defects.forEach(d => {
+      if (!d || !d.ratee || !(Number(d.n) > 0)) return;
+      const bad = stageBadShare(o, d.stage, null);
+      if (!bad) return;
+      pushBroadcast(String(d.ratee), { kind: 'orders', title: `⚠ #${o.number} — ${stageHistLabel(d.stage)} оноо хасагдлаа`, body: stagePenReason(bad, d.stage), url: './' });
+    });
+  }
 }
 // Badge — цэг + бараан текст (өнгөнд бус, текст+цэгээр ялгана). pill хэлбэр.
 function bqStatusBadge(raw) {
   const s = BQ_STATUS[raw] || { label: raw || '—', dot: '#9CA3AF', bg: '#F3F4F6', tx: '#374151' };
   return `<span class="bq-badge" style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.7;background:${s.bg};color:${s.tx};white-space:nowrap;">
     <span style="width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:${s.dot};"></span>${escapeHtml(s.label)}</span>`;
-}
-// M-Event төлвийг 6 төлвийн аль нэгэнд буулгана (нэгдсэн шүүлтэд)
-function meStatusKey(st) {
-  if (st === 'Цуцалсан') return 'canceled';
-  if (st === 'Дууссан') return 'stopped';
-  if (st === 'Шинэ') return 'reserved';
-  return 'started';   // Төлбөр авсан/Цэвэрлэгээ/Түрээс бэлдсэн/Гаргасан/Хүргэсэн/Буцаан ирсэн
 }
 
 // Захиалгын жагсаалт — түүхэн нь цорын ганц эх (M-Event давхарга 2026-06-28-нд цуцлагдсан).
@@ -24636,47 +27375,6 @@ async function saveAppOrder(ord) {
     throw new Error('save fail');
   }
 }
-// Тест захиалга цэвэрлэх (ЗӨВХӨН CEO) — нэрэнд test/тест/demo орсныг сонгож бүрмөсөн устгана
-const _TEST_ORDER_RE = /\btest\b|тест|demo|туршил|жишээ|sample/i;
-function openTestCleanupModal() {
-  if (!state.isCEO) { showToast('Зөвхөн CEO энэ үйлдлийг хийнэ', 'warn', 3000); return; }
-  const cands = (state.appOrders || []).filter(o => _TEST_ORDER_RE.test(o.customer || ''));
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg open'; modal.style.zIndex = '9600';
-  modal.innerHTML = `<div class="modal" style="max-width:480px;width:96%;max-height:88vh;overflow:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h2 style="margin:0;font-size:16px;">🧪 Тест захиалга устгах</h2><button class="btn" id="tc-close" style="padding:5px 10px;">✕</button></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Нэрэнд «test / тест / demo» орсон захиалгууд. Устгавал БҮРМӨСӨН арилна (буцаах боломжгүй).</div>
-    ${cands.length ? `<div id="tc-list">${cands.map(o => `<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer;">
-      <input type="checkbox" class="tc-cb" data-id="${escapeHtml(String(o.id))}" checked style="width:auto;margin:0;">
-      <b>#${o.number ?? '—'}</b>
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '?')}</span>
-      <span style="color:var(--muted);font-size:11px;">${escapeHtml((BQ_STATUS[o.status] || {}).label || o.status || '')}</span>
-      <b style="font-variant-numeric:tabular-nums;">${fmtMoney(o.total_mnt || 0)}</b>
-    </label>`).join('')}</div>
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
-      <button class="btn" id="tc-cancel">Болих</button>
-      <button class="btn" id="tc-del" style="background:var(--danger);color:#fff;border-color:var(--danger);">🗑 Устгах (<span id="tc-n">${cands.length}</span>)</button>
-    </div>` : `<div style="text-align:center;color:var(--muted);padding:24px;">Тест захиалга олдсонгүй ✓</div>`}
-  </div>`;
-  document.body.appendChild(modal);
-  const close = () => modal.remove();
-  modal.querySelector('#tc-close').onclick = close;
-  modal.querySelector('#tc-cancel')?.addEventListener('click', close);
-  modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const updateN = () => { const el = modal.querySelector('#tc-n'); if (el) el.textContent = modal.querySelectorAll('.tc-cb:checked').length; };
-  modal.querySelectorAll('.tc-cb').forEach(cb => cb.addEventListener('change', updateN));
-  modal.querySelector('#tc-del')?.addEventListener('click', async (e) => {
-    const ids = [...modal.querySelectorAll('.tc-cb:checked')].map(cb => cb.dataset.id);
-    if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
-    if (!(await showConfirm(`${ids.length} тест захиалгыг хасах уу? («Больсон» бүлэгт шилжинэ — дараа сэргээж болно)`, { okText: 'Хасах', danger: true }))) return;
-    e.currentTarget.disabled = true;
-    let ok = 0;
-    for (const id of ids) { try { await deleteAppOrder(id, 'Тест захиалга'); ok++; } catch (err) { console.warn('test del', err); } }
-    close();
-    showToast(`${ok} тест захиалга устгалаа`, 'success', 2800);
-    if (typeof render === 'function') render();
-  });
-}
 // CEO бөөн үйлдэл — сонгосон захиалгыг устгах/сэргээх (PostgREST id=in.() багцаар)
 async function bulkDeleteOrders(ids, reason) {
   // ЗӨӨЛӨН устгал — мөрийг DB-ээс устгахгүй, зөвхөн status='deleted' болгоно ⟹ "Устгасан" бүлэгт үлдэж,
@@ -24766,7 +27464,7 @@ async function bulkRestoreOrders(ids) {
 // хийнэ. Архивлах нь ЗӨӨЛӨН — status='archived', дата хэвээр, сэргээж болно.
 // Архивласан захиалга орлогод ХЭВЭЭР тоологдоно (_orderActive нь archived-ыг
 // хасдаггүй) — зөвхөн ажлын жагсаалтаас хальж, «Архивласан» бүлэгт үлдэнэ.
-const ORDER_ARCHIVABLE = ['returned', 'stopped', 'rented'];
+const ORDER_ARCHIVABLE = ['stowed', 'returned', 'stopped', 'rented'];
 // Архивлах гэж байгаа захиалгуудын дундах ТӨЛБӨР ДУТУУ нь. Архивлах нь өрийг тэглэдэггүй
 // (авлага хэвээр) — гэхдээ хэрэглэгч архивлахаасаа ӨМНӨ мэдэх ёстой тул тоо + дүн гаргана.
 function archUnpaid(list) {
@@ -24812,30 +27510,6 @@ async function archiveDoneMonth(ym) {
   showToast(ok ? `🗄 ${list.length} захиалга архивлалаа` : '⚠ Хэсэгчлэн архивлагдав — дахин оролдоно уу', ok ? 'success' : 'warn', 4500);
   render();
 }
-async function deleteAppOrder(id, reason) {
-  // ЗӨӨЛӨН устгал — мөр устгахгүй, status='deleted' (сэргээж болно). Хатуу устгал = буцалтгүй алдагдал тул хийхгүй.
-  const o = (state.appOrders || []).find(x => x.id === id);
-  // 🔒 Хаасан сарын захиалгыг устгавал тэр сарын орлого чимээгүй буурна
-  if (o) {
-    try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр */ }
-    const lk = orderLockedMonth(o);
-    if (lk) { showToast(`🔒 ${lk} сар хаагдсан — #${o.number} захиалгыг устгах боломжгүй`, 'error', 6000); return; }
-  }
-  const prevStatus = o ? o.status : null;
-  // ⚠ ШАЛТГААНГҮЙ «Больсон» = «яагаад алдаж байна» гэдгийг хэзээ ч тоолж чадахгүй.
-  //   Амьд датаар 54 больсоны 30 нь шалтгаангүй байсан нь яг эндээс төрсөн.
-  const _note = (o && reason) ? setCancelReason(o.note, reason) : null;
-  const prevNote = o ? o.note : null;
-  if (o) { o.status = 'deleted'; if (_note != null) o.note = _note; }
-  if (typeof render === 'function') render();
-  if (!DB_ANON_KEY) return;
-  try {
-    const _body = { status: 'deleted', updated_at: new Date().toISOString() };
-    if (_note != null) _body.note = _note;
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(_body) }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-  } catch (e) { console.warn('deleteAppOrder(soft)', e); if (o && prevStatus != null) { o.status = prevStatus; o.note = prevNote; if (typeof render === 'function') render(); } }
-}
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
   // source='history' → түүхэн, source='app' → шинэ; аль аль нь адилхан app_orders мөр.
@@ -24844,6 +27518,7 @@ function unifiedOrders() {
     // мөн ижил helper ашигладаг тул харагдац ↔ логик зөрөхгүй (төлбөргүй reserved→'draft' г.м.).
     const raw = orderCanonStatus(ao);
     const o = { ...ao, status: raw, item_count: (ao.items || []).length, _app: true };
+    const _ciHay = custInfoOf(ao.note);   // байгууллагын нэр/РД — хайлтад заавал
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
       ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',
       total: orderBilled(o),   // буцаагдсан барьцаа хасагдсан — payOf шүүлт ч үүнийг уншина
@@ -24852,7 +27527,9 @@ function unifiedOrders() {
       rev: (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : (Number(ao.total_mnt) || 0)),
       // Хайлт: дугаар + нэр + утас (форматтай БА зөвхөн цифр — 9911-2233↔99112233 хоёул олдоно)
       // + имэйл + гэрээний дугаар. Placeholder «Нэр, утас, имэйл, дугаар»-тай нийцнэ.
-      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${String(ao.phone || '').replace(/\D/g, '')} ${ao.email || ''} ${ao.contract_no || ''}`.toLowerCase() };
+      // ⚠ Байгууллагын нэр/РД ЗААВАЛ — жагсаалт байгууллагын нэрээр харагддаг тул
+      //   түүгээрээ хайхад олдохгүй бол хүн «захиалга алга» гэж дүгнэнэ.
+      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${_ciHay.company || ''} ${_ciHay.reg || ''} ${ao.phone || ''} ${String(ao.phone || '').replace(/\D/g, '')} ${ao.email || ''} ${ao.contract_no || ''}`.toLowerCase() };
   });
 }
 
@@ -25033,8 +27710,64 @@ function setOrderCmpNote(note, reason, amount, receipt, date) {
 function orderCmpAmount(o) { const c = parseOrderCmp(o && o.note); return c ? c.amount : 0; }
 // Захиалгын талбар засах (PATCH). `note` бичихийн ӨМНӨ DB-ээс шинэчилж уншина —
 // өөр хүн зэрэг шат ахиулсан бол түүний бичсэн токеныг дарж бичихгүй.
+/* ⛔ МӨНГӨНИЙ ТАЛБАР ДАМЖВАЛ ХААСАН САР ШАЛГАГДАНА (2026-10-02 аудит).
+   `patchOrderFields` нь захиалгын ДУРЫН талбарыг PATCH хийдэг ерөнхий зам —
+   одоогийн дуудагчид `note`/`paid_ref`/`stage_meta` л дамжуулдаг тул идэвхтэй
+   нүх биш байв. Гэхдээ хэн нэгэн ирээдүйд `total_mnt` дамжуулбал ХААСАН сарын
+   орлого чимээгүй өөрчлөгдөнө — тэр нь «хаасан сарын тоо хөдөлөхгүй» гэдэг гол
+   дүрмийг зөрчинө. Тиймээс хоригийг ЭНД, бичих цэгт нь тавина: шинэ дуудагч
+   нэмэгдсэн ч өөрөө хаагдана.
+   ⚠ Жагсаалт нь `orderMoneyChanged`-ийн баридаг талбаруудтай нийцнэ
+     (дүн · барьцаа · барааны мөр) + орлогын САР тодорхойлдог талбарууд
+     (`paid_date`, `starts_at`, `status`) — тэдгээр нь мөнгийг өөр сар руу
+     зөөдөг тул адил аюултай. */
+const ORDER_MONEY_FIELDS = ['total_mnt', 'paid_mnt', 'deposit_mnt', 'items', 'paid_date', 'starts_at', 'status'];
+/* ✋ Мэдүүлэг нэмэх — `stage_meta.<key>.claims` массивт нэр нэмнэ.
+   ⛔ `helpers`-т ШУУД нэмэхгүй — тэгвэл хүн өөртөө бонус бичнэ. Баталгаажсаны
+     дараа л орно (`approveStageClaim`). */
+async function claimStageWork(oid, key) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o || !key || !state.me) return;
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  const e = sm[key];
+  if (!e || typeof e !== 'object') return;
+  if (stageHasPerson(e, state.me)) { showToast('Та энэ дамжлагад аль хэдийн тоологдсон байна', 'warn', 3000); return; }
+  const cl = stageClaims(e);
+  if (cl.includes(String(state.me))) { showToast('Мэдүүлэг аль хэдийн илгээгдсэн', 'warn', 2500); return; }
+  const next = Object.assign({}, sm, { [key]: Object.assign({}, e, { claims: cl.concat(String(state.me)) }) });
+  try {
+    await patchOrderFields(o, { stage_meta: next });
+    o.stage_meta = next;
+    showToast('Мэдүүлэг илгээгдлээ — захирал баталгаажуулна', 'success', 3000); render();
+  } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); }
+}
+/* Баталгаажуулах/татгалзах — ЗӨВХӨН цалин хардаг хүн (нярав/захирал).
+   Баталгаажвал `helpers`-т орж бонус дахин хуваагдана. */
+async function resolveStageClaim(oid, key, who, accept) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  const e = sm[key]; if (!e || typeof e !== 'object') return;
+  const cl = stageClaims(e).filter(w => String(w) !== String(who));
+  const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String);
+  const nextE = Object.assign({}, e, { claims: cl });
+  if (accept && !hs.includes(String(who))) nextE.helpers = hs.concat(String(who));
+  const next = Object.assign({}, sm, { [key]: nextE });
+  try {
+    await patchOrderFields(o, { stage_meta: next });
+    o.stage_meta = next;
+    showToast(accept ? 'Баталгаажлаа — бонус дахин хуваагдана' : 'Татгалзлаа', 'success'); render();
+  } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); }
+}
 async function patchOrderFields(o, fields) {
   const oid = o && o.id; if (!oid) throw new Error('id алга');
+  const _money = ORDER_MONEY_FIELDS.filter(k => fields && Object.prototype.hasOwnProperty.call(fields, k));
+  if (_money.length) {
+    // ⚠ Түгжээг СЕРВЭРЭЭС шинэчилж шалгана — өөр сессээс тавигдсан хаалтыг ч барина.
+    try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр шалгана */ }
+    const _lk = orderLockedMonth(o) || orderLockedMonth({ ...o, ...fields });
+    if (_lk) throw new Error(`${_lk} сар хаалттай — захиалгын мөнгөн талбар (${_money.join(', ')}) засагдахгүй`);
+  }
   const body = { ...fields, updated_at: new Date().toISOString() };
   if (Object.prototype.hasOwnProperty.call(fields, 'note')) {
     try {
@@ -25069,7 +27802,7 @@ async function openOrderCmpModal(id) {
   const cur = parseOrderCmp(o.note);
   const total = Number(o.total_mnt) || 0;
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:460px;">
+  modal.innerHTML = `<div class="modal cmp-modal">
     <h2>↩️ Буулгалт бүртгэх</h2>
     <p class="amo-hint">#${escapeHtml(String(o.number || ''))} · ${escapeHtml(o.customer || '')} · нийт <b>${fmtMoney(total)}</b><br>
       Манай буруугаас өгсөн хөнгөлөлт. Энэ нь <b>зардал биш, орлогын бууралт</b>.<br>
@@ -25082,9 +27815,9 @@ async function openOrderCmpModal(id) {
       <div id="cmp-st">Дүн, огноо автоматаар уншигдана. Чимунээс ГАРСАН гүйлгээ байх ёстой.</div>
     </label>
     <div id="cmp-got"></div>
-    <div class="modal-actions" style="justify-content:space-between;">
-      <button class="btn" id="cmp-clear"${cur ? '' : ' hidden'} style="color:var(--danger);">Буулгалт хасах</button>
-      <span style="display:flex;gap:8px;"><button class="btn" id="cmp-cancel">Болих</button><button class="btn btn-primary" id="cmp-save" disabled style="opacity:.45;cursor:not-allowed;">Хадгалах</button></span>
+    <div class="modal-actions">
+      <button class="btn cmp-clear"${cur ? '' : ' hidden'} id="cmp-clear">Буулгалт хасах</button>
+      <span class="cmp-btns"><button class="btn" id="cmp-cancel">Болих</button><button class="btn btn-primary cmp-save" id="cmp-save" disabled>Хадгалах</button></span>
     </div></div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
@@ -25092,7 +27825,8 @@ async function openOrderCmpModal(id) {
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const saveBtn = modal.querySelector('#cmp-save'), st = modal.querySelector('#cmp-st'), got = modal.querySelector('#cmp-got');
   let rec = null;
-  const enable = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
+  // Идэвхгүй төрх = `.cmp-save:disabled` (CSS), JS-ээс style бичихгүй — `.bqp-save` -тай ижил арга.
+  const enable = (on) => { saveBtn.disabled = !on; };
   modal.querySelector('#cmp-pdf').addEventListener('change', async (e) => {
     const file = (e.target.files || [])[0]; e.target.value = ''; if (!file) return;
     st.textContent = `📄 ${file.name} уншиж байна…`; st.style.color = 'var(--muted)';
@@ -25147,19 +27881,86 @@ function encodeVat(amt) { return `⟦VAT|${Math.round(amt) || 0}⟧`; }
 const _CI_RE = /⟦CI\|([^⟧]*)⟧/;
 function custInfoOf(note) { const m = String(note || '').match(_CI_RE); if (!m) return {}; try { return JSON.parse(m[1]) || {}; } catch (e) { return {}; } }
 // Харилцагчийн төрөл — байгууллага эсвэл хувь хүн. Филтер БА гэрээний тал (хэнтэй байгуулах).
-// ⭐ ХҮНИЙ СОНГОЛТ ЭХЭНД: захиалгын формын «Төрөл» сонголт (⟦CI⟧.ctype) байвал ТҮҮНИЙГ дагана.
-// Таамаглал (нэр/РД-ээс) нь зөвхөн сонголтгүй ХУУЧИН захиалгад хэрэглэгдэнэ — өмнө нь
-// байгууллагын талбарт хүний нэр бичсэн захиалга гэрээнд «байгууллага» болж сонин гарч байв.
-function orderCustType(o) {
-  const ci = custInfoOf(o && o.note);
-  if (ci.ctype === 'org' || ci.ctype === 'person') return ci.ctype;
-  const reg = String(ci.reg || '').replace(/\s/g, '');
-  if (/^\d{7}$/.test(reg)) return 'org';                 // компанийн регистр = 7 орон
-  // Байгууллагын талбар дангаараа хангалтгүй: НӨАТ-ын «худалдан авагч» эсвэл төлөгчийн
-  // нэрээр автоматаар бөглөгддөг тул тэнд ХҮНИЙ нэр орсон захиалга «байгууллага» болж
-  // гэрээ хүний нэр дээр байгууллага мэт үүсдэг байв. Хуулийн хэлбэрийн тэмдэг шаардана.
-  if (_ORG_SUFFIX_RE.test(String(ci.company || ''))) return 'org';
+/* ⛔ 7 ОРОНТОЙ РД НЬ ХҮНИЙ СОНГОЛТООС ДЭЭГҮҮР (2026-10-03, CEO барив).
+   Монголд 7 оронтой регистр = ХУУЛИЙН ЭТГЭЭД (хувь хүн нь 2 үсэг + 8 орон) тул энэ нь
+   таамаг БИШ, БАРИМТ. Харин формын «Төрөл» сонгогч нь өгөгдмөлөөрөө «хувь хүн» тул
+   ажилтан дарахаа мартвал хадгалагддаг — өгөгдмөл нь шийдвэр БИШ.
+   Амьд жишээ (захиалга 1588): НӨАТ-ын баримт байгууллагын РД 7 оронтойгоор хоёр удаа
+   шивэгдсэн, ⟦CI⟧-д ч тэр РД + байгууллагын нэр бүртгэгдсэн атал `ctype:'person'`
+   үлдсэн тул гэрээ/нэхэмжлэх/филтер гурвуулаа «хувь хүн» гэж харуулж байв.
+   `autoFillOrderCompany()` нь НӨАТ баримтын `buyer_reg`-ийг ⟦CI⟧.reg-д өөрөө бичдэг
+   тул «НӨАТ бүртгэгдсэн бол байгууллага болно» гэдэг энэ дүрмээр хэрэгжинэ.
+   ⚠ Байгууллагын НЭР харин сонголтоос ДООГУУР хэвээр — тэр талбар НӨАТ-ын худалдан
+     авагч / банкны төлөгчийн нэрээр автоматаар бөглөгддөг тул ХҮНИЙ нэр орох нь бий. */
+/* НОТОЛГОО = юу нь «байгууллага» гэж хэлж байгаа вэ. Хоосон мөр = нотолгоогүй.
+   Гурван эх сурвалж, аль нь ч ХҮНИЙ СОНГОЛТООС дээгүүр:
+     ① ⟦CI⟧-ийн 7 оронтой РД  ② захиалгад тулгагдсан НӨАТ-ын баримтын байгууллагын РД
+     ③ байгууллагын нэрэн дэх ХУУЛИЙН ХЭЛБЭР (ХХК/LLC/банк…)
+   ③ нь нэр боловч нотолгоо мөн: `_ORG_SUFFIX_RE` хуулийн хэлбэрийн тэмдэг ШААРДАНА тул
+   автоматаар бөглөгдсөн ХҮНИЙ нэр энд тоологдохгүй (2026-09-04-ний хамгаалалт хэвээр).
+   Хувь хүний гэрээ үнэхээр хэрэгтэй бол байгууллагын талбарыг ХООСЛОНО — байгууллага
+   гэрээний тал биш бол тэнд бичигдэх ч ёсгүй. */
+/* ④ ХАРИЛЦАГЧИЙН нэрэн дэх хуулийн хэлбэр — ажилтан байгууллагын нэрийг «Харилцагч»
+   талбарт бичиж «Байгууллага»-г хоосон орхидог (амьд жишээ 1409 «Капитрон банк»,
+   1415 «Эвэнт хонх ххк» — хоёулаа «хувь хүн» гэж харагдаж байв). */
+function _orgProofFrom(ci, no, cust) {
+  const reg = String((ci && ci.reg) || '').replace(/\s/g, '');
+  if (/^\d{7}$/.test(reg)) return 'РД ' + reg;
+  const vreg = vatOrgRegFor(no);
+  if (vreg) return 'НӨАТ-ын баримт · РД ' + vreg;
+  const co = String((ci && ci.company) || '').trim();
+  if (_ORG_SUFFIX_RE.test(co)) return co;
+  const cu = String(cust || '').trim();
+  if (_ORG_SUFFIX_RE.test(cu)) return cu;
+  return '';
+}
+function orderOrgProof(o) { return _orgProofFrom(custInfoOf(o && o.note), o && o.number, o && o.customer); }
+// Төрлийн ГАНЦ дүрэм: нотолгоо → хүний сонголт → хувь хүн. Захиалга (`orderCustType`) ба
+// нэхэмжлэх (`invoiceBuyer`) хоёул ҮҮНИЙГ дуудна — дараалал хоёр газар бичигдэхгүй.
+function _custTypeFrom(ci, no, cust) {
+  if (_orgProofFrom(ci, no, cust)) return 'org';
+  if (ci && (ci.ctype === 'org' || ci.ctype === 'person')) return ci.ctype;
   return 'person';                                        // хувь хүний РД (2 үсэг+8 орон) эсвэл тодорхойгүй = хувь хүн
+}
+function orderCustType(o) { return _custTypeFrom(custInfoOf(o && o.note), o && o.number, o && o.customer); }
+/* НӨАТ-ын баримтаас байгууллагын РД — захиалгын дугаараар. ИНДЕКС ЗААВАЛ: эс бөгөөс
+   жагсаалтын мөр бүрд 181 баримт шүүгдэнэ (`vatCandidateOrders`-тэй ижил шалтгаан).
+   Кэш нь ачаалалт БА гар тулгалт/буцаалтын дараа өөрөө шинэчлэгдэнэ (`_vatOrgRev`). */
+let _vatOrgIdx = null, _vatOrgRev = 0, _vatOrgIdxRev = -1;
+function vatOrgIndex() {
+  if (_vatOrgIdx && _vatOrgIdxRev === _vatOrgRev) return _vatOrgIdx;
+  const m = new Map();
+  if (Array.isArray(state.vatReceipts)) {
+    vatReceiptsActive().forEach(v => {
+      if (!v.matched_id) return;
+      const r = String(v.buyer_reg || '').replace(/\s/g, '');
+      if (/^\d{7}$/.test(r) && !m.has(String(v.matched_id))) m.set(String(v.matched_id), r);
+    });
+  }
+  _vatOrgIdx = m; _vatOrgIdxRev = _vatOrgRev;
+  return m;
+}
+function vatOrgRegFor(no) {
+  if (no == null || no === '') return '';
+  return vatOrgIndex().get(String(no)) || '';
+}
+/* ХАРАГДАХ НЭР = гэрээний ТАЛ (2026-10-03, CEO барив: «чимгээ гэж гараад байна»).
+   Байгууллагын захиалгад харилцагч нь БАЙГУУЛЛАГА, `o.customer` нь түүнийг төлөөлж
+   байгаа ХҮН. Жагсаалт/картад хүний нэрийг толгойд тавихад гэрээ, нэхэмжлэх, НӨАТ-ын
+   баримт гурвуулаа байгууллагын нэртэй атал дэлгэц ганцаараа хүний нэр хэлж байв
+   (захиалга 1496: толгойд «Чимгээ», баримт дээр «ЭБЕРДИГММОНГОЛ»).
+   ⛔ `o.customer`-ыг ШУУД бүү хэвлэ — `orderCustName(o)` ашигла.
+   ⚠ Тулгалт (НӨАТ, банк, харилцагчийн бүртгэл) нь ТҮҮХИЙ `o.customer`-оор л явна —
+     тэнд гэрээний тал биш, бичигдсэн нэр хэрэгтэй. */
+function orderCustName(o) {
+  const co = String((custInfoOf(o && o.note).company) || '').trim();
+  if (co && orderCustType(o) === 'org') return co;
+  return String((o && o.customer) || '').trim();
+}
+// Байгууллагын захиалгад төлөөлөх хүн (нэр нь толгойд ороогүй бол), эс бөгөөс ''
+function orderCustPerson(o) {
+  const nm = String((o && o.customer) || '').trim();
+  return (nm && nm !== orderCustName(o)) ? nm : '';
 }
 // Хуулийн этгээдийн хэлбэр — байгууллагын нэрэнд байх ёстой тэмдэг.
 // ⚠ JS-ийн `\b` нь ASCII үсгээр тодорхойлогддог тул кирилл үгэнд АЖИЛЛАХГҮЙ —
@@ -25270,10 +28071,10 @@ function openOrderReceipts(oid) {
   if (list.length === 1) { openPaidReceiptDetail(oid, 0); return; }
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
-  modal.innerHTML = `<div class="modal" style="max-width:420px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">🧾 Банкны баримтууд (${list.length})</h2><button class="btn" id="orc-x" style="padding:5px 10px;">✕</button></div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Нийт төлсөн ${fmtMoney(o.paid_mnt || 0)} — ${list.length} гүйлгээгээр. Аль нэгийг дарж эх PDF-ийг харна.</div>
-    <div style="display:flex;flex-direction:column;gap:6px;">${list.map((r, i) => `<div class="paid-rcpt-row clickable" data-orc-open="${i}" role="button" tabindex="0" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || ('Баримт ' + (i + 1)))}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>
+  modal.innerHTML = `<div class="modal orc-modal">
+    <div class="prc-head"><h2>🧾 Банкны баримтууд (${list.length})</h2><button class="btn btn-sm" id="orc-x">✕</button></div>
+    <div class="orc-sub">Нийт төлсөн ${fmtMoney(o.paid_mnt || 0)} — ${list.length} гүйлгээгээр. Аль нэгийг дарж эх PDF-ийг харна.</div>
+    <div class="orc-list">${list.map((r, i) => `<div class="paid-rcpt-row clickable" data-orc-open="${i}" role="button" tabindex="0"><span class="prr-name">🧾 ${escapeHtml(r.sender || ('Баримт ' + (i + 1)))}${r.memo ? ` · <span class="prr-memo">${escapeHtml(r.memo)}</span>` : ''}</span><span class="prr-go">Харах ›</span></div>`).join('')}</div>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
@@ -25464,7 +28265,7 @@ function validateOrderContact({ customer, phone, email, noEmail }) {
 }
 
 function openNewOrder(editOrder) {
-  if (!(canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true)) {
+  if (!canSeeOrderBoard()) {
     showToast('Танд захиалга үүсгэх эрх алга', 'warn', 3000); return;
   }
   if (!state.products || !state.products.length) loadProductsCatalog();
@@ -25533,7 +28334,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Имэйл <span class="no-req">*</span><input id="no-email" type="email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"><label class="no-noemail"><input type="checkbox" id="no-email-none"${isEdit && !(editOrder.email || '') ? ' checked' : ''}> Имэйлгүй</label></label>
       <label class="no-lbl">Төрөл<select id="no-ctype"><option value="person"${_ctype0 === 'org' ? '' : ' selected'}>👤 Хувь хүн</option><option value="org"${_ctype0 === 'org' ? ' selected' : ''}>🏢 Байгууллага</option></select></label>
       <label class="no-lbl" id="no-company-wrap"${_ctype0 === 'org' ? '' : ' style="display:none;"'}>Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
-      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="${_ctype0 === 'org' ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД'}"></label>
+      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="${_ctype0 === 'org' ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД'}"><span class="no-hint no-ct-lock" id="no-ctype-lock" hidden></span></label>
       <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
       <label class="no-lbl no-wide">Хаанаас ирсэн <span class="no-req">*</span><select id="no-lead"><option value="">— сонгоно уу —</option>${LEAD_SOURCES.map(x => `<option value="${x.k}"${x.k === _lead0 ? ' selected' : ''}>${x.label}</option>`).join('')}</select><span class="no-hint">Харилцагч биднийг хаанаас олсон бэ — маркетингийн төсөв энэ тоон дээр хуваарилагдана</span></label>
     </div>
@@ -25805,13 +28606,38 @@ function openNewOrder(editOrder) {
   // Төрөл → «Байгууллага» талбар зөвхөн байгууллагад. Хувь хүн сонгоход утга нь
   // ХАДГАЛАГДАНА (буцааж сольвол буцаж гарна) — гэрээ ⟦CI⟧.ctype-ыг дагадаг тул
   // нуугдсан утга баримтад ГАРАХГҮЙ.
+  /* ⛔ НОТОЛГОО БАЙВАЛ СОНГОГЧ ТҮГЖИГДЭНЭ (2026-10-03).
+     `orderCustType` нь нотолгоог (`_orgProofFrom` — РД · НӨАТ баримт · ХХК нэр) сонголтоос
+     ДЭЭГҮҮР үздэг тул формд «хувь хүн» харуулаад хадгалахад захиалга чимээгүй
+     «байгууллага» болно — дүрэм оролтын цэгтээ ИЛ байх ёстой. Шалгуур нь ТЭР Л функц
+     (формын талбарын утгаар) — хоёр газар өөрөөр бичвэл форм ба жагсаалт зөрнө.
+     Унтраасан сонгогч юу буруугийн хэлдэггүй тул ЯМАР нотолгоо гэдгийг хажууд нь бичнэ. */
   {
-    const _ct = $('#no-ctype');
-    if (_ct) _ct.addEventListener('change', () => {
+    const _ctSync = () => {
+      const _ct = $('#no-ctype'); if (!_ct) return;
+      const _rg = $('#no-reg'), _co = $('#no-company'), _cu = $('#no-customer');
+      const proof = _orgProofFrom({ reg: (_rg && _rg.value) || '', company: (_co && _co.value) || '' },
+        isEdit ? editOrder.number : null, (_cu && _cu.value) || '');
+      if (proof) _ct.value = 'org';
+      _ct.disabled = !!proof;
       const org = _ct.value === 'org';
       const _cw = $('#no-company-wrap'); if (_cw) _cw.style.display = org ? '' : 'none';
-      const _rg = $('#no-reg'); if (_rg) _rg.placeholder = org ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД';
-    });
+      if (_rg) _rg.placeholder = org ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД';
+      const _lk = $('#no-ctype-lock');
+      if (_lk) {
+        _lk.hidden = !proof;
+        // НӨАТ-ын баримт бол формын талбар хассан ч түгжээ тайлагдахгүй — ЗӨВ заавар өгнө
+        const how = /^НӨАТ/.test(proof)
+          ? 'Баримт буруу захиалгад тулгагдсан бол НӨАТ тайлангаас тулгалтыг зас.'
+          : 'Хувь хүн болгох бол РД ба байгууллагын нэрийг хас.';
+        _lk.textContent = proof ? `🏢 Байгууллага — ${proof}. ${how}` : '';
+      }
+    };
+    { const _ct = $('#no-ctype'); if (_ct) _ct.addEventListener('change', _ctSync); }
+    { const _rg = $('#no-reg'); if (_rg) _rg.addEventListener('input', _ctSync); }
+    { const _co = $('#no-company'); if (_co) _co.addEventListener('input', _ctSync); }
+    { const _cu = $('#no-customer'); if (_cu) _cu.addEventListener('input', _ctSync); }
+    _ctSync();
   }
   $('#no-delivkm').addEventListener('input', recalc);
   $('#no-discval').addEventListener('input', recalc);
@@ -26013,7 +28839,6 @@ function openNewOrder(editOrder) {
   };
 }
 
-
 // ── Бараа сонгох popup (захиалгын модалаас) — бүх дэлгэцийг ашиглаж, том дүрс + ангиллын шүүлт +
 // тоо ширхэгийг картан дээр нь шууд оруулна. Жижиг inline каталогоос олон бараа сонгоход хурдан. ──
 function openOrderProductPicker(opt) {
@@ -26179,8 +29004,11 @@ function bqOrderCard(o) {
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/FB/Viber/газрын зураг) — зөвхөн менежерт харагдана
   const _ci = isApp ? custInfoOf(o.note) : {};
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
-  const ciHtml = (isApp && (_ci.company || _ci.reg || _ciContact || _ci.maps))
-    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ci.company ? `🏢 ${escapeHtml(_ci.company)}` : ''}${_ci.reg ? `${_ci.company ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
+  const _custPerson = isApp ? orderCustPerson(o) : '';
+  // Байгууллагын нэр толгойд гарсан бол энд ДАВТАХГҮЙ (нэг мэдээлэл хоёр газар = нүд төөрнө)
+  const _ciCo = (_ci.company && _ci.company !== orderCustName(o)) ? _ci.company : '';
+  const ciHtml = (isApp && (_ciCo || _ci.reg || _ciContact || _ci.maps))
+    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ciCo ? `🏢 ${escapeHtml(_ciCo)}` : ''}${_ci.reg ? `${_ciCo ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = orderOwed(o);
@@ -26298,7 +29126,7 @@ function bqOrderCard(o) {
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
-    <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
+    <div class="order-cust"><b>${escapeHtml(orderCustName(o) || '?')}</b>${_custPerson ? ` · <span class="order-rep">👤 ${escapeHtml(_custPerson)}</span>` : ''}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
@@ -27574,26 +30402,25 @@ function openBqPaymentModal(oid) {
   modal.className = 'modal-bg';
   modal.id = 'bq-pay-modal';
   const CHIMUN_ACCT = '3635185058';   // Чимун ХХК Голомт данс — баримтын хүлээн авагчтай тулгах
-  const rowCss = 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px solid var(--border);';
-  modal.innerHTML = `<div class="modal" style="max-width:430px;">
+  modal.innerHTML = `<div class="modal bqp-modal">
     <h2>💵 Төлбөр бүртгэх — #${o.number}</h2>
-    <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.8;">
+    <div class="bqp-sum">
       <div>Нийт дүн: <b>${fmtMoney(total)}</b></div>
       <div>Өмнө төлсөн: ${fmtMoney(paid)}</div>
-      <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--danger)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
+      <div>Үлдэгдэл: <b class="bqp-bal ${bal > 0 ? 'bad' : 'ok'}">${fmtMoney(bal)}</b></div>
     </div>
-    <label for="bqp-pdf" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
-      📄 <b>Банкны баримт (PDF) оруулах</b> <span style="font-weight:400;color:var(--muted);font-size:11px;">— олон файл сонгож болно</span>
+    <label for="bqp-pdf" class="bqp-drop">
+      📄 <b>Банкны баримт (PDF) оруулах</b> <span class="bqp-drop-sub">— олон файл сонгож болно</span>
       <input id="bqp-pdf" type="file" accept="application/pdf,.pdf" multiple hidden>
-      <div id="bqp-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Дүн · огноо · шилжүүлэгч автоматаар. Олон гүйлгээ = олон PDF сонго. <b>Гараар бүртгэх боломжгүй.</b></div>
+      <div id="bqp-pdf-status" class="bqp-drop-note">Дүн · огноо · шилжүүлэгч автоматаар. Олон гүйлгээ = олон PDF сонго. <b>Гараар бүртгэх боломжгүй.</b></div>
     </label>
     <div id="bqp-hist" class="payh"></div>
-    <div id="bqp-list" style="margin-bottom:14px;"></div>
+    <div id="bqp-list" class="bqp-list"></div>
     <input type="hidden" id="bqp-method" value="bank">
-    ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
+    ${o.status === 'draft' ? `<div class="bqp-draft">Төлбөр бүртгэмэгц захиалга <b>«Захиалсан»</b> болно.</div>` : ''}
+    <div class="modal-actions">
       <button class="btn" id="bqp-cancel">Болих</button>
-      <button class="btn btn-primary" id="bqp-save" disabled style="opacity:.45;cursor:not-allowed;">Бүртгэх</button>
+      <button class="btn btn-primary bqp-save" id="bqp-save" disabled>Бүртгэх</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -27605,18 +30432,18 @@ function openBqPaymentModal(oid) {
   // Зөрүү гарвал ил хэлнэ: `paid_mnt` нь дүнгийн эх сурвалж ХЭВЭЭР, энд зөвхөн тулгана.
   renderPaymentHistory(o, modal);
   const saveBtn = modal.querySelector('#bqp-save');
-  const enableSave = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
+  const enableSave = (on) => { saveBtn.disabled = !on; };   // төрх нь `.bqp-save:disabled`-д
   // Банкны баримт PDF (ОЛОН) → тус бүрийг автомат задалж жагсаалтад нэмнэ. Гараар бүртгэх боломжгүй.
   modal._receipts = [];
   const listEl = modal.querySelector('#bqp-list');
   function renderReceipts() {
     if (!modal._receipts.length) { listEl.innerHTML = ''; enableSave(false); return; }
     const sum = modal._receipts.reduce((s, r) => s + r.amount, 0);
-    listEl.innerHTML = modal._receipts.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;background:var(--panel);">
-      <div style="min-width:0;flex:1;"><b style="color:var(--ok);font-size:14px;">${fmtMoney(r.amount)}</b> <span style="color:var(--muted);">· ${escapeHtml(r.date || '')}</span><div style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.senderName || '—')}${r.warn ? ` · <span style="color:var(--warn);">⚠ ${escapeHtml(r.warn)}</span>` : ''}</div></div>
-      ${r._file ? `<button type="button" data-rrview="${i}" class="btn" style="padding:2px 9px;color:var(--accent);flex-shrink:0;">👁 Харах</button>` : ''}
-      <button type="button" data-rrm="${i}" class="btn" style="padding:2px 8px;color:var(--danger);flex-shrink:0;">✕</button>
-    </div>`).join('') + `<div style="display:flex;justify-content:space-between;font-weight:700;padding:8px 10px 2px;font-size:14px;"><span>Нийт төлбөр (${modal._receipts.length})</span><b style="color:var(--ok);">${fmtMoney(sum)}</b></div>`;
+    listEl.innerHTML = modal._receipts.map((r, i) => `<div class="bqp-rc">
+      <div class="bqp-rc-m"><b class="bqp-rc-amt">${fmtMoney(r.amount)}</b> <span class="bqp-rc-dim">· ${escapeHtml(r.date || '')}</span><div class="bqp-rc-who">${escapeHtml(r.senderName || '—')}${r.warn ? ` · <span class="bqp-rc-warn">⚠ ${escapeHtml(r.warn)}</span>` : ''}</div></div>
+      ${r._file ? `<button type="button" data-rrview="${i}" class="btn bqp-rc-view">👁 Харах</button>` : ''}
+      <button type="button" data-rrm="${i}" class="btn bqp-rc-x">✕</button>
+    </div>`).join('') + `<div class="bqp-rc-sum"><span>Нийт төлбөр (${modal._receipts.length})</span><b class="bqp-rc-amt">${fmtMoney(sum)}</b></div>`;
     enableSave(true);
   }
   listEl.addEventListener('click', (e) => {
@@ -27628,21 +30455,11 @@ function openBqPaymentModal(oid) {
     const files = [...(e.target.files || [])]; e.target.value = ''; if (!files.length) return;
     const status = modal.querySelector('#bqp-pdf-status');
     for (const file of files) {
-      status.textContent = `📄 ${file.name} уншиж байна…`; status.style.color = 'var(--muted)';
+      status.textContent = `📄 ${file.name} уншиж байна…`; status.className = 'bqp-drop-note';
       try {
-        const d = parseBankReceipt(await extractPdfText(file));
-        if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
-        if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
-        // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
-        if (!/чимун/i.test(d.receiverName || '')) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'})`);
-        const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
-        const reason = receiptDupReason(refKey, fpKey);
-        if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
-        if (modal._receipts.some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
-        const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
-        modal._receipts.push({ amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', bank: d.bank || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
-        status.textContent = `✓ ${file.name}`; status.style.color = 'var(--ok)';
-      } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
+        modal._receipts.push(await readIncomeReceipt(file, modal._receipts));
+        status.textContent = `✓ ${file.name}`; status.className = 'bqp-drop-note ok';
+      } catch (err) { status.textContent = '⚠ ' + err.message; status.className = 'bqp-drop-note bad'; }
     }
     renderReceipts();
   });
@@ -27675,7 +30492,7 @@ function openRefundModal(oid) {
   modal.className = 'modal-bg';
   modal.id = 'bq-refund-modal';
   modal._file = null;
-  modal.innerHTML = `<div class="modal" style="max-width:430px;">
+  modal.innerHTML = `<div class="modal rfd-modal">
     <h2>↩ Буцаан олгох — #${o.number ?? ''}</h2>
     <div class="rf-sum"><div>Төлсөн дүн: <b>${fmtMoney(paid)}</b></div>${prevRf ? `<div>Өмнө буцаасан: ${fmtMoney(prevRf.amount)}</div>` : ''}</div>
     ${srcAccts.length ? `<div class="rf-src">
@@ -27697,7 +30514,7 @@ function openRefundModal(oid) {
     </label>
     <label class="dmg-amt-l">Тэмдэглэл (шалтгаан)</label>
     <textarea id="rf-note" class="ui-raw" rows="2" placeholder="ж: захиалга цуцлагдсан, илүү төлөлт буцаав"></textarea>
-    <div class="modal-actions" style="margin-top:16px;">
+    <div class="modal-actions">
       <button class="btn" id="rf-cancel">Болих</button>
       <button class="btn btn-primary" id="rf-save">↩ Буцаан олгосныг бүртгэх</button>
     </div>
@@ -27810,6 +30627,21 @@ function openRefundModal(oid) {
   modal.classList.add('open');
 }
 
+/* Орлогын PDF баримт уншиж шалгана — M-Event ба катеринг ХОЁУЛАА үүнийг дуудна
+   (шалгуур хоёр газар салбарлахгүй). Алдаа бол ТОДОРХОЙ мессежтэй шиднэ. */
+async function readIncomeReceipt(file, existing) {
+  const d = parseBankReceipt(await extractPdfText(file));
+  if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
+  if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
+  // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
+  if (!/чимун/i.test(d.receiverName || '')) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'})`);
+  const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
+  const reason = receiptDupReason(refKey, fpKey);
+  if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
+  if ((existing || []).some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
+  const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
+  return { amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', bank: d.bank || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file };
+}
 // Төлбөр бүртгэх — bq_orders.total_paid шинэчлэх + bq_payments-д бичих (audit). Ноорог→Захиалсан.
 async function submitBqPayment(oid, modal, btn) {
   const bqO = (state.bqOrders || []).find(x => String(x.id) === String(oid));
@@ -27910,6 +30742,787 @@ async function submitBqPayment(oid, modal, btn) {
 // ⚠ ҮРГЭЛЖ БҮХ салбарын авлагыг тооцно (лензээр НУУХГҮЙ) — нэгдсэн "Нийт авлага" тоо
 // (CEO тууз + sidebar badge) салбар лензээс хамаарч бууж, мөнгө нүднээс далдлагдахаас сэргийлнэ.
 // Салбар фокус нь renderReceivables-ийн ӨӨРИЙН таб (Бүгд/Эвент/NOMAAD)-аар хийгдэнэ.
+/* ─── НЭЭЛТИЙН БАЛАНС (2026-10-02) ──────────────────────────────────────────
+   Нягтлан бодох бүртгэл эхлүүлэхэд ХАМГИЙН ТҮРҮҮНД нээлтийн үлдэгдэл хэрэгтэй:
+   «тодорхой өдөр компани юу эзэмшиж, хэнд өртэй вэ». Үүнгүйгээр баланс гарахгүй.
+
+   ⛔ ТООГ ГАРААР БИЧҮҮЛЭХГҮЙ — апп аль хэдийн мэддэг зүйлээ өөрөө бодно
+     (банкны үлдэгдэл, авлага, агуулах, барьцаа, эзний оруулалт). Гараар нэмэх нь
+     ЗӨВХӨН аппад огт байхгүй зүйл (татварын өглөг г.м.).
+   ⛔ ӨМЧ НЬ ҮЛДЭГДЛЭЭР ГАРНА (хөрөнгө − өр), гараар бичигдэхгүй. Эс бөгөөс
+     баланс тэнцэхгүй байж болох бөгөөд тэнцээгүй баланс нь баланс биш.
+   ⛔ АГУУЛАХЫГ ӨРТГӨӨР, ЗӨВХӨН БАТАЛГААЖСАНААР (2 гарын үсэг). Баталгаажаагүйг
+     оруулбал нотлох баримтгүй тоо балансад орно (`ownerCapital`-тай ижил дүрэм).
+   ⚠ ХӨЛДӨӨСНИЙ ДАРАА ӨӨРЧЛӨГДӨХГҮЙ — `app_config['opening_balance']`-д хадгална.
+     Нээлтийн үлдэгдэл хөдөлвөл түүнээс хойших БҮХ тайлан утгаа алдана. */
+const OB_KEY = 'opening_balance';
+function obFrozen() {
+  const v = state.appConfig && state.appConfig[OB_KEY];
+  return (v && typeof v === 'object' && v.at) ? v : null;
+}
+function obDefaultDate() { const f = obFrozen(); return (f && f.date) || '2026-10-01'; }
+/* Балансын мөрүүдийг нийлбэрлэнэ. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
+   auto — аппаас бодсон {key: {label, amount, side, note}} ; manual — гараар нэмсэн мөр. */
+function openingBalanceCalc(auto, manual) {
+  const rows = [];
+  (auto || []).forEach(r => { if (r && Number(r.amount)) rows.push({ ...r, auto: true }); });
+  (manual || []).forEach(r => {
+    const a = Number(r && r.amount) || 0;
+    // ⛔ Танихгүй тал → ӨР ТӨЛБӨР. Хөрөнгө болговол эвдэрсэн утга ӨМЧИЙГ чимээгүй
+    //   өсгөнө; өр тал руу унагаавал буруу нь ил харагдана (болгоомжтой тал).
+    if (a) rows.push({ label: String(r.label || '—'), amount: a, side: r.side === 'asset' ? 'asset' : 'liab', auto: false });
+  });
+  const assets = rows.filter(r => r.side === 'asset');
+  const liabs = rows.filter(r => r.side === 'liab');
+  const totalAssets = assets.reduce((s, r) => s + r.amount, 0);
+  const totalLiabs = liabs.reduce((s, r) => s + r.amount, 0);
+  return { assets, liabs, totalAssets, totalLiabs, equity: totalAssets - totalLiabs };
+}
+/* Аппаас автоматаар мэдэгдэх мөрүүд. ⚠ Мэдэхгүй зүйлээ 0 гэж БИЧИХГҮЙ —
+   мөрөө огт гаргахгүй, оронд нь «дутуу» анхааруулга гарна. */
+function openingBalanceAuto() {
+  const out = [];
+  // 1) Мөнгөн хөрөнгө — компанийн ₮ данс бүрийн СҮҮЛИЙН мэдэгдсэн эцсийн үлдэгдэл
+  const own = new Set((typeof companyAcctList === 'function' ? companyAcctList() : []).map(String));
+  const last = {};
+  (state.bankStatements || []).forEach(s => {
+    if (!s || String(s.ccy || 'MNT') !== 'MNT') return;
+    const a = String(s.acct || ''); if (!own.has(a)) return;
+    if (!last[a] || String(s.period_to || '') > String(last[a].period_to || '')) last[a] = s;
+  });
+  const cashAccts = Object.keys(last);
+  const cash = cashAccts.reduce((s, a) => s + (Number(last[a].closing_stated) || 0), 0);
+  if (cash) out.push({ key: 'cash', label: '🏦 Мөнгөн хөрөнгө (банк)', amount: cash, side: 'asset',
+    note: `${cashAccts.length} данс · сүүлийн хуулгын эцсийн үлдэгдэл` });
+  // 2) Авлага
+  const rec = (typeof receivablesData === 'function' ? receivablesData() : null);
+  const recTotal = rec ? Number(rec.total) || (rec.items || []).reduce((s, x) => s + (Number(x.balance) || 0), 0) : 0;
+  if (recTotal) out.push({ key: 'recv', label: '📄 Авлага (харилцагчаас)', amount: recTotal, side: 'asset',
+    note: `${(rec && rec.items ? rec.items.length : 0)} захиалга` });
+  // 3) Бараа материал — ЗӨВХӨН баталгаажсан өртөг
+  const w = (typeof warehouseCapital === 'function' ? warehouseCapital(state.products || []) : null);
+  if (w && w.verified) out.push({ key: 'inv', label: '📦 Бараа материал (өртгөөр)', amount: w.verified, side: 'asset',
+    note: `${w.verifiedN} нэр төрөл · 2 гарын үсгээр баталгаажсан` });
+  // 4) Харилцагчийн барьцаа — буцаах мөнгө тул ӨР
+  let dep = 0;
+  (state.appOrders || []).forEach(o => {
+    if (!o || typeof orderCanonStatus !== 'function') return;
+    if (!RECEIVABLE_ORDER_ST.has(orderCanonStatus(o))) return;
+    const d = Number(o.deposit_mnt) || 0;
+    if (d > 0 && !(typeof orderRefundedDeposit === 'function' && orderRefundedDeposit(o) >= d)) dep += d;
+  });
+  if (dep) out.push({ key: 'dep', label: '🔒 Харилцагчийн барьцаа (буцаах)', amount: dep, side: 'liab',
+    note: 'идэвхтэй захиалгад, буцаагаагүй' });
+  // 5) Эзэнд өглөх — `ownerCapital`-ийн баталгаажсан дүн (ганц эх сурвалж)
+  const oc = (typeof ownerCapital === 'function' ? ownerCapital(state.products || [], state.financeRequests || []) : null);
+  if (oc && oc.ownerVerified) out.push({ key: 'owner', label: '👤 Эзэмшигчид өглөх', amount: oc.ownerVerified, side: 'liab',
+    note: 'акт: компани төлснөө нотолж чадахгүй хөрөнгө' });
+  return out;
+}
+/* Юуг мэдэхгүй байгааг ИЛ хэлнэ — «дутуу» нь «тэг» БИШ. */
+function openingBalanceGaps() {
+  const g = [];
+  const w = (typeof warehouseCapital === 'function' ? warehouseCapital(state.products || []) : null);
+  if (w && w.capital > w.verified) g.push(`📦 Агуулахын ${fmtMoney(w.capital - w.verified)} баталгаажаагүй — балансад ОРООГҮЙ. Тооллого дуусгавал нэмэгдэнэ.`);
+  if (w && w.noCost) g.push(`📦 ${w.noCost} бараа өртөггүй — үнэ цэн тооцогдоогүй.`);
+  const own = new Set((typeof companyAcctList === 'function' ? companyAcctList() : []).map(String));
+  const seen = new Set((state.bankStatements || []).filter(s => s && String(s.ccy || 'MNT') === 'MNT').map(s => String(s.acct || '')));
+  const miss = [...own].filter(a => !seen.has(a));
+  if (miss.length) g.push(`🏦 ${miss.length} дансны хуулга огт ороогүй — мөнгөн хөрөнгө дутуу.`);
+  g.push('🧾 Татвар, нийгмийн даатгалын өглөгийг апп мэдэхгүй — гараар нэмнэ.');
+  return g;
+}
+/* ─── ЖУРНАЛ — давхар бичилтийн дэвтэр (2026-10-02) ─────────────────────────
+   Гүйлгээ бүр ХОЁР талтай: мөнгө хаанаас гарч хаашаа орсон. Хоёр тал үргэлж
+   тэнцүү тул баланс өөрөө тэнцэнэ, тоо бүр мөрдөгдөнө.
+
+   ⛔ ГАРААР ЖУРНАЛ БИЧҮҮЛЭХГҮЙ — бичилт нь аппад АЛЬ ХЭДИЙН байгаа үйл явдлаас
+     (хуулгын мөр, захиалга, нээлтийн үлдэгдэл) ӨӨРӨӨ үүснэ. Гараар бичүүлдэг
+     бүртгэл энэ компанид үхдэг нь батлагдсан.
+   ⛔ НЭГ ҮЙЛ ЯВДАЛ = НЭГ БИЧИЛТ. Захиалгын орлогыг баталгаажихад (Авлага/Орлого),
+     төлбөрийг хуулгаар (Банк/Авлага) бичнэ — хоёулаа Орлого руу бичвэл орлого
+     хоёр дахин харагдана.
+   ⛔ ДОТООД ШИЛЖҮҮЛЭГ (6960) БИЧИГДЭХГҮЙ — банкнаас банк руу, цэвэр нөлөө тэг;
+     бичвэл журнал утгагүй мөрөөр дүүрнэ.
+   ⚠ Энэ нь албан ёсны дэвтэр БИШ — нягтлан бодогчид өгөх оролт ба дотоод хяналт. */
+const JRN_ACC = {
+  bank:    { label: 'Банк',                   type: 'asset' },
+  recv:    { label: 'Авлага',                 type: 'asset' },
+  inv:     { label: 'Бараа материал',         type: 'asset' },
+  owner:   { label: 'Эзэмшигчид өглөх',       type: 'liab' },
+  deposit: { label: 'Харилцагчийн барьцаа',   type: 'liab' },
+  loan:    { label: 'Зээл',                   type: 'liab' },
+  tax:     { label: 'Татварын өглөг',         type: 'liab' },
+  equity:  { label: 'Өмч',                    type: 'equity' },
+  revenue: { label: 'Түрээсийн орлого',       type: 'revenue' },
+  expense: { label: 'Зардал',                 type: 'expense' },
+  /* ⚠ Тодорхойгүй = ӨР ТӨЛБӨР, хөрөнгө БИШ. Хэнийх нь мэдэгдэхгүй мөнгө бол
+     тулгагдтал бидний эзэмшил биш. Хөрөнгө гэвэл балансад СӨРӨГ хөрөнгө болж
+     гарч, уншигдахгүй болно. */
+  suspense:{ label: 'Тодорхойгүй',            type: 'liab' },
+  /* Хуримтлагдсан элэгдэл = ХӨРӨНГИЙГ БУУРУУЛАХ данс (contra-asset) тул төрөл нь
+     'asset', үлдэгдэл нь СӨРӨГ. Өр төлбөр болговол баланс тэнцсэн ч «компани
+     хэнд юу өртэй» гэдэг худал уншигдана. */
+  accdep:  { label: 'Хуримтлагдсан элэгдэл', type: 'asset' },
+  /* Хуримтлуулсан өглөг — зардал ГАРСАН сар ба мөнгө ТӨЛСӨН сар зөрөхөд хоёрыг
+     холбоно (ихэвчлэн цалин: ажилласан сар ≠ олгосон сар). ⚠ Урьдчилж төлсөн
+     тохиолдолд СӨРӨГ болж болно — тэр нь урьдчилгаа, алдаа БИШ. */
+  payable: { label: 'Хуримтлуулсан өглөг',  type: 'liab' },
+};
+function jrnAccLabel(k) { return (JRN_ACC[k] || {}).label || String(k || '?'); }
+/* Зарлагын мөр АЛЬ данс руу бичигдэх вэ — ангиллаар.
+   ⚠ Бүх зарлага «зардал» БИШ: эзэнд өгсөн, зээл төлсөн, барьцаа буцаасан нь
+     ӨР ТӨЛБӨРИЙГ буурууулдаг (зардал биш). Үүнийг андуурвал ашиг гажна. */
+function jrnDebitFor(cat, row) {
+  const c = String(cat || '');
+  /* ⛔ ХАРИЛЦАГЧИД БУЦААСАН БУУЛГАЛТ = ЗАРДАЛ БИШ (2026-10-03, амьд тулгалт).
+     Манай буруугаас өгсөн хөнгөлөлт нь аль хэдийн `orderRevenue`-ээс хасагдсан;
+     банкны буцаалтыг дахин зардал гэж бичвэл НЭГ мөнгө ХОЁР удаа хасагдана
+     (9 сард 843,000₮ ингэж давхардаж байв). Авлагыг бууруулна. */
+  if (row && typeof finIsCustomerRefund === 'function' && finIsCustomerRefund(row)) return 'recv';
+  if (/^6960/.test(c)) return null;        // дотоод шилжүүлэг — бичигдэхгүй
+  if (/^6900/.test(c)) return 'owner';     // эзэнд өгсөн → өглөг буурна
+  if (/^6950/.test(c)) return 'loan';      // зээлийн үндсэн төлбөр
+  if (/^5810/.test(c)) return 'deposit';   // барьцаа буцаасан
+  if (/^(5100|5200|5300|5400|5500)/.test(c)) return 'tax';   // татвар/НД төлсөн
+  if (/^6[1-7]/.test(c)) return 'inv';     // хөрөнгө авсан → бараа материал
+  return 'expense';
+}
+/* Орлогын мөр АЛЬ данс руу кредитлэгдэх вэ — хуулгын мөрийн төлвөөр. */
+function jrnCreditFor(status) {
+  const s = String(status || '');
+  if (s === 'order') return 'recv';        // захиалгын төлбөр → авлага хаагдана
+  /* ⛔ NOMAAD төлбөр = АВЛАГА хаагдах (орлого БИШ). Орлого гэж бичвэл мөнгө
+     орсон сард бүртгэгдэж, журнал бүхэлдээ гүйцэтгэлийн суурьтай байхад NOMAAD
+     ганцаараа мөнгөн суурьтай болно — амьд датаар 9 сард 19сая ингэж илүү
+     бүртгэгдэж байв. Орлогыг нь `ctx.nomaad` сараар тусад нь хүлээн зөвшөөрнө. */
+  if (s === 'nomaad') return 'recv';
+  if (s === 'catering') return 'recv';     // катерингийн төлбөр — орлого нь `ctx.catering`-аар
+  if (s === 'internal' || s === 'personal') return null;   // компанийн орлого биш
+  return 'suspense';                       // open/other — ИЛ үлдэнэ, нуугдахгүй
+}
+/* Тухайн сарын бичилтүүд. ЦЭВЭР функц (оролтыг гаднаас өгнө) тул тестлэгдэнэ.
+   ctx: { finance, income, orders, opening, basis }  →  [{date, text, lines:[{acc,dr,cr}], src}] */
+/* «YYYY-MM» → тэр сарын ЭЦСИЙН өдөр. ⚠ toISOString ашиглахгүй (UTC+8-д гулсана). */
+function jrnMonthEnd(ym) {
+  const p = String(ym || '').split('-').map(Number);
+  if (!(p[0] > 0 && p[1] >= 1 && p[1] <= 12)) return String(ym || '') + '-28';
+  const d = new Date(Date.UTC(p[0], p[1], 0)).getUTCDate();
+  return `${p[0]}-${String(p[1]).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+function journalEntries(ctx, month) {
+  const out = [];
+  const inM = (d) => !month || String(d || '').slice(0, 7) === month;
+  const push = (date, text, src, lines) => {
+    const ls = lines.filter(l => l && l.acc && (Number(l.dr) || Number(l.cr)));
+    if (ls.length < 2) return;
+    out.push({ date: String(date || '').slice(0, 10), text, src, lines: ls });
+  };
+  // ① Нээлтийн үлдэгдэл — сарын эхний бичилт (зөвхөн тэр сард)
+  const ob = ctx && ctx.opening;
+  if (ob && inM(ob.date) && Array.isArray(ob.rows)) {
+    const lines = [];
+    ob.rows.forEach(r => {
+      const amt = Math.round(Number(r.amount) || 0); if (!amt) return;
+      const acc = r.acc || (r.side === 'asset' ? 'inv' : 'tax');
+      lines.push(r.side === 'asset' ? { acc, dr: amt } : { acc, cr: amt });
+    });
+    const eq = Math.round(Number((ob.totals || {}).equity) || 0);
+    if (eq) lines.push(eq > 0 ? { acc: 'equity', cr: eq } : { acc: 'equity', dr: -eq });
+    push(ob.date, 'Нээлтийн үлдэгдэл', 'opening', lines);
+  }
+  // ② Захиалгын орлого — баталгаажсан дүн авлага болж бүртгэгдэнэ
+  (ctx && ctx.orders || []).forEach(o => {
+    if (!o) return;
+    const m = (typeof orderIncomeMonth === 'function') ? orderIncomeMonth(o, (ctx.basis || 'accrual')) : '';
+    if (!inM(m + '-01')) return;
+    const rev = Math.round(Number(typeof orderRevenue === 'function' ? orderRevenue(o, ctx.basis) : 0) || 0);
+    const dep = Math.round(Number(o.deposit_mnt) || 0);
+    if (!rev && !dep) return;
+    push((o.starts_at || m + '-01'), `Захиалга №${o.number ?? '—'} · ${o.customer || ''}`.trim(), 'order:' + o.id,
+      [{ acc: 'recv', dr: rev + dep }, rev ? { acc: 'revenue', cr: rev } : null, dep ? { acc: 'deposit', cr: dep } : null]);
+  });
+  /* ③ Хуулгын ЗАРЛАГА.
+     ⛔ ОГНООГ ЗӨӨХГҮЙ — банкны мөр жинхэнэ огноондоо үлдэнэ (эс бөгөөс дэвтэр
+       хуулгатай таарахаа болино). Харин ЗАРДАЛ нь ноогдох сард очих ёстой
+       (цалин: ажилласан сар ≠ олгосон сар). Тиймээс сар зөрвөл ХОЁР бичилт:
+         ① ноогдох сарын эцэст  Dr Зардал      / Cr Хуримтлуулсан өглөг
+         ② төлсөн огноонд       Dr Хуримтлуулсан өглөг / Cr Банк
+       Ингэснээр журналын ашиг удирдлагын тайлантай таарна.
+     ⚠ Зөвхөн ЗАРДАЛ ингэж хуваагдана. Эзэнд өгсөн, зээл, татвар, барьцаа,
+       хөрөнгө авалт нь балансын хөдөлгөөн тул ҮРГЭЛЖ төлсөн огноонд. */
+  (ctx && ctx.finance || []).forEach(t => {
+    if (!t || t.status === 'deleted' || t.decision !== 'approved') return;
+    const amt = Math.round(Number(t.amount) || 0); if (!amt) return;
+    const dr = jrnDebitFor(t.category, t); if (!dr) return;
+    const payYm = String(t.requested_at || '').slice(0, 7);
+    const accYm = (dr === 'expense' && typeof finAccrualMonth === 'function')
+      ? (finAccrualMonth(t) || payYm) : payYm;
+    const label = t.purpose || jrnAccLabel(dr);
+    if (accYm === payYm) {
+      if (!inM(t.requested_at)) return;
+      push(t.requested_at, label, 'fin:' + t.id,
+        [{ acc: dr, dr: amt, cat: String(t.category || '') }, { acc: 'bank', cr: amt }]);
+      return;
+    }
+    if (inM(String(accYm) + '-01')) push(jrnMonthEnd(accYm), `${label} · ${accYm}-д ноогдох`, 'acr:' + t.id,
+      [{ acc: dr, dr: amt, cat: String(t.category || '') }, { acc: 'payable', cr: amt }]);
+    if (inM(t.requested_at)) push(t.requested_at, `${label} · төлөлт`, 'fin:' + t.id,
+      [{ acc: 'payable', dr: amt }, { acc: 'bank', cr: amt }]);
+  });
+  // ⑤ ЭЛЭГДЭЛ — сар бүрийн эцэст. Журналд бичигдэхгүй бол баланс хөрөнгийг
+  //    мөнхөд бүтэн өртгөөр барьж, ашиг элэгдлийн хэмжээгээр ХЭТЭРНЭ.
+  (ctx && ctx.deprec || []).forEach(d => {
+    if (!d || !inM(String(d.ym) + '-01')) return;
+    const amt = Math.round(Number(d.amount) || 0); if (!amt) return;
+    push(jrnMonthEnd(d.ym), `Элэгдэл · ${d.ym}`, 'dep:' + d.ym,
+      [{ acc: 'expense', dr: amt, cat: 'ЭЛЭГДЭЛ' }, { acc: 'accdep', cr: amt }]);
+  });
+  // ⑦ NOMAAD-ийн орлого — сараар (эвентийн сард), төлбөр нь авлагыг хаана
+  (ctx && ctx.nomaad || []).forEach(n => {
+    if (!n || !inM(String(n.ym) + '-01')) return;
+    const amt = Math.round(Number(n.amount) || 0); if (!amt) return;
+    push(jrnMonthEnd(n.ym), `NOMAAD орлого · ${n.ym}`, 'nmd:' + n.ym,
+      [{ acc: 'recv', dr: amt }, { acc: 'revenue', cr: amt }]);
+  });
+  // ⑧ Катерингийн орлого — сараар (`cateringRevenue`, тайлангийн ИЖИЛ дүрэм)
+  (ctx && ctx.catering || []).forEach(n => {
+    if (!n || !inM(String(n.ym) + '-01')) return;
+    const amt = Math.round(Number(n.amount) || 0); if (!amt) return;
+    push(jrnMonthEnd(n.ym), `Катерингийн орлого · ${n.ym}`, 'ktr:' + n.ym,
+      [{ acc: 'recv', dr: amt }, { acc: 'revenue', cr: amt }]);
+  });
+  // ⑥ НӨАТ ба НӨӨЦИЙН АЛДАГДАЛ — бодит зардал, сарын эцэст
+  (ctx && ctx.extra || []).forEach(x => {
+    if (!x || !inM(String(x.ym) + '-01')) return;
+    const d = jrnMonthEnd(x.ym);
+    const vat = Math.round(Number(x.vat) || 0), loss = Math.round(Number(x.loss) || 0);
+    if (vat) push(d, `Борлуулалтын НӨАТ · ${x.ym}`, 'vat:' + x.ym,
+      [{ acc: 'expense', dr: vat, cat: 'НӨАТ' }, { acc: 'tax', cr: vat }]);
+    if (loss) push(d, `Нөөцийн алдагдал · ${x.ym}`, 'loss:' + x.ym,
+      [{ acc: 'expense', dr: loss, cat: 'АЛДАГДАЛ' }, { acc: 'inv', cr: loss }]);
+  });
+  // ④ Хуулгын ОРЛОГО — банк нэмэгдэж, авлага/орлого хаагдана
+  (ctx && ctx.income || []).forEach(r => {
+    if (!r || !inM(r.dt)) return;
+    const amt = Math.round(Number(r.amount) || 0); if (!amt) return;
+    const cr = jrnCreditFor(r.status); if (!cr) return;
+    push(r.dt, (r.payer || r.memo || 'Орлого'), 'inc:' + (r.fp || r.dt),
+      [{ acc: 'bank', dr: amt }, { acc: cr, cr: amt }]);
+  });
+  return out.sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.src).localeCompare(String(b.src)));
+}
+/* Нийлбэр ба тэнцэл. Дебет = Кредит байх ёстой — зөрвөл бичилт дутуу. */
+function journalTotals(entries) {
+  let dr = 0, cr = 0; const byAcc = {};
+  (entries || []).forEach(e => (e.lines || []).forEach(l => {
+    const d = Math.round(Number(l.dr) || 0), c = Math.round(Number(l.cr) || 0);
+    dr += d; cr += c;
+    const a = (byAcc[l.acc] = byAcc[l.acc] || { acc: l.acc, dr: 0, cr: 0 });
+    a.dr += d; a.cr += c;
+  }));
+  const accs = Object.keys(byAcc).map(k => ({ ...byAcc[k], net: byAcc[k].dr - byAcc[k].cr }))
+    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  return { dr, cr, diff: dr - cr, balanced: dr === cr, n: (entries || []).length, accs };
+}
+/* Ноорог (гараар нэмсэн мөр + огноо) — хөлдөөхөөс өмнөх ажлын хувилбар. */
+const OB_DRAFT_KEY = 'opening_balance_draft';
+function obDraft() {
+  const v = state.appConfig && state.appConfig[OB_DRAFT_KEY];
+  return (v && typeof v === 'object') ? v : {};
+}
+function obManual() { const d = obDraft(); return Array.isArray(d.manual) ? d.manual : []; }
+async function obSaveDraft(patch) {
+  const next = { ...obDraft(), ...patch };
+  state.appConfig = state.appConfig || {}; state.appConfig[OB_DRAFT_KEY] = next;
+  await saveAppConfig(OB_DRAFT_KEY, next);
+  render();
+}
+/* ─── ЕРӨНХИЙ ДЭВТЭР ба БАЛАНС (2026-10-02) ─────────────────────────────────
+   Журнал = дарааллаар. Ерөнхий дэвтэр = ТЭР ЖЕ бичилтийг данс тус бүрээр нь
+   бүлэглэж, явцын үлдэгдэлтэй нь. Баланс = дэвтрийн эцсийн үлдэгдлүүд.
+   ⛔ ГУРВУУЛАА НЭГ эх сурвалжаас (`journalEntries`) — дахин бодвол гурван өөр
+     тоо гарч аль нь үнэн болохыг хэн ч мэдэхгүй болно. */
+
+/* Нэг дансны хөдөлгөөн, явцын үлдэгдэлтэй. ЦЭВЭР функц.
+   ⚠ Үлдэгдлийн ТЭМДЭГ нь дансны төрлөөс хамаарна: хөрөнгө/зардал дебетээр өснө,
+     өр/өмч/орлого кредитээр өснө. Нэг томьёогоор бодвол тал нь сөрөг харагдана. */
+function ledgerLines(entries, acc) {
+  const t = (JRN_ACC[acc] || {}).type || 'asset';
+  const debitSide = (t === 'asset' || t === 'expense');
+  let bal = 0;
+  const out = [];
+  (entries || []).forEach(e => (e.lines || []).forEach(l => {
+    if (l.acc !== acc) return;
+    const dr = Math.round(Number(l.dr) || 0), cr = Math.round(Number(l.cr) || 0);
+    bal += debitSide ? (dr - cr) : (cr - dr);
+    out.push({ date: e.date, text: e.text, src: e.src, cat: l.cat || '', dr, cr, bal });
+  }));
+  return { acc, type: t, debitSide, lines: out, balance: bal,
+           dr: out.reduce((s, x) => s + x.dr, 0), cr: out.reduce((s, x) => s + x.cr, 0) };
+}
+/* Баланс — дэвтрийн эцсийн үлдэгдлүүд. ЦЭВЭР функц.
+   ⛔ ӨМЧ = нээлтийн өмч + ТАЙЛАНТ ҮЕИЙН АШИГ (орлого − зардал). Орлого/зардлын
+     данс нь түр зуурынх, үе дуусахад өмч рүү хаагддаг — үүнийг оруулахгүй бол
+     баланс ХЭЗЭЭ Ч тэнцэхгүй (яг тэр дүнгээр зөрнө). */
+function balanceSheetAt(entries) {
+  const net = {};
+  (entries || []).forEach(e => (e.lines || []).forEach(l => {
+    const d = Math.round(Number(l.dr) || 0), c = Math.round(Number(l.cr) || 0);
+    net[l.acc] = (net[l.acc] || 0) + d - c;          // дебет − кредит
+  }));
+  const pick = (type, signFlip) => Object.keys(net)
+    .filter(k => ((JRN_ACC[k] || {}).type) === type)
+    .map(k => ({ acc: k, label: jrnAccLabel(k), amount: signFlip ? -net[k] : net[k] }))
+    .filter(r => r.amount !== 0)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+  const assets = pick('asset', false);
+  const liabs = pick('liab', true);
+  const openEq = pick('equity', true);
+  const revenue = Object.keys(net).filter(k => ((JRN_ACC[k] || {}).type) === 'revenue')
+    .reduce((s, k) => s - net[k], 0);
+  const expense = Object.keys(net).filter(k => ((JRN_ACC[k] || {}).type) === 'expense')
+    .reduce((s, k) => s + net[k], 0);
+  const profit = revenue - expense;
+  const totalAssets = assets.reduce((s, r) => s + r.amount, 0);
+  const totalLiabs = liabs.reduce((s, r) => s + r.amount, 0);
+  const totalEquity = openEq.reduce((s, r) => s + r.amount, 0) + profit;
+  return { assets, liabs, openEq, revenue, expense, profit,
+           totalAssets, totalLiabs, totalEquity,
+           diff: totalAssets - (totalLiabs + totalEquity),
+           balanced: totalAssets === (totalLiabs + totalEquity) };
+}
+/* Тухайн огноо хүртэлх бүх бичилт (баланс нь ХУРИМТЛАГДСАН дүн). */
+function entriesUpTo(ctx, asOf) {
+  const all = journalEntries(ctx, null);
+  return asOf ? all.filter(e => String(e.date) <= String(asOf)) : all;
+}
+const JRN_LIMIT = 150;
+/* Элэгдэл эхлэх сараас өнөөдрийг хүртэл сар бүрийн дүн. ⚠ `deprecForMonth` нь
+   хаасан сард ХӨЛДӨӨСӨН зураглалыг өгдөг тул хуучин сарын тоо хожим хөдлөхгүй. */
+function jrnDeprecList() {
+  if (typeof deprecForMonth !== 'function' || typeof deprecStartMonth !== 'function') return [];
+  const end = todayStr().slice(0, 7);
+  const out = [];
+  let ym = deprecStartMonth();
+  for (let i = 0; i < 120 && ym <= end; i++) {
+    const d = deprecForMonth(ym);
+    if (d && d.active && d.total) out.push({ ym, amount: Math.round(d.total) });
+    ym = nextMonthStr(ym);
+  }
+  return out;
+}
+/* НӨАТ ба нөөцийн алдагдал — сар бүрээр. Эдгээр нь БОДИТ зардал мөртлөө журналд
+   бичигдэхгүй байсан тул журналын ашиг удирдлагын тайлангаас ~20сая зөрж байв.
+   ⛔ НӨАТ нь `tax` өглөг рүү кредитлэгдэнэ — дараа нь 5100 төлөлт (Dr tax / Cr банк)
+     түүнийг хаана. Иймд давхар тоологдохгүй.
+   ⛔ Алдагдал нь `inv` (бараа материал) -аас хасагдана — алга болсон бараа нөөцөөс гарна. */
+/* ⛔ ЭХЛЭХ САР нь `deprecStartMonth()` БИШ. НӨАТ ба нөөцийн алдагдал нь элэгдлийн
+   эхлэх сартай ямар ч хамаагүй — амьд системд `deprecStart` нь 2026-10 байсан тул
+   9 сарын НӨАТ (7.7сая) журналд ОГТ бичигдэхгүй байв. Бүртгэлийн эхлэлээс
+   (нээлтийн үлдэгдэл, эс бөгөөс хамгийн эртний НӨАТ-ын баримт) эхэлнэ. */
+function jrnExtraStart() {
+  const ob = obFrozen();
+  const cands = [];
+  if (ob && ob.date) cands.push(String(ob.date).slice(0, 7));
+  (vatReceiptsActive() || []).forEach(r => { const m = String(r && r.dt || '').slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) cands.push(m); });
+  if (!cands.length) { const d = new Date(); d.setMonth(d.getMonth() - 12); return monthStr(d); }
+  return cands.sort()[0];
+}
+function jrnExtraList() {
+  const out = [];
+  const end = todayStr().slice(0, 7);
+  let ym = jrnExtraStart();
+  for (let i = 0; i < 120 && ym <= end; i++) {
+    // ⚠ ЗААВАЛ `vatReceiptsActive()` — буцаасан баримт давхар тоологдохгүй (scan-тест).
+    const vat = state.vatReceipts ? Math.round(vatByBranchMonth(vatReceiptsActive(), ym).total || 0) : 0;
+    const miss = (typeof missingItemsCost === 'function')
+      ? Math.round((missingItemsCost(ym, state.appOrders || []) || {}).cost || 0) : 0;
+    const shr = (typeof countShrinkCost === 'function' && state.scAllRows)
+      ? Math.round((countShrinkCost(ym, state.scAllRows) || {}).cost || 0) : 0;
+    if (vat || miss || shr) out.push({ ym, vat, loss: miss + shr });
+    ym = nextMonthStr(ym);
+  }
+  return out;
+}
+/* NOMAAD-ийн сарын орлого — `nomaadIncomeMonth` (тайлангийн ИЖИЛ дүрэм). */
+function jrnNomaadList() {
+  if (typeof nomaadIncomeMonth !== 'function') return [];
+  const end = todayStr().slice(0, 7);
+  const out = [];
+  let ym = jrnExtraStart();
+  for (let i = 0; i < 120 && ym <= end; i++) {
+    let sum = 0;
+    (state.nomaadOrders || []).forEach(o => { sum += Number(nomaadIncomeMonth(o, ym, 'accrual')) || 0; });
+    if (sum) out.push({ ym, amount: Math.round(sum) });
+    ym = nextMonthStr(ym);
+  }
+  return out;
+}
+/* Катерингийн сарын орлого — гүйцэтгэлийн суурь (журнал үргэлж accrual). */
+function jrnCateringList() {
+  const by = {};
+  (state.cateringJobs || []).forEach(j => {
+    const ym = cateringIncomeMonth(j, 'accrual'), v = cateringRevenue(j, 'accrual');
+    if (/^\d{4}-\d{2}$/.test(ym) && v) by[ym] = (by[ym] || 0) + v;
+  });
+  return Object.keys(by).sort().map(ym => ({ ym, amount: Math.round(by[ym]) }));
+}
+function jrnCtx() {
+  return { finance: state.financeRequests || [], income: state.bankIncome || [],
+           orders: (state.appOrders || []).filter(o => typeof _orderActive === 'function' ? _orderActive(o) : true),
+           /* ⛔ ЖУРНАЛ ҮРГЭЛЖ ГҮЙЦЭТГЭЛИЙН СУУРЬТАЙ — давхар бичилт нь мөн чанараараа
+              тийм. Мөнгөн суурь хэрэглэвэл төлөгдөөгүй захиалгын орлого 0 болж,
+              «Дебет Авлага / Кредит Орлого» бичилт утгагүй болно (амьд жишээ:
+              21.3сая төлөгдөөгүй захиалга 0₮ орлоготой гарч байв). Мөнгөн дүр
+              зураг нь банкны мөрүүдээс өөрөө гарна. */
+           opening: obFrozen(), basis: 'accrual', deprec: jrnDeprecList(), extra: jrnExtraList(), nomaad: jrnNomaadList(), catering: jrnCateringList() };
+}
+/* ─── 📒 НЯГТЛАН — журнал · дэвтэр · баланс · нээлтийн үлдэгдэл нэг дор ──────
+   ⛔ Тус тусдаа таб болговол толгойн эгнээ 7 табтай болж аль нь юу болох нь
+     мэдэгдэхгүй болно. Нягтлангийн 4 дэлгэц нь НЭГ ажлын урсгал тул дэд табаар. */
+const ACCT_TABS = [
+  { k: 'journal', label: '📝 Журнал',           hint: 'Гүйлгээ бүр хоёр талаар, дарааллаар' },
+  { k: 'ledger',  label: '📘 Ерөнхий дэвтэр',   hint: 'Данс тус бүрийн хөдөлгөөн, явцын үлдэгдэлтэй' },
+  { k: 'pnl',     label: '📈 Орлогын тайлан',   hint: 'Тухайн сарын орлого · зардал · ашиг' },
+  { k: 'balance', label: '⚖️ Баланс',           hint: 'Тодорхой өдрийн хөрөнгө · өр төлбөр · өмч' },
+  { k: 'opening', label: '🔒 Нээлтийн үлдэгдэл', hint: 'Бүртгэлийн эхлэлийн цэг' },
+];
+function renderAccounting() {
+  // ⚠ НӨАТ ба тооллогын мөр ачаалагдаагүй бол тэдгээр зардал ЧИМЭЭГҮЙ 0 болж
+  //   ашиг хиймлээр өндөр гарна (тайлангийн дэлгэцийн `ensureVatLoaded`-тай ижил дүрэм).
+  if (typeof ensureVatLoaded === 'function') ensureVatLoaded();
+  if (state.scAllRows === undefined) { state.scAllRows = null; loadStockCountsAll().then(() => render()); }
+  if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { state.nomaadOrders = []; loadNomaadOrders().then(() => render()).catch(() => {}); }
+  // ⚠ Захиалга ачаалагдаагүй бол ОРЛОГО чимээгүй 0 болж ашиг сөрөг харагдана
+  //   (амьд тулгалтад яг ийм болсон: журнал «−55сая алдагдал» гэж харуулсан).
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
+  if (!state.cateringJobs && !state._ktLoading) { state._ktLoading = true; setTimeout(loadCateringJobs, 0); }
+  const t = ACCT_TABS.some(x => x.k === state.acctTab) ? state.acctTab : 'journal';
+  const bar = `<div class="ac-tabs">${ACCT_TABS.map(x =>
+    `<button class="ac-tb${x.k === t ? ' on' : ''}" data-acct-tab="${x.k}" title="${escapeHtml(x.hint)}">${x.label}</button>`).join('')}</div>`;
+  const body = t === 'ledger' ? renderLedger() : t === 'balance' ? renderBalanceSheet()
+    : t === 'pnl' ? renderIncomeStatement()
+    : t === 'opening' ? renderOpeningBalance() : renderJournal();
+  return bar + body;
+}
+function attachAccountingHandlers() {
+  document.querySelectorAll('[data-acct-tab]').forEach(b => b.addEventListener('click', () => { state.acctTab = b.dataset.acctTab; render(); }));
+  const t = state.acctTab;
+  if (t === 'ledger') attachLedgerHandlers();
+  else if (t === 'balance') attachBalanceHandlers();
+  else if (t === 'pnl') attachIncomeStatementHandlers();
+  else if (t === 'opening') attachOpeningBalanceHandlers();
+  else attachJournalHandlers();
+}
+/* 📘 ЕРӨНХИЙ ДЭВТЭР — данс сонгоод хөдөлгөөнийг нь явцын үлдэгдэлтэй харна. */
+function renderLedger() {
+  if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()); }
+  const asOf = state.lgDate || todayStr();
+  const ctx = jrnCtx();
+  const all = entriesUpTo(ctx, asOf);
+  const T = journalTotals(all);
+  const acc = state.lgAcc && JRN_ACC[state.lgAcc] ? state.lgAcc : (T.accs[0] || {}).acc;
+  const m = (n) => fmtMoney(Math.round(n || 0));
+  if (!acc) return `<div class="jr-wrap"><div class="jr-empty">Бичилт алга.</div></div>`;
+  const L = ledgerLines(all, acc);
+  const chips = T.accs.map(a => `<button class="jr-chip${a.acc === acc ? ' on' : ''}" data-lg-acc="${escapeHtml(a.acc)}">${escapeHtml(jrnAccLabel(a.acc))}</button>`).join('');
+  const rows = L.lines.slice(-200).map(x => `<div class="lg-r">
+      <span class="lg-d">${escapeHtml(String(x.date).slice(5))}</span>
+      <span class="lg-t">${escapeHtml(x.text)}${x.cat ? `<span class="jr-cat">${escapeHtml(x.cat)}</span>` : ''}</span>
+      <span class="lg-v jr-dr">${x.dr ? m(x.dr) : ''}</span>
+      <span class="lg-v jr-cr">${x.cr ? m(x.cr) : ''}</span>
+      <b class="lg-v">${m(x.bal)}</b></div>`).join('');
+  const more = L.lines.length > 200 ? `<div class="jr-note">${L.lines.length} мөрөөс сүүлийн 200 харагдав.</div>` : '';
+  return `<div class="jr-wrap">
+    <div class="jr-top"><div><div class="jr-title">📘 Ерөнхий дэвтэр</div>
+      <div class="jr-sub">Данс тус бүрийн хөдөлгөөн — явцын үлдэгдэлтэй</div></div>
+      <label class="ob-dl">хүртэл <input type="date" class="ui-raw ob-i" id="lg-date" value="${escapeHtml(asOf)}"></label></div>
+    <div class="jr-chips">${chips}</div>
+    <div class="lg-card">
+      <div class="lg-h"><b>${escapeHtml(jrnAccLabel(acc))}</b>
+        <span class="jr-sub">${L.debitSide ? 'дебетээр өсдөг данс' : 'кредитээр өсдөг данс'} · ${L.lines.length} хөдөлгөөн</span>
+        <b class="lg-bal ${L.balance < 0 ? 'jr-neg' : ''}">${m(L.balance)}</b></div>
+      <div class="lg-r lg-head"><span class="lg-d">Огноо</span><span class="lg-t">Гүйлгээ</span>
+        <span class="lg-v">Дебет</span><span class="lg-v">Кредит</span><span class="lg-v">Үлдэгдэл</span></div>
+      ${rows || '<div class="jr-empty">Хөдөлгөөн алга.</div>'}
+    </div>${more}
+    <div class="jr-note">Үлдэгдэл нь дансны мөн чанараар бодогдоно: хөрөнгө/зардал дебетээр, өр/өмч/орлого кредитээр өснө.</div></div>`;
+}
+function attachLedgerHandlers() {
+  document.getElementById('lg-date')?.addEventListener('change', (e) => { state.lgDate = e.target.value; render(); });
+  document.querySelectorAll('[data-lg-acc]').forEach(b => b.addEventListener('click', () => { state.lgAcc = b.dataset.lgAcc; render(); }));
+}
+/* ─── ОРЛОГЫН ТАЙЛАН (P&L) — журналаас (2026-10-02) ────────────────────────
+   ⛔ ЖУРНАЛААС Л ГАРНА. Балансын «тайлант үеийн ашиг»-тай ЯГ ТААРАХ ёстой —
+     өөр эх сурвалжаас бодвол хоёр дэлгэц хоёр өөр ашиг харуулна.
+   ⛔ ЗАРДЛЫГ АНГИЛЛААР НЬ ЗАДАЛНА (журналын мөрийн `cat`). Нийт дүн ганцаараа
+     «яагаад» гэдэгт хариулдаггүй. */
+function incomeStatement(entries) {
+  const rev = {}, exp = {};
+  (entries || []).forEach(e => (e.lines || []).forEach(l => {
+    const t = (JRN_ACC[l.acc] || {}).type;
+    const d = Math.round(Number(l.dr) || 0), c = Math.round(Number(l.cr) || 0);
+    if (t === 'revenue') rev[l.acc] = (rev[l.acc] || 0) + c - d;
+    else if (t === 'expense') { const k = l.cat || '—'; exp[k] = (exp[k] || 0) + d - c; }
+  }));
+  const revenue = Object.keys(rev).map(k => ({ key: k, label: jrnAccLabel(k), amount: rev[k] }))
+    .filter(r => r.amount !== 0).sort((a, b) => b.amount - a.amount);
+  // Зардлыг ҮНДСЭН бүлгээр нь (1000 Үйл ажиллагаа, 2000 Тогтмол, …) бүлэглэнэ
+  const groups = {};
+  Object.keys(exp).forEach(cat => {
+    const amt = exp[cat]; if (!amt) return;
+    const main = /^\d{4}$/.test(cat) ? cat.slice(0, 1) + '000' : 'other';
+    const g = (groups[main] = groups[main] || { main, label: main === 'other' ? 'Бусад' :
+      (typeof finMainName === 'function' ? finMainName(main) : main), amount: 0, rows: [] });
+    g.amount += amt;
+    g.rows.push({ cat, label: (/^\d{4}$/.test(cat) && typeof finSubName === 'function') ? finSubName(cat) : cat, amount: amt });
+  });
+  const expenses = Object.keys(groups).map(k => {
+    const g = groups[k]; g.rows.sort((a, b) => b.amount - a.amount); return g;
+  }).sort((a, b) => b.amount - a.amount);
+  const totalRevenue = revenue.reduce((s, r) => s + r.amount, 0);
+  const totalExpense = expenses.reduce((s, g) => s + g.amount, 0);
+  const profit = totalRevenue - totalExpense;
+  return { revenue, expenses, totalRevenue, totalExpense, profit,
+           margin: totalRevenue > 0 ? profit / totalRevenue : null };
+}
+/* Хугацааны бичилт — эхлэх/дуусах огноогоор. */
+function entriesBetween(ctx, from, to) {
+  return journalEntries(ctx, null).filter(e =>
+    (!from || String(e.date) >= String(from)) && (!to || String(e.date) <= String(to)));
+}
+function renderIncomeStatement() {
+  if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()); }
+  const ym = state.isMonth || todayStr().slice(0, 7);
+  const from = `${ym}-01`, to = jrnMonthEnd(ym);
+  const ctx = jrnCtx();
+  const P = incomeStatement(entriesBetween(ctx, from, to));
+  const prevYm = (() => { const p = ym.split('-').map(Number); return p[1] <= 1 ? `${p[0] - 1}-12` : `${p[0]}-${String(p[1] - 1).padStart(2, '0')}`; })();
+  const PV = incomeStatement(entriesBetween(ctx, `${prevYm}-01`, jrnMonthEnd(prevYm)));
+  const m = (n) => fmtMoney(Math.round(n || 0));
+  const delta = (now, prev) => {
+    if (!prev) return '';
+    const d = now - prev, pct = Math.round(d / Math.abs(prev) * 100);
+    return `<span class="is-d ${d >= 0 ? 'is-up' : 'is-dn'}">${d >= 0 ? '▲' : '▼'} ${Math.abs(pct)}%</span>`;
+  };
+  const row = (label, amount, cls, sub) => `<div class="is-r${cls ? ' ' + cls : ''}">
+    <span class="is-l">${escapeHtml(label)}${sub ? `<span class="ob-n">${escapeHtml(sub)}</span>` : ''}</span>
+    <b class="is-v">${m(amount)}</b></div>`;
+  const expBody = P.expenses.map(g => `<div class="is-g">
+      <div class="is-r is-gh"><span class="is-l">${escapeHtml(g.label)}</span><b class="is-v">${m(g.amount)}</b></div>
+      ${g.rows.map(r => `<div class="is-r is-sub"><span class="is-l">${escapeHtml(r.label)}</span><span class="is-v">${m(r.amount)}</span></div>`).join('')}
+    </div>`).join('');
+  return `<div class="ob-wrap">
+    <div class="ob-top"><div><div class="ob-title">📈 Орлогын тайлан</div>
+      <div class="ob-sub">${escapeHtml(ym)} · журналаас — балансын «тайлант үеийн ашиг»-тай таарна</div></div>
+      <input type="month" class="ui-raw ob-i" id="is-month" value="${escapeHtml(ym)}" max="${escapeHtml(todayStr().slice(0, 7))}"></div>
+    <div class="is-hero">
+      <div class="is-h"><div class="is-hl">Орлого</div><div class="is-hv is-rev">${m(P.totalRevenue)}${delta(P.totalRevenue, PV.totalRevenue)}</div></div>
+      <div class="is-h"><div class="is-hl">Зардал</div><div class="is-hv is-exp">${m(P.totalExpense)}${delta(P.totalExpense, PV.totalExpense)}</div></div>
+      <div class="is-h"><div class="is-hl">Ашиг</div><div class="is-hv ${P.profit < 0 ? 'is-dn' : 'is-pf'}">${m(P.profit)}${delta(P.profit, PV.profit)}</div>
+        <div class="is-hs">${P.margin == null ? 'марж тооцогдохгүй' : Math.round(P.margin * 100) + '% марж'}</div></div>
+    </div>
+    <div class="ob-cols">
+      <div class="ob-side"><div class="ob-hd ob-a">ОРЛОГО</div>
+        ${P.revenue.length ? P.revenue.map(r => row(r.label, r.amount)).join('') : '<div class="ob-empty">орлого алга</div>'}
+        <div class="is-r is-tot"><span class="is-l">Нийт орлого</span><b class="is-v">${m(P.totalRevenue)}</b></div></div>
+      <div class="ob-side"><div class="ob-hd ob-b">ЗАРДАЛ</div>
+        ${expBody || '<div class="ob-empty">зардал алга</div>'}
+        <div class="is-r is-tot"><span class="is-l">Нийт зардал</span><b class="is-v">${m(P.totalExpense)}</b></div></div>
+    </div>
+    <div class="ob-eq"><span>ЦЭВЭР АШИГ <span class="ob-n">орлого − зардал</span></span>
+      <b class="${P.profit < 0 ? 'ob-neg' : ''}">${m(P.profit)}</b></div>
+    <div class="ob-note">Элэгдэл сар бүр зардалд бичигдэнэ. Эзэнд өгсөн мөнгө, зээлийн төлбөр,
+      барьцаа буцаалт нь зардал БИШ тул энд ОРОХГҮЙ — тэдгээр нь балансын өр төлбөрийг хөдөлгөнө.</div></div>`;
+}
+function attachIncomeStatementHandlers() {
+  document.getElementById('is-month')?.addEventListener('change', (e) => { state.isMonth = e.target.value; render(); });
+}
+/* ⚖️ БАЛАНС — тодорхой өдрийн байдлаар. Хөрөнгө = Өр төлбөр + Өмч байх ЁСТОЙ. */
+function renderBalanceSheet() {
+  if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()); }
+  const asOf = state.bsDate || todayStr();
+  const B = balanceSheetAt(entriesUpTo(jrnCtx(), asOf));
+  const m = (n) => fmtMoney(Math.round(n || 0));
+  const chk = B.balanced
+    ? `<div class="jr-ok">✓ Тэнцсэн — Хөрөнгө <b>${m(B.totalAssets)}</b> = Өр төлбөр <b>${m(B.totalLiabs)}</b> + Өмч <b>${m(B.totalEquity)}</b></div>`
+    : `<div class="jr-bad">⚠ ТЭНЦЭЭГҮЙ — зөрүү ${m(B.diff)}. Журналд дутуу бичилт байна.</div>`;
+  const rows = (list) => list.length ? list.map(r => `<div class="ob-row"><span class="ob-l">${escapeHtml(r.label)}</span><b class="ob-v">${m(r.amount)}</b></div>`).join('')
+    : '<div class="ob-empty">мөр алга</div>';
+  return `<div class="ob-wrap">
+    <div class="ob-top"><div><div class="ob-title">⚖️ Баланс</div>
+      <div class="ob-sub">${escapeHtml(asOf)}-ний байдлаар · журналаас хуримтлагдсан</div></div>
+      <label class="ob-dl">огноо <input type="date" class="ui-raw ob-i" id="bs-date" value="${escapeHtml(asOf)}"></label></div>
+    ${chk}
+    <div class="ob-cols">
+      <div class="ob-side"><div class="ob-hd ob-a">ХӨРӨНГӨ</div>${rows(B.assets)}
+        <div class="ob-row ob-total"><span class="ob-l">Нийт хөрөнгө</span><b class="ob-v">${m(B.totalAssets)}</b></div></div>
+      <div class="ob-side"><div class="ob-hd ob-b">ӨР ТӨЛБӨР</div>${rows(B.liabs)}
+        <div class="ob-row ob-total"><span class="ob-l">Нийт өр төлбөр</span><b class="ob-v">${m(B.totalLiabs)}</b></div>
+        <div class="ob-hd ob-a">ӨМЧ</div>${rows(B.openEq)}
+        <div class="ob-row"><span class="ob-l">Тайлант үеийн ашиг<span class="ob-n">орлого ${m(B.revenue)} − зардал ${m(B.expense)}</span></span>
+          <b class="ob-v ${B.profit < 0 ? 'ob-neg' : ''}">${m(B.profit)}</b></div>
+        <div class="ob-row ob-total"><span class="ob-l">Нийт өмч</span><b class="ob-v">${m(B.totalEquity)}</b></div></div>
+    </div>
+    <div class="ob-note">Баланс нь журналын бичилтээс хуримтлагдаж гарна — гараар тохируулдаггүй.
+      Орлого ба зардал нь түр зуурын данс тул «тайлант үеийн ашиг» болж өмчид нэгдэнэ.</div></div>`;
+}
+function attachBalanceHandlers() {
+  document.getElementById('bs-date')?.addEventListener('change', (e) => { state.bsDate = e.target.value; render(); });
+}
+function renderJournal() {
+  // Журнал нь хуулгын орлогын мөрөөс хамаарна — ачаалагдаагүй бол ЧИМЭЭГҮЙ дутуу харуулахгүй.
+  if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()); }
+  const month = state.jrnMonth || todayStr().slice(0, 7);
+  const tab = state.jrnTab === 'accounts' ? 'accounts' : 'entries';
+  const filt = state.jrnAcc || '';
+  const all = journalEntries(jrnCtx(), month);
+  const T = journalTotals(all);
+  const shown = filt ? all.filter(e => e.lines.some(l => l.acc === filt)) : all;
+  const m = (n) => fmtMoney(Math.round(n || 0));
+
+  const bal = T.balanced
+    ? `<div class="jr-ok">✓ Тэнцсэн — Дебет <b>${m(T.dr)}</b> = Кредит <b>${m(T.cr)}</b> · ${T.n} бичилт</div>`
+    : `<div class="jr-bad">⚠ ТЭНЦЭЭГҮЙ — Дебет ${m(T.dr)} ≠ Кредит ${m(T.cr)} (зөрүү ${m(T.diff)}). Бичилт дутуу байна.</div>`;
+  const head = `<div class="jr-top">
+      <div><div class="jr-title">📒 Журнал</div><div class="jr-sub">Гүйлгээ бүр хоёр талаар — мөнгө хаанаас гарч хаашаа орсон</div></div>
+      <input type="month" class="ui-raw ob-i" id="jr-month" value="${escapeHtml(month)}" max="${escapeHtml(todayStr().slice(0, 7))}">
+    </div>`;
+  const legend = `<div class="jr-leg"><b>Дебет</b> = тэр данс руу орсон · <b>Кредит</b> = тэр данснаас гарсан.
+    Хоёр тал үргэлж тэнцүү тул баланс өөрөө тэнцэнэ.</div>`;
+  const tabs = `<div class="jr-tabs">
+      <button class="jr-tb${tab === 'entries' ? ' on' : ''}" data-jr-tab="entries">📝 Бичилтүүд</button>
+      <button class="jr-tb${tab === 'accounts' ? ' on' : ''}" data-jr-tab="accounts">📊 Дансаар (гүйлгээний баланс)</button>
+    </div>`;
+  const chips = `<div class="jr-chips"><button class="jr-chip${!filt ? ' on' : ''}" data-jr-acc="">Бүгд</button>
+    ${T.accs.map(a => `<button class="jr-chip${filt === a.acc ? ' on' : ''}" data-jr-acc="${escapeHtml(a.acc)}">${escapeHtml(jrnAccLabel(a.acc))}</button>`).join('')}</div>`;
+
+  if (tab === 'accounts') {
+    const grp = { asset: 'ХӨРӨНГӨ', liab: 'ӨР ТӨЛБӨР', equity: 'ӨМЧ', revenue: 'ОРЛОГО', expense: 'ЗАРДАЛ' };
+    const body = Object.keys(grp).map(g => {
+      const rows = T.accs.filter(a => ((JRN_ACC[a.acc] || {}).type) === g);
+      if (!rows.length) return '';
+      return `<div class="jr-grp">${grp[g]}</div>` + rows.map(a => `<div class="jr-arow">
+        <span class="jr-al">${escapeHtml(jrnAccLabel(a.acc))}</span>
+        <span class="jr-av">${m(a.dr)}</span><span class="jr-av">${m(a.cr)}</span>
+        <b class="jr-av ${a.net < 0 ? 'jr-neg' : ''}">${m(Math.abs(a.net))}${a.net < 0 ? ' Кр' : ' Дб'}</b></div>`).join('');
+    }).join('');
+    return `<div class="jr-wrap">${head}${bal}${legend}${tabs}
+      <div class="jr-ahead"><span class="jr-al">Данс</span><span class="jr-av">Дебет</span><span class="jr-av">Кредит</span><span class="jr-av">Үлдэгдэл</span></div>
+      ${body}<div class="jr-note">«Үлдэгдэл» нь аль тал давснаар нь (Дб = дебет, Кр = кредит). Нийт дебет ба кредит тэнцсэн бол бичилт бүрэн.</div></div>`;
+  }
+
+  const list = shown.slice(0, JRN_LIMIT).map(e => `<div class="jr-e">
+      <div class="jr-eh"><span class="jr-ed">${escapeHtml(e.date.slice(5))}</span><span class="jr-et">${escapeHtml(e.text)}</span></div>
+      ${e.lines.map(l => `<div class="jr-l">
+        <span class="jr-ls">${l.dr ? 'Дебет' : 'Кредит'}</span>
+        <span class="jr-ln">${escapeHtml(jrnAccLabel(l.acc))}${l.cat ? `<span class="jr-cat">${escapeHtml(l.cat)}</span>` : ''}</span>
+        <span class="jr-lv ${l.dr ? 'jr-dr' : 'jr-cr'}">${m(l.dr || l.cr)}</span></div>`).join('')}
+    </div>`).join('');
+  const more = shown.length > JRN_LIMIT ? `<div class="jr-note">${shown.length} бичилтээс эхний ${JRN_LIMIT} харагдав — данс сонгож нарийсгана уу.</div>` : '';
+  return `<div class="jr-wrap">${head}${bal}${legend}${tabs}${chips}
+    ${shown.length ? list + more : '<div class="jr-empty">Энэ сард бичилт алга.</div>'}
+    <div class="jr-note">Бичилт бүр аппад байгаа үйл явдлаас (хуулга, захиалга, нээлтийн үлдэгдэл) ӨӨРӨӨ үүснэ — гараар бичдэггүй.</div></div>`;
+}
+function attachJournalHandlers() {
+  document.getElementById('jr-month')?.addEventListener('change', (e) => { state.jrnMonth = e.target.value; render(); });
+  document.querySelectorAll('[data-jr-tab]').forEach(b => b.addEventListener('click', () => { state.jrnTab = b.dataset.jrTab; render(); }));
+  document.querySelectorAll('[data-jr-acc]').forEach(b => b.addEventListener('click', () => { state.jrnAcc = b.dataset.jrAcc; render(); }));
+}
+function renderOpeningBalance() {
+  const fr = obFrozen();
+  const date = fr ? fr.date : (obDraft().date || obDefaultDate());
+  const auto = openingBalanceAuto();
+  const calc = fr
+    ? openingBalanceCalc(fr.rows || [], [])          // ⛔ ХӨЛДСӨН бол ДАХИН бодохгүй
+    : openingBalanceCalc(auto, obManual());
+  const live = fr ? openingBalanceCalc(auto, obManual()) : null;   // зөрүүг харуулахад
+  const canEdit = !!state.isCEO;
+  const m = (n) => fmtMoney(Math.round(n || 0));
+  const row = (r, i) => `<div class="ob-row">
+    <span class="ob-l">${escapeHtml(r.label)}${r.note ? `<span class="ob-n">${escapeHtml(r.note)}</span>` : ''}</span>
+    <b class="ob-v">${m(r.amount)}</b>
+    ${(!fr && canEdit && !r.auto) ? `<button class="btn ob-x" data-ob-del="${i}" title="Устгах">✕</button>` : ''}
+  </div>`;
+  const side = (title, rows, total, cls) => `<div class="ob-side">
+    <div class="ob-hd ${cls}">${title}</div>
+    ${rows.length ? rows.map((r, i) => row(r, calc.assets.concat(calc.liabs).indexOf(r))).join('') : '<div class="ob-empty">мөр алга</div>'}
+    <div class="ob-row ob-total"><span class="ob-l">Нийт</span><b class="ob-v">${m(total)}</b></div>
+  </div>`;
+
+  const gaps = fr ? [] : openingBalanceGaps();
+  const gapHtml = gaps.length ? `<div class="ob-gaps"><b>⚠ Дутуу байгаа зүйлс</b>${gaps.map(g => `<div>${escapeHtml(g)}</div>`).join('')}</div>` : '';
+  const manualAdd = (!fr && canEdit) ? `<div class="ob-add">
+      <input type="text" id="ob-lbl" class="ui-raw ob-i" placeholder="Мөрийн нэр (ж: НД-ийн өглөг)">
+      <input type="text" inputmode="numeric" id="ob-amt" class="ui-raw ob-i money-input" placeholder="Дүн">
+      <select id="ob-side" class="ui-raw ob-i"><option value="liab">Өр төлбөр</option><option value="asset">Хөрөнгө</option></select>
+      <button class="btn" id="ob-add">+ Нэмэх</button>
+    </div>` : '';
+  const drift = (fr && live) ? (() => {
+    const d = live.equity - calc.equity;
+    return d ? `<div class="ob-drift">📊 Өнөөдрийн тоогоор өмч <b>${m(live.equity)}</b> (хөлдөөснөөс ${d > 0 ? '+' : ''}${m(d)} зөрүүтэй). Нээлтийн үлдэгдэл нь ХӨЛДСӨН хэвээр — зөрүү нь түүнээс хойших үйл ажиллагаа.</div>` : '';
+  })() : '';
+  const act = fr
+    ? `<div class="ob-froz">🔒 <b>${escapeHtml(String(fr.date))}</b>-ний байдлаар хөлдөөсөн · ${escapeHtml(String(fr.at || '').slice(0, 10))}${fr.by ? ' · ' + escapeHtml(memberName(fr.by) || String(fr.by)) : ''}
+        ${canEdit ? '<button class="btn btn-danger ob-unfreeze" id="ob-unfreeze">🔓 Нээх</button>' : ''}</div>`
+    : (canEdit ? `<div class="ob-act">
+        <label class="ob-dl">Огноо <input type="date" id="ob-date" class="ui-raw ob-i" value="${escapeHtml(date)}"></label>
+        <button class="btn btn-primary" id="ob-freeze">🔒 Нээлтийн үлдэгдэл болгож хөлдөөх</button></div>` : '');
+
+  return `<div class="ob-wrap">
+    <div class="ob-top"><div><div class="ob-title">⚖️ Нээлтийн баланс</div>
+      <div class="ob-sub">${escapeHtml(date)}-ний байдлаар · нягтлан бодох бүртгэлийн эхлэл</div></div></div>
+    ${gapHtml}
+    <div class="ob-cols">
+      ${side('ХӨРӨНГӨ', calc.assets, calc.totalAssets, 'ob-a')}
+      ${side('ӨР ТӨЛБӨР', calc.liabs, calc.totalLiabs, 'ob-b')}
+    </div>
+    <div class="ob-eq"><span>ӨМЧ <span class="ob-n">хөрөнгө − өр төлбөр · үлдэгдлээр гарна</span></span>
+      <b class="${calc.equity < 0 ? 'ob-neg' : ''}">${m(calc.equity)}</b></div>
+    ${manualAdd}${act}${drift}
+    <div class="ob-note">Агуулах нь ЗӨВХӨН 2 гарын үсгээр баталгаажсан өртгөөр орсон. Өмч нь үлдэгдлээр гардаг тул баланс үргэлж тэнцэнэ.</div>
+  </div>`;
+}
+function attachOpeningBalanceHandlers() {
+  document.getElementById('ob-add')?.addEventListener('click', async () => {
+    const lbl = (document.getElementById('ob-lbl')?.value || '').trim();
+    const amt = moneyVal(document.getElementById('ob-amt'));
+    const sd = document.getElementById('ob-side')?.value === 'asset' ? 'asset' : 'liab';
+    if (!lbl || !amt) { showToast('Нэр ба дүнг бөглөнө үү', 'warn', 2500); return; }
+    await obSaveDraft({ manual: obManual().concat([{ label: lbl, amount: amt, side: sd }]) });
+  });
+  document.querySelectorAll('[data-ob-del]').forEach(b => b.addEventListener('click', async () => {
+    const all = openingBalanceCalc(openingBalanceAuto(), obManual());
+    const r = all.assets.concat(all.liabs)[Number(b.dataset.obDel)];
+    if (!r || r.auto) return;
+    await obSaveDraft({ manual: obManual().filter(x => !(x.label === r.label && Number(x.amount) === r.amount)) });
+  }));
+  document.getElementById('ob-date')?.addEventListener('change', (e) => obSaveDraft({ date: e.target.value }));
+  document.getElementById('ob-freeze')?.addEventListener('click', async () => {
+    const date = document.getElementById('ob-date')?.value || obDefaultDate();
+    const c = openingBalanceCalc(openingBalanceAuto(), obManual());
+    if (!c.totalAssets) { showToast('Хөрөнгийн мөр алга — хөлдөөх утгагүй', 'warn', 3000); return; }
+    // ⚠ Буцаах боломжтой ч түүнээс хойших бүх тайлан үүн дээр суурилна — ЗААВАЛ баталгаажуулна.
+    if (!await showConfirm(`${date}-ний байдлаар нээлтийн үлдэгдлийг хөлдөөх үү?\n\nХөрөнгө ${fmtMoney(c.totalAssets)} · Өр ${fmtMoney(c.totalLiabs)} · Өмч ${fmtMoney(c.equity)}\n\nЭнэ тоо нягтлан бодох бүртгэлийн ЭХЛЭЛ болно. Дараа нь нээж засаж болно, гэхдээ түүнээс хойших бүх тайлан өөрчлөгдөнө.`,
+      { title: 'Нээлтийн үлдэгдэл', okText: 'Хөлдөөх' })) return;
+    const rec = { at: new Date().toISOString(), by: state.me, date,
+                  rows: c.assets.concat(c.liabs).map(r => ({ label: r.label, amount: r.amount, side: r.side, note: r.note || '', auto: !!r.auto })),
+                  totals: { assets: c.totalAssets, liabs: c.totalLiabs, equity: c.equity } };
+    state.appConfig = state.appConfig || {}; state.appConfig[OB_KEY] = rec;
+    try { await saveAppConfig(OB_KEY, rec); showToast('Нээлтийн үлдэгдэл хөлдөлөө', 'success', 2500); }
+    catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
+    render();
+  });
+  document.getElementById('ob-unfreeze')?.addEventListener('click', async () => {
+    if (!await showConfirm('Нээлтийн үлдэгдлийг нээх үү?\n\nТүүнээс хойших БҮХ тайлангийн суурь өөрчлөгдөнө.',
+      { title: 'Нээлтийн үлдэгдэл', okText: 'Нээх', danger: true })) return;
+    state.appConfig = state.appConfig || {}; state.appConfig[OB_KEY] = null;
+    try { await saveAppConfig(OB_KEY, null); showToast('Нээлээ', 'success', 2000); }
+    catch (e) { showToast('Алдаа: ' + e.message, 'error', 4000); }
+    render();
+  });
+}
 function receivablesData() {
   const today = todayStr();
   const items = [];
@@ -28090,15 +31703,22 @@ function cooSalaryPaid(rows, name, fromMonth, toMonth, acct, skip) {
 // basis: 'cash' = бодитоор орсон/гарсан (ашгийн эрхийн ҮНДЭС) · 'accrual' = гүйцэтгэсэн
 // сард ноогдуулах (лавлагаа). Дуудагч хоёуланг ил дамжуулна — энд өгөгдмөл байхгүй.
 // ⚠ Хоёр суурь ЗӨРНӨ: хураагдаагүй авлага ноогдохд орно, орсон мөнгөнд ОРОХГҮЙ.
+/* ⚠ Салбарын нэр → элэгдлийн хайрцгийн нэр. `finBranchPnl.rows` нь «M-Event»,
+   `dep` нь «ИВЕНТ» гэж түлхүүрлэгддэг тул шууд тулгавал ҮРГЭЛЖ 0 гарна. */
+const COO_DEP_KEY = { 'M-Event': 'ИВЕНТ', 'NOMAAD': 'КЕМП', 'Катеринг': 'КАТЕРИНГ', 'Чимун ХХК': 'ХХК' };
 function cooNetForMonths(months, branch, basis) {
   const want = branch || cooBranch();
   const bs = basis === 'cash' ? 'cash' : 'accrual';
-  let inc = 0, exp = 0;
+  const dk = COO_DEP_KEY[want] || '';
+  let inc = 0, exp = 0, dep = 0;
   (months || []).forEach(m => {
     const p = (typeof finBranchPnl === 'function') ? finBranchPnl(m, bs) : { rows: [] };
     (p.rows || []).filter(r => r && r.k === want).forEach(r => { inc += Number(r.inc) || 0; exp += Number(r.exp) || 0; });
+    /* ⚠ Зөвхөн ИДЭВХТЭЙ (эхлэх сараас хойшхи) элэгдэл зардалд ордог — өмнөх
+       сард `dep` нь лавлагаа тоо тул энд нэмбэл зардалтай зөрнө. */
+    if (dk && p.dep && p.dep.active) dep += Number(p.dep[dk]) || 0;
   });
-  return { inc, exp, net: inc - exp };
+  return { inc, exp, dep, net: inc - exp };
 }
 // Оны эхнээс сонгосон сар хүртэлх сарууд (YTD).
 /* ⚠ COO-гийн ашиг ЭХЛЭХ САР (2026-09-10). 2026-06-ээс ӨМНӨ зардлыг бүрэн
@@ -28124,6 +31744,26 @@ function cooMonthsYtd(month, start) {
   }
   return out;
 }
+/* COO-гийн САР БҮРИЙН ДЭВТЭР (2026-10-03, CEO: «сараар нь гаргаад авсан нь хасагдаад
+   явдаг байхаар»). ЦЭВЭР функц — тестлэгдэнэ.
+   ⛔ Эрх нь ХУРИМТЛАГДСАН ашгаас (алдагдалтай сар өмнөх ашгийг бууруулна) тул сарын
+     эрх = хуримтлагдсан эрхийн ӨСӨЛТ: share(Σашиг..M) − share(Σашиг..M−1). Сар бүрийн
+     ашгаас тусад нь бодвол алдагдлыг үл тоож эрх хиймлээр өснө. Ингэснээр сарын
+     эрхийн нийлбэр = хуримтлагдсан эрх ЯГ (ИНВАРИАНТ тест).
+   ⚠ Авсан = мөнгө ГАРСАН сараар (банкны огноо) — «авсан нь хасагдаад явна». Сүүлийн
+     мөрийн үлдэгдэл нь хуримтлагдсан самбарын «= Үлдэгдэл»-тэй ЯГ ижил. */
+function cooLedger(months, netByMonth, paidList, pct) {
+  let cumNet = 0, cumDue = 0, cumPaid = 0;
+  return (months || []).map(m => {
+    const net = Number((netByMonth || {})[m]) || 0;
+    cumNet += net;
+    const dueNow = cooShareAmount(cumNet, pct);
+    const due = dueNow - cumDue; cumDue = dueNow;
+    const paid = (paidList || []).filter(x => String(x.d || '').slice(0, 7) === m).reduce((t, x) => t + (Number(x.amount) || 0), 0);
+    cumPaid += paid;
+    return { m, net, due, paid, bal: cumDue - cumPaid };
+  });
+}
 function renderCooSalary() {
   // Тохиргоо + дата lazy ачаалал
   if (state.cooShare === undefined) { state.cooShare = null; loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
@@ -28148,7 +31788,11 @@ function renderCooSalary() {
   const _zero = { inc: 0, exp: 0, net: 0 };
   const _ytdM = cooMonthsYtd(month, _cooSt);
   const cur = { ac: _before ? _zero : cooNetForMonths([month], _cooBr, 'accrual'), ca: _before ? _zero : cooNetForMonths([month], _cooBr, 'cash') };
-  const ytd = { ac: cooNetForMonths(_ytdM, _cooBr, 'accrual'), ca: cooNetForMonths(_ytdM, _cooBr, 'cash') };
+  // Сар бүрийн мөнгөн ашиг — дэвтэрт хэрэгтэй; хуримтлагдсан нь ЭДГЭЭРИЙН нийлбэр
+  // (`cooNetForMonths` сараар нэмэгддэг тул ижил тоо, finBranchPnl 2 удаа дуудагдахгүй).
+  const _perM = _ytdM.map(m => ({ m, r: cooNetForMonths([m], _cooBr, 'cash') }));
+  const _caSum = _perM.reduce((t, x) => ({ inc: t.inc + x.r.inc, exp: t.exp + x.r.exp, dep: t.dep + (x.r.dep || 0) }), { inc: 0, exp: 0, dep: 0 });
+  const ytd = { ac: cooNetForMonths(_ytdM, _cooBr, 'accrual'), ca: { ..._caSum, net: _caSum.inc - _caSum.exp } };
   const cooName = cooKey ? ((typeof memberName === 'function' && memberName(cooKey)) || cfg.name || cooKey) : '—';
   const dataReady = (state.appOrders && state.appOrders.length != null) && (state.financeRequests !== undefined);
 
@@ -28169,6 +31813,11 @@ function renderCooSalary() {
       + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">✓ Орсон мөнгө</div><div class="coo-hd coo-hd-ref">Ноогдох</div>`
       + _r2('Орлого (барьцаа хассан)', d.ca.inc, d.ac.inc, 'coo-inc')
       + _r2('− Үйл ажиллагааны зардал', -d.ca.exp, -d.ac.exp)
+      /* ⚠ ЭЛЭГДЛИЙГ ИЛ ЗАДАЛНА (2026-10-02, CEO «14 саяын зардал хаанаас гарч
+         ирсэн юм бэ?» гэж асуув). Элэгдэл нь сарын эхэнд БҮТНЭЭР суудаг тул
+         сар дөнгөж эхлэхэд 2 хоногийн орлоготой харьцуулагдаж, зардал гэнэт
+         томорсон мэт харагдана. Мөнгө гарсан зардал БИШ гэдгийг ил хэлнэ. */
+      + (d.ca.dep || d.ac.dep ? _r2('<span class="mut">үүнээс элэгдэл (мөнгө гараагүй)</span>', -(d.ca.dep || 0), -(d.ac.dep || 0), 'coo-sub-row') : '')
       + _r2('= Цэвэр ашиг', d.ca.net, d.ac.net, 'coo-net')
       + _r2(`COO цалин (${pct}%)`, sc, sa, 'coo-share')
       + `</div>`
@@ -28203,26 +31852,38 @@ function renderCooSalary() {
     const _dueAc = cooShareAmount(ytd.ac.net, pct), _dueCa = cooShareAmount(ytd.ca.net, pct);
     const _balAc = _dueAc - _paid.total, _balCa = _dueCa - _paid.total;
     const _bcol = v => v > 0 ? 'coo-bal-due' : v < 0 ? 'coo-bal-over' : '';
+    const _led = cooLedger(_ytdM, Object.fromEntries(_perM.map(x => [x.m, x.r.net])), _paid.list, pct);
+    const _nowM = todayStr().slice(0, 7);
+    const _sg = v => v > 0 ? '+' + fmtMoney(v) : v < 0 ? fmtMoney(v) : '—';
+    const ledger = (cooKey || _cooAcct) && _led.length ? `<div class="coo-led">`
+      + `<div class="coo-led-h coo-led-hm">Сар</div><div class="coo-led-h">Эрх (${pct}%)</div><div class="coo-led-h">Авсан</div><div class="coo-led-h">Үлдэгдэл</div>`
+      + _led.map(x => `<div class="coo-led-m">${escapeHtml(x.m)}${x.m === _nowM ? ' <span class="coo-led-now">явж буй</span>' : ''}<span class="coo-led-net">ашиг ${fmtMoney(x.net)}</span></div>`
+        + `<div class="coo-led-v ${x.due < 0 ? 'coo-led-neg' : 'coo-led-pos'}">${_sg(x.due)}</div>`
+        + `<div class="coo-led-v">${x.paid ? fmtMoney(-x.paid) : '—'}</div>`
+        + `<div class="coo-led-v coo-led-bal ${_bcol(x.bal)}">${fmtMoney(x.bal)}</div>`).join('')
+      + `<div class="coo-led-m coo-led-t">Нийт</div><div class="coo-led-v coo-led-t">${fmtMoney(_dueCa)}</div><div class="coo-led-v coo-led-t">${fmtMoney(-_paid.total)}</div><div class="coo-led-v coo-led-t coo-led-bal ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div>`
+      + `</div>` : '';
     h += `<div class="coo-panel">`
-      + `<div class="coo-panel-h">💵 Олгосон цалин · ${escapeHtml(_cooSt)} → ${escapeHtml(month)}</div>`
+      + `<div class="coo-panel-h">💵 Сар бүрээр · эрх − авсан = үлдэгдэл</div>`
       + (!cooKey && !_cooAcct
         ? `<div class="coo-paid-none">⚙️ COO ажилтан сонгоогүй байна — доорх <b>Тохиргоо</b>-оос ажилтныг сонгож (мөн дансны дугаарыг бичиж) <b>Хадгалах</b> дарна уу. Түүний дараа олгосон цалин, үлдэгдэл харагдана.</div>`
         : '')
+      + ledger
+      /* Гүйлгээ бүрээр — дэвтрийн «Авсан» баганын задаргаа. Эвхэгдсэн: тоо нь дээр
+         аль хэдийн байгаа тул нээлттэй жагсаалт нь давхардана. */
       + (_paid.list.length
-        ? `<div class="coo-paid">${_paid.list.map(x => `<div class="coo-paid-d">${escapeHtml(x.d.slice(5))}</div><div class="coo-paid-m">${escapeHtml(x.memo || '—')}${meCeo && x.id ? ` <button class="coo-skip-b ui-raw" data-coo-skip="${escapeHtml(x.id)}" title="Өмнөх сарын цалин — хасах">✕</button>` : ''}</div><div class="coo-paid-a">${fmtMoney(x.amount)}</div>`).join('')}`
-          + `<div class="coo-paid-d coo-paid-t"></div><div class="coo-paid-m coo-paid-t">Нийт олгосон · ${_paid.list.length} гүйлгээ</div><div class="coo-paid-a coo-paid-t">${fmtMoney(_paid.total)}</div></div>`
+        ? `<details class="coo-paid-det"><summary>Авсан гүйлгээ бүрээр · ${_paid.list.length}</summary><div class="coo-paid">${_paid.list.map(x => `<div class="coo-paid-d">${escapeHtml(x.d.slice(5))}</div><div class="coo-paid-m">${escapeHtml(x.memo || '—')}${meCeo && x.id ? ` <button class="coo-skip-b ui-raw" data-coo-skip="${escapeHtml(x.id)}" title="Өмнөх сарын цалин — хасах">✕</button>` : ''}</div><div class="coo-paid-a">${fmtMoney(x.amount)}</div>`).join('')}`
+          + `<div class="coo-paid-d coo-paid-t"></div><div class="coo-paid-m coo-paid-t">Нийт авсан</div><div class="coo-paid-a coo-paid-t">${fmtMoney(_paid.total)}</div></div></details>`
         : ((cooKey || _cooAcct) ? `<div class="coo-paid-none">Энэ хугацаанд цалин олгоогүй.</div>` : ''))
-      + `<div class="coo-cmp coo-bal">`
-      + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">✓ Орсон мөнгөөр</div><div class="coo-hd coo-hd-ref">Ноогдохоор</div>`
-      + `<div class="coo-lbl">Ашгийн эрх (${pct}%)</div><div class="coo-v">${fmtMoney(_dueCa)}</div><div class="coo-v">${fmtMoney(_dueAc)}</div>`
-      + `<div class="coo-lbl">− Олгосон</div><div class="coo-v">${fmtMoney(-_paid.total)}</div><div class="coo-v">${fmtMoney(-_paid.total)}</div>`
-      + `<div class="coo-lbl coo-share">= Үлдэгдэл</div><div class="coo-v coo-share ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div><div class="coo-v coo-share ${_bcol(_balAc)}">${fmtMoney(_balAc)}</div>`
-      + `</div>`
+      /* Хасагдсан мөрүүд — ИЛ, НЭЭЛТТЭЙ. Эхлэх сараас өмнөх сарын цалин (тэмдэглэлээс
+         уншсан) эсвэл CEO гараар хассан. Чимээгүй хаявал COO-гийн үлдэгдэл яагаад
+         ийм байгаа нь хэнд ч мэдэгдэхгүй болно. */
       + (_paid.skipped.length
-        ? `<div class="coo-paid coo-paid-skip">${_paid.skipped.map(x => `<div class="coo-paid-d">${escapeHtml(x.d.slice(5))}</div><div class="coo-paid-m">${escapeHtml(x.memo || '—')} · <i>${escapeHtml(x.why)}</i>${meCeo && x.id ? ` <button class="coo-skip-b ui-raw" data-coo-unskip="${escapeHtml(x.id)}" title="Буцааж тоолох">↩</button>` : ''}</div><div class="coo-paid-a">${fmtMoney(x.amount)}</div>`).join('')}`
-          + `<div class="coo-paid-d coo-paid-t"></div><div class="coo-paid-m coo-paid-t">Хасагдсан · ${_paid.skipped.length} гүйлгээ (эхлэх сараас өмнөх сарын цалин)</div><div class="coo-paid-a coo-paid-t">${fmtMoney(_paid.skippedTotal)}</div></div>`
+        ? `<details class="coo-paid-det" open><summary>⊘ Хасагдсан · ${_paid.skipped.length} · ${fmtMoney(_paid.skippedTotal)}</summary><div class="coo-paid coo-paid-skip">${_paid.skipped.map(x => `<div class="coo-paid-d">${escapeHtml(x.d.slice(5))}</div><div class="coo-paid-m">${escapeHtml(x.memo || '—')} · <i>${escapeHtml(x.why)}</i>${meCeo && x.id ? ` <button class="coo-skip-b ui-raw" data-coo-unskip="${escapeHtml(x.id)}" title="Буцааж тоолох">↩</button>` : ''}</div><div class="coo-paid-a">${fmtMoney(x.amount)}</div>`).join('')}</div></details>`
         : '')
-      + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон гүйлгээ — цалин (7100 г.м.) БА ашгийн урамшуулал (<b>7700</b>, эсвэл 6900), мөнгө гарсан сараар. Нэрээр ба ${_cooAcct ? `<b>данс ${escapeHtml(_cooAcct)}</b>-аар` : 'дансаар'} тулгана — хуулгаас ирсэн мөрд нэр биш дансны дугаар бичигддэг. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлдэг тул <b>эхлэх сараас өмнөх сарын цалин өөрөө хасагдана</b> (доор ил гарна). Тэмдэглэлд сар бичээгүй мөрийг систем таамаглахгүй — <b>✕</b> дарж гараар хасна, <b>↩</b>-аар буцаана.</div>`
+      // Ноогдох суурь — ЗӨВХӨН лавлагаа (ашгийн эрхийн үндэс нь орсон мөнгө)
+      + ((cooKey || _cooAcct) ? `<div class="coo-led-ref">Ноогдохоор бодвол (лавлагаа): эрх ${fmtMoney(_dueAc)} · үлдэгдэл <b class="${_bcol(_balAc)}">${fmtMoney(_balAc)}</b></div>` : '')
+      + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон гүйлгээ — цалин (7100 г.м.) БА ашгийн урамшуулал (<b>7700</b>, эсвэл 6900), мөнгө гарсан сараар. Нэрээр ба ${_cooAcct ? `<b>данс ${escapeHtml(_cooAcct)}</b>-аар` : 'дансаар'} тулгана — хуулгаас ирсэн мөрд нэр биш дансны дугаар бичигддэг. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлдэг тул <b>эхлэх сараас өмнөх сарын цалин өөрөө хасагдана</b>. Тэмдэглэлд сар бичээгүй мөрийг систем таамаглахгүй — <b>✕</b> дарж гараар хасна, <b>↩</b>-аар буцаана.</div>`
       + `</div>`;
   }
 
@@ -28364,57 +32025,6 @@ function attachReceivablesHandlers() {
   // Төлбөр/Орлого товч — одоо байгаа модалуудыг дахин ашиглана (амжилтад render → жагсаалт шинэчлэгдэнэ)
   document.querySelectorAll('.ar-wrap [data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
   document.querySelectorAll('.ar-wrap [data-nomaad-income]').forEach(b => b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome)));
-}
-
-/* ━━━ ОЙРЫН 7 ХОНОГ — цэвэр функц (2026-09-22) ━━━━━━━━━━━━━━━━━━━
-   Гарах (эхлэх огноотой, бэлтгэлийн шатанд) ба буцах (гарсан, дуусах огноотой)
-   захиалгын тоо. Өмнө `ceoNowStrip` дотор inline байсан тул тестлэгдэхгүй байв. */
-function ceoNowCounts(appOrders, nomaadOrders, today, days) {
-  const t = String(today || '');
-  const end = (t && typeof addDays === 'function') ? addDays(t, Number(days) || 7) : '';
-  const inWin = (x) => !!x && !!t && !!end && x >= t && x <= end;
-  let deliveries = 0, returns = 0;
-  (Array.isArray(appOrders) ? appOrders : []).forEach(o => {
-    const st = String((o && o.status) || '');
-    if (['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering'].includes(st)
-        && inWin(String((o && o.starts_at) || '').slice(0, 10))) deliveries++;
-    if (['started', 'rented', 'returning'].includes(st)
-        && inWin(String((o && o.stops_at) || '').slice(0, 10))) returns++;
-  });
-  (Array.isArray(nomaadOrders) ? nomaadOrders : []).forEach(o => {
-    if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return;
-    if (inWin(String((o && o.date_start) || '').slice(0, 10))) deliveries++;
-  });
-  return { deliveries, returns };
-}
-
-/* CEO «Яг одоо» тууз (Тойм дээд талд) = ХОЁР КАРТ (2026-09-22, CEO).
-   Өмнө 4 байсан: орлого · авлага · хүргэлт · буцаалт. Гурав нь ДАРАГДАХГҮЙ,
-   үйлдэл төрүүлэхгүй тоо байв; орлого нь Санхүү → Тайланд бүрэн задаргаатай (давхардал).
-   ⛔ Тойм дээр ТОО БИШ, АЖИЛ байна — карт бүр ДАРАГДАЖ ажлын дэлгэц рүү хөтлөнө.
-      Дарагдахгүй тоо нэмэх бол түүнийг ХААНААС харахыг эхлээд бод. Scan-тест хаана. */
-function ceoNowStrip() {
-  if (state.appOrders === undefined && typeof loadAppOrders === 'function') loadAppOrders();   // орлого — амьд захиалгаас
-  if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') loadNomaadOrders();
-  if (!state.bqOrders && !state._bqOrdersLoading) loadOrdersData(); // захиалгууд (авлага/ойртож буй) — lazy
-  const loadingBq = state.appOrders === undefined || state.nomaadOrders === undefined || !state.bqOrders;
-  // Нийт авлага — ХҮН ЗАЛГАЖ авах ёстой мөнгө (үйлдэл төрүүлнэ)
-  const ar = receivablesData();
-  const arTotal = ar.bqTotal + ar.nomaadTotal;
-  const overdueCnt = ar.items.filter(i => i.overdue).length;
-  const { deliveries, returns } = ceoNowCounts(state.appOrders, state.nomaadOrders, todayStr(), 7);
-
-  const cell = (label, val, col, sub, view) => `<div ${view ? `data-ceo-now="${view}" ` : ''}style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:10px 12px;${view ? 'cursor:pointer;' : ''}">
-    <div style="font-size:10.5px;color:var(--muted);">${label}</div>
-    <div style="font-weight:800;font-size:16px;color:${col || 'var(--text)'};margin-top:2px;line-height:1.2;">${val}</div>
-    ${sub ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;">${sub}</div>` : ''}
-  </div>`;
-
-  const _upcoming = deliveries + returns;
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px;">
-    ${cell('📥 Авах үлдсэн төлбөр', loadingBq ? '…' : fmtMoney(arTotal), 'var(--warn)', `${ar.items.length} захиалга${overdueCnt ? ` · ⚠${overdueCnt} хэтэрсэн` : ''}`, 'receivables')}
-    ${cell('🚚 Ойрын 7 хоног', loadingBq ? '…' : String(_upcoming), _upcoming ? 'var(--text)' : 'var(--muted)', `${deliveries} хүргэлт · ${returns} буцаалт`, 'orders')}
-  </div>`;
 }
 
 // Хэвтээ bar мөр (нэр | bar | утга) — тайлантай ижил хэв маяг
@@ -29343,6 +32953,59 @@ function warehouseCapital(products, branchKey) {
            verifiedPct: capital > 0 ? verified / capital : 0 };
 }
 
+/* ─── ЭЗНИЙ ХӨРӨНГӨ ОРУУЛАЛТ (2026-10-02, CEO шийдвэр) ──────────────────────
+   Зорилго: 6 жилийн турш хувийн мөнгө ба компанийн ашиг ХОЛИЛДОЖ хөрөнгө
+   авсан тул аль нь алийг нь санах боломжгүй. Тиймээс ТҮҮХИЙГ ухахгүй, эсрэгээр
+   нь нотлох баримтаас бодно:
+
+     Эзний оруулсан = Агуулахын өртөг − компанийн мөнгөөр авсан нь
+
+   ⛔ КОМПАНИЙН ДАНСНААС ЭЗЭН РҮҮ ГАРСАН МӨНГИЙГ (6900) ЗААВАЛ ХАСНА. Тэр мөнгө
+     компаниас ГАРСАН тул түүгээр авсан бараа компанийх — хоёуланг нь тоолвол
+     нэг хөрөнгө хоёр удаа бүртгэгдэж, эзний өглөг хиймлээр хоёр дахин өснө.
+   ⛔ БАЛАНСАД ЗӨВХӨН БАТАЛГААЖСАН (2 гарын үсэгтэй) ХӨРӨНГӨ ОРНО. Тооллогоор
+     баталгаажаагүй тоо нь Booqable/гараас ирсэн, хэн ч биечлэн шалгаагүй —
+     түүн дээр өглөг үүсгэвэл татварын шалгалтад нотлох баримтгүй үлдэнэ.
+     `ownerTotal` нь зөвхөн «тооллого дуусвал хэд болох вэ» гэсэн ЛАВЛАГАА.
+   ⛔ СӨРӨГ БОЛОХГҮЙ — компанийн мөнгө агуулахын өртгөөс их бол эзэн юу ч
+     оруулаагүй гэсэн үг (0), компани эзэнд өртэй гэсэн үг БИШ.
+   ⚠ Аппын бүртгэл саяхнаас эхэлсэн тул өмнөх жилүүдэд компанийн ашгаар авсан
+     хөрөнгийн ул мөр БАЙХГҮЙ — энэ томьёо тэр бүгдийг эзний оруулалт гэж үзнэ.
+     Эзэнд ашигтай тул АКТ-аар баримтжуулах нь зайлшгүй. */
+function ownerCapital(products, finance, branchKey) {
+  const w = (typeof warehouseCapital === 'function')
+    ? warehouseCapital(products, branchKey)
+    : { capital: 0, verified: 0, verifiedN: 0, withCost: 0, noCost: 0 };
+  let coBuy = 0, coOut = 0;
+  (finance || []).forEach(r => {
+    if (!r || r.status === 'deleted' || r.decision !== 'approved') return;
+    const c = String(r.category || ''), a = Number(r.amount) || 0;
+    if (/^6[1-7]/.test(c)) coBuy += a;          // компанийн данснаас хөрөнгө авсан
+    else if (c === '6900') coOut += a;          // компанийн данснаас эзэн рүү гарсан
+  });
+  const funded = coBuy + coOut;
+  return {
+    invTotal: w.capital, invVerified: w.verified,
+    invUnverified: Math.max(0, w.capital - w.verified),
+    verifiedN: w.verifiedN, withCost: w.withCost, noCost: w.noCost,
+    coBuy, coOut, funded,
+    ownerVerified: Math.max(0, w.verified - funded),   // ← балансад орох тоо
+    ownerTotal: Math.max(0, w.capital - funded),       // ← тооллого дуусвал
+    get gap() { return Math.max(0, this.ownerTotal - this.ownerVerified); },
+  };
+}
+/* Актад орох мөрүүд — ЗӨВХӨН баталгаажсан, өртөгтэй бараа. Өртгөөр буурахаар. */
+function ownerCapitalRows(products) {
+  return (products || []).filter(p => p && !p.archived
+      && !(typeof isService === 'function' && isService(p))
+      && !(typeof isPackage === 'function' && isPackage(p))
+      && (Number(p.cost) || 0) > 0 && (Number(p.stock) || 0) > 0
+      && (typeof stockOpened === 'function' && stockOpened(p)))
+    .map(p => ({ sku: p.sku || p.id || '', name: p.name || '', qty: Number(p.stock) || 0,
+                 cost: Number(p.cost) || 0, sum: (Number(p.cost) || 0) * (Number(p.stock) || 0) }))
+    .sort((a, b) => b.sum - a.sum);
+}
+
 /* ЭЛЭГДЭЛ — түрээсийн бараа хуучирна, тэр нь ЗАРДАЛ (2026-09-24, CEO шийдвэр).
    Өмнө нь худалдан авалт 6000 ангиллаар «хөрөнгө» болж салбарын зардлаас БҮРЭН
    хасагддаг байсан тул салбарын ашиг элэгдлийн хэмжээгээр хиймлээр өндөр гарч,
@@ -29457,11 +33120,37 @@ function deprecForProduct(p, lives) {
            totalMonth: perUnitMonth * qty, totalYear: perUnitMonth * qty * 12, endYm };
 }
 /* Тухайн сарын элэгдэл — шилжилтийн сараас хойш Л зардал болно (`active`). */
+/* ⛔ ХААСАН САРЫН ЭЛЭГДЭЛ ХӨЛДӨНӨ (2026-10-02).
+   `deprecByBranch` нь ОДООГИЙН нөөцөөс бодогддог бөгөөд `month` нь зөвхөн
+   асаах/унтраах үүрэгтэй байв. Иймд сар хаасны ДАРАА 50 сандлыг M-Event-ээс
+   NOMAAD руу шилжүүлэхэд ХААСАН сарын элэгдэл, улмаар ашиг ба COO-гийн 30%
+   чимээгүй өөрчлөгддөг байв — «хаасан сарын тоо хөдөлөхгүй» гэдэг гол дүрэм
+   зөрчигдөж байсан. Одоо хаахад тухайн сарын элэгдлийг ЗУРАГ болгон хадгалж,
+   хаалттай сард түүнийг л буцаана.
+   ⚠ Зураггүй хаалттай сар (шилжилтийн хаалт, эсвэл энэ засвараас өмнө хаасан)
+     нь хуучнаараа одоогийн нөөцөөс бодогдоно — тоо чимээгүй 0 болгохоос дээр. */
+function deprecSnapshotOf(month) {
+  const i = (typeof monthCloseInfo === 'function') ? monthCloseInfo(closedMonths(), month) : null;
+  const d = i && i.kind === 'month' && i.dep;
+  return (d && typeof d === 'object' && Number(d.total) >= 0) ? d : null;
+}
 function deprecForMonth(month) {
-  const d = deprecByBranch(state.products, deprecLives());
+  const snap = deprecSnapshotOf(month);
+  const d = snap ? { ...snap, byCat: snap.byCat || {}, frozen: true }
+                 : deprecByBranch(state.products, deprecLives());
   d.active = String(month || '') >= deprecStartMonth();
   d.start = deprecStartMonth();
   return d;
+}
+/* Хаахад хадгалах зураг — ЗӨВХӨН салбарын дүн ба тоолол (бүх барааг хадгалахгүй:
+   `app_config` мөр хэт томорно). Элэгдэл идэвхгүй сард зураг авах утгагүй. */
+function deprecSnapshotNow(month) {
+  if (String(month || '') < deprecStartMonth()) return null;
+  const d = deprecByBranch(state.products, deprecLives());
+  if (!d || !d.total) return null;
+  return { 'ИВЕНТ': d['ИВЕНТ'], 'КЕМП': d['КЕМП'], 'КАТЕРИНГ': d['КАТЕРИНГ'], 'ХХК': d['ХХК'],
+    total: d.total, byCat: d.byCat, noCost: d.noCost, doneN: d.doneN, doneCapital: d.doneCapital,
+    noDateN: d.noDateN, noDateMonth: d.noDateMonth, at: new Date().toISOString() };
 }
 /* Тайлан элэгдлийг хасдаг тул каталог ачаалагдсан байх ЁСТОЙ — эс бөгөөс элэгдэл
    чимээгүй 0 болж ашиг хиймлээр өндөр харагдана (НӨАТ-ийн ensureVatLoaded-тай ижил занга). */
@@ -30334,7 +34023,8 @@ function _ubDate(ts) {
 // «…+00:00» нь ижил мөч боловч мөрийн эрэмбээр өөр гарна. Уншигдахгүй бол 0
 // (эрэмбийн ард унана, мөр АЛГА БОЛОХГҮЙ).
 function pbxTime(ts) {
-  const t = Date.parse(String(ts || ''));
+  // Postgres «…+00» (минутгүй офсет) хэлбэрийг Date.parse уншдаггүй — нормчилно.
+  const t = Date.parse(String(ts || '').replace(/([+-]\d\d)$/, '$1:00'));
   return isNaN(t) ? 0 : t;
 }
 // Сүүлд залгаснаар нь ЭРЭМБЭЛНЭ (шинэ нь дээр) — CEO 2026-09-17.
@@ -30423,18 +34113,51 @@ function pbxFollowups(calls, opts) {
       if ((Number(c.answer_sec) || 0) === 0 && (Number(c.call_sec) || 0) >= minSec) offOnly[p] = 1;
       return;
     }
-    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0 });
+    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0, missed: 0, missT: 0, ansT: 0 });
     x.tries++;
-    if ((Number(c.answer_sec) || 0) > 0) x.answered++;
-    x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0);
+    const tt = pbxTime(at);
+    if ((Number(c.answer_sec) || 0) > 0) { x.answered++; x.ansT = Math.max(x.ansT, tt); }
+    else if ((Number(c.call_sec) || 0) >= minSec) { x.missed++; x.missT = Math.max(x.missT, tt); x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0); }
     if (at && at < x.first) x.first = at;
     if (at && at > x.last) x.last = at;
   });
-  const out = Object.values(by).filter(x => !x.answered && x.maxSec >= minSec)
+  /* ⛔ ЯРЬСАН ДУУДЛАГА ЗӨВХӨН АЛДСАНЫ ДАРАА болсон бол хаана (2026-10-05, CEO).
+     Өмнө нь 14 хоногт ХЭЗЭЭ НЭГЭН удаа ярьсан л бол хожим алдсан дуудлага ч
+     жагсаалтаас алга болдог байв — амьд датаар: өглөө 3 мин ярьсан хүн үдээс
+     хойш 62 сек хүлээгээд тасалсан ч «шийдэгдсэн» гэж нуугдсан. Цагийг тоо
+     болгож тулгана (мөрөөр харьцуулахгүй). */
+  // ⚠ Цаг уншигдаагүй бол (missT=0) дарааллыг мэдэхгүй тул ҮЛДЭЭНЭ — эргэлзвэл нуухгүй.
+  const open = (x) => x.missed > 0 && !(x.missT > 0 && x.ansT > x.missT);
+  const out = Object.values(by).filter(open)
     .sort((a, b) => (b.tries - a.tries) || pbxByRecent(a, b));
-  out.short = Object.values(by).filter(x => !x.answered && x.maxSec < minSec).length;
+  out.short = Object.values(by).filter(x => !x.answered && !x.missed).length;
   out.off = Object.keys(offOnly).filter(p => !by[p]).length;
   return out;
+}
+/* Нэг дугаарын дуудлагын түүх (алдсан дуудлагын мөрөнд). ЦЭВЭР функц.
+   ЯАГААД: «яагаад жагсаалтад байна вэ / яагаад хасагдсан бэ» гэдгийг хүн
+   өөрөө харах ёстой — өглөө ярьсан ч үдээс хойш аваагүй гэх мэт. */
+function pbxPeerTimeline(calls, peer, from, ws, we) {
+  const p = String(peer || '');
+  const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9, w1 = Number.isFinite(Number(we)) ? Number(we) : 18;
+  return (calls || []).filter(c => c && String(c.direction || '') === 'in' && String(c.peer || '') === p
+      && (!from || String(c.started_at || '') >= from))
+    .map(c => {
+      const h = _ubHour(String(c.started_at || ''));
+      const ans = Number(c.answer_sec) || 0, sec = Number(c.call_sec) || 0;
+      return { at: String(c.started_at || ''), t: pbxTime(c.started_at), sec, ans,
+               off: h !== null && (h < w0 || h > w1) };
+    })
+    .sort((a, b) => a.t - b.t);
+}
+function pbxTimelineHtml(list) {
+  if (!list || !list.length) return '';
+  const fmt = (s) => s >= 60 ? `${Math.floor(s / 60)} мин ${s % 60} сек` : `${s} сек`;
+  const shown = list.slice(-6);
+  const more = list.length - shown.length;
+  return `<div class="mc-tl">${more > 0 ? `<div class="mc-tl-more">+${more} өмнөх дуудлага</div>` : ''}${shown.map(x => `<div class="mc-tl-r${x.ans ? ' ok' : ''}">
+      <span class="mc-tl-t">${escapeHtml(ubStamp(x.at))}</span>
+      <span class="mc-tl-s">${x.ans ? `✓ ярьсан · ${fmt(x.ans)}` : `✗ аваагүй · ${fmt(x.sec)} хүлээсэн`}${x.off ? ' · 🌙 ажлын бус цаг' : ''}</span></div>`).join('')}</div>`;
 }
 // ── 🌙 ОРОЙН ДУУДЛАГА — МАРГААШ ЗАЛГАХ (2026-09-17) ─────────────────────────
 // Амьд датаар (90 хоног): оройд 427 хүн залгасны **373 нь (87%) ажлын цагаар
@@ -30854,7 +34577,6 @@ async function loadGa(force) {
   } catch (e) { dataLoadFailed('Сайтын зочдын дата', e); state.ga = state.ga || []; return state.ga; }
 }
 
-
 // ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭРИЙН БҮРТГЭЛ (2026-09-16) ──────────────────────────
 // `tools/fb_budget.py` 10 минут тутам шийдвэр гаргадаг (төсөв шилжүүлэх, зар
 // зогсоох) ч энэ нь VPS-ийн лог файлд л үлддэг байв — хэрэглэгч «систем юу
@@ -30902,7 +34624,6 @@ function adActionLabel(a) {
   return k || '—';
 }
 function adActionIsBad(a) { return String((a && a.kind) || '') === 'error'; }
-
 
 // ── ПОСТ БЭЛДЭХ (2026-09-16) ────────────────────────────────────────────────
 // Апп зар дутуу ангиллыг аль хэдийн олдог (`adsAdvice` ①-р дүрэм). Дараагийн
@@ -31994,7 +35715,8 @@ function renderMissedCalls() {
       <div class="mc-main">${head}
         <div class="mc-meta">Сүүлд залгасан: <b>${escapeHtml(ubStamp(r.last))}</b>${
           !r.done && r.pri && r.pri.why ? ` · <span class="mc-why">${escapeHtml(r.pri.why)}</span>` : ''}</div>
-        ${tags ? `<div class="mc-tags">${tags}</div>` : ''}</div>
+        ${tags ? `<div class="mc-tags">${tags}</div>` : ''}
+        ${pbxTimelineHtml(pbxPeerTimeline(state.pbxLog || [], r.peer, from, ws, we))}</div>
       <div class="mc-acts">${acts}</div></div>`;
   };
   // 🌙 Оройн дуудлага — маргааш залгах (тоололд ОРОХГҮЙ, ажлын жагсаалтад ОРНО).
@@ -32539,7 +36261,7 @@ function appendOrderNote(list, text, by, at) {
    товчнуудын түлхүүрийг буцаана; үлдсэн нь «⋯ Бусад» дотор эвхэгдэнэ.
    ⛔ Цуцлах/устгах ХЭЗЭЭ Ч үндсэн эгнээнд гарахгүй — санамсаргүй дарагдах ёсгүй.
    ⚠ Цэвэр функц — тестлэгдэнэ. */
-const ORDER_DONE_ST = new Set(['returned', 'stopped', 'archived', 'done']);
+const ORDER_DONE_ST = new Set(['returned', 'stowed', 'stopped', 'archived', 'done']);
 function orderPrimaryActions(o, ctx) {
   ctx = ctx || {};
   const out = [];
@@ -32597,7 +36319,7 @@ async function openOrderNoteModal(id) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
   const notes = orderNotesOf(o);
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:480px;">
+  modal.innerHTML = `<div class="modal onote-modal">
     <h2>📝 Тэмдэглэл</h2>
     <p class="amo-hint">#${escapeHtml(String(o.number || ''))} · ${escapeHtml(o.customer || '')}<br>
       Бичсэн хүн, огноо автоматаар хадгалагдана. Хуучин тэмдэглэл дарагдахгүй.</p>
@@ -32827,6 +36549,12 @@ function finAddOrderIncome(inc, wantBr, basis) {
       if (v) inc[mo] = (inc[mo] || 0) + v;
     });
   }
+  if (!wantBr || wantBr === 'КАТЕРИНГ') {
+    (state.cateringJobs || []).forEach(j => {
+      const mo = cateringIncomeMonth(j, basis), v = cateringRevenue(j, basis);
+      if (/^\d{4}-\d{2}$/.test(mo) && v) inc[mo] = (inc[mo] || 0) + v;
+    });
+  }
 }
 // Салбар бүрийн орлого/зардал/ашиг (тухайн сар, суурьаар) — CEO төвлөрсөн харагдац
 // "Хуулга батлаагүй" авто цалин (⟦PENDST⟧) — зардлын ДҮНД оруулахгүй. Банкны хуулга орж
@@ -32885,9 +36613,17 @@ function finIsRealExpense(t) {
   return !!t && t.decision === 'approved' && !finPendingStmt(t)
     && !finIsNonExpense(t.category) && !finIsDepositReturn(t) && !finIsCustomerRefund(t);
 }
-// Зардал аль сард тоологдох вэ — basis-аар: 'cash'=гүйлгээ гарсан огноо(requested_at), 'accrual'=ноогдох сар.
+/* Зардал АЛЬ САРД тоологдох вэ — ⛔ ҮРГЭЛЖ ГҮЙЦЭТГЭЛИЙН (ноогдох) САРААР,
+   «Мөнгөн/Гүйцэтгэл» сонголтоос ХАМААРАХГҮЙ (2026-10-03, CEO шийдвэр:
+   «гүйлгээ бус гүйцэтгэлээр боддог болгох хэрэгтэй, Монгол Улсын хуулийн хүрээнд»).
+   ЯАГААД: өмнө нь cash суурьд `requested_at` байсан тул 8-р сарын цалинг 9-д
+   төлөхөд 9 сарын зардал болж, гүйлгээн дээр «8 сар» гэж сонгосон нь ЮУ Ч
+   өөрчилдөггүй байв (амьд системд 17 гүйлгээ ингэж буруу сард сууж байсан).
+   ⚠ Банктай тулгалт нь ЭНД БИШ — хуулгын залгаа/тэнцэл нь `bank_statements`
+   дээр, гүйлгээ гарсан огноогоороо шалгагддаг. Зардлын САР нь нягтлан бодох
+   ойлголт, банкны огноотой заавал таарах албагүй. Scan-тест буцахыг хаана. */
 function finExpMonth(t, basis) {
-  return basis === 'cash' ? String((t && t.requested_at) || '').slice(0, 7) : finAccrualMonth(t);
+  return finAccrualMonth(t);
 }
 // Тухайн сарын захиалгын орлого — эвент (M-Event) + NOMAAD, суурьаар. finBranchPnl ба Тайлан толгой
 // ХОЁУЛАН энэ ГАНЦ функцийг дуудна (C8: орлогын логикийг 2 газар давхардуулж, засвар-зөрүү гаргахгүй).
@@ -32900,7 +36636,9 @@ function finMonthIncome(month, basis) {
     const m = nomaadIncomeMonth(o, month, basis);
     if (m > 0) { noInc += m; noN++; }
   });
-  return { evInc, evN: evList.length, noInc, noN, evList };
+  // Катеринг — `cateringMonthIncome` (тренд, журналтай ИЖИЛ дүрэм)
+  const kt = cateringMonthIncome(state.cateringJobs || [], month, basis);
+  return { evInc, evN: evList.length, noInc, noN, evList, ktInc: kt.sum, ktN: kt.n };
 }
 /* ─── НӨӨЦИЙН АЛДАГДАЛ = САЛБАРЫН ЗАРДАЛ (2026-09-30) ───────────────────────
    Буцаан авахад дутсан бараа нөөцөөс хасагддаг ч ашгийн тайланд ХААНА Ч
@@ -33005,7 +36743,7 @@ function finBranchPnl(month, basis) {
     rows: [
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
       { k: 'NOMAAD', inc: noInc, exp: exp['КЕМП'] },
-      ...(exp['КАТЕРИНГ'] ? [{ k: 'Катеринг', inc: 0, exp: exp['КАТЕРИНГ'] }] : []),
+      ...((exp['КАТЕРИНГ'] || _mi.ktInc) ? [{ k: 'Катеринг', inc: _mi.ktInc || 0, exp: exp['КАТЕРИНГ'] }] : []),
       { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
       ...(exp['ЗАХ'] ? [{ k: '⚠ Салбар тодорхойгүй', inc: 0, exp: exp['ЗАХ'], unknown: true, n: unkN }] : []),
     ], ownerLoan, depReturn, vat, vatPaid, dep, miss, cnt, unknownExp: exp['ЗАХ'], unknownN: unkN,
@@ -33314,6 +37052,8 @@ function renderReports() {
   // Тайланд шаардлагатай дата (захиалга/бараа/өртөг) — байхгүй бол анх удаа татна
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { state.nomaadOrders = []; setTimeout(loadNomaadOrders, 0); }
+  // ⚠ Катерингийн орлого — ачаалагдаагүй бол чимээгүй 0 болно
+  if (!state.cateringJobs && !state._ktLoading) { state._ktLoading = true; setTimeout(loadCateringJobs, 0); }
   if (!state.products || !state.products.length) loadProductsCatalog();
   ensureVatLoaded();   // НӨАТ зардалд хасагдана — баримт заавал ачаалагдсан байх
   ensureProductsLoaded();   // элэгдэл каталогоос бодогдоно (ачаалагдаагүй бол чимээгүй 0)
@@ -33327,13 +37067,16 @@ function renderReports() {
   const inclNo = !wantBr || wantBr === 'КЕМП';    // NOMAAD
   const _mi = finMonthIncome(month, basis);   // C8: finBranchPnl-тэй НЭГ эх сурвалж (орлогын логик давхардуулахгүй)
   const evInc = _mi.evInc, noInc = _mi.noInc, noN = _mi.noN, evN = _mi.evN;
-  let income = (inclEv ? evInc : 0) + (inclNo ? noInc : 0);
-  let incomeN = (inclEv ? evN : 0) + (inclNo ? noN : 0);
+  const inclKt = !wantBr || wantBr === 'КАТЕРИНГ';   // Катеринг (2026-10-03)
+  const ktInc = _mi.ktInc || 0, ktN = _mi.ktN || 0;
+  let income = (inclEv ? evInc : 0) + (inclNo ? noInc : 0) + (inclKt ? ktInc : 0);
+  let incomeN = (inclEv ? evN : 0) + (inclNo ? noN : 0) + (inclKt ? ktN : 0);
   const bl = basis === 'accrual' ? 'гүйцэтгэл' : 'мөнгө';
   let incomeLabel, incomeSub, mi = null;
   if (wantBr === 'КЕМП') { incomeLabel = `Орлого (NOMAAD · ${bl})`; incomeSub = noN + ' эвент'; }
   else if (wantBr === 'ИВЕНТ') { mi = meventIncome(month); incomeLabel = `Орлого (M-Event · ${bl})`; incomeSub = evN + ' захиалга'; }
-  else if (!wantBr) { mi = meventIncome(month); incomeLabel = `Орлого (нийт · ${bl})`; incomeSub = 'M-Event + NOMAAD'; }
+  else if (wantBr === 'КАТЕРИНГ') { incomeLabel = `Орлого (Катеринг · ${bl})`; incomeSub = ktN + ' захиалга'; }
+  else if (!wantBr) { mi = meventIncome(month); incomeLabel = `Орлого (нийт · ${bl})`; incomeSub = ktInc ? 'M-Event + NOMAAD + Катеринг' : 'M-Event + NOMAAD'; }
   else { incomeLabel = 'Орлого'; incomeSub = 'энэ салбарт захиалгын орлого бүртгэгддэггүй'; }
   let expense = 0, expN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
@@ -33389,14 +37132,15 @@ function renderReports() {
     </div>`;
   const inputs = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
       ${kpi(incomeLabel, fmtBig(income), 'var(--ok)', incomeSub)}
-      ${kpi(basis === 'cash' ? 'Зарлага (гүйлгээгээр)' : 'Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + (vatExp > 0 ? ` · 🧾 НӨАТ ${fmtBig(vatExp)}` : '') + (basis === 'cash' ? ' · Санхүүтэй таарна' : ''))}
+      ${kpi('Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + (vatExp > 0 ? ` · 🧾 НӨАТ ${fmtBig(vatExp)}` : '') + ' · Санхүүтэй таарна')}
     </div>`;
-  // Орлогын суурь солих товч
+  /* Суурь солих товч нь ЗӨВХӨН ОРЛОГЫГ хөдөлгөнө. Зардал нь ҮРГЭЛЖ ноогдох
+     сараар (finExpMonth) — Монгол Улсын НББ-ийн хуулийн дагуу (2026-10-03 CEO). */
   const bt = (v, lbl) => `<button data-fin-basis="${v}" style="padding:6px 14px;font-size:12px;border:1px solid var(--border);cursor:pointer;font-weight:600;${basis === v ? 'background:var(--primary);color:#fff;border-color:var(--primary);' : 'background:var(--panel);color:var(--muted);'}">${lbl}</button>`;
   const basisToggle = `<div style="display:flex;justify-content:center;margin:0 0 6px;">
       <div style="display:inline-flex;border-radius:10px;overflow:hidden;">${bt('cash', 'Мөнгөн гүйлгээ')}${bt('accrual', 'Гүйцэтгэл')}</div>
     </div>
-    <div style="text-align:center;font-size:var(--fs-xs);color:var(--muted);margin-bottom:12px;line-height:1.4;">${basis === 'cash' ? '✓ Үндсэн — орлого: мөнгө орсон өдрөөр · зардал: гүйлгээ гарсан огноогоор. Банкны хуулгатай тулгагдана.' : '⚠ Лавлагаа — орлого: эвент болсон сараар · зардал: ноогдох сараар. Мөнгө хөдлөөгүй дүн орсон тул банкны хуулгатай ТААРАХГҮЙ.'}</div>`;
+    <div style="text-align:center;font-size:var(--fs-xs);color:var(--muted);margin-bottom:12px;line-height:1.4;">Зардал ҮРГЭЛЖ <b>ноогдох сараар</b> (8-р сарын цалинг 9-д төлсөн ч 8 сарын зардал). Товч нь зөвхөн <b>орлогыг</b> сольдог: ${basis === 'cash' ? '✓ мөнгө орсон өдрөөр (үндсэн).' : '⚠ эвент болсон сараар — хураагдаагүй дүн ордог тул лавлагаа.'}</div>`;
   const pnl = `
     ${monthNav}
     ${basisToggle}
@@ -33409,7 +37153,7 @@ function renderReports() {
   const incomeSections = mi ? renderIncomeSections(month, mi) : '';
   // ── 📊 Зардлын задаргаа (график) — ангилалаар (түлш, шууд зардал, цалин г.м.) ──
   const expItems = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
-    .filter(t => finAccrualMonth(t) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
+    .filter(t => finExpMonth(t, basis) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
   const byCat = {}; const txByCat = {};
   expItems.forEach(t => { const c = finSubName(t.category) || 'Ангилалгүй'; byCat[c] = (byCat[c] || 0) + (Number(t.amount) || 0); (txByCat[c] = txByCat[c] || []).push(t); });
   const catRows = Object.entries(byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
@@ -33437,12 +37181,14 @@ function renderReports() {
     ${catRows.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);"><span>Нийт зардал</span><span>${fmtSaya(expTotal)}</span></div>` : ''}
   </div>`;
   // ── 🔁 Сар хооронд шилжсэн зардал (accrual reclass) — ил тод байдал ──
-  // «Гүйцэтгэл» горимд зардал ноогдох сараар тоологддог тул төлсөн сараас зөрдөг.
-  // Энэ панел тухайн сартай холбоотой шилжилтийг ил гаргана (жишээ: 8-д төлсөн цалин 7-р сард).
+  // Зардал ноогдох сараар тоологддог тул төлсөн сараас зөрдөг.
+  // Энэ панел тухайн сартай холбоотой шилжилтийг ил гаргана (жишээ: 9-д төлсөн цалин 8-р сард).
   const _shRows = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
     .filter(t => finIsRealExpense(t) && (!wantBr || finEffBranch(t) === wantBr));
   const shiftOut = [], shiftIn = [];
-  if (basis === 'accrual') _shRows.forEach(t => {
+  /* ⛔ Суурьаас ХАМААРАХГҮЙ харагдана — зардал одоо ҮРГЭЛЖ ноогдох сараар
+     тоологддог тул шилжилт нь «Мөнгөн» горимд ч бодитой болсон. */
+  _shRows.forEach(t => {
     const pay = String(t.requested_at || '').slice(0, 7), acc = finAccrualMonth(t);
     if (!pay || !acc || pay === acc) return;
     if (pay === month) shiftOut.push({ t, other: acc });   // энэ сард төлсөн → өөр сард ноогдсон (эндээс хасагдсан)
@@ -33470,7 +37216,7 @@ function renderReports() {
           <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${shiftOut.length + shiftIn.length} гүйлгээ</span>
         </div>
         <div data-shift-detail style="display:none;margin-top:6px;">
-          <div style="font-size:11px;color:var(--muted);line-height:1.55;">«Гүйцэтгэл» горимд зардал <b style="color:var(--text);">ноогдох сараар</b> тоологддог (цалин ажилласан сард) тул мөнгө гарсан сараас зөрж болно. ${month} сартай холбоотой шилжилтүүд:</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.55;">Зардал <b style="color:var(--text);">ноогдох сараар</b> тоологддог (цалин ажилласан сард) тул мөнгө гарсан сараас зөрж болно. Гүйлгээ бүрийн сарыг «Аль сарын зардал» талбараас солино. ${month} сартай холбоотой шилжилтүүд:</div>
           ${sec('➡️ Энэ сард төлсөн → өөр сард ноогдсон', shiftOut, '→', month + '-д мөнгө гарсан ч энэ сарын зардалд ОРООГҮЙ — доорх сард шилжсэн.')}
           ${sec('⬅️ Өөр сард төлсөн → энэ сард ноогдсон', shiftIn, '←', 'Мөнгө өөр сард гарсан ч ' + month + '-ын зардалд НЭМЭГДСЭН.')}
         </div>
@@ -33611,7 +37357,7 @@ function renderReports() {
       <div class="rsrc-note">Харилцагч биднийг хаанаас олсон — захиалга бичих үед тэмдэглэгддэг. Зарын зарцуулалттай холбогдмогц суваг бүрийн өртөг гарна.</div>
     </div>`;
   })();
-  // ── АГУУЛАХААС ЦАГТАА ГАРСАН УУ — сараар, өдрөөр (2026-09-22) ──
+  // ── ХҮРГЭЛТ ЦАГТАА ХҮРСЭН ҮҮ — сараар, өдрөөр (арга хэмжээ эхлэх цагтай) ──
   // Тойм дээр зөвхөн хувь харагдана; ЗАДАРГАА нь энд. Хоёулаа `dispatchStats`
   // -ээс гардаг тул тоо хэзээ ч зөрөхгүй.
   const dispatchPanel = (() => {
@@ -33622,7 +37368,7 @@ function renderReports() {
       const d = String(o && o.starts_at || '').slice(0, 10);
       return d >= from && d <= to;
     });
-    const st = dispatchStats(inMonth, from);
+    const st = dispatchStats(state.appOrders || [], null, month);   // Тоймын карттай ИЖИЛ дуудлага
     const days = dispatchDayRows(inMonth, month);
     if (!st.n && !st.skipped) return '';
     const cls = st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';
@@ -33638,7 +37384,7 @@ function renderReports() {
       <span class="dsp-day-n">${d.n - d.late}/${d.n}</span>
     </div>`;
     return `<div class="rsrc-panel">
-      <div class="rsrc-title">🚚 Хүргэлтэд цагтаа гарсан · ${escapeHtml(month)}
+      <div class="rsrc-title">🚚 Хүргэлт цагтаа хүрсэн · ${escapeHtml(month)}
         <span class="rsrc-pct ${cls}">${st.pct === null ? '—' : st.pct + '%'}</span></div>
       <div class="rsrc-note">${st.n} хүргэлт хэмжигдсэн${st.late ? ` · <b>${st.late} хоцорсон</b> · дунджаар ${st.avgLate} цаг` : ' · бүгд цагтаа'}.
         ${st.pickup ? `<br>Очиж авах ${st.pickup} захиалга хэмжигдээгүй — харилцагч өөрөө цагаа сонгодог.` : ''}</div>
@@ -33648,10 +37394,10 @@ function renderReports() {
         <span class="dsp-lr-d">${escapeHtml(o.day.slice(5))}</span>
         <span class="dsp-lr-h">${o.lateH}ц</span></button>`).join('')}</div>` : ''}
       <details class="dsp-det"><summary>Өдрөөр харах (${days.length} өдөр) · тооцооны журам</summary>
-        <div class="rsrc-note">Гарах ёстой цаг = эвент эхлэх − (ачих 1ц + зам км÷60, хотод доод тал 1ц + угсралттай бол 1ц + нөөц 30мин).</div>
+        <div class="rsrc-note">Цагтаа = «Талбайд буулгасан» (суурилуулалттай бол «Суурилуулсан») цаг ≤ арга хэмжээ эхлэх цаг. Зураг хожим оруулсан бол утсанд зураг авсан цагаар.</div>
         ${days.length ? `<div class="dsp-days">${days.map(dayRow).join('')}</div>` : ''}
       </details>
-      ${(st.skipped || st.wild) ? `<div class="rsrc-warn">⚠ ${st.skipped + st.wild} хүргэлт хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
+      ${(st.skipped || st.wild) ? `<div class="rsrc-warn">⚠ ${st.skipped + st.wild} хүргэлт хэмжигдээгүй — эхлэх цаг тэмдэглээгүй, суурилуулалтыг алгассан эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
     </div>`;
   })();
 
@@ -33814,7 +37560,6 @@ function openVatReceiptsModal(title, sub, rows) {
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 }
 
-
 // Ачаалсан файлаас алга болсон баримтыг ол.
 // ⚠ ЗӨВХӨН файлд орсон саруудыг харна — эс бөгөөс нэг сарын файл ачаалахад
 // бусад бүх сарын баримт «буцаасан» болно.
@@ -33840,6 +37585,7 @@ async function vatSetReturned(id, on) {
     headers: { ...VAT_HDR, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(patch) }, 15000);
   if (!r.ok) throw new Error('Буцаалт тэмдэглэх алдаа (' + r.status + ')');
   const rec = (state.vatReceipts || []).find(x => x.id === id); if (rec) Object.assign(rec, patch);
+  _vatOrgRev++;   // байгууллагын РД-ийн индекс хуучирлаа
 }
 
 // ebarimt xlsx 2D массиваас баримтын мөр гаргана (толгойг нэрээр ононо)
@@ -33874,7 +37620,7 @@ function parseVatMatrix(matrix) {
 async function loadVatReceipts() {
   try {
     const r = await fetchWithTimeout(`${VAT_URL}?select=*&order=dt.desc`, { headers: VAT_HDR }, 15000);
-    if (r.ok) { state.vatReceipts = await r.json(); return state.vatReceipts; }
+    if (r.ok) { state.vatReceipts = await r.json(); _vatOrgRev++; return state.vatReceipts; }
   } catch (e) { console.warn('loadVatReceipts fail', e.message); }
   state.vatReceipts = state.vatReceipts || [];
   return state.vatReceipts;
@@ -33934,25 +37680,25 @@ function openAppErrorsModal() {
   let filter = 'active';                                   // active | fixed | all
   const ov = document.createElement('div');
   ov.className = 'modal-bg open'; ov.style.zIndex = '10002';
-  const chip = (k, t) => `<button class="btn ui-raw" data-err-f="${k}" style="font-size:12px;padding:5px 11px;">${t}</button>`;
-  ov.innerHTML = `<div class="modal" style="max-width:560px;width:96%;max-height:88vh;overflow:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <h2 id="err-h" style="margin:0;font-size:16px;">⚠ Аппын алдаа</h2>
-      <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
-    <div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap;">
+  const chip = (k, t) => `<button class="btn ui-raw aerr-chip" data-err-f="${k}">${t}</button>`;
+  ov.innerHTML = `<div class="modal aerr-modal">
+    <div class="aerr-head">
+      <h2 id="err-h" class="aerr-t">⚠ Аппын алдаа</h2>
+      <button class="btn aerr-x" data-err-x>✕</button></div>
+    <div class="aerr-tabs">
       ${chip('active', '⚠ Идэвхтэй')}${chip('fixed', '✅ Зассан')}${chip('all', '📜 Бүгд')}</div>
-    ${(state.isCEO && state.ciInfo) ? `<div style="font-size:12px;color:var(--muted);margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    ${(state.isCEO && state.ciInfo) ? `<div class="aerr-note aerr-ci">
       <span>Систем шалгалт: Апп ${state.ciInfo.app === 'ok' ? '🟢' : state.ciInfo.app === 'run' ? '🟡' : '🔴'} · Сайт ${state.ciInfo.site === 'ok' ? '🟢' : state.ciInfo.site === 'run' ? '🟡' : '🔴'}</span>
-      ${state.ciInfo.url ? `<button class="btn ui-raw" data-err-gh style="font-size:11px;padding:3px 9px;">🔗 GitHub Actions</button>` : ''}</div>` : ''}
+      ${state.ciInfo.url ? `<button class="btn ui-raw aerr-mini" data-err-gh>🔗 GitHub Actions</button>` : ''}</div>` : ''}
     ${(state.isCEO && state.ciInfo && state.ciInfo.fail) ? `<div class="ci-fail-detail">
       <b>🔴 ${escapeHtml(state.ciInfo.fail.name)}</b> унасан${state.ciInfo.at ? ' · ' + escapeHtml(String(state.ciInfo.at).slice(0, 16).replace('T', ' ')) : ''}
       ${state.ciInfo.fail.msg ? `<br>${escapeHtml(state.ciInfo.fail.msg)}` : ''}
       <br>Шалтгааныг «🔗 GitHub Actions» дотроос уншина.</div>` : ''}
-    <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+    <div class="aerr-note">
       🧑 = бүх ажилтнаас цуглуулсан (давтамжаар бүлэглэсэн) · бусад нь зөвхөн энэ төхөөрөмжийнх.<br>
       «Зассан»/«Үл хамаарах» тэмдэглэсэн нь идэвхтэйгээс гарч <b>«Зассан»/«Бүгд»</b> табд түүх болж үлдэнэ.</div>
     <div id="err-list"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+    <div class="aerr-foot">
       <button class="btn" data-err-clear>Энэ төхөөрөмжийн лог цэвэрлэх</button>
       <button class="btn btn-primary" data-err-x>Хаах</button></div>
   </div>`;
@@ -34097,6 +37843,7 @@ async function vatSetMatch(id, match) {
     headers: { ...VAT_HDR, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(patch) }, 15000);
   if (!r.ok) throw new Error('Тулгалт хадгалах алдаа (' + r.status + ')');
   const rec = (state.vatReceipts || []).find(x => x.id === id); if (rec) Object.assign(rec, patch);
+  _vatOrgRev++;   // байгууллагын РД-ийн индекс хуучирлаа
 }
 
 // Тулгах захиалгууд: NOMAAD + Эвент(түүхэн) — нэгдсэн хэлбэрт
@@ -34120,7 +37867,29 @@ function vatCandidateOrders() {
     const regM = cust.match(/\b(\d{7})\b/);
     out.push({ type: 'event', no: o.number, name: cust, reg: regM ? regM[1] : vatRegNorm(o.register || o.reg_no),
       amount: vatNum(o.total_mnt || o.grand_total || o.total), date: o.starts_at || o.created_at || '' }); });
-  return out.filter(c => c.no != null && c.no !== '');
+  /* Шивэгдсэн дүнг НЭГ УДАА индекслэнэ — захиалга бүрд `vatForOrder` дуудвал
+     181 баримт × 400 захиалга болж модал мэдэгдэхүйц удаашрана. */
+  const invBy = new Map();
+  vatReceiptsActive().forEach(v => { if (!v.matched_id) return; const k = String(v.matched_id);
+    invBy.set(k, (invBy.get(k) || 0) + (Number(v.total) || 0)); });
+  return out.filter(c => c.no != null && c.no !== '')
+    .map(c => Object.assign({}, c, { remain: vatCandRemain(c, invBy.get(String(c.no)) || 0) }));
+}
+/* Баримт ба саналын хоорондох хоногийн зөрүү. Мэдэгдэхгүй бол null. */
+function vatCandGap(rec, c) {
+  const a = Date.parse((rec && rec.dt) || ''), b = Date.parse((c && c.date) || '');
+  if (!isFinite(a) || !isFinite(b)) return null;
+  return Math.round(Math.abs(a - b) / 86400000);
+}
+const VAT_GAP_WARN = 45;   // 1.5 сар — НӨАТ хожуу шивэгдэх нь хэвийн, түүнээс хол бол эргэлзээтэй
+/* ⛔ ХОЛЫН САНАЛЫГ ДУУГҮЙ ӨНГӨРӨӨХГҮЙ (2026-10-03, CEO барив: «энэ таамаг нь
+   хаа байсан 4 сарыхыг санал болгоод байна, нягтлан он сар харахгүй бол алдаж
+   дарах магадлал их»). Дүн таарсан гэдэг дангаараа хангалтгүй — 4 сарын өмнөх
+   өөр харилцагчийн захиалга ижил дүнтэй байж болно. Зөрүүг ҮГЭЭР хэлнэ. */
+function vatGapNote(d) {
+  if (d == null || d <= VAT_GAP_WARN) return '';
+  const m = Math.round(d / 30);
+  return m >= 2 ? `⚠ ${m} сарын зөрүү` : `⚠ ${d} хоногийн зөрүү`;
 }
 function vatAutoScore(rec, c) {
   let s = 0;
@@ -34130,8 +37899,15 @@ function vatAutoScore(rec, c) {
   const rn = vatNorm(rec.name), cn = vatNorm(c.name);
   if (rn && cn) { if (rn === cn) s += 5; else { const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' ')); const ov = rt.filter(t => ct.has(t)).length; if (ov) s += 2 + Math.min(ov, 3); } }
   const amt = c.amount || 0;
-  if (amt > 0) { const near = (a, b) => Math.round(a) === Math.round(b); if (near(rec.total, amt) || near(rec.net, amt)) s += 5; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
-  if (rec.dt && c.date) { const dd = Math.abs(new Date(rec.dt) - new Date(c.date)) / 86400000; if (isFinite(dd)) { if (dd <= 7) s += 2; else if (dd <= 45) s += 1; } }
+  const nearAmt = (a, b) => Math.round(a) === Math.round(b);
+  if (amt > 0) { if (nearAmt(rec.total, amt) || nearAmt(rec.net, amt)) s += 5; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
+  // Хэсэгчилсэн шивэгдсэн захиалгын ҮЛДЭГДЭЛТЭЙ таарвал мөн адил хүчтэй дохио
+  const rem = Number(c.remain) || 0;
+  if (rem > 0 && (nearAmt(rec.total, rem) || nearAmt(rec.net, rem))) s += 5;
+  // Ойр огноо нэмэр, ХОЛ огноо ХАСНА — эс бөгөөс зөвхөн дүн таарсан хуучин
+  // захиалга «санал болгосон» ногоон чип болж эхний байрт сууна.
+  { const dd = vatCandGap(rec, c);
+    if (dd != null) { if (dd <= 7) s += 2; else if (dd <= VAT_GAP_WARN) s += 1; else if (dd > 120) s -= 3; else s -= 1; } }
   return s;
 }
 // Нэр таарч байгаа эсэх — ХАТУУ (нэг ерөнхий үг давхацсанаар таарсан гэхгүй):
@@ -34163,6 +37939,18 @@ function vatForOrder(orderNo) {
 }
 // Дүүрэн шивсэн бол ногоон, дутуу бол шар badge
 // Захиалга бүрэн НӨАТ шивэгдсэн үү (нэмэлт баримт орох зайгүй) — тийм бол саналаас хасна
+/* Захиалгын ҮЛДЭГДЭЛ — нэхэмжлэгдэх ёстой атал шивэгдээгүй хэсэг.
+   ⛔ Хэсэгчилсэн баримтыг таних ЦОРЫН ГАНЦ дохио. Өмнө нь санал нь зөвхөн
+      захиалгын БҮТЭН дүнтэй тулгадаг байсан тул «урьдчилгаа + үлдэгдэл» гэж
+      хоёр баримт болсон захиалга «таарах санал алга» болж, нягтлан гараар
+      хайхаас өөр аргагүй байв (амьд жишээ: захиалга 2,656,500 = 1,551,000
+      шивэгдсэн + 1,105,500 тулгаагүй баримт, хоёулаа нэг РД-тэй). */
+function vatCandRemain(c, invoiced) {
+  const amt = Number((c && c.amount) || 0), inv = Number(invoiced) || 0;
+  if (amt <= 0 || inv <= 0) return 0;
+  const r = amt - inv;
+  return r > 0.5 ? r : 0;
+}
 function vatCandFull(c) {
   const amt = Number(c.amount) || 0;
   if (amt <= 0) return false;   // дүнгүй бол хасахгүй
@@ -34306,7 +38094,7 @@ async function openVatReportModal() {
     const filterTabs = `<div style="display:flex;gap:7px;padding:0 18px 10px;flex-wrap:wrap;">${tabBtn('todo', 'Тулгаагүй', nTodo)}${tabBtn('done', 'Тулгагдсан', nDone)}${tabBtn('all', 'Бүгд', listAll.length)}${retList.length ? tabBtn('ret', '↩ Буцаасан', retList.length) : ''}</div>`;
     // Санал төрлөөр шүүх (РД/дүн/нэр таарсан захиалга байгаа эсэх)
     const near2 = (a, b) => b > 0 && Math.round(a) === Math.round(b);
-    const flagsFor = (r) => { let reg = false, amt = false, name = false; for (const c of cands) { if (!reg && r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg) reg = true; if (!amt && (near2(r.total, c.amount) || near2(r.net, c.amount))) amt = true; if (!name && vatNameMatch(r.buyer_name, c.name)) name = true; if (reg && amt && name) break; } return { reg, amt, name }; };
+    const flagsFor = (r) => { let reg = false, amt = false, name = false; for (const c of cands) { if (!reg && r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg) reg = true; if (!amt && (near2(r.total, c.amount) || near2(r.net, c.amount) || near2(r.total, c.remain) || near2(r.net, c.remain))) amt = true; if (!name && vatNameMatch(r.buyer_name, c.name)) name = true; if (reg && amt && name) break; } return { reg, amt, name }; };
     const flagged = list.map(r => ({ r, f: flagsFor(r) }));
     const cReg = flagged.filter(x => x.f.reg).length, cAmt = flagged.filter(x => x.f.amt).length, cName = flagged.filter(x => x.f.name).length, cNone = flagged.filter(x => !x.f.reg && !x.f.amt && !x.f.name).length;
     const shown = mfilter === 'reg' ? flagged.filter(x => x.f.reg) : mfilter === 'amt' ? flagged.filter(x => x.f.amt) : mfilter === 'name' ? flagged.filter(x => x.f.name) : mfilter === 'none' ? flagged.filter(x => !x.f.reg && !x.f.amt && !x.f.name) : flagged;
@@ -34335,18 +38123,26 @@ async function openVatReportModal() {
       } else {
         const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
         // Зөвхөн бодит таарсан (дүн ЯГ таарсан / РД / нэр) саналыг л харуулна — өөр дүнтэйг үзүүлэхгүй
+        const remOkOf = (c) => (Number(c.remain) || 0) > 0 && (near(r.total, c.remain) || near(r.net, c.remain));
         const tops = cands.map(c => {
           const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
           const nameOk = vatNameMatch(r.buyer_name, c.name);
-          return { c, ok: amtOk || regOk || nameOk, s: vatAutoScore(r, c) };
+          return { c, ok: amtOk || regOk || nameOk || remOkOf(c), s: vatAutoScore(r, c) };
         }).filter(x => x.ok && !vatCandFull(x.c)).sort((a, b) => b.s - a.s).slice(0, 3);
         const chips = tops.map((t, i) => {
           const c = t.c; const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
+          const remOk = !amtOk && remOkOf(c);   // яагаад таарсныг ИЛ хэлнэ — «дүн» гэвэл хүн бүтэн дүн гэж ойлгоно
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
           const nameOk = vatNameMatch(r.buyer_name, c.name);
           const lbl = (c.name || c.no) + ' · ' + fmtMoney(c.amount);
-          return `<button data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}" style="text-align:left;border:1px solid ${i === 0 ? '#1e7a55' : 'var(--border,#ddd)'};background:${i === 0 ? '#e8f2ec' : '#fff'};color:${i === 0 ? '#1e7a55' : 'var(--text,#333)'};border-radius:8px;padding:4px 9px;font-size:11.5px;font-weight:${i === 0 ? '700' : '500'};cursor:pointer;white-space:nowrap;">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b style="color:#0d7a3f;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;">✓дүн</b>' : ''}${nameOk ? ' <b style="color:#2563EB;">✓нэр</b>' : ''} <span style="color:var(--muted);">${escapeHtml(String(c.date || '').slice(5, 10))}</span></button>`;
+          /* Огноо нь БҮТНЭЭР (он-сар-өдөр) — «04-05» гэж зөвхөн сар-өдрөөр
+             харуулахад нягтлан аль оных болохыг мэдэхгүй дарж байв. Зөрүү их
+             бол ногоон «санал болгосон» өнгөөр БУДАХГҮЙ — ногоон нь «аюулгүй
+             дарж болно» гэж уншигддаг. */
+          const gapNote = vatGapNote(vatCandGap(r, c));
+          const hot = i === 0 && !gapNote;
+          return `<button class="vat-chip${hot ? ' on' : ''}${gapNote ? ' warn' : ''}" data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b class="vat-ok-reg">✓РД</b>' : ''}${amtOk ? ' <b class="vat-ok-amt">✓дүн</b>' : ''}${remOk ? ' <b class="vat-ok-amt">✓үлдэгдэл</b>' : ''}${nameOk ? ' <b class="vat-ok-name">✓нэр</b>' : ''} <span class="vat-chip-date">${escapeHtml(String(c.date || '').slice(0, 10))}</span>${gapNote ? ` <span class="vat-chip-warn">${escapeHtml(gapNote)}</span>` : ''}</button>`;
         }).join('');
         matchCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">${chips || '<span style="color:var(--muted);font-size:11.5px;">таарах санал алга</span>'}<button data-vpicker="${escapeHtml(r.id)}" style="border:none;background:none;color:var(--accent,#2563EB);font-size:11px;cursor:pointer;padding:2px 0;">🔍 Бусад захиалга хайх</button></div>`;
       }
@@ -34364,7 +38160,6 @@ async function openVatReportModal() {
         : vfilter === 'todo' ? '🎉 Бүх баримт тулгагдсан!' : vfilter === 'done' ? 'Тулгагдсан баримт алга.' : vfilter === 'ret' ? 'Буцаасан баримт алга.' : 'Баримт алга.';
       rowsHtml = `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--muted);">${emptyMsg}</td></tr>`;
     }
-
 
     card.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border,#eee);">
@@ -34680,7 +38475,11 @@ function renderFinanceReport(wrap) {
 
   const groupBy = (arr, k) => arr.reduce((o, t) => { const x = k(t); (o[x] = o[x] || []).push(t); return o; }, {});
   const sumOf = arr => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-  const monthList = base.filter(t => (t.requested_at || '').slice(0, 7) === month);
+  /* ⛔ ЖАГСААЛТ = НООГДОХ САРААР (`finExpMonth`), банкны огноогоор БИШ (2026-10-03).
+     Гүйлгээн дээр «аль сарын зардал» гэж сонгосон нь ЭНД харагдахгүй бол
+     тэр сонголт хүний хувьд ОГТ байхгүйтэй адил. Банкны огноо нь мөр бүрт
+     ⇄ тэмдэгээр ил гарна. */
+  const monthList = base.filter(t => finExpMonth(t, finBasis()) === month);
 
   // ── Тулгалт + Excel татах ──
   const bar = document.createElement('div');
@@ -34732,8 +38531,9 @@ function renderFinanceReport(wrap) {
           .map(d => { const i = bankAcctInfo(d); return (i && (i.name || i.bank)) || d; }),
         pendExpenses: allPendingCardExpenses().filter(r => String(r.requested_at || '').slice(0, 7) === month).length,
         openIncome: incomeOpenStats(state.bankIncome, month),
-        chainBreaks: (closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), month)
+        chainBreaks: (closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), month, 0)
           .find(b => b.kind === 'chain') || {}).n || 0,
+        balance: balanceStats(state.bankStatements, companyAcctList(), month),
       });
       const card = document.createElement('div');
       card.innerHTML = finNextStepsHtml(_ns, month);
@@ -34755,7 +38555,7 @@ function renderFinanceReport(wrap) {
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
   head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
     + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month} <span style="font-size:11px;font-weight:600;color:var(--muted);">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
-    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал${(() => {
+    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал <span style="font-size:11px;">(ноогдох сараар)</span>${(() => {
         const ol = sumOf(monthList.filter(t => finIsNonExpense(t.category)));
         const dr = sumOf(monthList.filter(finIsDepositReturn));
         const pd = sumOf(monthList.filter(t => finPendingStmt(t)));
@@ -35054,12 +38854,17 @@ function renderFinanceReport(wrap) {
       ? `<span style="color:var(--warn);"> · «${escapeHtml(t.close_note)}»</span>` : '';
     const titleAttr = t.close_note ? ` title="${escapeHtml(t.close_note)}"` : '';
     const timeHtml = t.requested_at ? `<span style="white-space:nowrap;color:var(--muted);font-size:11px;">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>` : '';
+    /* ⇄ Банкны сар ≠ ноогдох сар. Мөрийг нуухгүй, ЯЛГААГ ил хэлнэ — эс бөгөөс
+       «яагаад 9-р сарын гүйлгээ 8-р сард байна вэ» гэж хүн гайхна. */
+    const _bankYm = String(t.requested_at || '').slice(0, 7);
+    const shiftHtml = (_bankYm && _bankYm !== month)
+      ? `<span class="fin-shift" title="Банкнаас ${escapeHtml(_bankYm)}-д гарсан · ${escapeHtml(month)} сарын зардал">⇄ ${escapeHtml(_bankYm)}</span>` : '';
     // Шилжүүлгийн баримт — мөрөнд ШУУД thumbnail (дарвал томруулна, модал нээхгүй)
     const proofHtml = (t.payment_proof_url && /^http/.test(t.payment_proof_url))
       ? `<button type="button" class="fin-proof-thumb" data-lightbox="${escapeHtml(driveThumbUrl(t.payment_proof_url, 1600))}" title="Шилжүүлгийн баримт — томруулж харах"><img src="${escapeHtml(driveThumbUrl(t.payment_proof_url, 200))}" alt="баримт" loading="lazy"></button>` : '';
     d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"${titleAttr}>`
       + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
-      + `${classBadge(t)}${timeHtml}${proofHtml}`
+      + `${classBadge(t)}${shiftHtml}${timeHtml}${proofHtml}`
       + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
     d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openExpenseModal(t.id); });
     return d;
@@ -35135,7 +38940,8 @@ function exportFinanceReportExcel() {
   if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
   const stKey = state.finReportStatus || 'all';
   const stPred = stKey === 'all' ? () => true : (t => finStage(t).key === stKey);
-  let rows = base.filter(t => (t.requested_at || '').slice(0, 7) === month && stPred(t));
+  // Дэлгэцтэй ИЖИЛ дүрэм — ноогдох сараар (эс бөгөөс татсан Excel дэлгэцээс зөрнө)
+  let rows = base.filter(t => finExpMonth(t, finBasis()) === month && stPred(t));
   if (!rows.length) { showToast('Татах гүйлгээ алга', 'warn'); return; }
   const amt = t => Number(t.amount) || 0;
   const sumOf = arr => arr.reduce((s, t) => s + amt(t), 0);
@@ -35342,521 +39148,61 @@ function exportAllReports() {
 }
 
 function renderDashboard() {
-  // ─── Глобал салбар ленз (толгойн сонгогч) — доорх БҮХ тоо үүгээр шүүгдэнэ. Нэгдсэн (shared) хоёуланд. ───
-  const dashBranch = effectiveBranchLens();
-  const wantFinBr = finLensBranch(dashBranch);
-  const memberInDashBranch = (m) => memberInLens(m);   // НЭГДСЭН дүрэм (override-aware, 'shared'-ыг зөв авна)
-  const tasks = (state.tasks || []).filter(t => t.status !== 'deleted' && !isOrderAutoTask(t) && branchInLens(taskBranch(t)));   // устгасан + захиалгын авто-ажил хасна (жагсаалттай нийцүүлнэ)
-  const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted'
-    && (dashBranch === 'all' || finEffBranch(r) === wantFinBr));
   const today = todayStr();
   const isCEO = !!state.isCEO;
   const me = state.me;
 
-  // ─── Хувийн KPI (бүх ажилтанд) ───
-  // ⚠ Ленз ХАМААРАХГҮЙ — өөрт нь оноосон ажил нь тэр хүнийх, салбар нь хамаагүй.
-  //   Компанийн тоонууд (дээрх `tasks`) урьдын адил лензээр шүүгдэнэ; зөвхөн ХУВИЙН
-  //   блок бүтэн байна. Эс бөгөөс нэг салбартай ажилтан «0 ажил» гэсэн худал тоо хардаг.
-  const myBase = (state.tasks || []).filter(t => t.status !== 'deleted' && !isOrderAutoTask(t));
-  const mineTasks = myBase.filter(t => t.assignee === me);
-  const myDone = mineTasks.filter(t => t.status === 'done').length;
-  const myActive = mineTasks.filter(t => t.status !== 'done').length;
-  const myOverdue = mineTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
-  const myToday = mineTasks.filter(t => t.due === today && t.status !== 'done').length;
-  const myRate = mineTasks.length > 0 ? Math.round((myDone / mineTasks.length) * 100) : 0;
-  // Сүүлийн 7 хоног — миний дуусгасан
-  const my7 = last7Days(today).map(d => ({
-    day: d.day,
-    count: mineTasks.filter(t => t.status === 'done' && (t.executed_at || t.completed_at || '').toString().startsWith(d.ds)).length,
-    isToday: d.isToday,
-  }));
-  const myMax = Math.max(1, ...my7.map(x => x.count));
-
-  // 1) Status breakdown
-  const byStatus = { open: 0, in_progress: 0, done: 0, declined: 0 };
-  tasks.forEach(t => { byStatus[t.status || 'open'] = (byStatus[t.status || 'open'] || 0) + 1; });
-  const totalTasks = tasks.length || 1;
-
-  // 2) Per-staff active load — БҮХ идэвхтэй ажилтныг 0-ээс эхлүүлнэ (ачаалалгүй/чөлөөтэй
-  //    хүмүүс ч харагдана — CEO хэнд ажил оноох боломжтойг шууд харна).
-  const staffLoad = {};
-  TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && memberInDashBranch(m)).forEach(m => { staffLoad[personKey(m)] = 0; });
-  tasks.filter(t => t.status !== 'done' && t.assignee).forEach(t => {
-    staffLoad[t.assignee] = (staffLoad[t.assignee] || 0) + 1;
-  });
-  const topStaff = Object.entries(staffLoad).sort((a,b)=>b[1]-a[1]); // бүгд, ачаалалаар (чөлөөтэй нь доор)
-  const maxLoad = Math.max(1, ...topStaff.map(([,n]) => n));
-  // Үндсэн ба цагийн ажилтныг тойм дээр тусад нь харуулна.
-  const isDailyKey = (id) => { const m = findMember(id); return !!(m && m.worker_type === 'daily'); };
-  const permStaff  = topStaff.filter(([id]) => !isDailyKey(id));
-  const dailyStaff = topStaff.filter(([id]) =>  isDailyKey(id));
-  const maxPermLoad = Math.max(1, ...permStaff.map(([,n]) => n));
-
-  // 3) Финансын зардал — сүүлийн 30 хоног. Finance-ийн ts талбар нь `requested_at` —
-  // өмнөх кодонд `created_at || ts` гэж буруу нэр хайж байсан тул хоосон гарч байсан.
-  const cutoff = Date.now() - 30 * 86400 * 1000;
-  const financeTs = r => {
-    const raw = r.requested_at || r.updated || r.decision_at || r.created_at || r.ts;
-    if (!raw) return 0;
-    const t = new Date(raw).getTime();
-    return Number.isFinite(t) ? t : 0;
-  };
-  const recentFinance = fr.filter(r => financeTs(r) > cutoff);
-  // Хуулга суурьтай: нийт зардал + ангилаагүй (эзэн ангилахыг хүлээж буй).
-  const totalSpent = recentFinance.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const _finUnclas = (r) => { const tok = (typeof parseCardToken === 'function') ? parseCardToken(r.justification || '') : null; return (tok && tok.pend) || String(r.category || '') === (typeof CARD_PEND_CAT !== 'undefined' ? CARD_PEND_CAT : '9500') || !String(r.category || '').trim(); };
-  const unclasList = recentFinance.filter(_finUnclas);
-  const totalUnclassified = unclasList.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-
-  // 4) Хоцорсон
-  const overdueCount = tasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
-  const todayCount = tasks.filter(t => t.due === today && t.status !== 'done').length;
-  // 5) Хүлээж буй ажилтны бүртгэл (CEO action хэрэгтэй)
-  const pendingRegCount = TEAM.filter(m => (m.status || '') === 'хүлээж буй').length;
-
-  // 6) Trend: сүүлийн 14 хоногийн task үүсгэх vs дуусгах
-  const trendDays = 14;
-  const dayMs = 86400 * 1000;
-  const createdByDay = new Array(trendDays).fill(0);
-  const doneByDay = new Array(trendDays).fill(0);
-  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  const trendStart = startOfToday.getTime() - (trendDays - 1) * dayMs;
-  for (const t of tasks) {
-    const cMs = typeof t.created === 'number' ? t.created : new Date(t.created || 0).getTime();
-    if (cMs >= trendStart) {
-      const idx = Math.floor((cMs - trendStart) / dayMs);
-      if (idx >= 0 && idx < trendDays) createdByDay[idx]++;
-    }
-    if (t.status === 'done') {
-      const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
-      if (dMs >= trendStart) {
-        const idx = Math.floor((dMs - trendStart) / dayMs);
-        if (idx >= 0 && idx < trendDays) doneByDay[idx]++;
-      }
-    }
-  }
-
-  // 7) Top performer — хамгийн их дуусгасан 3 ажилтан (сүүлийн 30 хоног)
-  const completionCutoff = Date.now() - 30 * dayMs;
-  const completionCount = {};
-  for (const t of tasks) {
-    if (t.status !== 'done' || !t.assignee) continue;
-    const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
-    if (dMs >= completionCutoff) {
-      completionCount[t.assignee] = (completionCount[t.assignee] || 0) + 1;
-    }
-  }
-  const topPerformers = Object.entries(completionCount).sort((a,b)=>b[1]-a[1]).slice(0, 3);
-
-  // 8) Дундаж дуусгах хугацаа (created → completed_at, сүүлийн 30 хоног)
-  const durations = [];
-  for (const t of tasks) {
-    if (t.status !== 'done') continue;
-    const cMs = typeof t.created === 'number' ? t.created : new Date(t.created || 0).getTime();
-    const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
-    if (!cMs || !dMs || dMs < completionCutoff) continue;
-    const days = (dMs - cMs) / dayMs;
-    if (days >= 0 && days < 365) durations.push(days);
-  }
-  const avgCompletionDays = durations.length ? (durations.reduce((s,d)=>s+d, 0) / durations.length) : 0;
-
-  // SVG donut for status
-  const donut = (() => {
-    const cx = 60, cy = 60, r = 48;
-    const C = 2 * Math.PI * r;
-    const colors = {
-      open: '#f59e0b', in_progress: '#3b82f6',
-      done: '#10b981', declined: '#ef4444'
-    };
-    let offset = 0;
-    const segments = ['done', 'in_progress', 'open', 'declined'].map(k => {
-      const n = byStatus[k] || 0;
-      const frac = n / totalTasks;
-      const dash = `${C * frac} ${C}`;
-      const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${colors[k]}" stroke-width="14" stroke-dasharray="${dash}" stroke-dashoffset="${-offset * C}" transform="rotate(-90 ${cx} ${cy})"/>`;
-      offset += frac;
-      return seg;
-    }).join('');
-    return `
-      <svg viewBox="0 0 120 120" width="120" height="120">
-        ${segments}
-        <text x="60" y="58" text-anchor="middle" font-size="22" font-weight="700" fill="var(--text)">${tasks.length}</text>
-        <text x="60" y="76" text-anchor="middle" font-size="10" fill="var(--muted)">нийт</text>
-      </svg>
-    `;
-  })();
+  /* ⛔ Хувийн ажлын KPI, 7 хоногийн график, авлага/ойрын хүргэлтийн тууз
+     2026-10-05-нд ХАСАГДСАН (CEO). Ажил нь хувийн ажлын дэлгэцэд, авлага нь
+     Авлага дэлгэцэд бий — Тойм дээр давхардуулахгүй. Scan-тест буцахыг хаана. */
+  /* Шилдэг гүйцэтгэгч = M-Event-ийн ДАМЖЛАГЫН ОНОО, сонгосон САРААР (2026-10-05, CEO).
+     ⛔ Даалгаврын тоогоор БҮҮ буцаа — даалгавар цөөхөн хүнд л оноогддог тул карт
+       ихэнхдээ «Дуусгасан ажил алга» гэж хоосон байв. Оноо нь бонустай ИЖИЛ эх
+       сурвалжаас (`stagePayByPerson`) — хоёр өөр «шилдэг» гарахгүй. */
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
+  const topYm = state.dashTopYm || todayStr().slice(0, 7);
+  // Ростер = идэвхтэй үндсэн ажилтан, салбарын лензээр (цалингийн самбартай ижил шүүлт).
+  // ⚠ Тоймын өөр картын дотоод туслахыг БҮҮ ашигла — тэр карт хасагдахад энэ унана (2026-10-05).
+  const _topLens = effectiveBranchLens() || 'all';
+  const topRoster = TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && m.worker_type !== 'daily' && _inHubBranch(m, _topLens)).map(personKey).filter(Boolean);
+  const topPerformers = stageTopPerformers(state.appOrders || [], topYm, topRoster);
 
   return `
     <div class="dashboard">
       ${sessionExpiredBannerHtml()}
-      ${reviewBlockHtml(state.appOrders || [])}
+      ${/* ⛔ ДАРААЛАЛ = CEO-гийн шийдвэр (2026-10-05): ① гацсан захиалга ② календарь
+          ③ цагтаа хүрсэн % ④ үнэлгээ (муу нь дээр) ⑤ шилдэг гүйцэтгэгч. Scan-тест хаана. */ ''}
+      ${stuckBlockHtml(state.appOrders || [])}
+      ${canSeeOrderBoard() ? `<div class="dash-card dash-ocal">${ordersCalendarHtml(state.appOrders || [], { compact: true })}</div>` : ''}
       ${dispatchBlockHtml(state.appOrders || [])}
-      ${isCEO ? ceoNowStrip() : ''}
-      <div class="dashboard-actions">
-        <button class="btn" id="dash-export-csv">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          CSV татах
-        </button>
-        <button class="btn" id="dash-export-ics">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          Календарт татах (.ics)
-        </button>
-        <button class="btn" id="dash-print">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-          PDF хэвлэх
-        </button>
-        <button class="btn" id="dash-email-digest">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          Долоо хоногийн тойм имэйлдэх
-        </button>
-        <button class="btn" id="dash-staff">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Ажилтан удирдах
-        </button>
-      </div>
+      ${reviewBlockHtml(state.appOrders || [])}
       <div class="dashboard-grid">
-        <!-- ─── Миний ажил (бүх ажилтанд) ─── -->
-        <div class="dash-section-title" style="grid-column: span 4; font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:-4px;">Миний ажил</div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Идэвхтэй</div>
-          <div class="dash-kpi-value primary">${myActive}</div>
-          <div class="dash-kpi-sub">та хийх ёстой</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Өнөөдөр</div>
-          <div class="dash-kpi-value warn">${myToday}</div>
-          <div class="dash-kpi-sub">дуусах ёстой</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Хоцорсон</div>
-          <div class="dash-kpi-value danger">${myOverdue}</div>
-          <div class="dash-kpi-sub">та хийх ёстой</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Гүйцэтгэл</div>
-          <div class="dash-kpi-value ok">${myRate}%</div>
-          <div class="dash-kpi-sub">${myDone}/${mineTasks.length} дуусгасан</div>
-        </div>
-        <div class="dash-card dash-chart" style="grid-column: span 4;">
-          <div class="dash-card-title">Сүүлийн 7 хоног — Миний дуусгасан ажил</div>
-          <div class="kpi-bar-chart">
-            ${my7.map(d => `
-              <div class="kpi-bar-col">
-                <div class="kpi-bar-track">
-                  <div class="kpi-bar-fill ${d.isToday ? 'today' : ''}" style="height:${(d.count/myMax)*100}%"></div>
-                </div>
-                <div class="kpi-bar-num">${d.count}</div>
-                <div class="kpi-bar-day ${d.isToday ? 'today' : ''}">${d.day}</div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
 
-        <!-- ─── Компанийн тойм (бүх ажилтанд) ─── -->
-        <div class="dash-section-title" style="grid-column: span 4; font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:12px; margin-bottom:-4px;">Компанийн тойм</div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Хоцорсон</div>
-          <div class="dash-kpi-value danger">${overdueCount}</div>
-          <div class="dash-kpi-sub">эцсийн хугацаа өнгөрсөн</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Өнөөдөр</div>
-          <div class="dash-kpi-value warn">${todayCount}</div>
-          <div class="dash-kpi-sub">дуусах ёстой</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Хүлээгдэж буй</div>
-          <div class="dash-kpi-value primary">${recentFinance.filter(r => (r.decision||'pending')==='pending').length}</div>
-          <div class="dash-kpi-sub">санхүүгийн хүсэлт</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Идэвхтэй</div>
-          <div class="dash-kpi-value ok">${byStatus.open + byStatus.in_progress}</div>
-          <div class="dash-kpi-sub">ажилтнуудад</div>
-        </div>
-        ${isCEO && pendingRegCount > 0 ? `
-        <div class="dash-card dash-kpi dash-kpi-clickable" id="dash-pending-reg-card" style="grid-column: span 4;cursor:pointer;border:2px solid var(--accent-amber);">
-          <div class="dash-kpi-label" style="color:var(--accent-amber);">⏳ Хүлээж буй бүртгэлийн хүсэлт</div>
-          <div class="dash-kpi-value warn" style="font-size:24px;">${pendingRegCount} ажилтан хянахыг хүлээж байна</div>
-          <div class="dash-kpi-sub">Энд дарж хянах →</div>
-        </div>` : ''}
-
-        <!-- Status donut -->
-        <div class="dash-card dash-chart">
-          <div class="dash-card-title">Ажлын статус</div>
-          <div class="dash-donut">
-            ${donut}
-            <div class="dash-legend">
-              <div><span class="dot" style="background:#10b981"></span> Дууссан <strong>${byStatus.done}</strong></div>
-              <div><span class="dot" style="background:#3b82f6"></span> Хийгдэж байна <strong>${byStatus.in_progress}</strong></div>
-              <div><span class="dot" style="background:#f59e0b"></span> Шинэ <strong>${byStatus.open}</strong></div>
-              <div><span class="dot" style="background:#ef4444"></span> Татгалзсан <strong>${byStatus.declined}</strong></div>
-            </div>
+        <!-- Шилдэг гүйцэтгэгч — дамжлагын оноо, сараар -->
+        <div class="dash-card dash-top">
+          <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч</div>
+          <div class="dash-top-head">
+            <span class="dash-top-sub">M-Event дамжлагын оноогоор</span>
+            <input type="month" class="ui-raw dash-top-ym" id="dash-top-ym" value="${escapeHtml(topYm)}" max="${todayStr().slice(0, 7)}">
           </div>
-        </div>
-
-        <!-- Finance summary (CEO only — sensitive amounts) -->
-        ${isCEO ? `
-        <div class="dash-card dash-finance">
-          <div class="dash-card-title">Сүүлийн 30 хоног — Зардал</div>
-          <div class="dash-finance-row">
-            <div class="dash-finance-label">Нийт зардал</div>
-            <div class="dash-finance-value">${totalSpent.toLocaleString('mn-MN')}₮</div>
-          </div>
-          ${totalUnclassified > 0 ? `
-          <div class="dash-finance-row">
-            <div class="dash-finance-label">Ангилаагүй</div>
-            <div class="dash-finance-value warn">${totalUnclassified.toLocaleString('mn-MN')}₮ <span style="color:var(--muted);font-weight:400;font-size:11px;">(${unclasList.length})</span></div>
-          </div>` : ''}
-          <div class="dash-finance-row">
-            <div class="dash-finance-label">Гүйлгээ</div>
-            <div class="dash-finance-value">${recentFinance.length}${fr.length > recentFinance.length ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">(нийт ${fr.length})</span>` : ''}</div>
-          </div>
-        </div>` : ''}
-
-        <!-- Үндсэн ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг харна -->
-        <div class="dash-card dash-staff">
-          <div class="dash-card-title">Үндсэн ажилтны ачаалал (идэвхтэй ажил)</div>
-          <div class="dash-staff-scroll">
-          ${permStaff.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : permStaff.map(([id, n]) => `
-            <div class="dash-bar-row dash-staff-clickable${n === 0 ? ' is-free' : ''}" data-staff-email="${escapeHtml(id)}" title="Дарж ${escapeHtml(memberName(id))}-ийн ажлуудыг харах">
-              <div class="dash-bar-label">${escapeHtml(memberName(id))}</div>
-              <div class="dash-bar-track">
-                <div class="dash-bar-fill" style="width:${(n/maxPermLoad)*100}%"></div>
-              </div>
-              <div class="dash-bar-count">${n === 0 ? '<span class="dash-free">чөлөөтэй</span>' : n}</div>
-            </div>
-          `).join('')}
-          </div>
-        </div>
-
-        <!-- Цагийн (өдрийн) ажилтан — тусад нь. Нийт шилжүүлсэн цалин. -->
-        <div class="dash-card dash-staff">
-          <div class="dash-card-title">Цагийн ажилтан (${dailyStaff.length})</div>
-          <div class="dash-staff-scroll">
-          ${dailyStaff.length === 0 ? '<div class="dash-empty">Цагийн ажилтан алга</div>' : dailyStaff.map(([id]) => {
-            const m = findMember(id) || {};
-            const paid = hourlyPayouts(m).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+          <div class="dash-top-scroll">
+          ${topPerformers.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : topPerformers.map((r, i) => {
+            const top = topPerformers[0].pts || 1;
+            const medal = r.pts <= 0 ? '' : i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : `${i + 1}. `;
+            const w = r.pts > 0 ? Math.max(4, Math.round(r.pts / top * 100)) : 0;
             return `
-            <div class="dash-bar-row dash-staff-clickable" data-staff-email="${escapeHtml(id)}" title="Дарж ${escapeHtml(memberName(id))}-ийн ажлуудыг харах">
-              <div class="dash-bar-label">${escapeHtml(memberName(id))}<span style="font-size:10px;color:var(--muted);margin-left:6px;">${escapeHtml(m.role || '')}</span></div>
-              <div style="flex:1;text-align:right;font-size:11px;color:var(--muted);white-space:nowrap;">${paid > 0 ? 'Цалин: ' + fmtMoney(paid) : '—'}</div>
-            </div>`;
+              <div class="dash-bar-row${r.pts > 0 ? '' : ' is-free'}" title="Хариуцсан ${r.led} · хамтарсан ${r.helped} дамжлага">
+                <div class="dash-bar-label">${medal}${escapeHtml(memberName(r.key))}</div>
+                <div class="dash-bar-track"><div class="dash-bar-fill dash-top-fill" style="width:${w}%"></div></div>
+                <div class="dash-bar-count dash-top-n">${Math.round(r.pts)}</div>
+              </div>`;
           }).join('')}
           </div>
-        </div>
-
-        <!-- Сүүлийн 14 хоног — үүсгэх vs дуусгах trend (inline SVG sparkline) -->
-        <div class="dash-card dash-staff" style="grid-column: span 4;">
-          <div class="dash-card-title">Сүүлийн 14 хоног — даалгаврын урсгал</div>
-          ${(() => {
-            const maxV = Math.max(1, ...createdByDay, ...doneByDay);
-            const W = 600, H = 80, pad = 8;
-            const stepX = (W - 2*pad) / (trendDays - 1);
-            const yFor = v => H - pad - (v / maxV) * (H - 2*pad);
-            const ptsCreated = createdByDay.map((v, i) => `${pad + i*stepX},${yFor(v)}`).join(' ');
-            const ptsDone = doneByDay.map((v, i) => `${pad + i*stepX},${yFor(v)}`).join(' ');
-            const totalCreated = createdByDay.reduce((s,v)=>s+v,0);
-            const totalDone = doneByDay.reduce((s,v)=>s+v,0);
-            return `
-              <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">
-                <polyline points="${ptsCreated}" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round"/>
-                <polyline points="${ptsDone}"    fill="none" stroke="#10b981" stroke-width="2" stroke-linejoin="round"/>
-                ${createdByDay.map((v, i) => `<circle cx="${pad + i*stepX}" cy="${yFor(v)}" r="2.5" fill="#f59e0b"/>`).join('')}
-                ${doneByDay.map((v, i) => `<circle cx="${pad + i*stepX}" cy="${yFor(v)}" r="2.5" fill="#10b981"/>`).join('')}
-              </svg>
-              <div style="display:flex; gap:16px; font-size:12px; margin-top:6px; color:var(--muted);">
-                <span><span class="dot" style="background:#f59e0b;"></span> Үүсгэсэн <strong style="color:var(--text);">${totalCreated}</strong></span>
-                <span><span class="dot" style="background:#10b981;"></span> Дуусгасан <strong style="color:var(--text);">${totalDone}</strong></span>
-                <span style="margin-left:auto;">Дундаж дуусгах хугацаа: <strong style="color:var(--text);">${avgCompletionDays.toFixed(1)} өдөр</strong></span>
-              </div>
-            `;
-          })()}
-        </div>
-
-        <!-- Top performers — сүүлийн 30 хоног хамгийн их дуусгасан -->
-        <div class="dash-card dash-staff" style="grid-column: span 2;">
-          <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч (30 хоног)</div>
-          ${topPerformers.length === 0 ? '<div class="dash-empty">Дуусгасан ажил алга</div>' : topPerformers.map(([email, n], i) => {
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-            return `
-              <div class="dash-bar-row">
-                <div class="dash-bar-label">${medal} ${escapeHtml(memberName(email))}</div>
-                <div class="dash-bar-track">
-                  <div class="dash-bar-fill" style="width:${(n/topPerformers[0][1])*100}%;background:linear-gradient(90deg,#fbbf24,#f59e0b);"></div>
-                </div>
-                <div class="dash-bar-count">${n}</div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-
-        <!-- Салбараар ажлын статистик -->
-        <div class="dash-card dash-staff" style="grid-column: span 2;">
-          <div class="dash-card-title">Салбараар ажлын тоо</div>
-          ${(() => {
-            const byBranch = {};
-            BRANCHES.forEach(b => { byBranch[b.id] = { name: b.name, total: 0, done: 0, active: 0 }; });
-            tasks.forEach(t => {
-              const b = t.branch || 'shared';
-              if (!byBranch[b]) byBranch[b] = { name: b, total: 0, done: 0, active: 0 };
-              byBranch[b].total++;
-              if (t.status === 'done') byBranch[b].done++;
-              else byBranch[b].active++;
-            });
-            const branches = Object.values(byBranch).filter(b => b.total > 0);
-            if (branches.length === 0) return '<div class="dash-empty">Ажил алга</div>';
-            const maxTotal = Math.max(1, ...branches.map(b => b.total));
-            return branches.map(b => `
-              <div class="dash-bar-row">
-                <div class="dash-bar-label">${escapeHtml(b.name)}</div>
-                <div class="dash-bar-track" style="position:relative;">
-                  <div class="dash-bar-fill" style="width:${(b.total/maxTotal)*100}%;background:linear-gradient(90deg,var(--accent-green),var(--accent-blue));"></div>
-                </div>
-                <div class="dash-bar-count" style="width:auto;min-width:70px;text-align:right;font-size:12px;">
-                  <span style="color:var(--accent-green);">${b.done}</span> / <span>${b.total}</span>
-                </div>
-              </div>
-            `).join('');
-          })()}
         </div>
       </div>
     </div>
   `;
 }
-
-/* ─── Долоо хоногийн email тойм — CEO-д ──────────────────
-   n8n webhook руу POST хийж тус ажилтан бүрд тус тусын статистикийг
-   email-ээр илгээнэ. Webhook payload: { type: 'weekly_digest', period, stats } */
-async function sendWeeklyDigest() {
-  if (!state.isCEO) return;
-  const webhook = state.config.apiUrl;
-  if (!webhook) {
-    showToast('n8n endpoint тохируулагдаагүй', 'warn');
-    return;
-  }
-  // Сүүлийн 7 хоногийн өгөгдөл цуглуулах
-  const now = new Date();
-  const weekAgo = new Date(now);
-  weekAgo.setDate(now.getDate() - 7);
-  const tasks = state.tasks || [];
-  const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted');
-
-  const stats = {
-    period: {
-      from: dateStr(weekAgo),
-      to: dateStr(now),
-    },
-    tasks: {
-      total: tasks.length,
-      done: tasks.filter(t => t.status === 'done').length,
-      open: tasks.filter(t => t.status !== 'done').length,
-      overdue: tasks.filter(t => t.status !== 'done' && t.due && t.due < todayStr()).length,
-      created_this_week: tasks.filter(t => t.created && new Date(t.created) >= weekAgo).length,
-      completed_this_week: tasks.filter(t => t.status === 'done' && t.updated && new Date(t.updated) >= weekAgo).length,
-    },
-    finance: {
-      total: fr.length,
-      pending: fr.filter(r => (r.decision || 'pending') === 'pending').length,
-      approved_amount: fr.filter(r => r.decision === 'approved').reduce((s, r) => s + (+r.amount || 0), 0),
-    },
-    by_staff: (() => {
-      const map = {};
-      tasks.forEach(t => {
-        if (!t.assignee) return;
-        if (!map[t.assignee]) map[t.assignee] = { name: memberName(t.assignee), done: 0, active: 0, overdue: 0 };
-        if (t.status === 'done') map[t.assignee].done++;
-        else map[t.assignee].active++;
-        if (t.status !== 'done' && t.due && t.due < todayStr()) map[t.assignee].overdue++;
-      });
-      return Object.values(map);
-    })(),
-  };
-
-  try {
-    showToast('Имэйл илгээж байна...', 'info', 2000);
-    const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/weekly-digest')), {
-      method: 'POST',
-      headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ type: 'weekly_digest', stats, requested_by: state.user?.email }),
-    });
-    if (r.ok) showToast('Долоо хоногийн тойм имэйлээр илгээгдлээ', 'success', 3000);
-    else throw new Error('HTTP ' + r.status);
-  } catch (e) {
-    showToast('Имэйл илгээх амжилтгүй: ' + e.message, 'error', 4500);
-  }
-}
-
-/* ─── Google Calendar / ICS export ───────────────────────
-   Task-ийн due огнооноос ICS файл үүсгэж татах. Хэрэглэгч Google
-   Calendar, Apple Calendar, Outlook бүгдэд импортлох боломжтой. */
-function generateICS(tasks) {
-  const pad = (n) => String(n).padStart(2, '0');
-  const fmtDateICS = (dateStr) => {
-    // YYYY-MM-DD → YYYYMMDD (all-day event)
-    return dateStr.replace(/-/g, '');
-  };
-  const escape = (s) => String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
-  const now = new Date();
-  const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth()+1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
-
-  const events = tasks.filter(t => t.due).map(t => {
-    const startDate = fmtDateICS(t.due);
-    const endDate = (() => {
-      const d = new Date(t.due);
-      d.setDate(d.getDate() + 1);
-      return dateStr(d).replace(/-/g,'');
-    })();
-    const priorityNum = { high: 1, med: 5, low: 9 }[t.priority] || 5;
-    const description = [
-      `Хариуцагч: ${memberName(t.assignee)}`,
-      `Үүсгэгч: ${memberName(t.createdBy)}`,
-      `Төлөв: ${t.status}`,
-      t.desc ? `\\n${t.desc}` : '',
-    ].filter(Boolean).join('\\n');
-    return [
-      'BEGIN:VEVENT',
-      `UID:${t.id}@chimunllc.github.io`,
-      `DTSTAMP:${stamp}`,
-      `DTSTART;VALUE=DATE:${startDate}`,
-      `DTEND;VALUE=DATE:${endDate}`,
-      `SUMMARY:${escape(t.title)}`,
-      `DESCRIPTION:${description}`,
-      `PRIORITY:${priorityNum}`,
-      `STATUS:${t.status === 'done' ? 'COMPLETED' : 'NEEDS-ACTION'}`,
-      'END:VEVENT',
-    ].join('\r\n');
-  });
-
-  return [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Chimun Tasks//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-CALNAME:Чимун Tasks',
-    'X-WR-TIMEZONE:Asia/Ulaanbaatar',
-    ...events,
-    'END:VCALENDAR',
-  ].join('\r\n');
-}
-
-function exportTasksAsICS(tasks) {
-  const due = (tasks || state.tasks).filter(t => t.due);
-  if (!due.length) { showToast('Эцсийн огноотой ажил алга байна', 'warn'); return; }
-  const ics = generateICS(due);
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `chimun-tasks-${todayStr()}.ics`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  showToast(`${due.length} ажлыг календарт татсан`, 'success');
-}
-
 
 /* ─── Personal KPI (ажилтны хувийн тойм) ───────────────── */
 function renderPersonalKPI() {
@@ -36219,118 +39565,6 @@ function notifyCEOOfPendingRegistrations() {
   localStorage.setItem('seenStaffIds_v1', JSON.stringify(newSeen));
 }
 
-/* ─── Pending registrations (CEO review) ───────────────────
-   Шинэ ажилтан бүртгүүлэхэд status='хүлээж буй' гэж тэмдэглэгдэнэ.
-   CEO Staff Management list дотроос pending row дээр товшиход энэ
-   modal нээгдэж CEO цалин/зэрэглэл/ID нэмж "Зөвшөөрөх" эсвэл "Татгалзах". */
-function openPendingRegistration(member) {
-  if (!state.isCEO) return;
-  const modal = document.getElementById('pending-reg-modal');
-  // Avatar / initials
-  const photoEl = document.getElementById('pending-reg-photo');
-  if (member.photo) {
-    photoEl.innerHTML = `<img src="${escapeHtml(driveThumbUrl(member.photo, 256))}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
-  } else {
-    photoEl.textContent = memberInitials(member.email || member.name);
-  }
-  // Info block
-  const fmt = (label, val) => val ? `<div><strong>${escapeHtml(label)}:</strong> ${escapeHtml(val)}</div>` : '';
-  document.getElementById('pending-reg-info').innerHTML = [
-    fmt('Нэр', member.name),
-    fmt('Албан тушаал', member.role),
-    fmt('Салбар', member.group || member.branch),
-    fmt('Утас', member.phone),
-    fmt('И-мэйл', member.email),
-    fmt('РД', member.rd),
-    fmt('Хүйс', member.gender),
-    fmt('Гэрийн хаяг', member.address),
-    fmt('Яаралтай үед', `${member.emergency_name || ''}${member.emergency_phone ? ' — ' + member.emergency_phone : ''}`),
-    fmt('Хүсэлт өгсөн', member.requested_at ? new Date(member.requested_at).toLocaleString('mn-MN') : ''),
-  ].filter(Boolean).join('');
-  // CEO-ийн талбарууд — Зэрэглэлийг албан тушаалаас автомат
-  document.getElementById('reg-salary').value = member.salary || '';
-  document.getElementById('reg-level').value = member.level || levelForRole(member.role);
-  document.getElementById('reg-notes').value = member.notes || '';
-
-  const approveBtn = document.getElementById('reg-approve');
-  const rejectBtn = document.getElementById('reg-reject');
-  approveBtn.onclick = async () => {
-    const salary = document.getElementById('reg-salary').value.trim();
-    const level = parseInt(document.getElementById('reg-level').value, 10) || 40;
-    const notes = document.getElementById('reg-notes').value.trim();
-    if (!member.email) { showToast('И-мэйл хаяг алга — баталгаажуулах боломжгүй', 'error'); return; }
-    const payload = {
-      action: 'approve_registration',
-      request_id: member.request_id || member.email || member.requested_at,
-      email: member.email,
-      salary,
-      level,
-      notes,
-      status: 'идэвхтэй',
-      approved_by: state.me,
-      approved_at: new Date().toISOString(),
-    };
-    const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
-    if (webhook) {
-      try {
-        const r = await fetchWithTimeout(withKey(webhook), {
-          method: 'POST',
-          headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify(payload),
-        });
-        if (r.ok) {
-          showToast('Бүртгэл баталгаажсан. Master Sheet шинэчлэгдсэн.', 'success', 3000);
-          modal.classList.remove('open');
-          // Локал TEAM шинэчлэх — email-ээр олно
-          const idx = TEAM.findIndex(m => m.email === member.email);
-          if (idx >= 0) {
-            TEAM[idx] = { ...TEAM[idx], status: 'идэвхтэй', salary, level, notes };
-            localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
-          }
-          await loadTeamFromAPI();
-          renderStaffList();
-        } else {
-          throw new Error('HTTP ' + r.status);
-        }
-      } catch(e) {
-        showToast('Sync алдаа: ' + e.message, 'error', 4000);
-      }
-    } else {
-      showToast('Staff webhook тохируулагдаагүй', 'warn');
-    }
-  };
-  rejectBtn.onclick = async () => {
-    if (!(await showConfirm(`${member.name}-ийн хүсэлтийг татгалзах уу?`, { okText: 'Татгалзах', danger: true }))) return;
-    const payload = {
-      action: 'reject_registration',
-      request_id: member.request_id || member.email || member.requested_at,
-      email: member.email,
-      status: 'татгалзсан',
-      rejected_by: state.me,
-      rejected_at: new Date().toISOString(),
-    };
-    const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
-    if (webhook) {
-      try {
-        await fetchWithTimeout(withKey(webhook), {
-          method: 'POST',
-          headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify(payload),
-        });
-      } catch(e) {}
-    }
-    // Локал хасах — email-ээр
-    const idx = TEAM.findIndex(m => m.email === member.email);
-    if (idx >= 0) TEAM.splice(idx, 1);
-    localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
-    modal.classList.remove('open');
-    showToast('Хүсэлт татгалзсан', 'info');
-    renderStaffList();
-  };
-
-  modal.classList.add('open');
-}
-
 /* ─── Staff management (CEO only) ─────────────────────────
    CEO ажилтны статусыг өөрчилнө (идэвхтэй ↔ гарсан).
    "Гарсан" гэж тэмдэглэсэн ажилтан:
@@ -36419,11 +39653,9 @@ function renderStaffList() {
   const rowHtml = (m) => {
     const status = m.status || 'идэвхтэй';
     const isActive = status === 'идэвхтэй';
-    const isPending = status === 'хүлээж буй';
     const isSelf = personKey(m) === state.me;
     let statusLabel = 'Идэвхтэй', statusCls = 'active';
     if (status === 'гарсан') { statusLabel = 'Гарсан'; statusCls = 'left'; }
-    else if (isPending)      { statusLabel = '⏳ Хүлээж буй'; statusCls = 'pending'; }
     const key = personKey(m);
     const _age = ageFromRD(m.rd);
     // Мета мөр: албан тушаал · хүйс · нас · имэйл. Нэр цэвэр үлдэнэ (хамгийн том элемент).
@@ -36441,7 +39673,7 @@ function renderStaffList() {
     // Ажилтан удирдах + эрх → мөр дээр дарахад POPUP-д (openStaffCardModal). Мөр = цэвэр товч.
     const canOpen = state.isCEO || canAccessView('access', () => false) || canManagePermsOf(key);
     return `
-      <div class="staff-row ${canOpen ? 'staff-clickable' : ''} ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}"${canOpen ? ` data-staff-open="${escapeHtml(key)}"` : ''}>
+      <div class="staff-row ${canOpen ? 'staff-clickable' : ''} ${isActive ? '' : 'staff-left'}" data-staff-email="${escapeHtml(key)}"${canOpen ? ` data-staff-open="${escapeHtml(key)}"` : ''}>
         <span class="staff-avatar">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
@@ -36450,11 +39682,6 @@ function renderStaffList() {
         </div>
         <div class="staff-right">
           <span class="staff-status status-${statusCls}">${statusLabel}</span>
-          ${(isSelf || (!state.isCEO && (Number(m.level) || 0) >= 100)) ? '' : (
-            isPending
-              ? `<button class="staff-action approve" data-staff-act="review" data-staff-email="${escapeHtml(key)}">Хянах</button>`
-              : ''
-          )}
           ${canOpen ? '<span class="staff-open-hint">›</span>' : ''}
         </div>
       </div>
@@ -36526,18 +39753,10 @@ function renderStaffList() {
       saveFinanceBranchPerm(cb.dataset.finperm, cb.dataset.finpermName, cb.checked);
     });
   });
-  listEl.querySelectorAll('.staff-action').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const member = findMember(btn.dataset.staffEmail);
-      if (!member) return;
-      if (btn.dataset.staffAct === 'review') { openPendingRegistration(member); return; }
-      if (await setStaffStatus(member, btn.dataset.staffAct)) renderStaffList();
-    });
-  });
   // 👤 Мөр дээр дарахад ажилтны POPUP (удирдах + эрх). Дотор товч/оролт дарвал алгасна.
   listEl.querySelectorAll('[data-staff-open]').forEach(row => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('button, a, input, select, label, .staff-action')) return;
+      if (e.target.closest('button, a, input, select, label')) return;
       openStaffCardModal(row.dataset.staffOpen);
     });
   });
@@ -36621,6 +39840,30 @@ function openStaffCardModal(key) {
         ? '<div class="sc-hint">☎️ Яаралтай үеийн холбоо бүртгэгдээгүй — ажилтан «Профайл»-аасаа нэмнэ.</div>' : '';
       if (rows || noEmg) info = `<div class="sc-sec"><div class="sc-sec-t">ℹ️ Хувийн мэдээлэл</div>${rows}${noEmg}</div>`;
     }
+    /* ── 🏦 ДАНС — одоогийн + хуулгаар цалин явсан бүх данс ──────────────────
+       Ажилчид данс байнга солидог; `employees.bank_account` зөвхөн ОДООГИЙНХ
+       тул хуучин нь дарагдаад алга болдог. Хуулгын гүйлгээнээс нь сэргээнэ
+       («аль данс руу хэзээ хэд явсан» = данс солигдсоны цорын ганц баримт).
+       ⚠ Эмзэг мэдээлэл тул `canSeeStaffSensitive()` (CEO / «Цалин» эрх) л харна. */
+    let bankBox = '';
+    if (typeof canSeeStaffSensitive === 'function' && canSeeStaffSensitive()) {
+      const accts = empAcctsForPerson(key);
+      const items = accts.map(a => {
+        const tag = a.current ? '<span class="sc-acct-tag">бүртгэсэн</span>'
+          : '<span class="sc-acct-tag sc-acct-guess">хуулгын утгаар</span>';
+        const used = a.n ? `<span class="sc-acct-used">${a.n} удаа · ${fmtMoney(a.sum)}${a.lastDay ? ' · сүүлд ' + escapeHtml(a.lastDay) : ''}</span>` : '';
+        return `<div class="sc-acct"><b>${escapeHtml(a.acct)}</b>${tag}${used}
+          <button class="btn sc-acct-copy" data-copy-text="${escapeHtml(a.acct)}" data-copy-label="Дансны дугаар">⧉</button></div>`;
+      }).join('');
+      const curAcct = accts.find(a => a.current);
+      const hint = !curAcct
+        ? (accts.length
+            ? '<div class="sc-hint">⚠ Бүртгэсэн данс алга — доорх нь хуулгын гүйлгээний утгаар танигдсан. Ажилтан «Профайл»-аасаа дансаа бүртгэвэл цалин нь зөв тулгагдана.</div>'
+            : '<div class="sc-hint">⚠ Данс бүртгэгдээгүй, хуулгаас ч танигдсангүй. Ажилтан «Профайл»-аасаа нэмнэ.</div>')
+        : (accts.length > 1 ? '<div class="sc-hint">Нэгээс олон данс — ажилтан данс сольсон. Цалингийн тулгалт бүгдийг нь тооцно.</div>' : '');
+      bankBox = `<div class="sc-sec"><div class="sc-sec-t">🏦 Банк${m.bank ? ' · ' + escapeHtml(m.bank) : ''}</div>
+        ${items}${hint}</div>`;
+    }
     // ── Удирдах хэсэг ──
     const gBtn = (val, label) => `<button class="staff-gbtn${m.gender === val ? ' on' : ''}" data-sc-gender="${val}">${label}</button>`;
     const brBtn = (val, label) => `<button class="staff-gbtn${bs.includes(val) ? ' on' : ''}" data-sc-br="${val}">${label}</button>`;
@@ -36637,7 +39880,7 @@ function openStaffCardModal(key) {
         ${isActive ? `<label class="staff-finperm"><input type="checkbox" data-sc-finperm ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''}/>🏦 Санхүү: салбар засах эрх</label>` : ''}
         <div class="sc-row2"><button class="btn" data-sc-doc>📄 Үнэмлэх харах</button>
           <span class="sc-pin">🔑 <b data-sc-pinval>${m.pin ? '••••' : '—'}</b>${m.pin ? ' <button class="staff-pin-show" data-sc-pinshow>харах</button>' : ''}</span></div>
-        ${isActive ? `<div class="sc-row2"><button class="btn" data-sc-contract style="border-color:var(--primary);color:var(--primary);">📄 Хөдөлмөрийн гэрээ бэлдэх</button></div>` : ''}` : ''}
+        ${isActive ? `<div class="sc-row2"><button class="btn sc-contract-btn" data-sc-contract>📄 Хөдөлмөрийн гэрээ бэлдэх</button></div>` : ''}` : ''}
         ${canStatus ? `<div class="sc-row2">${isActive ? `<button class="btn btn-danger" data-sc-status="leave">🚪 Гарсан гэж тэмдэглэх</button>` : `<button class="btn" data-sc-status="restore">↩ Сэргээх</button>`}</div>` : ''}
       </div>` : '';
     // ── Юу хийж чадах (энгийн үгээр — албан тушаалын багцаас) ──
@@ -36648,9 +39891,9 @@ function openStaffCardModal(key) {
       const tags = [..._cs.views.map(l => `<span class="sc-cap-tag">${escapeHtml(l)}</span>`),
                     ..._cs.actions.map(l => `<span class="sc-cap-tag sc-cap-act">✎ ${escapeHtml(l)}</span>`)].join('');
       capBox = `<div class="sc-sec"><div class="sc-sec-t">🔓 Юу хийж чадах</div>
-        ${isFullS ? '<div style="font-size:12.5px;">Бүх эрх — хязгааргүй (удирдлага).</div>'
-          : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Албан тушаал <b style="color:var(--text);">${escapeHtml(m.role || '—')}</b>-д ногдох бэлэн эрх. Өөрчлөх бол «⚙️ Ажилтан удирдах»-аас албан тушаалыг нь солино; онцгой тохиолдолд доорх «🔑 Нарийвчилсан эрх».</div>
-            ${tags ? `<div class="sc-caps">${tags}</div>` : '<div style="font-size:12px;color:var(--muted);">Үндсэн ажил — Тойм · Миний ажил · Ирц. Захиалга/бусад цэс нээхгүй (ажлаа даалгавраар авна).</div>'}`}
+        ${isFullS ? '<div class="sc-note sc-note-b">Бүх эрх — хязгааргүй (удирдлага).</div>'
+          : `<div class="sc-note-xs">Албан тушаал <b class="sc-note-b">${escapeHtml(m.role || '—')}</b>-д ногдох бэлэн эрх. Өөрчлөх бол «⚙️ Ажилтан удирдах»-аас албан тушаалыг нь солино; онцгой тохиолдолд доорх «🔑 Нарийвчилсан эрх».</div>
+            ${tags ? `<div class="sc-caps">${tags}</div>` : '<div class="sc-note">Үндсэн ажил — Тойм · Миний ажил · Ирц. Захиалга/бусад цэс нээхгүй (ажлаа даалгавраар авна).</div>'}`}
       </div>`;
     }
     // ── Эрх хэсэг ──
@@ -36661,25 +39904,25 @@ function openStaffCardModal(key) {
       const hasOv = pov && Object.keys(pov).length > 0;
       const isFull = (m.level || 0) >= 100 || isFullAccessMember(m);
       perms = isFull
-        ? `<div class="sc-sec"><div class="sc-sec-t">🔑 Эрх</div><div style="font-size:12px;color:var(--muted);">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div></div>`
+        ? `<div class="sc-sec"><div class="sc-sec-t">🔑 Эрх</div><div class="sc-note">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div></div>`
         : `<div class="sc-sec"><details class="sc-adv"${hasOv ? ' open' : ''}>
-            <summary class="sc-sec-t sc-adv-sum">🔑 Нарийвчилсан эрх засах <span style="font-weight:400;color:var(--muted);font-size:11px;">— онцгой тохиолдол${amCeo ? '' : ' (доорхи хүн)'}</span></summary>
-            <div style="margin-top:10px;">
-              <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Ихэвчлэн хэрэггүй — <b style="color:var(--text);">албан тушаал</b> өөрчилвөл эрхийн багц бүхэлдээ солигдоно. Энэ нь зөвхөн нэг хүнд багцаас гадуур эрх нэмэх/хасах онцгой тохиолдолд.</div>
+            <summary class="sc-sec-t sc-adv-sum">🔑 Нарийвчилсан эрх засах <span class="sc-adv-tag">— онцгой тохиолдол${amCeo ? '' : ' (доорхи хүн)'}</span></summary>
+            <div class="sc-adv-body">
+              <div class="sc-note-xs">Ихэвчлэн хэрэггүй — <b class="sc-note-b">албан тушаал</b> өөрчилвөл эрхийн багц бүхэлдээ солигдоно. Энэ нь зөвхөн нэг хүнд багцаас гадуур эрх нэмэх/хасах онцгой тохиолдолд.</div>
               ${capMatrixHtml('sc-cap', key, (k, kind) => effectiveCapForMember(m, k, kind), grantFn)}
-              ${hasOv ? `<div style="margin-top:8px;"><button class="btn" data-sc-permreset style="padding:4px 11px;font-size:11px;">↺ Албан тушаалын эрхэд буцаах</button></div>` : ''}
+              ${hasOv ? `<div class="sc-row2"><button class="btn sc-reset-btn" data-sc-permreset>↺ Албан тушаалын эрхэд буцаах</button></div>` : ''}
             </div>
           </details></div>`;
     }
     ov.innerHTML = `<div class="org-modal sc-modal">
       <div class="sc-head">
         <span class="staff-avatar sc-ava">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
-        <div style="min-width:0;flex:1;"><div class="sc-name">${escapeHtml(m.name || '?')}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
+        <div class="sc-head-main"><div class="sc-name">${escapeHtml(m.name || '?')}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
           <div class="sc-meta">${escapeHtml(m.role || '—')}${_age != null ? ' · ' + _age + ' нас' : ''}${m.phone ? ' · ' + escapeHtml(m.phone) : ''}</div></div>
-        <span class="staff-status status-${isActive ? 'active' : (status === 'хүлээж буй' ? 'pending' : 'left')}">${isActive ? 'Идэвхтэй' : (status === 'хүлээж буй' ? '⏳' : 'Гарсан')}</span>
+        <span class="staff-status status-${isActive ? 'active' : 'left'}">${isActive ? 'Идэвхтэй' : 'Гарсан'}</span>
         <button class="sc-x" data-sc-close>✕</button>
       </div>
-      <div class="sc-body">${info}${admin}${capBox}${perms}${(!info && !admin && !capBox && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
+      <div class="sc-body">${info}${bankBox}${admin}${capBox}${perms}${(!info && !bankBox && !admin && !capBox && !perms) ? '<div class="sc-empty">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
     </div>`;
     attachHandlers();
   }
@@ -36701,6 +39944,10 @@ function openStaffCardModal(key) {
     ov.querySelector('[data-sc-finperm]')?.addEventListener('change', (e) => { saveFinanceBranchPerm(key, (findMember(key) || {}).name || '', e.target.checked); });
     ov.querySelector('[data-sc-doc]')?.addEventListener('click', () => { const m = findMember(key); openEmployeeDocModal(key, (m && m.name) || ''); });
     ov.querySelector('[data-sc-contract]')?.addEventListener('click', () => { close(); openEmployeeContract(key); });
+    // ⚠ Модал нь динамик тул глобал `[data-copy-text]` холбогч хүрэхгүй — энд холбоно.
+    ov.querySelectorAll('[data-copy-text]').forEach(b => b.addEventListener('click', (e) => {
+      e.stopPropagation(); copyText(b.dataset.copyText, b.dataset.copyLabel || 'Хууллаа');
+    }));
     ov.querySelector('[data-sc-pinshow]')?.addEventListener('click', () => { const m = findMember(key); const el = ov.querySelector('[data-sc-pinval]'); const btn = ov.querySelector('[data-sc-pinshow]'); if (!m || !el) return; if (btn.textContent === 'нуух') { el.textContent = '••••'; btn.textContent = 'харах'; } else { el.textContent = String(m.pin || '—'); btn.textContent = 'нуух'; } });
     // PIN хараахан ачаалагдаагүй үед карт нээгдвэл — татаж дуусмагц «••••» + «харах» товчийг картад нэмнэ
     if (state.isCEO && !(findMember(key) || {}).pin) {
@@ -39459,8 +42706,9 @@ async function bootApp() {
   loadWorkerTypeOverrides(); // Цагийн⇄Үндсэн ажилтны төрөл (app_config override)
   loadBankAccounts();   // Данс & Карт бүртгэл (хуулгаар ангилах нь эндээс данс→салбарыг таьнна)
   loadExpenseLearn();   // Хуваалцсан суралцлага (худалдагч→салбар+ангилал, бүх компанид)
+  loadAppConfigAll();   // ⚙️ Тохиргоо (ажлын норм, илүү цаг, цай, дамжлагын оноо…) — өмнө нь ОГТ ачаалагддаггүй байв
   loadClosedMonths();   // 🔒 Хаасан сар — түгжээ нь бичих БҮХ замд (төлбөр/зардал/хуулга) ажиллах ёстой
-  if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); }   // Сарын цалин (CEO/нягтлан)
+  if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }   // Сарын цалин (CEO/нягтлан)
   state._initialLoading = false;
   generateNotifications();
   render();

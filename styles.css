@@ -77,8 +77,23 @@
     /* Орлого тулгалтын модалын өргөн — нэг баганатай жагсаалт, өргөсгөх шаардлагагүй */
     --recon-modal-w: 640px;
 
+    /* Аппын алдааны цонх — нэг баганатай жагсаалт + табууд */
+    --aerr-modal-w: 560px;
+
     /* Барааны модалын өргөн — 4 хэсэгт менюгээр хуваагдсан тул нарийн байж болно */
     --prod-modal-w: 540px;
+
+    /* Засварын «✓ Зассан / 🗑 Актлах» цонх — өргөн, зургийн эскиз, × товч */
+    --rf-modal-w: 460px;
+    --rf-thumb-min: 72px;
+    --rf-rm: 20px;
+
+    /* Захиалгын нарийн цонхнууд — өмнө нь inline style="max-width:…" байв.
+       ⚠ Хэрэглэхдээ ХОЁР класс (`.modal.xxx-modal`) — мобайлын `.modal` дүрмээс давна. */
+    --cmp-modal-w: 460px;     /* ↩️ Буулгалт бүртгэх */
+    --orc-modal-w: 420px;     /* 🧾 Банкны баримтуудын жагсаалт */
+    --rfd-modal-w: 430px;     /* ↩ Буцаан олгох */
+    --onote-modal-w: 480px;   /* 📝 Захиалгын тэмдэглэл */
 
     /* ── РАДИУС ── */
     --r-sm: 6px;
@@ -101,6 +116,7 @@
        ялгаатай бичвэл «шинэ өнгө» гэж тоологдоод CI унана. */
     --scrim-photo:  rgba(0,0,0,.3);            /* зураг харах давхарга — ард нь бүдгэрнэ */
     --scrim-btn:    rgba(255, 255, 255, 0.15); /* давхаргын товчны дэвсгэр */
+    --scrim-del:    rgba(0,0,0,.5);            /* зураг дээрх × товч — тод байх ёстой */
 
     /* ── Хөдөлгөөн ── */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -498,8 +514,6 @@
   .btn-sm { padding: 5px 11px; font-size: 12px; }
   .filter-pill:hover { background: var(--panel-hover); }
   .filter-pill.active { background: var(--primary-soft); color: var(--primary); border-color: var(--primary-soft); font-weight: 600; }
-  @media (max-width: 720px) {
-  }
   .search { flex: 1; max-width: 280px; }
   .search input {
     width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
@@ -3409,7 +3423,7 @@ body {
   font-size: 11px;
   color: var(--muted);
 }
-.dash-chart, .dash-finance, .dash-staff {
+.dash-chart {
   grid-column: span 2;
 }
 .dash-card-title {
@@ -3419,53 +3433,6 @@ body {
   margin-bottom: 14px;
   letter-spacing: -0.01em;
 }
-.dash-donut {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-.dash-legend {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.dash-legend > div {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.dash-legend .dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  display: inline-block;
-}
-.dash-legend strong {
-  margin-left: auto;
-  font-weight: 700;
-  color: var(--text);
-}
-.dash-finance-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-.dash-finance-row:last-child { border-bottom: none; }
-.dash-finance-label {
-  font-size: 13px;
-  color: var(--muted);
-}
-.dash-finance-value {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-.dash-finance-value.ok { color: var(--accent-green); }
-.dash-finance-value.warn { color: var(--accent-amber); }
 .dash-bar-row {
   display: flex;
   align-items: center;
@@ -3510,7 +3477,7 @@ body {
 /* Tablet/Mobile dashboard layout */
 @media (max-width: 1000px) {
   .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
-  .dash-chart, .dash-finance, .dash-staff { grid-column: span 2; }
+  .dash-chart { grid-column: span 2; }
 }
 @media (max-width: 720px) {
   .dashboard { padding: 4px 0 100px; }
@@ -3521,9 +3488,7 @@ body {
   }
   .dash-card { padding: 14px; }
   .dash-kpi-value { font-size: 28px; }
-  .dash-chart, .dash-finance, .dash-staff { grid-column: span 2; }
-  .dash-donut { flex-direction: column; align-items: stretch; }
-  .dash-donut svg { align-self: center; }
+  .dash-chart { grid-column: span 2; }
 }
 
 /* ═══ Toast — амьд анимаци + SVG icon + close товч ═══ */
@@ -4077,17 +4042,6 @@ body.role-daily #nav-projects-label,
 body.role-daily #project-list,
 body.role-daily #add-project { display: none !important; }
 
-/* ═══ Тойм: ажилтны ачаалал — даркуй мөр + чөлөөтэй badge ═══ */
-.dash-staff-scroll { max-height: 320px; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
-.dash-staff-clickable { cursor: pointer; border-radius: 6px; transition: background 100ms ease; padding: 2px 6px; margin: 0 -6px; }
-.dash-staff-clickable:hover { background: var(--panel-hover); }
-.dash-staff-clickable.is-free .dash-bar-label { color: var(--muted); }
-.dash-free {
-  font-size: 11px; font-weight: 600;
-  color: #10b981; background: rgba(16,185,129,0.12);
-  padding: 1px 8px; border-radius: 999px; white-space: nowrap;
-}
-
 /* ═══ Мөрийн шуурхай үйлдэл (⋯ цэс) ═══ */
 .col-rowactions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
 .row-menu-btn {
@@ -4147,29 +4101,6 @@ body.role-daily #add-project { display: none !important; }
 
 /* Telegram section removed */
 
-/* ═══ Dashboard action товчнууд ═══ */
-.dashboard-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-}
-.dashboard-actions .btn {
-  background: var(--panel) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--text) !important;
-  padding: 8px 14px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  border-radius: 8px !important;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-.dashboard-actions .btn:hover {
-  background: var(--panel-hover) !important;
-}
-
 /* ═══ Personal KPI bar chart ═══ */
 .kpi-bar-chart {
   display: flex;
@@ -4223,7 +4154,7 @@ body.role-daily #add-project { display: none !important; }
 @media print {
   body { background: #fff !important; }
   .sidebar, .header-actions, .toolbar, .fab, .mobile-bottom-nav,
-  .install-banner, #ptr-indicator, .bulk-bar, .dashboard-actions { display: none !important; }
+  .install-banner, #ptr-indicator, .bulk-bar { display: none !important; }
   .app { grid-template-columns: 1fr !important; }
   .dash-card { break-inside: avoid; box-shadow: none !important; }
   .header { background: #fff !important; border-bottom: 1px solid #ccc; }
@@ -4646,72 +4577,10 @@ body.role-daily #add-project { display: none !important; }
   background: rgba(239, 68, 68, 0.10);
   color: var(--accent-red);
 }
-/* Дэд зэрэглэлийн үйлдэл — мөрийн гол мэдээллээс визуал жин БАГА байх ёстой.
-   Мобайлын ерөнхий товчны 44px өндөр энд хэт их байсан: улаан блок нэрнээс ч
-   илүү анхаарал татаж байв. */
-.staff-action {
-  padding: 5px 12px;
-  border-radius: 6px;
-  border: none;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-  flex-shrink: 0;
-  min-height: 30px;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-.staff-action.leave {
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--muted);
-}
-.staff-action.leave:hover { border-color: var(--accent-red); }
-.staff-action.leave:hover {
-  background: var(--accent-red);
-  color: #fff;
-}
-.staff-action.restore {
-  background: rgba(16, 185, 129, 0.10);
-  color: var(--accent-green);
-}
-.staff-action.restore:hover {
-  background: var(--accent-green);
-  color: #fff;
-}
 @media (max-width: 720px) {
   .staff-row {
     flex-wrap: wrap;
   }
-  /* width:100% ХАСАГДСАН — хуучин layout-ын үлдэгдэл байв (товч мөрийн доор бүтэн
-     өргөнөөр сунаж, улаан блок нэрнээс илүү анхаарал татдаг). Одоо баруун баганад. */
-  .staff-action { padding: 8px 12px; min-height: 40px; }
-}
-
-/* ═══ Pending registration row ═══ */
-.staff-row.staff-pending {
-  background: rgba(245, 158, 11, 0.08);
-  border-left: 3px solid var(--accent-amber);
-}
-.status-pending {
-  background: rgba(245, 158, 11, 0.15);
-  color: #b45309;
-}
-.staff-action.approve {
-  background: var(--accent-amber);
-  color: #fff;
-}
-.staff-action.approve:hover {
-  background: #d97706;
-}
-
-/* Dashboard pending registration card */
-.dash-kpi-clickable {
-  transition: transform 100ms ease, box-shadow 120ms ease;
-}
-.dash-kpi-clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(245, 158, 11, 0.18);
 }
 
 /* Финансын модал — readonly талбарыг "энгийн текст шиг" харуулна (засах боломжгүй гэдэг нь
@@ -4860,7 +4729,6 @@ body.role-daily #add-project { display: none !important; }
 .mk-hint { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; line-height: 1.5; }
 .mk-url { word-break: break-all; color: var(--text); }
 /* Шатны зургийн заавар (дамжлагын модал). */
-.sa-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; margin: -2px 0 6px; }
 .mk-pub-t { width: 100%; margin: 8px 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: inherit; font-size: var(--fs-sm); line-height: 1.5; resize: vertical; }
 .ads-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: var(--fs-sm); }
 .ads-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -5621,6 +5489,24 @@ body.role-daily #add-project { display: none !important; }
 .prc-acts { flex-wrap: wrap; }
 .prc-pdf { color: var(--accent, #7c3aed); }
 
+/* ── 🧾 Олон баримтын СОНГОЛТ (openOrderReceipts) ──
+   Толгой нь `.prc-head`-ийг ДАХИН ашиглана (ижил бүтэц — гарчиг + ✕ товч),
+   шинэ угтвар үүсгэхгүй. Мөрийн төрх нь `.paid-rcpt-row` дээр (хоёр газар
+   хуваалцдаг hook тул угтварыг `prr-` гэж нэрлэв). */
+.modal.orc-modal { max-width: var(--orc-modal-w); }
+.orc-sub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-2); }
+.orc-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.paid-rcpt-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--panel); font-size: var(--fs-sm); cursor: pointer;
+}
+/* Илгээгчийн нэр нэг эгнээнд — урт нэр ✕ «Харах ›»-ийг түлхэхгүй */
+.prr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prr-memo { color: var(--muted); }
+.prr-go { color: var(--accent, #7c3aed); flex-shrink: 0; }
+
 /* ── НӨАТ задаргаа — мөр дарахад баримтууд гарна ──
    Угтвар `vat-click` / `vatl-`. Шинэ угтвар авахын өмнө давхцлыг шалга
    (`grep -o '^\.xx-[a-z-]*' styles.css`) — 2026-09-04-нд `sc-` давхцаж эвдэрсэн. */
@@ -5674,6 +5560,8 @@ body.role-daily #add-project { display: none !important; }
 .stc-open-n { font-size: var(--fs-xl); font-weight: 700; color: var(--primary);
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stc-open-m { font-size: var(--fs-xs); color: var(--muted); }
+/* Үлдсэнийг задлах товч — жагсаалтын төгсгөлд, бүтэн өргөнөөр (утсанд хүрэхэд амар) */
+.stc-open-more { width: 100%; margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--primary); }
 .stc-open-list { display: flex; flex-direction: column; border: 1px solid var(--border);
   border-radius: var(--r-md); overflow: hidden; margin-top: var(--space-1); }
 .stc-open-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;
@@ -5754,9 +5642,7 @@ body.role-daily #add-project { display: none !important; }
 .usg-none { color: var(--muted); }
 /* Давтан үйлчлүүлэгч — багана дотор бараан хэсэг = буцаж ирсэн харилцагч. */
 /* Барааны ашиг — орлого − элэгдэл. */
-.pf-ok { color: var(--ok); font-weight: 600; }
 .pf-bad { color: var(--danger); font-weight: 600; }
-.pf-na { color: var(--muted); }
 .pf-head { font-size: var(--fs-sm); color: var(--muted); padding-bottom: var(--space-2); }
 .pf-head b { color: var(--text); }
 .rep-kpi { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--fs-sm);
@@ -6138,6 +6024,13 @@ body.role-daily #add-project { display: none !important; }
 .no-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: 6px; }
 .no-head h2 { margin: 0; font-size: var(--fs-lg); }
 .no-hint { font-size: var(--fs-xs); color: var(--muted); margin: -2px 0 4px; }
+/* 7 оронтой РД бичигдсэн үед «Төрөл» сонгогч түгжигдэх шалтгаан (untraasan товч юу
+   буруугийн хэлдэггүй тул ил бичигдэнэ) */
+.no-ct-lock { color: var(--ok); font-weight: 600; }
+/* Ирцийн өдрийн мөрөнд хасагдсан цайны цаг (2026-10-03) */
+.att-lunch { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
+/* Байгууллагын захиалгын толгойд төлөөлөх хүн — гэрээний «Төлөөлөх хүн»-тэй ижил утга */
+.order-rep { color: var(--muted); font-weight: 400; }
 .no-lock { font-size: var(--fs-sm); color: var(--warn); background: var(--warn-soft); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-2) 11px; margin: var(--space-2) 0 var(--space-1); }
 .no-sec { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: var(--space-4) 2px 7px; }
 .no-col > .no-sec:first-child { margin-top: var(--space-2); }
@@ -6463,6 +6356,15 @@ body.role-daily #add-project { display: none !important; }
 .doc-row.doc-folder .doc-title { font-weight: 700; }
 .doc-bulk-row .db-fold { color: var(--muted); }
 .doc-lbl-hint { font-weight: 400; color: var(--muted); }
+/* НӨАТ-ын тулгалтын санал. Огноо БҮТНЭЭР, зөрүү их бол шар — ногоон нь
+   «аюулгүй дарж болно» гэж уншигддаг тул хол саналыг ингэж будахгүй. */
+.vat-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; text-align: left; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px 9px; font-size: var(--fs-sm); cursor: pointer; font-family: inherit; }
+.vat-chip.on { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); color: var(--ok); font-weight: 700; }
+.vat-chip.warn { border-color: var(--warn); }
+.vat-chip .vat-chip-date { color: var(--muted); font-variant-numeric: tabular-nums; }
+.vat-chip .vat-chip-warn { color: var(--warn); font-weight: 700; }
+.vat-ok-reg, .vat-ok-amt { color: var(--ok); }
+.vat-ok-name { color: var(--primary); }
 .doc-bulk-drop { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: 18px 12px; border: 2px dashed var(--border); border-radius: var(--r-md); background: var(--panel-hover); text-align: center; transition: border-color .12s, background .12s; }
 .doc-bulk-drop.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--panel)); }
 .doc-bulk-drop .db-drop-t { font-size: var(--fs-md); color: var(--muted); }
@@ -6519,7 +6421,7 @@ body.role-daily #add-project { display: none !important; }
 .org-tree li:first-child::after { border-radius:6px 0 0 0; }
 .org-tree ul ul::before { content:''; position:absolute; top:0; left:50%; border-left:2px solid var(--border); width:0; height:24px; }
 /* Карт */
-.org-card { position:relative; display:flex; flex-direction:column; align-items:center; gap:2px; background:var(--panel); border:1px solid var(--border); border-top:4px solid var(--border); border-radius:14px; padding:12px 14px 11px; min-width:130px; max-width:170px; box-shadow:0 1px 3px rgba(0,0,0,.05); transition:transform .12s, box-shadow .12s; }
+.org-card { position:relative; display:flex; flex-direction:column; align-items:center; gap:var(--space-1); background:var(--panel); border:1px solid var(--border); border-top:4px solid var(--border); border-radius:14px; padding:12px 14px 11px; min-width:130px; max-width:170px; box-shadow:0 1px 3px rgba(0,0,0,.05); transition:transform .12s, box-shadow .12s; }
 .org-card:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(0,0,0,.10); }
 .org-ava { position:relative; width:56px; height:56px; border-radius:50%; overflow:hidden; background:linear-gradient(135deg,#e2e8f0,#cbd5e1); display:flex; align-items:center; justify-content:center; margin-bottom:4px; }
 .org-init { font-size:19px; font-weight:800; color:#64748b; text-transform:uppercase; }
@@ -6601,6 +6503,36 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .sc-val { font-size: var(--fs-sm); color: var(--text); flex:1; min-width:0; overflow-wrap:anywhere; }
 .sc-tel, .tel-link { color: var(--primary); text-decoration:none; font-weight:600; }
 .sc-hint { font-size: var(--fs-xs); color: var(--muted); line-height:1.5; margin-top:4px; }
+/* Картын тайлбар текст — хоёр хэмжээ, нэг өнгө. `.sc-note-b` нь өнгийг үндсэн текст болгоно. */
+.sc-note { font-size: var(--fs-sm); color: var(--muted); }
+.sc-note-xs { font-size: var(--fs-xs); color: var(--muted); line-height:1.5; margin-bottom: var(--space-2); }
+.sc-note-b { color: var(--text); }
+.sc-empty { padding: var(--space-5); text-align:center; font-size: var(--fs-sm); color: var(--muted); }
+/* Ажилтны данснууд — одоогийн нь «бүртгэсэн», хуулгаар танигдсан нь «хуулгын утгаар» */
+.sc-acct { display:flex; align-items:center; gap: var(--space-2); flex-wrap:wrap; margin-bottom: var(--space-2); font-size: var(--fs-sm); }
+.sc-acct-tag { font-size: var(--fs-xs); font-weight:600; padding:2px 8px; border-radius:20px; background: var(--primary-soft); border:1px solid var(--primary); color: var(--primary); }
+.sc-acct-tag.sc-acct-guess { background: var(--panel-hover); border-color: var(--border); color: var(--muted); }
+.sc-acct-used { font-size: var(--fs-xs); color: var(--muted); }
+.sc-acct-copy { padding:2px 8px; font-size: var(--fs-xs); }
+/* Жолоочийн сонголт — ҮРГЭЛЖ яг нэг хүн (дамжлагын цонх) */
+.sa-drv-chip { cursor:pointer; font-size: var(--fs-sm); padding:5px 10px; border:1px solid var(--border); border-radius:999px; background: var(--panel); user-select:none; }
+.sa-drv-chip.on { background: var(--primary); border-color: var(--primary); color:#fff; }
+/* Өмнөх ажлын алдааны тоо (бүртгэж гаргах дамжлага) */
+.sa-def-who { display:block; font-size: var(--fs-xs); color: var(--muted); }
+/* ⚠ `.modal` угтвар ЗААВАЛ — `.modal input { width:100% }` (styles.css:713) нь
+   ангиас ИЛҮҮ онцлогтой тул угтваргүй бол тоон талбар бүтэн өргөнөөр тэлж,
+   шошгыг үсэг тус бүрээр босоо тасардаг болгоно (амьд дэлгэцэд гарсан). */
+.modal .sa-def-in { width:74px; flex:none; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align:right; }
+.sa-def-n { font-size: var(--fs-xs); color: var(--warn); min-height:14px; }
+.sm-def { font-size: var(--fs-xs); color: var(--warn); margin-top:2px; }
+.sm-def.sm-def-ok { color: var(--muted); }
+/* ⚙️ Дамжлагын онооны тохиргоо */
+.sp-cfg-btn { padding:3px 9px; font-size: var(--fs-xs); margin-left: var(--space-2); }
+.sc-head-main { min-width:0; flex:1; }
+.sc-contract-btn { border-color: var(--primary); color: var(--primary); }
+.sc-adv-tag { font-weight:400; font-size: var(--fs-xs); color: var(--muted); }
+.sc-adv-body { margin-top: var(--space-3); }
+.sc-reset-btn { padding: var(--space-1) var(--space-3); font-size: var(--fs-xs); }
 
 /* Ажилтны карт popup — доторх агуулга гүйдэг болгоно (толгой тогтмол) */
 .sc-modal { display:flex; flex-direction:column; max-height:85vh; }
@@ -6860,6 +6792,13 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .fin-grp-neutral .fin-grp-s { font-weight: 600; }
 .fin-grp-neutral.fin-grp-1 { border-left-style: dashed; border-left-color: var(--border-strong); }
 .fin-grp-neutral.fin-grp-2 { border-left-style: dashed; border-left-color: var(--border); }
+/* ⇄ Банкны сар ≠ ноогдох сар. Зардал нь ноогдох сард тоологддог тул мөр
+   «өөр сарын» огноотой харагдана — ялгааг нуухгүй, тэмдэгээр хэлнэ. */
+.fin-shift {
+  white-space: nowrap; font-size: var(--fs-xs); font-weight: 700;
+  padding: 2px 7px; border-radius: 20px; color: var(--muted);
+  border: 1px dashed var(--border-strong);
+}
 .fin-grp-neutral .fin-grp-l::after {
   content: 'зардалд ОРОХГҮЙ'; margin-left: var(--space-2);
   font-size: var(--fs-xs); font-weight: 600; letter-spacing: .03em;
@@ -7062,6 +7001,19 @@ select.no-asar-len {
 .cmp-drop #cmp-st { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; line-height: 1.5; }
 .cmp-got { border: 1px solid var(--warn); border-radius: 9px; padding: 9px 11px; font-size: var(--fs-md); margin-bottom: var(--space-3); line-height: 1.6; }
 .cmp-prev { color: var(--muted); font-size: var(--fs-sm); }
+/* Буулгалтын цонх — өмнө нь 5 inline style= байсныг класс болгов (2026-10-04).
+   ⚠ «Буулгалт хасах» товч нь `.modal-actions`-ийн хүчлэгдсэн
+     `justify-content:flex-end`-ээс болж ҮРГЭЛЖ баруун талд байсан — хуучин
+     inline `justify-content:space-between` ҮХМЭЛ байсан тул зүгээр хасав
+     (класс болгож дахин бичвэл хүчлэгч шаардана — тэр нь хориотой). */
+.modal.cmp-modal { max-width: var(--cmp-modal-w); }
+.cmp-clear { color: var(--danger); }
+.cmp-btns { display: flex; gap: var(--space-2); }
+.cmp-save:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Буцаан олгох ба захиалгын тэмдэглэлийн цонхны өргөн */
+.modal.rfd-modal { max-width: var(--rfd-modal-w); }
+.modal.onote-modal { max-width: var(--onote-modal-w); }
 
 
 .sum-lead { color: var(--muted); }
@@ -7181,7 +7133,6 @@ select.no-asar-len {
 .coo-skip-b { background: none; border: 0; padding: 0 var(--space-1);
   color: var(--muted); cursor: pointer; font-size: var(--fs-sm); line-height: 1; }
 .coo-skip-b:hover { color: var(--danger); }
-.coo-bal { border-top: 1px solid var(--border); padding-top: 8px; }
 .coo-v.coo-bal-due { color: var(--warn); }
 .coo-v.coo-bal-over { color: var(--danger); }
 @media (max-width: 620px) {
@@ -7191,6 +7142,32 @@ select.no-asar-len {
   /* Нийлбэрийн зураас бүтэн мөрөөр — хоосон огнооны эсээс тасархай зураас гаргахгүй */
   .coo-paid-d.coo-paid-t { border-top: 0; padding-top: 0; margin-top: 0; }
   .coo-paid-m.coo-paid-t { grid-column: 1 / -1; }
+}
+
+/* COO — сар бүрийн дэвтэр: сар · эрх · авсан · гүйж буй үлдэгдэл (2026-10-03).
+   Утсанд (≤620px) сарын нэр бүтэн мөр, 3 дүн доор зэрэгцэнэ — 4 багана 320px-д багтахгүй. */
+.coo-led { display: grid; grid-template-columns: auto 1fr 1fr 1fr; column-gap: var(--space-3);
+  row-gap: var(--space-1); align-items: baseline; font-size: var(--fs-sm); margin-bottom: 10px; }
+.coo-led-h { font-size: var(--fs-xs); color: var(--muted); font-weight: 700; text-align: right; }
+.coo-led-hm { text-align: left; }
+.coo-led-m { font-weight: 700; white-space: nowrap; }
+.coo-led-net { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
+.coo-led-now { font-weight: 400; font-size: var(--fs-xs); color: var(--warn); }
+.coo-led-v { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.coo-led-pos { color: var(--ok); }
+.coo-led-neg { color: var(--danger); }
+.coo-led-bal { font-weight: 800; }
+.coo-led-bal.coo-bal-due, .coo-led-ref .coo-bal-due { color: var(--warn); }
+.coo-led-bal.coo-bal-over, .coo-led-ref .coo-bal-over { color: var(--danger); }
+.coo-led-t { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 2px; font-weight: 800; }
+.coo-led-ref { font-size: var(--fs-xs); color: var(--muted); margin-top: 6px; }
+.coo-paid-det > summary { cursor: pointer; font-size: var(--fs-sm); color: var(--muted); margin: 4px 0 8px; }
+@media (max-width: 620px) {
+  .coo-led { grid-template-columns: 1fr 1fr 1fr; }
+  .coo-led-m { grid-column: 1 / -1; padding-top: 6px; }
+  .coo-led-hm { display: none; }
+  .coo-led-net { display: inline; margin-left: var(--space-2); }
+  .coo-led-v.coo-led-t { border-top: 0; padding-top: 0; margin-top: 0; }
 }
 
 /* COO дэлгэцийн бүрхүүл, сар сонгогч, тайлбар, CEO тохиргоо.
@@ -7268,26 +7245,58 @@ select.no-asar-len {
   align-items:baseline; gap:var(--space-2); }
 .rv-sum { font-weight:600; font-size:var(--fs-sm); color:var(--muted); }
 .rv-warn { margin-top:var(--space-2); font-size:var(--fs-sm); color:var(--danger); font-weight:700; }
-.rv-row { display:grid; grid-template-columns:auto auto 1fr auto; gap:var(--space-2);
+/* ⛔ НЭГ МӨР = НЭГ ҮНЭЛГЭЭ. Сэтгэгдэл нь дарахад нээгдэнэ (2026-10-05, CEO) */
+.rv-row { display:grid; grid-template-columns:auto 1fr auto auto; gap:var(--space-2);
   align-items:baseline; padding:var(--space-2) 0; border-top:1px solid var(--border);
-  font-size:var(--fs-sm); cursor:pointer; }
+  font-size:var(--fs-sm); cursor:pointer; list-style:none; }
+.rv-row::-webkit-details-marker { display:none; }
+.rv-item { border:0; }
+.rv-more { color:var(--muted); font-size:var(--fs-xs); }
+.rv-item[open] .rv-more { color:var(--primary); }
+.rv-go { margin:var(--space-2) 0 var(--space-3); padding:3px 10px; font-size:var(--fs-xs); }
 .rv-row .rv-st { letter-spacing:1px; color:var(--ok); white-space:nowrap; }
 .rv-row.bad .rv-st { color:var(--danger); }
-.rv-nm { font-weight:700; white-space:nowrap; }
-.rv-tx { color:var(--text-soft); min-width:0; }
+.rv-nm { font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rv-tx { color:var(--text-soft); min-width:0; font-size:var(--fs-sm); line-height:1.5;
+  padding:var(--space-2) 0 0; }
 .rv-at { color:var(--muted); font-size:var(--fs-xs); white-space:nowrap; }
-.dsp-pct { font-size:var(--fs-2xl); font-weight:800; margin-top:var(--space-2);
-  display:flex; align-items:baseline; gap:var(--space-3); flex-wrap:wrap; }
-.dsp-pct.ok { color:var(--ok); } .dsp-pct.warn { color:var(--warn); } .dsp-pct.bad { color:var(--danger); }
-.dsp-sub { font-size:var(--fs-sm); font-weight:600; color:var(--muted); }
-.rv-note { margin-top:var(--space-2); font-size:var(--fs-xs); color:var(--muted); }
+/* «Цагтаа гарсан» — сараар, нэг мөр (2026-10-05). Картыг бүхэлд нь дарахад задаргаа. */
+.dsp-card { cursor:pointer; }
+.dsp-top { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
+.dsp-ttl { font-weight:800; font-size:var(--fs-md); }
+.dsp-row { display:flex; align-items:center; gap:var(--space-3); margin-top:var(--space-2); }
+.dsp-big { font-size:var(--fs-2xl); font-weight:800; line-height:1; }
+.dsp-big.ok { color:var(--ok); } .dsp-big.warn { color:var(--warn); } .dsp-big.bad { color:var(--danger); }
+.dsp-meta { flex:1; min-width:0; display:flex; flex-direction:column; gap:var(--space-1); font-size:var(--fs-sm); color:var(--muted); }
+.dsp-delta { font-weight:700; color:var(--text-soft); }
+.dsp-delta.up { color:var(--ok); } .dsp-delta.down { color:var(--danger); }
+.dsp-chart { display:flex; gap:var(--space-1); margin-top:var(--space-3); }
+.dsp-col { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:var(--space-1);
+  border:0; background:transparent; padding:var(--space-1) 0; border-radius:var(--r-md); cursor:pointer; color:var(--muted); }
+.dsp-col:hover { background:var(--panel-hover); }
+.dsp-col.on { background:var(--panel-hover); color:var(--text); }
+.dsp-col.on .dsp-cm { font-weight:800; }
+.dsp-cv { font-size:var(--fs-xs); font-weight:700; font-variant-numeric:tabular-nums; }
+.dsp-cm { font-size:var(--fs-xs); white-space:nowrap; }
+.dsp-bar { display:flex; align-items:flex-end; width:60%; max-width:var(--space-6); height:var(--space-8);
+  border-radius:var(--r-sm); background:var(--border); overflow:hidden; }
+.dsp-fill { display:block; width:100%; background:var(--muted); }
+.dsp-fill.ok { background:var(--ok); } .dsp-fill.warn { background:var(--warn); } .dsp-fill.bad { background:var(--danger); }
+.dsp-col.thin .dsp-fill { opacity:.4; }
+.dsp-h0 { height:0; } .dsp-h10 { height:10%; } .dsp-h20 { height:20%; } .dsp-h30 { height:30%; }
+.dsp-h40 { height:40%; } .dsp-h50 { height:50%; } .dsp-h60 { height:60%; } .dsp-h70 { height:70%; }
+.dsp-h80 { height:80%; } .dsp-h90 { height:90%; } .dsp-h100 { height:100%; }
+.dsp-unm { white-space:nowrap; }
+.dsp-go { font-size:var(--fs-lg); color:var(--muted); }
+.dsp-empty { margin-top:var(--space-2); font-size:var(--fs-sm); color:var(--muted); }
 .dep-badge.dsp-late { color:var(--danger); }
 .dep-badge.dsp-ok { color:var(--ok); }
 .dep-badge.dsp-need { color:var(--muted); }
+/* ⚠ Утсан дээр ч НЭГ МӨР — өмнө нь огноо/сэтгэгдлийг доош нь буулгаснаас
+   нэг үнэлгээ 3 мөр эзэлж байв. Нэр нь богиносно, бусад нь багтана. */
 @media (max-width: 620px) {
-  .rv-row { grid-template-columns:auto 1fr; }
-  .rv-tx { grid-column:1 / -1; }
-  .rv-at { grid-column:2; text-align:right; }
+  .rv-at { font-size:var(--fs-xs); }
+  .rv-nm { font-size:var(--fs-sm); }
 }
 .fin-actions { display: flex; justify-content: flex-end; flex-wrap: wrap;
   gap: var(--space-2); margin-bottom: var(--space-2); }
@@ -7311,6 +7320,8 @@ select.no-asar-len {
 .ns-btn-lock { color: var(--ok); border-color: var(--ok); }
 .ns-done .ns-mark { background: var(--ok); }
 .ns-done .ns-title, .ns-done .ns-hint { color: var(--muted); }
+/* «Харах» нь хийх ажил биш — товч нь чимээгүй, хийх ёстой алхмуудаас ялгарна */
+.ns-done .ns-btn { background: none; border-color: var(--border); color: var(--muted); }
 .ns-wait .ns-mark { background: var(--border); color: var(--muted); }
 .ns-wait .ns-title, .ns-wait .ns-hint { color: var(--muted); }
 @media (max-width: 620px) {
@@ -7478,7 +7489,6 @@ select.no-asar-len {
   padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
 .mc-main { flex: 1 1 190px; min-width: 0; }
 .mc-num { font-size: var(--fs-base); font-weight: 800; }
-.mc-who { font-size: var(--fs-sm); font-weight: 400; color: var(--muted); }
 .mc-meta { margin-top: 2px; font-size: var(--fs-xs); color: var(--muted); }
 .mc-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .mc-btn { padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px;
@@ -7568,16 +7578,6 @@ select.no-asar-len {
 .fc-h { margin: 0; font-size: var(--fs-lg); }
 .fc-note { font-size: var(--fs-sm); color: var(--muted); }
 .fc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-md); }
-.fc-mode { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
-.fc-mode-l { font-size: var(--fs-sm); color: var(--muted); font-weight: 700; }
-.fc-mode-b {
-  border: 1px solid var(--border); background: var(--panel); color: var(--text);
-  border-radius: var(--r-sm); padding: 4px var(--space-3);
-  font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
-}
-.fc-mode-b.on { background: var(--primary); border-color: var(--primary); color: #fff; }
-.fc-mode-b:disabled { opacity: .5; cursor: default; }
-.fc-mode-h { font-size: var(--fs-sm); color: var(--muted); }
 .fc-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
 .fc-card {
   background: var(--panel); border: 1px solid var(--border);
@@ -7586,20 +7586,12 @@ select.no-asar-len {
 .fc-card.warn { border-color: var(--warn); }
 .fc-v { font-size: var(--fs-xl); font-weight: 800; }
 .fc-k { font-size: var(--fs-xs); color: var(--muted); }
-.fc-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.fc-tab {
-  border: 1px solid var(--border); background: var(--panel); color: var(--text);
-  border-radius: var(--r-sm); padding: var(--space-2) var(--space-3);
-  font-size: var(--fs-sm); font-weight: 700; cursor: pointer;
-}
-.fc-tab.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 .fc-list { display: flex; flex-direction: column; gap: var(--space-2); }
-.fc-row, .fc-draft {
+.fc-row {
   display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
   background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--r-sm); padding: var(--space-3);
 }
-.fc-draft { flex-direction: column; align-items: stretch; }
 .fc-main { flex: 1 1 190px; min-width: 0; }
 .fc-name { font-size: var(--fs-base); font-weight: 800; }
 .fc-sub { font-size: var(--fs-sm); color: var(--muted); }
@@ -7612,12 +7604,6 @@ select.no-asar-len {
 .fc-tag.warn { border-color: var(--warn); color: var(--warn); }
 .fc-tag.off { border-color: var(--danger); color: var(--danger); }
 /* Харилцагчийн мессеж ба ботын ноорог — нүд аль нь алинг хэлснийг шууд ялгана. */
-.fc-in, .fc-out {
-  font-size: var(--fs-md); white-space: pre-wrap; word-break: break-word;
-  border-radius: var(--r-sm); padding: var(--space-2);
-}
-.fc-in { color: var(--muted); border-left: 2px solid var(--border); }
-.fc-out { background: var(--panel-hover); border-left: 2px solid var(--primary); }
 .fc-act { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 /* Inbox холбоос товчны хажууд сууна — доогуур зураас нь эгнээг эвддэг. */
 .fc-act a.btn { text-decoration: none; display: inline-block; }
@@ -7754,6 +7740,9 @@ select.no-asar-len {
 .ocal-day { font-weight:800; margin-bottom:var(--space-2); }
 .ocal-sec { font-size:var(--fs-sm); font-weight:700; color:var(--muted); margin:var(--space-2) 0; }
 .ocal-hint { color:var(--muted); font-size:var(--fs-sm); text-align:center; padding:var(--space-4) 0; }
+.dash-ocal { margin-bottom:var(--space-3); }
+.dash-ocal .ocal-grid { margin-bottom:0; }
+.dash-ocal .ocal-hint { padding:var(--space-2) 0 0; }
 
 /* Дүн шинжилгээ — «агуулахаас цагтаа гарсан» өдрийн задаргаа */
 .dsp-days { display:flex; flex-direction:column; gap:var(--space-1); margin-top:var(--space-2); }
@@ -7763,10 +7752,6 @@ select.no-asar-len {
 .dsp-day-bar { height:8px; border-radius:999px; background:var(--danger-soft); overflow:hidden; }
 .dsp-day-fill { display:block; height:100%; background:var(--ok); }
 .dsp-day-n { font-variant-numeric:tabular-nums; color:var(--muted); }
-.dsp-day-o { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:var(--space-1); }
-.dsp-chip { border:1px solid var(--border); border-radius:999px; background:var(--panel);
-  color:var(--danger); font:inherit; font-size:var(--fs-xs); font-weight:700;
-  padding:1px var(--space-2); cursor:pointer; }
 .rsrc-pct.ok { color:var(--ok); } .rsrc-pct.warn { color:var(--warn); } .rsrc-pct.bad { color:var(--danger); }
 
 /* Эхний үлдэгдэл — ↩ буцаах/татгалзах (буруу дарсныг засах зам) */
@@ -7806,7 +7791,7 @@ select.no-asar-len {
 .ncl-tag { font-size: var(--fs-xs); background: var(--warn-soft); color: var(--warn);
   border-radius: var(--r-sm); padding: 2px var(--space-2); }
 
-/* ─── Шатны хөлс (дамжлагын ажлын хөлс, барааны тоогоор) ─── */
+/* ─── Дамжлагын бонус (барааны тоогоор) ─── */
 .sp-line {
   margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--ok); line-height: 1.6;
 }
@@ -7827,6 +7812,302 @@ select.no-asar-len {
   font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2);
   padding-top: var(--space-2); border-top: 1px solid var(--line); line-height: 1.5;
 }
+
+/* ─── 💵 Миний цалин (ажилтан өөрөө харна) ─── */
+.pay-card {
+  background: var(--panel); border: 1px solid var(--primary); border-radius: var(--r-xl);
+  padding: var(--space-4); margin-bottom: var(--space-3);
+}
+.pay-hd { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.pay-hd-t { font-size: var(--fs-md); font-weight: 700; color: var(--text); }
+.pay-ym {
+  padding: 4px var(--space-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm);
+}
+.pay-total { font-size: var(--fs-2xl); font-weight: 800; color: var(--primary); margin-top: var(--space-2); line-height: 1.15; }
+.pay-total-s { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; }
+.pay-rows { margin-top: var(--space-3); border-top: 1px solid var(--line); }
+.pay-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  padding: 6px 0; font-size: var(--fs-md); border-bottom: 1px solid var(--line);
+}
+.pay-lbl { color: var(--text-soft); min-width: 0; }
+.pay-val { font-variant-numeric: tabular-nums; text-align: right; flex-shrink: 0; }
+.pay-minus .pay-val { color: var(--danger); }
+.pay-plus .pay-val { color: var(--ok); }
+.pay-zero, .pay-zero .pay-val { color: var(--muted); }
+.pay-sub .pay-val, .pay-sum .pay-val { color: var(--text); }
+.pay-sum { border-bottom: none; border-top: 1px solid var(--border); padding-top: var(--space-2); font-size: var(--fs-base); }
+.pay-paid .pay-val { color: var(--ok); }
+.pay-left .pay-val { color: var(--warn); }
+.pay-over .pay-val { color: var(--danger); }
+.pay-worked { border-bottom: none; color: var(--muted); }
+.pay-note {
+  font-size: var(--fs-sm); color: var(--muted); margin-top: var(--space-2);
+  padding-top: var(--space-2); border-top: 1px solid var(--line); line-height: 1.5;
+}
+.pay-warn {
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
+  color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
+}
+/* ─── 📈 Орлогын тайлан ─── */
+.is-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-2); margin-bottom: var(--space-3); }
+.is-h { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
+  padding: var(--space-3); }
+.is-hl { font-size: var(--fs-xs); color: var(--muted); }
+.is-hv { font-weight: 800; font-size: var(--fs-xl); margin-top: 2px; font-variant-numeric: tabular-nums;
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.is-hs { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.is-rev { color: var(--primary); } .is-exp { color: var(--warn); } .is-pf { color: var(--ok); }
+.is-d { font-size: var(--fs-xs); font-weight: 600; }
+.is-up { color: var(--ok); } .is-dn { color: var(--danger); }
+.is-r { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  padding: 7px var(--space-3); border-bottom: 1px solid var(--line); font-size: var(--fs-md); }
+.is-l { flex: 1; min-width: 0; color: var(--text-soft); display: flex; flex-direction: column;
+  overflow-wrap: anywhere; }
+.is-v { font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--text); }
+.is-gh { background: var(--panel-hover); font-weight: 700; }
+.is-gh .is-l { color: var(--text); }
+.is-sub { padding-left: var(--space-5, 26px); font-size: var(--fs-sm); }
+.is-sub .is-v { color: var(--muted); }
+.is-tot { border-bottom: none; border-top: 1px solid var(--border); background: var(--panel-hover);
+  font-size: var(--fs-base); }
+.is-tot .is-l { color: var(--text); font-weight: 700; }
+
+/* ─── 📒 Нягтлангийн дэд таб + ерөнхий дэвтэр ─── */
+.ac-tabs { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-bottom: var(--space-3);
+  background: var(--panel-hover); border-radius: var(--r-lg); padding: 4px; }
+.ac-tb { padding: 7px var(--space-3); font-size: var(--fs-sm); font-weight: 600; border: none;
+  border-radius: var(--r-md); background: none; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.ac-tb.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.lg-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
+.lg-h { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3); background: var(--panel-hover); border-bottom: 1px solid var(--line); }
+.lg-bal { margin-left: auto; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; color: var(--primary); }
+.lg-r { display: flex; gap: var(--space-2); align-items: baseline; padding: 5px var(--space-3);
+  font-size: var(--fs-sm); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.lg-head { color: var(--muted); font-size: var(--fs-xs); background: var(--panel); }
+.lg-d { flex: 0 0 42px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg-t { flex: 1 1 140px; min-width: 0; color: var(--text-soft); overflow-wrap: anywhere; }
+.lg-v { flex: 0 0 88px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ─── 📒 Журнал (давхар бичилт) ─── */
+.jr-wrap { padding: var(--space-1); }
+.jr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2);
+  flex-wrap: wrap; margin-bottom: var(--space-3); }
+.jr-title { font-weight: 800; font-size: var(--fs-lg); }
+.jr-sub { font-size: var(--fs-xs); color: var(--muted); }
+.jr-ok { border: 1px solid var(--ok); background: var(--ok-soft); color: var(--ok);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); font-size: var(--fs-sm); }
+.jr-bad { border: 1px solid var(--danger); background: var(--danger-soft); color: var(--danger);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); font-size: var(--fs-sm); }
+.jr-leg { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-2) 0; line-height: 1.6; }
+.jr-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border); margin-bottom: var(--space-2); flex-wrap: wrap; }
+.jr-tb { padding: 7px var(--space-3); font-size: var(--fs-sm); font-weight: 600; border: none;
+  border-bottom: 2.5px solid transparent; background: none; color: var(--muted); cursor: pointer; }
+.jr-tb.on { color: var(--text); border-bottom-color: var(--primary); }
+.jr-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: var(--space-3); }
+.jr-chip { padding: 2px 10px; font-size: var(--fs-xs); border: 1px solid var(--border);
+  border-radius: 999px; background: var(--panel); color: var(--text-soft); cursor: pointer; }
+.jr-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.jr-e { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel);
+  margin-bottom: 6px; overflow: hidden; }
+.jr-eh { display: flex; gap: var(--space-2); align-items: baseline; padding: 7px var(--space-3);
+  background: var(--panel-hover); font-size: var(--fs-sm); }
+.jr-ed { font-variant-numeric: tabular-nums; color: var(--muted); flex-shrink: 0; }
+.jr-et { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jr-l { display: flex; gap: var(--space-2); align-items: baseline; padding: 5px var(--space-3);
+  font-size: var(--fs-sm); border-top: 1px solid var(--line); }
+.jr-ls { flex: 0 0 52px; color: var(--muted); font-size: var(--fs-xs); }
+.jr-ln { flex: 1; min-width: 0; color: var(--text-soft); }
+.jr-cat { color: var(--muted); font-size: var(--fs-xs); margin-left: 5px; }
+.jr-lv { font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.jr-dr { color: var(--primary); } .jr-cr { color: var(--ok); }
+/* ⚠ 390px-д нэр + 3 тоон багана багтдаггүй тул мөр нь ЭВХРЭНЭ (нэр дээд мөрөнд
+   бүтнээр). Эс бөгөөс нэр тоон дээр давхарлаж уншигдахгүй болно. */
+.jr-ahead, .jr-arow { display: flex; gap: var(--space-2); padding: 6px var(--space-3);
+  font-size: var(--fs-sm); flex-wrap: wrap; }
+.jr-ahead { color: var(--muted); font-size: var(--fs-xs); border-bottom: 1px solid var(--border); }
+.jr-arow { border-bottom: 1px solid var(--line); }
+.jr-al { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.jr-av { flex: 0 0 92px; text-align: right; font-variant-numeric: tabular-nums; }
+.jr-neg { color: var(--ok); }
+.jr-grp { margin-top: var(--space-3); font-size: var(--fs-xs); font-weight: 700; color: var(--muted);
+  letter-spacing: .4px; }
+.jr-empty { text-align: center; color: var(--muted); padding: 30px 0; font-size: var(--fs-sm); }
+.jr-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-3); line-height: 1.5; }
+
+/* ─── ⚖️ Нээлтийн баланс ─── */
+.ob-wrap { padding: var(--space-1); }
+.ob-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2);
+  flex-wrap: wrap; margin-bottom: var(--space-3); }
+.ob-title { font-weight: 800; font-size: var(--fs-lg); }
+.ob-sub { font-size: var(--fs-xs); color: var(--muted); }
+.ob-gaps { border: 1px solid var(--warn); background: var(--warn-soft); color: var(--warn);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3);
+  font-size: var(--fs-sm); line-height: 1.7; }
+.ob-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: var(--space-3); }
+.ob-side { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
+.ob-hd { padding: var(--space-2) var(--space-3); font-weight: 700; font-size: var(--fs-sm);
+  letter-spacing: .4px; border-bottom: 1px solid var(--line); }
+.ob-a { color: var(--primary); }
+.ob-b { color: var(--warn); }
+.ob-row { display: flex; align-items: baseline; gap: var(--space-2); padding: 8px var(--space-3);
+  border-bottom: 1px solid var(--line); font-size: var(--fs-md); }
+.ob-l { flex: 1; min-width: 0; color: var(--text-soft); display: flex; flex-direction: column; }
+.ob-n { font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
+.ob-v { font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--text); }
+.ob-total { border-bottom: none; border-top: 1px solid var(--border); background: var(--panel-hover);
+  font-size: var(--fs-base); }
+.ob-total .ob-l { color: var(--text); font-weight: 700; }
+.ob-empty { padding: var(--space-3); color: var(--muted); font-size: var(--fs-sm); text-align: center; }
+.ob-x { padding: 0 7px; font-size: var(--fs-xs); flex-shrink: 0; }
+.ob-eq { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3);
+  margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--primary);
+  border-radius: var(--r-lg); background: var(--panel); font-size: var(--fs-base); font-weight: 700; }
+.ob-eq b { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; color: var(--primary); }
+.ob-eq .ob-neg { color: var(--danger); }
+.ob-add { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
+.ob-i { padding: 7px var(--space-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--panel); color: var(--text); font-size: var(--fs-md); }
+.ob-add #ob-lbl { flex: 2 1 180px; } .ob-add #ob-amt { flex: 1 1 110px; text-align: right; }
+.ob-act { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-top: var(--space-3); }
+.ob-dl { font-size: var(--fs-sm); color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.ob-froz { margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--ok);
+  border-radius: var(--r-md); background: var(--ok-soft); color: var(--ok); font-size: var(--fs-sm);
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ob-unfreeze { padding: 2px 10px; font-size: var(--fs-xs); }
+.ob-drift { margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--text-soft); line-height: 1.6; }
+.ob-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-3); line-height: 1.5; }
+
+/* ─── 💼 Эзний хөрөнгө оруулалт (Өртөг ба хөрөнгө дэлгэц) ─── */
+.oc-card { background: var(--panel); border: 1px solid var(--primary); border-radius: var(--r-xl);
+  padding: var(--space-4); margin-top: var(--space-3); }
+.oc-hd { font-size: var(--fs-md); font-weight: 700; color: var(--text); }
+.oc-v { font-size: var(--fs-2xl); font-weight: 800; color: var(--primary); margin-top: var(--space-1); line-height: 1.15; }
+.oc-s { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; }
+.oc-rows { margin-top: var(--space-3); border-top: 1px solid var(--line); }
+.oc-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  padding: 6px 0; font-size: var(--fs-md); border-bottom: 1px solid var(--line); color: var(--text-soft); }
+.oc-row b { font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--text); }
+.oc-minus b { color: var(--danger); }
+.oc-sum { border-bottom: none; border-top: 1px solid var(--border); padding-top: var(--space-2);
+  font-size: var(--fs-base); color: var(--text); }
+.oc-gap { margin-top: var(--space-3); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
+  color: var(--warn); font-size: var(--fs-sm); line-height: 1.6; }
+.oc-go { padding: 2px 10px; font-size: var(--fs-xs); margin-left: var(--space-2); }
+.oc-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); line-height: 1.5; }
+.oc-act { margin-top: var(--space-3); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.oc-dim { font-size: var(--fs-xs); color: var(--muted); }
+
+/* ─── 💵 Цалингийн самбар (бүх цалингийн тоо нэг дэлгэцэд) ─── */
+.pb-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; margin: 2px 0 var(--space-3); }
+.pb-title { font-weight: 800; font-size: var(--fs-lg); }
+.pb-sub { font-size: var(--fs-xs); color: var(--muted); }
+.pb-head-r { display: flex; gap: var(--space-2); align-items: center; }
+.pb-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); }
+.pb-kpi { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); }
+.pb-kpi-l { font-size: var(--fs-xs); color: var(--muted); }
+.pb-kpi-v { font-weight: 800; font-size: var(--fs-lg); margin-top: 2px; }
+.pb-kpi-s { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.pb-warn {
+  margin-bottom: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
+  color: var(--warn); font-size: var(--fs-sm); line-height: 1.5;
+}
+.pb-note {
+  margin-bottom: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel-hover);
+  color: var(--text-soft); font-size: var(--fs-sm); line-height: 1.5;
+}
+.pb-rates {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  font-size: var(--fs-sm); color: var(--muted); background: var(--panel-hover);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);
+}
+.pb-rates label { display: inline-flex; align-items: center; gap: 4px; }
+.pb-rate { width: 56px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: right; }
+.pb-rates-n { flex-basis: 100%; font-size: var(--fs-xs); opacity: .85; }
+/* Хураангуй мөр нь үргэлж харагдана; задаргаа нь дарахад нээгдэнэ (<details>).
+   ⛔ Хүн бүрд ижил урт блок бичихгүй — 20 ажилтны жагсаалт уншигдахгүй болно. */
+.pb-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
+  margin-bottom: 6px; overflow: hidden; }
+.pb-card[open] { border-color: var(--primary); }
+/* ⚠ Шинэ breakpoint нэмэхгүй: нэр нь 150px-ээс нарийсвал ӨӨРӨӨ дээд мөрөнд
+   гарна (320px-д нэр · цаг · төлөв · дүн нэг мөрөнд багтдаггүй). */
+.pb-sum {
+  display: flex; align-items: center; gap: var(--space-2); cursor: pointer;
+  padding: var(--space-2) var(--space-3); list-style: none; user-select: none;
+  flex-wrap: wrap;
+}
+.pb-sum::-webkit-details-marker { display: none; }
+.pb-sum:hover { background: var(--panel-hover); }
+.pb-sum-n { flex: 1 1 150px; min-width: 0; font-size: var(--fs-md); display: flex;
+  flex-direction: column; line-height: 1.3; }
+.pb-sum-n .pb-role { font-size: var(--fs-xs); color: var(--muted); }
+.pb-sum-h { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-soft);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-ot { color: var(--ok); }
+.pb-sum-v { flex: 0 0 auto; margin-left: auto; font-weight: 800; font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums; text-align: right; }
+.pb-chip { flex: 0 0 auto; font-size: var(--fs-xs); border-radius: 999px;
+  padding: 1px 8px; white-space: nowrap; }
+.pb-st-ok { background: var(--ok-soft); color: var(--ok); }
+.pb-st-part { background: var(--warn-soft); color: var(--warn); }
+/* Илүү олголт — урьдчилгаа авсан эсвэл буруу олгосон. Дутуугаас ЯЛГАРАХ ёстой. */
+.pb-st-over { background: var(--danger-soft); color: var(--danger); }
+.pb-st-no { background: var(--panel-hover); color: var(--muted); }
+.pb-st-none { background: transparent; color: var(--muted); }
+.pb-body { padding: 0 var(--space-3) var(--space-3); display: flex;
+  flex-direction: column; gap: var(--space-2); border-top: 1px solid var(--line); padding-top: var(--space-2); }
+.pb-noout-l { font-size: var(--fs-xs); color: var(--warn); margin-top: 2px; }
+.pb-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.pb-who { min-width: 160px; flex: 1; font-size: var(--fs-md); }
+.pb-role { font-size: var(--fs-xs); color: var(--muted); }
+.pb-hist, .pb-copy, .pb-memo { padding: 1px 8px; font-size: var(--fs-xs); margin-left: 5px; }
+.pb-bank { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; display: flex;
+  align-items: center; gap: 5px; flex-wrap: wrap; }
+.pb-base { text-align: right; min-width: 0; }
+.pb-base-r { display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end; }
+.pb-base-r .money-input { width: 118px; max-width: 100%; box-sizing: border-box; padding: 6px var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel);
+  color: var(--text); font-size: var(--fs-md); text-align: right; }
+.pb-ded-l { font-size: var(--fs-xs); color: var(--muted); margin-top: 3px; display: flex;
+  align-items: center; gap: var(--space-2); justify-content: flex-end; flex-wrap: wrap; }
+.pb-ded { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.pb-rows { margin-top: 0; border-top: 1px dashed var(--border); }
+.pb-nosal { font-size: var(--fs-sm); color: var(--warn); border-top: 1px dashed var(--border); padding-top: var(--space-2); }
+/* ⚠ 320px-д гурван тогтмол өргөнтэй хэсэг багтдаггүй тул МӨР НЬ ЭВХРЭНЭ — таслагдвал
+   «олгоогүй/⧉ Утга» товч дэлгэцийн гадна үлдэж дарагдахгүй болно. */
+.pb-dim { color: var(--muted); }
+.pb-empty { text-align: center; color: var(--muted); padding: 30px 0; }
+.pb-orph { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  flex-wrap: wrap; margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.pb-orph-b { padding: 2px 10px; font-size: var(--fs-xs); flex-shrink: 0; }
+.orph-l { display: block; font-size: var(--fs-sm); color: var(--muted); margin: var(--space-2) 0 4px; }
+.orph-sel { width: 100%; box-sizing: border-box; padding: 8px var(--space-2); border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--panel); color: var(--text); font-size: var(--fs-md); }
+
+
+/* Сард олгосон мөр бүр — «олгосон N₮» гэсэн ганц тоог задалж харуулна */
+.pay-plist { padding: var(--space-1) 0 var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }
+.pay-pitem {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2);
+  font-size: var(--fs-sm); color: var(--muted); padding: 3px 0;
+}
+.pay-pwhen { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pay-pnote { color: var(--text-soft); }
+/* Банкны сар ≠ ноогдох сар — яагаад өөр сард харагдаж байгааг ил хэлнэ */
+.pay-pshift { color: var(--primary); font-weight: 700; cursor: help; }
+.pay-pamt { font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--ok); }
+.pay-fine { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); line-height: 1.5; }
+/* Ирцийн сарын жагсаалт — хүн бүрийн доорх илүү цаг / цалингийн мөр */
+.pay-line { margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--text-soft); line-height: 1.6; }
+.pay-line-sum { color: var(--primary); font-weight: 600; }
 
 /* ─── Өдрийн ачаалал — «хэдэн хүн хэрэгтэй вэ» ─── */
 .dl-card {
@@ -7882,3 +8163,410 @@ select.no-asar-len {
 .dsp-w0 { width: 0; } .dsp-w10 { width: 10%; } .dsp-w20 { width: 20%; } .dsp-w30 { width: 30%; }
 .dsp-w40 { width: 40%; } .dsp-w50 { width: 50%; } .dsp-w60 { width: 60%; } .dsp-w70 { width: 70%; }
 .dsp-w80 { width: 80%; } .dsp-w90 { width: 90%; } .dsp-w100 { width: 100%; }
+
+/* ─── Засвар: «✓ Зассан / 🗑 Актлах» цонх (зураг ЗААВАЛ) ───────────────────
+   Бүх хэв маяг класс болов (inline style-гүй), шинэ хүчит дүрэм нэмээгүй —
+   мобайлын `.modal button/textarea` flatten дүрмүүд өмнө нь inline style-ыг ч
+   дардаг байсан тул харагдах байдал ижил хэвээр.
+   ⚠ `.modal .rf-*` гэж бичигдсэн нь ЗОРИУД: `.modal label` / `.modal textarea`
+   (0,1,1) дүрмийг давах specificity (0,2,0) — өмнө inline давдаг байсныг хадгална. */
+/* Хоёр класс = мобайлын `.modal { max-width:100% }`-аас давна (pm-modal-тай ижил арга) */
+.modal.rf-modal { max-width: var(--rf-modal-w); }
+.rf-l { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-1); }
+.rf-req { color: var(--danger); }
+.rf-photos {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--rf-thumb-min), 1fr));
+  gap: var(--space-2); margin-bottom: var(--space-2);
+}
+.rf-thumb {
+  position: relative; aspect-ratio: 1; border-radius: var(--r-md);
+  overflow: hidden; border: 1px solid var(--border);
+}
+.rf-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.modal .rf-rm {
+  position: absolute; top: 2px; right: 2px;
+  width: var(--rf-rm); height: var(--rf-rm);
+  border: none; border-radius: var(--r-full);
+  background: var(--scrim-del); color: var(--on-primary);
+  cursor: pointer; line-height: 1;
+}
+/* Зураг оруулах талбар — тасархай хүрээтэй, бүтэн өргөн */
+.modal .rf-pick {
+  display: block; text-align: center; cursor: pointer;
+  border: 2px dashed var(--accent-purple); border-radius: var(--r-lg);
+  padding: var(--space-3); margin-bottom: var(--space-1);
+}
+.rf-status { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--space-3); }
+.rf-status.is-ok { color: var(--ok); }
+.rf-status.is-bad { color: var(--danger); }
+.modal .rf-note {
+  width: 100%; box-sizing: border-box; padding: var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--panel); color: var(--text); font-size: var(--fs-md);
+}
+.rf-foot { display: flex; gap: var(--space-2); justify-content: flex-end; }
+
+/* ⚖️ Хуулгын бодолт — «эхний + орлого − зарлага = эцсийн» (2026-10-02).
+   «✓ тэнцэв» гэдэг дангаараа шалгалт ЮУГ харьцуулсныг хэлдэггүй тул
+   хуулга бүрийг нээхэд бодолт бүтнээр гарна. Данс бүрээр бүлэглэнэ. */
+.stmt-acct { border-top: 1px solid var(--border); }
+.stmt-acct:first-child { border-top: none; }
+.stmt-acct-h { background: var(--panel-hover); font-weight: 600; color: var(--text); }
+.stmt-det > summary { cursor: pointer; list-style: none; }
+.stmt-det > summary::-webkit-details-marker { display: none; }
+.stmt-det > summary::before { content: '▸'; color: var(--muted); margin-right: var(--space-2); }
+.stmt-det[open] > summary::before { content: '▾'; }
+.stmt-det > summary:hover { background: var(--panel-hover); }
+.stmt-lad {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); gap: var(--space-1) var(--space-4);
+  padding: var(--space-2) var(--space-4) var(--space-3) var(--space-6);
+  font-size: var(--fs-sm); background: var(--bg);
+}
+.stmt-lad .sl-k { color: var(--muted); }
+.stmt-lad .sl-v { text-align: right; color: var(--text-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stmt-lad .sl-sum { border-top: 1px solid var(--border-strong); padding-top: var(--space-1); color: var(--text); font-weight: 600; }
+.stmt-lad .sl-ok { color: var(--ok); }
+.stmt-lad .sl-bad { color: var(--warn); }
+/* ⛔ Дансны НЭРИЙГ тайлбарт БҮҮ ДАРУУЛ (2026-10-02, амьд дэлгэцэд гарсан алдаа).
+   `.recon-l` нь `nowrap + ellipsis` тул урт тайлбарыг нэг эгнээнд тавихад нэр
+   бүрмөсөн шахагдаж «○ 2026-09-30-ны эцсийн үлдэгдэл алга…» гэж ДАНСГҮЙ мөр
+   үлдэж байв. Нэр + богино дүгнэлт эхний эгнээнд, тайлбар нь ДООРХ мөрөнд. */
+.seal-row { flex-wrap: wrap; }
+.seal-row .seal-l { flex: 1 1 auto; min-width: 0; }
+.seal-row .seal-why {
+  flex: 1 0 100%; color: var(--muted); font-size: var(--fs-xs);
+  white-space: normal; overflow-wrap: anywhere; margin-top: var(--space-1);
+}
+.recon-sec-h .recon-amt { margin-left: auto; }
+.recon-sec-h { display: flex; align-items: baseline; gap: var(--space-2); }
+
+/* ⛔ Чөлөөт бичвэр (файлын нэр, шалтгаан) нь ТООН БАГАНАД ОРОХГҮЙ — БҮТЭН мөр.
+   Файлын нэрэнд зай байдаггүй (C000051740_7137…xlsx) тул тоон баганад тавиад
+   `anywhere`-ээр таслахад багана нарийсаж, ШОШГО нь үсэг тус бүрээр босоо
+   таслагдаж байв (375px-д баталсан). Тоон багана зөвхөн мөнгө барина. */
+.stmt-lad .sl-full {
+  grid-column: 1 / -1; color: var(--muted); font-size: var(--fs-xs);
+  white-space: normal; overflow-wrap: anywhere;
+}
+.stmt-lad .sl-full.sl-bad { color: var(--warn); }
+
+/* Элэгдлийн дэд мөр — зардлын мөрийн доор бүдэг (2026-10-02). «14 сая хаанаас
+   гарч ирсэн бэ» гэсэн асуулт нь зардал задрахгүй байснаас төрсөн. */
+.coo-cmp .coo-sub-row { font-size: var(--fs-xs); color: var(--muted); }
+
+/* 📉 Элэгдлийн мөр «Өртөг ба хөрөнгө» жагсаалтад (2026-10-02) — тайлангийн
+   нийт дүнг бараа бүрээр тулгах цорын ганц зам. */
+.ps-dep { flex: 0 1 auto; font-size: var(--fs-xs); color: var(--muted); }
+.ps-dep[open] { flex: 1 0 100%; }
+.ps-dep > summary { cursor: pointer; list-style: none; white-space: nowrap; }
+.ps-dep > summary::-webkit-details-marker { display: none; }
+.ps-dep > summary::after { content: '▸'; margin-left: 3px; color: var(--muted-soft); }
+.ps-dep[open] > summary::after { content: '▾'; }
+.ps-dep-x { padding-top: var(--space-1); white-space: normal; line-height: 1.5; }
+.ps-dep b { color: var(--text-soft); }
+.ps-dep-done { color: var(--ok); }
+.ps-dep-warn { color: var(--warn); }
+.ps-dep-sum {
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  background: var(--panel-hover); border-radius: var(--r-md);
+  font-size: var(--fs-sm); color: var(--text-soft);
+}
+
+/* 🔒 Эхний үлдэгдлийн 3 дахь гарын үсэг — CEO эцэслэнэ (2026-10-02). */
+.stc-open-seal { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+.stc-open-sealed { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }
+
+/* 🔒 Эцэслээгүй бараа — тооллого хаалттай (2026-10-02). Суурь нь баталгаажаагүй
+   бол зөрүү юутай ч харьцуулагдахгүй. */
+.stc-active-blk { border-color: var(--warn); }
+.stc-blk {
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  background: var(--warn-soft); color: var(--warn); border-radius: var(--r-md);
+  font-size: var(--fs-sm); line-height: 1.5;
+}
+/* 🔒 Эцэслэгдсэн барааны тоо түгжээтэй (2026-10-02). */
+.pm-hint-lock { background: var(--warn-soft); color: var(--warn); }
+
+/* 📦 «Нөөц ба салбар» — хуваарилалт нэг мөрөнд, шилжүүлэг үндсэн үйлдэл (2026-10-03).
+   Өмнө нь 4 тоон талбар задгай зогсож нэг бараа ~350px эзэлдэг тул 281 бараа
+   уншигдахгүй байв; шилжүүлэх товч огт байгаагүй тул хүн 2 тоог гараар нэмж
+   хасдаг (нийлбэр санамсаргүй өөрчлөгдөх нүх). */
+.ps-dist { flex: 1; min-width: 0; }
+.ps-dist > summary {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  cursor: pointer; list-style: none; padding: var(--space-1) 0;
+}
+.ps-dist > summary::-webkit-details-marker { display: none; }
+.ps-dist > summary::after { content: '✎'; color: var(--muted); font-size: var(--fs-xs); margin-left: var(--space-1); }
+.ps-dist[open] > summary::after { content: '▴'; }
+.ps-dist > summary:hover { color: var(--text); }
+.ps-chip {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px var(--space-2);
+  border-radius: var(--r-full); background: var(--panel-hover); color: var(--text-soft);
+  font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ps-chip.is-0 { color: var(--muted-soft); background: transparent; }
+.ps-dist .ps-tot { margin-left: auto; color: var(--text); font-size: var(--fs-sm); white-space: nowrap; }
+.ps-sld { color: var(--ok); font-size: var(--fs-sm); }
+.ps-dist-g { display: flex; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2) 0 var(--space-1); }
+.ps-dist-lock { flex: 1 0 100%; font-size: var(--fs-xs); color: var(--warn); }
+.ps-mv {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: var(--r-md);
+  border: 1px solid var(--border-strong); background: var(--panel);
+  color: var(--primary); font-size: var(--fs-lg); cursor: pointer;
+}
+.ps-mv:hover { background: var(--primary-soft); border-color: var(--primary); }
+/* ⛔ `.ps-savebar` нь `display:flex` тул `hidden` ажиллахгүй байв — тууз
+   «0 бараа өөрчлөгдсөн» гэж ҮРГЭЛЖ харагдаж, мөр халхалдаг байсан. */
+.ps-savebar[hidden] { display: none; }
+/* ⛔ `.ps-nm` нь 210px ТОГТМОЛ тул нарийн дэлгэцэд зураг/нэр/талбар давхарлаж
+   нэг бараа ~177px эзэлдэг — 281 бараа уншигдахгүй. Нөөцийн самбарт нэр нь
+   ШАХАГДДАГ, хуваарилалт нь доор нэг мөрөнд. ⚠ Суурь `.ps-row` нь flex тул
+   grid болгож БОЛОХГҮЙ — хүүхдийн flex дүрмүүд зөрчилдөж бүтэц задарна
+   (375px-д нэр бүрмөсөн алга болохыг хэмжиж баталсан). */
+/* ⛔ `.ps-nm` 210px ТОГТМОЛ нь БҮХ самбарт адил асуудал үүсгэдэг: 375px-д
+   зураг(56) + нэр(210) багтахгүй тул зураг ГАНЦААРАА мөр эзэлж, нэг бараа
+   173–231px болдог (каталог 178 · үнэ 173 · өртөг 231 — хэмжсэн).
+   Нэрийг ШАХАГДДАГ болгоход зураг хажууд нь ороод талбарууд доор нэг мөрөнд
+   жагсана. ⚠ Суурь `.ps-row` нь flex — grid болгож БОЛОХГҮЙ (хүүхдийн flex
+   дүрмүүд зөрчилдөж нэр алга болохыг 2026-10-03-нд хэмжиж баталсан). */
+.ps-row { flex-wrap: wrap; row-gap: var(--space-1); }
+.ps-row .ps-nm { flex: 1 1 140px; }
+.ps-row .ps-fields { flex: 1 1 100%; }
+@media (min-width: 721px) {
+  .ps-row .ps-nm { flex: 0 0 240px; }
+  .ps-row .ps-fields { flex: 1 1 auto; }
+}
+/* Нөөцийн самбар: хуваарилалтын чипүүд нэг эгнээнд таслагдахгүй. */
+.ps-row-stock .ps-fields { flex-wrap: nowrap; align-items: center; }
+
+/* 🔎 Самбарын шүүлтүүрийн чипүүд — тоо нь ажил хаана байгааг хэлнэ (2026-10-03). */
+.ps-fbar { display: flex; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2) 0 0; }
+.ps-fc {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-1) var(--space-3); border-radius: var(--r-full);
+  border: 1px solid var(--border); background: var(--panel);
+  color: var(--text-soft); font-size: var(--fs-sm); cursor: pointer; white-space: nowrap;
+}
+.ps-fc b { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ps-fc:hover { border-color: var(--border-strong); }
+.ps-fc.is-on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.ps-fc.is-on b { color: var(--on-primary); }
+.ps-fc.is-empty { opacity: .45; }
+
+/* ═══ Катерингийн захиалга — мөнгө (2026-10-03) ═══ */
+.kt-money { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px dashed var(--border);
+  font-size: var(--fs-sm); color: var(--muted); }
+.kt-money b { color: var(--text); font-variant-numeric: tabular-nums; }
+.kt-money .kt-m-paid { color: var(--ok); }
+.kt-m-no { font-weight: 700; color: var(--text-soft); }
+.kt-m-owe b { color: var(--warn); }
+.kt-m-ok { color: var(--ok); font-weight: 700; }
+.kt-m-warn { color: var(--warn); font-weight: 700; }
+.kt-money-nm { font-size: var(--fs-sm); color: var(--muted); }
+.kt-pay-btn { margin-left: auto; font-size: var(--fs-sm); }
+.kt-money-f { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.kt-pay { max-width: 440px; }
+.kt-pay-sum { background: var(--panel-hover); border-radius: 10px; padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3); font-size: var(--fs-md); line-height: 1.7; }
+.kt-pay-prev { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-3); }
+.kt-pay-drop { display: block; margin-bottom: var(--space-3); font-size: var(--fs-md); text-align: center;
+  border: 2px dashed var(--primary); border-radius: 10px; padding: var(--space-3); cursor: pointer;
+  background: var(--panel-hover); }
+.kt-pay-st { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
+.kt-pay-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2);
+  padding: var(--space-2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: var(--space-1);
+  font-size: var(--fs-sm); }
+.kt-pay-tot { text-align: right; font-size: var(--fs-md); margin: var(--space-2) 0; }
+.kt-money-f[hidden], .kt-money-nm[hidden] { display: none; }
+
+/* ── Эрхийн матриц (capMatrixHtml) — inline style-аас хөрвүүлсэн ──
+   `.ac-chips` нь HTML-д байсан ч CSS-д ТОДОРХОЙЛОГДООГҮЙ байсан: бүх зохион
+   байгуулалтыг inline style барьдаг тул чагтны эгнээг нэг газраас засах
+   боломжгүй байв. Одоо хоёр газар (эрхийн матриц ба 🏢 Салбар) ижил класс. */
+.cap-mx { margin-top: var(--space-2); }
+.ac-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* Цэсний нэрний хажуугийн бүдэг тайлбар — «(үндсэн)», «(харах дата …)» */
+.ac-menu-hint { font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
+
+/* ── NOMAAD дүн шинжилгээний шүүлтүүрийн чип ── */
+.naa-chip { padding: var(--space-1) var(--space-3); font-size: var(--fs-sm);
+  border: 1px solid var(--border); border-radius: var(--r-full); cursor: pointer;
+  white-space: nowrap; background: var(--panel); color: var(--text); }
+.naa-chip.on { background: var(--primary); color: var(--on-primary);
+  border-color: var(--primary); font-weight: 600; }
+
+/* ── Аппын алдааны цонх (openAppErrorsModal) ──
+   ⚠ Эдгээр нь мобайл/десктопын `.modal` flatten дүрмүүдийг (хүчтэй тугтай)
+   ДАВАХГҮЙ — inline style ч давдаггүй байсан тул зан чанар ижил. */
+.aerr-modal { max-width: var(--aerr-modal-w); width: 96%; max-height: 88vh; overflow: auto; }
+.aerr-head { display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--space-2); }
+.aerr-t { margin: 0; font-size: var(--fs-lg); }
+.aerr-x { padding: var(--space-1) var(--space-2); }
+.aerr-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.aerr-chip { font-size: var(--fs-sm); padding: var(--space-1) var(--space-3); }
+.aerr-mini { font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); }
+.aerr-note { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5;
+  margin-bottom: var(--space-2); }
+.aerr-ci { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.aerr-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
+
+/* ─── Дамжлагын цонх: асуулт бүр ДУГААРТАЙ хэсэг (2026-10-04, CEO) ────────
+   Өмнө нь бүх блок тасархай зураасаар тусгаарлагдсан хавтгай жагсаалт
+   байсан тул ажилтан хэдэн зүйл бөглөхөө мэдэхгүй, заавал бөглөхийг
+   нь ялгадаггүй байв. */
+.sa-sec { background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-3); margin-bottom: var(--space-3); }
+.sa-sec-h { display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); }
+.sa-sec-n { flex: none; width: 19px; height: 19px; margin-top: 1px; border-radius: 50%; background: var(--primary); color: #fff; font-size: var(--fs-xs); font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.sa-sec-t { font-size: var(--fs-md); font-weight: 700; line-height: 1.35; }
+.sa-sec-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; margin-bottom: var(--space-2); }
+.sa-req { color: var(--danger); }
+.sa-all-btn { width: 100%; margin-bottom: var(--space-2); }
+.sa-ph-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-2); }
+.sa-ph-btn { display: block; text-align: center; border: 2px dashed var(--primary); border-radius: 10px; padding: 11px; cursor: pointer; }
+.sa-ph-status { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }
+.sp-card-pen { margin-top: var(--space-2); color: var(--danger); font-size: var(--fs-sm); }
+.sp-pen-tag { color: var(--danger); font-size: var(--fs-xs); }
+.sp-pen-det { margin-top: var(--space-1); font-size: var(--fs-xs); }
+.sp-pen-det > summary { cursor: pointer; color: var(--muted); }
+.sp-pen-row { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--line); }
+.sp-pen-n { font-weight: 700; }
+.sp-pen-w { color: var(--text-soft); min-width: 0; }
+.sp-pen-k { display: block; color: var(--muted); }
+.sp-pen-f small { display: block; color: var(--muted); font-size: var(--fs-xs); text-align: right; }
+.order-stagemeta .sm-pts { display: inline-block; margin-left: var(--space-1); padding: 0 var(--space-1); border-radius: var(--r-sm);
+  font-size: var(--fs-xs); font-weight: 700; color: var(--ok); background: var(--ok-soft); }
+.order-stagemeta .sm-pts.bad { color: var(--danger); background: var(--danger-soft); }
+.sm-pen { font-size: var(--fs-xs); color: var(--danger); margin-top: var(--space-1); line-height: 1.4; }
+.sp-pen-f { color: var(--danger); font-variant-numeric: tabular-nums; }
+.sa-ph-status.ok { color: var(--ok); } .sa-ph-status.bad { color: var(--danger); }
+.sa-ph-row { display: flex; gap: var(--space-2); }
+.sa-ph-row .sa-ph-btn { flex: 1; min-width: 0; white-space: nowrap; }
+.sa-chip-wrap { display: flex; flex-wrap: wrap; gap: var(--space-2); max-height: 132px; overflow: auto; }
+.modal .sa-help-search { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-sm); margin-bottom: var(--space-2); }
+.modal .sa-note { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-md); font-family: inherit; }
+.sa-stars { font-size: var(--fs-2xl); letter-spacing: 5px; margin: 2px 0 var(--space-3); user-select: none; }
+.sa-stars span { cursor: pointer; color: var(--border-strong); }
+.sa-skip { margin-bottom: var(--space-3); }
+.sa-skip-open { width: 100%; font-size: var(--fs-sm); }
+.sa-skip-box { margin-top: var(--space-2); }
+.sa-skip-box[hidden] { display: none; }
+.sa-skip-go { width: 100%; margin-top: var(--space-2); border-color: var(--danger); color: var(--danger); }
+.rc-warn[hidden] { display: none; }
+/* Алдааны тоо — асуулт дээр, хяналт доор (урт асуултыг шахахгүй) */
+.sa-def-item { padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+.sa-def-item:last-of-type { border-bottom: none; }
+.sa-def-q { font-size: var(--fs-sm); line-height: 1.4; margin-bottom: var(--space-2); }
+.sa-def-ctl { display: flex; align-items: center; gap: var(--space-2); }
+.sa-def-ctl .sa-def-who { flex: 1; min-width: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-def-u { font-size: var(--fs-xs); color: var(--muted); }
+.sa-def-n.ok { color: var(--ok); }
+/* Энэ захиалгад аль хэдийн ажилласан хүн — эхэнд, бага зэрэг тодруулна */
+/* ⛔ Суурь загвар ЗААВАЛ — өмнөх засварт inline загварыг класс болгоход `.sa-help-chip`
+   дүрэм бичигдээгүй үлдэж, чип нь нүцгэн бичвэр болж байв (390px-д барив). */
+.sa-help-chip { cursor: pointer; font-size: var(--fs-sm); padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); user-select: none; }
+.sa-help-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.sa-help-chip.sa-help-on { border-color: var(--primary); }
+
+/* ─── Төлбөр бүртгэх цонх (2026-10-04) — дамжлагын цонхтой ижил хэл ──────
+   Inline загвар, хатуу px фонт бүгд класс/токен болов. */
+.bqp-modal { max-width: 430px; }
+.bqp-sum { background: var(--panel-hover); border-radius: 10px; padding: 10px 12px; margin-bottom: var(--space-4); font-size: var(--fs-md); line-height: 1.8; }
+.bqp-bal.bad { color: var(--danger); }
+.bqp-bal.ok { color: var(--ok); }
+.bqp-drop { display: block; margin-bottom: var(--space-4); font-size: var(--fs-md); border: 2px dashed var(--primary); border-radius: 10px; padding: var(--space-4); text-align: center; cursor: pointer; background: var(--panel-hover); }
+.bqp-drop-sub { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+.bqp-drop-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
+.bqp-drop-note.ok { color: var(--ok); }
+.bqp-drop-note.bad { color: var(--danger); }
+.bqp-list { margin-bottom: var(--space-4); }
+.bqp-draft { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--space-3); }
+.bqp-save:disabled { opacity: .45; cursor: not-allowed; }
+.bqp-rc { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r-md); margin-bottom: var(--space-2); font-size: var(--fs-sm); background: var(--panel); }
+.bqp-rc-m { min-width: 0; flex: 1; }
+.bqp-rc-amt { color: var(--ok); font-size: var(--fs-base); }
+.bqp-rc-dim { color: var(--muted); }
+.bqp-rc-who { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bqp-rc-warn { color: var(--warn); }
+.bqp-rc-view { padding: 2px 9px; color: var(--primary); flex-shrink: 0; }
+.bqp-rc-x { padding: 2px 8px; color: var(--danger); flex-shrink: 0; }
+.bqp-rc-sum { display: flex; justify-content: space-between; font-weight: 700; padding: 8px 10px 2px; font-size: var(--fs-base); }
+
+/* ─── Дамжлагын схем (зөвхөн харах) 2026-10-04 ────────────────────────── */
+.pm-modal { max-width: 440px; }
+.pm-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.pm-chip { cursor: pointer; font-size: var(--fs-sm); padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); user-select: none; }
+.pm-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.pm-sum { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-3); }
+.pm-dim { color: var(--muted-soft, var(--muted)); }
+.pm-st { display: flex; align-items: center; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; background: var(--panel-hover); }
+.pm-st.ctl { border-color: var(--primary); border-width: 2px; background: var(--panel); }
+.pm-n { flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--border-strong); color: var(--panel); font-size: var(--fs-xs); font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.pm-st.ctl .pm-n { background: var(--primary); color: #fff; }
+.pm-b { flex: 1; min-width: 0; }
+.pm-l { display: block; font-weight: 650; font-size: var(--fs-sm); }
+.pm-m { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.pm-p { flex: none; font-weight: 700; font-size: var(--fs-sm); color: var(--ok); }
+.pm-ar { text-align: center; color: var(--border-strong); font-size: var(--fs-xs); line-height: 1; margin: 2px 0; }
+.pm-leg { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--muted); line-height: 1.6; }
+/* ⛔ `.modal-head`/`.modal-x` нь ЗАГВАРГҮЙ байв — засварын цонх ч ижил
+   бүтэцтэй тул урт гарчиг дээр ✕ товч НААЛДАЖ байв (390px-д барив). */
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--fs-lg); }
+.modal-x { flex: none; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: var(--r-md); padding: 4px 10px; cursor: pointer; font-size: var(--fs-base); }
+.modal-foot { margin-top: var(--space-3); }
+/* Дамжлагын нэр засах мөр + схемийн толгойн товч */
+/* Схем дотор шууд засах (CEO) — тусдаа тохиргооны цонх байхгүй */
+.pm-st.ed { border-color: var(--primary); border-width: 2px; background: var(--panel); }
+.modal .pm-nm { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); font-weight: 650; }
+.modal .pm-w { width: 56px; flex: none; padding: 5px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: right; }
+.pm-ok { flex: none; padding: 4px 8px; }
+.pm-gen { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-2); }
+.pm-gen summary { cursor: pointer; font-size: var(--fs-sm); font-weight: 650; }
+.pm-grow { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); font-size: var(--fs-sm); }
+.pm-grow span:first-child { flex: 1; min-width: 0; }
+.modal .pm-in { width: 86px; flex: none; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: right; }
+.pm-gsave { width: 100%; margin-top: var(--space-3); }
+.pm-warn { color: var(--warn); }
+
+/* ✋ «Би ч оролцсон» мэдүүлэг (2026-10-04) */
+.sm-claim { font-size: var(--fs-xs); color: var(--warn); margin-top: 2px; }
+.sm-claim-w { color: var(--muted); }
+.sm-claim-btn { margin-top: var(--space-2); padding: 3px 9px; font-size: var(--fs-xs); }
+.clm-box { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--r-md); padding: var(--space-3); margin-bottom: var(--space-3); }
+.clm-t { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-2); }
+.clm-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.clm-l { flex: 1; min-width: 0; }
+.clm-o { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.clm-ok, .clm-no { flex: none; padding: 4px 10px; font-size: var(--fs-xs); }
+.clm-no { color: var(--danger); }
+.clm-n { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }
+
+/* Тойм — шилдэг гүйцэтгэгч (дамжлагын оноо, сараар) */
+.dash-top { grid-column: span 4; }
+.dash-top-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); margin-bottom: var(--space-2); }
+.dash-top-ym { flex: none; font-size: var(--fs-sm); padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
+.dash-top-sub { font-size: var(--fs-xs); color: var(--muted); }
+.dash-top-fill { background: var(--warn); }
+.dash-top-n { width: auto; min-width: 32px; font-variant-numeric: tabular-nums; }
+.dash-top-scroll { max-height: 20rem; overflow-y: auto; }
+
+/* Тойм — гацсан захиалга (2026-10-05) */
+.stk-ok { font-size: var(--fs-sm); color: var(--ok); font-weight: 600; }
+.stk-list { margin-top: var(--space-2); max-height: 22rem; overflow-y: auto; }
+.stk-row { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2); align-items: center;
+  width: 100%; text-align: left; padding: var(--space-2) 0; border: 0; border-top: 1px solid var(--border);
+  background: none; color: var(--text); font-size: var(--fs-sm); cursor: pointer; }
+.stk-no { font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stk-main { display: flex; flex-direction: column; min-width: 0; }
+.stk-cust { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stk-step { font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stk-late { font-weight: 800; color: var(--danger); white-space: nowrap; }
+
+/* Алдсан дуудлага — дугаарын дуудлагын түүх (2026-10-05) */
+.mc-tl { margin-top: var(--space-2); border-left: 2px solid var(--border); padding-left: var(--space-2); }
+.mc-tl-r { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); font-size: var(--fs-xs); color: var(--danger); line-height: 1.6; }
+.mc-tl-r.ok { color: var(--ok); }
+.mc-tl-t { color: var(--muted); font-variant-numeric: tabular-nums; }
+.mc-tl-more { font-size: var(--fs-xs); color: var(--muted); }

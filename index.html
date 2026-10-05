@@ -354,6 +354,9 @@
     <div class="nav-item" data-view="coosalary" id="nav-coosalary" style="display:none;">
       <span><svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>COO цалин</span><span class="count-badge"></span>
     </div>
+    <div class="nav-item" data-view="acct" id="nav-acct" style="display:none;">
+      <span><svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 9v12"/></svg>Нягтлан</span><span class="count-badge"></span>
+    </div>
     <div class="section-label" id="nav-group-marketing">Маркетинг</div>
     <div class="nav-item" data-view="marketing" id="nav-marketing" style="display:none;">
       <span><svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Постер &amp; брэнд</span><span class="count-badge"></span>
@@ -1015,38 +1018,6 @@
     <div class="modal-actions">
       <button class="btn" id="profile-cancel">Болих</button>
       <button class="btn btn-primary" id="profile-save">Хадгалах</button>
-    </div>
-  </div>
-</div>
-
-<!-- ─── PENDING REGISTRATION REVIEW (CEO) — шинэ ажилтны хүсэлт ─── -->
-<div class="modal-bg" id="pending-reg-modal">
-  <div class="modal" style="max-width:520px;">
-    <h2>Шинэ ажилтны хүсэлт</h2>
-    <div id="pending-reg-photo-wrap" style="display:flex;justify-content:center;margin-bottom:12px;">
-      <div id="pending-reg-photo" style="width:90px;height:90px;border-radius:50%;background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple));color:#fff;font-weight:700;font-size:28px;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;"></div>
-    </div>
-    <div id="pending-reg-info" style="background:var(--panel-hover);padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.7;"></div>
-
-    <h3 style="font-size:13px;font-weight:700;margin:14px 0 10px;border-top:1px solid var(--border);padding-top:12px;">CEO тохиргоо</h3>
-
-    <label>Цалин (нэг сар, ₮)</label>
-    <input id="reg-salary" type="text" inputmode="numeric" placeholder="Жишээ: 1500000" />
-
-    <label>Зэрэглэл</label>
-    <select id="reg-level">
-      <option value="40">40 — Энгийн ажилтан</option>
-      <option value="60">60 — Менежер / Нярав</option>
-      <option value="80">80 — ҮАХ Захирал</option>
-      <option value="100">100 — CEO</option>
-    </select>
-
-    <label>Тэмдэглэл (заавал биш)</label>
-    <textarea id="reg-notes" rows="2" placeholder="Дотоод тэмдэглэл..."></textarea>
-
-    <div class="modal-actions">
-      <button class="btn btn-danger" id="reg-reject">Татгалзах</button>
-      <button class="btn btn-primary" id="reg-approve" style="background:var(--accent-green) !important;">Зөвшөөрч бүртгэх</button>
     </div>
   </div>
 </div>

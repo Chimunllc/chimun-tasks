@@ -86,12 +86,12 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'dayLoadForecast', 'missingItemsCost', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
-  'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
+  'ownerCapital', 'ownerCapitalRows', 'openingBalanceCalc', 'journalEntries', 'journalTotals', 'jrnDebitFor', 'jrnCreditFor', 'ledgerLines', 'balanceSheetAt', 'entriesUpTo', 'incomeStatement', 'entriesBetween', 'jrnMonthEnd', 'deprecYearsFor', 'deprecByBranch', 'deprecForMonth', 'deprecLives', 'deprecStartMonth', 'finBranchPnl', 'deprecForProduct']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -159,6 +159,614 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: хүсэлт нэг мөрөөр upsert хийгдэнэ');
   ok(/status\.eq\.pending/.test(codeLines),
      'scan: хүлээгдэж буй хүсэлт огнооны шүүлтээс үл хамааран татагдана');
+}
+
+/* ═══ ⛔ ХААСАН САРЫН ЭЛЭГДЭЛ ХӨЛДӨНӨ (2026-10-02) ═══
+   `deprecByBranch` нь ОДООГИЙН нөөцөөс бодогддог бөгөөд `month` нь зөвхөн
+   асаах/унтраах үүрэгтэй байв. Сар хаасны ДАРАА бараа салбар хооронд шилжихэд
+   ХААСАН сарын элэгдэл → ашиг → COO-гийн 30% чимээгүй өөрчлөгддөг байв. */
+{
+  const DSO = vm.runInContext('deprecSnapshotOf', sandbox);
+  const DFM = vm.runInContext('deprecForMonth', sandbox);
+  const DSN = vm.runInContext('deprecSnapshotNow', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const savedCm = st.closedMonths, savedP = st.products;
+  const prod = (q) => ([{ sku: 'A', name: 'Сандал', cost: 1200000, qty_mevent: q, qty_nomaad: 100 - q,
+    purchase_date: '2026-09-01', archived: false, type: 'rental' }]);
+
+  st.products = prod(100);
+  const snap = DSN('2026-10');
+  ok(snap && snap.total > 0, 'хөлдөөлт: хаахад зураг үүснэ');
+  const mev0 = snap['ИВЕНТ'];
+  ok(mev0 > 0 && snap['КЕМП'] === 0, 'хөлдөөлт: зураг нь салбарын хуваарилалтыг барина');
+
+  // Сар ХААГДСАН + зурагтай → нөөц хөдөлсөн ч тоо ХЭВЭЭР
+  st.closedMonths = { '2026-10': { at: '2026-11-01T00:00:00Z', by: 'x', dep: snap } };
+  st.products = prod(0);   // БҮХ сандал NOMAAD руу шилжив
+  eq(DFM('2026-10')['ИВЕНТ'], mev0, 'ХӨЛДӨӨЛТ: хаасны дараа нөөц шилжсэн ч хаасан сарын элэгдэл ХЭВЭЭР');
+  eq(DFM('2026-10').frozen, true, 'хөлдөөлт: хаалттай сар «хөлдсөн» гэж тэмдэглэгдэнэ');
+  ok(DSO('2026-10'), 'хөлдөөлт: зураг олдоно');
+
+  // НЭЭЛТТЭЙ сар нь одоогийн нөөцөөс — шилжилт шууд тусна
+  st.closedMonths = {};
+  eq(DFM('2026-10')['ИВЕНТ'], 0, 'нээлттэй сар: нөөц шилжихэд элэгдэл шууд дагана');
+  ok(!DFM('2026-10').frozen, 'нээлттэй сар хөлдөөгүй');
+
+  /* ⚠ Зураггүй хаалттай сар (шилжилтийн хаалт, эсвэл энэ засвараас ӨМНӨ хаасан)
+     нь хуучнаараа бодогдоно — тоог чимээгүй 0 болгохоос дээр. */
+  st.closedMonths = { '2026-10': { at: '2026-11-01T00:00:00Z', by: 'x' } };
+  st.products = prod(100);
+  eq(DFM('2026-10')['ИВЕНТ'], mev0, 'зураггүй хаалттай сар: хуучнаар бодогдоно (0 болгохгүй)');
+  eq(DSO('2026-10'), null, 'зураггүй сард зураг null');
+
+  // Элэгдэл эхлэхээс ӨМНӨХ сард зураг авахгүй (утгагүй)
+  eq(DSN('2026-08'), null, 'хөлдөөлт: элэгдэл идэвхгүй сард зураг авахгүй');
+  st.closedMonths = savedCm; st.products = savedP;
+}
+
+/* 0e2h) SCAN — хаахад элэгдлийн зураг ЗААВАЛ авна (2026-10-02)
+   Зураг авахгүй бол хаалттай сар одоогийн нөөцөөс дахин бодогдож, бараа салбар
+   хооронд шилжих бүрд ХААСАН сарын ашиг ба COO-гийн 30% чимээгүй өөрчлөгдөнө —
+   «хаасан сарын тоо хөдөлөхгүй» гэдэг гол дүрэм зөрчигдөнө. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function deprecSnapshotNow\(/.test(codeLines) && /function deprecSnapshotOf\(/.test(codeLines),
+     'scan: элэгдлийн зургийн функцууд байна');
+  ok(/const dep = deprecSnapshotNow\(m\);/.test(codeLines),
+     'scan: сар хаахад элэгдлийн зураг авагдана');
+  ok(/\.\.\.\(dep \? \{ dep \} : \{\}\)/.test(codeLines),
+     'scan: зураг хаалтын бичлэгт хадгалагдана');
+  const dm = codeLines.slice(codeLines.indexOf('function deprecForMonth'), codeLines.indexOf('function ensureProductsLoaded'));
+  ok(/const snap = deprecSnapshotOf\(month\);/.test(dm),
+     'scan: хаалттай сар зурагнаасаа уншина (одоогийн нөөцөөс БИШ)');
+}
+
+/* ═══ 🔒 ЭХНИЙ ҮЛДЭГДЭЛ — ГУРАВ ДАХЬ ГАРЫН ҮСЭГ (2026-10-02, CEO шийдвэр) ═══
+   Нярав тоолно → ҮАХ захирал хянана → CEO эцэслэнэ → суурь ХӨЛДӨНӨ.
+   Эцэслэсний дараа дахин тоолох/батлах/буцаах БОЛОМЖГҮЙ; залруулга зөвхөн
+   тооллогоор (аудитын мөртэй). */
+{
+  const SB = vm.runInContext('openingSealBlock', sandbox);
+  const SS = vm.runInContext('stockSealed', sandbox);
+  const SIGN = vm.runInContext('openingSignBlock', sandbox);
+  const UNDO = vm.runInContext('openingUndoBlock', sandbox);
+  const mk = (o) => ({ sku: 'A', name: 'Сандал', stock_opened_at: o.c ? '2026-10-01T00:00:00Z' : null,
+    stock_opened_by: o.cby || null, stock_approved_at: o.a ? '2026-10-01T01:00:00Z' : null,
+    stock_approved_by: o.aby || null, stock_locked_at: o.s ? '2026-10-01T02:00:00Z' : null,
+    stock_locked_by: o.sby || null });
+
+  eq(SS(mk({ c: 1, a: 1 })), false, 'эцэслэл: батлагдсан ч эцэслээгүй');
+  eq(SS(mk({ c: 1, a: 1, s: 1 })), true, 'эцэслэл: эцэслэгдсэн');
+
+  // ── Дараалал: тоолох → батлах → эцэслэх ──
+  ok(/нярав тоолно/i.test(SB(mk({}), 'ceo', true)), 'эцэслэл: тоолоогүй бол эхлээд нярав');
+  ok(/ҮАХ захирал хянана/.test(SB(mk({ c: 1, cby: 'n' }), 'ceo', true)), 'эцэслэл: батлагдаагүй бол эхлээд захирал');
+  eq(SB(mk({ c: 1, cby: 'n', a: 1, aby: 'alt' }), 'ceo', true), '', 'эцэслэл: гурав дахь хүн эцэслэж чадна');
+  ok(/Зөвхөн CEO/.test(SB(mk({ c: 1, cby: 'n', a: 1, aby: 'alt' }), 'alt', false)), 'эцэслэл: зөвхөн CEO');
+
+  /* ⛔ ГУРВАН ӨӨР ХҮН — нэг хүн хоёр үүрэг гүйцэтгэвэл гурван гарын үсэг нэг
+     болж хумигдана (хоёр гарын үсгийн дүрэмтэй ижил зарчим). */
+  ok(/Та тоолсон/.test(SB(mk({ c: 1, cby: 'ceo', a: 1, aby: 'alt' }), 'ceo', true)),
+     'эцэслэл: тоолсон хүн эцэслэж чадахгүй');
+  ok(/Та хянасан/.test(SB(mk({ c: 1, cby: 'n', a: 1, aby: 'ceo' }), 'ceo', true)),
+     'эцэслэл: хянасан хүн эцэслэж чадахгүй');
+  ok(/Аль хэдийн/.test(SB(mk({ c: 1, cby: 'n', a: 1, aby: 'alt', s: 1 }), 'ceo', true)),
+     'эцэслэл: давхар эцэслэхгүй');
+
+  /* ⛔ ХӨЛДСӨНИЙ ДАРАА БҮХ ЗАМ ХААЛТТАЙ — дахин батлах ч, буцаах ч боломжгүй. */
+  const sealed = mk({ c: 1, cby: 'n', a: 1, aby: 'alt', s: 1, sby: 'ceo' });
+  ok(/өөрчлөх боломжгүй/.test(SIGN(sealed, 'alt', true)), 'хөлдөөлт: дахин батлах зам хаалттай');
+  ok(/буцаах боломжгүй/.test(UNDO(sealed, 'alt', true, 'approve')), 'хөлдөөлт: батлалт буцаах зам хаалттай');
+  ok(/буцаах боломжгүй/.test(UNDO(sealed, 'alt', true, 'count')), 'хөлдөөлт: тоолол буцаах зам ч хаалттай');
+  // ⚠ Хөлдөөгүй бол хуучнаараа ажиллана
+  eq(UNDO(mk({ c: 1, cby: 'n', a: 1, aby: 'alt' }), 'alt', true, 'approve'), '',
+     'хөлдөөгүй бол буцаах зам нээлттэй хэвээр');
+}
+
+/* ═══ ⛔ CEO-гийн ШҮХЭР ҮҮРЭГ ТУСГААРЛАЛТЫГ ЗАДАЛДАГ (2026-10-02) ═══
+   `capValue` нь CEO-д ҮРГЭЛЖ `true` буцаадаг. Иймд `canOpenCount` -ийг
+   `capValue`-ээр бичихэд эрхийг нь хассан мөртөө CEO-д «Тоолсон» товч
+   харагдсаар байв — амьд дэлгэцээс барив.
+   ⚠ Scan-тест нь ДҮРСИЙГ шалгадаг (функцийн биед `state.isCEO` байхгүй) тул
+     үүнийг БАРЬЖ ЧАДААГҮЙ — зан чанарын тест заавал хэрэгтэй. */
+{
+  const st = vm.runInContext('state', sandbox);
+  const COC = vm.runInContext('canOpenCount', sandbox);
+  const CAO = vm.runInContext('canApproveOpening', sandbox);
+  const CV = vm.runInContext('capValue', sandbox);
+  const saved = { ceo: st.isCEO, me: st.me, mp: st.memberPerms, rp: st.rolePerms };
+  st.memberPerms = {}; st.rolePerms = {};
+
+  // ── CEO, ил олгосон эрхгүй → тоолох ч, хянах ч БОЛОХГҮЙ ──
+  st.isCEO = true; st.me = '88006790';
+  eq(COC(), false, 'ЗАН: CEO ил эрхгүй бол эхний үлдэгдэл ТООЛОХГҮЙ');
+  eq(CAO(), false, 'ЗАН: CEO ил эрхгүй бол ХЯНАХГҮЙ');
+  eq(CV('products.count'), true, 'ЗАН: харин capValue нь CEO-д true хэвээр (бусад эрхэд хэрэгтэй)');
+
+  // ── Нярав: ил олгосон эрхтэй → тоолно, хянахгүй ──
+  st.isCEO = false; st.me = '99285468';
+  st.memberPerms = { '99285468': { 'products.count': true, 'products.opening': false } };
+  eq([COC(), CAO()], [true, false], 'ЗАН: нярав тоолно, хянахгүй');
+
+  // ── ҮАХ захирал: хянана, тоолохгүй ──
+  st.me = '86657676';
+  st.memberPerms = { '86657676': { 'products.opening': true, 'products.count': false } };
+  eq([COC(), CAO()], [false, true], 'ЗАН: ҮАХ захирал хянана, тоолохгүй');
+
+  /* ⚠ `products.edit` ШҮХЭР эдгээрийг НЭЭХГҮЙ — энэ нь анхны алдааны мөн чанар
+     (амьд системд 5 хүн тоолж чаддаг байв). */
+  st.me = 'x'; st.memberPerms = { x: { 'products.edit': true } };
+  eq([COC(), CAO()], [false, false], 'ЗАН: products.edit шүхэр тоолох/хянах эрх ӨГӨХГҮЙ');
+
+  st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
+}
+
+/* 0e2j) SCAN — ГУРВАН АЛХАМ = ГУРВАН ӨӨР ЭРХ (2026-10-02, CEO барив)
+   Өмнө нь ТООЛОХ нь `products.edit` шүхэр дор явдаг байсан тул амьд системд
+   5 хүн (нярав 2, ҮАХ захирал, захиалгын ажилтан, дууны инженер) бүгд
+   «Тоолсон» дарж чаддаг байв — гурван гарын үсэг нэг болж хумигдана.
+   ⛔ CEO тоолох/хянах алхамд ОРОЛЦОХГҮЙ: эцэслэх нь зөвхөн CEO-гийнх бөгөөд
+   «гурван өөр хүн» дүрэмтэй тул CEO тоолсон бараа ХЭЗЭЭ Ч эцэслэгдэхгүй болж
+   мухардалд орно. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  /* ⛔ `capValue` БИШ `capResolved` — `capValue` нь CEO-д ҮРГЭЛЖ true буцаадаг
+     тул үүрэг тусгаарлалт ажиллахгүй (амьд дэлгэцэд CEO-д «Тоолсон» товч
+     харагдсаар байв). */
+  ok(/function canOpenCount\(\)\s*\{ return capResolved\('products\.count'\) === true; \}/.test(codeLines),
+     'scan: тоолох эрх = capResolved (CEO шүхэр тойрсон)');
+  ok(/function canApproveOpening\(\) \{ return capResolved\('products\.opening'\) === true; \}/.test(codeLines),
+     'scan: хянах эрх = capResolved (CEO шүхэр тойрсон)');
+  // ⛔ CEO эдгээр хоёр алхамд БАЙХГҮЙ — мухардал үүснэ
+  const g = codeLines.slice(codeLines.indexOf('function canOpenCount'), codeLines.indexOf('function canSeeStockCount'));
+  eq(/state\.isCEO/.test(g), false, 'scan: CEO тоолох/хянах эрхэд ОРОХГҮЙ (мухардал үүснэ)');
+  // Тоолох ТОВЧ ч ижил эрхээр
+  ok(/const canOpen = canOpenCount\(\);/.test(codeLines), 'scan: тоолох товч ижил эрхээр гарна');
+  ok(/\$\{canOpen \? `<input class="ui-raw stc-open-in"/.test(codeLines),
+     'scan: тоолох оролт нь canOpen-оор хаалттай');
+}
+
+/* ═══ ⛔ ЭЦЭСЛЭЭГҮЙ БАРААГ ТООЛОХГҮЙ (2026-10-02, CEO барив) ═══
+   «Тооллого хийгээд байна» — суурь нь баталгаажаагүй бол зөрүү юутай ч
+   харьцуулагдахгүй. Улмаар зөрүү нь нөөцийг засаж, алдагдлын ЗАРДАЛ болж
+   салбарын ашиг ба COO-гийн 30%-д хүрнэ. */
+{
+  const CBR = vm.runInContext('countBlockReason', sandbox);
+  const mk = (o) => ({ sku: 'A', stock_opened_at: o.c ? 't' : null, stock_approved_at: o.a ? 't' : null,
+    stock_locked_at: o.s ? 't' : null });
+  eq(CBR(mk({ c: 1, a: 1, s: 1 })), '', 'тооллого: эцэслэгдсэн бараа тоологдоно');
+  ok(/тоологдоогүй/.test(CBR(mk({}))), 'тооллого: тоолоогүй суурьтай бол хаалттай');
+  ok(/хянагдаагүй/.test(CBR(mk({ c: 1 }))), 'тооллого: хянагдаагүй суурьтай бол хаалттай');
+  ok(/эцэслээгүй/.test(CBR(mk({ c: 1, a: 1 }))), 'тооллого: хоёр гарын үсэгтэй ч эцэслээгүй бол хаалттай');
+  ok(/олдсонгүй/.test(CBR(null)), 'тооллого: бараагүй бол хаалттай');
+}
+
+/* ═══ ⛔ ЭЦЭСЛЭГДСЭН ТООГ ФОРМООР ЗАСАХГҮЙ — ГАНЦ БИЧИХ ЦЭГТ (2026-10-02) ═══
+   CEO барив: «эцэслэсэн байхад шууд энд ингээд сольж болж байхад эцэслэх ямар
+   хэрэгтэй гэж? ийм төрлийн алдаа маш их байна». Урсгал БҮРИЙГ тус тусад нь
+   хаах нь буруу арга байв — барааны засах цонх `stock`/`qty_*`-г чөлөөтэй
+   өөрчилдөг тул эцэслэл чимэг болж байв.
+   Шийдэл: хориг нь `saveProduct` (ГАНЦ бичих цэг) дээр. Хяналттай зам бүр
+   `_moveReason` дамжуулдаг, форм дамжуулдаггүй. ⭐ Шинэ дэлгэц нэмэгдсэн ч
+   энэ цэгээр дамжих тул ӨӨРӨӨ хаагдана — тэр нь энэ аргын гол давуу тал. */
+{
+  const SP = vm.runInContext('saveProduct', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const saved = st.products;
+  const base = () => ({ sku: 'SEAL1', id: 'SEAL1', name: 'Түгжээтэй', stock: 10, qty_mevent: 10,
+    qty_nomaad: 0, qty_catering: 0, qty_chimun: 0, stock_locked_at: '2026-10-01T00:00:00Z' });
+  const open = () => ({ ...base(), sku: 'OPEN1', id: 'OPEN1', stock_locked_at: null });
+  /* ⚠ `saveProduct` нь ОПТИМИСТ — амжилттай дуудлага `state.products`-ыг
+     өөрчилдөг тул шалгуур бүрийн ӨМНӨ фикстурыг сэргээнэ. Эс бөгөөс өмнөх
+     дуудлагын үлдэц дараагийнхыг худал унагана. */
+  const err = async (patch) => {
+    st.products = [base(), open()];
+    try { await SP(patch); return ''; } catch (e) { return e.message; }
+  };
+
+  (async () => {
+    // ⛔ Форм (шалтгаангүй) + эцэслэгдсэн + тоо хөдөлсөн → ТАТГАЛЗАНА
+    ok(/гараар засах боломжгүй/.test(await err({ ...base(), qty_mevent: 3 })),
+       'түгжээ: эцэслэгдсэн барааны салбарын тоог формоор засахгүй');
+    ok(/гараар засах боломжгүй/.test(await err({ ...base(), stock: 99 })),
+       'түгжээ: нийт нөөцийг ч формоор засахгүй');
+    // ✅ Хяналттай зам (_moveReason-тэй) — ЗӨВШӨӨРНӨ
+    eq(await err({ ...base(), qty_mevent: 3, _moveReason: 'count' }), '',
+       'түгжээ: тооллогын зам (_moveReason) нээлттэй');
+    // ✅ Тоо ХӨДӨЛӨӨГҮЙ бол бусад талбар засагдана (нэр, үнэ…)
+    eq(await err({ ...base(), name: 'Шинэ нэр' }), '',
+       'түгжээ: тоо хөдлөөгүй бол нэр/үнэ засагдана');
+    // ✅ Эцэслээгүй бараа — хуучнаараа чөлөөтэй
+    eq(await err({ ...open(), qty_mevent: 3 }), '', 'түгжээ: эцэслээгүй бараа чөлөөтэй хэвээр');
+    st.products = saved;
+  })();
+}
+
+/* ═══ ⛔ ЕРӨНХИЙ PATCH-Д МӨНГӨНИЙ ТҮГЖЭЭ (2026-10-02 аудит) ═══
+   `patchOrderFields` нь захиалгын ДУРЫН талбарыг PATCH хийдэг. Одоогийн
+   дуудагчид мөнгө хөнддөггүй ч шинэ дуудагч `total_mnt` дамжуулбал ХААСАН
+   сарын орлого чимээгүй өөрчлөгдөнө. */
+{
+  const PF = vm.runInContext('patchOrderFields', sandbox);
+  const MF = vm.runInContext('ORDER_MONEY_FIELDS', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const saved = st.closedMonths;
+  // ⚠ Мөнгийг өөр САР руу зөөдөг талбарууд ч жагсаалтад байх ЁСТОЙ
+  ['total_mnt', 'paid_mnt', 'deposit_mnt', 'items', 'paid_date', 'starts_at', 'status']
+    .forEach(k => ok(MF.includes(k), 'мөнгөний талбар жагсаалтад: ' + k));
+
+  (async () => {
+    st.closedMonths = { '2026-08': { at: 'x', by: 'y' } };
+    const o = { id: 'O1', paid_date: '2026-08-15', starts_at: '2026-08-20' };
+    const err = async (f) => { try { await PF(o, f); return ''; } catch (e) { return e.message; } };
+    ok(/сар хаалттай/.test(await err({ total_mnt: 5 })), 'PATCH: хаасан сарын дүн засагдахгүй');
+    ok(/сар хаалттай/.test(await err({ items: [] })), 'PATCH: хаасан сарын барааны мөр засагдахгүй');
+    ok(/сар хаалттай/.test(await err({ status: 'deleted' })), 'PATCH: хаасан сарын төлөв засагдахгүй');
+    /* ⚠ Мөнгөний БИШ талбар нээлттэй хэвээр — эс бөгөөс тэмдэглэл, дамжлагын
+       зураг зэрэг хаасан сарын захиалгад бичигдэхээ болино (мөнгө хөнддөггүй). */
+    eq(/сар хаалттай/.test(await err({ note: 'тэмдэглэл' })), false, 'PATCH: тэмдэглэл хаалттай сард ч бичигдэнэ');
+    eq(/сар хаалттай/.test(await err({ stage_meta: {} })), false, 'PATCH: дамжлагын мэдээлэл бичигдэнэ');
+    st.closedMonths = {};
+    eq(/сар хаалттай/.test(await err({ total_mnt: 5 })), false, 'PATCH: нээлттэй сард мөнгө засагдана');
+    st.closedMonths = saved;
+  })();
+}
+
+/* 0e2n) SCAN — ерөнхий PATCH-ийн мөнгөн түгжээ (2026-10-02) */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const _i = codeLines.indexOf('async function patchOrderFields');
+  const pf = codeLines.slice(_i, _i + 1200);
+  ok(/const _money = ORDER_MONEY_FIELDS\.filter\(/.test(pf), 'scan: мөнгөний талбарыг шүүнэ');
+  ok(/await loadClosedMonths\(true\)/.test(pf), 'scan: түгжээг СЕРВЭРЭЭС шинэчилнэ');
+  ok(/orderLockedMonth\(o\) \|\| orderLockedMonth\(\{ \.\.\.o, \.\.\.fields \}\)/.test(pf),
+     'scan: ӨМНӨХ ба ШИНЭ сар ХОЁУЛАА шалгагдана (өөр сар руу зөөхийг барина)');
+  ok(/throw new Error\(`\$\{_lk\} сар хаалттай/.test(pf), 'scan: тодорхой мессежтэй татгалзана');
+  ok(/if \(_money\.length\) \{/.test(pf), 'scan: зөвхөн мөнгөний талбар дамжсан үед шалгана');
+}
+
+/* ═══ 🔎 САМБАРЫН ШҮҮЛТҮҮР (2026-10-03, CEO «нийлүүлэгчгүй, огноогүй гэх мэт») ═══
+   281 барааг нүдээр хөөх боломжгүй — дутуу талбарыг шүүж өгнө. Амьд датаар:
+   огноогүй 169 · нийлүүлэгчгүй 212 · барьцаагүй 82 · эцэслээгүй 230. */
+{
+  const AF = vm.runInContext('psApplyFilter', sandbox);
+  const F = vm.runInContext('PSHEET_FILTERS', sandbox);
+  const P = [
+    { sku: 'A', category: 'Асар', photo: 'x', price: 100, deposit: 50, cost: 10, purchase_date: '2026-01-01', supplier: 'Нэг', qty_mevent: 5, stock_locked_at: 't' },
+    { sku: 'B', category: '', photo: '', price: 0, deposit: 0, cost: 0, purchase_date: '', supplier: '', qty_mevent: 0, stock_locked_at: null },
+    { sku: 'C', category: 'Техник', photo: 'y', price: 200, deposit: 0, cost: 5, purchase_date: null, supplier: '  ', qty_nomaad: 3, stock_locked_at: null },
+  ];
+  const k = (mode, key) => AF(P, mode, key).map(x => x.sku).join('');
+  eq(k('cost', 'nodate'), 'BC', 'шүүлт: авсан огноогүй (null ба хоосон мөр хоёулаа)');
+  eq(k('cost', 'nosup'), 'BC', 'шүүлт: нийлүүлэгчгүй (зөвхөн зайнаас тогтсон нь ч)');
+  eq(k('cost', 'nocost'), 'B', 'шүүлт: өртөггүй');
+  eq(k('price', 'noprice'), 'B', 'шүүлт: үнэгүй');
+  eq(k('price', 'nodep'), 'BC', 'шүүлт: барьцаагүй');
+  eq(k('catalog', 'nocat'), 'B', 'шүүлт: ангилалгүй');
+  eq(k('catalog', 'nophoto'), 'B', 'шүүлт: зураггүй');
+  eq(k('stock', 'zero'), 'B', 'шүүлт: нөөцгүй (бүх салбарын нийлбэр 0)');
+  eq(k('stock', 'unsealed'), 'BC', 'шүүлт: эцэслээгүй');
+  /* ⚠ Танихгүй түлхүүр → БҮГД. Хоосон дэлгэц гаргавал хүн «бараа алга» гэж
+     андуурна (хуучин шүүлттэй үлдсэн төлөв рүү буцаж орохыг ч барина). */
+  eq(k('cost', 'байхгүй'), 'ABC', 'шүүлт: танихгүй түлхүүр БҮГДИЙГ гаргана');
+  eq(k('cost', ''), 'ABC', 'шүүлт: хоосон түлхүүр = бүгд');
+  eq(AF(null, 'cost', 'nodate'), [], 'шүүлт: хоосон жагсаалт унахгүй');
+  // ⚠ `test` унавал мөр ХАСАГДана, бүх дэлгэц унахгүй
+  eq(AF([{ sku: 'X', get supplier() { throw new Error('x'); } }], 'cost', 'nosup').length, 0,
+     'шүүлт: алдаатай мөр дэлгэцийг унагахгүй');
+  // Самбар бүр өөрийн шүүлтүүртэй
+  ['catalog', 'price', 'cost', 'stock'].forEach(m => ok((F[m] || []).length > 0, 'шүүлт: ' + m + ' самбар шүүлтүүртэй'));
+}
+
+/* 0e2p) SCAN — шүүлтүүр нэг газраас, тоотой (2026-10-03) */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/const PSHEET_FILTERS = \{/.test(codeLines), 'scan: шүүлтүүр нэг тодорхойлолтоос');
+  ok(/function psApplyFilter\(/.test(codeLines), 'scan: хэрэглэх нь ганц функц');
+  ok(/psApplyFilter\(_all, mode, state\.psF\)/.test(codeLines), 'scan: жагсаалтад хэрэглэгдэнэ');
+  /* ⛔ Чип бүр ТООТОЙ — тоогүй бол хүн аль нь ажилтайг мэдэхгүй, дарж үзэх
+     болно. Тоо нь ажил хаана байгааг систем хэлэх цорын ганц зам. */
+  ok(/data-ps-f2="\$\{escapeHtml\(k\)\}">\$\{escapeHtml\(lb\)\}<b>\$\{n\}<\/b>/.test(codeLines),
+     'scan: чип бүр тоотой');
+  // ⚠ Тоо нь ШҮҮГДСЭН биш, ХАЙЛТААР шүүгдсэн бүх мөрөөс — эс бөгөөс шүүлт
+  //   идэвхжихэд бусад чипийн тоо 0 болж утгагүй болно.
+  ok(/_all\.filter\(x => \{ try \{ return !!f\.test\(x\); \}/.test(codeLines),
+     'scan: чипийн тоо нь шүүлтээс ӨМНӨХ жагсаалтаас');
+  ok(/state\.psF === k \|\| !k\) \? '' : k/.test(codeLines),
+     'scan: дахин дарвал БҮГД рүү буцна');
+}
+
+/* 0e2o) SCAN — «Нөөц ба салбар» самбар: ШИЛЖҮҮЛЭГ үндсэн үйлдэл (2026-10-03)
+   CEO: «бараа шилжихгүй, ойлгомжгүй». 4 тоог тусад нь нэмж хасуулах нь
+   шилжүүлэг БИШ — нийлбэр санамсаргүй өөрчлөгдөх нүх үлдээдэг. ⇄ товч нь
+   одоо байгаа `openTransferModal`-ыг дуудаж `product_transfers`-д мөр
+   үлдээдэг бөгөөд нийлбэрийг БАРЬДАГ. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const _css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  ok(/data-ps-mv="\$\{escapeHtml\(p\.sku\)\}"/.test(codeLines), 'scan: мөр бүрт ⇄ шилжүүлэх товч');
+  ok(/data-ps-mv\]'\)\.forEach[\s\S]{0,220}openTransferModal\(b\.dataset\.psMv\)/.test(codeLines),
+     'scan: ⇄ нь одоо байгаа шилжүүлэх модалыг дуудна (шинэ зам үүсгэхгүй)');
+  // Эцэслэгдсэн бараа: гар засвар түгжээтэй, ШИЛЖҮҮЛЭГ нээлттэй
+  ok(/_sld \? ' disabled' : ''/.test(codeLines), 'scan: эцэслэгдсэн барааны тоон талбар түгжээтэй');
+  ok(/ps-row-stock/.test(codeLines), 'scan: нөөцийн мөр өөрийн бүтэцтэй (нягт байрлал)');
+  /* ⛔ `.ps-nm` ТОГТМОЛ өргөнтэй бол 375px-д зураг ганцаараа мөр эзэлж, БҮХ
+     самбарын мөр 173–231px болдог. Нэр ШАХАГДДАГ байх ёстой. */
+  ok(/\.ps-row \.ps-nm \{ flex: 1 1 140px; \}/.test(_css),
+     'scan: нэр шахагддаг (бүх самбарт нягт мөр)');
+  ok(/\.ps-row \.ps-fields \{ flex: 1 1 100%; \}/.test(_css),
+     'scan: талбарууд нарийн дэлгэцэд өөрийн мөрөнд');
+  // ⛔ Хадгалах тууз `display:flex` тул `hidden` ажиллахгүй байв — «0 бараа
+  //    өөрчлөгдсөн» гэж ҮРГЭЛЖ харагдаж мөр халхалдаг байсан.
+  ok(/\.ps-savebar\[hidden\]\s*\{\s*display:\s*none/.test(_css),
+     'scan: хадгалах тууз ҮНЭХЭЭР нуугдана (display:flex-ийг дарна)');
+}
+
+/* 0e2m) SCAN — ТҮГЖЭЭНИЙ АУДИТ: products-ийн БҮХ бичих зам (2026-10-02)
+   CEO «ийм төрлийн алдаа маш их байна» гэснээр бүх бичих замыг тоолов.
+   `products`-д 9 бичих зам байхад түгжээ зөвхөн `saveProduct`-д байв:
+   · `removeProductRow` (DELETE) — эцэслэгдсэн суурийг ХАТУУ УСТГАНА
+   · `setProductArchived` — архивласан бараа элэгдлээс ЧИМЭЭГҮЙ гарна
+   (`saveBranchTransfer`/`bulkReturnBranch` нь `product_transfers`-д мөр
+   үлдээдэг хяналттай зам тул зориуд нээлттэй.) */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const rm = codeLines.slice(codeLines.indexOf('async function removeProductRow'),
+                             codeLines.indexOf('async function setProductArchived'));
+  ok(/if \(stockSealed\(_p\)\) throw new Error\(/.test(rm),
+     'scan: эцэслэгдсэн барааг ХАТУУ УСТГАХГҮЙ');
+  ok(/const _p = \(state\.products[\s\S]{0,200}archivedProducts/.test(rm),
+     'scan: архивлагдсан жагсаалтаас ч хайна (устгахын өмнө)');
+  const ar = codeLines.slice(codeLines.indexOf('async function setProductArchived'),
+                             codeLines.indexOf('async function runAsarModuleSetup'));
+  ok(/val && stockSealed\(/.test(ar), 'scan: эцэслэгдсэнийг архивлахад баталгаажуулалт');
+  ok(/await showConfirm\(/.test(ar) && /return false;/.test(ar),
+     'scan: баталгаажуулалтын хариуг ШАЛГАЖ буцдаг');
+  // ⚠ Архивлахыг ХОРИГЛОХГҮЙ — актлах нь жинхэнэ хэрэгцээ, зөвхөн чимээгүй болгохгүй
+  eq(/throw new Error\('Эцэслэгдсэн[^']*архив/.test(ar), false,
+     'scan: архивлахыг бүрэн хориглохгүй (актлах хэрэгцээтэй)');
+}
+
+/* 0e2l) SCAN — түгжээ ГАНЦ БИЧИХ ЦЭГТ, нэгтгэхээс ӨМНӨ (2026-10-02)
+   Хориг нь `state.products[idx]` нэгтгэхээс ХОЙШ байвал ӨМНӨХ утга аль хэдийн
+   дарагдсан байх тул «хөдөлсөн эсэх» нь ҮРГЭЛЖ худал гарч, түгжээ ажиллахгүй. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const i = codeLines.indexOf('async function saveProduct(');
+  const fn = codeLines.slice(i, i + 2400);
+  const guardAt = fn.indexOf('stockSealed(state.products[idx]) && !product._moveReason');
+  const mergeAt = fn.indexOf('state.products[idx] = { ...state.products[idx], ...product }');
+  ok(guardAt > 0, 'scan: эцэслэлийн түгжээ saveProduct дотор');
+  ok(guardAt < mergeAt, 'scan: түгжээ state нэгтгэхээс ӨМНӨ (эс бол өмнөх утга дарагдана)');
+  ok(/throw new Error\('Эцэслэгдсэн барааны тоог гараар засах боломжгүй/.test(fn),
+     'scan: татгалзах нь ТОДОРХОЙ мессежтэй');
+  // ⛔ Хяналттай зам нь `_moveReason`-оор ялгардаг — тэр нөхцөлийг хасвал бүх зам хаагдана
+  ok(/!product\._moveReason/.test(fn), 'scan: хяналттай зам (_moveReason) нээлттэй үлдэнэ');
+  // Дэлгэцэд ч түгжээ харагдана
+  ok(/const _sealed = !!\(isEdit && p && stockSealed\(p\)\);/.test(codeLines),
+     'scan: засах цонх эцэслэлийг мэднэ');
+  ok(/\$\{_pkgDis \|\| _sealDis\}/.test(codeLines), 'scan: тоон талбарууд түгжигдэнэ');
+}
+
+/* 0e2k) SCAN — тооллогын хориг БҮХ замд (2026-10-02)
+   Бүртгэх зам нээлттэй үлдвэл батлагдаагүй суурьтай зөрүү DB-д хуримтлагдана;
+   ХЭРЭГЖҮҮЛЭХ зам нээлттэй үлдвэл тэр зөрүү нөөц ба МӨНГӨНД хүрнэ. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function countBlockReason\(/.test(codeLines), 'scan: тооллогын хоригийн шалтгаан ганц функцээс');
+  const _sv0 = codeLines.indexOf('async function saveStockCount');
+  const sv = codeLines.slice(_sv0, _sv0 + 900);
+  ok(/const _blk = countBlockReason\(productBySku\(sku\)\);[\s\S]{0,60}throw new Error\(_blk\)/.test(sv),
+     'scan: БҮРТГЭХ зам хаалттай');
+  const _ap0 = codeLines.indexOf('async function applyStockCount');
+  const ap = codeLines.slice(_ap0, _ap0 + 900);
+  ok(/const _blk = countBlockReason\(p\);[\s\S]{0,60}throw new Error\(_blk\)/.test(ap),
+     'scan: ХЭРЭГЖҮҮЛЭХ зам (мөнгөний зам) хаалттай');
+  ok(/const actBlk = act \? countBlockReason\(act\) : '';/.test(codeLines),
+     'scan: дэлгэцэд шалтгаан ил гарна');
+}
+
+/* 0e2i) SCAN — эцэслэлийн хориг БҮХ бичих замд (2026-10-02)
+   Нэг замыг нь онгорхой орхивол хөлдсөн суурь чимээгүй өөрчлөгдөж, гурван
+   гарын үсэг утгагүй болно. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function stockSealed\(/.test(codeLines) && /function openingSealBlock\(/.test(codeLines),
+     'scan: эцэслэлийн функцууд байна');
+  ok(/if \(stockSealed\(p\)\) return 'Эцэслэн баталгаажсан — өөрчлөх боломжгүй';/.test(codeLines),
+     'scan: дахин батлах зам хаагдсан');
+  ok(/if \(stockSealed\(p\)\) return 'Эцэслэн баталгаажсан — буцаах боломжгүй/.test(codeLines),
+     'scan: буцаах зам хаагдсан');
+  ok(/if \(stockSealed\(p\)\) \{ showToast\('Эцэслэн баталгаажсан/.test(codeLines),
+     'scan: дахин ТООЛОХ зам ч хаагдсан');
+  // ⛔ Эцэслэх нь буцаах боломжгүй тул баталгаажуулалтгүй байж БОЛОХГҮЙ
+  const h = codeLines.slice(codeLines.indexOf("data-op-seal]"), codeLines.indexOf("data-op-un]"));
+  ok(/if \(!\(await showConfirm\(/.test(h), 'scan: эцэслэхийн өмнө баталгаажуулалт асууна');
+  // ⛔ «Нээх» товч БАЙХГҮЙ — залруулга тооллогоор, аудитын мөртэй
+  eq((codeLines.match(/data-op-unseal/g) || []).length, 0,
+     'scan: эцэслэлийг НЭЭХ товч БАЙХГҮЙ (залруулга тооллогоор)');
+}
+
+/* 0e2g) SCAN — ЭЛЭГДЛИЙГ ШАЛГАХ ГАЗАР байна (2026-10-02)
+   «Тооцоолол зөв эсэхийг хаанаас харах вэ?» — өмнө нь зөвхөн барааны ЦОНХ дотор
+   байсан тул 281 барааг нэг бүрчлэн нээхээс өөр арга байгаагүй, тайлан дахь
+   14.3сая/сар гэсэн тоог хэн ч тулгаж чаддаггүй байв. Одоо «Өртөг ба хөрөнгө»
+   жагсаалт: дээр нь НИЙЛБЭР, мөр бүрт дүрэм/нас/сарын дүн. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function psDeprecLine\(/.test(codeLines) && /function psDeprecSummary\(/.test(codeLines),
+     'scan: элэгдлийн мөр ба нийлбэр функцууд байна');
+  ok(/\$\{psDeprecLine\(p\)\}/.test(codeLines), 'scan: бараа бүрийн мөрөнд элэгдэл бичигдэнэ');
+  ok(/mode === 'cost' \? psDeprecSummary\(\)/.test(codeLines),
+     'scan: нийлбэр нь «Өртөг ба хөрөнгө» дэлгэцийн толгойд');
+  /* ⛔ ТООГ ДАХИН БОДОХГҮЙ — тайлантай ижил эх сурвалжаас. Дахин бодвол
+     жагсаалт ба тайлан хоёр өөр тоо харуулж, тулгалт утгагүй болно.
+     ⚠ `psDeprecSummary` нь `psDeprecLine`-ААС ӨМНӨ тодорхойлогддог тул зүсэлт
+       түүнээс эхлэх ёстой — эс бөгөөс гурван шалгуур худал унана. */
+  const dl = codeLines.slice(codeLines.indexOf('function psDeprecSummary'), codeLines.indexOf('function renderProductSheet'));
+  ok(/const d = deprecForProduct\(p\);/.test(dl), 'scan: мөр нь deprecForProduct-аас (тайлангийн ижил эх сурвалж)');
+  ok(/deprecByBranch\(state\.products/.test(dl), 'scan: нийлбэр нь deprecByBranch-аас');
+  eq((dl.match(/\/\s*\(\s*years\s*\*\s*12\s*\)/g) || []).length, 0,
+     'scan: элэгдлийг дэлгэцэд ДАХИН бодохгүй');
+  // Өртөггүй / огноогүй бараа НУУГДАХГҮЙ — тэдгээр нь буруу тооцооллын гол эх үүсвэр
+  ok(/noCost \? `[^`]*бараа өртөггүй/.test(dl), 'scan: өртөггүй бараа ил тоологдоно');
+  /* ⛔ ЭВХЭГДСЭН ч САРЫН ДҮН товчлолд ҮЛДЭНЭ (2026-10-03). Бүрэн нуувал энэ
+     мөрийн ЗОРИЛГО — элэгдлийг бараагаар тулгах — алдагдаж, хүн 281 барааг
+     нэг бүрчлэн нээх болно. */
+  ok(/<summary>📉 <b>\$\{fmtMoneyShort\(Math\.round\(d\.totalMonth\)\)\}\/сар<\/b>/.test(dl),
+     'scan: эвхэгдсэн үед ч сарын дүн товчлолд харагдана');
+  ok(/<details class="ps-dep">/.test(dl), 'scan: задаргаа эвхэгддэг');
+  // Эвхэгдсэн үед мөрөнд багтана, задарвал бүтэн мөр эзэлнэ
+  const _depCss = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  ok(/\.ps-dep \{ flex: 0 1 auto;/.test(_depCss), 'scan: эвхэгдсэн элэгдэл мөрөнд багтана');
+  ok(/\.ps-dep\[open\] \{ flex: 1 0 100%; \}/.test(_depCss), 'scan: задарсан үед бүтэн мөр');
+  ok(/noDateN \? `[^`]*авсан огноогүй/.test(dl), 'scan: авсан огноогүй бараа ил тоологдоно');
+}
+
+/* 0e2f) SCAN — COO картад ЭЛЭГДЭЛ ил задарна (2026-10-02)
+   «14 саяын зардал хаанаас гарч ирсэн юм бэ?» — элэгдэл нь сарын эхэнд БҮТНЭЭР
+   суудаг тул сар дөнгөж эхлэхэд 2 хоногийн орлоготой харьцуулагдаж, зардал
+   гэнэт томорсон мэт харагдана. Мөнгө гараагүй гэдгийг ил хэлэх ёстой. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/const COO_DEP_KEY = \{/.test(codeLines),
+     'scan: салбарын нэр → элэгдлийн түлхүүрийн зураглал ганц газар');
+  ok(/if \(dk && p\.dep && p\.dep\.active\) dep \+=/.test(codeLines),
+     'scan: зөвхөн ИДЭВХТЭЙ элэгдэл нэмэгдэнэ (лавлагаа тоо орохгүй)');
+  ok(/үүнээс элэгдэл \(мөнгө гараагүй\)/.test(codeLines),
+     'scan: картад «үүнээс элэгдэл (мөнгө гараагүй)» дэд мөр гарна');
+}
+
+/* 0e2e) SCAN — ТЭНЦЭЛ ЗӨВХӨН САРААР (2026-10-02, CEO шийдвэр)
+   Хуулгын экспортын цонх дурын (амьд датаар 23 хуулгын 2 нь л сартай тохирсон)
+   тул тэндээс «сар тэнцсэн» гэж дүгнэвэл: ① хил давсан хуулга ХОЁР сард тоологдож
+   нэг дутуу файл хоёр сарыг зэрэг блоклоно ② «01…өнөөдөр» хуулганд сарын эцсийн
+   үлдэгдэл БАЙХГҮЙ атал сар батлагдсан мэт харагдана. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function monthSeal\(/.test(codeLines) && /function monthEndDay\(/.test(codeLines),
+     'scan: сарын тэнцэл ганц функцээс');
+  const bs = codeLines.slice(codeLines.indexOf('function balanceStats'),
+                             codeLines.indexOf('function closeMonthBlockers'));
+  ok(/monthSeal\(stmts, a, m\)/.test(bs), 'scan: balanceStats нь monthSeal-аас уншина');
+  eq((bs.match(/stmtBalanceCheck\(/g) || []).length, 0,
+     'scan: balanceStats хуулга тус бүрийн тэнцлийг ШУУД шалгахаа болив (сараар)');
+  const ms = codeLines.slice(codeLines.indexOf('function monthSeal'), codeLines.indexOf('function balanceStats'));
+  // ⛔ Эцсийн үлдэгдэлгүй сарыг «батлагдсан» гэж бичихгүй — ЯМАР хуулга хэрэгтэйг хэлнэ
+  ok(/state: 'noend'/.test(ms) && /хуулга татаж оруул/.test(ms),
+     'scan: эцсийн үлдэгдэл алга бол ЯМАР хуулга татахыг хэлнэ');
+  ok(/closing: null/.test(ms), 'scan: батлагдаагүй сарын эцсийн үлдэгдлийг ТААМАГЛАХГҮЙ');
+  /* ⛔ ТЭНЦЭЭГҮЙ хуулгаас сарын дүн ГАРГАЖ АВАХГҮЙ — батлагдаагүй тооноос
+     гаргасан зүсэлт батлагдаагүй хэвээр. Хамгаалалт алдагдвал «батлагдсан»
+     гэсэн ХУДАЛ дүгнэлт тарна. */
+  ok(/const b = stmtBalanceCheck\(s\); return b\.ok && !b\.skip;/.test(ms),
+     'scan: зөвхөн ӨӨРӨӨ тэнцсэн хуулгаас сарын дүн гаргаж авна');
+  ok(/s\.months\[m\]\.end != null/.test(ms),
+     'scan: эцсийн үлдэгдэл гарган аваагүй сарыг батлахгүй');
+  // Хуулга импортод сараар задарна — эс бөгөөс гаргаж авах дата хэзээ ч үүсэхгүй
+  ok(/months: stmtMonthSplit\(rows, opening\)/.test(codeLines),
+     'scan: импортод хуулга сараар задарч хадгалагдана');
+  /* ⛔ ЖИНХЭНЭ хаах зам (toggleMonthClose) ч ангилаагүй зардлыг тоолж дамжуулна —
+     зөвхөн картын товчийг унтраавал CEO цонхноос шууд хааж өнгөрнө. */
+  ok(/allPendingCardExpenses\(\)\.filter\(r => String\(r\.requested_at \|\| ''\)\.slice\(0, 7\) === m\)\.length/.test(codeLines),
+     'scan: хаах зам ангилаагүй зардлыг тоолно');
+  ok(/closeMonthBlockers\(state\.bankStatements, state\.bankIncome, companyAcctList\(\), m, _pendM\)/.test(codeLines),
+     'scan: тэр тоо блокеруудад дамжина');
+  // Бүтэн сар = 1-нээс сүүлчийн өдөр хүртэл
+  ok(/String\(s\.period_from\) === first && String\(s\.period_to\) === end/.test(ms),
+     'scan: сар батлагдах нөхцөл = 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга');
+  // Тулгалтын цонхонд сарын шат байна
+  ok(/recon-sec-h">⚖️ \$\{escapeHtml\(sealMonth\)\} сарын эцсийн үлдэгдэл/.test(codeLines),
+     'scan: тулгалтын цонхонд сарын блок гарна (тайлбар биш, бодит markup)');
+  ok(/monthSeal\(list, a, sealMonth\)/.test(codeLines), 'scan: сарын шат ч ижил функцээс (дүрэм салбарлахгүй)');
+  /* ⛔ ЗӨВХӨН СОНГОСОН САР — бүх сарыг дараалуулбал «9 сар сонгосон атал яагаад
+     10 сар улаан байна» гэж хүн төөрнө (амьд дэлгэцэд гарсан гомдол). */
+  ok(/const sealMonth = String\(state\.finReportMonth/.test(codeLines),
+     'scan: сарын блок нь СОНГОСОН сараар (бүх сар дараалахгүй)');
+  // ⛔ Дансны нэр тайлбарт дарагдахгүй — тайлбар нь ӨӨРИЙН мөрөнд
+  ok(/seal-why/.test(codeLines), 'scan: шалтгаан нь дансны нэрийг шахахгүй, доорх мөрөнд');
+  // Мөр дарахад бодолт нээгдэнэ
+  ok(/<details class="stmt-det"><summary class="recon-row seal-row">/.test(codeLines),
+     'scan: сарын мөр дарахад бодолт нээгдэнэ');
+}
+
+/* 0e2d) SCAN — БОДОЛТЫГ ДАХИН БОДОХГҮЙ, залгааны тулгуур ГАНЦ газар (2026-10-02)
+   `stmtBalanceCheck` = тэнцлийн ганц шүүгч (валют данс, уншигдаагүй үлдэгдэл,
+   ±1₮ тоймлолт бүгд тэнд). Дэлгэц өөрөө «эхний + орлого − зарлага» бодож
+   харьцуулбал тэр онцгой тохиолдлууд алдагдаж, дэлгэц ба шалгуур зөрнө.
+   Багтсан хуулгыг хасах дүрэм ч ганц газар (`stmtChainSpine`) — хоёр газар
+   бичвэл залгаа ба дэлгэц өөр хуулгыг «тулгуур» гэж үзнэ. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function stmtChainSpine\(/.test(codeLines), 'scan: залгааны тулгуур ганц функцээс');
+  ok(/function stmtDetail\(/.test(codeLines), 'scan: хуулгын бодолт ганц функцээс');
+  // stmtChainCheck өөрөө эрэмбэлж/шүүхгүй — stmtChainSpine дуудна
+  const cc = codeLines.slice(codeLines.indexOf('function stmtChainCheck'),
+                             codeLines.indexOf('function stmtManualIncome') > 0
+                               ? codeLines.indexOf('function stmtManualIncome') : codeLines.indexOf('function incomeManualRows'));
+  ok(/stmtChainSpine\(all\)/.test(cc), 'scan: залгааны шалгуур тулгуурыг ганц функцээс авна');
+  eq((cc.match(/period_from\)\.localeCompare/g) || []).length, 0,
+     'scan: stmtChainCheck дотор эрэмбэлэх/багтсаныг шүүх код ДАВХАРДААГҮЙ');
+  // stmtDetail нь зөрүүг ӨӨРӨӨ бодохгүй — stmtBalanceCheck-ээс авна
+  const sd = codeLines.slice(codeLines.indexOf('function stmtDetail'),
+                             codeLines.indexOf('function stmtChainCheck'));
+  ok(/stmtBalanceCheck\(s\)/.test(sd), 'scan: бодолт тэнцлийн шүүгчээс уншина');
+  eq((sd.match(/closing_calc\s*\)?\s*-/g) || []).length, 0,
+     'scan: stmtDetail зөрүүг ДАХИН бодохгүй');
+  // Шалгагдаагүй үед зөрүү нь null — 0 бол «зөв» гэж уншигдана
+  ok(/diff: b\.skip \? null :/.test(sd), 'scan: шалгагдаагүй үед зөрүү null');
+  // Дэлгэц: бодолтын мөрүүд + эх файл харагдана
+  ok(/= Бодсон эцсийн/.test(codeLines) && /Хуулгад бичсэн/.test(codeLines),
+     'scan: «бодсон» ба «хуулгад бичсэн» хоёр мөр ЗЭРЭГ харагдана');
+  ok(/stmt-lad/.test(codeLines), 'scan: бодолт өөрийн класстай (inline style биш)');
+}
+
+/* 0e2c) SCAN — ТЭНЦЛИЙН ТӨЛӨВ хоёр газар салбарлахгүй (2026-10-02)
+   «Хэдэн данснаас хэд нь тэнцсэн» нь ГАНЦ функцээс (`balanceStats`) гарна: карт
+   болон сар хаах хоёул түүнээс уншина. Хоёр газар бодвол дэлгэц «4/4 тэнцсэн»
+   гэж байхад сар хаах «зөрүүтэй» гэж хориглож, хүн алийг нь ч эрх мэдэлтэй
+   гэж мэдэхгүй болно. Мөн ТУСДАА ЦОНХ үүсгэхгүй — хэн ч нээдэггүй дэлгэц үхдэг. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function balanceStats\(/.test(codeLines), 'scan: тэнцлийн тоолол ганц функцээс');
+  // closeMonthBlockers нь өөрөө ДАХИН бодохгүй — balanceStats дуудна
+  const cb = codeLines.slice(codeLines.indexOf('function closeMonthBlockers'),
+                             codeLines.indexOf('function finNextSteps'));
+  ok(/balanceStats\(stmts, regAccts, month\)/.test(cb),
+     'scan: сар хаах нь balanceStats-аас уншина');
+  eq((cb.match(/stmtBalanceCheck\(/g) || []).length, 0,
+     'scan: closeMonthBlockers тэнцлийг ДАХИН бодохгүй (бүгд balanceStats-аар)');
+  // ⛔ Тэнцлийн зөрүү «залгаа» гэж нэрлэгдэхгүй — хүнд өөр ажил заана
+  ok(/flags\.filter\(g => g\.kind !== 'balance'\)/.test(cb),
+     'scan: тэнцлийн зөрүү залгааны блокероос ХАСАГДСАН');
+  ok(/kind: 'balance'/.test(cb), 'scan: тэнцэл нь өөрийн нэртэй блокер');
+  // Карт нь тэнцлийн мөрийг ҮРГЭЛЖ гаргана (зөв үед ч N/M)
+  ok(/key: 'balance', done: true[\s\S]{0,300}данс сарын эцсийн үлдэгдлээр батлагдсан/.test(codeLines),
+     'scan: зөв үед ч «N/M данс сарын эцсийн үлдэгдлээр батлагдсан» гэж батална');
+  ok(/balance: balanceStats\(state\.bankStatements, companyAcctList\(\), month\)/.test(codeLines),
+     'scan: дэлгэц картад тэнцлийн төлөв дамжуулна');
+  /* ⛔ Сар хаахыг хоридог бүх нөхцөл НЭГ мөрөнд — аль нэгийг нь чимээгүй хасвал
+     тэр дутагдалтайгаар сар хаагдаж, гажсан тоо МӨНХӨД хөлдөнө. */
+  ok(/const blocked = miss\.length \|\| pend \|\| oi\.n \|\| chain \|\| balBad/.test(codeLines),
+     'scan: дутуу хуулга · АНГИЛААГҮЙ ЗАРДАЛ · хаагдаагүй орлого · залгаа · тэнцэл — бүгд сар хаахыг хорино');
+}
+
+/* 0e2b) SCAN — НЭРГҮЙ хуулгын экспортыг импортод ИЛ хэлнэ (2026-10-02)
+   Голомт хоёр хэлбэрээр экспортолдог: харилцагчийн НЭРИЙН баганатай, ба
+   зөвхөн «Харьцсан данс»-тай (7 багана). Нэргүйг оруулахад мөрийн тоо, дүн,
+   тэнцэл БҮГД ЗӨВ гардаг тул өөр ямар ч шалгуур дуугардаггүй — орлогын мөр
+   бүрийн «хэн төлсөн» чимээгүй хоосон орно. Анхааруулга нь зардлыг ангилах
+   цонхны нэг л газраас гарна; хасагдвал буруу хэлбэр дахин орж мэднэ. */
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  ok(/function stmtNoPayerNames\(/.test(codeLines),
+     'scan: нэргүй экспортын шалгуур ганц функцээс (stmtNoPayerNames)');
+  ok(/stmtQueue\.filter\(q => stmtNoPayerNames\(q\.parsed\) > 0\)/.test(codeLines),
+     'scan: импортын цонх хуулга бүрийг нэргүй эсэхээр шалгана');
+  ok(/nameBanner[\s\S]{0,400}нэрний багана байхгүй/.test(codeLines),
+     'scan: нэргүй бол хэрэглэгчид ил анхааруулга гарна');
+  ok(/warnBanner = prsnBanner \+ salBanner \+ nameBanner/.test(codeLines),
+     'scan: тэр анхааруулга анхааруулгын туузанд УГСАРСАН (харагдана)');
 }
 
 /* 0e3) SCAN — өөрийн данс/яаралтай холбоог УНШИХ зам (2026-09-30)
@@ -504,6 +1112,50 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
     // ⛔ Зориудын дахин ачаалалт «гэнэт үхсэн» гэж бүртгэгдэх ёсгүй.
     ok(/clearAlive\(\);[\s\S]{0,160}?location\.reload\(\)/.test(_src),
        'scan: reload-ийн өмнө clearAlive');
+  }
+
+  // ⛔ SCAN: `await`-ийн ДАРАА `e.currentTarget` УНШИХГҮЙ (fp 99731bced2c1, 2026-10-03).
+  //   Браузер нь үйл явдал дамжуулж дуусмагц `currentTarget`-ыг **null** болгодог тул
+  //   async handler-д await-ийн дараа түүнийг уншвал «null is not an object» гэж унана.
+  //   Амьд системд PIN шинэчлэх товч: код буруу оруулахад товч мөнхөд «Шинэчилж байна…»
+  //   гэж гацаж, хүн дахин оролдож чаддаггүй байв. Товчийг handler-ийн ЭХЭНД хувьсагчид
+  //   ав (`const btn = e.currentTarget`) — тэр лавлагаа await-ийн дараа ч хүчинтэй.
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    // Тайлбарыг зайгаар дүүргэнэ (УРТ хэвээр — мөрийн дугаар зөв үлдэнэ): эс бөгөөс
+    // тайлбар дотор бичсэн «await» гэдэг үг кодын await мэт уншигдаж ХУДАЛ зөрчил гаргана.
+    const noCmt = (s) => s
+      .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+      .split('\n').map(l => {
+        const i = l.indexOf('//');
+        if (i < 0 || l[i - 1] === ':') return l;   // `https://…` нь тайлбар БИШ
+        return l.slice(0, i) + ' '.repeat(l.length - i);
+      }).join('\n');
+    const late = [];
+    const hre = /async\s*(?:\(\s*(\w+)\s*\)|(\w+))\s*=>\s*\{/g;
+    let hm;
+    while ((hm = hre.exec(_src))) {
+      const p = hm[1] || hm[2];
+      const open = _src.indexOf('{', hm.index + hm[0].length - 1);
+      let depth = 0, end = -1;
+      for (let i = open; i < _src.length; i++) {
+        const c = _src[i];
+        if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end < 0) continue;
+      const body = noCmt(_src.slice(open, end));
+      const aw = body.search(/\bawait\b/);
+      if (aw < 0) continue;
+      const rest = body.slice(aw);
+      const cre = new RegExp('\\b' + p + '\\.currentTarget\\b', 'g');
+      let cm;
+      while ((cm = cre.exec(rest))) {
+        const line = _src.slice(0, open + aw + cm.index).split('\n').length;
+        if (!late.includes(line)) late.push(line);
+      }
+    }
+    eq(late, [], 'scan: await-ийн дараа e.currentTarget уншихгүй (null болсон байдаг)');
   }
 
   runIn("state._staffPinsErr = 'denied';");
@@ -1112,6 +1764,27 @@ ok(F.vatNameMatch('Түшиг', 'Өөр Компани') === false, 'vatNameMatc
   const past = F.attMemberSummary([{ kind: 'in', ts: inTs }], false);
   ok(past.mins === 0, 'attMemberSummary: өнгөрсөн өдрийн нээлттэй сесс = 0 мин (172ц алдаа засав)');
   ok(past.noOut === true && past.open === false, 'attMemberSummary: өнгөрсөн нээлттэй = noOut, open биш');
+  /* ⛔ ЦАЙНЫ ЦАГ ЧИМЭЭГҮЙ 0 БОЛДОГ БАЙВ (2026-10-03). Өдрийн ирцийн жагсаалт
+     `day` талбарыг ТАТДАГГҮЙ байсан тул `lunchMinsFor(undefined, …)` = 0 болж,
+     дэлгэцэд цай хасагдаагүй БҮТЭН цаг гарч, сарын тооцоотой зөрж байв
+     (CEO: «хасагдаагүй л харагдаад байна»). */
+  {
+    const D = (day, a, b) => F.attMemberSummary([
+      { kind: 'in', day, ts: `2026-10-01T${a}:00.000Z` },
+      { kind: 'out', day, ts: `2026-10-01T${b}:00.000Z` }], false);
+    const full = D('2026-10-01', '01:00', '10:04');     // 9ц 4м
+    eq(full.gross, 544, 'цай: нийт байсан цаг');
+    eq(full.lunch, 60, 'цай: 5ц-аас урт өдөр 1ц хасагдана');
+    eq(full.mins, 484, 'цай: ажилласан = нийт − цай');
+    const short = D('2026-10-01', '01:00', '03:00');    // 2ц
+    eq(short.lunch, 0, 'цай: богино өдөр хасагдахгүй');
+    eq(short.mins, 120, 'цай: богино өдөр бүтнээрээ');
+    // ⛔ Эхлэх өдрөөс ӨМНӨ хасагдахгүй (9 сарын цалин аль хэдийн бодогдсон)
+    eq(D('2026-09-30', '01:00', '10:04').lunch, 60, 'цай: 9 сард ч хасагдана (тооцоо тэр сараас эхэлсэн)');
+    eq(D('2026-08-31', '01:00', '10:04').lunch, 0, 'цай: 8 сар (түүх) хасагдахгүй');
+    // ⛔ `day` дутвал ЧИМЭЭГҮЙ 0 болно — тиймээс татах select-д заавал байна
+    eq(D(undefined, '01:00', '10:04').lunch, 0, 'цай: өдөргүй бол хасагдахгүй (select-д day заавал)');
+  }
   const closed = F.attMemberSummary([{ kind: 'in', ts: '2026-08-20T01:00:00.000Z' }, { kind: 'out', ts: '2026-08-20T09:00:00.000Z' }], false);
   ok(closed.mins === 480, 'attMemberSummary: хаагдсан сесс = 8ц (480 мин)');
 }
@@ -1123,6 +1796,45 @@ ok(F.vatNameMatch('Түшиг', 'Өөр Компани') === false, 'vatNameMatc
   const weak = F.vatAutoScore(rec, { reg: '9999999', name: 'Огт өөр', amount: 12345, date: '2020-01-01' });
   ok(strong >= 20, 'vatAutoScore: РД+нэр+дүн+огноо таарвал өндөр оноо (≥20)');
   ok(weak < strong, 'vatAutoScore: таарахгүй бол бага оноо');
+
+  /* ⛔ ХОЛЫН ОГНОО — ТОРГУУЛЬТАЙ (2026-10-03, CEO барив: «хаа байсан 4 сарыхыг
+     санал болгоод байна, нягтлан он сар харахгүй бол алдаж дарах магадлал их»).
+     Дүн таарсан гэдэг дангаараа хангалтгүй: 4 сарын өмнөх өөр харилцагчийн
+     захиалга ижил дүнтэй байж болно. */
+  need(['vatCandGap', 'vatGapNote']);
+  eq(F.vatCandGap({ dt: '2026-09-09' }, { date: '2026-09-09' }), 0, 'зөрүү: ижил өдөр → 0');
+  eq(F.vatCandGap({ dt: '2026-09-09' }, { date: '2026-05-04' }), 128, 'зөрүү: хоногоор');
+  eq(F.vatCandGap({ dt: '2026-09-09' }, {}), null, 'огноогүй бол null (0 гэж худал хэлэхгүй)');
+  eq(F.vatGapNote(0), '', 'ойр санал — анхааруулгагүй');
+  eq(F.vatGapNote(45), '', '45 хоног хүртэл хэвийн (НӨАТ хожуу шивэгддэг)');
+  eq(F.vatGapNote(128), '⚠ 4 сарын зөрүү', 'хол санал — сараар нь ил хэлнэ');
+  eq(F.vatGapNote(60), '⚠ 2 сарын зөрүү', '60 хоног → 2 сар');
+  eq(F.vatGapNote(null), '', 'огноо мэдэгдэхгүй бол чимээгүй');
+
+  /* ⛔ ХЭСЭГЧИЛСЭН ШИВЭГДСЭН ЗАХИАЛГЫН ҮЛДЭГДЭЛ (2026-10-03, амьд датаас).
+     Захиалга #1279 = 2,656,500₮; 1,551,000₮ нь аль хэдийн шивэгдсэн;
+     тулгаагүй баримт 1,105,500₮ — яг үлдэгдэл. Хоёулаа нэг РД (5770734).
+     Өмнө нь санал зөвхөн БҮТЭН дүнтэй тулгадаг тул «таарах санал алга» байв. */
+  need(['vatCandRemain']);
+  eq(F.vatCandRemain({ amount: 2656500 }, 1551000), 1105500, 'үлдэгдэл = дүн − шивэгдсэн');
+  eq(F.vatCandRemain({ amount: 2656500 }, 0), 0, 'огт шивэгдээгүй бол үлдэгдэл 0 (бүтэн дүнгээр л тулгана)');
+  eq(F.vatCandRemain({ amount: 2656500 }, 2656500), 0, 'бүрэн шивэгдсэн бол үлдэгдэлгүй');
+  eq(F.vatCandRemain({ amount: 0 }, 500), 0, 'дүнгүй захиалгад үлдэгдэл бодохгүй');
+  {
+    const rec = { dt: '2026-05-29', buyer_reg: '5770734', name: 'Орчлонконсалтинг', total: 1105500, net: 1005000 };
+    const full = { reg: '', name: 'Э.Бэрцэцэг', amount: 2656500, remain: 0, date: '2026-05-31' };
+    const part = { reg: '', name: 'Э.Бэрцэцэг', amount: 2656500, remain: 1105500, date: '2026-05-31' };
+    ok(F.vatAutoScore(rec, part) > F.vatAutoScore(rec, full),
+       'үлдэгдэлтэй таарсан захиалга илүү өндөр оноотой');
+    ok(F.vatAutoScore(rec, part) >= 5, 'үлдэгдлийн таарц дүнгийн таарцтай ижил хүчтэй');
+  }
+  {
+    const r = { dt: '2026-09-09', buyer_reg: '', name: '', total: 3960000, net: 3600000 };
+    const near = F.vatAutoScore(r, { reg: '', name: '', amount: 3600000, date: '2026-09-05' });
+    const far = F.vatAutoScore(r, { reg: '', name: '', amount: 3600000, date: '2026-05-04' });
+    ok(far < near, 'дүн ижил атал хол огноотой санал БАГА оноотой');
+    ok(far < 5, 'зөвхөн дүнгээр таарсан хол санал дангаараа хүчтэй болохгүй');
+  }
 }
 
 // 18) Мөнгөний НЭГ формат — сая-аас дээш товчилно, доош бүтэн
@@ -1415,7 +2127,7 @@ function finish() {
   const BQS = vm.runInContext('BQ_STATUS', sandbox);
   ok(SLL.prepared.indexOf('Бэлдсэн') > -1, 'шошго: SL лог prepared = Бэлдсэн (төлвийн нэртэй нийцнэ)');
   eq(BQS.prepared.label, 'Цэвэрлэсэн', 'шошго: prepared төлвийн нэр Цэвэрлэсэн (шинэ дараалал)');
-  ok(SML.prepare.indexOf('Бэлдсэн') > -1, 'шошго: stage_meta prepare = Бэлдсэн');
+  ok(SML.prepare.indexOf('Баглаж/ачсан') > -1, 'шошго: stage_meta prepare = Баглаж/ачсан');
   ok(SLL.prepared.indexOf('Цэвэрлэсэн') === -1, 'шошго: prepared нь Цэвэрлэсэн ГЭЖ нэрлэгдэхээ болив');
 }
 
@@ -1431,7 +2143,7 @@ function finish() {
   eq(NS({ status: 'reserved' }).to, 'prepared', 'урсгал: Захиалсан → Цэвэрлэсэн');
   eq(NS({ status: 'prepared' }).to, 'ready',    'урсгал: Цэвэрлэсэн → Бэлдсэн (ШИНЭ дараалал)');
   eq(NS({ status: 'ready' }).to,    'rented',   'урсгал: Бэлдсэн → Гаргах');
-  eq(NS({ status: 'rented' }).to,   'returned', 'урсгал: Гарсан → Буцаан авах');
+  eq(NS({ status: 'rented' }).to,   'stowed',   'урсгал: Гарсан → Буулгаж байршуулах (нярав сүүлд тоолно)');
 
   eq(NS({ status: 'reserved' }).cap, 'orders.clean',    'эрх: эхний алхам (цэвэрлэх) orders.clean');
   eq(NS({ status: 'prepared' }).cap, 'orders.prepare',  'эрх: 2 дахь алхам (бэлдэх) orders.prepare');
@@ -1440,7 +2152,9 @@ function finish() {
   eq(SAF('prepared', 'ready').key, 'prepare', 'дамжлага: prepared→ready нь prepare түлхүүртэй');
   eq(SAF('ready', 'rented').key,   'dispatch','дамжлага: ready→rented нь dispatch');
 
-  eq(BQS.ready.label, 'Бэлдсэн', 'төлөв: ready = Бэлдсэн');
+  /* ⛔ Картын шошго нь ТОВЧНЫ нэртэй ИЖИЛ үгтэй байна (2026-10-04) — ажилтан
+     «Баглаж/ачсан» дараад карт нь «Бэлдсэн» гэж өөр үг хэлдэг байв. */
+  eq(BQS.ready.label, 'Баглаж/ачсан', 'төлөв: ready = Баглаж/ачсан');
   ok(!LEG.ready, 'төлөв: ready legacy зураглалаас гарсан (жинхэнэ төлөв боллоо)');
   ok(ORD.indexOf('ready') > ORD.indexOf('prepared'), 'төлөв: ready нь prepared-ийн ДАРАА эрэмбэлэгдэнэ');
   ok(ORD.indexOf('ready') < ORD.indexOf('rented'),   'төлөв: ready нь rented-ээс ӨМНӨ');
@@ -1592,7 +2306,6 @@ function finish() {
 {
   const ON  = vm.runInContext('STAGE_AUTOTASK_ENABLED', sandbox);
   const PSI = vm.runInContext('prevStageInfo', sandbox);
-  const PSQ = vm.runInContext('prevStageQuestion', sandbox);
   const st  = vm.runInContext('state', sandbox);
 
   eq(ON, false, 'авто ажил: дамжлагын ажил автоматаар үүсэхээ болив');
@@ -1615,17 +2328,9 @@ function finish() {
   const pa = PSA(o);
   eq(pa && pa.key, 'clean', 'prevStageInfoAny: сүүлийн шат (хэн ч бай)');
 
-  // Асуулт нь шатдаа тохирсон, ерөнхий биш
-  const qClean = PSQ({ by: 'B', key: 'clean' });
-  ok(/цэвэрлэгээ/i.test(qClean), 'асуулт: цэвэрлэгээний тухай тодорхой');
-  ok(qClean.indexOf('хүлээлгэж өгсөн ажлыг үнэлнэ') === -1, 'асуулт: ерөнхий томьёолол ашиглахаа болив');
-  const qPrep = PSQ({ by: 'A', key: 'prepare' });
-  ok(qPrep.indexOf('бүрэн') > -1, 'асуулт: бэлтгэл бүрэн эсэхийг асууна');
-  ok(PSQ({ by: 'A', key: 'deliver' }).indexOf('цаг хугацаа') > -1, 'асуулт: хүргэлт цаг хугацааны тухай');
-  ok(PSQ({ by: 'A', key: 'received' }).indexOf('эвдрэлгүй') > -1, 'асуулт: буцаан авалт эвдрэлийн тухай');
-  eq(PSQ(null), null, 'асуулт: өмнөх шат байхгүй бол null');
-  ok(PSQ({ by: 'A', key: 'танихгүй_шат' }).length > 0, 'асуулт: танигдаагүй шатад ерөнхий асуулт');
-
+  /* ⛔ ★-ийн асуултын тест УСТГАГДСАН (2026-10-04) — ★ бүх дамжлагаас
+     хасагдаж `prevStageQuestion` дуудагчгүй үлдсэн тул код нь ч, тест нь ч
+     хог болсон. Хуучин ★ ТҮҮХИЙГ уншдаг тест доор хэвээр. */
   // Олон үнэлгээ (handoffRatings массив — Агуулахаас гарах дээр цэвэрлэгч+бэлдэгч)
   const HQS = vm.runInContext('handoffQualityScore', sandbox);
   vm.runInContext('state.appOrders = ' + JSON.stringify([
@@ -1667,18 +2372,21 @@ function finish() {
   eq(NS(DLV('ready')).to,      'delivering', 'хүргэлт 3: Цэвэрлэсэн → Агуулахаас гарсан');
   eq(NS(DLV('delivering')).to, 'rented',     'хүргэлт 4: Агуулахаас гарсан → Хүргэж өгсөн');
   eq(NS(DLV('rented')).to,     'returning',  'хүргэлт 5: Хүргэж өгсөн → Хүргэлтээр авсан');
-  eq(NS(DLV('returning')).to,  'returned',   'хүргэлт 6: Хүргэлтээр авсан → Агуулахад хүлээн авсан');
-  eq(NS(DLV('returned')).to,   'archived',   'хүргэлт: дараа нь архив');
+  eq(NS(DLV('returning')).to,  'stowed',     'хүргэлт 6: Талбайгаас ачсан → Буулгаж байршуулах');
+  eq(NS(DLV('stowed')).to,     'returned',   'хүргэлт 7: Байршуулсны ДАРАА нярав тоолно');
+  eq(NS(DLV('returned')).to,   'archived',   'хүргэлт: тоолсны дараа архив');
 
   // Очиж авах: 4, 5-р шат ГАРАХГҮЙ
   eq(NS(PICK('ready')).to,  'rented',   'очиж авах: Цэвэрлэсэн → шууд Олгосон');
-  eq(NS(PICK('rented')).to, 'returned', 'очиж авах: Олгосон → шууд Агуулахад хүлээн авсан');
+  eq(NS(PICK('rented')).to, 'stowed',   'очиж авах: Олгосон → эхлээд байршуулна');
+  eq(NS(PICK('stowed')).to, 'returned', 'очиж авах: байршуулсны ДАРАА нярав тоолно');
 
   // Эрх — шат бүр зөв хүнд
   eq(NS(DLV('ready')).cap,      'orders.dispatch', 'эрх: агуулахаас гаргах нь нярав');
   eq(NS(DLV('delivering')).cap, 'orders.deliver',  'эрх: хүргэж өгөх нь жолооч');
   eq(NS(DLV('rented')).cap,     'orders.deliver',  'эрх: хүргэлтээр авах нь жолооч');
-  eq(NS(DLV('returning')).cap,  'orders.dispatch', 'эрх: агуулахад хүлээн авах нь нярав');
+  eq(NS(DLV('returning')).cap,  'orders.prepare', 'эрх: байршуулах нь агуулахын ажилтан');
+  eq(NS(DLV('stowed')).cap,     'orders.dispatch', 'эрх: тавиур дээр тоолох нь нярав');
 
   // Шатны түлхүүр — зураг/үнэлгээ тус тусдаа хадгалагдана
   eq(SAF('ready', 'delivering').key,   'dispatch', 'түлхүүр: агуулахаас гаргах');
@@ -1689,8 +2397,10 @@ function finish() {
   // Төлөв жинхэнэ болсон эсэх
   ok(!LEG.delivering, 'төлөв: delivering legacy зураглалаас гарсан');
   ok(!LEG.returning,  'төлөв: returning legacy зураглалаас гарсан');
-  eq(BQS.delivering.label, 'Агуулахаас гаргасан', 'нэр: delivering');
-  eq(BQS.returning.label,  'Хүргэлтээр авсан',  'нэр: returning');
+  eq(BQS.delivering.label, 'Агуулахаас гарсан', 'нэр: delivering');
+  eq(BQS.returning.label,  'Талбайгаас ачсан',  'нэр: returning');
+  eq(BQS.installing.label, 'Талбайд буулгасан', 'нэр: installing');
+  eq(BQS.teardown.label,   'Задалсан', 'нэр: teardown');
   ok(STF.includes('delivering') && STF.includes('returning'), 'ажилтан: шинэ шатууд харагдана');
 }
 
@@ -2149,16 +2859,16 @@ function finish() {
       + '{ k: "M-Event", inc: 10000000, exp: 4000000 },'
       + '{ k: "NOMAAD", inc: 90000000, exp: 20000000 },'
       + '{ k: "Чимун ХХК", inc: 0, exp: 7000000 } ] }; }', sandbox);
-    eq(CN(['2026-09'], 'M-Event'), { inc: 10000000, exp: 4000000, net: 6000000 },
+    eq(CN(['2026-09'], 'M-Event'), { inc: 10000000, exp: 4000000, dep: 0, net: 6000000 },
        'COO: ЗӨВХӨН M-Event мөр тоологдоно (NOMAAD/ХХК орохгүй)');
 
     // ── ХОЁР СУУРЬ: ноогдох vs орсон мөнгө (2026-09-10) ──
     // Хураагдаагүй авлага ноогдохд орж, орсон мөнгөнд ОРОХГҮЙ — COO цалин зөрнө.
     vm.runInContext('finBranchPnl = function (m, basis) { return { rows: ['
       + '{ k: "M-Event", inc: basis === "cash" ? 6000000 : 10000000, exp: basis === "cash" ? 3000000 : 4000000 } ] }; }', sandbox);
-    eq(CN(['2026-09'], 'M-Event', 'accrual'), { inc: 10000000, exp: 4000000, net: 6000000 },
+    eq(CN(['2026-09'], 'M-Event', 'accrual'), { inc: 10000000, exp: 4000000, dep: 0, net: 6000000 },
        'COO: ноогдох суурь');
-    eq(CN(['2026-09'], 'M-Event', 'cash'), { inc: 6000000, exp: 3000000, net: 3000000 },
+    eq(CN(['2026-09'], 'M-Event', 'cash'), { inc: 6000000, exp: 3000000, dep: 0, net: 3000000 },
        'COO: орсон мөнгө суурь');
     eq(CN(['2026-09'], 'M-Event').inc, 10000000, 'COO: суурь заахгүй бол ноогдохоор (өгөгдмөл)');
     eq(CN(['2026-09'], 'M-Event', 'хог').inc, 10000000, 'COO: танигдахгүй суурь → ноогдох');
@@ -2166,14 +2876,36 @@ function finish() {
       + '{ k: "M-Event", inc: 10000000, exp: 4000000 },'
       + '{ k: "NOMAAD", inc: 90000000, exp: 20000000 },'
       + '{ k: "Чимун ХХК", inc: 0, exp: 7000000 } ] }; }', sandbox);
-    eq(CN(['2026-09'], 'NOMAAD'), { inc: 90000000, exp: 20000000, net: 70000000 },
+    eq(CN(['2026-09'], 'NOMAAD'), { inc: 90000000, exp: 20000000, dep: 0, net: 70000000 },
        'COO: NOMAAD салбар сонговол зөвхөн тэр');
-    eq(CN(['2026-09', '2026-08'], 'M-Event'), { inc: 20000000, exp: 8000000, net: 12000000 },
+    eq(CN(['2026-09', '2026-08'], 'M-Event'), { inc: 20000000, exp: 8000000, dep: 0, net: 12000000 },
        'COO: олон сар нэмэгдэнэ');
+
+    /* ⚖️ ЭЛЭГДЭЛ ТУСАД НЬ ГАРНА (2026-10-02). CEO «14 саяын зардал хаанаас гарч
+       ирсэн юм бэ?» гэж асуув — зардал задрахгүй байснаас. Элэгдэл нь сарын
+       эхэнд БҮТНЭЭР суудаг тул сар дөнгөж эхлэхэд асар том харагдана. */
+    vm.runInContext('finBranchPnl = function () { return { rows: ['
+      + '{ k: "M-Event", inc: 97000, exp: 14321916 } ],'
+      + ' dep: { active: true, "ИВЕНТ": 14300000, "КЕМП": 500000, "ХХК": 2000000 } }; }', sandbox);
+    eq(CN(['2026-10'], 'M-Event').dep, 14300000, 'COO: M-Event-ийн элэгдэл тусад нь гарна');
+    eq(CN(['2026-10'], 'NOMAAD').dep, 500000, 'COO: салбар бүр ӨӨРИЙН элэгдлийг авна');
+    /* ⛔ Мөрийн түлхүүр («M-Event») ба элэгдлийн түлхүүр («ИВЕНТ») нь ӨӨР —
+       шууд тулгавал ҮРГЭЛЖ 0 гарч, дэд мөр хэзээ ч харагдахгүй. */
+    ok(CN(['2026-10'], 'M-Event').dep > 0, 'COO: салбарын нэр → элэгдлийн түлхүүр зураглагдана');
+    // ⚠ Эхлэх сараас ӨМНӨХ сард элэгдэл ЛАВЛАГАА — зардалд ороогүй тул энд ч орохгүй
+    vm.runInContext('finBranchPnl = function () { return { rows: ['
+      + '{ k: "M-Event", inc: 100, exp: 50 } ],'
+      + ' dep: { active: false, "ИВЕНТ": 14300000 } }; }', sandbox);
+    eq(CN(['2026-09'], 'M-Event').dep, 0, 'COO: идэвхгүй (лавлагаа) элэгдэл тоологдохгүй');
+    // ⚠ Доорх тестүүд анхны mock-оос хамаардаг тул СЭРГЭЭНЭ
+    vm.runInContext('finBranchPnl = function () { return { rows: ['
+      + '{ k: "M-Event", inc: 10000000, exp: 4000000 },'
+      + '{ k: "NOMAAD", inc: 90000000, exp: 20000000 },'
+      + '{ k: "Чимун ХХК", inc: 0, exp: 7000000 } ] }; }', sandbox);
     st.cooShare = {};
     eq(CN(['2026-09']).net, 6000000, 'COO: салбар заахгүй бол өгөгдмөл M-Event-ээр');
-    eq(CN([], 'M-Event'), { inc: 0, exp: 0, net: 0 }, 'COO: сар алга → 0');
-    eq(CN(null, 'M-Event'), { inc: 0, exp: 0, net: 0 }, 'COO: сар null → 0 (унахгүй)');
+    eq(CN([], 'M-Event'), { inc: 0, exp: 0, dep: 0, net: 0 }, 'COO: сар алга → 0');
+    eq(CN(null, 'M-Event'), { inc: 0, exp: 0, dep: 0, net: 0 }, 'COO: сар null → 0 (унахгүй)');
     // ── Ашиг тоолж ЭХЛЭХ САР = 2026-06 (түүнээс өмнө зардал бүртгэгдээгүй) ──
     const YT = vm.runInContext('cooMonthsYtd', sandbox);
     const CS = vm.runInContext('cooStartMonth', sandbox);
@@ -2285,6 +3017,22 @@ function finish() {
       eq(F.cooSalaryPaid(rows, 'Алтансүх', '2026-06', '2026-08', '', ['öör']).total, 500000,
          'цалин: өөр id-гийн хасалт энэ мөрт хамаарахгүй');
     }
+    // ── САР БҮРИЙН ДЭВТЭР (2026-10-03, CEO: «сараар нь, авсан нь хасагдаад явдаг») ──
+    const L = vm.runInContext('cooLedger', sandbox);
+    const M3 = ['2026-06', '2026-07', '2026-08'];
+    const led = L(M3, { '2026-06': 10000000, '2026-07': -2000000, '2026-08': 5000000 },
+      [{ d: '2026-06-15', amount: 1000000 }, { d: '2026-08-20', amount: 2000000 }, { d: '2026-05-30', amount: 9 }], 30);
+    eq(led.map(x => x.due), [3000000, -600000, 1500000], 'COO дэвтэр: сарын эрх = ХУРИМТЛАГДСАН эрхийн өсөлт (алдагдалтай сар бууруулна)');
+    eq(led.map(x => x.paid), [1000000, 0, 2000000], 'COO дэвтэр: авсан нь мөнгө гарсан сараар (хүрээнээс гадуурх орохгүй)');
+    eq(led.map(x => x.bal), [2000000, 1400000, 900000], 'COO дэвтэр: үлдэгдэл сар бүр гүйнэ');
+    // ИНВАРИАНТ: сарын эрхийн нийлбэр = хуримтлагдсан ашгийн хувь; сүүлийн үлдэгдэл = нийт эрх − нийт авсан
+    eq(led.reduce((t, x) => t + x.due, 0), F.cooShareAmount(13000000, 30), 'ИНВАРИАНТ: сарын эрхийн нийлбэр = хуримтлагдсан эрх');
+    eq(led[2].bal, F.cooShareAmount(13000000, 30) - 3000000, 'ИНВАРИАНТ: сүүлийн үлдэгдэл = нийт эрх − нийт авсан');
+    // Эхний сар алдагдалтай — эрх сөрөг болохгүй (хуримтлагдсан нь 0-оос доош бол 0)
+    const l2 = L(['2026-06', '2026-07'], { '2026-06': -5000000, '2026-07': 8000000 }, [], 30);
+    eq(l2.map(x => x.due), [0, 900000], 'COO дэвтэр: алдагдлыг дараагийн ашгаас НӨХНӨ');
+    eq(L([], {}, [], 30).length, 0, 'COO дэвтэр: хоосон → хоосон (унахгүй)');
+    eq(L(['2026-06'], null, null, 30)[0].bal, 0, 'COO дэвтэр: null дата → 0 (унахгүй)');
 
     // ── ДАНСААР тулгах: хуулгаас ирсэн мөрд хүлээн авагч нь НЭР биш ДАНС ──
     eq(F.cooAcctDigits('5009711612'), '5009711612', 'цалин: дансны цифр');
@@ -2756,9 +3504,29 @@ function finish() {
 need(['orderCustType']);
 {
   const ct = (ci) => F.orderCustType({ customer: 'М.Занабазар', note: F.setCustInfo('', ci) });
-  // (а) Формын сонголт — юунаас ч ДЭЭГҮҮР
-  eq(ct({ ctype: 'person', company: 'Итзон ХХК', reg: '1234567' }), 'person', 'төрөл: сонголт «хувь хүн» таамаглалыг дардаг');
+  // (а) Формын сонголт — ЗӨВХӨН нотолгоогүй үед хүчинтэй. Автоматаар бөглөгдсөн
+  //     ХҮНИЙ нэр (хуулийн хэлбэргүй) нь нотолгоо БИШ тул сонголт ялна.
+  eq(ct({ ctype: 'person', company: 'МӨНХСАЙХАН ЗАНАБАЗАР' }), 'person', 'төрөл: сонголт «хувь хүн» хүний нэрийн таамаглалыг дардаг');
+  eq(ct({ ctype: 'person', company: 'Алтан гэр' }), 'person', 'төрөл: хуулийн хэлбэргүй нэр сонголтыг дардаггүй');
   eq(ct({ ctype: 'org' }), 'org', 'төрөл: сонголт «байгууллага» дангаараа хангалттай');
+  // (а3) ⛔ ХУУЛИЙН ХЭЛБЭР (ХХК/LLC) нь нотолгоо — сонголтоос ДЭЭГҮҮР (2026-10-03).
+  //      Амьд жишээ: захиалга 1539 «ДИЖИТАЛ БҮТЭЭЛЧ ӨСӨЛТ ХХК» атал хувь хүн гэж үлдсэн.
+  eq(ct({ ctype: 'person', company: 'ДИЖИТАЛ БҮТЭЭЛЧ ӨСӨЛТ ХХК' }), 'org', 'төрөл: ХХК нэр «хувь хүн» сонголтыг дардаг');
+  eq(ct({ ctype: 'person', company: 'Nomad LLC' }), 'org', 'төрөл: LLC нэр сонголтыг дардаг');
+  // (а4) ⛔ ХАРИЛЦАГЧИЙН нэрэнд хуулийн хэлбэр — «Байгууллага» талбар хоосон ч байгууллага
+  //      (амьд жишээ 1409, 1415). Хүний нэр харилцагчид байвал хэвээр хувь хүн.
+  const ctc = (cust, ci) => F.orderCustType({ customer: cust, note: F.setCustInfo('', ci || {}) });
+  eq(ctc('Капитрон банк'), 'org', 'төрөл: харилцагчийн нэр «банк» → байгууллага');
+  eq(ctc('Эвэнт хонх ххк', { ctype: 'person' }), 'org', 'төрөл: харилцагчийн нэр «ххк» сонголтыг дардаг');
+  eq(ctc('М.Занабазар', { ctype: 'person' }), 'person', 'төрөл: хүний нэр харилцагчид → хувь хүн хэвээр');
+  eq(ctc('Банкхүү'), 'person', 'төрөл: үгийн хэсэг «банк» нь хуулийн хэлбэр БИШ');
+  // (а2) ⛔ 7 ОРОНТОЙ РД нь сонголтоос ДЭЭГҮҮР (2026-10-03) — регистр нь баримт,
+  //      формын өгөгдмөл «хувь хүн» нь шийдвэр БИШ. Амьд жишээ = захиалга 1588:
+  //      НӨАТ байгууллагын РД-гээр шивэгдсэн атал ажилтан төрлийг сольж амжаагүй.
+  eq(ct({ ctype: 'person', company: 'Итзон ХХК', reg: '1234567' }), 'org', 'төрөл: 7 оронтой РД «хувь хүн» сонголтыг дардаг');
+  eq(ct({ ctype: 'person', company: 'МОНГОЛЫН ТУСГАЙ ОЛИМПИЙН', reg: '8102945', contact: 'Randal Tseegiiaagii' }), 'org', 'төрөл: захиалга 1588 — НӨАТ-ын РД-тэй бол байгууллага');
+  eq(ct({ ctype: 'person', reg: ' 810 2945 ' }), 'org', 'төрөл: РД-ийн хоосон зай РД-г нуухгүй');
+  eq(ct({ ctype: 'person', reg: 'УБ98765432' }), 'person', 'төрөл: хувь хүний РД сонголтыг дардаггүй');
   // (б) Сонголтгүй хуучин захиалга — 7 оронтой РД = байгууллага
   eq(ct({ reg: '1234567' }), 'org', 'төрөл: 7 оронтой РД → байгууллага');
   eq(ct({ reg: 'УБ98765432' }), 'person', 'төрөл: хувь хүний РД → хувь хүн');
@@ -2767,6 +3535,100 @@ need(['orderCustType']);
   eq(ct({ company: 'Nomad LLC' }), 'org', 'төрөл: LLC → байгууллага');
   eq(ct({ company: 'МӨНХСАЙХАН ЗАНАБАЗАР' }), 'person', 'төрөл: хүний нэр байгууллагын талбарт байсан ч хувь хүн');
   eq(ct({}), 'person', 'төрөл: мэдээлэлгүй бол хувь хүн');
+
+  /* ХАРАГДАХ НЭР = гэрээний ТАЛ (2026-10-03). Байгууллагын захиалгад толгойд
+     байгууллага гарч, `o.customer` нь ТӨЛӨӨЛӨХ ХҮН болж доогуур үлдэнэ. */
+  need(['orderCustName', 'orderCustPerson']);
+  {
+    const mk = (ci, cust) => ({ customer: cust, note: F.setCustInfo('', ci) });
+    // (а) Захиалга 1496 — амьд тохиолдол
+    const o1496 = mk({ company: 'ЭБЕРДИГММОНГОЛ', reg: '5578264', ctype: 'person' }, 'Чимгээ');
+    eq(F.orderCustName(o1496), 'ЭБЕРДИГММОНГОЛ', 'нэр: байгууллагын захиалгад байгууллага гарна');
+    eq(F.orderCustPerson(o1496), 'Чимгээ', 'нэр: хүний нэр төлөөлөгч болж үлдэнэ');
+    // (б) Хувь хүн — хуучнаараа
+    const per = mk({ reg: 'УБ98765432' }, 'Батбаяр');
+    eq(F.orderCustName(per), 'Батбаяр', 'нэр: хувь хүний захиалгад хүний нэр');
+    eq(F.orderCustPerson(per), '', 'нэр: хувь хүнд төлөөлөгчийн мөр гарахгүй');
+    // (в) «Хувь хүн» гэж СОНГОСОН, нотолгоогүй нэр — толгойд ГАРАХГҮЙ
+    const forced = mk({ company: 'МӨНХСАЙХАН ЗАНАБАЗАР', ctype: 'person' }, 'Болд');
+    eq(F.orderCustName(forced), 'Болд', 'нэр: нотолгоогүй нэр толгойд гарахгүй');
+    // (в2) ХХК нэртэй бол толгойд байгууллага гарна (захиалга 1539)
+    eq(F.orderCustName(mk({ company: 'ДИЖИТАЛ БҮТЭЭЛЧ ӨСӨЛТ ХХК', ctype: 'person' }, 'Эрдэнэбулган')),
+       'ДИЖИТАЛ БҮТЭЭЛЧ ӨСӨЛТ ХХК', 'нэр: ХХК нэртэй захиалгын толгойд байгууллага');
+    // (г) Байгууллагын нэргүй — хүний нэр хэвээр (хоосон толгой гарахгүй)
+    eq(F.orderCustName(mk({ reg: '1234567' }, 'Сараа')), 'Сараа', 'нэр: байгууллагын нэргүй бол хүний нэр');
+    // (д) ⟦CI⟧ огт байхгүй хуучин захиалга
+    eq(F.orderCustName({ customer: 'Дорж' }), 'Дорж', 'нэр: ⟦CI⟧-гүй хуучин захиалга эвдрэхгүй');
+  }
+
+  /* ② НӨАТ-ын баримтын РД — захиалга дээр РД бичигдээгүй ч баримт нотолно (2026-10-03).
+     Амьд жишээ 1562: «МАКСИМУС ДИСТРИБЬЮШН» (хуулийн хэлбэргүй нэр), ⟦CI⟧-д РД алга,
+     харин тулгагдсан НӨАТ-ын баримтын худалдан авагч РД 6191592. */
+  {
+    const runIn = (code) => vm.runInContext(code, sandbox);
+    const saved = runIn('state.vatReceipts');
+    const o1562 = { number: 1562, customer: 'Б.Тулга', note: F.setCustInfo('', { company: 'МАКСИМУС ДИСТРИБЬЮШН', ctype: 'person' }) };
+    // Баримт ачаалагдаагүй үед — таамаглахгүй, сонголт хэвээр
+    runIn('state.vatReceipts = undefined; _vatOrgRev++;');
+    eq(F.orderCustType(o1562), 'person', 'НӨАТ: баримт ачаалагдаагүй үед сонголт хэвээр (таамаглахгүй)');
+    runIn('state.vatReceipts = ' + JSON.stringify([
+      { id: 'v1', matched_type: 'event', matched_id: '1562', buyer_reg: '6191592', buyer_name: 'Максимус дистрибьюшн', total: 1000 },
+      { id: 'v2', matched_type: 'event', matched_id: '1600', buyer_reg: 'УБ98765432', buyer_name: 'Хүн', total: 1000 },
+    ]) + '; _vatOrgRev++;');
+    eq(F.orderCustType(o1562), 'org', 'НӨАТ: тулгагдсан баримтын 7 оронтой РД «хувь хүн» сонголтыг дардаг');
+    eq(F.orderCustName(o1562), 'МАКСИМУС ДИСТРИБЬЮШН', 'НӨАТ: толгойд байгууллагын нэр');
+    ok(/НӨАТ/.test(F.orderOrgProof(o1562)), 'НӨАТ: нотолгоо нь эх сурвалжаа нэрлэнэ');
+    // Хувь хүнд шивсэн баримт нотолгоо БИШ
+    const o1600 = { number: 1600, customer: 'Хүн', note: F.setCustInfo('', { ctype: 'person' }) };
+    eq(F.orderCustType(o1600), 'person', 'НӨАТ: хувь хүний РД-тэй баримт байгууллага болгохгүй');
+    // Буцаасан баримт — индекс ДАХИН бодогдож нотолгоо алга болно
+    runIn("state.vatReceipts[0].returned = true; _vatOrgRev++;");
+    ok(runIn('vatIsReturned(state.vatReceipts[0])'), 'НӨАТ: буцаалтын туг хүчинтэй (тестийн суурь)');
+    eq(F.orderCustType(o1562), 'person', 'НӨАТ: буцаасан баримт нотолгоо болохгүй');
+    runIn('state.vatReceipts = ' + JSON.stringify(saved === undefined ? null : saved) + '; _vatOrgRev++;');
+  }
+
+  /* SCAN: индекс хуучрахгүй — баримтыг ЖИГД засдаг (Object.assign) бүх замд тоолуур өсөх ёстой.
+     Эс бөгөөс гараар тулгасан баримт дахин ачаалах хүртэл захиалгын төрлийг өөрчлөхгүй. */
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const mut = (_src.match(/Object\.assign\(rec, patch\);[^\n]*\n[^\n]*/g) || []);
+    ok(mut.length >= 2 && mut.every(m => /_vatOrgRev\+\+/.test(m)), 'scan: НӨАТ баримт засах бүх замд индекс шинэчлэгдэнэ');
+    ok(/state\.vatReceipts = await r\.json\(\); _vatOrgRev\+\+/.test(_src), 'scan: НӨАТ ачаалахад индекс шинэчлэгдэнэ');
+  }
+
+  /* SCAN: харагдах нэрийг түүхий `o.customer`-оор бүү хэвлэ — хоёр дэлгэц хоёр өөр
+     нэр хэлнэ (жагсаалтад хүн, баримтад байгууллага). */
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(!/class="br-cust">\$\{escapeHtml\(o\.customer/.test(_src), 'scan: жагсаалтын мөр orderCustName ашиглана');
+    ok(!/class="order-cust"><b>\$\{escapeHtml\(o\.customer/.test(_src), 'scan: захиалгын карт orderCustName ашиглана');
+    // Хайлт — байгууллагын нэрээр олдохгүй бол жагсаалт нь тэр нэрээр харагдаад хайгдахгүй болно
+    const hay = (_src.match(/hay: `#\$\{ao\.number[^`]*`/) || [''])[0];
+    ok(/_ciHay\.company/.test(hay) && /_ciHay\.reg/.test(hay), 'scan: хайлтад байгууллагын нэр ба РД орсон');
+  }
+
+  /* SCAN: РД-ийн шалгалт `ctype`-аас ӨМНӨ байх ЁСТОЙ. Дарааллыг солих нь дүрмийг
+     чимээгүй буцаана (зан нь өөрчлөгдөнө, дүрс нь зөв хэвээр) — тиймээс эх кодоор барина. */
+  {
+    const _src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const body = (_src.match(/function _custTypeFrom\(ci, no, cust\) \{[\s\S]*?\n\}/) || [''])[0];
+    ok(body.length > 50, 'scan: _custTypeFrom-ийн бие олдов');
+    ok(/function orderCustType\(o\) \{ return _custTypeFrom\(/.test(_src), 'scan: orderCustType нь ганц дүрмийг дуудна');
+    ok(/_custTypeFrom\(\{ company, reg, ctype/.test(_src), 'scan: нэхэмжлэх ижил дүрмийг дуудна');
+    const iPr = body.indexOf('_orgProofFrom('), iCt = body.indexOf("ci.ctype === 'org'");
+    ok(iPr > -1 && iCt > -1, 'scan: хоёр шалгалт хоёулаа бий');
+    ok(iPr < iCt, 'scan: нотолгооны шалгалт `ctype`-аас ӨМНӨ (сонголтыг дарна)');
+    // Гурван эх сурвалж бүгд нотолгоонд байх ёстой — аль нэгийг хасвал тэр ангийн
+    // захиалга чимээгүй «хувь хүн» болж буцна.
+    const pb = (_src.match(/function _orgProofFrom\(ci, no, cust\) \{[\s\S]*?\n\}/) || [''])[0];
+    ok(pb.length > 50, 'scan: _orgProofFrom-ийн бие олдов');
+    ok(/\\d\{7\}/.test(pb), 'scan: нотолгоонд 7 оронтой РД бий');
+    ok(/vatOrgRegFor\(/.test(pb), 'scan: нотолгоонд НӨАТ-ын баримтын РД бий');
+    ok(/_ORG_SUFFIX_RE/.test(pb), 'scan: нотолгоонд хуулийн хэлбэрийн тэмдэг бий');
+    ok(/_ORG_SUFFIX_RE\.test\(cu\)/.test(pb), 'scan: нотолгоонд харилцагчийн нэр бий');
+    ok(/_custTypeFrom\(custInfoOf\(o && o\.note\), o && o\.number, o && o\.customer\)/.test(_src), 'scan: orderCustType харилцагчийн нэрийг дамжуулна');
+  }
 }
 
 // 26b) БАЙГУУЛЛАГЫН ГЭРЭЭ — гэрээ байгуулагч тал = байгууллага, хувь хүн БИШ (2026-09-04)
@@ -2792,11 +3654,16 @@ need(['orderCustType']);
   const reg7 = F.meventContractHtml(mk({ reg: '7654321' }));
   ok(reg7.indexOf('Байгууллагын РД') > -1, 'байгууллага: 7 оронтой РД-г байгууллагад тооцно');
   ok(reg7.indexOf('Төлөөлөх хүн:') === -1, 'байгууллага: нэр давхардвал төлөөлөгч мөр гарахгүй');
-  // (в2) Байгууллагын нэр бөглөгдсөн ч «хувь хүн» гэж СОНГОСОН бол гэрээ хүнтэй
-  const forced = F.meventContractHtml(mk({ ctype: 'person', company: 'Итзон ХХК', reg: '1234567' }));
+  // (в2) Байгууллагын НЭР бөглөгдсөн ч «хувь хүн» гэж СОНГОСОН бол гэрээ хүнтэй
+  //      (нэр нь НӨАТ/төлөгчөөс авто бөглөгддөг тул хүний нэр орох нь бий)
+  const forced = F.meventContractHtml(mk({ ctype: 'person', company: 'МӨНХСАЙХАН ЗАНАБАЗАР', reg: 'УБ98765432' }));
   ok(forced.indexOf('<b>Батбаяр</b>') > -1,       'сонголт: «хувь хүн» гэвэл гэрээний тал хүн');
-  ok(forced.indexOf('Итзон ХХК') === -1,          'сонголт: «хувь хүн» гэвэл байгууллагын нэр гэрээнд гарахгүй');
-  ok(forced.indexOf('Регистрийн дугаар: 1234567') > -1, 'сонголт: хувь хүний РД шошготой хэвээр гарна');
+  ok(forced.indexOf('МӨНХСАЙХАН ЗАНАБАЗАР') === -1, 'сонголт: «хувь хүн» гэвэл байгууллагын талбарын нэр гэрээнд гарахгүй');
+  ok(forced.indexOf('Регистрийн дугаар: УБ98765432') > -1, 'сонголт: хувь хүний РД шошготой хэвээр гарна');
+  // (в3) ⛔ 7 оронтой РД-тэй бол «хувь хүн» сонголт гэрээг хүн болгож ЧАДАХГҮЙ
+  const regWins = F.meventContractHtml(mk({ ctype: 'person', company: 'Итзон ХХК', reg: '1234567' }));
+  ok(regWins.indexOf('Байгууллагын РД') > -1,     'РД: 7 оронтой РД «хувь хүн» сонголтыг дарж гэрээг байгууллагатай болгоно');
+  ok(regWins.indexOf('<b>Итзон ХХК</b>') > -1,    'РД: гэрээний тал = байгууллага');
 
   // (в) Хувь хүн — хуучин байдал хэвээр, тамга/төлөөлөгч ГАРАХГҮЙ
   const per = F.meventContractHtml(mk({ reg: 'УБ98765432' }));
@@ -3103,9 +3970,92 @@ need(['orderCustType']);
     ok(F.orderNeedsSetup(offFlag) === false, 'setup: гараар унтраасан нь бараа мөрөөс ДАВУУ');
     ok(F.orderNeedsSetup(plain) === false, 'setup: энгийн захиалгад шат гарахгүй');
 
+    /* ═══ УРСГАЛ = ЖАГСААЛТ, КОД БИШ (2026-10-03) ══════════════════════════
+       `switch`-ийг `PIPELINE` жагсаалт болгосон. Энэ тест нь ХУУЧИН дүрмийг
+       лавлагаа болгон бичиж, БҮХ төлөв × хүргэлт × суурилуулалт хослолыг
+       тулгана — refactor зан чанарыг өөрчилсөн бол ЭНД барина. */
+    {
+      const ref = (st, dlv, setup) => {   // ← хуучин switch-ийн яг хуулбар
+        switch (st) {
+          case 'reserved': case 'preparation': case 'cleaning':
+            return { to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' };
+          case 'prepared': return { to: 'ready', label: '🧰 Бэлдсэн', cap: 'orders.prepare' };
+          case 'ready': return dlv
+            ? { to: 'delivering', label: '📦 Агуулахаас гаргасан', cap: 'orders.dispatch' }
+            : { to: 'rented', label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch' };
+          case 'delivering': return setup
+            ? { to: 'installing', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' }
+            : { to: 'rented', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
+          case 'installing': return { to: 'rented', label: '🔧 Суурилуулсан', cap: 'orders.setup' };
+          /* 2026-10-05 (CEO): очиж авахад ч нярав ХАМГИЙН СҮҮЛД тоолно —
+             эхлээд байршуулна, дараа нь хүлээн авна (хүргэлттэй ижил). */
+          case 'rented': case 'started': return setup
+            ? { to: 'teardown', label: '🧱 Буулгасан', cap: 'orders.setup' }
+            : dlv ? { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' }
+                  : { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
+          case 'teardown': return { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' };
+          /* 2026-10-04: ХҮРГЭЛТЭД эхлээд БАЙРШУУЛНА, дараа нь нярав ТООЛНО —
+             сүүлчийн дамжлага хяналтгүй үлдэхгүйн тулд (CEO). Очиж авахад
+             дараалал ЭСРЭГ: харилцагч байхад нь тоолох ёстой. */
+          case 'returning': return { to: 'stowed', label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare' };
+          case 'stowed': return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
+          case 'returned': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
+          case 'stopped': return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
+          default: return null;
+        }
+      };
+      const ALL = ['draft', 'reserved', 'preparation', 'cleaning', 'prepared', 'ready', 'delivering',
+        'installing', 'rented', 'started', 'teardown', 'returning', 'returned', 'stowed', 'stopped', 'archived',
+        'canceled', 'deleted', 'ямар_ч_биш', ''];
+      let same = 0, diff = [];
+      ALL.forEach(st => [false, true].forEach(dlv => [false, true].forEach(setup => {
+        /* ⚠ ЗӨВХӨН ЗАН ЧАНАР (to + cap) тулгана — НЭР нь 2026-10-03-нд шинэ
+           нэр томьёогоор солигдсон (дамжлагын жинтэй хамт). */
+        const _k = (x) => x ? { to: x.to, cap: x.cap } : null;
+        const a = _k(ref(st, dlv, setup)), b = _k(F.pipelineNext(st, { dlv, setup }));
+        if (JSON.stringify(a) === JSON.stringify(b)) same++;
+        else diff.push(`${st}/dlv=${dlv}/setup=${setup}: ${JSON.stringify(a)} ≠ ${JSON.stringify(b)}`);
+      })));
+      eq(diff.join(' | '), '', 'урсгал: жагсаалт нь хуучин дүрэмтэй ЯГ ижил');
+      eq(same, ALL.length * 4, 'урсгал: бүх хослол шалгагдав');
+      eq(F.pipelineNext('stowed', {}).to, 'returned', 'урсгал: байршуулсны дараа нярав хүлээн авна');
+      // Хуучин урсгалаар аль хэдийн хүлээн авсан (дараа нь байршуулсан) захиалгыг ДАХИН тоолуулахгүй
+      eq(F.pipelineNext('stowed', { rcvd: true }).to, 'archived', 'урсгал: хуучин хүлээн авсан захиалга шууд архив');
+      eq(F.orderPipelineCtx({ stage_meta: { received: { at: '2026-10-03' } }, items: [] }).rcvd, true, 'урсгал: хүлээн авсан эсэх stage_meta-аас');
+      /* ⛔ «Буулгаж байршуулах» нь ХҮРГЭЛТЭЭС ҮЛ ХАМААРНА — очиж авсан захиалгын
+         бараа ч агуулахад байрандаа тавигдана. */
+      eq(F.pipelineNext('rented', { dlv: false }).to, 'stowed', 'урсгал: очиж авсанд эхлээд байршуулна');
+      eq(F.pipelineNext('returned', { dlv: false }).to, 'archived', 'урсгал: очиж авсанд хүлээн авсны дараа архив');
+      eq(vm.runInContext("stageActionFor('rented','stowed').key", sandbox), 'stow', 'урсгал: очиж авсны байршуулалт stow түлхүүрээр хадгалагдана');
+      eq(F.stageWeight('stow'), 15, 'оноо: Буулгаж байршуулах 15');
+      eq(F.stageEvidence('stow'), 'photo', 'нотолгоо: Буулгаж байршуулах = зураг');
+      /* ⛔ БИЕИЙН ХҮЧНИЙ ДАМЖЛАГА → `orders.prepare` (агуулахын БҮХ ажилтанд),
+         `orders.dispatch` БИШ (зөвхөн 4 нярав/ахлахад — хүнд ажил хийх ёсгүй
+         хүмүүс). Буруу эрхэнд тавибал товч дарах хүн байхгүй болж захиалга
+         гацна (амьд эрхээр баталсан, 2026-10-04). */
+      eq(F.pipelineNext('rented', { dlv: false }).cap, 'orders.prepare', 'эрх: байршуулах нь агуулахын ажилтны эрхээр');
+      eq(F.pipelineNext('stowed', {}).cap, 'orders.dispatch', 'эрх: сүүлийн хүлээн авалт нь няравын эрхээр');
+      // ⚠ Нөөц эзлэх төлөвт ОРОХГҮЙ — бараа аль хэдийн агуулахад ирсэн
+      ok(vm.runInContext('_ORDER_OCCUPYING', sandbox).indexOf('stowed') < 0,
+         'нөөц: байршуулж буй захиалга нөөц эзлэхгүй (DB харагдац хөндөгдөхгүй)');
+      // ⛔ Танихгүй төлөв → null (дамжлага ЗОХИОХГҮЙ)
+      eq(F.pipelineNext('ямар_ч_биш', { dlv: true, setup: true }), null, 'урсгал: танихгүй төлөвт дамжлага алга');
+      // Нөхцөл — суурилуулалт зөвхөн хүргэлттэй захиалгад
+      const ctx = F.orderPipelineCtx({ note: '⟦SET|1⟧', delivery_address: 'СБД 1-р хороо', items: [] });
+      ok(ctx.dlv && ctx.setup, 'урсгал: хүргэлт + суурилуулалт танигдана');
+      const ctx2 = F.orderPipelineCtx({ note: '⟦SET|1⟧', items: [] });
+      ok(!ctx2.dlv && !ctx2.setup, 'урсгал: очиж авахад суурилуулалт гарахгүй');
+    }
+
     const step = (o, st) => F.orderNextStep(Object.assign({}, o, { status: st }));
     // Суурилуулалттай: Хүргэсэн → 🔧 Суурилуулах → түрээс → 🧱 Буулгах → буцаан авах
+    /* ⛔ БУУЛГАХ БА СУУРИЛУУЛАХ ТУСДАА (2026-10-04, CEO — нэгтгэж үзээд
+       буцаасан). «Суурилуулсан»/«Задалсан» нь ЗӨВХӨН суурилуулалттай
+       захиалгад гардаг тул нэгтгэвэл тийм захиалгад «Талбайд буулгасан»
+       дамжлага ОГТ гарахгүй болж, хоёр төрлийн захиалга өөр бүтэцтэй болно. */
     ok(step(withSet, 'delivering').to === 'installing', 'setup: хүргэсний дараа installing');
+    ok(step(withSet, 'delivering').cap === 'orders.deliver', 'буулгах: суурилуулалттайд ч хүргэлтийн эрхээр');
+    eq(F.stageWeight('setup'), 20, 'суурилуулах: 20 оноо (буулгахтай НЭГДЭЭГҮЙ)');
     ok(step(withSet, 'installing').to === 'rented', 'setup: суурилуулсны дараа түрээс');
     ok(step(withSet, 'installing').cap === 'orders.setup', 'setup: суурилуулах эрх = orders.setup');
     ok(step(withSet, 'rented').to === 'teardown', 'setup: түрээсийн дараа буулгах');
@@ -3123,7 +4073,6 @@ need(['orderCustType']);
     ok(G('STAGE_ACTION')['rented>teardown'].key === 'teardown', 'teardown: STAGE_ACTION зураглал');
     ok(!!G('STAGE_META_LABEL').setup && !!G('STAGE_META_LABEL').teardown, 'setup: түүхийн нэр бий');
     ok(F.stageHelpQuestion('setup').includes('Суурилуулалт'), 'setup: хамтрагчийн асуулт тодорхой');
-    ok(!!G('STAGE_PREV_Q').setup && !!G('STAGE_PREV_Q').teardown, 'setup: үнэлгээний асуулт бий');
     const _ss = G('ORDER_STAFF_STATUSES');
     ok(_ss.includes('installing') && _ss.includes('teardown'), 'setup: шинэ төлөв ажилтанд харагдана');
     ok(F.bucketOf('installing') === 'active' && F.bucketOf('teardown') === 'active',
@@ -3148,7 +4097,8 @@ need(['orderCustType']);
       ['reserved', 'orders.clean'], ['prepared', 'orders.prepare'],
       ['ready', 'orders.dispatch'], ['delivering', 'orders.deliver'],
       ['installing', 'orders.setup'], ['rented', 'orders.setup'],
-      ['returned', 'orders.advance'],
+      // ⚠ setO = ХҮРГЭЛТТЭЙ тул: байршуулсны дараа нярав тоолж, дараа нь архив
+      ['returning', 'orders.prepare'], ['stowed', 'orders.dispatch'], ['returned', 'orders.advance'],
     ];
     for (const [st, cap] of pairs) {
       const b = btn(setO, st);
@@ -3254,6 +4204,32 @@ need(['orderCustType']);
     ok(/saved && kind === 'out'/.test(fn), 'ирц: «маргааш хэдэн цагт» зөвхөн хадгалагдсаны дараа');
 
     sandbox.fetch = savedFetch; st.attendanceToday = savedAtt; st._attLastScan = savedLast;
+  }
+
+  /* ═══ ТОХИРГОО СЕРВЕРЭЭС АЧААЛАГДАНА (2026-10-03) ═══════════════════════
+     ⛔ `state.appConfig`-ийг ачаалдаг код ОГТ байгаагүй тул «тохиргооноос
+        уншина» гэсэн БҮХ дүрэм (ажлын норм, илүү цаг, цай, дамжлагын оноо,
+        элэгдлийн нас, суутгалын хувь) чимээгүй кодын нөөц утгаар ажиллаж байв. */
+  {
+    const runIn = (c) => vm.runInContext(c, sandbox);
+    const savedFetch = sandbox.fetch;
+    const savedCfg = runIn('JSON.stringify(state.appConfig || null)');
+    const load = runIn('loadAppConfigAll');
+    runIn("state.appConfig = { salary_rates: { ndsh: 1, pit: 2 } };");
+    sandbox.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([
+      { key: 'work_norm_days', value: 21 },
+      { key: 'salary_rates', value: { ndsh: 99, pit: 99 } },   // ⚠ СЕССИЙН утгыг дарахгүй
+    ]) });
+    await load();
+    eq(runIn('state.appConfig.work_norm_days'), 21, 'тохиргоо: серверийн утга бууна');
+    eq(runIn('state.appConfig.salary_rates.ndsh'), 1, 'тохиргоо: сессийн утгыг ДАРАХГҮЙ');
+    ok(runIn('state._appConfigLoaded') === true, 'тохиргоо: ачаалагдсан төлөв тэмдэглэгдэнэ');
+    // ⛔ Унавал хуучин утгыг ХООСЛОХГҮЙ
+    sandbox.fetch = () => Promise.resolve({ ok: false, status: 500 });
+    await load();
+    eq(runIn('state.appConfig.work_norm_days'), 21, 'тохиргоо: унасан ч хуучин утга үлдэнэ');
+    sandbox.fetch = savedFetch;
+    runIn('state.appConfig = ' + (savedCfg === 'null' ? 'null' : savedCfg) + ';');
   }
 
   // ТООЛЛОГО — бичлэг ачаалагдаагүйг чимээгүй өнгөрүүлэхгүй (2026-09-27)
@@ -3868,16 +4844,24 @@ need(['orderCustType']);
     eq(LA('all', 'all'), false, 'ленз: «Бүгд» ленз юу ч шүүхгүй');
     eq(LA('mine', 'all'), false, 'ленз: «Бүгд» ленз + Миний ажил');
 
-    // Тоймын ХУВИЙН блок лензээс салсан эсэх (эх кодоор)
     const dash = src.slice(src.indexOf('function renderDashboard()'));
-    const head = dash.slice(0, dash.indexOf('const myDone'));
-    ok(/const myBase = \(state\.tasks \|\| \[\]\)/.test(head),
-       'ленз: Тоймын хувийн KPI лензгүй суурьтай');
-    ok(head.indexOf('const mineTasks = myBase.filter') > -1,
-       'ленз: mineTasks нь лензээр шүүгдээгүй суурьнаас');
-    // Компанийн тоо урьдын адил лензээр шүүгдсэн хэвээр
-    ok(/const tasks = \(state\.tasks \|\| \[\]\)[\s\S]*branchInLens\(taskBranch\(t\)\)/.test(head),
-       'ленз: Тоймын компанийн тоо урьдын адил лензээр шүүгдэнэ');
+    // «Компанийн тойм» хэсэг 2026-10-05-нд хасагдсан (CEO): бүх тоо өөр дэлгэцэд давхардаж байв
+    const dashBody = dash.slice(0, dash.indexOf('\nfunction ', 1));
+    ok(!/Компанийн тойм|dash-staff|dash-donut|dash-finance/.test(dashBody),
+       'Тойм: «Компанийн тойм» хэсэг буцаж ирэхгүй');
+    // «Миний ажил» + авлага/ойрын 7 хоногийн тууз 2026-10-05-нд хасагдсан (CEO):
+    // ажил нь «Миний ажил» дэлгэцэд, авлага нь Авлага дэлгэцэд бий — давхардал.
+    const _gone = [
+      ['ceoNowStrip(', 'авлагын тууз'], ['Авах үлдсэн төлбөр', 'авлагын карт'],
+      ['Ойрын 7 хоног', 'ойрын 7 хоногийн карт'], ['Миний ажил', '«Миний ажил» гарчиг'],
+      ['Миний дуусгасан', '7 хоногийн график'], ['kpi-bar-chart', 'баганан график'],
+      ['dash-kpi-value primary', 'идэвхтэй ажлын KPI'], ['last7Days(', '7 хоногийн бодолт'],
+      ['data-ceo-now', 'туузны товч'],
+    ];
+    _gone.forEach(([pat, what]) => ok(dashBody.indexOf(pat) < 0, `Тойм: ${what} буцаж ирэхгүй`));
+    ok(src.indexOf('function ceoNowStrip') < 0, 'Тойм: туузны функц устсан (үхмэл код үлдэхгүй)');
+    ok(src.indexOf('function ceoNowCounts') < 0, 'Тойм: туузны тоолуур устсан (үхмэл код үлдэхгүй)');
+    ok(src.indexOf("querySelectorAll('[data-ceo-now]')") < 0, 'Тойм: туузны дарах үйлдэл устсан');
   }
 
   // ── ХАМГИЙН ЧУХАЛ ИНВАРИАНТ: Түүхийн «Нийт орлого» = Захиалгын жагсаалтын «борлуулалт» ──
@@ -5121,7 +6105,7 @@ need(['orderCustType']);
   ok(/stats/.test(body), 'scan: таамаглалын тоог гаргана (чимээгүй буруу ангилахгүй)');
   // Бараа зассаны дараа тайлангийн кэш хүчингүй болох ёстой
   const sp = src.slice(src.indexOf('async function saveProduct('));
-  ok(/state\.history = null/.test(sp.slice(0, 6000)),
+  ok(/state\.history = null/.test(sp.slice(0, 7500)),
      'scan: saveProduct тайлангийн кэшийг хүчингүй болгоно');
   // `зүлэг` тоглоомын түлхүүр үгэнд БУЦАЖ ОРОХГҮЙ
   const kw = src.slice(src.indexOf('const _HIST_CAT_KW'), src.indexOf('function _histNormAgg'));
@@ -5372,9 +6356,10 @@ need(['orderCustType']);
 
 // ── ГАРАХ ЁСТОЙ ЦАГ — хоцролтын хэмжүүр (2026-09-22) ───────────────────────
 {
-  const mk = (n, day, note, dispatchAt) => ({
+  // Хүргэлт: «Бүртгэж гаргасан» ба «Талбайд буулгасан» хоёулаа тэр цагт (хэмжүүр нь буулгасан цаг)
+  const mk = (n, day, note, deliverAt) => ({
     id: 'o' + n, number: n, customer: 'Х', status: 'archived', starts_at: day, note,
-    stage_meta: dispatchAt ? { dispatch: { at: dispatchAt } } : {},
+    stage_meta: deliverAt ? { dispatch: { at: deliverAt }, deliver: { at: deliverAt } } : {},
   });
   // ⛔ Хотын захиалгад км нь 0 гэж бичигддэг — доод тал нь 1 цаг зам тооцно,
   //    эс бөгөөс хотын хүргэлт «замгүй» болно. 1 + 1 + 0.5 = 2.5 цаг.
@@ -5398,17 +6383,90 @@ need(['orderCustType']);
   eq(F.orderDispatchPlan(mk(5, '2026-09-14', '')), null, 'гарах: цаггүй бол null');
   eq(F.orderDispatchPlan(null), null, 'гарах: хоосон → унахгүй');
 
-  // Хоцролт: эвент 13:00 УБ = 05:00Z. Хот 2.5ц → 10:30 УБ = 02:30Z гэхэд гарна.
-  const late = F.orderDispatchLate(mk(6, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T07:29:00Z'));
-  eq(late.lateH, 5, 'хоцролт: 5 цаг хоцорсон');
+  // Хоцролт = ТАЛБАЙД БУУЛГАСАН цаг − эвент эхлэх цаг (2026-10-05, CEO).
+  // Эвент 13:00 УБ = 05:00Z; 07:29Z-д буулгасан → 2.5 цаг хоцорсон.
+  const late = F.orderArrivalLate(mk(6, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T07:29:00Z'));
+  eq(late.lateH, 2.5, 'хоцролт: эвент эхэлснээс 2.5 цагийн дараа буулгасан');
   eq(late.ok, false, 'хоцролт: цагтаа биш');
-  eq(F.orderDispatchLate(mk(7, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T02:00:00Z')).ok,
-     true, 'хоцролт: эрт гарсан = цагтаа');
+  eq(F.orderArrivalLate(mk(7, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T02:00:00Z')).ok,
+     true, 'хоцролт: эхлэхээс өмнө буулгасан = цагтаа');
+  // ⛔ «Бүртгэж гаргасан» цаг нотолгоо БИШ — эрт бүртгэсэн ч хожуу очсон бол ХОЦОРСОН
+  //   (амьд: 09:00-д эхлэх эвент, өмнөх орой бүртгэсэн, 11:14-д буулгасан → «цагтаа» гэж тоологдож байв)
+  const lateArr = F.orderArrivalLate({ number: 30, status: 'archived', starts_at: '2026-10-03',
+    note: '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧',
+    stage_meta: { dispatch: { at: '2026-10-02T10:11:00Z' }, deliver: { at: '2026-10-03T03:14:00Z' } } });
+  ok(lateArr && !lateArr.ok && lateArr.lateH === 2.2, 'хоцролт: эрт бүртгэсэн ч хожуу буулгасан = хоцорсон');
+  eq(F.orderArrivalLate({ number: 31, status: 'delivering', starts_at: '2026-10-03', note: '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧',
+    stage_meta: { dispatch: { at: '2026-10-02T10:11:00Z' } } }), null, 'хоцролт: хараахан буулгаагүй → хэмжигдэхгүй');
+  // ⛔ Суурилуулалттай бол СУУРИЛУУЛЖ ДУУССАН цагаар — буулгасан нь хангалтгүй
+  const setupO = (setupAt) => ({ number: 32, status: 'rented', starts_at: '2026-09-14', note: '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧ ⟦SET|1⟧',
+    stage_meta: { deliver: { at: '2026-09-14T04:00:00Z' }, ...(setupAt ? { setup: { at: setupAt } } : {}) } });
+  eq(F.orderArrivalLate(setupO('2026-09-14T06:00:00Z')).lateH, 1, 'суурилуулалт: суурилуулж дууссан цагаар хэмжинэ');
+  eq(F.orderArrivalLate(setupO(null)), null, 'суурилуулалт: суурилуулаагүй бол буулгасан цагаар ХЭМЖИХГҮЙ');
+  eq(F.dispatchStats([{ ...setupO(null), status: 'installing' }], '2026-09-01').skipped, 0, 'суурилуулалт хүлээж буй нь «хэмжигдээгүй» биш');
+  eq(F.dispatchStats([setupO(null)], '2026-09-01').skipped, 1, 'суурилуулалтыг алгассан нь «хэмжигдээгүй»-д ил');
+
+  // ── ЗУРАГ АВСАН ЦАГ (EXIF) — хожим оруулсан зураг (2026-10-05, CEO) ──
+  const exifJpeg = (dt, offset, be) => {
+    const w16 = (a, v) => be ? a.push((v >> 8) & 255, v & 255) : a.push(v & 255, (v >> 8) & 255);
+    const w32 = (a, v) => be ? a.push((v >>> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255)
+                             : a.push(v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255);
+    const n = offset ? 2 : 1, exifOff = 8 + 18, dataOff = exifOff + 2 + 12 * n + 4, t = [];
+    t.push(...(be ? [0x4D, 0x4D] : [0x49, 0x49])); w16(t, 42); w32(t, 8);
+    w16(t, 1); w16(t, 0x8769); w16(t, 4); w32(t, 1); w32(t, exifOff); w32(t, 0);
+    w16(t, n); w16(t, 0x9003); w16(t, 2); w32(t, 20); w32(t, dataOff);
+    if (offset) { w16(t, 0x9011); w16(t, 2); w32(t, 7); w32(t, dataOff + 20); }
+    w32(t, 0);
+    for (const ch of dt) t.push(ch.charCodeAt(0)); t.push(0);
+    if (offset) { for (const ch of offset) t.push(ch.charCodeAt(0)); t.push(0); }
+    const app1 = [0x45, 0x78, 0x69, 0x66, 0, 0, ...t], len = app1.length + 2;
+    // APP0 сегментийг алгасаж чадахыг ч шалгана
+    return [0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xE1, (len >> 8) & 255, len & 255, ...app1, 0xFF, 0xDA, 0, 2];
+  };
+  eq(F.exifTakenAt(exifJpeg('2026:10:03 08:40:12')), '2026-10-03T08:40:12+08:00', 'EXIF: зураг авсан цаг (бүсгүй → УБ)');
+  eq(F.exifTakenAt(exifJpeg('2026:10:03 08:40:12', '+09:00', true)), '2026-10-03T08:40:12+09:00', 'EXIF: big-endian + цагийн бүс');
+  eq(F.exifTakenAt(exifJpeg('0000:00:00 00:00:00')), null, 'EXIF: хоосон цаг → null');
+  eq(F.exifTakenAt([0xFF, 0xD8, 0xFF, 0xDA, 0, 2]), null, 'EXIF: EXIF-гүй JPEG → null');
+  eq(F.exifTakenAt([0x89, 0x50, 0x4E, 0x47]), null, 'EXIF: PNG → null');
+  eq(F.exifTakenAt(exifJpeg('2026:10:03 08:40:12').slice(0, 30)), null, 'EXIF: тасарсан файл → унахгүй, null');
+  eq(F.exifTakenAt(null), null, 'EXIF: хоосон → null');
+
+  // 09:00-д эхлэх эвент; агуулахаас өмнөх орой бүртгэсэн; 11:14-д товч дарсан,
+  // гэхдээ зургийг 08:40-д авсан → ЦАГТАА (зургийн цагаар)
+  const shotO = (deliverShots, setupStage) => ({ number: 40, status: 'archived', starts_at: '2026-10-03',
+    note: '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧' + (setupStage ? ' ⟦SET|1⟧' : ''),
+    stage_meta: { dispatch: { at: '2026-10-02T10:11:00Z' },
+      deliver: { at: '2026-10-03T03:14:00Z', ...(deliverShots ? { shots: deliverShots } : {}) },
+      ...(setupStage ? { setup: setupStage } : {}) } });
+  const ph = F.orderArrivalLate(shotO(['2026-10-03T08:40:00+08:00']));
+  ok(ph.ok && ph.src === 'photo' && ph.lateH === -0.3, 'зураг: хожим оруулсан ч зураг авсан цагаар цагтаа');
+  // ⛔ Өмнөх эвентийн (агуулахаас гарахаас ӨМНӨХ) зураг тооцогдохгүй
+  const old = F.orderArrivalLate(shotO(['2026-09-20T10:00:00+08:00']));
+  ok(!old.ok && old.src === 'press' && old.lateH === 2.2, 'зураг: агуулахаас гарахаас өмнөх зураг → товчны цаг');
+  // ⛔ Товч дарснаас ХОЙШ авсан зураг (10 минутаас их) тооцогдохгүй
+  eq(F.orderArrivalLate(shotO(['2026-10-03T13:00:00+08:00'])).src, 'press', 'зураг: товчноос хойшхи зураг → товчны цаг');
+  eq(F.orderArrivalLate(shotO(null)).src, 'press', 'зураг: EXIF-гүй бол товчны цаг');
+  // Суурилуулалт: СҮҮЛИЙН (дууссан) зураг; буулгалтын зургаас ӨМНӨХ нь тооцогдохгүй
+  const su = F.orderArrivalLate(shotO(['2026-10-03T08:40:00+08:00'],
+    { at: '2026-10-03T03:15:00Z', shots: ['2026-10-03T08:30:00+08:00', '2026-10-03T08:55:00+08:00'] }));
+  ok(su.ok && su.src === 'photo' && su.lateH === -0.1, 'суурилуулалт: сүүлийн зургийн цагаар (буулгалтаас хойш)');
+  {
+    const _sx = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const i0 = _sx.indexOf('const _onPhoto = async (e) => {');
+    const seg = _sx.slice(i0, i0 + 900);
+    // ⛔ Шахалт EXIF-ийг устгадаг тул цагийг uploadReceipt-ээс ӨМНӨ уншина
+    ok(i0 > 0 && seg.indexOf('photoTakenAt(f)') > 0 && seg.indexOf('photoTakenAt(f)') < seg.indexOf('uploadReceipt(f'),
+      'scan: зураг авсан цагийг шахахаас өмнө уншина');
+    ok(/entry\.shots = shots\.slice\(\)/.test(_sx), 'scan: зураг авсан цаг дамжлагад хадгалагдана');
+    // ⛔ `capture` нь камерыг ШУУД нээдэг — өмнө авсан зургийг оруулах зам ЗААВАЛ
+    ok(/<input id="sa-photo-gallery" type="file" accept="image\/\*" hidden>/.test(_sx), 'scan: дамжлагад галерейгаас зураг оруулах зам бий');
+    ok(/\$\('#sa-photo-gallery'\)\.onchange = _onPhoto/.test(_sx), 'scan: галерейн зураг ч ижил замаар (цаг уншина)');
+  }
   // ⛔ Очиж авах — хугацаа бодохгүй (дээрх дүрэм)
   eq(F.orderDispatchPlan(mk(10, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|pickup|0|0⟧')), null,
      'гарах: очиж авахад хугацаа бодохгүй');
   // ⛔ Товч ХОЖУУ дарсан бичлэг (амьд датад −79 цаг байсан) хэмжүүрийг эвдэнэ.
-  ok(F.orderDispatchLate(mk(8, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-17T09:00:00Z')).wild,
+  ok(F.orderArrivalLate(mk(8, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-17T09:00:00Z')).wild,
      'хоцролт: хэт том зөрүү = бүртгэлийн алдаа');
 
   const st = F.dispatchStats([
@@ -5426,6 +6484,57 @@ need(['orderCustType']);
   eq(st.pickup, 1, 'нэгтгэл: очиж авах тусад нь (хэмжигдээгүй гэж тоологдохгүй)');
   // ⛔ Хэмжих юмгүй бол хувь null — 0% нь «бүгд хоцорсон» гэж уншигдана.
   eq(F.dispatchStats([], '2026-09-01').pct, null, 'нэгтгэл: дата байхгүй бол null');
+
+  // ── САРААР (2026-10-05, CEO: «тухайн сараа харуулдаг, саруудыг сонгодог») ──
+  const two = [
+    mk(21, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T07:29:00Z'),   // 9 сар, хоцорсон
+    mk(22, '2026-10-02', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-10-02T02:00:00Z'),   // 10 сар, цагтаа
+  ];
+  eq(F.dispatchStats(two, null, '2026-09').n, 1, 'сараар: 9 сар зөвхөн 9 сарынхыг');
+  eq(F.dispatchStats(two, null, '2026-10').pct, 100, 'сараар: 10 сар тусдаа');
+  eq(F.dispatchStats(two, null, '2026-08').pct, null, 'сараар: датагүй сар → null (0% БИШ)');
+  {
+    const runIn = (c) => vm.runInContext(c, sandbox);
+    const sv = runIn('[state.dspMonth, state.isCEO]');
+    runIn("state.isCEO = true; state.dspMonth = '2026-09';");
+    const h9 = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
+    ok(/data-dsp-ym="2026-09"/.test(h9), 'карт: сонгосон сарыг харуулна');
+    ok(/>0%</.test(h9) && /1\/1 хоцорсон/.test(h9), 'карт: 9 сарын тоо (1/1 хоцорсон)');
+    ok(!/хоног/.test(h9), 'карт: «60 хоног» гулсдаг цонх БАЙХГҮЙ');
+    // График: сар бүр багана, дарж сонгоно; сонгосон нь тодорно
+    ok(/data-dsp-pick="2026-09"/.test(h9) && /data-dsp-pick="2026-10"/.test(h9), 'график: сар бүр багана');
+    ok(/dsp-col ui-raw on[^"]*" data-dsp-pick="2026-09"/.test(h9), 'график: сонгосон сар тодорно');
+    // ⛔ Хоосон сараар графикийг дүүргэхгүй — эхний хэмжигдсэн сараас эхэлнэ
+    ok(!/data-dsp-pick="2026-08"/.test(h9), 'график: эхний хэмжигдсэн сараас өмнөх хоосон сар гарахгүй');
+    // Өмнөх сартай харьцуулалт: 10 сар 100% vs 9 сар 0% → ▲ +100
+    runIn("state.dspMonth = '2026-10';");
+    const h10 = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
+    ok(!/dsp-delta/.test(h10), 'харьцуулалт: өмнөх сар цөөн хүргэлттэй бол гарахгүй (дуу чимээ)');
+    const many = [];
+    for (let i = 0; i < 5; i++) many.push(mk(30 + i, '2026-09-1' + i, '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-1' + i + 'T07:29:00Z'));   // 9 сар 5/5 хоцорсон
+    const h10b = runIn(`dispatchBlockHtml(${JSON.stringify([...many, two[1]])})`);
+    ok(/dsp-delta up">▲ \+100 нэгж · 9 сар 0%/.test(h10b), 'харьцуулалт: өмнөх сараас ахисан');
+    ok(!/dsp-delta/.test(h9), 'харьцуулалт: өмнөх сар хэмжигдээгүй бол гарахгүй');
+    // ⛔ Цөөн хүргэлттэй сар бүдэг (1 хүргэлтийн «100%» худал дүр зураг өгөхгүй)
+    ok(/dsp-col ui-raw[^"]* thin" data-dsp-pick="2026-10"/.test(h10), 'график: цөөн хүргэлттэй сар бүдэг');
+    // Цувааны цэвэр функц
+    const ser = runIn(`dispatchMonthSeries(${JSON.stringify(two)}, '2026-12', 6)`);
+    eq(ser.map(m => m.ym).join(','), '2026-09,2026-10,2026-11,2026-12', 'цуваа: эхний датаас өнөөдөр хүртэл');
+    eq(ser[2].pct, null, 'цуваа: датагүй сар → null (0% БИШ)');
+    eq(runIn(`dispatchMonthSeries([], '2026-12', 6)`).length, 1, 'цуваа: дата огт алга бол зөвхөн энэ сар');
+    // Цувааны гадна (эсвэл ирээдүйн) сар → энэ сар
+    runIn("state.dspMonth = '2999-01';");
+    const hf = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
+    ok(new RegExp('data-dsp-ym="' + runIn('todayStr().slice(0, 7)') + '"').test(hf), 'карт: цувааны гадна сар → энэ сар');
+    runIn(`[state.dspMonth, state.isCEO] = ${JSON.stringify(sv)};`);
+  }
+  // ИНВАРИАНТ: Тойм ба Дүн шинжилгээ ИЖИЛ дуудлагаар (тоо зөрөхгүй)
+  {
+    const _sx = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(/dispatchStats\(orders, null, ym\)/.test(_sx), 'scan: Тойм сараар бодно');
+    ok(/dispatchStats\(state\.appOrders \|\| \[\], null, month\)/.test(_sx), 'scan: Дүн шинжилгээ ижил дуудлагаар');
+    ok(!/DISPATCH_STAT_DAYS/.test(_sx), 'scan: гулсдаг 60 хоногийн цонх буцаж ирэхгүй');
+  }
 
   // ── Өдрөөр задаргаа (Дүн шинжилгээ, 2026-09-22) ──
   const dayRows = F.dispatchDayRows([
@@ -5447,7 +6556,7 @@ need(['orderCustType']);
   // ⛔ ЖАГСААЛТ ЗӨВХӨН ТАЙЛАНД — Тойм дээр давтвал аль нь бүтэн болох нь мэдэгдэхгүй.
   ok(/dispatchDayRows\(inMonth, month\)/.test(_s2), 'scan: өдрийн задаргаа тайланд');
   ok(!/st\.worst\.map/.test(_s2), 'scan: хамгийн муугийн жагсаалт Тоймд БАЙХГҮЙ');
-  ok(/id="dsp-more"/.test(_s2), 'scan: Тоймоос тайлан руу зам бий');
+  ok(/id="dsp-card"/.test(_s2), 'scan: Тоймоос тайлан руу зам бий (картыг бүхэлд нь дарна)');
   // ⛔ Ажил нь КАРТ дээр, хэмжүүр нь Тойм дээр — хоёр газар ижил зүйл ДАВТАХГҮЙ.
   ok(/\$\{dispatchChipHtml\(o\)\}/.test(_s2), 'scan: шошго захиалгын картад');
   ok(/\$\{dispatchBlockHtml\(state\.appOrders \|\| \[\]\)\}/.test(_s2), 'scan: хэмжүүр Тоймд');
@@ -6930,6 +8039,26 @@ need(['orderCustType']);
   eq(F.pbxFollowups(cl, { from: '2026-09-15' }).length, 1, 'дуудлага: хугацаагаар шүүнэ');
   eq(F.pbxFollowups(cl, { from: '2026-09-16' }).length, 0, 'дуудлага: хугацаанаас гадуур → хоосон');
   eq(F.pbxFollowups(null).length, 0, 'дуудлага: дата байхгүй → хоосон (унахгүй)');
+  /* ⛔ ЯРЬСАН ДУУДЛАГА ЗӨВХӨН АЛДСАНЫ ДАРАА болсон бол хаана (2026-10-05, CEO).
+     Амьд жишээ: 12:43 ярьсан → 16:44 62 сек хүлээгээд аваагүй — нуугдаж байв. */
+  const ord = [
+    { direction: 'in', peer: '80070001', started_at: '2026-09-24T04:43:00Z', answer_sec: 166, call_sec: 180 },
+    { direction: 'in', peer: '80070001', started_at: '2026-09-24T08:44:00Z', answer_sec: 0, call_sec: 62 },
+    { direction: 'in', peer: '80100002', started_at: '2026-09-29T01:32:00Z', answer_sec: 0, call_sec: 40 },
+    { direction: 'in', peer: '80100002', started_at: '2026-09-29T06:07:00Z', answer_sec: 178, call_sec: 196 },
+  ];
+  const fo = F.pbxFollowups(ord, { ws: 9, we: 18 });
+  ok(fo.some(x => x.peer === '80070001'), 'дуудлага: өмнө ярьсан ч ДАРАА нь аваагүй бол жагсаалтад гарна');
+  ok(!fo.some(x => x.peer === '80100002'), 'дуудлага: аваагүйн ДАРАА ярьсан бол хасагдана');
+  eq(F.pbxTime('2026-09-15T04:00:00+00'), Date.parse('2026-09-15T04:00:00Z'), 'дуудлага: Postgres «+00» цаг уншигдана');
+  // Дугаарын дуудлагын түүх — цагийн дарааллаар, ажлын бус цаг тэмдэглэгдэнэ
+  const tl = F.pbxPeerTimeline(ord.concat([{ direction: 'in', peer: '80070001', started_at: '2026-09-24T13:00:00Z', answer_sec: 0, call_sec: 9 }]), '80070001', '', 9, 18);
+  eq(tl.length, 3, 'түүх: тэр дугаарын бүх дуудлага');
+  ok(tl[0].t <= tl[1].t && tl[1].t <= tl[2].t, 'түүх: цагийн дарааллаар');
+  eq(tl[0].ans, 166, 'түүх: ярьсан хугацаа');
+  ok(tl[2].off && !tl[0].off, 'түүх: ажлын бус цагийн дуудлага тэмдэглэгдэнэ');
+  const tlh = F.pbxTimelineHtml(tl);
+  ok(/ярьсан/.test(tlh) && /аваагүй/.test(tlh), 'түүх: ярьсан/аваагүй ил бичигдэнэ');
 
   // ── Харилцагчийн дуудлагын түүх (2026-09-16) ──
   {
@@ -9821,54 +10950,6 @@ need(['orderCustType']);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ТОЙМЫН ТУУЗ = ХОЁР ДАРАГДДАГ КАРТ (2026-09-22, CEO)
-//
-// Өмнө 4 карт байсан боловч 3 нь ДАРАГДАХГҮЙ тоо: орлого (Санхүүд бүрэн
-// задаргаатай), хүргэлт, буцаалт. Тойм дээр ТОО БИШ, АЖИЛ байна.
-// ═══════════════════════════════════════════════════════════════════════════
-{
-  const cnt = sandbox.ceoNowCounts;
-  ok(typeof cnt === 'function', 'тууз: ceoNowCounts бий');
-  const T = '2026-09-22';
-
-  const r = cnt([
-    { status: 'reserved',   starts_at: '2026-09-24' },   // хүргэлт ✓
-    { status: 'delivering', starts_at: '2026-09-22' },   // өнөөдөр ✓
-    { status: 'rented',     stops_at:  '2026-09-25' },   // буцаалт ✓
-    { status: 'reserved',   starts_at: '2026-10-05' },   // цонхны гадна ✗
-    { status: 'archived',   starts_at: '2026-09-23' },   // дууссан ✗
-  ], [], T, 7);
-  eq({ d: r.deliveries, r: r.returns }, { d: 2, r: 1 }, 'ойрын 7 хоног: 2 хүргэлт · 1 буцаалт');
-
-  // ⛔ ӨНӨӨДРИЙГ ОРОЛЦУУЛНА — хасвал өнөөдрийн ажил дэлгэцээс алга болно
-  eq(cnt([{ status: 'ready', starts_at: T }], [], T, 7).deliveries, 1,
-     '⛔ өнөөдрийн хүргэлт тоологдоно');
-  eq(cnt([{ status: 'ready', starts_at: '2026-09-21' }], [], T, 7).deliveries, 0,
-     'өнгөрсөн огноо: тоологдохгүй');
-  // ⚠ NOMAAD мөрийг `nomaadExpiredLead` ЖИНХЭНЭ өнөөдрөөр шүүдэг тул огноо ирээдүй байх ёстой.
-  eq(cnt([], [{ date_start: _soon(2) }], _soon(0), 7).deliveries, 1, 'NOMAAD эвент тоологдоно');
-  eq(cnt(null, null, T, 7), { deliveries: 0, returns: 0 }, 'хог оролт: 0');
-  eq(cnt([{ status: 'ready', starts_at: '2026-09-24' }], [], '', 7).deliveries, 0,
-     'огноогүй: 0 (буруу тоо гаргахгүй)');
-}
-
-// ━━━ SCAN: ТОЙМЫН КАРТ ДАРАГДАЖ АЖИЛ РУУ ХӨТЛӨНӨ ━━━
-{
-  const at = src.indexOf('function ceoNowStrip');
-  ok(at > 0, 'scan: ceoNowStrip олдов');
-  const fn = src.slice(at, at + 3000);
-  ok(!/Энэ сарын орлого/.test(fn),
-     '⛔ scan: Тоймын туузанд орлогын карт буцаж ирээгүй (Санхүүд бий)');
-  const calls = fn.match(/\$\{cell\(/g) || [];
-  eq(calls.length, 2, 'тууз: ЯГ 2 карт');
-  for (const v of ["'receivables')", "'orders')"]) {
-    ok(fn.includes(v), `⛔ scan: карт ${v.slice(1, -2)} дэлгэц рүү дарагдана`);
-  }
-  ok(/ceoNowCounts\(state\.appOrders/.test(fn),
-     'scan: ойрын 7 хоног цэвэр функцаар бодогдоно');
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // ЗАХИАЛГЫН ТОВЧ — «ОДОО ХИЙХ» НЬ ЭГНЭЭНД (2026-09-22, CEO)
 //
 // 12 товч нэг дор суухад аль нь одоо хэрэгтэйг хүн мэдэхгүй — санхүүгийн
@@ -10282,6 +11363,8 @@ need(['orderCustType']);
 {
   need(['stmtPeriodDates', 'stmtIdOf', 'stmtIncomeKey', 'stmtIncomeFp', 'buildStatementImport',
     'stmtBalanceCheck', 'stmtChainCheck', 'incomeOpenStats', 'stmtMonthMissingAccts',
+    'stmtNoPayerNames', 'balanceStats', 'stmtChainSpine', 'stmtDetail', 'monthSeal', 'monthEndDay', 'stmtMonthSplit',
+    'stockSealed', 'openingSealBlock',
     'receiptFpIndex', 'receiptMatchFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner']);
 
   // ── хугацаа: толгойд бичигдсэн бол түүнээс, эс бол мөрүүдээс ──
@@ -10345,6 +11428,18 @@ need(['orderCustType']);
   eq(F.stmtBalanceCheck({ ccy: 'MNT', opening: 100, closing_stated: 300, closing_calc: 250 }).diff, -50, 'тэнцэл: зөрүү гарна (мөр дутуу уншигдсан)');
   eq(F.stmtBalanceCheck({ ccy: 'USD', opening: 100, closing_stated: 300, closing_calc: 999 }).ok, true, 'тэнцэл: валют данс шалгагдахгүй (мөр ₮ болж хөрвүүлэгдсэн)');
   eq(F.stmtBalanceCheck({ ccy: 'MNT', opening: null, closing_stated: null }).ok, true, 'тэнцэл: үлдэгдэл хуулгад алга → шалгахгүй');
+
+  // ── НЭРГҮЙ ЭКСПОРТ: дүн зөв байж нэр алга бол ил хэлнэ (2026-10-02) ──
+  // Голомт хоёр хэлбэрээр экспортолдог; нэргүйг оруулбал «хэн төлсөн» хоосон орно.
+  eq(F.stmtNoPayerNames({ rows: [{ credit: 100, name: 'СИНЭФФЭКТ' }, { credit: 200, name: '' }] }), 0,
+     'нэргүй экспорт: ЗАРИМ мөрд нэр байвал анхааруулахгүй (банк хоорондын шилжүүлэг хэвийн)');
+  eq(F.stmtNoPayerNames({ rows: [{ credit: 100, name: '' }, { credit: 200 }, { debit: 50 }] }), 2,
+     'нэргүй экспорт: орлогын мөр бүрд нэр алга бол тоогоо буцаана');
+  eq(F.stmtNoPayerNames({ rows: [{ debit: 50 }, { debit: 70 }] }), 0,
+     'нэргүй экспорт: орлогын мөр огт байхгүй бол анхааруулахгүй');
+  eq(F.stmtNoPayerNames({ rows: [{ credit: 100, name: '   ' }] }), 1,
+     'нэргүй экспорт: зөвхөн зайнаас тогтсон нэр = нэр биш');
+  eq(F.stmtNoPayerNames(null), 0, 'нэргүй экспорт: хоосон хуулга → 0');
 
   /* ⛔ ХУДАЛ АНХААРУУЛГА (2026-09-11, амьд датаар олсон). ХААН дансны хуулганд
      opening=0, closing_stated=0 байтал 16.8сая орж 15.7сая гарсан — задлагч
@@ -10724,7 +11819,7 @@ function testFinanceCacheThrottle() {
 
   // SCAN: assertMonthOpen нь кэш бичилтээс ӨМНӨ хэвээр (хаасан сар хамгаалагдана)
   const at = src.indexOf('async function saveFinanceRequest');
-  const body = src.slice(at, at + 700);
+  const body = src.slice(at, at + 1400);
   const aAt = body.indexOf('assertMonthOpen('), cAt = body.indexOf('saveFinanceCache(');
   ok(aAt > 0 && cAt > 0 && aAt < cAt, 'scan: assertMonthOpen нь saveFinanceCache-ээс ӨМНӨ хэвээр');
 }
@@ -10937,8 +12032,14 @@ function testFinNextSteps() {
   // ① Бүх ажил үлдсэн — эрэмбэ нь хамаарлын дараалал
   const all = F.finNextSteps({ month: '2026-09', isCEO: true,
     missingAccts: ['Голомт', 'Хаан'], pendExpenses: 7,
-    openIncome: { n: 12, sum: 4200000 }, chainBreaks: 2 });
-  eq(keys(all).join('>'), 'stmt>expense>income>chain>close', 'алхмын эрэмбэ: хуулга→ангилах→тулгах→залгаа→хаах');
+    openIncome: { n: 12, sum: 4200000 }, chainBreaks: 2,
+    balance: { total: 4, ok: 2, bad: 1, unver: 1, badAccts: ['504'], unverAccts: ['300'] } });
+  eq(keys(all).join('>'), 'stmt>expense>income>balance>chain>close',
+     'алхмын эрэмбэ: хуулга→ангилах→тулгах→тэнцэл→залгаа→хаах');
+  eq(byKey(all, 'balance').n, 2, 'тэнцэл: зөрүүтэй + шалгагдаагүй дансыг нийлүүлж тоолно');
+  ok(/504/.test(byKey(all, 'balance').hint) && /300/.test(byKey(all, 'balance').hint),
+     'тэнцэл: АЛЬ данс гэдгийг нэрлэнэ');
+  eq(byKey(all, 'balance').act, 'recon', 'тэнцлийн алхам → тулгалтын цонх');
   eq(byKey(all, 'stmt').n, 2, 'хуулга дутуу дансны тоо');
   eq(byKey(all, 'stmt').act, 'classify', 'хуулгын алхам → оруулах модал');
   eq(byKey(all, 'income').sum, 4200000, 'хаагдаагүй орлогын дүн харагдана');
@@ -10949,9 +12050,46 @@ function testFinNextSteps() {
 
   // ② Бүгд цэвэр — хаах нь идэвхтэй, бусад нь ✓
   const clean = F.finNextSteps({ month: '2026-09', isCEO: true,
-    missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 }, chainBreaks: 0 });
-  eq(keys(clean).join('>'), 'stmt>expense>income>close', 'цэвэр үед залгааны алхам гарахгүй');
-  ok(clean.slice(0, 3).every(x => x.done), 'цэвэр үед эхний 3 алхам ✓');
+    missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 4, ok: 4, bad: 0, unver: 0, badAccts: [], unverAccts: [] } });
+  eq(keys(clean).join('>'), 'stmt>expense>income>balance>close', 'цэвэр үед залгааны алхам гарахгүй');
+  ok(clean.slice(0, 4).every(x => x.done), 'цэвэр үед эхний 4 алхам ✓');
+  /* ⭐ ЗӨВ БАЙХАД Ч ХАРАГДАНА — «хэдэн данснаас хэд нь тэнцсэн» гэдэг нь шалгалт
+     үнэхээр ажилласныг батлах цорын ганц дохио. Зөрүү байхад л гарч ирдэг мөр
+     бол шалгалт чимээгүй унасныг хэн ч мэдэхгүй. */
+  eq(byKey(clean, 'balance').hint, '4/4 данс сарын эцсийн үлдэгдлээр батлагдсан',
+     'тэнцэл: зөв үед ч N/M тоо харагдана (сарын эцсийн үлдэгдлээр)');
+  /* ⛔ ХИЙГДСЭН АЛХАМ Ч НЭЭГДЭНЭ (2026-10-03, CEO барив: «орлого тулгах хэсэг
+     дахин өөрчлөх боломжгүй хаагдах нь зөв үү, ямар орлогууд тулгасныг ч харж
+     чадахгүй байна»). ✓ нь «ажил дууссан», «буцаж харах эрхгүй» гэсэн үг БИШ. */
+  eq(byKey(clean, 'income').act, 'recon', 'тулгасан орлогыг буцаж ХАРАХ зам үлдэнэ');
+  eq(byKey(clean, 'income').btn, 'Харах', 'хийгдсэн алхмын товч «Харах»');
+  eq(byKey(clean, 'balance').act, 'recon', 'тэнцэл: зөв үед ч харах зам үлдэнэ');
+  eq(byKey(clean, 'expense').act, 'expenses', 'ангилсан зардлыг буцаж харна');
+  eq(byKey(clean, 'stmt').act, 'recon', 'оруулсан хуулгыг буцаж харна');
+  // ⚠ «Харах» нь хийх ажил БИШ — толгойн тоололд орохгүй
+  ok(/✓ 2026-09 сар цэгцтэй/.test(F.finNextStepsHtml(clean, '2026-09')),
+     'бүгд ✓ үед толгой «цэгцтэй» хэвээр (Харах товч тоологдохгүй)');
+  eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 0,
+    openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 0, ok: 0, bad: 0, unver: 0 } }).find(x => x.key === 'balance').hint,
+     'Шалгах хуулга алга', 'тэнцэл: хуулга байхгүй бол «0/0» гэж төөрөгдүүлэхгүй');
+  /* ⛔ АНГИЛААГҮЙ ЗАРДАЛ САР ХААХЫГ ХОРИНО (2026-10-02, амьд дэлгэцээс барив).
+     Ангилаагүй мөр `9500`-аар салбарын зардалд ордог тул салбарын ашиг ба
+     COO-гийн 30% гажна; хаавал тэр гажсан тоо хөлдөнө. */
+  eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 62,
+    openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 4, ok: 4, bad: 0, unver: 0 } }).find(x => x.key === 'close').wait, true,
+     'ангилаагүй зардал байхад сар хаах ХҮЛЭЭНЭ');
+  eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 0,
+    openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 4, ok: 4, bad: 0, unver: 0 } }).find(x => x.key === 'close').act, 'close',
+     'бүгд цэгцэрсэн үед л сар хаах идэвхтэй');
+  /* ⛔ ТЭНЦЭЛ ЗӨРВӨЛ САР ХААГДАХГҮЙ — эс бөгөөс зөрүүтэй сар хөлдөж, засах зам хаагдана. */
+  eq(F.finNextSteps({ month: '2026-09', isCEO: true, missingAccts: [], pendExpenses: 0,
+    openIncome: { n: 0, sum: 0 }, chainBreaks: 0,
+    balance: { total: 2, ok: 1, bad: 1, unver: 0, badAccts: ['504'], unverAccts: [] } })
+    .find(x => x.key === 'close').wait, true, 'тэнцэл зөрвөл сар хаах ХҮЛЭЭНЭ');
   eq(byKey(clean, 'close').act, 'close', 'цэвэр үед сар хаах идэвхтэй');
 
   // ③ CEO биш → хаах алхам огт байхгүй
@@ -10969,7 +12107,7 @@ function testFinNextSteps() {
 
   // ⑤ HTML — тоолол, товч, «хийх N зүйл» толгой
   const h = F.finNextStepsHtml(all, '2026-09');
-  ok(/2026-09 сард хийх 4 зүйл/.test(h), 'толгойд үлдсэн ажлын тоо (хаах нь тоологдохгүй)');
+  ok(/2026-09 сард хийх 5 зүйл/.test(h), 'толгойд үлдсэн ажлын тоо (хаах нь тоологдохгүй)');
   ok(/data-ns-act="classify"/.test(h) && /data-ns-act="recon"/.test(h), 'товчнууд үйлдлээ авч явна');
   ok(!/data-ns-act="close"/.test(h), 'хүлээж буй сар хаах товчгүй');
   ok(/✓ 2026-09 сар цэгцтэй/.test(F.finNextStepsHtml(
@@ -11021,7 +12159,9 @@ function testFinBasisDefault() {
   }
   ok(/_r2\(`COO цалин \(\$\{pct\}%\)`, sc, sa,/.test(src),
      'scan: COO цалингийн мөрөнд ч орсон мөнгө эхэнд');
-  ok(/= Үлдэгдэл<\/div><div class="coo-v coo-share \$\{_bcol\(_balCa\)\}/.test(src),
+  // Үлдэгдэл нь сар бүрийн дэвтрийн «Нийт» мөрөнд — ОРСОН МӨНГӨӨР (_balCa);
+  // ноогдох (_balAc) нь зөвхөн «лавлагаа» гэсэн бүдэг мөрөнд.
+  ok(/coo-led-bal \$\{_bcol\(_balCa\)\}">\$\{fmtMoney\(_balCa\)\}/.test(src),
      'scan: олгосон цалингийн үлдэгдэл ч орсон мөнгөний суурьтай');
 
   // ⑤ ГАРААР ХАССАН МӨР ДАХИН ТООЛОГДОХ НҮХ (2026-10-05)
@@ -11034,6 +12174,8 @@ function testFinBasisDefault() {
      'scan: COO тохиргоо хадгалахад байгаа түлхүүрүүд (skip) ХАДГАЛАГДАНА');
   ok(/if \(mo - Number\(d\.slice\(5, 7\)\) >= 9\) y -= 1;/.test(src),
      'scan: цалингийн сарын он буцаалт ЗӨВХӨН ойр хилд (урьдчилсан олголтыг хасахгүй)');
+  ok(/coo-led-ref">Ноогдохоор бодвол \(лавлагаа\)[^`]*_balAc/.test(src),
+     'scan: ноогдохоор бодсон үлдэгдэл зөвхөн лавлагаа мөрөнд');
 }
 testFinBasisDefault();
 
@@ -11078,6 +12220,12 @@ testFinBasisDefault();
       { fp: 'i3', dt: '2026-07-06', amount: 900000, status: 'open' }];
 
     eq(F.closeMonthBlockers(stmts, [], ['504'], '2026-08'), [], 'хаах: хуулга бүрэн, хаагдаагүй мөр алга → бэлэн');
+    // ⛔ Ангилаагүй зардал нь баталгаажуулах цонхонд ИЛ бичигдэнэ
+    eq(F.closeMonthBlockers(stmts, [], ['504'], '2026-08', 62).map(x => x.kind), ['pending'],
+       'хаах: ангилаагүй зардал саад болно');
+    eq((F.closeMonthBlockers(stmts, [], ['504'], '2026-08', 62).find(b => b.kind === 'pending') || {}).n, 62,
+       'хаах: хэдэн гүйлгээ ангилаагүйг хэлнэ');
+    eq(F.closeMonthBlockers(stmts, [], ['504'], '2026-08', 0), [], 'хаах: ангилаагүй 0 бол саад биш');
 
     const b1 = F.closeMonthBlockers(stmts, income, ['504'], '2026-08');
     eq(b1.map(x => x.kind), ['income'], 'хаах: хаагдаагүй орлого нь саад');
@@ -11089,8 +12237,13 @@ testFinBasisDefault();
 
     // Тэнцлийн зөрүү — тухайн сарын хуулганд
     const bad = [{ ...stmts[0], closing_calc: 90 }];
-    eq(F.closeMonthBlockers(bad, [], ['504'], '2026-08').map(x => x.kind), ['chain'],
-       'хаах: хуулгын тэнцэл зөрвөл саад');
+    /* ⛔ ТЭНЦЛИЙН ЗӨРҮҮ нь «ЗАЛГАА» БИШ (2026-10-02) — хоёр нь хоёр өөр ажил:
+       залгаа тасарсан бол ДУТУУ ХУУЛГА оруулна, тэнцэл зөрсөн бол оруулсан
+       хуулгын МӨР дутуу уншигдсан. Нэг нэрээр нэрлэвэл хүнд буруу заавар хүрнэ. */
+    eq(F.closeMonthBlockers(bad, [], ['504'], '2026-08').map(x => x.kind), ['balance'],
+       'хаах: хуулгын тэнцэл зөрвөл саад (залгаа БИШ, тэнцэл гэж нэрлэгдэнэ)');
+    eq(F.closeMonthBlockers(bad, [], ['504'], '2026-08')[0].accts, ['504'],
+       'хаах: аль дансны тэнцэл зөрснийг нэрлэнэ');
 
     /* ⭐ ХУВИЙН дансны зөрүү сар хаахыг БЛОКЛОХГҮЙ. `regAccts` = компанийн данс
        (`companyAcctList()` хувийн дансыг хасдаг) тул залгааны шалгуур ч түүгээр
@@ -11100,7 +12253,7 @@ testFinBasisDefault();
       period_from: '2026-08-01', period_to: '2026-08-31', opening: 0, closing_stated: 100, closing_calc: -434583 }];
     eq(F.closeMonthBlockers(prsn, [], ['504'], '2026-08'), [],
        'хаах: хувийн дансны тэнцлийн зөрүү сар хаахыг блоклохгүй');
-    eq(F.closeMonthBlockers(prsn, [], ['504', '9911223344'], '2026-08').map(x => x.kind), ['chain'],
+    eq(F.closeMonthBlockers(prsn, [], ['504', '9911223344'], '2026-08').map(x => x.kind), ['balance'],
        'хаах: тэр данс КОМПАНИЙНХ бол дахин саад болно');
     // ӨӨР сарын эвдрэл нь энэ сарыг хаахад саад БОЛОХГҮЙ
     const other = [{ ...stmts[0], id: '504|2026-06-01|2026-06-30', period_from: '2026-06-01', period_to: '2026-06-30', closing_calc: 90 }];
@@ -11122,7 +12275,7 @@ testFinBasisDefault();
     gate('async function submitBqPayment', 'monthLocked');
     gate('async function clearMonthExpenses', 'monthLocked');
     // Кэш бичихээс ӨМНӨ шалгана — эс бөгөөс локал кэш хаасан сарыг дарна
-    const sf = src.slice(src.indexOf('async function saveFinanceRequest'), src.indexOf('async function saveFinanceRequest') + 600);
+    const sf = src.slice(src.indexOf('async function saveFinanceRequest'), src.indexOf('async function saveFinanceRequest') + 1400);
     ok(sf.indexOf('assertMonthOpen') < sf.indexOf('saveFinanceCache'),
        'scan: түгжээ нь localStorage кэш бичихээс ӨМНӨ шалгагдана');
     // Эхлэхэд ачаалагдана — эс бөгөөс түгжээ «нээлттэй» гэж андуурна
@@ -11405,13 +12558,12 @@ testFinBasisDefault();
     ok(/state\._closedMonthsAt = Date\.now\(\)/.test(fn), 'түгжээ: ачаалсан цаг тэмдэглэгдэнэ');
   }
 
-  // ── SCAN: устгах 3 замд түгжээ тавигдсан ──
+  // ── SCAN: устгах 2 замд түгжээ тавигдсан ──
   {
     const gate = (fn, needle) => {
       const at = src.indexOf(fn); ok(at > 0, 'scan: ' + fn + ' олдов');
       ok(new RegExp(needle).test(src.slice(at, at + 1500)), `scan: ${fn} — хаасан сарын түгжээ бий`);
     };
-    gate('async function deleteAppOrder', 'orderLockedMonth');
     gate('async function bulkDeleteOrders', 'orderLockedMonth');
     gate('async function bqUpdateStatus', 'orderStatusTouchesMoney');
     // Түгжээг шалгахын ӨМНӨ серверээс шинэчилнэ (хуучирсан кэшээр гаргахгүй)
@@ -11514,7 +12666,11 @@ testFinBasisDefault();
 // байв — амьд датаар 54 «Больсон»-ы 30 нь шалтгаангүй, «яагаад захиалга алдаж
 // байна» гэдгийг тоолж чадахгүй байв (#1559 ч яг ингэж ороод гацсан).
 {
-  need(['setCancelReason', 'cxReasonKey', 'bulkDeleteOrders', 'deleteAppOrder']);
+  need(['setCancelReason', 'cxReasonKey', 'bulkDeleteOrders']);
+  // «Больсон» болгох цорын ганц бичих зам = bulkDeleteOrders (шалтгаантай). Шалтгаангүй
+  // ганц-устгах зам (deleteAppOrder) ба тест-цэвэрлэгээний цонх 2026-10-05-нд хасагдсан.
+  ok(!/function deleteAppOrder|function openTestCleanupModal/.test(src),
+     'scan: шалтгаангүй устгах хуучин зам буцаж ирэхгүй');
 
   // ── ① Багц устгал шалтгааныг захиалга БҮРД бичнэ ──
   {
@@ -11538,17 +12694,6 @@ testFinBasisDefault();
     ok(/if \(!reason\) return;/.test(h), 'scan: шалтгаангүй бол устгахгүй');
     ok(h.indexOf('pickCancelReason') < h.indexOf('bulkDeleteOrders'),
        'scan: шалтгааныг устгахаас ӨМНӨ асууна');
-  }
-
-  // ── ③ Ганц зөөлөн устгал ч шалтгаантай; тест-цэвэрлэгээ нь админ шалтгаанаар ──
-  {
-    ok(/async function deleteAppOrder\(id, reason\)/.test(src),
-       'scan: deleteAppOrder шалтгаан хүлээж авна');
-    const fn = src.slice(src.indexOf('async function deleteAppOrder'),
-                         src.indexOf('async function deleteAppOrder') + 1800);
-    ok(/setCancelReason\(o\.note, reason\)/.test(fn), 'scan: шалтгаан note-д бичигдэнэ');
-    ok(/deleteAppOrder\(id, 'Тест захиалга'\)/.test(src),
-       'scan: тест-цэвэрлэгээ «Тест захиалга» гэж бүртгэгдэнэ');
   }
 
   // ── ④ «Тест захиалга» = админ шалтгаан → алдагдлын шинжилгээнд ОРОХГҮЙ ──
@@ -11883,6 +13028,31 @@ async function swFetchTests() {
   eq(b3.name, 'Д.Сараа', 'нэхэмжлэх: хувь хүний нэр');
   eq(b3.person, '', 'нэхэмжлэх: хувь хүнд төлөөлөгч давхардахгүй');
   ok(!b3.isOrg, 'нэхэмжлэх: хувь хүн байгууллага биш');
+  // ⛔ ГАНЦ ДҮРЭМ (2026-10-03): нэхэмжлэх нь жагсаалт/гэрээтэй ИЖИЛ тал руу бичигдэнэ.
+  // (а) «Хувь хүн» сонгосон, байгууллагын талбарт автоматаар орсон ХҮНИЙ нэр — хувь хүн
+  const b4 = NB({ customer: 'Батбаяр', note: setCI('', { company: 'МӨНХСАЙХАН ЗАНАБАЗАР', ctype: 'person' }) }, null);
+  eq(b4.name, 'Батбаяр', 'нэхэмжлэх: «хувь хүн» сонголттой бол хүний нэрийн талбар байгууллага болохгүй');
+  ok(!b4.isOrg, 'нэхэмжлэх: гэрээтэй ижил — хувь хүн');
+  // (б) «Хувь хүн» сонгосон ч ХХК нэртэй — байгууллага (захиалга 1539)
+  const b5 = NB({ customer: 'Эрдэнэбулган', note: setCI('', { company: 'ДИЖИТАЛ БҮТЭЭЛЧ ӨСӨЛТ ХХК', ctype: 'person' }) }, null);
+  eq(b5.name, 'ДИЖИТАЛ БҮТЭЭЛЧ ӨСӨЛТ ХХК', 'нэхэмжлэх: ХХК нэртэй бол байгууллага');
+  eq(b5.person, 'Эрдэнэбулган', 'нэхэмжлэх: хүн нь төлөөлөгч');
+  // (в) Бүртгэлд байгууллага — захиалга өөрөөр заагаагүй бол байгууллага (хуучин зан)
+  const b6 = NB({ customer: 'Хүн' }, { company: 'Алтан гэр', name: 'Хүн' });
+  ok(b6.isOrg && b6.name === 'Алтан гэр', 'нэхэмжлэх: бүртгэлийн байгууллага хэвээр байгууллага');
+  // (г) Захиалга «хувь хүн» гэвэл бүртгэлийн хуулийн хэлбэргүй нэрийг дарна
+  const b7 = NB({ customer: 'Хүн', note: setCI('', { ctype: 'person' }) }, { company: 'Алтан гэр', name: 'Хүн' });
+  ok(!b7.isOrg && b7.name === 'Хүн', 'нэхэмжлэх: захиалгын «хувь хүн» сонголт бүртгэлийг дарна');
+  // (д) РД алга — тулгагдсан НӨАТ-ын баримтын байгууллагын РД (захиалга 1562)
+  {
+    const runIn = (code) => vm.runInContext(code, sandbox);
+    const sv = runIn('state.vatReceipts');
+    runIn('state.vatReceipts = ' + JSON.stringify([{ id: 'x1', matched_type: 'event', matched_id: '1562', buyer_reg: '6191592', total: 1 }]) + '; _vatOrgRev++;');
+    const b8 = NB({ number: 1562, customer: 'Б.Тулга', note: setCI('', { company: 'МАКСИМУС ДИСТРИБЬЮШН', ctype: 'person' }) }, null);
+    ok(b8.isOrg, 'нэхэмжлэх: НӨАТ-ын РД-тэй бол байгууллага');
+    eq(b8.reg, '6191592', 'нэхэмжлэх: РД алга бол НӨАТ-ын баримтынхыг авна');
+    runIn('state.vatReceipts = ' + JSON.stringify(sv === undefined ? null : sv) + '; _vatOrgRev++;');
+  }
 
   // Дүн — orderMoneyBreakdown-той ИЖИЛ байх ёстой
   const MB = vm.runInContext('orderMoneyBreakdown', sandbox);
@@ -12158,13 +13328,13 @@ async function swFetchTests() {
 // Эс бөгөөс `state.products[idx]` шинэ утгаар дарагдаж, delta ҮРГЭЛЖ 0 болно.
 {
   const i = src.indexOf('async function saveProduct(');
-  const fn = src.slice(i, i + 900);
+  const fn = src.slice(i, i + 2400);
   const snapAt = fn.indexOf('stockQtySnapshot(state.products[idx])');
   const mergeAt = fn.indexOf('state.products[idx] = { ...state.products[idx], ...product }');
   ok(snapAt > 0, 'scan: нөөцийн хормын хуулбар авдаг');
   ok(mergeAt > 0, 'scan: state нэгтгэл олдов');
   ok(snapAt < mergeAt, 'scan: хормын хуулбар state нэгтгэхээс ӨМНӨ (эс бол delta үргэлж 0)');
-  ok(/logStockMoves\(stockMoveRows/.test(src.slice(i, i + 6000)), 'scan: saveProduct дэвтэрт бичнэ');
+  ok(/logStockMoves\(stockMoveRows/.test(src.slice(i, i + 7500)), 'scan: saveProduct дэвтэрт бичнэ');
 }
 
 // ── ХУДАЛДАН АВАЛТ (2026-09-13) ─────────────────────────────────────────
@@ -12315,7 +13485,10 @@ async function swFetchTests() {
   const fn = src.slice(i, src.indexOf('async function applyStockCount(', i));
   ok(/saveProduct\(\{/.test(fn), 'scan: эхний үлдэгдэл saveProduct-аар бичигдэнэ');
   ok(!/rest\/v1\/products/.test(fn), 'scan: эхний үлдэгдэл ШУУД PostgREST рүү бичихгүй');
-  ok(/canProductPart\('stock'\)/.test(fn), 'scan: баталгаажуулахад нөөцийн эрх шалгагдана');
+  ok(/canOpenCount\(\)/.test(fn),
+     'scan: тоолоход ТУСДАА эрх шалгагдана (products.edit шүхэр БИШ)');
+  eq(/canProductPart\('stock'\)/.test(fn), false,
+     'scan: нөөцийн шүхэр эрхээр эхний үлдэгдэл тоологдохгүй');
   ok(/_moveReason: 'opening'/.test(fn), 'scan: дэвтэрт «эхний үлдэгдэл» шалтгаанаар бичигдэнэ');
   // ⚠ Тоо ТААРСАН ч тэмдэг тавигдана — «шалгасан, зөв байсан» гэдэг нь мэдээлэл.
   //   `applyStockCount` нь diff=0 үед шууд гардаг тул тэрийг ашиглаж БОЛОХГҮЙ.
@@ -12344,8 +13517,8 @@ async function swFetchTests() {
   ok(k > 0, 'scan: canApproveOpening олдов');
   ok(!/canEditProducts\(\)/.test(src.slice(k, k + 220)),
      '⛔ scan: батлах эрх `products.edit` шүхэрт ОРОХГҮЙ');
-  ok(/capValue\('products\.opening'\) === true/.test(src.slice(k, k + 220)),
-     'scan: батлах эрх ЗӨВХӨН ил олгосон үед');
+  ok(/capResolved\('products\.opening'\) === true/.test(src.slice(k, k + 220)),
+     'scan: батлах эрх ЗӨВХӨН ил олгосон үед (CEO шүхэр тойрсон)');
   ok(/DENY_DEFAULT_ACTIONS[\s\S]{0,400}?'products\.opening'/.test(src),
      'scan: `products.opening` өгөгдмөлөөрөө ХОРИГЛОГДСОН');
   // Тооллогын дэлгэц дээр хоёр ажил ХОЁР товчоор — нэг товчоор хоёуланг хийвэл
@@ -12368,6 +13541,13 @@ async function swFetchTests() {
   ok(/x\.apBy/.test(body) && /x\.by/.test(body),
      '⛔ scan: баталгаажсан мөрөнд ХОЁУЛАНГИЙН нэр гарна (тоолсон + батлав)');
   ok(/\$\{doneList\}/.test(body), 'scan: баталгаажсан жагсаалт дэлгэцэд угсрагдана');
+  /* ⛔ ТАСАРСАН ЖАГСААЛТАД ЗАДЛАХ ЗАМ БАЙХ ЁСТОЙ (2026-10-03, CEO барив:
+     «…бас 126 бараа» гэж бичээд үлдсэнийг харах арга огт байгаагүй). Өртгөөр
+     эрэмбэлж эхний 40-ийг гаргах нь зөв — гэхдээ ажил дуусгахад бүгд хэрэгтэй. */
+  ok(/data-op-more=/.test(body), '⛔ scan: «…бас N бараа» нь ЗАДЛАХ товч');
+  ok(!/stc-open-m">…бас/.test(body), '⛔ scan: тасарсан мэдэгдэл дарагдахгүй бичвэр байж БОЛОХГҮЙ');
+  ok(/state\.openExpand/.test(body), 'scan: задрах төлөв state-д хадгалагдана');
+  ok(/data-op-more\]/.test(src), '⛔ scan: задлах товчид дарах заавар холбогдсон');
 }
 
 // scan: барааны эрхэд `can()` ХЭРЭГЛЭХГҮЙ — тэр нь «тохируулаагүй бол зөвшөөрнө».
@@ -12620,6 +13800,9 @@ async function swFetchTests() {
   // ⚠ Хүлээн авагч кодод хатуу бичигдээгүй.
   ok(/cfg_json\('pbx_notify'\)/.test(py) && !/\b8800\d{4}\b/.test(py),
      'мэдэгдэл: хүлээн авагч тохиргооноос, кодод биш');
+  // ⛔ Аппын дүрэмтэй ИЖИЛ: ярьсан нь зөвхөн алдсаны ДАРАА болсон бол хаана (2026-10-05)
+  ok(/last_ans is null or last_ans < last_miss/.test(py), 'мэдэгдэл: өмнө ярьсан ч дараа нь аваагүй бол мэдэгдэнэ');
+  ok(!/where answered = 0/.test(py), 'мэдэгдэл: «нэг ч удаа яриагүй» гэсэн хуучин дүрэм буцаж ирэхгүй');
 
   try {
     const out = require('child_process')
@@ -12926,7 +14109,7 @@ async function swFetchTests() {
   eq(deprecYearsFor('Аяны ор').years, 5, 'нас: ангиллаас гадуур 5 жил (өгөгдмөл)');
 }
 
-// ═══ ШАТНЫ ХӨЛС — барааны тоогоор, хамтрагчид хувьтай (2026-09-30) ═══
+// ═══ ДАМЖЛАГЫН БОНУС — барааны тоогоор, хамтрагчид хувьтай (2026-09-30) ═══
 // Амьд датагаар шийдсэн: 9 сарын захиалга 1–345 бараатай (дундаж 12) тул хавтгай
 // хөлс бол сарын хамгийн том 2 ачааг татсан жолооч 20,000₮ авч байв.
 {
@@ -12957,10 +14140,13 @@ async function swFetchTests() {
   eq(stageFeeForQty(345), 9000, 'тохиргоо: хилээс давсан захиалга ч дээд шатлалаар (хил→Infinity)');
   eq(stageFeeForQty(100000), 9000, 'тохиргоо: хязгааргүй том ч дээд шатлалаар');
   // Хамтрагчийн хувь/тоог ч тохиргооноос
-  vm.runInContext("state.appConfig = { stage_pay: { helper_share: 0.5, helper_max: 2 } };", sandbox);
+  vm.runInContext("state.appConfig = { stage_pay: { lead_weight: 2, helper_max: 2 } };", sandbox);
   const cfgR = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B','C','D'] } } }], '2026-09');
-  eq(cfgR.B.helperFee, 500, 'тохиргоо: хамтрагчийн хувь 50%, 2 хүнд → 2000×0.5÷2 = 500₮');
+  // 10 оноо, нэгж = 2 (хариуцсан) + 2 (хамтрагч) = 4 → A 5, B/C 2.5 тус бүр
+  eq(cfgR.A.ledPts, 5, 'тохиргоо: хариуцсан хүний жин 2 → 10×2/4');
+  eq(cfgR.B.helperPts, 2.5, 'тохиргоо: хамтрагч 10×1/4');
+  eq(Math.round(cfgR.A.ledPts + cfgR.B.helperPts + cfgR.C.helperPts), 10, 'ИНВАРИАНТ: нийт = дамжлагын оноо');
   ok(!cfgR.D, 'тохиргоо: helper_max 2 → 3 дахь хамтрагч хөлсгүй');
   vm.runInContext("state.appConfig = {};", sandbox);
   eq(stageFeeForQty(345), 20000, 'тохиргоо цэвэрлэгдвэл кодын нөөц утга');
@@ -12971,14 +14157,20 @@ async function swFetchTests() {
   eq(orderItemQty({}), 0, 'тоо: items байхгүй = 0');
   eq(orderItemQty({ items: [{ qty: '7' }, { qty: null }] }), 7, 'тоо: мөр текст/хоосон байсан ч бодогдоно');
 
-  // Нэг шат: удирдсан хүн бүтэн, хамтрагчид 30%-ийг ХУВААНА
+  /* ⛔ САН ТОГТМОЛ, ДОТРОО ХУВААГДАНА (2026-10-04, CEO). 30 бараа = 3.5 ×
+     Цэвэрлэх 10 = 35 оноо. Нэгж = 1.3 + 2 = 3.3 → A 13.79, B/C 10.61. */
   const ords = [{ items: [{ qty: 30 }], stage_meta: {
     clean: { by: 'A', at: '2026-09-05T02:00:00Z', helpers: ['B', 'C'] } } }];
   const r1 = stagePayByPerson(ords, '2026-09');
-  eq(r1.A.ledFee, 7000, 'хөлс: 30 бараа → удирдсан A 7,000₮');
+  eq(Math.round(r1.A.ledPts * 100) / 100, 13.79, 'бонус: хариуцсан A = 35×1.3/3.3');
   eq(r1.A.led, 1, 'хөлс: A удирдсан 1 шат');
-  eq(r1.B.helperFee, 1050, 'хөлс: хамтрагч B = 7000×30%÷2 = 1,050₮');
-  eq(r1.C.helperFee, 1050, 'хөлс: хамтрагч C ижил');
+  eq(Math.round(r1.B.helperPts * 100) / 100, 10.61, 'бонус: хамтрагч B = 35×1/3.3');
+  eq(Math.round(r1.C.helperPts * 100) / 100, 10.61, 'бонус: хамтрагч C ижил');
+  // ⛔ НИЙТ нь хүний тооноос ХАМААРАХГҮЙ — ажил нь ажил
+  eq(Math.round(r1.A.ledPts + r1.B.helperPts + r1.C.helperPts), 35, 'ИНВАРИАНТ: нийт = 35 оноо (хүний тооноос үл хамаарна)');
+  const solo2 = stagePayByPerson([{ items: [{ qty: 30 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09');
+  eq(solo2.A.ledPts, 35, 'ИНВАРИАНТ: ганцаараа хийсэн ч ижил 35 оноо');
   eq(r1.B.ledFee, 0, 'хөлс: хамтрагч удирдсаны хөлс авахгүй');
 
   // ⛔ Бичиг цаасны шат (discount/revert) ачаа зөөгөөгүй → хөлс БАЙХГҮЙ
@@ -12993,8 +14185,101 @@ async function swFetchTests() {
   const rm = stagePayByPerson(many, '2026-09');
   const paidHelpers = ['B','C','D','E','F','G'].filter(h => rm[h] && rm[h].helperFee > 0);
   eq(paidHelpers.length, 4, 'хөлс: хамтрагч дээд тал 4 хүнд хуваагдана');
-  eq(rm.B.helperFee, 150, 'хөлс: 2000×30%÷4 = 150₮');
+  eq(Math.round(rm.B.helperPts * 100) / 100, Math.round(10 / 5.3 * 100) / 100, 'бонус: 10 оноо ÷ (1.3+4) нэгж');
 
+  /* ⛔ ХАСАХ ОНОО (2026-10-05, CEO: «бонус өгч байгаа бол буцаагаад торгууль»).
+     Сайн хэсэг +оноо, муу хэсэг ТЭР ХЭМЖЭЭГЭЭР −оноо. 10 сараас (9 сар хэвээр). */
+  {
+    vm.runInContext("state.appConfig = {};", sandbox);
+    const NOTE = '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧';
+    // №1: 09:00-д эхлэх эвент, 11:14-д буулгасан → ХОЦОРСОН (30 бараа = 3.5 шатлал)
+    const lateO = (day, prevDay) => ({ number: 1, starts_at: day, note: NOTE, items: [{ qty: 30 }], stage_meta: {
+      clean:    { by: 'C', at: prevDay + 'T02:00:00Z' },
+      prepare:  { by: 'P', at: prevDay + 'T10:00:00Z' },
+      dispatch: { by: 'N', at: prevDay + 'T10:11:00Z' },
+      deliver:  { by: 'D', at: day + 'T03:14:00Z' } } });
+    // №2: цагтаа (61 бараа = 6 шатлал), баглагч мөн P
+    const okO = { number: 2, starts_at: '2026-10-08', note: NOTE, items: [{ qty: 61 }], stage_meta: {
+      prepare: { by: 'P', at: '2026-10-07T10:00:00Z' },
+      deliver: { by: 'D', at: '2026-10-08T00:30:00Z' } } };
+    const r = stagePayByPerson([lateO('2026-10-03', '2026-10-02'), okO], '2026-10');
+    eq(r.P.penPts, 52.5, 'хасах: хоцорсон захиалгын баглалт (3.5×15) хасах оноо болно');
+    eq(r.P.ledFee, 12150, 'хасах: цагтаа захиалгын оноо хэвээр (6×15×135)');
+    eq(r.P.total, 12150 - 7088, 'хасах: цэвэр = олсон − хоцорсон хэсэг');
+    eq(r.P.lateN, 1, 'хасах: хоцорсон тоо');
+    eq(r.N.total, 0, 'хасах: бүртгэж гаргасан нярав ч хоцорсон захиалгын оноогоо алдана');
+    eq(r.N.penApplied, 0, '⛔ хасах: бонус 0-ээс доош орохгүй (суурь цалингаас хасахгүй)');
+    eq(r.N.penFee > 0, true, 'хасах: хасах оноо тоологдсон ч бонусаар хязгаарлагдана');
+    eq(r.C.total, 35 * 135, 'хасах: цэвэрлэгээ хоцролтын гинжинд ОРОХГҮЙ');
+    // 9 сар хэвээр (from = 2026-10)
+    const r9 = stagePayByPerson([lateO('2026-09-14', '2026-09-13')], '2026-09');
+    eq(r9.P.penPts, 0, '⛔ хасах: 9 сард хэрэглэгдэхгүй (CEO)');
+    eq(r9.D.total, Math.round(52.5 * 135), 'хасах: 9 сарын бонус хэвээр');
+    // 15 минутаас бага хоцролт тооцохгүй
+    const near = lateO('2026-10-03', '2026-10-02'); near.stage_meta.deliver.at = '2026-10-03T01:10:00Z';
+    eq(stagePayByPerson([near], '2026-10').D.penPts, 0, 'хасах: 10 мин хоцролт (15 минутын хүлцэл) тооцохгүй');
+    // ⛔ Товчоо 24ц-ээс хожуу дарсан (нотолгоогүй) = хоцорсон
+    const wild = lateO('2026-10-03', '2026-10-02'); wild.stage_meta.deliver.at = '2026-10-06T03:00:00Z';
+    eq(stagePayByPerson([wild], '2026-10').D.lateN, 1, '⛔ хасах: цагтаа гэх нотолгоогүй (24ц+ хожуу дарсан) = хоцорсон');
+    // Чанаргүй: 30-аас 3 нь цэвэрлэгдээгүй → цэвэрлэгээний 10% хасах оноо
+    const defO = { number: 3, starts_at: '2026-10-10', note: '⟦RT|9|18⟧ ⟦DLV|pickup|0|0⟧', items: [{ qty: 30 }], stage_meta: {
+      clean: { by: 'C', at: '2026-10-09T02:00:00Z' },
+      dispatch: { by: 'N', at: '2026-10-10T00:00:00Z', defChecked: true, defects: [{ stage: 'clean', ratee: 'C', n: 3 }],
+        items: [{ qty: 30, got: 30 }] } } };
+    const rd = stagePayByPerson([defO], '2026-10');
+    eq(Math.round(rd.C.penPts * 10) / 10, 3.5, 'чанар: 3/30 алдаа → цэвэрлэгээний 10% хасах оноо');
+    eq(Math.round(rd.C.ledPts * 10) / 10, 31.5, 'чанар: үлдсэн 90% нь олсон оноо');
+    eq(rd.C.defN, 1, 'чанар: чанаргүй ажлын тоо');
+    eq(F.stageBadShare(defO, 'prepare', null), null, 'чанар: алдаагүй дамжлага хасагдахгүй');
+    // Хамтрагч ч хувиа үүрнэ (сан шиг)
+    const hl = lateO('2026-10-03', '2026-10-02'); hl.stage_meta.deliver.helpers = ['H'];
+    const rh = stagePayByPerson([hl], '2026-10');
+    ok(rh.H.penPts > 0 && Math.round((rh.D.penPts + rh.H.penPts) * 10) / 10 === 52.5, 'хасах: хамтрагч ч хоцролтын хувиа үүрнэ, нийт = дамжлагын оноо');
+    // ⛔ Алгассан дамжлага 10 сараас оноо авахгүй; хэмжүүрт ирсэн цаг болохгүй
+    const sk = lateO('2026-10-03', '2026-10-02');
+    Object.keys(sk.stage_meta).forEach(k => { sk.stage_meta[k].skipped = true; sk.stage_meta[k].by = 'S'; });
+    ok(!stagePayByPerson([sk], '2026-10').S, '⛔ алгассан дамжлага оноо авахгүй (10 сараас)');
+    eq(F.orderArrivalLate(sk), null, 'алгассан «Талбайд буулгасан» нь ирсэн цаг БИШ');
+    const sk9 = lateO('2026-09-14', '2026-09-13');
+    Object.keys(sk9.stage_meta).forEach(k => { sk9.stage_meta[k].skipped = true; sk9.stage_meta[k].by = 'S'; });
+    ok(stagePayByPerson([sk9], '2026-09').S.total > 0, 'алгассан: 9 сар хэвээр');
+    // Мөр: олсон + хасалт = бонус (нийлбэртэй таарна)
+    const rows = F.stageBonusRowsHtml(r.P, r.P.total, (l, v) => `[${l}|${v}]`, 'Б');
+    ok(/\[Б\|\+12,150/.test(rows) && /Хасах оноо · 1 захиалга хоцорсон\|−7,088/.test(rows), 'мөр: олсон + хасалт тусдаа, нийлбэртэй таарна');
+    eq(F.stageBonusRowsHtml(r.C, r.C.total, (l, v) => `[${l}|${v}]`, 'Б'), '[Б|+4,725₮]'.replace('₮', F.fmtMoney(1).replace(/[\d,]/g, '')), 'мөр: хасалтгүй бол ганц мөр');
+    ok(/#1/.test(F.stagePenListHtml(r.P)), 'жагсаалт: аль захиалгаас хасагдсан нь харагдана');
+    // ── Ажилтанд ИЛ: хасалтын ШАЛТГААН ойлгомжтой үгээр (2026-10-05, CEO) ──
+    const lr = F.stagePenReason({ why: 'late', late: F.orderLateForPenalty(lateO('2026-10-03', '2026-10-02'), 15) }, 'deliver');
+    ok(/09:00-д эхлэх байсан/.test(lr) && /11:14-д бэлэн болсон/.test(lr) && /2\.2ц хоцорсон/.test(lr), 'шалтгаан: эхлэх ба бэлэн болсон цаг, хоцролт');
+    eq(F.stagePenReason(F.stageBadShare(defO, 'clean', null), 'clean'), 'Нярав 30-аас 3 барааг цэвэрлэгээгүй гэж бүртгэсэн', 'шалтгаан: чанар');
+    ok(/хожуу дарсан/.test(F.stagePenReason({ why: 'late', late: F.orderLateForPenalty(wild, 15) }, 'deliver')), 'шалтгаан: товч хожуу дарсан');
+    ok(/09:00-д эхлэх байсан/.test(F.stagePenListHtml(r.P)), 'жагсаалт: шалтгаан бүтэн өгүүлбэрээр');
+    ok(/<details class="sp-pen-det" open>/.test(F.stagePenListHtml(r.P)), 'жагсаалт: НЭЭЛТТЭЙ (нуухгүй)');
+    // Захиалгын дамжлагын түүх: оноо + шалтгаан (бонустай ижил бодолт)
+    const hLate = F.stageMetaHtml(lateO('2026-10-03', '2026-10-02'));
+    ok(/sm-pts bad">−52\.5 оноо/.test(hLate) && /Цагтаа бол <b>\+52\.5 оноо<\/b>/.test(hLate), 'түүх: хоцорсон дамжлагад хасах оноо + авах байсан оноо');
+    ok(/11:14-д бэлэн болсон/.test(hLate), 'түүх: шалтгаан захиалга дээр');
+    ok(/sm-pts">\+35 оноо/.test(hLate), 'түүх: хоцролтын гинжинд ороогүй цэвэрлэгээ +оноотой');
+    ok(/sm-pts">\+90 оноо/.test(F.stageMetaHtml(okO)), 'түүх: цагтаа дамжлага +оноо');
+    ok(!/sm-pen/.test(F.stageMetaHtml(lateO('2026-09-14', '2026-09-13'))), 'түүх: 9 сард хасалт харагдахгүй');
+    // Дарах мөчид: хоцорсон бол тэр даруй хэлж, гинжний хүмүүст мэдэгдэнэ
+    vm.runInContext("globalThis.__push = []; globalThis.__toast = []; globalThis.__pb = pushBroadcast; globalThis.__st = showToast; pushBroadcast = (k, p) => __push.push([k, p.title]); showToast = (m) => __toast.push(m);", sandbox);
+    const lo = lateO('2026-10-03', '2026-10-02');
+    F.stagePenaltyNotify(lo, 'deliver', lo.stage_meta.deliver);
+    const pushed = vm.runInContext('__push', sandbox).map(x => x[0]).sort().join(',');
+    eq(pushed, 'D,N,P', 'мэдэгдэл: баглах, бүртгэх, буулгах хүмүүст (цэвэрлэгчид биш)');
+    ok(/11:14-д бэлэн болсон/.test(vm.runInContext('__toast[0]', sandbox)), 'мэдэгдэл: дарсан хүнд тэр даруй шалтгаантай');
+    vm.runInContext("__push.length = 0;", sandbox);
+    F.stagePenaltyNotify(okO, 'deliver', okO.stage_meta.deliver);
+    eq(vm.runInContext('__push.length', sandbox), 0, 'мэдэгдэл: цагтаа бол юу ч илгээхгүй');
+    F.stagePenaltyNotify(defO, 'dispatch', defO.stage_meta.dispatch);
+    eq(vm.runInContext('__push.map(x => x[0]).join()', sandbox), 'C', 'мэдэгдэл: алдаатай цэвэрлэгээ → цэвэрлэгчид');
+    vm.runInContext("__push.length = 0;", sandbox);
+    const l9 = lateO('2026-09-14', '2026-09-13');
+    F.stagePenaltyNotify(l9, 'deliver', l9.stage_meta.deliver);
+    eq(vm.runInContext('__push.length', sandbox), 0, 'мэдэгдэл: 9 сард илгээхгүй');
+    vm.runInContext("pushBroadcast = __pb; showToast = __st;", sandbox);
+  }
   // Сар шүүлт — өөр сарын шат тоологдохгүй
   const twom = [{ items: [{ qty: 10 }], stage_meta: {
     clean:   { by: 'A', at: '2026-09-05T02:00:00Z' },
@@ -13011,20 +14296,23 @@ async function swFetchTests() {
   const sumTotal = Object.keys(ri).reduce((t, k) => t + ri[k].total, 0);
   const sumParts = Object.keys(ri).reduce((t, k) => t + ri[k].ledFee + ri[k].helperFee, 0);
   eq(sumTotal, sumParts, 'ИНВАРИАНТ: нийт хөлс = удирдсан + хамтрагч');
-  eq(ri.A.ledFee + ri.B.ledFee, 22000, 'ИНВАРИАНТ: удирдсаны хөлс = 20,000 + 2,000');
+  // Цэвэрлэх(345 бараа) = 10 оноо × жин 1; Талбайд буулгах(2 бараа) = 1 оноо × жин 1.5
+  // Нэгж: 1-р шат 1.3+1 = 2.3 · 2-р шат 1.3+2 = 3.3
+  eq(Math.round((ri.A.ledPts + ri.B.ledPts) * 100) / 100,
+     Math.round((100 * 1.3 / 2.3 + 15 * 1.3 / 3.3) * 100) / 100, 'ИНВАРИАНТ: хариуцсаны оноо');
 
   // Хамтрагчгүй шат — 30%-ийн сан хэнд ч ХУВААГДАХГҮЙ (сүйрэхгүй)
   const solo = [{ items: [{ qty: 8 }], stage_meta: { clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }];
-  eq(stagePayByPerson(solo, '2026-09').A.total, 4000, 'хөлс: хамтрагчгүй бол зөвхөн удирдсаны хөлс');
+  eq(stagePayByPerson(solo, '2026-09').A.total, Math.round(20 * 135), 'бонус: хамтрагчгүй бол бүтэн сан дарсан хүнд');
 }
 
-// ═══ SCAN: шатны хөлсийг ЦАГААР бодохыг хаана ═══
+// ═══ SCAN: дамжлагын бонусыг ЦАГААР бодохыг хаана ═══
 // Цагаар төлбөл суугаад цаг нөхцөөх нь шагнагдана — амьд датаар 256 цаг ажиллаж
 // НЭГ Ч шат удирдаагүй хүн байсан. Хөлс нь ЗӨВХӨН гарцаас (шат × барааны тоо).
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   const fn = src.slice(src.indexOf('function stagePayByPerson'), src.indexOf('function stagePayFor'));
-  ok(!/\bmins\b|\bhours\b|attendance|attMonth/.test(fn), 'scan: шатны хөлс ирц/цагаас хамаарахгүй');
+  ok(!/\bmins\b|\bhours\b|attendance|attMonth/.test(fn), 'scan: дамжлагын бонус ирц/цагаас хамаарахгүй');
   // Мөр бүрд ДАХИН бодвол рендер удааширна — сарын хүснэгт нэг удаа бодно
   const mo = src.slice(src.indexOf('function renderAttendanceMonth'), src.indexOf('function openWorkStartModal'));
   eq((mo.match(/stagePayByPerson\(/g) || []).length, 1, 'scan: сарын хүснэгт хөлсийг нэг удаа бодно');
@@ -13271,7 +14559,7 @@ async function swFetchTests() {
 
   // Статистикт очиж авах нь «хэмжигдээгүй» БИШ, тусдаа тоологдоно
   const mk = (n, note, at) => ({ number: n, status: 'reserved', starts_at: '2026-10-05', note,
-    stage_meta: { dispatch: { by: 'A', at } } });
+    stage_meta: { dispatch: { by: 'A', at }, deliver: { by: 'A', at } } });
   const st = DS([
     mk(1, '⟦RT|14|18⟧⟦DLV|city|0|150000⟧', '2026-10-05T02:00:00Z'),      // цагтаа
     mk(2, '⟦RT|14|18⟧⟦DLV|pickup|0|0⟧',    '2026-10-05T09:00:00Z'),      // очиж авах
@@ -13285,9 +14573,2713 @@ async function swFetchTests() {
 // ═══ SCAN: очиж авахыг хэмжүүрт буцааж оруулахыг хаана ═══
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
-  const fn = src.slice(src.indexOf('function orderDispatchPlan'), src.indexOf('function orderDispatchLate'));
+  const fn = src.slice(src.indexOf('function orderDispatchPlan'), src.indexOf('function orderArrivalLate'));
+  // ⛔ Агуулахаас бүртгэсэн цагаар хэмжих зам буцаж ирэхгүй (2026-10-05)
+  ok(!/orderDispatchLate/.test(src), 'scan: «Бүртгэж гаргасан» цагаар хэмжих функц буцаж ирэхгүй');
+  const _ds = src.slice(src.indexOf('function dispatchStats'), src.indexOf('function orderReview'));
+  ok(/orderArrivalLate\(o\)/.test(_ds) && !/dispatch\.at/.test(_ds), 'scan: нэгтгэл ирсэн цагаар бодно');
   ok(/if \(!deliver\) return null;/.test(fn), 'scan: очиж авах захиалга хэмжүүрээс гарна');
   // Дэлгэц: өдөр бүрийн мөр нээлттэй БАЙХГҮЙ — <details> дотор
   ok(/<details class="dsp-det">/.test(src), 'scan: өдрийн задаргаа details дотор');
   ok(/dsp-late-row/.test(src), 'scan: хоцорсон захиалга жагсаалтаар харагдана');
+}
+
+// ═══ ХУУЛГААС ОРСОН МӨРД ЦАГ ХАРУУЛАХГҮЙ (2026-10-02) ═══
+// Хуулгын задлагч зөвхөн огноог уншдаг; код `T12:00:00.000Z` (үд дунд UTC)
+// залгадаг нь САНААТАЙ (огноо гулсахгүй). Гэвч дэлгэцэд тэр нь УБ-гийн 20:00
+// болж гарч, хэрэглэгч «гүйлгээ 20:00-д болсон» гэж уншдаг байв —
+// банкны хуулгад 13:40 гэж бичээстэй атал.
+{
+  const { fmtDateTimeUB, isDateOnlyStamp } = F;
+  ok(isDateOnlyStamp('2026-10-01T12:00:00.000Z'), 'цаг: үд дундын орлуулга танигдана');
+  ok(isDateOnlyStamp('2026-10-01T12:00:00Z'), 'цаг: миллисекундгүй хэлбэр ч танигдана');
+  ok(!isDateOnlyStamp('2026-10-01T13:40:12.000Z'), 'цаг: бодит цаг орлуулга БИШ');
+  ok(!isDateOnlyStamp('2026-10-01T12:00:00+08:00'), 'цаг: офсеттэй утга орлуулга БИШ');
+  ok(!isDateOnlyStamp(''), 'цаг: хоосон утга');
+
+  // Орлуулга → ЗӨВХӨН огноо
+  eq(fmtDateTimeUB('2026-10-01T12:00:00.000Z'), '10/01', 'цаг: хуулгын мөрд цаг харуулахгүй');
+  // ⛔ 20:00 гэж харуулахыг хаана (УБ = UTC+8)
+  ok(!/20:00/.test(fmtDateTimeUB('2026-10-01T12:00:00.000Z')), 'цаг: 20:00 гэж гарахгүй');
+  // Бодит цагтай утга ХЭВЭЭР цагаа харуулна
+  eq(fmtDateTimeUB('2026-10-01T05:40:12.000Z'), '10/01 13:40', 'цаг: бодит цаг УБ-аар харагдана');
+  // Шөнө дунд орчмын бодит цаг — өдөр зөв гулсана (UTC+8)
+  eq(fmtDateTimeUB('2026-10-01T18:30:00.000Z'), '10/02 02:30', 'цаг: UTC+8 хөрвүүлэлт зөв');
+  eq(fmtDateTimeUB(''), '', 'цаг: хоосон → хоосон');
+  eq(fmtDateTimeUB('буруу'), '', 'цаг: уншигдахгүй утга → хоосон');
+}
+
+// ═══ SCAN: хуулгын огнооны ОРЛУУЛГЫГ хадгалалт дээр засахыг хаана ═══
+// `finExpMonth` нь мөрийг ШУУД таслаж сар гаргадаг. Бодит цагийг +08:00
+// офсеттэй бичвэл шөнө дунд орчмын гүйлгээ ӨМНӨХ сар руу гулсана.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/T12:00:00\.000Z/.test(src), 'scan: хуулгын огноо үд дундын UTC-ээр хадгалагдсан хэвээр');
+  /* `finExpMonth` 2026-10-03-нд `finAccrualMonth` руу шилжсэн тул таслалт нь
+     `finAccrualAuto`-д байна — орлуулгын шаардлага ТЭНД хэвээр. */
+  const faa = src.slice(src.indexOf('function finAccrualAuto'), src.indexOf('function finAccrualAuto') + 400);
+  ok(/slice\(0, 7\)/.test(faa), 'scan: finAccrualAuto мөрийг таслаж сар гаргадаг (орлуулга шаардлагатай)');
+  ok(/isDateOnlyStamp/.test(src), 'scan: орлуулгыг таних шалгуур бий');
+}
+
+// ═══ ХУУЛГЫН БОДИТ ЦАГ (2026-10-02) ═══
+// Хоёр банк хоёулаа цагтай: ХААН «2026-09-01 09:39:50», Голомт «2026-09-01T09:32:57».
+// Задлагч өмнө нь зөвхөн огноог авч, цагийг хаядаг байв.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  // Задлагч цаг уншина
+  ok(/const timeStr = tm \?/.test(src), 'хуулга: гүйлгээний цаг уншигдана');
+  ok(/rows\.push\(\{ date: dateStr, time: timeStr,/.test(src), 'хуулга: цаг мөрөнд дамжина');
+  ok(/_finBackfill = \{ date: r\.date, time: r\.time \|\| '' \}/.test(src), 'хуулга: цаг backfill-д дамжина');
+  // ⛔ УБ офсеттэй бичигдэнэ — `Z` болгон хөрвүүлбэл сарын зааг дээр гулсана
+  ok(/\$\{_bfT\}\+08:00/.test(src), 'хуулга: бодит цаг +08:00 офсеттэй хадгалагдана');
+  ok(/T12:00:00\.000Z/.test(src), 'хуулга: цаггүй мөрд үд дундын орлуулга хэвээр');
+
+  // ⚠ ОФСЕТТЭЙ мөр нь slice-д ЗӨВ сар/огноо өгөх ёстой (finExpMonth мөрийг таслана)
+  eq('2026-10-01T00:30:00+08:00'.slice(0, 7), '2026-10', 'хуулга: шөнө дундын гүйлгээ ЗӨВ сард');
+  eq('2026-10-01T00:30:00+08:00'.slice(0, 10), '2026-10-01', 'хуулга: огноо гулсахгүй');
+  // Эсрэгээр: UTC болгон хөрвүүлбэл өмнөх сар руу унана — тиймээс `Z` БИШ
+  eq(new Date('2026-10-01T00:30:00+08:00').toISOString().slice(0, 7), '2026-09',
+     'хуулга: UTC болгон хөрвүүлбэл өмнөх сар (ийм учраас офсеттэй бичнэ)');
+
+  // Дэлгэц: офсеттэй утга БОДИТ цагаа харуулна, орлуулга нь огноо л
+  const { fmtDateTimeUB, isDateOnlyStamp } = F;
+  eq(fmtDateTimeUB('2026-09-01T09:32:57+08:00'), '09/01 09:32', 'хуулга: бодит цаг УБ-аар харагдана');
+  ok(!isDateOnlyStamp('2026-09-01T09:32:57+08:00'), 'хуулга: бодит цагтай мөр орлуулга БИШ');
+  eq(fmtDateTimeUB('2026-09-01T12:00:00.000Z'), '09/01', 'хуулга: цаггүй мөрд цаг харуулахгүй');
+}
+
+// ═══ ЗАЛГААНЫ ШАЛГУУР — ДАВХЦСАН ХУУЛГА (2026-10-02) ═══
+// Нэг хугацааг дахин экспортлоход шинэ бичлэг үүсдэг. Амьд датаар 5222003015
+// данс дээр 2026-09-01-ээс эхэлсэн ЗУРГААН хуулга байв; дараалан тулгахад
+// «09-10-ны эцсийн» ба «09-11-ний эхний» харьцуулагдаж 1,070,023₮-ийн ХУДАЛ
+// «залгаа тасарсан» төрж байсан (14 алдааны 13 нь ийм гаралтай).
+{
+  const CC = vm.runInContext('stmtChainCheck', sandbox);
+  const mk = (from, to, op, cl) => ({ id: `A|${from}|${to}`, acct: 'A', ccy: 'MNT',
+    period_from: from, period_to: to, opening: op, closing_stated: cl,
+    closing_calc: cl, credit_total: 1, debit_total: 1 });
+
+  // ⛔ Ижил эхлэлтэй, өөр төгсгөлтэй (дахин экспорт) — алдаа ҮҮСГЭХГҮЙ
+  eq(CC([mk('2026-09-01', '2026-09-10', 446582, 1516605),
+         mk('2026-09-01', '2026-09-11', 446582, 958805),
+         mk('2026-09-01', '2026-10-01', 446582, 12205)]).length, 0,
+     'залгаа: дахин экспортлосон хуулга худал алдаа үүсгэхгүй');
+  // Бүрэн багтсан дэд хугацаа ч алдаа үүсгэхгүй
+  eq(CC([mk('2026-09-01', '2026-09-30', 100, 500),
+         mk('2026-09-20', '2026-09-21', 300, 400)]).length, 0,
+     'залгаа: багтсан дэд хуулга алдаа үүсгэхгүй');
+  /* ⛔ БАГТСАН хуулга ХУДАЛ ЗАВСАР үүсгэнэ — энэ тохиолдлыг ЗӨВХӨН давхцлын
+     шүүлт (contained-ийг хасах) барина, давхцлын «continue» хангалтгүй:
+     A(09-01→09-30) · B(09-05→09-06, багтсан) · C(10-01→10-10)
+     Шүүлтгүй бол B↔C хос харьцуулагдаж «09-07-оос 09-30 завсар» гэж гарна. */
+  eq(CC([mk('2026-09-01', '2026-09-30', 100, 500),
+         mk('2026-09-05', '2026-09-06', 200, 300),
+         mk('2026-10-01', '2026-10-10', 500, 700)]).length, 0,
+     'залгаа: багтсан хуулга ХУДАЛ завсар үүсгэхгүй');
+  /* ⛔ ХЭСЭГЧЛЭН давхцсан (аль нь ч нөгөөдөө багтаагүй) — энэ тохиолдлыг
+     ЗӨВХӨН давхцлын «continue» барина, contained-шүүлт хангалтгүй:
+     A(09-01→09-20, эцсийн 500) · B(09-10→09-30, эхний 900) */
+  eq(CC([mk('2026-09-01', '2026-09-20', 100, 500),
+         mk('2026-09-10', '2026-09-30', 900, 1200)]).length, 0,
+     'залгаа: хэсэгчлэн давхцсан хуулга үлдэгдэл тулгахгүй');
+
+  // ✅ ЖИНХЭНЭ завсар хэвээр баригдана
+  const g = CC([mk('2026-09-01', '2026-09-10', 100, 500), mk('2026-09-20', '2026-09-30', 500, 900)]);
+  eq(g.length, 1, 'залгаа: жинхэнэ завсар баригдана');
+  eq(g[0].kind, 'gap', 'залгаа: завсар гэж тэмдэглэгдэнэ');
+  eq(g[0].from, '2026-09-11', 'залгаа: завсрын эхлэл');
+  // ✅ ЖИНХЭНЭ үлдэгдлийн үсрэлт хэвээр
+  const j = CC([mk('2026-09-01', '2026-09-10', 100, 500), mk('2026-09-11', '2026-09-20', 900, 1200)]);
+  eq(j.length, 1, 'залгаа: жинхэнэ үсрэлт баригдана');
+  eq(j[0].kind, 'jump', 'залгаа: үсрэлт гэж тэмдэглэгдэнэ');
+  eq(j[0].diff, 400, 'залгаа: үсрэлтийн хэмжээ');
+  // Залгаа зөв бол алдаагүй
+  eq(CC([mk('2026-09-01', '2026-09-10', 100, 500), mk('2026-09-11', '2026-09-20', 500, 900)]).length, 0,
+     'залгаа: зөв залгаа алдаагүй');
+  // Тэнцлийн шалгуур нь БҮХ хуулгад (багтсан нь ч) ажиллана
+  const b = CC([mk('2026-09-01', '2026-09-30', 100, 500),
+                { ...mk('2026-09-20', '2026-09-21', 300, 400), closing_calc: 999 }]);
+  eq(b.filter(x => x.kind === 'balance').length, 1, 'залгаа: багтсан хуулгын ТЭНЦЭЛ шалгагдсан хэвээр');
+}
+
+/* ═══ ⚖️ ХУУЛГЫН БОДОЛТ ИЛ — `stmtDetail` + `stmtChainSpine` (2026-10-02) ═══
+   «✓ тэнцэв» гэдэг дангаараа шалгалт ЮУГ харьцуулсныг хэлдэггүй. Хуулга бүрийг
+   нээхэд «эхний + орлого − зарлага = эцсийн», хуулгад бичсэнтэй тулгасан зөрүү,
+   өмнөх хуулгатай залгасан холбоос, ямар файлаас орсон нь гарна. */
+{
+  const SP = vm.runInContext('stmtChainSpine', sandbox);
+  const SD = vm.runInContext('stmtDetail', sandbox);
+  const st = (o) => ({ id: `${o.a || '504'}|${o.f}|${o.t}`, acct: o.a || '504', ccy: o.ccy || 'MNT',
+    period_from: o.f, period_to: o.t, opening: o.op, closing_stated: o.cs, closing_calc: o.cc,
+    credit_total: o.cr, debit_total: o.db, row_count: o.n, file_name: o.file, imported_at: o.at });
+
+  // ── ТУЛГУУР: багтсан хуулга хасагдаж, ИЛ гарна ──
+  const whole = st({ f: '2026-09-01', t: '2026-09-30', op: 0, cs: 100, cc: 100 });
+  const part = st({ f: '2026-09-01', t: '2026-09-11', op: 0, cs: 50, cc: 50 });
+  const sp = SP([part, whole]);
+  eq([sp.spine.length, sp.dropped.length], [1, 1], 'тулгуур: багтсан хуулга тулгуураас хасагдана');
+  eq(sp.spine[0].period_to, '2026-09-30', 'тулгуур: БҮТЭН хуулга тулгуурт үлдэнэ');
+  eq(sp.dropped[0].period_to, '2026-09-11', 'тулгуур: багтсан нь «dropped»-д ИЛ гарна (нуугдахгүй)');
+  eq(SP([]).spine.length, 0, 'тулгуур: хоосон жагсаалт унахгүй');
+  // Огноогүй хуулга тулгуурт орохгүй (эрэмбэлэх боломжгүй)
+  eq(SP([{ id: 'x', acct: '504' }, whole]).spine.length, 1, 'тулгуур: хугацаагүй хуулга орохгүй');
+
+  // ── БОДОЛТ: эхний + орлого − зарлага = эцсийн ──
+  const d = SD(st({ f: '2026-09-01', t: '2026-09-30', op: 88542, cs: 15316644, cc: 15316644,
+    cr: 107470202, db: 92242100, n: 145, file: '1180d.xlsx', at: '2026-10-02T04:00:00Z' }));
+  eq([d.opening, d.credit, d.debit, d.calc, d.stated], [88542, 107470202, 92242100, 15316644, 15316644],
+     'бодолт: эхний · орлого · зарлага · бодсон · хуулгад бичсэн');
+  eq([d.diff, d.ok, d.skip], [0, true, ''], 'бодолт: тэнцсэн хуулга зөрүү 0');
+  eq([d.rows, d.file, d.at], [145, '1180d.xlsx', '2026-10-02'], 'бодолт: мөрийн тоо + эх файл + огноо');
+
+  // ── Зөрүүтэй: тоо нь `stmtBalanceCheck`-ээс, ДАХИН бодогдохгүй ──
+  const bad = SD(st({ f: '2026-09-01', t: '2026-09-30', op: 0, cs: 100, cc: 90, cr: 100, db: 10 }));
+  eq([bad.diff, bad.ok], [-10, false], 'бодолт: зөрүү = бодсон − хуулгад бичсэн');
+  // ⚠ Шалгагдаагүй үед зөрүү нь 0 БИШ `null` — «0 зөрүү» нь «зөв» гэж уншигдана
+  eq(SD(st({ f: '2026-09-01', t: '2026-09-30', op: 0, cs: 0, cc: 0, cr: 500, db: 100 })).diff, null,
+     'бодолт: шалгагдаагүй үед зөрүү null (0 гэж бичвэл «зөв» гэж уншигдана)');
+  eq(SD(st({ f: '2026-09-01', t: '2026-09-30', op: 500, cs: 600, cc: 500, ccy: 'USD' })).skip, 'валют данс',
+     'бодолт: валют дансны шалтгаан ил бичигдэнэ');
+
+  // ── ЗАЛГААНЫ ХОЛБООС: өмнөх эцсийн ↔ энэ эхний ──
+  const p1 = st({ f: '2026-08-01', t: '2026-08-31', op: 0, cs: 141028, cc: 141028 });
+  const c1 = st({ f: '2026-09-01', t: '2026-09-26', op: 141028, cs: 133565, cc: 133565 });
+  eq(SD(c1, p1).link, { to: '2026-08-31', closing: 141028, diff: 0, ok: true },
+     'залгаа: өмнөх эцсийн = энэ эхний → ✓');
+  eq(SD(st({ f: '2026-09-01', t: '2026-09-26', op: 999999, cs: 1, cc: 1 }), p1).link.ok, false,
+     'залгаа: үлдэгдэл таарахгүй бол ⚠');
+  /* ⛔ ХЭСЭГЧЛЭН ДАВХЦСАН бол холбоос ГАРГАХГҮЙ — давхцсан хугацаанд гүйлгээ
+     хоёуланд нь орсон тул «өмнөхийн эцсийн» нь «энэ эхний»-гийн мөч БИШ. */
+  eq(SD(c1, st({ f: '2026-08-01', t: '2026-09-11', op: 0, cs: 7, cc: 7 })).link, null,
+     'залгаа: давхцсан хуулгатай тулгахгүй (худал зөрүү төрүүлэхгүй)');
+  eq(SD(c1, null).link, null, 'залгаа: өмнөх хуулга байхгүй бол холбоосгүй');
+}
+
+/* ═══ ⚖️ ХУУЛГЫГ САРААР ЗАДЛАХ = `stmtMonthSplit` (2026-10-02) ═══
+   «01…өнөөдөр» хуулганд тэр сарын дата БҮРЭН байдаг — задлагч мөр бүрийн
+   огноо/дүнг мэддэг атлаа зөвхөн НИЙТ дүнг хадгалдаг тул сарыг батлах аргагүй
+   болж, хүнээс ШИНЭ хуулга татахыг шаарддаг байв. */
+{
+  const SPL = vm.runInContext('stmtMonthSplit', sandbox);
+  const R = [{ date: '2026-09-01', credit: 100, debit: 0 },
+             { date: '2026-09-30', credit: 0, debit: 40 },
+             { date: '2026-10-01', credit: 7, debit: 0 },
+             { date: '2026-10-02', credit: 0, debit: 2 }];
+  eq(SPL(R, 50), { '2026-09': { c: 100, d: 40, end: 110 }, '2026-10': { c: 7, d: 2, end: 115 } },
+     'задаргаа: сар бүрийн урсгал ба эцсийн үлдэгдэл');
+  /* ⚠ Эхний үлдэгдэл уншигдаагүй бол `end` нь NULL — 0 гэж бичвэл «тэр сар
+     тэглэгдсэн» гэж уншигдана. Урсгал нь хэвээр тоологдоно. */
+  eq(SPL(R, null), { '2026-09': { c: 100, d: 40, end: null }, '2026-10': { c: 7, d: 2, end: null } },
+     'задаргаа: эхний үлдэгдэлгүй бол end нь null (0 БИШ)');
+  eq(SPL([{ date: '', credit: 5 }, { date: 'муу', debit: 3 }], 0), {},
+     'задаргаа: огноогүй мөр сард оногдохгүй');
+  eq(SPL([], 100), {}, 'задаргаа: хоосон хуулга унахгүй');
+  // Сөрөг тэмдэгтэй ирсэн дүнг ч үнэмлэхүйгээр авна (задлагч ингэж өгдөг)
+  eq(SPL([{ date: '2026-09-05', credit: -10, debit: 0 }], 0)['2026-09'].c, 10,
+     'задаргаа: дүнг үнэмлэхүйгээр');
+}
+
+/* ═══ ⚖️ САР БҮРИЙН ТЭНЦЭЛ = `monthSeal` (2026-10-02, CEO шийдвэр) ═══
+   Бусад БҮХ зүйл сараар явдаг (сар хаах · P&L · COO-гийн 30%) тул тэнцэл ч сараар
+   л утгатай. Хуулгын ЭКСПОРТЫН ЦОНХ нь дурын (амьд датаар 23 хуулгын ердөө 2 нь
+   сартай тохирч байв) тул тэндээс «сар тэнцсэн» гэж дүгнэж БОЛОХГҮЙ. */
+{
+  const MS = vm.runInContext('monthSeal', sandbox);
+  const ME = vm.runInContext('monthEndDay', sandbox);
+  const m = (o) => ({ id: `${o.a || '504'}|${o.f}|${o.t}`, acct: o.a || '504', ccy: o.ccy || 'MNT',
+    period_from: o.f, period_to: o.t, opening: o.op, closing_stated: o.cs, closing_calc: o.cc,
+    credit_total: o.cr == null ? 100 : o.cr, debit_total: o.db == null ? 100 : o.db });
+
+  // ── Сарын сүүлчийн өдөр — 12-р сар ба өндөр жил ──
+  eq(ME('2026-09'), '2026-09-30', 'сарын эцэс: 30 хоногтой сар');
+  eq(ME('2026-12'), '2026-12-31', 'сарын эцэс: 12-р сар дараа ОНоор гарна');
+  eq(ME('2024-02'), '2024-02-29', 'сарын эцэс: өндөр жилийн 2-р сар');
+  eq(ME('2026-02'), '2026-02-28', 'сарын эцэс: энгийн жилийн 2-р сар');
+  eq([ME(''), ME('2026-13'), ME('муу')], ['', '', ''], 'сарын эцэс: буруу оролт хоосон (унахгүй)');
+
+  // ── БАТЛАГДСАН: сарын 1 → сүүлчийн өдөр, тэнцсэн ──
+  const sealed = MS([m({ f: '2026-09-01', t: '2026-09-30', op: 88542, cs: 15316644, cc: 15316644 })], '504', '2026-09');
+  eq([sealed.state, sealed.closing, sealed.diff], ['sealed', 15316644, 0], 'сар: бүтэн хуулга тэнцсэн → батлагдсан');
+
+  /* ⛔ «01…ӨНӨӨДӨР» ХУУЛГА САРЫГ БАТЛАХГҮЙ — 09-30-ны үлдэгдэл тэнд БАЙХГҮЙ.
+     Амьд датаар 8 хуулга яг ийм (09-01…10-02). Өмнө нь эдгээр «тэнцсэн» гэж
+     тоологдож, батлагдаагүй сар батлагдсан мэт харагддаг байв. */
+  const noend = MS([m({ f: '2026-09-01', t: '2026-10-02', op: 88542, cs: 13913644, cc: 13913644 })], '504', '2026-09');
+  eq(noend.state, 'noend', 'сар: «01…өнөөдөр» хуулга сарыг БАТЛАХГҮЙ');
+  eq(noend.closing, null, 'сар: батлагдаагүй сарын эцсийн үлдэгдлийг ТААМАГЛАХГҮЙ');
+  /* ⚠ Тэр хуулга сарыг БҮРЭН хамарч байгаа тул шинэ хуулга татуулахгүй — зүгээр
+     ДАХИН оруулбал сараар задарна (`months`). Хамрахгүй бол л шинээр татуулна. */
+  ok(/ДАХИН оруулбал сараар задарна/.test(noend.why),
+     'сар: сарыг хамарсан хуулга байвал ДАХИН оруулахыг хэлнэ (шинийг татуулахгүй)');
+  ok(/2026-09-01…2026-09-30 хуулга татаж оруул/.test(
+       MS([m({ f: '2026-09-05', t: '2026-10-02', op: 1, cs: 2, cc: 2 })], '504', '2026-09').why),
+     'сар: сарыг хамраагүй бол ЯГ ямар хугацааны хуулга хэрэгтэйг хэлнэ');
+
+  /* ⭐ САРЫГ БҮРЭН ХАМАРСАН, ӨӨРӨӨ ТЭНЦСЭН хуулгаас ГАРГАЖ АВНА (CEO зөв хэлсэн).
+     «09-01…10-02»-д 9 сарын дата бүрэн байдаг — шинэ хуулга татуулах нь утгагүй. */
+  const host = m({ f: '2026-09-01', t: '2026-10-02', op: 88542, cs: 13913644, cc: 13913644,
+    cr: 107567202, db: 93742100 });
+  host.months = { '2026-09': { c: 107470202, d: 92242100, end: 15316644 },
+                  '2026-10': { c: 97000, d: 1500000, end: 13913644 } };
+  const got = MS([host], '504', '2026-09');
+  eq([got.state, got.closing, got.credit, got.debit], ['sealed', 15316644, 107470202, 92242100],
+     'сар: хамарсан тэнцсэн хуулгаас сарын дүн ГАРГАЖ АВНА');
+  eq(got.opening, 88542, 'сар: гаргаж авсан сарын эхний үлдэгдэл');
+  eq(got.from, '2026-09-01…2026-10-02', 'сар: аль хуулгаас гаргаснаа ил хэлнэ');
+  /* ⚠ 10 сар нь тэр хуулгад БҮРЭН хамрагдаагүй (10-02-нд дуусдаг) тул батлагдахгүй —
+     хагас сарыг «батлагдсан» гэж бичих нь хамгийн муу алдаа байх байсан. */
+  eq(MS([host], '504', '2026-10').state, 'noend', 'сар: хагас хамрагдсан сар батлагдахгүй');
+  // ХОЁР БҮТЭН сар хамарсан хуулга — хоёр дахь сар нь эхнийхийн эцсээс эхэлнэ
+  const two = m({ f: '2026-08-01', t: '2026-09-30', op: 100, cs: 500, cc: 500, cr: 900, db: 500 });
+  two.months = { '2026-08': { c: 400, d: 200, end: 300 }, '2026-09': { c: 500, d: 300, end: 500 } };
+  eq(MS([two], '504', '2026-08').closing, 300, 'сар: эхний сарын эцсийг гаргана');
+  eq([MS([two], '504', '2026-09').opening, MS([two], '504', '2026-09').closing], [300, 500],
+     'сар: дараагийн сар өмнөхийн эцсээс эхэлнэ');
+  /* ⛔ ТЭНЦЭЭГҮЙ хуулгаас ГАРГАЖ АВАХГҮЙ — батлагдаагүй тооноос гаргасан зүсэлт
+     нь батлагдаагүй хэвээр. */
+  const bad = { ...host, closing_calc: 999, id: '504|bad' };
+  eq(MS([bad], '504', '2026-09').state, 'noend', 'сар: ТЭНЦЭЭГҮЙ хуулгаас гаргаж авахгүй');
+  const unread = { ...host, opening: 0, closing_stated: 0, closing_calc: 0 };
+  eq(MS([unread], '504', '2026-09').state, 'noend', 'сар: ШАЛГАГДААГҮЙ хуулгаас гаргаж авахгүй');
+
+  // ── Эцсийн үлдэгдэл мэдэгдэх ч сарын урсгал бүтэн биш ──
+  const noflow = MS([m({ f: '2026-09-15', t: '2026-09-30', op: 5, cs: 300, cc: 300 })], '504', '2026-09');
+  eq([noflow.state, noflow.closing], ['noflow', 300], 'сар: эцсийн мэдэгдэх ч бүтэн урсгалгүй → батлагдахгүй');
+
+  // ── Зөрүүтэй ──
+  const dif = MS([m({ f: '2026-09-01', t: '2026-09-30', op: 0, cs: 100, cc: 90, cr: 100, db: 10 })], '504', '2026-09');
+  eq([dif.state, dif.diff], ['diff', -10], 'сар: бүтэн хуулга зөрвөл diff');
+  ok(/ОРЛОГО уншигдаагүй/.test(dif.why), 'сар: зөрүү нь ЮУ дутсаныг хэлнэ');
+
+  // ── Хамаарахгүй тохиолдлууд ──
+  eq(MS([m({ f: '2026-08-01', t: '2026-08-31', op: 0, cs: 1, cc: 1 })], '504', '2026-09').state, 'none',
+     'сар: өөр сарын хуулга тухайн сарыг хөндөхгүй');
+  eq(MS([m({ f: '2026-09-01', t: '2026-09-30', op: 1, cs: 2, cc: 2, ccy: 'USD' })], '504', '2026-09').state, 'ccy',
+     'сар: валют данс шалгагдахгүй');
+  eq(MS([], '504', '2026-09').state, 'none', 'сар: хуулгагүй бол «ороогүй»');
+  /* ⚠ Сарын хил ДАВСАН хуулга тэр сарыг хөндөнө (08-01…09-11 нь 9 сард ч хамаатай)
+     — гэхдээ ЗӨВХӨН «эцсийн үлдэгдэл алга» гэж хэлнэ, «тэнцсэн» гэж ХЭЗЭЭ Ч бичихгүй. */
+  eq(MS([m({ f: '2026-08-01', t: '2026-09-11', op: 0, cs: 1, cc: 1 })], '504', '2026-09').state, 'noend',
+     'сар: хил давсан хуулга сарыг батлахгүй');
+}
+
+/* ═══ ⚖️ «ХЭДЭН ДАНСНААС ХЭД НЬ ТЭНЦСЭН» = `balanceStats` (2026-10-02) ═══
+   Тэнцлийн төлөв өмнө нь ЗӨВХӨН «Сар хаах» дарахад харагддаг байв. Одоо «дараагийн
+   алхам» картад мөр болж үргэлж гарна; `closeMonthBlockers` МӨН үүнээс уншина. */
+{
+  const BS = vm.runInContext('balanceStats', sandbox);
+  const CB = vm.runInContext('closeMonthBlockers', sandbox);
+  // o = {a данс, f эхлэх, t дуусах, op эхний, cs хуулгад бичсэн, cc бодсон, cr орлого, db зарлага, ccy}
+  const st = (o) => ({ id: `${o.a || '504'}|${o.f}|${o.t}`, acct: o.a || '504', ccy: o.ccy || 'MNT',
+    period_from: o.f, period_to: o.t, opening: o.op, closing_stated: o.cs, closing_calc: o.cc,
+    credit_total: o.cr == null ? 100 : o.cr, debit_total: o.db == null ? 100 : o.db });
+
+  /* ⛔ САР БАТЛАГДАХ = сарын 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга тэнцсэн байх
+     (2026-10-02, CEO). Хэсэгчилсэн экспортууд нийлээд сарыг «батлахгүй» — сарын
+     эцсийн үлдэгдэл нь БАНКНЫ хэлсэн тоо, бидний нийлбэр биш. */
+  const three = [st({ f: '2026-09-01', t: '2026-09-10', op: 0, cs: 100, cc: 100 }),
+                 st({ f: '2026-09-10', t: '2026-09-20', op: 100, cs: 200, cc: 200 }),
+                 st({ f: '2026-09-20', t: '2026-09-30', op: 200, cs: 300, cc: 300 })];
+  eq([BS(three, ['504'], '2026-09').ok, BS(three, ['504'], '2026-09').unver], [0, 1],
+     'сараар: хэсэгчилсэн 3 хуулга нийлээд сарыг БАТЛАХГҮЙ');
+  ok(/бүтэн хуулга алга/.test(BS(three, ['504'], '2026-09').why['504']),
+     'сараар: юу дутууг нэрлэнэ (бүтэн хуулга алга)');
+
+  // ── Сарын эцсийн үлдэгдэл ОГТ байхгүй → ЯМАР хуулга татахыг хэлнэ ──
+  const noend = [st({ f: '2026-09-01', t: '2026-10-02', op: 88542, cs: 13913644, cc: 13913644 })];
+  eq([BS(noend, ['504'], '2026-09').ok, BS(noend, ['504'], '2026-09').unver], [0, 1],
+     'сараар: «01…өнөөдөр» хуулга сарыг БАТЛАХГҮЙ (09-30-ны үлдэгдэл байхгүй)');
+  ok(/ДАХИН оруулбал сараар задарна/.test(BS(noend, ['504'], '2026-09').why['504']),
+     'сараар: хамарсан хуулгыг ДАХИН оруулахыг хэлнэ');
+
+  // ── Бүтэн сарын хуулга тэнцсэн → БАТЛАГДСАН ──
+  const full = [st({ f: '2026-09-01', t: '2026-09-30', op: 88542, cs: 15316644, cc: 15316644 })];
+  eq([BS(full, ['504'], '2026-09').ok, BS(full, ['504'], '2026-09').total], [1, 1],
+     'сараар: бүтэн сарын тэнцсэн хуулга → батлагдсан');
+  /* ⚠ Нэг данс нэг сард ОЛОН экспорттой байж болно (амьд датаар 6). Бүтэн сарын
+     хуулга тэнцсэн бол сар БАТЛАГДСАН — давхардсан хэсэгчилсэн экспортын дотоод
+     зөрүү нь сарын дүгнэлтийг хөдөлгөхгүй (тэр нь хуулгын жагсаалтад ⚠-ээр гарна). */
+  eq(BS(full.concat([st({ f: '2026-09-11', t: '2026-09-20', op: 1, cs: 2, cc: 999 })]), ['504'], '2026-09').ok, 1,
+     'сараар: давхардсан хэсэгчилсэн экспорт сарын дүгнэлтийг хөдөлгөхгүй');
+
+  // ── Бүтэн сарын хуулга ЗӨРВӨЛ → зөрүүтэй, шалтгаантай ──
+  const dif = [st({ f: '2026-09-01', t: '2026-09-30', op: 0, cs: 100, cc: 90, cr: 100, db: 10 })];
+  eq([BS(dif, ['504'], '2026-09').bad, BS(dif, ['504'], '2026-09').ok], [1, 0], 'сараар: бүтэн хуулга зөрвөл «зөрүүтэй»');
+  ok(/уншигдаагүй/.test(BS(dif, ['504'], '2026-09').why['504']), 'сараар: зөрүүний шалтгаан ил');
+
+  // ── Валют данс ба бүртгэлгүй данс тоололд ОГТ ОРОХГҮЙ ──
+  eq(BS([st('504', 500, 600, 500, 'USD')], ['504'], '2026-09').total, 0,
+     'тэнцэл: валют данс тоололд орохгүй (мөр нь ₮ болж хөрвүүлэгддэг)');
+  eq(BS([st('999', 0, 100, 100)], ['504'], '2026-09').total, 0,
+     'тэнцэл: бүртгэгдээгүй (хувийн) данс тоололд орохгүй');
+  eq(BS([st('504', 0, 100, 100, 'MNT', '2026-08-01', '2026-08-31')], ['504'], '2026-09').total, 0,
+     'тэнцэл: өөр сарын хуулга тоологдохгүй');
+
+  /* ⭐ ИНВАРИАНТ — карт ба сар хаах ИЖИЛ тоо. Дүрэм хоёр газар салбарлавал
+     дэлгэц «4/4 тэнцсэн» гэж байхад сар хаах «зөрүүтэй» гэж хориглоно. */
+  const inv = [st({ a: '504', f: '2026-09-01', t: '2026-09-30', op: 0, cs: 100, cc: 999 }),
+               st({ a: '300', f: '2026-09-01', t: '2026-10-02', op: 0, cs: 50, cc: 50 })];
+  const bs = BS(inv, ['504', '300'], '2026-09');
+  const blk = CB(inv, [], ['504', '300'], '2026-09');
+  eq([bs.bad, bs.unver], [1, 1], 'ИНВАРИАНТ: суурь нөхцөл — 1 зөрүүтэй, 1 шалгагдаагүй');
+  eq((blk.find(b => b.kind === 'balance') || {}).n, bs.bad,
+     'ИНВАРИАНТ: сар хаахын «зөрүүтэй» тоо = картын тоо');
+  eq((blk.find(b => b.kind === 'unverified') || {}).n, bs.unver,
+     'ИНВАРИАНТ: сар хаахын «шалгагдаагүй» тоо = картын тоо');
+}
+
+// ═══ «ШАЛГАЖ ЧАДСАНГҮЙ» нь «ЗӨВ» БИШ (2026-10-02) ═══
+{
+  const CB = vm.runInContext('closeMonthBlockers', sandbox);
+  const s = (acct, ccy, op, cl) => ({ id: `${acct}|2026-09-01|2026-09-30`, acct, ccy,
+    period_from: '2026-09-01', period_to: '2026-09-30', opening: op, closing_stated: cl,
+    closing_calc: op, credit_total: 100, debit_total: 100 });
+  const kinds = l => (l || []).map(x => x.kind);
+  // Үлдэгдэл уншигдаагүй (0/0 + гүйлгээтэй) → ИЛ гарна
+  ok(kinds(CB([s('111', 'MNT', 0, 0)], [], ['111'], '2026-09')).includes('unverified'),
+     'шалгуур: уншигдаагүй үлдэгдэл ил гарна');
+  // Эцсийн үлдэгдэл огт байхгүй → ИЛ гарна
+  ok(kinds(CB([s('111', 'MNT', 500, null)], [], ['111'], '2026-09')).includes('unverified'),
+     'шалгуур: эцсийн үлдэгдэлгүй хуулга ил гарна');
+  // ⛔ Валют данс нь ЗАКОНЫ ЁСООР шалгагдахгүй — анхааруулга гаргахгүй
+  ok(!kinds(CB([s('111', 'USD', 500, 600)], [], ['111'], '2026-09')).includes('unverified'),
+     'шалгуур: валют данс анхааруулга гаргахгүй');
+  // Хэвийн шалгагдсан хуулга — анхааруулгагүй
+  ok(!kinds(CB([s('111', 'MNT', 500, 500)], [], ['111'], '2026-09')).includes('unverified'),
+     'шалгуур: тэнцсэн хуулга анхааруулгагүй');
+  // ⚠ Бүртгэгдээгүй (хувийн) данс сар хаахыг блоклохгүй
+  ok(!kinds(CB([s('999', 'MNT', 0, 0)], [], ['111'], '2026-09')).includes('unverified'),
+     'шалгуур: бүртгэлгүй данс блоклохгүй');
+}
+
+// ═══ САРЫН ЦАЛИН — ажилтан өөрөө харна (2026-10-02) ═══════════════════════
+// Гарт очих = цэвэр суурь + ИЛҮҮ ЦАГ + ХҮРГЭЛТ. ДАМЖЛАГЫН БОНУС ОРОХГҮЙ (CEO шийдвэр).
+// ═══ САРЫН НОРМ = ТЭР САРЫН АЖЛЫН ӨДӨР × 8 (2026-10-03, CEO) ═══════════════
+// 23 өдөр (184ц) гэж хатуу тавигдсанаас болж нормоо БҮТЭН ажилласан хүний
+// суурь цалин `ажилласан ÷ норм`-оор хасагдаж, 2 сард 160÷184 = 87% болж байв.
+{
+  const { monthWorkdays, workNormDays, workNormMins } = F;
+  // 2026 оны ажлын өдөр (бямба/ням хассан) — хуанлиар шалгасан
+  const exp = { '2026-01': 22, '2026-02': 20, '2026-03': 22, '2026-04': 22, '2026-05': 21,
+                '2026-06': 22, '2026-07': 23, '2026-08': 21, '2026-09': 22, '2026-10': 22,
+                '2026-11': 21, '2026-12': 23 };
+  Object.keys(exp).forEach(m => eq(monthWorkdays(m), exp[m], `норм: ${m} = ${exp[m]} ажлын өдөр`));
+  eq(workNormMins('2026-09'), 22 * 8 * 60, 'норм: 9 сар = 176 цаг');
+  eq(workNormMins('2026-02'), 20 * 8 * 60, 'норм: 2 сар = 160 цаг');
+  /* ⛔ БАЯРЫН ӨДӨР ХАСАГДАХГҮЙ (CEO) — 7 сард Наадам 5 хоног байхад 23 өдөр
+     хэвээр. Хасвал норм бага болж, илүү цаг хиймлээр өснө. */
+  eq(monthWorkdays('2026-07'), 23, 'норм: Наадамтай 7 сар ч 23 өдөр (баяр хасагдахгүй)');
+  eq(monthWorkdays('2026-01'), 22, 'норм: Шинэ жилтэй 1 сар ч 22 өдөр');
+  // ⚠ Оны хил: 12 сар 31 хоногтой, 2 сар 28 — хоёуланг барина
+  eq(monthWorkdays('2025-12'), 23, 'норм: 2025-12 = 23 өдөр');
+  eq(monthWorkdays('2024-02'), 21, 'норм: 2024-02 (өрсөн жил, 29 хоног) = 21 өдөр');
+  // Танихгүй сар → өнөөдрийн сар (бодолт зогсохгүй)
+  ok(monthWorkdays('') >= 19 && monthWorkdays('') <= 23, 'норм: сар дамжуулаагүй бол өнөөдрийн сараар');
+  // Тохиргоо тавибал тогтмол тоо ялна (онцгой тохиолдол)
+  vm.runInContext("state.appConfig = state.appConfig || {}; state.appConfig.work_norm_days = 26;", sandbox);
+  eq(workNormDays('2026-02'), 26, 'норм: тохиргооны тогтмол тоо ялна');
+  vm.runInContext("delete state.appConfig.work_norm_days;", sandbox);
+  eq(workNormDays('2026-02'), 20, 'норм: тохиргоо авахад хуанли руу буцна');
+}
+
+// Илүү цаг нь САРААР (нийт − 184ц), хувь 1.0, нэмэгдэлд суутгал ТООЦОХГҮЙ.
+{
+  const { monthPayBreakdown, payMonthDefault, payMonthMins } = F;
+  const H = h => h * 60;
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  runIn("state.salaryRates = { ndsh: 11.5, pit: 10 }; state.appConfig = state.appConfig || {}; delete state.appConfig.salary_rates; delete state.appConfig.overtime;");
+  const NORM = H(184);
+
+  // ── Суутгал ЗӨВХӨН суурь цалингаас ──
+  const b1 = monthPayBreakdown(1840000, true, NORM, NORM, 0, 1);
+  eq(b1.ndsh, 211600, 'цалин: НДШ 11.5% суурьтаас');
+  eq(b1.pit, 162840, 'цалин: ХХОАТ (суурь−НДШ)-ээс');
+  eq(b1.netBase, 1840000 - 211600 - 162840, 'цалин: цэвэр суурь');
+  eq(b1.otMins, 0, 'цалин: норм яг хүрвэл илүү цаг 0');
+  eq(b1.total, b1.netBase, 'цалин: нэмэгдэлгүй бол нийт = цэвэр суурь');
+
+  // ── Илүү цаг = САРААР, 1.0 дахин. Цагийн хөлс = суурь ÷ 184 ──
+  const b2 = monthPayBreakdown(1840000, true, H(200), NORM, 0, 1);
+  eq(b2.hourly, 10000, 'цалин: цагийн хөлс = суурь ÷ нормын цаг');
+  eq(b2.otMins, H(16), 'цалин: илүү цаг = 200 − 184');
+  eq(b2.otPay, 160000, 'цалин: 16ц × 10,000 = 160,000');
+  eq(b2.total, b1.netBase + 160000, 'цалин: илүү цаг БҮТНЭЭР нэмэгдэнэ (суутгалгүй)');
+  // ⛔ НЭМЭГДЭЛД СУУТГАЛ ТООЦОХГҮЙ — суутгал суурьтайгаа л тэнцүү үлдэнэ
+  eq(b2.ndsh, b1.ndsh, 'цалин: илүү цаг НДШ-ийг өсгөхгүй');
+  eq(b2.pit, b1.pit, 'цалин: илүү цаг ХХОАТ-ыг өсгөхгүй');
+
+  // ── Хүргэлтийн нэмэгдэл бүтнээр ──
+  const b3 = monthPayBreakdown(1840000, true, H(200), NORM, 120000, 1);
+  eq(b3.delivery, 120000, 'цалин: хүргэлтийн нэмэгдэл бүтнээр');
+  eq(b3.total, b1.netBase + 160000 + 120000, 'цалин: нийт = цэвэр суурь + илүү цаг + хүргэлт');
+
+  // ── Нормоос дутуу ажиллавал илүү цаг 0 (СӨРӨГ болохгүй) ──
+  eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otMins, 0, 'цалин: илүү цаг сөрөг болохгүй');
+  eq(monthPayBreakdown(1840000, true, H(100), NORM, 0, 1).otPay, 0, 'цалин: нормоос доош → илүү цаг 0₮');
+
+  // ── ⛔ НОРМД ХҮРЭЭГҮЙ → СУУРЬ АЖИЛЛАСАН ЦАГААР (2026-10-03, CEO; Ц.Бат эрдэнэ 129.6ц/184ц) ──
+  const OCT = '2026-10', DONE = '2026-12-15';   // DONE = 10, 11 сар ДУУССАН өдөр
+  const bs = monthPayBreakdown(1840000, true, H(92), NORM, 0, 1, OCT, DONE);
+  eq(bs.shortMins, H(92), 'цалин: нормоос дутуу цаг');
+  eq(bs.earned, 920000, 'цалин: 92/184ц → суурийн тал');
+  eq(bs.base, 1840000, 'цалин: гэрээний суурь хэвээр харагдана');
+  eq(bs.ndsh, 105800, 'цалин: НДШ ЦАГААР БОДСОН суурьаас (олгоогүй мөнгөнөөс суутгахгүй)');
+  eq(bs.pit, 81420, 'цалин: ХХОАТ цагаар бодсон суурьаас');
+  eq(bs.total, 920000 - 105800 - 81420, 'цалин: нийт = цагаар бодсон цэвэр суурь');
+  // Цагийн хөлс ижил — дутуу ба илүү цаг ТЭГШ хэмтэй
+  eq(monthPayBreakdown(1840000, false, H(174), NORM, 0, 1, OCT, DONE).earned, 1840000 - 10 * 10000, 'цалин: 10ц дутуу = 10 × цагийн хөлс хасагдана');
+  eq(monthPayBreakdown(1840000, false, NORM, NORM, 0, 1, OCT, DONE).earned, 1840000, 'цалин: норм яг хүрвэл бүтэн суурь');
+  eq(monthPayBreakdown(1840000, false, H(200), NORM, 0, 1, OCT, DONE).earned, 1840000, 'цалин: нормоос илүү бол суурь хэвээр (илүү нь илүү цаг)');
+  // ⛔ 10 САРААС — «9 сард хэлж амжаагүй учраас 9 сарынхад хэрэгжүүлж болохгүй» (CEO)
+  // ⛔ 9 САРААС (цалингийн тооцооны эхлэх сар) — CEO: «цагтаа хүрээгүй хүнд бүтэн цалин
+  //   өгөх нь буруу». 8 сар ба өмнөх нь ТҮҮХ (гараар тооцсон) — хасахгүй.
+  vm.runInContext("state.payrollCfg = { start: '2026-09' };", sandbox);
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09', DONE).earned, 920000, 'цалин: 9 сард дутуу цагаар ХАСНА (цалингийн тооцооны эхний сар)');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-09', DONE).shortMins, H(92), 'цалин: 9 сард дутуу цаг ил');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-08', DONE).earned, 1840000, 'цалин: 8 сар (түүх) хасахгүй');
+  ok(/function payProrateFrom\(\) \{ return payrollStartMonth\(\); \}/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8')),
+     'scan: дутуу цагийн хасалт цалингийн тооцоотой ИЖИЛ сараас (тусдаа эхлэх сар байхгүй)');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1).earned, 1840000, 'цалин: сар мэдэгдэхгүй бол хасахгүй (эргэлзвэл бүтэн)');
+  // ⛔ ЯВЖ БУЙ САРД ХАСАХГҮЙ — 10-03-нд 2 хоногийн ирцээр суурь 10% болж «илүү авсан» гэж худал гарч байв
+  eq(monthPayBreakdown(1840000, false, H(14), NORM, 0, 1, OCT, '2026-10-03').earned, 1840000, 'цалин: явж буй сард дутуу цагаар хасахгүй');
+  eq(monthPayBreakdown(1840000, false, H(14), NORM, 0, 1, OCT, '2026-11-01').earned, 140000, 'цалин: сар дуусмагц хасалт тооцогдоно');
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 0, 1, '2026-11', DONE).earned, 920000, 'цалин: 11 сард ч хэрэгжинэ');
+  // ⛔ Цаг МЭДЭГДЭХГҮЙ (ирц ачаалагдаагүй / огт бүртгэлгүй) → ТЭГЛЭХГҮЙ
+  const bu = monthPayBreakdown(1840000, false, null, NORM, 0, 1, OCT, DONE);
+  eq(bu.earned, 1840000, 'цалин: цаг мэдэгдэхгүй (null) бол бүтэн суурь — тэглэхгүй');
+  eq(bu.shortMins, 0, 'цалин: цаг мэдэгдэхгүй бол дутуу цаг 0');
+  eq(monthPayBreakdown(1840000, false, undefined, NORM, 0, 1, OCT, DONE).earned, 1840000, 'цалин: undefined ч мэдэгдэхгүй гэж үзнэ');
+  // Хүргэлт цагаас үл хамааран бүтнээр
+  eq(monthPayBreakdown(1840000, false, H(92), NORM, 50000, 1, OCT, DONE).total, 920000 + 50000, 'цалин: дутуу цагтай ч хүргэлт бүтнээр');
+
+  // ── Суутгалгүй ажилтан ──
+  const b4 = monthPayBreakdown(1000000, false, NORM, NORM, 0, 1);
+  eq(b4.ndsh + b4.pit, 0, 'цалин: суутгалгүй ажилтанд суутгал 0');
+  eq(b4.total, 1000000, 'цалин: суутгалгүй → нийт = суурь');
+
+  // ── Суурь цалин 0 бол илүү цаг ч 0₮ (хуваах алдаа гаргахгүй) ──
+  const b5 = monthPayBreakdown(0, true, H(300), NORM, 50000, 1);
+  eq(b5.otPay, 0, 'цалин: суурь 0 → илүү цаг 0₮');
+  eq(b5.total, 50000, 'цалин: суурь 0 ч хүргэлтийн нэмэгдэл үлдэнэ');
+
+  // ── Хувь тохируулгатай (app_config['overtime'].rate) ──
+  runIn("state.appConfig.overtime = { rate: 1.5 };");
+  eq(F.overtimeRate(), 1.5, 'цалин: илүү цагийн хувь тохиргооноос');
+  eq(monthPayBreakdown(1840000, true, H(200), NORM, 0).otPay, 240000, 'цалин: 1.5 хувиар 16ц = 240,000');
+  runIn("delete state.appConfig.overtime;");
+  eq(F.overtimeRate(), 1, 'цалин: тохиргоогүй бол 1.0 (нөөц утга)');
+
+  // ── Суутгалын хувь = app_config (ажилтан ба CEO ижил тоо харна) ──
+  runIn("state.appConfig.salary_rates = { ndsh: 0, pit: 0 };");
+  eq(monthPayBreakdown(1000000, true, NORM, NORM, 0, 1).total, 1000000, 'цалин: хувь app_config-оос уншигдана');
+  runIn("delete state.appConfig.salary_rates;");
+
+  // ── Цалингийн САР: үлдэгдэл дараа сарын 5-нд тул 5 хүртэл ӨМНӨХ сар ──
+  eq(payMonthDefault('2026-10-02'), '2026-09', 'цалингийн сар: 10-02 → 9 сар');
+  eq(payMonthDefault('2026-10-05'), '2026-09', 'цалингийн сар: 10-05 → 9 сар (олголтын өдөр)');
+  eq(payMonthDefault('2026-10-06'), '2026-10', 'цалингийн сар: 10-06 → 10 сар');
+  eq(payMonthDefault('2026-01-03', '2025-01'), '2025-12', 'цалингийн сар: оны эхэнд өмнөх он руу шилжинэ');
+  /* ⛔ ЭХЛЭХ САРААС ӨМНӨ ГУЛСАХГҮЙ — тэр нь түүх, нээхэд бодолт байхгүй тул
+     хүн «цалин алга» гэж гайхна. Эхлэх сар = 2026-09 (CEO, 2026-10-03). */
+  eq(payMonthDefault('2026-09-03', '2026-09'), '2026-09', 'цалингийн сар: эхлэх сараас өмнө гулсахгүй');
+  eq(payMonthDefault('2026-01-03', '2026-09'), '2026-09', 'цалингийн сар: эхлэх сар руу хавчуулна');
+  ok(F.payrollHistOnly('2026-08', '2026-09'), 'цалин: 8 сар = түүх');
+  ok(!F.payrollHistOnly('2026-09', '2026-09'), 'цалин: эхлэх сар өөрөө түүх БИШ');
+  ok(!F.payrollHistOnly('2026-10', '2026-09'), 'цалин: шинэ сар түүх биш');
+  ok(!F.payrollHistOnly('', '2026-09'), 'цалин: хоосон сар түүх биш (бодолт зогсохгүй)');
+
+  // ── payMonthMins: in/out хосоор, гараагүй өдөр 0 цаг бөгөөд ИЛ тоологдоно ──
+  const rec = (day, kind, hh) => ({ day, kind, ts: `${day}T${String(hh - 8).padStart(2, '0')}:00:00.000Z` });
+  const w = payMonthMins([
+    rec('2026-09-01', 'in', 9), rec('2026-09-01', 'out', 18),
+    rec('2026-09-02', 'in', 9), rec('2026-09-02', 'out', 21),
+    rec('2026-09-03', 'in', 9),                                   // гарах бүртгэлгүй
+  ], '2026-09');
+  // ⚠ 9 сараас цайны цаг хасагдана: 9ц→8ц, 12ц→11ц
+  eq(w.mins, H(8) + H(11), 'ирц: in/out хосоор л тоологдоно (цай хассан)');
+  eq(w.days, 3, 'ирц: өдрийн тоо');
+  eq(w.noOut, 1, 'ирц: гарах бүртгэлгүй өдөр тоологдоно (илүү цаг дутуу гарна)');
+}
+
+// ═══ ЦАЙНЫ ЦАГ — 9 сараас ирцээс автоматаар хасна (2026-10-03, CEO) ═══════════
+{
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  runIn('state.appConfig = state.appConfig || {}; delete state.appConfig.lunch;');
+  const LM = (d, m) => runIn(`lunchMinsFor(${JSON.stringify(d)}, ${m})`);
+  // Томьёо: min(60, max(0, нийт − 5ц)) — 5ц хүртэл 0, 6ц-аас дээш бүтэн 1ц
+  eq(LM('2026-10-05', 9 * 60), 60, 'цай: 9ц байсан өдөр 1ц хасагдана');
+  eq(LM('2026-10-05', 6 * 60), 60, 'цай: яг 6ц → бүтэн 1ц');
+  eq(LM('2026-10-05', 5 * 60 + 30), 30, 'цай: 5ц30м → 30м (хатуу босгогүй)');
+  eq(LM('2026-10-05', 5 * 60), 0, 'цай: 5ц хүртэл хасахгүй');
+  eq(LM('2026-10-05', 3 * 60), 0, 'цай: богино ээлжинд хасахгүй');
+  // ⛔ Шулуун томьёо: ИЛҮҮ байсан хүн хэзээ ч БАГА цаг авахгүй (хатуу босгын гажиг)
+  let prev = -1, mono = true;
+  for (let g = 0; g <= 12 * 60; g += 5) { const net = g - LM('2026-10-05', g); if (net < prev) mono = false; prev = net; }
+  ok(mono, 'цай: ажилласан цаг нийт цагаас хэзээ ч буурахгүй (5ц59м < 6ц гажиггүй)');
+  /* ⛔ ЭХЛЭХ ӨДӨР = 2026-09-01 — цалингийн тооцоо эхэлсэн сартай ИЖИЛ.
+     Эс бөгөөс аппын бодож буй ПЕРВЫЙ сар (9 сар) цайгүй, 10 сар цайтай гэсэн
+     ХОЁР өөр дүрмээр бодогдоно. 8 сар ба өмнөх нь ТҮҮХ (гараар тооцсон). */
+  eq(LM('2026-08-31', 9 * 60), 0, 'цай: 8 сар (түүх) хасагдахгүй');
+  eq(LM('2026-09-01', 9 * 60), 60, 'цай: 9 сарын эхнээс хасна');
+  eq(LM('2026-09-30', 9 * 60), 60, 'цай: 9 сард хасагдана');
+  eq(LM('2026-10-01', 9 * 60), 60, 'цай: 10 сард ч хасна');
+  // ⛔ Цайны ЭХЛЭХ сар = цалингийн тооцооны эхлэх сар (хоёр дүрэм зөрөх ёсгүй)
+  eq(F.lunchCfg().from.slice(0, 7), F.payrollStartMonth(), 'ИНВАРИАНТ: цай ба цалингийн эхлэл ижил сар');
+  eq(LM('', 9 * 60), 0, 'цай: өдөр мэдэгдэхгүй бол хасахгүй');
+  // Тохиргоо: mins=0 → унтарна
+  runIn("state.appConfig.lunch = { mins: 0 };");
+  eq(LM('2026-10-05', 9 * 60), 0, 'цай: тохиргоогоор унтарна');
+  runIn("state.appConfig.lunch = { from: '2026-11-01', mins: 30, after: 240 };");
+  eq(LM('2026-10-05', 9 * 60), 0, 'цай: тохиргооны эхлэх өдрөөс өмнө хасахгүй');
+  eq(LM('2026-11-05', 9 * 60), 30, 'цай: тохиргооны хугацаа/босго');
+  runIn('delete state.appConfig.lunch;');
+
+  // attMemberSummary — ГАНЦ хасах цэг: mins = цай хассан, gross = нийт
+  const rec = (day, kind, hh) => ({ day, kind, ts: `${day}T${String(hh - 8).padStart(2, '0')}:00:00.000Z` });
+  const sOct = F.attMemberSummary([rec('2026-10-05', 'in', 9), rec('2026-10-05', 'out', 18)], false);
+  eq(sOct.gross, 540, 'цай: нийт байсан цаг хэвээр (9ц)');
+  eq(sOct.lunch, 60, 'цай: хассан цаг ил');
+  eq(sOct.mins, 480, 'цай: 09–18 → 8ц ажилласан');
+  eq(F.attMemberSummary([rec('2026-09-29', 'in', 9), rec('2026-09-29', 'out', 18)], false).mins, 480, 'цай: 9 сарын өдөр ч 8ц');
+  eq(F.attMemberSummary([rec('2026-08-29', 'in', 9), rec('2026-08-29', 'out', 18)], false).mins, 540, 'цай: 8 сар (түүх) хэвээр 9ц');
+  // Цалин руу ДАМЖИНА: 23 өдөр 09–18 = 184ц = норм яг (илүү цаггүй)
+  const days = []; for (let d = 1; d <= 23; d++) { const day = `2026-10-${String(d).padStart(2, '0')}`; days.push(rec(day, 'in', 9), rec(day, 'out', 18)); }
+  eq(F.payMonthMins(days, '2026-10').mins, 23 * 480, 'цай: сарын нийлбэрт цай хасагдсан');
+  eq(F.monthPayBreakdown(1840000, false, F.payMonthMins(days, '2026-10').mins, 184 * 60, 0, 1).otMins, 0, 'цай: 09–18 × 23 өдөр = норм, илүү цаг 0');
+
+  // SCAN: цайг ГАНЦ газар хасна — өөр газар дахин хасвал давхар хасагдана
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  eq((src.match(/lunchMinsFor\(/g) || []).length, 2, 'scan: цай зөвхөн attMemberSummary-д хасагдана (тодорхойлолт + 1 дуудалт)');
+}
+
+// ═══ SCAN: ДАМЖЛАГЫН БОНУС ЦАЛИНД НЭМЭГДЭХГҮЙ (2026-10-02, CEO шийдвэр) ═══════
+// Дамжлагын бонус нь дамжлагын урамшуулал — цалингийн нийт дүнд орвол утгаа алдана.
+// «Нэмэгдэлд суутгал тооцохгүй» гэдэг нь суутгал ЗӨВХӨН суурьтаас бодогдоно гэсэн үг:
+// нэмэгдлийг нэмсний ДАРАА salaryNet дуудвал татвар чимээгүй өснө.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  /* ⚠ ЗӨВХӨН функцийн бие — `payMonthDefault` хүртэл зүсвэл хооронд нь
+     орших `payrollCarryIn` ч багтаж, дамжлагын бонусын дуудлагыг худлаа
+     барина (2026-10-04). Хаалт тоолж таслана. */
+  const _mb0 = src.indexOf('function monthPayBreakdown');
+  const body = (() => { let i = src.indexOf('{', _mb0), d = 0, j = i;
+    for (; j < src.length; j++) { const c = src[j]; if (c === '{') d++; else if (c === '}') { d--; if (!d) break; } }
+    return src.slice(_mb0, j + 1); })();
+  ok(body.length > 200, 'scan: monthPayBreakdown олдов');
+  /* ⚠ 2026-10-04: бонус нийт олгоход ОРСОН (CEO). Гэхдээ дотор нь ДАХИН
+     бодогдохгүй — дуудагч тооцсон дүнг параметрээр дамжуулна. */
+  ok(/stageBonus/.test(body), 'scan: бонус параметрээр дамжина');
+  eq((body.match(/stagePayByPerson\(|stagePayFor\(/g) || []).length, 0,
+     'scan: цалингийн тооцоо бонусыг ДОТРОО дахин бодохгүй');
+  ok(/total: d\.net \+ otPay \+ delivery \+ bonus/.test(body), 'scan: бонус нийт олгоход нэмэгдэнэ');
+  eq((body.match(/salaryNet\(/g) || []).length, 1, 'scan: salaryNet нэг л удаа дуудагдана');
+  ok(/salaryNet\(earned,/.test(body), 'scan: суутгал ЗӨВХӨН (цагаар бодсон) суурь цалингаас бодогдоно');
+  // ⛔ Цаг мэдэгдэхгүйг 0 цаг гэж үзвэл цалин тэглэгдэнэ — дуудагч бүр null дамжуулна
+  const rsB = src.slice(src.indexOf('function renderSalary('), src.indexOf('function attachSalaryHandlers('));
+  ok(/\(attReady && attMins\[r\.k\]\) \? w\.mins : null/.test(rsB), 'scan: самбар ирц ачаалагдаагүй үед цагийг null дамжуулна');
+  // ⛔ Сар дамжуулаагүй дуудагч цагаар ХЭЗЭЭ Ч хасахгүй — тиймээс бүгд сараа өгнө
+  const callers = (src.match(/monthPayBreakdown\([^\n]*\)/g) || []).filter(x => !/deliveryAmt, rate, month/.test(x));   // тодорхойлолтыг хасна
+  ok(callers.length >= 3 && callers.every(x => /undefined, (month|ym|m)[,)]/.test(x)), 'scan: цалингийн дуудагч бүр сараа дамжуулна');
+  // ⚠ 2026-10-04: бонус нь СҮҮЛИЙН параметр — дуудагч бүр түүнийг ч өгнө
+  ok(callers.every(x => /stagePayFor|spAll|\.total/.test(x)), 'scan: дуудагч бүр дамжлагын бонусыг дамжуулна');
+  ok(/-\s*norm\b/.test(body), 'scan: илүү цаг = сарын нийт − норм (өдрөөр биш)');
+
+  // Картын нийт дүн нь monthPayBreakdown-аас л гарна (дэлгэцэд дахин бодохгүй)
+  const card = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
+  ok(card.length > 400, 'scan: myPayCardHtml олдов');
+  ok(/w\.days \? w\.mins : null/.test(card), 'scan: карт ирцгүй сард цагийг null дамжуулна');
+  ok(/monthPayBreakdown\(/.test(card), 'scan: карт нийт дүнг monthPayBreakdown-аас авна');
+  /* ⛔ Картад бонусыг ГАРААР нэмэхгүй — `monthPayBreakdown`-ийн `total` дотор
+     аль хэдийн орсон. Хоёр газар нэмбэл ДАВХАР тоологдоно. */
+  eq((card.match(/sp\.total\s*\+|\+\s*sp\.total/g) || []).length, 0,
+     'scan: картад бонус нийт дүн дээр ДАХИН нэмэгдэхгүй');
+  /* ⛔ БОНУС = НИЙЛБЭРЭЭС ӨМНӨХ МӨР (2026-10-05, CEO барив). Доор нь
+     тэмдэглэл болгож тавибал мөрүүд нийлбэртэйгээ таарахгүй, хүн «дүн
+     буруу» гэж уншина. `spRow` нь `dlvRow`-гийн дараа, нийлбэрээс өмнө. */
+  ok(/\$\{spRow\}\s*\n\s*\$\{row\('Нийт гарт очих'/.test(card), 'scan: бонус мөр нийлбэрээс ӨМНӨ');
+  ok(/Дамжлагын бонус/.test(card), 'scan: бонусын мөр нэртэйгээ гарна');
+  // Гарах бүртгэлгүй өдрийг НУУХГҮЙ — тэр нь илүү цаг дутуу гарах цорын ганц шалтгаан
+  ok(/w\.noOut/.test(card), 'scan: гарах бүртгэлгүй өдрийг картад ил хэлнэ');
+
+  // Суутгалын хувь = app_config (ажилтан ба CEO ижил тоо харна)
+  const rates = src.slice(src.indexOf('function salaryRates'), src.indexOf('function salaryNet'));
+  ok(/appConfig\.salary_rates/.test(rates), 'scan: суутгалын хувь app_config-оос (localStorage зөвхөн нөөц)');
+}
+
+// ═══ САРД ОЛГОСОН ЦАЛИН — мөр бүрээр (2026-10-02) ════════════════════════
+// «Олгосон 600,000₮» гэсэн ганц тоо нь хэзээ, хэдэн удаа, ямар утгаар орсныг
+// хэлдэггүй тул ажилтан дансаа тулгаж чаддаггүй байв.
+{
+  const { salaryPaymentsFor, salaryPayLabel } = F;
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const rows = [
+    { person_key: '88001122', ym: '2026-09', amount: 300000, note: '⟦УР⟧ [#abc] Цалин урьдчилгаа', paid_at: '2026-09-20T05:00:00Z' },
+    { person_key: '88001122', ym: '2026-09', amount: 200000, note: 'Хуулгаар баталгаажсан · EB-цалин: Э.Очбаяр', paid_at: '2026-09-26T03:00:00Z' },
+    { person_key: '88001122', ym: '2026-09', amount: 100000, note: '⟦ҮЛ⟧ үлдэгдэл', paid_at: '2026-10-05T04:00:00Z' },
+    { person_key: '88001122', ym: '2026-08', amount: 999999, note: '', paid_at: '2026-08-20T05:00:00Z' },   // өөр сар
+    { person_key: '90000000', ym: '2026-09', amount: 777777, note: '', paid_at: '2026-09-20T05:00:00Z' },   // өөр хүн
+  ];
+  const ps = salaryPaymentsFor(rows, '88001122', '2026-09');
+  eq(ps.length, 3, 'олголт: зөвхөн тухайн хүний тухайн сар');
+  eq(ps.map(x => x.amount).join(','), '300000,200000,100000', 'олголт: огноо ӨСӨХӨӨР эрэмбэлэгдэнэ');
+  eq(ps[0].label, 'урьдчилгаа', 'олголт: ⟦УР⟧ → урьдчилгаа');
+  eq(ps[2].label, 'үлдэгдэл', 'олголт: ⟦ҮЛ⟧ → үлдэгдэл');
+  eq(ps[1].label, 'EB-цалин: Э.Очбаяр', 'олголт: хуулгын утга цэвэрлэгдэнэ');
+
+  // ⛔ Хээ (`[#...]`) ба токен хүнд юу ч хэлэхгүй — харагдахгүй
+  eq(salaryPayLabel('[#deadbeef] ⟦SAL|x⟧ Цалин'), 'Цалин', 'олголт: хээ/токен шошгонд орохгүй');
+  eq(salaryPayLabel(''), '', 'олголт: хоосон тэмдэглэл хоосон шошго');
+  eq(salaryPayLabel(null), '', 'олголт: null тэмдэглэл унахгүй');
+
+  // ── ИНВАРИАНТ: нийлбэр ба жагсаалт ИЖИЛ шүүлтээс гарна ──
+  runIn("state.salaryPayments = " + JSON.stringify(rows) + ";");
+  eq(F.salaryPaidFor('88001122', '2026-09'), 600000, 'олголт: нийт = 300k+200k+100k');
+  eq(F.salaryPaidFor('88001122', '2026-09'),
+     salaryPaymentsFor(rows, '88001122', '2026-09').reduce((s, x) => s + x.amount, 0),
+     'ИНВАРИАНТ: олгосон нийлбэр = жагсаалтын нийлбэр');
+  eq(F.salaryPaidFor('88001122', '2026-07'), 0, 'олголт: олголтгүй сар → 0');
+  runIn("state.salaryPayments = [];");
+}
+
+// ═══ SCAN: олголтын нийлбэр ба жагсаалт ХОЁР ӨӨР шүүлтээр гарахгүй ═══════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const sum = src.slice(src.indexOf('function salaryPaidFor'), src.indexOf('function salaryPaymentsFor'));
+  ok(/salaryPaymentsFor\(/.test(sum), 'scan: salaryPaidFor нь salaryPaymentsFor-оос тооцогдоно');
+  eq((sum.match(/\.filter\(/g) || []).length, 0, 'scan: нийлбэр өөрийн шүүлт давхардуулахгүй');
+
+  const card = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
+  ok(/salaryPaymentsFor\(/.test(card), 'scan: карт олголтыг мөрөөр жагсаана');
+  ok(/олголт бүртгэгдээгүй/.test(card), 'scan: олголтгүй сард ч мөр гарч ил хэлнэ');
+
+  // Олголтын шошгын дүрэм ГАНЦ газар — түүхийн модал ч түүнийг дуудна
+  const hist = src.slice(src.indexOf('function openSalaryHistory'), src.indexOf('function openSalaryHistory') + 1400);
+  ok(/salaryPayLabel\(/.test(hist), 'scan: түүхийн модал ижил шошгын дүрэм ашиглана');
+  eq((hist.match(/SAL_ADV_TAG\)/g) || []).length, 0, 'scan: түүхийн модал токеныг өөрөө задлахгүй');
+}
+
+// ═══ ЦАЛИНГИЙН САМБАР — ХЭН гарах вэ (2026-10-02) ════════════════════════
+// ⛔ `worker_type`-аар шүүвэл амьд системд сарын цалинтай 4 ажилтан (яг хамгийн
+//   их илүү цаг гаргасан хүмүүс) цалингийн дэлгэцээс ОГТ алга болж байв.
+{
+  const { payrollRoster, payrollOrphans, payrollAttMins } = F;
+  const T = [
+    { name: 'А.Сарнай', phone: '88000001', worker_type: 'permanent', status: 'идэвхтэй' },
+    { name: 'Б.Очир',   phone: '88000002', worker_type: 'daily',     status: 'идэвхтэй' },   // цалинтай, буруу тэмдэглэгдсэн
+    { name: 'В.Цэрэн',  phone: '88000003', worker_type: 'daily',     status: 'идэвхтэй' },   // ирцтэй, цалингүй
+    { name: 'Г.Дорж',   phone: '88000004', worker_type: 'daily',     status: 'идэвхтэй' },   // жинхэнэ цагийн — гарахгүй
+    { name: 'Д.Болд',   phone: '88000005', worker_type: 'permanent', status: 'гарсан' },     // гарсан, мөргүй
+    { name: 'Е.Нар',    phone: '88000006', worker_type: 'permanent', status: 'гарсан' },     // гарсан, ОЛГОЛТТОЙ
+  ];
+  const sal = { '88000001': 1800000, '88000002': 2200000, '88000009': 500000 };   // 09 = эзэнгүй
+  const att = new Set(['88000003']);
+  const paid = new Set(['88000006']);
+  const got = payrollRoster(T, sal, att, paid).map(r => r.m.name);
+  ok(got.includes('Б.Очир'), 'самбар: цалинтай «daily» ажилтан ГАРНА (worker_type-аар шүүхгүй)');
+  ok(got.includes('В.Цэрэн'), 'самбар: ирцтэй атлаа цалингүй хүн гарна');
+  ok(got.includes('Е.Нар'), 'самбар: гарсан ч олголттой бол гарна (түүх таслагдахгүй)');
+  ok(!got.includes('Г.Дорж'), 'самбар: цалин/ирц/олголтгүй цагийн ажилтан гарахгүй');
+  ok(!got.includes('Д.Болд'), 'самбар: гарсан бөгөөд мөргүй хүн гарахгүй');
+  eq(got[0], 'Б.Очир', 'самбар: цалингийн дүнгээр буурахаар эрэмбэлэгдэнэ');
+  // Тугууд — анхааруулга эдгээрээс гарна
+  const byName = {}; payrollRoster(T, sal, att, paid).forEach(r => { byName[r.m.name] = r; });
+  const flag = (n, f) => !!(byName[n] && byName[n][f]);   // ⚠ алга болсон хүн дээр унахгүй — УЛААН болно
+  ok(flag('В.Цэрэн', 'noSalary') && flag('В.Цэрэн', 'hasAtt'), 'самбар: «ажилласан ч цалингүй» тэмдэглэгдэнэ');
+  ok(flag('Б.Очир', 'noAtt'), 'самбар: «цалинтай ч ирцгүй» тэмдэглэгдэнэ');
+
+  // ── Эзэнгүй цалин/олголт НУУГДАХГҮЙ ──
+  const orph = payrollOrphans(T, sal, [
+    { person_key: '88000077', ym: '2026-09', amount: 150000 },
+    { person_key: '88000001', ym: '2026-09', amount: 900000 },   // эзэнтэй — орохгүй
+    { person_key: '88000077', ym: '2026-08', amount: 999999 },   // өөр сар — орохгүй
+  ], '2026-09');
+  eq(orph.length, 2, 'эзэнгүй: цалингийн мөр + олголт хоёулаа баригдана');
+  eq(orph.map(o => o.key).sort().join(','), '88000009,88000077', 'эзэнгүй: зөв түлхүүрүүд');
+  eq(orph.find(o => o.key === '88000077').paid, 150000, 'эзэнгүй: зөвхөн тухайн сарын олголт');
+  eq(payrollOrphans(T, {}, [], '2026-09').length, 0, 'эзэнгүй: цэвэр үед хоосон');
+
+  // ── Ирцээс хүн бүрийн минут ──
+  const rec = (key, day, kind, hh) => ({ member_key: key, member_name: key, day, kind, ts: `${day}T${String(hh - 8).padStart(2, '0')}:00:00.000Z` });
+  const am = payrollAttMins([
+    rec('88000001', '2026-09-01', 'in', 9), rec('88000001', '2026-09-01', 'out', 18),
+    rec('88000001', '2026-09-02', 'in', 9),                                   // гараагүй
+    rec('88000003', '2026-09-01', 'in', 10), rec('88000003', '2026-09-01', 'out', 20),
+  ]);
+  eq(am['88000001'].mins, 8 * 60, 'ирц: хүн бүрээр тусад нь тоологдоно (цай хассан)');
+  eq(am['88000001'].noOut, 1, 'ирц: гараагүй өдөр тоологдоно');
+  eq(am['88000003'].mins, 9 * 60, 'ирц: хоёр дахь хүн зөв (цай хассан)');
+  eq(Object.keys(am).length, 2, 'ирц: зөвхөн бичлэгтэй хүн');
+}
+
+// ═══ SCAN: цалингийн самбар хүнийг чимээгүй АЛГАСАХГҮЙ ═══════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(rs.length > 1000, 'scan: renderSalary олдов');
+  // ⛔ worker_type-аар шүүхийг хаана (salaryStaff нь яг үүнийг хийдэг)
+  eq((rs.match(/worker_type|salaryStaff\(/g) || []).length, 0,
+     'scan: самбар worker_type-аар хүн шүүхгүй');
+  ok(/payrollRoster\(/.test(rs), 'scan: жагсаалт payrollRoster-оос гарна');
+  // Чимээгүй цоорхойг ИЛ хэлнэ
+  ok(/payrollOrphans\(/.test(rs), 'scan: эзэнгүй цалин/олголтыг ил хэлнэ');
+  ok(/суурь цалин тохируулаагүй/.test(rs), 'scan: ажилласан ч цалингүй хүнийг ил хэлнэ');
+  ok(/ирц бүртгүүлээгүй/.test(rs), 'scan: цалинтай ч ирцгүй хүнийг ил хэлнэ');
+  // ⛔ Ирц ачаалагдаагүй үед «илүү цаг 0» гэж ЧИМЭЭГҮЙ харуулахгүй
+  ok(/attReady/.test(rs) && /илүү цаг тооцогдоогүй|ачаалж байна/.test(rs),
+     'scan: ирц ачаалагдаагүйг ил хэлнэ (чимээгүй 0 илүү цаг гаргахгүй)');
+  // Тоог ДАХИН бодохгүй — ижил эх сурвалж
+  ok(/monthPayBreakdown\(/.test(rs), 'scan: самбар monthPayBreakdown ашиглана');
+  ok(/salaryPaymentsFor\(/.test(rs), 'scan: самбар олголтыг мөрөөр жагсаана');
+
+  // Сарын ирц ачаалахад цалингийн дэлгэц ч дахин зурагдана
+  const ld = src.slice(src.indexOf('async function loadAttendanceMonthFull'), src.indexOf('function attMonthStart'));
+  ok(/state\.view === 'salary'/.test(ld), 'scan: ирц ирэхэд цалингийн самбар дахин зурагдана');
+}
+
+// ═══ SCAN: эзэнгүй цалин — АНХААРУУЛГА БИШ, ЗАСАХ ЗАМ (2026-10-02) ═══════
+// Цалингийн мөр нь зөвхөн утас+дүн хадгалдаг тул НЭР огт үлддэггүй: ажилтны дугаар
+// DB дээр засагдахад мөр нь хуучин дугаартаа үлдэнэ. Амьд системд 2 мөр (1.8сая,
+// 2.5сая) ингэж эзэнгүй болсон бөгөөд CEO юу ч хийж чаддаггүй байв.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(/data-orph-fix=/.test(rs), 'scan: эзэнгүй мөр бүрд засах ТОВЧ гарна');
+  const h = src.slice(src.indexOf('function attachSalaryHandlers'), src.indexOf('function openOrphanSalaryModal'));
+  ok(/data-orph-fix\]/.test(h), 'scan: засах товч холбогдсон');
+
+  const mo = src.slice(src.indexOf('function openOrphanSalaryModal'), src.indexOf('// Цалин олгосон түүх'));
+  ok(mo.length > 500, 'scan: openOrphanSalaryModal олдов');
+  // ⛔ Хатуу устгахгүй — дүнг 0 болгоно (staff_salary-д DELETE эрх зориуд алга)
+  eq((mo.match(/method:\s*'DELETE'|\.delete\(/g) || []).length, 0, 'scan: эзэнгүй мөрийг ХАТУУ устгахгүй');
+  ok(/saveSalary\(key, 0\)/.test(mo), 'scan: хаах нь дүнг 0 болгоно');
+  // ⛔ Хоёр үйлдэл хоёулаа БАТАЛГААЖУУЛАЛТТАЙ (мөнгө дарж бичнэ)
+  // ⛔ «showConfirm дуудсан» нь ХАНГАЛТГҮЙ — ХАРИУГ нь шалгаж буцдаг байх ёстой
+  //   (`false && await showConfirm(...)` гэж бичвэл эхний хэлбэр таарсаар байна).
+  eq((mo.match(/if \(!await showConfirm\([\s\S]*?\)\)\s*return;/g) || []).length, 2,
+     'scan: хаах БА шилжүүлэх хоёулаа showConfirm-ийн ХАРИУГ шалгаж буцна');
+  // ⛔ Зорилтот хүний одоогийн цалин дарагдахыг ИЛ хэлнэ
+  ok(/ДАРАГДАНА/.test(mo), 'scan: дарагдах цалинг ил сануулна');
+  ok(/can\('salary\.edit'\)/.test(mo), 'scan: эрхгүй хүн засахгүй');
+}
+
+// ═══ SCAN: цалингийн мөр МЕХАНИК давтагдахгүй (2026-10-02) ═══════════════
+// Хүн бүр 8 мөртэй, үүний 4 нь ИЖИЛ тоог давтдаг байв (цэвэр суурь = нийт олгох =
+// урьдчилгаа + үлдэгдэл) тул 20 ажилтны жагсаалт уншигдахаа больсон.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rs = src.slice(src.indexOf('const rows = calc.map'), src.indexOf('const spFoot = T.sp'));
+  ok(rs.length > 800, 'scan: цалингийн мөрийн блок олдов');
+  // Хураангуй мөр нь үргэлж харагдана, задаргаа нь нээгддэг
+  ok(/<details class="ac-row pb-card"/.test(rs), 'scan: мөр нь нээгддэг (<details>) хэлбэртэй');
+  ok(/<summary class="pb-sum">/.test(rs), 'scan: хураангуй мөртэй');
+  ok(/pb-sum-v/.test(rs) && /fmtMoney\(b\.total\)/.test(rs), 'scan: хураангуйд НИЙТ ОЛГОХ дүн гарна');
+  // ⛔ Утгагүй мөр нөхцөлгүйгээр бичигдэхгүй
+  ok(/hasParts/.test(rs), 'scan: суутгал/нэмэгдэлгүй үед задаргааны мөр бичигдэхгүй');
+  eq((rs.match(/line\('= Цэвэр суурь'|line\('Цэвэр суурь'/g) || []).length, 0,
+     'scan: «цэвэр суурь» нь «нийт олгох»-ыг давтахгүй');
+  // Төлөв нь БҮТЭН МӨР биш, НЭГ чип
+  ok(/pb-chip/.test(rs), 'scan: олголтын төлөв чипээр');
+  eq((rs.match(/'олголт бүртгэгдээгүй'/g) || []).length, 0,
+     'scan: «олголт бүртгэгдээгүй» бүтэн мөр хүн бүрд давтагдахгүй');
+  // ⛔ УРЬДЧИЛГАА/ХУВААРЬ ОГТ ХАРАГДАХГҮЙ (CEO шийдвэр) — цалин автоматаар
+  //   бодогдож, олголт нь банкны хуулгаас автоматаар бүртгэгддэг тул аппад
+  //   хагас сарын хуваарилалтыг давтах зүйл алга (хүн бүрд 2 илүү мөр байв).
+  eq((rs.match(/Урьдчилгаа|SAL_ADV_TAG|SAL_REM_TAG|salaryCyclePaid|salaryLastAdvance/g) || []).length, 0,
+     'scan: цалингийн мөрөнд урьдчилгаа/хуваарь байхгүй');
+  ok(/owed > 0 \?/.test(rs), 'scan: үлдэгдэл зөвхөн дутуу үед гарна');
+}
+
+// ═══ ЦАЛИНГИЙН САМБАР ҮНЭХЭЭР ЗУРАГДАНА (2026-10-02) ════════════════════
+// ⚠ Scan-тест нь ХЭВ МАЯГ хардаг, АЖИЛЛАХ эсэхийг хардаггүй. 2026-10-02-нд
+// `memoBtn` зарлахаасаа ӨМНӨ ашиглагдаж (TDZ) дэлгэц бүхэлдээ УНАХ байсныг
+// scan-тест ч, нэгж тест ч барьсангүй — зөвхөн гараар зурж үзэхэд илэрсэн.
+// Тиймээс самбарыг ҮНЭХЭЭР дуудаж, HTML буцааж байгааг шалгана.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('JSON.stringify([state.salaries, state.salaryPayments, state.attMonthKey, state.salaryYM])');
+  runIn(`
+    state.isCEO = true; state._salLoaded = true; state._staffPinsLoaded = true;
+    state.salaryYM = '2026-09'; state.appConfig = state.appConfig || {};
+    state.salaries = { '88000001': 2000000, '88000002': 1800000, '88000777': 500000 };
+    state.salaryDeduct = { '88000002': false };
+    state.salaryPayments = [{ person_key: '88000001', ym: '2026-09', amount: 700000, note: 'EB-цалин', paid_at: '2026-09-20T05:00:00Z' }];
+    TEAM.length = 0;
+    TEAM.push({ name: 'А.Сарнай', phone: '88000001', role: 'Менежер', worker_type: 'permanent', status: 'идэвхтэй', bank: 'Хаан', bank_account: '5000000001' });
+    TEAM.push({ name: 'Б.Очир', phone: '88000002', role: 'Жолооч', worker_type: 'daily', status: 'идэвхтэй' });
+    TEAM.push({ name: 'В.Цэрэн', phone: '88000003', role: 'Туслах', worker_type: 'daily', status: 'идэвхтэй' });
+    state.attMonthKey = '2026-09';
+    state.attMonthRecs = [
+      { member_key: '88000001', member_name: 'А.Сарнай', day: '2026-09-01', kind: 'in',  ts: '2026-09-01T01:00:00.000Z' },
+      { member_key: '88000001', member_name: 'А.Сарнай', day: '2026-09-01', kind: 'out', ts: '2026-09-01T13:00:00.000Z' },
+      { member_key: '88000003', member_name: 'В.Цэрэн',  day: '2026-09-02', kind: 'in',  ts: '2026-09-02T01:00:00.000Z' },
+    ];
+    state.appOrders = [];
+  `);
+  let html = '', err = '';
+  try { html = runIn('renderSalary()'); } catch (e) { err = e.message; }
+  eq(err, '', 'самбар: renderSalary алдаагүй ажиллана');
+  ok(html.length > 500, 'самбар: HTML буцаана');
+  ok(html.includes('А.Сарнай') && html.includes('Б.Очир'), 'самбар: цалинтай хүмүүс гарна');
+  ok(html.includes('В.Цэрэн'), 'самбар: ирцтэй атлаа цалингүй хүн гарна');
+  ok(html.includes('88000777'), 'самбар: эзэнгүй цалин ил гарна');
+  ok(html.includes('<summary'), 'самбар: хураангуй мөртэй');
+  eq(html.indexOf('Урьдчилгаа'), -1, 'самбар: урьдчилгааны хуваарь ХАРАГДАХГҮЙ');
+
+  // Ажилтны өөрийн карт ч ажиллана (ижил тооцооны эх сурвалж)
+  runIn("state.me = '88000001'; state.myPayMonth = '2026-09'; state.myPayRecs = { '2026-09': state.attMonthRecs };");
+  let card = '', cerr = '';
+  try { card = runIn('myPayCardHtml(findMember(state.me) || {})'); } catch (e) { cerr = e.message; }
+  eq(cerr, '', 'карт: myPayCardHtml алдаагүй ажиллана');
+  ok(card.includes('Миний цалин'), 'карт: гарчигтай');
+
+  /* ⚠ Scan-тест нь ХЭВ МАЯГ хардаг, АЖИЛЛАХ эсэхийг хардаггүй — тохиргооны
+     цонхыг ҮНЭХЭЭР дуудаж HTML үүсч байгааг шалгана. */
+  ok(html.includes('data-pipeline-map'), 'самбар: 📊 урсгалын товч гарна (тохиргоо нь дотроо)');
+  // ⚠ DOM нь stub тул агуулгыг унших боломжгүй — HTML угсрах үед ШИДЭГДЭХ
+  //   алдааг (TDZ, тодорхойлогдоогүй функц) барихад л хангалттай. Нэмж
+  //   `document.body.appendChild` дуудагдсаныг тоолж цонх үүссэнийг батална.
+  let cfgErr = '', added = 0;
+  const _body = runIn('document.body'), _origAppend = _body.appendChild;
+  _body.appendChild = function (x) { added++; return _origAppend ? _origAppend.call(this, x) : x; };
+  try { runIn('openPipelineMapModal()'); } catch (e) { cfgErr = e.message; }
+  eq(cfgErr, '', 'схем: цонх алдаагүй нээгдэнэ');
+  eq(added, 1, 'схем: цонх үүсч хуудсанд нэмэгдэнэ');
+  /* ⚠ Схемийг БҮХ хүн харна (ажилтан урсгалаа ойлгох ёстой) — ЗАСАХ эрх нь
+     зөвхөн захиралд (`can()`). Цонх өөрөө эрхгүй хүнд ч нээгдэнэ. */
+  added = 0; runIn('state.isCEO = false;');
+  try { runIn('openPipelineMapModal()'); } catch (e) { cfgErr = e.message; }
+  eq(added, 1, 'схем: ажилтан ч харна');
+  runIn('state.isCEO = true;'); _body.appendChild = _origAppend;
+
+  /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ (2026-10-03, CEO). 8 сар ба өмнөхийг
+     өдөр/цаг/нэмэгдлээр ГАРААР тооцож олгосон; аппын бодолт одоогийн суурь
+     цалингаар явдаг тул ХУДАЛ «Үлдэгдэл» гарч, ДАХИН олгох эрсдэл үүснэ. */
+  runIn("state.salaryYM = '2026-08'; state.attMonthKey = '2026-08'; state.myPayMonth = '2026-08'; state.myPayRecs = { '2026-08': [] };");
+  runIn("state.salaryPayments = [{ person_key: '88000001', ym: '2026-08', amount: 1500000, note: 'EB-Цалин 8 сар', paid_at: '2026-08-20T05:00:00Z' }];");
+  let h8 = '', e8 = '';
+  try { h8 = runIn('renderSalary()'); } catch (e) { e8 = e.message; }
+  eq(e8, '', 'түүх сар: renderSalary алдаагүй');
+  ok(h8.includes('гараар тооцож олгосон'), 'түүх сар: ЯАГААД гэдгийг ил хэлнэ');
+  eq(h8.indexOf('Үлдэгдэл'), -1, 'түүх сар: үлдэгдэл ОГТ гарахгүй');
+  eq(h8.indexOf('Нийт олгох'), -1, 'түүх сар: бодсон дүн гарахгүй');
+  eq(h8.indexOf('Илүү олгосон'), -1, 'түүх сар: илүү олголт гарахгүй');
+  ok(h8.includes('Олгосон'), 'түүх сар: олгосон түүх харагдана');
+  ok(h8.includes('А.Сарнай'), 'түүх сар: олголттой хүн гарна');
+  /* ⛔ ХЭРЭГЖЭЭГҮЙ ЗҮЙЛС ГАРАХГҮЙ (CEO, 2026-10-03: «цаг гэх мэт хэрэгжүүлж
+     байгаагүй зүйлс давхар харагдаад байна»). Тэр сард цаг бүртгэл, суурь
+     цалингийн тохиргоо, дамжлагын бонус хэрэгжээгүй. */
+  eq(h8.indexOf('184ц'), -1, 'түүх сар: нормын цаг гарахгүй');
+  eq(h8.indexOf('ирцгүй'), -1, 'түүх сар: «ирцгүй» гэж бичихгүй');
+  eq(h8.indexOf('Суурь цалин'), -1, 'түүх сар: суурь цалингийн талбар гарахгүй');
+  eq(h8.indexOf('Дамжлагын бонус'), -1, 'түүх сар: дамжлагын бонус гарахгүй');
+  eq(h8.indexOf('Суутгал'), -1, 'түүх сар: суутгалын хувь гарахгүй');
+  eq(h8.indexOf('гарах бүртгэлгүй'), -1, 'түүх сар: ирцийн анхааруулга гарахгүй');
+  // ⚠ Олголтгүй хүн ОРОХГҮЙ — хоосон мөр 60 хүнээр давтагдвал түүх уншигдахгүй
+  eq(h8.indexOf('Б.Очир'), -1, 'түүх сар: тэр сард мөнгө аваагүй хүн гарахгүй');
+  eq(h8.indexOf('олголт бүртгэгдээгүй'), -1, 'түүх сар: хоосон мөр гарахгүй');
+  let c8 = '', ce8 = '';
+  try { c8 = runIn('myPayCardHtml(findMember(state.me) || {})'); } catch (e) { ce8 = e.message; }
+  eq(ce8, '', 'түүх сар: ажилтны карт алдаагүй');
+  eq(c8.indexOf('Үлдэгдэл'), -1, 'түүх сар: ажилтанд үлдэгдэл харуулахгүй');
+  ok(c8.includes('олгосон дүн'), 'түүх сар: ажилтанд олгосон дүн харагдана');
+
+  runIn(`(function(){ const s = ${save}; state.salaries = s[0]; state.salaryPayments = s[1]; state.attMonthKey = s[2]; state.salaryYM = s[3]; })()`);
+}
+
+// ═══ SCAN: «Дамжлагын бонус» нэр (2026-10-03, CEO) ══════════════════════
+// Хуучин нэр «Шатны хөлс» нь ЦАЛИН мэт уншигдаж байв. Бонус = урамшуулал,
+// цалинд ОРОХГҮЙ. Кодын нэр (stagePay…, sp-…) ХЭВЭЭР — зөвхөн шошго солигдсон.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  eq((src.match(/Шатны хөлс|шатны хөлс/g) || []).length, 0, 'scan: хуучин «шатны хөлс» нэр буцаж ирээгүй');
+  ok(/Дамжлагын бонус/.test(src), 'scan: шинэ нэр хэрэглэгдэнэ');
+}
+
+// ═══ ОНОО → ТӨГРӨГ, ХАНШ НЭГ ГАЗАР (2026-10-03, CEO) ═══════════════════
+{
+  const { stagePtsForQty, stageWeight, stagePayByPerson } = F;
+  // Барааны тоо → оноо (хөлстэй ижил шатлал)
+  eq(stagePtsForQty(3), 1, 'оноо: 1–5 бараа = 1');
+  eq(stagePtsForQty(12), 2, 'оноо: 6–20 бараа = 2');
+  eq(stagePtsForQty(30), 3.5, 'оноо: 21–60 бараа = 3.5');
+  eq(stagePtsForQty(100), 6, 'оноо: 61–150 бараа = 6');
+  eq(stagePtsForQty(345), 10, 'оноо: 151+ бараа = 10');
+  eq(stagePtsForQty(0), 1, 'оноо: бараагүй захиалга доод шатлалаар');
+  ok(stagePtsForQty(100000) === 10, 'оноо: хязгааргүй том ч дээд шатлалаар');
+  // Дамжлагын жин — CEO-гийн тогтоосон (PIPELINE-аас)
+  eq(stageWeight('clean'), 10, 'жин: Цэвэрлэх 10');
+  eq(stageWeight('prepare'), 15, 'жин: Баглаж/ачих 15');
+  eq(stageWeight('dispatch'), 10, 'жин: Бүртгэж гаргах 10');
+  eq(stageWeight('deliver'), 15, 'жин: Талбайд буулгах 15');
+  eq(stageWeight('setup'), 20, 'жин: Суурилуулах 20');
+  eq(stageWeight('teardown'), 15, 'жин: Задлах 15');
+  eq(stageWeight('retstart'), 15, 'жин: Талбайгаас ачих 15');
+  eq(stageWeight('received'), 10, 'жин: Бүртгэж хүлээн авах 10');
+  // ⛔ Танихгүй дамжлага чимээгүй 0 болохгүй (шинэ дамжлага нэмэхэд бонус алга болно)
+  eq(stageWeight('шинэ_дамжлага'), 1, 'жин: танихгүй дамжлага 1 (чимээгүй 0 болохгүй)');
+  // Оноо × жин — суурилуулалт цэвэрлэгээнээс ХОЁР дахин
+  const one = (key) => stagePayByPerson([{ items: [{ qty: 12 }], stage_meta: {
+    [key]: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09').A;
+  eq(one('clean').pts, 20, 'оноо: 12 бараа × Цэвэрлэх = 20');
+  eq(one('setup').pts, 40, 'оноо: 12 бараа × Суурилуулах = 40');
+  eq(one('prepare').pts, 30, 'оноо: 12 бараа × Баглаж/ачих = 30');
+  // ⛔ ХАНШ НЭГ ГАЗАР — тохиргоо өөрчлөхөд БҮХ дүн дагаж хөдөлнө
+  vm.runInContext("state.appConfig = { stage_pay: { rate: 2000 } };", sandbox);
+  eq(one('clean').total, 40000, 'ханш: тохиргооны ханшаар бодогдоно');
+  vm.runInContext("state.appConfig = {};", sandbox);
+  eq(one('clean').total, 20 * 135, 'ханш: тохиргоо авахад кодын нөөц ханш');
+}
+
+// ═══ АЖЛЫН ЧАНАР = АЛДААНЫ ХАРЬЦАА, ★ БИШ (2026-10-04, CEO) ════════════
+{
+  const { defectStats } = F;
+  const mk = (defChecked, defects, got) => ({ items: [{ qty: 10 }], stage_meta: {
+    clean:   { by: 'A', at: '2026-09-01T02:00:00Z' },
+    prepare: { by: 'B', at: '2026-09-01T03:00:00Z' },
+    dispatch: { by: 'N', at: '2026-09-01T04:00:00Z', defChecked, defects,
+                items: [{ sku: 'X', name: 'Бараа', qty: 10, got: got != null ? got : 10 }] },
+  } });
+  // Алдаа 2ш цэвэрлэгчид, 1ш баглагчид
+  const r = defectStats([mk(true, [{ stage: 'clean', ratee: 'A', n: 2 }, { stage: 'prepare', ratee: 'B', n: 1 }])], '2026-09');
+  eq(r.A.items, 10, 'чанар: нийт ширхэг гарсан тооноос');
+  eq(r.A.defects, 2, 'чанар: цэвэрлэгчийн алдаа');
+  eq(r.A.rate, 0.8, 'чанар: 1 − 2/10');
+  eq(r.B.defects, 1, 'чанар: баглагчийн алдаа тусад нь');
+  eq(r.B.rate, 0.9, 'чанар: 1 − 1/10');
+  // Алдаагүй шалгалт — чанар 100%
+  const ok0 = defectStats([mk(true, undefined)], '2026-09');
+  eq(ok0.A.rate, 1, 'чанар: алдаагүй бол 100%');
+  eq(ok0.A.checked, 1, 'чанар: шалгасан тоо');
+  /* ⛔ ШАЛГААГҮЙГ «алдаагүй» гэж тоолохгүй — эс бөгөөс шалгалт хийгээгүй бүх
+     захиалга «төгс» болж хэмжүүр чимээгүй утгаа алдана. */
+  eq(Object.keys(defectStats([mk(false, [{ stage: 'clean', ratee: 'A', n: 5 }])], '2026-09')).length, 0,
+     'чанар: defChecked-гүй бүртгэл тоологдохгүй');
+  // ⚠ Нийт нь ГАРСАН тооноос (захиалгын тооноос БИШ) — дутуу гарсан бол хувь нь гажихгүй
+  eq(defectStats([mk(true, [{ stage: 'clean', ratee: 'A', n: 1 }], 5)], '2026-09').A.items, 5,
+     'чанар: нийт = гарсан тоо');
+  // Сарын шүүлт
+  eq(Object.keys(defectStats([mk(true, undefined)], '2026-08')).length, 0, 'чанар: өөр сар тоологдохгүй');
+}
+
+// ═══ «БИ Ч ОРОЛЦСОН» МЭДҮҮЛЭГ (2026-10-04, CEO) ════════════════════════
+{
+  const { pendingStageClaims, stageClaims, stageHasPerson } = F;
+  eq(stageClaims(null).length, 0, 'мэдүүлэг: байхгүй бол хоосон');
+  eq(stageClaims({ claims: ['A', '', null, 'B'] }).join(','), 'A,B', 'мэдүүлэг: хоосон утга шүүгдэнэ');
+  // Аль хэдийн тоологдсон эсэх — by/driver/helpers гурвууланг хардаг
+  ok(stageHasPerson({ by: 'A' }, 'A'), 'тоологдсон: дарсан хүн');
+  ok(stageHasPerson({ by: 'X', driver: 'A' }, 'A'), 'тоологдсон: жолооч');
+  ok(stageHasPerson({ by: 'X', helpers: ['B', 'A'] }, 'A'), 'тоологдсон: хамтрагч');
+  ok(!stageHasPerson({ by: 'X', helpers: ['B'] }, 'A'), 'тоологдоогүй: гаднын хүн');
+  const ords = [
+    { id: 1, number: 11, stage_meta: { prepare: { by: 'X', at: '2026-09-02T02:00:00Z', claims: ['A'] } } },
+    /* ⛔ Аль хэдийн тоологдсон хүний мэдүүлэг жагсаалтад ГАРАХГҮЙ — баталгаажсаны
+       дараа `claims` цэвэрлэгддэг ч хуучин бичлэгт үлдэж болно. */
+    { id: 2, number: 12, stage_meta: { clean: { by: 'B', at: '2026-09-03T02:00:00Z', helpers: ['A'], claims: ['A'] } } },
+    { id: 3, number: 13, stage_meta: { quotes: [{ to: 'x' }] } },
+  ];
+  const pend = pendingStageClaims(ords);
+  eq(pend.length, 1, 'мэдүүлэг: зөвхөн шийдэгдээгүй нь');
+  eq(pend[0].who, 'A', 'мэдүүлэг: хэн мэдүүлсэн');
+  eq(pend[0].key, 'prepare', 'мэдүүлэг: аль дамжлага');
+  eq(pend[0].number, 11, 'мэдүүлэг: захиалгын дугаар');
+  eq(pendingStageClaims([]).length, 0, 'мэдүүлэг: захиалгагүй бол хоосон');
+  /* ⛔ МЭДҮҮЛЭГ ӨӨРӨӨ МӨНГӨ БОЛОХГҮЙ — зөвхөн `helpers`-т орсны дараа. */
+  const pay = F.stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
+    clean: { by: 'X', at: '2026-09-02T02:00:00Z', claims: ['A'] } } }], '2026-09');
+  ok(!pay.A, 'мэдүүлэг: баталгаажаагүй бол бонус үүсэхгүй');
+  eq(pay.X.ledPts, 10, 'мэдүүлэг: дарсан хүн бүтэн санг хэвээр авна');
+}
+
+// ═══ ДАМЖЛАГЫН НЭР = ТОХИРГООНООС (2026-10-04, CEO) ════════════════════
+{
+  const st = vm.runInContext('state', sandbox);
+  const old = st.appConfig;
+  st.appConfig = {};
+  const row = { key: 'clean', to: 'prepared', label: '🧹 Цэвэрлэсэн' };
+  eq(F.stageLabelKey(row), 'clean|prepared', 'нэр: түлхүүр нь key|to');
+  eq(F.stageLabel(row), '🧹 Цэвэрлэсэн', 'нэр: тохиргоогүй бол кодынх');
+  /* ⛔ ТҮЛХҮҮР нь `key|to` — нэг түлхүүр ХОЁР нэртэй байж болно («Бүртгэж
+     гаргасан» ба «Үйлчлүүлэгчид өгсөн» хоёул `dispatch`). */
+  st.appConfig = { stage_pay: { labels: { 'clean|prepared': '🧼 Угаасан', 'dispatch|rented': '🤝 Гардуулсан' } } };
+  eq(F.stageLabel(row), '🧼 Угаасан', 'нэр: тохиргоо кодыг дарна');
+  eq(F.stageLabel({ key: 'dispatch', to: 'delivering', label: '📋 Бүртгэж гаргасан' }), '📋 Бүртгэж гаргасан',
+     'нэр: нэг түлхүүрийн НӨГӨӨ мөр хөндөгдөхгүй');
+  eq(F.stageLabel({ key: 'dispatch', to: 'rented', label: '🤝 Үйлчлүүлэгчид өгсөн' }), '🤝 Гардуулсан', 'нэр: зөв мөр солигдоно');
+  eq(F.pipelineNext('reserved', {}).label, '🧼 Угаасан', 'нэр: товчны бичвэр тохиргооноос');
+  eq(F.stageHistLabel('clean'), '🧼 Угаасан', 'нэр: түүхийн бичвэр ч тохиргооноос');
+  // Хоосон/зайтай утга кодынхыг дарахгүй
+  st.appConfig = { stage_pay: { labels: { 'clean|prepared': '   ' } } };
+  eq(F.stageLabel(row), '🧹 Цэвэрлэсэн', 'нэр: хоосон утга кодынхыг дарахгүй');
+  st.appConfig = old;
+}
+
+// ═══ SCAN: үнэлгээ БҮГД, нэг мөрөөр (2026-10-05, CEO) ═════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rv = src.slice(src.indexOf('function reviewBlockHtml'), src.indexOf('function dispatchDayRows'));
+  /* ⛔ Зөвхөн 3-ыг гаргадаг байсныг болив — бүгд харагдана. Сэтгэгдлийн
+     бичвэр мөрөнд наалдвал нэг үнэлгээ дэлгэцийн тал хувийг эзэлнэ. */
+  ok(!/\.slice\(0, 3\)/.test(rv), 'scan: үнэлгээ 3-аар таслагдахгүй');
+  ok(/<details class="rv-item"/.test(rv), 'scan: сэтгэгдэл дарж нээгддэг');
+  ok(/st\.bad, \.\.\.st\.rows\.filter/.test(rv), 'scan: муу үнэлгээ эхэнд');
+}
+
+// ═══ ДАМЖЛАГЫН СХЕМ — PIPELINE-ээс өөрөө угсарна (2026-10-04, CEO) ═════
+{
+  const S = F.pipelineSteps;
+  const dlv = S({ dlv: true, setup: false }), set = S({ dlv: true, setup: true }), pick = S({ dlv: false, setup: false });
+  eq(dlv.length, 7, 'схем: хүргэлт 7 дамжлага');
+  eq(set.length, 9, 'схем: хүргэлт+суурилуулалт 9');
+  eq(pick.length, 5, 'схем: очиж авах 5');
+  eq(dlv[0].key, 'clean', 'схем: эхнийх нь цэвэрлэх');
+  /* ⛔ ХЯНАЛТ СҮҮЛД — ажил → ажил → нярав тоолно (2026-10-04). Буцах талын
+     сүүлчийн дамжлага тоолох байх ёстой, эс бөгөөс байршуулалтыг хэн ч
+     шалгахгүй үлдэнэ. */
+  eq(dlv[dlv.length - 1].key, 'received', 'схем: хүргэлтийн сүүлчийнх = нярав тоолно');
+  eq(set[set.length - 1].key, 'received', 'схем: суурилуулалттайд ч сүүлд тоолно');
+  // ⛔ Очиж авахад ч нярав СҮҮЛД тоолно (2026-10-05, CEO)
+  eq(pick[pick.length - 1].key, 'received', 'схем: очиж авахад ч сүүлд нярав тоолно');
+  eq(dlv.reduce((a, r) => a + r.pts, 0), 90, 'схем: хүргэлтийн нийт оноо (бүхэл тоо, ханш ÷10)');
+  // Архив нь ажил биш — схемд орохгүй
+  ok(!dlv.some(r => r.key === 'archive'), 'схем: архив дамжлага биш');
+  ok(dlv.every(r => r.label && r.cap && r.ev), 'схем: мөр бүр нэр/эрх/нотолгоотой');
+}
+
+// ═══ ХҮЛЭЭЛЦЭХ ЧАНАР = АЛДААНЫ ТОО, ★ нь НӨӨЦ (2026-10-04, CEO) ════════
+{
+  const st = vm.runInContext('state', sandbox);
+  const mk = (n) => ({ items: [{ qty: 10 }], stage_meta: {
+    clean:    { by: 'A', at: '2026-09-01T02:00:00Z' },
+    dispatch: { by: 'N', at: '2026-09-01T04:00:00Z', defChecked: true,
+                items: [{ sku: 'X', name: 'Б', qty: 10, got: 10 }],
+                defects: n ? [{ stage: 'clean', ratee: 'A', n }] : undefined } } });
+  const old = st.appOrders;
+  // 3 шалгалт (HANDOFF_MIN) — алдаа нийт 2/30 → чанар 0.933 → ★ 4.7
+  st.appOrders = [mk(1), mk(1), mk(0)];
+  const r = F.handoffQualityScore('A', '2026-09');
+  eq(r.src, 'defect', 'чанар: алдааны тоогоор бодогдоно');
+  eq(r.count, 3, 'чанар: шалгасан тоо');
+  eq(r.avg, 4.7, 'чанар: 1 − 2/30 = 0.933 → 4.7★');
+  /* ⚠ Цөөн шалгалттай үед ХУУЧИН ★ түүх рүү унана — сарын тоо чимээгүй
+     алга болохоос сэргийлнэ (★ шинээр цуглахаа больсон ч түүх уншигдана). */
+  st.appOrders = [mk(1), { stage_meta: { prepare: { by: 'X', at: '2026-09-02T02:00:00Z',
+    handoffRatings: [{ ratee: 'A', rating: 4 }, { ratee: 'A', rating: 2 }] } } },
+    { stage_meta: { deliver: { by: 'Y', at: '2026-09-03T02:00:00Z', handoffRating: 3, handoffRatee: 'A' } } }];
+  const r2 = F.handoffQualityScore('A', '2026-09');
+  eq(r2.src, undefined, 'чанар: цөөн шалгалттай бол ★ руу унана');
+  eq(r2.count, 3, 'чанар: хуучин ★ тоологдоно');
+  eq(r2.avg, 3, 'чанар: (4+2+3)/3');
+  st.appOrders = old;
+}
+
+// ═══ ЖОЛООЧ ТУСДАА · БҮРТГЭХ ДАМЖЛАГАД ТОО (2026-10-03, CEO) ═══════════
+{
+  const { driverBonus, stageEvidence } = F;
+  // Нотолгоо — бүртгэх дамжлагад зураг БИШ тоо
+  eq(stageEvidence('dispatch'), 'count', 'нотолгоо: Бүртгэж гаргах = тоо');
+  eq(stageEvidence('received'), 'count', 'нотолгоо: Бүртгэж хүлээн авах = тоо');
+  eq(stageEvidence('clean'), 'photo', 'нотолгоо: Цэвэрлэх = зураг');
+  eq(stageEvidence('deliver'), 'photo', 'нотолгоо: Талбайд буулгах = зураг');
+  eq(stageEvidence('archive'), '', 'нотолгоо: Архивлахад шаардлагагүй');
+  // ⛔ Танихгүй дамжлага → зураг (хамгаалалт сулрахгүй)
+  eq(stageEvidence('шинэ_дамжлага'), 'photo', 'нотолгоо: танихгүй дамжлага зурагтай');
+
+  /* ⛔ ЖОЛООНЫ НЭМЭГДЭЛ = `driver`, дамжлага дарсан хүн БИШ. Өмнө нь нэг хүн
+     дамжлагын оноо БА 10,000₮-ийг ХОЁУЛАНГ авдаг байв. */
+  const ords = [{ number: 1, delivery_address: 'СБД', stage_meta: {
+    deliver:  { by: 'A', driver: 'B', at: '2026-09-05T02:00:00Z' },
+    retstart: { by: 'A', driver: 'B', at: '2026-09-07T02:00:00Z' },
+  } }];
+  eq(driverBonus('B', '2026-09', ords).count, 2, 'жолоо: нэмэгдэл ЖОЛООЧИД');
+  eq(driverBonus('B', '2026-09', ords).amount, 20000, 'жолоо: 2 чиглэл × 10,000₮');
+  eq(driverBonus('A', '2026-09', ords).count, 0, 'жолоо: дамжлага дарсан хүнд нэмэгдэл ОЧИХГҮЙ');
+  // ⚠ Хуучин бичлэгт `driver` байхгүй — `by` руу унана (түүх эвдрэхгүй)
+  const old = [{ number: 2, delivery_address: 'СБД', stage_meta: {
+    deliver: { by: 'C', at: '2026-08-05T02:00:00Z' } } }];
+  eq(driverBonus('C', '2026-08', old).count, 1, 'жолоо: хуучин бичлэгт `by` нь жолооч');
+}
+
+// ═══ ДАМЖЛАГЫН ОНООГ АППААС ЗАСНА (2026-10-03) ═════════════════════════
+{
+  const { stageDefs, stageWeight, stagePointRate, stagePayByPerson } = F;
+  const defs = stageDefs();
+  ok(defs.length >= 8, 'тохиргоо: бүх дамжлага жагсаалтад');
+  ok(defs.some(d => d.key === 'clean' && d.pts === 10), 'тохиргоо: Цэвэрлэх 10 оноо');
+  ok(defs.some(d => d.key === 'dispatch' && d.ev === 'count'), 'тохиргоо: нотолгооны төрөл харагдана');
+  eq(defs.filter(d => d.key === 'dispatch').length, 1, 'тохиргоо: давхардсан дамжлага НЭГ мөр');
+  // ⛔ Аппаас тавьсан жин PIPELINE-ийн анхдагчийг ДАРНА
+  vm.runInContext("state.appConfig = { stage_pay: { weights: { clean: 3 }, rate: 2000 } };", sandbox);
+  eq(stageWeight('clean'), 3, 'тохиргоо: аппаас тавьсан жин ялна');
+  eq(stageWeight('setup'), 20, 'тохиргоо: тавиагүй дамжлага анхдагчаараа');
+  eq(stagePointRate(), 2000, 'тохиргоо: ханш аппаас');
+  const r = stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09').A;
+  eq(r.pts, 3, 'тохиргоо: 1 оноо × жин 3');
+  eq(r.total, 6000, 'тохиргоо: 3 оноо × 2,000₮');
+  // ⛔ 0 жин = бонусгүй (жолоо)
+  vm.runInContext("state.appConfig = { stage_pay: { weights: { clean: 0 } } };", sandbox);
+  eq(Object.keys(stagePayByPerson([{ items: [{ qty: 3 }], stage_meta: {
+    clean: { by: 'A', at: '2026-09-05T02:00:00Z' } } }], '2026-09')).length, 0, 'тохиргоо: 0 жин → бонусгүй');
+  vm.runInContext("state.appConfig = {};", sandbox);
+  eq(stageWeight('clean'), 10, 'тохиргоо: цэвэрлэгдвэл анхдагч руу буцна');
+}
+
+// ═══ SCAN: модал доторх нарийн тоон талбар `.modal` угтвартай ══════════
+/* ⛔ `.modal input { width:100% }` (styles.css) нь ангиас ИЛҮҮ онцлогтой тул
+   `.xxx-in { width:74px }` гэж бичвэл ДАРАГДАНА — талбар бүтэн өргөнөөр тэлж,
+   хажуугийн шошго үсэг тус бүрээр босоо тасарна (2026-10-04 амьд дэлгэцэд). */
+{
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+  ['sa-def-in', 'pm-w', 'pm-in'].forEach(cls => {
+    // Мөрийн эхэнд ганцаараа бичигдсэн дүрэм = угтваргүй (дарагдана)
+    ok(!new RegExp('^\\s*\\.' + cls + '\\s*\\{', 'm').test(css), `scan: .${cls} нь .modal угтваргүй бичигдээгүй`);
+    ok(new RegExp('\\.modal\\s+\\.' + cls + '\\s*\\{').test(css), `scan: .modal .${cls} дүрэм бий`);
+    ok(new RegExp('\\.modal\\s+\\.' + cls + '[^}]*flex\\s*:\\s*none').test(css), `scan: .${cls} тэлэхгүй (flex:none)`);
+  });
+}
+
+// ═══ SCAN: урсгал жагсаалтаас ажиллана ═════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/const PIPELINE = \[/.test(src), 'scan: урсгалын жагсаалт бий');
+  const fn = src.slice(src.indexOf('function orderNextStep'), src.indexOf('function orderNextStep') + 400);
+  ok(/return pipelineNext\(/.test(fn), 'scan: orderNextStep жагсаалтаас уншина');
+  eq((fn.match(/switch \(/g) || []).length, 0, 'scan: switch буцаж ирээгүй');
+  const pn = src.slice(src.indexOf('function pipelineRow'), src.indexOf('function orderNextStep'));
+  ok(/r\.dlv !== undefined/.test(pn) && /r\.setup !== undefined/.test(pn), 'scan: нөхцөл заагаагүй мөр хоёуланд тохирно');
+  ok(/return null/.test(pn), 'scan: танихгүй төлөвт дамжлага зохиохгүй');
+  // ⛔ ХАНШ НЭГ ГАЗАР — хоёр газар бичвэл нэг дамжлага хоёр үнэтэй болно
+  eq((src.match(/const STAGE_PT_RATE = /g) || []).length, 1, 'scan: ханш нэг л газар зарлагдана');
+  const sp = src.slice(src.indexOf('function stagePayByPerson'), src.indexOf('function stagePayFor'));
+  // Дамжлагын оноо ГАНЦ бодолтод (`stageEntryPts`) — бонус ба дамжлагын түүх ижил тоо
+  const sep = src.slice(src.indexOf('function stageEntryPts'), src.indexOf('function stagePtsCtx'));
+  ok(/stageEntryPts\(o, key, e, ctx\)/.test(sp), 'scan: бонусын нэгтгэл дамжлагын оноог ганц бодолтоос авна');
+  ok(/stagePtsForQty\(orderItemQty\(o\), ctx\.bands\) \* stageWeight\(key\)/.test(sep), 'scan: оноо = шатлал × жин');
+  ok(/if \(pts <= 0\) return null/.test(sep), 'scan: 0 оноотой дамжлага (жолоо) бонус авахгүй');
+  ok(/stagePointRate\(\)/.test(sp), 'scan: төгрөг нь ханшаар, нэг газраас');
+  // ⛔ Жин нь PIPELINE-аас — хоёр дахь жагсаалт үүсгэхгүй
+  const sw = src.slice(src.indexOf('function stageWeight'), src.indexOf('function stageDefs'));
+  ok(/for \(const r of PIPELINE\)/.test(sw), 'scan: жин PIPELINE-аас (давхардсан жагсаалтгүй)');
+  ok(/_stagePayCfg\(\)\.weights/.test(sw), 'scan: тохиргооны override эхлээд');
+  const sd = src.slice(src.indexOf('function stageDefs'), src.indexOf('function stageDefs') + 600);
+  ok(/for \(const r of PIPELINE\)/.test(sd), 'scan: тохиргооны жагсаалт ч PIPELINE-аас');
+  // ⛔ Гаргах дамжлагад дутуу тоо нь АЛДАГДАЛ БИШ — нөөцөөс хасаж засвар үүсгэхгүй
+  const md = src.slice(src.indexOf('function openStageAdvanceModal'), src.indexOf('function bqStatusBadge'));
+  ok(/if \(!_isDispatch\) \{/.test(md), 'scan: гаргахад дутагдал тоологдохгүй');
+  ok(/!_isPickup && !_isDispatch && _prevPick/.test(md), 'scan: гаргахад жолоочийн хариуцлага үүсэхгүй');
+  ok(/const needPhoto = _ev === 'photo'/.test(md), 'scan: зураг нь нотолгооны төрлөөс');
+  ok(/entry\.driver = driverKey/.test(md), 'scan: жолооч тусдаа хадгалагдана');
+  // ⛔ «Бүртгэж гаргах» дээр ★ БИШ, алдааны ТОО
+  ok(/_defTargets/.test(md), 'scan: алдааны тоо асуудаг');
+  ok(/entry\.defChecked = true/.test(md), 'scan: шалгасан эсэх тэмдэглэгдэнэ');
+  /* ⛔ Тоолох дамжлагад хамтрагч асуухгүй — ачааг өмнөх/дараах дамжлагад
+     хийдэг тул нэг ачилт хоёр удаа шагнагдаж байв (9 сард 51-ийн 30). */
+  ok(/_helpAsk = stageEvidence\(act\.key\) !== 'count'/.test(md), 'scan: тоолох дамжлагад хамтрагч асуухгүй');
+  /* ⛔ Асуулт бүр ДУГААРТАЙ хэсэг — шинэ блокийг зураасаар наавал
+     ажилтан хэдэн зүйл бөглөхөө дахин мэдэхгүй болно (2026-10-04 CEO). */
+  ok((md.match(/_sec\('/g) || []).length >= 5, 'scan: цонхны блокууд _sec()-ээр угсарна');
+  /* ⛔ ★ БҮХ ДАМЖЛАГААС ХАСАГДСАН — үнэлэгчээс хамаарсан дүлий зурвас
+     (3.0–3.9) гаргахын төлөө сард ~500 албадсан даралт болж байв. */
+  ok(!/_sec\('⭐'/.test(md), 'scan: ★ хэсэг цонхонд байхгүй');
+  /* ⛔ Мэдүүлэг нь `helpers`-т ШУУД орохгүй — тэгвэл хүн өөртөө бонус бичнэ. */
+  {
+    const i0 = src.indexOf('async function claimStageWork');
+    let i = src.indexOf('{', i0), d = 0, j = i;
+    for (; j < src.length; j++) { const c = src[j]; if (c === '{') d++; else if (c === '}') { d--; if (!d) break; } }
+    const body = src.slice(i0, j);
+    ok(/claims:/.test(body), 'scan: мэдүүлэг claims талбарт бичигдэнэ');
+    ok(!/helpers:/.test(body), 'scan: мэдүүлэг helpers-т шууд ОРОХГҮЙ');
+  }
+  /* ⛔ Схем нь PIPELINE-аас угсарна — гараар жагсаалт бичвэл шинэ дамжлага
+     нэмэхэд схем чимээгүй хуучирна. */
+  {
+    const i0 = src.indexOf('function openPipelineMapModal');
+    let i = src.indexOf('{', i0), d = 0, j = i;
+    for (; j < src.length; j++) { const c = src[j]; if (c === '{') d++; else if (c === '}') { d--; if (!d) break; } }
+    const body = src.slice(i0, j);
+    ok(/pipelineSteps\(/.test(body), 'scan: схем pipelineSteps-ээс уншина');
+    eq((body.match(/Цэвэрлэсэн|Баглаж|Бүртгэж/g) || []).length, 0, 'scan: схемд дамжлагын нэр хатуу бичигдээгүй');
+  }
+  /* ⛔ Төлбөрийн цонх ч ИЖИЛ хэлээр — inline загвар буцаж ирэхийг хаана
+     (2026-10-04). Функцийн биеийг хаалт тоолж таслана. */
+  {
+    const i0 = src.indexOf('function openBqPaymentModal');
+    let i = src.indexOf('{', i0), d = 0, j = i;
+    for (; j < src.length; j++) { const c = src[j]; if (c === '{') d++; else if (c === '}') { d--; if (!d) break; } }
+    const body = src.slice(i0, j);
+    eq((body.match(/style="/g) || []).length, 0, 'scan: төлбөрийн цонхонд inline загвар алга');
+    eq((body.match(/\.style\.(color|opacity|cursor)/g) || []).length, 0, 'scan: төлбөрийн цонх өнгийг JS-ээс бичихгүй');
+  }
+  ok(!/rateTargets\.push\(/.test(md), 'scan: ★ зорилт огт үүсэхгүй');
+  ok(/_needNoteSec = _isReceive \|\| _defTargets\.length/.test(md), 'scan: тэмдэглэл зөвхөн асуудалтай дамжлагад');
+  ok(!/border-top:1px dashed var\(--border\)/.test(md), 'scan: тасархай зураасан тусгаарлагч буцаж ирээгүй');
+  ok(/_helpStaff = !_helpAsk \?/.test(md), 'scan: хамтрагчийн жагсаалт түүгээр хаагдана');
+  ok(!/rateTargets\.push\(\{ ratee: _smNow\.clean\.by/.test(md), 'scan: цэвэрлэгээнд ★ буцаж ирээгүй');
+  const ds = src.slice(src.indexOf('function defectStats'), src.indexOf('/* Сарын дамжлагын бонус'));
+  ok(/!d\.defChecked\) continue/.test(ds), 'scan: шалгаагүйг алдаагүй гэж тоолохгүй');
+  const db = src.slice(src.indexOf('function driverBonus'), src.indexOf('const DRIVER_LIABILITY_NOTE'));
+  ok(/e\.driver \|\| e\.by/.test(db), 'scan: нэмэгдэл жолоочид, хуучин бичлэгт by руу унана');
+  // ⛔ Тохиргоо хадгалахад БАТАЛГААЖУУЛАЛТ (бүх сарын бонус дахин бодогдоно)
+  const spm = src.slice(src.indexOf('function openPipelineMapModal'), src.indexOf('// ── Дамжлагын АВТОМАТ ажил'));
+  /* ⛔ БАТАЛГААЖУУЛАХ ЦОНХ ХАСАГДСАН (2026-10-04, CEO: «дахин баталгаажуулалт
+     асуухгүй»). Оронд нь анхааруулга ХӨЛД ИЛ үлдэнэ — мөнгө хөдөлж байгааг
+     хүн мэдэх ёстой, зөвхөн зогсоохоо больсон. */
+  ok(!/showConfirm\(/.test(spm), 'scan: хадгалахад цонх асуухгүй');
+  ok(/pm-warn/.test(spm), 'scan: мөнгө хөдлөх анхааруулга ил үлдсэн');
+  ok(/saveAppConfig\('stage_pay'/.test(spm), 'scan: тохиргоо DB-д хадгалагдана');
+  ok(/state\.isCEO/.test(spm), 'scan: зөвхөн захирал тохируулна');
+  ok(/pipelineSteps\(/.test(spm), 'scan: жагсаалт ганц эх сурвалжаас');
+  // ⛔ ХОЁР тохиргооны цонх байхгүй — «аль нь жинхэнэ вэ» гэсэн эргэлзээ төрүүлнэ
+  eq((src.match(/function openStagePayModal/g) || []).length, 0, 'scan: тусдаа тохиргооны цонх буцаж ирээгүй');
+}
+
+// ═══ SCAN: тохиргоо үнэхээр ачаалагддаг ════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/async function loadAppConfigAll\(/.test(src), 'scan: бөөн ачаалагч бий');
+  ok(/loadAppConfigAll\(\);\s*\/\/ ⚙️/.test(src), 'scan: эхлэхэд дуудагдана');
+  const f = src.slice(src.indexOf('async function loadAppConfigAll'), src.indexOf('async function loadAppConfig(key)'));
+  ok(/!\(x\.key in cfg\)/.test(f), 'scan: сессийн утгыг дарахгүй');
+  ok(/dataLoadFailed\('loadAppConfigAll'/.test(f), 'scan: унавал чимээгүй залгихгүй');
+  // ⛔ Эмзэг түлхүүр бөөн татацад ОРОХГҮЙ (RLS-ээр хаалттай, тусдаа ачаалагчтай)
+  const keys = (src.match(/const APP_CONFIG_KEYS = \[[^\]]*\]/) || [''])[0];
+  ok(keys.indexOf('coo_share') < 0, 'scan: coo_share бөөн татацад орохгүй');
+  ok(keys.indexOf('personal_settlements') < 0, 'scan: personal_settlements орохгүй');
+  ok(keys.indexOf('closed_months') < 0, 'scan: хаасан сар тусдаа ачаалагчтай хэвээр');
+}
+
+// ═══ SCAN: ирцийн select бүрд `day` байна ═══════════════════════════════
+// ⛔ `attMemberSummary` цайны цагийг `recs[0].day`-ээр шийддэг тул талбар
+//    дутвал хасалт ЧИМЭЭГҮЙ 0 болно (дэлгэц ба цалин зөрнө).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const sels = src.match(/rest\/v1\/attendance\?[^`]*select=[^&`]*/g) || [];
+  ok(sels.length >= 5, 'scan: ирцийн select-үүд олдов');
+  sels.forEach((u, i) => {
+    const cols = (u.match(/select=([^&`]*)/) || [])[1] || '';
+    ok(cols.split(',').indexOf('day') >= 0, `scan: ирцийн select #${i + 1}-д day багтана`);
+  });
+}
+
+// ═══ SCAN: норм сар бүрээр бодогдоно ════════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ Сар дамжуулахгүй дуудвал ӨНӨӨДРИЙН сарын норм хуучин сард хэрэглэгдэнэ
+  eq((src.match(/workNormMins\(\)/g) || []).length, 0, 'scan: workNormMins сар дамжуулалгүй дуудагдахгүй');
+  eq((src.match(/workNormDays\(\)/g) || []).length, 0, 'scan: workNormDays сар дамжуулалгүй дуудагдахгүй');
+  const f = src.slice(src.indexOf('function monthWorkdays'), src.indexOf('function workNormDays'));
+  ok(/getUTCDay\(\)/.test(f), 'scan: гарагийг UTC геттерээр (бүсээр гулсуулахгүй)');
+  ok(/Date\.UTC\(/.test(f), 'scan: огноог Date.UTC-ээр угсарна');
+  // ⛔ Баярын өдрийн жагсаалт БАЙХГҮЙ (CEO: баяр хасагдахгүй)
+  eq((f.match(/holiday|баяр|Наадам/gi) || []).length, 0, 'scan: баярын өдөр хасагдахгүй');
+}
+
+// ═══ SCAN: цалингийн эхлэх сарын хамгаалалт ═════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/const PAYROLL_START_DEFAULT = '2026-09'/.test(src), 'scan: эхлэх сарын нөөц утга бий');
+  const f = src.slice(src.indexOf('function payrollStartMonth'), src.indexOf('function payMonthDefault'));
+  /* ⛔ `state.appConfig`-ээс уншиж БОЛОХГҮЙ — тэр объектыг серверээс ачаалдаг
+     код ОГТ байхгүй тул DB-ийн утга хэзээ ч хүрэхгүй (чимээгүй нөөц утга). */
+  ok(/state\.payrollCfg/.test(f), 'scan: эхлэх сар тусдаа state талбараас');
+  eq((f.match(/state\.appConfig/g) || []).length, 0, 'scan: state.appConfig-ээс уншихгүй (ачаалагддаггүй)');
+  ok(/loadAppConfig\('payroll'\)/.test(src), 'scan: тохиргоо үнэхээр татагдана');
+  ok(/ensurePayrollCfg\(\);\s*\/\/ цалингийн тооцоо/.test(src), 'scan: самбар тохиргоог ачаална');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(/const histOnly = payrollHistOnly\(ym\)/.test(rs), 'scan: самбар түүх сарыг таьна');
+  ok(/histOnly \? '' : warnBits/.test(rs), 'scan: түүх сард анхааруулга/суутгалын мөр гарахгүй');
+  ok(/fmtMoney\(histOnly \? paid : b\.total\)/.test(rs), 'scan: түүх сард хураангуйд ОЛГОСОН дүн гарна');
+  const mp = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
+  ok(/payrollHistOnly\(month\)/.test(mp), 'scan: ажилтны карт ч түүх сарыг таьна');
+  // ⛔ Түүх сард ирц ТАТАХГҮЙ — «0 / 184ц» гэсэн мөр гаргах нь хийгдээгүй
+  //   зүйлийг хийсэн мэт үзүүлнэ.
+  ok(/!histOnly && state\.attMonthKey !== ym/.test(rs), 'scan: түүх сард ирц татахгүй');
+  ok(/const attReady = !histOnly &&/.test(rs), 'scan: түүх сард ирц «бэлэн» болохгүй');
+  ok(/const hrs = histOnly \? ''/.test(rs), 'scan: түүх сард цагийн мөр хоосон');
+  ok(/const body = histOnly/.test(rs), 'scan: түүх сард биеийн блок тусдаа (суурь/дамжлагын бонусгүй)');
+  const ma = src.slice(src.indexOf('function renderMyAttend'), src.indexOf('function renderMyAttend') + 9000);
+  eq((ma.match(/payrollHistOnly\(payM\)/g) || []).length, 2, 'scan: ажилтны хуудсанд нэмэгдэл ба дамжлагын бонус хоёулаа хаагдана');
+}
+
+// ═══ ЭЗНИЙ ХӨРӨНГӨ ОРУУЛАЛТ (2026-10-02) ════════════════════════════════
+// «Компани өөрөө төлснөө нотолж чадахгүй хөрөнгө = эзэн оруулсан».
+// 6 жилийн түүхийг санах шаардлагагүй — нотлох баримтаас эсрэгээр нь бодно.
+{
+  const { ownerCapital, ownerCapitalRows } = F;
+  const P = (sku, cost, qty, opened, approved) => ({
+    sku, id: sku, name: 'Бараа ' + sku, cost, stock: qty, qty_mevent: qty, archived: false,
+    stock_opened_at: opened ? '2026-09-10' : null, stock_opened_by: opened ? '900' : null,
+    stock_approved_at: approved ? '2026-09-11' : null, stock_approved_by: approved ? '800' : null,
+  });
+  const prods = [
+    P('A', 1000, 100, true, true),     // 100,000 — баталгаажсан
+    P('B', 2000, 200, true, true),     // 400,000 — баталгаажсан
+    P('C', 5000, 100, true, false),    // 500,000 — ЗӨВХӨН тоолсон (1 гарын үсэг)
+    P('D', 3000, 100, false, false),   // 300,000 — огт тоологдоогүй
+  ];
+  const fin = [
+    { status: 'done', decision: 'approved', category: '6100', amount: 50000 },   // хөрөнгө авалт
+    { status: 'done', decision: 'approved', category: '6700', amount: 30000 },   // хөрөнгө авалт
+    { status: 'done', decision: 'approved', category: '6900', amount: 120000 },  // эзэн рүү гарсан
+    { status: 'done', decision: 'approved', category: '6950', amount: 99999 },   // зээлийн төлбөр — ОРОХГҮЙ
+    { status: 'done', decision: 'approved', category: '7100', amount: 99999 },   // цалин — ОРОХГҮЙ
+    { status: 'deleted', decision: 'approved', category: '6100', amount: 99999 },// устгасан — ОРОХГҮЙ
+    { status: 'done', decision: 'pending', category: '6100', amount: 99999 },    // батлаагүй — ОРОХГҮЙ
+  ];
+  const oc = ownerCapital(prods, fin);
+  eq(oc.invTotal, 1300000, 'эзэн: агуулахын нийт өртөг');
+  eq(oc.invVerified, 500000, 'эзэн: ЗӨВХӨН 2 гарын үсэгтэй нь баталгаажсан');
+  eq(oc.invUnverified, 800000, 'эзэн: баталгаажаагүй үлдэл');
+  eq(oc.coBuy, 80000, 'эзэн: компанийн хөрөнгө авалт (61xx–67xx)');
+  eq(oc.coOut, 120000, 'эзэн: компанийн данснаас эзэн рүү гарсан (6900)');
+  eq(oc.funded, 200000, 'эзэн: компанийн санхүүжилт нийт');
+
+  // ⛔ Эзэн рүү гарсан мөнгийг ЗААВАЛ хасна — эс бөгөөс нэг хөрөнгө хоёр удаа тоологдоно
+  eq(oc.ownerVerified, 300000, 'эзэн: баталгаажсан 500k − санхүүжилт 200k = 300k');
+  eq(oc.ownerTotal, 1100000, 'эзэн: тооллого дуусвал 1,300k − 200k = 1,100k');
+  eq(oc.gap, 800000, 'эзэн: тооллого дуусгахын үнэ цэн');
+
+  // ⛔ 6950 (зээлийн үндсэн төлбөр) хасагдахгүй — тэр нь хөрөнгө авдаггүй
+  eq(ownerCapital(prods, fin.filter(f => f.category !== '6950')).ownerVerified, 300000,
+     'эзэн: 6950 тооцоонд огт нөлөөлөхгүй');
+
+  // ⛔ СӨРӨГ БОЛОХГҮЙ — компанийн мөнгө их бол «эзэн юу ч оруулаагүй» (0)
+  const big = ownerCapital(prods, [{ status: 'done', decision: 'approved', category: '6100', amount: 9000000 }]);
+  eq(big.ownerVerified, 0, 'эзэн: сөрөг гарахгүй (0-оор тагласан)');
+  eq(big.ownerTotal, 0, 'эзэн: нийт нь ч сөрөг болохгүй');
+
+  // ── Актын мөрүүд: ЗӨВХӨН баталгаажсан, өртөгтэй, үлдэгдэлтэй ──
+  const rows = ownerCapitalRows(prods);
+  eq(rows.length, 2, 'акт: зөвхөн 2 гарын үсэгтэй бараа');
+  eq(rows.map(r => r.sku).join(','), 'B,A', 'акт: дүнгээр буурахаар эрэмбэлэгдэнэ');
+  eq(rows[0].sum, 400000, 'акт: мөрийн дүн = өртөг × тоо');
+  eq(ownerCapitalRows([P('Z', 0, 50, true, true)]).length, 0, 'акт: өртөггүй бараа орохгүй');
+  eq(ownerCapitalRows([P('Y', 100, 0, true, true)]).length, 0, 'акт: үлдэгдэлгүй бараа орохгүй');
+
+  // ИНВАРИАНТ: актын мөрүүдийн нийлбэр = баталгаажсан агуулахын өртөг
+  eq(rows.reduce((s, r) => s + r.sum, 0), oc.invVerified,
+     'ИНВАРИАНТ: актын жагсаалтын нийлбэр = баталгаажсан өртөг');
+}
+
+// ═══ SCAN: эзний хөрөнгийн тооцоо ганц газар, актад баталгаажсан нь л орно ═══
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function ownerCapital('), src.indexOf('function ownerCapitalRows'));
+  ok(fn.length > 300, 'scan: ownerCapital олдов');
+  // ⛔ Эзэн рүү гарсан мөнгө (6900) ЗААВАЛ хасагдана
+  ok(/'6900'/.test(fn) && /coOut/.test(fn), 'scan: 6900 хасагдана (хоёр удаа тоологдохгүй)');
+  // ⛔ Сөрөг болохгүй
+  eq((fn.match(/Math\.max\(0,/g) || []).length >= 3, true, 'scan: сөрөг дүн 0-оор тагласан');
+  // ⛔ Баталгаажсан нь `warehouseCapital`-ийн `verified` (2 гарын үсэг) — дахин бодохгүй
+  ok(/warehouseCapital\(/.test(fn), 'scan: баталгаажсан дүнг warehouseCapital-аас авна');
+  eq((fn.match(/stock_approved_at/g) || []).length, 0, 'scan: гарын үсгийн дүрмийг дахин бичихгүй');
+
+  const card = src.slice(src.indexOf('function psOwnerCapitalHtml'), src.indexOf('function openOwnerCapitalAct'));
+  ok(/state\.isCEO/.test(card), 'scan: эзний өглөг зөвхөн CEO-д');
+  ok(/ownerVerified/.test(card) && /oc\.gap/.test(card), 'scan: картад баталгаажсан дүн ба цоорхой');
+
+  const act = src.slice(src.indexOf('function openOwnerCapitalAct'), src.indexOf('function renderProductSheet'));
+  ok(/ownerCapitalRows\(/.test(act), 'scan: акт баталгаажсан жагсаалтаас гарна');
+  ok(/window\.open\(/.test(act), 'scan: акт ШИНЭ ЦОНХОНД (харагдах элементээс PDF)');
+  // ⚠ Тайлбарт дурдах нь зүгээр — ОПЦИ болгож дамжуулахыг хаана (элементийн өргөнтэй зөрвөл тасарна)
+  eq((act.match(/windowWidth\s*:/g) || []).length, 0, 'scan: windowWidth опци дамжуулахгүй — баримт тасарна');
+  ok(/ОРООГҮЙ/.test(act), 'scan: баталгаажаагүй хөрөнгө актад ороогүйг ил бичнэ');
+}
+
+// ═══ НЭЭЛТИЙН БАЛАНС (2026-10-02) ═══════════════════════════════════════
+// ⛔ ӨМЧ НЬ ҮЛДЭГДЛЭЭР гарна (хөрөнгө − өр) — гараар бичигдэхгүй, тиймээс
+//   баланс ҮРГЭЛЖ тэнцэнэ. Тэнцээгүй баланс нь баланс биш.
+{
+  const { openingBalanceCalc } = F;
+  const auto = [
+    { key: 'cash', label: 'Банк', amount: 14953276, side: 'asset' },
+    { key: 'inv', label: 'Агуулах', amount: 744468853, side: 'asset' },
+    { key: 'owner', label: 'Эзэнд өглөх', amount: 153670534, side: 'liab' },
+    { key: 'dep', label: 'Барьцаа', amount: 1603260, side: 'liab' },
+    { key: 'zero', label: 'Тэг мөр', amount: 0, side: 'asset' },      // ⛔ орохгүй
+  ];
+  const c = openingBalanceCalc(auto, [{ label: 'НД-ийн өглөг', amount: 24000000, side: 'liab' }]);
+  eq(c.assets.length, 2, 'баланс: тэг дүнтэй мөр ОРОХГҮЙ');
+  eq(c.totalAssets, 759422129, 'баланс: хөрөнгийн нийлбэр');
+  eq(c.totalLiabs, 179273794, 'баланс: өр төлбөрийн нийлбэр (гараар нэмсэнтэй)');
+  eq(c.equity, 759422129 - 179273794, 'баланс: өмч = хөрөнгө − өр');
+
+  // ИНВАРИАНТ: хөрөнгө = өр + өмч (тэнцэл үргэлж хангагдана)
+  eq(c.totalAssets, c.totalLiabs + c.equity, 'ИНВАРИАНТ: хөрөнгө = өр төлбөр + өмч');
+
+  // Гараар нэмсэн мөр нь auto туггүй — зөвхөн тэр нь устгагдана
+  eq(c.liabs.filter(r => !r.auto).length, 1, 'баланс: гараар нэмсэн мөр ялгагдана');
+  eq(c.liabs.filter(r => r.auto).length, 2, 'баланс: автомат мөр тугтай');
+
+  // Талыг буруу бичвэл ӨР тал руу (өмчийг хиймлээр өсгөхгүй)
+  eq(openingBalanceCalc([], [{ label: 'x', amount: 100, side: 'ямарч' }]).liabs.length, 1,
+     'баланс: танихгүй тал → өр төлбөр (өмч хөөрөгдөхгүй)');
+
+  // Хоосон
+  const e = openingBalanceCalc([], []);
+  eq(e.totalAssets + e.totalLiabs + e.equity, 0, 'баланс: хоосон үед бүгд 0');
+
+  // Өр нь хөрөнгөөс их бол өмч СӨРӨГ гарна (нуухгүй)
+  eq(openingBalanceCalc([{ label: 'a', amount: 100, side: 'asset' }],
+                        [{ label: 'b', amount: 300, side: 'liab' }]).equity, -200,
+     'баланс: сөрөг өмч нуугдахгүй');
+}
+
+// ═══ SCAN: нээлтийн баланс — хөлдсөн бол дахин бодохгүй ═════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const calc = src.slice(src.indexOf('function openingBalanceCalc'), src.indexOf('function openingBalanceAuto'));
+  ok(/totalAssets - totalLiabs/.test(calc), 'scan: өмч = хөрөнгө − өр (гараар бичигдэхгүй)');
+  eq((calc.match(/equity\s*:\s*Number|equity\s*=\s*manual/g) || []).length, 0, 'scan: өмч гаднаас орж ирэхгүй');
+
+  const auto = src.slice(src.indexOf('function openingBalanceAuto'), src.indexOf('function openingBalanceGaps'));
+  // ⛔ Агуулах нь ЗӨВХӨН баталгаажсанаар (ownerCapital-тай ижил дүрэм)
+  ok(/w\.verified/.test(auto), 'scan: агуулах зөвхөн баталгаажсан өртгөөр');
+  eq((auto.match(/w\.capital/g) || []).length, 0, 'scan: баталгаажаагүй агуулах балансад орохгүй');
+  // ⛔ Эзний дүнг дахин бодохгүй — ownerCapital ганц эх сурвалж
+  ok(/ownerCapital\(/.test(auto), 'scan: эзний өглөг ownerCapital-аас');
+  // ⛔ Мэдэхгүй зүйлээ 0 гэж бичихгүй — мөр огт гарахгүй
+  ok(/if \(cash\)/.test(auto) && /if \(recTotal\)/.test(auto), 'scan: тэг мөр гаргахгүй');
+
+  const r = src.slice(src.indexOf('function renderOpeningBalance'), src.indexOf('function attachOpeningBalanceHandlers'));
+  ok(/fr\s*\n?\s*\?\s*openingBalanceCalc\(fr\.rows/.test(r.replace(/\s+/g, ' ').replace(/ \? /g, ' ? ')) || /openingBalanceCalc\(fr\.rows/.test(r),
+     'scan: ХӨЛДСӨН бол хадгалсан мөрөөс, ДАХИН бодохгүй');
+  const h = src.slice(src.indexOf('function attachOpeningBalanceHandlers'), src.indexOf('function receivablesData'));
+  // ⛔ Хөлдөөх ба нээх хоёулаа баталгаажуулалтын ХАРИУГ шалгана
+  eq((h.match(/if \(!await showConfirm\([\s\S]*?\)\)\s*return;/g) || []).length, 2,
+     'scan: хөлдөөх БА нээх хоёулаа showConfirm-ийн хариуг шалгана');
+}
+
+// ═══ ЖУРНАЛ — давхар бичилт (2026-10-02) ════════════════════════════════
+// ⛔ ДЕБЕТ = КРЕДИТ байх нь журналын цорын ганц үнэний шалгуур. Зөрвөл бичилт дутуу.
+{
+  const { journalEntries, journalTotals, jrnDebitFor, jrnCreditFor } = F;
+
+  // ── Ангилал → данс: бүх зарлага «зардал» БИШ ──
+  eq(jrnDebitFor('7100'), 'expense', 'журнал: цалин → зардал');
+  eq(jrnDebitFor('6900'), 'owner',   'журнал: эзэнд өгсөн → өглөг буурна (зардал БИШ)');
+  eq(jrnDebitFor('6950'), 'loan',    'журнал: зээлийн үндсэн төлбөр → зээл');
+  eq(jrnDebitFor('5810'), 'deposit', 'журнал: барьцаа буцаалт → барьцаа');
+  eq(jrnDebitFor('5300'), 'tax',     'журнал: НДШ төлөлт → татварын өглөг');
+  eq(jrnDebitFor('6100'), 'inv',     'журнал: хөрөнгө авалт → бараа материал');
+  eq(jrnDebitFor('6960'), null,      'журнал: дотоод шилжүүлэг БИЧИГДЭХГҮЙ');
+
+  eq(jrnCreditFor('order'),    'recv',     'журнал: захиалгын төлбөр → авлага хаагдана');
+  // ⛔ NOMAAD төлбөр = АВЛАГА хаагдах, орлого БИШ. Орлого гэж бичвэл мөнгө орсон
+  //   сард бүртгэгдэж, журнал бүхэлдээ гүйцэтгэлийн суурьтай байхад NOMAAD
+  //   ганцаараа мөнгөн суурьтай болно (амьд датаар 9 сард 19сая илүү бүртгэгдсэн).
+  eq(jrnCreditFor('nomaad'),   'recv',     'журнал: NOMAAD төлбөр → авлага хаагдана (орлого БИШ)');
+  eq(jrnCreditFor('internal'), null,       'журнал: дотоод шилжүүлэг орлого биш');
+  eq(jrnCreditFor('personal'), null,       'журнал: хувийн орлого компанийн биш');
+  eq(jrnCreditFor('open'),     'suspense', 'журнал: хаагдаагүй мөр ИЛ үлдэнэ (нуугдахгүй)');
+
+  // ── Бичилт үүсэх ──
+  const ctx = {
+    basis: 'accrual',
+    opening: { date: '2026-09-01', totals: { equity: 600000 },
+               rows: [{ label: 'Банк', amount: 1000000, side: 'asset', acc: 'bank' },
+                      { label: 'Эзэнд', amount: 400000, side: 'liab', acc: 'owner' }] },
+    orders: [{ id: 'o1', number: 1501, customer: 'Ган', starts_at: '2026-09-10',
+               total_mnt: 1500000, deposit_mnt: 200000, paid_mnt: 0, status: 'returned', source: 'app', items: [] }],
+    finance: [
+      { id: 'f1', status: 'done', decision: 'approved', category: '7100', amount: 300000, requested_at: '2026-09-20', purpose: 'Цалин' },
+      { id: 'f2', status: 'done', decision: 'approved', category: '6960', amount: 999999, requested_at: '2026-09-21', purpose: 'Данс хооронд' },
+      { id: 'f3', status: 'deleted', decision: 'approved', category: '7100', amount: 777, requested_at: '2026-09-22' },
+      { id: 'f4', status: 'done', decision: 'approved', category: '7100', amount: 555, requested_at: '2026-08-20' },  // өөр сар
+    ],
+    income: [
+      { fp: 'i1', dt: '2026-09-25', amount: 900000, status: 'order', payer: 'Ган' },
+      { fp: 'i2', dt: '2026-09-26', amount: 500000, status: 'internal', payer: 'Өөрийн данс' },
+      { fp: 'i3', dt: '2026-09-27', amount: 120000, status: 'open', payer: '?' },
+    ],
+  };
+  const e = journalEntries(ctx, '2026-09');
+  const texts = e.map(x => x.src);
+  ok(texts.includes('opening'), 'журнал: нээлтийн үлдэгдэл эхний бичилт');
+  ok(texts.includes('fin:f1'), 'журнал: цалингийн зарлага бичигдэнэ');
+  ok(!texts.includes('fin:f2'), 'журнал: дотоод шилжүүлэг бичигдэхгүй');
+  ok(!texts.includes('fin:f3'), 'журнал: устгасан мөр бичигдэхгүй');
+  ok(!texts.includes('fin:f4'), 'журнал: өөр сарын мөр орохгүй');
+  ok(!texts.includes('inc:i2'), 'журнал: дотоод орлого бичигдэхгүй');
+  ok(texts.includes('inc:i3'), 'журнал: хаагдаагүй орлого ИЛ бичигдэнэ');
+
+  // ⛔ ИНВАРИАНТ: бичилт бүр дотроо тэнцэнэ
+  e.forEach(x => {
+    const d = x.lines.reduce((s, l) => s + (Number(l.dr) || 0), 0);
+    const c = x.lines.reduce((s, l) => s + (Number(l.cr) || 0), 0);
+    eq(d, c, `ИНВАРИАНТ: «${x.text}» бичилт дотроо тэнцэнэ`);
+  });
+  // ⛔ ИНВАРИАНТ: нийт дебет = нийт кредит
+  const T = journalTotals(e);
+  eq(T.dr, T.cr, 'ИНВАРИАНТ: нийт дебет = нийт кредит');
+  ok(T.balanced, 'журнал: тэнцсэн гэж тэмдэглэгдэнэ');
+
+  // Захиалгын бичилт: авлага = орлого + барьцаа
+  const ord = e.find(x => x.src === 'order:o1');
+  ok(!!ord, 'журнал: захиалгын бичилт үүснэ');
+  eq(ord.lines.find(l => l.acc === 'recv').dr, 1500000, 'журнал: авлага = нийт дүн');
+  eq(ord.lines.find(l => l.acc === 'deposit').cr, 200000, 'журнал: барьцаа тусдаа кредит');
+  eq(ord.lines.find(l => l.acc === 'revenue').cr, 1300000, 'журнал: орлого = дүн − барьцаа');
+
+  // Дансаар нэгтгэл
+  const bank = T.accs.find(a => a.acc === 'bank');
+  eq(bank.dr, 1000000 + 900000 + 120000, 'журнал: банкны дебет (нээлт + орлого)');
+  eq(bank.cr, 300000, 'журнал: банкны кредит (зарлага)');
+
+  // Тэнцээгүй үед ил гарна
+  const bad = journalTotals([{ lines: [{ acc: 'bank', dr: 100 }, { acc: 'recv', cr: 90 }] }]);
+  ok(!bad.balanced && bad.diff === 10, 'журнал: тэнцээгүйг нуухгүй');
+
+  // Хоосон сар
+  eq(journalEntries(ctx, '2026-01').length, 0, 'журнал: бичилтгүй сар хоосон');
+}
+
+// ═══ SCAN: журнал гараар бичигддэггүй, тэнцэл ил ═══════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const je = src.slice(src.indexOf('function journalEntries'), src.indexOf('function journalTotals'));
+  ok(je.length > 600, 'scan: journalEntries олдов');
+  // ⛔ Нэг талтай бичилт гарч болохгүй (хамгийн багадаа 2 мөр)
+  ok(/ls\.length < 2/.test(je), 'scan: нэг талтай бичилт бичигдэхгүй');
+  // ⛔ Дотоод шилжүүлэг хасагдана
+  ok(/6960/.test(src.slice(src.indexOf('function jrnDebitFor'), src.indexOf('function jrnCreditFor'))),
+     'scan: дотоод шилжүүлэг данс оноогдохгүй');
+  const r = src.slice(src.indexOf('function renderJournal'), src.indexOf('function attachJournalHandlers'));
+  ok(/T\.balanced/.test(r), 'scan: тэнцлийн төлөв дэлгэцэд ил');
+  ok(/ТЭНЦЭЭГҮЙ/.test(r), 'scan: тэнцээгүйг ил хэлнэ');
+  // ⛔ Гараар бичих форм БАЙХГҮЙ — бичилт үйл явдлаас үүснэ
+  eq((r.match(/data-jr-new|jr-add|Шинэ бичилт/g) || []).length, 0, 'scan: гараар журнал бичих форм байхгүй');
+  ok(/ӨӨРӨӨ үүснэ/.test(r), 'scan: автоматаар үүсдэгийг ил бичнэ');
+  // ⚠ Орлогын мөр ачаалагдаагүй бол чимээгүй дутуу харуулахгүй
+  ok(/loadBankIncome\(\)/.test(r), 'scan: хуулгын орлогын мөрийг ачаална');
+}
+
+// ═══ SCAN: журнал ҮРГЭЛЖ гүйцэтгэлийн суурьтай (2026-10-02) ═════════════
+// Мөнгөн суурь хэрэглэвэл төлөгдөөгүй захиалгын орлого 0 болж «Дебет Авлага /
+// Кредит Орлого» бичилт утгагүй болно (21.3сая захиалга 0₮ орлоготой гарч байв).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const ctx = src.slice(src.indexOf('function jrnCtx'), src.indexOf('function renderJournal'));
+  ok(/basis:\s*'accrual'/.test(ctx), 'scan: журнал гүйцэтгэлийн суурьтай');
+  eq((ctx.match(/finBasis\(\)/g) || []).length, 0, 'scan: журнал дэлгэцийн суурьаас хамаарахгүй');
+
+  // Төлөгдөөгүй захиалга ч бүтэн орлого бичигдэнэ
+  const e = F.journalEntries({ basis: 'accrual', orders: [{ id: 'x', number: 9, customer: 'Т',
+    starts_at: '2026-09-05', total_mnt: 21305600, deposit_mnt: 500000, paid_mnt: 0,
+    status: 'returned', source: 'app', items: [] }], finance: [], income: [] }, '2026-09');
+  const o = e.find(x => x.src === 'order:x');
+  ok(!!o, 'журнал: төлөгдөөгүй захиалга ч бичигдэнэ');
+  eq(o.lines.find(l => l.acc === 'revenue').cr, 20805600, 'журнал: төлөгдөөгүй ч бүтэн орлого');
+  eq(o.lines.find(l => l.acc === 'recv').dr, 21305600, 'журнал: авлага = орлого + барьцаа');
+}
+
+// ═══ ЕРӨНХИЙ ДЭВТЭР ба БАЛАНС (2026-10-02) ═════════════════════════════
+// ⛔ Хөрөнгө = Өр төлбөр + Өмч байх нь балансын цорын ганц үнэний шалгуур.
+//   Орлого/зардлыг «тайлант үеийн ашиг» болгож өмчид нэмэхгүй бол ХЭЗЭЭ Ч тэнцэхгүй.
+{
+  const { ledgerLines, balanceSheetAt, entriesUpTo, journalEntries } = F;
+  const ctx = {
+    basis: 'accrual',
+    opening: { date: '2026-09-01', totals: { equity: 600000 },
+               rows: [{ amount: 1000000, side: 'asset', acc: 'bank' },
+                      { amount: 400000, side: 'liab', acc: 'owner' }] },
+    orders: [{ id: 'o1', number: 1, customer: 'Т', starts_at: '2026-09-10',
+               total_mnt: 1500000, deposit_mnt: 200000, paid_mnt: 0, status: 'returned', source: 'app', items: [] }],
+    finance: [{ id: 'f1', status: 'done', decision: 'approved', category: '7100',
+                amount: 300000, requested_at: '2026-09-20', purpose: 'Цалин' }],
+    income: [{ fp: 'i1', dt: '2026-09-25', amount: 900000, status: 'order', payer: 'Т' }],
+  };
+  const all = journalEntries(ctx, null);
+
+  // ── Ерөнхий дэвтэр: явцын үлдэгдэл, дансны мөн чанараар ──
+  const bank = ledgerLines(all, 'bank');
+  ok(bank.debitSide, 'дэвтэр: банк дебетээр өсдөг данс');
+  eq(bank.balance, 1000000 - 300000 + 900000, 'дэвтэр: банкны эцсийн үлдэгдэл');
+  eq(bank.lines[bank.lines.length - 1].bal, bank.balance, 'дэвтэр: сүүлийн мөрийн явцын үлдэгдэл = нийт');
+
+  const owner = ledgerLines(all, 'owner');
+  ok(!owner.debitSide, 'дэвтэр: өглөг КРЕДИТЭЭР өсдөг данс');
+  eq(owner.balance, 400000, 'дэвтэр: кредит данс эерэг үлдэгдэлтэй (сөрөг харагдахгүй)');
+
+  // ── Баланс: тэнцэнэ ──
+  const B = balanceSheetAt(all);
+  ok(B.balanced, 'баланс: Хөрөнгө = Өр + Өмч');
+  eq(B.diff, 0, 'баланс: зөрүү 0');
+  eq(B.revenue, 1300000, 'баланс: орлого (барьцаа хасагдсан)');
+  eq(B.expense, 300000, 'баланс: зардал');
+  eq(B.profit, 1000000, 'баланс: ашиг = орлого − зардал');
+  eq(B.totalEquity, 600000 + 1000000, 'баланс: өмч = нээлтийн өмч + тайлант ашиг');
+
+  // ⛔ Ашгийг оруулахгүй бол тэнцэхгүй гэдгийг БАТАЛНА
+  eq(B.totalAssets, B.totalLiabs + B.totalEquity, 'ИНВАРИАНТ: хөрөнгө = өр + өмч');
+  ok(B.totalAssets !== B.totalLiabs + (B.totalEquity - B.profit),
+     'баланс: ашиггүй бол тэнцэхгүй (яг ашгийн дүнгээр зөрнө)');
+
+  // ── Огноогоор таслах: хуримтлагдсан ──
+  const early = entriesUpTo(ctx, '2026-09-15');
+  ok(early.length < all.length, 'баланс: огноогоор таслагдана');
+  ok(balanceSheetAt(early).balanced, 'баланс: дунд огноонд ч тэнцэнэ');
+  eq(ledgerLines(early, 'bank').balance, 1000000, 'дэвтэр: 09-15-ны байдлаар банк (зарлага хараахан болоогүй)');
+
+  // Хоосон
+  const E = balanceSheetAt([]);
+  eq(E.totalAssets + E.totalLiabs + E.totalEquity, 0, 'баланс: хоосон үед бүгд 0');
+  ok(E.balanced, 'баланс: хоосон ч тэнцсэн');
+}
+
+// ═══ SCAN: дэвтэр/баланс нь журналаас л гарна ══════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const bs = src.slice(src.indexOf('function balanceSheetAt'), src.indexOf('function entriesUpTo'));
+  ok(/profit/.test(bs) && /totalEquity/.test(bs), 'scan: өмчид тайлант үеийн ашиг нэмэгдэнэ');
+  ok(/revenue - expense/.test(bs), 'scan: ашиг = орлого − зардал');
+
+  const lg = src.slice(src.indexOf('function ledgerLines'), src.indexOf('function balanceSheetAt'));
+  ok(/debitSide/.test(lg), 'scan: үлдэгдэл дансны мөн чанараар бодогдоно');
+
+  const r = src.slice(src.indexOf('function renderBalanceSheet'), src.indexOf('function attachBalanceHandlers'));
+  ok(/balanceSheetAt\(entriesUpTo\(/.test(r), 'scan: баланс журналаас хуримтлагдана (дахин бодохгүй)');
+  ok(/ТЭНЦЭЭГҮЙ/.test(r), 'scan: тэнцээгүйг ил хэлнэ');
+  eq((r.match(/data-bs-edit|Засах/g) || []).length, 0, 'scan: балансыг гараар тохируулдаггүй');
+
+  const lr = src.slice(src.indexOf('function renderLedger'), src.indexOf('function attachLedgerHandlers'));
+  ok(/ledgerLines\(all, acc\)/.test(lr), 'scan: дэвтэр ledgerLines-аас');
+
+  // Нягтлангийн дэлгэцүүд НЭГ дэд-таб бүлэгт (`renderAccounting`), харин өөрөө
+  // хажуугийн цэсний тусдаа мөр — доорх «тусдаа цэс» scan-тест үүнийг барина.
+  ok(/ACCT_TABS/.test(src), 'scan: нягтлангийн дэлгэцүүд нэг дэд-таб бүлэгт');
+}
+
+// ⚠ «Тодорхойгүй» нь ӨР ТӨЛБӨР — хэнийх нь мэдэгдэхгүй мөнгө бидний эзэмшил биш.
+// Хөрөнгө гэвэл балансад СӨРӨГ хөрөнгө болж гарч уншигдахгүй болно.
+{
+  const B = F.balanceSheetAt([{ date: '2026-09-01', text: 't', src: 's',
+    lines: [{ acc: 'bank', dr: 120000 }, { acc: 'suspense', cr: 120000 }] }]);
+  eq(B.assets.find(r => r.acc === 'suspense'), undefined, 'баланс: тодорхойгүй нь хөрөнгө БИШ');
+  eq((B.liabs.find(r => r.acc === 'suspense') || {}).amount, 120000, 'баланс: тодорхойгүй = өр төлбөр, ЭЕРЭГ');
+  ok(B.balanced, 'баланс: тодорхойгүйтэй ч тэнцэнэ');
+}
+
+// ═══ ОРЛОГЫН ТАЙЛАН + ЭЛЭГДЭЛ ЖУРНАЛД (2026-10-02) ══════════════════════
+// ⛔ Орлогын тайлангийн ашиг нь БАЛАНСЫН «тайлант үеийн ашиг»-тай ЯГ таарах ёстой.
+{
+  const { incomeStatement, entriesBetween, balanceSheetAt, journalEntries, jrnMonthEnd } = F;
+  eq(jrnMonthEnd('2026-09'), '2026-09-30', 'сарын эцэс: 9 сар 30');
+  eq(jrnMonthEnd('2026-02'), '2026-02-28', 'сарын эцэс: 2 сар 28');
+  eq(jrnMonthEnd('2024-02'), '2024-02-29', 'сарын эцэс: өндөр жил 29');
+
+  const ctx = {
+    basis: 'accrual', opening: null,
+    orders: [{ id: 'o1', number: 1, customer: 'Т', starts_at: '2026-09-10',
+               total_mnt: 5000000, deposit_mnt: 1000000, paid_mnt: 0, status: 'returned', source: 'app', items: [] }],
+    finance: [
+      { id: 'f1', status: 'done', decision: 'approved', category: '7100', amount: 900000, requested_at: '2026-09-20', purpose: 'Цалин' },
+      { id: 'f2', status: 'done', decision: 'approved', category: '1800', amount: 100000, requested_at: '2026-09-21', purpose: 'Шатахуун' },
+      { id: 'f3', status: 'done', decision: 'approved', category: '6900', amount: 700000, requested_at: '2026-09-22', purpose: 'Эзэнд' },
+      { id: 'f4', status: 'done', decision: 'approved', category: '6950', amount: 200000, requested_at: '2026-09-23', purpose: 'Зээл' },
+    ],
+    income: [], deprec: [{ ym: '2026-09', amount: 500000 }],
+  };
+  const sep = entriesBetween(ctx, '2026-09-01', '2026-09-30');
+  const P = incomeStatement(sep);
+
+  eq(P.totalRevenue, 4000000, 'тайлан: орлого (барьцаа хасагдсан)');
+  // ⛔ Эзэнд өгсөн ба зээлийн төлбөр нь ЗАРДАЛ БИШ — тайланд орохгүй
+  eq(P.totalExpense, 900000 + 100000 + 500000, 'тайлан: зардал = цалин + шатахуун + ЭЛЭГДЭЛ');
+  eq(P.profit, 4000000 - 1500000, 'тайлан: ашиг');
+  eq(Math.round(P.margin * 100), 63, 'тайлан: марж %');
+
+  // ⛔ ЭЛЭГДЭЛ заавал зардалд орно — журналд бичигдэхгүй бол ашиг хэтэрнэ
+  const hasDep = sep.some(e => e.src === 'dep:2026-09');
+  ok(hasDep, 'журнал: элэгдлийн бичилт үүснэ');
+  const depRow = P.expenses.flatMap(g => g.rows).find(r => r.cat === 'ЭЛЭГДЭЛ');
+  eq((depRow || {}).amount, 500000, 'тайлан: элэгдэл зардлын мөрөнд');
+
+  // ⛔ ИНВАРИАНТ: тайлангийн ашиг = балансын тайлант үеийн ашиг
+  eq(P.profit, balanceSheetAt(sep).profit, 'ИНВАРИАНТ: тайлангийн ашиг = балансын ашиг');
+  ok(balanceSheetAt(sep).balanced, 'баланс: элэгдэлтэй ч тэнцэнэ');
+
+  // Элэгдэл нь хөрөнгийг бууруулна (contra-asset, СӨРӨГ)
+  const B = balanceSheetAt(sep);
+  eq((B.assets.find(r => r.acc === 'accdep') || {}).amount, -500000, 'баланс: хуримтлагдсан элэгдэл сөрөг хөрөнгө');
+
+  // Зардал ҮНДСЭН бүлгээр задарна
+  ok(P.expenses.length >= 2, 'тайлан: зардал бүлгээр задарна');
+  ok(P.expenses.every(g => g.rows.length), 'тайлан: бүлэг бүр дэд мөртэй');
+
+  // Хоосон хугацаа
+  const E = incomeStatement([]);
+  eq(E.totalRevenue + E.totalExpense + E.profit, 0, 'тайлан: хоосон үед 0');
+  eq(E.margin, null, 'тайлан: орлогогүй бол марж null (0% БИШ)');
+}
+
+// ═══ SCAN: орлогын тайлан журналаас, элэгдэл журналд ════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const r = src.slice(src.indexOf('function renderIncomeStatement'), src.indexOf('function attachIncomeStatementHandlers'));
+  ok(/incomeStatement\(entriesBetween\(/.test(r), 'scan: тайлан журналаас гарна (дахин бодохгүй)');
+  eq((r.match(/finMonthIncome|finBranchPnl|orderRevenue\(/g) || []).length, 0,
+     'scan: тайлан өөр эх сурвалжаас тоо авахгүй');
+  const je = src.slice(src.indexOf('function journalEntries'), src.indexOf('function journalTotals'));
+  ok(/ctx\.deprec/.test(je), 'scan: элэгдэл журналд бичигдэнэ');
+  ok(/accdep/.test(je), 'scan: хуримтлагдсан элэгдлийн данс руу кредит');
+  const is = src.slice(src.indexOf('function incomeStatement'), src.indexOf('function entriesBetween'));
+  ok(/margin: totalRevenue > 0 \? profit \/ totalRevenue : null/.test(is),
+     'scan: орлогогүй үед марж null (0% гэж худал харуулахгүй)');
+  // Элэгдлийн сарын эцсийн огноо — түүхий toISOString ашиглахгүй
+  const me = src.slice(src.indexOf('function jrnMonthEnd'), src.indexOf('function journalEntries'));
+  eq((me.match(/toISOString/g) || []).length, 0, 'scan: сарын эцсийг toISOString-гүй бодно');
+}
+
+// ═══ SCAN: Нягтлан = тусдаа цэс, хоёр давхар нуугдахгүй (2026-10-03) ═════
+// ⛔ Хажуугийн цэс → Дүн шинжилгээ → Нягтлан → Журнал гэсэн ГУРВАН даралт нь
+//   дэлгэцийг үхүүлнэ («хэн ч нээдэггүй дэлгэц үхдэг»). Санхүү бүлэгт тусдаа мөр.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const idx = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
+  ok(/data-view="acct" id="nav-acct"/.test(idx), 'scan: Нягтлан хажуугийн цэсэнд');
+  ok(/'nav-coosalary', 'nav-acct'/.test(src), 'scan: Нягтлан САНХҮҮ бүлэгт');
+  ok(/state\.view === 'acct'/.test(src), 'scan: acct view маршруттай');
+  ok(/state\.view === 'acct' && !canSeeReports\(\)/.test(src), 'scan: acct эрхээр хамгаалагдсан');
+  // ⛔ Дүн шинжилгээний таб болж БУЦАЖ ОРОХГҮЙ
+  const rt = src.slice(src.indexOf("_rTabs.push({ k: 'reports'"), src.indexOf("if (!_rTabs.some"));
+  eq((rt.match(/k: 'acct'/g) || []).length, 0, 'scan: Нягтлан тайлангийн таб БИШ');
+  eq((rt.match(/_rTabs\.push/g) || []).length, 3, 'scan: тайлангийн таб 3 болов');
+  // Эрхийн жагсаалтад бүртгэгдсэн (эс бөгөөс эрх олгох боломжгүй)
+  ok(/key: 'acct',\s*label: 'Нягтлан/.test(src), 'scan: acct эрхийн жагсаалтад');
+}
+
+// ═══ НӨАТ ба НӨӨЦИЙН АЛДАГДАЛ журналд (2026-10-03) ══════════════════════
+// Эдгээр нь БОДИТ зардал мөртлөө журналд бичигдэхгүй байсан тул журналын ашиг
+// удирдлагын тайлангаас ~20сая зөрж байв.
+{
+  const { journalEntries, incomeStatement, balanceSheetAt, entriesBetween } = F;
+  const ctx = {
+    basis: 'accrual', opening: null, orders: [], finance: [], income: [], deprec: [],
+    extra: [{ ym: '2026-09', vat: 7724239, loss: 840000 }],
+  };
+  const e = journalEntries(ctx, '2026-09');
+  const vat = e.find(x => x.src === 'vat:2026-09');
+  const loss = e.find(x => x.src === 'loss:2026-09');
+  ok(!!vat, 'журнал: НӨАТ-ын бичилт үүснэ');
+  ok(!!loss, 'журнал: нөөцийн алдагдлын бичилт үүснэ');
+  // ⚠ Бичилт алга бол УНАХ ёстой, CRASH болох ёсгүй — тийм тест улаанаа харуулдаггүй
+  const ln = (en, acc, side) => ((en && en.lines || []).find(l => l.acc === acc) || {})[side] || 0;
+  eq(vat && vat.date, '2026-09-30', 'журнал: НӨАТ сарын ЭЦЭСТ');
+
+  // ⛔ НӨАТ нь ТАТВАРЫН ӨГЛӨГ рүү — дараа нь 5100 төлөлт түүнийг хаана (давхар биш)
+  eq(ln(vat, 'tax', 'cr'), 7724239, 'журнал: НӨАТ → татварын өглөг');
+  eq(ln(vat, 'expense', 'dr'), 7724239, 'журнал: НӨАТ → зардал');
+  // ⛔ Алдагдал нь БАРАА МАТЕРИАЛААС хасагдана (алга болсон бараа нөөцөөс гарна)
+  eq(ln(loss, 'inv', 'cr'), 840000, 'журнал: алдагдал → бараа материал буурна');
+
+  const P = incomeStatement(e);
+  eq(P.totalExpense, 7724239 + 840000, 'тайлан: НӨАТ ба алдагдал зардалд орно');
+  const cats = P.expenses.flatMap(g => g.rows).map(r => r.cat);
+  ok(cats.includes('НӨАТ') && cats.includes('АЛДАГДАЛ'), 'тайлан: тусдаа мөрөөр харагдана');
+  ok(balanceSheetAt(e).balanced, 'баланс: НӨАТ/алдагдалтай ч тэнцэнэ');
+
+  // 5100 НӨАТ төлөлт нь ЗАРДАЛ БИШ — өглөгийг хаана (давхар тоологдохгүй)
+  const paid = journalEntries({ basis: 'accrual', orders: [], income: [], deprec: [], extra: [],
+    finance: [{ id: 'v', status: 'done', decision: 'approved', category: '5100',
+                amount: 7724239, requested_at: '2026-09-15', purpose: 'НӨАТ төлөв' }] }, '2026-09');
+  eq(incomeStatement(paid).totalExpense, 0, 'тайлан: НӨАТ-ын ТӨЛӨЛТ зардал БИШ');
+  eq(((paid[0] && paid[0].lines || []).find(l => l.acc === 'tax') || {}).dr || 0, 7724239,
+     'журнал: НӨАТ төлөлт өглөгийг хаана');
+
+  // Тэг сар бичилт үүсгэхгүй
+  eq(journalEntries({ basis: 'accrual', orders: [], finance: [], income: [], deprec: [],
+    extra: [{ ym: '2026-09', vat: 0, loss: 0 }] }, '2026-09').length, 0, 'журнал: тэг сар бичилтгүй');
+}
+
+// ═══ SCAN: НӨАТ/тооллого ачаалагдаагүй бол чимээгүй 0 болохгүй ══════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const ra = src.slice(src.indexOf('function renderAccounting'), src.indexOf('function attachAccountingHandlers'));
+  ok(/ensureVatLoaded\(\)/.test(ra), 'scan: нягтлангийн дэлгэц НӨАТ-ыг ачаална');
+  ok(/loadStockCountsAll\(\)/.test(ra), 'scan: нягтлангийн дэлгэц тооллогыг ачаална');
+  const ex = src.slice(src.indexOf('function jrnExtraList'), src.indexOf('function jrnCtx'));
+  // ⛔ Ачаалагдаагүй үед 0 бичихгүй — мөр огт үүсэхгүй (`state.vatReceipts` шалгана)
+  ok(/state\.vatReceipts \?/.test(ex), 'scan: НӨАТ ачаалагдаагүй бол тооцохгүй');
+  ok(/state\.scAllRows/.test(ex), 'scan: тооллого ачаалагдаагүй бол тооцохгүй');
+  // ⛔ scRows (НЭГ сесс) ашиглавал бусад сар чимээгүй 0 болно
+  eq((ex.match(/state\.scRows/g) || []).length, 0, 'scan: журнал нэг сессийн мөрөөр бодохгүй');
+}
+
+// ═══ ЗАРДАЛ НООГДОХ САРД, БАНК ТӨЛСӨН ОГНООНД (2026-10-03) ══════════════
+// ⛔ Журналын огноог ЗӨӨХГҮЙ — банкны мөр жинхэнэ огноондоо үлдэнэ (эс бөгөөс
+//   дэвтэр хуулгатай таарахаа болино). Сар зөрвөл ХОЁР бичилт, дунд нь өглөг.
+{
+  const { journalEntries, incomeStatement, balanceSheetAt, entriesBetween, ledgerLines } = F;
+  const base = { basis: 'accrual', orders: [], income: [], deprec: [], extra: [], opening: null };
+  // 10-05-нд төлсөн 9 сарын цалин (finAccrualAuto: 1-10-нд төлсөн цалин → өмнөх сар)
+  const ctx = { ...base, finance: [{ id: 's1', status: 'done', decision: 'approved',
+    category: '7100', amount: 13400000, requested_at: '2026-10-05', purpose: 'Цалин үлдэгдэл' }] };
+  const all = journalEntries(ctx, null);
+  const acr = all.find(e => e.src === 'acr:s1');
+  const pay = all.find(e => e.src === 'fin:s1');
+  const ln = (e, acc, side) => ((e && e.lines || []).find(l => l.acc === acc) || {})[side] || 0;
+
+  ok(!!acr, 'хуримтлал: ноогдох бичилт үүснэ');
+  ok(!!pay, 'хуримтлал: төлөлтийн бичилт үүснэ');
+  eq(acr && acr.date, '2026-09-30', 'хуримтлал: зардал 9 сарын ЭЦЭСТ');
+  eq(pay && pay.date, '2026-10-05', 'хуримтлал: банк ЖИНХЭНЭ огноондоо үлдэнэ');
+  eq(ln(acr, 'expense', 'dr'), 13400000, 'хуримтлал: зардал ноогдох сард');
+  eq(ln(acr, 'payable', 'cr'), 13400000, 'хуримтлал: өглөг үүснэ');
+  eq(ln(pay, 'payable', 'dr'), 13400000, 'хуримтлал: төлөхөд өглөг хаагдана');
+  eq(ln(pay, 'bank', 'cr'), 13400000, 'хуримтлал: банкнаас гарна');
+
+  // ⛔ Зардал 9 сард, банкны хөдөлгөөн 10 сард
+  eq(incomeStatement(entriesBetween(ctx, '2026-09-01', '2026-09-30')).totalExpense, 13400000,
+     'хуримтлал: 9 сарын зардалд орно');
+  eq(incomeStatement(entriesBetween(ctx, '2026-10-01', '2026-10-31')).totalExpense, 0,
+     'хуримтлал: 10 сард зардал ДАХИН орохгүй');
+  eq(ledgerLines(entriesBetween(ctx, '2026-10-01', '2026-10-31'), 'bank').balance, -13400000,
+     'хуримтлал: банк 10 сард хөдөлнө');
+
+  // ⛔ Өглөг 9 сарын эцэст балансад ГАРНА, төлсний дараа 0 болно
+  eq((balanceSheetAt(entriesBetween(ctx, null, '2026-09-30')).liabs.find(r => r.acc === 'payable') || {}).amount,
+     13400000, 'баланс: 9 сарын эцэст цалингийн өглөг харагдана');
+  eq((balanceSheetAt(all).liabs.find(r => r.acc === 'payable') || {}).amount, undefined,
+     'баланс: төлсний дараа өглөг хаагдана');
+  ok(balanceSheetAt(all).balanced, 'баланс: хуримтлалтай ч тэнцэнэ');
+
+  // ⛔ Сар ТААРВАЛ нэг бичилт (хоёр болж хуваагдахгүй)
+  const same = journalEntries({ ...base, finance: [{ id: 's2', status: 'done', decision: 'approved',
+    category: '1800', amount: 350000, requested_at: '2026-09-22', purpose: 'Шатахуун' }] }, null);
+  eq(same.length, 1, 'хуримтлал: сар таарвал нэг бичилт');
+  eq(same[0].src, 'fin:s2', 'хуримтлал: энгийн зарлагын бичилт');
+
+  // ⛔ ЗАРДАЛ БИШ мөр ХЭЗЭЭ Ч хуваагдахгүй — балансын хөдөлгөөн төлсөн огноонд
+  ['6900', '6950', '5810', '5300', '6100'].forEach(cat => {
+    const r = journalEntries({ ...base, finance: [{ id: 'x' + cat, status: 'done', decision: 'approved',
+      category: cat, amount: 500000, requested_at: '2026-10-05', purpose: 'Тест' }] }, null);
+    eq(r.length, 1, `хуримтлал: ${cat} хуваагдахгүй (зардал биш)`);
+    eq(r[0].date, '2026-10-05', `хуримтлал: ${cat} төлсөн огноондоо`);
+  });
+}
+
+// ═══ SCAN: журналын огноо зөөгдөхгүй ═══════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const je = src.slice(src.indexOf('function journalEntries'), src.indexOf('function journalTotals'));
+  ok(/payable/.test(je), 'scan: хуримтлуулсан өглөгийн данс ашиглагдана');
+  ok(/finAccrualMonth\(t\)/.test(je), 'scan: ноогдох сар finAccrualMonth-оос (тайлантай ижил дүрэм)');
+  // ⛔ Зөвхөн ЗАРДАЛ хуваагдана
+  ok(/dr === 'expense' && typeof finAccrualMonth/.test(je), 'scan: зөвхөн зардал хуваагдана');
+  // ⛔ Төлөлтийн бичилт ҮРГЭЛЖ requested_at огноонд
+  ok(/push\(t\.requested_at, `\$\{label\} · төлөлт`/.test(je), 'scan: банкны мөр жинхэнэ огноондоо');
+}
+
+// ═══ ЖУРНАЛЫН ХОЁР АЛДАА — амьд тулгалтаар илэрсэн (2026-10-03) ═════════
+{
+  const { journalEntries, incomeStatement } = F;
+  const base = { basis: 'accrual', opening: null, orders: [], finance: [], deprec: [], extra: [], nomaad: [] };
+
+  // ① NOMAAD төлбөр ОРЛОГО болж бүртгэгдэж байв → 9 сард 19сая илүү
+  const paid = journalEntries({ ...base,
+    income: [{ fp: 'n1', dt: '2026-09-25', amount: 19000000, status: 'nomaad', payer: 'NOMAAD' }] }, '2026-09');
+  eq(incomeStatement(paid).totalRevenue, 0, 'NOMAAD: төлбөр нь ОРЛОГО үүсгэхгүй');
+  eq(((paid[0] && paid[0].lines || []).find(l => l.acc === 'recv') || {}).cr || 0, 19000000,
+     'NOMAAD: төлбөр авлагыг хаана');
+
+  // Орлого нь ЭВЕНТИЙН сард, тусад нь хүлээн зөвшөөрөгдөнө
+  const rec = journalEntries({ ...base, income: [], nomaad: [{ ym: '2026-08', amount: 19000000 }] }, '2026-08');
+  eq(incomeStatement(rec).totalRevenue, 19000000, 'NOMAAD: орлого эвентийн сард');
+  eq(rec[0].date, '2026-08-31', 'NOMAAD: орлого сарын эцэст');
+  eq(((rec[0].lines || []).find(l => l.acc === 'recv') || {}).dr || 0, 19000000, 'NOMAAD: авлага үүснэ');
+
+  // ② НӨАТ-ын мөр огт үүсэхгүй байсан — эхлэх сар элэгдлийнхээс хамаардаг байв
+  const vat = journalEntries({ ...base, extra: [{ ym: '2026-09', vat: 7724239, loss: 0 }] }, '2026-09');
+  eq(incomeStatement(vat).totalExpense, 7724239, 'НӨАТ: 9 сард зардалд орно');
+}
+
+// ═══ SCAN: НӨАТ-ын эхлэх сар элэгдлээс ХАМААРАХГҮЙ ═════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const st = src.slice(src.indexOf('function jrnExtraStart'), src.indexOf('function jrnExtraList'));
+  ok(st.length > 100, 'scan: jrnExtraStart олдов');
+  eq((st.match(/deprecStartMonth/g) || []).length, 0,
+     'scan: НӨАТ/алдагдлын эхлэл элэгдлийн эхлэлээс ХАМААРАХГҮЙ');
+  ok(/obFrozen\(\)/.test(st), 'scan: бүртгэлийн эхлэлээс (нээлтийн үлдэгдэл)');
+  const el = src.slice(src.indexOf('function jrnExtraList'), src.indexOf('function jrnNomaadList'));
+  eq((el.match(/deprecStartMonth/g) || []).length, 0, 'scan: jrnExtraList ч элэгдлээс хамаарахгүй');
+  // NOMAAD орлого нь тайлангийн ижил дүрмээр
+  const nl = src.slice(src.indexOf('function jrnNomaadList'), src.indexOf('function jrnCtx'));
+  ok(/nomaadIncomeMonth\(o, ym, 'accrual'\)/.test(nl), 'scan: NOMAAD орлого nomaadIncomeMonth-оор');
+}
+
+// ═══ БУУЛГАЛТ = ЗАРДАЛ БИШ (2026-10-03, амьд тулгалтаар илэрсэн) ════════
+// Манай буруугаас өгсөн хөнгөлөлт аль хэдийн `orderRevenue`-ээс хасагдсан тул
+// банкны буцаалтыг дахин зардал гэж бичвэл НЭГ мөнгө ХОЁР удаа хасагдана.
+{
+  const { journalEntries, incomeStatement, jrnDebitFor } = F;
+  const base = { basis: 'accrual', opening: null, orders: [], income: [], deprec: [], extra: [], nomaad: [] };
+  const refund = { id: 'r1', status: 'done', decision: 'approved', category: '5800',
+    amount: 843000, requested_at: '2026-09-26', purpose: 'Буулгалт №1501',
+    justification: '⟦CMP|хоцорсон|843000⟧', link_type: 'order', link_id: '1501' };
+  // ⚠ `finIsCustomerRefund` нь захиалгад ХОЛБОГДСОН 5800-г таних тул мөр бүхэлдээ өгнө
+  const isRef = (typeof F.finIsCustomerRefund === 'function') && F.finIsCustomerRefund(refund);
+  if (isRef) {
+    eq(jrnDebitFor('5800', refund), 'recv', 'буулгалт: авлага руу (зардал БИШ)');
+    const e = journalEntries({ ...base, finance: [refund] }, '2026-09');
+    eq(incomeStatement(e).totalExpense, 0, 'буулгалт: зардалд ОРОХГҮЙ');
+    eq(((e[0] && e[0].lines || []).find(l => l.acc === 'recv') || {}).dr || 0, 843000,
+       'буулгалт: авлагыг бууруулна');
+  }
+  // Захиалгад ХОЛБООГҮЙ 5800 (торгууль) нь ЖИНХЭНЭ зардал хэвээр
+  const fine = { id: 'f9', status: 'done', decision: 'approved', category: '5800',
+    amount: 200000, requested_at: '2026-09-27', purpose: 'Торгууль' };
+  eq(jrnDebitFor('5800', fine), 'expense', 'торгууль: зардал хэвээр');
+  eq(jrnDebitFor('5800'), 'expense', 'мөргүй дуудлага: зардал (буцах нийцтэй)');
+}
+
+// ═══ SCAN: буулгалт журналд зардал болохгүй ════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const d = src.slice(src.indexOf('function jrnDebitFor'), src.indexOf('function jrnCreditFor'));
+  ok(/finIsCustomerRefund\(row\)/.test(d), 'scan: буулгалт танигдана');
+  ok(/return 'recv'/.test(d), 'scan: буулгалт авлага руу');
+  const je = src.slice(src.indexOf('function journalEntries'), src.indexOf('function journalTotals'));
+  ok(/jrnDebitFor\(t\.category, t\)/.test(je), 'scan: мөр бүхэлдээ дамжуулагдана');
+}
+
+// ⚠ Нягтлангийн дэлгэц өөрт хэрэгтэй БҮХ датаг ачаална — эс бөгөөс орлого/зардал
+//   чимээгүй 0 болно (амьд тулгалтад журнал «−55сая алдагдал» гэж харуулсан).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const ra = src.slice(src.indexOf('function renderAccounting'), src.indexOf('function attachAccountingHandlers'));
+  ok(/loadAppOrders/.test(ra), 'scan: нягтлангийн дэлгэц захиалгыг ачаална');
+  ok(/loadNomaadOrders/.test(ra), 'scan: NOMAAD захиалгыг ачаална');
+  ok(/ensureVatLoaded/.test(ra) && /loadStockCountsAll/.test(ra), 'scan: НӨАТ ба тооллого');
+  ok(/loadBankIncome/.test(src.slice(src.indexOf('function renderJournal'), src.indexOf('function attachJournalHandlers'))),
+     'scan: хуулгын орлого');
+}
+
+/* ═══ ЗАРДАЛ = НООГДОХ САР, СУУРЬААС ХАМААРАХГҮЙ (2026-10-03, CEO) ═══════════
+   ⛔ Өмнө нь cash суурьд `requested_at` байсан тул 8-р сарын цалинг 9-д төлөхөд
+      9 сарын зардал болж, гүйлгээн дээр «8 сар» гэж сонгосон нь ЮУ Ч өөрчилдөггүй
+      байв. Амьд датаар 9-06-ны 17 гүйлгээ («8 сар» гэсэн утгатай) 9 сард сууж байв.
+   CEO: «гүйлгээ бус гүйцэтгэлээр боддог болгох хэрэгтэй, Монгол Улсын хуулийн
+   хүрээнд». Зардал ҮРГЭЛЖ ноогдох сараар; суурь нь зөвхөн ОРЛОГЫГ сольдог. */
+{
+  const { finExpMonth, finAccrualMonth, finAccrualAuto } = F;
+  // ① Гараар тохируулсан сар ЯЛНА — ХОЁУЛАН суурьд
+  const manual = { category: '7700', requested_at: '2026-09-06', amount: 1000000,
+                   justification: 'EB-цалин 8сар ⟦ACCR|2026-08⟧' };
+  eq(finExpMonth(manual, 'cash'), '2026-08', 'зардал: мөнгөн суурьд ч тохируулсан сар ялна');
+  eq(finExpMonth(manual, 'accrual'), '2026-08', 'зардал: гүйцэтгэлийн суурьд ч ижил');
+  // ② 7700 (ашгийн урамшуулал) нь ЦАЛИНГИЙН ангилал БИШ — таамаг ажиллахгүй,
+  //    тиймээс гараар тохируулаагүй бол банкны сар хэвээр (худал зөөхгүй).
+  eq(finAccrualAuto('7700', '2026-09-06'), '2026-09', 'зардал: 7700-д таамаг ажиллахгүй');
+  eq(finExpMonth({ category: '7700', requested_at: '2026-09-06' }, 'cash'), '2026-09',
+     'зардал: тохируулаагүй 7700 → банкны сар');
+  // ③ Цалингийн ангилал (71xx) сарын эхэнд төлөгдвөл таамаг өмнөх сар руу
+  eq(finExpMonth({ category: '7100', requested_at: '2026-09-06' }, 'cash'), '2026-08',
+     'зардал: 9-06-ны цалин → 8 сар (таамаг)');
+  eq(finExpMonth({ category: '7100', requested_at: '2026-09-21' }, 'cash'), '2026-09',
+     'зардал: 9-21-ний цалин → 9 сар');
+  // ④ Энгийн зардал хөдлөхгүй
+  eq(finExpMonth({ category: '4100', requested_at: '2026-09-15' }, 'cash'), '2026-09',
+     'зардал: энгийн зардал банкны сартайгаа үлдэнэ');
+  // ⑤ ИНВАРИАНТ: finExpMonth ≡ finAccrualMonth (хоёр дүрэм салбарлахгүй)
+  [manual, { category: '7100', requested_at: '2026-09-06' }, { category: '4100', requested_at: '2026-10-02' }]
+    .forEach((r, i) => eq(finExpMonth(r, 'cash'), finAccrualMonth(r), 'ИНВАРИАНТ: finExpMonth = finAccrualMonth #' + i));
+}
+
+// ═══ SCAN: зардлын сар буцаж банкны огноо руу орохыг хаана ═══════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fem = src.slice(src.indexOf('function finExpMonth(t, basis)'), src.indexOf('function finMonthIncome'));
+  eq((fem.match(/requested_at/g) || []).length, 0, 'scan: finExpMonth банкны огноо уншихгүй');
+  eq((fem.match(/basis ===/g) || []).length, 0, 'scan: finExpMonth суурьаас хамаарахгүй');
+  ok(/finAccrualMonth\(t\)/.test(fem), 'scan: finExpMonth = finAccrualMonth');
+  // Гүйлгээний жагсаалт ч ижил дүрмээр — эс бөгөөс сонголт хүнд ХАРАГДАХГҮЙ
+  const rf = src.slice(src.indexOf('function renderFinanceReport'), src.indexOf('function renderFinanceReport') + 4000);
+  ok(/const monthList = base\.filter\(t => finExpMonth\(t, finBasis\(\)\) === month\)/.test(rf),
+     'scan: Гүйлгээ жагсаалт ноогдох сараар');
+  eq((rf.match(/monthList = base\.filter\(t => \(t\.requested_at/g) || []).length, 0,
+     'scan: жагсаалт банкны огноогоор шүүхгүй');
+  // Банкны сар зөрсөн мөр ⇄ тэмдэгтэй — нуугдахгүй
+  ok(/class="fin-shift"/.test(src), 'scan: зөрсөн сар ⇄ тэмдэгээр ил гарна');
+  // Модалын хадгалалт: сонголт ҮРГЭЛЖ хадгалагдана + хуучин/шинэ сар хоёулаа түгжээтэй
+  const ex = src.slice(src.indexOf("modal.querySelector('#ex-save').onclick"), src.indexOf("modal.querySelector('#ex-del')"));
+  eq((ex.match(/accChosen !== finAccrualAuto/g) || []).length, 0,
+     'scan: сонгосон сар нөхцөлгүйгээр хадгалагдана');
+  ok(/\u27E6ACCR\|\$\{accChosen\}\u27E7/.test(ex), 'scan: ⟦ACCR⟧ токен бичигдэнэ');
+  ok(/assertMonthOpen\(accPrev/.test(ex) && /assertMonthOpen\(accChosen/.test(ex),
+     'scan: хуучин БА шинэ сар хоёулаа түгжээтэй');
+  ok(/loadClosedMonths\(true\)/.test(ex), 'scan: түгжээг серверээс шинэчилж шалгана');
+  // Устгахад ч ноогдох сар шалгагдана
+  const sf = src.slice(src.indexOf('async function saveFinanceRequest'), src.indexOf('async function saveFinanceRequest') + 1400);
+  ok(/deleted && typeof finAccrualMonth/.test(sf), 'scan: устгахад ноогдох сар шалгагдана');
+}
+
+
+// ═══ ТОЙМЫН ДАРААЛАЛ (2026-10-05, CEO) ═════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const d = src.slice(src.indexOf('function renderDashboard()'), src.indexOf('function renderDashboard()') + 6000);
+  const at = (k) => d.indexOf(k);
+  const order = ['stuckBlockHtml(', 'ordersCalendarHtml(', 'dispatchBlockHtml(', 'reviewBlockHtml(', 'dash-top'];
+  order.forEach(k => ok(at(k) > 0, `Тойм: ${k} байна`));
+  ok(order.every((k, i) => i === 0 || at(order[i - 1]) < at(k)),
+     'Тойм: гацсан → календарь → цагтаа хүрсэн → үнэлгээ → шилдэг гүйцэтгэгч дараалал');
+}
+
+// ═══ ТОЙМ: ГАЦСАН ЗАХИАЛГА (2026-10-05, CEO) ═══════════════════════════
+// Дараагийн дамжлага эвентийн огнооноосоо хоцорсон захиалга. Тэр өдөртөө
+// дарагдах нь хэвийн, маргаашаас нь л гацсан.
+{
+  const stuck = vm.runInContext('stuckOrders', sandbox);
+  const T = '2026-10-05';
+  const O = (n, status, s, e, extra) => Object.assign({ id: 'o' + n, number: n, customer: 'Х' + n, status, starts_at: s, stops_at: e, note: '', items: [{ qty: 2 }] }, extra || {});
+  const list = [
+    O(1, 'reserved', '2026-10-03', '2026-10-06'),            // цэвэрлэх — эхлэх өдрөөс 2 хоног хоцорсон
+    O(2, 'reserved', '2026-10-05', '2026-10-06'),            // өнөөдөр эхэлнэ — ХЭВИЙН
+    O(3, 'rented', '2026-10-01', '2026-10-04'),              // очиж авах: хүлээн авах — дуусахын маргааш (10-05) — хэвийн
+    O(4, 'rented', '2026-10-01', '2026-10-02'),              // очиж авах: байршуулах — 10-03 хүртэл, одоо 2 хоног
+    O(5, 'stowed', '2026-09-01', '2026-09-02', { stage_meta: { received: { at: '2026-09-02' } } }),   // хуучин: аль хэдийн хүлээн авсан → архивлах — ОРОХГҮЙ
+    O(6, 'reserved', '', ''),                                // огноогүй — ОРОХГҮЙ
+    O(7, 'rented', '2026-09-10', '2026-09-12'),              // байршуулах — дамжлага нэмэгдэхээс өмнө — ОРОХГҮЙ
+    O(8, 'rented', '2026-10-02', '2026-10-03'),              // байршуулах — 10-04 хүртэл, одоо 1 хоног
+    O(9, 'deleted', '2026-09-01', '2026-09-02'),             // больсон — ОРОХГҮЙ
+  ];
+  const r = stuck(list, T);
+  const by = Object.fromEntries(r.map(x => [x.number, x]));
+  eq((by[1] || {}).late, 2, 'гацсан: эхлэх өдрөөс хоцорсон гарах алхам');
+  ok(!by[2], 'гацсан: тэр өдөртөө дарагдах нь хэвийн');
+  ok(!by[3], 'гацсан: хүлээн авах нь дуусахын маргааш хүртэл хэвийн');
+  eq((by[4] || {}).late, 2, 'гацсан: буцах талын алхам хоцорсон');
+  ok(!by[5], 'гацсан: архивлах алхам тоологдохгүй');
+  ok(!by[6], 'гацсан: огноогүй захиалга таамаглахгүй');
+  ok(!by[7], 'гацсан: шинэ дамжлага хуучин захиалгыг гацсан болгохгүй');
+  eq((by[8] || {}).late, 1, 'гацсан: шинэ дамжлагаас хойш хоцорсон нь тоологдоно');
+  ok(!by[9], 'гацсан: больсон захиалга орохгүй');
+  ok(r.every((x, i) => i === 0 || r[i - 1].late >= x.late), 'гацсан: хамгийн их хоцорсон нь эхэнд');
+  ok((by[1] || {}).label && (by[1] || {}).key === 'clean', 'гацсан: дараагийн алхмын нэр ба түлхүүр');
+  eq(F.pipelineNext('reserved', {}).key, 'clean', 'урсгал: дараагийн алхам түлхүүрээ буцаана');
+}
+
+// ═══ ТОЙМ: ШИЛДЭГ ГҮЙЦЭТГЭГЧ = ДАМЖЛАГЫН ОНОО, САРААР (2026-10-05, CEO) ═══
+// Даалгаврын тоогоор эрэмбэлдэг байсан тул карт ихэнхдээ хоосон байв.
+{
+  const top = vm.runInContext('stageTopPerformers', sandbox);
+  const sp = vm.runInContext('stagePayByPerson', sandbox);
+  const ords = [
+    { items: [{ qty: 30 }], stage_meta: {
+      prepare: { by: 'A', at: '2026-09-10T03:00:00Z', helpers: ['B'] },
+      stow:    { by: 'B', at: '2026-09-12T03:00:00Z' } } },
+    { items: [{ qty: 3 }], stage_meta: {
+      clean:   { by: 'C', at: '2026-09-11T03:00:00Z' },
+      prepare: { by: 'C', at: '2026-10-02T03:00:00Z' } } },
+  ];
+  const sep = top(ords, '2026-09', []);
+  const all = sp(ords, '2026-09');
+  ok(sep.length > 0, 'шилдэг: 9 сарын оноотой хүмүүс гарна');
+  ok(sep.every((r, i) => i === 0 || sep[i - 1].pts >= r.pts), 'шилдэг: оноогоор буурахаар эрэмбэлэгдэнэ');
+  ok(sep.every(r => r.pts === all[r.key].pts), 'ИНВАРИАНТ: шилдгийн оноо = бонусын оноо');
+  ok(!top(ords, '2026-10', []).some(r => r.key === 'A'), 'шилдэг: өөр сарын дамжлага орохгүй');
+  eq(top([], '2026-09', []).length, 0, 'шилдэг: ростергүй, дамжлагагүй бол хоосон');
+  // ⛔ Бүх үндсэн ажилтан гарна — оноогүй нь ч (0-ээр, доод талд)
+  const withRoster = top(ords, '2026-09', ['A', 'Z']);
+  ok(withRoster.some(r => r.key === 'Z' && r.pts === 0), 'шилдэг: оноогүй ажилтан ч жагсаалтад');
+  eq(withRoster[withRoster.length - 1].key, 'Z', 'шилдэг: оноогүй нь доод талд');
+  ok(withRoster.some(r => r.key === 'C'), 'шилдэг: ростерт байхгүй ч оноотой хүн орно');
+  // ⛔ Тоймыг ҮНЭХЭЭР зурж шалгана — хассан хувьсагч өөр газар үлдвэл дэлгэц бүхэлдээ унана
+  // ⚠ TEAM-д хүн ЗААВАЛ — хоосон бол ростерын шүүлтүүр ажиллахгүй тул тодорхойлогдоогүй функц баригдахгүй (2026-10-05 Тойм ингэж унасан)
+  const _T = vm.runInContext('TEAM', sandbox); const _Tsave = _T.slice(); _T.length = 0;
+  _T.push({ name: 'Тест Ажилтан', phone: '99000001', status: 'идэвхтэй', role: 'Нярав' });
+  vm.runInContext('state.appOrders = ' + JSON.stringify(ords) + '; state.dashTopYm = "2026-09";', sandbox);
+  let html = '', err = '';
+  try { html = vm.runInContext('renderDashboard()', sandbox); } catch (e) { err = String(e && e.message || e); }
+  eq(err, '', 'Тойм: зурахад алдаа гарахгүй');
+  ok(/dash-top-ym/.test(html) && /dash-top-n/.test(html), 'Тойм: шилдэг гүйцэтгэгчийн карт оноотой зурагдана');
+  ok(/Тест Ажилтан/.test(html), 'Тойм: оноогүй үндсэн ажилтан ч картад гарна');
+  ok(/stk-card/.test(html), 'Тойм: гацсан захиалгын карт зурагдана (гацаагүй үед ч)');
+  ok(!/Миний ажил/.test(html), 'Тойм: зурагдсан хуудсанд «Миний ажил» алга');
+  ok(!/Авах үлдсэн төлбөр/.test(html), 'Тойм: зурагдсан хуудсанд авлагын карт алга');
+  ok(!/Миний дуусгасан/.test(html), 'Тойм: зурагдсан хуудсанд 7 хоногийн график алга');
+  // Захиалгын календарь Тойм дээр: эрхтэй хүнд зурагдана; хураангуй хувилбарт өдрийн жагсаалт ЗУРАГДАХГҮЙ
+  {
+    const isC = vm.runInContext('state.isCEO', sandbox);
+    vm.runInContext('state.isCEO = true;', sandbox);
+    const h1 = vm.runInContext('renderDashboard()', sandbox);
+    ok(/dash-ocal/.test(h1) && /data-ocal-day=/.test(h1), 'Тойм: эрхтэй хүнд захиалгын календарь зурагдана');
+    const cmp = vm.runInContext('ordersCalendarHtml(state.appOrders, { compact: true })', sandbox);
+    ok(!/ocal-sec/.test(cmp) && !/class="ocal-day"/.test(cmp), 'Тойм: календарийн хураангуй хувилбарт өдрийн жагсаалт зурагдахгүй');
+    vm.runInContext('state.isCEO = ' + JSON.stringify(isC) + ';', sandbox);
+  }
+  _T.length = 0; _Tsave.forEach(x => _T.push(x));
+  vm.runInContext('state.appOrders = undefined; state.dashTopYm = undefined;', sandbox);
+}
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const dash = src.slice(src.indexOf('function renderDashboard()'), src.indexOf('function renderDashboard()') + 40000);
+  ok(/stageTopPerformers\(state\.appOrders/.test(dash), 'scan: Тойм шилдгийг дамжлагын оноогоор');
+  eq((dash.match(/completionCount/g) || []).length, 0, 'scan: даалгаврын тоогоор эрэмбэлэхгүй');
+  ok(/id="dash-top-ym"/.test(dash) && /state\.dashTopYm/.test(dash), 'scan: сар сонгодог');
+  const f = src.slice(src.indexOf('function stageTopPerformers'), src.indexOf('function stageTopPerformers') + 600);
+  ok(/stagePayByPerson\(/.test(f), 'scan: шилдгийн оноо бонусын бодолтоос');
+}
+
+// ═══ ЦАЛИН АЛЬ САРЫНХ — ГҮЙЦЭТГЭЛЭЭР (2026-10-03, CEO) ═════════════════
+// ⛔ Банкны огноогоор бодвол 9-06-нд төлсөн «8 сар 2р хагас» 9 сарын олголт
+//   болж, 8 сар дутуу · 9 сар илүү харагдана.
+// ⛔ Сохор дүрэм (өдөр ≤10 → өмнөх сар) ч болохгүй — амьд датаар 9-06-нд
+//   «8 сар 2р хагас» ба «9сар урьдчилгаа» ХОЁУЛАА байсан.
+{
+  const { salaryPaymentsFor, salaryPayMonth, salaryPayFp, salaryPaidFor } = F;
+  eq(salaryPayFp('Хуулгаар · Цалин [#EXP-100-20260906-abc] х'), 'EXP-100-20260906-abc', 'олголт: fp задарна');
+  eq(salaryPayFp('тэмдэглэлгүй'), '', 'олголт: fp байхгүй бол хоосон');
+
+  const K = '86042460';
+  const pays = [
+    // 9-06-нд төлсөн 8 САРЫН цалин — гүйлгээнд ⟦ACCR|2026-08⟧ тохируулсан
+    { person_key: K, ym: '2026-09', amount: 1000000, paid_at: '2026-09-06T05:00:00Z',
+      note: 'EB-Зарлага: Цалин Сайнжаргал 8 сар 2р хагас [#EXP-A]' },
+    // 9-06-нд төлсөн 9 САРЫН урьдчилгаа — ⟦ACCR|2026-09⟧
+    { person_key: K, ym: '2026-09', amount: 500000, paid_at: '2026-09-06T05:00:00Z',
+      note: 'EB-Цалин 9сар урьдчилгаа [#EXP-B]' },
+    // 9-21-нд төлсөн, тохиргоогүй — хэвээр 9 сар
+    { person_key: K, ym: '2026-09', amount: 1250000, paid_at: '2026-09-21T05:00:00Z',
+      note: 'EB-урьдчилгаа [#EXP-C]' },
+  ];
+  const fin = [
+    { id: 'A', status: 'done', decision: 'approved', category: '7100', amount: 1000000,
+      requested_at: '2026-09-06', justification: '[#EXP-A] ⟦ACCR|2026-08⟧' },
+    { id: 'B', status: 'done', decision: 'approved', category: '7100', amount: 500000,
+      requested_at: '2026-09-06', justification: '[#EXP-B] ⟦ACCR|2026-09⟧' },
+    { id: 'C', status: 'done', decision: 'approved', category: '7100', amount: 1250000,
+      requested_at: '2026-09-21', justification: '[#EXP-C]' },
+  ];
+  eq(salaryPayMonth(pays[0], fin), '2026-08', 'цалин: гүйлгээнд 8 сар гэж тохируулсан нь 8 сард');
+  eq(salaryPayMonth(pays[1], fin), '2026-09', 'цалин: ижил өдөр ч 9 сарын урьдчилгаа 9 сард ҮЛДЭНЭ');
+  eq(salaryPayMonth(pays[2], fin), '2026-09', 'цалин: 9-21 тохиргоогүй → 9 сар');
+
+  // ⚠ Холбоос олдохгүй бол хадгалсан ym хэвээр (хуучин бичлэг эвдрэхгүй)
+  eq(salaryPayMonth({ ym: '2026-07', paid_at: '2026-08-02T00:00:00Z', note: 'тэмдэглэлгүй' }, fin),
+     '2026-07', 'цалин: холбоосгүй бол хадгалсан сар хэвээр');
+
+  // Жагсаалт ба нийлбэр
+  const aug = salaryPaymentsFor(pays, K, '2026-08', fin);
+  const sep = salaryPaymentsFor(pays, K, '2026-09', fin);
+  // ⚠ Мөр алга бол УНАХ ёстой, CRASH болох ёсгүй (crash нь аль тест унасныг хэлдэггүй)
+  const a0 = aug[0] || {};
+  eq(aug.length, 1, 'цалин: 8 сард 1 олголт');
+  eq(a0.amount, 1000000, 'цалин: 8 сарын дүн');
+  ok(!!a0.shifted, 'цалин: банкны сар зөрснийг ИЛ тэмдэглэнэ');
+  eq(a0.bankYm, '2026-09', 'цалин: банкнаас гарсан сар үлдэнэ');
+  eq(sep.length, 2, 'цалин: 9 сард 2 олголт');
+  eq(sep.reduce((s, x) => s + x.amount, 0), 1750000, 'цалин: 9 сарын нийт');
+  ok(!sep.some(x => x.shifted), 'цалин: зөрөөгүй олголт тэмдэглэгдэхгүй');
+
+  // ИНВАРИАНТ: нийлбэр нь жагсаалттай таарна (аль ч сард)
+  vm.runInContext('state.salaryPayments = ' + JSON.stringify(pays) + '; state.financeRequests = ' + JSON.stringify(fin) + ';', sandbox);
+  eq(salaryPaidFor(K, '2026-08'), 1000000, 'ИНВАРИАНТ: 8 сарын нийлбэр');
+  eq(salaryPaidFor(K, '2026-09'), 1750000, 'ИНВАРИАНТ: 9 сарын нийлбэр');
+  vm.runInContext('state.salaryPayments = []; state.financeRequests = [];', sandbox);
+
+  /* ⛔ САНХҮҮ ХААЛТТАЙ ХҮН (нярав) — 2026-10-03, амьд датаар яг давтагдсан алдаа.
+     Бүрэн санхүүгийн бүртгэл зөвхөн CEO/нягтланд ирдэг тул нярав цалингийн самбарыг
+     нээхэд «8 сар 2р хагас» 9 сард орж, хуулгаас орсон 9/21-ний олголт алга болж байв.
+     Одоо `v_salary_fin`-ийн цалингийн мөрөөс уншина (`salaryFinSource`). */
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  runIn('state.salaryPayments = ' + JSON.stringify(pays) + '; state.financeRequests = []; state.finGated = true; state.salaryFinRows = undefined; state._acctOwners = null;');
+  // Цалингийн мөргүй үед — хадгалсан сар (хуучин алдааны төлөв, давтагдана)
+  eq(salaryPaidFor(K, '2026-08'), 0, 'санхүүгүй: цалингийн мөр ирээгүй бол 8 сар хоосон (алдааны төлөвийг давтав)');
+  runIn('state.salaryFinRows = ' + JSON.stringify(fin) + '; state._acctOwners = null;');
+  eq(salaryPaidFor(K, '2026-08'), 1000000, 'санхүүгүй: v_salary_fin-ээр «8 сар 2р хагас» 8 сард');
+  eq(salaryPaidFor(K, '2026-09'), 1750000, 'санхүүгүй: 9 сарын олголт зөв');
+  // Бүрэн бүртгэл байвал ТҮҮНИЙГ авна (локал засвар шууд тусна)
+  runIn("state.finGated = false; state.financeRequests = [{ id: 'X' }];");
+  eq(F.salaryFinSource().length, 1, 'эх сурвалж: бүрэн санхүү байвал түүнийг авна');
+  runIn('state.finGated = true;');
+  eq(F.salaryFinSource().length, 3, 'эх сурвалж: санхүү хаалттай бол цалингийн харагдац');
+  runIn('state.salaryPayments = []; state.financeRequests = []; state.finGated = false; state.salaryFinRows = undefined; state._acctOwners = null;');
+}
+
+// ═══ COO дэлгэц ҮНЭХЭЭР зурагдана + сар бүрийн дэвтэр (2026-10-03) ══════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rc = src.slice(src.indexOf('function renderCooSalary('), src.indexOf('function attachCooSalaryHandlers('));
+  ok(/cooLedger\(_ytdM,/.test(rc), 'scan: COO дэлгэц сар бүрийн дэвтэр зурна');
+  ok(/coo-led-t[^`]*\$\{fmtMoney\(_balCa\)\}/.test(rc), 'scan: дэвтрийн «Нийт» үлдэгдэл = хуримтлагдсан мөнгөн үлдэгдэл (нэг тоо)');
+  // Хуримтлагдсан мөнгөн дүн нь сарын дүнгийн НИЙЛБЭР — finBranchPnl-ийг 2 удаа дуудахгүй
+  eq((rc.match(/cooNetForMonths\(_ytdM, _cooBr, 'cash'\)/g) || []).length, 0, 'scan: хуримтлагдсан мөнгөн ашгийг дахин бодохгүй');
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  runIn("state.cooShare = { key: '86657676', pct: 30, acct: '5009711612', name: 'И.Алтансүх', start: '2026-06', branch: 'M-Event' }; state.cooMonth = '2026-09';");
+  let html = '', err = '';
+  try { html = runIn('state.isCEO = true; renderCooSalary()'); } catch (e) { err = e.message; }
+  eq(err, '', 'COO дэлгэц: зурахад алдаа гарахгүй');
+  ok(/coo-led/.test(html) || /Энэ мэдээлэл зөвхөн удирдлагад/.test(html), 'COO дэлгэц: дэвтэр (эсвэл эрхийн мэдэгдэл) буцаана');
+  runIn('delete state.cooMonth;');
+}
+
+// ═══ SCAN: цалингийн тулгалт санхүүгийн бүрэн бүртгэлийг ШУУД уншихгүй ══════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fns = ['function salaryPaymentsFor(', 'function empAcctOwnersCached(', 'function empAcctsForPerson('];
+  fns.forEach(fn => {
+    const i = src.indexOf(fn), body = src.slice(i, src.indexOf('\n}', i));
+    ok(i > 0 && /salaryFinSource\(\)/.test(body), `scan: ${fn.slice(9, -1)} нь salaryFinSource ашиглана`);
+    ok(!/state\.financeRequests/.test(body), `scan: ${fn.slice(9, -1)} state.financeRequests-ийг шууд уншихгүй`);
+  });
+  // Олголт ачаалах БҮХ газарт цалингийн мөр ч ачаална — эс бөгөөс тэр дэлгэцэд алдаа буцна
+  const a = (src.match(/loadSalaryPayments\(\);/g) || []).length, b = (src.match(/loadSalaryPayments\(\); loadSalaryFinRows\(\);/g) || []).length;
+  ok(a > 0 && a === b, 'scan: олголт ачаалах бүх газарт цалингийн санхүүгийн мөр ч ачаална');
+  const sql = require('fs').readFileSync(require('path').join(__dirname, '..', 'db', 'salary_fin.sql'), 'utf8');
+  ok(/category ~ '\^7\[1236\]00'/.test(sql), 'scan: v_salary_fin ЗӨВХӨН цалингийн ангилал (6900/7700 орохгүй)');
+  ok(/revoke all on public\.v_salary_fin from public, anon/.test(sql), 'scan: v_salary_fin anon-д ХААЛТТАЙ');
+  ok(/sec\.can\('salary'\)/.test(sql) && /sec\.phone\(\)/.test(sql), 'scan: v_salary_fin = salary эрх ЭСВЭЛ өөрийн мөр');
+  ok(/notify pgrst, 'reload schema';/.test(sql), 'scan: v_salary_fin PostgREST кэш шинэчилнэ');
+}
+
+// ═══ SCAN: цалингийн олголт банкны огноогоор шүүгдэхгүй ════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const f = src.slice(src.indexOf('function salaryPaymentsFor'), src.indexOf('/* Олголтын мөрийн тайлбар'));
+  ok(/salaryPayMonth\(p, fin\) === ym/.test(f), 'scan: олголт НООГДОХ сараар шүүгдэнэ');
+  eq((f.match(/p\.ym === ym/g) || []).length, 0, 'scan: банкны сараар шүүхгүй');
+  const m = src.slice(src.indexOf('function salaryPayMonth'), src.indexOf('/* Тухайн сард олгосон МӨР'));
+  ok(/finAccrualMonth\(row\)/.test(m), 'scan: гүйлгээн дээрх ноогдох сар ялна');
+  ok(/return String\(p\.ym \|\| ''\)/.test(m), 'scan: холбоосгүй бол хадгалсан сар (буцах нийцтэй)');
+}
+
+// ═══ ОЛГОЛТ `salary_payments`-д БИЧИГДЭЭГҮЙ БАЙЖ БОЛНО (2026-10-03) ═══════════
+// Хуулга оруулахад цалингийн гүйлгээг ажилтанд холбох ГАНЦ дохио = бүртгэсэн ДАНС.
+// Данс бүртгэгдэхээс ӨМНӨ импортлогдсон мөр «дансны дугаар» хүлээн авагчтай зардал
+// болж үлдэж, цалингийн самбарт ХЭЗЭЭ Ч харагдахгүй байв (амьд датаар 85 мөр).
+{
+  const { salaryFinPayments, salaryPaymentsFor, salaryPaidFor } = F;
+  const K = '88627550';
+  const team = [{ name: 'Б.Байгалмаа', phone: K, bank_account: '5720418321' }];
+  const fin = [
+    // (1) данс хүлээн авагчтай, олголтын бичлэггүй → ЭНД нэмэгдэнэ
+    { id: 'F1', status: 'done', category: '7100', amount: 200000, beneficiary: '5720418321',
+      requested_at: '2026-09-15', purpose: 'EB-Цалин Ш.Байгалмаа 9р сар урьдчилгаа',
+      justification: 'Хуулгаар баталгаажсан · цалин [#EXP-A]' },
+    // (2) нэрээр холбогдсон, олголтын бичлэгтэй → ДАВХАРДАХГҮЙ
+    { id: 'F2', status: 'done', category: '7100', amount: 1000000, beneficiary: 'Б.Байгалмаа',
+      requested_at: '2026-09-21', purpose: 'EB-Цалин: 9р сар урьдчилгаа',
+      justification: 'Хуулгаар баталгаажсан · цалин [#EXP-B]' },
+    // (3) 7200 = цагийн/өдрийн цалингийн модулийнх → цалингийн самбарт ОРОХГҮЙ
+    { id: 'F3', status: 'done', category: '7200', amount: 240000, beneficiary: '5720418321',
+      requested_at: '2026-09-18', purpose: 'EB-Өдрийн цалин 2х', justification: '[#EXP-C]' },
+    // (4) өөр хүний данс → хамаарахгүй
+    { id: 'F4', status: 'done', category: '7100', amount: 900000, beneficiary: '5076410048',
+      requested_at: '2026-09-21', purpose: 'EB-Цалин өөр хүн', justification: '[#EXP-D]' },
+    // (5) больсон мөр → орохгүй
+    { id: 'F5', status: 'deleted', category: '7100', amount: 700000, beneficiary: '5720418321',
+      requested_at: '2026-09-19', purpose: 'EB-буруу', justification: '[#EXP-E]' },
+  ];
+  const pays = [{ person_key: K, ym: '2026-09', amount: 1000000, paid_at: '2026-09-21T08:10:12Z',
+                  note: 'Хуулгаар баталгаажсан · EB-Цалин: 9р сар урьдчилгаа [#EXP-B] \u27e6\u0423\u0420\u27e7' }];
+  const got = salaryFinPayments(fin, K, '2026-09', pays, team);
+  eq(got.length, 1, 'олголт: данс бүртгэгдэхээс өмнөх цалингийн гүйлгээ нэмэгдэнэ');
+  eq((got[0] || {}).amount, 200000, 'олголт: дүн гүйлгээнээс');
+  ok((got[0] || {}).fromFin, 'олголт: санхүүгийн мөрөөс гарсныг тэмдэглэнэ');
+  eq(salaryFinPayments(fin, K, '2026-08', pays, team).length, 0, 'олголт: өөр сард орохгүй');
+  // ⛔ Олголтын бичлэг аль хэдийн байвал ХОЁР удаа тоологдохгүй
+  ok(!got.some(x => x.amount === 1000000), 'олголт: [#fp] таарсан мөр давхардахгүй');
+  // Бүртгэлгүй хүн (данс ч, нэр ч таарахгүй) → хоосон
+  eq(salaryFinPayments(fin, '99999999', '2026-09', pays, team).length, 0, 'олголт: багт байхгүй хүнд юу ч нэмэхгүй');
+
+  // ИНВАРИАНТ: самбарын нийлбэр = бичлэг + санхүүгийн мөр
+  const TEAM = vm.runInContext('TEAM', sandbox);
+  const saved = TEAM.slice();
+  TEAM.length = 0; team.forEach(x => TEAM.push(x));
+  vm.runInContext('state.salaryPayments = ' + JSON.stringify(pays) + '; state.financeRequests = ' + JSON.stringify(fin) + ';', sandbox);
+  eq(salaryPaymentsFor(pays, K, '2026-09', fin).length, 2, 'ИНВАРИАНТ: 9 сард 2 олголт (бичлэг + гүйлгээ)');
+  eq(salaryPaidFor(K, '2026-09'), 1200000, 'ИНВАРИАНТ: нийлбэр гүйлгээг ч тоолно');
+  vm.runInContext('state.salaryPayments = []; state.financeRequests = [];', sandbox);
+  TEAM.length = 0; saved.forEach(x => TEAM.push(x));
+}
+
+// ═══ IBAN ДАНСААР ТУЛГАЛТ + ИЛҮҮ ОЛГОЛТ (2026-10-03, CEO) ═══════════════
+// Хуулгын мөрд хүлээн авагч НЭР («ЭНЭБИШ НИНЖДОЛГОР»), данс IBAN-аар account_number-д
+// байдаг тул 4,000,000₮-ийн урьдчилгаа цалингийн самбараас алга байв. Илүү олголт
+// `max(0, …)`-аар нуугдаж «✓ олгосон» гэж харагдаж байв.
+{
+  const { salaryFinPayments, payBalance } = F;
+  const K = '99285468';
+  const team = [{ name: 'Э.Нинждолгор', phone: K, bank_account: '5029853564' }];
+  const fin = [
+    { id: 'N1', status: 'done', category: '7100', amount: 2000000, beneficiary: 'ЭНЭБИШ НИНЖДОЛГОР',
+      account_number: 'MN410005005029853564', requested_at: '2026-09-26T06:43:44Z',
+      purpose: '2САРЫН ЦАЛИН УРЬДЧИЛЖ АВАВ (9 сар)', justification: '[#EXP-4000000-20260917-X] ⟦ACCR|2026-09⟧' },
+    { id: 'N2', status: 'done', category: '7100', amount: 2000000, beneficiary: 'ЭНЭБИШ НИНЖДОЛГОР',
+      account_number: 'MN410005005029853564', requested_at: '2026-09-26T06:43:44Z',
+      purpose: '2САРЫН ЦАЛИН УРЬДЧИЛЖ АВАВ (10 сар)', justification: '[#EXP-4000000-20260917-X~2] ⟦ACCR|2026-10⟧' },
+    // өөр хүний IBAN — хамаарахгүй
+    { id: 'N3', status: 'done', category: '7100', amount: 500000, beneficiary: 'ӨӨР ХҮН',
+      account_number: 'MN410005005029853599', requested_at: '2026-09-20', purpose: 'x', justification: '[#EXP-Z]' },
+  ];
+  const sep = salaryFinPayments(fin, K, '2026-09', [], team);
+  const oct = salaryFinPayments(fin, K, '2026-10', [], team);
+  eq(sep.length, 1, 'IBAN: 9 сард нэг хэсэг');
+  eq((sep[0] || {}).amount, 2000000, 'IBAN: 9 сарын хэсэг 2сая');
+  eq(oct.length, 1, 'IBAN: 10 сарын хэсэг тусдаа');
+  ok(!sep.some(x => x.amount === 500000), 'IBAN: өөр дансны мөр орохгүй');
+  eq(payBalance(1700000, 2000000), { owed: 0, over: 300000 }, 'илүү олголт ил гарна');
+  eq(payBalance(2000000, 1500000), { owed: 500000, over: 0 }, 'дутуу хэвээр');
+  eq(payBalance(2000000, 2000000), { owed: 0, over: 0 }, 'тэнцүү');
+}
+// ═══ ИЛҮҮ ОЛГОЛТ ДАРААГИЙН САРД ШИЛЖИНЭ (2026-10-03, CEO) ═══════════════════
+{
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  const chain = (rows) => runIn(`payCarryChain(${JSON.stringify(rows)})`);
+  // Амьд жишээ: Э.Нинждолгор 9 сард 1,633,000 олгох атал 2,000,000 урьдчилж авсан
+  const c1 = chain([{ m: '2026-09', total: 1633000, paid: 2000000 }, { m: '2026-10', total: 2040000, paid: 0 }]);
+  eq(c1.map(x => x.carryIn), [0, 367000], 'шилжүүлэлт: 9 сарын илүү 10 сард орно');
+  eq(c1.map(x => x.over), [367000, 0], 'шилжүүлэлт: 9 сард илүү харагдана');
+  eq(c1[1].owed, 2040000 - 367000, 'шилжүүлэлт: 10 сарын үлдэгдлээс хасагдана');
+  // Илүү нь дараа сарын олгохоос их бол ЦААШ шилжинэ
+  const c2 = chain([{ total: 1000000, paid: 3500000 }, { total: 1000000, paid: 0 }, { total: 1000000, paid: 0 }]);
+  eq(c2.map(x => x.carryIn), [0, 2500000, 1500000], 'шилжүүлэлт: том урьдчилгаа олон сард хуваагдана');
+  eq(c2[2].over, 500000, 'шилжүүлэлт: үлдсэн илүү дахин шилжинэ');
+  // ДУТУУ шилжихгүй — тухайн сарын үлдэгдэл хэвээр
+  const c3 = chain([{ total: 2000000, paid: 1000000 }, { total: 2000000, paid: 0 }]);
+  eq(c3.map(x => x.carryIn), [0, 0], 'шилжүүлэлт: дутуу (үлдэгдэл) дараа сард шилжихгүй');
+  eq(c3[0].owed, 1000000, 'шилжүүлэлт: дутуу нь тэр сардаа үлдэнэ');
+  // Сарын гинж = цалингийн тооцооны эхлэх сараас
+  eq(runIn("payCarryMonths('2026-10', '2026-09')"), ['2026-09'], 'шилжүүлэлт: 10 сард 9 сараас');
+  eq(runIn("payCarryMonths('2026-09', '2026-09')"), [], 'шилжүүлэлт: эхлэх сард өмнөх сар байхгүй (түүхээс шилжихгүй)');
+  eq(runIn("payCarryMonths('2027-01', '2026-11')"), ['2026-11', '2026-12'], 'шилжүүлэлт: он дамжина');
+  eq(runIn("payCarryMonths('xx', '2026-09')"), [], 'шилжүүлэлт: буруу сар → хоосон (давталтгүй)');
+
+  // salaryCarryIn: ⛔ суурь цалингүй хүнд ШИЛЖИХГҮЙ (COO-гийн урамшуулал, зардал)
+  const save = runIn('[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct, state.payrollCfg]');
+  runIn(`state.payrollCfg = { start: '2026-09' }; state.salaryDeduct = { '88001': false, '88002': false };
+    state.salaries = { '88001': 1000000 }; state.financeRequests = [];
+    state.salaryPayments = [{ person_key: '88001', ym: '2026-09', amount: 1400000, paid_at: '2026-09-26T00:00:00Z', note: 'урьдчилгаа' },
+                            { person_key: '88002', ym: '2026-09', amount: 3000000, paid_at: '2026-09-26T00:00:00Z', note: 'урьдчилгаа' }];`);
+  const ci = (k, mins) => runIn(`salaryCarryIn('${k}', '2026-10', () => ${mins === undefined ? 'undefined' : mins})`);
+  eq(ci('88001', 'null').amount, 400000, 'шилжүүлэлт: ирцгүй сард бүтэн суурьтай харьцуулж илүүг шилжүүлнэ');
+  eq(ci('88002', 'null').amount, 0, 'шилжүүлэлт: суурь цалингүй хүний «илүү» шилжихгүй (зохиомол өр үүсгэхгүй)');
+  const nr = ci('88001', undefined);
+  ok(nr.ready === false && nr.amount === 0, 'шилжүүлэлт: өмнөх сарын ирц ачаалагдаагүй бол ready:false (чимээгүй 0 биш)');
+  runIn(`[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct, state.payrollCfg] = ${JSON.stringify(save)};`);
+
+  // SCAN: самбар, карт, ирцийн хүснэгт гурвуулаа шилжүүлэлттэй ижил дүрмээр
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const card = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function renderMyAttend'));
+  ok(/salaryCarryIn\(key, month,/.test(card) && /payBalance\(b\.total, paid \+ carry\.amount\)/.test(card), 'scan: ажилтны карт шилжүүлэлттэй');
+  const am = src.slice(src.indexOf('function renderAttendanceMonth('), src.indexOf('function renderAttendanceMonth(') + 9000);
+  ok(/payrollCarryIn\(r\.k, month\)/.test(am) && !/Math\.max\(0, pb\.total - rPaid\)/.test(am), 'scan: ирцийн хүснэгт шилжүүлэлттэй');
+  ok(/T\.carryWait/.test(src), 'scan: шилжүүлэлт мэдэгдэхгүй үед самбар ил хэлнэ');
+  // «Илүү олгосон» KPI нь шилжүүлэлттэй ИЖИЛ хил — суурьгүй хүний олголт тоологдохгүй
+  const rsx = src.slice(src.indexOf('function renderSalary('), src.indexOf('function attachSalaryHandlers('));
+  ok(/c\.amount > 0 \? pb0 : \{ owed: pb0\.owed, over: 0 \}/.test(rsx), 'scan: суурьгүй хүний олголт «илүү олгосон»-д орохгүй');
+}
+
+// ═══ SCAN: илүү олголт нуугдахгүй ═══════════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  // Олгосон + өмнөх сараас шилжсэн илүү олголт хоёулаа тооцогдоно (2026-10-03)
+  ok(/payBalance\(b\.total, paid \+ carry\.amount\)/.test(rs), 'scan: самбар payBalance-аар (шилжүүлэлттэй)');
+  eq((rs.match(/Math\.max\(0, b\.total - paid\)/g) || []).length, 0, 'scan: самбар илүү олголтыг тэглэхгүй');
+  eq((rs.match(/Math\.max\(0, T\.total - T\.paid\)/g) || []).length, 0, 'scan: нийт үлдэгдэл хүнээр нийлбэрлэгдэнэ');
+  ok(/pay-over/.test(rs), 'scan: илүү олголтын мөр');
+  const mc = src.slice(src.indexOf('function myPayCardHtml'), src.indexOf('function myPayCardHtml') + 6000);
+  eq((mc.match(/Math\.max\(0, b\.total - paid\)/g) || []).length, 0, 'scan: ажилтны карт илүү олголтыг тэглэхгүй');
+}
+
+// ═══ КАТЕРИНГИЙН ЗАХИАЛГА = МӨНГӨ (2026-10-03, CEO) ══════════════════════
+// 9 сард 18,375,000₮ катерингийн орлого банкинд орсон атлаа тайланд ОГТ ороогүй.
+// Одоо катерингийн ажил дүнтэй, PDF-ээр төлөгддөг, тайлан/тренд/журнал НЭГ дүрмээр.
+{
+  const { cateringRevenue, cateringIncomeMonth, cateringOwed, cateringMonthIncome, jrnCateringList,
+          jrnCreditFor, incomeStatusOfOwner, incomeLinkOfOwner, finMonthIncome, finAddOrderIncome, renderCatering } = F;
+  const man = { id: 'KT-1', number: 7, source: 'manual', status: 'confirmed', event_date: '2026-09-27',
+                total_mnt: 18375000, paid_mnt: 18375000, paid_date: '2026-09-28', title: 'Үйлдвэрчний эвлэл' };
+  const part = { id: 'KT-2', source: 'manual', status: 'confirmed', event_date: '2026-09-30',
+                 total_mnt: 5000000, paid_mnt: 2000000, paid_date: '2026-10-01' };
+  const nm = { id: 'KT-3', source: 'nomaad', status: 'confirmed', event_date: '2026-09-20', total_mnt: 9000000, paid_mnt: 9000000, paid_date: '2026-09-15' };
+  const cx = { id: 'KT-4', source: 'manual', status: 'cancelled', event_date: '2026-10-10', total_mnt: 3000000, paid_mnt: 300000, paid_date: '2026-09-05' };
+  eq(cateringRevenue(man, 'cash'), 18375000, 'катеринг: мөнгөн суурь = төлсөн');
+  eq(cateringRevenue(part, 'cash'), 2000000, 'катеринг: хэсэгчилсэн төлбөр');
+  eq(cateringRevenue(part, 'accrual'), 5000000, 'катеринг: гүйцэтгэл = гэрээний дүн');
+  eq(cateringIncomeMonth(part, 'cash'), '2026-10', 'катеринг: мөнгө орсон сар');
+  eq(cateringIncomeMonth(part, 'accrual'), '2026-09', 'катеринг: эвентийн сар');
+  // ⛔ NOMAAD-аас татсан ажлын мөнгө NOMAAD-д багтсан — ДАВХАР орохгүй
+  eq(cateringRevenue(nm, 'cash'), 0, 'катеринг: NOMAAD ажил орлогод орохгүй (cash)');
+  eq(cateringRevenue(nm, 'accrual'), 0, 'катеринг: NOMAAD ажил орлогод орохгүй (accrual)');
+  // Цуцалсан: гэрээ орлого БИШ, орсон мөнгө хэвээр
+  eq(cateringRevenue(cx, 'accrual'), 300000, 'катеринг: цуцалсан — орсон мөнгө л');
+  eq(cateringIncomeMonth(cx, 'accrual'), '2026-09', 'катеринг: цуцалсан — мөнгө орсон сар');
+  eq(cateringOwed(cx), 0, 'катеринг: цуцалсанд авлага үүсэхгүй');
+  eq(cateringOwed(part), 3000000, 'катеринг: үлдэгдэл');
+  eq(cateringMonthIncome([man, part, nm, cx], '2026-09', 'cash').sum, 18675000, 'катеринг: 9 сарын мөнгөн орлого');
+
+  // ИНВАРИАНТ: Тайлан (finMonthIncome) = Тренд (finAddOrderIncome) катерингийн лензэд
+  vm.runInContext('state.cateringJobs = ' + JSON.stringify([man, part, nm, cx]) + '; state.appOrders = []; state.nomaadOrders = [];', sandbox);
+  for (const basis of ['cash', 'accrual']) {
+    const tr = {}; finAddOrderIncome(tr, 'КАТЕРИНГ', basis);
+    for (const m of ['2026-09', '2026-10']) eq(tr[m] || 0, finMonthIncome(m, basis).ktInc, `ИНВАРИАНТ: катеринг Тайлан = Тренд (${basis} ${m})`);
+  }
+  // ИНВАРИАНТ: журнал = гүйцэтгэлийн тайлан
+  const jl = jrnCateringList();
+  for (const m of ['2026-09', '2026-10']) eq((jl.find(x => x.ym === m) || {}).amount || 0, finMonthIncome(m, 'accrual').ktInc, `ИНВАРИАНТ: журнал = тайлан (${m})`);
+  // Дэлгэц ҮНЭХЭЭР зурагдана (TDZ/синтакс алдаа барих)
+  const html = renderCatering();
+  ok(/Үйлдвэрчний эвлэл/.test(html) && /kt-money/.test(html), 'катеринг: картад мөнгөний мөр');
+  ok(/NOMAAD-ийн захиалгад багтсан/.test(html), 'катеринг: NOMAAD ажилд дүн оруулахгүйг хэлнэ');
+  vm.runInContext('state.cateringJobs = undefined;', sandbox);
+
+  // Банкны мөр ↔ баримт
+  eq(incomeStatusOfOwner('catering:KT-1'), 'catering', 'катеринг: баримтын эзэн → төлөв');
+  eq(incomeLinkOfOwner('catering:KT-1'), { type: 'catering', id: 'KT-1' }, 'катеринг: холбоос');
+  eq(jrnCreditFor('catering'), 'recv', 'катеринг: төлбөр авлагыг хаана (орлого давхардахгүй)');
+  const plan = F.incomeRelinkPlan([{ fp: 'Z', status: 'other', amount: 18375000, dt: '2026-09-28', payer: 'ҮЙЛДВЭРЧНИЙ ЭВЛЭЛ' }],
+    new Set(['FP-18375000-20260928-ҮЙЛДВЭРЧНИЙЭВЛЭЛ']), new Map([['FP-18375000-20260928-ҮЙЛДВЭРЧНИЙЭВЛЭЛ', 'catering:KT-1']]));
+  eq((plan[0] || {}).status, 'catering', 'relink: «бусад» мөр катерингийн баримтаар хаагдана');
+}
+// ═══ SCAN: катерингийн мөнгөний хамгаалалт ═══════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const sp = src.slice(src.indexOf('async function submitCateringPayment'), src.indexOf('/* ========================== КАТЕРИНГ модуль төгсгөл'));
+  ok(/loadClosedMonths\(true\)/.test(sp) && /monthLocked\(/.test(sp), 'scan: катерингийн төлбөр хаасан сарыг шалгана');
+  ok(/reserveReceipt\(/.test(sp) && /usedIn: 'catering:'/.test(sp), 'scan: баримт давхардлын ledger-т эзэмшигдэнэ');
+  ok(/rr === 'err'/.test(sp), 'scan: сүлжээ унахад давхардлын хамгаалалт чимээгүй унтрахгүй');
+  eq((sp.match(/method: 'DELETE'/g) || []).length, 0, 'scan: катерингт хатуу устгал алга');
+  // PDF шалгуур НЭГ газар (M-Event ба катеринг)
+  eq((src.match(/Чимунд ирээгүй гүйлгээ \(/g) || []).length, 1, 'scan: M-Event/катерингийн PDF шалгуур нэг газар');
+  ok(/readIncomeReceipt\(file, modal\._receipts\)/.test(src), 'scan: M-Event төлбөр нийтлэг уншигчийг ашиглана');
+  // NOMAAD ажилд мөнгө орохгүй дүрэм ганц функцэд
+  ok(/function cateringHasMoney\(j\) \{ return !!j && j\.source !== 'nomaad'; \}/.test(src), 'scan: NOMAAD ажил давхар орлого болохгүй');
+  ok(/catering: jrnCateringList\(\)/.test(src), 'scan: журнал катерингийн орлогыг авна');
+}
+
+// ═══ ХОЖИМ БҮРТГЭСЭН БАРИМТ ОРЛОГЫН МӨРИЙГ ХААНА (2026-10-03) ═══════════
+// Хуулга эхэлж орж, PDF дараа нь захиалгад бүртгэгдвэл мөр «хаагдаагүй» эсвэл гараар
+// «бусад орлого» болж үлддэг байв (Майнс Ап 3.96сая, Гранд Нова 725мян).
+{
+  const { incomeRelinkPlan } = F;
+  const used = new Set(['FP-3960000-20260911-МАЙНСАПХХК', 'FP-725000-20260925-ГРАНДНОВАГРЭЙТ', 'FP-50000-20260912-ХҮН', 'FP-90000-20260913-ФИН']);
+  const owners = new Map([['FP-3960000-20260911-МАЙНСАПХХК', 'mevent:#1601'], ['FP-725000-20260925-ГРАНДНОВАГРЭЙТ', 'mevent:#1602'],
+                          ['FP-50000-20260912-ХҮН', 'nomaad:NC-1'], ['FP-90000-20260913-ФИН', 'fin:abc']]);
+  const rows = [
+    { fp: 'A', status: 'other', amount: 3960000, dt: '2026-09-11', payer: 'МАЙНС АП ХХК' },
+    { fp: 'B', status: 'open', amount: 725000, dt: '2026-09-25', payer: 'ГРАНД НОВА ГРЭЙТ' },
+    { fp: 'C', status: 'personal', amount: 50000, dt: '2026-09-12', payer: 'ХҮН' },          // хүний шийдвэр — хөндөхгүй
+    { fp: 'D', status: 'open', amount: 90000, dt: '2026-09-13', payer: 'ФИН' },              // fin: эзэн — орлого биш
+    { fp: 'E', status: 'order', amount: 725000, dt: '2026-09-25', payer: 'ГРАНД НОВА ГРЭЙТ', note: '' },
+  ];
+  const plan = incomeRelinkPlan(rows, used, owners);
+  const by = Object.fromEntries(plan.map(x => [x.fp, x]));
+  eq((by.A || {}).status, 'order', 'relink: гараар «бусад» болсон ч баримттай бол захиалга');
+  eq((by.A || {}).link_id, '1601', 'relink: захиалгын дугаар');
+  eq((by.B || {}).link_id, '1602', 'relink: хаагдаагүй мөр холбогдоно');
+  ok(!by.C, 'relink: хувийн гэж шийдсэнийг хөндөхгүй');
+  ok(!by.D, 'relink: захиалга бус баримт ахиулахгүй');
+  ok(!by.E, 'relink: аль хэдийн хаагдсан мөрийг хөндөхгүй');
+  // НЭГ БАРИМТ = НЭГ МӨР: өөр мөрийн тэмдэглэлд байвал дахин ашиглахгүй
+  const plan2 = incomeRelinkPlan([{ fp: 'X', status: 'order', note: 'баримт FP-725000-20260925-ГРАНДНОВАГРЭЙТ' }, rows[1]], used, owners);
+  eq(plan2.length, 0, 'relink: эзэмшсэн баримт давхар ашиглагдахгүй');
+}
+
+// ═══ SCAN: санхүүгийн мөрөөс гарсан олголтын хамгаалалт ════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const f = src.slice(src.indexOf('function salaryFinPayments'), src.indexOf('function salaryPayLabel'));
+  ok(f.length > 100, 'scan: salaryFinPayments-ийн бие олдов');
+  ok(/have\.has\(fp\)/.test(f), 'scan: [#fp]-ээр давхардал хаагдана');
+  ok(/SALARY_FIN_CAT/.test(f), 'scan: зөвхөн үндсэн цалингийн ангилал');
+  eq((src.match(/const SALARY_FIN_CAT = '7100'/g) || []).length, 1, 'scan: ангилал ганц газар');
+  ok(/finAccrualMonth\(r\)/.test(f), 'scan: ноогдох сараар шүүгдэнэ (банкны огноогоор биш)');
+  ok(/status === 'deleted'/.test(f), 'scan: больсон мөр орохгүй');
+  const spf = src.slice(src.indexOf('function salaryPaymentsFor'), src.indexOf('/* ОЛГОЛТ `salary_payments`'));
+  ok(/salaryFinPayments\(/.test(spf), 'scan: самбарын ганц эх сурвалж гүйлгээг ч нэгтгэнэ');
+}
+
+// ═══ АЖИЛТНЫ ДАНС = ОДООГИЙН + ХУУЛГААР ТАНИГДСАН (2026-10-03) ══════════════
+// Ажилчид данс байнга солидог; `employees.bank_account` зөвхөн ОДООГИЙНХ тул
+// хуучин нь дарагдаад алга болдог → тэр данс руу явсан цалин «хэнийх нь
+// мэдэгдэхгүй» болно. Хуулгын гүйлгээний УТГА дахь нэрээр нь таана.
+{
+  const { empAcctOwners, empAcctsForPerson, salaryFinPayments } = F;
+  const team = [
+    { name: 'Э.Нинждолгор', phone: '99285468' },                          // данс бүртгээгүй
+    { name: 'Б.Байгалмаа', phone: '88627550', bank_account: '5720418321' },
+    { name: 'Ч.Билгүүн', phone: '80001111' },                             // нэр давхардсан
+    { name: 'Б.Билгүүн', phone: '80002222' },
+    // ⛔ ДОТОРЛОСОН нэр: «ХОНГОР» нь «ХОНГОРЗУЛ»-ын дотор байна
+    { name: 'Ц.Хонгор', phone: '80003333' },
+    { name: 'Б.Хонгорзул', phone: '80004444' },
+  ];
+  const fin = [
+    { id: '1', status: 'done', category: '7100', amount: 500000, beneficiary: '5029853564',
+      requested_at: '2026-08-31', purpose: 'EB-цалин: Э.Нинждолгор. 8сар цалин 2', justification: '[#E1]' },
+    { id: '2', status: 'done', category: '7100', amount: 300000, beneficiary: '5029853564',
+      requested_at: '2026-09-06', purpose: 'EB-Цалин Э.Нинждолгор 8 сар 2р хагас', justification: '[#E2]' },
+    // ⛔ Давхардсан нэр — ТААХГҮЙ (цалин өөр хүнд тоологдох эрсдэл)
+    { id: '3', status: 'done', category: '7100', amount: 700000, beneficiary: '5111111111',
+      requested_at: '2026-09-10', purpose: 'EB-Цалин Билгүүн 9 сар', justification: '[#E3]' },
+    // ⛔ Нэг данс ХОЁР өөр нэрээр → хаягдана
+    { id: '4', status: 'done', category: '7100', amount: 100000, beneficiary: '5222222222',
+      requested_at: '2026-09-11', purpose: 'EB-Цалин Нинждолгор', justification: '[#E4]' },
+    { id: '5', status: 'done', category: '7100', amount: 100000, beneficiary: '5222222222',
+      requested_at: '2026-09-12', purpose: 'EB-Цалин Байгалмаа', justification: '[#E5]' },
+    // Бүртгэлтэй данс — утгаар таахгүй (нэр нь өөр хүний ч байсан)
+    { id: '6', status: 'done', category: '7100', amount: 200000, beneficiary: '5720418321',
+      requested_at: '2026-09-15', purpose: 'EB-Цалин Ш.Байгалмаа 9р сар', justification: '[#E6]' },
+  ];
+  fin.push({ id: '7', status: 'done', category: '7200', amount: 600000, beneficiary: '5333333333',
+             requested_at: '2026-09-13', purpose: 'EB-ЗАРЛАГА: ӨДРИЙН ЦАЛИН Б.ХОНГОРЗУЛ', justification: '[#E7]' });
+  // ⛔ ИНИЦИАЛГҮЙ бол «ХОНГОР» ба «ХОНГОРЗ» хоёулаа таарч ХОЁРДМОЛ болно
+  fin.push({ id: '8', status: 'done', category: '7200', amount: 70000, beneficiary: '5444444444',
+             requested_at: '2026-09-14', purpose: 'EB-ЦАЛИН ХОНГОРЗУЛ', justification: '[#E8]' });
+  const own = empAcctOwners(team, fin);
+  eq(own.guess['5029853564'], '99285468', 'данс: хуулгын утгаар эзэн танигдана');
+  eq(own.guess['5111111111'], undefined, 'данс: ХОЁРДМОЛ нэрээр таахгүй');
+  ok(own.ambiguous.indexOf('БИЛГҮҮН') >= 0, 'данс: давхардсан нэрийн цөм тэмдэглэгдэнэ');
+  eq(own.guess['5222222222'], undefined, 'данс: нэг данс хоёр нэрээр таарвал хаягдана');
+  /* «Б.ХОНГОРЗУЛ» утганд «Ц.Хонгор» (ХОНГОР) ч таардаг. ИНИЦИАЛ нь салгана:
+     «БХОНГОРЗ» нь зөвхөн Б.Хонгорзул-д таарна. Инициалгүй утганд хоёрдмол
+     хэвээр → ТААХГҮЙ (амьд датаар 600,000₮ буруу хүнд тоологдож байсан). */
+  eq(own.guess['5333333333'], '80004444', 'данс: инициал + нэрээр зөв хүнд таарна');
+  eq(own.guess['5444444444'], undefined, 'данс: инициалгүй бол доторлосон нэр ХОЁРДМОЛ → таахгүй');
+  eq(own.reg['5720418321'], '88627550', 'данс: бүртгэсэн данс эзэнтэйгээ');
+  ok(!Object.prototype.hasOwnProperty.call(own.guess, '5720418321'), 'данс: бүртгэлтэй дансыг утгаар таахгүй');
+
+  // Нинждолгорын цалин одоо тоологдоно (данс бүртгэгдээгүй ч)
+  const nj = salaryFinPayments(fin, '99285468', '2026-08', [], team);
+  eq(nj.length, 2, 'данс: бүртгэлгүй дансны цалин ноогдох сардаа тоологдоно');
+  eq(nj.reduce((s, x) => s + x.amount, 0), 800000, 'данс: дүн нийлнэ');
+
+  // Картын жагсаалт — бүртгэсэн нь эхэнд, хэрэглээний тоо/дүн/сүүлийн огноо
+  const la = empAcctsForPerson('88627550', team, fin);
+  eq(la.length, 1, 'данс: Байгалмаад 1 данс');
+  ok(la[0].current && la[0].reg, 'данс: бүртгэсэн данс «одоогийн» гэж тэмдэглэгдэнэ');
+  eq(la[0].n, 1, 'данс: хэрэглээний тоо');
+  eq(la[0].lastDay, '2026-09-15', 'данс: сүүлд хэрэглэсэн огноо');
+  const lb = empAcctsForPerson('99285468', team, fin);
+  eq(lb.length, 1, 'данс: Нинждолгорт хуулгаас 1 данс');
+  ok(!lb[0].current, 'данс: хуулгаар танигдсан нь «бүртгэсэн» БИШ');
+  eq(empAcctsForPerson('80001111', team, fin).length, 0, 'данс: хоёрдмол нэрт хүнд данс таахгүй');
+}
+
+// ═══ ДАНС = УРТ ба ЦӨМ хоёр хэлбэртэй (2026-10-03) ══════════════════════════
+// Профайлд банкны УРТ хэлбэр (880004000434123912), хуулгад ЦӨМ (434123912).
+// Яг тэнцүүгээр тулгаснаас болж БҮРТГЭЛТЭЙ ажилтны цалин «эзэнгүй» болж байв
+// (амьд датаар Б.Хонгорзул 600,000₮, Т.Эрдэнэзул 90,000₮).
+{
+  const { acctSame, empNameFullKey, empAcctOwners, empAcctsForPerson, salaryFinPayments } = F;
+  ok(acctSame('880004000434123912', '434123912'), 'данс: урт хэлбэр цөмтэйгөө таарна');
+  ok(acctSame('434123912', '880004000434123912'), 'данс: дараалал хамаарахгүй');
+  ok(acctSame('5720418321', '5720418321'), 'данс: ижил нь таарна');
+  ok(!acctSame('5720418321', '5720418322'), 'данс: өөр данс таарахгүй');
+  // ⛔ Хэт богино хэсгээр таарвал өөр хүний данс санамсаргүй тулна
+  ok(!acctSame('123456789012', '9012'), 'данс: 9 оронгоос богино суффиксээр таахгүй');
+  ok(!acctSame('', '5720418321'), 'данс: хоосон таарахгүй');
+  eq(empNameFullKey('Э.Шинэбаяр'), 'ЭШИНЭБАЯ', 'нэр: инициал + цөм');
+  eq(empNameFullKey('Шинэбаяр'), 'ШШИНЭБАЯ', 'нэр: инициалгүй бол эхний үсэг');
+  eq(empNameFullKey('Ба'), '', 'нэр: хэт богино бол хоосон');
+
+  const team = [
+    { name: 'Б.Хонгорзул', phone: '95846114', bank_account: '880004000434123912' },
+    { name: 'Т.Эрдэнэзул', phone: '96901617', bank_account: '312501887218' },
+  ];
+  const fin = [
+    { id: '1', status: 'done', category: '7100', amount: 600000, beneficiary: '434123912',
+      requested_at: '2026-09-14', purpose: 'EB-ЗАРЛАГА: ЦАЛИН Б.ХОНГОРЗУЛ', justification: '[#A1]' },
+    { id: '2', status: 'done', category: '7100', amount: 90000, beneficiary: '2501887218',
+      requested_at: '2026-09-14', purpose: 'EB-ЗАРЛАГА: ЦАЛИН Т.ЭРДЭНЭЗ', justification: '[#A2]' },
+  ];
+  const own = empAcctOwners(team, fin);
+  eq(own.regOwner('434123912'), '95846114', 'данс: цөмөөр бүртгэлтэй эзэн олдоно');
+  eq(own.regOwner('2501887218'), '96901617', 'данс: 12 оронтой урт хэлбэр ч тулна');
+  ok(!Object.prototype.hasOwnProperty.call(own.guess, '434123912'), 'данс: бүртгэлтэйг утгаар таахгүй');
+  // ⛔ Цалин нь эзэндээ тоологдоно (өмнө «эзэнгүй» болж самбараас хасагдаж байв)
+  eq(salaryFinPayments(fin, '95846114', '2026-09', [], team).reduce((s, x) => s + x.amount, 0),
+     600000, 'данс: цөмөөр тулгасан цалин эзэндээ тоологдоно');
+  // ⚠ НЭГ данс хоёр хэлбэрээр ХОЁР мөр болохгүй
+  const la = empAcctsForPerson('95846114', team, fin);
+  eq(la.length, 1, 'данс: урт ба цөм нэг мөр болж нэгдэнэ');
+  eq(la[0].acct, '880004000434123912', 'данс: УРТ хэлбэр харагдана');
+  eq(la[0].n, 1, 'данс: хэрэглээ цөмийн мөрөөс тоологдоно');
+
+  /* ⛔ ХОЁР АЖИЛТНЫ ПРОФАЙЛД ИЖИЛ ДАНС (амьд датаар бодитоор тохиолдсон —
+     нэг нь буруу бичигдсэн). Таавал цалин өөр хүнд очно → ЮУ Ч БУЦААХГҮЙ. */
+  const dupTeam = [
+    { name: 'Б.Хишигтогтох', phone: '70001111', bank_account: '5779282197' },
+    { name: 'Б.Адъяабаатар', phone: '70002222', bank_account: '5779282197' },
+  ];
+  eq(empAcctOwners(dupTeam, []).regOwner('5779282197'), '', 'данс: хоёр ажилтанд ижил данс → эзэн тодорхойлохгүй');
+}
+
+// ═══ ХҮЛЭЭН АВАГЧ НЭРЭЭР БИЧИГДСЭН ОЛГОЛТ (2026-10-03) ══════════════════════
+// Гараар бүртгэсэн олголтын `beneficiary` нь «Хишигтогтох» гэж ИНИЦИАЛГҮЙ
+// бичигддэг атал ажилтны нэр «Б.Хишигтогтох» — яг тэнцүүгээр тулгаснаас болж
+// 5–7 сарын олголт (урьдчилгаа ч) цалингийн самбарт ОГТ гарахгүй байв.
+{
+  const { empAcctOwners, salaryFinPayments, salaryIsLoan } = F;
+  ok(salaryIsLoan('Цалингийн зээл'), 'зээл: утгаар танигдана');
+  ok(!salaryIsLoan('Хишигтогтох 6 сарын цалин (1)'), 'зээл: жирийн цалин зээл биш');
+
+  const team = [
+    { name: 'Б.Хишигтогтох', phone: '95185655', bank_account: '2900128906' },
+    { name: 'Ц.Бат эрдэнэ', phone: '90505456', bank_account: '5135806589' },
+    { name: 'Э.Оюун-Эрдэнэ', phone: '95109223' },     // цөм «ЭРДЭНЭ» давхардсан
+    { name: 'Э.Төгс-Эрдэнэ', phone: '99941983' },
+  ];
+  const own = empAcctOwners(team, []);
+  eq(own.nameOwner('Хишигтогтох'), '95185655', 'нэр: инициалгүй бичлэг эзэндээ таарна');
+  eq(own.nameOwner('Б.Хишигтогтох'), '95185655', 'нэр: инициалтай ч таарна');
+  // ① БҮТЭН нэр нь цөмийн хоёрдмолыг давна («ЭРДЭНЭ» 3 хүнд таардаг)
+  eq(own.nameOwner('Ц.Бат эрдэнэ'), '90505456', 'нэр: бүтэн нэр хоёрдмолыг давна');
+  eq(own.nameOwner('Эрдэнэ'), '', 'нэр: хоёрдмол цөмөөр таахгүй');
+  eq(own.nameOwner('Хэнбугай'), '', 'нэр: танихгүй бол хоосон');
+
+  const fin = [
+    // 6 сарын УРЬДЧИЛГАА — хүлээн авагч инициалгүй НЭР
+    { id: '1', status: 'done', category: '7100', amount: 800000, beneficiary: 'Хишигтогтох',
+      requested_at: '2026-06-20', purpose: 'Хишигтогтох 6 сарын цалин (1)', justification: '' },
+    { id: '2', status: 'done', category: '7100', amount: 100000, beneficiary: 'Хишигтогтох',
+      requested_at: '2026-06-23', purpose: 'Хишигтогтох цалин үлдэгдэл', justification: '' },
+    // ⛔ ЗЭЭЛ — олголт БИШ
+    { id: '3', status: 'done', category: '7100', amount: 6000000, beneficiary: 'Хишигтогтох',
+      requested_at: '2026-06-15', purpose: 'Цалингийн зээл', justification: '' },
+    // Данс нь бусдын — нэрээр таарах ёсгүй
+    { id: '4', status: 'done', category: '7100', amount: 900000, beneficiary: '5135806589',
+      requested_at: '2026-06-18', purpose: 'Цалин Ц.Бат-Эрдэнэ', justification: '' },
+  ];
+  const jun = salaryFinPayments(fin, '95185655', '2026-06', [], team);
+  eq(jun.length, 2, '6 сар: нэрээр бичигдсэн олголт 2 мөр');
+  eq(jun.reduce((s, x) => s + x.amount, 0), 900000, '6 сар: урьдчилгаа + үлдэгдэл');
+  ok(!jun.some(x => x.amount === 6000000), '6 сар: зээл олголтод ОРОХГҮЙ');
+  // ⚠ Өөр хүний дансны мөр нэрээр татагдахгүй
+  eq(salaryFinPayments(fin, '90505456', '2026-06', [], team).length, 1, '6 сар: данстай мөр эзэндээ');
+}
+
+// ═══ SCAN: дансны таамаглалын хамгаалалт ════════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const f = src.slice(src.indexOf('function empAcctOwners('), src.indexOf('function empAcctOwnersCached'));
+  ok(f.length > 100, 'scan: empAcctOwners-ийн бие олдов');
+  ok(/ks\.length === 1/.test(f), 'scan: таарсан БҮХ нэрээс ЯГ НЭГ хүн гарвал л таана');
+  ok(/t\.bag\[kk\]\.forEach/.test(f), 'scan: хоёрдмол цөмийн хүмүүс ч нэгтгэгдэнэ (хасагдахгүй)');
+  ok(/\[byWhole, byFull, byName\]/.test(f), 'scan: гурван шат нарийнаас уруудна');
+  ok(/regOwner\(acct\)/.test(f), 'scan: бүртгэлтэй эзнийг суффиксээр ч шалгана');
+  ok(/byWhole/.test(f), 'scan: бүтэн нэрийн шат бий (цөмийн хоёрдмолыг давна)');
+  ok(/ks\.length > 1\) return ''/.test(f), 'scan: шатанд хоёрдмол гарвал ДООШ уруудахгүй');
+  const sf = src.slice(src.indexOf('function salaryFinPayments'), src.indexOf('/* Олголтын мөрийн тайлбар'));
+  ok(/salaryIsLoan\(r\.purpose\)/.test(sf), 'scan: зээл олголтод орохгүй');
+  ok(/!bd &&/.test(sf), 'scan: нэрээр тулгах нь ЗӨВХӨН данс биш хүлээн авагчид');
+  ok(/reg\[acct\]/.test(f), 'scan: бүртгэлтэй данс утгаар таахаас ДАВУУ');
+  ok(/bad\[acct\]/.test(f), 'scan: нэг данс хоёр нэрээр таарвал хаягдана');
+  ok(/cooNameKey/.test(f), 'scan: нэрийн цөм ганц функцээр гарна');
+  // Ажилтны картад данс нь ЭМЗЭГ мэдээллийн эрхээр хаагдана
+  const card = src.slice(src.indexOf('let bankBox = '), src.indexOf('// ── Удирдах хэсэг ──'));
+  ok(/canSeeStaffSensitive\(\)/.test(card), 'scan: данс зөвхөн эрхтэйд харагдана');
+  ok(/empAcctsForPerson\(/.test(card), 'scan: карт дансыг ганц эх сурвалжаас авна');
+  // ⛔ Хуулга оруулах зам ч суффиксээр тулгана (яг тэнцүү хайх нь буцаж ирээгүй)
+  eq((src.match(/empByAcct\[cAcct\]/g) || []).length, 0, 'scan: хуулгын тулгалт яг тэнцүүгээр хайхгүй');
+  ok(/const emp = empForAcct\(cAcct\)/.test(src), 'scan: хуулгын тулгалт empForAcct-аар');
+  ok(/const ACCT_MATCH_MIN = 9/.test(src), 'scan: суффиксийн доод урт 9 (богиносгохгүй)');
+  ok(/хуулгын утгаар/.test(card), 'scan: таасан дансыг ИЛ тэмдэглэнэ (нуухгүй)');
 }

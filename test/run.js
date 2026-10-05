@@ -15410,6 +15410,17 @@ async function swFetchTests() {
   st.appConfig = old;
 }
 
+// ═══ SCAN: үнэлгээ БҮГД, нэг мөрөөр (2026-10-05, CEO) ═════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const rv = src.slice(src.indexOf('function reviewBlockHtml'), src.indexOf('function dispatchDayRows'));
+  /* ⛔ Зөвхөн 3-ыг гаргадаг байсныг болив — бүгд харагдана. Сэтгэгдлийн
+     бичвэр мөрөнд наалдвал нэг үнэлгээ дэлгэцийн тал хувийг эзэлнэ. */
+  ok(!/\.slice\(0, 3\)/.test(rv), 'scan: үнэлгээ 3-аар таслагдахгүй');
+  ok(/<details class="rv-item"/.test(rv), 'scan: сэтгэгдэл дарж нээгддэг');
+  ok(/st\.bad, \.\.\.st\.rows\.filter/.test(rv), 'scan: муу үнэлгээ эхэнд');
+}
+
 // ═══ ДАМЖЛАГЫН СХЕМ — PIPELINE-ээс өөрөө угсарна (2026-10-04, CEO) ═════
 {
   const S = F.pipelineSteps;

@@ -4582,12 +4582,6 @@ function renderTaskList() {
     wrap.innerHTML = safeViewHtml(renderDashboard, 'Тойм');
     attachSessionBanner();   // «Нэвтрэлт дууссан» туузны товч
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
-    // Dashboard action товчнууд
-    document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
-    document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
-    document.getElementById('dash-print')?.addEventListener('click', () => window.print());
-    document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
-    document.getElementById('dash-staff')?.addEventListener('click', () => { if (!canAccessView('access', () => state.isCEO)) return; state.view = 'access'; state.hubTab = 'people'; render(); });
     document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
     // Ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг жагсаалтаар харах
     wrap.querySelectorAll('.dash-staff-clickable').forEach(row => {
@@ -4602,11 +4596,6 @@ function renderTaskList() {
     });
     // "Яг одоо" тууз — авлага нүд дээр дарж Авлага view руу
     wrap.querySelectorAll('[data-ceo-now]').forEach(c => c.addEventListener('click', () => { state.view = c.dataset.ceoNow; render(); }));
-    // CEO бус хэрэглэгчид permissions/staff/email digest нуух
-    if (!state.isCEO) {
-      document.getElementById('dash-email-digest')?.style.setProperty('display', 'none');
-      document.getElementById('dash-staff')?.style.setProperty('display', 'none');
-    }
     return;
   } else if (state.view === 'orders') {
     if (tableHead) tableHead.style.display = 'none';
@@ -26543,13 +26532,20 @@ function reviewBlockHtml(orders) {
   if (!canSeeOrders()) return '';
   const st = reviewStats(orders);
   if (!st.n) return '';
-  const row = r => `<div class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">
-      <span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
+  /* ⛔ БҮХ ҮНЭЛГЭЭ, ГЭХДЭЭ НЭГ МӨРӨӨР (2026-10-05, CEO). Өмнө нь сэтгэгдлийн
+     бүтэн бичвэр мөрөнд наалддаг тул НЭГ үнэлгээ дэлгэцийн тал хувийг эзэлж,
+     үлдсэнийг нь харахын тулд гүйлгэх ч шаардлагагүй — ердөө 3-ыг л гаргадаг
+     байв. Одоо: бүгд нэг мөрөөр, сэтгэгдлийг дарж нээнэ. */
+  const head = r => `<span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
       <span class="rv-nm">#${escapeHtml(String(r.number ?? '—'))} ${escapeHtml(r.customer || '')}</span>
-      <span class="rv-tx">${r.text ? escapeHtml(r.text) : 'сэтгэгдэл бичээгүй'}</span>
-      <span class="rv-at">${escapeHtml(r.at || '')}</span>
-    </div>`;
-  const show = st.bad.length ? st.bad : st.rows.slice(0, 3);
+      <span class="rv-at">${escapeHtml(r.at || '')}</span>`;
+  const row = r => r.text
+    ? `<details class="rv-item"><summary class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}">${head(r)}<span class="rv-more">💬</span></summary>
+        <div class="rv-tx">${escapeHtml(r.text)}</div>
+        <button type="button" class="btn rv-go" data-rv-open="${escapeHtml(String(r.number ?? ''))}">→ Захиалга нээх</button></details>`
+    : `<div class="rv-row rv-plain${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">${head(r)}</div>`;
+  // Муу үнэлгээ нь АЖИЛ — эхэнд. Бусад нь шинээр нь.
+  const show = [...st.bad, ...st.rows.filter(r => r.stars > REVIEW_BAD_MAX)];
   return `<div class="rv-card">
     <div class="rv-head">★ Хэрэглэгчийн үнэлгээ
       <span class="rv-sum">${st.avg} дундаж · ${st.n} хариулт</span></div>
@@ -39185,28 +39181,6 @@ function renderDashboard() {
       ${reviewBlockHtml(state.appOrders || [])}
       ${dispatchBlockHtml(state.appOrders || [])}
       ${isCEO ? ceoNowStrip() : ''}
-      <div class="dashboard-actions">
-        <button class="btn" id="dash-export-csv">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          CSV татах
-        </button>
-        <button class="btn" id="dash-export-ics">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          Календарт татах (.ics)
-        </button>
-        <button class="btn" id="dash-print">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-          PDF хэвлэх
-        </button>
-        <button class="btn" id="dash-email-digest">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          Долоо хоногийн тойм имэйлдэх
-        </button>
-        <button class="btn" id="dash-staff">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Ажилтан удирдах
-        </button>
-      </div>
       <div class="dashboard-grid">
         <!-- ─── Миний ажил (бүх ажилтанд) ─── -->
         <div class="dash-section-title" style="grid-column: span 4; font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:-4px;">Миний ажил</div>
@@ -39417,139 +39391,6 @@ function renderDashboard() {
     </div>
   `;
 }
-
-/* ─── Долоо хоногийн email тойм — CEO-д ──────────────────
-   n8n webhook руу POST хийж тус ажилтан бүрд тус тусын статистикийг
-   email-ээр илгээнэ. Webhook payload: { type: 'weekly_digest', period, stats } */
-async function sendWeeklyDigest() {
-  if (!state.isCEO) return;
-  const webhook = state.config.apiUrl;
-  if (!webhook) {
-    showToast('n8n endpoint тохируулагдаагүй', 'warn');
-    return;
-  }
-  // Сүүлийн 7 хоногийн өгөгдөл цуглуулах
-  const now = new Date();
-  const weekAgo = new Date(now);
-  weekAgo.setDate(now.getDate() - 7);
-  const tasks = state.tasks || [];
-  const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted');
-
-  const stats = {
-    period: {
-      from: dateStr(weekAgo),
-      to: dateStr(now),
-    },
-    tasks: {
-      total: tasks.length,
-      done: tasks.filter(t => t.status === 'done').length,
-      open: tasks.filter(t => t.status !== 'done').length,
-      overdue: tasks.filter(t => t.status !== 'done' && t.due && t.due < todayStr()).length,
-      created_this_week: tasks.filter(t => t.created && new Date(t.created) >= weekAgo).length,
-      completed_this_week: tasks.filter(t => t.status === 'done' && t.updated && new Date(t.updated) >= weekAgo).length,
-    },
-    finance: {
-      total: fr.length,
-      pending: fr.filter(r => (r.decision || 'pending') === 'pending').length,
-      approved_amount: fr.filter(r => r.decision === 'approved').reduce((s, r) => s + (+r.amount || 0), 0),
-    },
-    by_staff: (() => {
-      const map = {};
-      tasks.forEach(t => {
-        if (!t.assignee) return;
-        if (!map[t.assignee]) map[t.assignee] = { name: memberName(t.assignee), done: 0, active: 0, overdue: 0 };
-        if (t.status === 'done') map[t.assignee].done++;
-        else map[t.assignee].active++;
-        if (t.status !== 'done' && t.due && t.due < todayStr()) map[t.assignee].overdue++;
-      });
-      return Object.values(map);
-    })(),
-  };
-
-  try {
-    showToast('Имэйл илгээж байна...', 'info', 2000);
-    const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/weekly-digest')), {
-      method: 'POST',
-      headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ type: 'weekly_digest', stats, requested_by: state.user?.email }),
-    });
-    if (r.ok) showToast('Долоо хоногийн тойм имэйлээр илгээгдлээ', 'success', 3000);
-    else throw new Error('HTTP ' + r.status);
-  } catch (e) {
-    showToast('Имэйл илгээх амжилтгүй: ' + e.message, 'error', 4500);
-  }
-}
-
-/* ─── Google Calendar / ICS export ───────────────────────
-   Task-ийн due огнооноос ICS файл үүсгэж татах. Хэрэглэгч Google
-   Calendar, Apple Calendar, Outlook бүгдэд импортлох боломжтой. */
-function generateICS(tasks) {
-  const pad = (n) => String(n).padStart(2, '0');
-  const fmtDateICS = (dateStr) => {
-    // YYYY-MM-DD → YYYYMMDD (all-day event)
-    return dateStr.replace(/-/g, '');
-  };
-  const escape = (s) => String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
-  const now = new Date();
-  const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth()+1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
-
-  const events = tasks.filter(t => t.due).map(t => {
-    const startDate = fmtDateICS(t.due);
-    const endDate = (() => {
-      const d = new Date(t.due);
-      d.setDate(d.getDate() + 1);
-      return dateStr(d).replace(/-/g,'');
-    })();
-    const priorityNum = { high: 1, med: 5, low: 9 }[t.priority] || 5;
-    const description = [
-      `Хариуцагч: ${memberName(t.assignee)}`,
-      `Үүсгэгч: ${memberName(t.createdBy)}`,
-      `Төлөв: ${t.status}`,
-      t.desc ? `\\n${t.desc}` : '',
-    ].filter(Boolean).join('\\n');
-    return [
-      'BEGIN:VEVENT',
-      `UID:${t.id}@chimunllc.github.io`,
-      `DTSTAMP:${stamp}`,
-      `DTSTART;VALUE=DATE:${startDate}`,
-      `DTEND;VALUE=DATE:${endDate}`,
-      `SUMMARY:${escape(t.title)}`,
-      `DESCRIPTION:${description}`,
-      `PRIORITY:${priorityNum}`,
-      `STATUS:${t.status === 'done' ? 'COMPLETED' : 'NEEDS-ACTION'}`,
-      'END:VEVENT',
-    ].join('\r\n');
-  });
-
-  return [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Chimun Tasks//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-CALNAME:Чимун Tasks',
-    'X-WR-TIMEZONE:Asia/Ulaanbaatar',
-    ...events,
-    'END:VCALENDAR',
-  ].join('\r\n');
-}
-
-function exportTasksAsICS(tasks) {
-  const due = (tasks || state.tasks).filter(t => t.due);
-  if (!due.length) { showToast('Эцсийн огноотой ажил алга байна', 'warn'); return; }
-  const ics = generateICS(due);
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `chimun-tasks-${todayStr()}.ics`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  showToast(`${due.length} ажлыг календарт татсан`, 'success');
-}
-
 
 /* ─── Personal KPI (ажилтны хувийн тойм) ───────────────── */
 function renderPersonalKPI() {

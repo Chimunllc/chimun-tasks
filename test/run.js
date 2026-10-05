@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'vatIsAggregate', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -1795,6 +1795,71 @@ ok(F.vatNameMatch('Түшиг', 'Өөр Компани') === false, 'vatNameMatc
   eq(F.vatIsReturned({}), false, 'буцаалт: тэмдэглэгээгүй = хүчинтэй');
   eq(F.vatActive(null).length, 0, 'буцаалт: хоосон оролт унахгүй');
   eq(F.vatDetectReturned([], []).gone.length, 0, 'буцаалт: хоосон файл юуг ч тэмдэглэхгүй');
+}
+
+// 16a-1b) НӨАТ-ын САРЫН ТАЙЛАН → иргэдийн нийлбэр (2026-10-05).
+// e-barimt-ийн задаргаа ЗӨВХӨН регистртэй баримтыг гаргадаг тул иргэнд гаргасан
+// 3,022,000₮ аппад огт ороогүй байв. Татварт илгээдэг тайлангийн «1000000» мөрөөс
+// уншина. Бусад нэгтгэсэн мөр (4000000) задаргаатай давхцдаг тул ОРОХГҮЙ.
+{
+  const H = ['Огноо', 'Падааны дугаар', 'Борлуулагчийн ТТД', 'Борлуулагчийн Нэр', 'Худалдан авагчийн ТТД', 'Худалдан авагчийн Нэр', 'Татвар ногдуулах нийт орлогын дүн (6+7)', 'Нэмэгдсэн өртгийн албан татвар', 'Нийт дүн', 'ХМЛ Задаргаа', '', ''];
+  const mx = [H,
+    ['2026-09-07', '4273221425', '6614337', 'Чимун', '5054788', 'МЧБС', '17403636.36', '1740363.64', '19144000', '', '1', '2'],
+    ['2026-09-30', '4272263059', '6614337', 'Чимун', '1000000', 'ЭЦСИЙН ХЭРЭГЛЭГЧ', '2747272.73', '274727.27', '3022000', '', '1', ''],
+    ['2026-09-30', '4272533022', '6614337', 'Чимун', '4000000', 'ЭЦСИЙН ХЭРЭГЛЭГЧ', '24487409.09', '2448740.91', '26936150', '', '1', ''],
+    ['2026-09-30', '4272337088', '6614337', 'Чимун', '2000000', 'ЭЦСИЙН ХЭРЭГЛЭГЧ', '0', '0', '0', '', '3', ''],
+    ['2026-09-01', '4272465855', '5241901', 'Петростар', '6614337', 'Чимун', '45454.55', '4545.45', '50000', '', '0', '1'],
+    ['2026-09-02', '4272465999', '5000001', 'Номин', '6614337', 'Чимун', '90909.09', '9090.91', '100000', '', '0', '1'],
+  ];
+  const rp = F.parseVatReportMatrix(mx);
+  ok(rp, 'НӨАТ тайлан: файлыг таньлаа');
+  eq(rp.own, '6614337', 'НӨАТ тайлан: өөрийн ТТД = мөр бүрд гардаг ТТД');
+  eq(rp.month, '2026-09', 'НӨАТ тайлан: сар');
+  eq(rp.citizen.id, 'agg-2026-09-1000000', 'НӨАТ тайлан: иргэдийн нийлбэрийн id сараар (дахин оруулахад шинэчлэгдэнэ)');
+  eq(rp.citizen.total, 3022000, 'НӨАТ тайлан: иргэдийн дүн 3,022,000');
+  eq(Math.round(rp.citizen.vat), 274727, 'НӨАТ тайлан: иргэдийн НӨАТ');
+  eq(rp.citizen.reg, '1000000', 'НӨАТ тайлан: зөвхөн иргэдийн код');
+  eq(String(rp.citizen.dt).slice(0, 10), '2026-09-30', 'НӨАТ тайлан: огноо тайлангийн сард');
+  eq(rp.sales.total, 19144000 + 3022000 + 26936150, 'НӨАТ тайлан: борлуулалтын нийт (нэгтгэсэн мөр багтана)');
+  eq(rp.purchases.n, 2, 'НӨАТ тайлан: худалдан авалт = худалдан авагч нь өөрөө');
+  eq(Math.round(rp.purchases.vat), 13636, 'НӨАТ тайлан: худалдан авалтын НӨАТ');
+  // Задаргааны файлыг тайлан гэж андуурахгүй, тайлангийн толгойгүй файл → null
+  eq(F.parseVatReportMatrix([['Пос дугаар', 'ДДТД', 'Огноо', 'Нийт дүн'], ['1', 'X', '2026-09-01', '100']]), null, 'НӨАТ тайлан: задаргааг тайлан гэж андуурахгүй');
+  eq(F.parseVatReportMatrix([]), null, 'НӨАТ тайлан: хоосон → null');
+  // Иргэдийн мөргүй тайлан → citizen null (юу ч нэмэхгүй)
+  eq(F.parseVatReportMatrix([H, mx[1], mx[5]]).citizen, null, 'НӨАТ тайлан: иргэдийн мөргүй бол нэмэх юм алга');
+
+  // ⛔ Иргэдийн нийлбэр задаргаанд хэзээ ч гарахгүй → задаргаа оруулахад «буцаасан» БОЛОХГҮЙ
+  const agg = { id: rp.citizen.id, ddtd: rp.citizen.ddtd, dt: '2026-09-30T00:00:00+00:00', total: 3022000, vat: 274727.27, buyer_reg: '1000000' };
+  const b2b = { id: 'B1', ddtd: 'B1', dt: '2026-09-07T10:00:00+00:00', total: 19144000, vat: 1740363.64, buyer_reg: '5054788' };
+  const det = F.vatDetectReturned([agg, b2b], [b2b]);
+  eq(det.gone.length, 0, 'НӨАТ тайлан: иргэдийн нийлбэр задаргаа оруулахад «алга болсон» гэж тооцогдохгүй');
+  ok(F.vatIsAggregate(agg) && !F.vatIsAggregate(b2b), 'НӨАТ тайлан: нэгтгэсэн мөрийг таньдаг');
+
+  // Иргэдийн НӨАТ зардалд орно (тулгагдаагүй → ХХК)
+  const br = F.vatByBranchMonth([agg, b2b], '2026-09');
+  eq(Math.round(br.total), Math.round(274727.27 + 1740363.64), 'НӨАТ тайлан: иргэдийн НӨАТ сарын НӨАТ-д орно');
+  eq(Math.round(br['ХХК']), Math.round(274727.27 + 1740363.64), 'НӨАТ тайлан: тулгагдаагүй → ХХК');
+
+  // Тайлан ↔ апп тулгалт: буцаасныг хасна, зөрүүг тэмдэгтэй буцаана
+  const ret = { id: 'R', ddtd: 'R', dt: '2026-09-04T10:00:00+00:00', total: 2476000, vat: 225090.91, returned: true };
+  const c1 = F.vatReportRecon({ month: '2026-09', sales: { total: 19144000 + 3022000, vat: 1740363.64 + 274727.27 }, purchases: { n: 0 }, citizen: rp.citizen }, [agg, b2b, ret]);
+  eq(c1.diffTotal, 0, 'НӨАТ тайлан: таарсан үед зөрүү 0 (буцаасан тоологдохгүй)');
+  ok(/таарч байна/.test(F.vatReportReconHtml(c1)), 'НӨАТ тайлан: таарвал «таарч байна»');
+  const c2 = F.vatReportRecon({ month: '2026-09', sales: { total: 19144000 + 3022000 - 887000, vat: 1740363.64 + 274727.27 - 80636.36 }, purchases: { n: 197, vat: 1443934 } }, [agg, b2b]);
+  eq(c2.diffTotal, 887000, 'НӨАТ тайлан: аппад илүү бол зөрүү эерэг');
+  ok(/887,000/.test(F.vatReportReconHtml(c2)) && /илүү/.test(F.vatReportReconHtml(c2)), 'НӨАТ тайлан: зөрүүг дүнтэй нь ил хэлнэ');
+  ok(/1,443,934/.test(F.vatReportReconHtml(c2)), 'НӨАТ тайлан: худалдан авалтын НӨАТ ил гарна');
+}
+
+// SCAN — иргэдийн нийлбэрийг захиалгатай тулгахгүй (авто-тулгалт ба гараар холбох цонх)
+{
+  const autoLine = src.split('\n').find(l => /const todo = vatReceiptsActive\(\)\.filter/.test(l)) || '';
+  ok(/vatIsAggregate/.test(autoLine), 'SCAN НӨАТ: авто-тулгалт иргэдийн нийлбэрийг алгасна');
+  const attach = src.slice(src.indexOf('async function openVatAttachModal'), src.indexOf('async function openVatAttachModal') + 4000);
+  ok(/vatReceiptsActive\(\)\.filter\(r => !vatIsAggregate\(r\)\)/.test(attach), 'SCAN НӨАТ: захиалгад холбох цонхонд иргэдийн нийлбэр гарахгүй');
+  const det = src.slice(src.indexOf('function vatDetectReturned'), src.indexOf('function vatDetectReturned') + 800);
+  ok(/vatIsAggregate\(r\)\) return/.test(det), 'SCAN НӨАТ: буцаалт илрүүлэлт иргэдийн нийлбэрийг алгасна');
 }
 
 // 16a-2) SCAN — НӨАТ-ын нийлбэр/тулгалт БҮГД буцаасныг шүүсэн эх сурвалжаас уншина.

@@ -6386,6 +6386,16 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .vat-chip .vat-chip-warn { color: var(--warn); font-weight: 700; }
 .vat-ok-reg, .vat-ok-amt { color: var(--ok); }
 .vat-ok-name { color: var(--primary); }
+/* НӨАТ-ын сарын тайлан ↔ апп (импортын дараа). Иргэдийн нийлбэр нь тайлангаас
+   ирдэг тул тулгах санал БИШ, тайлбар гарна. */
+.vat-agg-note { color: var(--muted); font-size: var(--fs-sm); }
+.vat-rpt { margin: 0 18px 10px; border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-3); background: var(--panel); display: flex; flex-direction: column; gap: var(--space-1); }
+.vat-rpt-h { font-weight: 700; font-size: var(--fs-md); }
+.vat-rpt-row { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: var(--space-3); font-size: var(--fs-sm); color: var(--text-soft); }
+.vat-rpt-row b { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vat-rpt-ok { color: var(--ok); font-weight: 700; font-size: var(--fs-sm); }
+.vat-rpt-warn { color: var(--warn); font-weight: 700; font-size: var(--fs-sm); }
+.vat-rpt-why { color: var(--muted); font-size: var(--fs-xs); }
 .doc-bulk-drop { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: 18px 12px; border: 2px dashed var(--border); border-radius: var(--r-md); background: var(--panel-hover); text-align: center; transition: border-color .12s, background .12s; }
 .doc-bulk-drop.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--panel)); }
 .doc-bulk-drop .db-drop-t { font-size: var(--fs-md); color: var(--muted); }

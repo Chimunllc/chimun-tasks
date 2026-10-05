@@ -37766,6 +37766,7 @@ function vatDetectReturned(existing, imported) {
   (existing || []).forEach(r => {
     const m = String(r.dt || '').slice(0, 7);
     if (!m || !months.has(m)) return;
+    if (vatIsAggregate(r)) return;   // иргэдийн нийлбэр задаргаанд хэзээ ч гарахгүй — «буцаасан» БИШ
     if (seen.has(String(r.ddtd || ''))) { if (vatIsReturned(r)) back.push(r); }
     else if (!vatIsReturned(r)) gone.push(r);
   });
@@ -37810,6 +37811,85 @@ function parseVatMatrix(matrix) {
     out.push(rec);
   }
   return out;
+}
+
+// ── НӨАТ-ын САРЫН ТАЙЛАН → иргэдийн нэгтгэсэн мөр (2026-10-05) ──────────────
+// e-barimt-ийн «баримтын задаргаа» экспорт нь ЗӨВХӨН регистртэй (байгууллагын)
+// баримтыг гаргадаг — иргэнд гаргасан баримт тэнд ОГТ ордоггүй. Харин татварт
+// илгээдэг сарын тайланд тэд «1000000 · ЭЦСИЙН ХЭРЭГЛЭГЧ» гэсэн НЭГ нийлбэр мөр
+// болж ордог. Тэр мөрийг тайлангаас уншиж нэг «нэгтгэсэн» баримт болгоно →
+// НӨАТ-ын зардалд орно (тулгагдаагүй тул ХХК-д, бусад тулгагдаагүйтэй ижил).
+// ⛔ ЗӨВХӨН иргэдийн код — бусад нэгтгэсэн мөр (4000000 г.м.) нь задаргааны
+//   байгууллагын баримтуудтай ДАВХЦДАГ, оруулбал давхар тоологдоно.
+// ⛔ Захиалгатай ТУЛГАХГҮЙ — нэг захиалга биш, олон баримтын нийлбэр.
+// ⛔ Задаргаа оруулахад «алга болсон» гэж тооцохгүй — тэнд хэзээ ч гарахгүй.
+const VAT_CITIZEN_TTD = '1000000';
+function vatIsAggregate(r) { return String((r && r.id) || '').startsWith('agg-'); }
+// Тайлангийн 2D массиваас: өөрийн ТТД, сар, борлуулалт/худалдан авалтын нийлбэр,
+// иргэдийн нэгтгэсэн баримт. Танихгүй файл → null. Цэвэр функц (тестлэгдэнэ).
+function parseVatReportMatrix(matrix) {
+  if (!Array.isArray(matrix) || !matrix.length) return null;
+  let hr = -1, C = {};
+  for (let i = 0; i < Math.min(matrix.length, 10); i++) {
+    const cells = (matrix[i] || []).map(c => String(c == null ? '' : c).trim().toLowerCase());
+    const find = (re) => cells.findIndex(c => re.test(c));
+    if (find(/падаан/) >= 0 && find(/худалдан авагчийн ттд/) >= 0) {
+      C = { dt: find(/огноо/), no: find(/падаан/), seller: find(/борлуулагчийн ттд/), buyer: find(/худалдан авагчийн ттд/),
+        net: find(/татвар ногдуулах/), vat: find(/нэмэгдсэн өртгийн/), total: find(/^нийт дүн/) };
+      hr = i; break;
+    }
+  }
+  if (hr < 0 || C.seller < 0 || C.buyer < 0 || C.total < 0) return null;
+  const cell = (r, i) => String(i >= 0 && r[i] != null ? r[i] : '').trim();
+  const rows = matrix.slice(hr + 1).filter(r => r && (cell(r, C.seller) || cell(r, C.buyer)));
+  if (!rows.length) return null;
+  // Өөрийн ТТД = мөр БҮРД (борлуулагч эсвэл худалдан авагч) гардаг цорын ганц ТТД
+  let own = null;
+  rows.forEach(r => { const s = new Set([cell(r, C.seller), cell(r, C.buyer)]); own = own === null ? s : new Set([...own].filter(x => s.has(x))); });
+  own = own && own.size === 1 ? [...own][0] : '';
+  if (!own) return null;
+  const sum = (list, i) => list.reduce((s, r) => s + vatNum(cell(r, i)), 0);
+  const sales = rows.filter(r => cell(r, C.seller) === own), purch = rows.filter(r => cell(r, C.buyer) === own && cell(r, C.seller) !== own);
+  const months = {}; sales.forEach(r => { const m = vatDateIso(cell(r, C.dt)).slice(0, 7); if (m) months[m] = (months[m] || 0) + 1; });
+  const month = Object.keys(months).sort((a, b) => months[b] - months[a])[0] || '';
+  const cit = sales.filter(r => cell(r, C.buyer) === VAT_CITIZEN_TTD);
+  const citizen = cit.length && month ? (() => {
+    const total = sum(cit, C.total), vat = sum(cit, C.vat);
+    const dt = cit.map(r => vatDateIso(cell(r, C.dt))).filter(Boolean).sort().pop() || `${month}-01T00:00:00`;
+    return { id: `agg-${month}-${VAT_CITIZEN_TTD}`, pos: 'НӨАТ тайлан', ddtd: cit.map(r => cell(r, C.no)).filter(Boolean).join(','),
+      dt, total, vat, net: C.net >= 0 ? sum(cit, C.net) : total - vat, reg: VAT_CITIZEN_TTD, name: 'Иргэд (нэгтгэсэн)', office: '' };
+  })() : null;
+  return { own, month, citizen,
+    sales: { n: sales.length, total: sum(sales, C.total), vat: sum(sales, C.vat) },
+    purchases: { n: purch.length, total: sum(purch, C.total), vat: sum(purch, C.vat) } };
+}
+// Тайлан ↔ аппын баримт (тухайн сар, буцаагаагүй). Зөрүү = апп − тайлан.
+// Нэг төгрөгийн бутархайг тоймлоно — тайлан НӨАТ-ыг 2 оронтой бичдэг.
+function vatReportRecon(rep, receipts) {
+  if (!rep || !rep.month) return null;
+  const mine = vatActive(receipts).filter(r => String(r.dt || '').slice(0, 7) === rep.month);
+  const appTotal = mine.reduce((s, r) => s + (Number(r.total) || 0), 0), appVat = mine.reduce((s, r) => s + (Number(r.vat) || 0), 0);
+  return { month: rep.month, rptTotal: rep.sales.total, rptVat: rep.sales.vat, appTotal, appVat,
+    diffTotal: Math.round(appTotal - rep.sales.total), diffVat: Math.round(appVat - rep.sales.vat),
+    citizen: rep.citizen ? { total: rep.citizen.total, vat: rep.citizen.vat } : null, purchases: rep.purchases };
+}
+
+function vatReportReconHtml(x) {
+  if (!x) return '';
+  const M = (v) => fmtMoney(Math.round(Number(v) || 0));
+  const row = (l, t, v) => `<div class="vat-rpt-row"><span>${l}</span><b>${M(t)} · НӨАТ ${M(v)}</b></div>`;
+  const d = x.diffTotal, dv = x.diffVat;
+  const verdict = d === 0
+    ? `<div class="vat-rpt-ok">✓ Тайлан ба апп таарч байна</div>`
+    : `<div class="vat-rpt-warn">⚠ Аппад ${M(Math.abs(d))} ${d > 0 ? 'илүү' : 'дутуу'} (НӨАТ ${M(Math.abs(dv))})</div>
+       <div class="vat-rpt-why">${d > 0 ? 'e-barimt дээр буцаагдсан эсвэл дүн нь өөрчлөгдсөн баримт аппад хуучнаараа байж болно.' : 'Задаргааны файлд ороогүй баримт байна.'} Тэр сарын задаргааг дахин татаж оруулна уу.</div>`;
+  return `<div class="vat-rpt"><div class="vat-rpt-h">📄 ${escapeHtml(x.month)} сарын НӨАТ-ын тайлан</div>
+    ${x.citizen ? row('Иргэд (тайлангаас)', x.citizen.total, x.citizen.vat) : ''}
+    ${row('Тайлангийн борлуулалт', x.rptTotal, x.rptVat)}
+    ${row('Аппад', x.appTotal, x.appVat)}
+    ${verdict}
+    ${x.purchases && x.purchases.n ? `<div class="vat-rpt-why">Худалдан авалтын НӨАТ ${M(x.purchases.vat)} (${x.purchases.n} баримт) — аппын зардлаас хасагдаагүй.</div>` : ''}
+  </div>`;
 }
 
 async function loadVatReceipts() {
@@ -38212,7 +38292,7 @@ async function openVatAttachModal(order) {
   const listEl = pc.querySelector('#va-list'), sumEl = pc.querySelector('#va-sum');
   function scoreRec(r) { return vatAutoScore(r, order); }
   function renderList(q) {
-    const all = vatReceiptsActive();
+    const all = vatReceiptsActive().filter(r => !vatIsAggregate(r));   // иргэдийн нийлбэрийг нэг захиалгад холбохгүй
     const mineIds = all.filter(r => String(r.matched_id) === String(order.no)).map(r => r.id);
     const inv = all.filter(r => mineIds.includes(r.id)).reduce((s, r) => s + (Number(r.total) || 0), 0);
     const rem = Math.max(0, (Number(order.amount) || 0) - inv);
@@ -38263,6 +38343,7 @@ async function openVatReportModal() {
   let month = 'all';
   let vfilter = 'todo';   // 'todo'=тулгаагүй | 'done'=тулгагдсан | 'all' | 'ret'=буцаасан
   let pendingRet = null;  // ачаалсан файлаас алга болсон баримтууд — хүн баталгаажуулна
+  let pendingRpt = null;  // НӨАТ-ын сарын тайлан оруулсны дараах тулгалт (тайлан ↔ апп)
   let mfilter = 'any';    // санал төрөл: 'any'|'reg'|'amt'|'name'|'none'
   function receiptsForMonth() {
     const list = (state.vatReceipts || []).slice().sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
@@ -38278,15 +38359,17 @@ async function openVatReportModal() {
     const cands = vatCandidateOrders();
     const totSales = listAll.reduce((s, r) => s + (Number(r.total) || 0), 0);
     const totVat = listAll.reduce((s, r) => s + (Number(r.vat) || 0), 0);
-    const mDone = listAll.filter(r => r.matched_id), mTodo = listAll.filter(r => !r.matched_id);
+    // Иргэдийн нийлбэр (тайлангаас) нь захиалгатай тулгагддаггүй — ажлын жагсаалтад БҮҮ оруул
+    const aggList = listAll.filter(vatIsAggregate), aggVat = aggList.reduce((s, r) => s + (Number(r.vat) || 0), 0);
+    const mDone = listAll.filter(r => r.matched_id), mTodo = listAll.filter(r => !r.matched_id && !vatIsAggregate(r));
     const mSales = mDone.reduce((s, r) => s + (Number(r.total) || 0), 0), uSales = totSales - mSales;
     const mVat = mDone.reduce((s, r) => s + (Number(r.vat) || 0), 0), uVat = totVat - mVat;
     const nDone = mDone.length, nTodo = mTodo.length;
     const matched = nDone;
     // Тулгагдсаныг тусад нь — тулгаагүй нь ажлын жагсаалтад үлдэнэ
-    const list = vfilter === 'ret' ? retList : vfilter === 'done' ? listAll.filter(r => r.matched_id) : vfilter === 'all' ? listAll : listAll.filter(r => !r.matched_id);
+    const list = vfilter === 'ret' ? retList : vfilter === 'agg' ? aggList : vfilter === 'done' ? listAll.filter(r => r.matched_id) : vfilter === 'all' ? listAll : mTodo;
     const tabBtn = (k, lbl, n) => `<button data-vfilter="${k}" style="border:none;background:${vfilter === k ? '#0B1F3A' : '#f0f0f0'};color:${vfilter === k ? '#fff' : '#555'};border-radius:100px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer;">${lbl} ${n}</button>`;
-    const filterTabs = `<div style="display:flex;gap:7px;padding:0 18px 10px;flex-wrap:wrap;">${tabBtn('todo', 'Тулгаагүй', nTodo)}${tabBtn('done', 'Тулгагдсан', nDone)}${tabBtn('all', 'Бүгд', listAll.length)}${retList.length ? tabBtn('ret', '↩ Буцаасан', retList.length) : ''}</div>`;
+    const filterTabs = `<div style="display:flex;gap:7px;padding:0 18px 10px;flex-wrap:wrap;">${tabBtn('todo', 'Тулгаагүй', nTodo)}${tabBtn('done', 'Тулгагдсан', nDone)}${tabBtn('all', 'Бүгд', listAll.length)}${aggList.length ? tabBtn('agg', '👥 Иргэд', aggList.length) : ''}${retList.length ? tabBtn('ret', '↩ Буцаасан', retList.length) : ''}</div>`;
     // Санал төрлөөр шүүх (РД/дүн/нэр таарсан захиалга байгаа эсэх)
     const near2 = (a, b) => b > 0 && Math.round(a) === Math.round(b);
     const flagsFor = (r) => { let reg = false, amt = false, name = false; for (const c of cands) { if (!reg && r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg) reg = true; if (!amt && (near2(r.total, c.amount) || near2(r.net, c.amount) || near2(r.total, c.remain) || near2(r.net, c.remain))) amt = true; if (!name && vatNameMatch(r.buyer_name, c.name)) name = true; if (reg && amt && name) break; } return { reg, amt, name }; };
@@ -38295,7 +38378,7 @@ async function openVatReportModal() {
     const shown = mfilter === 'reg' ? flagged.filter(x => x.f.reg) : mfilter === 'amt' ? flagged.filter(x => x.f.amt) : mfilter === 'name' ? flagged.filter(x => x.f.name) : mfilter === 'none' ? flagged.filter(x => !x.f.reg && !x.f.amt && !x.f.name) : flagged;
     const dlist = shown.map(x => x.r);
     const mBtn = (k, lbl, n) => `<button data-mfilter="${k}" style="border:1px solid ${mfilter === k ? '#0B1F3A' : 'var(--border,#e0e0e0)'};background:${mfilter === k ? '#0B1F3A' : '#fff'};color:${mfilter === k ? '#fff' : '#555'};border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;">${lbl}${n != null ? ' ' + n : ''}</button>`;
-    const matchFilters = (vfilter === 'done' || vfilter === 'ret') ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 18px 10px;"><span style="font-size:11px;color:#888;">Санал:</span>${mBtn('any', 'Бүгд')}${mBtn('reg', '✓РД', cReg)}${mBtn('amt', '✓дүн', cAmt)}${mBtn('name', '✓нэр', cName)}${mBtn('none', 'Санал алга', cNone)}</div>`;
+    const matchFilters = (vfilter === 'done' || vfilter === 'ret' || vfilter === 'agg') ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 18px 10px;"><span style="font-size:11px;color:#888;">Санал:</span>${mBtn('any', 'Бүгд')}${mBtn('reg', '✓РД', cReg)}${mBtn('amt', '✓дүн', cAmt)}${mBtn('name', '✓нэр', cName)}${mBtn('none', 'Санал алга', cNone)}</div>`;
     // Ачаалсан файлаас алга болсон баримт = eBarimt дээр буцаагдсан. АВТОМАТААР
     // тэмдэглэхгүй — хагас дутуу файл ачаалахад бүхэл сар «буцаасан» болохоос сэргийлж
     // хүн жагсаалтыг нь хараад баталгаажуулна (барааны тулгалттай ижил зарчим).
@@ -38313,6 +38396,8 @@ async function openVatReportModal() {
       let matchCell;
       if (vatIsReturned(r)) {
         matchCell = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span style="color:var(--muted);font-size:11.5px;">eBarimt-д байхгүй — НӨАТ-д тооцогдохгүй</span><button data-vunret="${escapeHtml(r.id)}" title="Буруу тэмдэглэсэн бол сэргээнэ" style="border:1px solid var(--border,#ddd);background:#fff;color:var(--muted,#888);cursor:pointer;font-size:11px;border-radius:6px;padding:2px 8px;">↺ сэргээх</button></div>`;
+      } else if (vatIsAggregate(r)) {
+        matchCell = `<span class="vat-agg-note">Иргэдэд гаргасан баримтуудын нийлбэр (НӨАТ-ын тайлангаас). Захиалгатай тулгахгүй.</span>`;
       } else if (r.matched_id) {
         matchCell = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span style="display:inline-flex;align-items:center;gap:4px;color:#1e7a55;font-weight:700;font-size:12px;background:#e8f2ec;border-radius:6px;padding:2px 8px;">🔒 ${escapeHtml(r.matched_label || r.matched_id)}</span><button data-vunmatch="${escapeHtml(r.id)}" title="Түгжээ гаргаж тулгалтыг болиулах" style="border:1px solid var(--border,#ddd);background:#fff;color:var(--muted,#888);cursor:pointer;font-size:11px;border-radius:6px;padding:2px 8px;">🔓 гаргах</button></div>`;
       } else {
@@ -38362,7 +38447,7 @@ async function openVatReportModal() {
         <button id="vat-close" style="border:none;background:none;font-size:22px;color:var(--muted);cursor:pointer;">×</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border,#eee);">
-        <button id="vat-upload-btn" class="btn btn-primary" style="padding:7px 14px;font-size:12.5px;">📥 ebarimt файл оруулах</button>
+        <button id="vat-upload-btn" class="btn btn-primary" style="padding:7px 14px;font-size:12.5px;" title="Баримтын задаргаа, эсвэл татварт илгээсэн сарын НӨАТ-ын тайлан (иргэдийн нийлбэр тэндээс орно)">📥 ebarimt файл оруулах</button>
         <input type="file" id="vat-file" accept=".xlsx,.xls,.csv" multiple style="display:none;">
         <button id="vat-auto" class="btn" style="padding:7px 12px;font-size:12.5px;" title="Зөвхөн РД (регистр) яг таарсан баримтыг автоматаар тулгана. Нэр/дүнгээр таарсан ч РД баталгаагүй бол гараар шалгана.">⚡ Авто-тулгах (РД-гээр)</button>
         <select id="vat-month" class="btn" style="padding:7px 12px;font-size:12.5px;">${monthOpts}</select>
@@ -38373,8 +38458,9 @@ async function openVatReportModal() {
         <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Баримт</div><div style="font-size:17px;font-weight:800;">${listAll.length}</div><div style="font-size:10.5px;margin-top:2px;"><span style="color:#1e7a55;">✓${nDone} тулгасан</span> · <span style="color:#9a6a00;">${nTodo} үлдсэн</span></div></div>
         <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Нийт борлуулалт</div><div style="font-size:17px;font-weight:800;">${fmtMoney(totSales)}</div><div style="font-size:10.5px;margin-top:2px;"><span style="color:#1e7a55;">✓${fmtMoney(mSales)}</span> · <span style="color:#9a6a00;">${fmtMoney(uSales)}</span></div></div>
         <div style="background:#e8f2ec;border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:#1e7a55;">Төлөх НӨАТ</div><div style="font-size:17px;font-weight:800;color:#1e7a55;">${fmtMoney(totVat)}</div><div style="font-size:10.5px;margin-top:2px;"><span style="color:#1e7a55;">✓${fmtMoney(mVat)}</span> · <span style="color:#9a6a00;">${fmtMoney(uVat)}</span></div></div>
-        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Тулгасан НӨАТ</div><div style="font-size:17px;font-weight:800;">${totVat > 0 ? Math.round(mVat / totVat * 100) : 0}%</div><div style="font-size:10.5px;margin-top:2px;color:var(--muted);">${fmtMoney(mVat)} / ${fmtMoney(totVat)}</div></div>
+        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Тулгасан НӨАТ</div><div style="font-size:17px;font-weight:800;">${totVat - aggVat > 0 ? Math.round(mVat / (totVat - aggVat) * 100) : 0}%</div><div style="font-size:10.5px;margin-top:2px;color:var(--muted);">${fmtMoney(mVat)} / ${fmtMoney(totVat - aggVat)}</div></div>
       </div>
+      ${(pendingRpt || []).map(vatReportReconHtml).join('')}
       ${retBanner}
       ${filterTabs}
       ${matchFilters}
@@ -38395,25 +38481,36 @@ async function openVatReportModal() {
       const files = [...(e.target.files || [])]; if (!files.length) return;
       const st = card.querySelector('#vat-status'); st.textContent = 'Уншиж байна…';
       try {
-        let all = [];
-        for (const f of files) { const mx = await statementFileToMatrix(f); all = all.concat(parseVatMatrix(mx)); }
+        let all = []; const reps = [];
+        for (const f of files) {
+          const mx = await statementFileToMatrix(f);
+          const rows = parseVatMatrix(mx);
+          if (rows.length) { all = all.concat(rows); continue; }
+          // Задаргаа биш бол — татварт илгээдэг сарын НӨАТ-ын тайлан уу?
+          const rep = parseVatReportMatrix(mx); if (rep) reps.push(rep);
+        }
         // давхардсан id-г нэгтгэ
         const uniq = {}; all.forEach(r => uniq[r.id] = r); all = Object.values(uniq);
-        if (!all.length) { st.textContent = '⚠ Баримт олдсонгүй (багана таарсангүй)'; return; }
+        if (!all.length && !reps.length) { st.textContent = '⚠ Баримт олдсонгүй (багана таарсангүй)'; return; }
         const before = (state.vatReceipts || []).slice();
         const det = vatDetectReturned(before, all);
-        await vatUpsert(all);
+        if (all.length) await vatUpsert(all);
+        // Иргэдийн нийлбэр зөвхөн тайлангаас (задаргаанд ордоггүй) — дахин оруулахад ижил id-г шинэчилнэ
+        const cit = reps.map(r => r.citizen).filter(Boolean);
+        if (cit.length) await vatUpsert(cit);
         // Файлд дахин гарч ирсэн = буцаалт нь цуцлагдсан → шууд сэргээнэ (эргэлзээгүй).
         for (const r of det.back) { try { await vatSetReturned(r.id, false); } catch (e) {} }
         await loadVatReceipts();
         pendingRet = det.gone.length ? det : null;
-        st.textContent = `✓ ${all.length} баримт орлоо` + (det.back.length ? ` · ${det.back.length} сэргээв` : '') + (det.gone.length ? ` · ⚠ ${det.gone.length} алга болсон` : '');
+        pendingRpt = reps.length ? reps.map(r => vatReportRecon(r, vatReceiptsActive())).filter(Boolean) : null;
+        if (pendingRpt && pendingRpt.length) month = pendingRpt[0].month;
+        st.textContent = (all.length ? `✓ ${all.length} баримт орлоо` : '') + (cit.length ? `${all.length ? ' · ' : '✓ '}иргэдийн нийлбэр ${cit.length} сар` : '') + (reps.length && !cit.length ? `${all.length ? ' · ' : ''}тайлан уншигдлаа (иргэдийн мөр алга)` : '') + (det.back.length ? ` · ${det.back.length} сэргээв` : '') + (det.gone.length ? ` · ⚠ ${det.gone.length} алга болсон` : '');
         render();
       } catch (err) { st.textContent = '✗ ' + err.message; showToast('НӨАТ оруулах алдаа: ' + err.message, 'error', 5000); }
     };
     card.querySelector('#vat-auto').onclick = async () => {
       const st = card.querySelector('#vat-status'); st.textContent = 'Тулгаж байна…';
-      const cs = vatCandidateOrders(); const todo = vatReceiptsActive().filter(r => !r.matched_id);
+      const cs = vatCandidateOrders(); const todo = vatReceiptsActive().filter(r => !r.matched_id && !vatIsAggregate(r));
       let n = 0, skip = 0;
       for (const r of todo) {
         const rReg = vatRegNorm(r.reg || r.buyer_reg);

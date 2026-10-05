@@ -6370,6 +6370,42 @@ need(['orderCustType']);
   // ⛔ Хэмжих юмгүй бол хувь null — 0% нь «бүгд хоцорсон» гэж уншигдана.
   eq(F.dispatchStats([], '2026-09-01').pct, null, 'нэгтгэл: дата байхгүй бол null');
 
+  // ── САРААР (2026-10-05, CEO: «тухайн сараа харуулдаг, саруудыг сонгодог») ──
+  const two = [
+    mk(21, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T07:29:00Z'),   // 9 сар, хоцорсон
+    mk(22, '2026-10-02', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-10-02T02:00:00Z'),   // 10 сар, цагтаа
+  ];
+  eq(F.dispatchStats(two, null, '2026-09').n, 1, 'сараар: 9 сар зөвхөн 9 сарынхыг');
+  eq(F.dispatchStats(two, null, '2026-10').pct, 100, 'сараар: 10 сар тусдаа');
+  eq(F.dispatchStats(two, null, '2026-08').pct, null, 'сараар: датагүй сар → null (0% БИШ)');
+  {
+    const runIn = (c) => vm.runInContext(c, sandbox);
+    const sv = runIn('[state.dspMonth, state.isCEO]');
+    runIn("state.isCEO = true; state.dspMonth = '2026-09';");
+    const h9 = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
+    ok(/data-dsp-ym="2026-09"/.test(h9), 'карт: сонгосон сарыг харуулна');
+    ok(/data-dsp-m="-1"/.test(h9) && /data-dsp-m="1"/.test(h9), 'карт: сар сонгогч бий');
+    ok(/>0%</.test(h9) && /1\/1 хоцорсон/.test(h9), 'карт: 9 сарын тоо (1/1 хоцорсон)');
+    ok(!/хоног/.test(h9), 'карт: «60 хоног» гулсдаг цонх БАЙХГҮЙ');
+    // ⛔ Хоосон сард карт ҮЛДЭНЭ — эс бөгөөс сар сонгогч ч алга болж буцах зам тасарна
+    runIn("state.dspMonth = '2026-08';");
+    const h8 = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
+    ok(/хэмжигдсэн хүргэлт алга/.test(h8) && /data-dsp-m="1"/.test(h8), 'карт: хоосон сард сонгогчтойгоо үлдэнэ');
+    // Ирээдүйн сар руу явахгүй; анхдагч = энэ сар
+    runIn("state.dspMonth = '2999-01';");
+    const hf = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
+    ok(new RegExp('data-dsp-ym="' + runIn('todayStr().slice(0, 7)') + '"').test(hf), 'карт: ирээдүйн сар → энэ сар');
+    ok(/data-dsp-m="1" aria-label="Дараах сар" disabled/.test(hf), 'карт: энэ сард «›» идэвхгүй');
+    runIn(`[state.dspMonth, state.isCEO] = ${JSON.stringify(sv)};`);
+  }
+  // ИНВАРИАНТ: Тойм ба Дүн шинжилгээ ИЖИЛ дуудлагаар (тоо зөрөхгүй)
+  {
+    const _sx = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(/dispatchStats\(orders, null, ym\)/.test(_sx), 'scan: Тойм сараар бодно');
+    ok(/dispatchStats\(state\.appOrders \|\| \[\], null, month\)/.test(_sx), 'scan: Дүн шинжилгээ ижил дуудлагаар');
+    ok(!/DISPATCH_STAT_DAYS/.test(_sx), 'scan: гулсдаг 60 хоногийн цонх буцаж ирэхгүй');
+  }
+
   // ── Өдрөөр задаргаа (Дүн шинжилгээ, 2026-09-22) ──
   const dayRows = F.dispatchDayRows([
     mk(11, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T07:29:00Z'),   // хоцорсон
@@ -6390,7 +6426,7 @@ need(['orderCustType']);
   // ⛔ ЖАГСААЛТ ЗӨВХӨН ТАЙЛАНД — Тойм дээр давтвал аль нь бүтэн болох нь мэдэгдэхгүй.
   ok(/dispatchDayRows\(inMonth, month\)/.test(_s2), 'scan: өдрийн задаргаа тайланд');
   ok(!/st\.worst\.map/.test(_s2), 'scan: хамгийн муугийн жагсаалт Тоймд БАЙХГҮЙ');
-  ok(/id="dsp-more"/.test(_s2), 'scan: Тоймоос тайлан руу зам бий');
+  ok(/id="dsp-card"/.test(_s2), 'scan: Тоймоос тайлан руу зам бий (картыг бүхэлд нь дарна)');
   // ⛔ Ажил нь КАРТ дээр, хэмжүүр нь Тойм дээр — хоёр газар ижил зүйл ДАВТАХГҮЙ.
   ok(/\$\{dispatchChipHtml\(o\)\}/.test(_s2), 'scan: шошго захиалгын картад');
   ok(/\$\{dispatchBlockHtml\(state\.appOrders \|\| \[\]\)\}/.test(_s2), 'scan: хэмжүүр Тоймд');

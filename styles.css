@@ -7403,11 +7403,23 @@ select.no-asar-len {
 .rv-nm { font-weight:700; white-space:nowrap; }
 .rv-tx { color:var(--text-soft); min-width:0; }
 .rv-at { color:var(--muted); font-size:var(--fs-xs); white-space:nowrap; }
-.dsp-pct { font-size:var(--fs-2xl); font-weight:800; margin-top:var(--space-2);
-  display:flex; align-items:baseline; gap:var(--space-3); flex-wrap:wrap; }
-.dsp-pct.ok { color:var(--ok); } .dsp-pct.warn { color:var(--warn); } .dsp-pct.bad { color:var(--danger); }
-.dsp-sub { font-size:var(--fs-sm); font-weight:600; color:var(--muted); }
-.rv-note { margin-top:var(--space-2); font-size:var(--fs-xs); color:var(--muted); }
+/* «Цагтаа гарсан» — сараар, нэг мөр (2026-10-05). Картыг бүхэлд нь дарахад задаргаа. */
+.dsp-card { cursor:pointer; }
+.dsp-top { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
+.dsp-ttl { font-weight:800; font-size:var(--fs-md); }
+.dsp-mnav { display:inline-flex; align-items:center; gap:var(--space-1); }
+.dsp-mbtn { border:0; background:transparent; color:var(--text-soft);
+  border-radius:var(--r-md); padding:0 var(--space-2); font-size:var(--fs-lg); line-height:1.6; cursor:pointer; }
+.dsp-mbtn:not(:disabled):hover { background:var(--panel-hover); }
+.dsp-mbtn:disabled { opacity:.35; cursor:default; }
+.dsp-mlbl { min-width:4.5em; text-align:center; font-size:var(--fs-sm); font-weight:700; color:var(--text-soft); }
+.dsp-row { display:flex; align-items:baseline; gap:var(--space-3); margin-top:var(--space-2); }
+.dsp-big { font-size:var(--fs-2xl); font-weight:800; line-height:1; }
+.dsp-big.ok { color:var(--ok); } .dsp-big.warn { color:var(--warn); } .dsp-big.bad { color:var(--danger); }
+.dsp-meta { flex:1; min-width:0; font-size:var(--fs-sm); color:var(--muted); }
+.dsp-unm { white-space:nowrap; }
+.dsp-go { font-size:var(--fs-lg); color:var(--muted); }
+.dsp-empty { margin-top:var(--space-2); font-size:var(--fs-sm); color:var(--muted); }
 .dep-badge.dsp-late { color:var(--danger); }
 .dep-badge.dsp-ok { color:var(--ok); }
 .dep-badge.dsp-need { color:var(--muted); }

@@ -26003,7 +26003,11 @@ const PIPELINE = [
   { key: 'setup',    from: ['installing'], to: 'rented',     label: '🔧 Суурилуулсан',       cap: 'orders.setup',    pts: 20,   ev: 'photo' },
   { key: 'teardown', from: ['rented', 'started'], to: 'teardown',  label: '🧱 Задалсан',    cap: 'orders.setup',    pts: 15, ev: 'photo', setup: true },
   { key: 'retstart', from: ['rented', 'started'], to: 'returning', label: '🚚 Талбайгаас ачсан', cap: 'orders.deliver',  pts: 15, ev: 'photo', dlv: true },
-  { key: 'received', from: ['rented', 'started'], to: 'returned',  label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 10, ev: 'count', dlv: false },
+  /* ⛔ ОЧИЖ АВАХ захиалгад ч НЯРАВ ХАМГИЙН СҮҮЛД тоолно (2026-10-05, CEO:
+     «нярав ахлах хамгийн сүүлд хүлээн авна»). Өмнө нь очиж авахад эхэлж
+     тоолж, байршуулалт сүүлд хяналтгүй үлддэг байв. Одоо хоёр урсгал ижил:
+     буулгаж байршуулна → нярав тоолж хүлээн авна. */
+  { key: 'stow',     from: ['rented', 'started'], to: 'stowed',    label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare', pts: 15, ev: 'photo', dlv: false },
   { key: 'retstart', from: ['teardown'],   to: 'returning',  label: '🚚 Талбайгаас ачсан',        cap: 'orders.deliver',  pts: 15, ev: 'photo' },
   /* ⛔ ХҮРГЭЛТЭД: ЭХЛЭЭД БАЙРШУУЛНА, ДАРАА НЬ ТООЛНО (2026-10-04, CEO барив).
      Өмнө нь нярав эхэлж тоолдог байсан тул «Буулгаж байршуулах» нь сүүлчийн
@@ -26013,32 +26017,38 @@ const PIPELINE = [
      ⚠ Замд алдагдсан нь алдагдахгүй — ЖОЛООЧ талбай дээр тоолсон тоо
        («Талбайгаас ачсан») аль хэдийн бүртгэгддэг, няравынх түүнтэй тулгагдана. */
   { key: 'stow',     from: ['returning'],  to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare',  pts: 15, ev: 'photo' },
-  { key: 'received', from: ['stowed'],     to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 10, ev: 'count', dlv: true },
+  /* ⚠ `rcvd: false` — хуучин урсгалаар (2026-10-05-аас өмнө) очиж авсан захиалга
+     ЭХЛЭЭД тоологдож дараа нь байршуулагдсан тул «stowed» дээр аль хэдийн
+     хүлээн авагдсан байна. Тэдгээрийг ДАХИН тоолуулахгүй — шууд архив руу. */
+  { key: 'received', from: ['stowed'],     to: 'returned',   label: '📋 Бүртгэж хүлээн авсан', cap: 'orders.dispatch', pts: 10, ev: 'count', rcvd: false },
   /* ⛔ БИЕИЙН ХҮЧНИЙ АЖИЛ → `orders.prepare` (агуулахын БҮХ ажилтанд бий),
      `orders.dispatch` БИШ (тэр нь зөвхөн 4 нярав/ахлахад — яг хүнд ажил хийх
      ёсгүй хүмүүс). Буруу эрхэнд тавибал товчийг дарах хүн байхгүй болж
      захиалга «Хүлээн авсан» дээр гацна (2026-10-04, CEO барив). */
-  /* ⚠ ОЧИЖ АВАХ захиалгад дараалал ЭСРЭГ: харилцагч бараагаа авчирсан мөчид
-     нь тоолох ёстой (явсных нь дараа дутуу илэрвэл барих хүн алга). Тиймээс
-     тэнд тоолох нь ЭХЭЛЖ, байршуулах нь ДАРАА. `dlv` нөхцөл хоёуланг ялгана. */
-  { key: 'stow',     from: ['returned'],   to: 'stowed',     label: '🏬 Буулгаж байршуулсан', cap: 'orders.prepare', pts: 15, ev: 'photo', dlv: false },
   { key: 'archive',  from: ['stowed', 'returned', 'stopped'], to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance', pts: 0 },
 ];
 // Захиалгын нөхцөл — урсгалын салаалалт үүгээр шийдэгдэнэ (ЦЭВЭР тулгалтад тестлэгдэнэ).
 function orderPipelineCtx(o) {
   const dlv = (typeof isDeliveryOrder === 'function') ? isDeliveryOrder(o) : false;
-  return { dlv, setup: !!(dlv && typeof orderNeedsSetup === 'function' && orderNeedsSetup(o)) };
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  return { dlv, setup: !!(dlv && typeof orderNeedsSetup === 'function' && orderNeedsSetup(o)), rcvd: !!sm.received };
 }
-// ЦЭВЭР функц — төлөв + нөхцөлөөс дараагийн дамжлага. Тестэд шууд дуудагдана.
-function pipelineNext(status, ctx) {
+// Төлөв + нөхцөлд тохирох PIPELINE мөр — ЭХНИЙ таарсан нь ялна. ГАНЦ газар (pipelineNext ба схем хоёулаа).
+function pipelineRow(status, ctx) {
   const st = String(status || ''), c = ctx || {};
   for (const r of PIPELINE) {
     if (r.from.indexOf(st) < 0) continue;
     if (r.dlv !== undefined && r.dlv !== !!c.dlv) continue;
     if (r.setup !== undefined && r.setup !== !!c.setup) continue;
-    return { key: r.key, to: r.to, label: stageLabel(r), cap: r.cap };
+    if (r.rcvd !== undefined && r.rcvd !== !!c.rcvd) continue;
+    return r;
   }
   return null;
+}
+// ЦЭВЭР функц — төлөв + нөхцөлөөс дараагийн дамжлага. Тестэд шууд дуудагдана.
+function pipelineNext(status, ctx) {
+  const r = pipelineRow(status, ctx);
+  return r ? { key: r.key, to: r.to, label: stageLabel(r), cap: r.cap } : null;
 }
 function orderNextStep(o) { return pipelineNext((o && o.status) || '', orderPipelineCtx(o)); }
 // Хуучин статик map (легаси/bq картын fallback) — orderNextStep-ийн хүргэлт хувилбар
@@ -26072,9 +26082,7 @@ function pipelineSteps(ctx) {
   const out = []; let st = 'reserved';
   for (let i = 0; i < 24; i++) {
     const nx = pipelineNext(st, ctx); if (!nx) break;
-    const row = PIPELINE.find(r => r.from.indexOf(st) >= 0
-      && (r.dlv === undefined || r.dlv === !!(ctx || {}).dlv)
-      && (r.setup === undefined || r.setup === !!(ctx || {}).setup));
+    const row = pipelineRow(st, ctx);
     if (row && row.key !== 'archive') out.push(row);
     st = nx.to; if (st === 'archived') break;
   }
@@ -26307,6 +26315,10 @@ const STAGE_ACTION = {
   'started>returning':    { key: 'retstart', label: 'Талбайгаас ачсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
   'started>returned':     { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
   'returning>stowed':     { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, байрандаа тавигдсан уу?' },
+  // Очиж авах (2026-10-05): харилцагч авчирсан барааг эхлээд байршуулна, нярав СҮҮЛД тоолно.
+  // ⛔ Зураглалгүй бол шат `stowed` түлхүүрээр хадгалагдаж бонус, түүх, гацсан жагсаалтаас алга болно.
+  'rented>stowed':        { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, байрандаа тавигдсан уу?' },
+  'started>stowed':       { key: 'stow',     label: 'Буулгаж байршуулсан',   q: 'Бараа бүрэн, байрандаа тавигдсан уу?' },
   'stowed>returned':      { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Тавиур дээрх бараа бүрэн, зөв тоологдсон уу?' },
   // Хуучин бичлэг: шууд тоолоод дууссан захиалгууд (шинэ урсгалд үүсэхгүй)
   'returning>returned':   { key: 'received', label: 'Бүртгэж хүлээн авсан',       q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
@@ -26634,7 +26646,7 @@ const STUCK_DUE = { clean: 0, prepare: 0, dispatch: 0, deliver: 0, setup: 0, tea
    2026-10-03-нд нэмэгдсэн тул түүнээс өмнө буцаж ирсэн захиалга тэр алхамгүйгээр
    дууссан — амьд датаар 8-ийн 5 нь ийм худал дохио байв. Шинэ дамжлага нэмбэл
    энд огноог нь бич. */
-const STUCK_SINCE = { stow: '2026-10-03' };
+const STUCK_SINCE = { stow: '2026-10-03' };   // received-ийн байрлал 10-05-нд өөрчлөгдсөн ч rcvd нөхцөл хуучныг хамгаална
 function stuckOrders(orders, today) {
   const t = String(today || '').slice(0, 10);
   const out = [];

@@ -16409,6 +16409,46 @@ async function swFetchTests() {
   ok(/deleted && typeof finAccrualMonth/.test(sf), 'scan: устгахад ноогдох сар шалгагдана');
 }
 
+
+// ═══ ТОЙМ: ШИЛДЭГ ГҮЙЦЭТГЭГЧ = ДАМЖЛАГЫН ОНОО, САРААР (2026-10-05, CEO) ═══
+// Даалгаврын тоогоор эрэмбэлдэг байсан тул карт ихэнхдээ хоосон байв.
+{
+  const top = vm.runInContext('stageTopPerformers', sandbox);
+  const sp = vm.runInContext('stagePayByPerson', sandbox);
+  const ords = [
+    { items: [{ qty: 30 }], stage_meta: {
+      prepare: { by: 'A', at: '2026-09-10T03:00:00Z', helpers: ['B'] },
+      stow:    { by: 'B', at: '2026-09-12T03:00:00Z' } } },
+    { items: [{ qty: 3 }], stage_meta: {
+      clean:   { by: 'C', at: '2026-09-11T03:00:00Z' },
+      prepare: { by: 'C', at: '2026-10-02T03:00:00Z' } } },
+  ];
+  const sep = top(ords, '2026-09', 5);
+  const all = sp(ords, '2026-09');
+  ok(sep.length > 0, 'шилдэг: 9 сарын оноотой хүмүүс гарна');
+  ok(sep.every((r, i) => i === 0 || sep[i - 1].pts >= r.pts), 'шилдэг: оноогоор буурахаар эрэмбэлэгдэнэ');
+  ok(sep.every(r => r.pts === all[r.key].pts), 'ИНВАРИАНТ: шилдгийн оноо = бонусын оноо');
+  ok(!top(ords, '2026-10', 5).some(r => r.key === 'A'), 'шилдэг: өөр сарын дамжлага орохгүй');
+  eq(top(ords, '2026-09', 1).length, 1, 'шилдэг: тоо хязгаарлагдана');
+  eq(top([], '2026-09', 5).length, 0, 'шилдэг: дамжлагагүй сард хоосон');
+  // ⛔ Тоймыг ҮНЭХЭЭР зурж шалгана — хассан хувьсагч өөр газар үлдвэл дэлгэц бүхэлдээ унана
+  vm.runInContext('state.appOrders = ' + JSON.stringify(ords) + '; state.dashTopYm = "2026-09";', sandbox);
+  let html = '', err = '';
+  try { html = vm.runInContext('renderDashboard()', sandbox); } catch (e) { err = String(e && e.message || e); }
+  eq(err, '', 'Тойм: зурахад алдаа гарахгүй');
+  ok(/dash-top-ym/.test(html) && /dash-top-n/.test(html), 'Тойм: шилдэг гүйцэтгэгчийн карт оноотой зурагдана');
+  vm.runInContext('state.appOrders = undefined; state.dashTopYm = undefined;', sandbox);
+}
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const dash = src.slice(src.indexOf('function renderDashboard()'), src.indexOf('function renderDashboard()') + 40000);
+  ok(/stageTopPerformers\(state\.appOrders/.test(dash), 'scan: Тойм шилдгийг дамжлагын оноогоор');
+  eq((dash.match(/completionCount/g) || []).length, 0, 'scan: даалгаврын тоогоор эрэмбэлэхгүй');
+  ok(/id="dash-top-ym"/.test(dash) && /state\.dashTopYm/.test(dash), 'scan: сар сонгодог');
+  const f = src.slice(src.indexOf('function stageTopPerformers'), src.indexOf('function stageTopPerformers') + 600);
+  ok(/stagePayByPerson\(/.test(f), 'scan: шилдгийн оноо бонусын бодолтоос');
+}
+
 // ═══ ЦАЛИН АЛЬ САРЫНХ — ГҮЙЦЭТГЭЛЭЭР (2026-10-03, CEO) ═════════════════
 // ⛔ Банкны огноогоор бодвол 9-06-нд төлсөн «8 сар 2р хагас» 9 сарын олголт
 //   болж, 8 сар дутуу · 9 сар илүү харагдана.

@@ -36729,10 +36729,6 @@ function vatByBranchMonth(receipts, month) {
   });
   return out;
 }
-function vatExpenseFor(month, wantBr) {
-  const b = vatByBranchMonth(vatReceiptsActive(), month);
-  return wantBr ? (b[wantBr] || 0) : b.total;
-}
 // Тайлангийн дэлгэц НӨАТ-ыг хасдаг тул баримтууд ачаалагдсан байх ЁСТОЙ.
 // Ачаалагдаагүй бол НӨАТ чимээгүй 0 болж ашиг хиймлээр өндөр харагдана.
 function ensureVatLoaded() {
@@ -36836,6 +36832,58 @@ function countShrinkCost(month, rows) {
   return { qty, cost: Math.round(cost), lines, pendingQty, pendingCost: Math.round(pendingCost),
            dmgQty, dmgCost: Math.round(dmgCost), total: Math.round(cost + dmgCost) };
 }
+/* ═══ ЗАРДЛЫН ШАТ — ГАНЦ эх сурвалж (2026-10-05, CEO: «зарлагууд зөрөөд байна») ═══
+   Гурван дэлгэц гурван өөр тоо харуулдаг байв (Гүйлгээ «Бүгд» 40.8 · толгой 38.1 ·
+   Дүн шинжилгээ 43.8 сая) — бүгд зөв, гэхдээ өөр зүйл тоолж, юуг хассан/нэмснээ
+   хэлдэггүй байв. Одоо НЭГ шат:
+     гарсан мөнгө − (барьцаа · захиалгын буцаалт · эзний зээл · хүлээгдэж буй)
+       = ГҮЙЛГЭЭНИЙ ЗАРДАЛ (`txn`)                 ← Гүйлгээ дэлгэц
+     − НӨАТ төлөлт + ноогдуулсан НӨАТ + элэгдэл + нөөцийн алдагдал
+       = АШГИЙН ЗАРДАЛ (`pnl`)                      ← Дүн шинжилгээ = COO = сар хаах
+   ⛔ Дэлгэц бүр ЭНДЭЭС уншина — дахин бодохгүй. ИНВАРИАНТ тест: pnl = finBranchPnl.
+   ⛔ Хасагдсан/нэмэгдсэн зүйл БҮР дэлгэцэд нэрээр нь гарна — нуувал хүн дахин
+     «яагаад зөрөөд байна» гэж асууна. */
+function expenseLadderOf(list) {
+  const z = () => ({ amt: 0, n: 0 });
+  const L = { gross: z(), pending: z(), loan: z(), deposit: z(), refund: z(), txn: z(), vatPaid: z() };
+  const add = (k, t) => { L[k].amt += Number(t.amount) || 0; L[k].n++; };
+  (list || []).forEach(t => {
+    if (!t) return;
+    add('gross', t);
+    if (t.decision !== 'approved' || finPendingStmt(t)) { add('pending', t); return; }
+    if (finIsNonExpense(t.category)) { add('loan', t); return; }
+    if (finIsDepositReturn(t)) { add('deposit', t); return; }
+    if (finIsCustomerRefund(t)) { add('refund', t); return; }
+    add('txn', t);
+    if (finIsVatPayment(t)) add('vatPaid', t);
+  });
+  return L;
+}
+// Санхүүгийн ленз ('Чимун ХХК') → P&L хайрцгийн түлхүүр ('ХХК').
+function finPnlKey(b) { return !b ? null : (b === 'Чимун ХХК' ? 'ХХК' : b); }
+// Гүйлгээнээс ГАДНА бодогддог зардал (элэгдэл, нөөцийн алдагдал) — салбараар.
+// ⚠ Нөөцийн алдагдал нь дамжлагаас (M-Event) тул зөвхөн ИВЕНТ / бүгд үед.
+// ⚠ Тооллогын алдагдал БҮХ сессээр (`scAllRows`) — нэг сессийнхээр бодвол бусад сар 0 болно.
+function pnlExtrasFor(month, bk) {
+  const dep = deprecForMonth(month);
+  const evOk = !bk || bk === 'ИВЕНТ';
+  return {
+    dep: dep.active ? (bk ? (dep[bk] || 0) : ['ИВЕНТ', 'КЕМП', 'КАТЕРИНГ', 'ХХК'].reduce((a, b) => a + (dep[b] || 0), 0)) : 0,
+    miss: evOk ? missingItemsCost(month).cost : 0,
+    shrink: evOk ? countShrinkCost(month, state.scAllRows || undefined).total : 0,
+  };
+}
+function expenseLadderFor(month, wantBr) {
+  const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
+    .filter(t => finExpMonth(t) === month && (!wantBr || finEffBranch(t) === wantBr));
+  const L = expenseLadderOf(rows);
+  const bk = finPnlKey(wantBr);
+  const vat = vatByBranchMonth(vatReceiptsActive(), month);
+  L.vatAcc = bk ? (vat[bk] || 0) : vat.total;
+  Object.assign(L, pnlExtrasFor(month, bk));
+  L.pnl = L.txn.amt - L.vatPaid.amt + L.vatAcc + L.dep + L.miss + L.shrink;
+  return L;
+}
 function finBranchPnl(month, basis) {
   const _mi = finMonthIncome(month, basis);
   const evInc = _mi.evInc, noInc = _mi.noInc;
@@ -36868,7 +36916,7 @@ function finBranchPnl(month, basis) {
   const miss = missingItemsCost(month);
   exp['ИВЕНТ'] += miss.cost;
   // Тооллогоор илэрсэн алдагдал — тавиур дээрээс чимээгүй алга болсон бараа.
-  const cnt = countShrinkCost(month);
+  const cnt = countShrinkCost(month, state.scAllRows || undefined);
   exp['ИВЕНТ'] += cnt.total;
   return {
     rows: [
@@ -37113,7 +37161,7 @@ function financeTrend(wantBr) {
   });
   // Ноогдуулсан НӨАТ = зардал (баримтын сараар, салбараар)
   vatReceiptsActive().forEach(r => {
-    if (wantBr && vatReceiptBranch(r) !== wantBr) return;
+    if (wantBr && vatReceiptBranch(r) !== finPnlKey(wantBr)) return;
     const mo = String(r.dt || '').slice(0, 7);
     if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(r.vat) || 0);
   });
@@ -37128,7 +37176,9 @@ function financeTrend(wantBr) {
   let y = y0, mm = m0, guard = 0;
   while ((y < y1 || (y === y1 && mm <= m1)) && guard++ < 240) {
     const mo = `${y}-${String(mm).padStart(2, '0')}`;
-    out.push({ month: mo, income: inc[mo] || 0, expense: exp[mo] || 0, net: (inc[mo] || 0) - (exp[mo] || 0) });
+    const ex = pnlExtrasFor(mo, finPnlKey(wantBr));   // элэгдэл + нөөцийн алдагдал — шаттай ИЖИЛ
+    const e = (exp[mo] || 0) + ex.dep + ex.miss + ex.shrink;
+    out.push({ month: mo, income: inc[mo] || 0, expense: e, net: (inc[mo] || 0) - e });
     mm++; if (mm > 12) { mm = 1; y++; }
   }
   return out;
@@ -37209,14 +37259,16 @@ function renderReports() {
   else if (wantBr === 'КАТЕРИНГ') { incomeLabel = `Орлого (Катеринг · ${bl})`; incomeSub = ktN + ' захиалга'; }
   else if (!wantBr) { mi = meventIncome(month); incomeLabel = `Орлого (нийт · ${bl})`; incomeSub = ktInc ? 'M-Event + NOMAAD + Катеринг' : 'M-Event + NOMAAD'; }
   else { incomeLabel = 'Орлого'; incomeSub = 'энэ салбарт захиалгын орлого бүртгэгддэггүй'; }
-  let expense = 0, expN = 0;
-  (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    // P1: basis-аар — "Мөнгөн гүйлгээ"=гарсан огноо (Санхүүтэй таарна), "Гүйцэтгэл"=ноогдох сар.
-    // P2: finIsRealExpense — эзний зээл(6900)+PENDST хасна (Санхүүтэй ижил дүрэм).
-    if (finExpMonth(t, basis) === month && finIsRealExpense(t) && !finIsVatPayment(t) && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
-  });
-  const vatExp = vatExpenseFor(month, wantBr);   // ноогдуулсан НӨАТ = зардал (салбараар)
-  expense += vatExp;
+  // ⛔ Зардал = ЗАРДЛЫН ШАТ (`expenseLadderFor`) — COO-гийн тооцоо, сар хаахтай ИЖИЛ тоо.
+  const _L = expenseLadderFor(month, wantBr);
+  const expense = _L.pnl, expN = _L.txn.n - _L.vatPaid.n;
+  const vatExp = _L.vatAcc;
+  const _sy = v => fmtSaya(v);
+  const expBridge = ['Гүйлгээ ' + _sy(_L.txn.amt)]
+    .concat(_L.vatPaid.amt ? ['− НӨАТ төлөлт ' + _sy(_L.vatPaid.amt)] : [])
+    .concat(_L.vatAcc ? ['+ НӨАТ ' + _sy(_L.vatAcc)] : [])
+    .concat(_L.miss + _L.shrink ? ['+ нөөцийн алдагдал ' + _sy(_L.miss + _L.shrink)] : [])
+    .concat(_L.dep ? ['+ элэгдэл ' + _sy(_L.dep)] : []).join(' ');
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
   const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;
   const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
@@ -37263,7 +37315,7 @@ function renderReports() {
     </div>`;
   const inputs = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
       ${kpi(incomeLabel, fmtBig(income), 'var(--ok)', incomeSub)}
-      ${kpi('Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + (vatExp > 0 ? ` · 🧾 НӨАТ ${fmtBig(vatExp)}` : '') + ' · Санхүүтэй таарна')}
+      ${kpi('Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + '<br>' + escapeHtml(expBridge))}
     </div>`;
   /* Суурь солих товч нь ЗӨВХӨН ОРЛОГЫГ хөдөлгөнө. Зардал нь ҮРГЭЛЖ ноогдох
      сараар (finExpMonth) — Монгол Улсын НББ-ийн хуулийн дагуу (2026-10-03 CEO). */
@@ -38611,6 +38663,7 @@ function renderFinanceReport(wrap) {
      тэр сонголт хүний хувьд ОГТ байхгүйтэй адил. Банкны огноо нь мөр бүрт
      ⇄ тэмдэгээр ил гарна. */
   const monthList = base.filter(t => finExpMonth(t, finBasis()) === month);
+  const _LD = expenseLadderOf(monthList);   // ⛔ ЗАРДЛЫН ШАТ — толгой ба Дүн шинжилгээ ижил эх сурвалж
 
   // ── Тулгалт + Excel татах ──
   const bar = document.createElement('div');
@@ -38690,15 +38743,15 @@ function renderFinanceReport(wrap) {
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
   head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
     + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month} <span style="font-size:11px;font-weight:600;color:var(--muted);">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
-    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал <span style="font-size:11px;">(ноогдох сараар)</span>${(() => {
-        const ol = sumOf(monthList.filter(t => finIsNonExpense(t.category)));
-        const dr = sumOf(monthList.filter(finIsDepositReturn));
-        const pd = sumOf(monthList.filter(t => finPendingStmt(t)));
+    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${_LD.txn.n} зардал · <b style="color:var(--text);">${fmtMoney(_LD.txn.amt)}</b> (ноогдох сараар)${(() => {
+        // Зардлаас гадуур мөр БҮР нэрээр — «Нийт гарсан мөнгө»-тэй тулгахад (2026-10-05)
         const bits = [];
-        if (ol) bits.push(`эзний зээл ${fmtMoney(ol)}`);
-        if (dr) bits.push(`барьцаа буцаалт ${fmtMoney(dr)}`);
-        if (pd) bits.push(`хүлээгдэж буй ${fmtMoney(pd)}`);
-        return bits.length ? ` <span style="font-size:11px;">(${bits.join(' · ')} — зардлаас гадуур)</span>` : '';
+        if (_LD.deposit.n) bits.push(`барьцаа буцаалт ${fmtMoney(_LD.deposit.amt)} (${_LD.deposit.n})`);
+        if (_LD.refund.n) bits.push(`захиалгын буцаалт ${fmtMoney(_LD.refund.amt)} (${_LD.refund.n})`);
+        if (_LD.loan.n) bits.push(`эзний зээл ${fmtMoney(_LD.loan.amt)} (${_LD.loan.n})`);
+        if (_LD.pending.n) bits.push(`хүлээгдэж буй ${fmtMoney(_LD.pending.amt)} (${_LD.pending.n})`);
+        const out = _LD.gross.n - _LD.txn.n;
+        return bits.length ? `<br><span style="font-size:11px;">${out} мөр зардлаас гадуур: ${bits.join(' · ')}</span>` : '';
       })()}</div></div>`
     + `<button class="btn" data-fin-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>`;
   wrap.appendChild(head);
@@ -38782,7 +38835,7 @@ function renderFinanceReport(wrap) {
   // ── Ангилсан / Ангилаагүй (хуулга суурьтай) — хуучин хүсэлт/батлах/шилжүүлэх төлвүүд хасагдсан. ──
   const isUnclassified = (t) => { const tok = parseCardToken(t.justification || ''); return (tok && tok.pend) || String(t.category || '') === CARD_PEND_CAT || !String(t.category || '').trim(); };
   const stDefs = [
-    ['all',    'Бүгд',                     () => true,             'var(--text)'],
+    ['all',    'Нийт гарсан мөнгө',        () => true,             'var(--text)'],
     ['unclas', '⏳ Ангилах хүлээж буй',     t => isUnclassified(t), 'var(--warn)'],
   ];
   const stFilter = (state.finReportStatus === 'unclas') ? 'unclas' : 'all';

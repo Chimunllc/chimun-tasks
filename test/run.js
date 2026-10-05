@@ -12735,6 +12735,22 @@ testFinBasisDefault();
       vm.runInContext("state._wtOverrides = undefined; state.view = 'mine';", sandbox);
     }
   }
+  // Гүйлгээ — зөвхөн бүх санхүүг хардаг хүнд (2026-10-05, CEO). Цэс нуугдана + шууд нээж чадахгүй.
+  {
+    ok(/if \(state\.view === 'finance' && !canSeeAllFinance\(\)\) state\.view = 'mine';/.test(src),
+       'scan: санхүүгийн эрхгүй хүн Гүйлгээ рүү орж чадахгүй (render хамгаалалт)');
+    const sb = src.slice(src.indexOf('function renderSidebar()'), src.indexOf('function renderSidebar()') + 20000);
+    ok(/const _finOk = canSeeAllFinance\(\);[\s\S]{0,200}mobile-nav-item\[data-view="finance"\]/.test(sb),
+       'scan: Гүйлгээ хажуугийн БА доод цэснээс эрхгүй хүнд нуугдана');
+    const _T = vm.runInContext('TEAM', sandbox); const save = _T.slice(); _T.length = 0;
+    _T.push({ name: 'Энгийн Ажилтан', phone: '99001122', status: 'идэвхтэй', role: 'Агуулахын ажилтан' });
+    vm.runInContext("state.isCEO = false; state.me = '99001122'; state.finBranchPerms = new Set();", sandbox);
+    eq(vm.runInContext('canSeeAllFinance()', sandbox), false, 'Гүйлгээ: энгийн ажилтан санхүүг бүхэлд нь харахгүй');
+    vm.runInContext("state.finBranchPerms = new Set(['99001122']);", sandbox);
+    eq(vm.runInContext('canSeeAllFinance()', sandbox), true, 'Гүйлгээ: салбар засах эрхтэй ажилтан харна');
+    _T.length = 0; save.forEach(x => _T.push(x));
+    vm.runInContext("state.finBranchPerms = undefined;", sandbox);
+  }
   // «Больсон» болгох цорын ганц бичих зам = bulkDeleteOrders (шалтгаантай). Шалтгаангүй
   // ганц-устгах зам (deleteAppOrder) ба тест-цэвэрлэгээний цонх 2026-10-05-нд хасагдсан.
   ok(!/function deleteAppOrder|function openTestCleanupModal/.test(src),

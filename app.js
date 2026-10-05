@@ -4245,6 +4245,7 @@ function render() {
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !canSeeProducts()) state.view = 'mine';
   if (state.view === 'accounts' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'finance' && !canSeeAllFinance()) state.view = 'mine';
   if (state.view === 'documents' && !canSeeDocuments()) state.view = 'mine';
   if (state.view === 'marketing' && !canSeeMarketing()) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
@@ -4496,6 +4497,13 @@ function renderSidebar() {
     const dCnt = document.getElementById('cnt-documents');
     if (dCnt) { const n = (state.companyDocs || []).length; dCnt.textContent = n ? String(n) : ''; }
   }
+  /* Гүйлгээ — ЗӨВХӨН бүх санхүүг хардаг хүнд (CEO · нягтлан · салбар засагч). 2026-10-05, CEO:
+     зардал банкны хуулгаас өөрөө ордог болсноос хойш энгийн ажилтан хүсэлт үүсгэдэггүй
+     (8 сараас хойш 0) — тэдэнд зөвхөн хуучирсан өөрийн жагсаалт харагддаг байв.
+     Картын зардал нь «Миний зардал»-д хэвээр. */
+  const _finOk = canSeeAllFinance();
+  document.querySelectorAll('.nav-item[data-view="finance"], .mobile-nav-item[data-view="finance"]')
+    .forEach(el => { el.style.display = _finOk ? '' : 'none'; });
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
@@ -42063,6 +42071,7 @@ function initEvents() {
       const views = ['mine','delegated','finance','dashboard'];
       const idx = parseInt(e.key, 10) - 1;
       if (views[idx] === 'dashboard' && isDailyWorker()) return;
+      if (views[idx] === 'finance' && !canSeeAllFinance()) return;
       state.view = views[idx];
       render();
     }

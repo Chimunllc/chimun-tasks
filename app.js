@@ -26036,7 +26036,7 @@ function pipelineNext(status, ctx) {
     if (r.from.indexOf(st) < 0) continue;
     if (r.dlv !== undefined && r.dlv !== !!c.dlv) continue;
     if (r.setup !== undefined && r.setup !== !!c.setup) continue;
-    return { to: r.to, label: stageLabel(r), cap: r.cap };
+    return { key: r.key, to: r.to, label: stageLabel(r), cap: r.cap };
   }
   return null;
 }
@@ -26621,6 +26621,53 @@ function dispatchMonthSeries(orders, cur, count) {
   return out;
 }
 const _dspCls = pct => pct === null ? '' : pct >= 90 ? 'ok' : pct >= 70 ? 'warn' : 'bad';
+/* ═══ ГАЦСАН ЗАХИАЛГА — Тойм (2026-10-05, CEO) ═══════════════════════════
+   Дараагийн дамжлага нь ЭВЕНТИЙН ОГНООНООС хоцорсон захиалга. Хугацаа нь
+   `dayLoadForecast`-ийн хэмжсэн медиантай ИЖИЛ: гарах тал → эхлэх өдөр,
+   задлах/ачих → дуусах өдөр, хүлээн авах/байршуулах → дуусахын маргааш.
+   Тэр өдрөө дарагдах нь ХЭВИЙН — маргаашаас нь л «гацсан».
+   ⛔ «Архивлах» ОРОХГҮЙ — бичиг хэргийн алхам, ажил зогсоохгүй.
+   ⛔ Огноогүй захиалга ОРОХГҮЙ — хугацаагүй бол хоцролт тодорхойгүй (таамаглахгүй).
+   ЦЭВЭР функц — тестлэгдэнэ. */
+const STUCK_DUE = { clean: 0, prepare: 0, dispatch: 0, deliver: 0, setup: 0, teardown: 1, retstart: 1, received: 2, stow: 2 };
+/* ⛔ ШИНЭ ДАМЖЛАГА ХУУЧИН ЗАХИАЛГЫГ «ГАЦСАН» БОЛГОХГҮЙ. «Буулгаж байршуулах»
+   2026-10-03-нд нэмэгдсэн тул түүнээс өмнө буцаж ирсэн захиалга тэр алхамгүйгээр
+   дууссан — амьд датаар 8-ийн 5 нь ийм худал дохио байв. Шинэ дамжлага нэмбэл
+   энд огноог нь бич. */
+const STUCK_SINCE = { stow: '2026-10-03' };
+function stuckOrders(orders, today) {
+  const t = String(today || '').slice(0, 10);
+  const out = [];
+  (orders || []).forEach(o => {
+    if (!o) return;
+    const st = String(o.status || '').toLowerCase();
+    if (['draft', 'deleted', 'canceled', 'cancelled', 'archived'].includes(st)) return;
+    const step = pipelineNext(st, orderPipelineCtx(o));
+    if (!step || !(step.key in STUCK_DUE)) return;
+    const kind = STUCK_DUE[step.key];
+    const base = String((kind === 0 ? o.starts_at : o.stops_at) || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return;
+    const due = kind === 2 ? addDays(base, 1) : base;
+    if (STUCK_SINCE[step.key] && due < STUCK_SINCE[step.key]) return;
+    const late = daysBetween(due, t);
+    if (late < 1) return;
+    out.push({ id: o.id, number: o.number, customer: String(o.customer || ''), key: step.key, label: step.label, due, late });
+  });
+  return out.sort((a, b) => b.late - a.late || String(a.number).localeCompare(String(b.number)));
+}
+function stuckBlockHtml(orders) {
+  if (!canSeeOrders()) return '';
+  const list = stuckOrders(orders, todayStr());
+  if (!list.length) return `<div class="rv-card stk-card stk-ok">✓ Гацсан захиалга алга — бүх дамжлага хугацаандаа</div>`;
+  const rows = list.map(r => `<button type="button" class="stk-row ui-raw" data-rv-open="${escapeHtml(String(r.number ?? ''))}">
+      <span class="stk-no">#${escapeHtml(String(r.number ?? ''))}</span>
+      <span class="stk-main"><span class="stk-cust">${escapeHtml(r.customer || '—')}</span><span class="stk-step">хүлээж буй: ${escapeHtml(r.label)}</span></span>
+      <span class="stk-late">${r.late} хоног</span></button>`).join('');
+  return `<div class="rv-card stk-card">
+    <div class="rv-head">⏳ Гацсан захиалга <span class="rv-sum">${list.length} · дараагийн алхам хугацаанаасаа хоцорсон</span></div>
+    <div class="stk-list">${rows}</div>
+  </div>`;
+}
 function dispatchBlockHtml(orders) {
   if (!canSeeOrders()) return '';
   const cur = todayStr().slice(0, 7);
@@ -39052,6 +39099,7 @@ function renderDashboard() {
     <div class="dashboard">
       ${sessionExpiredBannerHtml()}
       ${reviewBlockHtml(state.appOrders || [])}
+      ${stuckBlockHtml(state.appOrders || [])}
       ${dispatchBlockHtml(state.appOrders || [])}
       <div class="dashboard-grid">
         ${isCEO && pendingRegCount > 0 ? `

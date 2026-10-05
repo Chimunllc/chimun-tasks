@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'vatIsAggregate', 'vatIssuedDay', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost', 'offHoursFeeFor', 'orderOffHoursFeeOf', 'tariffOffhoursFirstFee',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'claimCanResolve', 'vatIsAggregate', 'vatIssuedDay', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost', 'offHoursFeeFor', 'orderOffHoursFeeOf', 'tariffOffhoursFirstFee',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -17109,20 +17109,50 @@ async function swFetchTests() {
   const att = src.slice(src.indexOf('function attachSalaryHandlers'), src.indexOf('function attachSalaryHandlers') + 300);
   ok(/attachClaimHandlers\(\)/.test(att), 'мэдүүлэг: цалингийн самбарт товч холбогдоно');
   const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
-  ok(/data-clm-ok=/.test(rs) && /data-clm-no=/.test(rs), 'мэдүүлэг: хайрцаг цалингийн самбарт зурагдана');
+  ok(/claimBoxHtml\(/.test(rs), 'мэдүүлэг: хайрцаг цалингийн самбарт зурагдана (CEO нөөц)');
+  const cb = src.slice(src.indexOf('function claimBoxHtml'), src.indexOf('function stageMetaHtml'));
+  ok(/data-clm-ok=/.test(cb) && /data-clm-no=/.test(cb), 'мэдүүлэг: хайрцагт ✓/✕ товч');
   const ch = src.slice(src.indexOf('function attachClaimHandlers'), src.indexOf('function attachSalaryHandlers'));
-  ok(/resolveStageClaim\([^)]*true\)/.test(ch) && /resolveStageClaim\([^)]*false\)/.test(ch), 'мэдүүлэг: баталгаажуулах ба татгалзах хоёулаа холбогдсон');
+  ok(/bind\('\[data-clm-ok\]', true\)/.test(ch) && /bind\('\[data-clm-no\]', false\)/.test(ch) && /resolveStageClaim\(/.test(ch), 'мэдүүлэг: баталгаажуулах ба татгалзах хоёулаа холбогдсон');
+  /* ⛔ БАТЛАХ = АХЛАГЧ (2026-10-05, CEO). Цалингийн самбарт зөвхөн CEO-д нөөц;
+     `salary.edit` (нярав) батлахгүй — ажил дээр байгаагүй. Ахлагч «Миний ирц» дээр. */
+  ok(/const _claims = state\.isCEO \?/.test(rs) && !/salary\.edit'\) \|\| state\.isCEO\) \? pendingStageClaims/.test(rs), 'мэдүүлэг: цалингийн самбарт зөвхөн CEO (нярав батлахгүй)');
+  const ma = src.slice(src.indexOf('function renderMyAttend'), src.indexOf('function attachMyAttendHandlers'));
+  ok(/pendingStageClaims\(state\.appOrders \|\| \[\], personKey\(me\)/.test(ma), 'мэдүүлэг: ахлагч «Миний ирц» дээрээ өөрийн ахалсан ажлын мэдүүлгийг харна');
+  const mah = src.slice(src.indexOf('function attachMyAttendHandlers'), src.indexOf('function attachMyAttendHandlers') + 200);
+  ok(/attachClaimHandlers\(\)/.test(mah), 'мэдүүлэг: «Миний ирц» дээр товч холбогдоно');
+  const cw = src.slice(src.indexOf('async function claimStageWork'), src.indexOf('async function resolveStageClaim'));
+  ok(/pushBroadcast\(String\(e\.by\)/.test(cw), 'мэдүүлэг: ахлагчид мэдэгдэл очно');
+  // Зан чанар: ахлагч эсвэл CEO л шийднэ
+  eq(F.claimCanResolve({ by: 'A' }, 'A', false), true, 'мэдүүлэг: ахлагч батална');
+  eq(F.claimCanResolve({ by: 'A' }, 'C', false), false, 'мэдүүлэг: өөр ажилтан батлахгүй');
+  eq(F.claimCanResolve({ by: 'A' }, 'C', true), true, 'мэдүүлэг: CEO нөөц болж шийднэ');
+  eq(F.claimCanResolve({}, 'C', false), false, 'мэдүүлэг: ахлагчгүй бол зөвхөн CEO');
+  const lp = F.pendingStageClaims([{ id: 7, number: 70, stage_meta: { clean: { by: 'A', claims: ['B'] }, prepare: { by: 'X', claims: ['B'] } } }], 'A');
+  eq(lp.map(c => c.key), ['clean'], 'мэдүүлэг: ахлагчид зөвхөн өөрийн ахалсан дамжлага');
+  eq(lp[0].lead, 'A', 'мэдүүлэг: ахлагч нь мөрөнд');
   // Зан чанар: татгалзвал мэдүүлэг арилж, хамтрагч болохгүй
   const st = vm.runInContext('state', sandbox);
   const o = { id: 'clm1', number: 1553, stage_meta: { retstart: { by: 'A', at: '2026-10-02T03:00:00Z', claims: ['B'] } } };
   const saved = st.appOrders; st.appOrders = [o];
   const origFetch = sandbox.fetch;
   sandbox.fetch = () => Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve([]), text: () => Promise.resolve('') });
-  vm.runInContext("resolveStageClaim('clm1', 'retstart', 'B', false)", sandbox).then(() => {
+  // Эрхийн шалгалт синхроноор (эхний await-ээс өмнө) хийгддэг тул state-ийг дуудлагын
+  // ЯГ үед тавьж, буцаагаад шууд сэргээнэ — бусад тест өөрчлөгдсөн state харахгүй.
+  const asWho = (me, ceo, expr) => { const m0 = st.me, c0 = st.isCEO, a0 = st.appOrders; st.me = me; st.isCEO = ceo; st.appOrders = [o];
+    try { return vm.runInContext(expr, sandbox); } finally { st.me = m0; st.isCEO = c0; st.appOrders = a0; } };
+  const restore = () => { sandbox.fetch = origFetch; st.appOrders = saved; };
+  // ⛔ Ахлагч биш, CEO биш хүн дарвал ЮУ Ч өөрчлөгдөхгүй
+  const p1 = asWho('C', false, "resolveStageClaim('clm1', 'retstart', 'B', true)");
+  Promise.resolve(p1).then(() => {
+    eq(o.stage_meta.retstart.claims, ['B'], 'мэдүүлэг: ахлагч бус хүн батлах боломжгүй');
+    ok(!(o.stage_meta.retstart.helpers || []).includes('B'), 'мэдүүлэг: ахлагч бус хүн дарахад хамтрагч нэмэгдэхгүй');
+    return asWho('A', false, "resolveStageClaim('clm1', 'retstart', 'B', false)");
+  }).then(() => {
     eq(o.stage_meta.retstart.claims, [], 'мэдүүлэг: татгалзвал жагсаалтаас арилна');
     ok(!(o.stage_meta.retstart.helpers || []).includes('B'), 'мэдүүлэг: татгалзсан хүн хамтрагч болохгүй');
-    sandbox.fetch = origFetch; st.appOrders = saved;
-  }).catch(e => { ok(false, 'мэдүүлэг: татгалзах ажиллана — ' + e.message); sandbox.fetch = origFetch; st.appOrders = saved; });
+    restore();
+  }).catch(e => { ok(false, 'мэдүүлэг: татгалзах ажиллана — ' + e.message); restore(); });
 }
 
 // ═══ ТОЙМ: БУЦАЖ ЗАЛГААГҮЙ ДУУДЛАГА (2026-10-05, CEO) ═══════════════════

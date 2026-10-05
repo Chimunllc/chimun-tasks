@@ -8546,6 +8546,9 @@ select.no-asar-len {
 .sm-claim { font-size: var(--fs-xs); color: var(--warn); margin-top: 2px; }
 .sm-claim-w { color: var(--muted); }
 .sm-claim-btn { margin-top: var(--space-2); padding: 3px 9px; font-size: var(--fs-xs); }
+.sm-claim-act { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--text-soft); }
+.sm-claim-act > span { flex: 1; min-width: 0; }
+.sm-claim-act .btn { padding: 3px 10px; font-size: var(--fs-xs); }
 .clm-box { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--r-md); padding: var(--space-3); margin-bottom: var(--space-3); }
 .clm-t { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-2); }
 .clm-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }

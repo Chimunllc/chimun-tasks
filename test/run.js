@@ -12079,6 +12079,25 @@ function testStmtFlowSummary() {
 }
 testStmtFlowSummary();
 
+// ⚡ ГҮЙЦЭТГЭЛ (2026-10-05, CEO: «бусад дэлгэц ч удаан эсэхийг шалга»)
+{
+  const fat = vm.runInContext('financeAsTask', sandbox);
+  const row = { id: 'p1', amount: 1234567, beneficiary: 'Бат', purpose: 'түлш', justification: 'Хуулгаар орсон ⟦ACCR|2026-09⟧', status: 'done', decision: 'approved', requested_at: '2026-10-02T10:00:00+08:00', category: '1300' };
+  const t1 = fat(row), t2 = fat(row);
+  ok(t1 === t2, 'санах ой: өөрчлөгдөөгүй мөр дахин хувиргагдахгүй (ижил объект)');
+  eq(t1.title, '💸 Бат — 1,234,567₮', 'санах ой: гарчиг өмнөхтэй ЯГ ижил формат');
+  eq(t1.accrual_month, '2026-09', 'санах ой: токен уншигдана');
+  row.justification = 'Хуулгаар орсон ⟦ACCR|2026-10⟧'; row.category = '1800';
+  const t3 = fat(row);
+  ok(t3 !== t1 && t3.accrual_month === '2026-10' && t3.category === '1800', '⛔ санах ой: мөрийг газар дээр нь засахад ДАХИН бодогдоно');
+  row.amount = 5; ok(fat(row).title === '💸 Бат — 5₮', 'санах ой: дүн өөрчлөгдөхөд гарчиг шинэчлэгдэнэ');
+  eq(vm.runInContext('fmtMoney(1234567.4)', sandbox), '1,234,567₮', 'fmtMoney: формат хэвээр');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const fm = src.slice(src.indexOf('function fmtMoney(n) {'), src.indexOf('function fmtMoney(n) {') + 120);
+  ok(!/new Intl\.NumberFormat/.test(fm), 'scan: fmtMoney дуудалт бүрд форматлагч ҮҮСГЭХГҮЙ');
+  ok(src.indexOf('const _MN_NF = ') < src.indexOf('function financeAsTask(r)'), 'scan: форматлагч файлын эхэнд (TDZ-гүй)');
+}
+
 // ⛔ Хуулга оруулсны дараа АРЫН дэлгэц шинэчлэгдэнэ (2026-10-05, CEO: «бүх хуулга орсон
 // ч зардал нь орохгүй байна» — зардал DB-д орсон, дэлгэц хуучин «5 гүйлгээ»-гээ харуулж байв)
 {

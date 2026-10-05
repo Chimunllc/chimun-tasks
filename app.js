@@ -2078,7 +2078,37 @@ function accrualMonthOptions(sel) {
   if (sel && !opts.includes(sel)) opts.push(sel);
   return opts.map(v => `<option value="${v}"${v === sel ? ' selected' : ''}>${v}</option>`).join('');
 }
+/* ⚡ САНХҮҮГИЙН МӨР → ДААЛГАВАР ХЭЛБЭР, САНАХ ОЙТОЙ (2026-10-05).
+   Тайлан/COO дэлгэц сар бүрд БҮХ 1,600 мөрийг дахин хувиргадаг (COO: 20,709
+   дуудалт = 279ms-ийн 228ms). Мөр бүрийн үр дүнг ХАДГАЛЖ, мөр өөрчлөгдөөгүй бол
+   дахин бодохгүй. ⚠ Түлхүүр = мөрийн уншдаг БҮХ талбар (`_finTaskSig`) — мөрийг
+   газар дээр нь засахад (justification, category, status…) хээ өөрчлөгдөж дахин
+   бодогдоно. ⚠ `assignee` нь багийн бүтцээс (TEAM) хамаардаг тул ҮРГЭЛЖ шинээр.
+   ⛔ Буцаасан объектыг дуудагч ӨӨРЧЛӨХГҮЙ (дундын) — кодоор шалгасан, ийм газар алга. */
+/* ⚡ ФОРМАТЛАГЧ НЭГ УДАА (2026-10-05). `new Intl.NumberFormat` нь дуудалт бүрд
+   ~14µs — Захиалга дэлгэц 2,700+ удаа дууддаг тул утсан дээр ~0.2с нэмдэг байв.
+   Нэг үүсгэсэн форматлагчийн гаралт ЯГ ижил (амьд хуудсанд 2000 утгаар тулгасан).
+   ⚠ Файлын ЭХЭНД — top-level кодоос эрт дуудагдсан ч TDZ алдаа гарахгүй. */
+const _MN_NF = new Intl.NumberFormat('mn-MN');
+function _mnNum(n) { return _MN_NF.format(n); }
+const _finTaskMemo = new WeakMap();
+function _finTaskSig(r) {
+  return [r.id, r.decision, r.executor, r.beneficiary, r.amount, r.purpose, r.justification, r.due_date,
+    r.priority, r.status, r.executed_at, r.requested_by, r.requested_at, r.dept_branch, r.category,
+    r.account_number, r.link_type, r.link_label, r.link_id, r.close_type, r.close_note, r.payment_proof_url,
+    Array.isArray(r.purchase_receipt_urls) ? r.purchase_receipt_urls.length : '', r.purchase_receipt_url ? 1 : 0].join('\u0001');
+}
 function financeAsTask(r) {
+  if (!r || typeof r !== 'object') return _financeAsTaskBuild(r || {});
+  const sig = _finTaskSig(r);
+  const hit = _finTaskMemo.get(r);
+  const task = (hit && hit.sig === sig) ? hit.task : _financeAsTaskBuild(r);
+  if (!hit || hit.sig !== sig) _finTaskMemo.set(r, { sig, task });
+  // Хариуцагч нь TEAM/эрхээс хамаарна — хадгалсан утгад бүү найд
+  task.assignee = r.decision === 'approved' ? (r.executor || getFinanceExecutorEmail()) : getFinanceApprover(r);
+  return task;
+}
+function _financeAsTaskBuild(r) {
   const executorId = r.executor || getFinanceExecutorEmail();
   // Assignee logic:
   //  - pending: salbar manager эсвэл CEO (getFinanceApprover)
@@ -2090,7 +2120,7 @@ function financeAsTask(r) {
   else assignee = getFinanceApprover(r);
   return {
     id: r.id,
-    title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
+    title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${_mnNum(Number(r.amount || 0))}₮`,
     desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + stripSrcToken(stripCardToken(stripAccrualToken((r.justification || '').replace(/\s*⟦PENDST⟧/g, '')))),
     branch: 'shared',
     project: 'finance',
@@ -10902,8 +10932,9 @@ function orderShortages(items, start, end, excludeOrderNo) {
 }
 
 // Мөнгөн дүн форматлагч (₮). fmt-тэй давхцахгүй, орон тусгаарлана.
+// ⚡ Форматлагч `_MN_NF` нь файлын ЭХЭНД (financeAsTask-ын дэргэд) — нэг удаа үүснэ.
 function fmtMoney(n) {
-  return new Intl.NumberFormat('mn-MN').format(Math.round(Number(n) || 0)) + '₮';
+  return _MN_NF.format(Math.round(Number(n) || 0)) + '₮';
 }
 
 // ── Мөнгөн ОРОЛТ — орон таслалтай харуулна (3,750,000). type="text" .money-input талбарт ──

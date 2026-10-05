@@ -16022,6 +16022,12 @@ async function swFetchTests() {
   ok(/#sa-late'\) \|\| \{\}\)\.checked/.test(md), 'scan: нэмэлт төлбөр чагтаар баталгаажна');
   ok(/_lateAsk = !_ctxNow\.dlv/.test(md), 'scan: хүргэлтэд хоцролтын төлбөр нэмэхгүй');
   ok(/⟦LATE\|/.test(md), 'scan: шалтгаан note-д токеноор үлдэнэ');
+  /* ⛔ Модал доторх ЧАГТ ч `.modal` угтвартай байх ёстой — эс бөгөөс
+     `width:100%` нь чагтыг тэлж бичвэрийг доош буулгана (дүрэм 7). */
+  {
+    const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+    ok(/\.modal \.sa-late input\[type="checkbox"\][^}]*width:\s*auto/.test(css), 'scan: хожуу-чагт тэлэхгүй');
+  }
   /* ⛔ Асуулт бүр ДУГААРТАЙ хэсэг — шинэ блокийг зураасаар наавал
      ажилтан хэдэн зүйл бөглөхөө дахин мэдэхгүй болно (2026-10-04 CEO). */
   ok((md.match(/_sec\('/g) || []).length >= 5, 'scan: цонхны блокууд _sec()-ээр угсарна');

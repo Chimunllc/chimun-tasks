@@ -4594,6 +4594,7 @@ function renderTaskList() {
         render();
       });
     });
+    document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
     // "Яг одоо" тууз — авлага нүд дээр дарж Авлага view руу
     wrap.querySelectorAll('[data-ceo-now]').forEach(c => c.addEventListener('click', () => { state.view = c.dataset.ceoNow; render(); }));
     return;
@@ -13380,6 +13381,15 @@ function stagePayByPerson(orders, month) {
     r.total = r.ledFee + r.helperFee;
   });
   return out;
+}
+/* Сарын шилдэг гүйцэтгэгч — дамжлагын оноогоор эрэмбэлсэн (Тойм). ЦЭВЭР функц.
+   Оноо нь бонусын ИЖИЛ бодолтоос (`stagePayByPerson`) — дүрэм хоёр газар салбарлахгүй. */
+function stageTopPerformers(orders, month, n) {
+  const all = stagePayByPerson(orders || [], month);
+  return Object.keys(all).map(k => ({ key: k, pts: all[k].pts || 0, led: all[k].led || 0, helped: all[k].helped || 0 }))
+    .filter(r => r.pts > 0)
+    .sort((a, b) => b.pts - a.pts || b.led - a.led)
+    .slice(0, n || 5);
 }
 // Нэг хүний сарын дамжлагын бонус (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
 function stagePayFor(key, month, orders) {
@@ -39094,17 +39104,13 @@ function renderDashboard() {
     }
   }
 
-  // 7) Top performer — хамгийн их дуусгасан 3 ажилтан (сүүлийн 30 хоног)
-  const completionCutoff = Date.now() - 30 * dayMs;
-  const completionCount = {};
-  for (const t of tasks) {
-    if (t.status !== 'done' || !t.assignee) continue;
-    const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
-    if (dMs >= completionCutoff) {
-      completionCount[t.assignee] = (completionCount[t.assignee] || 0) + 1;
-    }
-  }
-  const topPerformers = Object.entries(completionCount).sort((a,b)=>b[1]-a[1]).slice(0, 3);
+  /* 7) Шилдэг гүйцэтгэгч = M-Event-ийн ДАМЖЛАГЫН ОНОО, сонгосон САРААР (2026-10-05, CEO).
+     ⛔ Даалгаврын тоогоор БҮҮ буцаа — даалгавар цөөхөн хүнд л оноогддог тул карт
+       ихэнхдээ «Дуусгасан ажил алга» гэж хоосон байв. Оноо нь бонустай ИЖИЛ эх
+       сурвалжаас (`stagePayByPerson`) — хоёр өөр «шилдэг» гарахгүй. */
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
+  const topYm = state.dashTopYm || todayStr().slice(0, 7);
+  const topPerformers = stageTopPerformers(state.appOrders || [], topYm, 5);
 
   // 8) Дундаж дуусгах хугацаа (created → completed_at, сүүлийн 30 хоног)
   const durations = [];
@@ -39310,20 +39316,22 @@ function renderDashboard() {
           })()}
         </div>
 
-        <!-- Top performers — сүүлийн 30 хоног хамгийн их дуусгасан -->
+        <!-- Шилдэг гүйцэтгэгч — дамжлагын оноо, сараар -->
         <div class="dash-card dash-staff" style="grid-column: span 2;">
-          <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч (30 хоног)</div>
-          ${topPerformers.length === 0 ? '<div class="dash-empty">Дуусгасан ажил алга</div>' : topPerformers.map(([email, n], i) => {
-            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+          <div class="dash-top-head">
+            <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч</div>
+            <input type="month" class="ui-raw dash-top-ym" id="dash-top-ym" value="${escapeHtml(topYm)}" max="${todayStr().slice(0, 7)}">
+          </div>
+          <div class="dash-top-sub">M-Event дамжлагын оноогоор</div>
+          ${topPerformers.length === 0 ? '<div class="dash-empty">Энэ сард дамжлагын оноо алга</div>' : topPerformers.map((r, i) => {
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+            const w = Math.max(4, Math.round(r.pts / topPerformers[0].pts * 100));
             return `
-              <div class="dash-bar-row">
-                <div class="dash-bar-label">${medal} ${escapeHtml(memberName(email))}</div>
-                <div class="dash-bar-track">
-                  <div class="dash-bar-fill" style="width:${(n/topPerformers[0][1])*100}%;background:linear-gradient(90deg,#fbbf24,#f59e0b);"></div>
-                </div>
-                <div class="dash-bar-count">${n}</div>
-              </div>
-            `;
+              <div class="dash-bar-row" title="Хариуцсан ${r.led} · хамтарсан ${r.helped} дамжлага">
+                <div class="dash-bar-label">${medal} ${escapeHtml(memberName(r.key))}</div>
+                <div class="dash-bar-track"><div class="dash-bar-fill dash-top-fill" style="width:${w}%"></div></div>
+                <div class="dash-bar-count dash-top-n">${Math.round(r.pts)}</div>
+              </div>`;
           }).join('')}
         </div>
 

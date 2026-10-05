@@ -26541,13 +26541,20 @@ function reviewBlockHtml(orders) {
   if (!canSeeOrders()) return '';
   const st = reviewStats(orders);
   if (!st.n) return '';
-  const row = r => `<div class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">
-      <span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
+  /* ⛔ БҮХ ҮНЭЛГЭЭ, ГЭХДЭЭ НЭГ МӨРӨӨР (2026-10-05, CEO). Өмнө нь сэтгэгдлийн
+     бүтэн бичвэр мөрөнд наалддаг тул НЭГ үнэлгээ дэлгэцийн тал хувийг эзэлж,
+     үлдсэнийг нь харахын тулд гүйлгэх ч шаардлагагүй — ердөө 3-ыг л гаргадаг
+     байв. Одоо: бүгд нэг мөрөөр, сэтгэгдлийг дарж нээнэ. */
+  const head = r => `<span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
       <span class="rv-nm">#${escapeHtml(String(r.number ?? '—'))} ${escapeHtml(r.customer || '')}</span>
-      <span class="rv-tx">${r.text ? escapeHtml(r.text) : 'сэтгэгдэл бичээгүй'}</span>
-      <span class="rv-at">${escapeHtml(r.at || '')}</span>
-    </div>`;
-  const show = st.bad.length ? st.bad : st.rows.slice(0, 3);
+      <span class="rv-at">${escapeHtml(r.at || '')}</span>`;
+  const row = r => r.text
+    ? `<details class="rv-item"><summary class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}">${head(r)}<span class="rv-more">💬</span></summary>
+        <div class="rv-tx">${escapeHtml(r.text)}</div>
+        <button type="button" class="btn rv-go" data-rv-open="${escapeHtml(String(r.number ?? ''))}">→ Захиалга нээх</button></details>`
+    : `<div class="rv-row rv-plain${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">${head(r)}</div>`;
+  // Муу үнэлгээ нь АЖИЛ — эхэнд. Бусад нь шинээр нь.
+  const show = [...st.bad, ...st.rows.filter(r => r.stars > REVIEW_BAD_MAX)];
   return `<div class="rv-card">
     <div class="rv-head">★ Хэрэглэгчийн үнэлгээ
       <span class="rv-sum">${st.avg} дундаж · ${st.n} хариулт</span></div>

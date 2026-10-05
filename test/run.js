@@ -6316,9 +6316,10 @@ need(['orderCustType']);
 
 // ── ГАРАХ ЁСТОЙ ЦАГ — хоцролтын хэмжүүр (2026-09-22) ───────────────────────
 {
-  const mk = (n, day, note, dispatchAt) => ({
+  // Хүргэлт: «Бүртгэж гаргасан» ба «Талбайд буулгасан» хоёулаа тэр цагт (хэмжүүр нь буулгасан цаг)
+  const mk = (n, day, note, deliverAt) => ({
     id: 'o' + n, number: n, customer: 'Х', status: 'archived', starts_at: day, note,
-    stage_meta: dispatchAt ? { dispatch: { at: dispatchAt } } : {},
+    stage_meta: deliverAt ? { dispatch: { at: deliverAt }, deliver: { at: deliverAt } } : {},
   });
   // ⛔ Хотын захиалгад км нь 0 гэж бичигддэг — доод тал нь 1 цаг зам тооцно,
   //    эс бөгөөс хотын хүргэлт «замгүй» болно. 1 + 1 + 0.5 = 2.5 цаг.
@@ -6342,17 +6343,33 @@ need(['orderCustType']);
   eq(F.orderDispatchPlan(mk(5, '2026-09-14', '')), null, 'гарах: цаггүй бол null');
   eq(F.orderDispatchPlan(null), null, 'гарах: хоосон → унахгүй');
 
-  // Хоцролт: эвент 13:00 УБ = 05:00Z. Хот 2.5ц → 10:30 УБ = 02:30Z гэхэд гарна.
-  const late = F.orderDispatchLate(mk(6, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T07:29:00Z'));
-  eq(late.lateH, 5, 'хоцролт: 5 цаг хоцорсон');
+  // Хоцролт = ТАЛБАЙД БУУЛГАСАН цаг − эвент эхлэх цаг (2026-10-05, CEO).
+  // Эвент 13:00 УБ = 05:00Z; 07:29Z-д буулгасан → 2.5 цаг хоцорсон.
+  const late = F.orderArrivalLate(mk(6, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T07:29:00Z'));
+  eq(late.lateH, 2.5, 'хоцролт: эвент эхэлснээс 2.5 цагийн дараа буулгасан');
   eq(late.ok, false, 'хоцролт: цагтаа биш');
-  eq(F.orderDispatchLate(mk(7, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T02:00:00Z')).ok,
-     true, 'хоцролт: эрт гарсан = цагтаа');
+  eq(F.orderArrivalLate(mk(7, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-14T02:00:00Z')).ok,
+     true, 'хоцролт: эхлэхээс өмнө буулгасан = цагтаа');
+  // ⛔ «Бүртгэж гаргасан» цаг нотолгоо БИШ — эрт бүртгэсэн ч хожуу очсон бол ХОЦОРСОН
+  //   (амьд: 09:00-д эхлэх эвент, өмнөх орой бүртгэсэн, 11:14-д буулгасан → «цагтаа» гэж тоологдож байв)
+  const lateArr = F.orderArrivalLate({ number: 30, status: 'archived', starts_at: '2026-10-03',
+    note: '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧',
+    stage_meta: { dispatch: { at: '2026-10-02T10:11:00Z' }, deliver: { at: '2026-10-03T03:14:00Z' } } });
+  ok(lateArr && !lateArr.ok && lateArr.lateH === 2.2, 'хоцролт: эрт бүртгэсэн ч хожуу буулгасан = хоцорсон');
+  eq(F.orderArrivalLate({ number: 31, status: 'delivering', starts_at: '2026-10-03', note: '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧',
+    stage_meta: { dispatch: { at: '2026-10-02T10:11:00Z' } } }), null, 'хоцролт: хараахан буулгаагүй → хэмжигдэхгүй');
+  // ⛔ Суурилуулалттай бол СУУРИЛУУЛЖ ДУУССАН цагаар — буулгасан нь хангалтгүй
+  const setupO = (setupAt) => ({ number: 32, status: 'rented', starts_at: '2026-09-14', note: '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧ ⟦SET|1⟧',
+    stage_meta: { deliver: { at: '2026-09-14T04:00:00Z' }, ...(setupAt ? { setup: { at: setupAt } } : {}) } });
+  eq(F.orderArrivalLate(setupO('2026-09-14T06:00:00Z')).lateH, 1, 'суурилуулалт: суурилуулж дууссан цагаар хэмжинэ');
+  eq(F.orderArrivalLate(setupO(null)), null, 'суурилуулалт: суурилуулаагүй бол буулгасан цагаар ХЭМЖИХГҮЙ');
+  eq(F.dispatchStats([{ ...setupO(null), status: 'installing' }], '2026-09-01').skipped, 0, 'суурилуулалт хүлээж буй нь «хэмжигдээгүй» биш');
+  eq(F.dispatchStats([setupO(null)], '2026-09-01').skipped, 1, 'суурилуулалтыг алгассан нь «хэмжигдээгүй»-д ил');
   // ⛔ Очиж авах — хугацаа бодохгүй (дээрх дүрэм)
   eq(F.orderDispatchPlan(mk(10, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|pickup|0|0⟧')), null,
      'гарах: очиж авахад хугацаа бодохгүй');
   // ⛔ Товч ХОЖУУ дарсан бичлэг (амьд датад −79 цаг байсан) хэмжүүрийг эвдэнэ.
-  ok(F.orderDispatchLate(mk(8, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-17T09:00:00Z')).wild,
+  ok(F.orderArrivalLate(mk(8, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-17T09:00:00Z')).wild,
      'хоцролт: хэт том зөрүү = бүртгэлийн алдаа');
 
   const st = F.dispatchStats([
@@ -14374,7 +14391,7 @@ async function swFetchTests() {
 
   // Статистикт очиж авах нь «хэмжигдээгүй» БИШ, тусдаа тоологдоно
   const mk = (n, note, at) => ({ number: n, status: 'reserved', starts_at: '2026-10-05', note,
-    stage_meta: { dispatch: { by: 'A', at } } });
+    stage_meta: { dispatch: { by: 'A', at }, deliver: { by: 'A', at } } });
   const st = DS([
     mk(1, '⟦RT|14|18⟧⟦DLV|city|0|150000⟧', '2026-10-05T02:00:00Z'),      // цагтаа
     mk(2, '⟦RT|14|18⟧⟦DLV|pickup|0|0⟧',    '2026-10-05T09:00:00Z'),      // очиж авах
@@ -14388,7 +14405,11 @@ async function swFetchTests() {
 // ═══ SCAN: очиж авахыг хэмжүүрт буцааж оруулахыг хаана ═══
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
-  const fn = src.slice(src.indexOf('function orderDispatchPlan'), src.indexOf('function orderDispatchLate'));
+  const fn = src.slice(src.indexOf('function orderDispatchPlan'), src.indexOf('function orderArrivalLate'));
+  // ⛔ Агуулахаас бүртгэсэн цагаар хэмжих зам буцаж ирэхгүй (2026-10-05)
+  ok(!/orderDispatchLate/.test(src), 'scan: «Бүртгэж гаргасан» цагаар хэмжих функц буцаж ирэхгүй');
+  const _ds = src.slice(src.indexOf('function dispatchStats'), src.indexOf('function orderReview'));
+  ok(/orderArrivalLate\(o\)/.test(_ds) && !/dispatch\.at/.test(_ds), 'scan: нэгтгэл ирсэн цагаар бодно');
   ok(/if \(!deliver\) return null;/.test(fn), 'scan: очиж авах захиалга хэмжүүрээс гарна');
   // Дэлгэц: өдөр бүрийн мөр нээлттэй БАЙХГҮЙ — <details> дотор
   ok(/<details class="dsp-det">/.test(src), 'scan: өдрийн задаргаа details дотор');

@@ -26453,30 +26453,43 @@ function orderDispatchPlan(o) {
   if (isNaN(startMs)) return null;
   return { startMs, needMs: startMs - hours * 3600000, hours: Math.round(hours * 10) / 10, km, setup };
 }
-// Бодит гарсан (товч дарсан) цагтай тулгана. Буцаах: null | {lateH, ok, wild}.
-function orderDispatchLate(o) {
+/* ── ЦАГТАА ХҮРСЭН ҮҮ = АРГА ХЭМЖЭЭ ЭХЛЭХ ЦАГТАЙ тулгана (2026-10-05, CEO) ──
+   Харилцагчид бараа БЭЛЭН болсон мөч: суурилуулалттай бол «Суурилуулсан»,
+   үгүй бол «Талбайд буулгасан» дамжлагын цаг. Түүнийг эвент эхлэх цагтай
+   (⟦RT⟧) харьцуулна. Буцаах: null | {lateH, ok, wild, plan, at}.
+   ⛔ «Бүртгэж гаргасан» (агуулахаас) цагаар БҮҮ хэмж. Тэр нь бүртгэл хийсэн
+     цаг, машин гарсан цаг БИШ: амьд датаар нярав 4 захиалгыг 2 минутад
+     бүртгэсэн; олон цэгтэй маршрутад сүүлийн цэг хэдэн цагийн дараа очдог. 10
+     сард тэр хэмжүүр 2 хоцролт харуулж байхад харилцагчид 4 нь хоцорч очсон
+     (09:00-д эхлэх эвентэд 11:14-д буулгасан нь «цагтаа» гэж тоологдож байв).
+   ⛔ Суурилуулалттай захиалгад БУУЛГАСАН цагаар хэмжихгүй — суурилуулж
+     дуусаагүй бол харилцагчид бэлэн биш.
+   ⚠ Товчийг хожуу дарвал хоцорсон мэт харагдана — DISPATCH_WILD_H-аас их
+     зөрүүг «бүртгэл алдаатай» гэж хасна (ил тоолно). */
+function orderArrivalLate(o) {
   const plan = orderDispatchPlan(o);
   if (!plan) return null;
-  const at = o && o.stage_meta && o.stage_meta.dispatch && o.stage_meta.dispatch.at;
+  const sm = (o && o.stage_meta) || {};
+  const at = plan.setup ? (sm.setup && sm.setup.at) : (sm.deliver && sm.deliver.at);
   const ms = Date.parse(String(at || ''));
   if (!at || isNaN(ms)) return null;
-  const lateH = Math.round(((ms - plan.needMs) / 3600000) * 10) / 10;
-  return { lateH, ok: lateH <= 0, wild: Math.abs(lateH) > DISPATCH_WILD_H, plan };
+  const lateH = Math.round(((ms - plan.startMs) / 3600000) * 10) / 10;
+  return { lateH, ok: lateH <= 0, wild: Math.abs(lateH) > DISPATCH_WILD_H, plan, at };
 }
-// Захиалгын карт дээрх шошго. Хоцорсон бол улаан — ажилтан ШАЛТГААНЫГ нь
-// мэдэхийн тулд «гарах ёстой байсан цаг»-ийг ч харуулна.
+// Захиалгын карт дээрх шошго. Хүрээгүй байхад «HH:MM гэхэд гарна» гэсэн
+// ТӨЛӨВЛӨГӨӨ (ажилтанд чиглэл), хүрсний дараа ҮР ДҮН (цагтаа / N ц хоцорсон).
 function dispatchChipHtml(o) {
   const plan = orderDispatchPlan(o);
   if (!plan) return '';
-  const need = ubStamp(new Date(plan.needMs).toISOString(), false);
-  const late = orderDispatchLate(o);
-  if (late && !late.wild && !late.ok) {
-    return `<span class="dep-badge dsp-late" title="Агуулахаас ${escapeHtml(need)} гэхэд гарах ёстой байсан (ачих ${DISPATCH_LOAD_H}ц + зам ${plan.km} км${plan.setup ? ' + угсралт' : ''} + нөөц)">⚠ ${late.lateH} ц хоцорсон</span>`;
+  const r = orderArrivalLate(o);
+  if (r && !r.wild && !r.ok) {
+    return `<span class="dep-badge dsp-late" title="Арга хэмжээ ${escapeHtml(ubStamp(new Date(plan.startMs).toISOString(), false))}-д эхлэх байсан, ${plan.setup ? 'суурилуулж дууссан' : 'талбайд буулгасан'} нь ${escapeHtml(ubStamp(r.at, false))}">⚠ ${r.lateH} ц хоцорсон</span>`;
   }
-  if (late && late.ok) return `<span class="dep-badge dsp-ok" title="Агуулахаас цагтаа гарсан">🚚 цагтаа</span>`;
+  if (r && r.ok) return `<span class="dep-badge dsp-ok" title="Арга хэмжээ эхлэхээс өмнө ${plan.setup ? 'суурилуулж дууссан' : 'хүргэгдсэн'}">🚚 цагтаа</span>`;
+  const need = ubStamp(new Date(plan.needMs).toISOString(), false);
   return `<span class="dep-badge dsp-need" title="Ачих ${DISPATCH_LOAD_H}ц + зам ${plan.km} км${plan.setup ? ' + угсралт 1ц' : ''} + нөөц 30мин">🚚 ${escapeHtml(need)} гэхэд гарна</span>`;
 }
-// Нэгтгэл — «хэдэн хувь нь цагтаа гарсан бэ». Цэвэр функц.
+// Нэгтгэл — «хэдэн хувь нь цагтаа хүрсэн бэ». Цэвэр функц.
 // ⚠ Хэмжигдэхгүй захиалгыг (цаггүй, dispatch тамгагүй) ил тоолно — «100% цагтаа»
 //   гэсэн худал дүр зургаас сэргийлнэ.
 // `ym` (YYYY-MM) өгвөл ЗӨВХӨН тэр сар — Тойм ба Дүн шинжилгээ ИЖИЛ дуудалтаар.
@@ -26492,8 +26505,10 @@ function dispatchStats(orders, fromDay, ym) {
     // хэмжиж чадаагүй» гэж уншина; үнэндээ хэмжих ЁСГҮЙ захиалга.
     const _d = parseDelivery(o.note);
     if (!(_d && isDeliveryZone(_d.zone))) { if (o.stage_meta && o.stage_meta.dispatch) pickup++; return; }
-    const r = orderDispatchLate(o);
-    if (!r) { if (o.stage_meta && o.stage_meta.dispatch) skipped++; return; }
+    const r = orderArrivalLate(o);
+    // Хүргэгдсэн атлаа хэмжиж чадаагүй (цаггүй, суурилуулалтыг алгассан) = ил тоолно.
+    // ⚠ Суурилуулалт хүлээж буй (installing) захиалга ХАРААХАН дуусаагүй — тоолохгүй.
+    if (!r) { if (o.stage_meta && o.stage_meta.deliver && o.status !== 'installing') skipped++; return; }
     if (r.wild) { wild++; return; }
     n++;
     if (!r.ok) { late++; sumLate += r.lateH; worst.push({ number: o.number, customer: String(o.customer || ''), lateH: r.lateH, day }); }
@@ -26563,7 +26578,7 @@ function dispatchDayRows(orders, ym) {
     if (!o || !_orderActive(o)) return;
     const day = String(o.starts_at || '').slice(0, 10);
     if (!day || day.slice(0, 7) !== ym) return;
-    const r = orderDispatchLate(o);
+    const r = orderArrivalLate(o);
     if (!r || r.wild) return;
     const d = by[day] || (by[day] = { day, n: 0, late: 0, orders: [] });
     d.n++;
@@ -26571,7 +26586,7 @@ function dispatchDayRows(orders, ym) {
   });
   return Object.values(by).sort((a, b) => a.day.localeCompare(b.day));
 }
-// Тоймын блок — «цагтаа гарсан уу». ⛔ Үнэлгээний картын ДЭРГЭД байрлана:
+// Тоймын блок — «цагтаа хүрсэн үү». ⛔ Үнэлгээний картын ДЭРГЭД байрлана:
 // хоцролт нь муу үнэлгээний ШАЛТГААН тул хоёрыг тусад нь харуулбал хүн
 // холбохгүй. Ажил нь захиалгын карт дээр (🚚 шошго) — энд зөвхөн ХЭМЖҮҮР.
 /* ⛔ САРААР, «сүүлийн 60 хоног» БИШ (2026-10-05, CEO: «тухайн сарын хоцролт
@@ -26617,7 +26632,7 @@ function dispatchBlockHtml(orders) {
   const st = dispatchStats(orders, null, ym);
   const unm = st.skipped + st.wild;
   const cls = _dspCls(st.pct);
-  const unmTxt = unm ? `<span class="dsp-unm" title="Эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан">${unm} хэмжигдээгүй</span>` : '';
+  const unmTxt = unm ? `<span class="dsp-unm" title="Эхлэх цаг тэмдэглээгүй, суурилуулалтыг алгассан эсвэл дамжлагын товч хожуу дарсан">${unm} хэмжигдээгүй</span>` : '';
   // Өмнөх сартай харьцуулалт — өмнөх сар ХАНГАЛТТАЙ хүргэлттэй үед л
   // (3 хүргэлттэй сартай харьцуулбал «−24 нэгж» гэсэн дуу чимээ гарна)
   const prev = series.find(m => m.ym === dspMonthShift(ym, -1));
@@ -26628,7 +26643,7 @@ function dispatchBlockHtml(orders) {
     ? `<div class="dsp-row"><span class="dsp-big ${cls}">${st.pct}%</span>
         <span class="dsp-meta">${delta}<span>${st.late ? `${st.late}/${st.n} хоцорсон · дундаж ${st.avgLate}ц` : `${st.n} хүргэлт · бүгд цагтаа`}${unm ? ' · ' + unmTxt : ''}</span></span></div>`
     : `<div class="dsp-empty">Энэ сард хэмжигдсэн хүргэлт алга${unm ? ' · ' + unmTxt : ''}</div>`;
-  const chart = series.length < 2 ? '' : `<div class="dsp-chart" role="group" aria-label="Сар бүрийн цагтаа гарсан хувь">${series.map(m => {
+  const chart = series.length < 2 ? '' : `<div class="dsp-chart" role="group" aria-label="Сар бүрийн цагтаа хүрсэн хувь">${series.map(m => {
       const h = m.pct === null ? 0 : Math.round(m.pct / 10) * 10;
       const tip = m.n ? `${dspMonthLabel(m.ym, cur)}: ${m.n - m.late}/${m.n} цагтаа${m.n < DSP_THIN_N ? ' — цөөн хүргэлт' : ''}${m.ym === cur ? ' (явж буй сар)' : ''}` : `${dspMonthLabel(m.ym, cur)}: хэмжигдсэн хүргэлт алга`;
       return `<button type="button" class="dsp-col ui-raw${m.ym === ym ? ' on' : ''}${m.n && m.n < DSP_THIN_N ? ' thin' : ''}" data-dsp-pick="${escapeHtml(m.ym)}" title="${escapeHtml(tip)}">
@@ -26637,7 +26652,7 @@ function dispatchBlockHtml(orders) {
         <span class="dsp-cm">${escapeHtml(dspMonthLabel(m.ym, cur))}</span></button>`;
     }).join('')}</div>`;
   return `<div class="rv-card dsp-card" id="dsp-card" role="button" tabindex="0" data-dsp-ym="${escapeHtml(ym)}">
-    <div class="dsp-top"><span class="dsp-ttl">🚚 Цагтаа гарсан · ${escapeHtml(dspMonthLabel(ym, cur))}</span><span class="dsp-go" aria-hidden="true">›</span></div>
+    <div class="dsp-top"><span class="dsp-ttl">🚚 Цагтаа хүрсэн · ${escapeHtml(dspMonthLabel(ym, cur))}</span><span class="dsp-go" aria-hidden="true">›</span></div>
     ${body}
     ${chart}
   </div>`;
@@ -37271,7 +37286,7 @@ function renderReports() {
       <div class="rsrc-note">Харилцагч биднийг хаанаас олсон — захиалга бичих үед тэмдэглэгддэг. Зарын зарцуулалттай холбогдмогц суваг бүрийн өртөг гарна.</div>
     </div>`;
   })();
-  // ── АГУУЛАХААС ЦАГТАА ГАРСАН УУ — сараар, өдрөөр (2026-09-22) ──
+  // ── ХҮРГЭЛТ ЦАГТАА ХҮРСЭН ҮҮ — сараар, өдрөөр (арга хэмжээ эхлэх цагтай) ──
   // Тойм дээр зөвхөн хувь харагдана; ЗАДАРГАА нь энд. Хоёулаа `dispatchStats`
   // -ээс гардаг тул тоо хэзээ ч зөрөхгүй.
   const dispatchPanel = (() => {
@@ -37298,7 +37313,7 @@ function renderReports() {
       <span class="dsp-day-n">${d.n - d.late}/${d.n}</span>
     </div>`;
     return `<div class="rsrc-panel">
-      <div class="rsrc-title">🚚 Хүргэлтэд цагтаа гарсан · ${escapeHtml(month)}
+      <div class="rsrc-title">🚚 Хүргэлт цагтаа хүрсэн · ${escapeHtml(month)}
         <span class="rsrc-pct ${cls}">${st.pct === null ? '—' : st.pct + '%'}</span></div>
       <div class="rsrc-note">${st.n} хүргэлт хэмжигдсэн${st.late ? ` · <b>${st.late} хоцорсон</b> · дунджаар ${st.avgLate} цаг` : ' · бүгд цагтаа'}.
         ${st.pickup ? `<br>Очиж авах ${st.pickup} захиалга хэмжигдээгүй — харилцагч өөрөө цагаа сонгодог.` : ''}</div>
@@ -37308,10 +37323,10 @@ function renderReports() {
         <span class="dsp-lr-d">${escapeHtml(o.day.slice(5))}</span>
         <span class="dsp-lr-h">${o.lateH}ц</span></button>`).join('')}</div>` : ''}
       <details class="dsp-det"><summary>Өдрөөр харах (${days.length} өдөр) · тооцооны журам</summary>
-        <div class="rsrc-note">Гарах ёстой цаг = эвент эхлэх − (ачих 1ц + зам км÷60, хотод доод тал 1ц + угсралттай бол 1ц + нөөц 30мин).</div>
+        <div class="rsrc-note">Цагтаа = «Талбайд буулгасан» (суурилуулалттай бол «Суурилуулсан») цаг ≤ арга хэмжээ эхлэх цаг.</div>
         ${days.length ? `<div class="dsp-days">${days.map(dayRow).join('')}</div>` : ''}
       </details>
-      ${(st.skipped || st.wild) ? `<div class="rsrc-warn">⚠ ${st.skipped + st.wild} хүргэлт хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
+      ${(st.skipped || st.wild) ? `<div class="rsrc-warn">⚠ ${st.skipped + st.wild} хүргэлт хэмжигдээгүй — эхлэх цаг тэмдэглээгүй, суурилуулалтыг алгассан эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
     </div>`;
   })();
 

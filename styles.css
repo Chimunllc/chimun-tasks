@@ -8646,3 +8646,15 @@ select.no-asar-len {
 .dash-top-fill { background: var(--warn); }
 .dash-top-n { width: auto; min-width: 32px; font-variant-numeric: tabular-nums; }
 .dash-top-scroll { max-height: 20rem; overflow-y: auto; }
+
+/* Тойм — гацсан захиалга (2026-10-05) */
+.stk-ok { font-size: var(--fs-sm); color: var(--ok); font-weight: 600; }
+.stk-list { margin-top: var(--space-2); max-height: 22rem; overflow-y: auto; }
+.stk-row { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2); align-items: center;
+  width: 100%; text-align: left; padding: var(--space-2) 0; border: 0; border-top: 1px solid var(--border);
+  background: none; color: var(--text); font-size: var(--fs-sm); cursor: pointer; }
+.stk-no { font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stk-main { display: flex; flex-direction: column; min-width: 0; }
+.stk-cust { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stk-step { font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stk-late { font-weight: 800; color: var(--danger); white-space: nowrap; }

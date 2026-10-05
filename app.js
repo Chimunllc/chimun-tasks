@@ -6733,7 +6733,7 @@ function openOrderDamageModal(oid) {
   modal.id = 'mev-damage-modal';
   const cleanUserNote = existingDmg ? String(existingDmg.note || '').replace(/·?\s*Эвдэрсэн:.*$/, '').trim() : '';
   modal.innerHTML = `
-    <div class="modal" style="max-width:460px;">
+    <div class="modal dmg-modal">
       <h2>Буцаалт · эвдрэл — #${o.number ?? ''}</h2>
       <p class="dmg-hint">Эвдэрсэн/дутсан барааны тоог оруулна — тэр тоо нөөцөөс (боломжит хэмжээ) хасагдана. Засварласны дараа барааны хэсгээс «⚠ Эвдэрсэн» тоог буулгаж сэргээнэ.</p>
       <div class="dmg-list">${rowsHtml || '<div class="dmg-hint">Бараа алга</div>'}</div>
@@ -6742,7 +6742,7 @@ function openOrderDamageModal(oid) {
       <label class="dmg-amt-l">Тэмдэглэл</label>
       <textarea id="dmg-note" class="ui-raw" rows="2" placeholder="ж: 1 ширээ хугарсан, 2 таваг цуурсан">${escapeHtml(cleanUserNote)}</textarea>
       <div id="dmg-ret" class="dmg-ret"></div>
-      <div class="modal-actions" style="margin-top:16px;">
+      <div class="modal-actions">
         <button class="btn" id="dmg-cancel">Болих</button>
         <button class="btn btn-primary" id="dmg-save">✓ Хадгалах</button>
       </div>
@@ -11243,14 +11243,14 @@ async function openOrderScanModal(oid) {
   modal.className = 'modal-bg';
   modal.id = 'oscan-modal';
   modal.innerHTML = `
-    <div class="modal" style="max-width:460px;">
+    <div class="modal oscan-modal">
       <h2>📷 Бараа скан · #${o.number ?? '—'}</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">${escapeHtml(o.customer || '')} — бараа бүрийн QR-ийг сканнердаж бүгд бэлэн эсэхийг шалга.</p>
+      <p class="oscan-hint">${escapeHtml(o.customer || '')} — бараа бүрийн QR-ийг сканнердаж бүгд бэлэн эсэхийг шалга.</p>
       <div class="scan-box"><video id="oscan-video" playsinline muted></video><div class="scan-frame"></div></div>
       <div id="oscan-status" class="scan-status">Камер ачаалж байна…</div>
       <div id="oscan-progress" class="oscan-progress"></div>
       <div id="oscan-list" class="oscan-list"></div>
-      <div class="modal-actions" style="margin-top:14px;"><button class="btn btn-primary" id="oscan-done">Дуусгах</button></div>
+      <div class="modal-actions"><button class="btn btn-primary" id="oscan-done">Дуусгах</button></div>
     </div>`;
   document.body.appendChild(modal);
   modal.classList.add('open');
@@ -11259,7 +11259,7 @@ async function openOrderScanModal(oid) {
   function renderList() {
     const done = items.reduce((s, i) => s + Math.min(i.scanned, i.qty), 0);
     const total = items.reduce((s, i) => s + i.qty, 0);
-    progEl.innerHTML = `<b>${done}/${total}</b> ширхэг сканнердсан${done >= total ? ' · <span style="color:var(--ok)">✅ Бүгд бэлэн</span>' : ''}`;
+    progEl.innerHTML = `<b>${done}/${total}</b> ширхэг сканнердсан${done >= total ? ' · <span class="oscan-allok">✅ Бүгд бэлэн</span>' : ''}`;
     listEl.innerHTML = items.map((it, i) => {
       const ok = it.scanned >= it.qty;
       return `<div class="oscan-row${ok ? ' ok' : ''}"><span class="oscan-name">${ok ? '✅' : '⬜'} ${escapeHtml(it.name)}</span><span class="oscan-cnt"><button type="button" data-dec="${i}">−</button> ${it.scanned}/${it.qty} <button type="button" data-inc="${i}">+</button></span></div>`;

@@ -94,6 +94,8 @@
     --orc-modal-w: 420px;     /* 🧾 Банкны баримтуудын жагсаалт */
     --rfd-modal-w: 430px;     /* ↩ Буцаан олгох */
     --onote-modal-w: 480px;   /* 📝 Захиалгын тэмдэглэл */
+    --dmg-modal-w: 460px;     /* Буцаалт · эвдрэл бүртгэх */
+    --oscan-modal-w: 460px;   /* 📷 Захиалгын бараа скан */
 
     /* ── РАДИУС ── */
     --r-sm: 6px;
@@ -5016,8 +5018,12 @@ body.role-daily #add-project { display: none !important; }
 .pay-shortage { font-size: 12px; color: var(--danger); font-weight: 500; background: var(--danger-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; line-height: 1.4; }
 .order-dmg { color: var(--danger); }
 .rt-return { font-size: 13px; color: var(--text-soft); background: var(--panel-hover); border-radius: 8px; padding: 9px 12px; margin-top: 12px; }
-/* Буцаалт · эвдрэл модал */
-.dmg-hint { font-size: var(--fs-sm); color: var(--muted); margin: var(--space-1) 0 var(--space-3); line-height: 1.4; }
+/* Буцаалт · эвдрэл модал.
+   ⚠ Хоёр класс (`.modal.dmg-modal`) — мобайлын `.modal { max-width:100% }`-аас давна
+     (`cmp-modal`/`pm-modal`-тай ижил арга). */
+.modal.dmg-modal { max-width: var(--dmg-modal-w); }
+/* Цонхны тайлбар мөр — эвдрэл ба бараа сканны цонх ИЖИЛ хэв маягтай, нэг дүрэм. */
+.dmg-hint, .oscan-hint { font-size: var(--fs-sm); color: var(--muted); margin: var(--space-1) 0 var(--space-3); line-height: 1.4; }
 .dmg-list { display: flex; flex-direction: column; }
 .dmg-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); }
 .dmg-item-name { flex: 1; min-width: 0; font-size: var(--fs-md); }
@@ -5858,9 +5864,13 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .bq-doc-s.warn { background: var(--warn-soft, #fffbeb); color: var(--warn, #d97706); }
 .bq-doc-s.muted { background: var(--panel); color: var(--text-soft); }
 .bq-doc-revised { opacity: .55; }
-/* Захиалгын check-in/out скан */
+/* Захиалгын check-in/out скан.
+   ⚠ Хоёр класс (`.modal.oscan-modal`) — мобайлын `.modal { max-width:100% }`-аас давна.
+   Тайлбарын мөр нь `.oscan-hint` (эвдрэлийн цонхтой нэг дүрэм, дээр үз). */
+.modal.oscan-modal { max-width: var(--oscan-modal-w); }
 #oscan-modal .scan-box { aspect-ratio: 4/3; margin-bottom: 8px; }
 .oscan-progress { font-size: 14px; text-align: center; margin: 4px 0 10px; }
+.oscan-allok { color: var(--ok); }
 .oscan-list { display: flex; flex-direction: column; gap: 6px; max-height: 30vh; overflow-y: auto; }
 .oscan-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; background: var(--panel-hover); border-radius: 8px; font-size: 13px; }
 .oscan-row.ok { background: var(--ok-soft, rgba(34,197,94,.14)); }

@@ -13218,6 +13218,53 @@ function stageFeeBands() {
   out[out.length - 1][0] = Infinity;   // хамгийн дээд шатлал ҮРГЭЛЖ хязгааргүй — эс бол том захиалга 0₮ болно
   return out;
 }
+/* ─── ХАСАХ ОНОО = чанаргүй / хоцорсон ажил (2026-10-05, CEO) ──────────────
+   «Бонус шагнал өгч байгаа бол буцаагаад торгууль байх ёстой — ингэж байж
+   хоёр тал зөв ажиллана.» Зарчим: САЙН хийсэн хэсэг +оноо, МУУ хийсэн хэсэг
+   ТЭР ХЭМЖЭЭГЭЭР −оноо.
+   · ХОЦОРСОН (`orderArrivalLate` — арга хэмжээ эхлэхэд бэлэн биш): тэр
+     захиалгын ГАРАХ ТАЛЫН дамжлага (баглах · бүртгэж гаргах · буулгах ·
+     суурилуулах) бүхэлдээ муу → оноо нь хасах оноо болно. Нэг баг — хэн
+     удаашруулсныг товчны цагаар тогтоох найдваргүй (бүртгэлийг багцаар дардаг).
+   · ЧАНАРГҮЙ (`dispatch.defects` — нярав тоолсон алдаатай ширхэг): цэвэрлэх /
+     баглах дамжлагын муу хувь = алдаа ÷ гарсан нийт ширхэг.
+   ⛔ Товчоо 24 цагаас хожуу дарсан (хэмжээгүй) нь «хоцорсон» гэж тооцогдоно —
+     цагтаа гэдгийг нотлох зүйлгүй бол торгуулиас мултрах нүх болно.
+   ⛔ Сарын бонус 0-ээс доош ОРОХГҮЙ — суурь цалингаас хасахгүй (хөдөлмөрийн
+     хуулиар цалингаас дур мэдэн суутгал хийж болохгүй).
+   ⛔ `from`-оос өмнөх сард ХЭРЭГЛЭГДЭХГҮЙ (9 сар хэвээр — CEO, 2026-10-05).
+   Тохиргоо `app_config['stage_pay'].penalty` = {from, late_grace_min}. */
+const STAGE_PENALTY_DEFAULT = { from: '2026-10', late_grace_min: 15 };
+const STAGE_LATE_CHAIN = ['prepare', 'dispatch', 'deliver', 'setup'];
+function stagePenaltyCfg() {
+  const c = _stagePayCfg().penalty;
+  const o = (c && typeof c === 'object') ? c : {};
+  const from = /^\d{4}-\d{2}$/.test(String(o.from || '')) ? String(o.from) : STAGE_PENALTY_DEFAULT.from;
+  const g = Number(o.late_grace_min);
+  return { from, graceMin: (g >= 0 && g <= 240) ? g : STAGE_PENALTY_DEFAULT.late_grace_min, off: o.off === true };
+}
+// Нэг захиалгын «хоцорсон уу» — ганц удаа бодогдоно. Цэвэр функц.
+function orderLateForPenalty(o, graceMin) {
+  const r = orderArrivalLate(o);
+  if (!r) return null;                                   // хэмжих боломжгүй (очиж авах, цаггүй) → хасахгүй
+  return r.lateH * 60 > graceMin ? { lateH: r.lateH } : null;   // ⛔ +24ц (хожуу дарсан) ч хоцорсонд орно
+}
+// Тухайн дамжлагын МУУ хувь (0..1) ба шалтгаан. Цэвэр функц — тестлэгдэнэ.
+function stageBadShare(o, key, late) {
+  if (late && STAGE_LATE_CHAIN.indexOf(key) >= 0) return { share: 1, why: 'late' };
+  if (key === 'clean' || key === 'prepare') {
+    const d = o && o.stage_meta && o.stage_meta.dispatch;
+    if (d && d.defChecked && Array.isArray(d.defects)) {
+      const bad = d.defects.filter(x => x && x.stage === key).reduce((t, x) => t + (Number(x.n) || 0), 0);
+      if (bad > 0) {
+        const tot = Array.isArray(d.items) && d.items.length
+          ? d.items.reduce((t, x) => t + (Number(x.got != null ? x.got : x.qty) || 0), 0) : orderItemQty(o);
+        if (tot > 0) return { share: Math.min(1, bad / tot), why: 'defect', n: bad };
+      }
+    }
+  }
+  return null;
+}
 function stageLeadWeight() { const v = Number(_stagePayCfg().lead_weight); return (v >= 1 && v <= 5) ? v : STAGE_LEAD_WEIGHT; }
 function stageHelperMax() { const v = Number(_stagePayCfg().helper_max); return (v >= 1) ? Math.floor(v) : STAGE_FEE_HELPER_MAX; }
 // Барааны тоогоор шатлалын хөлс. Тоо нь 0 (бараагүй захиалга) бол хамгийн доод шатлал.
@@ -13345,20 +13392,20 @@ function defectStats(orders, month) {
    Буцаах: { key: {led, helped, qty, ledFee, helperFee, total} } */
 function stagePayByPerson(orders, month) {
   const bands = stagePtBands(), lead = stageLeadWeight(), hmax = stageHelperMax(), rate = stagePointRate();
+  const pen = stagePenaltyCfg();
   const out = {};
-  const bump = (k, p, fld, cntFld) => {
-    if (!k) return;
-    const r = out[k] || (out[k] = { led: 0, helped: 0, qty: 0, ledPts: 0, helperPts: 0, pts: 0, ledFee: 0, helperFee: 0, total: 0 });
-    r[fld] += p; r[cntFld] += 1;
-  };
+  const get = k => out[k] || (out[k] = { led: 0, helped: 0, qty: 0, ledPts: 0, helperPts: 0, penPts: 0, pts: 0,
+    ledFee: 0, helperFee: 0, penFee: 0, total: 0, lateN: 0, defN: 0, penOrders: [] });
   for (const o of (orders || [])) {
     const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
     const qty = orderItemQty(o);
+    let late;   // захиалга бүрд ГАНЦ удаа (хэрэгтэй үед л) бодно
     for (const key of Object.keys(sm)) {
       const e = sm[key];
       if (!e || typeof e !== 'object') continue;
       if (STAGE_FEE_STAGES.indexOf(key) < 0) continue;
-      if (month && String(e.at || '').slice(0, 7) !== month) continue;
+      const ym = String(e.at || '').slice(0, 7);
+      if (month && ym !== month) continue;
       // ⛔ ОНООГООР бодно: барааны тооны шатлал × дамжлагын жин. ₮ нь ТӨГСГӨЛД ганц ханшаар.
       const pts = stagePtsForQty(qty, bands) * stageWeight(key);
       if (pts <= 0) continue;   // жолоо г.м. бонусгүй дамжлага
@@ -13369,15 +13416,39 @@ function stagePayByPerson(orders, month) {
          тусам хүн бүрийн хувь буурна, НИЙТ дүн хөдлөхгүй. */
       const units = (by ? lead : 0) + hs.length;
       if (units <= 0) continue;
-      if (by) { bump(by, pts * lead / units, 'ledPts', 'led'); out[by].qty += qty; }
-      hs.forEach(h => bump(h, pts / units, 'helperPts', 'helped'));
+      /* ⛔ АЛГАССАН дамжлага (`skipped`) оноо АВАХГҮЙ — ажил аппад хийгдээгүй, зураггүй.
+         Амьд датаар хуучин захиалгыг хожим оруулахдаа 8 дамжлагыг 30 секундэд
+         «алгасаж» бонус авч байв. 9 сар хэвээр (`from`). */
+      if (e.skipped && !pen.off && ym >= pen.from) continue;
+      // Хасах оноо — сайн хэсэг +, муу хэсэг ТЭР ХЭМЖЭЭГЭЭР − (хамтрагч ч хувиа үүрнэ)
+      let bad = null;
+      if (!pen.off && ym >= pen.from) {
+        if (late === undefined) late = orderLateForPenalty(o, pen.graceMin);
+        bad = stageBadShare(o, key, late);
+      }
+      const good = pts * (1 - (bad ? bad.share : 0)), badPts = pts - good;
+      const share = (k, w, fld, cnt) => {
+        const r = get(k);
+        r[fld] += good * w / units; r[cnt] += 1;
+        if (badPts > 0) {
+          r.penPts += badPts * w / units;
+          if (bad.why === 'late') r.lateN += 1; else r.defN += 1;
+          r.penOrders.push({ number: o.number, key, why: bad.why, lateH: late ? late.lateH : null, n: bad.n || 0, pts: badPts * w / units });
+        }
+      };
+      if (by) { share(by, lead, 'ledPts', 'led'); out[by].qty += qty; }
+      hs.forEach(h => share(h, 1, 'helperPts', 'helped'));
     }
   }
   Object.keys(out).forEach(k => {
     const r = out[k];
-    r.pts = Math.round((r.ledPts + r.helperPts) * 100) / 100;
+    r.pts = Math.round((r.ledPts + r.helperPts - r.penPts) * 100) / 100;
     r.ledFee = Math.round(r.ledPts * rate); r.helperFee = Math.round(r.helperPts * rate);
-    r.total = r.ledFee + r.helperFee;
+    r.penFee = Math.round(r.penPts * rate);
+    // ⛔ Сарын бонус 0-ээс доош БИШ — суурь цалингаас хасахгүй. Хасалт нь олсон бонусаар хязгаарлагдана.
+    r.penApplied = Math.min(r.penFee, r.ledFee + r.helperFee);
+    r.total = r.ledFee + r.helperFee - r.penApplied;
+    r.penOrders.forEach(x => { x.fee = Math.round(x.pts * rate); });
   });
   return out;
 }
@@ -13393,9 +13464,38 @@ function stageTopPerformers(orders, month, roster) {
     .sort((a, b) => b.pts - a.pts || b.led - a.led);
 }
 // Нэг хүний сарын дамжлагын бонус (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
+/* Бонусын мөр(үүд): олсон + хасалт. Нийлбэр нь `b.bonus` (= sp.total)-тэй ЯГ
+   таарна — нийлбэрээс өмнө тавигдана. Карт ба самбар хоёул үүнийг дуудна. */
+function stagePenWhy(sp) {
+  const po = (sp && sp.penOrders) || [];
+  const lateN = new Set(po.filter(x => x.why === 'late').map(x => x.number)).size;
+  const defN = po.filter(x => x.why === 'defect').length;
+  return [lateN ? `${lateN} захиалга хоцорсон` : '', defN ? `${defN} ажил чанаргүй` : ''].filter(Boolean).join(' · ');
+}
+function stageBonusRowsHtml(sp, bonus, lineFn, label) {
+  const earned = sp ? (sp.ledFee || 0) + (sp.helperFee || 0) : 0;
+  const pen = sp ? (sp.penApplied || 0) : 0;
+  if (!pen) return bonus ? lineFn(label, `+${fmtMoney(bonus)}`, 'pay-plus') : '';
+  return (earned ? lineFn(label, `+${fmtMoney(earned)}`, 'pay-plus') : '')
+    + lineFn(`⚠ Хасах оноо · ${stagePenWhy(sp)}`, `−${fmtMoney(pen)}`, 'pay-minus');
+}
+// Аль ажлаас хасагдсан — захиалгаар бүлэглэсэн жагсаалт (ажилтан шалгаж чадна)
+function stagePenListHtml(sp) {
+  const by = {};
+  ((sp && sp.penOrders) || []).forEach(x => {
+    const g = by[x.number] || (by[x.number] = { number: x.number, why: x.why, lateH: x.lateH, keys: [], fee: 0 });
+    g.keys.push(stageHistLabel(x.key)); g.fee += x.fee || 0;
+  });
+  const rows = Object.values(by).sort((a, z) => z.fee - a.fee);
+  if (!rows.length) return '';
+  return `<details class="sp-pen-det"><summary>Аль ажлаас хасагдсан бэ (${rows.length})</summary>${rows.map(g => `<div class="sp-pen-row">
+      <span class="sp-pen-n">#${escapeHtml(String(g.number ?? '—'))}</span>
+      <span class="sp-pen-w">${g.why === 'late' ? `${g.lateH > 24 ? 'товч хожуу дарсан' : g.lateH + 'ц хоцорсон'}` : 'чанаргүй'} · ${escapeHtml(g.keys.join(', '))}</span>
+      <span class="sp-pen-f">−${fmtMoney(g.fee)}</span></div>`).join('')}</details>`;
+}
 function stagePayFor(key, month, orders) {
   const all = stagePayByPerson(orders || state.appOrders || [], month);
-  return all[String(key)] || { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, total: 0 };
+  return all[String(key)] || { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, penFee: 0, penApplied: 0, total: 0, lateN: 0, defN: 0, penOrders: [] };
 }
 function driverBonus(key, month, orders) {
   let deliveries = 0, pickups = 0; const trips = [];
@@ -13650,7 +13750,7 @@ function renderAttendanceMonth(month) {
     const driverLine = db.count ? `<div style="font-size:12px;color:var(--ok);margin-top:2px;">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span style="color:var(--muted);">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
     const sp = spAll[r.k];
     if (sp && sp.total) spTotal += sp.total;
-    const stageLine = (sp && sp.total) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span></div>` : '';
+    const stageLine = (sp && (sp.total || sp.penApplied)) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span>${sp.penApplied ? ` <span class="sp-pen-tag">⚠ −${fmtMoney(sp.penApplied)} · ${escapeHtml(stagePenWhy(sp))}</span>` : ''}</div>` : '';
     // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ДАМЖЛАГЫН БОНУС ОРОХГҮЙ.
     const otMins = Math.max(0, r.mins - normMins);
     const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
@@ -13865,8 +13965,7 @@ function myPayCardHtml(me) {
   const sp = stagePayFor(key, month);
   /* ⛔ Бонус нь НИЙЛБЭРЭЭС ӨМНӨХ мөр — тэмдэглэл болгож доор нь тавибал
      мөрүүд нийлбэртэйгээ таарахгүй харагдана (2026-10-05, CEO барив). */
-  const spRow = b.bonus
-    ? row(`📦 Дамжлагын бонус · ${sp.led || 0} удирдсан${sp.helped ? ` · ${sp.helped} хамтрагч` : ''}`, `+${fmtMoney(b.bonus)}`, 'pay-plus') : '';
+  const spRow = stageBonusRowsHtml(sp, b.bonus, row, `📦 Дамжлагын бонус · ${sp.led || 0} удирдсан${sp.helped ? ` · ${sp.helped} хамтрагч` : ''}`);
   const spNote = '';
   const noOutNote = w.noOut
     ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул ${b.shortMins ? '<b>цалин дутуу бодогдсон</b>' : 'илүү цаг дутуу'} байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
@@ -14010,12 +14109,13 @@ function renderMyAttend() {
     ${(() => {
       if (payrollHistOnly(payM)) return '';            // ⛔ түүх сард дамжлагын бонус гаргахгүй
       const sp = stagePayFor(personKey(me) || state.me, payM);
-      if (!sp.total) return '';
+      if (!sp.total && !sp.penApplied) return '';
       return `<div class="sp-card">
-        <div class="sp-card-t">📦 Дамжлагын бонус · ${escapeHtml(payM)} <span class="sp-sub">(цалинд ороогүй)</span></div>
+        <div class="sp-card-t">📦 Дамжлагын бонус · ${escapeHtml(payM)} <span class="sp-sub">(нийт олгоход орсон)</span></div>
         <div class="sp-card-v">${fmtMoney(sp.total)}</div>
         <div class="sp-card-s">Удирдсан <b>${sp.led}</b> шат${sp.helped ? ` · хамтрагчаар <b>${sp.helped}</b>` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''}</div>
-        <div class="sp-card-n">Бонус нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил бонус болохгүй.</div>
+        ${sp.penApplied ? `<div class="sp-card-pen">⚠ Хасах оноо: <b>−${fmtMoney(sp.penApplied)}</b> · ${escapeHtml(stagePenWhy(sp))}</div>${stagePenListHtml(sp)}` : ''}
+        <div class="sp-card-n">Бонус нь захиалгын <b>барааны тоогоор</b> бодогдоно. Дамжлагад бүртгээгүй ажил бонус болохгүй. <b>Хоцорсон</b> (арга хэмжээ эхлэхэд бэлэн биш) эсвэл <b>чанаргүй</b> ажлын оноо хасагдана.</div>
         <button class="btn sp-cfg-btn" data-pipeline-map>📊 Урсгал харах</button>
       </div>`;
     })()}
@@ -17919,7 +18019,7 @@ function renderSalary() {
         ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}
         ${/* ⛔ БОНУС НИЙЛБЭРЭЭС ӨМНӨ — доор нь тавибал мөрүүд нийлбэртэйгээ
              таарахгүй, хүн «дүн буруу» гэж уншина (2026-10-05, CEO барив). */''
-        }${b.bonus ? line(`📦 Дамжлагын бонус · ${(sp && sp.led) || 0} удирдсан${(sp && sp.helped) ? ` · ${sp.helped} хамтрагч` : ''}`, `+${fmtMoney(b.bonus)}`, 'pay-plus') : ''}
+        }${stageBonusRowsHtml(sp, b.bonus, line, `📦 Дамжлагын бонус · ${(sp && sp.led) || 0} удирдсан${(sp && sp.helped) ? ` · ${sp.helped} хамтрагч` : ''}`)}
         ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
         ${carry.amount ? line(`↪ ${escapeHtml(carry.from)} сард илүү олгосон`, `−${fmtMoney(carry.amount)}`, 'pay-minus') : ''}
         ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList : ''}
@@ -26573,9 +26673,10 @@ function orderArrivalLate(o) {
   const sm = (o && o.stage_meta) || {};
   // Ачаа агуулахаас гарсны ДАРАА авсан зураг л тоологдоно; суурилуулалтын зураг
   // нь буулгасны ДАРАА (буулгалтын бодит цаг нь өөрөө зургаас байж болно).
-  const dlv = sm.deliver && sm.deliver.at ? stageDoneAt(sm.deliver, sm.dispatch && sm.dispatch.at, false) : null;
+  // ⛔ АЛГАССАН дамжлагын цаг = товч дарсан цаг, ирсэн цаг БИШ → хэмжихгүй
+  const dlv = sm.deliver && sm.deliver.at && !sm.deliver.skipped ? stageDoneAt(sm.deliver, sm.dispatch && sm.dispatch.at, false) : null;
   const r = plan.setup
-    ? (sm.setup && sm.setup.at ? stageDoneAt(sm.setup, dlv ? dlv.at : (sm.dispatch && sm.dispatch.at), true) : null)
+    ? (sm.setup && sm.setup.at && !sm.setup.skipped ? stageDoneAt(sm.setup, dlv ? dlv.at : (sm.dispatch && sm.dispatch.at), true) : null)
     : dlv;
   if (!r) return null;
   const ms = Date.parse(r.at);

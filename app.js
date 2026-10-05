@@ -34098,7 +34098,8 @@ function _ubDate(ts) {
 // «…+00:00» нь ижил мөч боловч мөрийн эрэмбээр өөр гарна. Уншигдахгүй бол 0
 // (эрэмбийн ард унана, мөр АЛГА БОЛОХГҮЙ).
 function pbxTime(ts) {
-  const t = Date.parse(String(ts || ''));
+  // Postgres «…+00» (минутгүй офсет) хэлбэрийг Date.parse уншдаггүй — нормчилно.
+  const t = Date.parse(String(ts || '').replace(/([+-]\d\d)$/, '$1:00'));
   return isNaN(t) ? 0 : t;
 }
 // Сүүлд залгаснаар нь ЭРЭМБЭЛНЭ (шинэ нь дээр) — CEO 2026-09-17.
@@ -34187,18 +34188,51 @@ function pbxFollowups(calls, opts) {
       if ((Number(c.answer_sec) || 0) === 0 && (Number(c.call_sec) || 0) >= minSec) offOnly[p] = 1;
       return;
     }
-    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0 });
+    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0, missed: 0, missT: 0, ansT: 0 });
     x.tries++;
-    if ((Number(c.answer_sec) || 0) > 0) x.answered++;
-    x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0);
+    const tt = pbxTime(at);
+    if ((Number(c.answer_sec) || 0) > 0) { x.answered++; x.ansT = Math.max(x.ansT, tt); }
+    else if ((Number(c.call_sec) || 0) >= minSec) { x.missed++; x.missT = Math.max(x.missT, tt); x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0); }
     if (at && at < x.first) x.first = at;
     if (at && at > x.last) x.last = at;
   });
-  const out = Object.values(by).filter(x => !x.answered && x.maxSec >= minSec)
+  /* ⛔ ЯРЬСАН ДУУДЛАГА ЗӨВХӨН АЛДСАНЫ ДАРАА болсон бол хаана (2026-10-05, CEO).
+     Өмнө нь 14 хоногт ХЭЗЭЭ НЭГЭН удаа ярьсан л бол хожим алдсан дуудлага ч
+     жагсаалтаас алга болдог байв — амьд датаар: өглөө 3 мин ярьсан хүн үдээс
+     хойш 62 сек хүлээгээд тасалсан ч «шийдэгдсэн» гэж нуугдсан. Цагийг тоо
+     болгож тулгана (мөрөөр харьцуулахгүй). */
+  // ⚠ Цаг уншигдаагүй бол (missT=0) дарааллыг мэдэхгүй тул ҮЛДЭЭНЭ — эргэлзвэл нуухгүй.
+  const open = (x) => x.missed > 0 && !(x.missT > 0 && x.ansT > x.missT);
+  const out = Object.values(by).filter(open)
     .sort((a, b) => (b.tries - a.tries) || pbxByRecent(a, b));
-  out.short = Object.values(by).filter(x => !x.answered && x.maxSec < minSec).length;
+  out.short = Object.values(by).filter(x => !x.answered && !x.missed).length;
   out.off = Object.keys(offOnly).filter(p => !by[p]).length;
   return out;
+}
+/* Нэг дугаарын дуудлагын түүх (алдсан дуудлагын мөрөнд). ЦЭВЭР функц.
+   ЯАГААД: «яагаад жагсаалтад байна вэ / яагаад хасагдсан бэ» гэдгийг хүн
+   өөрөө харах ёстой — өглөө ярьсан ч үдээс хойш аваагүй гэх мэт. */
+function pbxPeerTimeline(calls, peer, from, ws, we) {
+  const p = String(peer || '');
+  const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9, w1 = Number.isFinite(Number(we)) ? Number(we) : 18;
+  return (calls || []).filter(c => c && String(c.direction || '') === 'in' && String(c.peer || '') === p
+      && (!from || String(c.started_at || '') >= from))
+    .map(c => {
+      const h = _ubHour(String(c.started_at || ''));
+      const ans = Number(c.answer_sec) || 0, sec = Number(c.call_sec) || 0;
+      return { at: String(c.started_at || ''), t: pbxTime(c.started_at), sec, ans,
+               off: h !== null && (h < w0 || h > w1) };
+    })
+    .sort((a, b) => a.t - b.t);
+}
+function pbxTimelineHtml(list) {
+  if (!list || !list.length) return '';
+  const fmt = (s) => s >= 60 ? `${Math.floor(s / 60)} мин ${s % 60} сек` : `${s} сек`;
+  const shown = list.slice(-6);
+  const more = list.length - shown.length;
+  return `<div class="mc-tl">${more > 0 ? `<div class="mc-tl-more">+${more} өмнөх дуудлага</div>` : ''}${shown.map(x => `<div class="mc-tl-r${x.ans ? ' ok' : ''}">
+      <span class="mc-tl-t">${escapeHtml(ubStamp(x.at))}</span>
+      <span class="mc-tl-s">${x.ans ? `✓ ярьсан · ${fmt(x.ans)}` : `✗ аваагүй · ${fmt(x.sec)} хүлээсэн`}${x.off ? ' · 🌙 ажлын бус цаг' : ''}</span></div>`).join('')}</div>`;
 }
 // ── 🌙 ОРОЙН ДУУДЛАГА — МАРГААШ ЗАЛГАХ (2026-09-17) ─────────────────────────
 // Амьд датаар (90 хоног): оройд 427 хүн залгасны **373 нь (87%) ажлын цагаар
@@ -35758,7 +35792,8 @@ function renderMissedCalls() {
       <div class="mc-main">${head}
         <div class="mc-meta">Сүүлд залгасан: <b>${escapeHtml(ubStamp(r.last))}</b>${
           !r.done && r.pri && r.pri.why ? ` · <span class="mc-why">${escapeHtml(r.pri.why)}</span>` : ''}</div>
-        ${tags ? `<div class="mc-tags">${tags}</div>` : ''}</div>
+        ${tags ? `<div class="mc-tags">${tags}</div>` : ''}
+        ${pbxTimelineHtml(pbxPeerTimeline(state.pbxLog || [], r.peer, from, ws, we))}</div>
       <div class="mc-acts">${acts}</div></div>`;
   };
   // 🌙 Оройн дуудлага — маргааш залгах (тоололд ОРОХГҮЙ, ажлын жагсаалтад ОРНО).

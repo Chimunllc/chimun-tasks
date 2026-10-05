@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -8011,6 +8011,26 @@ need(['orderCustType']);
   eq(F.pbxFollowups(cl, { from: '2026-09-15' }).length, 1, 'дуудлага: хугацаагаар шүүнэ');
   eq(F.pbxFollowups(cl, { from: '2026-09-16' }).length, 0, 'дуудлага: хугацаанаас гадуур → хоосон');
   eq(F.pbxFollowups(null).length, 0, 'дуудлага: дата байхгүй → хоосон (унахгүй)');
+  /* ⛔ ЯРЬСАН ДУУДЛАГА ЗӨВХӨН АЛДСАНЫ ДАРАА болсон бол хаана (2026-10-05, CEO).
+     Амьд жишээ: 12:43 ярьсан → 16:44 62 сек хүлээгээд аваагүй — нуугдаж байв. */
+  const ord = [
+    { direction: 'in', peer: '80070001', started_at: '2026-09-24T04:43:00Z', answer_sec: 166, call_sec: 180 },
+    { direction: 'in', peer: '80070001', started_at: '2026-09-24T08:44:00Z', answer_sec: 0, call_sec: 62 },
+    { direction: 'in', peer: '80100002', started_at: '2026-09-29T01:32:00Z', answer_sec: 0, call_sec: 40 },
+    { direction: 'in', peer: '80100002', started_at: '2026-09-29T06:07:00Z', answer_sec: 178, call_sec: 196 },
+  ];
+  const fo = F.pbxFollowups(ord, { ws: 9, we: 18 });
+  ok(fo.some(x => x.peer === '80070001'), 'дуудлага: өмнө ярьсан ч ДАРАА нь аваагүй бол жагсаалтад гарна');
+  ok(!fo.some(x => x.peer === '80100002'), 'дуудлага: аваагүйн ДАРАА ярьсан бол хасагдана');
+  eq(F.pbxTime('2026-09-15T04:00:00+00'), Date.parse('2026-09-15T04:00:00Z'), 'дуудлага: Postgres «+00» цаг уншигдана');
+  // Дугаарын дуудлагын түүх — цагийн дарааллаар, ажлын бус цаг тэмдэглэгдэнэ
+  const tl = F.pbxPeerTimeline(ord.concat([{ direction: 'in', peer: '80070001', started_at: '2026-09-24T13:00:00Z', answer_sec: 0, call_sec: 9 }]), '80070001', '', 9, 18);
+  eq(tl.length, 3, 'түүх: тэр дугаарын бүх дуудлага');
+  ok(tl[0].t <= tl[1].t && tl[1].t <= tl[2].t, 'түүх: цагийн дарааллаар');
+  eq(tl[0].ans, 166, 'түүх: ярьсан хугацаа');
+  ok(tl[2].off && !tl[0].off, 'түүх: ажлын бус цагийн дуудлага тэмдэглэгдэнэ');
+  const tlh = F.pbxTimelineHtml(tl);
+  ok(/ярьсан/.test(tlh) && /аваагүй/.test(tlh), 'түүх: ярьсан/аваагүй ил бичигдэнэ');
 
   // ── Харилцагчийн дуудлагын түүх (2026-09-16) ──
   {
@@ -13749,6 +13769,9 @@ async function swFetchTests() {
   // ⚠ Хүлээн авагч кодод хатуу бичигдээгүй.
   ok(/cfg_json\('pbx_notify'\)/.test(py) && !/\b8800\d{4}\b/.test(py),
      'мэдэгдэл: хүлээн авагч тохиргооноос, кодод биш');
+  // ⛔ Аппын дүрэмтэй ИЖИЛ: ярьсан нь зөвхөн алдсаны ДАРАА болсон бол хаана (2026-10-05)
+  ok(/last_ans is null or last_ans < last_miss/.test(py), 'мэдэгдэл: өмнө ярьсан ч дараа нь аваагүй бол мэдэгдэнэ');
+  ok(!/where answered = 0/.test(py), 'мэдэгдэл: «нэг ч удаа яриагүй» гэсэн хуучин дүрэм буцаж ирэхгүй');
 
   try {
     const out = require('child_process')

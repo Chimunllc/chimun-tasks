@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'vatIsAggregate', 'vatIssuedDay', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'vatIsAggregate', 'vatIssuedDay', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost', 'offHoursFeeFor', 'orderOffHoursFeeOf', 'tariffOffhoursFirstFee',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -1518,6 +1518,15 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   eq(F.tariffDeliveryCity(), 150000, 'Тариф fallback: хот дотор 150,000');
   eq(F.tariffPerKm(), 5000, 'Тариф fallback: км тутам 5,000');
   eq(F.tariffOffhoursFee(), 10000, 'Тариф fallback: ажлын бус цаг 10,000₮/ЦАГ');
+  eq(F.tariffOffhoursFirstFee(), 20000, 'Тариф fallback: ЭХНИЙ цаг 20,000₮');
+  /* ⛔ ЭХНИЙ ЦАГ ҮНЭТЭЙ — шөнө ажилтан дуудах нь өөрөө зардалтай. */
+  eq(F.offHoursFeeFor(0), 0, 'хөлс: 0 цаг = 0');
+  eq(F.offHoursFeeFor(1), 20000, 'хөлс: 1 цаг = 20,000');
+  eq(F.offHoursFeeFor(3), 40000, 'хөлс: 3 цаг = 20,000 + 2×10,000');
+  eq(F.offHoursFeeFor(5), 60000, 'хөлс: 5 цаг = 20,000 + 4×10,000');
+  // ⚠ ЦЭГ ТУС БҮРД өөрийн «эхний цаг» — хоёр өөр удаа дуудаж байна
+  eq(F.orderOffHoursFeeOf(7, 20), 60000, 'хөлс: 07:00 ба 20:00 = 30,000 × 2');
+  eq(F.orderOffHoursFeeOf(10, 16), 0, 'хөлс: ажлын цагт 0');
   /* ⛔ ЦАГ БҮРТ, «авах/өгөх бүрт» БИШ (2026-10-05, CEO). 19:00-д ба 23:00-д
      буцаахыг ижил үнээр бодох нь буруу байв. */
   eq(F.offHoursSpan(21), 3, 'бус цаг: 21:00 = 18-аас 3 цаг хойш');
@@ -4402,9 +4411,11 @@ need(['orderCustType']);
   const DAY = _soon(6);
   const mk = (st, paid, note) => ({ id: 'z', number: 9, status: st, paid_mnt: paid,
     starts_at: DAY, stops_at: DAY, note });
-  eq(ofr([mk('returned', 1, '⟦RT|7|20⟧')]).total, 40000, 'ажлын бус цаг: хоёр тал = 2 × 20,000₮');
+  /* ⛔ ЭХНИЙ ЦАГ 20,000₮, цааш 10,000₮/цаг (2026-10-05, CEO). 07:00 = 2 цаг,
+     20:00 = 2 цаг → цэг тус бүр 30,000₮ (цэг бүр ӨӨРИЙН эхний цагтай). */
+  eq(ofr([mk('returned', 1, '⟦RT|7|20⟧')]).total, 60000, 'ажлын бус цаг: хоёр тал = 2 × 30,000₮');
   eq(ofr([mk('returned', 1, '⟦RT|9|18⟧')]).total, 0, 'ажлын бус цаг: ажлын цагт хөлсгүй');
-  eq(ofr([mk('returned', 1, '⟦RT|7|18⟧')]).total, 20000, 'ажлын бус цаг: нэг тал = 20,000₮');
+  eq(ofr([mk('returned', 1, '⟦RT|7|18⟧')]).total, 30000, 'ажлын бус цаг: нэг тал 2 цаг = 20,000 + 10,000');
   eq(ofr([mk('deleted', 1, '⟦RT|7|20⟧')]).total, 0, 'ажлын бус цаг: больсон захиалга тоологдохгүй');
   eq(ofr([mk('reserved', 0, '⟦RT|7|20⟧')]).total, 0,
      '⛔ ажлын бус цаг: төлбөргүй reserved (=ноорог) тоологдохгүй');
@@ -4556,7 +4567,7 @@ need(['orderCustType']);
       starts_at: '2026-05-01', stops_at: '2026-05-04', total_mnt: 950000, deposit_mnt: 0,
       note: '⟦DLV|city|0|150000⟧⟦SET|1|50000⟧',
       items: [{ name: 'Ор', qty: 10, price: 20000 }, { name: 'Хүргэлт 1 талдаа', qty: 1, price: 50000 }] },
-    // Хөнгөлөлттэй + НӨАТ мөртэй + ажлын бус цаг (7:00 → 20:00 = 2 × 20,000)
+    // Хөнгөлөлттэй + НӨАТ мөртэй + ажлын бус цаг (7:00 → 20:00 = цэг тус бүр 2 цаг = 2 × 30,000)
     { id: 'i2', number: 22, customer: 'Б', status: 'rented',
       starts_at: '2026-05-10', stops_at: '2026-05-10', total_mnt: 1240000, deposit_mnt: 200000,
       note: '⟦RT|7|20⟧',
@@ -4565,7 +4576,7 @@ need(['orderCustType']);
   const comp = F._histCompute(orders, null, () => 'Бусад');
   const sum = (a) => (a || []).reduce((x, y) => x + (Number(y.revenue_mnt) || 0), 0);
   const fees = orders.reduce((a, o) => a + F.orderTokenFees(o), 0);
-  eq(fees, 150000 + 50000 + 40000, 'инвариант: гурван хөлс бодогдоно');
+  eq(fees, 150000 + 50000 + 60000, 'инвариант: гурван хөлс бодогдоно');
   const diff = Math.abs(comp.summary.net_revenue_mnt - (sum(comp.products) + sum(comp.services) + fees));
   ok(diff <= 2, '⭐ ИНВАРИАНТ: бараа + үйлчилгээ + хөлс = нийт орлого (зөрүү ' + diff + '₮)');
   // Олон хоногийн түрээс БҮТНЭЭРЭЭ оногдоно — 1 хоног болж хумигдахгүй.
@@ -16017,14 +16028,17 @@ async function swFetchTests() {
   // ⚠ Эрт ирсэн нь ХАСАГДАХГҮЙ — сөрөг төлбөр гаргахгүй
   eq(L(22, 20, 10000).fee, 0, 'хожуу: эрт ирсэн бол 0 (сөрөг болохгүй)');
   eq(L(7, 9, 10000).fee, 0, 'хожуу: өглөө эртээс ажлын цаг руу = 0');
-  eq(L(21, 23, 10000).fee, 20000, 'хожуу: шөнө 21→23 = 2 цаг');
+  eq(L(21, 23).fee, 20000, 'хожуу: шөнө 21→23 = 2 цаг × 10,000 (эхний цаг аль хэдийн төлөгдсөн)');
+  /* ⛔ Ажлын цагаас ШӨНӨ рүү орвол «эхний цаг» нь ЭНД үүснэ. */
+  eq(L(16, 19).fee, 20000, 'хожуу: 16→19 = шинэ эхний цаг 20,000');
+  eq(L(16, 20).fee, 30000, 'хожуу: 16→20 = эхний 20,000 + 1 цаг 10,000');
   /* ⛔ Нэмэлт нь АЖЛЫН БУС ЦАГИЙН мөрөнд багтана — `total_mnt`-ыг дангаар нь
      өсгөвөл задаргаа нийлбэртэйгээ таарахаа болино. */
   eq(F.orderLateFee('⟦RT|20|20⟧ ⟦LATE|20|22|20000⟧'), 20000, 'хожуу: токеноос дүн уншигдана');
   eq(F.orderLateFee('⟦LATE|20|22|20000⟧ ⟦LATE|22|23|10000⟧'), 30000, 'хожуу: хоёр удаа хоцорвол нийлнэ');
   eq(F.orderLateFee('тэмдэглэл'), 0, 'хожуу: токенгүй бол 0');
-  eq(F.orderOffHoursFee({ note: '⟦RT|20|18⟧ ⟦LATE|20|22|20000⟧' }), 2 * 10000 + 20000,
-     'хожуу: ажлын бус цагийн мөрөнд багтана (товлосон 2 цаг + нэмэлт)');
+  eq(F.orderOffHoursFee({ note: '⟦RT|20|18⟧ ⟦LATE|20|22|20000⟧' }), 30000 + 20000,
+     'хожуу: ажлын бус цагийн мөрөнд багтана (товлосон 2 цаг 30,000 + нэмэлт)');
 }
 
 // ═══ SCAN: үнэлгээ БҮГД, нэг мөрөөр (2026-10-05, CEO) ═════════════════

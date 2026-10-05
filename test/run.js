@@ -6218,8 +6218,15 @@ need(['orderCustType']);
   ok(/r\.sku/.test(body), "scan: productOf «бараа биш» толийг шүүнэ");
   // Толь эрт ачаалагдана — зөвхөн агуулахын дэлгэцээс хамаарахгүй
   const boot = src.indexOf("loadVatReceipts();    // НӨАТ баримт");
-  ok(boot > 0 && /loadItemAliases\(\);/.test(src.slice(boot, boot + 700)),
+  ok(boot > 0 && /loadItemAliases\(\);/.test(src.slice(boot, boot + 1800)),
      'scan: барааны толь эхлэхэд ачаалагдана');
+  /* ⚡ ЭХЛЭЛ: бие даасан дата bootstrap-тай ЗЭРЭГ (2026-10-05, CEO: «НӨАТ удаан»).
+     Өмнө нь НӨАТ 2МБ-ын bootstrap дуустал хүлээж ~3 секундын дараа ирдэг байв. */
+  const bootAt = src.indexOf('const bootOk = await loadBootstrap();\n  if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);');
+  ok(bootAt > 0 && boot > 0 && boot < bootAt, 'scan: НӨАТ баримт bootstrap-ыг ХҮЛЭЭЛГҮЙ ачаалагдана');
+  // ⛔ Апп нээгдэх үеийн «харагдах болсон» дохио bootstrap-ийг ДАХИН татуулахгүй
+  ok(/let _lastVisRefresh = Date\.now\(\);/.test(src) && !/let _lastVisRefresh = 0;/.test(src),
+     'scan: эхлэх мөчид давхар бүрэн шинэчлэл хийхгүй');
 }
 
 

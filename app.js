@@ -42748,13 +42748,17 @@ async function bootApp() {
   await flushPendingWrites();   // офлайн үлдсэн өөрчлөлтийг сервер рүү
   // TEAM нь /staff cache-аас аль хэдийн ачаалагдсан (start()-д). Хоосон үед л дахин татах.
   if (!TEAM.length) await loadTeamFromAPI();
-  const bootOk = await loadBootstrap();
-  if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
+  /* ⚡ БИЕ ДААСАН ДАТА bootstrap-ТАЙ ЗЭРЭГ (2026-10-05, CEO: «НӨАТ удаан гараад
+     байна»). Өмнө нь эдгээр нь 2МБ-ын bootstrap (даалгавар + санхүү) ДУУСТАЛ
+     хүлээгээд эхэлдэг байсан тул НӨАТ-ын баримт апп эхэлснээс ~3 секундын дараа
+     л ирдэг байв. Эдгээр нь bootstrap-ын датанаас хамаардаггүй. */
+  loadVatReceipts();    // НӨАТ баримт — захиалгын "🧾 НӨАТ" badge-д
+  loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadProductsCatalog();   // M-Event барааны каталог (CEO)
   loadEvaluations();   // 360° гүйцэтгэлийн үнэлгээ (бүх ажилтан)
   loadFinanceCategories();  // Санхүүгийн ангилал — Sheet-ээс (засвал бүгдэд тархана)
-  loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
-  loadVatReceipts();    // НӨАТ баримт — захиалгын "🧾 НӨАТ" badge-д
+  const bootOk = await loadBootstrap();
+  if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
   // Барааны толь — productOf (нөөц/ROI/орлого) үүнээс хамаарна. Зөвхөн агуулахын
   // дэлгэцээр ачаалдаг байсан тул захиалга руу шууд орсон хүнд тулгалт сул байв.
   if (state.itemAliases === undefined) { state.itemAliases = {}; loadItemAliases(); }
@@ -42802,7 +42806,10 @@ async function bootApp() {
   // гэхдээ tab switch ихтэй хэрэглэгчид мангаа дуудахаас сэргийлж 90 сек throttle.
   // (Шинэ ажил оноогдох бүрд Web Push шууд мэдэгддэг тул focus-refresh ховор байж болно.)
   if (!_visibilityBound) {
-    let _lastVisRefresh = 0;
+    /* ⛔ 0 БИШ — дөнгөж бүх датаг татсан. 0-ээс эхэлбэл апп нээгдэх үеийн «харагдах
+       болсон» дохио (PWA эхлэх, таб сэргэх) 2МБ-ын bootstrap-ийг ШУУД ДАХИН татуулж,
+       эхлэлийн ачааллыг хоёр дахин нэмдэг байв (2026-10-05 хэмжсэн). */
+    let _lastVisRefresh = Date.now();
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && state.me && Date.now() - _lastVisRefresh > 90_000) {
         _lastVisRefresh = Date.now();

@@ -13863,8 +13863,11 @@ function myPayCardHtml(me) {
     ? row(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus')
     : '';
   const sp = stagePayFor(key, month);
-  const spNote = sp.total
-    ? `<div class="pay-note">📦 Дамжлагын бонус <b>${fmtMoney(sp.total)}</b> — нийт олгоход <b>ОРСОН</b>. Суутгал тооцогдохгүй.</div>` : '';
+  /* ⛔ Бонус нь НИЙЛБЭРЭЭС ӨМНӨХ мөр — тэмдэглэл болгож доор нь тавибал
+     мөрүүд нийлбэртэйгээ таарахгүй харагдана (2026-10-05, CEO барив). */
+  const spRow = b.bonus
+    ? row(`📦 Дамжлагын бонус · ${sp.led || 0} удирдсан${sp.helped ? ` · ${sp.helped} хамтрагч` : ''}`, `+${fmtMoney(b.bonus)}`, 'pay-plus') : '';
+  const spNote = '';
   const noOutNote = w.noOut
     ? `<div class="pay-warn">⚠ <b>${w.noOut}</b> өдөр гарах бүртгэлгүй — тэр өдрүүд 0 цаг тоологдсон тул ${b.shortMins ? '<b>цалин дутуу бодогдсон</b>' : 'илүү цаг дутуу'} байж болно. Доорх жагсаалтаас «🙋 Цаг гаргуулах» дарна уу.</div>` : '';
   // Олголтын МӨР бүрийг ил жагсаана — «олгосон 600,000₮» гэсэн ганц тоо нь хэзээ,
@@ -13906,6 +13909,7 @@ function myPayCardHtml(me) {
       ${row('= Цэвэр суурь', `<b>${fmtMoney(b.netBase)}</b>`, 'pay-sub')}
       ${otRow}
       ${dlvRow}
+      ${spRow}
       ${row('Нийт гарт очих', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
       ${paidRow}
     </div>
@@ -17913,13 +17917,16 @@ function renderSalary() {
         ${(dOn && (b.ndsh || b.pit)) ? line('− НДШ · ХХОАТ', `−${fmtMoney(b.ndsh + b.pit)}`, 'pay-minus') : ''}
         ${b.otMins ? line(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : ''}
         ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}
+        ${/* ⛔ БОНУС НИЙЛБЭРЭЭС ӨМНӨ — доор нь тавибал мөрүүд нийлбэртэйгээ
+             таарахгүй, хүн «дүн буруу» гэж уншина (2026-10-05, CEO барив). */''
+        }${b.bonus ? line(`📦 Дамжлагын бонус · ${(sp && sp.led) || 0} удирдсан${(sp && sp.helped) ? ` · ${sp.helped} хамтрагч` : ''}`, `+${fmtMoney(b.bonus)}`, 'pay-plus') : ''}
         ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
         ${carry.amount ? line(`↪ ${escapeHtml(carry.from)} сард илүү олгосон`, `−${fmtMoney(carry.amount)}`, 'pay-minus') : ''}
         ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList : ''}
         ${owed > 0 ? line('Үлдэгдэл', `<b>${fmtMoney(owed)}</b> ${memoBtn}`, 'pay-left') : ''}
         ${over > 0 ? line(`⚠ Илүү олгосон → ${escapeHtml(nextMonthStr(ym))} сард шилжинэ`, `<b>${fmtMoney(over)}</b>`, 'pay-over') : ''}
       </div>`;
-    const spLine = (sp && sp.total) ? `<div class="pb-sp">📦 Дамжлагын бонус ${fmtMoney(sp.total)} <span class="sp-sub">— нийт олгоход ОРСОН</span></div>` : '';
+    const spLine = '';   // бонус нь дээрх мөрүүдийн дунд — доор давтахгүй
     const noOut = w.noOut ? `<div class="pb-noout-l">⚠ ${w.noOut} өдөр гарах бүртгэлгүй — тэр өдөр 0 цаг тоологдсон${b.shortMins ? ', <b>цалин дутуу бодогдсон</b>' : ', илүү цаг дутуу'}. «🙋 Цаг гаргуулах»-аар засна.</div>` : '';
     /* ⛔ ТҮҮХ САРД ЗӨВХӨН ОЛГОЛТ. Суурь цалингийн талбар (тэр үеийн цалин биш,
        ОДООГИЙНХ), «гарах бүртгэлгүй» анхааруулга, дамжлагын бонус — бүгд тэр сард

@@ -21598,7 +21598,7 @@ function meventContractHtml(o) {
   <p><b>3.1.</b> ${hasVat ? 'Гэрээнд заасан үнэд нэмэгдсэн өртгийн албан татвар багтаагүй болно.' : 'Гэрээнд заасан үнэд нэмэгдсэн өртгийн албан татвар багтсан бөгөөд Түрээслүүлэгч төлбөрийн баримтыг хууль тогтоомжийн дагуу олгоно.'}</p>
   <p><b>3.2.</b> Талууд урьдчилгаа төлбөрөөр тохирч болно. Энэ тохиолдолд үлдэгдэл төлбөрийг бараа, төхөөрөмжийг хүлээлгэн өгөхөөс өмнө бүрэн төлнө.</p>
   <p><b>3.3.</b> Хүргэлтийн төлбөрийг хот дотор тогтмол дүнгээр, хотоос гадуур нэг талын зайн километр тутмаар тооцох бөгөөд дүнг дээрх задаргаанд тусгав.</p>
-  <p><b>3.4.</b> Түрээслүүлэгчийн ажлын цаг ${_pad2(tariffWorkStart())}:00–${_pad2(tariffWorkEnd())}:00 байна. Хүлээлгэн өгөх, буцаан авах ажиллагаа ажлын бус цагт хийгдвэл нэмэлт төлбөр тооцно.</p>
+  <p><b>3.4.</b> Түрээслүүлэгчийн ажлын цаг ${_pad2(tariffWorkStart())}:00–${_pad2(tariffWorkEnd())}:00 байна. Хүлээлгэн өгөх, буцаан авах ажиллагаа ажлын бус цагт хийгдвэл тухайн цагаас гадуур өнгөрсөн <b>цаг тутамд ${fmtMoney(tariffOffhoursFee())}</b> нэмэлт төлбөр тооцно.</p>
   <p><b>3.5.</b> Суурилуулалт, угсралт, буулгалтын ажиллагааны төлбөрийг Талууд урьдчилан тохиролцож дээрх задаргаанд тусгана.</p>
   <p><b>3.6.</b> Хэрэглэгч банкаар төлбөр гүйцэтгэхдээ гүйлгээний утгад захиалгын дугаарыг заавал бичнэ. Утга буруу бичигдсэнээс төлбөр тодорхойгүй болж үүсэх хугацааны алдагдлыг Түрээслүүлэгч хариуцахгүй.</p>
 
@@ -27561,12 +27561,25 @@ function orderDateTime(dateVal, note, isStop) {
   if (!(h >= 0 && h <= 23)) return s;
   return s.slice(0, 10) + 'T' + _pad2(h) + ':00';
 }
-// Ажлын бус цаг — 09:00–18:00-аас ГАДУУР авах/өгөх бүрт нэмэлт төлбөр (сайттай ижил: WORK 9–18, +20,000₮/бүр)
+// Ажлын бус цаг — 09:00–18:00-аас ГАДУУР өнгөрсөн ЦАГ БҮРТ нэмэлт төлбөр (сайттай ижил: WORK 9–18, +10,000₮/цаг)
 // ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн OFFHOURS_FEE/WORK_START/WORK_END-тэй
 // ЯГ ИЖИЛ байх ёстой. Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас — эс бол суваг хооронд өөр үнэ. [[tariff_two_repos_sync]]
-const ORDER_OFFHOURS_FEE = 20000;   // fallback (app_config['tariffs'].offhours_fee давуу)
+/* ⛔ ЦАГ БҮРТ (2026-10-05, CEO даалгавар) — өмнө нь «авах/өгөх бүрт» ХАВТГАЙ
+   20,000₮ байв. 19:00-д буцаалт ба 23:00-д буцаалт ижил үнэтэй байсан нь
+   буруу: шөнө дунд ажиллуулах нь хэдэн цагаар нь үнэтэй. Одоо ажлын цагаас
+   ГАДУУР өнгөрсөн ЦАГ БҮРТ (доош нь бүхэлчилнэ). */
+const ORDER_OFFHOURS_FEE = 10000;   // ₮/ЦАГ — fallback (app_config['tariffs'].offhours_fee давуу)
 function _isOffHour(h) { h = +h; return !isNaN(h) && (h < tariffWorkStart() || h > tariffWorkEnd()); }
-function orderOffHoursCount(sh, eh) { return (_isOffHour(sh) ? 1 : 0) + (_isOffHour(eh) ? 1 : 0); }
+// Нэг цагийн утганд ажлын цагаас хэдэн цаг гадуур болохыг буцаана (ЦЭВЭР функц)
+function offHoursSpan(h) {
+  h = +h; if (isNaN(h)) return 0;
+  const a = tariffWorkStart(), b = tariffWorkEnd();
+  if (h < a) return a - h;
+  if (h > b) return h - b;
+  return 0;
+}
+// ⚠ Нэр нь «Count» хэвээр ч утга нь ЦАГИЙН ТОО болсон — хоёр цэгийн нийлбэр
+function orderOffHoursCount(sh, eh) { return offHoursSpan(sh) + offHoursSpan(eh); }
 // Захиалгын note-оос (⟦RT⟧ цаг) ажлын бус цагийн төлбөрийг тооцоолно
 function orderOffHoursFee(o) { const t = parseOrderTimes(o && o.note); return t ? orderOffHoursCount(t.sh, t.eh) * tariffOffhoursFee() : 0; }
 function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV, CX г.м.)
@@ -28539,7 +28552,7 @@ function openNewOrder(editOrder) {
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
     const offN = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value);
-    const offFee = offN * tariffOffhoursFee();   // ажлын бус цаг (09:00–18:00-аас гадуур) авах/өгөх бүрт (сайттай ижил)
+    const offFee = offN * tariffOffhoursFee();   // ажлын бус цаг — гадуур өнгөрсөн ЦАГ БҮРТ (сайттай ижил)
     const setupOn = dlv.zone !== 'pickup' && !!(($('#no-setup') || {}).checked);
     const setupFee = setupOn ? setupFeeForItems(items) : 0;   // суурилуулалт: бараа бүрийн тоо × нэгж хөлс, доод хязгаартай
     // «Тохирсон дүн» горим — бичсэн эцсийн дүнгээс хөнгөлөлтийг УРВУУ бодно
@@ -28583,7 +28596,8 @@ function openNewOrder(editOrder) {
     $('#no-dep').textContent = fmtMoney(deposit);
     $('#no-deliv').textContent = fmtMoney(dlv.fee);
     $('#no-delivrow').style.display = dlv.zone === 'pickup' ? 'none' : 'flex';
-    $('#no-offh').textContent = '+' + fmtMoney(offFee);
+    // ⚠ Хэдэн ЦАГИЙН төлбөр болохыг ИЛ хэлнэ — «яагаад ийм үнэтэй вэ» гэдэгт хариулна
+    $('#no-offh').textContent = offN > 0 ? `${offN} цаг × ${fmtMoney(tariffOffhoursFee())} = +${fmtMoney(offFee)}` : '+' + fmtMoney(offFee);
     $('#no-offhrow').style.display = offN > 0 ? 'flex' : 'none';
     $('#no-setupfee').textContent = '+' + fmtMoney(setupFee);
     $('#no-setupfeerow').style.display = setupFee > 0 ? 'flex' : 'none';

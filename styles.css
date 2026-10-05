@@ -4163,29 +4163,6 @@ body.role-daily #add-project { display: none !important; }
 
 /* Telegram section removed */
 
-/* ═══ Dashboard action товчнууд ═══ */
-.dashboard-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-}
-.dashboard-actions .btn {
-  background: var(--panel) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--text) !important;
-  padding: 8px 14px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  border-radius: 8px !important;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-.dashboard-actions .btn:hover {
-  background: var(--panel-hover) !important;
-}
-
 /* ═══ Personal KPI bar chart ═══ */
 .kpi-bar-chart {
   display: flex;
@@ -4239,7 +4216,7 @@ body.role-daily #add-project { display: none !important; }
 @media print {
   body { background: #fff !important; }
   .sidebar, .header-actions, .toolbar, .fab, .mobile-bottom-nav,
-  .install-banner, #ptr-indicator, .bulk-bar, .dashboard-actions { display: none !important; }
+  .install-banner, #ptr-indicator, .bulk-bar { display: none !important; }
   .app { grid-template-columns: 1fr !important; }
   .dash-card { break-inside: avoid; box-shadow: none !important; }
   .header { background: #fff !important; border-bottom: 1px solid #ccc; }

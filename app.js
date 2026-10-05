@@ -14062,10 +14062,6 @@ function attachMyAttendHandlers() {
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
-  document.querySelectorAll('[data-clm-ok]').forEach(b2 => b2.addEventListener('click', () =>
-    resolveStageClaim(b2.dataset.clmOk, b2.dataset.clmK, b2.dataset.clmW, true)));
-  document.querySelectorAll('[data-clm-no]').forEach(b2 => b2.addEventListener('click', () =>
-    resolveStageClaim(b2.dataset.clmNo, b2.dataset.clmK, b2.dataset.clmW, false)));
   document.getElementById('my-pay-ym')?.addEventListener('change', (e) => {
     const v = String(e.target.value || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(v)) return;
@@ -17981,7 +17977,19 @@ function renderSalary() {
    Тохиргоо нь СХЕМ дотроо: мөр дээр дарж нэр/оноог засаад 💾. Ханш, шатлал,
    хамтрагчийн сан нь схемийн хөлийн «⚙️ Ханш ба хуваарилалт» эвхэгдэх хэсэгт.
    Хоёр цонх байх нь «аль нь жинхэнэ вэ» гэсэн эргэлзээ төрүүлдэг. */
+/* ✋ Мэдүүлгийн ✕/✓ товч — хайрцаг нь ЦАЛИНГИЙН самбарт зурагддаг тул ТЭНД
+   холбогдоно. ⛔ 2026-10-05 хүртэл зөвхөн «Миний ирц»-д холбогдсон байсан тул
+   товч дарахад юу ч болдоггүй байв (scan-тест хаана). */
+function attachClaimHandlers() {
+  document.querySelectorAll('[data-clm-ok]').forEach(b2 => b2.addEventListener('click', () => {
+    b2.disabled = true; resolveStageClaim(b2.dataset.clmOk, b2.dataset.clmK, b2.dataset.clmW, true);
+  }));
+  document.querySelectorAll('[data-clm-no]').forEach(b2 => b2.addEventListener('click', () => {
+    b2.disabled = true; resolveStageClaim(b2.dataset.clmNo, b2.dataset.clmK, b2.dataset.clmW, false);
+  }));
+}
 function attachSalaryHandlers() {
+  attachClaimHandlers();
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);

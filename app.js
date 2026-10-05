@@ -7591,7 +7591,7 @@ async function openStatementClassifyModal() {
   };
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
-    <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулга оруулах</div>
+    <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулга оруулах — орлого ба зардал</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Голомт/Хаан хуулга оруул → зардал <b>шууд орно</b>, дараа нь <b>эзэн бүр өөрийн зардлаа ангилж баталгаажуулна</b>. Зөвхөн хуулгаар л орно.<br>🙍 <b>Хувийн данс</b> (Данс&nbsp;&amp;&nbsp;Карт-д «зорилго: хувийн») хуулга оруулбал мөр бүрийг <b>компанийн / хувийн</b> гэж сонгоно — зөвхөн компанийнх нь зардал болно.</div>
     <label for="sc-file" style="display:block;margin-bottom:12px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
       📄 <b>Хуулга(ууд) оруулах (xlsx / csv)</b>
@@ -7599,12 +7599,13 @@ async function openStatementClassifyModal() {
       <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Олон дансны хуулгыг зэрэг сонгож болно</div>
     </label>
     <div id="sc-srcaccts"></div>
+    <div id="sc-income"></div>
     <div id="sc-dropped"></div>
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn" id="sc-cancel">Хаах</button>
       <button class="btn" id="sc-undo" hidden>↩️ Энэ хуулгын импортыг буцаах</button>
-      <button class="btn btn-primary" id="sc-save" style="display:none;">Зардлыг оруулах</button>
+      <button class="btn btn-primary" id="sc-save" style="display:none;">Хуулга оруулах</button>
     </div></div>`;
   document.body.appendChild(modal);
   let rows = [], sources = [], dropped = [], settleAdd = {};
@@ -7613,6 +7614,29 @@ async function openStatementClassifyModal() {
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save'), undoBtn = modal.querySelector('#sc-undo');
   const srcAcctsEl = modal.querySelector('#sc-srcaccts'), droppedEl = modal.querySelector('#sc-dropped');
+  const incomeEl = modal.querySelector('#sc-income');
+  /* ⭐ НЭГ ИМПОРТ = ОРЛОГО + ЗАРДАЛ (2026-10-05, CEO: «хуулга оруулахаар орлого
+     зарлага хоёулаа ордог баймаар байна»). Өмнө нь энэ цонх зөвхөн зардлыг
+     харуулж, зөвхөн орлоготой хуулгыг «зарлагын мөр уншигдсангүй» гэж
+     татгалздаг; зардал нь аль хэдийн орсон хуулгыг дахин оруулахад орлого огт
+     бичигдэхгүй өнгөрдөг байв. Орлогын урьдчилсан тоо = `buildStatementImport`
+     (хадгалах үеийн ИЖИЛ функц) — дэлгэц ба бодит бичилт зөрөхгүй. */
+  let incomePrev = [];
+  const renderIncome = () => {
+    const inc = incomePrev;
+    if (!inc.length) { incomeEl.innerHTML = ''; return; }
+    const sum = a => a.reduce((t, x) => t + (Number(x.amount) || 0), 0);
+    const by = st => inc.filter(x => x.status === st);
+    const linked = inc.filter(x => x.status === 'order' || x.status === 'nomaad' || x.status === 'catering');
+    const open = by('open'), side = inc.filter(x => x.status === 'internal' || x.status === 'personal');
+    incomeEl.innerHTML = `<div class="sc-inc">
+      <div class="sc-inc-h">💰 Орлого · <b>${inc.length}</b> мөр · <b>${fmtMoney(sum(inc))}</b></div>
+      <div class="sc-inc-r">${linked.length ? `<span class="sc-inc-ok">✓ ${linked.length} захиалгад холбогдоно · ${fmtMoney(sum(linked))}</span>` : ''}
+        ${open.length ? `<span class="sc-inc-open">🔓 ${open.length} хаагдаагүй · ${fmtMoney(sum(open))}</span>` : ''}
+        ${side.length ? `<span class="sc-inc-mut">↔ ${side.length} дотоод/хувийн · ${fmtMoney(sum(side))}</span>` : ''}</div>
+      ${open.length ? '<div class="sc-inc-n">Хаагдаагүй мөрийг оруулсны дараа «Орлого тулгах»-аас захиалгад холбоно.</div>' : ''}
+    </div>`;
+  };
   // ХАСАГДСАН МӨР — «дутуу орлоо» гэдэг нь хэзээ ч чимээгүй болохгүй. Хуулгад байсан
   // боловч зардал болоогүй мөр бүрийг шалтгаантай нь энд гаргана.
   const renderDropped = () => {
@@ -7725,7 +7749,7 @@ async function openStatementClassifyModal() {
     if (!files || !files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
-      rows = []; dropped = []; settleAdd = {}; stmtQueue = [];
+      rows = []; dropped = []; settleAdd = {}; stmtQueue = []; incomePrev = [];
       const parseWarn = [];   // толгой/багана танигдаагүй файлуудын шалтгаан — ил хэлнэ
       /* ⛔ «Аль хэдийн орсон» гэдгийг ЗӨВ харуулахын тулд бүртгэлийг серверээс
          эхлээд шинэчилнэ. Кэш хуучирсан бол жагсаалт бүх мөрийг «шинэ» гэж
@@ -7744,6 +7768,13 @@ async function openStatementClassifyModal() {
         //   мэт харагдаад гүйлгээ ОРОХГҮЙ. Файлын нэр + харсан толгойг хамт хэлнэ.
         if (st.warn && st.warn.length) parseWarn.push(`${f.name}: ${st.warn.join(', ')}${st.seen ? ` · харсан толгой → ${st.seen}` : ''}`);
         stmtQueue.push({ matrix, parsed: st, fileName: f.name });
+        // Орлогын урьдчилсан харагдац — хадгалах үеийн ИЖИЛ функцээр (зөвхөн уншина)
+        try {
+          const _meta = statementMeta(matrix); if (!_meta.acct) _meta.acct = src;
+          const _b = buildStatementImport(st, _meta, { fileName: f.name, own, personal: isPersonalAcct(_meta.acct), company: companyAcctSet(),
+            rcpt: receiptFpIndex(state.usedFps instanceof Set ? state.usedFps : new Set()), owners: state.fpOwners instanceof Map ? state.fpOwners : new Map() });
+          (_b.incomes || []).forEach(x => incomePrev.push(x));
+        } catch (e) { /* урьдчилсан харагдац — хадгалалтад нөлөөгүй */ }
         (st.skipped || []).forEach(x => dropped.push(x));
         // ХУВИЙН данс: КОМПАНИЙН данснаас ирсэн орлого = нөхөн олголт (өр хаалт), зардал БИШ.
         // Дэвтэрт бичигдэж «компани эзэнд өртэй» үлдэгдлээс хасагдана.
@@ -7799,11 +7830,11 @@ async function openStatementClassifyModal() {
       // Эх сурвалжуудыг (карт/данс) цуглуулна
       const seen = new Set(); sources = [];
       rows.forEach(r => { const k = srcKeyOf(r); if (seen.has(k)) return; seen.add(k); sources.push(r.cardL4 ? { key: k, type: 'card', l4: r.cardL4 } : { key: k, type: 'acct', acct: r.src }); });
-      if (!rows.length && !skippedInternal) throw new Error(parseWarn.length ? parseWarn.join(' | ') : 'Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
-      status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span class="sc-muted">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`
+      if (!rows.length && !skippedInternal && !incomePrev.length) throw new Error(parseWarn.length ? parseWarn.join(' | ') : 'Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
+      status.innerHTML = `✓ ${files.length} хуулга · ${incomePrev.length} орлого · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span class="sc-muted">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`
         + (parseWarn.length ? `<div class="sc-warn">⚠ ${escapeHtml(parseWarn.join(' | '))}</div>` : '');
       status.style.color = 'var(--ok)';
-      renderSrcAccts(); renderDropped(); render(); saveBtn.style.display = '';
+      renderSrcAccts(); renderIncome(); renderDropped(); render(); saveBtn.style.display = '';
       undoBtn.hidden = !rows.some(r => r.done);   // энэ хуулгаас орсон зардал байвал буцаах боломж
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   };
@@ -7868,7 +7899,10 @@ async function openStatementClassifyModal() {
     const prsnSkipped = rows.filter(r => !r.done && r.personal && !r.biz).length;
     let settled = 0;
     try { settled = await savePersonalSettlements(settleAdd); } catch (e) { console.warn('settlements', e); }
-    if (!todo.length) { showToast((filled || settled) ? `${filled ? `✏️ ${filled} бүртгэлд нэр/эх данс нөхлөө` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${settled ? ` · 💵 ${settled} нөхөн олголт бүртгэв` : ''}`.replace(/^ · /, '') : (prsnSkipped ? `🙍 ${prsnSkipped} мөр хувийн гэж үлдсэн — компанийн зардлыг нь сонгоно уу` : 'Оруулах зардал алга'), (filled || settled) ? 'success' : 'warn', 4000); render(); saveBtn.disabled = false; return; }
+    /* ⛔ ШИНЭ ЗАРДАЛГҮЙ Ч ХУУЛГА + ОРЛОГО БИЧИГДЭНЭ — өмнө нь энд `return` хийдэг
+       байсан тул зөвхөн орлоготой эсвэл зардал нь аль хэдийн орсон хуулгын орлого
+       ХЭЗЭЭ Ч бичигддэггүй байв. */
+    if (!todo.length) showToast((filled || settled) ? `${filled ? `✏️ ${filled} бүртгэлд нэр/эх данс нөхлөө` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${settled ? ` · 💵 ${settled} нөхөн олголт бүртгэв` : ''}`.replace(/^ · /, '') : (prsnSkipped ? `🙍 ${prsnSkipped} мөр хувийн гэж үлдсэн — компанийн зардлыг нь сонгоно уу` : 'Шинэ зардал алга'), (filled || settled) ? 'success' : 'info', 3000);
     for (const r of todo) {
       // НЭГ мөр унавал БҮХ импорт зогсохгүй — унасныг тоолж эцэст нь ил хэлнэ.
       // Өмнө нь дундуур гарсан алдаа үлдсэн мөрүүдийг чимээгүй орхидог байв.
@@ -7939,14 +7973,21 @@ async function openStatementClassifyModal() {
         if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
       } catch (e) { state._finBackfill = null; failedRows++; console.warn('Хуулгын мөр орсонгүй:', r.fp, e); }
     }
-    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${prsnSkipped ? ` · 🙍 ${prsnSkipped} хувийн (орсонгүй)` : ''}${settled ? ` · 💵 ${settled} нөхөн олголт` : ''}${failedRows ? ` · ⚠ ${failedRows} мөр ОРСОНГҮЙ (дахин оруулна уу)` : ''}`, failedRows ? 'warn' : 'success', failedRows ? 7000 : 4000);
+    if (todo.length) showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${prsnSkipped ? ` · 🙍 ${prsnSkipped} хувийн (орсонгүй)` : ''}${settled ? ` · 💵 ${settled} нөхөн олголт` : ''}${failedRows ? ` · ⚠ ${failedRows} мөр ОРСОНГҮЙ (дахин оруулна уу)` : ''}`, failedRows ? 'warn' : 'success', failedRows ? 7000 : 4000);
     // ⭐ Хуулга ба ОРЛОГЫН мөрийг бүртгэнэ — «ямар хуулга орсон» + захиалгад
     //   холбогдоогүй орсон мөнгө хаана ч алга болохгүй болно.
     try {
       await loadBankIncome(true);
       const rcptTaken = new Set(); let _skipC = 0;
-      for (const q of stmtQueue) { const _ps = await persistStatement(q.matrix, q.parsed, q.fileName, rcptTaken); _skipC += (_ps.skippedClosed || 0); }
+      const _inc = [];
+      for (const q of stmtQueue) { const _ps = await persistStatement(q.matrix, q.parsed, q.fileName, rcptTaken); _skipC += (_ps.skippedClosed || 0); (_ps.incomes || []).forEach(x => _inc.push(x)); }
+      if (_inc.length) {
+        const _lk = _inc.filter(x => x.status === 'order' || x.status === 'nomaad' || x.status === 'catering').length;
+        const _op = _inc.filter(x => x.status === 'open').length;
+        showToast(`💰 ${_inc.length} орлого бүртгэгдлээ${_lk ? ` · ${_lk} захиалгад холбогдсон` : ''}${_op ? ` · ${_op} хаагдаагүй` : ''}`, 'success', 5000);
+      }
       if (_skipC) showToast(`🔒 ${_skipC} орлогын мөр хаасан сард байсан тул алгасагдав`, 'info', 5000);
+      try { await loadBankStatements(true); await loadBankIncome(true); } catch (_) {}
     } catch (e) { showToast('⚠ Хуулгын бүртгэл хадгалагдсангүй: ' + e.message, 'error', 6000); }
     render(); saveBtn.disabled = false;
     undoBtn.hidden = !rows.some(r => r.done);   // дөнгөж оруулсныг шууд буцааж болно
@@ -9255,16 +9296,23 @@ function finNextSteps(ctx) {
      Тусдаа цонх ҮҮСГЭХГҮЙ — хэн ч нээдэггүй дэлгэц үхдэг (CLAUDE.md-ийн дүрэм),
      тиймээс хүн аль хэдийн хардаг картан дээр мөр болж суна. */
   const bal = c.balance || { total: 0, ok: 0, bad: 0, unver: 0, badAccts: [], unverAccts: [] };
-  const balBad = (bal.bad || 0) + (bal.unver || 0);
+  /* ⏳ САР ДУУСААГҮЙ бол сарын эцсийн үлдэгдэл БАЙХ БОЛОМЖГҮЙ (2026-10-05, CEO
+     барив: 10-05-нд «10-01…10-31 хуулга татаж оруул» гэж 4 дансаар шаардаж,
+     хийх ажил мэт улбар шараар тоолж байв). Сар дуустал тэнцэл ХҮЛЭЭНЭ.
+     `today` дамжуулаагүй бол (хуучин дуудагч) өмнөх зан хэвээр. */
+  const ended = !c.today || String(c.today) > monthEndDay(month);
+  const balBad = ended ? (bal.bad || 0) + (bal.unver || 0) : 0;
   /* ⚠ Дансны ДУГААР дангаараа хүнд юу ч хэлдэггүй — «юу хийх» нь шалтгаанд бий
      («09-30-ны эцсийн үлдэгдэл алга — 09-01…09-30 хуулга татаж оруул»). */
-  const balWhy = bal.why || {};
-  const balList = (arr) => (arr || []).map(a => `${a}${balWhy[a] ? ` — ${balWhy[a]}` : ''}`).join(' · ');
+  /* ⚠ Картан дээр ТОВЧ: дансны нэр + юу дутуу. Данс бүрийн урт тайлбар нь
+     тулгалтын цонхонд (өмнө нь 4 дансны 4 урт өгүүлбэр нэг мөрөнд нийлж байв). */
   const balHint = [
-    bal.bad ? balList(bal.badAccts) : '',
-    bal.unver ? balList(bal.unverAccts) : '',
+    bal.bad ? `⚠ ${(bal.badAccts || []).join(', ')} — тэнцэл зөрсөн` : '',
+    bal.unver ? `${(bal.unverAccts || []).join(', ')} — ${monthEndDay(month).slice(5)}-ны эцсийн үлдэгдэлтэй бүтэн сарын хуулга дутуу` : '',
   ].filter(Boolean).join(' · ');
-  steps.push(balBad
+  steps.push(!ended
+    ? { key: 'balance', wait: true, icon: '⚖️', title: 'Тэнцэл шалгах', hint: `Сар дуусахаар (${monthEndDay(month)}) бүтэн сарын хуулгаар шалгана` }
+    : balBad
     ? { key: 'balance', n: balBad, icon: '⚖️', title: 'Тэнцэл шалгах', hint: balHint, act: 'recon', btn: 'Харах' }
     : { key: 'balance', done: true, icon: '⚖️', title: 'Тэнцэл шалгах',
         hint: bal.total ? `${bal.ok}/${bal.total} данс сарын эцсийн үлдэгдлээр батлагдсан` : 'Шалгах хуулга алга' });
@@ -9277,9 +9325,9 @@ function finNextSteps(ctx) {
        30% гажна. Сар хаах нь тэр гажсан тоог ХӨЛДӨӨНӨ — дараа нь засагдахгүй.
        Өмнө нь `pend` энэ жагсаалтад БАЙХГҮЙ байсан тул 62 гүйлгээ ангилаагүй
        байхад «Хаах» товч идэвхтэй болж байв. */
-    const blocked = miss.length || pend || oi.n || chain || balBad;
+    const blocked = miss.length || pend || oi.n || chain || balBad || !ended;
     steps.push(blocked
-      ? { key: 'close', icon: '🔒', title: 'Сар хаах', hint: 'Дээрх цэгцэрсний дараа', wait: true }
+      ? { key: 'close', icon: '🔒', title: 'Сар хаах', hint: ended ? 'Дээрх цэгцэрсний дараа' : 'Сар дууссаны дараа', wait: true }
       : { key: 'close', icon: '🔒', title: 'Сар хаах', hint: month + ' сарын тоог хөлдөөнө — дараа нь засагдахгүй', act: 'close', btn: 'Хаах' });
   }
   /* ⛔ ХИЙГДСЭН АЛХАМ Ч НЭЭГДЭНЭ (2026-10-03, CEO барив: «орлого тулгах хэсэг
@@ -9556,8 +9604,16 @@ function renderStmtLedger() {
      нь ТҮҮХ — хөндөгдөхгүй, гэхдээ чимээгүй нуугдах ч ёсгүй тул тоогоор бичнэ. */
   const openAll = (state.bankIncome || []).filter(r => r.status === 'open')
     .sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
-  const open = openAll.filter(r => !monthLocked(String(r.dt || '').slice(0, 7)));
-  const frozen = openAll.length - open.length;
+  const sealMonth = String(state.finReportMonth || todayStr().slice(0, 7)).slice(0, 7);
+  const mStart = sealMonth + '-01', mEnd = monthEndDay(sealMonth);
+  const mEnded = todayStr() > mEnd;
+  const inMonth = st => String(st.period_from || '') <= mEnd && String(st.period_to || '') >= mStart;
+  /* ⛔ ЗӨВХӨН СОНГОСОН САР (2026-10-05, CEO: «маш замбараагүй, ойлгомжгүй»). Өмнө
+     нь 6 сарын 25 хуулга, бүх сарын хаагдаагүй мөр нэг цонхонд холилдож байв —
+     картан дээрх тоо (сараар) цонхныхтой таардаггүй байв. */
+  const openOther = openAll.filter(r => !monthLocked(String(r.dt || '').slice(0, 7)) && String(r.dt || '').slice(0, 7) !== sealMonth).length;
+  const open = openAll.filter(r => String(r.dt || '').slice(0, 7) === sealMonth && !monthLocked(sealMonth));
+  const frozen = openAll.filter(r => monthLocked(String(r.dt || '').slice(0, 7))).length;
   const os = { n: open.length, sum: open.reduce((t, r) => t + (Number(r.amount) || 0), 0) };
   const manual = incomeManualRows(state.bankIncome);
   const acctLabel = (a) => { const i = bankAcctInfo(a); return i ? `${i.name || ''} ${i.bank ? '· ' + i.bank : ''}`.trim() : (a || 'тодорхойгүй данс'); };
@@ -9608,15 +9664,19 @@ function renderStmtLedger() {
   };
   const byA = {};
   (list || []).forEach(st => { if (st && st.acct) (byA[String(st.acct)] || (byA[String(st.acct)] = [])).push(st); });
+  let stmtN = 0;
   const stmtRows = Object.keys(byA).sort((x, y) => acctLabel(x).localeCompare(acctLabel(y))).map(a => {
+    // Залгааны тулгуурыг БҮХ хуулгаар бодно (өмнөх сартай залгаа), харуулахдаа зөвхөн энэ сарынх
     const { spine, dropped } = stmtChainSpine(byA[a]);
-    const seq = spine.concat(dropped.map(d => ({ ...d, _contained: true })));
-    const marks = spine.map(st => stmtBalanceCheck(st));
+    const seq = spine.concat(dropped.map(d => ({ ...d, _contained: true }))).filter(inMonth);
+    if (!seq.length) return '';
+    stmtN += seq.length;
+    const marks = seq.filter(st => !st._contained).map(st => stmtBalanceCheck(st));
     const nBad = marks.filter(m => !m.skip && !m.ok).length;
     const nSkip = marks.filter(m => m.skip && m.skip !== 'валют данс' && m.skip !== 'хоосон').length;
     const head = nBad ? `<span class="recon-bad">⚠ ${nBad} хуулгын тэнцэл зөрүүтэй</span>`
       : nSkip ? `<span class="mut">⃝ ${nSkip} хуулга шалгагдаагүй</span>`
-      : `<span class="recon-ok">✓ ${spine.length} хуулга тэнцэв</span>`;
+      : `<span class="recon-ok">✓ ${marks.length} хуулга тэнцэв</span>`;
     const rows = seq.map((st, i) => {
       const b = stmtBalanceCheck(st);
       const mark = st._contained ? '<span class="mut" title="Бусад хуулгад бүрэн багтсан — залгаанд тоологдохгүй">⊂ багтсан</span>'
@@ -9650,7 +9710,6 @@ function renderStmtLedger() {
         тайлбарыг нэг эгнээнд тавихад дансны НЭР бүрмөсөн шахагдаж алга болж байв
         (амьд дэлгэцэд ингэж гарсан). Нэр + богино дүгнэлт эхний мөрөнд, бүтэн
         тайлбар нь ДООРХ мөрөнд. */
-  const sealMonth = String(state.finReportMonth || todayStr().slice(0, 7)).slice(0, 7);
   const sealAccts = [...new Set((list || []).map(st => String(st.acct || '')).filter(Boolean))];
   const sealSeq = sealAccts.map(a => ({ a, r: monthSeal(list, a, sealMonth) }))
     .filter(x => x.r.state !== 'none' && x.r.state !== 'ccy')
@@ -9681,164 +9740,66 @@ function renderStmtLedger() {
       + (r.why ? `<span class="seal-why">${escapeHtml(r.why)}</span>` : '')
       + `</summary>${body}</details>`;
   }).join('');
-  return `<div class="recon-sec${sealSeq.length && sealOk < sealSeq.length ? ' warn' : ''}">
-      <div class="recon-sec-h">⚖️ ${escapeHtml(sealMonth)} сарын эцсийн үлдэгдэл <span class="mut">${escapeHtml(monthEndDay(sealMonth))}</span>
-        <span class="recon-amt">${sealSeq.length ? (sealOk === sealSeq.length ? `<span class="recon-ok">✓ ${sealOk}/${sealSeq.length} батлагдсан</span>` : `<span class="recon-bad">${sealOk}/${sealSeq.length} батлагдсан</span>`) : ''}</span></div>
-      ${sealRows || `<div class="recon-empty">${escapeHtml(sealMonth)} сард хуулга ороогүй байна</div>`}
-      <div class="recon-summary-sub">Сар батлагдах = тэр сарын 1-нээс сүүлчийн өдөр хүртэлх БҮТЭН хуулга тэнцсэн байх. «01…өнөөдөр» гэж татсан хуулганд сарын эцсийн үлдэгдэл байдаггүй тул сарыг батлахгүй. Мөр дарж бодолтыг үз.</div>
-    </div>
-    <div class="recon-sec${gaps.length ? ' warn' : ''}">
-      <div class="recon-sec-h">📚 Оруулсан хуулга <span class="recon-n">${(list || []).length}</span></div>
-      ${gaps.length ? `<div class="recon-rows">${gaps.map(gapRow).join('')}</div>` : '<div class="recon-empty recon-ok">✓ Цоорхой алга — бүх хуулга залгаатай</div>'}
-      ${stmtRows ? `<div class="recon-rows">${stmtRows}</div>` : '<div class="recon-empty">Хуулга оруулаагүй байна</div>'}
-    </div>
-    <div class="recon-sec${os.n ? ' warn' : ''}">
+  // Цоорхой/үсрэлт — зөвхөн энэ сартай давхцсан нь
+  const gapsM = gaps.filter(g => g.kind === 'gap'
+    ? (String(g.from) <= mEnd && String(g.to) >= mStart)
+    : (() => { const st = (list || []).find(x => String(x.id) === String(g.id)); return !st || inMonth(st); })());
+  const sealWarn = mEnded && sealSeq.length && sealOk < sealSeq.length;
+  /* ⭐ ДАРААЛАЛ = ХИЙХ АЖИЛ ЭХЭНД: ① хаагдаагүй орлого (гараар шийднэ) ② сарын
+     тэнцэл ③ хуулгын жагсаалт (эвхмэл) ④ гараар шийдсэн (эвхмэл). */
+  return `<div class="recon-sec${os.n ? ' warn' : ''}">
       <div class="recon-sec-h">🔓 Хаагдаагүй орлого <span class="recon-n">${os.n}</span> ${os.n ? `<b>${fmtMoney(os.sum)}</b>` : ''}</div>
-      ${os.n ? `<div class="recon-rows">${openRows}</div><div class="recon-summary-sub">Мөр бүрийг хаана хамаарахаар тэмдэглэнэ: 🎪 захиалга · ↔ дотоод шилжүүлэг · 📦 бусад орлого · 🙍 хувийн · 🚫 орлого биш. Энэ тоо 0 болтол сар хаагдаагүй.</div>`
-    : '<div class="recon-empty recon-ok">✓ Бүх орлогын мөр хаагдсан</div>'}
+      ${os.n ? `<div class="recon-rows">${openRows}</div><div class="recon-summary-sub">Мөр бүрийг хаана хамаарахаар тэмдэглэнэ: 🎪 захиалга · ↔ дотоод шилжүүлэг · 📦 бусад орлого · 🙍 хувийн · 🚫 орлого биш</div>`
+        : '<div class="recon-empty recon-ok">✓ Орсон мөнгө бүгд захиалгадаа холбогдсон</div>'}
+      ${openOther ? `<div class="recon-summary-sub">Бусад сард ${openOther} хаагдаагүй мөр бий — тэр сарыг сонгож шийднэ.</div>` : ''}
       ${frozen ? `<div class="recon-summary-sub">🔒 Хаасан сарын ${frozen} хаагдаагүй мөр — түүх, хөндөгдөхгүй.</div>` : ''}
     </div>
-    ${manual.length ? `<div class="recon-sec">
-      <div class="recon-sec-h">👤 Та гараар шийдсэн <span class="recon-n">${manual.length}</span></div>
+    <div class="recon-sec${sealWarn ? ' warn' : ''}">
+      <div class="recon-sec-h">⚖️ ${escapeHtml(sealMonth)} сарын эцсийн үлдэгдэл
+        <span class="recon-amt">${!mEnded ? '<span class="mut">⏳ дуусаагүй</span>' : sealSeq.length ? (sealOk === sealSeq.length ? `<span class="recon-ok">✓ ${sealOk}/${sealSeq.length} батлагдсан</span>` : `<span class="recon-bad">${sealOk}/${sealSeq.length} батлагдсан</span>`) : ''}</span></div>
+      ${!mEnded
+        ? `<div class="recon-empty">Сар дуусаагүй байна. ${escapeHtml(mEnd)}-ний дараа ${escapeHtml(mStart)}…${escapeHtml(mEnd)} бүтэн хуулга оруулахад данс бүр батлагдана.</div>`
+        : (sealRows || `<div class="recon-empty">${escapeHtml(sealMonth)} сард хуулга ороогүй байна</div>`)
+          + '<div class="recon-summary-sub">Батлагдах = 1-нээс сүүлчийн өдөр хүртэлх бүтэн хуулга тэнцсэн байх. Мөр дарж бодолтыг үз.</div>'}
+    </div>
+    <details class="recon-sec recon-fold${gapsM.length ? ' warn' : ''}"${gapsM.length ? ' open' : ''}>
+      <summary class="recon-sec-h">📚 Энэ сарын хуулга <span class="recon-n">${stmtN}</span>
+        <span class="recon-amt">${gapsM.length ? `<span class="recon-bad">⚠ ${gapsM.length} цоорхой</span>` : stmtN ? '<span class="recon-ok">✓ залгаатай</span>' : ''}</span></summary>
+      ${gapsM.length ? `<div class="recon-rows">${gapsM.map(gapRow).join('')}</div>` : ''}
+      ${stmtRows ? `<div class="recon-rows">${stmtRows}</div>` : `<div class="recon-empty">${escapeHtml(sealMonth)} сард хуулга оруулаагүй байна</div>`}
+    </details>
+    ${manual.length ? `<details class="recon-sec recon-fold">
+      <summary class="recon-sec-h">👤 Та гараар шийдсэн <span class="recon-n">${manual.length}</span></summary>
       <div class="recon-rows">${manual.slice(0, 30).map(r => `<div class="recon-row">
         <span class="recon-l">${escapeHtml(String(r.dt || ''))} · ${escapeHtml(r.payer || '')} · <span class="mut">${escapeHtml(String(r.memo || '').slice(0, 30))}</span></span>
         <span class="recon-amt">${escapeHtml(INCOME_STATUS_LABEL[r.status] || r.status || '')} · ${fmtMoney(r.amount)}
           <button class="btn ui-raw inc-btn" data-inc-undo="${escapeHtml(r.fp)}" title="Буруу тэмдэглэсэн бол буцаах">↩</button>
         </span></div>`).join('')}</div>
       <div class="recon-summary-sub">Буруу дарсан бол <b>↩</b> дарж «хаагдаагүй» болгож буцаана. Авто тэмдэглэгдсэн мөр энд гарахгүй.</div>
-    </div>` : ''}`;
+    </details>` : ''}`;
 }
+/* ⛔ ХУУЛГА ОРУУЛАХ ХААЛГА НЭГ (2026-10-05, CEO): энэ цонхонд тусдаа импорт
+   байсан нь ЗӨВХӨН орлогыг бүртгэж, зардлыг орхидог байв — нөгөө цонх нь эсрэгээрээ.
+   Одоо хоёулаа `openStatementClassifyModal` (орлого + зардал) руу. */
 function renderReconcilePanel() {
-  const res = state._reconResult;
-  let resultHtml = '';
-  if (res) {
-    const sec = (title, cls, items, fn) => `<div class="recon-sec ${cls}">
-      <div class="recon-sec-h">${title} <span class="recon-n">${items.length}</span></div>
-      ${items.length ? `<div class="recon-rows">${items.map(fn).join('')}</div>` : '<div class="recon-empty">—</div>'}
-    </div>`;
-    const stmts = res._stmts || [];
-    const totalIncome = stmts.reduce((s, x) => s + (Number(x.incomeTotal) || 0), 0);
-    const matchedSum = (res.matched || []).reduce((s, m) => s + (Number(m.credit) || 0), 0) + (res.mismatch || []).reduce((s, m) => s + (Number(m.credit) || 0), 0);
-    const untrackedSum = (res.untracked || []).reduce((s, c) => s + (Number(c.credit) || 0), 0);
-    const acctChips = stmts.map(s => `<span class="recon-acct">${s.personal ? '🙍' : '🏦'} ${escapeHtml(s.acct || s.fileName || '')} · ${s.personal ? 'хувийн (орлого биш)' : fmtMoney(s.incomeTotal)}</span>`).join('');
-    resultHtml = `<div class="recon-report">
-        <div class="recon-report-h"><b>${stmts.length} данс${stmts[0] && stmts[0].period ? ' · ' + escapeHtml(stmts[0].period) : ''}</b><button class="btn" id="recon-report-btn">🖨 Тайлан татах</button></div>
-        <div class="recon-kpis">
-          <div class="recon-kpi"><span class="rk-l">Банкны нийт орлого</span><span class="rk-v">${fmtMoney(totalIncome)}</span></div>
-          <div class="recon-kpi ok"><span class="rk-l">✓ Бүртгэсэн</span><span class="rk-v">${fmtMoney(matchedSum)}</span></div>
-          <div class="recon-kpi info"><span class="rk-l">💰 Бүртгээгүй</span><span class="rk-v">${fmtMoney(untrackedSum)}</span></div>
-        </div>
-        ${acctChips ? `<div class="recon-accts">${acctChips}</div>` : ''}
-        <div class="recon-summary-sub">Ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ · ✓ Бүртгэсэн: <b>${(res.matched || []).length}</b> · 💰 Бүртгээгүй: <b>${(res.untracked || []).length}</b></div>
-      </div>
-      ${sec(res._byReceipt ? '✓ Бүртгэсэн (PDF баримттай)' : '✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${m.order.order_no ? escapeHtml(m.order.order_no) + ' · ' : ''}${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
-      ${res._byReceipt ? '' : sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => { const found = (m.rows || []).length, rec = m.receipts || 0; const note = rec > found ? ` <span style="color:var(--muted);font-size:11px;">(${found}/${rec} баримт — дутуу)</span>` : (found > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${found} гүйлгээ)</span>` : ''); return `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${note}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.credit != null ? m.credit : (m.row ? m.row.credit : 0))}</span></div>`; })}
-      ${res._byReceipt ? '' : sec('❓ Дансанд алга', 'danger', res.missing, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)} · ${escapeHtml(m.order.paid_ref || 'утга алга')}</span></div>`)}
-      ${sec(res._byReceipt ? '💰 Бүртгээгүй орлого (PDF баримт алга)' : '💰 Захиалгагүй орлого', 'info', res.untracked, c => `<div class="recon-row"><span class="recon-l">${escapeHtml(c.date)} · ${escapeHtml(c.name || '')} · ${escapeHtml((c.memo || '').slice(0, 44))}</span><span class="recon-amt">${fmtMoney(c.credit)}</span></div>`)}
-      ${(res.missing.length && res.untracked.length) ? `<div class="recon-ai-bar"><button class="btn" id="recon-ai-btn"${state._reconAiLoading ? ' disabled' : ''}>${state._reconAiLoading ? '🤖 Бодож байна…' : '🤖 AI-аар санал авах'}</button><span class="recon-ai-hint">Зөвхөн таараагүй ${res.missing.length}×${res.untracked.length}-д. AI санал болгоно — та шалгаж баталгаажуулна.</span></div>` : ''}
-      ${(res._aiSuggestions && res._aiSuggestions.length) ? `<div class="recon-sec recon-ai"><div class="recon-sec-h">🤖 AI санал <span class="recon-n">${res._aiSuggestions.length}</span></div><div class="recon-rows">${res._aiSuggestions.map(s => `<div class="recon-row clickable" data-recon-open="${escapeHtml(s.order.order_no)}"><span class="recon-l">${escapeHtml(s.order.order_no)} · ${escapeHtml(s.order.customer_name || '')} ← ${escapeHtml(s.income.name || (s.income.memo || '').slice(0, 30) || 'орлого')}${s.reason ? `<span class="recon-ai-reason">${escapeHtml(s.reason)}</span>` : ''}</span><span class="recon-amt"><b class="recon-ai-conf">${Math.round(s.confidence * 100)}%</b> · ${fmtMoney(s.income.credit)}${s.amountDiff ? ` <span class="recon-ai-diff">зөрүү ${fmtMoney(s.amountDiff)}</span>` : ''}</span></div>`).join('')}</div></div>` : ''}`;
-  }
   return `<div class="recon-wrap">
-    <div class="recon-intro">Бүх дансны хуулгыг (олон файл зэрэг) оруулбал нэгтгэж, M-Event + NOMAAD бүх орлоготой тулгаж, орлогын тайлан гаргана. Дотоод шилжүүлэг автоматаар хасагдана.</div>
+    <button class="btn btn-primary recon-import" id="recon-import">🧾 Хуулга оруулах · орлого + зардал</button>
     ${renderStmtLedger()}
-    <div class="recon-upload">
-      <label class="btn btn-primary" for="recon-file" style="cursor:pointer;">📂 Хуулга(ууд) оруулах (.xlsx / .csv)</label>
-      <input type="file" id="recon-file" accept=".xlsx,.xls,.csv" multiple style="display:none;" />
-      <span id="recon-status" class="recon-status"></span>
-    </div>
-    ${resultHtml}
   </div>`;
 }
 // Орлого тулгалт — Санхүү цэснээс нээгддэг МОДАЛ (банкны орлого ↔ төлсөн захиалга + AI санал).
 function openReconcileModal() {
   document.getElementById('recon-modal')?.remove();
-  state._reconStmts = []; state._reconResult = null;   // шинэ сесс — өмнөх хуулгуудыг цэвэрлэнэ
   const ov = document.createElement('div'); ov.id = 'recon-modal'; ov.className = 'modal-bg';
   document.body.appendChild(ov);
   const draw = () => {
+    const _m = String(state.finReportMonth || todayStr().slice(0, 7)).slice(0, 7);
     ov.innerHTML = `<div class="modal recon-modal">
       <button class="modal-x ui-raw recon-x" data-recon-close>✕</button>
-      <h2 class="recon-title">📊 Орлого тулгалт</h2>
-      <div class="recon-sub">Банкны орлогыг төлсөн захиалгатай тулгана. Дотоод шилжүүлэг автоматаар хасагдана.</div>
+      <h2 class="recon-title">📊 ${escapeHtml(_m)} · Хуулга ба орлого</h2>
       ${renderReconcilePanel()}</div>`;
-    // Модал доторх handler-ууд (render() дуудвал модал хаагдана тул зөвхөн draw()-оор шинэчилнэ)
     ov.querySelector('[data-recon-close]')?.addEventListener('click', () => ov.remove());
-    const reconFile = ov.querySelector('#recon-file');
-    if (reconFile) reconFile.addEventListener('change', async (e) => {
-      const files = [...(e.target.files || [])]; e.target.value = ''; if (!files.length) return;
-      const st = ov.querySelector('#recon-status');
-      // Захиалга/орлого ачаалагдаагүй бол эхлээд татна (эс бол бүгд «захиалгагүй» болж харагдана)
-      if (!Array.isArray(state.appOrders) || !state.appOrders.length) {
-        if (st) st.textContent = 'Захиалга татаж байна…';
-        try { await loadAppOrders(); } catch (_) {}
-      }
-      if (!state.nomaadPayments || !Object.keys(state.nomaadPayments).length) {
-        if (st) st.textContent = 'NOMAAD орлого татаж байна…';
-        try { if (typeof loadNomaadPayments === 'function') await loadNomaadPayments(); } catch (_) {}
-      }
-      try { if (typeof loadBankAccounts === 'function') await loadBankAccounts(); } catch (_) {}   // дансны нэр/салбар тайланд
-      try { if (typeof loadUsedReceipts === 'function') await loadUsedReceipts(); } catch (_) {}   // ⭐ бүртгэсэн PDF баримтын хээ (тулгалтын үндэс)
-      try { await loadBankStatements(true); await loadBankIncome(true); } catch (_) {}             // хуулгын бүртгэл + орлогын мөр
-      state._reconStmts = state._reconStmts || [];
-      let added = 0, skippedClosed = 0; const saveErrs = [], rcptTaken = new Set();
-      const _ownAccts = ownAcctSet();   // бүртгэсэн өөрийн данс — дотоод шилжүүлгийг орлогод тоолохгүй
-      for (const file of files) {
-        if (st) st.textContent = `📄 ${file.name} уншиж байна…`;
-        try {
-          const matrix = await statementFileToMatrix(file);
-          const parsed = parseStatement(matrix);
-          if (parsed.headerRow < 0) { if (st) st.textContent = `⚠ ${file.name}: багана танигдсангүй`; continue; }
-          const meta = statementMeta(matrix);
-          parsed.rows.forEach(r => { r._srcAcct = meta.acct; });
-          const credits = parsed.rows.filter(r => r.credit > 0);
-          const debits = parsed.rows.filter(r => r.debit > 0);
-          // 🙍 ХУВИЙН данс: ирэлт нь эзний хувийн хэрэглээ — компанийн орлого БИШ (0).
-          const _prsnAcct = isPersonalAcct(meta.acct);
-          const incomeTotal = _prsnAcct ? 0
-            : credits.filter(r => !creditIsInternal(r, _ownAccts)).reduce((s, r) => s + r.credit, 0);   // бизнесийн орлого (дотоод шилжүүлэг хассан)
-          const rawIn = credits.reduce((s, r) => s + r.credit, 0);
-          const rawOut = debits.reduce((s, r) => s + r.debit, 0);
-          const opening = meta.opening;
-          const closing = (opening != null) ? (opening + rawIn - rawOut) : null;
-          const info = bankAcctInfo(meta.acct);
-          // Ижил данс+хугацаа дахин орвол ОРЛУУЛНА (давхар тооллого сэргийлнэ)
-          state._reconStmts = state._reconStmts.filter(s => !(s.acct === meta.acct && s.period === meta.period && meta.acct));
-          state._reconStmts.push({ acct: meta.acct, period: meta.period, fileName: file.name, rows: parsed.rows, personal: _prsnAcct, incomeCount: credits.length, incomeTotal, expenseCount: debits.length, expenseTotal: rawOut, rawIn, opening, closing, info });
-          added++;
-          // ⭐ Хуулга + орлогын мөрийг БҮРТГЭНЭ — цонх хаагдахад алга болохгүй.
-          try { const _ps = await persistStatement(matrix, parsed, file.name, rcptTaken); skippedClosed += (_ps.skippedClosed || 0); }
-          catch (e2) { saveErrs.push(file.name + ': ' + e2.message); }
-        } catch (err) { if (st) st.textContent = `⚠ ${file.name}: ${err.message}`; }
-      }
-      if (saveErrs.length) showToast('⚠ Хуулгын бүртгэл хадгалагдсангүй — ' + saveErrs[0], 'error', 6000);
-      // 🔒 Хаасан сарын мөр алгасагдсаныг ИЛ хэлнэ — чимээгүй алга болох ёсгүй.
-      if (skippedClosed) showToast(`🔒 ${skippedClosed} орлогын мөр хаасан сард байсан тул алгасагдав (түүх хөндөгдөхгүй)`, 'info', 6000);
-      if (!added && !state._reconStmts.length) return;
-      const allRows = state._reconStmts.flatMap(s => s.rows);
-      state._reconResult = reconcileByReceipts(allRows, { own: _ownAccts });   // ⭐ хээ-суурьтай: хуулга ↔ бүртгэсэн PDF баримт
-      state._reconResult._orderCount = (state.usedFps instanceof Set) ? state.usedFps.size : 0;
-      state._reconResult._stmts = state._reconStmts;
-      if (st) st.textContent = '';
-      draw();
-    });
-    ov.querySelector('#recon-report-btn')?.addEventListener('click', openIncomeReport);
-    ov.querySelector('#recon-ai-btn')?.addEventListener('click', async () => {
-      const res = state._reconResult; const payload = buildReconAiPayload(res);
-      if (!payload) { showToast('AI шаардлагагүй — таараагүй үлдэгдэлгүй', 'info', 2500); return; }
-      state._reconAiLoading = true; draw();
-      try {
-        const r = await fetchWithTimeout(DEFAULT_RECON_AI_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: N8N_API_KEY, ...payload }) }, 60000);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        let data = null; try { data = await r.json(); } catch (e) { data = null; }
-        const arr = Array.isArray(data) ? data : (data && Array.isArray(data.suggestions) ? data.suggestions : []);
-        const n = applyReconAiSuggestions(res, arr).length;
-        showToast(n ? `🤖 ${n} санал олдлоо` : 'AI тохирол олсонгүй', n ? 'success' : 'info', 3000);
-      } catch (e) { showToast('AI алдаа: ' + e.message, 'error', 4500); }
-      finally { state._reconAiLoading = false; draw(); }
-    });
-    ov.querySelectorAll('[data-recon-open]').forEach(el => el.addEventListener('click', () => {
-      ov.remove(); state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.reconOpen; render();
-    }));
+    ov.querySelector('#recon-import')?.addEventListener('click', () => { ov.remove(); openStatementClassifyModal(); });
     // ── Хаагдаагүй орлогын мөрийг хаах ──
     const setInc = async (fp, status, link, note) => {
       try { await setIncomeStatus(fp, status, link, note); showToast('Хаалаа ✓', 'success', 1500); draw(); }
@@ -38558,7 +38519,11 @@ function renderFinanceReport(wrap) {
         openIncome: incomeOpenStats(state.bankIncome, month),
         chainBreaks: (closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), month, 0)
           .find(b => b.kind === 'chain') || {}).n || 0,
-        balance: balanceStats(state.bankStatements, companyAcctList(), month),
+        balance: (b => {
+          const nm = d => { const i = bankAcctInfo(d); return (i && (i.name || i.bank)) || d; };
+          return { ...b, badAccts: (b.badAccts || []).map(nm), unverAccts: (b.unverAccts || []).map(nm) };
+        })(balanceStats(state.bankStatements, companyAcctList(), month)),
+        today: todayStr(),
       });
       const card = document.createElement('div');
       card.innerHTML = finNextStepsHtml(_ns, month);

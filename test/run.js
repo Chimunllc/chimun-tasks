@@ -743,8 +743,54 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   // Карт нь тэнцлийн мөрийг ҮРГЭЛЖ гаргана (зөв үед ч N/M)
   ok(/key: 'balance', done: true[\s\S]{0,300}данс сарын эцсийн үлдэгдлээр батлагдсан/.test(codeLines),
      'scan: зөв үед ч «N/M данс сарын эцсийн үлдэгдлээр батлагдсан» гэж батална');
-  ok(/balance: balanceStats\(state\.bankStatements, companyAcctList\(\), month\)/.test(codeLines),
+  ok(/\}\)\(balanceStats\(state\.bankStatements, companyAcctList\(\), month\)\)/.test(codeLines),
      'scan: дэлгэц картад тэнцлийн төлөв дамжуулна');
+  // ⏳ Сар дуусаагүй бол тэнцэл ХҮЛЭЭНЭ — 10-05-нд «10-31-ний хуулга оруул» гэж шаардахгүй (2026-10-05, CEO)
+  ok(/today: todayStr\(\),/.test(codeLines), 'scan: карт өнөөдрийг дамжуулна (сар дууссан эсэх)');
+  {
+    const bal4 = { total: 4, ok: 0, bad: 0, unver: 4, badAccts: [], unverAccts: ['Зарлага данс', 'Орлого Mevent', 'Орлого Nomaad', 'ХААН байгууллага'] };
+    const base = { month: '2026-10', isCEO: true, missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 }, balance: bal4 };
+    const mid = F.finNextSteps({ ...base, today: '2026-10-05' });
+    const bm = mid.find(s => s.key === 'balance');
+    ok(bm.wait && !bm.n && /2026-10-31/.test(bm.hint), 'тэнцэл: сар дуусаагүй → хүлээнэ, тоологдохгүй');
+    ok(mid.find(s => s.key === 'close').wait, 'сар хаах: сар дуусаагүй бол хүлээнэ');
+    const end = F.finNextSteps({ ...base, today: '2026-11-03' }).find(s => s.key === 'balance');
+    eq(end.n, 4, 'тэнцэл: сар дууссаны дараа 4 данс');
+    ok(/Зарлага данс, Орлого Mevent/.test(end.hint) && end.hint.length < 160, 'тэнцэл: товч (дансны нэр + юу дутуу), урт өгүүлбэр давтахгүй');
+  }
+  // ── НЭГ ИМПОРТ = ОРЛОГО + ЗАРДАЛ (2026-10-05, CEO) ──
+  {
+    const cm = codeLines.slice(codeLines.indexOf('async function openStatementClassifyModal'), codeLines.indexOf('function renderMyExpenses'));
+    ok(cm.length > 1000, 'scan: хуулга оруулах цонх олдов');
+    ok(/!rows\.length && !skippedInternal && !incomePrev\.length\) throw/.test(cm), 'импорт: зөвхөн орлоготой хуулга татгалзагдахгүй');
+    ok(/buildStatementImport\(st, _meta/.test(cm), 'импорт: орлогыг хадгалах үеийн ИЖИЛ функцээр урьдчилж харуулна');
+    ok(/if \(!todo\.length\) showToast\(/.test(cm) && !/if \(!todo\.length\) \{ showToast\([^\n]*return; \}/.test(cm),
+       '⛔ импорт: шинэ зардалгүй ч хуулга + орлого бичигдэнэ (өмнө нь return хийж орлогыг алгасдаг байв)');
+    const sv = cm.slice(cm.indexOf('saveBtn.onclick'));
+    ok(sv.indexOf('persistStatement(') > sv.indexOf('if (!todo.length) showToast('), 'импорт: орлогын бичилт зардлын дараа ҮРГЭЛЖ ажиллана');
+    const rp = codeLines.slice(codeLines.indexOf('function renderReconcilePanel'), codeLines.indexOf('function openReconcileModal'));
+    ok(!/recon-file/.test(rp) && /id="recon-import"/.test(rp), '⛔ тулгалтын цонхонд тусдаа импорт БАЙХГҮЙ — нэг хаалга');
+    ok(/#recon-import'\)\?\.addEventListener\('click', \(\) => \{ ov\.remove\(\); openStatementClassifyModal\(\); \}\)/.test(codeLines), 'тулгалтын цонхны товч нэгдсэн импортыг нээнэ');
+  }
+  // ── Тулгалтын цонх: ЗӨВХӨН сонгосон сар ──
+  {
+    const sv0 = vm.runInContext('[state.finReportMonth, state.bankStatements, state.bankIncome]', sandbox);
+    vm.runInContext(`state.finReportMonth = '2026-09';
+      state.bankStatements = [
+        { id: 'A|2026-08-01|2026-08-31', acct: '111', period_from: '2026-08-01', period_to: '2026-08-31', opening: 0, closing_stated: 100, credit_total: 100, debit_total: 0, ccy: 'MNT' },
+        { id: 'A|2026-09-01|2026-09-30', acct: '111', period_from: '2026-09-01', period_to: '2026-09-30', opening: 100, closing_stated: 150, credit_total: 50, debit_total: 0, ccy: 'MNT' }];
+      state.bankIncome = [
+        { fp: 'x9', dt: '2026-09-12', amount: 50, payer: 'Бат', memo: 'тулгаагүй', status: 'open' },
+        { fp: 'x8', dt: '2026-08-12', amount: 70, payer: 'Дорж', memo: 'наймдугаар', status: 'open' }];`, sandbox);
+    const h = vm.runInContext('renderStmtLedger()', sandbox);
+    ok(/2026-09-01 … 2026-09-30/.test(h) && !/2026-08-01 … 2026-08-31/.test(h), 'тулгалт: зөвхөн сонгосон сарын хуулга');
+    ok(/Бат/.test(h) && !/Дорж/.test(h), 'тулгалт: зөвхөн сонгосон сарын хаагдаагүй орлого');
+    ok(h.indexOf('Хаагдаагүй орлого') < h.indexOf('сарын эцсийн үлдэгдэл'), 'тулгалт: хийх ажил (хаагдаагүй орлого) ЭХЭНД');
+    ok(/<details class="recon-sec recon-fold/.test(h), 'тулгалт: хуулгын жагсаалт эвхмэл');
+    vm.runInContext("state.finReportMonth = '2099-01';", sandbox);
+    ok(/Сар дуусаагүй/.test(vm.runInContext('renderStmtLedger()', sandbox)), 'тулгалт: дуусаагүй сард «сар дуусаагүй» гэж нэг мөр');
+    vm.runInContext(`[state.finReportMonth, state.bankStatements, state.bankIncome] = ${JSON.stringify(sv0)};`, sandbox);
+  }
   /* ⛔ Сар хаахыг хоридог бүх нөхцөл НЭГ мөрөнд — аль нэгийг нь чимээгүй хасвал
      тэр дутагдалтайгаар сар хаагдаж, гажсан тоо МӨНХӨД хөлдөнө. */
   ok(/const blocked = miss\.length \|\| pend \|\| oi\.n \|\| chain \|\| balBad/.test(codeLines),

@@ -6424,12 +6424,15 @@ need(['orderCustType']);
   ok(su.ok && su.src === 'photo' && su.lateH === -0.1, 'суурилуулалт: сүүлийн зургийн цагаар (буулгалтаас хойш)');
   {
     const _sx = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-    const i0 = _sx.indexOf("$('#sa-photo-input').onchange");
+    const i0 = _sx.indexOf('const _onPhoto = async (e) => {');
     const seg = _sx.slice(i0, i0 + 900);
     // ⛔ Шахалт EXIF-ийг устгадаг тул цагийг uploadReceipt-ээс ӨМНӨ уншина
     ok(i0 > 0 && seg.indexOf('photoTakenAt(f)') > 0 && seg.indexOf('photoTakenAt(f)') < seg.indexOf('uploadReceipt(f'),
       'scan: зураг авсан цагийг шахахаас өмнө уншина');
     ok(/entry\.shots = shots\.slice\(\)/.test(_sx), 'scan: зураг авсан цаг дамжлагад хадгалагдана');
+    // ⛔ `capture` нь камерыг ШУУД нээдэг — өмнө авсан зургийг оруулах зам ЗААВАЛ
+    ok(/<input id="sa-photo-gallery" type="file" accept="image\/\*" hidden>/.test(_sx), 'scan: дамжлагад галерейгаас зураг оруулах зам бий');
+    ok(/\$\('#sa-photo-gallery'\)\.onchange = _onPhoto/.test(_sx), 'scan: галерейн зураг ч ижил замаар (цаг уншина)');
   }
   // ⛔ Очиж авах — хугацаа бодохгүй (дээрх дүрэм)
   eq(F.orderDispatchPlan(mk(10, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|pickup|0|0⟧')), null,

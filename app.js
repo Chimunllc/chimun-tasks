@@ -27062,8 +27062,12 @@ function openStageAdvanceModal(oid, to) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">${escapeHtml(act.label)} · #${o.number ?? ''}</h2><button class="btn" id="sa-close" style="padding:5px 10px;">✕</button></div>
     ${needPhoto ? _sec('📷', stageIsShowcase(act.key) ? 'Угсарсан байдлын зураг' : 'Гүйцэтгэлийн зураг', true, stagePhotoHint(act.key), `
       <div id="sa-photos" class="sa-ph-grid"></div>
-      <label class="btn sa-ph-btn" for="sa-photo-input">📷 Зураг оруулах / авах</label>
+      <div class="sa-ph-row">
+        <label class="btn sa-ph-btn ui-raw" for="sa-photo-input">📷 Камер</label>
+        <label class="btn sa-ph-btn ui-raw" for="sa-photo-gallery">🖼 Галерей</label>
+      </div>
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
+      <input id="sa-photo-gallery" type="file" accept="image/*" hidden>
       <div id="sa-photo-status" class="sa-ph-status"></div>`) : ''}
     ${_rcHtml}
     ${_defTargets.length ? _sec('🔎', 'Өмнөх ажлын алдаа', false, 'Алдаа байхгүй бол 0 үлдээнэ.', `
@@ -27178,14 +27182,28 @@ function openStageAdvanceModal(oid, to) {
       $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
       $('#sa-photos').querySelectorAll('[data-prm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.prm, 1); shots.splice(+b.dataset.prm, 1); renderPhotos(); validate(); });
     };
-    $('#sa-photo-input').onchange = async (e) => {
+    /* ⛔ ХОЁР ТОВЧ (2026-10-05, CEO): `capture` нь утсанд КАМЕРЫГ ШУУД нээдэг
+       (iPhone, Android хоёулаа) — газар дээр нь аваад ХОЖИМ оруулах боломжгүй
+       байв. «Галерейгаас» товч нь өмнө авсан зургийг сонгуулна; зураг авсан
+       цаг (EXIF) нь хоцролтыг бодоход товч дарсан цагийг орлоно.
+       Хуучин эвентийн зураг хэмжүүрт тооцогдохгүй (`stageDoneAt`-ын хил). */
+    const _onPhoto = async (e) => {
       const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
-      $('#sa-photo-status').textContent = '⏳ Илгээж байна...'; $('#sa-photo-status').style.color = 'var(--muted)';
+      const st = $('#sa-photo-status');
+      st.className = 'sa-ph-status'; st.textContent = '⏳ Илгээж байна...';
       // ⛔ Зураг авсан цагийг ШАХАХААС ӨМНӨ — шахалт EXIF-ийг устгадаг
       const _shot = await photoTakenAt(f);
-      try { const url = await uploadReceipt(f, o.id, 'completion', `Захиалга #${o.number} ${act.label}`); if (url) { photos.push(url); shots.push(_shot); renderPhotos(); $('#sa-photo-status').textContent = `✓ ${photos.length} зураг`; $('#sa-photo-status').style.color = 'var(--ok)'; validate(); } else { $('#sa-photo-status').textContent = '⚠ Хадгалж чадсангүй'; $('#sa-photo-status').style.color = 'var(--danger)'; } }
-      catch (err) { $('#sa-photo-status').textContent = '⚠ ' + err.message; $('#sa-photo-status').style.color = 'var(--danger)'; }
+      try {
+        const url = await uploadReceipt(f, o.id, 'completion', `Захиалга #${o.number} ${act.label}`);
+        if (!url) { st.className = 'sa-ph-status bad'; st.textContent = '⚠ Хадгалж чадсангүй'; return; }
+        photos.push(url); shots.push(_shot); renderPhotos();
+        st.className = 'sa-ph-status ok';
+        st.textContent = `✓ ${photos.length} зураг` + (_shot ? ` · ${ubStamp(_shot, true)}-д авсан` : ' · авсан цаг уншигдсангүй');
+        validate();
+      } catch (err) { st.className = 'sa-ph-status bad'; st.textContent = '⚠ ' + err.message; }
     };
+    $('#sa-photo-input').onchange = _onPhoto;
+    $('#sa-photo-gallery').onchange = _onPhoto;
   }
   modal.querySelectorAll('.sa-stars').forEach(row => {
     const si = +row.dataset.si;

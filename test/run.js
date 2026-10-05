@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'vatIsAggregate', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'offHoursFeeFor', 'orderOffHoursFeeOf', 'tariffOffhoursFirstFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'vatIsAggregate', 'vatIssuedDay', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost', 'offHoursFeeFor', 'orderOffHoursFeeOf', 'tariffOffhoursFirstFee',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -1859,6 +1859,33 @@ ok(F.vatNameMatch('Түшиг', 'Өөр Компани') === false, 'vatNameMatc
   eq(c2.diffTotal, 887000, 'НӨАТ тайлан: аппад илүү бол зөрүү эерэг');
   ok(/887,000/.test(F.vatReportReconHtml(c2)) && /илүү/.test(F.vatReportReconHtml(c2)), 'НӨАТ тайлан: зөрүүг дүнтэй нь ил хэлнэ');
   ok(/1,443,934/.test(F.vatReportReconHtml(c2)), 'НӨАТ тайлан: худалдан авалтын НӨАТ ил гарна');
+}
+
+// Хойш огноолсон баримт: ДДТД-ийн шивсэн өдөр > сар → тайлангийн зөрүүг тайлбарлана (2026-10-05).
+// 9 сарын тайлан гарсны дараа 10-05-нд шивсэн 852,000₮ (огноо 09-30 23:59) тайланд ороогүй байв.
+{
+  eq(F.vatIssuedDay('000006614337000261005000001635194'), '2026-10-05', 'ДДТД: шивсэн өдрийг уншина');
+  eq(F.vatIssuedDay('000006614337000260930000001353472'), '2026-09-30', 'ДДТД: энгийн баримт');
+  eq(F.vatIssuedDay('4272263059'), '', 'ДДТД: танихгүй хэлбэр (тайлангийн падаан) → хоосон');
+  eq(F.vatIssuedDay(''), '', 'ДДТД: хоосон → хоосон');
+  const ok1 = { id: 'A', ddtd: '000006614337000260930000001353472', dt: '2026-09-30T15:39:00+00:00', total: 20805600, vat: 1891418.18, buyer_name: 'Трансвест' };
+  const late = { id: 'L', ddtd: '000006614337000261005000001635194', dt: '2026-09-30T23:59:00+00:00', total: 852000, vat: 77454.55, buyer_name: 'Ламбда глобал' };
+  const rc = F.vatReportRecon({ month: '2026-09', sales: { total: 20805600, vat: 1891418.18 }, purchases: { n: 0 } }, [ok1, late]);
+  eq(rc.late.length, 1, 'НӨАТ тайлан: сар дууссаны дараа шивсэн баримтыг олно');
+  eq(rc.late[0].issued, '2026-10-05', 'НӨАТ тайлан: шивсэн өдөр');
+  eq(rc.diffTotal, 852000, 'НӨАТ тайлан: зөрүү = хойш огноолсон баримт');
+  const h = F.vatReportReconHtml(rc);
+  ok(/бүхэлдээ сар дууссаны дараа/.test(h) && /Ламбда глобал/.test(h) && /10-05-нд шивсэн/.test(h), 'НӨАТ тайлан: зөрүү бүхэлдээ хойш огноолсон баримтаас бол ил хэлнэ');
+  // Тайланд нэрээр жагссан хойш огноолсон баримт (Максимус) ОРСОН тул тайлбарт тоологдохгүй
+  const named = { id: 'M', ddtd: '000006614337000261002000001472397', dt: '2026-09-30T23:59:00+00:00', total: 1157440, vat: 105221.82, buyer_name: 'Максимус', buyer_reg: '6191592' };
+  const rc3 = F.vatReportRecon({ month: '2026-09', named: [{ reg: '6191592', total: 1157440 }], sales: { total: 20805600 + 1157440, vat: 1 }, purchases: { n: 0 } }, [ok1, late, named]);
+  eq(rc3.late.map(x => x.name), ['Ламбда глобал'], 'НӨАТ тайлан: тайланд нэрээр жагссан баримт «ороогүй» гэж тооцогдохгүй');
+  eq(F.parseVatReportMatrix([['Огноо', 'Падааны дугаар', 'Борлуулагчийн ТТД', 'Борлуулагчийн Нэр', 'Худалдан авагчийн ТТД', 'Худалдан авагчийн Нэр', 'Татвар ногдуулах', 'Нэмэгдсэн өртгийн', 'Нийт дүн'],
+    ['2026-09-30', '1', '6614337', 'Чимун', '6191592', 'Максимус', '1052218', '105222', '1157440'],
+    ['2026-09-30', '2', '6614337', 'Чимун', '4000000', 'ЭЦСИЙН', '10', '1', '11'],
+    ['2026-09-01', '3', '5241901', 'Петростар', '6614337', 'Чимун', '10', '1', '11']]).named, [{ reg: '6191592', total: 1157440 }], 'НӨАТ тайлан: нэрээр жагссан борлуулалт (нэгтгэсэн код хасагдана)');
+  const rc2 = F.vatReportRecon({ month: '2026-09', sales: { total: 20805600 - 35000, vat: 1891418.18 }, purchases: { n: 0 } }, [ok1, late]);
+  ok(/Үүнээс 852,000₮/.test(F.vatReportReconHtml(rc2)) && /35,000₮/.test(F.vatReportReconHtml(rc2)), 'НӨАТ тайлан: хэсэгчлэн тайлбарлавал үлдэгдлийг ил хэлнэ');
 }
 
 // SCAN — иргэдийн нийлбэрийг захиалгатай тулгахгүй (авто-тулгалт ба гараар холбох цонх)
@@ -17072,6 +17099,30 @@ async function swFetchTests() {
   order.forEach(k => ok(at(k) > 0, `Тойм: ${k} байна`));
   ok(order.every((k, i) => i === 0 || at(order[i - 1]) < at(k)),
      'Тойм: гацсан → буцаж залгах → календарь → цагтаа хүрсэн → үнэлгээ → шилдэг гүйцэтгэгч дараалал');
+}
+
+// ═══ «БИ Ч ОРОЛЦСОН» ТОВЧ ЦАЛИНГИЙН САМБАРТ ХОЛБОГДОНО (2026-10-05) ═════
+// Хайрцаг цалингийн самбарт зурагддаг атал товчны үйлдэл «Миний ирц»-д л
+// холбогдсон байсан — ✕/✓ дарахад юу ч болдоггүй байв (CEO барив).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const att = src.slice(src.indexOf('function attachSalaryHandlers'), src.indexOf('function attachSalaryHandlers') + 300);
+  ok(/attachClaimHandlers\(\)/.test(att), 'мэдүүлэг: цалингийн самбарт товч холбогдоно');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(/data-clm-ok=/.test(rs) && /data-clm-no=/.test(rs), 'мэдүүлэг: хайрцаг цалингийн самбарт зурагдана');
+  const ch = src.slice(src.indexOf('function attachClaimHandlers'), src.indexOf('function attachSalaryHandlers'));
+  ok(/resolveStageClaim\([^)]*true\)/.test(ch) && /resolveStageClaim\([^)]*false\)/.test(ch), 'мэдүүлэг: баталгаажуулах ба татгалзах хоёулаа холбогдсон');
+  // Зан чанар: татгалзвал мэдүүлэг арилж, хамтрагч болохгүй
+  const st = vm.runInContext('state', sandbox);
+  const o = { id: 'clm1', number: 1553, stage_meta: { retstart: { by: 'A', at: '2026-10-02T03:00:00Z', claims: ['B'] } } };
+  const saved = st.appOrders; st.appOrders = [o];
+  const origFetch = sandbox.fetch;
+  sandbox.fetch = () => Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve([]), text: () => Promise.resolve('') });
+  vm.runInContext("resolveStageClaim('clm1', 'retstart', 'B', false)", sandbox).then(() => {
+    eq(o.stage_meta.retstart.claims, [], 'мэдүүлэг: татгалзвал жагсаалтаас арилна');
+    ok(!(o.stage_meta.retstart.helpers || []).includes('B'), 'мэдүүлэг: татгалзсан хүн хамтрагч болохгүй');
+    sandbox.fetch = origFetch; st.appOrders = saved;
+  }).catch(e => { ok(false, 'мэдүүлэг: татгалзах ажиллана — ' + e.message); sandbox.fetch = origFetch; st.appOrders = saved; });
 }
 
 // ═══ ТОЙМ: БУЦАЖ ЗАЛГААГҮЙ ДУУДЛАГА (2026-10-05, CEO) ═══════════════════

@@ -14062,10 +14062,6 @@ function attachMyAttendHandlers() {
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
-  document.querySelectorAll('[data-clm-ok]').forEach(b2 => b2.addEventListener('click', () =>
-    resolveStageClaim(b2.dataset.clmOk, b2.dataset.clmK, b2.dataset.clmW, true)));
-  document.querySelectorAll('[data-clm-no]').forEach(b2 => b2.addEventListener('click', () =>
-    resolveStageClaim(b2.dataset.clmNo, b2.dataset.clmK, b2.dataset.clmW, false)));
   document.getElementById('my-pay-ym')?.addEventListener('change', (e) => {
     const v = String(e.target.value || '').slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(v)) return;
@@ -17981,7 +17977,19 @@ function renderSalary() {
    Тохиргоо нь СХЕМ дотроо: мөр дээр дарж нэр/оноог засаад 💾. Ханш, шатлал,
    хамтрагчийн сан нь схемийн хөлийн «⚙️ Ханш ба хуваарилалт» эвхэгдэх хэсэгт.
    Хоёр цонх байх нь «аль нь жинхэнэ вэ» гэсэн эргэлзээ төрүүлдэг. */
+/* ✋ Мэдүүлгийн ✕/✓ товч — хайрцаг нь ЦАЛИНГИЙН самбарт зурагддаг тул ТЭНД
+   холбогдоно. ⛔ 2026-10-05 хүртэл зөвхөн «Миний ирц»-д холбогдсон байсан тул
+   товч дарахад юу ч болдоггүй байв (scan-тест хаана). */
+function attachClaimHandlers() {
+  document.querySelectorAll('[data-clm-ok]').forEach(b2 => b2.addEventListener('click', () => {
+    b2.disabled = true; resolveStageClaim(b2.dataset.clmOk, b2.dataset.clmK, b2.dataset.clmW, true);
+  }));
+  document.querySelectorAll('[data-clm-no]').forEach(b2 => b2.addEventListener('click', () => {
+    b2.disabled = true; resolveStageClaim(b2.dataset.clmNo, b2.dataset.clmK, b2.dataset.clmW, false);
+  }));
+}
 function attachSalaryHandlers() {
+  attachClaimHandlers();
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
@@ -37873,9 +37881,21 @@ function parseVatReportMatrix(matrix) {
     return { id: `agg-${month}-${VAT_CITIZEN_TTD}`, pos: 'НӨАТ тайлан', ddtd: cit.map(r => cell(r, C.no)).filter(Boolean).join(','),
       dt, total, vat, net: C.net >= 0 ? sum(cit, C.net) : total - vat, reg: VAT_CITIZEN_TTD, name: 'Иргэд (нэгтгэсэн)', office: '' };
   })() : null;
-  return { own, month, citizen,
+  // Нэрээр жагсаасан (нэгтгээгүй) борлуулалт — тайланд ОРСОН нь лавтай баримтууд
+  const named = sales.filter(r => !/^[1-9]000000$/.test(cell(r, C.buyer)))
+    .map(r => ({ reg: cell(r, C.buyer), total: Math.round(vatNum(cell(r, C.total))) }));
+  return { own, month, citizen, named,
     sales: { n: sales.length, total: sum(sales, C.total), vat: sum(sales, C.vat) },
     purchases: { n: purch.length, total: sum(purch, C.total), vat: sum(purch, C.vat) } };
+}
+// ДДТД дотор баримт ШИВСЭН өдөр бичигддэг: ТТД(12) + 000 + ЖЖССӨӨ + …
+// (000006614337 000 261005 …). Огноо нь 09-30 атлаа 10-05-нд шивсэн баримт = сар
+// дууссаны ДАРАА нэмэгдсэн → тэр өдрөөс өмнө гаргасан тайланд ОРООГҮЙ байх нь
+// тайлан ↔ e-barimt зөрүүний хамгийн түгээмэл шалтгаан. Танихгүй хэлбэр → ''.
+function vatIssuedDay(ddtd) {
+  const m = String(ddtd || '').match(/^\d{12}000(\d{2})(\d{2})(\d{2})\d{12}$/);
+  if (!m || +m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > 31) return '';
+  return `20${m[1]}-${m[2]}-${m[3]}`;
 }
 // Тайлан ↔ аппын баримт (тухайн сар, буцаагаагүй). Зөрүү = апп − тайлан.
 // Нэг төгрөгийн бутархайг тоймлоно — тайлан НӨАТ-ыг 2 оронтой бичдэг.
@@ -37883,9 +37903,15 @@ function vatReportRecon(rep, receipts) {
   if (!rep || !rep.month) return null;
   const mine = vatActive(receipts).filter(r => String(r.dt || '').slice(0, 7) === rep.month);
   const appTotal = mine.reduce((s, r) => s + (Number(r.total) || 0), 0), appVat = mine.reduce((s, r) => s + (Number(r.vat) || 0), 0);
+  // Сар дууссаны дараа шивсэн (хойш огноолсон) баримтууд — тайланд ороогүй байж магадгүй
+  // ⚠ Тайланд нэрээр нь жагсаасан баримт (РД + дүн) хойш огноолсон ч ОРСОН тул тоолохгүй.
+  const inRpt = new Set((rep.named || []).map(n => vatRegNorm(n.reg) + '|' + n.total));
+  const late = mine.filter(r => !inRpt.has(vatRegNorm(r.buyer_reg) + '|' + Math.round(Number(r.total) || 0)))
+    .map(r => ({ name: r.buyer_name || '', total: Number(r.total) || 0, vat: Number(r.vat) || 0, issued: vatIssuedDay(r.ddtd) }))
+    .filter(x => x.issued && x.issued.slice(0, 7) > rep.month).sort((a, b) => a.issued.localeCompare(b.issued));
   return { month: rep.month, rptTotal: rep.sales.total, rptVat: rep.sales.vat, appTotal, appVat,
     diffTotal: Math.round(appTotal - rep.sales.total), diffVat: Math.round(appVat - rep.sales.vat),
-    citizen: rep.citizen ? { total: rep.citizen.total, vat: rep.citizen.vat } : null, purchases: rep.purchases };
+    late, citizen: rep.citizen ? { total: rep.citizen.total, vat: rep.citizen.vat } : null, purchases: rep.purchases };
 }
 
 function vatReportReconHtml(x) {
@@ -37893,15 +37919,26 @@ function vatReportReconHtml(x) {
   const M = (v) => fmtMoney(Math.round(Number(v) || 0));
   const row = (l, t, v) => `<div class="vat-rpt-row"><span>${l}</span><b>${M(t)} · НӨАТ ${M(v)}</b></div>`;
   const d = x.diffTotal, dv = x.diffVat;
+  const late = Array.isArray(x.late) ? x.late : [];
+  const lateSum = Math.round(late.reduce((s, r) => s + r.total, 0));
+  // Хойш огноолсон баримт зөрүүг тайлбарлавал — тайлан гарсны ДАРАА нэмэгдсэн, апп (e-barimt) зөв
+  const lateHtml = late.length ? `<div class="vat-rpt-why">Сар дууссаны дараа шивсэн баримт (огноо нь ${escapeHtml(x.month)}):</div>`
+    + late.map(r => `<div class="vat-rpt-row"><span>${escapeHtml(r.name)} · ${escapeHtml(r.issued.slice(5))}-нд шивсэн</span><b>${M(r.total)}</b></div>`).join('') : '';
+  const why = d > 0
+    ? (lateSum && lateSum === d ? 'Зөрүү бүхэлдээ сар дууссаны дараа шивсэн баримтаас — тайлан тэднээс өмнө гарсан. e-barimt дээр баримт хүчинтэй тул тайланг засах хэрэгтэй.'
+      : lateSum && lateSum < d ? `Үүнээс ${M(lateSum)} нь сар дууссаны дараа шивсэн баримт. Үлдсэн ${M(d - lateSum)}-ийн шалтгааныг тайлан нийлбэрээр л өгдөг тул тогтоох боломжгүй (буцаалт, дүн өөрчилсөн баримт).`
+      : 'e-barimt дээр буцаагдсан эсвэл дүн нь өөрчлөгдсөн баримт аппад хуучнаараа байж болно. Тэр сарын задаргааг дахин татаж оруулна уу.')
+    : 'Задаргааны файлд ороогүй баримт байна. Тэр сарын задаргааг дахин татаж оруулна уу.';
   const verdict = d === 0
     ? `<div class="vat-rpt-ok">✓ Тайлан ба апп таарч байна</div>`
     : `<div class="vat-rpt-warn">⚠ Аппад ${M(Math.abs(d))} ${d > 0 ? 'илүү' : 'дутуу'} (НӨАТ ${M(Math.abs(dv))})</div>
-       <div class="vat-rpt-why">${d > 0 ? 'e-barimt дээр буцаагдсан эсвэл дүн нь өөрчлөгдсөн баримт аппад хуучнаараа байж болно.' : 'Задаргааны файлд ороогүй баримт байна.'} Тэр сарын задаргааг дахин татаж оруулна уу.</div>`;
+       <div class="vat-rpt-why">${why}</div>`;
   return `<div class="vat-rpt"><div class="vat-rpt-h">📄 ${escapeHtml(x.month)} сарын НӨАТ-ын тайлан</div>
     ${x.citizen ? row('Иргэд (тайлангаас)', x.citizen.total, x.citizen.vat) : ''}
     ${row('Тайлангийн борлуулалт', x.rptTotal, x.rptVat)}
     ${row('Аппад', x.appTotal, x.appVat)}
     ${verdict}
+    ${d !== 0 ? lateHtml : ''}
     ${x.purchases && x.purchases.n ? `<div class="vat-rpt-why">Худалдан авалтын НӨАТ ${M(x.purchases.vat)} (${x.purchases.n} баримт) — аппын зардлаас хасагдаагүй.</div>` : ''}
   </div>`;
 }

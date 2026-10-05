@@ -4583,7 +4583,6 @@ function renderTaskList() {
     attachSessionBanner();   // «Нэвтрэлт дууссан» туузны товч
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
     attachOrdersCalendar(wrap, { go: true });   // захиалгын календарь — өдөр дарахад захиалга руу
-    document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
     document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
     return;
   } else if (state.view === 'orders') {
@@ -39347,9 +39346,6 @@ function renderDashboard() {
   /* ⛔ Хувийн ажлын KPI, 7 хоногийн график, авлага/ойрын хүргэлтийн тууз
      2026-10-05-нд ХАСАГДСАН (CEO). Ажил нь хувийн ажлын дэлгэцэд, авлага нь
      Авлага дэлгэцэд бий — Тойм дээр давхардуулахгүй. Scan-тест буцахыг хаана. */
-  // Хүлээж буй ажилтны бүртгэл (CEO-гийн хийх ажил)
-  const pendingRegCount = TEAM.filter(m => (m.status || '') === 'хүлээж буй').length;
-
   /* Шилдэг гүйцэтгэгч = M-Event-ийн ДАМЖЛАГЫН ОНОО, сонгосон САРААР (2026-10-05, CEO).
      ⛔ Даалгаврын тоогоор БҮҮ буцаа — даалгавар цөөхөн хүнд л оноогддог тул карт
        ихэнхдээ «Дуусгасан ажил алга» гэж хоосон байв. Оноо нь бонустай ИЖИЛ эх
@@ -39370,12 +39366,6 @@ function renderDashboard() {
       ${dispatchBlockHtml(state.appOrders || [])}
       ${canSeeOrderBoard() ? `<div class="dash-card dash-ocal">${ordersCalendarHtml(state.appOrders || [], { compact: true })}</div>` : ''}
       <div class="dashboard-grid">
-        ${isCEO && pendingRegCount > 0 ? `
-        <div class="dash-card dash-kpi dash-kpi-clickable" id="dash-pending-reg-card" style="grid-column: span 4;cursor:pointer;border:2px solid var(--accent-amber);">
-          <div class="dash-kpi-label" style="color:var(--accent-amber);">⏳ Хүлээж буй бүртгэлийн хүсэлт</div>
-          <div class="dash-kpi-value warn" style="font-size:24px;">${pendingRegCount} ажилтан хянахыг хүлээж байна</div>
-          <div class="dash-kpi-sub">Энд дарж хянах →</div>
-        </div>` : ''}
 
         <!-- Шилдэг гүйцэтгэгч — дамжлагын оноо, сараар -->
         <div class="dash-card dash-top">
@@ -39764,118 +39754,6 @@ function notifyCEOOfPendingRegistrations() {
   localStorage.setItem('seenStaffIds_v1', JSON.stringify(newSeen));
 }
 
-/* ─── Pending registrations (CEO review) ───────────────────
-   Шинэ ажилтан бүртгүүлэхэд status='хүлээж буй' гэж тэмдэглэгдэнэ.
-   CEO Staff Management list дотроос pending row дээр товшиход энэ
-   modal нээгдэж CEO цалин/зэрэглэл/ID нэмж "Зөвшөөрөх" эсвэл "Татгалзах". */
-function openPendingRegistration(member) {
-  if (!state.isCEO) return;
-  const modal = document.getElementById('pending-reg-modal');
-  // Avatar / initials
-  const photoEl = document.getElementById('pending-reg-photo');
-  if (member.photo) {
-    photoEl.innerHTML = `<img src="${escapeHtml(driveThumbUrl(member.photo, 256))}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
-  } else {
-    photoEl.textContent = memberInitials(member.email || member.name);
-  }
-  // Info block
-  const fmt = (label, val) => val ? `<div><strong>${escapeHtml(label)}:</strong> ${escapeHtml(val)}</div>` : '';
-  document.getElementById('pending-reg-info').innerHTML = [
-    fmt('Нэр', member.name),
-    fmt('Албан тушаал', member.role),
-    fmt('Салбар', member.group || member.branch),
-    fmt('Утас', member.phone),
-    fmt('И-мэйл', member.email),
-    fmt('РД', member.rd),
-    fmt('Хүйс', member.gender),
-    fmt('Гэрийн хаяг', member.address),
-    fmt('Яаралтай үед', `${member.emergency_name || ''}${member.emergency_phone ? ' — ' + member.emergency_phone : ''}`),
-    fmt('Хүсэлт өгсөн', member.requested_at ? new Date(member.requested_at).toLocaleString('mn-MN') : ''),
-  ].filter(Boolean).join('');
-  // CEO-ийн талбарууд — Зэрэглэлийг албан тушаалаас автомат
-  document.getElementById('reg-salary').value = member.salary || '';
-  document.getElementById('reg-level').value = member.level || levelForRole(member.role);
-  document.getElementById('reg-notes').value = member.notes || '';
-
-  const approveBtn = document.getElementById('reg-approve');
-  const rejectBtn = document.getElementById('reg-reject');
-  approveBtn.onclick = async () => {
-    const salary = document.getElementById('reg-salary').value.trim();
-    const level = parseInt(document.getElementById('reg-level').value, 10) || 40;
-    const notes = document.getElementById('reg-notes').value.trim();
-    if (!member.email) { showToast('И-мэйл хаяг алга — баталгаажуулах боломжгүй', 'error'); return; }
-    const payload = {
-      action: 'approve_registration',
-      request_id: member.request_id || member.email || member.requested_at,
-      email: member.email,
-      salary,
-      level,
-      notes,
-      status: 'идэвхтэй',
-      approved_by: state.me,
-      approved_at: new Date().toISOString(),
-    };
-    const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
-    if (webhook) {
-      try {
-        const r = await fetchWithTimeout(withKey(webhook), {
-          method: 'POST',
-          headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify(payload),
-        });
-        if (r.ok) {
-          showToast('Бүртгэл баталгаажсан. Master Sheet шинэчлэгдсэн.', 'success', 3000);
-          modal.classList.remove('open');
-          // Локал TEAM шинэчлэх — email-ээр олно
-          const idx = TEAM.findIndex(m => m.email === member.email);
-          if (idx >= 0) {
-            TEAM[idx] = { ...TEAM[idx], status: 'идэвхтэй', salary, level, notes };
-            localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
-          }
-          await loadTeamFromAPI();
-          renderStaffList();
-        } else {
-          throw new Error('HTTP ' + r.status);
-        }
-      } catch(e) {
-        showToast('Sync алдаа: ' + e.message, 'error', 4000);
-      }
-    } else {
-      showToast('Staff webhook тохируулагдаагүй', 'warn');
-    }
-  };
-  rejectBtn.onclick = async () => {
-    if (!(await showConfirm(`${member.name}-ийн хүсэлтийг татгалзах уу?`, { okText: 'Татгалзах', danger: true }))) return;
-    const payload = {
-      action: 'reject_registration',
-      request_id: member.request_id || member.email || member.requested_at,
-      email: member.email,
-      status: 'татгалзсан',
-      rejected_by: state.me,
-      rejected_at: new Date().toISOString(),
-    };
-    const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
-    if (webhook) {
-      try {
-        await fetchWithTimeout(withKey(webhook), {
-          method: 'POST',
-          headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify(payload),
-        });
-      } catch(e) {}
-    }
-    // Локал хасах — email-ээр
-    const idx = TEAM.findIndex(m => m.email === member.email);
-    if (idx >= 0) TEAM.splice(idx, 1);
-    localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
-    modal.classList.remove('open');
-    showToast('Хүсэлт татгалзсан', 'info');
-    renderStaffList();
-  };
-
-  modal.classList.add('open');
-}
-
 /* ─── Staff management (CEO only) ─────────────────────────
    CEO ажилтны статусыг өөрчилнө (идэвхтэй ↔ гарсан).
    "Гарсан" гэж тэмдэглэсэн ажилтан:
@@ -39964,11 +39842,9 @@ function renderStaffList() {
   const rowHtml = (m) => {
     const status = m.status || 'идэвхтэй';
     const isActive = status === 'идэвхтэй';
-    const isPending = status === 'хүлээж буй';
     const isSelf = personKey(m) === state.me;
     let statusLabel = 'Идэвхтэй', statusCls = 'active';
     if (status === 'гарсан') { statusLabel = 'Гарсан'; statusCls = 'left'; }
-    else if (isPending)      { statusLabel = '⏳ Хүлээж буй'; statusCls = 'pending'; }
     const key = personKey(m);
     const _age = ageFromRD(m.rd);
     // Мета мөр: албан тушаал · хүйс · нас · имэйл. Нэр цэвэр үлдэнэ (хамгийн том элемент).
@@ -39986,7 +39862,7 @@ function renderStaffList() {
     // Ажилтан удирдах + эрх → мөр дээр дарахад POPUP-д (openStaffCardModal). Мөр = цэвэр товч.
     const canOpen = state.isCEO || canAccessView('access', () => false) || canManagePermsOf(key);
     return `
-      <div class="staff-row ${canOpen ? 'staff-clickable' : ''} ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}"${canOpen ? ` data-staff-open="${escapeHtml(key)}"` : ''}>
+      <div class="staff-row ${canOpen ? 'staff-clickable' : ''} ${isActive ? '' : 'staff-left'}" data-staff-email="${escapeHtml(key)}"${canOpen ? ` data-staff-open="${escapeHtml(key)}"` : ''}>
         <span class="staff-avatar">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
@@ -39995,11 +39871,6 @@ function renderStaffList() {
         </div>
         <div class="staff-right">
           <span class="staff-status status-${statusCls}">${statusLabel}</span>
-          ${(isSelf || (!state.isCEO && (Number(m.level) || 0) >= 100)) ? '' : (
-            isPending
-              ? `<button class="staff-action approve" data-staff-act="review" data-staff-email="${escapeHtml(key)}">Хянах</button>`
-              : ''
-          )}
           ${canOpen ? '<span class="staff-open-hint">›</span>' : ''}
         </div>
       </div>
@@ -40071,18 +39942,10 @@ function renderStaffList() {
       saveFinanceBranchPerm(cb.dataset.finperm, cb.dataset.finpermName, cb.checked);
     });
   });
-  listEl.querySelectorAll('.staff-action').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const member = findMember(btn.dataset.staffEmail);
-      if (!member) return;
-      if (btn.dataset.staffAct === 'review') { openPendingRegistration(member); return; }
-      if (await setStaffStatus(member, btn.dataset.staffAct)) renderStaffList();
-    });
-  });
   // 👤 Мөр дээр дарахад ажилтны POPUP (удирдах + эрх). Дотор товч/оролт дарвал алгасна.
   listEl.querySelectorAll('[data-staff-open]').forEach(row => {
     row.addEventListener('click', (e) => {
-      if (e.target.closest('button, a, input, select, label, .staff-action')) return;
+      if (e.target.closest('button, a, input, select, label')) return;
       openStaffCardModal(row.dataset.staffOpen);
     });
   });
@@ -40245,7 +40108,7 @@ function openStaffCardModal(key) {
         <span class="staff-avatar sc-ava">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
         <div class="sc-head-main"><div class="sc-name">${escapeHtml(m.name || '?')}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
           <div class="sc-meta">${escapeHtml(m.role || '—')}${_age != null ? ' · ' + _age + ' нас' : ''}${m.phone ? ' · ' + escapeHtml(m.phone) : ''}</div></div>
-        <span class="staff-status status-${isActive ? 'active' : (status === 'хүлээж буй' ? 'pending' : 'left')}">${isActive ? 'Идэвхтэй' : (status === 'хүлээж буй' ? '⏳' : 'Гарсан')}</span>
+        <span class="staff-status status-${isActive ? 'active' : 'left'}">${isActive ? 'Идэвхтэй' : 'Гарсан'}</span>
         <button class="sc-x" data-sc-close>✕</button>
       </div>
       <div class="sc-body">${info}${bankBox}${admin}${capBox}${perms}${(!info && !bankBox && !admin && !capBox && !perms) ? '<div class="sc-empty">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>

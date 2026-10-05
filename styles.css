@@ -4579,72 +4579,10 @@ body.role-daily #add-project { display: none !important; }
   background: rgba(239, 68, 68, 0.10);
   color: var(--accent-red);
 }
-/* Дэд зэрэглэлийн үйлдэл — мөрийн гол мэдээллээс визуал жин БАГА байх ёстой.
-   Мобайлын ерөнхий товчны 44px өндөр энд хэт их байсан: улаан блок нэрнээс ч
-   илүү анхаарал татаж байв. */
-.staff-action {
-  padding: 5px 12px;
-  border-radius: 6px;
-  border: none;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-  flex-shrink: 0;
-  min-height: 30px;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-.staff-action.leave {
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--muted);
-}
-.staff-action.leave:hover { border-color: var(--accent-red); }
-.staff-action.leave:hover {
-  background: var(--accent-red);
-  color: #fff;
-}
-.staff-action.restore {
-  background: rgba(16, 185, 129, 0.10);
-  color: var(--accent-green);
-}
-.staff-action.restore:hover {
-  background: var(--accent-green);
-  color: #fff;
-}
 @media (max-width: 720px) {
   .staff-row {
     flex-wrap: wrap;
   }
-  /* width:100% ХАСАГДСАН — хуучин layout-ын үлдэгдэл байв (товч мөрийн доор бүтэн
-     өргөнөөр сунаж, улаан блок нэрнээс илүү анхаарал татдаг). Одоо баруун баганад. */
-  .staff-action { padding: 8px 12px; min-height: 40px; }
-}
-
-/* ═══ Pending registration row ═══ */
-.staff-row.staff-pending {
-  background: rgba(245, 158, 11, 0.08);
-  border-left: 3px solid var(--accent-amber);
-}
-.status-pending {
-  background: rgba(245, 158, 11, 0.15);
-  color: #b45309;
-}
-.staff-action.approve {
-  background: var(--accent-amber);
-  color: #fff;
-}
-.staff-action.approve:hover {
-  background: #d97706;
-}
-
-/* Dashboard pending registration card */
-.dash-kpi-clickable {
-  transition: transform 100ms ease, box-shadow 120ms ease;
-}
-.dash-kpi-clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(245, 158, 11, 0.18);
 }
 
 /* Финансын модал — readonly талбарыг "энгийн текст шиг" харуулна (засах боломжгүй гэдэг нь

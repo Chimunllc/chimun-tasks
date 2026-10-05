@@ -6372,6 +6372,60 @@ need(['orderCustType']);
   eq(F.orderArrivalLate(setupO(null)), null, 'суурилуулалт: суурилуулаагүй бол буулгасан цагаар ХЭМЖИХГҮЙ');
   eq(F.dispatchStats([{ ...setupO(null), status: 'installing' }], '2026-09-01').skipped, 0, 'суурилуулалт хүлээж буй нь «хэмжигдээгүй» биш');
   eq(F.dispatchStats([setupO(null)], '2026-09-01').skipped, 1, 'суурилуулалтыг алгассан нь «хэмжигдээгүй»-д ил');
+
+  // ── ЗУРАГ АВСАН ЦАГ (EXIF) — хожим оруулсан зураг (2026-10-05, CEO) ──
+  const exifJpeg = (dt, offset, be) => {
+    const w16 = (a, v) => be ? a.push((v >> 8) & 255, v & 255) : a.push(v & 255, (v >> 8) & 255);
+    const w32 = (a, v) => be ? a.push((v >>> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255)
+                             : a.push(v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255);
+    const n = offset ? 2 : 1, exifOff = 8 + 18, dataOff = exifOff + 2 + 12 * n + 4, t = [];
+    t.push(...(be ? [0x4D, 0x4D] : [0x49, 0x49])); w16(t, 42); w32(t, 8);
+    w16(t, 1); w16(t, 0x8769); w16(t, 4); w32(t, 1); w32(t, exifOff); w32(t, 0);
+    w16(t, n); w16(t, 0x9003); w16(t, 2); w32(t, 20); w32(t, dataOff);
+    if (offset) { w16(t, 0x9011); w16(t, 2); w32(t, 7); w32(t, dataOff + 20); }
+    w32(t, 0);
+    for (const ch of dt) t.push(ch.charCodeAt(0)); t.push(0);
+    if (offset) { for (const ch of offset) t.push(ch.charCodeAt(0)); t.push(0); }
+    const app1 = [0x45, 0x78, 0x69, 0x66, 0, 0, ...t], len = app1.length + 2;
+    // APP0 сегментийг алгасаж чадахыг ч шалгана
+    return [0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xE1, (len >> 8) & 255, len & 255, ...app1, 0xFF, 0xDA, 0, 2];
+  };
+  eq(F.exifTakenAt(exifJpeg('2026:10:03 08:40:12')), '2026-10-03T08:40:12+08:00', 'EXIF: зураг авсан цаг (бүсгүй → УБ)');
+  eq(F.exifTakenAt(exifJpeg('2026:10:03 08:40:12', '+09:00', true)), '2026-10-03T08:40:12+09:00', 'EXIF: big-endian + цагийн бүс');
+  eq(F.exifTakenAt(exifJpeg('0000:00:00 00:00:00')), null, 'EXIF: хоосон цаг → null');
+  eq(F.exifTakenAt([0xFF, 0xD8, 0xFF, 0xDA, 0, 2]), null, 'EXIF: EXIF-гүй JPEG → null');
+  eq(F.exifTakenAt([0x89, 0x50, 0x4E, 0x47]), null, 'EXIF: PNG → null');
+  eq(F.exifTakenAt(exifJpeg('2026:10:03 08:40:12').slice(0, 30)), null, 'EXIF: тасарсан файл → унахгүй, null');
+  eq(F.exifTakenAt(null), null, 'EXIF: хоосон → null');
+
+  // 09:00-д эхлэх эвент; агуулахаас өмнөх орой бүртгэсэн; 11:14-д товч дарсан,
+  // гэхдээ зургийг 08:40-д авсан → ЦАГТАА (зургийн цагаар)
+  const shotO = (deliverShots, setupStage) => ({ number: 40, status: 'archived', starts_at: '2026-10-03',
+    note: '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧' + (setupStage ? ' ⟦SET|1⟧' : ''),
+    stage_meta: { dispatch: { at: '2026-10-02T10:11:00Z' },
+      deliver: { at: '2026-10-03T03:14:00Z', ...(deliverShots ? { shots: deliverShots } : {}) },
+      ...(setupStage ? { setup: setupStage } : {}) } });
+  const ph = F.orderArrivalLate(shotO(['2026-10-03T08:40:00+08:00']));
+  ok(ph.ok && ph.src === 'photo' && ph.lateH === -0.3, 'зураг: хожим оруулсан ч зураг авсан цагаар цагтаа');
+  // ⛔ Өмнөх эвентийн (агуулахаас гарахаас ӨМНӨХ) зураг тооцогдохгүй
+  const old = F.orderArrivalLate(shotO(['2026-09-20T10:00:00+08:00']));
+  ok(!old.ok && old.src === 'press' && old.lateH === 2.2, 'зураг: агуулахаас гарахаас өмнөх зураг → товчны цаг');
+  // ⛔ Товч дарснаас ХОЙШ авсан зураг (10 минутаас их) тооцогдохгүй
+  eq(F.orderArrivalLate(shotO(['2026-10-03T13:00:00+08:00'])).src, 'press', 'зураг: товчноос хойшхи зураг → товчны цаг');
+  eq(F.orderArrivalLate(shotO(null)).src, 'press', 'зураг: EXIF-гүй бол товчны цаг');
+  // Суурилуулалт: СҮҮЛИЙН (дууссан) зураг; буулгалтын зургаас ӨМНӨХ нь тооцогдохгүй
+  const su = F.orderArrivalLate(shotO(['2026-10-03T08:40:00+08:00'],
+    { at: '2026-10-03T03:15:00Z', shots: ['2026-10-03T08:30:00+08:00', '2026-10-03T08:55:00+08:00'] }));
+  ok(su.ok && su.src === 'photo' && su.lateH === -0.1, 'суурилуулалт: сүүлийн зургийн цагаар (буулгалтаас хойш)');
+  {
+    const _sx = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const i0 = _sx.indexOf("$('#sa-photo-input').onchange");
+    const seg = _sx.slice(i0, i0 + 900);
+    // ⛔ Шахалт EXIF-ийг устгадаг тул цагийг uploadReceipt-ээс ӨМНӨ уншина
+    ok(i0 > 0 && seg.indexOf('photoTakenAt(f)') > 0 && seg.indexOf('photoTakenAt(f)') < seg.indexOf('uploadReceipt(f'),
+      'scan: зураг авсан цагийг шахахаас өмнө уншина');
+    ok(/entry\.shots = shots\.slice\(\)/.test(_sx), 'scan: зураг авсан цаг дамжлагад хадгалагдана');
+  }
   // ⛔ Очиж авах — хугацаа бодохгүй (дээрх дүрэм)
   eq(F.orderDispatchPlan(mk(10, '2026-09-14', '⟦RT|13|18⟧ ⟦DLV|pickup|0|0⟧')), null,
      'гарах: очиж авахад хугацаа бодохгүй');

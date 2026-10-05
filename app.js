@@ -26451,6 +26451,85 @@ function orderDispatchPlan(o) {
   if (isNaN(startMs)) return null;
   return { startMs, needMs: startMs - hours * 3600000, hours: Math.round(hours * 10) / 10, km, setup };
 }
+/* ── ЗУРАГ АВСАН ЦАГ = EXIF (2026-10-05, CEO) ─────────────────────────────
+   Ажилтан газар дээр нь утсаараа зураг аваад, аппад ХОЖИМ оруулдаг. Тэгвэл
+   дамжлагын товч дарсан цаг хоцорсон мэт харагдана. Утасны JPEG файлд зураг
+   авсан цаг (DateTimeOriginal) бичигддэг — апп зургийг ШАХАХААС ӨМНӨ уншина
+   (шахалт нь canvas-аар дахин кодлодог тул EXIF бүрмөсөн устдаг; Drive дахь
+   хуучин зургаас ГАРГАЖ АВАХ БОЛОМЖГҮЙ).
+   ⚠ Цагийн бүс заагаагүй бол +08:00 (УБ) — ажилчдын утас УБ-ийн цагтай.
+   ⚠ Messenger/Viber-ээр дамжсан зураг, дэлгэцийн зураг EXIF-гүй → null. */
+function exifTakenAt(bytes) {
+  try {
+    const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+    if (b.length < 4 || b[0] !== 0xFF || b[1] !== 0xD8) return null;
+    let p = 2;
+    while (p + 4 <= b.length) {
+      if (b[p] !== 0xFF) return null;
+      const mk = b[p + 1];
+      if (mk === 0xDA || mk === 0xD9) return null;      // зургийн өгөгдөл эхэлсэн — EXIF алга
+      const len = (b[p + 2] << 8) | b[p + 3];
+      if (mk === 0xE1 && b[p + 4] === 0x45 && b[p + 5] === 0x78 && b[p + 6] === 0x69 && b[p + 7] === 0x66) {
+        return _exifTiffTime(b, p + 10, Math.min(b.length, p + 2 + len));
+      }
+      p += 2 + len;
+    }
+  } catch (_) { /* эвдэрсэн файл — цаггүй гэж үзнэ */ }
+  return null;
+}
+function _exifTiffTime(b, t, end) {
+  const le = b[t] === 0x49;   // «II» = little-endian, «MM» = big-endian
+  const u16 = o => (o < t || o + 2 > end) ? NaN : (le ? b[o] | (b[o + 1] << 8) : (b[o] << 8) | b[o + 1]);
+  const u32 = o => (o < t || o + 4 > end) ? NaN
+    : (le ? (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16)) + b[o + 3] * 16777216
+          : b[o] * 16777216 + ((b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]));
+  const str = (o, n) => { let x = ''; for (let i = 0; i < n && o + i < end; i++) { const c = b[o + i]; if (!c) break; x += String.fromCharCode(c); } return x; };
+  const ifd = off => {
+    const out = {}, n = u16(t + off);
+    if (!(n > 0 && n < 512)) return out;
+    for (let i = 0; i < n; i++) {
+      const e = t + off + 2 + i * 12, tag = u16(e), type = u16(e + 2), cnt = u32(e + 4);
+      if (type === 2) out[tag] = str(cnt <= 4 ? e + 8 : t + u32(e + 8), cnt);
+      else if (type === 4) out[tag] = u32(e + 8);
+    }
+    return out;
+  };
+  const i0 = ifd(u32(t + 4));
+  const ex = i0[0x8769] ? ifd(i0[0x8769]) : {};
+  const raw = ex[0x9003] || ex[0x9004] || i0[0x0132] || '';
+  const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(raw);
+  if (!m || m[1] === '0000') return null;
+  const off = /^[+-]\d{2}:\d{2}$/.test(ex[0x9011] || '') ? ex[0x9011] : '+08:00';
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${off}`;
+  return isNaN(Date.parse(iso)) ? null : iso;
+}
+async function photoTakenAt(file) {
+  try {
+    if (!file || !/^image\//i.test(file.type || '')) return null;
+    return exifTakenAt(new Uint8Array(await file.slice(0, 262144).arrayBuffer()));
+  } catch (_) { return null; }
+}
+/* Дамжлагын БОДИТ цаг: зураг авсан цаг (хүчинтэй бол), эс бөгөөс товч дарсан цаг.
+   ⛔ Зургийн цагийг СОХРООР итгэхгүй — өмнөх эвентийн зураг оруулж «цагтаа»
+     болгох нүх. Хүчинтэй = `floor`-оос (өмнөх дамжлага, жиш. агуулахаас
+     бүртгэж гаргасан) ХОЙШ, товч дарснаас ӨМНӨ (утасны цагийн зөрүү 10 мин).
+     Хүчингүй бол товчны цаг — хоцорсон мэт харагдах нь хуурамчаар
+     «цагтаа» харагдахаас дээр.
+   ⚠ `latest` — суурилуулалт: ДУУССАН байдлыг сүүлийн зураг харуулна;
+     буулгалт: ирсэн мөчийг ЭХНИЙ зураг харуулна. */
+const PHOTO_CLOCK_SKEW_MS = 10 * 60000;
+function stageDoneAt(stage, floorIso, latest) {
+  const pressMs = Date.parse(String((stage && stage.at) || ''));
+  if (isNaN(pressMs)) return null;
+  const floorMs = Date.parse(String(floorIso || ''));
+  const lo = isNaN(floorMs) ? pressMs - DISPATCH_WILD_H * 3600000 : floorMs;
+  const ok = (Array.isArray(stage.shots) ? stage.shots : [])
+    .map(x => Date.parse(String(x || '')))
+    .filter(ms => !isNaN(ms) && ms >= lo && ms <= pressMs + PHOTO_CLOCK_SKEW_MS);
+  if (!ok.length) return { at: stage.at, src: 'press' };
+  const ms = Math.min(latest ? Math.max(...ok) : Math.min(...ok), pressMs);
+  return { at: new Date(ms).toISOString(), src: 'photo' };
+}
 /* ── ЦАГТАА ХҮРСЭН ҮҮ = АРГА ХЭМЖЭЭ ЭХЛЭХ ЦАГТАЙ тулгана (2026-10-05, CEO) ──
    Харилцагчид бараа БЭЛЭН болсон мөч: суурилуулалттай бол «Суурилуулсан»,
    үгүй бол «Талбайд буулгасан» дамжлагын цаг. Түүнийг эвент эхлэх цагтай
@@ -26468,11 +26547,16 @@ function orderArrivalLate(o) {
   const plan = orderDispatchPlan(o);
   if (!plan) return null;
   const sm = (o && o.stage_meta) || {};
-  const at = plan.setup ? (sm.setup && sm.setup.at) : (sm.deliver && sm.deliver.at);
-  const ms = Date.parse(String(at || ''));
-  if (!at || isNaN(ms)) return null;
+  // Ачаа агуулахаас гарсны ДАРАА авсан зураг л тоологдоно; суурилуулалтын зураг
+  // нь буулгасны ДАРАА (буулгалтын бодит цаг нь өөрөө зургаас байж болно).
+  const dlv = sm.deliver && sm.deliver.at ? stageDoneAt(sm.deliver, sm.dispatch && sm.dispatch.at, false) : null;
+  const r = plan.setup
+    ? (sm.setup && sm.setup.at ? stageDoneAt(sm.setup, dlv ? dlv.at : (sm.dispatch && sm.dispatch.at), true) : null)
+    : dlv;
+  if (!r) return null;
+  const ms = Date.parse(r.at);
   const lateH = Math.round(((ms - plan.startMs) / 3600000) * 10) / 10;
-  return { lateH, ok: lateH <= 0, wild: Math.abs(lateH) > DISPATCH_WILD_H, plan, at };
+  return { lateH, ok: lateH <= 0, wild: Math.abs(lateH) > DISPATCH_WILD_H, plan, at: r.at, src: r.src };
 }
 // Захиалгын карт дээрх шошго. Хүрээгүй байхад «HH:MM гэхэд гарна» гэсэн
 // ТӨЛӨВЛӨГӨӨ (ажилтанд чиглэл), хүрсний дараа ҮР ДҮН (цагтаа / N ц хоцорсон).
@@ -26481,7 +26565,7 @@ function dispatchChipHtml(o) {
   if (!plan) return '';
   const r = orderArrivalLate(o);
   if (r && !r.wild && !r.ok) {
-    return `<span class="dep-badge dsp-late" title="Арга хэмжээ ${escapeHtml(ubStamp(new Date(plan.startMs).toISOString(), false))}-д эхлэх байсан, ${plan.setup ? 'суурилуулж дууссан' : 'талбайд буулгасан'} нь ${escapeHtml(ubStamp(r.at, false))}">⚠ ${r.lateH} ц хоцорсон</span>`;
+    return `<span class="dep-badge dsp-late" title="Арга хэмжээ ${escapeHtml(ubStamp(new Date(plan.startMs).toISOString(), false))}-д эхлэх байсан, ${plan.setup ? 'суурилуулж дууссан' : 'талбайд буулгасан'} нь ${escapeHtml(ubStamp(r.at, false))}${r.src === 'photo' ? ' (зураг авсан цагаар)' : ' (товч дарсан цагаар)'}">⚠ ${r.lateH} ц хоцорсон</span>`;
   }
   if (r && r.ok) return `<span class="dep-badge dsp-ok" title="Арга хэмжээ эхлэхээс өмнө ${plan.setup ? 'суурилуулж дууссан' : 'хүргэгдсэн'}">🚚 цагтаа</span>`;
   const need = ubStamp(new Date(plan.needMs).toISOString(), false);
@@ -26982,7 +27066,7 @@ function openStageAdvanceModal(oid, to) {
     };
   }
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const photos = []; const ratings = new Array(rateTargets.length).fill(0);
+  const photos = []; const shots = []; const ratings = new Array(rateTargets.length).fill(0);
   // Буцаан авалтын зөрүү — дутсан бол шалтгаан ЗААВАЛ (эс бөгөөс алдагдал мөрдөгдөхгүй)
   const rcGot = _rcItems.map(x => x.qty);
   const rcShort = () => receiveShortfalls(_rcItems, rcGot);
@@ -27033,12 +27117,14 @@ function openStageAdvanceModal(oid, to) {
   if (needPhoto) {
     const renderPhotos = () => {
       $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
-      $('#sa-photos').querySelectorAll('[data-prm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.prm, 1); renderPhotos(); validate(); });
+      $('#sa-photos').querySelectorAll('[data-prm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.prm, 1); shots.splice(+b.dataset.prm, 1); renderPhotos(); validate(); });
     };
     $('#sa-photo-input').onchange = async (e) => {
       const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
       $('#sa-photo-status').textContent = '⏳ Илгээж байна...'; $('#sa-photo-status').style.color = 'var(--muted)';
-      try { const url = await uploadReceipt(f, o.id, 'completion', `Захиалга #${o.number} ${act.label}`); if (url) { photos.push(url); renderPhotos(); $('#sa-photo-status').textContent = `✓ ${photos.length} зураг`; $('#sa-photo-status').style.color = 'var(--ok)'; validate(); } else { $('#sa-photo-status').textContent = '⚠ Хадгалж чадсангүй'; $('#sa-photo-status').style.color = 'var(--danger)'; } }
+      // ⛔ Зураг авсан цагийг ШАХАХААС ӨМНӨ — шахалт EXIF-ийг устгадаг
+      const _shot = await photoTakenAt(f);
+      try { const url = await uploadReceipt(f, o.id, 'completion', `Захиалга #${o.number} ${act.label}`); if (url) { photos.push(url); shots.push(_shot); renderPhotos(); $('#sa-photo-status').textContent = `✓ ${photos.length} зураг`; $('#sa-photo-status').style.color = 'var(--ok)'; validate(); } else { $('#sa-photo-status').textContent = '⚠ Хадгалж чадсангүй'; $('#sa-photo-status').style.color = 'var(--danger)'; } }
       catch (err) { $('#sa-photo-status').textContent = '⚠ ' + err.message; $('#sa-photo-status').style.color = 'var(--danger)'; }
     };
   }
@@ -27082,7 +27168,10 @@ function openStageAdvanceModal(oid, to) {
     const sm2 = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
     const nowD = new Date().toISOString();
     const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
-    if (needPhoto) entry.photos = photos.slice();
+    if (needPhoto) {
+      entry.photos = photos.slice();
+      if (shots.some(Boolean)) entry.shots = shots.slice(); else delete entry.shots;   // зураг авсан цаг (EXIF)
+    }
     if (helpers.size) entry.helpers = [...helpers]; else delete entry.helpers;   // хамтарсан хүмүүс
     if (_needDriver) entry.driver = driverKey;   // 🚗 нэмэгдэл ЭНЭ хүнд (дамжлагын оноо нь дарсан хүнд)
     /* Өмнөх ажлын АЛДААНЫ ТОО — хүн бүрт нь холбож хадгална. 0 бол бичихгүй
@@ -37270,7 +37359,7 @@ function renderReports() {
         <span class="dsp-lr-d">${escapeHtml(o.day.slice(5))}</span>
         <span class="dsp-lr-h">${o.lateH}ц</span></button>`).join('')}</div>` : ''}
       <details class="dsp-det"><summary>Өдрөөр харах (${days.length} өдөр) · тооцооны журам</summary>
-        <div class="rsrc-note">Цагтаа = «Талбайд буулгасан» (суурилуулалттай бол «Суурилуулсан») цаг ≤ арга хэмжээ эхлэх цаг.</div>
+        <div class="rsrc-note">Цагтаа = «Талбайд буулгасан» (суурилуулалттай бол «Суурилуулсан») цаг ≤ арга хэмжээ эхлэх цаг. Зураг хожим оруулсан бол утсанд зураг авсан цагаар.</div>
         ${days.length ? `<div class="dsp-days">${days.map(dayRow).join('')}</div>` : ''}
       </details>
       ${(st.skipped || st.wild) ? `<div class="rsrc-warn">⚠ ${st.skipped + st.wild} хүргэлт хэмжигдээгүй — эхлэх цаг тэмдэглээгүй, суурилуулалтыг алгассан эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}

@@ -12719,8 +12719,21 @@ testFinBasisDefault();
     const cs = fs_.readFileSync(path_.join(__dirname, '..', 'styles.css'), 'utf8');
     ok(/class="mobile-nav-item[^"]*" data-view="dashboard"/.test(ih), 'scan: Тойм доод цэсэнд байна');
     ok(/body\.role-daily \.mobile-nav-item\[data-view="dashboard"\]/.test(cs), 'scan: цагийн ажилтанд доод цэсний Тойм нуугдана');
-    const sa = src.slice(src.indexOf('function showApp()'), src.indexOf('function renderUserChip()'));
-    ok(/else if \(!state\.isCEO\) state\.view = 'dashboard'/.test(sa), 'scan: үндсэн ажилтан Тоймоос эхэлнэ');
+    // Зан чанар: CEO «Үндсэн» болгосон (override) ажилтан — override ХОЖУУ ирэхэд цэс нээгдэж Тойм руу шилжинэ
+    {
+      const _T = vm.runInContext('TEAM', sandbox); const save = _T.slice(); _T.length = 0;
+      _T.push({ name: 'Override Ажилтан', phone: '99887766', status: 'идэвхтэй', role: 'Агуулахын ажилтан', worker_type: 'daily' });
+      vm.runInContext("state.isCEO = false; state.me = '99887766'; state.user = { worker_type: 'daily' }; state._wtOverrides = {}; document.body.classList.remove('role-daily');", sandbox);
+      vm.runInContext('applyRoleUi(true)', sandbox);
+      eq(vm.runInContext('state.view', sandbox), 'myattend', 'төрөл: цагийн ажилтан Миний ирцээс эхэлнэ');
+      vm.runInContext("state._wtOverrides = { '99887766': 'permanent' }; applyWorkerTypeOverrides(); applyRoleUi();", sandbox);
+      eq(vm.runInContext('state.view', sandbox), 'dashboard', 'төрөл: override хожуу ирэхэд үндсэн ажилтан Тойм руу шилжинэ');
+      eq(vm.runInContext("document.body.classList.contains('role-daily')", sandbox), false, 'төрөл: override ирэхэд цагийн ажилтны цэсний хориг арилна');
+      vm.runInContext("state.view = 'orders'; state._wtOverrides = {}; TEAM[0].worker_type = 'daily'; state.user.worker_type = 'daily'; applyRoleUi(); state._wtOverrides = { '99887766': 'permanent' }; applyWorkerTypeOverrides(); applyRoleUi();", sandbox);
+      eq(vm.runInContext('state.view', sandbox), 'orders', 'төрөл: хүн өөр дэлгэц рүү шилжсэн бол эхлэх дэлгэц рүү татахгүй');
+      _T.length = 0; save.forEach(x => _T.push(x));
+      vm.runInContext("state._wtOverrides = undefined; state.view = 'mine';", sandbox);
+    }
   }
   // «Больсон» болгох цорын ганц бичих зам = bulkDeleteOrders (шалтгаантай). Шалтгаангүй
   // ганц-устгах зам (deleteAppOrder) ба тест-цэвэрлэгээний цонх 2026-10-05-нд хасагдсан.

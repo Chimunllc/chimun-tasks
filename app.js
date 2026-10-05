@@ -40079,18 +40079,30 @@ async function saveStaffRole(member, role) {
 // employees хүснэгт/n8n staff-update workflow ХӨНДӨХГҮЙ (backend action шаардахгүй, тестгүй HR бичилтгүй).
 // TEAM ачаалах бүрд applyWorkerTypeOverrides() эдгээрийг member.worker_type-д буулгана.
 function applyWorkerTypeOverrides() {
+  // ⛔ Override нь серверээс ХОЖУУ ирдэг (bootApp) — тэр хүртэл CEO-гийн «Үндсэн»
+  //   болгосон ажилтан цагийн ажилтан мэт эхэлж, цэс нь (Тойм г.м.) нуугдаж байв
+  //   (2026-10-05, Э.Очбаяр). Сүүлд ирсэн утгыг төхөөрөмжид хадгалж эхлэхэд хэрэглэнэ.
+  if (state._wtOverrides === undefined) {
+    try { const c = JSON.parse(localStorage.getItem('wtOverrides') || 'null'); if (c && typeof c === 'object') state._wtOverrides = c; } catch (_) {}
+  }
   const ov = state._wtOverrides;
   if (!ov || typeof ov !== 'object') return;
   (TEAM || []).forEach(m => { const k = personKey(m); if (ov[k]) m.worker_type = ov[k]; });
   // Нэвтэрсэн хэрэглэгчийн хуулбарыг мөн шинэчилнэ — эс бөгөөс өөрийн эрх хоцорно
   if (state.user && state.me && ov[state.me]) state.user.worker_type = ov[state.me];
 }
+function cacheWtOverrides(v) { try { localStorage.setItem('wtOverrides', JSON.stringify(v)); } catch (_) { /* хадгалах зай алга — дараагийн нээлтэд серверээс */ } }
 async function loadWorkerTypeOverrides() {
   try {
     const v = await loadAppConfig('worker_type_overrides');
-    state._wtOverrides = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    // ⚠ null = уншиж чадсангүй (эрх/сүлжээ) — хадгалсан утгыг ДАРАХГҮЙ
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      state._wtOverrides = v;
+      cacheWtOverrides(v);
+    } else state._wtOverrides = state._wtOverrides || {};
   } catch (e) { state._wtOverrides = state._wtOverrides || {}; }
   applyWorkerTypeOverrides();
+  applyRoleUi();   // төрөл өөрчлөгдсөн бол цэс + эхлэх дэлгэцийг дахин тооцно
   if (typeof render === 'function') render();
 }
 async function saveWorkerType(member, wt) {
@@ -42991,12 +43003,24 @@ function showApp() {
   // Тайлан export зөвхөн CEO-д
   const exportBtn = document.getElementById('export-btn');
   if (exportBtn) exportBtn.style.display = state.isCEO ? '' : 'none';
-  // Цагийн ажилтан — хязгаарлагдмал UI (body class → CSS-ээр нав/товч нуух)
-  document.body.classList.toggle('role-daily', isDailyWorker());
-  if (isDailyWorker()) state.view = 'myattend';
-  // Үндсэн ажилтан Тоймоос эхэлнэ (2026-10-05, CEO: «ажилчдад олдохгүй байна»).
-  // CEO-гийн эхлэх дэлгэц хэвээр.
-  else if (!state.isCEO) state.view = 'dashboard';
+  applyRoleUi(true);
+}
+// Цагийн ажилтан — хязгаарлагдмал UI (body class → CSS-ээр нав/товч нуух) + эхлэх дэлгэц.
+// Үндсэн ажилтан Тоймоос эхэлнэ (2026-10-05, CEO: «ажилчдад олдохгүй байна»); CEO-гийнх хэвээр.
+// ⛔ Ажилтны төрөл апп нээгдсэний ДАРАА өөрчлөгдөж болно (override хожуу ирнэ) — тэр үед
+//   дахин дуудагдана. Хүн өөр дэлгэц рүү шилжсэн бол эхлэх дэлгэц рүү ТАТАХГҮЙ.
+function landingView() {
+  if (isDailyWorker()) return 'myattend';
+  return state.isCEO ? null : 'dashboard';
+}
+function applyRoleUi(initial) {
+  const daily = isDailyWorker();
+  const was = state._roleDaily;   // DOM-оос биш — өмнөх шийдвэрээ санана
+  state._roleDaily = daily;
+  document.body.classList.toggle('role-daily', daily);
+  const land = landingView();
+  if (initial) { if (land) state.view = land; state._landing = state.view; return; }
+  if (was !== daily && state.view === state._landing && land) { state.view = land; state._landing = land; }
 }
 
 function renderUserChip() {

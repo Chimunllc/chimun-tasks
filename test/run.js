@@ -17060,6 +17060,30 @@ async function swFetchTests() {
      'Тойм: гацсан → буцаж залгах → календарь → цагтаа хүрсэн → үнэлгээ → шилдэг гүйцэтгэгч дараалал');
 }
 
+// ═══ «БИ Ч ОРОЛЦСОН» ТОВЧ ЦАЛИНГИЙН САМБАРТ ХОЛБОГДОНО (2026-10-05) ═════
+// Хайрцаг цалингийн самбарт зурагддаг атал товчны үйлдэл «Миний ирц»-д л
+// холбогдсон байсан — ✕/✓ дарахад юу ч болдоггүй байв (CEO барив).
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const att = src.slice(src.indexOf('function attachSalaryHandlers'), src.indexOf('function attachSalaryHandlers') + 300);
+  ok(/attachClaimHandlers\(\)/.test(att), 'мэдүүлэг: цалингийн самбарт товч холбогдоно');
+  const rs = src.slice(src.indexOf('function renderSalary'), src.indexOf('function attachSalaryHandlers'));
+  ok(/data-clm-ok=/.test(rs) && /data-clm-no=/.test(rs), 'мэдүүлэг: хайрцаг цалингийн самбарт зурагдана');
+  const ch = src.slice(src.indexOf('function attachClaimHandlers'), src.indexOf('function attachSalaryHandlers'));
+  ok(/resolveStageClaim\([^)]*true\)/.test(ch) && /resolveStageClaim\([^)]*false\)/.test(ch), 'мэдүүлэг: баталгаажуулах ба татгалзах хоёулаа холбогдсон');
+  // Зан чанар: татгалзвал мэдүүлэг арилж, хамтрагч болохгүй
+  const st = vm.runInContext('state', sandbox);
+  const o = { id: 'clm1', number: 1553, stage_meta: { retstart: { by: 'A', at: '2026-10-02T03:00:00Z', claims: ['B'] } } };
+  const saved = st.appOrders; st.appOrders = [o];
+  const origFetch = sandbox.fetch;
+  sandbox.fetch = () => Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve([]), text: () => Promise.resolve('') });
+  vm.runInContext("resolveStageClaim('clm1', 'retstart', 'B', false)", sandbox).then(() => {
+    eq(o.stage_meta.retstart.claims, [], 'мэдүүлэг: татгалзвал жагсаалтаас арилна');
+    ok(!(o.stage_meta.retstart.helpers || []).includes('B'), 'мэдүүлэг: татгалзсан хүн хамтрагч болохгүй');
+    sandbox.fetch = origFetch; st.appOrders = saved;
+  }).catch(e => { ok(false, 'мэдүүлэг: татгалзах ажиллана — ' + e.message); sandbox.fetch = origFetch; st.appOrders = saved; });
+}
+
 // ═══ ТОЙМ: БУЦАЖ ЗАЛГААГҮЙ ДУУДЛАГА (2026-10-05, CEO) ═══════════════════
 // Алдсан дуудлагын дэлгэцтэй ИЖИЛ дүрэм — тусад нь бодохгүй.
 {

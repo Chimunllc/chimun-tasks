@@ -6385,18 +6385,33 @@ need(['orderCustType']);
     runIn("state.isCEO = true; state.dspMonth = '2026-09';");
     const h9 = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
     ok(/data-dsp-ym="2026-09"/.test(h9), 'карт: сонгосон сарыг харуулна');
-    ok(/data-dsp-m="-1"/.test(h9) && /data-dsp-m="1"/.test(h9), 'карт: сар сонгогч бий');
     ok(/>0%</.test(h9) && /1\/1 хоцорсон/.test(h9), 'карт: 9 сарын тоо (1/1 хоцорсон)');
     ok(!/хоног/.test(h9), 'карт: «60 хоног» гулсдаг цонх БАЙХГҮЙ');
-    // ⛔ Хоосон сард карт ҮЛДЭНЭ — эс бөгөөс сар сонгогч ч алга болж буцах зам тасарна
-    runIn("state.dspMonth = '2026-08';");
-    const h8 = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
-    ok(/хэмжигдсэн хүргэлт алга/.test(h8) && /data-dsp-m="1"/.test(h8), 'карт: хоосон сард сонгогчтойгоо үлдэнэ');
-    // Ирээдүйн сар руу явахгүй; анхдагч = энэ сар
+    // График: сар бүр багана, дарж сонгоно; сонгосон нь тодорно
+    ok(/data-dsp-pick="2026-09"/.test(h9) && /data-dsp-pick="2026-10"/.test(h9), 'график: сар бүр багана');
+    ok(/dsp-col ui-raw on[^"]*" data-dsp-pick="2026-09"/.test(h9), 'график: сонгосон сар тодорно');
+    // ⛔ Хоосон сараар графикийг дүүргэхгүй — эхний хэмжигдсэн сараас эхэлнэ
+    ok(!/data-dsp-pick="2026-08"/.test(h9), 'график: эхний хэмжигдсэн сараас өмнөх хоосон сар гарахгүй');
+    // Өмнөх сартай харьцуулалт: 10 сар 100% vs 9 сар 0% → ▲ +100
+    runIn("state.dspMonth = '2026-10';");
+    const h10 = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
+    ok(!/dsp-delta/.test(h10), 'харьцуулалт: өмнөх сар цөөн хүргэлттэй бол гарахгүй (дуу чимээ)');
+    const many = [];
+    for (let i = 0; i < 5; i++) many.push(mk(30 + i, '2026-09-1' + i, '⟦RT|13|18⟧ ⟦DLV|city|0|0⟧', '2026-09-1' + i + 'T07:29:00Z'));   // 9 сар 5/5 хоцорсон
+    const h10b = runIn(`dispatchBlockHtml(${JSON.stringify([...many, two[1]])})`);
+    ok(/dsp-delta up">▲ \+100 нэгж · 9 сар 0%/.test(h10b), 'харьцуулалт: өмнөх сараас ахисан');
+    ok(!/dsp-delta/.test(h9), 'харьцуулалт: өмнөх сар хэмжигдээгүй бол гарахгүй');
+    // ⛔ Цөөн хүргэлттэй сар бүдэг (1 хүргэлтийн «100%» худал дүр зураг өгөхгүй)
+    ok(/dsp-col ui-raw[^"]* thin" data-dsp-pick="2026-10"/.test(h10), 'график: цөөн хүргэлттэй сар бүдэг');
+    // Цувааны цэвэр функц
+    const ser = runIn(`dispatchMonthSeries(${JSON.stringify(two)}, '2026-12', 6)`);
+    eq(ser.map(m => m.ym).join(','), '2026-09,2026-10,2026-11,2026-12', 'цуваа: эхний датаас өнөөдөр хүртэл');
+    eq(ser[2].pct, null, 'цуваа: датагүй сар → null (0% БИШ)');
+    eq(runIn(`dispatchMonthSeries([], '2026-12', 6)`).length, 1, 'цуваа: дата огт алга бол зөвхөн энэ сар');
+    // Цувааны гадна (эсвэл ирээдүйн) сар → энэ сар
     runIn("state.dspMonth = '2999-01';");
     const hf = runIn(`dispatchBlockHtml(${JSON.stringify(two)})`);
-    ok(new RegExp('data-dsp-ym="' + runIn('todayStr().slice(0, 7)') + '"').test(hf), 'карт: ирээдүйн сар → энэ сар');
-    ok(/data-dsp-m="1" aria-label="Дараах сар" disabled/.test(hf), 'карт: энэ сард «›» идэвхгүй');
+    ok(new RegExp('data-dsp-ym="' + runIn('todayStr().slice(0, 7)') + '"').test(hf), 'карт: цувааны гадна сар → энэ сар');
     runIn(`[state.dspMonth, state.isCEO] = ${JSON.stringify(sv)};`);
   }
   // ИНВАРИАНТ: Тойм ба Дүн шинжилгээ ИЖИЛ дуудлагаар (тоо зөрөхгүй)

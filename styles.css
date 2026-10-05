@@ -6488,7 +6488,7 @@ body.role-daily #add-project { display: none !important; }
 .org-tree li:first-child::after { border-radius:6px 0 0 0; }
 .org-tree ul ul::before { content:''; position:absolute; top:0; left:50%; border-left:2px solid var(--border); width:0; height:24px; }
 /* Карт */
-.org-card { position:relative; display:flex; flex-direction:column; align-items:center; gap:2px; background:var(--panel); border:1px solid var(--border); border-top:4px solid var(--border); border-radius:14px; padding:12px 14px 11px; min-width:130px; max-width:170px; box-shadow:0 1px 3px rgba(0,0,0,.05); transition:transform .12s, box-shadow .12s; }
+.org-card { position:relative; display:flex; flex-direction:column; align-items:center; gap:var(--space-1); background:var(--panel); border:1px solid var(--border); border-top:4px solid var(--border); border-radius:14px; padding:12px 14px 11px; min-width:130px; max-width:170px; box-shadow:0 1px 3px rgba(0,0,0,.05); transition:transform .12s, box-shadow .12s; }
 .org-card:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(0,0,0,.10); }
 .org-ava { position:relative; width:56px; height:56px; border-radius:50%; overflow:hidden; background:linear-gradient(135deg,#e2e8f0,#cbd5e1); display:flex; align-items:center; justify-content:center; margin-bottom:4px; }
 .org-init { font-size:19px; font-weight:800; color:#64748b; text-transform:uppercase; }
@@ -7331,16 +7331,28 @@ select.no-asar-len {
 .dsp-card { cursor:pointer; }
 .dsp-top { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
 .dsp-ttl { font-weight:800; font-size:var(--fs-md); }
-.dsp-mnav { display:inline-flex; align-items:center; gap:var(--space-1); }
-.dsp-mbtn { border:0; background:transparent; color:var(--text-soft);
-  border-radius:var(--r-md); padding:0 var(--space-2); font-size:var(--fs-lg); line-height:1.6; cursor:pointer; }
-.dsp-mbtn:not(:disabled):hover { background:var(--panel-hover); }
-.dsp-mbtn:disabled { opacity:.35; cursor:default; }
-.dsp-mlbl { min-width:4.5em; text-align:center; font-size:var(--fs-sm); font-weight:700; color:var(--text-soft); }
-.dsp-row { display:flex; align-items:baseline; gap:var(--space-3); margin-top:var(--space-2); }
+.dsp-row { display:flex; align-items:center; gap:var(--space-3); margin-top:var(--space-2); }
 .dsp-big { font-size:var(--fs-2xl); font-weight:800; line-height:1; }
 .dsp-big.ok { color:var(--ok); } .dsp-big.warn { color:var(--warn); } .dsp-big.bad { color:var(--danger); }
-.dsp-meta { flex:1; min-width:0; font-size:var(--fs-sm); color:var(--muted); }
+.dsp-meta { flex:1; min-width:0; display:flex; flex-direction:column; gap:var(--space-1); font-size:var(--fs-sm); color:var(--muted); }
+.dsp-delta { font-weight:700; color:var(--text-soft); }
+.dsp-delta.up { color:var(--ok); } .dsp-delta.down { color:var(--danger); }
+.dsp-chart { display:flex; gap:var(--space-1); margin-top:var(--space-3); }
+.dsp-col { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:var(--space-1);
+  border:0; background:transparent; padding:var(--space-1) 0; border-radius:var(--r-md); cursor:pointer; color:var(--muted); }
+.dsp-col:hover { background:var(--panel-hover); }
+.dsp-col.on { background:var(--panel-hover); color:var(--text); }
+.dsp-col.on .dsp-cm { font-weight:800; }
+.dsp-cv { font-size:var(--fs-xs); font-weight:700; font-variant-numeric:tabular-nums; }
+.dsp-cm { font-size:var(--fs-xs); white-space:nowrap; }
+.dsp-bar { display:flex; align-items:flex-end; width:60%; max-width:var(--space-6); height:var(--space-8);
+  border-radius:var(--r-sm); background:var(--border); overflow:hidden; }
+.dsp-fill { display:block; width:100%; background:var(--muted); }
+.dsp-fill.ok { background:var(--ok); } .dsp-fill.warn { background:var(--warn); } .dsp-fill.bad { background:var(--danger); }
+.dsp-col.thin .dsp-fill { opacity:.4; }
+.dsp-h0 { height:0; } .dsp-h10 { height:10%; } .dsp-h20 { height:20%; } .dsp-h30 { height:30%; }
+.dsp-h40 { height:40%; } .dsp-h50 { height:50%; } .dsp-h60 { height:60%; } .dsp-h70 { height:70%; }
+.dsp-h80 { height:80%; } .dsp-h90 { height:90%; } .dsp-h100 { height:100%; }
 .dsp-unm { white-space:nowrap; }
 .dsp-go { font-size:var(--fs-lg); color:var(--muted); }
 .dsp-empty { margin-top:var(--space-2); font-size:var(--fs-sm); color:var(--muted); }

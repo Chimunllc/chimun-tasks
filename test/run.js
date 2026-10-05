@@ -12712,6 +12712,16 @@ testFinBasisDefault();
 // байна» гэдгийг тоолж чадахгүй байв (#1559 ч яг ингэж ороод гацсан).
 {
   need(['setCancelReason', 'cxReasonKey', 'bulkDeleteOrders']);
+  // Тойм үндсэн ажилтанд ОЛДОХ ёстой: доод цэсэнд + эхний дэлгэц; цагийн ажилтанд нуугдана (2026-10-05, CEO)
+  {
+    const fs_ = require('fs'), path_ = require('path');
+    const ih = fs_.readFileSync(path_.join(__dirname, '..', 'index.html'), 'utf8');
+    const cs = fs_.readFileSync(path_.join(__dirname, '..', 'styles.css'), 'utf8');
+    ok(/class="mobile-nav-item[^"]*" data-view="dashboard"/.test(ih), 'scan: Тойм доод цэсэнд байна');
+    ok(/body\.role-daily \.mobile-nav-item\[data-view="dashboard"\]/.test(cs), 'scan: цагийн ажилтанд доод цэсний Тойм нуугдана');
+    const sa = src.slice(src.indexOf('function showApp()'), src.indexOf('function renderUserChip()'));
+    ok(/else if \(!state\.isCEO\) state\.view = 'dashboard'/.test(sa), 'scan: үндсэн ажилтан Тоймоос эхэлнэ');
+  }
   // «Больсон» болгох цорын ганц бичих зам = bulkDeleteOrders (шалтгаантай). Шалтгаангүй
   // ганц-устгах зам (deleteAppOrder) ба тест-цэвэрлэгээний цонх 2026-10-05-нд хасагдсан.
   ok(!/function deleteAppOrder|function openTestCleanupModal/.test(src),

@@ -4316,12 +4316,12 @@ function renderSidebar() {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === state.view);
   });
-  // Тойм — бүгдэд харагдана. CEO бол company-wide, бусад нь хувийн.
+  // Тойм — үндсэн ажилтан бүгдэд (цагийн ажилтанд CSS-ээр нуугдана). Агуулга нь бүгдэд ижил.
   const dashNav = document.getElementById('nav-dashboard');
   if (dashNav) {
     dashNav.style.display = '';
     const lbl = document.getElementById('nav-dashboard-label');
-    if (lbl) lbl.textContent = state.isCEO ? 'Тойм' : 'Миний тойм';
+    if (lbl) lbl.textContent = 'Тойм';
   }
   // Миний зардал — картын эзэн эсвэл ангилах хүлээж буй зардалтай хэн бүхэнд.
   const mxNav = document.getElementById('nav-myexpenses');
@@ -42050,7 +42050,7 @@ function initEvents() {
     } else if (['1','2','3','4'].includes(e.key) && !mod) {
       const views = ['mine','delegated','finance','dashboard'];
       const idx = parseInt(e.key, 10) - 1;
-      if (views[idx] === 'dashboard' && !state.isCEO) return;
+      if (views[idx] === 'dashboard' && isDailyWorker()) return;
       state.view = views[idx];
       render();
     }
@@ -42994,6 +42994,9 @@ function showApp() {
   // Цагийн ажилтан — хязгаарлагдмал UI (body class → CSS-ээр нав/товч нуух)
   document.body.classList.toggle('role-daily', isDailyWorker());
   if (isDailyWorker()) state.view = 'myattend';
+  // Үндсэн ажилтан Тоймоос эхэлнэ (2026-10-05, CEO: «ажилчдад олдохгүй байна»).
+  // CEO-гийн эхлэх дэлгэц хэвээр.
+  else if (!state.isCEO) state.view = 'dashboard';
 }
 
 function renderUserChip() {

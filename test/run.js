@@ -14209,6 +14209,37 @@ async function swFetchTests() {
     ok(/\[Б\|\+12,150/.test(rows) && /Хасах оноо · 1 захиалга хоцорсон\|−7,088/.test(rows), 'мөр: олсон + хасалт тусдаа, нийлбэртэй таарна');
     eq(F.stageBonusRowsHtml(r.C, r.C.total, (l, v) => `[${l}|${v}]`, 'Б'), '[Б|+4,725₮]'.replace('₮', F.fmtMoney(1).replace(/[\d,]/g, '')), 'мөр: хасалтгүй бол ганц мөр');
     ok(/#1/.test(F.stagePenListHtml(r.P)), 'жагсаалт: аль захиалгаас хасагдсан нь харагдана');
+    // ── Ажилтанд ИЛ: хасалтын ШАЛТГААН ойлгомжтой үгээр (2026-10-05, CEO) ──
+    const lr = F.stagePenReason({ why: 'late', late: F.orderLateForPenalty(lateO('2026-10-03', '2026-10-02'), 15) }, 'deliver');
+    ok(/09:00-д эхлэх байсан/.test(lr) && /11:14-д бэлэн болсон/.test(lr) && /2\.2ц хоцорсон/.test(lr), 'шалтгаан: эхлэх ба бэлэн болсон цаг, хоцролт');
+    eq(F.stagePenReason(F.stageBadShare(defO, 'clean', null), 'clean'), 'Нярав 30-аас 3 барааг цэвэрлэгээгүй гэж бүртгэсэн', 'шалтгаан: чанар');
+    ok(/хожуу дарсан/.test(F.stagePenReason({ why: 'late', late: F.orderLateForPenalty(wild, 15) }, 'deliver')), 'шалтгаан: товч хожуу дарсан');
+    ok(/09:00-д эхлэх байсан/.test(F.stagePenListHtml(r.P)), 'жагсаалт: шалтгаан бүтэн өгүүлбэрээр');
+    ok(/<details class="sp-pen-det" open>/.test(F.stagePenListHtml(r.P)), 'жагсаалт: НЭЭЛТТЭЙ (нуухгүй)');
+    // Захиалгын дамжлагын түүх: оноо + шалтгаан (бонустай ижил бодолт)
+    const hLate = F.stageMetaHtml(lateO('2026-10-03', '2026-10-02'));
+    ok(/sm-pts bad">−52\.5 оноо/.test(hLate) && /Цагтаа бол <b>\+52\.5 оноо<\/b>/.test(hLate), 'түүх: хоцорсон дамжлагад хасах оноо + авах байсан оноо');
+    ok(/11:14-д бэлэн болсон/.test(hLate), 'түүх: шалтгаан захиалга дээр');
+    ok(/sm-pts">\+35 оноо/.test(hLate), 'түүх: хоцролтын гинжинд ороогүй цэвэрлэгээ +оноотой');
+    ok(/sm-pts">\+90 оноо/.test(F.stageMetaHtml(okO)), 'түүх: цагтаа дамжлага +оноо');
+    ok(!/sm-pen/.test(F.stageMetaHtml(lateO('2026-09-14', '2026-09-13'))), 'түүх: 9 сард хасалт харагдахгүй');
+    // Дарах мөчид: хоцорсон бол тэр даруй хэлж, гинжний хүмүүст мэдэгдэнэ
+    vm.runInContext("globalThis.__push = []; globalThis.__toast = []; globalThis.__pb = pushBroadcast; globalThis.__st = showToast; pushBroadcast = (k, p) => __push.push([k, p.title]); showToast = (m) => __toast.push(m);", sandbox);
+    const lo = lateO('2026-10-03', '2026-10-02');
+    F.stagePenaltyNotify(lo, 'deliver', lo.stage_meta.deliver);
+    const pushed = vm.runInContext('__push', sandbox).map(x => x[0]).sort().join(',');
+    eq(pushed, 'D,N,P', 'мэдэгдэл: баглах, бүртгэх, буулгах хүмүүст (цэвэрлэгчид биш)');
+    ok(/11:14-д бэлэн болсон/.test(vm.runInContext('__toast[0]', sandbox)), 'мэдэгдэл: дарсан хүнд тэр даруй шалтгаантай');
+    vm.runInContext("__push.length = 0;", sandbox);
+    F.stagePenaltyNotify(okO, 'deliver', okO.stage_meta.deliver);
+    eq(vm.runInContext('__push.length', sandbox), 0, 'мэдэгдэл: цагтаа бол юу ч илгээхгүй');
+    F.stagePenaltyNotify(defO, 'dispatch', defO.stage_meta.dispatch);
+    eq(vm.runInContext('__push.map(x => x[0]).join()', sandbox), 'C', 'мэдэгдэл: алдаатай цэвэрлэгээ → цэвэрлэгчид');
+    vm.runInContext("__push.length = 0;", sandbox);
+    const l9 = lateO('2026-09-14', '2026-09-13');
+    F.stagePenaltyNotify(l9, 'deliver', l9.stage_meta.deliver);
+    eq(vm.runInContext('__push.length', sandbox), 0, 'мэдэгдэл: 9 сард илгээхгүй');
+    vm.runInContext("pushBroadcast = __pb; showToast = __st;", sandbox);
   }
   // Сар шүүлт — өөр сарын шат тоологдохгүй
   const twom = [{ items: [{ qty: 10 }], stage_meta: {
@@ -15683,8 +15714,11 @@ async function swFetchTests() {
   // ⛔ ХАНШ НЭГ ГАЗАР — хоёр газар бичвэл нэг дамжлага хоёр үнэтэй болно
   eq((src.match(/const STAGE_PT_RATE = /g) || []).length, 1, 'scan: ханш нэг л газар зарлагдана');
   const sp = src.slice(src.indexOf('function stagePayByPerson'), src.indexOf('function stagePayFor'));
-  ok(/stagePtsForQty\(qty, bands\) \* stageWeight\(key\)/.test(sp), 'scan: оноо = шатлал × жин');
-  ok(/if \(pts <= 0\) continue/.test(sp), 'scan: 0 оноотой дамжлага (жолоо) бонус авахгүй');
+  // Дамжлагын оноо ГАНЦ бодолтод (`stageEntryPts`) — бонус ба дамжлагын түүх ижил тоо
+  const sep = src.slice(src.indexOf('function stageEntryPts'), src.indexOf('function stagePtsCtx'));
+  ok(/stageEntryPts\(o, key, e, ctx\)/.test(sp), 'scan: бонусын нэгтгэл дамжлагын оноог ганц бодолтоос авна');
+  ok(/stagePtsForQty\(orderItemQty\(o\), ctx\.bands\) \* stageWeight\(key\)/.test(sep), 'scan: оноо = шатлал × жин');
+  ok(/if \(pts <= 0\) return null/.test(sep), 'scan: 0 оноотой дамжлага (жолоо) бонус авахгүй');
   ok(/stagePointRate\(\)/.test(sp), 'scan: төгрөг нь ханшаар, нэг газраас');
   // ⛔ Жин нь PIPELINE-аас — хоёр дахь жагсаалт үүсгэхгүй
   const sw = src.slice(src.indexOf('function stageWeight'), src.indexOf('function stageDefs'));

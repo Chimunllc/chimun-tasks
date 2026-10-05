@@ -12910,6 +12910,14 @@ testFinBasisDefault();
     ok(!/'customers'\s*,\s*'phone'|\('app_orders'\s*,\s*'phone'\)|\('pbx_calls'/.test(rk),
        'person_rekey: харилцагчийн утас ба дуудлагын лог хөндөгдөхгүй');
   }
+  // Буцаан авалт: ДУТУУ = алдагдал — хадгалахаас ӨМНӨ асууна (2026-10-05, #1476 худал 840k алдагдал)
+  {
+    const i = src.indexOf('if (_shortLines.length) {\n      const _nS');
+    const j = src.indexOf('sm2[act.key] = entry;');
+    ok(i > 0 && i < j, 'scan: дутуу бүртгэхээс ӨМНӨ анхааруулга асууна (нөөцөд бичихээс өмнө)');
+    ok(/if \(!\(await showConfirm\(`⚠ \$\{_nS\} ширхэг ДУТУУ/.test(src) && /\)\)\) return;\n    \}\n    sm2\[act\.key\] = entry;/.test(src),
+       'scan: «Буцаж засах» дарвал хадгалахгүй (хариуг шалгана)');
+  }
   // «Больсон» болгох цорын ганц бичих зам = bulkDeleteOrders (шалтгаантай). Шалтгаангүй
   // ганц-устгах зам (deleteAppOrder) ба тест-цэвэрлэгээний цонх 2026-10-05-нд хасагдсан.
   ok(!/function deleteAppOrder|function openTestCleanupModal/.test(src),

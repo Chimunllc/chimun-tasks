@@ -6953,20 +6953,38 @@ function parseStatement(matrix) {
   for (let i = 0; i < Math.min(matrix.length, 20); i++) {
     const cells = (matrix[i] || []).map(c => String(c == null ? '' : c).trim().toLowerCase());
     const find = (re) => cells.findIndex(c => re.test(c));
-    const dIdx = find(/огноо|date/);
-    const inIdx = find(/^орлого|кредит|credit/);
+    // ⛔ БИЧЛЭГИЙН ХУВИЛБАР (2026-10-05): банкууд «Дебет гүйлгээ» (е-гээр) гэж бичдэг,
+    //   огнооны баганыг «Гүйлгээний ӨДӨР» гэж ч бичдэг. Нэг хувилбарыг л хайснаас болж
+    //   зарлагын багана олдохгүй → мөр бүрийн `debit` 0 болж, доод урсгалын
+    //   `r.debit > 0` шүүлт БҮХ мөрийг хаядаг байв («гүйлгээ орохгүй»).
+    const dIdx = find(/огноо|өдөр|date/);
+    const inIdx = find(/^орлого|кред[еи]т|credit/);
     const memIdx = find(/утга|тайлбар|description|narrat/);
     if (dIdx >= 0 && (inIdx >= 0 || memIdx >= 0)) {
       cols = { date: dIdx, memo: memIdx, name: find(/нэр|харьцагч/),
         account: cells.findIndex(c => /харьцсан данс|данс|iban|account/.test(c) && !/нэр/.test(c)),
-        credit: inIdx, debit: find(/^зарлага|дебит|debit/), rate: find(/^ханш|rate/) };
+        credit: inIdx, debit: find(/^зарлага|деб[еи]т|debit/), rate: find(/^ханш|rate/) };
       hr = i; break;
     }
   }
-  if (hr < 0) return { rows: [], headerRow: -1, cols, skipped: [] };
+  if (hr < 0) {
+    // Юу харснаа ХЭЛНЭ — «уншигдсангүй» гэдэг нь хүнд юу хийхийг заадаггүй.
+    let seen = '';
+    for (let i = 0; i < Math.min(matrix.length, 20); i++) {
+      const c = (matrix[i] || []).map(x => String(x == null ? '' : x).trim()).filter(Boolean);
+      if (c.length > seen.split(' | ').length) seen = c.join(' | ');
+    }
+    return { rows: [], headerRow: -1, cols, skipped: [], warn: ['Толгойн мөр танигдсангүй'], seen };
+  }
   const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; };
   const cell = (r, idx) => (idx >= 0 ? String(r[idx] == null ? '' : r[idx]).trim() : '');
   const rows = [], skipped = [];
+  /* ⛔ Мөнгөний багана дутвал дүн нь 0 болж, доод урсгал мөрийг чимээгүй хаядаг.
+     Тиймээс АНХААРУУЛГА болгож гаргана — «хуулга орсон» гэж андуурахгүй. */
+  const warn = [];
+  const hdrTxt = (matrix[hr] || []).map(x => String(x == null ? '' : x).trim()).filter(Boolean).join(' | ');
+  if (cols.debit < 0) warn.push('Зарлагын багана олдсонгүй (Зарлага / Дебет / Debit)');
+  if (cols.credit < 0) warn.push('Орлогын багана олдсонгүй (Орлого / Кредит / Credit)');
   const pad2 = (v) => String(v).padStart(2, '0');
   for (let i = hr + 1; i < matrix.length; i++) {
     const r = matrix[i] || [];
@@ -7000,7 +7018,7 @@ function parseStatement(matrix) {
     if (!rates.length) {
       // Ханшгүй бол ТААМАГЛАХГҮЙ — буруу дүн орохоос чимээгүй алдагдсан нь дээр.
       rows.forEach(r => skipped.push({ date: r.date, memo: r.memo, debit: r.debit, why: `${ccy} дансны ханш хуулгад алга — ₮ рүү хөрвүүлэх боломжгүй` }));
-      return { rows: [], headerRow: hr, cols, skipped, ccy };
+      return { rows: [], headerRow: hr, cols, skipped, ccy, warn, seen: hdrTxt };
     }
     rows.forEach((r, i) => {
       const rate = r._rate >= 100 ? r._rate : fxRateNear(rates, i);
@@ -7011,7 +7029,7 @@ function parseStatement(matrix) {
     });
   }
   rows.forEach(r => { delete r._rate; });
-  return { rows, headerRow: hr, cols, skipped, ccy };
+  return { rows, headerRow: hr, cols, skipped, ccy, warn, seen: hdrTxt };
 }
 
 // ── ХУУЛГААР ЗАРДАЛ АНГИЛАХ (долоо хоног бүр) — авто ангилал + гараар + сурах ──
@@ -7708,6 +7726,7 @@ async function openStatementClassifyModal() {
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
       rows = []; dropped = []; settleAdd = {}; stmtQueue = [];
+      const parseWarn = [];   // толгой/багана танигдаагүй файлуудын шалтгаан — ил хэлнэ
       /* ⛔ «Аль хэдийн орсон» гэдгийг ЗӨВ харуулахын тулд бүртгэлийг серверээс
          эхлээд шинэчилнэ. Кэш хуучирсан бол жагсаалт бүх мөрийг «шинэ» гэж
          харуулж, хүн давхардлыг оруулах гэж байгаагаа МЭДЭХГҮЙ (2026-09-д ингэж
@@ -7720,6 +7739,10 @@ async function openStatementClassifyModal() {
         const matrix = await statementFileToMatrix(f);
         const src = detectStatementAccount(matrix);
         const st = parseStatement(matrix);
+        // ⛔ Толгой/мөнгөний багана танигдаагүйг ЧИМЭЭГҮЙ өнгөрүүлэхгүй: дүн 0 болж
+        //   доод урсгалын `r.debit > 0` шүүлт бүх мөрийг хаядаг тул хуулга «орсон»
+        //   мэт харагдаад гүйлгээ ОРОХГҮЙ. Файлын нэр + харсан толгойг хамт хэлнэ.
+        if (st.warn && st.warn.length) parseWarn.push(`${f.name}: ${st.warn.join(', ')}${st.seen ? ` · харсан толгой → ${st.seen}` : ''}`);
         stmtQueue.push({ matrix, parsed: st, fileName: f.name });
         (st.skipped || []).forEach(x => dropped.push(x));
         // ХУВИЙН данс: КОМПАНИЙН данснаас ирсэн орлого = нөхөн олголт (өр хаалт), зардал БИШ.
@@ -7776,8 +7799,10 @@ async function openStatementClassifyModal() {
       // Эх сурвалжуудыг (карт/данс) цуглуулна
       const seen = new Set(); sources = [];
       rows.forEach(r => { const k = srcKeyOf(r); if (seen.has(k)) return; seen.add(k); sources.push(r.cardL4 ? { key: k, type: 'card', l4: r.cardL4 } : { key: k, type: 'acct', acct: r.src }); });
-      if (!rows.length && !skippedInternal) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
-      status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span style="color:var(--muted);">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`; status.style.color = 'var(--ok)';
+      if (!rows.length && !skippedInternal) throw new Error(parseWarn.length ? parseWarn.join(' | ') : 'Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
+      status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span class="sc-muted">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`
+        + (parseWarn.length ? `<div class="sc-warn">⚠ ${escapeHtml(parseWarn.join(' | '))}</div>` : '');
+      status.style.color = 'var(--ok)';
       renderSrcAccts(); renderDropped(); render(); saveBtn.style.display = '';
       undoBtn.hidden = !rows.some(r => r.done);   // энэ хуулгаас орсон зардал байвал буцаах боломж
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }

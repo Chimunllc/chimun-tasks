@@ -16452,11 +16452,16 @@ async function swFetchTests() {
   eq(withRoster[withRoster.length - 1].key, 'Z', 'шилдэг: оноогүй нь доод талд');
   ok(withRoster.some(r => r.key === 'C'), 'шилдэг: ростерт байхгүй ч оноотой хүн орно');
   // ⛔ Тоймыг ҮНЭХЭЭР зурж шалгана — хассан хувьсагч өөр газар үлдвэл дэлгэц бүхэлдээ унана
+  // ⚠ TEAM-д хүн ЗААВАЛ — хоосон бол ростерын шүүлтүүр ажиллахгүй тул тодорхойлогдоогүй функц баригдахгүй (2026-10-05 Тойм ингэж унасан)
+  const _T = vm.runInContext('TEAM', sandbox); const _Tsave = _T.slice(); _T.length = 0;
+  _T.push({ name: 'Тест Ажилтан', phone: '99000001', status: 'идэвхтэй', role: 'Нярав' });
   vm.runInContext('state.appOrders = ' + JSON.stringify(ords) + '; state.dashTopYm = "2026-09";', sandbox);
   let html = '', err = '';
   try { html = vm.runInContext('renderDashboard()', sandbox); } catch (e) { err = String(e && e.message || e); }
   eq(err, '', 'Тойм: зурахад алдаа гарахгүй');
   ok(/dash-top-ym/.test(html) && /dash-top-n/.test(html), 'Тойм: шилдэг гүйцэтгэгчийн карт оноотой зурагдана');
+  ok(/Тест Ажилтан/.test(html), 'Тойм: оноогүй үндсэн ажилтан ч картад гарна');
+  _T.length = 0; _Tsave.forEach(x => _T.push(x));
   vm.runInContext('state.appOrders = undefined; state.dashTopYm = undefined;', sandbox);
 }
 {

@@ -39095,8 +39095,10 @@ function renderDashboard() {
        сурвалжаас (`stagePayByPerson`) — хоёр өөр «шилдэг» гарахгүй. */
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   const topYm = state.dashTopYm || todayStr().slice(0, 7);
-  // Ростер = «Үндсэн ажилтны ачаалал» карттай ИЖИЛ (доор бодогдоно — тиймээс энд дахин бодно)
-  const topRoster = TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && memberInDashBranch(m) && m.worker_type !== 'daily').map(personKey).filter(Boolean);
+  // Ростер = идэвхтэй үндсэн ажилтан, салбарын лензээр (цалингийн самбартай ижил шүүлт).
+  // ⚠ Тоймын өөр картын дотоод туслахыг БҮҮ ашигла — тэр карт хасагдахад энэ унана (2026-10-05).
+  const _topLens = effectiveBranchLens() || 'all';
+  const topRoster = TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && m.worker_type !== 'daily' && _inHubBranch(m, _topLens)).map(personKey).filter(Boolean);
   const topPerformers = stageTopPerformers(state.appOrders || [], topYm, topRoster);
 
   return `
@@ -39157,7 +39159,7 @@ function renderDashboard() {
             <span class="dash-top-sub">M-Event дамжлагын оноогоор</span>
             <input type="month" class="ui-raw dash-top-ym" id="dash-top-ym" value="${escapeHtml(topYm)}" max="${todayStr().slice(0, 7)}">
           </div>
-          <div class="dash-staff-scroll">
+          <div class="dash-top-scroll">
           ${topPerformers.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : topPerformers.map((r, i) => {
             const top = topPerformers[0].pts || 1;
             const medal = r.pts <= 0 ? '' : i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : `${i + 1}. `;

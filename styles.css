@@ -7175,6 +7175,12 @@ select.no-asar-len {
 .coo-paid-t { border-top: 1px solid var(--border); padding-top: 5px; margin-top: 3px;
   font-weight: 800; color: var(--text); }
 .coo-paid-none { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 10px; }
+/* Хасагдсан цалингийн мөр — бүдэг, гэхдээ НУУГДАХГҮЙ (дүн нь ил байх ёстой) */
+.coo-paid-skip { opacity: .62; }
+.coo-paid-skip .coo-paid-m i { font-style: normal; color: var(--warn); }
+.coo-skip-b { background: none; border: 0; padding: 0 var(--space-1);
+  color: var(--muted); cursor: pointer; font-size: var(--fs-sm); line-height: 1; }
+.coo-skip-b:hover { color: var(--danger); }
 .coo-bal { border-top: 1px solid var(--border); padding-top: 8px; }
 .coo-v.coo-bal-due { color: var(--warn); }
 .coo-v.coo-bal-over { color: var(--danger); }

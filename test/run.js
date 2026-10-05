@@ -12832,6 +12832,8 @@ testFinBasisDefault();
     eq(vm.runInContext('canSeeAllFinance()', sandbox), false, 'Гүйлгээ: энгийн ажилтан санхүүг бүхэлд нь харахгүй');
     vm.runInContext("state.finBranchPerms = new Set(['99001122']);", sandbox);
     eq(vm.runInContext('canSeeAllFinance()', sandbox), true, 'Гүйлгээ: салбар засах эрхтэй ажилтан харна');
+    _T[0].status = 'гарсан';
+    eq(vm.runInContext('canSeeAllFinance()', sandbox), false, 'Гүйлгээ: ажлаас гарсан хүний салбар засах эрх хүчингүй');
     _T.length = 0; save.forEach(x => _T.push(x));
     vm.runInContext("state.finBranchPerms = undefined;", sandbox);
   }

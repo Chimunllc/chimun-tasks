@@ -2447,7 +2447,11 @@ async function loadFinanceCategories() {
    Эдгээр хүн бүх санхүүгийн гүйлгээг ХАРАХ + зөвхөн САЛБАРЫГ нь засна (бусад нь read-only). */
 function isFinanceBranchEditor(key = state.me) {
   if (state.isCEO) return true;
-  return !!(key && state.finBranchPerms && state.finBranchPerms.has(key));
+  if (!(key && state.finBranchPerms && state.finBranchPerms.has(key))) return false;
+  // ⛔ Ажлаас ГАРСАН хүний эрх хүчингүй (2026-10-05: 6 эрхийн 3 нь гарсан хүнийх байв).
+  //   Эрхийн мөрийг гараар хураахыг мартдаг тул төлвөөр нь шүүнэ.
+  const m = findMember(key);
+  return !(m && (m.status || 'идэвхтэй') !== 'идэвхтэй');
 }
 /* Туслах нягтлан мөн эсэх — role-аар (/нягтлан/) таньна (хэд хэдэн нягтлан байж болно). */
 function isFinanceAccountant(key = state.me) {

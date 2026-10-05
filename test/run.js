@@ -14156,6 +14156,68 @@ async function swFetchTests() {
   eq(paidHelpers.length, 4, 'хөлс: хамтрагч дээд тал 4 хүнд хуваагдана');
   eq(Math.round(rm.B.helperPts * 100) / 100, Math.round(10 / 5.3 * 100) / 100, 'бонус: 10 оноо ÷ (1.3+4) нэгж');
 
+  /* ⛔ ХАСАХ ОНОО (2026-10-05, CEO: «бонус өгч байгаа бол буцаагаад торгууль»).
+     Сайн хэсэг +оноо, муу хэсэг ТЭР ХЭМЖЭЭГЭЭР −оноо. 10 сараас (9 сар хэвээр). */
+  {
+    vm.runInContext("state.appConfig = {};", sandbox);
+    const NOTE = '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧';
+    // №1: 09:00-д эхлэх эвент, 11:14-д буулгасан → ХОЦОРСОН (30 бараа = 3.5 шатлал)
+    const lateO = (day, prevDay) => ({ number: 1, starts_at: day, note: NOTE, items: [{ qty: 30 }], stage_meta: {
+      clean:    { by: 'C', at: prevDay + 'T02:00:00Z' },
+      prepare:  { by: 'P', at: prevDay + 'T10:00:00Z' },
+      dispatch: { by: 'N', at: prevDay + 'T10:11:00Z' },
+      deliver:  { by: 'D', at: day + 'T03:14:00Z' } } });
+    // №2: цагтаа (61 бараа = 6 шатлал), баглагч мөн P
+    const okO = { number: 2, starts_at: '2026-10-08', note: NOTE, items: [{ qty: 61 }], stage_meta: {
+      prepare: { by: 'P', at: '2026-10-07T10:00:00Z' },
+      deliver: { by: 'D', at: '2026-10-08T00:30:00Z' } } };
+    const r = stagePayByPerson([lateO('2026-10-03', '2026-10-02'), okO], '2026-10');
+    eq(r.P.penPts, 52.5, 'хасах: хоцорсон захиалгын баглалт (3.5×15) хасах оноо болно');
+    eq(r.P.ledFee, 12150, 'хасах: цагтаа захиалгын оноо хэвээр (6×15×135)');
+    eq(r.P.total, 12150 - 7088, 'хасах: цэвэр = олсон − хоцорсон хэсэг');
+    eq(r.P.lateN, 1, 'хасах: хоцорсон тоо');
+    eq(r.N.total, 0, 'хасах: бүртгэж гаргасан нярав ч хоцорсон захиалгын оноогоо алдана');
+    eq(r.N.penApplied, 0, '⛔ хасах: бонус 0-ээс доош орохгүй (суурь цалингаас хасахгүй)');
+    eq(r.N.penFee > 0, true, 'хасах: хасах оноо тоологдсон ч бонусаар хязгаарлагдана');
+    eq(r.C.total, 35 * 135, 'хасах: цэвэрлэгээ хоцролтын гинжинд ОРОХГҮЙ');
+    // 9 сар хэвээр (from = 2026-10)
+    const r9 = stagePayByPerson([lateO('2026-09-14', '2026-09-13')], '2026-09');
+    eq(r9.P.penPts, 0, '⛔ хасах: 9 сард хэрэглэгдэхгүй (CEO)');
+    eq(r9.D.total, Math.round(52.5 * 135), 'хасах: 9 сарын бонус хэвээр');
+    // 15 минутаас бага хоцролт тооцохгүй
+    const near = lateO('2026-10-03', '2026-10-02'); near.stage_meta.deliver.at = '2026-10-03T01:10:00Z';
+    eq(stagePayByPerson([near], '2026-10').D.penPts, 0, 'хасах: 10 мин хоцролт (15 минутын хүлцэл) тооцохгүй');
+    // ⛔ Товчоо 24ц-ээс хожуу дарсан (нотолгоогүй) = хоцорсон
+    const wild = lateO('2026-10-03', '2026-10-02'); wild.stage_meta.deliver.at = '2026-10-06T03:00:00Z';
+    eq(stagePayByPerson([wild], '2026-10').D.lateN, 1, '⛔ хасах: цагтаа гэх нотолгоогүй (24ц+ хожуу дарсан) = хоцорсон');
+    // Чанаргүй: 30-аас 3 нь цэвэрлэгдээгүй → цэвэрлэгээний 10% хасах оноо
+    const defO = { number: 3, starts_at: '2026-10-10', note: '⟦RT|9|18⟧ ⟦DLV|pickup|0|0⟧', items: [{ qty: 30 }], stage_meta: {
+      clean: { by: 'C', at: '2026-10-09T02:00:00Z' },
+      dispatch: { by: 'N', at: '2026-10-10T00:00:00Z', defChecked: true, defects: [{ stage: 'clean', ratee: 'C', n: 3 }],
+        items: [{ qty: 30, got: 30 }] } } };
+    const rd = stagePayByPerson([defO], '2026-10');
+    eq(Math.round(rd.C.penPts * 10) / 10, 3.5, 'чанар: 3/30 алдаа → цэвэрлэгээний 10% хасах оноо');
+    eq(Math.round(rd.C.ledPts * 10) / 10, 31.5, 'чанар: үлдсэн 90% нь олсон оноо');
+    eq(rd.C.defN, 1, 'чанар: чанаргүй ажлын тоо');
+    eq(F.stageBadShare(defO, 'prepare', null), null, 'чанар: алдаагүй дамжлага хасагдахгүй');
+    // Хамтрагч ч хувиа үүрнэ (сан шиг)
+    const hl = lateO('2026-10-03', '2026-10-02'); hl.stage_meta.deliver.helpers = ['H'];
+    const rh = stagePayByPerson([hl], '2026-10');
+    ok(rh.H.penPts > 0 && Math.round((rh.D.penPts + rh.H.penPts) * 10) / 10 === 52.5, 'хасах: хамтрагч ч хоцролтын хувиа үүрнэ, нийт = дамжлагын оноо');
+    // ⛔ Алгассан дамжлага 10 сараас оноо авахгүй; хэмжүүрт ирсэн цаг болохгүй
+    const sk = lateO('2026-10-03', '2026-10-02');
+    Object.keys(sk.stage_meta).forEach(k => { sk.stage_meta[k].skipped = true; sk.stage_meta[k].by = 'S'; });
+    ok(!stagePayByPerson([sk], '2026-10').S, '⛔ алгассан дамжлага оноо авахгүй (10 сараас)');
+    eq(F.orderArrivalLate(sk), null, 'алгассан «Талбайд буулгасан» нь ирсэн цаг БИШ');
+    const sk9 = lateO('2026-09-14', '2026-09-13');
+    Object.keys(sk9.stage_meta).forEach(k => { sk9.stage_meta[k].skipped = true; sk9.stage_meta[k].by = 'S'; });
+    ok(stagePayByPerson([sk9], '2026-09').S.total > 0, 'алгассан: 9 сар хэвээр');
+    // Мөр: олсон + хасалт = бонус (нийлбэртэй таарна)
+    const rows = F.stageBonusRowsHtml(r.P, r.P.total, (l, v) => `[${l}|${v}]`, 'Б');
+    ok(/\[Б\|\+12,150/.test(rows) && /Хасах оноо · 1 захиалга хоцорсон\|−7,088/.test(rows), 'мөр: олсон + хасалт тусдаа, нийлбэртэй таарна');
+    eq(F.stageBonusRowsHtml(r.C, r.C.total, (l, v) => `[${l}|${v}]`, 'Б'), '[Б|+4,725₮]'.replace('₮', F.fmtMoney(1).replace(/[\d,]/g, '')), 'мөр: хасалтгүй бол ганц мөр');
+    ok(/#1/.test(F.stagePenListHtml(r.P)), 'жагсаалт: аль захиалгаас хасагдсан нь харагдана');
+  }
   // Сар шүүлт — өөр сарын шат тоологдохгүй
   const twom = [{ items: [{ qty: 10 }], stage_meta: {
     clean:   { by: 'A', at: '2026-09-05T02:00:00Z' },

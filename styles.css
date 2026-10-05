@@ -8476,6 +8476,14 @@ select.no-asar-len {
 .sa-ph-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-2); }
 .sa-ph-btn { display: block; text-align: center; border: 2px dashed var(--primary); border-radius: 10px; padding: 11px; cursor: pointer; }
 .sa-ph-status { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }
+.sp-card-pen { margin-top: var(--space-2); color: var(--danger); font-size: var(--fs-sm); }
+.sp-pen-tag { color: var(--danger); font-size: var(--fs-xs); }
+.sp-pen-det { margin-top: var(--space-1); font-size: var(--fs-xs); }
+.sp-pen-det > summary { cursor: pointer; color: var(--muted); }
+.sp-pen-row { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--line); }
+.sp-pen-n { font-weight: 700; }
+.sp-pen-w { color: var(--muted); min-width: 0; }
+.sp-pen-f { color: var(--danger); font-variant-numeric: tabular-nums; }
 .sa-ph-status.ok { color: var(--ok); } .sa-ph-status.bad { color: var(--danger); }
 .sa-ph-row { display: flex; gap: var(--space-2); }
 .sa-ph-row .sa-ph-btn { flex: 1; min-width: 0; white-space: nowrap; }

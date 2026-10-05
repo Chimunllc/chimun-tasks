@@ -4818,6 +4818,10 @@ need(['orderCustType']);
        'ленз: Тоймын хувийн KPI лензгүй суурьтай');
     ok(head.indexOf('const mineTasks = myBase.filter') > -1,
        'ленз: mineTasks нь лензээр шүүгдээгүй суурьнаас');
+    // «Компанийн тойм» хэсэг 2026-10-05-нд хасагдсан (CEO): бүх тоо өөр дэлгэцэд давхардаж байв
+    const dashBody = dash.slice(0, dash.indexOf('\nfunction ', 1));
+    ok(!/Компанийн тойм|dash-staff|dash-donut|dash-finance/.test(dashBody),
+       'Тойм: «Компанийн тойм» хэсэг буцаж ирэхгүй');
   }
 
   // ── ХАМГИЙН ЧУХАЛ ИНВАРИАНТ: Түүхийн «Нийт орлого» = Захиалгын жагсаалтын «борлуулалт» ──

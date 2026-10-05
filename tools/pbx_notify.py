@@ -136,9 +136,12 @@ def missed(day, ws, we):
     ЗӨВХӨН нэг өдрийн шинэ тохиолдол (буцаж залгасан эсэх нь аппын хэрэг)."""
     sql = f"""
       with c as (
+        -- ⛔ Ярьсан дуудлага зөвхөн АЛДСАНЫ ДАРАА болсон бол хаана (app.js
+        --    pbxFollowups-тай ижил, 2026-10-05). Өглөө ярьсан хүн үдээс хойш
+        --    аваагүй бол мэдэгдэлд орно.
         select peer,
-               max(call_sec) as maxsec,
-               sum(case when answer_sec > 0 then 1 else 0 end) as answered,
+               max(case when answer_sec = 0 and call_sec >= {PBX_WAIT_SEC} then started_at end) as last_miss,
+               max(case when answer_sec > 0 then started_at end) as last_ans,
                max(started_at) as last_at
         from pbx_calls
         where direction = 'in'
@@ -149,7 +152,7 @@ def missed(day, ws, we):
         group by peer
       )
       select peer from c
-      where answered = 0 and maxsec >= {PBX_WAIT_SEC}
+      where last_miss is not null and (last_ans is null or last_ans < last_miss)
       order by last_at desc
     """
     return [r[0] for r in psql(sql) if r and r[0]]

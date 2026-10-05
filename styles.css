@@ -8661,3 +8661,10 @@ select.no-asar-len {
 .stk-cust { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stk-step { font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stk-late { font-weight: 800; color: var(--danger); white-space: nowrap; }
+
+/* Алдсан дуудлага — дугаарын дуудлагын түүх (2026-10-05) */
+.mc-tl { margin-top: var(--space-2); border-left: 2px solid var(--border); padding-left: var(--space-2); }
+.mc-tl-r { display: flex; flex-wrap: wrap; gap: 0 var(--space-2); font-size: var(--fs-xs); color: var(--danger); line-height: 1.6; }
+.mc-tl-r.ok { color: var(--ok); }
+.mc-tl-t { color: var(--muted); font-variant-numeric: tabular-nums; }
+.mc-tl-more { font-size: var(--fs-xs); color: var(--muted); }

@@ -5490,10 +5490,17 @@ need(['orderCustType']);
 // дүрэм мартагддаг тул эх кодыг шалгана.
 {
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-  const fn = src.slice(src.indexOf('async function loadStockCounts('));
-  const body = fn.slice(0, fn.indexOf('\n}'));
-  ok(/session_id=eq\.\$\{encodeURIComponent\(sessionId\)\}/.test(body),
+  // ⚠ Татах хэсэг нь `_fetchStockCountRows`-д (урьдчилсан таамаг ч дуудна) — хоёуланг шалгана
+  const fn = src.slice(src.indexOf('function _fetchStockCountRows('));
+  const body = fn.slice(0, fn.indexOf('\n// Тоолсныг бүртгэнэ'));
+  ok(/session_id=eq\.\$\{encodeURIComponent\(sessionId\)\}/.test(body) && /async function loadStockCounts\(sessionId, pre\)/.test(body),
      'scan: loadStockCounts кампанит сессээр татна');
+  // ⛔ Таамгийн татац төлөвт бичихгүй (хожуу ирвэл зөв сессийн мөрийг дарах ёсгүй)
+  const en = src.slice(src.indexOf('function ensureStockCountLoaded'), src.indexOf('async function loadStockCountCfg'));
+  ok(/_fetchStockCountRows\(guess\)/.test(en) && !/loadStockCounts\(guess\)/.test(en), 'scan: тооллогын таамаг төлөвт бичихгүй');
+  ok(/guess === id/.test(en), 'scan: таамаг таарсан үед л бэлэн хариуг ашиглана');
+  ok(/setTimeout\(prefetchHeavyViews, 1500\)/.test(src), 'scan: цалин/тооллогын дата урьдчилан татагдана');
+  ok(/state\._salLoaded = true; loadSalaries\(\);/.test(src), 'scan: цалингийн дата дэлгэц нээхэд давхар татагдахгүй');
   ok(!/state\.me|counted_by=|'\|'|"\|"/.test(body),
      'scan: шүүлтэд ХҮН орохгүй (бүх хүний бичилт нэг дор)');
   // Сесс нь тохиргооноос ирнэ — өдрөөр дахин үүсгэвэл прогресс өдөр бүр тэглэгдэнэ

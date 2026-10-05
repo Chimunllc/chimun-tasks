@@ -5578,6 +5578,28 @@ function countStats(rows, totalProducts) {
 }
 
 const SC_CFG_KEY = 'stock_count';
+/* ⚡ ТООЛЛОГО ХУРДАН (2026-10-05, CEO). Өмнө нь тохиргоо (идэвхтэй сесс) ирсний
+   ДАРАА л бичилтүүдийг татдаг байсан — хоёр дараалсан хүсэлт ≈1.3с. Одоо сүүлд
+   харсан сессийн дугаарыг санаж, тохиргоотой ЗЭРЭГ татна; сесс солигдсон бол
+   (шинэ тооллого эхэлсэн / хаагдсан) зөв сессээр ДАХИН татна — буруу сессийн
+   мөр ХЭЗЭЭ Ч үлдэхгүй. Дэлгэц нээх ба урьдчилан татах хоёул энийг дуудна. */
+const SC_LAST_SESSION_KEY = 'scLastSession';
+function ensureStockCountLoaded() {
+  if (!state.products || !state.products.length) loadProductsCatalog();
+  if (state.scCfg !== undefined) return;
+  state.scCfg = null;
+  let guess = '';
+  try { guess = localStorage.getItem(SC_LAST_SESSION_KEY) || ''; } catch (_) {}
+  // ⛔ Таамгийн татац ТӨЛӨВТ БИЧИХГҮЙ — хожуу ирвэл зөв сессийн мөрийг дарах ёсгүй
+  const early = guess ? _fetchStockCountRows(guess).catch(() => null) : Promise.resolve(null);
+  loadStockCountCfg().then(async cfg => {
+    const id = cfg.active ? cfg.active.id : '';
+    try { localStorage.setItem(SC_LAST_SESSION_KEY, id); } catch (_) {}
+    state.scSession = id;
+    const pre = (guess && guess === id) ? await early : null;   // таамаг таарсан бол бэлэн хариуг ашиглана
+    await loadStockCounts(id, pre || undefined);                 // ⚠ алдааны зохицуулалт ХЭВЭЭР нэг газар
+  }).then(() => { if (state.view === 'stockcount') render(); }).catch(e => dataLoadFailed('ensureStockCountLoaded', e));
+}
 async function loadStockCountCfg() {
   const cfg = scNormalizeConfig(await loadAppConfig(SC_CFG_KEY));
   state.scCfg = cfg;
@@ -5621,12 +5643,16 @@ async function loadStockCountsAll() {
   } catch (e) { dataLoadFailed('loadStockCountsAll', e); state.scAllRows = state.scAllRows || []; }
   return state.scAllRows;
 }
-async function loadStockCounts(sessionId) {
+// Сессийн бичилтийг ТАТНА (төлөвт бичихгүй) — урьдчилсан таамгийн татац үүнийг дуудна.
+function _fetchStockCountRows(sessionId) {
+  // ⚠ Шүүлтэд ХҮН орж БОЛОХГҮЙ — сесс нь кампанит ажил, бүх хүний бичилт нэг дор.
+  return fetchWithTimeout(`${STOCKCOUNT_URL()}?session_id=eq.${encodeURIComponent(sessionId)}&select=*&order=counted_at.asc`,
+    { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+}
+async function loadStockCounts(sessionId, pre) {
   if (!sessionId) { state.scRows = []; return []; }
   try {
-    // ⚠ Шүүлтэд ХҮН орж БОЛОХГҮЙ — сесс нь кампанит ажил, бүх хүний бичилт нэг дор.
-    const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?session_id=eq.${encodeURIComponent(sessionId)}&select=*&order=counted_at.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    const r = pre || await _fetchStockCountRows(sessionId);
     if (r.status === 404 || r.status === 406) { state._countTableMissing = true; state.scRows = []; return []; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state._countTableMissing = false;
@@ -42835,13 +42861,14 @@ async function bootApp() {
   loadExpenseLearn();   // Хуваалцсан суралцлага (худалдагч→салбар+ангилал, бүх компанид)
   loadAppConfigAll();   // ⚙️ Тохиргоо (ажлын норм, илүү цаг, цай, дамжлагын оноо…) — өмнө нь ОГТ ачаалагддаггүй байв
   loadClosedMonths();   // 🔒 Хаасан сар — түгжээ нь бичих БҮХ замд (төлбөр/зардал/хуулга) ажиллах ёстой
-  if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }   // Сарын цалин (CEO/нягтлан)
+  if (canSeeSalary()) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }   // Сарын цалин (CEO/нягтлан) — дэлгэц нээхэд ДАХИН татахгүй
   state._initialLoading = false;
   generateNotifications();
   render();
   setConn('online', 'n8n холбогдсон');
   // CEO-д шинэ бүртгэлийн хүсэлтийг тусгайлан шалгаж дахин мэдэгдэх
   notifyCEOOfPendingRegistrations();
+  setTimeout(prefetchHeavyViews, 1500);   // ⚡ Цалин/Тооллогын дата урьдчилан (дэлгэц нээхэд бэлэн)
   // Safety-net polling — Web Push амжилттай subscribe хийгдсэн бол polling-г бүхэлд нь хасна
   // (push event + visibilitychange л refresh-ийг trigger болгоно). Push бүтэлгүйтсэн бол
   // 10 мин тутам fallback poll хийнэ. N8n execution-ийг 30+ мянгаар бууруулна.
@@ -43023,17 +43050,7 @@ function refreshViewData() {
     loadWriteoffs(true).then(() => { if (state.view === 'writeoff') render(); });
     if (state.archivedProducts === undefined && state.isCEO) loadArchivedProducts().then(() => { if (state.view === 'writeoff') render(); });
   }
-  if (v === 'stockcount' && canSeeStockCount()) {
-    if (!state.products || !state.products.length) loadProductsCatalog();
-    // Идэвхтэй сессийг тохиргооноос авна (өдрөөр биш) — дараа нь бичилтүүдийг.
-    if (state.scCfg === undefined) {
-      state.scCfg = null;
-      setTimeout(() => loadStockCountCfg().then(cfg => {
-        state.scSession = cfg.active ? cfg.active.id : '';
-        return loadStockCounts(state.scSession);
-      }).then(() => { if (state.view === 'stockcount') render(); }), 0);
-    }
-  }
+  if (v === 'stockcount' && canSeeStockCount()) ensureStockCountLoaded();
   else if (v === 'orders' && canSeeOrders()) { loadAppOrders(); loadOrdersData(); }
   else if (v === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
   else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadOrdersData(); loadNomaadOrders(); }
@@ -43044,6 +43061,27 @@ function refreshViewData() {
   else if (v === 'myexpenses') loadExpenseLearn();   // шинэ хуваалцсан суралцлага авч таамаглана
 }
 
+/* ⚡ ХҮНД ДЭЛГЭЦИЙН ДАТАГ УРЬДЧИЛАН ТАТНА (2026-10-05, CEO: «Тооллого, цалингийн
+   ачааллыг хурдасга»). Анх нээхэд Цалин ≈0.9с (энэ сарын ирц → дараа нь илүү
+   олголтын шилжилтэд өмнөх сарын ирц — хоёр шат), Тооллого ≈1.3с хүлээдэг байв.
+   Апп эхэлж дууссаны дараа (1.5с) эрхтэй хүнд л арын фонд татна — дэлгэц нээхэд
+   дата аль хэдийн бэлэн. ⚠ Дэлгэц нээх үеийн ачаалагчтай ИЖИЛ функцүүд — давхар
+   хүсэлт явахгүй (тэд өөрсдөө «ачаалж байна/ачаалсан» төлвөө шалгадаг). */
+function prefetchHeavyViews() {
+  try {
+    if (canSeeSalary()) {
+      ensurePayrollCfg();
+      loadStaffPins();
+      const ym = state.salaryYM || payMonthDefault(todayStr());
+      if (!payrollHistOnly(ym)) {
+        if (state.attMonthKey !== ym && state._attMonthBusy !== ym) loadAttendanceMonthFull(ym);
+        // Илүү олголтын шилжилт өмнөх сарын ирцийг хүсдэг — ЗЭРЭГ татна (өмнө нь дараа нь)
+        payCarryMonths(ym).forEach(m => loadAttMonthCache(m));
+      }
+    }
+    if (canSeeStockCount()) ensureStockCountLoaded();
+  } catch (e) { dataLoadFailed('prefetchHeavyViews', e); }
+}
 async function refreshFromServer() {
   if (document.hidden) return; // нуугдсан үед сэрвэр дуудахгүй
   try {

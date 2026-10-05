@@ -8581,3 +8581,16 @@ select.no-asar-len {
    гэрээний 7-р дүрэм). */
 .sa-late { display:flex; align-items:center; gap: var(--space-2); font-size: var(--fs-sm); cursor:pointer; }
 .modal .sa-late input[type="checkbox"] { width:auto; flex:0 0 auto; min-height:0; margin:0; }
+
+/* Тойм — буцаж залгаагүй дуудлага (2026-10-05) */
+.mcd-ok { font-size: var(--fs-sm); color: var(--ok); font-weight: 600; cursor: pointer; }
+.mcd-sub { font-size: var(--fs-sm); color: var(--muted); }
+.mcd-list { margin-top: var(--space-2); }
+.mcd-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left;
+  padding: var(--space-2) 0; border: 0; border-top: 1px solid var(--border); background: none;
+  color: var(--text); font-size: var(--fs-sm); cursor: pointer; }
+.mcd-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mcd-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcd-meta { font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcd-tag { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }
+.mcd-more { margin-top: var(--space-1); border: 0; background: none; color: var(--primary); font-size: var(--fs-sm); cursor: pointer; padding: 0; }

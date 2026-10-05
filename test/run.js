@@ -16909,10 +16909,34 @@ async function swFetchTests() {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   const d = src.slice(src.indexOf('function renderDashboard()'), src.indexOf('function renderDashboard()') + 6000);
   const at = (k) => d.indexOf(k);
-  const order = ['stuckBlockHtml(', 'ordersCalendarHtml(', 'dispatchBlockHtml(', 'reviewBlockHtml(', 'dash-top'];
+  const order = ['stuckBlockHtml(', 'missedBlockHtml(', 'ordersCalendarHtml(', 'dispatchBlockHtml(', 'reviewBlockHtml(', 'dash-top'];
   order.forEach(k => ok(at(k) > 0, `Тойм: ${k} байна`));
   ok(order.every((k, i) => i === 0 || at(order[i - 1]) < at(k)),
-     'Тойм: гацсан → календарь → цагтаа хүрсэн → үнэлгээ → шилдэг гүйцэтгэгч дараалал');
+     'Тойм: гацсан → буцаж залгах → календарь → цагтаа хүрсэн → үнэлгээ → шилдэг гүйцэтгэгч дараалал');
+}
+
+// ═══ ТОЙМ: БУЦАЖ ЗАЛГААГҮЙ ДУУДЛАГА (2026-10-05, CEO) ═══════════════════
+// Алдсан дуудлагын дэлгэцтэй ИЖИЛ дүрэм — тусад нь бодохгүй.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const f = src.slice(src.indexOf('function missedBlockHtml'), src.indexOf('function stuckBlockHtml'));
+  ok(/pbxFollowups\(/.test(f) && /pbxOpenCalls\(/.test(f), 'Тойм дуудлага: алдсан дуудлагын дэлгэцтэй ижил дүрэм');
+  ok(/!x\.done/.test(f), 'Тойм дуудлага: шийдэгдсэн нь орохгүй');
+  ok(/canSeeMissedCalls\(\)/.test(f), 'Тойм дуудлага: эрхгүй хүнд харагдахгүй');
+  ok(/Буцаж залгах дуудлага алга/.test(f), 'Тойм дуудлага: хоосон үед ч ил хэлнэ');
+  // Зан чанар: ажлын цагт хүлээгээд аваагүй → гарна; дараа нь ярьсан → гарахгүй
+  const st = vm.runInContext('state', sandbox);
+  const save = { l: st.pbxLog, c: st.pbxCb, v: st.isCEO };
+  const base = vm.runInContext('todayStr()', sandbox);
+  const t1 = base + 'T03:00:00Z', t2 = base + 'T05:00:00Z';   // УБ 11:00 ба 13:00
+  st.isCEO = true; st.pbxCb = [];
+  st.pbxLog = [{ direction: 'in', peer: '99112233', started_at: t1, answer_sec: 0, call_sec: 40 }];
+  const h1 = vm.runInContext('missedBlockHtml()', sandbox);
+  st.pbxLog = st.pbxLog.concat([{ direction: 'in', peer: '99112233', started_at: t2, answer_sec: 30, call_sec: 45 }]);
+  const h2 = vm.runInContext('missedBlockHtml()', sandbox);
+  st.pbxLog = save.l; st.pbxCb = save.c; st.isCEO = save.v;
+  ok(/99112233/.test(h1), 'Тойм дуудлага: хүлээгээд аваагүй дуудлага гарна');
+  ok(!/99112233/.test(h2) && /алга/.test(h2), 'Тойм дуудлага: дараа нь ярьсан бол гарахгүй');
 }
 
 // ═══ ТОЙМ: ГАЦСАН ЗАХИАЛГА (2026-10-05, CEO) ═══════════════════════════

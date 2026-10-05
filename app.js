@@ -4579,6 +4579,7 @@ function renderTaskList() {
     attachSessionBanner();   // «Нэвтрэлт дууссан» туузны товч
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
     attachOrdersCalendar(wrap, { go: true });   // захиалгын календарь — өдөр дарахад захиалга руу
+    wrap.querySelectorAll('[data-mcd-go]').forEach(el => el.addEventListener('click', () => { state.view = 'missedcalls'; render(); }));
     document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
     return;
   } else if (state.view === 'orders') {
@@ -26692,6 +26693,33 @@ function stuckOrders(orders, today) {
   });
   return out.sort((a, b) => b.late - a.late || String(a.number).localeCompare(String(b.number)));
 }
+/* ═══ БУЦАЖ ЗАЛГААГҮЙ ДУУДЛАГА — Тойм (2026-10-05, CEO) ═══════════════════
+   «📵 Алдсан дуудлага» дэлгэцийн шийдэгдээгүй мөрүүд — ИЖИЛ дүрэм
+   (`pbxFollowups` → `pbxOpenCalls`), тусад нь бодохгүй. Мөр дарахад тэр
+   дэлгэц нээгдэнэ (ярьсан/аваагүй тэмдэглэх нь тэнд). */
+function missedBlockHtml() {
+  if (typeof canSeeMissedCalls !== 'function' || !canSeeMissedCalls()) return '';
+  if (!Array.isArray(state.pbxLog) || !Array.isArray(state.pbxCb)) {
+    if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => render()); }
+    if (state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => render()); }
+    return `<div class="rv-card mcd-card"><div class="rv-head">📵 Буцаж залгаагүй дуудлага</div><div class="mcd-sub">Ачаалж байна…</div></div>`;
+  }
+  const f = pbxFollowups(state.pbxLog, { from: addDays(todayStr(), -MISSED_DAYS), ws: tariffWorkStart(), we: tariffWorkEnd() });
+  const open = pbxOpenCalls(f, state.pbxCb, state.appOrders || []).filter(x => !x.done).sort(pbxByRecent);
+  if (!open.length) return `<div class="rv-card mcd-card mcd-ok" data-mcd-go="1" role="button" tabindex="0">✓ Буцаж залгах дуудлага алга</div>`;
+  const idx = pbxNameIndex(state.customers || [], state.appOrders || []);
+  const rows = open.slice(0, 6).map(r => {
+    const w = pbxWho(r.peer, idx);
+    return `<button type="button" class="mcd-row ui-raw" data-mcd-go="1">
+      <span class="mcd-main"><span class="mcd-name">${escapeHtml(w.name || r.peer)}</span><span class="mcd-meta">${w.name ? escapeHtml(r.peer) + ' · ' : ''}${r.tries > 1 ? r.tries + ' удаа залгасан · ' : ''}${escapeHtml(ubStamp(r.last))}</span></span>
+      ${w.orders ? `<span class="mcd-tag">🛒 ${w.orders}</span>` : ''}</button>`;
+  }).join('');
+  const more = open.length > 6 ? `<button type="button" class="mcd-more ui-raw" data-mcd-go="1">+${open.length - 6} бусад — бүгдийг харах</button>` : '';
+  return `<div class="rv-card mcd-card">
+    <div class="rv-head">📵 Буцаж залгаагүй дуудлага <span class="rv-sum">${open.length} · сүүлийн ${MISSED_DAYS} хоног</span></div>
+    <div class="mcd-list">${rows}</div>${more}
+  </div>`;
+}
 function stuckBlockHtml(orders) {
   if (!canSeeOrders()) return '';
   const list = stuckOrders(orders, todayStr());
@@ -39220,9 +39248,10 @@ function renderDashboard() {
   return `
     <div class="dashboard">
       ${sessionExpiredBannerHtml()}
-      ${/* ⛔ ДАРААЛАЛ = CEO-гийн шийдвэр (2026-10-05): ① гацсан захиалга ② календарь
-          ③ цагтаа хүрсэн % ④ үнэлгээ (муу нь дээр) ⑤ шилдэг гүйцэтгэгч. Scan-тест хаана. */ ''}
+      ${/* ⛔ ДАРААЛАЛ = CEO-гийн шийдвэр (2026-10-05): ① гацсан захиалга ② буцаж залгаагүй дуудлага ③ календарь
+          ④ цагтаа хүрсэн % ⑤ үнэлгээ (муу нь дээр) ⑥ шилдэг гүйцэтгэгч. Scan-тест хаана. */ ''}
       ${stuckBlockHtml(state.appOrders || [])}
+      ${missedBlockHtml()}
       ${canSeeOrderBoard() ? `<div class="dash-card dash-ocal">${ordersCalendarHtml(state.appOrders || [], { compact: true })}</div>` : ''}
       ${dispatchBlockHtml(state.appOrders || [])}
       ${reviewBlockHtml(state.appOrders || [])}

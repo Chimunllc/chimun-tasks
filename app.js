@@ -39350,11 +39350,11 @@ function renderDashboard() {
 
         <!-- Шилдэг гүйцэтгэгч — дамжлагын оноо, сараар -->
         <div class="dash-card dash-staff" style="grid-column: span 2;">
+          <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч</div>
           <div class="dash-top-head">
-            <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч</div>
+            <span class="dash-top-sub">M-Event дамжлагын оноогоор</span>
             <input type="month" class="ui-raw dash-top-ym" id="dash-top-ym" value="${escapeHtml(topYm)}" max="${todayStr().slice(0, 7)}">
           </div>
-          <div class="dash-top-sub">M-Event дамжлагын оноогоор</div>
           ${topPerformers.length === 0 ? '<div class="dash-empty">Энэ сард дамжлагын оноо алга</div>' : topPerformers.map((r, i) => {
             const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
             const w = Math.max(4, Math.round(r.pts / topPerformers[0].pts * 100));

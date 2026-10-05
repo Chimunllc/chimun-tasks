@@ -8687,9 +8687,8 @@ select.no-asar-len {
 .clm-n { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }
 
 /* Тойм — шилдэг гүйцэтгэгч (дамжлагын оноо, сараар) */
-.dash-top-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.dash-top-head .dash-card-title { margin-bottom: 0; }
-.dash-top-ym { font-size: var(--fs-sm); padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); max-width: 140px; }
-.dash-top-sub { font-size: var(--fs-xs); color: var(--muted); margin: 2px 0 var(--space-2); }
+.dash-top-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); margin-bottom: var(--space-2); }
+.dash-top-ym { flex: none; font-size: var(--fs-sm); padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
+.dash-top-sub { font-size: var(--fs-xs); color: var(--muted); }
 .dash-top-fill { background: var(--warn); }
 .dash-top-n { width: auto; min-width: 32px; font-variant-numeric: tabular-nums; }

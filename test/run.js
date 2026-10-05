@@ -9262,7 +9262,7 @@ need(['orderCustType']);
   //    хүн мэдэхгүй, хаанаас ч гаргахгүй бол блок ЧИМЭЭГҮЙ алга болно.
   {
     const keys = ['advice', 'daily', 'cand', 'pubNote', 'pp', 'queue', 'kpi', 'budget',
-      'camps', 'cmp', 'state', 'act', 'ga', 'gsc', 'attrib', 'lead', 'capi', 'call', 'conv', 'agent', 'fup'];
+      'camps', 'cmp', 'state', 'act', 'ga', 'gsc', 'chat', 'attrib', 'lead', 'capi', 'call', 'conv', 'agent', 'fup'];
     const parts = {}; keys.forEach(k => { parts[k] = '<' + k + '>'; });
     const tabs = ['todo', 'money', 'src', 'calls'];
     const seen = {};
@@ -9846,42 +9846,45 @@ need(['orderCustType']);
   eq(F.leadStats([{ created_at: '2026-01-01', starts_at: '2026-01-08' }]).median, 7, 'хугацаа: нэг мөрийн медиан');
 }
 
-// ── 💬 Facebook чат дэлгэц ─────────────────────────────────────────────────
-// Хариулах ажлыг Meta Business Agent хийнэ. Энэ дэлгэц нь ХЭМЖҮҮР —
-// Meta-гийн бот үнэхээр ажиллаж байгаа эсэхийг яг эндээс мэднэ.
+// ── 💬 Facebook чатын СТАТИСТИК (2026-10-05, CEO) ───────────────────────────
+// Тусдаа дэлгэц хасагдсан (хэн ч «шийдсэн» дарахгүй, тоо зөвхөн өсдөг байв);
+// статистик нь Зар → Хаанаас ирсэн табд.
 {
-  const now = Date.parse('2026-09-17T12:00:00Z');
-  const h = (n) => new Date(now - n * 3600000).toISOString();
-
-  // Цонхны үлдэгдэл — Meta 24 цагаас хойш чөлөөт бичвэр авахгүй.
-  eq(F.chatWindowLeft(h(2), now), 22, 'чат: 2 цагийн өмнөх → 22 цаг үлдсэн');
-  eq(F.chatWindowLeft(h(30), now), 0, 'чат: 30 цаг → цонх хаагдсан');
-  eq(F.chatWindowLeft(null, now), 0, 'чат: мессежгүй → 0');
-
   const cs = [
-    { thread_id: 't1', name: 'А', state: 'open', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(3) },
-    { thread_id: 't2', name: 'Б', state: 'open', last_at: '2026-09-17', last_in_at: h(40), last_out_at: h(50) },
-    { thread_id: 't3', name: 'В', state: 'open', last_at: '2026-09-17', last_in_at: h(5), last_out_at: h(2) },
-    { thread_id: 't4', name: 'Г', state: 'done', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(9) },
+    // 02:00Z = УБ 10:00 · 20:00Z = УБ маргааш 04:00 (өдрийн хил)
+    { thread_id: 't1', first_at: '2026-09-10T02:00:00Z', last_in_at: '2026-09-10T02:00:00Z', last_out_at: '2026-09-10T02:12:00Z', msgs_out: 2 },
+    { thread_id: 't2', first_at: '2026-09-20T02:00:00Z', last_in_at: '2026-09-20T02:00:00Z', last_out_at: null, msgs_out: 0 },
+    { thread_id: 't3', first_at: '2026-08-31T20:00:00Z', last_in_at: '2026-08-31T20:00:00Z', last_out_at: '2026-08-31T21:00:00+00', msgs_out: 1 },
+    { thread_id: 't4', first_at: '2026-07-05T02:00:00Z', last_in_at: '2026-07-05T02:00:00Z', last_out_at: '2026-07-05T02:30:00Z', msgs_out: 1 },
   ];
-  const w = F.chatWaiting(cs, now);
-  eq(w.map(x => x.thread_id).join(','), 't1,t2', 'чат: харилцагч сүүлд бичсэн нь л жагсана');
-  // ⛔ Цонх хаагдсан чатыг ХАСАХГҮЙ — тэр нь алдагдсан лид.
-  ok(w.some(x => x.thread_id === 't2'), 'чат: цонх хаагдсан ч жагсаалтад үлдэнэ');
-
-  const stt = F.chatStats(cs, '2026-09-01', now);
-  eq(stt.n, 4, 'чат: 30 хоногийн тоо');
-  eq(stt.waiting, 2, 'чат: хариугүй');
-  eq(stt.open, 1, 'чат: одоо хариулж болох нь');
-  // ⛔ Хэмжих юм алга бол медиан `null`, 0 БИШ — «0 мин» нь төгс гэж уншигдана.
-  eq(F.chatStats([], '2026-09-01', now).med, null, 'чат: дата алга → медиан null');
-  eq(stt.med, 180, 'чат: эхний хариултын медиан (t3 = 3 цаг)');
+  const st = F.chatPeriodStats(cs, '2026-09-01');
+  eq(st.n, 3, 'чат: хугацаанд эхэлсэн чат (УБ-ийн огноогоор — 08-31 20:00Z = 09-01)');
+  eq(st.noReply, 1, 'чат: манайх нэг ч хариу бичээгүй чат');
+  eq(st.pct, 33, 'чат: хариугүй хувь');
+  eq(st.med, 60, 'чат: хариултын медиан (12 · 60 → дээд дунд 60)');
+  const empty = F.chatPeriodStats([], '2026-09-01');
+  eq(empty.pct, null, 'чат: дата алга → хувь null (0% биш)');
+  eq(empty.med, null, 'чат: дата алга → медиан null');
+  const ser = F.chatMonthSeries(cs, '2026-09', 3);
+  eq(ser.map(x => x.ym), ['2026-07', '2026-08', '2026-09'], 'чат: сарын цуваа дараалалтай');
+  eq(ser.map(x => x.n), [1, 0, 3], 'чат: сар бүрийн тоо (УБ-ийн сараар)');
+  eq(F.chatMonthSeries(cs, '2026-01', 2).map(x => x.ym), ['2025-12', '2026-01'], 'чат: оны хил');
+  eq(F.chatT('2026-08-31T21:00:00+00'), Date.parse('2026-08-31T21:00:00Z'), 'чат: Postgres «+00» цаг уншигдана');
 
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-  // ⛔ ДАХИН БОТ БОЛГОХГҮЙ — Meta-гийн ботын хажуугаар хоёр дахь бот
-  //    ярьж эхэлбэл харилцагч төөрнө.
+  // ⛔ ДАХИН БОТ БОЛГОХГҮЙ — Meta-гийн ботын хажуугаар хоёр дахь бот ярьвал харилцагч төөрнө.
   ok(!/data-fc-ok|data-fc-no|data-fc-mode|chatBotMode|chatPending/.test(src),
      'чат: ботын удирдлага дэлгэцэд байхгүй');
+  // ⛔ Тусдаа дэлгэц/цэс/тоо буцаж ирэхгүй
+  ok(!/function renderChats/.test(src), 'чат: тусдаа дэлгэц буцаж ирэхгүй');
+  ok(!/nav-chats|cnt-chats/.test(src), 'чат: цэсний тоо буцаж ирэхгүй');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  ok(!/nav-chats/.test(html), 'чат: цэсний мөр буцаж ирэхгүй');
+  ok(/if \(tab === 'src'\) return \[[^\]]*p\.chat/.test(src), 'чат: статистик Хаанаас ирсэн табд');
+  ok(/mktEnsure\('fbChats', loadFbChats, 'ads'\)/.test(src), 'чат: зарын дэлгэц нээхэд ачаална');
+  const h1 = F.chatSectionHtml(cs, 3650);
+  ok(/Ирсэн чат/.test(h1) && /fcs-chart/.test(h1), 'чат: блок тоо ба сарын графиктай зурагдана');
+  ok(/Ачаалж/.test(F.chatSectionHtml(null, 30)), 'чат: ачаалж байхад хоосон биш');
 }
 
 // ── Meta-гийн бүтээгдэхүүний каталог (tools/fb_catalog.py) ─────────────────

@@ -7594,44 +7594,25 @@ select.no-asar-len {
 .wd-w90 { width: 90%; }
 .wd-w100 { width: 100%; }
 
-/* ── 💬 Facebook чат ─────────────────────────────────────────────────────── */
-.fc-wrap { display: flex; flex-direction: column; gap: var(--space-3); }
-.fc-h { margin: 0; font-size: var(--fs-lg); }
-.fc-note { font-size: var(--fs-sm); color: var(--muted); }
-.fc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-md); }
-.fc-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
-.fc-card {
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--r-sm); padding: var(--space-3); text-align: center;
-}
-.fc-card.warn { border-color: var(--warn); }
-.fc-v { font-size: var(--fs-xl); font-weight: 800; }
-.fc-k { font-size: var(--fs-xs); color: var(--muted); }
-.fc-list { display: flex; flex-direction: column; gap: var(--space-2); }
-.fc-row {
-  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--r-sm); padding: var(--space-3);
-}
-.fc-main { flex: 1 1 190px; min-width: 0; }
-.fc-name { font-size: var(--fs-base); font-weight: 800; }
-.fc-sub { font-size: var(--fs-sm); color: var(--muted); }
-.fc-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
-.fc-tag {
-  font-size: var(--fs-xs); border: 1px solid var(--border); color: var(--muted);
-  border-radius: var(--r-sm); padding: 1px var(--space-2);
-}
-.fc-tag.ok { border-color: var(--ok); color: var(--ok); }
-.fc-tag.warn { border-color: var(--warn); color: var(--warn); }
-.fc-tag.off { border-color: var(--danger); color: var(--danger); }
-/* Харилцагчийн мессеж ба ботын ноорог — нүд аль нь алинг хэлснийг шууд ялгана. */
-.fc-act { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
-/* Inbox холбоос товчны хажууд сууна — доогуур зураас нь эгнээг эвддэг. */
-.fc-act a.btn { text-decoration: none; display: inline-block; }
-@media (max-width: 480px) {
-  .fc-cards { grid-template-columns: repeat(2, 1fr); }
-  .fc-act { width: 100%; }
-}
+/* ── 💬 Facebook чатын статистик (Зар → Хаанаас ирсэн, 2026-10-05) ── */
+.fcs-chart { display: flex; gap: var(--space-2); align-items: flex-end; margin: var(--space-2) 0 var(--space-3); }
+.fcs-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.fcs-v { font-size: var(--fs-xs); font-weight: 700; font-variant-numeric: tabular-nums; }
+.fcs-bar { width: 100%; height: 56px; display: flex; align-items: flex-end; background: var(--panel-hover); border-radius: 6px; overflow: hidden; }
+.fcs-fill { width: 100%; background: var(--primary); opacity: .55; border-radius: 6px 6px 0 0; }
+.fcs-col.cur .fcs-fill { opacity: 1; }
+.fcs-m { font-size: var(--fs-xs); color: var(--muted); }
+.fcs-h0 { height: 0%; }
+.fcs-h10 { height: 10%; }
+.fcs-h20 { height: 20%; }
+.fcs-h30 { height: 30%; }
+.fcs-h40 { height: 40%; }
+.fcs-h50 { height: 50%; }
+.fcs-h60 { height: 60%; }
+.fcs-h70 { height: 70%; }
+.fcs-h80 { height: 80%; }
+.fcs-h90 { height: 90%; }
+.fcs-h100 { height: 100%; }
 
 /* ── Төлөвлөгөө — шийдвэрийн дэлгэц (2026-09-17) ──────────────────────────
    Агент мөрийг бичнэ, CEO хаана. Зөвхөн токен + класс. */

@@ -4406,20 +4406,6 @@ function renderSidebar() {
     const mcC = document.getElementById('cnt-missedcalls');
     if (mcC) { const n = seeMc ? pbxOpenCount() : 0; mcC.textContent = n ? String(n) : ''; }
   }
-  // Facebook чат — хариу хүлээж буй яриа + ботын баталгаа.
-  const fcNav = document.getElementById('nav-chats');
-  if (fcNav) {
-    const seeFc = canSeeChats();
-    fcNav.style.display = seeFc ? '' : 'none';
-    // ⚠ Тоог харуулахад дата ЭХЛЭЭД хэрэгтэй — дэлгэц нээхийг хүлээвэл
-    //   «5 хүн хариу хүлээж байна» гэдгийг хэн ч мэдэхгүй өнгөрнө.
-    if (seeFc && state.fbChats === undefined) { state.fbChats = null; loadFbChats(true).then(() => render()); }
-    const fcC = document.getElementById('cnt-chats');
-    if (fcC) {
-      const n = seeFc ? chatWaiting(state.fbChats || [], Date.now()).length : 0;
-      fcC.textContent = n ? String(n) : '';
-    }
-  }
   // Зар & үр дүн — FB зарцуулалт ↔ борлуулалт.
   const adNav = document.getElementById('nav-ads');
   if (adNav) adNav.style.display = canSeeAds() ? '' : 'none';
@@ -4511,7 +4497,7 @@ function renderSidebar() {
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
-  _setGrp('nav-group-sales', ['nav-chats', 'nav-missedcalls', 'nav-orders', 'nav-nomaad', 'nav-catering']);
+  _setGrp('nav-group-sales', ['nav-missedcalls', 'nav-orders', 'nav-nomaad', 'nav-catering']);
   _setGrp('nav-group-inventory', ['nav-purchases', 'nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary', 'nav-acct']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
@@ -4545,7 +4531,6 @@ function renderTitle() {
     ps_cost:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h5M9.5 14.5h5"/></svg>', 'Өртөг ба хөрөнгө', 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч'],
     ps_stock:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21V12h6v9"/></svg>', 'Нөөц ба салбар', 'Салбар бүрийн тоо — нярав нэг дэлгэцээс шинэчилнэ'],
     ads:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>', 'Зар & үр дүн', 'Facebook зарын зарцуулалт ба борлуулалтын тулгалт — аль зар үр дүнтэйг харуулна'],
-    chats: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>', 'Facebook чат', 'Хариу хүлээж буй яриа, ботын хариултын баталгаа'],
     missedcalls: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>', 'Алдсан дуудлага', 'Хүлээгээд холбогдоогүй хүмүүс — буцаж залгах ажлын жагсаалт'],
     plan:      ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 11l3 3 7-7"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', 'Төлөвлөгөө', 'Шийдвэрийг чи гаргана, бичилтийг агент хийнэ — хийгдсэнийг нь дарж хаа'],
     writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
@@ -4629,10 +4614,8 @@ function renderTaskList() {
     attachPurchasesHandlers();
     return;
   } else if (state.view === 'chats') {
-    if (tableHead) tableHead.style.display = 'none';
-    if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = safeViewHtml(renderChats, 'Facebook чат');
-    attachChatsHandlers();
+    // Дэлгэц 2026-10-05-нд хасагдсан (CEO) — статистик нь Зар & үр дүн → Хаанаас ирсэн.
+    state.view = 'ads'; state._adsTab = 'src'; render();
     return;
   } else if (state.view === 'missedcalls') {
     if (tableHead) tableHead.style.display = 'none';
@@ -14601,7 +14584,6 @@ const PERM_MENUS = [
   { key: 'access',      label: 'Ажилчид (удирдах)', actions: [
       { key: 'access.delegate', label: 'Доорхийн эрх удирдах' } ] },   // ажилтан нэмэх/засах; эрх засах: CEO бүгдийг, delegate=доорхио
   { key: 'missedcalls', label: 'Алдсан дуудлага', actions: [] },   // буцаж залгах ажлын жагсаалт
-  { key: 'chats',       label: 'Facebook чат', actions: [] },      // хариу хүлээж буй яриа + ботын баталгаа
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
@@ -35149,7 +35131,7 @@ const ADS_TABS = [
 //    хоёуланг нь шалгана — шинэ блок нэмбэл энд ч нэм.
 function adsTabParts(tab, p) {
   if (tab === 'money') return [p.kpi, p.budget, p.camps, p.cmp, p.state, p.act];
-  if (tab === 'src') return [p.ga, p.gsc, p.attrib, p.lead, p.capi];
+  if (tab === 'src') return [p.ga, p.gsc, p.chat, p.attrib, p.lead, p.capi];
   if (tab === 'calls') return [p.call, p.wd, p.conv, p.agent, p.fup];
   return [p.advice, p.daily, p.cand, p.pubNote, p.pp, p.queue];   // 'todo' = өгөгдмөл
 }
@@ -35594,7 +35576,7 @@ function renderAds() {
   const body = adsTabParts(tab, {
     advice: adviceHtml, daily: dailyHtml, cand: candHtml, pubNote, pp: ppHtml, queue: queueHtml,
     kpi, budget: budgetHtml, camps: campsHtml, cmp: cmpHtml, state: stateHtml, act: actHtml,
-    ga: gaHtml, gsc: gscHtml, attrib: attribHtml, lead: leadHtml, capi: capiHtml,
+    ga: gaHtml, gsc: gscHtml, chat: chatSectionHtml(state.fbChats === undefined ? null : state.fbChats, days), attrib: attribHtml, lead: leadHtml, capi: capiHtml,
     call: callHtml, wd: wdHtml, conv: convHtml, agent: agentHtml, fup: fupHtml,
   }).filter(x => x && String(x).trim()).join('\n');
 
@@ -35908,151 +35890,89 @@ function attachMissedCallsHandlers() {
   document.querySelectorAll('[data-mc-reopen]').forEach(b => b.onclick = () =>
     act(b.dataset.mcReopen, 'no_answer', null, false));
 }
-// ── ДЭЛГЭЦ: 💬 Facebook чат ────────────────────────────────────────────────
-// `pages_messaging` 2026-09-17-нд нээгдсэн тул чат анх удаа харагдах боллоо.
-// Эхний хэмжилтээр 30 хоногт 195 чатын 43 нь хариугүй үлдсэн байв — алдсан
-// дуудлагатай ИЖИЛ алдагдал, зөвхөн илүү том.
-//
-// ⚠ Бүтэн яриа ЭНД БАЙХГҮЙ (хувийн мэдээлэл DB-д хуулагдаагүй). Яриа унших
-//   бол Facebook Inbox — мөр бүр дээр холбоос бий. Энд төлөв ба БОТ юу
-//   хэлснийг харна.
+// ── 💬 FACEBOOK ЧАТЫН СТАТИСТИК (2026-10-05, CEO) ──────────────────────────
+// Тусдаа «Facebook чат» дэлгэц ХАСАГДСАН: 14 хоногт 120 чатын 3-ыг л «шийдсэн»
+// гэж тэмдэглэсэн, хариулах ажил Facebook Inbox / Meta-гийн ботоор явдаг тул
+// жагсаалт нь хэнд ч ажил өгдөггүй, тоо нь зөвхөн өсдөг байв. СТАТИСТИК нь
+// хэрэгтэй тул «Зар & үр дүн» → «Хаанаас ирсэн» табд (зар → чат → дуудлага →
+// захиалга нэг дор). ⛔ Цэсэнд дэлгэц/тоо БУЦААЖ БҮҮ НЭМ — scan-тест хаана.
+// ⚠ Бүтэн яриа DB-д БАЙХГҮЙ (хувийн мэдээлэл). Дата = `tools/fb_chat.py` (VPS cron).
 const FB_CHATS_URL = () => `${DB_URL}/rest/v1/fb_chats`;
-const CHAT_DAYS = 30;
-const CHAT_WINDOW_H = 24;        // Meta-гийн чөлөөт бичвэрийн цонх
-
-function canSeeChats() {
-  return canAccessView('chats', () => !!state.isCEO || canSeeOrders());
-}
 
 async function loadFbChats(force) {
   if (state.fbChats && !force) return state.fbChats;
   try {
-    const r = await fetchWithTimeout(`${FB_CHATS_URL()}?select=*&order=last_at.desc&limit=600`,
+    const r = await fetchWithTimeout(`${FB_CHATS_URL()}?select=thread_id,first_at,last_at,last_in_at,last_out_at,msgs_in,msgs_out,state&order=last_at.desc&limit=2000`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.fbChats = await r.json();
+    mktStamp('fbChats');
     return state.fbChats;
   } catch (e) { dataLoadFailed('Facebook чат', e); state.fbChats = state.fbChats || []; return state.fbChats; }
 }
 
-// ── Цэвэр функцууд ─────────────────────────────────────────────────────────
-// ⚠ Цагийг МӨРӨӨР бүү харьцуул — «…Z» ба «…+00:00» ижил мөч боловч мөрийн
-//   эрэмбээр өөр гарна. Бүгд `Date.parse`-аар тоо болно.
-// ⚠ Тоо (Date.now()) БА мөр хоёуланг авна. Зөвхөн мөр гэж үзвэл `Date.parse`
-//   тоог NaN болгож, цонхны тооцоо чимээгүй утгагүй болно (тест барьсан).
+// ⚠ Цагийг МӨРӨӨР бүү харьцуул — «…Z» ба «…+00:00» ижил мөч. Тоо ч, мөр ч авна.
 function chatT(v) {
   if (typeof v === 'number') return isFinite(v) ? v : 0;
-  const t = Date.parse(String(v || ''));
+  const t = Date.parse(String(v || '').replace(/([+-]\d\d)$/, '$1:00'));
   return isNaN(t) ? 0 : t;
 }
-
-// Meta-гийн цонхонд үлдсэн цаг. Хаагдсан бол 0 — тэр чатад чөлөөт бичвэр
-// ИЛГЭЭХ БОЛОМЖГҮЙ (Meta татгалзана), хүн Inbox-оос ч бичиж чадахгүй.
-function chatWindowLeft(lastIn, now) {
-  const t = chatT(lastIn);
-  if (!t) return 0;
-  const left = CHAT_WINDOW_H - (chatT(now) - t) / 3600000;
-  return left > 0 ? Math.round(left * 10) / 10 : 0;
-}
-
-// Хариу хүлээж буй чат = харилцагч СҮҮЛД бичсэн. Цонх хаагдсаныг ч
-// ХАСАХГҮЙ — тэдгээр алдагдсан лид, тоог нь харах ёстой (`left=0` гэж
-// тэмдэглэгдэнэ). `done` нь хүний шийдвэр, жагсаалтаас гарна.
-function chatWaiting(chats, now) {
-  return (chats || []).filter(c => {
-    if (!c || c.state === 'done') return false;
-    const inT = chatT(c.last_in_at);
-    return inT > 0 && inT > chatT(c.last_out_at);
-  }).sort((a, b) => chatT(b.last_in_at) - chatT(a.last_in_at));
-}
-
-function chatStats(chats, fromDay, now) {
-  const out = { n: 0, waiting: 0, open: 0, bot: 0, human: 0, med: null };
+/* Хугацааны статистик — ЭХЭЛСЭН өдрөөр (УБ). ЦЭВЭР функц.
+   noReply = манайх НЭГ Ч хариу бичээгүй (msgs_out = 0).
+   med = харилцагчийн сүүлийн мессежээс манай хариу хүртэлх медиан (мин).
+   ⛔ Хэмжих юм алга бол хувь/медиан `null`, 0 БИШ — «0%» нь «төгс» гэж уншигдана. */
+function chatPeriodStats(chats, fromDay) {
+  const out = { n: 0, noReply: 0, pct: null, med: null };
   const gaps = [];
   (chats || []).forEach(c => {
     if (!c) return;
-    const d = String(c.last_at || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || (fromDay && d < fromDay)) return;
+    const d = _ubDate(c.first_at || c.last_at);
+    if (!d || (fromDay && d < fromDay)) return;
     out.n++;
-    if (c.state === 'human') out.human++; else if (c.state === 'bot') out.bot++;
+    if (!(Number(c.msgs_out) > 0)) out.noReply++;
     const inT = chatT(c.last_in_at), outT = chatT(c.last_out_at);
-    // `done` = хүн шийдсэн. Хариугүй гэж тоолвол жагсаалт хэзээ ч богиносохгүй.
-    if (inT > 0 && inT > outT && c.state !== 'done') {
-      out.waiting++;
-      if (chatWindowLeft(c.last_in_at, now) > 0) out.open++;
-    }
-    if (outT > inT && inT > 0) gaps.push((outT - inT) / 60000);
+    if (inT > 0 && outT > inT) gaps.push((outT - inT) / 60000);
   });
+  if (out.n) out.pct = Math.round(out.noReply / out.n * 100);
   gaps.sort((a, b) => a - b);
-  // ⛔ Хэмжих юм алга бол `null`, 0 БИШ — «0 минут» нь төгс ажиллаж байна гэж
-  //   уншигдана. Хоосон датаг амжилт мэт харуулах нь хамгийн муу худал.
   if (gaps.length) out.med = Math.round(gaps[Math.floor(gaps.length / 2)]);
   return out;
 }
-
-function chatFbLink(c) {
-  const t = String((c && c.thread_id) || '').replace(/^t_/, '');
-  return t ? `https://business.facebook.com/latest/inbox/all?selected_item_id=${encodeURIComponent(t)}` : '';
-}
-
-function renderChats() {
-  if (state.fbChats === null) return '<div class="fc-empty">Ачаалж байна…</div>';
-  const now = Date.now();
-  const chats = state.fbChats || [];
-  const st = chatStats(chats, addDays(todayStr(), -CHAT_DAYS), now);
-  const rows = chatWaiting(chats, now);
-
-  const cards = `<div class="fc-cards">
-    <div class="fc-card"><div class="fc-v">${st.n}</div><div class="fc-k">чат · ${CHAT_DAYS} хоног</div></div>
-    <div class="fc-card${st.open ? ' warn' : ''}"><div class="fc-v">${st.open}</div><div class="fc-k">одоо хариулж болно</div></div>
-    <div class="fc-card"><div class="fc-v">${st.waiting}</div><div class="fc-k">хариугүй үлдсэн</div></div>
-    <div class="fc-card"><div class="fc-v">${st.med === null ? '—' : st.med + ' мин'}</div><div class="fc-k">эхний хариулт</div></div>
-  </div>`;
-
-  const body = rows.length ? `<div class="fc-list">${rows.slice(0, 120).map(c => {
-    const left = chatWindowLeft(c.last_in_at, now);
-    // ⚠ Цонх хаагдсан чатыг НУУХГҮЙ — тэр нь алдагдсан лид. Гэхдээ «хариулж
-    //   болно» гэж хуурахгүй: Meta чөлөөт бичвэр авахаа больсныг ил хэлнэ.
-    const win = left > 0
-      ? `<span class="fc-tag ok">${left} цаг үлдсэн</span>`
-      : '<span class="fc-tag off">цонх хаагдсан — зөвхөн залгах</span>';
-    return `<div class="fc-row">
-      <div class="fc-main">
-        <div class="fc-name">${escapeHtml(c.name || 'Нэргүй')}</div>
-        <div class="fc-sub">${escapeHtml(ubStamp(c.last_in_at))} · ${Number(c.msgs_in) || 0} мессеж бичсэн</div>
-        <div class="fc-tags">${win}</div>
-      </div>
-      <div class="fc-act">
-        <a class="btn btn-sm ui-raw" href="${chatFbLink(c)}" target="_blank" rel="noopener">Inbox ↗</a>
-        <button class="btn btn-sm ui-raw" data-fc-done="${escapeHtml(c.thread_id)}">Шийдсэн</button>
-      </div>
-    </div>`;
-  }).join('')}</div>` : '<div class="fc-empty">Хариу хүлээж буй чат алга.</div>';
-
-  return `<div class="fc-wrap"><h3 class="fc-h">💬 Facebook чат</h3>
-    <div class="fc-note">Хариулах ажлыг Meta Business Agent гүйцэтгэнэ. Энэ дэлгэц нь
-      хэмжүүр: хэдэн чат хариугүй үлдэж байгааг харуулна. Бүтэн яриа Facebook Inbox дээр.</div>
-    ${cards}${body}</div>`;
-}
-
-async function saveChatState(thread, patch) {
-  const r = await fetchWithTimeout(`${FB_CHATS_URL()}?thread_id=eq.${encodeURIComponent(thread)}`, {
-    method: 'PATCH',
-    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify(patch),
-  }, 15000);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-}
-
-function attachChatsHandlers() {
-  document.querySelectorAll('[data-fc-done]').forEach(b => b.onclick = async () => {
-    try {
-      await saveChatState(b.dataset.fcDone, { state: 'done' });
-      await loadFbChats(true);
-      showToast('Шийдсэн гэж тэмдэглэлээ', 'success');
-      render();
-    } catch (err) { showToast('Хадгалж чадсангүй: ' + err.message, 'error', 4000); }
+// Сүүлийн N сарын чатын тоо (эхэлсэн сараар, УБ). ЦЭВЭР функц.
+function chatMonthSeries(chats, curYm, n) {
+  const months = [];
+  let ym = String(curYm || '').slice(0, 7);
+  for (let i = 0; i < (n || 6) && /^\d{4}-\d{2}$/.test(ym); i++) {
+    months.unshift({ ym, n: 0, noReply: 0 });
+    const [y, m] = ym.split('-').map(Number);
+    ym = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  }
+  const by = Object.fromEntries(months.map(x => [x.ym, x]));
+  (chats || []).forEach(c => {
+    const d = c && _ubDate(c.first_at || c.last_at);
+    const row = d && by[d.slice(0, 7)];
+    if (!row) return;
+    row.n++;
+    if (!(Number(c.msgs_out) > 0)) row.noReply++;
   });
+  return months;
+}
+function chatSectionHtml(chats, days) {
+  if (chats === null) return '<div class="ads-sec">💬 Facebook чат</div><div class="ads-note">Ачаалж байна…</div>';
+  const from = addDays(todayStr(), -(Number(days) || 30));
+  const st = chatPeriodStats(chats || [], from);
+  const ser = chatMonthSeries(chats || [], todayStr().slice(0, 7), 6);
+  const max = Math.max(1, ...ser.map(x => x.n));
+  const cur = todayStr().slice(0, 7);
+  return `<div class="ads-sec">💬 Facebook чат <span class="ads-sub">(${Number(days) || 30} хоног · бүтэн яриа Facebook Inbox дээр)</span></div>
+    <div class="ads-kpis">
+      <div class="ads-kpi"><div class="ads-kpi-l">Ирсэн чат</div><div class="ads-kpi-v">${st.n}</div><div class="ads-kpi-s">шинэ яриа</div></div>
+      <div class="ads-kpi"><div class="ads-kpi-l">Хариугүй үлдсэн</div><div class="ads-kpi-v">${st.pct === null ? '—' : st.pct + '%'}</div><div class="ads-kpi-s">${st.noReply} чат</div></div>
+      <div class="ads-kpi"><div class="ads-kpi-l">Хариулт</div><div class="ads-kpi-v">${st.med === null ? '—' : st.med + ' мин'}</div><div class="ads-kpi-s">медиан хугацаа</div></div>
+    </div>
+    <div class="fcs-chart">${ser.map(x => `<div class="fcs-col${x.ym === cur ? ' cur' : ''}" title="${escapeHtml(x.ym)}: ${x.n} чат${x.noReply ? ' · ' + x.noReply + ' хариугүй' : ''}">
+      <span class="fcs-v">${x.n}</span><span class="fcs-bar"><span class="fcs-fill fcs-h${Math.round(x.n / max * 10) * 10}"></span></span>
+      <span class="fcs-m">${Number(x.ym.slice(5))} сар</span></div>`).join('')}</div>`;
 }
 
 function attachAdsHandlers() {
@@ -42931,6 +42851,7 @@ function refreshViewData() {
     mktEnsure('gsc', loadGsc, 'ads');
     mktEnsure('ga', loadGa, 'ads');
     mktEnsure('fbAds', loadFbAds, 'ads');
+    mktEnsure('fbChats', loadFbChats, 'ads');   // Facebook чатын статистик (Хаанаас ирсэн таб)
     if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'ads') render(); }); }
     if (state.pbxLog === undefined) state.pbxLog = null;
     if (state.gsc === undefined) state.gsc = null;
@@ -42948,9 +42869,6 @@ function refreshViewData() {
     loadPbxLog(true).then(() => { if (state.view === 'customers') render(); });
   }
   // 📵 Алдсан дуудлага — лог + тэмдэглэл + харилцагч (нэр тааруулахад).
-  if (v === 'chats' && canSeeChats()) {
-    if (state.fbChats === undefined) { state.fbChats = null; loadFbChats(true).then(() => { if (state.view === 'chats') render(); }); }
-  }
   if (v === 'missedcalls' && canSeeMissedCalls()) {
     if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'missedcalls') render(); }); }
     if (state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => { if (state.view === 'missedcalls') render(); }); }

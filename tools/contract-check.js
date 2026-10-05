@@ -77,6 +77,7 @@ const tierKey = (t) => (t || []).map((x) => `${Number(x.min)}:${Number(x.pct)}`)
     ['Хот доторх хүргэлт (нэг тал)', valueOf(appSrc, 'DELIVERY_CITY_ONE_FEE'), valueOf(siteSrc, 'DELIVERY_CITY_ONE_FEE'), Number(cfg.delivery_city_one_fee)],
     ['Нэг км тариф', valueOf(appSrc, 'DELIVERY_PER_KM'), valueOf(siteSrc, 'DELIVERY_PER_KM'), Number(cfg.delivery_per_km)],
     ['Ажлын бус цагийн хөлс', valueOf(appSrc, 'ORDER_OFFHOURS_FEE'), valueOf(siteSrc, 'OFFHOURS_FEE'), Number(cfg.offhours_fee)],
+    ['Ажлын бус ЭХНИЙ цагийн хөлс', valueOf(appSrc, 'ORDER_OFFHOURS_FIRST_FEE'), valueOf(siteSrc, 'OFFHOURS_FIRST_FEE'), Number(cfg.offhours_first_fee)],
   ];
   for (const [label, app, site, live] of checks) {
     if (app === undefined || site === undefined) { note(`${label}: утга олдсонгүй (апп=${app}, сайт=${site})`); continue; }

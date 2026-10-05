@@ -4584,8 +4584,6 @@ function renderTaskList() {
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
     document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
     document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
-    // "Яг одоо" тууз — авлага нүд дээр дарж Авлага view руу
-    wrap.querySelectorAll('[data-ceo-now]').forEach(c => c.addEventListener('click', () => { state.view = c.dataset.ceoNow; render(); }));
     return;
   } else if (state.view === 'orders') {
     if (tableHead) tableHead.style.display = 'none';
@@ -31938,57 +31936,6 @@ function attachReceivablesHandlers() {
   document.querySelectorAll('.ar-wrap [data-nomaad-income]').forEach(b => b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome)));
 }
 
-/* ━━━ ОЙРЫН 7 ХОНОГ — цэвэр функц (2026-09-22) ━━━━━━━━━━━━━━━━━━━
-   Гарах (эхлэх огноотой, бэлтгэлийн шатанд) ба буцах (гарсан, дуусах огноотой)
-   захиалгын тоо. Өмнө `ceoNowStrip` дотор inline байсан тул тестлэгдэхгүй байв. */
-function ceoNowCounts(appOrders, nomaadOrders, today, days) {
-  const t = String(today || '');
-  const end = (t && typeof addDays === 'function') ? addDays(t, Number(days) || 7) : '';
-  const inWin = (x) => !!x && !!t && !!end && x >= t && x <= end;
-  let deliveries = 0, returns = 0;
-  (Array.isArray(appOrders) ? appOrders : []).forEach(o => {
-    const st = String((o && o.status) || '');
-    if (['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering'].includes(st)
-        && inWin(String((o && o.starts_at) || '').slice(0, 10))) deliveries++;
-    if (['started', 'rented', 'returning'].includes(st)
-        && inWin(String((o && o.stops_at) || '').slice(0, 10))) returns++;
-  });
-  (Array.isArray(nomaadOrders) ? nomaadOrders : []).forEach(o => {
-    if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return;
-    if (inWin(String((o && o.date_start) || '').slice(0, 10))) deliveries++;
-  });
-  return { deliveries, returns };
-}
-
-/* CEO «Яг одоо» тууз (Тойм дээд талд) = ХОЁР КАРТ (2026-09-22, CEO).
-   Өмнө 4 байсан: орлого · авлага · хүргэлт · буцаалт. Гурав нь ДАРАГДАХГҮЙ,
-   үйлдэл төрүүлэхгүй тоо байв; орлого нь Санхүү → Тайланд бүрэн задаргаатай (давхардал).
-   ⛔ Тойм дээр ТОО БИШ, АЖИЛ байна — карт бүр ДАРАГДАЖ ажлын дэлгэц рүү хөтлөнө.
-      Дарагдахгүй тоо нэмэх бол түүнийг ХААНААС харахыг эхлээд бод. Scan-тест хаана. */
-function ceoNowStrip() {
-  if (state.appOrders === undefined && typeof loadAppOrders === 'function') loadAppOrders();   // орлого — амьд захиалгаас
-  if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') loadNomaadOrders();
-  if (!state.bqOrders && !state._bqOrdersLoading) loadOrdersData(); // захиалгууд (авлага/ойртож буй) — lazy
-  const loadingBq = state.appOrders === undefined || state.nomaadOrders === undefined || !state.bqOrders;
-  // Нийт авлага — ХҮН ЗАЛГАЖ авах ёстой мөнгө (үйлдэл төрүүлнэ)
-  const ar = receivablesData();
-  const arTotal = ar.bqTotal + ar.nomaadTotal;
-  const overdueCnt = ar.items.filter(i => i.overdue).length;
-  const { deliveries, returns } = ceoNowCounts(state.appOrders, state.nomaadOrders, todayStr(), 7);
-
-  const cell = (label, val, col, sub, view) => `<div ${view ? `data-ceo-now="${view}" ` : ''}style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:10px 12px;${view ? 'cursor:pointer;' : ''}">
-    <div style="font-size:10.5px;color:var(--muted);">${label}</div>
-    <div style="font-weight:800;font-size:16px;color:${col || 'var(--text)'};margin-top:2px;line-height:1.2;">${val}</div>
-    ${sub ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;">${sub}</div>` : ''}
-  </div>`;
-
-  const _upcoming = deliveries + returns;
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px;">
-    ${cell('📥 Авах үлдсэн төлбөр', loadingBq ? '…' : fmtMoney(arTotal), 'var(--warn)', `${ar.items.length} захиалга${overdueCnt ? ` · ⚠${overdueCnt} хэтэрсэн` : ''}`, 'receivables')}
-    ${cell('🚚 Ойрын 7 хоног', loadingBq ? '…' : String(_upcoming), _upcoming ? 'var(--text)' : 'var(--muted)', `${deliveries} хүргэлт · ${returns} буцаалт`, 'orders')}
-  </div>`;
-}
-
 // Хэвтээ bar мөр (нэр | bar | утга) — тайлантай ижил хэв маяг
 function bqBar(label, value, max, color, sub) {
   const pct = max > 0 ? Math.max(2, Math.round(value / max * 100)) : 0;
@@ -39083,24 +39030,9 @@ function renderDashboard() {
   const isCEO = !!state.isCEO;
   const me = state.me;
 
-  // ─── Хувийн KPI (бүх ажилтанд) ───
-  // ⚠ Ленз ХАМААРАХГҮЙ — өөрт нь оноосон ажил нь тэр хүнийх, салбар нь хамаагүй.
-  //   Эс бөгөөс нэг салбартай ажилтан «0 ажил» гэсэн худал тоо хардаг.
-  const myBase = (state.tasks || []).filter(t => t.status !== 'deleted' && !isOrderAutoTask(t));
-  const mineTasks = myBase.filter(t => t.assignee === me);
-  const myDone = mineTasks.filter(t => t.status === 'done').length;
-  const myActive = mineTasks.filter(t => t.status !== 'done').length;
-  const myOverdue = mineTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
-  const myToday = mineTasks.filter(t => t.due === today && t.status !== 'done').length;
-  const myRate = mineTasks.length > 0 ? Math.round((myDone / mineTasks.length) * 100) : 0;
-  // Сүүлийн 7 хоног — миний дуусгасан
-  const my7 = last7Days(today).map(d => ({
-    day: d.day,
-    count: mineTasks.filter(t => t.status === 'done' && (t.executed_at || t.completed_at || '').toString().startsWith(d.ds)).length,
-    isToday: d.isToday,
-  }));
-  const myMax = Math.max(1, ...my7.map(x => x.count));
-
+  /* ⛔ Хувийн ажлын KPI, 7 хоногийн график, авлага/ойрын хүргэлтийн тууз
+     2026-10-05-нд ХАСАГДСАН (CEO). Ажил нь хувийн ажлын дэлгэцэд, авлага нь
+     Авлага дэлгэцэд бий — Тойм дээр давхардуулахгүй. Scan-тест буцахыг хаана. */
   // Хүлээж буй ажилтны бүртгэл (CEO-гийн хийх ажил)
   const pendingRegCount = TEAM.filter(m => (m.status || '') === 'хүлээж буй').length;
 
@@ -39121,45 +39053,7 @@ function renderDashboard() {
       ${sessionExpiredBannerHtml()}
       ${reviewBlockHtml(state.appOrders || [])}
       ${dispatchBlockHtml(state.appOrders || [])}
-      ${isCEO ? ceoNowStrip() : ''}
       <div class="dashboard-grid">
-        <!-- ─── Миний ажил (бүх ажилтанд) ─── -->
-        <div class="dash-section-title" style="grid-column: span 4; font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:-4px;">Миний ажил</div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Идэвхтэй</div>
-          <div class="dash-kpi-value primary">${myActive}</div>
-          <div class="dash-kpi-sub">та хийх ёстой</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Өнөөдөр</div>
-          <div class="dash-kpi-value warn">${myToday}</div>
-          <div class="dash-kpi-sub">дуусах ёстой</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Хоцорсон</div>
-          <div class="dash-kpi-value danger">${myOverdue}</div>
-          <div class="dash-kpi-sub">та хийх ёстой</div>
-        </div>
-        <div class="dash-card dash-kpi">
-          <div class="dash-kpi-label">Гүйцэтгэл</div>
-          <div class="dash-kpi-value ok">${myRate}%</div>
-          <div class="dash-kpi-sub">${myDone}/${mineTasks.length} дуусгасан</div>
-        </div>
-        <div class="dash-card dash-chart" style="grid-column: span 4;">
-          <div class="dash-card-title">Сүүлийн 7 хоног — Миний дуусгасан ажил</div>
-          <div class="kpi-bar-chart">
-            ${my7.map(d => `
-              <div class="kpi-bar-col">
-                <div class="kpi-bar-track">
-                  <div class="kpi-bar-fill ${d.isToday ? 'today' : ''}" style="height:${(d.count/myMax)*100}%"></div>
-                </div>
-                <div class="kpi-bar-num">${d.count}</div>
-                <div class="kpi-bar-day ${d.isToday ? 'today' : ''}">${d.day}</div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-
         ${isCEO && pendingRegCount > 0 ? `
         <div class="dash-card dash-kpi dash-kpi-clickable" id="dash-pending-reg-card" style="grid-column: span 4;cursor:pointer;border:2px solid var(--accent-amber);">
           <div class="dash-kpi-label" style="color:var(--accent-amber);">⏳ Хүлээж буй бүртгэлийн хүсэлт</div>

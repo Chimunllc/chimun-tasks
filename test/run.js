@@ -4811,17 +4811,24 @@ need(['orderCustType']);
     eq(LA('all', 'all'), false, 'ленз: «Бүгд» ленз юу ч шүүхгүй');
     eq(LA('mine', 'all'), false, 'ленз: «Бүгд» ленз + Миний ажил');
 
-    // Тоймын ХУВИЙН блок лензээс салсан эсэх (эх кодоор)
     const dash = src.slice(src.indexOf('function renderDashboard()'));
-    const head = dash.slice(0, dash.indexOf('const myDone'));
-    ok(/const myBase = \(state\.tasks \|\| \[\]\)/.test(head),
-       'ленз: Тоймын хувийн KPI лензгүй суурьтай');
-    ok(head.indexOf('const mineTasks = myBase.filter') > -1,
-       'ленз: mineTasks нь лензээр шүүгдээгүй суурьнаас');
     // «Компанийн тойм» хэсэг 2026-10-05-нд хасагдсан (CEO): бүх тоо өөр дэлгэцэд давхардаж байв
     const dashBody = dash.slice(0, dash.indexOf('\nfunction ', 1));
     ok(!/Компанийн тойм|dash-staff|dash-donut|dash-finance/.test(dashBody),
        'Тойм: «Компанийн тойм» хэсэг буцаж ирэхгүй');
+    // «Миний ажил» + авлага/ойрын 7 хоногийн тууз 2026-10-05-нд хасагдсан (CEO):
+    // ажил нь «Миний ажил» дэлгэцэд, авлага нь Авлага дэлгэцэд бий — давхардал.
+    const _gone = [
+      ['ceoNowStrip(', 'авлагын тууз'], ['Авах үлдсэн төлбөр', 'авлагын карт'],
+      ['Ойрын 7 хоног', 'ойрын 7 хоногийн карт'], ['Миний ажил', '«Миний ажил» гарчиг'],
+      ['Миний дуусгасан', '7 хоногийн график'], ['kpi-bar-chart', 'баганан график'],
+      ['dash-kpi-value primary', 'идэвхтэй ажлын KPI'], ['last7Days(', '7 хоногийн бодолт'],
+      ['data-ceo-now', 'туузны товч'],
+    ];
+    _gone.forEach(([pat, what]) => ok(dashBody.indexOf(pat) < 0, `Тойм: ${what} буцаж ирэхгүй`));
+    ok(src.indexOf('function ceoNowStrip') < 0, 'Тойм: туузны функц устсан (үхмэл код үлдэхгүй)');
+    ok(src.indexOf('function ceoNowCounts') < 0, 'Тойм: туузны тоолуур устсан (үхмэл код үлдэхгүй)');
+    ok(src.indexOf("querySelectorAll('[data-ceo-now]')") < 0, 'Тойм: туузны дарах үйлдэл устсан');
   }
 
   // ── ХАМГИЙН ЧУХАЛ ИНВАРИАНТ: Түүхийн «Нийт орлого» = Захиалгын жагсаалтын «борлуулалт» ──
@@ -10833,54 +10840,6 @@ need(['orderCustType']);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ТОЙМЫН ТУУЗ = ХОЁР ДАРАГДДАГ КАРТ (2026-09-22, CEO)
-//
-// Өмнө 4 карт байсан боловч 3 нь ДАРАГДАХГҮЙ тоо: орлого (Санхүүд бүрэн
-// задаргаатай), хүргэлт, буцаалт. Тойм дээр ТОО БИШ, АЖИЛ байна.
-// ═══════════════════════════════════════════════════════════════════════════
-{
-  const cnt = sandbox.ceoNowCounts;
-  ok(typeof cnt === 'function', 'тууз: ceoNowCounts бий');
-  const T = '2026-09-22';
-
-  const r = cnt([
-    { status: 'reserved',   starts_at: '2026-09-24' },   // хүргэлт ✓
-    { status: 'delivering', starts_at: '2026-09-22' },   // өнөөдөр ✓
-    { status: 'rented',     stops_at:  '2026-09-25' },   // буцаалт ✓
-    { status: 'reserved',   starts_at: '2026-10-05' },   // цонхны гадна ✗
-    { status: 'archived',   starts_at: '2026-09-23' },   // дууссан ✗
-  ], [], T, 7);
-  eq({ d: r.deliveries, r: r.returns }, { d: 2, r: 1 }, 'ойрын 7 хоног: 2 хүргэлт · 1 буцаалт');
-
-  // ⛔ ӨНӨӨДРИЙГ ОРОЛЦУУЛНА — хасвал өнөөдрийн ажил дэлгэцээс алга болно
-  eq(cnt([{ status: 'ready', starts_at: T }], [], T, 7).deliveries, 1,
-     '⛔ өнөөдрийн хүргэлт тоологдоно');
-  eq(cnt([{ status: 'ready', starts_at: '2026-09-21' }], [], T, 7).deliveries, 0,
-     'өнгөрсөн огноо: тоологдохгүй');
-  // ⚠ NOMAAD мөрийг `nomaadExpiredLead` ЖИНХЭНЭ өнөөдрөөр шүүдэг тул огноо ирээдүй байх ёстой.
-  eq(cnt([], [{ date_start: _soon(2) }], _soon(0), 7).deliveries, 1, 'NOMAAD эвент тоологдоно');
-  eq(cnt(null, null, T, 7), { deliveries: 0, returns: 0 }, 'хог оролт: 0');
-  eq(cnt([{ status: 'ready', starts_at: '2026-09-24' }], [], '', 7).deliveries, 0,
-     'огноогүй: 0 (буруу тоо гаргахгүй)');
-}
-
-// ━━━ SCAN: ТОЙМЫН КАРТ ДАРАГДАЖ АЖИЛ РУУ ХӨТЛӨНӨ ━━━
-{
-  const at = src.indexOf('function ceoNowStrip');
-  ok(at > 0, 'scan: ceoNowStrip олдов');
-  const fn = src.slice(at, at + 3000);
-  ok(!/Энэ сарын орлого/.test(fn),
-     '⛔ scan: Тоймын туузанд орлогын карт буцаж ирээгүй (Санхүүд бий)');
-  const calls = fn.match(/\$\{cell\(/g) || [];
-  eq(calls.length, 2, 'тууз: ЯГ 2 карт');
-  for (const v of ["'receivables')", "'orders')"]) {
-    ok(fn.includes(v), `⛔ scan: карт ${v.slice(1, -2)} дэлгэц рүү дарагдана`);
-  }
-  ok(/ceoNowCounts\(state\.appOrders/.test(fn),
-     'scan: ойрын 7 хоног цэвэр функцаар бодогдоно');
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // ЗАХИАЛГЫН ТОВЧ — «ОДОО ХИЙХ» НЬ ЭГНЭЭНД (2026-09-22, CEO)
 //
 // 12 товч нэг дор суухад аль нь одоо хэрэгтэйг хүн мэдэхгүй — санхүүгийн
@@ -16482,6 +16441,9 @@ async function swFetchTests() {
   eq(err, '', 'Тойм: зурахад алдаа гарахгүй');
   ok(/dash-top-ym/.test(html) && /dash-top-n/.test(html), 'Тойм: шилдэг гүйцэтгэгчийн карт оноотой зурагдана');
   ok(/Тест Ажилтан/.test(html), 'Тойм: оноогүй үндсэн ажилтан ч картад гарна');
+  ok(!/Миний ажил/.test(html), 'Тойм: зурагдсан хуудсанд «Миний ажил» алга');
+  ok(!/Авах үлдсэн төлбөр/.test(html), 'Тойм: зурагдсан хуудсанд авлагын карт алга');
+  ok(!/Миний дуусгасан/.test(html), 'Тойм: зурагдсан хуудсанд 7 хоногийн график алга');
   _T.length = 0; _Tsave.forEach(x => _T.push(x));
   vm.runInContext('state.appOrders = undefined; state.dashTopYm = undefined;', sandbox);
 }

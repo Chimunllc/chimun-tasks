@@ -26478,13 +26478,15 @@ function dispatchChipHtml(o) {
 // Нэгтгэл — «хэдэн хувь нь цагтаа гарсан бэ». Цэвэр функц.
 // ⚠ Хэмжигдэхгүй захиалгыг (цаггүй, dispatch тамгагүй) ил тоолно — «100% цагтаа»
 //   гэсэн худал дүр зургаас сэргийлнэ.
-function dispatchStats(orders, fromDay) {
+// `ym` (YYYY-MM) өгвөл ЗӨВХӨН тэр сар — Тойм ба Дүн шинжилгээ ИЖИЛ дуудалтаар.
+function dispatchStats(orders, fromDay, ym) {
   let n = 0, late = 0, wild = 0, skipped = 0, sumLate = 0, pickup = 0;
   const worst = [];
   (orders || []).forEach(o => {
     if (!o || !_orderActive(o)) return;
     const day = String(o.starts_at || '').slice(0, 10);
     if (fromDay && day < fromDay) return;
+    if (ym && day.slice(0, 7) !== ym) return;
     // Очиж авах — хэмжүүрээс ГАДНА. «Хэмжигдээгүй» гэж тоолвол хүн «бид
     // хэмжиж чадаагүй» гэж уншина; үнэндээ хэмжих ЁСГҮЙ захиалга.
     const _d = parseDelivery(o.note);
@@ -26571,26 +26573,55 @@ function dispatchDayRows(orders, ym) {
 // Тоймын блок — «цагтаа гарсан уу». ⛔ Үнэлгээний картын ДЭРГЭД байрлана:
 // хоцролт нь муу үнэлгээний ШАЛТГААН тул хоёрыг тусад нь харуулбал хүн
 // холбохгүй. Ажил нь захиалгын карт дээр (🚚 шошго) — энд зөвхөн ХЭМЖҮҮР.
-const DISPATCH_STAT_DAYS = 60;
+/* ⛔ САРААР, «сүүлийн 60 хоног» БИШ (2026-10-05, CEO: «тухайн сараа харуулдаг,
+   саруудыг сонгодог, минимал»). Гулсдаг цонх нь Дүн шинжилгээний сарын
+   задаргаатай хэзээ ч таарахгүй (60 хоног ≠ аль ч сар) — карт дарахад өөр тоо
+   гарч хүн төөрнө. Одоо хоёулаа `dispatchStats(…, null, сар)` — ИЖИЛ тоо.
+   ⛔ Хоосон сард КАРТ АЛГА БОЛОХГҮЙ — сар сонгогч ч алга болж өмнөх сар руу
+   буцах зам тасарна. «Хэмжигдсэн хүргэлт алга» гэж хэлнэ.
+   ⚠ Хэмжигдээгүйн тоо ҮЛДЭНЭ (нуувал «100% цагтаа» гэсэн худал дүр зураг) —
+   гэхдээ урт өгүүлбэр биш, нэг жижиг хэсэг, тайлбар нь `title`-д. */
+function dspMonthLabel(ym, cur) {
+  const [y, m] = String(ym || '').split('-');
+  return String(cur || '').slice(0, 4) === y ? `${Number(m)} сар` : `${y}-${m}`;
+}
 function dispatchBlockHtml(orders) {
   if (!canSeeOrders()) return '';
-  const st = dispatchStats(orders, addDays(todayStr(), -DISPATCH_STAT_DAYS));
-  if (!st.n) return '';
-  const cls = st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';
-  return `<div class="rv-card">
-    <div class="rv-head">🚚 Агуулахаас цагтаа гарсан
-      <span class="rv-sum">${DISPATCH_STAT_DAYS} хоног · ${st.n} захиалга</span></div>
-    <div class="dsp-pct ${cls}">${st.pct}%<span class="dsp-sub">${st.late ? `${st.late} хоцорсон · дунджаар ${st.avgLate} цаг` : 'бүгд цагтаа'}</span>
-      <button class="btn btn-sm" id="dsp-more">Дэлгэрэнгүй →</button></div>
-    ${(st.skipped || st.wild) ? `<div class="rv-note">⚠ ${st.skipped + st.wild} захиалга хэмжигдээгүй — эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан.</div>` : ''}
+  const cur = todayStr().slice(0, 7);
+  const ym = (/^\d{4}-\d{2}$/.test(String(state.dspMonth || '')) && state.dspMonth <= cur) ? state.dspMonth : cur;
+  const st = dispatchStats(orders, null, ym);
+  const unm = st.skipped + st.wild;
+  const cls = st.pct === null ? '' : st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';
+  const unmTxt = unm ? `<span class="dsp-unm" title="Эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан">${unm} хэмжигдээгүй</span>` : '';
+  const body = st.n
+    ? `<div class="dsp-row"><span class="dsp-big ${cls}">${st.pct}%</span>
+        <span class="dsp-meta">${st.late ? `${st.late}/${st.n} хоцорсон · дундаж ${st.avgLate}ц` : `${st.n} хүргэлт · бүгд цагтаа`}${unm ? ' · ' + unmTxt : ''}</span>
+        <span class="dsp-go" aria-hidden="true">›</span></div>`
+    : `<div class="dsp-empty">Энэ сард хэмжигдсэн хүргэлт алга${unm ? ' · ' + unmTxt : ''}</div>`;
+  return `<div class="rv-card dsp-card" id="dsp-card" role="button" tabindex="0" data-dsp-ym="${escapeHtml(ym)}">
+    <div class="dsp-top"><span class="dsp-ttl">🚚 Цагтаа гарсан</span>
+      <span class="dsp-mnav"><button type="button" class="dsp-mbtn ui-raw" data-dsp-m="-1" aria-label="Өмнөх сар">‹</button><span class="dsp-mlbl">${escapeHtml(dspMonthLabel(ym, cur))}</span><button type="button" class="dsp-mbtn ui-raw" data-dsp-m="1" aria-label="Дараах сар"${ym >= cur ? ' disabled' : ''}>›</button></span></div>
+    ${body}
   </div>`;
 }
 function attachReviewBlock(root) {
   // ⛔ Хамгийн муу захиалгын ЖАГСААЛТ Тойм дээр БАЙХГҮЙ — зөвхөн Дүн шинжилгээнд.
   //    Нэг жагсаалт хоёр газар байвал аль нь бүтэн болох нь мэдэгдэхгүй.
-  (root || document).querySelector('#dsp-more')?.addEventListener('click', () => {
-    state.view = 'reports'; state.reportsTab = 'reports'; render();
-  });
+  // Сар солих — картын дарцаас ТУСДАА (stopPropagation), ирээдүй рүү явахгүй
+  (root || document).querySelectorAll('[data-dsp-m]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const card = b.closest('#dsp-card');
+    const [y, m] = String((card && card.dataset.dspYm) || todayStr().slice(0, 7)).split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + Number(b.dataset.dspM), 1));
+    const nm = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (nm > todayStr().slice(0, 7)) return;
+    state.dspMonth = nm; render();
+  }));
+  // Картыг дарахад ТЭР САРЫН задаргаа (Дүн шинжилгээ) — тоо нь ижил
+  const _dspCard = (root || document).querySelector('#dsp-card');
+  const _dspGo = () => { state.reportMonth = (_dspCard && _dspCard.dataset.dspYm) || todayStr().slice(0, 7); state.view = 'reports'; state.reportsTab = 'reports'; render(); };
+  _dspCard?.addEventListener('click', _dspGo);
+  _dspCard?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _dspGo(); } });
   (root || document).querySelectorAll('[data-rv-open]').forEach(el => el.addEventListener('click', () => {
     if (!canSeeOrders()) return;
     state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.rvOpen; render();
@@ -37218,7 +37249,7 @@ function renderReports() {
       const d = String(o && o.starts_at || '').slice(0, 10);
       return d >= from && d <= to;
     });
-    const st = dispatchStats(inMonth, from);
+    const st = dispatchStats(state.appOrders || [], null, month);   // Тоймын карттай ИЖИЛ дуудлага
     const days = dispatchDayRows(inMonth, month);
     if (!st.n && !st.skipped) return '';
     const cls = st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';

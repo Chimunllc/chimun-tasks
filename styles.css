@@ -7832,6 +7832,9 @@ select.no-asar-len {
 .ocal-day { font-weight:800; margin-bottom:var(--space-2); }
 .ocal-sec { font-size:var(--fs-sm); font-weight:700; color:var(--muted); margin:var(--space-2) 0; }
 .ocal-hint { color:var(--muted); font-size:var(--fs-sm); text-align:center; padding:var(--space-4) 0; }
+.dash-ocal { margin-bottom:var(--space-3); }
+.dash-ocal .ocal-grid { margin-bottom:0; }
+.dash-ocal .ocal-hint { padding:var(--space-2) 0 0; }
 
 /* Дүн шинжилгээ — «агуулахаас цагтаа гарсан» өдрийн задаргаа */
 .dsp-days { display:flex; flex-direction:column; gap:var(--space-1); margin-top:var(--space-2); }

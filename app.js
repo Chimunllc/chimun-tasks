@@ -4582,6 +4582,7 @@ function renderTaskList() {
     wrap.innerHTML = safeViewHtml(renderDashboard, 'Тойм');
     attachSessionBanner();   // «Нэвтрэлт дууссан» туузны товч
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
+    attachOrdersCalendar(wrap, { go: true });   // захиалгын календарь — өдөр дарахад захиалга руу
     document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
     document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
     return;
@@ -10319,10 +10320,17 @@ function calendarCells(ym) {
   while (cells.length % 7) cells.push(null);
   return cells;
 }
-function ordersCalendarHtml(orders) {
+// Захиалгын бүтэн самбар (жагсаалт + календарь) харах эрх — захиалгын дэлгэц ба Тойм ИЖИЛ дүрэм.
+function canSeeOrderBoard() {
+  return canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true;
+}
+// `compact` = Тойм дээрх хувилбар: зөвхөн сарын тор. Өдөр дарахад захиалгын дэлгэц
+// рүү шилжинэ — картын товчнууд зөвхөн тэнд ажилладаг тул жагсаалтыг энд ЗУРАХГҮЙ.
+function ordersCalendarHtml(orders, opts) {
+  const compact = !!(opts && opts.compact);
   const ym = state.ordersCalYm || todayStr().slice(0, 7);
   const data = ordersCalendarData(orders, ym);
-  const sel = state.ordersCalDay || '';
+  const sel = compact ? '' : (state.ordersCalDay || '');
   const wd = ['Да', 'Мя', 'Лха', 'Пү', 'Ба', 'Бя', 'Ня'];
   const cells = calendarCells(ym).map(day => {
     if (!day) return '<div class="ocal-c ocal-pad"></div>';
@@ -10333,7 +10341,9 @@ function ordersCalendarHtml(orders) {
       <span class="ocal-dots">${o ? `<span class="ocal-b out">${o}</span>` : ''}${b ? `<span class="ocal-b back">${b}</span>` : ''}</span>
     </button>`;
   }).join('');
-  const list = sel
+  const list = compact
+    ? '<div class="ocal-hint">Өдөр дээр дарж тэр өдрийн захиалгыг нээнэ.</div>'
+    : sel
     ? (() => {
         const o = data.out[sel] || [], b = (data.back[sel] || []).filter(x => !o.includes(x));
         if (!o.length && !b.length) return '<div class="orders-empty"><div class="icon">📭</div><div>Энэ өдөр захиалга алга.</div></div>';
@@ -10353,8 +10363,9 @@ function ordersCalendarHtml(orders) {
     ${list}
   </div>`;
 }
-function attachOrdersCalendar(root) {
+function attachOrdersCalendar(root, opts) {
   const el = root || document;
+  const go = !!(opts && opts.go);   // Тойм: өдөр дарахад захиалгын календарь руу
   el.querySelectorAll('[data-ocal-mv]').forEach(b => b.addEventListener('click', () => {
     const ym = state.ordersCalYm || todayStr().slice(0, 7);
     const d = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + Number(b.dataset.ocalMv), 1));
@@ -10362,6 +10373,7 @@ function attachOrdersCalendar(root) {
     state.ordersCalDay = ''; render();
   }));
   el.querySelectorAll('[data-ocal-day]').forEach(b => b.addEventListener('click', () => {
+    if (go) { state.view = 'orders'; state.ordersCal = true; state.ordersCalDay = b.dataset.ocalDay; render(); return; }
     state.ordersCalDay = state.ordersCalDay === b.dataset.ocalDay ? '' : b.dataset.ocalDay; render();
   }));
 }
@@ -10369,7 +10381,7 @@ function renderOrders() {
   // Захиалга = нэгдсэн (app_orders). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
   // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders
   // байсан тул ҮАХ захирал зэрэг хүн хоосон харж байв.)
-  const canManage = canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true;
+  const canManage = canSeeOrderBoard();
 
   // ── Захиалга харах эрхтэй (менежер биш) ажилтан — түүхэн жагсаалтыг харна (энгийн, read) ──
   if (!canManage) {
@@ -28394,7 +28406,7 @@ function validateOrderContact({ customer, phone, email, noEmail }) {
 }
 
 function openNewOrder(editOrder) {
-  if (!(canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true)) {
+  if (!canSeeOrderBoard()) {
     showToast('Танд захиалга үүсгэх эрх алга', 'warn', 3000); return;
   }
   if (!state.products || !state.products.length) loadProductsCatalog();
@@ -39255,6 +39267,7 @@ function renderDashboard() {
       ${reviewBlockHtml(state.appOrders || [])}
       ${stuckBlockHtml(state.appOrders || [])}
       ${dispatchBlockHtml(state.appOrders || [])}
+      ${canSeeOrderBoard() ? `<div class="dash-card dash-ocal">${ordersCalendarHtml(state.appOrders || [], { compact: true })}</div>` : ''}
       <div class="dashboard-grid">
         ${isCEO && pendingRegCount > 0 ? `
         <div class="dash-card dash-kpi dash-kpi-clickable" id="dash-pending-reg-card" style="grid-column: span 4;cursor:pointer;border:2px solid var(--accent-amber);">

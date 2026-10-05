@@ -16564,6 +16564,16 @@ async function swFetchTests() {
   ok(!/Миний ажил/.test(html), 'Тойм: зурагдсан хуудсанд «Миний ажил» алга');
   ok(!/Авах үлдсэн төлбөр/.test(html), 'Тойм: зурагдсан хуудсанд авлагын карт алга');
   ok(!/Миний дуусгасан/.test(html), 'Тойм: зурагдсан хуудсанд 7 хоногийн график алга');
+  // Захиалгын календарь Тойм дээр: эрхтэй хүнд зурагдана; хураангуй хувилбарт өдрийн жагсаалт ЗУРАГДАХГҮЙ
+  {
+    const isC = vm.runInContext('state.isCEO', sandbox);
+    vm.runInContext('state.isCEO = true;', sandbox);
+    const h1 = vm.runInContext('renderDashboard()', sandbox);
+    ok(/dash-ocal/.test(h1) && /data-ocal-day=/.test(h1), 'Тойм: эрхтэй хүнд захиалгын календарь зурагдана');
+    const cmp = vm.runInContext('ordersCalendarHtml(state.appOrders, { compact: true })', sandbox);
+    ok(!/ocal-sec/.test(cmp) && !/class="ocal-day"/.test(cmp), 'Тойм: календарийн хураангуй хувилбарт өдрийн жагсаалт зурагдахгүй');
+    vm.runInContext('state.isCEO = ' + JSON.stringify(isC) + ';', sandbox);
+  }
   _T.length = 0; _Tsave.forEach(x => _T.push(x));
   vm.runInContext('state.appOrders = undefined; state.dashTopYm = undefined;', sandbox);
 }

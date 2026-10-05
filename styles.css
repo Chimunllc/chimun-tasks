@@ -4029,6 +4029,7 @@ body {
 
 /* ═══ Цагийн ажилтан — хязгаарлагдмал хандалт (зөвхөн өөрийн Ирсэн ажил) ═══ */
 body.role-daily #nav-dashboard,
+body.role-daily .mobile-nav-item[data-view="dashboard"],
 body.role-daily #nav-calendar,
 body.role-daily .nav-item[data-view="delegated"],
 body.role-daily .nav-item[data-view="finance"],

@@ -7657,7 +7657,12 @@ async function openStatementClassifyModal() {
     </div></div>`;
   document.body.appendChild(modal);
   let rows = [], sources = [], dropped = [], settleAdd = {};
-  const close = () => modal.remove();
+  /* ⛔ АРЫН ДЭЛГЭЦИЙГ ШИНЭЧИЛНЭ (2026-10-05, CEO барив: «бүх хуулга орсон ч зардал нь
+     орохгүй байна»). Зардал DB-д ЗӨВ орсон атлаа Гүйлгээ дэлгэц «5 гүйлгээ» гэсэн
+     хуучин тоогоо харуулсаар байв — энэ цонхны `render` нь зөвхөн жагсаалтаа зурдаг
+     (апп-ын `render`-ийг сүүдэрлэдэг), арын дэлгэц дараагийн poll хүртэл хөдөлдөггүй. */
+  const appRender = () => { try { if (typeof globalThis.render === 'function') globalThis.render(); } catch (_) { /* дэлгэц шинэчлэлт бүтэлгүйтсэн нь хадгалалтыг эвдэхгүй */ } };
+  const close = () => { modal.remove(); appRender(); };
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save'), undoBtn = modal.querySelector('#sc-undo');
@@ -7907,7 +7912,7 @@ async function openStatementClassifyModal() {
     rows.forEach(r => { r.done = false; });
     undoBtn.hidden = true; undoBtn.disabled = false;
     showToast(`↩️ ${n} зардал буцаалаа${fail ? ` · ⚠ ${fail} буцаагдсангүй` : ''}`, fail ? 'warn' : 'success', 5000);
-    render();
+    render(); appRender();
   };
   saveBtn.onclick = async () => {
     // ХУУЛГА ШУУД ОРНО: бүх зардал даруй бүртгэгдэж, ангилах эзэн рүү шилжинэ (карт→картын эзэн, шилжүүлэг→CEO).
@@ -8041,7 +8046,7 @@ async function openStatementClassifyModal() {
       if (_skipC) showToast(`🔒 ${_skipC} орлогын мөр хаасан сард байсан тул алгасагдав`, 'info', 5000);
       try { await loadBankStatements(true); await loadBankIncome(true); } catch (_) {}
     } catch (e) { showToast('⚠ Хуулгын бүртгэл хадгалагдсангүй: ' + e.message, 'error', 6000); }
-    render(); saveBtn.disabled = false;
+    render(); appRender(); saveBtn.disabled = false;
     undoBtn.hidden = !rows.some(r => r.done);   // дөнгөж оруулсныг шууд буцааж болно
   };
   modal.classList.add('open');
@@ -9850,7 +9855,7 @@ function openReconcileModal() {
       <button class="modal-x ui-raw recon-x" data-recon-close>✕</button>
       <h2 class="recon-title">📊 ${escapeHtml(_m)} · Хуулга ба орлого</h2>
       ${renderReconcilePanel()}</div>`;
-    ov.querySelector('[data-recon-close]')?.addEventListener('click', () => ov.remove());
+    ov.querySelector('[data-recon-close]')?.addEventListener('click', () => { ov.remove(); render(); });
     ov.querySelector('#recon-import')?.addEventListener('click', () => { ov.remove(); openStatementClassifyModal(); });
     // ── Хаагдаагүй орлогын мөрийг хаах ──
     const setInc = async (fp, status, link, note) => {
@@ -9880,7 +9885,7 @@ function openReconcileModal() {
   // Хуулгын бүртгэл + орлогын мөр — цонх нээхэд шууд («ямар хуулга орсон» гэдэг нь
   // хуулга оруулахаас ӨМНӨ харагдах ёстой мэдээлэл).
   Promise.all([loadBankStatements(), loadBankIncome()]).then(() => { if (document.body.contains(ov)) draw(); }).catch(() => {});
-  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.addEventListener('click', e => { if (e.target === ov) { ov.remove(); render(); } });   // картын тоо шинэчлэгдэнэ
   ov.classList.add('open');
 }
 

@@ -12072,6 +12072,16 @@ function testStmtFlowSummary() {
 }
 testStmtFlowSummary();
 
+// ⛔ Хуулга оруулсны дараа АРЫН дэлгэц шинэчлэгдэнэ (2026-10-05, CEO: «бүх хуулга орсон
+// ч зардал нь орохгүй байна» — зардал DB-д орсон, дэлгэц хуучин «5 гүйлгээ»-гээ харуулж байв)
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const cm = src.slice(src.indexOf('async function openStatementClassifyModal'), src.indexOf('function renderMyExpenses'));
+  ok(/const appRender = \(\) => \{ try \{ if \(typeof globalThis\.render === 'function'\) globalThis\.render\(\);/.test(cm), 'scan: хуулгын цонх апп-ын render-ийг (сүүдэрлэгдээгүй) дуудна');
+  ok(/render\(\); appRender\(\); saveBtn\.disabled = false;/.test(cm), 'scan: хадгалсны дараа арын дэлгэц шинэчлэгдэнэ');
+  ok(/const close = \(\) => \{ modal\.remove\(\); appRender\(\); \};/.test(cm), 'scan: цонх хаахад арын дэлгэц шинэчлэгдэнэ');
+}
+
 // ═══ ҮЛДЭГДЭЛ ЯАЖ УНШИГДАХ ВЭ — БАНК БҮР ӨӨР (2026-09-11) ════════════════════
 // Голомт үлдэгдлээ ШОШГОТОЙ мөрд, ХААН БАГАНА болгон бичдэг. Fixture нь амьд
 // файлын бүтцээс (Deposit Account Statement / ДАНСНЫ ХУУЛГА) авсан.

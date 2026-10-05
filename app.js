@@ -7540,6 +7540,60 @@ function isInternalTransfer(r, own) {
 /* Хасагдсан мөрийг ШАЛТГААНААР бүлэглэнэ, дүнгээр эрэмбэлнэ. 56 мөрийг нэг
    жагсаалтаар харуулахад хүн юуг ч уншихгүй — «маш их байна» гэсэн гомдол.
    Бүлэг нь «дотоод шилжүүлэг · 45 мөр · 38.8сая» болж хумигдана. Цэвэр функц. */
+/* ⭐ ХУУЛГЫН ЗАДАРГАА — ОРЛОГО ба ЗАРЛАГА ИЖИЛ БҮТЭЦТЭЙ (2026-10-05, CEO: «нийт
+   орсон орлого, дотоод гээд зардал мөн яг ижил тайлбартай ойлгомжтой»).
+   Нийт → «үүнээс» мөр бүр тайлбартай → «= компанийн орлого / шинээр орох зардал».
+   Өмнө нь орлого нэг хайрцагт, зарлага гурван өөр газар (төлөвийн мөр, хасагдсан
+   мөрийн хайрцаг, жагсаалтын толгой) тарсан байсан тул «28 сая орлого орсон уу,
+   үгүй юу» гэдгийг хүн ойлгохгүй байв (бүгд дотоод шилжүүлэг байсан).
+   ЦЭВЭР функц — тестлэгдэнэ. Тоо нь мөрийн төлөвөөс л (дахин бодохгүй). */
+function stmtFlowSummary(rows, dropped, incomes, existingFps) {
+  const add = (o, x, amt) => { o.n += 1; o.sum += Math.round(Number(amt) || 0); };
+  const L = (k, icon, label, why) => ({ k, icon, label, why, n: 0, sum: 0 });
+  const have = existingFps instanceof Set ? existingFps : new Set();
+  // ── ОРЛОГО ──
+  const inc = { total: { n: 0, sum: 0 }, net: { n: 0, sum: 0 }, lines: [
+    L('dup', '✓', 'Өмнө орсон', 'дахин орохгүй'),
+    L('internal', '↔', 'Дотоод шилжүүлэг', 'өөрийн данс хооронд — орлого биш'),
+    L('personal', '🙍', 'Хувийн', 'хувийн данс — компанийн орлого биш'),
+    L('notincome', '🚫', 'Орлого биш', 'зээл, хөрөнгө оруулалт'),
+    L('linked', '🎪', 'Захиалгад холбогдоно', 'төлбөрийн баримтаар автоматаар'),
+    L('other', '📦', 'Бусад орлого', ''),
+    L('open', '🔓', 'Хаагдаагүй', 'аль захиалгынх нь тодорхойгүй — «Орлого тулгах»-аас холбоно'),
+  ] };
+  const il = k => inc.lines.find(x => x.k === k);
+  (incomes || []).forEach(x => {
+    const amt = Number(x && x.amount) || 0;
+    add(inc.total, x, amt);
+    const st = String((x && x.status) || 'open');
+    const k = have.has(String(x && x.fp)) ? 'dup'
+      : (st === 'order' || st === 'nomaad' || st === 'catering') ? 'linked'
+      : il(st) ? st : 'open';
+    add(il(k), x, amt);
+    if (k === 'linked' || k === 'other' || k === 'open') add(inc.net, x, amt);
+  });
+  // ── ЗАРЛАГА ──
+  const exp = { total: { n: 0, sum: 0 }, net: { n: 0, sum: 0 }, lines: [
+    L('dup', '✓', 'Өмнө орсон', 'дахин орохгүй'),
+    L('drop', '↔', 'Зардал биш', 'дотоод шилжүүлэг г.м. — шалтгааныг доор'),
+    L('personal', '🙍', 'Хувийн', 'хувийн данснаас — «компанийн» гэж сонгоогүй'),
+    L('fee', '🏦', 'Банкны шимтгэл', 'автоматаар зардал болно'),
+    L('salary', '👤', 'Цалин', 'ажилтанд автоматаар холбогдоно'),
+    L('order', '🎪', 'Барьцаа буцаалт / буулгалт', 'захиалгад автоматаар холбогдоно'),
+    L('classify', '🏷', 'Ангилуулна', 'картын эзэн эсвэл танд — ямар зардал болохыг сонгоно'),
+  ] };
+  const el = k => exp.lines.find(x => x.k === k);
+  (dropped || []).forEach(x => { if (!(Number(x && x.debit) > 0)) return; add(exp.total, x, x.debit); add(el('drop'), x, x.debit); });
+  (rows || []).forEach(r => {
+    const amt = Number(r && r.debit) || 0;
+    add(exp.total, r, amt);
+    const k = r.done ? 'dup' : (r.personal && !r.biz) ? 'personal' : r.fee ? 'fee'
+      : (r.salaryEmp || r.hourlyEmp) ? 'salary' : (r.depMatch || r.cmpMatch) ? 'order' : 'classify';
+    add(el(k), r, amt);
+    if (k !== 'dup' && k !== 'personal') add(exp.net, r, amt);
+  });
+  return { inc, exp };
+}
 function dropReasonGroups(list) {
   const by = new Map();
   (list || []).forEach(x => {
@@ -7608,7 +7662,6 @@ async function openStatementClassifyModal() {
     </label>
     <div id="sc-srcaccts"></div>
     <div id="sc-income"></div>
-    <div id="sc-dropped"></div>
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn" id="sc-cancel">Хаах</button>
@@ -7621,7 +7674,7 @@ async function openStatementClassifyModal() {
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save'), undoBtn = modal.querySelector('#sc-undo');
-  const srcAcctsEl = modal.querySelector('#sc-srcaccts'), droppedEl = modal.querySelector('#sc-dropped');
+  const srcAcctsEl = modal.querySelector('#sc-srcaccts');
   const incomeEl = modal.querySelector('#sc-income');
   /* ⭐ НЭГ ИМПОРТ = ОРЛОГО + ЗАРДАЛ (2026-10-05, CEO: «хуулга оруулахаар орлого
      зарлага хоёулаа ордог баймаар байна»). Өмнө нь энэ цонх зөвхөн зардлыг
@@ -7631,32 +7684,33 @@ async function openStatementClassifyModal() {
      (хадгалах үеийн ИЖИЛ функц) — дэлгэц ба бодит бичилт зөрөхгүй. */
   let incomePrev = [];
   const renderIncome = () => {
-    const inc = incomePrev;
-    if (!inc.length) { incomeEl.innerHTML = ''; return; }
-    const sum = a => a.reduce((t, x) => t + (Number(x.amount) || 0), 0);
-    const by = st => inc.filter(x => x.status === st);
-    const linked = inc.filter(x => x.status === 'order' || x.status === 'nomaad' || x.status === 'catering');
-    const open = by('open'), side = inc.filter(x => x.status === 'internal' || x.status === 'personal');
-    incomeEl.innerHTML = `<div class="sc-inc">
-      <div class="sc-inc-h">💰 Орлого · <b>${inc.length}</b> мөр · <b>${fmtMoney(sum(inc))}</b></div>
-      <div class="sc-inc-r">${linked.length ? `<span class="sc-inc-ok">✓ ${linked.length} захиалгад холбогдоно · ${fmtMoney(sum(linked))}</span>` : ''}
-        ${open.length ? `<span class="sc-inc-open">🔓 ${open.length} хаагдаагүй · ${fmtMoney(sum(open))}</span>` : ''}
-        ${side.length ? `<span class="sc-inc-mut">↔ ${side.length} дотоод/хувийн · ${fmtMoney(sum(side))}</span>` : ''}</div>
-      ${open.length ? '<div class="sc-inc-n">Хаагдаагүй мөрийг оруулсны дараа «Орлого тулгах»-аас захиалгад холбоно.</div>' : ''}
+    if (!incomePrev.length && !rows.length && !dropped.length) { incomeEl.innerHTML = ''; return; }
+    const have = new Set((state.bankIncome || []).map(x => String(x.fp)));
+    const fs = stmtFlowSummary(rows, dropped, incomePrev, have);
+    // «Ангилуулна» — хэн ангилахыг ил хэлнэ (картын эзэд / та)
+    const _cls = rows.filter(r => !r.done && !(r.personal && !r.biz) && !r.fee && !r.salaryEmp && !r.hourlyEmp && !r.depMatch && !r.cmpMatch);
+    const _mine = _cls.filter(r => routeOwnerOf(r) === state.me).length;
+    const _cl = fs.exp.lines.find(x => x.k === 'classify');
+    if (_cl && _cls.length) _cl.why = `картын эзэд ${_cls.length - _mine}${_mine ? ` · танд ${_mine}` : ''} — ямар зардал болохыг сонгоно`;
+    const ln = (x, extra) => (!x.n ? '' : `<div class="sc-fl"><span class="sc-fl-l">${x.icon} ${escapeHtml(x.label)}${x.why ? `<small>${escapeHtml(x.why)}</small>` : ''}</span>`
+      + `<span class="sc-fl-n">${x.n}</span><span class="sc-fl-v">${fmtMoney(x.sum)}</span></div>${extra || ''}`);
+    // Зардал болоогүй мөрийн ШАЛТГААН — «зардал биш» мөрийн доор эвхмэл
+    /* ⚠ Мөр бүр ДАНСТАЙГАА — «өөрийн данс» гэж хасагдсаныг хүн нүдээр батлах ганц зам
+       (2026-09-11: 38сая хасагдсаныг шалгах аргагүй байв). */
+    const dropDet = dropped.length ? `<details class="sc-fl-det"><summary>Шалтгааныг харах</summary>${dropReasonGroups(dropped).map(g =>
+      `<details class="stmt-drop-g"><summary>${escapeHtml(g.why)} · <b>${g.rows.length}</b> · <b>${fmtMoney(g.sum)}</b></summary>${g.rows.map(x =>
+        `<div class="stmt-drop-row"><span>${escapeHtml(String(x.date || '—'))} · ${escapeHtml(String(x.memo || '—'))}</span><b>${fmtMoney(Number(x.debit) || 0)}</b><i>${escapeHtml(srcAcctLabel(x.acct) || '')}</i></div>`).join('')}</details>`).join('')}</details>` : '';
+    const block = (icon, title, f, netLabel, extraFor) => `<div class="sc-flow">
+      <div class="sc-fl sc-fl-h"><span class="sc-fl-l">${icon} ${title}</span><span class="sc-fl-n">${f.total.n}</span><span class="sc-fl-v">${fmtMoney(f.total.sum)}</span></div>
+      ${f.lines.map(x => ln(x, extraFor ? extraFor(x) : '')).join('')}
+      <div class="sc-fl sc-fl-net"><span class="sc-fl-l">= ${netLabel}</span><span class="sc-fl-n">${f.net.n}</span><span class="sc-fl-v">${fmtMoney(f.net.sum)}</span></div>
+    </div>`;
+    incomeEl.innerHTML = `<div class="sc-flows">
+      ${block('💰', 'Орсон мөнгө', fs.inc, 'Компанийн орлого')}
+      ${block('💸', 'Гарсан мөнгө', fs.exp, 'Шинээр бүртгэгдэх зардал', x => x.k === 'drop' ? dropDet : '')}
     </div>`;
   };
-  // ХАСАГДСАН МӨР — «дутуу орлоо» гэдэг нь хэзээ ч чимээгүй болохгүй. Хуулгад байсан
-  // боловч зардал болоогүй мөр бүрийг шалтгаантай нь энд гаргана.
-  const renderDropped = () => {
-    if (!dropped.length) { droppedEl.innerHTML = ''; return; }
-    const tot = dropped.reduce((a, x) => a + (Number(x.debit) || 0), 0);
-    // Шалтгаан нь БҮЛГИЙН гарчигт байгаа тул мөрөнд давтахгүй — зөвхөн харьцсан данс.
-    const rowHtml = (x) => `<div class="stmt-drop-row"><span>${escapeHtml(String(x.date || '—'))} · ${escapeHtml(String(x.memo || '—'))}</span><b>${fmtMoney(Number(x.debit) || 0)}</b><i>${escapeHtml(srcAcctLabel(x.acct) || '')}</i></div>`;
-    const grpHtml = (g) => `<details class="stmt-drop-g"><summary>${escapeHtml(g.why)} · <b>${g.rows.length}</b> мөр · <b>${fmtMoney(g.sum)}</b></summary>${g.rows.map(rowHtml).join('')}</details>`;
-    droppedEl.innerHTML = `<details class="stmt-drop"><summary>⚠ Зардал болоогүй <b>${dropped.length}</b> мөр · ${fmtMoney(tot)} — шалтгааныг харах</summary>
-      ${dropReasonGroups(dropped).map(grpHtml).join('')}
-      </details>`;
-  };
+  // ХАСАГДСАН МӨР — «зардал болоогүй» мөр бүр шалтгаантайгаа задаргааны «Зардал биш» мөрөнд (`renderIncome`).
   // Бүртгэлгүй эх данс (манай хуулгын данс) — нэг товчоор Данс&Карт-д бүртгэнэ → зардал дээр банкны нэр гарна.
   const renderSrcAccts = () => {
     const srcs = [...new Set(rows.map(r => _acctDigits(r.src)).filter(Boolean))].filter(d => !_acctBySuffix(d));
@@ -7681,6 +7735,7 @@ async function openStatementClassifyModal() {
   // Мөр бүрийн ангилах эзэн: цалин→ажилтан, эс бол эх сурвалжийн эзэн (карт/данс), эс бол CEO
   const routeOwnerOf = (r) => r.salaryEmp ? r.salaryEmp : (ownerOf(srcKeyOf(r)) || state.me);
   const render = () => {
+    renderIncome();   // задаргаа мөрийн төлөвийг дагана (хувийн/компанийн сонголт, хадгалсны дараа «өмнө орсон»)
     // ХУВИЙН данснаас гарсан мөр «компанийн» гэж сонгогдтол зардал болохгүй — тоололтоос ч хасна.
     const prsnRows = rows.filter(r => !r.done && r.personal);
     const live = rows.filter(r => !r.done && !(r.personal && !r.biz));
@@ -7713,7 +7768,8 @@ async function openStatementClassifyModal() {
     const noName = stmtQueue.filter(q => stmtNoPayerNames(q.parsed) > 0);
     const nameBanner = noName.length ? `<div class="stmt-warn">🏷 <b>${noName.map(q => escapeHtml(q.fileName)).join(', ')}</b> — харилцагчийн <b>нэрний багана байхгүй</b> хэлбэр. Дүн, тэнцэл зөв боловч орлогын мөр «хэн төлсөн» нь хоосон орно. Банкнаас <b>нэртэй</b> хуулгаа дахин татаж оруулбал тулгалт хөнгөн болно.</div>` : '';
     const warnBanner = prsnBanner + salBanner + nameBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
-    const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 сарын цалин ${nSal}` : ''}${nHrl ? ` · ⏱ цагийн цалин ${nHrl}` : ''}${nFee ? ` · 🏦 шимтгэл ${nFee} (авто)` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
+    // ⛔ Тоолол нь задаргаанд (`renderIncome`) — жагсаалтын толгойд ДАВТАХГҮЙ
+    const head = warnBanner;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
       const srcTag = r.cardL4 ? ('карт ••' + r.cardL4) : ('данс ' + (r.account || '—'));
@@ -7765,6 +7821,7 @@ async function openStatementClassifyModal() {
          118 мөр давхарласан). Хадгалах үед дахин шалгагдана — энэ нь урьдчилсан
          дохио. Офлайн бол кэшээр үргэлжилнэ. */
       try { await loadFinanceRequests(); } catch (e) { /* офлайн */ }
+      try { await loadBankIncome(true); } catch (e) { /* офлайн — «өмнө орсон» орлого тоологдохгүй */ }
       const imp = importedFpCounts(); const occSeen = new Map();
       const own = ownAcctSet(); let skippedInternal = 0;
       for (const f of files) {
@@ -7839,10 +7896,10 @@ async function openStatementClassifyModal() {
       const seen = new Set(); sources = [];
       rows.forEach(r => { const k = srcKeyOf(r); if (seen.has(k)) return; seen.add(k); sources.push(r.cardL4 ? { key: k, type: 'card', l4: r.cardL4 } : { key: k, type: 'acct', acct: r.src }); });
       if (!rows.length && !skippedInternal && !incomePrev.length) throw new Error(parseWarn.length ? parseWarn.join(' | ') : 'Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
-      status.innerHTML = `✓ ${files.length} хуулга · ${incomePrev.length} орлого · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span class="sc-muted">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`
+      status.innerHTML = `✓ ${files.length} хуулга уншигдлаа — задаргааг доор харна уу`
         + (parseWarn.length ? `<div class="sc-warn">⚠ ${escapeHtml(parseWarn.join(' | '))}</div>` : '');
       status.style.color = 'var(--ok)';
-      renderSrcAccts(); renderIncome(); renderDropped(); render(); saveBtn.style.display = '';
+      renderSrcAccts(); render(); saveBtn.style.display = '';
       undoBtn.hidden = !rows.some(r => r.done);   // энэ хуулгаас орсон зардал байвал буцаах боломж
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   };

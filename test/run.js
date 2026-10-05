@@ -12018,6 +12018,44 @@ function testDropGroups() {
 }
 testDropGroups();
 
+// ═══ ХУУЛГЫН ЗАДАРГАА — орлого ба зарлага ИЖИЛ бүтэцтэй (2026-10-05, CEO) ═══
+// «Нийт орсон орлого, дотоод гээд зардал мөн яг ижил тайлбартай ойлгомжтой.»
+function testStmtFlowSummary() {
+  need(['stmtFlowSummary']);
+  const inc = [
+    { fp: 'i1', amount: 20000000, status: 'internal' }, { fp: 'i2', amount: 8000000, status: 'internal' },
+    { fp: 'i3', amount: 500000, status: 'order' }, { fp: 'i4', amount: 300000, status: 'open' },
+    { fp: 'i5', amount: 100000, status: 'open' },   // өмнө орсон
+  ];
+  const rows = [
+    { debit: 1000, done: true }, { debit: 200, fee: true }, { debit: 900000, salaryEmp: 'k' },
+    { debit: 50000, personal: true, biz: false }, { debit: 70000, personal: true, biz: true },
+    { debit: 30000, depMatch: { id: 1 } }, { debit: 134300 },
+  ];
+  const dropped = [{ debit: 3300000, why: 'дотоод шилжүүлэг (өөрийн данс)' }, { credit: 5, why: 'x' }];
+  const f = F.stmtFlowSummary(rows, dropped, inc, new Set(['i5']));
+  const L = (side, k) => f[side].lines.find(x => x.k === k);
+  // Орлого: нийт = бүх ирсэн мөнгө; компанийн = холбогдох + хаагдаагүй (дотоод/өмнө орсон хасагдана)
+  eq(f.inc.total.sum, 28900000, 'задаргаа: орлогын нийт = бүх ирсэн мөнгө');
+  eq(L('inc', 'internal').sum, 28000000, 'задаргаа: дотоод шилжүүлэг тусдаа');
+  eq(L('inc', 'dup').n, 1, 'задаргаа: өмнө орсон орлого давхар тоологдохгүй');
+  eq(f.inc.net.sum, 800000, 'задаргаа: компанийн орлого = холбогдох 500,000 + хаагдаагүй 300,000');
+  // Зарлага: нийт = уншсан бүх зарлага (зардал биш мөр ч); шинэ зардал = өмнө орсон, хувийн, зардал биш хасагдана
+  eq(f.exp.total.n, 8, 'задаргаа: зарлагын нийт = мөр 7 + зардал биш 1 (орлогын хасагдсан мөр тоологдохгүй)');
+  eq(L('exp', 'drop').sum, 3300000, 'задаргаа: зардал биш (дотоод шилжүүлэг) тусдаа');
+  eq(L('exp', 'personal').n, 1, 'задаргаа: «компанийн» гэж сонгоогүй хувийн мөр тусдаа');
+  eq(L('exp', 'classify').n, 2, 'задаргаа: компанийн гэж сонгосон хувийн мөр ангилалд орно');
+  eq(f.exp.net.sum, 200 + 900000 + 70000 + 30000 + 134300, 'задаргаа: шинээр бүртгэгдэх = шимтгэл + цалин + барьцаа + ангилах');
+  // ИНВАРИАНТ: «үүнээс» мөрүүдийн нийлбэр = нийт (хоёр талд ч)
+  ['inc', 'exp'].forEach(sd => eq(f[sd].lines.reduce((t, x) => t + x.sum, 0), f[sd].total.sum, `ИНВАРИАНТ: ${sd} — мөрүүдийн нийлбэр = нийт`));
+  // Дэлгэц: нэг газар (жагсаалтын толгойд тоолол ДАВТАХГҮЙ)
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  ok(!/💳 Эзэн рүү <b/.test(src), 'scan: жагсаалтын толгойд тоолол давтагдахгүй');
+  ok(!/const renderDropped = /.test(src), 'scan: «зардал болоогүй» тусдаа хайрцаг алга (задаргаанд)');
+  ok(/stmtFlowSummary\(rows, dropped, incomePrev, have\)/.test(src), 'scan: хуулга оруулах цонх задаргааг харуулна');
+}
+testStmtFlowSummary();
+
 // ═══ ҮЛДЭГДЭЛ ЯАЖ УНШИГДАХ ВЭ — БАНК БҮР ӨӨР (2026-09-11) ════════════════════
 // Голомт үлдэгдлээ ШОШГОТОЙ мөрд, ХААН БАГАНА болгон бичдэг. Fixture нь амьд
 // файлын бүтцээс (Deposit Account Statement / ДАНСНЫ ХУУЛГА) авсан.

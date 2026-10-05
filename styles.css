@@ -5079,13 +5079,20 @@ details.recon-fold > summary { cursor: pointer; list-style: none; }
 details.recon-fold > summary::-webkit-details-marker { display: none; }
 details.recon-fold > summary::before { content: '▸'; color: var(--muted); }
 details.recon-fold[open] > summary::before { content: '▾'; }
-.sc-inc { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); background: var(--panel); }
-.sc-inc-h { font-size: var(--fs-md); }
-.sc-inc-r { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); font-size: var(--fs-sm); margin-top: var(--space-1); }
-.sc-inc-ok { color: var(--ok); }
-.sc-inc-open { color: var(--warn); }
-.sc-inc-mut { color: var(--muted); }
-.sc-inc-n { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
+.sc-flows { display: grid; gap: var(--space-3); margin-bottom: var(--space-3); }
+.sc-flow { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); overflow: hidden; }
+.sc-fl { display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-2); align-items: baseline;
+  padding: var(--space-1) var(--space-3); font-size: var(--fs-sm); }
+.sc-fl-l small { display: block; color: var(--muted); font-size: var(--fs-xs); }
+.sc-fl-n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.sc-fl-v { font-variant-numeric: tabular-nums; text-align: right; }
+.sc-fl-h { font-weight: 800; font-size: var(--fs-md); background: var(--panel-hover); padding: var(--space-2) var(--space-3); }
+.sc-fl-h .sc-fl-n { color: var(--text); }
+.sc-fl-net { font-weight: 800; border-top: 1px solid var(--border); padding: var(--space-2) var(--space-3); }
+.sc-fl-net .sc-fl-n { color: var(--text); }
+.sc-fl-det { padding: 0 var(--space-3) var(--space-1) var(--space-6); font-size: var(--fs-xs); color: var(--muted); }
+.sc-fl-det > summary { cursor: pointer; }
+.sc-fl-g { padding: 2px 0; }
 .pm-hint { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
 
 /* ─── NOMAAD захиалга — camp/багц бүлэглэл + эвхэгддэг карт ─── */

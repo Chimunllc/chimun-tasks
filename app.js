@@ -39113,6 +39113,7 @@ function renderDashboard() {
   const topPerformers = stageTopPerformers(state.appOrders || [], topYm, 5);
 
   // 8) Дундаж дуусгах хугацаа (created → completed_at, сүүлийн 30 хоног)
+  const completionCutoff = Date.now() - 30 * dayMs;
   const durations = [];
   for (const t of tasks) {
     if (t.status !== 'done') continue;

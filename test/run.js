@@ -16395,6 +16395,13 @@ async function swFetchTests() {
   ok(!top(ords, '2026-10', 5).some(r => r.key === 'A'), 'шилдэг: өөр сарын дамжлага орохгүй');
   eq(top(ords, '2026-09', 1).length, 1, 'шилдэг: тоо хязгаарлагдана');
   eq(top([], '2026-09', 5).length, 0, 'шилдэг: дамжлагагүй сард хоосон');
+  // ⛔ Тоймыг ҮНЭХЭЭР зурж шалгана — хассан хувьсагч өөр газар үлдвэл дэлгэц бүхэлдээ унана
+  vm.runInContext('state.appOrders = ' + JSON.stringify(ords) + '; state.dashTopYm = "2026-09";', sandbox);
+  let html = '', err = '';
+  try { html = vm.runInContext('renderDashboard()', sandbox); } catch (e) { err = String(e && e.message || e); }
+  eq(err, '', 'Тойм: зурахад алдаа гарахгүй');
+  ok(/dash-top-ym/.test(html) && /dash-top-n/.test(html), 'Тойм: шилдэг гүйцэтгэгчийн карт оноотой зурагдана');
+  vm.runInContext('state.appOrders = undefined; state.dashTopYm = undefined;', sandbox);
 }
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');

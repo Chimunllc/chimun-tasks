@@ -26977,6 +26977,14 @@ function openStageAdvanceModal(oid, to) {
   // Тэмдэглэлийн хэсэг нь АСУУДАЛ ГАРЧ БОЛОХ дамжлагад л (тоо тулгах, алдаа
   // бүртгэх). Зураг хийгээд дарах дамжлагад хоосон талбар нэмэх нь хог.
   const _needNoteSec = _isReceive || _defTargets.length > 0;
+  /* ⏰ ТОВЛОСНООС ХОЖУУ — зөвхөн ҮЙЛЧЛҮҮЛЭГЧТЭЙ харьцах мөчид (өөрөө ирж
+     авах/буцаах). Хүргэлтэд хоцролт нь МАНАЙ буруу тул төлбөр нэмэхгүй. */
+  const _ctxNow = orderPipelineCtx(o);
+  const _lateAsk = !_ctxNow.dlv && (act.key === 'dispatch' || act.key === 'received');
+  const _rt = _lateAsk ? parseOrderTimes(o.note) : null;
+  const _bookedH = _rt ? (act.key === 'dispatch' ? _rt.sh : _rt.eh) : null;
+  const _nowH = (new Date().getUTCHours() + 8) % 24;   // УБ = UTC+8
+  const _late = (_bookedH !== null && _nowH > _bookedH) ? lateOffHoursFee(_bookedH, _nowH) : { hours: 0, fee: 0 };
   /* ЭНЭ ЗАХИАЛГАД аль хэдийн ажилласан хүн ЭХЭНД — 12 нэрийг цагаан
      толгойн дарааллаар гүйлгэж хайх нь ажлын гол саад байв. */
   const _onOrder = new Set();
@@ -27032,6 +27040,11 @@ function openStageAdvanceModal(oid, to) {
           <input class="ui-raw sa-def-in" type="number" inputmode="numeric" min="0" step="1" data-def="${i}" value="0"><span class="sa-def-u">ш</span>
         </div></div>`).join('')}
       <div class="sa-def-n ok" id="sa-def-note">✓ Алдаагүй</div>`) : ''}
+    ${_late.fee > 0 ? _sec('⏰', 'Товлосноос хожуу', false,
+      `Товлосон ${_pad2(_bookedH)}:00 · одоо ${_pad2(_nowH)}:00 — ${_nowH - _bookedH} цаг хожуу. Ажлын бус цагт ${_late.hours} цаг нэмэгдсэн.`, `
+      <label class="sa-late"><input type="checkbox" id="sa-late" class="ui-raw" checked>
+        <span>Нэмэлт <b>${fmtMoney(_late.fee)}</b> захиалгын дүнд нэмэх</span></label>
+      <div class="sa-sec-hint">Манай буруугаас хүлээсэн бол чагтыг аваарай — дүн нэмэгдэхгүй.</div>`) : ''}
     ${_needNoteSec ? _sec('📝', 'Тэмдэглэл', false, 'Дутуу / эвдэрсэн бараа байвал ЯАГААД гэдгийг энд бич.', `
       <textarea id="sa-comment" class="ui-raw sa-note" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)"></textarea>`) : ''}
     ${_helpStaff.length ? _sec('👥', stageHelpQuestion(act.key), false, 'Хамт ажилласан хүнээ дарж нэмнэ — бонусын 30% тэдэнд хуваагдана.', `
@@ -27249,6 +27262,18 @@ function openStageAdvanceModal(oid, to) {
       }
       try { await loadRepairs(); } catch (_) {}
       showToast(`⚠ ${entry.missing}ш дутуу — нөөцөөс хасаж засварын жагсаалтад нэмлээ`, 'warn', 4500);
+    }
+    /* ⏰ Хожуу ирснийх — ЗАХИАЛГЫН ДҮН дээр нэмнэ. ⚠ Шалтгаан нь note-д
+       `⟦LATE⟧` токеноор үлдэнэ: хожим «яагаад дүн өөрчлөгдсөн» гэдэгт
+       хариулна. Хаасан сарынх бол `patchOrderFields` өөрөө татгалзана. */
+    if (_late.fee > 0 && (modal.querySelector('#sa-late') || {}).checked) {
+      const _newTotal = (Number(o.total_mnt) || 0) + _late.fee;
+      const _note = `${String(o.note || '').trim()} ⟦LATE|${_bookedH}|${_nowH}|${_late.fee}⟧`.trim();
+      try {
+        await patchOrderFields(o, { total_mnt: _newTotal, note: _note });
+        o.total_mnt = _newTotal; o.note = _note;
+        showToast(`⏰ ${_late.hours} цагийн нэмэлт ${fmtMoney(_late.fee)} захиалгад нэмэгдлээ`, 'warn', 4500);
+      } catch (e) { showToast('Нэмэлт төлбөр бичигдсэнгүй: ' + e.message, 'error', 5000); }
     }
     await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${(BQ_STATUS[to] || {}).label || act.label} ✓` });
     try { stagePenaltyNotify({ ...o, stage_meta: sm2 }, act.key, entry); } catch (_) { /* мэдэгдэл бүтэлгүйтсэн нь хадгалалтыг эвдэхгүй */ }
@@ -27625,7 +27650,35 @@ function offHoursSpan(h) {
 // ⚠ Нэр нь «Count» хэвээр ч утга нь ЦАГИЙН ТОО болсон — хоёр цэгийн нийлбэр
 function orderOffHoursCount(sh, eh) { return offHoursSpan(sh) + offHoursSpan(eh); }
 // Захиалгын note-оос (⟦RT⟧ цаг) ажлын бус цагийн төлбөрийг тооцоолно
-function orderOffHoursFee(o) { const t = parseOrderTimes(o && o.note); return t ? orderOffHoursCount(t.sh, t.eh) * tariffOffhoursFee() : 0; }
+/* ─── ТОВЛОСНООС ХОЖУУ ИРВЭЛ (2026-10-05, CEO) ────────────────────────────
+   Үйлчлүүлэгч 20:00-д ирнэ гээд 22:00-д ирвэл ажилтан 2 цаг илүү хүлээдэг ч
+   төлбөр нь захиалга үүсгэх үеийн цагаар тогтоогдсон хэвээр байв.
+   ⛔ ЗӨВХӨН НЭМЭГДСЭН ажлын бус цагийг тооцно (бүтэн цагийг БИШ) — товлосон
+     цагийнх нь аль хэдийн захиалгад орсон.
+   ⛔ АВТОМАТААР МӨНГӨ НЭМЭХГҮЙ — товч дарсан цаг нь ажил хийсэн цаг БИШ
+     (дамжлагын 30% багцаар дарагддаг). Хүн шийднэ; систем зөвхөн сануулна.
+   ⚠ ЦЭВЭР функц — тестлэгдэнэ. */
+function lateOffHoursFee(bookedH, actualH, rate) {
+  const b = offHoursSpan(bookedH), a2 = offHoursSpan(actualH);
+  const extra = Math.max(0, a2 - b);
+  const r = (rate === undefined || rate === null) ? tariffOffhoursFee() : (Number(rate) || 0);
+  return { hours: extra, fee: Math.round(extra * r) };
+}
+/* ⛔ ХОЖУУ ИРСНИЙ НЭМЭЛТ нь ЭНД нэмэгдэнэ (2026-10-05) — `total_mnt`-ыг
+   дангаар нь өсгөвөл `orderMoneyBreakdown` зөрүүг «хөнгөлөлт буурсан» гэж
+   уншиж задаргаа нийлбэртэйгээ таарахаа болино (0-ээр тагласан). Ажлын бус
+   цагийн мөрөнд багтаах нь УТГААРАА ч зөв — энэ нь яг тэр төлбөр. */
+const _LATE_RE = /⟦LATE\|(\d+)\|(\d+)\|(\d+)⟧/g;
+function orderLateFee(note) {
+  let m, sum = 0; _LATE_RE.lastIndex = 0;
+  while ((m = _LATE_RE.exec(String(note || '')))) sum += Number(m[3]) || 0;
+  return sum;
+}
+function orderOffHoursFee(o) {
+  const t = parseOrderTimes(o && o.note);
+  const base = t ? orderOffHoursCount(t.sh, t.eh) * tariffOffhoursFee() : 0;
+  return base + orderLateFee(o && o.note);
+}
 function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV, CX г.м.)
 // ⚠ ДУНДЫН МӨР — захиалгын формын ӨӨРИЙН эзэмшдэг токен ЗӨВХӨН эдгээр (2026-09-03).
 // Бусад бүх токен (PAY/RF/DMG/BRK/CX/CI/SL/SRC…) өөр урсгалынх — засварт ХАДГАЛАГДАНА.

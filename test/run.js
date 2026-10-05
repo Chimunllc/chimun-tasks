@@ -86,7 +86,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
@@ -15825,6 +15825,29 @@ async function swFetchTests() {
   st.appConfig = old;
 }
 
+// ═══ ТОВЛОСНООС ХОЖУУ ИРВЭЛ (2026-10-05, CEO) ══════════════════════════
+{
+  const L = F.lateOffHoursFee;
+  /* ⛔ ЗӨВХӨН НЭМЭГДСЭН ажлын бус цагийг тооцно — товлосон цагийнх нь аль
+     хэдийн захиалгад орсон. 20:00 товлоод 22:00-д ирвэл 2 цаг, 4 цаг БИШ. */
+  eq(L(20, 22, 10000).hours, 2, 'хожуу: 20→22 = 2 цаг нэмэгдсэн');
+  eq(L(20, 22, 10000).fee, 20000, 'хожуу: 2 цаг × 10,000');
+  eq(L(16, 19, 10000).hours, 1, 'хожуу: 16→19 = ажлын бус 1 цаг (18-аас хойш)');
+  eq(L(16, 17, 10000).fee, 0, 'хожуу: ажлын цагт хоцорсон нь төлбөргүй');
+  eq(L(20, 20, 10000).fee, 0, 'хожуу: цагтаа ирсэн = 0');
+  // ⚠ Эрт ирсэн нь ХАСАГДАХГҮЙ — сөрөг төлбөр гаргахгүй
+  eq(L(22, 20, 10000).fee, 0, 'хожуу: эрт ирсэн бол 0 (сөрөг болохгүй)');
+  eq(L(7, 9, 10000).fee, 0, 'хожуу: өглөө эртээс ажлын цаг руу = 0');
+  eq(L(21, 23, 10000).fee, 20000, 'хожуу: шөнө 21→23 = 2 цаг');
+  /* ⛔ Нэмэлт нь АЖЛЫН БУС ЦАГИЙН мөрөнд багтана — `total_mnt`-ыг дангаар нь
+     өсгөвөл задаргаа нийлбэртэйгээ таарахаа болино. */
+  eq(F.orderLateFee('⟦RT|20|20⟧ ⟦LATE|20|22|20000⟧'), 20000, 'хожуу: токеноос дүн уншигдана');
+  eq(F.orderLateFee('⟦LATE|20|22|20000⟧ ⟦LATE|22|23|10000⟧'), 30000, 'хожуу: хоёр удаа хоцорвол нийлнэ');
+  eq(F.orderLateFee('тэмдэглэл'), 0, 'хожуу: токенгүй бол 0');
+  eq(F.orderOffHoursFee({ note: '⟦RT|20|18⟧ ⟦LATE|20|22|20000⟧' }), 2 * 10000 + 20000,
+     'хожуу: ажлын бус цагийн мөрөнд багтана (товлосон 2 цаг + нэмэлт)');
+}
+
 // ═══ SCAN: үнэлгээ БҮГД, нэг мөрөөр (2026-10-05, CEO) ═════════════════
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
@@ -15987,6 +16010,11 @@ async function swFetchTests() {
   /* ⛔ Тоолох дамжлагад хамтрагч асуухгүй — ачааг өмнөх/дараах дамжлагад
      хийдэг тул нэг ачилт хоёр удаа шагнагдаж байв (9 сард 51-ийн 30). */
   ok(/_helpAsk = stageEvidence\(act\.key\) !== 'count'/.test(md), 'scan: тоолох дамжлагад хамтрагч асуухгүй');
+  /* ⛔ Хожуу ирснийг АВТОМАТААР бичихгүй — чагт шалгагдана (товч дарсан цаг
+     нь ажил хийсэн цаг БИШ). ⛔ Зөвхөн ҮЙЛЧЛҮҮЛЭГЧТЭЙ харьцах мөчид. */
+  ok(/#sa-late'\) \|\| \{\}\)\.checked/.test(md), 'scan: нэмэлт төлбөр чагтаар баталгаажна');
+  ok(/_lateAsk = !_ctxNow\.dlv/.test(md), 'scan: хүргэлтэд хоцролтын төлбөр нэмэхгүй');
+  ok(/⟦LATE\|/.test(md), 'scan: шалтгаан note-д токеноор үлдэнэ');
   /* ⛔ Асуулт бүр ДУГААРТАЙ хэсэг — шинэ блокийг зураасаар наавал
      ажилтан хэдэн зүйл бөглөхөө дахин мэдэхгүй болно (2026-10-04 CEO). */
   ok((md.match(/_sec\('/g) || []).length >= 5, 'scan: цонхны блокууд _sec()-ээр угсарна');

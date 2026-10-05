@@ -10639,6 +10639,7 @@ function attachOrdersHandlers() {
     b2.dataset.busy = '1'; setTimeout(() => { b2.dataset.busy = ''; }, 1500);
     claimStageWork(b2.dataset.claim, b2.dataset.claimK);
   }));
+  attachClaimHandlers();   // ахлагч захиалгын карт дээрээс ч батална
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); e.preventDefault();
     if (b.dataset.busy === '1') return;                                  // давхар дарахаас хамгаалах
@@ -14053,11 +14054,15 @@ function renderMyAttend() {
         <button class="btn sp-cfg-btn" data-pipeline-map>📊 Урсгал харах</button>
       </div>`;
     })()}
+    ${(() => { const mine = pendingStageClaims(state.appOrders || [], personKey(me) || state.me);
+      return claimBoxHtml(mine, `✋ ${mine.length} хүн таны ахалсан ажилд оролцсон гэж мэдүүлсэн`,
+        'Үнэхээр хамт ажилласан бол «✓ Тийм» — тэр дамжлагын бонус хуваагдана. Ажиллаагүй бол ✕.', false); })()}
     <button class="ui-raw myreq-new" id="my-att-req">🙋 Бүртгүүлж амжаагүй өдөр мэдүүлэх</button>
     ${dayKeys.length || otherReqs ? `<div style="font-size:13px;font-weight:700;color:var(--muted);margin:6px 2px 4px;">Энэ сарын ирц</div><div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 12px;">${dayList}${otherReqs}</div>` : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">Энэ сард ирц бүртгэгдээгүй байна.</div>'}
   </div>`;
 }
 function attachMyAttendHandlers() {
+  attachClaimHandlers();   // ахлагч мэдүүлгийг энд батална
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
@@ -17951,17 +17956,12 @@ function renderSalary() {
   const spFoot = T.sp
     ? `<div class="sp-foot">📦 Дамжлагын бонус нийт <b>${fmtMoney(T.sp)}</b> · ${(T.spPts || 0).toFixed(1)} оноо × ${fmtMoney(stagePointRate())} — нийт олгоход ОРСОН.${spCfgBtn}</div>`
     : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
-  /* ✋ Хүлээгдэж буй мэдүүлэг — ЦАЛИН хардаг хүнд ИЛ. Хамтрагчаа нуух нүхийг
-     барих цорын ганц хүч нь орхигдсон хүн өөрөө; түүний дуу хоосон өрөөнд
-     биш, цалин баталдаг хүний нүдэн дээр гарна. */
-  const _claims = (can('salary.edit') || state.isCEO) ? pendingStageClaims(state.appOrders || []) : [];
-  const claimBox = _claims.length ? `<div class="clm-box">
-    <div class="clm-t">✋ ${_claims.length} хүн «би ч оролцсон» гэж мэдүүлсэн</div>
-    ${_claims.slice(0, 20).map(c => `<div class="clm-row">
-      <span class="clm-l"><b>${escapeHtml(memberName(c.who) || c.who)}</b> — ${escapeHtml(stageHistLabel(c.key))}<span class="clm-o">#${escapeHtml(String(c.number ?? ''))} · ${escapeHtml(String(c.at || '').slice(0, 10))}</span></span>
-      <button class="btn clm-no" data-clm-no="${escapeHtml(String(c.oid))}" data-clm-k="${escapeHtml(c.key)}" data-clm-w="${escapeHtml(c.who)}">✕</button>
-      <button class="btn btn-primary clm-ok" data-clm-ok="${escapeHtml(String(c.oid))}" data-clm-k="${escapeHtml(c.key)}" data-clm-w="${escapeHtml(c.who)}">✓ Тийм</button></div>`).join('')}
-    <div class="clm-n">Баталгаажуулбал тэр дамжлагын бонус дахин хуваагдана.</div></div>` : '';
+  /* ✋ Хүлээгдэж буй мэдүүлэг — ахлагч «Миний ирц» дээрээ батална. Энд ЗӨВХӨН
+     CEO-д НӨӨЦ болж харагдана (ахлагч ажлаас гарсан/хариу өгөхгүй үед).
+     ⛔ Цалин хардаг бусад хүнд БҮҮ харуул — тэр ажил дээр байгаагүй. */
+  const _claims = state.isCEO ? pendingStageClaims(state.appOrders || []) : [];
+  const claimBox = claimBoxHtml(_claims, `✋ ${_claims.length} мэдүүлэг ахлагчийн баталгаа хүлээж байна`,
+    'Ахалсан хүн «Миний ирц» дээрээ батална. Удаж байвал та шийдэж болно — бонус дахин хуваагдана.', true);
   return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar + claimBox}${searchBar}
     <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${histOnly ? '' : spFoot}</div>`;
 }
@@ -17981,12 +17981,17 @@ function renderSalary() {
    холбогдоно. ⛔ 2026-10-05 хүртэл зөвхөн «Миний ирц»-д холбогдсон байсан тул
    товч дарахад юу ч болдоггүй байв (scan-тест хаана). */
 function attachClaimHandlers() {
-  document.querySelectorAll('[data-clm-ok]').forEach(b2 => b2.addEventListener('click', () => {
-    b2.disabled = true; resolveStageClaim(b2.dataset.clmOk, b2.dataset.clmK, b2.dataset.clmW, true);
-  }));
-  document.querySelectorAll('[data-clm-no]').forEach(b2 => b2.addEventListener('click', () => {
-    b2.disabled = true; resolveStageClaim(b2.dataset.clmNo, b2.dataset.clmK, b2.dataset.clmW, false);
-  }));
+  // Захиалгын карт, «Миний ирц», цалингийн самбар гурвуулаа дууддаг — нэг товчийг
+  // ХОЁР удаа холбохгүй (давхар PATCH), картын дарах үйлдэлд ч дамжуулахгүй.
+  const bind = (sel, accept) => document.querySelectorAll(sel).forEach(b2 => {
+    if (b2.dataset.clmBound === '1') return; b2.dataset.clmBound = '1';
+    b2.addEventListener('click', (ev) => {
+      ev.stopPropagation(); ev.preventDefault(); b2.disabled = true;
+      resolveStageClaim(accept ? b2.dataset.clmOk : b2.dataset.clmNo, b2.dataset.clmK, b2.dataset.clmW, accept);
+    });
+  });
+  bind('[data-clm-ok]', true);
+  bind('[data-clm-no]', false);
 }
 function attachSalaryHandlers() {
   attachClaimHandlers();
@@ -26891,8 +26896,17 @@ function stageHasPerson(e, key) {
   if (String(e.by || '') === k || String(e.driver || '') === k) return true;
   return (Array.isArray(e.helpers) ? e.helpers : []).map(String).includes(k);
 }
-// Бүх захиалгаас хүлээгдэж буй мэдүүлэг — ЦЭВЭР функц (тестлэгдэнэ)
-function pendingStageClaims(orders) {
+/* ⛔ БАТЛАХ = ТУХАЙН ДАМЖЛАГЫГ АХАЛСАН ХҮН (`e.by`) (2026-10-05, CEO: «ахласан хүн
+   баталдаг нь илүү шударга»). Хэн хамт ажилласныг тэр л мэднэ. CEO нь ахлагч
+   ажлаас гарсан/хариу өгөхгүй үед нөөц болж шийдэж чадна. Цалин хардаг бусад
+   хүн (нярав) батлахгүй — ажил дээр байгаагүй. */
+function claimCanResolve(e, me, isCEO) {
+  if (!e || typeof e !== 'object') return false;
+  return !!isCEO || (!!me && String(e.by || '') === String(me));
+}
+// Бүх захиалгаас хүлээгдэж буй мэдүүлэг — ЦЭВЭР функц (тестлэгдэнэ).
+// `lead` өгвөл ЗӨВХӨН тэр хүний ахалсан дамжлагын мэдүүлэг.
+function pendingStageClaims(orders, lead) {
   const out = [];
   for (const o of (orders || [])) {
     const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : null;
@@ -26900,13 +26914,25 @@ function pendingStageClaims(orders) {
     for (const k of Object.keys(sm)) {
       const e = sm[k];
       if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
+      if (lead && String(e.by || '') !== String(lead)) continue;
       stageClaims(e).forEach(who => {
         if (stageHasPerson(e, who)) return;   // аль хэдийн тоологдсоныг харуулахгүй
-        out.push({ oid: o.id, number: o.number, key: k, who, at: e.at || '' });
+        out.push({ oid: o.id, number: o.number, key: k, who, lead: e.by || '', at: e.at || '' });
       });
     }
   }
   return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+// Батлах хайрцаг — «Миний ирц» (ахлагч) ба цалингийн самбар (CEO нөөц) ИЖИЛ загвар
+function claimBoxHtml(claims, title, note, showLead) {
+  if (!claims || !claims.length) return '';
+  return `<div class="clm-box">
+    <div class="clm-t">${title}</div>
+    ${claims.slice(0, 20).map(c => `<div class="clm-row">
+      <span class="clm-l"><b>${escapeHtml(memberName(c.who) || c.who)}</b> — ${escapeHtml(stageHistLabel(c.key))}<span class="clm-o">#${escapeHtml(String(c.number ?? ''))} · ${escapeHtml(String(c.at || '').slice(0, 10))}${showLead && c.lead ? ` · ахлагч ${escapeHtml(memberName(c.lead) || c.lead)}` : ''}</span></span>
+      <button class="btn clm-no" data-clm-no="${escapeHtml(String(c.oid))}" data-clm-k="${escapeHtml(c.key)}" data-clm-w="${escapeHtml(c.who)}">✕</button>
+      <button class="btn btn-primary clm-ok" data-clm-ok="${escapeHtml(String(c.oid))}" data-clm-k="${escapeHtml(c.key)}" data-clm-w="${escapeHtml(c.who)}">✓ Тийм</button></div>`).join('')}
+    <div class="clm-n">${note}</div></div>`;
 }
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
@@ -26947,8 +26973,10 @@ function stageMetaHtml(o) {
     /* ✋ Мэдүүлэх товч — ЗӨВХӨН өөрөө тоологдоогүй, ачаа зөөдөг дамжлагад.
        Мэдүүлсэн бол «хүлээгдэж буй» гэж ил харагдана (нуугдахгүй). */
     const _cl = stageClaims(e).filter(w => !stageHasPerson(e, w));
+    const _canRes = claimCanResolve(e, state.me, state.isCEO);
     const _clHtml = _cl.length
-      ? `<div class="sm-claim">✋ Мэдүүлсэн: ${escapeHtml(_cl.map(w => memberName(w) || w).join(', '))} <span class="sm-claim-w">— баталгаажаагүй</span></div>` : '';
+      ? `<div class="sm-claim">✋ Мэдүүлсэн: ${escapeHtml(_cl.map(w => memberName(w) || w).join(', '))} <span class="sm-claim-w">— ${_canRes ? 'та батална' : escapeHtml((memberName(e.by) || 'ахлагч') + ' батална')}</span></div>`
+        + (_canRes ? _cl.map(w => `<div class="sm-claim-act"><span>${escapeHtml(memberName(w) || w)} оролцсон уу?</span><button class="btn clm-no" data-clm-no="${escapeHtml(String(o.id))}" data-clm-k="${escapeHtml(k)}" data-clm-w="${escapeHtml(w)}">✕</button><button class="btn btn-primary clm-ok" data-clm-ok="${escapeHtml(String(o.id))}" data-clm-k="${escapeHtml(k)}" data-clm-w="${escapeHtml(w)}">✓ Тийм</button></div>`).join('') : '') : '';
     const _canClaim = STAGE_FEE_STAGES.indexOf(k) >= 0 && state.me && !stageHasPerson(e, state.me)
       && !_cl.includes(String(state.me)) && !e.skipped;
     const _clBtn = _canClaim
@@ -27964,7 +27992,9 @@ async function claimStageWork(oid, key) {
   try {
     await patchOrderFields(o, { stage_meta: next });
     o.stage_meta = next;
-    showToast('Мэдүүлэг илгээгдлээ — захирал баталгаажуулна', 'success', 3000); render();
+    // Ахлагчид мэдэгдэнэ — батлах ажил өөрөө түүнд очно (хэн ч хайж олохгүй)
+    if (e.by) pushBroadcast(String(e.by), { kind: 'orders', title: `✋ #${o.number ?? ''} — ${memberName(state.me) || 'Ажилтан'} оролцсон гэж мэдүүллээ`, body: `${stageHistLabel(key)} · «Миний ирц» дээр батална уу`, url: './' });
+    showToast(`Мэдүүлэг илгээгдлээ — ${memberName(e.by) || 'ахлагч'} батална`, 'success', 3000); render();
   } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); }
 }
 /* Баталгаажуулах/татгалзах — ЗӨВХӨН цалин хардаг хүн (нярав/захирал).
@@ -27974,6 +28004,7 @@ async function resolveStageClaim(oid, key, who, accept) {
   if (!o) return;
   const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
   const e = sm[key]; if (!e || typeof e !== 'object') return;
+  if (!claimCanResolve(e, state.me, state.isCEO)) { showToast(`Зөвхөн ахалсан хүн (${memberName(e.by) || e.by || '—'}) батална`, 'warn', 3500); return; }
   const cl = stageClaims(e).filter(w => String(w) !== String(who));
   const hs = (Array.isArray(e.helpers) ? e.helpers : []).map(String);
   const nextE = Object.assign({}, e, { claims: cl });

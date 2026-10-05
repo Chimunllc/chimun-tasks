@@ -39361,10 +39361,12 @@ function renderDashboard() {
   return `
     <div class="dashboard">
       ${sessionExpiredBannerHtml()}
-      ${reviewBlockHtml(state.appOrders || [])}
+      ${/* ⛔ ДАРААЛАЛ = CEO-гийн шийдвэр (2026-10-05): ① гацсан захиалга ② календарь
+          ③ цагтаа хүрсэн % ④ үнэлгээ (муу нь дээр) ⑤ шилдэг гүйцэтгэгч. Scan-тест хаана. */ ''}
       ${stuckBlockHtml(state.appOrders || [])}
-      ${dispatchBlockHtml(state.appOrders || [])}
       ${canSeeOrderBoard() ? `<div class="dash-card dash-ocal">${ordersCalendarHtml(state.appOrders || [], { compact: true })}</div>` : ''}
+      ${dispatchBlockHtml(state.appOrders || [])}
+      ${reviewBlockHtml(state.appOrders || [])}
       <div class="dashboard-grid">
 
         <!-- Шилдэг гүйцэтгэгч — дамжлагын оноо, сараар -->

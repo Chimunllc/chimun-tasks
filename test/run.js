@@ -16553,6 +16553,17 @@ async function swFetchTests() {
 }
 
 
+// ═══ ТОЙМЫН ДАРААЛАЛ (2026-10-05, CEO) ═════════════════════════════════
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const d = src.slice(src.indexOf('function renderDashboard()'), src.indexOf('function renderDashboard()') + 6000);
+  const at = (k) => d.indexOf(k);
+  const order = ['stuckBlockHtml(', 'ordersCalendarHtml(', 'dispatchBlockHtml(', 'reviewBlockHtml(', 'dash-top'];
+  order.forEach(k => ok(at(k) > 0, `Тойм: ${k} байна`));
+  ok(order.every((k, i) => i === 0 || at(order[i - 1]) < at(k)),
+     'Тойм: гацсан → календарь → цагтаа хүрсэн → үнэлгээ → шилдэг гүйцэтгэгч дараалал');
+}
+
 // ═══ ТОЙМ: ГАЦСАН ЗАХИАЛГА (2026-10-05, CEO) ═══════════════════════════
 // Дараагийн дамжлага эвентийн огнооноосоо хоцорсон захиалга. Тэр өдөртөө
 // дарагдах нь хэвийн, маргаашаас нь л гацсан.

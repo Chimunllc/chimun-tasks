@@ -26583,49 +26583,81 @@ function dispatchDayRows(orders, ym) {
 // Тоймын блок — «цагтаа гарсан уу». ⛔ Үнэлгээний картын ДЭРГЭД байрлана:
 // хоцролт нь муу үнэлгээний ШАЛТГААН тул хоёрыг тусад нь харуулбал хүн
 // холбохгүй. Ажил нь захиалгын карт дээр (🚚 шошго) — энд зөвхөн ХЭМЖҮҮР.
-/* ⛔ САРААР, «сүүлийн 60 хоног» БИШ (2026-10-05, CEO: «тухайн сараа харуулдаг,
-   саруудыг сонгодог, минимал»). Гулсдаг цонх нь Дүн шинжилгээний сарын
-   задаргаатай хэзээ ч таарахгүй (60 хоног ≠ аль ч сар) — карт дарахад өөр тоо
-   гарч хүн төөрнө. Одоо хоёулаа `dispatchStats(…, null, сар)` — ИЖИЛ тоо.
-   ⛔ Хоосон сард КАРТ АЛГА БОЛОХГҮЙ — сар сонгогч ч алга болж өмнөх сар руу
-   буцах зам тасарна. «Хэмжигдсэн хүргэлт алга» гэж хэлнэ.
-   ⚠ Хэмжигдээгүйн тоо ҮЛДЭНЭ (нуувал «100% цагтаа» гэсэн худал дүр зураг) —
-   гэхдээ урт өгүүлбэр биш, нэг жижиг хэсэг, тайлбар нь `title`-д. */
+/* ⛔ САРААР, «сүүлийн 60 хоног» БИШ (2026-10-05, CEO: «тухайн сарын хоцролт
+   ба өмнөх сараас ахисан/муудсаныг харуулдаг график л байхад болно»).
+   Гулсдаг цонх нь Дүн шинжилгээний сарын задаргаатай хэзээ ч таарахгүй
+   (60 хоног ≠ аль ч сар) — карт дарахад өөр тоо гарч хүн төөрнө. Одоо
+   хоёулаа `dispatchStats(…, null, сар)` — ИЖИЛ тоо.
+   ⛔ Сар бүрийн багана ЦӨӨН хүргэлттэй бол (`DSP_THIN_N`-ээс доош) бүдэг —
+   7 сарын «100%» нь 2 хүргэлт; бүтэн өндрөөр зурвал «муудсан» гэсэн худал
+   дүр зураг гарна. Тоо нь `title`-д.
+   ⚠ Баганыг дарахад тэр сар сонгогдоно (тусдаа сар сонгогч БАЙХГҮЙ).
+   ⚠ Хэмжигдээгүйн тоо ҮЛДЭНЭ (нуувал «100% цагтаа» гэсэн худал дүр зураг). */
+const DSP_CHART_MONTHS = 6;
+const DSP_THIN_N = 5;
 function dspMonthLabel(ym, cur) {
   const [y, m] = String(ym || '').split('-');
   return String(cur || '').slice(0, 4) === y ? `${Number(m)} сар` : `${y}-${m}`;
 }
+function dspMonthShift(ym, k) {
+  const [y, m] = String(ym).split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + k, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+// Сүүлийн N сарын цуваа — ЭХНИЙ хэмжигдсэн сараас эхэлнэ (хоосон сараар
+// графикийг дүүргэхгүй). Цэвэр функц — тестлэгдэнэ.
+function dispatchMonthSeries(orders, cur, count) {
+  const out = [];
+  for (let k = (count || DSP_CHART_MONTHS) - 1; k >= 0; k--) {
+    const ym = dspMonthShift(cur, -k);
+    const s = dispatchStats(orders, null, ym);
+    if (!out.length && !s.n && ym !== cur) continue;
+    out.push({ ym, pct: s.pct, n: s.n, late: s.late });
+  }
+  return out;
+}
+const _dspCls = pct => pct === null ? '' : pct >= 90 ? 'ok' : pct >= 70 ? 'warn' : 'bad';
 function dispatchBlockHtml(orders) {
   if (!canSeeOrders()) return '';
   const cur = todayStr().slice(0, 7);
-  const ym = (/^\d{4}-\d{2}$/.test(String(state.dspMonth || '')) && state.dspMonth <= cur) ? state.dspMonth : cur;
+  const series = dispatchMonthSeries(orders, cur);
+  const want = String(state.dspMonth || '');
+  const ym = series.some(m => m.ym === want) ? want : cur;
   const st = dispatchStats(orders, null, ym);
   const unm = st.skipped + st.wild;
-  const cls = st.pct === null ? '' : st.pct >= 90 ? 'ok' : st.pct >= 70 ? 'warn' : 'bad';
+  const cls = _dspCls(st.pct);
   const unmTxt = unm ? `<span class="dsp-unm" title="Эхлэх цаг тэмдэглээгүй эсвэл дамжлагын товч хожуу дарсан">${unm} хэмжигдээгүй</span>` : '';
+  // Өмнөх сартай харьцуулалт — өмнөх сар ХАНГАЛТТАЙ хүргэлттэй үед л
+  // (3 хүргэлттэй сартай харьцуулбал «−24 нэгж» гэсэн дуу чимээ гарна)
+  const prev = series.find(m => m.ym === dspMonthShift(ym, -1));
+  const d = (st.pct !== null && prev && prev.pct !== null && prev.n >= DSP_THIN_N) ? st.pct - prev.pct : null;
+  const delta = d === null ? ''
+    : `<span class="dsp-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '▲ +' : d < 0 ? '▼ −' : '= '}${Math.abs(d)} нэгж · ${escapeHtml(dspMonthLabel(prev.ym, cur))} ${prev.pct}%</span>`;
   const body = st.n
     ? `<div class="dsp-row"><span class="dsp-big ${cls}">${st.pct}%</span>
-        <span class="dsp-meta">${st.late ? `${st.late}/${st.n} хоцорсон · дундаж ${st.avgLate}ц` : `${st.n} хүргэлт · бүгд цагтаа`}${unm ? ' · ' + unmTxt : ''}</span>
-        <span class="dsp-go" aria-hidden="true">›</span></div>`
+        <span class="dsp-meta">${delta}<span>${st.late ? `${st.late}/${st.n} хоцорсон · дундаж ${st.avgLate}ц` : `${st.n} хүргэлт · бүгд цагтаа`}${unm ? ' · ' + unmTxt : ''}</span></span></div>`
     : `<div class="dsp-empty">Энэ сард хэмжигдсэн хүргэлт алга${unm ? ' · ' + unmTxt : ''}</div>`;
+  const chart = series.length < 2 ? '' : `<div class="dsp-chart" role="group" aria-label="Сар бүрийн цагтаа гарсан хувь">${series.map(m => {
+      const h = m.pct === null ? 0 : Math.round(m.pct / 10) * 10;
+      const tip = m.n ? `${dspMonthLabel(m.ym, cur)}: ${m.n - m.late}/${m.n} цагтаа${m.n < DSP_THIN_N ? ' — цөөн хүргэлт' : ''}${m.ym === cur ? ' (явж буй сар)' : ''}` : `${dspMonthLabel(m.ym, cur)}: хэмжигдсэн хүргэлт алга`;
+      return `<button type="button" class="dsp-col ui-raw${m.ym === ym ? ' on' : ''}${m.n && m.n < DSP_THIN_N ? ' thin' : ''}" data-dsp-pick="${escapeHtml(m.ym)}" title="${escapeHtml(tip)}">
+        <span class="dsp-cv">${m.pct === null ? '—' : m.pct + '%'}</span>
+        <span class="dsp-bar"><span class="dsp-fill ${_dspCls(m.pct)} dsp-h${h}"></span></span>
+        <span class="dsp-cm">${escapeHtml(dspMonthLabel(m.ym, cur))}</span></button>`;
+    }).join('')}</div>`;
   return `<div class="rv-card dsp-card" id="dsp-card" role="button" tabindex="0" data-dsp-ym="${escapeHtml(ym)}">
-    <div class="dsp-top"><span class="dsp-ttl">🚚 Цагтаа гарсан</span>
-      <span class="dsp-mnav"><button type="button" class="dsp-mbtn ui-raw" data-dsp-m="-1" aria-label="Өмнөх сар">‹</button><span class="dsp-mlbl">${escapeHtml(dspMonthLabel(ym, cur))}</span><button type="button" class="dsp-mbtn ui-raw" data-dsp-m="1" aria-label="Дараах сар"${ym >= cur ? ' disabled' : ''}>›</button></span></div>
+    <div class="dsp-top"><span class="dsp-ttl">🚚 Цагтаа гарсан · ${escapeHtml(dspMonthLabel(ym, cur))}</span><span class="dsp-go" aria-hidden="true">›</span></div>
     ${body}
+    ${chart}
   </div>`;
 }
 function attachReviewBlock(root) {
   // ⛔ Хамгийн муу захиалгын ЖАГСААЛТ Тойм дээр БАЙХГҮЙ — зөвхөн Дүн шинжилгээнд.
   //    Нэг жагсаалт хоёр газар байвал аль нь бүтэн болох нь мэдэгдэхгүй.
-  // Сар солих — картын дарцаас ТУСДАА (stopPropagation), ирээдүй рүү явахгүй
-  (root || document).querySelectorAll('[data-dsp-m]').forEach(b => b.addEventListener('click', (e) => {
+  // Баганыг дарахад тэр сар — картын дарцаас ТУСДАА (stopPropagation)
+  (root || document).querySelectorAll('[data-dsp-pick]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation();
-    const card = b.closest('#dsp-card');
-    const [y, m] = String((card && card.dataset.dspYm) || todayStr().slice(0, 7)).split('-').map(Number);
-    const d = new Date(Date.UTC(y, m - 1 + Number(b.dataset.dspM), 1));
-    const nm = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-    if (nm > todayStr().slice(0, 7)) return;
-    state.dspMonth = nm; render();
+    state.dspMonth = b.dataset.dspPick; render();
   }));
   // Картыг дарахад ТЭР САРЫН задаргаа (Дүн шинжилгээ) — тоо нь ижил
   const _dspCard = (root || document).querySelector('#dsp-card');

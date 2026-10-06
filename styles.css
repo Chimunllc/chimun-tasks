@@ -74,6 +74,9 @@
     /* NOMAAD бэлтгэлийн модалын «хүн сонгох» товчны доод өргөн — нэр багтах өргөн */
     --na-pick-w: 140px;
 
+    /* Цагийн ажилтны мөрийн зураг — `.staff-row`-гийн 36px-ээс том (нэр+банк 2 мөр) */
+    --hw-av: 42px;
+
     /* Орлого тулгалтын модалын өргөн — нэг баганатай жагсаалт, өргөсгөх шаардлагагүй */
     --recon-modal-w: 640px;
 
@@ -8616,3 +8619,37 @@ select.no-asar-len {
 .mcd-meta { font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mcd-tag { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }
 .mcd-more { margin-top: var(--space-1); border: 0; background: none; color: var(--primary); font-size: var(--fs-sm); cursor: pointer; padding: 0; }
+
+/* ═══ ЦАГИЙН АЖИЛТНЫ МӨР (renderHourly → rowHtml) ═══
+   2026-10-06: 23 inline style-ыг класс болгов. ⚠ `display:flex` нь ОДОО
+   класст — `applyHourlySearch` нь мөрийг нуухдаа `style.display=''` гэж
+   сэргээдэг тул inline байх үед хайлтын дараа мөр `block` болж бүтэц
+   эвдэрдэг байв (нэр ба товч доош нь буудаг). */
+.hw-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--r-lg);
+  margin-bottom: var(--space-2); background: var(--card); }
+.hw-row-off { opacity: .72; }
+.hw-left { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.hw-info { min-width: 0; }
+.hw-avatar { position: relative; width: var(--hw-av); height: var(--hw-av); border-radius: 50%;
+  background: var(--panel-hover); display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md); font-weight: 700; color: var(--muted); flex-shrink: 0; overflow: hidden; }
+.hw-role { font-size: var(--fs-xs); color: var(--muted); }
+.hw-meta { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
+.hw-sub { font-size: var(--fs-xs); color: var(--text-soft); margin-top: var(--space-1); }
+.hw-sub-dim { color: var(--muted); }
+.hw-note { font-size: var(--fs-xs); color: var(--text-soft); margin-top: var(--space-1); font-style: italic; }
+.hw-bank-miss { color: var(--danger); }
+.hw-bank-lock { color: var(--muted); }
+/* Үнэлгээ · цалингийн задаргаа — доош нь бүлэглэсэн блок */
+.hw-blk { margin-top: var(--space-1); }
+.hw-paid { font-size: var(--fs-sm); font-weight: 600; color: var(--ok); }
+.hw-days { font-size: var(--fs-xs); font-weight: 700; color: var(--text-soft); }
+.hw-avg { color: var(--primary); }
+.hw-pay { font-size: var(--fs-xs); color: var(--muted); }
+.hw-pay-d { color: var(--text-soft); }
+.hw-badge { font-size: var(--fs-xs); color: var(--muted); background: var(--panel-hover);
+  border-radius: var(--r-sm); padding: 0 var(--space-1); white-space: nowrap; }
+.hw-badge-new { color: var(--primary); font-weight: 700; }
+.hw-acts { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.hw-acts .btn { padding: var(--space-1) var(--space-4); font-size: var(--fs-sm); white-space: nowrap; }

@@ -2775,6 +2775,19 @@ creative үүсгэхэд «The post you selected is not available» гэнэ. �
 Урсгал: **хүн постлоно → `fb_posts_pull.py` жагсаана (15 мин) → хүн
 аппаас сонгоно → `fb_boost.py` зар болгоно (10 мин).** Хүснэгт `fb_page_posts`.
 
+⛔ **БҮҮСТ = ЧАТ ЗАР (2026-10-06).** 8/17–10/02-ны зарын дотор захиалга
+авчирсан ганц төрөл нь чат (Messenger) зар; сайт руу (968 зочин → 0 lead) ба
+хандалтын бүүст 820к₮ → 0 захиалга. Апп зөвхөн `chat` илгээнэ, сонголт өгөхгүй.
+· Кампанит ажил `OUTCOME_ENGAGEMENT` · adset `CONVERSATIONS` + `MESSENGER` +
+  `promoted_object.page_id` · creative-д **`MESSAGE_PAGE` товч ЗААВАЛ** —
+  товчгүй бол «creative is incompatible with the objective» (өмнө «зурагтай
+  постыг чат болгох боломжгүй» гэж БУРУУ дүгнэсний шалтгаан).
+· ⚠ IG+Messenger хосолсон газар «degrees_of_freedom spec» шаардана — зөвхөн
+  `MESSENGER`. Гараар нийтэлсэн пост постоороо; аппын пост `link_data`
+  (`fb.com/messenger_doc/` + DB-ийн зураг). Хоёуланг validate_only-оор амьд туршсан.
+· ⚠ Бүх зар зогссон үед (сарын эхэнд) загвар нь ЧАТ зарын adset-ээс
+  (`pick_template`) — эс бөгөөс хүсэлт чимээгүй гацна.
+
 **АППЫН ПОСТЫГ Ч БҮҮСТЛЭНЭ (2026-09-17).** Facebook аппын постыг жагсаалтдаа
 оруулдаггүй, Graph-аар ч уншуулдаггүй («Object does not exist») — тиймээс
 Facebook-ээс ЮУ Ч УНШИХГҮЙ: `fb_publish.py` нийтлэх мөчид `fb_page_posts`-д

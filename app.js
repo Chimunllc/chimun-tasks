@@ -35151,22 +35151,19 @@ function pagePostRows(posts, limit) {
     .slice(0, limit || 12)
     .map(p => {
       const st = PAGE_POST_ST[String(p.boost || '')] || null;
-      const site = !!String(p.link_url || '').trim();
       return {
         id: String(p.post_id),
         day: String(p.created_time || '').slice(5, 10),
         msg: String(p.message || '').replace(/\s+/g, ' ').trim() || '(бичвэргүй)',
 
-        // ⚠ Холбоосгүй постыг «сайт руу» гэж бүүстлэх боломжгүй — Facebook
-        //   татгалздаг. Хүнд ЯГ юу болохыг нь хэлнэ.
-        kind: site ? 'site' : 'engage',
-        // ⚠ Зурагтай постыг ЗӨВХӨН хандалтаар бүүстлэх боломжтой — Meta нь
-        //   чат руу чиглүүлэхийг «Invalid Creative For Objective» гэж
-        //   татгалздаг (амьд туршиж баталсан). Хандалт нь таалагдсан тоо
-        //   нэмдэг ч захиалга ховор авчирдаг тул хүнд ИЛ хэлнэ — эс бөгөөс
-        //   хоёр товч ижил үнэтэй мэт харагдана.
-        kindLabel: site ? '🔗 Сайт руу' : '👁 Зөвхөн хандалт',
-        weak: !site,
+        // ⛔ БҮҮСТ = ЧАТ ЗАР (2026-10-06). 8/17–10/02-ны зарын дотор захиалга
+        //    авчирсан ганц төрөл нь чат (Messenger) зар; сайт руу (968 зочин →
+        //    0 lead) ба хандалтын бүүст 820к₮ → 0 захиалга. Тиймээс сонголт
+        //    өгөхгүй — бүх пост чат зар болно (`tools/fb_boost.py`).
+        // ⚠ «Зурагтай постыг чат болгох боломжгүй» гэсэн хуучин дүгнэлт БУРУУ
+        //   байв — creative-д «Мессеж илгээх» товч дутсан нь шалтгаан.
+        kind: 'chat',
+        kindLabel: '💬 Чат зар',
         // Аппаас нийтэлсэн пост. Facebook эдгээрийг жагсаалтдаа ОРУУЛДАГГҮЙ тул
         // `fb_publish.py` өөрөө бүртгэдэг — хүнд аль нь болохыг ил хэлнэ.
         fromApp: String((p && p.source) || '') === 'app',
@@ -35665,7 +35662,7 @@ function renderAds() {
     <div class="ads-sec">📣 Таны постыг бүүст хийх <span class="ads-sub">(хуудсанд нийтэлсэн сүүлийн постууд)</span></div>
     <div class="ads-list">${ppRows.map(r => `<div class="pp-row">
       <div class="pp-b">
-        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind${r.weak ? ' pp-weak' : ''}">${escapeHtml(r.kindLabel)}</span>${
+        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind">${escapeHtml(r.kindLabel)}</span>${
           r.fromApp ? '<span class="pp-src">📱 Аппаас</span>' : ''}${
           r.link ? `<a class="pp-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">Facebook дээр ↗</a>` : ''}</div>
         <div class="pp-t">${escapeHtml(r.msg.slice(0, 90))}</div>
@@ -35674,10 +35671,10 @@ function renderAds() {
       <div class="pp-a">${r.state
         ? `<span class="pp-st ${r.stateCls}">${escapeHtml(r.stateLabel)}</span>${
             r.state === 'error' ? `<button class="btn" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">↻ Дахин</button>` : ''}`
-        : `<button class="btn${r.weak ? '' : ' btn-primary'}" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">⚡ Бүүст</button>`}</div>
+        : `<button class="btn btn-primary" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">⚡ Бүүст</button>`}</div>
     </div>`).join('')}</div>
-    <div class="ads-note">📱 тэмдэгтэй нь аппын постер үүсгэгчээс нийтлэгдсэн пост — зураг, бичвэр, холбоос нь манай санд байгаа тул шууд бүүст хийж болно.
-      <b>Гараар нийтлэх постдоо mevent.mn-ий холбоос оруулаарай</b> — тэгвэл сайт руу хүн чиглүүлж захиалга авч болно. Холбоосгүй зураг постыг Meta зөвхөн хандалтаар бүүстлэхийг зөвшөөрдөг: таалагдсан тоо нэмнэ, захиалга ховор. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.</div>`;
+    <div class="ads-note">Бүүст бүр <b>чат зар</b> болно — хүн постыг хараад Messenger-ээр шууд бичнэ. Захиалга авчирсан ганц төрөл нь энэ.
+      📱 тэмдэгтэй нь аппын постер үүсгэгчээс нийтлэгдсэн пост. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.</div>`;
 
   const queueHtml = !queued.length ? '' : `<div class="ads-sec">Постын дараалал</div>
     <div class="ads-list">${queued.map(x => `<div class="ads-row">
@@ -36225,15 +36222,10 @@ function attachAdsHandlers() {
     state._adsTab = b.dataset.adsTab; render();
   });
   // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна тул баталгаажуулалтгүй болохгүй.
-  // ⚠ Сайтын зар нь постын зураг+линкээс ШИНЭ зар болж угсрагдана (Facebook
-  //   зурагтай постыг постоор нь вэб зар болгодоггүй) — органик постын
-  //   таалагдсан тоо/сэтгэгдэл шилжихгүй. Баталгаажуулалтад ИЛ бичнэ.
+  // ⚠ Бүүст бүр чат зар болно (`pagePostRows` → kind 'chat').
   document.querySelectorAll('[data-pp-boost]').forEach(b => b.onclick = async () => {
-    const id = b.dataset.ppBoost, kind = b.dataset.ppKind || 'engage';
-    const what = kind === 'site'
-      ? 'сайт руу хүн оруулах — постын зураг, линкээр шинэ зар угсарна (таалагдсан тоо шилжихгүй)'
-      : 'зөвхөн хандалт нэмэх — захиалга ховор авчирна';
-    if (!(await showConfirm(`Энэ постыг бүүст хийх үү? Зорилго: ${what}. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.`,
+    const id = b.dataset.ppBoost, kind = b.dataset.ppKind || 'chat';
+    if (!(await showConfirm('Энэ постыг чат зар болгох уу? Хүмүүс постыг хараад Messenger-ээр шууд бичнэ. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.',
       { okText: 'Бүүст хийх' }))) return;
     b.disabled = true;
     try {

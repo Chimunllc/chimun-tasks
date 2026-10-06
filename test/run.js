@@ -9694,16 +9694,11 @@ need(['orderCustType']);
   const rows = F.pagePostRows(posts, 10);
   eq(rows.length, 3, 'пост: id-гүй мөр хасагдана');
   eq(rows[0].id, 'b', 'пост: шинэ нь эхэнд');
-  // ⛔ Холбоосгүй постыг «сайт руу» гэж бүүстлэх боломжгүй — Facebook татгалздаг.
-  eq(rows[0].kind, 'site', 'пост: холбоостой → сайт');
-  eq(rows[1].kind, 'engage', 'пост: холбоосгүй → хандалт');
-  // ⛔ Зурагтай постыг чат руу бүүстлэхийг Meta ТАТГАЛЗДАГ («Invalid Creative
-  //    For Objective», амьд туршиж баталсан) тул хандалт л үлддэг. Тэр нь
-  //    захиалга ховор авчирдгийг хүнд ИЛ хэлэхгүй бол хоёр товч ижил үнэтэй
-  //    мэт харагдана.
-  eq(rows[1].weak, true, 'пост: хандалтын бүүст сул гэж тэмдэглэгдэнэ');
-  eq(rows[0].weak, false, 'пост: сайтын бүүст сул биш');
-  ok(/Зөвхөн хандалт/.test(rows[1].kindLabel), 'пост: шошго нь хязгаарыг хэлнэ');
+  // ⛔ БҮҮСТ = ЧАТ ЗАР (2026-10-06) — захиалга авчирсан ганц төрөл. Холбоостой
+  //    ч, холбоосгүй ч бүх пост чат зар болно; сонголт өгөхгүй.
+  eq(rows[0].kind, 'chat', 'пост: холбоостой → чат');
+  eq(rows[1].kind, 'chat', 'пост: холбоосгүй → чат');
+  ok(/Чат/.test(rows[1].kindLabel), 'пост: шошго нь чат зар гэж хэлнэ');
   eq(rows[1].msg, 'Сайн байна уу', 'пост: зай нэгтгэгдэнэ');
   eq(rows[2].msg, '(бичвэргүй)', 'пост: бичвэргүй нь ил');
   eq(rows[0].state, 'done', 'пост: төлөв уншигдана');
@@ -9716,7 +9711,7 @@ need(['orderCustType']);
   const appRow = F.pagePostRows([{ post_id: 'p9', created_time: '2026-09-17T05:00:00+00:00',
     message: 'Асар майхан', link_url: 'https://mevent.mn/products/m-007/', source: 'app' }], 5)[0];
   eq(appRow.fromApp, true, 'пост: аппын пост тэмдэглэгдэнэ');
-  eq(appRow.kind, 'site', 'пост: аппын пост линктэй тул сайтын зар');
+  eq(appRow.kind, 'chat', 'пост: аппын пост ч чат зар');
   eq(F.pagePostRows([{ post_id: 'p8', source: 'page' }], 5)[0].fromApp, false,
      'пост: гараар нийтэлсэн нь тэмдэггүй');
   eq(F.pagePostRows([{ post_id: 'p7' }], 5)[0].fromApp, false, 'пост: эх сурвалжгүй → тэмдэггүй');
@@ -9739,14 +9734,22 @@ need(['orderCustType']);
   //    саарал хайрцаг л гарна (амьд системд яг ингэсэн).
   ok(!/pp-img/.test(asrc3), 'scan: Facebook зураг харуулахгүй');
   ok(/pp-link/.test(asrc3), 'scan: оронд нь постын холбоос');
-  // ⛔ Баталгаажуулалтын бичвэр нь хандалтын хязгаарыг ч хэлнэ.
-  ok(/захиалга ховор авчирна/.test(asrc3), 'scan: баталгаажуулалт үнэнийг хэлнэ');
+  // ⛔ Бүүст = чат зар. Сайт/хандалтын бүүст 820к₮ → 0 захиалга (2026-10-06) —
+  //    аппаас тэр төрлийг илгээх зам буцаж ирэх ёсгүй.
+  ok(/чат зар болгох уу\?/.test(asrc3), 'scan: баталгаажуулалт чат зар гэж хэлнэ');
+  ok(!/kind: site \? 'site' : 'engage'/.test(asrc3) && /ppKind \|\| 'chat'/.test(asrc3),
+     'scan: апп бүүстыг чат төрлөөр илгээнэ');
 
   // ⛔ Зорилтот бүлгийн загварыг [0]-оос авахгүй — тэр нь санамсаргүй мөр,
   //    зогссон кампанит ажлынх ч байж болно.
   const bsrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_boost.py'), 'utf8');
-  ok(!/tpl = sets\[0\]/.test(bsrc) && /max\(sets, key=/.test(bsrc),
+  ok(!/tpl = sets\[0\]/.test(bsrc) && /tpl = pick_template\(/.test(bsrc),
      'scan: загвар нь хамгийн том төсөвтэй зар');
+  // ⛔ Чат зарын creative-д «Мессеж илгээх» товч ЗААВАЛ — товчгүй бол Meta
+  //    «creative is incompatible with the objective» гэнэ (2026-10-06 амьд туршсан).
+  ok(/'type': 'MESSAGE_PAGE'/.test(bsrc) && /'call_to_action': json\.dumps\(CHAT_CTA\)/.test(bsrc),
+     'scan: чат зар мессеж товчтой');
+  ok(/aset_p\['promoted_object'\]/.test(bsrc), 'scan: чат зар хуудас руу заана');
   // ⛔ Зарыг ХОТООР хумивал хөдөөгийн захиалга таслагдана — тэр нь орлогын ТАЛ
   //    (180 хоногт хот 30 захиалга = 44.1сая, хөдөө 7 захиалга = 44.1сая).
   ok(/geo_locations/.test(bsrc) && /countries/.test(bsrc),

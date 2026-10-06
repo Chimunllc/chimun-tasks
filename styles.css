@@ -7554,7 +7554,6 @@ select.no-asar-len {
 .cu-tel { color: var(--info); text-decoration: none; }
 .cu-tel:hover { text-decoration: underline; }
 .cu-snooze { flex: 0 0 auto; }
-.pp-weak { color: var(--warn); }
 .pp-link { font-size: var(--fs-xs); color: var(--info); text-decoration: none; }
 .pp-link:hover { text-decoration: underline; }
 .pp-b { flex: 1 1 auto; min-width: 0; }

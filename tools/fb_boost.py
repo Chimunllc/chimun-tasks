@@ -12,6 +12,16 @@ Development горимд) — гараар нийтэлсэн пост хари�
    ② Постын ТӨРӨЛ зорилготойгоо таарах ёстой. Холбоосгүй постыг вэб зар
       болгох гэвэл «Non-Website Ad in Website Ad Set» гэж ТАТГАЛЗана.
 
+⛔ БҮҮСТ = ЧАТ ЗАР (2026-10-06). 8/17–10/02-ны 2.74сая₮-ийн зарын дотор
+   захиалга авчирсан ганц төрөл нь чат (Messenger) зар байв — сайт руу
+   (968 зочин → 0 lead) ба хандалтын бүүст 820к₮ → 0 захиалга. Апп зөвхөн
+   `chat` илгээнэ; `site`/`engage` нь хуучин мөрийн төлөө л үлдсэн.
+   ⚠ Чат зарын creative-д `MESSAGE_PAGE` товч ЗААВАЛ — товчгүй бол
+     «creative is incompatible with the objective» гэж татгалзана (өмнө нь
+     «зурагтай постыг чат болгох боломжгүй» гэж буруу дүгнэсний шалтгаан).
+   ⚠ Хүрэх газар = зөвхөн `MESSENGER`. IG+Messenger хосолсон газар нь
+     «degrees_of_freedom spec» шаардана (амьд туршсан).
+
 Ажиллах: VPS cron, 10 минут тутам.  Гараар: python3 fb_boost.py [--dry]
 """
 import base64, json, subprocess, sys, urllib.error, urllib.parse, urllib.request
@@ -30,7 +40,14 @@ KINDS = {
                'dest': 'WEBSITE'},
     'engage': {'objective': 'OUTCOME_ENGAGEMENT', 'goal': 'POST_ENGAGEMENT',
                'dest': 'ON_POST'},
+    'chat':   {'objective': 'OUTCOME_ENGAGEMENT', 'goal': 'CONVERSATIONS',
+               'dest': 'MESSENGER'},
 }
+DEFAULT_KIND = 'chat'
+# Messenger-ийн «Мессеж илгээх» товч. Чат зарт ЗААВАЛ (дээрх тайлбар).
+CHAT_CTA = {'type': 'MESSAGE_PAGE', 'value': {'app_destination': 'MESSENGER'}}
+# Click-to-Messenger зарын холбоос — Meta-гийн баримтжуулсан тогтмол хаяг.
+CHAT_LINK = 'https://fb.com/messenger_doc/'
 
 
 def cfg():
@@ -159,6 +176,32 @@ def head_line(msg, n=40):
     return first[:n]
 
 
+def pick_template(sets):
+    """Зорилтот бүлгийн загвар. ⛔ ЗОХИОХГҮЙ — бодит мөнгө зарцуулсан зарынхыг
+    хуулна: ① идэвхтэйгээс хамгийн том өдрийн төсөвтэй нь ② идэвхтэй алга бол
+    (бүх зар зогссон сарын эхэнд) ЧАТ зарын хамгийн том төсөвтэй нь — тэд
+    захиалга авчирсан батлагдсан тохиргоо. Аль нь ч алга бол None (зогсоно)."""
+    def best(xs):
+        return max(xs, key=lambda a: float(a.get('daily_budget') or 0)) if xs else None
+    sets = [a for a in (sets or []) if a and a.get('targeting')]
+    return (best([a for a in sets if a.get('status') == 'ACTIVE'])
+            or best([a for a in sets if a.get('optimization_goal') == 'CONVERSATIONS']))
+
+
+def chat_creative(page, post_id, from_app, msg, image_hash):
+    """Чат зарын creative-ийн параметр. Цэвэр функц — тестлэгдэнэ.
+    · Гараар нийтэлсэн пост → постоороо (таалагдсан тоо, сэтгэгдэл нь үлдэнэ).
+    · Аппын пост → Graph уншуулдаггүй тул DB-ийн зураг+бичвэрээр шинэ зар.
+    ⛔ Хоёуланд нь `MESSAGE_PAGE` товч заавал (2026-10-06 амьд туршсан)."""
+    if from_app:
+        if not image_hash:
+            raise RuntimeError('аппын постод зураг алга — чат зар угсрах боломжгүй')
+        return {'object_story_spec': json.dumps({'page_id': page, 'link_data': {
+            'link': CHAT_LINK, 'message': str(msg or ''), 'image_hash': image_hash,
+            'call_to_action': CHAT_CTA}})}
+    return {'object_story_id': post_id, 'call_to_action': json.dumps(CHAT_CTA)}
+
+
 # ── Graph дуудлагууд ────────────────────────────────────────────────────────
 def post_media(post_id, tok):
     """Постын БҮТЭН бичвэр, зураг, хавсралтын төрөл. Бичвэрийг DB-ээс биш эндээс
@@ -205,52 +248,62 @@ def main():
     rows = [r for r in psql(
         "select post_id, "
         "replace(encode(convert_to(coalesce(message,''),'UTF8'),'base64'), chr(10), ''), "
-        "coalesce(boost_kind,'engage'), coalesce(link_url,''), coalesce(picture,'') "
+        f"coalesce(boost_kind,'{DEFAULT_KIND}'), coalesce(link_url,''), coalesce(picture,''), "
+        "coalesce(source,'') "
         "from fb_page_posts where boost = 'requested' order by requested_at limit 5")
-        if len(r) == 5]
+        if len(r) == 6]
     stamp = datetime.now(UB).strftime('%Y-%m-%d %H:%M')
     if not rows:
         print(f'[{stamp}] boost: хүсэлт алга')
         return
 
-    # Зорилтот бүлгийг ЗОХИОХГҮЙ — ажиллаж байгаа зарынхыг хуулна.
+    # Зорилтот бүлгийг ЗОХИОХГҮЙ — бодит мөнгө зарцуулсан зарынхыг хуулна.
     # ⛔ ЗАГВАРЫГ [0]-ООС БҮҮ АВ — тэр нь ердөө API-гийн буцаасан эхний мөр,
-    #    зогссон кампанит ажлынх ч байж болно. ХАМГИЙН ТОМ ӨДРИЙН ТӨСӨВТЭЙГ
-    #    сонгоно: бодит мөнгө зарцуулж байгаа нь л батлагдсан тохиргоо.
-    sets = [a for a in get(f'{acct}/adsets',
-                           {'fields': 'status,targeting,billing_event,daily_budget',
-                            'limit': 50, 'access_token': tok}).get('data', [])
-            if a.get('status') == 'ACTIVE' and a.get('targeting')]
-    if not sets:
-        print(f'[{stamp}] boost: идэвхтэй зар алга — зорилтот бүлгийн загвар авах боломжгүй')
+    #    зогссон кампанит ажлынх ч байж болно (`pick_template`).
+    tpl = pick_template(get(f'{acct}/adsets',
+                            {'fields': 'status,targeting,billing_event,daily_budget,optimization_goal',
+                             'limit': 50, 'access_token': tok}).get('data', []))
+    if not tpl:
+        print(f'[{stamp}] boost: зарын загвар алга — зорилтот бүлгийг зохиохгүй')
         return
-    tpl = max(sets, key=lambda a: float(a.get('daily_budget') or 0))
     targeting = clean_targeting(tpl.get('targeting'))
 
     ok = bad = 0
-    for post_id, msg_b64, kind, link, pic_db in rows:
+    for post_id, msg_b64, kind, link, pic_db, src in rows:
         msg_full = b64_msg(msg_b64)
         msg = head_line(msg_full, 60)
-        k = KINDS.get(kind) or KINDS['engage']
+        if kind not in KINDS:
+            kind = DEFAULT_KIND
+        k = KINDS[kind]
         name = camp_name(msg, post_id)
         if DRY:
             print(f'   DRY {kind:7} {name}')
             continue
         try:
+            # Зураггүй аппын постыг кампанит ажил үүсгэхээс ӨМНӨ хаана — эс бөгөөс
+            # зогссон хоосон кампанит ажил үлдэнэ.
+            if kind == 'chat' and src == 'app' and not pic_db:
+                raise RuntimeError('аппын постод зураг алга — чат зар угсрах боломжгүй')
             # ⚠ PAUSED-аар үүсгээд бүх хэсэг бүрдсэний ДАРАА асаана — дунд нь
             #   унавал зargүй идэвхтэй кампанит ажил төсвөөс хувь авна.
             camp = post(f'{acct}/campaigns', {
                 'name': name, 'objective': k['objective'], 'status': 'PAUSED',
                 'special_ad_categories': '[]',
                 'is_adset_budget_sharing_enabled': 'false', 'access_token': tok})
-            aset = post(f'{acct}/adsets', {
+            aset_p = {
                 'name': name, 'campaign_id': camp['id'],
                 'daily_budget': int(START_USD * 100),
                 'bid_strategy': 'LOWEST_COST_WITHOUT_CAP',
-                'billing_event': tpl.get('billing_event') or 'IMPRESSIONS',
+                # ⚠ Чат зар зөвхөн IMPRESSIONS-ээр төлөгддөг — загварынхыг бүү хуул.
+                'billing_event': 'IMPRESSIONS' if kind == 'chat'
+                                 else (tpl.get('billing_event') or 'IMPRESSIONS'),
                 'optimization_goal': k['goal'], 'destination_type': k['dest'],
                 'targeting': json.dumps(targeting),
-                'status': 'ACTIVE', 'access_token': tok})
+                'status': 'ACTIVE', 'access_token': tok}
+            if kind == 'chat':
+                # Чат аль хуудас руу очихыг заана — үгүй бол adset үүсэхгүй.
+                aset_p['promoted_object'] = json.dumps({'page_id': page})
+            aset = post(f'{acct}/adsets', aset_p)
             # ⛔ ЗУРАГТАЙ ПОСТЫГ ПОСТООР НЬ ВЭБ ЗАР БОЛГОХ БОЛОМЖГҮЙ — Facebook
             #    «Non-Website Ad in Website Ad Set» гэж татгалздаг. Тиймээс сайт
             #    руу чиглүүлэх зарыг постын ЗУРАГ + ЛИНКЭЭС дахин угсарна
@@ -267,7 +320,14 @@ def main():
                     pic = g_pic or pic_db
                 except Exception:
                     full_msg, atyp = '', ''
-            if kind == 'site' and atyp != 'share':
+            if kind == 'chat':
+                # ⚠ Аппын пост Graph-д харагддаггүй тул DB-ийн зургийг байршуулна.
+                from_app = src == 'app'
+                cre = post(f'{acct}/adcreatives', dict(
+                    chat_creative(page, post_id, from_app, msg_full or msg,
+                                  upload_image(acct, tok, pic_db) if from_app and pic_db else ''),
+                    name=name, access_token=tok))
+            elif kind == 'site' and atyp != 'share':
                 ld = {'link': ad_link(link, head_line(msg, 30)),
                       'message': full_msg or msg_full or msg,
                       'name': head_line(msg) or 'M-Event түрээс',
@@ -371,6 +431,39 @@ def selftest():
     eq(KINDS['engage']['dest'], 'ON_POST', 'төрөл: хандалт → ON_POST')
     eq(KINDS['site']['objective'] != KINDS['engage']['objective'], True,
        'төрөл: зорилго ялгаатай')
+
+    # ⛔ БҮҮСТ = ЧАТ ЗАР (2026-10-06): захиалга авчирсан ганц төрөл.
+    eq(DEFAULT_KIND, 'chat', 'төрөл: өгөгдмөл нь чат')
+    eq(KINDS['chat']['goal'], 'CONVERSATIONS', 'чат: харилцан яриагаар оновчилно')
+    # ⚠ IG+Messenger хосолсон газар нь degrees_of_freedom шаарддаг — зөвхөн Messenger.
+    eq(KINDS['chat']['dest'], 'MESSENGER', 'чат: зөвхөн Messenger')
+    eq(KINDS['chat']['objective'], 'OUTCOME_ENGAGEMENT', 'чат: зорилго engagement')
+    # ⛔ Товчгүй бол Meta «creative is incompatible with the objective» гэнэ.
+    cp = chat_creative('pg', 'pg_1', False, 'Тайз', '')
+    eq(cp['object_story_id'], 'pg_1', 'чат: гараар нийтэлсэн пост постоороо')
+    eq(json.loads(cp['call_to_action'])['type'], 'MESSAGE_PAGE', 'чат: пост мессеж товчтой')
+    ca = chat_creative('pg', 'pg_2', True, 'LED дэлгэц\nтүрээс', 'h1')
+    ld = json.loads(ca['object_story_spec'])['link_data']
+    eq('object_story_id' in ca, False, 'чат: аппын постыг постоор нь авахгүй (Graph харахгүй)')
+    eq(ld['call_to_action']['type'], 'MESSAGE_PAGE', 'чат: аппын пост мессеж товчтой')
+    eq(ld['link'], CHAT_LINK, 'чат: аппын пост Messenger холбоостой')
+    eq((ld['image_hash'], ld['message']), ('h1', 'LED дэлгэц\nтүрээс'), 'чат: зураг, бүтэн бичвэр')
+    try:
+        chat_creative('pg', 'pg_3', True, 'x', '')
+        eq('унасангүй', 'унана', 'чат: зураггүй аппын пост')
+    except RuntimeError:
+        pass
+
+    # ⛔ Загвар: идэвхтэй нь эхэлж; бүх зар зогссон бол ЧАТ зарынх; эс бол None.
+    tp = [{'status': 'PAUSED', 'optimization_goal': 'CONVERSATIONS', 'daily_budget': '300', 'targeting': {'c': 1}},
+          {'status': 'PAUSED', 'optimization_goal': 'CONVERSATIONS', 'daily_budget': '900', 'targeting': {'c': 2}},
+          {'status': 'PAUSED', 'optimization_goal': 'LANDING_PAGE_VIEWS', 'daily_budget': '5000', 'targeting': {'s': 1}}]
+    eq(pick_template(tp)['targeting'], {'c': 2}, 'загвар: зар зогссон бол чатынх, том төсөвтэй')
+    eq(pick_template(tp + [{'status': 'ACTIVE', 'daily_budget': '100', 'targeting': {'a': 1}}])['targeting'],
+       {'a': 1}, 'загвар: идэвхтэй нь давуу')
+    eq(pick_template([tp[2]]), None, 'загвар: чат ч идэвхтэй ч алга → зохиохгүй')
+    eq(pick_template([{'status': 'ACTIVE', 'daily_budget': '1'}]), None, 'загвар: таргетгүй нь тоологдохгүй')
+    eq(pick_template(None), None, 'загвар: None → унахгүй')
 
     # ⛔ Загвар нь хамгийн ТОМ төсөвтэй зар — [0] нь санамсаргүй мөр.
     sets = [{'daily_budget': '100', 'targeting': {'a': 1}},

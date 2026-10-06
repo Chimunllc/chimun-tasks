@@ -10327,9 +10327,10 @@ function ordersCalendarHtml(orders, opts) {
     ? (() => {
         const o = data.out[sel] || [], b = (data.back[sel] || []).filter(x => !o.includes(x));
         if (!o.length && !b.length) return '<div class="orders-empty"><div class="icon">📭</div><div>Энэ өдөр захиалга алга.</div></div>';
+        const card = x => bqOrderCard(appOrderView(x));   // жагсаалттай ИЖИЛ карт (түүхий мөр биш)
         return `<div class="ocal-day">${escapeHtml(sel)}</div>`
-          + (o.length ? `<div class="ocal-sec">🔵 Гарах (${o.length})</div>` + o.map(bqOrderCard).join('') : '')
-          + (b.length ? `<div class="ocal-sec">🟢 Буцах (${b.length})</div>` + b.map(bqOrderCard).join('') : '');
+          + (o.length ? `<div class="ocal-sec">🔵 Гарах (${o.length})</div>` + o.map(card).join('') : '')
+          + (b.length ? `<div class="ocal-sec">🟢 Буцах (${b.length})</div>` + b.map(card).join('') : '');
       })()
     : '<div class="ocal-hint">Өдөр дээр дарж тэр өдрийн захиалгыг хараарай.</div>';
   return `<div class="ocal">
@@ -27704,14 +27705,19 @@ async function archiveDoneMonth(ym) {
   showToast(ok ? `🗄 ${list.length} захиалга архивлалаа` : '⚠ Хэсэгчлэн архивлагдав — дахин оролдоно уу', ok ? 'success' : 'warn', 4500);
   render();
 }
+// Картад зурах хэлбэр — `_app` тэмдэггүй мөрийг bqOrderCard Booqable түүх гэж андуурч
+// бараагаа хуучин архиваас хайна («0 бараа», дамжлагын товч буруу). Жагсаалт ба
+// календарь ХОЁУЛАА үүгээр зурна (2026-10-06 календарь түүхийгээр өгч эвдэрсэн).
+function appOrderView(ao) {
+  // Canon төлөв — нэг helper (orderCanonStatus). Нөөц тооцоо (bookedQtyForRange) болон багц сонголт
+  // мөн ижил helper ашигладаг тул харагдац ↔ логик зөрөхгүй (төлбөргүй reserved→'draft' г.м.).
+  return { ...ao, status: orderCanonStatus(ao), item_count: (ao.items || []).length, _app: true };
+}
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
   // source='history' → түүхэн, source='app' → шинэ; аль аль нь адилхан app_orders мөр.
   return (state.appOrders || []).map(ao => {
-    // Canon төлөв — нэг helper (orderCanonStatus). Нөөц тооцоо (bookedQtyForRange) болон багц сонголт
-    // мөн ижил helper ашигладаг тул харагдац ↔ логик зөрөхгүй (төлбөргүй reserved→'draft' г.м.).
-    const raw = orderCanonStatus(ao);
-    const o = { ...ao, status: raw, item_count: (ao.items || []).length, _app: true };
+    const o = appOrderView(ao), raw = o.status;
     const _ciHay = custInfoOf(ao.note);   // байгууллагын нэр/РД — хайлтад заавал
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
       ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',

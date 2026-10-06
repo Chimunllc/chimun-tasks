@@ -17286,6 +17286,27 @@ async function swFetchTests() {
   ok(/stagePayByPerson\(/.test(f), 'scan: шилдгийн оноо бонусын бодолтоос');
 }
 
+// ── КАЛЕНДАРИЙН КАРТ = АППЫН ЗАХИАЛГА (2026-10-06) ─────────────────────────
+// Календарь `state.appOrders`-ийг ТҮҮХИЙГЭЭР нь bqOrderCard руу өгдөг байсан тул
+// `_app` тэмдэггүй → карт захиалгыг Booqable түүх гэж андуурч «0 бараа», задлахад
+// хуучин архиваас хайж «бараа алга» гэж харуулдаг байв (дамжлагын товч ч буруу).
+// Жагсаалттай ИЖИЛ хэлбэрээр (`appOrderView`) зурна.
+{
+  const keep = vm.runInContext('({ a: state.appOrders, d: state.ordersCalDay, y: state.ordersCalYm, c: state.isCEO })', sandbox);
+  sandbox.__calOrders = [{ id: 'cal1', number: 1610, customer: 'Х', status: 'reserved', paid_mnt: 85000, total_mnt: 85000,
+    starts_at: '2026-10-07', stops_at: '2026-10-09', note: '',
+    items: [{ name: 'Тест сандал', qty: 3, price: 10000 }, { name: 'Тест ширээ', qty: 1, price: 22800 }] }];
+  vm.runInContext('state.appOrders = __calOrders; state.ordersCalYm = "2026-10"; state.ordersCalDay = "2026-10-09"; state.isCEO = true;', sandbox);
+  const h = vm.runInContext('ordersCalendarHtml(state.appOrders)', sandbox);
+  ok(/2 бараа/.test(h) && /Тест сандал/.test(h), 'календарь: аппын захиалгын бараа картад харагдана');
+  ok(!/bqa-items-toggle/.test(h), 'календарь: аппын захиалгыг Booqable түүх гэж андуурахгүй');
+  vm.runInContext(`state.appOrders = __k.a; state.ordersCalDay = __k.d; state.ordersCalYm = __k.y; state.isCEO = __k.c;`, Object.assign(sandbox, { __k: keep }));
+  delete sandbox.__calOrders; delete sandbox.__k;
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const cal = src.slice(src.indexOf('function ordersCalendarHtml('), src.indexOf('function bqOrderCard('));
+  eq((cal.match(/map\(bqOrderCard\)/g) || []).length, 0, 'scan: календарь түүхий захиалгыг bqOrderCard-д шууд өгөхгүй');
+}
+
 // ═══ ЦАЛИН АЛЬ САРЫНХ — ГҮЙЦЭТГЭЛЭЭР (2026-10-03, CEO) ═════════════════
 // ⛔ Банкны огноогоор бодвол 9-06-нд төлсөн «8 сар 2р хагас» 9 сарын олголт
 //   болж, 8 сар дутуу · 9 сар илүү харагдана.

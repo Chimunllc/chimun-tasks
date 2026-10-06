@@ -14253,44 +14253,44 @@ function renderHourly() {
     const payouts = st.ps;
     const sum = st.sum;
     // Initials default; зураг ачаалагдвал дээр нь харагдана, алдвал (onerror) initials үлдэнэ.
-    const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>`;
+    const avatar = `<span class="hw-avatar">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>`;
     const bankLine = !money ? ''
       : (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
       : (bankLineReason(false, staffSensitiveLoaded()) === 'missing'
-          ? '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>'
-          : '<span style="color:var(--muted)">🔒 данс харагдахгүй (эрх)</span>');
+          ? '<span class="hw-bank-miss">банк бүртгэгдээгүй</span>'
+          : '<span class="hw-bank-lock">🔒 данс харагдахгүй (эрх)</span>');
     // Авсан нийт цалин + шилжүүлэг бүрийг (дүн · огноо) тусдаа мөрөөр доош
     const paidLine = (money && sum > 0)
-      ? `<div style="margin-top:4px;">
-           <div style="font-size:12px;font-weight:600;color:var(--ok);">Авсан нийт: ${fmtMoney(sum)}</div>
-           ${st.days > 0 ? `<div style="font-size:11.5px;font-weight:700;color:var(--text-soft);margin-top:1px;">📅 ${st.days} өдөр ажилласан · өдрийн дундаж <span style="color:var(--primary);">${fmtMoney(st.avgDaily)}</span></div>` : ''}
-           ${payouts.map(p => { const d = hourlyPayoutDays(p); return `<div style="font-size:11px;color:var(--muted);margin-top:1px;">· ${fmtMoney(Number(p.amount) || 0)}${d > 0 ? ` <span style="color:var(--text-soft);">(${d} өдөр)</span>` : ''} · ${escapeHtml(fmtDateTimeUB(p.executed_at || p.requested_at || ''))}</div>`; }).join('')}
+      ? `<div class="hw-blk">
+           <div class="hw-paid">Авсан нийт: ${fmtMoney(sum)}</div>
+           ${st.days > 0 ? `<div class="hw-days">📅 ${st.days} өдөр ажилласан · өдрийн дундаж <span class="hw-avg">${fmtMoney(st.avgDaily)}</span></div>` : ''}
+           ${payouts.map(p => { const d = hourlyPayoutDays(p); return `<div class="hw-pay">· ${fmtMoney(Number(p.amount) || 0)}${d > 0 ? ` <span class="hw-pay-d">(${d} өдөр)</span>` : ''} · ${escapeHtml(fmtDateTimeUB(p.executed_at || p.requested_at || ''))}</div>`; }).join('')}
          </div>`
       : '';
     const rlist = ratingsForWorker(m);
-    const ratingLine = `<div style="margin-top:4px;">${starsRow(avgStars(rlist), rlist.length)}</div>`;
+    const ratingLine = `<div class="hw-blk">${starsRow(avgStars(rlist), rlist.length)}</div>`;
     const lastNote = rlist.slice().sort((a, b) => String(b.ts).localeCompare(String(a.ts))).find(r => (r.note || '').trim());
     const noteLine = lastNote
-      ? `<div style="font-size:11.5px;color:var(--text-soft);margin-top:2px;font-style:italic;">“${escapeHtml(lastNote.note)}” — ${escapeHtml(lastNote.rater_name || '')}</div>`
+      ? `<div class="hw-note">“${escapeHtml(lastNote.note)}” — ${escapeHtml(lastNote.rater_name || '')}</div>`
       : '';
     // Ажилласан хугацаа (цалингийн идэвхээр) — анх/сүүлд цалин авсан огноо
     const spanLine = st.count
-      ? `<div style="font-size:11.5px;color:var(--text-soft);margin-top:3px;">🕒 ${st.count > 1 ? 'Анх ' + escapeHtml(String(st.first).slice(0, 10)) + ' · ' : ''}Сүүлд <b>${escapeHtml(String(st.last).slice(0, 10))}</b> · ${st.count} удаа</div>`
-      : `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">🕒 Цалин аваагүй</div>`;
+      ? `<div class="hw-sub">🕒 ${st.count > 1 ? 'Анх ' + escapeHtml(String(st.first).slice(0, 10)) + ' · ' : ''}Сүүлд <b>${escapeHtml(String(st.last).slice(0, 10))}</b> · ${st.count} удаа</div>`
+      : `<div class="hw-sub hw-sub-dim">🕒 Цалин аваагүй</div>`;
     const nameKey = escapeHtml(String(m.name || '').toLowerCase());
     const phoneKey = escapeHtml(String(m.phone || '').replace(/\D/g, ''));
     const stt = statusOf(m);
     const inact = stt === 'inactive';
     const badge = inact
-      ? ` <span style="font-size:10px;color:var(--muted);background:var(--panel-hover);border-radius:6px;padding:1px 6px;white-space:nowrap;">💤 идэвхгүй</span>`
-      : (stt === 'new' ? ` <span style="font-size:10px;color:var(--primary);background:var(--panel-hover);border-radius:6px;padding:1px 6px;white-space:nowrap;font-weight:700;">🆕 шинэ</span>` : '');
-    return `<div data-hourly-name="${nameKey}" data-hourly-phone="${phoneKey}" data-hourly-state="${stt}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);${inact ? 'opacity:.72;' : ''}">
-      <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+      ? ` <span class="hw-badge">💤 идэвхгүй</span>`
+      : (stt === 'new' ? ` <span class="hw-badge hw-badge-new">🆕 шинэ</span>` : '');
+    return `<div class="hw-row${inact ? ' hw-row-off' : ''}" data-hourly-name="${nameKey}" data-hourly-phone="${phoneKey}" data-hourly-state="${stt}">
+      <div class="hw-left">
         ${avatar}
-        <div style="min-width:0;">
-          <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span>${badge}</div>
-          <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">${hourlyTelHtml(m.phone)}${bankLine ? ' · ' + bankLine : ''}</div>
+        <div class="hw-info">
+          <div><b>${escapeHtml(m.name || '')}</b> <span class="hw-role">${escapeHtml(m.role || 'цагийн ажилтан')}</span>${badge}</div>
+          <div class="hw-meta">${hourlyTelHtml(m.phone)}${bankLine ? ' · ' + bankLine : ''}</div>
           ${spanLine}
           ${attWorkedLine(m)}
           ${ratingLine}
@@ -14298,9 +14298,9 @@ function renderHourly() {
           ${paidLine}
         </div>
       </div>
-      <div style="flex-shrink:0;display:flex;flex-direction:column;gap:6px;">
-        ${money ? `<button class="btn btn-primary" data-hourly-pay="${escapeHtml(key)}" style="padding:5px 14px;font-size:12px;">Цалин шилжүүлэх</button>` : ''}
-        <button class="btn" data-hourly-rate="${escapeHtml(key)}" style="padding:5px 14px;font-size:12px;">★ Үнэлгээ өгөх</button>
+      <div class="hw-acts">
+        ${money ? `<button class="btn btn-primary" data-hourly-pay="${escapeHtml(key)}">Цалин шилжүүлэх</button>` : ''}
+        <button class="btn" data-hourly-rate="${escapeHtml(key)}">★ Үнэлгээ өгөх</button>
       </div>
     </div>`;
   };

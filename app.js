@@ -24757,7 +24757,9 @@ function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO
 // ⚠ Хадгалалт = `app_config['plan']` (шинэ хүснэгт БАЙХГҮЙ).
 // ⚠ Бичлэг ХЭЗЭЭ Ч устахгүй — «хаах» = status:'done', буцааж нээж болно.
 const PLAN_KEY = 'plan';
-const PLAN_NOW_MAX = 3;   // зэрэг эхлүүлэх ажлын дээд тоо (хэтэрвэл анхааруулна)
+const PLAN_NOW_MAX = 3;
+// Seed-ээс хадгалсан мөр руу шинэчлэгддэг талбарууд (бичвэр — шийдвэр БИШ)
+const PLAN_TEXT_FIELDS = ['title', 'act'];   // зэрэг эхлүүлэх ажлын дээд тоо (хэтэрвэл анхааруулна)
 // sec: now = одоо хийж байгаа · next = дараагийнх · no = хийхгүй гэж шийдсэн
 // ⛔ ЭНЭ РЕПО НИЙТИЙН — мөрд ЗӨВХӨН ГАРЧИГ байна (2026-09-17).
 //   Шалтгаан, тоо, стратеги нь ХААЛТТАЙ `Chimunllc/chimun-infra`-гийн `PLAN.md`-д.
@@ -24765,16 +24767,26 @@ const PLAN_NOW_MAX = 3;   // зэрэг эхлүүлэх ажлын дээд т�
 //   Шинэ мөр нэмэхдээ: гарчиг энд, дэлгэрэнгүй тэнд. `why` талбар код дотор
 //   ХЭВЭЭР (CEO аппаас нэмсэн мөрд хэрэглэгдэнэ) — зүгээр л seed түүнийг агуулахгүй.
 const PLAN_SEED = [
-  { id: 'p-today-block',  sec: 'now',  owner: 'Claude', created: '2026-09-17', title: '«Өнөөдөр» блок — Тойм дэлгэцэд' },
-  { id: 'p-rev-measure',  sec: 'now',  owner: 'Claude', created: '2026-09-17', title: 'Орлогын эхний 3 ажлыг датанаас хэмжих' },
-  { id: 'p-saas-calls',   sec: 'now',  owner: 'CEO',    created: '2026-09-17', title: 'Түрээсийн SaaS — 10 дуудлага' },
-  { id: 'p-price-test',   sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Үнэ турших' },
-  { id: 'p-repeat',       sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Давтан худалдан авалт' },
-  { id: 'p-rural',        sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Хөдөө зориудаар' },
-  { id: 'p-lead-cov',     sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Лид сувгийн хамралт 70%+' },
-  { id: 'p-ads-purchase', sec: 'next', owner: 'Claude', created: '2026-09-17', title: 'Хөрвөлтөөр зар оновчлох' },
-  { id: 'p-winter',       sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Өвлийн ачаалал' },
-  { id: 'p-google',       sec: 'next', owner: 'Claude', created: '2026-09-17', title: 'Google хайлт' },
+  { id: 'p-today-block',  sec: 'now',  owner: 'Claude', created: '2026-09-17', title: '«Өнөөдөр» блок — Тойм дэлгэцэд',
+    act: 'Тойм дэлгэцэд өнөөдөр хийх ажил датанаас гарна: авлага · илгээгээгүй үнийн санал · буцаж залгах · хугацаа хэтэрсэн ажил' },
+  { id: 'p-rev-measure',  sec: 'now',  owner: 'Claude', created: '2026-09-17', title: 'Орлогын эхний 3 ажлыг датанаас хэмжих',
+    act: 'Авлагын дүн · илгээгээгүй саналын тоо · буцаж залгах хүний тоог ил гаргаж, юунаас эхлэхийг тоогоор шийдэх' },
+  { id: 'p-saas-calls',   sec: 'now',  owner: 'CEO',    created: '2026-09-17', title: 'Түрээсийн SaaS — 10 дуудлага',
+    act: 'Зэргэлдээ салбарын 10 компанийн ЭЗЭНД залгаж 4 асуулт асуух (скрипт хаалттай төлөвлөгөөнд)' },
+  { id: 'p-price-test',   sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Үнэ турших',
+    act: 'Тарифыг өөрчилж, дараагийн сарын захиалгын тоог хуучинтай тулгах' },
+  { id: 'p-repeat',       sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Давтан худалдан авалт',
+    act: 'Өмнө түрээслүүлсэн харилцагчдын жагсаалт гаргаж, дахин хүрэх мессеж илгээх' },
+  { id: 'p-rural',        sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Хөдөө зориудаар',
+    act: 'Хөдөө орон нутаг руу чиглэсэн тусдаа зар ба хүргэлтийн үнийн санал гаргах' },
+  { id: 'p-lead-cov',     sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Лид сувгийн хамралтыг бүрэн болгох',
+    act: 'Захиалга бүрт «хаанаас ирсэн» тэмдэглэгдэж байгааг хангах — хамралт дутуу бол зарын төсөв таамгаар хуваарилагдана' },
+  { id: 'p-ads-purchase', sec: 'next', owner: 'Claude', created: '2026-09-17', title: 'Хөрвөлтөөр зар оновчлох',
+    act: 'Зарыг чатын тоогоор биш, захиалгын өртгөөр оновчлох' },
+  { id: 'p-winter',       sec: 'next', owner: 'CEO',    created: '2026-09-17', title: 'Өвлийн ачаалал',
+    act: 'Өвөл зогсдог хөрөнгийг түрээслэх шинэ хэрэглэгч хайх: кино/зураг авалт, дотоод эвент, барилгын түр байр, өвлийн жуулчлал' },
+  { id: 'p-google',       sec: 'next', owner: 'Claude', created: '2026-09-17', title: 'Google хайлт',
+    act: 'Google хайлтад гарах ангиллын хуудсуудыг сайтад нэмэх' },
   { id: 'p-no-resell',    sec: 'no',   owner: '',       created: '2026-09-17', title: 'Гадаад дижитал захиалга дахин зарах' },
   { id: 'p-no-invest',    sec: 'no',   owner: '',       created: '2026-09-17', title: 'Хөрөнгө оруулалтын зөвлөгөөний хуудас' },
   { id: 'p-no-planform',  sec: 'no',   owner: '',       created: '2026-09-17', title: 'Гараар шивдэг төлөвлөгөөний форм' },
@@ -24784,10 +24796,14 @@ const PLAN_SEED = [
 // ⚠ Хадгалсан мөр ялна — эс бөгөөс хаасан ажил дараагийн PR-аар дахин нээгдэнэ.
 function planMerge(seed, stored) {
   const list = (Array.isArray(stored) ? stored : []).filter(x => x && x.id).map(x => ({ ...x }));
-  const have = new Set(list.map(x => String(x.id)));
+  const byId = new Map(list.map(x => [String(x.id), x]));
   (Array.isArray(seed) ? seed : []).forEach(sd => {
-    if (!sd || !sd.id || have.has(String(sd.id))) return;
-    list.push({ ...sd, status: 'open' });
+    if (!sd || !sd.id) return;
+    const cur = byId.get(String(sd.id));
+    if (!cur) { list.push({ ...sd, status: 'open' }); return; }
+    // ⛔ БИЧВЭРИЙГ seed ялна (гарчиг тодруулахад хадгалсан мөр хуучнаараа үлдэх ёсгүй),
+    //    ШИЙДВЭРИЙГ (sec/status/closed_at) хадгалсан нь ялна — хаасан ажил дахин нээгдэхгүй.
+    PLAN_TEXT_FIELDS.forEach(f => { if (sd[f]) cur[f] = sd[f]; });
   });
   return list;
 }
@@ -24846,7 +24862,7 @@ function renderPlan() {
   const item = (x, acts) => `<div class="plan-item">`
     + `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
     + `${x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : ''}</div>`
-    + `${x.why ? `<div class="plan-w">${escapeHtml(x.why)}</div>` : ''}`
+    + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
     + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}</div>` : ''}`
     + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
     + `</div>`;

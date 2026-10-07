@@ -276,11 +276,19 @@ let _lastErrToastAt = 0;
 // ⚠ Шүүлт нь `схем://` хэлбэртэй байрлалд Л хамаарна — `app.js:17472` гэсэн
 //    манай өөрийн байрлалыг «схем» гэж андуурвал ЖИНХЭНЭ алдаа чимээгүй алга болно.
 const ERR_FOREIGN_SRC = /^(?!https?:)[a-z][a-z0-9+.-]*:\/\//i;
+// ⛔ IN-APP БРАУЗЕРЫН ГҮҮРИЙН АЛДААГ БҮРТГЭХГҮЙ (2026-10-07).
+//   Facebook/Instagram-ийн дотоод браузер хуудсанд ӨӨРИЙН inline код шахдаг тул
+//   `src` нь манай хаяг болж (`ERR_FOREIGN_SRC` барихгүй), «window.webkit.
+//   messageHandlers undefined» гэсэн алдаа манайх мэт бүртгэгддэг байв
+//   (fp 0f6bea95f208). Манай код `window.webkit`-д ХЭЗЭЭ Ч хүрдэггүй.
+//   ⚠ Сайтын `errIsNoise`-тэй ИЖИЛ дүрэм — нэгийг нь заавал нөгөөтэй нь зэрэг зас.
+const ERR_FOREIGN_MSG = /webkit\.messageHandlers|messageHandlers|iabjs|__fbNative/i;
 function _errIsNoise(msg, src) {
   const m = String(msg || '');
   if (!m || m === 'Script error.') return true;                  // cross-origin, дэлгэрэнгүй байхгүй
   if (/ResizeObserver loop/i.test(m)) return true;               // хор хөнөөлгүй браузерын чимээ
   if (ERR_FOREIGN_SRC.test(String(src || ''))) return true;      // өргөтгөл / in-app браузерын шахсан код
+  if (ERR_FOREIGN_MSG.test(m)) return true;                      // in-app браузерын гүүрийн код (доорх тайлбар)
   return false;
 }
 function appErrors() {

@@ -8305,6 +8305,27 @@ select.no-asar-len {
 
 /* 🔒 Эхний үлдэгдлийн 3 дахь гарын үсэг — CEO эцэслэнэ (2026-10-02). */
 .stc-open-seal { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+/* 🔒 Бөөнөөр эцэслэх (2026-10-07) */
+.stc-bulk-seal { margin: var(--space-2) 0; font-weight: 700; }
+.bsl-modal { max-width: 520px; }
+.bsl-g { border: 1px solid var(--border); border-radius: var(--r-md); margin-bottom: var(--space-2); background: var(--panel); }
+.bsl-g > summary { list-style: none; cursor: pointer; padding: var(--space-2) var(--space-3); font-weight: 700; font-size: var(--fs-sm); }
+.bsl-g > summary::-webkit-details-marker { display: none; }
+.bsl-gh { display: inline-flex; align-items: center; gap: var(--space-2); }
+.bsl-cb { flex: none; width: 18px; height: 18px; border: 2px solid var(--border-strong); border-radius: 4px; background: var(--panel);
+  display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: 800; line-height: 1; cursor: pointer; }
+.bsl-cb.on, .bsl-row.on .bsl-cb { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.bsl-cb.on::after, .bsl-row.on .bsl-cb::after { content: '✓'; }
+.bsl-cb.mix { border-color: var(--primary); color: var(--primary); }
+.bsl-cb.mix::after { content: '–'; }
+.bsl-list { max-height: 40vh; overflow-y: auto; border-top: 1px solid var(--border); }
+.bsl-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); font-size: var(--fs-sm); cursor: pointer; }
+.bsl-row:last-child { border-bottom: 0; }
+.bsl-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.bsl-n { min-width: 0; overflow-wrap: anywhere; }
+.bsl-q { color: var(--muted); font-variant-numeric: tabular-nums; font-size: var(--fs-xs); }
+.bsl-q.down { color: var(--danger); font-weight: 700; }
+.bsl-q.up { color: var(--warn); font-weight: 700; }
 .stc-open-sealed { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }
 
 /* 🔒 Эцэслээгүй бараа — тооллого хаалттай (2026-10-02). Суурь нь баталгаажаагүй

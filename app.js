@@ -24838,10 +24838,11 @@ function planSections(list) {
   const arr = (Array.isArray(list) ? list : []).filter(Boolean);
   const open = (sec) => arr.filter(x => x.sec === sec && x.status !== 'done');
   return {
+    idea: open('idea'),
     now: open('now'),
     next: open('next'),
     no: arr.filter(x => x.sec === 'no'),
-    done: arr.filter(x => x.sec !== 'no' && x.status === 'done')
+    done: arr.filter(x => x.sec !== 'no' && x.sec !== 'idea' && x.status === 'done')
       .sort((a, b) => String(b.closed_at || '').localeCompare(String(a.closed_at || ''))),
   };
 }
@@ -24877,6 +24878,16 @@ async function planSet(id, patch) {
   try { await savePlan(); } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
   render();
 }
+// САНАЛ — агент амьд датанаас дүгнэж DB-д бичнэ, CEO нэг товчоор шийднэ (2026-10-07).
+// ⛔ Санал нь app.js-д БИЧИГДЭХГҮЙ — нотолгоо нь бодит тоо агуулдаг, энэ репо НИЙТИЙН.
+//   Хадгалалт = `app_config['plan']`-ийн `sec:'idea'` мөрүүд.
+// ⛔ Татгалзахад ШАЛТГААН заавал — эс бөгөөс ижил санал дахин гарч ирнэ.
+async function planAcceptIdea(id) { await planSet(id, { sec: 'next', status: 'open' }); }
+async function planRejectIdea(id) {
+  const why = String((await showPrompt('Яагаад хийхгүй вэ?', { okText: 'Татгалзах' })) || '').trim();
+  if (!why) return;
+  await planSet(id, { sec: 'no', status: 'open', why });
+}
 async function planAdd() {
   const t = String((await showPrompt('Шинэ ажил — нэр:', { okText: 'Нэмэх' })) || '').trim();
   if (!t) return;
@@ -24905,6 +24916,7 @@ function renderPlan() {
     + ageHtml(x) + `</div>`
     + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
     + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
+    + `${x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : ''}`
     + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : ''}</div>` : ''}`
     + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
     + `</div>`;
@@ -24917,6 +24929,9 @@ function renderPlan() {
     + `<span class="plan-sub">Шийдвэрийг чи гаргана, бичилтийг агент хийнэ. Хийгдсэнийг нь дарж хаа.</span>`
     + `<span class="plan-sub">Шалтгаан, тоо, дэлгэрэнгүй — хаалттай PLAN.md-д (энэ репо нийтийн).</span></div>`
     + warn
+    + (s.idea.length ? `<div class="plan-sec plan-ideas"><div class="plan-sec-h">💡 Агентын санал<span class="plan-n">${s.idea.length}</span></div>`
+        + s.idea.map(x => item(x, btn('plan-yes', x.id, '✓ Батлах') + btn('plan-no', x.id, '✕ Хийхгүй'))).join('')
+        + `</div>` : '')
     + `<div class="plan-sec"><div class="plan-sec-h">Одоо хийж байгаа<span class="plan-n">${s.now.length}</span></div>`
     + (s.now.length ? s.now.map(x => item(x, nowActs(x))).join('') : '<div class="plan-empty">Одоо эхэлсэн ажил алга — доороос нэгийг дээшлүүл.</div>')
     + `</div>`
@@ -24934,7 +24949,9 @@ function renderPlan() {
 function attachPlanHandlers() {
   document.getElementById('plan-add')?.addEventListener('click', () => planAdd());
   document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() })));
-  document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
+  document.querySelectorAll('[data-plan-yes]').forEach(b => b.addEventListener('click', () => planAcceptIdea(b.dataset.planYes)));
+  document.querySelectorAll('[data-plan-no]').forEach(b => b.addEventListener('click', () => planRejectIdea(b.dataset.planNo)));
+    document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
   document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
   document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true })));
 }

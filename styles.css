@@ -5742,6 +5742,10 @@ details.recon-fold[open] > summary::before { content: '▾'; }
   border: 1px solid var(--border); background: var(--panel); color: var(--muted); white-space: nowrap;
 }
 .stc-chip.on { border-color: var(--primary); background: var(--primary); color: #fff; }
+/* Салбарын таб — салбар бүр өөрийн тооллоготой (2026-10-07) */
+.stc-brs { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: 0 0 var(--space-3); }
+.stc-br-live { color: var(--ok); font-size: var(--fs-xs); font-weight: 700; }
+.stc-chip.on .stc-br-live { color: inherit; }
 .stc-row-i { flex-shrink: 0; }
 .stc-row-n { flex: 1; min-width: 0; font-size: var(--fs-base); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Хэн тоолсон — нэрийн доор жижгээр (тооллого багийн ажил тул зайлшгүй) */

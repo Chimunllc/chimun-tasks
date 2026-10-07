@@ -5087,27 +5087,86 @@ function scQuarterOf(dateStr) {
 }
 const _SC_ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 function scSessionLabel(id) {
-  const m = String(id || '').match(/^(\d{4})-Q([1-4])(?:-(\d+))?$/);
+  const m = String(id || '').match(/^(\d{4})-Q([1-4])(?:-(\d+))?(?:@[a-z]+)?$/);
   if (!m) return String(id || '');
   return `${m[1]} оны ${_SC_ROMAN[Number(m[2])]} улирал${m[3] ? ' (' + m[3] + ')' : ''}`;
 }
+/* ─── САЛБАР БҮРИЙН ТООЛЛОГО (2026-10-07, CEO: «тухайн салбар өөрсдийн
+   тооллогоо хийх хэрэгтэй»). Нөөц нь `qty_<салбар>` баганаар хуваагдсан тул
+   салбар бүр ӨӨРИЙН баганаа тоолно; зөрүү нь ТЭР баганыг л хөдөлгөж, алдагдал
+   нь ТЭР салбарын зардал болно.
+   ⛔ Салбар бүрт НЭГ идэвхтэй сесс (`actives[салбар]`) — хоёр салбар зэрэг тоолж болно.
+   ⛔ Сессийн дугаарт салбар орно (`2026-Q4@nomaad`). Салбаргүй ХУУЧИН сесс = M-Event
+     (тэр үед зөрүү M-Event-ийн баганаас залруулагддаг байсан — утга нь хэвээр). */
+const SC_BRANCHES = [
+  { k: 'mevent', q: 'qty_mevent', pnl: 'ИВЕНТ' },
+  { k: 'nomaad', q: 'qty_nomaad', pnl: 'КЕМП' },
+  { k: 'catering', q: 'qty_catering', pnl: 'КАТЕРИНГ' },
+  { k: 'chimun', q: 'qty_chimun', pnl: 'ХХК' },
+];
+function scBranchDef(k) { return SC_BRANCHES.find(b => b.k === k) || SC_BRANCHES[0]; }
+function scBranchOfSession(id) {
+  const m = String(id || '').match(/@([a-z]+)$/);
+  return m && SC_BRANCHES.some(b => b.k === m[1]) ? m[1] : 'mevent';
+}
+function scBranchQty(p, br) { return Number(p && p[scBranchDef(br).q]) || 0; }
+// Тооллогын жагсаалтад орох эсэх: тэр салбарт тоотой. Хаана ч тоогүй (0) бараа
+// M-Event-д харагдана — алга болсныг баталгаажуулах газар нэг байх ёстой.
+function scInBranch(p, br) {
+  if (scBranchQty(p, br) > 0) return true;
+  return br === 'mevent' && SC_BRANCHES.every(b => scBranchQty(p, b.k) <= 0);
+}
+/* Барааны «эзэн» салбар — ЭХНИЙ ҮЛДЭГДЭЛД бараа нэг л жагсаалтад гарна (гарын
+   үсэг нь бараанд нэг). Хамгийн их тоотой салбар; тэнцвэл SC_BRANCHES дараалал. */
+function scPrimaryBranch(p) {
+  let best = 'mevent', n = 0;
+  SC_BRANCHES.forEach(b => { const q = scBranchQty(p, b.k); if (q > n) { n = q; best = b.k; } });
+  return best;
+}
 // Нэг улиралд хоёр дахь тооллого хийвэл дугаарлана (Q3, Q3-2, Q3-3…).
-function scNewSessionId(dateStr, usedIds) {
+// `br` өгвөл салбарын дугаар (`2026-Q4@nomaad`); салбар бүр өөрөө дугаарлагдана.
+function scNewSessionId(dateStr, usedIds, br) {
   const base = scQuarterOf(dateStr); if (!base) return '';
-  const used = new Set(usedIds || []);
-  if (!used.has(base)) return base;
-  for (let i = 2; i < 100; i++) if (!used.has(`${base}-${i}`)) return `${base}-${i}`;
-  return `${base}-${Date.parse(dateStr) || 0}`;
+  if (!br) {
+    const used = new Set(usedIds || []);
+    if (!used.has(base)) return base;
+    for (let i = 2; i < 100; i++) if (!used.has(`${base}-${i}`)) return `${base}-${i}`;
+    return `${base}-${Date.parse(dateStr) || 0}`;
+  }
+  // Хуучин (салбаргүй) дугаар нь M-Event-ийнх гэж тооцогдоно
+  const used = new Set((usedIds || []).map(id => /@/.test(String(id)) ? String(id) : `${id}@mevent`));
+  if (!used.has(`${base}@${br}`)) return `${base}@${br}`;
+  for (let i = 2; i < 100; i++) if (!used.has(`${base}-${i}@${br}`)) return `${base}-${i}@${br}`;
+  return `${base}-${Date.parse(dateStr) || 0}@${br}`;
 }
 // `stock_count` тохиргооны хэлбэрийг ЖИГДЛЭНЭ — хоосон/эвдэрсэн утга дэлгэц унагаахгүй.
+// Хуучин хэлбэр `{active}` → `actives.mevent` (тэр үеийн сесс M-Event-ийн бараа л тоолсон).
 function scNormalizeConfig(cfg) {
   const c = (cfg && typeof cfg === 'object') ? cfg : {};
-  const a = (c.active && typeof c.active === 'object' && c.active.id) ? c.active : null;
-  return { active: a, history: Array.isArray(c.history) ? c.history : [] };
+  const actives = {};
+  const src = (c.actives && typeof c.actives === 'object') ? c.actives : {};
+  SC_BRANCHES.forEach(b => { const a = src[b.k]; if (a && typeof a === 'object' && a.id) actives[b.k] = a; });
+  if (c.active && typeof c.active === 'object' && c.active.id && !actives.mevent) actives.mevent = c.active;
+  return { actives, history: Array.isArray(c.history) ? c.history : [] };
 }
+function scActiveFor(cfg, br) { return scNormalizeConfig(cfg).actives[br] || null; }
 function scAllSessionIds(cfg) {
   const c = scNormalizeConfig(cfg);
-  return (c.active ? [c.active.id] : []).concat(c.history.map(h => h && h.id).filter(Boolean));
+  return Object.values(c.actives).map(a => a.id).concat(c.history.map(h => h && h.id).filter(Boolean));
+}
+// Сонгосон салбар — санасан утга, эс бөгөөс хэрэглэгчийн салбар (Удирдлага → M-Event).
+function scBranch() {
+  if (state.scBranch && SC_BRANCHES.some(b => b.k === state.scBranch)) return state.scBranch;
+  let k = '';
+  try { k = localStorage.getItem('scBranch') || ''; } catch (_) {}
+  if (!SC_BRANCHES.some(b => b.k === k)) {
+    const me = findMember(state.me);
+    const mb = me && typeof memberBranch1 === 'function' ? memberBranch1(me) : '';
+    k = mb === 'camp' ? 'nomaad' : mb === 'catering' ? 'catering' : 'mevent';
+    if (!me) return k;   // ажилтны жагсаалт ирээгүй — таамгийг САНАХГҮЙ (дараа нь зөв салбар гарна)
+  }
+  state.scBranch = k;
+  return k;
 }
 // Бичлэгийг хэн тоолсон бэ. Хуучин (2026-09-04-өөс өмнөх) бичлэгийн session_id нь
 // `огноо|хүн` хэлбэртэй байсан тул counted_by дутвал тэндээс сэргээнэ.
@@ -5209,8 +5268,10 @@ function outNowIndex() {
   return state._outIdx;
 }
 // Нэг барааны «агуулахад байх ёстой» тоо — тооллого ҮҮНТЭЙ тулгана.
-function countExpectedFor(p) {
-  return expectedInWarehouse(Number(p && p.stock) || 0, outNowIndex().get(p && p.sku) || 0);
+// САЛБАРЫН тоо − гадаа байгаа. Түрээсэнд гарсныг зөвхөн M-Event мэддэг (захиалгууд).
+function countExpectedFor(p, br) {
+  br = br || scBranch();
+  return expectedInWarehouse(scBranchQty(p, br), br === 'mevent' ? (outNowIndex().get(p && p.sku) || 0) : 0);
 }
 // Агуулахад БАЙХ ЁСТОЙ тоо = нийт нөөц − гадаа байгаа. Тооллого үүнтэй тулгана.
 function expectedInWarehouse(stock, outQty) {
@@ -5393,9 +5454,11 @@ async function countActDownload(session, rows, btn) {
         sc.onload = res; sc.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));
         document.head.appendChild(sc); });
     }
-    const all = countScopedProducts(scNormalizeConfig(state.scCfg).active && scNormalizeConfig(state.scCfg).active.scope);
+    const _act0 = scActiveFor(state.scCfg, scBranch());
+    const all = countScopedProducts(_act0 && _act0.scope);
     const html = countActHtml({
       org: CHIMUN_LEGAL,
+      branch: STOCK_BRANCH_LABEL[scBranch()] || '',
       rows,
       total: all.length,
       startedAt: String(session && session.started_at || '').slice(0, 10),
@@ -5438,9 +5501,10 @@ async function countActDownload(session, rows, btn) {
   finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 
-// Тооллогод хамаарах бараа — ГАНЦ эх сурвалж (үйлчилгээ/багц хасагдана + хүрээ).
-function countScopedProducts(scope) {
-  const base = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+// Тооллогод хамаарах бараа — ГАНЦ эх сурвалж (үйлчилгээ/багц хасагдана + САЛБАР + хүрээ).
+function countScopedProducts(scope, br) {
+  br = br || scBranch();
+  const base = (state.products || []).filter(p => !isService(p) && !isPackage(p) && scInBranch(p, br));
   return countScopeProducts(base, scope, countUnitCost);
 }
 // ── ХАМРАХ ХҮРЭЭ (2026-09-04) ──────────────────────────────────────────────
@@ -5540,7 +5604,7 @@ function countActHtml(o) {
     <h1>БАРААНЫ ТООЛЛОГЫН АКТ</h1>
     <div class="meta">
       <div><b>${esc(org.name || '')}</b>${org.reg ? ` · РД ${esc(org.reg)}` : ''}</div>
-      <div>Тооллого: ${esc(o.startedAt || '')} — ${esc(o.finishedAt || '')}</div>
+      <div>Тооллого: ${esc(o.startedAt || '')} — ${esc(o.finishedAt || '')}${o.branch ? ` · Салбар: ${esc(String(o.branch).replace(/^\S+\s/, ''))}` : ''}</div>
       <div>Тоолсон: ${people.length ? esc(people.join(', ')) : '—'}</div>
     </div>
     <table class="sum">
@@ -5593,7 +5657,7 @@ function ensureStockCountLoaded() {
   // ⛔ Таамгийн татац ТӨЛӨВТ БИЧИХГҮЙ — хожуу ирвэл зөв сессийн мөрийг дарах ёсгүй
   const early = guess ? _fetchStockCountRows(guess).catch(() => null) : Promise.resolve(null);
   loadStockCountCfg().then(async cfg => {
-    const id = cfg.active ? cfg.active.id : '';
+    const a = scActiveFor(cfg, scBranch()); const id = a ? a.id : '';
     try { localStorage.setItem(SC_LAST_SESSION_KEY, id); } catch (_) {}
     state.scSession = id;
     const pre = (guess && guess === id) ? await early : null;   // таамаг таарсан бол бэлэн хариуг ашиглана
@@ -5605,28 +5669,44 @@ async function loadStockCountCfg() {
   state.scCfg = cfg;
   return cfg;
 }
-// Тооллого эхлүүлэх — нэг л идэвхтэй сесс байна (хоёр зэрэг явбал тоо хуваагдана).
-async function startStockCount(scope) {
-  const cfg = scNormalizeConfig(state.scCfg);
-  if (cfg.active) throw new Error('Тооллого аль хэдийн эхэлсэн байна');
-  const id = scNewSessionId(todayStr(), scAllSessionIds(cfg));
+// Салбарыг солих — тэр салбарын идэвхтэй сессийн мөрийг татна.
+function scSetBranch(k) {
+  if (!SC_BRANCHES.some(b => b.k === k)) return;
+  state.scBranch = k;
+  try { localStorage.setItem('scBranch', k); } catch (_) {}
+  const a = scActiveFor(state.scCfg, k);
+  state.scSession = a ? a.id : ''; state.scRows = []; state.scActive = null; state.scQty = null;
+  try { localStorage.setItem(SC_LAST_SESSION_KEY, state.scSession); } catch (_) {}
+  render();
+  loadStockCounts(state.scSession).then(() => { if (state.view === 'stockcount') render(); });
+}
+// Тооллого эхлүүлэх — салбар бүрт нэг л идэвхтэй сесс (хоёр зэрэг явбал тоо хуваагдана).
+// ⚠ Тохиргоог СЕРВЕРЭЭС шинээр уншиж бичнэ — өөр салбар зэрэг эхлүүлсэн бол дарахгүй.
+async function startStockCount(scope, br) {
+  br = br || scBranch();
+  const cfg = await loadStockCountCfg();
+  if (cfg.actives[br]) throw new Error('Энэ салбарын тооллого аль хэдийн эхэлсэн байна');
+  const id = scNewSessionId(todayStr(), scAllSessionIds(cfg), br);
   if (!id) throw new Error('Сессийн дугаар үүсгэж чадсангүй');
-  const next = { active: { id, started_at: new Date().toISOString(), started_by: state.me || '', scope: String(scope || 'all') }, history: cfg.history };
+  const next = { actives: Object.assign({}, cfg.actives, { [br]: { id, branch: br, started_at: new Date().toISOString(), started_by: state.me || '', scope: String(scope || 'all') } }), history: cfg.history };
   await saveAppConfig(SC_CFG_KEY, next);
   state.scCfg = next; state.scSession = id; state.scRows = [];
   return id;
 }
 // Хаах — зөрүү залруулсан эсэхээс үл хамааран кампанит ажлыг дуусгана.
 // Бичилтүүд `session_id`-аараа хэвээр үлдэж түүх болно (хатуу устгахгүй).
-async function closeStockCount(stats) {
-  const cfg = scNormalizeConfig(state.scCfg);
-  if (!cfg.active) throw new Error('Идэвхтэй тооллого алга');
-  const done = Object.assign({}, cfg.active, {
+async function closeStockCount(stats, br) {
+  br = br || scBranch();
+  const cfg = await loadStockCountCfg();
+  const act = cfg.actives[br];
+  if (!act) throw new Error('Идэвхтэй тооллого алга');
+  const done = Object.assign({ branch: br }, act, {
     closed_at: new Date().toISOString(), closed_by: state.me || '',
     counted: Number(stats && stats.counted) || 0, total: Number(stats && stats.total) || 0,
     diffs: Number(stats && stats.diffs) || 0, pending: Number(stats && stats.pending) || 0,
   });
-  const next = { active: null, history: [done].concat(cfg.history).slice(0, 20) };
+  const rest = Object.assign({}, cfg.actives); delete rest[br];
+  const next = { actives: rest, history: [done].concat(cfg.history).slice(0, 40) };
   await saveAppConfig(SC_CFG_KEY, next);
   state.scCfg = next; state.scSession = ''; state.scRows = [];
 }
@@ -5836,12 +5916,22 @@ async function applyStockCount(row) {
   if (_blk) throw new Error(_blk);
   const d = countDiff(row);
   if (!d) return;
-  // Салбарын хуваарилалт: зөрүүг M-Event дээр залруулна (нөөцийн үндсэн салбар),
-  // хүрэлцэхгүй бол Чимун дээрээс. Нийлбэр stock-той үргэлж тэнцэнэ.
-  const qm = Number(p.qty_mevent) || 0, qc = Number(p.qty_chimun) || 0;
-  let nm = qm + d, nc = qc;
-  if (nm < 0) { nc = Math.max(0, qc + nm); nm = 0; }
-  await saveProduct({ ...p, stock: Math.max(0, (Number(p.stock) || 0) + d), qty_mevent: nm, qty_chimun: nc,
+  /* Салбарын тооллого (`…@салбар`) → зөрүү нь ЗӨВХӨН тэр салбарын баганад.
+     Хуучин (салбаргүй) сесс → M-Event дээр, хүрэлцэхгүй бол Чимун дээрээс
+     (тэр үеийн дүрэм — утга нь хэвээр). Нийлбэр stock-той үргэлж тэнцэнэ. */
+  let patch;
+  if (/@/.test(String(row.session_id || ''))) {
+    const f = scBranchDef(scBranchOfSession(row.session_id)).q;
+    const nb = Math.max(0, (Number(p[f]) || 0) + d);
+    patch = { [f]: nb };
+    patch.stock = SC_BRANCHES.reduce((n, b) => n + (b.q === f ? nb : (Number(p[b.q]) || 0)), 0);
+  } else {
+    const qm = Number(p.qty_mevent) || 0, qc = Number(p.qty_chimun) || 0;
+    let nm = qm + d, nc = qc;
+    if (nm < 0) { nc = Math.max(0, qc + nm); nm = 0; }
+    patch = { stock: Math.max(0, (Number(p.stock) || 0) + d), qty_mevent: nm, qty_chimun: nc };
+  }
+  await saveProduct({ ...p, ...patch,
     _moveReason: 'count', _moveRef: String(row.id || ''), _moveNote: 'тооллогын зөрүү' });
   const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?id=eq.${encodeURIComponent(row.id)}`, {
     method: 'PATCH',
@@ -23188,9 +23278,26 @@ async function openCountScanner() {
 /* ⚠ `canManage` (нөөц засах) нь эхний үлдэгдэл ТООЛОХ эрх БИШ — тооллого
    нээх/хаахад хэрэглэгдэнэ. Тоолох товч нь `canOpenCount()`-оор л гарна,
    эс бөгөөс `products.edit` шүхэртэй хүмүүс бүгд тоолж чадна. */
+/* Салбарын таб — салбар бүр ӨӨРИЙН тооллоготой. Таб дээр барааны тоо ба
+   идэвхтэй тооллого байгаа эсэх ил харагдана (аль салбар тоолж байгааг мэднэ). */
+function scBranchTabsHtml() {
+  const cur = scBranch(), cfg = scNormalizeConfig(state.scCfg);
+  const base = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+  return `<div class="stc-brs">${SC_BRANCHES.map(b => {
+    const n = base.filter(p => scInBranch(p, b.k)).length;
+    return `<button type="button" class="stc-chip ui-raw${b.k === cur ? ' on' : ''}" data-scbranch="${b.k}">${escapeHtml(STOCK_BRANCH_LABEL[b.k] || b.k)} ${n}${cfg.actives[b.k] ? ' <span class="stc-br-live" title="Тооллого явж байна">●</span>' : ''}</button>`;
+  }).join('')}</div>`;
+}
 function openingBlockHtml(canManage) {
   const canOpen = canOpenCount();
-  const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p)), countUnitCost);
+  /* Эхний үлдэгдэл нь барааны «эзэн» салбарт (хамгийн их тоотой) гарна — гарын
+     үсэг бараанд НЭГ тул нэг л жагсаалтад. Хэд хэдэн салбарт байгаа бол мөрөнд
+     задаргаа нь ил (тоолохдоо бүгдийг нь тоолно). */
+  const _br = scBranch();
+  const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p) && scPrimaryBranch(p) === _br), countUnitCost);
+  const _split = (sku) => { const p = productBySku(sku); if (!p) return '';
+    const parts = SC_BRANCHES.filter(b => scBranchQty(p, b.k) > 0);
+    return parts.length > 1 ? ` · үүнд ${parts.map(b => `${escapeHtml(String(STOCK_BRANCH_LABEL[b.k] || b.k).replace(/^\S+\s/, ''))} ${scBranchQty(p, b.k)}`).join(', ')}` : ''; };
   const oSt = openingStats(oRows);
   const showMoney = canProductPart('cost');
   const canApprove = canApproveOpening();
@@ -23225,7 +23332,7 @@ function openingBlockHtml(canManage) {
   const oDone = oCap(oDoneAll, 'done', 60);
 
   const countList = oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
-      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
+      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%${_split(x.sku)}</span></span>
       <span class="stc-open-q">системд <b>${x.qty}</b></span>
       ${canOpen ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
       <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Тоолсон</button>` : ''}
@@ -23270,7 +23377,7 @@ function openingBlockHtml(canManage) {
 
   return `<div class="stc-open">
     <div class="stc-open-h">
-      <div><b>Эхний үлдэгдэл</b><span>Нярав тоолно → ҮАХ захирал хянана → CEO эцэслэнэ. Алхам бүр ӨӨР эрхтэй — нэг хүн хоёрыг нь хийж чадахгүй. Эцэслэсний дараа суурь ХӨЛДӨНӨ, залруулга зөвхөн тооллогоор.</span></div>
+      <div><b>Эхний үлдэгдэл · ${escapeHtml(String(STOCK_BRANCH_LABEL[_br] || '').replace(/^\S+\s/, ''))}</b><span>Нярав тоолно → ҮАХ захирал хянана → CEO эцэслэнэ. Алхам бүр ӨӨР эрхтэй — нэг хүн хоёрыг нь хийж чадахгүй. Эцэслэсний дараа суурь ХӨЛДӨНӨ, залруулга зөвхөн тооллогоор.</span></div>
       <div class="stc-open-n">${oPct}%</div>
     </div>
     <div class="stc-bar"><div style="width:${oPct}%"></div></div>
@@ -23289,9 +23396,14 @@ function renderStockCount() {
   }
   if (!state.scCfg) return '<div class="orders-empty"><div class="icon">📋</div>Ачаалж байна…</div>';
   const cfg = scNormalizeConfig(state.scCfg);
-  if (!cfg.active) return renderStockCountIdle(cfg, canManage);
-  const all = countScopedProducts(scNormalizeConfig(state.scCfg).active && scNormalizeConfig(state.scCfg).active.scope);
+  const br = scBranch(), active = cfg.actives[br];
+  if (!active) return scBranchTabsHtml() + renderStockCountIdle(cfg, canManage);
   const rows = state.scRows || [];
+  /* Тоолсон ч салбарын жагсаалтад ороогүй бараа (тоо нь 0 болсон, өөр салбараас
+     олдсон) нуугдахгүй — жагсаалтад нэмэгдэнэ. */
+  const _scoped = countScopedProducts(active.scope, br);
+  const _inSet = new Set(_scoped.map(p => p.sku));
+  const all = _scoped.concat([...countLatestBySku(rows).keys()].filter(k => !_inSet.has(k)).map(productBySku).filter(Boolean));
   const st = countStats(rows, all.length);
   const latest = countLatestBySku(rows);
   const counters = [...new Set(rows.map(countRowPerson).filter(Boolean))];
@@ -23313,8 +23425,8 @@ function renderStockCount() {
   state.scFilter = state.scFilter || 'todo';
   const shown = countFilterList(merged, state.scFilter, state.scSearch);
   const act = state.scActive ? productBySku(state.scActive) : null;
-  const actTotal = act ? (Number(act.stock) || 0) : 0;
-  const actOut = act ? (outNowIndex().get(act.sku) || 0) : 0;
+  const actTotal = act ? scBranchQty(act, br) : 0;
+  const actOut = act && br === 'mevent' ? (outNowIndex().get(act.sku) || 0) : 0;
   const actSys = act ? countExpectedFor(act) : 0;   // агуулахад БАЙХ ЁСТОЙ
   const actCnt = state.scQty == null ? actSys : Number(state.scQty);
   const actDiff = actCnt - actSys;
@@ -23334,7 +23446,7 @@ function renderStockCount() {
       <div class="stc-active-m">${escapeHtml(act.code || act.sku || '')}${act.category ? ' · ' + escapeHtml(act.category) : ''}</div>
       <div class="stc-active-row">
         <div class="stc-sys"><span>Агуулахад байх ёстой</span><b>${actSys} ш</b>
-          <em>Нийт ${actTotal}${actOut ? ` · түрээсэнд ${actOut}` : ''}</em></div>
+          <em>${escapeHtml(String(STOCK_BRANCH_LABEL[br] || '').replace(/^\S+\s/, ''))}-д ${actTotal}${actOut ? ` · түрээсэнд ${actOut}` : ''}</em></div>
         <div class="stc-step">
           <span class="stc-step-l">Тоолсон</span>
           <div class="stc-step-b">
@@ -23391,9 +23503,10 @@ function renderStockCount() {
 
   return `
     ${loadWarn}
+    ${scBranchTabsHtml()}
     <div class="stc-head">
-      <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(cfg.active.id))} · ${escapeHtml(countScopeLabel(cfg.active.scope))}</span></div>
-      <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${st.rep ? ` · <span class="stc-dmg-t">🔧 ${st.rep} ш засварт</span>` : ''}${st.wo ? ` · <span class="stc-dmg-t">🗑 ${st.wo} ш актлах</span>` : ''}${cfg.active.started_at ? ` · ${escapeHtml(String(cfg.active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
+      <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(active.id))} · ${escapeHtml(countScopeLabel(active.scope))}</span></div>
+      <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${st.rep ? ` · <span class="stc-dmg-t">🔧 ${st.rep} ш засварт</span>` : ''}${st.wo ? ` · <span class="stc-dmg-t">🗑 ${st.wo} ш актлах</span>` : ''}${active.started_at ? ` · ${escapeHtml(String(active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
       ${loss && loss.totalVal > 0 ? `<div class="stc-loss">Алдагдал <b>${fmtMoney(loss.totalVal)}</b>${loss.shortQty ? ` · дутуу ${loss.shortQty} ш ${fmtMoneyShort(loss.shortVal)}` : ''}${loss.woQty ? ` · актлах ${loss.woQty} ш ${fmtMoneyShort(loss.woVal)}` : ''}</div>` : ''}
       <div class="stc-bar"><div style="width:${pct}%"></div></div>
       ${canManage ? `<div class="stc-actions"><button class="btn ui-raw" id="stc-close">Тооллого хаах</button></div>` : ''}
@@ -23415,7 +23528,8 @@ function renderStockCount() {
 // Идэвхтэй тооллого байхгүй үе — эхлүүлэх товч + өмнөх тооллогуудын түүх.
 // Түүх нь «сүүлд хэзээ тоолсон бэ» гэдгийг хариулна (улирал алгасахаас сэргийлнэ).
 function renderStockCountIdle(cfg, canManage) {
-  const hist = cfg.history.map(h => `<div class="stc-row ok">
+  const _br = scBranch();
+  const hist = cfg.history.filter(h => h && (h.branch || scBranchOfSession(h.id)) === _br).map(h => `<div class="stc-row ok">
       <span class="stc-row-i">✓</span>
       <span class="stc-row-n">${escapeHtml(scSessionLabel(h.id))}<span class="stc-row-by">${escapeHtml(String(h.closed_at || '').slice(0, 10))}${h.closed_by ? ' · ' + escapeHtml(memberName(h.closed_by)) : ''}</span></span>
       <span class="stc-row-q">${Number(h.counted) || 0}/${Number(h.total) || 0}${h.diffs ? ` · ${h.diffs} зөрүү` : ''}</span>
@@ -23423,7 +23537,7 @@ function renderStockCountIdle(cfg, canManage) {
   return `
     <div class="stc-head">
       <div class="stc-head-t">Тооллого</div>
-      <div class="stc-head-m">Идэвхтэй тооллого алга. Улиралд нэг удаа бүрэн тооллого хийнэ.</div>
+      <div class="stc-head-m">${escapeHtml(String(STOCK_BRANCH_LABEL[_br] || '').replace(/^\S+\s/, ''))}-д идэвхтэй тооллого алга. Салбар бүр өөрийн нөөцөө улиралд нэг удаа бүрэн тоолно.</div>
     </div>
     ${openingBlockHtml(canManage)}
     ${canManage ? `<div class="stc-actions">
@@ -23440,6 +23554,7 @@ function renderStockCountIdle(cfg, canManage) {
 
 function attachStockCountHandlers() {
   const $ = (id) => document.getElementById(id);
+  document.querySelectorAll('[data-scbranch]').forEach(b => b.addEventListener('click', () => scSetBranch(b.dataset.scbranch)));
   document.querySelectorAll('[data-op-more]').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.opMore;
     state.openExpand = state.openExpand || {};
@@ -23520,12 +23635,13 @@ function attachStockCountHandlers() {
   if ($('stc-start')) $('stc-start').onclick = async (e) => {
     const btn = e.currentTarget; btn.disabled = true;
     const sel = document.getElementById('stc-scope');
-    try { const id = await startStockCount(sel ? sel.value : 'all'); render(); showToast(scSessionLabel(id) + ' — тооллого эхэллээ', 'ok', 2500); }
+    try { const id = await startStockCount(sel ? sel.value : 'all'); render(); showToast(`${String(STOCK_BRANCH_LABEL[scBranch()] || '').replace(/^\S+\s/, '')} · ${scSessionLabel(id)} — тооллого эхэллээ`, 'ok', 2500); }
     catch (err) { showToast('Эхлүүлж чадсангүй: ' + err.message, 'error', 5000); btn.disabled = false; }
   };
   if ($('stc-close')) $('stc-close').onclick = async (e) => {
     const rows = state.scRows || [];
-    const all = countScopedProducts(scNormalizeConfig(state.scCfg).active && scNormalizeConfig(state.scCfg).active.scope);
+    const _a = scActiveFor(state.scCfg, scBranch());
+    const all = countScopedProducts(_a && _a.scope);
     const st = countStats(rows, all.length);
     const left = st.total - st.counted;
     // Дуусаагүй / залруулаагүй байхад хаах нь бодит эрсдэл — тоогоор нь сануулна.
@@ -23566,8 +23682,7 @@ function attachStockCountHandlers() {
   if ($('stc-plus')) $('stc-plus').onclick = () => bump(1);
   if ($('stc-scan')) $('stc-scan').onclick = () => openCountScanner();
   if ($('stc-act')) $('stc-act').onclick = (e) => {
-    const cfg = scNormalizeConfig(state.scCfg);
-    countActDownload(cfg.active || {}, state.scRows || [], e.currentTarget);
+    countActDownload(scActiveFor(state.scCfg, scBranch()) || {}, state.scRows || [], e.currentTarget);
   };
   if ($('stc-save')) $('stc-save').onclick = async (e) => {
     const p = productBySku(state.scActive); if (!p) return;
@@ -36871,10 +36986,12 @@ function missingItemsCost(month, orders) {
      нь өмнөх тооллогын алдаа, шинэ хөрөнгө биш.
    ⚠ Актлах гэж тэмдэглэсэн эвдрэл (⟦DMG|засвар|актлах⟧) нь тоолсон тоонд
      БАЙГАА (тавиур дээр байгаа) тул зөрүүгээр баригдахгүй — тусад нь нэмнэ. */
-function countShrinkCost(month, rows) {
+// `pnlKey` өгвөл ЗӨВХӨН тэр салбарын тооллого (сессийн дугаараас, хуучин = ИВЕНТ).
+function countShrinkCost(month, rows, pnlKey) {
   let qty = 0, cost = 0, lines = 0, pendingQty = 0, pendingCost = 0, dmgQty = 0, dmgCost = 0;
   for (const r of (rows || state.scRows || [])) {
     if (!r || !r.sku) continue;
+    if (pnlKey && scBranchDef(scBranchOfSession(r.session_id)).pnl !== pnlKey) continue;
     if (month && String(r.counted_at || '').slice(0, 7) !== month) continue;
     const unit = (typeof countUnitCost === 'function') ? countUnitCost(r.sku) : 0;
     const d = (typeof countDiff === 'function') ? countDiff(r) : 0;
@@ -36928,7 +37045,8 @@ function pnlExtrasFor(month, bk) {
   return {
     dep: dep.active ? (bk ? (dep[bk] || 0) : ['ИВЕНТ', 'КЕМП', 'КАТЕРИНГ', 'ХХК'].reduce((a, b) => a + (dep[b] || 0), 0)) : 0,
     miss: evOk ? missingItemsCost(month).cost : 0,
-    shrink: evOk ? countShrinkCost(month, state.scAllRows || undefined).total : 0,
+    // Тооллогын алдагдал ТООЛСОН салбарын зардал (салбар бүр өөрийн тооллоготой)
+    shrink: countShrinkCost(month, state.scAllRows || undefined, bk || undefined).total,
   };
 }
 function expenseLadderFor(month, wantBr) {
@@ -36975,7 +37093,8 @@ function finBranchPnl(month, basis) {
   exp['ИВЕНТ'] += miss.cost;
   // Тооллогоор илэрсэн алдагдал — тавиур дээрээс чимээгүй алга болсон бараа.
   const cnt = countShrinkCost(month, state.scAllRows || undefined);
-  exp['ИВЕНТ'] += cnt.total;
+  // Салбар бүр өөрийн тооллогын алдагдлыг үүрнэ (хуучин салбаргүй сесс = ИВЕНТ)
+  SC_BRANCHES.forEach(b => { exp[b.pnl] = (exp[b.pnl] || 0) + countShrinkCost(month, state.scAllRows || undefined, b.pnl).total; });
   return {
     rows: [
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },

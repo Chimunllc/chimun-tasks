@@ -5601,6 +5601,9 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .stc-open-nm { flex: 1 1 160px; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .stc-open-nm span { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stc-open-nm span.stc-open-dq { color: var(--text-soft); white-space: normal; }
+.stc-open-nm span.stc-open-dq.up { color: var(--warn); font-weight: 600; }
+.stc-open-nm span.stc-open-dq.down { color: var(--danger); font-weight: 600; }
 .stc-open-q { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 .stc-open-q b { color: var(--text); font-variant-numeric: tabular-nums; }
 .stc-open .stc-open-in { width: 76px; }

@@ -5402,6 +5402,38 @@ function openingUndoBlock(p, me, canApprove, kind) {
   return stockCounted(p) ? '' : 'Тоолоогүй байна';
 }
 
+/* ЭЦЭСЛЭХИЙН ӨМНӨ «анх хэд байсан → тоолоод хэд болсон» (2026-10-07, CEO).
+   Нөөцийн дэвтэрт (stock_moves) эхний үлдэгдлийн мөр ЗӨВХӨН тоо өөрчлөгдсөн үед
+   бичигддэг: мөр байхгүй = тоолсон тоо системийнхтэй таарсан. Тоолсны ДАРААХ
+   хөдөлгөөнийг (гараар, эвдрэл, тооллого…) одоогийн тооноос хасаж тоолсон мөчийн
+   тоог сэргээнэ. ⛔ Дэвтэр эхлэхээс ӨМНӨ тоолсон бараанд анхны тоо мэдэгдэхгүй —
+   ТААМАГЛАХГҮЙ (`known:false`), ил хэлнэ. Цэвэр функц. */
+function openingBeforeAfter(p, moves, ledgerStart) {
+  if (!p || !p.stock_opened_at || !Array.isArray(moves)) return null;
+  const t = (x) => Date.parse(x) || 0;
+  const ms = moves.filter(m => m && m.sku === p.sku).sort((a, b) => t(a.at) - t(b.at));
+  const op = ms.filter(m => m.reason === 'opening');
+  const lastAt = op.length ? t(op[op.length - 1].at) : t(p.stock_opened_at);
+  const later = ms.filter(m => m.reason !== 'opening' && t(m.at) > lastAt).reduce((n, m) => n + (Number(m.delta) || 0), 0);
+  const after = (Number(p.stock) || 0) - later;
+  if (!op.length) {
+    if (ledgerStart && t(p.stock_opened_at) < t(ledgerStart)) return { known: false, after };
+    return { known: true, before: after, after, d: 0 };
+  }
+  const d = op.reduce((n, m) => n + (Number(m.delta) || 0), 0);
+  return { known: true, before: after - d, after, d };
+}
+// Нөөцийн дэвтэр бүхэлдээ (жижиг — хэдэн зуун мөр) — эцэслэхийн өмнөх харьцуулалтад
+async function loadStockMovesAll() {
+  try {
+    const r = await fetchWithTimeout(`${STOCK_MOVES_URL()}?select=sku,delta,reason,at&order=at.asc&limit=20000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.stockMovesAll = await r.json();
+  } catch (e) { dataLoadFailed('loadStockMovesAll', e); }
+  return state.stockMovesAll;
+}
+
 /* Барааг ӨРТГӨӨР эрэмбэлж, хуримтлагдсан хувийг өгнө — «юуг эхэлж тоолох вэ»
    гэдгийг систем хэлэх ёстой, хүн таамаглах ёсгүй. 49 бараа = хөрөнгийн 80%. */
 function openingRows(products, costOf) {
@@ -23295,6 +23327,18 @@ function openingBlockHtml(canManage) {
      задаргаа нь ил (тоолохдоо бүгдийг нь тоолно). */
   const _br = scBranch();
   const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p) && scPrimaryBranch(p) === _br), countUnitCost);
+  // «анх → тоолсон» — дэвтэр ачаалагдаагүй бол ачаална (ачаалтал мөр харагдахгүй)
+  if (state.stockMovesAll === undefined) { state.stockMovesAll = null; loadStockMovesAll().then(() => { if (state.view === 'stockcount') render(); }); }
+  const _mv = Array.isArray(state.stockMovesAll) ? state.stockMovesAll : null;
+  const _ledger0 = _mv && _mv.length ? _mv[0].at : null;
+  const _dq = (sku) => {
+    const r = _mv ? openingBeforeAfter(productBySku(sku), _mv, _ledger0) : null;
+    if (!r) return '';
+    if (!r.known) return '<span class="stc-open-dq">анхны тоо бүртгэгдээгүй — дэвтэр эхлэхээс өмнө тоолсон</span>';
+    if (!r.d) return `<span class="stc-open-dq">анх ${r.before} → тоолсон ${r.after} · ✓ зөрүүгүй</span>`;
+    const c = countUnitCost(sku);
+    return `<span class="stc-open-dq ${r.d > 0 ? 'up' : 'down'}">анх ${r.before} → тоолсон ${r.after} · ${r.d > 0 ? '+' : '−'}${Math.abs(r.d)} ш${showMoney && c > 0 ? ` (${r.d > 0 ? '+' : '−'}${escapeHtml(fmtMoney(Math.abs(r.d) * c))})` : ''}</span>`;
+  };
   const _split = (sku) => { const p = productBySku(sku); if (!p) return '';
     const parts = SC_BRANCHES.filter(b => scBranchQty(p, b.k) > 0);
     return parts.length > 1 ? ` · үүнд ${parts.map(b => `${escapeHtml(String(STOCK_BRANCH_LABEL[b.k] || b.k).replace(/^\S+\s/, ''))} ${scBranchQty(p, b.k)}`).join(', ')}` : ''; };
@@ -23351,7 +23395,7 @@ function openingBlockHtml(canManage) {
     <div class="stc-open-list">${oWait.map(x => {
       const why = openingSignBlock(productBySku(x.sku), state.me, canApprove);
       return `<div class="stc-open-row">
-      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · ${escapeHtml(String(x.sku))}${money(x.value)}</span></span>
+      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · ${escapeHtml(String(x.sku))}${money(x.value)}</span>${_dq(x.sku)}</span>
       <span class="stc-open-q">тоолсон <b>${x.qty}</b></span>
       ${why ? `<span class="stc-open-why">${escapeHtml(why)}</span>`
             : `<button class="btn stc-open-ok" data-op-ap="${escapeHtml(x.sku)}">Батлах</button>`}
@@ -23363,7 +23407,7 @@ function openingBlockHtml(canManage) {
   const doneList = oSt.done ? `<details class="stc-open-done">
     <summary>✓ Баталгаажсан · ${oSt.done}${showMoney ? ` · ${fmtMoney(oSt.valueDone)}` : ''}</summary>
     <div class="stc-open-list">${oDone.map(x => `<div class="stc-open-row">
-      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · батлав: ${escapeHtml(memberName(x.apBy) || x.apBy || '—')}${x.apAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.apAt)) : ''}</span></span>
+      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · батлав: ${escapeHtml(memberName(x.apBy) || x.apBy || '—')}${x.apAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.apAt)) : ''}</span>${_dq(x.sku)}</span>
       <span class="stc-open-q">${x.qty} ш${money(x.value)}</span>
       ${x.sealed
         ? `<span class="stc-open-sealed">🔒 Эцэслэсэн${x.lkBy ? ' · ' + escapeHtml(memberName(x.lkBy) || x.lkBy) : ''}${x.lkAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.lkAt)) : ''}</span>`

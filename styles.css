@@ -7689,6 +7689,40 @@ select.no-asar-len {
 .plan-empty { font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }
 .plan-more { font-size: var(--fs-sm); display: flex; flex-direction: column; gap: var(--space-2); }
 .plan-more > summary { cursor: pointer; color: var(--muted); padding: var(--space-2) 0; }
+/* Төлөвлөгөөний мөрөнд «хэн санал болгосон» (бичвэр нь эвхэгдэнэ) */
+.plan-from { font-size: var(--fs-xs); color: var(--text-soft); }
+.plan-from > summary { cursor: pointer; }
+.plan-from-q { color: var(--muted); line-height: 1.5; padding: var(--space-1) 0 0 var(--space-3);
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ── Санал санаачлага — ажилтны асуудал/санал (2026-10-07) ──────────────── */
+.si-form { display: flex; flex-direction: column; gap: var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--space-3); background: var(--panel); }
+.si-kinds { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.si-kind { font-size: var(--fs-sm); padding: var(--space-1) var(--space-3); cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel); color: var(--text-soft); }
+.si-kind.on { border-color: var(--primary); background: var(--primary-soft); color: var(--text); font-weight: 600; }
+.si-ta { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical;
+  font: inherit; font-size: var(--fs-base); line-height: 1.5; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--space-2); background: var(--bg); }
+.si-send { align-self: flex-start; }
+.si-item { display: flex; flex-direction: column; gap: var(--space-1);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--space-3); background: var(--panel); }
+.si-meta { display: flex; gap: var(--space-2); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--muted); }
+.si-who { color: var(--text-soft); font-weight: 600; }
+.si-when { font-variant-numeric: tabular-nums; }
+.si-body { font-size: var(--fs-sm); color: var(--text); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.si-st { font-size: var(--fs-sm); font-weight: 600; }
+.si-st.si-wait { color: var(--muted); }
+.si-st.si-ok { color: var(--ok); }
+.si-st.si-no { color: var(--danger); }
+.si-st.si-info { color: var(--info); }
+.si-why { font-size: var(--fs-sm); color: var(--text-soft); line-height: 1.5;
+  background: var(--panel-hover); border-radius: var(--r-sm); padding: var(--space-1) var(--space-2); }
+.si-task { font-size: var(--fs-xs); color: var(--ok); }
+.si-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.si-btn { font-size: var(--fs-sm); padding: var(--space-1) var(--space-3); }
+.fsi-idea { background: var(--warn-soft); color: var(--warn); }
 
 /* ═══ NOMAAD бэлтгэлийн модал (openNomaadPrepChecklist) ═══
    Өмнө нь энэ модалын мөр бүр app.js дотор inline `style=`-аар зурагддаг байв

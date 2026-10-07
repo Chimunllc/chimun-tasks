@@ -8120,6 +8120,82 @@ need(['orderCustType']);
   vm.runInContext('state.plan = undefined;', sandbox);
 }
 
+// ── АЖИЛТНЫ САНАЛ / АСУУДАЛ → Claude шүүнэ → төлөвлөгөө (2026-10-07, CEO) ──
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const plan = [
+    { id: 's-1', sec: 'idea', status: 'open', title: 'Гэрэл', from: [1] },
+    { id: 's-2', sec: 'next', status: 'done', done_by: 'applied', title: 'Тавиур',
+      do: { kind: 'task', task: { title: 'Тавиур хийх', assignee: '99112233' } } },
+    { id: 's-3', sec: 'no', status: 'open', title: 'Цалин', why: 'төсөв алга' },
+    { id: 's-4', sec: 'next', status: 'open', title: 'Хуваарь' },
+  ];
+  const st = (row) => F.staffIdeaState(row, plan);
+  eq(st({ status: 'new' }).label, '⏳ Claude шалгаж байна', 'санал(ажилтан): шинэ → шалгагдаж байна');
+  eq(st({ status: 'drop', verdict: 'хэт ерөнхий' }).detail, 'хэт ерөнхий', 'санал(ажилтан): хассан шалтгаан зохиогчид харагдана');
+  eq(st({ status: 'plan', plan_id: 's-1' }).label, '📋 Захирлын шийдвэр хүлээж байна', 'санал(ажилтан): төлөвлөгөөнд хүлээгдэж буй');
+  const ap = st({ status: 'plan', plan_id: 's-2' });
+  ok(ap.label.includes('ажил үүслээ') && ap.task && ap.task.title === 'Тавиур хийх', 'санал(ажилтан): батлагдаж ажил үүссэнийг хэлнэ');
+  eq(st({ status: 'plan', plan_id: 's-3' }).detail, 'төсөв алга', 'ИНВАРИАНТ: захирлын татгалзсан шалтгаан зохиогчид очно');
+  eq(st({ status: 'plan', plan_id: 's-4' }).tone, 'ok', 'санал(ажилтан): батлагдсан');
+  ok(st({ status: 'merge', plan_id: 's-4' }).label.startsWith('🔗'), 'санал(ажилтан): нэгтгэснийг ил хэлнэ');
+  eq(st({ status: 'exists', plan_id: 's-3', verdict: 'v' }).tone, 'no', 'санал(ажилтан): өмнө татгалзсан шийдвэр');
+  eq(st({ status: 'plan', plan_id: 'байхгүй' }).label, '📋 Захиралд очсон', 'санал(ажилтан): мөр ачаалагдаагүй үед унахгүй');
+  eq(F.staffIdeaState(null, null).tone, 'wait', 'санал(ажилтан): хоосон оролт');
+
+  // ⛔ Саналын БИЧВЭР төлөвлөгөөний мөрөөр дамжихгүй — зөвхөн эрхтэй хүнд (RLS) ачаалагдсан үед
+  vm.runInContext('state.staffIdeas = undefined;', sandbox);
+  const f0 = F.planFromHtml({ from: [1, 2] });
+  ok(f0.includes('Ажилтны санал') && !f0.includes('«'), 'ИНВАРИАНТ: санал ачаалагдаагүй бол бичвэр гарахгүй');
+  vm.runInContext('state.staffIdeas = ' + JSON.stringify([{ id: 1, author: '', body: 'Агуулахын гэрэл муу' }]) + ';', sandbox);
+  ok(F.planFromHtml({ from: [1] }).includes('Агуулахын гэрэл муу'), 'санал(ажилтан): захиралд эх бичвэр харагдана');
+  eq(F.planFromHtml({ id: 'p' }), '', 'санал(ажилтан): агентын мөрөнд юу ч нэмэхгүй');
+  // Дэлгэц ҮНЭХЭЭР зурагдана
+  vm.runInContext('state.plan = ' + JSON.stringify(plan) + '; state.staffIdeas = '
+    + "[{ id: 9, author: String(state.me || ''), kind: 'problem', body: 'Миний асуудал', status: 'plan', plan_id: 's-2', created_at: '2026-10-07T01:00:00Z' }];", sandbox);
+  const ih = F.renderIdeas();
+  ok(/id="si-body"/.test(ih) && /id="si-send"/.test(ih), 'санал(ажилтан): бичих форм гарна');
+  ok(ih.includes('Миний асуудал') && ih.includes('ажил үүслээ'), 'санал(ажилтан): өөрийн санал ба үр дүн гарна');
+  vm.runInContext('state.plan = undefined; state.staffIdeas = undefined;', sandbox);
+
+  // ⛔ Зохиогчийг клиент ИЛГЭЭХГҮЙ (сервер JWT-ээс тавина)
+  const sb = src.slice(src.indexOf('async function submitStaffIdea'), src.indexOf('function planNotifyAuthors'));
+  ok(sb.length > 0 && !/author\s*:/.test(sb), 'ИНВАРИАНТ: санал илгээхэд зохиогчийг клиент бичихгүй');
+  // Захирлын шийдвэр бүр зохиогчид очно
+  ['async function planApplyIdea', 'async function planAcceptIdea', 'async function planRejectIdea'].forEach(fn => {
+    const b = src.slice(src.indexOf(fn), src.indexOf('\n}\n', src.indexOf(fn)));
+    ok(/planNotifyAuthors\(/.test(b), `санал(ажилтан): ${fn.split(' ').pop()} зохиогчид мэдэгдэнэ`);
+  });
+  // ⛔ Claude хассаныг төлөвлөгөөнд оруулахад гарчгийг ЗАХИРАЛ бичнэ (мөр бүх ажилтанд уншигддаг)
+  const pr = src.slice(src.indexOf('async function staffIdeaPromote'), src.indexOf('function renderIdeas'));
+  ok(/showPrompt\(/.test(pr) && /if \(!title\) return;/.test(pr), 'ИНВАРИАНТ: хассан саналыг оруулахад гарчиг асууна');
+
+  // DB: зохиогч JWT-ээс, хатуу устгалгүй, PostgREST кэш
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'staff_ideas.sql'), 'utf8');
+  ok(/new\.author := sec\.phone\(\)/.test(sql), 'ИНВАРИАНТ: санал бичсэн хүнийг DB тавина');
+  ok(/with check \(author = sec\.phone\(\) and status = 'new'/.test(sql), 'ИНВАРИАНТ: ажилтан дүгнэлтийг өөрөө бичиж чадахгүй');
+  ok(/notify pgrst, 'reload schema';/.test(sql), 'санал(ажилтан): PostgREST кэш шинэчилнэ');
+
+  // VPS скрипт: Python өөрийн тест + дүрмийн толь
+  const py = fs.readFileSync(path.join(__dirname, '..', 'tools', 'idea_triage.py'), 'utf8');
+  try {
+    const out = require('child_process').execSync(`python3 ${JSON.stringify(path.join(__dirname, '..', 'tools', 'idea_triage.py'))} --selftest`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/idea_triage selftest OK/.test(out), 'idea_triage: Python өөрийн тест — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'idea_triage: тест — ' + msg.trim().slice(0, 300));
+  }
+  const pyCats = ((py.match(/^CATS = \(([^)]*)\)/m) || [])[1] || '').match(/'([a-z]+)'/g) || [];
+  const jsCats = (src.match(/const PLAN_CATS = \[([\s\S]*?)\];/) || [])[1] || '';
+  eq(pyCats.map(s => s.replace(/'/g, '')).join(','), [...jsCats.matchAll(/key: '([a-z]+)'/g)].map(m => m[1]).join(','),
+     'ИНВАРИАНТ: Claude-ийн ангилал ↔ PLAN_CATS ижил');
+  ok(/where s\.id = x\.id and s\.status = 'new'/.test(py), 'ИНВАРИАНТ: нэг саналыг хоёр удаа шийдвэрлэхгүй');
+  ok(!/haiku/i.test((py.match(/^MODEL = .*/m) || [''])[0]), 'idea_triage: монгол бичвэрт Haiku хэрэглэхгүй');
+  ok(!/'body'\s*:\s*d\[|row\['body'\]|'author'\s*:/.test(py.slice(py.indexOf('def build_changes'), py.indexOf('def changes_sql'))),
+     'ИНВАРИАНТ: төлөвлөгөөний мөрөнд саналын бичвэр/зохиогч бичигдэхгүй');
+}
+
 // ── АКТ — түрээслэх боломжгүй бараа (2026-09-07) ────────────────────────────
 // Хэт хуучирсан / эвдэрсэн / өгөөжгүй барааг актаар нөөцөөс гаргана. Зарж
 // болох бол зараад орлогыг нь тусад нь (түрээсийн орлогод НЭМЭЛГҮЙ) бүртгэнэ.
@@ -17385,7 +17461,7 @@ async function swFetchTests() {
 //    (төгсгөлд залгах нь буруу). index.html ба `_setGrp` хоёулаа тулгагдана.
 {
   const NAV_LAYOUT = [
-    ['work', ['dashboard', 'mine', 'myattend', 'myexpenses', 'delegated']],
+    ['work', ['dashboard', 'mine', 'myattend', 'myexpenses', 'delegated', 'ideas']],
     ['nav-group-sales', ['orders', 'nomaad', 'catering', 'missedcalls', 'customers']],
     ['nav-group-inventory', ['products', 'ps_stock', 'stockcount', 'purchases', 'writeoff', 'ps_catalog', 'ps_price', 'ps_cost']],
     ['nav-group-finance', ['finance', 'receivables', 'vat', 'acct', 'coosalary', 'accounts']],

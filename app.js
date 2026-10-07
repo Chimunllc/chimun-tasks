@@ -27320,6 +27320,64 @@ function missedBlockHtml() {
     <div class="mcd-list">${rows}</div>${more}
   </div>`;
 }
+/* ━━━ АВЛАГА = ӨДРИЙН АЖИЛ (2026-10-07, CEO баталсан санал) ━━━━━━━━━━━━━
+   Авлагын дэлгэц байсан ч хэн ч өдөр бүр нээдэггүй тул хугацаа хэтэрсэн
+   үлдэгдэл чимээгүй хуримтлагддаг байв (21 захиалга · 64.5 сая₮, зарим нь
+   жилээс дээш). Одоо Тойм дээр «хэнд залгах» ажил болж гарна.
+   ⛔ Авлагын дүрмийг ЭНД ДАХИН БОДОХГҮЙ — `receivablesData()` ганц эх сурвалж
+     (`orderOwed`, буцаасан барьцаа хасагдсан). Түүхий `total_mnt − paid_mnt`
+     бодвол буцаасан барьцаа өр болж дахин гарч ирнэ.
+   ⚠ Залгасан гэж тэмдэглэснээс хойш `AR_SNOOZE_DAYS` хоног мөр бүдгэрч доошоо
+     явна — БҮРМӨСӨН хаагддаггүй (мөнгө орж ирэх хүртэл ажил дуусаагүй). */
+const AR_SNOOZE_DAYS = 3;
+function arCalledInfo(o) {
+  const a = o && o.stage_meta && typeof o.stage_meta === 'object' ? o.stage_meta.ar : null;
+  return (a && a.at) ? { at: String(a.at).slice(0, 10), by: String(a.by || '') } : null;
+}
+// ЦЭВЭР: хугацаа хэтэрсэн авлагын мөрүүд, залгаагүй нь эхэнд, дүнгээр.
+function arRows(items, orders, today) {
+  const byId = new Map((orders || []).filter(o => o && o.id).map(o => [String(o.id), o]));
+  return (items || [])
+    .filter(x => x && x.branch === 'bq' && x.overdue && Number(x.balance) > 0)
+    .map(x => {
+      const c = arCalledInfo(byId.get(String(x.id)));
+      const since = c ? planAge(c.at, today) : null;
+      return { ...x, calledAt: c ? c.at : '', calledBy: c ? c.by : '',
+        snoozed: since !== null && since < AR_SNOOZE_DAYS,
+        age: planAge(x.dateStop, today) };
+    })
+    .sort((a, b) => (a.snoozed === b.snoozed ? Number(b.balance) - Number(a.balance) : (a.snoozed ? 1 : -1)));
+}
+function arBlockHtml(orders) {
+  if (!canSeeOrders()) return '';
+  const rows = arRows(receivablesData().items, orders, todayStr());
+  if (!rows.length) return `<div class="rv-card stk-card stk-ok">✓ Хугацаа хэтэрсэн авлага алга</div>`;
+  const open = rows.filter(r => !r.snoozed);
+  const sum = rows.reduce((s, r) => s + Number(r.balance || 0), 0);
+  const row = (r) => `<div class="ar-row${r.snoozed ? ' ar-done' : ''}">
+      <button type="button" class="ar-main ui-raw" data-rv-open="${escapeHtml(String(r.sub || '').replace('#', ''))}">
+        <span class="stk-no">${escapeHtml(String(r.sub || ''))}</span>
+        <span class="stk-main"><span class="stk-cust">${escapeHtml(r.name || '—')}</span>
+          <span class="stk-step">${r.age === null ? '' : r.age + ' хоног'}${r.calledAt ? ` · ☎ ${escapeHtml(r.calledAt)} залгасан` : ''}</span></span>
+        <span class="ar-sum">${fmtMoney(r.balance)}</span></button>
+      ${r.phone ? `<a class="ar-tel" href="tel:${escapeHtml(String(r.phone).replace(/[^0-9+]/g, ''))}">☎</a>` : ''}
+      <button type="button" class="btn ar-btn" data-ar-called="${escapeHtml(String(r.id))}">Залгасан</button>
+    </div>`;
+  return `<div class="rv-card stk-card">
+    <div class="rv-head">💰 Авлага нэхэх <span class="rv-sum">${open.length} хүн · ${fmtMoney(sum)}</span></div>
+    <div class="stk-list">${rows.map(row).join('')}</div>
+  </div>`;
+}
+async function arMarkCalled(id) {
+  const o = (state.appOrders || []).find(x => x && String(x.id) === String(id));
+  if (!o) return;
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object' && !Array.isArray(o.stage_meta)) ? { ...o.stage_meta } : {};
+  sm.ar = { at: todayStr(), by: state.me || '' };
+  sm.notes = appendOrderNote(orderNotesOf(o), '☎ Авлага: залгаж сануулсан', state.me || '');
+  try { await patchOrderFields(o, { stage_meta: sm }); }
+  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
+  showToast('☎ Тэмдэглэлээ', 'success', 2000); render();
+}
 function stuckBlockHtml(orders) {
   if (!canSeeOrders()) return '';
   const list = stuckOrders(orders, todayStr());
@@ -27383,6 +27441,9 @@ function attachReviewBlock(root) {
   (root || document).querySelectorAll('[data-rv-open]').forEach(el => el.addEventListener('click', () => {
     if (!canSeeOrders()) return;
     state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.rvOpen; render();
+  }));
+  (root || document).querySelectorAll('[data-ar-called]').forEach(el => el.addEventListener('click', (e) => {
+    e.stopPropagation(); el.disabled = true; arMarkCalled(el.dataset.arCalled);
   }));
 }
 function reviewStats(orders) {
@@ -40084,6 +40145,7 @@ function renderDashboard() {
           ④ цагтаа хүрсэн % ⑤ үнэлгээ (муу нь дээр) ⑥ шилдэг гүйцэтгэгч. Scan-тест хаана. */ ''}
       ${stuckBlockHtml(state.appOrders || [])}
       ${missedBlockHtml()}
+      ${arBlockHtml(state.appOrders || [])}
       ${canSeeOrderBoard() ? `<div class="dash-card dash-ocal">${ordersCalendarHtml(state.appOrders || [], { compact: true })}</div>` : ''}
       ${dispatchBlockHtml(state.appOrders || [])}
       ${reviewBlockHtml(state.appOrders || [])}

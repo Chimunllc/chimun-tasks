@@ -7869,6 +7869,32 @@ need(['orderCustType']);
   eq(new Set(ids).size, ids.length, 'ИНВАРИАНТ: PLAN_SEED-ийн id давхардахгүй');
   eq(F.planSeed().every(x => ['now', 'next', 'no'].includes(x.sec)), true, 'төлөвлөгөө: seed бүрийн sec зөв');
   eq(F.planSeed().every(x => !!x.title), true, 'төлөвлөгөө: seed бүр гарчигтай');
+
+  // Гарчиг тодруулахад ХАДГАЛСАН мөр хуучнаараа үлдэх ёсгүй (бичвэр = seed, шийдвэр = хадгалсан)
+  const upd = F.planMerge(
+    [{ id: 'a', sec: 'now', title: 'Шинэ гарчиг', act: 'Юу хийхийг хэлнэ' }],
+    [{ id: 'a', sec: 'next', title: 'Хуучин', status: 'open' }],
+  );
+  eq(upd.length, 1, 'төлөвлөгөө: ижил id давхардахгүй');
+  eq(upd[0].title, 'Шинэ гарчиг', 'төлөвлөгөө: seed-ийн гарчиг хадгалсан мөрийг шинэчилнэ');
+  eq(upd[0].act, 'Юу хийхийг хэлнэ', 'төлөвлөгөө: юу хийх мөр хадгалсан мөрт ч хүрнэ');
+  eq(upd[0].sec, 'next', 'ИНВАРИАНТ: CEO-гийн шилжүүлсэн хэсэг seed-ээр буцахгүй');
+
+  // ⛔ Ажлын мөр бүр ЮУ ХИЙХИЙГ хэлнэ — гарчиг дангаараа хүнд юу ч хэлдэггүй
+  const noAct = F.planSeed().filter(x => x.sec !== 'no' && !x.act).map(x => x.id);
+  eq(noAct.join(','), '', 'ИНВАРИАНТ: seed-ийн ажил бүр юу хийхийг хэлнэ');
+
+  // ⛔ РЕПО НИЙТИЙН — бизнесийн тоо seed-д БИЧИГДЭХГҮЙ (шалтгаан/тоо хаалттай PLAN.md-д)
+  const moneyRe = /\d\s*(%|₮|сая|мянга)/;
+  const leak = F.planSeed().filter(x => moneyRe.test(String(x.title) + ' ' + String(x.act || ''))).map(x => x.id);
+  eq(leak.join(','), '', 'ИНВАРИАНТ: төлөвлөгөөний seed-д бизнесийн тоо байхгүй');
+
+  // Дэлгэц ҮНЭХЭЭР зурагдаж, «юу хийх» мөр гарч байгааг шалгана
+  vm.runInContext('state.plan = planMerge(planSeed(), []);', sandbox);
+  const planHtml = F.renderPlan();
+  ok(/plan-sec-h/.test(planHtml), 'төлөвлөгөө: дэлгэц зурагдана');
+  ok(planHtml.includes('Хөдөө орон нутаг'), 'төлөвлөгөө: дэлгэцэд юу хийхийг бичнэ');
+  vm.runInContext('state.plan = undefined;', sandbox);
 }
 
 // ── АКТ — түрээслэх боломжгүй бараа (2026-09-07) ────────────────────────────

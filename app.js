@@ -24888,9 +24888,29 @@ async function loadPlan(force) {
 }
 // ⚠ Ачаалж чадаагүй үед БИЧИХГҮЙ — seed-ээс шинээр угсарсан жагсаалт нь
 // хадгалсан төлөвийг (хаасан ажлууд) чимээгүй дарна.
+// ХАДГАЛАХЫН ӨМНӨ СЕРВЕРЭЭС ДАХИН УНШИНА (2026-10-07, амьд датанаас барьсан).
+// Нээлттэй таб хуучин жагсаалтаа санадаг тул агент шинэ санал нэмсний дараа тэр
+// табнаас НЭГ товч дарахад бүх шинэ мөр ЧИМЭЭГҮЙ УСТДАГ байв (4 санал ингэж алга
+// болсон). Одоо серверийн мөрүүд суурь, энэ сессийн өөрчлөлт л дээр нь буунa.
+// ⛔ Серверээс уншиж чадаагүй бол ХАДГАЛАХГҮЙ — хагас мэдээллээр дарж бичихээс дээр.
+function planMergeSave(local, server) {
+  const out = (Array.isArray(server) ? server : []).filter(x => x && x.id).map(x => ({ ...x }));
+  const byId = new Map(out.map(x => [String(x.id), x]));
+  (Array.isArray(local) ? local : []).filter(x => x && x.id).forEach(l => {
+    const cur = byId.get(String(l.id));
+    if (!cur) { out.push({ ...l }); return; }
+    Object.assign(cur, l);   // энэ сессийн шийдвэр ялна
+  });
+  return out;
+}
 async function savePlan() {
   if (!state.planLoaded) throw new Error('Төлөвлөгөө серверээс ирээгүй байна');
-  await saveAppConfig(PLAN_KEY, planList());
+  let server;
+  try { server = await loadAppConfig(PLAN_KEY); }
+  catch (e) { throw new Error('Серверээс уншиж чадсангүй — хадгалсангүй'); }
+  const merged = planMergeSave(planList(), Array.isArray(server) ? server : []);
+  state.plan = merged;
+  await saveAppConfig(PLAN_KEY, merged);
 }
 function canSeePlan() { return canAccessView('plan', () => !!state.isCEO); }
 async function planSet(id, patch) {

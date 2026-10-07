@@ -7971,6 +7971,15 @@ need(['orderCustType']);
   ok(F.planApproveHint({ owner: 'CEO' }).includes('Дараагийнх') && F.planApproveHint({ owner: 'CEO' }).includes('чи'), 'санал: жагсаалтад ордгийг хэлнэ');
   ok(F.planApproveHint({ owner: 'Claude' }).includes('агент'), 'санал: хийх хүнийг нэрлэнэ');
   ok(F.planApproveHint({ do: { kind: 'байхгүй' } }).includes('хэрэгжихгүй'), 'санал: танихгүй үйлдлийг ил хэлнэ');
+  // ⭐ CEO-д ажил ОНООХГҮЙ — батлагдвал ажилтан дээр ҮҮСНЭ
+  {
+    const h = F.planApproveHint({ do: { kind: 'task', task: { title: 'Т' } } });
+    ok(h.includes('ҮҮСНЭ') && h.includes('Чамд ажил оногдохгүй'), 'ИНВАРИАНТ: батлах нь CEO-д ажил оноохгүй');
+    const pv = F.planDoKinds().task.preview({ task: { title: 'Барааг тоол', due: '2026-10-20' } });
+    eq(pv.length, 1, 'ажил: урьдчилан харах мөр');
+    ok(pv[0].to.includes('Барааг тоол') && pv[0].to.includes('хариуцагчгүй'), 'ажил: гарчиг ба хариуцагч харагдана');
+    eq(F.planDoKinds().task.preview({ task: {} }), null, 'ИНВАРИАНТ: гарчиггүй ажил үүсэхгүй');
+  }
   vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'h1', sec: 'idea', title: 'Т', owner: 'CEO' }]) + ';', sandbox);
   ok(/plan-hint/.test(F.renderPlan()), 'санал: тайлбар дэлгэцэд гарна');
   vm.runInContext('state.plan = undefined;', sandbox);
@@ -8011,7 +8020,9 @@ need(['orderCustType']);
     ok(/state\.isCEO/.test(body), 'ИНВАРИАНТ: тохиргоог зөвхөн захирал хэрэгжүүлнэ');
     ok(/const ok = await showConfirm\(/.test(body) && /if \(!ok\) return;/.test(body), 'ИНВАРИАНТ: хэрэгжүүлэхийн өмнө баталгаажуулалтын ХАРИУГ шалгана');
     ok(/if \(!kind\)/.test(body), 'ИНВАРИАНТ: танихгүй үйлдэл чимээгүй өнгөрөхгүй');
-    ok(body.indexOf('undo[k] = cur[k]') < body.indexOf('kind.save('), 'ИНВАРИАНТ: хуучин утга бичлэгийн ӨМНӨ хадгалагдана');
+    const tf = src.slice(src.indexOf("  tariff: {"), src.indexOf("  task: {"));
+    ok(tf.indexOf('undo[k] = cur[k]') < tf.indexOf('saveAppConfig('), 'ИНВАРИАНТ: хуучин утга бичлэгийн ӨМНӨ хадгалагдана');
+    ok(/undo = await kind\.run\(/.test(body) && body.indexOf('kind.run(') < body.indexOf('done_by'), 'ИНВАРИАНТ: буцаах мэдээлэлгүйгээр «хэрэгжсэн» гэж тэмдэглэхгүй');
   }
 
   // Дэлгэцэд санал нотолгоотойгоо гарч, батлах/татгалзах товчтой

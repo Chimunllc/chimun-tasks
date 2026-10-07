@@ -24935,8 +24935,49 @@ const PLAN_DO_KINDS = {
   tariff: {
     label: 'Тариф',
     note: 'Апп БА mevent.mn хоёуланд шууд хүчинтэй болно.',
-    cur: () => ({ ...(state.tariffs && typeof state.tariffs === 'object' ? state.tariffs : {}) }),
-    save: async (next) => { await saveAppConfig('tariffs', next); state.tariffs = next; },
+    preview: (spec) => planDoDiff('tariff', spec.set, _tariffCfg()),
+    run: async (spec) => {
+      const cur = { ..._tariffCfg() }, set = spec.set || {};
+      const undo = {}; Object.keys(set).forEach(k => { undo[k] = cur[k]; });
+      await saveAppConfig('tariffs', { ...cur, ...set });
+      state.tariffs = { ...cur, ...set };
+      return undo;
+    },
+    undoRun: async (undo) => { const cur = { ..._tariffCfg() }; await saveAppConfig('tariffs', { ...cur, ...undo }); state.tariffs = { ...cur, ...undo }; },
+  },
+  // Ажил үүсгэх — ⭐ CEO-д ажил ОНООХГҮЙ (2026-10-07, CEO: «миний хүсэж байгаа
+  // зүйл бол надад ажил оноох биш»). Санал батлагдмагц даалгавар нь АЖИЛТАНД
+  // очиж, мэдэгдэл явна. CEO-гийн үүрэг = батлах, гүйцэтгэх биш.
+  task: {
+    label: 'Ажил',
+    note: 'Ажилтанд даалгавар болж очиж, мэдэгдэл явна.',
+    preview: (spec) => {
+      const t = (spec && spec.task) || {};
+      if (!t.title) return null;
+      const who = t.assignee ? memberName(t.assignee) : 'хариуцагчгүй (дараа оноох)';
+      return [{ key: 'task', label: 'Шинэ ажил', from: '—', to: `${t.title} → ${who}${t.due ? ' · ' + t.due : ''}` }];
+    },
+    run: async (spec) => {
+      const t = (spec && spec.task) || {};
+      const row = {
+        id: uid(), title: String(t.title || ''), desc: String(t.desc || ''),
+        branch: t.branch || 'shared', project: '', assignee: t.assignee || '',
+        due: t.due || '', priority: t.priority || 'high', status: 'open',
+        requires_photo: !!t.requires_photo, createdBy: state.me, created: Date.now(),
+        comments: [], activity: [], auto_source: 'plan',
+      };
+      if (!Array.isArray(state.tasks)) state.tasks = [];
+      state.tasks.unshift(row);
+      await saveTask(row);
+      if (row.assignee) pushBroadcast(row.assignee, { type: 'task_assigned', task_id: row.id, title: 'Шинэ ажил', body: row.title });
+      return { task_id: row.id };
+    },
+    undoRun: async (undo) => {
+      const t = (state.tasks || []).find(x => x && x.id === ((undo || {}).task_id));
+      if (!t) return;
+      markDeleted(t.id);
+      await saveTask(t, true);
+    },
   },
 };
 const PLAN_DO_LABELS = {
@@ -24950,6 +24991,8 @@ function planDoValText(v) {
   if (v === undefined || v === null || v === '') return '—';
   return String(v);
 }
+// ⚠ Тест ингэж уншина — `const` нь vm контекстээс гардаггүй.
+function planDoKinds() { return PLAN_DO_KINDS; }
 // Юу өөрчлөгдөхийг мөрөөр гаргана (ЦЭВЭР). Танихгүй төрөл → null (ХЭРЭГЖИХГҮЙ).
 function planDoDiff(kind, set, cur) {
   if (!PLAN_DO_KINDS[String(kind || '')] || !set || typeof set !== 'object') return null;
@@ -24958,22 +25001,39 @@ function planDoDiff(kind, set, cur) {
     .filter(k => JSON.stringify(set[k]) !== JSON.stringify(c[k]))
     .map(k => ({ key: k, label: PLAN_DO_LABELS[k] || k, from: planDoValText(c[k]), to: planDoValText(set[k]) }));
 }
+// «Батлавал юу болох» — товч дарахын ӨМНӨ ил (2026-10-07, CEO).
+// ⛔ Гурван өөр үр дагавар нэг үгтэй тул ЯЛГАЖ хэлнэ: ажил үүснэ · тохиргоо
+//   өөрчлөгдөнө · зүгээр л жагсаалтад орно.
+function planApproveHint(row) {
+  const r = row || {};
+  if (r.do) {
+    const kind = String(r.do.kind || '');
+    const k = PLAN_DO_KINDS[kind];
+    if (!k) return 'Батлавал: танихгүй үйлдэл — хэрэгжихгүй';
+    if (kind === 'task') {
+      const t = r.do.task || {};
+      return `Батлавал: ажил ${t.assignee ? memberName(t.assignee) : 'хариуцагчгүй'} дээр ҮҮСНЭ, мэдэгдэл явна. Чамд ажил оногдохгүй.`;
+    }
+    return `Батлавал: ${k.label} ШУУД өөрчлөгдөнө (өмнө нь хуучин→шинэ харуулна, буцаах боломжтой)`;
+  }
+  const who = String(r.owner || '') === PLAN_AGENT_OWNER ? 'агент' : 'чи';
+  return `Батлавал: «Дараагийнх» жагсаалтад орно, хийх хүн — ${who}. Тохиргоо өөрчлөгдөхгүй.`;
+}
 async function planApplyIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
   if (!row || !row.do) return;
-  if (!state.isCEO) { showToast('Зөвхөн захирал хэрэгжүүлнэ', 'error', 4000); return; }
+  if (!state.isCEO) { showToast('Зөвхөн захирал батална', 'error', 4000); return; }
   const kind = PLAN_DO_KINDS[String(row.do.kind || '')];
   if (!kind) { showToast('⚠ Танихгүй үйлдэл — хэрэгжүүлсэнгүй', 'error', 6000); return; }
-  const cur = kind.cur(), set = row.do.set || {};
-  const diff = planDoDiff(row.do.kind, set, cur);
-  if (!diff || !diff.length) { showToast('Өөрчлөх зүйл алга — тохиргоо аль хэдийн ийм байна', 'info', 4000); return; }
-  const ok = await showConfirm(`${kind.label} өөрчлөгдөнө:\n\n`
+  const diff = kind.preview(row.do);
+  if (!diff || !diff.length) { showToast('Өөрчлөх зүйл алга — аль хэдийн ийм байна', 'info', 4000); return; }
+  const ok = await showConfirm(`${kind.label}:\n\n`
     + diff.map(d => `${d.label}: ${d.from} → ${d.to}`).join('\n')
     + `\n\n${kind.note}\nБуцаахдаа «↩ Буцаах» дарна.`, { okText: 'Хэрэгжүүлэх' });
   if (!ok) return;
-  const undo = {}; Object.keys(set).forEach(k => { undo[k] = cur[k]; });
-  try { await kind.save({ ...cur, ...set }); }
-  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 6000); return; }
+  let undo;
+  try { undo = await kind.run(row.do); }
+  catch (e) { showToast('⚠ Хэрэгжсэнгүй: ' + e.message, 'error', 6000); return; }
   await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', undo });
   showToast('Хэрэгжлээ', 'success', 2500);
 }
@@ -24982,29 +25042,11 @@ async function planRevertIdea(id) {
   if (!row || !row.undo || !state.isCEO) return;
   const kind = PLAN_DO_KINDS[String((row.do || {}).kind || '')];
   if (!kind) return;
-  const cur = kind.cur();
-  const diff = planDoDiff((row.do || {}).kind, row.undo, cur) || [];
-  const ok = await showConfirm(`Хуучин байдалд буцаана:\n\n`
-    + (diff.length ? diff.map(d => `${d.label}: ${d.from} → ${d.to}`).join('\n') : 'Өөрчлөлт алга')
-    + `\n\n${kind.note}`, { okText: 'Буцаах' });
+  const ok = await showConfirm(`«${row.title || ''}» хэрэгжүүлснийг буцаана.\n\n${kind.note}`, { okText: 'Буцаах' });
   if (!ok) return;
-  try { await kind.save({ ...cur, ...row.undo }); }
+  try { await kind.undoRun(row.undo); }
   catch (e) { showToast('⚠ Буцаагдсангүй: ' + e.message, 'error', 6000); return; }
   await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', undo: null, reopened: true });
-}
-// «Батлавал юу болох» — товч дарахын ӨМНӨ ил (2026-10-07, CEO: «баталсан нь яг
-// юу хийхийг мэдэхгүй байна»). ЦЭВЭР функц.
-// ⛔ Үйлдэлтэй санал (тохиргоо өөрчилнө) ба жагсаалтад ордог санал хоёрыг
-//   ЯЛГАЖ хэлнэ — хоёулаа «батлах» гэсэн нэг үгтэй тул хүн андуурна.
-function planApproveHint(row) {
-  const r = row || {};
-  if (r.do) {
-    const k = PLAN_DO_KINDS[String(r.do.kind || '')];
-    return k ? `Батлавал: ${k.label} ШУУД өөрчлөгдөнө (өмнө нь хуучин→шинэ харуулна, буцаах боломжтой)`
-             : 'Батлавал: танихгүй үйлдэл — хэрэгжихгүй';
-  }
-  const who = String(r.owner || '') === PLAN_AGENT_OWNER ? 'агент' : 'чи';
-  return `Батлавал: «Дараагийнх» жагсаалтад орно, хийх хүн — ${who}. Тохиргоо өөрчлөгдөхгүй.`;
 }
 async function planAcceptIdea(id) { await planSet(id, { sec: 'next', status: 'open' }); }
 async function planRejectIdea(id) {

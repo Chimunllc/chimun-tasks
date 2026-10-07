@@ -7932,9 +7932,16 @@ need(['orderCustType']);
   const noAct = F.planSeed().filter(x => x.sec !== 'no' && !x.act).map(x => x.id);
   eq(noAct.join(','), '', 'ИНВАРИАНТ: seed-ийн ажил бүр юу хийхийг хэлнэ');
 
+  // ⛔ Ажлын мөр бүр ЮУНД ХЭРЭГТЭЙГ ч хэлнэ — үр ашиггүй ажил эрэмбэлэгдэхгүй
+  const noGain = F.planSeed().filter(x => x.sec !== 'no' && !x.gain).map(x => x.id);
+  eq(noGain.join(','), '', 'ИНВАРИАНТ: seed-ийн ажил бүр үр ашгаа хэлнэ');
+  // Хэзээ нэмэгдсэн нь ЗААВАЛ — «хэзээ үүссэн» мартагдах гол шалтгаан
+  const noDate = F.planSeed().filter(x => !/^\d{4}-\d{2}-\d{2}$/.test(String(x.created || ''))).map(x => x.id);
+  eq(noDate.join(','), '', 'ИНВАРИАНТ: seed мөр бүр нэмэгдсэн огноотой');
+
   // ⛔ РЕПО НИЙТИЙН — бизнесийн тоо seed-д БИЧИГДЭХГҮЙ (шалтгаан/тоо хаалттай PLAN.md-д)
   const moneyRe = /\d\s*(%|₮|сая|мянга)/;
-  const leak = F.planSeed().filter(x => moneyRe.test(String(x.title) + ' ' + String(x.act || ''))).map(x => x.id);
+  const leak = F.planSeed().filter(x => moneyRe.test([x.title, x.act, x.gain].map(v => String(v || '')).join(' '))).map(x => x.id);
   eq(leak.join(','), '', 'ИНВАРИАНТ: төлөвлөгөөний seed-д бизнесийн тоо байхгүй');
 
   // Дэлгэц ҮНЭХЭЭР зурагдаж, «юу хийх» мөр гарч байгааг шалгана
@@ -7942,6 +7949,15 @@ need(['orderCustType']);
   const planHtml = F.renderPlan();
   ok(/plan-sec-h/.test(planHtml), 'төлөвлөгөө: дэлгэц зурагдана');
   ok(planHtml.includes('Хөдөө орон нутаг'), 'төлөвлөгөө: дэлгэцэд юу хийхийг бичнэ');
+  ok(planHtml.includes('2026-09-17') && /plan-age/.test(planHtml), 'төлөвлөгөө: мөр хэзээ нэмэгдсэнээ хэлнэ');
+  ok(/plan-gain/.test(planHtml) && planHtml.includes('ашиг шууд өснө'), 'төлөвлөгөө: дэлгэцэд үр ашиг бичигдэнэ');
+
+  // planAge — цэвэр функц
+  eq(F.planAge('2026-09-17', '2026-10-07'), 20, 'төлөвлөгөө: хоногийн тоо');
+  eq(F.planAge('2026-10-07', '2026-10-07'), 0, 'төлөвлөгөө: өнөөдөр нэмсэн = 0 хоног');
+  eq(F.planAge('2026-10-09', '2026-10-07'), 0, 'төлөвлөгөө: ирээдүйн огноо сөрөг гарахгүй');
+  eq(F.planAge('', '2026-10-07'), null, 'ИНВАРИАНТ: огноогүй мөрийн хугацааг ТААМАГЛАХГҮЙ');
+  eq(F.planAge('хог', '2026-10-07'), null, 'төлөвлөгөө: буруу огноо → null');
   vm.runInContext('state.plan = undefined;', sandbox);
 }
 

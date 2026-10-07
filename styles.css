@@ -99,6 +99,7 @@
     --onote-modal-w: 480px;   /* 📝 Захиалгын тэмдэглэл */
     --dmg-modal-w: 460px;     /* Буцаалт · эвдрэл бүртгэх */
     --oscan-modal-w: 460px;   /* 📷 Захиалгын бараа скан */
+    --ec-modal-w: 640px;      /* 📄 Хөдөлмөрийн гэрээ бэлдэх — 2 баганатай форм */
 
     /* ── РАДИУС ── */
     --r-sm: 6px;
@@ -8734,3 +8735,23 @@ select.no-asar-len {
 .hw-badge-new { color: var(--primary); font-weight: 700; }
 .hw-acts { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .hw-acts .btn { padding: var(--space-1) var(--space-4); font-size: var(--fs-sm); white-space: nowrap; }
+
+/* ═══ 📄 ХӨДӨЛМӨРИЙН ГЭРЭЭ БЭЛДЭХ цонх (`openEmployeeContract`) ═══
+   Өмнө нь 21 inline `style=` байв (талбар бүрт давтагдсан `fld` мөр).
+   ⚠ Талбарын хүрээ/дэвсгэр/padding/фонтыг ЭНД БИЧИХГҮЙ — `.modal input`
+     дүрмүүд (мобайл ба десктоп хоёуланд хүчээр дарсан) тэднийг аль хэдийн
+     эзэмшдэг тул давтвал үхсэн CSS болно. Зөвхөн тэр дүрмүүдэд БАЙХГҮЙ
+     зүйлийг (өргөн, доод зай, баганын байрлал) тодорхойлно.
+   ⚠ Шошгын фонт/өнгө нь `.modal label`-аас — тусад нь бичих шаардлагагүй. */
+.modal.ec-modal { max-width: var(--ec-modal-w); max-height: 92vh; overflow: auto; }
+.modal .ec-h2 { margin: 0 0 var(--space-1); }
+.ec-sub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-3); }
+.ec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-2); }
+/* Бүтэн өргөнөөр (хаяг) — хоёр баганыг эзэлнэ */
+.ec-wide { grid-column: 1 / 3; }
+/* `.modal input.ec-in` — мобайлын `.modal input:not(.ui-raw)` нь доод зайг
+   14px болгодог тул ижил онцлогтой сонгогчоор (файлын дараа байрлаж) дарна. */
+.modal input.ec-in { width: 100%; margin-bottom: var(--space-2); }
+.ec-note { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-1) 0 var(--space-3); }
+.modal .ec-btn { width: 100%; }
+.modal .ec-btn + .ec-btn { margin-top: var(--space-3); }

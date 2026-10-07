@@ -7997,6 +7997,13 @@ need(['orderCustType']);
   ok(/plan-hint/.test(F.renderPlan()), 'санал: тайлбар дэлгэцэд гарна');
   vm.runInContext('state.plan = undefined;', sandbox);
 
+  // ── Гадны (in-app браузер) алдааг бүртгэхгүй (2026-10-07, fp 0f6bea95f208) ─
+  eq(F._errIsNoise("undefined is not an object (evaluating 'window.webkit.messageHandlers')", 'https://mevent.mn/?fbclid=x'), true,
+     'ИНВАРИАНТ: Facebook-ийн дотоод браузерын гүүрийн алдаа бүртгэгдэхгүй');
+  eq(F._errIsNoise('TypeError: x is not a function', 'https://chimunllc.github.io/chimun-tasks/app.js'), false,
+     'ИНВАРИАНТ: манай жинхэнэ алдаа шүүгдэхгүй');
+  eq(F._errIsNoise('Unexpected end of input', 'iabjs://iab_inner_frame_ota'), true, 'алдаа: гадны схемийн эх сурвалж шүүгдэнэ');
+
   // ── 401 = НЭВТРЭЛТ дууссан, «дата алга» БИШ (2026-10-07, амьд логоос) ───
   {
     vm.runInContext(`

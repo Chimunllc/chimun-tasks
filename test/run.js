@@ -7939,6 +7939,29 @@ need(['orderCustType']);
   const noDate = F.planSeed().filter(x => !/^\d{4}-\d{2}-\d{2}$/.test(String(x.created || ''))).map(x => x.id);
   eq(noDate.join(','), '', 'ИНВАРИАНТ: seed мөр бүр нэмэгдсэн огноотой');
 
+  // ── САНАЛ: агент дүгнэнэ, CEO батална (2026-10-07) ──────────────────────
+  const ideas = [
+    { id: 'i1', sec: 'idea', owner: 'Claude', created: '2026-10-07', title: 'Санал', act: 'х', gain: 'х', ev: 'нотолгоо' },
+    { id: 'i2', sec: 'idea', owner: 'Claude', created: '2026-10-07', title: 'Санал 2', status: 'done' },
+  ];
+  const isec = F.planSections(ideas);
+  eq(isec.idea.length, 1, 'санал: нээлттэй санал тусдаа хэсэгт');
+  eq(isec.done.length, 0, 'ИНВАРИАНТ: санал «хаагдсан ажил» болж тоологдохгүй');
+  eq(isec.now.length + isec.next.length, 0, 'санал: батлагдтал ажлын жагсаалтад орохгүй');
+  // Санал нь app.js-ийн seed-д БИЧИГДЭХГҮЙ (нотолгоо нь бодит тоо, репо нийтийн)
+  eq(F.planSeed().filter(x => x.sec === 'idea').length, 0, 'ИНВАРИАНТ: санал эх кодод бичигдэхгүй');
+  // ⛔ Татгалзахад ШАЛТГААН заавал — эс бөгөөс ижил санал дахин гарч ирнэ
+  {
+    const body = src.slice(src.indexOf('async function planRejectIdea'), src.indexOf('async function planAdd'));
+    ok(/if \(!why\) return;/.test(body), 'ИНВАРИАНТ: саналаас татгалзахад шалтгаан заавал');
+  }
+  // Дэлгэцэд санал нотолгоотойгоо гарч, батлах/татгалзах товчтой
+  vm.runInContext('state.plan = ' + JSON.stringify(ideas) + ';', sandbox);
+  const ih = F.renderPlan();
+  ok(/plan-ideas/.test(ih) && /data-plan-yes/.test(ih) && /data-plan-no/.test(ih), 'санал: батлах/татгалзах товчтой');
+  ok(/plan-ev/.test(ih) && ih.includes('нотолгоо'), 'санал: нотолгоо харагдана');
+  vm.runInContext('state.plan = undefined;', sandbox);
+
   // ── Агент ӨӨРИЙН ажлаа хаана (2026-10-07, CEO) ──────────────────────────
   const aSeed = (extra) => [{ id: 'a1', sec: 'now', owner: 'Claude', created: '2026-09-17', title: 'Агентын ажил', act: 'х', gain: 'х', done: '2026-10-07', ...extra }];
   const ag = F.planMerge(aSeed(), [{ id: 'a1', sec: 'now', title: 'Агентын ажил', status: 'open' }]);

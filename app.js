@@ -4547,6 +4547,7 @@ function renderTitle() {
     calendar:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>', 'Календарь', 'Эцсийн хугацаагаар task-уудыг харах'],
     mine:      [ICONS.inbox, 'Миний ажил', 'Танд оноосон ажлууд'],
     delegated: [ICONS.send, 'Хуваарилсан ажил', 'Та өөр хүнд оноосон ажлууд'],
+    ideas:     ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/></svg>', 'Санал санаачлага', 'Асуудал, санал бич — Claude шалгаж захиралд төлөвлөгөө болгоно'],
     finance:   [ICONS.wallet, 'Гүйлгээ', 'Хүсэлт, картын зарлага, тулгалт — бүх мөнгөн хөдөлгөөн'],
     purchases: ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Худалдан авалт', 'Хөрөнгийн зардлаас — хэнээс юу авсан'],
     customers: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', 'Харилцагч', 'Захиалгын түүх, авлага, холбоо барих мэдээлэл'],
@@ -4664,6 +4665,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderPlan, 'Төлөвлөгөө');
     attachPlanHandlers();
+    return;
+  } else if (state.view === 'ideas') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderIdeas, 'Санал санаачлага');
+    attachIdeasHandlers();
     return;
   } else if (state.view === 'writeoff') {
     if (tableHead) tableHead.style.display = 'none';
@@ -25047,6 +25054,8 @@ async function planApplyIdea(id) {
   try { undo = await kind.run(row.do); }
   catch (e) { showToast('⚠ Хэрэгжсэнгүй: ' + e.message, 'error', 6000); return; }
   await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', undo });
+  planNotifyAuthors(row, '✅ Таны санал батлагдлаа',
+    String(row.do.kind) === 'task' ? 'Ажил үүслээ: ' + ((row.do.task || {}).title || row.title || '') : (row.title || ''));
   showToast('Хэрэгжлээ', 'success', 2500);
 }
 async function planRevertIdea(id) {
@@ -25060,11 +25069,18 @@ async function planRevertIdea(id) {
   catch (e) { showToast('⚠ Буцаагдсангүй: ' + e.message, 'error', 6000); return; }
   await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', undo: null, reopened: true });
 }
-async function planAcceptIdea(id) { await planSet(id, { sec: 'next', status: 'open' }); }
+async function planAcceptIdea(id) {
+  const row = planList().find(x => String(x.id) === String(id));
+  await planSet(id, { sec: 'next', status: 'open' });
+  planNotifyAuthors(row, '✅ Таны санал батлагдлаа', ((row && row.title) || '') + ' — төлөвлөгөөнд орлоо');
+}
 async function planRejectIdea(id) {
   const why = String((await showPrompt('Яагаад хийхгүй вэ?', { okText: 'Татгалзах' })) || '').trim();
   if (!why) return;
+  const row = planList().find(x => String(x.id) === String(id));
   await planSet(id, { sec: 'no', status: 'open', why });
+  // Шалтгаан нь санал бичсэн хүнд ч очно («Санал санаачлага» дэлгэцэд мөн харагдана).
+  planNotifyAuthors(row, 'Таны саналыг захирал хийхгүй гэж шийдлээ', why);
 }
 async function planAdd() {
   const t = String((await showPrompt('Шинэ ажил — нэр:', { okText: 'Нэмэх' })) || '').trim();
@@ -25093,6 +25109,7 @@ function renderPlan() {
     + `${x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : ''}`
     + `${x.cat ? `<span class="plan-own">${escapeHtml(planCatLabel(x.cat))}</span>` : ''}`
     + ageHtml(x) + `</div>`
+    + planFromHtml(x)
     + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
     + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
     + `${x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : ''}`
@@ -25116,7 +25133,7 @@ function renderPlan() {
     + `<span class="plan-sub">Шийдвэрийг чи гаргана, бичилтийг агент хийнэ. Хийгдсэнийг нь дарж хаа.</span>`
     + `<span class="plan-sub">Шалтгаан, тоо, дэлгэрэнгүй — хаалттай PLAN.md-д (энэ репо нийтийн).</span></div>`
     + warn
-    + (s.idea.length ? `<div class="plan-sec plan-ideas"><div class="plan-sec-h">💡 Агентын санал<span class="plan-n">${s.idea.length}</span></div>`
+    + (s.idea.length ? `<div class="plan-sec plan-ideas"><div class="plan-sec-h">💡 Санал (агент · ажилтан)<span class="plan-n">${s.idea.length}</span></div>`
         + planIdeaGroups(s.idea).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>`
             + g.rows.map(x => item(x, (x.do ? btn('plan-apply', x.id, '✓ Батлаад хэрэгжүүл') : btn('plan-yes', x.id, '✓ Батлах')) + btn('plan-no', x.id, '✕ Хийхгүй'))).join('')).join('')
         + `</div>` : '')
@@ -25145,6 +25162,200 @@ function attachPlanHandlers() {
     document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
   document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
   document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true })));
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// АЖИЛТНЫ САНАЛ / АСУУДАЛ (2026-10-07, CEO)
+//
+// Ажилтан бүр асуудал эсвэл сайжруулах санаагаа бичнэ → VPS-ийн
+// `tools/idea_triage.py` (30 мин) Claude-аар шүүж, хэрэгтэйг нь төлөвлөгөөнд
+// «💡 санал» (id `s-<id>`) болгоно, хэрэггүйг шалтгаантай нь хасна → захирал
+// төлөвлөгөөнөөс батлахад ажил АЖИЛТАН дээр үүснэ.
+// ⛔ Санал ӨӨРӨӨ ажил болохгүй — зөвхөн захирлын батламжаар.
+// ⛔ Төлөвлөгөөний мөрөнд саналын БИЧВЭР, зохиогч бичигдэхгүй (`from` = id) —
+//    `app_config` бүх ажилтанд уншигддаг. Бичвэр нь RLS-тэй `staff_ideas`-д
+//    (`db/staff_ideas.sql`): ажилтан өөрийнхөө, төлөвлөгөө хардаг хүн бүгдийг.
+// ⭐ Зохиогч ҮР ДҮНГЭЭ хардаг (+ push) — хариугүй хайрцагт хүн дахин бичихгүй.
+const STAFF_IDEA_KINDS = [
+  { key: 'problem', label: '⚠ Асуудал' },
+  { key: 'idea',    label: '💡 Санал' },
+];
+function staffIdeaKindLabel(k) { const x = STAFF_IDEA_KINDS.find(i => i.key === k); return x ? x.label : '💡 Санал'; }
+function staffIdeaAuthor(key) { const m = key ? findMember(key) : null; return m ? m.name : 'Ажилтан'; }
+// Саналын одоогийн байдал = Claude-ийн дүгнэлт + төлөвлөгөөний мөрийн шийдвэр (ЦЭВЭР).
+// ⛔ Захирлын шийдвэрийг ТӨЛӨВЛӨГӨӨНИЙ МӨРӨӨС уншина — хоёр газар хадгалбал зөрнө.
+function staffIdeaState(row, plan) {
+  const r = row || {};
+  const v = String(r.verdict || '');
+  const p = r.plan_id ? (Array.isArray(plan) ? plan : []).find(x => x && String(x.id) === String(r.plan_id)) : null;
+  if (!r.status || r.status === 'new') return { tone: 'wait', label: '⏳ Claude шалгаж байна', detail: '' };
+  if (r.status === 'drop') return { tone: 'no', label: '✕ Хэрэгжүүлэхгүй', detail: v };
+  if (r.status === 'exists') {
+    return p && p.sec === 'no'
+      ? { tone: 'no', label: '✕ Захирал өмнө нь хийхгүй гэж шийдсэн', detail: v }
+      : { tone: 'info', label: 'ℹ️ Аль хэдийн шийдэгдсэн', detail: v };
+  }
+  const pre = r.status === 'merge' ? '🔗 Ижил санал байсан · ' : '';
+  if (!p) return { tone: 'wait', label: pre + '📋 Захиралд очсон', detail: v };
+  if (p.sec === 'no') return { tone: 'no', label: pre + '✕ Захирал хийхгүй гэж шийдсэн', detail: String(p.why || v) };
+  const task = (p.do && p.do.kind === 'task' && p.do.task) || null;
+  if (p.status === 'done') {
+    return { tone: 'ok', label: pre + (p.done_by === 'applied' && task ? '✅ Батлагдаж ажил үүслээ' : '✅ Хийгдсэн'), detail: v, task: p.done_by === 'applied' ? task : null };
+  }
+  if (p.sec === 'idea') return { tone: 'wait', label: pre + '📋 Захирлын шийдвэр хүлээж байна', detail: v };
+  return { tone: 'ok', label: pre + '✅ Батлагдсан — төлөвлөгөөнд орсон', detail: v };
+}
+async function loadStaffIdeas(force) {
+  if (Array.isArray(state.staffIdeas) && !force) return state.staffIdeas;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/staff_ideas?select=id,author,kind,body,status,verdict,plan_id,created_at&order=id.desc&limit=500`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    state.staffIdeas = Array.isArray(rows) ? rows : [];
+    state.staffIdeasErr = false;
+  } catch (e) {
+    dataLoadFailed('Ажилтны санал', e);
+    state.staffIdeasErr = true;
+    if (!Array.isArray(state.staffIdeas)) state.staffIdeas = [];
+  }
+  return state.staffIdeas;
+}
+// Зохиогчийг сервер JWT-ээс тавина (trigger) — клиент бусдын нэрээр бичиж чадахгүй.
+async function submitStaffIdea(kind, body) {
+  const text = String(body || '').trim();
+  if (text.length < 3) throw new Error('Бичвэр хэт богино');
+  if (!pgrstTokenValid()) throw new Error('Сесс хуучирсан — дахин нэвтэрнэ үү');
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/staff_ideas`, {
+    method: 'POST', headers: pgWrite({ Prefer: 'return=representation' }),
+    body: JSON.stringify({ kind: kind === 'idea' ? 'idea' : 'problem', body: text.slice(0, 2000) }),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const rows = await r.json();
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (row) state.staffIdeas = [row].concat(Array.isArray(state.staffIdeas) ? state.staffIdeas : []);
+  return row;
+}
+// Захирлын шийдвэрийг санал бичсэн хүмүүст хэлнэ (батлах · татгалзах).
+function planNotifyAuthors(row, title, body) {
+  const ids = (row && Array.isArray(row.from)) ? row.from.map(String) : [];
+  if (!ids.length || !Array.isArray(state.staffIdeas)) return 0;
+  const phones = [...new Set(state.staffIdeas.filter(s => s && ids.includes(String(s.id)))
+    .map(s => String(s.author || '')).filter(Boolean))];
+  phones.forEach(ph => pushBroadcast(ph, { kind: 'idea', title, body: String(body || '').slice(0, 160), url: './' }));
+  return phones.length;
+}
+// Төлөвлөгөөний мөрөнд «хэн санал болгосон» — бичвэр нь зөвхөн эрхтэй хүнд (RLS).
+function planFromHtml(x) {
+  const ids = (x && Array.isArray(x.from)) ? x.from.map(String) : [];
+  if (!ids.length) return '';
+  const rows = (Array.isArray(state.staffIdeas) ? state.staffIdeas : []).filter(s => s && ids.includes(String(s.id)));
+  const names = [...new Set(rows.map(s => staffIdeaAuthor(s.author)))];
+  const head = `✍ Ажилтны санал${ids.length > 1 ? ` · ${ids.length}` : ''}${names.length ? ': ' + names.join(', ') : ''}`;
+  if (!rows.length) return `<div class="plan-from">${escapeHtml(head)}</div>`;
+  return `<details class="plan-from"><summary>${escapeHtml(head)}</summary>`
+    + rows.map(s => `<div class="plan-from-q">«${escapeHtml(s.body || '')}»</div>`).join('') + `</details>`;
+}
+// Claude хассан саналыг захирал төлөвлөгөөнд оруулна. Гарчгийг ЗАХИРАЛ бичнэ —
+// мөр бүх ажилтанд уншигддаг тул саналын бичвэрийг шууд тавихгүй.
+async function staffIdeaPromote(id) {
+  if (!canSeePlan()) return;
+  const row = (Array.isArray(state.staffIdeas) ? state.staffIdeas : []).find(x => x && String(x.id) === String(id));
+  if (!row) return;
+  const title = String((await showPrompt('Төлөвлөгөөнд ямар нэрээр орох вэ? Мөрийг бүх ажилтан харж болно — хүний нэр бүү бич.',
+    { title: 'Төлөвлөгөөнд оруулах', defaultValue: String(row.body || '').slice(0, 80), okText: 'Оруулах' })) || '').trim();
+  if (!title) return;
+  try {
+    if (!state.planLoaded) await loadPlan(true);
+    const pid = 's-' + row.id;
+    const cur = planList().find(x => x && String(x.id) === pid);
+    state.plan = cur
+      ? planList().map(x => (x && String(x.id) === pid ? { ...x, sec: 'idea', status: 'open', title, reopened: true } : x))
+      : planList().concat([{ id: pid, sec: 'idea', status: 'open', src: 'staff', from: [row.id], title, owner: 'CEO', created: todayStr() }]);
+    await savePlan();
+    const verdict = 'Захирал төлөвлөгөөнд оруулав.';
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/staff_ideas?id=eq.${encodeURIComponent(row.id)}`, {
+      method: 'PATCH', headers: pgWrite({ Prefer: 'return=minimal' }),
+      body: JSON.stringify({ status: 'plan', plan_id: pid, verdict }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    Object.assign(row, { status: 'plan', plan_id: pid, verdict });
+    showToast('Төлөвлөгөөнд санал болж орлоо', 'success', 2500);
+  } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+  render();
+}
+function renderIdeas() {
+  if (state.staffIdeas === undefined) { state.staffIdeas = null; loadStaffIdeas(true).then(() => { if (state.view === 'ideas') render(); }); }
+  if (state.plan === undefined) { state.plan = null; loadPlan(true).then(() => { if (state.view === 'ideas') render(); }); }
+  const all = Array.isArray(state.staffIdeas) ? state.staffIdeas : [];
+  const me = String(state.me || '');
+  const mine = all.filter(x => x && String(x.author) === me);
+  const others = canSeePlan() ? all.filter(x => x && String(x.author) !== me) : [];
+  const plan = planList();
+  const kind = state._siKind === 'idea' ? 'idea' : 'problem';
+  const card = (x, showWho) => {
+    const s = staffIdeaState(x, plan);
+    const task = s.task ? `<div class="si-task">Ажил: ${escapeHtml(s.task.title || '')}${s.task.assignee ? ' → ' + escapeHtml(staffIdeaAuthor(s.task.assignee)) : ''}</div>` : '';
+    const promote = showWho && (x.status === 'drop' || x.status === 'exists')
+      ? `<div class="si-acts"><button class="btn si-btn" data-si-promote="${escapeHtml(String(x.id))}">↩ Төлөвлөгөөнд оруулах</button></div>` : '';
+    return `<div class="si-item">`
+      + `<div class="si-meta"><span>${escapeHtml(staffIdeaKindLabel(x.kind))}</span>`
+      + (showWho ? `<span class="si-who">${escapeHtml(staffIdeaAuthor(x.author))}</span>` : '')
+      + `<span class="si-when">${escapeHtml(String(x.created_at || '').slice(0, 10))}</span></div>`
+      + `<div class="si-body">${escapeHtml(x.body || '')}</div>`
+      + `<div class="si-st si-${s.tone}">${escapeHtml(s.label)}</div>`
+      + (s.detail ? `<div class="si-why">${escapeHtml(s.detail)}</div>` : '')
+      + task + promote + `</div>`;
+  };
+  const loading = state.staffIdeas === null ? '<div class="plan-empty">Ачаалж байна…</div>' : '';
+  const err = state.staffIdeasErr ? '<div class="plan-warn">⚠ Санал ачаалагдсангүй — дахин нээж үзнэ үү.</div>' : '';
+  let othersHtml = '';
+  if (others.length) {
+    const grp = (label, rows, open) => rows.length
+      ? `<details class="plan-more"${open ? ' open' : ''}><summary>${escapeHtml(label)} — ${rows.length}</summary>${rows.map(x => card(x, true)).join('')}</details>` : '';
+    othersHtml = `<div class="plan-sec"><div class="plan-sec-h">Ажилтны санал<span class="plan-n">${others.length}</span></div>`
+      + `<span class="plan-sub">Шийдвэрийг «Төлөвлөгөө» дэлгэцээс гаргана. Claude буруу хассан бол эндээс буцааж оруул.</span>`
+      + grp('⏳ Шалгагдаж байна', others.filter(x => x.status === 'new'), true)
+      + grp('📋 Төлөвлөгөөнд орсон', others.filter(x => x.status === 'plan' || x.status === 'merge'), true)
+      + grp('✕ Claude хассан', others.filter(x => x.status === 'drop' || x.status === 'exists'), false)
+      + `</div>`;
+  }
+  return `<div class="plan-wrap si-wrap">`
+    + `<div class="plan-top"><h2 class="plan-h1">Санал санаачлага</h2>`
+    + `<span class="plan-sub">Компанид тулгарч буй асуудал эсвэл сайжруулах санаагаа бич. Claude 30 минутын дотор шалгаж, хэрэгтэйг нь захиралд төлөвлөгөө болгож өгнө, хэрэггүй бол шалтгааныг нь хэлнэ. Захирал батлавал ажил болж хариуцах хүнд очно.</span></div>`
+    + `<div class="si-form">`
+    + `<div class="si-kinds">${STAFF_IDEA_KINDS.map(k => `<button type="button" class="si-kind${k.key === kind ? ' on' : ''}" data-si-kind="${k.key}">${escapeHtml(k.label)}</button>`).join('')}</div>`
+    + `<textarea id="si-body" class="si-ta" rows="4" maxlength="2000" placeholder="Юу болж байна, хаана, хэр олон удаа? Тодорхой бичих тусам ажил болох магадлал өндөр.">${escapeHtml(state._siDraft || '')}</textarea>`
+    + `<button type="button" class="btn btn-primary si-send" id="si-send">Илгээх</button>`
+    + `</div>`
+    + err + loading
+    + `<div class="plan-sec"><div class="plan-sec-h">Миний санал<span class="plan-n">${mine.length}</span></div>`
+    + (mine.length ? mine.map(x => card(x, false)).join('') : (state.staffIdeas === null ? '' : '<div class="plan-empty">Одоохондоо санал бичээгүй байна.</div>'))
+    + `</div>`
+    + othersHtml
+    + `</div>`;
+}
+function attachIdeasHandlers() {
+  document.querySelectorAll('[data-si-kind]').forEach(b => b.addEventListener('click', () => {
+    state._siKind = b.dataset.siKind;
+    document.querySelectorAll('[data-si-kind]').forEach(x => x.classList.toggle('on', x === b));
+  }));
+  document.getElementById('si-body')?.addEventListener('input', (e) => { state._siDraft = e.target.value; });
+  document.getElementById('si-send')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const text = String((document.getElementById('si-body') || {}).value || '').trim();
+    if (text.length < 3) { showToast('Юу болж байгааг бичнэ үү', 'warn', 3000); return; }
+    btn.disabled = true;
+    try {
+      await submitStaffIdea(state._siKind === 'idea' ? 'idea' : 'problem', text);
+      state._siDraft = '';
+      showToast('Илгээлээ — Claude 30 минутын дотор шалгана', 'success', 3500);
+      render();
+    } catch (err) {
+      showToast('⚠ Илгээгдсэнгүй: ' + err.message, 'error', 5000);
+      btn.disabled = false;
+    }
+  });
+  document.querySelectorAll('[data-si-promote]').forEach(b => b.addEventListener('click', () => staffIdeaPromote(b.dataset.siPromote)));
 }
 function renderWriteoff() {
   // Кэшээс шууд үзүүлээд, ард нь DB-ээс шинэчилнэ — refresh дээр жагсаалт «алга»
@@ -42800,6 +43011,10 @@ function initEvents() {
         if (action === 'task') openTaskModal();
         else if (action === 'finance') openFinanceModal();
         else if (action === 'cardexp') openFinanceModal(null, true);
+        else if (action === 'idea') {
+          state.view = 'ideas'; render();
+          setTimeout(() => { try { document.getElementById('si-body').focus(); } catch (_) {} }, 80);
+        }
       }, 180);
     });
   });
@@ -43879,6 +44094,12 @@ function refreshViewData() {
   if (v === 'plan' && canSeePlan()) {
     // Дэлгэц нээх бүрд DB-ээс ШИНЭЧЛЭНЭ — өөр сессээс хаасан ажил энд харагдана.
     loadPlan(true).then(() => { if (state.view === 'plan') render(); });
+    // Ажилтны саналын бичвэр/зохиогч (мөрөнд зөвхөн id) — батлахад зохиогчид мэдэгдэнэ.
+    loadStaffIdeas(true).then(() => { if (state.view === 'plan') render(); });
+  }
+  if (v === 'ideas') {
+    loadStaffIdeas(true).then(() => { if (state.view === 'ideas') render(); });
+    loadPlan(true).then(() => { if (state.view === 'ideas') render(); });
   }
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();

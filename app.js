@@ -24902,6 +24902,76 @@ async function planSet(id, patch) {
 // ⛔ Санал нь app.js-д БИЧИГДЭХГҮЙ — нотолгоо нь бодит тоо агуулдаг, энэ репо НИЙТИЙН.
 //   Хадгалалт = `app_config['plan']`-ийн `sec:'idea'` мөрүүд.
 // ⛔ Татгалзахад ШАЛТГААН заавал — эс бөгөөс ижил санал дахин гарч ирнэ.
+// ── САНАЛЫГ ХЭРЭГЖҮҮЛЭХ (2026-10-07, CEO) ─────────────────────────────────
+// Санал нь бичвэр биш, ҮЙЛДЭЛ авч явж болно (`do: {kind, set}`) — CEO «✓ Батлаад
+// хэрэгжүүл» дарахад тохиргоо ШУУД өөрчлөгдөнө. Гараар хоёр дэлгэц нээж тоо
+// шивэх алхам арилна (тэр алхам нь шийдвэрийг хойшлуулдаг гол шалтгаан).
+// ⛔ ЗӨВХӨН whitelist төрөл — танихгүй төрөл ХЭРЭГЖИХГҮЙ, чимээгүй өнгөрөхгүй.
+// ⛔ Хуучин утга `undo`-д хадгалагдана → «↩ Буцаах» нэг даралт.
+// ⛔ Мөнгөний дүрэм тул ЗӨВХӨН CEO, `showConfirm`-ийн ХАРИУГ шалгана.
+// ⚠ Тариф нь сайттай ХУВААЛЦСАН (`app_config['tariffs']`) — өөрчлөхөд mevent.mn
+//   дээр ч шууд хүчинтэй болно, баталгаажуулалтад ил бичигдэнэ.
+const PLAN_DO_KINDS = {
+  tariff: {
+    label: 'Тариф',
+    note: 'Апп БА mevent.mn хоёуланд шууд хүчинтэй болно.',
+    cur: () => ({ ...(state.tariffs && typeof state.tariffs === 'object' ? state.tariffs : {}) }),
+    save: async (next) => { await saveAppConfig('tariffs', next); state.tariffs = next; },
+  },
+};
+const PLAN_DO_LABELS = {
+  delivery_city_fee: 'Хотын хүргэлт', delivery_city_one_fee: 'Хотын хүргэлт (нэг тал)',
+  delivery_per_km: 'Хот гадна 1 км', offhours_fee: 'Ажлын бус цаг (цаг тутам)',
+  offhours_first_fee: 'Ажлын бус цаг (эхний цаг)', work_start: 'Ажил эхлэх цаг',
+  work_end: 'Ажил дуусах цаг', tiers: 'Хоногийн хямдрал',
+};
+function planDoValText(v) {
+  if (Array.isArray(v)) return v.map(t => `${Number(t.min) || 0}+ хоног ${Math.round((Number(t.pct) || 0) * 100)}%`).join(' · ') || '—';
+  if (v === undefined || v === null || v === '') return '—';
+  return String(v);
+}
+// Юу өөрчлөгдөхийг мөрөөр гаргана (ЦЭВЭР). Танихгүй төрөл → null (ХЭРЭГЖИХГҮЙ).
+function planDoDiff(kind, set, cur) {
+  if (!PLAN_DO_KINDS[String(kind || '')] || !set || typeof set !== 'object') return null;
+  const c = (cur && typeof cur === 'object') ? cur : {};
+  return Object.keys(set)
+    .filter(k => JSON.stringify(set[k]) !== JSON.stringify(c[k]))
+    .map(k => ({ key: k, label: PLAN_DO_LABELS[k] || k, from: planDoValText(c[k]), to: planDoValText(set[k]) }));
+}
+async function planApplyIdea(id) {
+  const row = planList().find(x => String(x.id) === String(id));
+  if (!row || !row.do) return;
+  if (!state.isCEO) { showToast('Зөвхөн захирал хэрэгжүүлнэ', 'error', 4000); return; }
+  const kind = PLAN_DO_KINDS[String(row.do.kind || '')];
+  if (!kind) { showToast('⚠ Танихгүй үйлдэл — хэрэгжүүлсэнгүй', 'error', 6000); return; }
+  const cur = kind.cur(), set = row.do.set || {};
+  const diff = planDoDiff(row.do.kind, set, cur);
+  if (!diff || !diff.length) { showToast('Өөрчлөх зүйл алга — тохиргоо аль хэдийн ийм байна', 'info', 4000); return; }
+  const ok = await showConfirm(`${kind.label} өөрчлөгдөнө:\n\n`
+    + diff.map(d => `${d.label}: ${d.from} → ${d.to}`).join('\n')
+    + `\n\n${kind.note}\nБуцаахдаа «↩ Буцаах» дарна.`, { okText: 'Хэрэгжүүлэх' });
+  if (!ok) return;
+  const undo = {}; Object.keys(set).forEach(k => { undo[k] = cur[k]; });
+  try { await kind.save({ ...cur, ...set }); }
+  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 6000); return; }
+  await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', undo });
+  showToast('Хэрэгжлээ', 'success', 2500);
+}
+async function planRevertIdea(id) {
+  const row = planList().find(x => String(x.id) === String(id));
+  if (!row || !row.undo || !state.isCEO) return;
+  const kind = PLAN_DO_KINDS[String((row.do || {}).kind || '')];
+  if (!kind) return;
+  const cur = kind.cur();
+  const diff = planDoDiff((row.do || {}).kind, row.undo, cur) || [];
+  const ok = await showConfirm(`Хуучин байдалд буцаана:\n\n`
+    + (diff.length ? diff.map(d => `${d.label}: ${d.from} → ${d.to}`).join('\n') : 'Өөрчлөлт алга')
+    + `\n\n${kind.note}`, { okText: 'Буцаах' });
+  if (!ok) return;
+  try { await kind.save({ ...cur, ...row.undo }); }
+  catch (e) { showToast('⚠ Буцаагдсангүй: ' + e.message, 'error', 6000); return; }
+  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', undo: null, reopened: true });
+}
 async function planAcceptIdea(id) { await planSet(id, { sec: 'next', status: 'open' }); }
 async function planRejectIdea(id) {
   const why = String((await showPrompt('Яагаад хийхгүй вэ?', { okText: 'Татгалзах' })) || '').trim();
@@ -24938,7 +25008,7 @@ function renderPlan() {
     + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
     + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
     + `${x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : ''}`
-    + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : ''}</div>` : ''}`
+    + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : (x.done_by === 'applied' ? ' · хэрэгжүүлсэн' : '')}</div>` : ''}`
     + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
     + `</div>`;
   const nowActs = (x) => btn('plan-done', x.id, '✓ Дууслаа') + btn('plan-down', x.id, '↓ Хойшлуулах');
@@ -24952,7 +25022,7 @@ function renderPlan() {
     + warn
     + (s.idea.length ? `<div class="plan-sec plan-ideas"><div class="plan-sec-h">💡 Агентын санал<span class="plan-n">${s.idea.length}</span></div>`
         + planIdeaGroups(s.idea).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>`
-            + g.rows.map(x => item(x, btn('plan-yes', x.id, '✓ Батлах') + btn('plan-no', x.id, '✕ Хийхгүй'))).join('')).join('')
+            + g.rows.map(x => item(x, (x.do ? btn('plan-apply', x.id, '✓ Батлаад хэрэгжүүл') : btn('plan-yes', x.id, '✓ Батлах')) + btn('plan-no', x.id, '✕ Хийхгүй'))).join('')).join('')
         + `</div>` : '')
     + `<div class="plan-sec"><div class="plan-sec-h">Одоо хийж байгаа<span class="plan-n">${s.now.length}</span></div>`
     + (s.now.length ? s.now.map(x => item(x, nowActs(x))).join('') : '<div class="plan-empty">Одоо эхэлсэн ажил алга — доороос нэгийг дээшлүүл.</div>')
@@ -24964,7 +25034,7 @@ function renderPlan() {
     + (s.no.length ? s.no.map(x => item(x, '')).join('') : '<div class="plan-empty">Хоосон.</div>')
     + `</details>`
     + `<details class="plan-more"><summary>Хаагдсан — ${s.done.length}</summary>`
-    + (s.done.length ? s.done.map(x => item(x, btn('plan-reopen', x.id, '↩ Буцааж нээх'))).join('') : '<div class="plan-empty">Хоосон.</div>')
+    + (s.done.length ? s.done.map(x => item(x, (x.done_by === 'applied' && x.undo ? btn('plan-revert', x.id, '↩ Буцаах') : btn('plan-reopen', x.id, '↩ Буцааж нээх')))).join('') : '<div class="plan-empty">Хоосон.</div>')
     + `</details>`
     + `</div>`;
 }
@@ -24972,6 +25042,8 @@ function attachPlanHandlers() {
   document.getElementById('plan-add')?.addEventListener('click', () => planAdd());
   document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() })));
   document.querySelectorAll('[data-plan-yes]').forEach(b => b.addEventListener('click', () => planAcceptIdea(b.dataset.planYes)));
+  document.querySelectorAll('[data-plan-apply]').forEach(b => b.addEventListener('click', () => planApplyIdea(b.dataset.planApply)));
+  document.querySelectorAll('[data-plan-revert]').forEach(b => b.addEventListener('click', () => planRevertIdea(b.dataset.planRevert)));
   document.querySelectorAll('[data-plan-no]').forEach(b => b.addEventListener('click', () => planRejectIdea(b.dataset.planNo)));
     document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
   document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));

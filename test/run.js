@@ -7966,6 +7966,21 @@ need(['orderCustType']);
   eq(F.planCatLabel('risk'), '🛡 Эрсдэл', 'санал: ангиллын нэр');
   eq(F.planCatLabel('байхгүй'), 'Бусад', 'санал: танихгүй ангилал → Бусад');
 
+  // ── Хадгалахад агентын шинэ мөр УСТАХГҮЙ (2026-10-07, амьд алдаа) ───────
+  const srv = [{ id: 'a', sec: 'now', title: 'Хуучин' }, { id: 'new', sec: 'idea', title: 'Агент шинээр нэмсэн' }];
+  const loc = [{ id: 'a', sec: 'now', title: 'Хуучин', status: 'done' }];
+  const sv = F.planMergeSave(loc, srv);
+  eq(sv.length, 2, 'ИНВАРИАНТ: нээлттэй табнаас хадгалахад серверийн шинэ мөр устахгүй');
+  eq(sv.find(x => x.id === 'new').title, 'Агент шинээр нэмсэн', 'хадгалах: агентын мөр бүтэн үлдэнэ');
+  eq(sv.find(x => x.id === 'a').status, 'done', 'хадгалах: энэ сессийн шийдвэр ялна');
+  eq(F.planMergeSave([{ id: 'z', title: 'Шинэ' }], srv).length, 3, 'хадгалах: энэ сессэд нэмсэн мөр ордог');
+  eq(F.planMergeSave(null, null).length, 0, 'хадгалах: хоосон оролт унагахгүй');
+  {
+    const body = src.slice(src.indexOf('async function savePlan'), src.indexOf('function canSeePlan'));
+    ok(body.indexOf('loadAppConfig(PLAN_KEY)') < body.indexOf('saveAppConfig(PLAN_KEY'), 'ИНВАРИАНТ: хадгалахын ӨМНӨ серверээс уншина');
+    ok(/catch[\s\S]*хадгалсангүй/.test(body), 'ИНВАРИАНТ: уншиж чадаагүй бол дарж бичихгүй');
+  }
+
   // ── Хэрэгждэг санал: «батлах» дарахад тохиргоо өөрчлөгдөнө ──────────────
   const curT = { offhours_fee: 10000, tiers: [{ min: 2, pct: 0.20 }] };
   const d1 = F.planDoDiff('tariff', { offhours_fee: 12000 }, curT);

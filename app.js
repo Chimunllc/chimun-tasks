@@ -25019,6 +25019,18 @@ function planApproveHint(row) {
   const who = String(r.owner || '') === PLAN_AGENT_OWNER ? 'агент' : 'чи';
   return `Батлавал: «Дараагийнх» жагсаалтад орно, хийх хүн — ${who}. Тохиргоо өөрчлөгдөхгүй.`;
 }
+// Хариуцагчийг БАТЛАХЫН ӨМНӨ солино (2026-10-07, CEO). Санал нэг хүнийг санал
+// болгодог ч сонголт нь CEO-гийнх — батлаад дараа нь ажил дотор засах нь
+// нэмэлт алхам болдог.
+function planAssignRow(row, who) {
+  const r = row || {}, d = r.do || {};
+  return { ...d, task: { ...(d.task || {}), assignee: String(who || '') } };
+}
+async function planSetAssignee(id, who) {
+  const row = planList().find(x => String(x.id) === String(id));
+  if (!row || !row.do || String(row.do.kind || '') !== 'task') return;
+  await planSet(id, { do: planAssignRow(row, who) });
+}
 async function planApplyIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
   if (!row || !row.do) return;
@@ -25085,6 +25097,13 @@ function renderPlan() {
     + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
     + `${x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : ''}`
     + `${x.sec === 'idea' && x.status !== 'done' ? `<div class="plan-hint">${escapeHtml(planApproveHint(x))}</div>` : ''}`
+    + `${x.sec === 'idea' && x.status !== 'done' && x.do && x.do.kind === 'task'
+        ? `<label class="plan-ass">Хариуцагч<select class="ui-raw plan-ass-sel" data-plan-ass="${escapeHtml(String(x.id))}">`
+          + `<option value=""${!(x.do.task || {}).assignee ? ' selected' : ''}>— хариуцагчгүй —</option>`
+          + TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && m.worker_type !== 'daily')
+              .map(m => personKey(m)).filter(Boolean)
+              .map(k => `<option value="${escapeHtml(k)}"${k === (x.do.task || {}).assignee ? ' selected' : ''}>${escapeHtml(memberName(k))}</option>`).join('')
+          + `</select></label>` : ''}`
     + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : (x.done_by === 'applied' ? ' · хэрэгжүүлсэн' : '')}</div>` : ''}`
     + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
     + `</div>`;
@@ -25119,6 +25138,7 @@ function attachPlanHandlers() {
   document.getElementById('plan-add')?.addEventListener('click', () => planAdd());
   document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() })));
   document.querySelectorAll('[data-plan-yes]').forEach(b => b.addEventListener('click', () => planAcceptIdea(b.dataset.planYes)));
+  document.querySelectorAll('[data-plan-ass]').forEach(el => el.addEventListener('change', () => planSetAssignee(el.dataset.planAss, el.value)));
   document.querySelectorAll('[data-plan-apply]').forEach(b => b.addEventListener('click', () => planApplyIdea(b.dataset.planApply)));
   document.querySelectorAll('[data-plan-revert]').forEach(b => b.addEventListener('click', () => planRevertIdea(b.dataset.planRevert)));
   document.querySelectorAll('[data-plan-no]').forEach(b => b.addEventListener('click', () => planRejectIdea(b.dataset.planNo)));

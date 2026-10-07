@@ -7997,6 +7997,36 @@ need(['orderCustType']);
   ok(/plan-hint/.test(F.renderPlan()), 'санал: тайлбар дэлгэцэд гарна');
   vm.runInContext('state.plan = undefined;', sandbox);
 
+  // ── 401 = НЭВТРЭЛТ дууссан, «дата алга» БИШ (2026-10-07, амьд логоос) ───
+  {
+    vm.runInContext(`
+      _errLog = [];
+      _reportErrToServer = (msg, src, stack) => { _errLog.push(src + '|' + msg); };
+      showToast = () => {};
+      render = () => {};
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      pgrstTokenValid = () => false;
+      dataLoadFailed('Дуудлагын лог', new Error('HTTP 401'));
+      dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
+      dataLoadFailed('Ажилтны санал', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('_errLog.length', sandbox), 1, 'ИНВАРИАНТ: нэг дэлгэцийн 3 татац алдааны логийг дүүргэхгүй');
+    eq(vm.runInContext('_errLog[0]', sandbox), 'auth:401|Нэвтрэлт дууссан', '401: шалтгааныг нэвтрэлт гэж бүртгэнэ');
+    eq(vm.runInContext('state.sessionExpired', sandbox), true, '401: сесс дууссан гэж тэмдэглэнэ');
+    // Токен ХҮЧИНТЭЙ атал 401 = эрхийн асуудал → хэвийн бүртгэнэ
+    vm.runInContext(`
+      _errLog = []; state.sessionExpired = false; pgrstTokenValid = () => true;
+      dataLoadFailed('Цалин', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('_errLog.length', sandbox), 1, '401: токен хүчинтэй үед хэвийн бүртгэнэ');
+    ok(/^load:Цалин/.test(vm.runInContext('_errLog[0]', sandbox)), 'ИНВАРИАНТ: эрхийн 401-ийг «сесс дууссан» гэж нуухгүй');
+    eq(vm.runInContext('state.sessionExpired', sandbox), false, '401: эрхийн алдаа сессийг хуурамчаар дуусгахгүй');
+  }
+  {
+    ok(/id = 'sess-banner'/.test(src) && src.indexOf("id = 'sess-banner'") < src.indexOf("const wrap = document.getElementById('task-list')"),
+       'ИНВАРИАНТ: нэвтрэлт дууссан тууз бүх дэлгэцэд гарна');
+  }
+
   // ── АВЛАГА = ӨДРИЙН АЖИЛ (2026-10-07) ──────────────────────────────────
   {
     const items = [

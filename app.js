@@ -24992,6 +24992,20 @@ async function planRevertIdea(id) {
   catch (e) { showToast('⚠ Буцаагдсангүй: ' + e.message, 'error', 6000); return; }
   await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', undo: null, reopened: true });
 }
+// «Батлавал юу болох» — товч дарахын ӨМНӨ ил (2026-10-07, CEO: «баталсан нь яг
+// юу хийхийг мэдэхгүй байна»). ЦЭВЭР функц.
+// ⛔ Үйлдэлтэй санал (тохиргоо өөрчилнө) ба жагсаалтад ордог санал хоёрыг
+//   ЯЛГАЖ хэлнэ — хоёулаа «батлах» гэсэн нэг үгтэй тул хүн андуурна.
+function planApproveHint(row) {
+  const r = row || {};
+  if (r.do) {
+    const k = PLAN_DO_KINDS[String(r.do.kind || '')];
+    return k ? `Батлавал: ${k.label} ШУУД өөрчлөгдөнө (өмнө нь хуучин→шинэ харуулна, буцаах боломжтой)`
+             : 'Батлавал: танихгүй үйлдэл — хэрэгжихгүй';
+  }
+  const who = String(r.owner || '') === PLAN_AGENT_OWNER ? 'агент' : 'чи';
+  return `Батлавал: «Дараагийнх» жагсаалтад орно, хийх хүн — ${who}. Тохиргоо өөрчлөгдөхгүй.`;
+}
 async function planAcceptIdea(id) { await planSet(id, { sec: 'next', status: 'open' }); }
 async function planRejectIdea(id) {
   const why = String((await showPrompt('Яагаад хийхгүй вэ?', { okText: 'Татгалзах' })) || '').trim();
@@ -25028,6 +25042,7 @@ function renderPlan() {
     + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
     + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
     + `${x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : ''}`
+    + `${x.sec === 'idea' && x.status !== 'done' ? `<div class="plan-hint">${escapeHtml(planApproveHint(x))}</div>` : ''}`
     + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : (x.done_by === 'applied' ? ' · хэрэгжүүлсэн' : '')}</div>` : ''}`
     + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
     + `</div>`;

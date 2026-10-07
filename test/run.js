@@ -7966,6 +7966,15 @@ need(['orderCustType']);
   eq(F.planCatLabel('risk'), '🛡 Эрсдэл', 'санал: ангиллын нэр');
   eq(F.planCatLabel('байхгүй'), 'Бусад', 'санал: танихгүй ангилал → Бусад');
 
+  // «Батлавал юу болох» нь товч дарахын өмнө ил
+  ok(F.planApproveHint({ do: { kind: 'tariff' } }).includes('ШУУД өөрчлөгдөнө'), 'санал: үйлдэлтэй санал юу өөрчлөхийг хэлнэ');
+  ok(F.planApproveHint({ owner: 'CEO' }).includes('Дараагийнх') && F.planApproveHint({ owner: 'CEO' }).includes('чи'), 'санал: жагсаалтад ордгийг хэлнэ');
+  ok(F.planApproveHint({ owner: 'Claude' }).includes('агент'), 'санал: хийх хүнийг нэрлэнэ');
+  ok(F.planApproveHint({ do: { kind: 'байхгүй' } }).includes('хэрэгжихгүй'), 'санал: танихгүй үйлдлийг ил хэлнэ');
+  vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'h1', sec: 'idea', title: 'Т', owner: 'CEO' }]) + ';', sandbox);
+  ok(/plan-hint/.test(F.renderPlan()), 'санал: тайлбар дэлгэцэд гарна');
+  vm.runInContext('state.plan = undefined;', sandbox);
+
   // ── Хадгалахад агентын шинэ мөр УСТАХГҮЙ (2026-10-07, амьд алдаа) ───────
   const srv = [{ id: 'a', sec: 'now', title: 'Хуучин' }, { id: 'new', sec: 'idea', title: 'Агент шинээр нэмсэн' }];
   const loc = [{ id: 'a', sec: 'now', title: 'Хуучин', status: 'done' }];

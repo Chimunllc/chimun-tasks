@@ -7966,6 +7966,30 @@ need(['orderCustType']);
   eq(F.planCatLabel('risk'), '🛡 Эрсдэл', 'санал: ангиллын нэр');
   eq(F.planCatLabel('байхгүй'), 'Бусад', 'санал: танихгүй ангилал → Бусад');
 
+  // ── Хэрэгждэг санал: «батлах» дарахад тохиргоо өөрчлөгдөнө ──────────────
+  const curT = { offhours_fee: 10000, tiers: [{ min: 2, pct: 0.20 }] };
+  const d1 = F.planDoDiff('tariff', { offhours_fee: 12000 }, curT);
+  eq(d1.length, 1, 'хэрэгжүүлэх: өөрчлөгдөх мөр');
+  eq(d1[0].label + ' ' + d1[0].from + '→' + d1[0].to, 'Ажлын бус цаг (цаг тутам) 10000→12000', 'хэрэгжүүлэх: хуучин→шинэ харагдана');
+  eq(F.planDoDiff('tariff', { offhours_fee: 10000 }, curT).length, 0, 'хэрэгжүүлэх: ижил утга өөрчлөлт БИШ');
+  eq(F.planDoDiff('tariff', { tiers: [{ min: 2, pct: 0.15 }] }, curT)[0].to, '2+ хоног 15%', 'хэрэгжүүлэх: хямдралын шатлал хүний үгээр');
+  eq(F.planDoDiff('байхгүй', { x: 1 }, curT), null, 'ИНВАРИАНТ: танихгүй үйлдэл хэрэгжихгүй');
+  eq(F.planDoDiff('tariff', null, curT), null, 'хэрэгжүүлэх: утгагүй оролт → null');
+  eq(F.planDoDiff('tariff', { offhours_fee: 12000 }, null).length, 1, 'хэрэгжүүлэх: тохиргоо хоосон байсан ч ажиллана');
+  // Дэлгэц: үйлдэлтэй санал өөр товчтой
+  vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'd1', sec: 'idea', cat: 'money', title: 'Тариф', do: { kind: 'tariff', set: { offhours_fee: 12000 } } }]) + ';', sandbox);
+  ok(/data-plan-apply/.test(F.renderPlan()), 'хэрэгжүүлэх: «Батлаад хэрэгжүүл» товч гарна');
+  vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'd2', sec: 'next', status: 'done', closed_at: '2026-10-07', done_by: 'applied', undo: { offhours_fee: 10000 }, do: { kind: 'tariff', set: {} } }]) + ';', sandbox);
+  { const h = F.renderPlan(); ok(/data-plan-revert/.test(h) && h.includes('хэрэгжүүлсэн'), 'хэрэгжүүлэх: буцаах товч ба тэмдэглэгээ'); }
+  vm.runInContext('state.plan = undefined;', sandbox);
+  {
+    const body = src.slice(src.indexOf('async function planApplyIdea'), src.indexOf('async function planRevertIdea'));
+    ok(/state\.isCEO/.test(body), 'ИНВАРИАНТ: тохиргоог зөвхөн захирал хэрэгжүүлнэ');
+    ok(/const ok = await showConfirm\(/.test(body) && /if \(!ok\) return;/.test(body), 'ИНВАРИАНТ: хэрэгжүүлэхийн өмнө баталгаажуулалтын ХАРИУГ шалгана');
+    ok(/if \(!kind\)/.test(body), 'ИНВАРИАНТ: танихгүй үйлдэл чимээгүй өнгөрөхгүй');
+    ok(body.indexOf('undo[k] = cur[k]') < body.indexOf('kind.save('), 'ИНВАРИАНТ: хуучин утга бичлэгийн ӨМНӨ хадгалагдана');
+  }
+
   // Дэлгэцэд санал нотолгоотойгоо гарч, батлах/татгалзах товчтой
   vm.runInContext('state.plan = ' + JSON.stringify(ideas) + ';', sandbox);
   const ih = F.renderPlan();

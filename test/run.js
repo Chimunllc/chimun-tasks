@@ -87,7 +87,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'claimCanResolve', 'stageMetaHtml', 'vatIsAggregate', 'vatIssuedDay', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost', 'offHoursFeeFor', 'orderOffHoursFeeOf', 'tariffOffhoursFirstFee',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'scBranchOfSession', 'scPrimaryBranch', 'scInBranch', 'applyStockCount', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
@@ -564,6 +564,26 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: ХЭРЭГЖҮҮЛЭХ зам (мөнгөний зам) хаалттай');
   ok(/const actBlk = act \? countBlockReason\(act\) : '';/.test(codeLines),
      'scan: дэлгэцэд шалтгаан ил гарна');
+}
+
+// Салбарын тооллогын зөрүү ЗӨВХӨН тэр салбарын баганыг хөдөлгөнө (2026-10-07)
+{
+  const st = vm.runInContext('state', sandbox);
+  const P0 = { sku: 'M-BR1', name: 'Туршилт', stock: 13, qty_mevent: 3, qty_nomaad: 10, qty_catering: 0, qty_chimun: 0, stock_locked_at: '2026-10-01T00:00:00Z', stock_opened_at: 'x', stock_approved_at: 'x' };
+  const savedP = st.products, origSave = sandbox.saveProduct, origFetch = sandbox.fetch;
+  let got = null;
+  const restore = () => { st.products = savedP; sandbox.saveProduct = origSave; sandbox.fetch = origFetch; };
+  st.products = [P0];
+  sandbox.saveProduct = async (x) => { got = x; return x; };
+  sandbox.fetch = () => Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve([]), text: () => Promise.resolve('') });
+  const pr = vm.runInContext("applyStockCount({ id: 1, session_id: '2026-Q4@nomaad', sku: 'M-BR1', system_qty: 10, counted_qty: 7 })", sandbox);
+  st.products = savedP;
+  Promise.resolve(pr).then(() => {
+    eq(got && got.qty_nomaad, 7, 'салбар: NOMAAD-ийн зөрүү NOMAAD-ийн баганад');
+    eq(got && got.qty_mevent, 3, 'салбар: бусад салбарын тоо хөдлөхгүй');
+    eq(got && got.stock, 10, 'салбар: нийт = салбаруудын нийлбэр');
+    restore();
+  }).catch(e => { ok(false, 'салбар: зөрүү хэрэгжүүлэх — ' + e.message); restore(); });
 }
 
 /* 0e2i) SCAN — эцэслэлийн хориг БҮХ бичих замд (2026-10-02)
@@ -5535,8 +5555,27 @@ need(['orderCustType']);
   eq(F.scNewSessionId('2026-09-04', ['2026-Q3', '2026-Q3-2']), '2026-Q3-3', 'сесс: 3 дахь');
   eq(F.scNewSessionId('2026-09-04', ['2026-Q2']), '2026-Q3', 'сесс: өөр улирал саад болохгүй');
 
-  eq(F.scNormalizeConfig(null), { active: null, history: [] }, 'тохиргоо: хоосон → жигдэрнэ');
-  eq(F.scNormalizeConfig({ active: {} }).active, null, 'тохиргоо: id-гүй active хүчингүй');
+  eq(F.scNormalizeConfig(null), { actives: {}, history: [] }, 'тохиргоо: хоосон → жигдэрнэ');
+  eq(F.scNormalizeConfig({ active: {} }).actives, {}, 'тохиргоо: id-гүй active хүчингүй');
+  /* ═══ САЛБАР БҮРИЙН ТООЛЛОГО (2026-10-07, CEO) ═══ */
+  // Хуучин нэг сесс → M-Event-ийнх (тэр үед M-Event-ийн бараа л тоолсон)
+  eq(F.scNormalizeConfig({ active: { id: '2026-Q3-2' } }).actives.mevent.id, '2026-Q3-2', 'салбар: хуучин сесс → M-Event');
+  eq(Object.keys(F.scNormalizeConfig({ actives: { nomaad: { id: '2026-Q4@nomaad' }, xyz: { id: 'z' }, catering: {} } }).actives), ['nomaad'], 'салбар: танихгүй/id-гүй сесс хасагдана');
+  eq(F.scAllSessionIds({ actives: { mevent: { id: 'a@mevent' }, nomaad: { id: 'b@nomaad' } }, history: [{ id: 'c' }] }), ['a@mevent', 'b@nomaad', 'c'], 'салбар: бүх салбарын сесс');
+  eq(F.scBranchOfSession('2026-Q4@nomaad'), 'nomaad', 'салбар: сессийн дугаараас');
+  eq(F.scBranchOfSession('2026-Q3-2'), 'mevent', 'салбар: хуучин сесс = M-Event');
+  eq(F.scBranchOfSession('2026-Q4@xyz'), 'mevent', 'салбар: танихгүй → M-Event');
+  eq(F.scNewSessionId('2026-10-07', ['2026-Q3-2'], 'nomaad'), '2026-Q4@nomaad', 'салбар: шинэ дугаар салбартай');
+  eq(F.scNewSessionId('2026-10-07', ['2026-Q4@nomaad'], 'nomaad'), '2026-Q4-2@nomaad', 'салбар: салбар бүр өөрөө дугаарлагдана');
+  eq(F.scNewSessionId('2026-10-07', ['2026-Q4@nomaad'], 'catering'), '2026-Q4@catering', 'салбар: өөр салбар саад болохгүй');
+  eq(F.scNewSessionId('2026-10-07', ['2026-Q4'], 'mevent'), '2026-Q4-2@mevent', 'салбар: хуучин дугаар M-Event-ийнх гэж тооцогдоно');
+  eq(F.scSessionLabel('2026-Q4-2@nomaad'), '2026 оны IV улирал (2)', 'салбар: нэрэнд салбарын дагавар гарахгүй');
+  {
+    const P = { qty_mevent: 3, qty_catering: 5, qty_nomaad: 0, qty_chimun: 0 }, Z = { qty_mevent: 0 };
+    eq(F.scPrimaryBranch(P), 'catering', 'салбар: эзэн = хамгийн их тоотой');
+    ok(F.scInBranch(P, 'mevent') && F.scInBranch(P, 'catering') && !F.scInBranch(P, 'nomaad'), 'салбар: тоотой салбар бүрийн тооллогод орно');
+    ok(F.scInBranch(Z, 'mevent') && !F.scInBranch(Z, 'chimun'), 'салбар: хаана ч тоогүй бараа зөвхөн M-Event-д');
+  }
   eq(F.scNormalizeConfig({ history: 'муу' }).history, [], 'тохиргоо: буруу түүх → хоосон массив');
   eq(F.scAllSessionIds({ active: { id: 'a' }, history: [{ id: 'b' }, { id: 'c' }] }), ['a', 'b', 'c'], 'тохиргоо: бүх сессийн дугаар');
   eq(F.scAllSessionIds(null), [], 'тохиргоо: хоосон → дугаар алга');
@@ -14936,7 +14975,19 @@ async function swFetchTests() {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
   const fn = src.slice(src.indexOf('function finBranchPnl'), src.indexOf('function finReceivables'));
   ok(/countShrinkCost\(month, state\.scAllRows/.test(fn), 'scan: finBranchPnl тооллогын алдагдлыг БҮХ сессээр бодно');
-  ok(/exp\['ИВЕНТ'\]\s*\+=\s*cnt\.total/.test(fn), 'scan: тооллогын алдагдал ИВЕНТ-д нэмэгдэнэ');
+  // Салбар бүр ӨӨРИЙН тооллогын алдагдлыг үүрнэ (2026-10-07) — бүгдийг ИВЕНТ-д БҮҮ нэм
+  ok(/SC_BRANCHES\.forEach\(b => \{ exp\[b\.pnl\][^\n]*countShrinkCost\(month, state\.scAllRows \|\| undefined, b\.pnl\)/.test(fn), 'scan: тооллогын алдагдал тоолсон салбарын зардал');
+  ok(!/exp\['ИВЕНТ'\]\s*\+=\s*cnt\.total/.test(fn), 'scan: тооллогын алдагдлыг бүхэлд нь ИВЕНТ-д нэмэхгүй');
+  {
+    const R = (sid, cq) => ({ sku: 'M-SH', session_id: sid, counted_at: '2026-10-07T03:00:00Z', system_qty: 10, counted_qty: cq, applied: true });
+    vm.runInContext("state.productCosts = { 'M-SH': 1000 };", sandbox);
+    const rows = [R('2026-Q4@nomaad', 8), R('2026-Q3-2', 9)];
+    eq(F.countShrinkCost('2026-10', rows, 'КЕМП').cost, 2000, 'салбар: NOMAAD-ийн алдагдал зөвхөн КЕМП-д');
+    eq(F.countShrinkCost('2026-10', rows, 'ИВЕНТ').cost, 1000, 'салбар: хуучин сессийн алдагдал ИВЕНТ-д');
+    eq(F.countShrinkCost('2026-10', rows, 'КАТЕРИНГ').cost, 0, 'салбар: тоолоогүй салбарт алдагдал алга');
+    eq(F.countShrinkCost('2026-10', rows).cost, 3000, 'салбар: салбаргүй дуудлага = бүгд (журнал)');
+    vm.runInContext("state.productCosts = {};", sandbox);
+  }
   // ⛔ Хэрэгжүүлээгүй зөрүү ИЛ гарна — эс бөгөөс «хэрэгжүүлэхгүй байж зайлсхийх» нүх үлдэнэ
   ok(/bp\.cnt && bp\.cnt\.pendingQty/.test(src), 'scan: хэрэгжүүлээгүй зөрүү тайланд ил гарна');
 }

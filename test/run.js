@@ -7955,11 +7955,24 @@ need(['orderCustType']);
     const body = src.slice(src.indexOf('async function planRejectIdea'), src.indexOf('async function planAdd'));
     ok(/if \(!why\) return;/.test(body), 'ИНВАРИАНТ: саналаас татгалзахад шалтгаан заавал');
   }
+  // Ангиллаар бүлэглэнэ — хоосон ангилал гарахгүй, дараалал нь PLAN_CATS
+  const grp = F.planIdeaGroups([
+    { id: 'g1', cat: 'app' }, { id: 'g2', cat: 'money' }, { id: 'g3', cat: 'money' }, { id: 'g4', cat: 'хог' }, { id: 'g5' },
+  ]);
+  eq(grp.map(g => g.label).join(' / '), '💰 Мөнгө / 📱 Апп / Бусад', 'санал: ангиллын дараалал ба хоосныг хасна');
+  eq(grp[0].rows.length, 2, 'санал: нэг ангилалд олон мөр');
+  eq(grp[2].rows.length, 2, 'ИНВАРИАНТ: танихгүй ангилал «Бусад» руу — алга болохгүй');
+  eq(F.planIdeaGroups([]).length, 0, 'санал: хоосон жагсаалт → бүлэггүй');
+  eq(F.planCatLabel('risk'), '🛡 Эрсдэл', 'санал: ангиллын нэр');
+  eq(F.planCatLabel('байхгүй'), 'Бусад', 'санал: танихгүй ангилал → Бусад');
+
   // Дэлгэцэд санал нотолгоотойгоо гарч, батлах/татгалзах товчтой
   vm.runInContext('state.plan = ' + JSON.stringify(ideas) + ';', sandbox);
   const ih = F.renderPlan();
   ok(/plan-ideas/.test(ih) && /data-plan-yes/.test(ih) && /data-plan-no/.test(ih), 'санал: батлах/татгалзах товчтой');
   ok(/plan-ev/.test(ih) && ih.includes('нотолгоо'), 'санал: нотолгоо харагдана');
+  vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'c1', sec: 'idea', cat: 'money', title: 'Мөнгөний санал' }]) + ';', sandbox);
+  ok(/plan-cat/.test(F.renderPlan()) && F.renderPlan().includes('💰 Мөнгө'), 'санал: ангилал дэлгэцэд гарна');
   vm.runInContext('state.plan = undefined;', sandbox);
 
   // ── Агент ӨӨРИЙН ажлаа хаана (2026-10-07, CEO) ──────────────────────────

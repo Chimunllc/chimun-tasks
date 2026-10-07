@@ -24762,6 +24762,26 @@ const PLAN_STALE_DAYS = 30;  // «одоо хийж байгаа» ажил ий
 // Seed-ээс хадгалсан мөр руу шинэчлэгддэг талбарууд (бичвэр — шийдвэр БИШ)
 const PLAN_TEXT_FIELDS = ['title', 'act', 'gain', 'created'];
 const PLAN_AGENT_OWNER = 'Claude';   // агент ӨӨРИЙН мөрөө л хааж чадна
+// Саналын ангилал. ⛔ Олон БҮҮ нэм — ангилал бүр хоосон бүлэг болж дэлгэц уртасна.
+//   Танихгүй/хоосон ангилал → «Бусад» (ТААМАГЛАХГҮЙ).
+const PLAN_CATS = [
+  { key: 'money', label: '💰 Мөнгө' },
+  { key: 'sales', label: '📈 Борлуулалт' },
+  { key: 'ops',   label: '⚙️ Үйл ажиллагаа' },
+  { key: 'app',   label: '📱 Апп' },
+  { key: 'risk',  label: '🛡 Эрсдэл' },
+];
+function planCatLabel(k) { const c = PLAN_CATS.find(x => x.key === String(k || '')); return c ? c.label : 'Бусад'; }
+// Саналыг ангиллаар бүлэглэнэ (ЦЭВЭР). Хоосон ангилал гарахгүй; дараалал нь PLAN_CATS.
+function planIdeaGroups(rows) {
+  const arr = (Array.isArray(rows) ? rows : []).filter(Boolean);
+  const out = [];
+  PLAN_CATS.forEach(c => { const r = arr.filter(x => String(x.cat || '') === c.key); if (r.length) out.push({ cat: c.key, label: c.label, rows: r }); });
+  const known = new Set(PLAN_CATS.map(c => c.key));
+  const rest = arr.filter(x => !known.has(String(x.cat || '')));
+  if (rest.length) out.push({ cat: '', label: 'Бусад', rows: rest });
+  return out;
+}
 // sec: now = одоо хийж байгаа · next = дараагийнх · no = хийхгүй гэж шийдсэн
 // ⛔ ЭНЭ РЕПО НИЙТИЙН — мөрд ЗӨВХӨН ГАРЧИГ байна (2026-09-17).
 //   Шалтгаан, тоо, стратеги нь ХААЛТТАЙ `Chimunllc/chimun-infra`-гийн `PLAN.md`-д.
@@ -24913,6 +24933,7 @@ function renderPlan() {
   const item = (x, acts) => `<div class="plan-item">`
     + `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
     + `${x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : ''}`
+    + `${x.cat ? `<span class="plan-own">${escapeHtml(planCatLabel(x.cat))}</span>` : ''}`
     + ageHtml(x) + `</div>`
     + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
     + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
@@ -24930,7 +24951,8 @@ function renderPlan() {
     + `<span class="plan-sub">Шалтгаан, тоо, дэлгэрэнгүй — хаалттай PLAN.md-д (энэ репо нийтийн).</span></div>`
     + warn
     + (s.idea.length ? `<div class="plan-sec plan-ideas"><div class="plan-sec-h">💡 Агентын санал<span class="plan-n">${s.idea.length}</span></div>`
-        + s.idea.map(x => item(x, btn('plan-yes', x.id, '✓ Батлах') + btn('plan-no', x.id, '✕ Хийхгүй'))).join('')
+        + planIdeaGroups(s.idea).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>`
+            + g.rows.map(x => item(x, btn('plan-yes', x.id, '✓ Батлах') + btn('plan-no', x.id, '✕ Хийхгүй'))).join('')).join('')
         + `</div>` : '')
     + `<div class="plan-sec"><div class="plan-sec-h">Одоо хийж байгаа<span class="plan-n">${s.now.length}</span></div>`
     + (s.now.length ? s.now.map(x => item(x, nowActs(x))).join('') : '<div class="plan-empty">Одоо эхэлсэн ажил алга — доороос нэгийг дээшлүүл.</div>')

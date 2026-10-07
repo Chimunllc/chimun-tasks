@@ -16118,22 +16118,21 @@ function openEmployeeContract(personKey) {
   const phone = String(m.phone || personKey).replace(/\D/g, '');
   document.getElementById('ec-modal')?.remove();
   const wrap = document.createElement('div'); wrap.className = 'modal-bg'; wrap.id = 'ec-modal';
-  const fld = 'width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:var(--fs-md);background:var(--panel);color:var(--text);margin-bottom:8px;';
-  wrap.innerHTML = `<div class="modal ui-raw" style="max-width:640px;max-height:92vh;overflow:auto;">
-    <h2 style="font-size:16px;margin:0 0 4px;">📄 Хөдөлмөрийн гэрээ бэлдэх — ${_ecEsc(m.name)}</h2>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Мэдээллийг бөглөж PDF татна. Гэрээний арын хуудсанд тухайн ажилтны оруулсан <b>иргэний үнэмлэхийн лавлагаа</b> хавсрагдана. Хэвлээд гараар эсвэл eMongolia-д гарын үсэг зурна.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
-      <label style="font-size:12px;color:var(--muted);">Албан тушаал<input id="ec-pos" value="${_ecEsc(m.role || 'Захиалгын ажилтан')}" style="${fld}"></label>
-      <label style="font-size:12px;color:var(--muted);">Сарын үндсэн цалин (₮)<input id="ec-sal" type="text" inputmode="numeric" value="${sal ? sal.toLocaleString('en-US') : ''}" placeholder="жишээ 1,500,000" style="${fld}"></label>
-      <label style="font-size:12px;color:var(--muted);">Регистрийн дугаар<input id="ec-reg" placeholder="АА00000000" style="${fld}"></label>
-      <label style="font-size:12px;color:var(--muted);">Ажилтны утас<input id="ec-phone" value="${_ecEsc(m.phone || '')}" style="${fld}"></label>
-      <label style="font-size:12px;color:var(--muted);grid-column:1/3;">Оршин суух хаяг<input id="ec-addr" placeholder="Дүүрэг, хороо, байр/тоот" style="${fld}"></label>
-      <label style="font-size:12px;color:var(--muted);">Ажил эхлэх огноо<input id="ec-start" type="date" style="${fld}"></label>
-      <label style="font-size:12px;color:var(--muted);">Гэрээний дугаар<input id="ec-no" placeholder="ХГ-2026-001" style="${fld}"></label>
+  wrap.innerHTML = `<div class="modal ui-raw ec-modal">
+    <h2 class="ec-h2">📄 Хөдөлмөрийн гэрээ бэлдэх — ${_ecEsc(m.name)}</h2>
+    <div class="ec-sub">Мэдээллийг бөглөж PDF татна. Гэрээний арын хуудсанд тухайн ажилтны оруулсан <b>иргэний үнэмлэхийн лавлагаа</b> хавсрагдана. Хэвлээд гараар эсвэл eMongolia-д гарын үсэг зурна.</div>
+    <div class="ec-grid">
+      <label>Албан тушаал<input id="ec-pos" class="ec-in" value="${_ecEsc(m.role || 'Захиалгын ажилтан')}"></label>
+      <label>Сарын үндсэн цалин (₮)<input id="ec-sal" class="ec-in" type="text" inputmode="numeric" value="${sal ? sal.toLocaleString('en-US') : ''}" placeholder="жишээ 1,500,000"></label>
+      <label>Регистрийн дугаар<input id="ec-reg" class="ec-in" placeholder="АА00000000"></label>
+      <label>Ажилтны утас<input id="ec-phone" class="ec-in" value="${_ecEsc(m.phone || '')}"></label>
+      <label class="ec-wide">Оршин суух хаяг<input id="ec-addr" class="ec-in" placeholder="Дүүрэг, хороо, байр/тоот"></label>
+      <label>Ажил эхлэх огноо<input id="ec-start" class="ec-in" type="date"></label>
+      <label>Гэрээний дугаар<input id="ec-no" class="ec-in" placeholder="ХГ-2026-001"></label>
     </div>
-    <div id="ec-idnote" style="font-size:11px;color:var(--muted);margin:2px 0 10px;">🪪 Лавлагаа шалгаж байна…</div>
-    <button class="btn btn-primary" id="ec-make" style="width:100%;padding:11px;">📄 Гэрээ бэлдэж татах (PDF)</button>
-    <button class="btn" id="ec-cancel" style="width:100%;margin-top:10px;padding:9px;">Хаах</button>
+    <div id="ec-idnote" class="ec-note">🪪 Лавлагаа шалгаж байна…</div>
+    <button class="btn btn-primary ec-btn" id="ec-make">📄 Гэрээ бэлдэж татах (PDF)</button>
+    <button class="btn ec-btn" id="ec-cancel">Хаах</button>
   </div>`;
   document.body.appendChild(wrap);
   requestAnimationFrame(() => wrap.classList.add('open'));

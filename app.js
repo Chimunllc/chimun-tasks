@@ -381,6 +381,21 @@ function dataLoadFailed(where, err) {
   if (_pageUnloading) return;                    // хуудас хаагдаж байна — таслагдсан fetch
   if (navigator && navigator.onLine === false) return;   // офлайн — хэрэглэгч мэднэ
   if (NET_BLIP_RE.test((err && err.message) ? String(err.message) : String(err || ''))) return;
+  // ⛔ 401 нь «дата ачаалагдсангүй» БИШ — НЭВТРЭЛТ дууссан (2026-10-07, амьд логоос).
+  //   Нэг дэлгэц 3 татац хийдэг тул алдааны лог нэг зочлолтод 3 бичлэгээр дүүрч,
+  //   хүнд «дата алга» гэж уншигдаж байв. Жинхэнэ шалтгаан нь токен хуучирсан.
+  //   ⚠ Токен ХҮЧИНТЭЙ атал 401 ирвэл энэ нь ЭРХИЙН асуудал — хэвийн бүртгэнэ.
+  if (/HTTP 401/.test((err && err.message) ? String(err.message) : String(err || ''))
+      && typeof pgrstTokenValid === 'function' && !pgrstTokenValid()) {
+    if (!state.sessionExpired) {
+      state.sessionExpired = true;
+      state.sessionExpiredAt = (typeof fmtDateTimeUB === 'function') ? fmtDateTimeUB(new Date().toISOString()) : '';
+      try { showToast('🔒 Нэвтрэлт дууссан — дахин нэвтэрнэ үү', 'error', 7000); } catch (e) {}
+      try { _reportErrToServer('Нэвтрэлт дууссан', 'auth:401', String(where || '').slice(0, 120)); } catch (e) {}
+      try { render(); } catch (e) {}
+    }
+    return;
+  }
   try {
     const m = (err && err.message) ? String(err.message) : String(err || '');
     _reportErrToServer('Дата ачаалагдсангүй: ' + String(where || '-'),
@@ -4598,6 +4613,15 @@ function renderTitle() {
   document.getElementById('view-sub').textContent = sub || '';
 }
 function renderTaskList() {
+  // Нэвтрэлт дууссны тууз нь БҮХ дэлгэцэд гарна — өмнө зөвхөн Тойм дээр байсан тул
+  // өөр дэлгэц дээр ажиллаж байсан хүн «дата алга» гэж ойлгодог байв.
+  const _sessHost = document.getElementById('task-list');
+  if (_sessHost && _sessHost.parentNode) {
+    let _sb = document.getElementById('sess-banner');
+    if (!_sb) { _sb = document.createElement('div'); _sb.id = 'sess-banner'; _sessHost.parentNode.insertBefore(_sb, _sessHost); }
+    const _html = sessionExpiredBannerHtml();
+    if (_sb.innerHTML !== _html) { _sb.innerHTML = _html; attachSessionBanner(_sb); }
+  }
   const wrap = document.getElementById('task-list');
   // CEO dashboard view — task жагсаалт биш, харин тойм статистик.
   // Table head, toolbar-уудыг нуунa

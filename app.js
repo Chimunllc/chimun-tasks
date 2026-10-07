@@ -24761,6 +24761,7 @@ const PLAN_NOW_MAX = 3;      // зэрэг эхлүүлэх ажлын дээд 
 const PLAN_STALE_DAYS = 30;  // «одоо хийж байгаа» ажил ийм хоног хөдөлгөөнгүй бол ил тэмдэглэнэ
 // Seed-ээс хадгалсан мөр руу шинэчлэгддэг талбарууд (бичвэр — шийдвэр БИШ)
 const PLAN_TEXT_FIELDS = ['title', 'act', 'gain', 'created'];
+const PLAN_AGENT_OWNER = 'Claude';   // агент ӨӨРИЙН мөрөө л хааж чадна
 // sec: now = одоо хийж байгаа · next = дараагийнх · no = хийхгүй гэж шийдсэн
 // ⛔ ЭНЭ РЕПО НИЙТИЙН — мөрд ЗӨВХӨН ГАРЧИГ байна (2026-09-17).
 //   Шалтгаан, тоо, стратеги нь ХААЛТТАЙ `Chimunllc/chimun-infra`-гийн `PLAN.md`-д.
@@ -24805,16 +24806,29 @@ const PLAN_SEED = [
 ];
 // Жагсаалт = хадгалсан төлөв + шинэ seed мөрүүд. ЦЭВЭР функц (тестлэгдэнэ).
 // ⚠ Хадгалсан мөр ялна — эс бөгөөс хаасан ажил дараагийн PR-аар дахин нээгдэнэ.
+// Агент ӨӨРИЙН хийсэн ажлаа хаана (2026-10-07, CEO). Нотолгоо нь нийлсэн PR —
+// seed-ийн мөрөнд `done: 'YYYY-MM-DD'` бичигдэнэ.
+// ⛔ ЗӨВХӨН агентын мөр (`owner === PLAN_AGENT_OWNER`) — CEO-гийн ажил хийгдсэн
+//    эсэхийг агент МЭДЭХГҮЙ (10 дуудлага хийсэн эсэхийг код хэлж чадахгүй).
+// ⛔ CEO буцааж нээсэн мөрийг ДАХИН хаахгүй (`reopened`) — эс бөгөөс «нээх» товч
+//    дараагийн ачаалалтаар чимээгүй буцаагдана.
+function planAgentClose(cur, sd) {
+  if (!sd || !sd.done || cur.reopened) return;
+  if (String(sd.owner || cur.owner || '') !== PLAN_AGENT_OWNER) return;
+  if (cur.status === 'done') return;
+  cur.status = 'done'; cur.closed_at = sd.done; cur.done_by = 'agent';
+}
 function planMerge(seed, stored) {
   const list = (Array.isArray(stored) ? stored : []).filter(x => x && x.id).map(x => ({ ...x }));
   const byId = new Map(list.map(x => [String(x.id), x]));
   (Array.isArray(seed) ? seed : []).forEach(sd => {
     if (!sd || !sd.id) return;
     const cur = byId.get(String(sd.id));
-    if (!cur) { list.push({ ...sd, status: 'open' }); return; }
+    if (!cur) { const row = { ...sd, status: 'open' }; planAgentClose(row, sd); list.push(row); return; }
     // ⛔ БИЧВЭРИЙГ seed ялна (гарчиг тодруулахад хадгалсан мөр хуучнаараа үлдэх ёсгүй),
     //    ШИЙДВЭРИЙГ (sec/status/closed_at) хадгалсан нь ялна — хаасан ажил дахин нээгдэхгүй.
     PLAN_TEXT_FIELDS.forEach(f => { if (sd[f]) cur[f] = sd[f]; });
+    planAgentClose(cur, sd);
   });
   return list;
 }
@@ -24891,7 +24905,7 @@ function renderPlan() {
     + ageHtml(x) + `</div>`
     + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
     + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
-    + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}</div>` : ''}`
+    + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : ''}</div>` : ''}`
     + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
     + `</div>`;
   const nowActs = (x) => btn('plan-done', x.id, '✓ Дууслаа') + btn('plan-down', x.id, '↓ Хойшлуулах');
@@ -24922,7 +24936,7 @@ function attachPlanHandlers() {
   document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() })));
   document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
   document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
-  document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '' })));
+  document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true })));
 }
 function renderWriteoff() {
   // Кэшээс шууд үзүүлээд, ард нь DB-ээс шинэчилнэ — refresh дээр жагсаалт «алга»

@@ -7939,6 +7939,30 @@ need(['orderCustType']);
   const noDate = F.planSeed().filter(x => !/^\d{4}-\d{2}-\d{2}$/.test(String(x.created || ''))).map(x => x.id);
   eq(noDate.join(','), '', 'ИНВАРИАНТ: seed мөр бүр нэмэгдсэн огноотой');
 
+  // ── Агент ӨӨРИЙН ажлаа хаана (2026-10-07, CEO) ──────────────────────────
+  const aSeed = (extra) => [{ id: 'a1', sec: 'now', owner: 'Claude', created: '2026-09-17', title: 'Агентын ажил', act: 'х', gain: 'х', done: '2026-10-07', ...extra }];
+  const ag = F.planMerge(aSeed(), [{ id: 'a1', sec: 'now', title: 'Агентын ажил', status: 'open' }]);
+  eq(ag[0].status, 'done', 'агент: хийгдсэн ажлаа өөрөө хаана');
+  eq(ag[0].closed_at, '2026-10-07', 'агент: хаасан огноо seed-ээс');
+  eq(ag[0].done_by, 'agent', 'агент: хэн хаасан нь ил үлдэнэ');
+  // Шинэ мөр ч адил (хадгалсан жагсаалтад хараахан ороогүй)
+  eq(F.planMerge(aSeed(), [])[0].status, 'done', 'агент: шинэ мөр ч хаагдсанаар орно');
+
+  // ⛔ CEO-гийн ажлыг агент ХЭЗЭЭ Ч хаахгүй — хийгдсэн эсэхийг код мэдэхгүй
+  const ceoRow = F.planMerge(aSeed({ owner: 'CEO' }), [{ id: 'a1', sec: 'now', status: 'open' }]);
+  eq(ceoRow[0].status, 'open', 'ИНВАРИАНТ: CEO-гийн ажлыг агент хаахгүй');
+
+  // ⛔ CEO буцааж нээсэн мөрийг ДАХИН хаахгүй
+  const reop = F.planMerge(aSeed(), [{ id: 'a1', sec: 'now', status: 'open', reopened: true }]);
+  eq(reop[0].status, 'open', 'ИНВАРИАНТ: буцааж нээсэн мөр дахин хаагдахгүй');
+
+  // Хүн аль хэдийн хаасан бол огноог нь дарж бичихгүй
+  const already = F.planMerge(aSeed(), [{ id: 'a1', sec: 'now', status: 'done', closed_at: '2026-10-01' }]);
+  eq(already[0].closed_at, '2026-10-01', 'агент: хүний хаасан огноо хэвээр');
+
+  // done-гүй seed юу ч хаахгүй
+  eq(F.planMerge(aSeed({ done: '' }), [{ id: 'a1', sec: 'now', status: 'open' }])[0].status, 'open', 'агент: done-гүй мөр хаагдахгүй');
+
   // ⛔ РЕПО НИЙТИЙН — бизнесийн тоо seed-д БИЧИГДЭХГҮЙ (шалтгаан/тоо хаалттай PLAN.md-д)
   const moneyRe = /\d\s*(%|₮|сая|мянга)/;
   const leak = F.planSeed().filter(x => moneyRe.test([x.title, x.act, x.gain].map(v => String(v || '')).join(' '))).map(x => x.id);

@@ -7971,6 +7971,19 @@ need(['orderCustType']);
   ok(F.planApproveHint({ owner: 'CEO' }).includes('Дараагийнх') && F.planApproveHint({ owner: 'CEO' }).includes('чи'), 'санал: жагсаалтад ордгийг хэлнэ');
   ok(F.planApproveHint({ owner: 'Claude' }).includes('агент'), 'санал: хийх хүнийг нэрлэнэ');
   ok(F.planApproveHint({ do: { kind: 'байхгүй' } }).includes('хэрэгжихгүй'), 'санал: танихгүй үйлдлийг ил хэлнэ');
+  // Хариуцагчийг батлахын өмнө солино
+  {
+    const r = { do: { kind: 'task', task: { title: 'Т', assignee: '111', due: '2026-10-20' } } };
+    const d2 = F.planAssignRow(r, '222');
+    eq(d2.task.assignee, '222', 'санал: хариуцагч солигдоно');
+    eq(d2.task.title + '|' + d2.task.due, 'Т|2026-10-20', 'санал: бусад талбар хэвээр');
+    eq(F.planAssignRow(r, '').task.assignee, '', 'санал: хариуцагчгүй болгож болно');
+    eq(F.planAssignRow(null, '222').task.assignee, '222', 'санал: хоосон мөрөнд ч унахгүй');
+    vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'as1', sec: 'idea', title: 'Т', do: { kind: 'task', task: { title: 'Ажил' } } }]) + ';', sandbox);
+    ok(/data-plan-ass/.test(F.renderPlan()), 'санал: хариуцагч сонгох жагсаалт гарна');
+    vm.runInContext('state.plan = undefined;', sandbox);
+  }
+
   // ⭐ CEO-д ажил ОНООХГҮЙ — батлагдвал ажилтан дээр ҮҮСНЭ
   {
     const h = F.planApproveHint({ do: { kind: 'task', task: { title: 'Т' } } });

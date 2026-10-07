@@ -7997,6 +7997,33 @@ need(['orderCustType']);
   ok(/plan-hint/.test(F.renderPlan()), 'санал: тайлбар дэлгэцэд гарна');
   vm.runInContext('state.plan = undefined;', sandbox);
 
+  // ── АВЛАГА = ӨДРИЙН АЖИЛ (2026-10-07) ──────────────────────────────────
+  {
+    const items = [
+      { branch: 'bq', id: '1', sub: '#1371', name: 'А', balance: 55000000, overdue: true, dateStop: '2026-07-19', phone: '99119911' },
+      { branch: 'bq', id: '2', sub: '#695', name: 'Б', balance: 4500000, overdue: true, dateStop: '2026-09-13', phone: '' },
+      { branch: 'bq', id: '3', sub: '#9', name: 'В', balance: 100000, overdue: false, dateStop: '2026-12-01', phone: '' },
+      { branch: 'nomaad', id: '4', sub: '#7', name: 'Г', balance: 900000, overdue: true, dateStop: '2026-08-01' },
+      { branch: 'bq', id: '5', sub: '#5', name: 'Д', balance: 0, overdue: true, dateStop: '2026-08-01' },
+    ];
+    const orders = [{ id: '2', stage_meta: { ar: { at: '2026-10-07', by: '99' } } }];
+    const rows = F.arRows(items, orders, '2026-10-07');
+    eq(rows.length, 2, 'авлага: зөвхөн хугацаа хэтэрсэн, үлдэгдэлтэй, эвентийн захиалга');
+    eq(rows.map(r => r.sub).join(','), '#1371,#695', 'авлага: залгаагүй нь эхэнд, дүнгээр');
+    eq(rows[1].snoozed, true, 'авлага: залгасан мөр доошоо явна');
+    eq(rows[0].age, 80, 'авлага: хэдэн хоног өнгөрснийг хэлнэ');
+    // Залгаснаас хойш хугацаа өнгөрвөл ДАХИН жагсаалтад гарна (бүрмөсөн хаагдахгүй)
+    eq(F.arRows(items, orders, '2026-10-20')[0].snoozed, false, 'ИНВАРИАНТ: авлага бүрмөсөн хаагдахгүй');
+    eq(F.arRows([], [], '2026-10-07').length, 0, 'авлага: хоосон оролт');
+  }
+  {
+    const body = src.slice(src.indexOf('function arBlockHtml'), src.indexOf('async function arMarkCalled'));
+    ok(/receivablesData\(\)/.test(body), 'ИНВАРИАНТ: авлагын дүрэм ганц эх сурвалжаас');
+    ok(!/total_mnt/.test(body), 'ИНВАРИАНТ: Тойм дээр авлагыг түүхий дүнгээр дахин бодохгүй');
+    ok(/data-ar-called/.test(src) && /arMarkCalled\(el\.dataset\.arCalled\)/.test(src), 'авлага: «Залгасан» товч холбогдсон');
+    ok(/arBlockHtml\(state\.appOrders/.test(src), 'авлага: Тойм дээр гарна');
+  }
+
   // ── Хадгалахад агентын шинэ мөр УСТАХГҮЙ (2026-10-07, амьд алдаа) ───────
   const srv = [{ id: 'a', sec: 'now', title: 'Хуучин' }, { id: 'new', sec: 'idea', title: 'Агент шинээр нэмсэн' }];
   const loc = [{ id: 'a', sec: 'now', title: 'Хуучин', status: 'done' }];

@@ -7669,6 +7669,14 @@ select.no-asar-len {
 .plan-gain { font-size: var(--fs-sm); color: var(--ok); line-height: 1.5; }
 .plan-ev { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .plan-cat { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); margin-top: var(--space-2); }
+.ar-row { display: flex; align-items: center; gap: var(--space-2); }
+.ar-row.ar-done { opacity: 0.55; }
+.ar-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2);
+  background: none; border: 0; padding: var(--space-2) 0; text-align: left; cursor: pointer; }
+.ar-sum { font-size: var(--fs-sm); font-weight: 600; color: var(--text); white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.ar-tel { font-size: var(--fs-base); text-decoration: none; padding: 0 var(--space-1); }
+.ar-btn { font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); white-space: nowrap; }
 .plan-ass { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); color: var(--muted); }
 .plan-ass-sel { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--space-1) var(--space-2); background: var(--panel); }

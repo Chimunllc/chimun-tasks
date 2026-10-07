@@ -5912,12 +5912,106 @@ function openOpeningCountModal(sku, preQty) {
    ⚠ Тоо, няравын гарын үсэг ХЭВЭЭР — зөвхөн 2 дахь гарын үсэг арилна. */
 /* 🔒 CEO эцэслэнэ — үүний дараа эхний үлдэгдэл ХЭЗЭЭ Ч өөрчлөгдөхгүй.
    ⚠ `_moveReason` өгөхгүй — тоо хөдлөхгүй тул нөөцийн дэвтэрт мөр үүсэхгүй. */
-async function sealOpeningStock(sku) {
+async function sealOpeningStock(sku, bulk) {
   const p = productBySku(sku);
   const why = openingSealBlock(p, state.me, !!state.isCEO);
-  if (why) { showToast(why, 'warn', 3500); return false; }
-  await saveProduct({ ...p, stock_locked_at: new Date().toISOString(), stock_locked_by: state.me || '' });
+  if (why) { if (bulk) throw new Error(why); showToast(why, 'warn', 3500); return false; }
+  await saveProduct({ ...p, stock_locked_at: new Date().toISOString(), stock_locked_by: state.me || '', ...(bulk ? { _bulk: true } : {}) });
   return true;
+}
+/* 🔒 БӨӨНӨӨР ЭЦЭСЛЭХ (2026-10-07, CEO) — 100+ барааг нэг бүрчлэн дарахгүй.
+   Эцэслэх боломжтой барааг «анх → тоолсон»-оор нь бүлэглэнэ. ДУТСАН бараа
+   өгөгдмөлөөр СОНГОГДОХГҮЙ — алдагдал (эсвэл буруу тоолсон: жиш. асрыг иж
+   бүрдлээр тоолсон) байж болох тул нэг бүрчлэн харж шийднэ. Цэвэр функц. */
+function openingSealGroups(products, moves, ledgerStart, costOf) {
+  const g = { same: [], up: [], unknown: [], down: [] };
+  (products || []).forEach(p => {
+    const r = openingBeforeAfter(p, moves, ledgerStart);
+    const c = Math.max(0, Number(costOf ? costOf(p.sku) : 0) || 0);
+    const it = { sku: p.sku, name: p.name || p.sku, before: r && r.known ? r.before : null, after: r ? r.after : (Number(p.stock) || 0), d: r && r.known ? r.d : null };
+    it.value = it.d ? Math.abs(it.d) * c : 0;
+    if (!r || !r.known) g.unknown.push(it);
+    else if (r.d < 0) g.down.push(it);
+    else if (r.d > 0) g.up.push(it);
+    else g.same.push(it);
+  });
+  g.down.sort((a, b) => b.value - a.value);
+  return g;
+}
+function openBulkSealModal() {
+  if (!state.isCEO) return;
+  const br = scBranch();
+  const elig = (state.products || []).filter(p => !isService(p) && !isPackage(p) && scPrimaryBranch(p) === br
+    && !openingSealBlock(p, state.me, true));
+  if (!elig.length) { showToast('Эцэслэх бараа алга', 'info', 2500); return; }
+  const mv = Array.isArray(state.stockMovesAll) ? state.stockMovesAll : null;
+  const G = openingSealGroups(elig, mv, mv && mv.length ? mv[0].at : null, countUnitCost);
+  const on = new Set([...G.same, ...G.up, ...G.unknown].map(x => x.sku));   // дутсан нь сонгогдоогүй
+  const qtxt = (x) => x.before == null ? `${x.after} ш` : `${x.before} → ${x.after}`;
+  /* ⚠ Native <label>/<input checkbox> БИШ — `.modal label/input` дүрмүүд (!important
+     margin, display:block) мөрийг эвддэг. Өөрийн жижиг checkbox (`.bsl-cb`). */
+  const grp = (key, title, list, open) => list.length ? `<details class="bsl-g"${open ? ' open' : ''}>
+      <summary><span class="bsl-gh"><span class="bsl-cb" data-bsl-g="${key}" role="checkbox" tabindex="0"></span>${title} · ${list.length}</span></summary>
+      <div class="bsl-list">${list.map(x => `<div class="bsl-row" data-bsl="${escapeHtml(x.sku)}" data-bsl-k="${key}" role="checkbox" tabindex="0"><span class="bsl-cb"></span>
+        <span class="bsl-t"><span class="bsl-n">${escapeHtml(x.name)}</span><span class="bsl-q${x.d < 0 ? ' down' : x.d > 0 ? ' up' : ''}">${qtxt(x)}${x.d ? ` · ${x.d > 0 ? '+' : '−'}${Math.abs(x.d)}` : ''}${x.value && canProductPart('cost') ? ` · ${escapeHtml(fmtMoneyShort(x.value))}` : ''}</span></span></div>`).join('')}</div>
+    </details>` : '';
+  document.getElementById('bsl-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'bsl-modal';
+  modal.innerHTML = `<div class="modal bsl-modal">
+      <h2>🔒 Бөөнөөр эцэслэх · ${escapeHtml(String(STOCK_BRANCH_LABEL[br] || '').replace(/^\S+\s/, ''))}</h2>
+      <p class="opc-hint">Эцэслэсний дараа эхний үлдэгдэл ӨӨРЧЛӨГДӨХГҮЙ — залруулга зөвхөн тооллогоор. <b>Дутсан</b> бараа өгөгдмөлөөр сонгогдоогүй: нэг бүрчлэн харж шийднэ үү.</p>
+      ${grp('down', '↓ Дутсан', G.down, true)}
+      ${grp('same', '✓ Зөрүүгүй', G.same, false)}
+      ${grp('up', '↑ Илүү гарсан', G.up, false)}
+      ${grp('unknown', '? Анхны тоо бүртгэгдээгүй', G.unknown, false)}
+      <div class="modal-actions">
+        <button class="btn" id="bsl-cancel">Болих</button>
+        <button class="btn btn-primary" id="bsl-go"></button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('open'));   // ⛔ `.open`-гүй бол харагдахгүй
+  const close = () => modal.remove();
+  const $go = modal.querySelector('#bsl-go');
+  const sync = () => {
+    modal.querySelectorAll('[data-bsl]').forEach(r => { const v = on.has(r.dataset.bsl); r.classList.toggle('on', v); r.setAttribute('aria-checked', v ? 'true' : 'false'); });
+    modal.querySelectorAll('[data-bsl-g]').forEach(c => {
+      const keys = [...modal.querySelectorAll(`[data-bsl-k="${c.dataset.bslG}"]`)].map(x => x.dataset.bsl);
+      const n = keys.filter(k => on.has(k)).length;
+      c.classList.toggle('on', n === keys.length && n > 0); c.classList.toggle('mix', n > 0 && n < keys.length);
+      c.setAttribute('aria-checked', n === keys.length && n > 0 ? 'true' : n ? 'mixed' : 'false');
+    });
+    $go.textContent = `🔒 ${on.size} барааг эцэслэх`; $go.disabled = !on.size;
+  };
+  const tgl = (el, fn) => { el.addEventListener('click', fn); el.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); fn(e); } }); };
+  modal.querySelectorAll('[data-bsl]').forEach(r => tgl(r, () => { on.has(r.dataset.bsl) ? on.delete(r.dataset.bsl) : on.add(r.dataset.bsl); sync(); }));
+  modal.querySelectorAll('[data-bsl-g]').forEach(c => tgl(c, (e) => {
+    e.preventDefault(); e.stopPropagation();   // summary-г нээж/хаахгүй
+    const rows = [...modal.querySelectorAll(`[data-bsl-k="${c.dataset.bslG}"]`)];
+    const all = rows.every(x => on.has(x.dataset.bsl));
+    rows.forEach(x => { all ? on.delete(x.dataset.bsl) : on.add(x.dataset.bsl); }); sync();
+  }));
+  modal.querySelector('#bsl-cancel').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  $go.onclick = async () => {
+    const list = [...on];
+    const nDown = G.down.filter(x => on.has(x.sku)).length;
+    // ⛔ БУЦААХ БОЛОМЖГҮЙ — баталгаажуулалт ЗААВАЛ (тоог дахин хэлнэ)
+    if (!(await showConfirm(`${list.length} барааны эхний үлдэгдлийг ЭЦЭСЛЭХ үү?${nDown ? `\n\n⚠ Үүнд ${nDown} ДУТСАН бараа орсон.` : ''}\n\nЭцэслэсний дараа өөрчлөгдөхгүй — залруулга зөвхөн тооллогоор.`,
+      { title: '🔒 Бөөнөөр эцэслэх', okText: 'Эцэслэх', danger: true }))) return;
+    $go.disabled = true; modal.querySelector('#bsl-cancel').disabled = true;
+    let done = 0, fail = 0, i = 0;
+    const worker = async () => { while (i < list.length) { const sku = list[i++];
+      try { await sealOpeningStock(sku, true); done++; } catch (e) { fail++; }
+      $go.textContent = `Эцэслэж байна… ${done + fail}/${list.length}`; } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    close();
+    await loadProductsCatalog();   // DB-ийн бодит төлвийг дахин уншина (дэлгэц ДБ-тэй таарна)
+    render();
+    showToast(fail ? `🔒 ${done} эцэслэгдлээ · ⚠ ${fail} амжилтгүй — дахин оролдоно уу` : `🔒 ${done} бараа эцэслэгдлээ`, fail ? 'warn' : 'success', 4000);
+  };
+  sync();
 }
 async function undoOpeningApproval(sku) {
   const p = productBySku(sku);
@@ -11145,6 +11239,7 @@ async function loadProductsCatalog() {
       state._prodHasPurchaseRef = rows.length ? ('purchase_ref' in rows[0]) : true;   // хөрөнгийн зардлын мөрийн холбоос (сонголттой багана)
       state._prodHasOpening = rows.length ? ('stock_opened_at' in rows[0]) : true;   // эхний үлдэгдлийн тэмдэг (сонголттой багана)
       state._prodHasApproval = rows.length ? ('stock_approved_at' in rows[0]) : true;   // 2-р гарын үсэг (сонголттой багана)
+      state._prodHasLock = rows.length ? ('stock_locked_at' in rows[0]) : true;   // 3-р гарын үсэг — CEO эцэслэл
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
@@ -11769,6 +11864,11 @@ function logStockMoves(rows) {
 }
 
 async function saveProduct(product) {
+  /* `_bulk` — бөөн бичилт (жиш. бөөнөөр эцэслэх): мөр бүрд дэлгэц зурах, мэдэгдэл,
+     каталог дахин татах нь 100 бараанд 100 удаа болно. Дуудагч төгсгөлд нэг удаа
+     хийнэ. Алдааг ЗАЛГИХГҮЙ — шидэж дуудагч тоолно (чимээгүй «амжилттай» биш). */
+  const _bulk = product && product._bulk === true;
+  if (_bulk) { product = { ...product }; delete product._bulk; }
   if (!product.sku) product.sku = 'P-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   if (!product.id) product.id = product.sku;
   const idx = state.products.findIndex(p => p.sku === product.sku);
@@ -11799,8 +11899,8 @@ async function saveProduct(product) {
     else delete state.productCosts[product.sku];
   }
   state._utilIdx = null;   // бараа өөрчлөгдсөн → ашиглалтын индекс хуучирлаа
-  render();
-  if (!DB_ANON_KEY) { showToast('Өгөгдлийн сан тохируулаагүй', 'error'); return; }
+  if (!_bulk) render();
+  if (!DB_ANON_KEY) { if (_bulk) throw new Error('Өгөгдлийн сан тохируулаагүй'); showToast('Өгөгдлийн сан тохируулаагүй', 'error'); return; }
   const row = {
     sku: product.sku, id: product.id, name: product.name || '', category: product.category || '',
     all_categories: Array.isArray(product.all_categories) ? product.all_categories : (product.category ? [product.category] : []),
@@ -11824,6 +11924,11 @@ async function saveProduct(product) {
   if (product.stock_opened_by !== undefined && state._prodHasOpening !== false) row.stock_opened_by = product.stock_opened_by || null;
   if (product.stock_approved_at !== undefined && state._prodHasApproval !== false) row.stock_approved_at = product.stock_approved_at || null;   // 2-р гарын үсэг
   if (product.stock_approved_by !== undefined && state._prodHasApproval !== false) row.stock_approved_by = product.stock_approved_by || null;
+  /* ⛔ 3-р гарын үсэг (CEO эцэслэл) — 2026-10-07 хүртэл энд ОГТ БАЙГААГҮЙ тул
+     «🔒 Эцэслэх» зөвхөн дэлгэц дээр тусаж, DB-д хадгалагддаггүй байв (дахин
+     ачаалахад буцаж «эцэслээгүй» болдог). Тест барина. */
+  if (product.stock_locked_at !== undefined && state._prodHasLock !== false) row.stock_locked_at = product.stock_locked_at || null;
+  if (product.stock_locked_by !== undefined && state._prodHasLock !== false) row.stock_locked_by = product.stock_locked_by || null;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
   if (product.variant_label !== undefined) row.variant_label = product.variant_label;
   // Салбарын нөөц: формоос тодорхой ирсэн бол ШУУД ашиглана (M-Event>0 = түрээслэгдэнэ).
@@ -11854,13 +11959,13 @@ async function saveProduct(product) {
     logStockMoves(stockMoveRows(row.sku, _qBefore,
       { mevent: _qm, chimun: _qc, nomaad: _qn, catering: _qk },
       { reason: product._moveReason, ref: product._moveRef, note: product._moveNote, by: state.me || '' }));
-    showToast('Бараа хадгалагдлаа', 'success', 1500);
+    if (!_bulk) showToast('Бараа хадгалагдлаа', 'success', 1500);
     // ⚠ Тайлан (Дүн шинжилгээ) нь `state.history`-г сесс дундаа кэшлэдэг. Ангилал/нэр
     // зассаны дараа хуучин тоо харагдвал «хадгалагдаагүй» мэт ойлгогдоно — кэшийг
     // хүчингүй болгож дараагийн нээлтэд дахин тооцуулна.
     state.history = null;
-    loadProductsCatalog();
-  } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 5000); }
+    if (!_bulk) loadProductsCatalog();
+  } catch (e) { if (_bulk) throw e; showToast('Хадгалах алдаа: ' + e.message, 'error', 5000); }
 }
 
 // Бараа түрээслэх боломжтой эсэх — type='asset' бол зөвхөн дотоод хөрөнгө (сайтад харагдахгүй).
@@ -23425,6 +23530,9 @@ function openingBlockHtml(canManage) {
       <div class="stc-open-n">${oPct}%</div>
     </div>
     <div class="stc-bar"><div style="width:${oPct}%"></div></div>
+    ${(() => { if (!state.isCEO) return '';
+      const n = oDoneAll.filter(x => !x.sealed && !openingSealBlock(productBySku(x.sku), state.me, true)).length;
+      return n ? `<button class="btn stc-open-seal stc-bulk-seal" id="stc-bulk-seal">🔒 Бөөнөөр эцэслэх · ${n}</button>` : ''; })()}
     <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа хоёр гарын үсэгтэй${oSt.wait ? ` · ${oSt.wait} батлах хүлээж буй` : ''}${oSt.sealed ? ` · 🔒 ${oSt.sealed} эцэслэгдсэн` : ''}${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
     ${oSt.left ? waitList + (oWait.length ? '<div class="stc-open-sub">📋 Тоолох</div>' : '') + countList
       : '<div class="stc-open-m">✓ Бүх бараа хоёр гарын үсгээр баталгаажсан. Одоо тооллого утгатай.</div>'}
@@ -23599,6 +23707,7 @@ function renderStockCountIdle(cfg, canManage) {
 function attachStockCountHandlers() {
   const $ = (id) => document.getElementById(id);
   document.querySelectorAll('[data-scbranch]').forEach(b => b.addEventListener('click', () => scSetBranch(b.dataset.scbranch)));
+  document.getElementById('stc-bulk-seal')?.addEventListener('click', openBulkSealModal);
   document.querySelectorAll('[data-op-more]').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.opMore;
     state.openExpand = state.openExpand || {};

@@ -87,7 +87,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'claimCanResolve', 'stageMetaHtml', 'vatIsAggregate', 'vatIssuedDay', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost', 'offHoursFeeFor', 'orderOffHoursFeeOf', 'tariffOffhoursFirstFee',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'openingBeforeAfter', 'scBranchOfSession', 'scPrimaryBranch', 'scInBranch', 'applyStockCount', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffDeliveryCityOne', 'isDeliveryZone', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'openingSealGroups', 'openingBeforeAfter', 'scBranchOfSession', 'scPrimaryBranch', 'scInBranch', 'applyStockCount', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver',
@@ -604,6 +604,53 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   eq(oba({ sku: 'A', stock: 78, stock_opened_at: 'x' }, null, L0), null, 'анх→тоолсон: дэвтэр ачаалагдаагүй → харуулахгүй');
   const ob = src.slice(src.indexOf('function openingBlockHtml('), src.indexOf('function renderStockCount('));
   ok((ob.match(/\$\{_dq\(x\.sku\)\}/g) || []).length === 2, 'анх→тоолсон: батлах ба эцэслэх жагсаалт хоёуланд гарна');
+}
+
+// 🔒 ЭЦЭСЛЭЛ DB-д ХАДГАЛАГДАНА + БӨӨНӨӨР ЭЦЭСЛЭХ (2026-10-07)
+// `saveProduct` нь stock_locked_* -ийг илгээдэггүй байсан тул «Эцэслэх» зөвхөн
+// дэлгэц дээр тусаж, дахин ачаалахад буцаж алга болдог байв.
+{
+  /* ⚠ Бусад асинх тест `saveProduct`/`fetch`-ийг түр сольдог тул энэ тест ТЭДНИЙ
+     дараа (setTimeout 0) ажиллана; төгсгөлд `__late`-ийг хүлээж тооллогод орно. */
+  (globalThis.__late = globalThis.__late || []).push(new Promise(done => setTimeout(() => {
+  const st = vm.runInContext('state', sandbox);
+  const P0 = { sku: 'M-LK1', id: 'M-LK1', name: 'Түгжих', stock: 4, qty_mevent: 4, stock_opened_at: 'a', stock_approved_at: 'b' };
+  const savedP = st.products, origFetch = sandbox.fetch, saved2 = st._prodHasLock;
+  const bodies = [];
+  const restore = () => { st.products = savedP; sandbox.fetch = origFetch; st._prodHasLock = saved2; done(); };
+  st.products = [P0]; st._prodHasLock = true;
+  sandbox.fetch = (url, opt) => { if (/products\?on_conflict/.test(String(url))) bodies.push(JSON.parse(opt.body)); return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve([]), text: () => Promise.resolve('') }); };
+  const p1 = vm.runInContext("saveProduct({ ...state.products[0], stock_locked_at: '2026-10-07T01:00:00Z', stock_locked_by: '88006790', _bulk: true })", sandbox);
+  Promise.resolve(p1).then(() => {
+    eq(bodies[0] && bodies[0].stock_locked_at, '2026-10-07T01:00:00Z', 'эцэслэл: stock_locked_at DB рүү илгээгдэнэ');
+    eq(bodies[0] && bodies[0].stock_locked_by, '88006790', 'эцэслэл: stock_locked_by DB рүү илгээгдэнэ');
+    ok(!('_bulk' in (bodies[0] || {})), 'эцэслэл: _bulk туг DB рүү явахгүй');
+    // Бөөн горимд алдаа ЗАЛГИГДАХГҮЙ — дуудагч тоолно
+    st.products = [P0];
+    sandbox.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}), text: () => Promise.resolve('boom') });
+    return vm.runInContext("saveProduct({ ...state.products[0], stock_locked_at: 'x', _bulk: true }).then(() => 'ok', () => 'threw')", sandbox);
+  }).then(r => { eq(r, 'threw', 'эцэслэл: бөөн горимд алдаа шидэгдэнэ (чимээгүй «амжилттай» биш)'); restore(); })
+    .catch(e => { ok(false, 'эцэслэл: хадгалалт — ' + e.message); restore(); });
+  }, 0)));
+
+  // Бүлэглэлт: дутсан нь тусдаа, өртгөөр эрэмбэлэгдэнэ
+  const mv = [
+    { sku: 'D1', reason: 'opening', delta: -5, at: '2026-10-02T01:00:00Z' },
+    { sku: 'D2', reason: 'opening', delta: -1, at: '2026-10-02T01:00:00Z' },
+    { sku: 'U1', reason: 'opening', delta: 3, at: '2026-10-02T01:00:00Z' },
+  ];
+  const pr = (sku, stock, at) => ({ sku, name: sku, stock, stock_opened_at: at || '2026-10-02T01:00:00Z' });
+  const G = F.openingSealGroups([pr('D1', 0), pr('D2', 4), pr('U1', 8), pr('S1', 6), pr('X1', 2, '2026-09-14T03:00:00Z')], mv, '2026-09-14T03:42:00Z',
+    (sku) => ({ D1: 7000000, D2: 100000 })[sku] || 0);
+  eq(G.down.map(x => x.sku), ['D1', 'D2'], 'бөөн эцэслэх: дутсан нь тусдаа, өртгөөр эрэмбэлэгдэнэ');
+  eq(G.down[0].value, 35000000, 'бөөн эцэслэх: дутсан дүн = тоо × өртөг');
+  eq(G.up.map(x => x.sku), ['U1'], 'бөөн эцэслэх: илүү гарсан');
+  eq(G.same.map(x => x.sku), ['S1'], 'бөөн эцэслэх: зөрүүгүй');
+  eq(G.unknown.map(x => x.sku), ['X1'], 'бөөн эцэслэх: анхны тоо мэдэгдэхгүй');
+  const bm = src.slice(src.indexOf('function openBulkSealModal'), src.indexOf('function openBulkSealModal') + 6000);
+  ok(/const on = new Set\(\[\.\.\.G\.same, \.\.\.G\.up, \.\.\.G\.unknown\]/.test(bm), 'бөөн эцэслэх: дутсан бараа өгөгдмөлөөр СОНГОГДОХГҮЙ');
+  ok(/if \(!\(await showConfirm\(/.test(bm), 'бөөн эцэслэх: буцаах боломжгүй тул showConfirm-ийн хариуг шалгана');
+  ok(/state\.isCEO/.test(bm.slice(0, 200)), 'бөөн эцэслэх: зөвхөн CEO');
 }
 
 /* 0e2i) SCAN — эцэслэлийн хориг БҮХ бичих замд (2026-10-02)
@@ -6330,7 +6377,7 @@ need(['orderCustType']);
   ok(/stats/.test(body), 'scan: таамаглалын тоог гаргана (чимээгүй буруу ангилахгүй)');
   // Бараа зассаны дараа тайлангийн кэш хүчингүй болох ёстой
   const sp = src.slice(src.indexOf('async function saveProduct('));
-  ok(/state\.history = null/.test(sp.slice(0, 7500)),
+  ok(/state\.history = null/.test(sp.slice(0, sp.indexOf("\n}\n"))),
      'scan: saveProduct тайлангийн кэшийг хүчингүй болгоно');
   // `зүлэг` тоглоомын түлхүүр үгэнд БУЦАЖ ОРОХГҮЙ
   const kw = src.slice(src.indexOf('const _HIST_CAT_KW'), src.indexOf('function _histNormAgg'));
@@ -7115,6 +7162,7 @@ need(['orderCustType']);
 }
 
   await swFetchTests();   // sw.js — файлын төгсгөлд тодорхойлогдсон (hoisted)
+  await Promise.all(globalThis.__late || []);   // бусдын дараа ажиллах ёстой асинх тестүүд
   finish();
 })();
 

@@ -77,6 +77,9 @@
     /* Цагийн ажилтны мөрийн зураг — `.staff-row`-гийн 36px-ээс том (нэр+банк 2 мөр) */
     --hw-av: 42px;
 
+    /* Ирцийн сарын тоймын мөрийн зураг — мөр нь цалин/бонусын дэд мөртэй тул нягт */
+    --att-av: 40px;
+
     /* Орлого тулгалтын модалын өргөн — нэг баганатай жагсаалт, өргөсгөх шаардлагагүй */
     --recon-modal-w: 640px;
 
@@ -6876,6 +6879,48 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
   border: 1px solid var(--warn); background: transparent; color: var(--warn);
   border-radius: 6px; padding: 0 var(--space-1); font-size: var(--fs-xs);
   font-weight: 700; cursor: pointer;
+}
+
+/* ═══ ИРЦИЙН САРЫН ТОЙМ (`renderAttendanceMonth`) ═══
+   2026-10-08: 22 inline style-ыг класс болгов.
+   ⚠ Жолооны нэмэгдлийн мөр нь дамжлагын бонусын мөртэй ЯГ ижил хэв маягтай тул
+     шинэ класс биш `.sp-line` / `.sp-sub`-ыг дахин ашиглав — хоёр мөр нэг л
+     дүрмээр хөдөлнө (нэг мөрийг засаад нөгөөг мартах нүх үүсэхгүй).
+   ⚠ Гурван хоосон төлөв (алдаа · ачаалж байна · ирцгүй) НЭГ `.att-mo-note`-д
+     нийлсэн — өмнө нь зөвхөн padding-аараа зөрж байв. */
+.att-mo-note { text-align: center; color: var(--muted); padding: var(--space-5) var(--space-3); }
+.att-mo-retry { margin-top: var(--space-3); }
+/* Толгойн тоонууд тод (--text); НИЙТ цаг нь брэндийн өнгөөр ялгарна.
+   ⚠ `b.att-mo-tot` — `.att-mo-head b` нь класснаас онцлог тул хосолсон сонгогч. */
+.att-mo-head { font-size: var(--fs-md); color: var(--text-soft); margin: var(--space-1) 0 var(--space-2); }
+.att-mo-head b { color: var(--text); }
+.att-mo-head b.att-mo-tot { color: var(--primary); }
+.att-mo-row { padding: var(--space-3) var(--space-1); border-bottom: 1px solid var(--line); }
+.att-mo-top { display: flex; align-items: center; gap: var(--space-3); }
+.att-mo-ava {
+  position: relative; width: var(--att-av); height: var(--att-av); border-radius: 50%;
+  background: var(--panel-hover); display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md); font-weight: 700; color: var(--muted); flex-shrink: 0; overflow: hidden;
+}
+.att-mo-who { flex: 1; min-width: 0; }
+.att-mo-name { font-weight: 600; font-size: var(--fs-base); }
+.att-mo-role {
+  font-size: var(--fs-sm); color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.att-mo-num { text-align: right; flex-shrink: 0; }
+.att-mo-days { font-size: var(--fs-sm); }
+/* Нормын хувь — өмнө нь JS-ээс inline өнгөөр бичигддэг байв */
+.att-mo-pct-ok  { color: var(--ok); }
+.att-mo-pct-mid { color: var(--text-soft); }
+.att-mo-pct-low { color: var(--warn); }
+.att-mo-hrs { font-weight: 700; color: var(--primary); font-size: var(--fs-md); margin-top: 1px; }
+.att-mo-norm { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+.att-mo-liab {
+  margin-top: var(--space-4); padding: var(--space-3);
+  border: 1px solid var(--danger); border-radius: var(--r-lg);
+  background: var(--danger-soft); color: var(--danger);
+  font-size: var(--fs-sm); line-height: 1.5;
 }
 .amo-modal { max-width: 400px; }
 .amo-hint { font-size: var(--fs-md); color: var(--text-soft); line-height: 1.6; margin: 0 0 var(--space-3); }

@@ -13910,13 +13910,13 @@ function payMonthDefault(todayIso, start) {
 // Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг + нормын хувь
 function renderAttendanceMonth(month) {
   if (state.attMonthErr && state.attMonthErr.month === month) {
-    return `<div style="text-align:center;color:var(--muted);padding:26px 12px;">⚠ Сарын ирц ачаалж чадсангүй — ${escapeHtml(state.attMonthErr.msg)}
-      <div style="margin-top:12px;"><button class="btn" data-att-month-retry>🔄 Дахин оролдох</button></div></div>`;
+    return `<div class="att-mo-note">⚠ Сарын ирц ачаалж чадсангүй — ${escapeHtml(state.attMonthErr.msg)}
+      <div class="att-mo-retry"><button class="btn" data-att-month-retry>🔄 Дахин оролдох</button></div></div>`;
   }
-  if (state.attMonthKey !== month || !Array.isArray(state.attMonthRecs)) return '<div style="text-align:center;color:var(--muted);padding:30px;">Ачаалж байна…</div>';
+  if (state.attMonthKey !== month || !Array.isArray(state.attMonthRecs)) return '<div class="att-mo-note">Ачаалж байна…</div>';
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
   const recs = state.attMonthRecs;
-  if (!recs.length) return `<div style="text-align:center;color:var(--muted);padding:30px;">${month} сард ирц бүртгэгдээгүй.</div>`;
+  if (!recs.length) return `<div class="att-mo-note">${month} сард ирц бүртгэгдээгүй.</div>`;
   const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
   const byM = {};
   recs.forEach(r => { const ck = attCanonKey(r); const m = (byM[ck] = byM[ck] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
@@ -13931,7 +13931,8 @@ function renderAttendanceMonth(month) {
     const mem = findMember(k) || { name: m.name, role: '' };
     return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays };
   }).sort((a, b) => b.mins - a.mins);
-  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · Сарын норм <b style="color:var(--text)">${normDays}×8=${normDays * 8}ц</b> · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
+  // `.att-mo-head b` нь өгөгдмөлөөр --text; нийт дүн нь `.att-mo-tot`-оор --primary.
+  const head = `<div class="att-mo-head">${month} · <b>${rows.length}</b> ажилтан · Сарын норм <b>${normDays}×8=${normDays * 8}ц</b> · нийт <b class="att-mo-tot">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
   let anyDriver = false;
   // ⚠ Дамжлагын бонусыг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
   //   рендер бүрд мянган давталт болно. Нэг удаа бодож, мөр бүрд уншина.
@@ -13942,14 +13943,15 @@ function renderAttendanceMonth(month) {
   if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   const list = rows.map(r => {
     const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
-    const pctColor = pct >= 100 ? 'var(--ok)' : pct >= 80 ? 'var(--text-soft)' : 'var(--warn)';
+    const pctCls = pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
     const db = driverBonus(r.k, month);
     if (db.count) anyDriver = true;
     // Гарах бүртгэлгүй өдөр = тэр өдөр БҮТЭН 0 цаг. Цалин болдог тул нуухгүй, өдрийг нь нэрлэнэ.
     const noOutLine = (r.noOutDays && r.noOutDays.length)
       ? `<div class="att-noout-line">⚠ <b>${r.noOutDays.length}</b> өдөр гарах бүртгэлгүй (0 цаг тоологдсон): ${r.noOutDays.map(d => `<button class="ui-raw att-noout-day" data-att-day="${escapeHtml(d)}">${escapeHtml(d.slice(8))}</button>`).join(' ')}</div>`
       : '';
-    const driverLine = db.count ? `<div style="font-size:12px;color:var(--ok);margin-top:2px;">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span style="color:var(--muted);">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
+    // Дамжлагын бонусын мөртэй ИЖИЛ хэв маяг тул `.sp-line`/`.sp-sub`-ыг дахин ашиглав.
+    const driverLine = db.count ? `<div class="sp-line">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span class="sp-sub">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
     const sp = spAll[r.k];
     if (sp && sp.total) spTotal += sp.total;
     const stageLine = (sp && (sp.total || sp.penApplied)) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span>${sp.penApplied ? ` <span class="sp-pen-tag">⚠ −${fmtMoney(sp.penApplied)} · ${escapeHtml(stagePenWhy(sp))}</span>` : ''}</div>` : '';
@@ -13964,14 +13966,14 @@ function renderAttendanceMonth(month) {
     const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''})</span>`
       + ((rPaid || rCarry.amount) ? ` <span class="sp-sub">— ${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)} · ${rBal.over > 0 ? `илүү <b>${fmtMoney(rBal.over)}</b> (дараа сард)` : `үлдэгдэл <b>${fmtMoney(rBal.owed)}</b>`}</span>` : ' <span class="sp-sub">— олгоогүй</span>')
       + `</div>` : '';
-    return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
-      <div style="display:flex;align-items:center;gap:12px;">
-      <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
-      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр · <b style="color:${pctColor};">${pct}%</b></div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)} <span style="font-weight:400;color:var(--muted);font-size:11px;">/ ${normDays * 8}ц</span></div></div>
+    return `<div class="att-mo-row">
+      <div class="att-mo-top">
+      <span class="att-mo-ava">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
+      <div class="att-mo-who"><div class="att-mo-name">${escapeHtml(r.name)}</div><div class="att-mo-role">${escapeHtml(r.role)}</div></div>
+      <div class="att-mo-num"><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${pct}%</b></div><div class="att-mo-hrs">${attHM(r.mins)} <span class="att-mo-norm">/ ${normDays * 8}ц</span></div></div>
       </div>${noOutLine}${otLine}${driverLine}${stageLine}${payLine}</div>`;
   }).join('');
-  const liabilityNote = anyDriver ? `<div style="margin-top:14px;padding:11px 13px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12.5px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
+  const liabilityNote = anyDriver ? `<div class="att-mo-liab">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
   const spFoot = spTotal ? `<div class="sp-foot">📦 Дамжлагын бонус нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил бонус болохгүй.</span></div>` : '';
   return head + `<div>${list}</div>${spFoot}${liabilityNote}`;
 }

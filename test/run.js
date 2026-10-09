@@ -18492,3 +18492,73 @@ async function swFetchTests() {
   ok(/const ACCT_MATCH_MIN = 9/.test(src), 'scan: суффиксийн доод урт 9 (богиносгохгүй)');
   ok(/хуулгын утгаар/.test(card), 'scan: таасан дансыг ИЛ тэмдэглэнэ (нуухгүй)');
 }
+
+// ═══ ДАТАНААС САНАЛ + ХЭРЭГЖСЭН САНАЛЫН ЭЗЭН (2026-10-09, CEO: «3-р алхам») ══
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // Харилцагчийн дуу хоолойноос санал — Python өөрийн тест
+  const vp = path.join(__dirname, '..', 'tools', 'voice_ideas.py');
+  const py = fs.readFileSync(vp, 'utf8');
+  try {
+    const out = require('child_process').execSync(`python3 ${JSON.stringify(vp)} --selftest`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], cwd: path.join(__dirname, '..', 'tools') });
+    ok(/voice_ideas selftest OK/.test(out), 'voice_ideas: Python өөрийн тест — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'voice_ideas: тест — ' + msg.trim().slice(0, 300));
+  }
+  // ⛔ Харилцагчийн нэр/утас Claude руу явахгүй: дата татах асуулгад тэдгээр багана ОГТ байхгүй
+  const g = py.slice(py.indexOf('def gather'), py.indexOf('SYSTEM = '));
+  ok(g.length > 200 && !/\bcustomer\b|\bphone\b|\bemail\b|\bpsid\b|\bname\b'|\bpeer\b'/.test(g.replace(/length\(peer\)|group by peer|select peer/g, '')),
+     'ИНВАРИАНТ: харилцагчийн дуу хоолойн датанд нэр/утас/имэйл гарахгүй');
+  ok(/strip_pii\(/.test(g), 'ИНВАРИАНТ: харилцагчийн бичвэрээс утас/имэйл хасагдана');
+  // ⛔ Түүхэн цоорхойг одоогийн асуудал гэж өгөхгүй (анхны туршилтад хийгдсэн ажлыг дахин санал болгосон)
+  ok(/^CX_REQUIRED_FROM = '\d{4}-\d{2}-\d{2}'$/m.test(py) && /max\(since, CX_REQUIRED_FROM\)/.test(g),
+     'ИНВАРИАНТ: хоосон цуцлах шалтгааныг дүрэм гарснаас хойш л тоолно');
+  ok(!/'linked_to_order'|order_id is not null/.test(g), 'ИНВАРИАНТ: бөглөгддөггүй чат↔захиалгын холбоосыг Claude-д өгөхгүй');
+  ok(/if month_ran\(plan, ym\) and not FORCE/.test(py), 'ИНВАРИАНТ: сард нэг удаа');
+  ok(/it\.psql_tx\(it\.changes_sql\(rows, \{\}, \[\]\)\)/.test(py), 'ИНВАРИАНТ: төлөвлөгөөнд атомаар нэмнэ (дарж бичихгүй)');
+
+  // Апп: батлах бүх зам `approved_at` тавина, буцаахад арилгана
+  const fn = (n) => src.slice(src.indexOf(n), src.indexOf('\n}\n', src.indexOf(n)));
+  ok(/approved_at:/.test(fn('async function planAcceptIdea')), 'батлах: төлөвлөгөөнд оруулахад approved_at');
+  ok((fn('async function planApplyIdea').match(/approved_at:/g) || []).length >= 3, 'батлах: хэрэгжүүлэхэд (ажил · тохиргоо · эцэг) approved_at');
+  ok(/approved_at: todayStr\(\)/.test(fn('async function planApproveAll')), 'батлах: бүх алхмыг батлахад эцэгт approved_at');
+  ok(/approved_at: ''/.test(fn('async function planRevertIdea')), 'буцаах: approved_at арилна');
+  ok(/data-plan-row|pl-voice/.test(src) && /x\.src === 'data'/.test(src), 'төлөвлөгөө: датанаас гарсан санал тэмдэгтэй');
+
+  // Харагдац: батлагдаагүй/хувийн/хийхгүй ОРОХГҮЙ, бичвэр/утас ГАРАХГҮЙ, anon-д хаалттай
+  const vs = fs.readFileSync(path.join(__dirname, '..', 'db', 'idea_credits.sql'), 'utf8');
+  ok(/in \('now', 'next'\)/.test(vs) && /'private', 'false'\) <> 'true'/.test(vs) && /approved_at is not null/.test(vs),
+     'ИНВАРИАНТ: харагдац зөвхөн батлагдсан, нийтийн санал');
+  const sel = vs.slice(vs.lastIndexOf('select c.plan_id'), vs.indexOf('from credit c'));
+  ok(sel.length > 0 && !/body|author\b|phone/.test(sel), 'ИНВАРИАНТ: харагдац саналын бичвэр, утас гаргахгүй');
+  ok(/revoke all on v_idea_credits from public, anon/.test(vs) && /notify pgrst, 'reload schema'/.test(vs),
+     'ИНВАРИАНТ: харагдац anon-д хаалттай, PostgREST кэш шинэчлэгдэнэ');
+
+  // Цэвэр функц: сарын жагсаалт ба шат
+  const rows = [
+    { plan_id: 's-1', title: 'А', approved_at: '2026-10-02', author_name: 'Б.Бат', tasks_total: 2, tasks_done: 1 },
+    { plan_id: 's-1', title: 'А', approved_at: '2026-10-02', author_name: 'Д.Дорж', tasks_total: 2, tasks_done: 1 },
+    { plan_id: 's-2', title: 'Б', approved_at: '2026-10-05', author_name: 'Б.Бат', tasks_total: 1, tasks_done: 1 },
+    { plan_id: 's-3', title: 'В', approved_at: '2026-08-01', author_name: 'Г.Гэрэл', verdict: 'worked', measure_check: '2026-10-08' },
+    { plan_id: 's-4', title: 'Г', approved_at: '2026-09-20', author_name: 'Э.Энх' },
+  ];
+  const ic = F.ideaCreditRows(rows, '2026-10');
+  eq(ic.map(r => r.plan_id).join(','), 's-3,s-2,s-1', 'хэрэгжсэн санал: үр дүн → хэрэгжсэн → батлагдсан, өмнөх сар хасагдана');
+  eq(ic.find(r => r.plan_id === 's-1').authors.join(','), 'Б.Бат,Д.Дорж', 'хэрэгжсэн санал: нэгтгэгдсэн зохиогчид нэг мөрөнд');
+  eq(F.ideaCreditStage({ tasks_total: 0, tasks_done: 0 }), 'doing', 'шат: ажилгүй батлагдсан = батлагдсан');
+  eq(F.ideaCreditStage({ closed_at: '2026-10-01' }), 'done', 'шат: хаагдсан тохиргоо = хэрэгжсэн');
+  // Тоймд ҮНЭХЭЭР зурагдана, дараалал: шилдэг гүйцэтгэгчийн ДАРАА
+  vm.runInContext('state.ideaCredits = ' + JSON.stringify(rows.map(r => ({ ...r, approved_at: r.approved_at.replace('2026-10', F.todayStr().slice(0, 7)) }))) + ';', sandbox);
+  let h = '', err = '';
+  try { h = vm.runInContext('ideaCreditsHtml()', sandbox); } catch (e) { err = String(e && e.message || e); }
+  eq(err, '', 'хэрэгжсэн санал: карт алдаагүй зурагдана');
+  ok(/ic-card/.test(h) && /Б\.Бат/.test(h) && /data-ic-write/.test(h), 'хэрэгжсэн санал: нэр ба «Санал бичих» товч');
+  vm.runInContext('state.ideaCredits = [];', sandbox);
+  ok(/ic-empty/.test(vm.runInContext('ideaCreditsHtml()', sandbox)), 'хэрэгжсэн санал: хоосон үед ч урьсан карт гарна');
+  vm.runInContext('state.ideaCredits = undefined;', sandbox);
+  const d = src.slice(src.indexOf('function renderDashboard()'), src.indexOf('function renderDashboard()') + 6000);
+  ok(d.indexOf('dash-top') > 0 && d.indexOf('ideaCreditsHtml()') > d.indexOf('dash-top'), 'Тойм: хэрэгжсэн санал шилдэг гүйцэтгэгчийн дараа');
+  ok(/\[data-ic-write\]/.test(src) && /state\.view = 'ideas'/.test(src), 'Тойм: «Санал бичих» санал санаачлага руу');
+}

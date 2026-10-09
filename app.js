@@ -4643,6 +4643,7 @@ function renderTaskList() {
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
     attachOrdersCalendar(wrap, { go: true });   // захиалгын календарь — өдөр дарахад захиалга руу
     wrap.querySelectorAll('[data-mcd-go]').forEach(el => el.addEventListener('click', () => { state.view = 'missedcalls'; render(); }));
+    wrap.querySelectorAll('[data-ic-write]').forEach(el => el.addEventListener('click', () => { state.view = 'ideas'; render(); }));
     document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
     return;
   } else if (state.view === 'orders') {
@@ -25087,10 +25088,10 @@ async function planApplyIdea(id) {
   // ⛔ Ажил үүсгэх санал батлагдмагц «хаагдсан» БИШ — ажил дуусах хүртэл «хэрэгжиж буй».
   //    Тохиргоо (тариф) нь хэрэгжмэгц дууссан тул шууд үр дүн рүү.
   if (String(row.do.kind) === 'task') {
-    if (row.parent) state.plan = planList().map(x => (String(x.id) === String(row.parent) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open' } : x));
-    await planSet(id, { sec: row.parent ? row.sec : 'now', status: 'open', done_by: 'applied', applied_at: todayStr(), undo });
+    if (row.parent) state.plan = planList().map(x => (String(x.id) === String(row.parent) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open', approved_at: x.approved_at || todayStr() } : x));
+    await planSet(id, { sec: row.parent ? row.sec : 'now', status: 'open', done_by: 'applied', applied_at: todayStr(), approved_at: row.approved_at || todayStr(), undo });
   } else {
-    await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', undo });
+    await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', approved_at: row.approved_at || todayStr(), undo });
   }
   planNotifyAuthors(row, '✅ Таны санал батлагдлаа',
     String(row.do.kind) === 'task' ? 'Ажил үүслээ: ' + ((row.do.task || {}).title || row.title || '') : (row.title || ''));
@@ -25105,11 +25106,12 @@ async function planRevertIdea(id) {
   if (!ok) return;
   try { await kind.undoRun(row.undo); }
   catch (e) { showToast('⚠ Буцаагдсангүй: ' + e.message, 'error', 6000); return; }
-  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', applied_at: '', undo: null, reopened: true });
+  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', applied_at: '', approved_at: '', undo: null, reopened: true });
 }
 async function planAcceptIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
-  await planSet(id, { sec: 'next', status: 'open' });
+  // `approved_at` = Тоймын «💡 Хэрэгжсэн санал»-ын эх сурвалж (db/idea_credits.sql)
+  await planSet(id, { sec: 'next', status: 'open', approved_at: (row && row.approved_at) || todayStr() });
   planNotifyAuthors(row, '✅ Таны санал батлагдлаа', ((row && row.title) || '') + ' — төлөвлөгөөнд орлоо');
 }
 async function planRejectIdea(id) {
@@ -25225,7 +25227,8 @@ async function planApproveAll(id) {
       n++;
     } catch (e) { showToast('⚠ ' + (s.title || '') + ': ' + e.message, 'error', 6000); }
   }
-  state.plan = planList().map(x => (String(x.id) === String(id) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open' } : x));
+  state.plan = planList().map(x => (String(x.id) === String(id) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open' } : x))
+    .map(x => (String(x.id) === String(id) && n && !x.approved_at ? { ...x, approved_at: todayStr() } : x));
   try { await savePlan(); } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 6000); }
   if (n) {
     planNotifyAuthors(parent, '✅ Таны санал хэрэгжиж эхэллээ', `${n} ажил үүслээ: ${parent.title || ''}`);
@@ -25436,6 +25439,7 @@ function renderPlan() {
     + (x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : '')
     + (x.cat ? `<span class="plan-own">${escapeHtml(planCatLabel(x.cat))}</span>` : '')
     + (x.auto ? `<span class="plan-own pl-auto" title="Жижиг санал — захиралгүйгээр шууд ажил болсон">⚡ Шууд</span>` : '')
+    + (x.src === 'data' ? `<span class="plan-own pl-voice" title="Цуцалсан шалтгаан, үнэлгээ, дуудлага, чатаас Claude гаргасан санал">📣 Харилцагчаас</span>` : '')
     + ageHtml(x, doing) + `</div>`;
   // «Батлахад: …» гэсэн тайлбар зөвхөн шийдвэрийн өмнө утгатай — батлагдсаны дараа алхам нь өөрөө харагдана.
   const body = (x) => planFromHtml(x)
@@ -25673,6 +25677,75 @@ async function staffIdeaPromote(id) {
     showToast('Төлөвлөгөөнд санал болж орлоо', 'success', 2500);
   } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
   render();
+}
+// ── ХЭРЭГЖСЭН САНАЛЫН ЭЗЭН (2026-10-09, CEO: «3-р алхам») ───────────────────
+// Үлгэр: Toyota-гийн кайзен — саналын ТООГ биш, БАТЛАГДАЖ хэрэгжсэн саналыг
+// нэрээр нь Тоймд гаргана. Дата = `v_idea_credits` (db/idea_credits.sql) —
+// зохиогчийн НЭР + төлөвлөгөөний гарчиг л; саналын бичвэр, утас ГАРАХГҮЙ.
+// ⛔ Батлагдаагүй, «хийхгүй», хувийн (`private`) санал ОРОХГҮЙ — харагдац шүүнэ.
+// ⛔ Урамшуулалд АВТОМАТААР холбохгүй — мөнгөний шийдвэр захирлынх.
+async function loadIdeaCredits(force) {
+  if (Array.isArray(state.ideaCredits) && !force) return state.ideaCredits;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/v_idea_credits?select=plan_id,title,approved_at,closed_at,tasks_total,tasks_done,verdict,measure_check,author_name&order=approved_at.desc&limit=300`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    state.ideaCredits = Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    dataLoadFailed('Хэрэгжсэн санал', e);
+    if (!Array.isArray(state.ideaCredits)) state.ideaCredits = [];
+  }
+  return state.ideaCredits;
+}
+// Шат (ЦЭВЭР): worked (хэмжүүрээр үр дүн батлагдсан) · done (бүх ажил дууссан) · doing
+function ideaCreditStage(r) {
+  if (r && r.verdict === 'worked') return 'worked';
+  const total = Number(r && r.tasks_total) || 0, done = Number(r && r.tasks_done) || 0;
+  if ((r && r.closed_at) || (total > 0 && done >= total)) return 'done';
+  return 'doing';
+}
+// Сарын жагсаалт (ЦЭВЭР). Санаачлага бүр НЭГ мөр, зохиогчид нийлнэ.
+// Сард орох = тэр сард батлагдсан · хэрэгжиж дууссан · үр дүн нь хэмжигдсэн.
+function ideaCreditRows(rows, ym) {
+  const by = new Map();
+  (Array.isArray(rows) ? rows : []).forEach(r => {
+    if (!r || !r.plan_id) return;
+    const m = (v) => String(v || '').slice(0, 7) === ym;
+    if (!(m(r.approved_at) || m(r.closed_at) || (r.verdict === 'worked' && m(r.measure_check)))) return;
+    const k = String(r.plan_id);
+    if (!by.has(k)) by.set(k, { plan_id: k, title: String(r.title || ''), approved_at: String(r.approved_at || ''),
+      stage: ideaCreditStage(r), done: Number(r.tasks_done) || 0, total: Number(r.tasks_total) || 0, authors: [] });
+    const g = by.get(k), nm = String(r.author_name || '').trim();
+    if (nm && !g.authors.includes(nm)) g.authors.push(nm);
+  });
+  const rank = { worked: 0, done: 1, doing: 2 };
+  return [...by.values()].sort((a, b) => rank[a.stage] - rank[b.stage] || b.approved_at.localeCompare(a.approved_at));
+}
+const IDEA_CREDIT_STAGE = { worked: ['✅', 'үр дүн гарсан'], done: ['🏁', 'хэрэгжсэн'], doing: ['✓', 'батлагдсан'] };
+// Тоймын карт. ⚠ Хоосон үед ч гарна — «санал бичвэл энд нэрээрээ гарна» гэдэг нь
+// санал бичих шалтгаан (хариугүй хайрцагт хүн бичдэггүй).
+function ideaCreditsHtml() {
+  if (state.ideaCredits === undefined) {
+    state.ideaCredits = null;
+    loadIdeaCredits(true).then(() => { if (state.view === 'dashboard') render(); });
+  }
+  if (!Array.isArray(state.ideaCredits)) return '';
+  const rows = ideaCreditRows(state.ideaCredits, todayStr().slice(0, 7));
+  const row = g => {
+    const [ico, label] = IDEA_CREDIT_STAGE[g.stage];
+    const prog = g.stage === 'doing' && g.total ? ` · ${g.done}/${g.total} ажил` : '';
+    return `<div class="ic-row ic-${g.stage}"><span class="ic-ico">${ico}</span>`
+      + `<div class="ic-main"><div class="ic-who">${escapeHtml(g.authors.join(', ') || 'Ажилтан')}</div>`
+      + `<div class="ic-title">${escapeHtml(g.title)}</div></div>`
+      + `<span class="ic-st">${escapeHtml(label + prog)}</span></div>`;
+  };
+  return `<div class="ic-card">
+    <div class="ic-head">💡 Хэрэгжсэн санал <span class="ic-sum">энэ сар · ${rows.length}</span></div>
+    ${rows.length ? rows.map(row).join('')
+      : `<div class="ic-empty">Энэ сар батлагдсан санал алга. Компанид тулгарсан асуудал, сайжруулах санаагаа бичээрэй — захирал батлавал энд нэрээрээ гарна.</div>`}
+    <button type="button" class="btn ic-go" data-ic-write>✍ Санал бичих</button>
+  </div>`;
 }
 function renderIdeas() {
   if (state.staffIdeas === undefined) { state.staffIdeas = null; loadStaffIdeas(true).then(() => { if (state.view === 'ideas') render(); }); }
@@ -40775,6 +40848,7 @@ function renderDashboard() {
           </div>
         </div>
       </div>
+      ${ideaCreditsHtml()}
     </div>
   `;
 }

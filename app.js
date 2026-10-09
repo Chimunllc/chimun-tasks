@@ -10298,7 +10298,7 @@ function orderCanonStatus(ao) {
   if (raw === 'reserved' && unpaid) raw = 'draft';
   // ⚠ Зөвшөөрөл өгөхөд DB-ийн статус 'draft' хэвээр үлдсэн ХУУЧИН мөр ч
   //   «Захиалсан» руу шилжинэ — эс бөгөөс зөвшөөрсөн атал карт «Ноорог»
-  //   бүлэгт гацаж, ажилчид олохгүй (амьд дээр #1609 дээр гарсан).
+  //   бүлэгт гацаж, ажилчид олохгүй (амьд дээр 1609-р захиалга дээр гарсан).
   if (raw === 'draft' && _credOk) raw = 'reserved';
   if (raw === 'draft' && unpaid) {
     const end = String((ao && (ao.stops_at || ao.starts_at)) || '').slice(0, 10);

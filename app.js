@@ -31265,7 +31265,7 @@ function bqOrderCard(o) {
   </div>` : '');
   // Бараа: app бол inline (o.items), түүхэн бол lazy toggle + баримт
   const itemsSection = isApp
-    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''}"><summary class="order-items-toggle">▸ ${o.items.length} бараа</summary><div class="order-items-list">${o.items.map(it => `<div class="order-meta oi-row"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span class="oi-amt">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta oi-dep">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
+    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''}><summary class="order-items-toggle">▸ ${o.items.length} бараа · нийт дүнгийн задаргаа</summary><div class="order-items-list">${orderBreakdownHtml(o)}</div></details>` : '')
     : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
@@ -31857,6 +31857,37 @@ function orderMoneyBreakdown(o) {
   const preVat = Math.round(rentalNet / 1.1);
   const vat = rentalNet - preVat;
   return { days, subtotal, discount, vatDisc, hasVat, delivFee, delivLbl, offFee, setupFee, deposit, rentalNet, vat, total };
+}
+/* ─── КАРТЫН «НИЙТ ДҮНД ЮУ ОРСОН» ЗАДАРГАА (2026-10-09, CEO) ──────────────────────────
+   Карт «2 бараа» гэж л харуулдаг тул хүргэлт · суурилуулалт · ажлын бус цаг · барьцаа нийт дүнд орсныг
+   харах арга байсангүй. Нугалаа НЭЭХЭД л харагдана. ⛔ Дүнг энд ДАХИН БОДОХГҮЙ — `orderMoneyBreakdown`
+   (гэрээ/үнийн санал/нэхэмжлэхтэй ИЖИЛ) ба `invoiceLines` л. Мөрүүд нийт дүнтэй таарахгүй бол
+   «Тохируулга» мөр ИЛ гарна (нуувал хүн «яагаад нийлэхгүй байна» гэж асууна). */
+function orderBreakdownRows(o) {
+  const B = orderMoneyBreakdown(o || {});
+  const items = invoiceLines(o || {}).map(l => ({ label: `${l.name} × ${l.qty}${l.days > 1 ? ` × ${l.days} хоног` : ''}`, amt: l.total }));
+  const parts = [];   // {k, label, amt, sign:+1|-1}
+  if (B.discount > 0) parts.push({ k: 'disc', label: 'Хөнгөлөлт', amt: B.discount, sign: -1 });
+  if (B.hasVat && B.vatDisc > 0) parts.push({ k: 'vatcut', label: 'НӨАТ хасалт (5%)', amt: B.vatDisc, sign: -1 });
+  if (B.delivFee > 0 || B.delivLbl) parts.push({ k: 'dlv', label: '🚚 Хүргэлт' + (B.delivLbl ? ' · ' + B.delivLbl : ''), amt: B.delivFee, sign: 1 });
+  if (B.offFee > 0) parts.push({ k: 'off', label: '🌙 Ажлын бус цаг', amt: B.offFee, sign: 1 });
+  if (B.setupFee > 0) parts.push({ k: 'setup', label: '🔧 Суурилуулалт', amt: B.setupFee, sign: 1 });
+  if (B.deposit > 0) parts.push({ k: 'dep', label: '🔒 Барьцаа (буцаан олгоно)', amt: B.deposit, sign: 1 });
+  const sum = B.subtotal + parts.reduce((t, r) => t + r.sign * r.amt, 0);
+  const diff = Math.round(B.total - sum);
+  if (Math.abs(diff) >= 1) parts.push({ k: 'adj', label: 'Тохируулга', amt: Math.abs(diff), sign: diff > 0 ? 1 : -1 });
+  return { items, subtotal: B.subtotal, days: B.days, parts, total: B.total };
+}
+function orderBreakdownHtml(o) {
+  const R = orderBreakdownRows(o);
+  const row = (cls, l, v) => `<div class="order-meta oi-row${cls ? ' ' + cls : ''}"><span>${l}</span><span class="oi-amt">${v}</span></div>`;
+  const body = R.items.map(i => row('', escapeHtml(i.label), fmtMoney(i.amt))).join('');
+  // Нэмэлт/хасалт байхгүй бол «Түрээс» нийлбэр, «Нийт» хоёр мөр нь бараа мөртэйгөө давтагдах тул гаргахгүй.
+  if (!R.parts.length) return body;
+  return body
+    + row('oi-sum', 'Түрээс' + (R.days > 1 ? ` (${R.days} хоног)` : ''), fmtMoney(R.subtotal))
+    + R.parts.map(r => row(r.sign < 0 ? 'oi-neg' : '', escapeHtml(r.label), (r.amt || r.k !== 'dlv') ? (r.sign < 0 ? '−' : '+') + fmtMoney(r.amt) : 'үнэгүй')).join('')
+    + row('oi-tot', 'Нийт', fmtMoney(R.total));
 }
 async function buildOrderQuote(o, lang) {
   const C = CHIMUN_LEGAL, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);

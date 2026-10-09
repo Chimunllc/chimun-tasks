@@ -19461,6 +19461,69 @@ async function swFetchTests() {
   st.isCEO = keep.ceo; st.appOrders = keep.ao;
 }
 
+// ═══ КАРТЫН «НИЙТ ДҮНД ЮУ ОРСОН» ЗАДАРГАА (2026-10-09, CEO) ═════════════════════════════════════════
+// Карт «2 бараа» гэж л харуулдаг тул хүргэлт · суурилуулалт · ажлын бус цаг · барьцаа нийт дүнд орсныг харах арга
+// байсангүй. Нугалаа нээхэд л харагдана. Нэмэх нь: нугалааны нээсэн төлөв render дахин зурахад хадгалагддаггүй байв
+// (`open"` гэсэн илүү хашилт — атрибутын нэр `open"` болж хэзээ ч нээгддэггүй).
+{
+  const srcB = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssB = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { ceo: st.isCEO, ao: st.appOrders, oio: st.ordersItemsOpen };
+  st.isCEO = true;
+  const T = vm.runInContext('todayStr()', sandbox);
+  const base = { id: 'b1', _app: true, number: 1901, customer: 'Тест', phone: '99110000', status: 'reserved', source: 'app',
+    starts_at: T + 'T09:00:00+08:00', stops_at: T + 'T18:00:00+08:00', created_at: T + 'T08:00:00+08:00',
+    items: [{ name: 'Сандал', qty: 10, price: 1500, sku: 'M-1' }, { name: 'Ширээ', qty: 5, price: 8000, sku: 'M-2' }], paid_mnt: 0 };   // түрээс 15,000 + 40,000 = 55,000 (1 хоног)
+  const rowsOf = (o) => F.orderBreakdownRows(o);
+  const signed = (R) => R.subtotal + R.parts.reduce((t, r) => t + r.sign * r.amt, 0);
+  // Нэмэлтгүй: зөвхөн бараа, «Нийт/Түрээс» давтагдахгүй
+  const plain = Object.assign({}, base, { note: '⟦RT|9|18⟧', total_mnt: 55000, deposit_mnt: 0 });
+  eq(rowsOf(plain).parts.length, 0, 'задаргаа: нэмэлтгүй захиалгад нэмэлт мөр ГАРАХГҮЙ');
+  ok(!/oi-tot|oi-sum/.test(F.orderBreakdownHtml(plain)), 'задаргаа: нэмэлтгүй бол «Нийт»/«Түрээс» давтагдахгүй (бараа мөр л)');
+  // Бүх нэмэлттэй: хүргэлт + суурилуулалт + барьцаа + хөнгөлөлт
+  const full = Object.assign({}, base, { note: '⟦RT|9|18⟧ ⟦DLV|out|40|120000⟧ ⟦SET|1|80000⟧', deposit_mnt: 500000, total_mnt: 55000 + 120000 + 80000 + 500000 - 5000 });
+  const R = rowsOf(full), keys = R.parts.map(r => r.k).join(',');
+  eq(keys, 'disc,dlv,setup,dep', 'задаргаа: хөнгөлөлт → хүргэлт → суурилуулалт → барьцаа дарааллаар');
+  eq(Math.round(signed(R)), R.total, 'ИНВАРИАНТ: түрээс ± нэмэлт/хасалт = НИЙТ (мөрүүд нийлнэ)');
+  eq(R.parts.find(r => r.k === 'disc').amt, 5000, 'задаргаа: хөнгөлөлт = нийт дүнгээс гарсан (5,000)');
+  ok(/Хотоос гадна 40км/.test(R.parts.find(r => r.k === 'dlv').label), 'задаргаа: хүргэлтийн бүс/км нэрлэгдэнэ');
+  const H = F.orderBreakdownHtml(full);
+  ok(/oi-sum[^>]*>[\s\S]*?Түрээс/.test(H) && /oi-tot[^>]*>[\s\S]*?Нийт/.test(H) && /oi-neg/.test(H), 'задаргаа: «Түрээс» нийлбэр, «Нийт», хасалт нь өөр ангитай');
+  ok(H.indexOf('oi-sum') < H.indexOf('Хүргэлт') && H.indexOf('Барьцаа') < H.indexOf('oi-tot'), 'задаргаа: бараа → түрээс → нэмэлт → барьцаа → нийт дараалал');
+  // Олон хоног: мөр бүр «× N хоног», дүн хоногоор
+  const multi = Object.assign({}, base, { note: '⟦RT|9|18⟧ ⟦DLV|city|0|40000⟧', stops_at: F.addDays(T, 2) + 'T18:00:00+08:00', deposit_mnt: 0 });
+  const D = F.orderRentalDays(multi);   // хоногийг ӨӨРӨӨ бодохгүй — захиалгын ижил функцээс
+  multi.total_mnt = 55000 * D + 40000;
+  const Rm = rowsOf(multi);
+  ok(D > 1 && Rm.days === D && new RegExp('× ' + D + ' хоног').test(Rm.items[0].label) && Rm.items[0].amt === 10 * 1500 * D, 'задаргаа: олон хоногийн түрээс — мөр бүр «× N хоног», дүн ×N');
+  eq(Math.round(signed(Rm)), Rm.total, 'ИНВАРИАНТ: олон хоногтой ч мөрүүд нийлнэ');
+  // Үнэгүй хүргэлт: нуугдахгүй, «үнэгүй»
+  const free = Object.assign({}, base, { note: '⟦RT|9|18⟧ ⟦DLV|city|0|0⟧', deposit_mnt: 0, total_mnt: 55000 });
+  ok(/Хот дотор[\s\S]*?үнэгүй/.test(F.orderBreakdownHtml(free)), 'задаргаа: үнэгүй хүргэлт ч «үнэгүй» гэж ИЛ харагдана');
+  // Нийт дүн мөрүүдээс их (хөнгөлөлт сөрөг болохгүй) → «Тохируулга» ИЛ
+  const over = Object.assign({}, base, { note: '⟦RT|9|18⟧', deposit_mnt: 0, total_mnt: 60000 });
+  const Ro = rowsOf(over);
+  ok(Ro.parts.some(r => r.k === 'adj' && r.sign === 1 && r.amt === 5000) && Math.round(signed(Ro)) === Ro.total, 'задаргаа: мөрүүд нийлэхгүй бол «Тохируулга» мөр ИЛ гарч нийлбэр таарна');
+  // Карт: нугалаа дотор, нээсэн төлөв render дахин зурахад хадгалагдана
+  st.appOrders = [full]; st.ordersItemsOpen = new Set();
+  const card = F.bqOrderCard(full);
+  ok(/<summary class="order-items-toggle">▸ 2 бараа · нийт дүнгийн задаргаа<\/summary>/.test(card), 'карт: нугалааны гарчиг «N бараа · нийт дүнгийн задаргаа»');
+  ok(/order-items-list">[\s\S]*oi-tot[\s\S]*<\/details>/.test(card), 'карт: задаргаа нугалаа ДОТОР (нээхэд л харагдана)');
+  ok(!/<details class="order-items-det"[^>]*\sopen/.test(card), 'карт: өгөгдмөлөөр нугалаа ХААЛТТАЙ');
+  st.ordersItemsOpen = new Set([String(full.id)]);
+  const cardOpen = F.bqOrderCard(full);
+  ok(/<details class="order-items-det" data-items-oid="b1" open>/.test(cardOpen), '⛔ карт: нээсэн нугалаа ДАХИН ЗУРАГДАХАД нээлттэй хэвээр (`open` атрибут цэвэр, илүү хашилтгүй)');
+  ok(!/open"/.test(cardOpen.slice(cardOpen.indexOf('order-items-det'), cardOpen.indexOf('order-items-det') + 160)), 'карт: нугалааны таг дотор `open"` илүү хашилт БАЙХГҮЙ');
+  // Дизайн
+  ok(!/style="/.test(F.orderBreakdownHtml(full)), 'дизайн: задаргаа inline style-гүй');
+  ok(/\.oi-tot \{[^}]*border-top/.test(cssB) && /\.oi-neg \.oi-amt \{[^}]*var\(--ok\)/.test(cssB) && /\.oi-amt \{[^}]*white-space: nowrap/.test(cssB), 'CSS: нийт мөр, хасалт (токен өнгө), дүн таслагдахгүй');
+  // Дүрмийг дахин бодохгүй
+  const fnB = srcB.slice(srcB.indexOf('function orderBreakdownRows'), srcB.indexOf('function orderBreakdownHtml'));
+  ok(/orderMoneyBreakdown\(/.test(fnB) && /invoiceLines\(/.test(fnB) && !/total_mnt|deposit_mnt|parseDelivery|setupFeeOf|orderOffHoursFee/.test(fnB), '⛔ задаргаа: дүнг ДАХИН БОДОХГҮЙ — orderMoneyBreakdown + invoiceLines л (гэрээ/нэхэмжлэхтэй ижил)');
+  Object.assign(st, { isCEO: keep.ceo, appOrders: keep.ao, ordersItemsOpen: keep.oio });
+}
+
 // ═══ ДАТАНААС САНАЛ + ХЭРЭГЖСЭН САНАЛЫН ЭЗЭН (2026-10-09, CEO: «3-р алхам») ══
 {
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');

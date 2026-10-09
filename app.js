@@ -25488,7 +25488,13 @@ function renderPlan() {
   };
   const measure = (x, final) => {
     const m = x.measure || {};
-    if (!m.what) return final ? '<div class="pl-meas pl-meas-none">📏 Үр дүнг хэмжих хэмжүүр тодорхойлогдоогүй</div>' : '';
+    if (!m.what) {
+      if (!final) return '';
+      // ⛔ «Хэмжих боломжгүй» (skip) ба «хараахан тодорхойлоогүй» ХОЁР ӨӨР зүйл — хоёуланг «тодорхойлогдоогүй»
+      //   гэвэл хүн гараар хийх ажил мэт уншина. Claude ӨӨРӨӨ тодорхойлно (ажлын цагт цаг тутам).
+      const why = m.skip ? 'Хэмжих боломжгүй' + (m.why ? ' — ' + m.why : '') : 'Claude хэмжүүрээ тодорхойлж байна (өөрөө, цаг тутам)';
+      return `<div class="pl-meas pl-meas-none">📏 ${escapeHtml(why)}</div>`;
+    }
     const vd = { worked: '✅ Ажилласан', failed: '❌ Ажиллаагүй', unclear: '❔ Тодорхойгүй' }[m.verdict] || '';
     return `<div class="pl-meas">📏 ${escapeHtml(m.what)}`
       + (m.base ? ` · эхлэл: ${escapeHtml(m.base)}` : '')

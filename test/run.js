@@ -12554,6 +12554,75 @@ function testBankFee() {
 }
 testBankFee();
 
+// ═══ САЛБАРЫН ХААЛТ (2026-10-09, CEO) ═══════════════════════════════════════
+// «Зөвхөн өөрийнхөө салбарын захиалга, ажил, ирцээ харна». Нэг салбарт түгжигдсэн хүн
+// (CEO биш) эрхийг ИЛ олгосон ч өөр салбарын дэлгэцийг нээхгүй; ирцийн жагсаалт нь
+// зөвхөн өөрийн салбарын хүмүүс. Хоёр+ салбартай, салбаргүй, CEO хаалтгүй.
+function testBranchFence() {
+  const TEAM = vm.runInContext('TEAM', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const sv = { team: TEAM.slice(), me: st.me, ceo: st.isCEO, mp: st.memberPerms, mb: st.memberBranches };
+  TEAM.length = 0;
+  TEAM.push(
+    { name: 'Камп Хүн',    phone: '80000011', role: 'Цагийн ажилтан', branches: ['camp'] },
+    { name: 'Эвент Хүн',   phone: '80000012', role: 'Нярав',          branches: ['m-event'] },
+    { name: 'Кэйтэринг',   phone: '80000013', role: 'Үйл ажиллагааны захирал', branches: ['catering'] },
+    { name: 'Хоёр Салбар', phone: '80000014', role: 'Нягтлан',        branches: ['m-event', 'camp'] },
+    { name: 'Салбаргүй',   phone: '80000015', role: 'Менежер',        branches: [] },
+  );
+  st.memberBranches = {};
+  const grant = { orders: true, nomaad: true, catering: true, attendance: true };
+  const as = (phone, ceo) => { st.me = phone; st.isCEO = !!ceo; st.memberPerms = { [phone]: grant }; };
+  const see = () => [F.canSeeOrders(), F.canSeeNomaadOrders(), F.canSeeCatering()];
+
+  as('80000011');   eq(see(), [false, true, false],  'хаалт: NOMAAD-ын хүн эрхтэй ч зөвхөн NOMAAD-ыг харна');
+  as('80000012');   eq(see(), [true, false, false],  'хаалт: M-Event-ийн хүн эрхтэй ч зөвхөн захиалгыг харна');
+  as('80000013');   eq(see(), [false, false, true],  'хаалт: Катерингийн хүн эрхтэй ч зөвхөн Катеринг');
+  as('80000014');   eq(see(), [true, true, false],   'хаалт: хоёр салбартай хүн тэр хоёрыг л харна (катерингийн эрхгүй салбар)');
+  as('80000015');   eq(see(), [true, true, true],    'хаалт: салбар оноогоогүй хүнд хаалт үйлчлэхгүй');
+  as('80000011', true); eq(see(), [true, true, true], 'хаалт: CEO бүгдийг харна');
+
+  // Хаалт нь эрхийг НЭМЭХГҮЙ — эрхгүй бол өөрийн салбарт ч нээгдэхгүй (өгөгдмөл зан хэвээр)
+  st.me = '80000011'; st.isCEO = false; st.memberPerms = { '80000011': { nomaad: false } };
+  eq(F.canSeeNomaadOrders(), false, 'хаалт: эрхийг ил хассан бол өөрийн салбарын дэлгэц ч хаалттай');
+
+  // Ирцийн жагсаалт: өөрийн салбарын хүн + бүртгэлгүй танихгүй хүн харагдана
+  const recs = [
+    { member_key: '80000011', member_name: 'Камп Хүн',  kind: 'in', ts: 't1', day: 'd' },
+    { member_key: '80000012', member_name: 'Эвент Хүн', kind: 'in', ts: 't2', day: 'd' },
+    { member_key: '80000014', member_name: 'Хоёр Салбар', kind: 'in', ts: 't3', day: 'd' },
+    { member_key: '99999999', member_name: 'Бүртгэлгүй', kind: 'in', ts: 't4', day: 'd' },
+  ];
+  const names = (r) => r.map(x => x.member_name);
+  as('80000011'); eq(names(F.attRecsInFence(recs)), ['Камп Хүн', 'Хоёр Салбар', 'Бүртгэлгүй'], 'ирц: NOMAAD-ын менежер Эвентийн хүний ирцийг харахгүй');
+  as('80000012'); eq(names(F.attRecsInFence(recs)), ['Эвент Хүн', 'Хоёр Салбар', 'Бүртгэлгүй'], 'ирц: Эвентийн менежер NOMAAD-ын хүний ирцийг харахгүй');
+  as('80000014'); eq(F.attRecsInFence(recs).length, 4, 'ирц: хоёр салбартай хүнд шүүлт үйлчлэхгүй');
+  as('80000011', true); eq(F.attRecsInFence(recs).length, 4, 'ирц: CEO бүгдийг харна');
+  ok(F.attRecsInFence(null) === null, 'ирц: массив биш утгыг хөндөхгүй');
+
+  TEAM.length = 0; sv.team.forEach(x => TEAM.push(x));
+  st.me = sv.me; st.isCEO = sv.ceo; st.memberPerms = sv.mp; st.memberBranches = sv.mb;
+}
+testBranchFence();
+{
+  // SCAN: хаалт ЭРХЭЭС ӨМНӨ, дэлгэц бүр хаалтаар дамжина. Нэгийг нь мартвал тэр дэлгэц чимээгүй нээлттэй үлдэнэ.
+  const body = (name) => { const i = src.indexOf('function ' + name + '('); return i < 0 ? '' : src.slice(i, src.indexOf('\nfunction ', i + 1)); };
+  ['canSeeOrders', 'canSeeNomaadOrders', 'canSeeCatering'].forEach(f => {
+    const b = body(f);
+    ok(/branchFenceAllowsView\(/.test(b), `scan: ${f} салбарын хаалтаар дамжина`);
+    ok(b.indexOf('branchFenceAllowsView(') < b.indexOf('canAccessView(') || !/canAccessView\(/.test(b),
+       `scan: ${f} хаалт эрхээс ӨМНӨ (эрх олгосон нь хаалтыг тойрохгүй)`);
+  });
+  ok(/attRecsInFence\(isToday/.test(body('renderAttendanceRows')), 'scan: өдрийн ирц хаалтаар шүүгдэнэ');
+  ok(/attRecsInFence\(state\.attMonthRecs\)/.test(body('renderAttendanceMonth')), 'scan: сарын ирц хаалтаар шүүгдэнэ');
+  ok(/branchFenceAllowsMember\(/.test(body('renderAttReqPanel')), 'scan: ирцийн хүсэлтийн самбар хаалтаар шүүгдэнэ');
+  ok(/branchFenceAllowsView\('orders'\)\) \? dayLoadCardHtml\(\)/.test(body('renderAttendance')), 'scan: ачааллын карт (M-Event захиалгаас) хаалтад орно');
+  // Түлхүүр ганц: allowedLenses. Хоёр дүрэм салбарлавал ленз ба хаалт зөрнө.
+  ok(/function branchFence\(\)[\s\S]{0,200}allowedLenses\(\)/.test(src), 'scan: хаалт нь allowedLenses-ээс уншина (ганц эх сурвалж)');
+  // Хаалт ӨГӨГДЛИЙГ хөндөхгүй: цалин/KPI ижил ирцээс бодогддог.
+  ok(!/state\.attMonthRecs\s*=\s*attRecsInFence|state\.attendanceToday\s*=\s*attRecsInFence/.test(src), 'scan: хаалт өгөгдлийг дарж бичихгүй (цалин зөв үлдэнэ)');
+}
+
 // ═══ «БАРАА БИШ» МӨР АНХААРУУЛГАД ТООЛОГДОХГҮЙ (2026-09-12) ══════════════════
 // Амьд датаар: 26 «тулгагдаагүй» мөрөөс 23 нь хүргэлт/НӨАТ/угсралт/тэмдэглэл —
 // каталогт байх ЁСГҮЙ зүйлс. Тэднийг «тулгаж амжаагүй» гэж тоолох нь худал дохио.

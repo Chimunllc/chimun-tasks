@@ -242,6 +242,10 @@ def normalize(items, batch, plan, refmap, today):
                 r['owner'] = ''
             else:
                 r['owner'] = 'Claude' if own == 'claude' else 'CEO'
+                # ⛔ owner=ceo = хүний тухай гомдол, цалин/ажилд авалт — Тоймын
+                #    «💡 Хэрэгжсэн санал»-д зохиогчийн нэр ГАРАХГҮЙ (db/idea_credits.sql)
+                if own == 'ceo':
+                    r['private'] = True
         res.append(r)
     # Claude алгассан санал → захиралд (эргэлзвэл plan). Эс бөгөөс тэр санал `new`
     # хэвээр үлдэж 30 мин тутам дахин илгээгдэн мөнгө зарцуулсаар байна.
@@ -271,6 +275,8 @@ def build_changes(decisions, batch, plan, today):
                 row[k] = d[k]
         if d.get('note'):
             row['ev'] = d['note']
+        if d.get('private'):
+            row['private'] = True
         if d.get('task'):
             row['do'] = {'kind': 'task', 'task': d['task']}
             row['owner'] = ''
@@ -726,6 +732,11 @@ def selftest():
     bad = normalize([dict(base, id=5, decision='plan', owner='staff', task_title='x', assignee='e999')],
                     batch, plan, refmap, '2026-10-07')
     eq('танихгүй хариуцагч → хоосон', bad[0]['task']['assignee'], '')
+    pv = normalize([dict(base, id=5, decision='plan', owner='ceo', task_title='')], batch, plan, refmap, '2026-10-07')
+    eq('захирлын шийдвэр (хүний тухай) → private', pv[0].get('private'), True)
+    eq('хувийн санал мөрөнд private', build_changes(pv, batch, plan, '2026-10-07')[0][0].get('private'), True)
+    pub = normalize([dict(base, id=5, decision='plan', owner='claude', task_title='')], batch, plan, refmap, '2026-10-07')
+    eq('аппын санал private БИШ', 'private' in pub[0], False)
     eq('буруу шийдвэр хаягдана (санал захиралд унана)',
        normalize([dict(base, id=5, decision='yes')], batch[:1], plan, refmap, '2026-10-07')[0]['title'], 'Ажилтны санал #5')
 

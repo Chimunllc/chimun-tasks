@@ -7788,7 +7788,26 @@ select.no-asar-len {
 .pl-meas-none { color: var(--muted); background: none; padding: 0; font-size: var(--fs-xs); }
 .pl-app { font-size: var(--fs-sm); color: var(--text-soft); padding: var(--space-1) 0; }
 .pl-auto { border-color: var(--warn); color: var(--warn); }
+.pl-voice { border-color: var(--primary); color: var(--primary); }
 .pl-app.pl-app-done { color: var(--muted); }
+
+/* Тоймын «💡 Хэрэгжсэн санал» (2026-10-09) — батлагдсан саналын эзэн нэрээрээ */
+.ic-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
+  padding: var(--space-3) var(--space-4); margin-top: var(--space-3); }
+.ic-head { font-weight: 800; font-size: var(--fs-md); display: flex; flex-wrap: wrap;
+  align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2); }
+.ic-sum { font-weight: 600; font-size: var(--fs-sm); color: var(--muted); }
+.ic-row { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) 0;
+  border-top: 1px solid var(--border); }
+.ic-ico { flex: none; width: 22px; text-align: center; }
+.ic-main { flex: 1; min-width: 0; }
+.ic-who { font-weight: 700; font-size: var(--fs-sm); }
+.ic-title { font-size: var(--fs-sm); color: var(--text-soft); overflow-wrap: anywhere; }
+.ic-st { flex: none; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.ic-worked .ic-st { color: var(--ok); font-weight: 700; }
+.ic-done .ic-st { color: var(--text-soft); font-weight: 700; }
+.ic-empty { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; padding: var(--space-1) 0; }
+.ic-go { margin-top: var(--space-2); padding: 3px 10px; font-size: var(--fs-xs); }
 
 /* Төлөвлөгөөний мөрөнд «хэн санал болгосон» (бичвэр нь эвхэгдэнэ) */
 .plan-from { font-size: var(--fs-xs); color: var(--text-soft); }

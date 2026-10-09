@@ -7354,7 +7354,10 @@ select.no-asar-len {
   font-size:var(--fs-sm); cursor:pointer; list-style:none; }
 .rv-row::-webkit-details-marker { display:none; }
 .rv-item { border:0; }
-.rv-more { color:var(--muted); font-size:var(--fs-xs); }
+.rv-more { color:var(--muted); font-size:var(--fs-xs); min-width:var(--space-5); text-align:center; }   /* үргэлж ижил өргөн — огнооны багана тэгш */
+.rv-acts { display:flex; flex-wrap:wrap; gap:var(--space-2); margin:var(--space-2) 0 var(--space-3); }
+.rv-acts .rv-go { margin:0; }
+.rv-tel { display:inline-flex; align-items:center; text-decoration:none; color:var(--text); }
 .rv-item[open] .rv-more { color:var(--primary); }
 .rv-go { margin:var(--space-2) 0 var(--space-3); padding:3px 10px; font-size:var(--fs-xs); }
 .rv-row .rv-st { letter-spacing:1px; color:var(--ok); white-space:nowrap; }
@@ -8723,9 +8726,11 @@ select.no-asar-len {
 /* Тойм — шилдэг гүйцэтгэгч (дамжлагын оноо, сараар) */
 .dash-top { grid-column: span 4; }
 .dash-top-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); margin-bottom: var(--space-2); }
-.dash-top-ym { flex: none; font-size: var(--fs-sm); padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
+.dash-top-ym { min-height: var(--tap-sm); flex: none; font-size: var(--fs-sm); padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
 .dash-top-sub { font-size: var(--fs-xs); color: var(--muted); }
 .dash-top-fill { background: var(--warn); }
+/* Нэр таслагдахгүй: «Д.Бат-Эрдэнэ» 110px-д багтахгүй байв */
+.dash-top .dash-bar-label { width: 8.5rem; font-size: var(--fs-md); }
 .dash-top-n { width: auto; min-width: 32px; font-variant-numeric: tabular-nums; }
 /* ⛔ max-height/overflow БУЦААЖ БҮҮ НЭМ — утсанд хуудас доторх хоёр дахь гүйлгэлт; `dashListHtml` хязгаарлана */
 .dash-top-scroll { min-width: 0; }

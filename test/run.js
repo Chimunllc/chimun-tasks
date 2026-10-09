@@ -16488,6 +16488,51 @@ async function swFetchTests() {
   ok(/st\.bad, \.\.\.st\.rows\.filter/.test(rv), 'scan: муу үнэлгээ эхэнд');
 }
 
+// ═══ ТОЙМ: ҮНЭЛГЭЭ, ЦАГТАА ХҮРСЭН, ШИЛДЭГ — нягт, тэгш, үйлдэлтэй (2026-10-09) ═════
+{
+  const st = vm.runInContext('state', sandbox);
+  const keep = { c: st.isCEO, a: st.appOrders, m: st.dashMore, ym: st.dspMonth };
+  st.isCEO = true; st.dashMore = undefined;
+  const mk = (n, stars, text, phone) => ({ id: 'r' + n, number: n, customer: 'Х' + n, phone: phone === undefined ? '' : phone, status: 'archived',
+    stage_meta: { review: { stars, text: text || '', at: '2026-09-' + String(10 + n).padStart(2, '0') } } });
+  const blk = (orders) => F.reviewBlockHtml(orders);
+  // Муу үнэлгээ: сэтгэгдэлгүй ч нээгддэг, утастай бол ☎ Залгах
+  const h1 = blk([mk(1, 1, '', '99001122')]);
+  ok(/<details class="rv-item"><summary class="rv-row bad"/.test(h1), 'үнэлгээ: муу үнэлгээ сэтгэгдэлгүй ч нээгдэнэ');
+  ok(/href="tel:99001122"/.test(h1) && /☎ Залгах/.test(h1), 'үнэлгээ: муу үнэлгээнд утастай бол ☎ Залгах');
+  ok(/Сэтгэгдэл бичээгүй/.test(h1), 'үнэлгээ: сэтгэгдэлгүй гэдгийг ил хэлнэ');
+  ok(/data-rv-open="1"/.test(h1), 'үнэлгээ: «Захиалга нээх» хэвээр');
+  // Утасгүй бол товч ГАРАХГҮЙ (хоосон tel: холбоос хууран мэхэлнэ)
+  ok(!/href="tel:/.test(blk([mk(2, 2, 'Муу', '')])), 'үнэлгээ: утасгүй бол ☎ товч гарахгүй');
+  ok(!/href="tel:/.test(blk([mk(3, 2, 'Муу')])), 'үнэлгээ: утас талбаргүй бол ☎ товч гарахгүй');
+  eq((blk([mk(4, 2, 'Муу', '+976 9900-1122')]).match(/href="tel:\+9769900/g) || []).length, 1, 'үнэлгээ: утасны дугаар цэвэрлэгдэж tel: болно');
+  // Сайн үнэлгээнд ☎ байхгүй (гомдол биш)
+  ok(!/href="tel:/.test(blk([mk(5, 5, 'Сайн', '99001122')])), 'үнэлгээ: сайн үнэлгээнд ☎ товч гарахгүй');
+  // Огнооны багана тэгш: сэтгэгдэлтэй/сэтгэгдэлгүй мөр ИЖИЛ 4 багана (хоосон rv-more хадгална)
+  const h2 = blk([mk(6, 5, ''), mk(7, 4, 'Сайн')]);
+  eq((h2.match(/class="rv-more"/g) || []).length, 2, 'үнэлгээ: сэтгэгдэлгүй мөр ч rv-more-ийн орон зайг хадгална (огноо тэгш)');
+  // Жагсаалтын хязгаар: ≤5 бүгд ил; >5 бол «бусад»; МУУ нь бүгд ил (тэд ажил)
+  const many = (nBad, nGood) => [].concat(Array.from({ length: nBad }, (_, i) => mk(100 + i, 1, 'Муу', '9900000' + i)), Array.from({ length: nGood }, (_, i) => mk(200 + i, 5)));
+  ok(!/dash-more/.test(blk(many(0, 5))), 'үнэлгээ: 5 хүртэл «бусад» гарахгүй');
+  const h3 = blk(many(0, 9));
+  ok(/бусад \(4\)/.test(h3), 'үнэлгээ: 9 дундаас 5 ил, 4 нь «бусад»');
+  const h4 = blk(many(7, 4));
+  const visibleBad = (h4.slice(0, h4.indexOf('<details class="dash-more"') >= 0 ? h4.indexOf('<details class="dash-more"') : undefined).match(/rv-row bad/g) || []).length;
+  eq(visibleBad, 7, 'ИНВАРИАНТ: муу үнэлгээ хэдэн ч байсан БҮГД ил (нуугдахгүй)');
+  eq(blk(many(7, 4)).match(/rv-row/g).length, 11, 'үнэлгээ: нийт мөр алдагдахгүй');
+
+  // «Цагтаа хүрсэн»: харьцуулалт өөрчлөлтгүй үед «= 0 нэгж» биш
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const d = src.slice(src.indexOf('function dispatchBlockHtml'), src.indexOf('function attachReviewBlock'));
+  ok(/d === 0/.test(d) && /өөрчлөлтгүй/.test(d), 'цагтаа хүрсэн: өөрчлөлтгүй үед тодорхой бичвэр');
+  ok(!/'= '\}\$\{Math\.abs\(d\)\}/.test(d), 'цагтаа хүрсэн: «= 0 нэгж» буцаж ирэхгүй');
+  ok(!/\}тэй ижил|\}тай ижил/.test(d), 'цагтаа хүрсэн: сарын нэрэнд дагавар («сартай») залгахгүй — «2025-12»-д буруу');
+  // Шилдэг гүйцэтгэгч: нэр багтана
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+  ok(/\.dash-top \.dash-bar-label \{ width: 8\.5rem;/.test(css), 'шилдэг: нэрийн багана хангалттай өргөн (Д.Бат-Эрдэнэ таслагдахгүй)');
+  st.isCEO = keep.c; st.appOrders = keep.a; st.dashMore = keep.m; st.dspMonth = keep.ym;
+}
+
 // ═══ ДАМЖЛАГЫН СХЕМ — PIPELINE-ээс өөрөө угсарна (2026-10-04, CEO) ═════
 {
   const S = F.pipelineSteps;

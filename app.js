@@ -27508,18 +27508,22 @@ function reviewBlockHtml(orders) {
   const head = r => `<span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
       <span class="rv-nm">#${escapeHtml(String(r.number ?? '—'))} ${escapeHtml(r.customer || '')}</span>
       <span class="rv-at">${escapeHtml(r.at || '')}</span>`;
-  const row = r => r.text
-    ? `<details class="rv-item"><summary class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}">${head(r)}<span class="rv-more">💬</span></summary>
-        <div class="rv-tx">${escapeHtml(r.text)}</div>
-        <button type="button" class="btn rv-go" data-rv-open="${escapeHtml(String(r.number ?? ''))}">→ Захиалга нээх</button></details>`
-    : `<div class="rv-row rv-plain${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">${head(r)}</div>`;
+  /* ⛔ МУУ ҮНЭЛГЭЭ = АЖИЛ → сэтгэгдэлгүй ч нээгддэг, дотор нь ☎ «Залгах» (2026-10-09).
+     «Залгаж уучлал хүс» гэж хэлээд дугаарыг нь олох зам (мөр → захиалга → утас) 3 даралт
+     байв. Утас захиалгад л байдаг тул мөрөнд дамжуулна. Утасгүй бол товч ГАРАХГҮЙ. */
+  const tel = r => (r.phone && r.stars <= REVIEW_BAD_MAX) ? `<a class="btn rv-go rv-tel" href="tel:${escapeHtml(String(r.phone).replace(/[^0-9+]/g, ''))}">☎ Залгах</a>` : '';
+  const row = r => (r.text || r.stars <= REVIEW_BAD_MAX)
+    ? `<details class="rv-item"><summary class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}">${head(r)}<span class="rv-more">${r.text ? '💬' : (r.phone ? '☎' : '▸')}</span></summary>
+        <div class="rv-tx">${r.text ? escapeHtml(r.text) : 'Сэтгэгдэл бичээгүй'}</div>
+        <div class="rv-acts">${tel(r)}<button type="button" class="btn rv-go" data-rv-open="${escapeHtml(String(r.number ?? ''))}">→ Захиалга нээх</button></div></details>`
+    : `<div class="rv-row rv-plain" data-rv-open="${escapeHtml(String(r.number ?? ''))}">${head(r)}<span class="rv-more" aria-hidden="true"></span></div>`;
   // Муу үнэлгээ нь АЖИЛ — эхэнд. Бусад нь шинээр нь.
   const show = [...st.bad, ...st.rows.filter(r => r.stars > REVIEW_BAD_MAX)];
   return `<div class="rv-card">
     <div class="rv-head">★ Хэрэглэгчийн үнэлгээ
       <span class="rv-sum">${st.avg} дундаж · ${st.n} хариулт</span></div>
     ${st.bad.length ? `<div class="rv-warn">${st.bad.length} хүн сэтгэл дундуур байна — залгаж уучлал хүс.</div>` : ''}
-    ${show.map(row).join('')}
+    ${dashListHtml('rv', show.map(row), Math.max(5, st.bad.length))}
   </div>`;
 }
 // Сарын өдөр бүрийн задаргаа. Цэвэр функц — тестлэгдэнэ.
@@ -27737,7 +27741,9 @@ function dispatchBlockHtml(orders) {
   const prev = series.find(m => m.ym === dspMonthShift(ym, -1));
   const d = (st.pct !== null && prev && prev.pct !== null && prev.n >= DSP_THIN_N) ? st.pct - prev.pct : null;
   const delta = d === null ? ''
-    : `<span class="dsp-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '▲ +' : d < 0 ? '▼ −' : '= '}${Math.abs(d)} нэгж · ${escapeHtml(dspMonthLabel(prev.ym, cur))} ${prev.pct}%</span>`;
+    : d === 0
+      ? `<span class="dsp-delta">= өөрчлөлтгүй · ${escapeHtml(dspMonthLabel(prev.ym, cur))} ${prev.pct}%</span>`   // «= 0 нэгж» гэдэг нь юу гэсэн үг нь ойлгомжгүй байв. ⚠ Дагавар («сартай») бүү залга — «2025-12»-д зөв бичигдэхгүй
+      : `<span class="dsp-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲ +' : '▼ −'}${Math.abs(d)} нэгж · ${escapeHtml(dspMonthLabel(prev.ym, cur))} ${prev.pct}%</span>`;
   const body = st.n
     ? `<div class="dsp-row"><span class="dsp-big ${cls}">${st.pct}%</span>
         <span class="dsp-meta">${delta}<span>${st.late ? `${st.late}/${st.n} хоцорсон · дундаж ${st.avgLate}ц` : `${st.n} хүргэлт · бүгд цагтаа`}${unm ? ' · ' + unmTxt : ''}</span></span></div>`
@@ -27786,7 +27792,7 @@ function reviewStats(orders) {
     if (!o || !_orderActive(o)) return;
     const r = orderReview(o);
     if (!r) return;
-    rows.push({ id: o.id, number: o.number, customer: String(o.customer || ''), stars: r.stars, text: r.text, at: r.at });
+    rows.push({ id: o.id, number: o.number, customer: String(o.customer || ''), phone: String(o.phone || ''), stars: r.stars, text: r.text, at: r.at });
   });
   rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
   const n = rows.length;

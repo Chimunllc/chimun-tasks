@@ -747,6 +747,9 @@ function showPrompt(msg, opts = {}) {
     document.getElementById('prompt-title').textContent = opts.title || 'Оролт';
     msgEl.textContent = msg || '';
     msgEl.style.display = msg ? '' : 'none';
+    // Огноо/тоо гэх мэт төрөл — гараар бичих алдаанаас хамгаална (CEO, 2026-10-09)
+    input.type = opts.type || 'text';
+    if (opts.min) input.min = opts.min; else input.removeAttribute('min');
     input.value = opts.defaultValue || '';
     input.placeholder = opts.placeholder || '';
     okBtn.textContent = opts.okText || 'Илгээх';
@@ -3888,6 +3891,7 @@ function canManageOrders() {
 function canSeeOrders() {
   // Эрх удирдах самбар = эх сурвалж: CEO → албан тушаалын тохиргоо → default(_ordersDefaultFor).
   // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
+  if (!branchFenceAllowsView('orders')) return false;   // салбарын хаалт — эрхээс ӨМНӨ
   return canAccessView('orders', () => _ordersDefaultFor(findMember(state.me)));
 }
 function projectName(id) {
@@ -4013,6 +4017,33 @@ function setBranchLens(v) {
   state.branchLens = v;
   try { localStorage.setItem('branchLens', v); } catch (e) {}
   render();
+}
+/* ⛔ САЛБАРЫН ХААЛТ (2026-10-09, CEO): CEO биш хүн ЗӨВХӨН өөрийн салбар(ууд)-ын захиалга,
+   ирцийг харна (нэг салбартай хүний ажил ленз/filteredTasks-аар аль хэдийн хаалттай).
+   Эрх (role_perms/member_perms) нь «юу хийж болох», хаалт нь «АЛЬ САЛБАРЫНХЫГ» шийднэ —
+   эрхийг ил олгосон ч өөр салбарын дэлгэцийг нээхгүй. Салбар оноогоогүй хүн ба CEO хаалтгүй;
+   гурван салбар бүгдэд нь байвал хаалт юу ч хасахгүй. Түлхүүр нь allowedLenses() — ленз ба
+   хаалт хоёр дүрэм салбарлахгүй. NOMAAD = 'camp'. Хаалт ДЭЛГЭЦ дээр; цалин/KPI ижил
+   өгөгдлөөс бодогддог тул өгөгдлийг хөндөхгүй. ⚠ Олон салбартай хүний ЖАГСААЛТ ажил
+   (ленз 'all') одоохондоо бүх салбараар — зөвхөн захиалга/ирц хаалттай. */
+const BRANCH_VIEW_OWNER = { orders: 'm-event', nomaad: 'camp', catering: 'catering' };
+function branchFence() {   // → ['camp'] | ['m-event','camp'] | null (хаалтгүй)
+  if (state.isCEO) return null;
+  const a = allowedLenses().filter(b => b !== 'all');
+  return a.length ? a : null;
+}
+function branchFenceAllowsView(view) {
+  const f = branchFence(), owner = BRANCH_VIEW_OWNER[view];
+  return !f || !owner || f.includes(owner);
+}
+function branchFenceAllowsMember(m) {
+  const f = branchFence();
+  return !f || f.some(b => _inHubBranch(m, b));
+}
+// Ирцийн бичлэгийг хаалтаар шүүнэ. Танихгүй хүн (бүртгэлгүй) харагдсаар — нуувал ирц чимээгүй алга болно.
+function attRecsInFence(recs) {
+  if (!branchFence() || !Array.isArray(recs)) return recs;
+  return recs.filter(r => branchFenceAllowsMember(findMember(r.member_key) || findMember(r.member_name)));
 }
 // "Гарсан" статустай ажилтны email-ийг хурдан хайхад зориулсан Set.
 // Active task жагсаалтаас тэдгээрийн оноосон ажлуудыг хасахад ашиглана —
@@ -4525,12 +4556,12 @@ function renderSidebar() {
     const wc = document.getElementById('cnt-writeoff');
     if (wc) wc.textContent = String(woList().filter(x => x && x.status === 'pending').length);
   }
-  // Төлөвлөгөө — тоо нь «одоо хийж байгаа» ажлын тоо.
+  // Төлөвлөгөө — тоо нь ТАНЫ шийдвэр хүлээж буй санаачлагын тоо.
   const plNav = document.getElementById('nav-plan');
   if (plNav) {
     plNav.style.display = canSeePlan() ? '' : 'none';
     const pc = document.getElementById('cnt-plan');
-    if (pc) pc.textContent = String(planOpenCount());
+    if (pc) pc.textContent = String(planDecideCount());
   }
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
@@ -4675,7 +4706,7 @@ function renderTitle() {
     ps_stock:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21V12h6v9"/></svg>', 'Нөөц ба салбар', 'Салбар бүрийн тоо — нярав нэг дэлгэцээс шинэчилнэ'],
     ads:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>', 'Зар & үр дүн', 'Facebook зарын зарцуулалт ба борлуулалтын тулгалт — аль зар үр дүнтэйг харуулна'],
     missedcalls: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>', 'Алдсан дуудлага', 'Хүлээгээд холбогдоогүй хүмүүс — буцаж залгах ажлын жагсаалт'],
-    plan:      ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 11l3 3 7-7"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', 'Төлөвлөгөө', 'Шийдвэрийг чи гаргана, бичилтийг агент хийнэ — хийгдсэнийг нь дарж хаа'],
+    plan:      ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 11l3 3 7-7"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', 'Төлөвлөгөө', 'Санал → таны шийдвэр → ажил → үр дүн'],
     writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
@@ -4733,6 +4764,7 @@ function renderTaskList() {
     attachReviewBlock();     // үнэлгээний мөр дарахад тэр захиалга руу үсэрнэ
     attachOrdersCalendar(wrap, { go: true });   // захиалгын календарь — өдөр дарахад захиалга руу
     wrap.querySelectorAll('[data-mcd-go]').forEach(el => el.addEventListener('click', () => { state.view = 'missedcalls'; render(); }));
+    wrap.querySelectorAll('[data-ic-write]').forEach(el => el.addEventListener('click', () => { state.view = 'ideas'; render(); }));
     document.getElementById('dash-top-ym')?.addEventListener('change', (e) => { state.dashTopYm = e.target.value || ''; render(); });
     return;
   } else if (state.view === 'orders') {
@@ -10357,8 +10389,15 @@ const _seenBadStatus = new Set();
 function orderCanonStatus(ao) {
   let raw = String((ao && ao.status) || 'reserved');
   if (BQ_LEGACY_MAP[raw]) raw = BQ_LEGACY_MAP[raw];
-  const unpaid = (Number(ao && ao.paid_mnt) || 0) <= 0;
+  // ⚠ Дараа төлбөрийн ЗӨВШӨӨРӨЛТЭЙ (⟦CRED⟧) захиалга төлбөргүй ч БАТАЛГААЖСАН
+  //   хэвээр — эс бөгөөс ажилчид гаргаж чадахгүй, дамжлага эхлэхгүй.
+  const _credOk = typeof parseOrderCredit === 'function' && !!parseOrderCredit(ao && ao.note);
+  const unpaid = (Number(ao && ao.paid_mnt) || 0) <= 0 && !_credOk;
   if (raw === 'reserved' && unpaid) raw = 'draft';
+  // ⚠ Зөвшөөрөл өгөхөд DB-ийн статус 'draft' хэвээр үлдсэн ХУУЧИН мөр ч
+  //   «Захиалсан» руу шилжинэ — эс бөгөөс зөвшөөрсөн атал карт «Ноорог»
+  //   бүлэгт гацаж, ажилчид олохгүй (амьд дээр 1609-р захиалга дээр гарсан).
+  if (raw === 'draft' && _credOk) raw = 'reserved';
   if (raw === 'draft' && unpaid) {
     const end = String((ao && (ao.stops_at || ao.starts_at)) || '').slice(0, 10);
     const t = new Date(); const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
@@ -11050,6 +11089,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-invoice]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); issueInvoice(b.dataset.appInvoice, b); }));
   document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
+  document.querySelectorAll('[data-app-credit]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCreditModal(b.dataset.appCredit); }));
   document.querySelectorAll('[data-app-cmp]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCmpModal(b.dataset.appCmp); }));
   document.querySelectorAll('[data-app-note]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderNoteModal(b.dataset.appNote); }));
   document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
@@ -13355,7 +13395,7 @@ function attWorkedLine(m) {
 }
 function renderAttendanceRows() {
   const isToday = (state.attViewDay || todayStr()) === todayStr();
-  const recs = isToday ? (state.attendanceToday || []) : (state.attViewRecs || []);
+  const recs = attRecsInFence(isToday ? (state.attendanceToday || []) : (state.attViewRecs || []));
   const word = isToday ? 'Өнөөдөр' : 'Энэ өдөр';
   const day = state.attViewDay || todayStr();
   const by = {};
@@ -13405,7 +13445,7 @@ function renderAttendanceRows() {
 // Хүлээгдэж буй хүсэлтийн самбар (зөвхөн ирц засах эрхтэй хүнд).
 function renderAttReqPanel() {
   if (!canEditAttendance()) return '';
-  const pend = attReqPending();
+  const pend = attReqPending().filter(r => branchFenceAllowsMember(findMember(r.key)));
   if (!pend.length) return '';
   return `<div class="areq-panel"><div class="areq-panel-h">🙋 Ирцийн хүсэлт · <b>${pend.length}</b> хүлээгдэж байна</div>
     ${pend.map(r => {
@@ -13475,7 +13515,8 @@ function renderAttendance() {
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
-  const loadCard = (isToday && !monthMode) ? dayLoadCardHtml() : '';
+  // Ачааллын карт = M-Event захиалгаас бодогддог → M-Event-ийн захиалга харахгүй хүнд харуулахгүй.
+  const loadCard = (isToday && !monthMode && branchFenceAllowsView('orders')) ? dayLoadCardHtml() : '';
   /* Скан товч = ГОЛ үйлдэл; ID карт хэвлэх · утсаар өөрөө · ажил эхлэх цаг нь ховор хэрэгтэй хэрэгсэл тул
      нугалаанд (2026-10-09). Өмнө нь 3 товч тусдаа мөр болж карт ~280px эзэлж, «хэн ирсэн» жагсаалт
      эхний дэлгэцээс гардаг байв. ⚠ Холбоосуудыг id-аар тохируулдаг (att-print/att-self) — нугалаанд ч DOM-д бий. */
@@ -14141,7 +14182,7 @@ function renderAttendanceMonth(month) {
   }
   if (state.attMonthKey !== month || !Array.isArray(state.attMonthRecs)) return '<div class="att-mo-note">Ачаалж байна…</div>';
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
-  const recs = state.attMonthRecs;
+  const recs = attRecsInFence(state.attMonthRecs);
   if (!recs.length) return `<div class="att-mo-note">${month} сард ирц бүртгэгдээгүй.</div>`;
   const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
   const nowMins = workNormMinsThrough(month, todayStr()), inProgress = nowMins < normMins;   // явж буй сар: хувийг өнөөдрийг хүртэлх нормоор
@@ -15215,6 +15256,7 @@ const PERM_MENUS = [
       // Эрх олгож буй хүн «энэ чагт аль товчийг нээж байна вэ» гэдгийг эргэлзэлгүй мэдэх ёстой.
       // Товчны нэрийг өөрчилвөл ЭНДХИЙГ ч хамт өөрчил (ordersStageCapOrder тест хамгаална).
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
+      { key: 'orders.credit',   label: '💳 Дараа төлбөрөөр зөвшөөрөх' },
       { key: 'orders.clean',    label: '🧹 Цэвэрлэсэн' },
       { key: 'orders.prepare',  label: '📦 Баглаж/ачсан / 🏬 Буулгаж байршуулсан' },
       { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан' },
@@ -15252,7 +15294,10 @@ const PERM_MENUS = [
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
   { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },
-  { key: 'plan',        label: 'Төлөвлөгөө',           actions: [] },   // шийдвэр — агент бичнэ, CEO хаана   // FB зарцуулалт ↔ борлуулалт
+  { key: 'plan',        label: 'Төлөвлөгөө',           actions: [
+      // Салбарын захирал ӨӨРИЙН салбарын мөнгөгүй ажлын саналыг батална (2026-10-09, CEO).
+      // Үнэ/тариф, хүний тухай гомдол, нэгдсэн салбар, өөрийн санал — захиралд.
+      { key: 'plan.approve', label: '✓ Салбарынхаа ажилтны саналыг батлах' } ] },   // шийдвэр — агент бичнэ, CEO хаана   // FB зарцуулалт ↔ борлуулалт
   { key: 'vat',         label: 'НӨАТ тайлан',          actions: [] },
   { key: 'documents',   label: 'Баримт бичиг',         actions: [
       { key: 'documents.edit', label: 'Баримт нэмэх / устгах' } ] },
@@ -15267,17 +15312,17 @@ const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // ро
 // Эмзэг үйлдлүүд — бусад үйлдлээс ялгаатай нь DEFAULT=ХОРИГЛОНО (тусгайлан олгох ёстой).
 // orders.skip / orders.revert — дамжлагыг тойрох үйлдэл. Тусгайлан олгоогүй бол ХОРИГЛОНО,
 // эс бөгөөс матрицад «зөвшөөрсөн» мэт харагдаад, чагтлахад нь grant хадгалагдахгүй байсан.
-const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert',
-  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
+const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert', 'orders.credit',
+  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening', 'plan.approve']);
 // ── АЛБАН ТУШААЛ = ЭРХИЙН БЭЛЭН БАГЦ (2026-09-01) ──────────────────────────────
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
-const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate',
-  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
+const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.credit', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate',
+  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening', 'plan.approve']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing', 'missedcalls', 'plan'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate', 'plan.approve'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
   [/эвент/, { views: ['orders', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
@@ -15367,6 +15412,10 @@ const PRODUCT_PARTS = ['catalog', 'price', 'cost', 'stock'];
 //   `can()` дуудаж байсан тул эрхийн загварт таараагүй ШИНЭ албан тушаал
 //   нөөц/өртөг/үнэ засах эрхийг чимээгүй авдаг байв. Бараа = хөрөнгийн үнэ цэн,
 //   өгөгдмөл нь ХОРИГ байх ёстой. Хуучин шүхэр эргэж ирэхийг scan-тест хаана.
+// 💳 Дараа төлбөрөөр зөвшөөрөх эрх (2026-10-09, CEO: «хүмүүст эрх өгч болдог болго»).
+// ⛔ `can()` БИШ — тэр нь тохируулаагүй үед ЗӨВШӨӨРДӨГ тул шинэ албан тушаалтай хүн
+//   компанийн мөнгийг зээлдүүлэх эрхийг чимээгүй авна. Зөвхөн ИЛ олгосон бол.
+function canCreditOrder() { return capValue('orders.credit') === true; }
 function canEditProducts() { return capValue('products.edit') === true; }
 function canProductPart(part) {
   if (canEditProducts()) return true;                // шүхэр — ЗӨВХӨН ил олгосон бол
@@ -15821,6 +15870,7 @@ function cateringMonthIncome(jobs, month, basis) {
 }
 function canSeeCatering() {
   if (state.isCEO) return true;
+  if (!branchFenceAllowsView('catering')) return false;   // салбарын хаалт — эрхээс ӨМНӨ
   const m = (typeof findMember === 'function') ? findMember(state.me) : null;
   if (m && (memberBranchesOf(m) || []).includes('catering')) return true;
   return canAccessView('catering', false);
@@ -19282,6 +19332,7 @@ function attachHubPeople() {
 function canSeeNomaadOrders() {
   // Эрх удирдах самбар = эх сурвалж: CEO → роль тохиргоо → default(_nomaadDefaultFor).
   // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
+  if (!branchFenceAllowsView('nomaad')) return false;   // салбарын хаалт — эрхээс ӨМНӨ
   return canAccessView('nomaad', () => _nomaadDefaultFor(findMember(state.me)) || (state.me === getFinanceExecutorEmail()));
 }
 // COO цалин харах эрх — CEO эсвэл тохируулсан COO өөрөө. (renderCounts ба renderCooSalary
@@ -25085,7 +25136,6 @@ function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO
 // ⚠ Хадгалалт = `app_config['plan']` (шинэ хүснэгт БАЙХГҮЙ).
 // ⚠ Бичлэг ХЭЗЭЭ Ч устахгүй — «хаах» = status:'done', буцааж нээж болно.
 const PLAN_KEY = 'plan';
-const PLAN_NOW_MAX = 3;      // зэрэг эхлүүлэх ажлын дээд тоо (хэтэрвэл анхааруулна)
 const PLAN_STALE_DAYS = 30;  // «одоо хийж байгаа» ажил ийм хоног хөдөлгөөнгүй бол ил тэмдэглэнэ
 // Seed-ээс хадгалсан мөр руу шинэчлэгддэг талбарууд (бичвэр — шийдвэр БИШ)
 const PLAN_TEXT_FIELDS = ['title', 'act', 'gain', 'created'];
@@ -25204,7 +25254,6 @@ function planAge(created, today) {
 }
 function planSeed() { return PLAN_SEED; }
 function planList() { return Array.isArray(state.plan) ? state.plan : []; }
-function planOpenCount() { return planSections(planList()).now.length; }
 async function loadPlan(force) {
   if (state.plan && !force) return state.plan;
   let stored = null, ok = false;
@@ -25347,6 +25396,67 @@ function planApproveHint(row) {
   const who = String(r.owner || '') === PLAN_AGENT_OWNER ? 'агент' : 'чи';
   return `Батлавал: «Дараагийнх» жагсаалтад орно, хийх хүн — ${who}. Тохиргоо өөрчлөгдөхгүй.`;
 }
+// ── САЛБАРЫН ЗАХИРАЛ БАТЛАНА (2026-10-09, CEO: «салбараар нь хуваа») ─────────
+// Үйл ажиллагааны захирал (`plan.approve`) ӨӨРИЙН салбарын (`memberBranchesOf` —
+// CEO аппаас сольдог, кодод бичихгүй) мөнгөгүй АЖЛЫН саналыг батлах/татгалзана.
+// Захиралд үлдэх: ⛔ үнэ, тариф, тохиргоо (`do.kind` ≠ task) · хүний тухай гомдол
+// (`private`) · нэгдсэн (`shared`) салбар · ӨӨРИЙН санал (тоолсон ≠ баталсан дүрэм).
+// ⛔ Захирал түүний баталсныг харна (`approved_by`), push ирнэ, «↩ Буцаах» дарна.
+function planActor() {
+  const me = String(state.me || '');
+  const m = me ? findMember(me) : null;
+  const ideas = Array.isArray(state.staffIdeas) ? state.staffIdeas : null;
+  return {
+    ceo: !!state.isCEO, me,
+    approve: capResolved('plan.approve') === true,
+    branches: m ? memberBranchesOf(m).map(String) : [],
+    // ⚠ Ачаалагдаагүй бол null — «өөрийн санал биш» гэж ТААМАГЛАХГҮЙ
+    myIdeas: ideas ? new Set(ideas.filter(x => x && String(x.author) === me).map(x => String(x.id))) : null,
+  };
+}
+function planRowIdeas(row, list) {
+  const own = Array.isArray(row && row.from) ? row.from : [];
+  const par = row && row.parent ? (list || []).find(x => x && String(x.id) === String(row.parent)) : null;
+  return own.concat(par && Array.isArray(par.from) ? par.from : []).map(String);
+}
+function planRowBranch(row) { return String((((row || {}).do || {}).task || {}).branch || 'shared'); }
+// ЦЭВЭР: '' = шийдэж болно, эс бөгөөс ЯАГААД болохгүйг хэлнэ (унтраасан товч шалтгаангүй байх ёсгүй).
+function planCanDecide(row, list, a) {
+  if (!row) return 'Олдсонгүй';
+  if (a && a.ceo) return '';
+  if (!a || !a.approve) return 'Захирал шийднэ';
+  if (row.private) return 'Захирал шийднэ';
+  if (String((row.do || {}).kind || '') !== 'task') return 'Үнэ, тохиргоо — захирал шийднэ';
+  const br = planRowBranch(row);
+  if (br === 'shared' || !a.branches.includes(br)) return 'Өөр салбарын — захирал шийднэ';
+  if (!a.myIdeas) return 'Ачаалж байна…';
+  if (planRowIdeas(row, list).some(id => a.myIdeas.has(id))) return 'Өөрийн санал — захирал батална';
+  return '';
+}
+// Захирал БИШ хүнд харагдах мөр (ЦЭВЭР): хувийн БИШ, ажлын санал (ажилтан/датаас эсвэл ажил
+// үүсгэх). Захирлын стратегийн мөр, тариф, Claude-ын аппын ажил ХАРАГДАХГҮЙ.
+function planVisible(row, list, a) {
+  if (a && a.ceo) return true;
+  if (!row || row.private) return false;
+  const isTask = (x) => !!(x && x.do && String(x.do.kind || '') === 'task');
+  if (row.parent) {
+    const par = (list || []).find(x => x && String(x.id) === String(row.parent));
+    return par ? planVisible(par, list, a) : isTask(row);
+  }
+  if (row.src === 'staff' || row.src === 'data' || isTask(row)) return true;
+  return (list || []).some(k => k && String(k.parent || '') === String(row.id) && isTask(k));
+}
+function planIsCeoKey(k) { const m = k ? findMember(k) : null; return !!(m && (m.level || 0) >= 100); }
+// Буцаах = захирал, эсвэл өөрөө баталсан хүн.
+function planCanRevert(row) {
+  return !!row && (!!state.isCEO || (!!row.approved_by && String(row.approved_by) === String(state.me || '')));
+}
+// Салбарын захирал батлах бүрд захиралд push — «түүний баталсныг та харна».
+function planNotifyCeo(what) {
+  if (state.isCEO) return;
+  const ceo = getCEOEmail();
+  if (ceo) pushBroadcast(ceo, { kind: 'plan', title: `✓ ${memberName(state.me)} санал батлав`, body: String(what || '').slice(0, 160), url: './#plan' });
+}
 // Хариуцагчийг БАТЛАХЫН ӨМНӨ солино (2026-10-07, CEO). Санал нэг хүнийг санал
 // болгодог ч сонголт нь CEO-гийнх — батлаад дараа нь ажил дотор засах нь
 // нэмэлт алхам болдог.
@@ -25357,12 +25467,14 @@ function planAssignRow(row, who) {
 async function planSetAssignee(id, who) {
   const row = planList().find(x => String(x.id) === String(id));
   if (!row || !row.do || String(row.do.kind || '') !== 'task') return;
+  if (planCanDecide(row, planList(), planActor())) return;
   await planSet(id, { do: planAssignRow(row, who) });
 }
 async function planApplyIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
   if (!row || !row.do) return;
-  if (!state.isCEO) { showToast('Зөвхөн захирал батална', 'error', 4000); return; }
+  const why = planCanDecide(row, planList(), planActor());
+  if (why) { showToast(why, 'error', 4000); return; }
   const kind = PLAN_DO_KINDS[String(row.do.kind || '')];
   if (!kind) { showToast('⚠ Танихгүй үйлдэл — хэрэгжүүлсэнгүй', 'error', 6000); return; }
   const diff = kind.preview(row.do);
@@ -25374,36 +25486,50 @@ async function planApplyIdea(id) {
   let undo;
   try { undo = await kind.run(row.do); }
   catch (e) { showToast('⚠ Хэрэгжсэнгүй: ' + e.message, 'error', 6000); return; }
-  await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', undo });
+  // ⛔ Ажил үүсгэх санал батлагдмагц «хаагдсан» БИШ — ажил дуусах хүртэл «хэрэгжиж буй».
+  //    Тохиргоо (тариф) нь хэрэгжмэгц дууссан тул шууд үр дүн рүү.
+  if (String(row.do.kind) === 'task') {
+    if (row.parent) state.plan = planList().map(x => (String(x.id) === String(row.parent) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open', approved_at: x.approved_at || todayStr(), approved_by: x.approved_by || state.me || '' } : x));
+    await planSet(id, { sec: row.parent ? row.sec : 'now', status: 'open', done_by: 'applied', applied_at: todayStr(), approved_at: row.approved_at || todayStr(), approved_by: state.me || '', undo });
+  } else {
+    await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', approved_at: row.approved_at || todayStr(), approved_by: state.me || '', undo });
+  }
+  planNotifyCeo(String(row.do.kind) === 'task' ? ((row.do.task || {}).title || row.title || '') : (row.title || ''));
   planNotifyAuthors(row, '✅ Таны санал батлагдлаа',
     String(row.do.kind) === 'task' ? 'Ажил үүслээ: ' + ((row.do.task || {}).title || row.title || '') : (row.title || ''));
   showToast('Хэрэгжлээ', 'success', 2500);
 }
 async function planRevertIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
-  if (!row || !row.undo || !state.isCEO) return;
+  if (!row || !row.undo || !planCanRevert(row)) return;
   const kind = PLAN_DO_KINDS[String((row.do || {}).kind || '')];
   if (!kind) return;
   const ok = await showConfirm(`«${row.title || ''}» хэрэгжүүлснийг буцаана.\n\n${kind.note}`, { okText: 'Буцаах' });
   if (!ok) return;
   try { await kind.undoRun(row.undo); }
   catch (e) { showToast('⚠ Буцаагдсангүй: ' + e.message, 'error', 6000); return; }
-  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', undo: null, reopened: true });
+  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', applied_at: '', approved_at: '', approved_by: '', undo: null, reopened: true });
 }
 async function planAcceptIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
-  await planSet(id, { sec: 'next', status: 'open' });
+  const why = planCanDecide(row, planList(), planActor());
+  if (why) { showToast(why, 'error', 4000); return; }
+  // `approved_at` = Тоймын «💡 Хэрэгжсэн санал»-ын эх сурвалж (db/idea_credits.sql)
+  await planSet(id, { sec: 'next', status: 'open', approved_at: (row && row.approved_at) || todayStr(), approved_by: state.me || '' });
   planNotifyAuthors(row, '✅ Таны санал батлагдлаа', ((row && row.title) || '') + ' — төлөвлөгөөнд орлоо');
 }
 async function planRejectIdea(id) {
+  const row = planList().find(x => String(x.id) === String(id));
+  const block = planCanDecide(row, planList(), planActor());
+  if (block) { showToast(block, 'error', 4000); return; }
   const why = String((await showPrompt('Яагаад хийхгүй вэ?', { okText: 'Татгалзах' })) || '').trim();
   if (!why) return;
-  const row = planList().find(x => String(x.id) === String(id));
-  await planSet(id, { sec: 'no', status: 'open', why });
+  await planSet(id, { sec: 'no', status: 'open', why, approved_by: state.me || '' });
   // Шалтгаан нь санал бичсэн хүнд ч очно («Санал санаачлага» дэлгэцэд мөн харагдана).
   planNotifyAuthors(row, 'Таны саналыг захирал хийхгүй гэж шийдлээ', why);
 }
 async function planAdd() {
+  if (!state.isCEO) return;
   const t = String((await showPrompt('Шинэ ажил — нэр:', { okText: 'Нэмэх' })) || '').trim();
   if (!t) return;
   state.plan = planList().concat([{ id: 'u' + Date.now().toString(36), sec: 'next', status: 'open', title: t, owner: 'CEO', created: todayStr() }]);
@@ -25411,78 +25537,468 @@ async function planAdd() {
   catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
   render();
 }
+// ── ТӨЛӨВЛӨГӨӨНИЙ САМБАР (2026-10-09, CEO: «ойлгомжгүй, юуны төлөө ажилладаг нь мэдэгдэхгүй») ──
+// НЭГ урсгал: санал → ① ТАНЫ ШИЙДВЭР → ② ХЭРЭГЖИЖ БУЙ → ③ ҮР ДҮН.
+// Санаачлага = `parent`-гүй мөр. `parent`-тай мөр нь түүний АЛХАМ — картын ДОТОР
+//   харагдана (өмнө нь алхам бүр тусдаа санал мэт жагсаж байв).
+// ⛔ Явцыг ГАРААР шинэчлэхгүй — холбогдсон БОДИТ ажлын төлвөөс (`undo.task_id`) бодогдоно.
+// ⛔ Батлах нь «хаагдсан» БИШ — ажил дуусах хүртэл «хэрэгжиж буй»-д үлдэнэ
+//    (өмнө нь батлах мөчид «Хаагдсан» руу орж, ажил явж буй эсэх харагдахгүй байв).
+// ⚠ Claude-ын аппын ажил захирлын удирдах зүйл БИШ — тусдаа эвхэгдэх жагсаалтад.
+const PLAN_DOING_MAX = 5;    // зэрэг хэрэгжих санаачлагын дээд тоо (хэтэрвэл ил сануулна)
+function planApplied(x) { return !!(x && (x.done_by === 'applied' || x.applied_at)); }
+function planPending(x) { return !!(x && x.sec === 'idea' && x.status !== 'done' && !planApplied(x)); }
+// Алхмын байдал (ЦЭВЭР): pending · no · done · late · open · gone (ажил устсан) · unknown (ачаалагдаагүй)
+function planStepState(r, taskById, today) {
+  if (planPending(r)) return { k: 'pending', task: null };
+  if (r && r.sec === 'no') return { k: 'no', task: null };
+  const tid = planApplied(r) && r.undo && r.undo.task_id ? String(r.undo.task_id) : '';
+  if (!tid) return { k: r && r.status === 'done' ? 'done' : 'open', task: null };
+  const t = taskById && taskById.get(tid);
+  if (!t) return { k: 'unknown', task: null };
+  if (t.status === 'deleted') return { k: 'gone', task: t };
+  if (t.status === 'done') return { k: 'done', task: t };
+  const due = String(t.due || '').slice(0, 10);
+  return { k: due && today && due < today ? 'late' : 'open', task: t };
+}
+// Санаачлагын явц = холбогдсон ажлуудаас. Устсан ажил тоологдохгүй; ачаалагдаагүйг
+// «дууссан» гэж ТААМАГЛАХГҮЙ (`unknown`).
+function planProgress(rows, taskById, today) {
+  const out = { total: 0, done: 0, late: 0, unknown: 0 };
+  (rows || []).forEach(r => {
+    if (!planApplied(r) || !(r.undo && r.undo.task_id)) return;
+    const s = planStepState(r, taskById, today);
+    if (s.k === 'gone') return;
+    out.total++;
+    if (s.k === 'done') out.done++;
+    else if (s.k === 'late') out.late++;
+    else if (s.k === 'unknown') out.unknown++;
+  });
+  return out;
+}
+// Самбар (ЦЭВЭР): мөр бүр ЯГ НЭГ хэсэгт. decide · doing · next · result · no · app
+function planBoard(list, tasks, today) {
+  const arr = (Array.isArray(list) ? list : []).filter(x => x && x.id);
+  const ids = new Set(arr.map(x => String(x.id)));
+  const taskById = new Map((Array.isArray(tasks) ? tasks : []).filter(t => t && t.id).map(t => [String(t.id), t]));
+  const isStep = (x) => !!(x.parent && ids.has(String(x.parent)) && String(x.parent) !== String(x.id));
+  const kids = new Map();
+  arr.filter(isStep).forEach(x => { const k = String(x.parent); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(x); });
+  const out = { decide: [], doing: [], next: [], result: [], no: [], app: [] };
+  arr.filter(x => !isStep(x)).forEach(x => {
+    const ks = kids.get(String(x.id)) || [];
+    const prog = planProgress([x].concat(ks), taskById, today);
+    const pending = ks.filter(planPending).length;
+    let z;
+    if (x.sec === 'no') z = 'no';
+    else if (planPending(x) || pending) z = 'decide';
+    else if (String(x.owner || '') === PLAN_AGENT_OWNER && !x.do && !ks.length) z = 'app';
+    else if (prog.total) z = (prog.done === prog.total && !prog.unknown) ? 'result' : 'doing';
+    else if (x.status === 'done') z = 'result';
+    else z = x.sec === 'now' ? 'doing' : 'next';
+    out[z].push({ row: x, kids: ks, prog, pending });
+  });
+  out.doing.sort((a, b) => b.prog.late - a.prog.late);
+  out.result.sort((a, b) => String(b.row.closed_at || '').localeCompare(String(a.row.closed_at || '')));
+  return out;
+}
+// Цэсний тоо = ТАНЫ шийдвэр хүлээж буй санаачлага (хийх ажил тань).
+function planDecideCount() {
+  const list = planList(), a = planActor();
+  const b = planBoard(list.filter(x => planVisible(x, list, a)), [], todayStr());
+  if (a.ceo) return b.decide.length;
+  // Салбарын захирлын тоо = ӨӨРИЙН шийдэж болох (бусад нь захиралд очно)
+  return b.decide.filter(c => [c.row].concat(c.kids).some(r => planPending(r) && !planCanDecide(r, list, a))).length;
+}
+function planAssSelect(x) {
+  const cur = ((x.do || {}).task || {}).assignee || '';
+  return `<label class="plan-ass">Хариуцагч<select class="ui-raw plan-ass-sel" data-plan-ass="${escapeHtml(String(x.id))}">`
+    + `<option value=""${!cur ? ' selected' : ''}>— хариуцагчгүй —</option>`
+    + TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && m.worker_type !== 'daily')
+        .map(m => personKey(m)).filter(Boolean)
+        .map(k => `<option value="${escapeHtml(k)}"${k === cur ? ' selected' : ''}>${escapeHtml(memberName(k))}</option>`).join('')
+    + `</select></label>`;
+}
+// Санаачлагын бүх хүлээгдэж буй алхмыг НЭГ баталгаагаар ажил болгоно.
+// ⛔ Жагсаалт (ажил → хариуцагч · хугацаа) батлахын ӨМНӨ ил — `showConfirm`-ийн ХАРИУГ шалгана.
+async function planApproveAll(id) {
+  const list0 = planList(), actor = planActor();
+  const parent = list0.find(x => String(x.id) === String(id));
+  // ⛔ Салбарын захирал зөвхөн ӨӨРИЙН шийдэж болох алхмуудыг батална (бусад нь захиралд үлдэнэ)
+  const steps = list0.filter(x => String(x.parent || '') === String(id) && planPending(x)
+    && x.do && PLAN_DO_KINDS[String(x.do.kind || '')] && !planCanDecide(x, list0, actor));
+  if (!parent) return;
+  if (!steps.length) { showToast('Батлах алхам алга — захирал шийднэ', 'error', 4000); return; }
+  const ok = await showConfirm(`${steps.length} алхам тус бүр ажил болж хариуцагчид очно:\n\n`
+    + steps.map(s => { const t = (s.do.task || {}); return `• ${t.title || s.title || ''} → ${t.assignee ? memberName(t.assignee) : 'хариуцагчгүй'}${t.due ? ' · ' + t.due : ''}`; }).join('\n'),
+    { okText: 'Бүгдийг батлах' });
+  if (!ok) return;
+  let n = 0;
+  for (const s of steps) {
+    try {
+      const undo = await PLAN_DO_KINDS[String(s.do.kind)].run(s.do);
+      state.plan = planList().map(x => (String(x.id) === String(s.id)
+        ? { ...x, status: 'open', done_by: 'applied', applied_at: todayStr(), approved_by: state.me || '', undo } : x));
+      n++;
+    } catch (e) { showToast('⚠ ' + (s.title || '') + ': ' + e.message, 'error', 6000); }
+  }
+  state.plan = planList().map(x => (String(x.id) === String(id) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open' } : x))
+    .map(x => (String(x.id) === String(id) && n && !x.approved_at ? { ...x, approved_at: todayStr(), approved_by: state.me || '' } : x));
+  try { await savePlan(); } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 6000); }
+  if (n) {
+    planNotifyAuthors(parent, '✅ Таны санал хэрэгжиж эхэллээ', `${n} ажил үүслээ: ${parent.title || ''}`);
+    planNotifyCeo(`${n} алхам: ${parent.title || ''}`);
+    showToast(`${n} ажил үүслээ`, 'success', 2500);
+  }
+  render();
+}
+// ── ДОЛОО ХОНОГИЙН ОНООНЫ САМБАР (2026-10-09, CEO: «2-р алхам») ───────────────
+// Үлгэр: EOS-ийн 10 тоот scorecard + Amazon-ий долоо хоногийн тойм. Төлөвлөгөөний
+// ДЭЭД талд 8 тоо: өнгөрсөн БҮТЭН долоо хоног ↔ суурь. Хүн юу ч бичихгүй.
+// ⛔ Тоог ДАХИН БОДОХГҮЙ — Тоймын дүрмүүдээс (dispatchStats · reviewStats ·
+//    pbxFollowups+pbxOpenCalls · arRows · stuckOrders · orderRevenue).
+// ⛔ Суурь: урсгал → өмнөх SC_WEEKS долоо хоногийн дундаж; одоогийн байдал (авлага,
+//    гацсан) → 7+ хоногийн өмнөх зураг (`app_config['scorecard_snaps']`, өдөрт нэг).
+// ⛔ Цөөн жишээн дээр (n < minN) ба 2-оос бага ялгаатай тоонд УЛААН БОЛГОХГҮЙ —
+//    дуу чимээ жинхэнэ дохиог дарна.
+// ⚠ 4 долоо хоногийн суурь улирлыг дагана (жилийнхтэй БИШ) — 11 сард захиалга
+//    буурах нь улаан болно; тэр нь бодит дохио, нуухгүй.
+const SC_WEEKS = 4;
+const SC_FLAG = 0.2;
+const SC_SNAP_KEY = 'scorecard_snaps';
+const SC_SNAP_KEEP = 120;
+const SC_DEFS = [
+  // ⛔ Тоо/нийлбэр хэмжүүрт minN = 0 — захиалга огцом буурах нь ӨӨРӨӨ дохио; «цөөн жишээ»
+  //    хориг яг тэр үед улааныг нууна. minN нь зөвхөн харьцаа/дундажид (хувь, үнэлгээ, өртөг).
+  { key: 'orders',   label: 'Шинэ захиалга',          unit: 'ш',   up: true,  minN: 0, go: 'orders' },
+  { key: 'booked',   label: 'Захиалгын дүн',          unit: '₮',   up: true,  minN: 0, go: 'orders' },
+  { key: 'ontime',   label: 'Цагтаа хүрсэн',          unit: '%',   up: true,  minN: 3, go: 'dashboard' },
+  { key: 'missed',   label: 'Холбогдоогүй залгагч',   unit: 'хүн', up: false, minN: 0, go: 'missedcalls' },
+  { key: 'chatcost', label: '1 чатын зарын өртөг',    unit: '₮',   up: false, minN: 5, go: 'ads' },
+  { key: 'rating',   label: 'Хэрэглэгчийн үнэлгээ',   unit: '★',   up: true,  minN: 2, go: 'dashboard' },
+  { key: 'ar',       label: 'Хугацаа хэтэрсэн авлага', unit: '₮',  up: false, minN: 0, go: 'receivables', snap: true },
+  { key: 'stuck',    label: 'Гацсан захиалга',        unit: 'ш',   up: false, minN: 0, go: 'dashboard', snap: true },
+];
+// Тухайн өдрийн долоо хоногийн Даваа (ЦЭВЭР, UTC геттер — бүсээр гулсахгүй).
+function scWeekStart(day) {
+  const t = Date.parse(String(day || '').slice(0, 10) + 'T00:00:00Z');
+  if (isNaN(t)) return '';
+  const dow = (new Date(t).getUTCDay() + 6) % 7;
+  const d = new Date(t - dow * 86400000);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+// Нэг долоо хоногийн урсгалын тоо [from, to). ЦЭВЭР.
+function scWeekValues(ctx, from, to) {
+  const inW = (d) => !!d && d >= from && d < to;
+  const all = Array.isArray(ctx.orders) ? ctx.orders : [];
+  const orders = all.filter(o => o && _orderActive(o));
+  const made = orders.filter(o => inW(_ubDate(o.created_at)));
+  const disp = dispatchStats(orders.filter(o => inW(String(o.starts_at || '').slice(0, 10))));
+  const rv = reviewStats(all).rows.filter(r => inW(String(r.at || '').slice(0, 10)));
+  let chatcost = { v: null, n: 0 };
+  if (Array.isArray(ctx.ads)) {
+    const ads = ctx.ads.filter(a => a && inW(String(a.day || '').slice(0, 10)));
+    const spend = ads.reduce((t, a) => t + (Number(a.spend_mnt) || 0), 0);
+    const chats = ads.reduce((t, a) => t + (Number(a.messages) || 0), 0);
+    chatcost = { v: chats ? Math.round(spend / chats) : null, n: chats };
+  }
+  let missed = { v: null, n: 0 };
+  if (Array.isArray(ctx.calls)) {
+    const calls = ctx.calls.filter(c => c && inW(_ubDate(c.started_at)));
+    const f = pbxFollowups(calls, { from: '', ws: ctx.ws, we: ctx.we });
+    const open = pbxOpenCalls(f, ctx.cbs || [], all).filter(x => !x.done).length;
+    missed = { v: open, n: open };
+  }
+  return {
+    orders: { v: made.length, n: made.length },
+    booked: { v: made.reduce((t, o) => t + (orderRevenue(o, 'accrual') || 0), 0), n: made.length },
+    ontime: { v: disp.n ? disp.pct : null, n: disp.n },
+    missed,
+    chatcost,
+    rating: { v: rv.length ? Math.round(rv.reduce((t, r) => t + r.stars, 0) / rv.length * 10) / 10 : null, n: rv.length },
+  };
+}
+// Сайжирсан/муудсан эсэх (ЦЭВЭР). '' = дохио алга.
+function scFlag(def, value, base, n) {
+  if (value === null || value === undefined || base === null || base === undefined) return '';
+  if ((Number(n) || 0) < (def.minN || 0)) return '';
+  const v = Number(value), b = Number(base);
+  if (!Number.isFinite(v) || !Number.isFinite(b)) return '';
+  if ((def.unit === 'ш' || def.unit === 'хүн') && Math.abs(v - b) < 2) return '';
+  const rel = b === 0 ? (v > 0 ? 1 : 0) : (v - b) / Math.abs(b);
+  const better = def.up ? rel : -rel;
+  if (better <= -SC_FLAG) return 'bad';
+  if (better >= SC_FLAG) return 'good';
+  return '';
+}
+// 7+ хоногийн өмнөх ХАМГИЙН сүүлийн зураг (ЦЭВЭР). Байхгүй бол null — таамаглахгүй.
+function scSnapBase(snaps, today) {
+  const cut = addDays(String(today || '').slice(0, 10), -7);
+  const keys = Object.keys(snaps || {}).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k) && k <= cut).sort();
+  return keys.length ? { day: keys[keys.length - 1], ...snaps[keys[keys.length - 1]] } : null;
+}
+// Самбарын мөрүүд (ЦЭВЭР) — тест ба дэлгэц ИЖИЛ функцээс.
+function scorecardRows(ctx) {
+  const c = ctx || {};
+  const today = String(c.today || '').slice(0, 10);
+  const w1 = scWeekStart(today), w0 = addDays(w1, -7);   // өнгөрсөн БҮТЭН долоо хоног
+  const cur = scWeekValues(c, w0, w1);
+  const past = [];
+  for (let i = 1; i <= SC_WEEKS; i++) past.push(scWeekValues(c, addDays(w0, -7 * i), addDays(w0, -7 * (i - 1))));
+  const sb = scSnapBase(c.snaps, today);
+  const skip = Array.isArray(c.skip) ? c.skip : [];
+  return SC_DEFS.filter(d => !skip.includes(d.key)).map(d => {
+    let value, n, base, baseDay = '';
+    if (d.snap) {
+      value = c.now && c.now[d.key] !== undefined ? c.now[d.key] : null;
+      n = 99; base = sb && sb[d.key] !== undefined ? sb[d.key] : null; baseDay = sb ? sb.day : '';
+    } else {
+      value = cur[d.key].v; n = cur[d.key].n;
+      const vals = past.map(p => p[d.key].v).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v)));
+      base = vals.length ? vals.reduce((t, v) => t + Number(v), 0) / vals.length : null;
+    }
+    return { ...d, value, n, base, baseDay, flag: scFlag(d, value, base, n), from: w0, to: addDays(w1, -1) };
+  });
+}
+function scFmt(v, unit) {
+  if (v === null || v === undefined || !Number.isFinite(Number(v))) return '—';
+  const x = Number(v);
+  if (unit === '₮') return fmtMoney(Math.round(x));
+  if (unit === '%') return Math.round(x) + '%';
+  if (unit === '★') return x.toFixed(1) + '★';
+  return String(Math.round(x * 10) / 10) + (unit ? ' ' + unit : '');
+}
+// Зургийг ЭХЛЭЭД серверээс уншиж нэгтгэнэ — ачаалж чадаагүй бол ХАДГАЛАХГҮЙ
+// (хоосон объект бичвэл бүх түүх устна).
+async function scFetchSnaps() {
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=eq.${SC_SNAP_KEY}&select=value`,
+    { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const rows = await r.json();
+  const v = rows && rows[0] ? rows[0].value : null;
+  return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+}
+async function loadScSnaps() {
+  try { state.scSnaps = await scFetchSnaps(); state.scSnapsOk = true; }
+  catch (e) { dataLoadFailed('Онооны самбарын зураг', e); if (!state.scSnaps) state.scSnaps = {}; }
+  return state.scSnaps;
+}
+async function scSaveSnap(today, vals) {
+  if (state._scSaving) return;
+  state._scSaving = true;
+  try {
+    const cur = await scFetchSnaps();
+    if (!cur[today]) {
+      cur[today] = vals;
+      const keys = Object.keys(cur).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+      keys.slice(0, Math.max(0, keys.length - SC_SNAP_KEEP)).forEach(k => { delete cur[k]; });
+      await saveAppConfig(SC_SNAP_KEY, cur);
+    }
+    state.scSnaps = cur;
+  } catch (e) { dataLoadFailed('Онооны самбарын зураг', e); }
+  state._scSaving = false;
+}
+function scorecardHtml() {
+  if (!canSeePlan()) return '';
+  const head = (sub) => `<div class="plan-sec-h">📊 Долоо хоногийн тоо${sub ? `<span class="plan-n">${escapeHtml(sub)}</span>` : ''}</div>`;
+  if (!Array.isArray(state.appOrders) || !state.appOrders.length) {
+    return `<div class="plan-sec wsc-sec">${head('')}<div class="plan-empty">Ачаалж байна…</div></div>`;
+  }
+  const orders = state.appOrders, today = todayStr();
+  const ar = arRows(receivablesData().items, orders, today).reduce((t, r) => t + (Number(r.balance) || 0), 0);
+  const stuck = stuckOrders(orders, today).length;
+  const skip = [];
+  if (!canSeeMissedCalls()) skip.push('missed');
+  if (!canSeeAds()) skip.push('chatcost');
+  const rows = scorecardRows({
+    orders, today, skip, snaps: state.scSnaps || {}, now: { ar, stuck },
+    calls: Array.isArray(state.pbxLog) ? state.pbxLog : null, cbs: Array.isArray(state.pbxCb) ? state.pbxCb : [],
+    ads: Array.isArray(state.fbAds) ? state.fbAds : null, ws: tariffWorkStart(), we: tariffWorkEnd(),
+  });
+  // Одоогийн байдлын зураг — өдөрт нэг удаа (суурь хуримтлагдана)
+  if (state.scSnapsOk && state.scSnaps && !state.scSnaps[today]) scSaveSnap(today, { ar, stuck });
+  const r0 = rows[0] || {};
+  const arrow = (r) => {
+    if (r.value === null || r.base === null || r.value === undefined || r.base === undefined) return '';
+    const d = Number(r.value) - Number(r.base);
+    return Math.abs(d) < 1e-9 ? '=' : (d > 0 ? '▲' : '▼');
+  };
+  const baseTxt = (r) => r.base === null || r.base === undefined
+    ? (r.snap ? 'суурь хуримтлагдаж байна' : 'суурь алга')
+    : (r.snap ? `${escapeHtml(String(r.baseDay).slice(5))}-нд ${scFmt(r.base, r.unit)}` : `дундаж ${scFmt(r.base, r.unit)}`);
+  return `<div class="plan-sec wsc-sec">${head(`${String(r0.from || '').slice(5)}…${String(r0.to || '').slice(5)}`)}`
+    + `<div class="wsc-sub">Өнгөрсөн долоо хоногийг өмнөх ${SC_WEEKS} долоо хоногийн дундажтай харьцуулав. Улаан = ${Math.round(SC_FLAG * 100)}%-иас илүү муудсан. Мөр дээр дарвал холбогдох дэлгэц нээгдэнэ.</div>`
+    + `<div class="wsc-grid">` + rows.map(r => `<button type="button" class="wsc-row ui-raw${r.flag ? ' wsc-' + r.flag : ''}" data-sc-go="${escapeHtml(r.go)}">`
+      + `<span class="wsc-l">${escapeHtml(r.label)}${r.snap ? ' <span class="wsc-now">одоо</span>' : ''}</span>`
+      + `<span class="wsc-v">${scFmt(r.value, r.unit)}<span class="wsc-ar">${arrow(r)}</span></span>`
+      + `<span class="wsc-b">${baseTxt(r)}${r.n && !r.snap && r.minN && r.n < r.minN ? ' · цөөн жишээ' : ''}</span></button>`).join('')
+    + `</div></div>`;
+}
 function renderPlan() {
   if (state.plan === undefined) { state.plan = null; loadPlan(true).then(() => { if (state.view === 'plan') render(); }); }
   if (!state.plan) return '<div class="plan-empty">Ачаалж байна…</div>';
-  const s = planSections(planList());
-  const btn = (attr, id, label) => `<button class="btn plan-btn" data-${attr}="${escapeHtml(String(id))}">${label}</button>`;
   const today = todayStr();
-  // Хугацаа ИЛ — «хэзээ үүссэн» нь мартагдах гол шалтгаан. Хөдөлгөөнгүй болсон
-  // «одоо хийж байгаа» ажил тэмдэглэгдэнэ (⛔ чимээгүй хоцрохгүй).
-  const ageHtml = (x) => {
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+  const taskById = new Map(tasks.filter(t => t && t.id).map(t => [String(t.id), t]));
+  // ⛔ Салбарын захирал зөвхөн ажлын саналыг харна, өөрийн салбарынхаа шийдвэрийг гаргана.
+  const actor = planActor(), ceo = actor.ceo, all = planList();
+  const b = planBoard(all.filter(x => planVisible(x, all, actor)), tasks, today);
+  const canDo = (x) => !planCanDecide(x, all, actor);
+  const btn = (attr, id, label) => `<button class="btn plan-btn" data-${attr}="${escapeHtml(String(id))}">${label}</button>`;
+  const who = (k) => { const m = k ? findMember(k) : null; return m ? m.name : ''; };
+  // Салбарын захирлын баталсныг ИЛ — захирал хянаж, хүсвэл буцаана.
+  const byDir = (x) => !!(x && x.approved_by && !planIsCeoKey(x.approved_by));
+  const byLine = (x) => byDir(x) ? `<div class="plan-when">✓ ${escapeHtml(who(x.approved_by) || 'Салбарын захирал')} баталсан${x.approved_at ? ' · ' + escapeHtml(x.approved_at) : ''}</div>` : '';
+  // Хугацаа ИЛ — «хэзээ үүссэн» нь мартагдах гол шалтгаан. Хөдөлгөөнгүй санаачлага тэмдэглэгдэнэ.
+  const ageHtml = (x, doing) => {
     const d = planAge(x.created, today);
     if (d === null) return '';
-    const old = x.sec === 'now' && x.status !== 'done' && d >= PLAN_STALE_DAYS;
+    const old = doing && d >= PLAN_STALE_DAYS;
     return `<span class="plan-age${old ? ' plan-old' : ''}">${escapeHtml(x.created)} · ${d} хоног${old ? ' хөдөлгөөнгүй' : ''}</span>`;
   };
-  const item = (x, acts) => `<div class="plan-item">`
-    + `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
-    + `${x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : ''}`
-    + `${x.cat ? `<span class="plan-own">${escapeHtml(planCatLabel(x.cat))}</span>` : ''}`
-    + ageHtml(x) + `</div>`
-    + planFromHtml(x)
-    + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
-    + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
-    + `${x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : ''}`
-    + `${x.sec === 'idea' && x.status !== 'done' ? `<div class="plan-hint">${escapeHtml(planApproveHint(x))}</div>` : ''}`
-    + `${x.sec === 'idea' && x.status !== 'done' && x.do && x.do.kind === 'task'
-        ? `<label class="plan-ass">Хариуцагч<select class="ui-raw plan-ass-sel" data-plan-ass="${escapeHtml(String(x.id))}">`
-          + `<option value=""${!(x.do.task || {}).assignee ? ' selected' : ''}>— хариуцагчгүй —</option>`
-          + TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && m.worker_type !== 'daily')
-              .map(m => personKey(m)).filter(Boolean)
-              .map(k => `<option value="${escapeHtml(k)}"${k === (x.do.task || {}).assignee ? ' selected' : ''}>${escapeHtml(memberName(k))}</option>`).join('')
-          + `</select></label>` : ''}`
-    + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : (x.done_by === 'applied' ? ' · хэрэгжүүлсэн' : '')}</div>` : ''}`
-    + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
-    + `</div>`;
-  const nowActs = (x) => btn('plan-done', x.id, '✓ Дууслаа') + btn('plan-down', x.id, '↓ Хойшлуулах');
-  const nextActs = (x) => btn('plan-up', x.id, '↑ Одоо эхэлье') + btn('plan-done', x.id, '✓ Дууслаа');
-  const warn = s.now.length > PLAN_NOW_MAX
-    ? `<div class="plan-warn">⚠ ${s.now.length} ажил зэрэг эхэлсэн байна. ${PLAN_NOW_MAX}-аас олон бол аль нь ч дуусахгүй.</div>` : '';
+  const head = (x, doing) => `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
+    + (x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : '')
+    + (x.cat ? `<span class="plan-own">${escapeHtml(planCatLabel(x.cat))}</span>` : '')
+    + (x.auto ? `<span class="plan-own pl-auto" title="Жижиг санал — захиралгүйгээр шууд ажил болсон">⚡ Шууд</span>` : '')
+    + (x.src === 'data' ? `<span class="plan-own pl-voice" title="Цуцалсан шалтгаан, үнэлгээ, дуудлага, чатаас Claude гаргасан санал">📣 Харилцагчаас</span>` : '')
+    + ageHtml(x, doing) + `</div>`;
+  // «Батлахад: …» гэсэн тайлбар зөвхөн шийдвэрийн өмнө утгатай — батлагдсаны дараа алхам нь өөрөө харагдана.
+  const body = (x) => planFromHtml(x)
+    + ((x.act || x.why) && !(planApplied(x) && /^Батлахад/.test(String(x.act || ''))) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : '')
+    + (x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : '');
+  // Нотолгоо + бүтэн судалгаа = эвхэгдэнэ (карт урт бичвэрээр дүүрэхгүй).
+  const research = (x) => {
+    const r = x.research || {};
+    const src = (Array.isArray(r.sources) ? r.sources : []).filter(s => s && /^https?:\/\//.test(String(s.u || '')));
+    if (!x.ev && !r.text && !src.length) return '';
+    return `<details class="plan-res"><summary>📄 ${r.text ? 'Судалгаа' : 'Дэлгэрэнгүй'}</summary>`
+      + (x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : '')
+      + (r.text ? `<div class="plan-res-t">${escapeHtml(r.text)}</div>` : '')
+      + (src.length ? `<div class="plan-src">${src.map(s => `<a href="${escapeHtml(s.u)}" target="_blank" rel="noopener">${escapeHtml(s.t || s.u)}</a>`).join('')}</div>` : '')
+      + `</details>`;
+  };
+  const measure = (x, final) => {
+    const m = x.measure || {};
+    if (!m.what) {
+      if (!final) return '';
+      // ⛔ «Хэмжих боломжгүй» (skip) ба «хараахан тодорхойлоогүй» ХОЁР ӨӨР зүйл — хоёуланг «тодорхойлогдоогүй»
+      //   гэвэл хүн гараар хийх ажил мэт уншина. Claude ӨӨРӨӨ тодорхойлно (ажлын цагт цаг тутам).
+      const why = m.skip ? 'Хэмжих боломжгүй' + (m.why ? ' — ' + m.why : '') : 'Claude хэмжүүрээ тодорхойлж байна (өөрөө, цаг тутам)';
+      return `<div class="pl-meas pl-meas-none">📏 ${escapeHtml(why)}</div>`;
+    }
+    const vd = { worked: '✅ Ажилласан', failed: '❌ Ажиллаагүй', unclear: '❔ Тодорхойгүй' }[m.verdict] || '';
+    return `<div class="pl-meas">📏 ${escapeHtml(m.what)}`
+      + (m.base ? ` · эхлэл: ${escapeHtml(m.base)}` : '')
+      + (m.result ? ` → ${escapeHtml(m.result)}` : (m.check ? ` · шалгах: ${escapeHtml(m.check)}` : ''))
+      + (vd ? ` · <b>${vd}</b>` : '') + `</div>`;
+  };
+  const ICON = { pending: '💡', no: '✕', done: '✓', late: '⚠', open: '○', gone: '—', unknown: '○' };
+  const steps = (rows) => rows.length ? `<div class="pl-steps">` + rows.map(r => {
+    const st = planStepState(r, taskById, today);
+    const t = st.task || ((r.do || {}).task) || {};
+    const meta = [who(t.assignee), String(t.due || '').slice(5, 10), byDir(r) ? '✓ ' + who(r.approved_by) : ''].filter(Boolean).join(' · ');
+    const block = st.k === 'pending' ? planCanDecide(r, all, actor) : '';
+    const acts = st.k === 'pending' && !block
+      ? (r.do ? planAssSelect(r) + btn('plan-apply', r.id, '✓ Батлах') : btn('plan-yes', r.id, '✓ Батлах')) + btn('plan-no', r.id, '✕')
+      // ↩ зөвхөн АЛХАМД — санаачлага өөрөө картын «↩ Буцаах» товчтой (давхардуулахгүй)
+      : (r.parent && (st.k === 'open' || st.k === 'late') && byDir(r) && planCanRevert(r) && r.undo && r.undo.task_id ? btn('plan-revert', r.id, '↩') : '');
+    return `<div class="pl-step pl-${st.k}"><span class="pl-ic">${ICON[st.k]}</span>`
+      + `<div class="pl-st-main"><span class="pl-st-t">${escapeHtml(t.title || r.title || '')}</span>`
+      + (meta ? `<span class="pl-st-m">${escapeHtml(meta)}</span>` : '')
+      + (st.k === 'no' && r.why ? `<span class="pl-st-m">${escapeHtml(r.why)}</span>` : '')
+      + (st.k === 'late' ? `<span class="pl-st-m pl-late-t">хугацаа хэтэрсэн</span>` : '')
+      + (block ? `<span class="pl-st-m">${escapeHtml(block)}</span>` : '')
+      + `</div>${acts ? `<div class="pl-st-acts">${acts}</div>` : ''}</div>`;
+  }).join('') + `</div>` : '';
+  const prog = (c) => c.prog.total
+    ? `<div class="pl-prog-row"><progress class="pl-prog" max="${c.prog.total}" value="${c.prog.done}"></progress>`
+      + `<span class="pl-prog-t">${c.prog.done}/${c.prog.total} ажил дууссан${c.prog.late ? ` · ⚠ ${c.prog.late} хоцорсон` : ''}${c.prog.unknown ? ` · ${c.prog.unknown} ажил ачаалагдаагүй` : ''}</span></div>`
+    : `<div class="pl-noprog">Ажил үүсээгүй — хариуцагч: ${escapeHtml(c.row.owner || 'тодорхойгүй')}</div>`;
+  // ① Шийдвэр — санал өөрөө эсвэл түүний алхмууд таны баталгааг хүлээж байна.
+  const decideCard = (c) => {
+    const x = c.row, own = planPending(x), block = own ? planCanDecide(x, all, actor) : '';
+    const okKids = c.kids.filter(k => planPending(k) && canDo(k)).length;
+    const acts = (own && !block ? (x.do ? btn('plan-apply', x.id, '✓ Батлаад хэрэгжүүл') : btn('plan-yes', x.id, '✓ Батлах')) + btn('plan-no', x.id, '✕ Хийхгүй') : '')
+      + (okKids > 1 ? btn('plan-all', x.id, `✓ Бүх алхмыг батлах (${okKids})`) : '');
+    return `<div class="plan-item">` + head(x) + body(x) + research(x)
+      + (own && !block ? `<div class="plan-hint">${escapeHtml(planApproveHint(x))}</div>` : '')
+      + (own && block ? `<div class="plan-hint">${escapeHtml(block)}</div>` : '')
+      + (own && !block && x.do && x.do.kind === 'task' ? planAssSelect(x) : '')
+      + (c.kids.length ? `<div class="pl-steps-h">Хэрэгжүүлэх алхам</div>` + steps(c.kids) : '')
+      + (acts ? `<div class="plan-acts">${acts}</div>` : '') + `</div>`;
+  };
+  // ② Хэрэгжиж буй — явц нь ажлаас.
+  const doingCard = (c) => {
+    const x = c.row;
+    const rows = (planApplied(x) && x.undo && x.undo.task_id ? [x] : []).concat(c.kids);
+    return `<div class="plan-item pl-doing${c.prog.late ? ' pl-has-late' : ''}">` + head(x, true) + body(x) + byLine(x) + prog(c)
+      + steps(rows) + measure(x, false) + research(x)
+      + (c.prog.total || !ceo ? '' : `<div class="plan-acts">${btn('plan-done', x.id, '✓ Дууслаа')}${btn('plan-down', x.id, '↓ Хойшлуулах')}</div>`)
+      // ⚡ Шууд ажил / салбарын захирлын баталсныг захирал БУЦААЖ болно (ажил устаж, санал шийдвэр рүү буцна)
+      + ((x.auto || byDir(x)) && planCanRevert(x) && x.undo && x.undo.task_id ? `<div class="plan-acts">${btn('plan-revert', x.id, '↩ Буцаах')}</div>` : '')
+      + `</div>`;
+  };
+  const nextCard = (c) => `<div class="plan-item">` + head(c.row) + body(c.row) + byLine(c.row) + research(c.row)
+    + (ceo ? `<div class="plan-acts">${btn('plan-up', c.row.id, '↑ Эхлүүлэх')}${btn('plan-done', c.row.id, '✓ Дууслаа')}</div>` : '') + `</div>`;
+  const resultCard = (c) => {
+    const x = c.row;
+    const when = x.closed_at ? `✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : (x.done_by === 'applied' ? ' · хэрэгжүүлсэн' : '')}` : '✓ Ажил дууссан';
+    const act = !ceo ? '' : (x.done_by === 'applied' && x.undo && !(x.undo.task_id)) ? btn('plan-revert', x.id, '↩ Буцаах')
+      : (c.prog.total ? '' : btn('plan-reopen', x.id, '↩ Буцааж нээх'));
+    return `<div class="plan-item">` + head(x) + `<div class="plan-when">${when}</div>` + byLine(x) + measure(x, true) + research(x)
+      + (act ? `<div class="plan-acts">${act}</div>` : '') + `</div>`;
+  };
+  const small = (c) => `<div class="plan-item">` + head(c.row) + body(c.row) + research(c.row) + `</div>`;
+  const appRow = (c) => `<div class="pl-app${c.row.status === 'done' ? ' pl-app-done' : ''}">${c.row.status === 'done' ? '✓' : '○'} ${escapeHtml(c.row.title || '')}</div>`;
+  // Салбарын захиралд: ӨӨРИЙН салбарын санал л (шийдэж болохгүй өөрийн санал ч ил — яагаад гэдэг нь бичигдэнэ)
+  const decide = ceo ? b.decide : b.decide.filter(c => [c.row].concat(c.kids)
+    .some(r => planPending(r) && actor.branches.includes(planRowBranch(r)) && !r.private));
+  // Тоо = ӨӨРӨӨ шийдэж болох (цэсний тоотой ИЖИЛ) — өөрийн санал ил боловч ажил биш
+  const decideN = ceo ? decide.length : decide.filter(c => [c.row].concat(c.kids).some(r => planPending(r) && canDo(r))).length;
+  const warn = b.doing.length > PLAN_DOING_MAX
+    ? `<div class="plan-warn">⚠ ${b.doing.length} санаачлага зэрэг явж байна. Олон ажил нэг дор эхэлбэл аль нь ч дуусахгүй — шинийг батлахаас өмнө аль нэгийг дуусгах эсвэл хойшлуул.</div>` : '';
   return `<div class="plan-wrap">`
     + `<div class="plan-top"><h2 class="plan-h1">Төлөвлөгөө</h2>`
-    + `<span class="plan-sub">Шийдвэрийг чи гаргана, бичилтийг агент хийнэ. Хийгдсэнийг нь дарж хаа.</span>`
-    + `<span class="plan-sub">Шалтгаан, тоо, дэлгэрэнгүй — хаалттай PLAN.md-д (энэ репо нийтийн).</span></div>`
-    + warn
-    + (s.idea.length ? `<div class="plan-sec plan-ideas"><div class="plan-sec-h">💡 Санал (агент · ажилтан)<span class="plan-n">${s.idea.length}</span></div>`
-        + planIdeaGroups(s.idea).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>`
-            + g.rows.map(x => item(x, (x.do ? btn('plan-apply', x.id, '✓ Батлаад хэрэгжүүл') : btn('plan-yes', x.id, '✓ Батлах')) + btn('plan-no', x.id, '✕ Хийхгүй'))).join('')).join('')
-        + `</div>` : '')
-    + `<div class="plan-sec"><div class="plan-sec-h">Одоо хийж байгаа<span class="plan-n">${s.now.length}</span></div>`
-    + (s.now.length ? s.now.map(x => item(x, nowActs(x))).join('') : '<div class="plan-empty">Одоо эхэлсэн ажил алга — доороос нэгийг дээшлүүл.</div>')
+    + `<span class="plan-sub">${ceo
+        ? 'Санал → таны шийдвэр → ажил → үр дүн. Санал Claude болон ажилтнуудаас ирнэ. Батлахад ажил хариуцагчид очиж, явц нь ажлаас өөрөө бодогдоно.'
+        : 'Салбарынхаа ажилтны саналыг батална. Батлахад ажил хариуцагчид очиж, захиралд мэдэгдэнэ. Үнэ, хүний тухай асуудал, өөрийн тань санал захиралд очно.'}</span></div>`
+    + (ceo ? safeViewHtml(scorecardHtml, 'Долоо хоногийн тоо') : '')
+    + `<div class="plan-sec plan-ideas"><div class="plan-sec-h">① Таны шийдвэр хүлээж буй<span class="plan-n">${decideN}</span></div>`
+    + (decide.length
+        ? planIdeaGroups(decide.map(c => ({ ...c, cat: c.row.cat }))).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>` + g.rows.map(decideCard).join('')).join('')
+        : '<div class="plan-empty">✓ Шийдвэр хүлээж буй зүйл алга.</div>')
     + `</div>`
-    + `<div class="plan-sec"><div class="plan-sec-h">Дараагийнх<span class="plan-n">${s.next.length}</span></div>`
-    + (s.next.length ? s.next.map(x => item(x, nextActs(x))).join('') : '<div class="plan-empty">Хоосон.</div>')
-    + `<button class="btn plan-btn plan-add" id="plan-add">+ Нэмэх</button></div>`
-    + `<details class="plan-more"><summary>Хийхгүй гэж шийдсэн — ${s.no.length}</summary>`
-    + (s.no.length ? s.no.map(x => item(x, '')).join('') : '<div class="plan-empty">Хоосон.</div>')
-    + `</details>`
-    + `<details class="plan-more"><summary>Хаагдсан — ${s.done.length}</summary>`
-    + (s.done.length ? s.done.map(x => item(x, (x.done_by === 'applied' && x.undo ? btn('plan-revert', x.id, '↩ Буцаах') : btn('plan-reopen', x.id, '↩ Буцааж нээх')))).join('') : '<div class="plan-empty">Хоосон.</div>')
-    + `</details>`
+    + warn
+    + `<div class="plan-sec"><div class="plan-sec-h">② Хэрэгжиж буй<span class="plan-n">${b.doing.length}</span></div>`
+    + (b.doing.length ? b.doing.map(doingCard).join('') : '<div class="plan-empty">Хэрэгжиж буй санаачлага алга — доорх дараалалаас эхлүүл.</div>')
+    + `<details class="plan-more"><summary>Дараалалд — ${b.next.length}</summary>`
+    + b.next.map(nextCard).join('') + (ceo ? `<button class="btn plan-btn plan-add" id="plan-add">+ Нэмэх</button>` : '') + `</details>`
+    + `</div>`
+    + `<div class="plan-sec"><div class="plan-sec-h">③ Үр дүн<span class="plan-n">${b.result.length}</span></div>`
+    + (b.result.length ? b.result.map(resultCard).join('') : '<div class="plan-empty">Дууссан санаачлага алга.</div>')
+    + `</div>`
+    + `<details class="plan-more"><summary>Хийхгүй гэж шийдсэн — ${b.no.length}</summary>`
+    + (b.no.length ? b.no.map(small).join('') : '<div class="plan-empty">Хоосон.</div>') + `</details>`
+    + (ceo ? `<details class="plan-more"><summary>🤖 Claude-ын аппын ажил — ${b.app.filter(c => c.row.status !== 'done').length} нээлттэй</summary>`
+      + (b.app.length ? b.app.map(appRow).join('') : '<div class="plan-empty">Хоосон.</div>') + `</details>` : '')
     + `</div>`;
 }
 function attachPlanHandlers() {
   document.getElementById('plan-add')?.addEventListener('click', () => planAdd());
-  document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() })));
+  // ⛔ Удирдах товч (дууслаа · эхлүүлэх · хойшлуулах · нээх) = ЗӨВХӨН захирал — салбарын захирал зөвхөн батална
+  const ceoOnly = (fn) => () => { if (state.isCEO) fn(); };
+  document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', ceoOnly(() => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() }))));
   document.querySelectorAll('[data-plan-yes]').forEach(b => b.addEventListener('click', () => planAcceptIdea(b.dataset.planYes)));
   document.querySelectorAll('[data-plan-ass]').forEach(el => el.addEventListener('change', () => planSetAssignee(el.dataset.planAss, el.value)));
   document.querySelectorAll('[data-plan-apply]').forEach(b => b.addEventListener('click', () => planApplyIdea(b.dataset.planApply)));
+  document.querySelectorAll('[data-plan-all]').forEach(b => b.addEventListener('click', () => planApproveAll(b.dataset.planAll)));
   document.querySelectorAll('[data-plan-revert]').forEach(b => b.addEventListener('click', () => planRevertIdea(b.dataset.planRevert)));
   document.querySelectorAll('[data-plan-no]').forEach(b => b.addEventListener('click', () => planRejectIdea(b.dataset.planNo)));
-    document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
-  document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
-  document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true })));
+  document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', ceoOnly(() => planSet(b.dataset.planUp, { sec: 'now' }))));
+  document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', ceoOnly(() => planSet(b.dataset.planDown, { sec: 'next' }))));
+  document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', ceoOnly(() => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true }))));
+  document.querySelectorAll('[data-sc-go]').forEach(b => b.addEventListener('click', () => { state.view = b.dataset.scGo; render(); }));
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // АЖИЛТНЫ САНАЛ / АСУУДАЛ (2026-10-07, CEO)
@@ -25579,7 +26095,7 @@ function planFromHtml(x) {
 // Claude хассан саналыг захирал төлөвлөгөөнд оруулна. Гарчгийг ЗАХИРАЛ бичнэ —
 // мөр бүх ажилтанд уншигддаг тул саналын бичвэрийг шууд тавихгүй.
 async function staffIdeaPromote(id) {
-  if (!canSeePlan()) return;
+  if (!state.isCEO) return;   // ⛔ Claude хассаныг сэргээх = захирлын шийдвэр (RLS ч зөвхөн CEO)
   const row = (Array.isArray(state.staffIdeas) ? state.staffIdeas : []).find(x => x && String(x.id) === String(id));
   if (!row) return;
   const title = String((await showPrompt('Төлөвлөгөөнд ямар нэрээр орох вэ? Мөрийг бүх ажилтан харж болно — хүний нэр бүү бич.',
@@ -25604,6 +26120,75 @@ async function staffIdeaPromote(id) {
   } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
   render();
 }
+// ── ХЭРЭГЖСЭН САНАЛЫН ЭЗЭН (2026-10-09, CEO: «3-р алхам») ───────────────────
+// Үлгэр: Toyota-гийн кайзен — саналын ТООГ биш, БАТЛАГДАЖ хэрэгжсэн саналыг
+// нэрээр нь Тоймд гаргана. Дата = `v_idea_credits` (db/idea_credits.sql) —
+// зохиогчийн НЭР + төлөвлөгөөний гарчиг л; саналын бичвэр, утас ГАРАХГҮЙ.
+// ⛔ Батлагдаагүй, «хийхгүй», хувийн (`private`) санал ОРОХГҮЙ — харагдац шүүнэ.
+// ⛔ Урамшуулалд АВТОМАТААР холбохгүй — мөнгөний шийдвэр захирлынх.
+async function loadIdeaCredits(force) {
+  if (Array.isArray(state.ideaCredits) && !force) return state.ideaCredits;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/v_idea_credits?select=plan_id,title,approved_at,closed_at,tasks_total,tasks_done,verdict,measure_check,author_name&order=approved_at.desc&limit=300`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    state.ideaCredits = Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    dataLoadFailed('Хэрэгжсэн санал', e);
+    if (!Array.isArray(state.ideaCredits)) state.ideaCredits = [];
+  }
+  return state.ideaCredits;
+}
+// Шат (ЦЭВЭР): worked (хэмжүүрээр үр дүн батлагдсан) · done (бүх ажил дууссан) · doing
+function ideaCreditStage(r) {
+  if (r && r.verdict === 'worked') return 'worked';
+  const total = Number(r && r.tasks_total) || 0, done = Number(r && r.tasks_done) || 0;
+  if ((r && r.closed_at) || (total > 0 && done >= total)) return 'done';
+  return 'doing';
+}
+// Сарын жагсаалт (ЦЭВЭР). Санаачлага бүр НЭГ мөр, зохиогчид нийлнэ.
+// Сард орох = тэр сард батлагдсан · хэрэгжиж дууссан · үр дүн нь хэмжигдсэн.
+function ideaCreditRows(rows, ym) {
+  const by = new Map();
+  (Array.isArray(rows) ? rows : []).forEach(r => {
+    if (!r || !r.plan_id) return;
+    const m = (v) => String(v || '').slice(0, 7) === ym;
+    if (!(m(r.approved_at) || m(r.closed_at) || (r.verdict === 'worked' && m(r.measure_check)))) return;
+    const k = String(r.plan_id);
+    if (!by.has(k)) by.set(k, { plan_id: k, title: String(r.title || ''), approved_at: String(r.approved_at || ''),
+      stage: ideaCreditStage(r), done: Number(r.tasks_done) || 0, total: Number(r.tasks_total) || 0, authors: [] });
+    const g = by.get(k), nm = String(r.author_name || '').trim();
+    if (nm && !g.authors.includes(nm)) g.authors.push(nm);
+  });
+  const rank = { worked: 0, done: 1, doing: 2 };
+  return [...by.values()].sort((a, b) => rank[a.stage] - rank[b.stage] || b.approved_at.localeCompare(a.approved_at));
+}
+const IDEA_CREDIT_STAGE = { worked: ['✅', 'үр дүн гарсан'], done: ['🏁', 'хэрэгжсэн'], doing: ['✓', 'батлагдсан'] };
+// Тоймын карт. ⚠ Хоосон үед ч гарна — «санал бичвэл энд нэрээрээ гарна» гэдэг нь
+// санал бичих шалтгаан (хариугүй хайрцагт хүн бичдэггүй).
+function ideaCreditsHtml() {
+  if (state.ideaCredits === undefined) {
+    state.ideaCredits = null;
+    loadIdeaCredits(true).then(() => { if (state.view === 'dashboard') render(); });
+  }
+  if (!Array.isArray(state.ideaCredits)) return '';
+  const rows = ideaCreditRows(state.ideaCredits, todayStr().slice(0, 7));
+  const row = g => {
+    const [ico, label] = IDEA_CREDIT_STAGE[g.stage];
+    const prog = g.stage === 'doing' && g.total ? ` · ${g.done}/${g.total} ажил` : '';
+    return `<div class="ic-row ic-${g.stage}"><span class="ic-ico">${ico}</span>`
+      + `<div class="ic-main"><div class="ic-who">${escapeHtml(g.authors.join(', ') || 'Ажилтан')}</div>`
+      + `<div class="ic-title">${escapeHtml(g.title)}</div></div>`
+      + `<span class="ic-st">${escapeHtml(label + prog)}</span></div>`;
+  };
+  return `<div class="ic-card">
+    <div class="ic-head">💡 Хэрэгжсэн санал <span class="ic-sum">энэ сар · ${rows.length}</span></div>
+    ${rows.length ? rows.map(row).join('')
+      : `<div class="ic-empty">Энэ сар батлагдсан санал алга. Компанид тулгарсан асуудал, сайжруулах санаагаа бичээрэй — захирал батлавал энд нэрээрээ гарна.</div>`}
+    <button type="button" class="btn ic-go" data-ic-write>✍ Санал бичих</button>
+  </div>`;
+}
 function renderIdeas() {
   if (state.staffIdeas === undefined) { state.staffIdeas = null; loadStaffIdeas(true).then(() => { if (state.view === 'ideas') render(); }); }
   if (state.plan === undefined) { state.plan = null; loadPlan(true).then(() => { if (state.view === 'ideas') render(); }); }
@@ -25616,7 +26201,7 @@ function renderIdeas() {
   const card = (x, showWho) => {
     const s = staffIdeaState(x, plan);
     const task = s.task ? `<div class="si-task">Ажил: ${escapeHtml(s.task.title || '')}${s.task.assignee ? ' → ' + escapeHtml(staffIdeaAuthor(s.task.assignee)) : ''}</div>` : '';
-    const promote = showWho && (x.status === 'drop' || x.status === 'exists')
+    const promote = showWho && state.isCEO && (x.status === 'drop' || x.status === 'exists')
       ? `<div class="si-acts"><button class="btn si-btn" data-si-promote="${escapeHtml(String(x.id))}">↩ Төлөвлөгөөнд оруулах</button></div>` : '';
     return `<div class="si-item">`
       + `<div class="si-meta"><span>${escapeHtml(staffIdeaKindLabel(x.kind))}</span>`
@@ -27009,6 +27594,29 @@ const _SET_RE = /⟦SET\|([01])(?:\|(\d+))?⟧/;
 const _SETUP_ITEM_RE = /суурилуул|угсрал|угсра[хл]|монтаж/i;
 function setupFlagOf(note) { const m = String(note || '').match(_SET_RE); return m ? m[1] === '1' : null; }
 function setupFeeOf(note) { const m = String(note || '').match(_SET_RE); return m && m[2] ? Number(m[2]) || 0 : 0; }
+/* ━━━ ДАРАА ТӨЛБӨР = ЗАХИРЛЫН ЗӨВШӨӨРӨЛ (2026-10-09, CEO) ━━━━━━━━━━━━━━━
+   Төлбөр ороогүй захиалга ҮРГЭЛЖ «Ноорог» харагддаг (`orderCanonStatus`) тул
+   ажилчдын «зөвхөн баталгаажсан захиалга гаргана» дүрэмд баригдаж, дараа
+   төлбөрөөр гаргах ховор тохиолдолд ажил ЗОГСДОГ байв. Амаар зөвшөөрөл өгвөл
+   дүрэм задарна — тиймээс зөвшөөрлийг БИЧЛЭГ болгоно.
+   ⛔ ЗӨВХӨН ЗАХИРАЛ (`state.isCEO`) — эс бөгөөс «дүрэм» гэдэг нэр төдий болно.
+   ⛔ ТӨЛӨХ ОГНОО ЗААВАЛ — огноогүй зөвшөөрөл нь авлагыг хэзээ нэхэхийг
+     хэлдэггүй, мөнгө чимээгүй хоцорно.
+   ⚠ Токен `_FORM_TOKEN_RE`-д ОРООГҮЙ тул захиалга засахад устахгүй. */
+const _CRED_RE = /⟦CRED\|([0-9]{4}-[0-9]{2}-[0-9]{2})\|?([^⟧]*)⟧/;
+function parseOrderCredit(note) {
+  const m = String(note || '').match(_CRED_RE);
+  return m ? { due: m[1], by: (m[2] || '').trim() } : null;
+}
+function encodeOrderCredit(due, by) { return `⟦CRED|${String(due || '').slice(0, 10)}|${String(by || '').replace(/[|⟧]/g, '')}⟧`; }
+// Зөвшөөрөл хүчинтэй эсэх (ЦЭВЭР). Төлбөр ОРСОН бол зөвшөөрөл хэрэггүй.
+function orderCreditOk(o) { return !!(o && (Number(o.paid_mnt) || 0) <= 0 && parseOrderCredit(o.note)); }
+// Амласан огноо хэтэрсэн эсэх — хэтэрвэл картад УЛААН, авлага нэхэх ажил болно.
+function orderCreditLate(o, today) {
+  const c = parseOrderCredit(o && o.note);
+  if (!c || (Number(o && o.paid_mnt) || 0) > 0) return false;
+  return !!today && c.due < String(today).slice(0, 10);
+}
 function encodeSetup(on, fee) { return `⟦SET|${on ? 1 : 0}${on && Number(fee) > 0 ? '|' + Math.round(Number(fee)) : ''}⟧`; }
 // ── Суурилуулалтын нэгж хөлс — барааны нэрээр, доод хязгаартай ────────────────
 // Газар дээр угсрах хөдөлмөр. Нэгж хөлсийг барааны нэрээр таамаглана (тайз/асар том,
@@ -29176,6 +29784,26 @@ async function resolveStageClaim(oid, key, who, accept) {
     showToast(accept ? 'Баталгаажлаа — бонус дахин хуваагдана' : 'Татгалзлаа', 'success'); render();
   } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); }
 }
+/* ⛔ NOTE БИЧИХЭД ДУУДАГЧИЙН ТОКЕНЫГ БҮҮ ХАЯ (2026-10-09, амьд алдаа).
+   `patchOrderFields` нь note бичихдээ СЕРВЕРИЙН шинэ мөрийг авч, дээр нь зөвхөн
+   ⟦CMP⟧-ыг буулгадаг байв — тиймээс дуудагчийн нэмсэн БУСАД токен чимээгүй
+   устдаг байсан: дараа төлбөрийн ⟦CRED⟧ (захиалга «Ноорог» руу буцаж, ажил
+   зогссон) ба хоцролтын ⟦LATE⟧ (нэмэлт төлбөрийн ул мөр алга болсон).
+   ⚠ ЗӨВХӨН НЭМЭХ/СОЛИХ — дуудагчид байхгүй токеныг серверээс ХАСАХГҮЙ
+     (хуучирсан дуудагч бусдын токеныг устгахаас сэргийлнэ).
+   ⚠ Шинэ урт хугацааны токен нэмэх бол ЭНЭ жагсаалтад ч нэм. */
+const NOTE_MERGE_TOKENS = ['CRED', 'LATE'];
+function mergeNoteTokens(base, want, keys) {
+  let out = String(base || '');
+  (Array.isArray(keys) ? keys : NOTE_MERGE_TOKENS).forEach((k) => {
+    const re = new RegExp('⟦' + k + '\\|[^⟧]*⟧', 'g');
+    const hit = String(want || '').match(re);
+    if (!hit || !hit.length) return;                 // дуудагчид алга → серверийнхийг хөндөхгүй
+    out = out.replace(re, '').replace(/\s+/g, ' ').trim();
+    out = (out + ' ' + hit.join(' ')).trim();
+  });
+  return out;
+}
 async function patchOrderFields(o, fields) {
   const oid = o && o.id; if (!oid) throw new Error('id алга');
   const _money = ORDER_MONEY_FIELDS.filter(k => fields && Object.prototype.hasOwnProperty.call(fields, k));
@@ -29195,7 +29823,8 @@ async function patchOrderFields(o, fields) {
         if (rows && rows[0] && rows[0].note != null) {
           const fresh = String(rows[0].note);
           const cmp = parseOrderCmp(fields.note);
-          body.note = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount, cmp.receipt, cmp.date) : setOrderCmpNote(fresh, '', 0);
+          const _merged = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount, cmp.receipt, cmp.date) : setOrderCmpNote(fresh, '', 0);
+          body.note = mergeNoteTokens(_merged, fields.note);
         }
       }
     } catch (_) { /* сүлжээ унавал санах ойн note-оор бичнэ */ }
@@ -29211,6 +29840,47 @@ async function patchOrderFields(o, fields) {
 }
 // Буулгалт бүртгэх — дүн + шалтгаан. Захиалгын note-д ⟦CMP⟧ токен болж суух ба
 // орлогоос шууд хасагдана. Тайланд шалтгаанаар нь нэгтгэгдэнэ.
+// 💳 Дараа төлбөрөөр зөвшөөрөх / цуцлах — ЗӨВХӨН захирал.
+// Зөвшөөрөл = бичлэг: хэн, хэзээ, хэзээ төлөхөөр тохирсон. Амаар хэлэх нь
+// ажилчдын «зөвхөн баталгаажсан захиалга гаргана» дүрмийг задалдаг.
+async function openOrderCreditModal(id) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
+  if (!canCreditOrder()) { showToast('Танд дараа төлбөрөөр зөвшөөрөх эрх алга', 'warn', 3500); return; }
+  const cur = parseOrderCredit(o.note);
+  const owed = orderOwed(o);
+  // ⛔ ЗӨВШӨӨРЛИЙГ УСТГАХ ЗАМ БАЙХГҮЙ (2026-10-09, CEO: «зөвшөөрчөөд устгавал
+  //   санхүүд тусгагдахгүй»). Зөвшөөрөл = авлага үүссэн гэсэн үг; устгавал
+  //   захиалга «Ноорог» болж орлого, авлага хоёулаа чимээгүй алга болно.
+  //   Цорын ганц өөрчлөлт = ТӨЛӨХ ОГНОО сунгах, тэр нь тэмдэглэлд үлдэнэ.
+  const msg = cur
+    ? `#${o.number || ''} · ${fmtMoney(owed)}\n\nОдоогийн төлөх огноо: ${cur.due}\nШинэ огноог сонгоно уу:`
+    : `#${o.number || ''} · ${fmtMoney(owed)} — төлөх огноог сонгоно уу:`;
+  const due = String((await showPrompt(msg, {
+    okText: cur ? 'Хугацаа сунгах' : 'Зөвшөөрөх',
+    type: 'date', min: todayStr(),
+    defaultValue: cur ? cur.due : addDays(String(o.stops_at || todayStr()).slice(0, 10), 7),
+  })) || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) { if (due) showToast('Огноог YYYY-MM-DD хэлбэрээр', 'warn', 3000); return; }
+  if (cur && due === cur.due) return;
+  const note = (String(o.note || '').replace(_CRED_RE, '').trim() + ' ' + encodeOrderCredit(due, (cur && cur.by) || state.me || '')).trim();
+  // ⛔ СТАТУСЫГ Ч БИЧНЭ — зөвхөн харагдацыг засвал бусад төхөөрөмж, дамжлага,
+  //   нөөцийн тооцоо DB-ийн 'draft'-ыг уншсаар үлдэнэ.
+  const fields = { note };
+  if (!cur && String(o.status || '') === 'draft') fields.status = 'reserved';
+  try { await patchOrderFields(o, fields); o.note = note; if (fields.status) o.status = fields.status; }
+  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
+  await appendOrderNoteTo(o, cur
+    ? `💳 Дараа төлбөрийн хугацаа сунгав: ${cur.due} → ${due}`
+    : `💳 Дараа төлбөрөөр зөвшөөрөв · төлөх огноо ${due} · ${fmtMoney(owed)}`);
+  showToast(cur ? '✓ Хугацаа сунгалаа' : '✓ Баталгаажлаа — ажилчид гаргах боломжтой', 'success', 4000);
+  render();
+}
+// Тэмдэглэлийн мөр нэмэх (append-only) — зөвшөөрлийн түүх үлдэнэ.
+async function appendOrderNoteTo(o, text) {
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object' && !Array.isArray(o.stage_meta)) ? { ...o.stage_meta } : {};
+  sm.notes = appendOrderNote(orderNotesOf(o), text, state.me || '');
+  try { await patchOrderFields(o, { stage_meta: sm }); o.stage_meta = sm; } catch (e) { /* тэмдэглэл унасан ч зөвшөөрөл хүчинтэй */ }
+}
 async function openOrderCmpModal(id) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
   if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буулгалт бүртгэх эрх алга', 'warn', 3000); return; }
@@ -30370,6 +31040,12 @@ function bqOrderCard(o) {
   // Хүргэлттэй эсэх — DLV token эсвэл хаягаар. Хүргэлттэй бол төлбөр/бүсийг харуулна.
   const _dlv = isApp ? parseDelivery(o.note) : null;
   const _isDeliv = isDeliveryOrder(o);
+  // 💳 Дараа төлбөрийн зөвшөөрөл — төлбөргүй ч ГАРНА гэдгийг ажилтанд ил хэлнэ
+  const _cred = isApp ? parseOrderCredit(o.note) : null;
+  const _credLate = isApp && orderCreditLate(o, todayStr());
+  const credBadge = (_cred && (Number(o.paid_mnt) || 0) <= 0)
+    ? `<span class="deliv-badge cred-badge${_credLate ? ' cred-late' : ''}" title="Захирал дараа төлбөрөөр зөвшөөрсөн${_cred.by ? ' · ' + escapeHtml(memberName(_cred.by)) : ''}">💳 Дараа төлбөр · ${escapeHtml(_cred.due.slice(5))}${_credLate ? ' ХЭТЭРСЭН' : ''}</span>`
+    : '';
   const delivBadge = isApp
     ? (_isDeliv ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Өөрөө авах</span>`)
     : '';
@@ -30472,6 +31148,7 @@ function bqOrderCard(o) {
           next, owed: appBal, canPay: appCanPay, over: _over,
           // ⚠ `_depOpen` нь ЭНЭ МӨРӨӨС ДООР тодорхойлогддог тул энд ШУУД бодно (TDZ).
           depOpen: (Number(o.deposit_mnt) || 0) > 0 && !depositReturnState(o),
+          creditAsk: canCreditOrder() && st === 'draft' && (Number(o.paid_mnt) || 0) <= 0 && !!(o.items && o.items.length),
           editable: appEditable,
         }));
         const rows = { pri: [], more: [] };
@@ -30482,6 +31159,8 @@ function bqOrderCard(o) {
         add('damage', ['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn ofb" data-app-damage="${id}">⚠ Эвдрэл</button>` : '');
         add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
         add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb" data-app-cmp="${id}">↩️ Буулгалт</button>` : '');
+        add('credit', (canCreditOrder() && (Number(o.paid_mnt) || 0) <= 0 && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length))
+          ? `<button class="btn ofb ord-btn-s${_cred ? '' : (st === 'draft' ? ' btn-primary' : '')}" data-app-credit="${id}" title="${_cred ? 'Төлөх огноог сунгана (зөвшөөрлийг устгах боломжгүй)' : 'Төлбөр ороогүй ч гаргахыг зөвшөөрнө — буцаах боломжгүй'}">💳 ${_cred ? 'Хугацаа сунгах' : 'Дараа төлбөрөөр зөвшөөрөх'}</button>` : '');
         add('note', `<button class="btn ofb" data-app-note="${id}" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>`);
         add('contract', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn ofb" data-app-contract="${id}">📜 Гэрээ</button>` : '');
         add('edit', appEditable ? `<button class="btn ofb" data-app-edit="${id}">✎ Засах</button>` : '');
@@ -30543,7 +31222,7 @@ function bqOrderCard(o) {
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span class="order-src-new">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${credBadge}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span class="order-src-new">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(orderCustName(o) || '?')}</b>${_custPerson ? ` · <span class="order-rep">👤 ${escapeHtml(_custPerson)}</span>` : ''}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
@@ -37615,6 +38294,9 @@ function orderPrimaryActions(o, ctx) {
   const out = [];
   if (ctx.next) out.push('advance');                       // дараагийн шат = хамгийн чухал
   if (ctx.canPay && (Number(ctx.owed) || 0) > 0) out.push('pay');
+  // Төлбөргүй НООРОГ дээр «дараа төлбөр» нь захиралд ГОЛ товч — ажилчид гаргаж
+  // чадахгүй гацсан захиалгыг нээх цорын ганц зам (хүсвэл «Бусад» дотор биш).
+  if (ctx.creditAsk) out.push('credit');
   // Буцаалт: илүү төлөлт байвал ШУУД, эсвэл захиалга дууссан байхад барьцаа үлдсэн бол
   if ((Number(ctx.over) || 0) > 0) out.push('refund');
   else if (ctx.depOpen && ORDER_DONE_ST.has(String((o && o.status) || ''))) out.push('refund');
@@ -40730,6 +41412,7 @@ function renderDashboard() {
           </div>
         </div>
       </div>
+      ${ideaCreditsHtml()}
     </div>
   `;
 }
@@ -44312,6 +44995,11 @@ async function bootApp() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'push-refresh' && state.me) refreshFromServer();
+        // Мэдэгдэл дарахад апп аль хэдийн нээлттэй бол SW холбоосыг энд дамжуулна
+        if (ev.data && ev.data.type === 'open-url' && state.me) {
+          const v = deepLinkView('#' + String(ev.data.url || '').split('#')[1]);
+          if (v) { state.view = v; render(); }
+        }
       });
     }
     _visibilityBound = true;
@@ -44448,6 +45136,14 @@ function refreshViewData() {
     loadPlan(true).then(() => { if (state.view === 'plan') render(); });
     // Ажилтны саналын бичвэр/зохиогч (мөрөнд зөвхөн id) — батлахад зохиогчид мэдэгдэнэ.
     loadStaffIdeas(true).then(() => { if (state.view === 'plan') render(); });
+    // Долоо хоногийн тоо — Тоймын ижил дата (захиалга · дуудлага · зар) + өдрийн зураг. ЗӨВХӨН захиралд.
+    if (state.isCEO && state.appOrders === undefined) { state.appOrders = []; loadAppOrders().then(() => { if (state.view === 'plan') render(); }); }
+    if (state.isCEO && canSeeMissedCalls()) {
+      if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'plan') render(); }); }
+      if (state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => { if (state.view === 'plan') render(); }); }
+    }
+    if (state.isCEO && canSeeAds()) mktEnsure('fbAds', loadFbAds, 'plan');
+    if (state.isCEO) loadScSnaps().then(() => { if (state.view === 'plan') render(); });
   }
   if (v === 'ideas') {
     loadStaffIdeas(true).then(() => { if (state.view === 'ideas') render(); });
@@ -44543,6 +45239,20 @@ function showApp() {
   const exportBtn = document.getElementById('export-btn');
   if (exportBtn) exportBtn.style.display = state.isCEO ? '' : 'none';
   applyRoleUi(true);
+  // Push-ийн холбоос (`./#plan`) — тэр дэлгэц рүү шууд (эрхтэй бол л).
+  const dl = deepLinkView(location.hash);
+  if (dl) {
+    state.view = dl;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+  }
+}
+// Мэдэгдлээс нээх дэлгэц. ⛔ ЗӨВХӨН энэ жагсаалт, эрх шалгаад — дурын hash-аар
+// дэлгэц нээх нь эрхгүй хүнд хаалттай дэлгэцийг гаргах нүх болно.
+const DEEP_VIEWS = { plan: () => canSeePlan(), ideas: () => true };
+function deepLinkView(hash) {
+  const m = String(hash || '').match(/^#([a-z]+)$/);
+  const v = m ? m[1] : '';
+  return v && DEEP_VIEWS[v] && DEEP_VIEWS[v]() ? v : '';
 }
 // Цагийн ажилтан — хязгаарлагдмал UI (body class → CSS-ээр нав/товч нуух) + эхлэх дэлгэц.
 // Үндсэн ажилтан Тоймоос эхэлнэ (2026-10-05, CEO: «ажилчдад олдохгүй байна»); CEO-гийнх хэвээр.

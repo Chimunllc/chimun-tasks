@@ -5027,6 +5027,9 @@ summary.order-items-toggle { cursor: pointer; }
 .deliv-badge { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
 .deliv-badge.deliv-yes { background: var(--warn-soft, #FEF3C7); color: var(--warn, #B45309); }
 .deliv-badge.deliv-no { background: var(--panel-2, #EEF2F7); color: var(--muted, #64748B); }
+.ord-btn-s { padding: var(--space-1) var(--space-3); font-size: var(--fs-sm); }
+.deliv-badge.cred-badge { background: var(--info-soft); color: var(--info); }
+.deliv-badge.cred-badge.cred-late { background: var(--danger-soft); color: var(--danger); }
 /* Эрхгүй шатны товч — идэвхгүй, саарал (Алтансүх: "бусдад товч идэвхгүй") */
 .btn.btn-disabled { opacity: .45; cursor: not-allowed; filter: grayscale(1); }
 /* Дамжлагын ажилтны бүртгэл — картын доод хэсэгт */
@@ -8017,6 +8020,77 @@ select.no-asar-len {
 .plan-empty { font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }
 .plan-more { font-size: var(--fs-sm); display: flex; flex-direction: column; gap: var(--space-2); }
 .plan-more > summary { cursor: pointer; color: var(--muted); padding: var(--space-2) 0; }
+/* ── Төлөвлөгөөний самбар: шийдвэр → хэрэгжиж буй → үр дүн (2026-10-09) ── */
+/* Долоо хоногийн онооны самбар (2026-10-09) — 8 тоо, дарж холбогдох дэлгэц */
+.wsc-sub { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+.wsc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--space-8) * 2.8), 1fr)); gap: var(--space-2); }
+.wsc-row { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--space-2) var(--space-3);
+  background: var(--panel); color: var(--text); font: inherit; }
+.wsc-row:hover { background: var(--panel-hover); }
+.wsc-row.wsc-bad { border-color: var(--danger); background: var(--danger-soft); }
+.wsc-row.wsc-good { border-color: var(--ok); background: var(--ok-soft); }
+.wsc-l { font-size: var(--fs-xs); color: var(--text-soft); }
+.wsc-now { font-size: var(--fs-xs); color: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 0 var(--space-1); }
+.wsc-v { font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+.wsc-ar { font-size: var(--fs-sm); margin-left: var(--space-1); color: var(--muted); }
+.wsc-bad .wsc-ar { color: var(--danger); }
+.wsc-good .wsc-ar { color: var(--ok); }
+.wsc-b { font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.plan-res { font-size: var(--fs-xs); color: var(--muted); }
+.plan-res > summary { cursor: pointer; color: var(--text-soft); padding: var(--space-1) 0; }
+.plan-res-t { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; color: var(--text-soft);
+  font-size: var(--fs-sm); padding-top: var(--space-1); }
+.plan-src { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-2); }
+.plan-src a { color: var(--primary); overflow-wrap: anywhere; }
+.pl-steps-h { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); margin-top: var(--space-1); }
+.pl-steps { display: flex; flex-direction: column; gap: var(--space-1); }
+.pl-step { display: flex; align-items: flex-start; gap: var(--space-2); flex-wrap: wrap;
+  border-top: 1px solid var(--border); padding: var(--space-2) 0 0; }
+.pl-ic { flex: none; width: var(--space-5); text-align: center; font-size: var(--fs-sm); color: var(--muted); }
+.pl-step.pl-done .pl-ic { color: var(--ok); }
+.pl-step.pl-late .pl-ic, .pl-late-t { color: var(--danger); }
+.pl-step.pl-done .pl-st-t, .pl-step.pl-no .pl-st-t, .pl-step.pl-gone .pl-st-t { color: var(--muted); text-decoration: line-through; }
+.pl-st-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.pl-st-t { font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
+.pl-st-m { font-size: var(--fs-xs); color: var(--muted); }
+.pl-st-acts { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; width: 100%; padding-left: calc(var(--space-5) + var(--space-2)); }
+.pl-prog-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.pl-prog { flex: 1; min-width: calc(var(--space-8) * 4); height: var(--space-2); appearance: none; -webkit-appearance: none;
+  border: 0; border-radius: var(--r-sm); background: var(--panel-hover); overflow: hidden; }
+.pl-prog::-webkit-progress-bar { background: var(--panel-hover); border-radius: var(--r-sm); }
+.pl-prog::-webkit-progress-value { background: var(--ok); border-radius: var(--r-sm); }
+.pl-prog::-moz-progress-bar { background: var(--ok); border-radius: var(--r-sm); }
+.pl-prog-t { font-size: var(--fs-xs); color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.pl-noprog { font-size: var(--fs-xs); color: var(--muted); }
+.pl-doing.pl-has-late { border-color: var(--danger); }
+.pl-meas { font-size: var(--fs-sm); color: var(--text-soft); background: var(--panel-hover);
+  border-radius: var(--r-sm); padding: var(--space-1) var(--space-2); }
+.pl-meas-none { color: var(--muted); background: none; padding: 0; font-size: var(--fs-xs); }
+.pl-app { font-size: var(--fs-sm); color: var(--text-soft); padding: var(--space-1) 0; }
+.pl-auto { border-color: var(--warn); color: var(--warn); }
+.pl-voice { border-color: var(--primary); color: var(--primary); }
+.pl-app.pl-app-done { color: var(--muted); }
+
+/* Тоймын «💡 Хэрэгжсэн санал» (2026-10-09) — батлагдсан саналын эзэн нэрээрээ */
+.ic-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
+  padding: var(--space-3) var(--space-4); margin-top: var(--space-3); }
+.ic-head { font-weight: 800; font-size: var(--fs-md); display: flex; flex-wrap: wrap;
+  align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2); }
+.ic-sum { font-weight: 600; font-size: var(--fs-sm); color: var(--muted); }
+.ic-row { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) 0;
+  border-top: 1px solid var(--border); }
+.ic-ico { flex: none; width: 22px; text-align: center; }
+.ic-main { flex: 1; min-width: 0; }
+.ic-who { font-weight: 700; font-size: var(--fs-sm); }
+.ic-title { font-size: var(--fs-sm); color: var(--text-soft); overflow-wrap: anywhere; }
+.ic-st { flex: none; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.ic-worked .ic-st { color: var(--ok); font-weight: 700; }
+.ic-done .ic-st { color: var(--text-soft); font-weight: 700; }
+.ic-empty { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; padding: var(--space-1) 0; }
+.ic-go { margin-top: var(--space-2); padding: 3px 10px; font-size: var(--fs-xs); }
+
 /* Төлөвлөгөөний мөрөнд «хэн санал болгосон» (бичвэр нь эвхэгдэнэ) */
 .plan-from { font-size: var(--fs-xs); color: var(--text-soft); }
 .plan-from > summary { cursor: pointer; }

@@ -6172,6 +6172,7 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .no-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: 6px; }
 .no-head h2 { margin: 0; font-size: var(--fs-lg); }
 .no-hint { font-size: var(--fs-xs); color: var(--muted); margin: -2px 0 4px; }
+.no-hint.no-name-bad { color: var(--danger); }
 /* 7 оронтой РД бичигдсэн үед «Төрөл» сонгогч түгжигдэх шалтгаан (untraasan товч юу
    буруугийн хэлдэггүй тул ил бичигдэнэ) */
 .no-ct-lock { color: var(--ok); font-weight: 600; }

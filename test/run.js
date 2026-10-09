@@ -3690,10 +3690,11 @@ function finish() {
   ok(withMv.indexOf('«Нөхөн төлбөрийн үнэлгээ» хүснэгтэд заасан') > -1,
      'үнэлгээ: заалт 7.3 хүснэгтийг иш татна');
 
-  // Үнэлгээ ТАВЬААГҮЙ — хүснэгт гарахгүй, гэрээ унахгүй
+  // Үнэлгээ ТАВЬААГҮЙ — хүснэгт ХЭВЭЭР гарна (2026-10-09, CEO: «гэрээнээс алга болсон»), мөр нь «—»
   setP([{ sku: 'M-001', id: 'M-001', name: 'Ширээ' }]);
   const noMv = F.meventContractHtml(base);
-  ok(noMv.indexOf('Нөхөн төлбөрийн үнэлгээ (заалт 7.3)') === -1, 'үнэлгээ: үнэлгээгүй бол хүснэгт гарахгүй');
+  ok(noMv.indexOf('Нөхөн төлбөрийн үнэлгээ (заалт 7.3)') > -1 && noMv.indexOf('Нийт үнэлгээ:') === -1,
+     'үнэлгээ: үнэлгээгүй ч хүснэгт гарна (нийт дүнгүй, «—» мөртэй)');
   ok(noMv.indexOf('зах зээлийн ханшаар тооцно') > -1, 'үнэлгээ: 7.3-д нөөц дүрэм бий');
 
   // Хэсэгчилсэн — нэг нь үнэлгээтэй, нөгөө нь үгүй → «—»
@@ -19620,4 +19621,43 @@ async function swFetchTests() {
   const rp = src.slice(src.indexOf('function renderPlan()'), src.indexOf('function attachPlanHandlers()'));
   ok(/① Таны шийдвэр хүлээж буй<span class="plan-n">\$\{decideN\}/.test(rp) && /canDo\(r\)\)\)\.length/.test(rp),
      'төлөвлөгөө: толгойн тоо = өөрөө шийдэж болох (цэсний тоотой ижил)');
+}
+
+// ═══ ХАРИЛЦАГЧИЙН ОВОГ НЭР + ГЭРЭЭНИЙ ҮНЭЛГЭЭ (2026-10-09, CEO) ═══════════════
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/Овог оруулна/.test(F.mnNameErr('', 'ovog')) && /Нэр оруулна/.test(F.mnNameErr(' ', 'ner')), 'нэр: хоосон бол заавал');
+  ok(/кирилл/.test(F.mnNameErr('Bat', 'ner')) && /кирилл/.test(F.mnNameErr('Бат1', 'ner')) && /кирилл/.test(F.mnNameErr('Odbayar Tsedev', 'ner')),
+     '⛔ нэр: латин, тоо хүлээн авахгүй');
+  eq([F.mnNameErr('Бат-Эрдэнэ', 'ner'), F.mnNameErr('Өлзий Орших', 'ner'), F.mnNameErr('Үүрцайх', 'ovog')].join('|'), '||', 'нэр: монгол үсэг, зураас, зай зөв');
+  eq(F.mnNameCase('бат-эрдэнэ'), 'Бат-Эрдэнэ', 'нэр: том үсгээр эхэлнэ (зураасны дараа ч)');
+  eq(F.mnNameCase('  БАТ  '), 'Бат', 'нэр: том үсгээр бичсэнийг засна');
+  eq(F.personShortName('алтангэрэл', 'бат'), 'А.Бат', 'гэрээ: «А.Бат» хэлбэр');
+  eq(F.personShortName('өлзийт', 'Нар'), 'Ө.Нар', 'гэрээ: Ө/Ү үсэг ч зөв');
+  eq(F.personShortName('', 'Бат'), 'Бат', 'гэрээ: овоггүй бол нэр л');
+  const sp = (c, ci) => { const r = F.splitPersonName(c, ci || {}); return r.ovog + '|' + r.ner; };
+  eq(sp('Ч.Амри'), 'Ч|Амри', 'засах: «Ч.Амри» → овог Ч, нэр Амри');
+  eq(sp('Ч.Амри', { ovog: 'Чулуун' }), 'Чулуун|Амри', 'засах: бүтэн овог алдагдахгүй');
+  eq(sp('Батаа Болд'), 'Батаа|Болд', 'засах: хоёр үгтэй кирилл → Овог Нэр');
+  eq(sp('Odbayar Tsedev'), '|Odbayar Tsedev', 'засах: латин нэрийг таамаглахгүй (хүн засна)');
+  eq(sp('Тэмүүлэн'), '|Тэмүүлэн', 'засах: ганц үг → нэр');
+  eq(F.orderPersonName({ customer: 'А.Бат', note: '⟦CI|{"ovog":"Алтангэрэл"}⟧' }), 'А.Бат', 'гэрээ: овогтой захиалга «А.Бат»');
+  eq(F.orderPersonName({ customer: 'Батаа Болд', note: '' }), 'Батаа Болд', 'гэрээ: овог бүртгээгүй хуучин нэрийг таамаглахгүй');
+  ok(F.custInfoOf(F.setCustInfo('', { ovog: 'Алтангэрэл' })).ovog === 'Алтангэрэл', 'хадгалалт: бүтэн овог ⟦CI⟧-д');
+  // Захиалгын цонх: хоёр талбар, хадгалахаас өмнө шалгана, бүтэн овгийг хадгална
+  const nw = src.slice(src.indexOf('function openNewOrder'), src.indexOf('$(\'#no-save\').onclick'));
+  ok(/id="no-ovog"/.test(nw) && /id="no-ner"/.test(nw) && !/id="no-customer"/.test(src), 'цонх: овог, нэр тусдаа талбар');
+  const sv = src.slice(src.indexOf('$(\'#no-save\').onclick'), src.indexOf('$(\'#no-save\').onclick') + 9000);
+  ok(sv.indexOf("mnNameErr($('#no-ovog')") > 0 && sv.indexOf("mnNameErr($('#no-ovog')") < sv.indexOf('validateOrderContact('), '⛔ хадгалахаас өмнө овог нэрийг шалгана');
+  ok(/const customer = _custNameNow\(\);/.test(sv) && /ovog: mnNameCase\(/.test(sv), 'хадгалалт: «А.Бат» + бүтэн овог');
+  // Гэрээ: үнэлгээний хүснэгт ҮРГЭЛЖ, хүний нэр гарын үсгийн мөрөнд
+  const o = { id: 'c1', number: 77, customer: 'А.Бат', phone: '99112233', note: '⟦CI|{"ctype":"person","ovog":"Алтангэрэл"}⟧',
+    starts_at: '2026-10-10', stops_at: '2026-10-11', items: [{ name: 'Үнэлгээгүй зүйл xyz', qty: 2, price: 1000 }], total_mnt: 2000 };
+  let h = '', err = '';
+  try { h = vm.runInContext('meventContractHtml(' + JSON.stringify(o) + ')', sandbox); } catch (e) { err = String(e && e.message || e); }
+  eq(err, '', 'гэрээ: алдаагүй зурагдана');
+  ok(h.includes('Нөхөн төлбөрийн үнэлгээ (заалт 7.3)') && h.includes('«—» тэмдэгтэй'), '⛔ гэрээ: үнэлгээгүй бараатай ч хүснэгт гарна');
+  ok(/class="tbwarn"/.test(h) && h.indexOf('class="tbwarn"') < h.indexOf('contenteditable'), 'гэрээ: дутуу үнэлгээг ажилтанд хэлнэ (хэвлэгдэхгүй)');
+  ok(/Овог нэр: А\.Бат/.test(h), 'гэрээ: хувь хүний гарын үсгийн мөрөнд «А.Бат»');
+  ok(/async function openMeventContract[\s\S]{0,700}await loadProductsCatalog\(\)/.test(src), '⛔ гэрээ: каталог ачаалагдаагүй бол эхлээд ачаална');
 }

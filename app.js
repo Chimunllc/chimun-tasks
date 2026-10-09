@@ -22184,7 +22184,7 @@ function meventContractHtml(o) {
   const _ciP = custInfoOf(o.note);
   const _isOrg = orderCustType(o) === 'org';
   const _orgName = String(_ciP.company || '').trim();
-  const _person = String(o.customer || '').trim();
+  const _person = orderPersonName(o);   // «А.Бат» — овог бүртгэгдсэн бол
   // Байгууллагын нэр хоосон ч РД нь 7 оронтой бол харилцагчийн нэрийг байгууллагад тооцно.
   const partyName = _isOrg ? (_orgName || _person) : _person;
   const cust = escapeHtml(partyName || '……………………………');
@@ -22226,10 +22226,17 @@ function meventContractHtml(o) {
     return { name: it.name || '', qty: qty(it) || 1, mv, line: mv * (qty(it) || 1) };
   });
   const mvTotal = mvRows.reduce((a, r) => a + r.line, 0);
-  const mvTable = mvTotal > 0 ? `<div class="mv-h">Нөхөн төлбөрийн үнэлгээ (заалт 7.3)</div>
+  const mvMissing = mvRows.filter(r => !(r.mv > 0)).length;
+  /* ⛔ ХҮСНЭГТ ҮРГЭЛЖ ГАРНА (2026-10-09, CEO: «үнэлгээ гэрээнээс алга болсон»). Өмнө нь
+     үнэлгээтэй бараа нэг ч байхгүй бол хүснэгт бүхэлдээ нуугддаг байсан — амьд датаар
+     сүүлийн 25 захиалгын 13-т ингэж алга болж байв (барааны 293-аас 42-т л үнэлгээ бий).
+     Заалт 7.3 хүснэгтийг иш татдаг тул хүснэгтгүй гэрээ заалтаа алдана. Үнэлгээгүй мөрөнд
+     «—» + 7.3-ын журам (тухайн үеийн зах зээлийн ханш); дутууг ажилтанд ил хэлнэ (хэвлэгдэхгүй). */
+  const mvTable = items.length ? `<div class="mv-h">Нөхөн төлбөрийн үнэлгээ (заалт 7.3)</div>
     <table class="svc"><tr><th class="ctr">№</th><th>Бараа</th><th class="ctr">Тоо</th><th class="rt">Нэгжийн үнэлгээ</th><th class="rt">Дүн</th></tr>
     ${mvRows.map((r, i) => `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="ctr">${r.qty}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.mv) : '—'}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.line) : '—'}</td></tr>`).join('')}
-    <tr><td colspan="4" class="rt sum">Нийт үнэлгээ:</td><td class="rt sum">${fmtMoney(mvTotal)}</td></tr></table>` : '';
+    ${mvTotal > 0 ? `<tr><td colspan="4" class="rt sum">Нийт үнэлгээ:</td><td class="rt sum">${fmtMoney(mvTotal)}</td></tr>` : ''}</table>
+    ${mvMissing ? '<p class="mv-note">«—» тэмдэгтэй бараанд заалт 7.3-ын дагуу тухайн үеийн зах зээлийн ханшаар тооцно.</p>' : ''}` : '';
 
   const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="ctr">НӨАТ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
     <table class="totb"><tbody>
@@ -22274,6 +22281,8 @@ function meventContractHtml(o) {
   .totb .tb-total td{font-weight:700;font-size:13.5px;border-top:2px solid #333}
   .vat-note{text-align:right;font-size:12px;color:#555;margin:4px 0 0}
   .mv-h{font-weight:700;font-size:12.5px;margin:16px 0 4px}
+  .mv-note{font-size:11.5px;color:#444}
+  .tbwarn{margin-top:6px;font-size:12px;color:#b45309}
   .sum{font-weight:700}
   .tbnote{font-size:12px}
   .intro{margin-top:8px}
@@ -22286,7 +22295,7 @@ function meventContractHtml(o) {
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head>
 <body>
-<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button> <span class="muted tbnote">…… талбаруудыг шууд бичиж засаж болно</span></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button> <span class="muted tbnote">…… талбаруудыг шууд бичиж засаж болно</span>${mvMissing ? `<div class="tbwarn">⚠ ${mvMissing} бараанд зах зээлийн үнэлгээ бөглөөгүй — «Бараа» дээр бөглөвөл гэрээнд дүн гарна (энэ мөр хэвлэгдэхгүй)</div>` : ''}</div>
 <div contenteditable="true">
   <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
   <table class="chead"><tr>
@@ -22369,7 +22378,7 @@ function meventContractHtml(o) {
   <p class="sigh">ГЭРЭЭ БАЙГУУЛСАН</p>
   <table class="sigt"><tr>
     <td><div class="sg-role">ТҮРЭЭСЛҮҮЛЭГЧ</div>Бараа, төхөөрөмжийн түрээс борлуулалт хариуцсан ажилтан:<br>Овог нэр: …………………………<br>Гарын үсэг: ________________ <span class="seal">( Тамга )</span></td>
-    <td class="r"><div class="sg-role">ХЭРЭГЛЭГЧ</div>${_isOrg ? '<b>' + cust + '</b><br>Албан тушаал: …………………………<br>' : ''}Овог нэр: ${_rep ? escapeHtml(_rep) : '…………………………'}<br>Гарын үсэг: ________________${_isOrg ? ' <span class="seal">( Тамга )</span>' : ''}</td>
+    <td class="r"><div class="sg-role">ХЭРЭГЛЭГЧ</div>${_isOrg ? '<b>' + cust + '</b><br>Албан тушаал: …………………………<br>' : ''}Овог нэр: ${_isOrg ? (_rep ? escapeHtml(_rep) : '…………………………') : (_person ? cust : '…………………………')}<br>Гарын үсэг: ________________${_isOrg ? ' <span class="seal">( Тамга )</span>' : ''}</td>
   </tr></table>
   <div class="foot">Хаяг: ${C.address}<br>Холбогдох утас: 7755-1010</div>
 
@@ -22388,11 +22397,17 @@ function ctWord(){
 </script>
 </body></html>`;
 }
-function openMeventContract(orderId) {
+async function openMeventContract(orderId) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(orderId));
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
-  const w = window.open('', '_blank');
+  const w = window.open('', '_blank');   // ⚠ дарсан мөчид нээнэ (await-ын дараа нээвэл pop-up хаагдана)
   if (!w) { showToast('Pop-up хаагдсан — зөвшөөрөөд дахин оролдоно уу', 'warn', 4000); return; }
+  // ⛔ Каталог ачаалагдаагүй бол үнэлгээ ЧИМЭЭГҮЙ «—» болно — эхлээд ачаална
+  if (!state.products || !state.products.length) {
+    w.document.write('<p>Гэрээ бэлдэж байна…</p>');
+    try { await loadProductsCatalog(); } catch (_) {}
+    w.document.open();
+  }
   w.document.write(meventContractHtml(o));
   w.document.close();
 }
@@ -30294,7 +30309,7 @@ async function reverseOrderPayment(oid, receiptId) {
 function setCustInfo(note, ci) {
   const base = String(note || '').replace(_CI_RE, '').trim();
   const clean = {};
-  ['company', 'reg', 'contact', 'maps'].forEach(k => { const v = ci && ci[k] ? String(ci[k]).replace(/[⟦⟧]/g, '').trim().slice(0, 400) : ''; if (v) clean[k] = v; });
+  ['company', 'reg', 'contact', 'maps', 'ovog'].forEach(k => { const v = ci && ci[k] ? String(ci[k]).replace(/[⟦⟧]/g, '').trim().slice(0, 400) : ''; if (v) clean[k] = v; });
   // Харилцагчийн төрөл — формын сонголт. Гэрээ ХЭНТЭЙ байгуулагдахыг энэ шийддэг тул
   // бусад талбар хоосон байсан ч (жишээ нь «хувь хүн») ЗААВАЛ хадгална.
   if (ci && (ci.ctype === 'org' || ci.ctype === 'person')) clean.ctype = ci.ctype;
@@ -30340,6 +30355,46 @@ function orderRentalDays(o) {
 // ── Шинэ захиалга үүсгэх / засах модал (түүхэн шиг — зурагтай picker, барьцаа+лог, хөнгөлөлт) ──
 // Захиалгын харилцагчийн мэдээлэл шалгах — үйлчлүүлэгчийн бааз бүрдүүлэхэд утас/имэйл заавал.
 // Алдаа байвал { field, msg } буцаана, зөв бол null.
+// ── ХАРИЛЦАГЧИЙН ОВОГ НЭР (2026-10-09, CEO) ──────────────────────────────────
+// Захиалгын цонхонд овог, нэр ТУСДАА, зөвхөн монгол (кирилл) үсгээр. Гэрээ ба
+// жагсаалтад «А.Бат» (овгийн эхний үсэг + нэр). Бүтэн овог ⟦CI⟧.ovog-д — засахад алдагдахгүй.
+// ⛔ Латин, тоо, тэмдэгт ХҮЛЭЭН АВАХГҮЙ — амьд датаар 90 хоногийн захиалгын ~20% нь
+//    латинаар («Odbayar Tsedev») эсвэл утгагүй бичвэртэй байж гэрээнд тэр чигээрээ гардаг байв.
+const MN_NAME_RE = /^[А-ЯЁӨҮа-яёөү]+(?:[- ][А-ЯЁӨҮа-яёөү]+)*$/;
+function mnNameCase(v) {
+  return String(v || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    .replace(/(^|[- ])([а-яёөү])/g, (m, p, c) => p + c.toUpperCase());
+}
+function mnNameErr(v, kind) {
+  const t = String(v || '').trim(), ov = kind === 'ovog';
+  if (!t) return ov ? 'Овог оруулна уу' : 'Нэр оруулна уу';
+  if (!MN_NAME_RE.test(t)) return (ov ? 'Овгийг' : 'Нэрийг') + ' зөвхөн монгол (кирилл) үсгээр бичнэ үү';
+  return '';
+}
+function personShortName(ovog, ner) {
+  const n = mnNameCase(ner), o = String(ovog || '').trim();
+  if (!n) return '';
+  return o ? `${o.charAt(0).toUpperCase()}.${n}` : n;
+}
+// Хадгалсан нэрийг цонхны хоёр талбар болгоно (ЦЭВЭР). «А.Бат» → А / Бат; ⟦CI⟧.ovog байвал бүтэн овог.
+// ⚠ Хоёр үгтэй кирилл нэрийг «Овог Нэр» гэж таамаглана — цонхонд ил, хүн засна.
+function splitPersonName(customer, ci) {
+  const c = String(customer || '').trim(), ov = String((ci && ci.ovog) || '').trim();
+  const m = c.match(/^([А-ЯЁӨҮа-яёөү])\.\s*(.+)$/);
+  if (m) return { ovog: ov && ov.charAt(0).toUpperCase() === m[1].toUpperCase() ? ov : m[1].toUpperCase(), ner: m[2].trim() };
+  if (ov) return { ovog: ov, ner: c };
+  const w = c.split(/\s+/).filter(Boolean);
+  if (w.length === 2 && w.every(x => MN_NAME_RE.test(x))) return { ovog: w[0], ner: w[1] };
+  return { ovog: '', ner: c };
+}
+// Гэрээнд харагдах хүний нэр: бүтэн овогтой бол «А.Бат», эс бөгөөс хадгалсан чигээр (таамаглахгүй).
+function orderPersonName(o) {
+  const c = String((o && o.customer) || '').trim();
+  const ci = custInfoOf(o && o.note);
+  if (!ci.ovog) return c;
+  const sp = splitPersonName(c, ci);
+  return MN_NAME_RE.test(sp.ner) ? personShortName(sp.ovog, sp.ner) : c;
+}
 function validateOrderContact({ customer, phone, email, noEmail }) {
   if (!String(customer || '').trim()) return { field: 'customer', msg: 'Харилцагчийн нэр оруулна уу' };
   const digits = String(phone || '').replace(/\D/g, '');
@@ -30369,6 +30424,7 @@ function openNewOrder(editOrder) {
   const _dlv0 = (isEdit ? parseDelivery(editOrder.note) : null) || { zone: 'pickup', km: 0, fee: 0 };   // хүргэлт (default очиж авах)
   const _setup0 = isEdit ? orderNeedsSetup(editOrder) : false;   // суурилуулалтын шат гарах уу
   const _ci0 = isEdit ? custInfoOf(editOrder.note) : {};   // байгууллага/РД/FB/Viber/газрын зураг
+  const _nm0 = isEdit ? splitPersonName(editOrder.customer, _ci0) : { ovog: '', ner: '' };   // овог · нэр (тусдаа)
   const _rcpts0 = isEdit ? parsePaidRef(editOrder.paid_ref) : [];   // бүртгэсэн банкны баримтууд
   // Байгууллага/РД хоосон бол авто санал: 1) НӨАТ баримт (нэр+РД), 2) банкны төлөгч (нэр, харилцагчаас ӨӨР бол)
   const _vr0 = (isEdit && typeof vatForOrder === 'function') ? ((vatForOrder(editOrder.number).recs || [])[0] || null) : null;
@@ -30416,7 +30472,8 @@ function openNewOrder(editOrder) {
     <div class="no-col no-col-a">
     ${_sec('Харилцагч')}
     <div class="no-fields">
-      <label class="no-lbl">Харилцагч <span class="no-req">*</span><input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
+      <label class="no-lbl">Овог <span class="no-req">*</span><input id="no-ovog" value="${escapeHtml(_nm0.ovog)}" placeholder="Овог (монголоор)" autocapitalize="words" lang="mn"></label>
+      <label class="no-lbl">Нэр <span class="no-req">*</span><input id="no-ner" value="${escapeHtml(_nm0.ner)}" placeholder="Нэр (монголоор)" autocapitalize="words" lang="mn"><span class="no-hint" id="no-name-show"></span></label>
       <label class="no-lbl">Утас <span class="no-req">*</span><input id="no-phone" type="tel" inputmode="numeric" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="8 оронтой дугаар"></label>
       <label class="no-lbl">Имэйл <span class="no-req">*</span><input id="no-email" type="email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"><label class="no-noemail"><input type="checkbox" id="no-email-none"${isEdit && !(editOrder.email || '') ? ' checked' : ''}> Имэйлгүй</label></label>
       <label class="no-lbl">Төрөл<select id="no-ctype"><option value="person"${_ctype0 === 'org' ? '' : ' selected'}>👤 Хувь хүн</option><option value="org"${_ctype0 === 'org' ? ' selected' : ''}>🏢 Байгууллага</option></select></label>
@@ -30700,12 +30757,22 @@ function openNewOrder(editOrder) {
      «байгууллага» болно — дүрэм оролтын цэгтээ ИЛ байх ёстой. Шалгуур нь ТЭР Л функц
      (формын талбарын утгаар) — хоёр газар өөрөөр бичвэл форм ба жагсаалт зөрнө.
      Унтраасан сонгогч юу буруугийн хэлдэггүй тул ЯМАР нотолгоо гэдгийг хажууд нь бичнэ. */
+  // Овог + нэр → «А.Бат» (гэрээ, жагсаалтад ингэж харагдана) — бичих зуур ил харуулна
+  function _custNameNow() { return personShortName(($('#no-ovog')?.value || ''), ($('#no-ner')?.value || '')); }
+  function _nameShow() {
+    const el = $('#no-name-show'); if (!el) return;
+    const bad = mnNameErr($('#no-ovog')?.value, 'ovog') && String($('#no-ovog')?.value || '').trim()
+      ? mnNameErr($('#no-ovog')?.value, 'ovog')
+      : (String($('#no-ner')?.value || '').trim() ? mnNameErr($('#no-ner')?.value, 'ner') : '');
+    el.textContent = bad ? '⚠ ' + bad : (_custNameNow() ? 'Гэрээнд: ' + _custNameNow() : '');
+    el.classList.toggle('no-name-bad', !!bad);
+  }
   {
     const _ctSync = () => {
       const _ct = $('#no-ctype'); if (!_ct) return;
-      const _rg = $('#no-reg'), _co = $('#no-company'), _cu = $('#no-customer');
+      const _rg = $('#no-reg'), _co = $('#no-company');
       const proof = _orgProofFrom({ reg: (_rg && _rg.value) || '', company: (_co && _co.value) || '' },
-        isEdit ? editOrder.number : null, (_cu && _cu.value) || '');
+        isEdit ? editOrder.number : null, _custNameNow());
       if (proof) _ct.value = 'org';
       _ct.disabled = !!proof;
       const org = _ct.value === 'org';
@@ -30724,8 +30791,8 @@ function openNewOrder(editOrder) {
     { const _ct = $('#no-ctype'); if (_ct) _ct.addEventListener('change', _ctSync); }
     { const _rg = $('#no-reg'); if (_rg) _rg.addEventListener('input', _ctSync); }
     { const _co = $('#no-company'); if (_co) _co.addEventListener('input', _ctSync); }
-    { const _cu = $('#no-customer'); if (_cu) _cu.addEventListener('input', _ctSync); }
-    _ctSync();
+    ['#no-ovog', '#no-ner'].forEach(sel => $(sel)?.addEventListener('input', () => { _ctSync(); _nameShow(); }));
+    _ctSync(); _nameShow();
   }
   $('#no-delivkm').addEventListener('input', recalc);
   $('#no-discval').addEventListener('input', recalc);
@@ -30750,7 +30817,7 @@ function openNewOrder(editOrder) {
     cb.checked = _loyaltyActive;
   }
   $('#no-loyalty')?.addEventListener('change', e => applyLoyalty(e.target.checked));
-  let _loyT; ['#no-email', '#no-phone', '#no-customer'].forEach(s => $(s)?.addEventListener('input', () => { clearTimeout(_loyT); _loyT = setTimeout(() => checkLoyalty(true), 400); }));
+  let _loyT; ['#no-email', '#no-phone', '#no-ner'].forEach(s => $(s)?.addEventListener('input', () => { clearTimeout(_loyT); _loyT = setTimeout(() => checkLoyalty(true), 400); }));
   checkLoyalty(true);
   if (isEdit && parseVat(editOrder.note) != null) $('#no-vat').checked = true;
   $('#no-vat').addEventListener('change', recalc);
@@ -30768,7 +30835,11 @@ function openNewOrder(editOrder) {
   $('#no-save').onclick = async (e) => {
     const btn = e.currentTarget;   // await-аас өмнө барьж авна (currentTarget нь async дараа null болно)
     if (!items.length) { showToast('Бараа сонгоно уу', 'warn'); return; }
-    const customer = $('#no-customer').value.trim();
+    // ⛔ Овог, нэр ЗААВАЛ, зөвхөн монголоор — гэрээнд «А.Бат» хэлбэрээр гарна.
+    const _nmErr = mnNameErr($('#no-ovog').value, 'ovog') ? ['ovog', mnNameErr($('#no-ovog').value, 'ovog')]
+      : (mnNameErr($('#no-ner').value, 'ner') ? ['ner', mnNameErr($('#no-ner').value, 'ner')] : null);
+    if (_nmErr) { showToast(_nmErr[1], 'warn'); $('#no-' + _nmErr[0])?.focus(); return; }
+    const customer = _custNameNow();
     // Харилцагчийн бааз бүрдүүлэх — нэр·утас заавал, имэйл заавал (эсвэл «Имэйлгүй» тэмдэглэнэ).
     const _bad = validateOrderContact({
       customer, phone: $('#no-phone').value, email: $('#no-email').value, noEmail: !!$('#no-email-none')?.checked,
@@ -30835,6 +30906,7 @@ function openNewOrder(editOrder) {
       company: ($('#no-company')?.value || '').trim(), reg: ($('#no-reg')?.value || '').trim(),
       contact: ($('#no-contact')?.value || '').trim(),
       maps: isDeliv ? ($('#no-maps')?.value || '').trim() : '',
+      ovog: mnNameCase($('#no-ovog')?.value || ''),   // бүтэн овог — «А.Бат»-аас сэргэхгүй тул тусад нь
     };
     // Шатны түүх (зураг/үнэлгээ/хэн-хэзээ) — засах бүрд ЗААВАЛ дамжуулна. saveAppOrder нь
     // бүтэн мөрөөр upsert хийж, локал объектыг орлуулдаг тул орхивол түүх дэлгэцээс алга болно.

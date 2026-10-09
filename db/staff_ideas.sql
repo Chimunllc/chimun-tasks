@@ -32,6 +32,11 @@ create table if not exists staff_ideas (
   constraint staff_ideas_status_chk check (status in ('new', 'plan', 'merge', 'exists', 'drop')),
   constraint staff_ideas_body_chk   check (char_length(btrim(body)) between 3 and 2000)
 );
+-- Хүний тухай гомдол, цалин, ажилд авалт — бичвэрийг ЗӨВХӨН захирал харна (2026-10-09).
+-- Салбарын захирал төлөвлөгөө хардаг болсон тул бусад саналыг уншина, энийг БИШ.
+-- `idea_triage.py` (Claude) тавина.
+alter table staff_ideas add column if not exists private boolean not null default false;
+
 create index if not exists staff_ideas_new_idx    on staff_ideas (created_at) where status = 'new';
 create index if not exists staff_ideas_author_idx on staff_ideas (author, created_at desc);
 
@@ -54,22 +59,25 @@ commit;
 -- ── Эрх ─────────────────────────────────────────────────────────────────
 -- Толь: аппын `canSeePlan()` = canAccessView('plan', () => isCEO)
 --   = `sec.cap('plan')` (CEO-д үргэлж true), тохируулаагүй бол хориг.
+-- ⛔ Үйл ажиллагааны захирал (`plan` харах эрхтэй, 2026-10-09) хувийн саналыг
+--    (`private`) УНШИХГҮЙ — гомдол нь түүний тухай ч байж болно.
 alter table staff_ideas enable row level security;
 
 drop policy if exists staff_ideas_sel on staff_ideas;
 create policy staff_ideas_sel on staff_ideas for select to authenticated
-  using (author = sec.phone() or coalesce(sec.cap('plan'), false));
+  using (author = sec.phone() or (coalesce(sec.cap('plan'), false) and (not private or sec.is_ceo())));
 
 -- Хэн ч өөрийн нэрээр, зөвхөн «шинэ» санал нэмнэ — дүгнэлтийг өөрөө бичиж чадахгүй.
 drop policy if exists staff_ideas_ins on staff_ideas;
 create policy staff_ideas_ins on staff_ideas for insert to authenticated
-  with check (author = sec.phone() and status = 'new'
+  with check (author = sec.phone() and status = 'new' and not private
               and verdict is null and plan_id is null and triaged_at is null);
 
--- Дүгнэлтийг засах (Claude буруу хассаныг төлөвлөгөөнд оруулах) = төлөвлөгөө хардаг хүн.
+-- Дүгнэлтийг засах (Claude буруу хассаныг төлөвлөгөөнд оруулах) = ЗӨВХӨН захирал
+-- (аппын `staffIdeaPromote` ч зөвхөн CEO). Салбарын захирал төлөвлөгөө хардаг ч засахгүй.
 drop policy if exists staff_ideas_upd on staff_ideas;
 create policy staff_ideas_upd on staff_ideas for update to authenticated
-  using (coalesce(sec.cap('plan'), false)) with check (coalesce(sec.cap('plan'), false));
+  using (sec.is_ceo()) with check (sec.is_ceo());
 
 grant select, insert, update on staff_ideas to authenticated;
 grant usage, select on sequence staff_ideas_id_seq to authenticated;

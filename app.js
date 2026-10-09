@@ -10293,8 +10293,13 @@ function orderCanonStatus(ao) {
   if (BQ_LEGACY_MAP[raw]) raw = BQ_LEGACY_MAP[raw];
   // ⚠ Дараа төлбөрийн ЗӨВШӨӨРӨЛТЭЙ (⟦CRED⟧) захиалга төлбөргүй ч БАТАЛГААЖСАН
   //   хэвээр — эс бөгөөс ажилчид гаргаж чадахгүй, дамжлага эхлэхгүй.
-  const unpaid = (Number(ao && ao.paid_mnt) || 0) <= 0 && !(typeof parseOrderCredit === 'function' && parseOrderCredit(ao && ao.note));
+  const _credOk = typeof parseOrderCredit === 'function' && !!parseOrderCredit(ao && ao.note);
+  const unpaid = (Number(ao && ao.paid_mnt) || 0) <= 0 && !_credOk;
   if (raw === 'reserved' && unpaid) raw = 'draft';
+  // ⚠ Зөвшөөрөл өгөхөд DB-ийн статус 'draft' хэвээр үлдсэн ХУУЧИН мөр ч
+  //   «Захиалсан» руу шилжинэ — эс бөгөөс зөвшөөрсөн атал карт «Ноорог»
+  //   бүлэгт гацаж, ажилчид олохгүй (амьд дээр 1609-р захиалга дээр гарсан).
+  if (raw === 'draft' && _credOk) raw = 'reserved';
   if (raw === 'draft' && unpaid) {
     const end = String((ao && (ao.stops_at || ao.starts_at)) || '').slice(0, 10);
     const t = new Date(); const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
@@ -29412,7 +29417,11 @@ async function openOrderCreditModal(id) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) { if (due) showToast('Огноог YYYY-MM-DD хэлбэрээр', 'warn', 3000); return; }
   if (cur && due === cur.due) return;
   const note = (String(o.note || '').replace(_CRED_RE, '').trim() + ' ' + encodeOrderCredit(due, (cur && cur.by) || state.me || '')).trim();
-  try { await patchOrderFields(o, { note }); o.note = note; }
+  // ⛔ СТАТУСЫГ Ч БИЧНЭ — зөвхөн харагдацыг засвал бусад төхөөрөмж, дамжлага,
+  //   нөөцийн тооцоо DB-ийн 'draft'-ыг уншсаар үлдэнэ.
+  const fields = { note };
+  if (!cur && String(o.status || '') === 'draft') fields.status = 'reserved';
+  try { await patchOrderFields(o, fields); o.note = note; if (fields.status) o.status = fields.status; }
   catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
   await appendOrderNoteTo(o, cur
     ? `💳 Дараа төлбөрийн хугацаа сунгав: ${cur.due} → ${due}`

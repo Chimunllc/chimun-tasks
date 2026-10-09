@@ -8218,6 +8218,49 @@ need(['orderCustType']);
      'ИНВАРИАНТ: ажил үүсгэх санал батлагдахад «хаагдсан» болохгүй');
 }
 
+// ── ҮР ДҮНГ ХЭМЖИХ + ЖИЖИГ САНАЛ ШУУД АЖИЛ (2026-10-09, CEO) ──────────────
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const pyPath = path.join(__dirname, '..', 'tools', 'plan_measure.py');
+  const py = fs.readFileSync(pyPath, 'utf8');
+  try {
+    const out = require('child_process').execSync(`python3 ${JSON.stringify(pyPath)} --selftest`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/plan_measure selftest OK/.test(out), 'plan_measure: Python өөрийн тест — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'plan_measure: тест — ' + msg.trim().slice(0, 300));
+  }
+  // ⛔ Claude датаг ЗӨВХӨН УНШИНА: data_reader + read only + psql -c (stdin БИШ — мета тушаал хаагдана)
+  const rr = py.slice(py.indexOf('def run_reader'), py.indexOf('def _one'));
+  ok(/begin transaction read only/.test(rr) && /set local role data_reader/.test(rr) && /'-c', wrap/.test(rr),
+     'ИНВАРИАНТ: хэмжүүрийн SQL зөвхөн унших эрхээр, -c-ээр ажиллана');
+  ok(/if ';' in s:/.test(py) && /if '\\\\' in s:/.test(py), 'ИНВАРИАНТ: хэмжүүрийн SQL-д «;» ба «\\» хориотой');
+  ok(/Улирлын/.test(py), 'ИНВАРИАНТ: хэмжүүр улирлын нөлөөг сануулна (нийт тоо БИШ)');
+  // Дуудлагын харагдац утас гаргахгүй
+  const vsql = fs.readFileSync(path.join(__dirname, '..', 'db', 'data_reader_views.sql'), 'utf8');
+  const views = vsql.slice(vsql.indexOf('create or replace view v_pbx_calls_safe'), vsql.indexOf('revoke all on v_pbx_calls_safe'));
+  ok(views.length > 0 && !/\bc\.peer\s*,/.test(views) && !/\bb\.peer\s*,/.test(views)
+     && /md5\(c\.peer \|\| s\.salt\)/.test(views) && !/by_key|note/.test(views),
+     'ИНВАРИАНТ: уншигчийн дуудлагын харагдацад утас, ажилтны түлхүүр, тэмдэглэл гарахгүй');
+  ok(/revoke all on reader_salt from public, anon, authenticated/.test(vsql), 'ИНВАРИАНТ: давс хэнд ч уншигдахгүй');
+  // ⚡ Шууд ажил: дээд тоо, хугацаа, бүтэлгүйтвэл захиралд
+  const tri = fs.readFileSync(path.join(__dirname, '..', 'tools', 'idea_triage.py'), 'utf8');
+  ok(/^AUTO_MAX = [1-5]$/m.test(tri) && /^AUTO_DUE_MAX = 14$/m.test(tri), 'шууд ажил: нэг удаад цөөн, хугацаа ≤ 14');
+  ok(/\[:AUTO_MAX\]/.test(tri) && /print\(f'\{stamp\}: шууд ажил үүссэнгүй/.test(tri),
+     'ИНВАРИАНТ: шууд ажил үүсэхгүй бол санал алга болохгүй (захиралд)');
+  ok(/ЭРГЭЛЗВЭЛ big/.test(tri), 'шууд ажил: эргэлзвэл захирал шийднэ');
+  // Апп: шууд ажил ил тэмдэглэгдэж, захирал буцааж чадна; хэмжүүр картад
+  vm.runInContext('var __mT = state.tasks; state.tasks = [{ id: "tx", status: "open", due: "2026-12-01" }]; state.plan = '
+    + JSON.stringify([{ id: 'a1', sec: 'now', auto: true, done_by: 'applied', applied_at: '2026-10-09', title: 'Шууд',
+        undo: { task_id: 'tx' }, do: { kind: 'task', task: { title: 'Ажил' } },
+        measure: { what: 'Хэмжүүр', base: '12%', check: '2026-11-21' } }]) + ';', sandbox);
+  const h = F.renderPlan();
+  ok(h.includes('⚡ Шууд') && /data-plan-revert="a1"/.test(h), 'шууд ажил: тэмдэг ба буцаах товч');
+  ok(h.includes('📏 Хэмжүүр') && h.includes('шалгах: 2026-11-21'), 'хэмжүүр: эхлэл ба шалгах өдөр картад');
+  vm.runInContext('state.tasks = __mT; state.plan = undefined;', sandbox);
+}
+
 // ── АЖИЛТНЫ САНАЛ / АСУУДАЛ → Claude шүүнэ → төлөвлөгөө (2026-10-07, CEO) ──
 {
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');

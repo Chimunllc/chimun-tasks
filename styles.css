@@ -7767,6 +7767,7 @@ select.no-asar-len {
   border-radius: var(--r-sm); padding: var(--space-1) var(--space-2); }
 .pl-meas-none { color: var(--muted); background: none; padding: 0; font-size: var(--fs-xs); }
 .pl-app { font-size: var(--fs-sm); color: var(--text-soft); padding: var(--space-1) 0; }
+.pl-auto { border-color: var(--warn); color: var(--warn); }
 .pl-app.pl-app-done { color: var(--muted); }
 
 /* Төлөвлөгөөний мөрөнд «хэн санал болгосон» (бичвэр нь эвхэгдэнэ) */

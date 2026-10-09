@@ -25252,6 +25252,7 @@ function renderPlan() {
   const head = (x, doing) => `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
     + (x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : '')
     + (x.cat ? `<span class="plan-own">${escapeHtml(planCatLabel(x.cat))}</span>` : '')
+    + (x.auto ? `<span class="plan-own pl-auto" title="Жижиг санал — захиралгүйгээр шууд ажил болсон">⚡ Шууд</span>` : '')
     + ageHtml(x, doing) + `</div>`;
   // «Батлахад: …» гэсэн тайлбар зөвхөн шийдвэрийн өмнө утгатай — батлагдсаны дараа алхам нь өөрөө харагдана.
   const body = (x) => planFromHtml(x)
@@ -25314,6 +25315,8 @@ function renderPlan() {
     return `<div class="plan-item pl-doing${c.prog.late ? ' pl-has-late' : ''}">` + head(x, true) + body(x) + prog(c)
       + steps(rows) + measure(x, false) + research(x)
       + (c.prog.total ? '' : `<div class="plan-acts">${btn('plan-done', x.id, '✓ Дууслаа')}${btn('plan-down', x.id, '↓ Хойшлуулах')}</div>`)
+      // ⚡ Шууд ажил болсон жижиг саналыг захирал БУЦААЖ болно (ажил устаж, санал шийдвэр рүү буцна)
+      + (x.auto && x.undo && x.undo.task_id ? `<div class="plan-acts">${btn('plan-revert', x.id, '↩ Буцаах')}</div>` : '')
       + `</div>`;
   };
   const nextCard = (c) => `<div class="plan-item">` + head(c.row) + body(c.row) + research(c.row)

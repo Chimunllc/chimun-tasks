@@ -18916,3 +18916,76 @@ async function swFetchTests() {
   ok(/\.att-mo-flag \{/.test(cssT) && /\.att-mo-st\.over/.test(cssT) && /\.att-mlabel \{/.test(cssT), 'CSS: сануулга · төлөв · сарын шошго');
   Object.assign(st, { attMonthKey: keep.k, attMonthRecs: keep.r, attMonthErr: keep.e, appOrders: keep.ao, salaries: keep.sal, salaryPayments: keep.sp, _salLoaded: keep.sl, isCEO: keep.ceo, attMonthMode: keep.mode, attViewDay: keep.day });
 }
+
+// ═══ БАРААНЫ ДЭЛГЭЦ УТСАНД: ТУУЗ → НЭГ НУГАЛАА, ХЭРЭГСЭЛ, `--line` ТОКЕН (2026-10-09) ═════
+// 7 нэг удаагийн цэгцлэх тууз (ангилал · асар · англи нэр · хувилбар · архив …) давхарлан эхний бараа утсанд
+// ~1000px доор байв; тууз бүр 5 inline style + хатуу rgba. Мөн `var(--line)` 40 дүрэмд ТОДОРХОЙЛОГДООГҮЙ байсан тул
+// тэдгээрийн border бүгд чимээгүй хүчингүй болж, хайрцаг/хуваагч шугам огт харагдахгүй байв.
+{
+  const srcP = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssP = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  // Цэвэр туслахууд
+  eq(F.prodBar('warn', 'текст', '<button>x</button>'), '<div class="prod-bar t-warn"><span class="prod-bar-t">текст</span><button>x</button></div>', 'тууз: ганц бүтэц, өнгө нь tone-оор');
+  eq(F.prodChoresHtml([], false), '', 'цэгцлэх нугалаа: ажил байхгүй бол ЮУ Ч гарахгүй');
+  eq(F.prodChoresHtml([{ hint: 'x', html: '' }, null], false), '', 'цэгцлэх нугалаа: хоосон тууз тоологдохгүй');
+  const ch = F.prodChoresHtml([{ hint: 'ангилал', html: '<b>1</b>' }, { hint: 'асар', html: '<b>2</b>' }], false);
+  ok(/<details class="prod-chores" id="prod-chores">/.test(ch) && /prod-chores-n">2</.test(ch) && /ангилал · асар/.test(ch), 'цэгцлэх нугалаа: хаалттай, тоо + юу байгааг нэрлэнэ');
+  ok(/prod-chores-in"><b>1<\/b><b>2<\/b>/.test(ch), 'цэгцлэх нугалаа: тууз нугалаа дотор');
+  ok(/<details class="prod-chores" id="prod-chores" open>/.test(F.prodChoresHtml([{ hint: 'x', html: 'y' }], true)), 'цэгцлэх нугалаа: нээсэн төлөв render-д хадгалагдана');
+
+  // Бодит дэлгэц: удирдлага, бүх тууз асаалттай
+  const st = vm.runInContext('state', sandbox);
+  const keep = { p: st.products, cc: st.productCosts, rp: st.repairs, ar: st.archivedProducts, ia: st.itemAliases, ao: st.appOrders, ceo: st.isCEO, me: st.me, cg: st.catGroups, ag: st.appCatGroups, ne: st._prodHasNameEn, pc: st.prodChoresOpen, pt: st.prodToolsOpen, lv: st.branchLens, sm: st.prodMissing };
+  st.isCEO = true; vm.runInContext("state.me = '99112233'", sandbox);
+  st.products = [
+    { id: 'M-1', sku: 'M-1', code: 'M-1', name: 'Сандал', category: 'Сандал', price: 5000, stock: 10, qty_mevent: 10, name_en: '', variant_group: 'g1' },
+    { id: 'M-2', sku: 'M-2', code: 'M-2', name: 'Ширээ', category: 'Ширээ', price: 9000, stock: 4, qty_mevent: 4, name_en: 'Table' },
+  ];
+  st.productCosts = { 'M-1': 20000 }; st.appOrders = []; st.itemAliases = {}; st.archivedProducts = [{ sku: 'A-1', name: 'Хуучин', stock: 1 }];
+  st.repairs = [{ id: 'r1', sku: 'M-1', product_name: 'Сандал', qty: 1, status: 'pending' }];
+  st.catGroups = [{ title: 'Тавилга', cats: ['Сандал'] }]; st.appCatGroups = st.catGroups; st._prodHasNameEn = true; st.prodChoresOpen = false; st.prodToolsOpen = false; st.prodMissing = 'all';
+  const page = F.renderProducts();
+  const chores = page.slice(page.indexOf('<details class="prod-chores"'), page.indexOf('</details>', page.indexOf('<details class="prod-chores"')) + 10);
+  ok(/class="prod-chores"/.test(page), 'бараа: цэгцлэх ажлууд НЭГ нугалаанд');
+  ok(/id="prod-fill-nameen"/.test(chores) && /id="prod-clear-variants"/.test(chores) && /id="prod-fix-cats"/.test(chores), 'бараа: англи нэр · хувилбар · ангилалын тууз нугалаа дотор (handler-ийн id үлдэнэ)');
+  ok(!/class="repair-bar"/.test(chores) && /class="repair-bar"/.test(page), 'бараа: ЗАСВАРТАЙ бараа нугалаанд ОРОХГҮЙ — үргэлжийн дохио, ил байна');
+  ok(page.indexOf('class="prod-chores"') < page.indexOf('class="prod-list"') && page.indexOf('class="repair-bar"') < page.indexOf('class="prod-list"'), 'бараа: тууз бүгд жагсаалтаас ӨМНӨ');
+  ok(!/rgba\(/.test(page) && !/margin:8px 0 2px/.test(page), 'дизайн: бараа дэлгэц хатуу rgba / inline тууз загваргүй');
+  // Хэрэгслүүд: нугалаанд, гэхдээ id-ууд DOM-д
+  const tb = page.slice(page.indexOf('<div class="prod-toolbar">'), page.indexOf('</div>', page.indexOf('<div class="prod-toolbar">')));
+  ok(/id="prod-search"/.test(tb) && /id="prod-scan"/.test(tb) && /id="prod-new"/.test(tb), 'бараа: эхний мөр = хайх · скан · шинэ');
+  ok(!/id="prod-xls"/.test(tb) && !/id="prod-wo-mode"/.test(tb) && !/id="prod-new-pkg"/.test(tb), 'бараа: Excel · Багц · Актлах эхний мөрөнд БАЙХГҮЙ');
+  const tools = page.slice(page.indexOf('<details class="prod-tools"'), page.indexOf('</details>', page.indexOf('<details class="prod-tools"')));
+  ok(/id="prod-xls"/.test(tools) && /id="prod-new-pkg"/.test(tools) && /id="prod-wo-mode"/.test(tools), 'бараа: Excel · Багц · Актлах нугалаанд (id-тай — handler холбогдоно)');
+  ok(/class="prod-scan-l"/.test(tb) && /aria-label="QR скан"/.test(tb), 'бараа: скан товч утсанд зөвхөн 📷 (шошго ангитай, aria-label бий)');
+  // Нээсэн төлөв render-д хадгалагдана
+  st.prodChoresOpen = true; st.prodToolsOpen = true;
+  const pageO = F.renderProducts();
+  ok(/<details class="prod-chores" id="prod-chores" open>/.test(pageO) && /<details class="prod-tools" id="prod-tools" open>/.test(pageO), 'бараа: нугалааны нээсэн төлөв хадгалагдана');
+  // Цэвэр дэлгэц: ажил алга бол нугалаа ч гарахгүй
+  st.archivedProducts = []; st.repairs = []; st.products = [{ id: 'M-2', sku: 'M-2', code: 'M-2', name: 'Ширээ', category: 'Сандал', price: 9000, stock: 4, qty_mevent: 4, name_en: 'Table' }];
+  vm.runInContext("state.asarDone = true", sandbox);
+  const clean = F.renderProducts();
+  ok(!/class="repair-bar"/.test(clean), 'бараа: засвар байхгүй бол засварын тууз гарахгүй');
+  Object.assign(st, { products: keep.p, productCosts: keep.cc, repairs: keep.rp, archivedProducts: keep.ar, itemAliases: keep.ia, appOrders: keep.ao, isCEO: keep.ceo, catGroups: keep.cg, appCatGroups: keep.ag, _prodHasNameEn: keep.ne, prodChoresOpen: keep.pc, prodToolsOpen: keep.pt, prodMissing: keep.sm });
+  vm.runInContext(`state.me = ${JSON.stringify(keep.me === undefined ? '' : keep.me)}`, sandbox);
+
+  // Handler: нугалааны төлөв хадгална
+  ok(/getElementById\('prod-chores'\)\?\.addEventListener\('toggle', \(e\) => \{ state\.prodChoresOpen = e\.target\.open; \}\)/.test(srcP), 'handler: цэгцлэх нугалааны төлөв state.prodChoresOpen-д');
+  ok(/getElementById\('prod-tools'\)\?\.addEventListener\('toggle', \(e\) => \{ state\.prodToolsOpen = e\.target\.open; \}\)/.test(srcP), 'handler: хэрэгслийн нугалааны төлөв state.prodToolsOpen-д');
+  // CSS
+  ok(/\.prod-chores-sum \{[^}]*min-height: var\(--tap\)/.test(cssP), 'CSS: цэгцлэх нугалаа хурууны хэмжээтэй');
+  ok(/\.prod-bar\.t-warn \{ background: var\(--warn-soft\)/.test(cssP) && /\.prod-bar\.t-danger \.prod-bar-b/.test(cssP), 'CSS: тууз токен өнгөтэй (хатуу rgba биш)');
+  ok(/@media \(max-width: 720px\) \{ \.prod-scan-l \{ display: none; \} \}/.test(cssP), 'CSS: скан шошго зөвхөн ≤720px-д нуугдана (шинэ breakpoint нэмэхгүй)');
+
+  // ⭐ ТОКЕН ЗАЛГУУР: `var(--x)` (нөөцгүй) бүр styles.css-д ТОДОРХОЙЛОГДСОН байх ёстой. `--line` 40 газар тодорхойлогдоогүй байсан
+  // тул border бүхэлдээ хүчингүй болж, юу ч алдаа шиддэггүй. Динамик (inline-аар тавигддаг) болон мэдэгдсэн үлдэгдлийг зөвшөөрнө.
+  const defs = new Set((cssP.match(/--[a-zA-Z0-9_-]+(?=\s*:)/g) || []));
+  const undefd = {};
+  for (const m of cssP.matchAll(/var\(\s*(--[a-zA-Z0-9_-]+)\s*([,)])/g)) { if (m[2] === ')' && !defs.has(m[1])) undefd[m[1]] = (undefd[m[1]] || 0) + 1; }
+  const KNOWN = ['--d', '--seg', '--card', '--brand'];   // --d/--seg: JS inline-аар; --card/--brand: мэдэгдсэн, засагдаагүй (нөөцгүй газрууд)
+  const bad = Object.keys(undefd).filter(k => !KNOWN.includes(k));
+  eq(JSON.stringify(bad), '[]', 'токен: нөөцгүй var(--x) бүр тодорхойлогдсон (шинэ тодорхойгүй токен нэмэхгүй) — тодорхойгүй: ' + bad.join(','));
+  ok(defs.has('--line'), 'токен: --line тодорхойлогдсон (border-ууд харагдана)');
+  ok(/--line: var\(--border\);/.test(cssP), 'токен: --line = --border (харанхуй горимд хамт солигдоно)');
+}

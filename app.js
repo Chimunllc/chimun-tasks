@@ -25766,6 +25766,17 @@ function openWriteoffModal(preSku) {
   };
   modal.classList.add('open');
 }
+/* Барааны дэлгэцийн тууз = НЭГ бүтэн (`.prod-bar`), өнгө нь tone-оор (2026-10-09). Өмнө нь тууз бүр 5 inline style +
+   хатуу rgba өнгөтэй, 7 тууз давхарлавал эхний бараа утсанд ~1000px доор байв. */
+function prodBar(tone, text, btn) { return `<div class="prod-bar t-${tone}"><span class="prod-bar-t">${text}</span>${btn}</div>`; }
+/* ГАНЦААРЧИЛСАН цэгцлэх ажлууд (ангилал · асар · англи нэр · хувилбар · архив) нэг нугалаанд. Эдгээр нь ХАМГИЙН ИХДЭЭ нэг удаагийн
+   шилжилт — «дараа нь өөрөө алга болно» — тул өдөр бүр бараа хайдаг хүний дэлгэцийг эзлэх ёсгүй. Тоо + юу байгааг нэрлэнэ
+   (нуувал хэн ч нээхгүй). Засвартай бараа, нэр тулгалт нь ҮРГЭЛЖИЙН дохио тул нугалаанд ОРОХГҮЙ. */
+function prodChoresHtml(items, open) {
+  const list = (items || []).filter(x => x && x.html);
+  if (!list.length) return '';
+  return `<details class="prod-chores" id="prod-chores"${open ? ' open' : ''}><summary class="prod-chores-sum">🧹 Цэгцлэх ажил <span class="prod-chores-n">${list.length}</span><span class="prod-chores-h">${escapeHtml(list.map(x => x.hint).join(' · '))}</span></summary><div class="prod-chores-in">${list.map(x => x.html).join('')}</div></details>`;
+}
 function renderProducts() {
   const all = state.products || [];
   // Сайтын ангиллын бүлгүүдийг нэг удаа lazy татна (dropdown-ыг сайтын бүлгээр харуулах)
@@ -25821,19 +25832,13 @@ function renderProducts() {
   // Хувилбар цэвэрлэх тууз — хуучин дата дээр л гарна, цуцалмагц өөрөө алга болно
   const _vgLeft = all.filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim()).length;
   const variantClearBar = (_prodMgmt && _vgLeft > 0)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🎨 ${_vgLeft} бараа хувилбар бүлэгт байна — сайтад нэг картад нэгтгэгдэж каталог цөөн харагдана.</span>
-        <button class="btn btn-primary" id="prod-clear-variants" style="white-space:nowrap;">Хувилбар цуцлах (${_vgLeft})</button>
-      </div>`
+    ? prodBar('primary', `🎨 ${_vgLeft} бараа хувилбар бүлэгт байна — сайтад нэг картад нэгтгэгдэж каталог цөөн харагдана.`, `<button class="btn btn-primary prod-bar-b" id="prod-clear-variants">Хувилбар цуцлах (${_vgLeft})</button>`)
     : '';
   // Англи нэр — үнийн саналын EN хувилбарт хэрэглэнэ. Хоосон нь толиор автоматаар
   // бөглөгдөж болно (дараа нь гараар засаж болно). Багана байхгүй бол тууз гарахгүй.
   const _noEnN = state._prodHasNameEn === false ? 0 : all.filter(p => !String(p.name_en || '').trim()).length;
   const nameEnBar = (_prodMgmt && _noEnN > 0)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🇬🇧 ${_noEnN} барааны англи нэр хоосон — англи үнийн саналд автомат орчуулга гарна.</span>
-        <button class="btn btn-primary" id="prod-fill-nameen" style="white-space:nowrap;">Англи нэр бөглөх (${_noEnN})</button>
-      </div>`
+    ? prodBar('info', `🇬🇧 ${_noEnN} барааны англи нэр хоосон — англи үнийн саналд автомат орчуулга гарна.`, `<button class="btn btn-primary prod-bar-b" id="prod-fill-nameen">Англи нэр бөглөх (${_noEnN})</button>`)
     : '';
   // Асрын каталог модуль болоогүй бол нэг товчоор цэгцэлнэ (дараа нь өөрөө алга болно)
   // Бүлэгт ороогүй ангилал — сайтын цэсэнд бүлгүүдийн доор тусдаа өлгөөтэй харагдана.
@@ -25841,31 +25846,19 @@ function renderProducts() {
   // хуучин үлдэгдлийг ил хэлж, нэг товчоор засах зам өгнө.
   const _orphanCats = _prodMgmt ? catOrphans(all, (Array.isArray(state.catGroups) && state.catGroups.length) ? state.catGroups : state.appCatGroups) : [];
   const orphanBar = _orphanCats.length
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:var(--warn-soft,rgba(217,119,6,.08));border:1px solid var(--warn);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🗂 <b>${_orphanCats.length}</b> ангилал сайтын бүлэгт ороогүй (${escapeHtml(_orphanCats.slice(0, 3).map(x => `${x.cat} ${x.count}ш`).join(' · '))}${_orphanCats.length > 3 ? ' …' : ''}) — mevent.mn дээр бүлгүүдийн доор тусдаа өлгөөтэй харагдана.</span>
-        <button class="btn btn-primary" id="prod-fix-cats" style="white-space:nowrap;">🗂 Бүлэгт оруулах</button>
-      </div>`
+    ? prodBar('warn', `🗂 <b>${_orphanCats.length}</b> ангилал сайтын бүлэгт ороогүй (${escapeHtml(_orphanCats.slice(0, 3).map(x => `${x.cat} ${x.count}ш`).join(' · '))}${_orphanCats.length > 3 ? ' …' : ''}) — mevent.mn дээр бүлгүүдийн доор тусдаа өлгөөтэй харагдана.`, `<button class="btn btn-primary prod-bar-b" id="prod-fix-cats">🗂 Бүлэгт оруулах</button>`)
     : '';
   const asarBar = (_prodMgmt && !asarSetupDone())
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү: модуль бараанууд үүсч, хуучин уртын бүртгэлүүд архивлагдаж, түүх нь шинэ бараа руу холбогдоно.</span>
-        <button class="btn btn-primary" id="prod-asar-setup" style="white-space:nowrap;">🏕 Асрыг модуль болгох</button>
-      </div>`
+    ? prodBar('ok', `🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү: модуль бараанууд үүсч, хуучин уртын бүртгэлүүд архивлагдаж, түүх нь шинэ бараа руу холбогдоно.`, `<button class="btn btn-primary prod-bar-b" id="prod-asar-setup">🏕 Асрыг модуль болгох</button>`)
     : '';
   // Хуучин асрын бүртгэл DB-д үлдсэн эсэх — архивласан нь каталогт ирдэггүй тул тусад нь асууна
   if (_prodMgmt && state._asarLeftover === undefined && asarSetupDone()) { state._asarLeftover = null; loadAsarLeftovers().then(() => render()); }
   const _leftN = Array.isArray(state._asarLeftover) ? state._asarLeftover.length : 0;
   const asarPurgeBar = (_prodMgmt && _leftN > 0)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🗑 Хуучин асрын <b>${_leftN}</b> бүртгэл (архивласан уртууд + хөрөнгийн давхардал) өгөгдлийн санд үлдсэн — хөрөнгийн дүн давхар тоологдож байна.</span>
-        <button class="btn" id="prod-asar-purge" style="white-space:nowrap;color:var(--danger);border-color:var(--danger);">🗑 Бүрмөсөн хасах (${_leftN})</button>
-      </div>`
+    ? prodBar('danger', `🗑 Хуучин асрын <b>${_leftN}</b> бүртгэл (архивласан уртууд + хөрөнгийн давхардал) өгөгдлийн санд үлдсэн — хөрөнгийн дүн давхар тоологдож байна.`, `<button class="btn prod-bar-b" id="prod-asar-purge">🗑 Бүрмөсөн хасах (${_leftN})</button>`)
     : '';
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
-        <button class="btn btn-primary" id="prod-return-nomaad" style="white-space:nowrap;">⇄ Бүгдийг 🎪 M-Event руу (${_nomaadSum}ш)</button>
-      </div>`
+    ? prodBar('ok', `⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.`, `<button class="btn btn-primary prod-bar-b" id="prod-return-nomaad">⇄ Бүгдийг 🎪 M-Event руу (${_nomaadSum}ш)</button>`)
     : '';
   // ── Засвартай бараа — эвдэрсэн бараа мартагдахгүй, өөрийн дамжлагатай ──
   const _rep = (state.repairs || []).filter(r => r && ['pending', 'in_progress'].includes(String(r.status)));
@@ -25897,14 +25890,8 @@ function renderProducts() {
   // Тулгалт бүрэн дууссан ч энэ тууз үлдэнэ, эс бөгөөс бэхжүүлэх гарц хаагдана.
   const _fz = _rec ? Object.keys(nameMatchedKeys(state.appOrders)).length : 0;
   const reconBar = (_rec && _rec.groups.length)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(217,119,6,.10);border:1px solid rgba(217,119,6,.32);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🔗 <b>${_rec.groups.length}</b> нэр бараатай холбогдоогүй — <b>${fmtMoney(_rec.badAmt)}</b>-ийн түрээс тайланд ороогүй байна.</span>
-        <button class="btn btn-primary" id="prod-reconcile" style="white-space:nowrap;">Тулгах (${_rec.groups.length})</button>
-      </div>`
-    : (_fz ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(37,99,235,.09);border:1px solid rgba(37,99,235,.30);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🔒 <b>${_fz}</b> нэр зөвхөн <b>нэрээрээ</b> таарч байна — бараа нэрээ соливол тасарна.</span>
-        <button class="btn btn-primary" id="prod-reconcile" style="white-space:nowrap;">Бэхжүүлэх (${_fz})</button>
-      </div>` : '');
+    ? prodBar('warn', `🔗 <b>${_rec.groups.length}</b> нэр бараатай холбогдоогүй — <b>${fmtMoney(_rec.badAmt)}</b>-ийн түрээс тайланд ороогүй байна.`, `<button class="btn btn-primary prod-bar-b" id="prod-reconcile">Тулгах (${_rec.groups.length})</button>`)
+    : (_fz ? prodBar('info', `🔒 <b>${_fz}</b> нэр зөвхөн <b>нэрээрээ</b> таарч байна — бараа нэрээ соливол тасарна.`, `<button class="btn btn-primary prod-bar-b" id="prod-reconcile">Бэхжүүлэх (${_fz})</button>`) : '');
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = _prodCatOptsGrouped(cats, state.prodCategory);   // сайтын бүлгээр (optgroup)
@@ -25936,9 +25923,9 @@ function renderProducts() {
   const archiveBar = _arch.length ? `<div class="prod-arch">
       <div class="prod-arch-head">
         <span>🗄 Архивласан <b>${_arch.length}</b> бараа — каталог болон сайтад харагдахгүй</span>
-        <span style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="prod-arch-acts">
           <button class="btn" id="prod-arch-toggle">${state.archOpen ? 'Хаах' : 'Харах'}</button>
-          <button class="btn" id="prod-arch-purge" style="color:var(--danger);border-color:var(--danger);white-space:nowrap;">🗑 Бүрмөсөн устгах (${_arch.length})</button>
+          <button class="btn prod-arch-purge" id="prod-arch-purge">🗑 Бүрмөсөн устгах (${_arch.length})</button>
         </span>
       </div>
       ${state.archOpen ? `<div class="prod-arch-list">${_arch.map(a => `<div class="prod-arch-row">
@@ -25975,6 +25962,13 @@ function renderProducts() {
       <button class="btn btn-primary ui-raw" id="prod-wo-go"${picked.length ? '' : ' disabled'}>Үргэлжлүүлэх (${picked.length})</button>
     </div>`;
   }
+  /* Ховор хэрэгслүүд (Excel · Багц · Актлах) нугалаанд — өдөр бүрийн «хайх · скан · шинэ» мөрийг цэвэр байлгана.
+     ⚠ id-уудаар handler холбогддог тул нугалаанд ч DOM-д үлдэнэ. */
+  const toolsBar = `<details class="prod-tools" id="prod-tools"${state.prodToolsOpen ? ' open' : ''}><summary class="prod-tools-sum" title="Хэрэгсэл: Excel · Багц · Актлах" aria-label="Хэрэгсэл: Excel, Багц, Актлах">⋯</summary><div class="prod-tools-body">
+      <button class="btn" id="prod-xls" title="Дэлгэц дээр харагдаж буй барааг Excel-д татах">📊 Excel</button>
+      ${canEditProducts() ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
+      ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
+    </div></details>`;
   // Excel экспорт нь ХАРАГДАЖ БУЙ жагсаалтыг татна — шүүлтийн дүрмийг хоёр дахь
   // газарт давтвал дэлгэц ба файл зөрнө (нэг эх сурвалж).
   state._prodShown = list;
@@ -25983,11 +25977,8 @@ function renderProducts() {
   // Эхний бараа хүртэлх зай утасны дэлгэцийн ~50%-иас ~20% болно.
   return `
     <div class="prod-toolbar">
-      <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
-      <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
-      <button class="btn" id="prod-xls" title="Дэлгэц дээр харагдаж буй барааг Excel-д татах">📊 Excel</button>
-      ${canEditProducts() ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
-      ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
+      <input type="search" id="prod-search" class="prod-search" placeholder="Нэр, код, ангилал…" value="${escapeHtml(state.productSearch || '')}">
+      <button class="btn" id="prod-scan" title="QR скан" aria-label="QR скан">📷<span class="prod-scan-l"> Скан</span></button>
       ${canEditProducts() ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
     </div>
     ${woBar}
@@ -25996,14 +25987,9 @@ function renderProducts() {
       <span class="prod-meta-i" id="prod-count"><b>${list.length}</b> бараа</span>
       ${assetChip}
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
+      ${toolsBar}
     </div>
-    ${orphanBar}
-    ${asarBar}
-    ${asarPurgeBar}
-    ${archiveBar}
-    ${nameEnBar}
-    ${variantClearBar}
-    ${seasonCloseBar}
+    ${prodChoresHtml([{ hint: 'ангилал', html: orphanBar }, { hint: 'асар', html: asarBar }, { hint: 'асрын хуучин бүртгэл', html: asarPurgeBar }, { hint: 'архив', html: archiveBar }, { hint: 'англи нэр', html: nameEnBar }, { hint: 'хувилбар', html: variantClearBar }, { hint: 'улирал', html: seasonCloseBar }], state.prodChoresOpen)}
     ${repairBar}
     ${reconBar}
     <div class="prod-list">${rows ||'<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
@@ -26608,6 +26594,8 @@ function attachProductsHandlers() {
   // (Агуулахын доод салбар таб хасагдсан — толгойн ленз ГАНЦ удирдлага.)
   // Ангилал шүүлт + эрэмбэ
   document.getElementById('prod-filters')?.addEventListener('toggle', (e) => { state.prodFiltersOpen = e.target.open; });
+  document.getElementById('prod-tools')?.addEventListener('toggle', (e) => { state.prodToolsOpen = e.target.open; });
+  document.getElementById('prod-chores')?.addEventListener('toggle', (e) => { state.prodChoresOpen = e.target.open; });
   document.getElementById('prod-filters-clear')?.addEventListener('click', () => {
     state.prodCategory = 'all'; state.prodMissing = 'all'; state.prodSort = 'name'; render();
   });

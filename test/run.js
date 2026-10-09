@@ -18516,7 +18516,7 @@ async function swFetchTests() {
   ok(/^CX_REQUIRED_FROM = '\d{4}-\d{2}-\d{2}'$/m.test(py) && /max\(since, CX_REQUIRED_FROM\)/.test(g),
      'ИНВАРИАНТ: хоосон цуцлах шалтгааныг дүрэм гарснаас хойш л тоолно');
   ok(!/'linked_to_order'|order_id is not null/.test(g), 'ИНВАРИАНТ: бөглөгддөггүй чат↔захиалгын холбоосыг Claude-д өгөхгүй');
-  ok(/if month_ran\(plan, ym\) and not FORCE/.test(py), 'ИНВАРИАНТ: сард нэг удаа');
+  ok(/if \(month_ran\(plan, ym\) or read_state\(\) == ym\) and not FORCE/.test(py), 'ИНВАРИАНТ: сард нэг удаа (0 санал гарсан сар ч)');
   ok(/it\.psql_tx\(it\.changes_sql\(rows, \{\}, \[\]\)\)/.test(py), 'ИНВАРИАНТ: төлөвлөгөөнд атомаар нэмнэ (дарж бичихгүй)');
 
   // Апп: батлах бүх зам `approved_at` тавина, буцаахад арилгана

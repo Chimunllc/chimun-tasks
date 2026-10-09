@@ -28,6 +28,9 @@ import idea_triage as it
 UB = timezone(timedelta(hours=8))
 DAYS = 60                 # хэдэн хоногийн дуу хоолой
 MAX_IDEAS = 3
+# 0 санал гарсан сарыг ч тэмдэглэнэ — cron 1–5-нд дахин оролддог (Claude унасан өдрийг нөхнө),
+# тэмдэглэхгүй бол санал гараагүй сард өдөр бүр Claude дуудагдаж өөр өөр санал гаргана.
+STATE_FILE = '/opt/chimun/marketing/voice_ideas.state'
 DRY = '--dry' in sys.argv
 FORCE = '--force' in sys.argv
 ADMIN_CX = ('Давхардсан бүртгэл', 'Тест захиалга', 'тест')
@@ -205,11 +208,27 @@ def ask(api_key, voice, plan, roster, features, today):
     return json.loads(text).get('items') or []
 
 
+def read_state():
+    try:
+        with open(STATE_FILE) as f:
+            return f.read().strip()
+    except Exception:
+        return ''
+
+
+def write_state(ym):
+    try:
+        with open(STATE_FILE, 'w') as f:
+            f.write(ym)
+    except Exception as e:
+        print('⚠ voice_ideas state бичигдсэнгүй:', e)
+
+
 def main():
     today = datetime.now(UB).strftime('%Y-%m-%d')
     ym = today[:7]
     plan, roster, refmap, _tasks, _recent, _names = it.context(today)
-    if month_ran(plan, ym) and not FORCE:
+    if (month_ran(plan, ym) or read_state() == ym) and not FORCE:
         return
     key = it.load_env(it.AI_ENV).get('ANTHROPIC_API_KEY')
     if not key:
@@ -223,6 +242,7 @@ def main():
     if rows:
         it.psql_tx(it.changes_sql(rows, {}, []))
     print(f'{today} voice_ideas: {len(rows)} санал')
+    write_state(ym)
     secret = it.load_env(it.PUSH_ENV).get('PUSH_INTERNAL_KEY')
     to = it.recipients(it.cfg_json('idea_notify')) or it.recipients(it.cfg_json('pbx_notify'))
     if not (secret and to and rows):

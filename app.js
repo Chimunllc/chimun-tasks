@@ -25233,6 +25233,189 @@ async function planApproveAll(id) {
   }
   render();
 }
+// ── ДОЛОО ХОНОГИЙН ОНООНЫ САМБАР (2026-10-09, CEO: «2-р алхам») ───────────────
+// Үлгэр: EOS-ийн 10 тоот scorecard + Amazon-ий долоо хоногийн тойм. Төлөвлөгөөний
+// ДЭЭД талд 8 тоо: өнгөрсөн БҮТЭН долоо хоног ↔ суурь. Хүн юу ч бичихгүй.
+// ⛔ Тоог ДАХИН БОДОХГҮЙ — Тоймын дүрмүүдээс (dispatchStats · reviewStats ·
+//    pbxFollowups+pbxOpenCalls · arRows · stuckOrders · orderRevenue).
+// ⛔ Суурь: урсгал → өмнөх SC_WEEKS долоо хоногийн дундаж; одоогийн байдал (авлага,
+//    гацсан) → 7+ хоногийн өмнөх зураг (`app_config['scorecard_snaps']`, өдөрт нэг).
+// ⛔ Цөөн жишээн дээр (n < minN) ба 2-оос бага ялгаатай тоонд УЛААН БОЛГОХГҮЙ —
+//    дуу чимээ жинхэнэ дохиог дарна.
+// ⚠ 4 долоо хоногийн суурь улирлыг дагана (жилийнхтэй БИШ) — 11 сард захиалга
+//    буурах нь улаан болно; тэр нь бодит дохио, нуухгүй.
+const SC_WEEKS = 4;
+const SC_FLAG = 0.2;
+const SC_SNAP_KEY = 'scorecard_snaps';
+const SC_SNAP_KEEP = 120;
+const SC_DEFS = [
+  // ⛔ Тоо/нийлбэр хэмжүүрт minN = 0 — захиалга огцом буурах нь ӨӨРӨӨ дохио; «цөөн жишээ»
+  //    хориг яг тэр үед улааныг нууна. minN нь зөвхөн харьцаа/дундажид (хувь, үнэлгээ, өртөг).
+  { key: 'orders',   label: 'Шинэ захиалга',          unit: 'ш',   up: true,  minN: 0, go: 'orders' },
+  { key: 'booked',   label: 'Захиалгын дүн',          unit: '₮',   up: true,  minN: 0, go: 'orders' },
+  { key: 'ontime',   label: 'Цагтаа хүрсэн',          unit: '%',   up: true,  minN: 3, go: 'dashboard' },
+  { key: 'missed',   label: 'Холбогдоогүй залгагч',   unit: 'хүн', up: false, minN: 0, go: 'missedcalls' },
+  { key: 'chatcost', label: '1 чатын зарын өртөг',    unit: '₮',   up: false, minN: 5, go: 'ads' },
+  { key: 'rating',   label: 'Хэрэглэгчийн үнэлгээ',   unit: '★',   up: true,  minN: 2, go: 'dashboard' },
+  { key: 'ar',       label: 'Хугацаа хэтэрсэн авлага', unit: '₮',  up: false, minN: 0, go: 'receivables', snap: true },
+  { key: 'stuck',    label: 'Гацсан захиалга',        unit: 'ш',   up: false, minN: 0, go: 'dashboard', snap: true },
+];
+// Тухайн өдрийн долоо хоногийн Даваа (ЦЭВЭР, UTC геттер — бүсээр гулсахгүй).
+function scWeekStart(day) {
+  const t = Date.parse(String(day || '').slice(0, 10) + 'T00:00:00Z');
+  if (isNaN(t)) return '';
+  const dow = (new Date(t).getUTCDay() + 6) % 7;
+  const d = new Date(t - dow * 86400000);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+// Нэг долоо хоногийн урсгалын тоо [from, to). ЦЭВЭР.
+function scWeekValues(ctx, from, to) {
+  const inW = (d) => !!d && d >= from && d < to;
+  const all = Array.isArray(ctx.orders) ? ctx.orders : [];
+  const orders = all.filter(o => o && _orderActive(o));
+  const made = orders.filter(o => inW(_ubDate(o.created_at)));
+  const disp = dispatchStats(orders.filter(o => inW(String(o.starts_at || '').slice(0, 10))));
+  const rv = reviewStats(all).rows.filter(r => inW(String(r.at || '').slice(0, 10)));
+  let chatcost = { v: null, n: 0 };
+  if (Array.isArray(ctx.ads)) {
+    const ads = ctx.ads.filter(a => a && inW(String(a.day || '').slice(0, 10)));
+    const spend = ads.reduce((t, a) => t + (Number(a.spend_mnt) || 0), 0);
+    const chats = ads.reduce((t, a) => t + (Number(a.messages) || 0), 0);
+    chatcost = { v: chats ? Math.round(spend / chats) : null, n: chats };
+  }
+  let missed = { v: null, n: 0 };
+  if (Array.isArray(ctx.calls)) {
+    const calls = ctx.calls.filter(c => c && inW(_ubDate(c.started_at)));
+    const f = pbxFollowups(calls, { from: '', ws: ctx.ws, we: ctx.we });
+    const open = pbxOpenCalls(f, ctx.cbs || [], all).filter(x => !x.done).length;
+    missed = { v: open, n: open };
+  }
+  return {
+    orders: { v: made.length, n: made.length },
+    booked: { v: made.reduce((t, o) => t + (orderRevenue(o, 'accrual') || 0), 0), n: made.length },
+    ontime: { v: disp.n ? disp.pct : null, n: disp.n },
+    missed,
+    chatcost,
+    rating: { v: rv.length ? Math.round(rv.reduce((t, r) => t + r.stars, 0) / rv.length * 10) / 10 : null, n: rv.length },
+  };
+}
+// Сайжирсан/муудсан эсэх (ЦЭВЭР). '' = дохио алга.
+function scFlag(def, value, base, n) {
+  if (value === null || value === undefined || base === null || base === undefined) return '';
+  if ((Number(n) || 0) < (def.minN || 0)) return '';
+  const v = Number(value), b = Number(base);
+  if (!Number.isFinite(v) || !Number.isFinite(b)) return '';
+  if ((def.unit === 'ш' || def.unit === 'хүн') && Math.abs(v - b) < 2) return '';
+  const rel = b === 0 ? (v > 0 ? 1 : 0) : (v - b) / Math.abs(b);
+  const better = def.up ? rel : -rel;
+  if (better <= -SC_FLAG) return 'bad';
+  if (better >= SC_FLAG) return 'good';
+  return '';
+}
+// 7+ хоногийн өмнөх ХАМГИЙН сүүлийн зураг (ЦЭВЭР). Байхгүй бол null — таамаглахгүй.
+function scSnapBase(snaps, today) {
+  const cut = addDays(String(today || '').slice(0, 10), -7);
+  const keys = Object.keys(snaps || {}).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k) && k <= cut).sort();
+  return keys.length ? { day: keys[keys.length - 1], ...snaps[keys[keys.length - 1]] } : null;
+}
+// Самбарын мөрүүд (ЦЭВЭР) — тест ба дэлгэц ИЖИЛ функцээс.
+function scorecardRows(ctx) {
+  const c = ctx || {};
+  const today = String(c.today || '').slice(0, 10);
+  const w1 = scWeekStart(today), w0 = addDays(w1, -7);   // өнгөрсөн БҮТЭН долоо хоног
+  const cur = scWeekValues(c, w0, w1);
+  const past = [];
+  for (let i = 1; i <= SC_WEEKS; i++) past.push(scWeekValues(c, addDays(w0, -7 * i), addDays(w0, -7 * (i - 1))));
+  const sb = scSnapBase(c.snaps, today);
+  const skip = Array.isArray(c.skip) ? c.skip : [];
+  return SC_DEFS.filter(d => !skip.includes(d.key)).map(d => {
+    let value, n, base, baseDay = '';
+    if (d.snap) {
+      value = c.now && c.now[d.key] !== undefined ? c.now[d.key] : null;
+      n = 99; base = sb && sb[d.key] !== undefined ? sb[d.key] : null; baseDay = sb ? sb.day : '';
+    } else {
+      value = cur[d.key].v; n = cur[d.key].n;
+      const vals = past.map(p => p[d.key].v).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v)));
+      base = vals.length ? vals.reduce((t, v) => t + Number(v), 0) / vals.length : null;
+    }
+    return { ...d, value, n, base, baseDay, flag: scFlag(d, value, base, n), from: w0, to: addDays(w1, -1) };
+  });
+}
+function scFmt(v, unit) {
+  if (v === null || v === undefined || !Number.isFinite(Number(v))) return '—';
+  const x = Number(v);
+  if (unit === '₮') return fmtMoney(Math.round(x));
+  if (unit === '%') return Math.round(x) + '%';
+  if (unit === '★') return x.toFixed(1) + '★';
+  return String(Math.round(x * 10) / 10) + (unit ? ' ' + unit : '');
+}
+// Зургийг ЭХЛЭЭД серверээс уншиж нэгтгэнэ — ачаалж чадаагүй бол ХАДГАЛАХГҮЙ
+// (хоосон объект бичвэл бүх түүх устна).
+async function scFetchSnaps() {
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=eq.${SC_SNAP_KEY}&select=value`,
+    { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const rows = await r.json();
+  const v = rows && rows[0] ? rows[0].value : null;
+  return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+}
+async function loadScSnaps() {
+  try { state.scSnaps = await scFetchSnaps(); state.scSnapsOk = true; }
+  catch (e) { dataLoadFailed('Онооны самбарын зураг', e); if (!state.scSnaps) state.scSnaps = {}; }
+  return state.scSnaps;
+}
+async function scSaveSnap(today, vals) {
+  if (state._scSaving) return;
+  state._scSaving = true;
+  try {
+    const cur = await scFetchSnaps();
+    if (!cur[today]) {
+      cur[today] = vals;
+      const keys = Object.keys(cur).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+      keys.slice(0, Math.max(0, keys.length - SC_SNAP_KEEP)).forEach(k => { delete cur[k]; });
+      await saveAppConfig(SC_SNAP_KEY, cur);
+    }
+    state.scSnaps = cur;
+  } catch (e) { dataLoadFailed('Онооны самбарын зураг', e); }
+  state._scSaving = false;
+}
+function scorecardHtml() {
+  if (!canSeePlan()) return '';
+  const head = (sub) => `<div class="plan-sec-h">📊 Долоо хоногийн тоо${sub ? `<span class="plan-n">${escapeHtml(sub)}</span>` : ''}</div>`;
+  if (!Array.isArray(state.appOrders) || !state.appOrders.length) {
+    return `<div class="plan-sec wsc-sec">${head('')}<div class="plan-empty">Ачаалж байна…</div></div>`;
+  }
+  const orders = state.appOrders, today = todayStr();
+  const ar = arRows(receivablesData().items, orders, today).reduce((t, r) => t + (Number(r.balance) || 0), 0);
+  const stuck = stuckOrders(orders, today).length;
+  const skip = [];
+  if (!canSeeMissedCalls()) skip.push('missed');
+  if (!canSeeAds()) skip.push('chatcost');
+  const rows = scorecardRows({
+    orders, today, skip, snaps: state.scSnaps || {}, now: { ar, stuck },
+    calls: Array.isArray(state.pbxLog) ? state.pbxLog : null, cbs: Array.isArray(state.pbxCb) ? state.pbxCb : [],
+    ads: Array.isArray(state.fbAds) ? state.fbAds : null, ws: tariffWorkStart(), we: tariffWorkEnd(),
+  });
+  // Одоогийн байдлын зураг — өдөрт нэг удаа (суурь хуримтлагдана)
+  if (state.scSnapsOk && state.scSnaps && !state.scSnaps[today]) scSaveSnap(today, { ar, stuck });
+  const r0 = rows[0] || {};
+  const arrow = (r) => {
+    if (r.value === null || r.base === null || r.value === undefined || r.base === undefined) return '';
+    const d = Number(r.value) - Number(r.base);
+    return Math.abs(d) < 1e-9 ? '=' : (d > 0 ? '▲' : '▼');
+  };
+  const baseTxt = (r) => r.base === null || r.base === undefined
+    ? (r.snap ? 'суурь хуримтлагдаж байна' : 'суурь алга')
+    : (r.snap ? `${escapeHtml(String(r.baseDay).slice(5))}-нд ${scFmt(r.base, r.unit)}` : `дундаж ${scFmt(r.base, r.unit)}`);
+  return `<div class="plan-sec wsc-sec">${head(`${String(r0.from || '').slice(5)}…${String(r0.to || '').slice(5)}`)}`
+    + `<div class="wsc-sub">Өнгөрсөн долоо хоногийг өмнөх ${SC_WEEKS} долоо хоногийн дундажтай харьцуулав. Улаан = ${Math.round(SC_FLAG * 100)}%-иас илүү муудсан. Мөр дээр дарвал холбогдох дэлгэц нээгдэнэ.</div>`
+    + `<div class="wsc-grid">` + rows.map(r => `<button type="button" class="wsc-row ui-raw${r.flag ? ' wsc-' + r.flag : ''}" data-sc-go="${escapeHtml(r.go)}">`
+      + `<span class="wsc-l">${escapeHtml(r.label)}${r.snap ? ' <span class="wsc-now">одоо</span>' : ''}</span>`
+      + `<span class="wsc-v">${scFmt(r.value, r.unit)}<span class="wsc-ar">${arrow(r)}</span></span>`
+      + `<span class="wsc-b">${baseTxt(r)}${r.n && !r.snap && r.minN && r.n < r.minN ? ' · цөөн жишээ' : ''}</span></button>`).join('')
+    + `</div></div>`;
+}
 function renderPlan() {
   if (state.plan === undefined) { state.plan = null; loadPlan(true).then(() => { if (state.view === 'plan') render(); }); }
   if (!state.plan) return '<div class="plan-empty">Ачаалж байна…</div>';
@@ -25336,6 +25519,7 @@ function renderPlan() {
   return `<div class="plan-wrap">`
     + `<div class="plan-top"><h2 class="plan-h1">Төлөвлөгөө</h2>`
     + `<span class="plan-sub">Санал → таны шийдвэр → ажил → үр дүн. Санал Claude болон ажилтнуудаас ирнэ. Батлахад ажил хариуцагчид очиж, явц нь ажлаас өөрөө бодогдоно.</span></div>`
+    + safeViewHtml(scorecardHtml, 'Долоо хоногийн тоо')
     + `<div class="plan-sec plan-ideas"><div class="plan-sec-h">① Таны шийдвэр хүлээж буй<span class="plan-n">${b.decide.length}</span></div>`
     + (b.decide.length
         ? planIdeaGroups(b.decide.map(c => ({ ...c, cat: c.row.cat }))).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>` + g.rows.map(decideCard).join('')).join('')
@@ -25368,6 +25552,7 @@ function attachPlanHandlers() {
   document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
   document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
   document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true })));
+  document.querySelectorAll('[data-sc-go]').forEach(b => b.addEventListener('click', () => { state.view = b.dataset.scGo; render(); }));
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // АЖИЛТНЫ САНАЛ / АСУУДАЛ (2026-10-07, CEO)
@@ -44166,6 +44351,11 @@ async function bootApp() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'push-refresh' && state.me) refreshFromServer();
+        // Мэдэгдэл дарахад апп аль хэдийн нээлттэй бол SW холбоосыг энд дамжуулна
+        if (ev.data && ev.data.type === 'open-url' && state.me) {
+          const v = deepLinkView('#' + String(ev.data.url || '').split('#')[1]);
+          if (v) { state.view = v; render(); }
+        }
       });
     }
     _visibilityBound = true;
@@ -44302,6 +44492,14 @@ function refreshViewData() {
     loadPlan(true).then(() => { if (state.view === 'plan') render(); });
     // Ажилтны саналын бичвэр/зохиогч (мөрөнд зөвхөн id) — батлахад зохиогчид мэдэгдэнэ.
     loadStaffIdeas(true).then(() => { if (state.view === 'plan') render(); });
+    // Долоо хоногийн тоо — Тоймын ижил дата (захиалга · дуудлага · зар) + өдрийн зураг
+    if (state.appOrders === undefined) { state.appOrders = []; loadAppOrders().then(() => { if (state.view === 'plan') render(); }); }
+    if (canSeeMissedCalls()) {
+      if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'plan') render(); }); }
+      if (state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => { if (state.view === 'plan') render(); }); }
+    }
+    if (canSeeAds()) mktEnsure('fbAds', loadFbAds, 'plan');
+    loadScSnaps().then(() => { if (state.view === 'plan') render(); });
   }
   if (v === 'ideas') {
     loadStaffIdeas(true).then(() => { if (state.view === 'ideas') render(); });
@@ -44397,6 +44595,20 @@ function showApp() {
   const exportBtn = document.getElementById('export-btn');
   if (exportBtn) exportBtn.style.display = state.isCEO ? '' : 'none';
   applyRoleUi(true);
+  // Push-ийн холбоос (`./#plan`) — тэр дэлгэц рүү шууд (эрхтэй бол л).
+  const dl = deepLinkView(location.hash);
+  if (dl) {
+    state.view = dl;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+  }
+}
+// Мэдэгдлээс нээх дэлгэц. ⛔ ЗӨВХӨН энэ жагсаалт, эрх шалгаад — дурын hash-аар
+// дэлгэц нээх нь эрхгүй хүнд хаалттай дэлгэцийг гаргах нүх болно.
+const DEEP_VIEWS = { plan: () => canSeePlan(), ideas: () => true };
+function deepLinkView(hash) {
+  const m = String(hash || '').match(/^#([a-z]+)$/);
+  const v = m ? m[1] : '';
+  return v && DEEP_VIEWS[v] && DEEP_VIEWS[v]() ? v : '';
 }
 // Цагийн ажилтан — хязгаарлагдмал UI (body class → CSS-ээр нав/товч нуух) + эхлэх дэлгэц.
 // Үндсэн ажилтан Тоймоос эхэлнэ (2026-10-05, CEO: «ажилчдад олдохгүй байна»); CEO-гийнх хэвээр.

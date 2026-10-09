@@ -86,7 +86,12 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = event.notification.data?.url || './';
   event.waitUntil((async () => {
     const clients = await self.clients.matchAll({ type: 'window' });
-    if (clients.length) { clients[0].focus(); return; }
+    if (clients.length) {
+      await clients[0].focus();
+      // Нээлттэй апп руу холбоосыг дамжуулна (`./#plan` → Төлөвлөгөө) — дахин ачаалахгүй
+      if (targetUrl.includes('#')) clients[0].postMessage({ type: 'open-url', url: targetUrl });
+      return;
+    }
     await self.clients.openWindow(targetUrl);
   })());
 });

@@ -15006,7 +15006,10 @@ const PERM_MENUS = [
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
   { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },
-  { key: 'plan',        label: 'Төлөвлөгөө',           actions: [] },   // шийдвэр — агент бичнэ, CEO хаана   // FB зарцуулалт ↔ борлуулалт
+  { key: 'plan',        label: 'Төлөвлөгөө',           actions: [
+      // Салбарын захирал ӨӨРИЙН салбарын мөнгөгүй ажлын саналыг батална (2026-10-09, CEO).
+      // Үнэ/тариф, хүний тухай гомдол, нэгдсэн салбар, өөрийн санал — захиралд.
+      { key: 'plan.approve', label: '✓ Салбарынхаа ажилтны саналыг батлах' } ] },   // шийдвэр — агент бичнэ, CEO хаана   // FB зарцуулалт ↔ борлуулалт
   { key: 'vat',         label: 'НӨАТ тайлан',          actions: [] },
   { key: 'documents',   label: 'Баримт бичиг',         actions: [
       { key: 'documents.edit', label: 'Баримт нэмэх / устгах' } ] },
@@ -15022,16 +15025,16 @@ const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // ро
 // orders.skip / orders.revert — дамжлагыг тойрох үйлдэл. Тусгайлан олгоогүй бол ХОРИГЛОНО,
 // эс бөгөөс матрицад «зөвшөөрсөн» мэт харагдаад, чагтлахад нь grant хадгалагдахгүй байсан.
 const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert', 'orders.credit',
-  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
+  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening', 'plan.approve']);
 // ── АЛБАН ТУШААЛ = ЭРХИЙН БЭЛЭН БАГЦ (2026-09-01) ──────────────────────────────
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
 const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.credit', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate',
-  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
+  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening', 'plan.approve']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing', 'missedcalls', 'plan'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate', 'plan.approve'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
   [/эвент/, { views: ['orders', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
@@ -25105,6 +25108,67 @@ function planApproveHint(row) {
   const who = String(r.owner || '') === PLAN_AGENT_OWNER ? 'агент' : 'чи';
   return `Батлавал: «Дараагийнх» жагсаалтад орно, хийх хүн — ${who}. Тохиргоо өөрчлөгдөхгүй.`;
 }
+// ── САЛБАРЫН ЗАХИРАЛ БАТЛАНА (2026-10-09, CEO: «салбараар нь хуваа») ─────────
+// Үйл ажиллагааны захирал (`plan.approve`) ӨӨРИЙН салбарын (`memberBranchesOf` —
+// CEO аппаас сольдог, кодод бичихгүй) мөнгөгүй АЖЛЫН саналыг батлах/татгалзана.
+// Захиралд үлдэх: ⛔ үнэ, тариф, тохиргоо (`do.kind` ≠ task) · хүний тухай гомдол
+// (`private`) · нэгдсэн (`shared`) салбар · ӨӨРИЙН санал (тоолсон ≠ баталсан дүрэм).
+// ⛔ Захирал түүний баталсныг харна (`approved_by`), push ирнэ, «↩ Буцаах» дарна.
+function planActor() {
+  const me = String(state.me || '');
+  const m = me ? findMember(me) : null;
+  const ideas = Array.isArray(state.staffIdeas) ? state.staffIdeas : null;
+  return {
+    ceo: !!state.isCEO, me,
+    approve: capResolved('plan.approve') === true,
+    branches: m ? memberBranchesOf(m).map(String) : [],
+    // ⚠ Ачаалагдаагүй бол null — «өөрийн санал биш» гэж ТААМАГЛАХГҮЙ
+    myIdeas: ideas ? new Set(ideas.filter(x => x && String(x.author) === me).map(x => String(x.id))) : null,
+  };
+}
+function planRowIdeas(row, list) {
+  const own = Array.isArray(row && row.from) ? row.from : [];
+  const par = row && row.parent ? (list || []).find(x => x && String(x.id) === String(row.parent)) : null;
+  return own.concat(par && Array.isArray(par.from) ? par.from : []).map(String);
+}
+function planRowBranch(row) { return String((((row || {}).do || {}).task || {}).branch || 'shared'); }
+// ЦЭВЭР: '' = шийдэж болно, эс бөгөөс ЯАГААД болохгүйг хэлнэ (унтраасан товч шалтгаангүй байх ёсгүй).
+function planCanDecide(row, list, a) {
+  if (!row) return 'Олдсонгүй';
+  if (a && a.ceo) return '';
+  if (!a || !a.approve) return 'Захирал шийднэ';
+  if (row.private) return 'Захирал шийднэ';
+  if (String((row.do || {}).kind || '') !== 'task') return 'Үнэ, тохиргоо — захирал шийднэ';
+  const br = planRowBranch(row);
+  if (br === 'shared' || !a.branches.includes(br)) return 'Өөр салбарын — захирал шийднэ';
+  if (!a.myIdeas) return 'Ачаалж байна…';
+  if (planRowIdeas(row, list).some(id => a.myIdeas.has(id))) return 'Өөрийн санал — захирал батална';
+  return '';
+}
+// Захирал БИШ хүнд харагдах мөр (ЦЭВЭР): хувийн БИШ, ажлын санал (ажилтан/датаас эсвэл ажил
+// үүсгэх). Захирлын стратегийн мөр, тариф, Claude-ын аппын ажил ХАРАГДАХГҮЙ.
+function planVisible(row, list, a) {
+  if (a && a.ceo) return true;
+  if (!row || row.private) return false;
+  const isTask = (x) => !!(x && x.do && String(x.do.kind || '') === 'task');
+  if (row.parent) {
+    const par = (list || []).find(x => x && String(x.id) === String(row.parent));
+    return par ? planVisible(par, list, a) : isTask(row);
+  }
+  if (row.src === 'staff' || row.src === 'data' || isTask(row)) return true;
+  return (list || []).some(k => k && String(k.parent || '') === String(row.id) && isTask(k));
+}
+function planIsCeoKey(k) { const m = k ? findMember(k) : null; return !!(m && (m.level || 0) >= 100); }
+// Буцаах = захирал, эсвэл өөрөө баталсан хүн.
+function planCanRevert(row) {
+  return !!row && (!!state.isCEO || (!!row.approved_by && String(row.approved_by) === String(state.me || '')));
+}
+// Салбарын захирал батлах бүрд захиралд push — «түүний баталсныг та харна».
+function planNotifyCeo(what) {
+  if (state.isCEO) return;
+  const ceo = getCEOEmail();
+  if (ceo) pushBroadcast(ceo, { kind: 'plan', title: `✓ ${memberName(state.me)} санал батлав`, body: String(what || '').slice(0, 160), url: './#plan' });
+}
 // Хариуцагчийг БАТЛАХЫН ӨМНӨ солино (2026-10-07, CEO). Санал нэг хүнийг санал
 // болгодог ч сонголт нь CEO-гийнх — батлаад дараа нь ажил дотор засах нь
 // нэмэлт алхам болдог.
@@ -25115,12 +25179,14 @@ function planAssignRow(row, who) {
 async function planSetAssignee(id, who) {
   const row = planList().find(x => String(x.id) === String(id));
   if (!row || !row.do || String(row.do.kind || '') !== 'task') return;
+  if (planCanDecide(row, planList(), planActor())) return;
   await planSet(id, { do: planAssignRow(row, who) });
 }
 async function planApplyIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
   if (!row || !row.do) return;
-  if (!state.isCEO) { showToast('Зөвхөн захирал батална', 'error', 4000); return; }
+  const why = planCanDecide(row, planList(), planActor());
+  if (why) { showToast(why, 'error', 4000); return; }
   const kind = PLAN_DO_KINDS[String(row.do.kind || '')];
   if (!kind) { showToast('⚠ Танихгүй үйлдэл — хэрэгжүүлсэнгүй', 'error', 6000); return; }
   const diff = kind.preview(row.do);
@@ -25135,41 +25201,47 @@ async function planApplyIdea(id) {
   // ⛔ Ажил үүсгэх санал батлагдмагц «хаагдсан» БИШ — ажил дуусах хүртэл «хэрэгжиж буй».
   //    Тохиргоо (тариф) нь хэрэгжмэгц дууссан тул шууд үр дүн рүү.
   if (String(row.do.kind) === 'task') {
-    if (row.parent) state.plan = planList().map(x => (String(x.id) === String(row.parent) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open', approved_at: x.approved_at || todayStr() } : x));
-    await planSet(id, { sec: row.parent ? row.sec : 'now', status: 'open', done_by: 'applied', applied_at: todayStr(), approved_at: row.approved_at || todayStr(), undo });
+    if (row.parent) state.plan = planList().map(x => (String(x.id) === String(row.parent) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open', approved_at: x.approved_at || todayStr(), approved_by: x.approved_by || state.me || '' } : x));
+    await planSet(id, { sec: row.parent ? row.sec : 'now', status: 'open', done_by: 'applied', applied_at: todayStr(), approved_at: row.approved_at || todayStr(), approved_by: state.me || '', undo });
   } else {
-    await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', approved_at: row.approved_at || todayStr(), undo });
+    await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', approved_at: row.approved_at || todayStr(), approved_by: state.me || '', undo });
   }
+  planNotifyCeo(String(row.do.kind) === 'task' ? ((row.do.task || {}).title || row.title || '') : (row.title || ''));
   planNotifyAuthors(row, '✅ Таны санал батлагдлаа',
     String(row.do.kind) === 'task' ? 'Ажил үүслээ: ' + ((row.do.task || {}).title || row.title || '') : (row.title || ''));
   showToast('Хэрэгжлээ', 'success', 2500);
 }
 async function planRevertIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
-  if (!row || !row.undo || !state.isCEO) return;
+  if (!row || !row.undo || !planCanRevert(row)) return;
   const kind = PLAN_DO_KINDS[String((row.do || {}).kind || '')];
   if (!kind) return;
   const ok = await showConfirm(`«${row.title || ''}» хэрэгжүүлснийг буцаана.\n\n${kind.note}`, { okText: 'Буцаах' });
   if (!ok) return;
   try { await kind.undoRun(row.undo); }
   catch (e) { showToast('⚠ Буцаагдсангүй: ' + e.message, 'error', 6000); return; }
-  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', applied_at: '', approved_at: '', undo: null, reopened: true });
+  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', applied_at: '', approved_at: '', approved_by: '', undo: null, reopened: true });
 }
 async function planAcceptIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
+  const why = planCanDecide(row, planList(), planActor());
+  if (why) { showToast(why, 'error', 4000); return; }
   // `approved_at` = Тоймын «💡 Хэрэгжсэн санал»-ын эх сурвалж (db/idea_credits.sql)
-  await planSet(id, { sec: 'next', status: 'open', approved_at: (row && row.approved_at) || todayStr() });
+  await planSet(id, { sec: 'next', status: 'open', approved_at: (row && row.approved_at) || todayStr(), approved_by: state.me || '' });
   planNotifyAuthors(row, '✅ Таны санал батлагдлаа', ((row && row.title) || '') + ' — төлөвлөгөөнд орлоо');
 }
 async function planRejectIdea(id) {
+  const row = planList().find(x => String(x.id) === String(id));
+  const block = planCanDecide(row, planList(), planActor());
+  if (block) { showToast(block, 'error', 4000); return; }
   const why = String((await showPrompt('Яагаад хийхгүй вэ?', { okText: 'Татгалзах' })) || '').trim();
   if (!why) return;
-  const row = planList().find(x => String(x.id) === String(id));
-  await planSet(id, { sec: 'no', status: 'open', why });
+  await planSet(id, { sec: 'no', status: 'open', why, approved_by: state.me || '' });
   // Шалтгаан нь санал бичсэн хүнд ч очно («Санал санаачлага» дэлгэцэд мөн харагдана).
   planNotifyAuthors(row, 'Таны саналыг захирал хийхгүй гэж шийдлээ', why);
 }
 async function planAdd() {
+  if (!state.isCEO) return;
   const t = String((await showPrompt('Шинэ ажил — нэр:', { okText: 'Нэмэх' })) || '').trim();
   if (!t) return;
   state.plan = planList().concat([{ id: 'u' + Date.now().toString(36), sec: 'next', status: 'open', title: t, owner: 'CEO', created: todayStr() }]);
@@ -25243,7 +25315,13 @@ function planBoard(list, tasks, today) {
   return out;
 }
 // Цэсний тоо = ТАНЫ шийдвэр хүлээж буй санаачлага (хийх ажил тань).
-function planDecideCount() { return planBoard(planList(), [], todayStr()).decide.length; }
+function planDecideCount() {
+  const list = planList(), a = planActor();
+  const b = planBoard(list.filter(x => planVisible(x, list, a)), [], todayStr());
+  if (a.ceo) return b.decide.length;
+  // Салбарын захирлын тоо = ӨӨРИЙН шийдэж болох (бусад нь захиралд очно)
+  return b.decide.filter(c => [c.row].concat(c.kids).some(r => planPending(r) && !planCanDecide(r, list, a))).length;
+}
 function planAssSelect(x) {
   const cur = ((x.do || {}).task || {}).assignee || '';
   return `<label class="plan-ass">Хариуцагч<select class="ui-raw plan-ass-sel" data-plan-ass="${escapeHtml(String(x.id))}">`
@@ -25256,11 +25334,13 @@ function planAssSelect(x) {
 // Санаачлагын бүх хүлээгдэж буй алхмыг НЭГ баталгаагаар ажил болгоно.
 // ⛔ Жагсаалт (ажил → хариуцагч · хугацаа) батлахын ӨМНӨ ил — `showConfirm`-ийн ХАРИУГ шалгана.
 async function planApproveAll(id) {
-  if (!state.isCEO) { showToast('Зөвхөн захирал батална', 'error', 4000); return; }
-  const parent = planList().find(x => String(x.id) === String(id));
-  const steps = planList().filter(x => String(x.parent || '') === String(id) && planPending(x)
-    && x.do && PLAN_DO_KINDS[String(x.do.kind || '')]);
-  if (!parent || !steps.length) return;
+  const list0 = planList(), actor = planActor();
+  const parent = list0.find(x => String(x.id) === String(id));
+  // ⛔ Салбарын захирал зөвхөн ӨӨРИЙН шийдэж болох алхмуудыг батална (бусад нь захиралд үлдэнэ)
+  const steps = list0.filter(x => String(x.parent || '') === String(id) && planPending(x)
+    && x.do && PLAN_DO_KINDS[String(x.do.kind || '')] && !planCanDecide(x, list0, actor));
+  if (!parent) return;
+  if (!steps.length) { showToast('Батлах алхам алга — захирал шийднэ', 'error', 4000); return; }
   const ok = await showConfirm(`${steps.length} алхам тус бүр ажил болж хариуцагчид очно:\n\n`
     + steps.map(s => { const t = (s.do.task || {}); return `• ${t.title || s.title || ''} → ${t.assignee ? memberName(t.assignee) : 'хариуцагчгүй'}${t.due ? ' · ' + t.due : ''}`; }).join('\n'),
     { okText: 'Бүгдийг батлах' });
@@ -25270,15 +25350,16 @@ async function planApproveAll(id) {
     try {
       const undo = await PLAN_DO_KINDS[String(s.do.kind)].run(s.do);
       state.plan = planList().map(x => (String(x.id) === String(s.id)
-        ? { ...x, status: 'open', done_by: 'applied', applied_at: todayStr(), undo } : x));
+        ? { ...x, status: 'open', done_by: 'applied', applied_at: todayStr(), approved_by: state.me || '', undo } : x));
       n++;
     } catch (e) { showToast('⚠ ' + (s.title || '') + ': ' + e.message, 'error', 6000); }
   }
   state.plan = planList().map(x => (String(x.id) === String(id) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open' } : x))
-    .map(x => (String(x.id) === String(id) && n && !x.approved_at ? { ...x, approved_at: todayStr() } : x));
+    .map(x => (String(x.id) === String(id) && n && !x.approved_at ? { ...x, approved_at: todayStr(), approved_by: state.me || '' } : x));
   try { await savePlan(); } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 6000); }
   if (n) {
     planNotifyAuthors(parent, '✅ Таны санал хэрэгжиж эхэллээ', `${n} ажил үүслээ: ${parent.title || ''}`);
+    planNotifyCeo(`${n} алхам: ${parent.title || ''}`);
     showToast(`${n} ажил үүслээ`, 'success', 2500);
   }
   render();
@@ -25472,9 +25553,15 @@ function renderPlan() {
   const today = todayStr();
   const tasks = Array.isArray(state.tasks) ? state.tasks : [];
   const taskById = new Map(tasks.filter(t => t && t.id).map(t => [String(t.id), t]));
-  const b = planBoard(planList(), tasks, today);
+  // ⛔ Салбарын захирал зөвхөн ажлын саналыг харна, өөрийн салбарынхаа шийдвэрийг гаргана.
+  const actor = planActor(), ceo = actor.ceo, all = planList();
+  const b = planBoard(all.filter(x => planVisible(x, all, actor)), tasks, today);
+  const canDo = (x) => !planCanDecide(x, all, actor);
   const btn = (attr, id, label) => `<button class="btn plan-btn" data-${attr}="${escapeHtml(String(id))}">${label}</button>`;
   const who = (k) => { const m = k ? findMember(k) : null; return m ? m.name : ''; };
+  // Салбарын захирлын баталсныг ИЛ — захирал хянаж, хүсвэл буцаана.
+  const byDir = (x) => !!(x && x.approved_by && !planIsCeoKey(x.approved_by));
+  const byLine = (x) => byDir(x) ? `<div class="plan-when">✓ ${escapeHtml(who(x.approved_by) || 'Салбарын захирал')} баталсан${x.approved_at ? ' · ' + escapeHtml(x.approved_at) : ''}</div>` : '';
   // Хугацаа ИЛ — «хэзээ үүссэн» нь мартагдах гол шалтгаан. Хөдөлгөөнгүй санаачлага тэмдэглэгдэнэ.
   const ageHtml = (x, doing) => {
     const d = planAge(x.created, today);
@@ -25522,15 +25609,18 @@ function renderPlan() {
   const steps = (rows) => rows.length ? `<div class="pl-steps">` + rows.map(r => {
     const st = planStepState(r, taskById, today);
     const t = st.task || ((r.do || {}).task) || {};
-    const meta = [who(t.assignee), String(t.due || '').slice(5, 10)].filter(Boolean).join(' · ');
-    const acts = st.k === 'pending' && r.do
-      ? planAssSelect(r) + btn('plan-apply', r.id, '✓ Батлах') + btn('plan-no', r.id, '✕')
-      : (st.k === 'pending' ? btn('plan-yes', r.id, '✓ Батлах') + btn('plan-no', r.id, '✕') : '');
+    const meta = [who(t.assignee), String(t.due || '').slice(5, 10), byDir(r) ? '✓ ' + who(r.approved_by) : ''].filter(Boolean).join(' · ');
+    const block = st.k === 'pending' ? planCanDecide(r, all, actor) : '';
+    const acts = st.k === 'pending' && !block
+      ? (r.do ? planAssSelect(r) + btn('plan-apply', r.id, '✓ Батлах') : btn('plan-yes', r.id, '✓ Батлах')) + btn('plan-no', r.id, '✕')
+      // ↩ зөвхөн АЛХАМД — санаачлага өөрөө картын «↩ Буцаах» товчтой (давхардуулахгүй)
+      : (r.parent && (st.k === 'open' || st.k === 'late') && byDir(r) && planCanRevert(r) && r.undo && r.undo.task_id ? btn('plan-revert', r.id, '↩') : '');
     return `<div class="pl-step pl-${st.k}"><span class="pl-ic">${ICON[st.k]}</span>`
       + `<div class="pl-st-main"><span class="pl-st-t">${escapeHtml(t.title || r.title || '')}</span>`
       + (meta ? `<span class="pl-st-m">${escapeHtml(meta)}</span>` : '')
       + (st.k === 'no' && r.why ? `<span class="pl-st-m">${escapeHtml(r.why)}</span>` : '')
       + (st.k === 'late' ? `<span class="pl-st-m pl-late-t">хугацаа хэтэрсэн</span>` : '')
+      + (block ? `<span class="pl-st-m">${escapeHtml(block)}</span>` : '')
       + `</div>${acts ? `<div class="pl-st-acts">${acts}</div>` : ''}</div>`;
   }).join('') + `</div>` : '';
   const prog = (c) => c.prog.total
@@ -25539,12 +25629,14 @@ function renderPlan() {
     : `<div class="pl-noprog">Ажил үүсээгүй — хариуцагч: ${escapeHtml(c.row.owner || 'тодорхойгүй')}</div>`;
   // ① Шийдвэр — санал өөрөө эсвэл түүний алхмууд таны баталгааг хүлээж байна.
   const decideCard = (c) => {
-    const x = c.row, own = planPending(x);
-    const acts = (own ? (x.do ? btn('plan-apply', x.id, '✓ Батлаад хэрэгжүүл') : btn('plan-yes', x.id, '✓ Батлах')) + btn('plan-no', x.id, '✕ Хийхгүй') : '')
-      + (c.pending > 1 ? btn('plan-all', x.id, `✓ Бүх алхмыг батлах (${c.pending})`) : '');
+    const x = c.row, own = planPending(x), block = own ? planCanDecide(x, all, actor) : '';
+    const okKids = c.kids.filter(k => planPending(k) && canDo(k)).length;
+    const acts = (own && !block ? (x.do ? btn('plan-apply', x.id, '✓ Батлаад хэрэгжүүл') : btn('plan-yes', x.id, '✓ Батлах')) + btn('plan-no', x.id, '✕ Хийхгүй') : '')
+      + (okKids > 1 ? btn('plan-all', x.id, `✓ Бүх алхмыг батлах (${okKids})`) : '');
     return `<div class="plan-item">` + head(x) + body(x) + research(x)
-      + (own ? `<div class="plan-hint">${escapeHtml(planApproveHint(x))}</div>` : '')
-      + (own && x.do && x.do.kind === 'task' ? planAssSelect(x) : '')
+      + (own && !block ? `<div class="plan-hint">${escapeHtml(planApproveHint(x))}</div>` : '')
+      + (own && block ? `<div class="plan-hint">${escapeHtml(block)}</div>` : '')
+      + (own && !block && x.do && x.do.kind === 'task' ? planAssSelect(x) : '')
       + (c.kids.length ? `<div class="pl-steps-h">Хэрэгжүүлэх алхам</div>` + steps(c.kids) : '')
       + (acts ? `<div class="plan-acts">${acts}</div>` : '') + `</div>`;
   };
@@ -25552,63 +25644,72 @@ function renderPlan() {
   const doingCard = (c) => {
     const x = c.row;
     const rows = (planApplied(x) && x.undo && x.undo.task_id ? [x] : []).concat(c.kids);
-    return `<div class="plan-item pl-doing${c.prog.late ? ' pl-has-late' : ''}">` + head(x, true) + body(x) + prog(c)
+    return `<div class="plan-item pl-doing${c.prog.late ? ' pl-has-late' : ''}">` + head(x, true) + body(x) + byLine(x) + prog(c)
       + steps(rows) + measure(x, false) + research(x)
-      + (c.prog.total ? '' : `<div class="plan-acts">${btn('plan-done', x.id, '✓ Дууслаа')}${btn('plan-down', x.id, '↓ Хойшлуулах')}</div>`)
-      // ⚡ Шууд ажил болсон жижиг саналыг захирал БУЦААЖ болно (ажил устаж, санал шийдвэр рүү буцна)
-      + (x.auto && x.undo && x.undo.task_id ? `<div class="plan-acts">${btn('plan-revert', x.id, '↩ Буцаах')}</div>` : '')
+      + (c.prog.total || !ceo ? '' : `<div class="plan-acts">${btn('plan-done', x.id, '✓ Дууслаа')}${btn('plan-down', x.id, '↓ Хойшлуулах')}</div>`)
+      // ⚡ Шууд ажил / салбарын захирлын баталсныг захирал БУЦААЖ болно (ажил устаж, санал шийдвэр рүү буцна)
+      + ((x.auto || byDir(x)) && planCanRevert(x) && x.undo && x.undo.task_id ? `<div class="plan-acts">${btn('plan-revert', x.id, '↩ Буцаах')}</div>` : '')
       + `</div>`;
   };
-  const nextCard = (c) => `<div class="plan-item">` + head(c.row) + body(c.row) + research(c.row)
-    + `<div class="plan-acts">${btn('plan-up', c.row.id, '↑ Эхлүүлэх')}${btn('plan-done', c.row.id, '✓ Дууслаа')}</div></div>`;
+  const nextCard = (c) => `<div class="plan-item">` + head(c.row) + body(c.row) + byLine(c.row) + research(c.row)
+    + (ceo ? `<div class="plan-acts">${btn('plan-up', c.row.id, '↑ Эхлүүлэх')}${btn('plan-done', c.row.id, '✓ Дууслаа')}</div>` : '') + `</div>`;
   const resultCard = (c) => {
     const x = c.row;
     const when = x.closed_at ? `✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : (x.done_by === 'applied' ? ' · хэрэгжүүлсэн' : '')}` : '✓ Ажил дууссан';
-    const act = (x.done_by === 'applied' && x.undo && !(x.undo.task_id)) ? btn('plan-revert', x.id, '↩ Буцаах')
+    const act = !ceo ? '' : (x.done_by === 'applied' && x.undo && !(x.undo.task_id)) ? btn('plan-revert', x.id, '↩ Буцаах')
       : (c.prog.total ? '' : btn('plan-reopen', x.id, '↩ Буцааж нээх'));
-    return `<div class="plan-item">` + head(x) + `<div class="plan-when">${when}</div>` + measure(x, true) + research(x)
+    return `<div class="plan-item">` + head(x) + `<div class="plan-when">${when}</div>` + byLine(x) + measure(x, true) + research(x)
       + (act ? `<div class="plan-acts">${act}</div>` : '') + `</div>`;
   };
   const small = (c) => `<div class="plan-item">` + head(c.row) + body(c.row) + research(c.row) + `</div>`;
   const appRow = (c) => `<div class="pl-app${c.row.status === 'done' ? ' pl-app-done' : ''}">${c.row.status === 'done' ? '✓' : '○'} ${escapeHtml(c.row.title || '')}</div>`;
+  // Салбарын захиралд: ӨӨРИЙН салбарын санал л (шийдэж болохгүй өөрийн санал ч ил — яагаад гэдэг нь бичигдэнэ)
+  const decide = ceo ? b.decide : b.decide.filter(c => [c.row].concat(c.kids)
+    .some(r => planPending(r) && actor.branches.includes(planRowBranch(r)) && !r.private));
+  // Тоо = ӨӨРӨӨ шийдэж болох (цэсний тоотой ИЖИЛ) — өөрийн санал ил боловч ажил биш
+  const decideN = ceo ? decide.length : decide.filter(c => [c.row].concat(c.kids).some(r => planPending(r) && canDo(r))).length;
   const warn = b.doing.length > PLAN_DOING_MAX
     ? `<div class="plan-warn">⚠ ${b.doing.length} санаачлага зэрэг явж байна. Олон ажил нэг дор эхэлбэл аль нь ч дуусахгүй — шинийг батлахаас өмнө аль нэгийг дуусгах эсвэл хойшлуул.</div>` : '';
   return `<div class="plan-wrap">`
     + `<div class="plan-top"><h2 class="plan-h1">Төлөвлөгөө</h2>`
-    + `<span class="plan-sub">Санал → таны шийдвэр → ажил → үр дүн. Санал Claude болон ажилтнуудаас ирнэ. Батлахад ажил хариуцагчид очиж, явц нь ажлаас өөрөө бодогдоно.</span></div>`
-    + safeViewHtml(scorecardHtml, 'Долоо хоногийн тоо')
-    + `<div class="plan-sec plan-ideas"><div class="plan-sec-h">① Таны шийдвэр хүлээж буй<span class="plan-n">${b.decide.length}</span></div>`
-    + (b.decide.length
-        ? planIdeaGroups(b.decide.map(c => ({ ...c, cat: c.row.cat }))).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>` + g.rows.map(decideCard).join('')).join('')
+    + `<span class="plan-sub">${ceo
+        ? 'Санал → таны шийдвэр → ажил → үр дүн. Санал Claude болон ажилтнуудаас ирнэ. Батлахад ажил хариуцагчид очиж, явц нь ажлаас өөрөө бодогдоно.'
+        : 'Салбарынхаа ажилтны саналыг батална. Батлахад ажил хариуцагчид очиж, захиралд мэдэгдэнэ. Үнэ, хүний тухай асуудал, өөрийн тань санал захиралд очно.'}</span></div>`
+    + (ceo ? safeViewHtml(scorecardHtml, 'Долоо хоногийн тоо') : '')
+    + `<div class="plan-sec plan-ideas"><div class="plan-sec-h">① Таны шийдвэр хүлээж буй<span class="plan-n">${decideN}</span></div>`
+    + (decide.length
+        ? planIdeaGroups(decide.map(c => ({ ...c, cat: c.row.cat }))).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>` + g.rows.map(decideCard).join('')).join('')
         : '<div class="plan-empty">✓ Шийдвэр хүлээж буй зүйл алга.</div>')
     + `</div>`
     + warn
     + `<div class="plan-sec"><div class="plan-sec-h">② Хэрэгжиж буй<span class="plan-n">${b.doing.length}</span></div>`
     + (b.doing.length ? b.doing.map(doingCard).join('') : '<div class="plan-empty">Хэрэгжиж буй санаачлага алга — доорх дараалалаас эхлүүл.</div>')
     + `<details class="plan-more"><summary>Дараалалд — ${b.next.length}</summary>`
-    + b.next.map(nextCard).join('') + `<button class="btn plan-btn plan-add" id="plan-add">+ Нэмэх</button></details>`
+    + b.next.map(nextCard).join('') + (ceo ? `<button class="btn plan-btn plan-add" id="plan-add">+ Нэмэх</button>` : '') + `</details>`
     + `</div>`
     + `<div class="plan-sec"><div class="plan-sec-h">③ Үр дүн<span class="plan-n">${b.result.length}</span></div>`
     + (b.result.length ? b.result.map(resultCard).join('') : '<div class="plan-empty">Дууссан санаачлага алга.</div>')
     + `</div>`
     + `<details class="plan-more"><summary>Хийхгүй гэж шийдсэн — ${b.no.length}</summary>`
     + (b.no.length ? b.no.map(small).join('') : '<div class="plan-empty">Хоосон.</div>') + `</details>`
-    + `<details class="plan-more"><summary>🤖 Claude-ын аппын ажил — ${b.app.filter(c => c.row.status !== 'done').length} нээлттэй</summary>`
-    + (b.app.length ? b.app.map(appRow).join('') : '<div class="plan-empty">Хоосон.</div>') + `</details>`
+    + (ceo ? `<details class="plan-more"><summary>🤖 Claude-ын аппын ажил — ${b.app.filter(c => c.row.status !== 'done').length} нээлттэй</summary>`
+      + (b.app.length ? b.app.map(appRow).join('') : '<div class="plan-empty">Хоосон.</div>') + `</details>` : '')
     + `</div>`;
 }
 function attachPlanHandlers() {
   document.getElementById('plan-add')?.addEventListener('click', () => planAdd());
-  document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() })));
+  // ⛔ Удирдах товч (дууслаа · эхлүүлэх · хойшлуулах · нээх) = ЗӨВХӨН захирал — салбарын захирал зөвхөн батална
+  const ceoOnly = (fn) => () => { if (state.isCEO) fn(); };
+  document.querySelectorAll('[data-plan-done]').forEach(b => b.addEventListener('click', ceoOnly(() => planSet(b.dataset.planDone, { status: 'done', closed_at: todayStr() }))));
   document.querySelectorAll('[data-plan-yes]').forEach(b => b.addEventListener('click', () => planAcceptIdea(b.dataset.planYes)));
   document.querySelectorAll('[data-plan-ass]').forEach(el => el.addEventListener('change', () => planSetAssignee(el.dataset.planAss, el.value)));
   document.querySelectorAll('[data-plan-apply]').forEach(b => b.addEventListener('click', () => planApplyIdea(b.dataset.planApply)));
   document.querySelectorAll('[data-plan-all]').forEach(b => b.addEventListener('click', () => planApproveAll(b.dataset.planAll)));
   document.querySelectorAll('[data-plan-revert]').forEach(b => b.addEventListener('click', () => planRevertIdea(b.dataset.planRevert)));
   document.querySelectorAll('[data-plan-no]').forEach(b => b.addEventListener('click', () => planRejectIdea(b.dataset.planNo)));
-  document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
-  document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
-  document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true })));
+  document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', ceoOnly(() => planSet(b.dataset.planUp, { sec: 'now' }))));
+  document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', ceoOnly(() => planSet(b.dataset.planDown, { sec: 'next' }))));
+  document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', ceoOnly(() => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true }))));
   document.querySelectorAll('[data-sc-go]').forEach(b => b.addEventListener('click', () => { state.view = b.dataset.scGo; render(); }));
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25706,7 +25807,7 @@ function planFromHtml(x) {
 // Claude хассан саналыг захирал төлөвлөгөөнд оруулна. Гарчгийг ЗАХИРАЛ бичнэ —
 // мөр бүх ажилтанд уншигддаг тул саналын бичвэрийг шууд тавихгүй.
 async function staffIdeaPromote(id) {
-  if (!canSeePlan()) return;
+  if (!state.isCEO) return;   // ⛔ Claude хассаныг сэргээх = захирлын шийдвэр (RLS ч зөвхөн CEO)
   const row = (Array.isArray(state.staffIdeas) ? state.staffIdeas : []).find(x => x && String(x.id) === String(id));
   if (!row) return;
   const title = String((await showPrompt('Төлөвлөгөөнд ямар нэрээр орох вэ? Мөрийг бүх ажилтан харж болно — хүний нэр бүү бич.',
@@ -25812,7 +25913,7 @@ function renderIdeas() {
   const card = (x, showWho) => {
     const s = staffIdeaState(x, plan);
     const task = s.task ? `<div class="si-task">Ажил: ${escapeHtml(s.task.title || '')}${s.task.assignee ? ' → ' + escapeHtml(staffIdeaAuthor(s.task.assignee)) : ''}</div>` : '';
-    const promote = showWho && (x.status === 'drop' || x.status === 'exists')
+    const promote = showWho && state.isCEO && (x.status === 'drop' || x.status === 'exists')
       ? `<div class="si-acts"><button class="btn si-btn" data-si-promote="${escapeHtml(String(x.id))}">↩ Төлөвлөгөөнд оруулах</button></div>` : '';
     return `<div class="si-item">`
       + `<div class="si-meta"><span>${escapeHtml(staffIdeaKindLabel(x.kind))}</span>`
@@ -44716,14 +44817,14 @@ function refreshViewData() {
     loadPlan(true).then(() => { if (state.view === 'plan') render(); });
     // Ажилтны саналын бичвэр/зохиогч (мөрөнд зөвхөн id) — батлахад зохиогчид мэдэгдэнэ.
     loadStaffIdeas(true).then(() => { if (state.view === 'plan') render(); });
-    // Долоо хоногийн тоо — Тоймын ижил дата (захиалга · дуудлага · зар) + өдрийн зураг
-    if (state.appOrders === undefined) { state.appOrders = []; loadAppOrders().then(() => { if (state.view === 'plan') render(); }); }
-    if (canSeeMissedCalls()) {
+    // Долоо хоногийн тоо — Тоймын ижил дата (захиалга · дуудлага · зар) + өдрийн зураг. ЗӨВХӨН захиралд.
+    if (state.isCEO && state.appOrders === undefined) { state.appOrders = []; loadAppOrders().then(() => { if (state.view === 'plan') render(); }); }
+    if (state.isCEO && canSeeMissedCalls()) {
       if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'plan') render(); }); }
       if (state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => { if (state.view === 'plan') render(); }); }
     }
-    if (canSeeAds()) mktEnsure('fbAds', loadFbAds, 'plan');
-    loadScSnaps().then(() => { if (state.view === 'plan') render(); });
+    if (state.isCEO && canSeeAds()) mktEnsure('fbAds', loadFbAds, 'plan');
+    if (state.isCEO) loadScSnaps().then(() => { if (state.view === 'plan') render(); });
   }
   if (v === 'ideas') {
     loadStaffIdeas(true).then(() => { if (state.view === 'ideas') render(); });

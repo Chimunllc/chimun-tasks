@@ -84,6 +84,12 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 
 // функцуудыг контекстээс авах
 const F = sandbox;
+// Төлөвлөгөөний дэлгэцийг ЗАХИРЛЫН нүдээр зурна (салбарын захирал өөр дэлгэц хардаг — 2026-10-09).
+const asCeo = (fn) => {
+  const prev = vm.runInContext('!!state.isCEO', sandbox);
+  vm.runInContext('state.isCEO = true;', sandbox);
+  try { return fn(); } finally { vm.runInContext('state.isCEO = ' + prev + ';', sandbox); }
+};
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', 'parseVatReportMatrix', 'vatReportRecon', 'vatReportReconHtml', 'claimCanResolve', 'stageMetaHtml', 'vatIsAggregate', 'vatIssuedDay', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'monthPayBreakdown', 'monthWorkdays', 'workNormDays', 'workNormMins', 'payMonthDefault', 'payMonthMins', 'payrollHistOnly', 'payrollStartMonth', 'lunchCfg', 'overtimeRate', 'salaryPaymentsFor', 'salaryFinPayments', 'payBalance', 'incomeRelinkPlan', 'pbxPeerTimeline', 'pbxTimelineHtml', 'pbxTime', 'cateringRevenue', 'cateringIncomeMonth', 'cateringOwed', 'cateringMonthIncome', 'cateringHasMoney', 'jrnCateringList', 'jrnCreditFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner', 'renderCatering', 'finMonthIncome', 'finAddOrderIncome', 'journalEntries', 'empAcctOwners', 'empAcctsForPerson', 'acctSame', 'empNameFullKey', 'salaryIsLoan', 'salaryPayLabel', 'salaryPaidFor', 'salaryPayMonth', 'salaryPayFp', 'salaryFinSource', 'payrollRoster', 'payrollOrphans', 'payrollAttMins', 'finIsRealExpense', 'stageFeeForQty', 'orderItemQty', 'stagePayByPerson', 'orderStagesOnDay', 'defectStats', 'pipelineSteps', 'pendingStageClaims', 'stageClaims', 'stageHasPerson', 'stageLabel', 'stageLabelKey', 'stageHistLabel', 'offHoursSpan', 'orderOffHoursCount', 'lateOffHoursFee', 'orderLateFee', 'orderOffHoursFee', 'handoffQualityScore', 'stageDefs', 'stageEvidence', 'stagePtsForQty', 'stageWeight', 'stagePointRate', 'pipelineNext', 'orderPipelineCtx', 'dayLoadForecast', 'missingItemsCost', 'fmtDateTimeUB', 'isDateOnlyStamp', 'countShrinkCost', 'offHoursFeeFor', 'orderOffHoursFeeOf', 'tariffOffhoursFirstFee',
@@ -7980,7 +7986,7 @@ need(['orderCustType']);
     eq(F.planAssignRow(r, '').task.assignee, '', 'санал: хариуцагчгүй болгож болно');
     eq(F.planAssignRow(null, '222').task.assignee, '222', 'санал: хоосон мөрөнд ч унахгүй');
     vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'as1', sec: 'idea', title: 'Т', do: { kind: 'task', task: { title: 'Ажил' } } }]) + ';', sandbox);
-    ok(/data-plan-ass/.test(F.renderPlan()), 'санал: хариуцагч сонгох жагсаалт гарна');
+    ok(/data-plan-ass/.test(asCeo(() => F.renderPlan())), 'санал: хариуцагч сонгох жагсаалт гарна');
     vm.runInContext('state.plan = undefined;', sandbox);
   }
 
@@ -7994,7 +8000,7 @@ need(['orderCustType']);
     eq(F.planDoKinds().task.preview({ task: {} }), null, 'ИНВАРИАНТ: гарчиггүй ажил үүсэхгүй');
   }
   vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'h1', sec: 'idea', title: 'Т', owner: 'CEO' }]) + ';', sandbox);
-  ok(/plan-hint/.test(F.renderPlan()), 'санал: тайлбар дэлгэцэд гарна');
+  ok(/plan-hint/.test(asCeo(() => F.renderPlan())), 'санал: тайлбар дэлгэцэд гарна');
   vm.runInContext('state.plan = undefined;', sandbox);
 
   // ── Гадны (in-app браузер) алдааг бүртгэхгүй (2026-10-07, fp 0f6bea95f208) ─
@@ -8182,13 +8188,13 @@ need(['orderCustType']);
   eq(F.planDoDiff('tariff', { offhours_fee: 12000 }, null).length, 1, 'хэрэгжүүлэх: тохиргоо хоосон байсан ч ажиллана');
   // Дэлгэц: үйлдэлтэй санал өөр товчтой
   vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'd1', sec: 'idea', cat: 'money', title: 'Тариф', do: { kind: 'tariff', set: { offhours_fee: 12000 } } }]) + ';', sandbox);
-  ok(/data-plan-apply/.test(F.renderPlan()), 'хэрэгжүүлэх: «Батлаад хэрэгжүүл» товч гарна');
+  ok(/data-plan-apply/.test(asCeo(() => F.renderPlan())), 'хэрэгжүүлэх: «Батлаад хэрэгжүүл» товч гарна');
   vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'd2', sec: 'next', status: 'done', closed_at: '2026-10-07', done_by: 'applied', undo: { offhours_fee: 10000 }, do: { kind: 'tariff', set: {} } }]) + ';', sandbox);
-  { const h = F.renderPlan(); ok(/data-plan-revert/.test(h) && h.includes('хэрэгжүүлсэн'), 'хэрэгжүүлэх: буцаах товч ба тэмдэглэгээ'); }
+  { const h = asCeo(() => F.renderPlan()); ok(/data-plan-revert/.test(h) && h.includes('хэрэгжүүлсэн'), 'хэрэгжүүлэх: буцаах товч ба тэмдэглэгээ'); }
   vm.runInContext('state.plan = undefined;', sandbox);
   {
     const body = src.slice(src.indexOf('async function planApplyIdea'), src.indexOf('async function planRevertIdea'));
-    ok(/state\.isCEO/.test(body), 'ИНВАРИАНТ: тохиргоог зөвхөн захирал хэрэгжүүлнэ');
+    ok(/planCanDecide\(row, planList\(\), planActor\(\)\)/.test(body), 'ИНВАРИАНТ: хэрэгжүүлэхийн өмнө эрхийг шалгана (захирал / салбарын захирал)');
     ok(/const ok = await showConfirm\(/.test(body) && /if \(!ok\) return;/.test(body), 'ИНВАРИАНТ: хэрэгжүүлэхийн өмнө баталгаажуулалтын ХАРИУГ шалгана');
     ok(/if \(!kind\)/.test(body), 'ИНВАРИАНТ: танихгүй үйлдэл чимээгүй өнгөрөхгүй');
     const tf = src.slice(src.indexOf("  tariff: {"), src.indexOf("  task: {"));
@@ -8198,11 +8204,11 @@ need(['orderCustType']);
 
   // Дэлгэцэд санал нотолгоотойгоо гарч, батлах/татгалзах товчтой
   vm.runInContext('state.plan = ' + JSON.stringify(ideas) + ';', sandbox);
-  const ih = F.renderPlan();
+  const ih = asCeo(() => F.renderPlan());
   ok(/plan-ideas/.test(ih) && /data-plan-yes/.test(ih) && /data-plan-no/.test(ih), 'санал: батлах/татгалзах товчтой');
   ok(/plan-ev/.test(ih) && ih.includes('нотолгоо'), 'санал: нотолгоо харагдана');
   vm.runInContext('state.plan = ' + JSON.stringify([{ id: 'c1', sec: 'idea', cat: 'money', title: 'Мөнгөний санал' }]) + ';', sandbox);
-  ok(/plan-cat/.test(F.renderPlan()) && F.renderPlan().includes('💰 Мөнгө'), 'санал: ангилал дэлгэцэд гарна');
+  ok(/plan-cat/.test(asCeo(() => F.renderPlan())) && asCeo(() => F.renderPlan()).includes('💰 Мөнгө'), 'санал: ангилал дэлгэцэд гарна');
   vm.runInContext('state.plan = undefined;', sandbox);
 
   // ── Агент ӨӨРИЙН ажлаа хаана (2026-10-07, CEO) ──────────────────────────
@@ -8236,7 +8242,7 @@ need(['orderCustType']);
 
   // Дэлгэц ҮНЭХЭЭР зурагдаж, «юу хийх» мөр гарч байгааг шалгана
   vm.runInContext('state.plan = planMerge(planSeed(), []);', sandbox);
-  const planHtml = F.renderPlan();
+  const planHtml = asCeo(() => F.renderPlan());
   ok(/plan-sec-h/.test(planHtml), 'төлөвлөгөө: дэлгэц зурагдана');
   ok(planHtml.includes('Хөдөө орон нутаг'), 'төлөвлөгөө: дэлгэцэд юу хийхийг бичнэ');
   ok(planHtml.includes('2026-09-17') && /plan-age/.test(planHtml), 'төлөвлөгөө: мөр хэзээ нэмэгдсэнээ хэлнэ');
@@ -8296,16 +8302,16 @@ need(['orderCustType']);
   eq(F.planBoard(null, null, today).decide.length, 0, 'самбар: хоосон оролт');
   // Дэлгэц ҮНЭХЭЭР зурагдана
   vm.runInContext('var __pbT = state.tasks; state.plan = ' + JSON.stringify(list) + '; state.tasks = ' + JSON.stringify(tasks) + ';', sandbox);
-  const h = F.renderPlan();
+  const h = asCeo(() => F.renderPlan());
   ok(h.includes('① Таны шийдвэр') && h.includes('② Хэрэгжиж буй') && h.includes('③ Үр дүн'), 'самбар: гурван хэсэг гарна');
   ok(/<progress class="pl-prog" max="2" value="1">/.test(h) && h.includes('хоцорсон'), 'самбар: явцын зураас ба хоцролт');
   ok(h.includes('Алхмын ажил') && /data-plan-apply="B1"/.test(h), 'самбар: алхам картын дотор батлах товчтой');
   ok(!/PLAN\.md|репо/.test(h), 'самбар: хөгжүүлэгчийн үг дэлгэцэд гарахгүй');
-  eq(F.planDecideCount(), 2, 'самбар: цэсний тоо = таны шийдвэр хүлээж буй');
+  eq(asCeo(() => F.planDecideCount()), 2, 'самбар: цэсний тоо = таны шийдвэр хүлээж буй');
   vm.runInContext('state.tasks = __pbT; state.plan = undefined;', sandbox);
   // Бүх алхмыг нэг дор батлах — жагсаалт ил, хариуг шалгана, зөвхөн захирал
   const aa = src.slice(src.indexOf('async function planApproveAll'), src.indexOf('function renderPlan()'));
-  ok(/state\.isCEO/.test(aa) && /const ok = await showConfirm\(/.test(aa) && /if \(!ok\) return;/.test(aa),
+  ok(/!planCanDecide\(x, list0, actor\)/.test(aa) && /const ok = await showConfirm\(/.test(aa) && /if \(!ok\) return;/.test(aa),
      'ИНВАРИАНТ: бүх алхмыг батлахаас өмнө жагсаалт харуулж хариуг шалгана');
   const ap = src.slice(src.indexOf('async function planApplyIdea'), src.indexOf('async function planRevertIdea'));
   ok(/kind\) === 'task'\) \{[\s\S]*?status: 'open', done_by: 'applied', applied_at/.test(ap),
@@ -8349,7 +8355,7 @@ need(['orderCustType']);
     + JSON.stringify([{ id: 'a1', sec: 'now', auto: true, done_by: 'applied', applied_at: '2026-10-09', title: 'Шууд',
         undo: { task_id: 'tx' }, do: { kind: 'task', task: { title: 'Ажил' } },
         measure: { what: 'Хэмжүүр', base: '12%', check: '2026-11-21' } }]) + ';', sandbox);
-  const h = F.renderPlan();
+  const h = asCeo(() => F.renderPlan());
   ok(h.includes('⚡ Шууд') && /data-plan-revert="a1"/.test(h), 'шууд ажил: тэмдэг ба буцаах товч');
   ok(h.includes('📏 Хэмжүүр') && h.includes('шалгах: 2026-11-21'), 'хэмжүүр: эхлэл ба шалгах өдөр картад');
   vm.runInContext('state.tasks = __mT; state.plan = undefined;', sandbox);
@@ -18735,4 +18741,100 @@ async function swFetchTests() {
   const d = src.slice(src.indexOf('function renderDashboard()'), src.indexOf('function renderDashboard()') + 6000);
   ok(d.indexOf('dash-top') > 0 && d.indexOf('ideaCreditsHtml()') > d.indexOf('dash-top'), 'Тойм: хэрэгжсэн санал шилдэг гүйцэтгэгчийн дараа');
   ok(/\[data-ic-write\]/.test(src) && /state\.view = 'ideas'/.test(src), 'Тойм: «Санал бичих» санал санаачлага руу');
+}
+
+// ═══ ТӨЛӨВЛӨГӨӨ: САЛБАРЫН ЗАХИРАЛ БАТЛАНА (2026-10-09, CEO: «салбараар нь хуваа») ══
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const A = (o) => ({ ceo: false, me: 'd1', approve: true, branches: ['m-event'], myIdeas: new Set(), ...o });
+  const task = (br, extra) => ({ id: 'x', sec: 'idea', src: 'staff', from: [9], do: { kind: 'task', task: { title: 'Ажил', branch: br } }, ...extra });
+  const cd = (row, a, list) => F.planCanDecide(row, list || [row], a);
+  // ЗАН ЧАНАР — функцийг бодитоор дуудна (scan-тест хэв маяг л хардаг)
+  eq(cd(task('m-event'), A()), '', 'салбарын захирал: өөрийн салбарын ажлын саналыг батална');
+  eq(cd({ id: 't', sec: 'idea', do: { kind: 'tariff', set: {} } }, A({ ceo: true, approve: false })), '', 'захирал: бүгдийг шийднэ');
+  ok(cd({ id: 't', sec: 'idea', do: { kind: 'tariff', set: {} } }, A()) !== '', '⛔ салбарын захирал үнэ/тариф батлахгүй');
+  ok(cd({ id: 'c', sec: 'idea', owner: 'CEO' }, A()) !== '', '⛔ ажилгүй (захирлын) санал батлахгүй');
+  ok(cd(task('shared'), A()) !== '', '⛔ нэгдсэн салбарын санал захиралд');
+  ok(cd(task('camp'), A({ branches: ['catering'] })) !== '', '⛔ өөр салбарын санал батлахгүй');
+  ok(cd(task('m-event', { private: true }), A()) !== '', '⛔ хүний тухай гомдол захиралд');
+  ok(/Өөрийн санал/.test(cd(task('m-event'), A({ myIdeas: new Set(['9']) }))), '⛔ өөрийн саналыг өөрөө батлахгүй');
+  {
+    const par = { id: 'p', sec: 'now', src: 'staff', from: [9], owner: 'CEO' };
+    const step = { id: 'p-1', parent: 'p', sec: 'idea', do: { kind: 'task', task: { title: 'А', branch: 'm-event' } } };
+    ok(/Өөрийн санал/.test(cd(step, A({ myIdeas: new Set(['9']) }), [par, step])), '⛔ өөрийн саналын АЛХМЫГ ч батлахгүй');
+    eq(cd(step, A(), [par, step]), '', 'бусдын саналын алхмыг батална');
+  }
+  ok(/Ачаалж/.test(cd(task('m-event'), A({ myIdeas: null }))), '⛔ саналууд ачаалагдаагүй бол «өөрийнх биш» гэж ТААМАГЛАХГҮЙ');
+  ok(cd(task('m-event'), A({ approve: false })) !== '', '⛔ эрхгүй хүн батлахгүй');
+  // Харагдах мөр: захирлын стратеги, тариф, хувийн гомдол ХАРАГДАХГҮЙ
+  const vlist = [
+    { id: 'seed', sec: 'now', owner: 'CEO', title: 'Стратеги' },
+    { id: 'tar', sec: 'idea', do: { kind: 'tariff', set: {} } },
+    { id: 'st', sec: 'idea', src: 'staff', from: [1] },
+    { id: 'pv', sec: 'idea', src: 'staff', private: true },
+    { id: 'dt', sec: 'idea', src: 'data' },
+    { id: 'par', sec: 'now', owner: 'CEO' }, { id: 'par-1', parent: 'par', do: { kind: 'task', task: {} } },
+  ];
+  const vis = vlist.filter(x => F.planVisible(x, vlist, A())).map(x => x.id).join(',');
+  eq(vis, 'st,dt,par,par-1', 'салбарын захиралд: зөвхөн ажлын санал харагдана (стратеги/тариф/гомдол БИШ)');
+  eq(vlist.filter(x => F.planVisible(x, vlist, A({ ceo: true }))).length, vlist.length, 'захиралд: бүгд харагдана');
+
+  // Эрх нь албан тушаалын багцаас (кодод хүний нэр/утас БИШ) — capResolved-ийг бодитоор дуудна
+  const T = vm.runInContext('TEAM', sandbox); const Tsave = T.slice(); T.length = 0;
+  T.push({ name: 'Үйл Захирал', phone: '91110001', role: 'Үйл ажиллагааны захирал', status: 'идэвхтэй', branches: ['m-event'] },
+         { name: 'Нярав Нэг', phone: '91110002', role: 'Нярав', status: 'идэвхтэй', branches: ['m-event'] },
+         { name: 'Захирал', phone: '91110000', role: 'CEO', level: 100, status: 'идэвхтэй' });
+  const snap = vm.runInContext('JSON.stringify({ c: state.isCEO, m: state.me, p: state.memberPerms, b: state.memberBranches, r: state.rolePerms, i: state.staffIdeas, pl: state.plan, t: state.tasks })', sandbox);
+  vm.runInContext("state.isCEO = false; state.me = '91110001'; state.memberPerms = {}; state.memberBranches = {}; state.rolePerms = {};", sandbox);
+  eq(vm.runInContext("capResolved('plan.approve')", sandbox), true, 'эрх: үйл ажиллагааны захирал батлах эрхтэй (багцаас)');
+  eq(vm.runInContext("canSeePlan()", sandbox), true, 'эрх: үйл ажиллагааны захирал төлөвлөгөө харна');
+  vm.runInContext("state.me = '91110002';", sandbox);
+  eq(vm.runInContext("capResolved('plan.approve') === true", sandbox), false, '⛔ эрх: нярав батлахгүй (өгөгдмөл хориг)');
+  vm.runInContext("state.me = '91110001'; state.memberBranches = { '91110001': ['catering'] };", sandbox);
+  eq(vm.runInContext("planActor().branches.join(',')", sandbox), 'catering', 'салбар: CEO аппаас тавьсан салбараас (member_branches)');
+  vm.runInContext("state.memberBranches = {};", sandbox);
+  // Дэлгэц: салбарын захирлын нүдээр ҮНЭХЭЭР зурна
+  vm.runInContext('state.staffIdeas = [{ id: 7, author: "91110001" }]; state.tasks = []; state.plan = ' + JSON.stringify([
+    { id: 's-1', sec: 'idea', src: 'staff', from: [1], title: 'Мэвент санал', do: { kind: 'task', task: { title: 'Мэвент ажил', branch: 'm-event' } } },
+    { id: 's-2', sec: 'idea', src: 'staff', from: [2], title: 'Кемп санал', do: { kind: 'task', task: { title: 'Кемп ажил', branch: 'camp' } } },
+    { id: 's-7', sec: 'idea', src: 'staff', from: [7], title: 'Өөрийн санал', do: { kind: 'task', task: { title: 'Өөр ажил', branch: 'm-event' } } },
+    { id: 'tf', sec: 'idea', title: 'Тарифын санал', do: { kind: 'tariff', set: { offhours_fee: 1 } } },
+    { id: 'sd', sec: 'now', owner: 'CEO', title: 'Захирлын стратеги' },
+    { id: 's-9', sec: 'idea', src: 'staff', from: [3], private: true, title: 'Гомдол', owner: 'CEO' },
+  ]) + ';', sandbox);
+  let h = '', err = '';
+  try { h = vm.runInContext('renderPlan()', sandbox); } catch (e) { err = String(e && e.message || e); }
+  eq(err, '', 'салбарын захирал: дэлгэц алдаагүй зурагдана');
+  ok(/data-plan-apply="s-1"/.test(h), 'салбарын захирал: өөрийн салбарын саналд батлах товч');
+  ok(!/data-plan-apply="s-7"/.test(h) && h.includes('Өөрийн санал — захирал батална'), '⛔ өөрийн саналд товч алга, шалтгаан ил');
+  ok(!h.includes('Кемп санал') && !h.includes('Тарифын санал') && !h.includes('Захирлын стратеги') && !h.includes('Гомдол'),
+     '⛔ өөр салбар, тариф, стратеги, гомдол харагдахгүй');
+  ok(!/wsc-/.test(h) && !/id="plan-add"/.test(h), '⛔ онооны самбар ба «Нэмэх» зөвхөн захиралд');
+  eq(vm.runInContext('planDecideCount()', sandbox), 1, 'салбарын захирлын тоо = зөвхөн өөрийн шийдэж болох');
+  vm.runInContext('(function(s){ state.isCEO = s.c; state.me = s.m; state.memberPerms = s.p; state.memberBranches = s.b; state.rolePerms = s.r; state.staffIdeas = s.i; state.plan = s.pl; state.tasks = s.t; })(' + snap + ')', sandbox);
+  T.length = 0; Tsave.forEach(x => T.push(x));
+
+  // Бичих зам бүр эрх шалгана; захиралд мэдэгдэнэ; буцаах = захирал эсвэл баталсан хүн
+  const fnb = (n) => src.slice(src.indexOf(n), src.indexOf('\n}\n', src.indexOf(n)));
+  ['async function planApplyIdea', 'async function planAcceptIdea', 'async function planRejectIdea', 'async function planSetAssignee']
+    .forEach(n => ok(/planCanDecide\(/.test(fnb(n)), 'ИНВАРИАНТ: ' + n.split(' ').pop() + ' эрх шалгана'));
+  ok(/planNotifyCeo\(/.test(fnb('async function planApplyIdea')) && /planNotifyCeo\(/.test(fnb('async function planApproveAll')),
+     'ИНВАРИАНТ: салбарын захирал батлахад захиралд мэдэгдэнэ');
+  ok(/approved_by: state\.me/.test(fnb('async function planApplyIdea')), 'ИНВАРИАНТ: хэн баталсан нь хадгалагдана');
+  ok(/planCanRevert\(row\)/.test(fnb('async function planRevertIdea')), 'ИНВАРИАНТ: буцаах = захирал эсвэл баталсан хүн');
+  ok(/if \(!state\.isCEO\) return;/.test(fnb('async function staffIdeaPromote')), '⛔ Claude хассаныг сэргээх = зөвхөн захирал');
+  // DB: хувийн гомдлыг салбарын захирал уншихгүй; засах = зөвхөн захирал
+  const sq = fs.readFileSync(path.join(__dirname, '..', 'db', 'staff_ideas.sql'), 'utf8');
+  ok(/add column if not exists private boolean not null default false/.test(sq), 'db: staff_ideas.private');
+  ok(/and \(not private or sec\.is_ceo\(\)\)\)\);/.test(sq), '⛔ db: хувийн санал зөвхөн захиралд уншигдана');
+  ok(/staff_ideas_upd on staff_ideas for update to authenticated\s+using \(sec\.is_ceo\(\)\) with check \(sec\.is_ceo\(\)\)/.test(sq), 'db: дүгнэлт засах = зөвхөн захирал');
+  const tri = fs.readFileSync(path.join(__dirname, '..', 'tools', 'idea_triage.py'), 'utf8');
+  ok(/'private': \{'type': 'boolean'\}/.test(tri) && /private = coalesce\(x\.private, false\)/.test(tri), 'триаж: хувийн тэмдэг DB-д бичигдэнэ');
+}
+{
+  // Толгойн тоо = цэсний тоо (өөрийн санал ил боловч тоологдохгүй)
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const rp = src.slice(src.indexOf('function renderPlan()'), src.indexOf('function attachPlanHandlers()'));
+  ok(/① Таны шийдвэр хүлээж буй<span class="plan-n">\$\{decideN\}/.test(rp) && /canDo\(r\)\)\)\.length/.test(rp),
+     'төлөвлөгөө: толгойн тоо = өөрөө шийдэж болох (цэсний тоотой ижил)');
 }

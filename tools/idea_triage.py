@@ -208,6 +208,9 @@ def normalize(items, batch, plan, refmap, today):
             tgt = ''
         r = {'id': i, 'decision': d, 'target': tgt if d in ('merge', 'exists') else '',
              'reply': clean(it.get('reply'), 400)}
+        # ⛔ Хүний тухай гомдол/цалин = зөвхөн захирал харна (салбарын захирал ч БИШ) — staff_ideas.private
+        if it.get('private') is True or (d == 'plan' and it.get('owner') == 'ceo'):
+            r['private'] = True
         if not r['reply']:
             r['reply'] = {'plan': 'Захиралд төлөвлөгөөний санал болгож илгээлээ.',
                           'merge': 'Ижил санал аль хэдийн төлөвлөгөөнд байна — нэгтгэлээ.',
@@ -242,10 +245,6 @@ def normalize(items, batch, plan, refmap, today):
                 r['owner'] = ''
             else:
                 r['owner'] = 'Claude' if own == 'claude' else 'CEO'
-                # ⛔ owner=ceo = хүний тухай гомдол, цалин/ажилд авалт — Тоймын
-                #    «💡 Хэрэгжсэн санал»-д зохиогчийн нэр ГАРАХГҮЙ (db/idea_credits.sql)
-                if own == 'ceo':
-                    r['private'] = True
         res.append(r)
     # Claude алгассан санал → захиралд (эргэлзвэл plan). Эс бөгөөс тэр санал `new`
     # хэвээр үлдэж 30 мин тутам дахин илгээгдэн мөнгө зарцуулсаар байна.
@@ -300,7 +299,8 @@ def build_changes(decisions, batch, plan, today):
                 merges.setdefault(pid, []).append(d['id'])
         elif d['decision'] == 'exists':
             pid = d['target']
-        updates.append({'id': d['id'], 'status': d['decision'], 'verdict': d['reply'], 'plan_id': pid})
+        updates.append({'id': d['id'], 'status': d['decision'], 'verdict': d['reply'], 'plan_id': pid,
+                        'private': bool(d.get('private'))})
     return new_rows, merges, updates
 
 
@@ -330,9 +330,9 @@ where c.key = 'plan';""")
     if updates:
         sql.append(f"""
 update staff_ideas s set status = x.status, verdict = x.verdict,
-       plan_id = nullif(x.plan_id, ''), triaged_at = now()
+       plan_id = nullif(x.plan_id, ''), triaged_at = now(), private = coalesce(x.private, false)
 from jsonb_to_recordset({dq(json.dumps(updates, ensure_ascii=False))}::jsonb)
-     as x(id bigint, status text, verdict text, plan_id text)
+     as x(id bigint, status text, verdict text, plan_id text, private boolean)
 where s.id = x.id and s.status = 'new';""")
     return '\n'.join(sql) + '\n'
 
@@ -442,6 +442,8 @@ SYSTEM = """Чи «Чимун ХХК»-ийн дотоод төлөвлөгөө�
     ceo = ЗӨВХӨН тодорхой хүний тухай гомдол, цалин/ажилд авах/халах зэрэг зөвхөн
     захирал шийддэг хүний асуудал (task_* хоосон).
   - task_title / task_desc: хийх хүнд ойлгомжтой, алхамтай. due_days: 3–30 (яаралтай бол бага).
+  - branch: ажил аль салбарынх (m-event | camp | catering). Салбарын захирал батална тул аль
+    болох тодорхой салбар сонго; бүх салбарт адил хамаатай бол л shared (тэгвэл захирал батална).
 • merge — төлөвлөгөөний НЭЭЛТТЭЙ мөр (sec: idea/now/next, status ≠ done) эсвэл энэ багцын өөр
   plan санал (target = "s-<id>")-тай утгаараа ижил. target-д тэр id-г бич.
 • exists — аль хэдийн хийгдсэн, аппад байгаа (доорх «аппад байгаа» жагсаалтыг хар), эсвэл захирал
@@ -455,6 +457,8 @@ SYSTEM = """Чи «Чимун ХХК»-ийн дотоод төлөвлөгөө�
 - reply = санал бичсэн ажилтанд харагдана: монгол хэлээр, 1–2 өгүүлбэр, шууд, хүндэтгэлтэй.
   Мэндчилгээ, магтаал, «баярлалаа» бүү бич. Шийдвэрээ ба шалтгааныг л хэл.
 - Тодорхой хүний тухай гомдол → owner: ceo, task_* хоосон, title/act-д нэр БҮҮ оруул.
+- private (БҮХ шийдвэрт): true = хүний (ажилтны) тухай гомдол, цалин, ажилд авах/халах, хувийн
+  асуудал — бичвэрийг ЗӨВХӨН захирал харна (салбарын захирал ч харахгүй). Бусад нь false.
 - Ижил асуудлыг хэд хэдэн ажилтан бичсэн бол нэгийг нь plan, бусдыг merge болго.
 - Эргэлзвэл plan (захирал шийднэ). Шууд drop зөвхөн илт хэрэггүй үед.
 - size (зөвхөн plan + owner: staff үед утгатай): small = мөнгө зарцуулахгүй, буцааж болох, НЭГ хүн
@@ -486,9 +490,11 @@ SCHEMA = {
             'priority': {'type': 'string', 'enum': ['high', 'normal']},
             'branch': {'type': 'string', 'enum': list(BRANCHES)},
             'size': {'type': 'string', 'enum': ['small', 'big']},
+            'private': {'type': 'boolean'},
         },
         'required': ['id', 'decision', 'reply', 'target', 'title', 'act', 'gain', 'note', 'cat',
-                     'owner', 'task_title', 'task_desc', 'assignee', 'due_days', 'priority', 'branch', 'size'],
+                     'owner', 'task_title', 'task_desc', 'assignee', 'due_days', 'priority', 'branch', 'size',
+                     'private'],
         'additionalProperties': False,
     }}},
     'required': ['items'],
@@ -737,6 +743,10 @@ def selftest():
     eq('хувийн санал мөрөнд private', build_changes(pv, batch, plan, '2026-10-07')[0][0].get('private'), True)
     pub = normalize([dict(base, id=5, decision='plan', owner='claude', task_title='')], batch, plan, refmap, '2026-10-07')
     eq('аппын санал private БИШ', 'private' in pub[0], False)
+    dp = normalize([dict(base, id=5, decision='drop', private=True)], batch, plan, refmap, '2026-10-07')
+    eq('хассан гомдол ч private', dp[0].get('private'), True)
+    eq('private саналын төлөвт бичигдэнэ', build_changes(dp, batch, plan, '2026-10-07')[2][0]['private'], True)
+    eq('промпт: салбарын захирал', 'Салбарын захирал батална' in SYSTEM and "'private'" in json.dumps(SCHEMA['properties']['items']['items']['required']).replace('"', "'"), True)
     eq('буруу шийдвэр хаягдана (санал захиралд унана)',
        normalize([dict(base, id=5, decision='yes')], batch[:1], plan, refmap, '2026-10-07')[0]['title'], 'Ажилтны санал #5')
 

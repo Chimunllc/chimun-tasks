@@ -6960,7 +6960,7 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .att-noout-day {
   border: 1px solid var(--warn); background: transparent; color: var(--warn);
   border-radius: 6px; padding: 0 var(--space-1); font-size: var(--fs-xs);
-  font-weight: 700; cursor: pointer;
+  font-weight: 700; cursor: pointer; min-width: var(--tap-sm); min-height: var(--tap-sm);
 }
 
 /* ═══ ИРЦИЙН САРЫН ТОЙМ (`renderAttendanceMonth`) ═══
@@ -6998,6 +6998,24 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .att-mo-pct-low { color: var(--warn); }
 .att-mo-hrs { font-weight: 700; color: var(--primary); font-size: var(--fs-md); margin-top: 1px; }
 .att-mo-norm { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+.att-mo-ot { font-size: var(--fs-xs); color: var(--ok); font-weight: 600; margin-top: 1px; }
+.att-mo-sub { font-weight: 400; color: var(--muted); font-size: var(--fs-sm); }
+.att-mo-flag { font-size: var(--fs-sm); color: var(--warn); margin: 0 0 var(--space-2); }
+.att-mo-flag b { color: var(--warn); }
+/* Цалин: нийт + төлөв нэг мөрөнд, задаргаа нугалаанд */
+.att-mo-pay { margin-top: var(--space-1); }
+.att-mo-pay > summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-height: var(--tap-sm);
+  font-size: var(--fs-sm); color: var(--text-soft); cursor: pointer; list-style: none; }
+.att-mo-pay > summary::-webkit-details-marker { display: none; }
+.att-mo-pay > summary::after { content: '▸'; margin-left: var(--space-1); font-size: var(--fs-xs); color: var(--muted); }
+.att-mo-pay[open] > summary::after { content: '▾'; }
+.att-mo-pay > summary > b { color: var(--primary); font-size: var(--fs-md); }
+.att-mo-pay-in { font-size: var(--fs-sm); color: var(--text-soft); line-height: 1.6; padding: 0 0 var(--space-1); }
+.att-mo-st { color: var(--muted); }
+.att-mo-st b { color: var(--text); }
+.att-mo-st.ok { color: var(--ok); font-weight: 600; }
+.att-mo-st.over, .att-mo-st.over b { color: var(--warn); }
+.att-mlabel { min-width: 5.5em; text-align: center; font-weight: 700; font-size: var(--fs-base); font-variant-numeric: tabular-nums; }
 .att-mo-liab {
   margin-top: var(--space-4); padding: var(--space-3);
   border: 1px solid var(--danger); border-radius: var(--r-lg);

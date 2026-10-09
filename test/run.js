@@ -18835,3 +18835,84 @@ async function swFetchTests() {
   Object.assign(st, { attRequests: keep.ar, appOrders: keep.ao, myPayMonth: keep.pm, myPayRecs: keep.pr, myAttendance: keep.att, _salLoaded: keep.sl, _myProfileLoaded: keep.ml, dashMore: keep.dm });
   vm.runInContext(`state.me = ${JSON.stringify(keep.me === undefined ? '' : keep.me)}`, sandbox);
 }
+
+// ═══ ИРЦИЙН САРЫН ТОЙМ: САРЫН НАВИГАЦИ, ЯВЖ БУЙ САРЫН НОРМ, НЭГ МӨРТ ЦАЛИН (2026-10-09) ═════
+// ◀ ▶ нь сарын тоймоос ӨДӨР рүү гаргадаг байсан тул өмнөх сарыг харах арга олдохгүй, скан карт сарын
+// жагсаалтын дээр ~330px эзэлж, сарын 7-нд бүх хүн бүтэн нормын «31%» улбар шараар гардаг байв.
+{
+  const srcT = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssT = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  // Цэвэр функцууд
+  eq(JSON.stringify(F.attMonthShift('2026-10', -1, '2026-10-09')), JSON.stringify({ month: '2026-09', day: '2026-09-01' }), 'сарын нав: өмнөх сар → 1-ний өдөр');
+  eq(F.attMonthShift('2026-10', 1, '2026-10-09'), null, 'сарын нав: одоогийн сараас хойш явахгүй');
+  eq(JSON.stringify(F.attMonthShift('2026-09', 1, '2026-10-09')), JSON.stringify({ month: '2026-10', day: '2026-10-09' }), 'сарын нав: одоогийн сар руу буцахад ӨНӨӨДӨР');
+  eq(F.attMonthShift('2026-01', -1, '2026-10-09').month, '2025-12', 'сарын нав: жилийн хил давна');
+  eq(F.attMonthShift('хоосон', 1, '2026-10-09'), null, 'сарын нав: буруу оролт null');
+  eq(F.monthWorkdaysThrough('2026-10', '2026-10-09'), 7, 'явж буй сар: 10-09 хүртэл 7 ажлын өдөр (Бямба/Ням хассан)');
+  eq(F.monthWorkdaysThrough('2026-10', '2026-10-04'), 2, 'явж буй сар: Бямба/Ням дээр дахин нэмэгдэхгүй (1-2 л ажлын өдөр)');
+  eq(F.monthWorkdaysThrough('2026-09', '2026-10-09'), F.monthWorkdays('2026-09'), 'дууссан сар: бүтэн');
+  eq(F.monthWorkdaysThrough('2026-11', '2026-10-09'), 0, 'ирээгүй сар: 0');
+  eq(F.workNormMinsThrough('2026-10', '2026-10-09'), 7 * 480, 'явж буй сарын норм = 7×8ц');
+  eq(F.workNormMinsThrough('2026-09', '2026-10-09'), F.workNormMins('2026-09'), 'дууссан сарын норм бүтэн');
+
+  const st = vm.runInContext('state', sandbox);
+  const keep = { k: st.attMonthKey, r: st.attMonthRecs, e: st.attMonthErr, ao: st.appOrders, sal: st.salaries, sp: st.salaryPayments, sl: st._salLoaded, ceo: st.isCEO, mode: st.attMonthMode, day: st.attViewDay };
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const R = (k, day, kind, hm) => ({ member_key: k, member_name: 'Ажилтан ' + k, kind, ts: ts(day, hm), day, branch: 'M-Event', source: 'scan' });
+  const wd = (ym) => { const o = []; for (let d = 1; d <= 28; d++) { const w = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1, d)).getUTCDay(); if (w && w < 6) o.push(ym + '-' + String(d).padStart(2, '0')); } return o; };
+  st.isCEO = true; st._salLoaded = true; st.appOrders = []; st.attMonthErr = null;
+  // Дууссан сар: нэг хүн 8ц × бүх өдөр + нэг өдөр гарахгүй; нөгөө нь бүтэн цалин олгогдсон
+  const M = '2026-09', days = wd(M);
+  st.attMonthKey = M;
+  st.attMonthRecs = [].concat(...days.map(d => [R('90000011', d, 'in', '09:00'), R('90000011', d, 'out', '19:00')]),
+    [R('90000012', days[0], 'in', '09:00')], ...days.slice(1, 4).map(d => [R('90000012', d, 'in', '09:00'), R('90000012', d, 'out', '18:00')]));
+  st.salaries = { '90000011': 2000000, '90000012': 1500000 };
+  st.salaryPayments = [];
+  const full = F.renderAttendanceMonth(M);
+  ok(/Сарын норм <b>\d+×8=\d+ц<\/b>/.test(full) && !/үргэлжилж байна/.test(full), 'сарын тойм: дууссан сард «Сарын норм», «үргэлжилж байна» гарахгүй');
+  ok(/class="att-mo-flag">⚠ <b>1<\/b> ажилтанд гарах бүртгэлгүй <b>1<\/b> өдөр/.test(full), 'сарын тойм: гарах бүртгэлгүй өдрийн ТОВЧ дүн дээд талд (ажилтан · өдөр)');
+  ok(full.indexOf('att-mo-flag') < full.indexOf('att-mo-row'), 'сарын тойм: сануулга мөрүүдээс ӨМНӨ');
+  ok(/<details class="att-mo-pay"><summary>💵 Цалин <b>[^<]+<\/b> <span class="att-mo-st">олгоогүй<\/span><\/summary>/.test(full), 'сарын тойм: цалин НЭГ мөр (нийт · «олгоогүй»), задаргаа нугалаанд');
+  ok(/att-mo-pay-in">цэвэр суурь/.test(full), 'сарын тойм: цалингийн задаргаа (цэвэр суурь …) нугалаанд ҮЛДЭНЭ');
+  ok(/att-mo-ot">\+\d+ц[^<]*илүү<\/div>/.test(full), 'сарын тойм: илүү цаг цагийн дор «+Xц илүү»');
+  ok(!/⏱ Илүү цаг:/.test(full), 'сарын тойм: «Илүү цаг:» тусдаа мөр буцаж ирээгүй');
+  // Төлөв: үлдэгдэл · ✓ олгосон · илүү
+  const pay = (amt) => { st.salaryPayments = [{ person_key: '90000011', ym: M, amount: amt, paid_at: M + '-28T05:00:00Z', note: 'Цалин' }]; return F.renderAttendanceMonth(M); };
+  ok(/att-mo-st">үлдэгдэл <b>/.test(pay(100000)), 'сарын тойм: хэсэгчлэн олгосон → «үлдэгдэл»');
+  ok(/att-mo-st over">илүү <b>/.test(pay(99000000)), 'сарын тойм: илүү олгосон → «илүү» (тэглэгдэхгүй)');
+  const exact = F.renderAttendanceMonth(M); // одоогийн төлөв
+  st.salaryPayments = [];
+  ok(!/style="/.test(full.replace(/<img[^>]*>/g, '')), 'дизайн: сарын тойм (нийтлэг <img>-ээс бусад) inline style-гүй');
+  // Явж буй сар: хувь = өнөөдрийг хүртэлх нормоор
+  const T = vm.runInContext('todayStr()', sandbox), CM = T.slice(0, 7), through = F.monthWorkdaysThrough(CM, T);
+  if (through > 0 && through < F.monthWorkdays(CM)) {
+    const cd = wd(CM).filter(d => d <= T);
+    st.attMonthKey = CM; st.attMonthRecs = [].concat(...cd.filter(d => d !== T).map(d => [R('90000011', d, 'in', '09:00'), R('90000011', d, 'out', '18:00')]));   // 9ц − 1ц цай = 8ц
+    const cur = F.renderAttendanceMonth(CM);
+    ok(/Норм <b>\d+×8=\d+ц<\/b> <span class="att-mo-sub">\(сар \d+×8=\d+ц · үргэлжилж байна\)/.test(cur), 'сарын тойм: явж буй сард «Норм Н×8 (сар …· үргэлжилж байна)»');
+    const doneDays = cd.filter(d => d !== T).length;
+    const expPct = Math.round(doneDays * 8 * 60 / F.workNormMinsThrough(CM, T) * 100);
+    ok(new RegExp('<b class="att-mo-pct-[a-z]+">' + expPct + '%</b>').test(cur), 'сарын тойм: явж буй сард хувь = цаг ÷ ӨНӨӨДРИЙГ ХҮРТЭЛХ норм (бүтэн сарын нормоор биш)');
+    ok(new RegExp('/ ' + Math.round(F.workNormMinsThrough(CM, T) / 60) + 'ц').test(cur), 'сарын тойм: явж буй сард цагийн хуваарь = өнөөдрийг хүртэлх норм');
+  }
+  // renderAttendance: сарын горимд скан карт, өдрийн огноо БАЙХГҮЙ; сарын ◀ ▶ + «Өдрөөр»
+  st.attMonthKey = M; st.attMonthRecs = []; st.attViewDay = T; st.attMonthMode = true;
+  st.workStart = {}; st.nextArrival = {}; st.attRequests = {};
+  const pageM = F.renderAttendance();
+  ok(!/class="att-scan"/.test(pageM), 'сарын тойм: скан карт ХАРАГДАХГҮЙ (жагсаалтыг 330px доош түлхдэг байв)');
+  ok(/data-att-mnav="-1"/.test(pageM) && /data-att-mnav="1"/.test(pageM) && /class="att-mlabel">\d{4}-\d{2}</.test(pageM), 'сарын тойм: САРЫН ◀ ▶ ба сарын шошго');
+  ok(/data-att-mnav="1" disabled/.test(pageM), 'сарын тойм: одоогийн сард ▶ идэвхгүй (ирээдүй рүү явахгүй)');
+  ok(!/id="att-date"/.test(pageM) && !/data-att-nav=/.test(pageM), 'сарын тойм: ӨДРИЙН огноо/◀ ▶ байхгүй (сарын тоймоос өдөр рүү чимээгүй гаргадаг байв)');
+  ok(/data-att-month>📅 Өдрөөр</.test(pageM), 'сарын тойм: буцах товч «Өдрөөр»');
+  st.attMonthMode = false; st.attViewDay = T;
+  const pageD = F.renderAttendance();
+  ok(/id="att-date"/.test(pageD) && /data-att-month>📅 Сарын тойм</.test(pageD) && !/data-att-mnav/.test(pageD), 'өдрийн горим: огнооны сонгогч + «Сарын тойм», сарын ◀ ▶ байхгүй');
+  // Handler: сарын ◀ ▶ нь сарын горимоос ГАРАХГҮЙ
+  const hm = srcT.slice(srcT.indexOf("querySelectorAll('[data-att-mnav]')"), srcT.indexOf("querySelectorAll('[data-att-mnav]')") + 420);
+  ok(/attMonthShift\(/.test(hm) && !/attMonthMode = false/.test(hm), 'handler: сарын ◀ ▶ нь attMonthShift-ээр, сарын горимоос гаргахгүй');
+  // CSS
+  ok(/\.att-mo-pay > summary \{[^}]*min-height: var\(--tap-sm\)/.test(cssT), 'CSS: цалингийн нугалаа хурууны хэмжээтэй');
+  ok(/\.att-noout-day \{[^}]*min-height: var\(--tap-sm\)/.test(cssT), 'CSS: «гарах бүртгэлгүй» өдрийн товч хурууны хэмжээтэй');
+  ok(/\.att-mo-flag \{/.test(cssT) && /\.att-mo-st\.over/.test(cssT) && /\.att-mlabel \{/.test(cssT), 'CSS: сануулга · төлөв · сарын шошго');
+  Object.assign(st, { attMonthKey: keep.k, attMonthRecs: keep.r, attMonthErr: keep.e, appOrders: keep.ao, salaries: keep.sal, salaryPayments: keep.sp, _salLoaded: keep.sl, isCEO: keep.ceo, attMonthMode: keep.mode, attViewDay: keep.day });
+}

@@ -13479,7 +13479,7 @@ function renderAttendance() {
   /* Скан товч = ГОЛ үйлдэл; ID карт хэвлэх · утсаар өөрөө · ажил эхлэх цаг нь ховор хэрэгтэй хэрэгсэл тул
      нугалаанд (2026-10-09). Өмнө нь 3 товч тусдаа мөр болж карт ~280px эзэлж, «хэн ирсэн» жагсаалт
      эхний дэлгэцээс гардаг байв. ⚠ Холбоосуудыг id-аар тохируулдаг (att-print/att-self) — нугалаанд ч DOM-д бий. */
-  const scanCard = isToday ? `<div class="att-scan">
+  const scanCard = (isToday && !monthMode) ? `<div class="att-scan">
       <div class="att-scan-date">${dateLabel}</div>
       <button id="att-scan-start" class="att-scan-btn">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
@@ -13491,12 +13491,20 @@ function renderAttendance() {
         ${state.isCEO ? `<button id="att-workstart" class="ui-raw att-tool">⏰ Ажил эхлэх цаг</button>` : ''}
       </div></details>
     </div>` : '';
-  const dateBar = `<div class="att-datebar">
+  /* Сарын тойм дээр ӨДРИЙН навигаци (◀ ▶ · огноо) БАЙХГҮЙ — тэр нь сарын тоймоос чимээгүй гаргаж өдөр рүү
+     аваачдаг байсан тул өмнөх сарыг харах арга олдохгүй байв. Тойм дээр САРЫН ◀ ▶, «Өдрөөр» буцах товч. */
+  const mNext = attMonthShift(day.slice(0, 7), 1, todayStr());
+  const dateBar = monthMode ? `<div class="att-datebar">
+      <button class="btn btn-sm ui-raw" data-att-mnav="-1" title="Өмнөх сар" aria-label="Өмнөх сар">◀</button>
+      <span class="att-mlabel">${day.slice(0, 7)}</span>
+      <button class="btn btn-sm ui-raw" data-att-mnav="1"${mNext ? '' : ' disabled'} title="Дараах сар" aria-label="Дараах сар">▶</button>
+      <button class="btn btn-sm" data-att-month>📅 Өдрөөр</button>
+    </div>` : `<div class="att-datebar">
       <button class="btn btn-sm ui-raw" data-att-nav="-1" title="Өмнөх өдөр" aria-label="Өмнөх өдөр">◀</button>
       <input type="date" id="att-date" value="${day}" max="${todayStr()}" class="ui-raw att-date">
       <button class="btn btn-sm ui-raw" data-att-nav="1"${isToday ? ' disabled' : ''} title="Дараах өдөр" aria-label="Дараах өдөр">▶</button>
       ${!isToday ? `<button class="btn btn-sm" data-att-today>Өнөөдөр</button>` : ''}
-      <button class="btn btn-sm${monthMode ? ' btn-primary' : ''}" data-att-month>📅 Сарын тойм</button>
+      <button class="btn btn-sm" data-att-month>📅 Сарын тойм</button>
     </div>`;
   const body = monthMode ? renderAttendanceMonth(day.slice(0, 7)) : renderAttendanceRows();
   return `<div class="att-wrap">
@@ -13533,6 +13541,34 @@ function workNormDays(ym) {
   return monthWorkdays(ym);
 }
 function workNormMins(ym) { return workNormDays(ym) * 8 * 60; }
+/* ЯВЖ БУЙ САРЫН норм = өнөөдрийг хүртэл өнгөрсөн ажлын өдөр (2026-10-09). Бүтэн сарын нормтой (176ц)
+   харьцуулбал сарын 7-нд бүх хүн «31%» улбар шараар гарч, хэн хоцорч байгааг ялгах аргагүй болдог байв.
+   ЗӨВХӨН ХАРУУЛАХ хувьд — цалингийн бодолт (`monthPayBreakdown`) бүтэн нормоор хэвээр, сар дуусмагц л хасна. */
+function monthWorkdaysThrough(ym, today) {
+  const t = String(today || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return monthWorkdays(ym);
+  if (t.slice(0, 7) > ym) return monthWorkdays(ym);
+  if (t.slice(0, 7) < ym) return 0;
+  const y = Number(ym.slice(0, 4)), mo = Number(ym.slice(5, 7)) - 1;
+  let n = 0;
+  for (let d = 1; d <= Number(t.slice(8, 10)); d++) { const w = new Date(Date.UTC(y, mo, d)).getUTCDay(); if (w !== 0 && w !== 6) n++; }
+  return n;
+}
+function workNormMinsThrough(ym, today) {
+  const total = monthWorkdays(ym), full = workNormMins(ym);
+  if (!total) return full;
+  return Math.round(full * monthWorkdaysThrough(ym, today) / total);
+}
+/* Сарын тоймын сар солих: ЦЭВЭР. Одоогийн сараас хойш явахгүй (null). Өнөөдрийн сар руу буцахад өнөөдөр,
+   бусад сард 1-ний өдрийг өгнө — «Өдрөөр» руу шилжихэд утга бүхий өдөр нээгдэнэ. */
+function attMonthShift(ym, n, today) {
+  const mm = String(ym || '').match(/^(\d{4})-(\d{2})$/); if (!mm) return null;
+  const d = new Date(Date.UTC(Number(mm[1]), Number(mm[2]) - 1 + Number(n), 1));
+  const nm = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+  const cur = String(today || '').slice(0, 7);
+  if (cur && nm > cur) return null;
+  return { month: nm, day: nm === cur ? String(today).slice(0, 10) : nm + '-01' };
+}
 // ── Жолооны нэмэгдэл — хүргэлттэй захиалгад ХҮРГЭЖ ӨГСӨН (delivering→rented) + ХҮРГЭЛТЭЭР
 // БУЦААН АВСАН (rented→returning) үйлдэл бүрд 10,000₮ (тухайн үйлдлийг хийсэн жолоочид). stage_meta-гаас автомат.
 const DRIVER_BONUS_EACH = 10000;
@@ -14108,6 +14144,7 @@ function renderAttendanceMonth(month) {
   const recs = state.attMonthRecs;
   if (!recs.length) return `<div class="att-mo-note">${month} сард ирц бүртгэгдээгүй.</div>`;
   const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
+  const nowMins = workNormMinsThrough(month, todayStr()), inProgress = nowMins < normMins;   // явж буй сар: хувийг өнөөдрийг хүртэлх нормоор
   const byM = {};
   recs.forEach(r => { const ck = attCanonKey(r); const m = (byM[ck] = byM[ck] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
   const rows = Object.keys(byM).map(k => {
@@ -14121,8 +14158,14 @@ function renderAttendanceMonth(month) {
     const mem = findMember(k) || { name: m.name, role: '' };
     return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays };
   }).sort((a, b) => b.mins - a.mins);
+  const noOutPeople = rows.filter(r => r.noOutDays.length), noOutTotal = noOutPeople.reduce((t, r) => t + r.noOutDays.length, 0);
+  const normTxt = inProgress
+    ? `Норм <b>${monthWorkdaysThrough(month, todayStr())}×8=${Math.round(nowMins / 60)}ц</b> <span class="att-mo-sub">(сар ${normDays}×8=${normDays * 8}ц · үргэлжилж байна)</span>`
+    : `Сарын норм <b>${normDays}×8=${normDays * 8}ц</b>`;
   // `.att-mo-head b` нь өгөгдмөлөөр --text; нийт дүн нь `.att-mo-tot`-оор --primary.
-  const head = `<div class="att-mo-head">${month} · <b>${rows.length}</b> ажилтан · Сарын норм <b>${normDays}×8=${normDays * 8}ц</b> · нийт <b class="att-mo-tot">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
+  const head = `<div class="att-mo-head">${month} · <b>${rows.length}</b> ажилтан · ${normTxt} · нийт <b class="att-mo-tot">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`
+    // Гарах бүртгэлгүй өдөр = 0 цаг тоологдож цалин дутна → мөрүүдийг гүйлгэж хайхгүйн тулд дээд талд ИЛ.
+    + (noOutTotal ? `<div class="att-mo-flag">⚠ <b>${noOutPeople.length}</b> ажилтанд гарах бүртгэлгүй <b>${noOutTotal}</b> өдөр — 0 цаг тоологдсон</div>` : '');
   let anyDriver = false;
   // ⚠ Дамжлагын бонусыг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
   //   рендер бүрд мянган давталт болно. Нэг удаа бодож, мөр бүрд уншина.
@@ -14132,13 +14175,13 @@ function renderAttendanceMonth(month) {
   const payVis = canSeeSalary();
   if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   const list = rows.map(r => {
-    const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
-    const pctCls = pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
+    const pct = nowMins ? Math.round(r.mins / nowMins * 100) : 0;   // явж буй сард өнөөдрийг хүртэлх нормоор
+    const pctCls = !nowMins ? 'att-mo-pct-mid' : pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
     const db = driverBonus(r.k, month);
     if (db.count) anyDriver = true;
     // Гарах бүртгэлгүй өдөр = тэр өдөр БҮТЭН 0 цаг. Цалин болдог тул нуухгүй, өдрийг нь нэрлэнэ.
     const noOutLine = (r.noOutDays && r.noOutDays.length)
-      ? `<div class="att-noout-line">⚠ <b>${r.noOutDays.length}</b> өдөр гарах бүртгэлгүй (0 цаг тоологдсон): ${r.noOutDays.map(d => `<button class="ui-raw att-noout-day" data-att-day="${escapeHtml(d)}">${escapeHtml(d.slice(8))}</button>`).join(' ')}</div>`
+      ? `<div class="att-noout-line">⚠ <b>${r.noOutDays.length}</b> өдөр гарах бүртгэлгүй: ${r.noOutDays.map(d => `<button class="ui-raw att-noout-day" data-att-day="${escapeHtml(d)}">${escapeHtml(d.slice(8))}</button>`).join(' ')}</div>`
       : '';
     // Дамжлагын бонусын мөртэй ИЖИЛ хэв маяг тул `.sp-line`/`.sp-sub`-ыг дахин ашиглав.
     const driverLine = db.count ? `<div class="sp-line">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span class="sp-sub">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
@@ -14147,21 +14190,27 @@ function renderAttendanceMonth(month) {
     const stageLine = (sp && (sp.total || sp.penApplied)) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span>${sp.penApplied ? ` <span class="sp-pen-tag">⚠ −${fmtMoney(sp.penApplied)} · ${escapeHtml(stagePenWhy(sp))}</span>` : ''}</div>` : '';
     // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ДАМЖЛАГЫН БОНУС ОРОХГҮЙ.
     const otMins = Math.max(0, r.mins - normMins);
-    const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
+    const otTag = otMins ? `<div class="att-mo-ot">+${attHM(otMins)} илүү</div>` : '';   // цагийн дор: «192ц / 176ц» → «+16ц 45м илүү»
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
     const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month, undefined, (sp && sp.total) || 0) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
     const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
     const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
-    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''})</span>`
-      + ((rPaid || rCarry.amount) ? ` <span class="sp-sub">— ${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)} · ${rBal.over > 0 ? `илүү <b>${fmtMoney(rBal.over)}</b> (дараа сард)` : `үлдэгдэл <b>${fmtMoney(rBal.owed)}</b>`}</span>` : ' <span class="sp-sub">— олгоогүй</span>')
-      + `</div>` : '';
+    /* Цалин = НЭГ мөр (нийт + төлөв), задаргаа нугалаанд (2026-10-09). Өмнө нь «цэвэр суурь … + илүү цаг … + хүргэлт …
+       — олгосон … · үлдэгдэл …» нь утсанд 3-4 мөр болж хүн бүрийн блок ~170px, 10 ажилтан 1600px байв. */
+    const payLine = pb ? `<details class="att-mo-pay"><summary>💵 Цалин <b>${fmtMoney(pb.total)}</b> ${
+        (rPaid || rCarry.amount)
+          ? (rBal.over > 0 ? `<span class="att-mo-st over">илүү <b>${fmtMoney(rBal.over)}</b></span>`
+            : rBal.owed > 0 ? `<span class="att-mo-st">үлдэгдэл <b>${fmtMoney(rBal.owed)}</b></span>`
+            : `<span class="att-mo-st ok">✓ олгосон</span>`)
+          : `<span class="att-mo-st">олгоогүй</span>`}</summary>
+      <div class="att-mo-pay-in">цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''}${(rPaid || rCarry.amount) ? `<br>${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)}${rBal.over > 0 ? ' · илүү нь дараа сард' : ''}` : ''}</div></details>` : '';
     return `<div class="att-mo-row">
       <div class="att-mo-top">
       <span class="att-mo-ava">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
       <div class="att-mo-who"><div class="att-mo-name">${escapeHtml(r.name)}</div><div class="att-mo-role">${escapeHtml(r.role)}</div></div>
-      <div class="att-mo-num"><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${pct}%</b></div><div class="att-mo-hrs">${attHM(r.mins)} <span class="att-mo-norm">/ ${normDays * 8}ц</span></div></div>
-      </div>${noOutLine}${otLine}${driverLine}${stageLine}${payLine}</div>`;
+      <div class="att-mo-num"><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${nowMins ? pct + '%' : '—'}</b></div><div class="att-mo-hrs">${attHM(r.mins)} <span class="att-mo-norm">/ ${Math.round(nowMins / 60)}ц</span></div>${otTag}</div>
+      </div>${noOutLine}${driverLine}${stageLine}${payLine}</div>`;
   }).join('');
   const liabilityNote = anyDriver ? `<div class="att-mo-liab">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
   const spFoot = spTotal ? `<div class="sp-foot">📦 Дамжлагын бонус нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил бонус болохгүй.</span></div>` : '';
@@ -14208,6 +14257,11 @@ function attachAttendanceHandlers() {
   document.querySelectorAll('[data-att-nav]').forEach(b => b.addEventListener('click', () => { const cur = state.attViewDay || todayStr(); const nd = addDays(cur, Number(b.dataset.attNav)); if (nd > todayStr()) return; state.attViewDay = nd; state.attMonthMode = false; render(); }));
   document.querySelector('[data-att-today]')?.addEventListener('click', () => { state.attViewDay = todayStr(); state.attMonthMode = false; render(); });
   document.querySelector('[data-att-month]')?.addEventListener('click', () => { state.attMonthMode = !state.attMonthMode; render(); });
+  document.querySelectorAll('[data-att-mnav]').forEach(b => b.addEventListener('click', () => {
+    const r = attMonthShift((state.attViewDay || todayStr()).slice(0, 7), Number(b.dataset.attMnav), todayStr());
+    if (!r) return;
+    state.attViewDay = r.day; render();   // сарын тойм горимд ҮЛДЭНЭ
+  }));
   document.querySelector('[data-att-month-retry]')?.addEventListener('click', () => { state.attMonthErr = null; render(); });
   // Гарахаа бүртгүүлээгүй → удирдлага гарсан цагийг гараар оруулна
   document.querySelectorAll('[data-att-out]').forEach(b => b.addEventListener('click', () =>

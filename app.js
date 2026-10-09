@@ -725,6 +725,9 @@ function showPrompt(msg, opts = {}) {
     document.getElementById('prompt-title').textContent = opts.title || 'Оролт';
     msgEl.textContent = msg || '';
     msgEl.style.display = msg ? '' : 'none';
+    // Огноо/тоо гэх мэт төрөл — гараар бичих алдаанаас хамгаална (CEO, 2026-10-09)
+    input.type = opts.type || 'text';
+    if (opts.min) input.min = opts.min; else input.removeAttribute('min');
     input.value = opts.defaultValue || '';
     input.placeholder = opts.placeholder || '';
     okBtn.textContent = opts.okText || 'Илгээх';
@@ -29360,6 +29363,26 @@ async function resolveStageClaim(oid, key, who, accept) {
     showToast(accept ? 'Баталгаажлаа — бонус дахин хуваагдана' : 'Татгалзлаа', 'success'); render();
   } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); }
 }
+/* ⛔ NOTE БИЧИХЭД ДУУДАГЧИЙН ТОКЕНЫГ БҮҮ ХАЯ (2026-10-09, амьд алдаа).
+   `patchOrderFields` нь note бичихдээ СЕРВЕРИЙН шинэ мөрийг авч, дээр нь зөвхөн
+   ⟦CMP⟧-ыг буулгадаг байв — тиймээс дуудагчийн нэмсэн БУСАД токен чимээгүй
+   устдаг байсан: дараа төлбөрийн ⟦CRED⟧ (захиалга «Ноорог» руу буцаж, ажил
+   зогссон) ба хоцролтын ⟦LATE⟧ (нэмэлт төлбөрийн ул мөр алга болсон).
+   ⚠ ЗӨВХӨН НЭМЭХ/СОЛИХ — дуудагчид байхгүй токеныг серверээс ХАСАХГҮЙ
+     (хуучирсан дуудагч бусдын токеныг устгахаас сэргийлнэ).
+   ⚠ Шинэ урт хугацааны токен нэмэх бол ЭНЭ жагсаалтад ч нэм. */
+const NOTE_MERGE_TOKENS = ['CRED', 'LATE'];
+function mergeNoteTokens(base, want, keys) {
+  let out = String(base || '');
+  (Array.isArray(keys) ? keys : NOTE_MERGE_TOKENS).forEach((k) => {
+    const re = new RegExp('⟦' + k + '\\|[^⟧]*⟧', 'g');
+    const hit = String(want || '').match(re);
+    if (!hit || !hit.length) return;                 // дуудагчид алга → серверийнхийг хөндөхгүй
+    out = out.replace(re, '').replace(/\s+/g, ' ').trim();
+    out = (out + ' ' + hit.join(' ')).trim();
+  });
+  return out;
+}
 async function patchOrderFields(o, fields) {
   const oid = o && o.id; if (!oid) throw new Error('id алга');
   const _money = ORDER_MONEY_FIELDS.filter(k => fields && Object.prototype.hasOwnProperty.call(fields, k));
@@ -29379,7 +29402,8 @@ async function patchOrderFields(o, fields) {
         if (rows && rows[0] && rows[0].note != null) {
           const fresh = String(rows[0].note);
           const cmp = parseOrderCmp(fields.note);
-          body.note = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount, cmp.receipt, cmp.date) : setOrderCmpNote(fresh, '', 0);
+          const _merged = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount, cmp.receipt, cmp.date) : setOrderCmpNote(fresh, '', 0);
+          body.note = mergeNoteTokens(_merged, fields.note);
         }
       }
     } catch (_) { /* сүлжээ унавал санах ойн note-оор бичнэ */ }
@@ -29408,11 +29432,12 @@ async function openOrderCreditModal(id) {
   //   захиалга «Ноорог» болж орлого, авлага хоёулаа чимээгүй алга болно.
   //   Цорын ганц өөрчлөлт = ТӨЛӨХ ОГНОО сунгах, тэр нь тэмдэглэлд үлдэнэ.
   const msg = cur
-    ? `#${o.number || ''} · ${fmtMoney(owed)}\n\nОдоогийн төлөх огноо: ${cur.due}\nШинэ огноо (YYYY-MM-DD):`
-    : `#${o.number || ''} · ${fmtMoney(owed)} — хэзээ төлөхөөр тохирсон бэ? (YYYY-MM-DD)`;
+    ? `#${o.number || ''} · ${fmtMoney(owed)}\n\nОдоогийн төлөх огноо: ${cur.due}\nШинэ огноог сонгоно уу:`
+    : `#${o.number || ''} · ${fmtMoney(owed)} — төлөх огноог сонгоно уу:`;
   const due = String((await showPrompt(msg, {
     okText: cur ? 'Хугацаа сунгах' : 'Зөвшөөрөх',
-    value: cur ? cur.due : addDays(String(o.stops_at || todayStr()).slice(0, 10), 7),
+    type: 'date', min: todayStr(),
+    defaultValue: cur ? cur.due : addDays(String(o.stops_at || todayStr()).slice(0, 10), 7),
   })) || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) { if (due) showToast('Огноог YYYY-MM-DD хэлбэрээр', 'warn', 3000); return; }
   if (cur && due === cur.due) return;

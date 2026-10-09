@@ -7736,6 +7736,23 @@ select.no-asar-len {
 .plan-more { font-size: var(--fs-sm); display: flex; flex-direction: column; gap: var(--space-2); }
 .plan-more > summary { cursor: pointer; color: var(--muted); padding: var(--space-2) 0; }
 /* ── Төлөвлөгөөний самбар: шийдвэр → хэрэгжиж буй → үр дүн (2026-10-09) ── */
+/* Долоо хоногийн онооны самбар (2026-10-09) — 8 тоо, дарж холбогдох дэлгэц */
+.wsc-sub { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+.wsc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--space-8) * 2.8), 1fr)); gap: var(--space-2); }
+.wsc-row { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--space-2) var(--space-3);
+  background: var(--panel); color: var(--text); font: inherit; }
+.wsc-row:hover { background: var(--panel-hover); }
+.wsc-row.wsc-bad { border-color: var(--danger); background: var(--danger-soft); }
+.wsc-row.wsc-good { border-color: var(--ok); background: var(--ok-soft); }
+.wsc-l { font-size: var(--fs-xs); color: var(--text-soft); }
+.wsc-now { font-size: var(--fs-xs); color: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 0 var(--space-1); }
+.wsc-v { font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+.wsc-ar { font-size: var(--fs-sm); margin-left: var(--space-1); color: var(--muted); }
+.wsc-bad .wsc-ar { color: var(--danger); }
+.wsc-good .wsc-ar { color: var(--ok); }
+.wsc-b { font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
 .plan-res { font-size: var(--fs-xs); color: var(--muted); }
 .plan-res > summary { cursor: pointer; color: var(--text-soft); padding: var(--space-1) 0; }
 .plan-res-t { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; color: var(--text-soft);

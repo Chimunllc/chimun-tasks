@@ -8261,6 +8261,96 @@ need(['orderCustType']);
   vm.runInContext('state.tasks = __mT; state.plan = undefined;', sandbox);
 }
 
+// ── ДОЛОО ХОНОГИЙН ОНООНЫ САМБАР + ДАВАА ГАРАГИЙН МЭДЭГДЭЛ (2026-10-09, CEO) ──
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  eq(F.scWeekStart('2026-10-09'), '2026-10-05', 'самбар: баасан → тэр долоо хоногийн даваа');
+  eq(F.scWeekStart('2026-10-05'), '2026-10-05', 'самбар: даваа өөрөө');
+  eq(F.scWeekStart('2026-10-11'), '2026-10-05', 'самбар: ням → өмнөх даваа');
+  eq(F.scWeekStart('хог'), '', 'самбар: буруу огноо');
+  const up = { unit: '₮', up: true, minN: 3 }, dn = { unit: 'ш', up: false, minN: 0 };
+  eq(F.scFlag(up, 70, 100, 10), 'bad', 'самбар: 30% буурсан → улаан');
+  eq(F.scFlag(up, 130, 100, 10), 'good', 'самбар: 30% өссөн → ногоон');
+  eq(F.scFlag(up, 90, 100, 10), '', 'самбар: 10% — дохио алга');
+  eq(F.scFlag(up, 10, 100, 2), '', 'ИНВАРИАНТ: цөөн жишээн дээр (харьцаа) улаан болгохгүй');
+  ok(F.scorecardRows({ orders: [], today: '2026-10-09' }).filter(x => x.key === 'orders' || x.key === 'booked').every(x => !x.minN),
+     'ИНВАРИАНТ: захиалгын тоо/дүнд «цөөн жишээ» хориг үйлчлэхгүй (буурах нь өөрөө дохио)');
+  eq(F.scFlag(dn, 3, 2, 99), '', 'ИНВАРИАНТ: 2-оос бага ялгаатай тоо — дуу чимээ');
+  eq(F.scFlag(dn, 5, 0, 99), 'bad', 'самбар: тэгээс өссөн муу тоо → улаан');
+  eq(F.scFlag(up, null, 100, 10), '', 'самбар: утгагүй → дохио алга');
+  const sb = F.scSnapBase({ '2026-09-30': { ar: 5 }, '2026-10-01': { ar: 7 }, '2026-10-05': { ar: 9 } }, '2026-10-09');
+  eq(sb && sb.day + ':' + sb.ar, '2026-10-01:7', 'самбар: 7+ хоногийн өмнөх хамгийн сүүлийн зураг');
+  eq(F.scSnapBase({ '2026-10-05': { ar: 9 } }, '2026-10-09'), null, 'ИНВАРИАНТ: суурь алга бол таамаглахгүй');
+  // Долоо хоног бүрийн захиалга: өнгөрсөн долоо хоногт 2, өмнөх 4 долоо хоногт 4-4
+  const mk = (n, day, total) => Array.from({ length: n }, (_, i) => ({ id: day + i, status: 'reserved', source: 'app',
+    created_at: day + 'T04:00:00Z', starts_at: day, total_mnt: total, deposit_mnt: 0, note: '' }));
+  const orders = [].concat(mk(2, '2026-09-29', 100000), mk(4, '2026-09-22', 100000), mk(4, '2026-09-15', 100000),
+    mk(4, '2026-09-08', 100000), mk(4, '2026-09-01', 100000), mk(3, '2026-10-06', 100000));
+  const rows = F.scorecardRows({ orders, today: '2026-10-09', calls: null, ads: null, snaps: { '2026-10-01': { ar: 100, stuck: 1 } },
+    now: { ar: 300, stuck: 1 } });
+  const r = (k) => rows.find(x => x.key === k);
+  eq(r('orders').from + '…' + r('orders').to, '2026-09-28…2026-10-04', 'самбар: өнгөрсөн БҮТЭН долоо хоног (энэ долоо хоног ОРОХГҮЙ)');
+  eq(r('orders').value + '/' + r('orders').base, '2/4', 'самбар: захиалгын тоо ба 4 долоо хоногийн дундаж');
+  eq(r('orders').flag, 'bad', 'самбар: захиалга буурсан → улаан');
+  eq(r('booked').value, 200000, 'самбар: захиалгын дүн orderRevenue-ээс');
+  eq(r('ar').value + '/' + r('ar').base + '/' + r('ar').flag, '300/100/bad', 'самбар: авлага одоо ↔ 7 хоногийн өмнөх зураг');
+  eq(r('missed').value, null, 'ИНВАРИАНТ: дуудлага ачаалагдаагүй бол 0 БИШ null');
+  eq(r('chatcost').value, null, 'самбар: зарын дата алга → null');
+  eq(F.scorecardRows({ orders: [], today: '2026-10-09', skip: ['missed', 'chatcost'] }).length, 6, 'самбар: эрхгүй мөр гарахгүй');
+  // ⛔ Тоог дахин бодохгүй — Тоймын дүрмүүдээс
+  const wv = src.slice(src.indexOf('function scWeekValues'), src.indexOf('function scFlag'));
+  ['dispatchStats(', 'reviewStats(', 'pbxFollowups(', 'pbxOpenCalls(', 'orderRevenue('].forEach(fn =>
+    ok(wv.includes(fn), `ИНВАРИАНТ: самбар ${fn.slice(0, -1)}-аас уншина`));
+  const sh = src.slice(src.indexOf('function scorecardHtml'), src.indexOf('function renderPlan()'));
+  ok(/arRows\(receivablesData\(\)\.items/.test(sh) && /stuckOrders\(/.test(sh), 'ИНВАРИАНТ: авлага ба гацсан захиалга Тоймын дүрмээс');
+  // ⛔ Зургийг хадгалахдаа серверийнхээс уншиж нэгтгэнэ — уншиж чадаагүй бол бичихгүй
+  const ss = src.slice(src.indexOf('async function scSaveSnap'), src.indexOf('function scorecardHtml'));
+  ok(ss.indexOf('scFetchSnaps()') < ss.indexOf('saveAppConfig('), 'ИНВАРИАНТ: зураг хадгалахаас ӨМНӨ серверээс уншина');
+  ok(/if \(!r\.ok\) throw/.test(src.slice(src.indexOf('async function scFetchSnaps'), src.indexOf('async function loadScSnaps'))),
+     'ИНВАРИАНТ: зураг уншиж чадаагүй бол хоосон гэж үзэхгүй');
+  ok(/state\.scSnapsOk && state\.scSnaps && !state\.scSnaps\[today\]/.test(sh), 'ИНВАРИАНТ: ачаалагдаагүй үед зураг бичихгүй');
+  // Дэлгэц ҮНЭХЭЭР зурагдана
+  vm.runInContext('var __scS = [state.isCEO, state.appOrders, state.scSnaps, state.scSnapsOk]; state.isCEO = true; state.scSnapsOk = false; state.scSnaps = {}; state.appOrders = '
+    + JSON.stringify(orders) + ';', sandbox);
+  const html = F.scorecardHtml();
+  ok(html.includes('📊 Долоо хоногийн тоо') && /data-sc-go="orders"/.test(html) && html.includes('Шинэ захиалга'), 'самбар: дэлгэц зурагдана');
+  ok(/wsc-bad/.test(html), 'самбар: муудсан тоо улаанаар');
+  vm.runInContext('[state.isCEO, state.appOrders, state.scSnaps, state.scSnapsOk] = __scS;', sandbox);
+  ok(/safeViewHtml\(scorecardHtml/.test(src.slice(src.indexOf('function renderPlan()'), src.indexOf('function attachPlanHandlers'))),
+     'самбар: Төлөвлөгөөний дээд талд');
+  // Мэдэгдлээс шууд Төлөвлөгөө — ЗӨВХӨН жагсаалтын дэлгэц, эрхтэй бол
+  eq(F.deepLinkView('#salary'), '', 'ИНВАРИАНТ: жагсаалтад байхгүй дэлгэц холбоосоор нээгдэхгүй');
+  eq(F.deepLinkView('#ideas'), 'ideas', 'холбоос: санал санаачлага');
+  eq(F.deepLinkView('javascript:x'), '', 'холбоос: хог');
+  const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  ok(/postMessage\(\{ type: 'open-url', url: targetUrl \}\)/.test(sw) && /type === 'open-url'/.test(src), 'холбоос: нээлттэй апп руу дамжина');
+  // Даваа гарагийн мэдэгдэл: Python өөрийн тест + аппын planBoard-тай ИЖИЛ тоо
+  const wn = path.join(__dirname, '..', 'tools', 'week_notify.py');
+  try {
+    const out = require('child_process').execSync(`python3 ${JSON.stringify(wn)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/week_notify selftest OK/.test(out), 'week_notify: Python өөрийн тест — ' + out.trim());
+    const fx = {
+      today: '2026-10-09',
+      tasks: [{ id: 't1', status: 'done' }, { id: 't2', status: 'open', due: '2026-10-01' }, { id: 't3', status: 'open', due: '2026-12-01' }],
+      plan: [{ id: 'A', sec: 'idea' }, { id: 'B', sec: 'now' }, { id: 'B1', parent: 'B', sec: 'idea', do: { kind: 'task' } },
+        { id: 'C', sec: 'now' }, { id: 'C1', parent: 'C', done_by: 'applied', undo: { task_id: 't1' } },
+        { id: 'C2', parent: 'C', done_by: 'applied', undo: { task_id: 't2' } },
+        { id: 'D', sec: 'idea', done_by: 'applied', undo: { task_id: 't2' }, do: { kind: 'task' } },
+        { id: 'E', sec: 'next', status: 'done', done_by: 'applied', undo: { task_id: 't3' } }, { id: 'F', sec: 'no' }],
+    };
+    const tmp = path.join(require('os').tmpdir(), 'wn_fixture_' + process.pid + '.json');
+    fs.writeFileSync(tmp, JSON.stringify(fx));
+    const py = JSON.parse(require('child_process').execSync(`python3 ${JSON.stringify(wn)} --counts ${JSON.stringify(tmp)}`, { encoding: 'utf8' }));
+    fs.unlinkSync(tmp);
+    const b = F.planBoard(fx.plan, fx.tasks, fx.today);
+    const jsLate = Object.values(b).reduce((a, z) => a.concat(z), []).filter(c => c.prog.late > 0).length;
+    eq(py.decide + '/' + py.late, b.decide.length + '/' + jsLate, 'ИНВАРИАНТ: даваа гарагийн мэдэгдэл ↔ апп ИЖИЛ тоо');
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || '') + (e.message || ''));
+    ok(/No such file|not found|ENOENT/.test(msg), 'week_notify: тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
 // ── АЖИЛТНЫ САНАЛ / АСУУДАЛ → Claude шүүнэ → төлөвлөгөө (2026-10-07, CEO) ──
 {
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');

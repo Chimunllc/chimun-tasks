@@ -89,6 +89,9 @@
     /* Орлого тулгалтын модалын өргөн — нэг баганатай жагсаалт, өргөсгөх шаардлагагүй */
     --recon-modal-w: 640px;
 
+    /* Барааны тулгалтын модал — мөр бүрт 3 санал + сонгогч эгнээнд багтана */
+    --rec-modal-w: 860px;
+
     /* Аппын алдааны цонх — нэг баганатай жагсаалт + табууд */
     --aerr-modal-w: 560px;
 
@@ -6746,6 +6749,20 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .sm-skip { display: inline-block; background: #FBF0DC; border: 1px solid #E6C878; color: #7A560F; font-size: var(--fs-xs); font-weight: 700; padding: 1px 7px; border-radius: 100px; }
 
 /* ── Барааны тулгалт (захиалгын мөр ↔ бараа) ─────────────────────────────── */
+/* ⚠ Угтвар `rec-` — `recon-` (орлого тулгалт) -тай БҮҮ андуур, тэр өөр цонх.
+   Толгой/× товч нь нийтийн `.modal-head`/`.modal-x` (өөрийн хувилбар БҮҮ бич).
+   ⚠ Өргөн нь ХОЁР классаар (`.modal.rec-modal`) — мобайлын `.modal{max-width:100%}`-аас давна. */
+.modal.rec-modal { max-width: var(--rec-modal-w); width: 96%; max-height: 92vh; overflow: auto; }
+.rec-intro { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; margin: 0 0 var(--space-3); }
+.rec-arrow { color: var(--muted); }
+.rec-share { color: var(--danger); }
+.rec-empty { padding: var(--space-5); text-align: center; color: var(--muted); }
+/* «✔ Тулгасан» хэсэг — жагсаалтаас зузаан зураасаар тусгаарлагдана */
+.rec-used-sec { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 2px solid var(--border); }
+.rec-used-head { display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-1); }
+.rec-used-title { font-size: var(--fs-md); }
+.rec-more { padding: var(--space-2) 0; }
 .rec-sum { display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; padding:8px 11px; margin-bottom:9px;
   background:var(--panel-2,rgba(127,127,127,.07)); border:1px solid var(--border); border-radius:9px; }
 .rec-freeze { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;

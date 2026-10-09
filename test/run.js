@@ -8034,6 +8034,31 @@ need(['orderCustType']);
        'ИНВАРИАНТ: нэвтрэлт дууссан тууз бүх дэлгэцэд гарна');
   }
 
+  // ⭐ БИЧИХ ЗАМЫГ ҮНЭХЭЭР ДУУДАЖ, ИЛГЭЭСЭН БИЕИЙГ ШАЛГАНА (2026-10-09).
+  //   Цэвэр функц ногоон байхад БИЧИЛТ замдаа токеноо хаядаг байсныг (⟦CRED⟧,
+  //   ⟦LATE⟧) нэг ч тест барьсангүй — учир нь хэн ч бодит дуудалтыг туршаагүй.
+  (globalThis.__late = globalThis.__late || []).push(new Promise(done => setTimeout(() => {
+    const origFetch = sandbox.fetch;
+    const sent = [];
+    sandbox.fetch = (url, opt) => {
+      const u = String(url);
+      if (opt && opt.method === 'PATCH') { sent.push(JSON.parse(opt.body)); return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve([]), text: () => Promise.resolve('') }); }
+      // GET note — сервер дээрх ОДООГИЙН мөр (дуудагчийнхаас өөр)
+      if (/select=note/.test(u)) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ note: '⟦RT|13|13⟧ Үндэсний музей' }]), text: () => Promise.resolve('') });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]), text: () => Promise.resolve('') });
+    };
+    const want = '⟦RT|13|13⟧ Үндэсний музей ⟦CRED|2026-10-12|8800⟧ ⟦LATE|20|22|20000⟧';
+    vm.runInContext(`patchOrderFields({ id: 'T1', status: 'draft' }, { note: ${JSON.stringify(want)}, status: 'reserved' })`, sandbox)
+      .then(() => {
+        const b = sent[0] || {};
+        ok(/⟦CRED\|2026-10-12\|8800⟧/.test(String(b.note || '')), 'ИНВАРИАНТ: бичилт ⟦CRED⟧-ыг серверт ҮНЭХЭЭР илгээнэ');
+        ok(/⟦LATE\|20\|22\|20000⟧/.test(String(b.note || '')), 'ИНВАРИАНТ: бичилт ⟦LATE⟧-ыг серверт ҮНЭХЭЭР илгээнэ');
+        eq(b.status, 'reserved', 'бичилт: төлөв ч илгээгдэнэ');
+        sandbox.fetch = origFetch; done();
+      })
+      .catch(e => { ok(false, 'бичилт: patchOrderFields — ' + e.message); sandbox.fetch = origFetch; done(); });
+  }, 0)));
+
   // ── note бичихэд дуудагчийн токен УСТАХГҮЙ (2026-10-09, амьд алдаа) ────
   {
     const fresh = '⟦RT|13|13⟧ ⟦DLV|city|0|150000⟧ Үндэсний музей';

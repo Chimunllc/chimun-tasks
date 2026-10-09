@@ -1855,7 +1855,20 @@ CEO: «юуны төлөө, яаж ажилладаг нь ойлгомжгүй�
 - Бүх алхмыг нэг дор = `planApproveAll` (жагсаалт ил, `showConfirm`-ийн хариу, зөвхөн CEO).
 - Claude-ын аппын ажил (`owner:'Claude'`, `do`-гүй) тусдаа эвхэгдэнэ — CEO удирддаггүй.
 - Нотолгоо (`ev`) + бүтэн судалгаа (`research: {text, sources:[{t,u}]}`) «📄» дотор эвхэгдэнэ.
-  Үр дүнгийн хэмжүүр = `measure: {what, base, check, result, verdict}` (дараагийн шат: Claude хэмжинэ).
+- **ҮР ДҮНГ CLAUDE ХЭМЖИНЭ = `tools/plan_measure.py`** (VPS cron өдөр бүр, `flock`).
+  Батлагдсан санаачлага бүрд Claude НЭГ хэмжүүр + SQL тодорхойлно → эхлэл одоо,
+  `check` өдөр ИЖИЛ SQL-ээр дахин хэмжиж `verdict` (worked/failed/unclear) бичнэ.
+  `period` = урсгал (эхлэхээс өмнөх/хойших ижил урт), `snapshot` = одоогийн байдал
+  (нэг өр, тоолох ажил). Дүгнэлт Claude-гүй, тодорхой (±5%, n<5 → тодорхойгүй).
+  ⛔ Claude ЗӨВХӨН УНШИНА: `data_reader` + `begin transaction read only` + `psql -c`;
+    SQL-д `;`/`\` хориотой. ⛔ Улирлын нөлөө — нийт тоо БИШ харьцаа/дундаж.
+  ⚠ Дуудлагын дата = `v_pbx_calls_safe`/`v_pbx_callbacks_safe` (`db/data_reader_views.sql`) —
+    утас БИШ, давстай хаш (`reader_salt` хэнд ч уншигдахгүй).
+  ⚠ Засвар бүрд `scp tools/plan_measure.py chimun-vps:/opt/chimun/marketing/`; `--dry` бичихгүй.
+- **⚡ ЖИЖИГ САНАЛ ШУУД АЖИЛ** (Amazon «буцаадаг хаалга»): мөнгөгүй, буцаах боломжтой,
+  нэг хүн ≤7 хоног → `idea_triage.py` ажлыг серверээс үүсгэнэ (`checklist` API, хүн НЭРЭЭР,
+  `createdBy:'SYSTEM'`) → мөр шууд «хэрэгжиж буй», `auto:true`, захирал «↩ Буцаах».
+  ⛔ Нэг удаад `AUTO_MAX`, хугацаа ≤14, ЭРГЭЛЗВЭЛ big. Ажил үүсэхгүй бол санал захиралд очно.
 
 ### Ажилтны санал → Claude шүүнэ → төлөвлөгөө (2026-10-07, CEO)
 

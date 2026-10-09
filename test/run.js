@@ -12278,9 +12278,10 @@ need(['orderCustType']);
      'scan: толгойд хувилбарын чип бий (index.html)');
   // ⚠ CACHE_TAG-аар хувилбар ХАРУУЛАХГҮЙ — app.js өөрчлөгдөхөд тэр солигддоггүй
   //   тул ажилтанд «хуучин хувилбар дээр байна» гэдгээ мэдэхгүй байх эрсдэл үүснэ.
-  const chip = src.slice(src.indexOf('function renderVerChip'), src.indexOf('function renderVerChip') + 700);
+  const chip = src.slice(src.indexOf('function verChipView'), src.indexOf('function applyAppUpdate') > 0 ? src.indexOf('async function applyAppUpdate') : undefined);
   ok(!/CACHE_TAG/.test(chip), 'scan: чип нь CACHE_TAG-аар БИШ, app.js-ийн хувилбараар');
   ok(/buildLabel\(/.test(chip), 'scan: чип нь buildLabel()-ээр бичигдэнэ');
+  ok(/verChipView\(_build, _buildNew/.test(src.slice(src.indexOf('function renderVerChip'), src.indexOf('function renderVerChip') + 300)), 'scan: renderVerChip нь verChipView-ээс уншина');
   // Шалгалт хэт олон давтагдахгүй (visibilitychange бүрд HEAD явуулбал сүлжээ чангарна)
   const cb = src.slice(src.indexOf('async function checkBuild'), src.indexOf('async function checkBuild') + 500);
   ok(/_BUILD_MIN_GAP/.test(cb), 'scan: checkBuild() завсарын хамгаалалттай');
@@ -12289,6 +12290,243 @@ need(['orderCustType']);
   // Зориудын reload тул «амьд» тэмдэглэгээ цэвэрлэгдэнэ (scan (2) үүнийг ч шалгана)
   const ap = src.slice(src.indexOf('async function applyAppUpdate'), src.indexOf('async function applyAppUpdate') + 600);
   ok(/clearAlive\(\)/.test(ap), 'scan: applyAppUpdate() нь clearAlive() дуудна');
+}
+
+// ═══ ХУВИЛБАР УТСАНД ЦЭСЭНД, ТОЛГОЙД ЗӨВХӨН «ШИНЭ» ҮЕД (2026-10-09) ═════════
+// Толгойн «⟳ 00:47» чип 64px эзэлж, 390px-д 24 дэлгэцийн 8-ын гарчгийг таслаж байв.
+{
+  const V = F.verChipView;
+  const noon = new Date(2026, 8, 12, 14, 5, 0).getTime();
+  const sameDay = new Date(2026, 8, 12, 9, 7, 0).getTime();
+  const prevDay = new Date(2026, 8, 11, 18, 40, 0).getTime();
+  const a = V({ at: sameDay }, null, noon);
+  eq(a.chip, '09:07', 'хувилбар: өнөөдрийн чип = цаг');
+  eq(a.row, 'Хувилбар: өнөөдөр 09:07', 'хувилбар: цэсийн мөр өнөөдөр гэж ил хэлнэ');
+  eq(a.act, 'Шалгах', 'хувилбар: шинэ биш үед үйлдэл = Шалгах');
+  eq(a.isNew, false, 'хувилбар: шинэ биш');
+  const b = V({ at: prevDay }, null, noon);
+  eq(b.chip, '9/11', 'хувилбар: өөр өдрийн чип = сар/өдөр');
+  eq(b.row, 'Хувилбар: 9/11 18:40', 'хувилбар: цэсийн мөр бүтэн цагтай');
+  // ⛔ «—» заагч БАЙХГҮЙ: чип дэргэд зураас нь эвдэрсэн мэт харагддаг байв
+  const u = V(null, null, noon);
+  eq(u.chip, '', 'хувилбар: мэдэгдэхгүй үед чип «—» БИШ, хоосон (зөвхөн ⟳)');
+  eq(u.row, 'Хувилбар тодорхойгүй', 'хувилбар: мэдэгдэхгүй гэдгийг цэсийн мөр ил хэлнэ');
+  eq(V({}, null, noon).chip, '', 'хувилбар: огноогүй build → хоосон');
+  eq(V({ at: 'хог' }, null, noon).chip, '', 'хувилбар: хог оролт → хоосон');
+  ok(![a, b, u].some(x => /—/.test(x.chip + x.row)), 'хувилбар: чип ба мөрийн текстэд ямар ч төлөвт «—» заагч гарахгүй');
+  // Шинэ хувилбар ҮРГЭЛЖ ялна (ихэвчлэн мэдэгдэхгүй build-тай ч)
+  const n = V({ at: sameDay }, { at: noon, tag: 'x' }, noon);
+  ok(n.isNew && n.chip === 'Шинэ' && n.act === 'Шинэчлэх', 'хувилбар: шинэ хувилбар → Шинэ / Шинэчлэх');
+  ok(V(null, { tag: 'x' }, noon).isNew, 'хувилбар: өөрийн build мэдэгдэхгүй ч шинэ гэдгийг хэлнэ');
+  eq(F.buildLabelFull(0, noon), '', 'хувилбар: buildLabelFull огноогүй → хоосон');
+
+  // Бүтэц: цэсэнд мөр, хоёр товч нэг үйлдэлтэй
+  const idx = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const sb = idx.slice(idx.indexOf('<aside class="sidebar">'), idx.indexOf('</aside>'));
+  ok(/id="ver-row-btn"/.test(sb) && /id="ver-row-txt"/.test(sb) && /id="ver-row-act"/.test(sb), 'хувилбар: цэсэнд (sidebar) мөр бий');
+  ok(sb.indexOf('id="ver-row-btn"') < sb.indexOf('id="user-chip"'), 'хувилбар: мөр хэрэглэгчийн чипийн ДЭЭР');
+  const rv = src.slice(src.indexOf('function renderVerChip'), src.indexOf('function renderVerChip') + 700);
+  ok(/ver-row-txt/.test(rv) && /ver-row-act/.test(rv) && /classList\.toggle\('new'/.test(rv), 'хувилбар: renderVerChip чип БА цэсийн мөрийг хоёуланг шинэчилнэ');
+  ok(/addEventListener\('click', onVerChipClick\)/.test(src) && /getElementById\('ver-row-btn'\)\?\.addEventListener\('click', onVerChipClick\)/.test(src), 'хувилбар: цэсийн мөр ч шалгаж шинэчилнэ');
+  const oc = src.slice(src.indexOf('async function onVerChipClick'), src.indexOf('async function onVerChipClick') + 500);
+  ok(/closeMobileSidebar\(\)/.test(oc) && /#ver-btn, #ver-row-btn/.test(oc), 'хувилбар: цэснээс дарахад цэс хаагдаж, хоёр товч busy болно');
+  const cbf = src.slice(src.indexOf('async function checkBuild'), src.indexOf('async function checkBuild') + 700);
+  ok(/catch \(e\) \{ renderVerChip\(\);/.test(cbf), 'хувилбар: шалгалт унахад ч «…» заагч үлдэхгүй');
+
+  // CSS: толгойн чипийг нуух ба цэсийн мөрийг харуулах дүрэм ЗӨВХӨН ≤720px дотор (өргөн дэлгэцэд чип хэвээр, мөр давхардахгүй)
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const bodies = [];
+  for (const m of css.matchAll(/@media \(max-width: 720px\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < css.length && d > 0) { if (css[i] === '{') d++; else if (css[i] === '}') d--; i++; }
+    bodies.push(css.slice(from, i));
+  }
+  const hideRe = /\.ver-chip:not\(\.new\) \{ display: none; \}/g, showRe = /\.ver-row \{ display: flex; \}/g;
+  const cnt = (re) => ({ all: (css.match(re) || []).length, inMedia: bodies.reduce((n, b) => n + (b.match(re) || []).length, 0) });
+  eq(JSON.stringify(cnt(hideRe)), JSON.stringify({ all: 1, inMedia: 1 }), 'ИНВАРИАНТ: толгойн чипийг нуух дүрэм ЗӨВХӨН @media (max-width: 720px) дотор');
+  eq(JSON.stringify(cnt(showRe)), JSON.stringify({ all: 1, inMedia: 1 }), 'ИНВАРИАНТ: цэсийн хувилбар мөрийг харуулах дүрэм ЗӨВХӨН @media (max-width: 720px) дотор');
+  ok(/\n\.ver-row \{ display: none;/.test(css), 'CSS: цэсийн мөр үндсэн дүрмээр нуугдана (өргөн дэлгэц)');
+  ok(css.indexOf('.ver-row { display: none;') < css.indexOf('.ver-row { display: flex; }'), 'CSS: үндсэн дүрэм media-аас ӨМНӨ (эс бөгөөс display:none дарж, утсанд мөр харагдахгүй)');
+  ok(/\.ver-chip\.new \{ min-height: var\(--tap-sm\); \}/.test(css), 'CSS: утсанд «Шинэ» чип хурууны хэмжээтэй');
+}
+
+// ═══ ЗАХИАЛГЫН ЖАГСААЛТ: ЯАРАЛТАЙ ЦЭГ, СТАТУСЫН ЧИП МӨР (2026-10-09) ═════════
+// Дууссан/архивласан мөрд ч «Хугацаа хэтэрсэн» улаан цэг тавигдаж, жагсаалтын доод хэсэг
+// бүхэлдээ яаралтай мэт харагдаж, жинхэнэ яаралтай мөр ялгарахгүй байв.
+{
+  const U = F.orderUrgRank;
+  const T = '2026-10-09';
+  const o = (s, e) => ({ starts_at: s + 'T09:00:00+08:00', stops_at: e + 'T18:00:00+08:00' });
+  // Идэвхтэй захиалга: өмнөх дүрэм хэвээр
+  eq(U(o('2026-10-05', '2026-10-06'), 'reserved', T), 0, 'яаралтай: идэвхтэй, эхлэх өдөр өнгөрсөн → хэтэрсэн');
+  eq(U(o('2026-10-09', '2026-10-10'), 'ready', T), 1, 'яаралтай: өнөөдөр');
+  eq(U(o('2026-10-11', '2026-10-12'), 'reserved', T), 2, 'яаралтай: 2 хоногийн дотор → удахгүй');
+  eq(U(o('2026-10-20', '2026-10-21'), 'reserved', T), 3, 'яаралтай: хол');
+  eq(U({ starts_at: '', stops_at: '' }, 'reserved', T), 9, 'яаралтай: огноогүй → дохиогүй');
+  // Түрээсэнд байгаа захиалга: ЭЦЭСЛЭХ өдрөөр (буцаах хугацаа)
+  eq(U(o('2026-10-01', '2026-10-11'), 'rented', T), 2, 'яаралтай: түрээсэнд → буцаах өдрөөр (2 хоногийн дотор = удахгүй)');
+  eq(U(o('2026-10-01', '2026-10-12'), 'rented', T), 3, 'яаралтай: түрээсэнд, буцаах өдөр 3 хоногийн дараа → хол');
+  eq(U(o('2026-10-01', '2026-10-05'), 'rented', T), 0, 'яаралтай: түрээсэнд, буцаах хугацаа хэтэрсэн');
+  // ⛔ Дууссан бүлгийн захиалга «хэтэрсэн» БИШ — өнгөрсөн огноо нь тэдний хувьд хэвийн
+  ['returned', 'stowed', 'stopped', 'archived', 'canceled', 'deleted'].forEach(st =>
+    eq(U(o('2026-09-01', '2026-09-02'), st, T), 9, `ИНВАРИАНТ: «${st}» өнгөрсөн огноотой ч улаан цэггүй`));
+  // Ноорог болон завсрын төлөв (суурилуулсан, задалсан…) нь БОДИТ яаралтай хэвээр
+  ['draft', 'installing', 'teardown', 'returning', 'delivering'].forEach(st =>
+    ok(U(o('2026-10-05', '2026-10-06'), st, T) <= 1, `яаралтай: «${st}» өнгөрсөн бол хэвээр дохиотой`));
+  // Дууссан бүлэг ORDER_BUCKETS-ээс гарна — гараар бичсэн жагсаалт шинэ төлөв нэмэхэд хоцордог
+  const srcU = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const fnU = srcU.slice(srcU.indexOf('function orderUrgRank'), srcU.indexOf('function orderUrgRank') + 900);
+  ok(/bucketOf\(stage\)/.test(fnU) && /'done', 'archived', 'canceled', 'deleted'/.test(fnU), 'яаралтай: дууссан бүлгийг bucketOf-оор тодорхойлно');
+
+  // Статусын чип мөр: идэвхтэй чипийг харагдуулах (өөр selector), гүйлгэлт хадгалагдана
+  let seenSel = null;
+  const gA = { scrollLeft: 0, clientWidth: 300, scrollWidth: 700, getBoundingClientRect: () => ({ left: 0, right: 300 }),
+    querySelector: (q) => { seenSel = q; return { getBoundingClientRect: () => ({ left: 350, right: 450 }) }; } };
+  F.revealActivePill(gA, '.ordv-st.on');
+  eq(seenSel, '.ordv-st.on', 'чип мөр: revealActivePill өөр selector-оор ажиллана');
+  eq(gA.scrollLeft, 450 - (300 - 36), 'чип мөр: идэвхтэй чип харагдтал гүйлгэнэ');
+  F.revealActivePill(Object.assign({}, gA, { scrollLeft: 0, querySelector: (q) => { seenSel = q; return null; } }));
+  eq(seenSel, '.filter-pill.active', 'чип мөр: selector өгөөгүй бол хуучин «.filter-pill.active» (ажлын шүүлтүүр эвдрэхгүй)');
+  const ah = srcU.slice(srcU.indexOf('function attachOrdersHandlers'), srcU.indexOf('function attachOrdersHandlers') + 1300);
+  ok(/state\.ordersSideX = _side\.scrollLeft/.test(ah) && /_side\.scrollLeft = state\.ordersSideX/.test(ah), 'чип мөр: гүйлгэлт render-ээс render-д хадгалагдана (DOM шинээр үүсдэг)');
+  ok(/revealActivePill\(_side, '\.ordv-st\.on'\)/.test(ah) && /updatePillFade\(_side\)/.test(ah), 'чип мөр: идэвхтэй чип харагдана + бүдгэрэлт');
+  // CSS: бүдгэрэлт нь чип мөрийг ХЭВТЭЭ болгодог ИЖИЛ @media дотор (≤1320px — өргөн дэлгэцэд мөр босоо, гүйлгэлтгүй)
+  const cssU = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const mediaBlocks = [];
+  for (const m of cssU.matchAll(/@media \([^)]*\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < cssU.length && d > 0) { if (cssU[i] === '{') d++; else if (cssU[i] === '}') d--; i++; }
+    mediaBlocks.push(cssU.slice(from, i));
+  }
+  const rowBlock = mediaBlocks.find(b => /\.ordv-side \{ flex-direction: row;/.test(b));
+  ok(!!rowBlock, 'чип мөр: хэвтээ байршлын media олдлоо');
+  const fadeRe = /\.ordv-side\[data-fade=/g;
+  eq(JSON.stringify([(cssU.match(fadeRe) || []).length, rowBlock ? (rowBlock.match(fadeRe) || []).length : -1]), JSON.stringify([3, 3]),
+     'ИНВАРИАНТ: чипийн бүдгэрэлт ЗӨВХӨН мөрийг хэвтээ болгодог media дотор (босоо баганад бүдгэрэлт утгагүй)');
+  ok(/\.orders-sumline \{ font-weight: 500;/.test(cssU) && !/\.orders-sumline \{ font-weight: 700/.test(cssU), 'тоймын мөр: бүхэлдээ тод БИШ (4 мөр болж юу чухал нь ялгарахгүй байв)');
+  ok(/\.osum-rev \{[^}]*font-weight: 800/.test(cssU), 'тоймын мөр: борлуулалт тодорно');
+}
+
+// ═══ САНХҮҮ: ШҮҮЛТИЙН ЧИП ТООТОЙ, КАРТ НЯГТ, КЛАСС (2026-10-09) ═════════════
+// «Ангилалгүй / Салбаргүй / Объектгүй / Баримтгүй / Хаагдаагүй» чип тоогүй байсан тул 12 гүйлгээнээс
+// хэд нь баримтгүйг мэдэхийн тулд чип бүрийг дарж үзэх хэрэгтэй байв. Мөн «дараагийн алхам» карт бүгд
+// цэгцтэй үед ч 520px (дэлгэцийн 60%) эзэлж байв.
+{
+  const srcF = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssF = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const mk = (o) => Object.assign({ category: '1700', dept_branch: 'ИВЕНТ', link_type: 'order', decision: 'approved', status: 'done', close_type: 'хуулгаар' }, o);
+  const list = [
+    mk({ category: '', dept_branch: '', link_type: '', decision: 'pending', status: 'open', close_type: '' }),   // a: нөгөө бүгд дутуу, хаагдаагүй
+    mk({}),                                                                                                       // b: бүрэн, баримттай (хуулгаар)
+    mk({ close_type: 'баримтгүй', link_type: '' }),                                                               // c: баримтгүй, объектгүй
+  ];
+  const c = F.finFlagCounts(list);
+  eq(JSON.stringify(c), JSON.stringify({ nocat: 1, nobranch: 1, nolink: 2, norcpt: 1, open: 1 }), 'санхүү чип: тоо бүр зөв (ангилалгүй 1 · салбаргүй 1 · объектгүй 2 · баримтгүй 1 · хаагдаагүй 1)');
+  eq(JSON.stringify(F.finFlagCounts([])), JSON.stringify({ nocat: 0, nobranch: 0, nolink: 0, norcpt: 0, open: 0 }), 'санхүү чип: хоосон жагсаалт → бүгд 0');
+  eq(F.finFlagCounts(null).nocat, 0, 'санхүү чип: null → унахгүй');
+  // ИНВАРИАНТ: тоо = чипийг дарахад гарах мөр (ганц чип идэвхтэй үед)
+  Object.keys(c).forEach(k => eq(list.filter(F.FIN_FLAGS ? F.FIN_FLAGS[k][1] : vm.runInContext('FIN_FLAGS', sandbox)[k][1]).length, c[k], `ИНВАРИАНТ: «${k}» чипийн тоо = дарахад гарах мөрийн тоо`));
+  // Чипийн тоо чипийн шүүлтээс ӨМНӨХ жагсаалтаас (эс бөгөөс нэг чип идэвхжихэд бусад нь 0 болно)
+  const rf = srcF.slice(srcF.indexOf('const FLAGS = FIN_FLAGS;'), srcF.indexOf('const FLAGS = FIN_FLAGS;') + 900);
+  ok(/const flBase = shown\.filter\(/.test(rf) && !/FLAGS\[k\]/.test(rf.slice(0, rf.indexOf('const flagN'))), 'санхүү чип: flBase нь чипийн шүүлтгүй');
+  ok(/finFlagCounts\(flBase\)/.test(rf) && /const flt = flBase\.filter\(t => \(F\.flags \|\| \[\]\)\.every/.test(rf), 'санхүү чип: тоо flBase-ээс, жагсаалт flBase + чип');
+  ok(/class="ff-chip\$\{\(F\.flags[^`]*`<span class="ff-n">/.test(srcF.replace(/\n/g, '')) || /<span class="ff-n">\$\{flagN\[k\]\}<\/span>/.test(srcF), 'санхүү чип: чип бүрд тоо (.ff-n)');
+  // Дизайны гэрээ: шүүлтийн мөр inline style-гүй
+  const fb = srcF.slice(srcF.indexOf("fbar.className = 'ff-bar'"), srcF.indexOf("wrap.appendChild(fbar)"));
+  ok(!/style="/.test(fb) && !/chipCss|selCss/.test(fb), 'дизайн: шүүлтийн мөр inline style-гүй');
+  const mh = srcF.slice(srcF.indexOf("head.className = 'fin-mhead'"), srcF.indexOf('wrap.appendChild(head);', srcF.indexOf("head.className = 'fin-mhead'")));
+  ok(!/style="/.test(mh), 'дизайн: сарын толгой inline style-гүй');
+  // Утсанд хурууны хэмжээ
+  ok(/\.ff-chip \{[^}]*min-height: var\(--tap-sm\)/.test(cssF) && /\.ff-sel \{[^}]*min-height: var\(--tap-sm\)/.test(cssF), 'CSS: шүүлтийн чип/select хурууны хэмжээтэй (өмнө ~28px)');
+  ok(/\.fin-mnav \{[^}]*min-width: var\(--tap-sm\)/.test(cssF), 'CSS: сарын ‹ › товч хурууны хэмжээтэй');
+  ok(/\.ff-chip\.zero:not\(\.on\)/.test(cssF), 'CSS: 0 тоотой чип бүдэг (идэвхтэй бол биш)');
+
+  // «Дараагийн алхам» карт: хийгдсэн мөрийн «Харах» товч утсанд гарчгийн ХАЖУУД (тусдаа мөр эзлэхгүй)
+  const bodies = [];
+  for (const m of cssF.matchAll(/@media \(max-width: 620px\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < cssF.length && d > 0) { if (cssF[i] === '{') d++; else if (cssF[i] === '}') d--; i++; }
+    bodies.push(cssF.slice(from, i));
+  }
+  const nsB = bodies.find(b => /\.ns-row \{ grid-template-columns: auto 1fr auto; \}/.test(b));
+  ok(!!nsB, 'карт: ≤620px-ийн мөрийн хэв байна');
+  ok(nsB && /\.ns-done \.ns-body \{ grid-column: 2; \}/.test(nsB) && /\.ns-done \.ns-btn \{ grid-row: 1; \}/.test(nsB), 'карт: хийгдсэн мөрийн товч гарчгийн хажууд (өмнө тусдаа мөр)');
+  ok(/\.ns-body \{ min-width: 0; \}/.test(nsB || ''), 'карт: body min-width:0 (урт hint товчийг түлхэхгүй)');
+  // ⛔ CEO-гийн шийдвэр (2026-10-03): хийгдсэн алхамд ч «Харах →» ҮЛДЭНЭ — компакт болгохдоо хасахгүй
+  const steps = F.finNextSteps({ month: '2026-10', locked: false, isCEO: true, missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 }, chainBreaks: 0, balance: { total: 4, ok: 4, bad: 0, unver: 0, badAccts: [], unverAccts: [] }, today: '2026-11-05' });
+  ok(steps.filter(x => x.done).every(x => x.act && x.btn === 'Харах'), 'ИНВАРИАНТ: хийгдсэн алхам бүрд «Харах» товч үлдсэн (CEO 2026-10-03)');
+  const nh = F.finNextStepsHtml(steps, '2026-10');
+  eq((nh.match(/ns-btn/g) || []).length >= 3, true, 'карт: хийгдсэн алхмуудын товч зурагдана');
+}
+
+// ═══ ИРЦ (өдрийн дэлгэц): ЖАГСААЛТ ЭХНИЙ ДЭЛГЭЦЭНД, ЦАГИЙН МУЖ, КЛАСС (2026-10-09) ═════
+// «Ирэх 7 хоногийн ачаалал» карт ~720px + скан карт ~280px эзэлж «өнөөдөр хэн ирсэн» жагсаалт
+// эхний дэлгэцээс 1000px доор байв. Мөр бүрд «● Ажиллаж байна» ижил бичвэр давтагддаг байв.
+{
+  const srcA = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssA = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { t: st.attendanceToday, v: st.attViewRecs, d: st.attViewDay, c: st.isCEO, o: st.appOrders, dl: st.dlOpen, ws: st.workStart, na: st.nextArrival, ar: st.attRequests, mm: st.attMonthMode };
+  const T = vm.runInContext('todayStr()', sandbox), Y = vm.runInContext('addDays(todayStr(), -1)', sandbox);
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (k, kind, day, hm, source) => ({ member_key: k, member_name: 'Ажилтан ' + k, kind, ts: ts(day, hm), day, branch: 'M-Event', source: source || 'scan' });
+  st.workStart = {}; st.nextArrival = {}; st.attRequests = []; st.attMonthMode = false; st.isCEO = true;
+
+  // Өнөөдөр: нээлттэй сесс = «→ одоо» (ногоон), явсан = «→ HH:MM»
+  st.attViewDay = T;
+  st.attendanceToday = [rec('90000001', 'in', T, '08:41'), rec('90000002', 'in', T, '08:55'), rec('90000002', 'out', T, '12:30', 'manual'), rec('90000003', 'in', T, '09:50', 'self')];
+  const h1 = F.renderAttendanceRows();
+  ok(/class="att-span open"[^>]*>08:41 → одоо/.test(h1), 'ирц: ажиллаж буй хүн «08:41 → одоо» (ногоон)');
+  ok(/class="att-span"[^>]*>08:55 → 12:30/.test(h1), 'ирц: явсан хүн «08:55 → 12:30»');
+  ok(!/● Ажиллаж байна/.test(h1), 'ирц: мөр бүрд «● Ажиллаж байна» давтагдахгүй (өмнө 4 удаа)');
+  ok(/<b class="on">2<\/b> ажиллаж байна/.test(h1), 'ирц: «хэд ажиллаж байна» нь дүнгийн мөрөнд ГАНЦ удаа');
+  ok(/✍️ гараар/.test(h1), 'ирц: гараар оруулсан гарах цаг ил тэмдэглэгдэнэ');
+  ok(/⚠ уншуулаагүй/.test(h1), 'ирц: менежер QR уншуулаагүй хүн тэмдэглэгдэнэ (self)');
+  eq((h1.match(/class="att-row"/g) || []).length, 3, 'ирц: хүн бүр нэг мөр');
+  ok(!/style="/.test(h1.replace(/<img[^>]*>/g, '')), 'дизайн: ирцийн мөрүүд inline style-гүй (нийтлэг staffAvatarImg-ийн <img>-ээс бусад)');
+  // Өнгөрсөн өдөр: гарахаа бүртгүүлээгүй = «⚠ гараагүй» + цаг оруулах товч (эрхтэй бол)
+  st.attViewDay = Y; st.attViewRecs = [rec('90000004', 'in', Y, '09:12')];
+  const h2 = F.renderAttendanceRows();
+  ok(/class="att-span noout"[^>]*>09:12 → ⚠ гараагүй/.test(h2), 'ирц: гарахаа бүртгүүлээгүй → «⚠ гараагүй»');
+  ok(/data-att-out="90000004"/.test(h2), 'ирц: эрхтэй хүнд «Цаг оруулах» товч');
+  st.isCEO = false; st.capOverrides = undefined;
+  ok(!/data-att-out=/.test(F.renderAttendanceRows()) || vm.runInContext('canEditAttendance()', sandbox), 'ирц: эрхгүй хүнд «Цаг оруулах» товч гарахгүй');
+  st.isCEO = true;
+  st.attViewRecs = [];
+  ok(/class="att-empty"/.test(F.renderAttendanceRows()), 'ирц: хоосон өдөр класстай мэдэгдэл');
+
+  // Скан карт: гол товч ил, ховор хэрэгслүүд нугалаанд (id-ууд DOM-д үлдэнэ — handler id-аар холбогдоно)
+  st.attViewDay = T; st.attendanceToday = [rec('90000001', 'in', T, '08:41')];
+  const page = F.renderAttendance();
+  const scan = page.slice(page.indexOf('class="att-scan"'), page.indexOf('class="att-datebar"'));
+  ok(/id="att-scan-start" class="att-scan-btn"/.test(scan), 'скан карт: гол «скан хийх» товч ил');
+  const tools = scan.slice(scan.indexOf('<details class="fin-more att-tools">'));
+  ok(/id="att-print"/.test(tools) && /id="att-self"/.test(tools) && /id="att-workstart"/.test(tools), 'скан карт: хэвлэх · утсаар өөрөө · ажил эхлэх цаг нугалаанд (id-тай)');
+  ok(scan.indexOf('att-scan-start') < scan.indexOf('att-tools'), 'скан карт: гол товч нугалааны ӨМНӨ');
+  st.isCEO = false; vm.runInContext('state.capOverrides = state.capOverrides', sandbox);
+  ok(!/id="att-workstart"/.test(F.renderAttendance()), 'скан карт: «Ажил эхлэх цаг» зөвхөн CEO-д');
+  st.isCEO = true;
+  ok(/class="att-wrap"/.test(page) && /class="att-datebar"/.test(page), 'ирц: wrapper, огнооны мөр класстай');
+  ok(!/style="/.test(page.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<img[^>]*>/g, '')), 'дизайн: ирцийн дэлгэц (svg, нийтлэг <img>-ээс бусад) inline style-гүй');
+
+  // «Ачааллын карт»: өдрийн мөрүүд нугалаанд, нээсэн төлөв хадгалагдана; гол тоо ба «чиглэл» тэмдэглэгээ ҮЛДЭНЭ
+  st.appOrders = [{ id: 'l1', number: 1, status: 'reserved', starts_at: T + 'T09:00:00+08:00', stops_at: addDaysT(T, 1) + 'T18:00:00+08:00', items: [{ qty: 40 }], note: '' }];
+  function addDaysT(d, n) { return vm.runInContext(`addDays('${d}', ${n})`, sandbox); }
+  st.dlOpen = false;
+  const c0 = F.dayLoadCardHtml();
+  ok(/<details class="dl-det">/.test(c0), 'ачааллын карт: хаалттай үед details нээлтгүй');
+  st.dlOpen = true;
+  ok(/<details class="dl-det" open>/.test(F.dayLoadCardHtml()), 'ачааллын карт: нээсэн төлөв render()-ээс render-д хадгалагдана');
+  ok(/хүн-өдөр/.test(c0) && /чиглэл/.test(c0) && /~\d+ хүн/.test(F.dayLoadCardHtml()), 'ачааллын карт: гол тоо, «чиглэл», өдрийн «~» тоо ҮЛДЭНЭ');
+  ok(c0.indexOf('dl-big') < c0.indexOf('<details'), 'ачааллын карт: 7 хоногийн ГОЛ тоо нугалааны ӨМНӨ (үргэлж ил)');
+  ok(/getElementById\('att-workstart'\)\?\.addEventListener[\s\S]{0,200}querySelector\('\.dl-det'\)\?\.addEventListener\('toggle'[\s\S]{0,80}state\.dlOpen = e\.target\.open/.test(srcA), 'ачааллын карт: toggle төлөв state.dlOpen-д хадгалагдана');
+
+  // CSS: хурууны хэмжээ, нугалаа
+  ok(/\.att-tool \{[^}]*min-height: var\(--tap-sm\)/.test(cssA) && /\.att-date \{[^}]*min-height: var\(--tap-sm\)/.test(cssA), 'CSS: ирцийн хэрэгсэл/огноо хурууны хэмжээтэй');
+  ok(/\.dl-day \{[^}]*white-space: nowrap/.test(cssA), 'CSS: ачааллын өдрийн нэр нэг мөрөнд («10-11 Ням» тасрахгүй)');
+  ok(/\.dl-det > summary \{[^}]*min-height: var\(--tap-sm\)/.test(cssA), 'CSS: «Өдөр бүрээр» нугалаа хурууны хэмжээтэй');
+
+  st.attendanceToday = keep.t; st.attViewRecs = keep.v; st.attViewDay = keep.d; st.isCEO = keep.c; st.appOrders = keep.o; st.dlOpen = keep.dl; st.workStart = keep.ws; st.nextArrival = keep.na; st.attRequests = keep.ar; st.attMonthMode = keep.mm;
 }
 
 // ═══ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════════
@@ -16862,6 +17100,51 @@ async function swFetchTests() {
   ok(/st\.bad, \.\.\.st\.rows\.filter/.test(rv), 'scan: муу үнэлгээ эхэнд');
 }
 
+// ═══ ТОЙМ: ҮНЭЛГЭЭ, ЦАГТАА ХҮРСЭН, ШИЛДЭГ — нягт, тэгш, үйлдэлтэй (2026-10-09) ═════
+{
+  const st = vm.runInContext('state', sandbox);
+  const keep = { c: st.isCEO, a: st.appOrders, m: st.dashMore, ym: st.dspMonth };
+  st.isCEO = true; st.dashMore = undefined;
+  const mk = (n, stars, text, phone) => ({ id: 'r' + n, number: n, customer: 'Х' + n, phone: phone === undefined ? '' : phone, status: 'archived',
+    stage_meta: { review: { stars, text: text || '', at: '2026-09-' + String(10 + n).padStart(2, '0') } } });
+  const blk = (orders) => F.reviewBlockHtml(orders);
+  // Муу үнэлгээ: сэтгэгдэлгүй ч нээгддэг, утастай бол ☎ Залгах
+  const h1 = blk([mk(1, 1, '', '99001122')]);
+  ok(/<details class="rv-item"><summary class="rv-row bad"/.test(h1), 'үнэлгээ: муу үнэлгээ сэтгэгдэлгүй ч нээгдэнэ');
+  ok(/href="tel:99001122"/.test(h1) && /☎ Залгах/.test(h1), 'үнэлгээ: муу үнэлгээнд утастай бол ☎ Залгах');
+  ok(/Сэтгэгдэл бичээгүй/.test(h1), 'үнэлгээ: сэтгэгдэлгүй гэдгийг ил хэлнэ');
+  ok(/data-rv-open="1"/.test(h1), 'үнэлгээ: «Захиалга нээх» хэвээр');
+  // Утасгүй бол товч ГАРАХГҮЙ (хоосон tel: холбоос хууран мэхэлнэ)
+  ok(!/href="tel:/.test(blk([mk(2, 2, 'Муу', '')])), 'үнэлгээ: утасгүй бол ☎ товч гарахгүй');
+  ok(!/href="tel:/.test(blk([mk(3, 2, 'Муу')])), 'үнэлгээ: утас талбаргүй бол ☎ товч гарахгүй');
+  eq((blk([mk(4, 2, 'Муу', '+976 9900-1122')]).match(/href="tel:\+9769900/g) || []).length, 1, 'үнэлгээ: утасны дугаар цэвэрлэгдэж tel: болно');
+  // Сайн үнэлгээнд ☎ байхгүй (гомдол биш)
+  ok(!/href="tel:/.test(blk([mk(5, 5, 'Сайн', '99001122')])), 'үнэлгээ: сайн үнэлгээнд ☎ товч гарахгүй');
+  // Огнооны багана тэгш: сэтгэгдэлтэй/сэтгэгдэлгүй мөр ИЖИЛ 4 багана (хоосон rv-more хадгална)
+  const h2 = blk([mk(6, 5, ''), mk(7, 4, 'Сайн')]);
+  eq((h2.match(/class="rv-more"/g) || []).length, 2, 'үнэлгээ: сэтгэгдэлгүй мөр ч rv-more-ийн орон зайг хадгална (огноо тэгш)');
+  // Жагсаалтын хязгаар: ≤5 бүгд ил; >5 бол «бусад»; МУУ нь бүгд ил (тэд ажил)
+  const many = (nBad, nGood) => [].concat(Array.from({ length: nBad }, (_, i) => mk(100 + i, 1, 'Муу', '9900000' + i)), Array.from({ length: nGood }, (_, i) => mk(200 + i, 5)));
+  ok(!/dash-more/.test(blk(many(0, 5))), 'үнэлгээ: 5 хүртэл «бусад» гарахгүй');
+  const h3 = blk(many(0, 9));
+  ok(/бусад \(4\)/.test(h3), 'үнэлгээ: 9 дундаас 5 ил, 4 нь «бусад»');
+  const h4 = blk(many(7, 4));
+  const visibleBad = (h4.slice(0, h4.indexOf('<details class="dash-more"') >= 0 ? h4.indexOf('<details class="dash-more"') : undefined).match(/rv-row bad/g) || []).length;
+  eq(visibleBad, 7, 'ИНВАРИАНТ: муу үнэлгээ хэдэн ч байсан БҮГД ил (нуугдахгүй)');
+  eq(blk(many(7, 4)).match(/rv-row/g).length, 11, 'үнэлгээ: нийт мөр алдагдахгүй');
+
+  // «Цагтаа хүрсэн»: харьцуулалт өөрчлөлтгүй үед «= 0 нэгж» биш
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const d = src.slice(src.indexOf('function dispatchBlockHtml'), src.indexOf('function attachReviewBlock'));
+  ok(/d === 0/.test(d) && /өөрчлөлтгүй/.test(d), 'цагтаа хүрсэн: өөрчлөлтгүй үед тодорхой бичвэр');
+  ok(!/'= '\}\$\{Math\.abs\(d\)\}/.test(d), 'цагтаа хүрсэн: «= 0 нэгж» буцаж ирэхгүй');
+  ok(!/\}тэй ижил|\}тай ижил/.test(d), 'цагтаа хүрсэн: сарын нэрэнд дагавар («сартай») залгахгүй — «2025-12»-д буруу');
+  // Шилдэг гүйцэтгэгч: нэр багтана
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+  ok(/\.dash-top \.dash-bar-label \{ width: 8\.5rem;/.test(css), 'шилдэг: нэрийн багана хангалттай өргөн (Д.Бат-Эрдэнэ таслагдахгүй)');
+  st.isCEO = keep.c; st.appOrders = keep.a; st.dashMore = keep.m; st.dspMonth = keep.ym;
+}
+
 // ═══ ДАМЖЛАГЫН СХЕМ — PIPELINE-ээс өөрөө угсарна (2026-10-04, CEO) ═════
 {
   const S = F.pipelineSteps;
@@ -17911,6 +18194,200 @@ async function swFetchTests() {
      'Тойм: гацсан → буцаж залгах → календарь → цагтаа хүрсэн → үнэлгээ → шилдэг гүйцэтгэгч дараалал');
 }
 
+// ═══ ТОЙМЫН ЖАГСААЛТ: эхний N мөр, үлдсэн нь «бусад» (2026-10-09) ═══════
+// `max-height + overflow-y:auto` нь утсанд хуудас доторх хоёр дахь гүйлгэлт —
+// нэг муу өдөр гурван блок эхний дэлгэцийг бүхлээр эзэлж календарь хүрэхгүй болдог байв.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+  const N = vm.runInContext('DASH_LIST_SHOW', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const rows = (n) => Array.from({ length: n }, (_, i) => `<i>${i}</i>`);
+  const save = st.dashMore;
+  st.dashMore = undefined;
+  eq(F.dashListHtml('t', rows(N)), rows(N).join(''), 'Тойм жагсаалт: N мөр хүртэл «бусад» гарахгүй');
+  const h = F.dashListHtml('t', rows(N + 4));
+  ok(h.indexOf(`<i>${N - 1}</i>`) < h.indexOf('<details'), 'Тойм жагсаалт: эхний N мөр ил, үлдсэн нь details дотор');
+  ok(new RegExp(`бусад \\(4\\)`).test(h), 'Тойм жагсаалт: үлдсэн мөрийн тоо ил');
+  ok(!/<details[^>]* open/.test(h), 'Тойм жагсаалт: өгөгдмөл нь хаалттай');
+  st.dashMore = { t: true };
+  ok(/<details[^>]* open/.test(F.dashListHtml('t', rows(N + 1))), 'Тойм жагсаалт: нээсэн нь render() дахин зурахад хаагдахгүй');
+  ok(!/<details[^>]* open/.test(F.dashListHtml('other', rows(N + 1))), 'Тойм жагсаалт: нэг жагсаалтын төлөв нөгөөд нөлөөлөхгүй');
+  eq(F.dashListHtml('t', rows(8), 5).split('<i>').length - 1, 8, 'Тойм жагсаалт: мөр алдагдахгүй (ил + нуугдсан = нийт)');
+  st.dashMore = save;
+  // Дэлгэц нь үүнийг үнэхээр ашиглана (мөр гараар .join('') хийвэл дахин гүйлгэлт нэмэх нүх нээгдэнэ)
+  ['function stuckBlockHtml', 'function arBlockHtml'].forEach(k => {
+    const b = src.slice(src.indexOf(k), src.indexOf(k) + 1800);
+    ok(/dashListHtml\(/.test(b), `Тойм жагсаалт: ${k} нь dashListHtml ашиглана`);
+  });
+  ok(/dashListHtml\('top'/.test(src), 'Тойм жагсаалт: шилдэг гүйцэтгэгч ч ашиглана');
+  ok(/data-dash-more\]'\)\.forEach\(d => d\.addEventListener\('toggle'/.test(src), 'Тойм жагсаалт: нээсэн төлөв state.dashMore-д хадгалагдана');
+  // ⛔ Дотоод гүйлгэлт буцаж ирэхийг хаана
+  ['stk-list', 'dash-top-scroll', 'mcd-list'].forEach(c => {
+    const m = css.match(new RegExp('\\n\\.' + c + '\\s*\\{[^}]*\\}'));
+    ok(m && !/overflow-y\s*:\s*(auto|scroll)/.test(m[0]) && !/max-height/.test(m[0]), `Тойм жагсаалт: .${c} дотор гүйлгэлтгүй`);
+  });
+}
+
+// ═══ ТОЙМЫН КАЛЕНДАРЬ УТСАНД = 7 ХОНОГИЙН МӨР (2026-10-09, CEO) ═════════
+// Сарын бүтэн тор утсанд ~370px — календарь эхний дэлгэцийн тал хувийг эзэлж байв.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+  // Даваа гараг: 7 хоногийн аль ч өдрөөс ижил Даваа; сар/жилийн хил
+  eq(F.calWeekStart('2026-10-05'), '2026-10-05', '7 хоног: Даваа өөрөө');
+  eq(F.calWeekStart('2026-10-11'), '2026-10-05', '7 хоног: Ням нь өмнөх Даваа гарагт хамаарна');
+  eq(F.calWeekStart('2026-10-09'), '2026-10-05', '7 хоног: Баасан → тэр 7 хоногийн Даваа');
+  eq(F.calWeekStart('2026-10-01'), '2026-09-28', '7 хоног: сарын хил (Пүрэв 10-01 → 09-28)');
+  eq(F.calWeekStart('2027-01-01'), '2026-12-28', '7 хоног: жилийн хил');
+  eq(F.calWeekStart(''), '', '7 хоног: хоосон оролт унагахгүй');
+  eq(F.calWeekStart('2026-13-40x'), '', '7 хоног: буруу огноо → хоосон, таамаглахгүй');
+
+  // Сарын хил давсан 7 хоног: ХОЁР сарын дата зэрэг гарна, олон өдрийн захиалга дунд өдөрт давтагдахгүй
+  const ords = [{ id: 'w1', number: 1, status: 'reserved', starts_at: '2026-09-30T09:00:00+08:00', stops_at: '2026-10-02T18:00:00+08:00', items: [] },
+                { id: 'w2', number: 2, status: 'deleted',  starts_at: '2026-09-29T09:00:00+08:00', stops_at: '2026-09-29T18:00:00+08:00', items: [] }];
+  const wk = F.ordersWeekData(ords, '2026-09-28');
+  eq(wk.days.join(','), '2026-09-28,2026-09-29,2026-09-30,2026-10-01,2026-10-02,2026-10-03,2026-10-04', '7 хоног: 7 тасралтгүй өдөр, сарын хил давна');
+  eq(wk.out('2026-09-30').length, 1, '7 хоног: гарах өдөр (9-р сар)');
+  eq(wk.back('2026-10-02').length, 1, '7 хоног: буцах өдөр (10-р сар) — ӨӨР сарын дата');
+  eq(wk.out('2026-10-01').length + wk.back('2026-10-01').length, 0, '7 хоног: олон өдрийн захиалга дунд өдөрт ДАВТАГДАХГҮЙ');
+  eq(wk.out('2026-09-29').length, 0, '7 хоног: устгасан захиалга орохгүй');
+
+  // Шилжилт: хоёр харагдац ИЖИЛ үеийг заана
+  eq(JSON.stringify(F.calSwitchView(true, '2026-09-28', '', '2026-10-09')), JSON.stringify({ ym: '2026-10', week: '2026-09-28' }), 'шилжилт: 09-28 7 хоногийн ихэнх нь 10-р сард → 10-р сар');
+  eq(F.calSwitchView(true, '', '', '2026-10-09').ym, '2026-10', 'шилжилт: өнөөдрийн 7 хоног → өнөөдрийн сар');
+  eq(F.calSwitchView(false, '', '2026-10', '2026-10-09').week, '', 'шилжилт: одоогийн сараас буцахад 7 хоног өнөөдрийг ДАГАНА (тогтоохгүй)');
+  eq(F.calSwitchView(false, '', '2026-12', '2026-10-09').week, '2026-11-30', 'шилжилт: өөр сараас буцахад тэр сарын 1-ийн 7 хоног');
+
+  // Зурагдалт: Тойм (compact) дээр л; Захиалгын дэлгэцийнх ӨӨРЧЛӨГДӨӨГҮЙ
+  const st = vm.runInContext('state', sandbox);
+  const keep = { f: st.dashCalFull, w: st.dashCalWeek, a: st.appOrders };
+  st.appOrders = []; st.dashCalWeek = '';
+  st.dashCalFull = false;
+  const c1 = F.ordersCalendarHtml([], { compact: true });
+  ok(/ocal ocal-wkmode/.test(c1), 'Тойм календарь: өгөгдмөлөөр 7 хоногийн горим');
+  eq((c1.match(/ocal-wk-only/g) || []).length, 2, 'Тойм календарь: 7 хоногийн толгой + мөр');
+  eq(c1.slice(c1.indexOf('ocal-grid ocal-wk-only')).split('data-ocal-day=').length - 1 >= 7, true, 'Тойм календарь: 7 хоногийн мөрөнд 7 өдөр');
+  ok(/data-ocal-wk="-1"/.test(c1) && /data-ocal-wk="1"/.test(c1) && /data-ocal-full=/.test(c1), 'Тойм календарь: 7 хоногоор шилжих, «Бүтэн сар» товчтой');
+  ok(/Энэ 7 хоног/.test(c1) && !/data-ocal-wk="0"/.test(c1), 'Тойм календарь: энэ 7 хоногт «Өнөөдөр» товч шаардлагагүй');
+  st.dashCalWeek = '2026-09-28';
+  ok(/data-ocal-wk="0"/.test(F.ordersCalendarHtml([], { compact: true })), 'Тойм календарь: өөр 7 хоногт «Өнөөдөр» буцах товч гарна');
+  st.dashCalWeek = '';
+  st.dashCalFull = true;
+  const c2 = F.ordersCalendarHtml([], { compact: true });
+  ok(!/ocal-wkmode/.test(c2) && /▴ 7 хоног/.test(c2), 'Тойм календарь: «Бүтэн сар» горимд сарын тор + буцах товч');
+  const full = F.ordersCalendarHtml([]);
+  ok(!/ocal-wk-only|ocal-foot|ocal-wkmode/.test(full), 'ИНВАРИАНТ: Захиалгын дэлгэцийн календарьт 7 хоногийн мөр ОРОХГҮЙ');
+  st.dashCalFull = keep.f; st.dashCalWeek = keep.w; st.appOrders = keep.a;
+
+  // ⛔ Өргөн дэлгэцэд 7 хоногийн мөр ХЭЗЭЭ Ч харагдахгүй: нуух нь media-гүй үндсэн дүрэмд,
+  //   харуулах нь ЗӨВХӨН ≤720px дотор.
+  ok(/\n\.ocal-head\.ocal-wk-only, \.ocal-grid\.ocal-wk-only, \.ocal-foot \{ display: none; \}/.test(css), 'CSS: 7 хоногийн мөр үндсэн дүрмээр НУУГДАНА (өргөн дэлгэц)');
+  // Харуулах дүрмийг @media (max-width: 720px)-ийн БИЕ дотроос хаалтаар нь (brace) гаргаж тулгана
+  const showRe = /\.ocal-wkmode \.ocal-(?:head|grid)\.ocal-wk-only \{ display: (?:flex|grid); \}|\.dash-ocal \.ocal-foot \{ display: flex; \}/g;
+  const mediaBodies = [];
+  for (const m of css.matchAll(/@media \(max-width: 720px\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < css.length && d > 0) { if (css[i] === '{') d++; else if (css[i] === '}') d--; i++; }
+    mediaBodies.push(css.slice(from, i));
+  }
+  const totalShow = (css.match(showRe) || []).length;
+  const inMedia = mediaBodies.reduce((n, b) => n + (b.match(showRe) || []).length, 0);
+  ok(totalShow >= 3, 'CSS: 7 хоногийн мөрийг харуулах дүрмүүд байна');
+  eq(inMedia, totalShow, 'ИНВАРИАНТ: 7 хоногийн мөрийг харуулах дүрэм ЗӨВХӨН @media (max-width: 720px) дотор');
+  // Товчнууд холбогдсон + сонголт хадгалагдана
+  ok(/data-ocal-wk\]'\)\.forEach/.test(src) && /data-ocal-full\]'\)\.forEach/.test(src), '7 хоног: товчнууд холбогдсон');
+  ok(/localStorage\.setItem\('dashCalFull'/.test(src) && /localStorage\.getItem\('dashCalFull'\)/.test(src), '7 хоног: «Бүтэн сар» сонголт хадгалагдана');
+  ok(/calSwitchView\(full, state\.dashCalWeek, state\.ordersCalYm/.test(src), '7 хоног: шилжилт цэвэр функцээр');
+}
+
+// ═══ МИНИЙ АЖИЛ: ШҮҮЛТҮҮРИЙН PILL — ТОО, ИДЭВХТЭЙ НЬ ХАРАГДАНА (2026-10-09) ═════
+// Утсанд 7 pill 334px-д багтахгүй (694px) — идэвхтэй шүүлт («Бүгд») дэлгэцээс гадуур,
+// ямар шүүлт асаалттайг хэн ч харахгүй байв; pill нь тоогүй, хүрээгүй (бичиг шиг) байв.
+{
+  const fs = require('fs'), path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { t: st.tasks, v: st.view, me: st.me, c: st.isCEO, f: st.statusFilter, s: st.search };
+  const T = vm.runInContext('todayStr()', sandbox);
+  const day = (n) => vm.runInContext(`addDays(todayStr(), ${n})`, sandbox);
+  const mk = (id, status, due) => ({ id, title: 'Ажил ' + id, assignee: '99001', createdBy: '99001', status, due, priority: 'medium', created: day(-3), updated: day(-1) });
+  st.tasks = [mk('a', 'open', day(-2)), mk('b', 'open', day(-1)), mk('c', 'open', T), mk('d', 'open', day(5)), mk('e', 'open', ''),
+              mk('f', 'done', day(-1)), mk('g', 'done', day(-2))];
+  st.view = 'mine'; st.me = '99001'; st.isCEO = false; st.search = ''; st.statusFilter = 'all';
+  const ids = (l) => l.map(t => t.id).sort().join(',');
+
+  // ИНВАРИАНТ: pill дээрх тоо = дарахад гарах жагсаалт (ИЖИЛ функц, state-ийг хөндөхгүй)
+  const cnt = F.taskFilterCounts();
+  eq(st.statusFilter, 'all', 'pill тоо: state.statusFilter-ийг ХӨНДӨХГҮЙ');
+  ['open', 'overdue', 'today'].forEach(k => {
+    st.statusFilter = k;
+    const shown = F.filteredTasks();
+    eq(cnt[k], shown.length, `ИНВАРИАНТ: «${k}» pill-ийн тоо = дарахад гарах мөрийн тоо`);
+    eq(ids(F.filteredTasks({ statusFilter: k })), ids(shown), `ИНВАРИАНТ: filteredTasks({statusFilter:'${k}'}) = state-ээр шүүсэнтэй ижил`);
+  });
+  st.statusFilter = 'all';
+  eq(cnt.open, 5, 'pill тоо: идэвхтэй 5'); eq(cnt.overdue, 2, 'pill тоо: хоцорсон 2'); eq(cnt.today, 1, 'pill тоо: өнөөдөр 1');
+  // Хайлт идэвхтэй үед тоо ХАЙЛТЫГ тооцно — дарахад гарах мөртэй зөрөхгүй
+  st.search = 'Ажил a';
+  eq(F.taskFilterCounts().open, 1, 'pill тоо: хайлт идэвхтэй үед хайлтыг тооцно');
+  st.search = '';
+  eq(JSON.stringify(vm.runInContext('FILTER_COUNT_KEYS', sandbox)), JSON.stringify(['open', 'overdue', 'today']), 'pill тоо: зөвхөн хийх ажил (open/overdue/today)');
+
+  // Идэвхтэй pill-ийг харагдуулах: хамгийн бага гүйлгэлт, ирмэгээс зайтай
+  const mkGrp = (sl, aL, aR) => ({ scrollLeft: sl, clientWidth: 300, scrollWidth: 700,
+    getBoundingClientRect: () => ({ left: 0, right: 300 }),
+    querySelector: () => ({ getBoundingClientRect: () => ({ left: aL, right: aR }) }) });
+  const g1 = mkGrp(0, 350, 450); F.revealActivePill(g1);
+  eq(g1.scrollLeft, 450 - (300 - 36), 'pill гүйлгэлт: баруун гадна → ирмэгээс 36px зайтай харагдана');
+  const g2 = mkGrp(0, 50, 150); F.revealActivePill(g2);
+  eq(g2.scrollLeft, 0, 'pill гүйлгэлт: аль хэдийн харагдаж байвал ХӨДӨЛГӨХГҮЙ');
+  const g3 = mkGrp(200, -80, -20); F.revealActivePill(g3);
+  eq(g3.scrollLeft, 200 - (36 + 80), 'pill гүйлгэлт: зүүн гадна → буцааж гүйлгэнэ');
+  const g4 = { scrollLeft: 0, clientWidth: 300, scrollWidth: 300, getBoundingClientRect: () => ({ left: 0, right: 300 }), querySelector: () => ({ getBoundingClientRect: () => ({ left: 400, right: 500 }) }) };
+  F.revealActivePill(g4); eq(g4.scrollLeft, 0, 'pill гүйлгэлт: гүйлгэх зүйлгүй (багтсан) бол хөндөхгүй');
+  const g5 = { scrollLeft: 0, clientWidth: 0, scrollWidth: 900, getBoundingClientRect: () => ({ left: 0, right: 0 }), querySelector: () => ({ getBoundingClientRect: () => ({ left: 400, right: 500 }) }) };
+  F.revealActivePill(g5); eq(g5.scrollLeft, 0, 'pill гүйлгэлт: нуугдсан (clientWidth 0) бүлгийг хөндөхгүй');
+  eq(F.revealActivePill({ querySelector: () => null }), undefined, 'pill гүйлгэлт: идэвхтэй pill байхгүй бол унахгүй');
+
+  // Бүдгэрэлт: «цааш бий» дохио зөвхөн гүйлгэх боломжтой талд
+  const fd = (sl, cw, sw) => { const g = { scrollLeft: sl, clientWidth: cw, scrollWidth: sw, dataset: {} }; F.updatePillFade(g); return g.dataset.fade; };
+  eq(fd(0, 300, 700), 'r', 'бүдгэрэлт: эхэнд → баруун талд');
+  eq(fd(200, 300, 700), 'lr', 'бүдгэрэлт: дунд → хоёр талд');
+  eq(fd(400, 300, 700), 'l', 'бүдгэрэлт: төгсгөлд → зүүн талд');
+  eq(fd(0, 300, 300), '', 'бүдгэрэлт: багтсан бол байхгүй');
+  eq(fd(0, 0, 0), '', 'бүдгэрэлт: inline/нуугдсан бүлэгт байхгүй');
+
+  // «Бүгд» эхэнд (хоёр бүлэгт): төгсгөлд байвал үндсэн төлөвт хамгийн хэрэгтэй тоо (Идэвхтэй/Хоцорсон) нуугдана
+  ['task-filters', 'fin-filters'].forEach(id => {
+    const a = html.indexOf('id="' + id + '"');
+    const first = html.slice(a, html.indexOf('</span>', a)).match(/data-status="([^"]+)"/);
+    eq(first && first[1], 'all', `pill дараалал: «Бүгд» ${id}-ийн ЭХНИЙХ`);
+  });
+  // Pill нь <div> тул товч гэдгийг хэлж, гараар дарагдана
+  ok(/setAttribute\('role', 'button'\)/.test(src) && /p\.tabIndex = 0/.test(src) && /aria-pressed/.test(src), 'pill: role/tabindex/aria-pressed');
+  ok(/el\.addEventListener\('keydown', \(e\) => \{ if \(e\.key === 'Enter' \|\| e\.key === ' '\)/.test(src), 'pill: Enter/Space-ээр дарагдана');
+  // Санхүүд тоо гарахгүй (тэнд үе шатны шүүлт ӨӨР: filteredTasks нь санхүүгийн шүүлтээр ажиллана)
+  const sf = src.slice(src.indexOf('function syncFilterPills'), src.indexOf('function renderSidebar'));
+  ok(/if \(!isFin\) \{\s*const cnt = taskFilterCounts\(\)/.test(sf), 'pill тоо: санхүүгийн шүүлтэд тоо гарахгүй');
+  // Утсанд pill хүрээтэй (товч шиг), бүдгэрэлт ЗӨВХӨН ≤720px дотор
+  const mediaBodies = [];
+  for (const m of css.matchAll(/@media \(max-width: 720px\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < css.length && d > 0) { if (css[i] === '{') d++; else if (css[i] === '}') d--; i++; }
+    mediaBodies.push(css.slice(from, i));
+  }
+  const inMedia = (re) => mediaBodies.some(b => re.test(b));
+  ok(inMedia(/\.filter-pill \{[^}]*border: 1px solid var\(--border\);[^}]*background: var\(--panel\);/), 'pill: утсанд хүрээ + дэвсгэртэй (дарж болох нь харагдана)');
+  const fadeAll = (css.match(/\.filter-group\[data-fade=/g) || []).length;
+  const fadeIn = mediaBodies.reduce((n, b) => n + (b.match(/\.filter-group\[data-fade=/g) || []).length, 0);
+  ok(fadeAll === 3 && fadeIn === 3, 'ИНВАРИАНТ: бүдгэрэлтийн дүрэм ЗӨВХӨН @media (max-width: 720px) дотор');
+
+  st.tasks = keep.t; st.view = keep.v; st.me = keep.me; st.isCEO = keep.c; st.statusFilter = keep.f; st.search = keep.s;
+}
+
 // ═══ «БИ Ч ОРОЛЦСОН» ТОВЧ ЦАЛИНГИЙН САМБАРТ ХОЛБОГДОНО (2026-10-05) ═════
 // Хайрцаг цалингийн самбарт зурагддаг атал товчны үйлдэл «Миний ирц»-д л
 // холбогдсон байсан — ✕/✓ дарахад юу ч болдоггүй байв (CEO барив).
@@ -18671,6 +19148,312 @@ async function swFetchTests() {
   ok(/const emp = empForAcct\(cAcct\)/.test(src), 'scan: хуулгын тулгалт empForAcct-аар');
   ok(/const ACCT_MATCH_MIN = 9/.test(src), 'scan: суффиксийн доод урт 9 (богиносгохгүй)');
   ok(/хуулгын утгаар/.test(card), 'scan: таасан дансыг ИЛ тэмдэглэнэ (нуухгүй)');
+}
+
+// ═══ МИНИЙ ИРЦ (ажилтны өөрийн дэлгэц): «ГАРАХ БҮРТГЭЛГҮЙ» АЖИЛ ДЭЭД ТАЛД, ЦАГИЙН МУЖ (2026-10-09) ═════
+// «🙋 Цаг гаргуулах» товч 1500px+ доор, цалингийн картын сануулга «доорх жагсаалтаас…» гэдэг байв.
+// Цалин тэр өдрийг 0 цаг гэж тооцдог тул мартсан ажилтан цалингаа дутуу авна.
+{
+  const srcM = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssM = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { me: st.me, att: st.myAttendance, ar: st.attRequests, ao: st.appOrders, pm: st.myPayMonth, pr: st.myPayRecs, pl: st.myProfileLoaded, sl: st._salLoaded, ml: st._myProfileLoaded, dm: st.dashMore };
+  const T = vm.runInContext('todayStr()', sandbox);
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const ad = (n) => vm.runInContext(`addDays('${T}', ${n})`, sandbox);
+  const R = (day, kind, hm) => ({ member_key: '99112244', member_name: 'Д.Бат', kind, ts: ts(day, hm), day, branch: 'M-Event', source: 'scan' });
+  st._myProfileLoaded = true; st._salLoaded = true; st.appOrders = []; st.myPayMonth = T.slice(0, 7); st.myPayRecs = { [T.slice(0, 7)]: [] };
+  vm.runInContext("state.me = '99112244'", sandbox);
+  const D = [ad(-2), ad(-3), ad(-4), ad(-5)];   // дөрвөн өмнөх өдөр
+  const day = (d, i, o) => [R(d, 'in', i)].concat(o ? [R(d, 'out', o)] : []);
+  st.attRequests = [];
+  // өнөөдөр нээлттэй (гараагүй ч «гарах бүртгэлгүй» БИШ), 4 өдөр гараагүй, нэг өдөр хэвийн
+  st.myAttendance = [].concat(day(T, '08:41'), day(D[0], '08:50'), day(D[1], '08:51'), day(D[2], '08:52'), day(D[3], '08:53'), day(ad(-1), '08:57', '17:17'));
+  const h = F.renderMyAttend();
+  const alert = h.slice(h.indexOf('class="myatt-alert"'), h.indexOf('class="myatt-card myatt-pay"') > 0 ? h.indexOf('class="myatt-card myatt-pay"') : undefined);
+  ok(/class="myatt-alert"/.test(h), 'миний ирц: гарах бүртгэлгүй өдөр байвал дээд талд сануулга гарна');
+  ok(/Гарах бүртгэлгүй өдөр · 4/.test(h), 'миний ирц: сануулгад тоо (өнөөдөр БОЛОН хэвийн өдөр ороогүй)');
+  ok(h.indexOf('myatt-alert') < h.indexOf('Миний цалин'), 'миний ирц: сануулга цалингийн картаас ӨМНӨ (1500px доор биш)');
+  ok(/data-my-areq=/.test(alert), 'миний ирц: сануулга дотор шууд «Цаг гаргуулах» товч');
+  ok(!new RegExp('data-my-areq="' + T + '"').test(alert), 'миний ирц: өнөөдөр (нээлттэй) сануулгад орохгүй');
+  ok(/data-dash-more="myout"/.test(h), 'миний ирц: 3-аас олон өдөр «+ N» нугалаанд');
+  // Хүсэлт илгээсэн өдөр сануулгаас гарна (мөрөндөө «⏳» гэж харагдана)
+  st.attRequests = { ['99112244|' + D[0]]: { key: '99112244', day: D[0], status: 'pending', outTime: '18:00' } };
+  const h2 = F.renderMyAttend();
+  ok(/Гарах бүртгэлгүй өдөр · 3/.test(h2), 'миний ирц: хүсэлт илгээсэн өдөр сануулгаас гарна (4 → 3)');
+  ok(/⏳ Хүсэлт хүлээгдэж байна/.test(h2), 'миний ирц: тэр өдөр мөрөндөө «⏳ хүлээгдэж байна»');
+  // Бүгд хэвийн бол сануулга огт гарахгүй
+  st.attRequests = []; st.myAttendance = [].concat(day(T, '08:41'), day(ad(-1), '08:57', '17:17'));
+  ok(!/class="myatt-alert"/.test(F.renderMyAttend()), 'миний ирц: гарах бүртгэлгүй өдөр байхгүй бол сануулга гарахгүй');
+  // Мөр = цагийн муж + гарсан цаг
+  st.myAttendance = [].concat(day(T, '08:41'), day(D[0], '08:50'), day(ad(-1), '08:57', '17:17'));
+  const h3 = F.renderMyAttend();
+  ok(/myatt-t open">08:41 → одоо/.test(h3), 'миний ирц: өнөөдрийн мөр «08:41 → одоо»');
+  ok(/myatt-t noout">08:50 → ⚠ гараагүй/.test(h3), 'миний ирц: гараагүй өдөр «08:50 → ⚠ гараагүй»');
+  ok(/myatt-t">08:57 → 17:17/.test(h3), 'миний ирц: хэвийн өдөр «08:57 → 17:17» (гарсан цаг харагдана)');
+  // Дизайн: inline style-гүй (нийтлэг staffAvatarImg-ийн <img>-ээс бусад)
+  ok(!/style="/.test(h3.replace(/<img[^>]*>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')), 'дизайн: миний ирц (нийтлэг <img>, svg-ээс бусад) inline style-гүй');
+  // Данс бүртгэгдээгүй бол улаан товч (профайл руу), бүртгэлтэй бол нэг мөр
+  ok(/myatt-bank/.test(h3) || /id="my-open-profile"/.test(h3), 'миний ирц: дансны мөр эсвэл «бүртгэх» товч байна');
+  // Scan: нугалааны төлөв хадгалагдана, хоёр газар
+  ok(/function attachDashMore\(root\)[\s\S]{0,260}\[d\.dataset\.dashMore\] = d\.open/.test(srcM), 'миний ирц: attachDashMore нь нээсэн төлвийг state.dashMore-д хадгална');
+  const mah2 = srcM.slice(srcM.indexOf('function attachMyAttendHandlers'), srcM.indexOf('function attachMyAttendHandlers') + 400);
+  ok(/\n  attachDashMore\(\);/.test(mah2), 'миний ирц: handler нь attachDashMore-г ҮРГЭЛЖ дууддаг (нугалаа хадгалагдана)');
+  const rma = srcM.slice(srcM.indexOf('function renderMyAttend'), srcM.indexOf('function attachMyAttendHandlers'));
+  ok(/noOutDays/.test(rma) && /d !== today/.test(rma), 'scan: «гарах бүртгэлгүй» сануулга өнөөдрийг хасна');
+  ok(/status === 'pending'/.test(rma.slice(rma.indexOf('const noOutDays'), rma.indexOf('const noOutDays') + 260)), 'scan: хүсэлт илгээсэн өдөр сануулгаас гарна');
+  // CSS: ангиуд оршино, QR цагаан хэвээр (харанхуй горимд ч уншигдана), сануулга токентой
+  ok(/\.myatt-alert \{[^}]*var\(--warn-soft\)/.test(cssM), 'CSS: .myatt-alert токен өнгөтэй');
+  ok(/\.myatt-qr-box \{[^}]*#fff/.test(cssM), 'CSS: QR хайрцаг ҮРГЭЛЖ цагаан (харанхуй горимд скан хийгдэнэ)');
+  ok(/\.myatt-row \{/.test(cssM) && /\.myatt-t\.noout \{/.test(cssM) && /\.myatt-t\.open \{/.test(cssM), 'CSS: мөр, гараагүй, одоо ангиуд');
+  Object.assign(st, { attRequests: keep.ar, appOrders: keep.ao, myPayMonth: keep.pm, myPayRecs: keep.pr, myAttendance: keep.att, _salLoaded: keep.sl, _myProfileLoaded: keep.ml, dashMore: keep.dm });
+  vm.runInContext(`state.me = ${JSON.stringify(keep.me === undefined ? '' : keep.me)}`, sandbox);
+}
+
+// ═══ ИРЦИЙН САРЫН ТОЙМ: САРЫН НАВИГАЦИ, ЯВЖ БУЙ САРЫН НОРМ, НЭГ МӨРТ ЦАЛИН (2026-10-09) ═════
+// ◀ ▶ нь сарын тоймоос ӨДӨР рүү гаргадаг байсан тул өмнөх сарыг харах арга олдохгүй, скан карт сарын
+// жагсаалтын дээр ~330px эзэлж, сарын 7-нд бүх хүн бүтэн нормын «31%» улбар шараар гардаг байв.
+{
+  const srcT = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssT = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  // Цэвэр функцууд
+  eq(JSON.stringify(F.attMonthShift('2026-10', -1, '2026-10-09')), JSON.stringify({ month: '2026-09', day: '2026-09-01' }), 'сарын нав: өмнөх сар → 1-ний өдөр');
+  eq(F.attMonthShift('2026-10', 1, '2026-10-09'), null, 'сарын нав: одоогийн сараас хойш явахгүй');
+  eq(JSON.stringify(F.attMonthShift('2026-09', 1, '2026-10-09')), JSON.stringify({ month: '2026-10', day: '2026-10-09' }), 'сарын нав: одоогийн сар руу буцахад ӨНӨӨДӨР');
+  eq(F.attMonthShift('2026-01', -1, '2026-10-09').month, '2025-12', 'сарын нав: жилийн хил давна');
+  eq(F.attMonthShift('хоосон', 1, '2026-10-09'), null, 'сарын нав: буруу оролт null');
+  eq(F.monthWorkdaysThrough('2026-10', '2026-10-09'), 7, 'явж буй сар: 10-09 хүртэл 7 ажлын өдөр (Бямба/Ням хассан)');
+  eq(F.monthWorkdaysThrough('2026-10', '2026-10-04'), 2, 'явж буй сар: Бямба/Ням дээр дахин нэмэгдэхгүй (1-2 л ажлын өдөр)');
+  eq(F.monthWorkdaysThrough('2026-09', '2026-10-09'), F.monthWorkdays('2026-09'), 'дууссан сар: бүтэн');
+  eq(F.monthWorkdaysThrough('2026-11', '2026-10-09'), 0, 'ирээгүй сар: 0');
+  eq(F.workNormMinsThrough('2026-10', '2026-10-09'), 7 * 480, 'явж буй сарын норм = 7×8ц');
+  eq(F.workNormMinsThrough('2026-09', '2026-10-09'), F.workNormMins('2026-09'), 'дууссан сарын норм бүтэн');
+
+  const st = vm.runInContext('state', sandbox);
+  const keep = { k: st.attMonthKey, r: st.attMonthRecs, e: st.attMonthErr, ao: st.appOrders, sal: st.salaries, sp: st.salaryPayments, sl: st._salLoaded, ceo: st.isCEO, mode: st.attMonthMode, day: st.attViewDay };
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const R = (k, day, kind, hm) => ({ member_key: k, member_name: 'Ажилтан ' + k, kind, ts: ts(day, hm), day, branch: 'M-Event', source: 'scan' });
+  const wd = (ym) => { const o = []; for (let d = 1; d <= 28; d++) { const w = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1, d)).getUTCDay(); if (w && w < 6) o.push(ym + '-' + String(d).padStart(2, '0')); } return o; };
+  st.isCEO = true; st._salLoaded = true; st.appOrders = []; st.attMonthErr = null;
+  // Дууссан сар: нэг хүн 8ц × бүх өдөр + нэг өдөр гарахгүй; нөгөө нь бүтэн цалин олгогдсон
+  const M = '2026-09', days = wd(M);
+  st.attMonthKey = M;
+  st.attMonthRecs = [].concat(...days.map(d => [R('90000011', d, 'in', '09:00'), R('90000011', d, 'out', '19:00')]),
+    [R('90000012', days[0], 'in', '09:00')], ...days.slice(1, 4).map(d => [R('90000012', d, 'in', '09:00'), R('90000012', d, 'out', '18:00')]));
+  st.salaries = { '90000011': 2000000, '90000012': 1500000 };
+  st.salaryPayments = [];
+  const full = F.renderAttendanceMonth(M);
+  ok(/Сарын норм <b>\d+×8=\d+ц<\/b>/.test(full) && !/үргэлжилж байна/.test(full), 'сарын тойм: дууссан сард «Сарын норм», «үргэлжилж байна» гарахгүй');
+  ok(/class="att-mo-flag">⚠ <b>1<\/b> ажилтанд гарах бүртгэлгүй <b>1<\/b> өдөр/.test(full), 'сарын тойм: гарах бүртгэлгүй өдрийн ТОВЧ дүн дээд талд (ажилтан · өдөр)');
+  ok(full.indexOf('att-mo-flag') < full.indexOf('att-mo-row'), 'сарын тойм: сануулга мөрүүдээс ӨМНӨ');
+  ok(/<div class="att-mo-pay">💵 Цалин <b>[^<]+<\/b> <span class="att-mo-st">олгоогүй<\/span>/.test(full), 'сарын тойм: цалин НЭГ мөр (нийт · «олгоогүй»), мөр нээгдэхэд харагдана');
+  ok(/att-mo-pay-in">цэвэр суурь/.test(full), 'сарын тойм: цалингийн задаргаа (цэвэр суурь …) ҮЛДЭНЭ');
+  ok(/att-mo-calc">⏱ Ажилласан <b>[^<]+<\/b> \/ норм \d+ц · <span class="att-mo-ot">\+\d+ц[^<]*илүү<\/span>/.test(full), 'сарын тойм: илүү цаг задаргаанд «норм … · +Xц илүү»');
+  ok(!/⏱ Илүү цаг:/.test(full), 'сарын тойм: «Илүү цаг:» тусдаа мөр буцаж ирээгүй');
+  // Төлөв: үлдэгдэл · ✓ олгосон · илүү
+  const pay = (amt) => { st.salaryPayments = [{ person_key: '90000011', ym: M, amount: amt, paid_at: M + '-28T05:00:00Z', note: 'Цалин' }]; return F.renderAttendanceMonth(M); };
+  ok(/att-mo-st">үлдэгдэл <b>/.test(pay(100000)), 'сарын тойм: хэсэгчлэн олгосон → «үлдэгдэл»');
+  ok(/att-mo-st over">илүү <b>/.test(pay(99000000)), 'сарын тойм: илүү олгосон → «илүү» (тэглэгдэхгүй)');
+  const exact = F.renderAttendanceMonth(M); // одоогийн төлөв
+  st.salaryPayments = [];
+  ok(!/style="/.test(full.replace(/<img[^>]*>/g, '')), 'дизайн: сарын тойм (нийтлэг <img>-ээс бусад) inline style-гүй');
+  // Явж буй сар: хувь = өнөөдрийг хүртэлх нормоор
+  const T = vm.runInContext('todayStr()', sandbox), CM = T.slice(0, 7), through = F.monthWorkdaysThrough(CM, T);
+  if (through > 0 && through < F.monthWorkdays(CM)) {
+    const cd = wd(CM).filter(d => d <= T);
+    st.attMonthKey = CM; st.attMonthRecs = [].concat(...cd.filter(d => d !== T).map(d => [R('90000011', d, 'in', '09:00'), R('90000011', d, 'out', '18:00')]));   // 9ц − 1ц цай = 8ц
+    const cur = F.renderAttendanceMonth(CM);
+    ok(/Норм <b>\d+×8=\d+ц<\/b> <span class="att-mo-sub">\(сар \d+×8=\d+ц · үргэлжилж байна\)/.test(cur), 'сарын тойм: явж буй сард «Норм Н×8 (сар …· үргэлжилж байна)»');
+    const doneDays = cd.filter(d => d !== T).length;
+    const expPct = Math.round(doneDays * 8 * 60 / F.workNormMinsThrough(CM, T) * 100);
+    ok(new RegExp('<b class="att-mo-pct-[a-z]+">' + expPct + '%</b>').test(cur), 'сарын тойм: явж буй сард хувь = цаг ÷ ӨНӨӨДРИЙГ ХҮРТЭЛХ норм (бүтэн сарын нормоор биш)');
+    ok(new RegExp('/ норм ' + Math.round(F.workNormMinsThrough(CM, T) / 60) + 'ц').test(cur), 'сарын тойм: явж буй сард задаргааны норм = өнөөдрийг хүртэлх норм');
+  }
+  // renderAttendance: сарын горимд скан карт, өдрийн огноо БАЙХГҮЙ; сарын ◀ ▶ + «Өдрөөр»
+  st.attMonthKey = M; st.attMonthRecs = []; st.attViewDay = T; st.attMonthMode = true;
+  st.workStart = {}; st.nextArrival = {}; st.attRequests = {};
+  const pageM = F.renderAttendance();
+  ok(!/class="att-scan"/.test(pageM), 'сарын тойм: скан карт ХАРАГДАХГҮЙ (жагсаалтыг 330px доош түлхдэг байв)');
+  ok(/data-att-mnav="-1"/.test(pageM) && /data-att-mnav="1"/.test(pageM) && /class="att-mlabel"><small>\d{4}<\/small>\d{1,2}-р сар</.test(pageM), 'сарын тойм: САРЫН ◀ ▶ ба шошго «9-р сар» (жил жижгээр)');
+  ok(/data-att-mnav="1" disabled/.test(pageM), 'сарын тойм: одоогийн сард ▶ идэвхгүй (ирээдүй рүү явахгүй)');
+  ok(!/id="att-date"/.test(pageM) && !/data-att-nav=/.test(pageM), 'сарын тойм: ӨДРИЙН огноо/◀ ▶ байхгүй (сарын тоймоос өдөр рүү чимээгүй гаргадаг байв)');
+  ok(/data-att-month>📅 Өдрөөр</.test(pageM), 'сарын тойм: буцах товч «Өдрөөр»');
+  st.attMonthMode = false; st.attViewDay = T;
+  const pageD = F.renderAttendance();
+  ok(/id="att-date"/.test(pageD) && /data-att-month>📅 Сарын тойм</.test(pageD) && !/data-att-mnav/.test(pageD), 'өдрийн горим: огнооны сонгогч + «Сарын тойм», сарын ◀ ▶ байхгүй');
+  // Handler: сарын ◀ ▶ нь сарын горимоос ГАРАХГҮЙ
+  const hm = srcT.slice(srcT.indexOf("querySelectorAll('[data-att-mnav]')"), srcT.indexOf("querySelectorAll('[data-att-mnav]')") + 420);
+  ok(/attMonthShift\(/.test(hm) && !/attMonthMode = false/.test(hm), 'handler: сарын ◀ ▶ нь attMonthShift-ээр, сарын горимоос гаргахгүй');
+  // CSS
+  ok(/\.att-mo-top \{[^}]*min-height: var\(--tap\)/.test(cssT), 'CSS: ажилтны мөр (дарагдах) хурууны хэмжээтэй');
+  ok(/\.att-noout-day \{[^}]*min-height: var\(--tap-sm\)/.test(cssT), 'CSS: «гарах бүртгэлгүй» өдрийн товч хурууны хэмжээтэй');
+  ok(/\.att-mo-flag \{/.test(cssT) && /\.att-mo-st\.over/.test(cssT) && /\.att-mlabel \{/.test(cssT), 'CSS: сануулга · төлөв · сарын шошго');
+
+  // ── «ТОЙМ» = нийт тоо ДЭЭР, ажилтан НЭГ ШУГАМ (2026-10-09, CEO: «тойм бол тойм шиг харагдмаар байна») ──
+  // Өмнө нь ажилтан бүр 120-170px блок байсан тул 10 хүн ~1500px урт жагсаалт болж, нийт дүн хаана ч харагддаггүй байв.
+  const hm2m = (t) => { const h = /(\d+)ц/.exec(t), m = /(\d+)м/.exec(t); return (h ? +h[1] * 60 : 0) + (m ? +m[1] : 0); };
+  const money = (t) => Number(String(t).replace(/[^\d]/g, ''));
+  st.attMonthKey = M; st.attMonthErr = null; st.isCEO = true; st._salLoaded = true; st.attMoOpen = {};
+  st.attMonthRecs = [].concat(...days.map(d => [R('90000011', d, 'in', '09:00'), R('90000011', d, 'out', '19:00')]),
+    [R('90000012', days[0], 'in', '09:00')], ...days.slice(1, 4).map(d => [R('90000012', d, 'in', '09:00'), R('90000012', d, 'out', '18:00')]));
+  st.salaries = { '90000011': 2000000, '90000012': 1500000 }; st.salaryPayments = [];
+  const ov = F.renderAttendanceMonth(M);
+  ok((ov.match(/class="att-mo-kpi"/g) || []).length === 4, 'тойм: 4 нийт хавтан (цаг · гүйцэтгэл · илүү цаг · цалин)');
+  ok(ov.indexOf('att-mo-kpis') < ov.indexOf('att-mo-flag') && ov.indexOf('att-mo-flag') < ov.indexOf('class="att-mo-row"'), 'тойм: хавтан → сануулга → ажилтны мөрүүд (нийт тоо ДЭЭР)');
+  const rowHrs = (ov.match(/att-mo-hrs">([^<]+)</g) || []).map(x => hm2m(x));
+  const tileTot = hm2m((/Нийт цаг<\/div><div class="att-mo-kpi-v">([^<]+)</.exec(ov) || [])[1]);
+  ok(rowHrs.length === 2 && tileTot > 0 && tileTot === rowHrs.reduce((a, b) => a + b, 0), 'ИНВАРИАНТ: «Нийт цаг» хавтан = мөрүүдийн цагийн нийлбэр');
+  const rowPay = (ov.match(/att-mo-pay">💵 Цалин <b>([^<]+)</g) || []).map(x => money(x.split('<b>')[1]));
+  const tilePay = money((/Нийт цалин<\/div><div class="att-mo-kpi-v">([^<]+)</.exec(ov) || [])[1]);
+  ok(rowPay.length === 2 && tilePay > 0 && tilePay === rowPay.reduce((a, b) => a + b, 0), 'ИНВАРИАНТ: «Нийт цалин» хавтан = мөр бүрийн цалингийн нийлбэр');
+  // Мөр = <details>; дээд шугам (summary) нь НЭР · ЦАГ · ХУВЬ · ЗУРААС, задаргаа (цалин/жолоо/бонус) нь нугалаанд
+  const rowsH = ov.split('<details class="att-mo-row"').slice(1);
+  ok(rowsH.length === 2 && rowsH.every(h => { const sm = h.slice(h.indexOf('<summary'), h.indexOf('</summary>')); return /att-mo-name/.test(sm) && /att-mo-hrs/.test(sm) && /att-mo-days/.test(sm) && /<progress class="att-mo-bar /.test(sm) && !/att-mo-pay|sp-line|att-mo-calc|att-noout-day/.test(sm); }), 'тойм: ажилтан = НЭГ шугам (нэр · цаг · хувь · зураас), задаргаа summary-д ОРОХГҮЙ');
+  ok(rowsH.every(h => /att-mo-more">/.test(h) && /att-mo-pay/.test(h.slice(h.indexOf('att-mo-more'))) && /att-mo-calc/.test(h.slice(h.indexOf('att-mo-more')))), 'тойм: цалин, илүү цаг нь нээгдэх хэсэгт (att-mo-more)');
+  ok(!/att-mo-row"[^>]* open/.test(ov), 'тойм: өгөгдмөлөөр бүх мөр ХААЛТТАЙ');
+  st.attMoOpen = { '90000011': true };
+  const ovOpen = F.renderAttendanceMonth(M);
+  ok(/data-att-mo="90000011" open>/.test(ovOpen) && (ovOpen.match(/ open>/g) || []).length === 1, 'тойм: нээсэн мөр render дахин зурахад ХААГДАХГҮЙ (state.attMoOpen), бусад хаалттай');
+  st.attMoOpen = {};
+  // Зураас: <progress>, inline style-гүй; 100%-аас дээш хувь зураасыг халихгүй
+  ok(/<progress class="att-mo-bar (ok|mid|low)" max="100" value="100">1\d\d%<\/progress>/.test(ov), 'тойм: 100%-аас дээш гүйцэтгэл зураасыг ХАЛИХГҮЙ (value ≤ 100)');
+  ok(/<progress class="att-mo-bar low" max="100" value="\d{1,2}">/.test(ov), 'тойм: нормоос доош хүний зураас «low» (шар)');
+  ok(!/style=/.test(ov.replace(/<img[^>]*>/g, '')), 'дизайн: тойм (нийтлэг <img>-ээс бусад) inline style-гүй, зураас ч <progress>');
+  // Цалин харахгүй хүнд: 💵 хавтан, цалингийн мөр ГАРАХГҮЙ; 4-р хавтан = гарах бүртгэлгүй, сануулга давхцахгүй
+  st.isCEO = false;
+  const ovNp = F.renderAttendanceMonth(M);
+  ok(!/Нийт цалин|att-mo-pay/.test(ovNp), 'тойм: цалин харах эрхгүй хүнд мөнгө ГАРАХГҮЙ');
+  ok(/Гарах бүртгэлгүй<\/div><div class="att-mo-kpi-v att-mo-pct-low">1 өдөр</.test(ovNp) && !/att-mo-flag/.test(ovNp), 'тойм: цалингүй хүнд 4-р хавтан = гарах бүртгэлгүй (сануулга давхцахгүй)');
+  st.isCEO = true;
+  // Handler: нээсэн төлөв хадгалагдана
+  const tgl = srcT.slice(srcT.indexOf("details.att-mo-row'"), srcT.indexOf("details.att-mo-row'") + 320);
+  ok(/addEventListener\('toggle'/.test(tgl) && /state\.attMoOpen/.test(tgl) && /delete o\[/.test(tgl), 'handler: мөр нээх/хаахыг state.attMoOpen-д хадгална');
+  // CSS: хавтан 2 багана (утас) → ≥721px-д 4; <progress> дэд элемент бүрт ТУСДАА дүрэм (нэг сонгогчид нэгтгэвэл ӨӨР вэб хөтөч бүгдийг хаяна)
+  ok(/\.att-mo-kpis \{[^}]*repeat\(2,/.test(cssT) && /@media \(min-width: 721px\) \{\s*\.att-mo-kpis \{[^}]*repeat\(4,/.test(cssT), 'CSS: хавтан утсанд 2 багана, ≥721px-д 4');
+  ok(/\.att-mo-bar::-webkit-progress-value \{/.test(cssT) && /\.att-mo-bar::-moz-progress-bar \{/.test(cssT) && !/-webkit-progress-value[^{]*-moz-progress-bar|-moz-progress-bar[^{]*-webkit-progress-value/.test(cssT), 'CSS: <progress> webkit/moz дүрмүүд ТУСДАА (нэгтгэвэл сонгогч хүчингүй болно)');
+  ok(/\.att-mo-bar \{[^}]*flex: 1 0 100%/.test(cssT), 'CSS: зураас мөрийн бүтэн өргөнд (хоёр дахь эгнээнд)');
+  Object.assign(st, { attMonthKey: keep.k, attMonthRecs: keep.r, attMonthErr: keep.e, appOrders: keep.ao, salaries: keep.sal, salaryPayments: keep.sp, _salLoaded: keep.sl, isCEO: keep.ceo, attMonthMode: keep.mode, attViewDay: keep.day });
+}
+
+// ═══ БАРААНЫ ДЭЛГЭЦ УТСАНД: ТУУЗ → НЭГ НУГАЛАА, ХЭРЭГСЭЛ, `--line` ТОКЕН (2026-10-09) ═════
+// 7 нэг удаагийн цэгцлэх тууз (ангилал · асар · англи нэр · хувилбар · архив …) давхарлан эхний бараа утсанд
+// ~1000px доор байв; тууз бүр 5 inline style + хатуу rgba. Мөн `var(--line)` 40 дүрэмд ТОДОРХОЙЛОГДООГҮЙ байсан тул
+// тэдгээрийн border бүгд чимээгүй хүчингүй болж, хайрцаг/хуваагч шугам огт харагдахгүй байв.
+{
+  const srcP = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssP = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  // Цэвэр туслахууд
+  eq(F.prodBar('warn', 'текст', '<button>x</button>'), '<div class="prod-bar t-warn"><span class="prod-bar-t">текст</span><button>x</button></div>', 'тууз: ганц бүтэц, өнгө нь tone-оор');
+  eq(F.prodChoresHtml([], false), '', 'цэгцлэх нугалаа: ажил байхгүй бол ЮУ Ч гарахгүй');
+  eq(F.prodChoresHtml([{ hint: 'x', html: '' }, null], false), '', 'цэгцлэх нугалаа: хоосон тууз тоологдохгүй');
+  const ch = F.prodChoresHtml([{ hint: 'ангилал', html: '<b>1</b>' }, { hint: 'асар', html: '<b>2</b>' }], false);
+  ok(/<details class="prod-chores" id="prod-chores">/.test(ch) && /prod-chores-n">2</.test(ch) && /ангилал · асар/.test(ch), 'цэгцлэх нугалаа: хаалттай, тоо + юу байгааг нэрлэнэ');
+  ok(/prod-chores-in"><b>1<\/b><b>2<\/b>/.test(ch), 'цэгцлэх нугалаа: тууз нугалаа дотор');
+  ok(/<details class="prod-chores" id="prod-chores" open>/.test(F.prodChoresHtml([{ hint: 'x', html: 'y' }], true)), 'цэгцлэх нугалаа: нээсэн төлөв render-д хадгалагдана');
+
+  // Бодит дэлгэц: удирдлага, бүх тууз асаалттай
+  const st = vm.runInContext('state', sandbox);
+  const keep = { p: st.products, cc: st.productCosts, rp: st.repairs, ar: st.archivedProducts, ia: st.itemAliases, ao: st.appOrders, ceo: st.isCEO, me: st.me, cg: st.catGroups, ag: st.appCatGroups, ne: st._prodHasNameEn, pc: st.prodChoresOpen, pt: st.prodToolsOpen, lv: st.branchLens, sm: st.prodMissing };
+  st.isCEO = true; vm.runInContext("state.me = '99112233'", sandbox);
+  st.products = [
+    { id: 'M-1', sku: 'M-1', code: 'M-1', name: 'Сандал', category: 'Сандал', price: 5000, stock: 10, qty_mevent: 10, name_en: '', variant_group: 'g1' },
+    { id: 'M-2', sku: 'M-2', code: 'M-2', name: 'Ширээ', category: 'Ширээ', price: 9000, stock: 4, qty_mevent: 4, name_en: 'Table' },
+  ];
+  st.productCosts = { 'M-1': 20000 }; st.appOrders = []; st.itemAliases = {}; st.archivedProducts = [{ sku: 'A-1', name: 'Хуучин', stock: 1 }];
+  st.repairs = [{ id: 'r1', sku: 'M-1', product_name: 'Сандал', qty: 1, status: 'pending' }];
+  st.catGroups = [{ title: 'Тавилга', cats: ['Сандал'] }]; st.appCatGroups = st.catGroups; st._prodHasNameEn = true; st.prodChoresOpen = false; st.prodToolsOpen = false; st.prodMissing = 'all';
+  const page = F.renderProducts();
+  const chores = page.slice(page.indexOf('<details class="prod-chores"'), page.indexOf('</details>', page.indexOf('<details class="prod-chores"')) + 10);
+  ok(/class="prod-chores"/.test(page), 'бараа: цэгцлэх ажлууд НЭГ нугалаанд');
+  ok(/id="prod-fill-nameen"/.test(chores) && /id="prod-clear-variants"/.test(chores) && /id="prod-fix-cats"/.test(chores), 'бараа: англи нэр · хувилбар · ангилалын тууз нугалаа дотор (handler-ийн id үлдэнэ)');
+  ok(!/class="repair-bar"/.test(chores) && /class="repair-bar"/.test(page), 'бараа: ЗАСВАРТАЙ бараа нугалаанд ОРОХГҮЙ — үргэлжийн дохио, ил байна');
+  ok(page.indexOf('class="prod-chores"') < page.indexOf('class="prod-list"') && page.indexOf('class="repair-bar"') < page.indexOf('class="prod-list"'), 'бараа: тууз бүгд жагсаалтаас ӨМНӨ');
+  ok(!/rgba\(/.test(page) && !/margin:8px 0 2px/.test(page), 'дизайн: бараа дэлгэц хатуу rgba / inline тууз загваргүй');
+  // Хэрэгслүүд: нугалаанд, гэхдээ id-ууд DOM-д
+  const tb = page.slice(page.indexOf('<div class="prod-toolbar">'), page.indexOf('</div>', page.indexOf('<div class="prod-toolbar">')));
+  ok(/id="prod-search"/.test(tb) && /id="prod-scan"/.test(tb) && /id="prod-new"/.test(tb), 'бараа: эхний мөр = хайх · скан · шинэ');
+  ok(!/id="prod-xls"/.test(tb) && !/id="prod-wo-mode"/.test(tb) && !/id="prod-new-pkg"/.test(tb), 'бараа: Excel · Багц · Актлах эхний мөрөнд БАЙХГҮЙ');
+  const tools = page.slice(page.indexOf('<details class="prod-tools"'), page.indexOf('</details>', page.indexOf('<details class="prod-tools"')));
+  ok(/id="prod-xls"/.test(tools) && /id="prod-new-pkg"/.test(tools) && /id="prod-wo-mode"/.test(tools), 'бараа: Excel · Багц · Актлах нугалаанд (id-тай — handler холбогдоно)');
+  ok(/class="prod-scan-l"/.test(tb) && /aria-label="QR скан"/.test(tb), 'бараа: скан товч утсанд зөвхөн 📷 (шошго ангитай, aria-label бий)');
+  // Нээсэн төлөв render-д хадгалагдана
+  st.prodChoresOpen = true; st.prodToolsOpen = true;
+  const pageO = F.renderProducts();
+  ok(/<details class="prod-chores" id="prod-chores" open>/.test(pageO) && /<details class="prod-tools" id="prod-tools" open>/.test(pageO), 'бараа: нугалааны нээсэн төлөв хадгалагдана');
+  // Цэвэр дэлгэц: ажил алга бол нугалаа ч гарахгүй
+  st.archivedProducts = []; st.repairs = []; st.products = [{ id: 'M-2', sku: 'M-2', code: 'M-2', name: 'Ширээ', category: 'Сандал', price: 9000, stock: 4, qty_mevent: 4, name_en: 'Table' }];
+  vm.runInContext("state.asarDone = true", sandbox);
+  const clean = F.renderProducts();
+  ok(!/class="repair-bar"/.test(clean), 'бараа: засвар байхгүй бол засварын тууз гарахгүй');
+  Object.assign(st, { products: keep.p, productCosts: keep.cc, repairs: keep.rp, archivedProducts: keep.ar, itemAliases: keep.ia, appOrders: keep.ao, isCEO: keep.ceo, catGroups: keep.cg, appCatGroups: keep.ag, _prodHasNameEn: keep.ne, prodChoresOpen: keep.pc, prodToolsOpen: keep.pt, prodMissing: keep.sm });
+  vm.runInContext(`state.me = ${JSON.stringify(keep.me === undefined ? '' : keep.me)}`, sandbox);
+
+  // Handler: нугалааны төлөв хадгална
+  ok(/getElementById\('prod-chores'\)\?\.addEventListener\('toggle', \(e\) => \{ state\.prodChoresOpen = e\.target\.open; \}\)/.test(srcP), 'handler: цэгцлэх нугалааны төлөв state.prodChoresOpen-д');
+  ok(/getElementById\('prod-tools'\)\?\.addEventListener\('toggle', \(e\) => \{ state\.prodToolsOpen = e\.target\.open; \}\)/.test(srcP), 'handler: хэрэгслийн нугалааны төлөв state.prodToolsOpen-д');
+  // CSS
+  ok(/\.prod-chores-sum \{[^}]*min-height: var\(--tap\)/.test(cssP), 'CSS: цэгцлэх нугалаа хурууны хэмжээтэй');
+  ok(/\.prod-bar\.t-warn \{ background: var\(--warn-soft\)/.test(cssP) && /\.prod-bar\.t-danger \.prod-bar-b/.test(cssP), 'CSS: тууз токен өнгөтэй (хатуу rgba биш)');
+  ok(/@media \(max-width: 720px\) \{ \.prod-scan-l \{ display: none; \} \}/.test(cssP), 'CSS: скан шошго зөвхөн ≤720px-д нуугдана (шинэ breakpoint нэмэхгүй)');
+
+  // ⭐ ТОКЕН ЗАЛГУУР: `var(--x)` (нөөцгүй) бүр styles.css-д ТОДОРХОЙЛОГДСОН байх ёстой. `--line` 40 газар тодорхойлогдоогүй байсан
+  // тул border бүхэлдээ хүчингүй болж, юу ч алдаа шиддэггүй. Динамик (inline-аар тавигддаг) болон мэдэгдсэн үлдэгдлийг зөвшөөрнө.
+  const defs = new Set((cssP.match(/--[a-zA-Z0-9_-]+(?=\s*:)/g) || []));
+  const undefd = {};
+  for (const m of cssP.matchAll(/var\(\s*(--[a-zA-Z0-9_-]+)\s*([,)])/g)) { if (m[2] === ')' && !defs.has(m[1])) undefd[m[1]] = (undefd[m[1]] || 0) + 1; }
+  const KNOWN = ['--d', '--seg', '--card', '--brand'];   // --d/--seg: JS inline-аар; --card/--brand: мэдэгдсэн, засагдаагүй (нөөцгүй газрууд)
+  const bad = Object.keys(undefd).filter(k => !KNOWN.includes(k));
+  eq(JSON.stringify(bad), '[]', 'токен: нөөцгүй var(--x) бүр тодорхойлогдсон (шинэ тодорхойгүй токен нэмэхгүй) — тодорхойгүй: ' + bad.join(','));
+  ok(defs.has('--line'), 'токен: --line тодорхойлогдсон (border-ууд харагдана)');
+  ok(/--line: var\(--border\);/.test(cssP), 'токен: --line = --border (харанхуй горимд хамт солигдоно)');
+}
+
+// ═══ ЗАХИАЛГЫН КАРТ УТСАНД: БАРЬЦААНЫ ЗААВАР, «БУСАД», ТОВЧ, КЛАСС (2026-10-09) ═════
+// «⋯ Бусад» нээхэд товчнууд картаас ЗҮҮН тийш гарч тасардаг байв (баруун тийш шахагдаж width:100% дотроо давхарлана);
+// барьцаа буцаах данс/утга/банкны 3 мөр заавар эвент ЯВААГҮЙ (түрээсэнд) байхад ч гарч ~130px эзэлдэг байв;
+// 21 жижиг товч бүр inline style; жагсаалтын «Төлбөр авах» ба картын «Төлбөр бүртгэх» хоёр өөр нэртэй байв.
+{
+  const srcC = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssC = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { ceo: st.isCEO, ao: st.appOrders, up: st.usedReceipts };
+  st.isCEO = true;
+  const T = vm.runInContext('todayStr()', sandbox);
+  const mk = (status, extra) => Object.assign({ id: 'c1', _app: true, number: 1801, customer: 'Тест ХХК', phone: '99110000', status, source: 'app',
+    starts_at: T + 'T09:00:00+08:00', stops_at: T + 'T18:00:00+08:00', note: '⟦RT|9|18⟧', created_at: T + 'T08:00:00+08:00',
+    items: [{ name: 'Сандал', qty: 10, price: 1500, sku: 'M-1' }], total_mnt: 1000000, paid_mnt: 400000, deposit_mnt: 300000,
+    paid_ref: '' }, extra || {});
+  st.appOrders = [mk('rented')];
+  const rented = F.bqOrderCard(mk('rented'));
+  ok(/dep-badge dep-held/.test(rented), 'карт: барьцаатай захиалга «🔒 Барьцаа» тэмдэгтэй хэвээр');
+  ok(!/Буцаах данс тодорхойгүй|dep-acct|Гүйлгээний утга/.test(rented), '⛔ карт: эвент ЯВААГҮЙ (түрээсэнд) байхад барьцаа буцаах данс/утгын заавар ГАРАХГҮЙ');
+  for (const s of ['returned', 'stowed', 'archived']) {
+    const c = F.bqOrderCard(mk(s));
+    ok(/Буцаах данс тодорхойгүй|dep-acct/.test(c) && /dep-memo/.test(c), `карт: ${s} → барьцаа буцаах данс + утга харагдана`);
+  }
+  for (const s of ['reserved', 'ready', 'delivering', 'returning']) {
+    ok(!/dep-acct/.test(F.bqOrderCard(mk(s))), `карт: ${s} → буцаах заавар гарахгүй`);
+  }
+  ok(!/style="/.test(rented.replace(/<img[^>]*>/g, '').replace(/<span class="bq-badge"[^>]*>\s*<span[^>]*><\/span>[^<]*<\/span>/g, '')), 'дизайн: захиалгын карт (нийтлэг <img> ба bqStatusBadge-ээс бусад) inline style-гүй');
+  ok(/class="btn ofb[ "]/.test(rented) && !/padding:5px/.test(rented), 'карт: жижиг товч .ofb класстай (inline padding байхгүй)');
+  ok(/class="ord-more"/.test(rented) || /class="order-foot"/.test(rented), 'карт: товчны эгнээ бий');
+  ok(/📥 Ирсэн <b>/.test(rented) && !/Захиалга ирсэн:/.test(rented), 'карт: «Ирсэн … · эвентээс N хоногийн өмнө» (нэг мөр, богино)');
+  // «⋯ Бусад» нээгдэхэд БҮТЭН өргөнтэй, зүүнээс эхэлнэ; утсанд товч бүр эгнээг тэнцүү дүүргэнэ
+  ok(/\.ord-more\[open\] \{ flex: 1 1 100%; \}/.test(cssC) && /\.ord-more-row \{ justify-content: flex-start; \}/.test(cssC), 'CSS: «Бусад» нээгдэхэд бүтэн өргөн + зүүнээс эхэлнэ (картаас гарахгүй)');
+  { const i = cssC.indexOf('/* Утсанд товч бүр эгнээг тэнцүү дүүргэнэ'); const mStart = cssC.lastIndexOf('@media (max-width: 720px) {', i);
+    let depth = 0, k = cssC.indexOf('{', mStart), end = k; for (; end < cssC.length; end++) { if (cssC[end] === '{') depth++; else if (cssC[end] === '}') { depth--; if (!depth) break; } }
+    const body = cssC.slice(mStart, end);
+    ok(/\.order-foot > \.btn[^{]*\{ flex: 1 1 120px; \}/.test(body) && /\.ord-more-row > \.btn \{ flex: 1 1 120px; \}/.test(body), 'CSS: утсанд товч эгнээг тэнцүү дүүргэнэ — ЗӨВХӨН ≤720px дотор');
+    ok(!/\.order-foot > \.btn[^{]*\{ flex: 1 1 120px;/.test(cssC.replace(body, '')), 'CSS: тэнцүү дүүргэлт өргөн дэлгэцэд хүрэхгүй'); }
+  // НӨАТ мөр: класстай, нийтлэг inline style/хатуу өнгөгүй (харанхуй горимд цайвар хайрцаг үлддэг байв)
+  const vr = F.vatOrderRow('1801', 1000000, 'event');
+  ok(vr === '' || (/class="vat-attach-btn"/.test(vr) || /vat-row-sum/.test(vr)), 'НӨАТ мөр: класстай');
+  ok(!/style="|#1e7a55|#f4faf6|#9a6a00/.test(vr), 'дизайн: НӨАТ мөр inline style/хатуу өнгөгүй');
+  ok(/\.vat-attach-btn \{[^}]*var\(--ok-soft\)/.test(cssC) && /\.order-meta \.vat-short/.test(cssC), 'CSS: НӨАТ товч токен өнгөтэй, тод span-д онцлог (.order-meta b-ийг даван)');
+  // Нэр нэг үг: жагсаалтын товч = картын товч = цонхны гарчиг
+  ok(/br-act br-act-pay" data-bq-pay="\$\{id\}">💵 Төлбөр бүртгэх</.test(srcC) && !/br-act-pay[^>]*>💵 Төлбөр авах/.test(srcC), 'нэр: жагсаалтын «Төлбөр бүртгэх» = картын товч = цонхны гарчиг');
+  ok(/\.order-meta \.ord-pos \{ color: var\(--ok\); \}/.test(cssC), 'CSS: ашгийн өнгө .order-meta b-ээс илүү онцлогтой');
+  st.isCEO = keep.ceo; st.appOrders = keep.ao;
 }
 
 // ═══ ДАТАНААС САНАЛ + ХЭРЭГЖСЭН САНАЛЫН ЭЗЭН (2026-10-09, CEO: «3-р алхам») ══

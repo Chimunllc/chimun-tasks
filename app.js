@@ -513,26 +513,47 @@ async function checkBuild(force) {
   if (!force && (now - _buildCheckAt) < _BUILD_MIN_GAP) return _buildNew;
   _buildCheckAt = now;
   let srv = null;
-  try { srv = await probeBuild(); } catch (e) { return _buildNew; }   // офлайн — чимээгүй
+  try { srv = await probeBuild(); } catch (e) { renderVerChip(); return _buildNew; }   // офлайн — чимээгүй (гэхдээ «…» заагч үлдэхгүй)
   if (!_build) _build = srv;                                          // эхний удаа = миний хувилбар
   _buildNew = buildIsNewer(_build, srv) ? srv : null;
   renderVerChip();
   return _buildNew;
 }
+// Цэсийн мөрд бүтэн шошго: «өнөөдөр 14:22» / «9/11 18:40». Мэдэгдэхгүй бол ''.
+function buildLabelFull(at, now) {
+  const t = Number(at) || 0; if (!t) return '';
+  const d = new Date(t), n = new Date(Number(now) || Date.now());
+  const same = d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  const hm = `${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
+  return same ? `өнөөдөр ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+/* ── ХУВИЛБАР: УТСАНД ЦЭСЭНД, ТОЛГОЙД ЗӨВХӨН «ШИНЭ» ҮЕД (2026-10-09) ────────────────
+   Толгойн «⟳ 00:47» чип 64px эзэлж, 390px-д гарчигт 164px л үлдээн «Хуваарилсан ажил»,
+   «Санал санаачлага», «M event захиалга» зэрэг 24 дэлгэцийн 8-ын гарчгийг таслаж байв.
+   Хувилбар нь өдөр бүр харах мэдээлэл биш (чипийн өөрийн тайлбар: «чимээгүй байх ёстой»).
+   Тиймээс утсанд: ☰ цэсийн ДООД талд бүтэн мөр («Хувилбар: өнөөдөр 14:22 · Шалгах»), толгойд
+   ЗӨВХӨН шинэ хувилбар гарсан үед «⟳ Шинэ». Өргөн дэлгэцэд чип хэвээр.
+   ⛔ «—» ЗААГЧ БАЙХГҮЙ: хувилбар мэдэгдэхгүй (офлайн/шалгаагүй) үед чип зөвхөн «⟳», мөр нь
+     «Хувилбар тодорхойгүй» гэж ил хэлнэ. Дүрс дэргэд зураас нь эвдэрсэн мэт харагддаг байв.
+   Цэвэр функц — тестлэгдэнэ. */
+function verChipView(build, buildNew, now) {
+  if (buildNew) return { isNew: true, chip: 'Шинэ', row: 'Шинэ хувилбар бэлэн', act: 'Шинэчлэх', title: 'Шинэ хувилбар бэлэн — дарж шинэчилнэ' };
+  const at = (build && Number(build.at)) || 0;
+  if (!at) return { isNew: false, chip: '', row: 'Хувилбар тодорхойгүй', act: 'Шалгах', title: 'Аппын хувилбар — дарж шинэчилнэ' };
+  return {
+    isNew: false,
+    chip: buildLabel(at, now),
+    row: `Хувилбар: ${buildLabelFull(at, now)}`,
+    act: 'Шалгах',
+    title: `Аппын хувилбар: ${new Date(at).toLocaleString('mn-MN')} — дарж шинэчилнэ`,
+  };
+}
 function renderVerChip() {
+  const v = verChipView(_build, _buildNew, Date.now());
   const b = document.getElementById('ver-btn'), t = document.getElementById('ver-txt');
-  if (!b || !t) return;
-  if (_buildNew) {
-    b.classList.add('new');
-    t.textContent = 'Шинэ';
-    b.title = 'Шинэ хувилбар бэлэн — дарж шинэчилнэ';
-  } else {
-    b.classList.remove('new');
-    t.textContent = buildLabel(_build && _build.at, Date.now());
-    b.title = _build && _build.at
-      ? `Аппын хувилбар: ${new Date(_build.at).toLocaleString('mn-MN')} — дарж шинэчилнэ`
-      : 'Аппын хувилбар — дарж шинэчилнэ';
-  }
+  if (b && t) { b.classList.toggle('new', v.isNew); t.textContent = v.chip; b.title = v.title; }
+  const r = document.getElementById('ver-row-btn'), rt = document.getElementById('ver-row-txt'), ra = document.getElementById('ver-row-act');
+  if (r && rt && ra) { r.classList.toggle('new', v.isNew); rt.textContent = v.row; ra.textContent = v.act; r.title = v.title; }
 }
 async function applyAppUpdate() {
   showToast('Шинэ хувилбар татаж байна…', 'info', 1800);
@@ -544,10 +565,11 @@ async function applyAppUpdate() {
   location.reload();
 }
 async function onVerChipClick() {
-  const b = document.getElementById('ver-btn');
-  if (b) b.classList.add('busy');
+  const btns = document.querySelectorAll('#ver-btn, #ver-row-btn');
+  btns.forEach(x => x.classList.add('busy'));
+  closeMobileSidebar();   // цэснээс дарсан бол цэс хаагдаж, доорх toast харагдана
   const found = await checkBuild(true);
-  if (b) b.classList.remove('busy');
+  btns.forEach(x => x.classList.remove('busy'));
   if (found) { await applyAppUpdate(); return; }
   showToast('Хамгийн сүүлийн хувилбар дээр байна', 'success', 2000);
 }
@@ -4034,7 +4056,12 @@ function leftStaffEmails() {
   );
 }
 
-function filteredTasks() {
+/* `opts` (сонголт) — ТООЛУУР ашиглана: `{ statusFilter, search }` өгвөл state-ийг ХӨНДӨЖ БИШ, зөвхөн
+   тэр шүүлтээр бодно. Шүүлтүүрийн pill-ийн тоо (`taskFilterCounts`) нь жагсаалттай ЯГ ИЖИЛ функцээр
+   гарах тул «Хоцорсон 3» дарахад яг 3 ажил гарна — дүрмийг хоёр газар бичихгүй. */
+function filteredTasks(opts) {
+  const sf = (opts && opts.statusFilter !== undefined) ? opts.statusFilter : state.statusFilter;
+  const search = (opts && opts.search !== undefined) ? opts.search : state.search;
   // Архив view-аас БУСАД бүх view-д устгасан task-уудыг хасна. Bootstrap нь deleted
   // task-уудыг ч буцаадаг тул CEO Архивлуулсан жагсаалт үзэх боломжтой болгосон.
   const includeDeleted = state.view === 'archive';
@@ -4111,7 +4138,7 @@ function filteredTasks() {
   // ─── Filter — санхүүгийн view нь үе шатны filter, бусад нь ерөнхий ажлын filter ───
   if (state.view === 'finance') {
     // Санхүүгийн үе шат: Хүлээгдэж буй / Гүйлгээ хүлээж буй / Хаахыг хүлээж буй / Дууссан
-    const f = state.statusFilter;
+    const f = sf;
     if (f === 'f-pending')          list = list.filter(t => (t.decision || 'pending') === 'pending');
     else if (f === 'f-await-txn')   list = list.filter(t => t.decision === 'approved' && !t.executed_at && t.status !== 'done');
     else if (f === 'f-await-close') list = list.filter(t => t.decision === 'approved' && t.executed_at && t.status !== 'done');
@@ -4120,11 +4147,11 @@ function filteredTasks() {
   } else {
     // status filter (Бүгд / Идэвхтэй / Хоцорсон / Өнөөдөр / Дууссан)
     // Үнэлгээ хүлээж буй (миний үүсгэсэн, дуусаад оноогүй) = "хаагдаагүй" → Идэвхтэйд үлдэнэ, Дуусснаас хасагдана.
-    if (state.statusFilter === 'open') list = list.filter(t => t.status !== 'done' || (needsRating(t) && t.createdBy === state.me));
-    else if (state.statusFilter === 'done') list = list.filter(t => t.status === 'done' && !(needsRating(t) && t.createdBy === state.me));
-    else if (state.statusFilter === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
-    else if (state.statusFilter === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
-    else if (state.statusFilter === 'week') {
+    if (sf === 'open') list = list.filter(t => t.status !== 'done' || (needsRating(t) && t.createdBy === state.me));
+    else if (sf === 'done') list = list.filter(t => t.status === 'done' && !(needsRating(t) && t.createdBy === state.me));
+    else if (sf === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
+    else if (sf === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
+    else if (sf === 'week') {
       // Энэ долоо хоног — даваа гарагаас ням гараг хүртэл
       const now = new Date();
       const dow = now.getDay() || 7; // Mon=1..Sun=7
@@ -4136,7 +4163,7 @@ function filteredTasks() {
       const weekEnd = dateStr(sunday);
       list = list.filter(t => t.due && t.due >= weekStart && t.due <= weekEnd);
     }
-    else if (state.statusFilter === 'month') {
+    else if (sf === 'month') {
       // Энэ сар
       const now = new Date();
       const y = now.getFullYear();
@@ -4148,9 +4175,9 @@ function filteredTasks() {
   // ─── Авто-архив: 14 хоногоос өмнө дууссан ажлыг идэвхтэй жагсаалтаас нуух ───
   // Дата ӨӨРЧЛӨХГҮЙ — зөвхөн харагдацын filter. "Дууссан" шүүлт, хайлт, Архив, Дууссан
   // view-д бүрэн хэвээр харагдана. Дуусгасан огноог t.updated-аар тооцно.
-  if (!state.search
+  if (!search
       && state.view !== 'done' && state.view !== 'archive' && state.view !== 'finance'
-      && state.statusFilter !== 'done') {
+      && sf !== 'done') {
     const cutoff = Date.now() - 14 * 86400000;
     list = list.filter(t => {
       if (t.status !== 'done') return true;
@@ -4159,11 +4186,11 @@ function filteredTasks() {
     });
   }
   // search
-  if (state.search) {
+  if (search) {
     // Search syntax — "from:Бат", "due:today" / "due:2026-05-30", "priority:high|med|low",
     // "status:open|done", "branch:m-event" гэх мэт. Бусад үлдсэн текст нь title+desc-д хайгдана.
     // Жишээ: "from:Бат due:today" → Бат-д оноосон, өнөөдөр дуустай.
-    const tokens = state.search.trim().match(/(\w+:[^\s]+|"[^"]+"|\S+)/g) || [];
+    const tokens = search.trim().match(/(\w+:[^\s]+|"[^"]+"|\S+)/g) || [];
     const today = todayStr();
     const filters = [];
     const textBits = [];
@@ -4378,6 +4405,40 @@ function render() {
 }
 // Санхүүгийн view-д үе шатны filter, бусад view-д ажлын ерөнхий filter харуулна.
 // Идэвхтэй pill-ийг state.statusFilter-тэй тааруулна.
+/* ── ШҮҮЛТҮҮРИЙН PILL: ТОО, ИДЭВХТЭЙ НЬ ХАРАГДАНА, ГҮЙЛГЭХ ДОХИО (2026-10-09) ──────
+   Утсанд 7 pill 334px-д багтахгүй (694px) тул идэвхтэй шүүлт («Бүгд», «Дууссан») мөрийн
+   баруун талд, ДЭЛГЭЦЭЭС ГАДУУР үлдэж хэрэглэгч ямар шүүлт асаалттайг харахгүй байв.
+   · Идэвхтэй pill үргэлж харагдана (`revealActivePill`, хамгийн бага гүйлгэлт) — view/шүүлт солигдоход ба
+     тоо гарч pill-үүд өргөсөхөд: render() бүрд гүйлгэвэл хэрэглэгч гараараа гүйлгэж байхад өгөгдөл ачаалагдмагц буцааж татна.
+   · Тоо = `filteredTasks({statusFilter})` — жагсаалттай ЯГ ИЖИЛ функц, тусад нь бодохгүй
+     (дарахад гарах мөрийн тоо ба pill дээрх тоо зөрөхгүй). Зөвхөн хийх ажил (FILTER_COUNT_KEYS);
+     0 бол гарахгүй. Санхүүд тоо ГАРАХГҮЙ (тэнд үе шатны шүүлт ӨӨР).
+   · Гүйлгэх боломжтой талд бүдгэрэлт (`data-fade`) — «цааш бий» гэсэн дохио. */
+const FILTER_COUNT_KEYS = ['open', 'overdue', 'today'];
+function taskFilterCounts() {
+  const out = {};
+  FILTER_COUNT_KEYS.forEach(k => { out[k] = filteredTasks({ statusFilter: k }).length; });
+  return out;
+}
+let _pillFocusKey = '';
+let _pillSW = 0;            // сүүлд төвлөрүүлэх үеийн мөрийн нийт өргөн
+let _pillUserMoved = false; // хэрэглэгч мөрийг ӨӨРӨӨ гүйлгэсэн — тэгвэл дахин татахгүй
+function updatePillFade(grp) {
+  if (!grp) return;
+  const max = grp.scrollWidth - grp.clientWidth;
+  const l = grp.scrollLeft > 2, r = grp.scrollLeft < max - 2;
+  grp.dataset.fade = max <= 1 ? '' : (l && r ? 'lr' : l ? 'l' : r ? 'r' : '');
+}
+// Идэвхтэй pill харагдахгүй байвал л, ХАМГИЙН БАГА хэмжээгээр гүйлгэнэ (хөрш pill-ээ харагдуулахаар
+// ирмэгээс PILL_EDGE зайтай). Төвд тогтоовол «Бүгд» гэх мэт нэг үзүүрт байгаа pill тоог нуудаг байв.
+const PILL_EDGE = 36;
+function revealActivePill(grp, sel) {
+  const a = grp && grp.querySelector(sel || '.filter-pill.active');
+  if (!a || grp.clientWidth === 0 || grp.scrollWidth <= grp.clientWidth + 1) return;
+  const gb = grp.getBoundingClientRect(), ab = a.getBoundingClientRect();
+  if (ab.left < gb.left + PILL_EDGE) grp.scrollLeft -= (gb.left + PILL_EDGE) - ab.left;
+  else if (ab.right > gb.right - PILL_EDGE) grp.scrollLeft += ab.right - (gb.right - PILL_EDGE);   // page-ийг биш, зөвхөн мөрийг
+}
 function syncFilterPills() {
   const isFin = state.view === 'finance';
   const taskG = document.getElementById('task-filters');
@@ -4399,6 +4460,35 @@ function syncFilterPills() {
     state.statusFilter = 'all';
     grp.querySelectorAll('.filter-pill').forEach(p => p.classList.toggle('active', p.dataset.status === 'all'));
   }
+  // Гар ба дэлгэц уншигчид: pill нь <div> тул товч гэдгийг хэлж өгнө
+  grp.querySelectorAll('.filter-pill').forEach(p => {
+    p.setAttribute('role', 'button');
+    p.tabIndex = 0;
+    p.setAttribute('aria-pressed', p.classList.contains('active') ? 'true' : 'false');
+  });
+  // Тоо — зөвхөн ажлын жагсаалтад
+  if (!isFin) {
+    const cnt = taskFilterCounts();
+    grp.querySelectorAll('.filter-pill').forEach(p => {
+      const k = p.dataset.status;
+      if (!(k in cnt)) return;
+      let n = p.querySelector('.fp-n');
+      if (!n) { n = document.createElement('span'); n.className = 'fp-n'; p.appendChild(n); }
+      n.textContent = cnt[k] > 0 ? String(cnt[k]) : '';
+      n.hidden = !(cnt[k] > 0);
+    });
+  }
+  // Toolbar-ийн display нь renderTaskList-д ДАРАА нь солигддог тул байрлал тогтсоны дараа
+  requestAnimationFrame(() => {
+    const key = state.view + '|' + state.statusFilter;
+    if (grp.clientWidth > 0) {
+      // 1) view/шүүлт солигдсон → төвлөрүүл. 2) өгөгдөл ачаалагдаж тоо гарснаар pill-үүд өргөсөж
+      //    идэвхтэй нь дахин гадагш гарсан (хэрэглэгч гүйлгээгүй бол) → дахин төвлөрүүл.
+      if (key !== _pillFocusKey) { _pillFocusKey = key; _pillUserMoved = false; _pillSW = grp.scrollWidth; revealActivePill(grp); }
+      else if (!_pillUserMoved && grp.scrollWidth !== _pillSW) { _pillSW = grp.scrollWidth; revealActivePill(grp); }
+    }
+    updatePillFade(grp);
+  });
 }
 function renderSidebar() {
   // active nav
@@ -10234,6 +10324,11 @@ function openReconcileModal() {
 
 // Захиалгын яаралтай зэрэглэл (эрэмбэ + тэмдэг). Гарах шатанд starts_at, түрээсэнд stops_at-аар.
 function orderUrgRank(o, stage, todayStr) {
+  /* ⛔ ДУУССАН/АРХИВЛАСАН/ЦУЦЛАСАН/БОЛЬСОН захиалга «хугацаа хэтэрсэн» БИШ (2026-10-09).
+     Өнгөрсөн огноо нь тэдний хувьд хэвийн — өмнө нь «Хүлээн авсан», «Архивласан» бүх мөрд
+     улаан цэг («Хугацаа хэтэрсэн/өнөөдөр») тавигдаж, жагсаалтын доод хэсэг бүхэлдээ яаралтай
+     мэт харагддаг, жинхэнэ яаралтай мөр ялгарахгүй байв. */
+  if (['done', 'archived', 'canceled', 'deleted'].includes(bucketOf(stage))) return 9;
   const dt = ['rented', 'returning', 'started'].includes(stage) ? o.stops_at : o.starts_at;
   const d = String(dt || '').slice(0, 10);
   if (!d) return 9;
@@ -10375,7 +10470,7 @@ function orderListRow(e, k, todayStr) {
   let actBtn = '';
   {
     if (orderOwed(o) > 0 && String(o.status) !== 'canceled' && can('orders.pay')) {
-      actBtn = `<button type="button" class="br-act br-act-pay" data-bq-pay="${id}">💵 Төлбөр авах</button>`;
+      actBtn = `<button type="button" class="br-act br-act-pay" data-bq-pay="${id}">💵 Төлбөр бүртгэх</button>`;
     }
   }
   const selBox = state.ordersSelect ? `<input type="checkbox" class="olist-sel" data-sel-id="${id}" ${(state.ordersSelected && state.ordersSelected.has(String(o.id))) ? 'checked' : ''} onclick="event.stopPropagation()">` : '';
@@ -10396,7 +10491,7 @@ function orderListRow(e, k, todayStr) {
     : _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
     : _paid > 0 ? '<span class="br-pay part">◐ Дутуу</span>'
-    : '';   // бүрэн төлөгдөөгүй — шошго хэрэггүй ("Төлбөр авах" товч өөрөө илэрхийлнэ)
+    : '';   // бүрэн төлөгдөөгүй — шошго хэрэггүй ("Төлбөр бүртгэх" товч өөрөө илэрхийлнэ)
   const _d1 = String(o.starts_at || '').slice(5, 10).replace('-', '/');
   const _d2 = String(o.stops_at || '').slice(5, 10).replace('-', '/');
   // Төлөв = өөрийн багана: НАРИЙН статус (Бэлдсэн/Хүргэгдэж/Түрээсэнд...)
@@ -10600,21 +10695,57 @@ function canSeeOrderBoard() {
 }
 // `compact` = Тойм дээрх хувилбар: зөвхөн сарын тор. Өдөр дарахад захиалгын дэлгэц
 // рүү шилжинэ — картын товчнууд зөвхөн тэнд ажилладаг тул жагсаалтыг энд ЗУРАХГҮЙ.
+/* ── ТОЙМЫН КАЛЕНДАРЬ УТСАНД = 7 ХОНОГИЙН МӨР (2026-10-09, CEO) ──────────────
+   Сарын бүтэн тор утсанд ~370px — календарь эхний дэлгэцийн тал хувийг эзэлж,
+   «цагтаа хүрсэн», үнэлгээ доош түлхэгддэг байв. Утсанд ЭХЛЭЭД 7 хоногийн ганц мөр
+   (гарах/буцах — өнөөдөр, маргааш юу болохыг л хэлнэ), «Бүтэн сар» дарвал сарын тор.
+   ⛔ Өргөн дэлгэц ба Захиалгын дэлгэцийн календарь ӨӨРЧЛӨГДӨӨГҮЙ — 7 хоногийн мөр
+     зөвхөн `compact` (Тойм) дээр зурагдаж, CSS нь ≤720px-д л харуулна.
+   ⚠ 7 хоног сарын хил давж болно (09-28 → 10-04) тул сарын тороос БИШ, өөрийн
+     өдрүүдээр (`ordersWeekData`) зурна. «Гарах/буцах» дүрэм НЭГ — `ordersCalendarData`.
+   ⚠ Даваа гарагийг `calWeekStart`-аар (түүхий Date UTC+8-д гулсана). */
+function calWeekStart(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!m) return '';
+  const lead = (new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay() + 6) % 7;   // Ням=0 → Даваа=0
+  return addDays(iso, -lead);
+}
+function ordersWeekData(orders, mon) {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+  const a = ordersCalendarData(orders, days[0].slice(0, 7));
+  const z = days[6].slice(0, 7) === days[0].slice(0, 7) ? a : ordersCalendarData(orders, days[6].slice(0, 7));
+  return { days, out: d => a.out[d] || z.out[d] || [], back: d => a.back[d] || z.back[d] || [] };
+}
+// «Бүтэн сар» ⇄ «7 хоног» — хоёр харагдац ИЖИЛ үеийг заана (7 хоногоос сар руу шилжихэд
+// ТЭР 7 хоногийн сар, сараас буцахад тэр сарын 7 хоног). Цэвэр функц — тестлэгдэнэ.
+// ⚠ Сар нь одоогийн сар бол 7 хоног = '' (өнөөдрийг ДАГАНА, хуучин огноо тогтохгүй).
+function calSwitchView(toFull, week, ym, today) {
+  if (toFull) return { ym: addDays(calWeekStart(week || today), 3).slice(0, 7), week: week || '' };   // Пүрэв = 7 хоногийн ихэнх нь орсон сар
+  const m = ym || today.slice(0, 7);
+  return { ym: ym || '', week: m === today.slice(0, 7) ? '' : calWeekStart(m + '-01') };
+}
+function dashCalFull() {
+  if (state.dashCalFull === undefined) {
+    try { state.dashCalFull = localStorage.getItem('dashCalFull') === '1'; } catch (e) { state.dashCalFull = false; }
+  }
+  return !!state.dashCalFull;
+}
 function ordersCalendarHtml(orders, opts) {
   const compact = !!(opts && opts.compact);
   const ym = state.ordersCalYm || todayStr().slice(0, 7);
   const data = ordersCalendarData(orders, ym);
   const sel = compact ? '' : (state.ordersCalDay || '');
   const wd = ['Да', 'Мя', 'Лха', 'Пү', 'Ба', 'Бя', 'Ня'];
-  const cells = calendarCells(ym).map(day => {
-    if (!day) return '<div class="ocal-c ocal-pad"></div>';
-    const o = (data.out[day] || []).length, b = (data.back[day] || []).length;
+  const cell = (day, o, b) => {
     const cls = [day === todayStr() ? 'today' : '', day === sel ? 'on' : ''].filter(Boolean).join(' ');
     return `<button class="ocal-c ${cls}" data-ocal-day="${day}">
       <span class="ocal-d">${+day.slice(8)}</span>
       <span class="ocal-dots">${o ? `<span class="ocal-b out">${o}</span>` : ''}${b ? `<span class="ocal-b back">${b}</span>` : ''}</span>
     </button>`;
-  }).join('');
+  };
+  const cells = calendarCells(ym).map(day => day
+    ? cell(day, (data.out[day] || []).length, (data.back[day] || []).length)
+    : '<div class="ocal-c ocal-pad"></div>').join('');
   const list = compact
     ? '<div class="ocal-hint">Өдөр дээр дарж тэр өдрийн захиалгыг нээнэ.</div>'
     : sel
@@ -10627,15 +10758,37 @@ function ordersCalendarHtml(orders, opts) {
           + (b.length ? `<div class="ocal-sec">🟢 Буцах (${b.length})</div>` + b.map(card).join('') : '');
       })()
     : '<div class="ocal-hint">Өдөр дээр дарж тэр өдрийн захиалгыг хараарай.</div>';
-  return `<div class="ocal">
-    <div class="ocal-head">
+  const legend = '<span class="ocal-leg"><span class="ocal-b out">●</span> гарах <span class="ocal-b back">●</span> буцах</span>';
+  // 7 хоногийн мөр + «Бүтэн сар» — зөвхөн Тойм (compact). CSS нь ≤720px-д л харуулна.
+  let week = '', foot = '';
+  if (compact) {
+    const thisWk = calWeekStart(todayStr());
+    const wkStart = calWeekStart(state.dashCalWeek || todayStr());
+    const wk = ordersWeekData(orders, wkStart);
+    const label = wkStart === thisWk ? 'Энэ 7 хоног' : `${wk.days[0].slice(5)} – ${wk.days[6].slice(5)}`;
+    week = `<div class="ocal-head ocal-wk-only">
+      <button class="btn btn-sm" data-ocal-wk="-1" aria-label="Өмнөх 7 хоног">‹</button>
+      <b>${escapeHtml(label)}</b>
+      <button class="btn btn-sm" data-ocal-wk="1" aria-label="Дараагийн 7 хоног">›</button>
+      ${wkStart !== thisWk ? '<button class="btn btn-sm" data-ocal-wk="0">Өнөөдөр</button>' : ''}
+    </div>
+    <div class="ocal-grid ocal-wk-only">${wd.map(d => `<div class="ocal-wd">${d}</div>`).join('')}${wk.days.map(day => cell(day, wk.out(day).length, wk.back(day).length)).join('')}</div>`;
+    foot = `<div class="ocal-foot">
+      <button class="btn btn-sm" data-ocal-full="1" aria-expanded="${dashCalFull()}">${dashCalFull() ? '▴ 7 хоног' : '▾ Бүтэн сар'}</button>
+      ${legend}
+    </div>`;
+  }
+  return `<div class="ocal${compact && !dashCalFull() ? ' ocal-wkmode' : ''}">
+    ${week}
+    <div class="ocal-head ocal-mo">
       <button class="btn btn-sm" data-ocal-mv="-1">‹</button>
       <b>${escapeHtml(ym)}</b>
       <button class="btn btn-sm" data-ocal-mv="1">›</button>
-      <span class="ocal-leg"><span class="ocal-b out">●</span> гарах <span class="ocal-b back">●</span> буцах</span>
+      ${legend}
     </div>
-    <div class="ocal-grid">${wd.map(d => `<div class="ocal-wd">${d}</div>`).join('')}${cells}</div>
+    <div class="ocal-grid ocal-mo">${wd.map(d => `<div class="ocal-wd">${d}</div>`).join('')}${cells}</div>
     ${list}
+    ${foot}
   </div>`;
 }
 function attachOrdersCalendar(root, opts) {
@@ -10646,6 +10799,21 @@ function attachOrdersCalendar(root, opts) {
     const d = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + Number(b.dataset.ocalMv), 1));
     state.ordersCalYm = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     state.ordersCalDay = ''; render();
+  }));
+  // Тойм (утас): 7 хоногоор шилжих, «Бүтэн сар» ⇄ «7 хоног»
+  el.querySelectorAll('[data-ocal-wk]').forEach(b => b.addEventListener('click', () => {
+    const dir = Number(b.dataset.ocalWk);
+    // 0 = «Өнөөдөр» — хоосон болгоно: тэгвэл маргааш апп нээлттэй байсан ч өнөөдрийн 7 хоногийг дагана
+    state.dashCalWeek = dir === 0 ? '' : addDays(calWeekStart(state.dashCalWeek || todayStr()), 7 * dir);
+    render();
+  }));
+  el.querySelectorAll('[data-ocal-full]').forEach(b => b.addEventListener('click', () => {
+    const full = !dashCalFull();
+    state.dashCalFull = full;
+    try { localStorage.setItem('dashCalFull', full ? '1' : '0'); } catch (e) {}
+    const to = calSwitchView(full, state.dashCalWeek, state.ordersCalYm, todayStr());
+    state.ordersCalYm = to.ym; state.dashCalWeek = to.week;
+    render();
   }));
   el.querySelectorAll('[data-ocal-day]').forEach(b => b.addEventListener('click', () => {
     if (go) { state.view = 'orders'; state.ordersCal = true; state.ordersCalDay = b.dataset.ocalDay; render(); return; }
@@ -10842,6 +11010,17 @@ function renderOrders() {
 }
 
 function attachOrdersHandlers() {
+  /* Статусын чип мөр (утсанд хэвтээ гүйдэг): render бүрд DOM шинээр үүсдэг тул (1) гүйлгэлт 0 руу
+     буцаж «Дууссан» дарсан хүний идэвхтэй чип дэлгэцээс гарч (2) гүйлгэх дохио байхгүй байв.
+     Гүйлгэлтийг state-д хадгалж сэргээнэ, идэвхтэй чипийг харагдуулна, бүдгэрэлт тавина. */
+  const _side = document.querySelector('.ordv-side');
+  if (_side) {
+    _side.addEventListener('scroll', () => { state.ordersSideX = _side.scrollLeft; updatePillFade(_side); }, { passive: true });
+    if (state.ordersSideX) _side.scrollLeft = state.ordersSideX;
+    revealActivePill(_side, '.ordv-st.on');
+    updatePillFade(_side);
+    requestAnimationFrame(() => { revealActivePill(_side, '.ordv-st.on'); updatePillFade(_side); });   // toolbar/layout тогтсоны дараа
+  }
   // Шинэ захиалга үүсгэх / app захиалга засах·устгах
   document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
   document.getElementById('orders-report-btn')?.addEventListener('click', openCompletedReport);
@@ -13222,7 +13401,7 @@ function renderAttendanceRows() {
   const by = {};
   recs.forEach(r => { const ck = attCanonKey(r); (by[ck] = by[ck] || []).push(r); });
   const keys = Object.keys(by);
-  if (!keys.length) return `<div style="text-align:center;color:var(--muted);padding:34px 10px;">${word} хэн ч бүртгүүлээгүй байна.<div style="font-size:12px;margin-top:4px;">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>`;
+  if (!keys.length) return `<div class="att-empty">${word} хэн ч бүртгүүлээгүй байна.<div class="att-empty-s">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>`;
   const rows = keys.map(k => {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
     const s = attMemberSummary(arr, isToday);
@@ -13236,28 +13415,30 @@ function renderAttendanceRows() {
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
   const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
   const nOpen = rows.filter(r => r.s.open).length;
-  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${word} <b style="color:var(--text)">${rows.length}</b> ажилтан ирсэн${nOpen ? ` · <b style="color:var(--ok)">${nOpen}</b> ажиллаж байна` : ''} · нийт <b style="color:var(--primary)">${attHM(totalMins)}</b></div>`;
+  const head = `<div class="att-sum">${word} <b>${rows.length}</b> ажилтан ирсэн${nOpen ? ` · <b class="on">${nOpen}</b> ажиллаж байна` : ''} · нийт <b class="tot">${attHM(totalMins)}</b></div>`;
+  /* ⛔ МӨР = ЦАГИЙН МУЖ («08:41 → одоо» / «08:55 → 12:30» / «09:12 → ⚠ гараагүй») (2026-10-09).
+     Өмнө нь «🟢 08:41 · ● Ажиллаж байна» гэж мөр бүрд ижил ногоон бичвэр давтагдаж, баруун багана
+     180px болон нэр 100px-д шахагддаг байв. «Хэдэн хүн ажиллаж байна» нь дээрх дүнгийн мөрөнд бий. */
   const list = rows.map(r => {
-    const av = `<span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.m)}</span>`;
-    const status = r.s.open
-      ? '<span style="color:var(--ok);font-weight:700;font-size:12px;">● Ажиллаж байна</span>'
-      : r.s.noOut
-        ? '<span style="color:var(--warn);font-size:12px;">⚠ Гараагүй</span>'
-        : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}${r.manualOut ? (r.bySelfReq ? ' <span class="att-manual" title="Ажилтны хүсэлтээр удирдлага баталсан">🙋 хүсэлтээр</span>' : ' <span class="att-manual" title="Удирдлага гараар оруулсан">✍️ гараар</span>') : ''}</span>`;
+    const av = `<span class="att-av">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.m)}</span>`;
+    const manualTag = r.manualOut ? (r.bySelfReq ? ' <span class="att-manual" title="Ажилтны хүсэлтээр удирдлага баталсан">🙋 хүсэлтээр</span>' : ' <span class="att-manual" title="Удирдлага гараар оруулсан">✍️ гараар</span>') : '';
+    const endTxt = r.s.open ? 'одоо' : r.s.noOut ? '⚠ гараагүй' : attTimeUB(r.s.lastEvent);
+    const spanCls = r.s.open ? ' open' : r.s.noOut ? ' noout' : '';
+    const spanTitle = r.s.open ? 'Ажиллаж байна' : r.s.noOut ? 'Гарахаа бүртгүүлээгүй' : 'Явсан';
     // «Хоцорсон» = ЗӨВХӨН одоо ажиллаж байгаа (нээлттэй сесс) хүнд — явсан хүнд retroactive
     // хоцролт гаргахгүй (хуучин buggy next_arrival дата departed хүмүүст л үлдсэн; шинэ дата зөв).
     const late = r.s.open ? attLateMinutes(r.k, day, r.s.firstIn) : 0;
-    const lateBadge = late > 0 ? ` <span style="color:var(--danger);font-weight:700;font-size:11.5px;">🔴 ${late}м хоцорсон</span>` : '';
+    const lateLine = late > 0 ? `<div class="att-late">🔴 ${late}м хоцорсон</div>` : '';
     // Гарахаа бүртгүүлээгүй → удирдлага цагийг нь оруулна. Товч нь ТУСДАА мөрөнд —
     // 320px өргөнтэй утсанд статустай нэг мөрөнд багтахгүй, хэвтээ гүйлт үүсгэдэг.
     const fixBtn = (r.s.noOut && canEditAttendance())
       ? `<button class="ui-raw att-fixout" data-att-out="${escapeHtml(r.k)}" data-att-in="${escapeHtml(String(r.s.openTs || ''))}" data-att-name="${escapeHtml(r.name)}">✍️ Цаг оруулах</button>`
       : '';
     const tmr = nextArrivalFor(r.k, addDays(day, 1));
-    const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
-    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
-      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}${r.scanned ? '' : ' <span title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн" style="color:var(--warn);font-size:11.5px;font-weight:600;">⚠ уншуулаагүй</span>'}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}${r.s.lunch ? `<span class="att-lunch" title="Цайны цаг хасагдсан (нийт ${attHM(r.s.gross)})">цай −${lunchHM(r.s.lunch)}</span>` : ''}</div>${fixBtn}${tmrBadge}</div></div>`;
+    const tmrBadge = tmr ? `<div class="att-tmr">→ маргааш ${escapeHtml(tmr)}</div>` : '';
+    return `<div class="att-row">${av}
+      <div class="att-who"><div class="att-name">${escapeHtml(r.name)}${r.scanned ? '' : ' <span class="att-warn" title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн">⚠ уншуулаагүй</span>'}</div><div class="att-role">${escapeHtml(r.role)}</div></div>
+      <div class="att-num"><div class="att-span${spanCls}" title="${spanTitle}">${attTimeUB(r.s.firstIn)} → ${endTxt}${manualTag}</div>${lateLine}<div class="att-dur">${attHM(r.s.mins)}${r.s.lunch ? `<span class="att-lunch" title="Цайны цаг хасагдсан (нийт ${attHM(r.s.gross)})">цай −${lunchHM(r.s.lunch)}</span>` : ''}</div>${fixBtn}${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;
 }
@@ -13290,6 +13471,10 @@ function dayLoadCardHtml() {
   const shift = loadShiftHours();
   const manDays = Math.ceil(tHours / shift);
   const max = Math.max(1, ...rows.map(r => r.touches));
+  /* ⛔ ӨДРИЙН МӨРҮҮД УТСАНД ӨГӨГДМӨЛӨӨР ЭВХЭГДЭНЭ (2026-10-09): карт ~720px эзэлж, «өнөөдөр хэн ирсэн»
+     жагсаалт эхний дэлгэцээс 1000px доор байв. Гол тоо = 7 хоногийн дүн (дээрх «хүн-өдөр»), өдрийн
+     мөр нь чиглэл — тиймээс эвхсэн нь мэдээллийг алдахгүй. Нээсэн төлөв state.dlOpen-д. */
+  const dlOpen = state.dlOpen === undefined ? (typeof window !== 'undefined' && window.innerWidth > 720) : !!state.dlOpen;
   const day = rows.map((r, i) => {
     const wd = _MN_WD[new Date(r.date + 'T00:00:00').getDay()];
     // ⚠ 10%-ийн алхмаар КЛАСС болгоно — inline style нэмэхгүй (дизайны гэрээ, CI шалгана)
@@ -13308,8 +13493,10 @@ function dayLoadCardHtml() {
     <div class="dl-t">👥 Ирэх 7 хоногийн ачаалал</div>
     <div class="dl-big">${manDays} <span>хүн-өдөр</span></div>
     <div class="dl-sub">${fmtMoneyShort ? '' : ''}${tHours} цагийн ажил · ${rows.reduce((t, r) => t + r.out.length + r.back.length, 0)} захиалгын хөдөлгөөн</div>
-    <div class="dl-list">${day}</div>
-    <div class="dl-warn">⚠ Өдрийн тоо нь <b>чиглэл</b> — баг эвентийн хуваарийг чанд дагадаггүй тул нэг өдрийн таамаг ойролцоо (бодит датагаар шалгахад 7 хоногийн дүн найдвартай, өдрийнх ойролцоо). Төлөвлөхдөө 7 хоногийн дүнг ашигла.</div>
+    <details class="dl-det"${dlOpen ? ' open' : ''}><summary>Өдөр бүрээр</summary>
+      <div class="dl-list">${day}</div>
+      <div class="dl-warn">⚠ Өдрийн тоо нь <b>чиглэл</b> — баг эвентийн хуваарийг чанд дагадаггүй тул нэг өдрийн таамаг ойролцоо (бодит датагаар шалгахад 7 хоногийн дүн найдвартай, өдрийнх ойролцоо). Төлөвлөхдөө 7 хоногийн дүнг ашигла.</div>
+    </details>
   </div>`;
 }
 function renderAttendance() {
@@ -13330,27 +13517,38 @@ function renderAttendance() {
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   // Ачааллын карт = M-Event захиалгаас бодогддог → M-Event-ийн захиалга харахгүй хүнд харуулахгүй.
   const loadCard = (isToday && !monthMode && branchFenceAllowsView('orders')) ? dayLoadCardHtml() : '';
-  const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
-      <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
-      <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
+  /* Скан товч = ГОЛ үйлдэл; ID карт хэвлэх · утсаар өөрөө · ажил эхлэх цаг нь ховор хэрэгтэй хэрэгсэл тул
+     нугалаанд (2026-10-09). Өмнө нь 3 товч тусдаа мөр болж карт ~280px эзэлж, «хэн ирсэн» жагсаалт
+     эхний дэлгэцээс гардаг байв. ⚠ Холбоосуудыг id-аар тохируулдаг (att-print/att-self) — нугалаанд ч DOM-д бий. */
+  const scanCard = (isToday && !monthMode) ? `<div class="att-scan">
+      <div class="att-scan-date">${dateLabel}</div>
+      <button id="att-scan-start" class="att-scan-btn">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
         Ажилтан скан хийх</button>
-      <div style="font-size:13.5px;color:var(--text-soft);margin-top:8px;">Ажилтны QR картыг камераар уншуулж<br>ирсэн / явсаныг бүртгэнэ</div>
-      <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-        <a id="att-print" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">🖨 ID QR карт хэвлэх</a>
-        <a id="att-self" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">📱 Утсаар өөрөө</a>
-        ${state.isCEO ? `<button id="att-workstart" class="ui-raw" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;">⏰ Ажил эхлэх цаг</button>` : ''}
-      </div>
+      <div class="att-scan-hint">Ажилтны QR картыг камераар уншуулж ирсэн / явсаныг бүртгэнэ</div>
+      <details class="fin-more att-tools"><summary>⋯ Хэрэгсэл</summary><div class="fin-more-in">
+        <a id="att-print" href="#" target="_blank" rel="noopener" class="att-tool">🖨 ID QR карт хэвлэх</a>
+        <a id="att-self" href="#" target="_blank" rel="noopener" class="att-tool">📱 Утсаар өөрөө</a>
+        ${state.isCEO ? `<button id="att-workstart" class="ui-raw att-tool">⏰ Ажил эхлэх цаг</button>` : ''}
+      </div></details>
     </div>` : '';
-  const dateBar = `<div style="display:flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">
-      <button class="btn btn-sm ui-raw" data-att-nav="-1" title="Өмнөх өдөр">◀</button>
-      <input type="date" id="att-date" value="${day}" max="${todayStr()}" class="ui-raw" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;">
-      <button class="btn btn-sm ui-raw" data-att-nav="1"${isToday ? ' disabled' : ''} title="Дараах өдөр">▶</button>
+  /* Сарын тойм дээр ӨДРИЙН навигаци (◀ ▶ · огноо) БАЙХГҮЙ — тэр нь сарын тоймоос чимээгүй гаргаж өдөр рүү
+     аваачдаг байсан тул өмнөх сарыг харах арга олдохгүй байв. Тойм дээр САРЫН ◀ ▶, «Өдрөөр» буцах товч. */
+  const mNext = attMonthShift(day.slice(0, 7), 1, todayStr());
+  const dateBar = monthMode ? `<div class="att-datebar">
+      <button class="btn btn-sm ui-raw" data-att-mnav="-1" title="Өмнөх сар" aria-label="Өмнөх сар">◀</button>
+      <span class="att-mlabel"><small>${day.slice(0, 4)}</small>${+day.slice(5, 7)}-р сар</span>
+      <button class="btn btn-sm ui-raw" data-att-mnav="1"${mNext ? '' : ' disabled'} title="Дараах сар" aria-label="Дараах сар">▶</button>
+      <button class="btn btn-sm" data-att-month>📅 Өдрөөр</button>
+    </div>` : `<div class="att-datebar">
+      <button class="btn btn-sm ui-raw" data-att-nav="-1" title="Өмнөх өдөр" aria-label="Өмнөх өдөр">◀</button>
+      <input type="date" id="att-date" value="${day}" max="${todayStr()}" class="ui-raw att-date">
+      <button class="btn btn-sm ui-raw" data-att-nav="1"${isToday ? ' disabled' : ''} title="Дараах өдөр" aria-label="Дараах өдөр">▶</button>
       ${!isToday ? `<button class="btn btn-sm" data-att-today>Өнөөдөр</button>` : ''}
-      <button class="btn btn-sm${monthMode ? ' btn-primary' : ''}" data-att-month>📅 Сарын тойм</button>
+      <button class="btn btn-sm" data-att-month>📅 Сарын тойм</button>
     </div>`;
   const body = monthMode ? renderAttendanceMonth(day.slice(0, 7)) : renderAttendanceRows();
-  return `<div style="max-width:720px;margin:0 auto;padding-bottom:20px;">
+  return `<div class="att-wrap">
     ${loadCard}${scanCard}${renderAttReqPanel()}${dateBar}
     <div id="att-list">${body}</div>
   </div>`;
@@ -13384,6 +13582,34 @@ function workNormDays(ym) {
   return monthWorkdays(ym);
 }
 function workNormMins(ym) { return workNormDays(ym) * 8 * 60; }
+/* ЯВЖ БУЙ САРЫН норм = өнөөдрийг хүртэл өнгөрсөн ажлын өдөр (2026-10-09). Бүтэн сарын нормтой (176ц)
+   харьцуулбал сарын 7-нд бүх хүн «31%» улбар шараар гарч, хэн хоцорч байгааг ялгах аргагүй болдог байв.
+   ЗӨВХӨН ХАРУУЛАХ хувьд — цалингийн бодолт (`monthPayBreakdown`) бүтэн нормоор хэвээр, сар дуусмагц л хасна. */
+function monthWorkdaysThrough(ym, today) {
+  const t = String(today || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return monthWorkdays(ym);
+  if (t.slice(0, 7) > ym) return monthWorkdays(ym);
+  if (t.slice(0, 7) < ym) return 0;
+  const y = Number(ym.slice(0, 4)), mo = Number(ym.slice(5, 7)) - 1;
+  let n = 0;
+  for (let d = 1; d <= Number(t.slice(8, 10)); d++) { const w = new Date(Date.UTC(y, mo, d)).getUTCDay(); if (w !== 0 && w !== 6) n++; }
+  return n;
+}
+function workNormMinsThrough(ym, today) {
+  const total = monthWorkdays(ym), full = workNormMins(ym);
+  if (!total) return full;
+  return Math.round(full * monthWorkdaysThrough(ym, today) / total);
+}
+/* Сарын тоймын сар солих: ЦЭВЭР. Одоогийн сараас хойш явахгүй (null). Өнөөдрийн сар руу буцахад өнөөдөр,
+   бусад сард 1-ний өдрийг өгнө — «Өдрөөр» руу шилжихэд утга бүхий өдөр нээгдэнэ. */
+function attMonthShift(ym, n, today) {
+  const mm = String(ym || '').match(/^(\d{4})-(\d{2})$/); if (!mm) return null;
+  const d = new Date(Date.UTC(Number(mm[1]), Number(mm[2]) - 1 + Number(n), 1));
+  const nm = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+  const cur = String(today || '').slice(0, 7);
+  if (cur && nm > cur) return null;
+  return { month: nm, day: nm === cur ? String(today).slice(0, 10) : nm + '-01' };
+}
 // ── Жолооны нэмэгдэл — хүргэлттэй захиалгад ХҮРГЭЖ ӨГСӨН (delivering→rented) + ХҮРГЭЛТЭЭР
 // БУЦААН АВСАН (rented→returning) үйлдэл бүрд 10,000₮ (тухайн үйлдлийг хийсэн жолоочид). stage_meta-гаас автомат.
 const DRIVER_BONUS_EACH = 10000;
@@ -13959,6 +14185,7 @@ function renderAttendanceMonth(month) {
   const recs = attRecsInFence(state.attMonthRecs);
   if (!recs.length) return `<div class="att-mo-note">${month} сард ирц бүртгэгдээгүй.</div>`;
   const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
+  const nowMins = workNormMinsThrough(month, todayStr()), inProgress = nowMins < normMins;   // явж буй сар: хувийг өнөөдрийг хүртэлх нормоор
   const byM = {};
   recs.forEach(r => { const ck = attCanonKey(r); const m = (byM[ck] = byM[ck] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
   const rows = Object.keys(byM).map(k => {
@@ -13972,24 +14199,27 @@ function renderAttendanceMonth(month) {
     const mem = findMember(k) || { name: m.name, role: '' };
     return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays };
   }).sort((a, b) => b.mins - a.mins);
-  // `.att-mo-head b` нь өгөгдмөлөөр --text; нийт дүн нь `.att-mo-tot`-оор --primary.
-  const head = `<div class="att-mo-head">${month} · <b>${rows.length}</b> ажилтан · Сарын норм <b>${normDays}×8=${normDays * 8}ц</b> · нийт <b class="att-mo-tot">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
+  const noOutPeople = rows.filter(r => r.noOutDays.length), noOutTotal = noOutPeople.reduce((t, r) => t + r.noOutDays.length, 0);
+  const normTxt = inProgress
+    ? `Норм <b>${monthWorkdaysThrough(month, todayStr())}×8=${Math.round(nowMins / 60)}ц</b> <span class="att-mo-sub">(сар ${normDays}×8=${normDays * 8}ц · үргэлжилж байна)</span>`
+    : `Сарын норм <b>${normDays}×8=${normDays * 8}ц</b>`;
   let anyDriver = false;
   // ⚠ Дамжлагын бонусыг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
   //   рендер бүрд мянган давталт болно. Нэг удаа бодож, мөр бүрд уншина.
   const spAll = stagePayByPerson(state.appOrders || [], month);
-  let spTotal = 0;
+  let spTotal = 0, payTot = 0, payOwed = 0, payPeople = 0;
   // Цалингийн мөр — хүн бүрийн доор. Мөнгө нь зөвхөн эрхтэйд; ИЛҮҮ ЦАГ нь бүгдэд (цаг = мөнгө биш).
   const payVis = canSeeSalary();
   if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
+  const moOpen = state.attMoOpen || {};
   const list = rows.map(r => {
-    const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
-    const pctCls = pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
+    const pct = nowMins ? Math.round(r.mins / nowMins * 100) : 0;   // явж буй сард өнөөдрийг хүртэлх нормоор
+    const pctCls = !nowMins ? 'att-mo-pct-mid' : pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
     const db = driverBonus(r.k, month);
     if (db.count) anyDriver = true;
     // Гарах бүртгэлгүй өдөр = тэр өдөр БҮТЭН 0 цаг. Цалин болдог тул нуухгүй, өдрийг нь нэрлэнэ.
     const noOutLine = (r.noOutDays && r.noOutDays.length)
-      ? `<div class="att-noout-line">⚠ <b>${r.noOutDays.length}</b> өдөр гарах бүртгэлгүй (0 цаг тоологдсон): ${r.noOutDays.map(d => `<button class="ui-raw att-noout-day" data-att-day="${escapeHtml(d)}">${escapeHtml(d.slice(8))}</button>`).join(' ')}</div>`
+      ? `<div class="att-noout-line">⚠ <b>${r.noOutDays.length}</b> өдөр гарах бүртгэлгүй: ${r.noOutDays.map(d => `<button class="ui-raw att-noout-day" data-att-day="${escapeHtml(d)}">${escapeHtml(d.slice(8))}</button>`).join(' ')}</div>`
       : '';
     // Дамжлагын бонусын мөртэй ИЖИЛ хэв маяг тул `.sp-line`/`.sp-sub`-ыг дахин ашиглав.
     const driverLine = db.count ? `<div class="sp-line">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span class="sp-sub">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
@@ -13998,22 +14228,54 @@ function renderAttendanceMonth(month) {
     const stageLine = (sp && (sp.total || sp.penApplied)) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span>${sp.penApplied ? ` <span class="sp-pen-tag">⚠ −${fmtMoney(sp.penApplied)} · ${escapeHtml(stagePenWhy(sp))}</span>` : ''}</div>` : '';
     // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ДАМЖЛАГЫН БОНУС ОРОХГҮЙ.
     const otMins = Math.max(0, r.mins - normMins);
-    const otLine = otMins ? `<div class="pay-line">⏱ Илүү цаг: <b>${attHM(otMins)}</b> <span class="sp-sub">(нормоос дээш)</span></div>` : '';
+    const otTag = otMins ? ` · <span class="att-mo-ot">+${attHM(otMins)} илүү</span>` : '';
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
     const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month, undefined, (sp && sp.total) || 0) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
     const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
     const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
-    const payLine = pb ? `<div class="pay-line pay-line-sum">💵 Цалин: <b>${fmtMoney(pb.total)}</b> <span class="sp-sub">(цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''})</span>`
-      + ((rPaid || rCarry.amount) ? ` <span class="sp-sub">— ${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)} · ${rBal.over > 0 ? `илүү <b>${fmtMoney(rBal.over)}</b> (дараа сард)` : `үлдэгдэл <b>${fmtMoney(rBal.owed)}</b>`}</span>` : ' <span class="sp-sub">— олгоогүй</span>')
-      + `</div>` : '';
-    return `<div class="att-mo-row">
-      <div class="att-mo-top">
+    if (pb) { payTot += pb.total; payPeople++; if (rBal.owed > 0) payOwed += rBal.owed; }
+    // Төлөв = нэг үг: хүн бүрийн мөрөнд харагдана (хэнд төлөөгүйг нугалаа задлахгүйгээр харах).
+    const stTxt = !pb ? '' : (rPaid || rCarry.amount)
+      ? (rBal.over > 0 ? '<span class="att-mo-st over">илүү олгосон</span>' : rBal.owed > 0 ? '<span class="att-mo-st">үлдэгдэлтэй</span>' : '<span class="att-mo-st ok">✓ олгосон</span>')
+      : '<span class="att-mo-st">олгоогүй</span>';
+    const payLine = pb ? `<div class="att-mo-pay">💵 Цалин <b>${fmtMoney(pb.total)}</b> ${
+        (rPaid || rCarry.amount)
+          ? (rBal.over > 0 ? `<span class="att-mo-st over">илүү <b>${fmtMoney(rBal.over)}</b></span>`
+            : rBal.owed > 0 ? `<span class="att-mo-st">үлдэгдэл <b>${fmtMoney(rBal.owed)}</b></span>`
+            : `<span class="att-mo-st ok">✓ олгосон</span>`)
+          : `<span class="att-mo-st">олгоогүй</span>`}
+      <div class="att-mo-pay-in">цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''}${(rPaid || rCarry.amount) ? `<br>${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)}${rBal.over > 0 ? ' · илүү нь дараа сард' : ''}` : ''}</div></div>` : '';
+    /* Мөр = НЭГ ШУГАМ (нэр · хувь · цаг) + дарахад задрах дэлгэрэнгүй (2026-10-09). Өмнө нь ажилтан бүр 120-170px
+       блок байсан тул «тойм» нь урт жагсаалт болж, 10 ажилтан ~1500px, нийт дүн хаана ч харагддаггүй байв. */
+    return `<details class="att-mo-row" data-att-mo="${escapeHtml(r.k)}"${moOpen[r.k] ? ' open' : ''}>
+      <summary class="att-mo-top">
       <span class="att-mo-ava">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
-      <div class="att-mo-who"><div class="att-mo-name">${escapeHtml(r.name)}</div><div class="att-mo-role">${escapeHtml(r.role)}</div></div>
-      <div class="att-mo-num"><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${pct}%</b></div><div class="att-mo-hrs">${attHM(r.mins)} <span class="att-mo-norm">/ ${normDays * 8}ц</span></div></div>
-      </div>${noOutLine}${otLine}${driverLine}${stageLine}${payLine}</div>`;
+      <div class="att-mo-who"><div class="att-mo-name">${escapeHtml(r.name)}</div><div class="att-mo-subl"><span class="att-mo-role">${escapeHtml(r.role)}</span>${r.noOutDays.length ? ` <span class="att-mo-warn">⚠ ${r.noOutDays.length}</span>` : ''}${stTxt}</div></div>
+      <div class="att-mo-num"><div class="att-mo-hrs">${attHM(r.mins)}</div><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${nowMins ? pct + '%' : '—'}</b></div></div>
+      <progress class="att-mo-bar ${pctCls.replace('att-mo-pct-', '')}" max="100" value="${Math.max(0, Math.min(100, pct))}">${pct}%</progress>
+      </summary>
+      <div class="att-mo-more">
+      <div class="att-mo-calc">⏱ Ажилласан <b>${attHM(r.mins)}</b> / норм ${Math.round(nowMins / 60)}ц${otTag}</div>${noOutLine}${driverLine}${stageLine}${payLine}</div></details>`;
   }).join('');
+  // ── Нийт тойм: сарын БҮХ ажилтны дүн нэг дор (хавтан). Тоог мөрүүдээс ДАХИН бодохгүй байхын тулд нэг л удаа.
+  const totMins = rows.reduce((t, r) => t + r.mins, 0);
+  const avgPct = (nowMins && rows.length) ? Math.round(totMins / (rows.length * nowMins) * 100) : null;
+  const avgCls = avgPct === null ? 'att-mo-pct-mid' : avgPct >= 100 ? 'att-mo-pct-ok' : avgPct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
+  const otPeople = rows.filter(r => r.mins > normMins), otTot = otPeople.reduce((t, r) => t + (r.mins - normMins), 0);
+  const kpi = (l, v, sub, cls) => `<div class="att-mo-kpi"><div class="att-mo-kpi-l">${l}</div><div class="att-mo-kpi-v${cls ? ' ' + cls : ''}">${v}</div><div class="att-mo-kpi-s">${sub}</div></div>`;
+  const kpis = `<div class="att-mo-kpis">`
+    + kpi('Нийт цаг', attHM(totMins), `<b>${rows.length}</b> ажилтан`)
+    + kpi('Дундаж гүйцэтгэл', avgPct === null ? '—' : avgPct + '%', 'нормын хувь', avgCls)
+    + kpi('Илүү цаг', otTot ? '+' + attHM(otTot) : '—', otTot ? `<b>${otPeople.length}</b> ажилтан` : 'нормоос хэтрээгүй')
+    + (payVis && payPeople
+      ? kpi('💵 Нийт цалин', fmtMoney(payTot), payOwed ? `үлдэгдэл <b>${fmtMoney(payOwed)}</b>` : '✓ бүгд олгосон', payOwed ? '' : 'att-mo-pct-ok')
+      : kpi('Гарах бүртгэлгүй', noOutTotal ? noOutTotal + ' өдөр' : '✓', noOutTotal ? `<b>${noOutPeople.length}</b> ажилтан · 0 цаг` : 'бүгд бүртгэлтэй', noOutTotal ? 'att-mo-pct-low' : 'att-mo-pct-ok'))   // цалин харахгүй хүнд 4-р хавтан = нэг тоо, сануулга давхцахгүй
+    + `</div>`;
+  // `.att-mo-head b` нь өгөгдмөлөөр --text.
+  const head = kpis + `<div class="att-mo-head">${normTxt}</div>`
+    // Гарах бүртгэлгүй өдөр = 0 цаг тоологдож цалин дутна → мөрүүдийг гүйлгэж хайхгүйн тулд дээд талд ИЛ.
+    + ((noOutTotal && payVis && payPeople) ? `<div class="att-mo-flag">⚠ <b>${noOutPeople.length}</b> ажилтанд гарах бүртгэлгүй <b>${noOutTotal}</b> өдөр — 0 цаг тоологдсон</div>` : '');
   const liabilityNote = anyDriver ? `<div class="att-mo-liab">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
   const spFoot = spTotal ? `<div class="sp-foot">📦 Дамжлагын бонус нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил бонус болохгүй.</span></div>` : '';
   return head + `<div>${list}</div>${spFoot}${liabilityNote}`;
@@ -14053,12 +14315,22 @@ function attachAttendanceHandlers() {
   const pf = document.getElementById('att-print'); if (pf) pf.href = attIdCardsUrl();
   const sf = document.getElementById('att-self'); if (sf) sf.href = attCheckinUrl(todayStr());
   document.getElementById('att-workstart')?.addEventListener('click', openWorkStartModal);
+  document.querySelector('.dl-det')?.addEventListener('toggle', (e) => { state.dlOpen = e.target.open; });   // render() дахин зурахад хүн нээсэн нь хаагдахгүй
   // Огноо навигаци (өнгөрсөн өдөр / сарын тойм)
   document.getElementById('att-date')?.addEventListener('change', e => { const v = e.target.value; if (v && v <= todayStr()) { state.attViewDay = v; state.attMonthMode = false; render(); } });
   document.querySelectorAll('[data-att-nav]').forEach(b => b.addEventListener('click', () => { const cur = state.attViewDay || todayStr(); const nd = addDays(cur, Number(b.dataset.attNav)); if (nd > todayStr()) return; state.attViewDay = nd; state.attMonthMode = false; render(); }));
   document.querySelector('[data-att-today]')?.addEventListener('click', () => { state.attViewDay = todayStr(); state.attMonthMode = false; render(); });
   document.querySelector('[data-att-month]')?.addEventListener('click', () => { state.attMonthMode = !state.attMonthMode; render(); });
+  document.querySelectorAll('[data-att-mnav]').forEach(b => b.addEventListener('click', () => {
+    const r = attMonthShift((state.attViewDay || todayStr()).slice(0, 7), Number(b.dataset.attMnav), todayStr());
+    if (!r) return;
+    state.attViewDay = r.day; render();   // сарын тойм горимд ҮЛДЭНЭ
+  }));
   document.querySelector('[data-att-month-retry]')?.addEventListener('click', () => { state.attMonthErr = null; render(); });
+  document.querySelectorAll('details.att-mo-row').forEach(d => d.addEventListener('toggle', () => {   // render() дахин зурахад нээсэн нь хаагдахгүй
+    const o = state.attMoOpen = state.attMoOpen || {};
+    if (d.open) o[d.dataset.attMo] = true; else delete o[d.dataset.attMo];
+  }));
   // Гарахаа бүртгүүлээгүй → удирдлага гарсан цагийг гараар оруулна
   document.querySelectorAll('[data-att-out]').forEach(b => b.addEventListener('click', () =>
     openManualOutModal(b.dataset.attOut, b.dataset.attName || b.dataset.attOut, state.attViewDay || todayStr(), b.dataset.attIn)));
@@ -14280,7 +14552,7 @@ function renderMyAttend() {
   const sumFor = (d) => attMemberSummary(byDay[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === today);
   const todaySum = byDay[today] ? sumFor(today) : null;
   let monthMins = 0; dayKeys.forEach(d => { monthMins += sumFor(d).mins; });
-  const avatar = `<span style="position:relative;width:56px;height:56px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:var(--muted);overflow:hidden;flex-shrink:0;">${escapeHtml(memberInitials(state.me))}${staffAvatarImg(me)}</span>`;
+  const avatar = `<span class="myatt-av">${escapeHtml(memberInitials(state.me))}${staffAvatarImg(me)}</span>`;
   const myKey = String(personKey(me) || state.me || '').replace(/\D/g, '') || String(state.me || '');
   // Хүсэлтийн төлвийг өдөр бүрд харуулна — ажилтан «илгээснээ» мартахгүй, хариуг ч энд харна.
   const reqLine = (d) => {
@@ -14290,6 +14562,9 @@ function renderMyAttend() {
     if (q.status === 'approved') return `<div class="myreq-st myreq-ok">✅ Хүсэлт батлагдсан</div>`;
     return `<div class="myreq-st myreq-no">❌ Татгалзсан${q.reason ? ' · ' + escapeHtml(q.reason) : ''}</div>`;
   };
+  /* ⛔ МӨР = ЦАГИЙН МУЖ + ГАРСАН ЦАГ (2026-10-09): «Ирсэн 08:57 · 8ц 20м» гэж гарсан цагийг
+     харуулдаггүй байсан тул ажилтан «явлаа» гэж бүртгэгдсэнийг шалгаж чаддаггүй, өнөөдрийн мөр
+     3 мөр болж тасардаг байв. Удирдлагын «Ирц» дэлгэцтэй ИЖИЛ хэлбэр: «08:41 → одоо» / «08:57 → 17:17». */
   const dayList = dayKeys.map(d => {
     const s = sumFor(d);
     const q = attReqFor(myKey, d);
@@ -14297,59 +14572,71 @@ function renderMyAttend() {
     const viaReq = (byDay[d] || []).some(x => x.source === 'request');
     const askBtn = (s.noOut && !(q && q.status === 'pending'))
       ? `<button class="ui-raw myreq-ask" data-my-areq="${escapeHtml(d)}">🙋 Цаг гаргуулах</button>` : '';
-    return `<div style="padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-      <span>${escapeHtml(d)}${d === today ? ' <b style="color:var(--ok);font-size:11px;">· өнөөдөр</b>' : ''}</span>
-      <span style="color:var(--text-soft);text-align:right;">Ирсэн <b>${attTimeUB(s.firstIn)}</b>${s.open ? ' · <span style="color:var(--ok);">ажиллаж байна</span>' : ''} · <b style="color:var(--primary);">${attHM(s.mins)}</b>${s.noOut ? ' <span style="color:var(--warn);">⚠ гараагүй</span>' : ''}${viaReq ? ' <span class="att-manual" title="Хүсэлтээр нэмэгдсэн">🙋</span>' : ''}</span>
+    const endTxt = s.open ? 'одоо' : s.noOut ? '⚠ гараагүй' : attTimeUB(s.lastEvent);
+    const spanCls = s.open ? ' open' : s.noOut ? ' noout' : '';
+    const wd = _MN_WD[new Date(d + 'T00:00:00').getDay()];
+    return `<div class="myatt-row">
+      <div class="myatt-line">
+        <span class="myatt-d">${escapeHtml(d.slice(5))} <span class="myatt-wd">${wd}</span>${d === today ? ' <b class="myatt-today">· өнөөдөр</b>' : ''}</span>
+        <span class="myatt-t${spanCls}">${attTimeUB(s.firstIn)} → ${endTxt}${viaReq ? ' <span class="att-manual" title="Хүсэлтээр нэмэгдсэн">🙋</span>' : ''}</span>
+        <span class="myatt-h">${attHM(s.mins)}</span>
       </div>${askBtn}${reqLine(d)}</div>`;
   }).join('');
   // Огт бүртгэгдээгүй өдрийн хүсэлт — тэр өдөр жагсаалтад БАЙХГҮЙ тул тусад нь харуулна.
   const otherReqs = Object.keys(attReqAll())
     .map(k => attReqAll()[k]).filter(q => q && q.key === myKey && !byDay[q.day])
     .sort((a, b) => String(b.day).localeCompare(String(a.day)))
-    .map(q => `<div style="padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
-      <div>${escapeHtml(q.day)} <span style="color:var(--muted);">${escapeHtml(q.inTime || '')}${q.inTime ? ' → ' : ''}${escapeHtml(q.outTime || '')}</span></div>${reqLine(q.day)}</div>`).join('');
-  return `<div style="max-width:520px;margin:0 auto;padding-bottom:26px;">
-    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;">
-      <div style="display:flex;align-items:center;gap:14px;">
+    .map(q => `<div class="myatt-row">
+      <div class="myatt-line"><span class="myatt-d">${escapeHtml(String(q.day).slice(5))}</span><span class="myatt-t">${escapeHtml(q.inTime || '')}${q.inTime ? ' → ' : ''}${escapeHtml(q.outTime || '')}</span></div>${reqLine(q.day)}</div>`).join('');
+  /* ⭐ ГАРАХАА БҮРТГҮҮЛЭЭГҮЙ ӨДӨР = ХИЙХ АЖИЛ → ДЭЭД ТАЛД, ШУУД ТОВЧТОЙ (2026-10-09).
+     Цалин тэр өдрийг 0 цаг гэж тооцдог тул мартсан ажилтан цалингаа дутуу авна. «Цаг гаргуулах»
+     товч дэлгэцийн хамгийн доод (сарын жагсаалтын мөр) дотор, цалингийн картын сануулга «доорх
+     жагсаалтаас…» гэж л хэлдэг байв — бодит датагаар 1500px+ доор. Хүсэлт илгээсэн (хүлээгдэж буй)
+     өдөр энд ГАРАХГҮЙ — мөрөндөө «⏳ хүлээгдэж байна» гэж харагдана. Өнөөдөр (нээлттэй) орохгүй. */
+  const noOutDays = dayKeys.filter(d => d !== today && sumFor(d).noOut && !(attReqFor(myKey, d) && attReqFor(myKey, d).status === 'pending'));
+  const noOutBox = noOutDays.length ? `<div class="myatt-alert">
+      <div class="myatt-alert-t">⚠ Гарах бүртгэлгүй өдөр · ${noOutDays.length}</div>
+      <div class="myatt-alert-s">Цалин эдгээр өдрийг 0 цаг гэж тооцдог — гарсан цагаа мэдүүлнэ үү.</div>
+      ${dashListHtml('myout', noOutDays.map(d => `<div class="myatt-alert-r"><span>${escapeHtml(d.slice(5))} <span class="myatt-wd">${_MN_WD[new Date(d + 'T00:00:00').getDay()]}</span> · ${attTimeUB(sumFor(d).firstIn)} → ?</span><button class="ui-raw myreq-ask" data-my-areq="${escapeHtml(d)}">🙋 Цаг гаргуулах</button></div>`), 3)}
+    </div>` : '';
+  return `<div class="myatt-wrap">
+    <div class="myatt-card myatt-me">
+      <div class="myatt-me-top">
         ${avatar}
-        <div style="flex:1;min-width:0;"><div style="font-size:18px;font-weight:700;">${escapeHtml(me.name || state.me)}</div>
-          <div style="font-size:13px;color:var(--muted);">${escapeHtml(me.role || 'Цагийн ажилтан')}</div>
-          <div style="font-size:12.5px;color:var(--text-soft);margin-top:2px;">📞 ${escapeHtml(me.phone || '-')}</div></div>
+        <div class="myatt-who"><div class="myatt-name">${escapeHtml(me.name || state.me)}</div>
+          <div class="myatt-sub">${escapeHtml(me.role || 'Цагийн ажилтан')} · 📞 ${escapeHtml(me.phone || '-')}</div></div>
       </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-        <div style="font-size:12px;color:var(--muted);">🏦 Цалингийн данс</div>
-        ${me.bank_account
-          ? `<div style="font-weight:600;font-size:14px;margin-top:3px;">${escapeHtml(me.bank || '')} · ${escapeHtml(me.bank_account)}${me.bank_holder ? ' · ' + escapeHtml(me.bank_holder) : ''}</div>`
-          : `<button id="my-open-profile" style="margin-top:6px;padding:9px 13px;border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;text-align:left;width:100%;">⚠ Данс бүртгэгдээгүй — энд дарж Миний профайл дээр бүртгэнэ үү</button>`}
-      </div>
+      ${me.bank_account
+        ? `<div class="myatt-bank">🏦 ${escapeHtml(me.bank || '')} · ${escapeHtml(me.bank_account)}${me.bank_holder ? ' · ' + escapeHtml(me.bank_holder) : ''}</div>`
+        : `<button id="my-open-profile" class="myatt-bank-add">⚠ Цалингийн данс бүртгэгдээгүй — бүртгэх ›</button>`}
     </div>
-    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 16px;text-align:center;margin-bottom:14px;">
-      <div style="font-size:13.5px;font-weight:600;color:var(--text);">Ирц бүртгүүлэхдээ энэ QR-аа менежерт харуул</div>
-      <div id="my-qr" style="width:212px;height:212px;margin:14px auto 4px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:8px;box-shadow:0 2px 12px rgba(0,0,0,.08);"><span style="color:#999;font-size:13px;">QR ачаалж байна…</span></div>
-      <div style="font-size:12px;color:var(--muted);">${escapeHtml(me.name || '')} · ${escapeHtml(me.phone || '')}</div>
+    <div class="myatt-card myatt-qr">
+      <div class="myatt-qr-t">Ирц бүртгүүлэхдээ энэ QR-аа менежерт харуул</div>
+      <div id="my-qr" class="myatt-qr-box"><span class="myatt-qr-wait">QR ачаалж байна…</span></div>
+      <div class="myatt-qr-s">${escapeHtml(me.name || '')} · ${escapeHtml(me.phone || '')}</div>
     </div>
-    <div style="display:flex;gap:10px;margin-bottom:16px;">
-      <div style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;">
-        <div style="font-size:12px;color:var(--muted);">Өнөөдөр</div>
-        <div style="font-size:17px;font-weight:800;color:${todaySum ? 'var(--ok)' : 'var(--muted)'};margin-top:2px;">${todaySum ? attHM(todaySum.mins) : '—'}</div>
-        <div style="font-size:11px;color:var(--text-soft);">${todaySum ? 'Ирсэн ' + attTimeUB(todaySum.firstIn) + (todaySum.open ? ' · ажиллаж байна' : '') : 'Бүртгэлгүй'}</div></div>
-      <div style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;">
-        <div style="font-size:12px;color:var(--muted);">Энэ сар</div>
-        <div style="font-size:17px;font-weight:800;color:var(--primary);margin-top:2px;">${attHM(monthMins)}</div>
-        <div style="font-size:11px;color:var(--text-soft);">${dayKeys.length} өдөр ажилласан</div></div>
+    <div class="myatt-tiles">
+      <div class="myatt-tile">
+        <div class="myatt-tile-l">Өнөөдөр</div>
+        <div class="myatt-tile-v${todaySum ? ' ok' : ' none'}">${todaySum ? attHM(todaySum.mins) : '—'}</div>
+        <div class="myatt-tile-s">${todaySum ? 'Ирсэн ' + attTimeUB(todaySum.firstIn) + (todaySum.open ? ' · ажиллаж байна' : '') : 'Бүртгэлгүй'}</div></div>
+      <div class="myatt-tile">
+        <div class="myatt-tile-l">Энэ сар</div>
+        <div class="myatt-tile-v">${attHM(monthMins)}</div>
+        <div class="myatt-tile-s">${dayKeys.length} өдөр ажилласан</div></div>
     </div>
+    ${noOutBox}
     ${myPayCardHtml(me)}
     ${(() => { if (payrollHistOnly(payM)) return '';   // ⛔ түүх сард хэрэгжээгүй нэмэгдэл гаргахгүй
       const db = driverBonus(personKey(me) || state.me, payM); return db.count ? `
-    <div style="background:var(--panel);border:1px solid var(--ok);border-radius:14px;padding:14px 16px;margin-bottom:14px;">
-      <div style="font-size:12px;color:var(--muted);">🚗 Жолооны нэмэгдэл · ${escapeHtml(payM)}</div>
-      <div style="font-size:19px;font-weight:800;color:var(--ok);margin-top:3px;">${fmtMoney(db.amount)}</div>
-      <div style="font-size:11.5px;color:var(--text-soft);margin-top:2px;">${db.count} удаа × ${fmtMoney(DRIVER_BONUS_EACH)} · хүргэсэн ${db.deliveries} · авсан ${db.pickups}</div>
-      <div style="margin-top:10px;border-top:1px solid var(--line);">${db.trips.map(t => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line);">
-        <span style="min-width:0;">${t.type === 'Хүргэсэн' ? '🚚' : '↩️'} <b>#${escapeHtml(String(t.number ?? ''))}</b> · ${escapeHtml(t.type)}${t.addr ? ` · <span style="color:var(--muted);">${escapeHtml(String(t.addr).slice(0, 34))}</span>` : ''}</span>
-        <span style="color:var(--muted);flex-shrink:0;">${escapeHtml(t.date)}</span></div>`).join('')}</div>
-      <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
+    <div class="myatt-drv">
+      <div class="myatt-drv-t">🚗 Жолооны нэмэгдэл · ${escapeHtml(payM)}</div>
+      <div class="myatt-drv-v">${fmtMoney(db.amount)}</div>
+      <div class="myatt-drv-s">${db.count} удаа × ${fmtMoney(DRIVER_BONUS_EACH)} · хүргэсэн ${db.deliveries} · авсан ${db.pickups}</div>
+      <div class="myatt-drv-l">${db.trips.map(t => `<div class="myatt-drv-r">
+        <span class="myatt-drv-w">${t.type === 'Хүргэсэн' ? '🚚' : '↩️'} <b>#${escapeHtml(String(t.number ?? ''))}</b> · ${escapeHtml(t.type)}${t.addr ? ` · <span class="myatt-drv-a">${escapeHtml(String(t.addr).slice(0, 34))}</span>` : ''}</span>
+        <span class="myatt-drv-d">${escapeHtml(t.date)}</span></div>`).join('')}</div>
+      <div class="myatt-drv-note">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
     </div>` : ''; })()}
     ${(() => {
       if (payrollHistOnly(payM)) return '';            // ⛔ түүх сард дамжлагын бонус гаргахгүй
@@ -14368,11 +14655,12 @@ function renderMyAttend() {
       return claimBoxHtml(mine, `✋ ${mine.length} хүн таны ахалсан ажилд оролцсон гэж мэдүүлсэн`,
         'Үнэхээр хамт ажилласан бол «✓ Тийм» — тэр дамжлагын бонус хуваагдана. Ажиллаагүй бол ✕.'); })()}
     <button class="ui-raw myreq-new" id="my-att-req">🙋 Бүртгүүлж амжаагүй өдөр мэдүүлэх</button>
-    ${dayKeys.length || otherReqs ? `<div style="font-size:13px;font-weight:700;color:var(--muted);margin:6px 2px 4px;">Энэ сарын ирц</div><div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 12px;">${dayList}${otherReqs}</div>` : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">Энэ сард ирц бүртгэгдээгүй байна.</div>'}
+    ${dayKeys.length || otherReqs ? `<div class="myatt-lh">Энэ сарын ирц</div><div class="myatt-list">${dayList}${otherReqs}</div>` : '<div class="myatt-none">Энэ сард ирц бүртгэгдээгүй байна.</div>'}
   </div>`;
 }
 function attachMyAttendHandlers() {
   attachClaimHandlers();   // ахлагч мэдүүлгийг энд батална
+  attachDashMore();         // «бусад (N)» гарах бүртгэлгүй өдрийн нугалаа
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
@@ -26090,6 +26378,17 @@ function openWriteoffModal(preSku) {
   };
   modal.classList.add('open');
 }
+/* Барааны дэлгэцийн тууз = НЭГ бүтэн (`.prod-bar`), өнгө нь tone-оор (2026-10-09). Өмнө нь тууз бүр 5 inline style +
+   хатуу rgba өнгөтэй, 7 тууз давхарлавал эхний бараа утсанд ~1000px доор байв. */
+function prodBar(tone, text, btn) { return `<div class="prod-bar t-${tone}"><span class="prod-bar-t">${text}</span>${btn}</div>`; }
+/* ГАНЦААРЧИЛСАН цэгцлэх ажлууд (ангилал · асар · англи нэр · хувилбар · архив) нэг нугалаанд. Эдгээр нь ХАМГИЙН ИХДЭЭ нэг удаагийн
+   шилжилт — «дараа нь өөрөө алга болно» — тул өдөр бүр бараа хайдаг хүний дэлгэцийг эзлэх ёсгүй. Тоо + юу байгааг нэрлэнэ
+   (нуувал хэн ч нээхгүй). Засвартай бараа, нэр тулгалт нь ҮРГЭЛЖИЙН дохио тул нугалаанд ОРОХГҮЙ. */
+function prodChoresHtml(items, open) {
+  const list = (items || []).filter(x => x && x.html);
+  if (!list.length) return '';
+  return `<details class="prod-chores" id="prod-chores"${open ? ' open' : ''}><summary class="prod-chores-sum">🧹 Цэгцлэх ажил <span class="prod-chores-n">${list.length}</span><span class="prod-chores-h">${escapeHtml(list.map(x => x.hint).join(' · '))}</span></summary><div class="prod-chores-in">${list.map(x => x.html).join('')}</div></details>`;
+}
 function renderProducts() {
   const all = state.products || [];
   // Сайтын ангиллын бүлгүүдийг нэг удаа lazy татна (dropdown-ыг сайтын бүлгээр харуулах)
@@ -26145,19 +26444,13 @@ function renderProducts() {
   // Хувилбар цэвэрлэх тууз — хуучин дата дээр л гарна, цуцалмагц өөрөө алга болно
   const _vgLeft = all.filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim()).length;
   const variantClearBar = (_prodMgmt && _vgLeft > 0)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🎨 ${_vgLeft} бараа хувилбар бүлэгт байна — сайтад нэг картад нэгтгэгдэж каталог цөөн харагдана.</span>
-        <button class="btn btn-primary" id="prod-clear-variants" style="white-space:nowrap;">Хувилбар цуцлах (${_vgLeft})</button>
-      </div>`
+    ? prodBar('primary', `🎨 ${_vgLeft} бараа хувилбар бүлэгт байна — сайтад нэг картад нэгтгэгдэж каталог цөөн харагдана.`, `<button class="btn btn-primary prod-bar-b" id="prod-clear-variants">Хувилбар цуцлах (${_vgLeft})</button>`)
     : '';
   // Англи нэр — үнийн саналын EN хувилбарт хэрэглэнэ. Хоосон нь толиор автоматаар
   // бөглөгдөж болно (дараа нь гараар засаж болно). Багана байхгүй бол тууз гарахгүй.
   const _noEnN = state._prodHasNameEn === false ? 0 : all.filter(p => !String(p.name_en || '').trim()).length;
   const nameEnBar = (_prodMgmt && _noEnN > 0)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🇬🇧 ${_noEnN} барааны англи нэр хоосон — англи үнийн саналд автомат орчуулга гарна.</span>
-        <button class="btn btn-primary" id="prod-fill-nameen" style="white-space:nowrap;">Англи нэр бөглөх (${_noEnN})</button>
-      </div>`
+    ? prodBar('info', `🇬🇧 ${_noEnN} барааны англи нэр хоосон — англи үнийн саналд автомат орчуулга гарна.`, `<button class="btn btn-primary prod-bar-b" id="prod-fill-nameen">Англи нэр бөглөх (${_noEnN})</button>`)
     : '';
   // Асрын каталог модуль болоогүй бол нэг товчоор цэгцэлнэ (дараа нь өөрөө алга болно)
   // Бүлэгт ороогүй ангилал — сайтын цэсэнд бүлгүүдийн доор тусдаа өлгөөтэй харагдана.
@@ -26165,31 +26458,19 @@ function renderProducts() {
   // хуучин үлдэгдлийг ил хэлж, нэг товчоор засах зам өгнө.
   const _orphanCats = _prodMgmt ? catOrphans(all, (Array.isArray(state.catGroups) && state.catGroups.length) ? state.catGroups : state.appCatGroups) : [];
   const orphanBar = _orphanCats.length
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:var(--warn-soft,rgba(217,119,6,.08));border:1px solid var(--warn);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🗂 <b>${_orphanCats.length}</b> ангилал сайтын бүлэгт ороогүй (${escapeHtml(_orphanCats.slice(0, 3).map(x => `${x.cat} ${x.count}ш`).join(' · '))}${_orphanCats.length > 3 ? ' …' : ''}) — mevent.mn дээр бүлгүүдийн доор тусдаа өлгөөтэй харагдана.</span>
-        <button class="btn btn-primary" id="prod-fix-cats" style="white-space:nowrap;">🗂 Бүлэгт оруулах</button>
-      </div>`
+    ? prodBar('warn', `🗂 <b>${_orphanCats.length}</b> ангилал сайтын бүлэгт ороогүй (${escapeHtml(_orphanCats.slice(0, 3).map(x => `${x.cat} ${x.count}ш`).join(' · '))}${_orphanCats.length > 3 ? ' …' : ''}) — mevent.mn дээр бүлгүүдийн доор тусдаа өлгөөтэй харагдана.`, `<button class="btn btn-primary prod-bar-b" id="prod-fix-cats">🗂 Бүлэгт оруулах</button>`)
     : '';
   const asarBar = (_prodMgmt && !asarSetupDone())
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү: модуль бараанууд үүсч, хуучин уртын бүртгэлүүд архивлагдаж, түүх нь шинэ бараа руу холбогдоно.</span>
-        <button class="btn btn-primary" id="prod-asar-setup" style="white-space:nowrap;">🏕 Асрыг модуль болгох</button>
-      </div>`
+    ? prodBar('ok', `🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү: модуль бараанууд үүсч, хуучин уртын бүртгэлүүд архивлагдаж, түүх нь шинэ бараа руу холбогдоно.`, `<button class="btn btn-primary prod-bar-b" id="prod-asar-setup">🏕 Асрыг модуль болгох</button>`)
     : '';
   // Хуучин асрын бүртгэл DB-д үлдсэн эсэх — архивласан нь каталогт ирдэггүй тул тусад нь асууна
   if (_prodMgmt && state._asarLeftover === undefined && asarSetupDone()) { state._asarLeftover = null; loadAsarLeftovers().then(() => render()); }
   const _leftN = Array.isArray(state._asarLeftover) ? state._asarLeftover.length : 0;
   const asarPurgeBar = (_prodMgmt && _leftN > 0)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🗑 Хуучин асрын <b>${_leftN}</b> бүртгэл (архивласан уртууд + хөрөнгийн давхардал) өгөгдлийн санд үлдсэн — хөрөнгийн дүн давхар тоологдож байна.</span>
-        <button class="btn" id="prod-asar-purge" style="white-space:nowrap;color:var(--danger);border-color:var(--danger);">🗑 Бүрмөсөн хасах (${_leftN})</button>
-      </div>`
+    ? prodBar('danger', `🗑 Хуучин асрын <b>${_leftN}</b> бүртгэл (архивласан уртууд + хөрөнгийн давхардал) өгөгдлийн санд үлдсэн — хөрөнгийн дүн давхар тоологдож байна.`, `<button class="btn prod-bar-b" id="prod-asar-purge">🗑 Бүрмөсөн хасах (${_leftN})</button>`)
     : '';
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
-        <button class="btn btn-primary" id="prod-return-nomaad" style="white-space:nowrap;">⇄ Бүгдийг 🎪 M-Event руу (${_nomaadSum}ш)</button>
-      </div>`
+    ? prodBar('ok', `⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.`, `<button class="btn btn-primary prod-bar-b" id="prod-return-nomaad">⇄ Бүгдийг 🎪 M-Event руу (${_nomaadSum}ш)</button>`)
     : '';
   // ── Засвартай бараа — эвдэрсэн бараа мартагдахгүй, өөрийн дамжлагатай ──
   const _rep = (state.repairs || []).filter(r => r && ['pending', 'in_progress'].includes(String(r.status)));
@@ -26221,14 +26502,8 @@ function renderProducts() {
   // Тулгалт бүрэн дууссан ч энэ тууз үлдэнэ, эс бөгөөс бэхжүүлэх гарц хаагдана.
   const _fz = _rec ? Object.keys(nameMatchedKeys(state.appOrders)).length : 0;
   const reconBar = (_rec && _rec.groups.length)
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(217,119,6,.10);border:1px solid rgba(217,119,6,.32);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🔗 <b>${_rec.groups.length}</b> нэр бараатай холбогдоогүй — <b>${fmtMoney(_rec.badAmt)}</b>-ийн түрээс тайланд ороогүй байна.</span>
-        <button class="btn btn-primary" id="prod-reconcile" style="white-space:nowrap;">Тулгах (${_rec.groups.length})</button>
-      </div>`
-    : (_fz ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(37,99,235,.09);border:1px solid rgba(37,99,235,.30);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🔒 <b>${_fz}</b> нэр зөвхөн <b>нэрээрээ</b> таарч байна — бараа нэрээ соливол тасарна.</span>
-        <button class="btn btn-primary" id="prod-reconcile" style="white-space:nowrap;">Бэхжүүлэх (${_fz})</button>
-      </div>` : '');
+    ? prodBar('warn', `🔗 <b>${_rec.groups.length}</b> нэр бараатай холбогдоогүй — <b>${fmtMoney(_rec.badAmt)}</b>-ийн түрээс тайланд ороогүй байна.`, `<button class="btn btn-primary prod-bar-b" id="prod-reconcile">Тулгах (${_rec.groups.length})</button>`)
+    : (_fz ? prodBar('info', `🔒 <b>${_fz}</b> нэр зөвхөн <b>нэрээрээ</b> таарч байна — бараа нэрээ соливол тасарна.`, `<button class="btn btn-primary prod-bar-b" id="prod-reconcile">Бэхжүүлэх (${_fz})</button>`) : '');
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = _prodCatOptsGrouped(cats, state.prodCategory);   // сайтын бүлгээр (optgroup)
@@ -26260,9 +26535,9 @@ function renderProducts() {
   const archiveBar = _arch.length ? `<div class="prod-arch">
       <div class="prod-arch-head">
         <span>🗄 Архивласан <b>${_arch.length}</b> бараа — каталог болон сайтад харагдахгүй</span>
-        <span style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="prod-arch-acts">
           <button class="btn" id="prod-arch-toggle">${state.archOpen ? 'Хаах' : 'Харах'}</button>
-          <button class="btn" id="prod-arch-purge" style="color:var(--danger);border-color:var(--danger);white-space:nowrap;">🗑 Бүрмөсөн устгах (${_arch.length})</button>
+          <button class="btn prod-arch-purge" id="prod-arch-purge">🗑 Бүрмөсөн устгах (${_arch.length})</button>
         </span>
       </div>
       ${state.archOpen ? `<div class="prod-arch-list">${_arch.map(a => `<div class="prod-arch-row">
@@ -26299,6 +26574,13 @@ function renderProducts() {
       <button class="btn btn-primary ui-raw" id="prod-wo-go"${picked.length ? '' : ' disabled'}>Үргэлжлүүлэх (${picked.length})</button>
     </div>`;
   }
+  /* Ховор хэрэгслүүд (Excel · Багц · Актлах) нугалаанд — өдөр бүрийн «хайх · скан · шинэ» мөрийг цэвэр байлгана.
+     ⚠ id-уудаар handler холбогддог тул нугалаанд ч DOM-д үлдэнэ. */
+  const toolsBar = `<details class="prod-tools" id="prod-tools"${state.prodToolsOpen ? ' open' : ''}><summary class="prod-tools-sum" title="Хэрэгсэл: Excel · Багц · Актлах" aria-label="Хэрэгсэл: Excel, Багц, Актлах">⋯</summary><div class="prod-tools-body">
+      <button class="btn" id="prod-xls" title="Дэлгэц дээр харагдаж буй барааг Excel-д татах">📊 Excel</button>
+      ${canEditProducts() ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
+      ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
+    </div></details>`;
   // Excel экспорт нь ХАРАГДАЖ БУЙ жагсаалтыг татна — шүүлтийн дүрмийг хоёр дахь
   // газарт давтвал дэлгэц ба файл зөрнө (нэг эх сурвалж).
   state._prodShown = list;
@@ -26307,11 +26589,8 @@ function renderProducts() {
   // Эхний бараа хүртэлх зай утасны дэлгэцийн ~50%-иас ~20% болно.
   return `
     <div class="prod-toolbar">
-      <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
-      <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
-      <button class="btn" id="prod-xls" title="Дэлгэц дээр харагдаж буй барааг Excel-д татах">📊 Excel</button>
-      ${canEditProducts() ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
-      ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
+      <input type="search" id="prod-search" class="prod-search" placeholder="Нэр, код, ангилал…" value="${escapeHtml(state.productSearch || '')}">
+      <button class="btn" id="prod-scan" title="QR скан" aria-label="QR скан">📷<span class="prod-scan-l"> Скан</span></button>
       ${canEditProducts() ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
     </div>
     ${woBar}
@@ -26320,14 +26599,9 @@ function renderProducts() {
       <span class="prod-meta-i" id="prod-count"><b>${list.length}</b> бараа</span>
       ${assetChip}
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
+      ${toolsBar}
     </div>
-    ${orphanBar}
-    ${asarBar}
-    ${asarPurgeBar}
-    ${archiveBar}
-    ${nameEnBar}
-    ${variantClearBar}
-    ${seasonCloseBar}
+    ${prodChoresHtml([{ hint: 'ангилал', html: orphanBar }, { hint: 'асар', html: asarBar }, { hint: 'асрын хуучин бүртгэл', html: asarPurgeBar }, { hint: 'архив', html: archiveBar }, { hint: 'англи нэр', html: nameEnBar }, { hint: 'хувилбар', html: variantClearBar }, { hint: 'улирал', html: seasonCloseBar }], state.prodChoresOpen)}
     ${repairBar}
     ${reconBar}
     <div class="prod-list">${rows ||'<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
@@ -26932,6 +27206,8 @@ function attachProductsHandlers() {
   // (Агуулахын доод салбар таб хасагдсан — толгойн ленз ГАНЦ удирдлага.)
   // Ангилал шүүлт + эрэмбэ
   document.getElementById('prod-filters')?.addEventListener('toggle', (e) => { state.prodFiltersOpen = e.target.open; });
+  document.getElementById('prod-tools')?.addEventListener('toggle', (e) => { state.prodToolsOpen = e.target.open; });
+  document.getElementById('prod-chores')?.addEventListener('toggle', (e) => { state.prodChoresOpen = e.target.open; });
   document.getElementById('prod-filters-clear')?.addEventListener('click', () => {
     state.prodCategory = 'all'; state.prodMissing = 'all'; state.prodSort = 'name'; render();
   });
@@ -27032,6 +27308,23 @@ function finStage(t) {
   }
   if (t.executed_at)       return { key: 'transferred',   label: 'Шилжүүлсэн',    mark: '💵', color: 'var(--primary)' };
   return                          { key: 'untransferred', label: 'Шилжүүлээгүй',  mark: '💸', color: 'var(--warn)' };
+}
+/* ШҮҮЛТҮҮРИЙН ЧИП (Ангилалгүй · Салбаргүй · Объектгүй · Баримтгүй · Хаагдаагүй) = ДУТУУ ТАЛБАР ШҮҮНЭ.
+   ⛔ Чип бүр ТООТОЙ (2026-10-09, CEO-гийн «Өртөг ба хөрөнгө»-ийн дүрэмтэй ижил) — тоогүй бол ажил хаана
+   байгааг хүн мэдэхгүй: 12 гүйлгээнээс хэд нь баримтгүйг мэдэхийн тулд чипийг дарж үзэх хэрэгтэй байв.
+   ⚠ Тоо нь ЧИПИЙН шүүлтээс ӨМНӨХ жагсаалтаас (дүн/эх данс/хүлээн авагчийн шүүлтийн дараа) — эс бөгөөс
+     нэг чип идэвхжихэд бусад чипийн тоо 0 болж утгагүй болно. Цэвэр функц — тестлэгдэнэ. */
+const FIN_FLAGS = {
+  nocat:    ['🏷 Ангилалгүй', t => !String(t.category || '').trim()],
+  nobranch: ['🏢 Салбаргүй',  t => !String(t.dept_branch || '').trim()],
+  nolink:   ['🔗 Объектгүй',  t => !t.link_type],
+  norcpt:   ['📝 Баримтгүй',  t => { const m = finStage(t).mark; return m === '📝' || m === '⚠'; }],
+  open:     ['⏳ Хаагдаагүй', t => t.status !== 'done'],
+};
+function finFlagCounts(list) {
+  const out = {};
+  Object.keys(FIN_FLAGS).forEach(k => { out[k] = (Array.isArray(list) ? list : []).filter(FIN_FLAGS[k][1]).length; });
+  return out;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -28043,18 +28336,22 @@ function reviewBlockHtml(orders) {
   const head = r => `<span class="rv-st">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
       <span class="rv-nm">#${escapeHtml(String(r.number ?? '—'))} ${escapeHtml(r.customer || '')}</span>
       <span class="rv-at">${escapeHtml(r.at || '')}</span>`;
-  const row = r => r.text
-    ? `<details class="rv-item"><summary class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}">${head(r)}<span class="rv-more">💬</span></summary>
-        <div class="rv-tx">${escapeHtml(r.text)}</div>
-        <button type="button" class="btn rv-go" data-rv-open="${escapeHtml(String(r.number ?? ''))}">→ Захиалга нээх</button></details>`
-    : `<div class="rv-row rv-plain${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}" data-rv-open="${escapeHtml(String(r.number ?? ''))}">${head(r)}</div>`;
+  /* ⛔ МУУ ҮНЭЛГЭЭ = АЖИЛ → сэтгэгдэлгүй ч нээгддэг, дотор нь ☎ «Залгах» (2026-10-09).
+     «Залгаж уучлал хүс» гэж хэлээд дугаарыг нь олох зам (мөр → захиалга → утас) 3 даралт
+     байв. Утас захиалгад л байдаг тул мөрөнд дамжуулна. Утасгүй бол товч ГАРАХГҮЙ. */
+  const tel = r => (r.phone && r.stars <= REVIEW_BAD_MAX) ? `<a class="btn rv-go rv-tel" href="tel:${escapeHtml(String(r.phone).replace(/[^0-9+]/g, ''))}">☎ Залгах</a>` : '';
+  const row = r => (r.text || r.stars <= REVIEW_BAD_MAX)
+    ? `<details class="rv-item"><summary class="rv-row${r.stars <= REVIEW_BAD_MAX ? ' bad' : ''}">${head(r)}<span class="rv-more">${r.text ? '💬' : (r.phone ? '☎' : '▸')}</span></summary>
+        <div class="rv-tx">${r.text ? escapeHtml(r.text) : 'Сэтгэгдэл бичээгүй'}</div>
+        <div class="rv-acts">${tel(r)}<button type="button" class="btn rv-go" data-rv-open="${escapeHtml(String(r.number ?? ''))}">→ Захиалга нээх</button></div></details>`
+    : `<div class="rv-row rv-plain" data-rv-open="${escapeHtml(String(r.number ?? ''))}">${head(r)}<span class="rv-more" aria-hidden="true"></span></div>`;
   // Муу үнэлгээ нь АЖИЛ — эхэнд. Бусад нь шинээр нь.
   const show = [...st.bad, ...st.rows.filter(r => r.stars > REVIEW_BAD_MAX)];
   return `<div class="rv-card">
     <div class="rv-head">★ Хэрэглэгчийн үнэлгээ
       <span class="rv-sum">${st.avg} дундаж · ${st.n} хариулт</span></div>
     ${st.bad.length ? `<div class="rv-warn">${st.bad.length} хүн сэтгэл дундуур байна — залгаж уучлал хүс.</div>` : ''}
-    ${show.map(row).join('')}
+    ${dashListHtml('rv', show.map(row), Math.max(5, st.bad.length))}
   </div>`;
 }
 // Сарын өдөр бүрийн задаргаа. Цэвэр функц — тестлэгдэнэ.
@@ -28149,6 +28446,20 @@ function stuckOrders(orders, today) {
    «📵 Алдсан дуудлага» дэлгэцийн шийдэгдээгүй мөрүүд — ИЖИЛ дүрэм
    (`pbxFollowups` → `pbxOpenCalls`), тусад нь бодохгүй. Мөр дарахад тэр
    дэлгэц нээгдэнэ (ярьсан/аваагүй тэмдэглэх нь тэнд). */
+/* ⛔ ТОЙМЫН ЖАГСААЛТ = эхний N мөр, үлдсэн нь «бусад» дарахад ТЭР ДОР нээгдэнэ (2026-10-09).
+   Өмнө нь `max-height + overflow-y:auto` — утсанд хуудас доторх ХОЁР ДАХЬ гүйлгэлт
+   үүсч, гүйлгэх хуруу жагсаалтад «гацдаг», нэг муу өдөр гурван блок эхний
+   дэлгэцийн 1000px-ээс илүүг эзэлж календарь, цагтаа хүрсэн хувь хүрэх аргагүй
+   болдог байв. Нээлттэй/хаалттай байдал `state.dashMore`-д (render() дахин зурахад
+   хүн нээсэн жагсаалт хаагдахгүй). */
+const DASH_LIST_SHOW = 3;
+function dashListHtml(key, rows, show) {
+  const n = show || DASH_LIST_SHOW;
+  if (rows.length <= n) return rows.join('');
+  const open = !!(state.dashMore && state.dashMore[key]);
+  return rows.slice(0, n).join('')
+    + `<details class="dash-more" data-dash-more="${key}"${open ? ' open' : ''}><summary class="dash-more-sum">бусад (${rows.length - n})</summary>${rows.slice(n).join('')}</details>`;
+}
 function missedBlockHtml() {
   if (typeof canSeeMissedCalls !== 'function' || !canSeeMissedCalls()) return '';
   if (!Array.isArray(state.pbxLog) || !Array.isArray(state.pbxCb)) {
@@ -28160,13 +28471,13 @@ function missedBlockHtml() {
   const open = pbxOpenCalls(f, state.pbxCb, state.appOrders || []).filter(x => !x.done).sort(pbxByRecent);
   if (!open.length) return `<div class="rv-card mcd-card mcd-ok" data-mcd-go="1" role="button" tabindex="0">✓ Буцаж залгах дуудлага алга</div>`;
   const idx = pbxNameIndex(state.customers || [], state.appOrders || []);
-  const rows = open.slice(0, 6).map(r => {
+  const rows = open.slice(0, DASH_LIST_SHOW).map(r => {
     const w = pbxWho(r.peer, idx);
     return `<button type="button" class="mcd-row ui-raw" data-mcd-go="1">
       <span class="mcd-main"><span class="mcd-name">${escapeHtml(w.name || r.peer)}</span><span class="mcd-meta">${w.name ? escapeHtml(r.peer) + ' · ' : ''}${r.tries > 1 ? r.tries + ' удаа залгасан · ' : ''}${escapeHtml(ubStamp(r.last))}</span></span>
       ${w.orders ? `<span class="mcd-tag">🛒 ${w.orders}</span>` : ''}</button>`;
   }).join('');
-  const more = open.length > 6 ? `<button type="button" class="mcd-more ui-raw" data-mcd-go="1">+${open.length - 6} бусад — бүгдийг харах</button>` : '';
+  const more = open.length > DASH_LIST_SHOW ? `<button type="button" class="mcd-more ui-raw" data-mcd-go="1">+${open.length - DASH_LIST_SHOW} бусад — бүгдийг харах</button>` : '';
   return `<div class="rv-card mcd-card">
     <div class="rv-head">📵 Буцаж залгаагүй дуудлага <span class="rv-sum">${open.length} · сүүлийн ${MISSED_DAYS} хоног</span></div>
     <div class="mcd-list">${rows}</div>${more}
@@ -28217,7 +28528,7 @@ function arBlockHtml(orders) {
     </div>`;
   return `<div class="rv-card stk-card">
     <div class="rv-head">💰 Авлага нэхэх <span class="rv-sum">${open.length} хүн · ${fmtMoney(sum)}</span></div>
-    <div class="stk-list">${rows.map(row).join('')}</div>
+    <div class="stk-list">${dashListHtml('ar', rows.map(row))}</div>
   </div>`;
 }
 async function arMarkCalled(id) {
@@ -28237,10 +28548,10 @@ function stuckBlockHtml(orders) {
   const rows = list.map(r => `<button type="button" class="stk-row ui-raw" data-rv-open="${escapeHtml(String(r.number ?? ''))}">
       <span class="stk-no">#${escapeHtml(String(r.number ?? ''))}</span>
       <span class="stk-main"><span class="stk-cust">${escapeHtml(r.customer || '—')}</span><span class="stk-step">хүлээж буй: ${escapeHtml(r.label)}</span></span>
-      <span class="stk-late">${r.late} хоног</span></button>`).join('');
+      <span class="stk-late">${r.late} хоног</span></button>`);
   return `<div class="rv-card stk-card">
     <div class="rv-head">⏳ Гацсан захиалга <span class="rv-sum">${list.length} · дараагийн алхам хугацаанаасаа хоцорсон</span></div>
-    <div class="stk-list">${rows}</div>
+    <div class="stk-list">${dashListHtml('stk', rows)}</div>
   </div>`;
 }
 function dispatchBlockHtml(orders) {
@@ -28258,7 +28569,9 @@ function dispatchBlockHtml(orders) {
   const prev = series.find(m => m.ym === dspMonthShift(ym, -1));
   const d = (st.pct !== null && prev && prev.pct !== null && prev.n >= DSP_THIN_N) ? st.pct - prev.pct : null;
   const delta = d === null ? ''
-    : `<span class="dsp-delta ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '▲ +' : d < 0 ? '▼ −' : '= '}${Math.abs(d)} нэгж · ${escapeHtml(dspMonthLabel(prev.ym, cur))} ${prev.pct}%</span>`;
+    : d === 0
+      ? `<span class="dsp-delta">= өөрчлөлтгүй · ${escapeHtml(dspMonthLabel(prev.ym, cur))} ${prev.pct}%</span>`   // «= 0 нэгж» гэдэг нь юу гэсэн үг нь ойлгомжгүй байв. ⚠ Дагавар («сартай») бүү залга — «2025-12»-д зөв бичигдэхгүй
+      : `<span class="dsp-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲ +' : '▼ −'}${Math.abs(d)} нэгж · ${escapeHtml(dspMonthLabel(prev.ym, cur))} ${prev.pct}%</span>`;
   const body = st.n
     ? `<div class="dsp-row"><span class="dsp-big ${cls}">${st.pct}%</span>
         <span class="dsp-meta">${delta}<span>${st.late ? `${st.late}/${st.n} хоцорсон · дундаж ${st.avgLate}ц` : `${st.n} хүргэлт · бүгд цагтаа`}${unm ? ' · ' + unmTxt : ''}</span></span></div>`
@@ -28277,6 +28590,12 @@ function dispatchBlockHtml(orders) {
     ${chart}
   </div>`;
 }
+// «бусад (N)» нугалаа нээсэн төлөвөө state.dashMore-д хадгална (render() дахин зурахад хаагдахгүй)
+function attachDashMore(root) {
+  (root || document).querySelectorAll('[data-dash-more]').forEach(d => d.addEventListener('toggle', () => {
+    (state.dashMore = state.dashMore || {})[d.dataset.dashMore] = d.open;
+  }));
+}
 function attachReviewBlock(root) {
   // ⛔ Хамгийн муу захиалгын ЖАГСААЛТ Тойм дээр БАЙХГҮЙ — зөвхөн Дүн шинжилгээнд.
   //    Нэг жагсаалт хоёр газар байвал аль нь бүтэн болох нь мэдэгдэхгүй.
@@ -28290,6 +28609,7 @@ function attachReviewBlock(root) {
   const _dspGo = () => { state.reportMonth = (_dspCard && _dspCard.dataset.dspYm) || todayStr().slice(0, 7); state.view = 'reports'; state.reportsTab = 'reports'; render(); };
   _dspCard?.addEventListener('click', _dspGo);
   _dspCard?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _dspGo(); } });
+  attachDashMore(root);
   (root || document).querySelectorAll('[data-rv-open]').forEach(el => el.addEventListener('click', () => {
     if (!canSeeOrders()) return;
     state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.rvOpen; render();
@@ -28304,7 +28624,7 @@ function reviewStats(orders) {
     if (!o || !_orderActive(o)) return;
     const r = orderReview(o);
     if (!r) return;
-    rows.push({ id: o.id, number: o.number, customer: String(o.customer || ''), stars: r.stars, text: r.text, at: r.at });
+    rows.push({ id: o.id, number: o.number, customer: String(o.customer || ''), phone: String(o.phone || ''), stars: r.stars, text: r.text, at: r.at });
   });
   rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
   const n = rows.length;
@@ -30757,7 +31077,7 @@ function bqOrderCard(o) {
   // Ашиг = захиалгын дүн (accrual) − холбогдсон зардал (зөвхөн бүх санхүү хардаг хүнд)
   const _oExp = (isApp && canSeeProfit()) ? linkedExpenseSum('order', o.id) : { n: 0, sum: 0 };
   const profitRow = _oExp.n
-    ? `<div class="order-meta">Зардал (${_oExp.n}): <b>${fmtMoney(_oExp.sum)}</b> · Ашиг: <b style="color:${(total - _oExp.sum) >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(total - _oExp.sum)}</b></div>`
+    ? `<div class="order-meta">Зардал (${_oExp.n}): <b>${fmtMoney(_oExp.sum)}</b> · Ашиг: <b class="${(total - _oExp.sum) >= 0 ? 'ord-pos' : 'ord-neg'}">${fmtMoney(total - _oExp.sum)}</b></div>`
     : '';
   // Төлбөрийн самбар — Төлсөн · Үлдэгдэл тод хайрцгаар (нийт нь толгойд бий). Цуцлахад нуух.
   // PDF банкны баримтаар бүртгэсэн орлого — шилжүүлэгч/баримт/огноо (самбар дотор дэд мөр).
@@ -30782,7 +31102,7 @@ function bqOrderCard(o) {
   // Байгууллагын нэр толгойд гарсан бол энд ДАВТАХГҮЙ (нэг мэдээлэл хоёр газар = нүд төөрнө)
   const _ciCo = (_ci.company && _ci.company !== orderCustName(o)) ? _ci.company : '';
   const ciHtml = (isApp && (_ciCo || _ci.reg || _ciContact || _ci.maps))
-    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ciCo ? `🏢 ${escapeHtml(_ciCo)}` : ''}${_ci.reg ? `${_ciCo ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
+    ? `<div class="order-meta order-ci">${_ciCo ? `🏢 ${escapeHtml(_ciCo)}` : ''}${_ci.reg ? `${_ciCo ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = orderOwed(o);
@@ -30795,16 +31115,16 @@ function bqOrderCard(o) {
   { const req = cancelReqOf(o.note);
     // Ноорог = шууд устгана. Бусад идэвхтэй захиалгад товчны НЭР төлбөрөөр шийдэгдэнэ
     // (эрх/батлуулах урсгал хэвээр — мөнгөгүй ч баталгаажсан захиалгыг дур мэдэн хаахгүй).
-    if (st === 'draft') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseLabel(o)}</button>` : ''; }
+    if (st === 'draft') { cxHtml = can('orders.cancel') ? `<button class="btn ofb ofb-danger" data-app-del="${id}">${orderCloseLabel(o)}</button>` : ''; }
     // «Больсон» = буцаах боломжтой байх ЁСТОЙ. Өмнө нь зөвхөн жагсаалтын багц-сонголтоор
     // сэргээдэг байсан тул бүрэн ТӨЛӨГДСӨН захиалга (төлбөрийн товч гарахгүй) гацдаг байв.
-    else if (st === 'deleted') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-restore="${id}" style="padding:5px 11px;font-size:12px;">↩ Сэргээх</button>` : ''; }
+    else if (st === 'deleted') { cxHtml = can('orders.cancel') ? `<button class="btn ofb" data-app-restore="${id}">↩ Сэргээх</button>` : ''; }
     else if (st !== 'canceled' && st !== 'deleted' && appActive) {
       if (req) {
-        cxHtml = `<span style="font-size:11.5px;color:#9a6a00;font-weight:700;">⏳ Цуцлах хүсэлт${req.by ? ' · ' + escapeHtml(memberName(req.by) || req.by) : ''}${req.reason ? ' — ' + escapeHtml(req.reason) : ''}</span>`;
-        if (state.isCEO) cxHtml += `<button class="btn" data-cx-approve="${id}" style="padding:5px 11px;font-size:12px;color:#fff;background:var(--danger);border-color:var(--danger);">✓ Цуцлахыг батлах</button><button class="btn" data-cx-reject="${id}" style="padding:5px 11px;font-size:12px;">✕ Татгалзах</button>`;
-      } else if (state.isCEO) { cxHtml = `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseLabel(o)}</button>`; }
-      else if (can('orders.cancel')) { cxHtml = `<button class="btn" data-cx-request="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseAction(o) === 'deleted' ? '🗑 Устгах хүсэлт' : '✕ Цуцлах хүсэлт'}</button>`; }
+        cxHtml = `<span class="order-cx-req">⏳ Цуцлах хүсэлт${req.by ? ' · ' + escapeHtml(memberName(req.by) || req.by) : ''}${req.reason ? ' — ' + escapeHtml(req.reason) : ''}</span>`;
+        if (state.isCEO) cxHtml += `<button class="btn ofb ofb-danger-solid" data-cx-approve="${id}">✓ Цуцлахыг батлах</button><button class="btn ofb" data-cx-reject="${id}">✕ Татгалзах</button>`;
+      } else if (state.isCEO) { cxHtml = `<button class="btn ofb ofb-danger" data-bq-cancel="${id}">${orderCloseLabel(o)}</button>`; }
+      else if (can('orders.cancel')) { cxHtml = `<button class="btn ofb ofb-danger" data-cx-request="${id}">${orderCloseAction(o) === 'deleted' ? '🗑 Устгах хүсэлт' : '✕ Цуцлах хүсэлт'}</button>`; }
     }
   }
   // ⚠ «Больсон» (deleted)-д ч төлбөр бүртгэнэ — мөнгө орсон нь «хэлцэл больсон» гэдэг БУРУУ байсны
@@ -30814,7 +31134,7 @@ function bqOrderCard(o) {
   const advCap = next ? (next.cap || 'orders.advance') : null;
   const advOk = next ? canStage(advCap) : false;
   const advBtn = (next && st !== 'draft')
-    ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
+    ? `<button class="btn ofb${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'}>${next.label}</button>`
     : '';
   const foot = isApp
     ? (() => {
@@ -30833,33 +31153,33 @@ function bqOrderCard(o) {
         }));
         const rows = { pri: [], more: [] };
         const add = (k, html) => { if (html) rows[PRI.has(k) ? 'pri' : 'more'].push(html); };
-        add('pay', appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : '');
+        add('pay', appCanPay ? `<button class="btn ofb btn-primary" data-bq-pay="${id}">💵 Төлбөр бүртгэх</button>` : '');
         add('advance', advBtn);
-        add('scan', ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : '');
-        add('damage', ['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : '');
-        add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
-        add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : '');
+        add('scan', ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn ofb" data-bq-scan="${id}">📷 Скан</button>` : '');
+        add('damage', ['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn ofb" data-app-damage="${id}">⚠ Эвдрэл</button>` : '');
+        add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
+        add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb" data-app-cmp="${id}">↩️ Буулгалт</button>` : '');
         add('credit', (canCreditOrder() && (Number(o.paid_mnt) || 0) <= 0 && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length))
-          ? `<button class="btn ord-btn-s${_cred ? '' : (st === 'draft' ? ' btn-primary' : '')}" data-app-credit="${id}" title="${_cred ? 'Төлөх огноог сунгана (зөвшөөрлийг устгах боломжгүй)' : 'Төлбөр ороогүй ч гаргахыг зөвшөөрнө — буцаах боломжгүй'}">💳 ${_cred ? 'Хугацаа сунгах' : 'Дараа төлбөрөөр зөвшөөрөх'}</button>` : '');
-        add('note', `<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>`);
-        add('contract', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : '');
-        add('edit', appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : '');
-        add('quote', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : '');
-        add('invoice', st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-invoice="${id}" style="padding:5px 11px;font-size:12px;" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : '');
+          ? `<button class="btn ofb ord-btn-s${_cred ? '' : (st === 'draft' ? ' btn-primary' : '')}" data-app-credit="${id}" title="${_cred ? 'Төлөх огноог сунгана (зөвшөөрлийг устгах боломжгүй)' : 'Төлбөр ороогүй ч гаргахыг зөвшөөрнө — буцаах боломжгүй'}">💳 ${_cred ? 'Хугацаа сунгах' : 'Дараа төлбөрөөр зөвшөөрөх'}</button>` : '');
+        add('note', `<button class="btn ofb" data-app-note="${id}" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>`);
+        add('contract', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn ofb" data-app-contract="${id}">📜 Гэрээ</button>` : '');
+        add('edit', appEditable ? `<button class="btn ofb" data-app-edit="${id}">✎ Засах</button>` : '');
+        add('quote', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn ofb" data-app-quote="${id}">📄 Үнийн санал</button>` : '');
+        add('invoice', st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb" data-app-invoice="${id}" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : '');
         add('cancel', cxHtml);   // ⛔ цуцлах/устгах ҮРГЭЛЖ «Бусад» дотор — санамсаргүй дарагдахгүй
         return `<div class="order-foot">${rows.pri.join('')}${rows.more.length
           ? `<details class="ord-more"><summary class="ord-more-s">⋯ Бусад (${rows.more.length})</summary><div class="ord-more-row">${rows.more.join('')}</div></details>`
           : ''}</div>`;
       })()
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
-    ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
-    ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
-    ${canScan ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}
-    ${canCancel ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;">${orderCloseLabel(o)}</button>` : ''}
+    ${canPay ? `<button class="btn ofb btn-primary" data-bq-pay="${id}">💵 Төлбөр</button>` : ''}
+    ${next ? `<button class="btn ofb${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}">${next.label}</button>` : ''}
+    ${canScan ? `<button class="btn ofb" data-bq-scan="${id}">📷 Скан</button>` : ''}
+    ${canCancel ? `<button class="btn ofb" data-bq-cancel="${id}">${orderCloseLabel(o)}</button>` : ''}
   </div>` : '');
   // Бараа: app бол inline (o.items), түүхэн бол lazy toggle + баримт
   const itemsSection = isApp
-    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''} style="margin-top:6px;"><summary class="order-items-toggle" style="cursor:pointer;">▸ ${o.items.length} бараа</summary><div style="padding:4px 0;">${o.items.map(it => `<div class="order-meta" style="display:flex;justify-content:space-between;gap:8px;"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span style="color:var(--muted);">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta" style="margin-top:4px;color:var(--muted);">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
+    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''}"><summary class="order-items-toggle">▸ ${o.items.length} бараа</summary><div class="order-items-list">${o.items.map(it => `<div class="order-meta oi-row"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span class="oi-amt">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta oi-dep">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
     : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
@@ -30880,7 +31200,7 @@ function bqOrderCard(o) {
   // ⭐ Барьцаа буцаах ДАНС — орлогын PDF-ээс уншсан шилжүүлэгчийн данс (`paid_ref`).
   // Барьцаа нь ирсэн данс руугаа буцах ёстой; ажилтан данс хайж явахгүйн тулд картад шууд.
   // Зөвхөн БУЦААГААГҮЙ барьцаанд харагдана (буцаасны дараа хэрэггүй, картыг чихэхгүй).
-  const _depOpen = (_dep > 0 && !_depRet && isApp && _cardMoney);   // буцаах ёстой барьцаа
+  const _depOpen = (_dep > 0 && !_depRet && isApp && _cardMoney && ORDER_DONE_ST.has(st));   // буцаах ёстой барьцаа
   const _depAccts = _depOpen
     ? parsePaidRef(o.paid_ref).filter(r => refundAcctDigits(r.acct))
       .map(r => ({ acct: r.acct.trim(), sender: (r.sender || '').trim(), bank: refundBankOf(r.memo) }))
@@ -30902,7 +31222,7 @@ function bqOrderCard(o) {
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${credBadge}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${credBadge}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span class="order-src-new">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(orderCustName(o) || '?')}</b>${_custPerson ? ` · <span class="order-rep">👤 ${escapeHtml(_custPerson)}</span>` : ''}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
@@ -30910,12 +31230,12 @@ function bqOrderCard(o) {
     ${ciHtml}
     ${delivMeta}
     ${offMeta}
-    ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
+    ${isApp && o.contract_no ? `<div class="order-meta">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
-    ${o.created_at ? `<div class="order-meta">📥 Захиалга ирсэн: <b>${escapeHtml(String(o.created_at).slice(0, 10))}</b>${(() => { const ld = orderLeadDays(o); return ld == null ? '' : ` · арга хэмжээнээс <b>${ld} хоногийн өмнө</b>${ld === 0 ? ' (тэр өдрөө!)' : ld <= 2 ? ' ⚠ хэт дөхөж' : ''}`; })()}</div>` : ''}
+    ${o.created_at ? `<div class="order-meta">📥 Ирсэн <b>${escapeHtml(String(o.created_at).slice(0, 10))}</b>${(() => { const ld = orderLeadDays(o); return ld == null ? '' : ` · эвентээс <b>${ld} хоногийн өмнө</b>${ld === 0 ? ' (тэр өдрөө!)' : ld <= 2 ? ' ⚠ хэт дөхөж' : ''}`; })()}</div>` : ''}
     ${_cardMoney ? payPanel : ''}
     ${_dep > 0 ? (_cardMoney
-      ? `<div class="dep-row">${depBadge}<span style="color:var(--muted);font-size:var(--fs-sm);margin-left:8px;" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b style="color:var(--text);">${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>${depAcctHtml}`
+      ? `<div class="dep-row">${depBadge}<span class="dep-sales" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b>${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>${depAcctHtml}`
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
@@ -30924,10 +31244,10 @@ function bqOrderCard(o) {
     ${(() => { const _e = orderEditsOf(o); if (!_e.length) return ''; const _l = _e[_e.length - 1];
       return `<div class="order-meta order-edits" title="${escapeHtml(_e.map(x => `${String(x.at || '').slice(0, 10)} · ${memberName(x.by) || x.by || '?'} — ${x.reason || ''}`).join('\n'))}">✎ Засварласан: ${escapeHtml(String(_l.reason || ''))} <span class="order-note-by">— ${escapeHtml(memberName(_l.by) || _l.by || '?')} · ${escapeHtml(String(_l.at || '').slice(0, 10))}${_e.length > 1 ? ` · +${_e.length - 1}` : ''}</span></div>`; })()}
     ${(() => { const _n = lastOrderNote(o); if (!_n) return ''; const _cnt = orderNotesOf(o).length; return `<div class="order-meta order-note">📝 ${escapeHtml(_n.text)} <span class="order-note-by">— ${escapeHtml(memberName(_n.by) || _n.by || '?')} · ${escapeHtml(String(_n.at || '').slice(0, 10))}${_cnt > 1 ? ` · +${_cnt - 1}` : ''}</span></div>`; })()}
-    ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span style="color:var(--muted);">(орлогоос хасагдсан)</span></div>` : ''; })()}
+    ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span>(орлогоос хасагдсан)</span></div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
-    ${['canceled', 'deleted'].includes(st) && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">${st === 'deleted' ? '🚫 Больсон' : '❌ Цуцлах'} шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
+    ${['canceled', 'deleted'].includes(st) && isApp && cancelReasonOf(o.note) ? `<div class="order-meta order-cx-why">${st === 'deleted' ? '🚫 Больсон' : '❌ Цуцлах'} шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${_smHtml ? '' : slogHtml}
     ${_smHtml}
     ${itemsSection}
@@ -32293,7 +32613,7 @@ function openRefundModal(oid) {
     <textarea id="rf-note" class="ui-raw" rows="2" placeholder="ж: захиалга цуцлагдсан, илүү төлөлт буцаав"></textarea>
     <div class="modal-actions">
       <button class="btn" id="rf-cancel">Болих</button>
-      <button class="btn btn-primary" id="rf-save">↩ Буцаан олгосныг бүртгэх</button>
+      <button class="btn btn-primary" id="rf-save" title="Буцаан олгосон гүйлгээг бүртгэх">↩ Бүртгэх</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -39852,18 +40172,18 @@ function vatOrderRow(orderNo, orderTotal, type) {
   if (!vatCanManage()) return '';
   const info = vatForOrder(orderNo);
   const tot = Number(orderTotal) || 0;
-  const attachBtn = `<button onclick="openVatAttachFor('${type || 'nomaad'}','${escapeHtml(String(orderNo))}')" style="border:1px dashed #1e7a55;background:#f4faf6;color:#1e7a55;border-radius:7px;padding:2px 9px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">🧾 НӨАТ баримт ${info.count ? 'засах' : 'холбох'}</button>`;
-  if (!info.count) return `<div class="order-meta" style="margin-top:4px;">${attachBtn}</div>`;
+  const attachBtn = `<button onclick="openVatAttachFor('${type || 'nomaad'}','${escapeHtml(String(orderNo))}')" class="vat-attach-btn">🧾 НӨАТ баримт ${info.count ? 'засах' : 'холбох'}</button>`;
+  if (!info.count) return `<div class="order-meta vat-row">${attachBtn}</div>`;
   const tol = 0.5;
   const over = tot > 0 && info.invoiced > tot + tol;
   const full = tot > 0 && !over && info.invoiced + tol >= tot;
   let statusHtml = '';
   if (tot > 0) {
-    if (over) statusHtml = ` · <b style="color:var(--danger);">⚠ Илүү ${fmtMoney(info.invoiced - tot)}</b>`;
-    else if (full) statusHtml = ` · <b style="color:var(--ok);">Бүрэн шивсэн</b>`;
-    else statusHtml = ` · <b style="color:#9a6a00;">⚠ Дутуу ${fmtMoney(tot - info.invoiced)}</b>`;
+    if (over) statusHtml = ` · <b class="vat-over">⚠ Илүү ${fmtMoney(info.invoiced - tot)}</b>`;
+    else if (full) statusHtml = ` · <b class="vat-full">Бүрэн шивсэн</b>`;
+    else statusHtml = ` · <b class="vat-short">⚠ Дутуу ${fmtMoney(tot - info.invoiced)}</b>`;
   }
-  return `<div class="order-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b style="color:#1e7a55;">${fmtMoney(info.vat)}</b>${statusHtml} ${attachBtn}</div>`;
+  return `<div class="order-meta vat-row vat-row-sum">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b class="vat-amt">${fmtMoney(info.vat)}</b>${statusHtml} ${attachBtn}</div>`;
 }
 
 // Захиалгаас шууд НӨАТ баримт холбох (реверс тулгалт)
@@ -40449,10 +40769,10 @@ function renderFinanceReport(wrap) {
 
   // ── Толгой: сар сонгох + нийт дүн ──
   const head = document.createElement('div');
-  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
-  head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
-    + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month} <span style="font-size:11px;font-weight:600;color:var(--muted);">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
-    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${_LD.txn.n} зардал · <b style="color:var(--text);">${fmtMoney(_LD.txn.amt)}</b> (ноогдох сараар)${(() => {
+  head.className = 'fin-mhead';   // дизайны гэрээ: inline style биш класс
+  head.innerHTML = `<button class="btn fin-mnav" data-fin-month="-1" aria-label="Өмнөх сар">‹</button>`
+    + `<div class="fin-mtxt"><div class="fin-mttl">${month} <span class="fin-mbr">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
+    + `<div class="fin-msub">${_LD.txn.n} зардал · <b>${fmtMoney(_LD.txn.amt)}</b> (ноогдох сараар)${(() => {
         // Зардлаас гадуур мөр БҮР нэрээр — «Нийт гарсан мөнгө»-тэй тулгахад (2026-10-05)
         const bits = [];
         if (_LD.deposit.n) bits.push(`барьцаа буцаалт ${fmtMoney(_LD.deposit.amt)} (${_LD.deposit.n})`);
@@ -40460,9 +40780,9 @@ function renderFinanceReport(wrap) {
         if (_LD.loan.n) bits.push(`эзний зээл ${fmtMoney(_LD.loan.amt)} (${_LD.loan.n})`);
         if (_LD.pending.n) bits.push(`хүлээгдэж буй ${fmtMoney(_LD.pending.amt)} (${_LD.pending.n})`);
         const out = _LD.gross.n - _LD.txn.n;
-        return bits.length ? `<br><span style="font-size:11px;">${out} мөр зардлаас гадуур: ${bits.join(' · ')}</span>` : '';
+        return bits.length ? `<br><span class="fin-mout">${out} мөр зардлаас гадуур: ${bits.join(' · ')}</span>` : '';
       })()}</div></div>`
-    + `<button class="btn" data-fin-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>`;
+    + `<button class="btn fin-mnav" data-fin-month="1" aria-label="Дараагийн сар"${month >= curMonth ? ' disabled' : ''}>›</button>`;
   wrap.appendChild(head);
   head.querySelectorAll('[data-fin-month]').forEach(b => b.addEventListener('click', () => {
     const [y, m] = state.finReportMonth.split('-').map(Number);
@@ -40620,10 +40940,10 @@ function renderFinanceReport(wrap) {
     }).filter(c => c.nr > 0).sort((a, b) => b.nr - a.nr);
     const barCol = (p) => p >= 50 ? 'var(--danger)' : p >= 20 ? 'var(--warn)' : 'var(--ok)';
     const panel = document.createElement('div');
-    panel.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:16px;background:var(--panel);';
-    let html = `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">`
-      + `<span style="font-weight:800;font-size:13px;">📝 Баримтын хяналт <span style="color:var(--muted);font-weight:400;font-size:11px;">· дууссан зардал</span></span>`
-      + `<span style="font-weight:800;font-size:15px;color:${barCol(pct)};">${pct}% баримтгүй</span></div>`
+    panel.className = 'fin-rcpt';
+    let html = `<div class="fin-rcpt-h">`
+      + `<span class="fin-rcpt-t">📝 Баримтын хяналт <span class="fin-rcpt-s">· дууссан зардал</span></span>`
+      + `<span class="fin-rcpt-pct" style="color:${barCol(pct)};">${pct}% баримтгүй</span></div>`
       + `<div style="font-size:11.5px;color:var(--muted);margin:2px 0 ${cats.length ? '11px' : '0'};">${fmtMoney(nrTotal)} / ${fmtMoney(doneTotal)} · ${nrList.length}/${doneList.length} хүсэлт</div>`;
     cats.forEach(c => {
       html += `<div style="margin-bottom:7px;">`
@@ -40644,42 +40964,35 @@ function renderFinanceReport(wrap) {
   // ── ШҮҮЛТҮҮР — дүн / эх данс / шинж (ангилалгүй г.м.) / хүлээн авагч / эрэмбэ ──
   const F = state.finF = state.finF || { min: 0, src: '', flags: [], ben: '', sort: '' };
   const srcOf = (t) => { const m = /импортолсон \(([^)]+)\)/.exec(String(t.desc || '')); return m ? m[1] : ''; };
-  const FLAGS = {
-    nocat:    ['🏷 Ангилалгүй', t => !String(t.category || '').trim()],
-    nobranch: ['🏢 Салбаргүй',  t => !String(t.dept_branch || '').trim()],
-    nolink:   ['🔗 Объектгүй',  t => !t.link_type],
-    norcpt:   ['📝 Баримтгүй',  t => { const m = finStage(t).mark; return m === '📝' || m === '⚠'; }],
-    open:     ['⏳ Хаагдаагүй', t => t.status !== 'done'],
-  };
-  const flt = shown.filter(t => (Number(t.amount) || 0) >= (F.min || 0)
+  const FLAGS = FIN_FLAGS;
+  const flBase = shown.filter(t => (Number(t.amount) || 0) >= (F.min || 0)   // чипийн шүүлтээс ӨМНӨХ жагсаалт — чипийн тоо эндээс
     && (!F.src || (F.src === '__manual' ? !srcOf(t) : srcOf(t) === F.src))
-    && (!F.ben || String(t.beneficiary || '').trim() === F.ben)
-    && (F.flags || []).every(k => FLAGS[k] && FLAGS[k][1](t)));
+    && (!F.ben || String(t.beneficiary || '').trim() === F.ben));
+  const flagN = finFlagCounts(flBase);
+  const flt = flBase.filter(t => (F.flags || []).every(k => FLAGS[k] && FLAGS[k][1](t)));
   const fActive = !!(F.min || F.src || F.ben || (F.flags || []).length || F.sort);
   const fbar = document.createElement('div');
-  fbar.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 10px;';
-  const selCss = 'padding:6px 8px;font-size:12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--panel);color:var(--text);max-width:46vw;';
-  const chipCss = (on) => `padding:5px 10px;font-size:11.5px;border-radius:14px;cursor:pointer;border:1px solid ${on ? 'var(--primary)' : 'var(--border-strong)'};background:${on ? 'var(--primary)' : 'var(--panel)'};color:${on ? '#fff' : 'var(--text)'};`;
+  fbar.className = 'ff-bar';   // дизайны гэрээ: inline style биш класс (.ff-bar / .ff-sel / .ff-chip)
   const srcs = [...new Set(shown.map(srcOf).filter(Boolean))].sort();
   const MINS = [[0, 'Бүх дүн'], [100000, '100 мянга+'], [500000, '500 мянга+'], [1000000, '1 сая+'], [5000000, '5 сая+'], [10000000, '10 сая+']];
   fbar.innerHTML =
-    `<select id="ff-sort" style="${selCss}">
+    `<select id="ff-sort" class="ff-sel">
       <option value="">📂 Бүлэглэсэн</option>
       <option value="amt_desc"${F.sort === 'amt_desc' ? ' selected' : ''}>💰 Их дүн эхэндээ</option>
       <option value="amt_asc"${F.sort === 'amt_asc' ? ' selected' : ''}>💰 Бага дүн эхэндээ</option>
       <option value="date_desc"${F.sort === 'date_desc' ? ' selected' : ''}>🕐 Шинэ эхэндээ</option>
       <option value="ben"${F.sort === 'ben' ? ' selected' : ''}>👤 Топ хүлээн авагч</option>
     </select>`
-    + `<select id="ff-min" style="${selCss}">${MINS.map(([v, l]) => `<option value="${v}"${Number(F.min) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`
-    + (srcs.length ? `<select id="ff-src" style="${selCss}">
+    + `<select id="ff-min" class="ff-sel">${MINS.map(([v, l]) => `<option value="${v}"${Number(F.min) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`
+    + (srcs.length ? `<select id="ff-src" class="ff-sel">
         <option value="">🏦 Бүх эх данс</option>
         ${srcs.map(s => `<option value="${escapeHtml(s)}"${F.src === s ? ' selected' : ''}>${escapeHtml(s)}</option>`).join('')}
         <option value="__manual"${F.src === '__manual' ? ' selected' : ''}>Гараар бүртгэсэн</option>
       </select>` : '')
-    + Object.entries(FLAGS).map(([k, [l]]) => `<button type="button" data-ff-flag="${k}" style="${chipCss((F.flags || []).includes(k))}">${l}</button>`).join('')
-    + (F.sort ? '' : `<button type="button" data-ff-expand style="${chipCss(!!state.finExpandAll)}">${state.finExpandAll ? '⊟ Бүгдийг хураах' : '⊞ Бүгдийг дэлгэх'}</button>`)
-    + (F.ben ? `<span style="font-size:11.5px;background:var(--primary);color:#fff;border-radius:14px;padding:5px 10px;">👤 ${escapeHtml(F.ben)} <b data-ff-clearben style="cursor:pointer;margin-left:4px;">×</b></span>` : '')
-    + (fActive ? `<button type="button" data-ff-clear style="padding:5px 10px;font-size:11.5px;border-radius:14px;border:1px solid var(--danger);color:var(--danger);background:var(--panel);cursor:pointer;">✕ Цэвэрлэх</button>` : '');
+    + Object.entries(FLAGS).map(([k, [l]]) => `<button type="button" class="ff-chip${(F.flags || []).includes(k) ? ' on' : ''}${flagN[k] ? '' : ' zero'}" data-ff-flag="${k}">${l}<span class="ff-n">${flagN[k]}</span></button>`).join('')
+    + (F.sort ? '' : `<button type="button" class="ff-chip${state.finExpandAll ? ' on' : ''}" data-ff-expand>${state.finExpandAll ? '⊟ Бүгдийг хураах' : '⊞ Бүгдийг дэлгэх'}</button>`)
+    + (F.ben ? `<span class="ff-chip on">👤 ${escapeHtml(F.ben)} <button type="button" class="ff-x" data-ff-clearben aria-label="Хүлээн авагчийн шүүлтийг арилгах">×</button></span>` : '')
+    + (fActive ? `<button type="button" class="ff-chip danger" data-ff-clear>✕ Цэвэрлэх</button>` : '');
   wrap.appendChild(fbar);
   fbar.querySelector('#ff-sort')?.addEventListener('change', e => { F.sort = e.target.value; render(); });
   fbar.querySelector('#ff-min')?.addEventListener('change', e => { F.min = Number(e.target.value) || 0; render(); });
@@ -41085,7 +41398,7 @@ function renderDashboard() {
             <input type="month" class="ui-raw dash-top-ym" id="dash-top-ym" value="${escapeHtml(topYm)}" max="${todayStr().slice(0, 7)}">
           </div>
           <div class="dash-top-scroll">
-          ${topPerformers.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : topPerformers.map((r, i) => {
+          ${topPerformers.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : dashListHtml('top', topPerformers.map((r, i) => {
             const top = topPerformers[0].pts || 1;
             const medal = r.pts <= 0 ? '' : i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : `${i + 1}. `;
             const w = r.pts > 0 ? Math.max(4, Math.round(r.pts / top * 100)) : 0;
@@ -41095,7 +41408,7 @@ function renderDashboard() {
                 <div class="dash-bar-track"><div class="dash-bar-fill dash-top-fill" style="width:${w}%"></div></div>
                 <div class="dash-bar-count dash-top-n">${Math.round(r.pts)}</div>
               </div>`;
-          }).join('')}
+          }), 5)}
           </div>
         </div>
       </div>
@@ -43645,7 +43958,12 @@ function initEvents() {
       state.statusFilter = el.dataset.status;
       render();
     };
+    // pill нь <div> — Enter/Space-ээр ч дарагдана (гар, дэлгэц уншигч)
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
   });
+  document.querySelectorAll('.filter-group').forEach(g => g.addEventListener('scroll', () => updatePillFade(g), { passive: true }));
+  ['pointerdown', 'touchstart', 'wheel'].forEach(ev => document.querySelectorAll('.filter-group').forEach(g => g.addEventListener(ev, () => { _pillUserMoved = true; }, { passive: true })));
+  window.addEventListener('resize', () => document.querySelectorAll('.filter-group').forEach(updatePillFade));
   const addProjBtn = document.getElementById('add-project');
   if (addProjBtn) addProjBtn.onclick = addProject;
   document.getElementById('new-task-btn').onclick = () => openTaskModal();
@@ -43959,6 +44277,7 @@ function initEvents() {
 
   // ─── Хувилбарын чип (толгой) — дарахад шалгаж шинэчилнэ ───
   document.getElementById('ver-btn')?.addEventListener('click', onVerChipClick);
+  document.getElementById('ver-row-btn')?.addEventListener('click', onVerChipClick);
   // Апп руу буцаж ороход чимээгүй шалгана (1 минутын завсартай) — ажилтан товч
   // дарахгүй ч «Шинэ» гэж өөрөө мэдэгдэнэ.
   document.addEventListener('visibilitychange', () => {

@@ -402,6 +402,8 @@
     </div>
     <!-- Системийн автомат шалгалт (GitHub Actions) — зөвхөн CEO -->
     <div class="ci-status" id="ci-status" role="button" tabindex="0" hidden></div>
+    <!-- Аппын хувилбар — зөвхөн утасны цэсэнд (толгойн чип утсанд «Шинэ» үед л гарна) -->
+    <button class="ver-row" id="ver-row-btn" type="button" title="Аппын хувилбар — дарж шинэчилнэ"><span class="ver-ic">⟳</span><span class="ver-row-txt" id="ver-row-txt">Хувилбар шалгаж байна…</span><span class="ver-row-act" id="ver-row-act">Шалгах</span></button>
     <!-- User chip — populated after Google sign-in -->
     <div class="user-chip" id="user-chip">
       <div class="avatar" id="user-avatar">?</div>
@@ -469,21 +471,21 @@
     <div class="toolbar">
       <!-- Ажлын ерөнхий filter — санхүүгийн view-д нуугдана -->
       <span class="filter-group" id="task-filters">
+        <div class="filter-pill active" data-status="all">Бүгд</div>
         <div class="filter-pill" data-status="open">Идэвхтэй</div>
         <div class="filter-pill" data-status="overdue"><svg class="lcd-icon" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Хоцорсон</div>
         <div class="filter-pill" data-status="today"><svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Өнөөдөр</div>
         <div class="filter-pill" data-status="week">Энэ долоо хоног</div>
         <div class="filter-pill" data-status="month">Энэ сар</div>
         <div class="filter-pill" data-status="done"><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Дууссан</div>
-        <div class="filter-pill active" data-status="all">Бүгд</div>
       </span>
       <!-- Санхүүгийн үе шатны filter — зөвхөн Санхүү view-д харагдана -->
       <span class="filter-group" id="fin-filters" style="display:none;">
+        <div class="filter-pill active" data-status="all">Бүгд</div>
         <div class="filter-pill" data-status="f-pending">🕐 Хүлээгдэж буй</div>
         <div class="filter-pill" data-status="f-await-txn">💸 Гүйлгээ хүлээж буй</div>
         <div class="filter-pill" data-status="f-await-close">💵 Хаахыг хүлээж буй</div>
         <div class="filter-pill" data-status="f-done"><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Дууссан</div>
-        <div class="filter-pill active" data-status="all">Бүгд</div>
       </span>
       <!-- Санхүү — эрэмбэлэх (зөвхөн Санхүү view) -->
       <select id="fin-sort" style="display:none; padding:6px 10px; border:1px solid var(--border); border-radius:var(--r-md); background:var(--panel); color:var(--text); font-size:13px; cursor:pointer;">

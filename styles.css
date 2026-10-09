@@ -12,6 +12,7 @@
     --panel-hover: #f7f7f5;
     --border: rgba(15, 15, 15, 0.08);
     --border-strong: rgba(15, 15, 15, 0.12);
+    --line: var(--border);   /* 40 дүрэм `var(--line)` бичсэн атлаа токен ТОДОРХОЙЛОГДООГҮЙ байсан → border бүхэлдээ хүчингүй болж, хаана ч хайрцаг/хуваагч шугам харагдахгүй байв (2026-10-09). Харанхуй горимд --border-тэй хамт солигдоно. */
 
     /* ── Текст ── */
     --text: #37352f;
@@ -70,6 +71,11 @@
        өргөн, товчгүй мөр 0 болж, 1fr өөр тооцогдон бүх багана мөр бүрт
        өөр байрлалд шилждэг байв (2026-09-04 алдаа). */
     --otable-cols: 56px minmax(88px, 1fr) 112px 112px 104px 88px 112px;
+
+    /* Хурууны хүрэх доод хэмжээ (утас). Агуулахын ажилтан гар бээлийтэй, гадаа ажилладаг
+       тул 34px (хуучин) жижиг байв. 40 = товч, 36 = мөрийн доторх жижиг үйлдэл. */
+    --tap: 40px;
+    --tap-sm: 36px;
 
     /* NOMAAD бэлтгэлийн модалын «хүн сонгох» товчны доод өргөн — нэр багтах өргөн */
     --na-pick-w: 140px;
@@ -247,15 +253,26 @@
   font-weight: 700;
 }
 .ver-chip.busy { opacity: .55; cursor: progress; }
-/* Хамгийн нарийн дэлгэц (320px): чип гарчгаас 66px иддэг тул зөвхөн дүрс үлдэнэ.
-   ⚠ ШИНЭ хувилбар байгаа үед текст ҮЛДЭНЭ — тэр нь хараад мэдэх ёстой мэдээлэл. */
-@media (max-width: 360px) {
-  .ver-chip:not(.new) .ver-txt { display: none; }
-  .ver-chip:not(.new) { padding: 4px 7px; }
-}
-.ver-chip.busy .ver-ic { animation: ver-spin 0.9s linear infinite; }
+.ver-chip.busy .ver-ic, .ver-row.busy .ver-ic { animation: ver-spin 0.9s linear infinite; }
 @keyframes ver-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .ver-chip.busy .ver-ic { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ver-chip.busy .ver-ic, .ver-row.busy .ver-ic { animation: none; } }
+/* Цэсийн хувилбарын мөр — өргөн дэлгэцэд нуугдана (тэнд толгойн чип бий) */
+.ver-row { display: none; align-items: center; gap: var(--space-2); width: 100%; margin: 10px 0 0; padding: 8px 10px;
+  min-height: var(--tap-sm); border: 1px solid var(--border); border-radius: 8px; background: transparent;
+  color: var(--muted); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.ver-row .ver-ic { font-size: var(--fs-sm); line-height: 1; }
+.ver-row .ver-row-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ver-row .ver-row-act { font-weight: 600; color: var(--primary); }
+.ver-row.new { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); font-weight: 700; }
+.ver-row.busy { opacity: .55; cursor: progress; }
+/* УТСАНД (≤720px): толгойн чип зөвхөн ШИНЭ хувилбар гарсан үед; бусад үед хувилбар цэсийн
+   доод мөрөнд (.ver-row). Чип гарчгаас 64px иддэг байсан тул 24 дэлгэцийн 8-ын гарчиг таслагдаж
+   байв. ⛔ `.ver-chip:not(.new)`-ийг утсанд буцааж харуулахгүй (тест хаана). */
+@media (max-width: 720px) {
+  .ver-chip:not(.new) { display: none; }
+  .ver-chip.new { min-height: var(--tap-sm); }
+  .ver-row { display: flex; }
+}
 @media (max-width: 1000px) {
   .header h1 { font-size: 18px; }
 }
@@ -325,10 +342,17 @@
   .filter-pill {
     display: flex;
     padding: 7px 13px;
-    min-height: 34px;
+    min-height: var(--tap);
     white-space: nowrap;
     flex-shrink: 0;
+    /* Хүрээгүй, дэвсгэргүй pill нь бичиг шиг харагдаж «дарна» гэж ойлгогддоггүй байв */
+    border: 1px solid var(--border);
+    background: var(--panel);
   }
+  /* Гүйлгэж болох талд бүдгэрэлт — «цааш бий» дохио (data-fade-ийг updatePillFade тавина) */
+  .filter-group[data-fade="r"]  { -webkit-mask-image: linear-gradient(to right, var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, var(--bg) calc(100% - 28px), transparent); }
+  .filter-group[data-fade="l"]  { -webkit-mask-image: linear-gradient(to left,  var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to left,  var(--bg) calc(100% - 28px), transparent); }
+  .filter-group[data-fade="lr"] { -webkit-mask-image: linear-gradient(to right, transparent, var(--bg) 28px, var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent, var(--bg) 28px, var(--bg) calc(100% - 28px), transparent); }
 }
 
 
@@ -2194,6 +2218,12 @@ body, input, textarea, select, button {
 }
 
 /* ── FILTER PILLS (desktop) — text button маяг ── */
+/* Pill дээрх тоо (2026-10-09) — filteredTasks-тай ижил: дарахад яг тэр тооны мөр гарна */
+.filter-pill .fp-n { margin-left: var(--space-1); min-width: 18px; padding: 0 var(--space-1); border-radius: 999px;
+  background: var(--panel-hover); color: var(--muted); font-size: var(--fs-xs); font-weight: 700; line-height: 18px; text-align: center; }
+.filter-pill .fp-n[hidden] { display: none; }
+.filter-pill[data-status="overdue"] .fp-n { background: var(--danger); color: #fff; }
+.filter-pill.active .fp-n { background: color-mix(in srgb, currentColor 22%, transparent); color: inherit; }
 .filter-pill:hover {
   background: var(--panel-hover) !important;
   color: var(--text) !important;
@@ -4642,7 +4672,7 @@ body.role-daily #add-project { display: none !important; }
 .order-cust { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -.01em; }
 .order-cust b { font-weight: 700; }
 .order-cust a { color: var(--primary); text-decoration: none; font-weight: 500; font-size: 13px; }
-.order-meta { font-size: 12.5px; color: var(--muted); margin: 2px 0; line-height: 1.55; }
+.order-meta { font-size: var(--fs-sm); color: var(--muted); margin: 2px 0; line-height: 1.55; }
 .order-meta b { color: var(--text-soft); font-weight: 600; }
 .order-period { color: var(--text-soft); font-weight: 500; }
 .order-period b { color: var(--text); }
@@ -4652,8 +4682,8 @@ body.role-daily #add-project { display: none !important; }
 .order-pay.paid { background: color-mix(in srgb, var(--ok, #16a34a) 7%, var(--panel)); border-color: color-mix(in srgb, var(--ok, #16a34a) 20%, var(--border)); }
 .op-grid { display: flex; gap: 26px; }
 .op-cell { display: flex; flex-direction: column; gap: 2px; }
-.op-lbl { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
-.op-val { font-size: 14.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.op-lbl { font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.op-val { font-size: var(--fs-base); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 .order-pay.owe .op-bal { color: var(--danger); }
 .order-pay.paid .op-bal { color: var(--ok, #16a34a); }
 .ord-more { flex: 0 0 auto; }
@@ -4668,7 +4698,7 @@ body.role-daily #add-project { display: none !important; }
 .no-editwarn { font-size: var(--fs-sm); color: var(--warn); background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); line-height: 1.6; }
 .order-edits { color: var(--muted); }
 .op-over { font-size: var(--fs-sm); color: var(--danger); font-weight: 600; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
-.op-receipt { font-size: 11px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-receipt { font-size: var(--fs-xs); color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-receipt.clickable { cursor: pointer; }
 .op-receipt.clickable:hover { color: var(--text); }
 .op-receipt-view { color: var(--primary); font-weight: 600; }
@@ -4773,6 +4803,42 @@ body.role-daily #add-project { display: none !important; }
 .order-items td { padding: 4px 6px; border-bottom: 1px solid var(--border); color: var(--text-soft); }
 .order-items .num { text-align: right; }
 .order-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+/* Захиалгын картын жижиг товч (өмнө нь 21 товч бүр inline style) */
+.ofb { padding: 5px 11px; font-size: var(--fs-sm); }
+.ofb-danger { color: var(--danger); }
+.ofb-danger-solid { color: #fff; background: var(--danger); border-color: var(--danger); }
+/* «⋯ Бусад» нээгдэхэд картын бүтэн өргөнийг эзэлнэ, товчнууд ЗҮҮНЭЭС эхэлнэ (өмнө баруун тийш шахагдаж, зүүн талаараа картаас гарч тасардаг байв) */
+.ord-more[open] { flex: 1 1 100%; }
+.ord-more-row { justify-content: flex-start; }
+.ord-more[open] > .ord-more-s { width: fit-content; }   /* өргөн дэлгэцэд «Бусад» бүтэн өргөнтэй зурвас болохгүй */
+@media (max-width: 720px) {
+  /* Утсанд товч бүр эгнээг тэнцүү дүүргэнэ — баруун тийш жигд бус шахагдахгүй */
+  .order-foot { justify-content: stretch; }
+  .order-foot > .btn, .order-foot > .ord-more:not([open]) { flex: 1 1 120px; }
+  .order-foot .ord-more-s { display: flex; align-items: center; justify-content: center; min-height: var(--tap); }
+  .order-foot .ord-more[open] > .ord-more-s { width: auto; }
+  .ord-more-row > .btn { flex: 1 1 120px; }
+}
+.vat-row { margin-top: var(--space-1); }
+.vat-row-sum { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.vat-attach-btn { border: 1px dashed var(--ok); background: var(--ok-soft); color: var(--ok); border-radius: var(--r-md); padding: 2px 9px; min-height: var(--tap-sm);
+  font-size: var(--fs-xs); font-weight: 600; cursor: pointer; white-space: nowrap; font-family: inherit; }
+.order-meta .vat-over { color: var(--danger); }
+.order-meta .vat-full, .order-meta .vat-amt { color: var(--ok); }
+.order-meta .vat-short { color: color-mix(in srgb, var(--warn) 55%, black); }
+.order-meta .ord-pos { color: var(--ok); }
+.order-meta .ord-neg { color: var(--danger); }
+.order-ci { font-size: var(--fs-sm); line-height: 1.6; }
+.order-cx-req { font-size: var(--fs-sm); color: color-mix(in srgb, var(--warn) 55%, black); font-weight: 700; }
+.order-cx-why { color: var(--danger); }
+.order-items-det { margin-top: var(--space-2); }
+summary.order-items-toggle { cursor: pointer; }
+.order-items-list { padding: var(--space-1) 0; }
+.oi-row { display: flex; justify-content: space-between; gap: var(--space-2); }
+.oi-dep { margin-top: var(--space-1); }
+.order-src-new { font-size: var(--fs-xs); color: var(--primary); font-weight: 700; }
+.dep-sales { color: var(--muted); font-size: var(--fs-sm); margin-left: var(--space-2); }
+.dep-sales b { color: var(--text); }
 .order-sub { font-size: 12px; color: var(--muted); }
 .order-status-sel { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .order-status-sel select { font-family: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--panel); color: var(--text); cursor: pointer; }
@@ -4816,9 +4882,11 @@ body.role-daily #add-project { display: none !important; }
 .ordv-main { min-width: 0; }
 
 /* ── Дүнгийн мөр ── */
-.orders-sumline { font-weight: 700; font-size: var(--fs-md); margin: 2px 2px 10px; }
+/* Мөр бүхэлдээ тод байсан тул 4 мөр болж «юу чухал» нь ялгарахгүй байв (2026-10-09):
+   энгийн бичвэр + зөвхөн борлуулалт тод. Өнгөт хэсгүүд (сайт/ноорог/илгээгээгүй) өөрийн жинтэй. */
+.orders-sumline { font-weight: 500; color: var(--text-soft); font-size: var(--fs-md); line-height: 1.6; margin: 2px 2px 10px; }
 .osum-ym { color: var(--brand, #2563EB); }
-.osum-rev { color: var(--ok, #16a34a); }
+.osum-rev { color: var(--ok, #16a34a); font-weight: 800; }
 
 /* ── Хугацааны бүлгийн гарчиг — гүйлгэхэд дээрээ наалдана ── */
 .olist { display: flex; flex-direction: column; }
@@ -4895,6 +4963,10 @@ body.role-daily #add-project { display: none !important; }
   .ordv { grid-template-columns: 1fr; gap: var(--space-2); }
   .ordv-side { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding-bottom: var(--space-1); scrollbar-width: none; }
   .ordv-side::-webkit-scrollbar { display: none; }
+  /* Гүйлгэх талд бүдгэрэлт — «цааш бий» дохио (updatePillFade-ийн data-fade) */
+  .ordv-side[data-fade="r"]  { -webkit-mask-image: linear-gradient(to right, var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, var(--bg) calc(100% - 28px), transparent); }
+  .ordv-side[data-fade="l"]  { -webkit-mask-image: linear-gradient(to left,  var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to left,  var(--bg) calc(100% - 28px), transparent); }
+  .ordv-side[data-fade="lr"] { -webkit-mask-image: linear-gradient(to right, transparent, var(--bg) 28px, var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent, var(--bg) 28px, var(--bg) calc(100% - 28px), transparent); }
   .ordv-st { width: auto; flex: 0 0 auto; border-color: var(--border); background: var(--panel); min-height: 36px; }
   .ordv-st-l { overflow: visible; }
   .otable-head { display: none; }
@@ -5335,6 +5407,7 @@ details.recon-fold[open] > summary::before { content: '▾'; }
    Урьд нь wrap байгаагүй тул мөр өргөнөөс давж, бүхэл контентыг хажуу тийш түлхэж байв. */
 .prod-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 2px 10px; }
 .prod-toolbar > .btn { flex-shrink: 0; }
+@media (max-width: 720px) { .prod-scan-l { display: none; } }   /* утсанд 📷 дангаараа — хайлтад өргөн үлдээнэ */
 .prod-search { flex: 1 1 130px; min-width: 0; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 8px; font-family: inherit; font-size: 14px; background: var(--panel); color: var(--text); }
 .prod-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 2px 10px; }
 .prod-tab { font-family: inherit; font-size: 12.5px; color: var(--text-soft); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
@@ -5379,16 +5452,16 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 
 /* ── ШҮҮЛТҮҮРИЙН ЭВХЭГДЭХ САМБАР ── */
 .prod-filters { flex-shrink: 0; }
-.prod-filters-sum {
-  list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+.prod-filters-sum, .prod-tools-sum {
+  list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap-sm);
   padding: 4px 11px; border: 1px solid var(--border-strong); border-radius: var(--r-full);
   font-size: var(--fs-sm); font-weight: 600; color: var(--text); background: var(--panel);
   user-select: none;
 }
-.prod-filters-sum::-webkit-details-marker { display: none; }
+.prod-filters-sum::-webkit-details-marker, .prod-tools-sum::-webkit-details-marker { display: none; }
 .prod-filters-sum::after { content: '▾'; font-size: 10px; color: var(--muted); }
 .prod-filters[open] .prod-filters-sum::after { content: '▴'; }
-.prod-filters-sum:hover { border-color: var(--primary); color: var(--primary); }
+.prod-filters-sum:hover, .prod-tools-sum:hover { border-color: var(--primary); color: var(--primary); }
 .prod-filters-n { background: var(--primary); color: #fff; border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: 700; padding: 0 6px; min-width: 16px; text-align: center; }
 .prod-filters-body { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: 10px; background: var(--panel); width: 100%; }
 .prod-filters-body label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); color: var(--muted); }
@@ -5396,6 +5469,33 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .prod-filters-clear { color: var(--danger); border-color: var(--danger); }
 /* Самбар нээгдэхэд мета мөрийн бүх өргөнийг эзэлнэ (сонгогч бүтэн нэртэй харагдана) */
 .prod-filters[open] { width: 100%; }
+.prod-tools { flex-shrink: 0; }
+.prod-tools[open] { width: 100%; }
+.prod-tools-body { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+/* Тууз: нэг бүтэн, өнгө нь tone-оор (өмнө нь тууз бүр 5 inline style + хатуу rgba) */
+.prod-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); flex-wrap: wrap;
+  margin: var(--space-2) 0 2px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.prod-bar-t { flex: 1 1 220px; min-width: 0; font-size: var(--fs-md); color: var(--text); line-height: 1.5; }
+.prod-bar-b { white-space: nowrap; flex-shrink: 0; }
+.prod-bar.t-warn { background: var(--warn-soft); border-color: var(--warn); }
+.prod-bar.t-info { background: var(--info-soft); border-color: var(--info); }
+.prod-bar.t-ok { background: var(--ok-soft); border-color: var(--ok); }
+.prod-bar.t-danger { background: var(--danger-soft); border-color: var(--danger); }
+.prod-bar.t-primary { background: var(--primary-soft); border-color: var(--primary); }
+.prod-bar.t-danger .prod-bar-b { color: var(--danger); border-color: var(--danger); }
+.prod-arch-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.prod-arch-purge { color: var(--danger); border-color: var(--danger); white-space: nowrap; }
+/* Цэгцлэх ажлууд: нэг нугалаа (тоо + юу байгааг нэрлэнэ) */
+.prod-chores { margin: var(--space-2) 0 2px; border: 1px dashed var(--border-strong); border-radius: var(--r-lg); background: var(--panel); }
+.prod-chores-sum { display: flex; align-items: center; gap: var(--space-2); min-height: var(--tap); padding: 0 var(--space-3); cursor: pointer; list-style: none;
+  font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.prod-chores-sum::-webkit-details-marker { display: none; }
+.prod-chores-sum::after { content: '▾'; margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
+.prod-chores[open] > .prod-chores-sum::after { content: '▴'; }
+.prod-chores-n { background: var(--warn); color: #fff; border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: 700; padding: 0 var(--space-2); min-width: 18px; text-align: center; }
+.prod-chores-h { flex: 1; min-width: 0; font-size: var(--fs-sm); font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prod-chores-in { padding: 0 var(--space-3) var(--space-3); }
+.prod-chores-in > .prod-bar:first-child, .prod-chores-in > .prod-arch:first-child { margin-top: 0; }
 .prod-assetval b { color: var(--primary); }
 .prod-assetval span { font-size: 11.5px; color: var(--muted); }
 /* Авсаархан, дартал нээгддэг бараа мөр */
@@ -6312,7 +6412,8 @@ details.recon-fold[open] > summary::before { content: '▾'; }
      Гарчиг 18 · картын гарчиг 15 · үндсэн текст 14 · туслах 13 · жижиг тэмдэг 11-12 */
   /* ── Товчнууд: харагдах хэмжээ жижиг ч дарах тал (touch target) хангалттай ──
      (хуучин "бүх button 16px" дүрэм халагдсан — товч бүр өөрийн хэмжээгээр) */
-  .btn { min-height: 34px; }
+  .btn { min-height: var(--tap); min-width: var(--tap-sm); }
+  .btn.btn-sm { min-height: var(--tap-sm); }
   .br-act { font-size: 12px !important; padding: 5px 12px !important; min-height: 28px; }
   .task-title { font-size: 15px !important; line-height: 1.4 !important; }
   .task-row .assignee, .task-meta, .task-row .meta { font-size: 13px !important; }
@@ -6875,13 +6976,59 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 }
 .att-fixout:hover { filter: brightness(.96); }
 .att-manual { color: var(--muted); font-size: var(--fs-xs); }
+/* ═══ ИРЦ: өдрийн дэлгэц (2026-10-09) — inline style-аас класс ═══ */
+.att-wrap { max-width: 720px; margin: 0 auto; padding-bottom: var(--space-5); }
+.att-scan { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: var(--space-4);
+  text-align: center; margin-bottom: var(--space-3); }
+.att-scan-date { font-size: var(--fs-sm); color: var(--muted); letter-spacing: .04em; }
+.att-scan-btn { margin: var(--space-3) auto var(--space-1); display: flex; align-items: center; justify-content: center;
+  gap: 10px; width: 100%; max-width: 340px; padding: 14px; border: 0; border-radius: var(--r-xl);
+  background: var(--primary); color: #fff; font-size: var(--fs-lg); font-weight: 700; cursor: pointer; font-family: inherit; }
+.att-scan-hint { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
+.att-tools { margin-top: var(--space-3); display: flex; flex-direction: column; align-items: center; }
+.att-tools .fin-more-in { justify-content: center; }
+.att-tool { display: inline-flex; align-items: center; min-height: var(--tap-sm); padding: 8px 14px;
+  border: 1px solid var(--line); background: var(--panel-hover); border-radius: 10px; font-size: var(--fs-md);
+  font-weight: 600; color: var(--text); text-decoration: none; cursor: pointer; font-family: inherit; }
+.att-datebar { display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: var(--space-3); }
+.att-date { padding: 7px 10px; min-height: var(--tap-sm); border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--panel); color: var(--text); font-size: var(--fs-md); }
+.att-sum { font-size: var(--fs-md); color: var(--text-soft); margin: 2px 0 var(--space-2); }
+.att-sum b { color: var(--text); }
+.att-sum b.on { color: var(--ok); }
+.att-sum b.tot { color: var(--primary); }
+.att-empty { text-align: center; color: var(--muted); padding: 34px 10px; }
+.att-empty-s { font-size: var(--fs-sm); margin-top: var(--space-1); }
+.att-row { display: flex; align-items: center; gap: var(--space-3); padding: 11px var(--space-1); border-bottom: 1px solid var(--line); }
+.att-av { position: relative; width: 40px; height: 40px; border-radius: 50%; background: var(--panel-hover);
+  display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-md); font-weight: 700;
+  color: var(--muted); flex-shrink: 0; overflow: hidden; }
+.att-who { flex: 1; min-width: 0; }
+.att-name { font-weight: 600; font-size: var(--fs-base); }
+.att-role { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-warn { color: var(--warn); font-size: var(--fs-xs); font-weight: 600; }
+.att-num { text-align: right; flex-shrink: 0; }
+/* Цагийн муж «08:41 → одоо»: ажиллаж байгаа нь ногоон, гараагүй нь анхааруулга */
+.att-span { font-size: var(--fs-md); color: var(--muted); font-variant-numeric: tabular-nums; }
+.att-span.open { color: var(--ok); font-weight: 700; }
+.att-span.noout { color: var(--warn); }
+.att-dur { font-weight: 700; color: var(--primary); font-size: var(--fs-md); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.att-late { color: var(--danger); font-weight: 700; font-size: var(--fs-xs); }
+.att-tmr { font-size: var(--fs-xs); color: var(--accent, var(--primary)); margin-top: 1px; }
+/* Ачааллын карт: өдрийн мөрүүд нугалаанд (утсанд өгөгдмөлөөр хаалттай) */
+.dl-det > summary { display: flex; align-items: center; gap: var(--space-1); min-height: var(--tap-sm); margin-top: var(--space-2);
+  border-top: 1px solid var(--line); color: var(--primary); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; list-style: none; }
+.dl-det > summary::-webkit-details-marker { display: none; }
+.dl-det > summary::before { content: '▸'; font-size: var(--fs-xs); }
+.dl-det[open] > summary::before { content: '▾'; }
+.dl-det .dl-list { margin-top: 0; }
 .att-noout-line {
   margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--warn); line-height: 1.6;
 }
 .att-noout-day {
   border: 1px solid var(--warn); background: transparent; color: var(--warn);
   border-radius: 6px; padding: 0 var(--space-1); font-size: var(--fs-xs);
-  font-weight: 700; cursor: pointer;
+  font-weight: 700; cursor: pointer; min-width: var(--tap-sm); min-height: var(--tap-sm);
 }
 
 /* ═══ ИРЦИЙН САРЫН ТОЙМ (`renderAttendanceMonth`) ═══
@@ -6893,32 +7040,68 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
      нийлсэн — өмнө нь зөвхөн padding-аараа зөрж байв. */
 .att-mo-note { text-align: center; color: var(--muted); padding: var(--space-5) var(--space-3); }
 .att-mo-retry { margin-top: var(--space-3); }
-/* Толгойн тоонууд тод (--text); НИЙТ цаг нь брэндийн өнгөөр ялгарна.
-   ⚠ `b.att-mo-tot` — `.att-mo-head b` нь класснаас онцлог тул хосолсон сонгогч. */
-.att-mo-head { font-size: var(--fs-md); color: var(--text-soft); margin: var(--space-1) 0 var(--space-2); }
+/* Нормын мөр: тоонууд тод (--text). Нийт дүн нь хавтанд (.att-mo-kpi). */
+.att-mo-head { font-size: var(--fs-sm); color: var(--text-soft); margin: 0 0 var(--space-2); }
 .att-mo-head b { color: var(--text); }
-.att-mo-head b.att-mo-tot { color: var(--primary); }
-.att-mo-row { padding: var(--space-3) var(--space-1); border-bottom: 1px solid var(--line); }
-.att-mo-top { display: flex; align-items: center; gap: var(--space-3); }
+/* Нийт тойм: 2×2 хавтан (утсанд), ≥721px-д 4 нэг эгнээнд */
+.att-mo-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin: var(--space-1) 0 var(--space-3); }
+.att-mo-kpi { min-width: 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.att-mo-kpi-l { font-size: var(--fs-xs); color: var(--muted); }
+.att-mo-kpi-v { font-size: var(--fs-lg); font-weight: 700; line-height: 1.25; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.att-mo-kpi-s { font-size: var(--fs-xs); color: var(--muted); }
+.att-mo-kpi-s b { color: var(--text-soft); }
+/* Ажилтан = НЭГ ШУГАМ (нэр · цаг · хувь · зураас), дарахад задарна */
+.att-mo-row { border-bottom: 1px solid var(--line); }
+.att-mo-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3);
+  min-height: var(--tap); padding: var(--space-2) var(--space-1); cursor: pointer; list-style: none; }
+.att-mo-top::-webkit-details-marker { display: none; }
 .att-mo-ava {
   position: relative; width: var(--att-av); height: var(--att-av); border-radius: 50%;
   background: var(--panel-hover); display: inline-flex; align-items: center; justify-content: center;
   font-size: var(--fs-md); font-weight: 700; color: var(--muted); flex-shrink: 0; overflow: hidden;
 }
 .att-mo-who { flex: 1; min-width: 0; }
-.att-mo-name { font-weight: 600; font-size: var(--fs-base); }
-.att-mo-role {
-  font-size: var(--fs-sm); color: var(--muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+.att-mo-name { font-weight: 600; font-size: var(--fs-base); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-mo-subl { display: flex; align-items: center; gap: var(--space-2); min-width: 0; font-size: var(--fs-sm); }
+.att-mo-role { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.att-mo-warn { color: var(--warn); font-weight: 700; flex: none; }
+.att-mo-subl > .att-mo-st { flex: none; font-size: var(--fs-xs); }
 .att-mo-num { text-align: right; flex-shrink: 0; }
-.att-mo-days { font-size: var(--fs-sm); }
+.att-mo-days { font-size: var(--fs-sm); color: var(--muted); }
 /* Нормын хувь — өмнө нь JS-ээс inline өнгөөр бичигддэг байв */
 .att-mo-pct-ok  { color: var(--ok); }
 .att-mo-pct-mid { color: var(--text-soft); }
 .att-mo-pct-low { color: var(--warn); }
-.att-mo-hrs { font-weight: 700; color: var(--primary); font-size: var(--fs-md); margin-top: 1px; }
-.att-mo-norm { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+.att-mo-hrs { font-weight: 700; color: var(--primary); font-size: var(--fs-md); line-height: 1.2; font-variant-numeric: tabular-nums; }
+/* Хувийн зураас — <progress> (inline style-гүй). Дэд элемент бүрт тусдаа дүрэм: webkit/moz-ийг нэг сонгогчид нэгтгэж БОЛОХГҮЙ */
+.att-mo-bar { flex: 1 0 100%; height: 4px; border: 0; border-radius: 2px; appearance: none; -webkit-appearance: none; background: var(--panel-hover); }
+.att-mo-bar::-webkit-progress-bar { background: var(--panel-hover); border-radius: 2px; }
+.att-mo-bar::-webkit-progress-value { background: var(--primary); border-radius: 2px; }
+.att-mo-bar::-moz-progress-bar { background: var(--primary); border-radius: 2px; }
+.att-mo-bar.ok::-webkit-progress-value { background: var(--ok); }
+.att-mo-bar.ok::-moz-progress-bar { background: var(--ok); }
+.att-mo-bar.low::-webkit-progress-value { background: var(--warn); }
+.att-mo-bar.low::-moz-progress-bar { background: var(--warn); }
+.att-mo-more { padding: 0 var(--space-1) var(--space-3) calc(var(--att-av) + var(--space-3) + var(--space-1)); font-size: var(--fs-sm); color: var(--text-soft); }
+.att-mo-calc { margin-bottom: var(--space-1); }
+.att-mo-ot { color: var(--ok); font-weight: 600; }
+.att-mo-sub { font-weight: 400; color: var(--muted); font-size: var(--fs-sm); }
+.att-mo-flag { font-size: var(--fs-sm); color: var(--warn); margin: 0 0 var(--space-2); }
+.att-mo-flag b { color: var(--warn); }
+/* Цалин: нийт + төлөв нэг мөрөнд, задаргаа доор (мөр нээгдсэний дараа) */
+.att-mo-pay { margin-top: var(--space-1); }
+.att-mo-pay > b { color: var(--primary); font-size: var(--fs-md); }
+.att-mo-pay-in { font-size: var(--fs-sm); color: var(--text-soft); line-height: 1.6; }
+.att-mo-st { color: var(--muted); }
+.att-mo-st b { color: var(--text); }
+.att-mo-st.ok { color: var(--ok); font-weight: 600; }
+.att-mo-st.over, .att-mo-st.over b { color: var(--warn); }
+.att-mlabel { min-width: 5.5em; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; text-align: center; font-weight: 700; font-size: var(--fs-base); }
+.att-mlabel > small { font-size: var(--fs-xs); font-weight: 400; color: var(--muted); }
+@media (min-width: 721px) {
+  .att-mo-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .att-mo-kpi-v { font-size: var(--fs-xl); }
+}
 .att-mo-liab {
   margin-top: var(--space-4); padding: var(--space-3);
   border: 1px solid var(--danger); border-radius: var(--r-lg);
@@ -7037,6 +7220,68 @@ select.no-asar-len {
 .areq-ok { border: none; background: var(--ok); color: #fff; }
 .areq-ok[disabled] { opacity: .45; cursor: not-allowed; }
 .areq-no { border: 1px solid var(--border); background: var(--panel); color: var(--muted); }
+/* ═══ МИНИЙ ИРЦ (2026-10-09) — inline style-аас класс ═══ */
+.myatt-wrap { max-width: 520px; margin: 0 auto; padding-bottom: 26px; }
+.myatt-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: var(--space-4); margin-bottom: var(--space-3); }
+.myatt-me-top { display: flex; align-items: center; gap: var(--space-3); }
+.myatt-av { position: relative; width: 48px; height: 48px; border-radius: 50%; background: var(--panel-hover);
+  display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-lg); font-weight: 700;
+  color: var(--muted); overflow: hidden; flex-shrink: 0; }
+.myatt-who { flex: 1; min-width: 0; }
+.myatt-name { font-size: var(--fs-lg); font-weight: 700; }
+.myatt-sub { font-size: var(--fs-md); color: var(--muted); }
+.myatt-bank { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); font-size: var(--fs-md); font-weight: 600; }
+.myatt-bank-add { margin-top: var(--space-3); width: 100%; min-height: var(--tap-sm); padding: 8px 12px;
+  border: 1px solid var(--danger); background: transparent; color: var(--danger); border-radius: 10px;
+  font: inherit; font-size: var(--fs-md); font-weight: 700; cursor: pointer; text-align: left; }
+/* QR нь ҮРГЭЛЖ цагаан дэвсгэртэй (харанхуй горимд ч) — эс бөгөөс скан хийхгүй */
+.myatt-qr { padding: 20px var(--space-4); text-align: center; }
+.myatt-qr-t { font-size: var(--fs-md); font-weight: 600; }
+.myatt-qr-box { width: 212px; height: 212px; margin: 14px auto 4px; display: flex; align-items: center; justify-content: center;
+  background: #fff; border-radius: 14px; padding: 8px; box-shadow: var(--shadow-md); }
+.myatt-qr-wait { color: #999; font-size: var(--fs-md); }
+.myatt-qr-s { font-size: var(--fs-sm); color: var(--muted); }
+.myatt-tiles { display: flex; gap: var(--space-3); margin-bottom: var(--space-3); }
+.myatt-tile { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; text-align: center; }
+.myatt-tile-l { font-size: var(--fs-sm); color: var(--muted); }
+.myatt-tile-v { font-size: var(--fs-lg); font-weight: 800; color: var(--primary); margin-top: 2px; }
+.myatt-tile-v.ok { color: var(--ok); }
+.myatt-tile-v.none { color: var(--muted); }
+.myatt-tile-s { font-size: var(--fs-xs); color: var(--text-soft); }
+/* ⚠ Гарах бүртгэлгүй өдөр = хийх ажил, шууд товчтой */
+.myatt-alert { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 14px; padding: var(--space-3) 14px; margin-bottom: var(--space-3); }
+.myatt-alert-t { font-weight: 800; font-size: var(--fs-md); color: var(--warn); }
+.myatt-alert-s { font-size: var(--fs-sm); color: var(--text-soft); margin: 2px 0 var(--space-2); line-height: 1.45; }
+.myatt-alert-r { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 6px 0;
+  border-top: 1px solid var(--line); font-size: var(--fs-md); }
+.myatt-alert .myreq-ask { margin: 0; }
+.myatt-alert .dash-more > summary { border-top: 1px solid var(--line); }
+/* Сарын ирцийн жагсаалт: «10-09 Баа · өнөөдөр | 08:41 → одоо | 2ц 41м» */
+.myatt-lh { font-size: var(--fs-md); font-weight: 700; color: var(--muted); margin: 6px 2px 4px; }
+.myatt-list { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 4px 12px; }
+.myatt-row { padding: 9px 2px; border-bottom: 1px solid var(--line); font-size: var(--fs-md); }
+.myatt-row:last-child { border-bottom: 0; }
+.myatt-line { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.myatt-d { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+.myatt-wd { color: var(--muted); font-size: var(--fs-xs); }
+.myatt-today { color: var(--ok); font-size: var(--fs-xs); }
+.myatt-t { color: var(--text-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.myatt-t.open { color: var(--ok); font-weight: 700; }
+.myatt-t.noout { color: var(--warn); }
+.myatt-h { min-width: 4.2em; text-align: right; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.myatt-none { text-align: center; color: var(--muted); padding: 20px; font-size: var(--fs-md); }
+/* Жолооны нэмэгдэл */
+.myatt-drv { background: var(--panel); border: 1px solid var(--ok); border-radius: 14px; padding: 14px var(--space-4); margin-bottom: var(--space-3); }
+.myatt-drv-t { font-size: var(--fs-sm); color: var(--muted); }
+.myatt-drv-v { font-size: var(--fs-lg); font-weight: 800; color: var(--ok); margin-top: 3px; }
+.myatt-drv-s { font-size: var(--fs-sm); color: var(--text-soft); margin-top: 2px; }
+.myatt-drv-l { margin-top: var(--space-3); border-top: 1px solid var(--line); }
+.myatt-drv-r { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); font-size: var(--fs-sm); padding: 7px 0; border-bottom: 1px solid var(--line); }
+.myatt-drv-w { min-width: 0; }
+.myatt-drv-a { color: var(--muted); }
+.myatt-drv-d { color: var(--muted); flex-shrink: 0; }
+.myatt-drv-note { margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--danger); border-radius: 10px;
+  background: var(--danger-soft); color: var(--danger); font-size: var(--fs-sm); line-height: 1.5; }
 .myreq-new {
   display: block; width: 100%; margin-bottom: var(--space-3);
   padding: var(--space-3); border: 1px dashed var(--primary); border-radius: 12px;
@@ -7351,7 +7596,10 @@ select.no-asar-len {
   font-size:var(--fs-sm); cursor:pointer; list-style:none; }
 .rv-row::-webkit-details-marker { display:none; }
 .rv-item { border:0; }
-.rv-more { color:var(--muted); font-size:var(--fs-xs); }
+.rv-more { color:var(--muted); font-size:var(--fs-xs); min-width:var(--space-5); text-align:center; }   /* үргэлж ижил өргөн — огнооны багана тэгш */
+.rv-acts { display:flex; flex-wrap:wrap; gap:var(--space-2); margin:var(--space-2) 0 var(--space-3); }
+.rv-acts .rv-go { margin:0; }
+.rv-tel { display:inline-flex; align-items:center; text-decoration:none; color:var(--text); }
 .rv-item[open] .rv-more { color:var(--primary); }
 .rv-go { margin:var(--space-2) 0 var(--space-3); padding:3px 10px; font-size:var(--fs-xs); }
 .rv-row .rv-st { letter-spacing:1px; color:var(--ok); white-space:nowrap; }
@@ -7431,7 +7679,41 @@ select.no-asar-len {
   .ns-body { grid-column: 2 / -1; }
   .ns-n { grid-column: 2; justify-self: start; align-self: center; }
   .ns-btn { grid-column: 3; justify-self: end; }
+  /* ХИЙГДСЭН мөр: тоо байхгүй тул товч нь гарчгийн ХАЖУУД (тусдаа мөр эзлэхгүй). Бүгд цэгцтэй сард
+     карт 520px (дэлгэцийн 60%) байсан — «Харах →» бүр өөрийн мөр эзэлж, мөр бүр ~85px болдог байв. */
+  .ns-body { min-width: 0; }
+  .ns-done .ns-body { grid-column: 2; }
+  .ns-done .ns-btn { grid-row: 1; }
 }
+/* ═══ САНХҮҮ: сарын толгой, шүүлтийн чип, баримтын хяналт (2026-10-09) — inline style-аас класс ═══ */
+.fin-mhead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 2px 0 var(--space-4); }
+.fin-mnav { min-width: var(--tap-sm); padding: 6px 13px; font-size: var(--fs-lg); line-height: 1; }
+.fin-mtxt { text-align: center; flex: 1; min-width: 0; }
+.fin-mttl { font-size: var(--fs-lg); font-weight: 800; }
+.fin-mbr { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.fin-msub { font-size: var(--fs-sm); color: var(--muted); margin-top: 1px; }
+.fin-msub b { color: var(--text); }
+.fin-mout { font-size: var(--fs-xs); }
+/* Шүүлтийн мөр: чип бүр ТООТОЙ, утсанд хурууны хэмжээтэй */
+.ff-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: 2px 0 10px; }
+.ff-sel { padding: 6px 8px; min-height: var(--tap-sm); font-size: var(--fs-sm); border: 1px solid var(--border-strong);
+  border-radius: 8px; background: var(--panel); color: var(--text); max-width: 46vw; }
+.ff-chip { display: inline-flex; align-items: center; gap: var(--space-1); padding: 5px 10px; min-height: var(--tap-sm);
+  font-size: var(--fs-sm); font-family: inherit; border-radius: 18px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); }
+.ff-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.ff-chip.danger { border-color: var(--danger); color: var(--danger); }
+.ff-chip.zero:not(.on) { color: var(--muted); }
+.ff-n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ff-chip.on .ff-n { color: inherit; }
+.ff-chip.zero:not(.on) .ff-n { font-weight: 400; }
+.ff-x { border: 0; background: none; color: inherit; font-size: var(--fs-lg); line-height: 1; padding: 0 var(--space-1); cursor: pointer; }
+/* Баримтын хяналт: гарчиг хоёр мөр болж «100% баримтгүй» босоо тасрахгүй */
+.fin-rcpt { border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-3) 14px; margin-bottom: var(--space-4); background: var(--panel); }
+.fin-rcpt-h { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.fin-rcpt-t { flex: 1; min-width: 0; font-weight: 800; font-size: var(--fs-md); }
+.fin-rcpt-s { color: var(--muted); font-weight: 400; font-size: var(--fs-xs); }
+.fin-rcpt-pct { flex: none; font-weight: 800; font-size: var(--fs-base); white-space: nowrap; }
 /* Ховор хэрэглэгддэг туслах хэрэгслүүд — нугалаанд */
 .fin-more { font-size: var(--fs-sm); }
 .fin-more > summary { cursor: pointer; color: var(--muted); padding: 6px 10px;
@@ -7947,6 +8229,23 @@ select.no-asar-len {
 .dash-ocal { margin-bottom:var(--space-3); }
 .dash-ocal .ocal-grid { margin-bottom:0; }
 .dash-ocal .ocal-hint { padding:var(--space-2) 0 0; }
+/* Тоймын календарь утсанд = 7 ХОНОГИЙН МӨР (2026-10-09). Өргөн дэлгэцэд ХЭЗЭЭ Ч харагдахгүй
+   (сарын тор л). «ocal-wkmode» = утсанд 7 хоног, «Бүтэн сар» дарвал энэ анги арилж сарын тор гарна. */
+.ocal-head.ocal-wk-only, .ocal-grid.ocal-wk-only, .ocal-foot { display: none; }
+.ocal-foot { align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); }
+.ocal-foot .ocal-leg { display: none; margin-left: 0; }
+@media (max-width: 720px) {
+  /* Бүтэн сарын нүд 52 → 44px (өдөр + тоо багтана) */
+  .dash-ocal .ocal-c { min-height: 44px; padding: var(--space-1) 0; }
+  .dash-ocal .ocal-head { margin-bottom: var(--space-2); }
+  .dash-ocal .ocal-foot { display: flex; }
+  .ocal-wkmode .ocal-head.ocal-wk-only { display: flex; }
+  .ocal-wkmode .ocal-grid.ocal-wk-only { display: grid; }
+  .ocal-wkmode .ocal-mo, .ocal-wkmode .ocal-hint { display: none; }
+  .ocal-wkmode .ocal-foot .ocal-leg { display: flex; }
+  /* 7 хоногийн нүд том — нэг л мөр, хурууны хүрэх тал хангалттай */
+  .dash-ocal .ocal-wk-only .ocal-c { min-height: 60px; }
+}
 
 /* Дүн шинжилгээ — «агуулахаас цагтаа гарсан» өдрийн задаргаа */
 .dsp-days { display:flex; flex-direction:column; gap:var(--space-1); margin-top:var(--space-2); }
@@ -8324,10 +8623,10 @@ select.no-asar-len {
 .dl-sub { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
 .dl-list { margin-top: var(--space-3); }
 .dl-row {
-  display: grid; grid-template-columns: 4.5rem 1fr 4rem; gap: var(--space-2);
+  display: grid; grid-template-columns: 5.5rem 1fr 4rem; gap: var(--space-2);
   align-items: center; padding: var(--space-2) 0; border-top: 1px solid var(--line);
 }
-.dl-day { font-size: var(--fs-sm); font-weight: 600; }
+.dl-day { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
 .dl-bar { background: var(--panel-hover); border-radius: var(--r-full); height: 8px; overflow: hidden; }
 .dl-bar i { display: block; height: 100%; background: var(--primary); border-radius: var(--r-full); }
 /* Баганын өргөн 10%-ийн алхмаар — динамик утгыг inline style-гүйгээр (дизайны гэрээ) */
@@ -8774,15 +9073,28 @@ select.no-asar-len {
 /* Тойм — шилдэг гүйцэтгэгч (дамжлагын оноо, сараар) */
 .dash-top { grid-column: span 4; }
 .dash-top-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); margin-bottom: var(--space-2); }
-.dash-top-ym { flex: none; font-size: var(--fs-sm); padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
+.dash-top-ym { min-height: var(--tap-sm); flex: none; font-size: var(--fs-sm); padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); }
 .dash-top-sub { font-size: var(--fs-xs); color: var(--muted); }
 .dash-top-fill { background: var(--warn); }
+/* Нэр таслагдахгүй: «Д.Бат-Эрдэнэ» 110px-д багтахгүй байв */
+.dash-top .dash-bar-label { width: 8.5rem; font-size: var(--fs-md); }
 .dash-top-n { width: auto; min-width: 32px; font-variant-numeric: tabular-nums; }
-.dash-top-scroll { max-height: 20rem; overflow-y: auto; }
+/* ⛔ max-height/overflow БУЦААЖ БҮҮ НЭМ — утсанд хуудас доторх хоёр дахь гүйлгэлт; `dashListHtml` хязгаарлана */
+.dash-top-scroll { min-width: 0; }
 
 /* Тойм — гацсан захиалга (2026-10-05) */
 .stk-ok { font-size: var(--fs-sm); color: var(--ok); font-weight: 600; }
-.stk-list { margin-top: var(--space-2); max-height: 22rem; overflow-y: auto; }
+/* «✓ алга» карт нь мэдээлэл биш, зөвхөн «шалгасан» гэсэн тэмдэг — нимгэн (2026-10-09) */
+.rv-card.stk-ok, .rv-card.mcd-ok { display: flex; align-items: center; min-height: var(--tap-sm);
+  padding: var(--space-1) var(--space-3); margin-bottom: var(--space-2); }
+/* Жагсаалтын «бусад (N)» — дарахад тэр дор нээгдэнэ */
+.dash-more > summary { display: flex; align-items: center; gap: var(--space-1); min-height: var(--tap-sm);
+  border-top: 1px solid var(--border); color: var(--primary); font-size: var(--fs-sm); font-weight: 600;
+  cursor: pointer; list-style: none; }
+.dash-more > summary::-webkit-details-marker { display: none; }
+.dash-more > summary::before { content: '▸'; font-size: var(--fs-xs); }
+.dash-more[open] > summary::before { content: '▾'; }
+.stk-list { margin-top: var(--space-2); }
 .stk-row { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2); align-items: center;
   width: 100%; text-align: left; padding: var(--space-2) 0; border: 0; border-top: 1px solid var(--border);
   background: none; color: var(--text); font-size: var(--fs-sm); cursor: pointer; }

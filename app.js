@@ -27541,6 +27541,20 @@ function stuckOrders(orders, today) {
    «📵 Алдсан дуудлага» дэлгэцийн шийдэгдээгүй мөрүүд — ИЖИЛ дүрэм
    (`pbxFollowups` → `pbxOpenCalls`), тусад нь бодохгүй. Мөр дарахад тэр
    дэлгэц нээгдэнэ (ярьсан/аваагүй тэмдэглэх нь тэнд). */
+/* ⛔ ТОЙМЫН ЖАГСААЛТ = эхний N мөр, үлдсэн нь «бусад» дарахад ТЭР ДОР нээгдэнэ (2026-10-09).
+   Өмнө нь `max-height + overflow-y:auto` — утсанд хуудас доторх ХОЁР ДАХЬ гүйлгэлт
+   үүсч, гүйлгэх хуруу жагсаалтад «гацдаг», нэг муу өдөр гурван блок эхний
+   дэлгэцийн 1000px-ээс илүүг эзэлж календарь, цагтаа хүрсэн хувь хүрэх аргагүй
+   болдог байв. Нээлттэй/хаалттай байдал `state.dashMore`-д (render() дахин зурахад
+   хүн нээсэн жагсаалт хаагдахгүй). */
+const DASH_LIST_SHOW = 3;
+function dashListHtml(key, rows, show) {
+  const n = show || DASH_LIST_SHOW;
+  if (rows.length <= n) return rows.join('');
+  const open = !!(state.dashMore && state.dashMore[key]);
+  return rows.slice(0, n).join('')
+    + `<details class="dash-more" data-dash-more="${key}"${open ? ' open' : ''}><summary class="dash-more-sum">бусад (${rows.length - n})</summary>${rows.slice(n).join('')}</details>`;
+}
 function missedBlockHtml() {
   if (typeof canSeeMissedCalls !== 'function' || !canSeeMissedCalls()) return '';
   if (!Array.isArray(state.pbxLog) || !Array.isArray(state.pbxCb)) {
@@ -27552,13 +27566,13 @@ function missedBlockHtml() {
   const open = pbxOpenCalls(f, state.pbxCb, state.appOrders || []).filter(x => !x.done).sort(pbxByRecent);
   if (!open.length) return `<div class="rv-card mcd-card mcd-ok" data-mcd-go="1" role="button" tabindex="0">✓ Буцаж залгах дуудлага алга</div>`;
   const idx = pbxNameIndex(state.customers || [], state.appOrders || []);
-  const rows = open.slice(0, 6).map(r => {
+  const rows = open.slice(0, DASH_LIST_SHOW).map(r => {
     const w = pbxWho(r.peer, idx);
     return `<button type="button" class="mcd-row ui-raw" data-mcd-go="1">
       <span class="mcd-main"><span class="mcd-name">${escapeHtml(w.name || r.peer)}</span><span class="mcd-meta">${w.name ? escapeHtml(r.peer) + ' · ' : ''}${r.tries > 1 ? r.tries + ' удаа залгасан · ' : ''}${escapeHtml(ubStamp(r.last))}</span></span>
       ${w.orders ? `<span class="mcd-tag">🛒 ${w.orders}</span>` : ''}</button>`;
   }).join('');
-  const more = open.length > 6 ? `<button type="button" class="mcd-more ui-raw" data-mcd-go="1">+${open.length - 6} бусад — бүгдийг харах</button>` : '';
+  const more = open.length > DASH_LIST_SHOW ? `<button type="button" class="mcd-more ui-raw" data-mcd-go="1">+${open.length - DASH_LIST_SHOW} бусад — бүгдийг харах</button>` : '';
   return `<div class="rv-card mcd-card">
     <div class="rv-head">📵 Буцаж залгаагүй дуудлага <span class="rv-sum">${open.length} · сүүлийн ${MISSED_DAYS} хоног</span></div>
     <div class="mcd-list">${rows}</div>${more}
@@ -27609,7 +27623,7 @@ function arBlockHtml(orders) {
     </div>`;
   return `<div class="rv-card stk-card">
     <div class="rv-head">💰 Авлага нэхэх <span class="rv-sum">${open.length} хүн · ${fmtMoney(sum)}</span></div>
-    <div class="stk-list">${rows.map(row).join('')}</div>
+    <div class="stk-list">${dashListHtml('ar', rows.map(row))}</div>
   </div>`;
 }
 async function arMarkCalled(id) {
@@ -27629,10 +27643,10 @@ function stuckBlockHtml(orders) {
   const rows = list.map(r => `<button type="button" class="stk-row ui-raw" data-rv-open="${escapeHtml(String(r.number ?? ''))}">
       <span class="stk-no">#${escapeHtml(String(r.number ?? ''))}</span>
       <span class="stk-main"><span class="stk-cust">${escapeHtml(r.customer || '—')}</span><span class="stk-step">хүлээж буй: ${escapeHtml(r.label)}</span></span>
-      <span class="stk-late">${r.late} хоног</span></button>`).join('');
+      <span class="stk-late">${r.late} хоног</span></button>`);
   return `<div class="rv-card stk-card">
     <div class="rv-head">⏳ Гацсан захиалга <span class="rv-sum">${list.length} · дараагийн алхам хугацаанаасаа хоцорсон</span></div>
-    <div class="stk-list">${rows}</div>
+    <div class="stk-list">${dashListHtml('stk', rows)}</div>
   </div>`;
 }
 function dispatchBlockHtml(orders) {
@@ -27682,6 +27696,9 @@ function attachReviewBlock(root) {
   const _dspGo = () => { state.reportMonth = (_dspCard && _dspCard.dataset.dspYm) || todayStr().slice(0, 7); state.view = 'reports'; state.reportsTab = 'reports'; render(); };
   _dspCard?.addEventListener('click', _dspGo);
   _dspCard?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _dspGo(); } });
+  (root || document).querySelectorAll('[data-dash-more]').forEach(d => d.addEventListener('toggle', () => {
+    (state.dashMore = state.dashMore || {})[d.dataset.dashMore] = d.open;
+  }));
   (root || document).querySelectorAll('[data-rv-open]').forEach(el => el.addEventListener('click', () => {
     if (!canSeeOrders()) return;
     state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.rvOpen; render();
@@ -40403,7 +40420,7 @@ function renderDashboard() {
             <input type="month" class="ui-raw dash-top-ym" id="dash-top-ym" value="${escapeHtml(topYm)}" max="${todayStr().slice(0, 7)}">
           </div>
           <div class="dash-top-scroll">
-          ${topPerformers.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : topPerformers.map((r, i) => {
+          ${topPerformers.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : dashListHtml('top', topPerformers.map((r, i) => {
             const top = topPerformers[0].pts || 1;
             const medal = r.pts <= 0 ? '' : i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : `${i + 1}. `;
             const w = r.pts > 0 ? Math.max(4, Math.round(r.pts / top * 100)) : 0;
@@ -40413,7 +40430,7 @@ function renderDashboard() {
                 <div class="dash-bar-track"><div class="dash-bar-fill dash-top-fill" style="width:${w}%"></div></div>
                 <div class="dash-bar-count dash-top-n">${Math.round(r.pts)}</div>
               </div>`;
-          }).join('')}
+          }), 5)}
           </div>
         </div>
       </div>

@@ -17537,6 +17537,41 @@ async function swFetchTests() {
      'Тойм: гацсан → буцаж залгах → календарь → цагтаа хүрсэн → үнэлгээ → шилдэг гүйцэтгэгч дараалал');
 }
 
+// ═══ ТОЙМЫН ЖАГСААЛТ: эхний N мөр, үлдсэн нь «бусад» (2026-10-09) ═══════
+// `max-height + overflow-y:auto` нь утсанд хуудас доторх хоёр дахь гүйлгэлт —
+// нэг муу өдөр гурван блок эхний дэлгэцийг бүхлээр эзэлж календарь хүрэхгүй болдог байв.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+  const N = vm.runInContext('DASH_LIST_SHOW', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const rows = (n) => Array.from({ length: n }, (_, i) => `<i>${i}</i>`);
+  const save = st.dashMore;
+  st.dashMore = undefined;
+  eq(F.dashListHtml('t', rows(N)), rows(N).join(''), 'Тойм жагсаалт: N мөр хүртэл «бусад» гарахгүй');
+  const h = F.dashListHtml('t', rows(N + 4));
+  ok(h.indexOf(`<i>${N - 1}</i>`) < h.indexOf('<details'), 'Тойм жагсаалт: эхний N мөр ил, үлдсэн нь details дотор');
+  ok(new RegExp(`бусад \\(4\\)`).test(h), 'Тойм жагсаалт: үлдсэн мөрийн тоо ил');
+  ok(!/<details[^>]* open/.test(h), 'Тойм жагсаалт: өгөгдмөл нь хаалттай');
+  st.dashMore = { t: true };
+  ok(/<details[^>]* open/.test(F.dashListHtml('t', rows(N + 1))), 'Тойм жагсаалт: нээсэн нь render() дахин зурахад хаагдахгүй');
+  ok(!/<details[^>]* open/.test(F.dashListHtml('other', rows(N + 1))), 'Тойм жагсаалт: нэг жагсаалтын төлөв нөгөөд нөлөөлөхгүй');
+  eq(F.dashListHtml('t', rows(8), 5).split('<i>').length - 1, 8, 'Тойм жагсаалт: мөр алдагдахгүй (ил + нуугдсан = нийт)');
+  st.dashMore = save;
+  // Дэлгэц нь үүнийг үнэхээр ашиглана (мөр гараар .join('') хийвэл дахин гүйлгэлт нэмэх нүх нээгдэнэ)
+  ['function stuckBlockHtml', 'function arBlockHtml'].forEach(k => {
+    const b = src.slice(src.indexOf(k), src.indexOf(k) + 1800);
+    ok(/dashListHtml\(/.test(b), `Тойм жагсаалт: ${k} нь dashListHtml ашиглана`);
+  });
+  ok(/dashListHtml\('top'/.test(src), 'Тойм жагсаалт: шилдэг гүйцэтгэгч ч ашиглана');
+  ok(/data-dash-more\]'\)\.forEach\(d => d\.addEventListener\('toggle'/.test(src), 'Тойм жагсаалт: нээсэн төлөв state.dashMore-д хадгалагдана');
+  // ⛔ Дотоод гүйлгэлт буцаж ирэхийг хаана
+  ['stk-list', 'dash-top-scroll', 'mcd-list'].forEach(c => {
+    const m = css.match(new RegExp('\\n\\.' + c + '\\s*\\{[^}]*\\}'));
+    ok(m && !/overflow-y\s*:\s*(auto|scroll)/.test(m[0]) && !/max-height/.test(m[0]), `Тойм жагсаалт: .${c} дотор гүйлгэлтгүй`);
+  });
+}
+
 // ═══ «БИ Ч ОРОЛЦСОН» ТОВЧ ЦАЛИНГИЙН САМБАРТ ХОЛБОГДОНО (2026-10-05) ═════
 // Хайрцаг цалингийн самбарт зурагддаг атал товчны үйлдэл «Миний ирц»-д л
 // холбогдсон байсан — ✕/✓ дарахад юу ч болдоггүй байв (CEO барив).

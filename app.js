@@ -3866,6 +3866,7 @@ function canManageOrders() {
 function canSeeOrders() {
   // Эрх удирдах самбар = эх сурвалж: CEO → албан тушаалын тохиргоо → default(_ordersDefaultFor).
   // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
+  if (!branchFenceAllowsView('orders')) return false;   // салбарын хаалт — эрхээс ӨМНӨ
   return canAccessView('orders', () => _ordersDefaultFor(findMember(state.me)));
 }
 function projectName(id) {
@@ -3991,6 +3992,33 @@ function setBranchLens(v) {
   state.branchLens = v;
   try { localStorage.setItem('branchLens', v); } catch (e) {}
   render();
+}
+/* ⛔ САЛБАРЫН ХААЛТ (2026-10-09, CEO): CEO биш хүн ЗӨВХӨН өөрийн салбар(ууд)-ын захиалга,
+   ирцийг харна (нэг салбартай хүний ажил ленз/filteredTasks-аар аль хэдийн хаалттай).
+   Эрх (role_perms/member_perms) нь «юу хийж болох», хаалт нь «АЛЬ САЛБАРЫНХЫГ» шийднэ —
+   эрхийг ил олгосон ч өөр салбарын дэлгэцийг нээхгүй. Салбар оноогоогүй хүн ба CEO хаалтгүй;
+   гурван салбар бүгдэд нь байвал хаалт юу ч хасахгүй. Түлхүүр нь allowedLenses() — ленз ба
+   хаалт хоёр дүрэм салбарлахгүй. NOMAAD = 'camp'. Хаалт ДЭЛГЭЦ дээр; цалин/KPI ижил
+   өгөгдлөөс бодогддог тул өгөгдлийг хөндөхгүй. ⚠ Олон салбартай хүний ЖАГСААЛТ ажил
+   (ленз 'all') одоохондоо бүх салбараар — зөвхөн захиалга/ирц хаалттай. */
+const BRANCH_VIEW_OWNER = { orders: 'm-event', nomaad: 'camp', catering: 'catering' };
+function branchFence() {   // → ['camp'] | ['m-event','camp'] | null (хаалтгүй)
+  if (state.isCEO) return null;
+  const a = allowedLenses().filter(b => b !== 'all');
+  return a.length ? a : null;
+}
+function branchFenceAllowsView(view) {
+  const f = branchFence(), owner = BRANCH_VIEW_OWNER[view];
+  return !f || !owner || f.includes(owner);
+}
+function branchFenceAllowsMember(m) {
+  const f = branchFence();
+  return !f || f.some(b => _inHubBranch(m, b));
+}
+// Ирцийн бичлэгийг хаалтаар шүүнэ. Танихгүй хүн (бүртгэлгүй) харагдсаар — нуувал ирц чимээгүй алга болно.
+function attRecsInFence(recs) {
+  if (!branchFence() || !Array.isArray(recs)) return recs;
+  return recs.filter(r => branchFenceAllowsMember(findMember(r.member_key) || findMember(r.member_name)));
 }
 // "Гарсан" статустай ажилтны email-ийг хурдан хайхад зориулсан Set.
 // Active task жагсаалтаас тэдгээрийн оноосон ажлуудыг хасахад ашиглана —
@@ -13176,7 +13204,7 @@ function attWorkedLine(m) {
 }
 function renderAttendanceRows() {
   const isToday = (state.attViewDay || todayStr()) === todayStr();
-  const recs = isToday ? (state.attendanceToday || []) : (state.attViewRecs || []);
+  const recs = attRecsInFence(isToday ? (state.attendanceToday || []) : (state.attViewRecs || []));
   const word = isToday ? 'Өнөөдөр' : 'Энэ өдөр';
   const day = state.attViewDay || todayStr();
   const by = {};
@@ -13224,7 +13252,7 @@ function renderAttendanceRows() {
 // Хүлээгдэж буй хүсэлтийн самбар (зөвхөн ирц засах эрхтэй хүнд).
 function renderAttReqPanel() {
   if (!canEditAttendance()) return '';
-  const pend = attReqPending();
+  const pend = attReqPending().filter(r => branchFenceAllowsMember(findMember(r.key)));
   if (!pend.length) return '';
   return `<div class="areq-panel"><div class="areq-panel-h">🙋 Ирцийн хүсэлт · <b>${pend.length}</b> хүлээгдэж байна</div>
     ${pend.map(r => {
@@ -13288,7 +13316,8 @@ function renderAttendance() {
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
-  const loadCard = (isToday && !monthMode) ? dayLoadCardHtml() : '';
+  // Ачааллын карт = M-Event захиалгаас бодогддог → M-Event-ийн захиалга харахгүй хүнд харуулахгүй.
+  const loadCard = (isToday && !monthMode && branchFenceAllowsView('orders')) ? dayLoadCardHtml() : '';
   const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
       <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
       <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
@@ -13915,7 +13944,7 @@ function renderAttendanceMonth(month) {
   }
   if (state.attMonthKey !== month || !Array.isArray(state.attMonthRecs)) return '<div class="att-mo-note">Ачаалж байна…</div>';
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
-  const recs = state.attMonthRecs;
+  const recs = attRecsInFence(state.attMonthRecs);
   if (!recs.length) return `<div class="att-mo-note">${month} сард ирц бүртгэгдээгүй.</div>`;
   const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
   const byM = {};
@@ -15533,6 +15562,7 @@ function cateringMonthIncome(jobs, month, basis) {
 }
 function canSeeCatering() {
   if (state.isCEO) return true;
+  if (!branchFenceAllowsView('catering')) return false;   // салбарын хаалт — эрхээс ӨМНӨ
   const m = (typeof findMember === 'function') ? findMember(state.me) : null;
   if (m && (memberBranchesOf(m) || []).includes('catering')) return true;
   return canAccessView('catering', false);
@@ -18994,6 +19024,7 @@ function attachHubPeople() {
 function canSeeNomaadOrders() {
   // Эрх удирдах самбар = эх сурвалж: CEO → роль тохиргоо → default(_nomaadDefaultFor).
   // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
+  if (!branchFenceAllowsView('nomaad')) return false;   // салбарын хаалт — эрхээс ӨМНӨ
   return canAccessView('nomaad', () => _nomaadDefaultFor(findMember(state.me)) || (state.me === getFinanceExecutorEmail()));
 }
 // COO цалин харах эрх — CEO эсвэл тохируулсан COO өөрөө. (renderCounts ба renderCooSalary

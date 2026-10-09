@@ -8034,6 +8034,36 @@ need(['orderCustType']);
        'ИНВАРИАНТ: нэвтрэлт дууссан тууз бүх дэлгэцэд гарна');
   }
 
+  // ── ДАРАА ТӨЛБӨР = захирлын зөвшөөрөл (2026-10-09, CEO) ────────────────
+  {
+    const tok = F.encodeOrderCredit('2026-10-20', '8800');
+    eq(tok, '⟦CRED|2026-10-20|8800⟧', 'дараа төлбөр: токен');
+    eq(F.parseOrderCredit('Үндэсний музей ' + tok).due, '2026-10-20', 'дараа төлбөр: огноо уншина');
+    eq(F.parseOrderCredit('юу ч алга'), null, 'дараа төлбөр: токенгүй бол null');
+    eq(F.parseOrderCredit('⟦CRED|огноогүй|x⟧'), null, 'ИНВАРИАНТ: огноогүй зөвшөөрөл хүчингүй');
+    // ⛔ Токен захиалга засахад УСТАХГҮЙ
+    eq(/CRED/.test(F.stripFormTokens('a ' + tok + ' ⟦SET|1⟧')), true, 'ИНВАРИАНТ: ⟦CRED⟧ засахад арилахгүй');
+    // Төлбөр орсон бол зөвшөөрөл хэрэггүй
+    eq(F.orderCreditOk({ note: tok, paid_mnt: 0 }), true, 'дараа төлбөр: төлбөргүй үед хүчинтэй');
+    eq(F.orderCreditOk({ note: tok, paid_mnt: 500 }), false, 'дараа төлбөр: төлбөр орсон бол хамаагүй');
+    // Амласан огноо хэтэрсэн
+    eq(F.orderCreditLate({ note: tok, paid_mnt: 0 }, '2026-10-21'), true, 'дараа төлбөр: хугацаа хэтэрсэн');
+    eq(F.orderCreditLate({ note: tok, paid_mnt: 0 }, '2026-10-20'), false, 'дараа төлбөр: тэр өдөр нь хэтрээгүй');
+    eq(F.orderCreditLate({ note: tok, paid_mnt: 9 }, '2026-11-01'), false, 'дараа төлбөр: төлсөн бол хоцрогдолгүй');
+    // ⭐ ГОЛ: зөвшөөрөлтэй захиалга төлбөргүй ч БАТАЛГААЖСАН (ажилчид гаргана)
+    eq(F.orderCanonStatus({ status: 'reserved', paid_mnt: 0, note: tok }), 'reserved',
+       'ИНВАРИАНТ: зөвшөөрөлтэй захиалга төлбөргүй ч «Ноорог» болохгүй');
+    eq(F.orderCanonStatus({ status: 'reserved', paid_mnt: 0, note: '' }), 'draft',
+       'ИНВАРИАНТ: зөвшөөрөлгүй төлбөргүй захиалга ХЭВЭЭР ноорог');
+    // Зөвшөөрөл = ЗӨВХӨН захирал
+    {
+      const body = src.slice(src.indexOf('async function openOrderCreditModal'), src.indexOf('async function appendOrderNoteTo'));
+      ok(/state\.isCEO/.test(body), 'ИНВАРИАНТ: дараа төлбөрийг зөвхөн захирал зөвшөөрнө');
+      ok(/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/.test(body), 'ИНВАРИАНТ: төлөх огноо заавал');
+      ok(/const ok = await showConfirm\(/.test(body) && /if \(!ok\) return;/.test(body), 'дараа төлбөр: цуцлахад баталгаажуулалт');
+    }
+  }
+
   // ── АВЛАГА = ӨДРИЙН АЖИЛ (2026-10-07) ──────────────────────────────────
   {
     const items = [

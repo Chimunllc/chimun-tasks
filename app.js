@@ -10262,7 +10262,9 @@ const _seenBadStatus = new Set();
 function orderCanonStatus(ao) {
   let raw = String((ao && ao.status) || 'reserved');
   if (BQ_LEGACY_MAP[raw]) raw = BQ_LEGACY_MAP[raw];
-  const unpaid = (Number(ao && ao.paid_mnt) || 0) <= 0;
+  // ⚠ Дараа төлбөрийн ЗӨВШӨӨРӨЛТЭЙ (⟦CRED⟧) захиалга төлбөргүй ч БАТАЛГААЖСАН
+  //   хэвээр — эс бөгөөс ажилчид гаргаж чадахгүй, дамжлага эхлэхгүй.
+  const unpaid = (Number(ao && ao.paid_mnt) || 0) <= 0 && !(typeof parseOrderCredit === 'function' && parseOrderCredit(ao && ao.note));
   if (raw === 'reserved' && unpaid) raw = 'draft';
   if (raw === 'draft' && unpaid) {
     const end = String((ao && (ao.stops_at || ao.starts_at)) || '').slice(0, 10);
@@ -10871,6 +10873,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-invoice]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); issueInvoice(b.dataset.appInvoice, b); }));
   document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
+  document.querySelectorAll('[data-app-credit]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCreditModal(b.dataset.appCredit); }));
   document.querySelectorAll('[data-app-cmp]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCmpModal(b.dataset.appCmp); }));
   document.querySelectorAll('[data-app-note]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderNoteModal(b.dataset.appNote); }));
   document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
@@ -27074,6 +27077,29 @@ const _SET_RE = /⟦SET\|([01])(?:\|(\d+))?⟧/;
 const _SETUP_ITEM_RE = /суурилуул|угсрал|угсра[хл]|монтаж/i;
 function setupFlagOf(note) { const m = String(note || '').match(_SET_RE); return m ? m[1] === '1' : null; }
 function setupFeeOf(note) { const m = String(note || '').match(_SET_RE); return m && m[2] ? Number(m[2]) || 0 : 0; }
+/* ━━━ ДАРАА ТӨЛБӨР = ЗАХИРЛЫН ЗӨВШӨӨРӨЛ (2026-10-09, CEO) ━━━━━━━━━━━━━━━
+   Төлбөр ороогүй захиалга ҮРГЭЛЖ «Ноорог» харагддаг (`orderCanonStatus`) тул
+   ажилчдын «зөвхөн баталгаажсан захиалга гаргана» дүрэмд баригдаж, дараа
+   төлбөрөөр гаргах ховор тохиолдолд ажил ЗОГСДОГ байв. Амаар зөвшөөрөл өгвөл
+   дүрэм задарна — тиймээс зөвшөөрлийг БИЧЛЭГ болгоно.
+   ⛔ ЗӨВХӨН ЗАХИРАЛ (`state.isCEO`) — эс бөгөөс «дүрэм» гэдэг нэр төдий болно.
+   ⛔ ТӨЛӨХ ОГНОО ЗААВАЛ — огноогүй зөвшөөрөл нь авлагыг хэзээ нэхэхийг
+     хэлдэггүй, мөнгө чимээгүй хоцорно.
+   ⚠ Токен `_FORM_TOKEN_RE`-д ОРООГҮЙ тул захиалга засахад устахгүй. */
+const _CRED_RE = /⟦CRED\|([0-9]{4}-[0-9]{2}-[0-9]{2})\|?([^⟧]*)⟧/;
+function parseOrderCredit(note) {
+  const m = String(note || '').match(_CRED_RE);
+  return m ? { due: m[1], by: (m[2] || '').trim() } : null;
+}
+function encodeOrderCredit(due, by) { return `⟦CRED|${String(due || '').slice(0, 10)}|${String(by || '').replace(/[|⟧]/g, '')}⟧`; }
+// Зөвшөөрөл хүчинтэй эсэх (ЦЭВЭР). Төлбөр ОРСОН бол зөвшөөрөл хэрэггүй.
+function orderCreditOk(o) { return !!(o && (Number(o.paid_mnt) || 0) <= 0 && parseOrderCredit(o.note)); }
+// Амласан огноо хэтэрсэн эсэх — хэтэрвэл картад УЛААН, авлага нэхэх ажил болно.
+function orderCreditLate(o, today) {
+  const c = parseOrderCredit(o && o.note);
+  if (!c || (Number(o && o.paid_mnt) || 0) > 0) return false;
+  return !!today && c.due < String(today).slice(0, 10);
+}
 function encodeSetup(on, fee) { return `⟦SET|${on ? 1 : 0}${on && Number(fee) > 0 ? '|' + Math.round(Number(fee)) : ''}⟧`; }
 // ── Суурилуулалтын нэгж хөлс — барааны нэрээр, доод хязгаартай ────────────────
 // Газар дээр угсрах хөдөлмөр. Нэгж хөлсийг барааны нэрээр таамаглана (тайз/асар том,
@@ -29249,6 +29275,38 @@ async function patchOrderFields(o, fields) {
 }
 // Буулгалт бүртгэх — дүн + шалтгаан. Захиалгын note-д ⟦CMP⟧ токен болж суух ба
 // орлогоос шууд хасагдана. Тайланд шалтгаанаар нь нэгтгэгдэнэ.
+// 💳 Дараа төлбөрөөр зөвшөөрөх / цуцлах — ЗӨВХӨН захирал.
+// Зөвшөөрөл = бичлэг: хэн, хэзээ, хэзээ төлөхөөр тохирсон. Амаар хэлэх нь
+// ажилчдын «зөвхөн баталгаажсан захиалга гаргана» дүрмийг задалдаг.
+async function openOrderCreditModal(id) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
+  if (!state.isCEO) { showToast('Зөвхөн захирал дараа төлбөрөөр зөвшөөрнө', 'warn', 3500); return; }
+  const cur = parseOrderCredit(o.note);
+  const owed = orderOwed(o);
+  if (cur) {
+    const ok = await showConfirm(`#${o.number || ''} — дараа төлбөрийн зөвшөөрлийг цуцлах уу?\n\nЗахиалга «Ноорог» болж буцаж, ажилчид гаргахгүй.`, { okText: 'Цуцлах' });
+    if (!ok) return;
+    const note = String(o.note || '').replace(_CRED_RE, '').replace(/\s+/g, ' ').trim();
+    try { await patchOrderFields(o, { note }); o.note = note; }
+    catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
+    await appendOrderNoteTo(o, '💳 Дараа төлбөрийн зөвшөөрөл ЦУЦЛАВ');
+    showToast('Цуцаллаа', 'success', 2500); render(); return;
+  }
+  const due = String((await showPrompt(`#${o.number || ''} · ${fmtMoney(owed)} — хэзээ төлөхөөр тохирсон бэ? (YYYY-MM-DD)`,
+    { okText: 'Зөвшөөрөх', value: addDays(String(o.stops_at || todayStr()).slice(0, 10), 7) })) || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) { if (due) showToast('Огноог YYYY-MM-DD хэлбэрээр', 'warn', 3000); return; }
+  const note = (String(o.note || '').replace(_CRED_RE, '').trim() + ' ' + encodeOrderCredit(due, state.me || '')).trim();
+  try { await patchOrderFields(o, { note }); o.note = note; }
+  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
+  await appendOrderNoteTo(o, `💳 Дараа төлбөрөөр зөвшөөрөв · төлөх огноо ${due} · ${fmtMoney(owed)}`);
+  showToast('✓ Баталгаажлаа — ажилчид гаргах боломжтой', 'success', 4000); render();
+}
+// Тэмдэглэлийн мөр нэмэх (append-only) — зөвшөөрлийн түүх үлдэнэ.
+async function appendOrderNoteTo(o, text) {
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object' && !Array.isArray(o.stage_meta)) ? { ...o.stage_meta } : {};
+  sm.notes = appendOrderNote(orderNotesOf(o), text, state.me || '');
+  try { await patchOrderFields(o, { stage_meta: sm }); o.stage_meta = sm; } catch (e) { /* тэмдэглэл унасан ч зөвшөөрөл хүчинтэй */ }
+}
 async function openOrderCmpModal(id) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
   if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буулгалт бүртгэх эрх алга', 'warn', 3000); return; }
@@ -30408,6 +30466,12 @@ function bqOrderCard(o) {
   // Хүргэлттэй эсэх — DLV token эсвэл хаягаар. Хүргэлттэй бол төлбөр/бүсийг харуулна.
   const _dlv = isApp ? parseDelivery(o.note) : null;
   const _isDeliv = isDeliveryOrder(o);
+  // 💳 Дараа төлбөрийн зөвшөөрөл — төлбөргүй ч ГАРНА гэдгийг ажилтанд ил хэлнэ
+  const _cred = isApp ? parseOrderCredit(o.note) : null;
+  const _credLate = isApp && orderCreditLate(o, todayStr());
+  const credBadge = (_cred && (Number(o.paid_mnt) || 0) <= 0)
+    ? `<span class="deliv-badge cred-badge${_credLate ? ' cred-late' : ''}" title="Захирал дараа төлбөрөөр зөвшөөрсөн${_cred.by ? ' · ' + escapeHtml(memberName(_cred.by)) : ''}">💳 Дараа төлбөр · ${escapeHtml(_cred.due.slice(5))}${_credLate ? ' ХЭТЭРСЭН' : ''}</span>`
+    : '';
   const delivBadge = isApp
     ? (_isDeliv ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Өөрөө авах</span>`)
     : '';
@@ -30510,6 +30574,7 @@ function bqOrderCard(o) {
           next, owed: appBal, canPay: appCanPay, over: _over,
           // ⚠ `_depOpen` нь ЭНЭ МӨРӨӨС ДООР тодорхойлогддог тул энд ШУУД бодно (TDZ).
           depOpen: (Number(o.deposit_mnt) || 0) > 0 && !depositReturnState(o),
+          creditAsk: state.isCEO && st === 'draft' && (Number(o.paid_mnt) || 0) <= 0 && !!(o.items && o.items.length),
           editable: appEditable,
         }));
         const rows = { pri: [], more: [] };
@@ -30520,6 +30585,8 @@ function bqOrderCard(o) {
         add('damage', ['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : '');
         add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
         add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : '');
+        add('credit', (state.isCEO && (Number(o.paid_mnt) || 0) <= 0 && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length))
+          ? `<button class="btn ord-btn-s${_cred ? '' : (st === 'draft' ? ' btn-primary' : '')}" data-app-credit="${id}" title="Төлбөр ороогүй ч гаргахыг зөвшөөрнө">💳 ${_cred ? 'Дараа төлбөр цуцлах' : 'Дараа төлбөрөөр зөвшөөрөх'}</button>` : '');
         add('note', `<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>`);
         add('contract', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : '');
         add('edit', appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : '');
@@ -30581,7 +30648,7 @@ function bqOrderCard(o) {
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${credBadge}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(orderCustName(o) || '?')}</b>${_custPerson ? ` · <span class="order-rep">👤 ${escapeHtml(_custPerson)}</span>` : ''}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
@@ -37653,6 +37720,9 @@ function orderPrimaryActions(o, ctx) {
   const out = [];
   if (ctx.next) out.push('advance');                       // дараагийн шат = хамгийн чухал
   if (ctx.canPay && (Number(ctx.owed) || 0) > 0) out.push('pay');
+  // Төлбөргүй НООРОГ дээр «дараа төлбөр» нь захиралд ГОЛ товч — ажилчид гаргаж
+  // чадахгүй гацсан захиалгыг нээх цорын ганц зам (хүсвэл «Бусад» дотор биш).
+  if (ctx.creditAsk) out.push('credit');
   // Буцаалт: илүү төлөлт байвал ШУУД, эсвэл захиалга дууссан байхад барьцаа үлдсэн бол
   if ((Number(ctx.over) || 0) > 0) out.push('refund');
   else if (ctx.depOpen && ORDER_DONE_ST.has(String((o && o.status) || ''))) out.push('refund');

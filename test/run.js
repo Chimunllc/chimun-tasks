@@ -11984,9 +11984,10 @@ need(['orderCustType']);
      'scan: толгойд хувилбарын чип бий (index.html)');
   // ⚠ CACHE_TAG-аар хувилбар ХАРУУЛАХГҮЙ — app.js өөрчлөгдөхөд тэр солигддоггүй
   //   тул ажилтанд «хуучин хувилбар дээр байна» гэдгээ мэдэхгүй байх эрсдэл үүснэ.
-  const chip = src.slice(src.indexOf('function renderVerChip'), src.indexOf('function renderVerChip') + 700);
+  const chip = src.slice(src.indexOf('function verChipView'), src.indexOf('function applyAppUpdate') > 0 ? src.indexOf('async function applyAppUpdate') : undefined);
   ok(!/CACHE_TAG/.test(chip), 'scan: чип нь CACHE_TAG-аар БИШ, app.js-ийн хувилбараар');
   ok(/buildLabel\(/.test(chip), 'scan: чип нь buildLabel()-ээр бичигдэнэ');
+  ok(/verChipView\(_build, _buildNew/.test(src.slice(src.indexOf('function renderVerChip'), src.indexOf('function renderVerChip') + 300)), 'scan: renderVerChip нь verChipView-ээс уншина');
   // Шалгалт хэт олон давтагдахгүй (visibilitychange бүрд HEAD явуулбал сүлжээ чангарна)
   const cb = src.slice(src.indexOf('async function checkBuild'), src.indexOf('async function checkBuild') + 500);
   ok(/_BUILD_MIN_GAP/.test(cb), 'scan: checkBuild() завсарын хамгаалалттай');
@@ -11995,6 +11996,64 @@ need(['orderCustType']);
   // Зориудын reload тул «амьд» тэмдэглэгээ цэвэрлэгдэнэ (scan (2) үүнийг ч шалгана)
   const ap = src.slice(src.indexOf('async function applyAppUpdate'), src.indexOf('async function applyAppUpdate') + 600);
   ok(/clearAlive\(\)/.test(ap), 'scan: applyAppUpdate() нь clearAlive() дуудна');
+}
+
+// ═══ ХУВИЛБАР УТСАНД ЦЭСЭНД, ТОЛГОЙД ЗӨВХӨН «ШИНЭ» ҮЕД (2026-10-09) ═════════
+// Толгойн «⟳ 00:47» чип 64px эзэлж, 390px-д 24 дэлгэцийн 8-ын гарчгийг таслаж байв.
+{
+  const V = F.verChipView;
+  const noon = new Date(2026, 8, 12, 14, 5, 0).getTime();
+  const sameDay = new Date(2026, 8, 12, 9, 7, 0).getTime();
+  const prevDay = new Date(2026, 8, 11, 18, 40, 0).getTime();
+  const a = V({ at: sameDay }, null, noon);
+  eq(a.chip, '09:07', 'хувилбар: өнөөдрийн чип = цаг');
+  eq(a.row, 'Хувилбар: өнөөдөр 09:07', 'хувилбар: цэсийн мөр өнөөдөр гэж ил хэлнэ');
+  eq(a.act, 'Шалгах', 'хувилбар: шинэ биш үед үйлдэл = Шалгах');
+  eq(a.isNew, false, 'хувилбар: шинэ биш');
+  const b = V({ at: prevDay }, null, noon);
+  eq(b.chip, '9/11', 'хувилбар: өөр өдрийн чип = сар/өдөр');
+  eq(b.row, 'Хувилбар: 9/11 18:40', 'хувилбар: цэсийн мөр бүтэн цагтай');
+  // ⛔ «—» заагч БАЙХГҮЙ: чип дэргэд зураас нь эвдэрсэн мэт харагддаг байв
+  const u = V(null, null, noon);
+  eq(u.chip, '', 'хувилбар: мэдэгдэхгүй үед чип «—» БИШ, хоосон (зөвхөн ⟳)');
+  eq(u.row, 'Хувилбар тодорхойгүй', 'хувилбар: мэдэгдэхгүй гэдгийг цэсийн мөр ил хэлнэ');
+  eq(V({}, null, noon).chip, '', 'хувилбар: огноогүй build → хоосон');
+  eq(V({ at: 'хог' }, null, noon).chip, '', 'хувилбар: хог оролт → хоосон');
+  ok(![a, b, u].some(x => /—/.test(x.chip + x.row)), 'хувилбар: чип ба мөрийн текстэд ямар ч төлөвт «—» заагч гарахгүй');
+  // Шинэ хувилбар ҮРГЭЛЖ ялна (ихэвчлэн мэдэгдэхгүй build-тай ч)
+  const n = V({ at: sameDay }, { at: noon, tag: 'x' }, noon);
+  ok(n.isNew && n.chip === 'Шинэ' && n.act === 'Шинэчлэх', 'хувилбар: шинэ хувилбар → Шинэ / Шинэчлэх');
+  ok(V(null, { tag: 'x' }, noon).isNew, 'хувилбар: өөрийн build мэдэгдэхгүй ч шинэ гэдгийг хэлнэ');
+  eq(F.buildLabelFull(0, noon), '', 'хувилбар: buildLabelFull огноогүй → хоосон');
+
+  // Бүтэц: цэсэнд мөр, хоёр товч нэг үйлдэлтэй
+  const idx = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const sb = idx.slice(idx.indexOf('<aside class="sidebar">'), idx.indexOf('</aside>'));
+  ok(/id="ver-row-btn"/.test(sb) && /id="ver-row-txt"/.test(sb) && /id="ver-row-act"/.test(sb), 'хувилбар: цэсэнд (sidebar) мөр бий');
+  ok(sb.indexOf('id="ver-row-btn"') < sb.indexOf('id="user-chip"'), 'хувилбар: мөр хэрэглэгчийн чипийн ДЭЭР');
+  const rv = src.slice(src.indexOf('function renderVerChip'), src.indexOf('function renderVerChip') + 700);
+  ok(/ver-row-txt/.test(rv) && /ver-row-act/.test(rv) && /classList\.toggle\('new'/.test(rv), 'хувилбар: renderVerChip чип БА цэсийн мөрийг хоёуланг шинэчилнэ');
+  ok(/addEventListener\('click', onVerChipClick\)/.test(src) && /getElementById\('ver-row-btn'\)\?\.addEventListener\('click', onVerChipClick\)/.test(src), 'хувилбар: цэсийн мөр ч шалгаж шинэчилнэ');
+  const oc = src.slice(src.indexOf('async function onVerChipClick'), src.indexOf('async function onVerChipClick') + 500);
+  ok(/closeMobileSidebar\(\)/.test(oc) && /#ver-btn, #ver-row-btn/.test(oc), 'хувилбар: цэснээс дарахад цэс хаагдаж, хоёр товч busy болно');
+  const cbf = src.slice(src.indexOf('async function checkBuild'), src.indexOf('async function checkBuild') + 700);
+  ok(/catch \(e\) \{ renderVerChip\(\);/.test(cbf), 'хувилбар: шалгалт унахад ч «…» заагч үлдэхгүй');
+
+  // CSS: толгойн чипийг нуух ба цэсийн мөрийг харуулах дүрэм ЗӨВХӨН ≤720px дотор (өргөн дэлгэцэд чип хэвээр, мөр давхардахгүй)
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const bodies = [];
+  for (const m of css.matchAll(/@media \(max-width: 720px\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < css.length && d > 0) { if (css[i] === '{') d++; else if (css[i] === '}') d--; i++; }
+    bodies.push(css.slice(from, i));
+  }
+  const hideRe = /\.ver-chip:not\(\.new\) \{ display: none; \}/g, showRe = /\.ver-row \{ display: flex; \}/g;
+  const cnt = (re) => ({ all: (css.match(re) || []).length, inMedia: bodies.reduce((n, b) => n + (b.match(re) || []).length, 0) });
+  eq(JSON.stringify(cnt(hideRe)), JSON.stringify({ all: 1, inMedia: 1 }), 'ИНВАРИАНТ: толгойн чипийг нуух дүрэм ЗӨВХӨН @media (max-width: 720px) дотор');
+  eq(JSON.stringify(cnt(showRe)), JSON.stringify({ all: 1, inMedia: 1 }), 'ИНВАРИАНТ: цэсийн хувилбар мөрийг харуулах дүрэм ЗӨВХӨН @media (max-width: 720px) дотор');
+  ok(/\n\.ver-row \{ display: none;/.test(css), 'CSS: цэсийн мөр үндсэн дүрмээр нуугдана (өргөн дэлгэц)');
+  ok(css.indexOf('.ver-row { display: none;') < css.indexOf('.ver-row { display: flex; }'), 'CSS: үндсэн дүрэм media-аас ӨМНӨ (эс бөгөөс display:none дарж, утсанд мөр харагдахгүй)');
+  ok(/\.ver-chip\.new \{ min-height: var\(--tap-sm\); \}/.test(css), 'CSS: утсанд «Шинэ» чип хурууны хэмжээтэй');
 }
 
 // ═══ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════════

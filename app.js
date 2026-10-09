@@ -513,26 +513,47 @@ async function checkBuild(force) {
   if (!force && (now - _buildCheckAt) < _BUILD_MIN_GAP) return _buildNew;
   _buildCheckAt = now;
   let srv = null;
-  try { srv = await probeBuild(); } catch (e) { return _buildNew; }   // офлайн — чимээгүй
+  try { srv = await probeBuild(); } catch (e) { renderVerChip(); return _buildNew; }   // офлайн — чимээгүй (гэхдээ «…» заагч үлдэхгүй)
   if (!_build) _build = srv;                                          // эхний удаа = миний хувилбар
   _buildNew = buildIsNewer(_build, srv) ? srv : null;
   renderVerChip();
   return _buildNew;
 }
+// Цэсийн мөрд бүтэн шошго: «өнөөдөр 14:22» / «9/11 18:40». Мэдэгдэхгүй бол ''.
+function buildLabelFull(at, now) {
+  const t = Number(at) || 0; if (!t) return '';
+  const d = new Date(t), n = new Date(Number(now) || Date.now());
+  const same = d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  const hm = `${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
+  return same ? `өнөөдөр ${hm}` : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+}
+/* ── ХУВИЛБАР: УТСАНД ЦЭСЭНД, ТОЛГОЙД ЗӨВХӨН «ШИНЭ» ҮЕД (2026-10-09) ────────────────
+   Толгойн «⟳ 00:47» чип 64px эзэлж, 390px-д гарчигт 164px л үлдээн «Хуваарилсан ажил»,
+   «Санал санаачлага», «M event захиалга» зэрэг 24 дэлгэцийн 8-ын гарчгийг таслаж байв.
+   Хувилбар нь өдөр бүр харах мэдээлэл биш (чипийн өөрийн тайлбар: «чимээгүй байх ёстой»).
+   Тиймээс утсанд: ☰ цэсийн ДООД талд бүтэн мөр («Хувилбар: өнөөдөр 14:22 · Шалгах»), толгойд
+   ЗӨВХӨН шинэ хувилбар гарсан үед «⟳ Шинэ». Өргөн дэлгэцэд чип хэвээр.
+   ⛔ «—» ЗААГЧ БАЙХГҮЙ: хувилбар мэдэгдэхгүй (офлайн/шалгаагүй) үед чип зөвхөн «⟳», мөр нь
+     «Хувилбар тодорхойгүй» гэж ил хэлнэ. Дүрс дэргэд зураас нь эвдэрсэн мэт харагддаг байв.
+   Цэвэр функц — тестлэгдэнэ. */
+function verChipView(build, buildNew, now) {
+  if (buildNew) return { isNew: true, chip: 'Шинэ', row: 'Шинэ хувилбар бэлэн', act: 'Шинэчлэх', title: 'Шинэ хувилбар бэлэн — дарж шинэчилнэ' };
+  const at = (build && Number(build.at)) || 0;
+  if (!at) return { isNew: false, chip: '', row: 'Хувилбар тодорхойгүй', act: 'Шалгах', title: 'Аппын хувилбар — дарж шинэчилнэ' };
+  return {
+    isNew: false,
+    chip: buildLabel(at, now),
+    row: `Хувилбар: ${buildLabelFull(at, now)}`,
+    act: 'Шалгах',
+    title: `Аппын хувилбар: ${new Date(at).toLocaleString('mn-MN')} — дарж шинэчилнэ`,
+  };
+}
 function renderVerChip() {
+  const v = verChipView(_build, _buildNew, Date.now());
   const b = document.getElementById('ver-btn'), t = document.getElementById('ver-txt');
-  if (!b || !t) return;
-  if (_buildNew) {
-    b.classList.add('new');
-    t.textContent = 'Шинэ';
-    b.title = 'Шинэ хувилбар бэлэн — дарж шинэчилнэ';
-  } else {
-    b.classList.remove('new');
-    t.textContent = buildLabel(_build && _build.at, Date.now());
-    b.title = _build && _build.at
-      ? `Аппын хувилбар: ${new Date(_build.at).toLocaleString('mn-MN')} — дарж шинэчилнэ`
-      : 'Аппын хувилбар — дарж шинэчилнэ';
-  }
+  if (b && t) { b.classList.toggle('new', v.isNew); t.textContent = v.chip; b.title = v.title; }
+  const r = document.getElementById('ver-row-btn'), rt = document.getElementById('ver-row-txt'), ra = document.getElementById('ver-row-act');
+  if (r && rt && ra) { r.classList.toggle('new', v.isNew); rt.textContent = v.row; ra.textContent = v.act; r.title = v.title; }
 }
 async function applyAppUpdate() {
   showToast('Шинэ хувилбар татаж байна…', 'info', 1800);
@@ -544,10 +565,11 @@ async function applyAppUpdate() {
   location.reload();
 }
 async function onVerChipClick() {
-  const b = document.getElementById('ver-btn');
-  if (b) b.classList.add('busy');
+  const btns = document.querySelectorAll('#ver-btn, #ver-row-btn');
+  btns.forEach(x => x.classList.add('busy'));
+  closeMobileSidebar();   // цэснээс дарсан бол цэс хаагдаж, доорх toast харагдана
   const found = await checkBuild(true);
-  if (b) b.classList.remove('busy');
+  btns.forEach(x => x.classList.remove('busy'));
   if (found) { await applyAppUpdate(); return; }
   showToast('Хамгийн сүүлийн хувилбар дээр байна', 'success', 2000);
 }
@@ -43445,6 +43467,7 @@ function initEvents() {
 
   // ─── Хувилбарын чип (толгой) — дарахад шалгаж шинэчилнэ ───
   document.getElementById('ver-btn')?.addEventListener('click', onVerChipClick);
+  document.getElementById('ver-row-btn')?.addEventListener('click', onVerChipClick);
   // Апп руу буцаж ороход чимээгүй шалгана (1 минутын завсартай) — ажилтан товч
   // дарахгүй ч «Шинэ» гэж өөрөө мэдэгдэнэ.
   document.addEventListener('visibilitychange', () => {

@@ -252,15 +252,26 @@
   font-weight: 700;
 }
 .ver-chip.busy { opacity: .55; cursor: progress; }
-/* Хамгийн нарийн дэлгэц (320px): чип гарчгаас 66px иддэг тул зөвхөн дүрс үлдэнэ.
-   ⚠ ШИНЭ хувилбар байгаа үед текст ҮЛДЭНЭ — тэр нь хараад мэдэх ёстой мэдээлэл. */
-@media (max-width: 360px) {
-  .ver-chip:not(.new) .ver-txt { display: none; }
-  .ver-chip:not(.new) { padding: 4px 7px; }
-}
-.ver-chip.busy .ver-ic { animation: ver-spin 0.9s linear infinite; }
+.ver-chip.busy .ver-ic, .ver-row.busy .ver-ic { animation: ver-spin 0.9s linear infinite; }
 @keyframes ver-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .ver-chip.busy .ver-ic { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ver-chip.busy .ver-ic, .ver-row.busy .ver-ic { animation: none; } }
+/* Цэсийн хувилбарын мөр — өргөн дэлгэцэд нуугдана (тэнд толгойн чип бий) */
+.ver-row { display: none; align-items: center; gap: var(--space-2); width: 100%; margin: 10px 0 0; padding: 8px 10px;
+  min-height: var(--tap-sm); border: 1px solid var(--border); border-radius: 8px; background: transparent;
+  color: var(--muted); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.ver-row .ver-ic { font-size: var(--fs-sm); line-height: 1; }
+.ver-row .ver-row-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ver-row .ver-row-act { font-weight: 600; color: var(--primary); }
+.ver-row.new { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); font-weight: 700; }
+.ver-row.busy { opacity: .55; cursor: progress; }
+/* УТСАНД (≤720px): толгойн чип зөвхөн ШИНЭ хувилбар гарсан үед; бусад үед хувилбар цэсийн
+   доод мөрөнд (.ver-row). Чип гарчгаас 64px иддэг байсан тул 24 дэлгэцийн 8-ын гарчиг таслагдаж
+   байв. ⛔ `.ver-chip:not(.new)`-ийг утсанд буцааж харуулахгүй (тест хаана). */
+@media (max-width: 720px) {
+  .ver-chip:not(.new) { display: none; }
+  .ver-chip.new { min-height: var(--tap-sm); }
+  .ver-row { display: flex; }
+}
 @media (max-width: 1000px) {
   .header h1 { font-size: 18px; }
 }

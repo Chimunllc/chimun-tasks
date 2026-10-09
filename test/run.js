@@ -15634,7 +15634,7 @@ async function swFetchTests() {
       clean:    { by: 'C', at: prevDay + 'T02:00:00Z' },
       prepare:  { by: 'P', at: prevDay + 'T10:00:00Z' },
       dispatch: { by: 'N', at: prevDay + 'T10:11:00Z' },
-      deliver:  { by: 'D', at: day + 'T03:14:00Z' } } });
+      deliver:  { by: 'D', at: day + 'T03:14:00Z', shots: [day + 'T03:14:00Z'] } } });
     // №2: цагтаа (61 бараа = 6 шатлал), баглагч мөн P
     const okO = { number: 2, starts_at: '2026-10-08', note: NOTE, items: [{ qty: 61 }], stage_meta: {
       prepare: { by: 'P', at: '2026-10-07T10:00:00Z' },
@@ -15656,8 +15656,13 @@ async function swFetchTests() {
     const near = lateO('2026-10-03', '2026-10-02'); near.stage_meta.deliver.at = '2026-10-03T01:10:00Z';
     eq(stagePayByPerson([near], '2026-10').D.penPts, 0, 'хасах: 10 мин хоцролт (15 минутын хүлцэл) тооцохгүй');
     // ⛔ Товчоо 24ц-ээс хожуу дарсан (нотолгоогүй) = хоцорсон
-    const wild = lateO('2026-10-03', '2026-10-02'); wild.stage_meta.deliver.at = '2026-10-06T03:00:00Z';
-    eq(stagePayByPerson([wild], '2026-10').D.lateN, 1, '⛔ хасах: цагтаа гэх нотолгоогүй (24ц+ хожуу дарсан) = хоцорсон');
+    /* ⚠ 24ц+ хожуу — ЗУРГИЙН ЦАГТАЙ бол хоцорсон (нотлогдсон), зураггүй бол
+       оноо хасахгүй (2026-10-09, CEO: товч дарсан цаг нь ирсэн цаг БИШ). */
+    const wild = lateO('2026-10-03', '2026-10-02');
+    wild.stage_meta.deliver.at = '2026-10-06T03:00:00Z'; wild.stage_meta.deliver.shots = ['2026-10-06T03:00:00Z'];
+    eq(stagePayByPerson([wild], '2026-10').D.lateN, 1, '⛔ хасах: зургийн цагаар 24ц+ хоцорсон нь хоцорсон');
+    { const w2 = lateO('2026-10-03', '2026-10-02'); w2.stage_meta.deliver.at = '2026-10-06T03:00:00Z'; delete w2.stage_meta.deliver.shots;
+      eq(stagePayByPerson([w2], '2026-10').D.lateN, 0, 'ИНВАРИАНТ: нотолгоогүй (зураггүй) бол хасахгүй'); }
     // Чанаргүй: 30-аас 3 нь цэвэрлэгдээгүй → цэвэрлэгээний 10% хасах оноо
     const defO = { number: 3, starts_at: '2026-10-10', note: '⟦RT|9|18⟧ ⟦DLV|pickup|0|0⟧', items: [{ qty: 30 }], stage_meta: {
       clean: { by: 'C', at: '2026-10-09T02:00:00Z' },
@@ -15690,6 +15695,18 @@ async function swFetchTests() {
     ok(/09:00-д эхлэх байсан/.test(lr) && /11:14-д бэлэн болсон/.test(lr) && /2\.2ц хоцорсон/.test(lr), 'шалтгаан: эхлэх ба бэлэн болсон цаг, хоцролт');
     eq(F.stagePenReason(F.stageBadShare(defO, 'clean', null), 'clean'), 'Нярав 30-аас 3 барааг цэвэрлэгээгүй гэж бүртгэсэн', 'шалтгаан: чанар');
     ok(/хожуу дарсан/.test(F.stagePenReason({ why: 'late', late: F.orderLateForPenalty(wild, 15) }, 'deliver')), 'шалтгаан: товч хожуу дарсан');
+    // ⛔ ЗУРГИЙН ЦАГГҮЙ бол ОНОО ХАСАХГҮЙ (2026-10-09, CEO) — товч дарсан цаг нь ирсэн цаг БИШ
+    {
+      const noShot = lateO('2026-10-03', '2026-10-02');
+      delete noShot.stage_meta.deliver.shots;
+      eq(F.orderArrivalLate(noShot).src, 'press', 'зураггүй бол эх сурвалж нь товч дарсан цаг');
+      eq(F.orderLateForPenalty(noShot, 15), null, 'ИНВАРИАНТ: зургийн цаггүй бол оноо хасахгүй');
+      const rn = stagePayByPerson([noShot], '2026-10');
+      eq(rn.P.penPts, 0, 'ИНВАРИАНТ: нотлогдоогүй хоцролтод бонус бүрэн хэвээр');
+      eq(rn.P.lateN, 0, 'зураггүй: хоцорсон гэж тоологдохгүй');
+      // Харин ХЭМЖҮҮР хэвээр (эх сурвалж нь шошгонд ил)
+      ok(F.orderArrivalLate(noShot).lateH > 0, 'хэмжүүр: хоцролт хэмжигдсэн хэвээр');
+    }
     ok(/09:00-д эхлэх байсан/.test(F.stagePenListHtml(r.P)), 'жагсаалт: шалтгаан бүтэн өгүүлбэрээр');
     ok(/<details class="sp-pen-det" open>/.test(F.stagePenListHtml(r.P)), 'жагсаалт: НЭЭЛТТЭЙ (нуухгүй)');
     // Захиалгын дамжлагын түүх: оноо + шалтгаан (бонустай ижил бодолт)

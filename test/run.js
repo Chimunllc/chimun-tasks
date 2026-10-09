@@ -8157,6 +8157,67 @@ need(['orderCustType']);
   vm.runInContext('state.plan = undefined;', sandbox);
 }
 
+// ── ТӨЛӨВЛӨГӨӨНИЙ САМБАР: шийдвэр → хэрэгжиж буй → үр дүн (2026-10-09, CEO) ──
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const today = '2026-10-09';
+  const tasks = [
+    { id: 't1', status: 'done' }, { id: 't2', status: 'open', due: '2026-10-01' },
+    { id: 't3', status: 'open', due: '2026-12-01' }, { id: 't4', status: 'deleted' },
+  ];
+  const list = [
+    { id: 'A', sec: 'idea', title: 'Санал' },
+    { id: 'B', sec: 'now', owner: 'CEO', title: 'Алхамтай санаачлага' },
+    { id: 'B1', parent: 'B', sec: 'idea', title: 'Алхам', do: { kind: 'task', task: { title: 'Алхмын ажил' } } },
+    { id: 'C', sec: 'now', owner: 'CEO', title: 'Хэрэгжиж буй' },
+    { id: 'C1', parent: 'C', sec: 'now', done_by: 'applied', undo: { task_id: 't1' } },
+    { id: 'C2', parent: 'C', sec: 'now', done_by: 'applied', undo: { task_id: 't2' } },
+    { id: 'C3', parent: 'C', sec: 'now', done_by: 'applied', undo: { task_id: 't4' } },
+    { id: 'D', sec: 'next', status: 'done', done_by: 'applied', undo: { task_id: 't1' }, do: { kind: 'task', task: {} } },
+    { id: 'E', sec: 'next', status: 'done', done_by: 'applied', undo: { task_id: 't3' }, do: { kind: 'task', task: {} } },
+    { id: 'F', sec: 'no', title: 'Үгүй', why: 'шалтгаан' },
+    { id: 'G', sec: 'now', owner: 'Claude', title: 'Аппын ажил' },
+    { id: 'H', sec: 'next', owner: 'CEO', title: 'Дараалалд' },
+    { id: 'I', sec: 'next', status: 'done', done_by: 'applied', closed_at: '2026-10-07', undo: { offhours_fee: 1 }, do: { kind: 'tariff', set: {} } },
+    { id: 'J', sec: 'next', done_by: 'applied', undo: { task_id: 'байхгүй' }, do: { kind: 'task', task: {} } },
+  ];
+  const b = F.planBoard(list, tasks, today);
+  const ids = (z) => b[z].map(c => c.row.id).join(',');
+  eq(ids('decide'), 'A,B', 'самбар: санал ба хүлээгдэж буй алхамтай санаачлага ШИЙДВЭР хэсэгт');
+  eq(ids('doing'), 'C,E,J', 'самбар: хэрэгжиж буй (хоцорсон нь эхэнд)');
+  eq(ids('result'), 'I,D', 'самбар: ажил нь дууссан ба хэрэгжсэн тариф ҮР ДҮН хэсэгт (шинэ нь эхэнд)');
+  eq(ids('no') + '|' + ids('app') + '|' + ids('next'), 'F|G|H', 'самбар: хийхгүй · аппын ажил · дараалал');
+  // ⛔ Батлагдсан ажлыг «хаагдсан» гэж харуулахгүй — ажил нь дуусах хүртэл хэрэгжиж буй
+  ok(ids('doing').includes('E'), 'ИНВАРИАНТ: батлагдсан ч ажил нь дуусаагүй санаачлага «хэрэгжиж буй»-д');
+  // ⛔ Ачаалагдаагүй ажлыг «дууссан» гэж ТААМАГЛАХГҮЙ
+  ok(ids('doing').includes('J') && b.doing.find(c => c.row.id === 'J').prog.unknown === 1, 'ИНВАРИАНТ: ачаалагдаагүй ажил дууссан болохгүй');
+  const c = b.doing.find(x => x.row.id === 'C');
+  eq(`${c.prog.done}/${c.prog.total}/${c.prog.late}`, '1/2/1', 'самбар: явц ажлаас — устсан ажил тоологдохгүй, хоцролт ил');
+  // Алхам тусдаа карт болохгүй; мөр бүр ЯГ НЭГ газар
+  const cards = Object.values(b).reduce((a, z) => a.concat(z), []);
+  ok(!cards.some(x => x.row.parent === 'B' || x.row.parent === 'C'), 'ИНВАРИАНТ: алхам үндсэн саналаасаа салж тусдаа карт болохгүй');
+  eq(cards.length + cards.reduce((n, x) => n + x.kids.length, 0), list.length, 'ИНВАРИАНТ: мөр бүр самбарт ЯГ НЭГ удаа');
+  eq(b.decide.find(x => x.row.id === 'B').pending, 1, 'самбар: хүлээгдэж буй алхмын тоо');
+  eq(F.planStepState({ sec: 'no' }, new Map(), today).k, 'no', 'алхам: татгалзсан');
+  eq(F.planBoard(null, null, today).decide.length, 0, 'самбар: хоосон оролт');
+  // Дэлгэц ҮНЭХЭЭР зурагдана
+  vm.runInContext('var __pbT = state.tasks; state.plan = ' + JSON.stringify(list) + '; state.tasks = ' + JSON.stringify(tasks) + ';', sandbox);
+  const h = F.renderPlan();
+  ok(h.includes('① Таны шийдвэр') && h.includes('② Хэрэгжиж буй') && h.includes('③ Үр дүн'), 'самбар: гурван хэсэг гарна');
+  ok(/<progress class="pl-prog" max="2" value="1">/.test(h) && h.includes('хоцорсон'), 'самбар: явцын зураас ба хоцролт');
+  ok(h.includes('Алхмын ажил') && /data-plan-apply="B1"/.test(h), 'самбар: алхам картын дотор батлах товчтой');
+  ok(!/PLAN\.md|репо/.test(h), 'самбар: хөгжүүлэгчийн үг дэлгэцэд гарахгүй');
+  eq(F.planDecideCount(), 2, 'самбар: цэсний тоо = таны шийдвэр хүлээж буй');
+  vm.runInContext('state.tasks = __pbT; state.plan = undefined;', sandbox);
+  // Бүх алхмыг нэг дор батлах — жагсаалт ил, хариуг шалгана, зөвхөн захирал
+  const aa = src.slice(src.indexOf('async function planApproveAll'), src.indexOf('function renderPlan()'));
+  ok(/state\.isCEO/.test(aa) && /const ok = await showConfirm\(/.test(aa) && /if \(!ok\) return;/.test(aa),
+     'ИНВАРИАНТ: бүх алхмыг батлахаас өмнө жагсаалт харуулж хариуг шалгана');
+  const ap = src.slice(src.indexOf('async function planApplyIdea'), src.indexOf('async function planRevertIdea'));
+  ok(/kind\) === 'task'\) \{[\s\S]*?status: 'open', done_by: 'applied', applied_at/.test(ap),
+     'ИНВАРИАНТ: ажил үүсгэх санал батлагдахад «хаагдсан» болохгүй');
+}
+
 // ── АЖИЛТНЫ САНАЛ / АСУУДАЛ → Claude шүүнэ → төлөвлөгөө (2026-10-07, CEO) ──
 {
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');

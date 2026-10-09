@@ -7735,6 +7735,40 @@ select.no-asar-len {
 .plan-empty { font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }
 .plan-more { font-size: var(--fs-sm); display: flex; flex-direction: column; gap: var(--space-2); }
 .plan-more > summary { cursor: pointer; color: var(--muted); padding: var(--space-2) 0; }
+/* ── Төлөвлөгөөний самбар: шийдвэр → хэрэгжиж буй → үр дүн (2026-10-09) ── */
+.plan-res { font-size: var(--fs-xs); color: var(--muted); }
+.plan-res > summary { cursor: pointer; color: var(--text-soft); padding: var(--space-1) 0; }
+.plan-res-t { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; color: var(--text-soft);
+  font-size: var(--fs-sm); padding-top: var(--space-1); }
+.plan-src { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-2); }
+.plan-src a { color: var(--primary); overflow-wrap: anywhere; }
+.pl-steps-h { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); margin-top: var(--space-1); }
+.pl-steps { display: flex; flex-direction: column; gap: var(--space-1); }
+.pl-step { display: flex; align-items: flex-start; gap: var(--space-2); flex-wrap: wrap;
+  border-top: 1px solid var(--border); padding: var(--space-2) 0 0; }
+.pl-ic { flex: none; width: var(--space-5); text-align: center; font-size: var(--fs-sm); color: var(--muted); }
+.pl-step.pl-done .pl-ic { color: var(--ok); }
+.pl-step.pl-late .pl-ic, .pl-late-t { color: var(--danger); }
+.pl-step.pl-done .pl-st-t, .pl-step.pl-no .pl-st-t, .pl-step.pl-gone .pl-st-t { color: var(--muted); text-decoration: line-through; }
+.pl-st-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.pl-st-t { font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
+.pl-st-m { font-size: var(--fs-xs); color: var(--muted); }
+.pl-st-acts { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; width: 100%; padding-left: calc(var(--space-5) + var(--space-2)); }
+.pl-prog-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.pl-prog { flex: 1; min-width: calc(var(--space-8) * 4); height: var(--space-2); appearance: none; -webkit-appearance: none;
+  border: 0; border-radius: var(--r-sm); background: var(--panel-hover); overflow: hidden; }
+.pl-prog::-webkit-progress-bar { background: var(--panel-hover); border-radius: var(--r-sm); }
+.pl-prog::-webkit-progress-value { background: var(--ok); border-radius: var(--r-sm); }
+.pl-prog::-moz-progress-bar { background: var(--ok); border-radius: var(--r-sm); }
+.pl-prog-t { font-size: var(--fs-xs); color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.pl-noprog { font-size: var(--fs-xs); color: var(--muted); }
+.pl-doing.pl-has-late { border-color: var(--danger); }
+.pl-meas { font-size: var(--fs-sm); color: var(--text-soft); background: var(--panel-hover);
+  border-radius: var(--r-sm); padding: var(--space-1) var(--space-2); }
+.pl-meas-none { color: var(--muted); background: none; padding: 0; font-size: var(--fs-xs); }
+.pl-app { font-size: var(--fs-sm); color: var(--text-soft); padding: var(--space-1) 0; }
+.pl-app.pl-app-done { color: var(--muted); }
+
 /* Төлөвлөгөөний мөрөнд «хэн санал болгосон» (бичвэр нь эвхэгдэнэ) */
 .plan-from { font-size: var(--fs-xs); color: var(--text-soft); }
 .plan-from > summary { cursor: pointer; }

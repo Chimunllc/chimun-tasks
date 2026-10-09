@@ -14959,6 +14959,7 @@ const PERM_MENUS = [
       // Эрх олгож буй хүн «энэ чагт аль товчийг нээж байна вэ» гэдгийг эргэлзэлгүй мэдэх ёстой.
       // Товчны нэрийг өөрчилвөл ЭНДХИЙГ ч хамт өөрчил (ordersStageCapOrder тест хамгаална).
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
+      { key: 'orders.credit',   label: '💳 Дараа төлбөрөөр зөвшөөрөх' },
       { key: 'orders.clean',    label: '🧹 Цэвэрлэсэн' },
       { key: 'orders.prepare',  label: '📦 Баглаж/ачсан / 🏬 Буулгаж байршуулсан' },
       { key: 'orders.dispatch', label: '📋 Бүртгэж гаргасан / 📋 Бүртгэж хүлээн авсан' },
@@ -15011,13 +15012,13 @@ const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // ро
 // Эмзэг үйлдлүүд — бусад үйлдлээс ялгаатай нь DEFAULT=ХОРИГЛОНО (тусгайлан олгох ёстой).
 // orders.skip / orders.revert — дамжлагыг тойрох үйлдэл. Тусгайлан олгоогүй бол ХОРИГЛОНО,
 // эс бөгөөс матрицад «зөвшөөрсөн» мэт харагдаад, чагтлахад нь grant хадгалагдахгүй байсан.
-const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert',
+const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert', 'orders.credit',
   'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
 // ── АЛБАН ТУШААЛ = ЭРХИЙН БЭЛЭН БАГЦ (2026-09-01) ──────────────────────────────
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
-const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate',
+const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.credit', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate',
   'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
@@ -15111,6 +15112,10 @@ const PRODUCT_PARTS = ['catalog', 'price', 'cost', 'stock'];
 //   `can()` дуудаж байсан тул эрхийн загварт таараагүй ШИНЭ албан тушаал
 //   нөөц/өртөг/үнэ засах эрхийг чимээгүй авдаг байв. Бараа = хөрөнгийн үнэ цэн,
 //   өгөгдмөл нь ХОРИГ байх ёстой. Хуучин шүхэр эргэж ирэхийг scan-тест хаана.
+// 💳 Дараа төлбөрөөр зөвшөөрөх эрх (2026-10-09, CEO: «хүмүүст эрх өгч болдог болго»).
+// ⛔ `can()` БИШ — тэр нь тохируулаагүй үед ЗӨВШӨӨРДӨГ тул шинэ албан тушаалтай хүн
+//   компанийн мөнгийг зээлдүүлэх эрхийг чимээгүй авна. Зөвхөн ИЛ олгосон бол.
+function canCreditOrder() { return capValue('orders.credit') === true; }
 function canEditProducts() { return capValue('products.edit') === true; }
 function canProductPart(part) {
   if (canEditProducts()) return true;                // шүхэр — ЗӨВХӨН ил олгосон бол
@@ -29311,26 +29316,30 @@ async function patchOrderFields(o, fields) {
 // ажилчдын «зөвхөн баталгаажсан захиалга гаргана» дүрмийг задалдаг.
 async function openOrderCreditModal(id) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
-  if (!state.isCEO) { showToast('Зөвхөн захирал дараа төлбөрөөр зөвшөөрнө', 'warn', 3500); return; }
+  if (!canCreditOrder()) { showToast('Танд дараа төлбөрөөр зөвшөөрөх эрх алга', 'warn', 3500); return; }
   const cur = parseOrderCredit(o.note);
   const owed = orderOwed(o);
-  if (cur) {
-    const ok = await showConfirm(`#${o.number || ''} — дараа төлбөрийн зөвшөөрлийг цуцлах уу?\n\nЗахиалга «Ноорог» болж буцаж, ажилчид гаргахгүй.`, { okText: 'Цуцлах' });
-    if (!ok) return;
-    const note = String(o.note || '').replace(_CRED_RE, '').replace(/\s+/g, ' ').trim();
-    try { await patchOrderFields(o, { note }); o.note = note; }
-    catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
-    await appendOrderNoteTo(o, '💳 Дараа төлбөрийн зөвшөөрөл ЦУЦЛАВ');
-    showToast('Цуцаллаа', 'success', 2500); render(); return;
-  }
-  const due = String((await showPrompt(`#${o.number || ''} · ${fmtMoney(owed)} — хэзээ төлөхөөр тохирсон бэ? (YYYY-MM-DD)`,
-    { okText: 'Зөвшөөрөх', value: addDays(String(o.stops_at || todayStr()).slice(0, 10), 7) })) || '').trim();
+  // ⛔ ЗӨВШӨӨРЛИЙГ УСТГАХ ЗАМ БАЙХГҮЙ (2026-10-09, CEO: «зөвшөөрчөөд устгавал
+  //   санхүүд тусгагдахгүй»). Зөвшөөрөл = авлага үүссэн гэсэн үг; устгавал
+  //   захиалга «Ноорог» болж орлого, авлага хоёулаа чимээгүй алга болно.
+  //   Цорын ганц өөрчлөлт = ТӨЛӨХ ОГНОО сунгах, тэр нь тэмдэглэлд үлдэнэ.
+  const msg = cur
+    ? `#${o.number || ''} · ${fmtMoney(owed)}\n\nОдоогийн төлөх огноо: ${cur.due}\nШинэ огноо (YYYY-MM-DD):`
+    : `#${o.number || ''} · ${fmtMoney(owed)} — хэзээ төлөхөөр тохирсон бэ? (YYYY-MM-DD)`;
+  const due = String((await showPrompt(msg, {
+    okText: cur ? 'Хугацаа сунгах' : 'Зөвшөөрөх',
+    value: cur ? cur.due : addDays(String(o.stops_at || todayStr()).slice(0, 10), 7),
+  })) || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) { if (due) showToast('Огноог YYYY-MM-DD хэлбэрээр', 'warn', 3000); return; }
-  const note = (String(o.note || '').replace(_CRED_RE, '').trim() + ' ' + encodeOrderCredit(due, state.me || '')).trim();
+  if (cur && due === cur.due) return;
+  const note = (String(o.note || '').replace(_CRED_RE, '').trim() + ' ' + encodeOrderCredit(due, (cur && cur.by) || state.me || '')).trim();
   try { await patchOrderFields(o, { note }); o.note = note; }
   catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
-  await appendOrderNoteTo(o, `💳 Дараа төлбөрөөр зөвшөөрөв · төлөх огноо ${due} · ${fmtMoney(owed)}`);
-  showToast('✓ Баталгаажлаа — ажилчид гаргах боломжтой', 'success', 4000); render();
+  await appendOrderNoteTo(o, cur
+    ? `💳 Дараа төлбөрийн хугацаа сунгав: ${cur.due} → ${due}`
+    : `💳 Дараа төлбөрөөр зөвшөөрөв · төлөх огноо ${due} · ${fmtMoney(owed)}`);
+  showToast(cur ? '✓ Хугацаа сунгалаа' : '✓ Баталгаажлаа — ажилчид гаргах боломжтой', 'success', 4000);
+  render();
 }
 // Тэмдэглэлийн мөр нэмэх (append-only) — зөвшөөрлийн түүх үлдэнэ.
 async function appendOrderNoteTo(o, text) {
@@ -30605,7 +30614,7 @@ function bqOrderCard(o) {
           next, owed: appBal, canPay: appCanPay, over: _over,
           // ⚠ `_depOpen` нь ЭНЭ МӨРӨӨС ДООР тодорхойлогддог тул энд ШУУД бодно (TDZ).
           depOpen: (Number(o.deposit_mnt) || 0) > 0 && !depositReturnState(o),
-          creditAsk: state.isCEO && st === 'draft' && (Number(o.paid_mnt) || 0) <= 0 && !!(o.items && o.items.length),
+          creditAsk: canCreditOrder() && st === 'draft' && (Number(o.paid_mnt) || 0) <= 0 && !!(o.items && o.items.length),
           editable: appEditable,
         }));
         const rows = { pri: [], more: [] };
@@ -30616,8 +30625,8 @@ function bqOrderCard(o) {
         add('damage', ['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : '');
         add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
         add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : '');
-        add('credit', (state.isCEO && (Number(o.paid_mnt) || 0) <= 0 && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length))
-          ? `<button class="btn ord-btn-s${_cred ? '' : (st === 'draft' ? ' btn-primary' : '')}" data-app-credit="${id}" title="Төлбөр ороогүй ч гаргахыг зөвшөөрнө">💳 ${_cred ? 'Дараа төлбөр цуцлах' : 'Дараа төлбөрөөр зөвшөөрөх'}</button>` : '');
+        add('credit', (canCreditOrder() && (Number(o.paid_mnt) || 0) <= 0 && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length))
+          ? `<button class="btn ord-btn-s${_cred ? '' : (st === 'draft' ? ' btn-primary' : '')}" data-app-credit="${id}" title="${_cred ? 'Төлөх огноог сунгана (зөвшөөрлийг устгах боломжгүй)' : 'Төлбөр ороогүй ч гаргахыг зөвшөөрнө — буцаах боломжгүй'}">💳 ${_cred ? 'Хугацаа сунгах' : 'Дараа төлбөрөөр зөвшөөрөх'}</button>` : '');
         add('note', `<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>`);
         add('contract', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : '');
         add('edit', appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : '');

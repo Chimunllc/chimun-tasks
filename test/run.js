@@ -8034,6 +8034,28 @@ need(['orderCustType']);
        'ИНВАРИАНТ: нэвтрэлт дууссан тууз бүх дэлгэцэд гарна');
   }
 
+  // ── note бичихэд дуудагчийн токен УСТАХГҮЙ (2026-10-09, амьд алдаа) ────
+  {
+    const fresh = '⟦RT|13|13⟧ ⟦DLV|city|0|150000⟧ Үндэсний музей';
+    const want = fresh + ' ⟦CRED|2026-10-12|8800⟧';
+    ok(/⟦CRED\|2026-10-12\|8800⟧/.test(F.mergeNoteTokens(fresh, want)), 'ИНВАРИАНТ: ⟦CRED⟧ серверийн note дээр буунa');
+    ok(/⟦RT\|13\|13⟧/.test(F.mergeNoteTokens(fresh, want)), 'нэгтгэл: серверийн бусад токен хэвээр');
+    // Хоцролтын нэмэлт — ХЭД Ч УДАА (авах, буцаах)
+    const twoLate = 'x ⟦LATE|20|22|20000⟧ ⟦LATE|9|7|20000⟧';
+    eq((F.mergeNoteTokens('x', twoLate).match(/⟦LATE\|/g) || []).length, 2, 'нэгтгэл: хоёр ⟦LATE⟧ хоёулаа үлдэнэ');
+    // Хуучин токеныг СОЛИНО (давхардахгүй)
+    eq((F.mergeNoteTokens('a ⟦CRED|2026-10-12|1⟧', 'a ⟦CRED|2026-10-20|1⟧').match(/⟦CRED\|/g) || []).length, 1, 'нэгтгэл: токен давхардахгүй');
+    ok(/2026-10-20/.test(F.mergeNoteTokens('a ⟦CRED|2026-10-12|1⟧', 'a ⟦CRED|2026-10-20|1⟧')), 'нэгтгэл: шинэ утга ялна');
+    // ⛔ Дуудагчид байхгүй токеныг СЕРВЕРЭЭС ХАСАХГҮЙ (хуучирсан дуудагчаас хамгаална)
+    ok(/⟦CRED\|/.test(F.mergeNoteTokens('a ⟦CRED|2026-10-12|1⟧', 'a')), 'ИНВАРИАНТ: хуучирсан дуудагч бусдын токеныг устгахгүй');
+    {
+      const body = src.slice(src.indexOf('async function patchOrderFields'), src.indexOf('async function patchOrderFields') + 2200);
+      ok(/mergeNoteTokens\(_merged, fields\.note\)/.test(body), 'ИНВАРИАНТ: note бичилт дуудагчийн токеныг нэгтгэнэ');
+    }
+    ok(src.slice(src.indexOf('async function openOrderCreditModal'), src.indexOf('async function appendOrderNoteTo')).includes("type: 'date'"),
+       'дараа төлбөр: огноог СОНГОНО (гараар бичихгүй)');
+  }
+
   // ── ДАРАА ТӨЛБӨР = захирлын зөвшөөрөл (2026-10-09, CEO) ────────────────
   {
     const tok = F.encodeOrderCredit('2026-10-20', '8800');

@@ -7467,7 +7467,41 @@ select.no-asar-len {
   .ns-body { grid-column: 2 / -1; }
   .ns-n { grid-column: 2; justify-self: start; align-self: center; }
   .ns-btn { grid-column: 3; justify-self: end; }
+  /* ХИЙГДСЭН мөр: тоо байхгүй тул товч нь гарчгийн ХАЖУУД (тусдаа мөр эзлэхгүй). Бүгд цэгцтэй сард
+     карт 520px (дэлгэцийн 60%) байсан — «Харах →» бүр өөрийн мөр эзэлж, мөр бүр ~85px болдог байв. */
+  .ns-body { min-width: 0; }
+  .ns-done .ns-body { grid-column: 2; }
+  .ns-done .ns-btn { grid-row: 1; }
 }
+/* ═══ САНХҮҮ: сарын толгой, шүүлтийн чип, баримтын хяналт (2026-10-09) — inline style-аас класс ═══ */
+.fin-mhead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 2px 0 var(--space-4); }
+.fin-mnav { min-width: var(--tap-sm); padding: 6px 13px; font-size: var(--fs-lg); line-height: 1; }
+.fin-mtxt { text-align: center; flex: 1; min-width: 0; }
+.fin-mttl { font-size: var(--fs-lg); font-weight: 800; }
+.fin-mbr { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.fin-msub { font-size: var(--fs-sm); color: var(--muted); margin-top: 1px; }
+.fin-msub b { color: var(--text); }
+.fin-mout { font-size: var(--fs-xs); }
+/* Шүүлтийн мөр: чип бүр ТООТОЙ, утсанд хурууны хэмжээтэй */
+.ff-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: 2px 0 10px; }
+.ff-sel { padding: 6px 8px; min-height: var(--tap-sm); font-size: var(--fs-sm); border: 1px solid var(--border-strong);
+  border-radius: 8px; background: var(--panel); color: var(--text); max-width: 46vw; }
+.ff-chip { display: inline-flex; align-items: center; gap: var(--space-1); padding: 5px 10px; min-height: var(--tap-sm);
+  font-size: var(--fs-sm); font-family: inherit; border-radius: 18px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); }
+.ff-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.ff-chip.danger { border-color: var(--danger); color: var(--danger); }
+.ff-chip.zero:not(.on) { color: var(--muted); }
+.ff-n { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ff-chip.on .ff-n { color: inherit; }
+.ff-chip.zero:not(.on) .ff-n { font-weight: 400; }
+.ff-x { border: 0; background: none; color: inherit; font-size: var(--fs-lg); line-height: 1; padding: 0 var(--space-1); cursor: pointer; }
+/* Баримтын хяналт: гарчиг хоёр мөр болж «100% баримтгүй» босоо тасрахгүй */
+.fin-rcpt { border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-3) 14px; margin-bottom: var(--space-4); background: var(--panel); }
+.fin-rcpt-h { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.fin-rcpt-t { flex: 1; min-width: 0; font-weight: 800; font-size: var(--fs-md); }
+.fin-rcpt-s { color: var(--muted); font-weight: 400; font-size: var(--fs-xs); }
+.fin-rcpt-pct { flex: none; font-weight: 800; font-size: var(--fs-base); white-space: nowrap; }
 /* Ховор хэрэглэгддэг туслах хэрэгслүүд — нугалаанд */
 .fin-more { font-size: var(--fs-sm); }
 .fin-more > summary { cursor: pointer; color: var(--muted); padding: 6px 10px;

@@ -12113,6 +12113,58 @@ need(['orderCustType']);
   ok(/\.osum-rev \{[^}]*font-weight: 800/.test(cssU), 'тоймын мөр: борлуулалт тодорно');
 }
 
+// ═══ САНХҮҮ: ШҮҮЛТИЙН ЧИП ТООТОЙ, КАРТ НЯГТ, КЛАСС (2026-10-09) ═════════════
+// «Ангилалгүй / Салбаргүй / Объектгүй / Баримтгүй / Хаагдаагүй» чип тоогүй байсан тул 12 гүйлгээнээс
+// хэд нь баримтгүйг мэдэхийн тулд чип бүрийг дарж үзэх хэрэгтэй байв. Мөн «дараагийн алхам» карт бүгд
+// цэгцтэй үед ч 520px (дэлгэцийн 60%) эзэлж байв.
+{
+  const srcF = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssF = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const mk = (o) => Object.assign({ category: '1700', dept_branch: 'ИВЕНТ', link_type: 'order', decision: 'approved', status: 'done', close_type: 'хуулгаар' }, o);
+  const list = [
+    mk({ category: '', dept_branch: '', link_type: '', decision: 'pending', status: 'open', close_type: '' }),   // a: нөгөө бүгд дутуу, хаагдаагүй
+    mk({}),                                                                                                       // b: бүрэн, баримттай (хуулгаар)
+    mk({ close_type: 'баримтгүй', link_type: '' }),                                                               // c: баримтгүй, объектгүй
+  ];
+  const c = F.finFlagCounts(list);
+  eq(JSON.stringify(c), JSON.stringify({ nocat: 1, nobranch: 1, nolink: 2, norcpt: 1, open: 1 }), 'санхүү чип: тоо бүр зөв (ангилалгүй 1 · салбаргүй 1 · объектгүй 2 · баримтгүй 1 · хаагдаагүй 1)');
+  eq(JSON.stringify(F.finFlagCounts([])), JSON.stringify({ nocat: 0, nobranch: 0, nolink: 0, norcpt: 0, open: 0 }), 'санхүү чип: хоосон жагсаалт → бүгд 0');
+  eq(F.finFlagCounts(null).nocat, 0, 'санхүү чип: null → унахгүй');
+  // ИНВАРИАНТ: тоо = чипийг дарахад гарах мөр (ганц чип идэвхтэй үед)
+  Object.keys(c).forEach(k => eq(list.filter(F.FIN_FLAGS ? F.FIN_FLAGS[k][1] : vm.runInContext('FIN_FLAGS', sandbox)[k][1]).length, c[k], `ИНВАРИАНТ: «${k}» чипийн тоо = дарахад гарах мөрийн тоо`));
+  // Чипийн тоо чипийн шүүлтээс ӨМНӨХ жагсаалтаас (эс бөгөөс нэг чип идэвхжихэд бусад нь 0 болно)
+  const rf = srcF.slice(srcF.indexOf('const FLAGS = FIN_FLAGS;'), srcF.indexOf('const FLAGS = FIN_FLAGS;') + 900);
+  ok(/const flBase = shown\.filter\(/.test(rf) && !/FLAGS\[k\]/.test(rf.slice(0, rf.indexOf('const flagN'))), 'санхүү чип: flBase нь чипийн шүүлтгүй');
+  ok(/finFlagCounts\(flBase\)/.test(rf) && /const flt = flBase\.filter\(t => \(F\.flags \|\| \[\]\)\.every/.test(rf), 'санхүү чип: тоо flBase-ээс, жагсаалт flBase + чип');
+  ok(/class="ff-chip\$\{\(F\.flags[^`]*`<span class="ff-n">/.test(srcF.replace(/\n/g, '')) || /<span class="ff-n">\$\{flagN\[k\]\}<\/span>/.test(srcF), 'санхүү чип: чип бүрд тоо (.ff-n)');
+  // Дизайны гэрээ: шүүлтийн мөр inline style-гүй
+  const fb = srcF.slice(srcF.indexOf("fbar.className = 'ff-bar'"), srcF.indexOf("wrap.appendChild(fbar)"));
+  ok(!/style="/.test(fb) && !/chipCss|selCss/.test(fb), 'дизайн: шүүлтийн мөр inline style-гүй');
+  const mh = srcF.slice(srcF.indexOf("head.className = 'fin-mhead'"), srcF.indexOf('wrap.appendChild(head);', srcF.indexOf("head.className = 'fin-mhead'")));
+  ok(!/style="/.test(mh), 'дизайн: сарын толгой inline style-гүй');
+  // Утсанд хурууны хэмжээ
+  ok(/\.ff-chip \{[^}]*min-height: var\(--tap-sm\)/.test(cssF) && /\.ff-sel \{[^}]*min-height: var\(--tap-sm\)/.test(cssF), 'CSS: шүүлтийн чип/select хурууны хэмжээтэй (өмнө ~28px)');
+  ok(/\.fin-mnav \{[^}]*min-width: var\(--tap-sm\)/.test(cssF), 'CSS: сарын ‹ › товч хурууны хэмжээтэй');
+  ok(/\.ff-chip\.zero:not\(\.on\)/.test(cssF), 'CSS: 0 тоотой чип бүдэг (идэвхтэй бол биш)');
+
+  // «Дараагийн алхам» карт: хийгдсэн мөрийн «Харах» товч утсанд гарчгийн ХАЖУУД (тусдаа мөр эзлэхгүй)
+  const bodies = [];
+  for (const m of cssF.matchAll(/@media \(max-width: 620px\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < cssF.length && d > 0) { if (cssF[i] === '{') d++; else if (cssF[i] === '}') d--; i++; }
+    bodies.push(cssF.slice(from, i));
+  }
+  const nsB = bodies.find(b => /\.ns-row \{ grid-template-columns: auto 1fr auto; \}/.test(b));
+  ok(!!nsB, 'карт: ≤620px-ийн мөрийн хэв байна');
+  ok(nsB && /\.ns-done \.ns-body \{ grid-column: 2; \}/.test(nsB) && /\.ns-done \.ns-btn \{ grid-row: 1; \}/.test(nsB), 'карт: хийгдсэн мөрийн товч гарчгийн хажууд (өмнө тусдаа мөр)');
+  ok(/\.ns-body \{ min-width: 0; \}/.test(nsB || ''), 'карт: body min-width:0 (урт hint товчийг түлхэхгүй)');
+  // ⛔ CEO-гийн шийдвэр (2026-10-03): хийгдсэн алхамд ч «Харах →» ҮЛДЭНЭ — компакт болгохдоо хасахгүй
+  const steps = F.finNextSteps({ month: '2026-10', locked: false, isCEO: true, missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 }, chainBreaks: 0, balance: { total: 4, ok: 4, bad: 0, unver: 0, badAccts: [], unverAccts: [] }, today: '2026-11-05' });
+  ok(steps.filter(x => x.done).every(x => x.act && x.btn === 'Харах'), 'ИНВАРИАНТ: хийгдсэн алхам бүрд «Харах» товч үлдсэн (CEO 2026-10-03)');
+  const nh = F.finNextStepsHtml(steps, '2026-10');
+  eq((nh.match(/ns-btn/g) || []).length >= 3, true, 'карт: хийгдсэн алхмуудын товч зурагдана');
+}
+
 // ═══ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════════
 // Цоорхой: зардал нь хуулгаас бүртгэгддэг байтал орлого нь зөвхөн захиалгаас
 // бүртгэгддэг байв → (1) ямар хуулга орсныг апп мэдэхгүй, (2) захиалгад

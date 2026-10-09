@@ -26627,6 +26627,23 @@ function finStage(t) {
   if (t.executed_at)       return { key: 'transferred',   label: 'Шилжүүлсэн',    mark: '💵', color: 'var(--primary)' };
   return                          { key: 'untransferred', label: 'Шилжүүлээгүй',  mark: '💸', color: 'var(--warn)' };
 }
+/* ШҮҮЛТҮҮРИЙН ЧИП (Ангилалгүй · Салбаргүй · Объектгүй · Баримтгүй · Хаагдаагүй) = ДУТУУ ТАЛБАР ШҮҮНЭ.
+   ⛔ Чип бүр ТООТОЙ (2026-10-09, CEO-гийн «Өртөг ба хөрөнгө»-ийн дүрэмтэй ижил) — тоогүй бол ажил хаана
+   байгааг хүн мэдэхгүй: 12 гүйлгээнээс хэд нь баримтгүйг мэдэхийн тулд чипийг дарж үзэх хэрэгтэй байв.
+   ⚠ Тоо нь ЧИПИЙН шүүлтээс ӨМНӨХ жагсаалтаас (дүн/эх данс/хүлээн авагчийн шүүлтийн дараа) — эс бөгөөс
+     нэг чип идэвхжихэд бусад чипийн тоо 0 болж утгагүй болно. Цэвэр функц — тестлэгдэнэ. */
+const FIN_FLAGS = {
+  nocat:    ['🏷 Ангилалгүй', t => !String(t.category || '').trim()],
+  nobranch: ['🏢 Салбаргүй',  t => !String(t.dept_branch || '').trim()],
+  nolink:   ['🔗 Объектгүй',  t => !t.link_type],
+  norcpt:   ['📝 Баримтгүй',  t => { const m = finStage(t).mark; return m === '📝' || m === '⚠'; }],
+  open:     ['⏳ Хаагдаагүй', t => t.status !== 'done'],
+};
+function finFlagCounts(list) {
+  const out = {};
+  Object.keys(FIN_FLAGS).forEach(k => { out[k] = (Array.isArray(list) ? list : []).filter(FIN_FLAGS[k][1]).length; });
+  return out;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════
    ТҮРЭЭСИЙН ТҮҮХ (түүхэн аналитик) — зөвхөн CEO
@@ -39969,10 +39986,10 @@ function renderFinanceReport(wrap) {
 
   // ── Толгой: сар сонгох + нийт дүн ──
   const head = document.createElement('div');
-  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
-  head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
-    + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month} <span style="font-size:11px;font-weight:600;color:var(--muted);">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
-    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${_LD.txn.n} зардал · <b style="color:var(--text);">${fmtMoney(_LD.txn.amt)}</b> (ноогдох сараар)${(() => {
+  head.className = 'fin-mhead';   // дизайны гэрээ: inline style биш класс
+  head.innerHTML = `<button class="btn fin-mnav" data-fin-month="-1" aria-label="Өмнөх сар">‹</button>`
+    + `<div class="fin-mtxt"><div class="fin-mttl">${month} <span class="fin-mbr">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
+    + `<div class="fin-msub">${_LD.txn.n} зардал · <b>${fmtMoney(_LD.txn.amt)}</b> (ноогдох сараар)${(() => {
         // Зардлаас гадуур мөр БҮР нэрээр — «Нийт гарсан мөнгө»-тэй тулгахад (2026-10-05)
         const bits = [];
         if (_LD.deposit.n) bits.push(`барьцаа буцаалт ${fmtMoney(_LD.deposit.amt)} (${_LD.deposit.n})`);
@@ -39980,9 +39997,9 @@ function renderFinanceReport(wrap) {
         if (_LD.loan.n) bits.push(`эзний зээл ${fmtMoney(_LD.loan.amt)} (${_LD.loan.n})`);
         if (_LD.pending.n) bits.push(`хүлээгдэж буй ${fmtMoney(_LD.pending.amt)} (${_LD.pending.n})`);
         const out = _LD.gross.n - _LD.txn.n;
-        return bits.length ? `<br><span style="font-size:11px;">${out} мөр зардлаас гадуур: ${bits.join(' · ')}</span>` : '';
+        return bits.length ? `<br><span class="fin-mout">${out} мөр зардлаас гадуур: ${bits.join(' · ')}</span>` : '';
       })()}</div></div>`
-    + `<button class="btn" data-fin-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>`;
+    + `<button class="btn fin-mnav" data-fin-month="1" aria-label="Дараагийн сар"${month >= curMonth ? ' disabled' : ''}>›</button>`;
   wrap.appendChild(head);
   head.querySelectorAll('[data-fin-month]').forEach(b => b.addEventListener('click', () => {
     const [y, m] = state.finReportMonth.split('-').map(Number);
@@ -40140,10 +40157,10 @@ function renderFinanceReport(wrap) {
     }).filter(c => c.nr > 0).sort((a, b) => b.nr - a.nr);
     const barCol = (p) => p >= 50 ? 'var(--danger)' : p >= 20 ? 'var(--warn)' : 'var(--ok)';
     const panel = document.createElement('div');
-    panel.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:16px;background:var(--panel);';
-    let html = `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">`
-      + `<span style="font-weight:800;font-size:13px;">📝 Баримтын хяналт <span style="color:var(--muted);font-weight:400;font-size:11px;">· дууссан зардал</span></span>`
-      + `<span style="font-weight:800;font-size:15px;color:${barCol(pct)};">${pct}% баримтгүй</span></div>`
+    panel.className = 'fin-rcpt';
+    let html = `<div class="fin-rcpt-h">`
+      + `<span class="fin-rcpt-t">📝 Баримтын хяналт <span class="fin-rcpt-s">· дууссан зардал</span></span>`
+      + `<span class="fin-rcpt-pct" style="color:${barCol(pct)};">${pct}% баримтгүй</span></div>`
       + `<div style="font-size:11.5px;color:var(--muted);margin:2px 0 ${cats.length ? '11px' : '0'};">${fmtMoney(nrTotal)} / ${fmtMoney(doneTotal)} · ${nrList.length}/${doneList.length} хүсэлт</div>`;
     cats.forEach(c => {
       html += `<div style="margin-bottom:7px;">`
@@ -40164,42 +40181,35 @@ function renderFinanceReport(wrap) {
   // ── ШҮҮЛТҮҮР — дүн / эх данс / шинж (ангилалгүй г.м.) / хүлээн авагч / эрэмбэ ──
   const F = state.finF = state.finF || { min: 0, src: '', flags: [], ben: '', sort: '' };
   const srcOf = (t) => { const m = /импортолсон \(([^)]+)\)/.exec(String(t.desc || '')); return m ? m[1] : ''; };
-  const FLAGS = {
-    nocat:    ['🏷 Ангилалгүй', t => !String(t.category || '').trim()],
-    nobranch: ['🏢 Салбаргүй',  t => !String(t.dept_branch || '').trim()],
-    nolink:   ['🔗 Объектгүй',  t => !t.link_type],
-    norcpt:   ['📝 Баримтгүй',  t => { const m = finStage(t).mark; return m === '📝' || m === '⚠'; }],
-    open:     ['⏳ Хаагдаагүй', t => t.status !== 'done'],
-  };
-  const flt = shown.filter(t => (Number(t.amount) || 0) >= (F.min || 0)
+  const FLAGS = FIN_FLAGS;
+  const flBase = shown.filter(t => (Number(t.amount) || 0) >= (F.min || 0)   // чипийн шүүлтээс ӨМНӨХ жагсаалт — чипийн тоо эндээс
     && (!F.src || (F.src === '__manual' ? !srcOf(t) : srcOf(t) === F.src))
-    && (!F.ben || String(t.beneficiary || '').trim() === F.ben)
-    && (F.flags || []).every(k => FLAGS[k] && FLAGS[k][1](t)));
+    && (!F.ben || String(t.beneficiary || '').trim() === F.ben));
+  const flagN = finFlagCounts(flBase);
+  const flt = flBase.filter(t => (F.flags || []).every(k => FLAGS[k] && FLAGS[k][1](t)));
   const fActive = !!(F.min || F.src || F.ben || (F.flags || []).length || F.sort);
   const fbar = document.createElement('div');
-  fbar.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 10px;';
-  const selCss = 'padding:6px 8px;font-size:12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--panel);color:var(--text);max-width:46vw;';
-  const chipCss = (on) => `padding:5px 10px;font-size:11.5px;border-radius:14px;cursor:pointer;border:1px solid ${on ? 'var(--primary)' : 'var(--border-strong)'};background:${on ? 'var(--primary)' : 'var(--panel)'};color:${on ? '#fff' : 'var(--text)'};`;
+  fbar.className = 'ff-bar';   // дизайны гэрээ: inline style биш класс (.ff-bar / .ff-sel / .ff-chip)
   const srcs = [...new Set(shown.map(srcOf).filter(Boolean))].sort();
   const MINS = [[0, 'Бүх дүн'], [100000, '100 мянга+'], [500000, '500 мянга+'], [1000000, '1 сая+'], [5000000, '5 сая+'], [10000000, '10 сая+']];
   fbar.innerHTML =
-    `<select id="ff-sort" style="${selCss}">
+    `<select id="ff-sort" class="ff-sel">
       <option value="">📂 Бүлэглэсэн</option>
       <option value="amt_desc"${F.sort === 'amt_desc' ? ' selected' : ''}>💰 Их дүн эхэндээ</option>
       <option value="amt_asc"${F.sort === 'amt_asc' ? ' selected' : ''}>💰 Бага дүн эхэндээ</option>
       <option value="date_desc"${F.sort === 'date_desc' ? ' selected' : ''}>🕐 Шинэ эхэндээ</option>
       <option value="ben"${F.sort === 'ben' ? ' selected' : ''}>👤 Топ хүлээн авагч</option>
     </select>`
-    + `<select id="ff-min" style="${selCss}">${MINS.map(([v, l]) => `<option value="${v}"${Number(F.min) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`
-    + (srcs.length ? `<select id="ff-src" style="${selCss}">
+    + `<select id="ff-min" class="ff-sel">${MINS.map(([v, l]) => `<option value="${v}"${Number(F.min) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`
+    + (srcs.length ? `<select id="ff-src" class="ff-sel">
         <option value="">🏦 Бүх эх данс</option>
         ${srcs.map(s => `<option value="${escapeHtml(s)}"${F.src === s ? ' selected' : ''}>${escapeHtml(s)}</option>`).join('')}
         <option value="__manual"${F.src === '__manual' ? ' selected' : ''}>Гараар бүртгэсэн</option>
       </select>` : '')
-    + Object.entries(FLAGS).map(([k, [l]]) => `<button type="button" data-ff-flag="${k}" style="${chipCss((F.flags || []).includes(k))}">${l}</button>`).join('')
-    + (F.sort ? '' : `<button type="button" data-ff-expand style="${chipCss(!!state.finExpandAll)}">${state.finExpandAll ? '⊟ Бүгдийг хураах' : '⊞ Бүгдийг дэлгэх'}</button>`)
-    + (F.ben ? `<span style="font-size:11.5px;background:var(--primary);color:#fff;border-radius:14px;padding:5px 10px;">👤 ${escapeHtml(F.ben)} <b data-ff-clearben style="cursor:pointer;margin-left:4px;">×</b></span>` : '')
-    + (fActive ? `<button type="button" data-ff-clear style="padding:5px 10px;font-size:11.5px;border-radius:14px;border:1px solid var(--danger);color:var(--danger);background:var(--panel);cursor:pointer;">✕ Цэвэрлэх</button>` : '');
+    + Object.entries(FLAGS).map(([k, [l]]) => `<button type="button" class="ff-chip${(F.flags || []).includes(k) ? ' on' : ''}${flagN[k] ? '' : ' zero'}" data-ff-flag="${k}">${l}<span class="ff-n">${flagN[k]}</span></button>`).join('')
+    + (F.sort ? '' : `<button type="button" class="ff-chip${state.finExpandAll ? ' on' : ''}" data-ff-expand>${state.finExpandAll ? '⊟ Бүгдийг хураах' : '⊞ Бүгдийг дэлгэх'}</button>`)
+    + (F.ben ? `<span class="ff-chip on">👤 ${escapeHtml(F.ben)} <button type="button" class="ff-x" data-ff-clearben aria-label="Хүлээн авагчийн шүүлтийг арилгах">×</button></span>` : '')
+    + (fActive ? `<button type="button" class="ff-chip danger" data-ff-clear>✕ Цэвэрлэх</button>` : '');
   wrap.appendChild(fbar);
   fbar.querySelector('#ff-sort')?.addEventListener('change', e => { F.sort = e.target.value; render(); });
   fbar.querySelector('#ff-min')?.addEventListener('change', e => { F.min = Number(e.target.value) || 0; render(); });

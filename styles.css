@@ -5028,6 +5028,9 @@ summary.order-items-toggle { cursor: pointer; }
 .deliv-badge.deliv-yes { background: var(--warn-soft, #FEF3C7); color: var(--warn, #B45309); }
 .deliv-badge.deliv-no { background: var(--panel-2, #EEF2F7); color: var(--muted, #64748B); }
 .ord-btn-s { padding: var(--space-1) var(--space-3); font-size: var(--fs-sm); }
+.modal .sa-hour-sel { width: auto; flex: none; font-size: var(--fs-base); padding: var(--space-1) var(--space-2); }
+.sa-late-sum { font-size: var(--fs-sm); color: var(--muted); }
+.sa-late-sum.warn { color: var(--warn); font-weight: 700; }
 .deliv-badge.cred-badge { background: var(--info-soft); color: var(--info); }
 .deliv-badge.cred-badge.cred-late { background: var(--danger-soft); color: var(--danger); }
 /* Эрхгүй шатны товч — идэвхгүй, саарал (Алтансүх: "бусдад товч идэвхгүй") */

@@ -18872,9 +18872,9 @@ async function swFetchTests() {
   ok(/Сарын норм <b>\d+×8=\d+ц<\/b>/.test(full) && !/үргэлжилж байна/.test(full), 'сарын тойм: дууссан сард «Сарын норм», «үргэлжилж байна» гарахгүй');
   ok(/class="att-mo-flag">⚠ <b>1<\/b> ажилтанд гарах бүртгэлгүй <b>1<\/b> өдөр/.test(full), 'сарын тойм: гарах бүртгэлгүй өдрийн ТОВЧ дүн дээд талд (ажилтан · өдөр)');
   ok(full.indexOf('att-mo-flag') < full.indexOf('att-mo-row'), 'сарын тойм: сануулга мөрүүдээс ӨМНӨ');
-  ok(/<details class="att-mo-pay"><summary>💵 Цалин <b>[^<]+<\/b> <span class="att-mo-st">олгоогүй<\/span><\/summary>/.test(full), 'сарын тойм: цалин НЭГ мөр (нийт · «олгоогүй»), задаргаа нугалаанд');
-  ok(/att-mo-pay-in">цэвэр суурь/.test(full), 'сарын тойм: цалингийн задаргаа (цэвэр суурь …) нугалаанд ҮЛДЭНЭ');
-  ok(/att-mo-ot">\+\d+ц[^<]*илүү<\/div>/.test(full), 'сарын тойм: илүү цаг цагийн дор «+Xц илүү»');
+  ok(/<div class="att-mo-pay">💵 Цалин <b>[^<]+<\/b> <span class="att-mo-st">олгоогүй<\/span>/.test(full), 'сарын тойм: цалин НЭГ мөр (нийт · «олгоогүй»), мөр нээгдэхэд харагдана');
+  ok(/att-mo-pay-in">цэвэр суурь/.test(full), 'сарын тойм: цалингийн задаргаа (цэвэр суурь …) ҮЛДЭНЭ');
+  ok(/att-mo-calc">⏱ Ажилласан <b>[^<]+<\/b> \/ норм \d+ц · <span class="att-mo-ot">\+\d+ц[^<]*илүү<\/span>/.test(full), 'сарын тойм: илүү цаг задаргаанд «норм … · +Xц илүү»');
   ok(!/⏱ Илүү цаг:/.test(full), 'сарын тойм: «Илүү цаг:» тусдаа мөр буцаж ирээгүй');
   // Төлөв: үлдэгдэл · ✓ олгосон · илүү
   const pay = (amt) => { st.salaryPayments = [{ person_key: '90000011', ym: M, amount: amt, paid_at: M + '-28T05:00:00Z', note: 'Цалин' }]; return F.renderAttendanceMonth(M); };
@@ -18893,14 +18893,14 @@ async function swFetchTests() {
     const doneDays = cd.filter(d => d !== T).length;
     const expPct = Math.round(doneDays * 8 * 60 / F.workNormMinsThrough(CM, T) * 100);
     ok(new RegExp('<b class="att-mo-pct-[a-z]+">' + expPct + '%</b>').test(cur), 'сарын тойм: явж буй сард хувь = цаг ÷ ӨНӨӨДРИЙГ ХҮРТЭЛХ норм (бүтэн сарын нормоор биш)');
-    ok(new RegExp('/ ' + Math.round(F.workNormMinsThrough(CM, T) / 60) + 'ц').test(cur), 'сарын тойм: явж буй сард цагийн хуваарь = өнөөдрийг хүртэлх норм');
+    ok(new RegExp('/ норм ' + Math.round(F.workNormMinsThrough(CM, T) / 60) + 'ц').test(cur), 'сарын тойм: явж буй сард задаргааны норм = өнөөдрийг хүртэлх норм');
   }
   // renderAttendance: сарын горимд скан карт, өдрийн огноо БАЙХГҮЙ; сарын ◀ ▶ + «Өдрөөр»
   st.attMonthKey = M; st.attMonthRecs = []; st.attViewDay = T; st.attMonthMode = true;
   st.workStart = {}; st.nextArrival = {}; st.attRequests = {};
   const pageM = F.renderAttendance();
   ok(!/class="att-scan"/.test(pageM), 'сарын тойм: скан карт ХАРАГДАХГҮЙ (жагсаалтыг 330px доош түлхдэг байв)');
-  ok(/data-att-mnav="-1"/.test(pageM) && /data-att-mnav="1"/.test(pageM) && /class="att-mlabel">\d{4}-\d{2}</.test(pageM), 'сарын тойм: САРЫН ◀ ▶ ба сарын шошго');
+  ok(/data-att-mnav="-1"/.test(pageM) && /data-att-mnav="1"/.test(pageM) && /class="att-mlabel"><small>\d{4}<\/small>\d{1,2}-р сар</.test(pageM), 'сарын тойм: САРЫН ◀ ▶ ба шошго «9-р сар» (жил жижгээр)');
   ok(/data-att-mnav="1" disabled/.test(pageM), 'сарын тойм: одоогийн сард ▶ идэвхгүй (ирээдүй рүү явахгүй)');
   ok(!/id="att-date"/.test(pageM) && !/data-att-nav=/.test(pageM), 'сарын тойм: ӨДРИЙН огноо/◀ ▶ байхгүй (сарын тоймоос өдөр рүү чимээгүй гаргадаг байв)');
   ok(/data-att-month>📅 Өдрөөр</.test(pageM), 'сарын тойм: буцах товч «Өдрөөр»');
@@ -18911,9 +18911,53 @@ async function swFetchTests() {
   const hm = srcT.slice(srcT.indexOf("querySelectorAll('[data-att-mnav]')"), srcT.indexOf("querySelectorAll('[data-att-mnav]')") + 420);
   ok(/attMonthShift\(/.test(hm) && !/attMonthMode = false/.test(hm), 'handler: сарын ◀ ▶ нь attMonthShift-ээр, сарын горимоос гаргахгүй');
   // CSS
-  ok(/\.att-mo-pay > summary \{[^}]*min-height: var\(--tap-sm\)/.test(cssT), 'CSS: цалингийн нугалаа хурууны хэмжээтэй');
+  ok(/\.att-mo-top \{[^}]*min-height: var\(--tap\)/.test(cssT), 'CSS: ажилтны мөр (дарагдах) хурууны хэмжээтэй');
   ok(/\.att-noout-day \{[^}]*min-height: var\(--tap-sm\)/.test(cssT), 'CSS: «гарах бүртгэлгүй» өдрийн товч хурууны хэмжээтэй');
   ok(/\.att-mo-flag \{/.test(cssT) && /\.att-mo-st\.over/.test(cssT) && /\.att-mlabel \{/.test(cssT), 'CSS: сануулга · төлөв · сарын шошго');
+
+  // ── «ТОЙМ» = нийт тоо ДЭЭР, ажилтан НЭГ ШУГАМ (2026-10-09, CEO: «тойм бол тойм шиг харагдмаар байна») ──
+  // Өмнө нь ажилтан бүр 120-170px блок байсан тул 10 хүн ~1500px урт жагсаалт болж, нийт дүн хаана ч харагддаггүй байв.
+  const hm2m = (t) => { const h = /(\d+)ц/.exec(t), m = /(\d+)м/.exec(t); return (h ? +h[1] * 60 : 0) + (m ? +m[1] : 0); };
+  const money = (t) => Number(String(t).replace(/[^\d]/g, ''));
+  st.attMonthKey = M; st.attMonthErr = null; st.isCEO = true; st._salLoaded = true; st.attMoOpen = {};
+  st.attMonthRecs = [].concat(...days.map(d => [R('90000011', d, 'in', '09:00'), R('90000011', d, 'out', '19:00')]),
+    [R('90000012', days[0], 'in', '09:00')], ...days.slice(1, 4).map(d => [R('90000012', d, 'in', '09:00'), R('90000012', d, 'out', '18:00')]));
+  st.salaries = { '90000011': 2000000, '90000012': 1500000 }; st.salaryPayments = [];
+  const ov = F.renderAttendanceMonth(M);
+  ok((ov.match(/class="att-mo-kpi"/g) || []).length === 4, 'тойм: 4 нийт хавтан (цаг · гүйцэтгэл · илүү цаг · цалин)');
+  ok(ov.indexOf('att-mo-kpis') < ov.indexOf('att-mo-flag') && ov.indexOf('att-mo-flag') < ov.indexOf('class="att-mo-row"'), 'тойм: хавтан → сануулга → ажилтны мөрүүд (нийт тоо ДЭЭР)');
+  const rowHrs = (ov.match(/att-mo-hrs">([^<]+)</g) || []).map(x => hm2m(x));
+  const tileTot = hm2m((/Нийт цаг<\/div><div class="att-mo-kpi-v">([^<]+)</.exec(ov) || [])[1]);
+  ok(rowHrs.length === 2 && tileTot > 0 && tileTot === rowHrs.reduce((a, b) => a + b, 0), 'ИНВАРИАНТ: «Нийт цаг» хавтан = мөрүүдийн цагийн нийлбэр');
+  const rowPay = (ov.match(/att-mo-pay">💵 Цалин <b>([^<]+)</g) || []).map(x => money(x.split('<b>')[1]));
+  const tilePay = money((/Нийт цалин<\/div><div class="att-mo-kpi-v">([^<]+)</.exec(ov) || [])[1]);
+  ok(rowPay.length === 2 && tilePay > 0 && tilePay === rowPay.reduce((a, b) => a + b, 0), 'ИНВАРИАНТ: «Нийт цалин» хавтан = мөр бүрийн цалингийн нийлбэр');
+  // Мөр = <details>; дээд шугам (summary) нь НЭР · ЦАГ · ХУВЬ · ЗУРААС, задаргаа (цалин/жолоо/бонус) нь нугалаанд
+  const rowsH = ov.split('<details class="att-mo-row"').slice(1);
+  ok(rowsH.length === 2 && rowsH.every(h => { const sm = h.slice(h.indexOf('<summary'), h.indexOf('</summary>')); return /att-mo-name/.test(sm) && /att-mo-hrs/.test(sm) && /att-mo-days/.test(sm) && /<progress class="att-mo-bar /.test(sm) && !/att-mo-pay|sp-line|att-mo-calc|att-noout-day/.test(sm); }), 'тойм: ажилтан = НЭГ шугам (нэр · цаг · хувь · зураас), задаргаа summary-д ОРОХГҮЙ');
+  ok(rowsH.every(h => /att-mo-more">/.test(h) && /att-mo-pay/.test(h.slice(h.indexOf('att-mo-more'))) && /att-mo-calc/.test(h.slice(h.indexOf('att-mo-more')))), 'тойм: цалин, илүү цаг нь нээгдэх хэсэгт (att-mo-more)');
+  ok(!/att-mo-row"[^>]* open/.test(ov), 'тойм: өгөгдмөлөөр бүх мөр ХААЛТТАЙ');
+  st.attMoOpen = { '90000011': true };
+  const ovOpen = F.renderAttendanceMonth(M);
+  ok(/data-att-mo="90000011" open>/.test(ovOpen) && (ovOpen.match(/ open>/g) || []).length === 1, 'тойм: нээсэн мөр render дахин зурахад ХААГДАХГҮЙ (state.attMoOpen), бусад хаалттай');
+  st.attMoOpen = {};
+  // Зураас: <progress>, inline style-гүй; 100%-аас дээш хувь зураасыг халихгүй
+  ok(/<progress class="att-mo-bar (ok|mid|low)" max="100" value="100">1\d\d%<\/progress>/.test(ov), 'тойм: 100%-аас дээш гүйцэтгэл зураасыг ХАЛИХГҮЙ (value ≤ 100)');
+  ok(/<progress class="att-mo-bar low" max="100" value="\d{1,2}">/.test(ov), 'тойм: нормоос доош хүний зураас «low» (шар)');
+  ok(!/style=/.test(ov.replace(/<img[^>]*>/g, '')), 'дизайн: тойм (нийтлэг <img>-ээс бусад) inline style-гүй, зураас ч <progress>');
+  // Цалин харахгүй хүнд: 💵 хавтан, цалингийн мөр ГАРАХГҮЙ; 4-р хавтан = гарах бүртгэлгүй, сануулга давхцахгүй
+  st.isCEO = false;
+  const ovNp = F.renderAttendanceMonth(M);
+  ok(!/Нийт цалин|att-mo-pay/.test(ovNp), 'тойм: цалин харах эрхгүй хүнд мөнгө ГАРАХГҮЙ');
+  ok(/Гарах бүртгэлгүй<\/div><div class="att-mo-kpi-v att-mo-pct-low">1 өдөр</.test(ovNp) && !/att-mo-flag/.test(ovNp), 'тойм: цалингүй хүнд 4-р хавтан = гарах бүртгэлгүй (сануулга давхцахгүй)');
+  st.isCEO = true;
+  // Handler: нээсэн төлөв хадгалагдана
+  const tgl = srcT.slice(srcT.indexOf("details.att-mo-row'"), srcT.indexOf("details.att-mo-row'") + 320);
+  ok(/addEventListener\('toggle'/.test(tgl) && /state\.attMoOpen/.test(tgl) && /delete o\[/.test(tgl), 'handler: мөр нээх/хаахыг state.attMoOpen-д хадгална');
+  // CSS: хавтан 2 багана (утас) → ≥721px-д 4; <progress> дэд элемент бүрт ТУСДАА дүрэм (нэг сонгогчид нэгтгэвэл ӨӨР вэб хөтөч бүгдийг хаяна)
+  ok(/\.att-mo-kpis \{[^}]*repeat\(2,/.test(cssT) && /@media \(min-width: 721px\) \{\s*\.att-mo-kpis \{[^}]*repeat\(4,/.test(cssT), 'CSS: хавтан утсанд 2 багана, ≥721px-д 4');
+  ok(/\.att-mo-bar::-webkit-progress-value \{/.test(cssT) && /\.att-mo-bar::-moz-progress-bar \{/.test(cssT) && !/-webkit-progress-value[^{]*-moz-progress-bar|-moz-progress-bar[^{]*-webkit-progress-value/.test(cssT), 'CSS: <progress> webkit/moz дүрмүүд ТУСДАА (нэгтгэвэл сонгогч хүчингүй болно)');
+  ok(/\.att-mo-bar \{[^}]*flex: 1 0 100%/.test(cssT), 'CSS: зураас мөрийн бүтэн өргөнд (хоёр дахь эгнээнд)');
   Object.assign(st, { attMonthKey: keep.k, attMonthRecs: keep.r, attMonthErr: keep.e, appOrders: keep.ao, salaries: keep.sal, salaryPayments: keep.sp, _salLoaded: keep.sl, isCEO: keep.ceo, attMonthMode: keep.mode, attViewDay: keep.day });
 }
 

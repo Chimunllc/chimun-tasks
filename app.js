@@ -13496,7 +13496,7 @@ function renderAttendance() {
   const mNext = attMonthShift(day.slice(0, 7), 1, todayStr());
   const dateBar = monthMode ? `<div class="att-datebar">
       <button class="btn btn-sm ui-raw" data-att-mnav="-1" title="Өмнөх сар" aria-label="Өмнөх сар">◀</button>
-      <span class="att-mlabel">${day.slice(0, 7)}</span>
+      <span class="att-mlabel"><small>${day.slice(0, 4)}</small>${+day.slice(5, 7)}-р сар</span>
       <button class="btn btn-sm ui-raw" data-att-mnav="1"${mNext ? '' : ' disabled'} title="Дараах сар" aria-label="Дараах сар">▶</button>
       <button class="btn btn-sm" data-att-month>📅 Өдрөөр</button>
     </div>` : `<div class="att-datebar">
@@ -14162,18 +14162,15 @@ function renderAttendanceMonth(month) {
   const normTxt = inProgress
     ? `Норм <b>${monthWorkdaysThrough(month, todayStr())}×8=${Math.round(nowMins / 60)}ц</b> <span class="att-mo-sub">(сар ${normDays}×8=${normDays * 8}ц · үргэлжилж байна)</span>`
     : `Сарын норм <b>${normDays}×8=${normDays * 8}ц</b>`;
-  // `.att-mo-head b` нь өгөгдмөлөөр --text; нийт дүн нь `.att-mo-tot`-оор --primary.
-  const head = `<div class="att-mo-head">${month} · <b>${rows.length}</b> ажилтан · ${normTxt} · нийт <b class="att-mo-tot">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`
-    // Гарах бүртгэлгүй өдөр = 0 цаг тоологдож цалин дутна → мөрүүдийг гүйлгэж хайхгүйн тулд дээд талд ИЛ.
-    + (noOutTotal ? `<div class="att-mo-flag">⚠ <b>${noOutPeople.length}</b> ажилтанд гарах бүртгэлгүй <b>${noOutTotal}</b> өдөр — 0 цаг тоологдсон</div>` : '');
   let anyDriver = false;
   // ⚠ Дамжлагын бонусыг мөр бүрд ДАХИН бодохгүй — 8 шат × 70 захиалга × 15 ажилтан нь
   //   рендер бүрд мянган давталт болно. Нэг удаа бодож, мөр бүрд уншина.
   const spAll = stagePayByPerson(state.appOrders || [], month);
-  let spTotal = 0;
+  let spTotal = 0, payTot = 0, payOwed = 0, payPeople = 0;
   // Цалингийн мөр — хүн бүрийн доор. Мөнгө нь зөвхөн эрхтэйд; ИЛҮҮ ЦАГ нь бүгдэд (цаг = мөнгө биш).
   const payVis = canSeeSalary();
   if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
+  const moOpen = state.attMoOpen || {};
   const list = rows.map(r => {
     const pct = nowMins ? Math.round(r.mins / nowMins * 100) : 0;   // явж буй сард өнөөдрийг хүртэлх нормоор
     const pctCls = !nowMins ? 'att-mo-pct-mid' : pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
@@ -14190,28 +14187,54 @@ function renderAttendanceMonth(month) {
     const stageLine = (sp && (sp.total || sp.penApplied)) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span>${sp.penApplied ? ` <span class="sp-pen-tag">⚠ −${fmtMoney(sp.penApplied)} · ${escapeHtml(stagePenWhy(sp))}</span>` : ''}</div>` : '';
     // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ДАМЖЛАГЫН БОНУС ОРОХГҮЙ.
     const otMins = Math.max(0, r.mins - normMins);
-    const otTag = otMins ? `<div class="att-mo-ot">+${attHM(otMins)} илүү</div>` : '';   // цагийн дор: «192ц / 176ц» → «+16ц 45м илүү»
+    const otTag = otMins ? ` · <span class="att-mo-ot">+${attHM(otMins)} илүү</span>` : '';
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
     const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month, undefined, (sp && sp.total) || 0) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
     const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
     const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
-    /* Цалин = НЭГ мөр (нийт + төлөв), задаргаа нугалаанд (2026-10-09). Өмнө нь «цэвэр суурь … + илүү цаг … + хүргэлт …
-       — олгосон … · үлдэгдэл …» нь утсанд 3-4 мөр болж хүн бүрийн блок ~170px, 10 ажилтан 1600px байв. */
-    const payLine = pb ? `<details class="att-mo-pay"><summary>💵 Цалин <b>${fmtMoney(pb.total)}</b> ${
+    if (pb) { payTot += pb.total; payPeople++; if (rBal.owed > 0) payOwed += rBal.owed; }
+    // Төлөв = нэг үг: хүн бүрийн мөрөнд харагдана (хэнд төлөөгүйг нугалаа задлахгүйгээр харах).
+    const stTxt = !pb ? '' : (rPaid || rCarry.amount)
+      ? (rBal.over > 0 ? '<span class="att-mo-st over">илүү олгосон</span>' : rBal.owed > 0 ? '<span class="att-mo-st">үлдэгдэлтэй</span>' : '<span class="att-mo-st ok">✓ олгосон</span>')
+      : '<span class="att-mo-st">олгоогүй</span>';
+    const payLine = pb ? `<div class="att-mo-pay">💵 Цалин <b>${fmtMoney(pb.total)}</b> ${
         (rPaid || rCarry.amount)
           ? (rBal.over > 0 ? `<span class="att-mo-st over">илүү <b>${fmtMoney(rBal.over)}</b></span>`
             : rBal.owed > 0 ? `<span class="att-mo-st">үлдэгдэл <b>${fmtMoney(rBal.owed)}</b></span>`
             : `<span class="att-mo-st ok">✓ олгосон</span>`)
-          : `<span class="att-mo-st">олгоогүй</span>`}</summary>
-      <div class="att-mo-pay-in">цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''}${(rPaid || rCarry.amount) ? `<br>${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)}${rBal.over > 0 ? ' · илүү нь дараа сард' : ''}` : ''}</div></details>` : '';
-    return `<div class="att-mo-row">
-      <div class="att-mo-top">
+          : `<span class="att-mo-st">олгоогүй</span>`}
+      <div class="att-mo-pay-in">цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''}${(rPaid || rCarry.amount) ? `<br>${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)}${rBal.over > 0 ? ' · илүү нь дараа сард' : ''}` : ''}</div></div>` : '';
+    /* Мөр = НЭГ ШУГАМ (нэр · хувь · цаг) + дарахад задрах дэлгэрэнгүй (2026-10-09). Өмнө нь ажилтан бүр 120-170px
+       блок байсан тул «тойм» нь урт жагсаалт болж, 10 ажилтан ~1500px, нийт дүн хаана ч харагддаггүй байв. */
+    return `<details class="att-mo-row" data-att-mo="${escapeHtml(r.k)}"${moOpen[r.k] ? ' open' : ''}>
+      <summary class="att-mo-top">
       <span class="att-mo-ava">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
-      <div class="att-mo-who"><div class="att-mo-name">${escapeHtml(r.name)}</div><div class="att-mo-role">${escapeHtml(r.role)}</div></div>
-      <div class="att-mo-num"><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${nowMins ? pct + '%' : '—'}</b></div><div class="att-mo-hrs">${attHM(r.mins)} <span class="att-mo-norm">/ ${Math.round(nowMins / 60)}ц</span></div>${otTag}</div>
-      </div>${noOutLine}${driverLine}${stageLine}${payLine}</div>`;
+      <div class="att-mo-who"><div class="att-mo-name">${escapeHtml(r.name)}</div><div class="att-mo-subl"><span class="att-mo-role">${escapeHtml(r.role)}</span>${r.noOutDays.length ? ` <span class="att-mo-warn">⚠ ${r.noOutDays.length}</span>` : ''}${stTxt}</div></div>
+      <div class="att-mo-num"><div class="att-mo-hrs">${attHM(r.mins)}</div><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${nowMins ? pct + '%' : '—'}</b></div></div>
+      <progress class="att-mo-bar ${pctCls.replace('att-mo-pct-', '')}" max="100" value="${Math.max(0, Math.min(100, pct))}">${pct}%</progress>
+      </summary>
+      <div class="att-mo-more">
+      <div class="att-mo-calc">⏱ Ажилласан <b>${attHM(r.mins)}</b> / норм ${Math.round(nowMins / 60)}ц${otTag}</div>${noOutLine}${driverLine}${stageLine}${payLine}</div></details>`;
   }).join('');
+  // ── Нийт тойм: сарын БҮХ ажилтны дүн нэг дор (хавтан). Тоог мөрүүдээс ДАХИН бодохгүй байхын тулд нэг л удаа.
+  const totMins = rows.reduce((t, r) => t + r.mins, 0);
+  const avgPct = (nowMins && rows.length) ? Math.round(totMins / (rows.length * nowMins) * 100) : null;
+  const avgCls = avgPct === null ? 'att-mo-pct-mid' : avgPct >= 100 ? 'att-mo-pct-ok' : avgPct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
+  const otPeople = rows.filter(r => r.mins > normMins), otTot = otPeople.reduce((t, r) => t + (r.mins - normMins), 0);
+  const kpi = (l, v, sub, cls) => `<div class="att-mo-kpi"><div class="att-mo-kpi-l">${l}</div><div class="att-mo-kpi-v${cls ? ' ' + cls : ''}">${v}</div><div class="att-mo-kpi-s">${sub}</div></div>`;
+  const kpis = `<div class="att-mo-kpis">`
+    + kpi('Нийт цаг', attHM(totMins), `<b>${rows.length}</b> ажилтан`)
+    + kpi('Дундаж гүйцэтгэл', avgPct === null ? '—' : avgPct + '%', 'нормын хувь', avgCls)
+    + kpi('Илүү цаг', otTot ? '+' + attHM(otTot) : '—', otTot ? `<b>${otPeople.length}</b> ажилтан` : 'нормоос хэтрээгүй')
+    + (payVis && payPeople
+      ? kpi('💵 Нийт цалин', fmtMoney(payTot), payOwed ? `үлдэгдэл <b>${fmtMoney(payOwed)}</b>` : '✓ бүгд олгосон', payOwed ? '' : 'att-mo-pct-ok')
+      : kpi('Гарах бүртгэлгүй', noOutTotal ? noOutTotal + ' өдөр' : '✓', noOutTotal ? `<b>${noOutPeople.length}</b> ажилтан · 0 цаг` : 'бүгд бүртгэлтэй', noOutTotal ? 'att-mo-pct-low' : 'att-mo-pct-ok'))   // цалин харахгүй хүнд 4-р хавтан = нэг тоо, сануулга давхцахгүй
+    + `</div>`;
+  // `.att-mo-head b` нь өгөгдмөлөөр --text.
+  const head = kpis + `<div class="att-mo-head">${normTxt}</div>`
+    // Гарах бүртгэлгүй өдөр = 0 цаг тоологдож цалин дутна → мөрүүдийг гүйлгэж хайхгүйн тулд дээд талд ИЛ.
+    + ((noOutTotal && payVis && payPeople) ? `<div class="att-mo-flag">⚠ <b>${noOutPeople.length}</b> ажилтанд гарах бүртгэлгүй <b>${noOutTotal}</b> өдөр — 0 цаг тоологдсон</div>` : '');
   const liabilityNote = anyDriver ? `<div class="att-mo-liab">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
   const spFoot = spTotal ? `<div class="sp-foot">📦 Дамжлагын бонус нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил бонус болохгүй.</span></div>` : '';
   return head + `<div>${list}</div>${spFoot}${liabilityNote}`;
@@ -14263,6 +14286,10 @@ function attachAttendanceHandlers() {
     state.attViewDay = r.day; render();   // сарын тойм горимд ҮЛДЭНЭ
   }));
   document.querySelector('[data-att-month-retry]')?.addEventListener('click', () => { state.attMonthErr = null; render(); });
+  document.querySelectorAll('details.att-mo-row').forEach(d => d.addEventListener('toggle', () => {   // render() дахин зурахад нээсэн нь хаагдахгүй
+    const o = state.attMoOpen = state.attMoOpen || {};
+    if (d.open) o[d.dataset.attMo] = true; else delete o[d.dataset.attMo];
+  }));
   // Гарахаа бүртгүүлээгүй → удирдлага гарсан цагийг гараар оруулна
   document.querySelectorAll('[data-att-out]').forEach(b => b.addEventListener('click', () =>
     openManualOutModal(b.dataset.attOut, b.dataset.attName || b.dataset.attOut, state.attViewDay || todayStr(), b.dataset.attIn)));

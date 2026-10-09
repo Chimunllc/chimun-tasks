@@ -10561,21 +10561,57 @@ function canSeeOrderBoard() {
 }
 // `compact` = Тойм дээрх хувилбар: зөвхөн сарын тор. Өдөр дарахад захиалгын дэлгэц
 // рүү шилжинэ — картын товчнууд зөвхөн тэнд ажилладаг тул жагсаалтыг энд ЗУРАХГҮЙ.
+/* ── ТОЙМЫН КАЛЕНДАРЬ УТСАНД = 7 ХОНОГИЙН МӨР (2026-10-09, CEO) ──────────────
+   Сарын бүтэн тор утсанд ~370px — календарь эхний дэлгэцийн тал хувийг эзэлж,
+   «цагтаа хүрсэн», үнэлгээ доош түлхэгддэг байв. Утсанд ЭХЛЭЭД 7 хоногийн ганц мөр
+   (гарах/буцах — өнөөдөр, маргааш юу болохыг л хэлнэ), «Бүтэн сар» дарвал сарын тор.
+   ⛔ Өргөн дэлгэц ба Захиалгын дэлгэцийн календарь ӨӨРЧЛӨГДӨӨГҮЙ — 7 хоногийн мөр
+     зөвхөн `compact` (Тойм) дээр зурагдаж, CSS нь ≤720px-д л харуулна.
+   ⚠ 7 хоног сарын хил давж болно (09-28 → 10-04) тул сарын тороос БИШ, өөрийн
+     өдрүүдээр (`ordersWeekData`) зурна. «Гарах/буцах» дүрэм НЭГ — `ordersCalendarData`.
+   ⚠ Даваа гарагийг `calWeekStart`-аар (түүхий Date UTC+8-д гулсана). */
+function calWeekStart(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!m) return '';
+  const lead = (new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay() + 6) % 7;   // Ням=0 → Даваа=0
+  return addDays(iso, -lead);
+}
+function ordersWeekData(orders, mon) {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+  const a = ordersCalendarData(orders, days[0].slice(0, 7));
+  const z = days[6].slice(0, 7) === days[0].slice(0, 7) ? a : ordersCalendarData(orders, days[6].slice(0, 7));
+  return { days, out: d => a.out[d] || z.out[d] || [], back: d => a.back[d] || z.back[d] || [] };
+}
+// «Бүтэн сар» ⇄ «7 хоног» — хоёр харагдац ИЖИЛ үеийг заана (7 хоногоос сар руу шилжихэд
+// ТЭР 7 хоногийн сар, сараас буцахад тэр сарын 7 хоног). Цэвэр функц — тестлэгдэнэ.
+// ⚠ Сар нь одоогийн сар бол 7 хоног = '' (өнөөдрийг ДАГАНА, хуучин огноо тогтохгүй).
+function calSwitchView(toFull, week, ym, today) {
+  if (toFull) return { ym: addDays(calWeekStart(week || today), 3).slice(0, 7), week: week || '' };   // Пүрэв = 7 хоногийн ихэнх нь орсон сар
+  const m = ym || today.slice(0, 7);
+  return { ym: ym || '', week: m === today.slice(0, 7) ? '' : calWeekStart(m + '-01') };
+}
+function dashCalFull() {
+  if (state.dashCalFull === undefined) {
+    try { state.dashCalFull = localStorage.getItem('dashCalFull') === '1'; } catch (e) { state.dashCalFull = false; }
+  }
+  return !!state.dashCalFull;
+}
 function ordersCalendarHtml(orders, opts) {
   const compact = !!(opts && opts.compact);
   const ym = state.ordersCalYm || todayStr().slice(0, 7);
   const data = ordersCalendarData(orders, ym);
   const sel = compact ? '' : (state.ordersCalDay || '');
   const wd = ['Да', 'Мя', 'Лха', 'Пү', 'Ба', 'Бя', 'Ня'];
-  const cells = calendarCells(ym).map(day => {
-    if (!day) return '<div class="ocal-c ocal-pad"></div>';
-    const o = (data.out[day] || []).length, b = (data.back[day] || []).length;
+  const cell = (day, o, b) => {
     const cls = [day === todayStr() ? 'today' : '', day === sel ? 'on' : ''].filter(Boolean).join(' ');
     return `<button class="ocal-c ${cls}" data-ocal-day="${day}">
       <span class="ocal-d">${+day.slice(8)}</span>
       <span class="ocal-dots">${o ? `<span class="ocal-b out">${o}</span>` : ''}${b ? `<span class="ocal-b back">${b}</span>` : ''}</span>
     </button>`;
-  }).join('');
+  };
+  const cells = calendarCells(ym).map(day => day
+    ? cell(day, (data.out[day] || []).length, (data.back[day] || []).length)
+    : '<div class="ocal-c ocal-pad"></div>').join('');
   const list = compact
     ? '<div class="ocal-hint">Өдөр дээр дарж тэр өдрийн захиалгыг нээнэ.</div>'
     : sel
@@ -10588,15 +10624,37 @@ function ordersCalendarHtml(orders, opts) {
           + (b.length ? `<div class="ocal-sec">🟢 Буцах (${b.length})</div>` + b.map(card).join('') : '');
       })()
     : '<div class="ocal-hint">Өдөр дээр дарж тэр өдрийн захиалгыг хараарай.</div>';
-  return `<div class="ocal">
-    <div class="ocal-head">
+  const legend = '<span class="ocal-leg"><span class="ocal-b out">●</span> гарах <span class="ocal-b back">●</span> буцах</span>';
+  // 7 хоногийн мөр + «Бүтэн сар» — зөвхөн Тойм (compact). CSS нь ≤720px-д л харуулна.
+  let week = '', foot = '';
+  if (compact) {
+    const thisWk = calWeekStart(todayStr());
+    const wkStart = calWeekStart(state.dashCalWeek || todayStr());
+    const wk = ordersWeekData(orders, wkStart);
+    const label = wkStart === thisWk ? 'Энэ 7 хоног' : `${wk.days[0].slice(5)} – ${wk.days[6].slice(5)}`;
+    week = `<div class="ocal-head ocal-wk-only">
+      <button class="btn btn-sm" data-ocal-wk="-1" aria-label="Өмнөх 7 хоног">‹</button>
+      <b>${escapeHtml(label)}</b>
+      <button class="btn btn-sm" data-ocal-wk="1" aria-label="Дараагийн 7 хоног">›</button>
+      ${wkStart !== thisWk ? '<button class="btn btn-sm" data-ocal-wk="0">Өнөөдөр</button>' : ''}
+    </div>
+    <div class="ocal-grid ocal-wk-only">${wd.map(d => `<div class="ocal-wd">${d}</div>`).join('')}${wk.days.map(day => cell(day, wk.out(day).length, wk.back(day).length)).join('')}</div>`;
+    foot = `<div class="ocal-foot">
+      <button class="btn btn-sm" data-ocal-full="1" aria-expanded="${dashCalFull()}">${dashCalFull() ? '▴ 7 хоног' : '▾ Бүтэн сар'}</button>
+      ${legend}
+    </div>`;
+  }
+  return `<div class="ocal${compact && !dashCalFull() ? ' ocal-wkmode' : ''}">
+    ${week}
+    <div class="ocal-head ocal-mo">
       <button class="btn btn-sm" data-ocal-mv="-1">‹</button>
       <b>${escapeHtml(ym)}</b>
       <button class="btn btn-sm" data-ocal-mv="1">›</button>
-      <span class="ocal-leg"><span class="ocal-b out">●</span> гарах <span class="ocal-b back">●</span> буцах</span>
+      ${legend}
     </div>
-    <div class="ocal-grid">${wd.map(d => `<div class="ocal-wd">${d}</div>`).join('')}${cells}</div>
+    <div class="ocal-grid ocal-mo">${wd.map(d => `<div class="ocal-wd">${d}</div>`).join('')}${cells}</div>
     ${list}
+    ${foot}
   </div>`;
 }
 function attachOrdersCalendar(root, opts) {
@@ -10607,6 +10665,21 @@ function attachOrdersCalendar(root, opts) {
     const d = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + Number(b.dataset.ocalMv), 1));
     state.ordersCalYm = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     state.ordersCalDay = ''; render();
+  }));
+  // Тойм (утас): 7 хоногоор шилжих, «Бүтэн сар» ⇄ «7 хоног»
+  el.querySelectorAll('[data-ocal-wk]').forEach(b => b.addEventListener('click', () => {
+    const dir = Number(b.dataset.ocalWk);
+    // 0 = «Өнөөдөр» — хоосон болгоно: тэгвэл маргааш апп нээлттэй байсан ч өнөөдрийн 7 хоногийг дагана
+    state.dashCalWeek = dir === 0 ? '' : addDays(calWeekStart(state.dashCalWeek || todayStr()), 7 * dir);
+    render();
+  }));
+  el.querySelectorAll('[data-ocal-full]').forEach(b => b.addEventListener('click', () => {
+    const full = !dashCalFull();
+    state.dashCalFull = full;
+    try { localStorage.setItem('dashCalFull', full ? '1' : '0'); } catch (e) {}
+    const to = calSwitchView(full, state.dashCalWeek, state.ordersCalYm, todayStr());
+    state.ordersCalYm = to.ym; state.dashCalWeek = to.week;
+    render();
   }));
   el.querySelectorAll('[data-ocal-day]').forEach(b => b.addEventListener('click', () => {
     if (go) { state.view = 'orders'; state.ordersCal = true; state.ordersCalDay = b.dataset.ocalDay; render(); return; }

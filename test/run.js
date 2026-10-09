@@ -17572,6 +17572,78 @@ async function swFetchTests() {
   });
 }
 
+// ═══ ТОЙМЫН КАЛЕНДАРЬ УТСАНД = 7 ХОНОГИЙН МӨР (2026-10-09, CEO) ═════════
+// Сарын бүтэн тор утсанд ~370px — календарь эхний дэлгэцийн тал хувийг эзэлж байв.
+{
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', 'styles.css'), 'utf8');
+  // Даваа гараг: 7 хоногийн аль ч өдрөөс ижил Даваа; сар/жилийн хил
+  eq(F.calWeekStart('2026-10-05'), '2026-10-05', '7 хоног: Даваа өөрөө');
+  eq(F.calWeekStart('2026-10-11'), '2026-10-05', '7 хоног: Ням нь өмнөх Даваа гарагт хамаарна');
+  eq(F.calWeekStart('2026-10-09'), '2026-10-05', '7 хоног: Баасан → тэр 7 хоногийн Даваа');
+  eq(F.calWeekStart('2026-10-01'), '2026-09-28', '7 хоног: сарын хил (Пүрэв 10-01 → 09-28)');
+  eq(F.calWeekStart('2027-01-01'), '2026-12-28', '7 хоног: жилийн хил');
+  eq(F.calWeekStart(''), '', '7 хоног: хоосон оролт унагахгүй');
+  eq(F.calWeekStart('2026-13-40x'), '', '7 хоног: буруу огноо → хоосон, таамаглахгүй');
+
+  // Сарын хил давсан 7 хоног: ХОЁР сарын дата зэрэг гарна, олон өдрийн захиалга дунд өдөрт давтагдахгүй
+  const ords = [{ id: 'w1', number: 1, status: 'reserved', starts_at: '2026-09-30T09:00:00+08:00', stops_at: '2026-10-02T18:00:00+08:00', items: [] },
+                { id: 'w2', number: 2, status: 'deleted',  starts_at: '2026-09-29T09:00:00+08:00', stops_at: '2026-09-29T18:00:00+08:00', items: [] }];
+  const wk = F.ordersWeekData(ords, '2026-09-28');
+  eq(wk.days.join(','), '2026-09-28,2026-09-29,2026-09-30,2026-10-01,2026-10-02,2026-10-03,2026-10-04', '7 хоног: 7 тасралтгүй өдөр, сарын хил давна');
+  eq(wk.out('2026-09-30').length, 1, '7 хоног: гарах өдөр (9-р сар)');
+  eq(wk.back('2026-10-02').length, 1, '7 хоног: буцах өдөр (10-р сар) — ӨӨР сарын дата');
+  eq(wk.out('2026-10-01').length + wk.back('2026-10-01').length, 0, '7 хоног: олон өдрийн захиалга дунд өдөрт ДАВТАГДАХГҮЙ');
+  eq(wk.out('2026-09-29').length, 0, '7 хоног: устгасан захиалга орохгүй');
+
+  // Шилжилт: хоёр харагдац ИЖИЛ үеийг заана
+  eq(JSON.stringify(F.calSwitchView(true, '2026-09-28', '', '2026-10-09')), JSON.stringify({ ym: '2026-10', week: '2026-09-28' }), 'шилжилт: 09-28 7 хоногийн ихэнх нь 10-р сард → 10-р сар');
+  eq(F.calSwitchView(true, '', '', '2026-10-09').ym, '2026-10', 'шилжилт: өнөөдрийн 7 хоног → өнөөдрийн сар');
+  eq(F.calSwitchView(false, '', '2026-10', '2026-10-09').week, '', 'шилжилт: одоогийн сараас буцахад 7 хоног өнөөдрийг ДАГАНА (тогтоохгүй)');
+  eq(F.calSwitchView(false, '', '2026-12', '2026-10-09').week, '2026-11-30', 'шилжилт: өөр сараас буцахад тэр сарын 1-ийн 7 хоног');
+
+  // Зурагдалт: Тойм (compact) дээр л; Захиалгын дэлгэцийнх ӨӨРЧЛӨГДӨӨГҮЙ
+  const st = vm.runInContext('state', sandbox);
+  const keep = { f: st.dashCalFull, w: st.dashCalWeek, a: st.appOrders };
+  st.appOrders = []; st.dashCalWeek = '';
+  st.dashCalFull = false;
+  const c1 = F.ordersCalendarHtml([], { compact: true });
+  ok(/ocal ocal-wkmode/.test(c1), 'Тойм календарь: өгөгдмөлөөр 7 хоногийн горим');
+  eq((c1.match(/ocal-wk-only/g) || []).length, 2, 'Тойм календарь: 7 хоногийн толгой + мөр');
+  eq(c1.slice(c1.indexOf('ocal-grid ocal-wk-only')).split('data-ocal-day=').length - 1 >= 7, true, 'Тойм календарь: 7 хоногийн мөрөнд 7 өдөр');
+  ok(/data-ocal-wk="-1"/.test(c1) && /data-ocal-wk="1"/.test(c1) && /data-ocal-full=/.test(c1), 'Тойм календарь: 7 хоногоор шилжих, «Бүтэн сар» товчтой');
+  ok(/Энэ 7 хоног/.test(c1) && !/data-ocal-wk="0"/.test(c1), 'Тойм календарь: энэ 7 хоногт «Өнөөдөр» товч шаардлагагүй');
+  st.dashCalWeek = '2026-09-28';
+  ok(/data-ocal-wk="0"/.test(F.ordersCalendarHtml([], { compact: true })), 'Тойм календарь: өөр 7 хоногт «Өнөөдөр» буцах товч гарна');
+  st.dashCalWeek = '';
+  st.dashCalFull = true;
+  const c2 = F.ordersCalendarHtml([], { compact: true });
+  ok(!/ocal-wkmode/.test(c2) && /▴ 7 хоног/.test(c2), 'Тойм календарь: «Бүтэн сар» горимд сарын тор + буцах товч');
+  const full = F.ordersCalendarHtml([]);
+  ok(!/ocal-wk-only|ocal-foot|ocal-wkmode/.test(full), 'ИНВАРИАНТ: Захиалгын дэлгэцийн календарьт 7 хоногийн мөр ОРОХГҮЙ');
+  st.dashCalFull = keep.f; st.dashCalWeek = keep.w; st.appOrders = keep.a;
+
+  // ⛔ Өргөн дэлгэцэд 7 хоногийн мөр ХЭЗЭЭ Ч харагдахгүй: нуух нь media-гүй үндсэн дүрэмд,
+  //   харуулах нь ЗӨВХӨН ≤720px дотор.
+  ok(/\n\.ocal-head\.ocal-wk-only, \.ocal-grid\.ocal-wk-only, \.ocal-foot \{ display: none; \}/.test(css), 'CSS: 7 хоногийн мөр үндсэн дүрмээр НУУГДАНА (өргөн дэлгэц)');
+  // Харуулах дүрмийг @media (max-width: 720px)-ийн БИЕ дотроос хаалтаар нь (brace) гаргаж тулгана
+  const showRe = /\.ocal-wkmode \.ocal-(?:head|grid)\.ocal-wk-only \{ display: (?:flex|grid); \}|\.dash-ocal \.ocal-foot \{ display: flex; \}/g;
+  const mediaBodies = [];
+  for (const m of css.matchAll(/@media \(max-width: 720px\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < css.length && d > 0) { if (css[i] === '{') d++; else if (css[i] === '}') d--; i++; }
+    mediaBodies.push(css.slice(from, i));
+  }
+  const totalShow = (css.match(showRe) || []).length;
+  const inMedia = mediaBodies.reduce((n, b) => n + (b.match(showRe) || []).length, 0);
+  ok(totalShow >= 3, 'CSS: 7 хоногийн мөрийг харуулах дүрмүүд байна');
+  eq(inMedia, totalShow, 'ИНВАРИАНТ: 7 хоногийн мөрийг харуулах дүрэм ЗӨВХӨН @media (max-width: 720px) дотор');
+  // Товчнууд холбогдсон + сонголт хадгалагдана
+  ok(/data-ocal-wk\]'\)\.forEach/.test(src) && /data-ocal-full\]'\)\.forEach/.test(src), '7 хоног: товчнууд холбогдсон');
+  ok(/localStorage\.setItem\('dashCalFull'/.test(src) && /localStorage\.getItem\('dashCalFull'\)/.test(src), '7 хоног: «Бүтэн сар» сонголт хадгалагдана');
+  ok(/calSwitchView\(full, state\.dashCalWeek, state\.ordersCalYm/.test(src), '7 хоног: шилжилт цэвэр функцээр');
+}
+
 // ═══ «БИ Ч ОРОЛЦСОН» ТОВЧ ЦАЛИНГИЙН САМБАРТ ХОЛБОГДОНО (2026-10-05) ═════
 // Хайрцаг цалингийн самбарт зурагддаг атал товчны үйлдэл «Миний ирц»-д л
 // холбогдсон байсан — ✕/✓ дарахад юу ч болдоггүй байв (CEO барив).

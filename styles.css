@@ -7879,10 +7879,22 @@ select.no-asar-len {
 .dash-ocal { margin-bottom:var(--space-3); }
 .dash-ocal .ocal-grid { margin-bottom:0; }
 .dash-ocal .ocal-hint { padding:var(--space-2) 0 0; }
-/* Утсанд Тоймын календарь эхний дэлгэцийг бүхлээр эзлэхгүй: нүд 52 → 44px (өдөр + тоо багтана) */
+/* Тоймын календарь утсанд = 7 ХОНОГИЙН МӨР (2026-10-09). Өргөн дэлгэцэд ХЭЗЭЭ Ч харагдахгүй
+   (сарын тор л). «ocal-wkmode» = утсанд 7 хоног, «Бүтэн сар» дарвал энэ анги арилж сарын тор гарна. */
+.ocal-head.ocal-wk-only, .ocal-grid.ocal-wk-only, .ocal-foot { display: none; }
+.ocal-foot { align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); }
+.ocal-foot .ocal-leg { display: none; margin-left: 0; }
 @media (max-width: 720px) {
+  /* Бүтэн сарын нүд 52 → 44px (өдөр + тоо багтана) */
   .dash-ocal .ocal-c { min-height: 44px; padding: var(--space-1) 0; }
   .dash-ocal .ocal-head { margin-bottom: var(--space-2); }
+  .dash-ocal .ocal-foot { display: flex; }
+  .ocal-wkmode .ocal-head.ocal-wk-only { display: flex; }
+  .ocal-wkmode .ocal-grid.ocal-wk-only { display: grid; }
+  .ocal-wkmode .ocal-mo, .ocal-wkmode .ocal-hint { display: none; }
+  .ocal-wkmode .ocal-foot .ocal-leg { display: flex; }
+  /* 7 хоногийн нүд том — нэг л мөр, хурууны хүрэх тал хангалттай */
+  .dash-ocal .ocal-wk-only .ocal-c { min-height: 60px; }
 }
 
 /* Дүн шинжилгээ — «агуулахаас цагтаа гарсан» өдрийн задаргаа */

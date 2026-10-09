@@ -6908,6 +6908,52 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 }
 .att-fixout:hover { filter: brightness(.96); }
 .att-manual { color: var(--muted); font-size: var(--fs-xs); }
+/* ═══ ИРЦ: өдрийн дэлгэц (2026-10-09) — inline style-аас класс ═══ */
+.att-wrap { max-width: 720px; margin: 0 auto; padding-bottom: var(--space-5); }
+.att-scan { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: var(--space-4);
+  text-align: center; margin-bottom: var(--space-3); }
+.att-scan-date { font-size: var(--fs-sm); color: var(--muted); letter-spacing: .04em; }
+.att-scan-btn { margin: var(--space-3) auto var(--space-1); display: flex; align-items: center; justify-content: center;
+  gap: 10px; width: 100%; max-width: 340px; padding: 14px; border: 0; border-radius: var(--r-xl);
+  background: var(--primary); color: #fff; font-size: var(--fs-lg); font-weight: 700; cursor: pointer; font-family: inherit; }
+.att-scan-hint { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
+.att-tools { margin-top: var(--space-3); display: flex; flex-direction: column; align-items: center; }
+.att-tools .fin-more-in { justify-content: center; }
+.att-tool { display: inline-flex; align-items: center; min-height: var(--tap-sm); padding: 8px 14px;
+  border: 1px solid var(--line); background: var(--panel-hover); border-radius: 10px; font-size: var(--fs-md);
+  font-weight: 600; color: var(--text); text-decoration: none; cursor: pointer; font-family: inherit; }
+.att-datebar { display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: var(--space-3); }
+.att-date { padding: 7px 10px; min-height: var(--tap-sm); border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--panel); color: var(--text); font-size: var(--fs-md); }
+.att-sum { font-size: var(--fs-md); color: var(--text-soft); margin: 2px 0 var(--space-2); }
+.att-sum b { color: var(--text); }
+.att-sum b.on { color: var(--ok); }
+.att-sum b.tot { color: var(--primary); }
+.att-empty { text-align: center; color: var(--muted); padding: 34px 10px; }
+.att-empty-s { font-size: var(--fs-sm); margin-top: var(--space-1); }
+.att-row { display: flex; align-items: center; gap: var(--space-3); padding: 11px var(--space-1); border-bottom: 1px solid var(--line); }
+.att-av { position: relative; width: 40px; height: 40px; border-radius: 50%; background: var(--panel-hover);
+  display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-md); font-weight: 700;
+  color: var(--muted); flex-shrink: 0; overflow: hidden; }
+.att-who { flex: 1; min-width: 0; }
+.att-name { font-weight: 600; font-size: var(--fs-base); }
+.att-role { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att-warn { color: var(--warn); font-size: var(--fs-xs); font-weight: 600; }
+.att-num { text-align: right; flex-shrink: 0; }
+/* Цагийн муж «08:41 → одоо»: ажиллаж байгаа нь ногоон, гараагүй нь анхааруулга */
+.att-span { font-size: var(--fs-md); color: var(--muted); font-variant-numeric: tabular-nums; }
+.att-span.open { color: var(--ok); font-weight: 700; }
+.att-span.noout { color: var(--warn); }
+.att-dur { font-weight: 700; color: var(--primary); font-size: var(--fs-md); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.att-late { color: var(--danger); font-weight: 700; font-size: var(--fs-xs); }
+.att-tmr { font-size: var(--fs-xs); color: var(--accent, var(--primary)); margin-top: 1px; }
+/* Ачааллын карт: өдрийн мөрүүд нугалаанд (утсанд өгөгдмөлөөр хаалттай) */
+.dl-det > summary { display: flex; align-items: center; gap: var(--space-1); min-height: var(--tap-sm); margin-top: var(--space-2);
+  border-top: 1px solid var(--line); color: var(--primary); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; list-style: none; }
+.dl-det > summary::-webkit-details-marker { display: none; }
+.dl-det > summary::before { content: '▸'; font-size: var(--fs-xs); }
+.dl-det[open] > summary::before { content: '▾'; }
+.dl-det .dl-list { margin-top: 0; }
 .att-noout-line {
   margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--warn); line-height: 1.6;
 }
@@ -8340,10 +8386,10 @@ select.no-asar-len {
 .dl-sub { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
 .dl-list { margin-top: var(--space-3); }
 .dl-row {
-  display: grid; grid-template-columns: 4.5rem 1fr 4rem; gap: var(--space-2);
+  display: grid; grid-template-columns: 5.5rem 1fr 4rem; gap: var(--space-2);
   align-items: center; padding: var(--space-2) 0; border-top: 1px solid var(--line);
 }
-.dl-day { font-size: var(--fs-sm); font-weight: 600; }
+.dl-day { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
 .dl-bar { background: var(--panel-hover); border-radius: var(--r-full); height: 8px; overflow: hidden; }
 .dl-bar i { display: block; height: 100%; background: var(--primary); border-radius: var(--r-full); }
 /* Баганын өргөн 10%-ийн алхмаар — динамик утгыг inline style-гүйгээр (дизайны гэрээ) */

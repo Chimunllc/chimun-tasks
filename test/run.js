@@ -12165,6 +12165,76 @@ need(['orderCustType']);
   eq((nh.match(/ns-btn/g) || []).length >= 3, true, 'карт: хийгдсэн алхмуудын товч зурагдана');
 }
 
+// ═══ ИРЦ (өдрийн дэлгэц): ЖАГСААЛТ ЭХНИЙ ДЭЛГЭЦЭНД, ЦАГИЙН МУЖ, КЛАСС (2026-10-09) ═════
+// «Ирэх 7 хоногийн ачаалал» карт ~720px + скан карт ~280px эзэлж «өнөөдөр хэн ирсэн» жагсаалт
+// эхний дэлгэцээс 1000px доор байв. Мөр бүрд «● Ажиллаж байна» ижил бичвэр давтагддаг байв.
+{
+  const srcA = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssA = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { t: st.attendanceToday, v: st.attViewRecs, d: st.attViewDay, c: st.isCEO, o: st.appOrders, dl: st.dlOpen, ws: st.workStart, na: st.nextArrival, ar: st.attRequests, mm: st.attMonthMode };
+  const T = vm.runInContext('todayStr()', sandbox), Y = vm.runInContext('addDays(todayStr(), -1)', sandbox);
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (k, kind, day, hm, source) => ({ member_key: k, member_name: 'Ажилтан ' + k, kind, ts: ts(day, hm), day, branch: 'M-Event', source: source || 'scan' });
+  st.workStart = {}; st.nextArrival = {}; st.attRequests = []; st.attMonthMode = false; st.isCEO = true;
+
+  // Өнөөдөр: нээлттэй сесс = «→ одоо» (ногоон), явсан = «→ HH:MM»
+  st.attViewDay = T;
+  st.attendanceToday = [rec('90000001', 'in', T, '08:41'), rec('90000002', 'in', T, '08:55'), rec('90000002', 'out', T, '12:30', 'manual'), rec('90000003', 'in', T, '09:50', 'self')];
+  const h1 = F.renderAttendanceRows();
+  ok(/class="att-span open"[^>]*>08:41 → одоо/.test(h1), 'ирц: ажиллаж буй хүн «08:41 → одоо» (ногоон)');
+  ok(/class="att-span"[^>]*>08:55 → 12:30/.test(h1), 'ирц: явсан хүн «08:55 → 12:30»');
+  ok(!/● Ажиллаж байна/.test(h1), 'ирц: мөр бүрд «● Ажиллаж байна» давтагдахгүй (өмнө 4 удаа)');
+  ok(/<b class="on">2<\/b> ажиллаж байна/.test(h1), 'ирц: «хэд ажиллаж байна» нь дүнгийн мөрөнд ГАНЦ удаа');
+  ok(/✍️ гараар/.test(h1), 'ирц: гараар оруулсан гарах цаг ил тэмдэглэгдэнэ');
+  ok(/⚠ уншуулаагүй/.test(h1), 'ирц: менежер QR уншуулаагүй хүн тэмдэглэгдэнэ (self)');
+  eq((h1.match(/class="att-row"/g) || []).length, 3, 'ирц: хүн бүр нэг мөр');
+  ok(!/style="/.test(h1.replace(/<img[^>]*>/g, '')), 'дизайн: ирцийн мөрүүд inline style-гүй (нийтлэг staffAvatarImg-ийн <img>-ээс бусад)');
+  // Өнгөрсөн өдөр: гарахаа бүртгүүлээгүй = «⚠ гараагүй» + цаг оруулах товч (эрхтэй бол)
+  st.attViewDay = Y; st.attViewRecs = [rec('90000004', 'in', Y, '09:12')];
+  const h2 = F.renderAttendanceRows();
+  ok(/class="att-span noout"[^>]*>09:12 → ⚠ гараагүй/.test(h2), 'ирц: гарахаа бүртгүүлээгүй → «⚠ гараагүй»');
+  ok(/data-att-out="90000004"/.test(h2), 'ирц: эрхтэй хүнд «Цаг оруулах» товч');
+  st.isCEO = false; st.capOverrides = undefined;
+  ok(!/data-att-out=/.test(F.renderAttendanceRows()) || vm.runInContext('canEditAttendance()', sandbox), 'ирц: эрхгүй хүнд «Цаг оруулах» товч гарахгүй');
+  st.isCEO = true;
+  st.attViewRecs = [];
+  ok(/class="att-empty"/.test(F.renderAttendanceRows()), 'ирц: хоосон өдөр класстай мэдэгдэл');
+
+  // Скан карт: гол товч ил, ховор хэрэгслүүд нугалаанд (id-ууд DOM-д үлдэнэ — handler id-аар холбогдоно)
+  st.attViewDay = T; st.attendanceToday = [rec('90000001', 'in', T, '08:41')];
+  const page = F.renderAttendance();
+  const scan = page.slice(page.indexOf('class="att-scan"'), page.indexOf('class="att-datebar"'));
+  ok(/id="att-scan-start" class="att-scan-btn"/.test(scan), 'скан карт: гол «скан хийх» товч ил');
+  const tools = scan.slice(scan.indexOf('<details class="fin-more att-tools">'));
+  ok(/id="att-print"/.test(tools) && /id="att-self"/.test(tools) && /id="att-workstart"/.test(tools), 'скан карт: хэвлэх · утсаар өөрөө · ажил эхлэх цаг нугалаанд (id-тай)');
+  ok(scan.indexOf('att-scan-start') < scan.indexOf('att-tools'), 'скан карт: гол товч нугалааны ӨМНӨ');
+  st.isCEO = false; vm.runInContext('state.capOverrides = state.capOverrides', sandbox);
+  ok(!/id="att-workstart"/.test(F.renderAttendance()), 'скан карт: «Ажил эхлэх цаг» зөвхөн CEO-д');
+  st.isCEO = true;
+  ok(/class="att-wrap"/.test(page) && /class="att-datebar"/.test(page), 'ирц: wrapper, огнооны мөр класстай');
+  ok(!/style="/.test(page.replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<img[^>]*>/g, '')), 'дизайн: ирцийн дэлгэц (svg, нийтлэг <img>-ээс бусад) inline style-гүй');
+
+  // «Ачааллын карт»: өдрийн мөрүүд нугалаанд, нээсэн төлөв хадгалагдана; гол тоо ба «чиглэл» тэмдэглэгээ ҮЛДЭНЭ
+  st.appOrders = [{ id: 'l1', number: 1, status: 'reserved', starts_at: T + 'T09:00:00+08:00', stops_at: addDaysT(T, 1) + 'T18:00:00+08:00', items: [{ qty: 40 }], note: '' }];
+  function addDaysT(d, n) { return vm.runInContext(`addDays('${d}', ${n})`, sandbox); }
+  st.dlOpen = false;
+  const c0 = F.dayLoadCardHtml();
+  ok(/<details class="dl-det">/.test(c0), 'ачааллын карт: хаалттай үед details нээлтгүй');
+  st.dlOpen = true;
+  ok(/<details class="dl-det" open>/.test(F.dayLoadCardHtml()), 'ачааллын карт: нээсэн төлөв render()-ээс render-д хадгалагдана');
+  ok(/хүн-өдөр/.test(c0) && /чиглэл/.test(c0) && /~\d+ хүн/.test(F.dayLoadCardHtml()), 'ачааллын карт: гол тоо, «чиглэл», өдрийн «~» тоо ҮЛДЭНЭ');
+  ok(c0.indexOf('dl-big') < c0.indexOf('<details'), 'ачааллын карт: 7 хоногийн ГОЛ тоо нугалааны ӨМНӨ (үргэлж ил)');
+  ok(/getElementById\('att-workstart'\)\?\.addEventListener[\s\S]{0,200}querySelector\('\.dl-det'\)\?\.addEventListener\('toggle'[\s\S]{0,80}state\.dlOpen = e\.target\.open/.test(srcA), 'ачааллын карт: toggle төлөв state.dlOpen-д хадгалагдана');
+
+  // CSS: хурууны хэмжээ, нугалаа
+  ok(/\.att-tool \{[^}]*min-height: var\(--tap-sm\)/.test(cssA) && /\.att-date \{[^}]*min-height: var\(--tap-sm\)/.test(cssA), 'CSS: ирцийн хэрэгсэл/огноо хурууны хэмжээтэй');
+  ok(/\.dl-day \{[^}]*white-space: nowrap/.test(cssA), 'CSS: ачааллын өдрийн нэр нэг мөрөнд («10-11 Ням» тасрахгүй)');
+  ok(/\.dl-det > summary \{[^}]*min-height: var\(--tap-sm\)/.test(cssA), 'CSS: «Өдөр бүрээр» нугалаа хурууны хэмжээтэй');
+
+  st.attendanceToday = keep.t; st.attViewRecs = keep.v; st.attViewDay = keep.d; st.isCEO = keep.c; st.appOrders = keep.o; st.dlOpen = keep.dl; st.workStart = keep.ws; st.nextArrival = keep.na; st.attRequests = keep.ar; st.attMonthMode = keep.mm;
+}
+
 // ═══ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════════
 // Цоорхой: зардал нь хуулгаас бүртгэгддэг байтал орлого нь зөвхөн захиалгаас
 // бүртгэгддэг байв → (1) ямар хуулга орсныг апп мэдэхгүй, (2) захиалгад

@@ -13361,7 +13361,7 @@ function renderAttendanceRows() {
   const by = {};
   recs.forEach(r => { const ck = attCanonKey(r); (by[ck] = by[ck] || []).push(r); });
   const keys = Object.keys(by);
-  if (!keys.length) return `<div style="text-align:center;color:var(--muted);padding:34px 10px;">${word} хэн ч бүртгүүлээгүй байна.<div style="font-size:12px;margin-top:4px;">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>`;
+  if (!keys.length) return `<div class="att-empty">${word} хэн ч бүртгүүлээгүй байна.<div class="att-empty-s">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>`;
   const rows = keys.map(k => {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
     const s = attMemberSummary(arr, isToday);
@@ -13375,28 +13375,30 @@ function renderAttendanceRows() {
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
   const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
   const nOpen = rows.filter(r => r.s.open).length;
-  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${word} <b style="color:var(--text)">${rows.length}</b> ажилтан ирсэн${nOpen ? ` · <b style="color:var(--ok)">${nOpen}</b> ажиллаж байна` : ''} · нийт <b style="color:var(--primary)">${attHM(totalMins)}</b></div>`;
+  const head = `<div class="att-sum">${word} <b>${rows.length}</b> ажилтан ирсэн${nOpen ? ` · <b class="on">${nOpen}</b> ажиллаж байна` : ''} · нийт <b class="tot">${attHM(totalMins)}</b></div>`;
+  /* ⛔ МӨР = ЦАГИЙН МУЖ («08:41 → одоо» / «08:55 → 12:30» / «09:12 → ⚠ гараагүй») (2026-10-09).
+     Өмнө нь «🟢 08:41 · ● Ажиллаж байна» гэж мөр бүрд ижил ногоон бичвэр давтагдаж, баруун багана
+     180px болон нэр 100px-д шахагддаг байв. «Хэдэн хүн ажиллаж байна» нь дээрх дүнгийн мөрөнд бий. */
   const list = rows.map(r => {
-    const av = `<span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.m)}</span>`;
-    const status = r.s.open
-      ? '<span style="color:var(--ok);font-weight:700;font-size:12px;">● Ажиллаж байна</span>'
-      : r.s.noOut
-        ? '<span style="color:var(--warn);font-size:12px;">⚠ Гараагүй</span>'
-        : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}${r.manualOut ? (r.bySelfReq ? ' <span class="att-manual" title="Ажилтны хүсэлтээр удирдлага баталсан">🙋 хүсэлтээр</span>' : ' <span class="att-manual" title="Удирдлага гараар оруулсан">✍️ гараар</span>') : ''}</span>`;
+    const av = `<span class="att-av">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.m)}</span>`;
+    const manualTag = r.manualOut ? (r.bySelfReq ? ' <span class="att-manual" title="Ажилтны хүсэлтээр удирдлага баталсан">🙋 хүсэлтээр</span>' : ' <span class="att-manual" title="Удирдлага гараар оруулсан">✍️ гараар</span>') : '';
+    const endTxt = r.s.open ? 'одоо' : r.s.noOut ? '⚠ гараагүй' : attTimeUB(r.s.lastEvent);
+    const spanCls = r.s.open ? ' open' : r.s.noOut ? ' noout' : '';
+    const spanTitle = r.s.open ? 'Ажиллаж байна' : r.s.noOut ? 'Гарахаа бүртгүүлээгүй' : 'Явсан';
     // «Хоцорсон» = ЗӨВХӨН одоо ажиллаж байгаа (нээлттэй сесс) хүнд — явсан хүнд retroactive
     // хоцролт гаргахгүй (хуучин buggy next_arrival дата departed хүмүүст л үлдсэн; шинэ дата зөв).
     const late = r.s.open ? attLateMinutes(r.k, day, r.s.firstIn) : 0;
-    const lateBadge = late > 0 ? ` <span style="color:var(--danger);font-weight:700;font-size:11.5px;">🔴 ${late}м хоцорсон</span>` : '';
+    const lateLine = late > 0 ? `<div class="att-late">🔴 ${late}м хоцорсон</div>` : '';
     // Гарахаа бүртгүүлээгүй → удирдлага цагийг нь оруулна. Товч нь ТУСДАА мөрөнд —
     // 320px өргөнтэй утсанд статустай нэг мөрөнд багтахгүй, хэвтээ гүйлт үүсгэдэг.
     const fixBtn = (r.s.noOut && canEditAttendance())
       ? `<button class="ui-raw att-fixout" data-att-out="${escapeHtml(r.k)}" data-att-in="${escapeHtml(String(r.s.openTs || ''))}" data-att-name="${escapeHtml(r.name)}">✍️ Цаг оруулах</button>`
       : '';
     const tmr = nextArrivalFor(r.k, addDays(day, 1));
-    const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
-    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
-      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}${r.scanned ? '' : ' <span title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн" style="color:var(--warn);font-size:11.5px;font-weight:600;">⚠ уншуулаагүй</span>'}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}${r.s.lunch ? `<span class="att-lunch" title="Цайны цаг хасагдсан (нийт ${attHM(r.s.gross)})">цай −${lunchHM(r.s.lunch)}</span>` : ''}</div>${fixBtn}${tmrBadge}</div></div>`;
+    const tmrBadge = tmr ? `<div class="att-tmr">→ маргааш ${escapeHtml(tmr)}</div>` : '';
+    return `<div class="att-row">${av}
+      <div class="att-who"><div class="att-name">${escapeHtml(r.name)}${r.scanned ? '' : ' <span class="att-warn" title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн">⚠ уншуулаагүй</span>'}</div><div class="att-role">${escapeHtml(r.role)}</div></div>
+      <div class="att-num"><div class="att-span${spanCls}" title="${spanTitle}">${attTimeUB(r.s.firstIn)} → ${endTxt}${manualTag}</div>${lateLine}<div class="att-dur">${attHM(r.s.mins)}${r.s.lunch ? `<span class="att-lunch" title="Цайны цаг хасагдсан (нийт ${attHM(r.s.gross)})">цай −${lunchHM(r.s.lunch)}</span>` : ''}</div>${fixBtn}${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;
 }
@@ -13429,6 +13431,10 @@ function dayLoadCardHtml() {
   const shift = loadShiftHours();
   const manDays = Math.ceil(tHours / shift);
   const max = Math.max(1, ...rows.map(r => r.touches));
+  /* ⛔ ӨДРИЙН МӨРҮҮД УТСАНД ӨГӨГДМӨЛӨӨР ЭВХЭГДЭНЭ (2026-10-09): карт ~720px эзэлж, «өнөөдөр хэн ирсэн»
+     жагсаалт эхний дэлгэцээс 1000px доор байв. Гол тоо = 7 хоногийн дүн (дээрх «хүн-өдөр»), өдрийн
+     мөр нь чиглэл — тиймээс эвхсэн нь мэдээллийг алдахгүй. Нээсэн төлөв state.dlOpen-д. */
+  const dlOpen = state.dlOpen === undefined ? (typeof window !== 'undefined' && window.innerWidth > 720) : !!state.dlOpen;
   const day = rows.map((r, i) => {
     const wd = _MN_WD[new Date(r.date + 'T00:00:00').getDay()];
     // ⚠ 10%-ийн алхмаар КЛАСС болгоно — inline style нэмэхгүй (дизайны гэрээ, CI шалгана)
@@ -13447,8 +13453,10 @@ function dayLoadCardHtml() {
     <div class="dl-t">👥 Ирэх 7 хоногийн ачаалал</div>
     <div class="dl-big">${manDays} <span>хүн-өдөр</span></div>
     <div class="dl-sub">${fmtMoneyShort ? '' : ''}${tHours} цагийн ажил · ${rows.reduce((t, r) => t + r.out.length + r.back.length, 0)} захиалгын хөдөлгөөн</div>
-    <div class="dl-list">${day}</div>
-    <div class="dl-warn">⚠ Өдрийн тоо нь <b>чиглэл</b> — баг эвентийн хуваарийг чанд дагадаггүй тул нэг өдрийн таамаг ойролцоо (бодит датагаар шалгахад 7 хоногийн дүн найдвартай, өдрийнх ойролцоо). Төлөвлөхдөө 7 хоногийн дүнг ашигла.</div>
+    <details class="dl-det"${dlOpen ? ' open' : ''}><summary>Өдөр бүрээр</summary>
+      <div class="dl-list">${day}</div>
+      <div class="dl-warn">⚠ Өдрийн тоо нь <b>чиглэл</b> — баг эвентийн хуваарийг чанд дагадаггүй тул нэг өдрийн таамаг ойролцоо (бодит датагаар шалгахад 7 хоногийн дүн найдвартай, өдрийнх ойролцоо). Төлөвлөхдөө 7 хоногийн дүнг ашигла.</div>
+    </details>
   </div>`;
 }
 function renderAttendance() {
@@ -13468,27 +13476,30 @@ function renderAttendance() {
   if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
   const loadCard = (isToday && !monthMode) ? dayLoadCardHtml() : '';
-  const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
-      <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
-      <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
+  /* Скан товч = ГОЛ үйлдэл; ID карт хэвлэх · утсаар өөрөө · ажил эхлэх цаг нь ховор хэрэгтэй хэрэгсэл тул
+     нугалаанд (2026-10-09). Өмнө нь 3 товч тусдаа мөр болж карт ~280px эзэлж, «хэн ирсэн» жагсаалт
+     эхний дэлгэцээс гардаг байв. ⚠ Холбоосуудыг id-аар тохируулдаг (att-print/att-self) — нугалаанд ч DOM-д бий. */
+  const scanCard = isToday ? `<div class="att-scan">
+      <div class="att-scan-date">${dateLabel}</div>
+      <button id="att-scan-start" class="att-scan-btn">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
         Ажилтан скан хийх</button>
-      <div style="font-size:13.5px;color:var(--text-soft);margin-top:8px;">Ажилтны QR картыг камераар уншуулж<br>ирсэн / явсаныг бүртгэнэ</div>
-      <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-        <a id="att-print" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">🖨 ID QR карт хэвлэх</a>
-        <a id="att-self" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">📱 Утсаар өөрөө</a>
-        ${state.isCEO ? `<button id="att-workstart" class="ui-raw" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;">⏰ Ажил эхлэх цаг</button>` : ''}
-      </div>
+      <div class="att-scan-hint">Ажилтны QR картыг камераар уншуулж ирсэн / явсаныг бүртгэнэ</div>
+      <details class="fin-more att-tools"><summary>⋯ Хэрэгсэл</summary><div class="fin-more-in">
+        <a id="att-print" href="#" target="_blank" rel="noopener" class="att-tool">🖨 ID QR карт хэвлэх</a>
+        <a id="att-self" href="#" target="_blank" rel="noopener" class="att-tool">📱 Утсаар өөрөө</a>
+        ${state.isCEO ? `<button id="att-workstart" class="ui-raw att-tool">⏰ Ажил эхлэх цаг</button>` : ''}
+      </div></details>
     </div>` : '';
-  const dateBar = `<div style="display:flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">
-      <button class="btn btn-sm ui-raw" data-att-nav="-1" title="Өмнөх өдөр">◀</button>
-      <input type="date" id="att-date" value="${day}" max="${todayStr()}" class="ui-raw" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;">
-      <button class="btn btn-sm ui-raw" data-att-nav="1"${isToday ? ' disabled' : ''} title="Дараах өдөр">▶</button>
+  const dateBar = `<div class="att-datebar">
+      <button class="btn btn-sm ui-raw" data-att-nav="-1" title="Өмнөх өдөр" aria-label="Өмнөх өдөр">◀</button>
+      <input type="date" id="att-date" value="${day}" max="${todayStr()}" class="ui-raw att-date">
+      <button class="btn btn-sm ui-raw" data-att-nav="1"${isToday ? ' disabled' : ''} title="Дараах өдөр" aria-label="Дараах өдөр">▶</button>
       ${!isToday ? `<button class="btn btn-sm" data-att-today>Өнөөдөр</button>` : ''}
       <button class="btn btn-sm${monthMode ? ' btn-primary' : ''}" data-att-month>📅 Сарын тойм</button>
     </div>`;
   const body = monthMode ? renderAttendanceMonth(day.slice(0, 7)) : renderAttendanceRows();
-  return `<div style="max-width:720px;margin:0 auto;padding-bottom:20px;">
+  return `<div class="att-wrap">
     ${loadCard}${scanCard}${renderAttReqPanel()}${dateBar}
     <div id="att-list">${body}</div>
   </div>`;
@@ -14191,6 +14202,7 @@ function attachAttendanceHandlers() {
   const pf = document.getElementById('att-print'); if (pf) pf.href = attIdCardsUrl();
   const sf = document.getElementById('att-self'); if (sf) sf.href = attCheckinUrl(todayStr());
   document.getElementById('att-workstart')?.addEventListener('click', openWorkStartModal);
+  document.querySelector('.dl-det')?.addEventListener('toggle', (e) => { state.dlOpen = e.target.open; });   // render() дахин зурахад хүн нээсэн нь хаагдахгүй
   // Огноо навигаци (өнгөрсөн өдөр / сарын тойм)
   document.getElementById('att-date')?.addEventListener('change', e => { const v = e.target.value; if (v && v <= todayStr()) { state.attViewDay = v; state.attMonthMode = false; render(); } });
   document.querySelectorAll('[data-att-nav]').forEach(b => b.addEventListener('click', () => { const cur = state.attViewDay || todayStr(); const nd = addDays(cur, Number(b.dataset.attNav)); if (nd > todayStr()) return; state.attViewDay = nd; state.attMonthMode = false; render(); }));

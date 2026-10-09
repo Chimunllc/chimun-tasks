@@ -17689,6 +17689,93 @@ async function swFetchTests() {
   ok(/calSwitchView\(full, state\.dashCalWeek, state\.ordersCalYm/.test(src), '7 хоног: шилжилт цэвэр функцээр');
 }
 
+// ═══ МИНИЙ АЖИЛ: ШҮҮЛТҮҮРИЙН PILL — ТОО, ИДЭВХТЭЙ НЬ ХАРАГДАНА (2026-10-09) ═════
+// Утсанд 7 pill 334px-д багтахгүй (694px) — идэвхтэй шүүлт («Бүгд») дэлгэцээс гадуур,
+// ямар шүүлт асаалттайг хэн ч харахгүй байв; pill нь тоогүй, хүрээгүй (бичиг шиг) байв.
+{
+  const fs = require('fs'), path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { t: st.tasks, v: st.view, me: st.me, c: st.isCEO, f: st.statusFilter, s: st.search };
+  const T = vm.runInContext('todayStr()', sandbox);
+  const day = (n) => vm.runInContext(`addDays(todayStr(), ${n})`, sandbox);
+  const mk = (id, status, due) => ({ id, title: 'Ажил ' + id, assignee: '99001', createdBy: '99001', status, due, priority: 'medium', created: day(-3), updated: day(-1) });
+  st.tasks = [mk('a', 'open', day(-2)), mk('b', 'open', day(-1)), mk('c', 'open', T), mk('d', 'open', day(5)), mk('e', 'open', ''),
+              mk('f', 'done', day(-1)), mk('g', 'done', day(-2))];
+  st.view = 'mine'; st.me = '99001'; st.isCEO = false; st.search = ''; st.statusFilter = 'all';
+  const ids = (l) => l.map(t => t.id).sort().join(',');
+
+  // ИНВАРИАНТ: pill дээрх тоо = дарахад гарах жагсаалт (ИЖИЛ функц, state-ийг хөндөхгүй)
+  const cnt = F.taskFilterCounts();
+  eq(st.statusFilter, 'all', 'pill тоо: state.statusFilter-ийг ХӨНДӨХГҮЙ');
+  ['open', 'overdue', 'today'].forEach(k => {
+    st.statusFilter = k;
+    const shown = F.filteredTasks();
+    eq(cnt[k], shown.length, `ИНВАРИАНТ: «${k}» pill-ийн тоо = дарахад гарах мөрийн тоо`);
+    eq(ids(F.filteredTasks({ statusFilter: k })), ids(shown), `ИНВАРИАНТ: filteredTasks({statusFilter:'${k}'}) = state-ээр шүүсэнтэй ижил`);
+  });
+  st.statusFilter = 'all';
+  eq(cnt.open, 5, 'pill тоо: идэвхтэй 5'); eq(cnt.overdue, 2, 'pill тоо: хоцорсон 2'); eq(cnt.today, 1, 'pill тоо: өнөөдөр 1');
+  // Хайлт идэвхтэй үед тоо ХАЙЛТЫГ тооцно — дарахад гарах мөртэй зөрөхгүй
+  st.search = 'Ажил a';
+  eq(F.taskFilterCounts().open, 1, 'pill тоо: хайлт идэвхтэй үед хайлтыг тооцно');
+  st.search = '';
+  eq(JSON.stringify(vm.runInContext('FILTER_COUNT_KEYS', sandbox)), JSON.stringify(['open', 'overdue', 'today']), 'pill тоо: зөвхөн хийх ажил (open/overdue/today)');
+
+  // Идэвхтэй pill-ийг харагдуулах: хамгийн бага гүйлгэлт, ирмэгээс зайтай
+  const mkGrp = (sl, aL, aR) => ({ scrollLeft: sl, clientWidth: 300, scrollWidth: 700,
+    getBoundingClientRect: () => ({ left: 0, right: 300 }),
+    querySelector: () => ({ getBoundingClientRect: () => ({ left: aL, right: aR }) }) });
+  const g1 = mkGrp(0, 350, 450); F.revealActivePill(g1);
+  eq(g1.scrollLeft, 450 - (300 - 36), 'pill гүйлгэлт: баруун гадна → ирмэгээс 36px зайтай харагдана');
+  const g2 = mkGrp(0, 50, 150); F.revealActivePill(g2);
+  eq(g2.scrollLeft, 0, 'pill гүйлгэлт: аль хэдийн харагдаж байвал ХӨДӨЛГӨХГҮЙ');
+  const g3 = mkGrp(200, -80, -20); F.revealActivePill(g3);
+  eq(g3.scrollLeft, 200 - (36 + 80), 'pill гүйлгэлт: зүүн гадна → буцааж гүйлгэнэ');
+  const g4 = { scrollLeft: 0, clientWidth: 300, scrollWidth: 300, getBoundingClientRect: () => ({ left: 0, right: 300 }), querySelector: () => ({ getBoundingClientRect: () => ({ left: 400, right: 500 }) }) };
+  F.revealActivePill(g4); eq(g4.scrollLeft, 0, 'pill гүйлгэлт: гүйлгэх зүйлгүй (багтсан) бол хөндөхгүй');
+  const g5 = { scrollLeft: 0, clientWidth: 0, scrollWidth: 900, getBoundingClientRect: () => ({ left: 0, right: 0 }), querySelector: () => ({ getBoundingClientRect: () => ({ left: 400, right: 500 }) }) };
+  F.revealActivePill(g5); eq(g5.scrollLeft, 0, 'pill гүйлгэлт: нуугдсан (clientWidth 0) бүлгийг хөндөхгүй');
+  eq(F.revealActivePill({ querySelector: () => null }), undefined, 'pill гүйлгэлт: идэвхтэй pill байхгүй бол унахгүй');
+
+  // Бүдгэрэлт: «цааш бий» дохио зөвхөн гүйлгэх боломжтой талд
+  const fd = (sl, cw, sw) => { const g = { scrollLeft: sl, clientWidth: cw, scrollWidth: sw, dataset: {} }; F.updatePillFade(g); return g.dataset.fade; };
+  eq(fd(0, 300, 700), 'r', 'бүдгэрэлт: эхэнд → баруун талд');
+  eq(fd(200, 300, 700), 'lr', 'бүдгэрэлт: дунд → хоёр талд');
+  eq(fd(400, 300, 700), 'l', 'бүдгэрэлт: төгсгөлд → зүүн талд');
+  eq(fd(0, 300, 300), '', 'бүдгэрэлт: багтсан бол байхгүй');
+  eq(fd(0, 0, 0), '', 'бүдгэрэлт: inline/нуугдсан бүлэгт байхгүй');
+
+  // «Бүгд» эхэнд (хоёр бүлэгт): төгсгөлд байвал үндсэн төлөвт хамгийн хэрэгтэй тоо (Идэвхтэй/Хоцорсон) нуугдана
+  ['task-filters', 'fin-filters'].forEach(id => {
+    const a = html.indexOf('id="' + id + '"');
+    const first = html.slice(a, html.indexOf('</span>', a)).match(/data-status="([^"]+)"/);
+    eq(first && first[1], 'all', `pill дараалал: «Бүгд» ${id}-ийн ЭХНИЙХ`);
+  });
+  // Pill нь <div> тул товч гэдгийг хэлж, гараар дарагдана
+  ok(/setAttribute\('role', 'button'\)/.test(src) && /p\.tabIndex = 0/.test(src) && /aria-pressed/.test(src), 'pill: role/tabindex/aria-pressed');
+  ok(/el\.addEventListener\('keydown', \(e\) => \{ if \(e\.key === 'Enter' \|\| e\.key === ' '\)/.test(src), 'pill: Enter/Space-ээр дарагдана');
+  // Санхүүд тоо гарахгүй (тэнд үе шатны шүүлт ӨӨР: filteredTasks нь санхүүгийн шүүлтээр ажиллана)
+  const sf = src.slice(src.indexOf('function syncFilterPills'), src.indexOf('function renderSidebar'));
+  ok(/if \(!isFin\) \{\s*const cnt = taskFilterCounts\(\)/.test(sf), 'pill тоо: санхүүгийн шүүлтэд тоо гарахгүй');
+  // Утсанд pill хүрээтэй (товч шиг), бүдгэрэлт ЗӨВХӨН ≤720px дотор
+  const mediaBodies = [];
+  for (const m of css.matchAll(/@media \(max-width: 720px\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < css.length && d > 0) { if (css[i] === '{') d++; else if (css[i] === '}') d--; i++; }
+    mediaBodies.push(css.slice(from, i));
+  }
+  const inMedia = (re) => mediaBodies.some(b => re.test(b));
+  ok(inMedia(/\.filter-pill \{[^}]*border: 1px solid var\(--border\);[^}]*background: var\(--panel\);/), 'pill: утсанд хүрээ + дэвсгэртэй (дарж болох нь харагдана)');
+  const fadeAll = (css.match(/\.filter-group\[data-fade=/g) || []).length;
+  const fadeIn = mediaBodies.reduce((n, b) => n + (b.match(/\.filter-group\[data-fade=/g) || []).length, 0);
+  ok(fadeAll === 3 && fadeIn === 3, 'ИНВАРИАНТ: бүдгэрэлтийн дүрэм ЗӨВХӨН @media (max-width: 720px) дотор');
+
+  st.tasks = keep.t; st.view = keep.v; st.me = keep.me; st.isCEO = keep.c; st.statusFilter = keep.f; st.search = keep.s;
+}
+
 // ═══ «БИ Ч ОРОЛЦСОН» ТОВЧ ЦАЛИНГИЙН САМБАРТ ХОЛБОГДОНО (2026-10-05) ═════
 // Хайрцаг цалингийн самбарт зурагддаг атал товчны үйлдэл «Миний ирц»-д л
 // холбогдсон байсан — ✕/✓ дарахад юу ч болдоггүй байв (CEO барив).

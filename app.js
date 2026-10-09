@@ -4003,7 +4003,12 @@ function leftStaffEmails() {
   );
 }
 
-function filteredTasks() {
+/* `opts` (сонголт) — ТООЛУУР ашиглана: `{ statusFilter, search }` өгвөл state-ийг ХӨНДӨЖ БИШ, зөвхөн
+   тэр шүүлтээр бодно. Шүүлтүүрийн pill-ийн тоо (`taskFilterCounts`) нь жагсаалттай ЯГ ИЖИЛ функцээр
+   гарах тул «Хоцорсон 3» дарахад яг 3 ажил гарна — дүрмийг хоёр газар бичихгүй. */
+function filteredTasks(opts) {
+  const sf = (opts && opts.statusFilter !== undefined) ? opts.statusFilter : state.statusFilter;
+  const search = (opts && opts.search !== undefined) ? opts.search : state.search;
   // Архив view-аас БУСАД бүх view-д устгасан task-уудыг хасна. Bootstrap нь deleted
   // task-уудыг ч буцаадаг тул CEO Архивлуулсан жагсаалт үзэх боломжтой болгосон.
   const includeDeleted = state.view === 'archive';
@@ -4080,7 +4085,7 @@ function filteredTasks() {
   // ─── Filter — санхүүгийн view нь үе шатны filter, бусад нь ерөнхий ажлын filter ───
   if (state.view === 'finance') {
     // Санхүүгийн үе шат: Хүлээгдэж буй / Гүйлгээ хүлээж буй / Хаахыг хүлээж буй / Дууссан
-    const f = state.statusFilter;
+    const f = sf;
     if (f === 'f-pending')          list = list.filter(t => (t.decision || 'pending') === 'pending');
     else if (f === 'f-await-txn')   list = list.filter(t => t.decision === 'approved' && !t.executed_at && t.status !== 'done');
     else if (f === 'f-await-close') list = list.filter(t => t.decision === 'approved' && t.executed_at && t.status !== 'done');
@@ -4089,11 +4094,11 @@ function filteredTasks() {
   } else {
     // status filter (Бүгд / Идэвхтэй / Хоцорсон / Өнөөдөр / Дууссан)
     // Үнэлгээ хүлээж буй (миний үүсгэсэн, дуусаад оноогүй) = "хаагдаагүй" → Идэвхтэйд үлдэнэ, Дуусснаас хасагдана.
-    if (state.statusFilter === 'open') list = list.filter(t => t.status !== 'done' || (needsRating(t) && t.createdBy === state.me));
-    else if (state.statusFilter === 'done') list = list.filter(t => t.status === 'done' && !(needsRating(t) && t.createdBy === state.me));
-    else if (state.statusFilter === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
-    else if (state.statusFilter === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
-    else if (state.statusFilter === 'week') {
+    if (sf === 'open') list = list.filter(t => t.status !== 'done' || (needsRating(t) && t.createdBy === state.me));
+    else if (sf === 'done') list = list.filter(t => t.status === 'done' && !(needsRating(t) && t.createdBy === state.me));
+    else if (sf === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
+    else if (sf === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
+    else if (sf === 'week') {
       // Энэ долоо хоног — даваа гарагаас ням гараг хүртэл
       const now = new Date();
       const dow = now.getDay() || 7; // Mon=1..Sun=7
@@ -4105,7 +4110,7 @@ function filteredTasks() {
       const weekEnd = dateStr(sunday);
       list = list.filter(t => t.due && t.due >= weekStart && t.due <= weekEnd);
     }
-    else if (state.statusFilter === 'month') {
+    else if (sf === 'month') {
       // Энэ сар
       const now = new Date();
       const y = now.getFullYear();
@@ -4117,9 +4122,9 @@ function filteredTasks() {
   // ─── Авто-архив: 14 хоногоос өмнө дууссан ажлыг идэвхтэй жагсаалтаас нуух ───
   // Дата ӨӨРЧЛӨХГҮЙ — зөвхөн харагдацын filter. "Дууссан" шүүлт, хайлт, Архив, Дууссан
   // view-д бүрэн хэвээр харагдана. Дуусгасан огноог t.updated-аар тооцно.
-  if (!state.search
+  if (!search
       && state.view !== 'done' && state.view !== 'archive' && state.view !== 'finance'
-      && state.statusFilter !== 'done') {
+      && sf !== 'done') {
     const cutoff = Date.now() - 14 * 86400000;
     list = list.filter(t => {
       if (t.status !== 'done') return true;
@@ -4128,11 +4133,11 @@ function filteredTasks() {
     });
   }
   // search
-  if (state.search) {
+  if (search) {
     // Search syntax — "from:Бат", "due:today" / "due:2026-05-30", "priority:high|med|low",
     // "status:open|done", "branch:m-event" гэх мэт. Бусад үлдсэн текст нь title+desc-д хайгдана.
     // Жишээ: "from:Бат due:today" → Бат-д оноосон, өнөөдөр дуустай.
-    const tokens = state.search.trim().match(/(\w+:[^\s]+|"[^"]+"|\S+)/g) || [];
+    const tokens = search.trim().match(/(\w+:[^\s]+|"[^"]+"|\S+)/g) || [];
     const today = todayStr();
     const filters = [];
     const textBits = [];
@@ -4347,6 +4352,40 @@ function render() {
 }
 // Санхүүгийн view-д үе шатны filter, бусад view-д ажлын ерөнхий filter харуулна.
 // Идэвхтэй pill-ийг state.statusFilter-тэй тааруулна.
+/* ── ШҮҮЛТҮҮРИЙН PILL: ТОО, ИДЭВХТЭЙ НЬ ХАРАГДАНА, ГҮЙЛГЭХ ДОХИО (2026-10-09) ──────
+   Утсанд 7 pill 334px-д багтахгүй (694px) тул идэвхтэй шүүлт («Бүгд», «Дууссан») мөрийн
+   баруун талд, ДЭЛГЭЦЭЭС ГАДУУР үлдэж хэрэглэгч ямар шүүлт асаалттайг харахгүй байв.
+   · Идэвхтэй pill үргэлж харагдана (`revealActivePill`, хамгийн бага гүйлгэлт) — view/шүүлт солигдоход ба
+     тоо гарч pill-үүд өргөсөхөд: render() бүрд гүйлгэвэл хэрэглэгч гараараа гүйлгэж байхад өгөгдөл ачаалагдмагц буцааж татна.
+   · Тоо = `filteredTasks({statusFilter})` — жагсаалттай ЯГ ИЖИЛ функц, тусад нь бодохгүй
+     (дарахад гарах мөрийн тоо ба pill дээрх тоо зөрөхгүй). Зөвхөн хийх ажил (FILTER_COUNT_KEYS);
+     0 бол гарахгүй. Санхүүд тоо ГАРАХГҮЙ (тэнд үе шатны шүүлт ӨӨР).
+   · Гүйлгэх боломжтой талд бүдгэрэлт (`data-fade`) — «цааш бий» гэсэн дохио. */
+const FILTER_COUNT_KEYS = ['open', 'overdue', 'today'];
+function taskFilterCounts() {
+  const out = {};
+  FILTER_COUNT_KEYS.forEach(k => { out[k] = filteredTasks({ statusFilter: k }).length; });
+  return out;
+}
+let _pillFocusKey = '';
+let _pillSW = 0;            // сүүлд төвлөрүүлэх үеийн мөрийн нийт өргөн
+let _pillUserMoved = false; // хэрэглэгч мөрийг ӨӨРӨӨ гүйлгэсэн — тэгвэл дахин татахгүй
+function updatePillFade(grp) {
+  if (!grp) return;
+  const max = grp.scrollWidth - grp.clientWidth;
+  const l = grp.scrollLeft > 2, r = grp.scrollLeft < max - 2;
+  grp.dataset.fade = max <= 1 ? '' : (l && r ? 'lr' : l ? 'l' : r ? 'r' : '');
+}
+// Идэвхтэй pill харагдахгүй байвал л, ХАМГИЙН БАГА хэмжээгээр гүйлгэнэ (хөрш pill-ээ харагдуулахаар
+// ирмэгээс PILL_EDGE зайтай). Төвд тогтоовол «Бүгд» гэх мэт нэг үзүүрт байгаа pill тоог нуудаг байв.
+const PILL_EDGE = 36;
+function revealActivePill(grp) {
+  const a = grp && grp.querySelector('.filter-pill.active');
+  if (!a || grp.clientWidth === 0 || grp.scrollWidth <= grp.clientWidth + 1) return;
+  const gb = grp.getBoundingClientRect(), ab = a.getBoundingClientRect();
+  if (ab.left < gb.left + PILL_EDGE) grp.scrollLeft -= (gb.left + PILL_EDGE) - ab.left;
+  else if (ab.right > gb.right - PILL_EDGE) grp.scrollLeft += ab.right - (gb.right - PILL_EDGE);   // page-ийг биш, зөвхөн мөрийг
+}
 function syncFilterPills() {
   const isFin = state.view === 'finance';
   const taskG = document.getElementById('task-filters');
@@ -4368,6 +4407,35 @@ function syncFilterPills() {
     state.statusFilter = 'all';
     grp.querySelectorAll('.filter-pill').forEach(p => p.classList.toggle('active', p.dataset.status === 'all'));
   }
+  // Гар ба дэлгэц уншигчид: pill нь <div> тул товч гэдгийг хэлж өгнө
+  grp.querySelectorAll('.filter-pill').forEach(p => {
+    p.setAttribute('role', 'button');
+    p.tabIndex = 0;
+    p.setAttribute('aria-pressed', p.classList.contains('active') ? 'true' : 'false');
+  });
+  // Тоо — зөвхөн ажлын жагсаалтад
+  if (!isFin) {
+    const cnt = taskFilterCounts();
+    grp.querySelectorAll('.filter-pill').forEach(p => {
+      const k = p.dataset.status;
+      if (!(k in cnt)) return;
+      let n = p.querySelector('.fp-n');
+      if (!n) { n = document.createElement('span'); n.className = 'fp-n'; p.appendChild(n); }
+      n.textContent = cnt[k] > 0 ? String(cnt[k]) : '';
+      n.hidden = !(cnt[k] > 0);
+    });
+  }
+  // Toolbar-ийн display нь renderTaskList-д ДАРАА нь солигддог тул байрлал тогтсоны дараа
+  requestAnimationFrame(() => {
+    const key = state.view + '|' + state.statusFilter;
+    if (grp.clientWidth > 0) {
+      // 1) view/шүүлт солигдсон → төвлөрүүл. 2) өгөгдөл ачаалагдаж тоо гарснаар pill-үүд өргөсөж
+      //    идэвхтэй нь дахин гадагш гарсан (хэрэглэгч гүйлгээгүй бол) → дахин төвлөрүүл.
+      if (key !== _pillFocusKey) { _pillFocusKey = key; _pillUserMoved = false; _pillSW = grp.scrollWidth; revealActivePill(grp); }
+      else if (!_pillUserMoved && grp.scrollWidth !== _pillSW) { _pillSW = grp.scrollWidth; revealActivePill(grp); }
+    }
+    updatePillFade(grp);
+  });
 }
 function renderSidebar() {
   // active nav
@@ -43058,7 +43126,12 @@ function initEvents() {
       state.statusFilter = el.dataset.status;
       render();
     };
+    // pill нь <div> — Enter/Space-ээр ч дарагдана (гар, дэлгэц уншигч)
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
   });
+  document.querySelectorAll('.filter-group').forEach(g => g.addEventListener('scroll', () => updatePillFade(g), { passive: true }));
+  ['pointerdown', 'touchstart', 'wheel'].forEach(ev => document.querySelectorAll('.filter-group').forEach(g => g.addEventListener(ev, () => { _pillUserMoved = true; }, { passive: true })));
+  window.addEventListener('resize', () => document.querySelectorAll('.filter-group').forEach(updatePillFade));
   const addProjBtn = document.getElementById('add-project');
   if (addProjBtn) addProjBtn.onclick = addProject;
   document.getElementById('new-task-btn').onclick = () => openTaskModal();

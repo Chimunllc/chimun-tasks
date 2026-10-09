@@ -333,7 +333,14 @@
     min-height: var(--tap);
     white-space: nowrap;
     flex-shrink: 0;
+    /* Хүрээгүй, дэвсгэргүй pill нь бичиг шиг харагдаж «дарна» гэж ойлгогддоггүй байв */
+    border: 1px solid var(--border);
+    background: var(--panel);
   }
+  /* Гүйлгэж болох талд бүдгэрэлт — «цааш бий» дохио (data-fade-ийг updatePillFade тавина) */
+  .filter-group[data-fade="r"]  { -webkit-mask-image: linear-gradient(to right, var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, var(--bg) calc(100% - 28px), transparent); }
+  .filter-group[data-fade="l"]  { -webkit-mask-image: linear-gradient(to left,  var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to left,  var(--bg) calc(100% - 28px), transparent); }
+  .filter-group[data-fade="lr"] { -webkit-mask-image: linear-gradient(to right, transparent, var(--bg) 28px, var(--bg) calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent, var(--bg) 28px, var(--bg) calc(100% - 28px), transparent); }
 }
 
 
@@ -2199,6 +2206,12 @@ body, input, textarea, select, button {
 }
 
 /* ── FILTER PILLS (desktop) — text button маяг ── */
+/* Pill дээрх тоо (2026-10-09) — filteredTasks-тай ижил: дарахад яг тэр тооны мөр гарна */
+.filter-pill .fp-n { margin-left: var(--space-1); min-width: 18px; padding: 0 var(--space-1); border-radius: 999px;
+  background: var(--panel-hover); color: var(--muted); font-size: var(--fs-xs); font-weight: 700; line-height: 18px; text-align: center; }
+.filter-pill .fp-n[hidden] { display: none; }
+.filter-pill[data-status="overdue"] .fp-n { background: var(--danger); color: #fff; }
+.filter-pill.active .fp-n { background: color-mix(in srgb, currentColor 22%, transparent); color: inherit; }
 .filter-pill:hover {
   background: var(--panel-hover) !important;
   color: var(--text) !important;

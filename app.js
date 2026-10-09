@@ -28881,8 +28881,9 @@ function openStageAdvanceModal(oid, to) {
   const _lateAsk = !_ctxNow.dlv && (act.key === 'dispatch' || act.key === 'received');
   const _rt = _lateAsk ? parseOrderTimes(o.note) : null;
   const _bookedH = _rt ? (act.key === 'dispatch' ? _rt.sh : _rt.eh) : null;
-  const _nowH = (new Date().getUTCHours() + 8) % 24;   // УБ = UTC+8
-  const _late = (_bookedH !== null && _nowH > _bookedH) ? lateOffHoursFee(_bookedH, _nowH) : { hours: 0, fee: 0 };
+  // ⛔ ТОВЧ ДАРСАН ЦАГИЙГ ХЭРЭГЛЭХГҮЙ (2026-10-09, амьд алдаа: 09:00-д авахаар
+  //   товлосон захиалгыг нярав 20:01-д багцаар бүртгэснээс 30,000₮ ХУДАЛ нэмэгдсэн).
+  //   Ирсэн цагийг ХҮН сонгоно; өгөгдмөл нь товлосон цаг = нэмэлт ТЭГ.
   /* ЭНЭ ЗАХИАЛГАД аль хэдийн ажилласан хүн ЭХЭНД — 12 нэрийг цагаан
      толгойн дарааллаар гүйлгэж хайх нь ажлын гол саад байв. */
   const _onOrder = new Set();
@@ -28938,11 +28939,13 @@ function openStageAdvanceModal(oid, to) {
           <input class="ui-raw sa-def-in" type="number" inputmode="numeric" min="0" step="1" data-def="${i}" value="0"><span class="sa-def-u">ш</span>
         </div></div>`).join('')}
       <div class="sa-def-n ok" id="sa-def-note">✓ Алдаагүй</div>`) : ''}
-    ${_late.fee > 0 ? _sec('⏰', 'Товлосноос хожуу', false,
-      `Товлосон ${_pad2(_bookedH)}:00 · одоо ${_pad2(_nowH)}:00 — ${_nowH - _bookedH} цаг хожуу. Ажлын бус цагт ${_late.hours} цаг нэмэгдсэн.`, `
-      <label class="sa-late"><input type="checkbox" id="sa-late" class="ui-raw" checked>
-        <span>Нэмэлт <b>${fmtMoney(_late.fee)}</b> захиалгын дүнд нэмэх</span></label>
-      <div class="sa-sec-hint">Манай буруугаас хүлээсэн бол чагтыг аваарай — дүн нэмэгдэхгүй.</div>`) : ''}
+    ${_lateAsk && _bookedH !== null ? _sec('⏰', 'Хэдэн цагт ирсэн бэ?', false,
+      `Товлосон: ${_pad2(_bookedH)}:00. Хожуу ирсэн бол ЯГ ирсэн цагийг нь сонго — ажлын бус цагийн нэмэлт зөвхөн тэгвэл бодогдоно.`, `
+      <label class="sa-late">
+        <select id="sa-hour" class="ui-raw sa-hour-sel">${Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === _bookedH ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('')}</select>
+        <span id="sa-late-sum" class="sa-late-sum">Нэмэлт төлбөргүй</span>
+      </label>
+      <div class="sa-sec-hint">⛔ Товч дарсан цаг нь ирсэн цаг БИШ (багцаар бүртгэдэг) — тиймээс өгөгдмөл нь товлосон цаг, нэмэлт 0.</div>`) : ''}
     ${_needNoteSec ? _sec('📝', 'Тэмдэглэл', false, 'Дутуу / эвдэрсэн бараа байвал ЯАГААД гэдгийг энд бич.', `
       <textarea id="sa-comment" class="ui-raw sa-note" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)"></textarea>`) : ''}
     ${_helpStaff.length ? _sec('👥', stageHelpQuestion(act.key), false, 'Хамт ажилласан хүнээ дарж нэмнэ — бонусын 30% тэдэнд хуваагдана.', `
@@ -29103,6 +29106,15 @@ function openStageAdvanceModal(oid, to) {
     el.className = 'sa-def-n' + (sum > 0 ? '' : ' ok');
   };
   modal.querySelectorAll('[data-def]').forEach(i2 => i2.oninput = _defPaint);
+  // ⏰ Ирсэн цаг солигдоход нэмэлтийг ТЭР ДОР НЬ харуулна (дарахаасаа өмнө хардаг)
+  const _hourSel = modal.querySelector('#sa-hour');
+  const _latePaint = () => {
+    const el = modal.querySelector('#sa-late-sum'); if (!el || !_hourSel) return;
+    const f = lateOffHoursFee(_bookedH, +_hourSel.value);
+    el.textContent = f.fee > 0 ? `Нэмэлт +${fmtMoney(f.fee)} (${f.hours} цаг)` : 'Нэмэлт төлбөргүй';
+    el.className = 'sa-late-sum' + (f.fee > 0 ? ' warn' : '');
+  };
+  if (_hourSel) { _hourSel.onchange = _latePaint; _latePaint(); }
   const _hSearch = modal.querySelector('#sa-help-search');
   if (_hSearch) _hSearch.oninput = () => { const qq = _hSearch.value.toLowerCase().trim(); modal.querySelectorAll('.sa-help-chip').forEach(ch => { ch.style.display = (!qq || (ch.dataset.hn || '').includes(qq)) ? '' : 'none'; }); };
   $('#sa-submit').onclick = async () => {
@@ -29176,13 +29188,15 @@ function openStageAdvanceModal(oid, to) {
     /* ⏰ Хожуу ирснийх — ЗАХИАЛГЫН ДҮН дээр нэмнэ. ⚠ Шалтгаан нь note-д
        `⟦LATE⟧` токеноор үлдэнэ: хожим «яагаад дүн өөрчлөгдсөн» гэдэгт
        хариулна. Хаасан сарынх бол `patchOrderFields` өөрөө татгалзана. */
-    if (_late.fee > 0 && (modal.querySelector('#sa-late') || {}).checked) {
-      const _newTotal = (Number(o.total_mnt) || 0) + _late.fee;
-      const _note = `${String(o.note || '').trim()} ⟦LATE|${_bookedH}|${_nowH}|${_late.fee}⟧`.trim();
+    const _actH = _hourSel ? +_hourSel.value : null;
+    const _lateNow = (_actH !== null && _bookedH !== null) ? lateOffHoursFee(_bookedH, _actH) : { hours: 0, fee: 0 };
+    if (_lateNow.fee > 0) {
+      const _newTotal = (Number(o.total_mnt) || 0) + _lateNow.fee;
+      const _note = `${String(o.note || '').trim()} ⟦LATE|${_bookedH}|${_actH}|${_lateNow.fee}⟧`.trim();
       try {
         await patchOrderFields(o, { total_mnt: _newTotal, note: _note });
         o.total_mnt = _newTotal; o.note = _note;
-        showToast(`⏰ ${_late.hours} цагийн нэмэлт ${fmtMoney(_late.fee)} захиалгад нэмэгдлээ`, 'warn', 4500);
+        showToast(`⏰ ${_pad2(_actH)}:00-д ирсэн — ${_lateNow.hours} цагийн нэмэлт ${fmtMoney(_lateNow.fee)} захиалгад нэмэгдлээ`, 'warn', 4500);
       } catch (e) { showToast('Нэмэлт төлбөр бичигдсэнгүй: ' + e.message, 'error', 5000); }
     }
     await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${(BQ_STATUS[to] || {}).label || act.label} ✓` });

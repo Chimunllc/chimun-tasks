@@ -18989,3 +18989,51 @@ async function swFetchTests() {
   ok(defs.has('--line'), 'токен: --line тодорхойлогдсон (border-ууд харагдана)');
   ok(/--line: var\(--border\);/.test(cssP), 'токен: --line = --border (харанхуй горимд хамт солигдоно)');
 }
+
+// ═══ ЗАХИАЛГЫН КАРТ УТСАНД: БАРЬЦААНЫ ЗААВАР, «БУСАД», ТОВЧ, КЛАСС (2026-10-09) ═════
+// «⋯ Бусад» нээхэд товчнууд картаас ЗҮҮН тийш гарч тасардаг байв (баруун тийш шахагдаж width:100% дотроо давхарлана);
+// барьцаа буцаах данс/утга/банкны 3 мөр заавар эвент ЯВААГҮЙ (түрээсэнд) байхад ч гарч ~130px эзэлдэг байв;
+// 21 жижиг товч бүр inline style; жагсаалтын «Төлбөр авах» ба картын «Төлбөр бүртгэх» хоёр өөр нэртэй байв.
+{
+  const srcC = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssC = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { ceo: st.isCEO, ao: st.appOrders, up: st.usedReceipts };
+  st.isCEO = true;
+  const T = vm.runInContext('todayStr()', sandbox);
+  const mk = (status, extra) => Object.assign({ id: 'c1', _app: true, number: 1801, customer: 'Тест ХХК', phone: '99110000', status, source: 'app',
+    starts_at: T + 'T09:00:00+08:00', stops_at: T + 'T18:00:00+08:00', note: '⟦RT|9|18⟧', created_at: T + 'T08:00:00+08:00',
+    items: [{ name: 'Сандал', qty: 10, price: 1500, sku: 'M-1' }], total_mnt: 1000000, paid_mnt: 400000, deposit_mnt: 300000,
+    paid_ref: '' }, extra || {});
+  st.appOrders = [mk('rented')];
+  const rented = F.bqOrderCard(mk('rented'));
+  ok(/dep-badge dep-held/.test(rented), 'карт: барьцаатай захиалга «🔒 Барьцаа» тэмдэгтэй хэвээр');
+  ok(!/Буцаах данс тодорхойгүй|dep-acct|Гүйлгээний утга/.test(rented), '⛔ карт: эвент ЯВААГҮЙ (түрээсэнд) байхад барьцаа буцаах данс/утгын заавар ГАРАХГҮЙ');
+  for (const s of ['returned', 'stowed', 'archived']) {
+    const c = F.bqOrderCard(mk(s));
+    ok(/Буцаах данс тодорхойгүй|dep-acct/.test(c) && /dep-memo/.test(c), `карт: ${s} → барьцаа буцаах данс + утга харагдана`);
+  }
+  for (const s of ['reserved', 'ready', 'delivering', 'returning']) {
+    ok(!/dep-acct/.test(F.bqOrderCard(mk(s))), `карт: ${s} → буцаах заавар гарахгүй`);
+  }
+  ok(!/style="/.test(rented.replace(/<img[^>]*>/g, '').replace(/<span class="bq-badge"[^>]*>\s*<span[^>]*><\/span>[^<]*<\/span>/g, '')), 'дизайн: захиалгын карт (нийтлэг <img> ба bqStatusBadge-ээс бусад) inline style-гүй');
+  ok(/class="btn ofb[ "]/.test(rented) && !/padding:5px/.test(rented), 'карт: жижиг товч .ofb класстай (inline padding байхгүй)');
+  ok(/class="ord-more"/.test(rented) || /class="order-foot"/.test(rented), 'карт: товчны эгнээ бий');
+  ok(/📥 Ирсэн <b>/.test(rented) && !/Захиалга ирсэн:/.test(rented), 'карт: «Ирсэн … · эвентээс N хоногийн өмнө» (нэг мөр, богино)');
+  // «⋯ Бусад» нээгдэхэд БҮТЭН өргөнтэй, зүүнээс эхэлнэ; утсанд товч бүр эгнээг тэнцүү дүүргэнэ
+  ok(/\.ord-more\[open\] \{ flex: 1 1 100%; \}/.test(cssC) && /\.ord-more-row \{ justify-content: flex-start; \}/.test(cssC), 'CSS: «Бусад» нээгдэхэд бүтэн өргөн + зүүнээс эхэлнэ (картаас гарахгүй)');
+  { const i = cssC.indexOf('/* Утсанд товч бүр эгнээг тэнцүү дүүргэнэ'); const mStart = cssC.lastIndexOf('@media (max-width: 720px) {', i);
+    let depth = 0, k = cssC.indexOf('{', mStart), end = k; for (; end < cssC.length; end++) { if (cssC[end] === '{') depth++; else if (cssC[end] === '}') { depth--; if (!depth) break; } }
+    const body = cssC.slice(mStart, end);
+    ok(/\.order-foot > \.btn[^{]*\{ flex: 1 1 120px; \}/.test(body) && /\.ord-more-row > \.btn \{ flex: 1 1 120px; \}/.test(body), 'CSS: утсанд товч эгнээг тэнцүү дүүргэнэ — ЗӨВХӨН ≤720px дотор');
+    ok(!/\.order-foot > \.btn[^{]*\{ flex: 1 1 120px;/.test(cssC.replace(body, '')), 'CSS: тэнцүү дүүргэлт өргөн дэлгэцэд хүрэхгүй'); }
+  // НӨАТ мөр: класстай, нийтлэг inline style/хатуу өнгөгүй (харанхуй горимд цайвар хайрцаг үлддэг байв)
+  const vr = F.vatOrderRow('1801', 1000000, 'event');
+  ok(vr === '' || (/class="vat-attach-btn"/.test(vr) || /vat-row-sum/.test(vr)), 'НӨАТ мөр: класстай');
+  ok(!/style="|#1e7a55|#f4faf6|#9a6a00/.test(vr), 'дизайн: НӨАТ мөр inline style/хатуу өнгөгүй');
+  ok(/\.vat-attach-btn \{[^}]*var\(--ok-soft\)/.test(cssC) && /\.order-meta \.vat-short/.test(cssC), 'CSS: НӨАТ товч токен өнгөтэй, тод span-д онцлог (.order-meta b-ийг даван)');
+  // Нэр нэг үг: жагсаалтын товч = картын товч = цонхны гарчиг
+  ok(/br-act br-act-pay" data-bq-pay="\$\{id\}">💵 Төлбөр бүртгэх</.test(srcC) && !/br-act-pay[^>]*>💵 Төлбөр авах/.test(srcC), 'нэр: жагсаалтын «Төлбөр бүртгэх» = картын товч = цонхны гарчиг');
+  ok(/\.order-meta \.ord-pos \{ color: var\(--ok\); \}/.test(cssC), 'CSS: ашгийн өнгө .order-meta b-ээс илүү онцлогтой');
+  st.isCEO = keep.ceo; st.appOrders = keep.ao;
+}

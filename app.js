@@ -10431,7 +10431,7 @@ function orderListRow(e, k, todayStr) {
   let actBtn = '';
   {
     if (orderOwed(o) > 0 && String(o.status) !== 'canceled' && can('orders.pay')) {
-      actBtn = `<button type="button" class="br-act br-act-pay" data-bq-pay="${id}">💵 Төлбөр авах</button>`;
+      actBtn = `<button type="button" class="br-act br-act-pay" data-bq-pay="${id}">💵 Төлбөр бүртгэх</button>`;
     }
   }
   const selBox = state.ordersSelect ? `<input type="checkbox" class="olist-sel" data-sel-id="${id}" ${(state.ordersSelected && state.ordersSelected.has(String(o.id))) ? 'checked' : ''} onclick="event.stopPropagation()">` : '';
@@ -10452,7 +10452,7 @@ function orderListRow(e, k, todayStr) {
     : _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
     : _paid > 0 ? '<span class="br-pay part">◐ Дутуу</span>'
-    : '';   // бүрэн төлөгдөөгүй — шошго хэрэггүй ("Төлбөр авах" товч өөрөө илэрхийлнэ)
+    : '';   // бүрэн төлөгдөөгүй — шошго хэрэггүй ("Төлбөр бүртгэх" товч өөрөө илэрхийлнэ)
   const _d1 = String(o.starts_at || '').slice(5, 10).replace('-', '/');
   const _d2 = String(o.stops_at || '').slice(5, 10).replace('-', '/');
   // Төлөв = өөрийн багана: НАРИЙН статус (Бэлдсэн/Хүргэгдэж/Түрээсэнд...)
@@ -30374,7 +30374,7 @@ function bqOrderCard(o) {
   // Ашиг = захиалгын дүн (accrual) − холбогдсон зардал (зөвхөн бүх санхүү хардаг хүнд)
   const _oExp = (isApp && canSeeProfit()) ? linkedExpenseSum('order', o.id) : { n: 0, sum: 0 };
   const profitRow = _oExp.n
-    ? `<div class="order-meta">Зардал (${_oExp.n}): <b>${fmtMoney(_oExp.sum)}</b> · Ашиг: <b style="color:${(total - _oExp.sum) >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(total - _oExp.sum)}</b></div>`
+    ? `<div class="order-meta">Зардал (${_oExp.n}): <b>${fmtMoney(_oExp.sum)}</b> · Ашиг: <b class="${(total - _oExp.sum) >= 0 ? 'ord-pos' : 'ord-neg'}">${fmtMoney(total - _oExp.sum)}</b></div>`
     : '';
   // Төлбөрийн самбар — Төлсөн · Үлдэгдэл тод хайрцгаар (нийт нь толгойд бий). Цуцлахад нуух.
   // PDF банкны баримтаар бүртгэсэн орлого — шилжүүлэгч/баримт/огноо (самбар дотор дэд мөр).
@@ -30399,7 +30399,7 @@ function bqOrderCard(o) {
   // Байгууллагын нэр толгойд гарсан бол энд ДАВТАХГҮЙ (нэг мэдээлэл хоёр газар = нүд төөрнө)
   const _ciCo = (_ci.company && _ci.company !== orderCustName(o)) ? _ci.company : '';
   const ciHtml = (isApp && (_ciCo || _ci.reg || _ciContact || _ci.maps))
-    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ciCo ? `🏢 ${escapeHtml(_ciCo)}` : ''}${_ci.reg ? `${_ciCo ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
+    ? `<div class="order-meta order-ci">${_ciCo ? `🏢 ${escapeHtml(_ciCo)}` : ''}${_ci.reg ? `${_ciCo ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = orderOwed(o);
@@ -30412,16 +30412,16 @@ function bqOrderCard(o) {
   { const req = cancelReqOf(o.note);
     // Ноорог = шууд устгана. Бусад идэвхтэй захиалгад товчны НЭР төлбөрөөр шийдэгдэнэ
     // (эрх/батлуулах урсгал хэвээр — мөнгөгүй ч баталгаажсан захиалгыг дур мэдэн хаахгүй).
-    if (st === 'draft') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseLabel(o)}</button>` : ''; }
+    if (st === 'draft') { cxHtml = can('orders.cancel') ? `<button class="btn ofb ofb-danger" data-app-del="${id}">${orderCloseLabel(o)}</button>` : ''; }
     // «Больсон» = буцаах боломжтой байх ЁСТОЙ. Өмнө нь зөвхөн жагсаалтын багц-сонголтоор
     // сэргээдэг байсан тул бүрэн ТӨЛӨГДСӨН захиалга (төлбөрийн товч гарахгүй) гацдаг байв.
-    else if (st === 'deleted') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-restore="${id}" style="padding:5px 11px;font-size:12px;">↩ Сэргээх</button>` : ''; }
+    else if (st === 'deleted') { cxHtml = can('orders.cancel') ? `<button class="btn ofb" data-app-restore="${id}">↩ Сэргээх</button>` : ''; }
     else if (st !== 'canceled' && st !== 'deleted' && appActive) {
       if (req) {
-        cxHtml = `<span style="font-size:11.5px;color:#9a6a00;font-weight:700;">⏳ Цуцлах хүсэлт${req.by ? ' · ' + escapeHtml(memberName(req.by) || req.by) : ''}${req.reason ? ' — ' + escapeHtml(req.reason) : ''}</span>`;
-        if (state.isCEO) cxHtml += `<button class="btn" data-cx-approve="${id}" style="padding:5px 11px;font-size:12px;color:#fff;background:var(--danger);border-color:var(--danger);">✓ Цуцлахыг батлах</button><button class="btn" data-cx-reject="${id}" style="padding:5px 11px;font-size:12px;">✕ Татгалзах</button>`;
-      } else if (state.isCEO) { cxHtml = `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseLabel(o)}</button>`; }
-      else if (can('orders.cancel')) { cxHtml = `<button class="btn" data-cx-request="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseAction(o) === 'deleted' ? '🗑 Устгах хүсэлт' : '✕ Цуцлах хүсэлт'}</button>`; }
+        cxHtml = `<span class="order-cx-req">⏳ Цуцлах хүсэлт${req.by ? ' · ' + escapeHtml(memberName(req.by) || req.by) : ''}${req.reason ? ' — ' + escapeHtml(req.reason) : ''}</span>`;
+        if (state.isCEO) cxHtml += `<button class="btn ofb ofb-danger-solid" data-cx-approve="${id}">✓ Цуцлахыг батлах</button><button class="btn ofb" data-cx-reject="${id}">✕ Татгалзах</button>`;
+      } else if (state.isCEO) { cxHtml = `<button class="btn ofb ofb-danger" data-bq-cancel="${id}">${orderCloseLabel(o)}</button>`; }
+      else if (can('orders.cancel')) { cxHtml = `<button class="btn ofb ofb-danger" data-cx-request="${id}">${orderCloseAction(o) === 'deleted' ? '🗑 Устгах хүсэлт' : '✕ Цуцлах хүсэлт'}</button>`; }
     }
   }
   // ⚠ «Больсон» (deleted)-д ч төлбөр бүртгэнэ — мөнгө орсон нь «хэлцэл больсон» гэдэг БУРУУ байсны
@@ -30431,7 +30431,7 @@ function bqOrderCard(o) {
   const advCap = next ? (next.cap || 'orders.advance') : null;
   const advOk = next ? canStage(advCap) : false;
   const advBtn = (next && st !== 'draft')
-    ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
+    ? `<button class="btn ofb${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'}>${next.label}</button>`
     : '';
   const foot = isApp
     ? (() => {
@@ -30449,31 +30449,31 @@ function bqOrderCard(o) {
         }));
         const rows = { pri: [], more: [] };
         const add = (k, html) => { if (html) rows[PRI.has(k) ? 'pri' : 'more'].push(html); };
-        add('pay', appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : '');
+        add('pay', appCanPay ? `<button class="btn ofb btn-primary" data-bq-pay="${id}">💵 Төлбөр бүртгэх</button>` : '');
         add('advance', advBtn);
-        add('scan', ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : '');
-        add('damage', ['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : '');
-        add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
-        add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : '');
-        add('note', `<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>`);
-        add('contract', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : '');
-        add('edit', appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : '');
-        add('quote', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : '');
-        add('invoice', st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-invoice="${id}" style="padding:5px 11px;font-size:12px;" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : '');
+        add('scan', ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn ofb" data-bq-scan="${id}">📷 Скан</button>` : '');
+        add('damage', ['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn ofb" data-app-damage="${id}">⚠ Эвдрэл</button>` : '');
+        add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
+        add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb" data-app-cmp="${id}">↩️ Буулгалт</button>` : '');
+        add('note', `<button class="btn ofb" data-app-note="${id}" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>`);
+        add('contract', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn ofb" data-app-contract="${id}">📜 Гэрээ</button>` : '');
+        add('edit', appEditable ? `<button class="btn ofb" data-app-edit="${id}">✎ Засах</button>` : '');
+        add('quote', st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn ofb" data-app-quote="${id}">📄 Үнийн санал</button>` : '');
+        add('invoice', st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb" data-app-invoice="${id}" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : '');
         add('cancel', cxHtml);   // ⛔ цуцлах/устгах ҮРГЭЛЖ «Бусад» дотор — санамсаргүй дарагдахгүй
         return `<div class="order-foot">${rows.pri.join('')}${rows.more.length
           ? `<details class="ord-more"><summary class="ord-more-s">⋯ Бусад (${rows.more.length})</summary><div class="ord-more-row">${rows.more.join('')}</div></details>`
           : ''}</div>`;
       })()
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
-    ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
-    ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
-    ${canScan ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}
-    ${canCancel ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;">${orderCloseLabel(o)}</button>` : ''}
+    ${canPay ? `<button class="btn ofb btn-primary" data-bq-pay="${id}">💵 Төлбөр</button>` : ''}
+    ${next ? `<button class="btn ofb${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}">${next.label}</button>` : ''}
+    ${canScan ? `<button class="btn ofb" data-bq-scan="${id}">📷 Скан</button>` : ''}
+    ${canCancel ? `<button class="btn ofb" data-bq-cancel="${id}">${orderCloseLabel(o)}</button>` : ''}
   </div>` : '');
   // Бараа: app бол inline (o.items), түүхэн бол lazy toggle + баримт
   const itemsSection = isApp
-    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''} style="margin-top:6px;"><summary class="order-items-toggle" style="cursor:pointer;">▸ ${o.items.length} бараа</summary><div style="padding:4px 0;">${o.items.map(it => `<div class="order-meta" style="display:flex;justify-content:space-between;gap:8px;"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span style="color:var(--muted);">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta" style="margin-top:4px;color:var(--muted);">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
+    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''}"><summary class="order-items-toggle">▸ ${o.items.length} бараа</summary><div class="order-items-list">${o.items.map(it => `<div class="order-meta oi-row"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span class="oi-amt">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta oi-dep">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
     : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
@@ -30494,7 +30494,7 @@ function bqOrderCard(o) {
   // ⭐ Барьцаа буцаах ДАНС — орлогын PDF-ээс уншсан шилжүүлэгчийн данс (`paid_ref`).
   // Барьцаа нь ирсэн данс руугаа буцах ёстой; ажилтан данс хайж явахгүйн тулд картад шууд.
   // Зөвхөн БУЦААГААГҮЙ барьцаанд харагдана (буцаасны дараа хэрэггүй, картыг чихэхгүй).
-  const _depOpen = (_dep > 0 && !_depRet && isApp && _cardMoney);   // буцаах ёстой барьцаа
+  const _depOpen = (_dep > 0 && !_depRet && isApp && _cardMoney && ORDER_DONE_ST.has(st));   // буцаах ёстой барьцаа
   const _depAccts = _depOpen
     ? parsePaidRef(o.paid_ref).filter(r => refundAcctDigits(r.acct))
       .map(r => ({ acct: r.acct.trim(), sender: (r.sender || '').trim(), bank: refundBankOf(r.memo) }))
@@ -30516,7 +30516,7 @@ function bqOrderCard(o) {
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span class="order-src-new">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(orderCustName(o) || '?')}</b>${_custPerson ? ` · <span class="order-rep">👤 ${escapeHtml(_custPerson)}</span>` : ''}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
@@ -30524,12 +30524,12 @@ function bqOrderCard(o) {
     ${ciHtml}
     ${delivMeta}
     ${offMeta}
-    ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
+    ${isApp && o.contract_no ? `<div class="order-meta">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
-    ${o.created_at ? `<div class="order-meta">📥 Захиалга ирсэн: <b>${escapeHtml(String(o.created_at).slice(0, 10))}</b>${(() => { const ld = orderLeadDays(o); return ld == null ? '' : ` · арга хэмжээнээс <b>${ld} хоногийн өмнө</b>${ld === 0 ? ' (тэр өдрөө!)' : ld <= 2 ? ' ⚠ хэт дөхөж' : ''}`; })()}</div>` : ''}
+    ${o.created_at ? `<div class="order-meta">📥 Ирсэн <b>${escapeHtml(String(o.created_at).slice(0, 10))}</b>${(() => { const ld = orderLeadDays(o); return ld == null ? '' : ` · эвентээс <b>${ld} хоногийн өмнө</b>${ld === 0 ? ' (тэр өдрөө!)' : ld <= 2 ? ' ⚠ хэт дөхөж' : ''}`; })()}</div>` : ''}
     ${_cardMoney ? payPanel : ''}
     ${_dep > 0 ? (_cardMoney
-      ? `<div class="dep-row">${depBadge}<span style="color:var(--muted);font-size:var(--fs-sm);margin-left:8px;" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b style="color:var(--text);">${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>${depAcctHtml}`
+      ? `<div class="dep-row">${depBadge}<span class="dep-sales" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b>${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>${depAcctHtml}`
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
@@ -30538,10 +30538,10 @@ function bqOrderCard(o) {
     ${(() => { const _e = orderEditsOf(o); if (!_e.length) return ''; const _l = _e[_e.length - 1];
       return `<div class="order-meta order-edits" title="${escapeHtml(_e.map(x => `${String(x.at || '').slice(0, 10)} · ${memberName(x.by) || x.by || '?'} — ${x.reason || ''}`).join('\n'))}">✎ Засварласан: ${escapeHtml(String(_l.reason || ''))} <span class="order-note-by">— ${escapeHtml(memberName(_l.by) || _l.by || '?')} · ${escapeHtml(String(_l.at || '').slice(0, 10))}${_e.length > 1 ? ` · +${_e.length - 1}` : ''}</span></div>`; })()}
     ${(() => { const _n = lastOrderNote(o); if (!_n) return ''; const _cnt = orderNotesOf(o).length; return `<div class="order-meta order-note">📝 ${escapeHtml(_n.text)} <span class="order-note-by">— ${escapeHtml(memberName(_n.by) || _n.by || '?')} · ${escapeHtml(String(_n.at || '').slice(0, 10))}${_cnt > 1 ? ` · +${_cnt - 1}` : ''}</span></div>`; })()}
-    ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span style="color:var(--muted);">(орлогоос хасагдсан)</span></div>` : ''; })()}
+    ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span>(орлогоос хасагдсан)</span></div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
-    ${['canceled', 'deleted'].includes(st) && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">${st === 'deleted' ? '🚫 Больсон' : '❌ Цуцлах'} шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
+    ${['canceled', 'deleted'].includes(st) && isApp && cancelReasonOf(o.note) ? `<div class="order-meta order-cx-why">${st === 'deleted' ? '🚫 Больсон' : '❌ Цуцлах'} шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${_smHtml ? '' : slogHtml}
     ${_smHtml}
     ${itemsSection}
@@ -31907,7 +31907,7 @@ function openRefundModal(oid) {
     <textarea id="rf-note" class="ui-raw" rows="2" placeholder="ж: захиалга цуцлагдсан, илүү төлөлт буцаав"></textarea>
     <div class="modal-actions">
       <button class="btn" id="rf-cancel">Болих</button>
-      <button class="btn btn-primary" id="rf-save">↩ Буцаан олгосныг бүртгэх</button>
+      <button class="btn btn-primary" id="rf-save" title="Буцаан олгосон гүйлгээг бүртгэх">↩ Бүртгэх</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -39463,18 +39463,18 @@ function vatOrderRow(orderNo, orderTotal, type) {
   if (!vatCanManage()) return '';
   const info = vatForOrder(orderNo);
   const tot = Number(orderTotal) || 0;
-  const attachBtn = `<button onclick="openVatAttachFor('${type || 'nomaad'}','${escapeHtml(String(orderNo))}')" style="border:1px dashed #1e7a55;background:#f4faf6;color:#1e7a55;border-radius:7px;padding:2px 9px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">🧾 НӨАТ баримт ${info.count ? 'засах' : 'холбох'}</button>`;
-  if (!info.count) return `<div class="order-meta" style="margin-top:4px;">${attachBtn}</div>`;
+  const attachBtn = `<button onclick="openVatAttachFor('${type || 'nomaad'}','${escapeHtml(String(orderNo))}')" class="vat-attach-btn">🧾 НӨАТ баримт ${info.count ? 'засах' : 'холбох'}</button>`;
+  if (!info.count) return `<div class="order-meta vat-row">${attachBtn}</div>`;
   const tol = 0.5;
   const over = tot > 0 && info.invoiced > tot + tol;
   const full = tot > 0 && !over && info.invoiced + tol >= tot;
   let statusHtml = '';
   if (tot > 0) {
-    if (over) statusHtml = ` · <b style="color:var(--danger);">⚠ Илүү ${fmtMoney(info.invoiced - tot)}</b>`;
-    else if (full) statusHtml = ` · <b style="color:var(--ok);">Бүрэн шивсэн</b>`;
-    else statusHtml = ` · <b style="color:#9a6a00;">⚠ Дутуу ${fmtMoney(tot - info.invoiced)}</b>`;
+    if (over) statusHtml = ` · <b class="vat-over">⚠ Илүү ${fmtMoney(info.invoiced - tot)}</b>`;
+    else if (full) statusHtml = ` · <b class="vat-full">Бүрэн шивсэн</b>`;
+    else statusHtml = ` · <b class="vat-short">⚠ Дутуу ${fmtMoney(tot - info.invoiced)}</b>`;
   }
-  return `<div class="order-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b style="color:#1e7a55;">${fmtMoney(info.vat)}</b>${statusHtml} ${attachBtn}</div>`;
+  return `<div class="order-meta vat-row vat-row-sum">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b class="vat-amt">${fmtMoney(info.vat)}</b>${statusHtml} ${attachBtn}</div>`;
 }
 
 // Захиалгаас шууд НӨАТ баримт холбох (реверс тулгалт)

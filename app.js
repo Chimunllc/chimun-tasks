@@ -4401,8 +4401,8 @@ function updatePillFade(grp) {
 // Идэвхтэй pill харагдахгүй байвал л, ХАМГИЙН БАГА хэмжээгээр гүйлгэнэ (хөрш pill-ээ харагдуулахаар
 // ирмэгээс PILL_EDGE зайтай). Төвд тогтоовол «Бүгд» гэх мэт нэг үзүүрт байгаа pill тоог нуудаг байв.
 const PILL_EDGE = 36;
-function revealActivePill(grp) {
-  const a = grp && grp.querySelector('.filter-pill.active');
+function revealActivePill(grp, sel) {
+  const a = grp && grp.querySelector(sel || '.filter-pill.active');
   if (!a || grp.clientWidth === 0 || grp.scrollWidth <= grp.clientWidth + 1) return;
   const gb = grp.getBoundingClientRect(), ab = a.getBoundingClientRect();
   if (ab.left < gb.left + PILL_EDGE) grp.scrollLeft -= (gb.left + PILL_EDGE) - ab.left;
@@ -10292,6 +10292,11 @@ function openReconcileModal() {
 
 // Захиалгын яаралтай зэрэглэл (эрэмбэ + тэмдэг). Гарах шатанд starts_at, түрээсэнд stops_at-аар.
 function orderUrgRank(o, stage, todayStr) {
+  /* ⛔ ДУУССАН/АРХИВЛАСАН/ЦУЦЛАСАН/БОЛЬСОН захиалга «хугацаа хэтэрсэн» БИШ (2026-10-09).
+     Өнгөрсөн огноо нь тэдний хувьд хэвийн — өмнө нь «Хүлээн авсан», «Архивласан» бүх мөрд
+     улаан цэг («Хугацаа хэтэрсэн/өнөөдөр») тавигдаж, жагсаалтын доод хэсэг бүхэлдээ яаралтай
+     мэт харагддаг, жинхэнэ яаралтай мөр ялгарахгүй байв. */
+  if (['done', 'archived', 'canceled', 'deleted'].includes(bucketOf(stage))) return 9;
   const dt = ['rented', 'returning', 'started'].includes(stage) ? o.stops_at : o.starts_at;
   const d = String(dt || '').slice(0, 10);
   if (!d) return 9;
@@ -10966,6 +10971,17 @@ function renderOrders() {
 }
 
 function attachOrdersHandlers() {
+  /* Статусын чип мөр (утсанд хэвтээ гүйдэг): render бүрд DOM шинээр үүсдэг тул (1) гүйлгэлт 0 руу
+     буцаж «Дууссан» дарсан хүний идэвхтэй чип дэлгэцээс гарч (2) гүйлгэх дохио байхгүй байв.
+     Гүйлгэлтийг state-д хадгалж сэргээнэ, идэвхтэй чипийг харагдуулна, бүдгэрэлт тавина. */
+  const _side = document.querySelector('.ordv-side');
+  if (_side) {
+    _side.addEventListener('scroll', () => { state.ordersSideX = _side.scrollLeft; updatePillFade(_side); }, { passive: true });
+    if (state.ordersSideX) _side.scrollLeft = state.ordersSideX;
+    revealActivePill(_side, '.ordv-st.on');
+    updatePillFade(_side);
+    requestAnimationFrame(() => { revealActivePill(_side, '.ordv-st.on'); updatePillFade(_side); });   // toolbar/layout тогтсоны дараа
+  }
   // Шинэ захиалга үүсгэх / app захиалга засах·устгах
   document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
   document.getElementById('orders-report-btn')?.addEventListener('click', openCompletedReport);

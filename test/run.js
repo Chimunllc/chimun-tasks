@@ -12056,6 +12056,63 @@ need(['orderCustType']);
   ok(/\.ver-chip\.new \{ min-height: var\(--tap-sm\); \}/.test(css), 'CSS: утсанд «Шинэ» чип хурууны хэмжээтэй');
 }
 
+// ═══ ЗАХИАЛГЫН ЖАГСААЛТ: ЯАРАЛТАЙ ЦЭГ, СТАТУСЫН ЧИП МӨР (2026-10-09) ═════════
+// Дууссан/архивласан мөрд ч «Хугацаа хэтэрсэн» улаан цэг тавигдаж, жагсаалтын доод хэсэг
+// бүхэлдээ яаралтай мэт харагдаж, жинхэнэ яаралтай мөр ялгарахгүй байв.
+{
+  const U = F.orderUrgRank;
+  const T = '2026-10-09';
+  const o = (s, e) => ({ starts_at: s + 'T09:00:00+08:00', stops_at: e + 'T18:00:00+08:00' });
+  // Идэвхтэй захиалга: өмнөх дүрэм хэвээр
+  eq(U(o('2026-10-05', '2026-10-06'), 'reserved', T), 0, 'яаралтай: идэвхтэй, эхлэх өдөр өнгөрсөн → хэтэрсэн');
+  eq(U(o('2026-10-09', '2026-10-10'), 'ready', T), 1, 'яаралтай: өнөөдөр');
+  eq(U(o('2026-10-11', '2026-10-12'), 'reserved', T), 2, 'яаралтай: 2 хоногийн дотор → удахгүй');
+  eq(U(o('2026-10-20', '2026-10-21'), 'reserved', T), 3, 'яаралтай: хол');
+  eq(U({ starts_at: '', stops_at: '' }, 'reserved', T), 9, 'яаралтай: огноогүй → дохиогүй');
+  // Түрээсэнд байгаа захиалга: ЭЦЭСЛЭХ өдрөөр (буцаах хугацаа)
+  eq(U(o('2026-10-01', '2026-10-11'), 'rented', T), 2, 'яаралтай: түрээсэнд → буцаах өдрөөр (2 хоногийн дотор = удахгүй)');
+  eq(U(o('2026-10-01', '2026-10-12'), 'rented', T), 3, 'яаралтай: түрээсэнд, буцаах өдөр 3 хоногийн дараа → хол');
+  eq(U(o('2026-10-01', '2026-10-05'), 'rented', T), 0, 'яаралтай: түрээсэнд, буцаах хугацаа хэтэрсэн');
+  // ⛔ Дууссан бүлгийн захиалга «хэтэрсэн» БИШ — өнгөрсөн огноо нь тэдний хувьд хэвийн
+  ['returned', 'stowed', 'stopped', 'archived', 'canceled', 'deleted'].forEach(st =>
+    eq(U(o('2026-09-01', '2026-09-02'), st, T), 9, `ИНВАРИАНТ: «${st}» өнгөрсөн огноотой ч улаан цэггүй`));
+  // Ноорог болон завсрын төлөв (суурилуулсан, задалсан…) нь БОДИТ яаралтай хэвээр
+  ['draft', 'installing', 'teardown', 'returning', 'delivering'].forEach(st =>
+    ok(U(o('2026-10-05', '2026-10-06'), st, T) <= 1, `яаралтай: «${st}» өнгөрсөн бол хэвээр дохиотой`));
+  // Дууссан бүлэг ORDER_BUCKETS-ээс гарна — гараар бичсэн жагсаалт шинэ төлөв нэмэхэд хоцордог
+  const srcU = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const fnU = srcU.slice(srcU.indexOf('function orderUrgRank'), srcU.indexOf('function orderUrgRank') + 900);
+  ok(/bucketOf\(stage\)/.test(fnU) && /'done', 'archived', 'canceled', 'deleted'/.test(fnU), 'яаралтай: дууссан бүлгийг bucketOf-оор тодорхойлно');
+
+  // Статусын чип мөр: идэвхтэй чипийг харагдуулах (өөр selector), гүйлгэлт хадгалагдана
+  let seenSel = null;
+  const gA = { scrollLeft: 0, clientWidth: 300, scrollWidth: 700, getBoundingClientRect: () => ({ left: 0, right: 300 }),
+    querySelector: (q) => { seenSel = q; return { getBoundingClientRect: () => ({ left: 350, right: 450 }) }; } };
+  F.revealActivePill(gA, '.ordv-st.on');
+  eq(seenSel, '.ordv-st.on', 'чип мөр: revealActivePill өөр selector-оор ажиллана');
+  eq(gA.scrollLeft, 450 - (300 - 36), 'чип мөр: идэвхтэй чип харагдтал гүйлгэнэ');
+  F.revealActivePill(Object.assign({}, gA, { scrollLeft: 0, querySelector: (q) => { seenSel = q; return null; } }));
+  eq(seenSel, '.filter-pill.active', 'чип мөр: selector өгөөгүй бол хуучин «.filter-pill.active» (ажлын шүүлтүүр эвдрэхгүй)');
+  const ah = srcU.slice(srcU.indexOf('function attachOrdersHandlers'), srcU.indexOf('function attachOrdersHandlers') + 1300);
+  ok(/state\.ordersSideX = _side\.scrollLeft/.test(ah) && /_side\.scrollLeft = state\.ordersSideX/.test(ah), 'чип мөр: гүйлгэлт render-ээс render-д хадгалагдана (DOM шинээр үүсдэг)');
+  ok(/revealActivePill\(_side, '\.ordv-st\.on'\)/.test(ah) && /updatePillFade\(_side\)/.test(ah), 'чип мөр: идэвхтэй чип харагдана + бүдгэрэлт');
+  // CSS: бүдгэрэлт нь чип мөрийг ХЭВТЭЭ болгодог ИЖИЛ @media дотор (≤1320px — өргөн дэлгэцэд мөр босоо, гүйлгэлтгүй)
+  const cssU = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const mediaBlocks = [];
+  for (const m of cssU.matchAll(/@media \([^)]*\) \{/g)) {
+    let d = 1, i = m.index + m[0].length; const from = i;
+    while (i < cssU.length && d > 0) { if (cssU[i] === '{') d++; else if (cssU[i] === '}') d--; i++; }
+    mediaBlocks.push(cssU.slice(from, i));
+  }
+  const rowBlock = mediaBlocks.find(b => /\.ordv-side \{ flex-direction: row;/.test(b));
+  ok(!!rowBlock, 'чип мөр: хэвтээ байршлын media олдлоо');
+  const fadeRe = /\.ordv-side\[data-fade=/g;
+  eq(JSON.stringify([(cssU.match(fadeRe) || []).length, rowBlock ? (rowBlock.match(fadeRe) || []).length : -1]), JSON.stringify([3, 3]),
+     'ИНВАРИАНТ: чипийн бүдгэрэлт ЗӨВХӨН мөрийг хэвтээ болгодог media дотор (босоо баганад бүдгэрэлт утгагүй)');
+  ok(/\.orders-sumline \{ font-weight: 500;/.test(cssU) && !/\.orders-sumline \{ font-weight: 700/.test(cssU), 'тоймын мөр: бүхэлдээ тод БИШ (4 мөр болж юу чухал нь ялгарахгүй байв)');
+  ok(/\.osum-rev \{[^}]*font-weight: 800/.test(cssU), 'тоймын мөр: борлуулалт тодорно');
+}
+
 // ═══ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════════
 // Цоорхой: зардал нь хуулгаас бүртгэгддэг байтал орлого нь зөвхөн захиалгаас
 // бүртгэгддэг байв → (1) ямар хуулга орсныг апп мэдэхгүй, (2) захиалгад

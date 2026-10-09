@@ -18775,3 +18775,63 @@ async function swFetchTests() {
   ok(/const ACCT_MATCH_MIN = 9/.test(src), 'scan: суффиксийн доод урт 9 (богиносгохгүй)');
   ok(/хуулгын утгаар/.test(card), 'scan: таасан дансыг ИЛ тэмдэглэнэ (нуухгүй)');
 }
+
+// ═══ МИНИЙ ИРЦ (ажилтны өөрийн дэлгэц): «ГАРАХ БҮРТГЭЛГҮЙ» АЖИЛ ДЭЭД ТАЛД, ЦАГИЙН МУЖ (2026-10-09) ═════
+// «🙋 Цаг гаргуулах» товч 1500px+ доор, цалингийн картын сануулга «доорх жагсаалтаас…» гэдэг байв.
+// Цалин тэр өдрийг 0 цаг гэж тооцдог тул мартсан ажилтан цалингаа дутуу авна.
+{
+  const srcM = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssM = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const keep = { me: st.me, att: st.myAttendance, ar: st.attRequests, ao: st.appOrders, pm: st.myPayMonth, pr: st.myPayRecs, pl: st.myProfileLoaded, sl: st._salLoaded, ml: st._myProfileLoaded, dm: st.dashMore };
+  const T = vm.runInContext('todayStr()', sandbox);
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const ad = (n) => vm.runInContext(`addDays('${T}', ${n})`, sandbox);
+  const R = (day, kind, hm) => ({ member_key: '99112244', member_name: 'Д.Бат', kind, ts: ts(day, hm), day, branch: 'M-Event', source: 'scan' });
+  st._myProfileLoaded = true; st._salLoaded = true; st.appOrders = []; st.myPayMonth = T.slice(0, 7); st.myPayRecs = { [T.slice(0, 7)]: [] };
+  vm.runInContext("state.me = '99112244'", sandbox);
+  const D = [ad(-2), ad(-3), ad(-4), ad(-5)];   // дөрвөн өмнөх өдөр
+  const day = (d, i, o) => [R(d, 'in', i)].concat(o ? [R(d, 'out', o)] : []);
+  st.attRequests = [];
+  // өнөөдөр нээлттэй (гараагүй ч «гарах бүртгэлгүй» БИШ), 4 өдөр гараагүй, нэг өдөр хэвийн
+  st.myAttendance = [].concat(day(T, '08:41'), day(D[0], '08:50'), day(D[1], '08:51'), day(D[2], '08:52'), day(D[3], '08:53'), day(ad(-1), '08:57', '17:17'));
+  const h = F.renderMyAttend();
+  const alert = h.slice(h.indexOf('class="myatt-alert"'), h.indexOf('class="myatt-card myatt-pay"') > 0 ? h.indexOf('class="myatt-card myatt-pay"') : undefined);
+  ok(/class="myatt-alert"/.test(h), 'миний ирц: гарах бүртгэлгүй өдөр байвал дээд талд сануулга гарна');
+  ok(/Гарах бүртгэлгүй өдөр · 4/.test(h), 'миний ирц: сануулгад тоо (өнөөдөр БОЛОН хэвийн өдөр ороогүй)');
+  ok(h.indexOf('myatt-alert') < h.indexOf('Миний цалин'), 'миний ирц: сануулга цалингийн картаас ӨМНӨ (1500px доор биш)');
+  ok(/data-my-areq=/.test(alert), 'миний ирц: сануулга дотор шууд «Цаг гаргуулах» товч');
+  ok(!new RegExp('data-my-areq="' + T + '"').test(alert), 'миний ирц: өнөөдөр (нээлттэй) сануулгад орохгүй');
+  ok(/data-dash-more="myout"/.test(h), 'миний ирц: 3-аас олон өдөр «+ N» нугалаанд');
+  // Хүсэлт илгээсэн өдөр сануулгаас гарна (мөрөндөө «⏳» гэж харагдана)
+  st.attRequests = { ['99112244|' + D[0]]: { key: '99112244', day: D[0], status: 'pending', outTime: '18:00' } };
+  const h2 = F.renderMyAttend();
+  ok(/Гарах бүртгэлгүй өдөр · 3/.test(h2), 'миний ирц: хүсэлт илгээсэн өдөр сануулгаас гарна (4 → 3)');
+  ok(/⏳ Хүсэлт хүлээгдэж байна/.test(h2), 'миний ирц: тэр өдөр мөрөндөө «⏳ хүлээгдэж байна»');
+  // Бүгд хэвийн бол сануулга огт гарахгүй
+  st.attRequests = []; st.myAttendance = [].concat(day(T, '08:41'), day(ad(-1), '08:57', '17:17'));
+  ok(!/class="myatt-alert"/.test(F.renderMyAttend()), 'миний ирц: гарах бүртгэлгүй өдөр байхгүй бол сануулга гарахгүй');
+  // Мөр = цагийн муж + гарсан цаг
+  st.myAttendance = [].concat(day(T, '08:41'), day(D[0], '08:50'), day(ad(-1), '08:57', '17:17'));
+  const h3 = F.renderMyAttend();
+  ok(/myatt-t open">08:41 → одоо/.test(h3), 'миний ирц: өнөөдрийн мөр «08:41 → одоо»');
+  ok(/myatt-t noout">08:50 → ⚠ гараагүй/.test(h3), 'миний ирц: гараагүй өдөр «08:50 → ⚠ гараагүй»');
+  ok(/myatt-t">08:57 → 17:17/.test(h3), 'миний ирц: хэвийн өдөр «08:57 → 17:17» (гарсан цаг харагдана)');
+  // Дизайн: inline style-гүй (нийтлэг staffAvatarImg-ийн <img>-ээс бусад)
+  ok(!/style="/.test(h3.replace(/<img[^>]*>/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '')), 'дизайн: миний ирц (нийтлэг <img>, svg-ээс бусад) inline style-гүй');
+  // Данс бүртгэгдээгүй бол улаан товч (профайл руу), бүртгэлтэй бол нэг мөр
+  ok(/myatt-bank/.test(h3) || /id="my-open-profile"/.test(h3), 'миний ирц: дансны мөр эсвэл «бүртгэх» товч байна');
+  // Scan: нугалааны төлөв хадгалагдана, хоёр газар
+  ok(/function attachDashMore\(root\)[\s\S]{0,260}\[d\.dataset\.dashMore\] = d\.open/.test(srcM), 'миний ирц: attachDashMore нь нээсэн төлвийг state.dashMore-д хадгална');
+  const mah2 = srcM.slice(srcM.indexOf('function attachMyAttendHandlers'), srcM.indexOf('function attachMyAttendHandlers') + 400);
+  ok(/\n  attachDashMore\(\);/.test(mah2), 'миний ирц: handler нь attachDashMore-г ҮРГЭЛЖ дууддаг (нугалаа хадгалагдана)');
+  const rma = srcM.slice(srcM.indexOf('function renderMyAttend'), srcM.indexOf('function attachMyAttendHandlers'));
+  ok(/noOutDays/.test(rma) && /d !== today/.test(rma), 'scan: «гарах бүртгэлгүй» сануулга өнөөдрийг хасна');
+  ok(/status === 'pending'/.test(rma.slice(rma.indexOf('const noOutDays'), rma.indexOf('const noOutDays') + 260)), 'scan: хүсэлт илгээсэн өдөр сануулгаас гарна');
+  // CSS: ангиуд оршино, QR цагаан хэвээр (харанхуй горимд ч уншигдана), сануулга токентой
+  ok(/\.myatt-alert \{[^}]*var\(--warn-soft\)/.test(cssM), 'CSS: .myatt-alert токен өнгөтэй');
+  ok(/\.myatt-qr-box \{[^}]*#fff/.test(cssM), 'CSS: QR хайрцаг ҮРГЭЛЖ цагаан (харанхуй горимд скан хийгдэнэ)');
+  ok(/\.myatt-row \{/.test(cssM) && /\.myatt-t\.noout \{/.test(cssM) && /\.myatt-t\.open \{/.test(cssM), 'CSS: мөр, гараагүй, одоо ангиуд');
+  Object.assign(st, { attRequests: keep.ar, appOrders: keep.ao, myPayMonth: keep.pm, myPayRecs: keep.pr, myAttendance: keep.att, _salLoaded: keep.sl, _myProfileLoaded: keep.ml, dashMore: keep.dm });
+  vm.runInContext(`state.me = ${JSON.stringify(keep.me === undefined ? '' : keep.me)}`, sandbox);
+}

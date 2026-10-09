@@ -7116,6 +7116,68 @@ select.no-asar-len {
 .areq-ok { border: none; background: var(--ok); color: #fff; }
 .areq-ok[disabled] { opacity: .45; cursor: not-allowed; }
 .areq-no { border: 1px solid var(--border); background: var(--panel); color: var(--muted); }
+/* ═══ МИНИЙ ИРЦ (2026-10-09) — inline style-аас класс ═══ */
+.myatt-wrap { max-width: 520px; margin: 0 auto; padding-bottom: 26px; }
+.myatt-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: var(--space-4); margin-bottom: var(--space-3); }
+.myatt-me-top { display: flex; align-items: center; gap: var(--space-3); }
+.myatt-av { position: relative; width: 48px; height: 48px; border-radius: 50%; background: var(--panel-hover);
+  display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-lg); font-weight: 700;
+  color: var(--muted); overflow: hidden; flex-shrink: 0; }
+.myatt-who { flex: 1; min-width: 0; }
+.myatt-name { font-size: var(--fs-lg); font-weight: 700; }
+.myatt-sub { font-size: var(--fs-md); color: var(--muted); }
+.myatt-bank { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); font-size: var(--fs-md); font-weight: 600; }
+.myatt-bank-add { margin-top: var(--space-3); width: 100%; min-height: var(--tap-sm); padding: 8px 12px;
+  border: 1px solid var(--danger); background: transparent; color: var(--danger); border-radius: 10px;
+  font: inherit; font-size: var(--fs-md); font-weight: 700; cursor: pointer; text-align: left; }
+/* QR нь ҮРГЭЛЖ цагаан дэвсгэртэй (харанхуй горимд ч) — эс бөгөөс скан хийхгүй */
+.myatt-qr { padding: 20px var(--space-4); text-align: center; }
+.myatt-qr-t { font-size: var(--fs-md); font-weight: 600; }
+.myatt-qr-box { width: 212px; height: 212px; margin: 14px auto 4px; display: flex; align-items: center; justify-content: center;
+  background: #fff; border-radius: 14px; padding: 8px; box-shadow: var(--shadow-md); }
+.myatt-qr-wait { color: #999; font-size: var(--fs-md); }
+.myatt-qr-s { font-size: var(--fs-sm); color: var(--muted); }
+.myatt-tiles { display: flex; gap: var(--space-3); margin-bottom: var(--space-3); }
+.myatt-tile { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; text-align: center; }
+.myatt-tile-l { font-size: var(--fs-sm); color: var(--muted); }
+.myatt-tile-v { font-size: var(--fs-lg); font-weight: 800; color: var(--primary); margin-top: 2px; }
+.myatt-tile-v.ok { color: var(--ok); }
+.myatt-tile-v.none { color: var(--muted); }
+.myatt-tile-s { font-size: var(--fs-xs); color: var(--text-soft); }
+/* ⚠ Гарах бүртгэлгүй өдөр = хийх ажил, шууд товчтой */
+.myatt-alert { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 14px; padding: var(--space-3) 14px; margin-bottom: var(--space-3); }
+.myatt-alert-t { font-weight: 800; font-size: var(--fs-md); color: var(--warn); }
+.myatt-alert-s { font-size: var(--fs-sm); color: var(--text-soft); margin: 2px 0 var(--space-2); line-height: 1.45; }
+.myatt-alert-r { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 6px 0;
+  border-top: 1px solid var(--line); font-size: var(--fs-md); }
+.myatt-alert .myreq-ask { margin: 0; }
+.myatt-alert .dash-more > summary { border-top: 1px solid var(--line); }
+/* Сарын ирцийн жагсаалт: «10-09 Баа · өнөөдөр | 08:41 → одоо | 2ц 41м» */
+.myatt-lh { font-size: var(--fs-md); font-weight: 700; color: var(--muted); margin: 6px 2px 4px; }
+.myatt-list { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 4px 12px; }
+.myatt-row { padding: 9px 2px; border-bottom: 1px solid var(--line); font-size: var(--fs-md); }
+.myatt-row:last-child { border-bottom: 0; }
+.myatt-line { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.myatt-d { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+.myatt-wd { color: var(--muted); font-size: var(--fs-xs); }
+.myatt-today { color: var(--ok); font-size: var(--fs-xs); }
+.myatt-t { color: var(--text-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.myatt-t.open { color: var(--ok); font-weight: 700; }
+.myatt-t.noout { color: var(--warn); }
+.myatt-h { min-width: 4.2em; text-align: right; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.myatt-none { text-align: center; color: var(--muted); padding: 20px; font-size: var(--fs-md); }
+/* Жолооны нэмэгдэл */
+.myatt-drv { background: var(--panel); border: 1px solid var(--ok); border-radius: 14px; padding: 14px var(--space-4); margin-bottom: var(--space-3); }
+.myatt-drv-t { font-size: var(--fs-sm); color: var(--muted); }
+.myatt-drv-v { font-size: var(--fs-lg); font-weight: 800; color: var(--ok); margin-top: 3px; }
+.myatt-drv-s { font-size: var(--fs-sm); color: var(--text-soft); margin-top: 2px; }
+.myatt-drv-l { margin-top: var(--space-3); border-top: 1px solid var(--line); }
+.myatt-drv-r { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); font-size: var(--fs-sm); padding: 7px 0; border-bottom: 1px solid var(--line); }
+.myatt-drv-w { min-width: 0; }
+.myatt-drv-a { color: var(--muted); }
+.myatt-drv-d { color: var(--muted); flex-shrink: 0; }
+.myatt-drv-note { margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--danger); border-radius: 10px;
+  background: var(--danger-soft); color: var(--danger); font-size: var(--fs-sm); line-height: 1.5; }
 .myreq-new {
   display: block; width: 100%; margin-bottom: var(--space-3);
   padding: var(--space-3); border: 1px dashed var(--primary); border-radius: 12px;

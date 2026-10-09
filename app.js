@@ -14430,7 +14430,7 @@ function renderMyAttend() {
   const sumFor = (d) => attMemberSummary(byDay[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === today);
   const todaySum = byDay[today] ? sumFor(today) : null;
   let monthMins = 0; dayKeys.forEach(d => { monthMins += sumFor(d).mins; });
-  const avatar = `<span style="position:relative;width:56px;height:56px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:var(--muted);overflow:hidden;flex-shrink:0;">${escapeHtml(memberInitials(state.me))}${staffAvatarImg(me)}</span>`;
+  const avatar = `<span class="myatt-av">${escapeHtml(memberInitials(state.me))}${staffAvatarImg(me)}</span>`;
   const myKey = String(personKey(me) || state.me || '').replace(/\D/g, '') || String(state.me || '');
   // Хүсэлтийн төлвийг өдөр бүрд харуулна — ажилтан «илгээснээ» мартахгүй, хариуг ч энд харна.
   const reqLine = (d) => {
@@ -14440,6 +14440,9 @@ function renderMyAttend() {
     if (q.status === 'approved') return `<div class="myreq-st myreq-ok">✅ Хүсэлт батлагдсан</div>`;
     return `<div class="myreq-st myreq-no">❌ Татгалзсан${q.reason ? ' · ' + escapeHtml(q.reason) : ''}</div>`;
   };
+  /* ⛔ МӨР = ЦАГИЙН МУЖ + ГАРСАН ЦАГ (2026-10-09): «Ирсэн 08:57 · 8ц 20м» гэж гарсан цагийг
+     харуулдаггүй байсан тул ажилтан «явлаа» гэж бүртгэгдсэнийг шалгаж чаддаггүй, өнөөдрийн мөр
+     3 мөр болж тасардаг байв. Удирдлагын «Ирц» дэлгэцтэй ИЖИЛ хэлбэр: «08:41 → одоо» / «08:57 → 17:17». */
   const dayList = dayKeys.map(d => {
     const s = sumFor(d);
     const q = attReqFor(myKey, d);
@@ -14447,59 +14450,71 @@ function renderMyAttend() {
     const viaReq = (byDay[d] || []).some(x => x.source === 'request');
     const askBtn = (s.noOut && !(q && q.status === 'pending'))
       ? `<button class="ui-raw myreq-ask" data-my-areq="${escapeHtml(d)}">🙋 Цаг гаргуулах</button>` : '';
-    return `<div style="padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-      <span>${escapeHtml(d)}${d === today ? ' <b style="color:var(--ok);font-size:11px;">· өнөөдөр</b>' : ''}</span>
-      <span style="color:var(--text-soft);text-align:right;">Ирсэн <b>${attTimeUB(s.firstIn)}</b>${s.open ? ' · <span style="color:var(--ok);">ажиллаж байна</span>' : ''} · <b style="color:var(--primary);">${attHM(s.mins)}</b>${s.noOut ? ' <span style="color:var(--warn);">⚠ гараагүй</span>' : ''}${viaReq ? ' <span class="att-manual" title="Хүсэлтээр нэмэгдсэн">🙋</span>' : ''}</span>
+    const endTxt = s.open ? 'одоо' : s.noOut ? '⚠ гараагүй' : attTimeUB(s.lastEvent);
+    const spanCls = s.open ? ' open' : s.noOut ? ' noout' : '';
+    const wd = _MN_WD[new Date(d + 'T00:00:00').getDay()];
+    return `<div class="myatt-row">
+      <div class="myatt-line">
+        <span class="myatt-d">${escapeHtml(d.slice(5))} <span class="myatt-wd">${wd}</span>${d === today ? ' <b class="myatt-today">· өнөөдөр</b>' : ''}</span>
+        <span class="myatt-t${spanCls}">${attTimeUB(s.firstIn)} → ${endTxt}${viaReq ? ' <span class="att-manual" title="Хүсэлтээр нэмэгдсэн">🙋</span>' : ''}</span>
+        <span class="myatt-h">${attHM(s.mins)}</span>
       </div>${askBtn}${reqLine(d)}</div>`;
   }).join('');
   // Огт бүртгэгдээгүй өдрийн хүсэлт — тэр өдөр жагсаалтад БАЙХГҮЙ тул тусад нь харуулна.
   const otherReqs = Object.keys(attReqAll())
     .map(k => attReqAll()[k]).filter(q => q && q.key === myKey && !byDay[q.day])
     .sort((a, b) => String(b.day).localeCompare(String(a.day)))
-    .map(q => `<div style="padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
-      <div>${escapeHtml(q.day)} <span style="color:var(--muted);">${escapeHtml(q.inTime || '')}${q.inTime ? ' → ' : ''}${escapeHtml(q.outTime || '')}</span></div>${reqLine(q.day)}</div>`).join('');
-  return `<div style="max-width:520px;margin:0 auto;padding-bottom:26px;">
-    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;">
-      <div style="display:flex;align-items:center;gap:14px;">
+    .map(q => `<div class="myatt-row">
+      <div class="myatt-line"><span class="myatt-d">${escapeHtml(String(q.day).slice(5))}</span><span class="myatt-t">${escapeHtml(q.inTime || '')}${q.inTime ? ' → ' : ''}${escapeHtml(q.outTime || '')}</span></div>${reqLine(q.day)}</div>`).join('');
+  /* ⭐ ГАРАХАА БҮРТГҮҮЛЭЭГҮЙ ӨДӨР = ХИЙХ АЖИЛ → ДЭЭД ТАЛД, ШУУД ТОВЧТОЙ (2026-10-09).
+     Цалин тэр өдрийг 0 цаг гэж тооцдог тул мартсан ажилтан цалингаа дутуу авна. «Цаг гаргуулах»
+     товч дэлгэцийн хамгийн доод (сарын жагсаалтын мөр) дотор, цалингийн картын сануулга «доорх
+     жагсаалтаас…» гэж л хэлдэг байв — бодит датагаар 1500px+ доор. Хүсэлт илгээсэн (хүлээгдэж буй)
+     өдөр энд ГАРАХГҮЙ — мөрөндөө «⏳ хүлээгдэж байна» гэж харагдана. Өнөөдөр (нээлттэй) орохгүй. */
+  const noOutDays = dayKeys.filter(d => d !== today && sumFor(d).noOut && !(attReqFor(myKey, d) && attReqFor(myKey, d).status === 'pending'));
+  const noOutBox = noOutDays.length ? `<div class="myatt-alert">
+      <div class="myatt-alert-t">⚠ Гарах бүртгэлгүй өдөр · ${noOutDays.length}</div>
+      <div class="myatt-alert-s">Цалин эдгээр өдрийг 0 цаг гэж тооцдог — гарсан цагаа мэдүүлнэ үү.</div>
+      ${dashListHtml('myout', noOutDays.map(d => `<div class="myatt-alert-r"><span>${escapeHtml(d.slice(5))} <span class="myatt-wd">${_MN_WD[new Date(d + 'T00:00:00').getDay()]}</span> · ${attTimeUB(sumFor(d).firstIn)} → ?</span><button class="ui-raw myreq-ask" data-my-areq="${escapeHtml(d)}">🙋 Цаг гаргуулах</button></div>`), 3)}
+    </div>` : '';
+  return `<div class="myatt-wrap">
+    <div class="myatt-card myatt-me">
+      <div class="myatt-me-top">
         ${avatar}
-        <div style="flex:1;min-width:0;"><div style="font-size:18px;font-weight:700;">${escapeHtml(me.name || state.me)}</div>
-          <div style="font-size:13px;color:var(--muted);">${escapeHtml(me.role || 'Цагийн ажилтан')}</div>
-          <div style="font-size:12.5px;color:var(--text-soft);margin-top:2px;">📞 ${escapeHtml(me.phone || '-')}</div></div>
+        <div class="myatt-who"><div class="myatt-name">${escapeHtml(me.name || state.me)}</div>
+          <div class="myatt-sub">${escapeHtml(me.role || 'Цагийн ажилтан')} · 📞 ${escapeHtml(me.phone || '-')}</div></div>
       </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-        <div style="font-size:12px;color:var(--muted);">🏦 Цалингийн данс</div>
-        ${me.bank_account
-          ? `<div style="font-weight:600;font-size:14px;margin-top:3px;">${escapeHtml(me.bank || '')} · ${escapeHtml(me.bank_account)}${me.bank_holder ? ' · ' + escapeHtml(me.bank_holder) : ''}</div>`
-          : `<button id="my-open-profile" style="margin-top:6px;padding:9px 13px;border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;text-align:left;width:100%;">⚠ Данс бүртгэгдээгүй — энд дарж Миний профайл дээр бүртгэнэ үү</button>`}
-      </div>
+      ${me.bank_account
+        ? `<div class="myatt-bank">🏦 ${escapeHtml(me.bank || '')} · ${escapeHtml(me.bank_account)}${me.bank_holder ? ' · ' + escapeHtml(me.bank_holder) : ''}</div>`
+        : `<button id="my-open-profile" class="myatt-bank-add">⚠ Цалингийн данс бүртгэгдээгүй — бүртгэх ›</button>`}
     </div>
-    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 16px;text-align:center;margin-bottom:14px;">
-      <div style="font-size:13.5px;font-weight:600;color:var(--text);">Ирц бүртгүүлэхдээ энэ QR-аа менежерт харуул</div>
-      <div id="my-qr" style="width:212px;height:212px;margin:14px auto 4px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:14px;padding:8px;box-shadow:0 2px 12px rgba(0,0,0,.08);"><span style="color:#999;font-size:13px;">QR ачаалж байна…</span></div>
-      <div style="font-size:12px;color:var(--muted);">${escapeHtml(me.name || '')} · ${escapeHtml(me.phone || '')}</div>
+    <div class="myatt-card myatt-qr">
+      <div class="myatt-qr-t">Ирц бүртгүүлэхдээ энэ QR-аа менежерт харуул</div>
+      <div id="my-qr" class="myatt-qr-box"><span class="myatt-qr-wait">QR ачаалж байна…</span></div>
+      <div class="myatt-qr-s">${escapeHtml(me.name || '')} · ${escapeHtml(me.phone || '')}</div>
     </div>
-    <div style="display:flex;gap:10px;margin-bottom:16px;">
-      <div style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;">
-        <div style="font-size:12px;color:var(--muted);">Өнөөдөр</div>
-        <div style="font-size:17px;font-weight:800;color:${todaySum ? 'var(--ok)' : 'var(--muted)'};margin-top:2px;">${todaySum ? attHM(todaySum.mins) : '—'}</div>
-        <div style="font-size:11px;color:var(--text-soft);">${todaySum ? 'Ирсэн ' + attTimeUB(todaySum.firstIn) + (todaySum.open ? ' · ажиллаж байна' : '') : 'Бүртгэлгүй'}</div></div>
-      <div style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;">
-        <div style="font-size:12px;color:var(--muted);">Энэ сар</div>
-        <div style="font-size:17px;font-weight:800;color:var(--primary);margin-top:2px;">${attHM(monthMins)}</div>
-        <div style="font-size:11px;color:var(--text-soft);">${dayKeys.length} өдөр ажилласан</div></div>
+    <div class="myatt-tiles">
+      <div class="myatt-tile">
+        <div class="myatt-tile-l">Өнөөдөр</div>
+        <div class="myatt-tile-v${todaySum ? ' ok' : ' none'}">${todaySum ? attHM(todaySum.mins) : '—'}</div>
+        <div class="myatt-tile-s">${todaySum ? 'Ирсэн ' + attTimeUB(todaySum.firstIn) + (todaySum.open ? ' · ажиллаж байна' : '') : 'Бүртгэлгүй'}</div></div>
+      <div class="myatt-tile">
+        <div class="myatt-tile-l">Энэ сар</div>
+        <div class="myatt-tile-v">${attHM(monthMins)}</div>
+        <div class="myatt-tile-s">${dayKeys.length} өдөр ажилласан</div></div>
     </div>
+    ${noOutBox}
     ${myPayCardHtml(me)}
     ${(() => { if (payrollHistOnly(payM)) return '';   // ⛔ түүх сард хэрэгжээгүй нэмэгдэл гаргахгүй
       const db = driverBonus(personKey(me) || state.me, payM); return db.count ? `
-    <div style="background:var(--panel);border:1px solid var(--ok);border-radius:14px;padding:14px 16px;margin-bottom:14px;">
-      <div style="font-size:12px;color:var(--muted);">🚗 Жолооны нэмэгдэл · ${escapeHtml(payM)}</div>
-      <div style="font-size:19px;font-weight:800;color:var(--ok);margin-top:3px;">${fmtMoney(db.amount)}</div>
-      <div style="font-size:11.5px;color:var(--text-soft);margin-top:2px;">${db.count} удаа × ${fmtMoney(DRIVER_BONUS_EACH)} · хүргэсэн ${db.deliveries} · авсан ${db.pickups}</div>
-      <div style="margin-top:10px;border-top:1px solid var(--line);">${db.trips.map(t => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line);">
-        <span style="min-width:0;">${t.type === 'Хүргэсэн' ? '🚚' : '↩️'} <b>#${escapeHtml(String(t.number ?? ''))}</b> · ${escapeHtml(t.type)}${t.addr ? ` · <span style="color:var(--muted);">${escapeHtml(String(t.addr).slice(0, 34))}</span>` : ''}</span>
-        <span style="color:var(--muted);flex-shrink:0;">${escapeHtml(t.date)}</span></div>`).join('')}</div>
-      <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
+    <div class="myatt-drv">
+      <div class="myatt-drv-t">🚗 Жолооны нэмэгдэл · ${escapeHtml(payM)}</div>
+      <div class="myatt-drv-v">${fmtMoney(db.amount)}</div>
+      <div class="myatt-drv-s">${db.count} удаа × ${fmtMoney(DRIVER_BONUS_EACH)} · хүргэсэн ${db.deliveries} · авсан ${db.pickups}</div>
+      <div class="myatt-drv-l">${db.trips.map(t => `<div class="myatt-drv-r">
+        <span class="myatt-drv-w">${t.type === 'Хүргэсэн' ? '🚚' : '↩️'} <b>#${escapeHtml(String(t.number ?? ''))}</b> · ${escapeHtml(t.type)}${t.addr ? ` · <span class="myatt-drv-a">${escapeHtml(String(t.addr).slice(0, 34))}</span>` : ''}</span>
+        <span class="myatt-drv-d">${escapeHtml(t.date)}</span></div>`).join('')}</div>
+      <div class="myatt-drv-note">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
     </div>` : ''; })()}
     ${(() => {
       if (payrollHistOnly(payM)) return '';            // ⛔ түүх сард дамжлагын бонус гаргахгүй
@@ -14518,11 +14533,12 @@ function renderMyAttend() {
       return claimBoxHtml(mine, `✋ ${mine.length} хүн таны ахалсан ажилд оролцсон гэж мэдүүлсэн`,
         'Үнэхээр хамт ажилласан бол «✓ Тийм» — тэр дамжлагын бонус хуваагдана. Ажиллаагүй бол ✕.'); })()}
     <button class="ui-raw myreq-new" id="my-att-req">🙋 Бүртгүүлж амжаагүй өдөр мэдүүлэх</button>
-    ${dayKeys.length || otherReqs ? `<div style="font-size:13px;font-weight:700;color:var(--muted);margin:6px 2px 4px;">Энэ сарын ирц</div><div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 12px;">${dayList}${otherReqs}</div>` : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">Энэ сард ирц бүртгэгдээгүй байна.</div>'}
+    ${dayKeys.length || otherReqs ? `<div class="myatt-lh">Энэ сарын ирц</div><div class="myatt-list">${dayList}${otherReqs}</div>` : '<div class="myatt-none">Энэ сард ирц бүртгэгдээгүй байна.</div>'}
   </div>`;
 }
 function attachMyAttendHandlers() {
   attachClaimHandlers();   // ахлагч мэдүүлгийг энд батална
+  attachDashMore();         // «бусад (N)» гарах бүртгэлгүй өдрийн нугалаа
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
@@ -27897,6 +27913,12 @@ function dispatchBlockHtml(orders) {
     ${chart}
   </div>`;
 }
+// «бусад (N)» нугалаа нээсэн төлөвөө state.dashMore-д хадгална (render() дахин зурахад хаагдахгүй)
+function attachDashMore(root) {
+  (root || document).querySelectorAll('[data-dash-more]').forEach(d => d.addEventListener('toggle', () => {
+    (state.dashMore = state.dashMore || {})[d.dataset.dashMore] = d.open;
+  }));
+}
 function attachReviewBlock(root) {
   // ⛔ Хамгийн муу захиалгын ЖАГСААЛТ Тойм дээр БАЙХГҮЙ — зөвхөн Дүн шинжилгээнд.
   //    Нэг жагсаалт хоёр газар байвал аль нь бүтэн болох нь мэдэгдэхгүй.
@@ -27910,9 +27932,7 @@ function attachReviewBlock(root) {
   const _dspGo = () => { state.reportMonth = (_dspCard && _dspCard.dataset.dspYm) || todayStr().slice(0, 7); state.view = 'reports'; state.reportsTab = 'reports'; render(); };
   _dspCard?.addEventListener('click', _dspGo);
   _dspCard?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _dspGo(); } });
-  (root || document).querySelectorAll('[data-dash-more]').forEach(d => d.addEventListener('toggle', () => {
-    (state.dashMore = state.dashMore || {})[d.dataset.dashMore] = d.open;
-  }));
+  attachDashMore(root);
   (root || document).querySelectorAll('[data-rv-open]').forEach(el => el.addEventListener('click', () => {
     if (!canSeeOrders()) return;
     state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.rvOpen; render();

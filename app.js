@@ -4435,12 +4435,12 @@ function renderSidebar() {
     const wc = document.getElementById('cnt-writeoff');
     if (wc) wc.textContent = String(woList().filter(x => x && x.status === 'pending').length);
   }
-  // Төлөвлөгөө — тоо нь «одоо хийж байгаа» ажлын тоо.
+  // Төлөвлөгөө — тоо нь ТАНЫ шийдвэр хүлээж буй санаачлагын тоо.
   const plNav = document.getElementById('nav-plan');
   if (plNav) {
     plNav.style.display = canSeePlan() ? '' : 'none';
     const pc = document.getElementById('cnt-plan');
-    if (pc) pc.textContent = String(planOpenCount());
+    if (pc) pc.textContent = String(planDecideCount());
   }
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
@@ -4585,7 +4585,7 @@ function renderTitle() {
     ps_stock:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21V12h6v9"/></svg>', 'Нөөц ба салбар', 'Салбар бүрийн тоо — нярав нэг дэлгэцээс шинэчилнэ'],
     ads:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>', 'Зар & үр дүн', 'Facebook зарын зарцуулалт ба борлуулалтын тулгалт — аль зар үр дүнтэйг харуулна'],
     missedcalls: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>', 'Алдсан дуудлага', 'Хүлээгээд холбогдоогүй хүмүүс — буцаж залгах ажлын жагсаалт'],
-    plan:      ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 11l3 3 7-7"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', 'Төлөвлөгөө', 'Шийдвэрийг чи гаргана, бичилтийг агент хийнэ — хийгдсэнийг нь дарж хаа'],
+    plan:      ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 11l3 3 7-7"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', 'Төлөвлөгөө', 'Санал → таны шийдвэр → ажил → үр дүн'],
     writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
@@ -24797,7 +24797,6 @@ function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO
 // ⚠ Хадгалалт = `app_config['plan']` (шинэ хүснэгт БАЙХГҮЙ).
 // ⚠ Бичлэг ХЭЗЭЭ Ч устахгүй — «хаах» = status:'done', буцааж нээж болно.
 const PLAN_KEY = 'plan';
-const PLAN_NOW_MAX = 3;      // зэрэг эхлүүлэх ажлын дээд тоо (хэтэрвэл анхааруулна)
 const PLAN_STALE_DAYS = 30;  // «одоо хийж байгаа» ажил ийм хоног хөдөлгөөнгүй бол ил тэмдэглэнэ
 // Seed-ээс хадгалсан мөр руу шинэчлэгддэг талбарууд (бичвэр — шийдвэр БИШ)
 const PLAN_TEXT_FIELDS = ['title', 'act', 'gain', 'created'];
@@ -24916,7 +24915,6 @@ function planAge(created, today) {
 }
 function planSeed() { return PLAN_SEED; }
 function planList() { return Array.isArray(state.plan) ? state.plan : []; }
-function planOpenCount() { return planSections(planList()).now.length; }
 async function loadPlan(force) {
   if (state.plan && !force) return state.plan;
   let stored = null, ok = false;
@@ -25086,7 +25084,14 @@ async function planApplyIdea(id) {
   let undo;
   try { undo = await kind.run(row.do); }
   catch (e) { showToast('⚠ Хэрэгжсэнгүй: ' + e.message, 'error', 6000); return; }
-  await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', undo });
+  // ⛔ Ажил үүсгэх санал батлагдмагц «хаагдсан» БИШ — ажил дуусах хүртэл «хэрэгжиж буй».
+  //    Тохиргоо (тариф) нь хэрэгжмэгц дууссан тул шууд үр дүн рүү.
+  if (String(row.do.kind) === 'task') {
+    if (row.parent) state.plan = planList().map(x => (String(x.id) === String(row.parent) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open' } : x));
+    await planSet(id, { sec: row.parent ? row.sec : 'now', status: 'open', done_by: 'applied', applied_at: todayStr(), undo });
+  } else {
+    await planSet(id, { sec: 'next', status: 'done', closed_at: todayStr(), done_by: 'applied', undo });
+  }
   planNotifyAuthors(row, '✅ Таны санал батлагдлаа',
     String(row.do.kind) === 'task' ? 'Ажил үүслээ: ' + ((row.do.task || {}).title || row.title || '') : (row.title || ''));
   showToast('Хэрэгжлээ', 'success', 2500);
@@ -25100,7 +25105,7 @@ async function planRevertIdea(id) {
   if (!ok) return;
   try { await kind.undoRun(row.undo); }
   catch (e) { showToast('⚠ Буцаагдсангүй: ' + e.message, 'error', 6000); return; }
-  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', undo: null, reopened: true });
+  await planSet(id, { sec: 'idea', status: 'open', closed_at: '', done_by: '', applied_at: '', undo: null, reopened: true });
 }
 async function planAcceptIdea(id) {
   const row = planList().find(x => String(x.id) === String(id));
@@ -25123,65 +25128,229 @@ async function planAdd() {
   catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
   render();
 }
+// ── ТӨЛӨВЛӨГӨӨНИЙ САМБАР (2026-10-09, CEO: «ойлгомжгүй, юуны төлөө ажилладаг нь мэдэгдэхгүй») ──
+// НЭГ урсгал: санал → ① ТАНЫ ШИЙДВЭР → ② ХЭРЭГЖИЖ БУЙ → ③ ҮР ДҮН.
+// Санаачлага = `parent`-гүй мөр. `parent`-тай мөр нь түүний АЛХАМ — картын ДОТОР
+//   харагдана (өмнө нь алхам бүр тусдаа санал мэт жагсаж байв).
+// ⛔ Явцыг ГАРААР шинэчлэхгүй — холбогдсон БОДИТ ажлын төлвөөс (`undo.task_id`) бодогдоно.
+// ⛔ Батлах нь «хаагдсан» БИШ — ажил дуусах хүртэл «хэрэгжиж буй»-д үлдэнэ
+//    (өмнө нь батлах мөчид «Хаагдсан» руу орж, ажил явж буй эсэх харагдахгүй байв).
+// ⚠ Claude-ын аппын ажил захирлын удирдах зүйл БИШ — тусдаа эвхэгдэх жагсаалтад.
+const PLAN_DOING_MAX = 5;    // зэрэг хэрэгжих санаачлагын дээд тоо (хэтэрвэл ил сануулна)
+function planApplied(x) { return !!(x && (x.done_by === 'applied' || x.applied_at)); }
+function planPending(x) { return !!(x && x.sec === 'idea' && x.status !== 'done' && !planApplied(x)); }
+// Алхмын байдал (ЦЭВЭР): pending · no · done · late · open · gone (ажил устсан) · unknown (ачаалагдаагүй)
+function planStepState(r, taskById, today) {
+  if (planPending(r)) return { k: 'pending', task: null };
+  if (r && r.sec === 'no') return { k: 'no', task: null };
+  const tid = planApplied(r) && r.undo && r.undo.task_id ? String(r.undo.task_id) : '';
+  if (!tid) return { k: r && r.status === 'done' ? 'done' : 'open', task: null };
+  const t = taskById && taskById.get(tid);
+  if (!t) return { k: 'unknown', task: null };
+  if (t.status === 'deleted') return { k: 'gone', task: t };
+  if (t.status === 'done') return { k: 'done', task: t };
+  const due = String(t.due || '').slice(0, 10);
+  return { k: due && today && due < today ? 'late' : 'open', task: t };
+}
+// Санаачлагын явц = холбогдсон ажлуудаас. Устсан ажил тоологдохгүй; ачаалагдаагүйг
+// «дууссан» гэж ТААМАГЛАХГҮЙ (`unknown`).
+function planProgress(rows, taskById, today) {
+  const out = { total: 0, done: 0, late: 0, unknown: 0 };
+  (rows || []).forEach(r => {
+    if (!planApplied(r) || !(r.undo && r.undo.task_id)) return;
+    const s = planStepState(r, taskById, today);
+    if (s.k === 'gone') return;
+    out.total++;
+    if (s.k === 'done') out.done++;
+    else if (s.k === 'late') out.late++;
+    else if (s.k === 'unknown') out.unknown++;
+  });
+  return out;
+}
+// Самбар (ЦЭВЭР): мөр бүр ЯГ НЭГ хэсэгт. decide · doing · next · result · no · app
+function planBoard(list, tasks, today) {
+  const arr = (Array.isArray(list) ? list : []).filter(x => x && x.id);
+  const ids = new Set(arr.map(x => String(x.id)));
+  const taskById = new Map((Array.isArray(tasks) ? tasks : []).filter(t => t && t.id).map(t => [String(t.id), t]));
+  const isStep = (x) => !!(x.parent && ids.has(String(x.parent)) && String(x.parent) !== String(x.id));
+  const kids = new Map();
+  arr.filter(isStep).forEach(x => { const k = String(x.parent); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(x); });
+  const out = { decide: [], doing: [], next: [], result: [], no: [], app: [] };
+  arr.filter(x => !isStep(x)).forEach(x => {
+    const ks = kids.get(String(x.id)) || [];
+    const prog = planProgress([x].concat(ks), taskById, today);
+    const pending = ks.filter(planPending).length;
+    let z;
+    if (x.sec === 'no') z = 'no';
+    else if (planPending(x) || pending) z = 'decide';
+    else if (String(x.owner || '') === PLAN_AGENT_OWNER && !x.do && !ks.length) z = 'app';
+    else if (prog.total) z = (prog.done === prog.total && !prog.unknown) ? 'result' : 'doing';
+    else if (x.status === 'done') z = 'result';
+    else z = x.sec === 'now' ? 'doing' : 'next';
+    out[z].push({ row: x, kids: ks, prog, pending });
+  });
+  out.doing.sort((a, b) => b.prog.late - a.prog.late);
+  out.result.sort((a, b) => String(b.row.closed_at || '').localeCompare(String(a.row.closed_at || '')));
+  return out;
+}
+// Цэсний тоо = ТАНЫ шийдвэр хүлээж буй санаачлага (хийх ажил тань).
+function planDecideCount() { return planBoard(planList(), [], todayStr()).decide.length; }
+function planAssSelect(x) {
+  const cur = ((x.do || {}).task || {}).assignee || '';
+  return `<label class="plan-ass">Хариуцагч<select class="ui-raw plan-ass-sel" data-plan-ass="${escapeHtml(String(x.id))}">`
+    + `<option value=""${!cur ? ' selected' : ''}>— хариуцагчгүй —</option>`
+    + TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && m.worker_type !== 'daily')
+        .map(m => personKey(m)).filter(Boolean)
+        .map(k => `<option value="${escapeHtml(k)}"${k === cur ? ' selected' : ''}>${escapeHtml(memberName(k))}</option>`).join('')
+    + `</select></label>`;
+}
+// Санаачлагын бүх хүлээгдэж буй алхмыг НЭГ баталгаагаар ажил болгоно.
+// ⛔ Жагсаалт (ажил → хариуцагч · хугацаа) батлахын ӨМНӨ ил — `showConfirm`-ийн ХАРИУГ шалгана.
+async function planApproveAll(id) {
+  if (!state.isCEO) { showToast('Зөвхөн захирал батална', 'error', 4000); return; }
+  const parent = planList().find(x => String(x.id) === String(id));
+  const steps = planList().filter(x => String(x.parent || '') === String(id) && planPending(x)
+    && x.do && PLAN_DO_KINDS[String(x.do.kind || '')]);
+  if (!parent || !steps.length) return;
+  const ok = await showConfirm(`${steps.length} алхам тус бүр ажил болж хариуцагчид очно:\n\n`
+    + steps.map(s => { const t = (s.do.task || {}); return `• ${t.title || s.title || ''} → ${t.assignee ? memberName(t.assignee) : 'хариуцагчгүй'}${t.due ? ' · ' + t.due : ''}`; }).join('\n'),
+    { okText: 'Бүгдийг батлах' });
+  if (!ok) return;
+  let n = 0;
+  for (const s of steps) {
+    try {
+      const undo = await PLAN_DO_KINDS[String(s.do.kind)].run(s.do);
+      state.plan = planList().map(x => (String(x.id) === String(s.id)
+        ? { ...x, status: 'open', done_by: 'applied', applied_at: todayStr(), undo } : x));
+      n++;
+    } catch (e) { showToast('⚠ ' + (s.title || '') + ': ' + e.message, 'error', 6000); }
+  }
+  state.plan = planList().map(x => (String(x.id) === String(id) && x.sec === 'idea' ? { ...x, sec: 'now', status: 'open' } : x));
+  try { await savePlan(); } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 6000); }
+  if (n) {
+    planNotifyAuthors(parent, '✅ Таны санал хэрэгжиж эхэллээ', `${n} ажил үүслээ: ${parent.title || ''}`);
+    showToast(`${n} ажил үүслээ`, 'success', 2500);
+  }
+  render();
+}
 function renderPlan() {
   if (state.plan === undefined) { state.plan = null; loadPlan(true).then(() => { if (state.view === 'plan') render(); }); }
   if (!state.plan) return '<div class="plan-empty">Ачаалж байна…</div>';
-  const s = planSections(planList());
-  const btn = (attr, id, label) => `<button class="btn plan-btn" data-${attr}="${escapeHtml(String(id))}">${label}</button>`;
   const today = todayStr();
-  // Хугацаа ИЛ — «хэзээ үүссэн» нь мартагдах гол шалтгаан. Хөдөлгөөнгүй болсон
-  // «одоо хийж байгаа» ажил тэмдэглэгдэнэ (⛔ чимээгүй хоцрохгүй).
-  const ageHtml = (x) => {
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+  const taskById = new Map(tasks.filter(t => t && t.id).map(t => [String(t.id), t]));
+  const b = planBoard(planList(), tasks, today);
+  const btn = (attr, id, label) => `<button class="btn plan-btn" data-${attr}="${escapeHtml(String(id))}">${label}</button>`;
+  const who = (k) => { const m = k ? findMember(k) : null; return m ? m.name : ''; };
+  // Хугацаа ИЛ — «хэзээ үүссэн» нь мартагдах гол шалтгаан. Хөдөлгөөнгүй санаачлага тэмдэглэгдэнэ.
+  const ageHtml = (x, doing) => {
     const d = planAge(x.created, today);
     if (d === null) return '';
-    const old = x.sec === 'now' && x.status !== 'done' && d >= PLAN_STALE_DAYS;
+    const old = doing && d >= PLAN_STALE_DAYS;
     return `<span class="plan-age${old ? ' plan-old' : ''}">${escapeHtml(x.created)} · ${d} хоног${old ? ' хөдөлгөөнгүй' : ''}</span>`;
   };
-  const item = (x, acts) => `<div class="plan-item">`
-    + `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
-    + `${x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : ''}`
-    + `${x.cat ? `<span class="plan-own">${escapeHtml(planCatLabel(x.cat))}</span>` : ''}`
-    + ageHtml(x) + `</div>`
-    + planFromHtml(x)
-    + `${(x.act || x.why) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : ''}`
-    + `${x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : ''}`
-    + `${x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : ''}`
-    + `${x.sec === 'idea' && x.status !== 'done' ? `<div class="plan-hint">${escapeHtml(planApproveHint(x))}</div>` : ''}`
-    + `${x.sec === 'idea' && x.status !== 'done' && x.do && x.do.kind === 'task'
-        ? `<label class="plan-ass">Хариуцагч<select class="ui-raw plan-ass-sel" data-plan-ass="${escapeHtml(String(x.id))}">`
-          + `<option value=""${!(x.do.task || {}).assignee ? ' selected' : ''}>— хариуцагчгүй —</option>`
-          + TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && m.worker_type !== 'daily')
-              .map(m => personKey(m)).filter(Boolean)
-              .map(k => `<option value="${escapeHtml(k)}"${k === (x.do.task || {}).assignee ? ' selected' : ''}>${escapeHtml(memberName(k))}</option>`).join('')
-          + `</select></label>` : ''}`
-    + `${x.closed_at ? `<div class="plan-when">✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : (x.done_by === 'applied' ? ' · хэрэгжүүлсэн' : '')}</div>` : ''}`
-    + `${acts ? `<div class="plan-acts">${acts}</div>` : ''}`
-    + `</div>`;
-  const nowActs = (x) => btn('plan-done', x.id, '✓ Дууслаа') + btn('plan-down', x.id, '↓ Хойшлуулах');
-  const nextActs = (x) => btn('plan-up', x.id, '↑ Одоо эхэлье') + btn('plan-done', x.id, '✓ Дууслаа');
-  const warn = s.now.length > PLAN_NOW_MAX
-    ? `<div class="plan-warn">⚠ ${s.now.length} ажил зэрэг эхэлсэн байна. ${PLAN_NOW_MAX}-аас олон бол аль нь ч дуусахгүй.</div>` : '';
+  const head = (x, doing) => `<div class="plan-head"><span class="plan-t">${escapeHtml(x.title || '')}</span>`
+    + (x.owner ? `<span class="plan-own">${escapeHtml(x.owner)}</span>` : '')
+    + (x.cat ? `<span class="plan-own">${escapeHtml(planCatLabel(x.cat))}</span>` : '')
+    + ageHtml(x, doing) + `</div>`;
+  // «Батлахад: …» гэсэн тайлбар зөвхөн шийдвэрийн өмнө утгатай — батлагдсаны дараа алхам нь өөрөө харагдана.
+  const body = (x) => planFromHtml(x)
+    + ((x.act || x.why) && !(planApplied(x) && /^Батлахад/.test(String(x.act || ''))) ? `<div class="plan-w">${escapeHtml(x.act || x.why)}</div>` : '')
+    + (x.gain ? `<div class="plan-gain">→ ${escapeHtml(x.gain)}</div>` : '');
+  // Нотолгоо + бүтэн судалгаа = эвхэгдэнэ (карт урт бичвэрээр дүүрэхгүй).
+  const research = (x) => {
+    const r = x.research || {};
+    const src = (Array.isArray(r.sources) ? r.sources : []).filter(s => s && /^https?:\/\//.test(String(s.u || '')));
+    if (!x.ev && !r.text && !src.length) return '';
+    return `<details class="plan-res"><summary>📄 ${r.text ? 'Судалгаа' : 'Дэлгэрэнгүй'}</summary>`
+      + (x.ev ? `<div class="plan-ev">${escapeHtml(x.ev)}</div>` : '')
+      + (r.text ? `<div class="plan-res-t">${escapeHtml(r.text)}</div>` : '')
+      + (src.length ? `<div class="plan-src">${src.map(s => `<a href="${escapeHtml(s.u)}" target="_blank" rel="noopener">${escapeHtml(s.t || s.u)}</a>`).join('')}</div>` : '')
+      + `</details>`;
+  };
+  const measure = (x, final) => {
+    const m = x.measure || {};
+    if (!m.what) return final ? '<div class="pl-meas pl-meas-none">📏 Үр дүнг хэмжих хэмжүүр тодорхойлогдоогүй</div>' : '';
+    const vd = { worked: '✅ Ажилласан', failed: '❌ Ажиллаагүй', unclear: '❔ Тодорхойгүй' }[m.verdict] || '';
+    return `<div class="pl-meas">📏 ${escapeHtml(m.what)}`
+      + (m.base ? ` · эхлэл: ${escapeHtml(m.base)}` : '')
+      + (m.result ? ` → ${escapeHtml(m.result)}` : (m.check ? ` · шалгах: ${escapeHtml(m.check)}` : ''))
+      + (vd ? ` · <b>${vd}</b>` : '') + `</div>`;
+  };
+  const ICON = { pending: '💡', no: '✕', done: '✓', late: '⚠', open: '○', gone: '—', unknown: '○' };
+  const steps = (rows) => rows.length ? `<div class="pl-steps">` + rows.map(r => {
+    const st = planStepState(r, taskById, today);
+    const t = st.task || ((r.do || {}).task) || {};
+    const meta = [who(t.assignee), String(t.due || '').slice(5, 10)].filter(Boolean).join(' · ');
+    const acts = st.k === 'pending' && r.do
+      ? planAssSelect(r) + btn('plan-apply', r.id, '✓ Батлах') + btn('plan-no', r.id, '✕')
+      : (st.k === 'pending' ? btn('plan-yes', r.id, '✓ Батлах') + btn('plan-no', r.id, '✕') : '');
+    return `<div class="pl-step pl-${st.k}"><span class="pl-ic">${ICON[st.k]}</span>`
+      + `<div class="pl-st-main"><span class="pl-st-t">${escapeHtml(t.title || r.title || '')}</span>`
+      + (meta ? `<span class="pl-st-m">${escapeHtml(meta)}</span>` : '')
+      + (st.k === 'no' && r.why ? `<span class="pl-st-m">${escapeHtml(r.why)}</span>` : '')
+      + (st.k === 'late' ? `<span class="pl-st-m pl-late-t">хугацаа хэтэрсэн</span>` : '')
+      + `</div>${acts ? `<div class="pl-st-acts">${acts}</div>` : ''}</div>`;
+  }).join('') + `</div>` : '';
+  const prog = (c) => c.prog.total
+    ? `<div class="pl-prog-row"><progress class="pl-prog" max="${c.prog.total}" value="${c.prog.done}"></progress>`
+      + `<span class="pl-prog-t">${c.prog.done}/${c.prog.total} ажил дууссан${c.prog.late ? ` · ⚠ ${c.prog.late} хоцорсон` : ''}${c.prog.unknown ? ` · ${c.prog.unknown} ажил ачаалагдаагүй` : ''}</span></div>`
+    : `<div class="pl-noprog">Ажил үүсээгүй — хариуцагч: ${escapeHtml(c.row.owner || 'тодорхойгүй')}</div>`;
+  // ① Шийдвэр — санал өөрөө эсвэл түүний алхмууд таны баталгааг хүлээж байна.
+  const decideCard = (c) => {
+    const x = c.row, own = planPending(x);
+    const acts = (own ? (x.do ? btn('plan-apply', x.id, '✓ Батлаад хэрэгжүүл') : btn('plan-yes', x.id, '✓ Батлах')) + btn('plan-no', x.id, '✕ Хийхгүй') : '')
+      + (c.pending > 1 ? btn('plan-all', x.id, `✓ Бүх алхмыг батлах (${c.pending})`) : '');
+    return `<div class="plan-item">` + head(x) + body(x) + research(x)
+      + (own ? `<div class="plan-hint">${escapeHtml(planApproveHint(x))}</div>` : '')
+      + (own && x.do && x.do.kind === 'task' ? planAssSelect(x) : '')
+      + (c.kids.length ? `<div class="pl-steps-h">Хэрэгжүүлэх алхам</div>` + steps(c.kids) : '')
+      + (acts ? `<div class="plan-acts">${acts}</div>` : '') + `</div>`;
+  };
+  // ② Хэрэгжиж буй — явц нь ажлаас.
+  const doingCard = (c) => {
+    const x = c.row;
+    const rows = (planApplied(x) && x.undo && x.undo.task_id ? [x] : []).concat(c.kids);
+    return `<div class="plan-item pl-doing${c.prog.late ? ' pl-has-late' : ''}">` + head(x, true) + body(x) + prog(c)
+      + steps(rows) + measure(x, false) + research(x)
+      + (c.prog.total ? '' : `<div class="plan-acts">${btn('plan-done', x.id, '✓ Дууслаа')}${btn('plan-down', x.id, '↓ Хойшлуулах')}</div>`)
+      + `</div>`;
+  };
+  const nextCard = (c) => `<div class="plan-item">` + head(c.row) + body(c.row) + research(c.row)
+    + `<div class="plan-acts">${btn('plan-up', c.row.id, '↑ Эхлүүлэх')}${btn('plan-done', c.row.id, '✓ Дууслаа')}</div></div>`;
+  const resultCard = (c) => {
+    const x = c.row;
+    const when = x.closed_at ? `✓ ${escapeHtml(x.closed_at)}${x.done_by === 'agent' ? ' · агент дуусгав' : (x.done_by === 'applied' ? ' · хэрэгжүүлсэн' : '')}` : '✓ Ажил дууссан';
+    const act = (x.done_by === 'applied' && x.undo && !(x.undo.task_id)) ? btn('plan-revert', x.id, '↩ Буцаах')
+      : (c.prog.total ? '' : btn('plan-reopen', x.id, '↩ Буцааж нээх'));
+    return `<div class="plan-item">` + head(x) + `<div class="plan-when">${when}</div>` + measure(x, true) + research(x)
+      + (act ? `<div class="plan-acts">${act}</div>` : '') + `</div>`;
+  };
+  const small = (c) => `<div class="plan-item">` + head(c.row) + body(c.row) + research(c.row) + `</div>`;
+  const appRow = (c) => `<div class="pl-app${c.row.status === 'done' ? ' pl-app-done' : ''}">${c.row.status === 'done' ? '✓' : '○'} ${escapeHtml(c.row.title || '')}</div>`;
+  const warn = b.doing.length > PLAN_DOING_MAX
+    ? `<div class="plan-warn">⚠ ${b.doing.length} санаачлага зэрэг явж байна. Олон ажил нэг дор эхэлбэл аль нь ч дуусахгүй — шинийг батлахаас өмнө аль нэгийг дуусгах эсвэл хойшлуул.</div>` : '';
   return `<div class="plan-wrap">`
     + `<div class="plan-top"><h2 class="plan-h1">Төлөвлөгөө</h2>`
-    + `<span class="plan-sub">Шийдвэрийг чи гаргана, бичилтийг агент хийнэ. Хийгдсэнийг нь дарж хаа.</span>`
-    + `<span class="plan-sub">Шалтгаан, тоо, дэлгэрэнгүй — хаалттай PLAN.md-д (энэ репо нийтийн).</span></div>`
-    + warn
-    + (s.idea.length ? `<div class="plan-sec plan-ideas"><div class="plan-sec-h">💡 Санал (агент · ажилтан)<span class="plan-n">${s.idea.length}</span></div>`
-        + planIdeaGroups(s.idea).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>`
-            + g.rows.map(x => item(x, (x.do ? btn('plan-apply', x.id, '✓ Батлаад хэрэгжүүл') : btn('plan-yes', x.id, '✓ Батлах')) + btn('plan-no', x.id, '✕ Хийхгүй'))).join('')).join('')
-        + `</div>` : '')
-    + `<div class="plan-sec"><div class="plan-sec-h">Одоо хийж байгаа<span class="plan-n">${s.now.length}</span></div>`
-    + (s.now.length ? s.now.map(x => item(x, nowActs(x))).join('') : '<div class="plan-empty">Одоо эхэлсэн ажил алга — доороос нэгийг дээшлүүл.</div>')
+    + `<span class="plan-sub">Санал → таны шийдвэр → ажил → үр дүн. Санал Claude болон ажилтнуудаас ирнэ. Батлахад ажил хариуцагчид очиж, явц нь ажлаас өөрөө бодогдоно.</span></div>`
+    + `<div class="plan-sec plan-ideas"><div class="plan-sec-h">① Таны шийдвэр хүлээж буй<span class="plan-n">${b.decide.length}</span></div>`
+    + (b.decide.length
+        ? planIdeaGroups(b.decide.map(c => ({ ...c, cat: c.row.cat }))).map(g => `<div class="plan-cat">${escapeHtml(g.label)}</div>` + g.rows.map(decideCard).join('')).join('')
+        : '<div class="plan-empty">✓ Шийдвэр хүлээж буй зүйл алга.</div>')
     + `</div>`
-    + `<div class="plan-sec"><div class="plan-sec-h">Дараагийнх<span class="plan-n">${s.next.length}</span></div>`
-    + (s.next.length ? s.next.map(x => item(x, nextActs(x))).join('') : '<div class="plan-empty">Хоосон.</div>')
-    + `<button class="btn plan-btn plan-add" id="plan-add">+ Нэмэх</button></div>`
-    + `<details class="plan-more"><summary>Хийхгүй гэж шийдсэн — ${s.no.length}</summary>`
-    + (s.no.length ? s.no.map(x => item(x, '')).join('') : '<div class="plan-empty">Хоосон.</div>')
-    + `</details>`
-    + `<details class="plan-more"><summary>Хаагдсан — ${s.done.length}</summary>`
-    + (s.done.length ? s.done.map(x => item(x, (x.done_by === 'applied' && x.undo ? btn('plan-revert', x.id, '↩ Буцаах') : btn('plan-reopen', x.id, '↩ Буцааж нээх')))).join('') : '<div class="plan-empty">Хоосон.</div>')
-    + `</details>`
+    + warn
+    + `<div class="plan-sec"><div class="plan-sec-h">② Хэрэгжиж буй<span class="plan-n">${b.doing.length}</span></div>`
+    + (b.doing.length ? b.doing.map(doingCard).join('') : '<div class="plan-empty">Хэрэгжиж буй санаачлага алга — доорх дараалалаас эхлүүл.</div>')
+    + `<details class="plan-more"><summary>Дараалалд — ${b.next.length}</summary>`
+    + b.next.map(nextCard).join('') + `<button class="btn plan-btn plan-add" id="plan-add">+ Нэмэх</button></details>`
+    + `</div>`
+    + `<div class="plan-sec"><div class="plan-sec-h">③ Үр дүн<span class="plan-n">${b.result.length}</span></div>`
+    + (b.result.length ? b.result.map(resultCard).join('') : '<div class="plan-empty">Дууссан санаачлага алга.</div>')
+    + `</div>`
+    + `<details class="plan-more"><summary>Хийхгүй гэж шийдсэн — ${b.no.length}</summary>`
+    + (b.no.length ? b.no.map(small).join('') : '<div class="plan-empty">Хоосон.</div>') + `</details>`
+    + `<details class="plan-more"><summary>🤖 Claude-ын аппын ажил — ${b.app.filter(c => c.row.status !== 'done').length} нээлттэй</summary>`
+    + (b.app.length ? b.app.map(appRow).join('') : '<div class="plan-empty">Хоосон.</div>') + `</details>`
     + `</div>`;
 }
 function attachPlanHandlers() {
@@ -25190,9 +25359,10 @@ function attachPlanHandlers() {
   document.querySelectorAll('[data-plan-yes]').forEach(b => b.addEventListener('click', () => planAcceptIdea(b.dataset.planYes)));
   document.querySelectorAll('[data-plan-ass]').forEach(el => el.addEventListener('change', () => planSetAssignee(el.dataset.planAss, el.value)));
   document.querySelectorAll('[data-plan-apply]').forEach(b => b.addEventListener('click', () => planApplyIdea(b.dataset.planApply)));
+  document.querySelectorAll('[data-plan-all]').forEach(b => b.addEventListener('click', () => planApproveAll(b.dataset.planAll)));
   document.querySelectorAll('[data-plan-revert]').forEach(b => b.addEventListener('click', () => planRevertIdea(b.dataset.planRevert)));
   document.querySelectorAll('[data-plan-no]').forEach(b => b.addEventListener('click', () => planRejectIdea(b.dataset.planNo)));
-    document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
+  document.querySelectorAll('[data-plan-up]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planUp, { sec: 'now' })));
   document.querySelectorAll('[data-plan-down]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planDown, { sec: 'next' })));
   document.querySelectorAll('[data-plan-reopen]').forEach(b => b.addEventListener('click', () => planSet(b.dataset.planReopen, { status: 'open', closed_at: '', done_by: '', reopened: true })));
 }

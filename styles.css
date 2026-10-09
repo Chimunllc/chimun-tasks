@@ -71,6 +71,11 @@
        өөр байрлалд шилждэг байв (2026-09-04 алдаа). */
     --otable-cols: 56px minmax(88px, 1fr) 112px 112px 104px 88px 112px;
 
+    /* Хурууны хүрэх доод хэмжээ (утас). Агуулахын ажилтан гар бээлийтэй, гадаа ажилладаг
+       тул 34px (хуучин) жижиг байв. 40 = товч, 36 = мөрийн доторх жижиг үйлдэл. */
+    --tap: 40px;
+    --tap-sm: 36px;
+
     /* NOMAAD бэлтгэлийн модалын «хүн сонгох» товчны доод өргөн — нэр багтах өргөн */
     --na-pick-w: 140px;
 
@@ -325,7 +330,7 @@
   .filter-pill {
     display: flex;
     padding: 7px 13px;
-    min-height: 34px;
+    min-height: var(--tap);
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -6309,7 +6314,8 @@ details.recon-fold[open] > summary::before { content: '▾'; }
      Гарчиг 18 · картын гарчиг 15 · үндсэн текст 14 · туслах 13 · жижиг тэмдэг 11-12 */
   /* ── Товчнууд: харагдах хэмжээ жижиг ч дарах тал (touch target) хангалттай ──
      (хуучин "бүх button 16px" дүрэм халагдсан — товч бүр өөрийн хэмжээгээр) */
-  .btn { min-height: 34px; }
+  .btn { min-height: var(--tap); min-width: var(--tap-sm); }
+  .btn.btn-sm { min-height: var(--tap-sm); }
   .br-act { font-size: 12px !important; padding: 5px 12px !important; min-height: 28px; }
   .task-title { font-size: 15px !important; line-height: 1.4 !important; }
   .task-row .assignee, .task-meta, .task-row .meta { font-size: 13px !important; }

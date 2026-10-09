@@ -8058,9 +8058,21 @@ need(['orderCustType']);
     // Зөвшөөрөл = ЗӨВХӨН захирал
     {
       const body = src.slice(src.indexOf('async function openOrderCreditModal'), src.indexOf('async function appendOrderNoteTo'));
-      ok(/state\.isCEO/.test(body), 'ИНВАРИАНТ: дараа төлбөрийг зөвхөн захирал зөвшөөрнө');
+      ok(/canCreditOrder\(\)/.test(body), 'ИНВАРИАНТ: дараа төлбөрийг зөвхөн ЭРХТЭЙ хүн зөвшөөрнө');
       ok(/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/.test(body), 'ИНВАРИАНТ: төлөх огноо заавал');
-      ok(/const ok = await showConfirm\(/.test(body) && /if \(!ok\) return;/.test(body), 'дараа төлбөр: цуцлахад баталгаажуулалт');
+      // ⛔ Зөвшөөрлийг УСТГАХ зам байхгүй — устгавал авлага чимээгүй алга болно
+      ok(!/replace\(_CRED_RE, ''\)[^+]*;\s*$/m.test(body), 'ИНВАРИАНТ: зөвшөөрлийг устгах зам байхгүй');
+      ok(/Хугацаа сунгах|хугацаа сунгав/i.test(body), 'дараа төлбөр: зөвхөн хугацаа сунгана');
+    }
+    {
+      // Эрх = ИЛ олгосон бол (can() нь тохируулаагүй үед зөвшөөрдөг тул болохгүй)
+      const _g = n => vm.runInContext(n, sandbox);
+      const fn = src.slice(src.indexOf('function canCreditOrder'), src.indexOf('function canEditProducts'));
+      ok(/capValue\('orders\.credit'\) === true/.test(fn), 'ИНВАРИАНТ: дараа төлбөрийн эрх зөвхөн ил олгосноор');
+      ok(_g('DENY_DEFAULT_ACTIONS').has('orders.credit'), 'эрх: orders.credit өгөгдмөлөөр ХОРИГ');
+      ok(_g('MANAGED_ACTIONS').has('orders.credit'), 'эрх: orders.credit эрхийн матрицад удирдагдана');
+      ok(_g('PERM_MENUS').find(m => m.key === 'orders').actions.some(a => a.key === 'orders.credit'),
+         'эрх: чагт захиалгын цэсэнд гарна');
     }
   }
 

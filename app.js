@@ -6738,8 +6738,8 @@ function openItemReconcile() {
     const nm = u.sku ? ((p && p.name) || u.sku) : '🚫 бараа биш';
     const warn = u.share >= 0.15 && u.sku;
     return `<div class="rec-used-row${warn ? ' rec-used-warn' : ''}">
-      <span class="rec-used-name">${escapeHtml(u.label)} <span style="color:var(--muted);">→</span> <b>${escapeHtml(nm)}</b></span>
-      <span class="rec-meta">${u.lines} мөр · ${u.qty}ш · <b>${money(u.amount)}</b>${warn ? ` · <b style="color:var(--danger);">нийт дүнгийн ${Math.round(u.share * 100)}%</b>` : ''}</span>
+      <span class="rec-used-name">${escapeHtml(u.label)} <span class="rec-arrow">→</span> <b>${escapeHtml(nm)}</b></span>
+      <span class="rec-meta">${u.lines} мөр · ${u.qty}ш · <b>${money(u.amount)}</b>${warn ? ` · <b class="rec-share">нийт дүнгийн ${Math.round(u.share * 100)}%</b>` : ''}</span>
       <button type="button" class="btn rec-undo" data-key="${escapeHtml(u.key)}">↩ Буцаах</button>
     </div>`;
   }).join('');
@@ -6760,12 +6760,9 @@ function openItemReconcile() {
       </div>
     </div>`;
   }).join('');
-  modal.innerHTML = `<div class="modal" style="max-width:860px;width:96%;max-height:92vh;overflow:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
-      <h2 style="margin:0;font-size:17px;">🔗 Барааны тулгалт</h2>
-      <button class="btn" id="rec-close" style="padding:5px 10px;">✕</button>
-    </div>
-    <p style="font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 10px;">
+  modal.innerHTML = `<div class="modal rec-modal">
+    <div class="modal-head"><b>🔗 Барааны тулгалт</b><button class="modal-x" id="rec-close">✕</button></div>
+    <p class="rec-intro">
       Захиалгын мөрийг бараатай нэг удаа холбоно — холбоос барааны <b>кодон дээр</b> тогтох тул
       дараа нь нэр, үнэ өөрчлөгдөхөд <b>эвдрэхгүй</b>. Автоматаар таамаглахгүй: доорх саналуудаас чи сонгоно.
     </p>
@@ -6777,16 +6774,16 @@ function openItemReconcile() {
       <span>🔒 <b>${nFrozen}</b> нэр одоо зөвхөн <b>нэрээрээ</b> таарч байна — бараа нэрээ соливол тасарна.</span>
       <button class="btn btn-primary" id="rec-freeze-btn">Бэхжүүлэх (${nFrozen})</button>
     </div>` : ''}
-    <div id="rec-list">${rowsHtml || '<div style="padding:20px;text-align:center;color:var(--muted);">🎉 Бүх мөр тулгагдсан байна.</div>'}</div>
-    ${usedRows ? `<div style="margin-top:14px;border-top:2px solid var(--border);padding-top:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-        <b style="font-size:13.5px;">✔ Тулгасан (${used.rows.length})</b>
-        <span style="font-size:11.5px;color:var(--muted);">Буруу холбосон бол буцаана — мөрүүд нь дахин жагсаалтад гарна.</span>
+    <div id="rec-list">${rowsHtml || '<div class="rec-empty">🎉 Бүх мөр тулгагдсан байна.</div>'}</div>
+    ${usedRows ? `<div class="rec-used-sec">
+      <div class="rec-used-head">
+        <b class="rec-used-title">✔ Тулгасан (${used.rows.length})</b>
+        <span class="rec-meta">Буруу холбосон бол буцаана — мөрүүд нь дахин жагсаалтад гарна.</span>
       </div>
       ${bigWarn}
       <div id="rec-used">${usedRows}</div>
     </div>` : ''}
-    ${st.groups.length > 80 ? `<div style="font-size:11.5px;color:var(--muted);padding:8px 2px;">…дээд 80 нэр харуулав (дүнгээр). Холбох тусам үлдсэн нь гарч ирнэ.</div>` : ''}
+    ${st.groups.length > 80 ? `<div class="rec-meta rec-more">…дээд 80 нэр харуулав (дүнгээр). Холбох тусам үлдсэн нь гарч ирнэ.</div>` : ''}
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();

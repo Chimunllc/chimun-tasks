@@ -28922,8 +28922,8 @@ function openStageAdvanceModal(oid, to) {
     <div id="rc-warn" class="rc-warn" hidden></div>`) : '';
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
-  modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">${escapeHtml(act.label)} · #${o.number ?? ''}</h2><button class="btn" id="sa-close" style="padding:5px 10px;">✕</button></div>
+  modal.innerHTML = `<div class="modal sa-modal">
+    <div class="modal-head"><b>${escapeHtml(act.label)} · #${o.number ?? ''}</b><button class="btn modal-x" id="sa-close">✕</button></div>
     ${needPhoto ? _sec('📷', stageIsShowcase(act.key) ? 'Угсарсан байдлын зураг' : 'Гүйцэтгэлийн зураг', true, stagePhotoHint(act.key), `
       <div id="sa-photos" class="sa-ph-grid"></div>
       <div class="sa-ph-row">
@@ -28967,7 +28967,7 @@ function openStageAdvanceModal(oid, to) {
         <button type="button" class="btn sa-skip-go" id="sa-skip-go" disabled>⏭ Алгасаад үргэлжлүүлэх</button>
       </div>
     </div>` : ''}
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;"><button class="btn" id="sa-cancel">Болих</button><button class="btn btn-primary" id="sa-submit" disabled>✓ Баталгаажуулах</button></div>
+    <div class="modal-foot modal-foot-r"><button class="btn" id="sa-cancel">Болих</button><button class="btn btn-primary" id="sa-submit" disabled>✓ Баталгаажуулах</button></div>
   </div>`;
   document.body.appendChild(modal);
   const $ = s => modal.querySelector(s);
@@ -29018,9 +29018,9 @@ function openStageAdvanceModal(oid, to) {
     const w = modal.querySelector('#rc-warn');
     if (w) {
       w.hidden = !sh.length;
-      const _liable = (!_isPickup && _prevPick && _driverBy) ? `<br><span style="font-weight:700;">🔴 Замд дутсан/эвдэрсэн — жолооч <b>${escapeHtml((typeof memberName === 'function' ? memberName(_driverBy) : '') || _driverBy)}</b> хариуцна.</span>` : '';
+      const _liable = (!_isPickup && _prevPick && _driverBy) ? `<br><span class="rc-liable">🔴 Замд дутсан/эвдэрсэн — жолооч <b>${escapeHtml((typeof memberName === 'function' ? memberName(_driverBy) : '') || _driverBy)}</b> хариуцна.</span>` : '';
       w.innerHTML = sh.length
-        ? `⚠ <b>${sh.reduce((a, x) => a + x.miss, 0)}ш</b> дутуу / эвдэрсэн: ${sh.map(x => escapeHtml(x.name) + '×' + x.miss).join(', ')}${_liable}<br><span style="font-weight:400;">Эдгээр нөөцөөс хасагдаж, засварын жагсаалтад орно. Доор <b>шалтгаан бичнэ үү</b>.</span>`
+        ? `⚠ <b>${sh.reduce((a, x) => a + x.miss, 0)}ш</b> дутуу / эвдэрсэн: ${sh.map(x => escapeHtml(x.name) + '×' + x.miss).join(', ')}${_liable}<br><span class="rc-plain">Эдгээр нөөцөөс хасагдаж, засварын жагсаалтад орно. Доор <b>шалтгаан бичнэ үү</b>.</span>`
         : '';
     }
   };
@@ -29050,7 +29050,7 @@ function openStageAdvanceModal(oid, to) {
   }
   if (needPhoto) {
     const renderPhotos = () => {
-      $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
+      $('#sa-photos').innerHTML = photos.map((u, i) => `<div class="sa-thumb"><img src="${escapeHtml(driveThumbUrl(u, 200))}"><button data-prm="${i}" type="button" class="sa-rm">×</button></div>`).join('');
       $('#sa-photos').querySelectorAll('[data-prm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.prm, 1); shots.splice(+b.dataset.prm, 1); renderPhotos(); validate(); });
     };
     /* ⛔ ХОЁР ТОВЧ (2026-10-05, CEO): `capture` нь утсанд КАМЕРЫГ ШУУД нээдэг

@@ -110,6 +110,7 @@
     --rfd-modal-w: 430px;     /* ↩ Буцаан олгох */
     --onote-modal-w: 480px;   /* 📝 Захиалгын тэмдэглэл */
     --dmg-modal-w: 460px;     /* Буцаалт · эвдрэл бүртгэх */
+    --sa-modal-w: 460px;      /* Дамжлага баталгаажуулах */
     --oscan-modal-w: 460px;   /* 📷 Захиалгын бараа скан */
     --ec-modal-w: 640px;      /* 📄 Хөдөлмөрийн гэрээ бэлдэх — 2 баганатай форм */
 
@@ -8702,12 +8703,14 @@ select.no-asar-len {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--rf-thumb-min), 1fr));
   gap: var(--space-2); margin-bottom: var(--space-2);
 }
-.rf-thumb {
+/* ⚠ Зургийн хавтан + × товч нь засварын (`rf-`) ба дамжлагын (`sa-`) цонхонд
+   ЯГ ИЖИЛ — дүрмийг давтахгүй, сонгогчийг нэмж хуваалцана. */
+.rf-thumb, .sa-thumb {
   position: relative; aspect-ratio: 1; border-radius: var(--r-md);
   overflow: hidden; border: 1px solid var(--border);
 }
-.rf-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.modal .rf-rm {
+.rf-thumb img, .sa-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.modal .rf-rm, .modal .sa-rm {
   position: absolute; top: 2px; right: 2px;
   width: var(--rf-rm); height: var(--rf-rm);
   border: none; border-radius: var(--r-full);
@@ -9014,6 +9017,14 @@ select.no-asar-len {
 .sa-help-chip { cursor: pointer; font-size: var(--fs-sm); padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); user-select: none; }
 .sa-help-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 .sa-help-chip.sa-help-on { border-color: var(--primary); }
+/* Цонхны бүрхүүл — өмнө нь inline style="max-width:…" байв.
+   ⚠ ХОЁР класс (`.modal.sa-modal`) — мобайлын `.modal { max-width:100% }`-аас давна
+     (inline загвар яг үүнийг давдаг байсан тул төрх хэвээр үлдэнэ). */
+.modal.sa-modal { max-width: var(--sa-modal-w); width: 96%; max-height: 92vh; overflow: auto; }
+/* Дутуу барааны анхааруулга: бүхэл тууз нь 700 жинтэй тул дотор нь
+   хариуцлагын мөр тод, тайлбар хэвийн жинтэй үлдэнэ. */
+.rc-warn .rc-liable { font-weight: 700; }
+.rc-warn .rc-plain { font-weight: 400; }
 
 /* ─── Төлбөр бүртгэх цонх (2026-10-04) — дамжлагын цонхтой ижил хэл ──────
    Inline загвар, хатуу px фонт бүгд класс/токен болов. */
@@ -9061,6 +9072,8 @@ select.no-asar-len {
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); font-size: var(--fs-lg); }
 .modal-x { flex: none; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: var(--r-md); padding: 4px 10px; cursor: pointer; font-size: var(--fs-base); }
 .modal-foot { margin-top: var(--space-3); }
+/* Товчны эгнээ баруун талдаа — цонх бүрт давтагддаг хэв маяг (Болих / Батлах) */
+.modal-foot-r { display: flex; gap: var(--space-2); justify-content: flex-end; }
 /* Дамжлагын нэр засах мөр + схемийн толгойн товч */
 /* Схем дотор шууд засах (CEO) — тусдаа тохиргооны цонх байхгүй */
 .pm-st.ed { border-color: var(--primary); border-width: 2px; background: var(--panel); }

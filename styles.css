@@ -5345,6 +5345,20 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .na-assign-hint { color: var(--muted); font-weight: 500; }
 .nomaad-item-assign:hover .na-assign-hint { color: var(--primary); }
 
+/* ─── Нэмэлт үйлчилгээний задаргааны мөр (`attachNomaadAnalytics`) ───
+   Мөр дээр дарахад доторх үйлчилгээнүүд нээгдэнэ. Нэр нь урт байдаг тул
+   ellipsis-ээр таслагдаж, дүн нь баруун талдаа БҮТНЭЭР үлдэнэ (`nowrap`). */
+.na-ad-row {
+  display: flex; justify-content: space-between; gap: var(--space-3);
+  font-size: var(--fs-sm); padding: 6px var(--space-2);
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.na-ad-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.na-ad-co { color: var(--muted); }
+.na-ad-q { color: var(--primary); }
+.na-ad-sum { white-space: nowrap; }
+.na-ad-empty { color: var(--muted); font-size: var(--fs-sm); padding: 5px var(--space-2); }
+
 /* ─── NOMAAD үнийн санал — Үүсгэх / Засах модал (mobile-first) ─── */
 .naq-modal { max-width: 640px; }
 .naq-sub { font-size: 12px; color: var(--muted); margin: 0 0 14px; }

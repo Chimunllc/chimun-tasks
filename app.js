@@ -20681,10 +20681,10 @@ function attachNomaadAnalytics() {
       const [dk, k] = key.split('::');
       const rows = (state._naAddonDetail && state._naAddonDetail[dk] && state._naAddonDetail[dk][k]) || [];
       detail.innerHTML = rows.length
-        ? rows.map(d => `<div data-open-quote="${escapeHtml(d.quote || '')}" title="Дарж захиалгыг нээж ангилна" style="display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;">
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(d.name)}${d.company ? ` <span style="color:var(--muted);">· ${escapeHtml(d.company)}</span>` : ''}${d.quote ? ` <span style="color:var(--primary);">#${escapeHtml(d.quote)}</span>` : ''}</span>
-            <b style="white-space:nowrap;">${fmtMoney(d.sum)}</b></div>`).join('')
-        : '<div style="color:var(--muted);font-size:11.5px;padding:5px 8px;">Задаргаа алга.</div>';
+        ? rows.map(d => `<div class="na-ad-row" data-open-quote="${escapeHtml(d.quote || '')}" title="Дарж захиалгыг нээж ангилна">
+            <span class="na-ad-nm">${escapeHtml(d.name)}${d.company ? ` <span class="na-ad-co">· ${escapeHtml(d.company)}</span>` : ''}${d.quote ? ` <span class="na-ad-q">#${escapeHtml(d.quote)}</span>` : ''}</span>
+            <b class="na-ad-sum">${fmtMoney(d.sum)}</b></div>`).join('')
+        : '<div class="na-ad-empty">Задаргаа алга.</div>';
       detail.querySelectorAll('[data-open-quote]').forEach(r => r.addEventListener('click', ev => {
         ev.stopPropagation(); const q = r.dataset.openQuote; if (q) openNomaadEditModal(q);
       }));

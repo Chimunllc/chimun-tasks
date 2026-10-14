@@ -8411,8 +8411,15 @@ need(['orderCustType']);
      'ИНВАРИАНТ: зураг уншиж чадаагүй бол хоосон гэж үзэхгүй');
   ok(/state\.scSnapsOk && state\.scSnaps && !state\.scSnaps\[today\]/.test(sh), 'ИНВАРИАНТ: ачаалагдаагүй үед зураг бичихгүй');
   // Дэлгэц ҮНЭХЭЭР зурагдана
+  // ⛔ ХУГАЦААНААС ХАМААРСАН ФИКСТУР БИЧИХГҮЙ — scorecardHtml() нь БОДИТ өнөөдрөөр
+  // (todayStr()) бодогддог тул огноог хатуу бичвэл тест хэдхэн хоногийн дараа ӨӨРӨӨ
+  // УНАЖ main-ийг улаан болгоно (2026-10-12…10-14-нд яг ингэж шөнийн агентын PR-ууд
+  // «CI улаан» гээд merge хийгдэхгүй үлдсэн). Иймд ОДООГИЙН долоо хоногоос ухраан угсарна.
+  const hw1 = F.scWeekStart(F.todayStr()), hw0 = F.addDays(hw1, -7);
+  const hOrders = [].concat(mk(2, hw0, 100000), mk(4, F.addDays(hw0, -7), 100000),
+    mk(4, F.addDays(hw0, -14), 100000), mk(4, F.addDays(hw0, -21), 100000), mk(4, F.addDays(hw0, -28), 100000));
   vm.runInContext('var __scS = [state.isCEO, state.appOrders, state.scSnaps, state.scSnapsOk]; state.isCEO = true; state.scSnapsOk = false; state.scSnaps = {}; state.appOrders = '
-    + JSON.stringify(orders) + ';', sandbox);
+    + JSON.stringify(hOrders) + ';', sandbox);
   const html = F.scorecardHtml();
   ok(html.includes('📊 Долоо хоногийн тоо') && /data-sc-go="orders"/.test(html) && html.includes('Шинэ захиалга'), 'самбар: дэлгэц зурагдана');
   ok(/wsc-bad/.test(html), 'самбар: муудсан тоо улаанаар');

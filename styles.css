@@ -31,6 +31,7 @@
     --warn:   #f59e0b;  --warn-soft:   #fffbeb;
     --ok:     #10b981;  --ok-soft:     #ecfdf5;
     --info:   #3b82f6;  --info-soft:   #eff6ff;
+    --on-danger: #ffffff;         /* дүүргэсэн ДАНЖЕР гадаргуу дээрх бичвэр */
 
     /* ── Accent (модуль ялгах) ── */
     --accent-blue:   #5e6ad2;
@@ -94,6 +95,9 @@
 
     /* Аппын алдааны цонх — нэг баганатай жагсаалт + табууд */
     --aerr-modal-w: 560px;
+
+    /* 🔁 Давхар импортын цонх — бүлэг + «үлдэх/устах» мөрүүд, нэг багана */
+    --di-modal-w: 520px;
 
     /* Барааны модалын өргөн — 4 хэсэгт менюгээр хуваагдсан тул нарийн байж болно */
     --prod-modal-w: 540px;
@@ -6922,6 +6926,33 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .di-row input { width: 16px; height: 16px; flex: 0 0 auto; }
 .di-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .di-row b { white-space: nowrap; color: var(--danger); }
+/* ── Цонхны их бие (openFinDupImports) — 14 inline style-ыг класс болгов (2026-10-12).
+   ⚠ Өргөн нь ХОЁР классаар (`.modal.di-modal`) — мобайлын `.modal { max-width:100% }`-аас давна.
+   ⚠ h2 ба товчны `padding`/`font-size` КЛАСС АВАХГҮЙ: `.modal h2` ба
+     `.modal .btn:not(.ui-raw)` хоёр breakpoint-д ч тэднийг ХҮЧЭЭР
+     тогтоодог тул хуучин inline style ямар ч нөлөөгүй байсан — класс нэмбэл
+     шууд дарагдах ҮХМЭЛ дүрэм болно (`.prc-*` блокийн ижил тэмдэглэлийг үз).
+     Товчнуудаас зөвхөн `flex` нь жинхэнэ нөлөөтэй. */
+.modal.di-modal { max-width: var(--di-modal-w); }
+.di-note { font-size: var(--fs-sm); color: var(--muted);
+  margin: var(--space-2) 0 var(--space-3); line-height: 1.5; }
+/* Товчны эгнээ: «Бүгдийг сонгох/Цэвэрлэх» ба «Болих/Устгах» — хоёулаа тэнцүү хуваана */
+.di-tools, .di-acts { display: flex; }
+.di-tools { gap: var(--space-2); margin-bottom: var(--space-2); }
+.di-acts { gap: var(--space-3); margin-top: var(--space-4); }
+.di-tools .btn, .di-acts .btn { flex: 1; }
+/* ⚠ `:hover` нь ЗААВАЛ — `.btn:hover` (0,2,0) нь `.di-del` (0,1,0)-ээс онцлог
+   тул хоёр дахь дүрэмгүй бол хулгана хүрэхэд улаан товч саарал болно (хуучин
+   inline style `.btn:hover`-ээс давдаг байсан). */
+.di-del, .di-del:hover { background: var(--danger); color: var(--on-danger); border: none; }
+.di-list { max-height: 46vh; overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--r-lg); }
+/* Нийлбэрийн мөр — зүүнд тоо, баруунд устах дүн */
+.di-sum { display: flex; justify-content: space-between;
+  font-weight: 700; font-size: var(--fs-md); margin-top: var(--space-3); }
+.di-amt { color: var(--danger); }
+.di-empty { text-align: center; padding: var(--space-5); color: var(--muted); }
+.di-empty-act { text-align: center; margin-top: var(--space-3); }
 /* Цалингийн давхцал аудитын мөр (openFinDupAudit) — «хуулгад бий/алга» шошготой.
    ⚠ `.modal label` нь `display:block` тавьдаг тул сонгогч нь ХОЁР класстай байх
    ёстой (`.modal .fd-row`) — эс бөгөөс мөр эвдэрч чагт нь тусдаа мөр болно. */

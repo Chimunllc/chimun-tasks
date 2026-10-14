@@ -113,6 +113,7 @@
     --sa-modal-w: 460px;      /* Дамжлага баталгаажуулах */
     --oscan-modal-w: 460px;   /* 📷 Захиалгын бараа скан */
     --ec-modal-w: 640px;      /* 📄 Хөдөлмөрийн гэрээ бэлдэх — 2 баганатай форм */
+    --di-modal-w: 520px;      /* 🔁 Давхар импорт — бүлэг + дотор нь мөрүүд */
 
     /* ── РАДИУС ── */
     --r-sm: 6px;
@@ -6922,6 +6923,31 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .di-row input { width: 16px; height: 16px; flex: 0 0 auto; }
 .di-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .di-row b { white-space: nowrap; color: var(--danger); }
+/* Модалын бүрхүүл — өмнө нь inline style-аар бичигддэг байв (дизайны гэрээ).
+   ⚠ Сонгогч бүр `.modal` угтвартай: `.modal h2` (0,1,1) ба `.btn` (0,1,0)-ийн
+     анхдагчийг давах ёстой, эс бөгөөс гарчгийн хэмжээ/товчны суналт нь
+     inline байхдаа ажиллаж байсан шигээ тусахгүй. */
+.modal.di-modal { max-width: var(--di-modal-w); }
+.modal .di-h { font-size: var(--fs-lg); }
+.modal .di-note { margin: 6px 0 10px; font-size: var(--fs-sm);
+  line-height: 1.5; color: var(--muted); }
+/* «Бүгдийг сонгох / Цэвэрлэх» — эгнээг тэнцүү хуваана. Доторх padding/font-size
+   нь мобайл ба desktop хоёрын `.modal .btn:not(.ui-raw)` flatten дүрмээр
+   дарагдана (inline байхад ч яг тэр дүрэм л ялж байсан — зан чанар хөдлөөгүй).
+   ⚠ Тайлбарт хүчингүй болгогчийн нэрийг БҮҮ бич — `tools/debt-check.js` нь
+     эх кодоос тоолдог тул тайлбар ч өрийн тоог өсгөнө. */
+.modal .di-tools { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
+.modal .di-tools .btn { flex: 1; padding: 7px; font-size: var(--fs-xs); }
+.modal .di-list { max-height: 46vh; overflow: auto;
+  border: 1px solid var(--border); border-radius: 10px; }
+.modal .di-tot { display: flex; justify-content: space-between;
+  margin-top: 10px; font-size: var(--fs-md); font-weight: 700; }
+.modal .di-sum { color: var(--danger); }
+.modal .di-foot { display: flex; gap: 10px; margin-top: var(--space-4); }
+.modal .di-foot .btn { flex: 1; padding: 11px; }
+.modal .di-del { background: var(--danger); color: #fff; border: none; font-weight: 700; }
+.modal .di-empty { padding: var(--space-5); text-align: center; color: var(--muted); }
+.modal .di-empty-foot { margin-top: var(--space-3); text-align: center; }
 /* Цалингийн давхцал аудитын мөр (openFinDupAudit) — «хуулгад бий/алга» шошготой.
    ⚠ `.modal label` нь `display:block` тавьдаг тул сонгогч нь ХОЁР класстай байх
    ёстой (`.modal .fd-row`) — эс бөгөөс мөр эвдэрч чагт нь тусдаа мөр болно. */

@@ -6922,6 +6922,28 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .di-row input { width: 16px; height: 16px; flex: 0 0 auto; }
 .di-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .di-row b { white-space: nowrap; color: var(--danger); }
+/* Модалын бүрхүүл (openFinDupImports) — тайлбар · хэрэгсэл · жагсаалт · дүн · үйлдэл.
+   Өмнө нь 14 inline style= байсныг класс болгов (2026-10-13).
+   ⚠ h2 класс АВАХГҮЙ — `.modal h2` дүрэм хэмжээ/захыг аль хэдийн хүчээр тогтоодог
+     тул хуучин inline `font-size` нь ямар ч нөлөөгүй үхмэл дүрэм байсан.
+   ⚠ Өргөн нь ХОЁР классаар (`.modal.di-modal`) — мобайлын `.modal{max-width:100%}`-аас давна.
+   ⚠ Эдгээр хэв маяг цалингийн давхцал аудитын модалд (`.fd-*`) ч ижил байдаг —
+     тэр функцэд хүрэх үед эндээс дахин хэрэглэ, шинээр бүү бич. */
+.modal.di-modal { max-width: 520px; }
+.di-note { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5;
+  margin: var(--space-1) 0 var(--space-3); }
+.di-tools { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
+/* Хэрэгслийн товч: эгнээг тэнцүү дүүргэнэ, фонт нь жижиг */
+.di-tools .btn { flex: 1; padding: var(--space-2); font-size: var(--fs-xs); }
+.di-list { max-height: 46vh; overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--r-lg); }
+.di-tot { display: flex; justify-content: space-between;
+  font-weight: 700; font-size: var(--fs-md); margin-top: var(--space-3); }
+.di-sum { color: var(--danger); }
+.di-acts { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
+.di-acts .btn { flex: 1; padding: var(--space-3); }
+.di-empty { text-align: center; padding: var(--space-5); color: var(--muted); }
+.di-empty-act { text-align: center; margin-top: var(--space-3); }
 /* Цалингийн давхцал аудитын мөр (openFinDupAudit) — «хуулгад бий/алга» шошготой.
    ⚠ `.modal label` нь `display:block` тавьдаг тул сонгогч нь ХОЁР класстай байх
    ёстой (`.modal .fd-row`) — эс бөгөөс мөр эвдэрч чагт нь тусдаа мөр болно. */

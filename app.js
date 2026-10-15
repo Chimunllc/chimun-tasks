@@ -39103,14 +39103,14 @@ async function openFinDupImports() {
   const grp = (g, gi) => `<div class="di-g">
       <div class="di-g-h">✓ үлдэнэ · ${escapeHtml(String(g.keep.purpose || g.keep.beneficiary || '').slice(0, 46))} <b>${fmtMoney(g.keep.amount)}</b></div>
       ${g.drop.map((r, di) => line(r, gi, di)).join('')}</div>`;
-  m.innerHTML = `<div class="modal" style="max-width:520px;">
-    <h2 style="font-size:16px;">🔁 Давхар импорт — ${escapeHtml(month)}</h2>
-    <div style="font-size:12px;color:var(--muted);margin:6px 0 10px;line-height:1.5;">Нэг банкны мөр хоёр удаа бүртгэгдсэн бол хуулга давхар орсон гэсэн үг. <b>✓ үлдэнэ</b> гэсэн мөр хадгалагдана (ангилагдсан нь эсвэл эрт орсон нь), доорх чагттай мөрүүд устана.<br>⚠ Ижил өдөр ижил дүнтэй <b>хоёр бодит гүйлгээ</b> ч ийм харагддаг — устгахаас өмнө хараарай.</div>
-    ${groups.length ? `<div style="display:flex;gap:8px;margin-bottom:8px;"><button id="di-all" class="btn" style="flex:1;padding:7px;font-size:11.5px;">Бүгдийг сонгох</button><button id="di-none" class="btn" style="flex:1;padding:7px;font-size:11.5px;">Цэвэрлэх</button></div>
-      <div style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:10px;">${groups.map(grp).join('')}</div>
-      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-top:10px;"><span id="di-cnt">${totRows} мөр сонгосон</span><span id="di-sum" style="color:var(--danger);">${fmtMoney(totAmt)}</span></div>
-      <div style="display:flex;gap:10px;margin-top:16px;"><button id="di-cancel" class="btn" style="flex:1;padding:11px;">Болих</button><button id="di-del" class="btn" style="flex:1;padding:11px;background:var(--danger);color:#fff;border:none;font-weight:700;">Сонгосныг устгах</button></div>`
-      : `<div style="text-align:center;padding:24px;color:var(--muted);">✅ ${escapeHtml(month)}-д давхар импорт алга — цэвэрхэн.</div><div style="text-align:center;margin-top:12px;"><button id="di-cancel" class="btn">Хаах</button></div>`}
+  m.innerHTML = `<div class="modal di-modal">
+    <h2>🔁 Давхар импорт — ${escapeHtml(month)}</h2>
+    <div class="di-note">Нэг банкны мөр хоёр удаа бүртгэгдсэн бол хуулга давхар орсон гэсэн үг. <b>✓ үлдэнэ</b> гэсэн мөр хадгалагдана (ангилагдсан нь эсвэл эрт орсон нь), доорх чагттай мөрүүд устана.<br>⚠ Ижил өдөр ижил дүнтэй <b>хоёр бодит гүйлгээ</b> ч ийм харагддаг — устгахаас өмнө хараарай.</div>
+    ${groups.length ? `<div class="di-tools"><button id="di-all" class="btn">Бүгдийг сонгох</button><button id="di-none" class="btn">Цэвэрлэх</button></div>
+      <div class="di-list">${groups.map(grp).join('')}</div>
+      <div class="di-tot"><span id="di-cnt">${totRows} мөр сонгосон</span><span id="di-sum" class="di-tot-v">${fmtMoney(totAmt)}</span></div>
+      <div class="di-acts"><button id="di-cancel" class="btn">Болих</button><button id="di-del" class="btn btn-danger">Сонгосныг устгах</button></div>`
+      : `<div class="di-empty">✅ ${escapeHtml(month)}-д давхар импорт алга — цэвэрхэн.</div><div class="di-empty-act"><button id="di-cancel" class="btn">Хаах</button></div>`}
   </div>`;
   document.body.appendChild(m);
   requestAnimationFrame(() => m.classList.add('open'));

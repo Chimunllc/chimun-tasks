@@ -113,6 +113,7 @@
     --sa-modal-w: 460px;      /* Дамжлага баталгаажуулах */
     --oscan-modal-w: 460px;   /* 📷 Захиалгын бараа скан */
     --ec-modal-w: 640px;      /* 📄 Хөдөлмөрийн гэрээ бэлдэх — 2 баганатай форм */
+    --di-modal-w: 520px;      /* 🔁 Давхар импорт — бүлэгтэй жагсаалт */
 
     /* ── РАДИУС ── */
     --r-sm: 6px;
@@ -6922,6 +6923,28 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .di-row input { width: 16px; height: 16px; flex: 0 0 auto; }
 .di-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .di-row b { white-space: nowrap; color: var(--danger); }
+/* Модалын бүрхүүл (openFinDupImports). Өмнө нь 14 inline style= байсныг класс болгов.
+   ⚠ Өргөн нь ХОЁР классаар (`.modal.di-modal`) — мобайлын `.modal { max-width:100% }`-аас давна.
+   ⚠ h2 класс АВАХГҮЙ — `.modal h2` дүрэм хэмжээг хүчээр тогтоодог тул хуучин
+     inline `font-size` ямар ч нөлөөгүй байсан (класс нэмбэл үхмэл дүрэм болно).
+   ⚠ Товчны padding/font-size-ыг ЭНД БҮҮ бич — мобайлын `.modal .btn:not(.ui-raw)`
+     flatten дүрэм тэдгээрийг хүчээр дардаг (хуучин inline утга ч ингэж үхмэл байв).
+     Зөвхөн `flex` нь үнэхээр хэрэгждэг. */
+.modal.di-modal { max-width: var(--di-modal-w); }
+.di-note { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5;
+  margin: var(--space-2) 0 var(--space-3); }
+.di-tools { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
+.di-tools .btn { flex: 1; }
+.di-list { max-height: 46vh; overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--r-lg); }
+/* Сонгосон мөрийн тоо ↔ нийт дүн. Дүн нь устах мөнгө тул улаан. */
+.di-tot { display: flex; justify-content: space-between;
+  font-weight: 700; font-size: var(--fs-md); margin-top: var(--space-3); }
+.di-tot-v { color: var(--danger); }
+.di-acts { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
+.di-acts .btn { flex: 1; }
+.di-empty { text-align: center; padding: var(--space-5); color: var(--muted); }
+.di-empty-act { text-align: center; margin-top: var(--space-3); }
 /* Цалингийн давхцал аудитын мөр (openFinDupAudit) — «хуулгад бий/алга» шошготой.
    ⚠ `.modal label` нь `display:block` тавьдаг тул сонгогч нь ХОЁР класстай байх
    ёстой (`.modal .fd-row`) — эс бөгөөс мөр эвдэрч чагт нь тусдаа мөр болно. */

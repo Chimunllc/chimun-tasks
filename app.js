@@ -40559,19 +40559,19 @@ async function openVatReportModal() {
     const cands = vatCandidateOrders();
     const scored = cands.map(c => ({ c, s: vatAutoScore(rec, c) })).filter(x => !vatCandFull(x.c)).sort((a, b) => b.s - a.s);
     const pov = document.createElement('div');
-    pov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto;';
+    pov.className = 'pk-ov';
     const pc = document.createElement('div');
-    pc.style.cssText = 'background:#fff;border-radius:14px;max-width:560px;width:100%;margin:auto;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 30px 70px -20px rgba(0,0,0,.45);';
+    pc.className = 'pk-card';
     pov.appendChild(pc); pov.addEventListener('click', e => { if (e.target === pov) pov.remove(); });
     const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
     // Бүрхүүлийг НЭГ УДАА зурна (input устахгүй → бичиж болно), зөвхөн жагсаалтыг шинэчилнэ
     pc.innerHTML = `
-      <div style="padding:14px 16px;border-bottom:1px solid #eee;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b style="font-size:15px;">Захиалга сонгож тулгах</b><button id="pk-x" style="border:none;background:none;font-size:20px;color:#999;cursor:pointer;">×</button></div>
-        <div style="font-size:12px;color:#666;">🧾 ${escapeHtml(rec.buyer_name || '')} · <b>${fmtMoney(rec.total)}</b> · ${escapeHtml(String(rec.dt || '').slice(0, 10))}</div>
-        <input id="pk-q" placeholder="нэр эсвэл захиалгын дугаараар хайх…" style="margin-top:8px;width:100%;padding:8px 11px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;">
+      <div class="pk-head">
+        <div class="pk-head-row"><b class="pk-title">Захиалга сонгож тулгах</b><button id="pk-x" class="pk-x">×</button></div>
+        <div class="pk-sub">🧾 ${escapeHtml(rec.buyer_name || '')} · <b>${fmtMoney(rec.total)}</b> · ${escapeHtml(String(rec.dt || '').slice(0, 10))}</div>
+        <input id="pk-q" class="pk-q" placeholder="нэр эсвэл захиалгын дугаараар хайх…">
       </div>
-      <div id="pk-list" style="overflow:auto;padding:6px;"></div>`;
+      <div id="pk-list" class="pk-list"></div>`;
     const listEl = pc.querySelector('#pk-list');
     function renderList(q) {
       const ql = vatNorm(q || ''); const qd = String(q || '').trim();
@@ -40580,11 +40580,11 @@ async function openVatReportModal() {
         const c = x.c; const amtOk = near(rec.total, c.amount) || near(rec.net, c.amount);
         const regOk = rec.buyer_reg && c.reg && vatRegNorm(rec.buyer_reg) === c.reg;
         const nameOk = vatNameMatch(rec.buyer_name, c.name);
-        return `<button class="pk-row" data-type="${c.type}" data-no="${escapeHtml(String(c.no))}" data-label="${escapeHtml((c.name || c.no) + ' · ' + fmtMoney(c.amount))}" style="display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;border-bottom:1px solid #f2f2f2;background:${x.s >= 6 ? '#f4faf6' : '#fff'};padding:9px 10px;cursor:pointer;">
-          <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.name || 'Нэргүй')} <span style="color:#999;font-weight:400;">${c.type === 'nomaad' ? '⛺' : '🎪'}#${escapeHtml(String(c.no))}</span></div><div style="font-size:11px;color:#888;">${escapeHtml(String(c.date || '').slice(0, 10))}</div></span>
-          <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(c.amount)}</div>${regOk ? '<div style="font-size:10.5px;color:#0d7a3f;font-weight:700;">✓ РД таарна</div>' : ''}${amtOk ? '<div style="font-size:10.5px;color:#1e7a55;font-weight:700;">✓ дүн таарна</div>' : ''}${nameOk ? '<div style="font-size:10.5px;color:#2563EB;font-weight:700;">✓ нэр таарна</div>' : ''}</span>
+        return `<button class="pk-row${x.s >= 6 ? ' pk-hit' : ''}" data-type="${c.type}" data-no="${escapeHtml(String(c.no))}" data-label="${escapeHtml((c.name || c.no) + ' · ' + fmtMoney(c.amount))}">
+          <span class="pk-l"><div class="pk-name">${escapeHtml(c.name || 'Нэргүй')} <span class="pk-no">${c.type === 'nomaad' ? '⛺' : '🎪'}#${escapeHtml(String(c.no))}</span></div><div class="pk-date">${escapeHtml(String(c.date || '').slice(0, 10))}</div></span>
+          <span class="pk-r"><div class="pk-amt">${fmtMoney(c.amount)}</div>${regOk ? '<div class="pk-ok">✓ РД таарна</div>' : ''}${amtOk ? '<div class="pk-ok">✓ дүн таарна</div>' : ''}${nameOk ? '<div class="pk-ok pk-ok-name">✓ нэр таарна</div>' : ''}</span>
         </button>`;
-      }).join('') || '<div style="padding:24px;text-align:center;color:#999;">Олдсонгүй</div>';
+      }).join('') || '<div class="pk-empty">Олдсонгүй</div>';
       listEl.querySelectorAll('.pk-row').forEach(b => b.onclick = async () => {
         try { await vatSetMatch(recId, { type: b.dataset.type, no: b.dataset.no, label: b.dataset.label, by: 'manual' }); pov.remove(); render(); } catch (e) { showToast(e.message, 'error'); }
       });

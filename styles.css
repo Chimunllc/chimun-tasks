@@ -95,6 +95,9 @@
     /* Аппын алдааны цонх — нэг баганатай жагсаалт + табууд */
     --aerr-modal-w: 560px;
 
+    /* НӨАТ баримтыг захиалгатай «гараар тулгах» цонх — нэг баганатай жагсаалт */
+    --pk-modal-w: 560px;
+
     /* Барааны модалын өргөн — 4 хэсэгт менюгээр хуваагдсан тул нарийн байж болно */
     --prod-modal-w: 540px;
 
@@ -137,6 +140,7 @@
     --scrim-photo:  rgba(0,0,0,.3);            /* зураг харах давхарга — ард нь бүдгэрнэ */
     --scrim-btn:    rgba(255, 255, 255, 0.15); /* давхаргын товчны дэвсгэр */
     --scrim-del:    rgba(0,0,0,.5);            /* зураг дээрх × товч — тод байх ёстой */
+    --scrim-modal:  rgba(0,0,0,.5);            /* `.modal` БИШ, өөрөө үүсгэсэн попап цонхны бүрхүүл */
 
     /* ── Хөдөлгөөн ── */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -9257,3 +9261,46 @@ select.no-asar-len {
 .ec-note { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-1) 0 var(--space-3); }
 .modal .ec-btn { width: 100%; }
 .modal .ec-btn + .ec-btn { margin-top: var(--space-3); }
+
+/* ═══ 🧾 НӨАТ баримт → захиалга «ГАРААР ТУЛГАХ» цонх (`openPicker`) ═══
+   Өмнө нь 18 inline `style=` + 2 `style.cssText` байв (15 хатуу өнгө).
+   ⚠ Энэ цонх `.modal` БИШ — `document.body`-д өөрөө үүсгэсэн бүрхүүл учир
+     `.modal input/button` дүрмүүд ХҮРЭХГҮЙ: хүрээ/дэвсгэр/фонт зэрэг суурь
+     тунхаглалыг энд БҮТНЭЭР бичнэ (дутуу бичвэл талбар нүцгэн болно).
+   ⚠ Хатуу `#fff` байснаас болж харанхуй горимд цагаан хайрцаг гарч байв —
+     одоо `var(--panel)`/`var(--text)` тул хоёр горимд ажиллана. */
+.pk-ov { position: fixed; inset: 0; z-index: 1100; background: var(--scrim-modal);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: var(--space-5); overflow: auto; }
+.pk-card { display: flex; flex-direction: column; margin: auto;
+  width: 100%; max-width: var(--pk-modal-w); max-height: 86vh;
+  background: var(--panel); border-radius: var(--r-xl); box-shadow: var(--shadow-xl); }
+.pk-head { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+.pk-head-row { display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--space-2); }
+.pk-title { font-size: var(--fs-base); }
+.pk-x { flex: none; border: none; background: none; color: var(--muted-soft);
+  font-size: var(--fs-lg); line-height: 1; cursor: pointer; }
+.pk-sub { font-size: var(--fs-sm); color: var(--muted); }
+.pk-q { box-sizing: border-box; width: 100%; margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--border-strong);
+  border-radius: var(--r-md); background: var(--panel); color: var(--text);
+  font-size: var(--fs-md); }
+.pk-list { overflow: auto; padding: var(--space-1); }
+/* Мөр = товч: зүүн талд нэр/огноо, баруун талд дүн/таарсан тэмдгүүд */
+.pk-row { display: flex; justify-content: space-between; gap: var(--space-2);
+  width: 100%; text-align: left; cursor: pointer;
+  padding: var(--space-2); border: none; border-bottom: 1px solid var(--border);
+  background: var(--panel); color: var(--text); }
+/* Онооны босго (`s >= 6`) хангасан мөр — нүдэнд шууд өртөнө */
+.pk-row.pk-hit { background: var(--ok-soft); }
+.pk-l { min-width: 0; }
+.pk-r { text-align: right; white-space: nowrap; }
+.pk-name { font-size: var(--fs-md); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk-no { color: var(--muted-soft); font-weight: 400; }
+.pk-date { font-size: var(--fs-xs); color: var(--muted); }
+.pk-amt { font-size: var(--fs-md); font-weight: 700; }
+.pk-ok { font-size: var(--fs-xs); font-weight: 700; color: var(--ok); }
+.pk-ok-name { color: var(--info); }
+.pk-empty { padding: var(--space-5); text-align: center; color: var(--muted); }

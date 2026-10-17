@@ -19199,23 +19199,23 @@ function openPersonFixModal() {
   const unknown = unknownPersonRefs(state.tasks, state.finance, findMember);
   if (!unknown.length) { showToast('Танигдахгүй нэр алга', 'info', 2200); return; }
   const staff = (TEAM || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
-  const pick = (nm) => `<select class="pf-sel ui-raw" data-pf="${escapeHtml(nm)}" style="flex:1 1 170px;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;background:var(--panel);color:var(--text);">
+  const pick = (nm) => `<select class="pf-sel ui-raw" data-pf="${escapeHtml(nm)}">
       <option value="">— хэн бэ? —</option>
       ${staff.map(m => `<option value="${escapeHtml(m.name || '')}">${escapeHtml(m.name || '')}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`).join('')}
     </select>`;
   document.getElementById('pfix-modal')?.remove();
   const m = document.createElement('div');
   m.className = 'modal-bg open'; m.id = 'pfix-modal'; m.style.zIndex = '9600';
-  m.innerHTML = `<div class="modal" style="max-width:520px;">
+  m.innerHTML = `<div class="modal pfix-modal">
     <div class="modal-head"><b>👤 Танигдахгүй нэрийг холбох (${unknown.length})</b><button class="modal-x" id="pf-x">✕</button></div>
     <div class="modal-body">
-      <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">Хүн нэрээ солиход хуучин даалгавар, хүсэлт нь эзэнгүй үлддэг. Аль ажилтных болохыг зааж өгвөл түүх нь эзэндээ буцна — <b>даалгаврын бичлэг өөрчлөгдөхгүй</b>.</div>
-      ${unknown.map(u => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:7px;">
-        <span style="flex:1 1 150px;min-width:0;font-size:13px;">${escapeHtml(u.name)}<span style="color:var(--muted);font-size:11px;"> · ${u.tasks ? u.tasks + ' даалгавар' : ''}${u.tasks && u.finance ? ' · ' : ''}${u.finance ? u.finance + ' хүсэлт' : ''}</span></span>
+      <div class="pf-note">Хүн нэрээ солиход хуучин даалгавар, хүсэлт нь эзэнгүй үлддэг. Аль ажилтных болохыг зааж өгвөл түүх нь эзэндээ буцна — <b>даалгаврын бичлэг өөрчлөгдөхгүй</b>.</div>
+      ${unknown.map(u => `<div class="pf-row">
+        <span class="pf-name">${escapeHtml(u.name)}<span class="pf-meta"> · ${u.tasks ? u.tasks + ' даалгавар' : ''}${u.tasks && u.finance ? ' · ' : ''}${u.finance ? u.finance + ' хүсэлт' : ''}</span></span>
         ${pick(u.name)}
       </div>`).join('')}
     </div>
-    <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;">
+    <div class="modal-foot modal-foot-r">
       <button class="btn" id="pf-cancel">Болих</button>
       <button class="btn btn-primary" id="pf-save">Холбох</button>
     </div>

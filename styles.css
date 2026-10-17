@@ -98,6 +98,13 @@
     /* НӨАТ баримтыг захиалгатай «гараар тулгах» цонх — нэг баганатай жагсаалт */
     --pk-modal-w: 560px;
 
+    /* 👤 Танигдахгүй нэрийг ажилтантай холбох цонх — нэр + сонгогч нэг мөрөнд.
+       Хоёр доод өргөн нь мөр хэзээ хуваагдахыг шийднэ: нийлбэр нь цонхны
+       биеэс хэтрэхэд сонгогч өөрийн мөрөнд бууна (нэр шахагдахгүй). */
+    --pfix-modal-w: 520px;
+    --pf-name-w: 150px;
+    --pf-sel-w: 170px;
+
     /* Барааны модалын өргөн — 4 хэсэгт менюгээр хуваагдсан тул нарийн байж болно */
     --prod-modal-w: 540px;
 
@@ -9304,3 +9311,22 @@ select.no-asar-len {
 .pk-ok { font-size: var(--fs-xs); font-weight: 700; color: var(--ok); }
 .pk-ok-name { color: var(--info); }
 .pk-empty { padding: var(--space-5); text-align: center; color: var(--muted); }
+
+/* ═══ 👤 Танигдахгүй нэрийг ажилтантай холбох цонх (`openPersonFixModal`) ═══
+   Өмнө нь 7 inline `style=` байв. Мөр бүр: нэр + мета (зүүн) → сонгогч (баруун),
+   нарийн дэлгэцэд сонгогч өөрийн мөрөнд бууна (`flex-wrap`).
+   ⚠ Сонгогч нь `.ui-raw` — мобайлын `.modal select:not(.ui-raw)` дүрмээс
+     чөлөөлөгдсөн тул хүрээ/дэвсгэр/фонтыг энд БҮТНЭЭР бичнэ.
+   ⚠ `.modal` угтвар ЗААВАЛ — `.modal select { width:100% }` нь ангиас илүү
+     онцлогтой тул угтваргүй бичвэл сонгогч нэрийг мөрнөөс доош түлхнэ. */
+.modal.pfix-modal { max-width: var(--pfix-modal-w); }   /* хоёр класс = мобайлын `.modal { max-width:100% }`-аас давна */
+.pf-note { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5;
+  margin-bottom: var(--space-3); }
+.pf-row { display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--space-2); margin-bottom: var(--space-2); }
+.pf-name { flex: 1 1 var(--pf-name-w); min-width: 0; font-size: var(--fs-md); }
+.pf-meta { color: var(--muted); font-size: var(--fs-xs); }
+.modal .pf-sel { flex: 1 1 var(--pf-sel-w); min-width: 0;
+  padding: var(--space-2); border: 1px solid var(--border-strong);
+  border-radius: var(--r-md); background: var(--panel); color: var(--text);
+  font-size: var(--fs-sm); }

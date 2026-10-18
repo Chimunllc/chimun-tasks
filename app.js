@@ -39178,42 +39178,40 @@ function financeTrend(wantBr) {
 function financeTrendChart(series, selMonth) {
   if (series.length < 2) return '';
   const max = Math.max(1, ...series.map(s => Math.max(s.income, s.expense)));
-  const H = 168;
-  const mn = String(new Date().getMonth() + 1);
   const sm = v => { const a = Math.abs(v); if (a < 5e5) return v === 0 ? '0' : (v > 0 ? '<1' : '-<1'); const s = (v / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(/\.0$/, ''); return s; };
+  // Баганын өндөр = ХУВЬ (эцэг нь `--ftc-h` токеноор тогтсон) — кодод px тоо үлдэхгүй,
+  // доод хязгаар нь `--ftc-bar-min` (0 дүн нь 0 хэвээр: зардалгүй сар хуурамч багана гаргахгүй).
+  const barH = v => v > 0 ? `max(var(--ftc-bar-min), ${(v / max * 100).toFixed(1)}%)` : '0';
   const bars = series.map(s => {
-    const hi = s.income > 0 ? Math.max(4, Math.round(s.income / max * H)) : 0;
-    const he = s.expense > 0 ? Math.max(4, Math.round(s.expense / max * H)) : 0;
     const sel = s.month === selMonth;
-    const nc = s.net >= 0 ? 'var(--ok)' : 'var(--danger)';
     const ml = s.month.slice(2).replace('-', '/');
-    return `<div data-trend-month="${s.month}" title="${s.month} · Орлого ${fmtMoney(s.income)} · Зардал ${fmtMoney(s.expense)} · Ашиг ${fmtMoney(s.net)}" style="flex:0 0 auto;width:66px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;padding:8px 2px 6px;border-radius:12px;transition:background .12s;${sel ? 'background:var(--primary-soft);' : ''}">
-      <div style="font-size:11px;font-weight:800;color:${nc};white-space:nowrap;">${s.net >= 0 ? '+' : '−'}${sm(Math.abs(s.net))}</div>
-      <div style="display:flex;align-items:flex-end;gap:5px;height:${H}px;">
-        <div style="width:20px;height:${hi}px;background:var(--ok);border-radius:5px 5px 0 0;" ></div>
-        <div style="width:20px;height:${he}px;background:var(--danger);border-radius:5px 5px 0 0;"></div>
+    return `<div data-trend-month="${s.month}" class="ftc-col${sel ? ' on' : ''}" title="${s.month} · Орлого ${fmtMoney(s.income)} · Зардал ${fmtMoney(s.expense)} · Ашиг ${fmtMoney(s.net)}">
+      <div class="ftc-net ${s.net >= 0 ? 'ftc-ok' : 'ftc-bad'}">${s.net >= 0 ? '+' : '−'}${sm(Math.abs(s.net))}</div>
+      <div class="ftc-bars" style="--ftc-in:${barH(s.income)};--ftc-out:${barH(s.expense)};">
+        <div class="ftc-bar ftc-bar-in"></div>
+        <div class="ftc-bar ftc-bar-out"></div>
       </div>
-      <div style="font-size:11.5px;color:${sel ? 'var(--primary-hover, var(--primary))' : 'var(--muted)'};font-weight:${sel ? 800 : 500};white-space:nowrap;">${ml}</div>
+      <div class="ftc-m">${ml}</div>
     </div>`;
   }).join('');
   const tot = series.reduce((a, s) => ({ i: a.i + s.income, e: a.e + s.expense }), { i: 0, e: 0 });
   const tn = tot.i - tot.e;
-  return `<div style="border:1px solid var(--border);border-radius:16px;background:var(--panel);padding:18px 18px 16px;margin-bottom:16px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:3px;">
-      <div style="font-weight:800;font-size:15px;">📈 Сар бүрийн урсгал</div>
-      <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:12px;">
-        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;border-radius:3px;background:var(--ok);display:inline-block;"></span>Орлого</span>
-        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;border-radius:3px;background:var(--danger);display:inline-block;"></span>Зардал</span>
+  return `<div class="ftc">
+    <div class="ftc-head">
+      <div class="ftc-t">📈 Сар бүрийн урсгал</div>
+      <div class="ftc-leg">
+        <span class="ftc-leg-i"><span class="ftc-sw ftc-sw-in"></span>Орлого</span>
+        <span class="ftc-leg-i"><span class="ftc-sw ftc-sw-out"></span>Зардал</span>
       </div>
     </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Дээрх тоо = цэвэр ашиг (сая₮). Сар дээр дарж дэлгэрэнгүйг доор нээнэ.</div>
-    <div style="display:flex;align-items:flex-end;gap:6px;height:${H + 46}px;overflow-x:auto;padding:2px 2px 0;border-bottom:2px solid var(--border);">${bars}</div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-top:14px;flex-wrap:wrap;gap:8px;">
-      <span style="color:var(--muted);font-weight:600;">Бүх хугацаа · ${series.length} сар</span>
-      <span style="display:flex;gap:14px;flex-wrap:wrap;">
-        <span>Орлого <b style="color:var(--ok);">${fmtSaya(tot.i)}</b></span>
-        <span>Зардал <b style="color:var(--danger);">${fmtSaya(tot.e)}</b></span>
-        <span>Ашиг <b style="color:${tn >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtSaya(tn)}</b></span>
+    <div class="ftc-hint">Дээрх тоо = цэвэр ашиг (сая₮). Сар дээр дарж дэлгэрэнгүйг доор нээнэ.</div>
+    <div class="ftc-row">${bars}</div>
+    <div class="ftc-foot">
+      <span class="ftc-foot-l">Бүх хугацаа · ${series.length} сар</span>
+      <span class="ftc-tot">
+        <span>Орлого <b class="ftc-ok">${fmtSaya(tot.i)}</b></span>
+        <span>Зардал <b class="ftc-bad">${fmtSaya(tot.e)}</b></span>
+        <span>Ашиг <b class="${tn >= 0 ? 'ftc-ok' : 'ftc-bad'}">${fmtSaya(tn)}</b></span>
       </span>
     </div>
   </div>`;

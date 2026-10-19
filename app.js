@@ -17727,6 +17727,38 @@ async function loadReminderMail() {
   R.loading = false;
   if (typeof render === 'function') render();
 }
+/* Автомат сануулгыг асаах/унтраах (2026-10-19, CEO). Зөвхөн `reminder_mail.mode` — n8n өдөр бүр
+   шинээр уншдаг тул n8n-ийг дахин асаах ШААРДЛАГАГҮЙ. ⛔ Бичихийн өмнө серверээс ШИНЭЭР уншина:
+   өөр газар тохируулсан days/cap/holdout/test_to-г дарахгүй (хуучирсан табаас бичихээс сэргийлнэ).
+   Уншиж чадаагүй бол бичихгүй. Асаахад showConfirm заавал (гадагш имэйл явна, буцаах боломжгүй). */
+async function toggleReminderMode() {
+  const R = state._reminder = state._reminder || {};
+  if (!state.isCEO) { showToast('Зөвхөн захирал асаах, унтраана', 'warn', 3000); return; }
+  let cur;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=eq.reminder_mail&select=value`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    cur = (rows && rows[0] && rows[0].value) || {};
+  } catch (e) { dataLoadFailed('toggleReminderMode', e); showToast('Одоогийн төлөвийг уншиж чадсангүй, өөрчлөөгүй', 'error', 4000); return; }
+  const next = cur.mode === 'on' ? 'off' : 'on';
+  const subj = String((R.text && R.text.subject) || REMINDER_TEXT_DEFAULT.subject);
+  const days = Number(cur.days) || 40;
+  const ok = await showConfirm(next === 'on'
+    ? `Автомат сануулгыг <b>асаах</b> уу?\n\nАжлын өдөр бүр 10:00-д, захиалга хаагдаад ${days} хоног болсон, шинэ захиалга өгөөгүй харилцагчид «${escapeHtml(subj)}» имэйл явна. Явсан имэйлийг буцаах боломжгүй.`
+    : 'Автомат сануулгыг <b>унтраах</b> уу? Дараагийн илгээлтээс эхлэн имэйл явахгүй.',
+    { title: next === 'on' ? '▶ Сануулга асаах' : '⏸ Сануулга унтраах', okText: next === 'on' ? 'Тийм, асаа' : 'Тийм, унтраа' });
+  if (!ok) return;
+  const me = (typeof findMember === 'function' && findMember(state.me)) || null;
+  const val = Object.assign({}, cur, { mode: next, switched_by: (me && me.name) || '', switched_at: new Date().toISOString() });
+  try {
+    await saveAppConfig('reminder_mail', val);
+    R.cfg = val;
+    showToast(next === 'on' ? '✅ Сануулга асалаа' : '⏸ Сануулга унтарлаа', 'success', 3500);
+  } catch (e) { showToast('Хадгалж чадсангүй: ' + (e.message || e), 'error', 5000); }
+  render();
+}
 async function saveReminderText() {
   const R = state._reminder || {};
   const cur = {}; REMINDER_TEXT_FIELDS.forEach(f => { cur[f.k] = String(document.getElementById('rmt-' + f.k)?.value || '').replace(/\r/g, '').trim(); });
@@ -17783,7 +17815,8 @@ function renderReminderCard() {
     return `<label class="rmt-lbl" for="rmt-${f.k}">${f.label}</label>${inp}<div class="rmt-hint">${f.hint}</div>`;
   }).join('');
   return `<div class="rmt">
-    <div class="rmt-head">${chip}${stats}</div>
+    <div class="rmt-head">${chip}${stats}${state.isCEO ? `<button class="btn rmt-toggle${mode === 'on' ? '' : ' btn-primary'}" id="rmt-toggle">${mode === 'on' ? '⏸ Унтраах' : '▶ Асаах'}</button>` : ''}</div>
+    ${(R.cfg && R.cfg.switched_by) ? `<div class="rmt-hint rmt-sw">${mode === 'on' ? 'Асаасан' : 'Сүүлд өөрчилсөн'}: ${escapeHtml(R.cfg.switched_by)}${R.cfg.switched_at ? ' · ' + escapeHtml(String(R.cfg.switched_at).slice(0, 10)) : ''}</div>` : ''}
     <div class="rmt-sub">Захиалга хаагдсанаас ${days} хоногийн дараа, шинэ захиалга өгөөгүй хүнд ганц удаа өөрөө явна. Хадгалмагц дараагийн илгээлтээс хүчинтэй.</div>
     <div class="rmt-grid">
       <div class="rmt-form">${fields}
@@ -17808,6 +17841,7 @@ function attachReminderHandlers() {
     const is = document.getElementById('rmt-issues'); if (is) is.innerHTML = reminderIssuesHtml(cur);
   }));
   document.getElementById('rmt-save')?.addEventListener('click', saveReminderText);
+  document.getElementById('rmt-toggle')?.addEventListener('click', toggleReminderMode);
   document.getElementById('rmt-reset')?.addEventListener('click', async () => {
     if (!(await showConfirm('Анхны бичвэрийг буцаан тавих уу? (Хадгалах дарахгүй бол сервер дээрх бичвэр өөрчлөгдөхгүй.)', { title: '↩ Анхны бичвэр', okText: 'Тийм' }))) return;
     R.draft = Object.assign({}, REMINDER_TEXT_DEFAULT); render();

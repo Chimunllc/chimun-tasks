@@ -9000,6 +9000,10 @@ need(['orderCustType']);
        'эрх: төсөв засах = зөвхөн CEO (app.js)');
     eq((rls.match(/when 'ads_budget' then sec\.is_ceo\(\)/g) || []).length, 3,
        'эрх: rls.sql-д ads_budget → CEO (insert + update-ийн using ба with check)');
+    eq((rls.match(/when 'reminder_mail' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д reminder_mail (сануулга асаах) → зөвхөн CEO');
+    eq((rls.match(/when 'reminder_mail_text' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д reminder_mail_text (харилцагчид очих бичвэр) → зөвхөн CEO');
+    const schema = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
+    eq((schema.match(/WHEN 'reminder_mail(_text)?'::text THEN sec\.is_ceo\(\)/g) || []).length, 6, 'эрх: schema.sql rls.sql-тэй ижил (сануулгын 2 түлхүүр × 3)');
     ok(!/data-ads-edit>/.test(app.replace(/\$\{adsBudgetEditable\(\) \? [\s\S]*?\}/g, '')),
        'эрх: төсвийн товч adsBudgetEditable()-гүйгээр гарахгүй');
   }
@@ -19783,4 +19787,77 @@ async function swFetchTests() {
   ok(/limit \(select cap from p\)/.test(pick), 'сануулга: нэг ажиллагаанд дээд хязгаартай');
   // ⛔ SQL-д утга нааж болохгүй (CLAUDE.md): цаг нь make_interval, тохиргоо нь jsonb-ээс
   ok(/make_interval\(days => p\.days\)/.test(pick) && !/'\{\{/.test(sql), 'сануулга: SQL-д утга нааагүй');
+}
+
+// ═══ САНУУЛГА ИМЭЙЛИЙН БИЧВЭР АППААС ЗАСАГДАНА (2026-10-19, CEO) ═══════════════════
+// n8n-ийн угсрагч (tools/reminder_compose.js) ба аппын урьдчилан харах (reminderTextPreview) ИЖИЛ
+// дүрэмтэй байх ёстой — эс бөгөөс захирал нэг юм харж, харилцагчид өөр юм очно.
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const compose = fs.readFileSync(path.join(__dirname, '..', 'tools', 'reminder_compose.js'), 'utf8');
+  const sqlf = fs.readFileSync(path.join(__dirname, '..', 'db', 'reminder_mail.sql'), 'utf8');
+  const DEF = vm.runInContext('REMINDER_TEXT_DEFAULT', sandbox);
+  const seed = JSON.parse((/values \('reminder_mail_text', '(\{.*\})'::jsonb\)/.exec(sqlf) || [])[1] || 'null');
+  eq(seed, DEF, '⛔ анхны бичвэр: аппын REMINDER_TEXT_DEFAULT = db/reminder_mail.sql-ийн seed');
+
+  const run = (rows) => new Function('$input', compose)({ all: () => rows.map(json => ({ json })) });
+  const items = JSON.stringify([{ name: 'Эвхэгддэг сандал Цагаан' }, { name: 'Цагаан Ширээ 180*74см' }]);
+  const row = (o) => Object.assign({ mode: 'on', order_id: 'ao-1', number: 1504, customer: 'Б.Ариун', email: 'a@b.mn',
+    starts_at: '2026-09-12', items, txt: JSON.stringify(DEF), test_to: null }, o || {});
+  const vis = (h) => h.replace(/<[^>]+>/g, '\n').split('\n').map(x => x.trim()).filter(Boolean);
+
+  // ① Бодит имэйлийн харагдах мөрүүд = аппын урьдчилан харах (олон тохиолдолд)
+  const txts = [DEF,
+    { subject: 'Сануулга', heading: 'Дахин ирээрэй', greeting: 'Сайн уу, {нэр}!', intro: 'Та {огноо} ирсэн.\nДахиад ирээрэй {нэр}.', body: 'Нэг.\n\nХоёр {огноо}.\nГурав {x}.' },
+    { subject: 'Гарчиг', heading: 'Том', greeting: '', intro: '', body: 'Зөвхөн үндсэн' }];
+  const ctxs = [{ customer: 'Б.Ариун', starts_at: '2026-09-12', date: '9 сарын 12-нд', name: 'Б.Ариун' },
+    { customer: 'Баянжаргал v', starts_at: '2026-10-05', date: '10 сарын 5-нд', name: 'Баянжаргал v' },
+    { customer: 'H&A Travel', starts_at: null, date: '', name: 'H&A Travel' },
+    { customer: 'Монголын геологийн холбоо', starts_at: '2026-01-02', date: '1 сарын 2-нд', name: 'Монголын геологийн холбоо' }];
+  let parity = 0, parityTotal = 0;
+  txts.forEach((T, ti) => ctxs.forEach((c, ci) => {
+    const out = run([row({ txt: JSON.stringify(T), customer: c.customer, starts_at: c.starts_at })]);
+    const pv = F.reminderTextPreview(T, { name: c.name, date: c.date });
+    const lines = out.length ? vis(out[0].json.html) : [];
+    const want = [pv.heading, pv.greeting, ...pv.intro, ...pv.body].filter(Boolean);
+    // хүлээгдэж буй мөрүүд бодит имэйлд ДАРААЛЛААРАА байх ёстой
+    let at = -1, good = true; want.forEach(w => { const i = lines.indexOf(w, at + 1); if (i < 0) good = false; else at = i; });
+    parityTotal++; if (good && (!out.length || out[0].json.subject === pv.subject)) parity++;
+    else console.log('   зөрөө:', ti, ci, JSON.stringify(want), '≠', JSON.stringify(lines.slice(0, 14)));
+  }));
+  eq(parity, parityTotal, '⛔ n8n-ийн имэйл ба аппын урьдчилан харах НЭГ бичвэр гаргана (' + parityTotal + ' хослол)');
+
+  // ② Нэр цэвэрлэх: хоёр хэрэгжилт ижил
+  ['Б.Ариун', 'Мягмар-Од', 'Баянжаргал v', 'H&A Travel', '', 'Монголын геологийн холбоо', 'нано интернэйшнл ххк', 'Эрдэнэбаяр Шүүдэр', 'А Б В Г'].forEach(n => {
+    const o = run([row({ customer: n })])[0].json.html;
+    const wantName = F.reminderCleanName(n);
+    ok(wantName ? o.includes('Сайн байна уу, ' + wantName + '.') : /Сайн байна уу\.</.test(o), 'нэр «' + n + '»: имэйл ба апп ижил (' + (wantName || 'нэргүй') + ')');
+  });
+
+  // ③ Аюулгүй байдал ба алдаа
+  const evil = run([row({ txt: JSON.stringify({ subject: 'S', heading: '<script>x</script>', greeting: 'Hi', intro: '', body: '<a href="http://evil">a</a> & b' }) })])[0].json.html;
+  ok(!/<script>|<a href="http:\/\/evil/.test(evil) && evil.includes('&lt;script&gt;'), '⛔ бичвэр HTML болохгүй: холбоос/script орохгүй');
+  eq(run([row({ txt: null })]).length + run([row({ txt: '{bad' })]).length + run([row({ txt: JSON.stringify({ subject: 'a', heading: 'b', body: ' ' }) })]).length, 0, '⛔ бичвэр байхгүй/эвдэрсэн/хоосон бол ЯВУУЛАХГҮЙ');
+  eq(run([row({ email: 'bad' })]).length, 0, 'буруу имэйлд явуулахгүй');
+  const t = run([row({ mode: 'test', test_to: 'hello@mevent.mn', email: 'real@x.mn' })])[0].json;
+  ok(t.to === 'hello@mevent.mn' && t.test === true && /^\[ТЕСТ\] /.test(t.subject), '⛔ тест горим: зөвхөн test_to руу, [ТЕСТ] гэж тэмдэглэнэ');
+  ok(!/[—–]/.test(run([row()])[0].json.html + run([row()])[0].json.subject), 'анхны бичвэрт зураас байхгүй');
+  ok(/\/webhook\/email-optout\?e=/.test(run([row()])[0].json.html), 'имэйл бүрд хасуулах холбоос');
+
+  // ④ Шалгалт: зураас, танихгүй {…}, хоосон
+  eq(F.reminderTextIssues(DEF), { errors: [], warns: [] }, 'анхны бичвэр: алдаа, анхааруулгагүй');
+  ok(F.reminderTextIssues(Object.assign({}, DEF, { body: '' })).errors.length === 1, 'хоосон үндсэн бичвэр: хадгалахыг зогсооно');
+  ok(F.reminderTextIssues(Object.assign({}, DEF, { heading: 'Сайн — байна' })).warns.length === 1, 'зураас байвал сануулна (зогсоохгүй)');
+  ok(F.reminderTextIssues(Object.assign({}, DEF, { subject: 'Сайн {нэр}' })).warns.length === 1, '{нэр} буруу газар: сануулна');
+
+  // ⑤ UI-ийн дүрэм
+  const card = src.slice(src.indexOf('function renderReminderCard'), src.indexOf('function attachReminderHandlers'));
+  ok(!/style="/.test(card), 'карт: inline style байхгүй (класс)');
+  const att = src.slice(src.indexOf('function attachReminderHandlers'), src.indexOf('function renderEmailMarketing'));
+  const inputBlock = att.slice(att.indexOf("addEventListener('input'"), att.indexOf("document.getElementById('rmt-save')"));
+  ok(!/\brender\(\)/.test(inputBlock), '⛔ бичиж байхад render() дуудахгүй (курсор алдагдана)');
+  const sv = src.slice(src.indexOf('async function saveReminderText'), src.indexOf('function reminderPreviewHtml'));
+  ok(/state\.isCEO/.test(sv) && /saveAppConfig\(REMINDER_TEXT_KEY/.test(sv), 'хадгалах: зөвхөн захирал, app_config руу');
+  ok(/dataLoadFailed\('loadReminderMail'/.test(src), 'ачаалалт унавал чимээгүй залгихгүй');
+  ok(!/innerHTML\s*=\s*[^;]*txt\.(subject|body)/.test(card), 'бичвэр escape-гүй innerHTML-д орохгүй');
 }

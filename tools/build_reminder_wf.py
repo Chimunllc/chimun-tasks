@@ -27,7 +27,8 @@ return out;
 """
 
 # Бичвэр (txt) аппаас засагддаг тул илгээх бүрд DB-ээс шинээр уншина.
-pick_sql = """select r.*, (select value::text from app_config where key = 'reminder_mail_text') as txt
+pick_sql = """select r.*, (select value::text from app_config where key = 'reminder_mail_text') as txt,
+       (select value::text from app_config where key = 'reminder_mail_text_old') as txt_old
   from (select * from reminder_pick()
         union all
         select * from reminder_test_pick()) r"""

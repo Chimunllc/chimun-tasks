@@ -17662,6 +17662,17 @@ const REMINDER_TEXT_DEFAULT = {
   intro: 'Та {огноо} манай түрээсийн үйлчилгээг сонгосон байна.',
   body: 'Ойрын хугацаанд дахиад эвент, арга хэмжээ төлөвлөж байгаа бол манай түрээсийн үйлчилгээтэй хамтран ажиллахыг хүсэж байна. Бид үйл ажиллагаагаа илүү мэргэжлийн түвшинд хүргэхийн төлөө өдөр бүр сайжруулж, шинэ бараа бүтээгдэхүүн нэмсээр байна.\nАрга хэмжээнийхээ огноо, хэрэгтэй зүйлсээ хэлэхэд л болно. Бид танд үйлчилгээ үзүүлэхдээ үргэлж баяртай байх болно.',
 };
+const REMINDER_TEXT_OLD_DEFAULT = {
+  subject: 'Дахин арга хэмжээ төлөвлөж байна уу? M-Event',
+  heading: 'Дахин арга хэмжээ төлөвлөж байна уу?',
+  greeting: 'Сайн байна уу, {нэр}.',
+  intro: 'Та {огноо} манайхаас түрээсийн үйлчилгээ авч байсан. Түүнээс хойш хэсэг хугацаа өнгөрчээ.',
+  body: 'Бид энэ хугацаанд бараа бүтээгдэхүүнээ нэмж, үйлчилгээгээ сайжруулсан. LED дэлгэц, тайз, хөгжим, сандал ширээ, гэрэл, асар, тохижилтын түрээсийг нэг дороос авах боломжтой.\nДараагийн арга хэмжээнийхээ огноо, хэрэгцээгээ хэлээрэй. Нөөц, үнийг бид шууд хэлж өгнө.',
+};
+// Бүлэг бүр өөрийн бичвэртэй: new = саяхан хаагдсан (талархал явсан), old = 9/13-аас өмнөх хуучин харилцагч
+const REMINDER_TEXT_KEYS = { new: REMINDER_TEXT_KEY, old: 'reminder_mail_text_old' };
+const reminderSegOf = () => ((state._reminder || {}).seg === 'old' ? 'old' : 'new');
+const reminderDefaultOf = (seg) => (seg === 'old' ? REMINDER_TEXT_OLD_DEFAULT : REMINDER_TEXT_DEFAULT);
 const REMINDER_TEXT_FIELDS = [
   { k: 'subject', label: 'Имэйлийн гарчиг', rows: 1, hint: 'Хүлээн авагчийн хайрцагт харагдана.' },
   { k: 'heading', label: 'Том гарчиг', rows: 1, hint: 'Имэйл дотор хамгийн том үсгээр.' },
@@ -17715,12 +17726,13 @@ async function loadReminderMail() {
   const R = state._reminder = state._reminder || {};
   R.loading = true; R.error = '';
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=in.(${REMINDER_TEXT_KEY},reminder_mail)&select=key,value`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=in.(${REMINDER_TEXT_KEY},${REMINDER_TEXT_KEYS.old},reminder_mail)&select=key,value`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     const by = {}; (rows || []).forEach(x => { by[x.key] = x.value; });
-    R.text = by[REMINDER_TEXT_KEY] || null;   // null = сервер дээр хараахан хадгалагдаагүй
+    R.texts = { new: by[REMINDER_TEXT_KEYS.new] || null, old: by[REMINDER_TEXT_KEYS.old] || null };   // null = сервер дээр хараахан хадгалагдаагүй
+    R.drafts = R.drafts || { new: null, old: null };
     R.cfg = by.reminder_mail || {};
     R.loaded = true;
   } catch (e) { R.error = String(e.message || e); dataLoadFailed('loadReminderMail', e); }
@@ -17731,7 +17743,8 @@ async function loadReminderMail() {
    шинээр уншдаг тул n8n-ийг дахин асаах ШААРДЛАГАГҮЙ. ⛔ Бичихийн өмнө серверээс ШИНЭЭР уншина:
    өөр газар тохируулсан days/cap/holdout/test_to-г дарахгүй (хуучирсан табаас бичихээс сэргийлнэ).
    Уншиж чадаагүй бол бичихгүй. Асаахад showConfirm заавал (гадагш имэйл явна, буцаах боломжгүй). */
-async function toggleReminderMode() {
+async function toggleReminderMode(which) {
+  const FLD = which === 'old_mode' ? 'old_mode' : 'mode';
   const R = state._reminder = state._reminder || {};
   if (!state.isCEO) { showToast('Зөвхөн захирал асаах, унтраана', 'warn', 3000); return; }
   let cur;
@@ -17742,20 +17755,24 @@ async function toggleReminderMode() {
     const rows = await r.json();
     cur = (rows && rows[0] && rows[0].value) || {};
   } catch (e) { dataLoadFailed('toggleReminderMode', e); showToast('Одоогийн төлөвийг уншиж чадсангүй, өөрчлөөгүй', 'error', 4000); return; }
-  const next = cur.mode === 'on' ? 'off' : 'on';
-  const subj = String((R.text && R.text.subject) || REMINDER_TEXT_DEFAULT.subject);
-  const days = Number(cur.days) || 40;
+  const next = cur[FLD] === 'on' ? 'off' : 'on';
+  const subj = String(((R.texts && R.texts[FLD === 'old_mode' ? 'old' : 'new']) || {}).subject || reminderDefaultOf(FLD === 'old_mode' ? 'old' : 'new').subject);
+  const days = Number(cur.days) || 30;
+  const isOld = FLD === 'old_mode';
+  const oldCap = Number(cur.old_cap) || 10;
   const ok = await showConfirm(next === 'on'
-    ? `Автомат сануулгыг <b>асаах</b> уу?\n\nАжлын өдөр бүр 10:00-д, захиалга хаагдаад ${days} хоног болсон, шинэ захиалга өгөөгүй харилцагчид «${escapeHtml(subj)}» имэйл явна. Явсан имэйлийг буцаах боломжгүй.`
-    : 'Автомат сануулгыг <b>унтраах</b> уу? Дараагийн илгээлтээс эхлэн имэйл явахгүй.',
+    ? (isOld
+      ? `Хуучин харилцагчдад сануулга явуулахыг <b>асаах</b> уу?\n\n9/13-аас өмнө хаагдсан захиалгын эзэд, ажлын өдөр бүр 10:00-д ${oldCap} хүнээр аажим «${escapeHtml(subj)}» имэйл авна (хамгийн сүүлд захиалсан нь эхэлж). Явсан имэйлийг буцаах боломжгүй.`
+      : `Автомат сануулгыг <b>асаах</b> уу?\n\nАжлын өдөр бүр 10:00-д, захиалга хаагдаад ${days} хоног болсон, шинэ захиалга өгөөгүй харилцагчид «${escapeHtml(subj)}» имэйл явна. Явсан имэйлийг буцаах боломжгүй.`)
+    : (isOld ? 'Хуучин харилцагчдад сануулга явуулахыг <b>унтраах</b> уу? Дараагийн илгээлтээс эхлэн явахгүй.' : 'Автомат сануулгыг <b>унтраах</b> уу? Дараагийн илгээлтээс эхлэн имэйл явахгүй.'),
     { title: next === 'on' ? '▶ Сануулга асаах' : '⏸ Сануулга унтраах', okText: next === 'on' ? 'Тийм, асаа' : 'Тийм, унтраа' });
   if (!ok) return;
   const me = (typeof findMember === 'function' && findMember(state.me)) || null;
-  const val = Object.assign({}, cur, { mode: next, switched_by: (me && me.name) || '', switched_at: new Date().toISOString() });
+  const val = Object.assign({}, cur, { [FLD]: next, [isOld ? 'old_switched_by' : 'switched_by']: (me && me.name) || '', [isOld ? 'old_switched_at' : 'switched_at']: new Date().toISOString() });
   try {
     await saveAppConfig('reminder_mail', val);
     R.cfg = val;
-    showToast(next === 'on' ? '✅ Сануулга асалаа' : '⏸ Сануулга унтарлаа', 'success', 3500);
+    showToast(next === 'on' ? (isOld ? '✅ Хуучин хүнд явуулах асалаа' : '✅ Сануулга асалаа') : '⏸ Унтарлаа', 'success', 3500);
   } catch (e) { showToast('Хадгалж чадсангүй: ' + (e.message || e), 'error', 5000); }
   render();
 }
@@ -17767,13 +17784,15 @@ async function saveReminderText() {
   if (!state.isCEO) { showToast('Бичвэрийг зөвхөн захирал засна', 'warn', 3000); return; }
   const me = (typeof findMember === 'function' && findMember(state.me)) || null;
   const val = Object.assign({}, cur, { updated_by: (me && me.name) || '', updated_at: new Date().toISOString() });
+  const seg = reminderSegOf();
   R.saving = true; render();
   try {
-    await saveAppConfig(REMINDER_TEXT_KEY, val);
-    R.text = val; R.draft = null; R.saving = false;
+    await saveAppConfig(REMINDER_TEXT_KEYS[seg], val);
+    R.texts = R.texts || { new: null, old: null }; R.drafts = R.drafts || { new: null, old: null };
+    R.texts[seg] = val; R.drafts[seg] = null; R.saving = false;
     showToast(warns.length ? '✓ Хадгаллаа. Анхааруулга байна, дээрээс харна уу' : '✓ Хадгаллаа. Дараагийн илгээлтээс хүчинтэй', warns.length ? 'warn' : 'success', 4000);
   } catch (e) {
-    R.saving = false; R.draft = cur;
+    R.saving = false; (R.drafts = R.drafts || { new: null, old: null })[seg] = cur;
     showToast('Хадгалж чадсангүй: ' + (e.message || e), 'error', 5000);
   }
   render();
@@ -17796,11 +17815,15 @@ function renderReminderCard() {
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   if (R.loading && !R.loaded) return '<div class="rmt"><div class="rmt-sub">Ачааллаж байна…</div></div>';
   if (R.error && !R.loaded) return `<div class="rmt"><div class="rmt-err">⛔ Бичвэр уншиж чадсангүй (${escapeHtml(R.error)}).</div><button class="btn" id="rmt-retry">Дахин оролдох</button></div>`;
-  const txt = R.draft || R.text || REMINDER_TEXT_DEFAULT;
+  const seg = reminderSegOf();
+  const txt = (R.drafts && R.drafts[seg]) || (R.texts && R.texts[seg]) || reminderDefaultOf(seg);
+  const saved = (R.texts && R.texts[seg]) || null;
   const mode = (R.cfg && R.cfg.mode) || 'off';
   const chip = mode === 'on' ? '<span class="rmt-chip rmt-on">✅ Асаалттай</span>'
     : mode === 'test' ? '<span class="rmt-chip rmt-test">🧪 Туршилт</span>' : '<span class="rmt-chip rmt-off">⏸ Унтраалттай</span>';
-  const days = Number((R.cfg || {}).days) || 40;
+  const days = Number((R.cfg || {}).days) || 30;
+  const oldOn = !!(R.cfg && R.cfg.old_mode === 'on');
+  const oldCap = Number((R.cfg || {}).old_cap) || 10;
   const orders = Array.isArray(state.appOrders) ? state.appOrders : [];
   const sent = orders.filter(o => o && o.stage_meta && o.stage_meta.mail && o.stage_meta.mail.reminder).length;
   const failed = orders.filter(o => o && o.stage_meta && o.stage_meta.mail && o.stage_meta.mail.reminder_err).length;
@@ -17817,14 +17840,22 @@ function renderReminderCard() {
   return `<div class="rmt">
     <div class="rmt-head">${chip}${stats}${state.isCEO ? `<button class="btn rmt-toggle${mode === 'on' ? '' : ' btn-primary'}" id="rmt-toggle">${mode === 'on' ? '⏸ Унтраах' : '▶ Асаах'}</button>` : ''}</div>
     ${(R.cfg && R.cfg.switched_by) ? `<div class="rmt-hint rmt-sw">${mode === 'on' ? 'Асаасан' : 'Сүүлд өөрчилсөн'}: ${escapeHtml(R.cfg.switched_by)}${R.cfg.switched_at ? ' · ' + escapeHtml(String(R.cfg.switched_at).slice(0, 10)) : ''}</div>` : ''}
-    <div class="rmt-sub">Захиалга хаагдсанаас ${days} хоногийн дараа, шинэ захиалга өгөөгүй хүнд ганц удаа өөрөө явна. Хадгалмагц дараагийн илгээлтээс хүчинтэй.</div>
+    <div class="mke-subs rmt-segs" role="tablist">
+      <button class="mke-sub${seg === 'new' ? ' on' : ''}" role="tab" aria-selected="${seg === 'new'}" data-rmt-seg="new">Шинэ харилцагч</button>
+      <button class="mke-sub${seg === 'old' ? ' on' : ''}" role="tab" aria-selected="${seg === 'old'}" data-rmt-seg="old">Хуучин харилцагч</button>
+    </div>
+    ${seg === 'new'
+      ? `<div class="rmt-sub">Захиалга хаагдаж талархал явснаас ${days} хоногийн дараа, шинэ захиалга өгөөгүй хүнд ганц удаа өөрөө явна. Хадгалмагц дараагийн илгээлтээс хүчинтэй.</div>`
+      : `<div class="rmt-sub">9/13-аас өмнө хаагдсан захиалгын эзэд ("баярлалаа" имэйл хэзээ ч аваагүй). Ажлын өдөр бүр ${oldCap} хүнээр аажим явна, хамгийн сүүлд захиалсан нь эхэлж. Үндсэн сануулга асаалттай үед л явна.</div>
+         <div class="rmt-oldrow"><span class="rmt-chip ${oldOn ? 'rmt-on' : 'rmt-off'}">${oldOn ? '✅ Хуучин хүнд явж байна' : '⏸ Хуучин хүнд явахгүй'}</span>${state.isCEO ? `<button class="btn rmt-toggle${oldOn ? '' : ' btn-primary'}" id="rmt-toggle-old">${oldOn ? '⏸ Унтраах' : '▶ Асаах'}</button>` : ''}</div>
+         ${(R.cfg && R.cfg.old_switched_by) ? `<div class="rmt-hint rmt-sw">${oldOn ? 'Асаасан' : 'Сүүлд өөрчилсөн'}: ${escapeHtml(R.cfg.old_switched_by)}${R.cfg.old_switched_at ? ' · ' + escapeHtml(String(R.cfg.old_switched_at).slice(0, 10)) : ''}</div>` : ''}`}
     <div class="rmt-grid">
       <div class="rmt-form">${fields}
         <div id="rmt-issues">${reminderIssuesHtml(txt)}</div>
         <div class="rmt-actions">
           ${can ? `<button class="btn btn-primary" id="rmt-save"${R.saving ? ' disabled' : ''}>💾 Хадгалах</button><button class="btn" id="rmt-reset">↩ Анхны бичвэр</button>` : '<span class="rmt-hint">Бичвэрийг зөвхөн захирал засна.</span>'}
         </div>
-        ${R.text && R.text.updated_by ? `<div class="rmt-hint">Сүүлд зассан: ${escapeHtml(R.text.updated_by)}${R.text.updated_at ? ' · ' + escapeHtml(String(R.text.updated_at).slice(0, 10)) : ''}</div>` : ''}
+        ${saved && saved.updated_by ? `<div class="rmt-hint">Сүүлд зассан: ${escapeHtml(saved.updated_by)}${saved.updated_at ? ' · ' + escapeHtml(String(saved.updated_at).slice(0, 10)) : ''}</div>` : ''}
       </div>
       <div class="rmt-pv-wrap"><div class="rmt-lbl">Имэйл ингэж харагдана (жишээ: Б.Ариун, 9 сарын 12)</div><div class="rmt-pv" id="rmt-pv">${reminderPreviewHtml(txt)}</div></div>
     </div>
@@ -17836,15 +17867,21 @@ function attachReminderHandlers() {
   const read = () => { const o = {}; REMINDER_TEXT_FIELDS.forEach(f => { o[f.k] = String(document.getElementById('rmt-' + f.k)?.value || ''); }); return o; };
   REMINDER_TEXT_FIELDS.forEach(f => document.getElementById('rmt-' + f.k)?.addEventListener('input', () => {
     // Дэлгэцийг бүтнээр дахин зурахгүй: бичиж байхад курсор алдагдана. Зөвхөн урьдчилан харах ба анхааруулга шинэчлэгдэнэ.
-    const cur = read(); R.draft = cur;
+    const cur = read(); (R.drafts = R.drafts || { new: null, old: null })[reminderSegOf()] = cur;
     const pv = document.getElementById('rmt-pv'); if (pv) pv.innerHTML = reminderPreviewHtml(cur);
     const is = document.getElementById('rmt-issues'); if (is) is.innerHTML = reminderIssuesHtml(cur);
   }));
   document.getElementById('rmt-save')?.addEventListener('click', saveReminderText);
-  document.getElementById('rmt-toggle')?.addEventListener('click', toggleReminderMode);
+  document.getElementById('rmt-toggle')?.addEventListener('click', () => toggleReminderMode('mode'));
+  document.getElementById('rmt-toggle-old')?.addEventListener('click', () => toggleReminderMode('old_mode'));
+  document.querySelectorAll('[data-rmt-seg]').forEach(b => b.addEventListener('click', () => {
+    // Бичиж байсан ноорогыг алдахгүй: бүлэг солихын өмнө хадгална
+    (R.drafts = R.drafts || { new: null, old: null })[reminderSegOf()] = read();
+    R.seg = b.dataset.rmtSeg; render();
+  }));
   document.getElementById('rmt-reset')?.addEventListener('click', async () => {
     if (!(await showConfirm('Анхны бичвэрийг буцаан тавих уу? (Хадгалах дарахгүй бол сервер дээрх бичвэр өөрчлөгдөхгүй.)', { title: '↩ Анхны бичвэр', okText: 'Тийм' }))) return;
-    R.draft = Object.assign({}, REMINDER_TEXT_DEFAULT); render();
+    (R.drafts = R.drafts || { new: null, old: null })[reminderSegOf()] = Object.assign({}, reminderDefaultOf(reminderSegOf())); render();
   });
 }
 function renderEmailMarketing() {

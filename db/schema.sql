@@ -3980,6 +3980,7 @@ CASE key
     WHEN 'ads_budget'::text THEN sec.is_ceo()
     WHEN 'reminder_mail'::text THEN sec.is_ceo()
     WHEN 'reminder_mail_text'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail_text_old'::text THEN sec.is_ceo()
     ELSE true
 END);
 
@@ -4002,6 +4003,7 @@ CASE key
     WHEN 'ads_budget'::text THEN sec.is_ceo()
     WHEN 'reminder_mail'::text THEN sec.is_ceo()
     WHEN 'reminder_mail_text'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail_text_old'::text THEN sec.is_ceo()
     ELSE true
 END) WITH CHECK (
 CASE key
@@ -4010,6 +4012,7 @@ CASE key
     WHEN 'ads_budget'::text THEN sec.is_ceo()
     WHEN 'reminder_mail'::text THEN sec.is_ceo()
     WHEN 'reminder_mail_text'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail_text_old'::text THEN sec.is_ceo()
     ELSE true
 END);
 

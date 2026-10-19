@@ -17645,6 +17645,174 @@ function marketingEmailHtml(branch, bodyText) {
   </table>
   </div>`;
 }
+/* ── АВТОМАТ САНУУЛГА ИМЭЙЛИЙН БИЧВЭР (2026-10-19, CEO) ──────────────────────
+   Захиалга хаагдснаас 40 хоногийн дараа өөрөө явдаг сануулгын БИЧВЭРИЙГ ажилтан аппаас
+   засна (`app_config['reminder_mail_text']`). Хэнд, хэзээ явахыг DB-ийн reminder_pick() шийднэ;
+   n8n илгээх бүрд бичвэрийг тэндээс уншина → хадгалмагц дараагийн илгээлтээс хүчинтэй.
+   ⛔ reminderTextPreview() нь tools/reminder_compose.js-тэй ЯГ ИЖИЛ дүрэмтэй (урьдчилан
+     харах = бодит имэйл). test/run.js хоёуланг тулгана — нэгийг засвал нөгөөг ЗЭРЭГ зас.
+   ⛔ Анхны бичвэр db/reminder_mail.sql-ийн seed-тэй ИЖИЛ. Бичвэр ЗӨВХӨН энгийн текст
+     (HTML/холбоос орохгүй). Зураас (—, –) хэрэглэхгүй — CEO дүрэм, сануулна (хориглохгүй). */
+const REMINDER_TEXT_KEY = 'reminder_mail_text';
+const REMINDER_TEXT_LIMITS = { subject: 120, heading: 120, greeting: 100, intro: 300, body: 1500 };
+const REMINDER_TEXT_DEFAULT = {
+  subject: 'Та ойрын хугацаанд эвент төлөвлөж байна уу? M-Event',
+  heading: 'Та ойрын хугацаанд эвент төлөвлөж байна уу?',
+  greeting: 'Сайн байна уу, {нэр}.',
+  intro: 'Та {огноо} манай түрээсийн үйлчилгээг сонгосон байна.',
+  body: 'Ойрын хугацаанд дахиад эвент, арга хэмжээ төлөвлөж байгаа бол манай түрээсийн үйлчилгээтэй хамтран ажиллахыг хүсэж байна. Бид үйл ажиллагаагаа илүү мэргэжлийн түвшинд хүргэхийн төлөө өдөр бүр сайжруулж, шинэ бараа бүтээгдэхүүн нэмсээр байна.\nАрга хэмжээнийхээ огноо, хэрэгтэй зүйлсээ хэлэхэд л болно. Бид танд үйлчилгээ үзүүлэхдээ үргэлж баяртай байх болно.',
+};
+const REMINDER_TEXT_FIELDS = [
+  { k: 'subject', label: 'Имэйлийн гарчиг', rows: 1, hint: 'Хүлээн авагчийн хайрцагт харагдана.' },
+  { k: 'heading', label: 'Том гарчиг', rows: 1, hint: 'Имэйл дотор хамгийн том үсгээр.' },
+  { k: 'greeting', label: 'Мэндчилгээ', rows: 1, hint: '{нэр} нь цэвэр кирилл нэр байвал орно, эс бөгөөс «Сайн байна уу.» гэж гарна.' },
+  { k: 'intro', label: 'Өмнөх захиалгын тухай', rows: 2, hint: '{огноо} нь «9 сарын 12-нд» гэж орно. Огноо мэдэгдэхгүй бол энэ мөр гарахгүй. Доор нь өмнөх захиалгын жижиг карт гарна.' },
+  { k: 'body', label: 'Үндсэн бичвэр', rows: 7, hint: 'Мөр бүр тусдаа догол мөр болно. Доор нь «7755-1010 руу залгах» товч автоматаар гарна.' },
+];
+// Нэр цэвэр кирилл хүний нэр бол л нэрээр нь мэндэлнэ (tools/reminder_compose.js-ийн cleanName-тэй ижил)
+function reminderCleanName(s) {
+  s = String(s || '').trim();
+  if (!s || s.length > 30) return '';
+  if (!/^[А-ЯӨҮЁа-яөүё][А-ЯӨҮЁа-яөүё.\- ]*$/.test(s)) return '';
+  if (s.split(/\s+/).length > 3) return '';
+  if (/(^|\s)(хк|ххк|хххк|компани|групп|холбоо|төв|сан)(\s|$)/i.test(s)) return '';
+  return s;
+}
+// Бодит имэйлд орох бичвэр (угсралтын ЦЭВЭР дүрэм). ctx = { name, date: «9 сарын 12-нд» | '' }
+function reminderTextPreview(txt, ctx) {
+  const T = txt || {}, when = String((ctx && ctx.date) || ''), nm = reminderCleanName(ctx && ctx.name);
+  const L = REMINDER_TEXT_LIMITS;
+  const clip = (s, n) => String(s == null ? '' : s).replace(/\r/g, '').slice(0, n);
+  const strip = s => s.replace(/\{[^{}]*\}/g, '').replace(/[ \t]{2,}/g, ' ').trim();
+  const paras = (s, n) => clip(s, n).split('\n').map(x => x.trim()).filter(x => x && (!x.includes('{огноо}') || when))
+    .map(x => strip(x.split('{огноо}').join(when))).filter(Boolean);
+  const g = clip(T.greeting, L.greeting).split('\n')[0].trim() || 'Сайн байна уу, {нэр}.';
+  return {
+    subject: strip(clip(T.subject, L.subject).split('\n')[0]),
+    heading: strip(clip(T.heading, L.heading).split('\n')[0]),
+    greeting: strip(nm ? g.split('{нэр}').join(nm) : g.replace(/[,\s]*\{нэр\}/g, '').replace(/\s+([.!?])/g, '$1')),
+    intro: paras(T.intro, L.intro),
+    body: paras(T.body, L.body),
+  };
+}
+// Хадгалахаас өмнөх шалгалт: errors = хадгалахыг ЗОГСООНО, warns = зөвхөн сануулна.
+function reminderTextIssues(txt) {
+  const T = txt || {}, errors = [], warns = [];
+  const must = { subject: 'Имэйлийн гарчиг', heading: 'Том гарчиг', body: 'Үндсэн бичвэр' };
+  Object.keys(must).forEach(k => { if (!String(T[k] || '').trim()) errors.push(`«${must[k]}» хоосон байж болохгүй.`); });
+  REMINDER_TEXT_FIELDS.forEach(f => {
+    const v = String(T[f.k] || '');
+    if (v.length > REMINDER_TEXT_LIMITS[f.k]) errors.push(`«${f.label}» ${REMINDER_TEXT_LIMITS[f.k]} тэмдэгтээс хэтэрсэн.`);
+    if (/[—–]/.test(v)) warns.push(`«${f.label}» дотор зураас (— эсвэл –) байна. Таслал, цэг хэрэглэнэ үү.`);
+    const allowed = f.k === 'greeting' ? ['нэр'] : (f.k === 'intro' || f.k === 'body') ? ['огноо'] : [];
+    (v.match(/\{[^{}]*\}/g) || []).forEach(ph => {
+      if (!allowed.includes(ph.slice(1, -1))) warns.push(`«${f.label}» дотор ${ph} энд ажиллахгүй, имэйлд харагдахгүй.`);
+    });
+  });
+  return { errors, warns };
+}
+async function loadReminderMail() {
+  const R = state._reminder = state._reminder || {};
+  R.loading = true; R.error = '';
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=in.(${REMINDER_TEXT_KEY},reminder_mail)&select=key,value`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    const by = {}; (rows || []).forEach(x => { by[x.key] = x.value; });
+    R.text = by[REMINDER_TEXT_KEY] || null;   // null = сервер дээр хараахан хадгалагдаагүй
+    R.cfg = by.reminder_mail || {};
+    R.loaded = true;
+  } catch (e) { R.error = String(e.message || e); dataLoadFailed('loadReminderMail', e); }
+  R.loading = false;
+  if (typeof render === 'function') render();
+}
+async function saveReminderText() {
+  const R = state._reminder || {};
+  const cur = {}; REMINDER_TEXT_FIELDS.forEach(f => { cur[f.k] = String(document.getElementById('rmt-' + f.k)?.value || '').replace(/\r/g, '').trim(); });
+  const { errors, warns } = reminderTextIssues(cur);
+  if (errors.length) { showToast(errors[0], 'warn', 4000); return; }
+  if (!state.isCEO) { showToast('Бичвэрийг зөвхөн захирал засна', 'warn', 3000); return; }
+  const me = (typeof findMember === 'function' && findMember(state.me)) || null;
+  const val = Object.assign({}, cur, { updated_by: (me && me.name) || '', updated_at: new Date().toISOString() });
+  R.saving = true; render();
+  try {
+    await saveAppConfig(REMINDER_TEXT_KEY, val);
+    R.text = val; R.draft = null; R.saving = false;
+    showToast(warns.length ? '✓ Хадгаллаа. Анхааруулга байна, дээрээс харна уу' : '✓ Хадгаллаа. Дараагийн илгээлтээс хүчинтэй', warns.length ? 'warn' : 'success', 4000);
+  } catch (e) {
+    R.saving = false; R.draft = cur;
+    showToast('Хадгалж чадсангүй: ' + (e.message || e), 'error', 5000);
+  }
+  render();
+}
+function reminderPreviewHtml(txt) {
+  const p = reminderTextPreview(txt, { name: 'Б.Ариун', date: '9 сарын 12-нд' });
+  const P = (t) => `<p class="rmt-p">${escapeHtml(t)}</p>`;
+  return `<div class="rmt-pv-h">${escapeHtml(p.heading)}</div>${P(p.greeting)}${p.intro.map(P).join('')}
+    <div class="rmt-pv-card"><b>Өмнөх захиалга №1504</b><br>Эвхэгддэг сандал Цагаан, Цагаан Ширээ 180*74см</div>
+    ${p.body.map(P).join('')}<div class="rmt-pv-btn">📞 7755-1010 руу залгах</div>`;
+}
+function reminderIssuesHtml(txt) {
+  const { errors, warns } = reminderTextIssues(txt);
+  return errors.map(m => `<div class="rmt-err">⛔ ${escapeHtml(m)}</div>`).join('') + warns.map(m => `<div class="rmt-warn">⚠ ${escapeHtml(m)}</div>`).join('');
+}
+function renderReminderCard() {
+  const R = state._reminder = state._reminder || {};
+  if (!R.loaded && !R.loading && !R.error) { R.loading = true; setTimeout(loadReminderMail, 0); }
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
+  if (R.loading && !R.loaded) return '<div class="rmt"><div class="rmt-sub">Ачааллаж байна…</div></div>';
+  if (R.error && !R.loaded) return `<div class="rmt"><div class="rmt-err">⛔ Бичвэр уншиж чадсангүй (${escapeHtml(R.error)}).</div><button class="btn" id="rmt-retry">Дахин оролдох</button></div>`;
+  const txt = R.draft || R.text || REMINDER_TEXT_DEFAULT;
+  const mode = (R.cfg && R.cfg.mode) || 'off';
+  const chip = mode === 'on' ? '<span class="rmt-chip rmt-on">✅ Асаалттай</span>'
+    : mode === 'test' ? '<span class="rmt-chip rmt-test">🧪 Туршилт</span>' : '<span class="rmt-chip rmt-off">⏸ Унтраалттай</span>';
+  const days = Number((R.cfg || {}).days) || 40;
+  const orders = Array.isArray(state.appOrders) ? state.appOrders : [];
+  const sent = orders.filter(o => o && o.stage_meta && o.stage_meta.mail && o.stage_meta.mail.reminder).length;
+  const failed = orders.filter(o => o && o.stage_meta && o.stage_meta.mail && o.stage_meta.mail.reminder_err).length;
+  const stats = orders.length ? `<div class="rmt-stats">Явсан <b>${sent}</b>${failed ? ` · алдаатай <b class="rmt-bad">${failed}</b>` : ''}</div>` : '';
+  const can = !!state.isCEO;
+  const dis = can ? '' : ' readonly';
+  const fields = REMINDER_TEXT_FIELDS.map(f => {
+    const v = escapeHtml(txt[f.k] || '');
+    const inp = f.rows <= 1
+      ? `<input class="rmt-in" id="rmt-${f.k}" type="text" maxlength="${REMINDER_TEXT_LIMITS[f.k]}" value="${v}"${dis}>`
+      : `<textarea class="rmt-in" id="rmt-${f.k}" rows="${f.rows}" maxlength="${REMINDER_TEXT_LIMITS[f.k]}"${dis}>${v}</textarea>`;
+    return `<label class="rmt-lbl" for="rmt-${f.k}">${f.label}</label>${inp}<div class="rmt-hint">${f.hint}</div>`;
+  }).join('');
+  return `<div class="rmt">
+    <div class="rmt-head"><div class="rmt-title">🔁 Автомат сануулга</div>${chip}</div>
+    <div class="rmt-sub">Захиалга хаагдаж талархал явснаас ${days} хоногийн дараа, шинэ захиалга өгөөгүй хүнд ганц удаа өөрөө явна. Доорх бичвэрийг хадгалмагц дараагийн илгээлтээс хүчин төгөлдөр болно.</div>
+    ${stats}
+    <div class="rmt-grid">
+      <div class="rmt-form">${fields}
+        <div id="rmt-issues">${reminderIssuesHtml(txt)}</div>
+        <div class="rmt-actions">
+          ${can ? `<button class="btn btn-primary" id="rmt-save"${R.saving ? ' disabled' : ''}>💾 Хадгалах</button><button class="btn" id="rmt-reset">↩ Анхны бичвэр</button>` : '<span class="rmt-hint">Бичвэрийг зөвхөн захирал засна.</span>'}
+        </div>
+        ${R.text && R.text.updated_by ? `<div class="rmt-hint">Сүүлд зассан: ${escapeHtml(R.text.updated_by)}${R.text.updated_at ? ' · ' + escapeHtml(String(R.text.updated_at).slice(0, 10)) : ''}</div>` : ''}
+      </div>
+      <div class="rmt-pv-wrap"><div class="rmt-lbl">Урьдчилан харах (Б.Ариун, 9 сарын 12)</div><div class="rmt-pv" id="rmt-pv">${reminderPreviewHtml(txt)}</div></div>
+    </div>
+  </div>`;
+}
+function attachReminderHandlers() {
+  const R = state._reminder = state._reminder || {};
+  document.getElementById('rmt-retry')?.addEventListener('click', () => { R.error = ''; R.loaded = false; render(); });
+  const read = () => { const o = {}; REMINDER_TEXT_FIELDS.forEach(f => { o[f.k] = String(document.getElementById('rmt-' + f.k)?.value || ''); }); return o; };
+  REMINDER_TEXT_FIELDS.forEach(f => document.getElementById('rmt-' + f.k)?.addEventListener('input', () => {
+    // Дэлгэцийг бүтнээр дахин зурахгүй: бичиж байхад курсор алдагдана. Зөвхөн урьдчилан харах ба анхааруулга шинэчлэгдэнэ.
+    const cur = read(); R.draft = cur;
+    const pv = document.getElementById('rmt-pv'); if (pv) pv.innerHTML = reminderPreviewHtml(cur);
+    const is = document.getElementById('rmt-issues'); if (is) is.innerHTML = reminderIssuesHtml(cur);
+  }));
+  document.getElementById('rmt-save')?.addEventListener('click', saveReminderText);
+  document.getElementById('rmt-reset')?.addEventListener('click', async () => {
+    if (!(await showConfirm('Анхны бичвэрийг буцаан тавих уу? (Хадгалах дарахгүй бол сервер дээрх бичвэр өөрчлөгдөхгүй.)', { title: '↩ Анхны бичвэр', okText: 'Тийм' }))) return;
+    R.draft = Object.assign({}, REMINDER_TEXT_DEFAULT); render();
+  });
+}
 function renderEmailMarketing() {
   const S = state._mkEmail = state._mkEmail || { branch: 'm-event', body: '', subject: '' };
   if (state._emailOptout === undefined) { state._emailOptout = new Set(); loadEmailOptout(); }
@@ -17765,7 +17933,15 @@ function renderMarketing() {
     <button class="btn${mkTab === 'poster' ? ' btn-primary' : ''}" data-mk-tab="poster" style="padding:7px 14px;">🎨 Постер</button>
     <button class="btn${mkTab === 'email' ? ' btn-primary' : ''}" data-mk-tab="email" style="padding:7px 14px;">📧 Имэйл маркетинг</button>
   </div>`;
-  if (mkTab === 'email') return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}${renderEmailMarketing()}</div>`;
+  if (mkTab === 'email') {
+    // Дэд сонголт: нэг удаагийн илгээлт (өмнөх) ба автомат сануулгын бичвэр (2026-10-19)
+    const sub = state.mkEmailSub === 'reminder' ? 'reminder' : 'manual';
+    const subBar = `<div class="mke-subs">
+      <button class="btn${sub === 'manual' ? ' btn-primary' : ''}" data-mke-sub="manual">📤 Нэг удаа илгээх</button>
+      <button class="btn${sub === 'reminder' ? ' btn-primary' : ''}" data-mke-sub="reminder">🔁 Автомат сануулга</button>
+    </div>`;
+    return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}${subBar}${sub === 'reminder' ? renderReminderCard() : renderEmailMarketing()}</div>`;
+  }
   const k = _brandKit();
   const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   if (!P.template) P.template = 'work';
@@ -17866,7 +18042,11 @@ function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv)
 function attachMarketingHandlers() {
   // Таб солих (Постер / Имэйл)
   document.querySelectorAll('[data-mk-tab]').forEach(b => b.addEventListener('click', () => { state.mkTab = b.dataset.mkTab; render(); }));
-  if ((state.mkTab || 'poster') === 'email') { attachEmailMarketingHandlers(); return; }
+  if ((state.mkTab || 'poster') === 'email') {
+    document.querySelectorAll('[data-mke-sub]').forEach(b => b.addEventListener('click', () => { state.mkEmailSub = b.dataset.mkeSub; render(); }));
+    if (state.mkEmailSub === 'reminder') attachReminderHandlers(); else attachEmailMarketingHandlers();
+    return;
+  }
   const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   // Лого урьдчилан ачаалах (брэнд зурвас дээр зурахад)
   const k = _brandKit();

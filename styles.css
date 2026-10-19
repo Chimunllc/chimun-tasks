@@ -9422,3 +9422,33 @@ select.no-asar-len {
 /* Ашиг/алдагдлын өнгө — багана дээрх тоо БА хөлийн нийлбэр ХОЁУЛАА үүнээс */
 .ftc-ok { color: var(--ok); }
 .ftc-bad { color: var(--danger); }
+
+/* ── Автомат сануулга имэйлийн бичвэр засах карт (2026-10-19) ───────────────
+   Маркетинг → Имэйл → «Автомат сануулга». Бүх өнгө, зай токен. */
+.mke-subs { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: 0 0 var(--space-4); }
+.rmt { display: block; }
+.rmt-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin: 0 0 var(--space-2); }
+.rmt-title { font-size: var(--fs-xl); font-weight: 800; }
+.rmt-chip { font-size: var(--fs-sm); font-weight: 700; padding: var(--space-1) var(--space-3); border-radius: var(--r-full); white-space: nowrap; }
+.rmt-on { background: var(--ok-soft); color: var(--ok); }
+.rmt-test { background: var(--warn-soft); color: var(--warn); }
+.rmt-off { background: var(--panel-hover); color: var(--muted); }
+.rmt-sub { font-size: var(--fs-sm); color: var(--muted); margin: 0 0 var(--space-3); line-height: 1.5; }
+.rmt-stats { font-size: var(--fs-md); margin: 0 0 var(--space-3); }
+.rmt-bad { color: var(--danger); }
+.rmt-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+@media (min-width: 1001px) { .rmt-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.rmt-lbl { display: block; font-size: var(--fs-sm); font-weight: 700; color: var(--muted); margin: var(--space-3) 0 var(--space-1); }
+.rmt-in { display: block; width: 100%; box-sizing: border-box; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font: inherit; font-size: var(--fs-base); line-height: 1.5; resize: vertical; }
+.rmt-in:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.rmt-in[readonly] { background: var(--panel-hover); }
+.rmt-hint { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-1) 0 0; line-height: 1.5; }
+.rmt-warn, .rmt-err { font-size: var(--fs-sm); margin: var(--space-2) 0 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md); line-height: 1.5; }
+.rmt-warn { background: var(--warn-soft); }
+.rmt-err { background: var(--danger-soft); color: var(--danger); }
+.rmt-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-4) 0 var(--space-2); }
+.rmt-pv { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); padding: var(--space-4); }
+.rmt-pv-h { font-size: var(--fs-xl); font-weight: 800; line-height: 1.3; margin: 0 0 var(--space-3); }
+.rmt-p { font-size: var(--fs-base); line-height: 1.6; margin: 0 0 var(--space-3); }
+.rmt-pv-card { font-size: var(--fs-md); line-height: 1.6; background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-3) var(--space-4); margin: 0 0 var(--space-4); }
+.rmt-pv-btn { display: block; text-align: center; background: var(--primary); color: #fff; font-weight: 700; padding: var(--space-3) var(--space-5); border-radius: var(--r-lg); margin: var(--space-4) 0 0; }

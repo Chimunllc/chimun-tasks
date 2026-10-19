@@ -3978,6 +3978,8 @@ CASE key
     WHEN 'coo_share'::text THEN sec.is_ceo()
     WHEN 'personal_settlements'::text THEN sec.fin_full()
     WHEN 'ads_budget'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail_text'::text THEN sec.is_ceo()
     ELSE true
 END);
 
@@ -3998,12 +4000,16 @@ CASE key
     WHEN 'coo_share'::text THEN sec.is_ceo()
     WHEN 'personal_settlements'::text THEN sec.fin_full()
     WHEN 'ads_budget'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail_text'::text THEN sec.is_ceo()
     ELSE true
 END) WITH CHECK (
 CASE key
     WHEN 'coo_share'::text THEN sec.is_ceo()
     WHEN 'personal_settlements'::text THEN sec.fin_full()
     WHEN 'ads_budget'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail'::text THEN sec.is_ceo()
+    WHEN 'reminder_mail_text'::text THEN sec.is_ceo()
     ELSE true
 END);
 

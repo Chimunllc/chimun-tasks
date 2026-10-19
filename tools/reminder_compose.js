@@ -38,16 +38,26 @@ return $input.all().map((it, i) => {
   const to = test ? String(r.test_to || '').trim().toLowerCase() : real;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to) || !r.order_id) return null;
 
-  // Бичвэр аппаас ирнэ. Байхгүй/эвдэрсэн бол ЯВУУЛАХГҮЙ (буруу бичвэрээр илгээхээс дээр).
+  // Бичвэр аппаас ирнэ. Бүлэг (segment) бүр өөрийн бичвэртэй: new = саяхан хаагдсан, old = хуучин (9/13-аас өмнөх).
+  // Байхгүй/эвдэрсэн бол ЯВУУЛАХГҮЙ (буруу бичвэрээр илгээхээс дээр).
   let T = null;
-  try { T = JSON.parse(r.txt || 'null'); } catch (e) { T = null; }
+  try { T = JSON.parse((r.segment === 'old' ? r.txt_old : r.txt) || 'null'); } catch (e) { T = null; }
   if (!T || !String(T.subject || '').trim() || !String(T.heading || '').trim() || !String(T.body || '').trim()) return null;
 
   let items = [];
   try { items = JSON.parse(r.items || '[]'); } catch (e) { items = []; }
   const seen = new Set();
+  // Хуучин (Booqable) захиалгад хүргэлт, барьцаа, НӨАТ, суурилуулалт нь «бараа» мөр болж орсон — картад гаргахгүй.
+  const NOT_GOODS = /нөат|vat|барьцаа|deposit|хүргэлт|хөнгөлөлт|суурилуулалт|угсрал|буулгах|оператор|ажлын бус/i;
+  // Хуучин каталогийн нэр урт, эвдэрхий («Майхан / Зуны Bell tent / 6-8 хүн  - 5метр…», `\` тэмдэгттэй) —
+  // эхний хоёр хэсгийг авч, ` - дараах` тайлбарыг хасаж, 40 тэмдэгтэд тайрна.
+  const short = n => {
+    let t = n.replace(/\s+/g, ' ').split(/\s*[\\/]\s*/).filter(Boolean).slice(0, 2).join(' ').replace(/\s+[-–—]\s+.*$/, '').trim();
+    if (t.length > 40) t = t.slice(0, 40).replace(/\s+\S*$/, '') + '…';
+    return t;
+  };
   const names = (Array.isArray(items) ? items : []).map(x => String((x && x.name) || '').trim())
-    .filter(n => n && !seen.has(n) && seen.add(n)).slice(0, 4);
+    .filter(n => n && !NOT_GOODS.test(n)).map(short).filter(n => n && !seen.has(n) && seen.add(n)).slice(0, 4);
   const when = dayText(r.starts_at);
   const nm = cleanName(r.customer);
   const paras = (txt, n) => clip(txt, n).split('\n').map(x => x.trim()).filter(x => x && (!x.includes('{огноо}') || when))

@@ -9141,8 +9141,9 @@ need(['orderCustType']);
        'эрх: rls.sql-д ads_budget → CEO (insert + update-ийн using ба with check)');
     eq((rls.match(/when 'reminder_mail' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д reminder_mail (сануулга асаах) → зөвхөн CEO');
     eq((rls.match(/when 'reminder_mail_text' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д reminder_mail_text (харилцагчид очих бичвэр) → зөвхөн CEO');
+    eq((rls.match(/when 'reminder_mail_text_old' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д reminder_mail_text_old (хуучин харилцагчид очих бичвэр) → зөвхөн CEO');
     const schema = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
-    eq((schema.match(/WHEN 'reminder_mail(_text)?'::text THEN sec\.is_ceo\(\)/g) || []).length, 6, 'эрх: schema.sql rls.sql-тэй ижил (сануулгын 2 түлхүүр × 3)');
+    eq((schema.match(/WHEN 'reminder_mail(_text|_text_old)?'::text THEN sec\.is_ceo\(\)/g) || []).length, 9, 'эрх: schema.sql rls.sql-тэй ижил (сануулгын 3 түлхүүр × 3)');
     ok(!/data-ads-edit>/.test(app.replace(/\$\{adsBudgetEditable\(\) \? [\s\S]*?\}/g, '')),
        'эрх: төсвийн товч adsBudgetEditable()-гүйгээр гарахгүй');
   }
@@ -19900,8 +19901,8 @@ async function swFetchTests() {
 // Харилцагчид очдог имэйл тул дүрэм бүрийг тест барина (SQL ажиллуулж чадахгүй тул эх кодыг уншина).
 {
   const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'reminder_mail.sql'), 'utf8');
-  const pick = sql.slice(sql.indexOf('create or replace function reminder_pick()'), sql.indexOf('create or replace function reminder_test_pick()'));
-  const tst = sql.slice(sql.indexOf('create or replace function reminder_test_pick()'));
+  const pick = sql.slice(sql.indexOf('create function reminder_pick()'), sql.indexOf('create function reminder_test_pick()'));
+  const tst = sql.slice(sql.indexOf('create function reminder_test_pick()'));
   ok(pick.length > 500 && tst.length > 200, 'сануулга: хоёр функц бүгд байна');
   // ⛔ Харилцагчийн имэйл буцаадаг — PUBLIC-д EXECUTE автоматаар олгогддог тул ЗААВАЛ хураана
   ok(/revoke all on function reminder_pick\(\) from public, anon, authenticated;/.test(sql)
@@ -19915,7 +19916,7 @@ async function swFetchTests() {
   // Хэнд ЯВАХГҮЙ
   ok(/stage_meta->'mail' \? 'closed'/.test(pick), 'сануулга: зөвхөн талархал (хаагдсан имэйл) очсон захиалгаас эхэлнэ');
   ok(/from email_optout/.test(pick), '⛔ сануулга: хасуулсан хүнд явуулахгүй');
-  ok(/b\.total_mnt - b\.paid_mnt - b\.deposit_mnt <= 1000(?!\d)/.test(pick), '⛔ сануулга: төлбөрийн үлдэгдэлтэй хүнд явуулахгүй (барьцаа буцаасныг өр гэж андуурахгүй)');
+  ok(/b\.total_mnt - b\.paid_mnt - b\.deposit_mnt end\) <= 1000(?!\d)/.test(pick) && /b\.source = 'booqable' then b\.total_mnt - b\.paid_mnt/.test(pick), '⛔ сануулга: төлбөрийн үлдэгдэлтэй хүнд явуулахгүй (апп: барьцаа буцаасныг өр гэж андуурахгүй; Booqable: барьцаа total-д ороогүй)');
   ok(/'reminder'/.test(pick) && /interval '120 days'/.test(pick), 'сануулга: 120 хоногт дахин сануулахгүй');
   ok(/\? 'reminder'\)/.test(pick) && /\? 'reminder_err'\)/.test(pick), 'сануулга: нэг захиалгад нэг л удаа оролдоно (алдаатай ч дахин явуулахгүй)');
   ok(/stars'\)::int, 5\) <= 2/.test(pick), 'сануулга: 1-2 одтой үнэлгээ өгсөн хүнд явуулахгүй');
@@ -20014,7 +20015,7 @@ async function swFetchTests() {
   const scenario = async (o) => {
     const log = { saved: [], confirms: [], fetched: 0, toasts: [] };
     Object.assign(sb, { __sc: Object.assign({ ceo: true, rows: [{ value: cfg0 }], fetchOk: true, confirm: true }, o), __log: log });
-    run(`state.isCEO = __sc.ceo; state._reminder = { loaded: true, text: { subject: 'Миний гарчиг' }, cfg: {} };
+    run(`state.isCEO = __sc.ceo; state._reminder = { loaded: true, texts: { new: { subject: 'Миний гарчиг' }, old: null }, cfg: {} };
       fetchWithTimeout = async () => { __log.fetched++; return { ok: __sc.fetchOk, json: async () => __sc.rows }; };
       saveAppConfig = async (k, v) => { __log.saved.push([k, v]); };
       showConfirm = async (m) => { __log.confirms.push(m); return __sc.confirm; };
@@ -20039,4 +20040,98 @@ async function swFetchTests() {
   L = await scenario({ rows: [] });
   ok(L.saved.length === 1 && L.saved[0][1].mode === 'on', 'унтраалга: тохиргоо огт байхгүй бол (анхны) off гэж үзнэ');
   ok(/id="rmt-toggle"/.test(appSrc) && /state\.isCEO \? `<button class="btn rmt-toggle/.test(appSrc), 'унтраалга: товч зөвхөн захиралд харагдана');
+})());
+
+// ═══ ХУУЧИН ХАРИЛЦАГЧИД САНУУЛГА: ӨӨР БИЧВЭР, АЖИМ ЯВНА (2026-10-19, CEO сонголт 1) ═══
+// 9/13-аас өмнө хаагдсан захиалгын эзэд «баярлалаа» имэйл хэзээ ч аваагүй тул өөр бичвэр, өдөрт цөөн хүнээр, ЗӨВХӨН
+// `old_mode='on'` үед. Дүрэм db/reminder_mail.sql-д (new-тэй ижил шүүлт), бичвэр тусдаа түлхүүрт.
+{
+  const sqlf = fs.readFileSync(path.join(__dirname, '..', 'db', 'reminder_mail.sql'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const compose = fs.readFileSync(path.join(__dirname, '..', 'tools', 'reminder_compose.js'), 'utf8');
+  const pick = sqlf.slice(sqlf.indexOf('create function reminder_pick()'), sqlf.indexOf('create function reminder_test_pick()'));
+  const oldBranch = pick.slice(pick.indexOf("select 'old'::text"), pick.indexOf('), eligible as'));
+  ok(/coalesce\(v->>'old_mode', 'off'\)/.test(pick) && /where p\.old_mode = 'on'/.test(oldBranch), '⛔ хуучин: тохиргоо байхгүй бол ЯВУУЛАХГҮЙ (old_mode өгөгдмөл off)');
+  ok(/not coalesce\(o\.stage_meta->'mail' \? 'closed', false\)/.test(oldBranch), 'хуучин: «хаагдсан имэйл» аль хэдийн очсон хүнийг энд давтахгүй');
+  ok(/o\.status in \('archived', 'returned', 'stowed', 'stopped', 'done'\)/.test(oldBranch) && !/'rented'|'reserved'/.test(oldBranch),
+     '⛔ хуучин: зөвхөн ДУУССАН захиалга (түрээсэнд/захиалсан төлөвтэйг оруулахгүй)');
+  ok(/o\.stops_at >= p\.old_from/.test(oldBranch) && /o\.stops_at <= \(now\(\) at time zone 'Asia\/Ulaanbaatar'\)::date - p\.days/.test(oldBranch), 'хуучин: эхлэх цэг = эвент дууссан өдөр, `days` хоног өнгөрсөн');
+  ok(/order by closed_at desc, number desc limit \(select old_cap from p\)/.test(pick), 'хуучин: өдөрт old_cap хүнээр аажим, хамгийн сүүлд захиалсан нь эхэлж');
+  ok(/order by email, \(segment = 'new'\) desc/.test(pick), 'хуучин: нэг хүн хоёр бүлэгт орвол шинэ нь давуу (нэг имэйл)');
+  // new-тэй ИЖИЛ шүүлт хоёр бүлэгт хамаарна (нэг `eligible` дотор)
+  ok(/eligible as \(\s*select b\.\*\s*from base b, p/.test(pick) && /from email_optout/.test(pick) && /reminder_err/.test(pick) && /<= 2\)/.test(pick), '⛔ хуучин: хасуулсан, өртэй, муу үнэлгээтэй, сануулга авсан хүнийг ШИНЭ-тэй ИЖИЛ шүүлтээр хасна');
+  // Booqable-д барьцаа total-д ороогүй → дүрэм хатуу
+  ok(/case when b\.source = 'booqable' then b\.total_mnt - b\.paid_mnt/.test(pick), 'хуучин: Booqable захиалгад барьцааг тооцохгүй (хатуу шалгана)');
+  ok(/old_cap|old_from/.test(sqlf.split('create function reminder_pick()')[0]), 'тохиргооны шинэ түлхүүрүүд (old_cap, old_from) толгойд тайлбарлагдсан');
+
+  // Анхны бичвэр: апп = SQL seed (хоёр бүлэг)
+  const DEFO = vm.runInContext('REMINDER_TEXT_OLD_DEFAULT', sandbox);
+  const seedOld = JSON.parse((/values \('reminder_mail_text_old', '(\{.*\})'::jsonb\)/.exec(sqlf) || [])[1] || 'null');
+  eq(seedOld, DEFO, '⛔ хуучин бичвэр: аппын REMINDER_TEXT_OLD_DEFAULT = db/reminder_mail.sql-ийн seed');
+  eq(F.reminderTextIssues(DEFO), { errors: [], warns: [] }, 'хуучин бичвэр: алдаа, зураасгүй');
+
+  // n8n угсрагч: бүлгээр бичвэр сонгоно
+  const DEFN = vm.runInContext('REMINDER_TEXT_DEFAULT', sandbox);
+  const run = (rows) => new Function('$input', compose)({ all: () => rows.map(json => ({ json })) });
+  const items = JSON.stringify([{ name: 'Асар 300мкв' }, { name: '2 талдаа Хүргэлт  (машины төрөл дунд)' }, { name: 'Барьцаа' }, { name: 'НӨАТ 10%' }, { name: 'Шилэн сандал' }]);
+  const row = (o) => Object.assign({ segment: 'old', mode: 'on', order_id: 'ao-9', number: 1008, customer: 'Д.Оюу-Эрдэнэ', email: 'o@x.mn', starts_at: '2026-07-04',
+    items, txt: JSON.stringify(DEFN), txt_old: JSON.stringify(DEFO), test_to: null }, o || {});
+  const vis = (h) => h.replace(/<[^>]+>/g, '\n').split('\n').map(x => x.trim()).filter(Boolean);
+  const o1 = run([row()])[0].json;
+  ok(o1.subject === DEFO.subject && vis(o1.html).includes(F.reminderTextPreview(DEFO, { name: 'Д.Оюу-Эрдэнэ', date: '7 сарын 4-нд' }).heading), '⛔ хуучин бүлэг: ХУУЧИН бичвэрээр явна (шинийхээр биш)');
+  const o2 = run([row({ segment: 'new' })])[0].json;
+  ok(o2.subject === DEFN.subject, 'шинэ бүлэг: шинэ бичвэрээр явна');
+  eq(run([row({ txt_old: null })]).length, 0, '⛔ хуучин бичвэр байхгүй бол ЯВУУЛАХГҮЙ (шинийхээр орлуулахгүй)');
+  eq(run([row({ segment: 'new', txt_old: null })]).length, 1, 'шинэ бүлэг хуучин бичвэргүй ч явна');
+  const card = vis(o1.html).join('|');
+  ok(/Асар 300мкв/.test(card) && /Шилэн сандал/.test(card) && !/Хүргэлт|Барьцаа|НӨАТ/.test(card), '⛔ барааны картад хүргэлт, барьцаа, НӨАТ мөр орохгүй (Booqable-ийн хуучин захиалга)');
+  // Урт, эвдэрхий хуучин нэр богиноссон байх ёстой (имэйлийн картад тайлбар шиг урт мөр орохгүй)
+  const ugly = JSON.stringify([{ name: 'Майхан / Зуны Bell tent  /  6-8 хүн  - 5метр 6-8хүний багтаамжтай' }, { name: 'Аяны эвхдэг модон ширээ   \\ жижиг \\' },
+    { name: 'Хийлдэг гудас түрээс 1 хүний (200*100*25см) нэмэлт урт тайлбар' }, { name: 'Эвхэгддэг сандал Цагаан' }]);
+  const cardTxt = vis(run([row({ items: ugly })])[0].json.html).join('|');
+  ok(cardTxt.includes('Майхан Зуны Bell tent') && !/5метр|\\/.test(cardTxt), '⛔ барааны нэр: эвдэрхий хуучин нэр цэвэрлэгдэнэ (/, \\, « - тайлбар» хасагдана)');
+  ok(/Хийлдэг гудас түрээс 1 хүний…/.test(cardTxt) && cardTxt.includes('Аяны эвхдэг модон ширээ'), 'барааны нэр: урт нэр 40 тэмдэгтэд үгийн хилээр таслагдана');
+  // Урьдчилан харах = бодит имэйл (хуучин бичвэр)
+  const pv = F.reminderTextPreview(DEFO, { name: 'Д.Оюу-Эрдэнэ', date: '7 сарын 4-нд' });
+  const lines = vis(o1.html); let at = -1, good = true;
+  [pv.heading, pv.greeting, ...pv.intro, ...pv.body].forEach(w => { const i = lines.indexOf(w, at + 1); if (i < 0) good = false; else at = i; });
+  ok(good, '⛔ хуучин бичвэр: аппын урьдчилан харах = бодит имэйл');
+
+  // Апп: бүлэг солих, ноорог алдагдахгүй, тусдаа түлхүүрт хадгална
+  const sv = src.slice(src.indexOf('async function saveReminderText'), src.indexOf('function reminderPreviewHtml'));
+  ok(/REMINDER_TEXT_KEYS\[seg\]/.test(sv) && /R\.drafts\[seg\] = null/.test(sv), 'апп: бичвэрийг бүлгийн өөрийн түлхүүрт хадгална, ноорог зөвхөн тэр бүлгийнх арилна');
+  const att = src.slice(src.indexOf('function attachReminderHandlers'), src.indexOf('function renderEmailMarketing'));
+  ok(/data-rmt-seg/.test(src) && /reminderSegOf\(\)\] = read\(\);\s*R\.seg = b\.dataset\.rmtSeg/.test(att), '⛔ апп: бүлэг солихын өмнө бичиж байсан ноорогыг хадгална (алдахгүй)');
+  ok(!/R\.text\b|R\.draft\b/.test(src.slice(src.indexOf('async function loadReminderMail'), src.indexOf('function renderEmailMarketing'))), 'апп: хуучин нэг-бичвэрийн R.text/R.draft үлдээгүй');
+}
+
+// Хуучин хүнд явуулахыг АППААС асаах/унтраах — ТУСДАА орчинд, үйлдлээр нь
+(globalThis.__late = globalThis.__late || []).push((async () => {
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const sb = Object.assign({}, sandbox); sb.window = sb; sb.self = sb; sb.globalThis = sb;
+  vm.createContext(sb); vm.runInContext(appSrc, sb, { filename: 'app.js' });
+  const run = (c) => vm.runInContext(c, sb);
+  const cfg0 = { mode: 'on', old_mode: 'off', days: 30, cap: 25, old_cap: 10, holdout_pct: 20, test_to: 'hello@mevent.mn' };
+  const go = async (which, o) => {
+    const log = { saved: [], confirms: [] };
+    Object.assign(sb, { __sc: Object.assign({ cfg: cfg0, confirm: true }, o), __log: log });
+    run(`state.isCEO = true; state._reminder = { loaded: true, texts: { new: null, old: { subject: 'Хуучин гарчиг' } }, cfg: {} };
+      fetchWithTimeout = async () => ({ ok: true, json: async () => [{ value: __sc.cfg }] });
+      saveAppConfig = async (k, v) => { __log.saved.push([k, v]); };
+      showConfirm = async (m) => { __log.confirms.push(m); return __sc.confirm; };
+      showToast = () => {}; render = () => {}; dataLoadFailed = () => {};`);
+    await run(`toggleReminderMode(${which ? "'" + which + "'" : ''})`);
+    return log;
+  };
+  let L = await go('old_mode');
+  ok(L.saved.length === 1 && L.saved[0][1].old_mode === 'on' && L.saved[0][1].mode === 'on', 'унтраалга: хуучин хүнд асаахад ҮНДСЭН mode хөндөгдөхгүй');
+  ok(L.saved[0][1].days === 30 && L.saved[0][1].old_cap === 10 && L.saved[0][1].holdout_pct === 20, '⛔ унтраалга: бусад тохиргоо дарагдахгүй (old_cap/days/holdout)');
+  ok(/Хуучин/.test(L.confirms[0] || '') && /Хуучин гарчиг/.test(L.confirms[0] || '') && /10 хүн/.test(L.confirms[0] || ''), 'унтраалга: хуучин хүнд асаахдаа хэдэн хүн, ямар гарчиг явахыг хэлнэ');
+  ok('old_switched_at' in L.saved[0][1] && !('switched_at' in L.saved[0][1]), 'унтраалга: хуучин хүнд асаасан тэмдэглэл тусдаа (old_switched_*)');
+  L = await go('old_mode', { cfg: Object.assign({}, cfg0, { old_mode: 'on' }) });
+  ok(L.saved[0][1].old_mode === 'off' && L.saved[0][1].mode === 'on', 'унтраалга: хуучин хүнд унтраахад ҮНДСЭН сануулга үргэлжилнэ');
+  L = await go('old_mode', { confirm: false });
+  eq(L.saved.length, 0, '⛔ унтраалга: хуучин хүнд — зөвшөөрөөгүй бол юу ч бичихгүй');
+  L = await go(null);
+  ok(L.saved[0][1].mode === 'off' && L.saved[0][1].old_mode === 'off', 'унтраалга: аргументгүй дуудвал ҮНДСЭН mode-ыг солино (өмнөх зан)');
 })());

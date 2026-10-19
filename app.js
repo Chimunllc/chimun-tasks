@@ -100,6 +100,8 @@ const DEFAULT_NOMAAD_QUOTE_VIEW_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad
 const DEFAULT_MEVENT_QUOTE_SEND_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-quote-send';
 // Имэйл маркетинг — олон хүнд нэр хувьчилж илгээх (салбараар илгээгч). recipients:[{email,name}].
 const DEFAULT_MARKETING_EMAIL_URL = 'https://n8n.nomaadcamp.com/webhook/marketing-email';
+// Сервер нэг дуудлагад ЭНЭ тооноос олныг 413-аар татгалздаг (workflow-ийн MAX_RECIPIENTS) — ижил байх ёстой.
+const MK_EMAIL_BATCH = 300;
 // Имэйл жагсаалтаас хасах (unsubscribe) — имэйл дэх холбоос энэ рүү орж email_optout-д бүртгэнэ.
 const DEFAULT_EMAIL_OPTOUT_URL = 'https://n8n.nomaadcamp.com/webhook/email-optout';
 // Банкны тулгалт — AI туслах (зөвхөн дүрмээр таараагүй үлдэгдэлд). n8n → Claude API. Backend тусад нь.
@@ -17609,6 +17611,12 @@ async function loadEmailOptout() {
     if (typeof render === 'function') render();
   } catch (e) { dataLoadFailed('loadEmailOptout', e); }
 }
+// Хүлээн авагчийг серверийн нэг дуудлагын хязгаарт (MK_EMAIL_BATCH) багтааж хуваана.
+function mkEmailBatches(list) {
+  const out = [];
+  for (let i = 0; i < (list || []).length; i += MK_EMAIL_BATCH) out.push(list.slice(i, i + MK_EMAIL_BATCH));
+  return out;
+}
 async function sendMarketingEmail(test) {
   const S = state._mkEmail || {};
   const s = MK_SENDERS[S.branch]; if (!s) return;
@@ -17630,18 +17638,29 @@ async function sendMarketingEmail(test) {
     const ok = await showConfirm(`${s.label} — <b>${recipients.length}</b> харилцагч руу «${escapeHtml(subject)}» имэйлийг ${escapeHtml(s.from)}-ээс илгээх үү?\n\nЭнэ нь бодит имэйл — буцаах боломжгүй.`, { title: '📤 Имэйл илгээх', okText: `Тийм, ${recipients.length} хүнд илгээ` });
     if (!ok) return;
   }
-  const payload = { key: N8N_API_KEY, branch: S.branch, sender: s.from, subject, html: marketingEmailHtml(S.branch, body), recipients, optout_url: DEFAULT_EMAIL_OPTOUT_URL, sent_by: state.me };
-  if (st) st.textContent = test ? 'Туршилт илгээж байна…' : `${recipients.length} имэйл илгээж байна… (хэдэн минут болж магадгүй)`;
+  // ⛔ Нийтийн n8n түлхүүр (`key`) ЭНД явуулахгүй — сервер зөвхөн нэвтэрсэн ажилтны токеныг (X-Session-Token) хүлээн авна.
+  const html = marketingEmailHtml(S.branch, body);
+  if (st) st.textContent = test ? 'Туршилт илгээж байна…' : `${recipients.length} имэйл илгээж байна…`;
+  let queued = 0, skipped = 0;
   try {
-    const r = await fetchWithTimeout(DEFAULT_MARKETING_EMAIL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 180000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    let res = {}; try { res = await r.json(); } catch (e) {}
-    const sent = res.sent != null ? res.sent : recipients.length;
-    if (st) st.innerHTML = `<b style="color:var(--ok);">✓ ${sent} имэйл илгээгдлээ${res.failed ? ` · ${res.failed} амжилтгүй` : ''}</b>`;
-    showToast(test ? '✓ Туршилт илгээгдлээ' : `✓ ${sent} имэйл илгээгдлээ`, 'success', 4000);
+    // Сервер хариуг ШУУД өгч, имэйлийг арын горимд илгээнэ — тиймээс `queued` нь «илгээхээр дараалалд орсон» тоо.
+    for (const part of mkEmailBatches(recipients)) {
+      const payload = { branch: S.branch, sender: s.from, subject, html, recipients: part, optout_url: DEFAULT_EMAIL_OPTOUT_URL, test: !!test };
+      const r = await fetchWithTimeout(DEFAULT_MARKETING_EMAIL_URL, { method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) }, 60000);
+      if (r.status === 401) throw new Error('Нэвтрэлт дууссан — дахин нэвтэрнэ үү');
+      if (r.status === 403) throw new Error('Имэйл илгээх эрх алга');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      let res = {}; try { res = await r.json(); } catch (e) {}
+      queued += res.queued != null ? res.queued : part.length;
+      skipped += res.skipped_optout || 0;
+    }
+    const note = skipped ? ` · ${skipped} хүн жагсаалтаас хасуулсан тул алгасав` : '';
+    if (st) st.innerHTML = `<b style="color:var(--ok);">✓ ${queued} имэйл илгээгдэж байна${note}</b>`;
+    showToast(test ? '✓ Туршилт илгээгдлээ' : `✓ ${queued} имэйл илгээгдэж байна`, 'success', 4000);
   } catch (e) {
-    if (st) st.innerHTML = `<b style="color:var(--danger,#dc2626);">✗ Алдаа: ${escapeHtml(e.message)}</b>`;
-    showToast('Илгээх алдаа: ' + e.message, 'error', 5000);
+    const part = queued ? ` (${queued} имэйл аль хэдийн дараалалд орсон)` : '';
+    if (st) st.innerHTML = `<b style="color:var(--danger,#dc2626);">✗ Алдаа: ${escapeHtml(e.message)}${part}</b>`;
+    showToast('Илгээх алдаа: ' + e.message + part, 'error', 5000);
   }
 }
 function openMarketingRecipientList() {

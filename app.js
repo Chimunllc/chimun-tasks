@@ -17446,7 +17446,8 @@ async function saveReminderText() {
 function reminderPreviewHtml(txt) {
   const p = reminderTextPreview(txt, { name: 'Б.Ариун', date: '9 сарын 12-нд' });
   const P = (t) => `<p class="rmt-p">${escapeHtml(t)}</p>`;
-  return `<div class="rmt-pv-h">${escapeHtml(p.heading)}</div>${P(p.greeting)}${p.intro.map(P).join('')}
+  return `<div class="rmt-pv-subj">Гарчиг: <b>${escapeHtml(p.subject)}</b></div><div class="rmt-pv-logo">M<span class="rmt-pv-dot">·</span>EVENT</div>
+    <div class="rmt-pv-h">${escapeHtml(p.heading)}</div>${P(p.greeting)}${p.intro.map(P).join('')}
     <div class="rmt-pv-card"><b>Өмнөх захиалга №1504</b><br>Эвхэгддэг сандал Цагаан, Цагаан Ширээ 180*74см</div>
     ${p.body.map(P).join('')}<div class="rmt-pv-btn">📞 7755-1010 руу залгах</div>`;
 }
@@ -17468,7 +17469,7 @@ function renderReminderCard() {
   const orders = Array.isArray(state.appOrders) ? state.appOrders : [];
   const sent = orders.filter(o => o && o.stage_meta && o.stage_meta.mail && o.stage_meta.mail.reminder).length;
   const failed = orders.filter(o => o && o.stage_meta && o.stage_meta.mail && o.stage_meta.mail.reminder_err).length;
-  const stats = orders.length ? `<div class="rmt-stats">Явсан <b>${sent}</b>${failed ? ` · алдаатай <b class="rmt-bad">${failed}</b>` : ''}</div>` : '';
+  const stats = orders.length ? `<span class="rmt-stats">Явсан <b>${sent}</b>${failed ? ` · алдаатай <b class="rmt-bad">${failed}</b>` : ''}</span>` : '';
   const can = !!state.isCEO;
   const dis = can ? '' : ' readonly';
   const fields = REMINDER_TEXT_FIELDS.map(f => {
@@ -17479,9 +17480,8 @@ function renderReminderCard() {
     return `<label class="rmt-lbl" for="rmt-${f.k}">${f.label}</label>${inp}<div class="rmt-hint">${f.hint}</div>`;
   }).join('');
   return `<div class="rmt">
-    <div class="rmt-head"><div class="rmt-title">🔁 Автомат сануулга</div>${chip}</div>
-    <div class="rmt-sub">Захиалга хаагдаж талархал явснаас ${days} хоногийн дараа, шинэ захиалга өгөөгүй хүнд ганц удаа өөрөө явна. Доорх бичвэрийг хадгалмагц дараагийн илгээлтээс хүчин төгөлдөр болно.</div>
-    ${stats}
+    <div class="rmt-head">${chip}${stats}</div>
+    <div class="rmt-sub">Захиалга хаагдсанаас ${days} хоногийн дараа, шинэ захиалга өгөөгүй хүнд ганц удаа өөрөө явна. Хадгалмагц дараагийн илгээлтээс хүчинтэй.</div>
     <div class="rmt-grid">
       <div class="rmt-form">${fields}
         <div id="rmt-issues">${reminderIssuesHtml(txt)}</div>
@@ -17490,7 +17490,7 @@ function renderReminderCard() {
         </div>
         ${R.text && R.text.updated_by ? `<div class="rmt-hint">Сүүлд зассан: ${escapeHtml(R.text.updated_by)}${R.text.updated_at ? ' · ' + escapeHtml(String(R.text.updated_at).slice(0, 10)) : ''}</div>` : ''}
       </div>
-      <div class="rmt-pv-wrap"><div class="rmt-lbl">Урьдчилан харах (Б.Ариун, 9 сарын 12)</div><div class="rmt-pv" id="rmt-pv">${reminderPreviewHtml(txt)}</div></div>
+      <div class="rmt-pv-wrap"><div class="rmt-lbl">Имэйл ингэж харагдана (жишээ: Б.Ариун, 9 сарын 12)</div><div class="rmt-pv" id="rmt-pv">${reminderPreviewHtml(txt)}</div></div>
     </div>
   </div>`;
 }
@@ -17633,9 +17633,9 @@ function renderMarketing() {
   if (mkTab === 'email') {
     // Дэд сонголт: нэг удаагийн илгээлт (өмнөх) ба автомат сануулгын бичвэр (2026-10-19)
     const sub = state.mkEmailSub === 'reminder' ? 'reminder' : 'manual';
-    const subBar = `<div class="mke-subs">
-      <button class="btn${sub === 'manual' ? ' btn-primary' : ''}" data-mke-sub="manual">📤 Нэг удаа илгээх</button>
-      <button class="btn${sub === 'reminder' ? ' btn-primary' : ''}" data-mke-sub="reminder">🔁 Автомат сануулга</button>
+    const subBar = `<div class="mke-subs" role="tablist">
+      <button class="mke-sub${sub === 'manual' ? ' on' : ''}" role="tab" aria-selected="${sub === 'manual'}" data-mke-sub="manual">📤 Нэг удаа илгээх</button>
+      <button class="mke-sub${sub === 'reminder' ? ' on' : ''}" role="tab" aria-selected="${sub === 'reminder'}" data-mke-sub="reminder">🔁 Автомат сануулга</button>
     </div>`;
     return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}${subBar}${sub === 'reminder' ? renderReminderCard() : renderEmailMarketing()}</div>`;
   }

@@ -17617,6 +17617,14 @@ const MK_EMAIL_CFG = {
   'm-event': { navy: '#0B1F3A', accent: '#FF6A00', site: 'https://mevent.mn', siteLabel: 'mevent.mn', cta: 'Захиалга өгөх', logo: 'https://chimunllc.github.io/chimun-tasks/mevent-logo.png', name: 'M-Event' },
   'camp':    { navy: '#0B3B2E', accent: '#16A34A', site: 'https://nomaadcamp.com', siteLabel: 'nomaadcamp.com', cta: 'Дэлгэрэнгүй үзэх', logo: '', name: 'NOMAAD Camp' },
 };
+/* ⛔ ЭНД INLINE STYLE нь ЗӨВ — КЛАСС БОЛГОХГҮЙ (2026-10-19).
+   Энэ HTML нь аппад ХЭЗЭЭ Ч зурагддаггүй: `marketing-email` webhook-оор n8n руу
+   явж харилцагчийн имэйл хайрцагт хүрнэ. Gmail/Outlook нь `styles.css`-ийг
+   ачаалдаггүй, `<style>` блокийг ч хаядаг тул класс болговол брэндийн өнгө,
+   бүтэц бүрмөсөн алга болж нүцгэн бичвэр хүрнэ. Иймд дизайны гэрээний «inline
+   style нэмэхгүй» дүрэм ЭНД хамаарахгүй (хэвлэх баримтын PR 634-тэй ИЖИЛ) —
+   `tools/debt-check.js`-ийн `EMAIL_FNS` нь үүнийг хэмжүүрээс БА шөнийн
+   саналаас хасдаг. ⚠ Аппын UI-г энэ функц дотор БҮҮ бич — scan-тест хаана. */
 function marketingEmailHtml(branch, bodyText) {
   const c = MK_EMAIL_CFG[branch] || MK_EMAIL_CFG['m-event'];
   const body = String(bodyText || '').trim()

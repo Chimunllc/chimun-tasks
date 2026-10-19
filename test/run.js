@@ -1054,6 +1054,66 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'хэт том функц саналд орохгүй');
 }
 
+// 0j-4) SCAN — ГАДАГШ ИЛГЭЭГДЭХ ИМЭЙЛИЙН HTML хэмжүүрээс хасагдана (2026-10-19)
+// Алдаа: суггестер `marketingEmailHtml`-ийг (14 inline style, churn 54) эрэмбийн
+// ТЭРГҮҮНД гаргаж, агентыг «класс болго» гэж чиглүүлж байв. Тэр HTML нь n8n-ээр
+// харилцагчийн имэйл хайрцагт явдаг — Gmail/Outlook нь styles.css ачаалдаггүй,
+// `<style>` блокийг ч хаядаг тул класс болговол брэнд бүрмөсөн алга болж нүцгэн
+// бичвэр хүрнэ. Хэвлэх баримтын (#634) ИЖИЛ шалтгаан.
+// ⚠ Хасалт нь «эндээс хэмжихгүй» сохор блок БИШ — доорх дүрэм бүр түүнийг
+//    аппын UI нуух зам болгон хувирахыг хаана.
+{
+  const D = require('../tools/debt-check.js');
+  ok(Array.isArray(D.EMAIL_FNS) && D.EMAIL_FNS.length > 0,
+     'имэйлийн функцийн жагсаалт бий');
+  ok(D.EMAIL_FNS.length <= 3,
+     'хасалт БАГА хэвээр: имэйлийн функц 3-аас хэтрэхгүй (сохор escape-hatch болохгүй)');
+
+  const sug = new Set(D.suggest().top.map((r) => r.fn));
+  for (const fn of D.EMAIL_FNS) {
+    // ① Функц ЯГ НЭГ удаа тодорхойлогдсон байх — хоёр байвал аль нь хасагдсаныг хэн ч мэдэхгүй
+    const decl = src.match(new RegExp(`^(?:async\\s+)?function\\s+${fn}\\s*\\(`, 'gm')) || [];
+    eq(decl.length, 1, `имэйл: «${fn}» ЯГ НЭГ удаа тодорхойлогдсон`);
+
+    // ② Биед ҮНЭХЭЭР inline style байх — байхгүй бол жагсаалтын мөр хуучирсан, УСТГА
+    const body = D.stripFn(src, fn).length;
+    ok(body < src.length, `имэйл: «${fn}»-ийн бие хасагдаж байна`);
+    const removed = src.length - body;
+    ok(removed > 0 && /style="/.test(src.slice(src.indexOf(`function ${fn}(`), src.indexOf(`function ${fn}(`) + removed)),
+       `имэйл: «${fn}» ҮНЭХЭЭР inline style агуулдаг (эс бөгөөс жагсаалтаас хас)`);
+
+    // ③ Гаралт DOM-д ХЭЗЭЭ Ч орохгүй — аппын UI-г имэйлийн функц дотор нуух зам хаалттай.
+    // ⚠ Дуудалтын мөрийг БҮТНЭЭР хар: `el.innerHTML = fn(...)` дээр зорилтот
+    //    элемент нь нэрнээс ЗҮҮН талд байдаг тул нэрнээс хойшхыг л уншвал
+    //    хамгаалалт чимээгүй унтарна (эхний хувилбар яг ингэж барьсангүй).
+    //    Урт мөр нугарч болох тул өмнөх мөрийг ч нэмж хардаг.
+    const DOM_RE = /innerHTML|outerHTML|appendChild|insertAdjacentHTML|append\(|replaceChildren/;
+    const lines = src.split('\n');
+    const callRe = new RegExp(`\\b${fn}\\s*\\(`);
+    const declRe = new RegExp(`^(?:async\\s+)?function\\s+${fn}\\s*\\(`);
+    const domUse = [];
+    lines.forEach((ln, i) => {
+      if (!callRe.test(ln) || declRe.test(ln)) return;
+      if (DOM_RE.test(ln) || DOM_RE.test(lines[i - 1] || '')) domUse.push(`app.js:${i + 1}`);
+    });
+    eq(domUse.length, 0, `имэйл: «${fn}»-ийн гаралт DOM-д орохгүй` +
+       (domUse.length ? ' → ' + domUse.join(', ') : ''));
+
+    // ④ Имэйл угсрагч DOM-д ОГТ хүрэхгүй (цэвэр мөр буцаана)
+    const fnBody = src.slice(src.indexOf(`function ${fn}(`), src.indexOf(`function ${fn}(`) + removed);
+    ok(!/document\.|querySelector|getElementById/.test(fnBody),
+       `имэйл: «${fn}» DOM-д хүрэхгүй (зөвхөн мөр угсарна)`);
+
+    // ⑤ Шөнийн саналд ОГТ гарахгүй — эс бөгөөс агент шөнө бүр ижил ажил авна
+    ok(!sug.has(fn), `имэйл: «${fn}» шөнийн саналд гарахгүй`);
+  }
+
+  // ⑥ Нэр солигдвол хасалт ЧИМЭЭГҮЙ унтрахгүй — АЛДАА шиднэ
+  let threw = false;
+  try { D.stripFn(src, 'энэФункцБайхгүй'); } catch (e) { threw = true; }
+  ok(threw, 'имэйл: байхгүй функц дээр хэмжигч чимээгүй өнгөрөхгүй, алдаа шиднэ');
+}
+
 // 0k) Захиалгын жагсаалт — хугацааны бүлэг (Өнөөдөр / Маргааш) (2026-09-04)
 // «Самбар» харагдац хасагдаж, бүлэг нь жагсаалтын дотор гарчиг мөр болов.
 // Гол дүрэм: дууссан/архив/цуцалсныг ХЭЗЭЭ Ч «өнөөдөр/маргааш» гэж бүлэглэхгүй —

@@ -38,6 +38,39 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
    тийм зүйл хийхгүй (бие даасан баримт л тэнд байна). */
 const stripDocs = (s) => String(s).replace(/<!doctype html[\s\S]*?<\/html>/gi, '');
 
+/* ⛔ ГАДАГШ ИЛГЭЭГДЭХ ИМЭЙЛИЙН HTML-ийг ХЭМЖИХГҮЙ (2026-10-19).
+   Дээрх хэвлэх баримтын ЯГ ИЖИЛ шалтгаан: эдгээр функц харилцагчийн имэйл
+   хайрцагт явдаг HTML угсардаг (n8n-ээр POST болж гарна, аппад ХЭЗЭЭ Ч
+   зурагддаггүй). Gmail/Outlook нь `styles.css`-ийг ачаалдаггүй, `<style>`
+   блокийг ч хаядаг тул имэйлд **inline style бичих нь ГАНЦ боломж** — класс
+   болговол брэндийн өнгө, бүтэц бүрмөсөн алга болж харилцагчид нүцгэн бичвэр
+   хүрнэ. Тоолох нь худал эерэг: шөнийн суггестер `marketingEmailHtml`-ийг
+   «14 inline style» гэж 54 мөрийн churn-тэйгээр эрэмбийн ТЭРГҮҮНД гаргаж,
+   агентыг амьд имэйл эвдэх ажил руу чиглүүлж байв.
+
+   ⚠ Сохор «эндээс хэмжихгүй» блок БАЙХГҮЙ — зөвхөн ЭНЭ нэрсийн жагсаалт.
+   Нэр олдохгүй бол хэмжигч ЧИМЭЭГҮЙ өнгөрөхгүй, АЛДАА шиднэ (функц
+   нэрлэгдэхээ эсвэл хэлбэрээ сольвол хасалт чимээгүй унтрахгүй).
+   ⚠ test/run.js нь мөр бүрийг хардаг: функц ЯГ НЭГ удаа тодорхойлогдсон байх,
+   гаралт нь `innerHTML`/`appendChild`/`insertAdjacentHTML`-д ХЭЗЭЭ Ч орохгүй
+   байх — аппын UI-г имэйлийн функц дотор нуун хэмжүүрээс мултрах зам хаалттай. */
+const EMAIL_FNS = ['marketingEmailHtml'];
+
+/* Нэрлэсэн дээд түвшний функцийн биеийг (тодорхойлолтоос 0-р баганын `}` хүртэл)
+   бүтнээр хасна. app.js-ийн бүх дээд түвшний функц ийм хэлбэртэй. */
+function stripFn(src, name) {
+  const lines = String(src).split('\n');
+  const decl = new RegExp(`^(?:async\\s+)?function\\s+${name}\\s*\\(`);
+  const from = lines.findIndex((l) => decl.test(l));
+  if (from < 0) throw new Error(`debt-check: «${name}» функц олдсонгүй — EMAIL_FNS жагсаалтыг зас`);
+  let to = -1;
+  for (let i = from + 1; i < lines.length; i++) if (lines[i] === '}') { to = i; break; }
+  if (to < 0) throw new Error(`debt-check: «${name}»-ийн төгсгөл олдсонгүй`);
+  lines.splice(from, to - from + 1);
+  return lines.join('\n');
+}
+const stripEmails = (s) => EMAIL_FNS.reduce(stripFn, String(s));
+
 const COLOR_RE = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g;
 
 // Метрик бүр: { тайлбар, хэмжигч }. Тоо нь БУУРАХ ёстой зүйлс.
@@ -71,7 +104,7 @@ const METRICS = {
 };
 
 function files() {
-  return { js: stripDocs(read('app.js')), css: read('styles.css') };
+  return { js: stripEmails(stripDocs(read('app.js'))), css: read('styles.css') };
 }
 
 function measure() {
@@ -138,10 +171,14 @@ function suggest() {
     if (m) fn = m[1] || m[2];
     owner.push(fn);
   }
+  // ⛔ Имэйлийн функцийг саналд ОГТ гаргахгүй — тэнд inline style нь ЗӨВ шийдэл
+  //    (`EMAIL_FNS`-ийн тайлбарыг үз). Хэмжигчээс хассан атал саналд үлдээвэл
+  //    агент шөнө бүр ижил ажил авч амьд имэйлийг эвдэхийг оролдоно.
+  const skip = new Set(EMAIL_FNS);
   const tally = new Map();
   lines.forEach((line, i) => {
     const n = (line.match(/style="/g) || []).length;
-    if (!n) return;
+    if (!n || skip.has(owner[i])) return;
     const key = owner[i];
     const cur = tally.get(key) || { n: 0, first: i + 1 };
     cur.n += n;
@@ -248,4 +285,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { measure, METRICS, suggest, SUG_MIN, SUG_MAX };
+module.exports = { measure, METRICS, suggest, SUG_MIN, SUG_MAX, EMAIL_FNS, stripFn };

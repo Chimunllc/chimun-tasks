@@ -2136,7 +2136,7 @@ eq(F.fmtBytes(3670016),  '3.5 MB',  'хэмжээ: мегабайт нэг ор�
 // 19b) Баримт — ЗУРАГ: HEIC-г «татаж ав» гэж үл харуулна, жижиг зураг жагсаалтад, нээхэд эх файл татахгүй (2026-10-19)
 // Шалтгаан: iPhone-ийн HEIC-г хөтөч танихгүй тул `application/octet-stream` гэж хадгалагддаг
 // (амьд датаар 15 зураг) → нээх бүрд «харуулах боломжгүй, татаж ав» гэдэг байв.
-need(['docIsImage', 'docIsHeic', 'docViewPlan', 'docSafeThumb', 'fetchDocPreview', 'loadCompanyDocs', 'openCompanyDoc']);
+need(['docIsImage', 'docIsHeic', 'docViewPlan', 'docSafeThumb', 'fetchDocPreview', 'loadCompanyDocs', 'openCompanyDoc', 'docEnsurePreview', 'docPickerList', 'docPickerFolders', 'openDocImagePicker']);
 {
   const runIn = (code) => vm.runInContext(code, sandbox);
   const heic = { mime: 'application/octet-stream', file_name: 'IMG_6101.HEIC' };
@@ -2149,6 +2149,23 @@ need(['docIsImage', 'docIsHeic', 'docViewPlan', 'docSafeThumb', 'fetchDocPreview
   eq(F.docViewPlan({ mime: 'application/octet-stream', file_name: 'a.xlsx' }), 'other', 'зураг: xlsx зураг БИШ');
   eq(F.docViewPlan(null), 'other', 'зураг: баримтгүй бол other');
 
+  // Баримт бичгээс зураг сонгох (постер): зөвхөн зураг, хайлт, хавтас
+  {
+    const D = [
+      { id: 'p1', title: 'LED дэлгэц', file_name: 'IMG_6101.HEIC', mime: 'application/octet-stream', folder: 'Дэлгэц' },
+      { id: 'p2', title: 'Тайз', file_name: 'a.jpg', mime: 'image/jpeg', folder: 'Дэлгэц' },
+      { id: 'p3', title: 'Лого', file_name: 'logo.png', mime: 'image/png', folder: 'Logo CAMP' },
+      { id: 'p4', title: 'Гэрээ', file_name: 'g.pdf', mime: 'application/pdf', folder: 'Дэлгэц' },
+      { id: 'p5', title: 'Хөдөлгөөнт', file_name: 'x.gif', mime: 'image/gif', folder: 'Дэлгэц' },
+      { id: 'p6', title: 'Тайлан', file_name: 't.xlsx', mime: 'application/octet-stream' },
+    ];
+    eq(F.docPickerList(D, '', '').map(d => d.id), ['p1', 'p2', 'p3'], 'сонгогч: зөвхөн зураг (HEIC орно; pdf, xlsx, gif орохгүй)');
+    eq(F.docPickerList(D, 'led', '').map(d => d.id), ['p1'], 'сонгогч: нэрээр хайна (том жижиг үсэг ялгахгүй)');
+    eq(F.docPickerList(D, '', 'Logo CAMP').map(d => d.id), ['p3'], 'сонгогч: хавтсаар шүүнэ');
+    eq(F.docPickerList(D, 'гэрээ', '').length, 0, 'сонгогч: зураг биш баримт хайлтаар ч гарахгүй');
+    eq(F.docPickerFolders(D), [{ path: 'Дэлгэц', n: 2 }, { path: 'Logo CAMP', n: 1 }], 'сонгогч: хавтас бүрийн ЗУРГИЙН тоо (pdf/gif тоологдохгүй)');
+    eq(F.docPickerList(null, '', '').length, 0, 'сонгогч: баримтгүй үед алдаагүй');
+  }
   // DB-ээс ирсэн data: URL-ийг src-д тавихаас өмнө хэлбэрийг шалгана (XSS)
   eq(F.docSafeThumb('data:image/jpeg;base64,/9j/AAAA'), 'data:image/jpeg;base64,/9j/AAAA', 'thumb: зөв хэлбэр өнгөрнө');
   eq(F.docSafeThumb('data:image/png;base64,iVBOR=='), 'data:image/png;base64,iVBOR==', 'thumb: png өнгөрнө');
@@ -2207,6 +2224,19 @@ need(['docIsImage', 'docIsHeic', 'docViewPlan', 'docSafeThumb', 'fetchDocPreview
     await F.openCompanyDoc('h2', ['h2']);
     ok(urls.some(u => /select=data/.test(u)), 'нээх: preview-гүй бол эх файлаас үүсгэхээр татна');
 
+    // docEnsurePreview: preview байвал эх файл ТАТАХГҮЙ; файл олдохгүй бол null
+    urls.length = 0; overlays.length = 0;
+    sandbox.fetch = (url) => { urls.push(String(url)); return Promise.resolve(/select=preview/.test(String(url))
+      ? { ok: true, status: 200, json: () => Promise.resolve([{ preview: 'data:image/jpeg;base64,/9j/ENSURE' }]) }
+      : { ok: false, status: 404, json: () => Promise.resolve([]), text: () => Promise.resolve('') }); };
+    const e1 = await F.docEnsurePreview({ id: 'ens1', file_name: 'a.jpg', mime: 'image/jpeg' });
+    eq(e1 && e1.preview, 'data:image/jpeg;base64,/9j/ENSURE', 'ensure: DB-д preview байвал шууд өгнө');
+    ok(urls.every(u => !/select=[^&]*\bdata\b/.test(u)), 'ensure: preview байхад эх файл ТАТАГДАХГҮЙ');
+    urls.length = 0;
+    sandbox.fetch = (url) => { urls.push(String(url)); return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ preview: null, data: null }]) }); };
+    eq(await F.docEnsurePreview({ id: 'ens2', file_name: 'b.jpg', mime: 'image/jpeg' }), null, 'ensure: preview ч, эх файл ч байхгүй бол null');
+    ok(urls.some(u => /select=data/.test(u)), 'ensure: preview-гүй бол эх файлыг татна');
+
     // Жагсаалтын татац: thumb ордог ч data/preview ОРОХГҮЙ; багана DB-д байхгүй (400) бол жагсаалт ХООСОН үлдэхгүй
     urls.length = 0;
     sandbox.fetch = (url) => {
@@ -2229,9 +2259,15 @@ need(['docIsImage', 'docIsHeic', 'docViewPlan', 'docSafeThumb', 'fetchDocPreview
   const body = (fn) => String(F[fn]);
   ok(/docPreviewFields\(f\)/.test(body('openDocEditModal')), 'scan: нэг файл нэмэх зам thumb/preview үүсгэнэ');
   ok(/docPreviewFields\(p\.file\)/.test(body('openDocBulkModal')), 'scan: олноор оруулах зам thumb/preview үүсгэнэ');
+  // Постер: «Баримт бичгээс сонгох» нь баримт бичгийн эрхтэй хүнд л; «Өөрийн зураг»-тай ижил дүрмээр (каталогийн бараа биш)
+  ok(/canSeeDocuments\(\) \? '<button type="button" class="mk-pick-btn" id="mk-doc-img"/.test(src), 'scan: постерын сонгогч баримт бичгийн эрхээр хаагдсан');
+  const pk = src.slice(src.indexOf("getElementById('mk-doc-img')"), src.indexOf("getElementById('mk-doc-img')") + 600);
+  ok(/P\.productSku = ''; P\.code = ''; P\.body = ''; P\.terms = '';/.test(pk), 'scan: баримтаас сонгосон зураг = каталогийн бараа БИШ (хуучин бараа/код/бичвэр хоцрохгүй)');
+  ok(!/fetchDocBlob/.test(body('openDocImagePicker')), 'scan: сонгогч эх файлыг ШУУД татахгүй (зөвхөн docEnsurePreview-ээр)');
   const openFn = body('openCompanyDoc');
-  ok(/await fetchDocPreview\(d\.id\)[\s\S]*?await fetchDocBlob\(d\.id\)[\s\S]*?docMakePreviews/.test(openFn),
-    'scan: нээхэд ЭХЛЭЭД хурдан харагдацыг, байхгүй бол л эх файлыг татна');
+  ok(/await docEnsurePreview\(d\)/.test(openFn), 'scan: зураг нээх нь docEnsurePreview-ээр (эх файлыг ШУУД татахгүй)');
+  ok(/await fetchDocPreview\(d\.id\)[\s\S]*?await fetchDocBlob\(d\.id\)[\s\S]*?docMakePreviews/.test(body('docEnsurePreview')),
+    'scan: ЭХЛЭЭД хурдан харагдацыг, байхгүй бол л эх файлыг татаж үүсгэнэ');
 }
 
 // 20) Системийн загвар — ХООСОН датагаар унахгүй эсэх (гол эрсдэл: талбар дутуу үед крэш)

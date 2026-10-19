@@ -16674,6 +16674,21 @@ async function saveDocPreviews(id, thumb, preview) {
     return r.ok;
   } catch (e) { console.warn('saveDocPreviews', e); return false; }
 }
+/* Зургийн хурдан харагдацыг БЭЛЭН болгоно (баримт нээх, постерт сонгох хоёул):
+   DB-д preview байвал шууд; үгүй бол эх файлаас үүсгээд (эрхтэй бол) DB-д хадгална.
+   Буцаах: null = файл олдсонгүй · {preview:''} = задарсангүй · {preview, blob} (blob нь эх файлаас үүсгэсэн үед л). */
+async function docEnsurePreview(d) {
+  const cached = await fetchDocPreview(d.id);
+  if (cached) return { preview: cached, blob: null };
+  const blob = await fetchDocBlob(d.id);
+  if (!blob) return null;
+  const made = await docMakePreviews(blob, d);
+  if (!made) return { preview: '', blob };
+  d.thumb = made.thumb;
+  _docPreviewCache.set(d.id, made.preview);
+  if (can('documents.edit')) saveDocPreviews(d.id, made.thumb, made.preview);   // дараагийн удаа шууд
+  return { preview: made.preview, blob };
+}
 function docDownloadBlob(blob, name) {
   const u = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -16768,21 +16783,12 @@ async function openCompanyDoc(id, order) {
         // 1) жижиг зураг шууд (бүдэг), 2) хурдан харагдац, 3) байхгүй бол эхээс үүсгэнэ
         const th = docSafeThumb(d.thumb);
         box.innerHTML = th ? `<img src="${th}" alt="" class="doc-view-img is-loading" />` : 'Уншиж байна…';
-        let pv = await fetchDocPreview(d.id);
+        const got = await docEnsurePreview(d);
         if (stale()) return;
-        if (!pv) {
-          const blob = await fetchDocBlob(d.id);
-          if (stale()) return;
-          if (!blob) { note('Файл олдсонгүй эсвэл татаж чадсангүй', true); return; }
-          curBlob = blob;
-          const made = await docMakePreviews(blob, d);
-          if (stale()) return;
-          if (!made) { note(`Энэ зургийг апп дотор харуулж чадсангүй.<br>«⬇ Татах» дарж үзнэ үү.`, true); return; }
-          pv = made.preview;
-          d.thumb = made.thumb;
-          _docPreviewCache.set(d.id, pv);
-          if (can('documents.edit')) saveDocPreviews(d.id, made.thumb, made.preview);   // дараагийн удаа шууд
-        }
+        if (!got) { note('Файл олдсонгүй эсвэл татаж чадсангүй', true); return; }
+        if (got.blob) curBlob = got.blob;
+        if (!got.preview) { note(`Энэ зургийг апп дотор харуулж чадсангүй.<br>«⬇ Татах» дарж үзнэ үү.`, true); return; }
+        const pv = got.preview;
         box.innerHTML = `<img src="${pv}" alt="" class="doc-view-img" />`;
         // Хөрш зургуудыг урьдчилан татна — дараагийнхаа руу шилжихэд хүлээхгүй
         [idx + 1, idx - 1].forEach(n => { const nd = docAt(n); if (nd && docViewPlan(nd) === 'image') fetchDocPreview(nd.id); });
@@ -16819,6 +16825,73 @@ async function openCompanyDoc(id, order) {
     }
   };
   return show();
+}
+
+/* ─── Баримт бичгээс ЗУРАГ СОНГОХ — постер г.м. өөр дэлгэцэд ашиглана ───
+   Жагсаалт нь `thumb`-ээр (бага) зурагдана; сонгосон зургийн хурдан харагдацыг (~1600px) л татна,
+   эх файлыг (3-5MB, HEIC) ХЭЗЭЭ Ч татахгүй. Зөвхөн зураг (gif-гүй) гарна. */
+function docPickerList(docs, q, folder) {
+  const needle = String(q || '').trim().toLowerCase();
+  const f = docFolderNorm(folder);
+  return (docs || []).filter(d => docViewPlan(d) === 'image'
+    && (!f || docFolderNorm(d.folder) === f)
+    && (!needle || [d.title, d.file_name, d.counterparty, d.note].some(v => String(v || '').toLowerCase().includes(needle))));
+}
+// Зураг агуулсан хавтаснууд (тоотой) — «Бүгд»-ийг дуудагч нэмнэ
+function docPickerFolders(docs) {
+  const m = new Map();
+  (docs || []).forEach(d => { if (docViewPlan(d) !== 'image') return; const f = docFolderNorm(d.folder); if (f) m.set(f, (m.get(f) || 0) + 1); });
+  return Array.from(m, ([path, n]) => ({ path, n })).sort((a, b) => a.path.localeCompare(b.path, 'mn'));
+}
+async function openDocImagePicker(onPick) {
+  if (!state.companyDocs) await loadCompanyDocs();
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg open';
+  ov.style.zIndex = '10002';
+  ov.innerHTML = `<div class="modal dip-modal">
+    <div class="dip-bar"><h2>🗂 Баримт бичгээс зураг сонгох</h2><button class="btn btn-sm ui-raw" id="dip-x">✕ Хаах</button></div>
+    <input id="dip-q" class="dip-q" type="search" placeholder="Нэрээр хайх…" />
+    <div id="dip-folders" class="otabs dip-folders"></div>
+    <div id="dip-grid" class="dip-grid"></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const $ = (sel) => ov.querySelector(sel);
+  let q = '', folder = '', busy = false;
+  const close = () => { document.removeEventListener('keydown', onKey); ov.remove(); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  $('#dip-x').onclick = close;
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  const paint = () => {
+    const all = state.companyDocs || [];
+    const folders = docPickerFolders(all);
+    const nAll = docPickerList(all, '', '').length;
+    $('#dip-folders').innerHTML = folders.length
+      ? [{ path: '', n: nAll }].concat(folders).map(f => `<button class="otab ui-raw${f.path === folder ? ' on' : ''}" data-f="${escapeHtml(f.path)}">${f.path ? '📁 ' + escapeHtml(f.path) : '🗂 Бүгд'} <span class="otab-n">${f.n}</span></button>`).join('')
+      : '';
+    const list = docPickerList(all, q, folder);
+    $('#dip-grid').innerHTML = list.length
+      ? list.map(d => { const th = docSafeThumb(d.thumb); return `<button class="dip-item ui-raw" data-id="${escapeHtml(d.id)}" title="${escapeHtml(d.title || d.file_name || '')}">
+          ${th ? `<img class="dip-thumb" src="${th}" alt="" loading="lazy" decoding="async" />` : '<span class="dip-ph">🖼</span>'}
+          <span class="dip-name">${escapeHtml(d.title || d.file_name || 'Нэргүй')}</span></button>`; }).join('')
+      : `<div class="doc-empty">${nAll ? 'Хайлтад таарах зураг алга.' : 'Баримт бичигт зураг алга. Эхлээд «Баримт бичиг» дэлгэцэд зураг оруулна уу.'}</div>`;
+    $('#dip-folders').querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { folder = b.dataset.f; paint(); }));
+    $('#dip-grid').querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', async () => {
+      if (busy) return;
+      const d = (state.companyDocs || []).find(x => String(x.id) === b.dataset.id);
+      if (!d) return;
+      busy = true; b.classList.add('is-busy');
+      try {
+        const got = await docEnsurePreview(d);
+        if (!got || !got.preview) { showToast('Зургийг уншиж чадсангүй', 'warn', 3000); return; }
+        close();
+        onPick(got.preview, d);
+      } finally { busy = false; b.classList.remove('is-busy'); }
+    }));
+  };
+  $('#dip-q').addEventListener('input', (e) => { q = e.target.value; paint(); });
+  paint();
+  if (state.companyDocs && !state.companyDocs.length) loadCompanyDocs(true).then(paint);   // хоосон бол сервериг дахин асууна
 }
 
 /* ─── Системийн загвар — аппд шингэсэн, ҮРГЭЛЖ ОДООГИЙН баримтын загварууд ───
@@ -17887,7 +17960,7 @@ function renderMarketing() {
   return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
       <div style="font-size:12px;color:var(--muted);">Зураг оруулаад брэнд хүрээ, гарчиг тавьж PNG татна. Instagram пост/story, Facebook.</div></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;">
+    <div class="mk-cols">
       <div>
         <div style="font-size:14px;font-weight:800;margin-bottom:8px;">🎯 Брэнд иж бүрдэл <span style="font-weight:400;color:var(--muted);font-size:11px;">(нэг удаа — бүх ажилтанд дундлагдана)</span></div>
         <div style="margin-bottom:10px;"><button class="btn btn-sm" id="mk-preset-mevent" style="border-color:#FF6A00;color:#FF6A00;">⚡ M-Event загвар оруулах</button></div>
@@ -17933,6 +18006,7 @@ function renderMarketing() {
         <datalist id="mk-prod-list">${(state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p))).slice(0, 400).map(p => `<option value="${escapeHtml(p.name)}${p.sku ? ' — ' + escapeHtml(p.sku) : ''}">${p.price ? fmtMoney(Number(p.price)) : ''}</option>`).join('')}</datalist>
         <div style="text-align:center;font-size:11px;color:var(--muted);margin:2px 0 10px;">— эсвэл —</div>
         <label for="mk-img" style="display:block;margin-bottom:10px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);font-size:13px;">📷 <b>Өөрийн зураг оруулах</b><input id="mk-img" type="file" accept="image/*" hidden></label>
+        ${canSeeDocuments() ? '<button type="button" class="mk-pick-btn" id="mk-doc-img">🗂 <b>Баримт бичгээс зураг сонгох</b></button>' : ''}
         <label style="font-size:11.5px;color:var(--muted);">Загвар</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${tplBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">Хэмжээ</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${sizeBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">🔍 Зураг тохируулах</label>
@@ -18045,6 +18119,14 @@ function attachMarketingHandlers() {
     P.body = '';   // шинэ зураг = шинэ пост
     r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; render(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
   });
+  // Баримт бичигт хадгалсан зургаас постер хийх — «Өөрийн зураг»-тай ИЖИЛ дүрэм (каталогийн бараа биш)
+  document.getElementById('mk-doc-img')?.addEventListener('click', () => openDocImagePicker((src) => {
+    P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5; P.productSku = ''; P.code = ''; P.body = ''; P.terms = '';
+    const im = new Image();
+    im.onload = () => { P.img = im; render(); };
+    im.onerror = () => showToast('Зураг ачаалж чадсангүй', 'warn', 2500);
+    im.src = src;
+  }));
   document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
   document.querySelectorAll('[data-mk-fit]').forEach(b => b.addEventListener('click', () => { P.imgFit = b.dataset.mkFit; render(); }));
   document.getElementById('mk-zoom')?.addEventListener('input', e => { P.imgZoom = (+e.target.value) / 100; _mkRedraw(); });

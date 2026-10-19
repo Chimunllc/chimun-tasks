@@ -9425,16 +9425,18 @@ select.no-asar-len {
 
 /* ── Автомат сануулга имэйлийн бичвэр засах карт (2026-10-19) ───────────────
    Маркетинг → Имэйл → «Автомат сануулга». Бүх өнгө, зай токен. */
-.mke-subs { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: 0 0 var(--space-4); }
+/* Дэд сонголт — үндсэн табаас хөнгөн, нэг мөрөнд багтана (320px) */
+.mke-subs { display: flex; gap: 2px; padding: 3px; max-width: 420px; margin: 0 0 var(--space-4); background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-full); }
+.mke-sub { flex: 1 1 0; min-width: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: var(--fs-md); font-weight: 600; padding: var(--space-2) var(--space-2); border-radius: var(--r-full); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.mke-sub.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px var(--border); }
 .rmt { display: block; }
-.rmt-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin: 0 0 var(--space-2); }
-.rmt-title { font-size: var(--fs-xl); font-weight: 800; }
+.rmt-head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin: 0 0 var(--space-2); }
 .rmt-chip { font-size: var(--fs-sm); font-weight: 700; padding: var(--space-1) var(--space-3); border-radius: var(--r-full); white-space: nowrap; }
 .rmt-on { background: var(--ok-soft); color: var(--ok); }
 .rmt-test { background: var(--warn-soft); color: var(--warn); }
 .rmt-off { background: var(--panel-hover); color: var(--muted); }
 .rmt-sub { font-size: var(--fs-sm); color: var(--muted); margin: 0 0 var(--space-3); line-height: 1.5; }
-.rmt-stats { font-size: var(--fs-md); margin: 0 0 var(--space-3); }
+.rmt-stats { font-size: var(--fs-md); color: var(--muted); }
 .rmt-bad { color: var(--danger); }
 .rmt-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-items: start; }
 @media (min-width: 1001px) { .rmt-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
@@ -9452,3 +9454,7 @@ select.no-asar-len {
 .rmt-p { font-size: var(--fs-base); line-height: 1.6; margin: 0 0 var(--space-3); }
 .rmt-pv-card { font-size: var(--fs-md); line-height: 1.6; background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-3) var(--space-4); margin: 0 0 var(--space-4); }
 .rmt-pv-btn { display: block; text-align: center; background: var(--primary); color: #fff; font-weight: 700; padding: var(--space-3) var(--space-5); border-radius: var(--r-lg); margin: var(--space-4) 0 0; }
+
+.rmt-pv-subj { font-size: var(--fs-sm); color: var(--muted); padding: 0 0 var(--space-3); margin: 0 0 var(--space-3); border-bottom: 1px solid var(--border); }
+.rmt-pv-logo { font-weight: 800; font-size: var(--fs-lg); letter-spacing: .04em; margin: 0 0 var(--space-4); }
+.rmt-pv-dot { color: var(--primary); }

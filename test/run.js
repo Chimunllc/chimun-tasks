@@ -19689,3 +19689,36 @@ async function swFetchTests() {
   ok(/Овог нэр: А\.Бат/.test(h), 'гэрээ: хувь хүний гарын үсгийн мөрөнд «А.Бат»');
   ok(/async function openMeventContract[\s\S]{0,700}await loadProductsCatalog\(\)/.test(src), '⛔ гэрээ: каталог ачаалагдаагүй бол эхлээд ачаална');
 }
+
+// ═══ ДАВТАН ҮЙЛЧЛҮҮЛЭГЧИД САНУУЛГА ИМЭЙЛ ӨӨРӨӨ ЯВНА (2026-10-19, CEO) ════════════
+// Хэнд, хэзээ явахыг НЭГ газар (db/reminder_mail.sql) шийднэ; n8n зөвхөн бичвэр угсарч илгээнэ.
+// Харилцагчид очдог имэйл тул дүрэм бүрийг тест барина (SQL ажиллуулж чадахгүй тул эх кодыг уншина).
+{
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'reminder_mail.sql'), 'utf8');
+  const pick = sql.slice(sql.indexOf('create or replace function reminder_pick()'), sql.indexOf('create or replace function reminder_test_pick()'));
+  const tst = sql.slice(sql.indexOf('create or replace function reminder_test_pick()'));
+  ok(pick.length > 500 && tst.length > 200, 'сануулга: хоёр функц бүгд байна');
+  // ⛔ Харилцагчийн имэйл буцаадаг — PUBLIC-д EXECUTE автоматаар олгогддог тул ЗААВАЛ хураана
+  ok(/revoke all on function reminder_pick\(\) from public, anon, authenticated;/.test(sql)
+     && /revoke all on function reminder_test_pick\(\) from public, anon, authenticated;/.test(sql),
+     '⛔ сануулга: хоёр функц anon/authenticated-д хаалттай');
+  ok(/notify pgrst, 'reload schema';/.test(sql), 'сануулга: PostgREST кэш шинэчилнэ');
+  ok(/coalesce\(v->>'mode', 'off'\)/.test(pick) && /where p\.mode = 'on'/.test(pick),
+     '⛔ сануулга: тохиргоо байхгүй бол ЮУ Ч явахгүй (өгөгдмөл off, зөвхөн on үед жинхэнэ)');
+  ok(/coalesce\(v->>'mode', 'off'\)/.test(pick) && /c\.v->>'mode' = 'test'/.test(tst) && /test_to/.test(tst),
+     'сануулга: тест горим зөвхөн test_to хаяг, зөвхөн заасан захиалгаар');
+  // Хэнд ЯВАХГҮЙ
+  ok(/stage_meta->'mail' \? 'closed'/.test(pick), 'сануулга: зөвхөн талархал (хаагдсан имэйл) очсон захиалгаас эхэлнэ');
+  ok(/from email_optout/.test(pick), '⛔ сануулга: хасуулсан хүнд явуулахгүй');
+  ok(/b\.total_mnt - b\.paid_mnt - b\.deposit_mnt <= 1000(?!\d)/.test(pick), '⛔ сануулга: төлбөрийн үлдэгдэлтэй хүнд явуулахгүй (барьцаа буцаасныг өр гэж андуурахгүй)');
+  ok(/'reminder'/.test(pick) && /interval '120 days'/.test(pick), 'сануулга: 120 хоногт дахин сануулахгүй');
+  ok(/\? 'reminder'\)/.test(pick) && /\? 'reminder_err'\)/.test(pick), 'сануулга: нэг захиалгад нэг л удаа оролдоно (алдаатай ч дахин явуулахгүй)');
+  ok(/stars'\)::int, 5\) <= 2/.test(pick), 'сануулга: 1-2 одтой үнэлгээ өгсөн хүнд явуулахгүй');
+  ok(/r\.starts_at > b\.starts_at/.test(pick) && /right\(b\.ph, 8\)/.test(pick), 'сануулга: дараагийн захиалгатай хүнд имэйл БА утсаар тулгаж явуулахгүй');
+  ok(/mevent\\\.mn\|nomaadcamp\\\.com/.test(pick), 'сануулга: өөрсдийн хаяг руу явуулахгүй');
+  ok(/distinct on \(email\)/.test(pick), 'сануулга: нэг хүнд нэг имэйл');
+  ok(/abs\(hashtext\(b\.email\)\) % 100 >= p\.holdout/.test(pick), 'сануулга: хяналтын бүлэг имэйлийн хэшээр тогтмол');
+  ok(/limit \(select cap from p\)/.test(pick), 'сануулга: нэг ажиллагаанд дээд хязгаартай');
+  // ⛔ SQL-д утга нааж болохгүй (CLAUDE.md): цаг нь make_interval, тохиргоо нь jsonb-ээс
+  ok(/make_interval\(days => p\.days\)/.test(pick) && !/'\{\{/.test(sql), 'сануулга: SQL-д утга нааагүй');
+}

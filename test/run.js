@@ -8066,6 +8066,68 @@ need(['orderCustType']);
       .catch(e => { ok(false, 'бичилт: patchOrderFields — ' + e.message); sandbox.fetch = origFetch; done(); });
   }, 0)));
 
+  // ── Имэйл маркетинг: webhook-ийг нийтийн түлхүүрээр БИШ, нэвтэрсэн токеноор дууддаг (2026-10-19) ──
+  // `marketing-email` workflow зөвхөн аппын эх кодод ИЛ түлхүүр шалгадаг байсан тул түүнийг мэдсэн хэн ч
+  // hello@mevent.mn-ээс дурын хүнд имэйл явуулах боломжтой байв. Сервер одоо X-Session-Token шаардана,
+  // нэг дуудлагад 300-аас олныг 413-аар татгалзана — апп жагсаалтаа 300-аар хуваана.
+  eq(vm.runInContext('MK_EMAIL_BATCH', sandbox), 300, 'имэйл: багцын хэмжээ серверийн хязгаар (300)-тай ижил');
+  eq(F.mkEmailBatches(Array.from({ length: 650 }, (_, i) => i)).map(b => b.length), [300, 300, 50], 'имэйл: 650 хүнийг 300/300/50 болгож хуваана');
+  eq(F.mkEmailBatches(Array.from({ length: 300 }, (_, i) => i)).length, 1, 'имэйл: яг 300 бол нэг дуудлага');
+  eq(F.mkEmailBatches([]).length, 0, 'имэйл: хоосон бол дуудлага хийхгүй');
+  {
+    const fn = src.slice(src.indexOf('async function sendMarketingEmail'), src.indexOf('function openMarketingRecipientList'));
+    ok(fn.length > 500, 'scan: sendMarketingEmail олдлоо');
+    ok(!/N8N_API_KEY/.test(fn), '⛔ scan: имэйл маркетинг нийтийн n8n түлхүүр (N8N_API_KEY) явуулахгүй');
+    ok(/n8nAuthHeaders\(/.test(fn), 'scan: имэйл маркетинг нэвтэрсэн токеныг толгойгоор явуулна');
+    ok(!/sent_by/.test(fn), 'scan: илгээгчийг бие рүү бичихгүй (сервер токеноос мэднэ)');
+  }
+  (globalThis.__late = globalThis.__late || []).push(new Promise(done => setTimeout(async () => {
+    const origFetch = sandbox.fetch, origGet = documentMock.getElementById;
+    const origConfirm = vm.runInContext('showConfirm', sandbox);
+    const st0 = vm.runInContext('({ me: state.me, app: state.appOrders, bq: state.bqOrders, opt: state._emailOptout, mk: state._mkEmail })', sandbox);
+    const stEl = stubEl();
+    documentMock.getElementById = (id) => id === 'mkm-subject' ? Object.assign(stubEl(), { value: 'Гарчиг' })
+      : id === 'mkm-body' ? Object.assign(stubEl(), { value: 'Мессеж' }) : id === 'mkm-status' ? stEl : stubEl();
+    const calls = []; let mode = 'ok';
+    sandbox.fetch = (url, opt) => {
+      calls.push({ url: String(url), headers: (opt && opt.headers) || {}, body: JSON.parse((opt && opt.body) || '{}') });
+      if (mode === '401') return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ ok: false, error: 'unauthorized' }) });
+      const n = calls[calls.length - 1].body.recipients.length;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, queued: n, skipped_optout: 1 }) });
+    };
+    try {
+      localStorage.setItem('sessionToken', 'tok.sig');
+      vm.runInContext(`state.me = 'me@x.mn'; state._mkEmail = { branch: 'm-event', subject: '', body: '' }; state._emailOptout = new Set();
+        state.appOrders = ${JSON.stringify(Array.from({ length: 650 }, (_, i) => ({ email: `u${i}@x.mn`, customer: 'Х' + i })))}; state.bqOrders = [];
+        showConfirm = async () => true;`, sandbox);
+      // туршилт: өөр рүүгээ
+      await vm.runInContext('sendMarketingEmail(true)', sandbox);
+      const mk = calls.filter(c => /webhook\/marketing-email/.test(c.url));
+      eq(mk.length, 1, 'имэйл: туршилт нэг дуудлага');
+      eq(mk[0] && mk[0].headers['X-Session-Token'], 'tok.sig', '⛔ ИНВАРИАНТ: имэйл маркетинг X-Session-Token-ийг ҮНЭХЭЭР илгээнэ');
+      ok(mk[0] && !('key' in mk[0].body) && !('sent_by' in mk[0].body), '⛔ ИНВАРИАНТ: биеэр нийтийн түлхүүр явахгүй');
+      eq(mk[0] && mk[0].body.test, true, 'имэйл: туршилт гэдгийг серверт хэлнэ (opt-out алгасахад)');
+      eq(mk[0] && mk[0].body.recipients, [{ email: 'me@x.mn', name: '' }], 'имэйл: туршилт зөвхөн өөрийн хаяг руу');
+      // бүх жагсаалт: 650 → 3 багц
+      calls.length = 0;
+      await vm.runInContext('sendMarketingEmail(false)', sandbox);
+      eq(calls.map(c => c.body.recipients.length), [300, 300, 50], 'ИНВАРИАНТ: 650 хүн 300/300/50 багцаар явна (сервер 300-аас олныг татгалзана)');
+      ok(calls.every(c => c.headers['X-Session-Token'] === 'tok.sig' && !('key' in c.body) && c.body.test === false), 'ИНВАРИАНТ: багц бүрд токен байна, түлхүүр байхгүй');
+      ok(/650 имэйл илгээгдэж байна/.test(stEl.innerHTML) && /650 хүн жагсаалтаас хасуулсан|3 хүн жагсаалтаас хасуулсан/.test(stEl.innerHTML), 'имэйл: серверийн тоог (queued/алгассан) хэрэглэгчид хэлнэ');
+      // 401 → ойлгомжтой мессеж
+      mode = '401'; calls.length = 0;
+      await vm.runInContext('sendMarketingEmail(false)', sandbox);
+      eq(calls.length, 1, 'имэйл: 401 бол үлдсэн багцыг оролдохгүй');
+      ok(/Нэвтрэлт дууссан/.test(stEl.innerHTML), 'имэйл: 401-ийг «нэвтрэлт дууссан» гэж ойлгомжтой хэлнэ');
+    } catch (e) { ok(false, 'имэйл маркетинг: ' + (e && e.stack || e)); }
+    finally {
+      sandbox.fetch = origFetch; documentMock.getElementById = origGet; localStorage.removeItem('sessionToken');
+      vm.runInContext(`showConfirm = __c; state.me = __s.me; state.appOrders = __s.app; state.bqOrders = __s.bq; state._emailOptout = __s.opt; state._mkEmail = __s.mk;`,
+        Object.assign(sandbox, { __c: origConfirm, __s: st0 }));
+      done();
+    }
+  }, 0)));
+
   // ── note бичихэд дуудагчийн токен УСТАХГҮЙ (2026-10-09, амьд алдаа) ────
   {
     const fresh = '⟦RT|13|13⟧ ⟦DLV|city|0|150000⟧ Үндэсний музей';

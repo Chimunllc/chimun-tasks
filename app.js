@@ -16360,14 +16360,102 @@ function fmtBytes(n) {
   return b ? b + ' B' : '';
 }
 
+/* ─── ЗУРАГ — жагсаалтад жижиг зураг, нээхэд хурдан харагдац ───
+   Эх файл (3-5MB, iPhone-ийн HEIC) нь зөвхөн «⬇ Татах» дарахад л татагдана.
+   · thumb   (~144px) — жагсаалтын татацад ордог, мөр бүрд зураг гарна
+   · preview (~1600px) — нээхэд л татна (эх файлаас 5-8 дахин бага)
+   Мөр дээр mime нь `application/octet-stream` байж болно (хөтөч HEIC-г танихгүй)
+   тул зураг эсэхийг файлын өргөтгөлөөр ч шалгана. */
+const DOC_IMG_EXT_RE = /\.(jpe?g|png|gif|webp|bmp|avif|heic|heif)$/i;
+const DOC_THUMB_RE = /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/;
+function docIsImage(d) { return !!d && (/^image\//i.test(d.mime || '') || DOC_IMG_EXT_RE.test(d.file_name || '')); }
+function docIsHeic(d) { return !!d && (/^image\/hei[cf]/i.test(d.mime || '') || /\.hei[cf]$/i.test(d.file_name || '')); }
+// data: URL нь DB-ээс ирдэг тул src-д тавихаас өмнө ЗААВАЛ хэлбэрийг шалгана
+function docSafeThumb(v) { return typeof v === 'string' && DOC_THUMB_RE.test(v) ? v : ''; }
+/* Нээх замыг ганц газар шийднэ (тестлэгдэнэ):
+   pdf · gif (хөдөлгөөнтэй — эх файлаар) · image (preview-ээр, байхгүй бол эхээс үүсгэнэ) · other */
+function docViewPlan(d) {
+  if (!d) return 'other';
+  const mime = String(d.mime || '');
+  if (mime === 'application/pdf') return 'pdf';
+  if (/^image\/gif$/i.test(mime) || /\.gif$/i.test(d.file_name || '')) return 'gif';
+  return docIsImage(d) ? 'image' : 'other';
+}
+
+/* HEIC задлагч — ЗӨВХӨН Chrome/Electron дээр, HEIC зураг оруулах үед л ачаална (~3MB).
+   ⚠ `heic2any` БИШ: тэр хуучин libheif-тэй тул iPhone-ийн HEIC-г «format not supported»
+   гэж татгалздаг (амьд файлаар баталсан). `heic-to` (libheif 1.19) ижил файлыг задалсан.
+   Safari HEIC-г өөрөө задалдаг тул энэ ачаалагдахгүй. */
+let _heicToPromise = null;
+function loadHeicTo() {
+  if (typeof window !== 'undefined' && typeof window.HeicTo === 'function') return Promise.resolve(window.HeicTo);
+  if (_heicToPromise) return _heicToPromise;
+  _heicToPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/heic-to@1.6.6/dist/iife/heic-to.js';
+    s.onload = () => (typeof window.HeicTo === 'function' ? resolve(window.HeicTo) : reject(new Error('HEIC задлагч ачаалагдсангүй')));
+    s.onerror = () => { _heicToPromise = null; reject(new Error('HEIC задлагч татаж чадсангүй — интернэт шалгана уу')); };
+    document.head.appendChild(s);
+  });
+  return _heicToPromise;
+}
+// Зургийг canvas-д зурж болох bitmap болгоно. HEIC-г Chrome задалж чадахгүй — зөвхөн тэр үед задлагч ачаална.
+async function docDecodeBitmap(blob, isHeic) {
+  try { return await createImageBitmap(blob); }
+  catch (e) {
+    if (!isHeic) throw e;
+    const jpg = await (await loadHeicTo())({ blob, type: 'image/jpeg', quality: 0.9 });
+    return await createImageBitmap(jpg);
+  }
+}
+function docBitmapToDataUrl(bmp, edge, quality, png) {
+  const sc = Math.min(1, edge / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * sc)), h = Math.max(1, Math.round(bmp.height * sc));
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d');
+  if (!png) { cx.fillStyle = 'white'; cx.fillRect(0, 0, w, h); }   // JPEG ил тод байдлыг хар болгодог
+  cx.drawImage(bmp, 0, 0, w, h);
+  return cv.toDataURL(png ? 'image/png' : 'image/jpeg', quality);
+}
+const DOC_THUMB_EDGE = 144, DOC_PREVIEW_EDGE = 1600, DOC_PNG_PREVIEW_MAX = 700 * 1024;
+/* Файлаас {thumb, preview} (бүтэн data URL) үүсгэнэ. Задалж чадахгүй бол null — дуудагч
+   зөвхөн жижиг зураггүй үлдэнэ, хадгалалт ТАСЛАГДАХГҮЙ. PNG (лого) нь PNG хэвээр. */
+async function docMakePreviews(blob, d) {
+  try {
+    const bmp = await docDecodeBitmap(blob, docIsHeic(d));
+    const png = /\.png$/i.test(d.file_name || '') || /^image\/png$/i.test(d.mime || '');
+    let preview = docBitmapToDataUrl(bmp, DOC_PREVIEW_EDGE, 0.74, png);
+    let thumb = docBitmapToDataUrl(bmp, DOC_THUMB_EDGE, 0.58, png);
+    if (png && preview.length > DOC_PNG_PREVIEW_MAX * 1.34) {   // том PNG (зураг) → JPEG
+      preview = docBitmapToDataUrl(bmp, DOC_PREVIEW_EDGE, 0.74, false);
+      thumb = docBitmapToDataUrl(bmp, DOC_THUMB_EDGE, 0.58, false);
+    }
+    if (bmp.close) bmp.close();
+    return { thumb, preview };
+  } catch (e) { console.warn('docMakePreviews', e); return null; }
+}
+// Шинэ файл → бичлэгийн thumb/preview талбар. Зураг биш/задрахгүй бол null болгоно —
+// файл солигдоход хуучин зураг үлдэж, буруу харагдахаас сэргийлнэ.
+async function docPreviewFields(file) {
+  const meta = { file_name: file.name, mime: file.type };
+  if (docViewPlan(meta) !== 'image') return { thumb: null, preview: null };
+  const pv = await docMakePreviews(file, meta);
+  return pv ? { thumb: pv.thumb, preview: pv.preview } : { thumb: null, preview: null };
+}
+
 async function loadCompanyDocs(force) {
   if (!DB_ANON_KEY) return;
   if (state.companyDocs && !force) return;
   try {
-    // data (base64 биет) СОНГОХГҮЙ — зөвхөн нээх үедээ ганцаарчлан татна.
+    // data (base64 биет) ба preview СОНГОХГҮЙ — зөвхөн нээх үедээ ганцаарчлан татна.
+    // thumb жижиг (~10KB) тул жагсаалтад орно.
     const sel = 'id,title,category,folder,doc_no,doc_date,counterparty,note,mime,file_name,size_bytes,uploaded_by,created_at';
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?select=${sel}&order=created_at.desc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    const hdr = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };
+    let r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?select=${sel},thumb&order=created_at.desc`, hdr, 20000);
+    // thumb багана DB-д байхгүй (db/company_docs_preview.sql ажиллаагүй) бол ЖАГСААЛТ ХООСОН
+    // болохоор нь жижиг зургийг хасаад дахин оролдоно.
+    if (r.status === 400) r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?select=${sel}&order=created_at.desc`, hdr, 20000);
     state.companyDocs = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'documents') render();
   } catch (e) { console.warn('loadCompanyDocs', e); state.companyDocs = state.companyDocs || []; }
@@ -16554,55 +16642,256 @@ async function fetchDocBlob(id) {
   } catch (e) { console.warn('fetchDocBlob', e); return null; }
 }
 
-// Баримтыг нээх — PDF бол pdf.js-ээр, зураг бол шууд, бусад бол татаж авах.
-async function openCompanyDoc(id) {
-  const d = (state.companyDocs || []).find(x => String(x.id) === String(id));
-  if (!d) return;
-  showToast('📄 Татаж байна…', 'info', 1500);
-  const blob = await fetchDocBlob(id);
-  if (!blob) { showToast('Файл олдсонгүй эсвэл татаж чадсангүй', 'warn', 3500); return; }
-  const url = URL.createObjectURL(blob);
+/* Хурдан харагдац (~1600px) — эх файлыг ТАТАХГҮЙ. Хэд хэдэн зургийг дараалан үзэхэд
+   буцаж ирэхэд дахин татахгүйн тулд сүүлийн 12-ыг санана. */
+const _docPreviewCache = new Map();
+async function fetchDocPreview(id) {
+  if (!DB_ANON_KEY || !id) return '';
+  if (_docPreviewCache.has(id)) return _docPreviewCache.get(id);
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?id=eq.${encodeURIComponent(id)}&select=preview`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 30000);
+    if (!r.ok) return '';
+    const rows = await r.json();
+    const v = docSafeThumb(rows[0] && rows[0].preview);
+    if (v) {
+      _docPreviewCache.set(id, v);
+      if (_docPreviewCache.size > 12) _docPreviewCache.delete(_docPreviewCache.keys().next().value);
+    }
+    return v;
+  } catch (e) { console.warn('fetchDocPreview', e); return ''; }
+}
+// Хуучин (thumb/preview-гүй) зургийг нээхэд үүсгэсэн хувилбарыг DB-д хадгална — дараагийн удаа шууд нээгдэнэ.
+// Алдаа гарвал чимээгүй (зөвхөн хурдасгуур, эх файл өөрчлөгдөхгүй).
+async function saveDocPreviews(id, thumb, preview) {
+  if (!DB_ANON_KEY || !id || !thumb || !preview) return false;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ thumb, preview }),
+    }, 30000);
+    return r.ok;
+  } catch (e) { console.warn('saveDocPreviews', e); return false; }
+}
+/* Зургийн хурдан харагдацыг БЭЛЭН болгоно (баримт нээх, постерт сонгох хоёул):
+   DB-д preview байвал шууд; үгүй бол эх файлаас үүсгээд (эрхтэй бол) DB-д хадгална.
+   Буцаах: null = файл олдсонгүй · {preview:''} = задарсангүй · {preview, blob} (blob нь эх файлаас үүсгэсэн үед л). */
+async function docEnsurePreview(d) {
+  const cached = await fetchDocPreview(d.id);
+  if (cached) return { preview: cached, blob: null };
+  const blob = await fetchDocBlob(d.id);
+  if (!blob) return null;
+  const made = await docMakePreviews(blob, d);
+  if (!made) return { preview: '', blob };
+  d.thumb = made.thumb;
+  _docPreviewCache.set(d.id, made.preview);
+  if (can('documents.edit')) saveDocPreviews(d.id, made.thumb, made.preview);   // дараагийн удаа шууд
+  return { preview: made.preview, blob };
+}
+function docDownloadBlob(blob, name) {
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = u; a.download = name || 'document';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 4000);
+}
+
+/* Баримтыг нээх.
+   · Зураг — хурдан харагдацаар ШУУД (эхэндээ жижиг зураг бүдэг, дараа нь тод). Эх файл татагдахгүй.
+   · PDF — pdf.js-ээр. · Бусад — татаж авна.
+   `order` = нээгдсэн жагсаалтын баримтын id-ууд: ‹ › товч, сум товч, шудрах (swipe)-аар дараагийн зураг руу.
+   «⬇ Татах» л эх файлыг татна. */
+async function openCompanyDoc(id, order) {
+  const all = state.companyDocs || [];
+  const ids = (order && order.length ? order : [id]).map(String);
+  let idx = Math.max(0, ids.indexOf(String(id)));
+  const docAt = (i) => all.find(x => String(x.id) === ids[i]);
+  if (!docAt(idx)) return;
   const ov = document.createElement('div');
   ov.className = 'modal-bg open';
   ov.style.zIndex = '10000';
   ov.innerHTML = `<div class="modal doc-view">
     <div class="doc-view-bar">
-      <h2>${docCat(d.category).icon} ${escapeHtml(d.title || d.file_name || 'Баримт')}</h2>
+      <h2 id="docv-title"></h2>
       <span class="doc-view-btns">
-        <a class="btn btn-sm" id="docv-dl" download="${escapeHtml(d.file_name || d.title || 'document')}" href="${url}">⬇ Татах</a>
+        <button class="btn btn-sm" id="docv-prev" title="Өмнөх">‹</button>
+        <span class="doc-view-pos" id="docv-pos"></span>
+        <button class="btn btn-sm" id="docv-next" title="Дараагийн">›</button>
+        <button class="btn btn-sm" id="docv-dl">⬇ Татах</button>
         <button class="btn btn-sm" id="docv-x">✕ Хаах</button>
       </span>
     </div>
     <div id="docv-body" class="doc-view-body">Уншиж байна…</div>
   </div>`;
   document.body.appendChild(ov);
-  const close = () => { URL.revokeObjectURL(url); ov.remove(); };
-  ov.querySelector('#docv-x').onclick = close;
+  const $ = (s) => ov.querySelector(s);
+  const box = $('#docv-body');
+  let seq = 0, curBlobUrl = '', curBlob = null;
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft') go(-1);
+    else if (e.key === 'ArrowRight') go(1);
+  };
+  const close = () => {
+    seq++;
+    if (curBlobUrl) URL.revokeObjectURL(curBlobUrl);
+    document.removeEventListener('keydown', onKey);
+    ov.remove();
+  };
+  const go = (dir) => { const n = idx + dir; if (n >= 0 && n < ids.length) { idx = n; show(); } };
+  $('#docv-x').onclick = close;
+  $('#docv-prev').onclick = () => go(-1);
+  $('#docv-next').onclick = () => go(1);
   ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
-  const box = ov.querySelector('#docv-body');
-  const mime = String(d.mime || '');
-  try {
-    if (/^image\//.test(mime)) {
-      box.innerHTML = `<img src="${url}" alt="" class="doc-view-img" />`;
-    } else if (mime === 'application/pdf') {
-      const pdfjsLib = await loadPdfJs();
-      const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
-      box.innerHTML = '';
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const vp = page.getViewport({ scale: 1.5 });
-        const cv = document.createElement('canvas');
-        cv.width = vp.width; cv.height = vp.height;
-        cv.className = 'doc-view-page';
-        box.appendChild(cv);
-        await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+  document.addEventListener('keydown', onKey);
+  // Утсан дээр хуруугаа хажуу тийш шудрахад дараагийн/өмнөх зураг
+  let tx = null, ty = null;
+  box.addEventListener('touchstart', (e) => { const t = e.touches[0]; tx = t.clientX; ty = t.clientY; }, { passive: true });
+  box.addEventListener('touchend', (e) => {
+    if (tx == null) return;
+    const t = e.changedTouches[0], dx = t.clientX - tx, dy = t.clientY - ty;
+    tx = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6) go(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  $('#docv-dl').onclick = async (e) => {
+    const d = docAt(idx), btn = e.currentTarget;
+    if (!d) return;
+    btn.disabled = true;
+    try {
+      const blob = curBlob || await fetchDocBlob(d.id);
+      if (!blob) { showToast('Файл татаж чадсангүй', 'warn', 3500); return; }
+      docDownloadBlob(blob, d.file_name || d.title);
+    } finally { btn.disabled = false; }
+  };
+
+  const show = async () => {
+    const my = ++seq;
+    const d = docAt(idx);
+    if (curBlobUrl) { URL.revokeObjectURL(curBlobUrl); curBlobUrl = ''; }
+    curBlob = null;
+    $('#docv-title').textContent = `${docIsImage(d) ? '🖼' : docCat(d.category).icon} ${d.title || d.file_name || 'Баримт'}`;
+    $('#docv-pos').textContent = ids.length > 1 ? `${idx + 1} / ${ids.length}` : '';
+    $('#docv-prev').hidden = $('#docv-next').hidden = ids.length < 2;
+    $('#docv-prev').disabled = idx === 0;
+    $('#docv-next').disabled = idx === ids.length - 1;
+    const stale = () => my !== seq;
+    const note = (html, err) => { box.innerHTML = `<div class="doc-view-note${err ? ' err' : ''}">${html}</div>`; };
+    const plan = docViewPlan(d);
+    try {
+      if (plan === 'image') {
+        // 1) жижиг зураг шууд (бүдэг), 2) хурдан харагдац, 3) байхгүй бол эхээс үүсгэнэ
+        const th = docSafeThumb(d.thumb);
+        box.innerHTML = th ? `<img src="${th}" alt="" class="doc-view-img is-loading" />` : 'Уншиж байна…';
+        const got = await docEnsurePreview(d);
+        if (stale()) return;
+        if (!got) { note('Файл олдсонгүй эсвэл татаж чадсангүй', true); return; }
+        if (got.blob) curBlob = got.blob;
+        if (!got.preview) { note(`Энэ зургийг апп дотор харуулж чадсангүй.<br>«⬇ Татах» дарж үзнэ үү.`, true); return; }
+        const pv = got.preview;
+        box.innerHTML = `<img src="${pv}" alt="" class="doc-view-img" />`;
+        // Хөрш зургуудыг урьдчилан татна — дараагийнхаа руу шилжихэд хүлээхгүй
+        [idx + 1, idx - 1].forEach(n => { const nd = docAt(n); if (nd && docViewPlan(nd) === 'image') fetchDocPreview(nd.id); });
+        return;
       }
-    } else {
-      box.innerHTML = `<div class="doc-view-note">Энэ төрлийг апп дотор харуулах боломжгүй (${escapeHtml(mime || 'тодорхойгүй')}).<br>«⬇ Татах» дарж компьютер дээрээ нээнэ үү.</div>`;
+      box.textContent = 'Уншиж байна…';
+      const blob = await fetchDocBlob(d.id);
+      if (stale()) return;
+      if (!blob) { note('Файл олдсонгүй эсвэл татаж чадсангүй', true); return; }
+      curBlob = blob;
+      if (plan === 'gif') {
+        curBlobUrl = URL.createObjectURL(blob);
+        box.innerHTML = `<img src="${curBlobUrl}" alt="" class="doc-view-img" />`;
+      } else if (plan === 'pdf') {
+        const pdfjsLib = await loadPdfJs();
+        const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
+        if (stale()) return;
+        box.innerHTML = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const vp = page.getViewport({ scale: 1.5 });
+          const cv = document.createElement('canvas');
+          cv.width = vp.width; cv.height = vp.height;
+          cv.className = 'doc-view-page';
+          box.appendChild(cv);
+          await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+          if (stale()) return;
+        }
+      } else {
+        note(`Энэ төрлийг апп дотор харуулах боломжгүй (${escapeHtml(d.mime || 'тодорхойгүй')}).<br>«⬇ Татах» дарж компьютер дээрээ нээнэ үү.`);
+      }
+    } catch (e) {
+      if (!stale()) note(`Харуулж чадсангүй: ${escapeHtml(e.message || '')}<br>«⬇ Татах» дарж үзнэ үү.`, true);
     }
-  } catch (e) {
-    box.innerHTML = `<div class="doc-view-note err">Харуулж чадсангүй: ${escapeHtml(e.message || '')}<br>«⬇ Татах» дарж үзнэ үү.</div>`;
-  }
+  };
+  return show();
+}
+
+/* ─── Баримт бичгээс ЗУРАГ СОНГОХ — постер г.м. өөр дэлгэцэд ашиглана ───
+   Жагсаалт нь `thumb`-ээр (бага) зурагдана; сонгосон зургийн хурдан харагдацыг (~1600px) л татна,
+   эх файлыг (3-5MB, HEIC) ХЭЗЭЭ Ч татахгүй. Зөвхөн зураг (gif-гүй) гарна. */
+function docPickerList(docs, q, folder) {
+  const needle = String(q || '').trim().toLowerCase();
+  const f = docFolderNorm(folder);
+  return (docs || []).filter(d => docViewPlan(d) === 'image'
+    && (!f || docFolderNorm(d.folder) === f)
+    && (!needle || [d.title, d.file_name, d.counterparty, d.note].some(v => String(v || '').toLowerCase().includes(needle))));
+}
+// Зураг агуулсан хавтаснууд (тоотой) — «Бүгд»-ийг дуудагч нэмнэ
+function docPickerFolders(docs) {
+  const m = new Map();
+  (docs || []).forEach(d => { if (docViewPlan(d) !== 'image') return; const f = docFolderNorm(d.folder); if (f) m.set(f, (m.get(f) || 0) + 1); });
+  return Array.from(m, ([path, n]) => ({ path, n })).sort((a, b) => a.path.localeCompare(b.path, 'mn'));
+}
+async function openDocImagePicker(onPick) {
+  if (!state.companyDocs) await loadCompanyDocs();
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg open';
+  ov.style.zIndex = '10002';
+  ov.innerHTML = `<div class="modal dip-modal">
+    <div class="dip-bar"><h2>🗂 Баримт бичгээс зураг сонгох</h2><button class="btn btn-sm ui-raw" id="dip-x">✕ Хаах</button></div>
+    <input id="dip-q" class="dip-q" type="search" placeholder="Нэрээр хайх…" />
+    <div id="dip-folders" class="otabs dip-folders"></div>
+    <div id="dip-grid" class="dip-grid"></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const $ = (sel) => ov.querySelector(sel);
+  let q = '', folder = '', busy = false;
+  const close = () => { document.removeEventListener('keydown', onKey); ov.remove(); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  $('#dip-x').onclick = close;
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  const paint = () => {
+    const all = state.companyDocs || [];
+    const folders = docPickerFolders(all);
+    const nAll = docPickerList(all, '', '').length;
+    $('#dip-folders').innerHTML = folders.length
+      ? [{ path: '', n: nAll }].concat(folders).map(f => `<button class="otab ui-raw${f.path === folder ? ' on' : ''}" data-f="${escapeHtml(f.path)}">${f.path ? '📁 ' + escapeHtml(f.path) : '🗂 Бүгд'} <span class="otab-n">${f.n}</span></button>`).join('')
+      : '';
+    const list = docPickerList(all, q, folder);
+    $('#dip-grid').innerHTML = list.length
+      ? list.map(d => { const th = docSafeThumb(d.thumb); return `<button class="dip-item ui-raw" data-id="${escapeHtml(d.id)}" title="${escapeHtml(d.title || d.file_name || '')}">
+          ${th ? `<img class="dip-thumb" src="${th}" alt="" loading="lazy" decoding="async" />` : '<span class="dip-ph">🖼</span>'}
+          <span class="dip-name">${escapeHtml(d.title || d.file_name || 'Нэргүй')}</span></button>`; }).join('')
+      : `<div class="doc-empty">${nAll ? 'Хайлтад таарах зураг алга.' : 'Баримт бичигт зураг алга. Эхлээд «Баримт бичиг» дэлгэцэд зураг оруулна уу.'}</div>`;
+    $('#dip-folders').querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { folder = b.dataset.f; paint(); }));
+    $('#dip-grid').querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', async () => {
+      if (busy) return;
+      const d = (state.companyDocs || []).find(x => String(x.id) === b.dataset.id);
+      if (!d) return;
+      busy = true; b.classList.add('is-busy');
+      try {
+        const got = await docEnsurePreview(d);
+        if (!got || !got.preview) { showToast('Зургийг уншиж чадсангүй', 'warn', 3000); return; }
+        close();
+        onPick(got.preview, d);
+      } finally { busy = false; b.classList.remove('is-busy'); }
+    }));
+  };
+  $('#dip-q').addEventListener('input', (e) => { q = e.target.value; paint(); });
+  paint();
+  if (state.companyDocs && !state.companyDocs.length) loadCompanyDocs(true).then(paint);   // хоосон бол сервериг дахин асууна
 }
 
 /* ─── Системийн загвар — аппд шингэсэн, ҮРГЭЛЖ ОДООГИЙН баримтын загварууд ───
@@ -16813,11 +17102,13 @@ function openDocBulkModal() {
       $('#db-prog').textContent = `${done + failed + 1} / ${list.length} — ${p.title}`;
       try {
         const durl = await fileToDataUrl(p.file);
+        const pv = await docPreviewFields(p.file);
         const ok = await saveCompanyDoc({
           id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'doc-' + crypto.randomUUID() : 'doc-' + Date.now() + '-' + done,
           title: p.title, category: p.cat, folder: p.folder || null, uploaded_by: state.me,
           data: String(durl).slice(String(durl).indexOf(',') + 1),
           mime: p.file.type || 'application/octet-stream', file_name: p.name, size_bytes: p.size,
+          thumb: pv.thumb, preview: pv.preview,
         });
         if (ok) done++; else failed++;
       } catch (_) { failed++; }
@@ -16857,8 +17148,12 @@ function renderDocuments() {
     const meta = [flat && docFolderNorm(d.folder) ? '📁 ' + docFolderNorm(d.folder) : '',
       d.doc_no ? '№ ' + d.doc_no : '', d.doc_date ? fmtDate(d.doc_date) : '', d.counterparty || '', fmtBytes(d.size_bytes)]
       .filter(Boolean).map(escapeHtml).join(' · ');
+    const th = docSafeThumb(d.thumb);
+    const lead = th
+      ? `<span class="doc-ico"><img class="doc-thumb" src="${th}" alt="" loading="lazy" decoding="async" /></span>`
+      : `<span class="doc-ico">${docIsImage(d) ? '🖼' : c.icon}</span>`;
     return `<div class="doc-row" data-doc="${escapeHtml(d.id)}">
-      <span class="doc-ico">${c.icon}</span>
+      ${lead}
       <span class="doc-main">
         <span class="doc-title">${escapeHtml(d.title || d.file_name || 'Нэргүй')}</span>
         <span class="doc-meta">${meta || '—'}</span>
@@ -16949,7 +17244,14 @@ function attachDocumentsHandlers() {
     render();
   }));
   document.querySelectorAll('[data-doc-tpl]').forEach(r => r.addEventListener('click', () => openDocTemplate(r.dataset.docTpl)));
-  document.querySelectorAll('.doc-row[data-doc]').forEach(r => r.addEventListener('click', () => openCompanyDoc(r.dataset.doc)));
+  document.querySelectorAll('.doc-row[data-doc]').forEach(r => r.addEventListener('click', () => {
+    const find = (x) => (state.companyDocs || []).find(d => String(d.id) === String(x));
+    // Зураг дарвал жагсаалт дахь БҮХ зургийг дараалуулж өгнө (‹ › -аар үзэх). Бусад нь ганцаараа.
+    const order = docViewPlan(find(r.dataset.doc)) === 'image'
+      ? Array.from(document.querySelectorAll('.doc-row[data-doc]')).map(x => x.dataset.doc).filter(x => docViewPlan(find(x)) === 'image')
+      : [r.dataset.doc];
+    openCompanyDoc(r.dataset.doc, order);
+  }));
 }
 
 // Баримт нэмэх/засах модал. id=null бол шинэ (файл ЗААВАЛ), эс бол зөвхөн мэдээллийг засна.
@@ -17024,6 +17326,7 @@ function openDocEditModal(id) {
         doc.mime = f.type || 'application/octet-stream';
         doc.file_name = f.name;
         doc.size_bytes = f.size;
+        Object.assign(doc, await docPreviewFields(f));   // жижиг зураг + хурдан харагдац (зураг бол)
       } catch (_) {
         showToast('Файл уншиж чадсангүй', 'error'); btn.disabled = false; btn.textContent = 'Хадгалах'; return;
       }
@@ -17657,7 +17960,7 @@ function renderMarketing() {
   return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
       <div style="font-size:12px;color:var(--muted);">Зураг оруулаад брэнд хүрээ, гарчиг тавьж PNG татна. Instagram пост/story, Facebook.</div></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;">
+    <div class="mk-cols">
       <div>
         <div style="font-size:14px;font-weight:800;margin-bottom:8px;">🎯 Брэнд иж бүрдэл <span style="font-weight:400;color:var(--muted);font-size:11px;">(нэг удаа — бүх ажилтанд дундлагдана)</span></div>
         <div style="margin-bottom:10px;"><button class="btn btn-sm" id="mk-preset-mevent" style="border-color:#FF6A00;color:#FF6A00;">⚡ M-Event загвар оруулах</button></div>
@@ -17703,6 +18006,7 @@ function renderMarketing() {
         <datalist id="mk-prod-list">${(state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p))).slice(0, 400).map(p => `<option value="${escapeHtml(p.name)}${p.sku ? ' — ' + escapeHtml(p.sku) : ''}">${p.price ? fmtMoney(Number(p.price)) : ''}</option>`).join('')}</datalist>
         <div style="text-align:center;font-size:11px;color:var(--muted);margin:2px 0 10px;">— эсвэл —</div>
         <label for="mk-img" style="display:block;margin-bottom:10px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);font-size:13px;">📷 <b>Өөрийн зураг оруулах</b><input id="mk-img" type="file" accept="image/*" hidden></label>
+        ${canSeeDocuments() ? '<button type="button" class="mk-pick-btn" id="mk-doc-img">🗂 <b>Баримт бичгээс зураг сонгох</b></button>' : ''}
         <label style="font-size:11.5px;color:var(--muted);">Загвар</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${tplBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">Хэмжээ</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${sizeBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">🔍 Зураг тохируулах</label>
@@ -17815,6 +18119,14 @@ function attachMarketingHandlers() {
     P.body = '';   // шинэ зураг = шинэ пост
     r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; render(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
   });
+  // Баримт бичигт хадгалсан зургаас постер хийх — «Өөрийн зураг»-тай ИЖИЛ дүрэм (каталогийн бараа биш)
+  document.getElementById('mk-doc-img')?.addEventListener('click', () => openDocImagePicker((src) => {
+    P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5; P.productSku = ''; P.code = ''; P.body = ''; P.terms = '';
+    const im = new Image();
+    im.onload = () => { P.img = im; render(); };
+    im.onerror = () => showToast('Зураг ачаалж чадсангүй', 'warn', 2500);
+    im.src = src;
+  }));
   document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
   document.querySelectorAll('[data-mk-fit]').forEach(b => b.addEventListener('click', () => { P.imgFit = b.dataset.mkFit; render(); }));
   document.getElementById('mk-zoom')?.addEventListener('input', e => { P.imgZoom = (+e.target.value) / 100; _mkRedraw(); });

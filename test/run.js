@@ -2133,6 +2133,143 @@ eq(F.fmtBytes(3670016),  '3.5 MB',  'хэмжээ: мегабайт нэг ор�
   runIn("state.docsSearch = ''");
 }
 
+// 19b) Баримт — ЗУРАГ: HEIC-г «татаж ав» гэж үл харуулна, жижиг зураг жагсаалтад, нээхэд эх файл татахгүй (2026-10-19)
+// Шалтгаан: iPhone-ийн HEIC-г хөтөч танихгүй тул `application/octet-stream` гэж хадгалагддаг
+// (амьд датаар 15 зураг) → нээх бүрд «харуулах боломжгүй, татаж ав» гэдэг байв.
+need(['docIsImage', 'docIsHeic', 'docViewPlan', 'docSafeThumb', 'fetchDocPreview', 'loadCompanyDocs', 'openCompanyDoc', 'docEnsurePreview', 'docPickerList', 'docPickerFolders', 'openDocImagePicker']);
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const heic = { mime: 'application/octet-stream', file_name: 'IMG_6101.HEIC' };
+  ok(F.docIsImage(heic) && F.docIsHeic(heic), 'зураг: octet-stream + .HEIC нь зураг (өргөтгөлөөр танина)');
+  eq(F.docViewPlan(heic), 'image', 'зураг: HEIC нь «харуулах» замаар (татаж аваад дуусахгүй)');
+  eq(F.docViewPlan({ mime: 'image/jpeg', file_name: 'a.JPG' }), 'image', 'зураг: jpeg');
+  eq(F.docViewPlan({ mime: 'image/png', file_name: 'logo.png' }), 'image', 'зураг: png');
+  eq(F.docViewPlan({ mime: 'image/gif', file_name: 'a.gif' }), 'gif', 'зураг: gif нь эх файлаар (хөдөлгөөн алдагдахгүй)');
+  eq(F.docViewPlan({ mime: 'application/pdf', file_name: 'a.pdf' }), 'pdf', 'зураг: pdf өөр замаар');
+  eq(F.docViewPlan({ mime: 'application/octet-stream', file_name: 'a.xlsx' }), 'other', 'зураг: xlsx зураг БИШ');
+  eq(F.docViewPlan(null), 'other', 'зураг: баримтгүй бол other');
+
+  // Баримт бичгээс зураг сонгох (постер): зөвхөн зураг, хайлт, хавтас
+  {
+    const D = [
+      { id: 'p1', title: 'LED дэлгэц', file_name: 'IMG_6101.HEIC', mime: 'application/octet-stream', folder: 'Дэлгэц' },
+      { id: 'p2', title: 'Тайз', file_name: 'a.jpg', mime: 'image/jpeg', folder: 'Дэлгэц' },
+      { id: 'p3', title: 'Лого', file_name: 'logo.png', mime: 'image/png', folder: 'Logo CAMP' },
+      { id: 'p4', title: 'Гэрээ', file_name: 'g.pdf', mime: 'application/pdf', folder: 'Дэлгэц' },
+      { id: 'p5', title: 'Хөдөлгөөнт', file_name: 'x.gif', mime: 'image/gif', folder: 'Дэлгэц' },
+      { id: 'p6', title: 'Тайлан', file_name: 't.xlsx', mime: 'application/octet-stream' },
+    ];
+    eq(F.docPickerList(D, '', '').map(d => d.id), ['p1', 'p2', 'p3'], 'сонгогч: зөвхөн зураг (HEIC орно; pdf, xlsx, gif орохгүй)');
+    eq(F.docPickerList(D, 'led', '').map(d => d.id), ['p1'], 'сонгогч: нэрээр хайна (том жижиг үсэг ялгахгүй)');
+    eq(F.docPickerList(D, '', 'Logo CAMP').map(d => d.id), ['p3'], 'сонгогч: хавтсаар шүүнэ');
+    eq(F.docPickerList(D, 'гэрээ', '').length, 0, 'сонгогч: зураг биш баримт хайлтаар ч гарахгүй');
+    eq(F.docPickerFolders(D), [{ path: 'Дэлгэц', n: 2 }, { path: 'Logo CAMP', n: 1 }], 'сонгогч: хавтас бүрийн ЗУРГИЙН тоо (pdf/gif тоологдохгүй)');
+    eq(F.docPickerList(null, '', '').length, 0, 'сонгогч: баримтгүй үед алдаагүй');
+  }
+  // DB-ээс ирсэн data: URL-ийг src-д тавихаас өмнө хэлбэрийг шалгана (XSS)
+  eq(F.docSafeThumb('data:image/jpeg;base64,/9j/AAAA'), 'data:image/jpeg;base64,/9j/AAAA', 'thumb: зөв хэлбэр өнгөрнө');
+  eq(F.docSafeThumb('data:image/png;base64,iVBOR=='), 'data:image/png;base64,iVBOR==', 'thumb: png өнгөрнө');
+  eq(F.docSafeThumb('javascript:alert(1)'), '', 'thumb: javascript: хаагдана');
+  eq(F.docSafeThumb('data:image/svg+xml;base64,PHN2Zz4='), '', 'thumb: svg хаагдана (скрипт агуулж болно)');
+  eq(F.docSafeThumb('data:image/jpeg;base64,AA" onerror="x'), '', 'thumb: хашилт оруулсан утга хаагдана');
+  eq(F.docSafeThumb(null), '', 'thumb: хоосон');
+
+  // Жагсаалт: жижиг зураг гарна, муу утга src-д орохгүй, зураг боловч thumb-гүй нь 🖼
+  const saved = runIn('state.companyDocs');
+  runIn(`state.docsCat = ''; state.docsSearch = ''; state.docsFolder = '';
+    state.companyDocs = [
+      { id: 'i1', title: 'IMG_6101', category: 'other', mime: 'application/octet-stream', file_name: 'IMG_6101.HEIC', thumb: 'data:image/jpeg;base64,/9j/AAAA' },
+      { id: 'i2', title: 'Thumb-гүй зураг', category: 'other', mime: 'image/jpeg', file_name: 'a.jpg' },
+      { id: 'i3', title: 'Муу thumb', category: 'other', mime: 'image/jpeg', file_name: 'b.jpg', thumb: 'x" onerror="alert(1)' },
+      { id: 'i4', title: 'Гэрээ', category: 'contract', mime: 'application/pdf', file_name: 'g.pdf' },
+    ];`);
+  const html = runIn('renderDocuments()');
+  ok(html.indexOf('class="doc-thumb" src="data:image/jpeg;base64,/9j/AAAA"') > -1, 'жагсаалт: жижиг зураг мөрөнд гарна');
+  ok(html.indexOf('onerror') === -1, 'жагсаалт: муу thumb src-д ОРОХГҮЙ');
+  eq((html.match(/class="doc-thumb"/g) || []).length, 1, 'жагсаалт: зөвхөн зөв thumb-тэй мөр л зурагтай');
+  ok(html.indexOf('🖼') > -1, 'жагсаалт: thumb-гүй зураг нь 🖼 дүрстэй (📎 биш)');
+  sandbox.__savedDocs = saved;
+
+  // ⛔ ҮНЭХЭЭР ДУУД (CLAUDE.md: цэвэр функц тестлээд зогсвол энэ ангиллын алдааг барихгүй).
+  // Асинх хэсгийг НЭГ дараалалд явуулна — зэрэг явуулбал fetch/DOM stub бие биенээ дарна.
+  const st = runIn('state');
+  const origFetch = sandbox.fetch, origCreate = sandbox.document.createElement;
+  const urls = [];
+  const PREV = 'data:image/jpeg;base64,/9j/PREVIEW';
+  const overlays = [];   // openCompanyDoc-ийн үүсгэсэн цонх бүрийн {селектор → элемент}
+  const bodyEl = () => (overlays.find(c => c['#docv-body']) || {})['#docv-body'];
+  const run = async () => {
+    sandbox.document.createElement = () => { const ov = stubEl(); const c = {}; ov.querySelector = (sel) => c[sel] || (c[sel] = stubEl()); overlays.push(c); return ov; };
+    st.companyDocs = [
+      { id: 'h1', title: 'IMG_6101', category: 'other', mime: 'application/octet-stream', file_name: 'IMG_6101.HEIC', thumb: 'data:image/jpeg;base64,/9j/AAAA' },
+      { id: 'h2', title: 'IMG_6102', category: 'other', mime: 'application/octet-stream', file_name: 'IMG_6102.HEIC' },
+    ];
+    sandbox.fetch = (url) => {
+      urls.push(String(url));
+      if (/select=preview/.test(String(url))) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ preview: PREV }]) });
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve([]), text: () => Promise.resolve('') });
+    };
+    await F.openCompanyDoc('h1', ['h1', 'h2']);
+    const body = bodyEl();
+    ok(body && body.innerHTML.indexOf(PREV) > -1, 'нээх: HEIC зургийг хурдан харагдацаар ШУУД харуулна');
+    ok(body && body.innerHTML.indexOf('харуулах боломжгүй') === -1, 'нээх: «харуулах боломжгүй, татаж ав» ГАРАХГҮЙ');
+    ok(urls.every(u => !/select=[^&]*\bdata\b/.test(u)), 'нээх: эх файл (data) ТАТАГДАХГҮЙ — зөвхөн preview');
+    eq(overlays[0]['#docv-pos'].textContent, '1 / 2', 'нээх: дарааллын тоолуур');
+    ok(overlays[0]['#docv-next'].disabled === false && overlays[0]['#docv-prev'].disabled === true, 'нээх: эхний зурагт ‹ идэвхгүй, › идэвхтэй');
+    ok(urls.some(u => /id=eq\.h2&select=preview/.test(u)), 'нээх: дараагийн зургийг урьдчилан татна');
+
+    // preview байхгүй хуучин зураг → эхээс үүсгэхийн тулд эх файлыг татна
+    urls.length = 0; overlays.length = 0;
+    sandbox.fetch = (url) => { urls.push(String(url)); return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ preview: null, data: '', mime: 'x' }]) }); };
+    await F.openCompanyDoc('h2', ['h2']);
+    ok(urls.some(u => /select=data/.test(u)), 'нээх: preview-гүй бол эх файлаас үүсгэхээр татна');
+
+    // docEnsurePreview: preview байвал эх файл ТАТАХГҮЙ; файл олдохгүй бол null
+    urls.length = 0; overlays.length = 0;
+    sandbox.fetch = (url) => { urls.push(String(url)); return Promise.resolve(/select=preview/.test(String(url))
+      ? { ok: true, status: 200, json: () => Promise.resolve([{ preview: 'data:image/jpeg;base64,/9j/ENSURE' }]) }
+      : { ok: false, status: 404, json: () => Promise.resolve([]), text: () => Promise.resolve('') }); };
+    const e1 = await F.docEnsurePreview({ id: 'ens1', file_name: 'a.jpg', mime: 'image/jpeg' });
+    eq(e1 && e1.preview, 'data:image/jpeg;base64,/9j/ENSURE', 'ensure: DB-д preview байвал шууд өгнө');
+    ok(urls.every(u => !/select=[^&]*\bdata\b/.test(u)), 'ensure: preview байхад эх файл ТАТАГДАХГҮЙ');
+    urls.length = 0;
+    sandbox.fetch = (url) => { urls.push(String(url)); return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ preview: null, data: null }]) }); };
+    eq(await F.docEnsurePreview({ id: 'ens2', file_name: 'b.jpg', mime: 'image/jpeg' }), null, 'ensure: preview ч, эх файл ч байхгүй бол null');
+    ok(urls.some(u => /select=data/.test(u)), 'ensure: preview-гүй бол эх файлыг татна');
+
+    // Жагсаалтын татац: thumb ордог ч data/preview ОРОХГҮЙ; багана DB-д байхгүй (400) бол жагсаалт ХООСОН үлдэхгүй
+    urls.length = 0;
+    sandbox.fetch = (url) => {
+      urls.push(String(url));
+      if (/,thumb/.test(String(url))) return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({}), text: () => Promise.resolve('') });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ id: 'z1', title: 'Зураггүй багана' }]) });
+    };
+    st.companyDocs = null;
+    await F.loadCompanyDocs(true);
+    eq(urls.length, 2, 'жагсаалт: thumb багана алга (400) бол thumb-гүйгээр дахин оролдоно');
+    ok(/,thumb/.test(urls[0]), 'жагсаалт: эхний татацад thumb орно');
+    ok(urls.every(u => !/select=[^&]*(,data|,preview)/.test(u)), 'жагсаалт: татацад data/preview ОРОХГҮЙ (бүх файлын биет татагдана)');
+    eq((st.companyDocs || []).length, 1, 'жагсаалт: багана алга үед ч баримтууд харагдана');
+  };
+  (globalThis.__lateSeq = globalThis.__lateSeq || []).push(() => run()
+    .catch(e => ok(false, 'баримт зураг: асинх тест — ' + e.message))
+    .finally(() => { sandbox.fetch = origFetch; sandbox.document.createElement = origCreate; st.companyDocs = sandbox.__savedDocs; }));
+
+  // Scan: оруулах бүх зам thumb/preview үүсгэнэ (шинэ зураг жижиг зураггүй үлдэхгүй)
+  const body = (fn) => String(F[fn]);
+  ok(/docPreviewFields\(f\)/.test(body('openDocEditModal')), 'scan: нэг файл нэмэх зам thumb/preview үүсгэнэ');
+  ok(/docPreviewFields\(p\.file\)/.test(body('openDocBulkModal')), 'scan: олноор оруулах зам thumb/preview үүсгэнэ');
+  // Постер: «Баримт бичгээс сонгох» нь баримт бичгийн эрхтэй хүнд л; «Өөрийн зураг»-тай ижил дүрмээр (каталогийн бараа биш)
+  ok(/canSeeDocuments\(\) \? '<button type="button" class="mk-pick-btn" id="mk-doc-img"/.test(src), 'scan: постерын сонгогч баримт бичгийн эрхээр хаагдсан');
+  const pk = src.slice(src.indexOf("getElementById('mk-doc-img')"), src.indexOf("getElementById('mk-doc-img')") + 600);
+  ok(/P\.productSku = ''; P\.code = ''; P\.body = ''; P\.terms = '';/.test(pk), 'scan: баримтаас сонгосон зураг = каталогийн бараа БИШ (хуучин бараа/код/бичвэр хоцрохгүй)');
+  ok(!/fetchDocBlob/.test(body('openDocImagePicker')), 'scan: сонгогч эх файлыг ШУУД татахгүй (зөвхөн docEnsurePreview-ээр)');
+  const openFn = body('openCompanyDoc');
+  ok(/await docEnsurePreview\(d\)/.test(openFn), 'scan: зураг нээх нь docEnsurePreview-ээр (эх файлыг ШУУД татахгүй)');
+  ok(/await fetchDocPreview\(d\.id\)[\s\S]*?await fetchDocBlob\(d\.id\)[\s\S]*?docMakePreviews/.test(body('docEnsurePreview')),
+    'scan: ЭХЛЭЭД хурдан харагдацыг, байхгүй бол л эх файлыг татаж үүсгэнэ');
+}
+
 // 20) Системийн загвар — ХООСОН датагаар унахгүй эсэх (гол эрсдэл: талбар дутуу үед крэш)
 need(['docBlankMeventOrder', 'docBlankNomaadQuote', 'meventContractHtml', 'nomaadContractHtml', 'buildOrderQuote']);
 {
@@ -7170,6 +7307,8 @@ need(['orderCustType']);
 
   await swFetchTests();   // sw.js — файлын төгсгөлд тодорхойлогдсон (hoisted)
   await Promise.all(globalThis.__late || []);   // бусдын дараа ажиллах ёстой асинх тестүүд
+  // НЭГ НЭГЭЭР, бусад бүх тест дууссаны дараа — fetch/DOM stub-аа бусад тестийнхтэй зэрэг дарахгүй
+  for (const fn of (globalThis.__lateSeq || [])) await fn();
   finish();
 })();
 

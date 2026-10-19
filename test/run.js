@@ -20000,3 +20000,43 @@ async function swFetchTests() {
   ok(/dataLoadFailed\('loadReminderMail'/.test(src), 'ачаалалт унавал чимээгүй залгихгүй');
   ok(!/innerHTML\s*=\s*[^;]*txt\.(subject|body)/.test(card), 'бичвэр escape-гүй innerHTML-д орохгүй');
 }
+
+// ═══ САНУУЛГЫГ АППААС АСААХ/УНТРААХ (2026-10-19, CEO) ═══════════════════════════════
+// Зөвхөн `reminder_mail.mode`. n8n өдөр бүр шинээр уншдаг тул дахин асаах шаардлагагүй.
+// Үйлдлээр нь (хуурамч сервер, хуурамч зөвшөөрлийн цонх) ажиллуулж шалгана — scan-тест хангалтгүй.
+// ⚠ ТУСДАА орчинд: нийтийн fetchWithTimeout/render-ийг солибол зэрэг ажиллаж буй async тестүүд унана.
+(globalThis.__late = globalThis.__late || []).push((async () => {
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const sb = Object.assign({}, sandbox); sb.window = sb; sb.self = sb; sb.globalThis = sb;
+  vm.createContext(sb); vm.runInContext(appSrc, sb, { filename: 'app.js' });
+  const run = (c) => vm.runInContext(c, sb);
+  const cfg0 = { mode: 'off', days: 40, window: 15, cap: 25, holdout_pct: 20, test_to: 'hello@mevent.mn' };
+  const scenario = async (o) => {
+    const log = { saved: [], confirms: [], fetched: 0, toasts: [] };
+    Object.assign(sb, { __sc: Object.assign({ ceo: true, rows: [{ value: cfg0 }], fetchOk: true, confirm: true }, o), __log: log });
+    run(`state.isCEO = __sc.ceo; state._reminder = { loaded: true, text: { subject: 'Миний гарчиг' }, cfg: {} };
+      fetchWithTimeout = async () => { __log.fetched++; return { ok: __sc.fetchOk, json: async () => __sc.rows }; };
+      saveAppConfig = async (k, v) => { __log.saved.push([k, v]); };
+      showConfirm = async (m) => { __log.confirms.push(m); return __sc.confirm; };
+      showToast = (m) => { __log.toasts.push(m); }; render = () => {}; dataLoadFailed = () => {};`);
+    await run('toggleReminderMode()');
+    return log;
+  };
+  let L = await scenario({});
+  ok(L.saved.length === 1 && L.saved[0][0] === 'reminder_mail' && L.saved[0][1].mode === 'on', 'унтраалга: унтраалттай → асаана (reminder_mail.mode = on)');
+  ok(L.saved[0][1].days === 40 && L.saved[0][1].cap === 25 && L.saved[0][1].holdout_pct === 20 && L.saved[0][1].test_to === 'hello@mevent.mn' && L.saved[0][1].window === 15,
+     '⛔ унтраалга: серверийн бусад тохиргоо (days/cap/holdout/test_to) ДАРАГДАХГҮЙ');
+  ok(L.saved[0][1].switched_at && 'switched_by' in L.saved[0][1], 'унтраалга: хэзээ асаасан нь тэмдэглэгдэнэ');
+  ok(/асаах/.test(L.confirms[0] || '') && /Миний гарчиг/.test(L.confirms[0] || ''), 'унтраалга: асаахдаа ямар бичвэр явахыг зөвшөөрлийн цонхонд хэлнэ');
+  L = await scenario({ rows: [{ value: Object.assign({}, cfg0, { mode: 'on' }) }] });
+  ok(L.saved.length === 1 && L.saved[0][1].mode === 'off', 'унтраалга: асаалттай → унтраана');
+  L = await scenario({ confirm: false });
+  eq(L.saved.length, 0, '⛔ унтраалга: зөвшөөрөөгүй бол ЮУ Ч бичихгүй');
+  L = await scenario({ ceo: false });
+  ok(L.saved.length === 0 && L.fetched === 0, '⛔ унтраалга: захирал биш бол сервер рүү ч хандахгүй');
+  L = await scenario({ fetchOk: false });
+  ok(L.saved.length === 0 && L.confirms.length === 0, '⛔ унтраалга: одоогийн төлвийг уншиж чадаагүй бол сохроор бичихгүй');
+  L = await scenario({ rows: [] });
+  ok(L.saved.length === 1 && L.saved[0][1].mode === 'on', 'унтраалга: тохиргоо огт байхгүй бол (анхны) off гэж үзнэ');
+  ok(/id="rmt-toggle"/.test(appSrc) && /state\.isCEO \? `<button class="btn rmt-toggle/.test(appSrc), 'унтраалга: товч зөвхөн захиралд харагдана');
+})());

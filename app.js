@@ -9055,6 +9055,7 @@ function reconReceiptOwnerLabel(usedIn) {
   m = s.match(/nomaad:(\S+)/i); if (m) return m[1];
   m = s.match(/catering:(\S+)/i); if (m) return 'Катеринг';
   m = s.match(/fin:(\S+)/i); if (m) return 'Санхүү';
+  m = s.match(/refund:#?([^:\s]+)/i); if (m) return 'буцаалт #' + m[1];
   return s || '';
 }
 // Бүртгэсэн PDF баримтуудыг ДҮН+ОГНОО-гоор индекслэнэ (нэр урт/богиноороо ялгаатай байж
@@ -33130,6 +33131,47 @@ async function reserveReceipt(receiptId, meta) {
     return 'ok';
   } catch (e) { console.warn('reserveReceipt', e); return 'err'; }
 }
+// ── БУЦААЛТЫН БАРИМТ: НЭГ PDF = НЭГ БУЦААЛТ (2026-10-20, захиалга №1610) ──────────
+// Буцаалтын цонх PDF-ийг зөвхөн дүн унших гэж ашигладаг, давхцлыг огт шалгадаггүй байв
+// (орлогын төлбөр л reserveReceipt-ээр хамгаалагдсан) — ИЖИЛ PDF-ээр барьцаа хоёр удаа буцсан.
+// Одоо буцаалтын баримт ч орлоготой ИЖИЛ ledger (bank_receipts)-т эзэмшигдэнэ.
+// ⛔ Хурууны хээ `RFP-` угтвартай: `FP-` нь орлогын тулгалтын индекс (receiptFpIndex)-д орж,
+//    ижил дүн/өдрийн ОРЛОГЫГ «бүртгэсэн» гэж худал хаадаг. Хүлээн авагчийг хээнд оруулна —
+//    ижил дүн, ижил өдөр, ӨӨР хүнд буцаасан хоёр бодит буцаалт мөргөлдөхгүй.
+function refundReceiptKeys(d) {
+  if (!d || (!d.bankRef && !(Number(d.amount) > 0))) return null;
+  const to = _normFp(d.receiverAcct || d.receiverName || '').slice(0, 32);
+  const fpKey = 'RFP-' + (Number(d.amount) || 0) + '-' + String(d.date || '').replace(/-/g, '') + '-' + to;
+  return { refKey: d.bankRef || '', fpKey, receiptId: d.bankRef || fpKey };
+}
+// PDF-ийг уншиж чадаагүй үед (дүн, лавлах дугаар олдоогүй) файлын агуулгын хээгээр хамгаална.
+async function refundFileHashKey(file) {
+  try {
+    const h = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    return 'RFH-' + Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+  } catch (e) { return ''; }
+}
+// Эзэмшигч = `refund:#<захиалга>:<буцаалтын НИЙТ дүн>`. Нийт дүн нь тусгай: ижил PDF-ийг
+// дахин хавсаргахад нийт дүн өөр (32,200 → 64,400) болдог тул өөр эзэмшигч = 'dup'. Харин
+// бичилт унаж дахин оролдоход нийт дүн ижил хэвээр тул 'ok' (reserveReceipt-ийн эзэмшигчийн дүрэм).
+async function reserveRefundReceipt(o, keys, cumAfter, meta) {
+  if (!keys) return 'ok';
+  try { await loadUsedReceipts(); } catch (e) { /* сервер өөрөө PK-аар барина */ }
+  return reserveReceipt(keys.receiptId, { fp: keys.fpKey, amount: (meta && meta.amount) || null, date: (meta && meta.date) || null, ref: (meta && meta.ref) || '', usedIn: 'refund:#' + (o.number ?? '') + ':' + Math.round(Number(cumAfter) || 0) });
+}
+// Файл сонгоход ШУУД хэлэх сануулга ('' = асуудалгүй). Эцсийн шийдвэр нь reserveRefundReceipt (сервер).
+// `recordedTotal` = захиалгад аль хэдийн тэмдэглэгдсэн буцаалтын нийт дүн: ledger-т байгаа ч
+// захиалгад тэмдэглэгдээгүй (бичилт унасан) бол дахин оролдохыг хаахгүй.
+function refundReceiptDupHint(o, keys, recordedTotal) {
+  if (!keys) return '';
+  const why = receiptDupReason(keys.refKey, keys.fpKey);
+  if (!why) return '';
+  const own = (m, k) => (m instanceof Map && k && m.get(k)) || '';
+  const owner = String(own(state.receiptOwners, keys.receiptId) || own(state.fpOwners, keys.fpKey));
+  const m = owner.match(/^refund:#(.+):(\d+)$/);
+  if (m && String(m[1]) === String(o && o.number) && Number(m[2]) > Number(recordedTotal || 0)) return '';
+  return why + (owner ? ' · ' + reconReceiptOwnerLabel(owner) : '');
+}
 // ── Банкны баримт PDF-ийг хадгалах (нээлттэй статик URL БИШ — Postgres receipt_files, anon key) ──
 // Эх файлыг base64-ээр хадгалж, дараа аппаас татаж үзнэ. receiptId = баримтын канон түлхүүр (bank_receipts-тэй ижил).
 async function uploadReceiptFile(receiptId, file, meta = {}) {
@@ -33384,6 +33426,7 @@ function openRefundModal(oid) {
   const srcAccts = parsePaidRef(o.paid_ref).filter(r => refundAcctDigits(r.acct))
     .map(r => ({ acct: r.acct.trim(), sender: r.sender.trim() }));
   document.getElementById('bq-refund-modal')?.remove();
+  loadUsedReceipts();   // нэгдсэн баримтын жагсаалт — файл сонгоход давхцлыг шууд хэлнэ
   const modal = document.createElement('div');
   modal.className = 'modal-bg';
   modal.id = 'bq-refund-modal';
@@ -33417,6 +33460,7 @@ function openRefundModal(oid) {
   </div>`;
   document.body.appendChild(modal);
   const amtEl = modal.querySelector('#rf-amount');
+  const saveBtn = modal.querySelector('#rf-save');
   const statusEl = modal.querySelector('#rf-pdf-status');
   const diffEl = modal.querySelector('#rf-diff');
   // Баримтын дүнтэй зөрөх бүрд ШУУД харагдана (хадгалахыг хүлээхгүй)
@@ -33450,10 +33494,23 @@ function openRefundModal(oid) {
     const f = (e.target.files || [])[0]; e.target.value = ''; if (!f) return;
     modal._file = f;
     modal._pdfAmt = 0;   // шинэ файл — хуучин баримтын дүн үлдэхгүй
+    modal._pdfDate = ''; modal._rcpt = null; saveBtn.disabled = false;
     statusEl.textContent = `📄 ${f.name} уншиж байна…`; statusEl.style.color = 'var(--muted)';
     try {
       const d = parseBankReceipt(await extractPdfText(f));
       modal._pdfAmt = Number(d.amount) || 0;   // баримтын дүн — хадгалахын өмнө гараар бичсэнтэй тулгана
+      modal._pdfDate = d.date || '';
+      // ⭐ НЭГ PDF = НЭГ БУЦААЛТ: баримтыг өмнө бүртгэсэн бол ШУУД хэлж, хадгалах товчийг хаана.
+      // Эцсийн шийдвэр хадгалах үед сервер дээр (reserveRefundReceipt) гарна.
+      modal._rcpt = refundReceiptKeys(d);
+      if (modal._rcpt && !(state.usedReceipts instanceof Set)) await loadUsedReceipts();
+      const dupWhy = refundReceiptDupHint(o, modal._rcpt, prevRf ? prevRf.amount : 0);
+      if (dupWhy) {
+        saveBtn.disabled = true;
+        statusEl.textContent = `⛔ ${f.name} — энэ баримтаар буцаалт өмнө бүртгэгдсэн (${dupWhy}). Давхар бүртгэхгүй`;
+        statusEl.style.color = 'var(--danger)';
+        return;
+      }
       // Баримтын дүн = БОДИТ явсан мөнгө — хүн гараар засаагүй бол түүнийг авна
       if (d.amount && !amtEl.dataset.touched) { amtEl.value = moneyFmtInput(d.amount); syncSplit(); }
       const okSender = /чимун/i.test(d.senderName || '');
@@ -33464,7 +33521,7 @@ function openRefundModal(oid) {
       statusEl.textContent = `✓ ${f.name}${d.amount ? ' · ' + fmtMoney(d.amount) : ''}${okSender ? '' : ' · ⚠ шилжүүлэгч Чимун биш?'}${okAcct ? '' : ' · ⚠ орлого орсон данс биш (' + d.receiverAcct + ')'}${diff ? ' · ⚠ бичсэн дүн ' + fmtMoney(moneyVal(amtEl)) + ' — баримттай зөрж байна' : ''}`;
       statusEl.style.color = (okSender && okAcct && !diff) ? 'var(--ok)' : 'var(--warn)';
       syncDiff();
-    } catch (err) { modal._pdfAmt = 0; statusEl.textContent = `✓ ${f.name} (хавсаргав — дүн уншигдсангүй, гараар бичсэн дүнгээр бүртгэнэ)`; statusEl.style.color = 'var(--warn)'; }
+    } catch (err) { modal._pdfAmt = 0; modal._rcpt = null; statusEl.textContent = `✓ ${f.name} (хавсаргав — дүн уншигдсангүй, гараар бичсэн дүнгээр бүртгэнэ)`; statusEl.style.color = 'var(--warn)'; }
   });
   modal.querySelectorAll('[data-rf-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.rfCopy, 'Дансны дугаар хууллаа')));
   const close = () => modal.remove();
@@ -33504,8 +33561,16 @@ function openRefundModal(oid) {
     const depPart = Math.min(depEl ? moneyVal(depEl) : 0, refundAmt) + prevDepPart;
     const isDep = depPart > 0;
     const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote, isDep ? 'dep' : '', depPart);
-    // PDF-ийг нотолгоо болгон хадгална (арын гүйлгээ, гацаахгүй)
-    uploadReceiptFileOrWarn('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: todayStr(), usedIn: 'refund:#' + (o.number ?? '') }, 'буцаалт #' + (o.number ?? ''));
+    // ⭐ НЭГ PDF = НЭГ БУЦААЛТ — мөнгө бичихээс ӨМНӨ баримтыг ledger-т эзэмшинэ. Өмнө энд шалгалт
+    // огт байхгүй байсан тул ИЖИЛ PDF-ээр барьцаа хоёр удаа буцаж бүртгэгдсэн (№1610).
+    // PDF уншигдаагүй бол файлын хээгээр хамгаална. Шалгаж чадаагүй бол ЗОГСООНО (fail-closed).
+    const rcpt = modal._rcpt || await (async () => { const h = await refundFileHashKey(modal._file); return h ? { refKey: '', fpKey: h, receiptId: h } : null; })();
+    const rcRes = await reserveRefundReceipt(o, rcpt, prevRfTot + refundAmt, { amount: modal._pdfAmt || refundAmt, date: modal._pdfDate || todayStr(), ref: 'буцаалт #' + (o.number ?? '') });
+    if (rcRes === 'dup') { showToast('⛔ Энэ баримтаар буцаалт өмнө бүртгэгдсэн — давхар бүртгэхгүй', 'error', 6000); btn.disabled = false; return; }
+    if (rcRes === 'err') { showToast('Баримтын давхцал шалгагдсангүй — дахин оролдоно уу', 'error', 5000); btn.disabled = false; return; }
+    // PDF-ийг нотолгоо болгон хадгална (арын гүйлгээ, гацаахгүй) — баримтын ӨӨРИЙН түлхүүрээр
+    const fileKey = rcpt ? rcpt.receiptId : 'rf-' + o.id + '-' + (prevRfTot + refundAmt);
+    uploadReceiptFileOrWarn(fileKey, modal._file, { amount: refundAmt, date: modal._pdfDate || todayStr(), usedIn: 'refund:#' + (o.number ?? '') }, 'буцаалт #' + (o.number ?? ''));
     const prevPaid = o.paid_mnt, prevNote = o.note;
     o.paid_mnt = newPaid; o.note = newNote;
     try {

@@ -11711,6 +11711,97 @@ need(['orderCustType']);
   ok(/дүн уншигдсангүй, гараар бичсэн дүнгээр бүртгэнэ/.test(src), 'scan: PDF дүн уншигдаагүйг ил хэлнэ');
 }
 
+// ── БУЦААЛТЫН БАРИМТ: НЭГ PDF = НЭГ БУЦААЛТ (2026-10-20, захиалга #1610) ───────────────
+// Буцаалтын цонх PDF-ийг зөвхөн ДҮН уншихад ашигладаг, давхцлыг огт шалгадаггүй байв
+// (орлогын төлбөр л `reserveReceipt`-ээр хамгаалагдсан). Нярав ЯГ ИЖИЛ PDF-ийг 15 секундийн
+// зайтай хоёр удаа хавсаргаж 32,200₮-ийн барьцааг 64,400₮ болгон бүртгэсэн; банкнаас бодитоор
+// нэг л шилжүүлэг явсан. Дараа нь давтахгүйн тулд: баримт аппын НЭГДСЭН ledger-т эзэмшигдэнэ.
+{
+  need(['refundReceiptKeys', 'reserveRefundReceipt', 'refundReceiptDupHint']);
+  // Голомтын бодит баримтаас задарсан хэлбэр (parseBankReceipt-ийн гаралт)
+  const d1 = { amount: 32200, date: '2026-10-09', senderName: 'ЧИМУН ХХК', receiverName: 'НЯМСҮРЭН БАТСҮХ', receiverAcct: '2405141277', bankRef: 'GLGB240518202610092' };
+  const k1 = F.refundReceiptKeys(d1);
+  eq(k1.receiptId, 'GLGB240518202610092', 'буцаалтын баримт: банкны лавлах дугаар байвал тэр нь түлхүүр');
+  ok(/^RFP-32200-20261009-/.test(k1.fpKey), 'буцаалтын баримт: хурууны хээ нь RFP- угтвартай');
+  // ⛔ `FP-` угтвар орлогын тулгалтын индексэд (receiptFpIndex) орно — буцаалтын баримт
+  // ижил дүн/огнооны ОРЛОГЫГ «бүртгэсэн» гэж худал хаах ёсгүй.
+  ok(!/^FP-/.test(k1.fpKey), 'буцаалтын баримт: орлогын хурууны хээтэй (FP-) холилдохгүй');
+  eq(F.refundReceiptKeys({ amount: 0 }), null, 'буцаалтын баримт: уншигдаагүй бол түлхүүр зохиохгүй');
+  eq(F.refundReceiptKeys(null), null, 'буцаалтын баримт: null хамгаална');
+  const noRef = F.refundReceiptKeys({ amount: 50000, date: '2026-10-09', receiverAcct: '111222333' });
+  eq(noRef.receiptId, noRef.fpKey, 'буцаалтын баримт: лавлах дугааргүй бол хээ нь түлхүүр');
+  ok(F.refundReceiptKeys({ amount: 50000, date: '2026-10-09', receiverAcct: '999888777' }).fpKey !== noRef.fpKey,
+     'буцаалтын баримт: ижил дүн/өдөр ӨӨР хүлээн авагч руу бол ӨӨР баримт');
+
+  (globalThis.__late = globalThis.__late || []).push(new Promise(done => setTimeout(async () => {
+    const origFetch = sandbox.fetch;
+    // bank_receipts-ийн ЖИНХЭНЭ зан: receipt_id нь PK тул давхар POST 409 өгнө.
+    const rows = [];
+    sandbox.fetch = (url, opt) => {
+      const u = String(url), m = (opt && opt.method) || 'GET';
+      const res = (status, body) => Promise.resolve({ ok: status < 300, status, json: () => Promise.resolve(body), text: () => Promise.resolve('') });
+      if (!/bank_receipts/.test(u)) return res(200, []);
+      if (m === 'POST') {
+        const b = JSON.parse(opt.body);
+        if (rows.some(r => r.receipt_id === b.receipt_id)) return res(409, {});
+        rows.push(b); return res(201, []);
+      }
+      if (m === 'GET') {
+        const q = u.match(/receipt_id=eq\.([^&]+)/);
+        if (q) return res(200, rows.filter(r => r.receipt_id === decodeURIComponent(q[1])).map(r => ({ used_in: r.used_in })));
+        return res(200, rows.map(r => ({ receipt_id: r.receipt_id, fp: r.fp, used_in: r.used_in })));
+      }
+      return res(200, []);
+    };
+    const order = { number: 1610 };
+    const meta = { amount: 32200, date: '2026-10-09', ref: 'буцаалт #1610' };
+    try {
+      vm.runInContext(`state.usedReceipts = null; state.usedFps = null; state.refLessFps = null; state.receiptOwners = null; state.fpOwners = null;`, sandbox);
+      eq(await F.reserveRefundReceipt(order, k1, 32200, meta), 'ok', 'буцаалт: анхны удаа баримт эзэмшигдэнэ');
+      // ⭐ #1610-ын ЯГ ТЭР нөхцөл: ижил PDF, захиалгын нийт буцаалт 32,200 → 64,400 болох гэж байна
+      eq(await F.reserveRefundReceipt(order, k1, 64400, meta), 'dup', 'ИНВАРИАНТ: ИЖИЛ PDF-ээр хоёр дахь буцаалт бүртгэгдэхгүй (#1610)');
+      // Кэш хуучирсан/ачаалагдаагүй байсан ч серверийн PK (receipt_id) өөрөө барина
+      vm.runInContext(`state.usedReceipts = new Set(); state.usedFps = new Set(); state.refLessFps = new Set(); state.receiptOwners = new Map(); state.fpOwners = new Map();`, sandbox);
+      eq(await F.reserveReceipt(k1.receiptId, { fp: k1.fpKey, amount: 32200, date: '2026-10-09', usedIn: 'refund:#1610:64400' }), 'dup', 'ИНВАРИАНТ: кэш хоосон байсан ч сервер давхцлыг барина');
+      // Өмнөх оролдлого PATCH дээр унасан: ижил дүнгээр ДАХИН оролдох нь зөвшөөрөгдөнө
+      eq(await F.reserveRefundReceipt(order, k1, 32200, meta), 'ok', 'буцаалт: бичилт унасны дараах дахин оролдлого хаагдахгүй');
+      // Өөр бодит гүйлгээ (өөр лавлах дугаар) — ижил дүн, ижил өдөр ч зөвшөөрнө
+      const k2 = F.refundReceiptKeys(Object.assign({}, d1, { bankRef: 'GLGB240518202610093' }));
+      eq(await F.reserveRefundReceipt(order, k2, 64400, meta), 'ok', 'буцаалт: ӨӨР лавлах дугаартай баримт зөвшөөрөгдөнө');
+      // Орлогын төлбөрийн баримтыг буцаалт болгон ашиглахыг хаана (ledger нэгдмэл)
+      rows.push({ receipt_id: 'GLGB240518202610062', fp: 'FP-85000-20261006-НЯМСҮРЭНБАТСҮХ', used_in: 'mevent:#1610' });
+      const kInc = F.refundReceiptKeys(Object.assign({}, d1, { bankRef: 'GLGB240518202610062', amount: 85000 }));
+      eq(await F.reserveRefundReceipt(order, kInc, 85000, meta), 'dup', 'буцаалт: орлогод бүртгэсэн баримтыг буцаалтад дахин ашиглахгүй');
+      // Лавлах дугааргүй баримт ч (хээгээр) давхардахгүй
+      eq(await F.reserveRefundReceipt({ number: 1700 }, noRef, 50000, meta), 'ok', 'буцаалт: лавлах дугааргүй баримт эхний удаа');
+      eq(await F.reserveRefundReceipt({ number: 1700 }, noRef, 100000, meta), 'dup', 'буцаалт: лавлах дугааргүй баримт ч давхардахгүй');
+      eq(await F.reserveRefundReceipt(order, null, 1, meta), 'ok', 'буцаалт: түлхүүр байхгүй бол (PDF унших боломжгүй) ledger-т хөндөхгүй');
+      // Жинхэнэ мөр: эзэмшигч нь «refund:#<дугаар>:<нийт>» — хэнийх нь тодорхой
+      const mine = rows.find(r => r.receipt_id === 'GLGB240518202610092');
+      eq(mine && mine.used_in, 'refund:#1610:32200', 'буцаалт: ledger-т эзэмшигч захиалга + нийт дүнтэй бичигдэнэ');
+      // Цонхны сануулга: бүртгэгдсэн буцаалтыг дахин сонгоход ШУУД хэлнэ
+      vm.runInContext(`state.usedReceipts = new Set(['GLGB240518202610092']); state.usedFps = new Set(); state.refLessFps = new Set();
+        state.receiptOwners = new Map([['GLGB240518202610092', 'refund:#1610:32200']]); state.fpOwners = new Map();`, sandbox);
+      ok(F.refundReceiptDupHint(order, k1, 32200) !== '', 'сануулга: бүртгэгдсэн буцаалтын баримтыг дахин сонговол анхааруулна');
+      eq(F.refundReceiptDupHint(order, k1, 0), '', 'сануулга: бичилт унасан (захиалгад буцаалт тэмдэглэгдээгүй) бол дахин оролдоход хаахгүй');
+      eq(F.refundReceiptDupHint(order, k2, 32200), '', 'сануулга: шинэ баримтад анхааруулга өгөхгүй');
+    } catch (e) { ok(false, 'буцаалтын баримт: ' + e.message); }
+    sandbox.fetch = origFetch; done();
+  }, 0)));
+
+  // ⛔ SCAN: буцаалтын хадгалалт баримтыг ЭЗЭМШИХ ёстой — PATCH-аас ӨМНӨ, дууссан бол хаана
+  const at = src.indexOf('function openRefundModal');
+  const fn = src.slice(at, src.indexOf('async function readIncomeReceipt', at));
+  ok(fn.length > 8000, 'scan: openRefundModal бүтнээр нь олдлоо');
+  const iRes = fn.indexOf('reserveRefundReceipt(');
+  const iPatch = fn.indexOf("method: 'PATCH'");
+  ok(iRes > 0 && iPatch > 0 && iRes < iPatch, 'scan: буцаалтын баримт мөнгө бичихээс ӨМНӨ ledger-т эзэмшигдэнэ');
+  ok(/'dup'/.test(fn) && /'err'/.test(fn), 'scan: давхцал БА шалгаж чадаагүй хоёуланд нь бүртгэлийг зогсооно (fail-closed)');
+  ok(/uploadReceiptFileOrWarn\(fileKey,/.test(fn) && !/uploadReceiptFileOrWarn\('rf-/.test(fn),
+     "scan: PDF-ийг нийт дүнгээр ('rf-…-64400') биш баримтын түлхүүрээр хадгална — өөр түлхүүр = давхар хадгалалт");
+  ok(/refundReceiptDupHint\(/.test(fn), 'scan: файл сонгоход давхцлыг ШУУД хэлнэ (хадгалахыг хүлээхгүй)');
+}
+
 // ── n8n webhook дуудлага БҮР нэвтэрсэн ажилтны токен явуулна ────────────────
 // ⚠ Сайтын кодод ил байгаа түлхүүр нь n8n-ий дата webhook-уудыг хамгаалдаг
 //   ЦОРЫН ГАНЦ зүйл байсан: түүгээр 158 ажилтны нэр/утас/албан тушаал,

@@ -40745,12 +40745,15 @@ function recentAppErrors() {
   return appErrors().filter(e => { const t = Date.parse(e && e.at); return !isNaN(t) && t >= cut; });
 }
 // Алдааны төлөв → шошго (цэвэр, тестлэгддэг). Локал (сервергүй) алдаа = «Шинэ».
+// ⚠ `cls` = `.aerr-st-*` класс (өнгө нь styles.css-д), `color` = тэр класс
+//   ЯМАР токен хэрэглэхийг зарлана. Төлөвийн төрх ЭНД шийдэгдэнэ — дуудагч
+//   талд дахин зураглал бичвэл хоёр эх сурвалж зөрнө.
 function errStatusLabel(status) {
   switch (status) {
-    case 'fixing':  return { icon: '🔧', text: 'Засаж байна', color: 'var(--warn)' };
-    case 'fixed':   return { icon: '✅', text: 'Зассан',       color: 'var(--ok)' };
-    case 'ignored': return { icon: '🚫', text: 'Үл хамаарах',  color: 'var(--muted)' };
-    default:        return { icon: '🆕', text: 'Шинэ',         color: 'var(--danger)' };
+    case 'fixing':  return { icon: '🔧', text: 'Засаж байна', color: 'var(--warn)',   cls: 'aerr-st-fixing' };
+    case 'fixed':   return { icon: '✅', text: 'Зассан',       color: 'var(--ok)',     cls: 'aerr-st-fixed' };
+    case 'ignored': return { icon: '🚫', text: 'Үл хамаарах',  color: 'var(--muted)',  cls: 'aerr-st-ignored' };
+    default:        return { icon: '🆕', text: 'Шинэ',         color: 'var(--danger)', cls: 'aerr-st-new' };
   }
 }
 function openAppErrorsModal() {
@@ -40809,20 +40812,20 @@ function openAppErrorsModal() {
       ? ` · зассан ${escapeHtml(e.fixed_ver || '?')}${e.updated_at ? ' · ' + escapeHtml(String(e.updated_at).slice(0, 10)) : ''}`
       : (st === 'ignored' && e.updated_at ? ' · ' + escapeHtml(String(e.updated_at).slice(0, 10)) : '');
     const resolved = st === 'fixed' || st === 'ignored';
-    const acts = (e._srv && e.fp) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center;">
-      <code style="font-size:10px;color:var(--muted);">${escapeHtml(e.fp)}</code>
+    const acts = (e._srv && e.fp) ? `<div class="aerr-acts">
+      <code class="aerr-fp">${escapeHtml(e.fp)}</code>
       ${resolved
-        ? `<button class="btn" data-err-st="new" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔄 Дахин нээх</button>`
-        : `<button class="btn" data-err-st="fixing" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔧 Засаж байна</button>
-        <button class="btn" data-err-st="fixed"  data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">✅ Зассан</button>
-        <button class="btn" data-err-st="ignored" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;color:var(--muted);">🚫 Үл хамаарах</button>`}
+        ? `<button class="btn aerr-act" data-err-st="new" data-err-fp="${escapeHtml(e.fp)}">🔄 Дахин нээх</button>`
+        : `<button class="btn aerr-act" data-err-st="fixing" data-err-fp="${escapeHtml(e.fp)}">🔧 Засаж байна</button>
+        <button class="btn aerr-act" data-err-st="fixed"  data-err-fp="${escapeHtml(e.fp)}">✅ Зассан</button>
+        <button class="btn aerr-act aerr-act-mute" data-err-st="ignored" data-err-fp="${escapeHtml(e.fp)}">🚫 Үл хамаарах</button>`}
     </div>` : '';
-    return `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
-      <div style="display:flex;gap:7px;align-items:baseline;">
-        <span style="font-size:11px;font-weight:700;color:${lb.color};white-space:nowrap;">${lb.icon} ${lb.text}</span>
-        <span style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</span></div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${who} · ${escapeHtml(when)} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.last_ver || e.ver || '')}${fixInfo}</div>
+    return `<div class="aerr-row">
+      <div class="aerr-row-head">
+        <span class="aerr-st ${lb.cls}">${lb.icon} ${lb.text}</span>
+        <span class="aerr-msg">${escapeHtml(e.msg)}</span></div>
+      <div class="aerr-src">${escapeHtml(e.src || '')}</div>
+      <div class="aerr-meta">${who} · ${escapeHtml(when)} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.last_ver || e.ver || '')}${fixInfo}</div>
       ${acts}
     </div>`;
   }

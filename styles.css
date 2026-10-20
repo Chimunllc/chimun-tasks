@@ -9056,6 +9056,28 @@ select.no-asar-len {
 .aerr-ci { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .aerr-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
 
+/* Алдааны мөр (`renderRow`): төлөв + мессеж · эх сурвалж · мета · үйлдэл */
+.aerr-row { border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); }
+.aerr-row-head { display: flex; gap: var(--space-2); align-items: baseline; }
+.aerr-st { font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
+/* Төлөвийн өнгө — аль классыг тавихыг `errStatusLabel()` шийднэ (нэг эх сурвалж) */
+.aerr-st-new { color: var(--danger); }
+.aerr-st-fixing { color: var(--warn); }
+.aerr-st-fixed { color: var(--ok); }
+.aerr-st-ignored { color: var(--muted); }
+.aerr-msg { font-weight: 700; font-size: var(--fs-md); }
+.aerr-src, .aerr-meta { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
+.aerr-src { font-family: monospace; word-break: break-all; }
+.aerr-acts { display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--space-2); margin-top: var(--space-2); }
+.aerr-fp { font-size: var(--fs-xs); color: var(--muted); }
+/* ⚠ `.modal` угтвар ЗААВАЛ — `.modal .btn` дүрэм (0,1,1) энгийн классыг (0,1,0)
+   дардаг. Мобайл/десктопын flatten дүрмүүдийг (хүчтэй тугтай) эдгээр
+   ДАВАХГҮЙ — inline style ч давдаггүй байсан тул зан чанар ижил хэвээр. */
+.modal .aerr-act { font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); }
+.modal .aerr-act-mute { color: var(--muted); }
+
 /* ─── Дамжлагын цонх: асуулт бүр ДУГААРТАЙ хэсэг (2026-10-04, CEO) ────────
    Өмнө нь бүх блок тасархай зураасаар тусгаарлагдсан хавтгай жагсаалт
    байсан тул ажилтан хэдэн зүйл бөглөхөө мэдэхгүй, заавал бөглөхийг

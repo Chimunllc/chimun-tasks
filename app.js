@@ -22251,13 +22251,33 @@ const CHIMUN_LEGAL = {
 /* M-EVENT-ИЙН ТӨЛБӨРИЙН данс (2026-10-20, CEO). `buildOrderQuote` (үнийн санал: имэйл, урьдчилан харах, PDF) ба
    `invoiceOrg()` (НЭХЭМЖЛЭХ, түүний имэйл) энэ дансыг ашиглана. M-Event гэрээнд дансны дугаар ОГТ байхгүй (зөвхөн
    «гүйлгээний утгад захиалгын дугаар бич»). NOMAAD нь `nomaadAcct`, `CHIMUN_LEGAL.account` нь бусад баримтад тусдаа.
-   ⚠ Хүлээн авагч нь ХУВИЙН хүний нэр тул банкны баримтын «хүлээн авагчийн нэр»
-   «Чимун» агуулдаггүй: `readIncomeReceipt` (хүлээн авагчид «чимун» шаарддаг) энэ данс руу орсон төлбөрийг татгалзана.
+   Хүлээн авагч нь ХУВИЙН хүний нэр тул банкны баримтын нэр «Чимун» агуулдаггүй — тиймээс баримтыг ДАНСААР нь таниулдаг
+   (`receiptReceiverIsUs` / `receiptSenderIsUs`): орлого бүртгэх, буулгалт, буцаалт.
    IBAN нь MOD-97 шалгалттай, данс = IBAN-ы сүүлийн 10 орон (тест хоёуланг тулгана). */
 const MEVENT_PAY = {
   bank: 'Голомт банк', bankEn: 'Golomt Bank', account: '3155107584', iban: 'MN14 0015 00 3155107584',
   holder: 'Г.Мөнх-Учрал', holderEn: 'G.Munkh-Uchral',
 };
+/* БАНКНЫ БАРИМТ МАНАЙ ДАНСНЫ ХАМААРАЛТАЙ ЭСЭХ (2026-10-20, CEO). Өмнө нь хүлээн авагч/илгээгчийн НЭРЭНД «чимун» шаарддаг байсан тул
+   M-Event-ийн төлбөрийн данс (эзэмшигч нь хувь хүн) руу орсон баримтыг «Чимунд ирээгүй гүйлгээ» гэж татгалздаг, түүнээс
+   гарсан буцаалтыг «Чимунээс гарсан биш» гэж татгалздаг байв.
+   ⛔ ДАНС ЯГ таарна (10 оронтой ч, IBAN ч — acctSame, сүүлийн 10 орон). Нэр «чимун» бол хуучнаараа зөвшөөрнө.
+   ⛔ Баримтад данс ЗААСАН бөгөөд манайх БИШ бол нэрээр НЬ ЗӨВШӨӨРӨХГҮЙ (өөр дансанд ижил нэртэй хүн). Данс уншигдаагүй
+     үед л данс эзэмшигчийн нэрээр (MEVENT_PAY.holder) тулгана. Цэвэр функц — тестлэгдэнэ. */
+function receiptAcctIsOurs(acct) {
+  const d = String(acct || '').replace(/\D/g, '');
+  if (!d) return false;
+  return [MEVENT_PAY.account, MEVENT_PAY.iban, CHIMUN_LEGAL.account, CHIMUN_LEGAL.iban].some(a => a && acctSame(d, a));
+}
+function _receiptSideIsUs(name, acct) {
+  if (/чимун/i.test(name || '')) return true;
+  if (String(acct || '').replace(/\D/g, '')) return receiptAcctIsOurs(acct);   // данс заасан бол ЗӨВХӨН данс шийднэ
+  const norm = (x) => String(x || '').toLowerCase().replace(/[^а-яөүё]/g, '');
+  const core = norm(String(MEVENT_PAY.holder || '').split('.').pop());     // «Г.Мөнх-Учрал» → «мөнхучрал»
+  return !!core && norm(name).includes(core);
+}
+function receiptReceiverIsUs(d) { return _receiptSideIsUs(d && d.receiverName, d && d.receiverAcct); }
+function receiptSenderIsUs(d) { return _receiptSideIsUs(d && d.senderName, d && d.senderAcct); }
 // 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
 function _mnTriad(n) {
   const o = ['', 'нэгэн', 'хоёр', 'гурван', 'дөрвөн', 'таван', 'зургаан', 'долоон', 'найман', 'есөн'];
@@ -30663,7 +30683,7 @@ async function openOrderCmpModal(id) {
       const d = parseBankReceipt(await extractPdfText(file));
       if (!d.amount) throw new Error('дүн олдсонгүй');
       // ЧИМУН нь ИЛГЭЭГЧ байх ёстой — орлогын баримтыг буулгалт гэж бүртгэхээс сэргийлнэ.
-      if (!/чимун/i.test(d.senderName || '')) throw new Error(`Чимунээс гарсан гүйлгээ биш (илгээгч: ${d.senderName || '?'})`);
+      if (!receiptSenderIsUs(d)) throw new Error(`Чимунээс гарсан гүйлгээ биш (илгээгч: ${d.senderName || '?'}${d.senderAcct ? ' · ' + d.senderAcct : ''})`);
       if (d.amount > total) throw new Error(`Дүн (${fmtMoney(d.amount)}) захиалгын дүнгээс их байна`);
       const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
       const dup = receiptDupReason(refKey, fpKey, 'cmp:' + o.id);
@@ -33513,7 +33533,7 @@ function openRefundModal(oid) {
       }
       // Баримтын дүн = БОДИТ явсан мөнгө — хүн гараар засаагүй бол түүнийг авна
       if (d.amount && !amtEl.dataset.touched) { amtEl.value = moneyFmtInput(d.amount); syncSplit(); }
-      const okSender = /чимун/i.test(d.senderName || '');
+      const okSender = receiptSenderIsUs(d);
       // Хүлээн авагчийн данс нь орлого орсон данстай таарч байна уу (сануулга — хаахгүй)
       const rcv = refundAcctDigits(d.receiverAcct);
       const okAcct = !srcAccts.length || !rcv || srcAccts.some(a => refundAcctDigits(a.acct) === rcv);
@@ -33595,7 +33615,7 @@ async function readIncomeReceipt(file, existing) {
   if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
   if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
   // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
-  if (!/чимун/i.test(d.receiverName || '')) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'})`);
+  if (!receiptReceiverIsUs(d)) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'}${d.receiverAcct ? ' · ' + d.receiverAcct : ''})`);
   const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
   const reason = receiptDupReason(refKey, fpKey);
   if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);

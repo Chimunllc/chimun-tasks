@@ -8984,7 +8984,7 @@ need(['orderCustType']);
 {
   const cmp = src.slice(src.indexOf('async function openOrderCmpModal'), src.indexOf('// ⟦VAT|amount⟧ note token'));
   ok(/parseBankReceipt\(await extractPdfText\(file\)\)/.test(cmp), 'scan: буулгалт PDF баримтаас дүн уншина');
-  ok(/чимун\/i\.test\(d\.senderName/.test(cmp), 'scan: Чимун ИЛГЭЭГЧ байх шалгалт (орлогын баримт орохгүй)');
+  ok(/if \(!receiptSenderIsUs\(d\)\) throw new Error\(`Чимунээс гарсан гүйлгээ биш/.test(cmp), 'scan: Чимун (эсвэл манай данс) ИЛГЭЭГЧ байх шалгалт (орлогын баримт орохгүй)');
   ok(/receiptDupReason\(refKey, fpKey/.test(cmp), 'scan: нэг баримт хоёр удаа бүртгэгдэхгүй');
   ok(!/moneyVal\(amtEl\)/.test(cmp), 'scan: гар оруулгын талбар алга');
   ok(/reserveReceipt\(rec\.receiptId/.test(cmp), 'scan: баримт ledger-т нөөцлөгдөнө');
@@ -20416,4 +20416,48 @@ async function swFetchTests() {
   // Тэмдэглэл
   ok(/async function noteContractEmailed/.test(src) && /appendOrderNoteTo\(o, '📧 Гэрээг имэйлээр илгээсэн/.test(src), 'гэрээ: илгээсэн тэмдэглэл append-only захиалгын тэмдэглэлд');
   ok(/meventContractHtml\(o, \{ sendUrl: withKey\([^)]*\), sendTok: sessionTokenForSend\(\) \}\)/.test(src.slice(src.indexOf('async function openMeventContract'), src.indexOf('async function openMeventContract') + 1500)), 'гэрээ: апп нэвтэрсэн токеныг дамжуулна');
+})());
+
+// ═══ ХУВИЙН ДАНС РУУ ОРСОН ТӨЛБӨРИЙН БАРИМТ БҮРТГЭГДЭНЭ (2026-10-20, CEO) ═══════════════════════
+// M-Event-ийн төлбөрийн данс (MEVENT_PAY) хувь хүний нэртэй тул баримтад «Чимун» байдаггүй. Өмнө нь «Чимунд ирээгүй гүйлгээ»
+// гэж татгалзаж байсан. Одоо ДАНСААР таниулна — гэхдээ өөр дансанд ижил нэртэй хүнийг ЗӨВШӨӨРӨХГҮЙ.
+(globalThis.__late = globalThis.__late || []).push((async () => {
+  const F2 = (n, ...a) => sandbox[n](...a);
+  // ① Дансны таних
+  for (const a of ['3155107584', 'MN14 0015 00 3155107584', 'MN140015003155107584', ' 3155107584 ', '3635161180'])
+    ok(F2('receiptAcctIsOurs', a), `данс манайх: «${a}»`);
+  for (const a of ['3155107585', '1234567890', '', null, '31551075', 'MN14 0015 00 9999999999'])
+    ok(!F2('receiptAcctIsOurs', a), `⛔ данс манайх БИШ: «${a}»`);
+  // ② Хүлээн авагч / илгээгч
+  const R = (n, a) => F2('receiptReceiverIsUs', { receiverName: n, receiverAcct: a });
+  ok(R('Чимун ХХК', '') && R('"ЧИМУН" ХХК', '5555555555'), 'хуучин зан: нэрэнд «чимун» бол зөвшөөрнө (үүнийг хөндөөгүй)');
+  ok(R('МӨНХ-УЧРАЛ', '3155107584') && R('Ганбат Мөнх-Учрал', 'MN14 0015 00 3155107584'), '⛔ хувийн данс: данс таарвал нэр ямар ч хэлбэртэй зөвшөөрнө');
+  ok(R('Хэн нэгэн', '3155107584'), 'данс таарвал нэр нь огт өөр ч зөвшөөрнө (данс шийднэ)');
+  ok(!R('Мөнх-Учрал', '5000000000'), '⛔ ӨӨР дансанд ижил нэртэй хүн ЗӨВШӨӨРӨГДӨХГҮЙ');
+  ok(!R('Бат', '1111111111') && !R('', '') && !R('Бат', ''), 'танихгүй хүлээн авагч татгалзагдана');
+  ok(R('Мөнх-Учрал', ''), 'данс уншигдаагүй үед л данс эзэмшигчийн нэрээр тулгана');
+  ok(F2('receiptSenderIsUs', { senderName: 'Г.МӨНХ-УЧРАЛ', senderAcct: '3155107584' }) && !F2('receiptSenderIsUs', { senderName: 'Бат', senderAcct: '2222222222' }), 'илгээгч (буцаалт): манай данснаас гарсан бол зөвшөөрнө');
+
+  // ③ Жинхэнэ уншигч — баримтыг ҮЙЛДЛЭЭР нь (тусдаа орчинд)
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const sb = Object.assign({}, sandbox); sb.window = sb; sb.self = sb; sb.globalThis = sb;
+  vm.createContext(sb); vm.runInContext(appSrc, sb, { filename: 'app.js' });
+  const readWith = async (parsed) => {
+    sb.__parsed = Object.assign({ amount: 50000, date: '2026-10-20', senderName: 'Б.АРИУН', senderAcct: '9999999999', bankRef: 'GLGB' + Math.random().toString(36).slice(2, 10), ref: 'захиалга 1700', bank: 'Голомт', status: 'Амжилттай' }, parsed);
+    vm.runInContext('extractPdfText = async () => "x"; parseBankReceipt = () => __parsed; state.usedReceipts = new Set(); state.usedFps = new Set(); state.refLessFps = new Set(); state.receiptOwners = new Map(); state.fpOwners = new Map();', sb);
+    try { return { ok: await vm.runInContext('readIncomeReceipt({ name: "r.pdf" }, [])', sb) }; } catch (e) { return { err: String(e.message || e) }; }
+  };
+  let r = await readWith({ receiverName: 'МӨНХ-УЧРАЛ', receiverAcct: '3155107584' });
+  ok(r.ok && r.ok.amount === 50000, '⛔ ХУВИЙН ДАНС РУУ ОРСОН баримт орлого болж бүртгэгдэнэ (өмнө «Чимунд ирээгүй гүйлгээ» гэж татгалздаг байв)');
+  r = await readWith({ receiverName: 'Ганбат Мөнх-Учрал', receiverAcct: 'MN14 0015 00 3155107584' });
+  ok(!!r.ok, 'хувийн данс: IBAN хэлбэрийн баримт бүртгэгдэнэ');
+  r = await readWith({ receiverName: 'Чимун ХХК', receiverAcct: '3635161180' });
+  ok(!!r.ok, 'регресс: компанийн дансны баримт өмнөх шигээ бүртгэгдэнэ');
+  r = await readWith({ receiverName: 'Мөнх-Учрал', receiverAcct: '5000000000' });
+  ok(!r.ok && /Чимунд ирээгүй/.test(r.err || ''), '⛔ өөр дансанд ижил нэртэй хүн рүү орсон баримтыг ТАТГАЛЗАНА');
+  r = await readWith({ receiverName: 'Бат', receiverAcct: '1111111111' });
+  ok(!r.ok && /Чимунд ирээгүй/.test(r.err || '') && /1111111111/.test(r.err), 'танихгүй данс: татгалзаж, ямар данс байсныг мессежид хэлнэ');
+  // ④ Буулгалт/буцаалт мөн ижил шалгуурыг ашиглана; NOMAAD хөндөгдөөгүй
+  ok(!/чимун\/i\.test\(d\.senderName/.test(appSrc.slice(appSrc.indexOf('Чимун нь ИЛГЭЭГЧ байх ёстой'), appSrc.indexOf('Чимун нь ИЛГЭЭГЧ байх ёстой') + 700)) && /receiptSenderIsUs\(d\)/.test(appSrc), 'буулгалт, буцаалт: илгээгчийг дансаар ч таниулна');
+  ok(/Чимун ХХК-д ирээгүй гүйлгээ/.test(appSrc) && /\/чимун\/i\.test\(d\.receiverName \|\| ''\)\) throw new Error\(`Чимун ХХК-д/.test(appSrc), 'NOMAAD орлого өмнөх шалгуураа хэвээр (өөрийн данс)');
 })());

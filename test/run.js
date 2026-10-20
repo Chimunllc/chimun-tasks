@@ -20237,3 +20237,29 @@ async function swFetchTests() {
   eq((rls.match(/when 'stock_count_pause' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д stock_count_pause → зөвхөн CEO');
   eq((sch.match(/WHEN 'stock_count_pause'::text THEN sec\.is_ceo\(\)/g) || []).length, 3, 'эрх: schema.sql rls.sql-тэй ижил');
 })());
+
+// ═══ ҮНИЙН САНАЛЫН ТӨЛБӨРИЙН ДАНС (2026-10-20, CEO) ═══════════════════════════════════
+// Үнийн санал (имэйл, урьдчилан харах, PDF) шинэ данс руу; гэрээ/нэхэмжлэх CHIMUN_LEGAL-ийн дансаа хэвээр.
+// Төлбөрийн мэдээлэл — буруу цифр = мөнгө өөр хүнд очно, тиймээс шалгах цифр, хоёр хэл, хуучин данс үлдээгүй эсэхийг барина.
+(globalThis.__late = globalThis.__late || []).push((async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const QP = run('QUOTE_PAY');
+  // IBAN-ы MOD-97 (ISO 13616): MN14 0015 00 3155107584
+  const mod97 = (iban) => { const s = iban.replace(/\s+/g, '').toUpperCase(); const r = s.slice(4) + s.slice(0, 4);
+    let rem = 0; for (const ch of r.split('').map(c => /[A-Z]/.test(c) ? String(c.charCodeAt(0) - 55) : c).join('')) rem = (rem * 10 + Number(ch)) % 97; return rem; };
+  eq(mod97(QP.iban), 1, '⛔ үнийн саналын IBAN: MOD-97 шалгалт тэнцэнэ (цифр буруу бичигдээгүй)');
+  eq(QP.iban.replace(/\s+/g, '').slice(-10), QP.account, '⛔ үнийн саналын данс = IBAN-ы сүүлийн 10 орон');
+  ok(QP.bank === 'Голомт банк' && QP.holder === 'Г.Мөнх-Учрал', 'үнийн саналын данс: банк, эзэмшигч');
+  for (const lang of ['mn', 'en']) {
+    const html = String(await run(`buildOrderQuote(docBlankMeventOrder(), '${lang}')`));
+    ok(html.includes('3155107584') && html.includes('MN14 0015 00 3155107584'), `⛔ үнийн санал (${lang}): шинэ данс ба IBAN гарна`);
+    ok(html.includes(lang === 'en' ? 'G.Munkh-Uchral' : 'Г.Мөнх-Учрал'), `үнийн санал (${lang}): данс эзэмшигчийн нэр (хүлээн авагч)`);
+    ok(!html.includes('3635161180') && !/MN24 0015 00/.test(html), `⛔ үнийн санал (${lang}): хуучин данс ҮЛДЭЭГҮЙ (хоёр данс андуурагдахгүй)`);
+    ok(html.includes(lang === 'en' ? 'Golomt Bank' : 'Голомт банк'), `үнийн санал (${lang}): банкны нэр`);
+  }
+  // Хамрах хүрээ: ЗӨВХӨН үнийн санал. Гэрээ/нэхэмжлэх өөр дансаар (CHIMUN_LEGAL) — тусад нь шийднэ.
+  const inv = src.slice(src.indexOf('function invoiceHtml'), src.indexOf('function invoiceHtml') + 8000);
+  ok(!/QUOTE_PAY/.test(inv) && !/QUOTE_PAY/.test(src.slice(src.indexOf('function meventContractHtml'), src.indexOf('function meventContractHtml') + 30000)),
+     'хамрах хүрээ: нэхэмжлэх, гэрээ QUOTE_PAY-г ашиглахгүй (тусад нь шийднэ)');
+})());

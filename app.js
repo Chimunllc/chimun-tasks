@@ -22247,6 +22247,15 @@ const CHIMUN_LEGAL = {
   bank: 'Голомт банк', bankEn: 'Golomt Bank', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
+/* ҮНИЙН САНАЛД харуулах ТӨЛБӨРИЙН данс (2026-10-20, CEO). Зөвхөн `buildOrderQuote` (M-Event үнийн санал: имэйл, урьдчилан
+   харах, PDF) энэ дансыг ашиглана. Гэрээ, нэхэмжлэх нь `CHIMUN_LEGAL`-ийн дансыг ХЭВЭЭР ашигладаг — нэхэмжлэх, гэрээнд
+   ямар данс гарахыг тусад нь шийднэ. ⚠ Хүлээн авагч нь ХУВИЙН хүний нэр тул банкны баримтын «хүлээн авагчийн нэр»
+   «Чимун» агуулдаггүй: `readIncomeReceipt` (хүлээн авагчид «чимун» шаарддаг) энэ данс руу орсон төлбөрийг татгалзана.
+   IBAN нь MOD-97 шалгалттай, данс = IBAN-ы сүүлийн 10 орон (тест хоёуланг тулгана). */
+const QUOTE_PAY = {
+  bank: 'Голомт банк', bankEn: 'Golomt Bank', account: '3155107584', iban: 'MN14 0015 00 3155107584',
+  holder: 'Г.Мөнх-Учрал', holderEn: 'G.Munkh-Uchral',
+};
 // 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
 function _mnTriad(n) {
   const o = ['', 'нэгэн', 'хоёр', 'гурван', 'дөрвөн', 'таван', 'зургаан', 'долоон', 'найман', 'есөн'];
@@ -32498,7 +32507,7 @@ function orderMoneyBreakdown(o) {
   return { days, subtotal, discount, vatDisc, hasVat, delivFee, delivLbl, offFee, setupFee, deposit, rentalNet, vat, total };
 }
 async function buildOrderQuote(o, lang) {
-  const C = CHIMUN_LEGAL, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
+  const C = CHIMUN_LEGAL, QP = QUOTE_PAY, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
   // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
   const days = orderRentalDays(o);
@@ -32545,7 +32554,8 @@ async function buildOrderQuote(o, lang) {
     const EN = T.htmlLang === 'en';
     const coName = EN ? (C.nameEn || C.name) : C.name;
     const coAddr = EN ? (C.addressEn || C.address) : C.address;
-    const coBank = EN ? (C.bankEn || C.bank) : C.bank;
+    const coBank = EN ? (QP.bankEn || QP.bank) : QP.bank;
+    const coHolder = EN ? (QP.holderEn || QP.holder) : QP.holder;   // данс эзэмшигч (хүлээн авагч) — ХУВИЙН хүн
     const custName = EN ? enProper(o.customer || '') : (o.customer || '');
     const custAddr = EN ? enText(o.delivery_address || '') : (o.delivery_address || '');
     const sName = EN ? enProper(_sName) : _sName;
@@ -32606,9 +32616,9 @@ ${_erow(T.rentalPeriod, T.days(days))}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border:1px solid #ECE9E2;border-radius:11px;border-collapse:separate;">
 <tr><td style="padding:14px 16px;">
 <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">${T.payInfo}</div>
-<div style="font-size:12.5px;color:#44444a;padding-top:6px;">${T.bank}: <b style="color:#17171B;">${escapeHtml(coBank)}</b> · ${escapeHtml(coName)}</div>
-<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.acctNo}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:18px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.account)}</span></div>
-${C.iban ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">IBAN</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.iban)}</span></div>` : ''}
+<div style="font-size:12.5px;color:#44444a;padding-top:6px;">${T.bank}: <b style="color:#17171B;">${escapeHtml(coBank)}</b> · ${escapeHtml(coHolder)}</div>
+<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.acctNo}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:18px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(QP.account)}</span></div>
+${QP.iban ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">IBAN</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(QP.iban)}</span></div>` : ''}
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.payRef}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:16px;font-weight:700;color:#E95400;">${T.ref(o.number ?? '')}</span></div>
 </td></tr>
 </table>
@@ -32634,16 +32644,16 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
       <div class="t-meta">${T.no}: <b>№${o.number ?? ''}</b><br>${T.date}: ${fd(now)}<br>${T.valid}: <b>${fd(valid)}</b>${T.until}</div>
     </div>
     <div class="parties">
-      <div class="party"><div class="p-lbl">${T.lessor}</div><div class="p-name">${escapeHtml(coName)}</div><div class="p-row">${T.reg}: ${escapeHtml(C.reg)}<br>${escapeHtml(coAddr)}<br>${T.phone}: 7755-1010<br>${T.account}: ${escapeHtml(coBank)} — ${escapeHtml(C.account)}</div></div>
+      <div class="party"><div class="p-lbl">${T.lessor}</div><div class="p-name">${escapeHtml(coName)}</div><div class="p-row">${T.reg}: ${escapeHtml(C.reg)}<br>${escapeHtml(coAddr)}<br>${T.phone}: 7755-1010<br>${T.account}: ${escapeHtml(coBank)} — ${escapeHtml(QP.account)}</div></div>
       <div class="party"><div class="p-lbl">${T.customer}</div><div class="p-name">${escapeHtml(custName || '—')}</div><div class="p-row">${o.phone ? T.phone + ': ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${custAddr ? T.address + ': ' + escapeHtml(custAddr) + '<br>' : ''}${period ? T.period + ': <b style="color:#0B1F3A">' + period + '</b>' : ''}</div></div>
     </div>
     <table class="items"><thead><tr><th class="ctr" style="width:36px">№</th><th>${T.thItem}</th><th class="ctr">${T.thQty}</th><th class="ctr">${T.thDays}</th><th class="rt">${T.thUnit}</th><th class="rt">${T.thSum}</th></tr></thead><tbody>${itemRows || `<tr><td colspan="6" style="text-align:center;color:#9aa4b2;padding:16px">${T.noItems}</td></tr>`}</tbody></table>
     <div class="settle">
       <div class="settle-info"><div class="pay-box">
         <div class="pay-lbl">${T.payInfo}</div>
-        <div class="pay-v">${escapeHtml(coBank)} — ${escapeHtml(C.account)}</div>
-        ${C.iban ? `<div class="pay-r">IBAN: ${escapeHtml(C.iban)}</div>` : ''}
-        <div class="pay-r">${T.payee}: ${escapeHtml(coName)}</div>
+        <div class="pay-v">${escapeHtml(coBank)} — ${escapeHtml(QP.account)}</div>
+        ${QP.iban ? `<div class="pay-r">IBAN: ${escapeHtml(QP.iban)}</div>` : ''}
+        <div class="pay-r">${T.payee}: ${escapeHtml(coHolder)}</div>
         <div class="pay-r pay-ref">${T.payRef}: <b>${T.ref(o.number ?? '')}</b></div>
       </div></div>
       <div class="settle-tot"><div class="tot">

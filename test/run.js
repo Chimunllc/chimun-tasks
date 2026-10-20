@@ -20244,7 +20244,7 @@ async function swFetchTests() {
 (globalThis.__late = globalThis.__late || []).push((async () => {
   const run = (c) => vm.runInContext(c, sandbox);
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-  const QP = run('QUOTE_PAY');
+  const QP = run('MEVENT_PAY');
   // IBAN-ы MOD-97 (ISO 13616): MN14 0015 00 3155107584
   const mod97 = (iban) => { const s = iban.replace(/\s+/g, '').toUpperCase(); const r = s.slice(4) + s.slice(0, 4);
     let rem = 0; for (const ch of r.split('').map(c => /[A-Z]/.test(c) ? String(c.charCodeAt(0) - 55) : c).join('')) rem = (rem * 10 + Number(ch)) % 97; return rem; };
@@ -20258,8 +20258,71 @@ async function swFetchTests() {
     ok(!html.includes('3635161180') && !/MN24 0015 00/.test(html), `⛔ үнийн санал (${lang}): хуучин данс ҮЛДЭЭГҮЙ (хоёр данс андуурагдахгүй)`);
     ok(html.includes(lang === 'en' ? 'Golomt Bank' : 'Голомт банк'), `үнийн санал (${lang}): банкны нэр`);
   }
-  // Хамрах хүрээ: ЗӨВХӨН үнийн санал. Гэрээ/нэхэмжлэх өөр дансаар (CHIMUN_LEGAL) — тусад нь шийднэ.
-  const inv = src.slice(src.indexOf('function invoiceHtml'), src.indexOf('function invoiceHtml') + 8000);
-  ok(!/QUOTE_PAY/.test(inv) && !/QUOTE_PAY/.test(src.slice(src.indexOf('function meventContractHtml'), src.indexOf('function meventContractHtml') + 30000)),
-     'хамрах хүрээ: нэхэмжлэх, гэрээ QUOTE_PAY-г ашиглахгүй (тусад нь шийднэ)');
+  // Хамрах хүрээ: үнийн санал + нэхэмжлэх. M-Event гэрээнд данс байхгүй; NOMAAD гэрээ өөрийн дансаа хэвээр.
+  ok(!/MEVENT_PAY/.test(src.slice(src.indexOf('function meventContractHtml'), src.indexOf('async function openMeventContract'))), 'хамрах хүрээ: M-Event гэрээний загвар дансыг агуулахгүй (зөвхөн утгад захиалгын дугаар)');
+  ok(!/MEVENT_PAY/.test(src.slice(src.indexOf('function nomaadContractHtml'), src.indexOf('function nomaadContractHtml') + 30000).split('function meventContractHtml')[0]), 'хамрах хүрээ: NOMAAD гэрээ өөрийн дансаа (nomaadAcct) хэвээр ашиглана');
+})());
+
+// ═══ НЭХЭМЖЛЭХИЙН ДАНС + ГЭРЭЭГ ИМЭЙЛЭЭР ИЛГЭЭДЭГ БОЛГОХ (2026-10-20, CEO) ═══════════════════════
+(globalThis.__late = globalThis.__late || []).push((async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const MP = run('MEVENT_PAY');
+
+  // ① Нэхэмжлэх: шинэ данс, хүлээн авагч = данс эзэмшигч, нэхэмжлэгч = компани. Хуучин данс үлдэхгүй.
+  const org = run('invoiceOrg()');
+  ok(org.account === MP.account && org.iban === MP.iban && org.holder === MP.holder, '⛔ нэхэмжлэх: invoiceOrg() шинэ данс/IBAN/эзэмшигчтэй');
+  ok(org.name === run('CHIMUN_LEGAL.name') && org.reg === run('CHIMUN_LEGAL.reg') && org.director === run('CHIMUN_LEGAL.director'), 'нэхэмжлэх: нэхэмжлэгч (компанийн нэр, РД, захирал) өөрчлөгдөөгүй');
+  const invD = { no: 'INV-1', issuedAt: '2026-10-20', dueAt: '2026-10-27', orderNo: 1700, buyer: { name: 'Б.Ариун', email: 'a@b.mn' },
+    lines: [{ name: 'Шилэн сандал', qty: 20, days: 1, total: 176000 }], t: { total: 176000, due: 176000 }, org, sendUrl: 'https://x/send', sendTok: 'tok', to: 'a@b.mn' };
+  sandbox.__invD = invD;
+  const invDoc = String(run('invoiceDocHtml(__invD)'));
+  ok(invDoc.includes('3155107584') && invDoc.includes('Г.Мөнх-Учрал'), '⛔ нэхэмжлэх: шинэ данс ба Хүлээн авагч: Г.Мөнх-Учрал');
+  ok(!invDoc.includes('3635161180') && !/MN24/.test(invDoc), '⛔ нэхэмжлэх: хуучин данс ҮЛДЭЭГҮЙ');
+  ok(/Хүлээн авагч: Г\.Мөнх-Учрал/.test(invDoc.replace(/\\n/g, '\n')) || invDoc.includes('Хүлээн авагч: Г.Мөнх-Учрал'), 'нэхэмжлэхийн имэйлийн бичвэр: хүлээн авагч = данс эзэмшигч');
+
+  const issue = src.slice(src.indexOf('async function issueInvoice'), src.indexOf('function invoiceDocHtml'));
+  ok(/org: invoiceOrg\(\)/.test(issue) && !/org: CHIMUN_LEGAL/.test(issue), '⛔ нэхэмжлэх: issueInvoice нь шинэ дансны invoiceOrg()-ийг ашиглана (CHIMUN_LEGAL-ийг шууд биш)');
+  // ② Гэрээ: имэйл илгээх товч ЗӨВХӨН илгээх сувагтай үед
+  const ord = { id: 'ao-1', number: 1700, contract_no: 'Г-17', customer: 'Б.Ариун', phone: '99112233', email: 'ariun@x.mn', items: [], total_mnt: 100000, starts_at: '2026-10-25', stops_at: '2026-10-26' };
+  sandbox.__ord = ord;
+  const blank = String(run('meventContractHtml(__ord)'));
+  ok(!/id="ctsend"/.test(blank) && /var CT_SEND="";/.test(blank), 'гэрээ: илгээх суваггүй (хоосон загвар) бол имэйл товч гарахгүй');
+  const full = String(run("meventContractHtml(__ord, { sendUrl: 'https://n8n.test/send', sendTok: 'TOK123' })"));
+  ok(/id="ctsend"/.test(full) && /ctSend\(\)/.test(full), '⛔ гэрээ: илгээх суваг байвал «📧 Имэйлээр илгээх» товч гарна');
+  // Гэрээний цонхны скриптийг ҮЙЛДЛЭЭР нь ажиллуулна (хуурамч DOM/сервер — жинхэнэ имэйл явахгүй)
+  const scr = (/<script>([\s\S]*?)<\/script>/.exec(full) || [])[1] || '';
+  let syntaxErr = ''; try { new Function(scr); } catch (e) { syntaxErr = String(e.message); }
+  eq(syntaxErr, '', '⛔ гэрээний цонхны скрипт синтакс зөв');
+  const drive = async (o) => {
+    const log = { fetches: [], confirms: [], alerts: [], prompts: [], noted: [] };
+    const win = { html2pdf: () => ({ set: () => ({ from: () => ({ outputPdf: async () => 'data:application/pdf;base64,JVBERi0xLjQ=' }) }) }),
+      opener: { noteContractEmailed: (id, to) => log.noted.push([id, to]) } };
+    const btn = { textContent: '📧 Имэйлээр илгээх', disabled: false };
+    const ctx = { window: win, document: { querySelector: () => ({}), getElementById: () => btn, fonts: null, head: { appendChild() {} }, createElement: () => ({}) },
+      fetch: async (url, init) => { log.fetches.push([url, init]); return { ok: o.ok !== false, status: o.ok === false ? 500 : 200 }; },
+      confirm: (m) => { log.confirms.push(m); return o.confirm !== false; }, alert: (m) => log.alerts.push(m),
+      prompt: (m) => { log.prompts.push(m); return o.prompt == null ? null : o.prompt; }, JSON, String, Promise, setTimeout, console };
+    vm.createContext(ctx); vm.runInContext(scr + '\nthis.__send = ctSend;', ctx);
+    ctx.__send(); await new Promise(r => setTimeout(r, 30));
+    return { log, btn };
+  };
+  let R = await drive({});
+  ok(R.log.confirms.length === 1 && /ariun@x\.mn/.test(R.log.confirms[0]) && /буцаах боломжгүй/.test(R.log.confirms[0]), '⛔ гэрээ: илгээхийн өмнө хаягийг нэрлэж БАТАЛГААЖУУЛНА');
+  const call = R.log.fetches[0] || [], body = JSON.parse((call[1] && call[1].body) || '{}');
+  ok(call[0] === 'https://n8n.test/send' && call[1].headers['X-Session-Token'] === 'TOK123', 'гэрээ: нэвтэрсэн ажилтны токентойгоор илгээх сувагт хандана (түлхүүр биш)');
+  eq(body.filename, 'Түрээсийн гэрээ Б.Ариун 1700.pdf', '⛔ гэрээ: хавсралтын нэр зөв бичигдсэн (үсгийн алдаагүй, овгийн цэгтэй)');
+  ok(body.to === 'ariun@x.mn' && body.pdf_base64 === 'JVBERi0xLjQ=' && /\.pdf$/.test(body.filename) && body.source === 'app-contract' && /Г-17/.test(body.subject), 'гэрээ: имэйл (to, PDF, нэр, гарчигт гэрээний дугаар) зөв илгээгдэнэ');
+  ok(R.log.noted.length === 1 && R.log.noted[0][0] === 'ao-1' && R.log.noted[0][1] === 'ariun@x.mn' && /илгээгдлээ/.test(R.log.alerts[0] || ''), '⛔ гэрээ: илгээгдсэний дараа захиалгад «имэйлээр илгээсэн» гэж тэмдэглэнэ');
+  R = await drive({ confirm: false });
+  ok(R.log.fetches.length === 0 && R.log.noted.length === 0, '⛔ гэрээ: зөвшөөрөөгүй бол ЮУ Ч илгээхгүй, тэмдэглэхгүй');
+  R = await drive({ ok: false });
+  ok(R.log.fetches.length === 1 && R.log.noted.length === 0 && /алдаа/i.test(R.log.alerts[0] || '') && R.btn.disabled === false, '⛔ гэрээ: илгээлт унавал «илгээсэн» гэж ТЭМДЭГЛЭХГҮЙ, товч буцаж идэвхжинэ');
+  sandbox.__ord2 = Object.assign({}, ord, { email: '' });
+  const noMail = String(run("meventContractHtml(__ord2, { sendUrl: 'https://n8n.test/send', sendTok: 'T' })"));
+  const scr2 = (/<script>([\s\S]*?)<\/script>/.exec(noMail) || [])[1] || '';
+  ok(/var CT_TO="";/.test(noMail) && /prompt\(/.test(scr2), 'гэрээ: харилцагчийн имэйл алга бол хаягийг асууна');
+  // Тэмдэглэл
+  ok(/async function noteContractEmailed/.test(src) && /appendOrderNoteTo\(o, '📧 Гэрээг имэйлээр илгээсэн/.test(src), 'гэрээ: илгээсэн тэмдэглэл append-only захиалгын тэмдэглэлд');
+  ok(/meventContractHtml\(o, \{ sendUrl: withKey\([^)]*\), sendTok: sessionTokenForSend\(\) \}\)/.test(src.slice(src.indexOf('async function openMeventContract'), src.indexOf('async function openMeventContract') + 1500)), 'гэрээ: апп нэвтэрсэн токеныг дамжуулна');
 })());

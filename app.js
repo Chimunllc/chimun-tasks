@@ -22247,12 +22247,13 @@ const CHIMUN_LEGAL = {
   bank: 'Голомт банк', bankEn: 'Golomt Bank', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
-/* ҮНИЙН САНАЛД харуулах ТӨЛБӨРИЙН данс (2026-10-20, CEO). Зөвхөн `buildOrderQuote` (M-Event үнийн санал: имэйл, урьдчилан
-   харах, PDF) энэ дансыг ашиглана. Гэрээ, нэхэмжлэх нь `CHIMUN_LEGAL`-ийн дансыг ХЭВЭЭР ашигладаг — нэхэмжлэх, гэрээнд
-   ямар данс гарахыг тусад нь шийднэ. ⚠ Хүлээн авагч нь ХУВИЙН хүний нэр тул банкны баримтын «хүлээн авагчийн нэр»
+/* M-EVENT-ИЙН ТӨЛБӨРИЙН данс (2026-10-20, CEO). `buildOrderQuote` (үнийн санал: имэйл, урьдчилан харах, PDF) ба
+   `invoiceOrg()` (НЭХЭМЖЛЭХ, түүний имэйл) энэ дансыг ашиглана. M-Event гэрээнд дансны дугаар ОГТ байхгүй (зөвхөн
+   «гүйлгээний утгад захиалгын дугаар бич»). NOMAAD нь `nomaadAcct`, `CHIMUN_LEGAL.account` нь бусад баримтад тусдаа.
+   ⚠ Хүлээн авагч нь ХУВИЙН хүний нэр тул банкны баримтын «хүлээн авагчийн нэр»
    «Чимун» агуулдаггүй: `readIncomeReceipt` (хүлээн авагчид «чимун» шаарддаг) энэ данс руу орсон төлбөрийг татгалзана.
    IBAN нь MOD-97 шалгалттай, данс = IBAN-ы сүүлийн 10 орон (тест хоёуланг тулгана). */
-const QUOTE_PAY = {
+const MEVENT_PAY = {
   bank: 'Голомт банк', bankEn: 'Golomt Bank', account: '3155107584', iban: 'MN14 0015 00 3155107584',
   holder: 'Г.Мөнх-Учрал', holderEn: 'G.Munkh-Uchral',
 };
@@ -22412,7 +22413,7 @@ function invoiceHtml(d) {
 
   <div class="words">Дүн үсгээр: <b>${e(mnNumToWords(Number(t.due) > 0 ? t.due : t.total))} төгрөг</b></div>
   <div class="pay">Төлбөрийг дараах данс руу шилжүүлнэ үү:<br>
-    <b>${e(org.bank)} · ${e(org.account)}</b> · Хүлээн авагч: ${e(org.name)}<br>
+    <b>${e(org.bank)} · ${e(org.account)}</b> · Хүлээн авагч: ${e(org.holder || org.name)}<br>
     Гүйлгээний утга: <b>${e(d.no)}</b></div>
   <div class="sig"><div>Нэхэмжлэгч: ${e(org.director)}<i></i></div><div>Хүлээн авсан:<i></i></div></div>`;
 }
@@ -22431,6 +22432,10 @@ function _amt(n) { return `${fmtMoney(n)} (${mnNumToWords(n)})`; }
    Тусдаа баримт нь аппын CSS-ээс бүрэн тусгаарлагдсан бөгөөд html2pdf нь
    ХАРАГДАХ элементээс рендэрлэдэг тул `windowWidth` заах шаардлагагүй —
    CLAUDE.md-д «ажилладаг quote PDF = харагдах popup» гэж тэмдэглэсэн. */
+// Нэхэмжлэхийн «нэхэмжлэгч» — компанийн мэдээлэл (нэр, РД, хаяг, захирал) + M-Event-ийн ТӨЛБӨРИЙН данс.
+function invoiceOrg() {
+  return Object.assign({}, CHIMUN_LEGAL, { bank: MEVENT_PAY.bank, account: MEVENT_PAY.account, iban: MEVENT_PAY.iban, holder: MEVENT_PAY.holder });
+}
 async function issueInvoice(orderId, btn) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(orderId));
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
@@ -22463,7 +22468,7 @@ async function issueInvoice(orderId, btn) {
     // Имэйл — үнийн саналын БЭЛЭН сувгаар (`mevent-quote-send`). Тэр урсгал нь
     // ерөнхий: {to, subject, body, filename, pdf_base64} авч PDF хавсаргаж илгээнэ.
     const doc = invoiceDocHtml({ no, issuedAt: inv.issued_at, dueAt: inv.due_at, orderNo: o.number,
-                                 buyer, lines, t, org: CHIMUN_LEGAL,
+                                 buyer, lines, t, org: invoiceOrg(),
                                  sendUrl: withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL),
                                  sendTok: sessionTokenForSend(),
                                  to: buyer.email || '' });
@@ -22554,7 +22559,7 @@ var BODY=${JSON.stringify(
   ((d.orderNo != null && d.orderNo !== '') ? ' (Захиалга №' + d.orderNo + ')' : '') + '\n\n' +
   'Төлөх дүн: ' + fmtMoney(Number((d.t && ((d.t.due > 0) ? d.t.due : d.t.total)) || 0)) + '\n' +
   'Данс: ' + ((d.org && d.org.bank) || '') + ' · ' + ((d.org && d.org.account) || '') + '\n' +
-  'Хүлээн авагч: ' + ((d.org && d.org.name) || '') + '\n' +
+  'Хүлээн авагч: ' + ((d.org && (d.org.holder || d.org.name)) || '') + '\n' +
   'Гүйлгээний утга: ' + (d.no || '') + '\n\n' +
   'Дэлгэрэнгүйг хавсаргасан PDF-ээс үзнэ үү.'
 )};
@@ -22795,7 +22800,8 @@ function ctTierText() {
   }).join(', ');
 }
 
-function meventContractHtml(o) {
+function meventContractHtml(o, opts) {
+  opts = opts || {};   // { sendUrl, sendTok } — байхгүй бол (хоосон загвар) имэйл илгээх товч гарахгүй
   const C = CHIMUN_LEGAL;
   // ⭐ ГЭРЭЭНИЙ ТАЛ — байгууллагын захиалгад ГЭРЭЭ БАЙГУУЛАГЧ НЬ БАЙГУУЛЛАГА (хувь хүн БИШ).
   // Хариуцлага (заалт 7 — нөхөн төлбөр) хэн дээр буухыг энэ тодорхойлно: байгууллагын
@@ -22832,7 +22838,8 @@ function meventContractHtml(o) {
   // Нэгтгэлт = orderDateTime (үнийн санал ч ЯГ үүнийг ашиглана — ганц эх сурвалж).
   const ds = _ctDT(orderDateTime(o.starts_at, o.note, false)), de = _ctDT(orderDateTime(o.stops_at, o.note, true)), now = new Date();
   const contractNo = escapeHtml(o.contract_no || '');
-  const fname = ('Туреэсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
+  // Хавсралтын нэр харилцагчид харагдана — «Түрээсийн гэрээ Б.Ариун 1700» (цэг хадгална: «Б.Ариун» → «БАриун» болохгүй)
+  const fname = ('Түрээсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё .\-]/g, '').replace(/\s+/g, ' ').trim();
   // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
   const itemRows = items.length ? items.map((it, i) => {
     const line = lineOf(it);
@@ -22915,7 +22922,7 @@ function meventContractHtml(o) {
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head>
 <body>
-<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button> <span class="muted tbnote">…… талбаруудыг шууд бичиж засаж болно</span>${mvMissing ? `<div class="tbwarn">⚠ ${mvMissing} бараанд зах зээлийн үнэлгээ бөглөөгүй — «Бараа» дээр бөглөвөл гэрээнд дүн гарна (энэ мөр хэвлэгдэхгүй)</div>` : ''}</div>
+<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button>${opts.sendUrl ? '<button id="ctsend" onclick="ctSend()">📧 Имэйлээр илгээх</button>' : ''} <span class="muted tbnote">…… талбаруудыг шууд бичиж засаж болно</span>${mvMissing ? `<div class="tbwarn">⚠ ${mvMissing} бараанд зах зээлийн үнэлгээ бөглөөгүй — «Бараа» дээр бөглөвөл гэрээнд дүн гарна (энэ мөр хэвлэгдэхгүй)</div>` : ''}</div>
 <div contenteditable="true">
   <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
   <table class="chead"><tr>
@@ -23005,6 +23012,56 @@ function meventContractHtml(o) {
 </div>
 <script>
 var CT_FILE=${JSON.stringify(fname)};
+var CT_SEND=${JSON.stringify(opts.sendUrl || '')};
+var CT_TOK=${JSON.stringify(opts.sendTok || '')};
+var CT_TO=${JSON.stringify(String(o.email || '').trim())};
+var CT_OID=${JSON.stringify(String(o.id || ''))};
+var CT_SUBJ=${JSON.stringify('Түрээсийн гэрээ №' + (o.contract_no || o.number || '') + ' · M-Event')};
+var CT_BODY=${JSON.stringify('Сайн байна уу.\n\nТаны захиалга №' + (o.number || '') + '-ийн түрээсийн гэрээг хавсаргав. Уншиж танилцана уу.\nАсуух зүйл гарвал 7755-1010 руу залгана уу.\n\nM-Event · mevent.mn')};
+function ctH2p(){return new Promise(function(res,rej){if(window.html2pdf)return res();
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  s.onload=function(){res();};s.onerror=function(){rej(new Error('PDF үүсгэгч татаж чадсангүй'));};
+  document.head.appendChild(s);});}
+/* Имэйлээр илгээх — гэрээний ОДООГИЙН (гараар засаж бөглөсөн) агуулгыг PDF болгож хавсаргана.
+   ⚠ ЗААВАЛ баталгаажуулна: харилцагч руу ЖИНХЭНЭ имэйл явна, буцаах боломжгүй. */
+function ctSend(){
+  if(!CT_SEND){alert('Илгээх суваг тохируулаагүй байна.');return;}
+  var to=CT_TO;
+  if(!to){
+    var v=prompt('Гэрээг ямар имэйл рүү илгээх вэ?','');
+    if(v===null)return;
+    v=String(v).trim();
+    if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(v)){alert('Имэйл буруу байна.');return;}
+    to=v;
+  }
+  if(!confirm('Гэрээг '+to+' рүү PDF-ээр илгээх үү?\\n\\nЭнэ нь жинхэнэ имэйл явуулна, буцаах боломжгүй. Талбаруудыг бөглөж дууссан эсэхээ шалгана уу.'))return;
+  var btn=document.getElementById('ctsend');var old=btn?btn.textContent:'';
+  if(btn){btn.textContent='Илгээж байна…';btn.disabled=true;}
+  var el=document.querySelector('[contenteditable]');
+  ctH2p().then(function(){return (document.fonts&&document.fonts.ready)?document.fonts.ready.catch(function(){}):0;})
+    .then(function(){
+      // ⚠ ХАРАГДАХ элементээс рендэрлэнэ — windowWidth заахгүй (заавал зааж, элементийн өргөнтэй зөрвөл баримт тасарна)
+      return window.html2pdf().set({filename:CT_FILE+'.pdf',margin:[10,10,12,10],
+        image:{type:'jpeg',quality:0.95},
+        html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},
+        jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
+        pagebreak:{mode:['css','legacy']}}).from(el).outputPdf('datauristring');
+    })
+    .then(function(uri){
+      var b64=String(uri).split(',')[1]||'';
+      if(!b64)throw new Error('PDF бэлдэгдсэнгүй');
+      return fetch(CT_SEND,{method:'POST',headers:{'Content-Type':'application/json','X-Session-Token':CT_TOK},
+        body:JSON.stringify({to:to,subject:CT_SUBJ,body:CT_BODY,filename:CT_FILE+'.pdf',pdf_base64:b64,source:'app-contract'})});
+    })
+    .then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);
+      // Захиалгад «гэрээ илгээсэн» гэж тэмдэглэнэ (аппын цонхоор; хаагдсан бол алгасна)
+      try{if(window.opener&&window.opener.noteContractEmailed)window.opener.noteContractEmailed(CT_OID,to);}catch(e){}
+      alert('✓ Гэрээ '+to+' рүү илгээгдлээ.');
+      if(btn){btn.textContent='✓ Илгээгдсэн';}})
+    .catch(function(e){alert('Илгээхэд алдаа: '+e.message);
+      if(btn){btn.textContent=old||'📧 Имэйлээр илгээх';btn.disabled=false;}});
+}
 function ctWord(){
   var css=document.querySelector('style').innerHTML;
   var body=document.querySelector('[contenteditable]').innerHTML;
@@ -23028,8 +23085,15 @@ async function openMeventContract(orderId) {
     try { await loadProductsCatalog(); } catch (_) {}
     w.document.open();
   }
-  w.document.write(meventContractHtml(o));
+  w.document.write(meventContractHtml(o, { sendUrl: withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL), sendTok: sessionTokenForSend() }));
   w.document.close();
+}
+// Гэрээний цонхоос (window.opener) дуудагдана: гэрээг хэнд имэйлээр илгээснийг захиалгад ТЭМДЭГЛЭНЭ (append-only тэмдэглэл).
+// Имэйл аль хэдийн явсан тул тэмдэглэл унавал чимээгүй алгасна — гүйцэтгэлийг тасалдуулахгүй.
+async function noteContractEmailed(orderId, to) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(orderId));
+  if (!o) return;
+  try { await appendOrderNoteTo(o, '📧 Гэрээг имэйлээр илгээсэн: ' + String(to || '').slice(0, 80)); render(); } catch (e) { /* тэмдэглэл унасан ч имэйл явсан */ }
 }
 
 /* Үнийн санал илгээх — nomaad-quote-send webhook (Төлөв=ИЛГЭЭХ) → хэрэглэгч рүү ШУУД Gmail-ээр
@@ -32507,7 +32571,7 @@ function orderMoneyBreakdown(o) {
   return { days, subtotal, discount, vatDisc, hasVat, delivFee, delivLbl, offFee, setupFee, deposit, rentalNet, vat, total };
 }
 async function buildOrderQuote(o, lang) {
-  const C = CHIMUN_LEGAL, QP = QUOTE_PAY, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
+  const C = CHIMUN_LEGAL, QP = MEVENT_PAY, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
   // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
   const days = orderRentalDays(o);

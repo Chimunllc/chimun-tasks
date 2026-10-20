@@ -5493,7 +5493,23 @@ function stockSealed(p) { return !!(p && p.stock_locked_at); }
    30%-д хүрнэ — батлагдаагүй суурь дээр мөнгөний шийдвэр гарна.
    ⚠ БАРАА ТУС БҮРЭЭР — 51 бараа аль хэдийн эцэслэгдсэн тул тэднийг тоолж болно.
      Бүгдийг хүлээвэл ажил зогсоно. */
+/* ⏸ ТООЛЛОГЫГ ТҮР ХААХ (2026-10-20, CEO). Эхний үлдэгдлийг бүрэн эцэслээгүй байхад тоолбол зөрүү утгагүй
+   гарч, нөөц засагдаж, алдагдал салбарын ашиг ба COO-гийн 30%-д хүрнэ. Тиймээс `app_config['stock_count_pause']`
+   = {until:'YYYY-MM-DD'} байвал тэр өдөр хүртэл тооллого ЭХЛЭХ, БҮРТГЭХ, ХЭРЭГЖҮҮЛЭХ БҮХ замыг хаана.
+   ⛔ Тооллогын ЦЭС/дэлгэцийг хасаж БОЛОХГҮЙ: «Эхний үлдэгдэл» (тэр ажил үргэлжилнэ) яг энэ дэлгэцэнд амьдардаг.
+   ⛔ ЭХЭЛСЭН сессийг ХААХ, түүх хадгалагдана — зөвхөн шинэ бичилт хаагдана. `countBlockReason` нь бүртгэх (saveStockCount)
+   ба хэрэгжүүлэх (applyStockCount) хоёр замыг хаадаг тул энд тавивал хоёулаа хаагдана. Зөвхөн CEO бичнэ (RLS). */
+const STOCK_COUNT_PAUSE_KEY = 'stock_count_pause';
+function stockCountPause() {
+  const v = state.appConfig && state.appConfig[STOCK_COUNT_PAUSE_KEY];
+  const until = String((v && v.until) || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until <= todayStr()) return null;   // өнгөрсөн/буруу огноо = хаалтгүй
+  return { until, reason: String((v && v.reason) || '') };
+}
+function stockCountPauseReason() { const ps = stockCountPause(); return ps ? `Тооллого ${ps.until} хүртэл түр хаалттай. Эхлээд «Эхний үлдэгдэл»-ээ эцэслэнэ` : ''; }
 function countBlockReason(p) {
+  const _paused = stockCountPauseReason();
+  if (_paused) return _paused;
   if (!p) return 'Бараа олдсонгүй';
   if (stockSealed(p)) return '';
   if (!stockCounted(p)) return 'Эхний үлдэгдэл тоологдоогүй — эхлээд суурь тогтооно';
@@ -5878,6 +5894,8 @@ function scSetBranch(k) {
 // Тооллого эхлүүлэх — салбар бүрт нэг л идэвхтэй сесс (хоёр зэрэг явбал тоо хуваагдана).
 // ⚠ Тохиргоог СЕРВЕРЭЭС шинээр уншиж бичнэ — өөр салбар зэрэг эхлүүлсэн бол дарахгүй.
 async function startStockCount(scope, br) {
+  const _paused = stockCountPauseReason();
+  if (_paused) throw new Error(_paused);
   br = br || scBranch();
   const cfg = await loadStockCountCfg();
   if (cfg.actives[br]) throw new Error('Энэ салбарын тооллого аль хэдийн эхэлсэн байна');
@@ -24181,7 +24199,7 @@ function attachPerformanceHandlers() {
      түлхүүрийг бичнэ.
    ⚠ Унавал `state.appConfig`-ийг ХООСЛОХГҮЙ — хуучин утга хэвээр үлдэнэ. */
 const APP_CONFIG_KEYS = ['work_norm_days', 'overtime', 'salary_rates', 'lunch', 'stage_pay',
-  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft'];
+  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause'];
 async function loadAppConfigAll(keys) {
   if (!DB_ANON_KEY) return;
   const list = (keys && keys.length) ? keys : APP_CONFIG_KEYS;
@@ -24527,6 +24545,32 @@ function openingBlockHtml(canManage) {
   </div>`;
 }
 
+function stockCountPauseHtml() {
+  const ps = stockCountPause();
+  if (!ps) return '';
+  return `<div class="stc-pause">
+    <div class="stc-pause-t">⏸ Тооллого ${escapeHtml(ps.until)} хүртэл түр хаалттай</div>
+    <div class="stc-pause-m">${escapeHtml(ps.reason || 'Эхний үлдэгдлийг бүрэн эцэслээгүй байхад тоолбол зөрүү утгагүй гарч, нөөц ба ашиг алдагдана. Одоо доорх «Эхний үлдэгдэл»-ээ гүйцээнэ.')}</div>
+    ${state.isCEO ? '<button class="btn ui-raw" id="stc-pause-edit">📅 Хаалтын огноо</button>' : ''}
+  </div>`;
+}
+async function editStockCountPause() {
+  if (!state.isCEO) { showToast('Зөвхөн захирал өөрчилнө', 'warn', 3000); return; }
+  const cur = stockCountPause();
+  const v = await showPrompt('Тооллого хэдий хүртэл түр хаалттай байх вэ? Өнөөдөр эсвэл өмнөх огноо сонговол тооллого нээгдэнэ.',
+    { type: 'date', defaultValue: cur ? cur.until : '2027-01-01', title: '📅 Тооллогын хаалт', okText: 'Хадгалах' });
+  if (v == null) return;
+  const until = String(v || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) { showToast('Огноо буруу байна', 'warn', 3000); return; }
+  const me = (typeof findMember === 'function' && findMember(state.me)) || null;
+  const val = { until, reason: '', set_by: (me && me.name) || '', set_at: new Date().toISOString() };
+  try {
+    await saveAppConfig(STOCK_COUNT_PAUSE_KEY, val);
+    state.appConfig = state.appConfig || {}; state.appConfig[STOCK_COUNT_PAUSE_KEY] = val;
+    showToast(until <= todayStr() ? '✅ Тооллого нээгдлээ' : `⏸ Тооллого ${until} хүртэл хаагдлаа`, 'success', 3500);
+  } catch (e) { showToast('Хадгалж чадсангүй: ' + (e.message || e), 'error', 5000); }
+  render();
+}
 function renderStockCount() {
   const canCount = canCountStock(), canApply = canProductPart('stock');
   const canManage = canApply;   // тооллого нээх/хаах = нөөц засах эрхтэй хүн
@@ -24536,7 +24580,7 @@ function renderStockCount() {
   if (!state.scCfg) return '<div class="orders-empty"><div class="icon">📋</div>Ачаалж байна…</div>';
   const cfg = scNormalizeConfig(state.scCfg);
   const br = scBranch(), active = cfg.actives[br];
-  if (!active) return scBranchTabsHtml() + renderStockCountIdle(cfg, canManage);
+  if (!active) return scBranchTabsHtml() + stockCountPauseHtml() + renderStockCountIdle(cfg, canManage);
   const rows = state.scRows || [];
   /* Тоолсон ч салбарын жагсаалтад ороогүй бараа (тоо нь 0 болсон, өөр салбараас
      олдсон) нуугдахгүй — жагсаалтад нэмэгдэнэ. */
@@ -24643,6 +24687,7 @@ function renderStockCount() {
   return `
     ${loadWarn}
     ${scBranchTabsHtml()}
+    ${stockCountPauseHtml()}
     <div class="stc-head">
       <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(active.id))} · ${escapeHtml(countScopeLabel(active.scope))}</span></div>
       <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${st.rep ? ` · <span class="stc-dmg-t">🔧 ${st.rep} ш засварт</span>` : ''}${st.wo ? ` · <span class="stc-dmg-t">🗑 ${st.wo} ш актлах</span>` : ''}${active.started_at ? ` · ${escapeHtml(String(active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
@@ -24679,14 +24724,14 @@ function renderStockCountIdle(cfg, canManage) {
       <div class="stc-head-m">${escapeHtml(String(STOCK_BRANCH_LABEL[_br] || '').replace(/^\S+\s/, ''))}-д идэвхтэй тооллого алга. Салбар бүр өөрийн нөөцөө улиралд нэг удаа бүрэн тоолно.</div>
     </div>
     ${openingBlockHtml(canManage)}
-    ${canManage ? `<div class="stc-actions">
+    ${canManage && !stockCountPause() ? `<div class="stc-actions">
         <label class="stc-scope">Хамрах хүрээ<select id="stc-scope">
           <option value="abc">Үнэтэй бараа — хөрөнгийн 80% (${countScopedProducts('abc').length} бараа)</option>
           <option value="all">Бүх бараа (${countScopedProducts('all').length})</option>
           ${[...new Set((state.products || []).map(p => p.category).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<option value="cat:${escapeHtml(c)}">${escapeHtml(c)} (${countScopedProducts('cat:' + c).length})</option>`).join('')}
         </select></label>
         <button class="btn btn-primary ui-raw" id="stc-start">Шинэ тооллого эхлүүлэх</button></div>`
-                : '<div class="pm-batch-note">Тооллого эхлээгүй байна. Удирдлага эхлүүлэхийг хүлээнэ үү.</div>'}
+                : (stockCountPause() ? '' : '<div class="pm-batch-note">Тооллого эхлээгүй байна. Удирдлага эхлүүлэхийг хүлээнэ үү.</div>')}
     ${hist ? `<div class="stc-list-t">Өмнөх тооллогууд</div><div class="stc-list">${hist}</div>` : ''}
   `;
 }
@@ -24772,6 +24817,7 @@ function attachStockCountHandlers() {
   });
   const search = $('stc-search');
   if (search) search.oninput = () => { state.scSearch = search.value; render(); setTimeout(() => { const el = $('stc-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0); };
+  if ($('stc-pause-edit')) $('stc-pause-edit').onclick = editStockCountPause;
   if ($('stc-start')) $('stc-start').onclick = async (e) => {
     const btn = e.currentTarget; btn.disabled = true;
     const sel = document.getElementById('stc-scope');

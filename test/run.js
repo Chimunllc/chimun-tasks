@@ -20195,3 +20195,45 @@ async function swFetchTests() {
   L = await go(null);
   ok(L.saved[0][1].mode === 'off' && L.saved[0][1].old_mode === 'off', 'унтраалга: аргументгүй дуудвал ҮНДСЭН mode-ыг солино (өмнөх зан)');
 })());
+
+// ═══ ТООЛЛОГЫГ ТҮР ХААХ — эхний үлдэгдэл дуустал (2026-10-20, CEO) ═══════════════════════
+// Эхний үлдэгдлийг бүрэн эцэслээгүй байхад тоолбол зөрүү утгагүй гарч, нөөц засагдаж, алдагдал ашигт хүрнэ.
+// «Тооллого» ДЭЛГЭЦИЙГ хасахгүй (Эхний үлдэгдэл яг тэнд), зөвхөн шинэ тооллого эхлэх/бүртгэх/хэрэгжүүлэхийг хаана.
+(globalThis.__late = globalThis.__late || []).push((async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const prev = run('state.appConfig');
+  const setCfg = (v) => { sandbox.__v = v; run('state.appConfig = Object.assign({}, state.appConfig || {}, { stock_count_pause: __v })'); };
+  try {
+    setCfg(undefined); eq(run('stockCountPause()'), null, 'түр хаалт: тохиргоо байхгүй бол хаалтгүй (өмнөх зан)');
+    setCfg({ until: _soon(30) }); eq(run('stockCountPause()').until, _soon(30), 'түр хаалт: ирээдүйн огноо хүртэл хаалттай');
+    setCfg({ until: _soon(0) }); eq(run('stockCountPause()'), null, 'түр хаалт: өнөөдөр бол нээгдэнэ (хаалт дуусна)');
+    setCfg({ until: _soon(-5) }); eq(run('stockCountPause()'), null, 'түр хаалт: өнгөрсөн огноо = хаалтгүй');
+    setCfg({ until: 'удахгүй' }); eq(run('stockCountPause()'), null, 'түр хаалт: буруу огноо хаахгүй (чимээгүй хаалттай үлдэхгүй)');
+    // countBlockReason: хаалттай үед бүх барааг (эцэслэснийг ч) хаана
+    const sealed = { sku: 'X', stock_opened_at: 'a', stock_approved_at: 'b', stock_locked_at: 'c' };
+    sandbox.__p = sealed;
+    setCfg(undefined); eq(run('countBlockReason(__p)'), '', 'тооллого: эцэслэсэн бараа хаалтгүй үед тоологдоно (өмнөх зан)');
+    setCfg({ until: _soon(30) });
+    ok(/түр хаалттай/.test(run('countBlockReason(__p)')), '⛔ тооллого: хаалттай үед эцэслэсэн барааг ч бүртгэж/хэрэгжүүлж болохгүй');
+    ok(/түр хаалттай/.test(run('countBlockReason(null)')), 'тооллого: хаалттай үед бараагүй ч хаалттай (шалтгаан нь хаалт)');
+    // Шинэ тооллого эхлэхийг хаана (сервер рүү хандахаас ӨМНӨ)
+    let err = ''; try { await run("startStockCount('all', 'mevent')"); } catch (e) { err = String(e && e.message || e); }
+    ok(/түр хаалттай/.test(err), '⛔ тооллого: хаалттай үед шинэ тооллого ЭХЛЭХГҮЙ');
+  } finally { sandbox.__prev = prev; run('state.appConfig = __prev'); }
+
+  // Дэлгэц ба эрх
+  const idle = src.slice(src.indexOf('function renderStockCountIdle'), src.indexOf('function attachStockCountHandlers'));
+  ok(/openingBlockHtml\(canManage\)/.test(idle), '⛔ тооллого: «Эхний үлдэгдэл» хаалттай үед ч харагдана (тэр ажил үргэлжилнэ)');
+  ok(/canManage && !stockCountPause\(\)/.test(idle), 'тооллого: хаалттай үед «Шинэ тооллого эхлүүлэх» товч гарахгүй');
+  const rc = src.slice(src.indexOf('function renderStockCount()'), src.indexOf('function renderStockCountIdle'));
+  ok((rc.match(/stockCountPauseHtml\(\)/g) || []).length >= 2, 'тооллого: хаалтын тайлбар идэвхтэй сесстэй ч, сессгүй ч харагдана');
+  const ed = src.slice(src.indexOf('async function editStockCountPause'), src.indexOf('function renderStockCount()'));
+  ok(/state\.isCEO/.test(ed) && /saveAppConfig\(STOCK_COUNT_PAUSE_KEY/.test(ed), 'хаалтын огноо: зөвхөн CEO өөрчилнө');
+  const closer = src.slice(src.indexOf('async function closeStockCount'), src.indexOf('async function closeStockCount') + 1500);
+  ok(!/stockCountPause/.test(closer), 'тооллого: эхэлсэн сессийг ХААХ боломж хаалттай үед ч хэвээр (түүх хадгалагдана)');
+  ok(/'stock_count_pause'\]/.test(src.slice(src.indexOf('const APP_CONFIG_KEYS'), src.indexOf('const APP_CONFIG_KEYS') + 300)), 'хаалт: апп нээгдэхэд тохиргоо ачаалагдана (APP_CONFIG_KEYS)');
+  const rls = fs.readFileSync(path.join(__dirname, '..', 'db', 'rls.sql'), 'utf8'), sch = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
+  eq((rls.match(/when 'stock_count_pause' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д stock_count_pause → зөвхөн CEO');
+  eq((sch.match(/WHEN 'stock_count_pause'::text THEN sec\.is_ceo\(\)/g) || []).length, 3, 'эрх: schema.sql rls.sql-тэй ижил');
+})());

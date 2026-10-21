@@ -9490,3 +9490,30 @@ select.no-asar-len {
 .stc-pause { background: var(--warn-soft); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-3) var(--space-4); margin: 0 0 var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 .stc-pause-t { font-weight: 800; font-size: var(--fs-base); }
 .stc-pause-m { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
+
+/* ═══ 🔒 NOMAAD «Хувийн дансаар — гар бүртгэл» цонх (`openNomaadManualIncomeModal`) ═══
+   Өмнө нь 11 inline `style=` байв (талбар бүрт давтагдсан нэг мөр + хатуу
+   амбер өнгө тул харанхуй горимд цайвар толбо үлддэг байв — одоо семантик
+   токеноор хоёр горимд ажиллана).
+   ⚠ Тайлбарт хатуу өнгө ба чангаруулагчийн НЭРИЙГ ч бичихгүй — `debt-check.js`
+     нь түүхий файлыг хардаг тул комментод бичсэн нь ч ӨР гэж тоологдоно.
+   ⚠ Талбарын хүрээ/дэвсгэр/padding/фонт, товчны padding, шошгын фонтыг ЭНД
+     БИЧИХГҮЙ — `.modal input/label/button` flatten дүрмүүд (max-width:720 ба
+     min-width:721 = БҮХ өргөн) тэднийг чангаруулагчаар эзэмшдэг тул давтвал
+     ҮХСЭН CSS болно. Хуучин inline style ч яг тэднээр дарагдаж байсан:
+     жиш. `font-weight:600` шошго үнэндээ хэзээ ч хүчин төгөлдөр болоогүй,
+     тиймээс хасахад харагдах байдал ӨӨРЧЛӨГДӨХГҮЙ (Chromium-аар 320/390/1200px-д
+     хоёр хувилбарыг хэмжиж баталсан). Зөвхөн тэдэнд БАЙХГҮЙ зүйлийг (доод зай,
+     эгнээний байрлал) тодорхойлно.
+   ⚠ `.modal input.nim-in` гэж ХОЁР классаар — `.modal input { width:100% }`
+     нь нэг класстай сонгогчоос илүү онцлогтой тул угтваргүй бичвэл дарагдана
+     (шинэ чангаруулагч бичихгүй — онцлогоор давна). */
+.nim-sub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-2); }
+/* Баримтгүй бүртгэл гэдгийг сануулах амбер хайрцаг */
+.nim-warn {
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--r-md);
+  font-size: var(--fs-xs); color: var(--warn); line-height: 1.45;
+}
+.modal input.nim-in { width: 100%; margin: var(--space-1) 0 var(--space-2); }
+.nim-acts { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-1); }

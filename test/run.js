@@ -7280,10 +7280,14 @@ need(['orderCustType']);
   eq(F.attReqKey('99112233', '2026-09-05'), F.attReqKey('9911 2233', '2026-09-05'), 'хүсэлт: утасны формат түлхүүрт нөлөөлөхгүй');
 
   // Батлах шалгалт нь хүсэлт дотор хадгалсан inTs-ээс тооцно (сервер рүү дахин хандахгүй)
-  const stored = { day: '2026-09-05', newIn: false, inTs, inTime: '09:00', outTime: '18:00' };
+  // ⚠ `attReqApprovalCheck` нь `today`-г хүлээж авдаггүй (ОДООГИЙН өдрөөр хязгаар
+  //   тооцно) тул огноог хатуу бичвэл 45 хоногийн хязгаараас хальж тест өөрөө
+  //   хуучирна — 2026-10-21-нд яг ингэж унасан. Огноо нь САЯХНЫ байх ёстой.
+  const rDay = _soon(-4);
+  const stored = { day: rDay, newIn: false, inTs: F.attManualOutTs(rDay, '09:00'), inTime: '09:00', outTime: '18:00' };
   const av = F.attReqApprovalCheck(stored);
   ok(av.ok && av.newIn === false && av.mins === 540, 'батлах: хадгалсан inTs-ээр тооцно, «in» давхардуулахгүй');
-  const stored2 = { day: '2026-09-05', newIn: true, inTime: '09:00', outTime: '18:00' };
+  const stored2 = { day: rDay, newIn: true, inTime: '09:00', outTime: '18:00' };
   ok(F.attReqApprovalCheck(stored2).newIn === true, 'батлах: бүртгэлгүй өдөрт «in» бичлэг үүснэ');
 
   // Хусалт — ХҮЛЭЭГДЭЖ БУЙГ хэзээ ч хасахгүй (хариу аваагүй хүсэлт алга болбол хамгийн муу)
@@ -8234,6 +8238,36 @@ need(['orderCustType']);
     eq(vm.runInContext('_errLog.length', sandbox), 1, '401: токен хүчинтэй үед хэвийн бүртгэнэ');
     ok(/^load:Цалин/.test(vm.runInContext('_errLog[0]', sandbox)), 'ИНВАРИАНТ: эрхийн 401-ийг «сесс дууссан» гэж нуухгүй');
     eq(vm.runInContext('state.sessionExpired', sandbox), false, '401: эрхийн алдаа сессийг хуурамчаар дуусгахгүй');
+  }
+
+  // ── СЕРВЕР Л ШИЙДНЭ: токен хүчинтэй харагдаж байсан ч 401 = НЭГ бичлэг ─────
+  //   (2026-10-21, fp 049beb19a3e0 · 400a5b1913a2 · b4e565453174)
+  //   Утасны цаг хоцорвол `pgrstTokenValid()` «хүчинтэй» гэж хэлдэг тул дээрх
+  //   хамгаалалт ажиллахгүй: `ideas` дэлгэцийн НЭГ зочлолт 3 татац хийж, гурван
+  //   ӨӨР хүснэгт зэрэг 401 буцаасан → 3 бичлэг → 3 Issue үүссэн.
+  {
+    vm.runInContext(`
+      _errLog = []; _load401Logged = false;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      pgrstTokenValid = () => true;
+      dataLoadFailed('Дуудлагын лог', new Error('HTTP 401'));
+      dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
+      dataLoadFailed('Ажилтны санал', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('_errLog.length', sandbox), 1, 'ИНВАРИАНТ: токен хүчинтэй үед ч нэг зочлолт нэг бичлэг');
+    ok(/^load:Дуудлагын лог\|/.test(vm.runInContext('_errLog[0]', sandbox)), '401: эрхийн алдаа татацынхаа нэрээр бүртгэгдэнэ');
+    ok(/401/.test(vm.runInContext('_errLog[0]', sandbox)) && !/Дата ачаалагдсангүй/.test(vm.runInContext('_errLog[0]', sandbox)),
+       'ИНВАРИАНТ: 401-ийг «дата ачаалагдсангүй» гэж бүртгэхгүй');
+    eq(vm.runInContext('state.sessionExpired', sandbox), false, '401: токен хүчинтэй үед сесс дуусгахгүй');
+    // 401 БИШ алдаа нь хязгаарлагдахгүй — татац бүр хэвээр бүртгэгдэнэ
+    vm.runInContext(`
+      _errLog = [];
+      dataLoadFailed('Дуудлагын лог', new Error('HTTP 500'));
+      dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 500'));
+    `, sandbox);
+    eq(vm.runInContext('_errLog.length', sandbox), 2, 'ИНВАРИАНТ: 401-ийн хязгаар бусад алдааг нуухгүй');
+    ok(/Дата ачаалагдсангүй/.test(vm.runInContext('_errLog[0]', sandbox)), '500: хэвийн мессежээр бүртгэгдэнэ');
+    vm.runInContext('_load401Logged = false;', sandbox);
   }
   {
     ok(/id = 'sess-banner'/.test(src) && src.indexOf("id = 'sess-banner'") < src.indexOf("const wrap = document.getElementById('task-list')"),

@@ -387,16 +387,25 @@ let _pageUnloading = false;
 //   серверт мэдээлэхгүй. Сервер үнэхээр унасан бол мэдээлэл ч хүрэхгүй тул
 //   алдагдах дохио алга.
 const NET_BLIP_RE = /failed to fetch|fetch is aborted|load failed|networkerror|network request failed|aborted (a )?request|signal is aborted|the operation was aborted|timeout/i;
+// ⛔ НЭГ 401 = НЭГ БИЧЛЭГ, токен хүчинтэй харагдаж байсан ч (2026-10-21).
+//   `pgrstTokenValid()` нь токены `exp`-ыг УТАСНЫ цагаар шалгадаг тул цаг хоцорвол
+//   «хүчинтэй» гэж хэлнэ — сервер харин татгалзана. Тэр үед доорх хамгаалалт
+//   ажиллахгүй: `ideas` дэлгэцийн НЭГ зочлолт 3 татац хийж (дуудлагын лог ·
+//   тэмдэглэл · ажилтны санал), гурван ӨӨР хүснэгт зэрэг 401 буцааж, 3 бичлэг
+//   болж 3 Issue үүссэн (fp 049beb19a3e0 · 400a5b1913a2 · b4e565453174 — нэг
+//   ажилтан, нэг мөч). Шалтгаан нь НЭГ: сервер бидний сессийг хүлээж авсангүй.
+let _load401Logged = false;
 function dataLoadFailed(where, err) {
   if (_pageUnloading) return;                    // хуудас хаагдаж байна — таслагдсан fetch
   if (navigator && navigator.onLine === false) return;   // офлайн — хэрэглэгч мэднэ
-  if (NET_BLIP_RE.test((err && err.message) ? String(err.message) : String(err || ''))) return;
+  const _m = (err && err.message) ? String(err.message) : String(err || '');
+  if (NET_BLIP_RE.test(_m)) return;
+  const _is401 = /HTTP 401/.test(_m);
   // ⛔ 401 нь «дата ачаалагдсангүй» БИШ — НЭВТРЭЛТ дууссан (2026-10-07, амьд логоос).
   //   Нэг дэлгэц 3 татац хийдэг тул алдааны лог нэг зочлолтод 3 бичлэгээр дүүрч,
   //   хүнд «дата алга» гэж уншигдаж байв. Жинхэнэ шалтгаан нь токен хуучирсан.
   //   ⚠ Токен ХҮЧИНТЭЙ атал 401 ирвэл энэ нь ЭРХИЙН асуудал — хэвийн бүртгэнэ.
-  if (/HTTP 401/.test((err && err.message) ? String(err.message) : String(err || ''))
-      && typeof pgrstTokenValid === 'function' && !pgrstTokenValid()) {
+  if (_is401 && typeof pgrstTokenValid === 'function' && !pgrstTokenValid()) {
     if (!state.sessionExpired) {
       state.sessionExpired = true;
       state.sessionExpiredAt = (typeof fmtDateTimeUB === 'function') ? fmtDateTimeUB(new Date().toISOString()) : '';
@@ -406,10 +415,20 @@ function dataLoadFailed(where, err) {
     }
     return;
   }
+  // ⚠ ЭРХИЙН 401-ийг НУУХГҮЙ — ЭХНИЙХ нь татацынхаа нэрээр бүрэн бүртгэгдэнэ
+  //   (`load:<нэр>`), сесс дууссан гэж ТЭМДЭГЛЭХГҮЙ. Зөвхөн дараагийнх нь дахин
+  //   бичигдэхгүй — 401 бүр нэг л шалтгаантай (эрх эсвэл токен), 3 бичлэг нэмэх
+  //   мэдээлэл өгөхгүй, дунд нь байгаа ЖИНХЭНЭ алдааг живүүлнэ.
+  if (_is401) {
+    if (_load401Logged) return;
+    _load401Logged = true;
+  }
   try {
-    const m = (err && err.message) ? String(err.message) : String(err || '');
-    _reportErrToServer('Дата ачаалагдсангүй: ' + String(where || '-'),
-                       'load:' + String(where || '-'), m.slice(0, 200));
+    const w = String(where || '-');
+    // 401-ийг «дата ачаалагдсангүй» гэж нэрлэвэл хөгжүүлэгч хүснэгтийн эрхийг
+    // хөөж цаг үрнэ — шалтгааныг нь нэрлэнэ (эрх хүрэхгүй эсвэл токен хүчингүй).
+    _reportErrToServer((_is401 ? 'Эрх хүрэхгүй эсвэл нэвтрэлт хүчингүй (401): ' : 'Дата ачаалагдсангүй: ') + w,
+                       'load:' + w, _m.slice(0, 200));
   } catch (e) { /* мэдээлэх нь өөрөө унавал чимээгүй өнгөрнө — зориудынх */ }
 }
 

@@ -11386,6 +11386,18 @@ function packageInfo(p) {
     pct: (sum > 0 && price > 0) ? Math.round((1 - price / sum) * 100) : null,
   };
 }
+// Тухайн бараа аль багцад орсон (багц бүрт хэдэн ширхгээр). Odoo-ийн «Used in» — бараа өөрчлөх/архивлахаас өмнө
+// ямар багцад нөлөөлөхийг мэднэ. Архивласан бараа каталогт ирдэггүй тул багц түүнийг «олдсонгүй» гэж 0 нөөцтэй болно.
+function packagesUsing(sku) {
+  if (!sku) return [];
+  const out = [];
+  for (const p of (state.products || [])) {
+    if (!isPackage(p)) continue;
+    const c = packageComponents(p).find(x => String(x.sku) === String(sku));
+    if (c) out.push({ sku: p.sku, name: p.name, qty: Math.max(1, Number(c.qty) || 1) });
+  }
+  return out;
+}
 /* Захиалгын мөрийг АГУУЛАХЫН харцаар задална: багц бол бүрэлдэхүүн рүү, бусад нь
    хэвээр. Тооллого (гаргах/буцаан авах), гэрээний нөхөн төлбөрийн хүснэгт хоёр
    ИЖИЛ функц ашиглана. Нэг эд зүйл олон мөрөнд орвол (микрофон SILVER болон
@@ -12676,14 +12688,9 @@ function productRowHtml(p) {
 
 // Бараа бүр ТУСДАА мөр — хувилбар (variant_group) бүлэглэлт 2026-08-29-нд халагдсан:
 // сайтад нэг картад нэгтгэснээр каталог хэт цөөн бараатай харагдаж байв.
-// ⛔ Багц бараатай ХОЛИГДОХГҮЙ (2026-10-22): тусдаа бүлэг, ЭХЭНД. Нэрээр эрэмбэлэхэд
-// «Хөгжим STARTER» нь Х үсгийн дунд 270 барааны хооронд нуугддаг байв. Бүлгийн
-// гарчиг зөвхөн ХОЁР төрөл зэрэг байгаа үед л гарна (шүүлт нэг төрлийг үлдээвэл хэрэггүй).
+// Багц бараатай ХОЛИГДОХГҮЙ (2026-10-22): `renderProducts` табаар салгана (Бараа | Багц), энд ганц төрөл ирнэ.
 function productListHtml(list) {
-  const pk = list.filter(isPackage), rest = list.filter(p => !isPackage(p));
-  if (!pk.length || !rest.length) return list.map(productRowHtml).join('');
-  return `<div class="prod-grp"><div class="prod-grp-h">📦 Багц <b>${pk.length}</b></div>${pk.map(productRowHtml).join('')}</div>`
-    + `<div class="prod-grp"><div class="prod-grp-h">Бараа <b>${rest.length}</b></div>${rest.map(productRowHtml).join('')}</div>`;
+  return list.map(productRowHtml).join('');
 }
 // Багц салбарт «байна» гэдэг нь БҮХ бүрэлдэхүүн тэр салбарт нөөцтэй гэсэн үг. Багцын өөрийн
 // qty_* ҮРГЭЛЖ 0 тул `branchQty(p, k) > 0` шүүлт багцыг M-Event ленз дээр бүрмөсөн нуудаг байв.
@@ -27270,7 +27277,12 @@ function prodChoresHtml(items, open) {
   return `<details class="prod-chores" id="prod-chores"${open ? ' open' : ''}><summary class="prod-chores-sum">🧹 Цэгцлэх ажил <span class="prod-chores-n">${list.length}</span><span class="prod-chores-h">${escapeHtml(list.map(x => x.hint).join(' · '))}</span></summary><div class="prod-chores-in">${list.map(x => x.html).join('')}</div></details>`;
 }
 function renderProducts() {
-  const all = state.products || [];
+  const allProducts = state.products || [];
+  /* ТАБ: [Бараа] | [📦 Багц] (2026-10-22, CEO). Багц бол ЖОР, бараа БИШ — бодит барааны жагсаалт, тоо,
+     «өртөггүй/хуваарилаагүй» шүүлт, хөрөнгийн дүн, Excel, актлах бүгд ЗӨВХӨН бараанд хамаарна. Багц нэг жагсаалтад
+     орвол өртөг, салбар, огноо хэзээ ч нөхөгдөхгүй 8 «дутуу мэдээлэл» үүсгэнэ. `all` = тухайн табын багц. */
+  const prodTab = state.prodTab === 'packages' ? 'packages' : 'items';
+  const all = allProducts.filter(p => (prodTab === 'packages') === isPackage(p));
   // Сайтын ангиллын бүлгүүдийг нэг удаа lazy татна (dropdown-ыг сайтын бүлгээр харуулах)
   if (state.catGroups === undefined) { state.catGroups = null; loadAppConfig('mevent_category_groups').then(v => { if (Array.isArray(v) && v.length) { state.catGroups = v; render(); } }); }
   state.prodFilter = state.prodFilter || 'all';
@@ -27322,13 +27334,13 @@ function renderProducts() {
   // Улирал хаалт — NOMAAD салбар идэвхтэй (лензээр эсвэл табаар) + нөөцтэй + удирдах эрхтэй үед
   const _nomaadSum = brQtySum('nomaad');
   // Хувилбар цэвэрлэх тууз — хуучин дата дээр л гарна, цуцалмагц өөрөө алга болно
-  const _vgLeft = all.filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim()).length;
+  const _vgLeft = allProducts.filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim()).length;
   const variantClearBar = (_prodMgmt && _vgLeft > 0)
     ? prodBar('primary', `🎨 ${_vgLeft} бараа хувилбар бүлэгт байна — сайтад нэг картад нэгтгэгдэж каталог цөөн харагдана.`, `<button class="btn btn-primary prod-bar-b" id="prod-clear-variants">Хувилбар цуцлах (${_vgLeft})</button>`)
     : '';
   // Англи нэр — үнийн саналын EN хувилбарт хэрэглэнэ. Хоосон нь толиор автоматаар
   // бөглөгдөж болно (дараа нь гараар засаж болно). Багана байхгүй бол тууз гарахгүй.
-  const _noEnN = state._prodHasNameEn === false ? 0 : all.filter(p => !String(p.name_en || '').trim()).length;
+  const _noEnN = state._prodHasNameEn === false ? 0 : allProducts.filter(p => !String(p.name_en || '').trim()).length;
   const nameEnBar = (_prodMgmt && _noEnN > 0)
     ? prodBar('info', `🇬🇧 ${_noEnN} барааны англи нэр хоосон — англи үнийн саналд автомат орчуулга гарна.`, `<button class="btn btn-primary prod-bar-b" id="prod-fill-nameen">Англи нэр бөглөх (${_noEnN})</button>`)
     : '';
@@ -27336,7 +27348,7 @@ function renderProducts() {
   // Бүлэгт ороогүй ангилал — сайтын цэсэнд бүлгүүдийн доор тусдаа өлгөөтэй харагдана.
   // Хүн бараа нэмэхдээ шинэ нэр бичихэд ингэж үүсдэг байсан; одоо сонголт болсон ч
   // хуучин үлдэгдлийг ил хэлж, нэг товчоор засах зам өгнө.
-  const _orphanCats = _prodMgmt ? catOrphans(all, (Array.isArray(state.catGroups) && state.catGroups.length) ? state.catGroups : state.appCatGroups) : [];
+  const _orphanCats = _prodMgmt ? catOrphans(allProducts, (Array.isArray(state.catGroups) && state.catGroups.length) ? state.catGroups : state.appCatGroups) : [];
   const orphanBar = _orphanCats.length
     ? prodBar('warn', `🗂 <b>${_orphanCats.length}</b> ангилал сайтын бүлэгт ороогүй (${escapeHtml(_orphanCats.slice(0, 3).map(x => `${x.cat} ${x.count}ш`).join(' · '))}${_orphanCats.length > 3 ? ' …' : ''}) — mevent.mn дээр бүлгүүдийн доор тусдаа өлгөөтэй харагдана.`, `<button class="btn btn-primary prod-bar-b" id="prod-fix-cats">🗂 Бүлэгт оруулах</button>`)
     : '';
@@ -27454,37 +27466,45 @@ function renderProducts() {
       <button class="btn btn-primary ui-raw" id="prod-wo-go"${picked.length ? '' : ' disabled'}>Үргэлжлүүлэх (${picked.length})</button>
     </div>`;
   }
-  /* Ховор хэрэгслүүд (Excel · Багц · Актлах) нугалаанд — өдөр бүрийн «хайх · скан · шинэ» мөрийг цэвэр байлгана.
+  /* Ховор хэрэгслүүд (Excel · Актлах) нугалаанд — өдөр бүрийн «хайх · скан · шинэ» мөрийг цэвэр байлгана.
      ⚠ id-уудаар handler холбогддог тул нугалаанд ч DOM-д үлдэнэ. */
-  const toolsBar = `<details class="prod-tools" id="prod-tools"${state.prodToolsOpen ? ' open' : ''}><summary class="prod-tools-sum" title="Хэрэгсэл: Excel · Багц · Актлах" aria-label="Хэрэгсэл: Excel, Багц, Актлах">⋯</summary><div class="prod-tools-body">
+  const toolsBar = `<details class="prod-tools" id="prod-tools"${state.prodToolsOpen ? ' open' : ''}><summary class="prod-tools-sum" title="Хэрэгсэл: Excel · Актлах" aria-label="Хэрэгсэл: Excel, Актлах">⋯</summary><div class="prod-tools-body">
       <button class="btn" id="prod-xls" title="Дэлгэц дээр харагдаж буй барааг Excel-д татах">📊 Excel</button>
-      ${canEditProducts() ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
       ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
     </div></details>`;
   // Excel экспорт нь ХАРАГДАЖ БУЙ жагсаалтыг татна — шүүлтийн дүрмийг хоёр дахь
   // газарт давтвал дэлгэц ба файл зөрнө (нэг эх сурвалж).
   state._prodShown = list;
+  const _pkgTab = prodTab === 'packages';
+  const _nPk = allProducts.filter(isPackage).length;
+  const tabBar = `<div class="prod-tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="${!_pkgTab}" class="prod-tab${_pkgTab ? '' : ' on'}" data-prodtab="items">Бараа <b>${allProducts.length - _nPk}</b></button>
+      <button type="button" role="tab" aria-selected="${_pkgTab}" class="prod-tab${_pkgTab ? ' on' : ''}" data-prodtab="packages">📦 Багц <b>${_nPk}</b></button>
+    </div>`;
   // ── 2 ТУУЗ (урьд нь 6) ──
-  // 1: хайлт · скан · шинэ бараа   2: шүүлтүүр · тоо · хөрөнгө · салбар
-  // Эхний бараа хүртэлх зай утасны дэлгэцийн ~50%-иас ~20% болно.
+  // 1: хайлт · скан · шинэ   2: шүүлтүүр · тоо · хөрөнгө · салбар
+  // Багц таб: шүүлтүүр/хөрөнгө/Excel/актлах/скан ХАМААРАХГҮЙ (багц хөрөнгө биш, QR-гүй) — нууна.
   return `
+    ${tabBar}
     <div class="prod-toolbar">
-      <input type="search" id="prod-search" class="prod-search" placeholder="Нэр, код, ангилал…" value="${escapeHtml(state.productSearch || '')}">
-      <button class="btn" id="prod-scan" title="QR скан" aria-label="QR скан">📷<span class="prod-scan-l"> Скан</span></button>
-      ${canEditProducts() ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
+      <input type="search" id="prod-search" class="prod-search" placeholder="${_pkgTab ? 'Багцын нэр, бүрэлдэхүүн…' : 'Нэр, код, ангилал…'}" value="${escapeHtml(state.productSearch || '')}">
+      ${_pkgTab ? '' : '<button class="btn" id="prod-scan" title="QR скан" aria-label="QR скан">📷<span class="prod-scan-l"> Скан</span></button>'}
+      ${canEditProducts() ? `<button class="btn btn-primary" id="prod-new">${_pkgTab ? '+ Багц' : '+ Шинэ'}</button>` : ''}
     </div>
     ${woBar}
     <div class="prod-metabar">
-      ${filterBar}
-      <span class="prod-meta-i" id="prod-count"><b>${list.length}</b> бараа</span>
-      ${assetChip}
-      <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
-      ${toolsBar}
+      ${_pkgTab ? '' : filterBar}
+      <span class="prod-meta-i" id="prod-count"><b>${list.length}</b> ${_pkgTab ? 'багц' : 'бараа'}</span>
+      ${_pkgTab ? '' : assetChip}
+      ${_pkgTab ? '' : `<span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>`}
+      ${_pkgTab ? '' : toolsBar}
     </div>
-    ${prodChoresHtml([{ hint: 'ангилал', html: orphanBar }, { hint: 'асар', html: asarBar }, { hint: 'асрын хуучин бүртгэл', html: asarPurgeBar }, { hint: 'архив', html: archiveBar }, { hint: 'англи нэр', html: nameEnBar }, { hint: 'хувилбар', html: variantClearBar }, { hint: 'улирал', html: seasonCloseBar }], state.prodChoresOpen)}
-    ${repairBar}
-    ${reconBar}
-    <div class="prod-list">${rows ||'<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
+    ${_pkgTab ? '' : prodChoresHtml([{ hint: 'ангилал', html: orphanBar }, { hint: 'асар', html: asarBar }, { hint: 'асрын хуучин бүртгэл', html: asarPurgeBar }, { hint: 'архив', html: archiveBar }, { hint: 'англи нэр', html: nameEnBar }, { hint: 'хувилбар', html: variantClearBar }, { hint: 'улирал', html: seasonCloseBar }], state.prodChoresOpen)}
+    ${_pkgTab ? '' : repairBar}
+    ${_pkgTab ? '' : reconBar}
+    <div class="prod-list">${rows || (_pkgTab
+      ? '<div class="orders-empty"><div class="icon">📦</div>Багц алга. «+ Багц» дарж нэмнэ үү.</div>'
+      : '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>')}</div>
   `;
 }
 
@@ -27542,6 +27562,7 @@ function openProductModal(p, opts) {
   // Салбарын нөөцийн анхны утга — шинэ/түрээсийн бол бүгд M-Event, asset бол Чимун
   // Багцын нөөц DB-д хадгалагддаггүй — бүрэлдэхүүнээс тухайн агшинд бодно.
   const _isPkg0 = isEdit && isPackage(p);
+  const _usedIn = (isEdit && !_isPkg0) ? packagesUsing(p.sku) : [];   // энэ бараа аль багцад орсон
   const _st0 = _isPkg0 ? packageStock(p) : (isEdit ? (Number(p.stock) || 0) : 1);
   /* 🔒 Эцэслэгдсэн бараа — тоон талбарууд ТҮГЖИГДЭНЭ. Хориг нь `saveProduct`-д
      (ганц бичих цэг) байгаа ч хүн бичээд дарсны ДАРАА алдаа харахаас илүү
@@ -27571,6 +27592,7 @@ function openProductModal(p, opts) {
     <div class="modal pm-modal">
       <h2>${isEdit ? (isPackage(p) ? 'Багц засах' : 'Бараа засах') : (asPkg ? 'Шинэ багц' : 'Шинэ бараа')}</h2>
       ${isEdit && (u.orders || (cost && !isPackage(p))) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost && !isPackage(p) ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b class="pm-roi ${roi >= 100 ? 'ok' : 'warn'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
+      ${_usedIn.length ? `<div class="pm-used">📦 <b>${_usedIn.length} багцад орсон:</b> ${_usedIn.map(x => `${escapeHtml(x.name)}${x.qty > 1 ? ` ×${x.qty}` : ''}`).join(' · ')}</div>` : ''}
       <div class="pm-menu" data-pmpane="menu">
         ${_pkgMode ? `<button type="button" class="pm-menu-row ui-raw" data-pmgo="price"><span class="pm-menu-i">${_pkgMode ? '📦' : '🏷'}</span><span class="pm-menu-t">${_pkgMode ? 'Бүрэлдэхүүн ба үнэ' : 'Түрээсийн үнэ'}<em>${_pkgMode ? `${(p && packageComponents(p).length) || 0} бараа · ` : ''}${Number(p && p.price) > 0 ? `${fmtMoneyShort(Number(p.price))}/өдөр` : 'үнэ оруулаагүй'}</em></span>${_pcanHtml('price')}</button>
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="cat"><span class="pm-menu-i">📷</span><span class="pm-menu-t">Каталог<em>${escapeHtml(p && p.category || 'ангилал сонгоогүй')}${_nImg ? ` · ${_nImg} зураг` : ' · зураггүй'}</em></span>${_pcanHtml('catalog')}</button>
@@ -27621,7 +27643,7 @@ function openProductModal(p, opts) {
         <div class="pm-pane-t">${_pkgMode ? '📦 Бүрэлдэхүүн ба үнэ' : '🏷 Түрээсийн үнэ'}</div>
         <div class="pm-lock" data-lockhint="price" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
 ${_pkgMode ? `
-      <label class="pm-rentable"${_pkgMode ? ' hidden' : ''}>
+      <label class="pm-rentable" hidden>
         <input type="checkbox" id="pm-ispackage" ${isPackage(p) || asPkg ? 'checked' : ''}>
         <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
       </label>
@@ -27641,7 +27663,7 @@ ${_pkgMode ? `
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span class="pm-sub">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
         </div>
-      <label class="pm-rentable"${_pkgMode ? ' hidden' : ''}>
+      <label class="pm-rentable" hidden>
         <input type="checkbox" id="pm-ispackage" ${isPackage(p) || asPkg ? 'checked' : ''}>
         <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
       </label>
@@ -27999,8 +28021,10 @@ ${_pkgMode ? `
   const _arch = modal.querySelector('#pm-archive');
   if (_arch) _arch.onclick = async () => {
     // ⚠ ХАТУУ УСТГАЛ БИШ. archived=true болгоно — захиалгын түүх, тайлан хэвээр.
+    const _used = packagesUsing(p.sku);
     const ok = await showConfirm(
       `«${p.name}» барааг архивлах уу?\n\n`
+      + (_used.length ? `⚠ Энэ бараа ${_used.length} багцад орсон: ${_used.map(x => x.name).join(', ')}.\nАрхивлавал тэдгээр багцын нөөц 0 болж, захиалга авч чадахгүй болно.\n\n` : '')
       + '· Каталог болон mevent.mn сайтаас алга болно\n'
       + '· Захиалгын түүх, тайлан ХЭВЭЭР үлдэнэ\n'
       + '· Дата устахгүй — «🗄 Архивласан» жагсаалтаас сэргээж болно',
@@ -28147,13 +28171,9 @@ function attachProductsHandlers() {
       row.style.display = show ? '' : 'none';
       if (show) n++;
     });
-    // Багц/Бараа бүлэг бүгдээрээ нуугдсан бол гарчгийг нь ч нууна
-    document.querySelectorAll('.prod-grp').forEach(g => {
-      g.style.display = [...g.querySelectorAll('.prod-row')].some(r => r.style.display !== 'none') ? '' : 'none';
-    });
     const c = document.getElementById('prod-count');
     // <b>-г хадгална (мета мөр тоог тодоор харуулдаг) — textContent бол устгана
-    if (c) c.innerHTML = `<b>${n}</b> бараа${q ? ' <span class="prod-meta-dim">(шүүсэн)</span>' : ''}`;
+    if (c) c.innerHTML = `<b>${n}</b> ${state.prodTab === 'packages' ? 'багц' : 'бараа'}${q ? ' <span class="prod-meta-dim">(шүүсэн)</span>' : ''}`;
   };
   // Мөр дээр дарж дэлгэрэнгүй/засах модал нээх (актлах горимд — сонгоно)
   document.querySelectorAll('[data-product-open]').forEach(row => {
@@ -28186,8 +28206,14 @@ function attachProductsHandlers() {
   });
   document.getElementById('prod-wo-go')?.addEventListener('click', () => openBulkWriteoffModal(state.prodWoSel || []));
   // Шинэ бараа → хоосон модал
-  document.getElementById('prod-new')?.addEventListener('click', () => openProductModal(null));
-  document.getElementById('prod-new-pkg')?.addEventListener('click', () => openProductModal(null, { asPackage: true }));
+  document.getElementById('prod-new')?.addEventListener('click', () => openProductModal(null, state.prodTab === 'packages' ? { asPackage: true } : undefined));
+  // Багц таб дээр «+ Багц» нь шууд багц үүсгэнэ (чагт хайх шаардлагагүй)
+  document.querySelectorAll('[data-prodtab]').forEach(b => b.addEventListener('click', () => {
+    const t = b.dataset.prodtab === 'packages' ? 'packages' : 'items';
+    if (state.prodTab === t) return;
+    state.prodTab = t; state.productSearch = ''; state.prodWoSel = null;   // хайлт/актлах сонголт нөгөө табд хамаарахгүй
+    render();
+  }));
   document.getElementById('prod-groups')?.addEventListener('click', () => openCategoryGroupsModal());
   document.getElementById('prod-fix-cats')?.addEventListener('click', () => openCategoryGroupsModal());
   // QR скан → бараа таних
@@ -31920,6 +31946,7 @@ function openNewOrder(editOrder) {
 
 // ── Бараа сонгох popup (захиалгын модалаас) — бүх дэлгэцийг ашиглаж, том дүрс + ангиллын шүүлт +
 // тоо ширхэгийг картан дээр нь шууд оруулна. Жижиг inline каталогоос олон бараа сонгоход хурдан. ──
+const PICK_PKG_CHIP = '__pkg';   // ангилалтай мөргөлдөхгүй тусгай түлхүүр
 function openOrderProductPicker(opt) {
   const all = (state.products || []).filter(p => isRentable(p));
   const keyOf = p => p.sku || p.name;
@@ -31927,6 +31954,7 @@ function openOrderProductPicker(opt) {
   (opt.items || []).forEach(it => { const k = it.sku || it.name; if (k) cart.set(k, Number(it.qty) || 0); });
   const cats = Array.from(new Set(all.map(p => String(p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'mn'));
   let cat = '', q = '';
+  const nPk = all.filter(isPackage).length;   // «📦 Багц» чип — багцыг ангиллаас үл хамааран нэг дор (Booqable-ийн «Bundles» таб шиг)
 
   const wrap = document.createElement('div');
   wrap.className = 'no-pick';
@@ -31934,7 +31962,7 @@ function openOrderProductPicker(opt) {
     <div class="no-pick-head"><h3>📦 Бараа сонгох</h3><button class="btn" id="np-x" style="padding:5px 10px;">✕</button></div>
     <div class="no-pick-tools">
       <div class="no-search">🔍<input type="search" id="np-q" placeholder="Бараа хайх — нэр / ангилал / SKU" autocomplete="off"></div>
-      <div class="no-chips" id="np-cats"><button type="button" class="no-chip on" data-cat="">Бүгд (${all.length})</button>${cats.map(c => `<button type="button" class="no-chip" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
+      <div class="no-chips" id="np-cats"><button type="button" class="no-chip on" data-cat="">Бүгд (${all.length})</button>${nPk ? `<button type="button" class="no-chip" data-cat="${PICK_PKG_CHIP}">📦 Багц (${nPk})</button>` : ''}${cats.map(c => `<button type="button" class="no-chip" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
     </div>
     <div class="no-pick-body"><div class="no-pick-grid" id="np-grid"></div></div>
     <div class="no-pick-foot"><span class="no-pick-count" id="np-count"></span><button class="btn" id="np-cancel">Болих</button><button class="btn btn-primary" id="np-ok">✓ Оруулах</button></div>
@@ -31947,7 +31975,7 @@ function openOrderProductPicker(opt) {
   const grid = $('#np-grid');
   function shown() {
     const t = q.toLowerCase();
-    return all.filter(p => (!cat || String(p.category || '').trim() === cat)
+    return all.filter(p => (!cat || (cat === PICK_PKG_CHIP ? isPackage(p) : String(p.category || '').trim() === cat))
       && (!t || (p.name || '').toLowerCase().includes(t) || (p.category || '').toLowerCase().includes(t)
         || (p.sku || '').toLowerCase().includes(t) || (p.code || '').toLowerCase().includes(t)));
   }
@@ -36822,7 +36850,7 @@ function attachHistoryHandlers() {
   document.querySelectorAll('[data-hist-oh]').forEach(b => b.addEventListener('click', () => openOffHoursFeeOrders()));
   // «Өртөг оруулаагүй» → Бараа хуудсанд тэр шүүлттэйгээр шууд очно (гараар хайх шаардлагагүй)
   document.getElementById('hist-nocost')?.addEventListener('click', () => {
-    state.view = 'products'; state.prodMissing = 'nocost'; state.prodCategory = 'all'; state.productSearch = '';
+    state.view = 'products'; state.prodTab = 'items'; state.prodMissing = 'nocost'; state.prodCategory = 'all'; state.productSearch = '';
     render();
     showToast('Өртөг оруулаагүй бараа — мөр дарж «Өртөг» хэсэгт бичнэ үү', 'info', 3500);
   });

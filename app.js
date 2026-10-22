@@ -23511,17 +23511,17 @@ function openNomaadManualIncomeModal(o) {
     modal.className = 'modal-bg'; modal.id = 'nim-modal';
     modal.innerHTML = `<div class="modal modal-sm">
       <h2>🔒 Хувийн дансаар — гар бүртгэл</h2>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">${escapeHtml(o.company || '')} · ${escapeHtml(o.quote_no || '')}</div>
-      <div style="background:rgba(245,158,11,.12);border:1px solid var(--warn);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11.5px;color:var(--warn);">Захирлын хувийн дансруу орсон төлбөр — баримт шаардахгүй. Дүн/огноог зөв оруулна уу. Үлдэгдэл: <b>${fmtMoney(bal)}</b></div>
-      <label style="font-size:12px;font-weight:600;">Дүн (₮)</label>
-      <input id="nim-amount" type="number" inputmode="numeric" placeholder="0" style="width:100%;margin:4px 0 10px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:15px;box-sizing:border-box;" />
-      <label style="font-size:12px;font-weight:600;">Огноо</label>
-      <input id="nim-date" type="date" value="${todayS}" style="width:100%;margin:4px 0 10px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;" />
-      <label style="font-size:12px;font-weight:600;">Тайлбар (хэн/юугаар)</label>
-      <input id="nim-note" type="text" placeholder="ж: бэлнээр / хувийн Хаан данс / нэр" style="width:100%;margin:4px 0 14px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;" />
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn" id="nim-cancel" style="padding:8px 16px;">Болих</button>
-        <button class="btn btn-primary" id="nim-save" style="padding:8px 16px;">Бүртгэх</button>
+      <div class="nim-sub">${escapeHtml(o.company || '')} · ${escapeHtml(o.quote_no || '')}</div>
+      <div class="nim-warn">Захирлын хувийн дансруу орсон төлбөр — баримт шаардахгүй. Дүн/огноог зөв оруулна уу. Үлдэгдэл: <b>${fmtMoney(bal)}</b></div>
+      <label>Дүн (₮)</label>
+      <input id="nim-amount" class="nim-in" type="number" inputmode="numeric" placeholder="0" />
+      <label>Огноо</label>
+      <input id="nim-date" class="nim-in" type="date" value="${todayS}" />
+      <label>Тайлбар (хэн/юугаар)</label>
+      <input id="nim-note" class="nim-in" type="text" placeholder="ж: бэлнээр / хувийн Хаан данс / нэр" />
+      <div class="nim-actions">
+        <button class="btn nim-btn" id="nim-cancel">Болих</button>
+        <button class="btn btn-primary nim-btn" id="nim-save">Бүртгэх</button>
       </div>
     </div>`;
     document.body.appendChild(modal);

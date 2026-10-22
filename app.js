@@ -11398,6 +11398,33 @@ function packagesUsing(sku) {
   }
   return out;
 }
+/* Багц ХАДГАЛАХЫН ӨМНӨХ заавал шалгуур (2026-10-22, CEO: «ангилал гэх мэт заавал сонгодог байж болох уу»).
+   Эхний таарсан алдааг `{pane, field, msg}` буцаана, зөв бол null. ЦЭВЭР — тестлэгдэнэ.
+   · ангилал: сайтад хаана харагдахыг тодорхойлно (хоосон бол ангилалгүй хадгалагдаж сайтад төөрнө)
+   · үнэ > 0: үнэгүй багц mevent.mn-д харагдахгүй (`public_catalog`: price > 0)
+   · нэг бараа ХОЁР мөрөнд орвол нөөцийг давхар тоолж (мөр бүрийг тусад нь), «хязгаарлагч» буруу гарна
+   · зураг заавал БИШ (бараатай ижил — шинэ барааны зураг ч заавал биш)
+   `checkPrice: false` = үнийн эрхгүй хүн (каталог л засдаг) — үнэ/бүрэлдэхүүнийг хөндөх эрхгүй тул тэдгээрээр хориглохгүй. */
+function packageSaveBlock(f) {
+  f = f || {};
+  if (!String(f.name || '').trim()) return { pane: 'cat', field: '#pm-name', msg: 'Нэр оруулна уу' };
+  if (!String(f.cat || '').trim()) return { pane: 'cat', field: '#pm-cat', msg: 'Багцын ангилал сонгоно уу — сайтад хаана харагдахыг тодорхойлно' };
+  if (f.checkPrice === false) return null;
+  const rows = Array.isArray(f.bundle) ? f.bundle : [];
+  if (!rows.length) return { pane: 'price', field: '#pm-bundle-add', msg: 'Багцад дор хаяж нэг бараа нэмнэ үү' };
+  const bad = rows.filter(c => !c || !c.sku).length;
+  if (bad) return { pane: 'price', field: '#pm-bundle-add', msg: `Багцын ${bad} мөрд бараа сонгогдоогүй байна — жагсаалтаас сонгоно уу` };
+  const seen = new Set();
+  for (const c of rows) {
+    if (seen.has(String(c.sku))) {
+      const cp = productBySku(c.sku);
+      return { pane: 'price', field: '#pm-bundle-add', msg: `«${cp ? cp.name : c.sku}» багцад 2 удаа орсон — тоог нэг мөрөнд нэгтгэнэ үү` };
+    }
+    seen.add(String(c.sku));
+  }
+  if (!(Number(f.price) > 0)) return { pane: 'price', field: '#pm-price', msg: 'Багцын үнэ оруулна уу — үнэгүй багц сайтад харагдахгүй' };
+  return null;
+}
 /* Захиалгын мөрийг АГУУЛАХЫН харцаар задална: багц бол бүрэлдэхүүн рүү, бусад нь
    хэвээр. Тооллого (гаргах/буцаан авах), гэрээний нөхөн төлбөрийн хүснэгт хоёр
    ИЖИЛ функц ашиглана. Нэг эд зүйл олон мөрөнд орвол (микрофон SILVER болон
@@ -27613,7 +27640,7 @@ function openProductModal(p, opts) {
         <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label class="pm-wide">Англи нэр <span class="pm-sub">(үнийн саналын EN хувилбарт)</span><input id="pm-nameen" value="${v('name_en')}" placeholder="${escapeHtml(p && p.name ? enText(p.name) : 'English name')}"></label>
-        <label>Ангилал<select id="pm-cat">${catSelectOpts(p && p.category)}</select></label>
+        <label>Ангилал${_pkgMode ? ' *' : ''}<select id="pm-cat">${catSelectOpts(p && p.category)}</select></label>
         <label>Код <span class="pm-sub">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" class="pm-ro" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly></label>
         <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
         <label class="pm-wide">🔗 Гарал үүсэл (хаанаас авсан)${/^https?:\/\//.test((p && (p.source_url || p.supplier)) || '') ? ` <a class="pm-link" href="${escapeHtml(p.source_url || p.supplier)}" target="_blank" rel="noopener">нээх ↗</a>` : ''}<input id="pm-source" value="${escapeHtml((p && (p.source_url || p.supplier)) || '')}" placeholder="ж: taobao/1688 линк, дэлгүүр, Монголоос г.м."></label>
@@ -27655,7 +27682,7 @@ ${_pkgMode ? `
       </div>
 
         <div class="pm-grid">
-        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
+        <label>Түрээсийн үнэ (₮) *<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span class="pm-sub">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
         </div>` : `        <div class="pm-grid">
@@ -28052,14 +28079,14 @@ async function submitProductModal(modal, orig, btn) {
   const images = (modal._images || []).filter(Boolean);
   const isPkg = !!modal.querySelector('#pm-ispackage')?.checked;
   const isSvc = !isPkg && !!modal.querySelector('#pm-isservice')?.checked;
-  const bundle = isPkg ? (modal._bundle || []).filter(c => c.sku) : [];
-  if (isPkg && !bundle.length) { modal._pmGo?.('price'); showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
-  // ⚠ Таарахгүй мөрийг ЧИМЭЭГҮЙ хаяхгүй — өмнө нь бичсэн нэр бараатай таараагүй бол
+  // ⚠ Таарахгүй мөрийг ЧИМЭЭГҮЙ хаяхгүй (`packageSaveBlock` хаана) — өмнө нь бичсэн нэр бараатай таараагүй бол
   // filter(c => c.sku) түүнийг устгаад хэрэглэгч мэдэлгүй багц дутуу хадгалагдаж байв.
   if (isPkg) {
-    const bad = (modal._bundle || []).filter(c => !c.sku).length;
-    if (bad) { modal._pmGo?.('price'); showToast(`Багцын ${bad} мөрд бараа сонгогдоогүй байна — жагсаалтаас сонгоно уу`, 'warn', 4500); return; }
+    const blk = packageSaveBlock({ name, cat, bundle: modal._bundle || [], price: moneyVal(modal.querySelector('#pm-price')), checkPrice: canProductPart('price') });
+    if (blk) { modal._pmGo?.(blk.pane); modal.querySelector(blk.field)?.focus(); showToast(blk.msg, 'warn', 4000); return; }
   }
+  // Зөвхөн sku/тоо хадгална — засах цонхны түр талбар (`_typed`) DB-д орохгүй
+  const bundle = isPkg ? (modal._bundle || []).filter(c => c.sku).map(c => ({ sku: c.sku, qty: Math.max(1, Number(c.qty) || 1) })) : [];
   // Шинэ бараанд нэгж өртөг ЗААВАЛ (багц=бүрэлдэхүүнээс, үйлчилгээ=өртөггүй тул хасна)
   if (!orig && !isPkg && !isSvc && !(moneyVal(modal.querySelector('#pm-cost')) > 0)) {
     modal._pmGo?.('cost');

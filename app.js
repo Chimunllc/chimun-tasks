@@ -11350,6 +11350,73 @@ function packageStock(p) {
   for (const c of cs) { const cp = productBySku(c.sku); if (!cp) return 0; m = Math.min(m, Math.floor(workingStock(cp) / Math.max(1, Number(c.qty) || 1))); }
   return isFinite(m) ? m : 0;
 }
+/* ─── БАГЦ = ЖОР, бүтээгдэхүүн БИШ (2026-10-22, CEO) ─────────────────────────
+   Харилцагч багцыг НЭГ зүйл гэж харна (санал, гэрээ, нэхэмжлэх нэг мөр, нэг үнэ).
+   Агуулах эд зүйлсээр нь харна: тоолох, буцаан авах, алдагдал, гэрээний нөхөн
+   төлбөр бүгд БҮРЭЛДЭХҮҮН дээр. Багц өөрөө өртөг, нөөц, салбар, үнэлгээгүй.
+   ⛔ Багцыг агуулахын тооллогод нэг мөр болгож БОЛОХГҮЙ — нэг микрофон дутвал
+     аль нь дутсан нь мэдэгдэхгүй, багц өртөггүй тул алдагдал 0₮ болно.
+   ⛔ Багцын ҮНЭ гараар тогтоно (790,000 гэх дугуй тоо маркетингт хэрэгтэй).
+     Харин бүрэлдэхүүний нийлбэрээс `pct` хувиар хэр хямд/үнэтэйг ҮРГЭЛЖ ил
+     харуулна — `pct < 0` бол багц тусад нь авснаасаа үнэтэй (алдаа). */
+function packageInfo(p) {
+  if (!isPackage(p)) return null;
+  const parts = packageComponents(p).map(c => {
+    const cp = productBySku(c.sku);
+    const q = Math.max(1, Number(c.qty) || 1);
+    const have = cp ? workingStock(cp) : 0;
+    return { sku: c.sku, name: cp ? cp.name : String(c.sku), qty: q, price: cp ? (Number(cp.price) || 0) : 0,
+             found: !!cp, have, sets: Math.floor(have / q) };
+  });
+  const sum = parts.reduce((s, x) => s + x.price * x.qty, 0);
+  const price = Number(p.price) || 0;
+  const missing = parts.filter(x => !x.found);
+  // Хязгаарлагч = хамгийн цөөн иж бүрдэл гаргадаг бүрэлдэхүүн. Бусад нь түүнээс
+  // илүү бол л утгатай (бүгд тэнцүү бол «хязгаарлагч» гэж нэрлэх хэрэггүй).
+  let limiter = null;
+  if (parts.length > 1) {
+    const m = parts.reduce((a, x) => (x.sets < a.sets ? x : a), parts[0]);
+    if (parts.some(x => x.sets > m.sets)) limiter = m;
+  }
+  return {
+    parts, sum, price, missing, limiter,
+    stock: missing.length ? 0 : (parts.length ? Math.min(...parts.map(x => x.sets)) : 0),
+    // Хямдралын хувь: эерэг = багцаар хямд, сөрөг = багц тусад нь авснаас ҮНЭТЭЙ.
+    // Үнэ эсвэл бүрэлдэхүүний үнэ байхгүй бол null (0% биш — «хямдралгүй» гэж уншигдана).
+    pct: (sum > 0 && price > 0) ? Math.round((1 - price / sum) * 100) : null,
+  };
+}
+/* Захиалгын мөрийг АГУУЛАХЫН харцаар задална: багц бол бүрэлдэхүүн рүү, бусад нь
+   хэвээр. Тооллого (гаргах/буцаан авах), гэрээний нөхөн төлбөрийн хүснэгт хоёр
+   ИЖИЛ функц ашиглана. Нэг эд зүйл олон мөрөнд орвол (микрофон SILVER болон
+   GOLD багцад) sku-аар НЭГТГЭНЭ — нярав нэг овоолгыг нэг удаа тоолно.
+   `pkg` нь тоо БҮХЭЛДЭЭ багцаас ирсэн үед л бичигдэнэ. Цэвэр функц (state-ээс
+   зөвхөн каталог уншина) — тестлэгдэнэ. */
+function expandOrderLines(items) {
+  const rows = [], idx = {};
+  const add = (sku, name, qty, pkg) => {
+    const key = sku ? 's:' + sku : 'n:' + _normProdName(name);
+    let r = idx[key];
+    if (!r) { r = idx[key] = { sku, name, qty: 0, own: 0, pkgs: [] }; rows.push(r); }
+    r.qty += qty;
+    if (pkg) { if (!r.pkgs.includes(pkg)) r.pkgs.push(pkg); } else r.own += qty;
+  };
+  for (const it of (items || [])) {
+    if (!it || !it.name) continue;
+    const p = productOf(it);
+    const q = Math.max(0, Number(it.qty) || 0);
+    const comps = (p && isPackage(p)) ? packageComponents(p) : [];
+    if (comps.length) {
+      for (const c of comps) {
+        const cp = productBySku(c.sku);
+        add(String(c.sku), cp ? cp.name : String(c.sku), q * Math.max(1, Number(c.qty) || 1), p.name || 'Багц');
+      }
+    } else {
+      add(p ? p.sku : (it.sku || ''), it.name, q, '');
+    }
+  }
+  return rows.map(r => ({ sku: r.sku, name: r.name, qty: r.qty, pkg: r.own === 0 ? r.pkgs.join(', ') : '' }));
+}
 // ⚠ Нэрээр хайх нь нөөцийн шалгалтыг ТОЙРДОГ байв (2026-09-03). Сайт хуучирсан нэр
 // илгээвэл productByName олдохгүй → null → «Хүрэлцэхгүй» анхааруулга ОГТ гарахгүй.
 // bookedQtyForRange нь аль хэдийн productOf-оор канонждог тул хайх тал ч ижил байх ёстой.
@@ -12494,12 +12561,40 @@ function productAge(dateStr) {
   if (mo > 0) return `${mo} сар`;
   return `${Math.max(0, Math.floor((now - then) / 86400000))} хоног`;
 }
+// Багцын картын «дотор нь» мөр: 2× Line Array · 1× KS28 сабвүфер · … (бүрэлдэхүүн ОЛДООГҮЙ бол ⚠).
+function packageBundleHtml(pk) {
+  if (!pk || !pk.parts.length) return '<div class="prod-bundle bad">⚠ Бүрэлдэхүүнгүй багц</div>';
+  return `<div class="prod-bundle">${pk.parts.map(x =>
+    `<span class="pb-i${x.found ? '' : ' bad'}"><b>${x.qty}×</b> ${escapeHtml(x.name)}</span>`).join('')}</div>`;
+}
+// «Хязгаарлагч» зөвхөн нөөц БАГА үед хэрэгтэй (аль бүрэлдэхүүн нөөцийг барьж байгааг хэлнэ).
+// 21 багц сул байхад нэрлэх нь чимээ — карт тэр бүр урт болно.
+const PACKAGE_LIMITER_MAX = 3;
+function packageLimiterShown(pk) { return !!(pk && pk.limiter && pk.stock <= PACKAGE_LIMITER_MAX); }
+// Багцын дохио: тусад нь авбал / багцаар / хувь, хязгаарлагч, дутагдал. ЦЭВЭР (pk-аас л).
+function packageSigHtml(pk) {
+  if (!pk) return '';
+  const out = [];
+  if (pk.missing.length) {
+    out.push(`<span class="sig sig-bad">⚠ олдоогүй бүрэлдэхүүн ${pk.missing.length}</span>`);
+  } else if (pk.pct == null) {
+    out.push('<span class="sig sig-bad">Багцын үнэ оруулаагүй</span>');
+  } else if (pk.pct < 0) {
+    // Багц тусад нь авснаасаа ҮНЭТЭЙ — харилцагч бүрэлдэхүүнийг тусад нь авбал хямд. Алдаа.
+    out.push(`<span class="sig sig-bad">⚠ Тусад нь <b>${fmtMoneyShort(pk.sum)}</b> — багц <b>${-pk.pct}%</b> үнэтэй</span>`);
+  } else {
+    out.push(`<span class="sig">Тусад нь <b>${fmtMoneyShort(pk.sum)}</b> · багцаар <b>${pk.pct}%</b> хямд</span>`);
+  }
+  if (packageLimiterShown(pk)) out.push(`<span class="sig${pk.stock === 0 ? ' sig-bad' : ''}">Хязгаарлагч: <b>${escapeHtml(pk.limiter.name)}</b> (${pk.limiter.have}ш${pk.limiter.qty > 1 ? ` ÷ ${pk.limiter.qty}` : ''})</span>`);
+  return out.join('');
+}
 function productRowHtml(p) {
   const img = p.photo
     ? `<img src="${escapeHtml(p.photo)}" loading="lazy" onerror="this.style.visibility='hidden'">`
     : '<div class="ph">📦</div>';
   const rentable = isRentable(p);
   const pkg = isPackage(p);
+  const pk = pkg ? packageInfo(p) : null;
   const u = productUtilization(p.name);
   const cost = (state.productCosts || {})[p.sku] || 0;
   // Салбар сонгосон/түгжсэн үед "Нөөц" нь ТУХАЙН САЛБАРЫН тоог харуулна (нийт биш)
@@ -12509,12 +12604,12 @@ function productRowHtml(p) {
   const broken = Number(p.broken) || 0, maint = Number(p.maintenance) || 0;
   const invested = cost * (Number(p.stock) || 0);   // нэгж өртөг × нөөц
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;   // өртгөө хэдэн % нөхсөн
-  const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''} ${p.code || ''} ${(p.code || '').replace(/-/g, '')}`.toLowerCase();
+  const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''} ${p.code || ''} ${(p.code || '').replace(/-/g, '')}${pk ? ' ' + pk.parts.map(x => x.name).join(' ') : ''}`.toLowerCase();   // багц: бүрэлдэхүүний нэрээр ч олдоно
 
   // ── Мета мөр (саарал): ангилал · Код (M-xxx) · нас · эх сурвалж ──
   const codeStr = p.code ? `<b>${escapeHtml(p.code)}</b>` : `SKU ${escapeHtml(p.sku || '—')}`;
   const metaParts = [escapeHtml(p.category || '—'), codeStr];
-  if (pkg) metaParts.push(`${packageComponents(p).length} барааны багц`);
+  if (pkg) metaParts.push(`${pk.parts.length} барааны багц`);
   if (p.purchase_date) { const _age = productAge(p.purchase_date); if (_age) metaParts.push(`${_age} ашигласан`); }
   { const _org = (p.source_url || p.supplier || '').trim(); if (_org) { const _u = /^https?:\/\//.test(_org); metaParts.push(_u ? 'Онлайн эх сурвалж' : escapeHtml(_org.length > 20 ? _org.slice(0, 20) + '…' : _org)); } }
   { const _m = (p.media_url || '').trim(); if (/^https?:\/\//.test(_m)) metaParts.push(`<a class="prod-media" href="${escapeHtml(_m)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Бичлэг üзэх</a>`.replace('üзэх', 'үзэх')); }
@@ -12529,10 +12624,12 @@ function productRowHtml(p) {
     // Ажилтанд хэрэгтэй нь нөөц, эвдрэл, салбар — мөнгө биш
     if (!pkg && (broken || maint)) sig.push(`<span class="sig sig-bad">${broken ? broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? maint + ' засварт' : ''}</span>`);
     if (!pkg && !_actBranch) sig.push(`<span class="sig">${branchStockHtml(p)}</span>`);
+    // Багцад ажилтанд хэрэгтэй нь юу нөөцийг хязгаарлаж байгаа (мөнгө БИШ)
+    if (packageLimiterShown(pk)) sig.push(`<span class="sig${pk.stock === 0 ? ' sig-bad' : ''}">Хязгаарлагч: <b>${escapeHtml(pk.limiter.name)}</b></span>`);
   } else if (pkg) {
-    // Багц нь өөрийн өртөг/хөрөнгөгүй — бүрэлдэхүүн бүр дээрээ тооцогдоно.
-    // «Өртөг оруулаагүй» гэж бичвэл байхгүй дутагдлыг зассан мэт харагдана.
-    sig.push('<span class="sig sig-empty">Өртөг — бүрэлдэхүүнээр</span>');
+    // Багц нь өөрийн өртөг/хөрөнгөгүй — бүрэлдэхүүн бүр дээрээ тооцогдоно (өртгийн
+    // мөр ОРООГҮЙ). Оронд нь хамгийн хэрэгтэй нь: тусад нь авбал хэд, хэр хямд.
+    sig.push(packageSigHtml(pk));
   } else if (cost > 0) {
     const _cq = _actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0);
     sig.push(_cq > 1
@@ -12565,10 +12662,11 @@ function productRowHtml(p) {
     <div class="prod-main">
       <div class="prod-name-d">${escapeHtml(p.name || '(нэргүй)')}</div>
       <div class="prod-sub">${metaParts.join(' · ')}</div>
+      ${pkg ? packageBundleHtml(pk) : ''}
       <div class="prod-signals">${sig.join('')}</div>
     </div>
     <div class="prod-badges">
-      <span class="prod-stock-b${partial ? ' part' : ''}">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}${stock}${partial ? `/${totalStock}` : ''} ширхэг</span>
+      <span class="prod-stock-b${partial ? ' part' : ''}">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}${stock}${partial ? `/${totalStock}` : ''} ${pkg ? 'багц' : 'ширхэг'}</span>
       <div class="prod-price"><b>${fmtMoneyShort(Number(p.price) || 0)}</b><span>түрээс/өдөр</span></div>
       ${typeBadge}
       ${(!pkg && canProductPart('stock')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id || p.sku)}" title="Салбар хооронд шилжүүлэх" aria-label="Салбар хооронд шилжүүлэх">⇄</button>` : ''}
@@ -12578,8 +12676,20 @@ function productRowHtml(p) {
 
 // Бараа бүр ТУСДАА мөр — хувилбар (variant_group) бүлэглэлт 2026-08-29-нд халагдсан:
 // сайтад нэг картад нэгтгэснээр каталог хэт цөөн бараатай харагдаж байв.
+// ⛔ Багц бараатай ХОЛИГДОХГҮЙ (2026-10-22): тусдаа бүлэг, ЭХЭНД. Нэрээр эрэмбэлэхэд
+// «Хөгжим STARTER» нь Х үсгийн дунд 270 барааны хооронд нуугддаг байв. Бүлгийн
+// гарчиг зөвхөн ХОЁР төрөл зэрэг байгаа үед л гарна (шүүлт нэг төрлийг үлдээвэл хэрэггүй).
 function productListHtml(list) {
-  return list.map(productRowHtml).join('');
+  const pk = list.filter(isPackage), rest = list.filter(p => !isPackage(p));
+  if (!pk.length || !rest.length) return list.map(productRowHtml).join('');
+  return `<div class="prod-grp"><div class="prod-grp-h">📦 Багц <b>${pk.length}</b></div>${pk.map(productRowHtml).join('')}</div>`
+    + `<div class="prod-grp"><div class="prod-grp-h">Бараа <b>${rest.length}</b></div>${rest.map(productRowHtml).join('')}</div>`;
+}
+// Багц салбарт «байна» гэдэг нь БҮХ бүрэлдэхүүн тэр салбарт нөөцтэй гэсэн үг. Багцын өөрийн
+// qty_* ҮРГЭЛЖ 0 тул `branchQty(p, k) > 0` шүүлт багцыг M-Event ленз дээр бүрмөсөн нуудаг байв.
+function packageInBranch(p, k) {
+  const cs = packageComponents(p);
+  return cs.length > 0 && cs.every(c => branchQty(productBySku(c.sku), k) > 0);
 }
 
 // Хувилбар бүлгийг бөөнөөр цуцлах — variant_group/variant_label-ийг null болгож,
@@ -22887,10 +22997,13 @@ function meventContractHtml(o, opts) {
   }).join('') : `<tr><td colspan="6" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
   // Нөхөн төлбөрийн үнэлгээ — products.market_value-аас. Заалт 7.3 ҮҮНИЙГ иш татна.
   // Үнэлгээгүй бараа мөрөнд «—» гарна: юу дутуу байгаа нь гэрээнээс шууд харагдана.
-  const mvRows = items.map(it => {
-    const pr = productOf(it) || {};
-    const mv = Number(pr.market_value) || 0;
-    return { name: it.name || '', qty: qty(it) || 1, mv, line: mv * (qty(it) || 1) };
+  // ⛔ Багц нь өөрөө үнэлгээгүй — нөхөн төлбөр БҮРЭЛДЭХҮҮН бүр дээр (`expandOrderLines`).
+  //   Эс бөгөөс «Хөгжим SILVER» мөр «—» гарч, дотор нь байгаа 2 Line Array · сабвүфер
+  //   · микрофоны үнэлгээ гэрээнд огт харагдахгүй.
+  const mvRows = expandOrderLines(items.map(it => ({ ...it, qty: qty(it) }))).map(r => {
+    const mv = Number((productBySku(r.sku) || {}).market_value) || 0;
+    const q = r.qty || 1;
+    return { name: r.name, pkg: r.pkg, qty: q, mv, line: mv * q };
   });
   const mvTotal = mvRows.reduce((a, r) => a + r.line, 0);
   const mvMissing = mvRows.filter(r => !(r.mv > 0)).length;
@@ -22901,7 +23014,7 @@ function meventContractHtml(o, opts) {
      «—» + 7.3-ын журам (тухайн үеийн зах зээлийн ханш); дутууг ажилтанд ил хэлнэ (хэвлэгдэхгүй). */
   const mvTable = items.length ? `<div class="mv-h">Нөхөн төлбөрийн үнэлгээ (заалт 7.3)</div>
     <table class="svc"><tr><th class="ctr">№</th><th>Бараа</th><th class="ctr">Тоо</th><th class="rt">Нэгжийн үнэлгээ</th><th class="rt">Дүн</th></tr>
-    ${mvRows.map((r, i) => `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="ctr">${r.qty}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.mv) : '—'}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.line) : '—'}</td></tr>`).join('')}
+    ${mvRows.map((r, i) => `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(r.name)}${r.pkg ? ` <span class="muted">(${escapeHtml(r.pkg)})</span>` : ''}</td><td class="ctr">${r.qty}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.mv) : '—'}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.line) : '—'}</td></tr>`).join('')}
     ${mvTotal > 0 ? `<tr><td colspan="4" class="rt sum">Нийт үнэлгээ:</td><td class="rt sum">${fmtMoney(mvTotal)}</td></tr>` : ''}</table>
     ${mvMissing ? '<p class="mv-note">«—» тэмдэгтэй бараанд заалт 7.3-ын дагуу тухайн үеийн зах зээлийн ханшаар тооцно.</p>' : ''}` : '';
 
@@ -27173,7 +27286,7 @@ function renderProducts() {
   const _lensProd = lensToProd(effectiveBranchLens());   // null when 'all'
   state.prodBranch = _lensProd || 'all';
   let list = all.slice();
-  if (state.prodBranch !== 'all') list = list.filter(p => branchQty(p, state.prodBranch) > 0);
+  if (state.prodBranch !== 'all') list = list.filter(p => isPackage(p) ? packageInBranch(p, state.prodBranch) : branchQty(p, state.prodBranch) > 0);
   // Ангилал шүүлтүүр + эрэмбэлэлт (өртөг/үнэ/нөөц)
   state.prodCategory = state.prodCategory || 'all';
   state.prodSort = state.prodSort || 'name';
@@ -27447,6 +27560,9 @@ function openProductModal(p, opts) {
     _qm0 = 0; _qc0 = 0; _qn0 = 0; _qk0 = 0;   // шинэ бараа — салбараа ИЛЭЭР сонгоно (чимээгүй default байхгүй)
   }
   const v = (x) => escapeHtml((p && p[x]) || '');
+  // Багц горим = багц засаж байгаа ЭСВЭЛ шинэ багц үүсгэж байгаа. Багц бол бүрэлдэхүүн ЭХЭНД,
+  // өртөг/нөөц/салбар/QR байхгүй (багц өөрөө хөрөнгө биш — бүрэлдэхүүн бүр дээрээ).
+  const _pkgMode = _isPkg0 || asPkg;
   document.getElementById('prod-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg';
@@ -27456,10 +27572,13 @@ function openProductModal(p, opts) {
       <h2>${isEdit ? (isPackage(p) ? 'Багц засах' : 'Бараа засах') : (asPkg ? 'Шинэ багц' : 'Шинэ бараа')}</h2>
       ${isEdit && (u.orders || (cost && !isPackage(p))) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost && !isPackage(p) ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b class="pm-roi ${roi >= 100 ? 'ok' : 'warn'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
       <div class="pm-menu" data-pmpane="menu">
+        ${_pkgMode ? `<button type="button" class="pm-menu-row ui-raw" data-pmgo="price"><span class="pm-menu-i">${_pkgMode ? '📦' : '🏷'}</span><span class="pm-menu-t">${_pkgMode ? 'Бүрэлдэхүүн ба үнэ' : 'Түрээсийн үнэ'}<em>${_pkgMode ? `${(p && packageComponents(p).length) || 0} бараа · ` : ''}${Number(p && p.price) > 0 ? `${fmtMoneyShort(Number(p.price))}/өдөр` : 'үнэ оруулаагүй'}</em></span>${_pcanHtml('price')}</button>
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="cat"><span class="pm-menu-i">📷</span><span class="pm-menu-t">Каталог<em>${escapeHtml(p && p.category || 'ангилал сонгоогүй')}${_nImg ? ` · ${_nImg} зураг` : ' · зураггүй'}</em></span>${_pcanHtml('catalog')}</button>
-        <button type="button" class="pm-menu-row ui-raw" data-pmgo="price"><span class="pm-menu-i">🏷</span><span class="pm-menu-t">Түрээсийн үнэ<em>${Number(p && p.price) > 0 ? `${fmtMoneyShort(Number(p.price))}/өдөр` : 'үнэ оруулаагүй'}</em></span>${_pcanHtml('price')}</button>
-        <button type="button" class="pm-menu-row ui-raw" data-pmgo="cost"><span class="pm-menu-i">💰</span><span class="pm-menu-t">Өртөг ба хөрөнгө<em>${isPackage(p) ? 'багц — бүрэлдэхүүн бүр дээрээ' : cost > 0 ? `${fmtMoneyShort(cost)} × ${Number(p && p.stock) || 0}ш` : 'өртөг оруулаагүй'}</em></span>${_pcanHtml('cost')}</button>
-        <button type="button" class="pm-menu-row ui-raw" data-pmgo="stock"><span class="pm-menu-i">📦</span><span class="pm-menu-t">Нөөц ба салбар<em>${_st0}ш${_isPkg0 ? ' — бүрэлдэхүүнээс бодогдсон' : (Number(p && p.broken) || 0) + (Number(p && p.maintenance) || 0) ? ` · ${(Number(p.broken) || 0) + (Number(p.maintenance) || 0)} эвдэрсэн/засварт` : ''}</em></span>${_pcanHtml('stock')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="cost"${_pkgMode ? ' hidden' : ''}><span class="pm-menu-i">💰</span><span class="pm-menu-t">Өртөг ба хөрөнгө<em>${isPackage(p) ? 'багц — бүрэлдэхүүн бүр дээрээ' : cost > 0 ? `${fmtMoneyShort(cost)} × ${Number(p && p.stock) || 0}ш` : 'өртөг оруулаагүй'}</em></span>${_pcanHtml('cost')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="stock"${_pkgMode ? ' hidden' : ''}><span class="pm-menu-i">📦</span><span class="pm-menu-t">Нөөц ба салбар<em>${_st0}ш${_isPkg0 ? ' — бүрэлдэхүүнээс бодогдсон' : (Number(p && p.broken) || 0) + (Number(p && p.maintenance) || 0) ? ` · ${(Number(p.broken) || 0) + (Number(p.maintenance) || 0)} эвдэрсэн/засварт` : ''}</em></span>${_pcanHtml('stock')}</button>` : `<button type="button" class="pm-menu-row ui-raw" data-pmgo="cat"><span class="pm-menu-i">📷</span><span class="pm-menu-t">Каталог<em>${escapeHtml(p && p.category || 'ангилал сонгоогүй')}${_nImg ? ` · ${_nImg} зураг` : ' · зураггүй'}</em></span>${_pcanHtml('catalog')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="price"><span class="pm-menu-i">${_pkgMode ? '📦' : '🏷'}</span><span class="pm-menu-t">${_pkgMode ? 'Бүрэлдэхүүн ба үнэ' : 'Түрээсийн үнэ'}<em>${_pkgMode ? `${(p && packageComponents(p).length) || 0} бараа · ` : ''}${Number(p && p.price) > 0 ? `${fmtMoneyShort(Number(p.price))}/өдөр` : 'үнэ оруулаагүй'}</em></span>${_pcanHtml('price')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="cost"${_pkgMode ? ' hidden' : ''}><span class="pm-menu-i">💰</span><span class="pm-menu-t">Өртөг ба хөрөнгө<em>${isPackage(p) ? 'багц — бүрэлдэхүүн бүр дээрээ' : cost > 0 ? `${fmtMoneyShort(cost)} × ${Number(p && p.stock) || 0}ш` : 'өртөг оруулаагүй'}</em></span>${_pcanHtml('cost')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="stock"${_pkgMode ? ' hidden' : ''}><span class="pm-menu-i">📦</span><span class="pm-menu-t">Нөөц ба салбар<em>${_st0}ш${_isPkg0 ? ' — бүрэлдэхүүнээс бодогдсон' : (Number(p && p.broken) || 0) + (Number(p && p.maintenance) || 0) ? ` · ${(Number(p.broken) || 0) + (Number(p.maintenance) || 0)} эвдэрсэн/засварт` : ''}</em></span>${_pcanHtml('stock')}</button>`}
       </div>
       ${isEdit && state.isCEO ? `<div class="pm-danger">
         <button type="button" class="btn ui-raw pm-archive" id="pm-archive">🗄 Барааг архивлах</button>
@@ -27495,18 +27614,14 @@ function openProductModal(p, opts) {
       <label class="pm-block">Тайлбар <span class="pm-sub">(сайтад харагдана)</span>
         <textarea id="pm-desc" rows="3" placeholder="Барааны тайлбар...">${v('description')}</textarea>
       </label>
-      ${isEdit && p.sku ? `<div class="pm-block">QR шошго <span class="pm-sub">(хэвлэж бараандаа наа → камераар сканнердана)</span><div id="pm-qr" class="pm-qr">QR…</div></div>` : ''}
+      ${isEdit && p.sku && !_pkgMode ? `<div class="pm-block">QR шошго <span class="pm-sub">(хэвлэж бараандаа наа → камераар сканнердана)</span><div id="pm-qr" class="pm-qr">QR…</div></div>` : ''}
       </div>
       <div class="pm-pane" data-pmpane="price" data-pmlock="price" hidden>
         <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
-        <div class="pm-pane-t">🏷 Түрээсийн үнэ</div>
+        <div class="pm-pane-t">${_pkgMode ? '📦 Бүрэлдэхүүн ба үнэ' : '🏷 Түрээсийн үнэ'}</div>
         <div class="pm-lock" data-lockhint="price" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
-        <div class="pm-grid">
-        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
-        <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
-        <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span class="pm-sub">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
-        </div>
-      <label class="pm-rentable">
+${_pkgMode ? `
+      <label class="pm-rentable"${_pkgMode ? ' hidden' : ''}>
         <input type="checkbox" id="pm-ispackage" ${isPackage(p) || asPkg ? 'checked' : ''}>
         <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
       </label>
@@ -27516,7 +27631,28 @@ function openProductModal(p, opts) {
         <datalist id="pm-prod-list">${(state.products || []).filter(x => !isPackage(x) && x.name).map(x => `<option value="${escapeHtml(x.name)}">`).join('')}</datalist>
         <div id="pm-bundle-sum" class="pm-bundle-sum"></div>
       </div>
-      <label class="pm-rentable">
+
+        <div class="pm-grid">
+        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
+        <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
+        <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span class="pm-sub">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
+        </div>` : `        <div class="pm-grid">
+        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
+        <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
+        <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span class="pm-sub">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
+        </div>
+      <label class="pm-rentable"${_pkgMode ? ' hidden' : ''}>
+        <input type="checkbox" id="pm-ispackage" ${isPackage(p) || asPkg ? 'checked' : ''}>
+        <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
+      </label>
+      <div id="pm-bundle" class="pm-bundle"${isPackage(p) || asPkg ? '' : ' hidden'}>
+        <div id="pm-bundle-list"></div>
+        <button type="button" class="btn pm-bundle-add" id="pm-bundle-add">+ Бараа нэмэх</button>
+        <datalist id="pm-prod-list">${(state.products || []).filter(x => !isPackage(x) && x.name).map(x => `<option value="${escapeHtml(x.name)}">`).join('')}</datalist>
+        <div id="pm-bundle-sum" class="pm-bundle-sum"></div>
+      </div>
+`}
+      <label class="pm-rentable"${_pkgMode ? ' hidden' : ''}>
         <input type="checkbox" id="pm-isservice" ${isService(p) ? 'checked' : ''}>
         <span><b>🛠 Үйлчилгээ</b> — суурилуулалт, оператор г.м. (хүргэлт бол захиалгын хэсэгт тусад нь). Нөөц/агуулах/ROI-д ОРОХГҮЙ, зөвхөн үнэтэй мөр.</span>
       </label>
@@ -27718,11 +27854,14 @@ function openProductModal(p, opts) {
     let sum = 0; bundle.forEach(c => { const cp = productBySku(c.sku); if (cp) sum += (Number(cp.price) || 0) * (Number(c.qty) || 1); });
     if (!bundle.length) { bundleSum.textContent = ''; return; }
     const pkgPrice = moneyVal(modal.querySelector('#pm-price'));
-    const save = sum > 0 && pkgPrice > 0 ? Math.round((1 - pkgPrice / sum) * 100) : null;
-    bundleSum.innerHTML = `Тусад нь түрээслэвэл <b>${fmtMoney(sum)}</b> · Багцын нөөц <b>${packageStock({ bundle_items: bundle })}</b>`
+    // Хувь/нөөц/хязгаарлагчийг картын ИЖИЛ функцээр бод (`packageInfo`) — хоёр газар өөр хэлбэл зөрнө.
+    const pk = packageInfo({ type: 'package', bundle_items: bundle, price: pkgPrice });
+    const save = pk.pct;
+    bundleSum.innerHTML = `Тусад нь түрээслэвэл <b>${fmtMoney(sum)}</b> · Багцын нөөц <b>${pk.stock}</b>${pk.limiter ? ` (хязгаарлагч: ${escapeHtml(pk.limiter.name)})` : ''}`
       + (save === null ? ' · <span class="pm-bi-info bad">Багцын үнээ оруулна уу</span>'
          : save > 0 ? ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — <b>${save}% хямд</b>`
-         : ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — <span class="pm-bi-info bad">бүрэлдэхүүнээс үнэтэй</span>`);
+         : save === 0 ? ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — хямдралгүй`
+         : ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — <span class="pm-bi-info bad">⚠ тусад нь авснаас ${-save}% ҮНЭТЭЙ</span>`);
   }
   function renderBundle() {
     bundleList.innerHTML = bundle.length ? bundle.map((c, i) => {
@@ -27745,6 +27884,8 @@ function openProductModal(p, opts) {
     bundleSumText();
   }
   renderBundle();
+  // Үнэ бичих явцад хямдралын хувь шууд шинэчлэгдэнэ (гараар тогтоох үнийн хяналт)
+  modal.querySelector('#pm-price')?.addEventListener('input', bundleSumText);
   // Багц / Үйлчилгээ харилцан үл нийцэх; үйлчилгээ бол нөөц/салбар хуваарь хэрэггүй
   const _svcEl = modal.querySelector('#pm-isservice');
   const _pkgEl = modal.querySelector('#pm-ispackage');
@@ -27757,6 +27898,9 @@ function openProductModal(p, opts) {
     const hideStock = _pkgEl.checked || _svcEl.checked;
     const row = modal.querySelector('[data-pmgo="stock"]');
     if (row) row.hidden = hideStock;
+    // Багц өөрөө хөрөнгө биш — өртөг/үнэлгээ нь бүрэлдэхүүн бүр дээр
+    const costRow = modal.querySelector('[data-pmgo="cost"]');
+    if (costRow) costRow.hidden = _pkgEl.checked;
     const pane = modal.querySelector('[data-pmpane="stock"]');
     if (pane && hideStock && !pane.hidden) pmGo('menu');
   };
@@ -28002,6 +28146,10 @@ function attachProductsHandlers() {
       const show = !q || (row.dataset.search || '').includes(q);
       row.style.display = show ? '' : 'none';
       if (show) n++;
+    });
+    // Багц/Бараа бүлэг бүгдээрээ нуугдсан бол гарчгийг нь ч нууна
+    document.querySelectorAll('.prod-grp').forEach(g => {
+      g.style.display = [...g.querySelectorAll('.prod-row')].some(r => r.style.display !== 'none') ? '' : 'none';
     });
     const c = document.getElementById('prod-count');
     // <b>-г хадгална (мета мөр тоог тодоор харуулдаг) — textContent бол устгана
@@ -29603,12 +29751,14 @@ function openStageAdvanceModal(oid, to) {
   // received дээр «хүлээгдэх тоо» = жолоочийн ХЭРЭГЛЭГЧЭЭС АВСАН тоо (retstart.got); эс бол захиалгын тоо.
   const _prevPick = (act.key === 'received' && _smNow.retstart && Array.isArray(_smNow.retstart.items)) ? _smNow.retstart.items : null;
   // ⚠ Гаргахад «хүлээгдэх» нь захиалгын тоо; буцаалтын тулгалт ҮҮНТЭЙ харьцуулагдана.
-  const _rcItems = _isReceive ? (o.items || []).filter(it => it && it.name).map(it => {
-    const p = productOf(it);   // sku → id → нэр (сайт id-г sku болгож илгээдэг)
-    const sku = p ? p.sku : (it.sku || '');
-    let qty = Math.max(0, Number(it.qty) || 0);
-    if (_prevPick) { const pj = _prevPick.find(x => (x.sku && x.sku === sku) || x.name === it.name); if (pj) qty = Math.max(0, Number(pj.got != null ? pj.got : pj.qty) || 0); }
-    return { sku, name: it.name, qty };
+  /* ⛔ БАГЦЫГ БҮРЭЛДЭХҮҮН РҮҮ ЗАДАЛЖ тоолно (`expandOrderLines`, 2026-10-22). Нярав
+     «Хөгжим SILVER × 1» гэж биш, 2 Line Array · сабвүфер · 2 микрофон · пүльтийг
+     тус тусад нь тоолно. Эс бөгөөс нэг микрофон дутвал аль нь дутсан нь мэдэгдэхгүй,
+     багц өртөггүй тул алдагдал 0₮ болж, нөөцөөс ч юу ч хасагдахгүй. */
+  const _rcItems = _isReceive ? expandOrderLines(o.items).map(r => {
+    let qty = r.qty;
+    if (_prevPick) { const pj = _prevPick.find(x => (x.sku && x.sku === r.sku) || x.name === r.name); if (pj) qty = Math.max(0, Number(pj.got != null ? pj.got : pj.qty) || 0); }
+    return { sku: r.sku, name: r.name, qty, pkg: r.pkg };
   }).filter(x => x.qty > 0) : [];
   const _driverBy = (_smNow.retstart && _smNow.retstart.by) || (_smNow.deliver && _smNow.deliver.by) || '';
   // Хамтрагч — олон хүн ажилласныг харуулах (сонголттой). Идэвхтэй ажилчид, өөрийгөө хасна.
@@ -29663,7 +29813,7 @@ function openStageAdvanceModal(oid, to) {
     <button type="button" class="btn btn-primary sa-all-btn" id="rc-all">✓ Бүгд бүрэн ${_isDispatch ? 'гарсан' : _isPickup ? 'авсан' : 'ирсэн'}</button>
     <div id="rc-list" class="rc-list">${_rcItems.map((x, i) => `
       <div class="rc-row" data-rc="${i}">
-        <span class="rc-name">${escapeHtml(x.name)}</span>
+        <span class="rc-name">${escapeHtml(x.name)}${x.pkg ? ` <em class="rc-pkg">📦 ${escapeHtml(x.pkg)}</em>` : ''}</span>
         <span class="rc-exp">${x.qty}ш</span>
         <input class="rc-got" type="number" inputmode="numeric" min="0" max="${x.qty}" value="${x.qty}" data-rci="${i}">
         <span class="rc-diff" data-rcd="${i}"></span>
@@ -29900,7 +30050,7 @@ function openStageAdvanceModal(oid, to) {
     // Буцаан авалтын тоо + дутсан барааг засварын урсгал руу
     let _shortLines = [];
     if (_isReceive && _rcItems.length) {
-      entry.items = _rcItems.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: rcGot[i] }));
+      entry.items = _rcItems.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: rcGot[i], ...(x.pkg ? { pkg: x.pkg } : {}) }));
       /* ⛔ ГАРГАХ дамжлагад дутуу тоо нь АЛДАГДАЛ БИШ — зүгээр л цөөн бараа
          гарсан гэсэн үг. Нөөцөөс хасаж засварын бичлэг үүсгэвэл гараагүй
          бараа «эвдэрсэн» болж, нөөц ба ашиг хоёулаа гажна. Буцаалтын тулгалт
@@ -31390,11 +31540,14 @@ function openNewOrder(editOrder) {
       // Асрын модуль — тоо ширхэг биш УРТААР сонгоно (5 модуль = 12×25м). Захиалга
       // авагч метрээр боддог тул модулийг гараар тоолуулахгүй.
       const _asar = asarModuleOf(it.sku);
+      // Багц бол «дотор нь» юу байгааг харуулна — захиалга авагч харилцагчид юу очихыг мэдэж байх ёстой.
+      const _pkI = packageInfo(productOf(it));
       const qtyCtl = _locked ? `<b>${qty} ш</b>`
         : _asar ? `<select class="ui-raw no-asar-len" data-ilen="${i}" aria-label="Асрын урт">${asarLengthOptions(it.sku).map(L => `<option value="${L / _asar.mod}"${L / _asar.mod === qty ? ' selected' : ''}>${_asar.w}×${L}м</option>`).join('')}</select>`
         : `<span class="no-qty"><button type="button" class="ui-raw" data-iqd="${i}" aria-label="Хасах">−</button><input type="number" class="ui-raw" min="1" value="${qty}" data-iq="${i}" aria-label="Тоо ширхэг"><button type="button" class="ui-raw" data-iqi="${i}" aria-label="Нэмэх">+</button></span>`;
       return `<div class="no-item">${ph}
       <div class="no-item-mid"><div class="no-item-nm">${escapeHtml(it.name || '')}${_asar ? ` <span class="no-item-mod">📐 ${escapeHtml(asarSizeLabel(it.sku, qty))} · ${qty} модуль</span>` : ''}</div>
+        ${_pkI && _pkI.parts.length ? `<div class="no-item-sub" title="${escapeHtml(_pkI.parts.map(x => (x.qty * qty) + '× ' + x.name).join(' · '))}">📦 ${escapeHtml(_pkI.parts.map(x => (x.qty * qty) + '× ' + x.name).join(' · '))}</div>` : ''}
         <div class="no-item-ctl">${qtyCtl}<span>×</span><input type="text" inputmode="numeric" class="money-input no-price ui-raw" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} aria-label="Нэгж үнэ">${warn}</div></div>
       <b class="no-item-amt" data-iamt="${i}">${fmtMoney(qty * (Number(it.price) || 0))}</b>
       ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:var(--fs-lg);color:var(--danger);" aria-label="Хасах">✕</button>`}

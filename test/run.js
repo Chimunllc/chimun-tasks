@@ -6836,10 +6836,81 @@ need(['orderCustType']);
   eq(F.packageSaveBlock({ ...okF, price: 0, bundle: [], checkPrice: false }), null, 'багц/шалгуур: үнийн эрхгүй хүн үнэ/бүрэлдэхүүнээр хориглогдохгүй');
   eq(F.packageSaveBlock({ ...okF, price: 0, bundle: [], checkPrice: false, cat: '' }).field, '#pm-cat', 'багц/шалгуур: үнийн эрхгүй ч ангилал заавал');
   eq(F.packageSaveBlock(null).field, '#pm-name', 'багц/шалгуур: хоосон оролт унахгүй');
-  ok(/packageSaveBlock\(\{ name, cat, bundle: modal\._bundle \|\| \[\], price: moneyVal\(modal\.querySelector\('#pm-price'\)\), checkPrice: canProductPart\('price'\) \}\)/.test(src), 'scan: багц хадгалахад packageSaveBlock дуудагдана');
+  ok(/packageSaveBlock\(\{ name, cat, bundle: modal\._bundle \|\| \[\], price: moneyVal\(modal\.querySelector\('#pm-price'\)\), days: [^}]*checkPrice: canProductPart\('price'\) \}\)/.test(src), 'scan: багц хадгалахад packageSaveBlock дуудагдана');
   eq((src.match(/Багцад дор хаяж нэг бараа нэмнэ үү/g) || []).length, 1, 'scan: шалгуур НЭГ газарт (packageSaveBlock) — submit-д давхардуулахгүй');
   ok(/\.filter\(c => c\.sku\)\.map\(c => \(\{ sku: c\.sku, qty: Math\.max\(1, Number\(c\.qty\) \|\| 1\) \}\)\)/.test(src), 'scan: бүрэлдэхүүн зөвхөн {sku, qty} хадгална (`_typed` DB-д орохгүй)');
   ok(/Ангилал\$\{_pkgMode \? ' \*' : ''\}<select id="pm-cat">/.test(src), 'scan: багцын цонхонд «Ангилал *» заавал гэж тэмдэглэгдсэн');
+  // 5e) БАГЦЫН «N ХОНОГИЙН ҮНЭ» (2026-10-22, CEO): үнэ N хоногийг багтаасан тогтмол; илүү хоног = үнэ ÷ N; авто хямдралгүй
+  const tentB = { price: 390000, qty: 1, bdays: 3 };
+  eq([1, 2, 3].map(d => F.itemRentLine(tentB, d)), [390000, 390000, 390000], 'хоног: N хоног хүртэл үнэ тогтмол (хоногоор ҮРЖИХГҮЙ)');
+  eq([4, 5, 6, 9].map(d => F.itemRentLine(tentB, d)), [520000, 650000, 780000, 1170000], 'хоног: илүү хоног тус бүр үнэ ÷ N (130,000₮)');
+  eq(F.itemRentLine({ ...tentB, qty: 2 }, 6), 1560000, 'хоног: тоо ширхэгээр үржинэ');
+  eq(F.itemRentLine({ price: 790000, qty: 1, bdays: 3 }, 4), Math.round(790000 * 4 / 3), 'хоног: хуваагдахгүй үнэ 1₮-д бөөрөнхийлөгдөнө');
+  for (const d of [1, 2, 5, 30]) eq(F.itemRentLine({ price: 27500, qty: 4 }, d), 27500 * 4 * d, 'хоног: `bdays`-гүй мөр ӨМНӨХ ШИГ өдрийн үнэ (' + d + ' хоног)');
+  eq(F.itemRentLine({ price: 100, qty: 2, bdays: 1 }, 3), 600, 'хоног: N=1 нь өдрийн үнэ');
+  eq(F.itemRentLine({ price: 100, qty: 2 }, 3), 600, 'хоног: bdays байхгүй = өдрийн үнэ');
+  eq(F.itemRentLine({ price: 100, qty: 1, bdays: 99 }, 3), 100, 'хоног: N 30-аас дээш бол 30-д хязгаарлагдана');
+  eq([F.itemBundleDays({ bdays: '3' }), F.itemBundleDays({ bdays: 1 }), F.itemBundleDays({}), F.itemBundleDays(null)], [3, 0, 0, 0], 'хоног: itemBundleDays');
+  eq(F.productBundleDays({ type: 'package', bundle_days: 3 }), 3, 'хоног: багцын N');
+  eq(F.productBundleDays({ type: 'rental', bundle_days: 3 }), 0, 'хоног: БАГЦ БИШ бараанд N хамаарахгүй');
+  eq(F.productBundleDays({ type: 'package', bundle_days: null }), 0, 'хоног: N хоосон = өдрийн үнэ');
+  const mixItems = [{ name: 'Майхан багц', qty: 1, price: 390000, bdays: 3 }, { name: 'Сандал', qty: 50, price: 3000 }];
+  eq(F.itemsRentSubtotal(mixItems, 4), 520000 + 600000, 'хоног: холимог захиалгын нийлбэр (багц тогтмол, сандал хоногоор)');
+  eq(F.itemsBundleSubtotal(mixItems, 4), 520000, 'хоног: багцын хэсэг тусдаа');
+  eq(F.itemsBundleSubtotal([{ price: 100, qty: 1 }], 4), 0, 'хоног: багцгүй захиалгад 0');
+  // Авто хоногийн хямдрал (2-6 хоног 20%) ЗӨВХӨН багцаас бусад мөрөнд
+  eq(F.orderDiscountAmount(1120000, 4, 'amount', 0, 600000), 120000, 'хоног: авто 20% зөвхөн багцгүй хэсэгт (600,000-ийн 20%)');
+  eq(F.orderDiscountAmount(1120000, 4, 'amount', 0), 224000, 'хоног: autoBase өгөөгүй бол ӨМНӨХ ШИГ (бүх дүнгийн 20%)');
+  eq(F.orderDiscountAmount(1120000, 4, 'amount', 300000, 600000), 300000, 'хоног: гар хөнгөлөлт авто-оос их бол гар ялна (багцтай ч)');
+  eq(F.orderDiscountAmount(100, 4, 'amount', 0, 999), 20, 'хоног: autoBase subtotal-аас хэтэрвэл хавчуулна');
+  eq(F.orderDiscountAmount(1000, 1, 'amount', 0, 0), 0, 'хоног: 1 хоног — авто хямдралгүй');
+  // Бүх мөнгөний зам ИЖИЛ дүн гаргана: санал · гэрээ · нэхэмжлэх · задаргаа
+  const bOrd = { number: 9001, customer: 'Тест ХХК', order_no: 'ME-9001', starts_at: '2026-11-01', stops_at: '2026-11-05', deposit_mnt: 0,
+    items: [{ sku: 'M-328', name: 'Өвлийн майхан багц', qty: 1, price: 390000, bdays: 3, total: undefined }, { sku: 'M-001', name: 'Цагаан сандал', qty: 50, price: 3000 }],
+    note: F.encodeOrderTimes(9, 9) };
+  const bDays = F.orderRentalDays(bOrd);
+  eq(bDays, 4, 'хоног: тест захиалга 4 хоног');
+  eq(F.orderMoneyBreakdown(bOrd).subtotal, 520000 + 150000 * 4, 'хоног: orderMoneyBreakdown дэд дүн (subtotal_mnt байхгүй үед)');
+  const inv = F.invoiceLines(bOrd);
+  eq(inv.map(x => x.total), [520000, 600000], 'хоног: нэхэмжлэхийн мөр дүн');
+  ok(inv[0].name.includes('3 хоногийн багц') && !inv[1].name.includes('багц'), 'хоног: нэхэмжлэхийн нэрэнд «3 хоногийн багц» тэмдэг');
+  const bct = F.meventContractHtml(bOrd);
+  ok(bct.includes(F.fmtMoney(520000)) && bct.includes('(3 хоногийн багц)'), 'хоног: гэрээний мөр багцын тогтмол дүнтэй + тэмдэг');
+  ok(!bct.includes(F.fmtMoney(390000 * 4)), 'хоног: гэрээнд багц 390,000×4 гэж үржигдээгүй');
+  // Үнэлгээ/ROI: багцын ДҮН бүрэлдэхүүн рүү задарна (N хоногийн тогтмол дүн)
+  const upk = { sku: 'M-322', name: 'Хөгжим GOLD', price: 2720000, qty: 1, bdays: 2 };
+  const uOrd = { number: 9002, status: 'reserved', paid_mnt: 1000000, total_mnt: 4080000, source: 'app', starts_at: '2026-11-01', stops_at: '2026-11-04', note: F.encodeOrderTimes(9, 9), items: [upk] };
+  const uIdx = F.buildProductUtilIndex([uOrd], runIn('state.products'));
+  let uRev = 0; uIdx.forEach(e => { uRev += e.revenue; });
+  eq(uRev, F.itemRentLine(upk, F.orderRentalDays(uOrd)), 'хоног: ROI/ашиглалтын орлого багцын N хоногийн дүнтэй ТААРНА');
+  // Багцын мэдээлэл: тусад нь авбал N хоног (олон хоногийн хямдралтай)
+  const tent3 = F.packageInfo({ ...byS('M-328'), bundle_days: 3 });
+  eq([tent3.bd, tent3.sepTotal, tent3.pct], [3, 686400, 43], 'хоног: packageInfo — тусад нь 3 хоног = 286,000×3×0.8 = 686,400 → багц 43% хямд');
+  eq(F.packageInfo({ ...byS('M-328'), bundle_days: 1 }).sepTotal, 286000, 'хоног: N=1 бол ӨМНӨХ харьцуулалт');
+  const gcard = asCeo(() => F.productRowHtml({ ...byS('M-328'), bundle_days: 3 }));
+  ok(gcard.includes('3 хоногийн үнэ') && !gcard.includes('түрээс/өдөр'), 'хоног: картын шошго «3 хоногийн үнэ»');
+  ok(asCeo(() => F.productRowHtml(byS('M-322'))).includes('түрээс/өдөр'), 'хоног: N-гүй багц «түрээс/өдөр» хэвээр');
+  // Хадгалахын шалгуур
+  for (const badD of [0, 31, 2.5, NaN, -1]) {
+    eq((F.packageSaveBlock({ ...okF, days: badD }) || {}).field, '#pm-bdays', 'багц/шалгуур: хоног ' + String(badD) + ' → хаана');
+  }
+  eq(F.packageSaveBlock({ ...okF, days: 3 }), null, 'багц/шалгуур: хоног 3 зөв');
+  eq(F.packageSaveBlock({ ...okF, days: 1 }), null, 'багц/шалгуур: хоног 1 (өдрийн үнэ) зөв');
+  eq(F.packageSaveBlock({ ...okF }), null, 'багц/шалгуур: хоногийн талбар байхгүй (undefined) бол шалгахгүй');
+  eq(F.packageSaveBlock({ ...okF, days: 0, checkPrice: false }), null, 'багц/шалгуур: үнийн эрхгүй хүн хоногоор хориглогдохгүй');
+  // Захиалгын мөр бараанаас: N хуулагдана
+  const oi = F.orderItemFromProduct({ ...byS('M-328'), bundle_days: 3 }, 2);
+  eq([oi.qty, oi.price, oi.bdays], [2, 390000, 3], 'хоног: захиалгын мөрд bdays хуулагдана');
+  eq('bdays' in F.orderItemFromProduct(byS('M-328'), 1), false, 'хоног: N-гүй багц/бараанд bdays бичигдэхгүй (хуучин шигээ)');
+  // SCAN
+  ok(!/\(Number\(i[t]?\.price\) \|\| 0\) \* \(Number\(i[t]?\.qty\) \|\| 0\) \* days/.test(src), 'scan: `price × qty × days`-ийг гараар бичихгүй — `itemRentLine` дууд');
+  eq((src.match(/sku: p\.sku \|\| p\.name, name: p\.name, qty,/g) || []).length, 1, 'scan: захиалгын мөрийг ГАНЦ `orderItemFromProduct` үүсгэнэ (picker + catalog давхардахгүй)');
+  ok(/subtotal = itemsRentSubtotal\(items, days\)/.test(src) && /const subtotal = perDay \* days \+ _bundleSub/.test(src), 'scan: захиалгын цонхны recalc ба save ИЖИЛ дүн (багц тогтмол)');
+  ok(/orderDiscountAmount\(subtotal, days, dtype, dval, _autoBase\)/.test(src) && /Math\.round\(_autoBase \*/.test(src), 'scan: recalc-ийн авто хямдрал багцгүй хэсгээс');
+  ok(/state\._prodHasBundleDays !== false\) row\.bundle_days/.test(src), 'scan: saveProduct bundle_days-ийг БАГАНА байвал л бичнэ (байхгүй бол бүх хадгалалт унахгүй)');
+  ok(/'type', 'bundle_items', 'bundle_days'\]/.test(src), 'scan: bundle_days «үнэ» эрхийн хэсэгт (эрхгүй хүн засахгүй)');
+  ok(/id="pm-bdays"/.test(src) && /bundle_days: isPkg \? Math\.max\(1/.test(src), 'scan: багцын цонхонд «Үнэ хэдэн хоногийнх» талбар хадгалагдана');
+  ok(fs.existsSync(path.join(__dirname, '..', 'db', 'product_bundle_days.sql')) && /add column if not exists bundle_days/.test(fs.readFileSync(path.join(__dirname, '..', 'db', 'product_bundle_days.sql'), 'utf8')), 'scan: db/product_bundle_days.sql байна');
   ok(/const _usedIn = \(isEdit && !_isPkg0\) \? packagesUsing\(p\.sku\) : \[\]/.test(src) && /class="pm-used"/.test(src), 'scan: барааны цонх «орсон багц» мөр харуулна (багцад биш)');
   ok(/const _used = packagesUsing\(p\.sku\);/.test(src) && /нөөц 0 болж, захиалга авч чадахгүй болно/.test(src), 'scan: багцад орсон барааг архивлахаас өмнө сануулна');
 
@@ -6856,7 +6927,7 @@ need(['orderCustType']);
   ok(/costRow\.hidden = _pkgEl\.checked/.test(src), 'scan: багц болгож чагтлахад «Өртөг» хэсэг нуугдана');
   ok(/data-pmgo="stock"\$\{_pkgMode \? ' hidden'/.test(src), 'scan: багцын засах цонхонд «Нөөц ба салбар» хэсэг байхгүй');
   ok(/\$\{isEdit && p\.sku && !_pkgMode \? `<div class="pm-block">QR шошго/.test(src), 'scan: багцад QR шошго байхгүй (физик зүйл биш)');
-  ok(/packageInfo\(\{ type: 'package', bundle_items: bundle, price: pkgPrice \}\)/.test(src), 'scan: засах цонхны хямдрал картын ИЖИЛ функцээр (packageInfo)');
+  ok(/packageInfo\(\{ type: 'package', bundle_items: bundle, price: pkgPrice, bundle_days: bdaysNow\(\) \}\)/.test(src), 'scan: засах цонхны хямдрал картын ИЖИЛ функцээр (packageInfo)');
   ok(/no-item-sub/.test(src), 'scan: захиалгын мөр багцын «дотор нь» харуулдаг');
   ok(/openProductModal\(null, state\.prodTab === 'packages' \? \{ asPackage: true \} : undefined\)/.test(src), 'scan: Багц таб дээрх «+ Багц» шууд багц үүсгэнэ');
   ok(!/id="prod-new-pkg"/.test(src), 'scan: «⋯» хэрэгсэлд багц товч байхгүй (багц табтай)');
@@ -15298,7 +15369,7 @@ async function swFetchTests() {
   ok(snapAt > 0, 'scan: нөөцийн хормын хуулбар авдаг');
   ok(mergeAt > 0, 'scan: state нэгтгэл олдов');
   ok(snapAt < mergeAt, 'scan: хормын хуулбар state нэгтгэхээс ӨМНӨ (эс бол delta үргэлж 0)');
-  ok(/logStockMoves\(stockMoveRows/.test(src.slice(i, i + 7500)), 'scan: saveProduct дэвтэрт бичнэ');
+  ok(/logStockMoves\(stockMoveRows/.test(src.slice(i, i + 9000)), 'scan: saveProduct дэвтэрт бичнэ');
 }
 
 // ── ХУДАЛДАН АВАЛТ (2026-09-13) ─────────────────────────────────────────

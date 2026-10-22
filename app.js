@@ -6922,7 +6922,8 @@ function pricingStats(orders, products, opts) {
     if (!d0 || d0 < from || d0 > to) return;
     const days = _dayRange(ord.starts_at, ord.stops_at);
     const _its = Array.isArray(ord.items) ? ord.items : [];
-    const grossAll = _its.reduce((s2, i) => s2 + (Number(i.qty) || 0) * (Number(i.price) || 0), 0);
+    const _gd = orderRentalDays(ord);
+    const grossAll = _its.reduce((s2, i) => s2 + itemGrossPerDay(i, _gd), 0);
     const _net = (typeof orderRevenue === 'function') ? orderRevenue(ord, 'accrual')
       : Math.max(0, (Number(ord.total_mnt) || 0) - (Number(ord.deposit_mnt) || 0));
     _its.forEach(it => {
@@ -6933,7 +6934,7 @@ function pricingStats(orders, products, opts) {
       // Мөрийн ЖАГСААЛТЫН дүн биш, БОДИТ орлого — захиалгад хөнгөлөлт байвал
       // харьцангуйгаар буурна. Эс бөгөөс «үнийн биелэлт» хиймлээр өндөр гарч,
       // хөнгөлж зарж буй бараанд «үнэ өсгө» гэж буруу зөвлөнө.
-      const amt = histLineRevenue(qty * (Number(it.price) || 0), grossAll, _net, orderTokenFees(ord));
+      const amt = histLineRevenue(itemGrossPerDay(it, _gd), grossAll, _net, orderTokenFees(ord));
       // ── БАГЦ = бүтээгдэхүүн БИШ, бүтээгдэхүүний НИЙЛБЭР ────────────────────
       // Багцын орлого/тоог бүрэлдэхүүн рүү задална. Эс бөгөөс өртөггүй багц мөр
       // болж эргэлт/ROI худал гарч, бодит хөрөнгө (майхан, ор, чанга яригч)
@@ -7235,10 +7236,42 @@ function rentalDiscount(days) {
 // Сайт олон хоногийн авто-хямдрал өгдөг тул аппаас захиалсан ижил бараа·хугацаа мөн адил үнэтэй
 // байх ёстой (сувгаар парити). Авто-tier = хамгийн бага хамгаалалт; менежер илүү өгвөл гар нь давна.
 // Давхар тооцохгүй (max, нэмэл БИШ). recalc ба save хоёул үүнийг дуудаж ижил дүн гаргана.
-function orderDiscountAmount(subtotal, days, dtype, dval) {
+/* ─── БАГЦЫН «N ХОНОГИЙН ҮНЭ» (2026-10-22, CEO) ───────────────────────────────
+   Багцын үнэ нь N хоногийг БАГТААСАН тогтмол дүн (жиш. «Өвлийн майхан багц» 390,000₮ = 3 хоног).
+   · хоног ≤ N → үнэ тэр чигээрээ (хоногоор ҮРЖИХГҮЙ)
+   · хоног > N → үнэ + илүү хоног × (үнэ ÷ N)  ≡ үнэ × хоног ÷ N (1₮-д бөөрөнхийлнө)
+   · олон хоногийн АВТО хямдралд ОРОХГҮЙ (багц өөрөө хямдралтай нийлбэр) — `orderDiscountAmount`-ийн `autoBase`
+   ⛔ N-ийг ЗАХИАЛГЫН МӨРД хуулж хадгална (`bdays`), барааны одоогийн утгаас БИШ. Эс бөгөөс багцын хоногийг
+     хожим солиход хуучин захиалгын санал/гэрээ/нэхэмжлэх чимээгүй өөр дүн болно.
+   · `bdays` байхгүй мөр (хуучин захиалга, сайтаас ирсэн) = өдрийн үнэ, ӨМНӨХ ШИГ. N=1 = өдрийн үнэ (`bdays` бичигдэхгүй).
+   ⚠ Мөнгөний БҮХ зам `itemRentLine`-ыг дуудна — `price × qty × days`-ийг гараар бичихгүй (scan-тест хаана).
+   ⚠ mevent.mn сайт өөр репо — багцын хоногийг `public_catalog`-оор уншиж тэнд тусад нь шинэчилнэ. */
+const BUNDLE_DAYS_MAX = 30;
+function itemBundleDays(it) { const n = Math.floor(Number(it && it.bdays) || 0); return n >= 2 ? Math.min(n, BUNDLE_DAYS_MAX) : 0; }
+function productBundleDays(p) {
+  if (!p || p.type !== 'package') return 0;
+  const n = Math.floor(Number(p.bundle_days) || 0);
+  return n >= 2 ? Math.min(n, BUNDLE_DAYS_MAX) : 0;
+}
+// Мөрийн түрээсийн дүн (нэгж үнэ × тоо × хоног; багц бол N хоногийн тогтмол + илүү хоног).
+function itemRentLine(it, days) {
+  const price = Number(it && (it.price != null ? it.price : it.unit_price)) || 0;
+  const q = Number(it && (it.qty != null ? it.qty : it.quantity)) || 0;
+  const n = itemBundleDays(it);
+  return n ? Math.round(price * q * Math.max(1, (Number(days) || 1) / n)) : price * q * (Number(days) || 0);
+}
+function itemsRentSubtotal(items, days) { return (items || []).reduce((s, it) => s + itemRentLine(it, days), 0); }
+function itemsBundleSubtotal(items, days) { return (items || []).reduce((s, it) => itemBundleDays(it) ? s + itemRentLine(it, days) : s, 0); }
+// Орлогыг мөрд хуваарилах жин (өдрийн үнийн суурьтай): багц бус мөр = qty × price (хуучин шигээ), багц = мөрийн дүн ÷ хоног.
+function itemGrossPerDay(it, days) {
+  return itemBundleDays(it) ? itemRentLine(it, days) / Math.max(1, Number(days) || 1) : (Number(it && it.qty) || 0) * (Number(it && it.price) || 0);
+}
+// `autoBase` = авто хоногийн хямдралд хамаарах дүн (багцын мөрийг хассан). Өгөөгүй бол subtotal (хуучин шигээ).
+function orderDiscountAmount(subtotal, days, dtype, dval, autoBase) {
   subtotal = Math.max(0, Number(subtotal) || 0);
   const autoPct = (typeof rentalDiscount === 'function' ? (rentalDiscount(days).pct || 0) : 0);
-  const autoDisc = Math.round(subtotal * autoPct);
+  const base = autoBase == null ? subtotal : Math.min(subtotal, Math.max(0, Number(autoBase) || 0));
+  const autoDisc = Math.round(base * autoPct);
   const manualDisc = dtype === 'pct' ? Math.round(subtotal * Math.min(100, Number(dval) || 0) / 100) : Math.min(subtotal, Number(dval) || 0);
   return Math.min(subtotal, Math.max(autoDisc, manualDisc));
 }
@@ -11370,6 +11403,9 @@ function packageInfo(p) {
   });
   const sum = parts.reduce((s, x) => s + x.price * x.qty, 0);
   const price = Number(p.price) || 0;
+  // «N хоногийн үнэ» багц: тусад нь N хоног түрээсэлбэл олон хоногийн авто хямдралтай (`rentalDiscount`) — харьцуулалт ЭНЭТЭЙ.
+  const bd = productBundleDays(p);
+  const sepTotal = bd ? Math.round(sum * bd * (1 - (rentalDiscount(bd).pct || 0))) : sum;
   const missing = parts.filter(x => !x.found);
   // Хязгаарлагч = хамгийн цөөн иж бүрдэл гаргадаг бүрэлдэхүүн. Бусад нь түүнээс
   // илүү бол л утгатай (бүгд тэнцүү бол «хязгаарлагч» гэж нэрлэх хэрэггүй).
@@ -11379,11 +11415,11 @@ function packageInfo(p) {
     if (parts.some(x => x.sets > m.sets)) limiter = m;
   }
   return {
-    parts, sum, price, missing, limiter,
+    parts, sum, price, missing, limiter, bd, sepTotal,
     stock: missing.length ? 0 : (parts.length ? Math.min(...parts.map(x => x.sets)) : 0),
     // Хямдралын хувь: эерэг = багцаар хямд, сөрөг = багц тусад нь авснаас ҮНЭТЭЙ.
     // Үнэ эсвэл бүрэлдэхүүний үнэ байхгүй бол null (0% биш — «хямдралгүй» гэж уншигдана).
-    pct: (sum > 0 && price > 0) ? Math.round((1 - price / sum) * 100) : null,
+    pct: (sepTotal > 0 && price > 0) ? Math.round((1 - price / sepTotal) * 100) : null,
   };
 }
 // Тухайн бараа аль багцад орсон (багц бүрт хэдэн ширхгээр). Odoo-ийн «Used in» — бараа өөрчлөх/архивлахаас өмнө
@@ -11423,6 +11459,8 @@ function packageSaveBlock(f) {
     seen.add(String(c.sku));
   }
   if (!(Number(f.price) > 0)) return { pane: 'price', field: '#pm-price', msg: 'Багцын үнэ оруулна уу — үнэгүй багц сайтад харагдахгүй' };
+  // Хоног: бүхэл тоо 1..BUNDLE_DAYS_MAX (1 = өдрийн үнэ). `days` өгөөгүй бол (талбар байхгүй) шалгахгүй.
+  if (f.days !== undefined && !(Number.isInteger(f.days) && f.days >= 1 && f.days <= BUNDLE_DAYS_MAX)) return { pane: 'price', field: '#pm-bdays', msg: `Багцын үнэ хэдэн хоногийнх вэ — 1-ээс ${BUNDLE_DAYS_MAX} хүртэл бүхэл тоо оруулна уу (1 = өдрийн үнэ)` };
   return null;
 }
 /* Захиалгын мөрийг АГУУЛАХЫН харцаар задална: багц бол бүрэлдэхүүн рүү, бусад нь
@@ -11637,6 +11675,7 @@ async function loadProductsCatalog() {
       state._prodHasMarketValue = rows.length ? ('market_value' in rows[0]) : true;
       state._prodHasNameEn = rows.length ? ('name_en' in rows[0]) : true;   // англи нэр (сонголттой багана)
       state._prodHasSetupFee = rows.length ? ('setup_fee' in rows[0]) : true;   // суурилуулалтын нэгж хөлс (сонголттой багана)
+      state._prodHasBundleDays = rows.length ? ('bundle_days' in rows[0]) : true;   // багцын «N хоногийн үнэ» (db/product_bundle_days.sql)
       state._prodHasPurchaseRef = rows.length ? ('purchase_ref' in rows[0]) : true;   // хөрөнгийн зардлын мөрийн холбоос (сонголттой багана)
       state._prodHasOpening = rows.length ? ('stock_opened_at' in rows[0]) : true;   // эхний үлдэгдлийн тэмдэг (сонголттой багана)
       state._prodHasApproval = rows.length ? ('stock_approved_at' in rows[0]) : true;   // 2-р гарын үсэг (сонголттой багана)
@@ -12317,6 +12356,7 @@ async function saveProduct(product) {
   if (product.market_value !== undefined && state._prodHasMarketValue !== false) row.market_value = Number(product.market_value) || 0;
   if (product.name_en !== undefined && state._prodHasNameEn !== false) row.name_en = product.name_en || null;
   if (product.setup_fee !== undefined && state._prodHasSetupFee !== false) row.setup_fee = Number(product.setup_fee) || 0;   // суурилуулалтын нэгж хөлс (сонголттой багана)
+  if (product.bundle_days !== undefined && state._prodHasBundleDays !== false) row.bundle_days = product.bundle_days == null ? null : (Math.floor(Number(product.bundle_days)) || 1);   // багцын «N хоногийн үнэ» (сонголттой багана)
   if (product.code) row.code = product.code;   // барааны нүүр код M-xxx
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
@@ -12408,7 +12448,7 @@ function buildProductUtilIndex(orders, products) {
     for (const it of (o.items || [])) {
       const pr = typeof productOf === 'function' ? productOf(it) : null;
       const q = Number(it.qty) || 0;
-      const lineRev = (Number(it.price) || 0) * q * d;
+      const lineRev = itemRentLine(it, d);   // багц = N хоногийн тогтмол дүн (түүхэн Booqable: d=1)
       const put = (nm2, qty2, rev2) => {
         const k = _normProdName(nm2);
         if (!k) return;
@@ -12620,9 +12660,9 @@ function packageSigHtml(pk) {
     out.push('<span class="sig sig-bad">Багцын үнэ оруулаагүй</span>');
   } else if (pk.pct < 0) {
     // Багц тусад нь авснаасаа ҮНЭТЭЙ — харилцагч бүрэлдэхүүнийг тусад нь авбал хямд. Алдаа.
-    out.push(`<span class="sig sig-bad">⚠ Тусад нь <b>${fmtMoneyShort(pk.sum)}</b> — багц <b>${-pk.pct}%</b> үнэтэй</span>`);
+    out.push(`<span class="sig sig-bad">⚠ Тусад нь${pk.bd ? ' ' + pk.bd + ' хоног' : ''} <b>${fmtMoneyShort(pk.sepTotal)}</b> — багц <b>${-pk.pct}%</b> үнэтэй</span>`);
   } else {
-    out.push(`<span class="sig">Тусад нь <b>${fmtMoneyShort(pk.sum)}</b> · багцаар <b>${pk.pct}%</b> хямд</span>`);
+    out.push(`<span class="sig">Тусад нь${pk.bd ? ' ' + pk.bd + ' хоног' : ''} <b>${fmtMoneyShort(pk.sepTotal)}</b> · багцаар <b>${pk.pct}%</b> хямд</span>`);
   }
   if (packageLimiterShown(pk)) out.push(`<span class="sig${pk.stock === 0 ? ' sig-bad' : ''}">Хязгаарлагч: <b>${escapeHtml(pk.limiter.name)}</b> (${pk.limiter.have}ш${pk.limiter.qty > 1 ? ` ÷ ${pk.limiter.qty}` : ''})</span>`);
   return out.join('');
@@ -12706,7 +12746,7 @@ function productRowHtml(p) {
     </div>
     <div class="prod-badges">
       <span class="prod-stock-b${partial ? ' part' : ''}">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}${stock}${partial ? `/${totalStock}` : ''} ${pkg ? 'багц' : 'ширхэг'}</span>
-      <div class="prod-price"><b>${fmtMoneyShort(Number(p.price) || 0)}</b><span>түрээс/өдөр</span></div>
+      <div class="prod-price"><b>${fmtMoneyShort(Number(p.price) || 0)}</b><span>${productBundleDays(p) ? productBundleDays(p) + ' хоногийн үнэ' : 'түрээс/өдөр'}</span></div>
       ${typeBadge}
       ${(!pkg && canProductPart('stock')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id || p.sku)}" title="Салбар хооронд шилжүүлэх" aria-label="Салбар хооронд шилжүүлэх">⇄</button>` : ''}
     </div>
@@ -15633,7 +15673,7 @@ function canSeeStockCount() { return canAccessView('stockcount', () => canCountS
 function productPartFields() {
   return {
     catalog: ['name', 'name_en', 'category', 'all_categories', 'description', 'photos', 'photo', 'source_url', 'supplier', 'media_url'],
-    price:   ['price', 'deposit', 'setup_fee', 'type', 'bundle_items'],
+    price:   ['price', 'deposit', 'setup_fee', 'type', 'bundle_items', 'bundle_days'],
     cost:    ['cost', 'purchase_date'],
     stock:   ['stock', 'broken', 'maintenance', 'qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'],
   };
@@ -22529,10 +22569,10 @@ function invoiceLines(o) {
   const qty = it => Number(it && (it.qty != null ? it.qty : it.quantity)) || 0;
   const price = it => Number(it && (it.price != null ? it.price : it.unit_price)) || 0;
   return ((o && o.items) || []).map(it => ({
-    name: String((it && it.name) || ''),
+    name: String((it && it.name) || '') + (itemBundleDays(it) ? ` (${itemBundleDays(it)} хоногийн багц)` : ''),
     qty: qty(it), days,
     price: price(it),
-    total: Number(it && it.total) || price(it) * qty(it) * days,
+    total: Number(it && it.total) || itemRentLine(it, days),   // багц = N хоногийн тогтмол дүн (qty × хоног × үнэ БИШ)
   }));
 }
 
@@ -23005,7 +23045,7 @@ function meventContractHtml(o, opts) {
   const qty = it => Number(it.qty != null ? it.qty : it.quantity) || 0;
   const days = orderRentalDays(o);   // C10: каноны хоног тоолол (гэрээ/сайт/квот нэг дүрэм)
   // Мөрийн түрээсийн дүн = нэгж үнэ × тоо × хоног (НӨАТ багтсан) — үнийн саналтай ЯГ ижил.
-  const lineOf = it => Number(it.total) || uPrice(it) * qty(it) * days;
+  const lineOf = it => Number(it.total) || itemRentLine(it, days);   // багц = N хоногийн тогтмол дүн
   // ⭐ Мөнгөний задаргаа — ГАНЦ эх сурвалж orderMoneyBreakdown (үнийн санал/картатай ЯГ ижил тоо).
   const _B = orderMoneyBreakdown(o);
   const subtotal = _B.subtotal, discount = _B.discount, vatDisc = _B.vatDisc, hasVat = _B.hasVat,
@@ -23027,7 +23067,7 @@ function meventContractHtml(o, opts) {
   // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
   const itemRows = items.length ? items.map((it, i) => {
     const line = lineOf(it);
-    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">${hasVat ? 'багтаагүй' : 'багтсан'}</td><td class="rt">${fmtMoney(line)}</td></tr>`;
+    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}${itemBundleDays(it) ? ` <span class="muted">(${itemBundleDays(it)} хоногийн багц)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">${hasVat ? 'багтаагүй' : 'багтсан'}</td><td class="rt">${fmtMoney(line)}</td></tr>`;
   }).join('') : `<tr><td colspan="6" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
   // Нөхөн төлбөрийн үнэлгээ — products.market_value-аас. Заалт 7.3 ҮҮНИЙГ иш татна.
   // Үнэлгээгүй бараа мөрөнд «—» гарна: юу дутуу байгаа нь гэрээнээс шууд харагдана.
@@ -27683,6 +27723,8 @@ ${_pkgMode ? `
 
         <div class="pm-grid">
         <label>Түрээсийн үнэ (₮) *<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
+        <label>Үнэ хэдэн хоногийнх вэ? * <span class="pm-sub">(1 = өдрийн үнэ)</span><input id="pm-bdays" type="number" min="1" max="${BUNDLE_DAYS_MAX}" step="1" value="${(p && Number(p.bundle_days) >= 1) ? Math.floor(Number(p.bundle_days)) : 1}"${state._prodHasBundleDays === false ? ' disabled title="products хүснэгтэд bundle_days багана алга — db/product_bundle_days.sql ажиллуулна уу"' : ''}></label>
+        <div class="pm-hint pm-wide" id="pm-bdays-hint"></div>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span class="pm-sub">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
         </div>` : `        <div class="pm-grid">
@@ -27897,6 +27939,16 @@ ${_pkgMode ? `
   // Багц бараа — бүрэлдэхүүний жагсаалт ({sku,qty}). modal._bundle-д хадгална.
   let bundle = (p && Array.isArray(p.bundle_items)) ? p.bundle_items.filter(c => c && c.sku).map(c => ({ sku: c.sku, qty: Number(c.qty) || 1 })) : [];
   modal._bundle = bundle;
+  // Багцын «N хоногийн үнэ» — талбар (багц горимд л байна). N<2 = өдрийн үнэ.
+  const bdEl = modal.querySelector('#pm-bdays'), bdHint = modal.querySelector('#pm-bdays-hint');
+  const bdaysNow = () => Math.floor(Number(bdEl && bdEl.value) || 1);
+  function bdaysHint() {
+    if (!bdHint) return;
+    const n = bdaysNow(), price = moneyVal(modal.querySelector('#pm-price'));
+    bdHint.textContent = n < 2 ? 'Өдрийн үнэ — захиалгын хоногоор үржинэ (олон хоногийн авто хямдралтай).'
+      : !(price > 0) ? ''
+      : `📦 ${n} хоног хүртэл ${fmtMoney(price)} (тогтмол) · илүү хоног тус бүр ${fmtMoney(Math.round(price / n))} · олон хоногийн авто хямдралд ОРОХГҮЙ`;
+  }
   const bundleList = modal.querySelector('#pm-bundle-list');
   const bundleSum = modal.querySelector('#pm-bundle-sum');
   function bundleSumText() {
@@ -27904,15 +27956,16 @@ ${_pkgMode ? `
     if (!bundle.length) { bundleSum.textContent = ''; return; }
     const pkgPrice = moneyVal(modal.querySelector('#pm-price'));
     // Хувь/нөөц/хязгаарлагчийг картын ИЖИЛ функцээр бод (`packageInfo`) — хоёр газар өөр хэлбэл зөрнө.
-    const pk = packageInfo({ type: 'package', bundle_items: bundle, price: pkgPrice });
+    const pk = packageInfo({ type: 'package', bundle_items: bundle, price: pkgPrice, bundle_days: bdaysNow() });
     const save = pk.pct;
-    bundleSum.innerHTML = `Тусад нь түрээслэвэл <b>${fmtMoney(sum)}</b> · Багцын нөөц <b>${pk.stock}</b>${pk.limiter ? ` (хязгаарлагч: ${escapeHtml(pk.limiter.name)})` : ''}`
+    bundleSum.innerHTML = `${pk.bd ? `Тусад нь ${pk.bd} хоног түрээслэвэл` : 'Тусад нь түрээслэвэл'} <b>${fmtMoney(pk.sepTotal)}</b> · Багцын нөөц <b>${pk.stock}</b>${pk.limiter ? ` (хязгаарлагч: ${escapeHtml(pk.limiter.name)})` : ''}`
       + (save === null ? ' · <span class="pm-bi-info bad">Багцын үнээ оруулна уу</span>'
          : save > 0 ? ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — <b>${save}% хямд</b>`
          : save === 0 ? ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — хямдралгүй`
          : ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — <span class="pm-bi-info bad">⚠ тусад нь авснаас ${-save}% ҮНЭТЭЙ</span>`);
   }
   function renderBundle() {
+    bdaysHint();
     bundleList.innerHTML = bundle.length ? bundle.map((c, i) => {
       const cp = productBySku(c.sku);
       // ⚠ ui-raw — мобайлын `.modal input {...!important}` дүрэм тооны талбарыг
@@ -27934,7 +27987,8 @@ ${_pkgMode ? `
   }
   renderBundle();
   // Үнэ бичих явцад хямдралын хувь шууд шинэчлэгдэнэ (гараар тогтоох үнийн хяналт)
-  modal.querySelector('#pm-price')?.addEventListener('input', bundleSumText);
+  modal.querySelector('#pm-price')?.addEventListener('input', () => { bundleSumText(); bdaysHint(); });
+  bdEl?.addEventListener('input', () => { bundleSumText(); bdaysHint(); });
   // Багц / Үйлчилгээ харилцан үл нийцэх; үйлчилгээ бол нөөц/салбар хуваарь хэрэггүй
   const _svcEl = modal.querySelector('#pm-isservice');
   const _pkgEl = modal.querySelector('#pm-ispackage');
@@ -28082,7 +28136,7 @@ async function submitProductModal(modal, orig, btn) {
   // ⚠ Таарахгүй мөрийг ЧИМЭЭГҮЙ хаяхгүй (`packageSaveBlock` хаана) — өмнө нь бичсэн нэр бараатай таараагүй бол
   // filter(c => c.sku) түүнийг устгаад хэрэглэгч мэдэлгүй багц дутуу хадгалагдаж байв.
   if (isPkg) {
-    const blk = packageSaveBlock({ name, cat, bundle: modal._bundle || [], price: moneyVal(modal.querySelector('#pm-price')), checkPrice: canProductPart('price') });
+    const blk = packageSaveBlock({ name, cat, bundle: modal._bundle || [], price: moneyVal(modal.querySelector('#pm-price')), days: modal.querySelector('#pm-bdays') ? Number(g('pm-bdays')) : undefined, checkPrice: canProductPart('price') });
     if (blk) { modal._pmGo?.(blk.pane); modal.querySelector(blk.field)?.focus(); showToast(blk.msg, 'warn', 4000); return; }
   }
   // Зөвхөн sku/тоо хадгална — засах цонхны түр талбар (`_typed`) DB-д орохгүй
@@ -28123,6 +28177,7 @@ async function submitProductModal(modal, orig, btn) {
     type: isPkg ? 'package' : (isSvc ? 'service' : (_qm > 0 ? 'rental' : 'asset')),   // Багц / Үйлчилгээ / M-Event>0=түрээс / асет
     qty_mevent: isPkg ? 0 : _qm, qty_chimun: isPkg ? 0 : _qc, qty_nomaad: isPkg ? 0 : _qn, qty_catering: isPkg ? 0 : _qk,
     bundle_items: bundle,
+    bundle_days: isPkg ? Math.max(1, Math.floor(Number(g('pm-bdays')) || 1)) : null,   // багцын «N хоногийн үнэ» (1 = өдрийн үнэ)
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
     variant_group: null, variant_label: null,   // хувилбар халагдсан — хадгалах бүрд цэвэрлэнэ
     source_url: g('pm-source') || null,
@@ -31517,6 +31572,7 @@ function openNewOrder(editOrder) {
     <div class="no-sum">
       <div class="no-sum-row muted"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
       <div class="no-sum-row muted"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
+      <div class="no-sum-row muted" id="no-bundlerow" hidden><span>📦 Багц (хоногийн тогтмол үнэ)</span><span id="no-bundle">0₮</span></div>
       <div class="no-sum-row"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
       <div class="no-sum-row muted"><span id="no-disc-lbl">Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
       <div class="no-sum-row" id="no-vatrow" style="display:none;color:var(--danger);"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
@@ -31577,7 +31633,7 @@ function openNewOrder(editOrder) {
     const key = p.sku || p.name;
     const ex = key ? items.find(it => (it.sku || it.name) === key) : null;
     if (ex) ex.qty = (Number(ex.qty) || 0) + 1;
-    else items.push({ sku: p.sku || p.name, name: p.name, qty: 1, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, setup: Number(p.setup_fee) || 0, photo: p.photo || '' });
+    else items.push(orderItemFromProduct(p, 1));
     renderItems(); recalc();
   });
 
@@ -31600,7 +31656,7 @@ function openNewOrder(editOrder) {
         : `<span class="no-qty"><button type="button" class="ui-raw" data-iqd="${i}" aria-label="Хасах">−</button><input type="number" class="ui-raw" min="1" value="${qty}" data-iq="${i}" aria-label="Тоо ширхэг"><button type="button" class="ui-raw" data-iqi="${i}" aria-label="Нэмэх">+</button></span>`;
       return `<div class="no-item">${ph}
       <div class="no-item-mid"><div class="no-item-nm">${escapeHtml(it.name || '')}${_asar ? ` <span class="no-item-mod">📐 ${escapeHtml(asarSizeLabel(it.sku, qty))} · ${qty} модуль</span>` : ''}</div>
-        ${_pkI && _pkI.parts.length ? `<div class="no-item-sub" title="${escapeHtml(_pkI.parts.map(x => (x.qty * qty) + '× ' + x.name).join(' · '))}">📦 ${escapeHtml(_pkI.parts.map(x => (x.qty * qty) + '× ' + x.name).join(' · '))}</div>` : ''}
+        ${_pkI && _pkI.parts.length ? `<div class="no-item-sub" title="${escapeHtml(_pkI.parts.map(x => (x.qty * qty) + '× ' + x.name).join(' · '))}">📦 ${itemBundleDays(it) ? `<b>${itemBundleDays(it)} хоногийн үнэ</b> · ` : ''}${escapeHtml(_pkI.parts.map(x => (x.qty * qty) + '× ' + x.name).join(' · '))}</div>` : ''}
         <div class="no-item-ctl">${qtyCtl}<span>×</span><input type="text" inputmode="numeric" class="money-input no-price ui-raw" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} aria-label="Нэгж үнэ">${warn}</div></div>
       <b class="no-item-amt" data-iamt="${i}">${fmtMoney(qty * (Number(it.price) || 0))}</b>
       ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:var(--fs-lg);color:var(--danger);" aria-label="Хасах">✕</button>`}
@@ -31647,9 +31703,12 @@ function openNewOrder(editOrder) {
     return { zone, km, fee: calcDeliveryFee(zone, km) };
   }
   function recalc() {
-    const perDay = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
     const days = currentDays();
-    const subtotal = perDay * days;   // түрээс = өдрийн дүн × хоног
+    // Багцын мөр «N хоногийн үнэ» (тогтмол) — өдрийн дүнд ОРОХГҮЙ, хоногоор үржихгүй, авто хямдралд хамаарахгүй.
+    const _bundleSub = itemsBundleSubtotal(items, days);
+    const perDay = items.reduce((s, it) => itemBundleDays(it) ? s : s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+    const subtotal = perDay * days + _bundleSub;   // түрээс = өдрийн дүн × хоног + багцын тогтмол дүн
+    const _autoBase = subtotal - _bundleSub;      // авто хоногийн хямдралын ҮНДЭС
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
     const vatOff = !!$('#no-vat')?.checked;
     const autoDep = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.deposit) || 0), 0);   // барьцаа = нэг удаагийн (хоногоор үржихгүй)
@@ -31664,23 +31723,24 @@ function openNewOrder(editOrder) {
     const _fixed = deposit + dlv.fee + offFee + setupFee;
     const _fromFinal = dtype === 'final' ? discountForFinal(subtotal, dval, vatOff, _fixed) : null;
     const discount = _fromFinal == null
-      ? orderDiscountAmount(subtotal, days, dtype, dval)   // C3: авто-хоног ба гар хямдралын их нь (сувагаар парити)
-      : orderDiscountAmount(subtotal, days, 'amount', _fromFinal);
+      ? orderDiscountAmount(subtotal, days, dtype, dval, _autoBase)   // C3: авто-хоног ба гар хямдралын их нь (сувагаар парити)
+      : orderDiscountAmount(subtotal, days, 'amount', _fromFinal, _autoBase);
     const rentalNet = Math.max(0, subtotal - discount);
     const vatDisc = vatOff ? Math.round(rentalNet * 0.05) : 0;   // НӨАТ хасалт — хямдарсан түрээсээс 5% (барьцаа/хүргэлтээс хасагдахгүй)
     _discNow = discount;   // ХАДГАЛАХАД ДАХИН БОДОХГҮЙ — дэлгэц дээр харсан тоо хадгалагдана
     const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee + offFee + setupFee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ + АЖЛЫН БУС ЦАГ + СУУРИЛУУЛАЛТ
     $('#no-perday').textContent = fmtMoney(perDay);
+    { const _br = $('#no-bundlerow'); if (_br) { _br.hidden = !(_bundleSub > 0); $('#no-bundle').textContent = fmtMoney(_bundleSub); } }
     $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
     $('#no-disc').textContent = '−' + fmtMoney(discount);
-    { const _t = rentalDiscount(days); const _dl = $('#no-disc-lbl'); if (_dl) _dl.textContent = _t.pct > 0 ? `Хөнгөлөлт · ${days} хоног авто −${Math.round(_t.pct * 100)}%` : 'Хөнгөлөлт'; }   // C3: авто-хоногийн хямдрал ил
+    { const _t = rentalDiscount(days); const _dl = $('#no-disc-lbl'); if (_dl) _dl.textContent = _t.pct > 0 ? `Хөнгөлөлт · ${days} хоног авто −${Math.round(_t.pct * 100)}%${_bundleSub > 0 ? ' (багцаас бусад)' : ''}` : 'Хөнгөлөлт'; }   // C3: авто-хоногийн хямдрал ил
     /* ХӨНГӨЛӨЛТ АЖИЛЛАЖ БАЙНА УУ — ИЛ ХЭЛНЭ (2026-09-22).
        Захиалга 1532: авто 20% илүү байсан тул гараар бичсэн 196,280₮ ЧИМЭЭГҮЙ хаягдсан.
        Ажилтан хөнгөлөв гэж бодоод явсан, дүн өөрчлөгдөөгүй — мөнгө дутах шалтгаан болсон. */
     {
       const _hint = $('#no-disc-hint');
-      const _autoD = Math.round(subtotal * (rentalDiscount(days).pct || 0));
+      const _autoD = Math.round(_autoBase * (rentalDiscount(days).pct || 0));
       const _wanted = _fromFinal != null ? _fromFinal
         : (dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval));
       const _manualUsed = dval > 0 && _wanted > _autoD;   // гар хөнгөлөлт ҮНЭХЭЭР хэрэглэгдсэн үү
@@ -31821,7 +31881,7 @@ function openNewOrder(editOrder) {
     const _lead = ($('#no-lead')?.value || '').trim();
     if (!_lead) { showToast('«Хаанаас ирсэн» сонгоно уу — маркетингийн тайланд хэрэгтэй', 'warn'); $('#no-lead')?.focus(); return; }
     const days = currentDays();
-    const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) * days;
+    const subtotal = itemsRentSubtotal(items, days);   // recalc-тай ИЖИЛ (багц = N хоногийн тогтмол дүн)
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
     // ХӨНГӨЛӨЛТ = recalc дээр БОДОГДСОН ДҮН (`_discNow`) — дэлгэц дээр харсан тоо
     // ЯГ тэр чигээр хадгалагдана. «Тохирсон дүн» горим дахин бодогдвол зөрөх эрсдэлтэй.
@@ -31973,6 +32033,12 @@ function openNewOrder(editOrder) {
 
 // ── Бараа сонгох popup (захиалгын модалаас) — бүх дэлгэцийг ашиглаж, том дүрс + ангиллын шүүлт +
 // тоо ширхэгийг картан дээр нь шууд оруулна. Жижиг inline каталогоос олон бараа сонгоход хурдан. ──
+// Захиалгын мөр бараанаас. Багц «N хоногийн үнэ»-тэй бол `bdays` хуулж хадгална (хожим багцын хоног солигдсон ч
+// энэ захиалгын дүн өөрчлөгдөхгүй — `itemRentLine`).
+function orderItemFromProduct(p, qty) {
+  const bd = productBundleDays(p);
+  return { sku: p.sku || p.name, name: p.name, qty, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, setup: Number(p.setup_fee) || 0, photo: p.photo || '', ...(bd ? { bdays: bd } : {}) };
+}
 const PICK_PKG_CHIP = '__pkg';   // ангилалтай мөргөлдөхгүй тусгай түлхүүр
 function openOrderProductPicker(opt) {
   const all = (state.products || []).filter(p => isRentable(p));
@@ -32060,7 +32126,7 @@ function openOrderProductPicker(opt) {
     cart.forEach((n, k) => {
       if (n <= 0) return;
       const p = all.find(x => keyOf(x) === k); if (!p) return;
-      out.push({ sku: p.sku || p.name, name: p.name, qty: n, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, setup: Number(p.setup_fee) || 0, photo: p.photo || '' });
+      out.push(orderItemFromProduct(p, n));
     });
     opt.onApply(out);
     close();
@@ -32799,7 +32865,7 @@ function quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, v
 function orderMoneyBreakdown(o) {
   o = o || {};
   const days = (typeof orderRentalDays === 'function') ? orderRentalDays(o) : 1;
-  const _line = it => Number(it && it.total) || (Number(it && it.price) || 0) * (Number(it && (it.qty != null ? it.qty : it.quantity)) || 0) * days;
+  const _line = it => Number(it && it.total) || itemRentLine(it, days);   // багц = N хоногийн тогтмол дүн
   const subtotal = Number(o.subtotal_mnt) || (Array.isArray(o.items) ? o.items.reduce((s, it) => s + _line(it), 0) : 0);
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
@@ -32828,14 +32894,14 @@ async function buildOrderQuote(o, lang) {
   const itemRows0 = await Promise.all(items.map(async (it) => {
     const prod = productOf(it) || {};
     return {
-      qty: Number(it.qty) || 1, price: Number(it.price) || 0,
+      qty: Number(it.qty) || 1, price: Number(it.price) || 0, bd: itemBundleDays(it),
       name: it.name || '', nameEn: enProdName(prod, it.name || ''),
       th: prod.photo ? await quoteThumbUrl(prod.photo) : '',
     };
   }));
   const itemRowsFor = (en) => itemRows0.map((r, i) => {
     const pic = r.th ? `<img class="it-th" src="${escapeHtml(r.th)}" alt="">` : '<span class="it-th it-th-x"></span>';
-    return `<tr><td class="ctr">${i + 1}</td><td><div class="it-wrap">${pic}<span>${escapeHtml(en ? r.nameEn : r.name)}</span></div></td><td class="ctr">${r.qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(r.price)}</td><td class="rt">${fmtMoney(r.qty * r.price * days)}</td></tr>`;
+    return `<tr><td class="ctr">${i + 1}</td><td><div class="it-wrap">${pic}<span>${escapeHtml(en ? r.nameEn : r.name)}</span></div></td><td class="ctr">${r.qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(r.price)}${r.bd ? `<br><small>${en ? r.bd + '-day price' : r.bd + ' хоногийн үнэ'}</small>` : ''}</td><td class="rt">${fmtMoney(itemRentLine({ price: r.price, qty: r.qty, bdays: r.bd }, days))}</td></tr>`;
   }).join('');
   // ⭐ Мөнгөний задаргаа — ГАНЦ эх сурвалж orderMoneyBreakdown (гэрээ/картатай ЯГ ижил тоо).
   const _B = orderMoneyBreakdown(o);
@@ -35384,13 +35450,14 @@ function histProductOrders(orders, productName) {
   const rows = [];
   (orders || []).forEach(o => {
     const items = Array.isArray(o.items) ? o.items : [];
-    const grossAll = items.reduce((s2, i) => s2 + (HIST_TAX_RE.test(String(i.name || '')) ? 0 : N(i.qty) * N(i.price)), 0);
+    const _gd = orderRentalDays(o);
+    const grossAll = items.reduce((s2, i) => s2 + (HIST_TAX_RE.test(String(i.name || '')) ? 0 : itemGrossPerDay(i, _gd)), 0);
     const total = N(o.total_mnt);
     const net = (typeof orderRevenue === 'function') ? orderRevenue(o, 'accrual') : Math.max(0, total - N(o.deposit_mnt));
     const days = (typeof _orderDays === 'function') ? _orderDays(o) : 1;
     items.forEach(i => {
       if (!wants.has(normP(i.name))) return;
-      const gross = N(i.qty) * N(i.price);
+      const gross = itemGrossPerDay(i, _gd);
       rows.push({
         id: o.id, number: o.number, customer: String(o.customer || '').trim() || '—',
         starts_at: String(o.starts_at || '').slice(0, 10), status: o.status,
@@ -35875,13 +35942,14 @@ function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
     const items = Array.isArray(o.items) ? o.items : [];
     // ⚠ ХУВААРЬ = зөвхөн ЖИНХЭНЭ мөрүүд (татвар/барьцаа хасагдана) — эс бөгөөс
     // тэдний ногдох хэсэг алга болж, мөр + хөлс ≠ цэвэр орлого болно.
-    const grossAll = items.reduce((s, i) => s + (HIST_TAX_RE.test(String(i.name || '')) ? 0 : N(i.qty) * N(i.price)), 0);
+    const _gd = orderRentalDays(o);
+    const grossAll = items.reduce((s, i) => s + (HIST_TAX_RE.test(String(i.name || '')) ? 0 : itemGrossPerDay(i, _gd)), 0);
     const tokFees = orderTokenFees(o);   // хүргэлт/суурилуулалт/ажлын бус цаг — мөрд тарахгүй
     const days = (typeof _orderDays === 'function') ? _orderDays(o) : 1;
     items.forEach(i => {
       const nm = String(i.name || '').trim();
       if (!nm || TAX.test(nm)) return;                    // татвар/барьцаа — бараа биш
-      const gross = N(i.qty) * N(i.price);
+      const gross = itemGrossPerDay(i, _gd);
       const rev = histLineRevenue(gross, grossAll, netRev, tokFees);   // барьцаа/хөлс хасагдана
       const isSvc = bqIsService(nm);
       const bucket = isSvc ? svcs : prods;
@@ -39526,7 +39594,7 @@ function meventIncome(month) {
       pr.revenue += rev; pr.unitDays += qty * days; pr.orders++;
     };
     (o.items || []).forEach(it => {
-      const line = (Number(it.price) || 0) * (Number(it.qty) || 0) * days;
+      const line = itemRentLine(it, days);   // багц = N хоногийн тогтмол дүн
       if (line <= 0) return;
       rental += line;
       // Багц = бүтээгдэхүүний нийлбэр. Ангилал/ROI-г бүрэлдэхүүнээр гаргана —
@@ -39557,7 +39625,7 @@ function _productLifetimeRev() {
     (o.items || []).forEach(it => {
       const key = _normProdName(it.name || '');
       if (!key) return;
-      map[key] = (map[key] || 0) + (Number(it.price) || 0) * (Number(it.qty) || 0) * days;
+      map[key] = (map[key] || 0) + itemRentLine(it, days);
     });
   });
   state._prodLifeRev = map; state._prodLifeRevN = n;

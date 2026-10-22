@@ -9506,3 +9506,19 @@ select.no-asar-len {
 .stc-pause { background: var(--warn-soft); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-3) var(--space-4); margin: 0 0 var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 .stc-pause-t { font-weight: 800; font-size: var(--fs-base); }
 .stc-pause-m { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
+
+/* 🔒 NOMAAD «Хувийн дансаар — гар бүртгэл» цонх (2026-10-22, inline style → класс).
+   ⚠ `.modal` угтвар ЗААВАЛ: `.modal label` ба `.modal input` нь нэг класстай
+   дүрмээс илүү онцлогтой тул угтваргүй бичвэл чимээгүй дарагдана
+   (CLAUDE.md → Дизайны гэрээ, 7-р дүрэм). Хүрээ/дэвсгэр/padding/фонт нь
+   `.modal input`-ээс — энд ЗӨВХӨН зөрөөг (доод зай) бичнэ.
+   ⚠ Шошгын зузаан ба талбарын фонтын хэмжээг ЭНД БИЧИХГҮЙ: `.modal label`
+   ба `.modal input` -д ХОЁР breakpoint (≤720px ба ≥721px) ХОЁУЛАНД хүчээр
+   (important) тавигдсан тул ямар ч өргөнд хүрэхгүй. Хуучин inline зузаан/
+   хэмжээ ч яг ингэж дарагдаж байсныг браузераар хэмжиж баталсан — тиймээс
+   тэднийг класс болгоогүй, хөрвүүлэлт нь зан чанарыг хөндөөгүй. */
+.nim-sub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-2); }
+.nim-warn { background: color-mix(in srgb, var(--warn) 12%, var(--panel)); border: 1px solid var(--warn); border-radius: var(--r-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); font-size: var(--fs-xs); color: var(--warn); }
+.modal input.nim-in { margin: var(--space-1) 0 var(--space-3); }
+.nim-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+.modal .nim-btn { padding: var(--space-2) var(--space-4); }

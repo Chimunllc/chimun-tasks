@@ -395,6 +395,24 @@ const NET_BLIP_RE = /failed to fetch|fetch is aborted|load failed|networkerror|n
 //   болж 3 Issue үүссэн (fp 049beb19a3e0 · 400a5b1913a2 · b4e565453174 — нэг
 //   ажилтан, нэг мөч). Шалтгаан нь НЭГ: сервер бидний сессийг хүлээж авсангүй.
 let _load401Logged = false;
+// ⛔ ТОКЕН ИЛГЭЭГДСЭН АТАЛ 401 = СЕСС ХҮЧИНГҮЙ, ажилтанд ГАРЦ ХАРАГДАНА (2026-10-22).
+//   Дээрх дүүргэлт зогссон ч ажилтны байдал хэвээр байв: тууз гарахгүй, дараагийн
+//   401-ууд `_load401Logged`-оор нуугдана → ХООСОН дэлгэц, дахин нэвтрэх шаардлагатайг
+//   хэн ч хэлэхгүй, дэлгэцээ дахин нээж ч нөхөгдөхгүй (fp b4e565453174, `ideas`).
+//   PostgREST-д ЭРХИЙН алдаа = **403** (нэвтэрсэн үүрэг), **401** нь зөвхөн токеныг
+//   хүлээж авсангүй гэсэн үг (эрхгүй anon руу уналт ч 401). n8n сувгууд ч ижил
+//   (нэвтрэлтгүй = 401, эрхгүй = 403). Тиймээс токеноо ИЛГЭЭСЭН атал 401 ирвэл
+//   шалтгаан нь НЭВТРЭЛТ — утасны цаг юу ч хэлж байсан хамаагүй, сервер Л шийднэ.
+// ⚠ Токен огт байхгүй үед хөндөхгүй — тэр тохиолдлыг эхлэлийн шалгалт барина.
+//   Шинээр тэмдэглэсэн бол `true` (нэг сесст нэг удаа) — дуудагч өөрөө бүртгэнэ.
+function markSessionRejected() {
+  if (state.sessionExpired) return false;
+  state.sessionExpired = true;
+  state.sessionExpiredAt = (typeof fmtDateTimeUB === 'function') ? fmtDateTimeUB(new Date().toISOString()) : '';
+  try { showToast('🔒 Нэвтрэлт дууссан — дахин нэвтэрнэ үү', 'error', 7000); } catch (e) {}
+  try { render(); } catch (e) {}
+  return true;
+}
 function dataLoadFailed(where, err) {
   if (_pageUnloading) return;                    // хуудас хаагдаж байна — таслагдсан fetch
   if (navigator && navigator.onLine === false) return;   // офлайн — хэрэглэгч мэднэ
@@ -404,22 +422,18 @@ function dataLoadFailed(where, err) {
   // ⛔ 401 нь «дата ачаалагдсангүй» БИШ — НЭВТРЭЛТ дууссан (2026-10-07, амьд логоос).
   //   Нэг дэлгэц 3 татац хийдэг тул алдааны лог нэг зочлолтод 3 бичлэгээр дүүрч,
   //   хүнд «дата алга» гэж уншигдаж байв. Жинхэнэ шалтгаан нь токен хуучирсан.
-  //   ⚠ Токен ХҮЧИНТЭЙ атал 401 ирвэл энэ нь ЭРХИЙН асуудал — хэвийн бүртгэнэ.
   if (_is401 && typeof pgrstTokenValid === 'function' && !pgrstTokenValid()) {
-    if (!state.sessionExpired) {
-      state.sessionExpired = true;
-      state.sessionExpiredAt = (typeof fmtDateTimeUB === 'function') ? fmtDateTimeUB(new Date().toISOString()) : '';
-      try { showToast('🔒 Нэвтрэлт дууссан — дахин нэвтэрнэ үү', 'error', 7000); } catch (e) {}
+    if (markSessionRejected()) {
       try { _reportErrToServer('Нэвтрэлт дууссан', 'auth:401', String(where || '').slice(0, 120)); } catch (e) {}
-      try { render(); } catch (e) {}
     }
     return;
   }
   // ⚠ ЭРХИЙН 401-ийг НУУХГҮЙ — ЭХНИЙХ нь татацынхаа нэрээр бүрэн бүртгэгдэнэ
-  //   (`load:<нэр>`), сесс дууссан гэж ТЭМДЭГЛЭХГҮЙ. Зөвхөн дараагийнх нь дахин
-  //   бичигдэхгүй — 401 бүр нэг л шалтгаантай (эрх эсвэл токен), 3 бичлэг нэмэх
-  //   мэдээлэл өгөхгүй, дунд нь байгаа ЖИНХЭНЭ алдааг живүүлнэ.
+  //   (`load:<нэр>`). Зөвхөн дараагийнх нь дахин бичигдэхгүй — 401 бүр нэг л
+  //   шалтгаантай, 3 бичлэг нэмэх мэдээлэл өгөхгүй, дунд нь байгаа ЖИНХЭНЭ
+  //   алдааг живүүлнэ. Харин ажилтанд ТУУЗ нь ЗААВАЛ гарна (дээрхийг үз).
   if (_is401) {
+    if (typeof pgrstToken === 'function' && pgrstToken()) markSessionRejected();
     if (_load401Logged) return;
     _load401Logged = true;
   }

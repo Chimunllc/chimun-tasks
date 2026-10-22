@@ -8515,6 +8515,40 @@ need(['orderCustType']);
     ok(/Дата ачаалагдсангүй/.test(vm.runInContext('_errLog[0]', sandbox)), '500: хэвийн мессежээр бүртгэгдэнэ');
     vm.runInContext('_load401Logged = false;', sandbox);
   }
+
+  // ── ТОКЕН ИЛГЭЭГДСЭН АТАЛ 401 = СЕСС ХҮЧИНГҮЙ, ажилтанд ГАРЦ харагдана ────
+  //   (2026-10-22, fp b4e565453174 — `ideas` дэлгэцийн «Ажилтны санал»)
+  //   PostgREST-д эрхийн алдаа = 403, 401 = нэвтрэлт. Тиймээс токеноо илгээсэн
+  //   атал 401 ирэх нь «сервер бидний сессийг хүлээж авсангүй» гэсэн үг.
+  //   Утасны цаг хоцорвол `pgrstTokenValid()` «хүчинтэй» гэж хэлдэг тул тууз
+  //   гардаггүй, `_load401Logged` дараагийн 401-ийг нууж, ажилтан ХООСОН
+  //   дэлгэц хараад дахин нэвтрэх шаардлагатайгаа МЭДЭХГҮЙ үлддэг байв.
+  {
+    vm.runInContext(`
+      _errLog = []; _load401Logged = false;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      localStorage.setItem('pgrstToken', 'head.body.sig');
+      pgrstTokenValid = () => true;
+      dataLoadFailed('Ажилтны санал', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('state.sessionExpired', sandbox), true,
+       'ИНВАРИАНТ: токен илгээгдсэн атал 401 → сесс хүчингүй гэж тэмдэглэнэ');
+    ok(/Дахин нэвтрэх/.test(vm.runInContext('sessionExpiredBannerHtml()', sandbox)),
+       '401: ажилтанд гарц (дахин нэвтрэх товч) харагдана');
+    eq(vm.runInContext('_errLog.length', sandbox), 1, '401: нэг зочлолт нэг бичлэг хэвээр');
+    ok(/^load:Ажилтны санал\|/.test(vm.runInContext('_errLog[0]', sandbox)),
+       'ИНВАРИАНТ: эрхийн 401-ийг нуухгүй — татацын нэр логт хэвээр');
+    // Токен ОГТ илгээгдээгүй бол (anon руу уналт) энэ дүрэм хөндөгдөхгүй —
+    // тэр тохиолдлыг эхлэлийн `pgrstTokenValid()` шалгалт аль хэдийн барина.
+    vm.runInContext(`
+      localStorage.removeItem('pgrstToken');
+      _errLog = []; _load401Logged = false; state.sessionExpired = false;
+      dataLoadFailed('Цалин', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('state.sessionExpired', sandbox), false,
+       '401: токенгүй үед сессийг хуурамчаар дуусгахгүй');
+    vm.runInContext('_load401Logged = false; state.sessionExpired = false;', sandbox);
+  }
   {
     ok(/id = 'sess-banner'/.test(src) && src.indexOf("id = 'sess-banner'") < src.indexOf("const wrap = document.getElementById('task-list')"),
        'ИНВАРИАНТ: нэвтрэлт дууссан тууз бүх дэлгэцэд гарна');

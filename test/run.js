@@ -6698,6 +6698,130 @@ need(['orderCustType']);
   eq(F.packageSplit(null, null, 1, 100), null, 'багц: хоосон оролт унахгүй');
 }
 
+// ─── БАГЦ = ЖОР, бүтээгдэхүүн БИШ (2026-10-22, CEO) ───────────────────────────
+// Харилцагч багцыг нэг зүйл гэж харна; АГУУЛАХ бүрэлдэхүүнээр нь харна. Өмнө нь тооллого,
+// буцаан авалт, гэрээний нөхөн төлбөр багцыг НЭГ мөр гэж үздэг байсан тул нэг микрофон
+// дутвал аль нь дутсан нь мэдэгдэхгүй, багц өртөггүй тул алдагдал 0₮ гардаг байв.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('[state.products, state.appOrders, state.productCosts]');
+  const comp = (sku, name, price, qm, extra) => Object.assign({ id: sku, sku, name, price, type: 'rental',
+    qty_mevent: qm, stock: qm, broken: 0, maintenance: 0, market_value: 0 }, extra || {});
+  const mkPkg = (sku, name, price, items) => ({ id: sku, sku, name, price, type: 'package', qty_mevent: 0, stock: 0, bundle_items: items });
+  const prods = [
+    comp('M-163', 'Line Array', 418000, 4, { market_value: 3000000, cost: 2000000 }),
+    comp('M-284', 'KS28 сабвүфер', 605000, 4, { market_value: 4000000, cost: 2500000 }),
+    comp('M-150', 'Takstar микрофон', 66000, 2, { market_value: 300000, cost: 150000 }),
+    comp('M-089', 'Майхан', 132000, 21), comp('M-064', 'Аяны ор', 27500, 557), comp('M-060', 'Аяны зуух', 44000, 21),
+    mkPkg('M-322', 'Хөгжим GOLD', 2720000, [{ sku: 'M-163', qty: 4 }, { sku: 'M-284', qty: 2 }, { sku: 'M-150', qty: 2 }]),
+    mkPkg('M-328', 'Өвлийн майхан багц', 390000, [{ sku: 'M-089', qty: 1 }, { sku: 'M-064', qty: 4 }, { sku: 'M-060', qty: 1 }]),
+    mkPkg('M-399', 'Эвдэрсэн багц', 100000, [{ sku: 'M-150', qty: 1 }, { sku: 'ALGA', qty: 1 }]),
+    mkPkg('M-398', 'Үнэгүй багц', 0, [{ sku: 'M-150', qty: 1 }]),
+    mkPkg('M-397', 'Тэнцүү багц', 100000, [{ sku: 'M-089', qty: 1 }, { sku: 'M-060', qty: 1 }]),
+  ];
+  runIn('state.products = ' + JSON.stringify(prods) + '; state.appOrders = []; state.productCosts = {};');
+  const byS = (k) => runIn(`productBySku('${k}')`);
+
+  // 1) packageInfo — нийлбэр, хувь, нөөц, хязгаарлагч
+  const gold = F.packageInfo(byS('M-322'));
+  eq(gold.sum, 4 * 418000 + 2 * 605000 + 2 * 66000, 'багц: бүрэлдэхүүний нийлбэр');
+  eq(gold.pct, 10, 'багц: GOLD нийлбэрээс 10% хямд');
+  eq(gold.stock, 1, 'багц: нөөц = хамгийн цөөн иж бүрдэл (Line Array 4÷4, микрофон 2÷2)');
+  eq(gold.limiter && gold.limiter.name, 'Line Array', 'багц: хязгаарлагч нэрлэгдэнэ');
+  eq(gold.stock, runIn("packageStock(productBySku('M-322'))"), 'багц: packageInfo.stock = packageStock (ИНВАРИАНТ)');
+  const tent = F.packageInfo(byS('M-328'));
+  eq(tent.sum, 286000, 'багц: майханы нийлбэр');
+  eq(tent.pct, -36, 'багц: тусад нь авснаасаа ҮНЭТЭЙ бол сөрөг хувь (амьд датаны алдаа)');
+  eq(F.packageInfo(byS('M-163')), null, 'багц: бараа бол null');
+  const broken = F.packageInfo(byS('M-399'));
+  eq(broken.stock, 0, 'багц: олдоогүй бүрэлдэхүүнтэй бол нөөц 0');
+  eq(broken.missing.length, 1, 'багц: олдоогүй бүрэлдэхүүн тоологдоно');
+  eq(F.packageInfo(byS('M-398')).pct, null, 'багц: үнэгүй бол хувь null (0% БИШ — «хямдралгүй» гэж уншигдана)');
+  eq(F.packageInfo(byS('M-397')).limiter, null, 'багц: бүх бүрэлдэхүүн ижил иж бүрдэл гаргавал хязгаарлагч алга');
+  eq(tent.limiter && tent.limiter.name, 'Майхан', 'багц: майханы хязгаарлагч нь ор (139) биш майхан/зуух (21)');
+
+  // 2) expandOrderLines — агуулахын харц
+  const gl = F.expandOrderLines([{ sku: 'M-322', name: 'Хөгжим GOLD', qty: 2 }]);
+  eq(gl.map(x => [x.sku, x.qty]), [['M-163', 8], ['M-284', 4], ['M-150', 4]], 'багц: 2 багц → бүрэлдэхүүн ×2');
+  ok(gl.every(x => x.pkg === 'Хөгжим GOLD'), 'багц: задарсан мөр багцаа нэрлэнэ');
+  const mixed = F.expandOrderLines([{ sku: 'M-322', name: 'Хөгжим GOLD', qty: 1 }, { sku: 'M-150', name: 'Takstar микрофон', qty: 3 }]);
+  const mic = mixed.find(x => x.sku === 'M-150');
+  eq(mic.qty, 5, 'багц: ижил эд зүйл багц болон тусдаа мөрөнд орвол НЭГТГЭНЭ (нярав нэг овоолгыг нэг тоолно)');
+  eq(mic.pkg, '', 'багц: тусдаа мөртэй нэгдвэл багцын шошго тавихгүй');
+  eq(mixed.find(x => x.sku === 'M-163').pkg, 'Хөгжим GOLD', 'багц: зөвхөн багцаас ирсэн нь шошготой');
+  const plain = F.expandOrderLines([{ sku: 'ZZ', name: 'Каталогт байхгүй', qty: 2 }, { sku: 'M-089', name: 'Майхан', qty: 1 }, { qty: 5 }, null]);
+  eq(plain.map(x => [x.sku, x.name, x.qty, x.pkg]), [['ZZ', 'Каталогт байхгүй', 2, ''], ['M-089', 'Майхан', 1, '']], 'багц: бараа хэвээр, нэргүй/хоосон мөр алгасагдана');
+  eq(F.expandOrderLines(null), [], 'багц: хоосон оролт унахгүй');
+
+  // 3) ҮНЭХЭЭР: микрофон дутсан нь бодит алдагдал болж бүртгэгдэнэ
+  const rows = F.expandOrderLines([{ sku: 'M-322', name: 'Хөгжим GOLD', qty: 1 }]);
+  const got = rows.map(x => x.sku === 'M-150' ? x.qty - 1 : x.qty);
+  const miss = F.receiveShortfalls(rows, got);
+  eq(miss.map(x => [x.sku, x.miss]), [['M-150', 1]], 'багц: буцаан авалтад ЯМАР бүрэлдэхүүн дутсан нь мэдэгдэнэ');
+  const mkOrder = (items) => ({ stage_meta: { received: { at: '2026-10-05T10:00:00', items } } });
+  const costNew = F.missingItemsCost('2026-10', [mkOrder(rows.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: got[i] })))]);
+  eq(costNew.cost, 150000, 'багц: дутсан микрофон ӨРТГӨӨРӨӨ (150,000₮) алдагдалд орно');
+  const costOld = F.missingItemsCost('2026-10', [mkOrder([{ sku: 'M-322', name: 'Хөгжим GOLD', qty: 1, got: 0 }])]);
+  eq(costOld.cost, 0, 'багц: ХУУЧИН арга (багц нэг мөр) алдагдлыг 0₮ гаргадаг байсан — энэ нь засагдсан алдаа');
+
+  // 4) Гэрээний нөхөн төлбөрийн хүснэгт — бүрэлдэхүүн бүр өөрийн үнэлгээтэй
+  const ord = { number: 7, customer: 'Тест ХХК', order_no: 'ME-7', starts_at: '2026-09-10', stops_at: '2026-09-12', total_mnt: 2720000, deposit_mnt: 0,
+    items: [{ sku: 'M-322', name: 'Хөгжим GOLD', qty: 1, price: 2720000, total: 2720000 }], note: F.encodeOrderTimes(8, 20) };
+  const ct = F.meventContractHtml(ord);
+  const mvAt = ct.indexOf('Нөхөн төлбөрийн үнэлгээ (заалт 7.3)');
+  ok(mvAt > -1, 'гэрээ/багц: нөхөн төлбөрийн хүснэгт гарна');
+  const mv = ct.slice(mvAt, ct.indexOf('</table>', mvAt));
+  ok(mv.includes('Line Array') && mv.includes('KS28 сабвүфер') && mv.includes('Takstar микрофон'), 'гэрээ/багц: бүрэлдэхүүн бүр мөр болж гарна');
+  ok(!/<td class="rt">—<\/td>/.test(mv), 'гэрээ/багц: үнэлгээтэй бүрэлдэхүүн «—» гарахгүй');
+  ok(mv.includes(F.fmtMoney(4 * 3000000 + 2 * 4000000 + 2 * 300000)), 'гэрээ/багц: нийт үнэлгээ = бүрэлдэхүүн × тоо × үнэлгээ');
+  ok(mv.includes('(Хөгжим GOLD)'), 'гэрээ/багц: бүрэлдэхүүн багцаа нэрлэнэ');
+
+  // 5) Жагсаалт: багцын карт бүрэлдэхүүнтэй, тусдаа бүлэг
+  const card = asCeo(() => F.productRowHtml(byS('M-322')));   // хямдрал/үнэтэй дохио зөвхөн мөнгө харах эрхтэйд
+  ok(card.includes('prod-bundle') && card.includes('Line Array') && card.includes('сабвүфер'), 'багц/карт: бүрэлдэхүүн ил');
+  ok(/ багц<\/span>/.test(card), 'багц/карт: нөөцийн нэгж «багц» (ширхэг БИШ)');
+  ok(card.includes('10%') && card.includes('хямд'), 'багц/карт: хэр хямд нь ил');
+  const tentCard = asCeo(() => F.productRowHtml(byS('M-328')));
+  ok(tentCard.includes('36%') && tentCard.includes('үнэтэй') && tentCard.includes('sig-bad'), 'багц/карт: үнэтэй багц улаанаар сануулна');
+  const staffCard = F.productRowHtml(byS('M-322'));   // мөнгөгүй ажилтан: хязгаарлагч л харна, хямдрал БИШ
+  ok(staffCard.includes('Хязгаарлагч') && !staffCard.includes('хямд'), 'багц/карт: ажилтанд хязгаарлагч харагдана, үнийн мэдээлэл харагдахгүй');
+  ok(!tentCard.includes('Хязгаарлагч'), 'багц/карт: нөөц элбэг (21 багц) үед «Хязгаарлагч» гарахгүй — чимээ');
+  ok(card.includes('Хязгаарлагч: <b>Line Array</b>'), 'багц/карт: нөөц бага (1 багц) үед хязгаарлагч нэрлэгдэнэ');
+  ok(!card.includes('Өртөг — бүрэлдэхүүнээр'), 'багц/карт: хуурамч «өртөг» мөр байхгүй');
+  ok(/data-search="[^"]*сабвүфер/.test(card), 'багц/карт: бүрэлдэхүүний нэрээр хайхад олдоно');
+  const pk2 = [byS('M-322'), byS('M-328')], gd = [byS('M-163'), byS('M-150')];
+  const mixHtml = F.productListHtml([...gd, ...pk2]);
+  eq((mixHtml.match(/class="prod-grp-h"/g) || []).length, 2, 'багц/жагсаалт: хоёр төрөл зэрэг байвал 2 бүлгийн гарчиг');
+  ok(mixHtml.indexOf('📦 Багц') < mixHtml.indexOf('Line Array') || mixHtml.indexOf('📦 Багц') < mixHtml.indexOf('>Бараа'), 'багц/жагсаалт: багц ЭХЭНД');
+  eq((F.productListHtml(pk2).match(/prod-grp-h/g) || []).length, 0, 'багц/жагсаалт: зөвхөн багц бол гарчиггүй');
+  eq((F.productListHtml(gd).match(/prod-grp-h/g) || []).length, 0, 'багц/жагсаалт: зөвхөн бараа бол гарчиггүй');
+  eq(mixHtml.match(/class="prod-row /g).length, 4, 'багц/жагсаалт: мөр алдагдахгүй');
+
+  // 6) Салбарын шүүлт: багцын qty_* ҮРГЭЛЖ 0 тул M-Event ленз дээр нуугддаг байв
+  ok(F.packageInBranch(byS('M-322'), 'mevent'), 'багц/салбар: бүрэлдэхүүн M-Event-д бол багц M-Event-д харагдана');
+  ok(!F.packageInBranch(byS('M-322'), 'nomaad'), 'багц/салбар: бүрэлдэхүүн тэр салбарт байхгүй бол харагдахгүй');
+  ok(!F.packageInBranch(byS('M-399'), 'mevent'), 'багц/салбар: олдоогүй бүрэлдэхүүнтэй багц харагдахгүй');
+  ok(/isPackage\(p\) \? packageInBranch\(p, state\.prodBranch\)/.test(src), 'scan: салбарын шүүлт багцыг packageInBranch-аар шүүнэ');
+
+  // 7) SCAN — хуучин алдаа буцаж ирэхийг хаана
+  ok(/const _rcItems = _isReceive \? expandOrderLines\(o\.items\)/.test(src), 'scan: гаргах/буцаан авах тоолол багцыг задалдаг');
+  ok(/const mvRows = expandOrderLines\(/.test(src), 'scan: гэрээний нөхөн төлбөр багцыг задалдаг');
+  ok(/class="pm-menu-row ui-raw" data-pmgo="cost"\$\{_pkgMode \? ' hidden'/.test(src), 'scan: багцын засах цонхонд «Өртөг» хэсэг байхгүй');
+  ok(/costRow\.hidden = _pkgEl\.checked/.test(src), 'scan: багц болгож чагтлахад «Өртөг» хэсэг нуугдана');
+  ok(/data-pmgo="stock"\$\{_pkgMode \? ' hidden'/.test(src), 'scan: багцын засах цонхонд «Нөөц ба салбар» хэсэг байхгүй');
+  ok(/\$\{isEdit && p\.sku && !_pkgMode \? `<div class="pm-block">QR шошго/.test(src), 'scan: багцад QR шошго байхгүй (физик зүйл биш)');
+  ok(/packageInfo\(\{ type: 'package', bundle_items: bundle, price: pkgPrice \}\)/.test(src), 'scan: засах цонхны хямдрал картын ИЖИЛ функцээр (packageInfo)');
+  ok(/no-item-sub/.test(src), 'scan: захиалгын мөр багцын «дотор нь» харуулдаг');
+  // Дизайны гэрээ: шинэ inline style БАЙХГҮЙ
+  for (const fn of ['packageBundleHtml', 'packageSigHtml']) {
+    const i0 = src.indexOf('function ' + fn + '(');
+    const body = src.slice(i0, src.indexOf('\n}\n', i0));
+    ok(i0 > -1 && !/style="/.test(body), 'scan: ' + fn + ' дотор inline style байхгүй');
+  }
+
+  runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + '; state.productCosts = ' + JSON.stringify(save[2] || {}) + ';');
+}
+
 // ── БАГЦ = бүтээгдэхүүн БИШ: үнийн шинжилгээнд мөр болж гарахгүй (2026-09-09)
 // Багц нь өөрийн өртөг/хөрөнгөгүй тул ROI/эргэлт утгагүй; орлого нь бүрэлдэхүүн
 // рүү задарсан байх ёстой. Багц мөр болж үлдвэл орлого ДАВХАР тоологдоно.

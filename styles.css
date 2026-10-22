@@ -6039,6 +6039,17 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .oscan-cnt button { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
 .oscan-cnt button:active { background: var(--panel-hover); }
 .prod-type-b.pk { background: var(--info-soft); color: var(--info); }
+/* Багц = жор, бараа БИШ (2026-10-22): картад бүрэлдэхүүн ил, жагсаалтад тусдаа бүлэг, тоололд "📦 багц" шошго. */
+.prod-bundle { margin-top: 4px; font-size: var(--fs-xs); color: var(--text-soft); line-height: 1.6; }
+.pb-i b { color: var(--text); font-weight: 600; }
+.pb-i + .pb-i::before { content: " · "; white-space: pre; color: var(--muted-soft); }
+.pb-i.bad, .prod-bundle.bad { color: var(--danger); }
+.prod-grp { display: flex; flex-direction: column; gap: 8px; }
+.prod-grp-h { padding: var(--space-2) 2px 0; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.prod-grp-h b { color: var(--text); }
+.rc-pkg { display: block; font-style: normal; font-size: var(--fs-xs); color: var(--muted); }
+.no-item-sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+.pm-rentable[hidden] { display: none; }
 .pm-bundle { background: var(--panel-hover); border-radius: 8px; padding: 10px; margin: -4px 0 8px; }
 .pm-bundle[hidden] { display: none; }
 /* ⚠ Мөрийн талбарууд `ui-raw` — мобайлын `.modal input {...!important}` дүрэм

@@ -6818,6 +6818,28 @@ need(['orderCustType']);
   eq(F.packagesUsing('M-163').map(x => [x.name, x.qty]), [['Хөгжим GOLD', 4]], 'багц/орсон: Line Array → GOLD ×4');
   eq(F.packagesUsing('ZZ'), [], 'багц/орсон: хаана ч ороогүй бараа → хоосон');
   eq(F.packagesUsing(''), [], 'багц/орсон: хоосон sku унахгүй');
+  // 5d) Багц хадгалахын ЗААВАЛ шалгуур (ангилал · үнэ > 0 · бүрэлдэхүүн · давхардалгүй)
+  const okF = { name: 'Тест багц', cat: 'Хөгжмийн багц', bundle: [{ sku: 'M-163', qty: 2 }, { sku: 'M-150', qty: 1 }], price: 900000 };
+  eq(F.packageSaveBlock(okF), null, 'багц/шалгуур: бүрэн бөглөсөн багц зөвшөөрөгдөнө');
+  eq(F.packageSaveBlock({ ...okF, name: '  ' }).field, '#pm-name', 'багц/шалгуур: нэргүй → нэр');
+  const noCat = F.packageSaveBlock({ ...okF, cat: '' });
+  eq([noCat.pane, noCat.field], ['cat', '#pm-cat'], 'багц/шалгуур: ангилалгүй → Каталог хэсгийн ангилал руу');
+  ok(/ангилал/.test(noCat.msg) && /сайтад/.test(noCat.msg), 'багц/шалгуур: ангилалгүй байх нь яагаад муу гэдгийг хэлнэ');
+  eq(F.packageSaveBlock({ ...okF, cat: '', name: '' }).field, '#pm-name', 'багц/шалгуур: эхний алдаа (нэр) түрүүлж');
+  eq(F.packageSaveBlock({ ...okF, bundle: [] }).field, '#pm-bundle-add', 'багц/шалгуур: бүрэлдэхүүнгүй');
+  ok(/1 мөрд бараа сонгогдоогүй/.test(F.packageSaveBlock({ ...okF, bundle: [{ sku: 'M-163', qty: 1 }, { sku: '', qty: 1 }] }).msg), 'багц/шалгуур: бараа сонгоогүй мөрийг чимээгүй хаяхгүй');
+  const dup = F.packageSaveBlock({ ...okF, bundle: [{ sku: 'M-150', qty: 1 }, { sku: 'M-150', qty: 1 }] });
+  ok(dup && dup.msg.includes('Takstar микрофон') && dup.msg.includes('2 удаа'), 'багц/шалгуур: нэг бараа 2 мөрөнд орвол хаана (нөөцийг давхар тоолно)');
+  for (const bad of [0, -5, '', null, undefined, NaN]) {
+    eq((F.packageSaveBlock({ ...okF, price: bad }) || {}).field, '#pm-price', 'багц/шалгуур: үнэ ' + String(bad) + ' → хаана (үнэгүй багц сайтад харагдахгүй)');
+  }
+  eq(F.packageSaveBlock({ ...okF, price: 0, bundle: [], checkPrice: false }), null, 'багц/шалгуур: үнийн эрхгүй хүн үнэ/бүрэлдэхүүнээр хориглогдохгүй');
+  eq(F.packageSaveBlock({ ...okF, price: 0, bundle: [], checkPrice: false, cat: '' }).field, '#pm-cat', 'багц/шалгуур: үнийн эрхгүй ч ангилал заавал');
+  eq(F.packageSaveBlock(null).field, '#pm-name', 'багц/шалгуур: хоосон оролт унахгүй');
+  ok(/packageSaveBlock\(\{ name, cat, bundle: modal\._bundle \|\| \[\], price: moneyVal\(modal\.querySelector\('#pm-price'\)\), checkPrice: canProductPart\('price'\) \}\)/.test(src), 'scan: багц хадгалахад packageSaveBlock дуудагдана');
+  eq((src.match(/Багцад дор хаяж нэг бараа нэмнэ үү/g) || []).length, 1, 'scan: шалгуур НЭГ газарт (packageSaveBlock) — submit-д давхардуулахгүй');
+  ok(/\.filter\(c => c\.sku\)\.map\(c => \(\{ sku: c\.sku, qty: Math\.max\(1, Number\(c\.qty\) \|\| 1\) \}\)\)/.test(src), 'scan: бүрэлдэхүүн зөвхөн {sku, qty} хадгална (`_typed` DB-д орохгүй)');
+  ok(/Ангилал\$\{_pkgMode \? ' \*' : ''\}<select id="pm-cat">/.test(src), 'scan: багцын цонхонд «Ангилал *» заавал гэж тэмдэглэгдсэн');
   ok(/const _usedIn = \(isEdit && !_isPkg0\) \? packagesUsing\(p\.sku\) : \[\]/.test(src) && /class="pm-used"/.test(src), 'scan: барааны цонх «орсон багц» мөр харуулна (багцад биш)');
   ok(/const _used = packagesUsing\(p\.sku\);/.test(src) && /нөөц 0 болж, захиалга авч чадахгүй болно/.test(src), 'scan: багцад орсон барааг архивлахаас өмнө сануулна');
 

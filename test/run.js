@@ -6493,9 +6493,9 @@ need(['orderCustType']);
 // scan: товч, багц горим, нөөц нуугдах логик бүрэн байгаа эсэх.
 {
   const openSrc = src.slice(src.indexOf('function openProductModal('), src.indexOf('async function submitProductModal('));
-  ok(/id="prod-new-pkg"/.test(src), 'багц: жагсаалтад тусдаа товч байна');
-  ok(/prod-new-pkg'\)\?\.addEventListener\('click', \(\) => openProductModal\(null, \{ asPackage: true \}\)\)/.test(src),
-     'багц: товч багц горимоор нээнэ');
+  ok(/data-prodtab="packages"/.test(src) && /\+ Багц/.test(src), 'багц: «📦 Багц» таб ба «+ Багц» товч байна (2026-10-22: «⋯» хэрэгслээс таб руу)');
+  ok(/openProductModal\(null, state\.prodTab === 'packages' \? \{ asPackage: true \} : undefined\)/.test(src),
+     'багц: Багц таб дээрх товч багц горимоор нээнэ');
   ok(/asPkg = !!\(opts && opts\.asPackage\)/.test(openSrc), 'багц: горимын тугийг уншина');
   ok(/isPackage\(p\) \|\| asPkg \? 'checked'/.test(openSrc), 'багц: чагт урьдчилан тавигдана');
   ok(/if \(asPkg\) pmGo\('price'\)/.test(openSrc), 'багц: шууд бүрэлдэхүүн рүү үсэрнэ');
@@ -6790,12 +6790,36 @@ need(['orderCustType']);
   ok(!card.includes('Өртөг — бүрэлдэхүүнээр'), 'багц/карт: хуурамч «өртөг» мөр байхгүй');
   ok(/data-search="[^"]*сабвүфер/.test(card), 'багц/карт: бүрэлдэхүүний нэрээр хайхад олдоно');
   const pk2 = [byS('M-322'), byS('M-328')], gd = [byS('M-163'), byS('M-150')];
-  const mixHtml = F.productListHtml([...gd, ...pk2]);
-  eq((mixHtml.match(/class="prod-grp-h"/g) || []).length, 2, 'багц/жагсаалт: хоёр төрөл зэрэг байвал 2 бүлгийн гарчиг');
-  ok(mixHtml.indexOf('📦 Багц') < mixHtml.indexOf('Line Array') || mixHtml.indexOf('📦 Багц') < mixHtml.indexOf('>Бараа'), 'багц/жагсаалт: багц ЭХЭНД');
-  eq((F.productListHtml(pk2).match(/prod-grp-h/g) || []).length, 0, 'багц/жагсаалт: зөвхөн багц бол гарчиггүй');
-  eq((F.productListHtml(gd).match(/prod-grp-h/g) || []).length, 0, 'багц/жагсаалт: зөвхөн бараа бол гарчиггүй');
-  eq(mixHtml.match(/class="prod-row /g).length, 4, 'багц/жагсаалт: мөр алдагдахгүй');
+  eq(F.productListHtml([...gd, ...pk2]).match(/class="prod-row /g).length, 4, 'багц/жагсаалт: мөр алдагдахгүй');
+  ok(!/prod-grp/.test(F.productListHtml([...gd, ...pk2])), 'багц/жагсаалт: холимог бүлэглэлт байхгүй (табаар салгана)');
+
+  // 5b) ТАБ: [Бараа] | [📦 Багц] — багц бараатай ХОЛИГДОХГҮЙ (2026-10-22, CEO)
+  // Багц нэг жагсаалтад орвол «өртөггүй/хуваарилаагүй/огноогүй» шүүлт тэдгээрийг хэзээ ч нөхөгдөхгүй дутагдал гэж тоолно.
+  runIn('state.catGroups = null; state.repairs = []; state.itemAliases = {}; state.archivedProducts = []; state.appOrders = [];');
+  const prevTab = runIn('state.prodTab');
+  const nPk = prods.filter(x => x.type === 'package').length, nGood = prods.length - nPk;
+  const items = asCeo(() => { runIn("state.prodTab = 'items'"); return F.renderProducts(); });
+  const pkgs = asCeo(() => { runIn("state.prodTab = 'packages'"); return F.renderProducts(); });
+  eq((items.match(/class="prod-row /g) || []).length, nGood, 'таб/бараа: зөвхөн бодит бараа (багц ороогүй)');
+  ok(!items.includes('Хөгжим GOLD') && !items.includes('prod-bundle'), 'таб/бараа: багцын карт байхгүй');
+  ok(items.includes('Өртөггүй (3)'), 'таб/бараа: «Өртөггүй» тоонд багц ОРООГҮЙ (3 бараа; хуучин арга 8 багцыг нэмж 11 гаргадаг байв)');
+  ok(new RegExp('data-prodtab="items"[^>]*>Бараа <b>' + nGood + '</b>').test(items) && new RegExp('data-prodtab="packages"[^>]*>📦 Багц <b>' + nPk + '</b>').test(items), 'таб: хоёр таб тоотой');
+  ok(items.includes('id="prod-scan"') && items.includes('prod-filters') && items.includes('+ Шинэ') && items.includes('prod-tools'), 'таб/бараа: скан, шүүлтүүр, хэрэгсэл, «+ Шинэ» байна');
+  eq((pkgs.match(/class="prod-row /g) || []).length, nPk, 'таб/багц: зөвхөн багц');
+  ok(pkgs.includes('Хөгжим GOLD') && pkgs.includes('prod-bundle') && !pkgs.includes('Цагаан сандал'), 'таб/багц: багцын карт, бүрэлдэхүүнтэй');
+  ok(pkgs.includes('+ Багц') && !pkgs.includes('+ Шинэ'), 'таб/багц: товч «+ Багц»');
+  ok(!pkgs.includes('id="prod-scan"') && !pkgs.includes('prod-filters') && !pkgs.includes('prod-tools') && !pkgs.includes('prod-meta-i prod-meta-dim'),
+     'таб/багц: скан (QR-гүй), шүүлтүүр, Excel/актлах, хөрөнгийн дүн ХАРАГДАХГҮЙ');
+  ok(!pkgs.includes('prod-chores') && !pkgs.includes('repair-bar'), 'таб/багц: барааны цэгцлэх ажил/засварын тууз гарахгүй');
+  runIn('state.prodTab = ' + JSON.stringify(prevTab === undefined ? 'items' : prevTab) + ';');
+
+  // 5c) «Орсон багц» (where-used) — бараа өөрчлөх/архивлахаас өмнө ямар багцад нөлөөлөхийг мэднэ
+  eq(F.packagesUsing('M-150').map(x => [x.sku, x.qty]).sort(), [['M-322', 2], ['M-398', 1], ['M-399', 1]], 'багц/орсон: микрофон 3 багцад (тоотой нь)');
+  eq(F.packagesUsing('M-163').map(x => [x.name, x.qty]), [['Хөгжим GOLD', 4]], 'багц/орсон: Line Array → GOLD ×4');
+  eq(F.packagesUsing('ZZ'), [], 'багц/орсон: хаана ч ороогүй бараа → хоосон');
+  eq(F.packagesUsing(''), [], 'багц/орсон: хоосон sku унахгүй');
+  ok(/const _usedIn = \(isEdit && !_isPkg0\) \? packagesUsing\(p\.sku\) : \[\]/.test(src) && /class="pm-used"/.test(src), 'scan: барааны цонх «орсон багц» мөр харуулна (багцад биш)');
+  ok(/const _used = packagesUsing\(p\.sku\);/.test(src) && /нөөц 0 болж, захиалга авч чадахгүй болно/.test(src), 'scan: багцад орсон барааг архивлахаас өмнө сануулна');
 
   // 6) Салбарын шүүлт: багцын qty_* ҮРГЭЛЖ 0 тул M-Event ленз дээр нуугддаг байв
   ok(F.packageInBranch(byS('M-322'), 'mevent'), 'багц/салбар: бүрэлдэхүүн M-Event-д бол багц M-Event-д харагдана');
@@ -6812,6 +6836,11 @@ need(['orderCustType']);
   ok(/\$\{isEdit && p\.sku && !_pkgMode \? `<div class="pm-block">QR шошго/.test(src), 'scan: багцад QR шошго байхгүй (физик зүйл биш)');
   ok(/packageInfo\(\{ type: 'package', bundle_items: bundle, price: pkgPrice \}\)/.test(src), 'scan: засах цонхны хямдрал картын ИЖИЛ функцээр (packageInfo)');
   ok(/no-item-sub/.test(src), 'scan: захиалгын мөр багцын «дотор нь» харуулдаг');
+  ok(/openProductModal\(null, state\.prodTab === 'packages' \? \{ asPackage: true \} : undefined\)/.test(src), 'scan: Багц таб дээрх «+ Багц» шууд багц үүсгэнэ');
+  ok(!/id="prod-new-pkg"/.test(src), 'scan: «⋯» хэрэгсэлд багц товч байхгүй (багц табтай)');
+  ok(/state\.prodTab = 'items'; state\.prodMissing = 'nocost'/.test(src), 'scan: «Өртөг оруулаагүй» холбоос Бараа таб руу');
+  ok(/class="pm-rentable" hidden>\s*<input type="checkbox" id="pm-ispackage"/.test(src), 'scan: бараа засах цонхонд «Багц болгох» чагт харагдахгүй');
+  ok(/PICK_PKG_CHIP/.test(src) && /cat === PICK_PKG_CHIP \? isPackage\(p\)/.test(src), 'scan: захиалгын сонголтод «📦 Багц» чип');
   // Дизайны гэрээ: шинэ inline style БАЙХГҮЙ
   for (const fn of ['packageBundleHtml', 'packageSigHtml']) {
     const i0 = src.indexOf('function ' + fn + '(');
@@ -19918,7 +19947,7 @@ async function swFetchTests() {
   ok(/id="prod-search"/.test(tb) && /id="prod-scan"/.test(tb) && /id="prod-new"/.test(tb), 'бараа: эхний мөр = хайх · скан · шинэ');
   ok(!/id="prod-xls"/.test(tb) && !/id="prod-wo-mode"/.test(tb) && !/id="prod-new-pkg"/.test(tb), 'бараа: Excel · Багц · Актлах эхний мөрөнд БАЙХГҮЙ');
   const tools = page.slice(page.indexOf('<details class="prod-tools"'), page.indexOf('</details>', page.indexOf('<details class="prod-tools"')));
-  ok(/id="prod-xls"/.test(tools) && /id="prod-new-pkg"/.test(tools) && /id="prod-wo-mode"/.test(tools), 'бараа: Excel · Багц · Актлах нугалаанд (id-тай — handler холбогдоно)');
+  ok(/id="prod-xls"/.test(tools) && /id="prod-wo-mode"/.test(tools) && !/id="prod-new-pkg"/.test(tools), 'бараа: Excel · Актлах нугалаанд (id-тай — handler холбогдоно); багц нь тусдаа табд');
   ok(/class="prod-scan-l"/.test(tb) && /aria-label="QR скан"/.test(tb), 'бараа: скан товч утсанд зөвхөн 📷 (шошго ангитай, aria-label бий)');
   // Нээсэн төлөв render-д хадгалагдана
   st.prodChoresOpen = true; st.prodToolsOpen = true;

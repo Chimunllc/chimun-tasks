@@ -159,6 +159,25 @@
     --scrim-del:    rgba(0,0,0,.5);            /* зураг дээрх × товч — тод байх ёстой */
     --scrim-modal:  rgba(0,0,0,.5);            /* `.modal` БИШ, өөрөө үүсгэсэн попап цонхны бүрхүүл */
 
+    /* ── 📄 ХЭВЛЭХ БАРИМТЫН ТОН (гэрээ → html2pdf) ──
+       Эдгээр баримт нь `<!doctype>` попап БИШ — аппын DOM-д энгийн урсгалд
+       зурагдаж PDF болдог тул styles.css ХҮРНЭ. Гэхдээ эцэг элемент дэвсгэрээ
+       ЦАГААНААР хүчээр тогтоодог учир `--muted`/`--border` ашиглавал харанхуй
+       горимд цайвар саарал бичвэр/хүрээ PDF дээр уншигдахгүй болно. Иймд
+       тусдаа, горимоос ҮЛ ХАМААРАХ тон (харанхуйд ДАХИН тодорхойлогдохгүй).
+       ⚠ Утгыг styles.css-д АЛЬ ХЭДИЙН байгаа бичиглэлээс авав — debt-check
+         өнгийг утгаар биш ТЭМДЭГТ МӨРӨӨР тоолдог тул шинэ бичиглэл нь
+         «шинэ өнгө» гэж тоологдоно.
+       ⚠ Тайлбарт ч хатуу өнгө БИЧИХГҮЙ — хэмжигчийн regex комментыг ялгадаггүй
+         тул дурдсан өнгө «шинэ өнгө» гэж тоологдож CI унана.
+       ⚠ `--doc-ink-soft` нь цагаан дэвсгэр дээр 4.6:1 (WCAG AA) — өмнө нь хоёр
+         өөр хатуу саарал байсныг ОРЛОНО. Үүнээс цайвар саарал 4.5:1-ээс
+         унаж хэвлэсэн баримт дээр уншигдахаа болино. */
+    --doc-ink-soft: rgba(15, 15, 15, 0.55);   /* хоёрдогч бичвэр: огноо, шошго */
+    --doc-rule: #999;                         /* гарын үсэг зурах зураас */
+    --doc-border: #ccc;                       /* баримтын хүснэгт/зургийн хүрээ */
+    --doc-sign-h: 52px;                       /* гараар гарын үсэг зурах ЗАЙ */
+
     /* ── Хөдөлгөөн ── */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
     --duration: 200ms;
@@ -9353,6 +9372,25 @@ select.no-asar-len {
 .ec-note { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-1) 0 var(--space-3); }
 .modal .ec-btn { width: 100%; }
 .modal .ec-btn + .ec-btn { margin-top: var(--space-3); }
+
+/* ── Гэрээний БАРИМТ өөрөө (`EMP_CONTRACT_HTML` → html2pdf) ──
+   ⚠ Баримт нь `document.body`-д ЭНГИЙН урсгалд зурагддаг (`position:fixed`
+     элементийг html2canvas хоосон буулгадаг) бөгөөд `.modal` ДОТОР БИШ —
+     тиймээс `.modal h2` зэрэг дүрэм ХҮРЭХГҮЙ: гарчгийн зай/төвлөрлийг энд.
+   ⚠ Өнгийг `--muted`/`--border`-ээр БҮҮ ав — дэвсгэр нь ҮРГЭЛЖ цагаан тул
+     харанхуй горимд PDF уншигдахгүй болно. `--doc-*` тон л зөв (:root-ийн
+     тайлбарыг үз). */
+.ec-doc .ec-title { text-align: center; margin: 0 0 var(--space-1); }
+.ec-doc .ec-meta { text-align: center; font-size: var(--fs-sm); color: var(--doc-ink-soft); margin-bottom: var(--space-3); }
+/* Гарын үсгийн хүснэгт — 2 нүд (ажил олгогч | ажилтан) тэнцүү хуваана */
+.ec-doc .ec-sign { width: 100%; margin-top: var(--space-5); border-collapse: collapse; }
+.ec-doc .ec-sign td { width: 50%; vertical-align: top; padding: var(--space-3); border: 1px solid var(--doc-border); }
+/* Хэвлээд гараар гарын үсэг зурах зай — өндрийг БАГАСГАХГҮЙ */
+.ec-doc .ec-sign-line { height: var(--doc-sign-h); border-bottom: 1px solid var(--doc-rule); margin: var(--space-2) 0 var(--space-1); }
+/* «Гарын үсэг» шошго ба огнооны мөр ИЖИЛ тон — огноо нь зайгаараа л ялгаатай */
+.ec-doc .ec-sign-cap { font-size: var(--fs-sm); color: var(--doc-ink-soft); }
+.ec-doc .ec-sign-name { margin-top: var(--space-2); }
+.ec-doc .ec-sign-date { margin-top: var(--space-1); }
 
 /* ═══ 🧾 НӨАТ баримт → захиалга «ГАРААР ТУЛГАХ» цонх (`openPicker`) ═══
    Өмнө нь 18 inline `style=` + 2 `style.cssText` байв (15 хатуу өнгө).

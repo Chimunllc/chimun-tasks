@@ -16719,8 +16719,8 @@ function _ecEsc(s) { return escapeHtml(String(s == null ? '' : s)); }
 function EMP_CONTRACT_HTML(d) {
   const org = (typeof CHIMUN_LEGAL !== 'undefined') ? CHIMUN_LEGAL : { name: '"ЧИМУН" ХХК', reg: '6614337', address: '', director: '', directorTitle: 'Гүйцэтгэх захирал', phones: '' };
   return `<div class="ec-doc">
-    <h2 style="text-align:center;margin:0 0 2px;">ХӨДӨЛМӨРИЙН ГЭРЭЭ</h2>
-    <div style="text-align:center;font-size:12px;color:#555;margin-bottom:12px;">${_ecEsc(d.docDate || '2026 оны … сарын …-ны өдөр')} · № ${_ecEsc(d.docNo || '………')} · Улаанбаатар хот</div>
+    <h2 class="ec-title">ХӨДӨЛМӨРИЙН ГЭРЭЭ</h2>
+    <div class="ec-meta">${_ecEsc(d.docDate || '2026 оны … сарын …-ны өдөр')} · № ${_ecEsc(d.docNo || '………')} · Улаанбаатар хот</div>
     <p>Энэхүү Хөдөлмөрийн гэрээ (цаашид Гэрээ гэх)-г нэг талаас “${_ecEsc(org.address)}” хаягт байрлах, ${_ecEsc(org.reg)} улсын бүртгэлийн дугаартай ${_ecEsc(org.name)} /цаашид Ажил олгогч гэх/, нөгөө талаас <b>${_ecEsc(d.empAddress || '…')}</b> хаягт оршин суух, <b>${_ecEsc(d.empRegister || '…')}</b> регистрийн дугаартай <b>${_ecEsc(d.empName || '…')}</b> /цаашид Ажилтан гэх/ нар (хамтад нь Талууд гэх) Монгол Улсын Хөдөлмөрийн тухай хууль /2021 оны шинэчилсэн найруулга/, холбогдох хууль тогтоомжийг үндэслэн харилцан тохиролцож, дараах нөхцөлөөр байгуулав.</p>
     <p><b>1. Нийтлэг үндэслэл</b><br>1.1. Энэхүү гэрээгээр Ажил олгогч болон Ажилтны хооронд үүсэх хөдөлмөрийн харилцааг зохицуулна.<br>1.2. Ажлын байрны тодорхойлолт, Нууцын баталгаа, цаашид байгуулагдах нэмэлт/сунгалтын гэрээ нь гэрээний салшгүй хэсэг болно.</p>
     <p><b>2. Гэрээний хугацаа ба туршилт</b><br>2.1. Ажил эхлэх огноо: <b>${_ecEsc(d.startDate || '…')}</b>.<br>2.2. Гэрээний хүчинтэй хугацаа: Хугацаагүй (ХтХ 50 дугаар зүйл).<br>2.3. Туршилтын хугацаа: эхний 1 (нэг) сар. Энэ хугацаанд үндсэн цалинг бүтнээр олгоно; ажилд тэнцэхгүй нь тогтоогдвол хуульд заасны дагуу гэрээг цуцалж болно.</p>
@@ -16730,22 +16730,22 @@ function EMP_CONTRACT_HTML(d) {
     <p><b>6. Талуудын хариуцлага</b><br>6.1. Сахилгын зөрчилд ХтХ 123-т заасан шийтгэл оногдуулна.<br>6.2. Буруутай үйлдлээр учруулсан хохирлыг Хөдөлмөрийн тухай хуульд заасан журмын дагуу нөхөн төлнө. Мөнгө/эд хөрөнгө хариуцсан ажилтантай Бүрэн эд хөрөнгийн хариуцлагын гэрээ байгуулж болно.<br>6.4. Гүйцэтгэлийг KPI-аар сар бүр үнэлнэ; сайжраагүй нь баримтаар тогтоогдвол ХтХ 80.1.2-оор гэрээг цуцалж болно.</p>
     <p><b>7. Гэрээ дуусгавар болох, цуцлах</b><br>7.2.1. Ажилтан өөрийн санаачилгаар цуцлах бол 30 хоногийн өмнө бичгээр мэдэгдэнэ.<br>7.2.2. Ажил олгогч ХтХ 80.1-д заасан үндэслэлээр цуцална.</p>
     <p><b>8–11.</b> Нэмэлт/өөрчлөлт бичгээр; давагдашгүй хүчин зүйл; маргааныг эв зүйгээр, эс бол шүүхээр; гэрээ 2 хувь, тал бүр 1 хувь хадгална; тусгаагүйг ХтХ болон дотоод журмаар зохицуулна.</p>
-    <table style="width:100%;margin-top:20px;border-collapse:collapse;"><tr>
-      <td style="width:50%;vertical-align:top;padding:10px;border:1px solid #bbb;">
+    <table class="ec-sign"><tr>
+      <td>
         <b>АЖИЛ ОЛГОГЧИЙГ ТӨЛӨӨЛЖ:</b>
-        <div style="height:52px;border-bottom:1px solid #999;margin:6px 0 4px;"></div>
-        <div style="font-size:12px;color:#777;">Гарын үсэг</div>
-        <div style="margin-top:6px;">Нэр: <b>${_ecEsc(d.employerName || org.director)}</b></div>
+        <div class="ec-sign-line"></div>
+        <div class="ec-sign-cap">Гарын үсэг</div>
+        <div class="ec-sign-name">Нэр: <b>${_ecEsc(d.employerName || org.director)}</b></div>
         <div>Албан тушаал: ${_ecEsc(d.employerTitle || org.directorTitle)}</div>
-        <div style="color:#777;font-size:12px;margin-top:4px;">Огноо: …… / …… / 2026</div>
+        <div class="ec-sign-cap ec-sign-date">Огноо: …… / …… / 2026</div>
       </td>
-      <td style="width:50%;vertical-align:top;padding:10px;border:1px solid #bbb;">
+      <td>
         <b>АЖИЛТАН:</b>
-        <div style="height:52px;border-bottom:1px solid #999;margin:6px 0 4px;"></div>
-        <div style="font-size:12px;color:#777;">Гарын үсэг</div>
-        <div style="margin-top:6px;">Нэр: <b>${_ecEsc(d.empName || '…')}</b></div>
+        <div class="ec-sign-line"></div>
+        <div class="ec-sign-cap">Гарын үсэг</div>
+        <div class="ec-sign-name">Нэр: <b>${_ecEsc(d.empName || '…')}</b></div>
         <div>Утас: ${_ecEsc(d.empPhone || '…')}</div>
-        <div style="color:#777;font-size:12px;margin-top:4px;">Огноо: …… / …… / 2026</div>
+        <div class="ec-sign-cap ec-sign-date">Огноо: …… / …… / 2026</div>
       </td>
     </tr></table>
     ${d.idRefHtml || ''}

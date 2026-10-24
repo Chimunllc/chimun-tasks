@@ -11489,7 +11489,7 @@ function packageAddons(p) {
   for (const a of p.bundle_addons) {
     const sku = String((a && a.sku) || '').trim();
     const price = Math.round(Number(a && a.price));
-    if (!sku || seen.has(sku) || comp.has(sku) || !(price >= 0)) continue;
+    if (!sku || seen.has(sku) || comp.has(sku) || !(price > 0)) continue;
     seen.add(sku);
     out.push({ sku, qty: Math.max(1, Math.floor(Number(a.qty)) || 1), price });
     if (out.length >= PACKAGE_ADDONS_MAX) break;

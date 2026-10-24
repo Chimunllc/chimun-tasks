@@ -7075,6 +7075,22 @@ need(['orderCustType']);
     // дээд тал 3
     const many = { rules: new Map([['X-T', [{ sku: 'X-C', n: 9, conf: .9, ratio: 1 }, { sku: 'X-K', n: 9, conf: .8, ratio: 1 }, { sku: 'X-P', n: 9, conf: .7, ratio: 1 }, { sku: 'X-Z', n: 9, conf: .6, ratio: 1 }]]]) };
     eq(F.crossSellFor(cur(), many, null).length, 3, 'хамт авдаг: нэг удаад дээд тал нь 3 санал');
+    // тоо ширхэг, anchor, conf — нэмэлт баталгаа
+    eq(F.crossSellFor([ln(C, 18)], MM, null).map(x => [x.product.sku, x.qty]), [['X-T', 3]], 'хамт авдаг: харьцаа × тоо бөөрөнхийлөгдөнө (0.17 × 18 = 3)');
+    const tiny = { rules: new Map([['X-T', [{ sku: 'X-C', n: 9, conf: 0.5, ratio: 0.01 }]]]) };
+    eq(F.crossSellFor([ln(T, 2)], tiny, null)[0].qty, 1, 'хамт авдаг: тоо хэзээ ч 1-ээс доош болохгүй');
+    runIn('state._xsRules = ' + JSON.stringify({ 'X-T': [{ sku: 'X-C', conf: 0.5, ratio: 0 }, { sku: 'X-K', conf: 0.4, ratio: 'abc' }, { sku: 'X-Z', conf: 'high' }] }) + '; state._xsell = null;');
+    eq(runIn('crossSellModel()').rules.get('X-T').map(r => [r.sku, r.ratio]), [['X-C', 1], ['X-K', 1]], 'хамт авдаг: эвдэрсэн харьцаа 1 болно, conf нь тоо биш мөр хаягдана');
+    runIn('state._xsRules = ' + JSON.stringify(RULES) + '; state._xsell = null;');
+    const dupM = { rules: new Map([['X-T', [{ sku: 'X-K', n: 9, conf: 0.4, ratio: 1 }]], ['X-C', [{ sku: 'X-K', n: 9, conf: 0.7, ratio: 2 }]]]) };
+    const dd = F.crossSellFor([ln(T, 1), ln(C, 10)], dupM, null);
+    eq([dd.length, Math.round(dd[0].conf * 100), dd[0].qty], [1, 70, 20], 'хамт авдаг: хоёр anchor нэг барааг санал болговол өндөр conf-той дүрмийг (тоо ч түүнийх) авна');
+    eq(F.crossSellFor([ln(T, 3)], MM, new Set()).length, 2, 'хамт авдаг: хоосон skip Set ажиллана');
+    eq(F.crossSellFor([{ sku: 'X-PK', name: 'Ширээ сандал багц', qty: 1, price: 150000 }], MM, null)[0].anchor.sku, 'X-T', 'хамт авдаг: багцын бүрэлдэхүүн (ширээ) anchor болно, anchor-ын нэр харагдана');
+    const it0 = sg2[0].item;
+    eq([it0.sku, it0.name, it0.qty, it0.price, it0.xs], ['X-C', 'Сандал', 18, 6600, 1], 'хамт авдаг: нэмэгдэх мөр — sku/нэр/тоо/ЭНГИЙН үнэ/xs');
+    eq(sg2.map(x => x.anchor && x.anchor.sku), ['X-T', 'X-T'], 'хамт авдаг: санал бүр аль anchor-оос гарсныг мэднэ («Ширээ»-тэй захиалгын N%)');
+    eq(sg2.map(x => Math.round(x.conf * 100)), [55, 41], 'хамт авдаг: conf хувь зөв дамжина');
     runIn('state._xsRules = null; state._xsell = null; state.products = ' + JSON.stringify(prods) + ';');
   }
   // DB тал: дүрмийг SQL гаргана — босго/шүүлт өөрчлөгдвөл ЭНД мэдэгдэнэ (JS-д хуулбар БАЙХГҮЙ)
@@ -7086,12 +7102,17 @@ need(['orderCustType']);
     ok(/a\.alias = 'sku:' \|\| lower\(oi\.isku\)/.test(sql) && /a\.alias = 'name:' \|\| oi\.nk/.test(sql) && /'ёacepxykmtbh', 'еасерхукмтвн'/.test(sql), 'sql: мөрийг аппын `resolveItemSku`-ээр (sku → alias → нэр, normItemKey) тулгана — Booqable-ийн хуучин мөр (өгөгдлийн 57%) алдагдахгүй');
     ok(/type = 'package'/.test(sql) && /type not in \('package', 'service'\)/.test(sql), 'sql: багцыг бүрэлдэхүүнээр нь тоолно, үйлчилгээ/багц санал болохгүй');
     ok(/insert into app_config \(key, value, updated_at\)[\s\S]*'mevent_cross_sell'[\s\S]*on conflict \(key\) do update/.test(sql) && /coalesce\(jsonb_object_agg/.test(sql), 'sql: `app_config[mevent_cross_sell]`-д бичнэ (хоосон бол `{}`, NULL биш)');
+    ok(/percentile_disc\(0\.5\) within group \(order by y\.qty \/ x\.qty\)/.test(sql), 'sql: тоо ширхэг = түүхэн харьцааны МЕДИАН');
+    ok(/where rk <= 5/.test(sql), 'sql: anchor бүрд дээд тал нь 5 дүрэм (app_config жижиг хэвээр)');
+    ok(/coalesce\(pb\.price, 0\) > 0/.test(sql) && /coalesce\(p\.qty_mevent, 0\) > 0/.test(sql), 'sql: санал болгох бараа үнэтэй, anchor түрээслэх (qty_mevent > 0)');
+    ok(/coalesce\(p\.archived, false\) = false/.test(sql) && /coalesce\(pb\.archived, false\) = false/.test(sql), 'sql: архивласан бараа anchor ч, санал ч болохгүй');
     ok(!/customer|phone|email|note/.test(sql.replace(/--.*$/gm, '')), 'sql: хувийн мэдээлэл (нэр/утас/имэйл/тэмдэглэл) гаралтад ОРОХГҮЙ — зөвхөн sku, хувь, тоо (нийтэд гардаг)');
   }
   ok(/function crossSellRules|function loadCrossSellHistory|xsellAccept/.test(src) === false, 'scan: дүрмийг аппад БОДОХГҮЙ (DB-д нэг удаа) — client-side `crossSellRules`/түүх татах буцаж ирэхгүй');
   eq((src.match(/crossSellFor\(/g) || []).length, 3, 'scan: «хамт авдаг» санал ГАНЦ харуулах ба товч дарахад (function + 2 дуудлага) — өөр газар авто нэмвэл дүрэм эвдэрнэ');
   ok(/items\.push\(\{ \.\.\.xs\.item, qty:/.test(src) && /item: \{ \.\.\.orderItemFromProduct\(p, qty\), xs: 1 \}/.test(src), 'scan: товч дарахад л орно, мөр `xs: 1` тэмдэгтэй, ЭНГИЙН үнэ (orderItemFromProduct)');
   ok(/_locked \? \[\] : crossSellFor\(items, crossSellModel\(\)/.test(src), 'scan: хаасан сарын захиалгад «хамт авдаг» санал гарахгүй');
+  ok(/const _skip = new Set\(\[\.\.\.dismissedX, \.\.\._pk\.map\(s => s\.addon\.sku\)\]\)/.test(src), 'scan: «хамт авдаг» нь багцын тусгай үнэтэй нэмэлттэй (мишок) ижил sku-г давхар санал болгохгүй, хаасан (✕) саналыг дахин гаргахгүй');
   ok(/if \(!crossSellReady\(\)\) loadCrossSellRules\(\)\.then\(\(\) => \{ if \(modal\.isConnected\) renderAddons\(\); \}\);/.test(src), 'scan: захиалгын цонх дүрэм ачаалагдаагүй бол өөрөө ачаалж, ирмэгц саналыг шинэчилнэ (нүүр хуудаснаас шууд нээхэд санал хоосон байсан)');
   {
     const lh = src.slice(src.indexOf('async function loadCrossSellRules('), src.indexOf('// Одоогийн захиалгад санал болгох нэмэлтүүд.'));

@@ -6109,6 +6109,7 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .no-xrow:last-child { margin-bottom: var(--space-2); }
 .no-xx { flex: none; width: 36px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--muted); font-family: inherit; font-size: var(--fs-md); cursor: pointer; }
 .no-xx:hover { background: var(--panel-hover); color: var(--danger); }
+.no-addon-hint { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-2) 2px; }
 .no-addon-pl { flex: none; font-size: var(--fs-lg); line-height: 1; color: var(--info); }
 .no-addon-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .no-addon-mid b { font-size: var(--fs-md); font-weight: 600; }

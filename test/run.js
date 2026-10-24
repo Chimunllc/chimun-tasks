@@ -7055,19 +7055,19 @@ need(['orderCustType']);
     // 10 зөвхөн сандалтай; 150 өөр захиалга (түгээмэл бараатай, дуутай) — P нь бүх захиалгын ихэнхэд
     for (let i = 0; i < 10; i++) orders.push(ord([ln(C, 20)]));
     for (let i = 0; i < 150; i++) orders.push(ord([ln(P, 1), ln(Z, 1)]));
-    // ховор бараа: ширээтэй 3 захиалгад л (хамт ≥ 4 хүрэхгүй) + өөрөө 8-аас цөөн
-    for (let i = 0; i < 3; i++) orders.push(ord([ln(T, 1), ln(R, 1)]));
+    // ховор бараа: ширээтэй 2 захиалгад л (хамт ≥ 3 хүрэхгүй) + өөрөө 5-аас цөөн
+    for (let i = 0; i < 2; i++) orders.push(ord([ln(T, 1), ln(R, 1)]));
     const M = F.crossSellRules(orders, today);
     const rt = (M.rules.get('X-T') || []);
     const find = (a, b) => (M.rules.get(a) || []).find(x => x.sku === b);
     ok(find('X-T', 'X-C') && find('X-T', 'X-K'), 'хамт авдаг: ширээ → сандал, бүтээлэг дүрэм гарна');
-    eq(Math.round(find('X-T', 'X-C').conf * 100), 52, 'хамт авдаг: ширээтэй 23 захиалгын 12 нь сандалтай (52%)');
+    eq(Math.round(find('X-T', 'X-C').conf * 100), 55, 'хамт авдаг: ширээтэй 22 захиалгын 12 нь сандалтай (55%)');
     eq(find('X-T', 'X-C').ratio, 6, 'хамт авдаг: тоо ширхэгийн харьцаа = медиан (12 ÷ 2 = 6)');
     ok(find('X-C', 'X-T'), 'хамт авдаг: эсрэг чиглэл (сандал → ширээ) мөн гарна');
-    eq(rt.map(x => x.sku)[0], 'X-C', 'хамт авдаг: confidence-ээр эрэмбэлэгдэнэ (сандал 52% > бүтээлэг 39%)');
+    eq(rt.map(x => x.sku)[0], 'X-C', 'хамт авдаг: confidence-ээр эрэмбэлэгдэнэ (сандал 55% > бүтээлэг 41%)');
     ok(!find('X-T', 'X-P'), 'хамт авдаг: түгээмэл барааг (lift бага) санал болгохгүй');
-    ok(!find('X-T', 'X-R'), 'хамт авдаг: хамт < 4 захиалга бол дүрэм болохгүй');
-    ok(!M.rules.has('X-R'), 'хамт авдаг: 8-аас цөөн захиалгатай бараа anchor болохгүй');
+    ok(!find('X-T', 'X-R'), 'хамт авдаг: хамт < 3 захиалга бол дүрэм болохгүй');
+    ok(!M.rules.has('X-R'), 'хамт авдаг: 5-аас цөөн захиалгатай бараа anchor болохгүй');
     ok(!find('X-T', 'X-S') && !find('X-T', 'X-PK'), 'хамт авдаг: үйлчилгээ, багц санал болохгүй');
     // төлөв/хугацаа/хэт том захиалга
     const bad = [];
@@ -7102,14 +7102,28 @@ need(['orderCustType']);
     ok(m1 === m2 && m1.rules.size > 0, 'хамт авдаг: загвар кэшлэгдэнэ (захиалга өөрчлөгдөхгүй бол дахин бодохгүй)');
     runIn("state.appOrders.push({ id: 'zz', status: 'archived', starts_at: '" + dayAgo(5) + "', items: [] }); state._xsell = state._xsell;");
     ok(runIn('crossSellModel()') !== m1, 'хамт авдаг: захиалгын тоо өөрчлөгдвөл дахин бодогдоно');
-    runIn('state.appOrders = []; state._xsell = null; state.products = ' + JSON.stringify(prods) + ';');
+    // эх сурвалж: хөнгөн түүх (`_xsHist`) байвал ТҮҮНИЙГ ашиглана, `crossSellReady` түүнээр/архиваар
+    runIn('state.appOrders = []; state._archiveLoaded = false; state._xsHist = null; state._xsell = null;');
+    eq(runIn('crossSellReady()'), false, 'хамт авдаг: түүх ачаалагдаагүй үед бэлэн биш («санал алга» гэж худал хэлэхгүй)');
+    eq(runIn('crossSellModel().rules.size'), 0, 'хамт авдаг: түүхгүй үед дүрэм алга');
+    runIn('state._xsHist = ' + JSON.stringify(orders) + '; state._xsell = null;');
+    eq(runIn('crossSellReady()'), true, 'хамт авдаг: хөнгөн түүх ирмэгц бэлэн');
+    ok(runIn('crossSellModel().rules.size') > 0, 'хамт авдаг: appOrders хоосон ч хөнгөн түүхээс дүрэм гарна (нүүр хуудаснаас шууд нээсэн тохиолдол)');
+    runIn('state.appOrders = []; state._xsHist = null; state._xsell = null; state.products = ' + JSON.stringify(prods) + ';');
   }
-  ok(/xsellAccept\(conf, lift\) \{ return \(conf >= 0\.4 && lift >= 1\.5\) \|\| \(conf >= 0\.15 && lift >= 3\); \}/.test(src), 'scan: хамт авдаг шүүлт — lift ҮРГЭЛЖ шаардана (түгээмэл барааг санал болгохгүй)');
+  ok(/xsellAccept\(conf, lift\) \{ return \(conf >= 0\.3 && lift >= 1\.5\) \|\| \(conf >= 0\.15 && lift >= 3\); \}/.test(src), 'scan: хамт авдаг шүүлт — lift ҮРГЭЛЖ шаардана (түгээмэл барааг санал болгохгүй)');
   eq((src.match(/crossSellFor\(/g) || []).length, 3, 'scan: «хамт авдаг» санал ГАНЦ харуулах ба товч дарахад (function + 2 дуудлага) — өөр газар авто нэмвэл дүрэм эвдэрнэ');
   ok(/items\.push\(\{ \.\.\.xs\.item, qty:/.test(src) && /item: \{ \.\.\.orderItemFromProduct\(p, qty\), xs: 1 \}/.test(src), 'scan: товч дарахад л орно, мөр `xs: 1` тэмдэгтэй, ЭНГИЙН үнэ (orderItemFromProduct)');
   ok(!/toISOString/.test(src.slice(src.indexOf('function crossSellRules('), src.indexOf('function crossSellFor('))), 'scan: хамт авдаг бодолт огноог `addDays`/`todayStr`-ээр (toISOString-гүй)');
   ok(/_locked \? \[\] : crossSellFor\(items, crossSellModel\(\)/.test(src), 'scan: хаасан сарын захиалгад «хамт авдаг» санал гарахгүй');
-  ok(/if \(!state\._archiveLoaded && typeof loadAppOrders === 'function'\) loadAppOrders\(\)\.then\(\(\) => \{ if \(modal\.isConnected\) renderAddons\(\); \}\)/.test(src), 'scan: захиалгын цонх түүх ачаалагдаагүй бол өөрөө ачаалж, ирмэгц «хамт авдаг» саналыг шинэчилнэ (нүүр хуудаснаас шууд нээхэд санал хоосон байсан)');
+  ok(/if \(!crossSellReady\(\)\) loadCrossSellHistory\(\)\.then\(\(\) => \{ if \(modal\.isConnected\) renderAddons\(\); \}\);/.test(src), 'scan: захиалгын цонх түүх ачаалагдаагүй бол өөрөө ачаалж, ирмэгц «хамт авдаг» саналыг шинэчилнэ (нүүр хуудаснаас шууд нээхэд санал хоосон байсан)');
+  {
+    const lh = src.slice(src.indexOf('async function loadCrossSellHistory('), src.indexOf('// Одоогийн захиалгад санал болгох нэмэлтүүд.'));
+    ok(/select=id,status,starts_at,items&starts_at=gte\./.test(lh) && !/select=\*/.test(lh), 'scan: «хамт авдаг» түүх ХӨНГӨН ачаалагдана (4 багана, 365 хоног) — `select=*` БИШ');
+    ok(/dataLoadFailed\('хамт авдаг санал', e\)/.test(lh) && /_xsHistFailed = true/.test(lh), 'scan: түүх ачаалахад унавал чимээгүй залгихгүй (dataLoadFailed + дэлгэцэд «ачаалагдсангүй»)');
+    ok(/pgrstBearer\(\)/.test(lh) && !/DB_ANON_KEY\s*\}/.test(lh.replace(/apikey: DB_ANON_KEY/, '')), 'scan: түүх нэвтэрсэн токеноор (`pgrstBearer`) уншигдана');
+    ok(/бэлдэж байна…/.test(src) && /ачаалагдсангүй' : 'бэлдэж байна/.test(src) && /алга: энэ барааны түүх хангалтгүй/.test(src), 'scan: санал хоосон үед шалтгааныг дэлгэцэд хэлнэ (бэлдэж байна / ачаалагдсангүй / алга) — чимээгүй хоосон БИШ');
+  }
   ok(/state\._prodHasBundleAddons !== false\) row\.bundle_addons/.test(src), 'scan: saveProduct bundle_addons-ийг БАГАНА байвал л бичнэ (байхгүй бол бүх хадгалалт унахгүй)');
   ok(/state\._prodHasBundleAddons = rows\.length \? \('bundle_addons' in rows\[0\]\)/.test(src), 'scan: каталог ачаалахад bundle_addons баганын байхыг тэмдэглэнэ');
   ok(/'bundle_items', 'bundle_days', 'bundle_addons'\]/.test(src), 'scan: bundle_addons «үнэ» эрхийн хэсэгт (эрхгүй хүн засахгүй)');

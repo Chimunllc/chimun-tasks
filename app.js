@@ -395,6 +395,24 @@ const NET_BLIP_RE = /failed to fetch|fetch is aborted|load failed|networkerror|n
 //   болж 3 Issue үүссэн (fp 049beb19a3e0 · 400a5b1913a2 · b4e565453174 — нэг
 //   ажилтан, нэг мөч). Шалтгаан нь НЭГ: сервер бидний сессийг хүлээж авсангүй.
 let _load401Logged = false;
+// ⛔ ТОКЕН ИЛГЭЭГДСЭН АТАЛ 401 = СЕСС ХҮЧИНГҮЙ, ажилтанд ГАРЦ ХАРАГДАНА (2026-10-22).
+//   Дээрх дүүргэлт зогссон ч ажилтны байдал хэвээр байв: тууз гарахгүй, дараагийн
+//   401-ууд `_load401Logged`-оор нуугдана → ХООСОН дэлгэц, дахин нэвтрэх шаардлагатайг
+//   хэн ч хэлэхгүй, дэлгэцээ дахин нээж ч нөхөгдөхгүй (fp b4e565453174, `ideas`).
+//   PostgREST-д ЭРХИЙН алдаа = **403** (нэвтэрсэн үүрэг), **401** нь зөвхөн токеныг
+//   хүлээж авсангүй гэсэн үг (эрхгүй anon руу уналт ч 401). n8n сувгууд ч ижил
+//   (нэвтрэлтгүй = 401, эрхгүй = 403). Тиймээс токеноо ИЛГЭЭСЭН атал 401 ирвэл
+//   шалтгаан нь НЭВТРЭЛТ — утасны цаг юу ч хэлж байсан хамаагүй, сервер Л шийднэ.
+// ⚠ Токен огт байхгүй үед хөндөхгүй — тэр тохиолдлыг эхлэлийн шалгалт барина.
+//   Шинээр тэмдэглэсэн бол `true` (нэг сесст нэг удаа) — дуудагч өөрөө бүртгэнэ.
+function markSessionRejected() {
+  if (state.sessionExpired) return false;
+  state.sessionExpired = true;
+  state.sessionExpiredAt = (typeof fmtDateTimeUB === 'function') ? fmtDateTimeUB(new Date().toISOString()) : '';
+  try { showToast('🔒 Нэвтрэлт дууссан — дахин нэвтэрнэ үү', 'error', 7000); } catch (e) {}
+  try { render(); } catch (e) {}
+  return true;
+}
 function dataLoadFailed(where, err) {
   if (_pageUnloading) return;                    // хуудас хаагдаж байна — таслагдсан fetch
   if (navigator && navigator.onLine === false) return;   // офлайн — хэрэглэгч мэднэ
@@ -404,22 +422,18 @@ function dataLoadFailed(where, err) {
   // ⛔ 401 нь «дата ачаалагдсангүй» БИШ — НЭВТРЭЛТ дууссан (2026-10-07, амьд логоос).
   //   Нэг дэлгэц 3 татац хийдэг тул алдааны лог нэг зочлолтод 3 бичлэгээр дүүрч,
   //   хүнд «дата алга» гэж уншигдаж байв. Жинхэнэ шалтгаан нь токен хуучирсан.
-  //   ⚠ Токен ХҮЧИНТЭЙ атал 401 ирвэл энэ нь ЭРХИЙН асуудал — хэвийн бүртгэнэ.
   if (_is401 && typeof pgrstTokenValid === 'function' && !pgrstTokenValid()) {
-    if (!state.sessionExpired) {
-      state.sessionExpired = true;
-      state.sessionExpiredAt = (typeof fmtDateTimeUB === 'function') ? fmtDateTimeUB(new Date().toISOString()) : '';
-      try { showToast('🔒 Нэвтрэлт дууссан — дахин нэвтэрнэ үү', 'error', 7000); } catch (e) {}
+    if (markSessionRejected()) {
       try { _reportErrToServer('Нэвтрэлт дууссан', 'auth:401', String(where || '').slice(0, 120)); } catch (e) {}
-      try { render(); } catch (e) {}
     }
     return;
   }
   // ⚠ ЭРХИЙН 401-ийг НУУХГҮЙ — ЭХНИЙХ нь татацынхаа нэрээр бүрэн бүртгэгдэнэ
-  //   (`load:<нэр>`), сесс дууссан гэж ТЭМДЭГЛЭХГҮЙ. Зөвхөн дараагийнх нь дахин
-  //   бичигдэхгүй — 401 бүр нэг л шалтгаантай (эрх эсвэл токен), 3 бичлэг нэмэх
-  //   мэдээлэл өгөхгүй, дунд нь байгаа ЖИНХЭНЭ алдааг живүүлнэ.
+  //   (`load:<нэр>`). Зөвхөн дараагийнх нь дахин бичигдэхгүй — 401 бүр нэг л
+  //   шалтгаантай, 3 бичлэг нэмэх мэдээлэл өгөхгүй, дунд нь байгаа ЖИНХЭНЭ
+  //   алдааг живүүлнэ. Харин ажилтанд ТУУЗ нь ЗААВАЛ гарна (дээрхийг үз).
   if (_is401) {
+    if (typeof pgrstToken === 'function' && pgrstToken()) markSessionRejected();
     if (_load401Logged) return;
     _load401Logged = true;
   }
@@ -16705,8 +16719,8 @@ function _ecEsc(s) { return escapeHtml(String(s == null ? '' : s)); }
 function EMP_CONTRACT_HTML(d) {
   const org = (typeof CHIMUN_LEGAL !== 'undefined') ? CHIMUN_LEGAL : { name: '"ЧИМУН" ХХК', reg: '6614337', address: '', director: '', directorTitle: 'Гүйцэтгэх захирал', phones: '' };
   return `<div class="ec-doc">
-    <h2 style="text-align:center;margin:0 0 2px;">ХӨДӨЛМӨРИЙН ГЭРЭЭ</h2>
-    <div style="text-align:center;font-size:12px;color:#555;margin-bottom:12px;">${_ecEsc(d.docDate || '2026 оны … сарын …-ны өдөр')} · № ${_ecEsc(d.docNo || '………')} · Улаанбаатар хот</div>
+    <h2 class="ec-title">ХӨДӨЛМӨРИЙН ГЭРЭЭ</h2>
+    <div class="ec-meta">${_ecEsc(d.docDate || '2026 оны … сарын …-ны өдөр')} · № ${_ecEsc(d.docNo || '………')} · Улаанбаатар хот</div>
     <p>Энэхүү Хөдөлмөрийн гэрээ (цаашид Гэрээ гэх)-г нэг талаас “${_ecEsc(org.address)}” хаягт байрлах, ${_ecEsc(org.reg)} улсын бүртгэлийн дугаартай ${_ecEsc(org.name)} /цаашид Ажил олгогч гэх/, нөгөө талаас <b>${_ecEsc(d.empAddress || '…')}</b> хаягт оршин суух, <b>${_ecEsc(d.empRegister || '…')}</b> регистрийн дугаартай <b>${_ecEsc(d.empName || '…')}</b> /цаашид Ажилтан гэх/ нар (хамтад нь Талууд гэх) Монгол Улсын Хөдөлмөрийн тухай хууль /2021 оны шинэчилсэн найруулга/, холбогдох хууль тогтоомжийг үндэслэн харилцан тохиролцож, дараах нөхцөлөөр байгуулав.</p>
     <p><b>1. Нийтлэг үндэслэл</b><br>1.1. Энэхүү гэрээгээр Ажил олгогч болон Ажилтны хооронд үүсэх хөдөлмөрийн харилцааг зохицуулна.<br>1.2. Ажлын байрны тодорхойлолт, Нууцын баталгаа, цаашид байгуулагдах нэмэлт/сунгалтын гэрээ нь гэрээний салшгүй хэсэг болно.</p>
     <p><b>2. Гэрээний хугацаа ба туршилт</b><br>2.1. Ажил эхлэх огноо: <b>${_ecEsc(d.startDate || '…')}</b>.<br>2.2. Гэрээний хүчинтэй хугацаа: Хугацаагүй (ХтХ 50 дугаар зүйл).<br>2.3. Туршилтын хугацаа: эхний 1 (нэг) сар. Энэ хугацаанд үндсэн цалинг бүтнээр олгоно; ажилд тэнцэхгүй нь тогтоогдвол хуульд заасны дагуу гэрээг цуцалж болно.</p>
@@ -16716,22 +16730,22 @@ function EMP_CONTRACT_HTML(d) {
     <p><b>6. Талуудын хариуцлага</b><br>6.1. Сахилгын зөрчилд ХтХ 123-т заасан шийтгэл оногдуулна.<br>6.2. Буруутай үйлдлээр учруулсан хохирлыг Хөдөлмөрийн тухай хуульд заасан журмын дагуу нөхөн төлнө. Мөнгө/эд хөрөнгө хариуцсан ажилтантай Бүрэн эд хөрөнгийн хариуцлагын гэрээ байгуулж болно.<br>6.4. Гүйцэтгэлийг KPI-аар сар бүр үнэлнэ; сайжраагүй нь баримтаар тогтоогдвол ХтХ 80.1.2-оор гэрээг цуцалж болно.</p>
     <p><b>7. Гэрээ дуусгавар болох, цуцлах</b><br>7.2.1. Ажилтан өөрийн санаачилгаар цуцлах бол 30 хоногийн өмнө бичгээр мэдэгдэнэ.<br>7.2.2. Ажил олгогч ХтХ 80.1-д заасан үндэслэлээр цуцална.</p>
     <p><b>8–11.</b> Нэмэлт/өөрчлөлт бичгээр; давагдашгүй хүчин зүйл; маргааныг эв зүйгээр, эс бол шүүхээр; гэрээ 2 хувь, тал бүр 1 хувь хадгална; тусгаагүйг ХтХ болон дотоод журмаар зохицуулна.</p>
-    <table style="width:100%;margin-top:20px;border-collapse:collapse;"><tr>
-      <td style="width:50%;vertical-align:top;padding:10px;border:1px solid #bbb;">
+    <table class="ec-sign"><tr>
+      <td>
         <b>АЖИЛ ОЛГОГЧИЙГ ТӨЛӨӨЛЖ:</b>
-        <div style="height:52px;border-bottom:1px solid #999;margin:6px 0 4px;"></div>
-        <div style="font-size:12px;color:#777;">Гарын үсэг</div>
-        <div style="margin-top:6px;">Нэр: <b>${_ecEsc(d.employerName || org.director)}</b></div>
+        <div class="ec-sign-line"></div>
+        <div class="ec-sign-cap">Гарын үсэг</div>
+        <div class="ec-sign-name">Нэр: <b>${_ecEsc(d.employerName || org.director)}</b></div>
         <div>Албан тушаал: ${_ecEsc(d.employerTitle || org.directorTitle)}</div>
-        <div style="color:#777;font-size:12px;margin-top:4px;">Огноо: …… / …… / 2026</div>
+        <div class="ec-sign-cap ec-sign-date">Огноо: …… / …… / 2026</div>
       </td>
-      <td style="width:50%;vertical-align:top;padding:10px;border:1px solid #bbb;">
+      <td>
         <b>АЖИЛТАН:</b>
-        <div style="height:52px;border-bottom:1px solid #999;margin:6px 0 4px;"></div>
-        <div style="font-size:12px;color:#777;">Гарын үсэг</div>
-        <div style="margin-top:6px;">Нэр: <b>${_ecEsc(d.empName || '…')}</b></div>
+        <div class="ec-sign-line"></div>
+        <div class="ec-sign-cap">Гарын үсэг</div>
+        <div class="ec-sign-name">Нэр: <b>${_ecEsc(d.empName || '…')}</b></div>
         <div>Утас: ${_ecEsc(d.empPhone || '…')}</div>
-        <div style="color:#777;font-size:12px;margin-top:4px;">Огноо: …… / …… / 2026</div>
+        <div class="ec-sign-cap ec-sign-date">Огноо: …… / …… / 2026</div>
       </td>
     </tr></table>
     ${d.idRefHtml || ''}
@@ -23511,17 +23525,17 @@ function openNomaadManualIncomeModal(o) {
     modal.className = 'modal-bg'; modal.id = 'nim-modal';
     modal.innerHTML = `<div class="modal modal-sm">
       <h2>🔒 Хувийн дансаар — гар бүртгэл</h2>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">${escapeHtml(o.company || '')} · ${escapeHtml(o.quote_no || '')}</div>
-      <div style="background:rgba(245,158,11,.12);border:1px solid var(--warn);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11.5px;color:var(--warn);">Захирлын хувийн дансруу орсон төлбөр — баримт шаардахгүй. Дүн/огноог зөв оруулна уу. Үлдэгдэл: <b>${fmtMoney(bal)}</b></div>
-      <label style="font-size:12px;font-weight:600;">Дүн (₮)</label>
-      <input id="nim-amount" type="number" inputmode="numeric" placeholder="0" style="width:100%;margin:4px 0 10px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:15px;box-sizing:border-box;" />
-      <label style="font-size:12px;font-weight:600;">Огноо</label>
-      <input id="nim-date" type="date" value="${todayS}" style="width:100%;margin:4px 0 10px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;" />
-      <label style="font-size:12px;font-weight:600;">Тайлбар (хэн/юугаар)</label>
-      <input id="nim-note" type="text" placeholder="ж: бэлнээр / хувийн Хаан данс / нэр" style="width:100%;margin:4px 0 14px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;" />
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn" id="nim-cancel" style="padding:8px 16px;">Болих</button>
-        <button class="btn btn-primary" id="nim-save" style="padding:8px 16px;">Бүртгэх</button>
+      <div class="nim-sub">${escapeHtml(o.company || '')} · ${escapeHtml(o.quote_no || '')}</div>
+      <div class="nim-warn">Захирлын хувийн дансруу орсон төлбөр — баримт шаардахгүй. Дүн/огноог зөв оруулна уу. Үлдэгдэл: <b>${fmtMoney(bal)}</b></div>
+      <label>Дүн (₮)</label>
+      <input id="nim-amount" class="nim-in" type="number" inputmode="numeric" placeholder="0" />
+      <label>Огноо</label>
+      <input id="nim-date" class="nim-in" type="date" value="${todayS}" />
+      <label>Тайлбар (хэн/юугаар)</label>
+      <input id="nim-note" class="nim-in" type="text" placeholder="ж: бэлнээр / хувийн Хаан данс / нэр" />
+      <div class="nim-actions">
+        <button class="btn nim-btn" id="nim-cancel">Болих</button>
+        <button class="btn btn-primary nim-btn" id="nim-save">Бүртгэх</button>
       </div>
     </div>`;
     document.body.appendChild(modal);

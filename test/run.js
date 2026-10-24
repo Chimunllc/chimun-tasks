@@ -6920,6 +6920,32 @@ need(['orderCustType']);
   eq(F.applyNoteBundleDays({ note: '⟦BD|M-328|3⟧ ⟦BD|M-322|2⟧', items: [{ sku: 'M-328' }, { sku: 'M-322' }] }).items.map(i => i.bdays), [3, 2], 'сайт/багц: олон багцын токен');
   eq(F.applyNoteBundleDays(null), null, 'сайт/багц: null унахгүй');
   eq(F.cleanAppNote('Сайн байна уу ⟦BD|M-328|3⟧'), 'Сайн байна уу', 'сайт/багц: ⟦BD⟧ токеныг харилцагчид/ажилтанд ил харуулахгүй');
+  // ИНТЕГРАЦ: сайтын БОДИТ илгээлт → n8n «Build Row» (мөрөөс зөвхөн sku/name/qty/price/deposit үлдээнэ) → апп ачаалж задлана.
+  // Сайтыг амьд каталогоор туршиж барьсан payload: 4 хоног, багц (3 хоног) + 2 ширхэг 66,000₮ бараа.
+  {
+    const webItems = [{ sku: 'M-328', name: 'Өвлийн майхан багц', qty: 1, price: 390000, bdays: 3 }, { sku: 'M-159', name: 'LED шал', qty: 2, price: 66000 }];
+    const webNote = '4 хоногийн хямдрал (−20% = 105,600₮) ⟦RT|9|9⟧ ⟦DLV|pickup|0|0⟧ ⟦BD|M-328|3⟧ ⟦LEAD|site⟧';
+    // n8n Build Row: items зөвхөн 5 талбар (bdays ХАЯГДАНА), дүн нь харилцагчийн сагснаас
+    const stored = { id: 'ao-web-1', number: 9100, source: 'm-event-website', status: 'draft', starts_at: '2026-12-01', stops_at: '2026-12-05',
+      items: webItems.map(it => ({ sku: it.sku, name: it.name, qty: it.qty, price: it.price, deposit: 0 })),
+      subtotal_mnt: 1048000, discount_type: 'pct', discount_value: 20, total_mnt: 942400, deposit_mnt: 0, paid_mnt: 0, note: webNote };
+    eq(stored.items[0].bdays, undefined, 'интеграц: n8n мөрийн bdays-ийг хаясан (бодит зан үйл)');
+    const loaded = F.applyNoteBundleDays(JSON.parse(JSON.stringify(stored)));
+    eq(loaded.items[0].bdays, 3, 'интеграц: апп ачаалахдаа токеноос bdays сэргээнэ');
+    const dys = F.orderRentalDays(loaded);
+    eq(dys, 4, 'интеграц: 4 хоног');
+    const B = F.orderMoneyBreakdown(loaded);
+    eq([B.subtotal, B.discount, B.total], [1048000, 105600, 942400], 'интеграц: задаргаа сайтын дүнтэй ТААРНА (хямдрал багцаас бусдын 20%)');
+    const il = F.invoiceLines(loaded);
+    eq(il.reduce((a, x) => a + x.total, 0), 1048000, 'интеграц: нэхэмжлэхийн мөрүүдийн нийлбэр = дэд дүн');
+    eq(F.itemRentLine(loaded.items[0], dys), 520000, 'интеграц: багцын мөр 520,000 (сайттай ижил)');
+    // токенгүй (хуучин) бол ӨМНӨХ ШИГ → мөр нийлбэр зөрнө (токен яагаад хэрэгтэйг баталж байна)
+    const noTok = F.applyNoteBundleDays({ ...JSON.parse(JSON.stringify(stored)), note: webNote.replace('⟦BD|M-328|3⟧', '') });
+    ok(F.invoiceLines(noTok).reduce((a, x) => a + x.total, 0) !== 1048000, 'интеграц: токенгүй бол багц өдрийн үнэ × хоног болж зөрнө (токены ач холбогдол)');
+    // Захиалгын форм сайтын pct=20-ыг ГАР хөнгөлөлт гэж ачаалахгүй
+    eq(F.siteAutoDiscountOnly(loaded), true, 'интеграц: сайтын pct=20 нь авто шат (гар биш) — форм хоосон үзүүлнэ');
+    eq(F.orderDiscountAmount(1048000, 4, 'amount', 0, 1048000 - 520000), 105600, 'интеграц: форм дахин бодоход хямдрал 105,600 хэвээр (багцад 20% үйлчлэхгүй)');
+  }
   // Сайтын pct хөнгөлөлт = авто шат, ГАР биш → багцад үйлчлэхгүй
   const dOrd = (extra) => ({ ...siteOrd(), starts_at: '2026-11-01', stops_at: '2026-11-05', note: siteOrd().note + ' ' + F.encodeOrderTimes(9, 9), discount_type: 'pct', discount_value: 20, ...(extra || {}) });
   eq(F.siteAutoDiscountOnly(F.applyNoteBundleDays(dOrd())), true, 'сайт/хөнгөлөлт: багцтай сайтын pct=авто шат (4 хоног 20%) → гар хөнгөлөлт БИШ');

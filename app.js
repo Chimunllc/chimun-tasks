@@ -16532,31 +16532,31 @@ function openCateringJobModal(job) {
   const noOpts = noOrders.map(o => `<option value="${escapeHtml(o.quote_no || '')}"${o.quote_no === job.quote_no ? ' selected' : ''}>${escapeHtml((o.company || 'Нэргүй') + ' · ' + String(o.date_start || '').slice(0, 10))}</option>`).join('');
   const stOpts = Object.keys(CATERING_STATUS).map(k => `<option value="${k}"${(job.status || 'planned') === k ? ' selected' : ''}>${CATERING_STATUS[k][0]}</option>`).join('');
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:560px;max-height:92vh;overflow-y:auto;">
-    <div style="font-weight:800;font-size:16px;margin-bottom:12px;">${isNew ? '🍽 Шинэ катеринг' : '🍽 Катеринг засах'}</div>
+  modal.innerHTML = `<div class="modal kt-job-modal">
+    <h2>${isNew ? '🍽 Шинэ катеринг' : '🍽 Катеринг засах'}</h2>
     <label class="fld">NOMAAD арга хэмжээнээс татах<select id="kt-nomaad"><option value="">— гараар оруулах —</option>${noOpts}</select></label>
     <label class="fld">Гарчиг<input id="kt-title" value="${escapeHtml(job.title || '')}" placeholder="жишээ: Таван Богд корпорат"></label>
-    <div style="display:flex;gap:8px;">
-      <label class="fld" style="flex:1;">Байгууллага<input id="kt-company" value="${escapeHtml(job.company || '')}"></label>
-      <label class="fld" style="width:150px;">Огноо<input type="date" id="kt-date" value="${escapeHtml(String(job.event_date || '').slice(0, 10))}"></label>
+    <div class="kt-row">
+      <label class="fld kt-f-grow">Байгууллага<input id="kt-company" value="${escapeHtml(job.company || '')}"></label>
+      <label class="fld kt-f-side">Огноо<input type="date" id="kt-date" value="${escapeHtml(String(job.event_date || '').slice(0, 10))}"></label>
     </div>
-    <div style="display:flex;gap:8px;">
-      <label class="fld" style="width:110px;">Зочны тоо<input type="number" id="kt-guests" value="${job.guests || ''}" placeholder="300"></label>
-      <label class="fld" style="flex:1;">Байршил<input id="kt-loc" value="${escapeHtml(job.location || '')}" placeholder="сонголт"></label>
-      <label class="fld" style="width:150px;">Төлөв<select id="kt-status">${stOpts}</select></label>
+    <div class="kt-row">
+      <label class="fld kt-f-qty">Зочны тоо<input type="number" id="kt-guests" value="${job.guests || ''}" placeholder="300"></label>
+      <label class="fld kt-f-grow">Байршил<input id="kt-loc" value="${escapeHtml(job.location || '')}" placeholder="сонголт"></label>
+      <label class="fld kt-f-side">Төлөв<select id="kt-status">${stOpts}</select></label>
     </div>
     <div class="kt-money-f" id="kt-money-f"${job.source === 'nomaad' ? ' hidden' : ''}>
       <label class="fld">Утас<input id="kt-phone" inputmode="tel" value="${escapeHtml(job.phone || '')}" placeholder="99112233"></label>
       <label class="fld">Нийт дүн (₮)<input id="kt-total" type="text" inputmode="numeric" class="money-input" value="${job.total_mnt ? moneyFmtInput(job.total_mnt) : ''}" placeholder="0"></label>
     </div>
     <div class="kt-money-nm" id="kt-money-nm"${job.source === 'nomaad' ? '' : ' hidden'}>💰 NOMAAD-аас татсан — төлбөр нь NOMAAD-ийн үнийн саналд багтсан тул энд дүн оруулахгүй.</div>
-    <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">🍲 Цэс ба үйлчлэх цаг</div>
+    <div class="kt-sec">🍲 Цэс ба үйлчлэх цаг</div>
     <div id="kt-servings"></div>
-    <button type="button" class="btn" id="kt-add-serving" style="width:100%;padding:8px;font-size:12.5px;margin-top:2px;">+ Хоол / цаг нэмэх</button>
-    <label class="fld" style="margin-top:10px;">Тэмдэглэл<input id="kt-note" value="${escapeHtml(job.note || '')}" placeholder="сонголт"></label>
-    <div style="display:flex;gap:8px;justify-content:space-between;margin-top:14px;">
-      <button class="btn" id="kt-del" style="${isNew ? 'visibility:hidden;' : 'color:var(--danger);'}">Устгах</button>
-      <div style="display:flex;gap:8px;"><button class="btn" id="kt-cancel">Болих</button><button class="btn btn-primary" id="kt-save">Хадгалах</button></div>
+    <button type="button" class="btn kt-add-serv" id="kt-add-serving">+ Хоол / цаг нэмэх</button>
+    <label class="fld kt-f-note">Тэмдэглэл<input id="kt-note" value="${escapeHtml(job.note || '')}" placeholder="сонголт"></label>
+    <div class="kt-foot">
+      <button class="btn kt-del-btn${isNew ? ' kt-del-hide' : ''}" id="kt-del">Устгах</button>
+      <div class="kt-row"><button class="btn" id="kt-cancel">Болих</button><button class="btn btn-primary" id="kt-save">Хадгалах</button></div>
     </div></div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();

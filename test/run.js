@@ -6902,6 +6902,33 @@ need(['orderCustType']);
   const oi = F.orderItemFromProduct({ ...byS('M-328'), bundle_days: 3 }, 2);
   eq([oi.qty, oi.price, oi.bdays], [2, 390000, 3], 'хоног: захиалгын мөрд bdays хуулагдана');
   eq('bdays' in F.orderItemFromProduct(byS('M-328'), 1), false, 'хоног: N-гүй багц/бараанд bdays бичигдэхгүй (хуучин шигээ)');
+  // 5f) САЙТААС ИРСЭН БАГЦ: n8n мөрийн `bdays`-ийг хаядаг тул ⟦BD|sku|N⟧ токеноор note-оор дамжина (2026-10-24)
+  const siteOrd = () => ({ source: 'm-event-website', note: 'тэмдэглэл ⟦RT|9|9⟧ ⟦BD|M-328|3⟧ ⟦DLV|city|0|0⟧',
+    items: [{ sku: 'M-328', name: 'Өвлийн майхан багц', qty: 1, price: 390000 }, { sku: 'M-001', name: 'Цагаан сандал', qty: 50, price: 3000 }] });
+  const so = F.applyNoteBundleDays(siteOrd());
+  eq([so.items[0].bdays, so.items[1].bdays], [3, undefined], 'сайт/багц: токеноос зөвхөн таарсан sku-д bdays тавина');
+  eq(F.itemRentLine(so.items[0], 4), 520000, 'сайт/багц: токен уншигдсаны дараа тооцоо апптай ижил (4 хоног 520,000)');
+  const so2 = siteOrd(); so2.items[0].bdays = 5; F.applyNoteBundleDays(so2);
+  eq(so2.items[0].bdays, 5, 'сайт/багц: аппын өөрийн bdays-ийг токен ДАРАХГҮЙ');
+  const so3 = F.applyNoteBundleDays(F.applyNoteBundleDays(siteOrd()));
+  eq(so3.items[0].bdays, 3, 'сайт/багц: давтан дуудахад ижил (idempotent)');
+  for (const badNote of ['⟦BD|M-328|1⟧', '⟦BD|M-328|0⟧', '⟦BD|M-328|abc⟧', '⟦BD|ZZ|3⟧', '', null]) {
+    const x = F.applyNoteBundleDays({ note: badNote, items: [{ sku: 'M-328', price: 1, qty: 1 }] });
+    eq(x.items[0].bdays, undefined, 'сайт/багц: «' + String(badNote) + '» токен bdays тавихгүй');
+  }
+  eq(F.applyNoteBundleDays({ note: '⟦BD|M-328|999⟧', items: [{ sku: 'M-328' }] }).items[0].bdays, 30, 'сайт/багц: N 30-аар хязгаарлагдана');
+  eq(F.applyNoteBundleDays({ note: '⟦BD|M-328|3⟧ ⟦BD|M-322|2⟧', items: [{ sku: 'M-328' }, { sku: 'M-322' }] }).items.map(i => i.bdays), [3, 2], 'сайт/багц: олон багцын токен');
+  eq(F.applyNoteBundleDays(null), null, 'сайт/багц: null унахгүй');
+  eq(F.cleanAppNote('Сайн байна уу ⟦BD|M-328|3⟧'), 'Сайн байна уу', 'сайт/багц: ⟦BD⟧ токеныг харилцагчид/ажилтанд ил харуулахгүй');
+  // Сайтын pct хөнгөлөлт = авто шат, ГАР биш → багцад үйлчлэхгүй
+  const dOrd = (extra) => ({ ...siteOrd(), starts_at: '2026-11-01', stops_at: '2026-11-05', note: siteOrd().note + ' ' + F.encodeOrderTimes(9, 9), discount_type: 'pct', discount_value: 20, ...(extra || {}) });
+  eq(F.siteAutoDiscountOnly(F.applyNoteBundleDays(dOrd())), true, 'сайт/хөнгөлөлт: багцтай сайтын pct=авто шат (4 хоног 20%) → гар хөнгөлөлт БИШ');
+  eq(F.siteAutoDiscountOnly(dOrd()), false, 'сайт/хөнгөлөлт: багц танигдаагүй (bdays-гүй) бол хуучин зан үйл');
+  eq(F.siteAutoDiscountOnly(F.applyNoteBundleDays(dOrd({ discount_value: 25 }))), false, 'сайт/хөнгөлөлт: авто шатаас өөр % бол ГАР хөнгөлөлт (хөндөхгүй)');
+  eq(F.siteAutoDiscountOnly(F.applyNoteBundleDays(dOrd({ source: 'app' }))), false, 'сайт/хөнгөлөлт: аппаас үүссэн захиалгад хамаарахгүй');
+  eq(F.siteAutoDiscountOnly(F.applyNoteBundleDays(dOrd({ discount_type: 'amount' }))), false, 'сайт/хөнгөлөлт: ₮ хөнгөлөлт хөндөгдөхгүй');
+  ok(/!siteAutoDiscountOnly\(editOrder\)\) \$\('#no-disctype'\)/.test(src) && /editOrder\.discount_value && !siteAutoDiscountOnly\(editOrder\)/.test(src), 'scan: захиалгын форм сайтын авто шатыг гар хөнгөлөлт болгож ачаалахгүй');
+  eq((src.match(/\.map\(applyNoteBundleDays\)/g) || []).length, 3, 'scan: захиалга ачаалах 3 замд (идэвхтэй, архив, кэш) токен уншигдана');
   // SCAN
   ok(!/\(Number\(i[t]?\.price\) \|\| 0\) \* \(Number\(i[t]?\.qty\) \|\| 0\) \* days/.test(src), 'scan: `price × qty × days`-ийг гараар бичихгүй — `itemRentLine` дууд');
   eq((src.match(/sku: p\.sku \|\| p\.name, name: p\.name, qty,/g) || []).length, 1, 'scan: захиалгын мөрийг ГАНЦ `orderItemFromProduct` үүсгэнэ (picker + catalog давхардахгүй)');

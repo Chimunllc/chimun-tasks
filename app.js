@@ -11526,19 +11526,18 @@ function orderAddonSuggestions(items) {
   }
   return out;
 }
-/* ─── «ХАМТ АВДАГ» НЭМЭЛТ = захиалгын ТҮҮХЭЭС ӨӨРӨӨ (2026-10-24, CEO: «бүх бараанд нэмэлт санал болгодог байя») ───────────
-   Багцын нэмэлт (`bundle_addons`) гараар тохируулдаг, ТУСГАЙ ҮНЭТЭЙ. Энэ нь бусад БҮХ барааны хувьд: «ширхэгтэй захиалгын 55% нь
-   сандал авсан» гэдгийг өөрийн түүхээс бодож, захиалгад ширээ орсон бөгөөд сандал ороогүй бол ажилтанд санал болгоно.
-   ⛔ ГАРААР ТОХИРУУЛАХГҮЙ (192 бараа, «өөрөө үүсдэг» дүрэм) — дүрэм бүхэлдээ `crossSellRules`-аас гарна.
+/* ─── «ХАМТ АВДАГ» НЭМЭЛТ = захиалгын ТҮҮХЭЭС ӨӨРӨӨ, ДҮРЭМ НЬ DB-Д (2026-10-24, CEO: «бүх бараанд санал болгодог байя», «сайтад л санал болгох нь зөв») ───
+   Багцын нэмэлт (`bundle_addons`) гараар тохируулдаг, ТУСГАЙ ҮНЭТЭЙ. Энэ нь бусад БҮХ барааны хувьд: «цагаан ширээтэй захиалгын 48% нь сандал авсан»
+   гэдгийг ДҮРЭМ болгож, захиалгад ширээ орсон бөгөөд сандал ороогүй бол санал болгоно.
+   ⛔ ДҮРМИЙГ АППАД БОДОХГҮЙ — `db/cross_sell_recompute.sql` (VPS cron 06:10) захиалгын түүхээс бодож `app_config['mevent_cross_sell']`-д бичнэ:
+     {"M-239": [{"sku":"M-051","conf":0.48,"n":120,"both":57,"ratio":3.3}, …]}. Апп БА mevent.mn ЯГ НЭГ дүрмийг уншина (өмнө нь апп өөрөө түүхээс
+     бодож, сайт уншиж чадахгүй, хоёр хэрэгжүүлэлт зөрөх эрсдэлтэй байв; түүх татах МБ ачаалалгүй болсон). Босго/шүүлт зөвхөн SQL-д:
+     conf ≥ 30% БА lift ≥ 1.5 ЭСВЭЛ conf ≥ 15% БА lift ≥ 3 · anchor ≥ 5 · хос ≥ 3 · 365 хоног · 1..12 төрөлтэй сагс · alias-аар тулгана.
+   ⛔ ГАРААР ТОХИРУУЛАХГҮЙ (192 бараа, «өөрөө үүсдэг» дүрэм).
    ⛔ ЭНГИЙН ҮНЭЭР (CEO шийдвэр): хөнгөлөлтгүй, `bdays`-гүй — мөр нь ердийн бараа (`orderItemFromProduct`), олон хоногийн авто хямдал ердийнхөөрөө.
    ⛔ АВТО НЭМЭГДЭХГҮЙ — зөвхөн ТОВЧ ДАРАХАД. Нэмсэн мөрд `xs: 1` тэмдэг (хэмжилт: санал хэдэн захиалгад, хэдэн төгрөг болсон).
-   Шүүлт — хоёр шаардлагын аль нэг (олон хүн авдаг бараагаар худал дүрэм гарахаас хамгаална — lift ҮРГЭЛЖ шаардана):
-     · conf ≥ 30% БА lift ≥ 1.5 ЭСВЭЛ conf ≥ 15% БА lift ≥ 3 (lift = санамсаргүйгээс хэд дахин олон хамт авсан)
-     · anchor-той ≥ 5 захиалга, хамт ≥ 3 захиалга; сүүлийн 365 хоног; ноорог/цуцалсан/устгасан хасна; 12-оос олон төрөлтэй (бүтэн эвент) захиалга хасна.
-     (2026-10-24: 8/4-өөс 5/3 болгов — бодит түүхэнд 8+ захиалгатай бараа ердөө 24 тул 10 anchor л гарч, CEO «санал харагдахгүй байна» гэсэн.)
-   Тоо ширхэг = түүхэн харьцааны МЕДИАН × одоогийн anchor-ын тоо (ширээ 3 → сандал 3 × 7). Багцыг бүрэлдэхүүнээр нь тоолно (`expandOrderLines`). */
-const XSELL_WINDOW_DAYS = 365, XSELL_MIN_ANCHOR = 5, XSELL_MIN_PAIR = 3, XSELL_MAX = 3, XSELL_BASKET_CAP = 12;
-function xsellAccept(conf, lift) { return (conf >= 0.3 && lift >= 1.5) || (conf >= 0.15 && lift >= 3); }
+   Тоо ширхэг = түүхэн харьцааны МЕДИАН (`ratio`) × одоогийн anchor-ын тоо (ширээ 3 → сандал 3 × 3.3). Багцыг бүрэлдэхүүнээр нь тоолно (`expandOrderLines`). */
+const XSELL_MAX = 3;
 // Захиалгын «сагс» = бодит түрээсийн барааны sku → тоо (багц задарна; үйлчилгээ/багц/түрээслэх боломжгүйг хасна).
 function xsellBasket(items) {
   const m = new Map();
@@ -11549,77 +11548,38 @@ function xsellBasket(items) {
   }
   return m;
 }
-function crossSellRules(orders, today) {
-  const from = addDays(today, -XSELL_WINDOW_DAYS);
-  const nA = new Map(), pair = new Map(), ratios = new Map();
-  let N = 0;
-  for (const o of (orders || [])) {
-    if (!o || ['draft', 'canceled', 'deleted'].includes(String(o.status))) continue;
-    const day = String(o.starts_at || '').slice(0, 10);
-    if (!day || day < from) continue;
-    const bk = xsellBasket(o.items);
-    const skus = [...bk.keys()];
-    if (!skus.length || skus.length > XSELL_BASKET_CAP) continue;
-    N++;
-    for (const a of skus) {
-      nA.set(a, (nA.get(a) || 0) + 1);
-      for (const b of skus) {
-        if (a === b) continue;
-        const k = a + '\u0001' + b;
-        pair.set(k, (pair.get(k) || 0) + 1);
-        const rr = ratios.get(k) || []; rr.push((bk.get(b) || 0) / Math.max(1, bk.get(a) || 1)); ratios.set(k, rr);
-      }
-    }
-  }
-  const rules = new Map();
-  for (const [k, both] of pair) {
-    if (both < XSELL_MIN_PAIR) continue;
-    const [a, b] = k.split('\u0001');
-    const na = nA.get(a), nb = nA.get(b);
-    if (na < XSELL_MIN_ANCHOR) continue;
-    const conf = both / na, lift = conf / (nb / N);
-    if (!xsellAccept(conf, lift)) continue;
-    const rr = ratios.get(k).sort((x, y) => x - y);
-    if (!rules.has(a)) rules.set(a, []);
-    rules.get(a).push({ sku: b, both, n: na, conf, lift, ratio: rr[Math.floor(rr.length / 2)] });
-  }
-  for (const v of rules.values()) v.sort((x, y) => y.conf - x.conf || y.lift - x.lift);
-  return { rules, orders: N };
-}
-// Загварын эх сурвалж = `state._xsHist` (хөнгөн, зөвхөн түүхийн 4 багана — `loadCrossSellHistory`), байхгүй бол `state.appOrders`.
-// Хэмжээ нь жижиг ч захиалгын цонх нээх бүрд дахин бодохгүй: эх сурвалж/захиалга/барааны тоо өөрчлөгдөхөд л.
+// DB-ийн дүрмийг (`state._xsRules` = {anchor: [{sku, conf, n, both, ratio}]}) Map болгоно. Объект өөрчлөгдөхөд л дахин бүтээнэ.
 function crossSellModel() {
-  const src = state._xsHist || state.appOrders || [];
-  const key = (state._xsHist ? 'h' : 'a') + src.length + ':' + (state.products || []).length;
-  if (!state._xsell || state._xsell.key !== key) state._xsell = { key, ...crossSellRules(src, todayStr()) };
+  const raw = state._xsRules;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (!state._xsell || state._xsell.raw !== raw) {
+    const rules = new Map();
+    for (const a of Object.keys(raw)) {
+      const v = Array.isArray(raw[a]) ? raw[a].filter(r => r && r.sku && Number(r.conf) > 0).map(r => ({ sku: String(r.sku), conf: Number(r.conf), n: Number(r.n) || 0, both: Number(r.both) || 0, ratio: Number(r.ratio) > 0 ? Number(r.ratio) : 1 })) : [];
+      if (v.length) rules.set(a, v.sort((x, y) => y.conf - x.conf));
+    }
+    state._xsell = { raw, rules };
+  }
   return state._xsell;
 }
-// Түүх бүрэн ачаалагдсан уу — ачаалагдаагүй үед «санал алга» гэж худал хэлэхгүй, «бэлдэж байна» гэнэ.
-function crossSellReady() { return !!(state._xsHist || state._archiveLoaded); }
-/* ⛔ Түүхийг ЗӨВХӨН «Захиалга» дэлгэц нээхэд ачаалдаг (`loadAppOrders`, бүх багана, ~МБ) тул нүүр хуудаснаас «Шинэ захиалга» нээвэл
-   түүх хоосон, санал хэзээ ч гардаггүй байв (2026-10-24, CEO «харагдахгүй байна» ХОЁР удаа). Тусдаа, ХӨНГӨН ачаалалт: id, status,
-   starts_at, items л (365 хоног). Унавал `dataLoadFailed` + `_xsHistFailed` (дэлгэцэд «ачаалагдсангүй» гэж ил хэлнэ, чимээгүй хоосон БИШ). */
-async function loadCrossSellHistory() {
-  if (state._xsHist) return state._xsHist;
-  if (state._xsHistInflight) return state._xsHistInflight;
-  state._xsHistFailed = false;
-  state._xsHistInflight = (async () => {
+// Дүрэм ачаалагдсан уу — ачаалагдаагүй үед «санал алга» гэж худал хэлэхгүй, «бэлдэж байна» гэнэ.
+function crossSellReady() { return !!state._xsRules; }
+/* Дүрмийг НЭГ удаа (сессэд) татна — `app_config` нь нэвтэрсэн токеноор уншигдана. Унавал (null) `_xsFailed` (дэлгэцэд «ачаалагдсангүй» гэж ИЛ хэлнэ,
+   чимээгүй хоосон БИШ). ⚠ Захиалгын цонх нээх бүрд дуудна (нүүр хуудаснаас шууд «Шинэ захиалга» нээхэд ч ажиллана — өмнө нь түүх зөвхөн «Захиалга»
+   дэлгэц нээхэд ачаалагддаг тул санал хэзээ ч гардаггүй байв, CEO «харагдахгүй» ХОЁР удаа гомдсон). */
+async function loadCrossSellRules() {
+  if (state._xsRules) return state._xsRules;
+  if (state._xsInflight) return state._xsInflight;
+  state._xsFailed = false;
+  state._xsInflight = (async () => {
     try {
-      if (!DB_ANON_KEY) { state._xsHistFailed = true; return null; }
-      const from = addDays(todayStr(), -XSELL_WINDOW_DAYS);
-      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?select=id,status,starts_at,items&starts_at=gte.${from}&status=not.in.(draft,canceled,deleted)&limit=5000`,
-        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      state._xsHist = await r.json();
-      state._xsell = null;
-      return state._xsHist;
-    } catch (e) {
-      state._xsHistFailed = true;
-      dataLoadFailed('хамт авдаг санал', e);
+      const v = await loadAppConfig('mevent_cross_sell');
+      if (v && typeof v === 'object' && !Array.isArray(v)) { state._xsRules = v; state._xsell = null; return v; }
+      state._xsFailed = true;
       return null;
-    } finally { state._xsHistInflight = null; }
+    } finally { state._xsInflight = null; }
   })();
-  return state._xsHistInflight;
+  return state._xsInflight;
 }
 // Одоогийн захиалгад санал болгох нэмэлтүүд. `skip` = аль хэдийн санал болгосон/хаасан sku. ЦЭВЭР (каталог л уншина).
 function crossSellFor(items, model, skip) {
@@ -11639,7 +11599,7 @@ function crossSellFor(items, model, skip) {
   const out = [];
   for (const { r, a, qa } of best.values()) {
     const p = productBySku(r.sku);
-    if (!p || !(Number(p.price) > 0)) continue;
+    if (!p || isPackage(p) || isService(p) || !(Number(p.price) > 0)) continue;
     const qty = Math.max(1, Math.round(r.ratio * qa));
     out.push({ product: p, qty, conf: r.conf, n: r.n, anchor: productBySku(a), item: { ...orderItemFromProduct(p, qty), xs: 1 } });
   }
@@ -31997,15 +31957,15 @@ function openNewOrder(editOrder) {
     // Санал ХООСОН үед ч шалтгааныг хэлнэ — «ажиллахгүй байна уу, санал алга уу» гэдгийг хүн ялгаж чаддаггүй байв.
     let hint = '';
     if (!_locked && items.length && !pkgHtml && !xsHtml) {
-      hint = `<div class="no-addon-hint">🛒 Хамт авдаг санал ${!crossSellReady() ? (state._xsHistFailed ? 'ачаалагдсангүй' : 'бэлдэж байна…') : 'алга: энэ барааны түүх хангалтгүй'}</div>`;
+      hint = `<div class="no-addon-hint">🛒 Хамт авдаг санал ${!crossSellReady() ? (state._xsFailed ? 'ачаалагдсангүй' : 'бэлдэж байна…') : 'алга: энэ барааны түүх хангалтгүй'}</div>`;
     }
     addonsBox.innerHTML = pkgHtml + xsHtml + hint;
   }
   renderItems();
   // «Хамт авдаг» дүрэм захиалгын ТҮҮХЭЭС гарна. Түүхийг зөвхөн «Захиалга» дэлгэц нээхэд ачаалдаг тул нүүр хуудаснаас шууд
   // «Шинэ захиалга» нээвэл түүх хоосон байж санал ХЭЗЭЭ Ч гарахгүй байв (2026-10-24, CEO: «санал болгосон бараа харагдахгүй»).
-  // Ачаалагдаагүй бол энд (хөнгөн `loadCrossSellHistory`) ачаалж, ирмэгц санал шинэчлэгдэнэ.
-  if (!crossSellReady()) loadCrossSellHistory().then(() => { if (modal.isConnected) renderAddons(); });
+  // Ачаалагдаагүй бол энд (`loadCrossSellRules`) ачаалж, ирмэгц санал шинэчлэгдэнэ.
+  if (!crossSellReady()) loadCrossSellRules().then(() => { if (modal.isConnected) renderAddons(); });
   itemsBox.addEventListener('input', e => {
     const t = e.target; let i;
     if (t.dataset.ilen != null) { i = +t.dataset.ilen; items[i].qty = Math.max(1, Number(t.value) || 1); renderItems(); recalc(); return; }

@@ -31967,6 +31967,10 @@ function openNewOrder(editOrder) {
     addonsBox.innerHTML = pkgHtml + xsHtml;
   }
   renderItems();
+  // «Хамт авдаг» дүрэм захиалгын ТҮҮХЭЭС гарна. Түүхийг зөвхөн «Захиалга» дэлгэц нээхэд ачаалдаг тул нүүр хуудаснаас шууд
+  // «Шинэ захиалга» нээвэл түүх хоосон байж санал ХЭЗЭЭ Ч гарахгүй байв (2026-10-24, CEO: «санал болгосон бараа харагдахгүй»).
+  // Ачаалагдаагүй бол энд ачаалж, ирмэгц санал шинэчлэгдэнэ (`loadAppOrders` давхар дуудлагыг нэгтгэдэг).
+  if (!state._archiveLoaded && typeof loadAppOrders === 'function') loadAppOrders().then(() => { if (modal.isConnected) renderAddons(); }).catch(() => {});
   itemsBox.addEventListener('input', e => {
     const t = e.target; let i;
     if (t.dataset.ilen != null) { i = +t.dataset.ilen; items[i].qty = Math.max(1, Number(t.value) || 1); renderItems(); recalc(); return; }

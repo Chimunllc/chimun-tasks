@@ -7109,6 +7109,7 @@ need(['orderCustType']);
   ok(/items\.push\(\{ \.\.\.xs\.item, qty:/.test(src) && /item: \{ \.\.\.orderItemFromProduct\(p, qty\), xs: 1 \}/.test(src), 'scan: товч дарахад л орно, мөр `xs: 1` тэмдэгтэй, ЭНГИЙН үнэ (orderItemFromProduct)');
   ok(!/toISOString/.test(src.slice(src.indexOf('function crossSellRules('), src.indexOf('function crossSellFor('))), 'scan: хамт авдаг бодолт огноог `addDays`/`todayStr`-ээр (toISOString-гүй)');
   ok(/_locked \? \[\] : crossSellFor\(items, crossSellModel\(\)/.test(src), 'scan: хаасан сарын захиалгад «хамт авдаг» санал гарахгүй');
+  ok(/if \(!state\._archiveLoaded && typeof loadAppOrders === 'function'\) loadAppOrders\(\)\.then\(\(\) => \{ if \(modal\.isConnected\) renderAddons\(\); \}\)/.test(src), 'scan: захиалгын цонх түүх ачаалагдаагүй бол өөрөө ачаалж, ирмэгц «хамт авдаг» саналыг шинэчилнэ (нүүр хуудаснаас шууд нээхэд санал хоосон байсан)');
   ok(/state\._prodHasBundleAddons !== false\) row\.bundle_addons/.test(src), 'scan: saveProduct bundle_addons-ийг БАГАНА байвал л бичнэ (байхгүй бол бүх хадгалалт унахгүй)');
   ok(/state\._prodHasBundleAddons = rows\.length \? \('bundle_addons' in rows\[0\]\)/.test(src), 'scan: каталог ачаалахад bundle_addons баганын байхыг тэмдэглэнэ');
   ok(/'bundle_items', 'bundle_days', 'bundle_addons'\]/.test(src), 'scan: bundle_addons «үнэ» эрхийн хэсэгт (эрхгүй хүн засахгүй)');

@@ -8787,6 +8787,82 @@ need(['orderCustType']);
        'ИНВАРИАНТ: нэвтрэлт дууссан тууз бүх дэлгэцэд гарна');
   }
 
+  // ── СЕСС ДУУССАН ГЭЖ ТУНХАГЛАХААС ӨМНӨ pgrst ТОКЕНЫГ ШИНЭЧЛЭНЭ ─────────────
+  //   (2026-10-24, fp c933fe553d64 — `plan` дэлгэц · 3 ажилтан · 5 удаа)
+  //   Эхлэл (`restoreSession`) нь сессийн токеноор pgrst JWT-ыг ҮРГЭЛЖ ШИНЭЭР
+  //   авдаг тул дахин ачаалахад л «засагддаг» байв. Ажиллаж байгаа апп түүнийг
+  //   хийдэггүй: токен ажлын дундаас хугацаа дуусахад (эсвэл офлайн эхэлснээс
+  //   болж эхлэлийн шалгалт алгасагдсан бол) ажилтан «Нэвтрэлт дууссан» тууз
+  //   + ХООСОН дэлгэцтэй үлдэж, бичилт ч бүтэхгүй байв.
+  (globalThis.__late = globalThis.__late || []).push(new Promise(done => setTimeout(async () => {
+    vm.runInContext('globalThis.__o = { pv: pgrstTokenValid, fr: forceRelogin, sv: serverVerifyToken };', sandbox);
+    const setup = (extra) => vm.runInContext(`
+      globalThis.__ver = []; globalThis.__forced = 0;
+      _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      localStorage.setItem('pgrstToken', 'old.body.sig');
+      pgrstTokenValid = () => false;
+      forceRelogin = () => { globalThis.__forced++; };
+      ${extra}
+      dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
+    `, sandbox);
+    try {
+      // ① Сервер сессийг хүлээн авбал → шинэ pgrst, сесс АМЬД үлдэнэ
+      setup(`
+        localStorage.setItem('sessionToken', 's1.sig');
+        serverVerifyToken = async (t) => { __ver.push(t); return { valid: true, phone: '8', pgrst: 'new.body.sig' }; };
+      `);
+      await vm.runInContext('_dbRenewP', sandbox);
+      eq(vm.runInContext("localStorage.getItem('pgrstToken')", sandbox), 'new.body.sig',
+         '⛔ ИНВАРИАНТ: 401 + хүчингүй токен → pgrst-ыг сессийн токеноор шинэчилнэ');
+      eq(vm.runInContext('__ver', sandbox), ['s1.sig'], 'сесс: шинэчлэлтийг сессийн токеноор асууна');
+      eq(vm.runInContext('state.sessionExpired', sandbox), false, 'сесс: шинэчлэгдвэл «дууссан» төлөв арилна');
+      eq(vm.runInContext('sessionExpiredBannerHtml()', sandbox), '', 'сесс: шинэчлэгдвэл тууз арилна');
+      eq(vm.runInContext('globalThis.__forced', sandbox), 0, 'сесс: шинэчлэгдсэн хүнийг PIN дэлгэц рүү хөөхгүй');
+      eq(vm.runInContext('_errLog.length', sandbox), 1, 'сесс: шинэчлэлт нь нэг удаагийн бүртгэлийг хөндөхгүй');
+      // ⚠ Нэг сесст НЭГ удаа — татац бүрд асуувал сервер дээр дуудлагын шуурга болно
+      vm.runInContext(`state.sessionExpired = false; dataLoadFailed('Дуудлагын лог', new Error('HTTP 401'));`, sandbox);
+      await vm.runInContext('_dbRenewP', sandbox);
+      eq(vm.runInContext('__ver.length', sandbox), 1, 'сесс: шинэчлэлтийг нэг сесст нэг л удаа асууна');
+
+      // ② Сервер ТАТГАЛЗВАЛ → PIN дэлгэц рүү (тууз ганцаараа хангалтгүй), токен солигдохгүй
+      setup(`
+        localStorage.setItem('sessionToken', 's2.sig');
+        serverVerifyToken = async (t) => { __ver.push(t); return { valid: false }; };
+      `);
+      await vm.runInContext('_dbRenewP', sandbox);
+      eq(vm.runInContext('globalThis.__forced', sandbox), 1,
+         '⛔ ИНВАРИАНТ: сервер сессийг хүчингүй гэвэл нэвтрэх дэлгэц рүү буцаана');
+      eq(vm.runInContext("localStorage.getItem('pgrstToken')", sandbox), 'old.body.sig',
+         'сесс: татгалзсан хариунаас токен бичихгүй');
+
+      // ③ Сүлжээ алга (null) → офлайн ажиллаж байгаа хүнийг ХӨӨХГҮЙ, тууз хэвээр
+      setup(`
+        localStorage.setItem('sessionToken', 's3.sig');
+        serverVerifyToken = async (t) => { __ver.push(t); return null; };
+      `);
+      await vm.runInContext('_dbRenewP', sandbox);
+      eq(vm.runInContext('globalThis.__forced', sandbox), 0, '⛔ ИНВАРИАНТ: сүлжээгүй үед хөөхгүй');
+      eq(vm.runInContext('state.sessionExpired', sandbox), true, 'сесс: шинэчлэгдээгүй бол тууз хэвээр');
+
+      // ④ Серверийн сесс ОГТ байхгүй (офлайн нэвтрэлт) → асуух юм алга
+      setup(`
+        localStorage.removeItem('sessionToken');
+        serverVerifyToken = async (t) => { __ver.push(t); return { valid: true, pgrst: 'x.y.z' }; };
+      `);
+      await vm.runInContext('_dbRenewP', sandbox);
+      eq(vm.runInContext('__ver.length', sandbox), 0, 'сесс: сессийн токенгүй үед серверээс асуухгүй');
+      eq(vm.runInContext('globalThis.__forced', sandbox), 0, 'сесс: токенгүй хүнийг хөөхгүй (нэвтрэлт нь шинэ)');
+    } catch (e) { ok(false, 'сесс шинэчлэлт: ' + (e && e.stack || e)); }
+    finally {
+      vm.runInContext(`pgrstTokenValid = __o.pv; forceRelogin = __o.fr; serverVerifyToken = __o.sv;
+        localStorage.removeItem('sessionToken'); localStorage.removeItem('pgrstToken');
+        _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+        state.sessionExpired = false; state.sessionExpiredAt = '';`, sandbox);
+      done();
+    }
+  }, 0)));
+
   // ⭐ БИЧИХ ЗАМЫГ ҮНЭХЭЭР ДУУДАЖ, ИЛГЭЭСЭН БИЕИЙГ ШАЛГАНА (2026-10-09).
   //   Цэвэр функц ногоон байхад БИЧИЛТ замдаа токеноо хаядаг байсныг (⟦CRED⟧,
   //   ⟦LATE⟧) нэг ч тест барьсангүй — учир нь хэн ч бодит дуудалтыг туршаагүй.

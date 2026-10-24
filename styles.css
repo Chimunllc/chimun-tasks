@@ -6088,6 +6088,25 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .pm-bundle-empty { font-size: 12px; color: var(--muted-soft); padding: 6px 0; }
 .pm-bundle-sum { font-size: var(--fs-sm); color: var(--muted); margin-top: var(--space-3); line-height: 1.6; }
 .pm-bundle-sum b { color: var(--text); font-weight: 600; }
+/* Багцын «санал болгох нэмэлт» (2026-10-24): засах цонхны мөр + картын мөр + захиалгын цонхны санал. Зөвхөн токен. */
+.pm-addons { margin-top: var(--space-2); }
+.pm-ad-t { font-size: var(--fs-md); font-weight: 600; margin-bottom: 2px; }
+.pm-addons .pm-hint { margin-bottom: var(--space-2); }
+.pm-ad-row { flex-wrap: wrap; }
+.pm-ad-row .pm-bi-main { flex: 1 1 100%; }
+.pm-ad-f { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs); color: var(--muted); }
+.modal .pm-ad-price { width: 120px; min-height: 40px; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm); font-size: var(--fs-base); font-family: inherit; background: var(--panel); color: var(--text); text-align: right; }
+.pm-ad-row .pm-bi-rm { align-self: flex-end; }
+.prod-addons { color: var(--text-soft); }
+.no-addon-t { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); margin: var(--space-2) 2px 4px; }
+.no-addon { display: flex; align-items: center; gap: var(--space-2); width: 100%; box-sizing: border-box; padding: var(--space-2) var(--space-3); margin-bottom: var(--space-1); border: 1px dashed var(--info); border-radius: var(--r-md); background: var(--info-soft); color: var(--text); font-family: inherit; text-align: left; cursor: pointer; }
+.no-addon:hover { background: var(--panel-hover); }
+.no-addon:last-child { margin-bottom: var(--space-2); }
+.no-addon-pl { flex: none; font-size: var(--fs-lg); line-height: 1; color: var(--info); }
+.no-addon-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.no-addon-mid b { font-size: var(--fs-md); font-weight: 600; }
+.no-addon-mid small { font-size: var(--fs-xs); color: var(--muted); }
+.no-addon-amt { flex: none; font-size: var(--fs-md); font-weight: 700; color: var(--info); white-space: nowrap; }
 .prod-fld { display: flex; flex-direction: column; font-size: 10.5px; color: var(--muted); gap: 2px; }
 .prod-fld input { width: 96px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 13px; font-family: inherit; text-align: right; background: var(--panel); color: var(--text); }
 .prod-fld.sm input { width: 64px; }

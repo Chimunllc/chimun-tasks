@@ -6955,13 +6955,105 @@ need(['orderCustType']);
   eq(F.siteAutoDiscountOnly(F.applyNoteBundleDays(dOrd({ discount_type: 'amount' }))), false, 'сайт/хөнгөлөлт: ₮ хөнгөлөлт хөндөгдөхгүй');
   ok(/!siteAutoDiscountOnly\(editOrder\)\) \$\('#no-disctype'\)/.test(src) && /editOrder\.discount_value && !siteAutoDiscountOnly\(editOrder\)/.test(src), 'scan: захиалгын форм сайтын авто шатыг гар хөнгөлөлт болгож ачаалахгүй');
   eq((src.match(/\.map\(applyNoteBundleDays\)/g) || []).length, 3, 'scan: захиалга ачаалах 3 замд (идэвхтэй, архив, кэш) токен уншигдана');
+  // 5g) БАГЦЫН «САНАЛ БОЛГОХ НЭМЭЛТ» (2026-10-24, CEO: «шууд нэмэх биш нэмэлтээр санал болгодог байя»)
+  {
+    const bag = comp('M-078', 'Өвлийн мишок', 44000, 7);
+    const bag2 = comp('M-057', 'Зуны мишок', 11000, 400);
+    const pk3 = { ...byS('M-328'), bundle_days: 3, bundle_addons: [{ sku: 'M-078', qty: 2, price: 50000 }] };
+    const withAddons = prods.map(x => x.sku === 'M-328' ? pk3 : x).concat([bag, bag2]);
+    runIn('state.products = ' + JSON.stringify(withAddons) + ';');
+    const pkgItem = (q) => ({ sku: 'M-328', name: 'Өвлийн майхан багц', qty: q || 1, price: 390000, bdays: 3 });
+    // normalizer
+    eq(F.packageAddons(runIn("productBySku('M-328')")), [{ sku: 'M-078', qty: 2, price: 50000 }], 'нэмэлт: багцын нэмэлт уншигдана');
+    eq(F.packageAddons(byS('M-163')), [], 'нэмэлт: бараанд нэмэлт гэж байхгүй');
+    eq(F.packageAddons({ ...pk3, bundle_addons: null }), [], 'нэмэлт: NULL = нэмэлтгүй');
+    eq(F.packageAddons({ ...pk3, bundle_addons: [{ sku: 'M-089', qty: 1, price: 1000 }, { sku: 'M-078', qty: 0, price: 49999.6 }, { sku: 'M-078', qty: 9, price: 1 }, { sku: '', price: 5 }, { sku: 'X', price: 'abc' }, null] }),
+       [{ sku: 'M-078', qty: 1, price: 50000 }], 'нэмэлт: бүрэлдэхүүн · давхар · хоосон · NaN үнэ хасагдана, qty≥1, үнэ бүхэлд');
+    eq(F.packageAddons({ ...pk3, bundle_addons: Array.from({ length: 9 }, (_, i) => ({ sku: 'Q' + i, qty: 1, price: 1 })) }).length, 5, 'нэмэлт: 5-аас дээшийг тасална');
+    // тусад нь авбал / хэр хямд
+    const inf3 = F.addonInfo(bag, 50000, 3);
+    eq([inf3.sep, inf3.pct], [105600, 53], 'нэмэлт: 3 хоног тусад нь 105,600 (олон хоногийн авто хямдралтай) → 50,000 нь 53% хямд');
+    eq([F.addonInfo(bag, 50000, 0).sep, F.addonInfo(bag, 50000, 0).pct], [44000, -14], 'нэмэлт: өдрийн үнэтэй багцад өдрийн үнэтэй харьцуулна; үнэтэй бол сөрөг %');
+    eq(F.addonInfo(bag, 0, 3).pct, null, 'нэмэлт: үнэгүй бол % null (0 БИШ)');
+    // захиалгын мөр
+    const ai = F.addonOrderItem(runIn("productBySku('M-328')"), { sku: 'M-078', qty: 2, price: 50000 }, bag, 1);
+    eq([ai.sku, ai.name, ai.qty, ai.price, ai.bdays], ['M-078', 'Өвлийн мишок', 2, 50000, 3], 'нэмэлт: мөр = энгийн бараа + нэмэлтийн үнэ + багцын N');
+    eq(F.addonOrderItem(runIn("productBySku('M-328')"), { sku: 'M-078', qty: 2, price: 50000 }, bag, 3).qty, 6, 'нэмэлт: 3 багц → 6 ширхэг санал');
+    eq('bdays' in F.addonOrderItem({ ...pk3, bundle_days: 1 }, { sku: 'M-078', qty: 2, price: 50000 }, bag, 1), false, 'нэмэлт: өдрийн үнэтэй багцын нэмэлт bdays-гүй (өдрийн үнэ)');
+    // санал
+    const sg = F.orderAddonSuggestions([pkgItem()]);
+    eq(sg.map(x => [x.addon.sku, x.item.qty, x.item.price, x.item.bdays]), [['M-078', 2, 50000, 3]], 'нэмэлт: багц орвол нэмэлт САНАЛ болно');
+    eq(F.orderAddonSuggestions([pkgItem(2)])[0].item.qty, 4, 'нэмэлт: 2 багц → 4 ширхэг санал');
+    eq(F.orderAddonSuggestions([pkgItem(), { sku: 'M-078', name: 'Өвлийн мишок', qty: 1, price: 44000 }]), [], 'нэмэлт: мишок аль хэдийн захиалгад байвал санал болгохгүй');
+    eq(F.orderAddonSuggestions([{ sku: 'M-089', name: 'Майхан', qty: 1, price: 132000 }]), [], 'нэмэлт: багцгүй захиалгад санал алга');
+    eq(F.orderAddonSuggestions([]), [], 'нэмэлт: хоосон захиалгад санал алга');
+    eq(F.orderAddonSuggestions(null), [], 'нэмэлт: null унахгүй');
+    runIn('state.products = ' + JSON.stringify(withAddons.map(x => x.sku === 'M-328' ? { ...x, bundle_addons: [{ sku: 'M-078', qty: 2, price: 50000 }, { sku: 'NO-SUCH', qty: 1, price: 1000 }, { sku: 'M-322', qty: 1, price: 1000 }] } : x)) + ';');
+    eq(F.orderAddonSuggestions([pkgItem()]).map(x => x.addon.sku), ['M-078'], 'нэмэлт: каталогт байхгүй/багц болсон нэмэлтийг санал болгохгүй');
+    runIn('state.products = ' + JSON.stringify(withAddons.map(x => x.sku === 'M-322' ? { ...x, bundle_days: 3, bundle_addons: [{ sku: 'M-078', qty: 1, price: 40000 }] } : x.sku === 'M-328' ? pk3 : x)) + ';');
+    eq(F.orderAddonSuggestions([pkgItem(), { sku: 'M-322', name: 'Хөгжим GOLD', qty: 1, price: 2720000 }]).length, 1, 'нэмэлт: хоёр багц ижил нэмэлт санал болговол нэг л удаа');
+    runIn('state.products = ' + JSON.stringify(withAddons) + ';');
+    // ШУУД НЭМЭГДЭХГҮЙ — багц, агуулах, нөөц нэмэлтээс үл хамаарна
+    eq(F.expandOrderLines([pkgItem()]).map(x => x.sku).sort(), ['M-060', 'M-064', 'M-089'], 'нэмэлт: сонгоогүй нэмэлт агуулахын задаргаанд ОРОХГҮЙ');
+    eq(F.packageInfo(runIn("productBySku('M-328')")).sum, 286000, 'нэмэлт: багцын нийлбэр/хямдралд орохгүй');
+    eq(F.packageStock(runIn("productBySku('M-328')")), runIn("packageStock(productBySku('M-328'))"), 'нэмэлт: багцын нөөц хөндөгдөхгүй');
+    // Сонгосон нэмэлт = энгийн мөр: агуулах мишокийг ШУУД тоолно
+    const chosen = F.expandOrderLines([pkgItem(), sg[0].item]);
+    eq(chosen.find(x => x.sku === 'M-078').qty, 2, 'нэмэлт: сонгосон нэмэлт агуулахад мишок 2 ширхэг болж харагдана');
+    // Мөнгө: 3 хоногт тогтмол, илүү хоног үнэ ÷ N, авто хямдралаас гарсан
+    eq([3, 4, 5].map(d => F.itemRentLine(sg[0].item, d)), [100000, 133333, 166667], 'нэмэлт: 3 хоног 100,000 · илүү хоног тус бүр 50,000÷3 ширхэгт');
+    eq(F.itemsBundleSubtotal([pkgItem(), sg[0].item], 4), 520000 + 133333, 'нэмэлт: багцын тогтмол дүнд орно → олон хоногийн авто хямдралаас гарна');
+    eq(F.orderDiscountAmount(520000 + 133333 + 66000 * 2 * 4, 4, 'amount', 0, 66000 * 2 * 4), Math.round(66000 * 2 * 4 * 0.2), 'нэмэлт: 4 хоногт хямдрал зөвхөн багц/нэмэлт бус мөрөөс');
+    eq(F.itemGrossPerDay(sg[0].item, 3), 100000 / 3, 'нэмэлт: орлогын жин нэмэлтийн мөрийн дүнгээр');
+    // Шошго
+    eq([F.bundleDaysLabel(pkgItem()), F.bundleDaysLabel(sg[0].item), F.bundleDaysLabel({ sku: 'M-089', qty: 1, price: 1 })], ['3 хоногийн багц', '3 хоногийн үнэ', ''], 'нэмэлт: нэхэмжлэх/саналын шошго — багц «багц», нэмэлт «үнэ»');
+    ok(F.invoiceLines({ starts_at: '2026-12-01', stops_at: '2026-12-04', items: [pkgItem(), sg[0].item] })[1].name.includes('3 хоногийн үнэ'), 'нэмэлт: нэхэмжлэхийн мөр «3 хоногийн үнэ»');
+    // Сайтаас ирсэн нэмэлт мөр: n8n bdays-ийг хаядаг → токеноор сэргэнэ
+    const webAdd = F.applyNoteBundleDays({ note: '⟦BD|M-328|3⟧ ⟦BD|M-078|3⟧', items: [{ sku: 'M-328', qty: 1, price: 390000 }, { sku: 'M-078', qty: 2, price: 50000 }] });
+    eq(webAdd.items.map(x => x.bdays), [3, 3], 'нэмэлт/сайт: нэмэлт мөрийн N ч токеноор сэргэнэ');
+    // Хадгалах шалгуур
+    const okA = { name: 'Тест багц', cat: 'Кемп', bundle: [{ sku: 'M-089', qty: 1 }], price: 390000, days: 3 };
+    eq(F.packageSaveBlock({ ...okA, addons: [{ sku: 'M-078', qty: 2, price: 50000 }] }), null, 'нэмэлт/шалгуур: зөв нэмэлт зөвшөөрөгдөнө');
+    eq(F.packageSaveBlock({ ...okA, addons: [] }), null, 'нэмэлт/шалгуур: нэмэлтгүй зөв (заавал биш)');
+    eq(F.packageSaveBlock({ ...okA }), null, 'нэмэлт/шалгуур: талбар байхгүй (багана алга) бол шалгахгүй');
+    eq(F.packageSaveBlock({ ...okA, addons: [{ sku: '', qty: 1, price: 5 }] }).field, '#pm-addon-add', 'нэмэлт/шалгуур: бараа сонгоогүй мөр хаана');
+    ok(F.packageSaveBlock({ ...okA, addons: [{ sku: 'M-089', qty: 1, price: 5000 }] }).msg.includes('бүрэлдэхүүнд'), 'нэмэлт/шалгуур: бүрэлдэхүүнийг нэмэлт болгож болохгүй (нэг sku хоёр мөр болно)');
+    ok(F.packageSaveBlock({ ...okA, addons: [{ sku: 'M-078', qty: 1, price: 5000 }, { sku: 'M-078', qty: 1, price: 5000 }] }).msg.includes('2 удаа'), 'нэмэлт/шалгуур: давхар нэмэлт хаана');
+    for (const bad of [0, -1, '', null, NaN]) eq(F.packageSaveBlock({ ...okA, addons: [{ sku: 'M-078', qty: 1, price: bad }] }).field, '#pm-addon-add', 'нэмэлт/шалгуур: үнэ ' + String(bad) + ' → хаана');
+    eq(F.packageSaveBlock({ ...okA, addons: Array.from({ length: 6 }, (_, i) => ({ sku: 'Z' + i, qty: 1, price: 1 })) }).field, '#pm-addon-add', 'нэмэлт/шалгуур: 5-аас олон хаана');
+    eq(F.packageSaveBlock({ ...okA, price: 0, bundle: [], checkPrice: false, addons: [{ sku: '', price: 0 }] }), null, 'нэмэлт/шалгуур: үнийн эрхгүй хүн нэмэлтээр хориглогдохгүй');
+    // Карт
+    const card = asCeo(() => F.productRowHtml(runIn("productBySku('M-328')")));
+    ok(card.includes('prod-addons') && card.includes('Өвлийн мишок') && card.includes('2×') && card.includes('/3 хоног'), 'нэмэлт/карт: багцын карт нэмэлтийг ил харуулна');
+    eq(F.packageAddonsHtml(byS('M-322')), '', 'нэмэлт/карт: нэмэлтгүй багцад мөр гарахгүй');
+    // DB
+    const addSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'product_bundle_addons.sql'), 'utf8');
+    ok(/add column if not exists bundle_addons jsonb/.test(addSql) && /jsonb_typeof\(bundle_addons\) = 'array'/.test(addSql) && /notify pgrst, 'reload schema'/.test(addSql), 'scan: db/product_bundle_addons.sql — багана · массив шалгуур · схем дахин ачаалах');
+    runIn('state.products = ' + JSON.stringify(prods) + ';');
+  }
+  ok(/state\._prodHasBundleAddons !== false\) row\.bundle_addons/.test(src), 'scan: saveProduct bundle_addons-ийг БАГАНА байвал л бичнэ (байхгүй бол бүх хадгалалт унахгүй)');
+  ok(/state\._prodHasBundleAddons = rows\.length \? \('bundle_addons' in rows\[0\]\)/.test(src), 'scan: каталог ачаалахад bundle_addons баганын байхыг тэмдэглэнэ');
+  ok(/'bundle_items', 'bundle_days', 'bundle_addons'\]/.test(src), 'scan: bundle_addons «үнэ» эрхийн хэсэгт (эрхгүй хүн засахгүй)');
+  ok(/addons: modal\.querySelector\('#pm-addon-list'\) \? \(modal\._addons \|\| \[\]\) : undefined/.test(src), 'scan: хадгалахын өмнө нэмэлт packageSaveBlock-оор шалгагдана');
+  eq((src.match(/Нэмэлтийн \$\{badA\} мөрд бараа сонгогдоогүй/g) || []).length, 1, 'scan: нэмэлтийн шалгуур НЭГ газарт (packageSaveBlock)');
+  eq((src.match(/orderAddonSuggestions\(/g) || []).length, 3, 'scan: санал ГАНЦ хоёр газарт — харуулах, нэг даралтаар нэмэх (function + 2 дуудлага). Өөр газар авто нэмвэл ШУУД нэмэхгүй гэсэн дүрэм эвдэрнэ');
+  ok(/addonsBox\?\.addEventListener\('click'/.test(src) && /items\.push\(\{ \.\.\.s\.item, qty:/.test(src), 'scan: нэмэлт зөвхөн хэрэглэгч товч дарахад мөр болж орно');
+  ok(!/function renderAddons[\s\S]{0,1400}items\.push/.test(src.slice(src.indexOf('function renderAddons() {\n    if (!addonsBox)'))), 'scan: renderAddons өөрөө мөр НЭМДЭГГҮЙ (зөвхөн санал харуулна)');
+  ok(/_locked \? \[\] : orderAddonSuggestions\(items\)/.test(src), 'scan: хаасан сарын захиалгад санал гарахгүй');
+  ok(/s\.av \|\| s\.av\.avail >= 1|!s\.av \|\| s\.av\.avail >= 1/.test(src), 'scan: сул үлдэгдэлгүй нэмэлтийг санал болгохгүй');
+  for (const fn of ['packageAddonsHtml']) {
+    const i0 = src.indexOf('function ' + fn + '(');
+    ok(i0 > -1 && !/style="/.test(src.slice(i0, src.indexOf('\n}\n', i0))), 'scan: ' + fn + ' дотор inline style байхгүй');
+  }
+  ok(/class="pm-ad-price money-input ui-raw"/.test(src) && !/\.modal \.pm-ad-price[^}]*!important/.test(fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8')), 'scan: нэмэлтийн үнийн талбар ui-raw, шинэ !important-гүй');
+
   // SCAN
   ok(!/\(Number\(i[t]?\.price\) \|\| 0\) \* \(Number\(i[t]?\.qty\) \|\| 0\) \* days/.test(src), 'scan: `price × qty × days`-ийг гараар бичихгүй — `itemRentLine` дууд');
   eq((src.match(/sku: p\.sku \|\| p\.name, name: p\.name, qty,/g) || []).length, 1, 'scan: захиалгын мөрийг ГАНЦ `orderItemFromProduct` үүсгэнэ (picker + catalog давхардахгүй)');
   ok(/subtotal = itemsRentSubtotal\(items, days\)/.test(src) && /const subtotal = perDay \* days \+ _bundleSub/.test(src), 'scan: захиалгын цонхны recalc ба save ИЖИЛ дүн (багц тогтмол)');
   ok(/orderDiscountAmount\(subtotal, days, dtype, dval, _autoBase\)/.test(src) && /Math\.round\(_autoBase \*/.test(src), 'scan: recalc-ийн авто хямдрал багцгүй хэсгээс');
   ok(/state\._prodHasBundleDays !== false\) row\.bundle_days/.test(src), 'scan: saveProduct bundle_days-ийг БАГАНА байвал л бичнэ (байхгүй бол бүх хадгалалт унахгүй)');
-  ok(/'type', 'bundle_items', 'bundle_days'\]/.test(src), 'scan: bundle_days «үнэ» эрхийн хэсэгт (эрхгүй хүн засахгүй)');
+  ok(/'type', 'bundle_items', 'bundle_days'(, 'bundle_addons')?\]/.test(src), 'scan: bundle_days «үнэ» эрхийн хэсэгт (эрхгүй хүн засахгүй)');
   ok(/id="pm-bdays"/.test(src) && /bundle_days: isPkg \? Math\.max\(1/.test(src), 'scan: багцын цонхонд «Үнэ хэдэн хоногийнх» талбар хадгалагдана');
   ok(fs.existsSync(path.join(__dirname, '..', 'db', 'product_bundle_days.sql')) && /add column if not exists bundle_days/.test(fs.readFileSync(path.join(__dirname, '..', 'db', 'product_bundle_days.sql'), 'utf8')), 'scan: db/product_bundle_days.sql байна');
   ok(/const _usedIn = \(isEdit && !_isPkg0\) \? packagesUsing\(p\.sku\) : \[\]/.test(src) && /class="pm-used"/.test(src), 'scan: барааны цонх «орсон багц» мөр харуулна (багцад биш)');

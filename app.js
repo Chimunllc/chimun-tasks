@@ -7274,6 +7274,8 @@ function itemRentLine(it, days) {
   const n = itemBundleDays(it);
   return n ? Math.round(price * q * Math.max(1, (Number(days) || 1) / n)) : price * q * (Number(days) || 0);
 }
+// Мөрийн шошго: багц бол «3 хоногийн багц», багцын нэмэлт (энгийн бараа, N хоногийн үнэтэй) бол «3 хоногийн үнэ».
+function bundleDaysLabel(it) { const n = itemBundleDays(it); return n ? n + ' хоногийн ' + (isPackage(productOf(it)) ? 'багц' : 'үнэ') : ''; }
 function itemsRentSubtotal(items, days) { return (items || []).reduce((s, it) => s + itemRentLine(it, days), 0); }
 function itemsBundleSubtotal(items, days) { return (items || []).reduce((s, it) => itemBundleDays(it) ? s + itemRentLine(it, days) : s, 0); }
 // Орлогыг мөрд хуваарилах жин (өдрийн үнийн суурьтай): багц бус мөр = qty × price (хуучин шигээ), багц = мөрийн дүн ÷ хоног.
@@ -11470,6 +11472,60 @@ function packagesUsing(sku) {
   }
   return out;
 }
+/* ─── БАГЦЫН «САНАЛ БОЛГОХ НЭМЭЛТ» (2026-10-24, CEO) ─────────────────────────────────────────────
+   «Мишокийг багцад ШУУД нэмэхгүй — нэмэлтээр санал болгодог байя.» Багц `products.bundle_addons`
+   (`[{sku, qty, price}]`, db/product_bundle_addons.sql) дээр санал болгох бараагаа агуулна:
+     · qty   = нэг багцад санал болгох ширхэг (багц ×2 бол ×2)
+     · price = 1 ширхгийн үнэ, багцын ХОНОГИЙГ БАГТААСАН (багц 3 хоногийнх бол нэмэлт ч 3 хоногийнх)
+   Багцын нөөц/үнэ/бүрэлдэхүүнд ОРОХГҮЙ — харилцагч сонговол л тусдаа мөр болж нэмэгдэнэ.
+   ⛔ Нэмэлт мөр = энгийн бараа (багц БИШ) + `price` нь нэмэлтийн үнэ + `bdays` = багцын N. Тиймээс мөнгөний бүх
+     зам (`itemRentLine`, авто хямдралаас гаргах, гэрээ/нэхэмжлэх) ӨӨРӨӨ зөв; агуулах энгийн барааг л харна.
+   ⛔ Нэмэлт нь багцын бүрэлдэхүүн байж БОЛОХГҮЙ — захиалгад нэг sku хоёр мөрөнд орж, нөөцийг буруу тоолно. */
+const PACKAGE_ADDONS_MAX = 5;
+function packageAddons(p) {
+  if (!isPackage(p) || !Array.isArray(p.bundle_addons)) return [];
+  const comp = new Set(packageComponents(p).map(c => String(c.sku)));
+  const seen = new Set(), out = [];
+  for (const a of p.bundle_addons) {
+    const sku = String((a && a.sku) || '').trim();
+    const price = Math.round(Number(a && a.price));
+    if (!sku || seen.has(sku) || comp.has(sku) || !(price >= 0)) continue;
+    seen.add(sku);
+    out.push({ sku, qty: Math.max(1, Math.floor(Number(a.qty)) || 1), price });
+    if (out.length >= PACKAGE_ADDONS_MAX) break;
+  }
+  return out;
+}
+// Нэмэлтийг тусад нь авбал хэд вэ (багцын хоногоор, олон хоногийн авто хямдралтай) ба нэмэлтийн үнэ хэр хямд. ЦЭВЭР.
+function addonInfo(ap, price, days) {
+  const unit = Number(ap && ap.price) || 0;
+  const n = days >= 2 ? days : 0;
+  const sep = n ? Math.round(unit * n * (1 - (rentalDiscount(n).pct || 0))) : unit;
+  return { sep, pct: (sep > 0 && price > 0) ? Math.round((1 - price / sep) * 100) : null };
+}
+// Нэмэлтийн захиалгын мөр: ижил бараа, нэмэлтийн үнэ, багцын N хоногоор (багц өдрийн үнэтэй бол өдрийн үнэ).
+function addonOrderItem(pkg, addon, ap, pkgQty) {
+  const bd = productBundleDays(pkg);
+  return { ...orderItemFromProduct(ap, addon.qty * Math.max(1, Math.floor(Number(pkgQty)) || 1)), price: addon.price, ...(bd ? { bdays: bd } : {}) };
+}
+// Захиалгад байгаа багцуудын санал болгох нэмэлтүүд (захиалгад аль хэдийн ОРСОН нь гарахгүй). ЦЭВЭР — state-ээс каталог л уншина.
+function orderAddonSuggestions(items) {
+  const have = new Set();
+  for (const it of (items || [])) { if (!it) continue; const pr = productOf(it); have.add(String((pr && pr.sku) || it.sku || '').trim()); }
+  const out = [], seen = new Set();
+  for (const it of (items || [])) {
+    const pkg = productOf(it);
+    if (!isPackage(pkg)) continue;
+    for (const a of packageAddons(pkg)) {
+      if (have.has(a.sku) || seen.has(a.sku)) continue;
+      const ap = productBySku(a.sku);
+      if (!ap || isPackage(ap) || !isRentable(ap)) continue;
+      seen.add(a.sku);
+      out.push({ pkg, addon: a, product: ap, item: addonOrderItem(pkg, a, ap, it.qty) });
+    }
+  }
+  return out;
+}
 /* Багц ХАДГАЛАХЫН ӨМНӨХ заавал шалгуур (2026-10-22, CEO: «ангилал гэх мэт заавал сонгодог байж болох уу»).
    Эхний таарсан алдааг `{pane, field, msg}` буцаана, зөв бол null. ЦЭВЭР — тестлэгдэнэ.
    · ангилал: сайтад хаана харагдахыг тодорхойлно (хоосон бол ангилалгүй хадгалагдаж сайтад төөрнө)
@@ -11497,6 +11553,23 @@ function packageSaveBlock(f) {
   if (!(Number(f.price) > 0)) return { pane: 'price', field: '#pm-price', msg: 'Багцын үнэ оруулна уу — үнэгүй багц сайтад харагдахгүй' };
   // Хоног: бүхэл тоо 1..BUNDLE_DAYS_MAX (1 = өдрийн үнэ). `days` өгөөгүй бол (талбар байхгүй) шалгахгүй.
   if (f.days !== undefined && !(Number.isInteger(f.days) && f.days >= 1 && f.days <= BUNDLE_DAYS_MAX)) return { pane: 'price', field: '#pm-bdays', msg: `Багцын үнэ хэдэн хоногийнх вэ — 1-ээс ${BUNDLE_DAYS_MAX} хүртэл бүхэл тоо оруулна уу (1 = өдрийн үнэ)` };
+  // Санал болгох нэмэлт (заавал биш). `addons` өгөөгүй бол (багана алга) шалгахгүй.
+  if (f.addons !== undefined) {
+    const ad = Array.isArray(f.addons) ? f.addons : [];
+    const nm = (sku) => { const cp = productBySku(sku); return cp ? cp.name : sku; };
+    if (ad.length > PACKAGE_ADDONS_MAX) return { pane: 'price', field: '#pm-addon-add', msg: `Санал болгох нэмэлт ${PACKAGE_ADDONS_MAX}-аас олон байж болохгүй` };
+    const badA = ad.filter(a => !a || !a.sku).length;
+    if (badA) return { pane: 'price', field: '#pm-addon-add', msg: `Нэмэлтийн ${badA} мөрд бараа сонгогдоогүй байна — жагсаалтаас сонгоно уу (хоосон мөрийг × -ээр хасна)` };
+    const compSkus = new Set(rows.map(c => String(c.sku)));
+    const seenA = new Set();
+    for (const a of ad) {
+      const sku = String(a.sku);
+      if (compSkus.has(sku)) return { pane: 'price', field: '#pm-addon-add', msg: `«${nm(sku)}» багцын бүрэлдэхүүнд орсон тул нэмэлт болгож болохгүй` };
+      if (seenA.has(sku)) return { pane: 'price', field: '#pm-addon-add', msg: `«${nm(sku)}» нэмэлтэд 2 удаа орсон` };
+      seenA.add(sku);
+      if (!(Number(a.price) > 0)) return { pane: 'price', field: '#pm-addon-add', msg: `«${nm(sku)}» нэмэлтийн үнэ оруулна уу` };
+    }
+  }
   return null;
 }
 /* Захиалгын мөрийг АГУУЛАХЫН харцаар задална: багц бол бүрэлдэхүүн рүү, бусад нь
@@ -11712,6 +11785,7 @@ async function loadProductsCatalog() {
       state._prodHasNameEn = rows.length ? ('name_en' in rows[0]) : true;   // англи нэр (сонголттой багана)
       state._prodHasSetupFee = rows.length ? ('setup_fee' in rows[0]) : true;   // суурилуулалтын нэгж хөлс (сонголттой багана)
       state._prodHasBundleDays = rows.length ? ('bundle_days' in rows[0]) : true;   // багцын «N хоногийн үнэ» (db/product_bundle_days.sql)
+      state._prodHasBundleAddons = rows.length ? ('bundle_addons' in rows[0]) : true;   // багцын санал болгох нэмэлт (db/product_bundle_addons.sql)
       state._prodHasPurchaseRef = rows.length ? ('purchase_ref' in rows[0]) : true;   // хөрөнгийн зардлын мөрийн холбоос (сонголттой багана)
       state._prodHasOpening = rows.length ? ('stock_opened_at' in rows[0]) : true;   // эхний үлдэгдлийн тэмдэг (сонголттой багана)
       state._prodHasApproval = rows.length ? ('stock_approved_at' in rows[0]) : true;   // 2-р гарын үсэг (сонголттой багана)
@@ -12393,6 +12467,7 @@ async function saveProduct(product) {
   if (product.name_en !== undefined && state._prodHasNameEn !== false) row.name_en = product.name_en || null;
   if (product.setup_fee !== undefined && state._prodHasSetupFee !== false) row.setup_fee = Number(product.setup_fee) || 0;   // суурилуулалтын нэгж хөлс (сонголттой багана)
   if (product.bundle_days !== undefined && state._prodHasBundleDays !== false) row.bundle_days = product.bundle_days == null ? null : (Math.floor(Number(product.bundle_days)) || 1);   // багцын «N хоногийн үнэ» (сонголттой багана)
+  if (product.bundle_addons !== undefined && state._prodHasBundleAddons !== false) row.bundle_addons = (Array.isArray(product.bundle_addons) && product.bundle_addons.length) ? product.bundle_addons.map(a => ({ sku: String(a.sku), qty: Math.max(1, Math.floor(Number(a.qty)) || 1), price: Math.round(Number(a.price)) || 0 })) : null;   // багцын санал болгох нэмэлт (сонголттой багана)
   if (product.code) row.code = product.code;   // барааны нүүр код M-xxx
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
@@ -12682,6 +12757,14 @@ function packageBundleHtml(pk) {
   return `<div class="prod-bundle">${pk.parts.map(x =>
     `<span class="pb-i${x.found ? '' : ' bad'}"><b>${x.qty}×</b> ${escapeHtml(x.name)}</span>`).join('')}</div>`;
 }
+// Багцын картын «➕ Нэмэлт» мөр: санал болгох нэмэлтүүд (байхгүй бол хоосон). ЦЭВЭР (каталог л уншина).
+function packageAddonsHtml(p) {
+  const ads = packageAddons(p);
+  if (!ads.length) return '';
+  const n = productBundleDays(p);
+  return `<div class="prod-bundle prod-addons">${ads.map(a => { const ap = productBySku(a.sku);
+    return `<span class="pb-i${ap ? '' : ' bad'}">➕ <b>${a.qty}×</b> ${escapeHtml(ap ? ap.name : a.sku)} <b>${fmtMoneyShort(a.price)}</b>${n ? '/' + n + ' хоног' : '/өдөр'}</span>`; }).join('')}</div>`;
+}
 // «Хязгаарлагч» зөвхөн нөөц БАГА үед хэрэгтэй (аль бүрэлдэхүүн нөөцийг барьж байгааг хэлнэ).
 // 21 багц сул байхад нэрлэх нь чимээ — карт тэр бүр урт болно.
 const PACKAGE_LIMITER_MAX = 3;
@@ -12777,7 +12860,7 @@ function productRowHtml(p) {
     <div class="prod-main">
       <div class="prod-name-d">${escapeHtml(p.name || '(нэргүй)')}</div>
       <div class="prod-sub">${metaParts.join(' · ')}</div>
-      ${pkg ? packageBundleHtml(pk) : ''}
+      ${pkg ? packageBundleHtml(pk) + packageAddonsHtml(p) : ''}
       <div class="prod-signals">${sig.join('')}</div>
     </div>
     <div class="prod-badges">
@@ -15709,7 +15792,7 @@ function canSeeStockCount() { return canAccessView('stockcount', () => canCountS
 function productPartFields() {
   return {
     catalog: ['name', 'name_en', 'category', 'all_categories', 'description', 'photos', 'photo', 'source_url', 'supplier', 'media_url'],
-    price:   ['price', 'deposit', 'setup_fee', 'type', 'bundle_items', 'bundle_days'],
+    price:   ['price', 'deposit', 'setup_fee', 'type', 'bundle_items', 'bundle_days', 'bundle_addons'],
     cost:    ['cost', 'purchase_date'],
     stock:   ['stock', 'broken', 'maintenance', 'qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'],
   };
@@ -22605,7 +22688,7 @@ function invoiceLines(o) {
   const qty = it => Number(it && (it.qty != null ? it.qty : it.quantity)) || 0;
   const price = it => Number(it && (it.price != null ? it.price : it.unit_price)) || 0;
   return ((o && o.items) || []).map(it => ({
-    name: String((it && it.name) || '') + (itemBundleDays(it) ? ` (${itemBundleDays(it)} хоногийн багц)` : ''),
+    name: String((it && it.name) || '') + (itemBundleDays(it) ? ` (${bundleDaysLabel(it)})` : ''),
     qty: qty(it), days,
     price: price(it),
     total: Number(it && it.total) || itemRentLine(it, days),   // багц = N хоногийн тогтмол дүн (qty × хоног × үнэ БИШ)
@@ -23103,7 +23186,7 @@ function meventContractHtml(o, opts) {
   // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
   const itemRows = items.length ? items.map((it, i) => {
     const line = lineOf(it);
-    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}${itemBundleDays(it) ? ` <span class="muted">(${itemBundleDays(it)} хоногийн багц)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">${hasVat ? 'багтаагүй' : 'багтсан'}</td><td class="rt">${fmtMoney(line)}</td></tr>`;
+    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}${itemBundleDays(it) ? ` <span class="muted">(${bundleDaysLabel(it)})</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">${hasVat ? 'багтаагүй' : 'багтсан'}</td><td class="rt">${fmtMoney(line)}</td></tr>`;
   }).join('') : `<tr><td colspan="6" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
   // Нөхөн төлбөрийн үнэлгээ — products.market_value-аас. Заалт 7.3 ҮҮНИЙГ иш татна.
   // Үнэлгээгүй бараа мөрөнд «—» гарна: юу дутуу байгаа нь гэрээнээс шууд харагдана.
@@ -27756,6 +27839,12 @@ ${_pkgMode ? `
         <datalist id="pm-prod-list">${(state.products || []).filter(x => !isPackage(x) && x.name).map(x => `<option value="${escapeHtml(x.name)}">`).join('')}</datalist>
         <div id="pm-bundle-sum" class="pm-bundle-sum"></div>
       </div>
+      <div id="pm-addons" class="pm-bundle pm-addons">
+        <div class="pm-ad-t">➕ Санал болгох нэмэлт <span class="pm-sub">(заавал биш)</span></div>
+        <div class="pm-hint" id="pm-addon-hint">Захиалгад энэ багц орвол «нэмэх үү?» гэж санал болгоно. Шууд нэмэгдэхгүй, багцын үнэ/нөөцөд орохгүй.</div>
+        <div id="pm-addon-list"></div>
+        <button type="button" class="btn pm-bundle-add" id="pm-addon-add"${state._prodHasBundleAddons === false ? ' disabled title="products хүснэгтэд bundle_addons багана алга — db/product_bundle_addons.sql ажиллуулна уу"' : ''}>+ Нэмэлт санал болгох</button>
+      </div>
 
         <div class="pm-grid">
         <label>Түрээсийн үнэ (₮) *<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
@@ -28073,6 +28162,59 @@ ${_pkgMode ? `
     const rm = e.target.closest('[data-birm]'); if (!rm) return;
     bundle.splice(+rm.dataset.birm, 1); renderBundle();
   });
+  // Санал болгох нэмэлт — `modal._addons` ({sku, qty, price}; `_typed` = таарахгүй бичвэр, DB-д орохгүй). Багц горимд л байна.
+  const addonList = modal.querySelector('#pm-addon-list');
+  let addons = (p && Array.isArray(p.bundle_addons)) ? p.bundle_addons.filter(a => a && a.sku).map(a => ({ sku: String(a.sku), qty: Math.max(1, Math.floor(Number(a.qty)) || 1), price: Math.round(Number(a.price)) || 0 })) : [];
+  modal._addons = addons;
+  const addonInfoText = (a) => {
+    const ap = productBySku(a.sku), n = bdaysNow();
+    if (!ap) return a._typed ? '⚠ Ийм нэртэй бараа олдсонгүй — жагсаалтаас сонгоно уу' : 'Нэмэлт барааг сонгоно уу';
+    const inf = addonInfo(ap, a.price, n);
+    const per = n >= 2 ? `${n} хоногийн үнэ` : 'өдрийн үнэ';
+    return `Өдөр ${fmtMoney(Number(ap.price) || 0)} · нөөц ${workingStock(ap)} ш` + (a.price > 0
+      ? ` · нэмэлт: ${fmtMoney(a.price)}/ш (${per})` + (inf.pct == null ? '' : inf.pct >= 0 ? ` · тусад нь ${fmtMoney(inf.sep)} → <b>${inf.pct}% хямд</b>` : ` · ⚠ тусад нь ${fmtMoney(inf.sep)} — нэмэлт ${-inf.pct}% ҮНЭТЭЙ`) : '');
+  };
+  function renderAddons() {
+    if (!addonList) return;
+    const n = bdaysNow();
+    addonList.innerHTML = addons.length ? addons.map((a, i) => {
+      const ap = productBySku(a.sku);
+      return `<div class="pm-bi-row pm-ad-row" data-ai="${i}">
+        <div class="pm-bi-main">
+          <input class="pm-bi-name pm-ad-name ui-raw" list="pm-prod-list" value="${escapeHtml(ap ? ap.name : (a._typed || ''))}" placeholder="Нэмэлт бараа хайх">
+          <div class="pm-bi-info pm-ad-info${ap ? '' : ' bad'}">${addonInfoText(a)}</div>
+        </div>
+        <div class="pm-ad-f"><span>Тоо</span><input class="pm-bi-qty pm-ad-qty ui-raw" type="number" min="1" value="${a.qty}" title="Нэг багцад санал болгох ширхэг"></div>
+        <div class="pm-ad-f"><span>Үнэ/ш · ${n >= 2 ? n + ' хоног' : 'өдөр'}</span><input class="pm-ad-price money-input ui-raw" type="text" inputmode="numeric" value="${moneyFmtInput(a.price || 0)}" title="1 ширхгийн үнэ${n >= 2 ? ' (багцын ' + n + ' хоногийг багтаасан)' : ' (өдрийн)'}"></div>
+        <button type="button" class="pm-bi-rm ui-raw" data-adrm="${i}" title="Хасах">×</button>
+      </div>`;
+    }).join('') : '<div class="pm-bundle-empty">Нэмэлт байхгүй</div>';
+    const addBtn = modal.querySelector('#pm-addon-add');
+    if (addBtn && state._prodHasBundleAddons !== false) addBtn.disabled = !_pcan.price || addons.length >= PACKAGE_ADDONS_MAX;
+  }
+  if (addonList) {
+    renderAddons();
+    bdEl?.addEventListener('input', renderAddons);
+    modal.querySelector('#pm-addon-add').onclick = () => { if (!_pcan.price) return; addons.push({ sku: '', qty: 1, price: 0 }); renderAddons(); };
+    addonList.addEventListener('input', (e) => {
+      if (!_pcan.price) return;
+      const row = e.target.closest('.pm-ad-row'); if (!row) return; const i = +row.dataset.ai;
+      if (e.target.classList.contains('pm-ad-name')) {
+        const prod = productByName(e.target.value);
+        addons[i].sku = (prod && !isPackage(prod)) ? prod.sku : '';
+        addons[i]._typed = addons[i].sku ? '' : e.target.value;
+      } else if (e.target.classList.contains('pm-ad-qty')) { addons[i].qty = Math.max(1, Math.floor(Number(e.target.value)) || 1); }
+      else if (e.target.classList.contains('pm-ad-price')) { addons[i].price = moneyVal(e.target); }
+      else return;
+      const inf = row.querySelector('.pm-ad-info');
+      if (inf) { inf.innerHTML = addonInfoText(addons[i]); inf.classList.toggle('bad', !productBySku(addons[i].sku)); }
+    });
+    addonList.addEventListener('click', (e) => {
+      if (!_pcan.price) return;
+      const rm = e.target.closest('[data-adrm]'); if (!rm) return;
+      addons.splice(+rm.dataset.adrm, 1); renderAddons();
+    });
+  }
   // Бүтэн нөөц (түрээслэх боломжтой) — нийт − эвдэрсэн − засварт, шууд шинэчлэгдэнэ.
   const workingEl = modal.querySelector('#pm-working');
   function updateWorking() {
@@ -28172,7 +28314,7 @@ async function submitProductModal(modal, orig, btn) {
   // ⚠ Таарахгүй мөрийг ЧИМЭЭГҮЙ хаяхгүй (`packageSaveBlock` хаана) — өмнө нь бичсэн нэр бараатай таараагүй бол
   // filter(c => c.sku) түүнийг устгаад хэрэглэгч мэдэлгүй багц дутуу хадгалагдаж байв.
   if (isPkg) {
-    const blk = packageSaveBlock({ name, cat, bundle: modal._bundle || [], price: moneyVal(modal.querySelector('#pm-price')), days: modal.querySelector('#pm-bdays') ? Number(g('pm-bdays')) : undefined, checkPrice: canProductPart('price') });
+    const blk = packageSaveBlock({ name, cat, bundle: modal._bundle || [], price: moneyVal(modal.querySelector('#pm-price')), days: modal.querySelector('#pm-bdays') ? Number(g('pm-bdays')) : undefined, addons: modal.querySelector('#pm-addon-list') ? (modal._addons || []) : undefined, checkPrice: canProductPart('price') });
     if (blk) { modal._pmGo?.(blk.pane); modal.querySelector(blk.field)?.focus(); showToast(blk.msg, 'warn', 4000); return; }
   }
   // Зөвхөн sku/тоо хадгална — засах цонхны түр талбар (`_typed`) DB-д орохгүй
@@ -28194,6 +28336,8 @@ async function submitProductModal(modal, orig, btn) {
       return;
     }
   }
+  // Санал болгох нэмэлт: зөвхөн {sku, qty, price} хадгална (`_typed` орохгүй). Багц биш = null; багц боловч цонхонд талбар байхгүй = undefined (хөндөхгүй).
+  const addonRows = isPkg ? (modal.querySelector('#pm-addon-list') ? (modal._addons || []).filter(a => a.sku).map(a => ({ sku: a.sku, qty: Math.max(1, Math.floor(Number(a.qty)) || 1), price: Math.round(Number(a.price)) || 0 })) : undefined) : null;
   const _qm = Number(modal.querySelector('#pm-qm')?.value) || 0;
   const _qc = Number(modal.querySelector('#pm-qc')?.value) || 0;
   const _qn = Number(modal.querySelector('#pm-qn')?.value) || 0;
@@ -28214,6 +28358,7 @@ async function submitProductModal(modal, orig, btn) {
     qty_mevent: isPkg ? 0 : _qm, qty_chimun: isPkg ? 0 : _qc, qty_nomaad: isPkg ? 0 : _qn, qty_catering: isPkg ? 0 : _qk,
     bundle_items: bundle,
     bundle_days: isPkg ? Math.max(1, Math.floor(Number(g('pm-bdays')) || 1)) : null,   // багцын «N хоногийн үнэ» (1 = өдрийн үнэ)
+    bundle_addons: addonRows,   // санал болгох нэмэлт
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
     variant_group: null, variant_label: null,   // хувилбар халагдсан — хадгалах бүрд цэвэрлэнэ
     source_url: g('pm-source') || null,
@@ -31581,6 +31726,7 @@ function openNewOrder(editOrder) {
     ${_locked ? '' : `<button type="button" class="btn btn-primary no-addbtn" id="no-pickopen">＋ Бараа сонгох</button>`}
     <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
     <div id="no-items" style="margin-bottom:8px;"></div>
+    <div id="no-addons"></div>
     </div>
     <div class="no-col no-col-c">
     ${_sec('Төлбөр')}
@@ -31693,11 +31839,28 @@ function openNewOrder(editOrder) {
       return `<div class="no-item">${ph}
       <div class="no-item-mid"><div class="no-item-nm">${escapeHtml(it.name || '')}${_asar ? ` <span class="no-item-mod">📐 ${escapeHtml(asarSizeLabel(it.sku, qty))} · ${qty} модуль</span>` : ''}</div>
         ${_pkI && _pkI.parts.length ? `<div class="no-item-sub" title="${escapeHtml(_pkI.parts.map(x => (x.qty * qty) + '× ' + x.name).join(' · '))}">📦 ${itemBundleDays(it) ? `<b>${itemBundleDays(it)} хоногийн үнэ</b> · ` : ''}${escapeHtml(_pkI.parts.map(x => (x.qty * qty) + '× ' + x.name).join(' · '))}</div>` : ''}
+        ${!_pkI && itemBundleDays(it) ? `<div class="no-item-sub">🏷 <b>${itemBundleDays(it)} хоногийн үнэ</b> · багцын нэмэлт</div>` : ''}
         <div class="no-item-ctl">${qtyCtl}<span>×</span><input type="text" inputmode="numeric" class="money-input no-price ui-raw" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} aria-label="Нэгж үнэ">${warn}</div></div>
       <b class="no-item-amt" data-iamt="${i}">${fmtMoney(qty * (Number(it.price) || 0))}</b>
       ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:var(--fs-lg);color:var(--danger);" aria-label="Хасах">✕</button>`}
     </div>`;
     }).join('') : `<div class="no-empty">Бараа сонгоогүй — дээрх каталогоос нэм.</div>`;
+    renderAddons();
+  }
+  // Захиалгад байгаа багцын «санал болгох нэмэлт» — ШУУД НЭМЭГДЭХГҮЙ, нэг даралтаар нэмнэ. Сул үлдэгдэлгүй бол санал болгохгүй.
+  const addonsBox = $('#no-addons');
+  function renderAddons() {
+    if (!addonsBox) return;
+    const days = currentDays();
+    const sug = _locked ? [] : orderAddonSuggestions(items).map(s => ({ ...s, av: availOf(s.product.name) })).filter(s => !s.av || s.av.avail >= 1);
+    addonsBox.innerHTML = sug.length ? `<div class="no-addon-t">💡 Санал болгох нэмэлт</div>` + sug.map(s => {
+      const q = s.av ? Math.max(1, Math.min(s.item.qty, s.av.avail)) : s.item.qty;
+      const bd = itemBundleDays(s.item);
+      return `<button type="button" class="no-addon ui-raw" data-addon="${escapeHtml(s.addon.sku)}">
+        <span class="no-addon-pl">＋</span>
+        <span class="no-addon-mid"><b>${escapeHtml(s.product.name)} × ${q}</b><small>«${escapeHtml(s.pkg.name)}»-д · ${fmtMoney(s.addon.price)}/ш${bd ? ' · ' + bd + ' хоногийн үнэ' : ' · өдрийн'}${s.av ? ' · ' + s.av.avail + ' сул' : ''}</small></span>
+        <b class="no-addon-amt">+${fmtMoney(itemRentLine({ ...s.item, qty: q }, days))}</b></button>`;
+    }).join('') : '';
   }
   renderItems();
   itemsBox.addEventListener('input', e => {
@@ -31718,6 +31881,14 @@ function openNewOrder(editOrder) {
     const i = +(dec ? dec.dataset.iqd : inc.dataset.iqi);
     items[i].qty = Math.max(1, (Number(items[i].qty) || 1) + (dec ? -1 : 1));
     renderItems(); recalc();
+  });
+
+  addonsBox?.addEventListener('click', e => {
+    const b = e.target.closest('[data-addon]'); if (!b) return;
+    const s = orderAddonSuggestions(items).find(x => x.addon.sku === b.dataset.addon); if (!s) return;
+    const av = availOf(s.product.name);
+    items.push({ ...s.item, qty: av ? Math.max(1, Math.min(s.item.qty, av.avail)) : s.item.qty });
+    renderItems(); renderCatalog(); recalc();
   });
 
   const depEl = $('#no-deposit');

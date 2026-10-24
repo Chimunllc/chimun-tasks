@@ -7031,6 +7031,84 @@ need(['orderCustType']);
     ok(/add column if not exists bundle_addons jsonb/.test(addSql) && /jsonb_typeof\(bundle_addons\) = 'array'/.test(addSql) && /notify pgrst, 'reload schema'/.test(addSql), 'scan: db/product_bundle_addons.sql — багана · массив шалгуур · схем дахин ачаалах');
     runIn('state.products = ' + JSON.stringify(prods) + ';');
   }
+  // 5h) «ХАМТ АВДАГ» НЭМЭЛТ — түүхээс өөрөө (2026-10-24, CEO: «бүх бараанд нэмэлт санал болгодог байя», энгийн үнээр, аппаас)
+  {
+    const T = comp('X-T', 'Ширээ', 27500, 50), C = comp('X-C', 'Сандал', 6600, 500), K = comp('X-K', 'Бүтээлэг', 8800, 100);
+    const P = comp('X-P', 'Түгээмэл бараа', 1000, 500), R = comp('X-R', 'Ховор бараа', 3000, 50), Z = comp('X-Z', 'Дуу', 90000, 5);
+    const SV = { id: 'X-S', sku: 'X-S', name: 'Хүргэлт', price: 20000, type: 'service', qty_mevent: 0, stock: 0 };
+    const PK = mkPkg('X-PK', 'Ширээ сандал багц', 150000, [{ sku: 'X-T', qty: 1 }, { sku: 'X-C', qty: 6 }]);
+    runIn('state.products = ' + JSON.stringify([T, C, K, P, R, Z, SV, PK]) + '; state.appOrders = [];');
+    const today = F.todayStr();
+    const dayAgo = (n) => F.addDays(today, -n);
+    let seq = 0;
+    const ln = (p, q) => ({ sku: p.sku, name: p.name, qty: q, price: p.price });
+    const ord = (items, o) => ({ id: 'o' + (++seq), status: 'archived', starts_at: dayAgo(10 + (seq % 200)), items, ...(o || {}) });
+    const orders = [];
+    // 20 ширээтэй захиалга: 12 нь сандалтай (ширээ ×2 бол сандал ×12), 9 нь бүтээлэгтэй; түгээмэл бараа 20-оос 8-д
+    for (let i = 0; i < 20; i++) {
+      const it = [ln(T, 2)];
+      if (i < 12) it.push(ln(C, 12));
+      if (i < 9) it.push(ln(K, 2));
+      if (i % 5 === 0) it.push(ln(P, 1));
+      orders.push(ord(it));
+    }
+    // 10 зөвхөн сандалтай; 150 өөр захиалга (түгээмэл бараатай, дуутай) — P нь бүх захиалгын ихэнхэд
+    for (let i = 0; i < 10; i++) orders.push(ord([ln(C, 20)]));
+    for (let i = 0; i < 150; i++) orders.push(ord([ln(P, 1), ln(Z, 1)]));
+    // ховор бараа: ширээтэй 3 захиалгад л (хамт ≥ 4 хүрэхгүй) + өөрөө 8-аас цөөн
+    for (let i = 0; i < 3; i++) orders.push(ord([ln(T, 1), ln(R, 1)]));
+    const M = F.crossSellRules(orders, today);
+    const rt = (M.rules.get('X-T') || []);
+    const find = (a, b) => (M.rules.get(a) || []).find(x => x.sku === b);
+    ok(find('X-T', 'X-C') && find('X-T', 'X-K'), 'хамт авдаг: ширээ → сандал, бүтээлэг дүрэм гарна');
+    eq(Math.round(find('X-T', 'X-C').conf * 100), 52, 'хамт авдаг: ширээтэй 23 захиалгын 12 нь сандалтай (52%)');
+    eq(find('X-T', 'X-C').ratio, 6, 'хамт авдаг: тоо ширхэгийн харьцаа = медиан (12 ÷ 2 = 6)');
+    ok(find('X-C', 'X-T'), 'хамт авдаг: эсрэг чиглэл (сандал → ширээ) мөн гарна');
+    eq(rt.map(x => x.sku)[0], 'X-C', 'хамт авдаг: confidence-ээр эрэмбэлэгдэнэ (сандал 52% > бүтээлэг 39%)');
+    ok(!find('X-T', 'X-P'), 'хамт авдаг: түгээмэл барааг (lift бага) санал болгохгүй');
+    ok(!find('X-T', 'X-R'), 'хамт авдаг: хамт < 4 захиалга бол дүрэм болохгүй');
+    ok(!M.rules.has('X-R'), 'хамт авдаг: 8-аас цөөн захиалгатай бараа anchor болохгүй');
+    ok(!find('X-T', 'X-S') && !find('X-T', 'X-PK'), 'хамт авдаг: үйлчилгээ, багц санал болохгүй');
+    // төлөв/хугацаа/хэт том захиалга
+    const bad = [];
+    for (const st of ['draft', 'deleted', 'canceled']) for (let i = 0; i < 10; i++) bad.push(ord([ln(Z, 1), ln(K, 1)], { status: st }));
+    for (let i = 0; i < 10; i++) bad.push(ord([ln(Z, 1), ln(K, 1)], { starts_at: dayAgo(400) }));
+    const big = [T, C, K, P, R, Z, comp('X-1', 'a', 1, 1), comp('X-2', 'b', 1, 1), comp('X-3', 'c', 1, 1), comp('X-4', 'd', 1, 1), comp('X-5', 'e', 1, 1), comp('X-6', 'f', 1, 1), comp('X-7', 'g', 1, 1)];
+    runIn('state.products = ' + JSON.stringify([T, C, K, P, R, Z, SV, PK, ...big.slice(6)]) + ';');
+    for (let i = 0; i < 10; i++) bad.push(ord(big.map(p => ln(p, 1))));
+    const MB = F.crossSellRules(bad, today);
+    eq(MB.orders, 0, 'хамт авдаг: ноорог/устгасан/цуцалсан, 365 хоногоос хуучин, 12+ төрөлтэй захиалга тоологдохгүй');
+    eq(MB.rules.size, 0, 'хамт авдаг: тэдгээрээс дүрэм гарахгүй');
+    runIn('state.products = ' + JSON.stringify([T, C, K, P, R, Z, SV, PK]) + ';');
+    // санал: одоогийн захиалгад
+    const cur = (extra) => [ln(T, 3), ...(extra || [])];
+    const sg2 = F.crossSellFor(cur(), M, null);
+    eq(sg2.map(x => [x.product.sku, x.qty]), [['X-C', 18], ['X-K', 3]], 'хамт авдаг: ширээ ×3 → сандал ×18 (6×3), бүтээлэг ×3; confidence-ээр');
+    eq(sg2.every(x => x.item.xs === 1 && x.item.price === x.product.price && !('bdays' in x.item)), true, 'хамт авдаг: ЭНГИЙН үнэ (хөнгөлөлтгүй, bdays-гүй), xs тэмдэгтэй');
+    eq(F.crossSellFor(cur([ln(C, 5)]), M, null).map(x => x.product.sku), ['X-K'], 'хамт авдаг: захиалгад аль хэдийн байгааг санал болгохгүй');
+    eq(F.crossSellFor(cur(), M, new Set(['X-C'])).map(x => x.product.sku), ['X-K'], 'хамт авдаг: хаасан/давхар (skip) санал гарахгүй');
+    eq(F.crossSellFor([ln(Z, 1)], M, null), [], 'хамт авдаг: дүрэмгүй бараанд санал алга');
+    eq(F.crossSellFor([], M, null).length + F.crossSellFor(null, M, null).length + F.crossSellFor(cur(), null, null).length, 0, 'хамт авдаг: хоосон оролт/загвар унахгүй');
+    eq(F.crossSellFor([{ sku: 'X-PK', name: 'Ширээ сандал багц', qty: 2, price: 150000 }], M, null).map(x => x.product.sku), ['X-K'], 'хамт авдаг: багцыг бүрэлдэхүүнээр нь тоолно (ширээ + сандал аль хэдийн багцад → бүтээлэг л)');
+    // санал болгосноор нэмсэн мөр (`xs`) шинэ санал үүсгэхгүй (гинж холдохоос сэргийлнэ), харин аль хэдийн орсон гэж тоологдоно
+    eq(F.crossSellFor([ln(T, 3), { ...ln(C, 18), xs: 1 }], M, null).map(x => x.product.sku), ['X-K'], 'хамт авдаг: xs мөр anchor болохгүй ч «орсон» тооцогдоно (сандал орсон → бүтээлэг л)');
+    eq(F.crossSellFor([{ ...ln(T, 3), xs: 1 }], M, null).length, 0, 'хамт авдаг: зөвхөн санал болгосноор орсон мөр бол шинэ санал гарахгүй');
+    // дээд тал 3
+    const many = new Map([['X-T', [{ sku: 'X-C', n: 9, conf: .9, lift: 5, ratio: 1 }, { sku: 'X-K', n: 9, conf: .8, lift: 5, ratio: 1 }, { sku: 'X-P', n: 9, conf: .7, lift: 5, ratio: 1 }, { sku: 'X-Z', n: 9, conf: .6, lift: 5, ratio: 1 }]]]);
+    eq(F.crossSellFor(cur(), { rules: many }, null).length, 3, 'хамт авдаг: нэг удаад дээд тал нь 3 санал');
+    // загвар кэш
+    runIn('state.appOrders = ' + JSON.stringify(orders) + '; state._xsell = null; state._archiveLoaded = true;');
+    const m1 = runIn('crossSellModel()'), m2 = runIn('crossSellModel()');
+    ok(m1 === m2 && m1.rules.size > 0, 'хамт авдаг: загвар кэшлэгдэнэ (захиалга өөрчлөгдөхгүй бол дахин бодохгүй)');
+    runIn("state.appOrders.push({ id: 'zz', status: 'archived', starts_at: '" + dayAgo(5) + "', items: [] }); state._xsell = state._xsell;");
+    ok(runIn('crossSellModel()') !== m1, 'хамт авдаг: захиалгын тоо өөрчлөгдвөл дахин бодогдоно');
+    runIn('state.appOrders = []; state._xsell = null; state.products = ' + JSON.stringify(prods) + ';');
+  }
+  ok(/xsellAccept\(conf, lift\) \{ return \(conf >= 0\.4 && lift >= 1\.5\) \|\| \(conf >= 0\.15 && lift >= 3\); \}/.test(src), 'scan: хамт авдаг шүүлт — lift ҮРГЭЛЖ шаардана (түгээмэл барааг санал болгохгүй)');
+  eq((src.match(/crossSellFor\(/g) || []).length, 3, 'scan: «хамт авдаг» санал ГАНЦ харуулах ба товч дарахад (function + 2 дуудлага) — өөр газар авто нэмвэл дүрэм эвдэрнэ');
+  ok(/items\.push\(\{ \.\.\.xs\.item, qty:/.test(src) && /item: \{ \.\.\.orderItemFromProduct\(p, qty\), xs: 1 \}/.test(src), 'scan: товч дарахад л орно, мөр `xs: 1` тэмдэгтэй, ЭНГИЙН үнэ (orderItemFromProduct)');
+  ok(!/toISOString/.test(src.slice(src.indexOf('function crossSellRules('), src.indexOf('function crossSellFor('))), 'scan: хамт авдаг бодолт огноог `addDays`/`todayStr`-ээр (toISOString-гүй)');
+  ok(/_locked \? \[\] : crossSellFor\(items, crossSellModel\(\)/.test(src), 'scan: хаасан сарын захиалгад «хамт авдаг» санал гарахгүй');
   ok(/state\._prodHasBundleAddons !== false\) row\.bundle_addons/.test(src), 'scan: saveProduct bundle_addons-ийг БАГАНА байвал л бичнэ (байхгүй бол бүх хадгалалт унахгүй)');
   ok(/state\._prodHasBundleAddons = rows\.length \? \('bundle_addons' in rows\[0\]\)/.test(src), 'scan: каталог ачаалахад bundle_addons баганын байхыг тэмдэглэнэ');
   ok(/'bundle_items', 'bundle_days', 'bundle_addons'\]/.test(src), 'scan: bundle_addons «үнэ» эрхийн хэсэгт (эрхгүй хүн засахгүй)');

@@ -6102,6 +6102,13 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .no-addon { display: flex; align-items: center; gap: var(--space-2); width: 100%; box-sizing: border-box; padding: var(--space-2) var(--space-3); margin-bottom: var(--space-1); border: 1px dashed var(--info); border-radius: var(--r-md); background: var(--info-soft); color: var(--text); font-family: inherit; text-align: left; cursor: pointer; }
 .no-addon:hover { background: var(--panel-hover); }
 .no-addon:last-child { margin-bottom: var(--space-2); }
+/* «Хамт авдаг» (түүхээс, энгийн үнэ): багцын нэмэлттэй ижил хэлбэр, гэхдээ өнгөгүй (тусгай үнэ БИШ) + «✕» */
+.no-xrow { display: flex; align-items: stretch; gap: var(--space-1); margin-bottom: var(--space-1); }
+.no-xrow .no-addon.xs { flex: 1; min-width: 0; margin-bottom: 0; border-color: var(--border-strong); background: var(--panel); }
+.no-xrow .no-addon.xs .no-addon-pl, .no-xrow .no-addon.xs .no-addon-amt { color: var(--text-soft); }
+.no-xrow:last-child { margin-bottom: var(--space-2); }
+.no-xx { flex: none; width: 36px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--muted); font-family: inherit; font-size: var(--fs-md); cursor: pointer; }
+.no-xx:hover { background: var(--panel-hover); color: var(--danger); }
 .no-addon-pl { flex: none; font-size: var(--fs-lg); line-height: 1; color: var(--info); }
 .no-addon-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .no-addon-mid b { font-size: var(--fs-md); font-weight: 600; }

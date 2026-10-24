@@ -11526,6 +11526,96 @@ function orderAddonSuggestions(items) {
   }
   return out;
 }
+/* ─── «ХАМТ АВДАГ» НЭМЭЛТ = захиалгын ТҮҮХЭЭС ӨӨРӨӨ (2026-10-24, CEO: «бүх бараанд нэмэлт санал болгодог байя») ───────────
+   Багцын нэмэлт (`bundle_addons`) гараар тохируулдаг, ТУСГАЙ ҮНЭТЭЙ. Энэ нь бусад БҮХ барааны хувьд: «ширхэгтэй захиалгын 55% нь
+   сандал авсан» гэдгийг өөрийн түүхээс бодож, захиалгад ширээ орсон бөгөөд сандал ороогүй бол ажилтанд санал болгоно.
+   ⛔ ГАРААР ТОХИРУУЛАХГҮЙ (192 бараа, «өөрөө үүсдэг» дүрэм) — дүрэм бүхэлдээ `crossSellRules`-аас гарна.
+   ⛔ ЭНГИЙН ҮНЭЭР (CEO шийдвэр): хөнгөлөлтгүй, `bdays`-гүй — мөр нь ердийн бараа (`orderItemFromProduct`), олон хоногийн авто хямдал ердийнхөөрөө.
+   ⛔ АВТО НЭМЭГДЭХГҮЙ — зөвхөн ТОВЧ ДАРАХАД. Нэмсэн мөрд `xs: 1` тэмдэг (хэмжилт: санал хэдэн захиалгад, хэдэн төгрөг болсон).
+   Шүүлт — хоёр шаардлагын аль нэг (олон хүн авдаг бараагаар худал дүрэм гарахаас хамгаална — lift ҮРГЭЛЖ шаардана):
+     · conf ≥ 40% БА lift ≥ 1.5 ЭСВЭЛ conf ≥ 15% БА lift ≥ 3 (lift = санамсаргүйгээс хэд дахин олон хамт авсан)
+     · anchor-той ≥ 8 захиалга, хамт ≥ 4 захиалга; сүүлийн 365 хоног; төсөл/цуцалсан/устгасан хасна; 12-оос олон төрөлтэй (бүтэн эвент) захиалга хасна.
+   Тоо ширхэг = түүхэн харьцааны МЕДИАН × одоогийн anchor-ын тоо (ширээ 3 → сандал 3 × 7). Багцыг бүрэлдэхүүнээр нь тоолно (`expandOrderLines`). */
+const XSELL_WINDOW_DAYS = 365, XSELL_MIN_ANCHOR = 8, XSELL_MIN_PAIR = 4, XSELL_MAX = 3, XSELL_BASKET_CAP = 12;
+function xsellAccept(conf, lift) { return (conf >= 0.4 && lift >= 1.5) || (conf >= 0.15 && lift >= 3); }
+// Захиалгын «сагс» = бодит түрээсийн барааны sku → тоо (багц задарна; үйлчилгээ/багц/түрээслэх боломжгүйг хасна).
+function xsellBasket(items) {
+  const m = new Map();
+  for (const r of expandOrderLines(items)) {
+    const p = r.sku ? productBySku(r.sku) : null;
+    if (!p || isPackage(p) || isService(p) || !isRentable(p)) continue;
+    m.set(p.sku, (m.get(p.sku) || 0) + (Number(r.qty) || 0));
+  }
+  return m;
+}
+function crossSellRules(orders, today) {
+  const from = addDays(today, -XSELL_WINDOW_DAYS);
+  const nA = new Map(), pair = new Map(), ratios = new Map();
+  let N = 0;
+  for (const o of (orders || [])) {
+    if (!o || ['draft', 'canceled', 'deleted'].includes(String(o.status))) continue;
+    const day = String(o.starts_at || '').slice(0, 10);
+    if (!day || day < from) continue;
+    const bk = xsellBasket(o.items);
+    const skus = [...bk.keys()];
+    if (!skus.length || skus.length > XSELL_BASKET_CAP) continue;
+    N++;
+    for (const a of skus) {
+      nA.set(a, (nA.get(a) || 0) + 1);
+      for (const b of skus) {
+        if (a === b) continue;
+        const k = a + '\u0001' + b;
+        pair.set(k, (pair.get(k) || 0) + 1);
+        const rr = ratios.get(k) || []; rr.push((bk.get(b) || 0) / Math.max(1, bk.get(a) || 1)); ratios.set(k, rr);
+      }
+    }
+  }
+  const rules = new Map();
+  for (const [k, both] of pair) {
+    if (both < XSELL_MIN_PAIR) continue;
+    const [a, b] = k.split('\u0001');
+    const na = nA.get(a), nb = nA.get(b);
+    if (na < XSELL_MIN_ANCHOR) continue;
+    const conf = both / na, lift = conf / (nb / N);
+    if (!xsellAccept(conf, lift)) continue;
+    const rr = ratios.get(k).sort((x, y) => x - y);
+    if (!rules.has(a)) rules.set(a, []);
+    rules.get(a).push({ sku: b, both, n: na, conf, lift, ratio: rr[Math.floor(rr.length / 2)] });
+  }
+  for (const v of rules.values()) v.sort((x, y) => y.conf - x.conf || y.lift - x.lift);
+  return { rules, orders: N };
+}
+// Хэмжээ нь жижиг (мянга хүрэхгүй захиалга) ч захиалгын цонх нээх бүрд дахин бодохгүй: захиалга/барааны тоо өөрчлөгдөхөд л.
+function crossSellModel() {
+  const key = (state.appOrders || []).length + ':' + (state.products || []).length + ':' + (state._archiveLoaded ? 1 : 0);
+  if (!state._xsell || state._xsell.key !== key) state._xsell = { key, ...crossSellRules(state.appOrders, todayStr()) };
+  return state._xsell;
+}
+// Одоогийн захиалгад санал болгох нэмэлтүүд. `skip` = аль хэдийн санал болгосон/хаасан sku. ЦЭВЭР (каталог л уншина).
+function crossSellFor(items, model, skip) {
+  if (!model || !model.rules) return [];
+  const bk = xsellBasket(items);
+  // Anchor = ажилтны ӨӨРИЙН сонгосон мөр. Санал болгосноор нэмсэн (`xs`) мөр шинэ санал үүсгэхгүй — эс бөгөөс
+  // бүтээлэг нэмэхэд «модон ширээ» санал болж, гинжээр хамааралгүй зүйл рүү холдоно (амьд түүхээр баталсан).
+  const anchors = xsellBasket((items || []).filter(it => !(it && it.xs)));
+  const best = new Map();
+  for (const [a, qa] of anchors) {
+    for (const r of (model.rules.get(a) || [])) {
+      if (bk.has(r.sku) || (skip && skip.has(r.sku))) continue;
+      const cur = best.get(r.sku);
+      if (!cur || r.conf > cur.r.conf) best.set(r.sku, { r, a, qa });
+    }
+  }
+  const out = [];
+  for (const { r, a, qa } of best.values()) {
+    const p = productBySku(r.sku);
+    if (!p || !(Number(p.price) > 0)) continue;
+    const qty = Math.max(1, Math.round(r.ratio * qa));
+    out.push({ product: p, qty, conf: r.conf, n: r.n, anchor: productBySku(a), item: { ...orderItemFromProduct(p, qty), xs: 1 } });
+  }
+  out.sort((x, y) => y.conf - x.conf);
+  return out.slice(0, XSELL_MAX);
+}
 /* Багц ХАДГАЛАХЫН ӨМНӨХ заавал шалгуур (2026-10-22, CEO: «ангилал гэх мэт заавал сонгодог байж болох уу»).
    Эхний таарсан алдааг `{pane, field, msg}` буцаана, зөв бол null. ЦЭВЭР — тестлэгдэнэ.
    · ангилал: сайтад хаана харагдахыг тодорхойлно (хоосон бол ангилалгүй хадгалагдаж сайтад төөрнө)
@@ -31849,11 +31939,13 @@ function openNewOrder(editOrder) {
   }
   // Захиалгад байгаа багцын «санал болгох нэмэлт» — ШУУД НЭМЭГДЭХГҮЙ, нэг даралтаар нэмнэ. Сул үлдэгдэлгүй бол санал болгохгүй.
   const addonsBox = $('#no-addons');
+  const dismissedX = new Set();   // энэ цонхонд «✕» дарж хаасан «хамт авдаг» санал (хадгалагдахгүй)
   function renderAddons() {
     if (!addonsBox) return;
     const days = currentDays();
-    const sug = _locked ? [] : orderAddonSuggestions(items).map(s => ({ ...s, av: availOf(s.product.name) })).filter(s => !s.av || s.av.avail >= 1);
-    addonsBox.innerHTML = sug.length ? `<div class="no-addon-t">💡 Санал болгох нэмэлт</div>` + sug.map(s => {
+    const _pk = _locked ? [] : orderAddonSuggestions(items);
+    const sug = _pk.map(s => ({ ...s, av: availOf(s.product.name) })).filter(s => !s.av || s.av.avail >= 1);
+    const pkgHtml = sug.length ? `<div class="no-addon-t">💡 Санал болгох нэмэлт</div>` + sug.map(s => {
       const q = s.av ? Math.max(1, Math.min(s.item.qty, s.av.avail)) : s.item.qty;
       const bd = itemBundleDays(s.item);
       return `<button type="button" class="no-addon ui-raw" data-addon="${escapeHtml(s.addon.sku)}">
@@ -31861,6 +31953,18 @@ function openNewOrder(editOrder) {
         <span class="no-addon-mid"><b>${escapeHtml(s.product.name)} × ${q}</b><small>«${escapeHtml(s.pkg.name)}»-д · ${fmtMoney(s.addon.price)}/ш${bd ? ' · ' + bd + ' хоногийн үнэ' : ' · өдрийн'}${s.av ? ' · ' + s.av.avail + ' сул' : ''}</small></span>
         <b class="no-addon-amt">+${fmtMoney(itemRentLine({ ...s.item, qty: q }, days))}</b></button>`;
     }).join('') : '';
+    // «Хамт авдаг» — түүхээс. Багцын нэмэлттэй ЗЭРЭГ нэг sku-г давхар санал болгохгүй. Энгийн үнэ.
+    const _skip = new Set([...dismissedX, ..._pk.map(s => s.addon.sku)]);
+    const xs = _locked ? [] : crossSellFor(items, crossSellModel(), _skip).map(s => ({ ...s, av: availOf(s.product.name) })).filter(s => !s.av || s.av.avail >= 1);
+    const xsHtml = xs.length ? `<div class="no-addon-t">🛒 Ихэнх нь хамт авдаг</div>` + xs.map(s => {
+      const q = s.av ? Math.max(1, Math.min(s.qty, s.av.avail)) : s.qty;
+      return `<div class="no-xrow"><button type="button" class="no-addon xs ui-raw" data-xsell="${escapeHtml(s.product.sku)}">
+        <span class="no-addon-pl">＋</span>
+        <span class="no-addon-mid"><b>${escapeHtml(s.product.name)} × ${q}</b><small>«${escapeHtml(s.anchor ? s.anchor.name : '')}»-тай захиалгын ${Math.round(s.conf * 100)}% нь авсан · ${fmtMoney(Number(s.product.price) || 0)}/ш${s.av ? ' · ' + s.av.avail + ' сул' : ''}</small></span>
+        <b class="no-addon-amt">+${fmtMoney(itemRentLine({ ...s.item, qty: q }, days))}</b></button>
+        <button type="button" class="no-xx ui-raw" data-xsell-x="${escapeHtml(s.product.sku)}" aria-label="Санал хаах" title="Энэ удаад санал болгохгүй">✕</button></div>`;
+    }).join('') : '';
+    addonsBox.innerHTML = pkgHtml + xsHtml;
   }
   renderItems();
   itemsBox.addEventListener('input', e => {
@@ -31884,6 +31988,16 @@ function openNewOrder(editOrder) {
   });
 
   addonsBox?.addEventListener('click', e => {
+    const xx = e.target.closest('[data-xsell-x]');
+    if (xx) { dismissedX.add(xx.dataset.xsellX); renderAddons(); return; }
+    const xb = e.target.closest('[data-xsell]');
+    if (xb) {
+      const xs = crossSellFor(items, crossSellModel(), dismissedX).find(x => x.product.sku === xb.dataset.xsell); if (!xs) return;
+      const av = availOf(xs.product.name);
+      items.push({ ...xs.item, qty: av ? Math.max(1, Math.min(xs.qty, av.avail)) : xs.qty });
+      renderItems(); renderCatalog(); recalc();
+      return;
+    }
     const b = e.target.closest('[data-addon]'); if (!b) return;
     const s = orderAddonSuggestions(items).find(x => x.addon.sku === b.dataset.addon); if (!s) return;
     const av = availOf(s.product.name);

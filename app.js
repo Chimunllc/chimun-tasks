@@ -7280,6 +7280,28 @@ function itemsBundleSubtotal(items, days) { return (items || []).reduce((s, it) 
 function itemGrossPerDay(it, days) {
   return itemBundleDays(it) ? itemRentLine(it, days) / Math.max(1, Number(days) || 1) : (Number(it && it.qty) || 0) * (Number(it && it.price) || 0);
 }
+/* САЙТААС ИРСЭН БАГЦЫН «N ХОНОГИЙН ҮНЭ» (2026-10-24). n8n-ийн сайтын захиалгын бүртгэл мөр бүрээс зөвхөн
+   sku/name/qty/price/deposit-ийг үлдээж бусдыг хаядаг тул `bdays` дамжихгүй. Харин `note` n8n-ээр ӨӨРЧЛӨГДӨЛГҮЙ
+   дамждаг (⟦DLV⟧, ⟦RT⟧ яг ингэж явдаг) — сайт `⟦BD|sku|N⟧` токен бичнэ, апп захиалгыг АЧААЛАХ үед мөрд `bdays` болгоно.
+   · Зөвхөн `bdays` ХООСОН мөрд, N 2..30 үед (апп өөрөө тавьсан утгыг ДАРАХГҮЙ).
+   · Мутаци хийж `o`-г буцаана; олон удаа дуудахад ижил (idempotent) — poll бүрд дахин ажиллана.
+   · Токен нь note-д ҮЛДЭНЭ (захиалгын форм өөрийн токенуудаас бусдыг устгадаггүй) — аль замаар ч бодитой. */
+const _BD_TOKEN_RE = /⟦BD\|([^|⟧]+)\|(\d{1,3})⟧/g;
+function applyNoteBundleDays(o) {
+  if (!o || !Array.isArray(o.items) || typeof o.note !== 'string' || o.note.indexOf('⟦BD|') < 0) return o;
+  const byS = {};
+  for (const m of o.note.matchAll(_BD_TOKEN_RE)) { const n = Math.floor(Number(m[2])); if (n >= 2) byS[m[1].trim()] = Math.min(n, BUNDLE_DAYS_MAX); }
+  o.items.forEach(it => { if (it && it.bdays == null) { const n = byS[String(it.sku || '').trim()]; if (n) it.bdays = n; } });
+  return o;
+}
+/* Сайтын захиалга `discount_type='pct'`, `discount_value=<авто шатны %>` бичдэг (n8n `multiDayPct`-ээс) — энэ нь ГАР хөнгөлөлт БИШ,
+   зүгээр л авто шат. Багцтай захиалгад үүнийг гар хөнгөлөлт гэж уншвал 20% нь БАГЦ ДЭЭР ч үйлчилж («багцад авто хямдрал
+   хамаарахгүй» дүрмийг эвдэнэ). Тиймээс ийм мөрийг формд хоосон үзүүлнэ — авто шат өөрөө хэрэгжинэ. */
+function siteAutoDiscountOnly(o) {
+  return !!(o && o.source === 'm-event-website' && o.discount_type === 'pct'
+    && (o.items || []).some(it => itemBundleDays(it))
+    && Number(o.discount_value) === Math.round((rentalDiscount(orderRentalDays(o)).pct || 0) * 100));
+}
 // `autoBase` = авто хоногийн хямдралд хамаарах дүн (багцын мөрийг хассан). Өгөөгүй бол subtotal (хуучин шигээ).
 function orderDiscountAmount(subtotal, days, dtype, dval, autoBase) {
   subtotal = Math.max(0, Number(subtotal) || 0);
@@ -30286,7 +30308,7 @@ async function _loadAppOrdersImpl() {
     state._ordersCacheSeeded = true;
     try {
       const c = localStorage.getItem('appOrdersActive');
-      if (c) { state.appOrders = JSON.parse(c); if (typeof render === 'function') render(); }
+      if (c) { state.appOrders = JSON.parse(c).map(applyNoteBundleDays); if (typeof render === 'function') render(); }
     } catch (e) {}
   }
   const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };
@@ -30295,7 +30317,7 @@ async function _loadAppOrdersImpl() {
     // 1-р шат: идэвхтэй захиалгууд — жижиг, хурдан
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?select=*&status=not.in.(archived,canceled)&order=number.desc.nullslast`, H, 20000);
     if (r.ok) {
-      const active = await r.json();
+      const active = (await r.json()).map(applyNoteBundleDays);
       const archive = (state.appOrders || []).filter(isArch);   // санах ойд буй архивыг хадгална
       state.appOrders = active.concat(archive);
       try { localStorage.setItem('appOrdersActive', JSON.stringify(active)); } catch (e) {}   // дараагийн нээлтэд шууд зурна
@@ -30312,7 +30334,7 @@ async function _loadAppOrdersImpl() {
     try {
       const r2 = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?select=*&status=in.(archived,canceled)&order=number.desc.nullslast`, H, 30000);
       if (r2.ok) {
-        const archive = await r2.json();
+        const archive = (await r2.json()).map(applyNoteBundleDays);
         const active = (state.appOrders || []).filter(o => !isArch(o));
         state.appOrders = active.concat(archive);
         state._archiveLoaded = true;
@@ -31563,7 +31585,7 @@ function openNewOrder(editOrder) {
     <div class="no-col no-col-c">
     ${_sec('Төлбөр')}
     <div class="no-fields" style="margin-bottom:10px;">
-      <label class="no-lbl">Хөнгөлөлт<div class="no-inline"><select id="no-disctype" style="flex:0 0 118px;"><option value="amount">₮ хөнгөлөлт</option><option value="pct">% хөнгөлөлт</option><option value="final">= Тохирсон дүн</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0"></div>
+      <label class="no-lbl">Хөнгөлөлт<div class="no-inline"><select id="no-disctype" style="flex:0 0 118px;"><option value="amount">₮ хөнгөлөлт</option><option value="pct">% хөнгөлөлт</option><option value="final">= Тохирсон дүн</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value && !siteAutoDiscountOnly(editOrder) ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0"></div>
       <div id="no-disc-hint" class="no-disc-hint"></div></label>
       <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
       ${isEdit ? `<label class="no-lbl no-wide">Төлсөн (банкны баримт)
@@ -31609,7 +31631,7 @@ function openNewOrder(editOrder) {
   const close = () => modal.remove();
   $('#no-close').onclick = close; $('#no-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  if (isEdit && editOrder.discount_type === 'pct') $('#no-disctype').value = 'pct';
+  if (isEdit && editOrder.discount_type === 'pct' && !siteAutoDiscountOnly(editOrder)) $('#no-disctype').value = 'pct';
 
   const catalog = $('#no-catalog');
   // Сонгосон огнооны мужид сул үлдэгдэл — каталог/сонгосон мөр дээр шууд харагдана

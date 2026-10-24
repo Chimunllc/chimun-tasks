@@ -125,6 +125,11 @@
     --ec-modal-w: 640px;      /* 📄 Хөдөлмөрийн гэрээ бэлдэх — 2 баганатай форм */
     --di-modal-w: 520px;      /* 🔁 Давхар импорт — бүлэгтэй жагсаалт */
 
+    /* 🍽 Катерингийн ажлын цонх (`openCateringJobModal`) — нэг эгнээнд 2-3 талбар */
+    --kt-job-modal-w: 560px;
+    --kt-f-side: 150px;   /* Огноо ба Төлөв — ИЖИЛ өргөн, хоёр эгнээ тэгшхэн харагдана */
+    --kt-f-qty: 110px;    /* Зочны тоо — 4 цифр багтана */
+
     /* 📈 Санхүүгийн «Сар бүрийн урсгал» график (`financeTrendChart`).
        Баганын өндөр нь ХУВИАР бодогддог тул эцгийн өндөр ЗААВАЛ тодорхой байх
        ёстой — `--ftc-h` байхгүй бол бүх багана 0 болж график хоосон харагдана. */
@@ -9085,6 +9090,26 @@ select.no-asar-len {
   font-size: var(--fs-sm); }
 .kt-pay-tot { text-align: right; font-size: var(--fs-md); margin: var(--space-2) 0; }
 .kt-money-f[hidden], .kt-money-nm[hidden] { display: none; }
+
+/* ── Катерингийн ажлын цонх (`openCateringJobModal`) — inline style-аас хөрвүүлсэн ──
+   ⚠ `.modal` угтвар ЗААВАЛ: `.modal label` нь өөрийн `display`/`margin`-аа
+   хүчлэгчтэй (important) тавьдаг тул шошгын өргөн/flex-ийг нэг класстай бичвэл
+   онцлог хүрэлцэхгүй болж 2-3 талбарын эгнээ нэг баганад бууна.
+   Гарчиг нь ЭНД БИЧИГДЭХГҮЙ — `<h2>` нь `.modal h2`-ийн нийтийн загварыг авна
+   (бусад цонхтой ижил, тусад нь фонт зарлах шаардлагагүй). */
+.modal.kt-job-modal { max-width: var(--kt-job-modal-w); max-height: 92vh; overflow-y: auto; }
+.modal .kt-row { display: flex; gap: var(--space-2); }
+.modal .kt-f-grow { flex: 1; }
+.modal .kt-f-side { width: var(--kt-f-side); }
+.modal .kt-f-qty { width: var(--kt-f-qty); }
+.modal .kt-f-note { margin-top: var(--space-3); }
+.modal .kt-sec { font-size: var(--fs-sm); font-weight: 700; margin: var(--space-3) 0 var(--space-1); }
+.modal .kt-add-serv { width: 100%; padding: var(--space-2); font-size: var(--fs-sm); margin-top: var(--space-1); }
+.modal .kt-foot { display: flex; gap: var(--space-2); justify-content: space-between; margin-top: var(--space-4); }
+.modal .kt-del-btn { color: var(--danger); }
+/* Шинэ ажил үүсгэж байхад «Устгах» ЗАЙГАА эзэлсэн хэвээр нуугдана
+   (`display:none` болговол «Болих/Хадгалах» зүүн тийш гулсана). */
+.modal .kt-del-btn.kt-del-hide { visibility: hidden; }
 
 /* ── Эрхийн матриц (capMatrixHtml) — inline style-аас хөрвүүлсэн ──
    `.ac-chips` нь HTML-д байсан ч CSS-д ТОДОРХОЙЛОГДООГҮЙ байсан: бүх зохион

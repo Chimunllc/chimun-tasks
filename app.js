@@ -405,12 +405,52 @@ let _load401Logged = false;
 //   шалтгаан нь НЭВТРЭЛТ — утасны цаг юу ч хэлж байсан хамаагүй, сервер Л шийднэ.
 // ⚠ Токен огт байхгүй үед хөндөхгүй — тэр тохиолдлыг эхлэлийн шалгалт барина.
 //   Шинээр тэмдэглэсэн бол `true` (нэг сесст нэг удаа) — дуудагч өөрөө бүртгэнэ.
+// ⛔ СЕСС ДУУССАН ГЭЖ ТУНХАГЛАХААС ӨМНӨ pgrst ТОКЕНЫГ ШИНЭЧЛЭХИЙГ ОРОЛДОНО
+//   (2026-10-24, fp c933fe553d64 — `plan` дэлгэц · 3 ажилтан · 5 удаа).
+//   Эхлэл (`restoreSession`) нь сессийн токеноор pgrst JWT-ыг ҮРГЭЛЖ ШИНЭЭР авдаг
+//   — тийм учраас ажилтны хувьд «дахин ачаалахад л засагддаг» байв. Ажиллаж байгаа
+//   апп түүнийг ХИЙДЭГГҮЙ тул токен ажлын дундаас хугацаа дуусахад (эсвэл офлайн
+//   эхэлснээс болж эхлэлийн шалгалт алгасагдсан бол) ажилтан «Нэвтрэлт дууссан»
+//   тууз + ХООСОН дэлгэцтэй үлдэж, бичилт ч бүтэхгүй байв.
+//   · сервер сессийг хүлээн авбал → шинэ pgrst хадгалж, сесс АМЬД үлдэнэ
+//   · сервер ТАТГАЛЗВАЛ (valid:false) → PIN дэлгэц рүү (тууз ганцаараа хангалтгүй)
+//   · сервер холбогдохгүй бол (null) → зөвхөн тууз (офлайн хүнийг хөөхгүй)
+// ⚠ Нэг сесст НЭГ удаа — татац бүрд асуувал сервер дээр дуудлагын шуурга болно.
+// ⚠ «401 → хуудсыг дахин ачаал» гэж БҮҮ зас: эхлэл офлайн үед аппад оруулдаг тул
+//   тэр нь мөнхийн дахин ачаалалтын давталт болно. Сервер Л шийднэ.
+let _dbRenewTried = false;
+let _dbRenewP = null;
+function renewDbSession() {
+  if (_dbRenewTried) return _dbRenewP;
+  _dbRenewTried = true;
+  _dbRenewP = (async () => {
+    let st = '';
+    try { st = localStorage.getItem('sessionToken') || ''; } catch (e) {}
+    if (!st) return false;        // серверийн сесс огт байхгүй (офлайн нэвтрэлт) — шинэчлэх юм алга
+    const v = await serverVerifyToken(st);
+    if (!v) return false;         // сүлжээ алга — тууз хэвээр, хүнийг хөөхгүй
+    if (v.valid && v.pgrst) {
+      try { localStorage.setItem('pgrstToken', v.pgrst); } catch (e) { return false; }
+      state.sessionExpired = false;
+      state.sessionExpiredAt = '';
+      _load401Logged = false;
+      try { showToast('🔄 Нэвтрэлт шинэчлэгдлээ — дата дахин ачаалж байна', 'info', 5000); } catch (e) {}
+      try { render(); } catch (e) {}
+      return true;
+    }
+    if (v.valid === false) forceRelogin();
+    return false;
+  })().catch(() => false);   // ⚠ шинэчлэлт өөрөө унавал чимээгүй — алдааны лог дүүргэхгүй
+  return _dbRenewP;
+}
 function markSessionRejected() {
   if (state.sessionExpired) return false;
   state.sessionExpired = true;
   state.sessionExpiredAt = (typeof fmtDateTimeUB === 'function') ? fmtDateTimeUB(new Date().toISOString()) : '';
   try { showToast('🔒 Нэвтрэлт дууссан — дахин нэвтэрнэ үү', 'error', 7000); } catch (e) {}
   try { render(); } catch (e) {}
+  // ⚠ Арын горимд — тунхаглал/бүртгэлийг саатуулахгүй (дуудагч нь sync).
+  try { renewDbSession(); } catch (e) {}
   return true;
 }
 function dataLoadFailed(where, err) {

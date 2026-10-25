@@ -8787,6 +8787,32 @@ need(['orderCustType']);
        'ИНВАРИАНТ: нэвтрэлт дууссан тууз бүх дэлгэцэд гарна');
   }
 
+  // ── #task-list АЛГА БАЙХАД РЕНДЕР УНАХГҮЙ (fp e8f1cb62c5cf) ────────────────
+  //   `renderTaskList` нь `#task-list`-ийг ШАЛГАЛТГҮЙ бичдэг байсан тул хайрцаг
+  //   нь байхгүй үед (хуудсын бүрхүүл дутуу ачаалагдсан) «Cannot set properties
+  //   of null (setting 'innerHTML')» гэж УНАЖ, түүний ДАРААХ `renderCounts` ба
+  //   `renderNotifications` огт ажиллахгүй болдог байв. Дээрх `sess-banner` блок
+  //   нь `parentNode`-оо аль хэдийн шалгадаг — `wrap` нь хоцорсон.
+  {
+    const origGet = documentMock.getElementById, origQS = documentMock.querySelector;
+    const prevView = vm.runInContext('state.view', sandbox);
+    documentMock.getElementById = (id) => (id === 'task-list' ? null : stubEl());
+    documentMock.querySelector = () => null;
+    const run = (view) => {
+      vm.runInContext(`state.view = ${JSON.stringify(view)};`, sandbox);
+      try { vm.runInContext('renderTaskList()', sandbox); return ''; }
+      catch (e) { return String((e && e.message) || e); }
+    };
+    const errPlan = run('plan'), errMine = run('mine'), errDash = run('dashboard');
+    documentMock.getElementById = origGet; documentMock.querySelector = origQS;
+    vm.runInContext(`state.view = ${JSON.stringify(prevView)};`, sandbox);
+    // Дараагийн тестүүдэд нөлөөлөхгүй: нэг удаагийн тэмдэг ба алдааны лог цэвэрлэнэ.
+    vm.runInContext('_taskHostMissingLogged = false; if (typeof _errLog !== "undefined") _errLog = [];', sandbox);
+    eq(errPlan, '', '#task-list алга: Төлөвлөгөө дэлгэц унахгүй (fp e8f1cb62c5cf)');
+    eq(errMine, '', '#task-list алга: ажлын жагсаалт ч унахгүй');
+    eq(errDash, '', '#task-list алга: Тойм ч унахгүй');
+  }
+
   // ── СЕСС ДУУССАН ГЭЖ ТУНХАГЛАХААС ӨМНӨ pgrst ТОКЕНЫГ ШИНЭЧЛЭНЭ ─────────────
   //   (2026-10-24, fp c933fe553d64 — `plan` дэлгэц · 3 ажилтан · 5 удаа)
   //   Эхлэл (`restoreSession`) нь сессийн токеноор pgrst JWT-ыг ҮРГЭЛЖ ШИНЭЭР

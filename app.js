@@ -4816,6 +4816,16 @@ function renderTitle() {
   document.getElementById('view-title').innerHTML = (icon || '') + escapeHtml(title);
   document.getElementById('view-sub').textContent = sub || '';
 }
+/* ⛔ ХАЙРЦАГ БАЙХГҮЙ БОЛ БИЧИХГҮЙ (2026-10-25, fp e8f1cb62c5cf).
+   `renderTaskList` нь `#task-list`-ийг шалгалтгүй бичдэг байсан тул хайрцаг нь
+   DOM-д байхгүй үед (хуудсын бүрхүүл дутуу ачаалагдсан, эсвэл app.js-ийг өөр
+   хуудас ачаалсан) 60 гаруй салаа бүр «Cannot set properties of null (setting
+   'innerHTML')» гэж УНАДАГ байв — улмаар `render()` тэндээ тасарч, дараах
+   `renderCounts` ба `renderNotifications` огт ажиллахгүй. Дээрх sess-banner блок
+   нь `parentNode`-оо аль хэдийн шалгадаг; `wrap` нь хоцорсон байв.
+   ⚠ Шалтгааныг НЭГ удаа логт бичнэ — чимээгүй өнгөрвөл бүрхүүл эвдэрснийг хэн ч
+     мэдэхгүй; render() нь байнга дуудагддаг тул давтан бичихгүй. */
+let _taskHostMissingLogged = false;
 function renderTaskList() {
   // Нэвтрэлт дууссны тууз нь БҮХ дэлгэцэд гарна — өмнө зөвхөн Тойм дээр байсан тул
   // өөр дэлгэц дээр ажиллаж байсан хүн «дата алга» гэж ойлгодог байв.
@@ -4827,6 +4837,13 @@ function renderTaskList() {
     if (_sb.innerHTML !== _html) { _sb.innerHTML = _html; attachSessionBanner(_sb); }
   }
   const wrap = document.getElementById('task-list');
+  if (!wrap) {
+    if (!_taskHostMissingLogged) {
+      _taskHostMissingLogged = true;
+      logAppError('Дэлгэцийн хайрцаг (#task-list) алга', 'shell', 'дэлгэц: ' + String(state.view || '-'));
+    }
+    return;
+  }
   // CEO dashboard view — task жагсаалт биш, харин тойм статистик.
   // Table head, toolbar-уудыг нуунa
   const tableHead = document.querySelector('.table-head');

@@ -118,6 +118,7 @@
     --cmp-modal-w: 460px;     /* ↩️ Буулгалт бүртгэх */
     --orc-modal-w: 420px;     /* 🧾 Банкны баримтуудын жагсаалт */
     --rfd-modal-w: 430px;     /* ↩ Буцаан олгох */
+    --cx-modal-w: 430px;      /* 🚫 Больсон / ✕ Цуцлах — шалтгаан сонгох */
     --onote-modal-w: 480px;   /* 📝 Захиалгын тэмдэглэл */
     --dmg-modal-w: 460px;     /* Буцаалт · эвдрэл бүртгэх */
     --sa-modal-w: 460px;      /* Дамжлага баталгаажуулах */
@@ -7562,6 +7563,18 @@ select.no-asar-len {
 .cx-opt.admin { color: var(--muted); }
 .cx-opt.admin.on { background: var(--muted); border-color: var(--muted); color: #fff; }
 .cx-picked { font-size: var(--fs-sm); color: var(--muted); align-self: center; }
+/* Шалтгаан сонгох цонх — өмнө нь 5 inline style= байсныг класс болгов (2026-10-25).
+   ⚠ Хуучин inline `justify-content:space-between` ҮХМЭЛ байсан — `.modal-actions`-ийн
+     хүчлэгдсэн `justify-content:flex-end` давдаг. `.cmp-modal`-тай ИЖИЛ шалтгаанаар
+     зүгээр хасав (класс болгож дахин бичвэл хүчлэгч шаардана — тэр нь хориотой).
+   ⚠ Товчны идэвхгүй төрх = `.cx-ok:disabled`, JS-ээс `style.opacity` бичихгүй
+     (`.cmp-save` / `.bqp-save`-тай ижил арга). */
+.modal.cx-modal { max-width: var(--cx-modal-w); }
+.cx-btns { display: flex; gap: var(--space-2); }
+.cx-ok:disabled { opacity: .45; cursor: not-allowed; }
+/* `.fld` шошгын «(сонголт)» тэмдэглэл — шошгын фонтын хэмжээг хальдахгүй,
+   зөвхөн зузаан/өнгөөр бүдгэрнэ (`.pm-hint` нь жижигрүүлдэг, өөр зорилготой). */
+.fld-opt { font-weight: 400; color: var(--muted); }
 .orders-cxsum { margin: var(--space-2) 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: var(--fs-md); line-height: 1.7; }
 .orders-cxsum .cx-tag { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--panel-hover); font-size: var(--fs-sm); white-space: nowrap; }
 .orders-cxsum .cx-admin { color: var(--muted); font-size: var(--fs-sm); }

@@ -32778,15 +32778,15 @@ function pickCancelReason(num, isDel, o) {
   return new Promise((resolve) => {
     const modal = document.createElement('div'); modal.className = 'modal-bg';
     const amt = Number(o && o.total_mnt) || 0;
-    modal.innerHTML = `<div class="modal" style="max-width:430px;">
+    modal.innerHTML = `<div class="modal cx-modal">
       <h2>${isDel ? '🚫 Захиалга больсон' : '✕ Захиалга цуцлах'}</h2>
       <p class="amo-hint">${/^\d+$/.test(String(num)) ? '#' : ''}${escapeHtml(String(num))}${o && o.customer ? ' · ' + escapeHtml(o.customer) : ''}${amt ? ` · ${fmtMoney(amt)}` : ''}<br>
         Шалтгааныг СОНГОНО уу — ингэснээр «яагаад захиалга алдаж байна» гэдгийг тоолж харна.</p>
       <div class="cx-opts">${ORDER_CX_REASONS.map((r, i) => `<button type="button" class="cx-opt${r.admin ? ' admin' : ''}" data-cx="${i}">${escapeHtml(r.k)}</button>`).join('')}</div>
-      <label class="fld">Нэмэлт тайлбар <span style="font-weight:400;color:var(--muted);">(сонголт)</span><input id="cx-note" placeholder="Ж: 20%-иар хямд санал авсан"></label>
-      <div class="modal-actions" style="justify-content:space-between;">
+      <label class="fld">Нэмэлт тайлбар <span class="fld-opt">(сонголт)</span><input id="cx-note" placeholder="Ж: 20%-иар хямд санал авсан"></label>
+      <div class="modal-actions">
         <span class="cx-picked" id="cx-picked">Шалтгаан сонгоогүй</span>
-        <span style="display:flex;gap:8px;"><button class="btn" id="cx-cancel">Болих</button><button class="btn btn-primary" id="cx-ok" disabled style="opacity:.45;cursor:not-allowed;">${isDel ? 'Больсон' : 'Цуцлах'}</button></span>
+        <span class="cx-btns"><button class="btn" id="cx-cancel">Болих</button><button class="btn btn-primary cx-ok" id="cx-ok" disabled>${isDel ? 'Больсон' : 'Цуцлах'}</button></span>
       </div></div>`;
     document.body.appendChild(modal);
     let picked = null;
@@ -32799,7 +32799,8 @@ function pickCancelReason(num, isDel, o) {
       b.classList.add('on');
       picked = ORDER_CX_REASONS[Number(b.dataset.cx)].k;
       pickEl.textContent = picked;
-      okBtn.disabled = false; okBtn.style.opacity = '1'; okBtn.style.cursor = 'pointer';
+      // Идэвхгүй төрх = `.cx-ok:disabled` (CSS), JS-ээс style бичихгүй — `.cmp-save`-тай ижил арга.
+      okBtn.disabled = false;
     });
     okBtn.onclick = () => {
       if (!picked) return;

@@ -4888,6 +4888,7 @@ function renderTaskList() {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
     poEnsureLoaded();
+    ensureProductsLoaded();   // мөрийн зураг каталогоос (sku-аар) гарна
     wrap.innerHTML = safeViewHtml(renderPurchases, 'Худалдан авалт');
     attachPurchasesHandlers();
     return;
@@ -25491,7 +25492,7 @@ function attachPerformanceHandlers() {
      түлхүүрийг бичнэ.
    ⚠ Унавал `state.appConfig`-ийг ХООСЛОХГҮЙ — хуучин утга хэвээр үлдэнэ. */
 const APP_CONFIG_KEYS = ['work_norm_days', 'overtime', 'salary_rates', 'lunch', 'stage_pay',
-  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause', 'pay_rules'];
+  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause', 'pay_rules', 'fx_cny'];
 async function loadAppConfigAll(keys) {
   if (!DB_ANON_KEY) return;
   const list = (keys && keys.length) ? keys : APP_CONFIG_KEYS;
@@ -26919,6 +26920,53 @@ const PO_BRANCH_LABEL = { mevent: 'M-Event', nomaad: 'NOMAAD', catering: 'Кат
 const PO_PLATFORMS = ['Taobao', '1688', 'Бусад'];
 const PO_FX_DEFAULT = 540;
 
+// Зургийн хаяг = зөвхөн https/http ФАЙЛ (VPS-д байршсан). base64/`data:`/`javascript:` ОРОХГҮЙ —
+// мөр бүр `purchases.lines` jsonb-д хадгалагддаг тул base64 нь хүснэгтийг хөргөнө, `src`-д ч аюултай.
+function poImgUrl(v) {
+  const u = String(v == null ? '' : v).trim();
+  return /^https?:\/\/[^\s"'<>]{4,480}$/i.test(u) ? u : '';
+}
+// Мөрийн зураг: өөрийн зураг, байхгүй бол каталогийн барааны зураг (sku-аар). Хадгалахдаа зөвхөн өөрийнхийг.
+function poImgOf(l) {
+  const own = poImgUrl(l && l.img);
+  if (own) return own;
+  const sku = l && l.sku;
+  if (!sku) return '';
+  const p = (state.products || []).find(x => x && x.sku === sku);
+  return p ? poImgUrl(p.photo) : '';
+}
+
+/* ХААН БАНКНЫ ЮАНИЙН ХАНШ (₮ / ¥, «зарах») — өдөр бүр хүн НЭГ удаа оруулна, `app_config['fx_cny']`-д.
+   ⛔ Хаан банкны сайт ботоос хамгаалагдсан (captcha), нийтийн API БАЙХГҮЙ → автоматаар татахгүй, captcha тойроход ХЭЗЭЭ Ч оролдохгүй.
+   `{ rates: { 'YYYY-MM-DD': { r, by, at } } }`. Өдрийн ханш байхгүй бол сүүлийн мэдэгдэх ханшийг `exact:false`-аар буцаана —
+   дуудагч түүнийг ХУВААЛЦАХГҮЙ, «өнөөдрийнхийг оруулна уу» гэж шаардана. */
+const PO_FX_KEY = 'fx_cny';
+const PO_FX_KEEP = 45;
+function poFxValid(v) { const n = Number(v); return isFinite(n) && n >= 100 && n <= 2000; }
+function poFxOn(cfg, ymd) {
+  const rates = (cfg && cfg.rates) || {};
+  const ok = (d) => rates[d] && poFxValid(rates[d].r);
+  if (ok(ymd)) return { rate: Number(rates[ymd].r), date: ymd, by: rates[ymd].by || '', exact: true };
+  const ds = Object.keys(rates).filter(d => d < ymd && ok(d)).sort();
+  const d = ds[ds.length - 1];
+  return d ? { rate: Number(rates[d].r), date: d, by: rates[d].by || '', exact: false } : null;
+}
+function poFxMerge(cfg, ymd, rate, by, nowIso) {
+  const rates = { ...((cfg && cfg.rates) || {}) };
+  rates[ymd] = { r: Math.round(Number(rate) * 100) / 100, by: String(by || ''), at: nowIso || new Date().toISOString() };
+  const out = {};
+  Object.keys(rates).sort().slice(-PO_FX_KEEP).forEach(k => { out[k] = rates[k]; });
+  return { rates: out };
+}
+async function poFxSave(ymd, rate) {
+  if (!poFxValid(rate)) throw new Error('Ханш буруу байна (100–2000 ₮/¥)');
+  const fresh = await loadAppConfig(PO_FX_KEY);   // серверээс ШИНЭЭР — бусдын оруулсан ханшийг дарахгүй
+  const next = poFxMerge(fresh || (state.appConfig && state.appConfig[PO_FX_KEY]), ymd, rate, state.me, new Date().toISOString());
+  await saveAppConfig(PO_FX_KEY, next);
+  state.appConfig = state.appConfig || {};
+  state.appConfig[PO_FX_KEY] = next;
+  return next;
+}
 function poStatusInfo(k) {
   return PO_STEPS.find(s => s.k === k) || PO_ENDS.find(s => s.k === k) || { k: String(k || ''), label: String(k || '—'), icon: '•' };
 }
@@ -26938,6 +26986,8 @@ function poLine(raw) {
     b: PO_BRANCH_LABEL[r.b] ? String(r.b) : 'mevent',
     u: String(r.u || '').trim(),
     cat: String(r.cat || '').trim(),
+    img: poImgUrl(r.img),
+    cg: r.cg == null || r.cg === '' ? null : Math.max(0, Math.round(Number(r.cg) || 0)),   // хүлээн авахад бодитоор төлсөн карго ₮ (null = оруулаагүй)
     rcv: Math.max(0, Math.round(num(r.rcv))),
     done: r.done === true,
   };
@@ -26978,6 +27028,33 @@ function poTotals(po) {
     t.item += x.item; t.ship += x.ship; t.total += x.total; t.qty += Number(l.q) || 0;
   });
   return t;
+}
+/* Нэгж өртөг. cargo (₮) өгөгдвөл — ЭНЭ ирсэн ачааны бодит карго (qty ширхэгт ногдох): бараа ¥×ханш + карго ÷ qty.
+   Өгөөгүй бол хүсэлтийн урьдчилсан (бараа + хүргэлт/карго) ÷ захиалсан тоо. */
+function poUnitCost(po, line, qty, cargo) {
+  if (cargo == null) return poLineTotals(line, po.fx).unit;
+  const q = Math.max(1, Number(qty) || 0);
+  const f = po.fx > 0 ? po.fx : 1;
+  return Math.round((Number(line.c) || 0) * f + Math.max(0, Number(cargo) || 0) / q);
+}
+/* Нэг ачааны каргог ирсэн мөрүүдэд бараа ҮНЭЛГЭЭГЭЭР (¥×ханш×тоо) хуваана; үнэлгээ байхгүй бол тоогоор.
+   Нийлбэр ЯГ cargo-той тэнцэнэ (үлдэгдэл сүүлийн мөрд). items = [{ id, get, c }]. cargo=null → {} (оруулаагүй). */
+function poCargoAlloc(po, items, cargo) {
+  const out = {};
+  if (cargo == null || !(Number(cargo) >= 0)) return out;
+  const rows = (items || []).filter(x => x && x.get > 0);
+  if (!rows.length) return out;
+  const total = Math.round(Number(cargo));
+  const f = po && po.fx > 0 ? po.fx : 1;
+  const byVal = rows.map(x => Math.max(0, (Number(x.c) || 0) * f * x.get));
+  const weights = byVal.reduce((a, b) => a + b, 0) > 0 ? byVal : rows.map(x => x.get);
+  const wsum = weights.reduce((a, b) => a + b, 0);
+  let left = total;
+  rows.forEach((x, i) => {
+    const a = i === rows.length - 1 ? left : Math.floor(total * weights[i] / wsum);
+    out[x.id] = a; left -= a;
+  });
+  return out;
 }
 function poLineLeft(line) { return line && line.done ? 0 : Math.max(0, (Number(line && line.q) || 0) - (Number(line && line.rcv) || 0)); }
 function poAllReceived(po) { const ls = (po && po.lines) || []; return ls.length > 0 && ls.every(l => poLineLeft(l) === 0); }
@@ -27059,7 +27136,7 @@ function poReceiptPlan(po, line, qty, product, ctx) {
   const c = ctx || {};
   const q = Math.max(0, Math.round(Number(qty) || 0));
   if (!(q > 0)) return null;
-  const unit = poLineTotals(line, po.fx).unit;
+  const unit = poUnitCost(po, line, q, c.cargo);
   const branch = PO_BRANCH_LABEL[line.b] ? line.b : 'mevent';
   const today = c.today || todayStr();
   const prev = product || null;
@@ -27078,17 +27155,18 @@ function poReceiptPlan(po, line, qty, product, ctx) {
       supplier: String(prev.supplier || '').trim() ? prev.supplier : (po.supplier || prev.supplier || null),
     };
     if (!String(prev.source_url || '').trim() && line.u) fields.source_url = line.u;
+    if (!String(prev.photo || '').trim() && line.img) fields.photo = line.img;   // байгаа зургийг ДАРАХГҮЙ
   } else {
     const code = c.code || '';
     fields = {
       sku: code, id: code, code, name: String(line.name || '').trim(), category: line.cat || '',
-      type: 'rental', price: 0, deposit: 0, stock: total, photo: '', description: '',
+      type: 'rental', price: 0, deposit: 0, stock: total, photo: line.img || '', description: '',
       broken: 0, maintenance: 0,
       qty_mevent: after.mevent, qty_chimun: after.chimun, qty_nomaad: after.nomaad, qty_catering: after.catering,
       cost: unit, purchase_date: today, supplier: po.supplier || null, source_url: line.u || po.url || null,
     };
   }
-  const meta = { reason: 'purchase', ref, note: `${po.supplier || 'худалдан авалт'} #${po.no || ''} · ${line.name || line.sku}`.trim(), by: c.by || '' };
+  const meta = { reason: 'purchase', ref, note: `${po.supplier || 'худалдан авалт'} #${po.no || ''} · ${line.name || line.sku}${c.cargo != null ? ' · карго ' + Math.round(c.cargo) + '₮' : ''}`.trim(), by: c.by || '' };
   const moves = stockMoveRows(fields.sku, before, after, meta);
   return { lineId: line.id, qty: q, branch, unit, isNew: !prev, fields, moves, ref, note: meta.note };
 }
@@ -27235,6 +27313,24 @@ function poSafeArith(f) {
   }
   try { const v = expr(); return i === s.length && isFinite(v) ? v : null; } catch (e) { return null; }
 }
+/* Барааны зураг → VPS (hosted URL). ⛔ `uploadProductImage`-аас ЯЛГААТАЙ: унавал base64 руу БУЦАХГҮЙ, АЛДАА шиднэ —
+   base64 нь `purchases.lines` (jsonb) мөр бүрийг хөөргөж, самбарын татацыг удаашруулна. */
+async function poUploadImage(file) {
+  if (!file || !/^image\//i.test(file.type || '')) throw new Error('Зураг файл сонгоно уу');
+  const b64 = await resizeImageToBase64(file, 1200, 0.78);
+  const r = await fetchWithTimeout(
+    'https://n8n.nomaadcamp.com/webhook/mevent-upload-image?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: b64 }) }, 30000);
+  if (!r.ok) throw new Error('Зураг байршуулж чадсангүй (HTTP ' + r.status + ')');
+  const j = await r.json();
+  const url = poImgUrl(j && (j.url || (Array.isArray(j) && j[0] && j[0].url)));
+  if (!url) throw new Error('Байршуулагчаас зургийн хаяг ирсэнгүй');
+  return url;
+}
+function poThumbHtml(url) {
+  const u = poImgUrl(url);
+  return u ? `<a class="po-th-a" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer"><img class="po-th" src="${escapeHtml(u)}" alt="" loading="lazy"></a>` : '';
+}
 function poSheetMatrix(ws) {
   if (!ws || !ws['!ref']) return [];
   const rng = (typeof XLSX !== 'undefined' && XLSX.utils) ? XLSX.utils.decode_range(ws['!ref']) : null;
@@ -27341,6 +27437,7 @@ function poDetailsHtml(po) {
       ? `<span class="po-rc${left === 0 ? ' ok' : ''}">${l.done && l.rcv < l.q ? `ирсэн ${l.rcv}/${l.q} (хаасан)` : `ирсэн ${l.rcv}/${l.q}`}</span>` : '';
     const unit = po.fx === 1 ? '₮' : '¥';
     return `<div class="po-ln">
+      ${poThumbHtml(poImgOf(l))}
       <span class="po-ln-nm">${escapeHtml(l.name || l.sku || 'бараа')}${l.sku ? ` <small>${escapeHtml(l.sku)}</small>` : ' <small>шинэ бараа</small>'}</span>
       <span class="po-ln-q">${l.q} × ${escapeHtml(String(l.c))}${unit}</span>
       <span class="po-ln-s">${x.ship ? '+ ' + escapeHtml(fmtMoney(x.ship)) : ''}</span>
@@ -27355,6 +27452,7 @@ function poDetailsHtml(po) {
   }).join('');
   const files = (po.files || []).map((u, i) => `<a class="po-file" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">📎 файл ${i + 1}</a>`).join(' ');
   return `<details class="po-more"><summary>Дэлгэрэнгүй</summary>
+    ${po.fx !== 1 ? `<div class="po-note">Ханш: ¥1 = ${escapeHtml(String(po.fx))}₮</div>` : ''}
     <div class="po-lns">${rows}</div>
     ${po.note ? `<div class="po-note">${escapeHtml(po.note)}</div>` : ''}
     ${files ? `<div class="po-files">${files}</div>` : ''}
@@ -27380,6 +27478,7 @@ function poCardHtml(po, caps) {
       ${po.platform ? `<small class="po-plat">${escapeHtml(po.platform)}</small>` : ''}
       ${poPillHtml(po.status)}
     </div>
+    ${po.lines.some(l => poImgOf(l)) ? `<div class="po-thumbs">${po.lines.filter(l => poImgOf(l)).slice(0, 5).map(l => poThumbHtml(poImgOf(l))).join('')}</div>` : ''}
     <div class="po-sum">${poLinesText(po)}</div>
     <div class="po-meta">
       <b>${escapeHtml(fmtMoney(po.paid_mnt != null && po.status !== 'request' && po.status !== 'approved' ? po.paid_mnt : (po.total_mnt || t.total)))}</b>
@@ -27489,9 +27588,11 @@ async function poHandleAction(act, id, btn) {
 /* ─── ХҮСЭЛТ ҮҮСГЭХ / ЗАСАХ ─────────────────────────────────────────────── */
 function poLineCardHtml(l, i, fx) {
   const cur = fx === 1 ? '₮' : '¥';
-  const x = poLineTotals(l, fx);
+  const x = fx > 0 ? poLineTotals(l, fx) : { total: 0, unit: 0 };
   return `<div class="po-line" data-i="${i}">
     <div class="po-line-top">
+      ${poThumbHtml(poImgOf(l))}
+      <label class="btn po-img-btn" title="Барааны зураг оруулах / солих">${l.imgBusy ? '⏳' : '📷'}<input type="file" accept="image/*" hidden data-imgup="${i}"></label>${l.img ? `<button class="btn po-line-del" data-imgdel="${i}" title="Зургийг хасах">🗑</button>` : ''}
       ${l.sku ? `<b class="po-line-nm">${escapeHtml(l.name || l.sku)}</b><span class="po-badge">${escapeHtml(l.sku)}</span>`
               : `<input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(l.name)}" placeholder="Барааны нэр"><span class="po-badge new">шинэ</span>`}
       <button class="btn po-line-del" data-del="${i}" title="Хасах">✕</button>
@@ -27502,18 +27603,22 @@ function poLineCardHtml(l, i, fx) {
       <label>Хүргэлт+карго ₮<input class="ui-raw po-num" data-f="s" type="number" min="0" step="1000" inputmode="numeric" value="${l.s || ''}"></label>
       <label>Аль салбарт<select class="ui-raw po-sel" data-f="b">${Object.entries(PO_BRANCH_LABEL).map(([k, v]) => `<option value="${k}"${l.b === k ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('')}</select></label>
     </div>
-    <div class="po-line-sum" data-sum="${i}">${x.total ? `= <b>${escapeHtml(fmtMoney(x.total))}</b> · нэгж өртөг ${escapeHtml(fmtMoney(x.unit))}` : 'үнэ оруулна уу'}</div>
+    <div class="po-line-sum" data-sum="${i}">${x.total ? `= <b>${escapeHtml(fmtMoney(x.total))}</b> · нэгж өртөг ${escapeHtml(fmtMoney(x.unit))}` : (fx > 0 ? 'үнэ оруулна уу' : 'ханшаа оруулна уу')}</div>
   </div>`;
 }
 async function openPoModal(id) {
   const ex = id ? poById(id) : null;
   if (id && !ex) return;
   if (!state.products || !state.products.length) { try { await loadProductsCatalog(); } catch (e) { /* бараа хайлтгүй ч үргэлжилнэ */ } }
-  let lastFx = 0, lastB = 'mevent';
-  try { lastFx = Number(localStorage.getItem('poFx')) || 0; lastB = localStorage.getItem('poBranch') || 'mevent'; } catch (e) { /* хувийн цонх */ }
+  let lastB = 'mevent', lastCur = 'CNY';
+  try { lastB = localStorage.getItem('poBranch') || 'mevent'; lastCur = localStorage.getItem('poCur') === 'MNT' ? 'MNT' : 'CNY'; } catch (e) { /* хувийн цонх */ }
+  let fxCfg = null;
+  try { fxCfg = await loadAppConfig(PO_FX_KEY); } catch (e) { /* кэш */ }
+  if (!fxCfg) fxCfg = (state.appConfig && state.appConfig[PO_FX_KEY]) || null;
+  const fxToday = poFxOn(fxCfg, todayStr());
   const d = ex
-    ? { supplier: ex.supplier, platform: ex.platform || 'Taobao', url: ex.url, fx: ex.fx, need_by: ex.need_by, note: ex.note, lines: ex.lines.map(l => ({ ...l })) }
-    : { supplier: '', platform: 'Taobao', url: '', fx: lastFx > 0 ? lastFx : PO_FX_DEFAULT, need_by: '', note: '', lines: [] };
+    ? { supplier: ex.supplier, platform: ex.platform || 'Taobao', url: ex.url, fx: ex.fx, cur: ex.fx === 1 ? 'MNT' : 'CNY', need_by: ex.need_by, note: ex.note, lines: ex.lines.map(l => ({ ...l })) }
+    : { supplier: '', platform: 'Taobao', url: '', fx: fxToday && fxToday.exact ? fxToday.rate : 0, cur: lastCur, need_by: '', note: '', lines: [] };
   const newFiles = [];
   const sups = [...new Set([...(state.purchases || []).map(p => p.supplier), ...purchaseRows(state.financeRequests || []).map(r => r.supplier)].filter(Boolean))].slice(0, 200);
   const w = poOpenModal('po-edit', `
@@ -27523,7 +27628,11 @@ async function openPoModal(id) {
       <datalist id="po-sup-dl">${sups.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
       <div class="po-grid2">
         <label class="fld">Платформ<select id="po-plat" class="ui-raw">${PO_PLATFORMS.map(p => `<option${d.platform === p ? ' selected' : ''}>${p}</option>`).join('')}</select></label>
-        <label class="fld">Ханш ₮ / ¥ <span class="fld-opt">(₮-өөр бол 1)</span><input id="po-fx" class="ui-raw" type="number" min="1" step="1" inputmode="numeric" value="${d.fx}"></label>
+        <label class="fld">Үнийн валют<select id="po-cur" class="ui-raw"><option value="CNY"${d.cur === 'CNY' ? ' selected' : ''}>¥ юань</option><option value="MNT"${d.cur === 'MNT' ? ' selected' : ''}>₮ төгрөг</option></select></label>
+      </div>
+      <div id="po-fx-box">
+        <label class="fld">Хаан банкны юанийн ханш ₮ / ¥ <span class="fld-opt">(зарах)</span><input id="po-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" value="${d.fx || ''}" placeholder="жишээ: 541"></label>
+        <div id="po-fx-hint" class="po-note"></div>
       </div>
       <label class="fld">Линк <span class="fld-opt">(дэлгүүр эсвэл барааны хуудас)</span><input id="po-url" class="ui-raw" type="url" value="${escapeHtml(d.url)}" placeholder="https://item.taobao.com/…"></label>
       <label class="fld">Хэзээ хүртэл шаардлагатай <span class="fld-opt">(хямдрал дуусах г.м.)</span><input id="po-need" class="ui-raw" type="date" value="${escapeHtml(d.need_by || '')}"></label>
@@ -27537,15 +27646,41 @@ async function openPoModal(id) {
       ${ex && ex.files.length ? `<div class="po-files">${ex.files.map((u, i) => `<a class="po-file" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">📎 файл ${i + 1}</a>`).join(' ')}</div>` : ''}
     </div>
     <div class="modal-actions"><button class="btn" id="po-cancel">Болих</button><button class="btn btn-primary" id="po-save">${ex ? 'Хадгалах' : 'Хүсэлт илгээх'}</button></div>`);
+  const curFx = () => (w.$('#po-cur').value === 'MNT' ? 1 : poNum(w.$('#po-fx').value));
+  const fxHint = () => {
+    const mnt = w.$('#po-cur').value === 'MNT';
+    w.$('#po-fx-box').hidden = mnt;
+    if (mnt) return;
+    const h = w.$('#po-fx-hint'), day = todayStr().slice(5);
+    if (ex) {
+      h.className = 'po-note';
+      h.textContent = `Хүсэлтийн ханш.${fxToday && fxToday.exact ? ` Өнөөдөр (${day}) Хаан банкинд ¥1 = ${fxToday.rate}₮.` : ''}`;
+    } else if (fxToday && fxToday.exact) {
+      h.className = 'po-note';
+      h.textContent = `Хаан банк · ${day} · ${memberName(fxToday.by)} оруулсан`;
+    } else if (poFxValid(poNum(w.$('#po-fx').value))) {
+      h.className = 'po-note';
+      h.textContent = `Хаан банк · ${day} · хүсэлт илгээхэд өнөөдрийн ханш болж хадгалагдана`;
+    } else {
+      h.className = 'po-probs';
+      h.textContent = `⚠ Өнөөдрийн (${day}) Хаан банкны ханш оруулаагүй байна${fxToday ? ` (сүүлийнх ${fxToday.rate} · ${fxToday.date.slice(5)})` : ''} — Хаан банкны апп/сайтаас харж оруулна уу.`;
+    }
+  };
   const draw = () => {
-    const fx = poNum(w.$('#po-fx').value) || 1;
+    const fx = curFx();
     d.fx = fx;
+    fxHint();
     w.$('#po-lines').innerHTML = d.lines.length ? d.lines.map((l, i) => poLineCardHtml(l, i, fx)).join('')
       : '<div class="po-empty">Бараа нэмээгүй байна. Доороос хайж нэмнэ үү.</div>';
     sums();
   };
   const sums = () => {
-    const fx = poNum(w.$('#po-fx').value) || 1;
+    const fx = curFx();
+    if (!(fx > 0)) {
+      d.lines.forEach((l, i) => { const el = w.$(`[data-sum="${i}"]`); if (el) el.textContent = 'ханшаа оруулна уу'; });
+      w.$('#po-total').innerHTML = d.lines.length ? '⚠ Хаан банкны ханшаа оруулбал нийт дүн гарна' : '';
+      return;
+    }
     const t = poTotals({ lines: d.lines, fx });
     d.lines.forEach((l, i) => {
       const el = w.$(`[data-sum="${i}"]`); if (!el) return;
@@ -27565,13 +27700,27 @@ async function openPoModal(id) {
     else l[f] = poNum(e.target.value);
     sums();
   });
+  let pendingImg = 0;
   w.$('#po-lines').addEventListener('click', (e) => {
+    const im = e.target.closest('[data-imgdel]');
+    if (im) { const l = d.lines[+im.dataset.imgdel]; if (l) { l.img = ''; draw(); } return; }
     const b = e.target.closest('[data-del]'); if (!b) return;
     d.lines.splice(+b.dataset.del, 1); draw();
   });
+  w.$('#po-lines').addEventListener('change', async (e) => {
+    const inp = e.target.closest('[data-imgup]');
+    if (!inp || !inp.files || !inp.files[0]) return;
+    const l = d.lines[+inp.dataset.imgup]; if (!l) return;
+    const file = inp.files[0];
+    l.imgBusy = true; pendingImg++; draw();
+    try { l.img = await poUploadImage(file); }
+    catch (err) { showToast('⚠ ' + (err && err.message ? err.message : err), 'error', 5000); }
+    finally { l.imgBusy = false; pendingImg--; draw(); }
+  });
   w.$('#po-fx').addEventListener('input', draw);
+  w.$('#po-cur').addEventListener('change', draw);
   const addLine = (p, typed) => {
-    d.lines.push(poLine({ sku: p ? p.sku : '', name: p ? (p.name || p.sku) : typed, q: 1, b: lastB }));
+    d.lines.push(poLine({ sku: p ? p.sku : '', name: p ? (p.name || p.sku) : typed, q: 1, b: lastB, img: p ? p.photo : '' }));
     w.$('#po-q').value = ''; w.$('#po-res').innerHTML = ''; draw();
   };
   let _t = null;
@@ -27596,23 +27745,30 @@ async function openPoModal(id) {
   w.$('#po-cancel').onclick = w.close;
   w.$('#po-save').onclick = async (ev) => {
     const btn = ev.currentTarget;
+    if (pendingImg > 0) { showToast('Зураг байршиж дуустал хүлээнэ үү', 'warn'); return; }
     const lines = d.lines.map(poLine).filter(l => (l.name || l.sku));
     if (!lines.length) { showToast('Дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
     if (lines.some(l => !(l.q > 0))) { showToast('Бараа бүрийн тоо 0-ээс их байх ёстой', 'warn'); return; }
-    const fx = poNum(w.$('#po-fx').value) || 1;
+    const cur = w.$('#po-cur').value;
+    const fx = cur === 'MNT' ? 1 : poNum(w.$('#po-fx').value);
+    if (cur !== 'MNT' && !poFxValid(fx)) { showToast(ex ? 'Ханшаа зөв оруулна уу (100–2000 ₮/¥)' : 'Өнөөдрийн Хаан банкны юанийн ханшаа оруулна уу', 'warn', 4000); return; }
     const files = [...(w.$('#po-files').files || [])];
     const po = { supplier: w.$('#po-sup').value.trim(), platform: w.$('#po-plat').value, url: w.$('#po-url').value.trim(), fx,
       need_by: w.$('#po-need').value || null, note: w.$('#po-note').value.trim(), lines };
     po.total_mnt = poTotals({ lines, fx }).total;
     btn.disabled = true;
     try {
-      try { localStorage.setItem('poFx', String(fx)); if (lines[0]) localStorage.setItem('poBranch', lines[0].b); } catch (e) { /* хувийн цонх */ }
+      try { localStorage.setItem('poCur', cur); if (lines[0]) localStorage.setItem('poBranch', lines[0].b); } catch (e) { /* хувийн цонх */ }
+      const rateNote = cur === 'MNT' ? '' : `Хаан банкны ханш ${fx} · ${todayStr().slice(5)}`;
       let saved;
       if (ex) {
-        saved = await poPatch(ex.id, { ...poRow({ ...ex, ...po }), history: [...ex.history, { at: new Date().toISOString(), by: state.me, to: 'request', note: 'Засварласан' }] }, 'request');
+        saved = await poPatch(ex.id, { ...poRow({ ...ex, ...po }), history: [...ex.history, { at: new Date().toISOString(), by: state.me, to: 'request', note: 'Засварласан' + (fx !== ex.fx && rateNote ? ' · ' + rateNote : '') }] }, 'request');
       } else {
         saved = await poInsert({ ...po, id: 'po_' + uid().slice(2), status: 'request', files: [], created_by: state.me,
-          history: [{ at: new Date().toISOString(), by: state.me, to: 'request', note: '' }] });
+          history: [{ at: new Date().toISOString(), by: state.me, to: 'request', note: rateNote }] });
+        if (cur !== 'MNT' && !(fxToday && fxToday.exact && fxToday.rate === fx)) {
+          try { await poFxSave(todayStr(), fx); } catch (e) { showToast('⚠ Ханш хадгалагдсангүй: ' + e.message, 'warn', 5000); }
+        }
       }
       if (files.length) {
         const urls = await poUploadAll(files, saved.id);
@@ -27627,31 +27783,69 @@ async function openPoModal(id) {
 }
 
 /* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН ───────────────────────────────────────── */
-function openPoPayModal(id) {
+async function openPoPayModal(id) {
   const po = poById(id); if (!po || po.status !== 'approved') return;
+  const yuan = po.fx !== 1;
+  let cfg = null;
+  if (yuan) { try { cfg = await loadAppConfig(PO_FX_KEY); } catch (e) { /* кэш */ } }
+  if (!cfg) cfg = (state.appConfig && state.appConfig[PO_FX_KEY]) || null;
+  const calc = (rate) => poTotals({ lines: po.lines, fx: yuan ? rate : 1 }).total;
+  // Юанийн худалдан авалтад Хятад руу шилжүүлэх нь БАРАА л — карго нь УБ-д ирэхэд хүлээн авахдаа төлөгдөнө.
+  const goodsAt = (rate) => poTotals({ lines: po.lines, fx: rate }).item;
+  const estShip = poTotals(po).ship;
+  const cny = po.lines.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0);
   const w = poOpenModal('po-step', `
     <div class="modal-head"><b>💸 Шилжүүлсэн · #${po.no} ${escapeHtml(po.supplier)}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
-      <p class="amo-hint">Хүсэлтийн дүн <b>${escapeHtml(fmtMoney(po.total_mnt))}</b>. Банк / Alipay / каргогоор бодитоор шилжүүлсэн дүнгээ оруулна.
-        Банкны зардал хуулгаас өөрөө орно — энд давхар бичихгүй.</p>
+      <p class="amo-hint">Хүсэлтийн дүн <b>${escapeHtml(fmtMoney(po.total_mnt))}</b>${yuan ? ` (¥${escapeHtml(Math.round(cny).toLocaleString('en-US'))} × ${escapeHtml(String(po.fx))})` : ''}. Банк / Alipay / каргогоор бодитоор шилжүүлсэн дүнгээ оруулна.
+        Банкны зардал хуулгаас өөрөө орно — энд давхар бичихгүй.${yuan ? ` Шилжүүлэх дүн = бараа (¥ × ханш).${estShip ? ` Карго (урьдчилсан ${escapeHtml(fmtMoney(estShip))}) УБ-д ирэхэд «Хүлээн авах»-д оруулна.` : ' Карго УБ-д ирэхэд «Хүлээн авах»-д оруулна.'}` : ''}</p>
       <label class="fld">Шилжүүлсэн огноо<input id="pp-date" class="ui-raw" type="date" value="${todayStr()}"></label>
-      <label class="fld">Шилжүүлсэн дүн ₮<input id="pp-amt" class="ui-raw" type="number" min="1" step="1000" inputmode="numeric" value="${po.total_mnt || ''}"></label>
+      ${yuan ? `<label class="fld">Хаан банкны юанийн ханш ₮ / ¥ <span class="fld-opt">(зарах · шилжүүлсэн өдрийнх)</span><input id="pp-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" placeholder="жишээ: 541"></label>
+      <div id="pp-fx-hint" class="po-note"></div>` : ''}
+      <label class="fld">Шилжүүлсэн дүн ₮<input id="pp-amt" class="ui-raw" type="number" min="1" step="1000" inputmode="numeric" value="${yuan ? '' : (po.total_mnt || '')}"></label>
       <label class="fld">Яаж шилжүүлсэн <span class="fld-opt">(данс, агент, лавлагаа)</span><input id="pp-note" class="ui-raw" type="text" placeholder="жишээ: Хаан 5xxxxx → HiCargo"></label>
       <label class="fld">Шилжүүлгийн баримт <span class="fld-opt">(зураг, PDF — заавал биш)</span><input id="pp-file" class="ui-raw" type="file" accept="image/*,application/pdf" multiple></label>
     </div>
     <div class="modal-actions"><button class="btn" id="pp-cancel">Болих</button><button class="btn btn-primary" id="pp-ok">💸 Шилжүүлсэн гэж бүртгэх</button></div>`);
+  let amtTouched = false;
+  const dayOf = () => w.$('#pp-date').value || todayStr();
+  const rateOf = () => (yuan ? poNum(w.$('#pp-fx').value) : 1);
+  const refresh = (fromDate) => {
+    if (!yuan) return;
+    const day = dayOf(), f = poFxOn(cfg, day);
+    if (fromDate) w.$('#pp-fx').value = f && f.exact ? f.rate : '';
+    const h = w.$('#pp-fx-hint'), rate = rateOf();
+    if (f && f.exact) { h.className = 'po-note'; h.textContent = `Хаан банк · ${day.slice(5)} · ${memberName(f.by)} оруулсан`; }
+    else if (poFxValid(rate)) { h.className = 'po-note'; h.textContent = `Хаан банк · ${day.slice(5)} · шилжүүлэхэд тэр өдрийн ханш болж хадгалагдана`; }
+    else { h.className = 'po-probs'; h.textContent = `⚠ ${day.slice(5)}-ны Хаан банкны ханш оруулаагүй байна${f ? ` (сүүлийнх ${f.rate} · ${f.date.slice(5)})` : ''} — Хаан банкнаас харж оруулна уу.`; }
+    if (poFxValid(rate) && !amtTouched) w.$('#pp-amt').value = goodsAt(rate);
+  };
   w.$('#pp-cancel').onclick = w.close;
+  w.$('#pp-amt').addEventListener('input', () => { amtTouched = true; });
+  if (yuan) {
+    w.$('#pp-fx').addEventListener('input', () => refresh(false));
+    w.$('#pp-date').addEventListener('change', () => refresh(true));
+    refresh(true);
+  }
   w.$('#pp-ok').onclick = async (ev) => {
     const btn = ev.currentTarget;
     const amt = poNum(w.$('#pp-amt').value);
-    const date = w.$('#pp-date').value || todayStr();
+    const date = dayOf();
+    const rate = rateOf();
+    if (yuan && !poFxValid(rate)) { showToast(`${date.slice(5)}-ны Хаан банкны юанийн ханшаа оруулна уу`, 'warn', 4000); return; }
     if (!amt) { showToast('Шилжүүлсэн дүнгээ оруулна уу', 'warn'); return; }
     btn.disabled = true;
     try {
       const urls = await poUploadAll([...(w.$('#pp-file').files || [])], po.id);
-      const patch = poAdvancePatch(po, 'paid', state.me, w.$('#pp-note').value.trim(), { paid_mnt: amt, d: date });
+      const note = [w.$('#pp-note').value.trim(), yuan ? `Ханш ${rate} · Хаан банк ${date.slice(5)}` : ''].filter(Boolean).join(' · ');
+      const patch = poAdvancePatch(po, 'paid', state.me, note, { paid_mnt: amt, d: date });
+      if (yuan) { patch.fx = rate; patch.total_mnt = calc(rate); }   // өртгийн суурь = шилжүүлсэн өдрийн ханш
       if (urls.length) patch.files = [...po.files, ...urls];
       await poPatch(po.id, patch, po.status);
+      if (yuan && date <= todayStr()) {
+        const f = poFxOn(cfg, date);
+        if (!(f && f.exact && f.rate === rate)) { try { await poFxSave(date, rate); } catch (e) { showToast('⚠ Ханш хадгалагдсангүй: ' + e.message, 'warn', 5000); } }
+      }
       w.close(); showToast('💸 Шилжүүлэг бүртгэгдлээ', 'success', 2500); render();
     } catch (e) { showToast('⚠ ' + e.message, 'error', 6000); btn.disabled = false; loadPurchases(true); }
   };
@@ -27686,8 +27880,12 @@ function openPoOrderModal(id) {
      ① нөөцийн дэвтэр (await) — унавал бараа ХӨНДӨГДӨӨГҮЙ, аюулгүй дахин оролдоно
      ② `saveProduct` (эрх, түгжээ, кэш тэнд) — унавал дэвтэрт ЭСРЭГ мөр бичиж залруулна
      ③ эцэст нь худалдан авалтын мөр (оптимист түгжээтэй) — унавал нөөц нэмэгдсэн ч дэвтэр давхар нэмэхээс сэргийлнэ */
-async function poReceiveApply(po, rows, work, finishOnly) {
+async function poReceiveApply(po, rows, work, finishOnly, opts) {
   const okNames = [], errs = [];
+  // Хятад → УБ карго: ЭНЭ ачааны бодит төлбөр (₮). null = оруулаагүй → хүсэлтийн урьдчилсан тооцоо.
+  const cargo = opts && opts.cargo != null && isFinite(Number(opts.cargo)) ? Math.max(0, Math.round(Number(opts.cargo))) : null;
+  const alloc = poCargoAlloc(po, work.filter(x => x.get > 0).map(x => ({ id: x.row.id, get: x.get, c: x.row.c })), cargo);
+  let cargoLost = 0;
   const prodOf = (r) => r.sku ? (state.products || []).find(p => p.sku === r.sku) : null;
   for (const x of work) {
     const r = x.row;
@@ -27699,7 +27897,8 @@ async function poReceiveApply(po, rows, work, finishOnly) {
         if (r.sku && !prev) throw new Error(`«${r.name}» бараа каталогт олдсонгүй`);
         if (!prev && !String(r.name || '').trim()) throw new Error('Шинэ барааны нэр хоосон байна');
         const code = prev ? '' : await nextFreeProductCode();
-        const plan = poReceiptPlan(po, r, x.get, prev, { code, by: state.me, today: todayStr() });
+        const ca = cargo == null ? undefined : (alloc[r.id] || 0);
+        const plan = poReceiptPlan(po, r, x.get, prev, { code, by: state.me, today: todayStr(), cargo: ca });
         const snap = prev ? { ...prev } : null;
         await poLogMoves(plan.moves);
         try {
@@ -27712,18 +27911,25 @@ async function poReceiveApply(po, rows, work, finishOnly) {
           throw err;
         }
         r.rcv += plan.qty; if (!r.sku) r.sku = plan.fields.sku;
+        if (ca != null) r.cg = (r.cg || 0) + ca;
         okNames.push(`${r.name} ×${plan.qty}`);
-      } catch (err) { errs.push(`${r.name || r.sku}: ${err.message}`); continue; }
+      } catch (err) { errs.push(`${r.name || r.sku}: ${err.message}`); cargoLost += (alloc[r.id] || 0); continue; }
     }
     if (x.short) r.done = true;
   }
+  if (cargoLost > 0) errs.push(`карго ${fmtMoney(cargoLost)} хуваарилагдсангүй (алдаатай мөрийнх) — дахин хүлээн авахдаа оруулна уу`);
+  // Мөр бүрэн ирсэн/хаагдсан бол карго нь БОДИТ дүнгээр (урьдчилсан тооцоог орлоно).
+  rows.forEach(r => { if (r.cg != null && poLineLeft(r) === 0) r.s = r.cg; });
   const lines = rows.map(poLine);
   const complete = poAllReceived({ lines });
   try {
     if (okNames.length || work.some(x => x.short) || finishOnly) {
-      const note = complete ? `Бүгд ирсэн${okNames.length ? ': ' + okNames.join(', ') : ''}` : `Хэсэгчлэн ирсэн: ${okNames.join(', ') || 'үлдсэнийг хүлээхгүй гэж хаав'}`;
+      const cg = cargo != null && okNames.length ? ` · карго ${fmtMoney(cargo - cargoLost)}` : '';
+      const note = (complete ? `Бүгд ирсэн${okNames.length ? ': ' + okNames.join(', ') : ''}` : `Хэсэгчлэн ирсэн: ${okNames.join(', ') || 'үлдсэнийг хүлээхгүй гэж хаав'}`) + cg;
       const base = poAdvancePatch(po, complete ? 'received' : 'ordered', state.me, note, null);
-      await poPatch(po.id, { ...base, lines }, 'ordered');
+      const patch = { ...base, lines };
+      if (cargo != null && okNames.length) patch.total_mnt = poTotals({ lines, fx: po.fx }).total;   // бодит карго нийт дүнд тусна
+      await poPatch(po.id, patch, 'ordered');
     }
   } catch (err) {
     errs.push('Худалдан авалтын төлөв хадгалагдсангүй (нөөц нэмэгдсэн — дэвтэр давхар нэмэхээс сэргийлнэ): ' + err.message);
@@ -27749,7 +27955,7 @@ async function openPoReceiveModal(id) {
   const cardHtml = (e, i) => {
     const r = e.row, p = prodOf(r), left = poLineLeft(r), unit = poLineTotals(r, po.fx).unit;
     return `<div class="po-rl" data-i="${i}">
-      <div class="po-line-top"><b class="po-line-nm">${escapeHtml(r.name || r.sku)}</b>
+      <div class="po-line-top">${poThumbHtml(poImgOf(r))}<b class="po-line-nm">${escapeHtml(r.name || r.sku)}</b>
         <span class="po-badge${p ? '' : ' new'}">${p ? escapeHtml(p.sku) + ' · одоо ' + prodTotalQty(p) + ' ш' : (r.sku ? 'олдсонгүй' : 'шинэ бараа')}</span></div>
       <div class="po-rl-info">Захиалсан ${r.q} · өмнө ирсэн ${r.rcv} · <b>үлдсэн ${left}</b> · нэгж өртөг ${escapeHtml(fmtMoney(unit))}</div>
       ${r.sku && !p ? '<div class="po-probs">⚠ Бараа каталогт олдсонгүй (архивлагдсан байж магадгүй) — энэ мөрийг хүлээж авахгүй</div>' : ''}
@@ -27764,31 +27970,40 @@ async function openPoReceiveModal(id) {
     </div>`;
   };
   const doneRows = rows.filter(r => poLineLeft(r) === 0);
+  const estCargo = open.reduce((n, r) => n + (Number(r.s) || 0) * poLineLeft(r) / Math.max(1, Number(r.q) || 1), 0);
   const w = poOpenModal('po-recv', `
     <div class="modal-head"><b>📦 Хүлээн авах · #${po.no} ${escapeHtml(po.supplier)}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
       <p class="amo-hint">Ирсэн барааны тоог шалгаад баталгаажуулна. Баталгаажуулмагц <b>нөөц болон өртөг шинэчлэгдэж</b>, нөөцийн дэвтэрт бичигдэнэ.
         Шинэ бараа үнэгүй үүсэх тул сайтад харагдахгүй — үнийг дараа нь «Бараа» дээр тавина.</p>
+      <label class="fld">🚚 Карго / тээврийн төлбөр ₮ <span class="fld-opt">(Хятад → УБ, ЭНЭ ирсэн ачаанд төлсөн)</span><input id="pr-cargo" class="ui-raw" type="number" min="0" step="1000" inputmode="numeric" placeholder="${estCargo ? 'урьдчилсан ' + Math.round(estCargo) : 'бодит дүн'}"></label>
+      <div class="po-note">Каргог ирсэн барааны үнэлгээгээр хувааж нэгж өртөгт нэмнэ. Хоосон бол хүсэлтийн урьдчилсан тооцоо орно.</div>
       <datalist id="po-cat-dl">${cats.map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
       ${open.length ? ent.map(cardHtml).join('') : '<div class="po-empty">Бүх мөр дэвтэрт бүртгэгдсэн байна. Худалдан авалтыг «Хүлээн авсан» болгож хаана.</div>'}
       ${doneRows.length ? `<div class="po-note">✓ Өмнө бүртгэгдсэн: ${doneRows.map(r => escapeHtml((r.name || r.sku) + ' ×' + r.rcv)).join(', ')}</div>` : ''}
       <div id="pr-total" class="po-total"></div>
     </div>
     <div class="modal-actions"><button class="btn" id="pr-cancel">Болих</button><button class="btn btn-primary" id="pr-ok">✓ Хүлээн авч бараанд нэмэх</button></div>`);
+  const cargoVal = () => { const v = String(w.$('#pr-cargo').value || '').trim(); return v === '' ? null : Math.max(0, Math.round(Number(v) || 0)); };
+  const getOf = (e) => Math.max(0, Math.min(poLineLeft(e.row), Math.round(Number(e.get) || 0)));
   const after = () => {
     let n = 0, kinds = 0;
+    const cg = cargoVal();
+    const al = poCargoAlloc(po, ent.map(e => ({ id: e.row.id, get: (!e.row.sku || prodOf(e.row)) ? getOf(e) : 0, c: e.row.c })), cg);
     ent.forEach((e, i) => {
-      const p = prodOf(e.row), unit = poLineTotals(e.row, po.fx).unit;
+      const p = prodOf(e.row);
       const el = w.$(`[data-after="${i}"]`);
-      const get = Math.max(0, Math.min(poLineLeft(e.row), Math.round(Number(e.get) || 0)));
+      const get = getOf(e);
+      const unit = poUnitCost(po, e.row, get, cg == null ? undefined : (al[e.row.id] || 0));
       if (get > 0 && (!e.row.sku || p)) { n += get; kinds++; }
       if (!el) return;
       if (!(get > 0)) { el.textContent = e.short ? 'Үлдсэнийг хүлээхгүй гэж хаана' : ''; return; }
       if (p) { const bl = blendCost(prodTotalQty(p), p.cost, get, unit); el.innerHTML = `Нэмсний дараа <b>${bl.qty} ш</b> · өртөг <b>${escapeHtml(fmtMoney(bl.cost))}</b>${Number(p.cost) > 0 ? ` <small>(дундаж, өмнө ${escapeHtml(fmtMoney(p.cost))})</small>` : ''}`; }
       else el.innerHTML = `Шинэ бараа үүснэ · <b>${get} ш</b> · өртөг <b>${escapeHtml(fmtMoney(unit))}</b>`;
     });
-    w.$('#pr-total').innerHTML = kinds ? `Нөөцөд нэмэгдэх: <b>${kinds} төрөл · ${n} ш</b>` : '';
+    w.$('#pr-total').innerHTML = kinds ? `Нөөцөд нэмэгдэх: <b>${kinds} төрөл · ${n} ш</b>${cg != null ? ` · карго <b>${escapeHtml(fmtMoney(cg))}</b>` : ''}` : '';
   };
+  w.$('#pr-cargo').addEventListener('input', after);
   w.m.addEventListener('input', (ev) => {
     const f = ev.target.dataset && ev.target.dataset.f, card = ev.target.closest('[data-i]');
     if (!f || !card) return;
@@ -27806,7 +28021,7 @@ async function openPoReceiveModal(id) {
     const finishOnly = !open.length && poAllReceived({ lines: rows });
     if (!work.length && !finishOnly) { showToast('Ирсэн тоогоо оруулна уу', 'warn'); return; }
     btn.disabled = true;
-    const { okNames, errs, complete } = await poReceiveApply(po, rows, work, finishOnly);
+    const { okNames, errs, complete } = await poReceiveApply(po, rows, work, finishOnly, { cargo: cargoVal() });
     if (okNames.length) { state.history = null; try { await loadProductsCatalog(); } catch (_) { /* дараагийн ачаалалт */ } }
     if (errs.length) showToast('⚠ ' + errs.join(' | '), 'error', 9000);
     if (okNames.length || !errs.length) {

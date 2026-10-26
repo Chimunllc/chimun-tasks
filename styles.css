@@ -120,6 +120,7 @@
     --rfd-modal-w: 430px;     /* ↩ Буцаан олгох */
     --cx-modal-w: 430px;      /* 🚫 Больсон / ✕ Цуцлах — шалтгаан сонгох */
     --onote-modal-w: 480px;   /* 📝 Захиалгын тэмдэглэл */
+    --ex-modal-w: 420px;      /* 💳 Зардлын минимал цонх (openExpenseModal) */
     --dmg-modal-w: 460px;     /* Буцаалт · эвдрэл бүртгэх */
     --sa-modal-w: 460px;      /* Дамжлага баталгаажуулах */
     --oscan-modal-w: 460px;   /* 📷 Захиалгын бараа скан */
@@ -9892,3 +9893,31 @@ select.no-asar-len {
 .modal input.nim-in { margin: var(--space-1) 0 var(--space-3); }
 .nim-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .modal .nim-btn { padding: var(--space-2) var(--space-4); }
+
+/* 💳 Зардлын минимал цонх — `openExpenseModal` (2026-10-26, 13 inline style → класс).
+   Толгой/✕ нь нийтийн `.modal-head`/`.modal-x` (өөрийн хувилбар БҮҮ бич), «(сонголт)»
+   тэмдэглэл нь нийтийн `.fld-opt`. Хэмжээ/зай/өнгө зөвхөн токеноор.
+   ⚠ Бүх дүрэм `.ex-modal`-аар хүрээлэгдсэн (`.modal-head`-ийн 0,1,0-ээс давахын тулд)
+     — файл дахь дараалалаас хамаарахгүй, шинэ хүчлэгч (important) шаардахгүй.
+   ⛔ ХӨРВҮҮЛЭЭГҮЙ ба ЗӨВХӨН ХАСАГДСАН хуучин inline дүрмүүд (бүгд ҮХМЭЛ байсан,
+     браузерын cascade-аар шалгасан — класс болгож дахин бичвэл хүчлэгч шаардана,
+     тэр нь хориотой; `.cmp-modal` / `.cx-modal`-тай ИЖИЛ шалтгаан):
+     · `.modal-actions`-ийн `display/justify-content/gap/margin-top` — styles.css:3318
+       дээр ДӨРВҮҮЛЭЭ хүчлэгдсэн (`justify-content:flex-end`), тул хуучин
+       inline `space-between` хэзээ ч үйлчилж байгаагүй: «Устгах» товч ҮРГЭЛЖ
+       баруун талд байсан. Зүгээр хасав.
+     · ✕ товчны `font-size` — `.modal button:not(.ui-raw)` нь ХОЁР breakpoint
+       (≤720px 16px, ≥721px 13px) ХОЁУЛАНД хүчээр тавьдаг.
+     · «Ангилал» шошгын `margin-top:0` — мобайлын `.modal label`-ийн хүчлэгдсэн
+       `margin` (styles.css:2045) давдаг. Оронд нь `.ex-amt`-ийн доод зайг 0 болгож, шошгын
+       ӨӨРИЙН margin нь зайг гаргана (ижил харагдац, хүчлэгчгүй). Зөвхөн-харах
+       салбарт тэр зайг `.ex-amt + .ex-ro` сэргээнэ. */
+.modal.ex-modal { max-width: var(--ex-modal-w); }
+.ex-modal .modal-head { align-items: flex-start; margin-bottom: var(--space-1); }
+.ex-modal .ex-t { min-width: 0; font-size: var(--fs-base); font-weight: 800; line-height: 1.3; }
+.ex-modal .ex-meta { font-size: var(--fs-xs); color: var(--muted); }
+.ex-modal .ex-amt { margin: var(--space-2) 0 0; font-size: var(--fs-xl); font-weight: 800; font-variant-numeric: tabular-nums; }
+.ex-modal .ex-cats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.ex-modal .ex-ro { padding: var(--space-1) 0; font-size: var(--fs-md); }
+.ex-modal .ex-amt + .ex-ro { margin-top: var(--space-4); }
+.modal .ex-del { color: var(--danger); }

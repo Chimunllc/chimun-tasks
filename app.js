@@ -8880,29 +8880,26 @@ function openExpenseModal(id) {
   const brOpts = (sel) => `<option value="">— салбар —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
   const canEdit = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()) || (t && t.ownerKey === state.me);
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:420px;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-      <div style="font-size:15px;font-weight:800;min-width:0;line-height:1.3;">${escapeHtml(r.purpose || benName || '—')}</div>
-      <button id="ex-close" style="border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;flex-shrink:0;">×</button>
-    </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">🗓 ${escapeHtml(txDate)} · ${outTag}${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}</div>
-    <div style="font-size:24px;font-weight:800;margin:8px 0 16px;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</div>
+  modal.innerHTML = `<div class="modal ex-modal">
+    <div class="modal-head"><b class="ex-t">${escapeHtml(r.purpose || benName || '—')}</b><button class="modal-x" id="ex-close" aria-label="Хаах">✕</button></div>
+    <div class="ex-meta">🗓 ${escapeHtml(txDate)} · ${outTag}${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}</div>
+    <div class="ex-amt">${fmtMoney(r.amount)}</div>
     ${canEdit ? `
-    <label class="fld" style="margin-top:0;">Ангилал</label>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <label class="fld">Ангилал</label>
+    <div class="ex-cats">
       <select id="ex-main">${mainCatOptions(curMain)}</select>
       <select id="ex-sub">${subCatOptions(curMain, curSub)}</select>
     </div>
     <label class="fld">Салбар</label>
     <select id="ex-branch">${brOpts(curBr)}</select>
-    <label class="fld">Аль сарын зардал <span style="font-weight:400;color:var(--muted);font-size:11px;">(гүйцэтгэлийн сар)</span></label>
+    <label class="fld">Аль сарын зардал <span class="fld-opt">(гүйцэтгэлийн сар)</span></label>
     <select id="ex-accr">${accrualMonthOptions(parseAccrualToken(r.justification) || finAccrualAuto(r.category, r.requested_at))}</select>
-    <div class="modal-actions" style="display:flex;justify-content:space-between;gap:8px;margin-top:18px;">
-      ${state.isCEO ? '<button id="ex-del" class="btn" style="color:var(--danger);">Устгах</button>' : '<span></span>'}
+    <div class="modal-actions">
+      ${state.isCEO ? '<button id="ex-del" class="btn ex-del">Устгах</button>' : '<span></span>'}
       <button id="ex-save" class="btn btn-primary">💾 Хадгалах</button>
     </div>` : `
-    <div style="font-size:13px;padding:2px 0;">Ангилал: <b>${escapeHtml(catLabel(r.category) || '—')}</b></div>
-    <div style="font-size:13px;padding:2px 0;">Салбар: <b>${escapeHtml(finBranchDisplay(finEffBranch(r)))}</b></div>`}
+    <div class="ex-ro">Ангилал: <b>${escapeHtml(catLabel(r.category) || '—')}</b></div>
+    <div class="ex-ro">Салбар: <b>${escapeHtml(finBranchDisplay(finEffBranch(r)))}</b></div>`}
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();

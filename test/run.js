@@ -8889,6 +8889,81 @@ need(['orderCustType']);
     }
   }, 0)));
 
+  // ── СЕСС ШИНЭЧЛЭГДВЭЛ ДАТА ҮНЭХЭЭР ДАХИН ТАТАГДАНА ────────────────────────
+  //   (2026-10-26, fp c933fe553d64 — `plan` дэлгэц · 3 ажилтан · 5 удаа)
+  //   401-д унасан ачаалагч `state.X = state.X || []` гэж ХООСОН массив кэшлэдэг
+  //   (дуудагч унахгүйн тулд) — гэтэл тэр хоосон кэш нь `refreshViewData`-ийн
+  //   `=== undefined` шалгуур БА ачаалагчийн `if (state.X && !force)` хоёуланг
+  //   БҮРМӨСӨН хааж, токен шинэчлэгдсэн ч дэлгэц ХООСОН үлддэг байв —
+  //   «🔄 дата дахин ачаалж байна» гэсэн тууз ХУДАЛ болдог.
+  (globalThis.__late = globalThis.__late || []).push(new Promise(done => setTimeout(async () => {
+    const origFetch = sandbox.fetch;
+    let pbxHits = 0, pbxOk = false;
+    sandbox.fetch = (url, opt) => {
+      if (String(url).indexOf('pbx_callbacks') >= 0) {
+        pbxHits++;
+        return Promise.resolve(pbxOk
+          ? { ok: true, status: 200, json: () => Promise.resolve([{ peer: '99119911', status: 'done' }]), text: () => Promise.resolve('') }
+          : { ok: false, status: 401, json: () => Promise.resolve({}), text: () => Promise.resolve('') });
+      }
+      return origFetch(url, opt);
+    };
+    vm.runInContext('globalThis.__o3 = { pv: pgrstTokenValid, fr: forceRelogin, sv: serverVerifyToken, rv: refreshViewData, rn: render, ts: showToast };', sandbox);
+    const setup = (verify) => vm.runInContext(`
+      globalThis.__refreshed = 0; globalThis.__cacheAtRefresh = 'нэг ч удаа дуудаагүй';
+      _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      delete state.pbxCb;
+      state.view = 'plan';
+      localStorage.setItem('pgrstToken', 'old.body.sig');
+      localStorage.setItem('sessionToken', 's9.sig');
+      pgrstTokenValid = () => false;
+      forceRelogin = () => {};
+      render = () => {}; showToast = () => {};
+      refreshViewData = () => { __refreshed++; __cacheAtRefresh = state.pbxCb; };
+      serverVerifyToken = async () => (${verify});
+    `, sandbox);
+    try {
+      // ① Сервер сессийг хүлээн авбал → хоосорсон кэш цэвэрлэгдэж татац дахин ажиллана
+      setup(`{ valid: true, phone: '8', pgrst: 'new.body.sig' }`);
+      const got = await vm.runInContext('loadPbxCallbacks(true)', sandbox);
+      eq(got, [], '401: ачаалагч хоосон массив буцаана (дуудагч унахгүй)');
+      eq(pbxHits, 1, '401: татац нэг удаа явсан');
+      await vm.runInContext('_dbRenewP', sandbox);
+      eq(vm.runInContext('typeof state.pbxCb', sandbox), 'undefined',
+         '⛔ ИНВАРИАНТ: сесс шинэчлэгдвэл 401-д хоосорсон кэш цэвэрлэгдэнэ (fp c933fe553d64)');
+      eq(vm.runInContext('globalThis.__refreshed', sandbox), 1,
+         '⛔ ИНВАРИАНТ: сесс шинэчлэгдвэл дэлгэцийн татац дахин ажиллана');
+      eq(vm.runInContext('globalThis.__cacheAtRefresh', sandbox), undefined,
+         'сесс: татац ажиллах мөчид кэш аль хэдийн цэвэрлэгдсэн байна');
+      // Дахин татахад дата ҮНЭХЭЭР ирнэ — хоосон кэш замыг хаахаа болино.
+      pbxOk = true;
+      const again = await vm.runInContext('loadPbxCallbacks()', sandbox);
+      eq(again, [{ peer: '99119911', status: 'done' }], 'сесс: шинэчлэгдсэний дараа дата ирнэ');
+      eq(pbxHits, 2, 'сесс: хоосон кэш дахин татахыг хаахаа болино');
+
+      // ② Сервер холбогдохгүй бол (офлайн) → кэш хөндөгдөхгүй, татац дахин ажиллахгүй
+      pbxOk = false;
+      setup('null');
+      await vm.runInContext('loadPbxCallbacks(true)', sandbox);
+      await vm.runInContext('_dbRenewP', sandbox);
+      eq(vm.runInContext('state.pbxCb', sandbox), [],
+         '⛔ шинэчлэгдээгүй бол кэш хөндөгдөхгүй (мөнхийн татацын давталт үүсгэхгүй)');
+      eq(vm.runInContext('globalThis.__refreshed', sandbox), 0,
+         'шинэчлэгдээгүй бол татац дахин ажиллахгүй');
+    } catch (e) { ok(false, 'сесс шинэчлэгдвэл дата дахин татагдана: ' + (e && e.stack || e)); }
+    finally {
+      sandbox.fetch = origFetch;
+      vm.runInContext(`pgrstTokenValid = __o3.pv; forceRelogin = __o3.fr; serverVerifyToken = __o3.sv;
+        refreshViewData = __o3.rv; render = __o3.rn; showToast = __o3.ts;
+        localStorage.removeItem('sessionToken'); localStorage.removeItem('pgrstToken');
+        delete state.pbxCb; state.view = 'dashboard';
+        _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+        state.sessionExpired = false; state.sessionExpiredAt = '';`, sandbox);
+      done();
+    }
+  }, 0)));
+
   // ⭐ БИЧИХ ЗАМЫГ ҮНЭХЭЭР ДУУДАЖ, ИЛГЭЭСЭН БИЕИЙГ ШАЛГАНА (2026-10-09).
   //   Цэвэр функц ногоон байхад БИЧИЛТ замдаа токеноо хаядаг байсныг (⟦CRED⟧,
   //   ⟦LATE⟧) нэг ч тест барьсангүй — учир нь хэн ч бодит дуудалтыг туршаагүй.
@@ -12266,6 +12341,32 @@ need(['orderCustType']);
   eq(bad.length, 0, 'scan: load* дотор хоосон catch байхгүй (dataLoadFailed ашигла)' +
      (bad.length ? ' → ' + bad.slice(0, 5).join(', ') : ''));
   ok(/function dataLoadFailed\(/.test(src), 'scan: dataLoadFailed тодорхойлогдсон');
+}
+
+// SCAN — ХООСОН КЭШЛЭДЭГ АЧААЛАГЧ `state` ТАЛБАРЫН НЭРЭЭ ЗААВАЛ ДАМЖУУЛНА
+// (2026-10-26, fp c933fe553d64). `state.X = state.X || []` нь 401-ийн дараа
+// `refreshViewData`-ийн `=== undefined` шалгуур ба ачаалагчийн
+// `if (state.X && !force)` хоёуланг хааж, сесс шинэчлэгдсэн ч дэлгэц ХООСОН
+// үлдэнэ. Нэрийг дамжуулсан бол `reloadAfterRenew()` кэшийг цэвэрлэж татна.
+{
+  const re = /dataLoadFailed\(([^;]*?)\);\s*state\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*state\.\2\s*\|\|\s*\[\]/g;
+  const miss = []; let total = 0, m;
+  while ((m = re.exec(src))) {
+    total++;
+    if (m[1].indexOf("'" + m[2] + "'") < 0) miss.push(m[2]);
+  }
+  ok(total >= 10, 'scan: хоосон кэшлэдэг ачаалагчид хэвээр (' + total + ')');
+  eq(miss, [], 'scan: хоосон кэшлэх ачаалагч бүр state талбарынхаа нэрийг dataLoadFailed-д дамжуулна');
+  ok(/function dataLoadFailed\(where, err, cacheKey\)/.test(src), 'scan: dataLoadFailed cacheKey хүлээж авна');
+  ok(/if \(_is401\) noteAuthEmptied\(cacheKey\)/.test(src), 'scan: 401 үед кэшийн нэр тэмдэглэгдэнэ');
+  // Шинэчлэлт бүтсэн замд ЗӨВХӨН — офлайн хүнийг татацын давталтад оруулахгүй.
+  const _rni = src.indexOf('function renewDbSession()');
+  const rn = src.slice(_rni, src.indexOf('\nfunction markSessionRejected', _rni));
+  ok(/reloadAfterRenew\(\)/.test(rn), 'scan: сесс шинэчлэгдвэл кэш цэвэрлэгдэж татац дахин ажиллана');
+  ok(rn.indexOf('reloadAfterRenew()') > rn.indexOf('v.valid && v.pgrst'),
+     'scan: дахин татац ЗӨВХӨН шинэчлэлт бүтсэн замд');
+  ok(/function reloadAfterRenew\(\)[\s\S]{0,400}?refreshViewData\(\)/.test(src),
+     'scan: reloadAfterRenew нь дэлгэцийн татацыг дуудна (render дангаараа татдаггүй)');
 }
 
 // ── SCAN: алдааны лог ЧИМЭЭ БАГАТАЙ байх (2026-09-10) ─────────────────────

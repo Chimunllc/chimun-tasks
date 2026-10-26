@@ -418,6 +418,27 @@ let _load401Logged = false;
 // ⚠ Нэг сесст НЭГ удаа — татац бүрд асуувал сервер дээр дуудлагын шуурга болно.
 // ⚠ «401 → хуудсыг дахин ачаал» гэж БҮҮ зас: эхлэл офлайн үед аппад оруулдаг тул
 //   тэр нь мөнхийн дахин ачаалалтын давталт болно. Сервер Л шийднэ.
+// ⛔ ШИНЭЧЛЭГДСЭН СЕССЭД ДАТА ҮНЭХЭЭР ДАХИН ТАТАГДАНА (2026-10-26, мөн fp c933fe553d64).
+//   401-д унасан ачаалагч `state.X = state.X || []` гэж ХООСОН массив кэшлэдэг
+//   (дуудагч `undefined`-ээс унахгүйн тулд) — гэтэл тэр хоосон кэш нь
+//   `refreshViewData`-ийн `=== undefined` шалгуур БА ачаалагчийн
+//   `if (state.X && !force)` хоёуланг БҮРМӨСӨН хаадаг. Иймд дээрх шинэчлэлт
+//   бүтсэн ч ажилтан ХООСОН дэлгэцтэй үлдэж, «🔄 дата дахин ачаалж байна»
+//   гэсэн тууз ХУДАЛ болж байв (хуудсаа дахин ачаалснаар л засагддаг).
+// ⚠ ЗӨВХӨН ХООСОН кэшийг цэвэрлэнэ — нэг татац 401 болоход нөгөө нь сайн
+//   ирсэн байж болно, ирсэн датаг хаяхгүй.
+// ⚠ Шинэчлэлт БҮТЭЭГҮЙ үед кэшийг хөндөхгүй — эс бөгөөс офлайн ажиллаж байгаа
+//   хүн 401 → цэвэрлэх → дахин татах → 401 гэсэн мөнхийн давталтад орно.
+const _authEmptied = new Set();
+function noteAuthEmptied(key) { if (key) _authEmptied.add(String(key)); }
+function reloadAfterRenew() {
+  _authEmptied.forEach(k => {
+    const v = state[k];
+    if (v == null || (Array.isArray(v) && !v.length)) { try { delete state[k]; } catch (e) {} }
+  });
+  _authEmptied.clear();
+  try { refreshViewData(); } catch (e) {}
+}
 let _dbRenewTried = false;
 let _dbRenewP = null;
 function renewDbSession() {
@@ -435,6 +456,9 @@ function renewDbSession() {
       state.sessionExpiredAt = '';
       _load401Logged = false;
       try { showToast('🔄 Нэвтрэлт шинэчлэгдлээ — дата дахин ачаалж байна', 'info', 5000); } catch (e) {}
+      // ⛔ Тууз хэлсэн зүйлээ ҮНЭХЭЭР хийнэ: 401-д хоосорсон кэш цэвэрлэгдэж,
+      //    тухайн дэлгэцийн татац дахин ажиллана (`render()` дангаараа татдаггүй).
+      try { reloadAfterRenew(); } catch (e) {}
       try { render(); } catch (e) {}
       return true;
     }
@@ -453,12 +477,16 @@ function markSessionRejected() {
   try { renewDbSession(); } catch (e) {}
   return true;
 }
-function dataLoadFailed(where, err) {
+// `cacheKey` = ачаалагч унахдаа хоосон массиваар дүүргэдэг `state` талбарын нэр.
+// 401 болоход тэмдэглэгдэж, сесс шинэчлэгдмэгц `reloadAfterRenew()` цэвэрлэнэ —
+// эс бөгөөс хоосон кэш дахин татахыг БҮРМӨСӨН хаана (дээрхийг үз).
+function dataLoadFailed(where, err, cacheKey) {
   if (_pageUnloading) return;                    // хуудас хаагдаж байна — таслагдсан fetch
   if (navigator && navigator.onLine === false) return;   // офлайн — хэрэглэгч мэднэ
   const _m = (err && err.message) ? String(err.message) : String(err || '');
   if (NET_BLIP_RE.test(_m)) return;
   const _is401 = /HTTP 401/.test(_m);
+  if (_is401) noteAuthEmptied(cacheKey);
   // ⛔ 401 нь «дата ачаалагдсангүй» БИШ — НЭВТРЭЛТ дууссан (2026-10-07, амьд логоос).
   //   Нэг дэлгэц 3 татац хийдэг тул алдааны лог нэг зочлолтод 3 бичлэгээр дүүрч,
   //   хүнд «дата алга» гэж уншигдаж байв. Жинхэнэ шалтгаан нь токен хуучирсан.
@@ -5258,7 +5286,7 @@ async function loadCustomers() {
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.customers = await r.json();
-  } catch (e) { dataLoadFailed('loadCustomers', e); state.customers = state.customers || []; }
+  } catch (e) { dataLoadFailed('loadCustomers', e, 'customers'); state.customers = state.customers || []; }
 }
 
 // Шинэ харилцагч / засвар. ⚠ `id`-г апп ҮҮСГЭХГҮЙ — DB өгөгдмөлөөр гарна.
@@ -6025,7 +6053,7 @@ async function loadStockCountsAll() {
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.scAllRows = await r.json();
-  } catch (e) { dataLoadFailed('loadStockCountsAll', e); state.scAllRows = state.scAllRows || []; }
+  } catch (e) { dataLoadFailed('loadStockCountsAll', e, 'scAllRows'); state.scAllRows = state.scAllRows || []; }
   return state.scAllRows;
 }
 // Сессийн бичилтийг ТАТНА (төлөвт бичихгүй) — урьдчилсан таамгийн татац үүнийг дуудна.
@@ -9569,7 +9597,7 @@ async function loadBankStatements(force) {
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.bankStatements = await r.json();
-  } catch (e) { dataLoadFailed('loadBankStatements', e); state.bankStatements = state.bankStatements || []; }
+  } catch (e) { dataLoadFailed('loadBankStatements', e, 'bankStatements'); state.bankStatements = state.bankStatements || []; }
   return state.bankStatements;
 }
 async function loadBankIncome(force) {
@@ -9580,7 +9608,7 @@ async function loadBankIncome(force) {
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.bankIncome = await r.json();
-  } catch (e) { dataLoadFailed('loadBankIncome', e); state.bankIncome = state.bankIncome || []; }
+  } catch (e) { dataLoadFailed('loadBankIncome', e, 'bankIncome'); state.bankIncome = state.bankIncome || []; }
   try { await relinkIncomeFromReceipts(); } catch (e) { console.warn('relinkIncomeFromReceipts', e); }
   return state.bankIncome;
 }
@@ -40276,7 +40304,7 @@ async function loadPbxCallbacks(force) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.pbxCb = await r.json();
     return state.pbxCb;
-  } catch (e) { dataLoadFailed('Дуудлагын тэмдэглэл', e); state.pbxCb = state.pbxCb || []; return state.pbxCb; }
+  } catch (e) { dataLoadFailed('Дуудлагын тэмдэглэл', e, 'pbxCb'); state.pbxCb = state.pbxCb || []; return state.pbxCb; }
 }
 // Нэг дугаарын төлөв бичих. `upto` = тухайн дугаарын СҮҮЛИЙН дуудлагын цаг —
 // түүнээс хойш дахин залгавал жагсаалтад эргэж гарна.
@@ -40343,7 +40371,7 @@ async function loadPbxLog(force) {
     state.pbxLog = await r.json();
     mktStamp('pbx');
     return state.pbxLog;
-  } catch (e) { dataLoadFailed('Дуудлагын лог', e); state.pbxLog = state.pbxLog || []; return state.pbxLog; }
+  } catch (e) { dataLoadFailed('Дуудлагын лог', e, 'pbxLog'); state.pbxLog = state.pbxLog || []; return state.pbxLog; }
 }
 
 // ⚠ `pbx_calls_hourly`-г апп УНШИХАА БОЛИВ (2026-09-17). Цагийн нэгтгэлд
@@ -40365,7 +40393,7 @@ async function loadFbAds(force) {
     state.fbAds = await r.json();
     mktStamp('fbAds');
     return state.fbAds;
-  } catch (e) { dataLoadFailed('Зарын дата', e); state.fbAds = state.fbAds || []; return state.fbAds; }
+  } catch (e) { dataLoadFailed('Зарын дата', e, 'fbAds'); state.fbAds = state.fbAds || []; return state.fbAds; }
 }
 
 // ── Google хайлтын дата татах (gsc_daily) ───────────────────────────────────
@@ -40382,7 +40410,7 @@ async function loadGsc(force) {
     state.gsc = await r.json();
     mktStamp('gsc');
     return state.gsc;
-  } catch (e) { dataLoadFailed('Google хайлтын дата', e); state.gsc = state.gsc || []; return state.gsc; }
+  } catch (e) { dataLoadFailed('Google хайлтын дата', e, 'gsc'); state.gsc = state.gsc || []; return state.gsc; }
 }
 
 // ── Сайтын зочдын дата татах (ga_daily) ─────────────────────────────────────
@@ -40398,7 +40426,7 @@ async function loadGa(force) {
     state.ga = await r.json();
     mktStamp('ga');
     return state.ga;
-  } catch (e) { dataLoadFailed('Сайтын зочдын дата', e); state.ga = state.ga || []; return state.ga; }
+  } catch (e) { dataLoadFailed('Сайтын зочдын дата', e, 'ga'); state.ga = state.ga || []; return state.ga; }
 }
 
 // ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭРИЙН БҮРТГЭЛ (2026-09-16) ──────────────────────────
@@ -40638,7 +40666,8 @@ async function loadFbActions(force) {
     state.fbStates = await rs.json();
     return state.fbActions;
   } catch (e) {
-    dataLoadFailed('Зарын шийдвэр', e);
+    dataLoadFailed('Зарын шийдвэр', e, 'fbActions');
+    noteAuthEmptied('fbStates');
     state.fbActions = state.fbActions || []; state.fbStates = state.fbStates || [];
     return state.fbActions;
   }
@@ -40658,7 +40687,7 @@ async function loadFbCapi(force) {
     state.fbCapi = await r.json();
     return state.fbCapi;
   } catch (e) {
-    dataLoadFailed('Facebook-т илгээсэн худалдан авалт', e);
+    dataLoadFailed('Facebook-т илгээсэн худалдан авалт', e, 'fbCapi');
     state.fbCapi = state.fbCapi || [];
     return state.fbCapi;
   }
@@ -40690,7 +40719,7 @@ async function loadAdPosts(force) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.adPosts = await r.json();
     return state.adPosts;
-  } catch (e) { dataLoadFailed('Постын дараалал', e); state.adPosts = state.adPosts || []; return state.adPosts; }
+  } catch (e) { dataLoadFailed('Постын дараалал', e, 'adPosts'); state.adPosts = state.adPosts || []; return state.adPosts; }
 }
 async function saveAdPost(row) {
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/ads_posts`, {
@@ -40756,7 +40785,7 @@ async function loadPagePosts(force) {
     state.pagePosts = await r.json();
     return state.pagePosts;
   } catch (e) {
-    dataLoadFailed('Хуудасны пост', e);
+    dataLoadFailed('Хуудасны пост', e, 'pagePosts');
     state.pagePosts = state.pagePosts || [];
     return state.pagePosts;
   }
@@ -41692,7 +41721,7 @@ async function loadFbChats(force) {
     state.fbChats = await r.json();
     mktStamp('fbChats');
     return state.fbChats;
-  } catch (e) { dataLoadFailed('Facebook чат', e); state.fbChats = state.fbChats || []; return state.fbChats; }
+  } catch (e) { dataLoadFailed('Facebook чат', e, 'fbChats'); state.fbChats = state.fbChats || []; return state.fbChats; }
 }
 
 // ⚠ Цагийг МӨРӨӨР бүү харьцуул — «…Z» ба «…+00:00» ижил мөч. Тоо ч, мөр ч авна.

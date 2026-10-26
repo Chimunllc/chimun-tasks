@@ -13735,7 +13735,7 @@ function attMarkDetailHtml(mn) {
    ⛔ Захиалгын бонус = өөрийн үүсгэсэн (`created_by`) захиалгын ТӨЛӨГДСӨН түрээсийн орлогын % (барьцаа, цуцалсан хасагдсан;
      `orderRevenue`). Тоогоор БИШ — нэг захиалгыг хуваан бичих сонирхол үүснэ. Сайтаас шууд ирсэн захиалга ажилтнаар
      үүсээгүй тул хэнд ч тоологдохгүй. Суутгал тооцохгүй (дамжлагын бонустой ижил). */
-const PAY_RULES_DEFAULT = { capPct: 20, graceMin: 5 };
+const PAY_RULES_DEFAULT = { capPct: 20, graceMin: 5, lateStepPct: 50 };
 function payRulesCfg() {
   const c = (state.appConfig && state.appConfig.pay_rules && typeof state.appConfig.pay_rules === 'object') ? state.appConfig.pay_rules : {};
   const pct = (v) => { const n = Number(v); return (n > 0 && n <= 100) ? n : 0; };
@@ -13744,6 +13744,9 @@ function payRulesCfg() {
     from: /^\d{4}-\d{2}$/.test(String(c.from || '')) ? String(c.from) : '',
     orderPct: pct(c.order_pct), absentPct: pct(c.absent_pct), latePct: pct(c.late_pct), noshowPct: pct(c.noshow_pct), regLatePct: pct(c.reg_late_pct),
     capPct: pct(c.cap_pct) || PAY_RULES_DEFAULT.capPct,
+    // ХОЦРОЛТ ДАВТАГДАХ ТУТАМ ӨСНӨ (2026-10-26, CEO): сарын n-р хоцролт = суурь хувь × (1 + (n−1) × өсөлт/100). Тохируулаагүй бол 50%
+    // (1-р ×1, 2-р ×1.5, 3-р ×2 …); 0 = өсөхгүй (тэгш). ЗӨВХӨН хоцролтод — тасалсан/ирээгүй өсөхгүй.
+    lateStepPct: (c.late_step_pct !== undefined && c.late_step_pct !== null && c.late_step_pct !== '' && Number(c.late_step_pct) >= 0 && Number(c.late_step_pct) <= 300) ? Number(c.late_step_pct) : PAY_RULES_DEFAULT.lateStepPct,
     graceMin: (c.grace_min !== undefined && c.grace_min !== null && c.grace_min !== '' && g >= 0 && g <= 120) ? g : PAY_RULES_DEFAULT.graceMin,
   };
 }
@@ -13905,17 +13908,35 @@ function orderBonusFor(key, ym) {
 /* Цалинд нэмэгдэх/хасагдах НЭМЭЛТ: торгууль, захиалгын бонус. `monthPayBreakdown`-ийн сүүлийн параметр.
    `ready:false` = дүрэм идэвхтэй атлаа өгөгдөл ачаалагдаагүй → дуудагч ил хэлнэ (0 гэж чимээгүй харуулахгүй).
    `recs` = тэр сарын ирцийн мөрүүд (хэн ч байж болно, `attDiscipline` өөрөө шүүнэ). */
+/* Торгуулийн хувь = үйл явдал бүрийн нийлбэр (тоо × хувь БИШ — хоцролт өсөх дарааллаар). `disc.events` өдрөөр эрэмбэлэгдсэн.
+   Хоцролт (дуудлагын БА ердийн) НЭГ дарааллаар тоологдоно: сарын 1-р хоцролт ×1, 2-р ×(1+өсөлт), 3-р ×(1+2×өсөлт)…
+   ⛔ Торгогддоггүй (хувь 0) хоцролт дарааллыг ӨСГӨХГҮЙ — торгоогүй хоцролтоос болж дараагийнх үнэтэй болохгүй.
+   ⛔ Тасалсан, дуудлагад ирээгүй өсөхгүй (CEO зөвхөн хоцролтыг асуусан). */
+function attPenaltyBreakdown(disc, cfg) {
+  const step = (Number(cfg.lateStepPct) || 0) / 100;
+  let nth = 0, raw = 0; const mult = {};
+  ((disc && disc.events) || []).forEach(e => {
+    if (e.kind === 'absent') raw += cfg.absentPct;
+    else if (e.kind === 'noshow') raw += cfg.noshowPct;
+    else {
+      const rate = e.kind === 'late' ? cfg.latePct : cfg.regLatePct;
+      if (rate > 0) { const m = 1 + nth * step; nth++; raw += rate * m; mult[e.day] = m; }
+    }
+  });
+  return { raw: Math.round(raw * 100) / 100, mult };
+}
 function payExtras(key, ym, recs, base) {
   const cfg = payRulesCfg(), active = !!cfg.from && String(ym) >= cfg.from;
   const dataOk = attMarksReady() && attCallinsReady() && Array.isArray(recs);
   const disc = dataOk ? attDiscipline(key, ym, recs, undefined, cfg.graceMin) : null;
-  const ex = { active, ready: true, disc, penalty: 0, penaltyPct: 0, orderBonus: 0, orderN: 0, cfg };
+  const ex = { active, ready: true, disc, penalty: 0, penaltyPct: 0, mult: {}, orderBonus: 0, orderN: 0, cfg };
   if (!active) return ex;
   if (cfg.absentPct > 0 || cfg.latePct > 0 || cfg.noshowPct > 0 || cfg.regLatePct > 0) {
     if (!disc || (cfg.regLatePct > 0 && !workStartReady())) ex.ready = false;   // «ажил эхлэх цаг» ачаалагдаагүй бол ердийн хоцролт тоологдохгүй — чимээгүй 0 БИШ
     else {
-      const raw = disc.absentN * cfg.absentPct + disc.noshowN * cfg.noshowPct + disc.lateN * cfg.latePct + disc.regLateN * cfg.regLatePct;
-      ex.penaltyPct = Math.min(cfg.capPct, raw);
+      const bd = attPenaltyBreakdown(disc, cfg);
+      ex.mult = bd.mult;
+      ex.penaltyPct = Math.min(cfg.capPct, bd.raw);
       ex.penalty = Math.round((Number(base) || 0) * ex.penaltyPct / 100);
     }
   }
@@ -13926,12 +13947,13 @@ function payExtras(key, ym, recs, base) {
   return ex;
 }
 // Үйл явдлын нэг мөр: «10-21 · Тасалсан», «10-22 · 09:30 дуудлагад ирээгүй», «10-23 · 09:30 дуудсан, 09:55 ирсэн (25м хоцорсон)»
-function attDisciplineLine(e) {
+function attDisciplineLine(e, mult) {
   const d = escapeHtml(String(e.day).slice(5));
+  const x = (mult && mult > 1) ? ` · <b>×${Math.round(mult * 100) / 100}</b>` : '';   // давтагдсан хоцролт: хэд дахин үнэтэй
   if (e.kind === 'absent') return `${d} · 🚫 Тасалсан`;
   if (e.kind === 'noshow') return `${d} · 📞 ${escapeHtml(e.time)} дуудлагад ирээгүй`;
-  if (e.kind === 'lateReg') return `${d} · ⏰ ${escapeHtml(e.time)} ажил эхлэх цаг, ${escapeHtml(e.came)} ирсэн (${e.mins}м хоцорсон)`;
-  return `${d} · ⏰ ${escapeHtml(e.time)} дуудсан, ${escapeHtml(e.came)} ирсэн (${e.mins}м хоцорсон)`;
+  if (e.kind === 'lateReg') return `${d} · ⏰ ${escapeHtml(e.time)} ажил эхлэх цаг, ${escapeHtml(e.came)} ирсэн (${e.mins}м хоцорсон)${x}`;
+  return `${d} · ⏰ ${escapeHtml(e.time)} дуудсан, ${escapeHtml(e.came)} ирсэн (${e.mins}м хоцорсон)${x}`;
 }
 function attDisciplineSummary(disc) {
   if (!disc) return '';
@@ -13947,14 +13969,15 @@ function payRulesText(cfg) {
   if (cfg.latePct) bits.push(`дуудсан цагаас ${cfg.graceMin}м-ээс хэтэрч хоцорвол ${cfg.latePct}%`);
   if (cfg.regLatePct) bits.push(`ажил эхлэх цагаас (тохируулсан хүнд) ${cfg.graceMin}м-ээс хэтэрч хоцорвол ${cfg.regLatePct}%`);
   const pen = cfg.absentPct || cfg.noshowPct || cfg.latePct || cfg.regLatePct;
+  if ((cfg.latePct || cfg.regLatePct) && cfg.lateStepPct > 0) bits.push(`хоцролт давтагдах тутам +${cfg.lateStepPct}%-аар өснө (сарын 2-р хоцролт ×${Math.round((1 + cfg.lateStepPct / 100) * 100) / 100}, 3-р ×${Math.round((1 + 2 * cfg.lateStepPct / 100) * 100) / 100} …)`);
   return bits.length ? `${cfg.from}-аас: ${bits.join(' · ')}${pen ? ` (сард дээд тал ${cfg.capPct}%)` : ''}.` : '';
 }
 // Сахилгын дэлгэрэнгүй (өдөр бүр) + тайлбар. Торгууль идэвхгүй үед ч «юу болсон»-ыг харуулна.
 function attDisciplineDetailHtml(ex) {
   if (!ex || !ex.disc || !ex.disc.events.length) return '';
   const pen = ex.active && ex.penalty > 0;
-  return `<div class="amk-line">${ex.disc.events.map(attDisciplineLine).join('<br>')}<br><span class="amk-line-s">${
-    pen ? `Торгууль: ${attDisciplineSummary(ex.disc)} → суурь цалингийн ${ex.penaltyPct}%.`
+  return `<div class="amk-line">${ex.disc.events.map(e => attDisciplineLine(e, pen ? (ex.mult || {})[e.day] : 0)).join('<br>')}<br><span class="amk-line-s">${
+    pen ? `Торгууль: ${attDisciplineSummary(ex.disc)} → суурь цалингийн ${ex.penaltyPct}%${Object.keys(ex.mult || {}).length > 1 && ex.cfg.lateStepPct > 0 ? ` (хоцролт давтагдах тутам +${ex.cfg.lateStepPct}%)` : ''}.`
         : ex.active ? 'Торгуулийн хувь тохируулаагүй — цалинд нөлөөлөхгүй.'
         : 'Торгуулийн дүрэм хараахан хэрэгжээгүй — цалинд нөлөөлөхгүй, зөвхөн бүртгэгдэв.'}</span></div>`;
 }
@@ -14087,6 +14110,7 @@ function payRulesCardHtml() {
       ${f('pr-late', '⏰ Дуудсан цагаас хоцорсон, %', cfg.latePct || '', 'суурь цалингийн, удаа тутамд')}
       ${f('pr-reglate', '🕘 Ажил эхлэх цагаас хоцорсон, %', cfg.regLatePct || '', 'суурь цалингийн, удаа тутамд — «Ажил эхлэх цаг» тохируулсан хүнд л, ажлын өдөр')}
       <div class="pr-ws">🕘 Ажил эхлэх цаг тохируулсан: <b>${workStartCountText()}</b> <button class="btn" id="pr-workstart" type="button">Тохируулах</button></div>
+      ${f('pr-step', '📈 Хоцролт давтагдах тутам өсөлт, %', cfg.lateStepPct, 'сарын 1-р хоцролт ×1, 2-р ×(1+өсөлт), 3-р ×(1+2×өсөлт)… 0 = өсөхгүй. Зөвхөн хоцролтод', 300)}
       ${f('pr-cap', 'Торгуулийн сарын дээд хязгаар, %', cfg.capPct, 'суурь цалингийн — нийлбэр үүнээс хэтрэхгүй')}
       ${f('pr-grace', 'Хоцролтын чөлөө, мин', cfg.graceMin, 'энэ хүртэл хоцролт тоологдохгүй', 120)}
       <button class="btn btn-primary" id="pr-save">Хадгалах</button>
@@ -14100,11 +14124,12 @@ function workStartCountText() {
 // Хадгалахын өмнө ЦЭВЭР шалгалт: { ok, cfg } | { ok:false, err }
 function payRulesValidate(raw, today) {
   const num = (v) => { const s = String(v === undefined || v === null ? '' : v).trim(); return s === '' ? 0 : Number(s); };
-  const o = { order_pct: num(raw.order), absent_pct: num(raw.absent), noshow_pct: num(raw.noshow), late_pct: num(raw.late), reg_late_pct: num(raw.reglate), cap_pct: num(raw.cap), grace_min: num(raw.grace) };
+  const o = { order_pct: num(raw.order), absent_pct: num(raw.absent), noshow_pct: num(raw.noshow), late_pct: num(raw.late), reg_late_pct: num(raw.reglate), cap_pct: num(raw.cap), grace_min: num(raw.grace), late_step_pct: (String(raw.step === undefined || raw.step === null ? '' : raw.step).trim() === '' ? PAY_RULES_DEFAULT.lateStepPct : Number(raw.step)) };
   for (const k of ['order_pct', 'absent_pct', 'noshow_pct', 'late_pct', 'reg_late_pct', 'cap_pct']) {
     if (!isFinite(o[k]) || o[k] < 0 || o[k] > 100) return { ok: false, err: 'Хувь 0–100 хооронд байна' };
   }
   if (!isFinite(o.grace_min) || o.grace_min < 0 || o.grace_min > 120) return { ok: false, err: 'Хоцролтын чөлөө 0–120 минут' };
+  if (!isFinite(o.late_step_pct) || o.late_step_pct < 0 || o.late_step_pct > 300) return { ok: false, err: 'Хоцролтын өсөлт 0–300%' };
   const from = String(raw.from || '');
   const any = o.order_pct > 0 || o.absent_pct > 0 || o.noshow_pct > 0 || o.late_pct > 0 || o.reg_late_pct > 0;
   if (any && !/^\d{4}-\d{2}$/.test(from)) return { ok: false, err: 'Хувь тавивал «хэзээнээс» сарыг заавал сонгоно' };
@@ -14115,10 +14140,10 @@ function payRulesValidate(raw, today) {
 async function payRulesSave() {
   if (!payRulesEditable()) { showToast('Зөвхөн CEO өөрчилнө', 'warn', 3000); return; }
   const v = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
-  const chk = payRulesValidate({ from: v('pr-from'), order: v('pr-order'), absent: v('pr-absent'), noshow: v('pr-noshow'), late: v('pr-late'), reglate: v('pr-reglate'), cap: v('pr-cap'), grace: v('pr-grace') });
+  const chk = payRulesValidate({ from: v('pr-from'), order: v('pr-order'), absent: v('pr-absent'), noshow: v('pr-noshow'), late: v('pr-late'), reglate: v('pr-reglate'), cap: v('pr-cap'), grace: v('pr-grace'), step: v('pr-step') });
   if (!chk.ok) { showToast('⚠ ' + chk.err, 'warn', 4500); return; }
   const next = { ...chk.cfg };
-  const preview = payRulesText({ from: next.from, orderPct: next.order_pct, absentPct: next.absent_pct, noshowPct: next.noshow_pct, latePct: next.late_pct, regLatePct: next.reg_late_pct, capPct: next.cap_pct || PAY_RULES_DEFAULT.capPct, graceMin: next.grace_min }) || 'Бүх дүрэм унтраалттай болно.';
+  const preview = payRulesText({ from: next.from, orderPct: next.order_pct, absentPct: next.absent_pct, noshowPct: next.noshow_pct, latePct: next.late_pct, regLatePct: next.reg_late_pct, lateStepPct: next.late_step_pct, capPct: next.cap_pct || PAY_RULES_DEFAULT.capPct, graceMin: next.grace_min }) || 'Бүх дүрэм унтраалттай болно.';
   if (!(await showConfirm(`${preview}\n\nЭнэ нь ${next.from || '—'}-аас хойших цалинд нөлөөлнө. Өмнөх сарын цалин өөрчлөгдөхгүй. Дотоод журамд тусгасан, ажилтнууддаа мэдэгдсэн эсэхээ шалгана уу.`, { title: 'Шагнал ба торгуулийн дүрэм', okText: 'Хадгалах' }))) return;
   try {
     await saveAppConfig('pay_rules', next);

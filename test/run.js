@@ -21725,15 +21725,17 @@ async function swFetchTests() {
   put([]);
   st.workStart = { [K]: '09:00' };
   const recs = [rec(K, '2026-10-12', 'in', '09:20'), rec(K, '2026-10-13', 'in', '09:00'), rec(K, '2026-10-14', 'in', '10:00')];   // 2 хоцролт
-  RULES({ from: '2026-10', reg_late_pct: 2 });
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 0 });
   let ex = PX(recs);
-  eq([ex.ready, ex.disc.regLateN, ex.penaltyPct, ex.penalty], [true, 2, 4, base * 0.04], '⛔ payExtras: ердийн хоцролт 2 удаа × 2% = 4% = 80,000₮');
+  eq([ex.ready, ex.disc.regLateN, ex.penaltyPct, ex.penalty], [true, 2, 4, base * 0.04], '⛔ payExtras: өсөлтгүй (0) үед ердийн хоцролт 2 удаа × 2% = 4% = 80,000₮');
+  RULES({ from: '2026-10', reg_late_pct: 2 });
+  eq(PX(recs).penaltyPct, 5, '⛔ payExtras: өсөлт тохируулаагүй бол өгөгдмөл 50% — 2 хоцролт = 2% + 2%×1.5 = 5%');
   eq(PX(recs, 0).penalty, 0, 'payExtras: суурь цалингүй хүнд торгууль 0');
   RULES({ from: '2026-11', reg_late_pct: 2 });
   eq(PX(recs).penalty, 0, '⛔ payExtras: «хэзээнээс» сараас ӨМНӨХ сард ердийн хоцролт торгогдохгүй (олгосон цалин хөндөгдөхгүй)');
   RULES({ from: '2026-10', late_pct: 2 });
   eq(PX(recs).penalty, 0, 'payExtras: ердийн хоцролтын хувь тавиагүй бол (зөвхөн дуудлагын хувь) торгохгүй');
-  RULES({ from: '2026-10', reg_late_pct: 2, cap_pct: 3 });
+  RULES({ from: '2026-10', reg_late_pct: 2, cap_pct: 3, late_step_pct: 0 });
   eq(PX(recs).penaltyPct, 3, 'payExtras: дээд хязгаар (3%) ердийн хоцролтод ч үйлчилнэ');
   RULES({ from: '2026-10', reg_late_pct: 2 });
   st.workStart = null;
@@ -21833,11 +21835,131 @@ async function swFetchTests() {
     const fn = appSrc.slice(appSrc.indexOf('async function attNextArrivalToCallin'), appSrc.indexOf('async function attNextArrivalToCallin') + 900);
     ok(/isWeekdayIso\(day\)/.test(fn) && /!prev\.place/.test(fn) && /silent: true/.test(fn), 'scan: амралтын өдөр үүсгэхгүй, газартай дуудлагыг хөндөхгүй, чимээгүй (push-гүй)');
     ok(/if \(!\(opts && opts\.silent\)\) pushBroadcast/.test(appSrc), 'scan: чимээгүй горимд push явахгүй');
-    ok(/regLateN \* cfg\.regLatePct/.test(appSrc), 'scan: ердийн хоцролт торгуулийн нийлбэрт орно');
+    ok(/attPenaltyBreakdown\(disc, cfg\)/.test(appSrc.slice(appSrc.indexOf('function payExtras('), appSrc.indexOf('function attDisciplineLine('))) && /e\.kind === 'late' \? cfg\.latePct : cfg\.regLatePct/.test(appSrc), 'scan: торгууль үйл явдал бүрээр (өсөх дарааллаар) бодогдож, ердийн хоцролт орно');
     ok(/ensureWorkStart\(\);/.test(appSrc.slice(appSrc.indexOf('function ensureAttMarks'), appSrc.indexOf('function ensureAttMarks') + 400)), 'scan: «ажил эхлэх цаг» цалин/ирцийн дэлгэцүүдэд ачаалагдана');
     ok(/reglate: v\('pr-reglate'\)/.test(appSrc) && /pr-workstart/.test(appSrc), 'scan: дүрэм хадгалах, ажил эхлэх цаг руу холбоос');
   }
 
   st.attMarks = saved.m; st.attMarksErr = saved.e; st.attCallins = saved.c; st.attCallinsErr = saved.ce; st.closedMonths = saved.cm; st._closedMonthsAt = saved.ca;
   st.isCEO = saved.ceo; st.payrollCfg = saved.cfg; st.appConfig = saved.ac; st.appOrders = saved.ao; st.me = saved.me; st.memberPerms = saved.mp; st.workStart = saved.ws; st.nextArrival = saved.na;
+});
+
+// ═══ ХОЦРОЛТЫН ТОРГУУЛЬ ӨСӨН НЭМЭГДЭНЭ (2026-10-26, CEO: «өсөн нэмэгддэг болго») ═══════════════════════════
+// Сарын n-р хоцролт = суурь хувь × (1 + (n−1) × өсөлт). Дуудлагын БА ердийн хоцролт НЭГ дарааллаар. Тасалсан/ирээгүй өсөхгүй.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const K = '99115511', OCT = '2026-10';
+  const saved = { m: st.attMarks, e: st.attMarksErr, c: st.attCallins, ce: st.attCallinsErr, cfg: st.payrollCfg, ac: st.appConfig, ws: st.workStart, ceo: st.isCEO };
+  st.payrollCfg = { start: '2026-09' }; st.attMarksErr = null; st.attCallinsErr = null; st.isCEO = true;
+  const RULES = (o) => { st.appConfig = Object.assign({}, st.appConfig || {}, { pay_rules: o }); };
+  const ci = (day, time) => ({ id: K + '|' + day, member_key: K, day, at_time: time, place: null, status: 'active' });
+  const mk = (day, kind) => ({ id: K + '|' + day, member_key: K, day, kind, status: 'active' });
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (day, hm) => ({ member_key: K, member_name: 'x', kind: 'in', ts: ts(day, hm), day, source: 'scan' });
+  const put = (calls, marks) => { st.attCallins = {}; (calls || []).forEach(r => { st.attCallins[r.id] = r; }); st.attMarks = {}; (marks || []).forEach(r => { st.attMarks[r.id] = r; }); };
+  const base = 2000000;
+  const PX = (recs) => run(`payExtras('${K}', '${OCT}', ${JSON.stringify(recs)}, ${base})`);
+  st.workStart = { [K]: '09:00' };
+
+  // ── ① Тохиргоо ──
+  RULES({ from: '2026-10', reg_late_pct: 2 });
+  eq(run('payRulesCfg().lateStepPct'), 50, 'өсөлт: тохируулаагүй бол өгөгдмөл 50%');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 0 });
+  eq(run('payRulesCfg().lateStepPct'), 0, 'өсөлт: 0 = өсөхгүй (тэгш) — тусгайлан тохируулсан утга өгөгдмөлөөр дарагдахгүй');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 100 });
+  eq(run('payRulesCfg().lateStepPct'), 100, 'өсөлт: 100% = давхар');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 900 });
+  eq(run('payRulesCfg().lateStepPct'), 50, 'өсөлт: хэт утга өгөгдмөл руу');
+  const V = (o) => run(`payRulesValidate(${JSON.stringify(o)}, '2026-10-20')`);
+  eq(V({ from: '2026-10', reglate: '2', step: '' }).cfg.late_step_pct, 50, 'шалгалт: өсөлт хоосон бол өгөгдмөл 50');
+  eq(V({ from: '2026-10', reglate: '2', step: '0' }).cfg.late_step_pct, 0, 'шалгалт: 0 хадгалагдана');
+  ok(!V({ from: '2026-10', reglate: '2', step: '301' }).ok && !V({ from: '2026-10', reglate: '2', step: '-5' }).ok, 'шалгалт: өсөлт 0–300%');
+
+  // ── ② Торгуулийн бодолт: сарын n-р хоцролт өснө ──
+  // 10-12 (Дав) 09:20 · 10-13 09:30 · 10-14 10:00 · 10-15 09:10 — дөрвөн ердийн хоцролт (чөлөө 5м)
+  put([], []);
+  const L4 = [rec('2026-10-12', '09:20'), rec('2026-10-13', '09:30'), rec('2026-10-14', '10:00'), rec('2026-10-15', '09:10')];
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 50, cap_pct: 100 });
+  let ex = PX(L4);
+  eq(ex.penaltyPct, 2 * 1 + 2 * 1.5 + 2 * 2 + 2 * 2.5, '⛔ өсөлт: 4 хоцролт = 2%×(1+1.5+2+2.5) = 14%');
+  eq(ex.penalty, base * 0.14, 'өсөлт: 14% × 2,000,000 = 280,000₮');
+  eq([ex.mult['2026-10-12'], ex.mult['2026-10-13'], ex.mult['2026-10-14'], ex.mult['2026-10-15']], [1, 1.5, 2, 2.5], 'өсөлт: хоцролт бүрийн үржвэр (1, 1.5, 2, 2.5)');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 0, cap_pct: 100 });
+  eq(PX(L4).penaltyPct, 8, 'өсөлт: 0 бол тэгш — 4 × 2% = 8%');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 100, cap_pct: 100 });
+  eq(PX(L4).penaltyPct, 2 * (1 + 2 + 3 + 4), 'өсөлт: 100% — 2%×(1+2+3+4) = 20%');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 100, cap_pct: 12 });
+  eq(PX(L4).penaltyPct, 12, '⛔ өсөлт: сарын дээд хязгаар өссөн торгуулийг ч хязгаарлана');
+  eq(PX([rec('2026-10-12', '09:20')]).penaltyPct, 2, 'өсөлт: нэг л хоцролт бол ×1 (өсөлтгүй)');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 50, cap_pct: 100 });
+  eq(PX([rec('2026-10-12', '09:00'), rec('2026-10-13', '09:30')]).mult['2026-10-13'], 1, 'өсөлт: цагтаа ирсэн өдөр дарааллыг ӨСГӨХГҮЙ — 1-р хоцролт ×1');
+
+  // ── ③ Дуудлагын БА ердийн хоцролт НЭГ дараалалд, өөр хувиар ──
+  put([ci('2026-10-12', '09:30')], []);
+  RULES({ from: '2026-10', late_pct: 4, reg_late_pct: 2, late_step_pct: 50, cap_pct: 100 });
+  const MIX = [rec('2026-10-12', '10:00'), rec('2026-10-13', '09:40'), rec('2026-10-14', '09:40')];   // 12: дуудлагад 30м · 13, 14: ердийн 40м
+  ex = PX(MIX);
+  eq([ex.disc.lateN, ex.disc.regLateN], [1, 2], 'нэг дараалал: дуудлагын 1 + ердийн 2 хоцролт');
+  eq(ex.penaltyPct, 4 * 1 + 2 * 1.5 + 2 * 2, '⛔ нэг дараалал: 1-р (дуудлага, 4%×1) + 2-р (ердийн, 2%×1.5) + 3-р (ердийн, 2%×2) = 11%');
+  RULES({ from: '2026-10', late_pct: 4, reg_late_pct: 0, late_step_pct: 50, cap_pct: 100 });
+  const ex0 = PX(MIX);
+  eq([ex0.penaltyPct, ex0.mult['2026-10-12']], [4, 1], '⛔ торгогддоггүй (хувь 0) ердийн хоцролт дарааллыг ӨСГӨХГҮЙ — дуудлагын хоцролт ×1 хэвээр');
+  ok(ex0.mult['2026-10-13'] === undefined, 'нэг дараалал: торгогддоггүй хоцролтод үржвэр байхгүй');
+  // Торгогддоггүй хоцролт ЭХЭЛЖ болсон ч дараагийн торгогдох хоцролтыг үнэтэй болгохгүй
+  put([ci('2026-10-13', '09:30')], []);
+  const exE = PX([rec('2026-10-12', '09:40'), rec('2026-10-13', '10:00')]);   // 12: ердийн (хувь 0) · 13: дуудлагад 30м
+  eq([exE.disc.regLateN, exE.disc.lateN, exE.penaltyPct, exE.mult['2026-10-13']], [1, 1, 4, 1], '⛔ нэг дараалал: өмнө нь торгогддоггүй (хувь 0) хоцролт болсон ч дараагийн торгогдох хоцролт ×1 (дарааллыг өсгөхгүй)');
+
+  // ── ④ Тасалсан, дуудлагад ирээгүй ӨСӨХГҮЙ ──
+  put([ci('2026-10-12', '09:30'), ci('2026-10-13', '09:30')], [mk('2026-10-08', 'absent'), mk('2026-10-09', 'absent'), mk('2026-10-07', 'absent')]);
+  RULES({ from: '2026-10', absent_pct: 5, noshow_pct: 7, late_step_pct: 100, cap_pct: 100 });
+  eq(PX([]).penaltyPct, 3 * 5 + 2 * 7, '⛔ өсөлт: тасалсан (3×5%) ба дуудлагад ирээгүй (2×7%) ӨСӨХГҮЙ — зөвхөн хоцролт өснө');
+
+  // ── ⑤ Дэлгэц, дүрмийн текст, карт ──
+  put([], []);
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 50, cap_pct: 100 });
+  const exv = PX(L4);
+  const det = run(`attDisciplineDetailHtml(${JSON.stringify(Object.assign({}, exv, { cfg: run('payRulesCfg()') }))})`);
+  ok(/×1\.5/.test(det) && /×2<|×2 /.test(det) && /×2\.5/.test(det) && !/×1[^.\d]/.test(det.replace(/×1\.5/g, '')), 'дэлгэрэнгүй: 2-р хоцролтоос ×1.5, ×2, ×2.5 гарна (1-р хоцролтод ×1 гаргахгүй)');
+  ok(/хоцролт давтагдах тутам \+50%/.test(det), 'дэлгэрэнгүй: өсөлтийн тайлбар гарна');
+  RULES({ from: '2026-11', reg_late_pct: 2, late_step_pct: 50 });
+  const detOff = run(`attDisciplineDetailHtml(${JSON.stringify(Object.assign({}, PX(L4), { cfg: run('payRulesCfg()') }))})`);
+  ok(!/×1\.5|×2/.test(detOff), '⛔ дэлгэрэнгүй: торгууль идэвхгүй (хэзээнээс хойно) үед үржвэр ХАРУУЛАХГҮЙ');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 50 });
+  ok(/хоцролт давтагдах тутам \+50%-аар өснө \(сарын 2-р хоцролт ×1\.5, 3-р ×2 …\)/.test(run('payRulesText()')), 'дүрмийн текст: ажилтанд өсөлт ИЛ тайлбарлагдана (мэдэхгүй хүнийг торгохгүй)');
+  RULES({ from: '2026-10', reg_late_pct: 2, late_step_pct: 0 });
+  ok(!/давтагдах тутам/.test(run('payRulesText()')), 'дүрмийн текст: өсөлтгүй бол тайлбар гарахгүй');
+  RULES({ from: '2026-10', absent_pct: 5, late_step_pct: 50 });
+  ok(!/давтагдах тутам/.test(run('payRulesText()')), 'дүрмийн текст: хоцролтын хувьгүй бол өсөлтийн тайлбар гарахгүй');
+  st.isCEO = true;
+  ok(/id="pr-step"/.test(run('payRulesCardHtml()')), 'дүрмийн карт: өсөлтийн талбар');
+  ok(/data-aci-void|pr-step/.test(appSrc) && /step: v\('pr-step'\)/.test(appSrc), 'scan: өсөлт хадгалагдана');
+  // Хоцролт өссөн сарын цалин: карт дээр торгууль ба үржвэр
+  {
+    const TEAM_ = run('TEAM'), tsave = TEAM_.slice(); TEAM_.length = 0;
+    TEAM_.push({ name: 'А.Ажилтан', phone: K, status: 'идэвхтэй', role: 'Нярав', worker_type: 'permanent' });
+    const keep = { sal: st.salaries, sp: st.salaryPayments, sd: st.salaryDeduct, me: st.me, mpm: st.myPayMonth, mpr: st.myPayRecs, sl: st._salLoaded, ao: st.appOrders };
+    const weekdays = []; for (let d = 1; d <= 30; d++) { const w = new Date(Date.UTC(2026, 8, d)).getUTCDay(); if (w && w < 6) weekdays.push('2026-09-' + String(d).padStart(2, '0')); }
+    // 9 сар: 3 ердийн хоцролт (09-02 09:30, 09-03 09:30, 09-04 09:30); бусад өдөр 09:00 → 18:00 (8ц цэвэр)
+    const late = new Set(['2026-09-02', '2026-09-03', '2026-09-04']);
+    const recs9 = [].concat(...weekdays.map(d => [{ member_key: K, member_name: 'x', kind: 'in', ts: ts(d, late.has(d) ? '09:30' : '09:00'), day: d, source: 'scan' },
+      { member_key: K, member_name: 'x', kind: 'out', ts: ts(d, late.has(d) ? '18:30' : '18:00'), day: d, source: 'scan' }]));
+    st.me = K; st._salLoaded = true; st.salaries = { [K]: 2000000 }; st.salaryDeduct = { [K]: false }; st.salaryPayments = []; st.appOrders = [];
+    st.myPayMonth = '2026-09'; st.myPayRecs = { '2026-09': recs9 };
+    RULES({ from: '2026-09', reg_late_pct: 2, late_step_pct: 50, cap_pct: 100 });
+    put([], []);
+    const card = run(`myPayCardHtml(findMember('${K}'))`);
+    ok(/⚠ Торгууль · ажлын цагаас хоцорсон 3/.test(card), 'карт: «⚠ Торгууль · ажлын цагаас хоцорсон 3»');
+    ok(/−180,000/.test(card), '⛔ карт: 2%×(1+1.5+2) = 9% × 2,000,000 = 180,000₮ хасагдана (тэгш 6% = 120,000₮ БИШ)');
+    ok(/×1\.5/.test(card) && /×2/.test(card), 'карт: хоцролт бүрийн үржвэр ИЛ харагдана');
+    RULES({ from: '2026-09', reg_late_pct: 2, late_step_pct: 0, cap_pct: 100 });
+    ok(/−120,000/.test(run(`myPayCardHtml(findMember('${K}'))`)), 'карт: өсөлтгүй (0) бол тэгш 6% = 120,000₮');
+    TEAM_.length = 0; tsave.forEach(x => TEAM_.push(x));
+    Object.assign(st, { salaries: keep.sal, salaryPayments: keep.sp, salaryDeduct: keep.sd, me: keep.me, myPayMonth: keep.mpm, myPayRecs: keep.mpr, _salLoaded: keep.sl, appOrders: keep.ao });
+  }
+  ok(/function attPenaltyBreakdown/.test(appSrc) && /1 \+ nth \* step/.test(appSrc), 'scan: өсөлтийн томьёо = 1 + (n−1) × өсөлт');
+
+  st.attMarks = saved.m; st.attMarksErr = saved.e; st.attCallins = saved.c; st.attCallinsErr = saved.ce; st.payrollCfg = saved.cfg; st.appConfig = saved.ac; st.workStart = saved.ws; st.isCEO = saved.ceo;
 });

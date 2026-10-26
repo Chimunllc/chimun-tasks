@@ -13325,7 +13325,23 @@ function attHandleScan(data) {
     if (saved && kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);
   });
 }
-// «Маргааш хэдэн цагт ирэх вэ?» — явах скан хийсний дараа гарах цаг сонгогч (app_config['next_arrival']).
+/* «Маргааш хэдэн цагт ирэх вэ?» гэж бүртгэгч СОНГОСОН цаг = ТҮҮХТЭЙ ДУУДЛАГА (`att_callins`, газаргүй). Алтансүхийн даалгавар: «цаг зааж
+   дууддаг, бүртгэж байгаа хүн сонгож оруулна» — яг энэ урсгал. `app_config['next_arrival']` нь хүн бүрд НЭГ мөр, маргааш дарагддаг тул
+   «яг хэдэн цагт ирэх ёстой байсан» нь хожим нотлогдохгүй, торгууль бодох боломжгүй.
+   ⛔ Амралтын өдөр (Бямба/Ням)-д дуудлага ҮҮСГЭХГҮЙ — Баасан гарагийн оройн ердийн сонголт Бямбад «ирээгүй» торгууль болохоос сэргийлнэ.
+   ⚠ Эрхгүй/ачаалагдаагүй бол чимээгүй алгасна (`next_arrival` хэвээр хадгалагдсан). Хуучин газартай дуудлагын ГАЗРЫГ дарахгүй.
+   «Цаг тодорхойгүй» = ердийн (газаргүй) дуудлагыг болино; газартай, тусгайлан дуудсаныг ХӨНДӨХГҮЙ. */
+async function attNextArrivalToCallin(phone, day, time) {
+  try {
+    if (!canEditAttendance() || !attCallinsReady()) return;
+    const prev = attCallinOn(phone, day);
+    if (time) {
+      if (!isWeekdayIso(day) || (prev && prev.at_time === time)) return;
+      await attCallinSet(phone, day, time, prev ? (prev.place || '') : '', { silent: true });
+    } else if (prev && !prev.place) await attCallinVoid(phone, day, { silent: true });
+  } catch (e) { /* дуудлага хадгалагдаагүй ч «маргааш ирэх цаг» (next_arrival) хэвээр — торгууль л тооцогдохгүй */ }
+}
+// «Маргааш хэдэн цагт ирэх вэ?» — явах скан хийсний дараа гарах цаг сонгогч (app_config['next_arrival'] + att_callins).
 function openNextArrivalPicker(phone, name) {
   const tomorrow = addDays(todayStr(), 1);
   const cur = nextArrivalFor(phone, tomorrow) || workStartFor(phone) || '09:00';
@@ -13350,6 +13366,7 @@ function openNextArrivalPicker(phone, name) {
     state.nextArrival = (state.nextArrival && typeof state.nextArrival === 'object') ? state.nextArrival : {};
     if (time) state.nextArrival[phone] = { day: tomorrow, time }; else delete state.nextArrival[phone];
     close();
+    attNextArrivalToCallin(phone, tomorrow, time);   // торгууль түүнээс хоцролтыг хэмжинэ — `next_arrival` өдөр бүр дарагддаг тул түүх үлдэхгүй
     try { await saveAppConfig('next_arrival', state.nextArrival); showToast(time ? `${name} → маргааш ${time}` : `${name} — цаг тодорхойгүй`, 'success', 1800); }
     catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
   };
@@ -13580,6 +13597,7 @@ async function loadAttMarks() {
 // Цалин/ирцийн дэлгэц бүр render хийхдээ дуудна. Унавал `attMarksRetryAt`-аас хойш л дахин оролдоно (render давталтгүй).
 function ensureAttMarks() {
   ensureAttCallins();   // дуудлага (торгуулийн эх сурвалж) ижил дэлгэцүүдэд хэрэгтэй — тусдаа төлөвтэй
+  ensureWorkStart();    // ердийн ажлын цагаас хоцролт — хүн бүрийн «ажил эхлэх цаг»
   if (state._attMarksBusy) return;
   const retry = state.attMarksErr && Date.now() >= (state.attMarksRetryAt || 0);
   if (state.attMarks !== undefined && !retry) return;
@@ -13699,14 +13717,15 @@ function attMarkDetailHtml(mn) {
 }
 /* ─── АЖИЛД ДУУДАХ + ТОРГУУЛЬ + ЗАХИАЛГЫН БОНУС (2026-10-26, Алтансүхийн даалгавар + CEO) ───────────
    «Шаардлагатай үед хаана хэдэн цагаас гэж цаг зааж дууддаг; хоцорсон/ирээгүй/тасалсан үед хариуцлага».
-   ⛔ ТОРГУУЛЬ ЗӨВХӨН ДУУДЛАГААС: хоцролтыг ЗӨВХӨН цаг зааж дуудсан өдөр хэмжинэ. Цаг заагаагүй өдөр хоцролт
-     хэмжигддэггүй (талбарын, уян цагийн хүн) тул тавибал хүн тус бүрд өөрөөр хэрэгжиж шударга бус болно;
-     гэрээний загварт ажлын цаг 09:00–18:00 гэж бичигдсэн тул хүн бүрийн цагаар торгох нь гэрээтэй зөрчилдөнө.
-     Дуудлага = менежерийн тодорхой үүрэг даалгавар тул энэ хоёр асуудал үүсэхгүй.
-   Гурван тохиолдол (`attDiscipline`, ГАНЦ эх сурвалж):
-     absent — «Тасалсан» тэмдэглэгээтэй, тэр өдөр ирц ОГТ байхгүй
-     noshow — дуудлагатай өдөр өнгөрсөн, ирц байхгүй, Амралт/Чөлөө тэмдэглэгээгүй
-     late   — дуудлагатай өдөр ирсэн, эхний ирсэн цаг дуудсан цаг + чөлөөнөөс хойш
+   ⛔ ХОЦРОЛТ = ХҮНИЙ «АЖИЛ ЭХЛЭХ ЦАГ» (CEO тохируулдаг, `work_start`) БОЛОН ДУУДЛАГА. Цаг тохируулаагүй хүн (талбарын, уян
+     цагийн) ЗОРИУДААР хэмжигдэхгүй — «Ажил эхлэх цаг» цонхонд ХООСОН орхино. Тэр өдөр дуудлага байвал ДУУДЛАГЫН цаг ялна
+     (өөр цагт дуудсан бол ердийн цагаар хоцорсонд тооцохгүй). Ердийн цагаар зөвхөн АЖЛЫН ӨДӨР (Даваа–Баасан) хэмжинэ.
+     (2026-10-26 CEO: «ердийн ажлын цагаас хоцорсон ч торгоно», «дотоод журмаар суутгаж болдог».)
+   Таван тохиолдол (`attDiscipline`, ГАНЦ эх сурвалж):
+     absent  — «Тасалсан» тэмдэглэгээтэй, тэр өдөр ирц ОГТ байхгүй
+     noshow  — дуудлагатай өдөр өнгөрсөн, ирц байхгүй, Амралт/Чөлөө тэмдэглэгээгүй
+     late    — дуудлагатай өдөр ирсэн, эхний ирсэн цаг дуудсан цаг + чөлөөнөөс хойш
+     lateReg — дуудлагагүй ажлын өдөр, «ажил эхлэх цаг» тохируулсан хүн, эхний ирсэн цаг түүнээс + чөлөөнөөс хойш
    ⛔ ФАКТ ТЭМДЭГЛЭГЭЭГ ДАРНА: тэр өдөр ирц байвал «Тасалсан» тэмдэглэгээ тоологдохгүй. Амралт/Чөлөө = зөвшөөрөгдсөн →
      ирээгүйд тооцохгүй. Тасалсан тэмдэглэгээ дуудлагатай өдөр давхцвал ЗӨВХӨН нэг удаа (absent) — давхар торгохгүй.
    ⛔ Торгуулийн хувь `app_config['pay_rules']` (зөвхөн CEO бичнэ, RLS) — кодод БИЧИХГҮЙ. `from` (хэзээнээс) ТАВИГДААГҮЙ
@@ -13723,10 +13742,17 @@ function payRulesCfg() {
   const g = Number(c.grace_min);
   return {
     from: /^\d{4}-\d{2}$/.test(String(c.from || '')) ? String(c.from) : '',
-    orderPct: pct(c.order_pct), absentPct: pct(c.absent_pct), latePct: pct(c.late_pct), noshowPct: pct(c.noshow_pct),
+    orderPct: pct(c.order_pct), absentPct: pct(c.absent_pct), latePct: pct(c.late_pct), noshowPct: pct(c.noshow_pct), regLatePct: pct(c.reg_late_pct),
     capPct: pct(c.cap_pct) || PAY_RULES_DEFAULT.capPct,
     graceMin: (c.grace_min !== undefined && c.grace_min !== null && c.grace_min !== '' && g >= 0 && g <= 120) ? g : PAY_RULES_DEFAULT.graceMin,
   };
+}
+function workStartReady() { return !!(state.workStart && typeof state.workStart === 'object'); }
+// Ердийн цагаас хоцролт бодоход `app_config['work_start']` заавал хэрэгтэй — ачаалагдаагүй бол хоцролт ТООЛОГДОХГҮЙ (ready:false)
+function ensureWorkStart() {
+  if (state.workStart !== undefined) return;
+  state.workStart = null;
+  loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; if (typeof render === 'function') render(); });
 }
 function payRulesEditable() { return !!state.isCEO; }   // db/rls.sql: pay_rules зөвхөн CEO (scan-тест тулгана)
 function payRulesActive(ym) { const c = payRulesCfg(); return !!c.from && String(ym) >= c.from; }
@@ -13770,7 +13796,7 @@ function attCallinValidate(p, today) {
   if (monthLocked(day.slice(0, 7))) return { ok: false, err: `🔒 ${day.slice(0, 7)} сар хаагдсан — дуудлага өөрчлөх боломжгүй.` };
   return { ok: true };
 }
-async function attCallinSet(key, day, time, place) {
+async function attCallinSet(key, day, time, place, opts) {
   const k = attMarkKey(key);
   if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
   if (!attCallinsReady()) throw new Error('Дуудлагын жагсаалт ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу');
@@ -13791,11 +13817,11 @@ async function attCallinSet(key, day, time, place) {
   const row = (Array.isArray(rows) && rows[0]) || Object.assign({ called_by: state.me }, body);
   state.attCallins = Object.assign({}, attCallinMap(), { [row.id]: row });
   // Дуудагдсан хүнд мэдэгдэнэ (өөртөө илгээхгүй) — мэдээгүй бол ирэхгүй, торгууль шударга биш болно
-  pushBroadcast(k, { kind: 'attendance', title: '📞 Ажилд дуудлаа', body: `${String(day).slice(5)} · ${time}${body.place ? ' · ' + body.place : ''}`, url: './' });
+  if (!(opts && opts.silent)) pushBroadcast(k, { kind: 'attendance', title: '📞 Ажилд дуудлаа', body: `${String(day).slice(5)} · ${time}${body.place ? ' · ' + body.place : ''}`, url: './' });
   return row;
 }
 // Болих = мөр УСТАХГҮЙ (status='void'). Өнгөрсөн өдрийнхийг upsert-ээр БИШ PATCH-аар — DB өнгөрсөн өдрөөр шинээр үүсгэхийг хаадаг.
-async function attCallinVoid(key, day) {
+async function attCallinVoid(key, day, opts) {
   const k = attMarkKey(key), prev = attCallinOn(k, day);
   if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
   if (!attCallinsReady()) throw new Error('Дуудлагын жагсаалт ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу');
@@ -13813,7 +13839,7 @@ async function attCallinVoid(key, day) {
   const rows = await r.json().catch(() => []);
   const row = (Array.isArray(rows) && rows[0]) || Object.assign({}, prev, { status: 'void' });
   state.attCallins = Object.assign({}, attCallinMap(), { [row.id]: row });
-  pushBroadcast(k, { kind: 'attendance', title: '📞 Дуудлага цуцлагдлаа', body: `${String(day).slice(5)} · ${prev.at_time}`, url: './' });
+  if (!(opts && opts.silent)) pushBroadcast(k, { kind: 'attendance', title: '📞 Дуудлага цуцлагдлаа', body: `${String(day).slice(5)} · ${prev.at_time}`, url: './' });
   return row;
 }
 // «ЦЦ:ММ» → минут
@@ -13822,7 +13848,7 @@ function _hmMin(hm) { const p = String(hm || '').split(':'); return (Number(p[0]
 // Хувь/хэзээнээс-ээс ХАМААРАХГҮЙ (тоолол) — дэлгэц торгууль идэвхгүй байхад ч «юу болсон»-ыг харуулна.
 function attDiscipline(key, ym, recs, today, graceMin) {
   const k = attMarkKey(key); today = today || todayStr();
-  const out = { events: [], lateN: 0, absentN: 0, noshowN: 0, lateMins: 0 };
+  const out = { events: [], lateN: 0, absentN: 0, noshowN: 0, lateMins: 0, regLateN: 0, regLateMins: 0 };
   if (!k) return out;
   const grace = (graceMin === undefined || graceMin === null) ? payRulesCfg().graceMin : Number(graceMin);
   const firstIn = {}, has = {};
@@ -13850,7 +13876,19 @@ function attDiscipline(key, ym, recs, today, graceMin) {
       out.events.push({ day: d, kind: 'noshow', time: call.at_time });       // Амралт/Чөлөө = зөвшөөрөгдсөн
     }
   });
-  out.events.forEach(e => { if (e.kind === 'late') { out.lateN++; out.lateMins += e.mins; } else if (e.kind === 'absent') out.absentN++; else out.noshowN++; });
+  // ЕРДИЙН ажлын цагаас хоцролт: «ажил эхлэх цаг» тохируулсан хүнд, ажлын өдөр, ДУУДЛАГАГҮЙ өдөр (дуудлагатайг дээр хэмжсэн — ДУУДЛАГЫН цаг ялна)
+  const start = workStartFor(k);
+  if (start) Object.keys(firstIn).forEach(d => {
+    if (attCallinOn(k, d) || !isWeekdayIso(d)) return;
+    const diff = _hmMin(hhmmUB(firstIn[d])) - _hmMin(start);
+    if (diff > grace) out.events.push({ day: d, kind: 'lateReg', mins: diff, time: start, came: hhmmUB(firstIn[d]) });
+  });
+  out.events.sort((a, b) => String(a.day).localeCompare(String(b.day)));
+  out.events.forEach(e => {
+    if (e.kind === 'late') { out.lateN++; out.lateMins += e.mins; }
+    else if (e.kind === 'lateReg') { out.regLateN++; out.regLateMins += e.mins; }
+    else if (e.kind === 'absent') out.absentN++; else out.noshowN++;
+  });
   return out;
 }
 // Өөрийн үүсгэсэн захиалгын төлөгдсөн түрээсийн орлого (тэр сард). ЦЭВЭР-д ойр: state.appOrders уншина.
@@ -13873,10 +13911,10 @@ function payExtras(key, ym, recs, base) {
   const disc = dataOk ? attDiscipline(key, ym, recs, undefined, cfg.graceMin) : null;
   const ex = { active, ready: true, disc, penalty: 0, penaltyPct: 0, orderBonus: 0, orderN: 0, cfg };
   if (!active) return ex;
-  if (cfg.absentPct > 0 || cfg.latePct > 0 || cfg.noshowPct > 0) {
-    if (!disc) ex.ready = false;
+  if (cfg.absentPct > 0 || cfg.latePct > 0 || cfg.noshowPct > 0 || cfg.regLatePct > 0) {
+    if (!disc || (cfg.regLatePct > 0 && !workStartReady())) ex.ready = false;   // «ажил эхлэх цаг» ачаалагдаагүй бол ердийн хоцролт тоологдохгүй — чимээгүй 0 БИШ
     else {
-      const raw = disc.absentN * cfg.absentPct + disc.noshowN * cfg.noshowPct + disc.lateN * cfg.latePct;
+      const raw = disc.absentN * cfg.absentPct + disc.noshowN * cfg.noshowPct + disc.lateN * cfg.latePct + disc.regLateN * cfg.regLatePct;
       ex.penaltyPct = Math.min(cfg.capPct, raw);
       ex.penalty = Math.round((Number(base) || 0) * ex.penaltyPct / 100);
     }
@@ -13892,11 +13930,13 @@ function attDisciplineLine(e) {
   const d = escapeHtml(String(e.day).slice(5));
   if (e.kind === 'absent') return `${d} · 🚫 Тасалсан`;
   if (e.kind === 'noshow') return `${d} · 📞 ${escapeHtml(e.time)} дуудлагад ирээгүй`;
+  if (e.kind === 'lateReg') return `${d} · ⏰ ${escapeHtml(e.time)} ажил эхлэх цаг, ${escapeHtml(e.came)} ирсэн (${e.mins}м хоцорсон)`;
   return `${d} · ⏰ ${escapeHtml(e.time)} дуудсан, ${escapeHtml(e.came)} ирсэн (${e.mins}м хоцорсон)`;
 }
 function attDisciplineSummary(disc) {
   if (!disc) return '';
-  return [disc.absentN ? `тасалсан ${disc.absentN}` : '', disc.noshowN ? `дуудлагад ирээгүй ${disc.noshowN}` : '', disc.lateN ? `хоцорсон ${disc.lateN}` : ''].filter(Boolean).join(' · ');
+  return [disc.absentN ? `тасалсан ${disc.absentN}` : '', disc.noshowN ? `дуудлагад ирээгүй ${disc.noshowN}` : '', disc.lateN ? `хоцорсон ${disc.lateN}` : '',
+    disc.regLateN ? `ажлын цагаас хоцорсон ${disc.regLateN}` : ''].filter(Boolean).join(' · ');
 }
 function payRulesText(cfg) {
   cfg = cfg || payRulesCfg();
@@ -13905,7 +13945,8 @@ function payRulesText(cfg) {
   if (cfg.absentPct) bits.push(`тасалсан өдөр бүр суурь цалингийн ${cfg.absentPct}% торгууль`);
   if (cfg.noshowPct) bits.push(`дуудсан цагтаа ирээгүй бол ${cfg.noshowPct}%`);
   if (cfg.latePct) bits.push(`дуудсан цагаас ${cfg.graceMin}м-ээс хэтэрч хоцорвол ${cfg.latePct}%`);
-  const pen = cfg.absentPct || cfg.noshowPct || cfg.latePct;
+  if (cfg.regLatePct) bits.push(`ажил эхлэх цагаас (тохируулсан хүнд) ${cfg.graceMin}м-ээс хэтэрч хоцорвол ${cfg.regLatePct}%`);
+  const pen = cfg.absentPct || cfg.noshowPct || cfg.latePct || cfg.regLatePct;
   return bits.length ? `${cfg.from}-аас: ${bits.join(' · ')}${pen ? ` (сард дээд тал ${cfg.capPct}%)` : ''}.` : '';
 }
 // Сахилгын дэлгэрэнгүй (өдөр бүр) + тайлбар. Торгууль идэвхгүй үед ч «юу болсон»-ыг харуулна.
@@ -14038,27 +14079,34 @@ function payRulesCardHtml() {
   const f = (id, label, val, hint, ro) => `<label class="pr-f"><span>${label}</span><input type="number" step="0.1" min="0" max="${ro || 100}" id="${id}" value="${val}" class="ui-raw pb-rate" placeholder="0"><small>${hint}</small></label>`;
   return `<details class="pb-rates pb-rules" id="pr-det"${state.prOpen ? ' open' : ''}><summary>⚙️ Шагнал ба торгуулийн дүрэм <span class="pb-rules-st">${st}</span></summary>
     <div class="pr-in">
-      <div class="pr-note">Бүх хувь 0 эсвэл «хэзээнээс» хоосон бол цалинд ЮУ Ч өөрчлөгдөхгүй. «Хэзээнээс» сараас ӨМНӨХ цалин хөндөгдөхгүй. Торгууль зөвхөн ажилд ДУУДСАН өдөр болон «Тасалсан» тэмдэглэгээнээс; цаг заагаагүй өдөр хоцролт хэмжигдэхгүй.</div>
+      <div class="pr-note">Бүх хувь 0 эсвэл «хэзээнээс» хоосон бол цалинд ЮУ Ч өөрчлөгдөхгүй. «Хэзээнээс» сараас ӨМНӨХ цалин хөндөгдөхгүй. Торгууль: «Тасалсан» тэмдэглэгээ, ажилд ДУУДСАН өдрийн ирээгүй/хоцролт, мөн «ажил эхлэх цаг» тохируулсан хүний ердийн хоцролт. Цаг тохируулаагүй (талбар, уян цаг) хүн хоцролтоор хэмжигдэхгүй.</div>
       <label class="pr-f"><span>Хэзээнээс (сар)</span><input type="month" id="pr-from" value="${escapeHtml(cfg.from || nextMonthStr(todayStr().slice(0, 7)))}" min="${escapeHtml(todayStr().slice(0, 7))}" class="ui-raw pay-ym"><small>Энэ сараас эхлэн хэрэгжинэ</small></label>
       ${f('pr-order', '🧾 Захиалгын бонус, %', cfg.orderPct || '', 'өөрийн үүсгэсэн захиалгын ТӨЛӨГДСӨН түрээсийн орлогоос (барьцаагүй)')}
       ${f('pr-absent', '🚫 Тасалсан өдөр тутамд, %', cfg.absentPct || '', 'суурь цалингийн')}
       ${f('pr-noshow', '📞 Дуудсан цагтаа ирээгүй, %', cfg.noshowPct || '', 'суурь цалингийн, удаа тутамд')}
       ${f('pr-late', '⏰ Дуудсан цагаас хоцорсон, %', cfg.latePct || '', 'суурь цалингийн, удаа тутамд')}
+      ${f('pr-reglate', '🕘 Ажил эхлэх цагаас хоцорсон, %', cfg.regLatePct || '', 'суурь цалингийн, удаа тутамд — «Ажил эхлэх цаг» тохируулсан хүнд л, ажлын өдөр')}
+      <div class="pr-ws">🕘 Ажил эхлэх цаг тохируулсан: <b>${workStartCountText()}</b> <button class="btn" id="pr-workstart" type="button">Тохируулах</button></div>
       ${f('pr-cap', 'Торгуулийн сарын дээд хязгаар, %', cfg.capPct, 'суурь цалингийн — нийлбэр үүнээс хэтрэхгүй')}
       ${f('pr-grace', 'Хоцролтын чөлөө, мин', cfg.graceMin, 'энэ хүртэл хоцролт тоологдохгүй', 120)}
       <button class="btn btn-primary" id="pr-save">Хадгалах</button>
     </div></details>`;
 }
+function workStartCountText() {
+  if (!workStartReady()) return 'ачаалж байна…';
+  const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m));
+  return `${staff.filter(m => workStartFor(personKey(m))).length} / ${staff.length} үндсэн ажилтан`;
+}
 // Хадгалахын өмнө ЦЭВЭР шалгалт: { ok, cfg } | { ok:false, err }
 function payRulesValidate(raw, today) {
   const num = (v) => { const s = String(v === undefined || v === null ? '' : v).trim(); return s === '' ? 0 : Number(s); };
-  const o = { order_pct: num(raw.order), absent_pct: num(raw.absent), noshow_pct: num(raw.noshow), late_pct: num(raw.late), cap_pct: num(raw.cap), grace_min: num(raw.grace) };
-  for (const k of ['order_pct', 'absent_pct', 'noshow_pct', 'late_pct', 'cap_pct']) {
+  const o = { order_pct: num(raw.order), absent_pct: num(raw.absent), noshow_pct: num(raw.noshow), late_pct: num(raw.late), reg_late_pct: num(raw.reglate), cap_pct: num(raw.cap), grace_min: num(raw.grace) };
+  for (const k of ['order_pct', 'absent_pct', 'noshow_pct', 'late_pct', 'reg_late_pct', 'cap_pct']) {
     if (!isFinite(o[k]) || o[k] < 0 || o[k] > 100) return { ok: false, err: 'Хувь 0–100 хооронд байна' };
   }
   if (!isFinite(o.grace_min) || o.grace_min < 0 || o.grace_min > 120) return { ok: false, err: 'Хоцролтын чөлөө 0–120 минут' };
   const from = String(raw.from || '');
-  const any = o.order_pct > 0 || o.absent_pct > 0 || o.noshow_pct > 0 || o.late_pct > 0;
+  const any = o.order_pct > 0 || o.absent_pct > 0 || o.noshow_pct > 0 || o.late_pct > 0 || o.reg_late_pct > 0;
   if (any && !/^\d{4}-\d{2}$/.test(from)) return { ok: false, err: 'Хувь тавивал «хэзээнээс» сарыг заавал сонгоно' };
   // ⛔ Өнгөрсөн сараас эхлүүлэхгүй — бодогдсон/олгогдсон цалин чимээгүй өөрчлөгдөнө
   if (any && from < String(today || todayStr()).slice(0, 7)) return { ok: false, err: 'Өнгөрсөн сараас эхлүүлэхгүй — олгосон цалин өөрчлөгдөнө. Энэ сар эсвэл дараа сарыг сонгоно уу' };
@@ -14067,11 +14115,11 @@ function payRulesValidate(raw, today) {
 async function payRulesSave() {
   if (!payRulesEditable()) { showToast('Зөвхөн CEO өөрчилнө', 'warn', 3000); return; }
   const v = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
-  const chk = payRulesValidate({ from: v('pr-from'), order: v('pr-order'), absent: v('pr-absent'), noshow: v('pr-noshow'), late: v('pr-late'), cap: v('pr-cap'), grace: v('pr-grace') });
+  const chk = payRulesValidate({ from: v('pr-from'), order: v('pr-order'), absent: v('pr-absent'), noshow: v('pr-noshow'), late: v('pr-late'), reglate: v('pr-reglate'), cap: v('pr-cap'), grace: v('pr-grace') });
   if (!chk.ok) { showToast('⚠ ' + chk.err, 'warn', 4500); return; }
   const next = { ...chk.cfg };
-  const preview = payRulesText({ from: next.from, orderPct: next.order_pct, absentPct: next.absent_pct, noshowPct: next.noshow_pct, latePct: next.late_pct, capPct: next.cap_pct || PAY_RULES_DEFAULT.capPct, graceMin: next.grace_min }) || 'Бүх дүрэм унтраалттай болно.';
-  if (!(await showConfirm(`${preview}\n\nЭнэ нь ${next.from || '—'}-аас хойших цалинд нөлөөлнө. Өмнөх сарын цалин өөрчлөгдөхгүй. Цалингаас торгох нь хуулиар хязгаартай — хуульчаасаа асуусан эсэхээ шалгана уу.`, { title: 'Шагнал ба торгуулийн дүрэм', okText: 'Хадгалах' }))) return;
+  const preview = payRulesText({ from: next.from, orderPct: next.order_pct, absentPct: next.absent_pct, noshowPct: next.noshow_pct, latePct: next.late_pct, regLatePct: next.reg_late_pct, capPct: next.cap_pct || PAY_RULES_DEFAULT.capPct, graceMin: next.grace_min }) || 'Бүх дүрэм унтраалттай болно.';
+  if (!(await showConfirm(`${preview}\n\nЭнэ нь ${next.from || '—'}-аас хойших цалинд нөлөөлнө. Өмнөх сарын цалин өөрчлөгдөхгүй. Дотоод журамд тусгасан, ажилтнууддаа мэдэгдсэн эсэхээ шалгана уу.`, { title: 'Шагнал ба торгуулийн дүрэм', okText: 'Хадгалах' }))) return;
   try {
     await saveAppConfig('pay_rules', next);
     state.appConfig = state.appConfig || {}; state.appConfig.pay_rules = next;
@@ -15393,6 +15441,7 @@ function openWorkStartModal() {
   modal.className = 'modal-bg'; modal.id = 'workstart-modal';
   modal.innerHTML = `<div class="modal" style="max-width:440px;max-height:88vh;overflow:auto;">
     <h2>⏰ Ажил эхлэх цаг</h2>
+    <button class="btn ws-fill" id="ws-fill" type="button">Хоосныг 09:00-ээр бөглөх</button>
     <p class="dmg-hint">Тухайн цагаас (${_LATE_GRACE_MIN} мин чөлөөтэй) хойш QR уншуулбал «хоцорсон» гэж тоологдоно. Талбар/уян цагийн ажилтныг ХООСОН орхи — хэмжигдэхгүй.</p>
     <div class="ws-list">${staff.map(m => { const k = personKey(m); return `<div class="ws-row"><span class="ws-name">${escapeHtml(m.name || k)}<small>${escapeHtml(m.role || '')}</small></span><input type="time" class="ui-raw ws-inp" data-ws-key="${escapeHtml(k)}" value="${escapeHtml(ws[k] || '')}"></div>`; }).join('')}</div>
     <div class="modal-actions" style="margin-top:14px;">
@@ -15404,6 +15453,8 @@ function openWorkStartModal() {
   const close = () => modal.remove();
   modal.querySelector('#ws-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  // Бүгдэд нэг цагийг гараар 20 удаа бичихгүйн тулд. Талбар/уян цагийн хүнийг дараа нь ХООСОЛНО (хоосон = хэмжигдэхгүй).
+  modal.querySelector('#ws-fill').onclick = () => { modal.querySelectorAll('.ws-inp').forEach(inp => { if (!(inp.value || '').trim()) inp.value = '09:00'; }); };
   modal.querySelector('#ws-save').onclick = async (e) => {
     const btn = e.currentTarget; btn.disabled = true;
     const out = {};
@@ -20318,6 +20369,7 @@ function attachSalaryHandlers() {
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
   document.getElementById('pr-save')?.addEventListener('click', payRulesSave);
+  document.getElementById('pr-workstart')?.addEventListener('click', openWorkStartModal);
   document.getElementById('pr-det')?.addEventListener('toggle', (e) => { state.prOpen = e.target.open; });   // render() дахин зурахад хаагдахгүй
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
   document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); showToast('Шинэчилж байна…', 'info', 1200); });
@@ -25129,11 +25181,12 @@ const _LATE_GRACE_MIN = 5;   // 5 минут хүртэлх зөрүү = цаг�
 // Явахдаа сонгосон «маргааш ирэх цаг» (app_config['next_arrival'] = {phone:{day,time}}). Тухайн өдрийнх л хүчинтэй.
 function nextArrivalFor(key, day) { const n = state.nextArrival; const e = n && n[key]; return (e && e.day === day) ? e.time : null; }
 // Тухайн өдрийн эхний ирсэн цаг хоцорсон эсэх — хоцорсон минут (0 = цагтаа/хэмжигдэхгүй).
-// ЗӨВХӨН урьдчилан зарласан «маргааш ирэх цаг» (next_arrival, тухайн өдрийнх)-аар хэмжинэ —
-// тогтмол work_start-ыг тухайн ӨДӨР РЕТРОАКТИВ хэрэглэж «хоцорсон» болгохгүй (цаг сонголт = ирээдүйн ирэх цаг).
+// Дуудлага (att_callins) > явахдаа сонгосон «маргааш ирэх цаг» > хүний «ажил эхлэх цаг» (ажлын өдөр, ТОХИРУУЛСАН хүнд л).
+// ⚠ Өмнө нь work_start-ыг ретроактив хэрэглэхгүй гэж орхидог байсан; торгуулийн дүрэм (`pay_rules.reg_late_pct`) түүгээр хэмждэг болсон тул
+//   шошго мөн ИЖИЛ байх ёстой — эс бөгөөс дэлгэц «цагтаа» гэж, цалин «хоцорсон» гэж зөрнө.
 function attLateMinutes(key, day, firstInTs) {
   const call = attCallinOn(key, day);   // менежерийн ЗААСАН дуудлага (цаг+газар) давуу; байхгүй бол явахдаа сонгосон «маргааш ирэх цаг»
-  const exp = (call && call.at_time) || nextArrivalFor(key, day); if (!exp || !firstInTs) return 0;
+  const exp = (call && call.at_time) || nextArrivalFor(key, day) || (isWeekdayIso(day) ? workStartFor(key) : null); if (!exp || !firstInTs) return 0;   // торгуулийн дүрэмтэй ИЖИЛ: ердийн цаг = ажил эхлэх цаг
   const sp = String(exp).split(':'); const expMin = (Number(sp[0]) || 0) * 60 + (Number(sp[1]) || 0);
   const hm = hhmmUB(firstInTs).split(':'); const inMin = (Number(hm[0]) || 0) * 60 + (Number(hm[1]) || 0);
   return inMin > expMin + _LATE_GRACE_MIN ? (inMin - expMin) : 0;

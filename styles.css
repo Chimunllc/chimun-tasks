@@ -7477,6 +7477,8 @@ select.no-asar-len {
 .pr-f > span { flex: 1 1 180px; color: var(--text); }
 .pr-f > small { flex-basis: 100%; font-size: var(--fs-xs); color: var(--muted); }
 .pr-ro { font-size: var(--fs-xs); line-height: 1.6; }
+.pr-ws { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); color: var(--text); }
+.ws-fill { margin-bottom: var(--space-2); }
 /* ═══ МИНИЙ ИРЦ (2026-10-09) — inline style-аас класс ═══ */
 .myatt-wrap { max-width: 520px; margin: 0 auto; padding-bottom: 26px; }
 .myatt-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: var(--space-4); margin-bottom: var(--space-3); }

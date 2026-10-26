@@ -17651,7 +17651,7 @@ async function swFetchTests() {
   ok(/stageBonus/.test(body), 'scan: бонус параметрээр дамжина');
   eq((body.match(/stagePayByPerson\(|stagePayFor\(/g) || []).length, 0,
      'scan: цалингийн тооцоо бонусыг ДОТРОО дахин бодохгүй');
-  ok(/total: d\.net \+ otPay \+ delivery \+ bonus/.test(body), 'scan: бонус нийт олгоход нэмэгдэнэ');
+  ok(/total: Math\.max\(0, d\.net \+ otPay \+ delivery \+ bonus/.test(body), 'scan: бонус нийт олгоход нэмэгдэнэ (торгууль, захиалгын бонусын хамт)');
   eq((body.match(/salaryNet\(/g) || []).length, 1, 'scan: salaryNet нэг л удаа дуудагдана');
   ok(/salaryNet\(earned,/.test(body), 'scan: суутгал ЗӨВХӨН (цагаар бодсон) суурь цалингаас бодогдоно');
   // ⛔ Цаг мэдэгдэхгүйг 0 цаг гэж үзвэл цалин тэглэгдэнэ — дуудагч бүр null дамжуулна
@@ -17676,7 +17676,7 @@ async function swFetchTests() {
   /* ⛔ БОНУС = НИЙЛБЭРЭЭС ӨМНӨХ МӨР (2026-10-05, CEO барив). Доор нь
      тэмдэглэл болгож тавибал мөрүүд нийлбэртэйгээ таарахгүй, хүн «дүн
      буруу» гэж уншина. `spRow` нь `dlvRow`-гийн дараа, нийлбэрээс өмнө. */
-  ok(/\$\{spRow\}\s*\n\s*\$\{row\('Нийт гарт очих'/.test(card), 'scan: бонус мөр нийлбэрээс ӨМНӨ');
+  ok(/\$\{spRow\}\s*\n\s*\$\{penRow\}\s*\n\s*\$\{row\('Нийт гарт очих'/.test(card), 'scan: бонус ба торгуулийн мөр нийлбэрээс ӨМНӨ');
   ok(/Дамжлагын бонус/.test(card), 'scan: бонусын мөр нэртэйгээ гарна');
   // Гарах бүртгэлгүй өдрийг НУУХГҮЙ — тэр нь илүү цаг дутуу гарах цорын ганц шалтгаан
   ok(/w\.noOut/.test(card), 'scan: гарах бүртгэлгүй өдрийг картад ил хэлнэ');
@@ -20976,7 +20976,7 @@ async function swFetchTests() {
   ok(/state\.isCEO/.test(ed) && /saveAppConfig\(STOCK_COUNT_PAUSE_KEY/.test(ed), 'хаалтын огноо: зөвхөн CEO өөрчилнө');
   const closer = src.slice(src.indexOf('async function closeStockCount'), src.indexOf('async function closeStockCount') + 1500);
   ok(!/stockCountPause/.test(closer), 'тооллого: эхэлсэн сессийг ХААХ боломж хаалттай үед ч хэвээр (түүх хадгалагдана)');
-  ok(/'stock_count_pause'\]/.test(src.slice(src.indexOf('const APP_CONFIG_KEYS'), src.indexOf('const APP_CONFIG_KEYS') + 300)), 'хаалт: апп нээгдэхэд тохиргоо ачаалагдана (APP_CONFIG_KEYS)');
+  ok(/'stock_count_pause'/.test(src.slice(src.indexOf('const APP_CONFIG_KEYS'), src.indexOf('const APP_CONFIG_KEYS') + 320)), 'хаалт: апп нээгдэхэд тохиргоо ачаалагдана (APP_CONFIG_KEYS)');
   const rls = fs.readFileSync(path.join(__dirname, '..', 'db', 'rls.sql'), 'utf8'), sch = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
   eq((rls.match(/when 'stock_count_pause' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д stock_count_pause → зөвхөн CEO');
   eq((sch.match(/WHEN 'stock_count_pause'::text THEN sec\.is_ceo\(\)/g) || []).length, 3, 'эрх: schema.sql rls.sql-тэй ижил');
@@ -21344,7 +21344,7 @@ async function swFetchTests() {
   {
     const calls = [...appSrc.matchAll(/monthPayBreakdown\(([^\n]*)/g)].map(m => m[1]).filter(a => !/^base, deduct/.test(a));
     ok(calls.length >= 4, 'scan: monthPayBreakdown дуудалтууд олдов (' + calls.length + ')');
-    const bad = calls.filter(a => !/\.norm\b/.test(a) || !/\.full\)/.test(a));
+    const bad = calls.filter(a => !/\.norm\b/.test(a) || !/\.full\b/.test(a));
     eq(bad.length, 0, '⛔ scan: monthPayBreakdown БҮХ дуудалт хүний нормоор (memberNorm .norm/.full) — бүтэн нормоор дуудвал амралт хасагдана: ' + bad.join(' | ').slice(0, 200));
     ok(!/monthPayBreakdown\([^\n]*workNormMins\(/.test(appSrc), 'scan: цалин бодохдоо workNormMins-ийг ШУУД дамжуулахгүй');
     const fnSet = appSrc.slice(appSrc.indexOf('async function attMarkSet'), appSrc.indexOf('// Тэмдэглэх ажилтнууд'));
@@ -21367,4 +21367,308 @@ async function swFetchTests() {
   }
 
   st.attMarks = saved.m; st.attMarksErr = saved.e; st.closedMonths = saved.c; st._closedMonthsAt = saved.ca; st.isCEO = saved.ce; st.payrollCfg = saved.cfg;
+});
+
+// ═══ АЖИЛД ДУУДАХ + ТОРГУУЛЬ + ЗАХИАЛГЫН БОНУС (2026-10-26, Алтансүхийн даалгавар + CEO) ═══════════
+// Торгууль ЗӨВХӨН дуудлага (цаг заасан) ба «Тасалсан» тэмдэглэгээнээс. Хувь/хэзээнээс тохируулаагүй бол ЮУ Ч өөрчлөгдөхгүй.
+// Бичих функцийг ҮНЭХЭЭР дуудаж серверт явсан биеийг шалгана; дэлгэцүүдийг ҮНЭХЭЭР зурна.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const sqlC = fs.readFileSync(path.join(__dirname, '..', 'db', 'att_callins.sql'), 'utf8');
+  const rlsSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'rls.sql'), 'utf8');
+  const K = '99113344', K2 = '99113355', SEP = '2026-09', OCT = '2026-10';
+  const saved = { m: st.attMarks, e: st.attMarksErr, c: st.attCallins, ce: st.attCallinsErr, cm: st.closedMonths, ca: st._closedMonthsAt,
+    ceo: st.isCEO, cfg: st.payrollCfg, ac: st.appConfig, ao: st.appOrders, me: st.me, mp: st.memberPerms };
+  st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attMarksErr = null; st.attCallinsErr = null;
+  const RULES = (o) => { st.appConfig = Object.assign({}, st.appConfig || {}, { pay_rules: o }); };
+  const mk = (day, kind, status, key) => ({ id: (key || K) + '|' + day, member_key: key || K, day, kind, status: status || 'active' });
+  const ci = (day, time, status, key, place) => ({ id: (key || K) + '|' + day, member_key: key || K, day, at_time: time, place: place || null, status: status || 'active' });
+  const put = (marks, calls) => { st.attMarks = {}; (marks || []).forEach(r => { st.attMarks[r.id] = r; }); st.attCallins = {}; (calls || []).forEach(r => { st.attCallins[r.id] = r; }); };
+  // УБ цаг → ISO (УБ = UTC+8)
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (key, day, kind, hm) => ({ member_key: key, member_name: 'x', kind, ts: ts(day, hm), day, source: 'scan' });
+  const TODAY = '2026-10-20';
+  const D = (key, ym, recs, today, grace) => run(`attDiscipline('${key}', '${ym}', ${JSON.stringify(recs)}, '${today || TODAY}', ${grace === undefined ? 5 : grace})`);
+
+  // ── ① Дүрмийн тохиргоо ──
+  RULES(undefined);
+  eq(run('payRulesCfg()').from, '', 'дүрэм: тохируулаагүй бол «хэзээнээс» хоосон');
+  eq(run(`payRulesActive('2026-10')`), false, '⛔ дүрэм: тохируулаагүй бол ЮУ Ч идэвхгүй');
+  RULES({ from: '2026-11', order_pct: 2, absent_pct: 5, noshow_pct: 7, late_pct: 1, cap_pct: 15, grace_min: 10 });
+  let cfg = run('payRulesCfg()');
+  eq([cfg.from, cfg.orderPct, cfg.absentPct, cfg.noshowPct, cfg.latePct, cfg.capPct, cfg.graceMin], ['2026-11', 2, 5, 7, 1, 15, 10], 'дүрэм: тохиргоо зөв уншигдана');
+  eq([run(`payRulesActive('2026-10')`), run(`payRulesActive('2026-11')`), run(`payRulesActive('2027-01')`)], [false, true, true], '⛔ дүрэм: «хэзээнээс» сараас ӨМНӨХ сар идэвхгүй (олгосон цалин хөндөгдөхгүй)');
+  RULES({ from: '2026-11', absent_pct: 'abc', late_pct: -3, cap_pct: 500, order_pct: 250 });
+  cfg = run('payRulesCfg()');
+  eq([cfg.absentPct, cfg.latePct, cfg.orderPct, cfg.capPct], [0, 0, 0, 20], 'дүрэм: буруу/хэт утга 0 болно, дээд хязгаар өгөгдмөл 20%');
+  // Хадгалахын өмнөх шалгалт
+  const V = (o, today) => run(`payRulesValidate(${JSON.stringify(o)}, '${today || '2026-10-20'}')`);
+  ok(V({ from: '2026-11', absent: '5' }).ok, 'шалгалт: зөв дүрэм');
+  ok(V({}).ok && V({}).cfg.from === '', 'шалгалт: бүх хувь хоосон бол унтраалттай (зөвшөөрнө)');
+  ok(!V({ absent: '5' }).ok && /хэзээнээс/.test(V({ absent: '5' }).err), '⛔ шалгалт: хувь тавивал «хэзээнээс» заавал');
+  ok(!V({ from: '2026-09', absent: '5' }).ok && /Өнгөрсөн/.test(V({ from: '2026-09', absent: '5' }).err), '⛔ шалгалт: өнгөрсөн сараас эхлүүлэхгүй (олгосон цалин өөрчлөгдөнө)');
+  ok(V({ from: '2026-10', absent: '5' }).ok, 'шалгалт: энэ сараас эхлүүлж болно');
+  ok(!V({ from: '2026-11', late: '101' }).ok && !V({ from: '2026-11', late: '-1' }).ok, 'шалгалт: хувь 0–100');
+  ok(!V({ from: '2026-11', late: '1', grace: '500' }).ok, 'шалгалт: чөлөө 0–120 мин');
+
+  // ── ② Сахилгын үйл явдал (attDiscipline) ──
+  // Дуудлага 09:30. 10-12 цагтаа, 10-13 25м хоцорсон, 10-14 ирээгүй, 10-15 амралттай ирээгүй, 10-16 чөлөөтэй ирээгүй
+  put([mk('2026-10-15', 'rest'), mk('2026-10-16', 'leave'), mk('2026-10-08', 'absent'), mk('2026-10-09', 'absent'), mk('2026-10-19', 'absent')],
+      [ci('2026-10-12', '09:30'), ci('2026-10-13', '09:30'), ci('2026-10-14', '09:30'), ci('2026-10-15', '09:30'), ci('2026-10-16', '09:30'),
+       ci('2026-10-09', '09:30'), ci('2026-10-20', '09:30'), ci('2026-10-17', '09:30', 'void')]);
+  const recs = [rec(K, '2026-10-12', 'in', '09:33'), rec(K, '2026-10-13', 'in', '09:55'), rec(K, '2026-10-13', 'out', '18:00'),
+                rec(K, '2026-10-09', 'in', '08:00'),                 // 10-09: «Тасалсан» тэмдэглэсэн ч ирсэн → ФАКТ давуу
+                rec(K2, '2026-10-14', 'in', '09:00')];               // өөр хүн
+  const dsc = D(K, OCT, recs);
+  const kinds = dsc.events.map(e => e.day.slice(8) + ':' + e.kind).join(',');
+  eq(kinds, '08:absent,13:late,14:noshow,19:absent', '⛔ үйл явдал: цагтаа=хоосон · хоцорсон · ирээгүй · тасалсан; амралт/чөлөө/void/өөр хүн/өнөөдөр орохгүй');
+  eq([dsc.lateN, dsc.absentN, dsc.noshowN, dsc.lateMins], [1, 2, 1, 25], 'үйл явдал: тоолол (хоцролт 25 минут)');
+  ok(!dsc.events.some(e => e.day === '2026-10-09'), '⛔ үйл явдал: тэр өдөр ирсэн хүнийг «Тасалсан» тэмдэглэгээгээр торгохгүй (факт давуу)');
+  ok(!dsc.events.some(e => e.day === '2026-10-20'), '⛔ үйл явдал: өнөөдрийн дуудлагад хараахан «ирээгүй» гэж торгохгүй (өдөр дуусаагүй)');
+  eq(D(K, OCT, recs, '2026-10-21').events.filter(e => e.day === '2026-10-20').map(e => e.kind), ['noshow'], 'үйл явдал: 10-20-ны дуудлага маргааш (өдөр дуусмагц) «ирээгүй» болж тоологдоно');
+  eq(D(K, OCT, [rec(K, '2026-10-13', 'in', '09:40')], TODAY, 10).events.filter(e => e.kind === 'late').length, 0, 'үйл явдал: чөлөөний дотор (10 мин) хоцролт тоологдохгүй');
+  eq(D(K, OCT, [rec(K, '2026-10-13', 'in', '09:35')], TODAY, 5).events.filter(e => e.kind === 'late').length, 0, 'үйл явдал: яг чөлөөнд (5 мин) цагтаа');
+  eq(D(K, OCT, [rec(K, '2026-10-13', 'in', '09:36')], TODAY, 5).events.filter(e => e.kind === 'late').length, 1, 'үйл явдал: чөлөөнөөс хэтэрвэл хоцорсон');
+  // Тасалсан тэмдэглэгээ дуудлагатай өдөр давхцвал НЭГ удаа (давхар торгохгүй)
+  put([mk('2026-10-14', 'absent')], [ci('2026-10-14', '09:30')]);
+  eq(D(K, OCT, []).events.map(e => e.kind), ['absent'], '⛔ үйл явдал: Тасалсан + дуудлага давхцвал нэг л удаа (absent) — давхар торгохгүй');
+  eq(D(K, SEP, recs).events.length, 0, 'үйл явдал: сар бүр тусдаа');
+  // Хоцролтыг ЗӨВХӨН дуудлагаас — тогтмол ажил эхлэх цаг, «маргааш ирэх цаг» ТОРГУУЛЬД ОРОХГҮЙ
+  st.workStart = { [K]: '09:00' }; st.nextArrival = { [K]: { day: '2026-10-13', time: '09:00' } }; put([], []);
+  eq(D(K, OCT, [rec(K, '2026-10-13', 'in', '11:00')]).events.length, 0, '⛔ үйл явдал: дуудлагагүй өдөр (ажил эхлэх цаг, маргааш ирэх цаг) хоцролтоор ТОРГОХГҮЙ');
+  st.workStart = null; st.nextArrival = null;
+  ok(!/workStartFor|nextArrivalFor|state\.workStart|state\.nextArrival/.test(appSrc.slice(appSrc.indexOf('function attDiscipline('), appSrc.indexOf('function orderBonusFor('))), 'scan: attDiscipline нь ЗӨВХӨН дуудлага/тэмдэглэгээ/ирцээс (тогтмол цагаас БИШ)');
+
+  // ── ③ payExtras: идэвхгүй бол ЮУ Ч, идэвхтэй бол хувь, дээд хязгаар, ачаалагдаагүй ──
+  const base = 2000000;
+  put([mk('2026-10-08', 'absent'), mk('2026-10-09', 'absent')], [ci('2026-10-13', '09:30'), ci('2026-10-14', '09:30')]);
+  const recs2 = [rec(K, '2026-10-13', 'in', '09:55')];   // 13-нд 25м хоцорсон, 14-нд ирээгүй
+  const PX = (ym, rs, b) => run(`payExtras('${K}', '${ym}', ${JSON.stringify(rs)}, ${b === undefined ? base : b})`);
+  RULES(undefined);
+  const off = PX(OCT, recs2);
+  eq([off.active, off.penalty, off.orderBonus, off.ready], [false, 0, 0, true], '⛔ payExtras: дүрэм тохируулаагүй бол торгууль/бонус 0, ачаалагдсан гэж үзнэ');
+  ok(off.disc && off.disc.events.length === 4, 'payExtras: идэвхгүй ч үйл явдлыг ТООЛНО (зөвхөн харуулна — цалинд нөлөөлөхгүй)');
+  RULES({ from: '2026-11', absent_pct: 5, noshow_pct: 7, late_pct: 1 });
+  eq(PX(OCT, recs2).penalty, 0, '⛔ payExtras: «хэзээнээс» сараас ӨМНӨХ сард торгууль 0 (олгосон цалин хөндөгдөхгүй)');
+  RULES({ from: '2026-10', absent_pct: 5, noshow_pct: 7, late_pct: 1, cap_pct: 50 });
+  let ex = PX(OCT, recs2);
+  eq([ex.penaltyPct, ex.penalty], [5 * 2 + 7 + 1, Math.round(base * 18 / 100)], 'payExtras: торгууль = Σ(тоо × хувь) × суурь (2 тасалсан·5 + 1 ирээгүй·7 + 1 хоцорсон·1 = 18%)');
+  RULES({ from: '2026-10', absent_pct: 5, noshow_pct: 7, late_pct: 1, cap_pct: 10 });
+  eq(PX(OCT, recs2).penalty, base * 0.10, '⛔ payExtras: сарын дээд хязгаар (10%) давагдахгүй');
+  RULES({ from: '2026-10', absent_pct: 5 });
+  eq(PX(OCT, recs2).penaltyPct, 10, 'payExtras: зөвхөн тохируулсан төрлийг торгоно (хоцролт/ирээгүй хувьгүй → 0)');
+  eq(PX(OCT, recs2, 0).penalty, 0, 'payExtras: суурь цалингүй хүнд торгууль 0');
+  st.attCallins = null;
+  ok(PX(OCT, recs2).ready === false && PX(OCT, recs2).penalty === 0, '⛔ payExtras: дуудлага ачаалагдаагүй үед ready:false (чимээгүй 0 БИШ)');
+  st.attCallins = {}; ok(PX(OCT, undefined).ready === false, '⛔ payExtras: ирц (recs) ачаалагдаагүй үед ready:false');
+  RULES({ from: '2026-10', order_pct: 3 });
+  st.attCallins = {};
+  ok(PX(OCT, undefined).ready === true, 'payExtras: торгуулийн хувьгүй бол ирц ачаалагдаагүй ч бэлэн (шаардлагагүй)');
+
+  // ── ④ Захиалгын бонус ──
+  const O = (n, by, over) => Object.assign({ number: n, source: 'app', status: 'returned', created_by: by, starts_at: '2026-10-05', paid_date: '2026-10-06', total_mnt: 1000000, paid_mnt: 1000000, deposit_mnt: 0, items: [] }, over || {});
+  st.appOrders = [O(1, K), O(2, K, { total_mnt: 1200000, paid_mnt: 1200000, deposit_mnt: 200000 }),   // түрээс 1,000,000 (барьцаа 200,000 хасагдана)
+    O(3, K, { status: 'canceled' }), O(4, K, { status: 'draft' }), O(5, K2), O(6, 'm-event-website', { source: 'm-event-website' }),
+    O(7, K, { paid_date: '2026-11-02', starts_at: '2026-11-03' }), O(8, K, { paid_mnt: 0, paid_date: '' })];
+  const ob = run(`orderBonusFor('${K}', '${OCT}')`);
+  eq([ob.n, ob.rev], [2, 2000000], '⛔ захиалгын бонус: өөрийн үүсгэсэн, ТӨЛӨГДСӨН түрээс (барьцаа, цуцалсан/ноорог, өөр хүн, сайт, өөр сар, төлөгдөөгүй орохгүй)');
+  RULES({ from: '2026-10', order_pct: 2 });
+  ex = PX(OCT, [rec(K, '2026-10-05', 'in', '09:00')]);
+  eq([ex.orderN, ex.orderBonus, ex.penalty], [2, 40000, 0], 'захиалгын бонус: 2,000,000 × 2% = 40,000₮');
+  RULES({ from: '2026-11', order_pct: 2 });
+  eq(PX(OCT, []).orderBonus, 0, '⛔ захиалгын бонус: «хэзээнээс»-ээс ӨМНӨХ сард 0');
+  eq(run(`orderBonusFor('${K2}', '${OCT}')`).n, 1, 'захиалгын бонус: хүн бүр өөрийнхөө захиалгаар');
+
+  // ── ⑤ Цалингийн томьёо: торгууль нэмэлт мөр, суутгал хөндөгдөхгүй ──
+  const PB = (ex) => run(`monthPayBreakdown(2000000, true, 10560, 10560, 0, 1, '${OCT}', '2026-12-01', 0, 10560, ${JSON.stringify(ex || null)})`);
+  const b0 = PB(null), b1 = PB({ penalty: 300000, orderBonus: 50000 });
+  eq(b1.total, b0.total - 300000 + 50000, 'цалин: торгууль хасагдаж, захиалгын бонус нэмэгдэнэ');
+  eq([b1.ndsh, b1.pit, b1.netBase], [b0.ndsh, b0.pit, b0.netBase], '⛔ цалин: торгууль/бонус НДШ, ХХОАТ-ын суурьд ОРОХГҮЙ (суутгал хэвээр)');
+  eq([b1.penalty, b1.orderBonus], [300000, 50000], 'цалин: торгууль, бонус задаргаанд гарна');
+  eq(PB({ penalty: 99999999 }).total, 0, 'цалин: торгууль нийт дүнг 0-ээс доош буулгахгүй');
+  eq(PB().total, b0.total, 'цалин: extra өгөөгүй бол хуучин тооцоотой ЯГ ижил (нийцтэй)');
+
+  // ── ⑥ Өмнөх сарын илүү олголт торгуулийг ч харгалзана ──
+  const base0 = run('[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct]');
+  run(`state.salaryDeduct = { '${K}': false }; state.salaries = { '${K}': 1000000 }; state.financeRequests = [];
+       state.salaryPayments = [{ person_key: '${K}', ym: '2026-09', amount: 1000000, paid_at: '2026-09-26T00:00:00Z', note: 'x' }];`);
+  const FULL9 = run(`workNormMins('2026-09')`);
+  put([mk('2026-09-08', 'absent')], []);
+  RULES({ from: '2026-09', absent_pct: 10 });
+  const carry = (rs) => run(`salaryCarryIn('${K}', '2026-10', () => ${FULL9}, ${rs === undefined ? 'undefined' : `() => (${JSON.stringify(rs)})`})`);
+  eq(carry([]).amount, 100000, '⛔ шилжүүлэлт: 9 сарын тасалсан торгууль (10% = 100,000₮) → олгосон нь тэр хэмжээгээр илүү болж дараа сард шилжинэ');
+  RULES(undefined);
+  eq(carry([]).amount, 0, 'шилжүүлэлт: дүрэмгүй бол 9 сарын цалин бүтэн — олгосонтой тэнцүү, илүү 0');
+  RULES({ from: '2026-09', absent_pct: 10 });
+  ok(carry(undefined).ready === false, '⛔ шилжүүлэлт: торгуулийн дүрэм идэвхтэй атлаа өмнөх сарын ирц ачаалагдаагүй бол ready:false');
+  RULES({ from: '2026-09', order_pct: 5 });
+  ok(carry(undefined).ready === true, 'шилжүүлэлт: торгуулийн хувьгүй бол ирц шаардахгүй (хуучин зан)');
+  run(`[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct] = ${JSON.stringify(base0)};`);
+
+  // ── ⑦ attCallinSet / attCallinVoid — серверт ҮНЭХЭЭР явна ──
+  const savedFetch = sandbox.fetch;
+  let posts = [], cfgReply = {}, pushes = [];
+  run('globalThis.__origPush = pushBroadcast; pushBroadcast = function (k, p) { globalThis.__pushes.push([k, p]); };'); run('globalThis.__pushes = [];');
+  const stub = (reply) => { posts = []; sandbox.fetch = (url, opts) => {
+    if (/\/app_config\?/.test(url)) return Promise.resolve({ ok: true, status: 200, json: async () => [{ value: cfgReply }] });
+    if (/\/att_callins/.test(url)) {
+      posts.push({ url, opts, body: JSON.parse(opts.body) });
+      return Promise.resolve(reply || { ok: true, status: 200, json: async () => [Object.assign({ called_by: '88001122', updated_at: 'x', place: null }, posts[posts.length - 1].body, opts.method === 'PATCH' ? (() => { const id = decodeURIComponent(url.split('id=eq.')[1]); return { id, member_key: id.split('|')[0], day: id.split('|')[1], at_time: '09:30' }; })() : {})] });
+    }
+    return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+  }; };
+  const T = (fn) => fn().then(() => '', e => String(e.message || e));
+  const FUT = '2099-01-15';   // ирээдүй (огнооноос хамаарахгүй)
+  try {
+    st.isCEO = true; put([], []); st.closedMonths = {}; cfgReply = {}; stub();
+    const row = await run(`attCallinSet('${K}', '${FUT}', '09:30', ' Нарны зам ')`);
+    eq(posts.length, 1, 'дуудах: 1 хүсэлт явав');
+    eq(posts[0].body, { id: `${K}|${FUT}`, member_key: K, day: FUT, at_time: '09:30', place: 'Нарны зам', status: 'active' }, 'дуудах: сервер рүү явсан бие (газар цэвэрлэгдсэн)');
+    ok(posts[0].opts.method === 'POST' && /merge-duplicates/.test(posts[0].opts.headers.Prefer) && /on_conflict=id/.test(posts[0].url), 'дуудах: upsert — нэг өдөрт нэг дуудлага');
+    ok(run(`attCallinOn('${K}', '${FUT}')`).at_time === '09:30', 'дуудах: амжилттай бол жагсаалтад шууд тусна');
+    eq(run('__pushes').length, 1, 'дуудах: дуудагдсан хүнд мэдэгдэл явна');
+    eq([run('__pushes')[0][0], /09:30/.test(run('__pushes')[0][1].body), /Нарны зам/.test(run('__pushes')[0][1].body)], [K, true, true], 'дуудах: мэдэгдэлд цаг, газар орно');
+    // Болих: PATCH (upsert БИШ — DB өнгөрсөн өдөрт шинээр үүсгэхийг хаадаг), мөр устахгүй
+    await run(`attCallinVoid('${K}', '${FUT}')`);
+    ok(posts[1].opts.method === 'PATCH' && posts[1].url.includes('id=eq.' + encodeURIComponent(`${K}|${FUT}`)), '⛔ болих: PATCH, id нь кодлогдсон (| тэмдэгттэй)');
+    eq(posts[1].body, { status: 'void' }, '⛔ болих: мөр УСТАХГҮЙ — зөвхөн status:void');
+    ok(run(`attCallinOn('${K}', '${FUT}')`) === null, 'болих: идэвхтэй дуудлага үлдэхгүй');
+    eq(run('__pushes').length, 2, 'болих: цуцалсан тухай мэдэгдэл явна');
+    // Татгалзах тохиолдлууд — сервер рүү ЮУ Ч явахгүй
+    posts = [];
+    ok(/Өнгөрсөн/.test(await T(() => run(`attCallinSet('${K}', '2020-01-02', '09:30', '')`))), '⛔ дуудах: өнгөрсөн өдрөөр дуудлага үүсгэхгүй (хойно нь торгууль зохиож болохгүй)');
+    ok(/ЦЦ:ММ/.test(await T(() => run(`attCallinSet('${K}', '${FUT}', '9:3', '')`))), 'дуудах: буруу цаг татгалзана');
+    ok(/120/.test(await T(() => run(`attCallinSet('${K}', '${FUT}', '09:30', '${'x'.repeat(121)}')`))), 'дуудах: 120-аас урт газар татгалзана');
+    ok(/утас/.test(await T(() => run(`attCallinSet('123', '${FUT}', '09:30', '')`))), 'дуудах: утасгүй ажилтныг дуудахгүй');
+    cfgReply = { '2099-01': { at: 'x', by: 'y' } };
+    ok(/сар хаагдсан/.test(await T(() => run(`attCallinSet('${K}', '${FUT}', '09:30', '')`))), '⛔ дуудах: хаасан сарын дуудлага — сервэрээс шинээр уншиж хориглоно');
+    cfgReply = {}; st.closedMonths = {};
+    st.attCallins = null;
+    ok(/ачаалагдаагүй/.test(await T(() => run(`attCallinSet('${K}', '${FUT}', '09:30', '')`))), 'дуудах: жагсаалт ачаалагдаагүй үед бичихгүй');
+    put([], []); st.isCEO = false; st.memberPerms = {}; st.me = '99000000';
+    ok(/эрх алга/.test(await T(() => run(`attCallinSet('${K}', '${FUT}', '09:30', '')`))), 'дуудах: ирц засах эрхгүй хүн дуудаж чадахгүй');
+    st.isCEO = true;
+    eq(posts.length, 0, 'дуудах: бүх татгалзсан тохиолдолд сервер рүү юу ч явсангүй');
+    // DB-ийн trigger-ийн мессеж хэрэглэгчид очно
+    stub({ ok: false, status: 400, text: async () => JSON.stringify({ message: 'Өнгөрсөн өдрөөр дуудлага үүсгэхгүй — тест' }) });
+    ok(/тест/.test(await T(() => run(`attCallinSet('${K}', '${FUT}', '09:30', '')`))), 'дуудах: DB-ийн мессеж хэрэглэгчид очно');
+  } finally { sandbox.fetch = savedFetch; run('pushBroadcast = globalThis.__origPush;'); }
+
+  // ── ⑧ Дэлгэцүүд ҮНЭХЭЭР зурагдана ──
+  {
+    const TEAM_ = run('TEAM'), tsave = TEAM_.slice();
+    TEAM_.length = 0;
+    TEAM_.push({ name: 'Д.Дуудагдсан', phone: K, status: 'идэвхтэй', role: 'Нярав', worker_type: 'permanent' },
+               { name: 'Э.Хоцорсон', phone: K2, status: 'идэвхтэй', role: 'Нярав', worker_type: 'permanent' });
+    st.isCEO = true; st._salLoaded = true; st._staffPinsLoaded = true; st.salaries = { [K]: 2000000, [K2]: 2000000 }; st.attMonthMode = false;
+    // Дуудсан хэсэг: өнгөрсөн өдөр (бодит өнөөдрөөс өмнө) → ирсэн/хоцорсон/ирээгүй
+    const PD = '2026-09-15';
+    put([], [ci(PD, '09:30', 'active', K), ci(PD, '09:30', 'active', K2, 'Нарны зам')]);
+    const sec = run(`attCallinSectionHtml('${PD}', ${JSON.stringify([rec(K2, PD, 'in', '10:05')])})`);
+    ok(sec.includes('Д.Дуудагдсан') && sec.includes('Э.Хоцорсон') && sec.includes('Нарны зам'), 'дуудсан хэсэг: хэн, цаг, газар гарна');
+    ok(/❌ ирээгүй/.test(sec) && /35м хоцорсон/.test(sec), 'дуудсан хэсэг: ирээгүй ба хоцорсон нь ялгарна');
+    ok(/data-aci-void/.test(sec), 'дуудсан хэсэг: болих ✕ товч');
+    st.closedMonths = { [SEP]: { at: 'x', by: 'y' } };
+    ok(!/data-aci-void/.test(run(`attCallinSectionHtml('${PD}', [])`)), '⛔ дуудсан хэсэг: хаасан сард болих товч ОГТ гарахгүй');
+    st.closedMonths = {};
+    eq(run(`attCallinSectionHtml('${PD}', null)`), '', 'дуудсан хэсэг: ирц ачаалагдаагүй үед гарахгүй');
+    st.isCEO = false; st.memberPerms = {}; st.me = '99000000';
+    eq(run(`attCallinSectionHtml('${PD}', [])`), '', 'дуудсан хэсэг: ирц засах эрхгүй хүнд гарахгүй');
+    st.isCEO = true;
+    // Ажилтны өөрийн карт: өнөөдөр/ирээдүйн дуудлага
+    put([], [ci('2099-02-03', '09:30', 'active', K, 'Агуулах'), ci('2020-01-01', '09:00', 'active', K), ci('2099-02-04', '09:00', 'active', K2)]);
+    st.me = K;
+    const my = run(`myCallinsHtml(findMember('${K}'))`);
+    ok(my.includes('02-03') && my.includes('09:30') && my.includes('Агуулах'), 'Миний ирц: өөрийн ирээдүйн дуудлага гарна');
+    ok(!my.includes('2020') && !my.includes('02-04'), 'Миний ирц: өнгөрсөн болон бусдын дуудлага гарахгүй');
+    put([], []);
+    eq(run(`myCallinsHtml(findMember('${K}'))`), '', 'Миний ирц: дуудлагагүй бол карт гарахгүй');
+    // Тохиргооны карт: CEO засна, бусад зөвхөн уншина
+    RULES({ from: '2026-11', absent_pct: 5, cap_pct: 20 });
+    const card = run('payRulesCardHtml()');
+    ok(/id="pr-save"/.test(card) && /id="pr-from"/.test(card) && /id="pr-order"/.test(card) && /id="pr-cap"/.test(card), 'дүрмийн карт: CEO-д засах талбарууд гарна');
+    st.isCEO = false; st.memberPerms = {}; st.me = '99000000';
+    const ro = run('payRulesCardHtml()');
+    ok(!/id="pr-save"/.test(ro) && /тасалсан өдөр бүр суурь цалингийн 5%/.test(ro), '⛔ дүрмийн карт: CEO биш хүнд ЗӨВХӨН уншигдана (товч, талбар алга)');
+    RULES(undefined);
+    eq(run('payRulesCardHtml()'), '', 'дүрмийн карт: дүрэмгүй үед CEO биш хүнд юу ч гарахгүй');
+    st.isCEO = true;
+    ok(!/style="/.test(run('payRulesCardHtml()')), 'дизайн: дүрмийн карт inline style-гүй');
+
+    // Сарын тойм + цалингийн самбар + карт: торгууль, бонус цалинд бодитоор тусна
+    const weekdays = []; for (let d = 1; d <= 30; d++) { const w = new Date(Date.UTC(2026, 8, d)).getUTCDay(); if (w && w < 6) weekdays.push('2026-09-' + String(d).padStart(2, '0')); }
+    const keep = { k: st.attMonthKey, r: st.attMonthRecs, e: st.attMonthErr, sal: st.salaries, sp: st.salaryPayments, sl: st._salLoaded, ym: st.salaryYM, me: st.me, mpm: st.myPayMonth, mpr: st.myPayRecs, sd: st.salaryDeduct };
+    st.me = K; st.attMonthErr = null; st.attMonthKey = SEP; st.salaryDeduct = { [K]: false, [K2]: false }; st.salaryPayments = []; st.salaryYM = SEP;
+    // 09:00 → 18:00 = ЯГ 8ц цэвэр; K бүх өдөр ирсэн, 09-15 (Мягмар)-д дуудлага 09:30-д 10:00 ирсэн = 30м хоцорсон; K2 09-16-д дуудлагад ирээгүй
+    st.attMonthRecs = [].concat(...[K, K2].map(k => [].concat(...weekdays.filter(d => !(k === K2 && d === '2026-09-16')).map(d => [rec(k, d, 'in', (k === K && d === '2026-09-15') ? '10:00' : '09:00'), rec(k, d, 'out', (k === K && d === '2026-09-15') ? '19:00' : '18:00')]))));
+    put([], [ci('2026-09-15', '09:30', 'active', K), ci('2026-09-16', '09:30', 'active', K2)]);
+    st.appOrders = [O(11, K, { starts_at: '2026-09-04', paid_date: '2026-09-05', total_mnt: 3000000, paid_mnt: 3000000 })];
+    RULES({ from: '2026-09', order_pct: 1, noshow_pct: 4, late_pct: 2, cap_pct: 20 });
+    const rowOf = (html, k) => { const i = html.indexOf(`data-att-mo="${k}"`); return html.slice(i, html.indexOf('</details>', i)); };
+    const mHtml = run(`renderAttendanceMonth('${SEP}')`);
+    const a = rowOf(mHtml, K), b = rowOf(mHtml, K2);
+    ok(/хоцорсон/.test(a) && /09:30 дуудсан, 10:00 ирсэн \(30м хоцорсон\)/.test(a), 'сарын тойм: хоцролтын мөр (хэзээ дуудсан, хэзээ ирсэн) ил гарна');
+    ok(/торгууль 40,?000/.test(a.replace(/\s/g, ' ')) || /− торгууль/.test(a), 'сарын тойм: торгууль цалингийн задаргаанд гарна');
+    ok(/захиалгын бонус/.test(a), 'сарын тойм: захиалгын бонус задаргаанд гарна');
+    ok(/дуудлагад ирээгүй/.test(b), 'сарын тойм: дуудлагад ирээгүй мөр гарна');
+    ok(!/style="/.test(mHtml.replace(/<img[^>]*>/g, '')), 'дизайн: сарын тойм inline style-гүй (шинэ мөрүүдтэй)');
+    RULES(undefined);
+    const mOff = rowOf(run(`renderAttendanceMonth('${SEP}')`), K);
+    ok(/хоцорсон/.test(mOff) && /цалинд нөлөөлөхгүй/.test(mOff) && !/− торгууль/.test(mOff), '⛔ сарын тойм: дүрэмгүй үед үйл явдал ХАРАГДАНА ч цалинд нөлөөлөхгүй, торгуулийн мөр ГАРАХГҮЙ');
+    RULES({ from: '2026-09', order_pct: 1, noshow_pct: 4, late_pct: 2, cap_pct: 20 });
+    // Цалингийн самбар
+    let sHtml = '', serr = '';
+    try { sHtml = run('renderSalary()'); } catch (e) { serr = e.message; }
+    eq(serr, '', 'самбар: торгууль, бонустой renderSalary алдаагүй');
+    ok(/⚠ Торгууль/.test(sHtml) && /🧾 Захиалгын бонус/.test(sHtml), 'самбар: торгууль ба захиалгын бонус мөр гарна');
+    ok(/id="pr-save"/.test(sHtml), 'самбар: CEO-д дүрмийн карт гарна');
+    // Ажилтны карт: нийт = суурь + бонус − торгууль
+    run(`state.myPayMonth = '${SEP}'; state.myPayRecs = { '${SEP}': state.attMonthRecs.filter(r => r.member_key === '${K}') };`);
+    let cardH = '', cerr = '';
+    try { cardH = run(`myPayCardHtml(findMember('${K}'))`); } catch (e) { cerr = e.message; }
+    eq(cerr, '', 'карт: торгууль, бонустой myPayCardHtml алдаагүй');
+    ok(/⚠ Торгууль · хоцорсон 1/.test(cardH) && /−[\d,]+/.test(cardH), 'карт: «⚠ Торгууль · хоцорсон 1» мөр, хасагдсан дүнтэй');
+    ok(/🧾 Захиалгын бонус · 1 захиалга/.test(cardH) && /\+30,000/.test(cardH), 'карт: захиалгын бонус 3,000,000 × 1% = 30,000');
+    ok(cardH.indexOf('⚠ Торгууль') < cardH.indexOf('Нийт гарт очих') && cardH.indexOf('🧾 Захиалгын бонус') < cardH.indexOf('Нийт гарт очих'), '⛔ карт: торгууль, бонус мөр нийлбэрээс ӨМНӨ');
+    ok(/−40,000/.test(cardH), 'карт: торгууль 2,000,000 × 2% (1 хоцролт) = 40,000₮ хасагдана');
+    ok(/Шагнал|захиалгын төлөгдсөн түрээсийн 1% бонус/.test(cardH) && /дуудсан цагаас 5м-ээс хэтэрч хоцорвол 2%/.test(cardH), 'карт: ажилтанд дүрэм ИЛ тайлбарлагдана (мэдэхгүй хүнийг торгохгүй)');
+    RULES(undefined);
+    ok(!/⚠ Торгууль|🧾 Захиалгын бонус/.test(run(`myPayCardHtml(findMember('${K}'))`)), '⛔ карт: дүрэмгүй үед торгууль/бонусын мөр ГАРАХГҮЙ — цалин өөрчлөгдөөгүй');
+    TEAM_.length = 0; tsave.forEach(x => TEAM_.push(x));
+    Object.assign(st, { attMonthKey: keep.k, attMonthRecs: keep.r, attMonthErr: keep.e, salaries: keep.sal, salaryPayments: keep.sp, _salLoaded: keep.sl, salaryYM: keep.ym, me: keep.me, myPayMonth: keep.mpm, myPayRecs: keep.mpr, salaryDeduct: keep.sd });
+  }
+
+  // ── ⑨ SCAN: DB, эрх, бүх газар нэг эх сурвалж ──
+  {
+    ok(/create table if not exists att_callins/.test(sqlC) && /at_time ~ '\^\(\[01\]\[0-9\]\|2\[0-3\]\):\[0-5\]\[0-9\]\$'/.test(sqlC), 'db: att_callins хүснэгт, цагийн хэлбэр шалгагдана');
+    ok(/new\.day < ub/.test(sqlC) && /Өнгөрсөн өдрөөр дуудлага үүсгэхгүй/.test(sqlC), '⛔ db: ӨНГӨРСӨН өдрөөр дуудлага үүсгэхгүй (торгуулийг хойно нь зохиож болохгүй)');
+    ok(/old\.day < ub/.test(sqlC) && /зөвхөн болино/.test(sqlC), '⛔ db: өнгөрсөн өдрийн цаг/газрыг өөрчлөхгүй, зөвхөн болино');
+    ok(/closed_months/.test(sqlC) && /__cutover/.test(sqlC) && /raise exception '🔒/.test(sqlC), '⛔ db: хаасан сарыг trigger ч хаана');
+    ok(/sec\.can\('attendance\.edit'\)/.test(sqlC.slice(sqlC.indexOf('att_callins_ins'))), 'db: дуудах эрх = attendance.edit (өгөгдмөл хориг)');
+    ok(/att_callins_sel[\s\S]*member_key = sec\.phone\(\)/.test(sqlC), 'db: дуудагдсан хүн ӨӨРИЙН мөрийг харна');
+    ok(/drop policy if exists att_callins_sel/.test(sqlC) && /drop policy if exists att_callins_ins/.test(sqlC) && /drop policy if exists att_callins_upd/.test(sqlC), 'db: бодлого бүр идемпотент');
+    ok(/revoke delete on att_callins from authenticated/.test(sqlC) && /revoke all on att_callins from anon/.test(sqlC), 'db: хатуу устгал хураагдсан, anon-д нээгээгүй');
+    ok(/notify pgrst, 'reload schema'/.test(sqlC) && /called_by := coalesce\(sec\.phone\(\)/.test(sqlC), 'db: PostgREST кэш шинэчлэгдэнэ; хэн дуудсаныг токеноос авна');
+    const pk = fs.readFileSync(path.join(__dirname, '..', 'db', 'person_rekey.sql'), 'utf8');
+    ok(/att_callins/.test(pk) && /'att_callins','called_by'/.test(pk), 'db: утас солигдоход att_callins дагана (person_rekey)');
+    // Торгуулийн дүрмийг ЗӨВХӨН CEO бичнэ — DB ба апп ИЖИЛ
+    ok(/when 'pay_rules' then sec\.is_ceo\(\)/.test(rlsSql) && (rlsSql.match(/when 'pay_rules' then sec\.is_ceo\(\)/g) || []).length === 3, '⛔ db: pay_rules зөвхөн CEO (insert, update using, update with check)');
+    ok(/function payRulesEditable\(\) \{ return !!state\.isCEO; \}/.test(appSrc), '⛔ апп: pay_rules засах эрх = CEO (db/rls.sql-тэй ижил)');
+    ok(/'pay_rules'\]/.test(appSrc.slice(appSrc.indexOf('const APP_CONFIG_KEYS'), appSrc.indexOf('const APP_CONFIG_KEYS') + 360)), 'апп: pay_rules апп нээгдэхэд ачаалагдана (APP_CONFIG_KEYS)');
+    const sv = appSrc.slice(appSrc.indexOf('async function payRulesSave'), appSrc.indexOf('async function payRulesSave') + 1800);
+    ok(/await showConfirm\(/.test(sv) && /\)\)\) return;/.test(sv) && /payRulesEditable\(\)/.test(sv), 'scan: дүрэм хадгалахын өмнө баталгаажуулалтын ХАРИУГ шалгана, зөвхөн CEO');
+    // Бүх цалин бодох газар `payExtras`-ээр (торгууль/бонус нэг эх сурвалж)
+    const calls = [...appSrc.matchAll(/monthPayBreakdown\(([^\n]*)/g)].map(m => m[1]).filter(a => !/^base, deduct/.test(a));
+    const noEx = calls.filter(a => !/\bex\b/.test(a));
+    eq(noEx.length, 0, '⛔ scan: monthPayBreakdown БҮХ дуудалт payExtras-ийн дүнтэй — нэг нь мартагдвал торгууль тэр дэлгэцэд тусахгүй: ' + noEx.join(' | ').slice(0, 160));
+    ok(!/торгуул[^\n]*(workStartFor|nextArrivalFor)/i.test(appSrc.slice(appSrc.indexOf('function payExtras('), appSrc.indexOf('function attDisciplineLine('))), 'scan: payExtras тогтмол цагаас хоцролт бодохгүй');
+    ok(/ensureAttCallins\(\);/.test(appSrc.slice(appSrc.indexOf('function ensureAttMarks'), appSrc.indexOf('function ensureAttMarks') + 300)), 'scan: дуудлага нь тэмдэглэгээтэй ижил дэлгэцүүдэд ачаалагдана');
+    ok(/attCallinOn\(key, day\)/.test(appSrc.slice(appSrc.indexOf('function attLateMinutes'), appSrc.indexOf('function attLateMinutes') + 400)), 'scan: ирцийн «хоцорсон» шошго дуудлагыг давуу авна');
+    ok(/data-aci-void/.test(appSrc.slice(appSrc.indexOf('function attachAttendanceHandlers'), appSrc.indexOf('function attachAttendanceHandlers') + 12000)) && /openCallinModal/.test(appSrc.slice(appSrc.indexOf('function attachAttendanceHandlers'), appSrc.indexOf('function attachAttendanceHandlers') + 1200)), 'scan: «Ажилд дуудах» товч, болих ✕ холбогдсон');
+  }
+
+  st.attMarks = saved.m; st.attMarksErr = saved.e; st.attCallins = saved.c; st.attCallinsErr = saved.ce; st.closedMonths = saved.cm; st._closedMonthsAt = saved.ca;
+  st.isCEO = saved.ceo; st.payrollCfg = saved.cfg; st.appConfig = saved.ac; st.appOrders = saved.ao; st.me = saved.me; st.memberPerms = saved.mp;
 });

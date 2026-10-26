@@ -7446,6 +7446,37 @@ select.no-asar-len {
 .amk-line { margin-top: var(--space-1); font-size: var(--fs-sm); line-height: 1.6; }
 .amk-line-s { color: var(--muted); }
 .amk-warn { margin-bottom: var(--space-2); }
+
+/* ── Ажилд дуудах, захиалгын бонус/торгуулийн дүрэм (2026-10-26) ───────────────── */
+.aci-chip { border-radius: 999px; padding: var(--space-1) var(--space-2); font-size: var(--fs-sm); font-weight: 600;
+  background: var(--panel-hover); color: var(--muted); white-space: nowrap; }
+.aci-ok { background: var(--ok-soft); color: var(--ok); }
+.aci-late { background: var(--danger-soft); color: var(--danger); }
+.aci-sec > .amk-sum { cursor: default; }
+.aci-sec > .amk-sum::before { content: none; }
+.aci-modal { max-width: 420px; }
+.aci-f { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
+.aci-f > span { font-size: var(--fs-sm); color: var(--muted); }
+.aci-up { margin-bottom: var(--space-3); }
+.aci-up-t { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-1); }
+.aci-up-r { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  font-size: var(--fs-sm); padding: var(--space-1) 0; border-top: 1px solid var(--line); }
+.aci-up-r > span { min-width: 0; overflow-wrap: anywhere; }
+.aci-my { border-color: var(--primary); background: var(--primary-soft); }
+.aci-my-t { font-size: var(--fs-md); font-weight: 700; margin-bottom: var(--space-1); }
+.aci-my-r { font-size: var(--fs-base); padding: var(--space-1) 0; overflow-wrap: anywhere; }
+.aci-my-s { font-size: var(--fs-sm); color: var(--muted); margin-top: var(--space-1); line-height: 1.6; }
+.pb-rules { display: block; }
+.pb-rules > summary { cursor: pointer; font-weight: 600; color: var(--text); list-style: none; min-height: var(--tap-sm);
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.pb-rules > summary::-webkit-details-marker { display: none; }
+.pb-rules-st { font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
+.pr-in { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); }
+.pr-note { font-size: var(--fs-xs); line-height: 1.6; color: var(--muted); }
+.pr-f { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.pr-f > span { flex: 1 1 180px; color: var(--text); }
+.pr-f > small { flex-basis: 100%; font-size: var(--fs-xs); color: var(--muted); }
+.pr-ro { font-size: var(--fs-xs); line-height: 1.6; }
 /* ═══ МИНИЙ ИРЦ (2026-10-09) — inline style-аас класс ═══ */
 .myatt-wrap { max-width: 520px; margin: 0 auto; padding-bottom: 26px; }
 .myatt-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: var(--space-4); margin-bottom: var(--space-3); }

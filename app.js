@@ -13579,6 +13579,7 @@ async function loadAttMarks() {
 }
 // Цалин/ирцийн дэлгэц бүр render хийхдээ дуудна. Унавал `attMarksRetryAt`-аас хойш л дахин оролдоно (render давталтгүй).
 function ensureAttMarks() {
+  ensureAttCallins();   // дуудлага (торгуулийн эх сурвалж) ижил дэлгэцүүдэд хэрэгтэй — тусдаа төлөвтэй
   if (state._attMarksBusy) return;
   const retry = state.attMarksErr && Date.now() >= (state.attMarksRetryAt || 0);
   if (state.attMarks !== undefined && !retry) return;
@@ -13695,6 +13696,388 @@ function attMarkDetailHtml(mn) {
     `${ATT_MARK_KINDS[x].icon} ${ATT_MARK_KINDS[x].label} <b>${mn.marks[x].length}</b> өдөр (${mn.marks[x].map(d => escapeHtml(d.slice(8))).join(', ')})`);
   if (!parts.length) return '';
   return `<div class="amk-line">${parts.join(' · ')}${mn.restDays ? `<br><span class="amk-line-s">Цалинтай амралт: сарын норм −${lunchHM(mn.restMins)} → <b>${lunchHM(mn.norm)}</b> (суурь цалин хасагдахгүй).${(mn.leaveDays || mn.absentDays) ? ' Чөлөө/тасалсан нормыг буулгахгүй — ажилласан цагаар бодогдоно.' : ''}</span>` : `<br><span class="amk-line-s">Чөлөө/тасалсан нормыг буулгахгүй — суурь цалин ажилласан цагаар бодогдоно.</span>`}</div>`;
+}
+/* ─── АЖИЛД ДУУДАХ + ТОРГУУЛЬ + ЗАХИАЛГЫН БОНУС (2026-10-26, Алтансүхийн даалгавар + CEO) ───────────
+   «Шаардлагатай үед хаана хэдэн цагаас гэж цаг зааж дууддаг; хоцорсон/ирээгүй/тасалсан үед хариуцлага».
+   ⛔ ТОРГУУЛЬ ЗӨВХӨН ДУУДЛАГААС: хоцролтыг ЗӨВХӨН цаг зааж дуудсан өдөр хэмжинэ. Цаг заагаагүй өдөр хоцролт
+     хэмжигддэггүй (талбарын, уян цагийн хүн) тул тавибал хүн тус бүрд өөрөөр хэрэгжиж шударга бус болно;
+     гэрээний загварт ажлын цаг 09:00–18:00 гэж бичигдсэн тул хүн бүрийн цагаар торгох нь гэрээтэй зөрчилдөнө.
+     Дуудлага = менежерийн тодорхой үүрэг даалгавар тул энэ хоёр асуудал үүсэхгүй.
+   Гурван тохиолдол (`attDiscipline`, ГАНЦ эх сурвалж):
+     absent — «Тасалсан» тэмдэглэгээтэй, тэр өдөр ирц ОГТ байхгүй
+     noshow — дуудлагатай өдөр өнгөрсөн, ирц байхгүй, Амралт/Чөлөө тэмдэглэгээгүй
+     late   — дуудлагатай өдөр ирсэн, эхний ирсэн цаг дуудсан цаг + чөлөөнөөс хойш
+   ⛔ ФАКТ ТЭМДЭГЛЭГЭЭГ ДАРНА: тэр өдөр ирц байвал «Тасалсан» тэмдэглэгээ тоологдохгүй. Амралт/Чөлөө = зөвшөөрөгдсөн →
+     ирээгүйд тооцохгүй. Тасалсан тэмдэглэгээ дуудлагатай өдөр давхцвал ЗӨВХӨН нэг удаа (absent) — давхар торгохгүй.
+   ⛔ Торгуулийн хувь `app_config['pay_rules']` (зөвхөн CEO бичнэ, RLS) — кодод БИЧИХГҮЙ. `from` (хэзээнээс) ТАВИГДААГҮЙ
+     эсвэл бүх хувь 0 бол ЮУ Ч өөрчлөгдөхгүй: олгочихсон сарын цалин чимээгүй өөрчлөгдөхөөс хамгаална.
+   ⛔ Торгууль = суурь цалингийн % (сарын дээд хязгаартай), НЭГ тусдаа мөр «⚠ Торгууль» — суутгалын суурьд ОРОХГҮЙ
+     (НДШ/ХХОАТ хэвээр), давхар хасалт биш: суурь цалин ажилласан цагаар бодогдох нь хэвээр.
+   ⛔ Захиалгын бонус = өөрийн үүсгэсэн (`created_by`) захиалгын ТӨЛӨГДСӨН түрээсийн орлогын % (барьцаа, цуцалсан хасагдсан;
+     `orderRevenue`). Тоогоор БИШ — нэг захиалгыг хуваан бичих сонирхол үүснэ. Сайтаас шууд ирсэн захиалга ажилтнаар
+     үүсээгүй тул хэнд ч тоологдохгүй. Суутгал тооцохгүй (дамжлагын бонустой ижил). */
+const PAY_RULES_DEFAULT = { capPct: 20, graceMin: 5 };
+function payRulesCfg() {
+  const c = (state.appConfig && state.appConfig.pay_rules && typeof state.appConfig.pay_rules === 'object') ? state.appConfig.pay_rules : {};
+  const pct = (v) => { const n = Number(v); return (n > 0 && n <= 100) ? n : 0; };
+  const g = Number(c.grace_min);
+  return {
+    from: /^\d{4}-\d{2}$/.test(String(c.from || '')) ? String(c.from) : '',
+    orderPct: pct(c.order_pct), absentPct: pct(c.absent_pct), latePct: pct(c.late_pct), noshowPct: pct(c.noshow_pct),
+    capPct: pct(c.cap_pct) || PAY_RULES_DEFAULT.capPct,
+    graceMin: (c.grace_min !== undefined && c.grace_min !== null && c.grace_min !== '' && g >= 0 && g <= 120) ? g : PAY_RULES_DEFAULT.graceMin,
+  };
+}
+function payRulesEditable() { return !!state.isCEO; }   // db/rls.sql: pay_rules зөвхөн CEO (scan-тест тулгана)
+function payRulesActive(ym) { const c = payRulesCfg(); return !!c.from && String(ym) >= c.from; }
+// Хүний тухайн сарын дуудлага
+function attCallinMap() { return (state.attCallins && typeof state.attCallins === 'object') ? state.attCallins : {}; }
+function attCallinsReady() { return !!(state.attCallins && typeof state.attCallins === 'object') && !state.attCallinsErr; }
+function attCallinOn(key, day) { const c = attCallinMap()[attMarkId(key, day)]; return (c && c.status === 'active') ? c : null; }
+async function loadAttCallins() {
+  try {
+    const since = payrollStartMonth() + '-01';
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/att_callins?select=id,member_key,day,at_time,place,status,called_by,updated_at&day=gte.${since}&order=day.asc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json(), map = {};
+    (Array.isArray(rows) ? rows : []).forEach(x => { if (x && x.id) map[x.id] = x; });
+    state.attCallins = map; state.attCallinsErr = null;
+  } catch (e) {
+    state.attCallinsErr = attFailMsg(e); state.attCallinsRetryAt = Date.now() + 60000;
+    dataLoadFailed('Ажилд дуудлага', e);
+  }
+  return state.attCallins;
+}
+function ensureAttCallins() {
+  if (state._attCallinsBusy) return;
+  const retry = state.attCallinsErr && Date.now() >= (state.attCallinsRetryAt || 0);
+  if (state.attCallins !== undefined && !retry) return;
+  state._attCallinsBusy = true;
+  if (state.attCallins === undefined) state.attCallins = null;
+  loadAttCallins().then(() => { state._attCallinsBusy = false; if (typeof render === 'function') render(); },
+                        () => { state._attCallinsBusy = false; });
+}
+function attCallinValidate(p, today) {
+  p = p || {}; today = today || todayStr();
+  const day = String(p.day || ''), time = String(p.time || ''), place = String(p.place || '').trim();
+  if (attMarkKey(p.key).length < 8) return { ok: false, err: 'Ажилтны утас бүртгэгдээгүй — дуудах боломжгүй' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { ok: false, err: 'Өдрөө сонгоно уу' };
+  if (day < today) return { ok: false, err: 'Өнгөрсөн өдрөөр дуудлага үүсгэхгүй — өнөөдөр эсвэл ирээдүйн өдрийг сонгоно уу' };
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { ok: false, err: 'Цагаа оруулна уу (ЦЦ:ММ)' };
+  if (place.length > 120) return { ok: false, err: 'Газрын нэр 120 тэмдэгтээс урт байна' };
+  if (monthLocked(day.slice(0, 7))) return { ok: false, err: `🔒 ${day.slice(0, 7)} сар хаагдсан — дуудлага өөрчлөх боломжгүй.` };
+  return { ok: true };
+}
+async function attCallinSet(key, day, time, place) {
+  const k = attMarkKey(key);
+  if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
+  if (!attCallinsReady()) throw new Error('Дуудлагын жагсаалт ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу');
+  const mem = findMember(key);
+  if (mem && !branchFenceAllowsMember(mem)) throw new Error('Энэ ажилтан таны салбарынх биш');
+  const v = attCallinValidate({ key: k, day, time, place });
+  if (!v.ok) throw new Error(v.err);
+  await assertMonthOpenLive(String(day).slice(0, 7), 'ажилд дуудлага');   // өөр сессээс хаагдсан байж болно
+  const body = { id: attMarkId(k, day), member_key: k, day, at_time: time, place: String(place || '').trim() || null, status: 'active' };
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/att_callins?on_conflict=id`, {
+    method: 'POST', headers: pgWrite({ Prefer: 'resolution=merge-duplicates,return=representation' }), body: JSON.stringify(body),
+  }, 15000);
+  if (!r.ok) {
+    const t = await r.text().catch(() => ''); let msg = ''; try { msg = (JSON.parse(t) || {}).message || ''; } catch (_) {}
+    throw new Error(msg || ('HTTP ' + r.status));
+  }
+  const rows = await r.json().catch(() => []);
+  const row = (Array.isArray(rows) && rows[0]) || Object.assign({ called_by: state.me }, body);
+  state.attCallins = Object.assign({}, attCallinMap(), { [row.id]: row });
+  // Дуудагдсан хүнд мэдэгдэнэ (өөртөө илгээхгүй) — мэдээгүй бол ирэхгүй, торгууль шударга биш болно
+  pushBroadcast(k, { kind: 'attendance', title: '📞 Ажилд дуудлаа', body: `${String(day).slice(5)} · ${time}${body.place ? ' · ' + body.place : ''}`, url: './' });
+  return row;
+}
+// Болих = мөр УСТАХГҮЙ (status='void'). Өнгөрсөн өдрийнхийг upsert-ээр БИШ PATCH-аар — DB өнгөрсөн өдрөөр шинээр үүсгэхийг хаадаг.
+async function attCallinVoid(key, day) {
+  const k = attMarkKey(key), prev = attCallinOn(k, day);
+  if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
+  if (!attCallinsReady()) throw new Error('Дуудлагын жагсаалт ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу');
+  if (!prev) return null;
+  const mem = findMember(key);
+  if (mem && !branchFenceAllowsMember(mem)) throw new Error('Энэ ажилтан таны салбарынх биш');
+  await assertMonthOpenLive(String(day).slice(0, 7), 'ажилд дуудлага');
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/att_callins?id=eq.${encodeURIComponent(attMarkId(k, day))}`, {
+    method: 'PATCH', headers: pgWrite({ Prefer: 'return=representation' }), body: JSON.stringify({ status: 'void' }),
+  }, 15000);
+  if (!r.ok) {
+    const t = await r.text().catch(() => ''); let msg = ''; try { msg = (JSON.parse(t) || {}).message || ''; } catch (_) {}
+    throw new Error(msg || ('HTTP ' + r.status));
+  }
+  const rows = await r.json().catch(() => []);
+  const row = (Array.isArray(rows) && rows[0]) || Object.assign({}, prev, { status: 'void' });
+  state.attCallins = Object.assign({}, attCallinMap(), { [row.id]: row });
+  pushBroadcast(k, { kind: 'attendance', title: '📞 Дуудлага цуцлагдлаа', body: `${String(day).slice(5)} · ${prev.at_time}`, url: './' });
+  return row;
+}
+// «ЦЦ:ММ» → минут
+function _hmMin(hm) { const p = String(hm || '').split(':'); return (Number(p[0]) || 0) * 60 + (Number(p[1]) || 0); }
+// Хүний тухайн сарын сахилгын үйл явдал. ЦЭВЭР функц — тестлэгдэнэ. `recs` = тэр сарын ирцийн мөрүүд (хэн ч байж болно).
+// Хувь/хэзээнээс-ээс ХАМААРАХГҮЙ (тоолол) — дэлгэц торгууль идэвхгүй байхад ч «юу болсон»-ыг харуулна.
+function attDiscipline(key, ym, recs, today, graceMin) {
+  const k = attMarkKey(key); today = today || todayStr();
+  const out = { events: [], lateN: 0, absentN: 0, noshowN: 0, lateMins: 0 };
+  if (!k) return out;
+  const grace = (graceMin === undefined || graceMin === null) ? payRulesCfg().graceMin : Number(graceMin);
+  const firstIn = {}, has = {};
+  (Array.isArray(recs) ? recs : []).forEach(r => {
+    if (!r || String(r.day || '').slice(0, 7) !== ym || attMarkKey(attCanonKey(r)) !== k) return;
+    has[r.day] = true;
+    if (r.kind === 'in' && (!firstIn[r.day] || String(r.ts) < String(firstIn[r.day]))) firstIn[r.day] = r.ts;
+  });
+  const days = new Set();
+  Object.keys(attCallinMap()).forEach(id => { const c = attCallinMap()[id];
+    if (c && c.status === 'active' && c.member_key === k && String(c.day).slice(0, 7) === ym) days.add(String(c.day)); });
+  Object.keys(attMarkMap()).forEach(id => { const m = attMarkMap()[id];
+    if (m && m.status === 'active' && m.kind === 'absent' && m.member_key === k && String(m.day).slice(0, 7) === ym) days.add(String(m.day)); });
+  [...days].sort().forEach(d => {
+    const call = attCallinOn(k, d), mark = attMarkOn(k, d);
+    if (has[d]) {
+      // Ирсэн — тэмдэглэгээнээс ФАКТ давуу. Дуудлагатай бол цагийг шалгана.
+      if (call && firstIn[d]) {
+        const diff = _hmMin(hhmmUB(firstIn[d])) - _hmMin(call.at_time);
+        if (diff > grace) out.events.push({ day: d, kind: 'late', mins: diff, time: call.at_time, came: hhmmUB(firstIn[d]) });
+      }
+    } else if (mark && mark.kind === 'absent') {
+      out.events.push({ day: d, kind: 'absent' });                           // дуудлагатай ч нэг удаа л (давхар торгохгүй)
+    } else if (call && d < today && !(mark && (mark.kind === 'rest' || mark.kind === 'leave'))) {
+      out.events.push({ day: d, kind: 'noshow', time: call.at_time });       // Амралт/Чөлөө = зөвшөөрөгдсөн
+    }
+  });
+  out.events.forEach(e => { if (e.kind === 'late') { out.lateN++; out.lateMins += e.mins; } else if (e.kind === 'absent') out.absentN++; else out.noshowN++; });
+  return out;
+}
+// Өөрийн үүсгэсэн захиалгын төлөгдсөн түрээсийн орлого (тэр сард). ЦЭВЭР-д ойр: state.appOrders уншина.
+function orderBonusFor(key, ym) {
+  const k = attMarkKey(key); let rev = 0, n = 0;
+  if (!k) return { rev, n };
+  (state.appOrders || []).forEach(o => {
+    if (!o || attMarkKey(o.created_by) !== k || !_orderActive(o) || orderIncomeMonth(o, 'cash') !== ym) return;
+    const v = orderRevenue(o, 'cash');
+    if (v > 0) { rev += v; n++; }
+  });
+  return { rev, n };
+}
+/* Цалинд нэмэгдэх/хасагдах НЭМЭЛТ: торгууль, захиалгын бонус. `monthPayBreakdown`-ийн сүүлийн параметр.
+   `ready:false` = дүрэм идэвхтэй атлаа өгөгдөл ачаалагдаагүй → дуудагч ил хэлнэ (0 гэж чимээгүй харуулахгүй).
+   `recs` = тэр сарын ирцийн мөрүүд (хэн ч байж болно, `attDiscipline` өөрөө шүүнэ). */
+function payExtras(key, ym, recs, base) {
+  const cfg = payRulesCfg(), active = !!cfg.from && String(ym) >= cfg.from;
+  const dataOk = attMarksReady() && attCallinsReady() && Array.isArray(recs);
+  const disc = dataOk ? attDiscipline(key, ym, recs, undefined, cfg.graceMin) : null;
+  const ex = { active, ready: true, disc, penalty: 0, penaltyPct: 0, orderBonus: 0, orderN: 0, cfg };
+  if (!active) return ex;
+  if (cfg.absentPct > 0 || cfg.latePct > 0 || cfg.noshowPct > 0) {
+    if (!disc) ex.ready = false;
+    else {
+      const raw = disc.absentN * cfg.absentPct + disc.noshowN * cfg.noshowPct + disc.lateN * cfg.latePct;
+      ex.penaltyPct = Math.min(cfg.capPct, raw);
+      ex.penalty = Math.round((Number(base) || 0) * ex.penaltyPct / 100);
+    }
+  }
+  if (cfg.orderPct > 0) {
+    const ob = orderBonusFor(key, ym);
+    ex.orderN = ob.n; ex.orderBonus = Math.round(ob.rev * cfg.orderPct / 100);
+  }
+  return ex;
+}
+// Үйл явдлын нэг мөр: «10-21 · Тасалсан», «10-22 · 09:30 дуудлагад ирээгүй», «10-23 · 09:30 дуудсан, 09:55 ирсэн (25м хоцорсон)»
+function attDisciplineLine(e) {
+  const d = escapeHtml(String(e.day).slice(5));
+  if (e.kind === 'absent') return `${d} · 🚫 Тасалсан`;
+  if (e.kind === 'noshow') return `${d} · 📞 ${escapeHtml(e.time)} дуудлагад ирээгүй`;
+  return `${d} · ⏰ ${escapeHtml(e.time)} дуудсан, ${escapeHtml(e.came)} ирсэн (${e.mins}м хоцорсон)`;
+}
+function attDisciplineSummary(disc) {
+  if (!disc) return '';
+  return [disc.absentN ? `тасалсан ${disc.absentN}` : '', disc.noshowN ? `дуудлагад ирээгүй ${disc.noshowN}` : '', disc.lateN ? `хоцорсон ${disc.lateN}` : ''].filter(Boolean).join(' · ');
+}
+function payRulesText(cfg) {
+  cfg = cfg || payRulesCfg();
+  const bits = [];
+  if (cfg.orderPct) bits.push(`өөрийн үүсгэсэн захиалгын төлөгдсөн түрээсийн ${cfg.orderPct}% бонус`);
+  if (cfg.absentPct) bits.push(`тасалсан өдөр бүр суурь цалингийн ${cfg.absentPct}% торгууль`);
+  if (cfg.noshowPct) bits.push(`дуудсан цагтаа ирээгүй бол ${cfg.noshowPct}%`);
+  if (cfg.latePct) bits.push(`дуудсан цагаас ${cfg.graceMin}м-ээс хэтэрч хоцорвол ${cfg.latePct}%`);
+  const pen = cfg.absentPct || cfg.noshowPct || cfg.latePct;
+  return bits.length ? `${cfg.from}-аас: ${bits.join(' · ')}${pen ? ` (сард дээд тал ${cfg.capPct}%)` : ''}.` : '';
+}
+// Сахилгын дэлгэрэнгүй (өдөр бүр) + тайлбар. Торгууль идэвхгүй үед ч «юу болсон»-ыг харуулна.
+function attDisciplineDetailHtml(ex) {
+  if (!ex || !ex.disc || !ex.disc.events.length) return '';
+  const pen = ex.active && ex.penalty > 0;
+  return `<div class="amk-line">${ex.disc.events.map(attDisciplineLine).join('<br>')}<br><span class="amk-line-s">${
+    pen ? `Торгууль: ${attDisciplineSummary(ex.disc)} → суурь цалингийн ${ex.penaltyPct}%.`
+        : ex.active ? 'Торгуулийн хувь тохируулаагүй — цалинд нөлөөлөхгүй.'
+        : 'Торгуулийн дүрэм хараахан хэрэгжээгүй — цалинд нөлөөлөхгүй, зөвхөн бүртгэгдэв.'}</span></div>`;
+}
+function attPayExtrasWarnHtml(ex) {
+  if (!ex || ex.ready) return '';
+  return `<div class="pb-note amk-warn">⏳ Торгуулийн мэдээлэл (дуудлага, тэмдэглэгээ, ирц) ачаалагдаагүй байна — ачаалагдтал торгууль тооцогдохгүй, цалин өндөр харагдана.</div>`;
+}
+// Өдрийн ирцийн дэлгэц дээрх «Дуудсан» хэсэг: хэн, хэдэн цагт, хаана — ирсэн/хоцорсон/ирээгүй. Зөвхөн ирц засах эрхтэйд.
+function attCallinSectionHtml(day, recs) {
+  if (!canEditAttendance() || state.attMonthMode || !Array.isArray(recs)) return '';
+  ensureAttMarks();
+  if (!attCallinsReady()) return '';
+  const grace = payRulesCfg().graceMin, today = todayStr();
+  const firstIn = {};
+  recs.forEach(r => { if (r && r.kind === 'in') { const ck = attMarkKey(attCanonKey(r)); if (!firstIn[ck] || String(r.ts) < String(firstIn[ck])) firstIn[ck] = r.ts; } });
+  const rows = Object.keys(attCallinMap()).map(id => attCallinMap()[id])
+    .filter(c => c && c.status === 'active' && String(c.day) === day)
+    .map(c => ({ c, m: findMember(c.member_key) || { name: c.member_key } }))
+    .filter(r => !r.m || branchFenceAllowsMember(r.m))
+    .sort((a, b) => String(a.c.at_time).localeCompare(String(b.c.at_time)));
+  if (!rows.length) return '';
+  const locked = monthLocked(day.slice(0, 7));
+  const html = rows.map(({ c, m }) => {
+    const fin = firstIn[c.member_key], mark = attMarkOn(c.member_key, day);
+    let chip;
+    if (fin) { const diff = _hmMin(hhmmUB(fin)) - _hmMin(c.at_time);
+      chip = diff > grace ? `<span class="aci-chip aci-late">🔴 ${escapeHtml(hhmmUB(fin))} · ${diff}м хоцорсон</span>` : `<span class="aci-chip aci-ok">✓ ${escapeHtml(hhmmUB(fin))} цагтаа</span>`; }
+    else if (mark && (mark.kind === 'rest' || mark.kind === 'leave')) chip = `<span class="aci-chip">${ATT_MARK_KINDS[mark.kind].icon} ${ATT_MARK_KINDS[mark.kind].label}</span>`;
+    else chip = day >= today ? '<span class="aci-chip">⏳ хүлээгдэж байна</span>' : '<span class="aci-chip aci-late">❌ ирээгүй</span>';
+    return `<div class="amk-row"><div class="amk-who"><span class="amk-name">${escapeHtml(m.name || c.member_key)}</span><span class="amk-role">📞 ${escapeHtml(c.at_time)}${c.place ? ' · ' + escapeHtml(c.place) : ''}</span></div>
+      <div class="amk-acts">${chip}${locked ? '' : `<button class="ui-raw amk-x" data-aci-void data-amk-key="${escapeHtml(c.member_key)}" data-amk-day="${escapeHtml(day)}" aria-label="Дуудлагыг болих" title="Болих">✕</button>`}</div></div>`;
+  }).join('');
+  return `<div class="amk-sec aci-sec"><div class="amk-sum">📞 Ажилд дуудсан <b class="amk-n">${rows.length}</b></div><div class="amk-list">${html}</div></div>`;
+}
+async function attCallinVoidClick(btn) {
+  const key = btn.dataset.amkKey, day = btn.dataset.amkDay;
+  btn.disabled = true;
+  try { await attCallinVoid(key, day); showToast('Дуудлага болилоо', 'success', 2000); }
+  catch (err) { showToast('⚠ ' + (err && err.message || err), 'error', 5000); }
+  const el = document.getElementById('att-list');
+  if (el && state.view === 'attendance' && !state.attMonthMode) el.innerHTML = renderAttendanceRows();
+}
+// Ажилтны өөрийн «Миний ирц» дээрх дуудлага (өнөөдөр ба ирээдүй)
+function myCallinsHtml(me) {
+  const k = attMarkKey(personKey(me) || state.me), today = todayStr();
+  if (!k) return '';
+  const list = Object.keys(attCallinMap()).map(id => attCallinMap()[id])
+    .filter(c => c && c.status === 'active' && c.member_key === k && String(c.day) >= today)
+    .sort((a, b) => (String(a.day) + a.at_time).localeCompare(String(b.day) + b.at_time));
+  if (!list.length) return '';
+  const rules = payRulesCfg(), pen = payRulesActive(today.slice(0, 7)) && (rules.noshowPct || rules.latePct);
+  return `<div class="myatt-card aci-my"><div class="aci-my-t">📞 Танд дуудлага байна</div>${list.map(c =>
+    `<div class="aci-my-r"><b>${escapeHtml(String(c.day).slice(5))} ${_MN_WD[new Date(c.day + 'T00:00:00').getDay()]}</b> · <b>${escapeHtml(c.at_time)}</b>${c.place ? ' · ' + escapeHtml(c.place) : ''}</div>`).join('')}
+    <div class="aci-my-s">Тэр цагтаа ирээгүй эсвэл хоцорвол бүртгэгдэнэ${pen ? ' — торгуулийн дүрэм үйлчилнэ' : ''}. Ирэх боломжгүй бол өмнө нь удирдлагад хэлнэ.</div></div>`;
+}
+// «📞 Ажилд дуудах» цонх (ирцийн «⋯ Хэрэгсэл»-ээс). Хэнийг, хэзээ, хэдэн цагт, хаана.
+function openCallinModal() {
+  if (!canEditAttendance()) { showToast('Танд ирц засах эрх алга', 'warn', 3000); return; }
+  ensureAttMarks();
+  document.getElementById('att-callin-modal')?.remove();
+  const today = todayStr(), tomorrow = addDays(today, 1);
+  const cands = attMarkCandidates();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'att-callin-modal';
+  const upcoming = () => Object.keys(attCallinMap()).map(id => attCallinMap()[id])
+    .filter(c => c && c.status === 'active' && String(c.day) >= today && branchFenceAllowsMember(findMember(c.member_key) || {}))
+    .sort((a, b) => (String(a.day) + a.at_time).localeCompare(String(b.day) + b.at_time));
+  const listHtml = () => { const u = upcoming();
+    return u.length ? `<div class="aci-up-t">Дуудсан (өнөөдрөөс хойш)</div>${u.map(c => `<div class="aci-up-r"><span><b>${escapeHtml(String(c.day).slice(5))}</b> ${escapeHtml(c.at_time)} · ${escapeHtml((findMember(c.member_key) || {}).name || c.member_key)}${c.place ? ' · ' + escapeHtml(c.place) : ''}</span>
+      <button class="ui-raw amk-x" data-aci-del="${escapeHtml(c.member_key)}|${escapeHtml(c.day)}" aria-label="Болих" title="Болих">✕</button></div>`).join('')}` : ''; };
+  modal.innerHTML = `<div class="modal aci-modal">
+    <h2>📞 Ажилд дуудах</h2>
+    <p class="amo-hint">Хэнийг, хэдэн цагт, хаана ирэхийг заана. Ажилтанд мэдэгдэл очно. Тэр цагтаа ирээгүй эсвэл хоцорвол бүртгэгдэнэ${payRulesActive(today.slice(0, 7)) && (payRulesCfg().noshowPct || payRulesCfg().latePct) ? ' (торгуулийн дүрэм үйлчилнэ)' : ''}.</p>
+    <label class="aci-f"><span>Ажилтан</span><select id="aci-who">${cands.map(m => `<option value="${escapeHtml(personKey(m))}">${escapeHtml(m.name || personKey(m))}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`).join('')}</select></label>
+    <label class="aci-f"><span>Өдөр</span><input type="date" id="aci-day" min="${today}" value="${tomorrow}"></label>
+    <label class="aci-f"><span>Цаг</span><input type="time" id="aci-time" value="09:00"></label>
+    <label class="aci-f"><span>Хаана</span><input type="text" id="aci-place" maxlength="120" placeholder="Жишээ: Нарны зам, агуулах"></label>
+    <div class="amo-err" id="aci-err" hidden></div>
+    <div class="aci-up" id="aci-up">${listHtml()}</div>
+    <div class="modal-actions">
+      <button class="btn" id="aci-cancel">Хаах</button>
+      <button class="btn btn-primary" id="aci-save"${cands.length ? '' : ' disabled'}>Дуудах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  const errEl = modal.querySelector('#aci-err');
+  modal.querySelector('#aci-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const refresh = () => { const el = modal.querySelector('#aci-up'); if (el) el.innerHTML = listHtml();
+    const l = document.getElementById('att-list'); if (l && state.view === 'attendance' && !state.attMonthMode) l.innerHTML = renderAttendanceRows(); };
+  modal.querySelector('#aci-up').addEventListener('click', async (e) => {
+    const b = e.target.closest && e.target.closest('[data-aci-del]'); if (!b || b.disabled) return;
+    b.disabled = true; const [k, d] = b.dataset.aciDel.split('|');
+    try { await attCallinVoid(k, d); showToast('Дуудлага болилоо', 'success', 1800); } catch (err) { showToast('⚠ ' + (err && err.message || err), 'error', 5000); }
+    refresh();
+  });
+  modal.querySelector('#aci-save').onclick = async (e) => {
+    const btn = e.currentTarget, key = modal.querySelector('#aci-who').value, day = modal.querySelector('#aci-day').value,
+      time = modal.querySelector('#aci-time').value, place = modal.querySelector('#aci-place').value;
+    errEl.hidden = true;
+    const v = attCallinValidate({ key, day, time, place });
+    if (!v.ok) { errEl.textContent = '⚠ ' + v.err; errEl.hidden = false; return; }
+    btn.disabled = true;
+    try {
+      await attCallinSet(key, day, time, place);
+      const mem = findMember(key);
+      showToast(`📞 ${(mem && mem.name) || key} · ${day.slice(5)} ${time}`, 'success', 2500);
+      modal.querySelector('#aci-place').value = '';
+      refresh();
+    } catch (err) { errEl.textContent = '⚠ ' + (err && err.message || err); errEl.hidden = false; }
+    btn.disabled = false;
+  };
+  modal.classList.add('open');
+}
+/* ⚙️ Шагнал ба торгуулийн дүрэм — цалингийн самбарын дээр. ЗӨВХӨН CEO өөрчилнө (db/rls.sql: pay_rules). Бусад цалин харагч
+   өөрт үйлчилж буй дүрмийг ЗӨВХӨН УНШИНА (дүрмээ мэдэхгүй хүнийг торгож болохгүй). Хувь = 0 бол тэр зүйл унтраалттай. */
+function payRulesCardHtml() {
+  const cfg = payRulesCfg(), txt = payRulesText(cfg);
+  if (!payRulesEditable()) return txt ? `<div class="pb-rates pr-ro">🧾 Шагнал ба торгуулийн дүрэм: ${escapeHtml(txt)}</div>` : '';
+  const st = !cfg.from ? 'унтраалттай' : txt ? `идэвхтэй · ${cfg.from}-аас` : 'хувь тохируулаагүй';
+  const f = (id, label, val, hint, ro) => `<label class="pr-f"><span>${label}</span><input type="number" step="0.1" min="0" max="${ro || 100}" id="${id}" value="${val}" class="ui-raw pb-rate" placeholder="0"><small>${hint}</small></label>`;
+  return `<details class="pb-rates pb-rules" id="pr-det"${state.prOpen ? ' open' : ''}><summary>⚙️ Шагнал ба торгуулийн дүрэм <span class="pb-rules-st">${st}</span></summary>
+    <div class="pr-in">
+      <div class="pr-note">Бүх хувь 0 эсвэл «хэзээнээс» хоосон бол цалинд ЮУ Ч өөрчлөгдөхгүй. «Хэзээнээс» сараас ӨМНӨХ цалин хөндөгдөхгүй. Торгууль зөвхөн ажилд ДУУДСАН өдөр болон «Тасалсан» тэмдэглэгээнээс; цаг заагаагүй өдөр хоцролт хэмжигдэхгүй.</div>
+      <label class="pr-f"><span>Хэзээнээс (сар)</span><input type="month" id="pr-from" value="${escapeHtml(cfg.from || nextMonthStr(todayStr().slice(0, 7)))}" min="${escapeHtml(todayStr().slice(0, 7))}" class="ui-raw pay-ym"><small>Энэ сараас эхлэн хэрэгжинэ</small></label>
+      ${f('pr-order', '🧾 Захиалгын бонус, %', cfg.orderPct || '', 'өөрийн үүсгэсэн захиалгын ТӨЛӨГДСӨН түрээсийн орлогоос (барьцаагүй)')}
+      ${f('pr-absent', '🚫 Тасалсан өдөр тутамд, %', cfg.absentPct || '', 'суурь цалингийн')}
+      ${f('pr-noshow', '📞 Дуудсан цагтаа ирээгүй, %', cfg.noshowPct || '', 'суурь цалингийн, удаа тутамд')}
+      ${f('pr-late', '⏰ Дуудсан цагаас хоцорсон, %', cfg.latePct || '', 'суурь цалингийн, удаа тутамд')}
+      ${f('pr-cap', 'Торгуулийн сарын дээд хязгаар, %', cfg.capPct, 'суурь цалингийн — нийлбэр үүнээс хэтрэхгүй')}
+      ${f('pr-grace', 'Хоцролтын чөлөө, мин', cfg.graceMin, 'энэ хүртэл хоцролт тоологдохгүй', 120)}
+      <button class="btn btn-primary" id="pr-save">Хадгалах</button>
+    </div></details>`;
+}
+// Хадгалахын өмнө ЦЭВЭР шалгалт: { ok, cfg } | { ok:false, err }
+function payRulesValidate(raw, today) {
+  const num = (v) => { const s = String(v === undefined || v === null ? '' : v).trim(); return s === '' ? 0 : Number(s); };
+  const o = { order_pct: num(raw.order), absent_pct: num(raw.absent), noshow_pct: num(raw.noshow), late_pct: num(raw.late), cap_pct: num(raw.cap), grace_min: num(raw.grace) };
+  for (const k of ['order_pct', 'absent_pct', 'noshow_pct', 'late_pct', 'cap_pct']) {
+    if (!isFinite(o[k]) || o[k] < 0 || o[k] > 100) return { ok: false, err: 'Хувь 0–100 хооронд байна' };
+  }
+  if (!isFinite(o.grace_min) || o.grace_min < 0 || o.grace_min > 120) return { ok: false, err: 'Хоцролтын чөлөө 0–120 минут' };
+  const from = String(raw.from || '');
+  const any = o.order_pct > 0 || o.absent_pct > 0 || o.noshow_pct > 0 || o.late_pct > 0;
+  if (any && !/^\d{4}-\d{2}$/.test(from)) return { ok: false, err: 'Хувь тавивал «хэзээнээс» сарыг заавал сонгоно' };
+  // ⛔ Өнгөрсөн сараас эхлүүлэхгүй — бодогдсон/олгогдсон цалин чимээгүй өөрчлөгдөнө
+  if (any && from < String(today || todayStr()).slice(0, 7)) return { ok: false, err: 'Өнгөрсөн сараас эхлүүлэхгүй — олгосон цалин өөрчлөгдөнө. Энэ сар эсвэл дараа сарыг сонгоно уу' };
+  return { ok: true, cfg: { from: any ? from : (/^\d{4}-\d{2}$/.test(from) ? from : ''), ...o } };
+}
+async function payRulesSave() {
+  if (!payRulesEditable()) { showToast('Зөвхөн CEO өөрчилнө', 'warn', 3000); return; }
+  const v = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const chk = payRulesValidate({ from: v('pr-from'), order: v('pr-order'), absent: v('pr-absent'), noshow: v('pr-noshow'), late: v('pr-late'), cap: v('pr-cap'), grace: v('pr-grace') });
+  if (!chk.ok) { showToast('⚠ ' + chk.err, 'warn', 4500); return; }
+  const next = { ...chk.cfg };
+  const preview = payRulesText({ from: next.from, orderPct: next.order_pct, absentPct: next.absent_pct, noshowPct: next.noshow_pct, latePct: next.late_pct, capPct: next.cap_pct || PAY_RULES_DEFAULT.capPct, graceMin: next.grace_min }) || 'Бүх дүрэм унтраалттай болно.';
+  if (!(await showConfirm(`${preview}\n\nЭнэ нь ${next.from || '—'}-аас хойших цалинд нөлөөлнө. Өмнөх сарын цалин өөрчлөгдөхгүй. Цалингаас торгох нь хуулиар хязгаартай — хуульчаасаа асуусан эсэхээ шалгана уу.`, { title: 'Шагнал ба торгуулийн дүрэм', okText: 'Хадгалах' }))) return;
+  try {
+    await saveAppConfig('pay_rules', next);
+    state.appConfig = state.appConfig || {}; state.appConfig.pay_rules = next;
+    showToast('Дүрэм хадгалагдлаа', 'success', 2200);
+    render();
+  } catch (e) { showToast('Хадгалж чадсангүй: ' + e.message, 'error', 5000); }
 }
 // ── ИРЦИЙН ЗАСВАРЫН ХҮСЭЛТ — ажилтан ӨӨРӨӨ гаргана (2026-09-09) ──────────────
 // Удирдлага л засаж чаддаг байсан тул ажилтан «намайг мартчихлаа» гэж дуудаж,
@@ -14087,7 +14470,8 @@ function renderAttendanceRows() {
   recs.forEach(r => { const ck = attCanonKey(r); (by[ck] = by[ck] || []).push(r); });
   const keys = Object.keys(by);
   // «Ирээгүй · тэмдэглэх» — ирсэн хүн ТАНИГДАХ ирцээр (хаалтаар шүүгээгүй) тооцогдоно
-  const markSec = attMarkSectionHtml(day, isToday ? state.attendanceToday : state.attViewRecs);
+  const dayRecs = isToday ? state.attendanceToday : state.attViewRecs;
+  const markSec = attCallinSectionHtml(day, dayRecs) + attMarkSectionHtml(day, dayRecs);
   if (!keys.length) return `<div class="att-empty">${word} хэн ч бүртгүүлээгүй байна.<div class="att-empty-s">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>${markSec}`;
   const rows = keys.map(k => {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
@@ -14216,6 +14600,7 @@ function renderAttendance() {
       <details class="fin-more att-tools"><summary>⋯ Хэрэгсэл</summary><div class="fin-more-in">
         <a id="att-print" href="#" target="_blank" rel="noopener" class="att-tool">🖨 ID QR карт хэвлэх</a>
         <a id="att-self" href="#" target="_blank" rel="noopener" class="att-tool">📱 Утсаар өөрөө</a>
+        ${canEditAttendance() ? `<button id="att-callin" class="ui-raw att-tool">📞 Ажилд дуудах</button>` : ''}
         ${state.isCEO ? `<button id="att-workstart" class="ui-raw att-tool">⏰ Ажил эхлэх цаг</button>` : ''}
       </div></details>
     </div>` : '';
@@ -14720,7 +15105,7 @@ function payProrateFrom() { return payrollStartMonth(); }
    (10-03-нд 2 хоногийн ирц) — норммоос «дутуу» нь хасалт биш, ердөө эрт. Өмнө нь
    суурь 10% болж урьдчилгаа авсан хүн «2.2 сая илүү авсан» гэж ХУДАЛ харагдаж байв.
    `today`-г тест дамжуулна; дуудагч дамжуулахгүй (өнөөдөр). */
-function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today, stageBonus, fullNormMins) {
+function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today, stageBonus, fullNormMins, extra) {
   base = Math.max(0, Number(base) || 0);
   /* ЦАЛИНТАЙ АМРАЛТ (2026-10-26): `normMins` нь ТЭР ХҮНИЙ норм (амралтын өдрөөр буурсан), `fullNormMins` нь
      тэр сарын бүтэн хуанлийн норм. Цагийн хөлс (илүү цаг, хасалт) ҮРГЭЛЖ бүтэн нормоор — амралт авсан хүний
@@ -14748,11 +15133,16 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
      2026-10-02-ны «орохгүй» шийдвэрийг СОЛИВ). ⚠ СУУТГАЛ ТООЦОХГҮЙ:
      илүү цаг, хүргэлттэй ижил — НДШ/ХХОАТ зөвхөн суурь цалингаас. */
   const bonus = Math.max(0, Math.round(Number(stageBonus) || 0));
+  /* `extra` = `payExtras()`: ТОРГУУЛЬ (хасна) ба ЗАХИАЛГЫН БОНУС (нэмнэ). ⚠ Хоёулаа суутгалын суурьд ОРОХГҮЙ — илүү цаг,
+     хүргэлт, дамжлагын бонустой ижил (НДШ/ХХОАТ зөвхөн суурь цалингаас). Торгууль нийт дүнг 0-ээс доош буулгахгүй. */
+  const ex = extra || {};
+  const penalty = Math.max(0, Math.round(Number(ex.penalty) || 0));
+  const orderBonus = Math.max(0, Math.round(Number(ex.orderBonus) || 0));
   return {
     base, earned, shortMins, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
     normMins: norm, creditMins: credit,
     otMins, hourly: Math.round(hourly), otRate: r, otPay,
-    delivery, bonus, total: d.net + otPay + delivery + bonus,
+    delivery, bonus, orderBonus, penalty, total: Math.max(0, d.net + otPay + delivery + bonus + orderBonus - penalty),
   };
 }
 /* ⛔ ЦАЛИНГИЙН ТООЦОО 2026-09-ААС ЭХЭЛНЭ (2026-10-03, CEO шийдвэр) ───────────
@@ -14815,7 +15205,7 @@ function payCarryChain(rows) {
   });
 }
 // minsOf(сар) → тэр сарын ажилласан минут · null = ирцгүй · undefined = ачаалагдаагүй
-function salaryCarryIn(key, ym, minsOf) {
+function salaryCarryIn(key, ym, minsOf, recsOf) {
   const base = Number((state.salaries || {})[key]) || 0;
   const months = payCarryMonths(ym);
   if (!base || !months.length) return { amount: 0, ready: true, from: '' };
@@ -14826,7 +15216,10 @@ function salaryCarryIn(key, ym, minsOf) {
     const mins = minsOf(m);
     if (mins === undefined) return { amount: 0, ready: false, from: '' };
     const mn = memberNorm(key, m);   // өмнөх сарын амралтыг ч харгалзана — тэр сарын цалин ЯГ ИЖИЛ дүрмээр
-    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, mn.norm, driverBonus(key, m).amount, undefined, m, undefined, stagePayFor(key, m).total, mn.full);
+    // Торгууль/захиалгын бонус ч ИЖИЛ: тэр сарын дүрэм идэвхтэй атлаа ирц/дуудлага ачаалагдаагүй бол ready:false
+    const ex = payExtras(key, m, recsOf ? recsOf(m) : undefined, base);
+    if (!ex.ready) return { amount: 0, ready: false, from: '' };
+    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, mn.norm, driverBonus(key, m).amount, undefined, m, undefined, stagePayFor(key, m).total, mn.full, ex);
     rows.push({ m, total: b.total, paid: salaryPaidFor(key, m) });
   }
   const ch = payCarryChain(rows);
@@ -14866,7 +15259,7 @@ function payrollCarryIn(key, ym) {
     const mp = payrollMinsMap(m);
     if (mp === undefined) return undefined;
     return mp[key] ? mp[key].mins : null;
-  });
+  }, m => ((state.attMonthKey === m && Array.isArray(state.attMonthRecs)) ? state.attMonthRecs : (state.attMonthCache && state.attMonthCache[m])));
 }
 /* Аль сарын цалинг анхдагчаар харуулах вэ. Үлдэгдэл дараа сарын 5-нд олгогддог тул
    сарын эхээр хүн ӨМНӨХ сарынхаа цалинг хардаг — 10-02-нд «9 сар» нээгдэнэ.
@@ -14939,7 +15332,8 @@ function renderAttendanceMonth(month) {
     const otMins = Math.max(0, r.mins - r.mn.norm);
     const otTag = otMins ? ` · <span class="att-mo-ot">+${attHM(otMins)} илүү</span>` : '';
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
-    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, r.mn.norm, db.amount, undefined, month, undefined, (sp && sp.total) || 0, r.mn.full) : null;
+    const ex = pbase ? payExtras(r.k, month, state.attMonthRecs, pbase) : null;   // торгууль + захиалгын бонус
+    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, r.mn.norm, db.amount, undefined, month, undefined, (sp && sp.total) || 0, r.mn.full, ex) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
     const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
     const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
@@ -14954,7 +15348,7 @@ function renderAttendanceMonth(month) {
             : rBal.owed > 0 ? `<span class="att-mo-st">үлдэгдэл <b>${fmtMoney(rBal.owed)}</b></span>`
             : `<span class="att-mo-st ok">✓ олгосон</span>`)
           : `<span class="att-mo-st">олгоогүй</span>`}
-      <div class="att-mo-pay-in">цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''}${(rPaid || rCarry.amount) ? `<br>${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)}${rBal.over > 0 ? ' · илүү нь дараа сард' : ''}` : ''}</div></div>` : '';
+      <div class="att-mo-pay-in">цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''}${pb.orderBonus ? ` + захиалгын бонус ${fmtMoney(pb.orderBonus)}` : ''}${pb.penalty ? ` − торгууль ${fmtMoney(pb.penalty)}` : ''}${(rPaid || rCarry.amount) ? `<br>${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)}${rBal.over > 0 ? ' · илүү нь дараа сард' : ''}` : ''}</div></div>` : '';
     /* Мөр = НЭГ ШУГАМ (нэр · хувь · цаг) + дарахад задрах дэлгэрэнгүй (2026-10-09). Өмнө нь ажилтан бүр 120-170px
        блок байсан тул «тойм» нь урт жагсаалт болж, 10 ажилтан ~1500px, нийт дүн хаана ч харагддаггүй байв. */
     return `<details class="att-mo-row" data-att-mo="${escapeHtml(r.k)}"${moOpen[r.k] ? ' open' : ''}>
@@ -14965,7 +15359,7 @@ function renderAttendanceMonth(month) {
       <progress class="att-mo-bar ${pctCls.replace('att-mo-pct-', '')}" max="100" value="${Math.max(0, Math.min(100, pct))}">${pct}%</progress>
       </summary>
       <div class="att-mo-more">
-      <div class="att-mo-calc">⏱ Ажилласан <b>${attHM(r.mins)}</b> / норм ${Math.round(r.pNow / 60)}ц${otTag}</div>${noOutLine}${attMarkDetailHtml(r.mn)}${driverLine}${stageLine}${payLine}</div></details>`;
+      <div class="att-mo-calc">⏱ Ажилласан <b>${attHM(r.mins)}</b> / норм ${Math.round(r.pNow / 60)}ц${otTag}</div>${noOutLine}${attMarkDetailHtml(r.mn)}${attDisciplineDetailHtml(ex)}${attPayExtrasWarnHtml(ex)}${driverLine}${stageLine}${payLine}</div></details>`;
   }).join('');
   // ── Нийт тойм: сарын БҮХ ажилтны дүн нэг дор (хавтан). Тоог мөрүүдээс ДАХИН бодохгүй байхын тулд нэг л удаа.
   const totMins = rows.reduce((t, r) => t + r.mins, 0);
@@ -15025,6 +15419,7 @@ function attachAttendanceHandlers() {
   const pf = document.getElementById('att-print'); if (pf) pf.href = attIdCardsUrl();
   const sf = document.getElementById('att-self'); if (sf) sf.href = attCheckinUrl(todayStr());
   document.getElementById('att-workstart')?.addEventListener('click', openWorkStartModal);
+  document.getElementById('att-callin')?.addEventListener('click', openCallinModal);
   document.querySelector('.dl-det')?.addEventListener('toggle', (e) => { state.dlOpen = e.target.open; });   // render() дахин зурахад хүн нээсэн нь хаагдахгүй
   // Огноо навигаци (өнгөрсөн өдөр / сарын тойм)
   document.getElementById('att-date')?.addEventListener('change', e => { const v = e.target.value; if (v && v <= todayStr()) { state.attViewDay = v; state.attMonthMode = false; render(); } });
@@ -15053,7 +15448,10 @@ function attachAttendanceHandlers() {
   // товчуудад ШУУД биш, контейнерт НЭГ delegation (шууд холбовол солигдсоны дараа товч үхнэ).
   const _attListEl = document.getElementById('att-list');
   if (_attListEl) {
-    _attListEl.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-amk],[data-amk-clear]'); if (b && !b.disabled) attMarkClick(b); });
+    _attListEl.addEventListener('click', e => {
+      const v = e.target.closest && e.target.closest('[data-aci-void]'); if (v && !v.disabled) { attCallinVoidClick(v); return; }
+      const b = e.target.closest && e.target.closest('[data-amk],[data-amk-clear]'); if (b && !b.disabled) attMarkClick(b);
+    });
     _attListEl.addEventListener('toggle', e => { if (e.target && e.target.classList && e.target.classList.contains('amk-sec')) state.amkOpen = e.target.open; }, true);   // render() дахин зурахад хаагдахгүй
   }
   const _isTodayView = () => (state.attViewDay || todayStr()) === todayStr() && !state.attMonthMode;
@@ -15158,7 +15556,8 @@ function myPayCardHtml(me) {
   // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
   ensureAttMarks();
   const mn = memberNorm(key, month);   // цалинтай амралт нормыг буулгана
-  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, mn.norm, db.amount, undefined, month, undefined, stagePayFor(key, month).total, mn.full);
+  const ex = payExtras(key, month, recs, base);   // торгууль + захиалгын бонус (өөрийн ирцээр)
+  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, mn.norm, db.amount, undefined, month, undefined, stagePayFor(key, month).total, mn.full, ex);
   const normH = Math.round(mn.norm / 60);
   const paid = salaryPaidFor(key, month);
   const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
@@ -15198,6 +15597,8 @@ function myPayCardHtml(me) {
   const dlvRow = db.count
     ? row(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus')
     : '';
+  const obRow = b.orderBonus > 0 ? row(`🧾 Захиалгын бонус · ${ex.orderN} захиалга`, `+${fmtMoney(b.orderBonus)}`, 'pay-plus') : '';
+  const penRow = b.penalty > 0 ? row(`⚠ Торгууль · ${attDisciplineSummary(ex.disc)}`, `−${fmtMoney(b.penalty)}`, 'pay-minus') : '';
   const sp = stagePayFor(key, month);
   /* ⛔ Бонус нь НИЙЛБЭРЭЭС ӨМНӨХ мөр — тэмдэглэл болгож доор нь тавибал
      мөрүүд нийлбэртэйгээ таарахгүй харагдана (2026-10-05, CEO барив). */
@@ -15224,7 +15625,7 @@ function myPayCardHtml(me) {
     }
     const w2 = payMonthMins(rr, m);
     return w2.days ? w2.mins : null;
-  });
+  }, m => (state.myPayRecs || {})[m]);
   const bal = payBalance(b.total, paid + carry.amount);
   const carryRow = carry.amount ? row(`↪ ${escapeHtml(carry.from)} сард илүү олгосон`, `−${fmtMoney(carry.amount)}`, 'pay-minus') : '';
   const balRow = bal.over > 0
@@ -15244,17 +15645,20 @@ function myPayCardHtml(me) {
       ${row('= Цэвэр суурь', `<b>${fmtMoney(b.netBase)}</b>`, 'pay-sub')}
       ${otRow}
       ${dlvRow}
+      ${obRow}
       ${spRow}
+      ${penRow}
       ${row('Нийт гарт очих', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
       ${paidRow}
     </div>
     ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`, 'pay-worked')}
-    ${attMarkDetailHtml(mn)}${attMarksWarnHtml()}${noOutNote}${spNote}
-    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${payProrateFrom()}-аас эхлэн ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. ${lunchNote()} Нэмэгдэлд суутгал тооцохгүй.</div>
+    ${attMarkDetailHtml(mn)}${attDisciplineDetailHtml(ex)}${attPayExtrasWarnHtml(ex)}${attMarksWarnHtml()}${noOutNote}${spNote}
+    <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${payProrateFrom()}-аас эхлэн ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. ${lunchNote()} Нэмэгдэлд суутгал тооцохгүй.${payRulesText() ? ' ' + escapeHtml(payRulesText()) : ''}</div>
   </div>`;
 }
 function renderMyAttend() {
   ensurePayrollCfg();   // «Миний цалин» карт түүх сарыг зөв таних
+  ensureAttMarks();     // амралт, дуудлага (өөрийнх нь мөр) — цалингийн норм, торгууль, «Танд дуудлага байна»
   const me = findMember(state.me) || {};
   if (!state._myProfileLoaded) loadMyProfile();   // данс TEAM-д байхгүй — өөрийн токеноор татна
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
@@ -15345,6 +15749,7 @@ function renderMyAttend() {
         <div class="myatt-tile-s">${dayKeys.length} өдөр ажилласан</div></div>
     </div>
     ${noOutBox}
+    ${myCallinsHtml(me)}
     ${myPayCardHtml(me)}
     ${(() => { if (payrollHistOnly(payM)) return '';   // ⛔ түүх сард хэрэгжээгүй нэмэгдэл гаргахгүй
       const db = driverBonus(personKey(me) || state.me, payM); return db.count ? `
@@ -19707,10 +20112,11 @@ function renderSalary() {
     const db = driverBonus(r.k, ym);
     // ⛔ Ирц ачаалагдаагүй / тэр сард огт бүртгэлгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 биш
     const mn = memberNorm(r.k, ym);
-    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, mn.norm, db.amount, undefined, ym, undefined, ((spAll[r.k] || {}).total) || 0, mn.full);
+    const ex = histOnly ? payExtras(r.k, ym, undefined, 0) : payExtras(r.k, ym, attReady ? state.attMonthRecs : undefined, r.amount);   // торгууль + захиалгын бонус
+    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, mn.norm, db.amount, undefined, ym, undefined, ((spAll[r.k] || {}).total) || 0, mn.full, ex);
     // ↪ Өмнөх сарын илүү олголт — энэ сарын олгохоос хасагдана (түүх сард шилжүүлэлтгүй)
     const carry = payrollHistOnly(ym) ? { amount: 0, ready: true, from: '' } : payrollCarryIn(r.k, ym);
-    return { ...r, w, db, b, mn, carry, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
+    return { ...r, w, db, b, mn, ex, carry, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
   });
   /* Үлдэгдэл ба илүү олголтыг ХҮН БҮРЭЭР нийлбэрлэнэ — нийт олгохоос нийт
      олгосныг хасвал нэг хүний илүү олголт нөгөөгийн дутууг «нөхөж» харагдана. */
@@ -19756,6 +20162,7 @@ function renderSalary() {
       o.amount > 0 && editable ? `<button class="btn pb-orph-b" data-orph-fix="${escapeHtml(o.key)}" data-orph-amt="${o.amount}">🔗 Хэнийх вэ?</button>`
         : '<span class="pb-dim">олголтын мөр — хуулгаас ирсэн, энд засагдахгүй</span>'}</div>`).join('')}</div>`);
   if (!histOnly) { const _mw = attMarksWarnHtml(); if (_mw) warnBits.push(_mw); }
+  if (!histOnly && calc.some(c => !c.ex.ready)) warnBits.push(attPayExtrasWarnHtml({ ready: false }));
   if (noSal.length) warnBits.push(`<div class="pb-warn">⚠ <b>${noSal.length}</b> хүн энэ сард ажилласан атлаа суурь цалин тохируулаагүй: ${noSal.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
   // ⛔ Шилжүүлэлт мэдэгдэхгүй үед ЧИМЭЭГҮЙ 0 гэж харуулахгүй — үлдэгдэл хиймлээр өснө
   // Явж буй сард нормоос дутуу цаг хасагдахгүй — яагаад гэдгийг нэг мөрөөр
@@ -19823,7 +20230,7 @@ function renderSalary() {
     const memoBtn = (payable && owed > 0 && !histOnly) ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : '';
     // ⛔ Утгагүй мөр БИЧИХГҮЙ: суутгалгүй бөгөөд нэмэгдэлгүй бол «цэвэр суурь» нь
     //   «нийт олгох»-той ЯГ ижил тоо — хоёуланг бичих нь нүдийг л төөрүүлнэ.
-    const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery || b.shortMins;
+    const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery || b.shortMins || b.orderBonus || b.penalty;
     /* ⛔ ТҮҮХ САРД ЗӨВХӨН ОЛГОСОН МӨР. Бодолтын мөрүүд (суурь · суутгал · илүү
        цаг · нийт олгох · үлдэгдэл) ОГТ гарахгүй — тэр тоо хуучин сард худал. */
     const money = histOnly
@@ -19840,6 +20247,8 @@ function renderSalary() {
         ${/* ⛔ БОНУС НИЙЛБЭРЭЭС ӨМНӨ — доор нь тавибал мөрүүд нийлбэртэйгээ
              таарахгүй, хүн «дүн буруу» гэж уншина (2026-10-05, CEO барив). */''
         }${stageBonusRowsHtml(sp, b.bonus, line, `📦 Дамжлагын бонус · ${(sp && sp.led) || 0} удирдсан${(sp && sp.helped) ? ` · ${sp.helped} хамтрагч` : ''}`)}
+        ${b.orderBonus ? line(`🧾 Захиалгын бонус · ${c.ex.orderN} захиалга`, `+${fmtMoney(b.orderBonus)}`, 'pay-plus') : ''}
+        ${b.penalty ? line(`⚠ Торгууль · ${attDisciplineSummary(c.ex.disc)}`, `−${fmtMoney(b.penalty)}`, 'pay-minus') : ''}
         ${line('Нийт олгох', `<b>${fmtMoney(b.total)}</b>`, 'pay-sum')}
         ${carry.amount ? line(`↪ ${escapeHtml(carry.from)} сард илүү олгосон`, `−${fmtMoney(carry.amount)}`, 'pay-minus') : ''}
         ${paid > 0 ? line(`✓ Олгосон · ${pays.length} удаа`, fmtMoney(paid), 'pay-paid') + payList : ''}
@@ -19855,7 +20264,7 @@ function renderSalary() {
       ? `<div class="pb-body">${money}</div>`
       : `<div class="pb-body">
         <div class="pb-top">
-          <div class="pb-who">${bankLine}${noOut}${attMarkDetailHtml(c.mn)}${histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 Бүх олголт (${histN})</button>` : ''}</div>
+          <div class="pb-who">${bankLine}${noOut}${attMarkDetailHtml(c.mn)}${attDisciplineDetailHtml(c.ex)}${histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 Бүх олголт (${histN})</button>` : ''}</div>
           <div class="pb-base"><div class="pb-base-r"><span class="pb-dim">Суурь цалин</span>${baseCell}</div>${dedChk ? `<div class="pb-ded-l">${dedChk}</div>` : ''}</div>
         </div>
         ${money}${spLine}
@@ -19874,7 +20283,7 @@ function renderSalary() {
     : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
   /* ✋ Мэдүүлгийг ЗӨВХӨН ахлагч батална («Миний ирц» + захиалгын карт).
      ⛔ Цалингийн самбарт хайрцаг БУЦААЖ БҮҮ НЭМ (2026-10-05, CEO). */
-  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar}${searchBar}
+  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar + payRulesCardHtml()}${searchBar}
     <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${histOnly ? '' : spFoot}</div>`;
 }
 /* ⚙️ ДАМЖЛАГЫН ОНООНЫ ТОХИРГОО (2026-10-03, CEO) ───────────────────────────
@@ -19908,6 +20317,8 @@ function attachClaimHandlers() {
 function attachSalaryHandlers() {
   attachStaffAcctBanner();
   document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
+  document.getElementById('pr-save')?.addEventListener('click', payRulesSave);
+  document.getElementById('pr-det')?.addEventListener('toggle', (e) => { state.prOpen = e.target.open; });   // render() дахин зурахад хаагдахгүй
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
   document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('sal-search');
@@ -24721,7 +25132,8 @@ function nextArrivalFor(key, day) { const n = state.nextArrival; const e = n && 
 // ЗӨВХӨН урьдчилан зарласан «маргааш ирэх цаг» (next_arrival, тухайн өдрийнх)-аар хэмжинэ —
 // тогтмол work_start-ыг тухайн ӨДӨР РЕТРОАКТИВ хэрэглэж «хоцорсон» болгохгүй (цаг сонголт = ирээдүйн ирэх цаг).
 function attLateMinutes(key, day, firstInTs) {
-  const exp = nextArrivalFor(key, day); if (!exp || !firstInTs) return 0;
+  const call = attCallinOn(key, day);   // менежерийн ЗААСАН дуудлага (цаг+газар) давуу; байхгүй бол явахдаа сонгосон «маргааш ирэх цаг»
+  const exp = (call && call.at_time) || nextArrivalFor(key, day); if (!exp || !firstInTs) return 0;
   const sp = String(exp).split(':'); const expMin = (Number(sp[0]) || 0) * 60 + (Number(sp[1]) || 0);
   const hm = hhmmUB(firstInTs).split(':'); const inMin = (Number(hm[0]) || 0) * 60 + (Number(hm[1]) || 0);
   return inMin > expMin + _LATE_GRACE_MIN ? (inMin - expMin) : 0;
@@ -24994,7 +25406,7 @@ function attachPerformanceHandlers() {
      түлхүүрийг бичнэ.
    ⚠ Унавал `state.appConfig`-ийг ХООСЛОХГҮЙ — хуучин утга хэвээр үлдэнэ. */
 const APP_CONFIG_KEYS = ['work_norm_days', 'overtime', 'salary_rates', 'lunch', 'stage_pay',
-  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause'];
+  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause', 'pay_rules'];
 async function loadAppConfigAll(keys) {
   if (!DB_ANON_KEY) return;
   const list = (keys && keys.length) ? keys : APP_CONFIG_KEYS;

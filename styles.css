@@ -8124,7 +8124,28 @@ select.no-asar-len {
   padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
 .po-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .po-no { color: var(--muted); }
-.po-sup { font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.po-title { font-weight: 600; font-size: var(--fs-base); flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.po-title small { color: var(--muted); font-weight: 400; }
+.po-cls { display: flex; flex-direction: column; }
+.po-cl { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--border); min-width: 0; }
+.po-cl .po-th { width: 44px; height: 44px; }
+.po-th-none { display: flex; align-items: center; justify-content: center; flex: none; color: var(--muted); font-size: var(--fs-lg); }
+.po-cl-b { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.po-cl-nm { overflow-wrap: anywhere; }
+.po-cl-b small { color: var(--muted); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.po-cl-t { flex: none; white-space: nowrap; font-size: var(--fs-sm); }
+.po-more-n { color: var(--muted); font-size: var(--fs-xs); padding-top: var(--space-1); }
+.po-trow { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-2); font-size: var(--fs-sm); }
+.po-trow span { color: var(--muted); font-size: var(--fs-xs); }
+.po-tot { font-size: var(--fs-lg); }
+.po-pay { display: flex; align-items: center; gap: var(--space-2); background: var(--info-soft); border-radius: var(--r-sm); padding: var(--space-2) var(--space-3); min-width: 0; }
+.po-pay.none { background: var(--warn-soft); color: var(--warn); font-size: var(--fs-xs); }
+.po-pay-t { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.po-copy { flex: none; padding: var(--space-1) var(--space-2); font-size: var(--fs-sm); }
+.po-sub { color: var(--muted); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.po-kv { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; font-size: var(--fs-sm); }
+.po-kv span { color: var(--muted); flex: none; }
+.po-kv b { font-weight: 500; text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .po-plat { color: var(--muted); font-size: var(--fs-xs); }
 .po-st { display: inline-block; font-size: var(--fs-xs); font-weight: 600; padding: var(--space-1) var(--space-2);
   border-radius: var(--r-full); white-space: nowrap; background: var(--info-soft); color: var(--info); }
@@ -8160,7 +8181,7 @@ select.no-asar-len {
 .po-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-sm); }
 /* цонхнууд — `.modal` угтвар ЗААВАЛ: `.modal input { width:100% }` нь ангиас илүү онцлогтой */
 .po-modal { max-width: 560px; }
-.po-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.po-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); align-items: end; }
 /* `.ui-raw` талбар label дотор inline тул (бусад цонх өөрийн класстай) — энд мөр бүрийг блок болгоно */
 .modal.po-modal label > input:not([type="checkbox"]), .modal.po-modal label > select, .modal.po-modal label > textarea {
   display: block; width: 100%; margin-top: var(--space-1); box-sizing: border-box; }

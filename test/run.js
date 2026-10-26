@@ -15877,7 +15877,8 @@ async function swFetchTests() {
   need(['poLine', 'poLineTotals', 'poTotals', 'poProblems', 'poLineLeft', 'poAllReceived', 'poSummary', 'poActions',
     'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
-    'poFxValid', 'poFxOn', 'poFxMerge', 'poFxSave', 'poUnitCost', 'poCargoAlloc', 'poImgOf']);
+    'poFxValid', 'poFxOn', 'poFxMerge', 'poFxSave', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
+    'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml']);
 
   // ① Дүн — PDF-ийн бодит тоо (Xinrui 3000W: ¥1,511 × 540 + 182,460 = 998,400₮)
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -15896,10 +15897,34 @@ async function swFetchTests() {
   ok(F.poLine({}).id.length > 1, 'худалдан авалт: мөр бүр өөрийн id-тай');
 
   // ③ Батлахаас өмнөх шалгалт
-  ok(F.poProblems({ supplier: '', lines: [] }).length === 2, 'худалдан авалт: нийлүүлэгч, бараа хоёулаа алга → 2 дутуу');
-  const pr = F.poProblems({ supplier: 'Х', lines: [F.poLine({ name: 'А', q: 1, c: 0 })] });
+  const ACCT = { bank: 'Хаан банк', no: '5012345678', name: 'Б.Бат' };
+  ok(F.poProblems({ supplier: '', lines: [] }).length === 3, 'худалдан авалт: нийлүүлэгч, бараа, данс алга → 3 дутуу');
+  const pr = F.poProblems({ supplier: 'Х', pay_to: ACCT, lines: [F.poLine({ name: 'А', q: 1, c: 0 })] });
   ok(pr.length === 1 && /нэгж үнэ/.test(pr[0]), 'худалдан авалт: үнэгүй мөр батлагдахгүй');
-  eq(F.poProblems({ supplier: 'Х', lines: [F.poLine({ name: 'А', q: 1, c: 5 })] }), [], 'худалдан авалт: бүрэн хүсэлт дутуугүй');
+  eq(F.poProblems({ supplier: 'Х', pay_to: ACCT, lines: [F.poLine({ name: 'А', q: 1, c: 5 })] }), [], 'худалдан авалт: бүрэн хүсэлт дутуугүй');
+  ok(F.poProblems({ supplier: 'Х', lines: [F.poLine({ name: 'А', q: 1, c: 5 })] }).some(x => /данс/.test(x)), '⛔ худалдан авалт: төлөх данс байхгүй хүсэлт батлагдахгүй');
+  ok(F.poProblems({ supplier: 'Х', pay_to: { bank: 'Хаан банк', no: '5012', name: '' }, lines: [F.poLine({ name: 'А', q: 1, c: 5 })] }).some(x => /данс/.test(x)), 'худалдан авалт: данс бүрэн биш (эзэмшигчгүй) бол дутуу');
+  eq(F.poProblems({ supplier: 'Х', lines: [F.poLine({ name: 'А', q: 1, c: 5 })] }, false), [], 'худалдан авалт: данс шаардахгүй горим (Excel оруулалт)');
+  {
+    const stq = vm.runInContext('state', sandbox), keepQ = stq._poHasPayTo;
+    stq._poHasPayTo = false;
+    eq(F.poProblems({ supplier: 'Х', lines: [F.poLine({ name: 'А', q: 1, c: 5 })] }), [], '⛔ худалдан авалт: DB-д pay_to багана байхгүй (SQL ажиллуулаагүй) үед данс шаардахгүй — хүсэлт гацахгүй');
+    stq._poHasPayTo = keepQ;
+  }
+  // Төлөх данс — цэвэрлэгч, DB рүү бичих
+  eq(F.poPayTo({ bank: ' Хаан банк ', no: 5012, name: 'Б.Бат', x: 1 }), { bank: 'Хаан банк', no: '5012', name: 'Б.Бат' }, 'данс: цэвэрлэгдэнэ, нэмэлт талбар хаягдана');
+  eq(F.poPayTo('{"bank":"Alipay","no":"138","name":"张三"}'), { bank: 'Alipay', no: '138', name: '张三' }, 'данс: JSON текстээс ч уншина');
+  eq([F.poPayTo(null), F.poPayTo('муу json'), F.poPayTo([1])].map(F.poPayToOk), [false, false, false], 'данс: хоосон/муу оролт → бүрэн биш');
+  eq(F.poPayToText(ACCT), 'Хаан банк · 5012345678 · Б.Бат', 'данс: товч текст');
+  {
+    const stq = vm.runInContext('state', sandbox), keepQ = stq._poHasPayTo;
+    stq._poHasPayTo = true;
+    const r1 = F.poRow({ id: 'x', status: 'request', lines: [], pay_to: ACCT });
+    eq(r1.pay_to, ACCT, 'данс: DB рүү pay_to бичигдэнэ');
+    stq._poHasPayTo = false;
+    ok(!('pay_to' in F.poRow({ id: 'x', status: 'request', lines: [], pay_to: ACCT })), '⛔ данс: багана DB-д байхгүй үед бичихгүй (эс бөгөөс хадгалалт БҮХЭЛДЭЭ 400-аар унана)');
+    stq._poHasPayTo = keepQ;
+  }
 
   // ④ Хэн юу хийх вэ (эрхийн матриц)
   const A = (st, caps, by) => F.poActions({ status: st, created_by: by || 'X' }, caps).map(a => a.k).join(',');
@@ -16077,7 +16102,7 @@ async function swFetchTests() {
   const saved = { p: st.purchases, miss: st._poMissing, tab: st._poTab, fin: st.financeRequests, me: st.me };
   st.me = 'C'; st.financeRequests = []; st._poMissing = false; st._poTab = 'open';
   st.purchases = [
-    F.poNormalize({ id: 'a', no: 1, status: 'request', supplier: 'Xinrui', fx: 540, created_by: 'U', created_at: '2026-10-26T02:00:00Z', total_mnt: 998400, need_by: _soon(2),
+    F.poNormalize({ id: 'a', no: 1, status: 'request', supplier: 'Xinrui', pay_to: ACCT, fx: 540, created_by: 'U', created_at: '2026-10-26T02:00:00Z', total_mnt: 998400, need_by: _soon(2),
       lines: [{ id: 'l1', name: 'Машин', q: 1, c: 1511, s: 182460, img: 'https://n8n.nomaadcamp.com/img/m.jpg' }], history: [{ at: '2026-10-26T02:00:00Z', by: 'U', to: 'request', note: '' }] }),
     F.poNormalize({ id: 'b', no: 2, status: 'request', supplier: '', fx: 540, created_by: 'U', lines: [{ id: 'l2', name: 'Үнэгүй', q: 1, c: 0 }] }),
     F.poNormalize({ id: 'c', no: 3, status: 'ordered', supplier: 'Jinnin', fx: 540, created_by: 'U', lines: [{ id: 'l3', sku: 'M-033', name: 'Хивс', q: 2, c: 1, rcv: 1 }] }),
@@ -16090,7 +16115,21 @@ async function swFetchTests() {
   ok(/ирсэн 1\/2/.test(html), 'самбар: хэсэгчилсэн ирэлт (1/2) харагдана');
   ok(/⏰/.test(html) && /2 хоног/.test(html), 'самбар: 2 хоногийн дараа дуусах хямдралын сануулга (⏰ … 2 хоног)');
   ok(!/data-po-id="d"/.test(html), 'самбар: «Идэвхтэй» табд хүлээн авсан орохгүй');
-  ok(/class="po-thumbs"/.test(html) && /<img class="po-th" src="https:\/\/n8n\.nomaadcamp\.com\/img\/m\.jpg"/.test(html), 'самбар: хүсэлтийн картад барааны зураг харагдана');
+  ok(/class="po-cl"/.test(html) && /<img class="po-th" src="https:\/\/n8n\.nomaadcamp\.com\/img\/m\.jpg"/.test(html), 'самбар: хүсэлтийн картад барааны мөр бүр зурагтай харагдана');
+  {
+    // Карт: гарчиг = БАРААНЫ НЭР; нийлүүлэгч нүүрэнд БИШ, «Дэлгэрэнгүй»-д; данс хуулах товчтой
+    const card = html.slice(html.indexOf('data-po-card="a"'), html.indexOf('data-po-card="b"'));
+    const head = card.slice(0, card.indexOf('class="po-cls"'));
+    ok(/class="po-title">Машин/.test(head), '⛔ карт: гарчиг нь барааны нэр');
+    ok(!/Xinrui/.test(card.slice(0, card.indexOf('<details'))), '⛔ карт: нийлүүлэгч нүүрэнд БИШ (Дэлгэрэнгүйд)');
+    ok(/class="po-kv"><span>Нийлүүлэгч<\/span><b>Xinrui<\/b>/.test(card), 'карт: нийлүүлэгч «Дэлгэрэнгүй»-д');
+    const withAcct = F.poCardHtml(F.poNormalize({ id: 'z', no: 9, status: 'approved', supplier: 'S', fx: 540, pay_to: ACCT, created_by: 'U', lines: [{ id: 'l', name: 'Ширээ', q: 10, c: 197 }] }), { me: 'C', approve: true, pay: true, receive: true });
+    ok(/class="po-pay-t">💳 Хаан банк · 5012345678 · Б\.Бат/.test(withAcct) && /data-copy-text="5012345678"/.test(withAcct), 'карт: төлөх данс нүүрэнд, дансны дугаар хуулах товчтой');
+    ok(/10 × 197¥/.test(withAcct) && /¥1,970 · ¥1 = 540₮/.test(withAcct), 'карт: мөр бүрд тоо × ¥үнэ, нийт ¥ ба ханш');
+    ok(/Төлөх данс оруулаагүй/.test(F.poCardHtml(F.poNormalize({ id: 'z2', no: 10, status: 'approved', supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'l', name: 'Ширээ', q: 1, c: 1 }] }), { me: 'C', approve: true, pay: true })), 'карт: батлагдсан боловч данс байхгүй бол ил анхааруулна');
+    const many = F.poCardHtml(F.poNormalize({ id: 'm', no: 11, status: 'request', supplier: 'S', fx: 540, created_by: 'U', lines: [1, 2, 3, 4, 5].map(i => ({ id: 'l' + i, name: 'Бараа' + i, q: 1, c: 1 })) }), { me: 'C' });
+    ok(/\+ 2 мөр «Дэлгэрэнгүй»-д/.test(many) && (many.match(/class="po-cl"/g) || []).length === 5, 'карт: 3 мөр нүүрэнд, үлдсэн нь Дэлгэрэнгүйд (давхардахгүй)');
+  }
   st._poTab = 'received';
   ok(/data-po-card="d"/.test(asCeo(() => F.poBoardHtml())), 'самбар: «Хүлээн авсан» табд харагдана');
   st._poMissing = true; ok(/db\/purchases\.sql/.test(F.poBoardHtml()), 'самбар: хүснэгт үүсээгүй бол ил хэлнэ');
@@ -16122,7 +16161,11 @@ async function swFetchTests() {
     ok(/id="po-cur"/.test(reqM) && /Хаан банкны юанийн ханш/.test(reqM) && /poFxValid\(fx\)/.test(reqM), 'scan: хүсэлт юаниар, Хаан банкны ханш заавал (шалгагдана)');
     ok(/poFxSave\(todayStr\(\), fx\)/.test(reqM), 'scan: шинэ хүсэлтийн ханш өдрийн ханш болж хадгалагдана (дараагийн хүсэлт дахин оруулахгүй)');
     ok(!/localStorage\.getItem\('poFx'\)/.test(reqM), '⛔ scan: ханшийг localStorage-ийн хуучин утгаас таамаглахгүй');
+    ok(/poPayToOk\(pay_to\)/.test(reqM) && /Төлөх дансаа бүрэн оруулна уу/.test(reqM) && /id="po-pbank"/.test(reqM) && /id="po-pno"/.test(reqM) && /id="po-pnm"/.test(reqM),
+       '⛔ scan: хүсэлт гаргахдаа төлөх данс (банк, дугаар, эзэмшигч) ЗААВАЛ');
+    ok(/const fillPay = /.test(reqM) && /poPayToOk\(p\.pay_to\)/.test(reqM), 'scan: нийлүүлэгч өмнө нь байсан бол данс өөрөө бөглөгдөнө');
     const payM = src.slice(src.indexOf('async function openPoPayModal('), src.indexOf('function openPoOrderModal('));
+    ok(/Шилжүүлэх данс/.test(payM) && /data-copy-text/.test(payM), 'scan: «Шилжүүлсэн» цонхонд төлөх данс (хуулах товчтой) харагдана');
     ok(/poFxValid\(rate\)/.test(payM) && /patch\.fx = rate/.test(payM) && /poFxSave\(date, rate\)/.test(payM), '⛔ scan: шилжүүлэхдээ ТЭР ӨДРИЙН Хаан банкны ханш заавал, өртгийн суурь болж хадгалагдана');
     const recvM2 = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('async function openPoImportModal('));
     ok(/id="pr-cargo"/.test(recvM2) && /cargo: cargoVal\(\)/.test(recvM2), 'scan: хүлээн авахад карго оруулна, poReceiveApply-д дамжина');
@@ -16274,6 +16317,24 @@ async function swFetchTests() {
         let thrown = false; try { await F.poFxSave('2026-10-26', 5.4); } catch (e) { thrown = true; }
         ok(thrown, '⛔ ханш: буруу (5.4) ханш хадгалагдахгүй');
       } finally { sandbox.fetch = origF; st.appConfig = keepCfg; }
+    }
+
+    // ✅ pay_to багана DB-д байгаа эсэхийг ачаалахдаа танина (SQL ажиллуулаагүй бол бичихгүй, самбар ил хэлнэ)
+    {
+      const origF2 = sandbox.fetch, keepFlag = st._poHasPayTo, keepLoading = st._poLoading;
+      let payload = [];
+      sandbox.fetch = async () => ({ ok: true, status: 200, json: async () => payload, text: async () => '' });
+      try {
+        payload = [{ id: 'p1', no: 1, status: 'request', lines: [], pay_to: { bank: 'Хаан банк', no: '1', name: 'Н' } }];
+        st._poLoading = false; await F.loadPurchases(true);
+        eq([st._poHasPayTo, st.purchases[0].pay_to.bank], [true, 'Хаан банк'], 'данс: багана байвал танина, мөр дээр уншигдана');
+        payload = [{ id: 'p1', no: 1, status: 'request', lines: [] }];
+        st._poLoading = false; await F.loadPurchases(true);
+        eq(st._poHasPayTo, false, '⛔ данс: багана олдохгүй (SQL ажиллуулаагүй) бол false — дараагийн бичилт pay_to-гүй явна');
+        payload = [];
+        st._poLoading = false; await F.loadPurchases(true);
+        eq(st._poHasPayTo, false, 'данс: хоосон жагсаалт өмнөх мэдлийг устгахгүй');
+      } finally { sandbox.fetch = origF2; st._poHasPayTo = keepFlag; st._poLoading = keepLoading; }
     }
 
     // ⛔ Каталогт олдохгүй (архивлагдсан) бараа — чимээгүй нэмэхгүй

@@ -8181,12 +8181,9 @@ select.no-asar-len {
 .po-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-sm); }
 /* цонхнууд — `.modal` угтвар ЗААВАЛ: `.modal input { width:100% }` нь ангиас илүү онцлогтой */
 .po-modal { max-width: 560px; }
-.po-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); align-items: end; }
 /* `.ui-raw` талбар label дотор inline тул (бусад цонх өөрийн класстай) — энд мөр бүрийг блок болгоно */
 .modal.po-modal label > input:not([type="checkbox"]), .modal.po-modal label > select, .modal.po-modal label > textarea {
   display: block; width: 100%; margin-top: var(--space-1); box-sizing: border-box; }
-.modal.po-modal .po-line-top > input { display: block; }
-.po-sec { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-3) 0 var(--space-2); }
 .po-line, .po-rl, .po-ig { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-3); margin-bottom: var(--space-2); }
 .po-ig.dup { opacity: .6; }
 .po-line-top { display: flex; align-items: center; gap: var(--space-2); }
@@ -8197,30 +8194,107 @@ select.no-asar-len {
 .po-th { width: 48px; height: 48px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--bg); }
 .po-thumbs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .po-ln .po-th { width: 36px; height: 36px; }
-.modal.po-modal .po-ph { flex: none; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; margin: 0;
-  border: 1px dashed var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--muted); font-size: var(--fs-lg); }
-.po-line .po-line-top { align-items: flex-start; }
-.po-line .po-line-grid { align-items: end; }
-.po-line .po-line-grid > label:last-child { grid-column: 1 / -1; }
-.po-ph .po-th { width: 100%; height: 100%; border: 0; border-radius: 0; }
-.po-line-nmwrap { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.po-linked { color: var(--muted); font-size: var(--fs-xs); }
-.po-lnk { background: none; border: 0; padding: 0; color: var(--primary); font-size: var(--fs-xs); cursor: pointer; text-decoration: underline; }
-.po-sug { display: flex; flex-direction: column; gap: var(--space-1); }
-.po-sug-h { color: var(--muted); font-size: var(--fs-xs); }
-.po-add { width: 100%; border-style: dashed; margin-bottom: var(--space-3); }
-.modal.po-modal .po-ph > input[type="file"] { display: none; }   /* зургийн оруулагч нуугдана (label-ийн дүрэм `display:block` хийдэг) */
-.po-badge.new { color: var(--ok); font-weight: 600; }
-.po-line-del { padding: var(--space-1) var(--space-2); font-size: var(--fs-xs); }
+/* ═══ ХҮСЭЛТИЙН ЦОНХ — орчин үеийн хэлбэр (2026-10-26, CEO) ═══
+   Карт бүр = нэг асуулт: Юу авах вэ → Төлбөр → Дэлгүүр → Данс → (нэмэлт, эвхэгдсэн). Нийт үнэ оруулбал нэгж үнэ ТОД гарна,
+   доод талд нийт дүн + «Дутуу: …» үргэлж харагдана. ⚠ Жижиг товч/талбар бүр `ui-raw` — мобайлын `.modal button:not(.ui-raw)`
+   flatten дүрэм (өндөр 48, хүчлэгдсэн padding) үүнд хүрэхгүй. Хүчлэх дүрэм шинээр БАЙХГҮЙ, бүх өнгө/зай токен. */
+/* Толгой · гүйдэг бие · товчны эгнээ = гурван тусдаа хэсэг. Өмнө нь товчны эгнээ `sticky` байсан тул мобайлын цонхны доод зайд (padding)
+   гүйж буй агуулга товчны ДООР харагдаж байв — одоо бие нь л гүйнэ, доод зай хоосон. */
+.modal.po-edit { display: flex; flex-direction: column; max-width: 560px; overflow: hidden; }
+.modal.po-edit .po-form { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.po-edit .po-head-t { display: flex; flex-direction: column; min-width: 0; }
+.po-edit .po-head-t small { color: var(--muted); font-size: var(--fs-sm); font-weight: 400; }
+.po-edit .po-form { display: flex; flex-direction: column; gap: var(--space-3); }
+.po-edit .po-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); min-width: 0;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); }
+.po-edit .po-card-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.po-edit .po-card-h small { color: var(--muted); font-size: var(--fs-xs); font-weight: 400; }
+.po-edit .po-lines { display: flex; flex-direction: column; gap: var(--space-3); }
+.po-edit .po-line { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel-hover); }
+.po-edit .po-line-hd { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; }
+.po-edit .po-txtbtn { min-height: 0; padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-sm); background: none; color: var(--danger); font-size: var(--fs-xs); cursor: pointer; }
+.po-edit .po-line-top { display: flex; align-items: center; gap: var(--space-3); }
+.po-edit .po-phw { position: relative; flex: none; }
+.modal.po-edit .po-ph { position: relative; display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; overflow: hidden; cursor: pointer;
+  border: 1px dashed var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--muted); }
+.po-edit .po-ph.has, .po-edit .po-ph:hover { border-style: solid; }
+.modal.po-edit .po-ph > input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; opacity: 0; cursor: pointer; }   /* `<label>` БИШ: мобайлын `.modal label` нь хүчлэгдсэн margin өгч тайлыг доош түлхдэг байв */
+.po-edit .po-ph .po-th { width: 100%; height: 100%; border: 0; border-radius: 0; }
+.po-edit .po-ph-t { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: var(--fs-lg); line-height: 1; }
+.po-edit .po-ph-t small { font-size: var(--fs-xs); }
+.po-edit .po-ph-x { min-height: 0; min-width: 0; position: absolute; top: calc(var(--space-1) * -1); right: calc(var(--space-1) * -1); width: var(--space-5); height: var(--space-5); padding: 0;
+  border: 1px solid var(--border); border-radius: var(--r-full); background: var(--panel); color: var(--muted); font-size: var(--fs-xs); line-height: 1; cursor: pointer; }
+.po-edit .po-line-nmwrap { display: flex; flex-direction: column; flex: 1 1 0; gap: var(--space-1); min-width: 0; }
+.modal.po-edit .po-line-in { width: 100%; min-height: var(--tap); font-size: var(--fs-base); font-weight: 600; }
+.po-edit .po-line-nm { overflow-wrap: anywhere; font-size: var(--fs-base); }
+.po-edit .po-linked { color: var(--ok); font-size: var(--fs-xs); }
+.po-edit .po-lnk { min-height: 0; padding: 0; border: 0; background: none; color: var(--primary); font-size: var(--fs-xs); text-decoration: underline; cursor: pointer; }
+.po-edit .po-sug { display: flex; flex-direction: column; gap: var(--space-1); }
+.po-edit .po-sug:empty { display: none; }
+.po-edit .po-sug-h { color: var(--muted); font-size: var(--fs-xs); }
+.po-edit .po-hit { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--tap); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.po-edit .po-hit:hover { border-color: var(--primary); }
+.po-edit .po-hit small { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.po-edit .po-line-row { display: grid; grid-template-columns: 1fr 1.3fr; gap: var(--space-3); align-items: end; }
+.po-edit .po-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); align-items: start; }
+.po-edit .po-fld { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.po-edit .po-lb { color: var(--muted); font-size: var(--fs-xs); font-weight: 500; }
+.po-edit .po-lb i { font-style: normal; font-weight: 400; }
+.po-edit .po-ctl { display: flex; align-items: center; min-height: var(--tap); overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); }
+.po-edit .po-ctl:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.modal.po-edit .po-ctl input { flex: 1 1 0; width: 100%; min-width: 0; padding: var(--space-2); border: 0; border-radius: 0; background: transparent;
+  box-shadow: none; font-size: var(--fs-base); font-weight: 600; text-align: center; -moz-appearance: textfield; appearance: textfield; }
+.modal.po-edit .po-ctl input::-webkit-outer-spin-button, .modal.po-edit .po-ctl input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.po-edit .po-pre, .po-edit .po-suf { flex: none; color: var(--muted); font-weight: 600; }
+.po-edit .po-pre { padding-left: var(--space-3); }
+.po-edit .po-suf { padding-right: var(--space-3); }
+.po-edit .po-stp { flex: none; align-self: stretch; width: var(--tap); border: 0; background: var(--panel-hover); color: var(--text); font-size: var(--fs-lg); cursor: pointer; }
+.po-edit .po-stp:hover { background: var(--primary-soft); color: var(--primary); }
+.po-edit .po-unit { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-md); background: var(--panel); color: var(--muted); font-size: var(--fs-sm); }
+.po-edit .po-unit.ok { background: var(--primary-soft); color: var(--text); }
+.po-edit .po-unit-l { color: var(--muted); font-size: var(--fs-xs); }
+.po-edit .po-unit-n { color: var(--primary); font-size: var(--fs-lg); font-weight: 700; }
+.po-edit .po-unit-m { color: var(--text-soft); font-size: var(--fs-sm); }
+.po-edit .po-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.po-edit .po-chip { min-height: var(--tap-sm); padding: var(--space-1) var(--space-3); border: 1px solid var(--border); border-radius: var(--r-full);
+  background: var(--panel); color: var(--text-soft); font-size: var(--fs-sm); cursor: pointer; }
+.po-edit .po-chip.on { border-color: var(--primary); background: var(--primary); color: var(--on-primary); font-weight: 600; }
+.po-edit .po-seg { display: flex; gap: var(--space-1); padding: var(--space-1); border-radius: var(--r-md); background: var(--panel-hover); }
+.po-edit .po-seg-b { flex: 1 1 0; min-height: var(--tap-sm); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
+.po-edit .po-seg-b.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: var(--shadow-sm); }
+.modal.po-edit .po-txt { min-height: var(--tap); }
+.po-edit .po-add { min-height: var(--tap); border: 1px dashed var(--border); border-radius: var(--r-md); background: none; color: var(--primary); font-size: var(--fs-md); font-weight: 600; cursor: pointer; }
+.po-edit .po-add:hover { background: var(--primary-soft); }
+.po-edit .po-more2 { padding: var(--space-3) var(--space-4); border: 1px dashed var(--border); border-radius: var(--r-lg); }
+.po-edit .po-more2 > summary { color: var(--text); font-size: var(--fs-md); font-weight: 600; cursor: pointer; list-style: none; }
+.po-edit .po-more2 > summary::-webkit-details-marker { display: none; }
+.po-edit .po-more2 > summary::before { content: "＋"; margin-right: var(--space-2); color: var(--primary); }
+.po-edit .po-more2[open] > summary::before { content: "－"; }
+.po-edit .po-more2 > summary small { margin-left: var(--space-2); color: var(--muted); font-size: var(--fs-xs); font-weight: 400; }
+.po-edit .po-more2[open] > summary { margin-bottom: var(--space-3); }
+.po-edit .po-more2-b { display: flex; flex-direction: column; gap: var(--space-3); }
+.po-edit .po-ctl.po-bad, .modal.po-edit input.po-bad { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.po-edit .po-foot { flex-wrap: wrap; align-items: center; row-gap: var(--space-2); }
+.po-edit .po-foot-sum { display: flex; flex-direction: column; flex: 1 1 170px; gap: var(--space-1); min-width: 0; }
+.po-edit .po-foot-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); }
+.po-edit .po-foot-l, .po-edit .po-foot-hint, .po-edit .po-foot-top small { color: var(--muted); font-size: var(--fs-xs); }
+.po-edit .po-foot-n { color: var(--text); font-size: var(--fs-lg); }
+.po-edit .po-foot-miss { color: var(--warn); font-size: var(--fs-xs); }
+.po-edit .po-foot-ok { color: var(--ok); font-size: var(--fs-xs); }
+.po-edit .po-foot .btn { white-space: nowrap; }
+@media (max-width: 720px) {
+  .po-edit .po-foot-sum { flex-basis: 100%; }
+  .po-edit .po-foot .btn-primary { flex: 1 1 0; }
+}
 .po-line-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2) var(--space-3); margin-top: var(--space-2); }
 .po-line-grid label { margin: 0; }
 .modal .po-num, .modal .po-sel { width: 100%; }
 .po-line-sum, .po-rl-info, .po-ig-m, .po-ig-l { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); overflow-wrap: anywhere; }
-.po-total { margin: var(--space-3) 0; font-size: var(--fs-sm); }
-.po-total-n { font-size: var(--fs-lg); }
-.po-hit { display: flex; justify-content: space-between; gap: var(--space-2); text-align: left; font-size: var(--fs-sm); }
-.po-hit small { color: var(--muted); font-size: var(--fs-xs); }
-.po-hit.new { color: var(--ok); }
 .po-chk { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; }
 .modal .po-chk input[type="checkbox"] { width: auto; flex: none; }
 .buy-bank > summary { cursor: pointer; font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }

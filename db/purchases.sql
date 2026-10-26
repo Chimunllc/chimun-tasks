@@ -31,6 +31,7 @@ create table if not exists purchases (
   paid_mnt    numeric,                                      -- бодитоор шилжүүлсэн дүн
   need_by     date,                                         -- хямдрал/эцсийн хугацаа
   note        text not null default '',
+  pay_to      jsonb not null default '{}'::jsonb,           -- төлөх данс { bank, no, name } (db/purchases_account.sql)
   lines       jsonb not null default '[]'::jsonb,
   files       jsonb not null default '[]'::jsonb,           -- хавсаргасан файлын URL-ууд
   history     jsonb not null default '[]'::jsonb,           -- [{at, by, to, note}] append-only

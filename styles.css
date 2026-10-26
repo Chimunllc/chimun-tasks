@@ -7405,6 +7405,47 @@ select.no-asar-len {
 .areq-ok { border: none; background: var(--ok); color: #fff; }
 .areq-ok[disabled] { opacity: .45; cursor: not-allowed; }
 .areq-no { border: 1px solid var(--border); background: var(--panel); color: var(--muted); }
+
+/* ── Ирцийн тэмдэглэгээ: Амралт / Чөлөө / Тасалсан (2026-10-26) ───────────────
+   «Ирээгүй · тэмдэглэх» хэсэг нь өдрийн ирцийн жагсаалтын доор. Мөр = нэр + 3 товч (утсанд товч доор нь). */
+.amk-sec { border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--panel);
+  padding: var(--space-2) var(--space-3); margin-top: var(--space-3); }
+.amk-sec-w { padding: 0; border: 0; background: transparent; }
+.amk-sum { cursor: pointer; font-size: var(--fs-md); font-weight: 600; list-style: none; padding: var(--space-1) 0;
+  display: flex; align-items: center; gap: var(--space-1); min-height: var(--tap-sm); }
+.amk-sum::-webkit-details-marker { display: none; }
+.amk-sum::before { content: '▸'; font-size: var(--fs-xs); color: var(--muted); }
+.amk-sec[open] > .amk-sum::before { content: '▾'; }
+.amk-n { background: var(--warn-soft); color: var(--warn); border-radius: 999px; padding: 0 var(--space-2); font-size: var(--fs-sm); }
+.amk-sub { color: var(--muted); font-weight: 400; font-size: var(--fs-sm); }
+.amk-hint { font-size: var(--fs-sm); color: var(--muted); line-height: 1.6; padding: var(--space-1) 0 var(--space-2); }
+.amk-lock { font-size: var(--fs-sm); color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: var(--space-2); margin-bottom: var(--space-2); }
+.amk-list { display: flex; flex-direction: column; }
+.amk-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-2) 0; border-top: 1px solid var(--line); }
+.amk-who { display: flex; flex-direction: column; min-width: 0; flex: 1 1 140px; }
+.amk-name { font-size: var(--fs-md); font-weight: 600; overflow-wrap: anywhere; }
+.amk-role { font-size: var(--fs-xs); color: var(--muted); }
+.amk-acts { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+.amk-b { border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); border-radius: 999px;
+  padding: 0 var(--space-3); min-height: var(--tap-sm); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.amk-b:disabled { opacity: .5; cursor: wait; }
+.amk-b-rest { border-color: var(--ok); color: var(--ok); }
+.amk-b-rest:hover { background: var(--ok-soft); }
+.amk-b-leave:hover { background: var(--info-soft); }
+.amk-b-absent { border-color: var(--danger); color: var(--danger); }
+.amk-b-absent:hover { background: var(--danger-soft); }
+.amk-tag { border-radius: 999px; padding: var(--space-1) var(--space-2); font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; }
+.amk-tag-rest { background: var(--ok-soft); color: var(--ok); }
+.amk-tag-leave { background: var(--info-soft); color: var(--info); }
+.amk-tag-absent { background: var(--danger-soft); color: var(--danger); }
+.amk-x { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: var(--fs-base);
+  min-width: var(--tap-sm); min-height: var(--tap-sm); border-radius: 8px; }
+.amk-x:hover { background: var(--panel-hover); color: var(--danger); }
+.amk-chip { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.amk-line { margin-top: var(--space-1); font-size: var(--fs-sm); line-height: 1.6; }
+.amk-line-s { color: var(--muted); }
+.amk-warn { margin-bottom: var(--space-2); }
 /* ═══ МИНИЙ ИРЦ (2026-10-09) — inline style-аас класс ═══ */
 .myatt-wrap { max-width: 520px; margin: 0 auto; padding-bottom: 26px; }
 .myatt-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); padding: var(--space-4); margin-bottom: var(--space-3); }

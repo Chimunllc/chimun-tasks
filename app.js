@@ -13488,6 +13488,214 @@ async function attSaveManualOut(body, keepDay) {
   if (!res.ok) throw new Error('HTTP ' + res.status + (res.text ? ' · ' + String(res.text).slice(0, 120) : ''));
   return true;
 }
+/* ─── ИРЦИЙН ТЭМДЭГЛЭГЭЭ — Амралт / Чөлөө / Тасалсан (2026-10-26, CEO) ──────────
+   Ирц зөвхөн «ирсэн/явсан»-ыг бүртгэдэг тул ирээгүй өдрийн ШАЛТГААН хаана ч байгаагүй.
+   Гурав нь мөнгөөр ӨӨР — нэг «ирээгүй» тэмдэг болгож БОЛОХГҮЙ:
+     rest   🏖 Амралт   — ЦАЛИНТАЙ (гэрээгээр жилд 15 ажлын өдөр) → тэр хүний сарын НОРМ 8 цагаар
+                          буурна, суурь цалин хасагдахгүй
+     leave  📝 Чөлөө    — цалингүй → норм буурахгүй (ажилласан цагаар бодогдох ХЭВЭЭР)
+     absent 🚫 Тасалсан — цалингүй, зөвхөн бүртгэнэ
+   ⛔ ТОРГУУЛЬ ЭНД БАЙХГҮЙ. «Тасалбал хувиар торгох» нь давхар хасалт: суурь цалин аль хэдийн
+     ажилласан цагаар бодогддог (тасалсан өдөр 1/22 хасагдсан). Аль нэгийг CEO сонгох хүртэл нэмэхгүй;
+     цалингаас торгууль хасах нь хуулиар хязгаартай.
+   ⛔ «Ажилласан цаг»-ийг хиймлээр БҮҮ НЭМ — илүү цаг нь «ажилласан − норм» тул амралтын өдрийн төлөө
+     илүү цагийн хөлс өгч эхэлнэ. Зөвхөн НОРМЫГ буулгана (`memberNorm`); цагийн хөлс бүтэн нормоор.
+   ⛔ ХААСАН САРД БИЧИГДЭХГҮЙ: цалин ирцээс тэр дор дахин бодогддог тул 11 сард 9 сарын өдрийг
+     тэмдэглэвэл олгочихсон цалин чимээгүй өөрчлөгдөнө. `attMarkSet` нь `assertMonthOpenLive`-ээр,
+     DB-ийн trigger (`db/att_marks.sql`) нь дахин шалгана.
+   Хадгалалт = `att_marks` ХҮСНЭГТ (мөр бүр өөрийн эрхтэй — хувийн мэдээлэл, `app_config` blob БИШ).
+   Тэмдэглэх эрх = `attendance.edit` (шинэ эрх үүсгээгүй); салбарын хаалт ирцтэй ижил.
+   ⛔ «Үндсэн ажилтан»-г `worker_type`-аар шүүхгүй: сарын цалинтай 4 хүн `daily` гэж буруу тэмдэглэгдсэн
+     байсан (цалингийн самбар аль хэдийн нэг удаа эвдэрсэн). Цалин харж чадах хүнд суурь цалинтай эсэхээр,
+     харахгүй хүнд л ажилтны төрлөөр. */
+const ATT_MARK_KINDS = {
+  rest:   { label: 'Амралт',   icon: '🏖', paid: true },
+  leave:  { label: 'Чөлөө',    icon: '📝', paid: false },
+  absent: { label: 'Тасалсан', icon: '🚫', paid: false },
+};
+const ATT_MARK_ORDER = ['rest', 'leave', 'absent'];
+const ATT_DAY_MINS = 8 * 60;   // нэг ажлын өдрийн норм (`workNormMins` = ажлын өдөр × 8 × 60)
+function attMarkKey(key) { return String(key || '').replace(/\D/g, ''); }
+function attMarkId(key, day) { return attMarkKey(key) + '|' + String(day || ''); }
+function attMarkMap() { return (state.attMarks && typeof state.attMarks === 'object') ? state.attMarks : {}; }
+// Ачаалагдсан уу. FALSE бол амралттай хүний цалин ДУТУУ харагдана (норм бүтнээрээ) → дуудагч ил хэлнэ.
+function attMarksReady() { return !!(state.attMarks && typeof state.attMarks === 'object') && !state.attMarksErr; }
+function attMarkOn(key, day) { const m = attMarkMap()[attMarkId(key, day)]; return (m && m.status === 'active') ? m : null; }
+function isWeekdayIso(day) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day || ''))) return false;
+  const w = new Date(day + 'T00:00:00Z').getUTCDay();
+  return w !== 0 && w !== 6;
+}
+// Хүний тухайн сарын идэвхтэй тэмдэглэгээ → { rest: [өдөр], leave: [...], absent: [...] }
+function attMarksOfMonth(key, ym) {
+  const k = attMarkKey(key), out = { rest: [], leave: [], absent: [] };
+  if (!k) return out;
+  Object.keys(attMarkMap()).forEach(id => {
+    const m = attMarkMap()[id];
+    if (m && m.status === 'active' && m.member_key === k && String(m.day).slice(0, 7) === ym && out[m.kind]) out[m.kind].push(String(m.day));
+  });
+  ATT_MARK_ORDER.forEach(x => out[x].sort());
+  return out;
+}
+/* ХҮНИЙ САРЫН НОРМ — цалин, илүү цаг, нормын хувь бүгд ЭНЭ ганц функцээс.
+   `full` = тэр сарын бүтэн хуанлийн норм (цагийн хөлсийг энэ нормоор бодно), `norm` = амралтаар буурсан.
+   ЗӨВХӨН цалинтай АМРАЛТ нормыг буулгана; бямба/ням өдөр норм дотор ороогүй тул тоолохгүй. */
+function memberNorm(key, ym) {
+  const full = workNormMins(ym), mk = attMarksOfMonth(key, ym);
+  const restDays = mk.rest.filter(isWeekdayIso).length;
+  const norm = Math.max(0, full - restDays * ATT_DAY_MINS);
+  return { full, norm, restDays, restMins: full - norm, leaveDays: mk.leave.length, absentDays: mk.absent.length, marks: mk, ready: attMarksReady() };
+}
+// Тэмдэглэх боломжтой эсэх. ЦЭВЭР функц — тестлэгдэнэ. `p.hasRecord` — тэр өдөр ирц бүртгэгдсэн.
+function attMarkValidate(p, today) {
+  p = p || {}; today = today || todayStr();
+  const day = String(p.day || '');
+  if (attMarkKey(p.key).length < 8) return { ok: false, err: 'Ажилтны утас бүртгэгдээгүй — тэмдэглэх боломжгүй' };
+  if (!ATT_MARK_KINDS[p.kind]) return { ok: false, err: 'Төрлөө сонгоно уу' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { ok: false, err: 'Огноо буруу' };
+  if (day > today) return { ok: false, err: 'Ирээдүйн өдрийг тэмдэглэхгүй' };
+  if (day.slice(0, 7) < payrollStartMonth()) return { ok: false, err: payrollStartMonth() + '-аас өмнөх цалинг гараар тооцсон — тэмдэглэх шаардлагагүй' };
+  if (!isWeekdayIso(day)) return { ok: false, err: 'Бямба/Ням өдөр сарын нормд ороогүй — тэмдэглэх шаардлагагүй' };
+  if (p.hasRecord) return { ok: false, err: 'Энэ өдөр ирц бүртгэгдсэн байна — ирсэн хүнийг тэмдэглэхгүй' };
+  if (monthLocked(day.slice(0, 7))) return { ok: false, err: `🔒 ${day.slice(0, 7)} сар хаагдсан — тэмдэглэх боломжгүй. Шаардлагатай бол CEO сарыг нээнэ (Санхүү → Тайлан).` };
+  return { ok: true };
+}
+async function loadAttMarks() {
+  try {
+    const since = payrollStartMonth() + '-01';
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/att_marks?select=id,member_key,day,kind,status,marked_by,updated_at&day=gte.${since}&order=day.asc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json(), map = {};
+    (Array.isArray(rows) ? rows : []).forEach(x => { if (x && x.id) map[x.id] = x; });
+    state.attMarks = map; state.attMarksErr = null;
+  } catch (e) {
+    // ⚠ Алдааг ЧИМЭЭГҮЙ залгихгүй — амралттай хүний цалин дутуу харагдана. Минут тутам өөрөө дахин оролдоно.
+    state.attMarksErr = attFailMsg(e); state.attMarksRetryAt = Date.now() + 60000;
+    dataLoadFailed('Ирцийн тэмдэглэгээ', e);
+  }
+  return state.attMarks;
+}
+// Цалин/ирцийн дэлгэц бүр render хийхдээ дуудна. Унавал `attMarksRetryAt`-аас хойш л дахин оролдоно (render давталтгүй).
+function ensureAttMarks() {
+  if (state._attMarksBusy) return;
+  const retry = state.attMarksErr && Date.now() >= (state.attMarksRetryAt || 0);
+  if (state.attMarks !== undefined && !retry) return;
+  state._attMarksBusy = true;
+  if (state.attMarks === undefined) state.attMarks = null;
+  loadAttMarks().then(() => { state._attMarksBusy = false; if (typeof render === 'function') render(); },
+                      () => { state._attMarksBusy = false; });
+}
+function attMarksWarnHtml() {
+  if (state.attMarksErr) return `<div class="pb-warn amk-warn">⚠ Амралт/чөлөөний тэмдэглэгээ ачаалж чадсангүй (${escapeHtml(state.attMarksErr)}) — <b>амралттай хүний цалин дутуу харагдаж болно</b>. Минутын дараа өөрөө дахин оролдоно.</div>`;
+  if (!attMarksReady()) return `<div class="pb-note amk-warn">⏳ Амралт/чөлөөний тэмдэглэгээ ачаалж байна — амралттай хүний цалин ачаалагдтал дутуу харагдана.</div>`;
+  return '';
+}
+// Тэр өдөр ирц бүртгэгдсэн хүнийг «ирээгүй» гэж тэмдэглэхгүй. Ачаалагдсан ирцийн жагсаалтуудаас шалгана.
+function attDayHasRecord(key, day) {
+  const k = attMarkKey(key);
+  const lists = [];
+  if (day === todayStr()) lists.push(state.attendanceToday);
+  if ((state.attViewDay || todayStr()) === day) lists.push(state.attViewRecs);
+  if (state.attMonthKey === String(day).slice(0, 7)) lists.push(state.attMonthRecs);
+  return lists.some(a => Array.isArray(a) && a.some(r => r && r.day === day && attMarkKey(attCanonKey(r)) === k));
+}
+// kind = 'rest'|'leave'|'absent' → тэмдэглэнэ; kind = null → БОЛИХ (мөр устахгүй, status='void', түүх үлдэнэ)
+async function attMarkSet(key, day, kind) {
+  const k = attMarkKey(key), prev = attMarkOn(k, day);
+  if (!canEditAttendance()) throw new Error('Танд ирц тэмдэглэх эрх алга');
+  if (!attMarksReady()) throw new Error('Тэмдэглэгээ ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу');
+  const mem = findMember(key);
+  if (mem && !branchFenceAllowsMember(mem)) throw new Error('Энэ ажилтан таны салбарынх биш');
+  if (kind) {
+    const v = attMarkValidate({ key: k, day, kind, hasRecord: attDayHasRecord(k, day) });
+    if (!v.ok) throw new Error(v.err);
+  } else if (!prev) return null;
+  await assertMonthOpenLive(String(day).slice(0, 7), 'ирцийн тэмдэглэгээ');   // өөр сессээс хаагдсан байж болно
+  const body = { id: attMarkId(k, day), member_key: k, day, kind: kind || prev.kind, status: kind ? 'active' : 'void' };
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/att_marks?on_conflict=id`, {
+    method: 'POST',
+    headers: pgWrite({ Prefer: 'resolution=merge-duplicates,return=representation' }),
+    body: JSON.stringify(body),
+  }, 15000);
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    let msg = ''; try { msg = (JSON.parse(t) || {}).message || ''; } catch (_) {}
+    throw new Error(msg || ('HTTP ' + r.status));   // trigger-ийн «🔒 сар хаагдсан» мессеж шууд хэрэглэгчид
+  }
+  const rows = await r.json().catch(() => []);
+  const row = (Array.isArray(rows) && rows[0]) || Object.assign({ marked_by: state.me }, body);
+  state.attMarks = Object.assign({}, attMarkMap(), { [row.id]: row });
+  return row;
+}
+// Тэмдэглэх ажилтнууд: идэвхтэй, салбарын хаалтад багтсан, утастай. Цалин харж байвал суурь цалинтай эсэхээр.
+function attMarkCandidates() {
+  const sal = state.salaries || {}, salKnown = Object.keys(sal).length > 0;
+  return (TEAM || []).filter(m => {
+    if ((m.status || 'идэвхтэй') === 'гарсан') return false;
+    const k = personKey(m);
+    if (attMarkKey(k).length < 8 || !branchFenceAllowsMember(m)) return false;
+    return salKnown ? (Number(sal[k]) || 0) > 0 : isPermanentStaff(m);
+  }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
+}
+// Өдрийн ирцийн дэлгэц дээрх «Ирээгүй · тэмдэглэх» хэсэг. Зөвхөн ирц засах эрхтэйд.
+function attMarkSectionHtml(day, recs) {
+  if (!canEditAttendance() || state.attMonthMode) return '';
+  if (!Array.isArray(recs) || !isWeekdayIso(day) || day.slice(0, 7) < payrollStartMonth()) return '';
+  ensureAttMarks();
+  if (canSeeSalary() && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
+  if (!attMarksReady()) { const w = attMarksWarnHtml(); return w ? `<div class="amk-sec amk-sec-w">${w}</div>` : ''; }
+  const present = new Set(recs.map(r => attMarkKey(attCanonKey(r))));
+  const all = attMarkCandidates().filter(m => !present.has(attMarkKey(personKey(m))))
+    .map(m => ({ m, k: personKey(m), mark: attMarkOn(personKey(m), day) }));
+  if (!all.length) return '';
+  const todo = all.filter(r => !r.mark), done = all.filter(r => r.mark);
+  const locked = monthLocked(day.slice(0, 7));
+  const open = state.amkOpen === undefined ? day !== todayStr() : !!state.amkOpen;
+  const row = r => {
+    const kd = r.mark && ATT_MARK_KINDS[r.mark.kind];
+    const who = `<div class="amk-who"><span class="amk-name">${escapeHtml(r.m.name || r.k)}</span><span class="amk-role">${escapeHtml(r.m.role || '')}</span></div>`;
+    const attrs = `data-amk-key="${escapeHtml(r.k)}" data-amk-day="${escapeHtml(day)}"`;
+    if (r.mark) return `<div class="amk-row">${who}<div class="amk-acts"><span class="amk-tag amk-tag-${r.mark.kind}">${kd.icon} ${kd.label}</span>${
+      locked ? '' : `<button class="ui-raw amk-x" data-amk-clear ${attrs} aria-label="Тэмдэглэгээг болих" title="Болих">✕</button>`}</div></div>`;
+    return `<div class="amk-row">${who}<div class="amk-acts">${locked ? '' : ATT_MARK_ORDER.map(x =>
+      `<button class="ui-raw amk-b amk-b-${x}" data-amk="${x}" ${attrs}>${ATT_MARK_KINDS[x].icon} ${ATT_MARK_KINDS[x].label}</button>`).join('')}</div></div>`;
+  };
+  return `<details class="amk-sec"${open ? ' open' : ''}>
+    <summary class="amk-sum">📋 Ирээгүй · тэмдэглэх <b class="amk-n">${todo.length}</b>${done.length ? `<span class="amk-sub"> · ${done.length} тэмдэглэсэн</span>` : ''}</summary>
+    <div class="amk-hint">🏖 <b>Амралт</b> — цалинтай, сарын норм 8ц буурна · 📝 <b>Чөлөө</b> — цалингүй · 🚫 <b>Тасалсан</b> — цалингүй, зөвхөн бүртгэнэ.${day === todayStr() ? ' Өнөөдөр дуусаагүй — хараахан ирээгүй байж болно.' : ''}</div>
+    ${locked ? `<div class="amk-lock">🔒 ${escapeHtml(day.slice(0, 7))} сар хаагдсан — тэмдэглэгээ өөрчлөгдөхгүй. Засах бол CEO сарыг нээнэ.</div>` : ''}
+    <div class="amk-list">${todo.map(row).join('')}${done.map(row).join('')}</div>
+  </details>`;
+}
+// Тэмдэглэгээний товчийн үйлдэл (өдрийн ирцийн жагсаалт дээр, delegation)
+async function attMarkClick(btn) {
+  const key = btn.dataset.amkKey, day = btn.dataset.amkDay;
+  const kind = btn.hasAttribute('data-amk-clear') ? null : btn.dataset.amk;
+  btn.disabled = true;
+  try {
+    await attMarkSet(key, day, kind);
+    const mem = findMember(key), nm = (mem && mem.name) || key;
+    showToast(kind ? `${ATT_MARK_KINDS[kind].icon} ${nm} · ${day.slice(5)} · ${ATT_MARK_KINDS[kind].label}` : `${nm} · ${day.slice(5)} · тэмдэглэгээ болилоо`, 'success', 2200);
+  } catch (err) {
+    showToast('⚠ ' + (err && err.message || err), 'error', 5000);
+  }
+  const el = document.getElementById('att-list');
+  if (el && state.view === 'attendance' && !state.attMonthMode) el.innerHTML = renderAttendanceRows();
+}
+// Нэг хүний тэмдэглэгээний товч мөр: «🏖 Амралт 2 · 🚫 Тасалсан 1» (хоосон бол '')
+function attMarkSummaryText(mn) {
+  return ATT_MARK_ORDER.filter(x => mn.marks[x].length)
+    .map(x => `${ATT_MARK_KINDS[x].icon} ${ATT_MARK_KINDS[x].label} ${mn.marks[x].length}`).join(' · ');
+}
+// Дэлгэрэнгүй: өдрүүдийг нэрлэнэ + нормд үзүүлэх нөлөө (амралт л нормыг буулгана)
+function attMarkDetailHtml(mn) {
+  const parts = ATT_MARK_ORDER.filter(x => mn.marks[x].length).map(x =>
+    `${ATT_MARK_KINDS[x].icon} ${ATT_MARK_KINDS[x].label} <b>${mn.marks[x].length}</b> өдөр (${mn.marks[x].map(d => escapeHtml(d.slice(8))).join(', ')})`);
+  if (!parts.length) return '';
+  return `<div class="amk-line">${parts.join(' · ')}${mn.restDays ? `<br><span class="amk-line-s">Цалинтай амралт: сарын норм −${lunchHM(mn.restMins)} → <b>${lunchHM(mn.norm)}</b> (суурь цалин хасагдахгүй).${(mn.leaveDays || mn.absentDays) ? ' Чөлөө/тасалсан нормыг буулгахгүй — ажилласан цагаар бодогдоно.' : ''}</span>` : `<br><span class="amk-line-s">Чөлөө/тасалсан нормыг буулгахгүй — суурь цалин ажилласан цагаар бодогдоно.</span>`}</div>`;
+}
 // ── ИРЦИЙН ЗАСВАРЫН ХҮСЭЛТ — ажилтан ӨӨРӨӨ гаргана (2026-09-09) ──────────────
 // Удирдлага л засаж чаддаг байсан тул ажилтан «намайг мартчихлаа» гэж дуудаж,
 // хэлэхээ мартвал тэр өдөр 0 цаг үлдэж байв. Одоо ажилтан «Миний ирц»-ээс
@@ -13878,7 +14086,9 @@ function renderAttendanceRows() {
   const by = {};
   recs.forEach(r => { const ck = attCanonKey(r); (by[ck] = by[ck] || []).push(r); });
   const keys = Object.keys(by);
-  if (!keys.length) return `<div class="att-empty">${word} хэн ч бүртгүүлээгүй байна.<div class="att-empty-s">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>`;
+  // «Ирээгүй · тэмдэглэх» — ирсэн хүн ТАНИГДАХ ирцээр (хаалтаар шүүгээгүй) тооцогдоно
+  const markSec = attMarkSectionHtml(day, isToday ? state.attendanceToday : state.attViewRecs);
+  if (!keys.length) return `<div class="att-empty">${word} хэн ч бүртгүүлээгүй байна.<div class="att-empty-s">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>${markSec}`;
   const rows = keys.map(k => {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
     const s = attMemberSummary(arr, isToday);
@@ -13917,7 +14127,7 @@ function renderAttendanceRows() {
       <div class="att-who"><div class="att-name">${escapeHtml(r.name)}${r.scanned ? '' : ' <span class="att-warn" title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн">⚠ уншуулаагүй</span>'}</div><div class="att-role">${escapeHtml(r.role)}</div></div>
       <div class="att-num"><div class="att-span${spanCls}" title="${spanTitle}">${attTimeUB(r.s.firstIn)} → ${endTxt}${manualTag}</div>${lateLine}<div class="att-dur">${attHM(r.s.mins)}${r.s.lunch ? `<span class="att-lunch" title="Цайны цаг хасагдсан (нийт ${attHM(r.s.gross)})">цай −${lunchHM(r.s.lunch)}</span>` : ''}</div>${fixBtn}${tmrBadge}</div></div>`;
   }).join('');
-  return head + `<div>${list}</div>`;
+  return head + `<div>${list}</div>${markSec}`;
 }
 // Хүлээгдэж буй хүсэлтийн самбар (зөвхөн ирц засах эрхтэй хүнд).
 function renderAttReqPanel() {
@@ -14510,18 +14720,27 @@ function payProrateFrom() { return payrollStartMonth(); }
    (10-03-нд 2 хоногийн ирц) — норммоос «дутуу» нь хасалт биш, ердөө эрт. Өмнө нь
    суурь 10% болж урьдчилгаа авсан хүн «2.2 сая илүү авсан» гэж ХУДАЛ харагдаж байв.
    `today`-г тест дамжуулна; дуудагч дамжуулахгүй (өнөөдөр). */
-function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today, stageBonus) {
+function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today, stageBonus, fullNormMins) {
   base = Math.max(0, Number(base) || 0);
-  const norm = Number(normMins) > 0 ? Number(normMins) : workNormMins(month);   // ⚠ норм = тэр сарын хуанли
+  /* ЦАЛИНТАЙ АМРАЛТ (2026-10-26): `normMins` нь ТЭР ХҮНИЙ норм (амралтын өдрөөр буурсан), `fullNormMins` нь
+     тэр сарын бүтэн хуанлийн норм. Цагийн хөлс (илүү цаг, хасалт) ҮРГЭЛЖ бүтэн нормоор — амралт авсан хүний
+     цагийн хөлс өөрчлөгдөхгүй. Цалинтай амралтын цаг (`credit`) нь зөвхөн ХАСАЛТЫГ арилгана (ажилласан
+     мэт тоологдоно), илүү цагт ОРОХГҮЙ — илүү цаг = ажилласан − хүний норм. `fullNormMins` өгөөгүй бол
+     `credit` = 0 тул хуучин тооцоотой ЯГ ИЖИЛ. */
+  const fullIn = Number(fullNormMins) > 0 ? Number(fullNormMins) : 0;
+  const norm = Number(normMins) > 0 ? Number(normMins)
+    : ((fullIn && Number(normMins) === 0) ? 0 : workNormMins(month));   // ⚠ норм = тэр сарын хуанли (сар бүхэлдээ амралттай бол 0)
+  const fullNorm = fullIn || norm;
+  const credit = Math.max(0, fullNorm - norm);
   const known = workedMins !== null && workedMins !== undefined && isFinite(Number(workedMins));
   const worked = known ? Math.max(0, Number(workedMins)) : 0;
   const curM = String(today || todayStr()).slice(0, 7);
   const prorate = /^\d{4}-\d{2}$/.test(String(month || '')) && String(month) >= payProrateFrom() && String(month) < curM;
   const shortMins = (known && prorate) ? Math.max(0, Math.round(norm - worked)) : 0;
-  const earned = shortMins > 0 ? Math.round(base * worked / norm) : base;
+  const earned = shortMins > 0 ? Math.round(base * (worked + credit) / fullNorm) : base;
   const d = salaryNet(earned, deduct);                     // суутгал ЗӨВХӨН (цагаар бодсон) суурьд
   const otMins = known ? Math.max(0, Math.round(worked - norm)) : 0;
-  const hourly = norm > 0 ? base / (norm / 60) : 0;
+  const hourly = fullNorm > 0 ? base / (fullNorm / 60) : 0;
   const r = (rate === undefined || rate === null) ? overtimeRate() : (Number(rate) || 0);
   const otPay = Math.round(otMins / 60 * hourly * r);
   const delivery = Math.max(0, Math.round(Number(deliveryAmt) || 0));
@@ -14531,6 +14750,7 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
   const bonus = Math.max(0, Math.round(Number(stageBonus) || 0));
   return {
     base, earned, shortMins, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
+    normMins: norm, creditMins: credit,
     otMins, hourly: Math.round(hourly), otRate: r, otPay,
     delivery, bonus, total: d.net + otPay + delivery + bonus,
   };
@@ -14599,11 +14819,14 @@ function salaryCarryIn(key, ym, minsOf) {
   const base = Number((state.salaries || {})[key]) || 0;
   const months = payCarryMonths(ym);
   if (!base || !months.length) return { amount: 0, ready: true, from: '' };
+  // ⛔ Амралтын тэмдэглэгээ ачаалагдаагүй бол өмнөх сарын норм буруу (бүтэн) → илүү олголт хиймлээр буурна
+  if (!attMarksReady()) return { amount: 0, ready: false, from: '' };
   const rows = [];
   for (const m of months) {
     const mins = minsOf(m);
     if (mins === undefined) return { amount: 0, ready: false, from: '' };
-    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, workNormMins(m), driverBonus(key, m).amount, undefined, m, undefined, stagePayFor(key, m).total);
+    const mn = memberNorm(key, m);   // өмнөх сарын амралтыг ч харгалзана — тэр сарын цалин ЯГ ИЖИЛ дүрмээр
+    const b = monthPayBreakdown(base, salaryDeductOn(key), mins, mn.norm, driverBonus(key, m).amount, undefined, m, undefined, stagePayFor(key, m).total, mn.full);
     rows.push({ m, total: b.total, paid: salaryPaidFor(key, m) });
   }
   const ch = payCarryChain(rows);
@@ -14667,6 +14890,7 @@ function renderAttendanceMonth(month) {
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
   const recs = attRecsInFence(state.attMonthRecs);
   if (!recs.length) return `<div class="att-mo-note">${month} сард ирц бүртгэгдээгүй.</div>`;
+  ensureAttMarks();   // амралттай хүний норм буурна — ачаалагдаагүй бол цалин дутуу харагдана (доор ил хэлнэ)
   const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
   const nowMins = workNormMinsThrough(month, todayStr()), inProgress = nowMins < normMins;   // явж буй сар: хувийг өнөөдрийг хүртэлх нормоор
   const byM = {};
@@ -14680,7 +14904,9 @@ function renderAttendanceMonth(month) {
       if (sm.noOut) noOutDays.push(d);   // гарах бүртгэлгүй → тэр өдөр 0 цаг тоологдож байна
     });
     const mem = findMember(k) || { name: m.name, role: '' };
-    return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays };
+    // ХҮНИЙ норм: цалинтай амралт нормыг буулгана (`memberNorm`); хувь, илүү цаг, цалин бүгд үүнээс
+    const mn = memberNorm(k, month);
+    return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays, mn, pNow: Math.max(0, nowMins - mn.restMins) };
   }).sort((a, b) => b.mins - a.mins);
   const noOutPeople = rows.filter(r => r.noOutDays.length), noOutTotal = noOutPeople.reduce((t, r) => t + r.noOutDays.length, 0);
   const normTxt = inProgress
@@ -14696,8 +14922,8 @@ function renderAttendanceMonth(month) {
   if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   const moOpen = state.attMoOpen || {};
   const list = rows.map(r => {
-    const pct = nowMins ? Math.round(r.mins / nowMins * 100) : 0;   // явж буй сард өнөөдрийг хүртэлх нормоор
-    const pctCls = !nowMins ? 'att-mo-pct-mid' : pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
+    const pct = r.pNow ? Math.round(r.mins / r.pNow * 100) : 0;   // явж буй сард өнөөдрийг хүртэлх нормоор (амралтыг хассан)
+    const pctCls = !r.pNow ? 'att-mo-pct-mid' : pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
     const db = driverBonus(r.k, month);
     if (db.count) anyDriver = true;
     // Гарах бүртгэлгүй өдөр = тэр өдөр БҮТЭН 0 цаг. Цалин болдог тул нуухгүй, өдрийг нь нэрлэнэ.
@@ -14710,10 +14936,10 @@ function renderAttendanceMonth(month) {
     if (sp && sp.total) spTotal += sp.total;
     const stageLine = (sp && (sp.total || sp.penApplied)) ? `<div class="sp-line">📦 Дамжлагын бонус: <b>${fmtMoney(sp.total)}</b> <span class="sp-sub">(удирдсан ${sp.led}${sp.helped ? ` · хамтрагчаар ${sp.helped}` : ''}${sp.helperFee ? ` — ${fmtMoney(sp.ledFee)} + ${fmtMoney(sp.helperFee)}` : ''})</span>${sp.penApplied ? ` <span class="sp-pen-tag">⚠ −${fmtMoney(sp.penApplied)} · ${escapeHtml(stagePenWhy(sp))}</span>` : ''}</div>` : '';
     // ⏱ Илүү цаг = сарын нийт − норм (ӨДРӨӨР БИШ). 💵 Цалинд ДАМЖЛАГЫН БОНУС ОРОХГҮЙ.
-    const otMins = Math.max(0, r.mins - normMins);
+    const otMins = Math.max(0, r.mins - r.mn.norm);
     const otTag = otMins ? ` · <span class="att-mo-ot">+${attHM(otMins)} илүү</span>` : '';
     const pbase = payVis ? (Number((state.salaries || {})[r.k]) || 0) : 0;
-    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, normMins, db.amount, undefined, month, undefined, (sp && sp.total) || 0) : null;
+    const pb = pbase ? monthPayBreakdown(pbase, salaryDeductOn(r.k), r.mins, r.mn.norm, db.amount, undefined, month, undefined, (sp && sp.total) || 0, r.mn.full) : null;
     const rPaid = pb ? salaryPaidFor(r.k, month) : 0;
     const rCarry = pb ? payrollCarryIn(r.k, month) : { amount: 0 };
     const rBal = pb ? payBalance(pb.total, rPaid + rCarry.amount) : null;
@@ -14734,18 +14960,19 @@ function renderAttendanceMonth(month) {
     return `<details class="att-mo-row" data-att-mo="${escapeHtml(r.k)}"${moOpen[r.k] ? ' open' : ''}>
       <summary class="att-mo-top">
       <span class="att-mo-ava">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
-      <div class="att-mo-who"><div class="att-mo-name">${escapeHtml(r.name)}</div><div class="att-mo-subl"><span class="att-mo-role">${escapeHtml(r.role)}</span>${r.noOutDays.length ? ` <span class="att-mo-warn">⚠ ${r.noOutDays.length}</span>` : ''}${stTxt}</div></div>
-      <div class="att-mo-num"><div class="att-mo-hrs">${attHM(r.mins)}</div><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${nowMins ? pct + '%' : '—'}</b></div></div>
+      <div class="att-mo-who"><div class="att-mo-name">${escapeHtml(r.name)}</div><div class="att-mo-subl"><span class="att-mo-role">${escapeHtml(r.role)}</span>${r.noOutDays.length ? ` <span class="att-mo-warn">⚠ ${r.noOutDays.length}</span>` : ''}${attMarkSummaryText(r.mn) ? ` <span class="amk-chip">${attMarkSummaryText(r.mn)}</span>` : ''}${stTxt}</div></div>
+      <div class="att-mo-num"><div class="att-mo-hrs">${attHM(r.mins)}</div><div class="att-mo-days"><b>${r.daysN}</b> өдөр · <b class="${pctCls}">${r.pNow ? pct + '%' : '—'}</b></div></div>
       <progress class="att-mo-bar ${pctCls.replace('att-mo-pct-', '')}" max="100" value="${Math.max(0, Math.min(100, pct))}">${pct}%</progress>
       </summary>
       <div class="att-mo-more">
-      <div class="att-mo-calc">⏱ Ажилласан <b>${attHM(r.mins)}</b> / норм ${Math.round(nowMins / 60)}ц${otTag}</div>${noOutLine}${driverLine}${stageLine}${payLine}</div></details>`;
+      <div class="att-mo-calc">⏱ Ажилласан <b>${attHM(r.mins)}</b> / норм ${Math.round(r.pNow / 60)}ц${otTag}</div>${noOutLine}${attMarkDetailHtml(r.mn)}${driverLine}${stageLine}${payLine}</div></details>`;
   }).join('');
   // ── Нийт тойм: сарын БҮХ ажилтны дүн нэг дор (хавтан). Тоог мөрүүдээс ДАХИН бодохгүй байхын тулд нэг л удаа.
   const totMins = rows.reduce((t, r) => t + r.mins, 0);
-  const avgPct = (nowMins && rows.length) ? Math.round(totMins / (rows.length * nowMins) * 100) : null;
+  const sumNow = rows.reduce((t, r) => t + r.pNow, 0);   // хүн бүрийн норм (амралтыг хассан)
+  const avgPct = (sumNow && rows.length) ? Math.round(totMins / sumNow * 100) : null;
   const avgCls = avgPct === null ? 'att-mo-pct-mid' : avgPct >= 100 ? 'att-mo-pct-ok' : avgPct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
-  const otPeople = rows.filter(r => r.mins > normMins), otTot = otPeople.reduce((t, r) => t + (r.mins - normMins), 0);
+  const otPeople = rows.filter(r => r.mins > r.mn.norm), otTot = otPeople.reduce((t, r) => t + (r.mins - r.mn.norm), 0);
   const kpi = (l, v, sub, cls) => `<div class="att-mo-kpi"><div class="att-mo-kpi-l">${l}</div><div class="att-mo-kpi-v${cls ? ' ' + cls : ''}">${v}</div><div class="att-mo-kpi-s">${sub}</div></div>`;
   const kpis = `<div class="att-mo-kpis">`
     + kpi('Нийт цаг', attHM(totMins), `<b>${rows.length}</b> ажилтан`)
@@ -14756,7 +14983,7 @@ function renderAttendanceMonth(month) {
       : kpi('Гарах бүртгэлгүй', noOutTotal ? noOutTotal + ' өдөр' : '✓', noOutTotal ? `<b>${noOutPeople.length}</b> ажилтан · 0 цаг` : 'бүгд бүртгэлтэй', noOutTotal ? 'att-mo-pct-low' : 'att-mo-pct-ok'))   // цалин харахгүй хүнд 4-р хавтан = нэг тоо, сануулга давхцахгүй
     + `</div>`;
   // `.att-mo-head b` нь өгөгдмөлөөр --text.
-  const head = kpis + `<div class="att-mo-head">${normTxt}</div>`
+  const head = kpis + `<div class="att-mo-head">${normTxt}</div>` + attMarksWarnHtml()
     // Гарах бүртгэлгүй өдөр = 0 цаг тоологдож цалин дутна → мөрүүдийг гүйлгэж хайхгүйн тулд дээд талд ИЛ.
     + ((noOutTotal && payVis && payPeople) ? `<div class="att-mo-flag">⚠ <b>${noOutPeople.length}</b> ажилтанд гарах бүртгэлгүй <b>${noOutTotal}</b> өдөр — 0 цаг тоологдсон</div>` : '');
   const liabilityNote = anyDriver ? `<div class="att-mo-liab">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
@@ -14822,6 +15049,13 @@ function attachAttendanceHandlers() {
   // Ажилтны ирцийн хүсэлт — батлах / татгалзах
   document.querySelectorAll('[data-areq-ok]').forEach(b => b.addEventListener('click', () => { b.disabled = true; attReqApprove(b.dataset.areqOk); }));
   document.querySelectorAll('[data-areq-no]').forEach(b => b.addEventListener('click', () => attReqReject(b.dataset.areqNo)));
+  // Ирээгүй · тэмдэглэх (Амралт / Чөлөө / Тасалсан). `#att-list`-ийг 20 сек тутам innerHTML-ээр солидог тул
+  // товчуудад ШУУД биш, контейнерт НЭГ delegation (шууд холбовол солигдсоны дараа товч үхнэ).
+  const _attListEl = document.getElementById('att-list');
+  if (_attListEl) {
+    _attListEl.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-amk],[data-amk-clear]'); if (b && !b.disabled) attMarkClick(b); });
+    _attListEl.addEventListener('toggle', e => { if (e.target && e.target.classList && e.target.classList.contains('amk-sec')) state.amkOpen = e.target.open; }, true);   // render() дахин зурахад хаагдахгүй
+  }
   const _isTodayView = () => (state.attViewDay || todayStr()) === todayStr() && !state.attMonthMode;
   if (_isTodayView()) loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance' && _isTodayView()) el.innerHTML = renderAttendanceRows(); });
   if (state._attPoll) clearInterval(state._attPoll);
@@ -14922,8 +15156,10 @@ function myPayCardHtml(me) {
   const base = Number((state.salaries || {})[key]) || 0;
   const db = driverBonus(key, month);
   // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
-  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, workNormMins(month), db.amount, undefined, month, undefined, stagePayFor(key, month).total);
-  const normH = workNormDays(month) * 8;
+  ensureAttMarks();
+  const mn = memberNorm(key, month);   // цалинтай амралт нормыг буулгана
+  const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, mn.norm, db.amount, undefined, month, undefined, stagePayFor(key, month).total, mn.full);
+  const normH = Math.round(mn.norm / 60);
   const paid = salaryPaidFor(key, month);
   const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
   const myPays = salaryPaymentsFor(state.salaryPayments, key, month);
@@ -15013,7 +15249,7 @@ function myPayCardHtml(me) {
       ${paidRow}
     </div>
     ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`, 'pay-worked')}
-    ${noOutNote}${spNote}
+    ${attMarkDetailHtml(mn)}${attMarksWarnHtml()}${noOutNote}${spNote}
     <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${payProrateFrom()}-аас эхлэн ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. ${lunchNote()} Нэмэгдэлд суутгал тооцохгүй.</div>
   </div>`;
 }
@@ -19443,7 +19679,8 @@ function renderSalary() {
   if (!histOnly && state.attMonthKey !== ym && state._attMonthBusy !== ym && !(state.attMonthErr && state.attMonthErr.month === ym)) setTimeout(() => loadAttendanceMonthFull(ym), 0);
   const attReady = !histOnly && state.attMonthKey === ym && Array.isArray(state.attMonthRecs);
   const attMins = attReady ? payrollAttMins(state.attMonthRecs) : {};
-  const normMins = workNormMins(ym), normH = workNormDays(ym) * 8;   // ⚠ норм САР БҮРЭЭР
+  if (!histOnly) ensureAttMarks();   // цалинтай амралт хүн бүрийн нормыг буулгана
+  const normH = workNormDays(ym) * 8;   // ⚠ норм САР БҮРЭЭР (бүтэн хуанли; хүн бүрийнх нь `memberNorm`)
   const spAll = stagePayByPerson(state.appOrders || [], ym);
   const payRows = (state.salaryPayments || []).filter(p => p && p.ym === ym);
   const attSet = new Set(Object.keys(attMins)), paidSet = new Set(payRows.map(p => p.person_key));
@@ -19469,10 +19706,11 @@ function renderSalary() {
     const w = attMins[r.k] || { mins: 0, days: 0, noOut: 0 };
     const db = driverBonus(r.k, ym);
     // ⛔ Ирц ачаалагдаагүй / тэр сард огт бүртгэлгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 биш
-    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, normMins, db.amount, undefined, ym, undefined, ((spAll[r.k] || {}).total) || 0);
+    const mn = memberNorm(r.k, ym);
+    const b = monthPayBreakdown(r.amount, salaryDeductOn(r.k), (attReady && attMins[r.k]) ? w.mins : null, mn.norm, db.amount, undefined, ym, undefined, ((spAll[r.k] || {}).total) || 0, mn.full);
     // ↪ Өмнөх сарын илүү олголт — энэ сарын олгохоос хасагдана (түүх сард шилжүүлэлтгүй)
     const carry = payrollHistOnly(ym) ? { amount: 0, ready: true, from: '' } : payrollCarryIn(r.k, ym);
-    return { ...r, w, db, b, carry, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
+    return { ...r, w, db, b, mn, carry, sp: spAll[r.k] || null, paid: salaryPaidFor(r.k, ym), pays: salaryPaymentsFor(state.salaryPayments, r.k, ym) };
   });
   /* Үлдэгдэл ба илүү олголтыг ХҮН БҮРЭЭР нийлбэрлэнэ — нийт олгохоос нийт
      олгосныг хасвал нэг хүний илүү олголт нөгөөгийн дутууг «нөхөж» харагдана. */
@@ -19517,6 +19755,7 @@ function renderSalary() {
     ${orphans.map(o => `<div class="pb-orph"><span>${escapeHtml(o.key)} — <b>${fmtMoney(o.amount || o.paid)}</b>${o.amount && o.paid ? ` (цалин ${fmtMoney(o.amount)} · олголт ${fmtMoney(o.paid)})` : ''}</span>${
       o.amount > 0 && editable ? `<button class="btn pb-orph-b" data-orph-fix="${escapeHtml(o.key)}" data-orph-amt="${o.amount}">🔗 Хэнийх вэ?</button>`
         : '<span class="pb-dim">олголтын мөр — хуулгаас ирсэн, энд засагдахгүй</span>'}</div>`).join('')}</div>`);
+  if (!histOnly) { const _mw = attMarksWarnHtml(); if (_mw) warnBits.push(_mw); }
   if (noSal.length) warnBits.push(`<div class="pb-warn">⚠ <b>${noSal.length}</b> хүн энэ сард ажилласан атлаа суурь цалин тохируулаагүй: ${noSal.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
   // ⛔ Шилжүүлэлт мэдэгдэхгүй үед ЧИМЭЭГҮЙ 0 гэж харуулахгүй — үлдэгдэл хиймлээр өснө
   // Явж буй сард нормоос дутуу цаг хасагдахгүй — яагаад гэдгийг нэг мөрөөр
@@ -19555,7 +19794,7 @@ function renderSalary() {
        үзүүлж, хүнийг төөрүүлнэ (CEO: «хэрэгжүүлж байгаагүй зүйлс харагдаад байна»). */
     const hrs = histOnly ? ''
       : w.days
-      ? `${attHM(w.mins)}<span class="pb-dim"> / ${normH}ц</span>${b.otMins ? ` <b class="pb-ot">+${attHM(b.otMins)}</b>` : ''}`
+      ? `${attHM(w.mins)}<span class="pb-dim"> / ${Math.round(c.mn.norm / 60)}ц</span>${b.otMins ? ` <b class="pb-ot">+${attHM(b.otMins)}</b>` : ''}`
       : '<span class="pb-dim">ирцгүй</span>';
     const sum = `<summary class="pb-sum">
       <span class="pb-sum-n"><b>${escapeHtml(m.name || '?')}</b><span class="pb-role">${escapeHtml(m.role || '')}</span></span>
@@ -19616,7 +19855,7 @@ function renderSalary() {
       ? `<div class="pb-body">${money}</div>`
       : `<div class="pb-body">
         <div class="pb-top">
-          <div class="pb-who">${bankLine}${noOut}${histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 Бүх олголт (${histN})</button>` : ''}</div>
+          <div class="pb-who">${bankLine}${noOut}${attMarkDetailHtml(c.mn)}${histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 Бүх олголт (${histN})</button>` : ''}</div>
           <div class="pb-base"><div class="pb-base-r"><span class="pb-dim">Суурь цалин</span>${baseCell}</div>${dedChk ? `<div class="pb-ded-l">${dedChk}</div>` : ''}</div>
         </div>
         ${money}${spLine}

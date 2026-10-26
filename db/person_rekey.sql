@@ -51,7 +51,8 @@ begin
     ('repairs','reported_by'), ('repairs','assignee'), ('repairs','fixed_by'),
     ('stock_moves','by'), ('receipt_files','uploaded_by'),
     ('member_branches','updated_by'), ('expense_learn','updated_by'),
-    ('app_orders','created_by')
+    ('app_orders','created_by'),
+    ('att_marks','marked_by')
   ) v(t, c) loop
     if to_regclass('public.' || quote_ident(r.t)) is null then continue; end if;
     execute format('update %I set %I = $2 where %I = $1', r.t, r.c, r.c) using o, n;
@@ -89,6 +90,12 @@ begin
                       where x.id = regexp_replace(a.id, '(^|\|)' || o || '(\||$)', '\1' || n || '\2', 'g'));
   get diagnostics cnt = row_count;
   if cnt > 0 then out := out || jsonb_build_object('att_requests', cnt); end if;
+  -- att_marks: id = «утас|өдөр», member_key = утас. Шинэ дугаар дээр тэр өдөр аль хэдийн мөр байвал ХУУЧНЫГ ҮЛДЭЭНЭ.
+  update att_marks a set member_key = n, id = n || '|' || to_char(a.day, 'YYYY-MM-DD')
+   where a.member_key = o
+     and not exists (select 1 from att_marks x where x.id = n || '|' || to_char(a.day, 'YYYY-MM-DD'));
+  get diagnostics cnt = row_count;
+  if cnt > 0 then out := out || jsonb_build_object('att_marks', cnt); end if;
 
   -- ④ JSON дотор: «"утас"» (хашилттай — өөр тоон дотор таарахгүй). Түлхүүр ч, утга ч.
   update app_orders set stage_meta = replace(stage_meta::text, oq, nq)::jsonb where stage_meta::text like '%' || oq || '%';

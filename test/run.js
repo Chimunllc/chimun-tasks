@@ -15878,7 +15878,8 @@ async function swFetchTests() {
     'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
     'poFxValid', 'poFxOn', 'poFxMerge', 'poFxSave', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
-    'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml']);
+    'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
+    'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml']);
 
   // ① Дүн — PDF-ийн бодит тоо (Xinrui 3000W: ¥1,511 × 540 + 182,460 = 998,400₮)
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -15998,6 +15999,33 @@ async function swFetchTests() {
     ok(/<img class="po-th" src="https:\/\/n8n\.nomaadcamp\.com\/img\/cat\.jpg"/.test(F.poLineCardHtml(F.poLine({ sku: 'M-033', name: 'A', q: 1 }), 0, 540)), 'зураг: хүсэлтийн мөрийн картад каталогийн зураг гарна');
     ok(!/data-imgdel/.test(F.poLineCardHtml(F.poLine({ sku: 'M-033', name: 'A', q: 1 }), 0, 540)), 'зураг: каталогийн зургийг «хасах» товч гаргахгүй (өөрийн зураг л хасагдана)');
     stp.products = keepP;
+  }
+
+  // ⑦а НИЙТ ҮНЭ оруулна → нэгжийг өөрөө гаргана (CEO: тээвэр хамт орсон тул нэгж/тээврийг тусад нь шивэхгүй)
+  eq([F.poUnitFromTotal(1970, 10), F.poUnitFromTotal(1511, 3), F.poUnitFromTotal(100, 0), F.poUnitFromTotal(0, 5), F.poUnitFromTotal('x', 2)], [197, 503.666667, 0, 0, 0], 'нийт үнэ: нэгж = нийт ÷ тоо (6 орон), тоо/үнэ байхгүй бол 0');
+  for (const [tt, qq] of [[1511, 3], [100, 7], [1970, 10], [99.99, 3], [12345.67, 11], [0.5, 3]]) {
+    eq(F.poLineTotalCur(F.poLine({ q: qq, c: F.poUnitFromTotal(tt, qq) })), tt, `⛔ нийт үнэ: ${tt} ÷ ${qq} → нэгж → ×${qq} буцаахад нийт ЯГ таарна (бөөрөнхийлөлтөөс 1 цент ч зөрөхгүй)`);
+  }
+  {
+    // 3 ширхэг ¥1511 → нэгж 503.666667; мөнгөн дүн нийт × ханштай яг таарна
+    const l3 = F.poLine({ q: 3, c: F.poUnitFromTotal(1511, 3) });
+    eq(F.poLineTotals(l3, 540).item, Math.round(1511 * 540), '⛔ нийт үнэ: ₮ дүн = нийт ¥ × ханш (нэгжийн бөөрөнхийлөлт ₮-д нэмэгдэхгүй)');
+  }
+  const CAT = [{ sku: 'M-205', code: 'M-205', name: 'Босоо дугуй ширээ' }, { sku: 'M-206', code: 'M-206', name: 'Босоо дугуй ширээ том' }, { sku: 'M-300', code: 'M-300', name: 'Ширээний бүтээлэг' }, { sku: 'P-1', name: 'Багц ширээ', type: 'package' }];
+  eq(F.poCatalogMatches(CAT, 'босоо дугуй ширээ', []).map(p => p.sku), ['M-205', 'M-206'], 'каталогийн санал: нэр ЯГ таарсан нь эхэнд, том/жижиг үсгээс үл хамаарна');
+  eq(F.poCatalogMatches(CAT, 'ширээ', ['M-205']).map(p => p.sku).includes('M-205'), false, 'каталогийн санал: мөрд аль хэдийн байгаа бараа дахин гарахгүй');
+  eq(F.poCatalogMatches(CAT, 'ширээ', []).some(p => p.sku === 'P-1'), false, 'каталогийн санал: багц орохгүй');
+  eq([F.poCatalogMatches(CAT, 'ш', []), F.poCatalogMatches(CAT, '', []), F.poCatalogMatches(null, 'ширээ', [])], [[], [], []], 'каталогийн санал: 2-оос цөөн үсэг/хоосон → юу ч санал болгохгүй');
+  eq(F.poCatalogMatches(CAT, 'M-30', []).map(p => p.sku), ['M-300'], 'каталогийн санал: кодоор ч хайна');
+  {
+    const newCard = F.poLineCardHtml(F.poLine({ name: 'Шинэ чийдэн', q: 2, c: 50 }), 0, 540);
+    ok(/data-f="name"/.test(newCard) && /data-sug="0"/.test(newCard) && /placeholder="Барааны нэр"/.test(newCard), 'мөр: шинэ бараа = барааны нэр оруулах талбар (каталогийн санал гарах газартай)');
+    ok(/data-f="t"/.test(newCard) && /Нийт үнэ ¥/.test(newCard) && !/data-f="c"/.test(newCard) && !/data-f="s"/.test(newCard), '⛔ мөр: НИЙТ үнэ оруулна; нэгж үнэ, «хүргэлт+карго» талбар ХАРАГДАХГҮЙ');
+    ok(/value="100"/.test(newCard), 'мөр: нийт үнэ = тоо × нэгж (2 × ¥50 = 100)');
+    const linked = F.poLineCardHtml(F.poLine({ sku: 'M-205', name: 'Босоо дугуй ширээ', q: 1, c: 10 }), 0, 540);
+    ok(!/data-f="name"/.test(linked) && /data-unlink="0"/.test(linked) && /M-205/.test(linked), 'мөр: каталогийн бараа = нэр уншигдахаар, «салгах» боломжтой');
+    ok(/нэгж <b>¥/.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 4, c: 25 }), 0, 540)) && /нийт үнээ оруулна уу/.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 4 }), 0, 540)), 'мөр: нэгж үнэ өөрөө гарна; үнэгүй бол «нийт үнээ оруулна уу»');
+    ok(/карго ~/.test(F.poLineSumHtml(F.poLine({ name: 'А', q: 1, c: 10, s: 9000 }), 540)), 'мөр: хуучин (урьдчилсан) карго байвал ил харагдана — хаяхгүй');
   }
 
   // ⑦в ХААН БАНКНЫ ЮАНИЙН ХАНШ (өдөр бүр, хүн оруулна)
@@ -16164,6 +16192,10 @@ async function swFetchTests() {
     ok(/poPayToOk\(pay_to\)/.test(reqM) && /Төлөх дансаа бүрэн оруулна уу/.test(reqM) && /id="po-pbank"/.test(reqM) && /id="po-pno"/.test(reqM) && /id="po-pnm"/.test(reqM),
        '⛔ scan: хүсэлт гаргахдаа төлөх данс (банк, дугаар, эзэмшигч) ЗААВАЛ');
     ok(/const fillPay = /.test(reqM) && /poPayToOk\(p\.pay_to\)/.test(reqM), 'scan: нийлүүлэгч өмнө нь байсан бол данс өөрөө бөглөгдөнө');
+    ok(!/id="po-q"/.test(reqM) && /id="po-addline"/.test(reqM) && /📦 Юу авах вэ\?/.test(reqM), 'scan: хүсэлтийн цонх барааны нэрээр ЭХЭЛНЭ («Юу авах вэ?»), нийлүүлэгч доор');
+    ok(reqM.indexOf('id="po-lines"') > 0 && reqM.indexOf('id="po-lines"') < reqM.indexOf('id="po-sup"'), '⛔ scan: барааны нэр/мөр нийлүүлэгчээс ӨМНӨ');
+    ok(/poCatalogMatches\(/.test(reqM) && /poUnitFromTotal\(/.test(reqM) && /тоо болон нийт үнээ оруулна уу/.test(reqM) && /Барааны нэрээ оруулна уу/.test(reqM), 'scan: каталогийн санал, нийт→нэгж, нэр/тоо/нийт үнэ заавал');
+    ok(/if \(!ex\) focusName\(0\)/.test(reqM), 'scan: шинэ хүсэлтэд барааны нэрийн талбар шууд идэвхжинэ');
     const payM = src.slice(src.indexOf('async function openPoPayModal('), src.indexOf('function openPoOrderModal('));
     ok(/Шилжүүлэх данс/.test(payM) && /data-copy-text/.test(payM), 'scan: «Шилжүүлсэн» цонхонд төлөх данс (хуулах товчтой) харагдана');
     ok(/poFxValid\(rate\)/.test(payM) && /patch\.fx = rate/.test(payM) && /poFxSave\(date, rate\)/.test(payM), '⛔ scan: шилжүүлэхдээ ТЭР ӨДРИЙН Хаан банкны ханш заавал, өртгийн суурь болж хадгалагдана');

@@ -8197,7 +8197,19 @@ select.no-asar-len {
 .po-th { width: 48px; height: 48px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--bg); }
 .po-thumbs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .po-ln .po-th { width: 36px; height: 36px; }
-.po-img-btn { flex: none; padding: var(--space-1) var(--space-2); font-size: var(--fs-sm); cursor: pointer; }
+.modal.po-modal .po-ph { flex: none; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; margin: 0;
+  border: 1px dashed var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--muted); font-size: var(--fs-lg); }
+.po-line .po-line-top { align-items: flex-start; }
+.po-line .po-line-grid { align-items: end; }
+.po-line .po-line-grid > label:last-child { grid-column: 1 / -1; }
+.po-ph .po-th { width: 100%; height: 100%; border: 0; border-radius: 0; }
+.po-line-nmwrap { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.po-linked { color: var(--muted); font-size: var(--fs-xs); }
+.po-lnk { background: none; border: 0; padding: 0; color: var(--primary); font-size: var(--fs-xs); cursor: pointer; text-decoration: underline; }
+.po-sug { display: flex; flex-direction: column; gap: var(--space-1); }
+.po-sug-h { color: var(--muted); font-size: var(--fs-xs); }
+.po-add { width: 100%; border-style: dashed; margin-bottom: var(--space-3); }
+.modal.po-modal .po-ph > input[type="file"] { display: none; }   /* зургийн оруулагч нуугдана (label-ийн дүрэм `display:block` хийдэг) */
 .po-badge.new { color: var(--ok); font-weight: 600; }
 .po-line-del { padding: var(--space-1) var(--space-2); font-size: var(--fs-xs); }
 .po-line-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2) var(--space-3); margin-top: var(--space-2); }
@@ -8206,8 +8218,6 @@ select.no-asar-len {
 .po-line-sum, .po-rl-info, .po-ig-m, .po-ig-l { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); overflow-wrap: anywhere; }
 .po-total { margin: var(--space-3) 0; font-size: var(--fs-sm); }
 .po-total-n { font-size: var(--fs-lg); }
-.modal .po-search { width: 100%; margin-top: var(--space-2); }
-.po-res { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-1); }
 .po-hit { display: flex; justify-content: space-between; gap: var(--space-2); text-align: left; font-size: var(--fs-sm); }
 .po-hit small { color: var(--muted); font-size: var(--fs-xs); }
 .po-hit.new { color: var(--ok); }

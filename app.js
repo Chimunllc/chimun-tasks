@@ -26919,6 +26919,12 @@ const PO_BRANCH_LABEL = { mevent: 'M-Event', nomaad: 'NOMAAD', catering: 'Кат
 const PO_PLATFORMS = ['Taobao', '1688', 'Бусад'];
 const PO_FX_DEFAULT = 540;
 
+// Зургийн хаяг = зөвхөн https/http ФАЙЛ (VPS-д байршсан). base64/`data:`/`javascript:` ОРОХГҮЙ —
+// мөр бүр `purchases.lines` jsonb-д хадгалагддаг тул base64 нь хүснэгтийг хөргөнө, `src`-д ч аюултай.
+function poImgUrl(v) {
+  const u = String(v == null ? '' : v).trim();
+  return /^https?:\/\/[^\s"'<>]{4,480}$/i.test(u) ? u : '';
+}
 function poStatusInfo(k) {
   return PO_STEPS.find(s => s.k === k) || PO_ENDS.find(s => s.k === k) || { k: String(k || ''), label: String(k || '—'), icon: '•' };
 }
@@ -26938,6 +26944,7 @@ function poLine(raw) {
     b: PO_BRANCH_LABEL[r.b] ? String(r.b) : 'mevent',
     u: String(r.u || '').trim(),
     cat: String(r.cat || '').trim(),
+    img: poImgUrl(r.img),
     rcv: Math.max(0, Math.round(num(r.rcv))),
     done: r.done === true,
   };
@@ -27078,11 +27085,12 @@ function poReceiptPlan(po, line, qty, product, ctx) {
       supplier: String(prev.supplier || '').trim() ? prev.supplier : (po.supplier || prev.supplier || null),
     };
     if (!String(prev.source_url || '').trim() && line.u) fields.source_url = line.u;
+    if (!String(prev.photo || '').trim() && line.img) fields.photo = line.img;   // байгаа зургийг ДАРАХГҮЙ
   } else {
     const code = c.code || '';
     fields = {
       sku: code, id: code, code, name: String(line.name || '').trim(), category: line.cat || '',
-      type: 'rental', price: 0, deposit: 0, stock: total, photo: '', description: '',
+      type: 'rental', price: 0, deposit: 0, stock: total, photo: line.img || '', description: '',
       broken: 0, maintenance: 0,
       qty_mevent: after.mevent, qty_chimun: after.chimun, qty_nomaad: after.nomaad, qty_catering: after.catering,
       cost: unit, purchase_date: today, supplier: po.supplier || null, source_url: line.u || po.url || null,
@@ -27235,6 +27243,24 @@ function poSafeArith(f) {
   }
   try { const v = expr(); return i === s.length && isFinite(v) ? v : null; } catch (e) { return null; }
 }
+/* Барааны зураг → VPS (hosted URL). ⛔ `uploadProductImage`-аас ЯЛГААТАЙ: унавал base64 руу БУЦАХГҮЙ, АЛДАА шиднэ —
+   base64 нь `purchases.lines` (jsonb) мөр бүрийг хөөргөж, самбарын татацыг удаашруулна. */
+async function poUploadImage(file) {
+  if (!file || !/^image\//i.test(file.type || '')) throw new Error('Зураг файл сонгоно уу');
+  const b64 = await resizeImageToBase64(file, 1200, 0.78);
+  const r = await fetchWithTimeout(
+    'https://n8n.nomaadcamp.com/webhook/mevent-upload-image?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: b64 }) }, 30000);
+  if (!r.ok) throw new Error('Зураг байршуулж чадсангүй (HTTP ' + r.status + ')');
+  const j = await r.json();
+  const url = poImgUrl(j && (j.url || (Array.isArray(j) && j[0] && j[0].url)));
+  if (!url) throw new Error('Байршуулагчаас зургийн хаяг ирсэнгүй');
+  return url;
+}
+function poThumbHtml(url) {
+  const u = poImgUrl(url);
+  return u ? `<a class="po-th-a" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer"><img class="po-th" src="${escapeHtml(u)}" alt="" loading="lazy"></a>` : '';
+}
 function poSheetMatrix(ws) {
   if (!ws || !ws['!ref']) return [];
   const rng = (typeof XLSX !== 'undefined' && XLSX.utils) ? XLSX.utils.decode_range(ws['!ref']) : null;
@@ -27341,6 +27367,7 @@ function poDetailsHtml(po) {
       ? `<span class="po-rc${left === 0 ? ' ok' : ''}">${l.done && l.rcv < l.q ? `ирсэн ${l.rcv}/${l.q} (хаасан)` : `ирсэн ${l.rcv}/${l.q}`}</span>` : '';
     const unit = po.fx === 1 ? '₮' : '¥';
     return `<div class="po-ln">
+      ${poThumbHtml(l.img)}
       <span class="po-ln-nm">${escapeHtml(l.name || l.sku || 'бараа')}${l.sku ? ` <small>${escapeHtml(l.sku)}</small>` : ' <small>шинэ бараа</small>'}</span>
       <span class="po-ln-q">${l.q} × ${escapeHtml(String(l.c))}${unit}</span>
       <span class="po-ln-s">${x.ship ? '+ ' + escapeHtml(fmtMoney(x.ship)) : ''}</span>
@@ -27380,6 +27407,7 @@ function poCardHtml(po, caps) {
       ${po.platform ? `<small class="po-plat">${escapeHtml(po.platform)}</small>` : ''}
       ${poPillHtml(po.status)}
     </div>
+    ${po.lines.some(l => l.img) ? `<div class="po-thumbs">${po.lines.filter(l => l.img).slice(0, 5).map(l => poThumbHtml(l.img)).join('')}</div>` : ''}
     <div class="po-sum">${poLinesText(po)}</div>
     <div class="po-meta">
       <b>${escapeHtml(fmtMoney(po.paid_mnt != null && po.status !== 'request' && po.status !== 'approved' ? po.paid_mnt : (po.total_mnt || t.total)))}</b>
@@ -27492,6 +27520,8 @@ function poLineCardHtml(l, i, fx) {
   const x = poLineTotals(l, fx);
   return `<div class="po-line" data-i="${i}">
     <div class="po-line-top">
+      ${poThumbHtml(l.img)}
+      <label class="btn po-img-btn" title="Барааны зураг оруулах / солих">${l.imgBusy ? '⏳' : '📷'}<input type="file" accept="image/*" hidden data-imgup="${i}"></label>${l.img ? `<button class="btn po-line-del" data-imgdel="${i}" title="Зургийг хасах">🗑</button>` : ''}
       ${l.sku ? `<b class="po-line-nm">${escapeHtml(l.name || l.sku)}</b><span class="po-badge">${escapeHtml(l.sku)}</span>`
               : `<input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(l.name)}" placeholder="Барааны нэр"><span class="po-badge new">шинэ</span>`}
       <button class="btn po-line-del" data-del="${i}" title="Хасах">✕</button>
@@ -27565,13 +27595,26 @@ async function openPoModal(id) {
     else l[f] = poNum(e.target.value);
     sums();
   });
+  let pendingImg = 0;
   w.$('#po-lines').addEventListener('click', (e) => {
+    const im = e.target.closest('[data-imgdel]');
+    if (im) { const l = d.lines[+im.dataset.imgdel]; if (l) { l.img = ''; draw(); } return; }
     const b = e.target.closest('[data-del]'); if (!b) return;
     d.lines.splice(+b.dataset.del, 1); draw();
   });
+  w.$('#po-lines').addEventListener('change', async (e) => {
+    const inp = e.target.closest('[data-imgup]');
+    if (!inp || !inp.files || !inp.files[0]) return;
+    const l = d.lines[+inp.dataset.imgup]; if (!l) return;
+    const file = inp.files[0];
+    l.imgBusy = true; pendingImg++; draw();
+    try { l.img = await poUploadImage(file); }
+    catch (err) { showToast('⚠ ' + (err && err.message ? err.message : err), 'error', 5000); }
+    finally { l.imgBusy = false; pendingImg--; draw(); }
+  });
   w.$('#po-fx').addEventListener('input', draw);
   const addLine = (p, typed) => {
-    d.lines.push(poLine({ sku: p ? p.sku : '', name: p ? (p.name || p.sku) : typed, q: 1, b: lastB }));
+    d.lines.push(poLine({ sku: p ? p.sku : '', name: p ? (p.name || p.sku) : typed, q: 1, b: lastB, img: p ? p.photo : '' }));
     w.$('#po-q').value = ''; w.$('#po-res').innerHTML = ''; draw();
   };
   let _t = null;
@@ -27596,6 +27639,7 @@ async function openPoModal(id) {
   w.$('#po-cancel').onclick = w.close;
   w.$('#po-save').onclick = async (ev) => {
     const btn = ev.currentTarget;
+    if (pendingImg > 0) { showToast('Зураг байршиж дуустал хүлээнэ үү', 'warn'); return; }
     const lines = d.lines.map(poLine).filter(l => (l.name || l.sku));
     if (!lines.length) { showToast('Дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
     if (lines.some(l => !(l.q > 0))) { showToast('Бараа бүрийн тоо 0-ээс их байх ёстой', 'warn'); return; }
@@ -27749,7 +27793,7 @@ async function openPoReceiveModal(id) {
   const cardHtml = (e, i) => {
     const r = e.row, p = prodOf(r), left = poLineLeft(r), unit = poLineTotals(r, po.fx).unit;
     return `<div class="po-rl" data-i="${i}">
-      <div class="po-line-top"><b class="po-line-nm">${escapeHtml(r.name || r.sku)}</b>
+      <div class="po-line-top">${poThumbHtml(r.img)}<b class="po-line-nm">${escapeHtml(r.name || r.sku)}</b>
         <span class="po-badge${p ? '' : ' new'}">${p ? escapeHtml(p.sku) + ' · одоо ' + prodTotalQty(p) + ' ш' : (r.sku ? 'олдсонгүй' : 'шинэ бараа')}</span></div>
       <div class="po-rl-info">Захиалсан ${r.q} · өмнө ирсэн ${r.rcv} · <b>үлдсэн ${left}</b> · нэгж өртөг ${escapeHtml(fmtMoney(unit))}</div>
       ${r.sku && !p ? '<div class="po-probs">⚠ Бараа каталогт олдсонгүй (архивлагдсан байж магадгүй) — энэ мөрийг хүлээж авахгүй</div>' : ''}

@@ -15951,6 +15951,19 @@ async function swFetchTests() {
   eq([fresh.moves.length, fresh.moves[0].qty_before, fresh.moves[0].delta, fresh.moves[0].sku], [1, 0, 5, 'M-400'], 'хүлээн авах: шинэ барааны дэвтрийн мөр 0 → 5');
   eq(F.poReceiptPlan(PO, carpet, 0, prod, {}), null, 'хүлээн авах: 0 ш бол төлөвлөгөө үүсэхгүй');
 
+  // ⑦б Барааны зураг (мөр бүрд)
+  eq(F.poLine({ img: 'https://n8n.nomaadcamp.com/img/a.jpg' }).img, 'https://n8n.nomaadcamp.com/img/a.jpg', 'зураг: https хаяг хадгалагдана');
+  eq([F.poLine({ img: 'javascript:alert(1)' }).img, F.poLine({ img: 'data:image/png;base64,AAAA' }).img, F.poLine({ img: 'https://x.mn/a b.jpg' }).img, F.poLine({ img: 'https://x.mn/"onerror="x' }).img, F.poLine({}).img],
+     ['', '', '', '', ''], '⛔ зураг: javascript:/data: (base64)/зайтай/хашилттай хаяг ХАДГАЛАГДАХГҮЙ (jsonb хөөрөхгүй, src-д аюулгүй)');
+  ok(/<img class="po-th" src="https:\/\/n8n\.nomaadcamp\.com\/img\/a\.jpg"/.test(F.poThumbHtml('https://n8n.nomaadcamp.com/img/a.jpg')), 'зураг: жижиг зураг зурагдана');
+  eq(F.poThumbHtml('javascript:alert(1)') + F.poThumbHtml(''), '', 'зураг: аюултай/хоосон хаяг зураг үүсгэхгүй');
+  const IMG = 'https://n8n.nomaadcamp.com/img/i.jpg';
+  eq(F.poReceiptPlan(PO, F.poLine({ id: 'l5', name: 'LED', q: 1, c: 10, img: IMG }), 1, null, { code: 'M-401' }).fields.photo, IMG, 'зураг: шинэ бараа хүсэлтийн зургийг авна');
+  eq(F.poReceiptPlan(PO, F.poLine({ ...carpet, img: IMG }), 1, { ...prod, photo: '' }, {}).fields.photo, IMG, 'зураг: зураггүй байгаа бараа зургаа авна');
+  eq(F.poReceiptPlan(PO, F.poLine({ ...carpet, img: IMG }), 1, { ...prod, photo: 'https://n8n.nomaadcamp.com/img/own.jpg' }, {}).fields.photo, 'https://n8n.nomaadcamp.com/img/own.jpg', '⛔ зураг: байгаа барааны зургийг ДАРАХГҮЙ');
+  ok(/data-imgup="0"/.test(F.poLineCardHtml(F.poLine({ name: 'A', q: 1 }), 0, 540)) && /data-imgdel="0"/.test(F.poLineCardHtml(F.poLine({ name: 'A', q: 1, img: IMG }), 0, 540)),
+     'зураг: мөрийн картад «оруулах», зурагтай бол «хасах» товч');
+
   // ⑧ Дэвтэр = үнэн (давхар нэмэхээс сэргийлэх ганц баталгаа)
   const led = [
     { ref: 'PO:po1:l1', reason: 'purchase', delta: 3, sku: 'M-033' },
@@ -16026,7 +16039,7 @@ async function swFetchTests() {
   st.me = 'C'; st.financeRequests = []; st._poMissing = false; st._poTab = 'open';
   st.purchases = [
     F.poNormalize({ id: 'a', no: 1, status: 'request', supplier: 'Xinrui', fx: 540, created_by: 'U', created_at: '2026-10-26T02:00:00Z', total_mnt: 998400, need_by: _soon(2),
-      lines: [{ id: 'l1', name: 'Машин', q: 1, c: 1511, s: 182460 }], history: [{ at: '2026-10-26T02:00:00Z', by: 'U', to: 'request', note: '' }] }),
+      lines: [{ id: 'l1', name: 'Машин', q: 1, c: 1511, s: 182460, img: 'https://n8n.nomaadcamp.com/img/m.jpg' }], history: [{ at: '2026-10-26T02:00:00Z', by: 'U', to: 'request', note: '' }] }),
     F.poNormalize({ id: 'b', no: 2, status: 'request', supplier: '', fx: 540, created_by: 'U', lines: [{ id: 'l2', name: 'Үнэгүй', q: 1, c: 0 }] }),
     F.poNormalize({ id: 'c', no: 3, status: 'ordered', supplier: 'Jinnin', fx: 540, created_by: 'U', lines: [{ id: 'l3', sku: 'M-033', name: 'Хивс', q: 2, c: 1, rcv: 1 }] }),
     F.poNormalize({ id: 'd', no: 4, status: 'received', supplier: 'Ганxин', fx: 540, created_by: 'U', lines: [{ id: 'l4', name: 'Цаг', q: 1, c: 1, rcv: 1 }] }),
@@ -16038,6 +16051,7 @@ async function swFetchTests() {
   ok(/ирсэн 1\/2/.test(html), 'самбар: хэсэгчилсэн ирэлт (1/2) харагдана');
   ok(/⏰/.test(html) && /2 хоног/.test(html), 'самбар: 2 хоногийн дараа дуусах хямдралын сануулга (⏰ … 2 хоног)');
   ok(!/data-po-id="d"/.test(html), 'самбар: «Идэвхтэй» табд хүлээн авсан орохгүй');
+  ok(/class="po-thumbs"/.test(html) && /<img class="po-th" src="https:\/\/n8n\.nomaadcamp\.com\/img\/m\.jpg"/.test(html), 'самбар: хүсэлтийн картад барааны зураг харагдана');
   st._poTab = 'received';
   ok(/data-po-card="d"/.test(asCeo(() => F.poBoardHtml())), 'самбар: «Хүлээн авсан» табд харагдана');
   st._poMissing = true; ok(/db\/purchases\.sql/.test(F.poBoardHtml()), 'самбар: хүснэгт үүсээгүй бол ил хэлнэ');
@@ -16061,6 +16075,9 @@ async function swFetchTests() {
   ok(/await poLedgerReceived\(po\.id\)/.test(recvModal) && /давхар нэмэхээс/.test(recvModal), '⛔ scan: цонх нээхэд дэвтрийг ЗААВАЛ уншина, уншиж чадахгүй бол хаалттай унана');
   ok(!/showConfirm\(|showPrompt\(/.test(recvModal + src.slice(src.indexOf('function openPoPayModal('), src.indexOf('async function openPoReceiveModal('))),
      '⛔ scan: цонх доторх showConfirm/showPrompt БАЙХГҮЙ (#confirm-modal DOM-д өмнө тул цонхны ДООР хаагдана)');
+  const upl = src.slice(src.indexOf('async function poUploadImage('), src.indexOf('function poThumbHtml('));
+  ok(upl.length > 300 && /throw new Error/.test(upl) && !/return b64/.test(upl), '⛔ scan: зураг байршуулалтад base64 fallback БАЙХГҮЙ (унавал алдаа шиднэ)');
+  ok(/pendingImg > 0/.test(src) && /data-imgup/.test(src), 'scan: зураг байршиж байхад хүсэлт илгээгдэхгүй');
   const patchFn = src.slice(src.indexOf('async function poPatch('), src.indexOf('async function poMove('));
   ok(/status=eq\./.test(patchFn) && /Төлөв өөрчлөгдсөн/.test(patchFn), 'scan: poPatch оптимист түгжээтэй (зэрэг батлахад нэг нь л)');
   ok(/function poCaps\(\)[\s\S]{0,400}canEditProducts\(\)/.test(src), 'scan: хүлээн авах эрх = canEditProducts()');
@@ -16148,12 +16165,13 @@ async function swFetchTests() {
     ok(calls.every(c => !(c.method === 'PATCH' && c.u.includes('/purchases'))), 'хүлээн авалт: бараа унавал худалдан авалт «ирсэн» болохгүй');
 
     // ✅ Шинэ бараа — үүсч, мөрөнд sku бичигдэнэ
-    reset(); po = mkPo(); po.lines = [F.poLine({ id: 'l9', name: 'LED цаг', q: 1, c: 496.85, s: 9000 })]; rows = po.lines.map(l => ({ ...l }));
+    reset(); po = mkPo(); po.lines = [F.poLine({ id: 'l9', name: 'LED цаг', q: 1, c: 496.85, s: 9000, img: 'https://n8n.nomaadcamp.com/img/led.jpg' })]; rows = po.lines.map(l => ({ ...l }));
     res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent', cat: 'Гэрэл', name: 'LED цаг 4″' }], false);
     eq(res.errs, [], 'хүлээн авалт (шинэ бараа): алдаагүй');
     const created = calls.find(c => c.u.includes('products?on_conflict')).body;
     ok(/^M-\d+$/.test(created.sku) && created.name === 'LED цаг 4″' && created.price === 0 && created.qty_mevent === 1 && created.category === 'Гэрэл',
        'хүлээн авалт: шинэ бараа M-код, нэр, ангилал, нөөцтэй, ҮНЭГҮЙ үүснэ');
+    eq(created.photo, 'https://n8n.nomaadcamp.com/img/led.jpg', 'хүлээн авалт: хүсэлтийн зураг шинэ барааны зураг болно');
     eq(rows[0].sku, created.sku, 'хүлээн авалт: шинэ барааны sku мөрөнд бичигдэнэ (дараагийн хэсэгчилсэн ирэлт давхар үүсгэхгүй)');
     eq(calls.find(c => c.u.includes('/stock_moves')).body[0].sku, created.sku, 'хүлээн авалт: дэвтрийн мөр шинэ sku-тай');
 

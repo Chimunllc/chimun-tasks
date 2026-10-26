@@ -15864,7 +15864,307 @@ async function swFetchTests() {
   ok(/purchaseRows\(/.test(fn), 'scan: дата нь хөрөнгийн зардлаас гарна');
   ok(!/<form|type="submit"|btn-primary/.test(fn),
      'scan: худалдан авалтын дэлгэцэд ГАРААР бичих форм БАЙХГҮЙ (гараар бүртгэл үхдэг)');
+  // 2026-10-26 (CEO): худалдан авалтын ПРОЦЕСС (хүсэлт → батлах → шилжүүлсэн → худалдан авсан → хүлээн авсан)
+  // самбар дээр өөрөө бий. Банкны хөрөнгийн зардлын хэсэг (энэ функц) хуучнаараа гараар бичихгүй, эвхэгдсэн лавлагаа.
+  ok(/poBoardHtml\(\)/.test(fn), 'scan: самбарын гол нь худалдан авалтын процесс (poBoardHtml)');
+  ok(/<details class="buy-bank"/.test(fn), 'scan: банкны гүйлгээ эвхэгдсэн лавлагаа болсон');
 }
+
+// ═══ ХУДАЛДАН АВАЛТЫН ПРОЦЕСС (2026-10-26, CEO) ═══════════════════════════
+// Хүсэлт → батлах → шилжүүлсэн → худалдан авсан → ХҮЛЭЭН АВСАН (бараанд нэмэгдэнэ).
+// Мөнгө/нөөцөд хүрдэг тул цэвэр логикийг ч, бичих замыг ч ҮНЭХЭЭР дуудаж шалгана.
+{
+  need(['poLine', 'poLineTotals', 'poTotals', 'poProblems', 'poLineLeft', 'poAllReceived', 'poSummary', 'poActions',
+    'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
+    'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml']);
+
+  // ① Дүн — PDF-ийн бодит тоо (Xinrui 3000W: ¥1,511 × 540 + 182,460 = 998,400₮)
+  const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
+  eq([x.item, x.ship, x.total, x.unit], [815940, 182460, 998400, 998400], 'худалдан авалт: Xinrui 3000W = 998,400₮ (PDF-тэй таарна)');
+  eq(F.poLineTotals(F.poLine({ q: 12, c: 80 }), 540).total, 518400, 'худалдан авалт: 12 үсэг × ¥80 × 540');
+  eq(F.poLineTotals(F.poLine({ q: 1, c: 496.85, s: 9000 }), 540).total, 277299, 'худалдан авалт: бутархай ¥ (496.85) зөв бөөрөнхийлөгдөнө');
+  eq(F.poLineTotals(F.poLine({ q: 4, c: 50000, s: 20000 }), 1).total, 220000, 'худалдан авалт: ханш 1 = ₮-өөр үнэлсэн');
+  eq(F.poLineTotals(F.poLine({ q: 4, c: 650, s: 158424 }), 540).unit, Math.round((4 * 650 * 540 + 158424) / 4), 'худалдан авалт: нэгж өртөг = (бараа+карго) ÷ тоо');
+  eq(F.poLineTotals(F.poLine({ q: 0, c: 100 }), 540).unit, 0, 'худалдан авалт: тоо 0 үед хуваахгүй');
+  const po2 = { fx: 540, lines: [F.poLine({ q: 1, c: 1511, s: 182460 }), F.poLine({ q: 1, c: 1128, s: 226500 })] };
+  eq(F.poTotals(po2).total, 998400 + 835620, 'худалдан авалт: нийт = мөрүүдийн нийлбэр');
+
+  // ② Мөр цэвэрлэх — муу оролт нуршихгүй
+  const pl = F.poLine({ q: '3.7', c: '-5', s: 'abc', b: 'зөрүү', rcv: -2 });
+  eq([pl.q, pl.c, pl.s, pl.b, pl.rcv], [4, 0, 0, 'mevent', 0], 'худалдан авалт: сөрөг/буруу оролт цэвэрлэгдэнэ, салбар M-Event');
+  ok(F.poLine({}).id.length > 1, 'худалдан авалт: мөр бүр өөрийн id-тай');
+
+  // ③ Батлахаас өмнөх шалгалт
+  ok(F.poProblems({ supplier: '', lines: [] }).length === 2, 'худалдан авалт: нийлүүлэгч, бараа хоёулаа алга → 2 дутуу');
+  const pr = F.poProblems({ supplier: 'Х', lines: [F.poLine({ name: 'А', q: 1, c: 0 })] });
+  ok(pr.length === 1 && /нэгж үнэ/.test(pr[0]), 'худалдан авалт: үнэгүй мөр батлагдахгүй');
+  eq(F.poProblems({ supplier: 'Х', lines: [F.poLine({ name: 'А', q: 1, c: 5 })] }), [], 'худалдан авалт: бүрэн хүсэлт дутуугүй');
+
+  // ④ Хэн юу хийх вэ (эрхийн матриц)
+  const A = (st, caps, by) => F.poActions({ status: st, created_by: by || 'X' }, caps).map(a => a.k).join(',');
+  const CEO = { me: 'C', approve: true, pay: true, receive: true };
+  eq(A('request', CEO), 'approve,reject,edit,cancel', 'процесс: хүсэлт — захирал батлах/татгалзах/засах/цуцлах');
+  eq(A('request', { me: 'U' }, 'U'), 'edit,cancel', 'процесс: хүсэлт гаргагч өөрийнхөө хүсэлтийг засч/цуцална, батлахгүй');
+  eq(A('request', { me: 'V' }, 'U'), '', 'процесс: гуравдагч хүн хүсэлтэд юу ч хийхгүй');
+  eq(A('approved', CEO), 'pay,cancel', 'процесс: батлагдсан — шилжүүлэх (мөнгө хөдлөөгүй тул цуцлах боломжтой)');
+  eq(A('approved', { me: 'U', pay: false, approve: false }, 'U'), '', 'процесс: шилжүүлэх эрхгүй хүн шилжүүлсэн гэж тэмдэглэхгүй');
+  eq(A('paid', { me: 'U' }, 'U'), 'order', 'процесс: шилжүүлсний дараа хүсэлт гаргагч «худалдан авсан» гэж тэмдэглэнэ');
+  eq(A('paid', CEO), 'order', 'процесс: шилжүүлсэн — цуцлах БАЙХГҮЙ (мөнгө гарсан)');
+  eq(A('ordered', { me: 'U', receive: false }, 'U'), '', 'процесс: бараанд нэмэх эрхгүй хүн хүлээн авахгүй (нөөц = хөрөнгө)');
+  eq(A('ordered', CEO), 'receive', 'процесс: худалдан авсан — хүлээн авах');
+  eq(A('received', CEO) + A('rejected', CEO) + A('cancelled', CEO), '', 'процесс: дууссан/татгалзсан/цуцалсанд үйлдэл алга');
+
+  // ⑤ Төлөв шилжилт — түүх append-only
+  const adv = F.poAdvancePatch({ history: [{ at: 'a', by: 'X', to: 'request', note: '' }] }, 'paid', 'C', 'Хаан', { paid_mnt: 998400.4, d: '2026-10-26' }, '2026-10-26T04:00:00Z');
+  eq([adv.status, adv.history.length, adv.paid_mnt, adv.history[1].d], ['paid', 2, 998400, '2026-10-26'], 'процесс: шилжилт түүхэнд нэмэгдэнэ, хуучныг дарахгүй');
+  eq(F.poAdvancePatch({ history: [] }, 'ordered', 'C', '', null).paid_mnt, undefined, 'процесс: шилжүүлсэн дүнгүй үед paid_mnt-д хүрэхгүй');
+
+  // ⑥ Хураангуй
+  const sm = F.poSummary([{ status: 'request', total_mnt: 100 }, { status: 'paid', total_mnt: 50 }, { status: 'received', total_mnt: 7 }, { status: 'cancelled', total_mnt: 3 }]);
+  eq([sm.open.n, sm.open.sum, sm.all.n, sm.received.n, sm.cancelled.n], [2, 150, 4, 1, 1], 'худалдан авалт: идэвхтэй = дуусаагүй, цуцалсан нь орохгүй');
+
+  // ⑦ ХҮЛЭЭН АВАХ ТӨЛӨВЛӨГӨӨ (нөөцөд хүрдэг тул нарийн)
+  const PO = { id: 'po1', no: 7, supplier: 'Jinnin carpets', fx: 540, url: '' };
+  const carpet = F.poLine({ id: 'l1', sku: 'M-033', name: 'Улаан хивс', q: 1, c: 1128, s: 226500, b: 'mevent' });
+  const prod = { sku: 'M-033', id: 'M-033', name: 'Улаан хивс', price: 15000, qty_mevent: 2, qty_nomaad: 1, stock: 3, cost: 700000, supplier: '', purchase_date: '' };
+  const pn = F.poReceiptPlan(PO, carpet, 1, prod, { today: '2026-11-02', by: 'C' });
+  eq([pn.fields.qty_mevent, pn.fields.qty_nomaad, pn.fields.stock], [3, 1, 4], 'хүлээн авах: тоо M-Event-д нэмэгдэнэ, бусад салбар хөдлөхгүй, нийт зөв');
+  eq(pn.fields.cost, Math.round((3 * 700000 + 835620) / 4), 'хүлээн авах: өртөг ЖИГНЭСЭН ДУНДАЖ (хуучин 3 ш + шинэ 1 ш)');
+  eq(pn.fields.purchase_date, '2026-11-02', 'хүлээн авах: огноо хоосон байсан бол бөглөгдөнө');
+  eq(pn.fields.supplier, 'Jinnin carpets', 'хүлээн авах: нийлүүлэгч хоосон байсан бол бөглөгдөнө');
+  eq(pn.fields.price, 15000, 'хүлээн авах: түрээсийн үнэ хөндөгдөхгүй');
+  eq(pn.moves.length, 1, 'хүлээн авах: дэвтэрт ЗӨВХӨН өөрчлөгдсөн салбар (1 мөр)');
+  eq([pn.moves[0].branch, pn.moves[0].delta, pn.moves[0].qty_before, pn.moves[0].qty_after, pn.moves[0].reason, pn.moves[0].ref],
+     ['mevent', 1, 2, 3, 'purchase', 'PO:po1:l1'], 'хүлээн авах: дэвтрийн мөр (шалтгаан purchase, ref PO:<id>:<мөр>)');
+  const keep = F.poReceiptPlan(PO, carpet, 1, { ...prod, purchase_date: '2024-03-01', supplier: 'https://item.taobao.com/x' }, { today: '2026-11-02' });
+  eq([keep.fields.purchase_date, keep.fields.supplier], ['2024-03-01', 'https://item.taobao.com/x'],
+     '⛔ хүлээн авах: хуучин нөөцийн огноо (элэгдэл), эх сурвалжийн линкийг ДАРАХГҮЙ');
+  const noCost = F.poReceiptPlan(PO, carpet, 1, { ...prod, cost: 0 }, { today: '2026-11-02' });
+  eq(noCost.fields.cost, 835620, 'хүлээн авах: өртөггүй байсан бол шинэ өртөг');
+  const nomaad = F.poReceiptPlan(PO, F.poLine({ id: 'l2', sku: 'M-033', q: 2, c: 10, b: 'nomaad' }), 2, prod, { today: '2026-11-02' });
+  eq([nomaad.fields.qty_nomaad, nomaad.fields.qty_mevent], [3, 2], 'хүлээн авах: сонгосон салбарт (NOMAAD) нэмэгдэнэ');
+  const fresh = F.poReceiptPlan(PO, F.poLine({ id: 'l3', name: 'LED цаг', q: 5, c: 496.85, s: 9000, u: 'https://item.taobao.com/z', cat: 'Гэрэл' }), 5, null, { code: 'M-400', today: '2026-11-02', by: 'C' });
+  eq([fresh.isNew, fresh.fields.sku, fresh.fields.id, fresh.fields.code, fresh.fields.qty_mevent, fresh.fields.stock], [true, 'M-400', 'M-400', 'M-400', 5, 5], 'хүлээн авах: шинэ бараа M-код авч нөөцтэй үүснэ');
+  eq([fresh.fields.price, fresh.fields.type], [0, 'rental'], '⛔ шинэ бараа ҮНЭГҮЙ үүснэ → public_catalog (price>0)-д орохгүй, сайтад харагдахгүй');
+  eq(fresh.fields.cost, Math.round((5 * 496.85 * 540 + 9000) / 5), 'хүлээн авах: шинэ барааны өртөг = (бараа+карго) ÷ тоо');
+  eq([fresh.fields.stock_opened_at, fresh.fields.stock_approved_at], [undefined, undefined], 'хүлээн авах: шинэ бараа эхний үлдэгдлийн баталгаагүй (ердийн урсгалаар батлагдана)');
+  eq([fresh.moves.length, fresh.moves[0].qty_before, fresh.moves[0].delta, fresh.moves[0].sku], [1, 0, 5, 'M-400'], 'хүлээн авах: шинэ барааны дэвтрийн мөр 0 → 5');
+  eq(F.poReceiptPlan(PO, carpet, 0, prod, {}), null, 'хүлээн авах: 0 ш бол төлөвлөгөө үүсэхгүй');
+
+  // ⑧ Дэвтэр = үнэн (давхар нэмэхээс сэргийлэх ганц баталгаа)
+  const led = [
+    { ref: 'PO:po1:l1', reason: 'purchase', delta: 3, sku: 'M-033' },
+    { ref: 'PO:po1:l1', reason: 'purchase', delta: -1, sku: 'M-033' },       // залруулга
+    { ref: 'PO:po1:l2', reason: 'purchase', delta: 5, sku: 'M-401' },
+    { ref: 'count-77', reason: 'count', delta: 9, sku: 'M-033' },
+    { ref: 'PO:po2:l1', reason: 'purchase', delta: 4, sku: 'M-033' },
+  ];
+  eq(F.poLedgerSums(led), { 'po1:l1': 2, 'po1:l2': 5, 'po2:l1': 4 }, 'дэвтэр: нийлбэр (залруулга хасагдана), бусад шалтгаан орохгүй');
+  eq(F.poLedgerSkus(led)['po1:l2'], 'M-401', 'дэвтэр: шинэ барааны sku-г сэргээнэ (бараа давхар үүсэхгүй)');
+  const rev = F.poReverseMoves(pn.moves);
+  eq([rev[0].delta, rev[0].qty_before, rev[0].qty_after], [-1, 3, 2], 'дэвтэр: залруулга = эсрэг мөр');
+  eq(F.poLedgerSums([...pn.moves, ...rev]), { 'po1:l1': 0 }, 'дэвтэр: бичилт + залруулга = 0');
+
+  // ⑨ Хэсэгчилсэн/дутуу ирэлт
+  const ln = F.poLine({ q: 5, rcv: 2 });
+  eq(F.poLineLeft(ln), 3, 'хүлээн авах: үлдсэн = захиалсан − ирсэн');
+  eq(F.poLineLeft({ ...ln, done: true }), 0, 'хүлээн авах: «үлдсэнийг хүлээхгүй» гэж хаасан мөр үлдэгдэлгүй');
+  ok(F.poAllReceived({ lines: [{ ...ln, rcv: 5 }, { ...ln, done: true }] }), 'хүлээн авах: бүх мөр бүрэн/хаагдсан бол дууссан');
+  ok(!F.poAllReceived({ lines: [] }), 'хүлээн авах: мөргүй худалдан авалт «дууссан» болохгүй');
+
+  // ⑩ Excel-ээс оруулах — бодит файлын бүтэц
+  const hdr = ['№', 'Код', 'Бараа', 'Төрөл', 'Нийлүүлэгч', 'Платформ', 'Тоо', 'Нэгж үнэ ¥', 'Нийт ¥', 'Бараа ₮', 'Хүргэлт + карго ₮', 'Нийт өртөг ₮', 'Төлөв', 'Захиалсан огноо', 'Тайлбар', 'Линк'];
+  const R = (o) => { const r = new Array(16).fill(''); Object.entries(o).forEach(([i, v]) => { r[i] = v; }); return r; };
+  const mx = [
+    ['M Event · Хөрөнгө оруулалт'],
+    ['Ханш (₮/¥)', '', 540, '← ханш өөрчлөгдвөл зөвхөн энд засна'],
+    ['Шинэ бараа нэмэх…'], [],
+    hdr,
+    R({ 2: 'Утаа-хөөсний машин 3000W', 4: 'Xinrui lighting', 5: 'Taobao', 6: 1, 7: 1511, 10: 182460, 12: 'Захиалах', 14: 'хямдрал 10.29', 15: 'https://item.taobao.com/a' }),
+    R({ 2: 'Гэрэлтэй үсэг', 4: 'Yide Lighting', 5: 'Taobao', 6: 12, 7: 80, 12: 'Захиалах', 15: 'https://item.taobao.com/y' }),
+    R({ 2: 'Гэрэлтэй тоо', 4: 'Yide Lighting', 5: 'Taobao', 6: 8, 7: 100, 12: 'Захиалах', 15: 'https://item.taobao.com/y' }),
+    R({ 1: 'M-033', 2: 'Улаан хивс 5.5号', 4: 'Jinnin carpets', 5: 'Taobao', 6: 1, 7: 1128, 10: 226500, 12: 'Захиалах' }),
+    R({ 2: 'Босоо дугуй ширээ', 5: '1688', 6: 10, 7: 197, 12: 'Захиалах', 15: 'https://detail.1688.com/offer/1.html' }),
+    R({ 2: 'Хөөсний машины шингэн', 5: '1688', 6: 12, 7: 18.33, 12: 'Захиалах', 15: 'https://detail.1688.com/offer/2.html' }),
+    R({ 2: 'Хуучин ирсэн', 4: 'Ganxin', 5: '1688', 6: 1, 7: 500, 12: 'Ирсэн' }),
+    R({ 2: 'НИЙТ' }),
+  ];
+  const imp = F.poFromMatrix(mx, { 'M-033': { sku: 'M-033', name: 'Улаан хивс (каталог)' } });
+  eq(imp.fx, 540, 'Excel: ханш толгойгоос уншигдана'); eq(imp.error, '', 'Excel: толгой олдоно');
+  eq(imp.groups.length, 6, 'Excel: нийлүүлэгч бүр = нэг худалдан авалт; нийлүүлэгчгүй мөр холилдохгүй (6 бүлэг)');
+  const gX = imp.groups.find(g => g.supplier === 'Xinrui lighting'), gY = imp.groups.find(g => g.supplier === 'Yide Lighting');
+  eq(gX.total_mnt, 998400, 'Excel: Xinrui нийт дүн PDF-тэй таарна'); eq(gY.lines.length, 2, 'Excel: Yide-ийн үсэг+тоо нэг худалдан авалтад');
+  eq(gY.total_mnt, 518400 + 432000, 'Excel: Yide нийт дүн');
+  const gC = imp.groups.find(g => g.supplier === 'Jinnin carpets');
+  eq([gC.lines[0].sku, gC.lines[0].name], ['M-033', 'Улаан хивс (каталог)'], 'Excel: кодтой мөр каталогийн бараатай холбогдож нэр нь каталогоос');
+  eq(imp.groups.filter(g => !g.supplier).length, 2, 'Excel: нийлүүлэгч хоосон 2 мөр тусдаа худалдан авалт');
+  ok(imp.groups.find(g => g.supplier === 'Ganxin').sel === false, 'Excel: «Ирсэн» төлөвтэйг өгөгдмөлөөр СОНГОХГҮЙ');
+  ok(gX.sel === true && gY.sel === true, 'Excel: «Захиалах» бүлэг сонгогдсон');
+  eq(new Set(imp.groups.map(g => g.import_key)).size, 6, 'Excel: давхардлын түлхүүр бүлэг бүрд өөр');
+  eq(F.poFromMatrix(mx, {}).groups.map(g => g.import_key), imp.groups.map(g => g.import_key),
+     'Excel: ижил файлыг дахин оруулахад түлхүүр тогтвортой — каталог өөрчлөгдсөн ч (давхар орохгүй)');
+  ok(F.poFromMatrix([['тэр'], ['бусад']], {}).error.length > 0, 'Excel: толгой олдохгүй бол ил алдаа');
+  eq(gX.problems, [], 'Excel: бүрэн мөр дутуугүй');
+  ok(imp.groups.find(g => g.lines[0].name === 'Хөөсний машины шингэн').lines[0].c === 18.33, 'Excel: бутархай ¥ үнэ');
+
+  // ⑪ Томьёоны аюулгүй бодолт — eval байхгүй
+  ok(Math.abs(F.poSafeArith('=220/12') - 18.3333) < 0.001, 'Excel: =220/12');
+  eq([F.poSafeArith('=1+2*3'), F.poSafeArith('=(1+2)*3'), F.poSafeArith('=-4+10')], [7, 9, 6], 'Excel: үйлдлийн дараалал, хаалт, сөрөг');
+  eq([F.poSafeArith('=process.exit()'), F.poSafeArith('=1/0'), F.poSafeArith('=(1+'), F.poSafeArith('')], [null, null, null, null], '⛔ Excel: томьёоны код ажиллахгүй, буруу оролт null');
+  {
+    // poSheetMatrix: кэшлээгүй томьёог (=220/12) энгийн тооцоогоор нөхнө
+    const col = (c) => String.fromCharCode(65 + c);
+    sandbox.XLSX = { utils: { decode_range: () => ({ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }), encode_cell: ({ r, c }) => col(c) + (r + 1) } };
+    const m = F.poSheetMatrix({ '!ref': 'A1:B1', A1: { v: 'Бараа' }, B1: { f: '220/12' } });
+    delete sandbox.XLSX;
+    ok(m[0][0] === 'Бараа' && Math.abs(m[0][1] - 18.3333) < 0.001, 'Excel: кэшлээгүй томьёо уншигдана');
+  }
+
+  // ⑫ Самбар ҮНЭХЭЭР зурагдана (TDZ/тодорхойлогдоогүй функцийг барина)
+  const st = vm.runInContext('state', sandbox);
+  const saved = { p: st.purchases, miss: st._poMissing, tab: st._poTab, fin: st.financeRequests, me: st.me };
+  st.me = 'C'; st.financeRequests = []; st._poMissing = false; st._poTab = 'open';
+  st.purchases = [
+    F.poNormalize({ id: 'a', no: 1, status: 'request', supplier: 'Xinrui', fx: 540, created_by: 'U', created_at: '2026-10-26T02:00:00Z', total_mnt: 998400, need_by: _soon(2),
+      lines: [{ id: 'l1', name: 'Машин', q: 1, c: 1511, s: 182460 }], history: [{ at: '2026-10-26T02:00:00Z', by: 'U', to: 'request', note: '' }] }),
+    F.poNormalize({ id: 'b', no: 2, status: 'request', supplier: '', fx: 540, created_by: 'U', lines: [{ id: 'l2', name: 'Үнэгүй', q: 1, c: 0 }] }),
+    F.poNormalize({ id: 'c', no: 3, status: 'ordered', supplier: 'Jinnin', fx: 540, created_by: 'U', lines: [{ id: 'l3', sku: 'M-033', name: 'Хивс', q: 2, c: 1, rcv: 1 }] }),
+    F.poNormalize({ id: 'd', no: 4, status: 'received', supplier: 'Ганxин', fx: 540, created_by: 'U', lines: [{ id: 'l4', name: 'Цаг', q: 1, c: 1, rcv: 1 }] }),
+  ];
+  const html = asCeo(() => F.poBoardHtml());
+  ok(/data-po-act="approve" data-po-id="a"(?![^>]*disabled)/.test(html), 'самбар: бүрэн хүсэлтэд «Батлах» идэвхтэй');
+  ok(/data-po-act="approve" data-po-id="b"[^>]*disabled/.test(html), '⛔ самбар: үнэгүй/нийлүүлэгчгүй хүсэлтийн «Батлах» ХААЛТТАЙ');
+  ok(/data-po-act="receive" data-po-id="c"/.test(html), 'самбар: худалдан авсан төлөвт «Хүлээн авах» товч');
+  ok(/ирсэн 1\/2/.test(html), 'самбар: хэсэгчилсэн ирэлт (1/2) харагдана');
+  ok(/⏰/.test(html) && /2 хоног/.test(html), 'самбар: 2 хоногийн дараа дуусах хямдралын сануулга (⏰ … 2 хоног)');
+  ok(!/data-po-id="d"/.test(html), 'самбар: «Идэвхтэй» табд хүлээн авсан орохгүй');
+  st._poTab = 'received';
+  ok(/data-po-card="d"/.test(asCeo(() => F.poBoardHtml())), 'самбар: «Хүлээн авсан» табд харагдана');
+  st._poMissing = true; ok(/db\/purchases\.sql/.test(F.poBoardHtml()), 'самбар: хүснэгт үүсээгүй бол ил хэлнэ');
+  st._poMissing = false; st.purchases = null; ok(/Ачаалж байна/.test(F.poBoardHtml()), 'самбар: ачаалагдаагүй үед «Ачаалж байна»');
+  st.purchases = []; st._poTab = 'open';
+  ok(/Шинэ худалдан авалт/.test(F.renderPurchases()) && /buy-bank/.test(F.renderPurchases()), 'самбар: renderPurchases бүтэн зурагдана (процесс + банкны лавлагаа)');
+  st.purchases = saved.p; st._poMissing = saved.miss; st._poTab = saved.tab; st.financeRequests = saved.fin; st.me = saved.me;
+
+  // ⑬ SCAN — бичих замууд
+  const rcv = src.slice(src.indexOf('async function poReceiveApply('), src.indexOf('async function openPoReceiveModal('));
+  ok(rcv.length > 800, 'scan: poReceiveApply олдов');
+  ok(/saveProduct\(/.test(rcv) && !/rest\/v1\/products/.test(rcv), '⛔ scan: хүлээн авалт нөөцийг ЗӨВХӨН saveProduct-аар бичнэ');
+  ok(rcv.indexOf('await poLogMoves(plan.moves)') > 0 && rcv.indexOf('await poLogMoves(plan.moves)') < rcv.indexOf('await saveProduct('),
+     '⛔ scan: дэвтэр (await) бараанаас ӨМНӨ — дэвтэр унавал бараа хөндөгдөхгүй');
+  ok(/poReverseMoves\(plan\.moves\)/.test(rcv), 'scan: бараа унавал дэвтэрт эсрэг мөр бичиж залруулна');
+  ok(/_moveSkipLog: true/.test(rcv) && /if \(!product\._moveSkipLog\) logStockMoves\(stockMoveRows/.test(src),
+     'scan: дэвтэр ДАВХАР бичигдэхгүй (saveProduct өөрөө бичихийг дуудагч унтраана)');
+  ok(/poPatch\(po\.id, \{ \.\.\.base, lines \}, 'ordered'\)/.test(rcv), 'scan: худалдан авалтын төлөв оптимист түгжээтэй (ordered байх үед л)');
+  const recvModal = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('async function openPoImportModal('));
+  ok(/canEditProducts\(\)/.test(recvModal), '⛔ scan: хүлээн авах цонх бараа засах эрхээр хаалттай (нөөц = хөрөнгө)');
+  ok(/await poLedgerReceived\(po\.id\)/.test(recvModal) && /давхар нэмэхээс/.test(recvModal), '⛔ scan: цонх нээхэд дэвтрийг ЗААВАЛ уншина, уншиж чадахгүй бол хаалттай унана');
+  ok(!/showConfirm\(|showPrompt\(/.test(recvModal + src.slice(src.indexOf('function openPoPayModal('), src.indexOf('async function openPoReceiveModal('))),
+     '⛔ scan: цонх доторх showConfirm/showPrompt БАЙХГҮЙ (#confirm-modal DOM-д өмнө тул цонхны ДООР хаагдана)');
+  const patchFn = src.slice(src.indexOf('async function poPatch('), src.indexOf('async function poMove('));
+  ok(/status=eq\./.test(patchFn) && /Төлөв өөрчлөгдсөн/.test(patchFn), 'scan: poPatch оптимист түгжээтэй (зэрэг батлахад нэг нь л)');
+  ok(/function poCaps\(\)[\s\S]{0,400}canEditProducts\(\)/.test(src), 'scan: хүлээн авах эрх = canEditProducts()');
+  ok(/'purchases\.approve'/.test(src.slice(src.indexOf('const DENY_DEFAULT_ACTIONS'), src.indexOf('const DENY_DEFAULT_ACTIONS') + 500)) &&
+     /'purchases\.pay'/.test(src.slice(src.indexOf('const DENY_DEFAULT_ACTIONS'), src.indexOf('const DENY_DEFAULT_ACTIONS') + 500)),
+     'scan: батлах/шилжүүлэх эрх өгөгдмөлөөрөө ХОРИГЛОГДСОН (ил олгоно)');
+  ok(/key: 'purchases\.approve'/.test(src) && /key: 'purchases\.pay'/.test(src), 'scan: эрхийн матрицад харагдана');
+  const sqlP = fs.readFileSync(path.join(__dirname, '..', 'db', 'purchases.sql'), 'utf8');
+  ok(/enable row level security/.test(sqlP) && /revoke all on purchases from anon/.test(sqlP) && /notify pgrst/.test(sqlP),
+     'scan: purchases — RLS, anon хаалттай, schema reload');
+  ok(/sec\.can\('products\.edit'\)/.test(sqlP) && /sec\.fin_full\(\)/.test(sqlP), 'scan: DB-ийн эрх аппын canSeePurchases-тай нийцнэ (аппаас ЧАНГА биш)');
+}
+
+// Хүлээн авалтын бичих замыг ҮНЭХЭЭР дуудна (fetch-ийг бичиж аваад дарааллыг шалгана) — «тест ногоон ≠ ажиллаж байна».
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const st = vm.runInContext('state', sandbox);
+  const origFetch = sandbox.fetch;
+  const saved = { products: st.products, me: st.me, purchases: st.purchases };
+  const calls = [];
+  let failProducts = false, failMoves = false;
+  sandbox.fetch = async (url, opts) => {
+    const u = String(url), method = (opts && opts.method) || 'GET';
+    const body = opts && opts.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, method, body });
+    const json = async () => (method === 'GET' ? [] : (u.includes('/purchases') ? [{ id: 'po1', no: 7, status: body && body.status, lines: body && body.lines, history: body && body.history, supplier: 'Jinnin', fx: 540 }] : []));
+    if (u.includes('/stock_moves') && failMoves) return { ok: false, status: 500, json, text: async () => '' };
+    if (u.includes('/rest/v1/products?on_conflict') && failProducts) return { ok: false, status: 500, json, text: async () => 'boom' };
+    return { ok: true, status: 200, json, text: async () => '' };
+  };
+  const mkPo = () => ({ id: 'po1', no: 7, status: 'ordered', supplier: 'Jinnin', fx: 540, url: '', history: [], files: [],
+    lines: [F.poLine({ id: 'l1', sku: 'M-033', name: 'Улаан хивс', q: 2, c: 1128, s: 226500 })] });
+  const mkProd = () => ({ sku: 'M-033', id: 'M-033', name: 'Улаан хивс', price: 15000, qty_mevent: 2, stock: 2, cost: 700000 });
+  const reset = () => { calls.length = 0; failProducts = false; failMoves = false; st.products = [mkProd()]; st.me = 'C'; };
+  const idxOf = (pred) => calls.findIndex(pred);
+  try {
+    // ✅ Бүтэн хүлээн авалт
+    reset();
+    let po = mkPo(), rows = po.lines.map(l => ({ ...l }));
+    let res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false);
+    eq(res.errs, [], 'хүлээн авалт (бодит дуудалт): алдаагүй');
+    ok(res.complete, 'хүлээн авалт: бүх мөр ирсэн → дууссан');
+    const iM = idxOf(c => c.u.includes('/stock_moves')), iP = idxOf(c => c.u.includes('products?on_conflict')), iPO = idxOf(c => c.method === 'PATCH' && c.u.includes('/purchases'));
+    ok(iM >= 0 && iP > iM && iPO > iP, '⛔ хүлээн авалт: дараалал дэвтэр → бараа → худалдан авалтын төлөв');
+    eq(calls.filter(c => c.u.includes('/stock_moves')).length, 1, '⛔ хүлээн авалт: дэвтэрт яг НЭГ мөр (saveProduct давхар бичдэггүй)');
+    const mv = calls[iM].body[0];
+    eq([mv.sku, mv.branch, mv.delta, mv.reason, mv.ref, mv.qty_before, mv.qty_after], ['M-033', 'mevent', 2, 'purchase', 'PO:po1:l1', 2, 4], 'хүлээн авалт: дэвтрийн мөр');
+    const pb = calls[iP].body;
+    const unit2 = Math.round((2 * 1128 * 540 + 226500) / 2);   // нэгж өртөг = (бараа + карго) ÷ захиалсан тоо
+    eq([pb.qty_mevent, pb.stock, pb.cost], [4, 4, Math.round((2 * 700000 + 2 * unit2) / 4)], 'хүлээн авалт: бараа 2 → 4 ш, өртөг жигнэсэн дундаж');
+    eq(pb.price, 15000, 'хүлээн авалт: түрээсийн үнэ ХӨНДӨГДӨӨГҮЙ');
+    ok(!('_moveReason' in pb) && !('_moveSkipLog' in pb), 'хүлээн авалт: дотоод тугууд DB рүү явахгүй');
+    const pp = calls[iPO].body;
+    eq([pp.status, pp.lines[0].rcv, calls[iPO].u.includes('status=eq.ordered')], ['received', 2, true], 'хүлээн авалт: төлөв received, мөрийн ирсэн тоо, оптимист түгжээ');
+    eq(st.products[0].qty_mevent, 4, 'хүлээн авалт: апп дахь нөөц шинэчлэгдсэн');
+
+    // ✅ Хэсэгчлэн
+    reset(); po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent' }], false);
+    ok(!res.complete && res.errs.length === 0, 'хүлээн авалт: хэсэгчлэн ирвэл дуусаагүй хэвээр');
+    eq(calls.find(c => c.method === 'PATCH' && c.u.includes('/purchases')).body.status, 'ordered', 'хүлээн авалт: хэсэгчлэн үед төлөв ordered хэвээр');
+    eq(rows[0].rcv, 1, 'хүлээн авалт: ирсэн тоо 1');
+
+    // ✅ Үлдсэнийг хүлээхгүй (дутуу ирсэн)
+    reset(); po = mkPo(); rows = po.lines.map(l => ({ ...l, rcv: 1 }));
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 0, short: true, b: 'mevent' }], false);
+    ok(res.complete && calls.every(c => !c.u.includes('/stock_moves')) && calls.every(c => !c.u.includes('products?on_conflict')),
+       'хүлээн авалт: «хүлээхгүй» гэж хаахад нөөц ХӨНДӨГДӨХГҮЙ, худалдан авалт дуусна');
+
+    // ⛔ Дэвтэр унавал бараа ХӨНДӨГДӨХГҮЙ
+    reset(); failMoves = true; po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false);
+    eq(res.errs.length > 0, true, 'хүлээн авалт: дэвтэр унавал алдаа ил');
+    ok(calls.every(c => !c.u.includes('products?on_conflict')), '⛔ хүлээн авалт: дэвтэр унавал бараа хөндөгдөөгүй (аюулгүй дахин оролдоно)');
+    ok(calls.every(c => !(c.method === 'PATCH' && c.u.includes('/purchases'))), 'хүлээн авалт: дэвтэр унавал худалдан авалт «ирсэн» болохгүй');
+    eq(rows[0].rcv, 0, 'хүлээн авалт: ирсэн тоо нэмэгдээгүй');
+
+    // ⛔ Бараа унавал дэвтэрт ЭСРЭГ мөр
+    reset(); failProducts = true; po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false);
+    const mvCalls = calls.filter(c => c.u.includes('/stock_moves'));
+    eq(mvCalls.length, 2, '⛔ хүлээн авалт: бараа унавал дэвтэрт залруулах мөр бичигдэнэ');
+    eq([mvCalls[0].body[0].delta, mvCalls[1].body[0].delta], [2, -2], 'хүлээн авалт: дэвтрийн нийлбэр 0 (+2, −2)');
+    eq(rows[0].rcv, 0, 'хүлээн авалт: бараа унавал ирсэн тоо нэмэгдэхгүй');
+    eq(st.products[0].qty_mevent, 2, '⛔ хүлээн авалт: бараа унавал санах ойн нөөц ӨМНӨХ байдалдаа буцна (DB-д бичигдээгүй)');
+    ok(calls.every(c => !(c.method === 'PATCH' && c.u.includes('/purchases'))), 'хүлээн авалт: бараа унавал худалдан авалт «ирсэн» болохгүй');
+
+    // ✅ Шинэ бараа — үүсч, мөрөнд sku бичигдэнэ
+    reset(); po = mkPo(); po.lines = [F.poLine({ id: 'l9', name: 'LED цаг', q: 1, c: 496.85, s: 9000 })]; rows = po.lines.map(l => ({ ...l }));
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent', cat: 'Гэрэл', name: 'LED цаг 4″' }], false);
+    eq(res.errs, [], 'хүлээн авалт (шинэ бараа): алдаагүй');
+    const created = calls.find(c => c.u.includes('products?on_conflict')).body;
+    ok(/^M-\d+$/.test(created.sku) && created.name === 'LED цаг 4″' && created.price === 0 && created.qty_mevent === 1 && created.category === 'Гэрэл',
+       'хүлээн авалт: шинэ бараа M-код, нэр, ангилал, нөөцтэй, ҮНЭГҮЙ үүснэ');
+    eq(rows[0].sku, created.sku, 'хүлээн авалт: шинэ барааны sku мөрөнд бичигдэнэ (дараагийн хэсэгчилсэн ирэлт давхар үүсгэхгүй)');
+    eq(calls.find(c => c.u.includes('/stock_moves')).body[0].sku, created.sku, 'хүлээн авалт: дэвтрийн мөр шинэ sku-тай');
+
+    // ⛔ Каталогт олдохгүй (архивлагдсан) бараа — чимээгүй нэмэхгүй
+    reset(); st.products = []; po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false);
+    ok(res.errs.length === 1 && /каталогт олдсонгүй/.test(res.errs[0]) && calls.length === 0, '⛔ хүлээн авалт: каталогт байхгүй sku-д нөөц нэмэхгүй, юу ч бичихгүй');
+  } finally {
+    sandbox.fetch = origFetch; st.products = saved.products; st.me = saved.me; st.purchases = saved.purchases;
+  }
+});
 
 // scan: эхний үлдэгдлийн блок ХОЁУЛАНГ нь харагдана — идэвхтэй тооллоготой ч,
 // тооллогогүй ч. ⛔ Анх ЗӨВХӨН idle дэлгэцэд тавьсан нь алдаа байв: тооллого

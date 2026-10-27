@@ -15980,7 +15980,7 @@ async function swFetchTests() {
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
     'poFxValid', 'poFxOn', 'poFxMerge', 'poFxSave', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
-    'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady']);
+    'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded']);
 
   // ① Дүн — PDF-ийн бодит тоо (Xinrui 3000W: ¥1,511 × 540 + 182,460 = 998,400₮)
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -16278,7 +16278,25 @@ async function swFetchTests() {
     ok(/10 × 197¥/.test(withAcct) && /¥1,970 · ¥1 = 540₮/.test(withAcct), 'карт: мөр бүрд тоо × ¥үнэ, нийт ¥ ба ханш');
     ok(/Төлөх данс оруулаагүй/.test(F.poCardHtml(F.poNormalize({ id: 'z2', no: 10, status: 'approved', supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'l', name: 'Ширээ', q: 1, c: 1 }] }), { me: 'C', approve: true, pay: true })), 'карт: батлагдсан боловч данс байхгүй бол ил анхааруулна');
     const many = F.poCardHtml(F.poNormalize({ id: 'm', no: 11, status: 'request', supplier: 'S', fx: 540, created_by: 'U', lines: [1, 2, 3, 4, 5].map(i => ({ id: 'l' + i, name: 'Бараа' + i, q: 1, c: 1 })) }), { me: 'C' });
-    ok(/\+ 2 мөр «Дэлгэрэнгүй»-д/.test(many) && (many.match(/class="po-cl"/g) || []).length === 5, 'карт: 3 мөр нүүрэнд, үлдсэн нь Дэлгэрэнгүйд (давхардахгүй)');
+    ok(/\+ 2 мөр «Дэлгэрэнгүй»-д/.test(many) && (many.match(/class="po-cl"/g) || []).length === 3 && (many.match(/class="po-bi"/g) || []).length === 5,
+       'карт: 3 мөр нүүрэнд, Дэлгэрэнгүйд БҮХ 5 барааны задаргаа');
+    {
+      // Задаргаа: нэгж үнэ, нийт ¥, карго, нэгж өртөг — дүнг дахин бодохгүй, картын нийттэй ижил
+      const bd = F.poCardHtml(F.poNormalize({ id: 'bd', no: 9, status: 'approved', supplier: 'Jimo', platform: '1688', fx: 540, pay_to: ACCT, created_by: 'U',
+        lines: [{ id: 'a', sku: 'M-205', name: 'Босоо дугуй ширээ', q: 10, c: 201.5, s: 252 }, { id: 'b', name: 'Углаа', q: 30, c: F.poUnitFromTotal(545, 30) }] }), { me: 'C' });
+      const det = bd.slice(bd.indexOf('<details'));
+      ok(/class="po-bd-h">Барааны задаргаа · 2 төрөл · 40 ш/.test(det), 'задаргаа: гарчигт төрөл, нийт ширхэг');
+      ok(/<span>Нэгж үнэ<\/span><b>¥201\.5 ≈ 108,810₮<\/b>/.test(det), 'задаргаа: нэгж үнэ ¥ ба ₮-өөр');
+      ok(/<span>Нийт үнэ<\/span><b>¥2,015 = 1,088,100₮<\/b>/.test(det), 'задаргаа: оруулсан нийт ¥ = ₮');
+      ok(/<span>Карго \(урьдчилсан\)<\/span><b>252₮<\/b>/.test(det) && /<span>Нэгж өртөг \(карго орсон\)<\/span><b>≈ 108,835₮<\/b>/.test(det), 'задаргаа: карго ба нэгж өртөг (карго орсон)');
+      ok(/<span>Нэгж үнэ<\/span><b>≈ ¥18\.17 ≈ 9,810₮<\/b>/.test(det), '⛔ задаргаа: 18.166667 мэт урт бутархай биш, «≈ ¥18.17 ≈ 9,810₮» гэж тоймолно');
+      ok(!/18\.166667/.test(bd), '⛔ карт: нэгж үнэ 6 оронтой бутархай болж ХАРАГДАХГҮЙ');
+      ok(/<span>Бараа<\/span><b>¥2,560 × 540 = 1,382,400₮<\/b>/.test(det) && /<span>Нийт<\/span><b>1,382,652₮<\/b>/.test(det), 'задаргаа: бараа + карго = нийт (картын нийттэй ижил)');
+      ok(/10 × 201\.5¥ · 108,810₮\/ш/.test(bd), 'карт: мөрд нэгж үнэ ₮-өөр ч харагдана');
+      const mn = F.poCardHtml(F.poNormalize({ id: 'mn', no: 10, status: 'approved', supplier: 'S', fx: 1, created_by: 'U', lines: [{ id: 'a', name: 'Цаас', q: 4, c: 2500 }] }), { me: 'C' });
+      ok(/<span>Нэгж үнэ<\/span><b>2,500₮<\/b>/.test(mn) && !/¥/.test(mn.slice(mn.indexOf('<details'))), 'задаргаа: ₮-өөр хүсэлтэд ¥ харагдахгүй');
+      eq([F.poUnitIsRounded(18.166667), F.poUnitIsRounded(201.5), F.poUnitIsRounded(197)], [true, false, false], 'poUnitIsRounded: 2 орноос урт бутархай л «≈»');
+    }
   }
   st._poTab = 'received';
   ok(/data-po-card="d"/.test(asCeo(() => F.poBoardHtml())), 'самбар: «Хүлээн авсан» табд харагдана');

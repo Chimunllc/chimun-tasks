@@ -8220,8 +8220,7 @@ select.no-asar-len {
 /* `.ui-raw` талбар label дотор inline тул (бусад цонх өөрийн класстай) — энд мөр бүрийг блок болгоно */
 .modal.po-modal label > input:not([type="checkbox"]), .modal.po-modal label > select, .modal.po-modal label > textarea {
   display: block; width: 100%; margin-top: var(--space-1); box-sizing: border-box; }
-.po-line, .po-ig { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-3); margin-bottom: var(--space-2); }
-.po-ig.dup { opacity: .6; }
+.po-line { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-3); margin-bottom: var(--space-2); }
 .po-line-top { display: flex; align-items: center; gap: var(--space-2); }
 .po-line-nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .modal .po-line-in { flex: 1; min-width: 0; width: auto; }
@@ -8333,7 +8332,6 @@ select.no-asar-len {
   .po-edit .po-foot .btn-primary { flex: 1 1 0; }
 }
 .modal .po-num, .modal .po-sel { width: 100%; }
-.po-ig-m, .po-ig-l { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); overflow-wrap: anywhere; }
 .po-chk { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; }
 .modal .po-chk input[type="checkbox"] { width: auto; flex: none; }
 .buy-bank > summary { cursor: pointer; font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }

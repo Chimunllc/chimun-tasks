@@ -27024,13 +27024,13 @@ function poIsImageFile(u) { return /\/img\/|\.(jpe?g|png|webp|gif)(\?|#|$)/i.tes
 function poEvThumbsHtml(urls, label) {
   return (urls || []).map((u, i) => `<button type="button" class="ui-raw po-evt" data-lightbox="${escapeHtml(driveThumbUrl(u, 1600))}" title="${escapeHtml(label)} ${i + 1}" aria-label="${escapeHtml(label)} ${i + 1} — томруулж харах"><img src="${escapeHtml(driveThumbUrl(u, 400))}" alt="" loading="lazy"></button>`).join('');
 }
-// Хавсаргасан файл (PO-ийн «Судалгаа, баримт»): зураг = thumbnail (дарахад апп дотор томорно), бусад = холбоос. removable → формд ✕.
-function poFileItemsHtml(files, removable) {
+// Хавсаргасан файл (зөвхөн ХАРУУЛНА): зураг = thumbnail (дарахад апп дотор томорно), бусад = холбоос. Одоо нэмэгддэг ганц зам = «Шилжүүлсэн» цонхны шилжүүлгийн баримт;
+// хүсэлтийн цонхны «Судалгаа, баримт» хасагдсан (2026-10-27) — хуучин хавсралт устахгүй, энд харагдсаар.
+function poFileItemsHtml(files) {
   return (files || []).map((u, i) => {
-    const rm = removable ? `<button type="button" class="ui-raw po-ph-x" data-fdel="${i}" aria-label="Файлыг хасах" title="Хасах">✕</button>` : '';
-    if (poIsImageFile(u)) return `<div class="po-evw">${poEvThumbsHtml([u], 'Зураг')}${rm}</div>`;
+    if (poIsImageFile(u)) return `<div class="po-evw">${poEvThumbsHtml([u], 'Зураг')}</div>`;
     const href = poLinkHref(u);
-    return `<div class="po-evw po-evw-f">${href ? `<a class="po-file" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">📎 файл ${i + 1}</a>` : `<span class="po-file">📎 файл ${i + 1}</span>`}${rm}</div>`;
+    return `<div class="po-evw po-evw-f">${href ? `<a class="po-file" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">📎 файл ${i + 1}</a>` : `<span class="po-file">📎 файл ${i + 1}</span>`}</div>`;
   }).join('');
 }
 
@@ -27578,27 +27578,6 @@ function poLedgerSkus(rows) {
   return by;
 }
 
-/* ─── EXCEL-ЭЭС ОРУУЛАХ (нэг удаагийн гүүр: «Хөрөнгө_оруулалт_захиалга.xlsx») ──────────
-   Мөр = бараа; нийлүүлэгч бүр = НЭГ худалдан авалт (нэг төлбөр). Томьёоны утгыг SheetJS
-   кэшлээгүй бол (`=220/12`) энгийн тооцоог л аюулгүй бодно (бусад томьёо хоосон). */
-function poSafeArith(f) {
-  // Зөвхөн тоо, + − * / ( ) — `eval`/`Function` ХЭРЭГЛЭХГҮЙ (рекурсив бууралтын задлагч).
-  const s = String(f || '').replace(/^=/, '').replace(/\s+/g, '');
-  if (!s || !/^[0-9+\-*/().]+$/.test(s)) return null;
-  let i = 0;
-  const peek = () => s[i];
-  function expr() { let v = term(); while (peek() === '+' || peek() === '-') { const op = s[i++]; const r = term(); v = op === '+' ? v + r : v - r; } return v; }
-  function term() { let v = factor(); while (peek() === '*' || peek() === '/') { const op = s[i++]; const r = factor(); v = op === '*' ? v * r : v / r; } return v; }
-  function factor() {
-    if (peek() === '-') { i++; return -factor(); }
-    if (peek() === '(') { i++; const v = expr(); if (peek() !== ')') throw new Error('x'); i++; return v; }
-    const m = /^\d+(\.\d+)?/.exec(s.slice(i));
-    if (!m) throw new Error('x');
-    i += m[0].length;
-    return Number(m[0]);
-  }
-  try { const v = expr(); return i === s.length && isFinite(v) ? v : null; } catch (e) { return null; }
-}
 /* Барааны зураг → VPS (hosted URL). ⛔ `uploadProductImage`-аас ЯЛГААТАЙ: унавал base64 руу БУЦАХГҮЙ, АЛДАА шиднэ —
    base64 нь `purchases.lines` (jsonb) мөр бүрийг хөөргөж, самбарын татацыг удаашруулна. */
 async function poUploadImage(file) {
@@ -27617,80 +27596,6 @@ function poThumbHtml(url) {
   const u = poImgUrl(url);
   return u ? `<a class="po-th-a" href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer"><img class="po-th" src="${escapeHtml(u)}" alt="" loading="lazy"></a>` : '';
 }
-function poSheetMatrix(ws) {
-  if (!ws || !ws['!ref']) return [];
-  const rng = (typeof XLSX !== 'undefined' && XLSX.utils) ? XLSX.utils.decode_range(ws['!ref']) : null;
-  if (!rng) return [];
-  const out = [];
-  for (let R = rng.s.r; R <= rng.e.r; R++) {
-    const row = [];
-    for (let C = rng.s.c; C <= rng.e.c; C++) {
-      const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
-      let v = cell ? cell.v : '';
-      if ((v === undefined || v === '') && cell && cell.f) { const e = poSafeArith(cell.f); v = e == null ? '' : e; }
-      row.push(v === undefined ? '' : v);
-    }
-    out.push(row);
-  }
-  return out;
-}
-function poFromMatrix(matrix, productsBySku) {
-  const m = matrix || [];
-  const norm = (v) => String(v == null ? '' : v).trim();
-  let hi = -1;
-  for (let i = 0; i < m.length && i < 30; i++) {
-    const cells = (m[i] || []).map(norm);
-    if (cells.includes('Бараа') && cells.some(c => /^Нэгж үнэ/.test(c))) { hi = i; break; }
-  }
-  if (hi < 0) return { fx: PO_FX_DEFAULT, groups: [], error: 'Толгойн мөр олдсонгүй (Бараа · Нэгж үнэ баганууд)' };
-  const head = (m[hi] || []).map(norm);
-  const col = (re) => head.findIndex(h => re.test(h));
-  const ix = { code: col(/^Код$/), name: col(/^Бараа$/), kind: col(/^Төрөл$/), sup: col(/^Нийлүүлэгч$/), plat: col(/^Платформ$/),
-    qty: col(/^Тоо$/), price: col(/^Нэгж үнэ/), st: col(/^Төлөв$/), note: col(/^Тайлбар$/), url: col(/^Линк$/) };
-  // Ханш — «Ханш» шошгын баруун талын эхний 1-ээс их тоо.
-  let fx = PO_FX_DEFAULT;
-  for (let i = 0; i < hi; i++) {
-    const row = m[i] || [];
-    const at = row.findIndex(c => /^Ханш/.test(norm(c)));
-    if (at >= 0) { const v = row.slice(at + 1).map(Number).find(n => isFinite(n) && n > 1); if (v) fx = v; }
-  }
-  const by = new Map();
-  for (let i = hi + 1; i < m.length; i++) {
-    const row = m[i] || [];
-    const name = norm(row[ix.name]);
-    if (!name || /^НИЙТ$/i.test(name)) continue;
-    const num = (k) => { const n = Number(row[ix[k]]); return isFinite(n) && n > 0 ? Math.round(n * 10000) / 10000 : 0; };   // =220/12 → 18.3333 (хэтэрхий урт бутархай харагдахгүй)
-    const status = ix.st >= 0 ? norm(row[ix.st]) : '';
-    const platform = ix.plat >= 0 ? norm(row[ix.plat]) : '';
-    const supplier = ix.sup >= 0 ? norm(row[ix.sup]) : '';
-    const code = ix.code >= 0 ? norm(row[ix.code]) : '';
-    const prod = code && productsBySku ? productsBySku[code] : null;
-    const lineUrl = ix.url >= 0 ? norm(row[ix.url]) : '';
-    // ⚠ Нийлүүлэгч хоосон мөрийг ХОЛИХГҮЙ — өөр өөр худалдагч байж болно (өөр линк = өөр худалдан авалт).
-    const key = supplier || ('?' + (lineUrl || name));
-    const line = poLine({ sku: prod ? prod.sku : '', name: prod ? prod.name : name, q: num('qty') || 1, c: num('price'),
-      u: lineUrl });
-    // ⚠ Кодтой ч каталогт олдохгүй бол шинэ бараа — нэрийг xlsx-ээс авна.
-    const g = by.get(key) || { supplier: supplier || '', platform, status: new Set(), lines: [], notes: [], url: '', ids: [] };
-    g.lines.push(line);
-    g.ids.push(code || name);   // давхардлын түлхүүр = Excel-ийн өөрийн мөр (каталог өөрчлөгдсөн ч тогтвортой)
-    if (status) g.status.add(status);
-    if (ix.note >= 0 && norm(row[ix.note])) g.notes.push(`${name}: ${norm(row[ix.note])}`);
-    if (!g.url && line.u) g.url = line.u;
-    by.set(key, g);
-  }
-  const groups = [...by.values()].map(g => {
-    const sts = [...g.status];
-    // Сонголт: «Захиалах» (хараахан захиалаагүй) мөртэй бүлэг. Ирсэн/Цуцалсан/Судалж байна → өгөгдмөлөөр СОНГОХГҮЙ.
-    const sel = sts.length === 0 || sts.includes('Захиалах');
-    const po = { supplier: g.supplier || '', platform: g.platform, url: g.url, fx, lines: g.lines, note: g.notes.join('\n').slice(0, 1500) };
-    po.total_mnt = poTotals(po).total;
-    po.import_key = 'xlsx:' + (g.supplier || g.platform || '?') + '|' + g.ids.slice().sort().join('||');
-    return { ...po, statuses: sts, sel, problems: poProblems({ ...po, supplier: po.supplier || '—' }, false) };
-  });
-  return { fx, groups, error: '' };
-}
-
 /* ─── ДЭЛГЭЦ: самбар + карт ─────────────────────────────────────────────── */
 function poPillHtml(status) {
   const s = poStatusInfo(status);
@@ -27791,7 +27696,7 @@ function poDetailsHtml(po) {
     const s = poStatusInfo(h.to);
     return `<div class="po-h">${poWhoWhen(h.at, h.by)} · ${s.icon} ${escapeHtml(s.label)}${h.d ? ' · ' + escapeHtml(h.d) : ''}${h.note ? ` · <i>${escapeHtml(h.note)}</i>` : ''}</div>`;
   }).join('');
-  const files = poFileItemsHtml(po.files, false);
+  const files = poFileItemsHtml(po.files);
   const kv = (k, v) => v ? `<div class="po-kv"><span>${k}</span><b>${v}</b></div>` : '';
   return `<details class="po-more"><summary>Дэлгэрэнгүй</summary>
     ${poShops(po).length > 1 ? kv(`Дэлгүүр (${poShops(po).length})`, poShops(po).map(escapeHtml).join(' · ')) : kv('Нийлүүлэгч', escapeHtml(po.supplier || ''))}
@@ -27800,7 +27705,7 @@ function poDetailsHtml(po) {
     ${kv('Төлөх данс', escapeHtml(poPayToText(po.pay_to)))}
     ${poBreakdownHtml(po)}
     ${po.note ? `<div class="po-note">${escapeHtml(po.note)}</div>` : ''}
-    ${files ? `<div class="po-bi-ev"><span class="po-bi-evl">📎 Судалгаа, баримт</span><div class="po-evs">${files}</div></div>` : ''}
+    ${files ? `<div class="po-bi-ev"><span class="po-bi-evl">📎 Хавсаргасан файл</span><div class="po-evs">${files}</div></div>` : ''}
     ${poLinkHref(po.url) ? `<div class="po-files"><a class="po-file" href="${escapeHtml(poLinkHref(po.url))}" target="_blank" rel="noopener noreferrer">🔗 дэлгүүр / бараа ↗</a></div>` : ''}
     <div class="po-hist">${hist}</div>
   </details>`;
@@ -27877,7 +27782,6 @@ function poBoardHtml() {
     ${noAcct}
     <div class="po-bar">
       <button class="btn po-main po-btn" data-po-new>＋ Шинэ худалдан авалт</button>
-      <button class="btn po-btn" data-po-import>📥 Excel-ээс оруулах</button>
     </div>
     <div class="po-tabs">${chips}</div>
     ${tabSum && tabSum.n ? `<div class="po-tsum">${tabSum.n} худалдан авалт · нийт <b>${escapeHtml(fmtMoney(tabSum.sum))}</b></div>` : ''}
@@ -27905,16 +27809,6 @@ const poNum = (v) => { const n = Number(String(v == null ? '' : v).replace(/,/g,
 async function poUploadAll(files, id) {
   const urls = [];
   for (const f of files || []) { const u = await uploadReceipt(f, id, 'purchase'); if (u) urls.push(u); }
-  return urls;
-}
-/* Хүсэлтийн «Судалгаа, баримт»: зураг → VPS (шууд харагдана, `poUploadImage`), PDF/бусад → Drive (`uploadReceipt`). Нэг нь ч унавал ШИДНЭ (хагас хадгалахгүй). */
-async function poUploadFiles(files, id) {
-  const urls = [];
-  for (const f of files || []) {
-    const u = /^image\//i.test(f.type || '') ? await poUploadImage(f) : await uploadReceipt(f, id, 'purchase');
-    if (!u) throw new Error(`«${f.name || 'файл'}» байршсангүй — дахин оролдоно уу`);
-    urls.push(u);
-  }
   return urls;
 }
 async function poHandleAction(act, id, btn) {
@@ -28040,12 +27934,12 @@ async function openPoModal(id) {
   const fxLocked = !!(fxToday && fxToday.exact);
   const blankLine = () => ({ ...poLine({ name: '', q: 1, b: lastB }), _t: 0 });
   const d = ex
-    ? { supplier: ex.supplier, platform: ex.platform || 'Taobao', url: ex.url, fx: fxLocked ? fxToday.rate : (poFxValid(ex.fx) ? ex.fx : (fxToday ? fxToday.rate : 0)), cur: ex.fx === 1 ? 'MNT' : 'CNY', note: ex.note, files: ex.files.slice(), pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
-    : { supplier: '', platform: 'Taobao', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, note: '', files: [], pay_to: poPayTo(null), lines: [blankLine()] };
+    ? { supplier: ex.supplier, platform: ex.platform || 'Taobao', url: ex.url, fx: fxLocked ? fxToday.rate : (poFxValid(ex.fx) ? ex.fx : (fxToday ? fxToday.rate : 0)), cur: ex.fx === 1 ? 'MNT' : 'CNY', note: ex.note, pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
+    : { supplier: '', platform: 'Taobao', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, note: '', pay_to: poPayTo(null), lines: [blankLine()] };
   const noCol = state._poHasPayTo === false;   // DB-д pay_to багана алга — данс хадгалагдахгүй (SQL ажиллуулаагүй)
   const prevAccts = noCol ? [] : poPrevAccounts(state.purchases, 6);
   const sups = [...new Set([...(state.purchases || []).map(p => p.supplier), ...purchaseRows(state.financeRequests || []).map(r => r.supplier)].filter(Boolean))].slice(0, 200);
-  const moreOpen = !!(ex && (d.note || d.files.length));
+  const moreOpen = !!(ex && d.note);
   const w = poOpenModal('po-edit', `
     <div class="modal-head"><div class="po-head-t"><b>${ex ? `Худалдан авалт #${ex.no}` : 'Шинэ худалдан авалт'}</b><small>${ex ? 'Засаад хадгална' : 'Юу авахаа бичнэ үү. Нэгж үнийг өөрөө бодно.'}</small></div><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
     <div class="modal-body po-form">
@@ -28093,13 +27987,9 @@ async function openPoModal(id) {
         <div id="po-pay-hint" class="po-note"></div>`}
       </section>
       <details class="po-more2"${moreOpen ? ' open' : ''}>
-        <summary>Нэмэлт мэдээлэл <small>нийт тэмдэглэл · судалгаа, баримт</small></summary>
+        <summary>Нэмэлт мэдээлэл <small>нийт тэмдэглэл</small></summary>
         <div class="po-more2-b">
           <div class="po-fld"><span class="po-lb">Тэмдэглэл <i>яагаад хэрэгтэй, сонголт, эрсдэл</i></span><textarea id="po-note" class="ui-raw po-txt" rows="3">${escapeHtml(d.note)}</textarea></div>
-          <div class="po-fld"><span class="po-lb">Судалгаа, баримт <i>PDF, зураг · зураг нь аппад шууд харагдана</i></span>
-            <div id="po-files-cur" class="po-evs"></div>
-            <input id="po-files" class="ui-raw po-txt" type="file" accept="image/*,application/pdf" multiple>
-            <div id="po-files-new" class="po-note"></div></div>
         </div>
       </details>
     </div>
@@ -28294,17 +28184,6 @@ async function openPoModal(id) {
     t.classList.remove('po-bad');
     const c = t.closest && t.closest('.po-ctl'); if (c) c.classList.remove('po-bad');
   });
-  // PO-ийн «Судалгаа, баримт»: байгаа файл (зураг = thumbnail, ✕ хасна) + шинээр сонгосон файлын нэр. Хадгалахад зураг нь VPS-д, PDF нь Drive-д орно.
-  const drawFiles = () => { w.$('#po-files-cur').innerHTML = poFileItemsHtml(d.files, true); };
-  w.$('#po-files-cur').addEventListener('click', (e) => {
-    const x = e.target.closest('[data-fdel]'); if (!x) return;
-    d.files = d.files.filter((_, j) => j !== +x.dataset.fdel); drawFiles();
-  });
-  w.$('#po-files').addEventListener('change', (e) => {
-    const fs = [...(e.target.files || [])];
-    w.$('#po-files-new').textContent = fs.length ? `Хадгалахад байршуулна: ${fs.map(f => f.name).join(', ')}` : '';
-  });
-  drawFiles();
   w.$('#po-addline').onclick = () => { d.lines.push(blankLine()); draw(); focusName(d.lines.length - 1); };
   w.$('#po-fx').addEventListener('input', () => { fxHint(); sums(); });
   w.$('#po-cur').addEventListener('change', draw);
@@ -28333,7 +28212,6 @@ async function openPoModal(id) {
     const cur = curVal();
     const fx = cur === 'MNT' ? 1 : poNum(val('#po-fx'));
     const pay_to = noCol ? poPayTo(null) : poPayTo({ bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') });
-    const newFiles = [...(w.$('#po-files').files || [])];
     // Шинэ хүсэлтийн холбоос (`url`) талбар форм дээр БАЙХГҮЙ — эх сурвалж бараа тус бүр дээр (`u`). Хуучин хүсэлтийнх хэвээр үлдэнэ.
     const po = { supplier: val('#po-sup').trim(), platform: val('#po-plat'), url: ex ? ex.url : '', fx,
       note: val('#po-note').trim(), pay_to, lines };
@@ -28343,11 +28221,8 @@ async function openPoModal(id) {
     try {
       try { localStorage.setItem('poCur', cur); if (lines[0]) localStorage.setItem('poBranch', lines[0].b); } catch (e) { /* хувийн цонх */ }
       const rateNote = cur === 'MNT' ? '' : `Хаан банкны ханш ${fx} · ${todayStr().slice(5)} · ${fxLocked ? 'автомат' : 'гараар'}`;
-      // Файлыг ЭХЛЭЭД байршуулна — унавал хүсэлт хагас хадгалагдахгүй (дахин дарахад давхар хүсэлт үүсэхгүй).
       const newId = ex ? ex.id : 'po_' + uid().slice(2);
-      let added = [];
-      if (newFiles.length) { btn.textContent = '⏳ Файл байршуулж байна…'; added = await poUploadFiles(newFiles, newId); }
-      const files = [...d.files, ...added];
+      const files = ex ? ex.files : [];   // хавсралтыг (шилжүүлгийн баримт г.м.) засахад ХАДГАЛНА
       if (ex) {
         await poPatch(ex.id, { ...poRow({ ...ex, ...po, files }), history: [...ex.history, { at: new Date().toISOString(), by: state.me, to: ex.status, note: 'Засварласан' + (fx !== ex.fx && rateNote ? ' · ' + rateNote : '') }] }, ex.status);
       } else {
@@ -28742,81 +28617,10 @@ async function openPoReceiveModal(id) {
   after();
 }
 
-/* ─── EXCEL-ЭЭС ОРУУЛАХ (цонх) ──────────────────────────────────────────── */
-async function openPoImportModal() {
-  if (!state.products || !state.products.length) { try { await loadProductsCatalog(); } catch (e) { /* кодоор тулгахгүй, нэрээр орно */ } }
-  const w = poOpenModal('po-import', `
-    <div class="modal-head"><b>📥 Excel-ээс худалдан авалт оруулах</b><button class="modal-x po-x-close">✕</button></div>
-    <div class="modal-body">
-      <p class="amo-hint">Бараа · Тоо · Нэгж үнэ ¥ · Нийлүүлэгч · Төлөв баганатай .xlsx файл (жишээ нь «Хөрөнгө_оруулалт_захиалга.xlsx»).
-        Нийлүүлэгч бүр НЭГ худалдан авалт болно. Оруулсан бүгд «Хүсэлт» төлөвт орж, батлагдахыг хүлээнэ.</p>
-      <input id="pi-file" class="ui-raw" type="file" accept=".xlsx,.xls">
-      <div id="pi-body"></div>
-    </div>
-    <div class="modal-actions"><button class="btn" id="pi-cancel">Болих</button><button class="btn btn-primary" id="pi-ok" disabled>Оруулах</button></div>`);
-  let groups = [];
-  const draw = () => {
-    const n = groups.filter(g => g.sel).length;
-    w.$('#pi-ok').disabled = !n;
-    w.$('#pi-ok').textContent = n ? `Оруулах (${n})` : 'Оруулах';
-    w.$('#pi-body').innerHTML = groups.map((g, i) => `<div class="po-ig${g.dup ? ' dup' : ''}" data-g="${i}">
-      <label class="po-chk"><input type="checkbox" data-gf="sel"${g.sel ? ' checked' : ''}${g.dup ? ' disabled' : ''}>
-        <input class="ui-raw po-line-in" data-gf="supplier" value="${escapeHtml(g.supplier)}" placeholder="Нийлүүлэгчийн нэр оруулна уу"></label>
-      <div class="po-ig-l">${g.lines.map(l => `${escapeHtml(l.name)} ×${l.q}${l.c ? '' : ' ⚠ үнэгүй'}`).join(' · ')}</div>
-      <div class="po-ig-m"><b>${escapeHtml(fmtMoney(g.total_mnt))}</b> · ${g.lines.length} мөр${g.platform ? ' · ' + escapeHtml(g.platform) : ''}${g.statuses.length ? ' · Excel төлөв: ' + escapeHtml(g.statuses.join(', ')) : ''}${g.dup ? ' · <b>аль хэдийн оруулсан</b>' : ''}</div>
-      ${g.problems.length && !g.dup ? `<div class="po-probs">⚠ ${escapeHtml(g.problems.slice(0, 3).join(' · '))}${g.problems.length > 3 ? ' …' : ''} — оруулсны дараа «Засах»-аар нөхнө</div>` : ''}
-    </div>`).join('') || '<div class="po-empty">Бараа олдсонгүй.</div>';
-  };
-  w.$('#pi-file').onchange = async (ev) => {
-    const f = ev.target.files[0]; if (!f) return;
-    w.$('#pi-body').innerHTML = '<div class="buy-load">Уншиж байна…</div>';
-    try {
-      const X = await loadSheetJS();
-      const wb = X.read(await f.arrayBuffer(), { type: 'array' });
-      const map = {};
-      (state.products || []).forEach(p => { if (p.sku) map[p.sku] = p; if (p.code) map[p.code] = p; });
-      const res = poFromMatrix(poSheetMatrix(wb.Sheets[wb.SheetNames[0]]), map);
-      if (res.error) throw new Error(res.error);
-      const have = new Set((state.purchases || []).map(p => p.import_key).filter(Boolean));
-      groups = res.groups.map(g => ({ ...g, dup: have.has(g.import_key) }));
-      groups.forEach(g => { if (g.dup) g.sel = false; });
-      draw();
-    } catch (e) { w.$('#pi-body').innerHTML = `<div class="po-probs">⚠ ${escapeHtml(e.message)}</div>`; }
-  };
-  w.m.addEventListener('input', (ev) => {
-    const f = ev.target.dataset && ev.target.dataset.gf, card = ev.target.closest('[data-g]');
-    if (!f || !card) return;
-    const g = groups[+card.dataset.g]; if (!g) return;
-    if (f === 'sel') { g.sel = ev.target.checked; draw(); } else g[f] = ev.target.value;
-  });
-  w.$('#pi-cancel').onclick = w.close;
-  w.$('#pi-ok').onclick = async (ev) => {
-    const btn = ev.currentTarget;
-    const pick = groups.filter(g => g.sel && !g.dup);
-    if (!pick.length) return;
-    btn.disabled = true;
-    let made = 0; const errs = [];
-    for (const g of pick) {
-      try {
-        const lines = g.lines.map(poLine);
-        await poInsert({ id: 'po_' + uid().slice(2), status: 'request', supplier: String(g.supplier || '').trim(), platform: g.platform || '',
-          url: g.url || '', fx: g.fx, note: g.note || '', lines, files: [], created_by: state.me,
-          total_mnt: poTotals({ lines, fx: g.fx }).total, import_key: g.import_key,
-          history: [{ at: new Date().toISOString(), by: state.me, to: 'request', note: 'Excel-ээс оруулсан' }] });
-        made++;
-      } catch (e) { errs.push((g.supplier || 'нэргүй') + ': ' + e.message); }
-    }
-    w.close();
-    showToast(errs.length ? `⚠ ${made} оруулав, ${errs.length} алдаатай: ${errs.join(' | ')}` : `📥 ${made} худалдан авалтын хүсэлт орлоо`, errs.length ? 'warn' : 'success', errs.length ? 8000 : 3500);
-    state._poTab = 'request'; render();
-  };
-}
-
 /* Самбарын товчнууд (render бүрд шинээр холбогдоно). */
 function attachPoHandlers() {
   document.querySelectorAll('[data-po-tab]').forEach(el => el.addEventListener('click', () => { state._poTab = el.dataset.poTab; render(); }));
   document.querySelectorAll('[data-po-new]').forEach(el => el.addEventListener('click', () => openPoModal(null)));
-  document.querySelectorAll('[data-po-import]').forEach(el => el.addEventListener('click', () => openPoImportModal()));
   document.querySelectorAll('[data-po-act]').forEach(el => el.addEventListener('click', () => poHandleAction(el.dataset.poAct, el.dataset.poId, el)));
   document.querySelectorAll('.po-card [data-copy-text]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.copyText, b.dataset.copyLabel || 'Хууллаа'); }));
 }

@@ -15978,7 +15978,7 @@ async function swFetchTests() {
   need(['poLine', 'poLineTotals', 'poTotals', 'poProblems', 'poLineLeft', 'poAllReceived', 'poSummary', 'poActions',
     'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
-    'poFxValid', 'poFxOn', 'poFxAuto', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
+    'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded']);
 
@@ -16166,6 +16166,24 @@ async function swFetchTests() {
   eq([F.poFxOn(null, '2026-10-26'), F.poFxOn({ rates: {} }, '2026-10-26')], [null, null], 'ханш: бүртгэл байхгүй → null');
   eq([F.poFxAuto(cfg0, '2026-10-24').exact, F.poFxAuto(cfg0, '2026-10-28').date, F.poFxAuto(cfg0, '2026-11-20'), F.poFxAuto(null, '2026-10-24')], [true, '2026-10-24', null, null],
      'ханш: автомат = өнөөдрийнх эсвэл ≤ 5 хоногийн өмнөх; түүнээс хуучин → null (гараар)');
+  {
+    // Төлөөгүй хүсэлт = ОДООГИЙН Хаан банкны ханш (Excel-ийн 540 биш); шилжүүлсний дараа хөлдөнө
+    const live = F.poNormalize({ id: 'lv', status: 'approved', fx: 540, lines: [{ q: 10, c: 201.5 }, { q: 30, c: F.poUnitFromTotal(545, 30) }] });
+    const cfgL = { rates: { '2026-10-27': { r: 541.2, by: 'khanbank', at: '2026-10-27T05:00:00Z' } } };
+    const a = F.poLive(live, cfgL, '2026-10-27');
+    eq([a.fx, a.total_mnt, a.fxLive.exact, live.fx], [541.2, Math.round(2015 * 541.2 + 545 * 541.2), true, 540], '⛔ ханш: батлагдсан хүсэлт одоогийн Хаан банкны ханшаар (540 биш), нийт дүн дагана, анхны объект хөндөгдөхгүй');
+    eq(F.poLive({ ...live, status: 'request' }, cfgL, '2026-10-27').fx, 541.2, 'ханш: «хүсэлт» төлөвт ч');
+    eq(F.poLive({ ...live, status: 'paid' }, cfgL, '2026-10-27').fx, 540, '⛔ ханш: шилжүүлсний ДАРАА тогтоосон ханш хөлдөнө (өртгийн суурь)');
+    eq(F.poLive({ ...live, status: 'received' }, cfgL, '2026-10-27').fx, 540, 'ханш: хүлээн авсан хүсэлтийн ханш хөдлөхгүй');
+    eq(F.poLive({ ...live, fx: 1 }, cfgL, '2026-10-27').fx, 1, 'ханш: ₮-өөр хүсэлт хөндөгдөхгүй');
+    eq(F.poLive(live, null, '2026-10-27').fx, 540, 'ханш: автомат ханш огт байхгүй бол хадгалсан ханш хэвээр');
+    const stale = F.poLive(live, cfgL, '2026-10-29');
+    eq([stale.fx, stale.fxLive.exact, stale.fxLive.date], [541.2, false, '2026-10-27'], 'ханш: өнөөдрийнх татагдаагүй бол ≤5 хоногийн өмнөх ханшийг «exact:false» гэж тэмдэглэнэ');
+    eq(F.poLive(live, cfgL, '2026-11-20').fx, 540, 'ханш: 5 хоногоос хуучин автомат ханш ашиглагдахгүй');
+    const asrcL = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(/\.map\(poNormalize\)\.map\(p => poLive\(p, poFxCfgNow\(\)\)\)/.test(asrcL) && /const po = poLive\(po0, poFxCfgNow\(\)\)/.test(asrcL), '⛔ scan: ачаалах БА poPut хоёулаа poLive-аар дамжина (үйлдлийн дараа ханш 540 руу буцахгүй)');
+    ok(/<span class="po-muted">Хаан банк/.test(F.poDetailsHtml ? F.poDetailsHtml(a) : F.poCardHtml(a, { me: 'C' })), 'карт: «Хаан банк · шилжүүлэхэд тогтоогдоно» гэж ил');
+  }
   {
     const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
     ok(!/async function poFxSave\(|function poFxMerge\(|poFxSave\(/.test(asrc), '⛔ scan: апп ханш БИЧИХГҮЙ (poFxSave/poFxMerge устсан) — ганц эх сурвалж tools/khan_fx.py, RLS-ээр зөвхөн CEO');

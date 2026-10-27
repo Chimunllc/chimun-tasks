@@ -15978,7 +15978,7 @@ async function swFetchTests() {
   need(['poLine', 'poLineTotals', 'poTotals', 'poProblems', 'poLineLeft', 'poAllReceived', 'poSummary', 'poActions',
     'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
-    'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
+    'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poPrevAccounts', 'poAcctKey', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded']);
 
@@ -16038,7 +16038,8 @@ async function swFetchTests() {
   eq(A('request', CEO), 'approve,reject,edit,cancel', 'процесс: хүсэлт — захирал батлах/татгалзах/засах/цуцлах');
   eq(A('request', { me: 'U' }, 'U'), 'edit,cancel', 'процесс: хүсэлт гаргагч өөрийнхөө хүсэлтийг засч/цуцална, батлахгүй');
   eq(A('request', { me: 'V' }, 'U'), '', 'процесс: гуравдагч хүн хүсэлтэд юу ч хийхгүй');
-  eq(A('approved', CEO), 'pay,cancel', 'процесс: батлагдсан — шилжүүлэх (мөнгө хөдлөөгүй тул цуцлах боломжтой)');
+  eq(A('approved', CEO), 'pay,edit,cancel', 'процесс: батлагдсан — шилжүүлэх, засах (дэлгүүр/данс/мөр), цуцлах (мөнгө хөдлөөгүй тул)');
+  eq(A('approved', { me: 'U', pay: false, approve: true }, 'U'), 'edit,cancel', 'процесс: батлах эрхтэй ч шилжүүлэх эрхгүй хүн засч/цуцална');
   eq(A('approved', { me: 'U', pay: false, approve: false }, 'U'), '', 'процесс: шилжүүлэх эрхгүй хүн шилжүүлсэн гэж тэмдэглэхгүй');
   eq(A('paid', { me: 'U' }, 'U'), 'order', 'процесс: шилжүүлсний дараа хүсэлт гаргагч «худалдан авсан» гэж тэмдэглэнэ');
   eq(A('paid', CEO), 'order', 'процесс: шилжүүлсэн — цуцлах БАЙХГҮЙ (мөнгө гарсан)');
@@ -16167,6 +16168,27 @@ async function swFetchTests() {
   eq([F.poFxAuto(cfg0, '2026-10-24').exact, F.poFxAuto(cfg0, '2026-10-28').date, F.poFxAuto(cfg0, '2026-11-20'), F.poFxAuto(null, '2026-10-24')], [true, '2026-10-24', null, null],
      'ханш: автомат = өнөөдрийнх эсвэл ≤ 5 хоногийн өмнөх; түүнээс хуучин → null (гараар)');
   {
+    // Өмнө ашигласан данснууд: худалдан авалтын мөрөөс өөрөө гарна, давхардлыг нэгтгэнэ, сүүлийнх нь эхэнд
+    const A = (bank, no, name) => ({ bank, no, name });
+    const L = [
+      { created_at: '2026-10-20T01:00:00Z', supplier: 'Jinnin', pay_to: A('Хаан банк', '5001', 'Б.Бат') },
+      { created_at: '2026-10-26T01:00:00Z', supplier: 'Xinrui', pay_to: A('Хаан банк', '83 000 5005', 'И.Алтансүх') },
+      { created_at: '2026-10-22T01:00:00Z', supplier: 'Jinnin 2', pay_to: A('хаан банк', '5001', 'Б.Бат') },
+      { created_at: '2026-10-25T01:00:00Z', supplier: 'Дутуу', pay_to: A('Хаан банк', '', 'Нэргүй') },
+      { created_at: '2026-10-24T01:00:00Z', supplier: 'Алипэй', pay_to: A('Alipay', 'wx_1', 'Li Wei') },
+      { created_at: '2026-10-23T01:00:00Z', supplier: 'Хоосон', pay_to: null },
+    ];
+    const pa = F.poPrevAccounts(L, 6);
+    eq(pa.map(x => [x.name, x.n]), [['И.Алтансүх', 1], ['Li Wei', 1], ['Б.Бат', 2]], '⛔ өмнөх данс: сүүлд ашигласан нь эхэнд, ижил банк+дугаар НЭГТГЭГДЭНЭ (хэдэн удаа), дутуу данс орохгүй');
+    eq(F.poPrevAccounts(L, 2).length, 2, 'өмнөх данс: хязгаар');
+    eq([F.poPrevAccounts(null, 3), F.poPrevAccounts([], 3)], [[], []], 'өмнөх данс: хоосон жагсаалт');
+    eq(F.poAcctKey({ bank: 'Хаан  банк', no: '83 000' }), F.poAcctKey({ bank: 'хаан банк', no: '83000' }), 'өмнөх данс: зай/том жижиг үсгийг үл тоож ижил данс гэж таньна');
+    const asrcP = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const moP = asrcP.slice(asrcP.indexOf('async function openPoModal('), asrcP.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
+    ok(/poPrevAccounts\(state\.purchases, 6\)/.test(moP) && /data-prev=/.test(moP) && /closest\('\[data-prev\]'\)/.test(moP), 'scan: шинэ хүсэлтийн цонх өмнөх данснуудыг санал болгож, товшихоор бөглөнө');
+    ok(!/rest\/v1\/purchases/.test(asrcP.slice(asrcP.indexOf('function poPrevAccounts('), asrcP.indexOf('function poPrevAccounts(') + 700)), '⛔ scan: өмнөх данс шинэ хүснэгт/бичлэг БАЙХГҮЙ — мөрүүдээс өөрөө гарна');
+  }
+  {
     // Төлөөгүй хүсэлт = ОДООГИЙН Хаан банкны ханш (Excel-ийн 540 биш); шилжүүлсний дараа хөлдөнө
     const live = F.poNormalize({ id: 'lv', status: 'approved', fx: 540, lines: [{ q: 10, c: 201.5 }, { q: 30, c: F.poUnitFromTotal(545, 30) }] });
     const cfgL = { rates: { '2026-10-27': { r: 541.2, by: 'khanbank', at: '2026-10-27T05:00:00Z' } } };
@@ -16224,6 +16246,23 @@ async function swFetchTests() {
     const pmM = asrcM.slice(asrcM.indexOf('async function openPoPayModal('), asrcM.indexOf('function openPoOrderModal('));
     ok(/\$\{poMemoBoxHtml\(po\)\}/.test(pmM), 'scan: «Шилжүүлсэн» цонхонд гүйлгээний утга + хуулах товч');
     ok(/poNoFromMemo\(r\.purpose\)/.test(asrcM) && /🧾 Худалдан авалт #/.test(asrcM), 'scan: банкны хуулгын мөр «Худалдан авалт №N» утгаар худалдан авалттай өөрөө таарна');
+    // Бараа бүрийн ДЭЛГҮҮР: нэг төлбөр доор өөр өөр дэлгүүрээс авч болно, олон ӨӨР дэлгүүр байвал л карт ил харуулна
+    eq([F.poLine({ shop: '  Xinrui  ' }).shop, F.poLine({}).shop, F.poLine({ shop: 'x'.repeat(300) }).shop.length], ['Xinrui', '', 120], 'дэлгүүр: мөрд хадгалагдана (тайрна), хоосон = хүсэлтийн дэлгүүр');
+    const mk = (lines, extra) => F.poNormalize({ id: 'sh', no: 9, status: 'approved', supplier: 'Jimo', fx: 541.2, created_by: 'U', pay_to: { bank: 'Хаан банк', no: '5001', name: 'Б.Бат' }, lines, ...(extra || {}) });
+    const one = mk([{ id: 'a', name: 'Ширээ', q: 1, c: 10 }, { id: 'b', name: 'Углаа', q: 1, c: 5, shop: 'jimo' }]);
+    const two = mk([{ id: 'a', name: 'Босоо дугуй ширээ', q: 10, c: 201.5 }, { id: 'b', name: 'Углаа', q: 30, c: 18.17, shop: 'Yide Lighting' }]);
+    eq([F.poShops(one), F.poShops(two), F.poLineShop(two, two.lines[0]), F.poLineShop(two, two.lines[1])], [['Jimo'], ['Jimo', 'Yide Lighting'], 'Jimo', 'Yide Lighting'], 'дэлгүүр: ижил нэр (том/жижиг) нэгтгэгдэнэ, хоосон = хүсэлтийн дэлгүүр');
+    const h1 = F.poCardHtml(one, { me: 'C' }), h2 = F.poCardHtml(two, { me: 'C' });
+    ok(!/🏪/.test(h1) && /<span>Нийлүүлэгч<\/span><b>Jimo<\/b>/.test(h1), 'карт: бүх бараа нэг дэлгүүрийнх бол дэлгүүр нүүрэнд давтагдахгүй');
+    ok((h2.match(/🏪 /g) || []).length === 2 && /🏪 Jimo · 10 ×/.test(h2) && /🏪 Yide Lighting · 30 ×/.test(h2), '⛔ карт: олон өөр дэлгүүр байвал бараа БҮРД дэлгүүр ил (өөр өөр дэлгүүрээс авч байгаа нь харагдана)');
+    ok(/<span>Дэлгүүр \(2\)<\/span><b>Jimo · Yide Lighting<\/b>/.test(h2), 'карт: Дэлгэрэнгүйд бүх дэлгүүр жагсана');
+    ok((h2.match(/<span>Дэлгүүр<\/span>/g) || []).length === 2 && !/<span>Дэлгүүр<\/span>/.test(h1), 'задаргаа: олон дэлгүүртэй үед бараа бүрд «Дэлгүүр» мөр');
+    const rp = F.poReceiptPlan({ id: 'p', no: 9, supplier: 'Jimo', fx: 540 }, F.poLine({ id: 'b', name: 'Углаа', q: 2, c: 18, shop: 'Yide Lighting' }), 2, null, { code: 'M-500', today: '2026-11-02' });
+    eq(rp.fields.supplier, 'Yide Lighting', 'хүлээн авах: шинэ барааны нийлүүлэгч = ТЭР барааны дэлгүүр (хүсэлтийнх биш)');
+    const asrcS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const moS = asrcS.slice(asrcS.indexOf('async function openPoModal('), asrcS.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
+    ok(/data-f="shop"/.test(asrcS.slice(asrcS.indexOf('function poLineCardHtml('), asrcS.indexOf('async function openPoModal('))) && /f === 'shop'\) l\.shop = e\.target\.value/.test(moS), 'scan: хүсэлтийн цонхонд бараа бүрийн «Дэлгүүр» талбар');
+    ok(/to: ex\.status, note: 'Засварласан'/.test(moS) && /\}, ex\.status\);/.test(moS), '⛔ scan: батлагдсан хүсэлтийг засахад төлөв «request» руу буцахгүй (оптимист түгжээ ч ex.status)');
   }
 
   // ⑦г КАРГО (Хятад → УБ) хүлээн авахад

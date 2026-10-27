@@ -27698,7 +27698,7 @@ function poDetailsHtml(po) {
   }).join('');
   const files = poFileItemsHtml(po.files);
   const kv = (k, v) => v ? `<div class="po-kv"><span>${k}</span><b>${v}</b></div>` : '';
-  return `<details class="po-more"><summary>Дэлгэрэнгүй</summary>
+  return `<details class="po-more"><summary>Задаргаа · түүх</summary>
     ${poShops(po).length > 1 ? kv(`Дэлгүүр (${poShops(po).length})`, poShops(po).map(escapeHtml).join(' · ')) : kv('Нийлүүлэгч', escapeHtml(po.supplier || ''))}
     ${kv('Платформ', escapeHtml(po.platform || ''))}
     ${po.fx !== 1 ? kv('Ханш', `¥1 = ${escapeHtml(String(po.fx))}₮${po.fxLive ? ` <span class="po-muted">Хаан банк${po.fxLive.exact ? '' : ' · ' + escapeHtml(po.fxLive.date.slice(5)) + '-ны'} · шилжүүлэхэд тогтоогдоно</span>` : ''}`) : ''}
@@ -27716,38 +27716,57 @@ function poCardHtml(po, caps) {
   const acts = poActions(po, caps);
   const probs = po.status === 'request' ? poProblems(po) : [];
   const hints = (po.status === 'request' || po.status === 'approved' || po.status === 'paid' || po.status === 'ordered') ? poUnlinkedHints(po, state.products) : [];
-  const btns = acts.map(a => {
+  const btnOf = (a) => {
     const blocked = a.k === 'approve' && probs.length;
     return `<button class="btn po-btn${a.main ? ' po-main' : ''}${a.danger ? ' po-danger' : ''}" data-po-act="${a.k}" data-po-id="${escapeHtml(po.id)}"${blocked ? ' disabled' : ''}>${escapeHtml(a.label)}</button>`;
-  }).join('');
+  };
+  // Нүүрэнд ЗӨВХӨН үндсэн товч + «Татгалзах»; ховор хэрэглэдэг (Засах · Цуцлах) нээгдэх хэсгийн төгсгөлд.
+  const faceActs = acts.filter(a => a.main || a.k === 'reject'), restActs = acts.filter(a => !(a.main || a.k === 'reject'));
+  const btns = faceActs.map(btnOf).join('');
+  const btns2 = restActs.map(btnOf).join('');
   const lines = po.lines.slice(0, PO_CARD_LINES).map(l => poLineRowHtml(po, l)).join('');
-  const more = po.lines.length > PO_CARD_LINES ? `<div class="po-more-n">+ ${po.lines.length - PO_CARD_LINES} мөр «Дэлгэрэнгүй»-д</div>` : '';
+  const more = po.lines.length > PO_CARD_LINES ? `<div class="po-more-n">+ ${po.lines.length - PO_CARD_LINES} мөр «Задаргаа»-д</div>` : '';
   const cny = po.fx === 1 ? 0 : po.lines.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0);
   const pay = poPayToOk(po.pay_to)
     ? `<div class="po-pay"><span class="po-pay-t">💳 ${escapeHtml(poPayToText(po.pay_to))}</span><button type="button" class="btn po-copy" data-copy-text="${escapeHtml(po.pay_to.no)}" data-copy-label="Дансны дугаар хууллаа" title="Дансны дугаарыг хуулах">⧉</button></div>`
     : (po.status === 'approved' && state._poHasPayTo !== false ? '<div class="po-pay none">💳 Төлөх данс оруулаагүй — «Засах»-аар нэмнэ</div>' : '');
+  // Нүүр = ЗӨВХӨН: зураг · №дугаар · барааны нэр · нийт дүн · төлөв (CEO 2026-10-27: «нэг дор маш олон мэдээлэл байгаа тул минимал болго»).
+  // Бусад БҮГД (мөр бүр, данс, утга, баримт, санамж, түүх) ДАРЖ нээгдэнэ; нээсэн нь render дахин зурахад хаагдахгүй (`state._poOpen`).
+  const img = po.lines.map(l => poImgUrl(poImgOf(l))).find(Boolean);
+  const qOrd = po.lines.reduce((n, l) => n + (Number(l.q) || 0), 0), qGot = po.lines.reduce((n, l) => n + (Number(l.rcv) || 0), 0);
+  const partial = po.status === 'ordered' && qGot > 0 && qGot < qOrd ? `ирсэн ${qGot}/${qOrd}` : '';
+  const meta = escapeHtml(partial);   // нүүрэнд зөвхөн ХЭСЭГЧИЛСЭН ирэлт (ирсэн 4/10) — тоо ширхэг нээгдэх хэсэгт
+  const total = po.paid_mnt != null && po.status !== 'request' && po.status !== 'approved' ? po.paid_mnt : (po.total_mnt || t.total);
+  const open = !!(state._poOpen && state._poOpen[po.id]);
   return `<div class="po-card" data-po-card="${escapeHtml(po.id)}">
-    <div class="po-head">
-      <b class="po-no">#${po.no == null ? '—' : po.no}</b>
-      <span class="po-title">${poTitleHtml(po)}</span>
-      ${poPillHtml(po.status)}
-    </div>
-    <div class="po-cls">${lines}${more}</div>
-    <div class="po-trow">
-      <b class="po-tot">${escapeHtml(fmtMoney(po.paid_mnt != null && po.status !== 'request' && po.status !== 'approved' ? po.paid_mnt : (po.total_mnt || t.total)))}</b>
-      <span>${t.qty} ш · ${po.lines.length} төрөл</span>
-      ${cny ? `<span>¥${escapeHtml(Math.round(cny).toLocaleString('en-US'))} · ¥1 = ${escapeHtml(String(po.fx))}₮</span>` : ''}
-    </div>
-    ${pay}
-    ${po.status === 'approved' ? poMemoBoxHtml(po) : ''}
-    ${poProofRowHtml(po)}
-    ${po.status === 'ordered' && !caps.receive ? poReceiverHintHtml() : ''}
-    <div class="po-sub">${[po.platform, memberName(po.created_by), fmtDateTimeUB(po.created_at)].filter(Boolean).map(escapeHtml).join(' · ')}</div>
-    ${poProgressHtml(po.status)}
-    ${hints.length ? `<div class="po-hint">${hints.slice(0, 2).map(h => `ℹ «${escapeHtml(h.line.name)}» кодгүй — каталогт ${h.matches.map(p => `«${escapeHtml(p.name || p.sku)}» (${escapeHtml(String(p.code || p.sku))})`).join(', ')} байна. Давхар бараа үүсгэхгүйн тулд ${po.status === 'request' || po.status === 'approved' ? '«Засах»-аар' : 'хүлээн авахдаа'} холбоорой.`).join('<br>')}</div>` : ''}
+    <details class="po-d" data-po-d="${escapeHtml(po.id)}"${open ? ' open' : ''}>
+      <summary class="po-top">
+        ${img ? `<img class="po-th" src="${escapeHtml(img)}" alt="" loading="lazy">` : '<span class="po-th po-th-none" aria-hidden="true">📷</span>'}
+        <span class="po-top-b">
+          <span class="po-top-l"><b class="po-no">#${po.no == null ? '—' : po.no}</b> <span class="po-title">${poTitleHtml(po)}</span></span>
+          <span class="po-top-m"><b class="po-tot">${escapeHtml(fmtMoney(total))}</b>${meta ? `<span class="po-top-s">${meta}</span>` : ''}${poPillHtml(po.status)}</span>
+        </span>
+        <span class="po-chev" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="po-exp">
+        <div class="po-cls">${lines}${more}</div>
+        <div class="po-trow">
+          <span>${t.qty} ш · ${po.lines.length} төрөл</span>
+          ${cny ? `<span>¥${escapeHtml(Math.round(cny).toLocaleString('en-US'))} · ¥1 = ${escapeHtml(String(po.fx))}₮</span>` : ''}
+        </div>
+        ${pay}
+        ${po.status === 'approved' ? poMemoBoxHtml(po) : ''}
+        ${poProofRowHtml(po)}
+        ${po.status === 'ordered' && !caps.receive ? poReceiverHintHtml() : ''}
+        <div class="po-sub">${[po.platform, memberName(po.created_by), fmtDateTimeUB(po.created_at)].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+        ${poProgressHtml(po.status)}
+        ${hints.length ? `<div class="po-hint">${hints.slice(0, 2).map(h => `ℹ «${escapeHtml(h.line.name)}» кодгүй — каталогт ${h.matches.map(p => `«${escapeHtml(p.name || p.sku)}» (${escapeHtml(String(p.code || p.sku))})`).join(', ')} байна. Давхар бараа үүсгэхгүйн тулд ${po.status === 'request' || po.status === 'approved' ? '«Засах»-аар' : 'хүлээн авахдаа'} холбоорой.`).join('<br>')}</div>` : ''}
+        ${poDetailsHtml(po)}
+        ${btns2 ? `<div class="po-acts po-acts2">${btns2}</div>` : ''}
+      </div>
+    </details>
     ${probs.length ? `<div class="po-probs">⚠ Батлахаас өмнө засах: ${escapeHtml(probs.slice(0, 3).join(' · '))}${probs.length > 3 ? ' …' : ''}</div>` : ''}
     ${btns ? `<div class="po-acts">${btns}</div>` : ''}
-    ${poDetailsHtml(po)}
   </div>`;
 }
 const PO_TABS = [{ k: 'open', label: 'Идэвхтэй' }, ...PO_STEPS.map(s => ({ k: s.k, label: s.icon + ' ' + s.label })), { k: 'ended', label: 'Цуцалсан' }];
@@ -28621,6 +28640,11 @@ async function openPoReceiveModal(id) {
 function attachPoHandlers() {
   document.querySelectorAll('[data-po-tab]').forEach(el => el.addEventListener('click', () => { state._poTab = el.dataset.poTab; render(); }));
   document.querySelectorAll('[data-po-new]').forEach(el => el.addEventListener('click', () => openPoModal(null)));
+  // Карт нээсэн/хаасан төлөв render дахин зурахад хадгалагдана (үйлдэл хийх бүрд хаагдаж, дахин нээлгэхгүй).
+  document.querySelectorAll('details[data-po-d]').forEach(d => d.addEventListener('toggle', () => {
+    const o = state._poOpen || (state._poOpen = {});
+    if (d.open) o[d.dataset.poD] = true; else delete o[d.dataset.poD];
+  }));
   document.querySelectorAll('[data-po-act]').forEach(el => el.addEventListener('click', () => poHandleAction(el.dataset.poAct, el.dataset.poId, el)));
   document.querySelectorAll('.po-card [data-copy-text]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.copyText, b.dataset.copyLabel || 'Хууллаа'); }));
 }

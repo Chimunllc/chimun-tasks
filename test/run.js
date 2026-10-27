@@ -16392,8 +16392,8 @@ async function swFetchTests() {
     eq((e1.match(/data-lightbox=/g) || []).length, 4, 'нотлох зураг: 1 баримт + 3 харьцуулалт = 4 thumbnail, бүгд дарахад апп дотор томорно (#lightbox)');
     ok(!/баримтгүй|харьцуулалтгүй/.test(e1), 'нотлох зураг: бүрэн бол «байхгүй» гэж хэлэхгүй');
     const c1 = F.poCardHtml(rq1, { me: 'C' });
-    ok(/ · 🔗 <a class="po-ln-a" href="https:\/\/item\.taobao\.com/.test(c1.slice(0, c1.indexOf('<details'))), 'карт: мөрд эх сурвалж (домэйн ↗) нүүрэнд');
-    const d1 = c1.slice(c1.indexOf('<details'));
+    ok(/ · 🔗 <a class="po-ln-a" href="https:\/\/item\.taobao\.com/.test(c1.slice(0, c1.indexOf('<details class="po-more"'))), 'карт: мөрд эх сурвалж (домэйн ↗) нүүрэнд');
+    const d1 = c1.slice(c1.indexOf('<details class="po-more"'));
     ok(/<span>Эх сурвалж<\/span><b><a class="po-ln-a"/.test(d1) && /<span>Тэмдэглэл<\/span><b>цагаан, 2м<\/b>/.test(d1), 'задаргаа: бараа бүрийн эх сурвалж, тэмдэглэл');
     ok(/🧾 Үнэ тохирсон баримт/.test(d1) && /📊 Үнийн харьцуулалт/.test(d1) && (d1.match(/data-lightbox=/g) || []).length === 4, 'задаргаа: баримт ба харьцуулалтын зураг тус тусдаа бүлэгт');
 
@@ -16683,15 +16683,32 @@ async function swFetchTests() {
     const card = html.slice(html.indexOf('data-po-card="a"'), html.indexOf('data-po-card="b"'));
     const head = card.slice(0, card.indexOf('class="po-cls"'));
     ok(/class="po-title">Машин/.test(head), '⛔ карт: гарчиг нь барааны нэр');
-    ok(!/Xinrui/.test(card.slice(0, card.indexOf('<details'))), '⛔ карт: нийлүүлэгч нүүрэнд БИШ (Дэлгэрэнгүйд)');
+    ok(!/Xinrui/.test(card.slice(0, card.indexOf('<details class="po-more"'))), '⛔ карт: нийлүүлэгч нүүрэнд БИШ (Дэлгэрэнгүйд)');
     ok(/class="po-kv"><span>Нийлүүлэгч<\/span><b>Xinrui<\/b>/.test(card), 'карт: нийлүүлэгч «Дэлгэрэнгүй»-д');
     const withAcct = F.poCardHtml(F.poNormalize({ id: 'z', no: 9, status: 'approved', supplier: 'S', fx: 540, pay_to: ACCT, created_by: 'U', lines: [{ id: 'l', name: 'Ширээ', q: 10, c: 197 }] }), { me: 'C', approve: true, pay: true, receive: true });
     ok(/class="po-pay-t">💳 Хаан банк · 5012345678 · Б\.Бат/.test(withAcct) && /data-copy-text="5012345678"/.test(withAcct), 'карт: төлөх данс нүүрэнд, дансны дугаар хуулах товчтой');
     ok(/10 × 197¥/.test(withAcct) && /¥1,970 · ¥1 = 540₮/.test(withAcct), 'карт: мөр бүрд тоо × ¥үнэ, нийт ¥ ба ханш');
     ok(/Төлөх данс оруулаагүй/.test(F.poCardHtml(F.poNormalize({ id: 'z2', no: 10, status: 'approved', supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'l', name: 'Ширээ', q: 1, c: 1 }] }), { me: 'C', approve: true, pay: true })), 'карт: батлагдсан боловч данс байхгүй бол ил анхааруулна');
+    {
+      // ═ МИНИМАЛ КАРТ (2026-10-27, CEO: «нэг дор маш олон мэдээлэл байгаа тул минимал болго») ═
+      const mc = F.poCardHtml(F.poNormalize({ id: 'mc', no: 7, status: 'request', supplier: 'Xinrui', platform: 'Taobao', fx: 540, created_by: 'U', note: 'Тэмдэглэл',
+        pay_to: ACCT, lines: [{ id: 'a', name: 'Хурдан гар тоглоом', q: 1, c: 1220, u: 'item.taobao.com/a' }, { id: 'b', name: 'Баллон', q: 2, c: 10 }] }), { me: 'C', approve: true });
+      const face = mc.slice(mc.indexOf('<summary'), mc.indexOf('</summary>'));
+      const faceTxt = face.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      ok(/#7/.test(faceTxt) && /Хурдан гар тоглоом/.test(faceTxt) && /\+1 бусад/.test(faceTxt) && /₮/.test(faceTxt) && /Хүсэлт/.test(faceTxt), '⛔ минимал карт: нүүрэнд зөвхөн №, барааны нэр, нийт дүн, төлөв');
+      ok(!/Xinrui|Тэмдэглэл|Б\.Бат|5012345678|item\.taobao|¥|Батлах/.test(faceTxt), '⛔ минимал карт: нүүрэнд нийлүүлэгч, данс, линк, ¥, тэмдэглэл, товч БАЙХГҮЙ (дарж нээхэд харагдана)');
+      ok(/<details class="po-d" data-po-d="mc">/.test(mc) && /<div class="po-exp">/.test(mc) && mc.indexOf('class="po-cls"') > mc.indexOf('</summary>'), 'минимал карт: мөр бүр, данс, түүх нээгдэх хэсэгт (дарж нээнэ)');
+      ok(mc.indexOf('class="po-acts"') > mc.indexOf('</details>'), 'минимал карт: үйлдлийн товч нүүрэн дээр үлдэнэ (нээхгүйгээр батлах/татгалзах)');
+      ok((mc.match(/class="btn po-btn po-main"/g) || []).length === 1, 'минимал карт: ГАНЦ үндсэн товч (бусад нь бүдэг)');
+      vm.runInContext('state._poOpen = { mc: true };', sandbox);
+      ok(/<details class="po-d" data-po-d="mc" open>/.test(F.poCardHtml(F.poNormalize({ id: 'mc', no: 7, status: 'request', supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'a', name: 'А', q: 1, c: 1 }] }), { me: 'C' })), 'минимал карт: нээсэн карт render дахин зурахад хаагдахгүй');
+      vm.runInContext('state._poOpen = {};', sandbox);
+      const srcP = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+      ok(/details\[data-po-d\]/.test(srcP) && /state\._poOpen/.test(srcP), 'scan: карт нээсэн төлөвийг хадгална (самбарын handler)');
+    }
     const many = F.poCardHtml(F.poNormalize({ id: 'm', no: 11, status: 'request', supplier: 'S', fx: 540, created_by: 'U', lines: [1, 2, 3, 4, 5].map(i => ({ id: 'l' + i, name: 'Бараа' + i, q: 1, c: 1 })) }), { me: 'C' });
-    ok(/\+ 2 мөр «Дэлгэрэнгүй»-д/.test(many) && (many.match(/class="po-cl"/g) || []).length === 3 && (many.match(/class="po-bi"/g) || []).length === 5,
-       'карт: 3 мөр нүүрэнд, Дэлгэрэнгүйд БҮХ 5 барааны задаргаа');
+    ok(/\+ 2 мөр «Задаргаа»-д/.test(many) && (many.match(/class="po-cl"/g) || []).length === 3 && (many.match(/class="po-bi"/g) || []).length === 5,
+       'карт: 3 мөр харагдана, Задаргаад БҮХ 5 барааны задаргаа');
     {
       // Задаргаа: нэгж үнэ, нийт ¥, карго, нэгж өртөг — дүнг дахин бодохгүй, картын нийттэй ижил
       const bd = F.poCardHtml(F.poNormalize({ id: 'bd', no: 9, status: 'approved', supplier: 'Jimo', platform: '1688', fx: 540, pay_to: ACCT, created_by: 'U',

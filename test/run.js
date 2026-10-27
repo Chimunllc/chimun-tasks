@@ -15980,7 +15980,8 @@ async function swFetchTests() {
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
     'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poPrevAccounts', 'poAcctKey', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
-    'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded']);
+    'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
+    'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poEvStripFormHtml', 'poUploadFiles']);
 
   // ① Дүн — карго хүсэлтэд ОРОХГҮЙ (хүлээн авахад бодитоор); хуучин `s` талбар уншигдахгүй
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -16389,12 +16390,94 @@ async function swFetchTests() {
     ok(m[0][0] === 'Бараа' && Math.abs(m[0][1] - 18.3333) < 0.001, 'Excel: кэшлээгүй томьёо уншигдана');
   }
 
+  {
+    // ═ БАРАА БҮРИЙН НЭМЭЛТ МЭДЭЭЛЭЛ (2026-10-27, CEO): эх сурвалж · 🧾 үнэ тохирсон баримт · 📊 үнийн харьцуулалт (2-3 зураг) · тэмдэглэл ═
+    const IMGS = [1, 2, 3, 4].map(i => `https://n8n.nomaadcamp.com/img/ev${i}.jpg`);
+    const L0 = F.poLine({ name: 'Ширээ', q: 1, c: 10, u: 'item.taobao.com/item.htm?id=1', pr: [IMGS[0], IMGS[0], 'javascript:alert(1)', 'data:image/png;base64,AAAA', IMGS[1]], cmp: IMGS, nt: '  цагаан  ' });
+    eq(L0.pr, [IMGS[0], IMGS[1]], '⛔ нотлох зураг: давхардал, data:/javascript: хаягдана (base64 jsonb-г хөргөнө)');
+    eq(L0.cmp, IMGS.slice(0, 3), 'нотлох зураг: нэг төрөлд дээд тал нь 3');
+    eq([L0.u, L0.nt], ['https://item.taobao.com/item.htm?id=1', 'цагаан'], 'эх сурвалж: схемгүй домэйнд https:// залгана; тэмдэглэл тайслагдана');
+    eq([F.poLine({ u: 'Нарантуул зах' }).u, F.poLine({}).pr, F.poLine({}).cmp, F.poLine({}).nt], ['Нарантуул зах', [], [], ''], 'эх сурвалж: газрын нэр бичвэр хэвээр; зураггүй мөр хоосон жагсаалттай');
+    eq(F.poImgList('x'), [], 'poImgList: массив биш бол хоосон');
+
+    // Холбоос: ЗӨВХӨН http(s) нь href болно
+    eq([F.poLinkHref('javascript:alert(1)'), F.poLinkHref('JavaScript:alert(1)'), F.poLinkHref('data:text/html,x'), F.poLinkHref('Нарантуул зах')], ['', '', '', ''], '⛔ холбоос: javascript:/data:/энгийн бичвэр href болохгүй');
+    eq([F.poLinkHref('https://x.com/a?b=1'), F.poLinkHref('www.1688.com/a?b=1')], ['https://x.com/a?b=1', 'https://www.1688.com/a?b=1'], 'холбоос: http(s) хэвээр, схемгүй домэйнд https:// залгана');
+    const sh = F.poSourceHtml('https://item.taobao.com/item.htm?id=1');
+    ok(/^<a class="po-ln-a" href="https:\/\/item\.taobao\.com\/item\.htm\?id=1" target="_blank" rel="noopener noreferrer">item\.taobao\.com ↗<\/a>$/.test(sh), 'эх сурвалж: холбоос = домэйн ↗ (шинэ цонхонд, noopener)');
+    ok(!/<a/.test(F.poSourceHtml('Нарантуул зах')) && /Нарантуул зах/.test(F.poSourceHtml('Нарантуул зах')), 'эх сурвалж: газрын нэр холбоос биш, бичвэр');
+    ok(!/href="javascript/i.test(F.poSourceHtml('javascript:alert(1)')) && !/<script/.test(F.poSourceHtml('<script>x</script>')), '⛔ эх сурвалж: javascript: холбоос болохгүй, HTML зугтана');
+
+    // Картын мөр: зураг ШУУД харагдана, зураггүй хүсэлтэд ил хэлнэ (бусад төлөвт хэлэхгүй)
+    const mk = (status, line) => F.poNormalize({ id: 'ev', no: 31, status, supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'a', name: 'Ширээ', q: 1, c: 10, ...line }] });
+    const rq0 = mk('request', {});
+    ok(/🧾 баримтгүй/.test(F.poEvRowHtml(rq0, rq0.lines[0])) && /📊 харьцуулалтгүй/.test(F.poEvRowHtml(rq0, rq0.lines[0])), 'нотлох зураг: зураггүй хүсэлтэд «баримтгүй · харьцуулалтгүй» ил (хаахгүй, батлагчид харуулна)');
+    eq(F.poEvRowHtml(mk('ordered', {}), mk('ordered', {}).lines[0]), '', 'нотлох зураг: захиалсан/хүлээн авсан төлөвт «байхгүй» гэж шуугихгүй');
+    const rq1 = mk('request', { u: 'https://item.taobao.com/item.htm?id=1', nt: 'цагаан, 2м', pr: [IMGS[0]], cmp: IMGS.slice(0, 3) });
+    const e1 = F.poEvRowHtml(rq1, rq1.lines[0]);
+    eq((e1.match(/data-lightbox=/g) || []).length, 4, 'нотлох зураг: 1 баримт + 3 харьцуулалт = 4 thumbnail, бүгд дарахад апп дотор томорно (#lightbox)');
+    ok(!/баримтгүй|харьцуулалтгүй/.test(e1), 'нотлох зураг: бүрэн бол «байхгүй» гэж хэлэхгүй');
+    const c1 = F.poCardHtml(rq1, { me: 'C' });
+    ok(/ · 🔗 <a class="po-ln-a" href="https:\/\/item\.taobao\.com/.test(c1.slice(0, c1.indexOf('<details'))), 'карт: мөрд эх сурвалж (домэйн ↗) нүүрэнд');
+    const d1 = c1.slice(c1.indexOf('<details'));
+    ok(/<span>Эх сурвалж<\/span><b><a class="po-ln-a"/.test(d1) && /<span>Тэмдэглэл<\/span><b>цагаан, 2м<\/b>/.test(d1), 'задаргаа: бараа бүрийн эх сурвалж, тэмдэглэл');
+    ok(/🧾 Үнэ тохирсон баримт/.test(d1) && /📊 Үнийн харьцуулалт/.test(d1) && (d1.match(/data-lightbox=/g) || []).length === 4, 'задаргаа: баримт ба харьцуулалтын зураг тус тусдаа бүлэгт');
+
+    // Формын зурвас: ＋ нэмэх, ✕ хасах, дээд тал нь 3, байршиж буй ⏳
+    const f0 = F.poLineCardHtml(F.poLine({ name: 'А', q: 1 }), 0, 540, false, 1);
+    ok(/data-f="u"/.test(f0) && /data-evup="0\|pr"/.test(f0) && /data-evup="0\|cmp"/.test(f0) && /data-f="nt"/.test(f0), 'форм: бараа бүр дээр эх сурвалж · баримт · харьцуулалт · тэмдэглэл');
+    ok(/<input[^>]*type="file"[^>]*accept="image\/\*"[^>]*multiple[^>]*data-evup="0\|cmp"/.test(f0), 'форм: олон зураг нэг дор сонгоно (multiple), зөвхөн зураг');
+    const fFull = F.poLineCardHtml(F.poLine({ name: 'А', q: 1, cmp: IMGS }), 0, 540, false, 1);
+    ok(!/data-evup="0\|cmp"/.test(fFull) && /data-evup="0\|pr"/.test(fFull) && (fFull.match(/data-evdel="0\|cmp\|/g) || []).length === 3, 'форм: 3 зураг дүүрсэн төрөлд ＋ алга, зураг бүрд ✕');
+    const fBusy = F.poLineCardHtml({ ...F.poLine({ name: 'А', q: 1, cmp: [IMGS[0]] }), evBusy: { cmp: 2 } }, 0, 540, false, 1);
+    ok(!/data-evup="0\|cmp"/.test(fBusy) && (fBusy.match(/po-evt-busy/g) || []).length === 2, 'форм: байршиж буй зураг ⏳ + нийт 3-аас хэтрүүлэхгүй');
+
+    // Хадгалалт: мөр дотор үлдэнэ (шинэ багана ХЭРЭГГҮЙ), need_by DB-д бичигдэхгүй
+    const rr = F.poRow(F.poNormalize({ id: 'rr', status: 'request', fx: 540, need_by: '2026-11-01', lines: [{ id: 'a', name: 'А', q: 1, c: 1, u: 'https://x.com', pr: [IMGS[0]], cmp: [IMGS[1]], nt: 'х' }] }));
+    eq([rr.lines[0].pr, rr.lines[0].cmp, rr.lines[0].nt, rr.lines[0].u], [[IMGS[0]], [IMGS[1]], 'х', 'https://x.com'], 'хадгалалт: нотлох зураг, эх сурвалж, тэмдэглэл мөрийн дотор (lines jsonb) үлдэнэ');
+    ok(!('need_by' in rr), '⛔ хадгалалт: need_by УСТСАН — DB-д бичигдэхгүй');
+    ok(!/need_by/.test(src), '⛔ scan: «хэзээ хүртэл / хямдрал дуусах» (need_by) аппад БУЦАЖ ИРЭХГҮЙ');
+
+    // Хавсаргасан файл: зураг = thumbnail, бусад = холбоос; хасах ✕ зөвхөн формд
+    const fi = F.poFileItemsHtml([IMGS[0], 'https://drive.google.com/file/d/abc/view', 'javascript:alert(1)'], true);
+    ok(/data-lightbox=/.test(fi) && (fi.match(/data-fdel=/g) || []).length === 3, 'файл: зураг нь thumbnail (томорно), бүх файлд ✕ (формд)');
+    ok(/href="https:\/\/drive\.google\.com/.test(fi) && !/href="javascript/i.test(fi), '⛔ файл: холбоос зөвхөн http(s)');
+    ok(!/data-fdel/.test(F.poFileItemsHtml([IMGS[0]], false)), 'файл: картад ✕ байхгүй');
+    eq([F.poIsImageFile(IMGS[0]), F.poIsImageFile('https://x.com/a.PNG?v=1'), F.poIsImageFile('https://drive.google.com/file/d/abc/view'), F.poIsImageFile('https://x.com/a.pdf')], [true, true, false, false], 'файл: зураг эсэхийг VPS /img/ эсвэл өргөтгөлөөр таньна (Drive-ийн хуучин хавсралт холбоос хэвээр)');
+
+    // Файл байршуулалт: зураг → VPS, PDF → Drive; нэг нь унавал ШИДНЭ (await хэрэгтэй тул late дараалалд)
+    (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+      const upI = sandbox.poUploadImage, upR = sandbox.uploadReceipt, calls = [];
+      sandbox.poUploadImage = async (f) => { calls.push('img:' + f.name); return 'https://n8n.nomaadcamp.com/img/' + f.name; };
+      sandbox.uploadReceipt = async (f) => { calls.push('rc:' + f.name); return f.name === 'bad.pdf' ? null : 'https://drive.google.com/file/d/' + f.name + '/view'; };
+      try {
+        const urls = await F.poUploadFiles([{ name: 'a.jpg', type: 'image/jpeg' }, { name: 'b.pdf', type: 'application/pdf' }], 'po_x');
+        eq(calls, ['img:a.jpg', 'rc:b.pdf'], 'байршуулалт: зураг VPS-д (шууд харагдана), PDF Drive-д');
+        eq(urls.length, 2, 'байршуулалт: хаяг бүр буцна');
+        let err = '';
+        try { await F.poUploadFiles([{ name: 'bad.pdf', type: 'application/pdf' }], 'po_x'); } catch (e) { err = e.message; }
+        ok(/bad\.pdf/.test(err), '⛔ байршуулалт: нэг файл унавал алдаа шиднэ (чимээгүй алгасахгүй — хагас хадгалагдахгүй)');
+      } finally { sandbox.poUploadImage = upI; sandbox.uploadReceipt = upR; }
+    });
+    // Хүсэлтийн цонх: файлыг ЭХЛЭЭД байршуулна, дараа нь хадгална (унавал давхар хүсэлт үүсэхгүй)
+    {
+      const mo = src.slice(src.indexOf('async function openPoModal('), src.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
+      const iU = mo.indexOf('await poUploadFiles('), iI = mo.indexOf('await poInsert('), iP = mo.indexOf('await poPatch(ex.id');
+      ok(iU > 0 && iU < iI && iU < iP, '⛔ scan: файлыг ХАДГАЛАХААС ӨМНӨ байршуулна — унавал хүсэлт хагас хадгалагдахгүй');
+      ok(/closest\('\[data-evup\]'\)/.test(mo) && /closest\('\[data-evdel\]'\)/.test(mo) && /PO_EV_MAX/.test(mo), 'scan: нотлох зураг оруулах/хасах боломж формд бий, дээд тал нь PO_EV_MAX');
+      ok(!/po-need|#po-url/.test(mo), '⛔ scan: форм дээр «Хэзээ хүртэл» ба нийт «Линк» талбар байхгүй (эх сурвалж бараа тус бүр дээр)');
+      // Зэрэг байршсан зургууд бие биенээ ДАРДАГ байсан (браузерт барьсан): `[...l[k], await …]` нь spread-ийг await-ээс ӨМНӨ авдаг.
+      ok(!/\[\.\.\.[^;\n]*?,\s*await\s/.test(mo), '⛔ scan: форм дээр массивын дотор `await` БИЧИХГҮЙ — олон зураг зэрэг орохад нэг нь л үлддэг');
+      ok(/Promise\.all\(picked\.map/.test(mo) && /const url = await poUploadImage\(f\); l\[k\] = poImgList\(\[\.\.\.\(l\[k\] \|\| \[\]\), url\]\)/.test(mo), 'scan: олон зургийг зэрэг байршуулж, дуусах бүрд өмнөх жагсаалт дээр НЭМНЭ');
+    }
+  }
+
   // ⑫ Самбар ҮНЭХЭЭР зурагдана (TDZ/тодорхойлогдоогүй функцийг барина)
   const st = vm.runInContext('state', sandbox);
   const saved = { p: st.purchases, miss: st._poMissing, tab: st._poTab, fin: st.financeRequests, me: st.me };
   st.me = 'C'; st.financeRequests = []; st._poMissing = false; st._poTab = 'open';
   st.purchases = [
-    F.poNormalize({ id: 'a', no: 1, status: 'request', supplier: 'Xinrui', pay_to: ACCT, fx: 540, created_by: 'U', created_at: '2026-10-26T02:00:00Z', total_mnt: 998400, need_by: _soon(2),
+    F.poNormalize({ id: 'a', no: 1, status: 'request', supplier: 'Xinrui', pay_to: ACCT, fx: 540, created_by: 'U', created_at: '2026-10-26T02:00:00Z', total_mnt: 998400,
       lines: [{ id: 'l1', name: 'Машин', q: 1, c: 1511, s: 182460, img: 'https://n8n.nomaadcamp.com/img/m.jpg' }], history: [{ at: '2026-10-26T02:00:00Z', by: 'U', to: 'request', note: '' }] }),
     F.poNormalize({ id: 'b', no: 2, status: 'request', supplier: '', fx: 540, created_by: 'U', lines: [{ id: 'l2', name: 'Үнэгүй', q: 1, c: 0 }] }),
     F.poNormalize({ id: 'c', no: 3, status: 'ordered', supplier: 'Jinnin', fx: 540, created_by: 'U', lines: [{ id: 'l3', sku: 'M-033', name: 'Хивс', q: 2, c: 1, rcv: 1 }] }),
@@ -16405,7 +16488,7 @@ async function swFetchTests() {
   ok(/data-po-act="approve" data-po-id="b"[^>]*disabled/.test(html), '⛔ самбар: үнэгүй/нийлүүлэгчгүй хүсэлтийн «Батлах» ХААЛТТАЙ');
   ok(/data-po-act="receive" data-po-id="c"/.test(html), 'самбар: худалдан авсан төлөвт «Хүлээн авах» товч');
   ok(/ирсэн 1\/2/.test(html), 'самбар: хэсэгчилсэн ирэлт (1/2) харагдана');
-  ok(/⏰/.test(html) && /2 хоног/.test(html), 'самбар: 2 хоногийн дараа дуусах хямдралын сануулга (⏰ … 2 хоног)');
+  ok(!/⏰|po-due|Хэзээ хүртэл/.test(html), '⛔ самбар: «хэзээ хүртэл / хямдрал дуусах» сануулга УСТСАН (CEO 2026-10-27) — буцаж ирэхгүй');
   ok(!/data-po-id="d"/.test(html), 'самбар: «Идэвхтэй» табд хүлээн авсан орохгүй');
   ok(/class="po-cl"/.test(html) && /<img class="po-th" src="https:\/\/n8n\.nomaadcamp\.com\/img\/m\.jpg"/.test(html), 'самбар: хүсэлтийн картад барааны мөр бүр зурагтай харагдана');
   {

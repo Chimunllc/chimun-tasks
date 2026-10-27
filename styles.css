@@ -8276,6 +8276,10 @@ select.no-asar-len {
 .po-edit .po-chip { min-height: var(--tap-sm); padding: var(--space-1) var(--space-3); border: 1px solid var(--border); border-radius: var(--r-full);
   background: var(--panel); color: var(--text-soft); font-size: var(--fs-sm); cursor: pointer; }
 .po-edit .po-chip.on { border-color: var(--primary); background: var(--primary); color: var(--on-primary); font-weight: 600; }
+.po-edit .po-chip.po-acct { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); border-radius: var(--r-md); text-align: left; padding: var(--space-2) var(--space-3); max-width: 100%; }
+.po-edit .po-chip.po-acct b { font-weight: 600; overflow-wrap: anywhere; }
+.po-edit .po-chip.po-acct small { color: var(--muted); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.po-edit .po-chip.po-acct.on small { color: var(--on-primary); }
 .po-edit .po-seg { display: flex; gap: var(--space-1); padding: var(--space-1); border-radius: var(--r-md); background: var(--panel-hover); }
 .po-edit .po-seg-b { flex: 1 1 0; min-height: var(--tap-sm); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-sm);
   background: transparent; color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }

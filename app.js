@@ -26996,6 +26996,19 @@ function poPayTo(v) {
 }
 function poPayToOk(p) { const o = poPayTo(p); return !!(o.bank && o.no && o.name); }
 function poPayToText(p) { const o = poPayTo(p); return [o.bank, o.no, o.name].filter(Boolean).join(' · '); }
+function poAcctKey(a) { return (String(a && a.bank || '') + '|' + String(a && a.no || '')).toLowerCase().replace(/\s+/g, ''); }
+/* Өмнөх худалдан авалтуудад ашигласан ДАНСНУУД — шинэ хүсэлтэд нэг товшилтоор бөглөнө (CEO 2026-10-27: «өмнөх данснуудыг санадаг байвал зүгээр»).
+   Банк+дугаараар давхардлыг нэгтгэнэ, СҮҮЛД ашигласан нь эхэнд (n = хэдэн удаа). ⛔ Зөвхөн БҮРЭН (банк+дугаар+нэр) данс. Шинэ хүснэгт БАЙХГҮЙ —
+   худалдан авалтын мөрүүдийн `pay_to`-оос өөрөө гарна («өөрөө үүсдэг» дүрэм), гараар бүртгэх зүйлгүй. */
+function poPrevAccounts(list, limit) {
+  const by = new Map();
+  (list || []).slice().sort((a, b) => String(b && b.created_at || '').localeCompare(String(a && a.created_at || ''))).forEach(p => {
+    if (!p || !poPayToOk(p.pay_to)) return;
+    const a = poPayTo(p.pay_to), k = poAcctKey(a), e = by.get(k);
+    if (e) e.n++; else by.set(k, { ...a, n: 1, supplier: String(p.supplier || '') });
+  });
+  return [...by.values()].slice(0, limit || 6);
+}
 
 /* ХААН БАНКНЫ ЮАНИЙН ХАНШ = «БЭЛЭН БУС ЗАРАХ» (₮ / ¥), CEO 2026-10-27: «тухайн өдрийн, тэндээс татдаг байх ёстой».
    ГАНЦ ЭХ СУРВАЛЖ = `tools/khan_fx.py` (VPS cron, хоёр удаа биш өдөрт 4 удаа) → `app_config['fx_cny']`:
@@ -27805,6 +27818,7 @@ async function openPoModal(id) {
     ? { supplier: ex.supplier, platform: ex.platform || 'Taobao', url: ex.url, fx: fxLocked ? fxToday.rate : (poFxValid(ex.fx) ? ex.fx : (fxToday ? fxToday.rate : 0)), cur: ex.fx === 1 ? 'MNT' : 'CNY', need_by: ex.need_by, note: ex.note, pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
     : { supplier: '', platform: 'Taobao', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, need_by: '', note: '', pay_to: poPayTo(null), lines: [blankLine()] };
   const noCol = state._poHasPayTo === false;   // DB-д pay_to багана алга — данс хадгалагдахгүй (SQL ажиллуулаагүй)
+  const prevAccts = noCol ? [] : poPrevAccounts(state.purchases, 6);
   const sups = [...new Set([...(state.purchases || []).map(p => p.supplier), ...purchaseRows(state.financeRequests || []).map(r => r.supplier)].filter(Boolean))].slice(0, 200);
   const moreOpen = !!(ex && (d.url || d.need_by || d.note || ex.files.length));
   const w = poOpenModal('po-edit', `
@@ -27843,6 +27857,8 @@ async function openPoModal(id) {
         <div class="po-card-h">Төлөх данс <small>хаашаа шилжүүлэх · заавал</small></div>
         ${noCol ? '<div class="po-probs">⚠ Данс хадгалагдахгүй: <code>db/purchases_account.sql</code> ажиллуулаагүй байна.</div>' : `
         <datalist id="po-bank-dl">${PO_BANKS.map(b => `<option value="${escapeHtml(b)}">`).join('')}</datalist>
+        ${prevAccts.length ? `<div class="po-fld"><span class="po-lb">Өмнө ашигласан данс <i>товшоод бөглөнө</i></span>
+          <div class="po-chips">${prevAccts.map((a, i) => `<button type="button" class="ui-raw po-chip po-acct${poAcctKey(a) === poAcctKey(d.pay_to) && a.name === d.pay_to.name ? ' on' : ''}" data-prev="${i}"><b>${escapeHtml(a.name)}</b><small>${escapeHtml(a.bank)} · ${escapeHtml(a.no)}${a.supplier ? ' · ' + escapeHtml(a.supplier) : ''}${a.n > 1 ? ' · ' + a.n + ' удаа' : ''}</small></button>`).join('')}</div></div>` : ''}
         <div class="po-chips">${PO_BANK_QUICK.map(([full, short]) => `<button type="button" class="ui-raw po-chip${d.pay_to.bank === full ? ' on' : ''}" data-bank="${escapeHtml(full)}">${escapeHtml(short)}</button>`).join('')}</div>
         <div class="po-row2">
           <div class="po-fld"><span class="po-lb">Банк / систем</span><input id="po-pbank" class="ui-raw po-txt" list="po-bank-dl" value="${escapeHtml(d.pay_to.bank)}" placeholder="Хаан банк, Alipay…" autocomplete="off"></div>
@@ -27922,7 +27938,11 @@ async function openPoModal(id) {
       ? `<div class="po-foot-miss">Дутуу: ${escapeHtml(poIssueLabels(iss))}</div>`
       : `<div class="po-foot-ok">✓ ${ex ? 'Хадгалахад' : 'Илгээхэд'} бэлэн</div>`);
   };
-  const syncBankChips = () => { const v = val('#po-pbank'); w.$$('[data-bank]').forEach(b => b.classList.toggle('on', b.dataset.bank === v)); };
+  const syncBankChips = () => {
+    const v = val('#po-pbank'); w.$$('[data-bank]').forEach(b => b.classList.toggle('on', b.dataset.bank === v));
+    const cur = { bank: v, no: val('#po-pno'), name: val('#po-pnm') };
+    w.$$('[data-prev]').forEach(b => { const a = prevAccts[+b.dataset.prev]; b.classList.toggle('on', !!a && poAcctKey(a) === poAcctKey(cur) && a.name === cur.name.trim()); });
+  };
   const issueEl = (x) => {
     const card = x.i != null ? w.$(`[data-i="${x.i}"]`) : null;
     if (x.k === 'name') return card && card.querySelector('[data-f="name"]');
@@ -28001,6 +28021,16 @@ async function openPoModal(id) {
       hid.dispatchEvent(new Event('change', { bubbles: true }));
       return;
     }
+    const pv = e.target.closest('[data-prev]');
+    if (pv) {
+      const a = prevAccts[+pv.dataset.prev];
+      if (a) {
+        [['#po-pbank', a.bank], ['#po-pno', a.no], ['#po-pnm', a.name]].forEach(([id, v]) => { const inp = w.$(id); if (inp) { inp.value = v; inp.dispatchEvent(new Event('input', { bubbles: true })); } });
+        w.$('#po-pay-hint').textContent = 'Өмнө ашигласан данснаас бөглөгдлөө — зөв эсэхийг шалгаарай.';
+        syncBankChips();
+      }
+      return;
+    }
     const bk = e.target.closest('[data-bank]');
     if (bk) { const inp = w.$('#po-pbank'); if (inp) { inp.value = bk.dataset.bank; inp.dispatchEvent(new Event('input', { bubbles: true })); } }
   });
@@ -28012,7 +28042,7 @@ async function openPoModal(id) {
   w.$('#po-addline').onclick = () => { d.lines.push(blankLine()); draw(); focusName(d.lines.length - 1); };
   w.$('#po-fx').addEventListener('input', () => { fxHint(); sums(); });
   w.$('#po-cur').addEventListener('change', draw);
-  ['#po-sup', '#po-pbank', '#po-pno', '#po-pnm'].forEach(id => { const el = w.$(id); if (el) el.addEventListener('input', () => { if (id === '#po-pbank') syncBankChips(); sums(); }); });
+  ['#po-sup', '#po-pbank', '#po-pno', '#po-pnm'].forEach(id => { const el = w.$(id); if (el) el.addEventListener('input', () => { syncBankChips(); sums(); }); });
   // Нийлүүлэгч өмнө нь байсан бол дансыг өмнөх худалдан авалтаас бөглөнө (бүгд хоосон үед л; хүн шалгаж засна).
   const fillPay = () => {
     if (noCol) return;

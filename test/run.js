@@ -15978,7 +15978,7 @@ async function swFetchTests() {
   need(['poLine', 'poLineTotals', 'poTotals', 'poProblems', 'poLineLeft', 'poAllReceived', 'poSummary', 'poActions',
     'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
-    'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
+    'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poPrevAccounts', 'poAcctKey', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded']);
 
@@ -16166,6 +16166,27 @@ async function swFetchTests() {
   eq([F.poFxOn(null, '2026-10-26'), F.poFxOn({ rates: {} }, '2026-10-26')], [null, null], 'ханш: бүртгэл байхгүй → null');
   eq([F.poFxAuto(cfg0, '2026-10-24').exact, F.poFxAuto(cfg0, '2026-10-28').date, F.poFxAuto(cfg0, '2026-11-20'), F.poFxAuto(null, '2026-10-24')], [true, '2026-10-24', null, null],
      'ханш: автомат = өнөөдрийнх эсвэл ≤ 5 хоногийн өмнөх; түүнээс хуучин → null (гараар)');
+  {
+    // Өмнө ашигласан данснууд: худалдан авалтын мөрөөс өөрөө гарна, давхардлыг нэгтгэнэ, сүүлийнх нь эхэнд
+    const A = (bank, no, name) => ({ bank, no, name });
+    const L = [
+      { created_at: '2026-10-20T01:00:00Z', supplier: 'Jinnin', pay_to: A('Хаан банк', '5001', 'Б.Бат') },
+      { created_at: '2026-10-26T01:00:00Z', supplier: 'Xinrui', pay_to: A('Хаан банк', '83 000 5005', 'И.Алтансүх') },
+      { created_at: '2026-10-22T01:00:00Z', supplier: 'Jinnin 2', pay_to: A('хаан банк', '5001', 'Б.Бат') },
+      { created_at: '2026-10-25T01:00:00Z', supplier: 'Дутуу', pay_to: A('Хаан банк', '', 'Нэргүй') },
+      { created_at: '2026-10-24T01:00:00Z', supplier: 'Алипэй', pay_to: A('Alipay', 'wx_1', 'Li Wei') },
+      { created_at: '2026-10-23T01:00:00Z', supplier: 'Хоосон', pay_to: null },
+    ];
+    const pa = F.poPrevAccounts(L, 6);
+    eq(pa.map(x => [x.name, x.n]), [['И.Алтансүх', 1], ['Li Wei', 1], ['Б.Бат', 2]], '⛔ өмнөх данс: сүүлд ашигласан нь эхэнд, ижил банк+дугаар НЭГТГЭГДЭНЭ (хэдэн удаа), дутуу данс орохгүй');
+    eq(F.poPrevAccounts(L, 2).length, 2, 'өмнөх данс: хязгаар');
+    eq([F.poPrevAccounts(null, 3), F.poPrevAccounts([], 3)], [[], []], 'өмнөх данс: хоосон жагсаалт');
+    eq(F.poAcctKey({ bank: 'Хаан  банк', no: '83 000' }), F.poAcctKey({ bank: 'хаан банк', no: '83000' }), 'өмнөх данс: зай/том жижиг үсгийг үл тоож ижил данс гэж таньна');
+    const asrcP = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const moP = asrcP.slice(asrcP.indexOf('async function openPoModal('), asrcP.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
+    ok(/poPrevAccounts\(state\.purchases, 6\)/.test(moP) && /data-prev=/.test(moP) && /closest\('\[data-prev\]'\)/.test(moP), 'scan: шинэ хүсэлтийн цонх өмнөх данснуудыг санал болгож, товшихоор бөглөнө');
+    ok(!/rest\/v1\/purchases/.test(asrcP.slice(asrcP.indexOf('function poPrevAccounts('), asrcP.indexOf('function poPrevAccounts(') + 700)), '⛔ scan: өмнөх данс шинэ хүснэгт/бичлэг БАЙХГҮЙ — мөрүүдээс өөрөө гарна');
+  }
   {
     // Төлөөгүй хүсэлт = ОДООГИЙН Хаан банкны ханш (Excel-ийн 540 биш); шилжүүлсний дараа хөлдөнө
     const live = F.poNormalize({ id: 'lv', status: 'approved', fx: 540, lines: [{ q: 10, c: 201.5 }, { q: 30, c: F.poUnitFromTotal(545, 30) }] });

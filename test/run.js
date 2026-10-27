@@ -15978,11 +15978,12 @@ async function swFetchTests() {
   need(['poLine', 'poLineTotals', 'poTotals', 'poProblems', 'poLineLeft', 'poAllReceived', 'poSummary', 'poActions',
     'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
-    'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poPrevAccounts', 'poAcctKey', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
+    'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poPrevAccounts', 'poAcctKey', 'poLineRealUnit', 'poUnitCost', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
     'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poEvStripFormHtml', 'poUploadFiles',
-    'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml']);
+    'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml',
+    'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
 
   // ① Дүн — карго хүсэлтэд ОРОХГҮЙ (хүлээн авахад бодитоор); хуучин `s` талбар уншигдахгүй
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -16310,11 +16311,8 @@ async function swFetchTests() {
   eq(F.poUnitCost(PO, carpet, 1), Math.round(carpet.c * 540), 'нэгж өртөг: карго оруулаагүй бол ЗӨВХӨН барааны үнэ (урьдчилсан карго ОРОХГҮЙ)');
   eq(F.poUnitCost(PO, F.poLine({ q: 4, c: 650 }), 4, 100000), Math.round(650 * 540 + 100000 / 4), 'нэгж өртөг: бодит карго → бараа ¥×ханш + карго ÷ ирсэн тоо');
   eq(F.poUnitCost(PO, F.poLine({ q: 4, c: 650, s: 999999 }), 2, 0), 650 * 540, 'нэгж өртөг: карго 0 (төлөөгүй) → зөвхөн бараа, урьдчилсан тооцоо ОРОХГҮЙ');
-  const al = F.poCargoAlloc(PO, [{ id: 'a', get: 1, c: 100 }, { id: 'b', get: 3, c: 9999 }], 100001);
-  eq([al.a + al.b, al.a, al.b], [100001, 25000, 75001], '⛔ карго хуваарилалт: ТООНД жигд (үнэлгээгээр БИШ), нийлбэр ЯГ карготой тэнцэнэ (үлдэгдэл сүүлийн мөрд)');
-  eq(F.poCargoAlloc(PO, [{ id: 'a', get: 2, c: 0 }, { id: 'b', get: 2, c: 0 }], 1000), { a: 500, b: 500 }, 'карго хуваарилалт: үнэгүй мөр → тоогоор');
-  eq(F.poCargoAlloc(PO, [{ id: 'a', get: 10, c: 201.5 }, { id: 'b', get: 30, c: 18.17 }], 40000), { a: 10000, b: 30000 }, 'карго хуваарилалт: ширхэгт 1,000₮ — нэг ширхэг бүрд ижил');
-  eq([F.poCargoAlloc(PO, [{ id: 'a', get: 1, c: 5 }], null), F.poCargoAlloc(PO, [{ id: 'a', get: 0, c: 5 }], 500)], [{}, {}], 'карго хуваарилалт: оруулаагүй / ирсэн мөргүй → хоосон');
+  ok(typeof F.poCargoAlloc === 'undefined' && !/poCargoAlloc/.test(fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8')), '⛔ карго: нийт каргог тоонд жигд хуваах (poCargoAlloc) УСТСАН — мөр бүрт тусад нь оруулна');
+  eq([F.poUnitCost(PO, F.poLine({ q: 10, c: 201.5 }), 10, 20000), F.poUnitCost(PO, F.poLine({ q: 30, c: 18.17 }), 30, 0)], [Math.round(201.5 * 540 + 2000), Math.round(18.17 * 540)], 'карго (мөр бүрийн): нэг мөрийн карго ЗӨВХӨН түүний нэгж өртөгт ордог — нөгөө мөр хөндөгдөхгүй');
   const cp = F.poReceiptPlan(PO, F.poLine({ id: 'l1', sku: 'M-033', q: 2, c: 1128, s: 226500 }), 2, prod, { today: '2026-11-02', cargo: 100000 });
   eq(cp.unit, Math.round(1128 * 540 + 100000 / 2), 'хүлээн авах (карго): нэгж өртөг бодит каргогоор');
   eq(cp.fields.cost, Math.round((3 * 700000 + 2 * cp.unit) / 5), 'хүлээн авах (карго): өртөг жигнэсэн дундаж');
@@ -16560,6 +16558,121 @@ async function swFetchTests() {
     }
   }
 
+  // ХҮЛЭЭН АВАГЧ = ИЛ ТОМИЛСОН ХҮН; мөр бүрийн карго; Тойм дээр «хүлээн аваагүй бараа» (CEO 2026-10-27)
+  {
+    const stR = vm.runInContext('state', sandbox);
+    const keep = { ceo: stR.isCEO, mp: stR.memberPerms, me: stR.me, pur: stR.purchases, req: stR._poDashReq };
+    const withPerm = (mp, ceo, fn) => { stR.me = 'N'; stR.isCEO = ceo; stR.memberPerms = mp; try { return fn(); } finally { stR.me = keep.me; stR.isCEO = keep.ceo; stR.memberPerms = keep.mp; } };
+    try {
+      ok(withPerm({ N: { 'purchases.receive': true } }, false, () => F.canReceivePurchases()) === true, 'эрх: ил томилсон хүн хүлээн авна');
+      ok(withPerm({}, true, () => F.canReceivePurchases()) === false, '⛔ эрх: CEO ч томилогдоогүй бол хүлээн авч чадахгүй (нөөц + өртөг хөдөлгөнө, батлах/шилжүүлэхээс ӨӨР хүн)');
+      ok(withPerm({ N: { 'purchases.receive': false, 'products.edit': true } }, false, () => F.canReceivePurchases()) === false, '⛔ эрх: бараа засах эрх хүлээн авах эрхийг орлохгүй');
+      ok(withPerm({ N: { 'purchases.receive': true } }, false, () => F.canReceivePurchases()) === true && withPerm({ N: {} }, false, () => F.canReceivePurchases()) === false, 'эрх: томилоогүй хүн ХОРИГЛОГДОНО');
+      eq(withPerm({ N: { 'purchases.receive': true }, X: { 'purchases.receive': true }, Y: { 'purchases.receive': false } }, false, () => F.poReceiverKeys().sort()), ['N', 'X'], 'хүлээн авагчид: зөвхөн ил томилсон хүмүүс');
+
+      // Тойм: хүлээн аваагүй бараа
+      eq(F.poUbDay('2026-10-26T20:30:00Z'), '2026-10-27', 'УБ-ын өдөр: UTC 20:30 = УБ маргааш 04:30 (огноо гулсахгүй)');
+      const mk = (id, no, st2, lines, hist) => F.poNormalize({ id, no, status: st2, supplier: 'S' + no, fx: 540, lines, history: hist });
+      const list = [
+        mk('a', 9, 'ordered', [{ id: 'l1', name: 'Босоо дугуй ширээ', q: 10, c: 1, rcv: 0 }, { id: 'l2', name: 'Углаа цагаан', q: 30, c: 1, rcv: 30 }], [{ to: 'ordered', at: '2026-10-20T04:00:00Z' }]),
+        mk('b', 10, 'ordered', [{ id: 'l3', name: 'Хивс', q: 5, c: 1, rcv: 5 }], [{ to: 'ordered', at: '2026-10-21T04:00:00Z' }]),
+        mk('c', 11, 'ordered', [{ id: 'l4', name: 'Дутуу', q: 4, c: 1, rcv: 1 }], [{ to: 'ordered', at: '2026-10-25T04:00:00Z' }]),
+        mk('d', 12, 'received', [{ id: 'l5', name: 'Ирсэн', q: 1, c: 1, rcv: 0 }], []),
+        mk('e', 13, 'ordered', [{ id: 'l6', name: 'Хаасан', q: 3, c: 1, rcv: 1, done: true }], []),
+        mk('f', 14, 'ordered', [{ id: 'l7', name: 'Түүхгүй', q: 2, c: 1, rcv: 0 }], []),
+      ];
+      const out = F.poOutstanding(list, '2026-10-27');
+      eq(out.map(r => r.no), [9, 11, 14], 'Тойм: ирээгүй мөртэй худалдан авалт л (бүрэн ирсэн, «хүлээн авсан», «дахиж ирэхгүй» гэж хаасан орохгүй), хамгийн удаан хүлээсэн нь эхэнд, түүхгүй нь сүүлд');
+      eq([out[0].pcs, out[0].kinds, out[0].days, out[0].items.map(x => x.name + '×' + x.left)], [10, 1, 7, ['Босоо дугуй ширээ×10']], 'Тойм: зөвхөн ирээгүй мөр, үлдсэн тоо, хүлээсэн хоног');
+      eq([out[1].pcs, out[2].days], [3, null], 'Тойм: дутуу ирсэн мөрийн үлдсэн тоо; түүх байхгүй бол хоногийг ТААМАГЛАХГҮЙ (null)');
+
+      stR.purchases = list;
+      const blkR = withPerm({ N: { 'purchases.receive': true } }, false, () => F.poRecvBlockHtml());
+      ok(/Хүлээн аваагүй бараа/.test(blkR) && /3 захиалга · 15 ш/.test(blkR) && /data-po-recv="a"/.test(blkR) && /Босоо дугуй ширээ ×10/.test(blkR), 'Тойм блок: хүлээн авагчид жагсаалт + «Хүлээн авах» товч (нэр × үлдсэн тоо)');
+      const blkC = withPerm({}, true, () => F.poRecvBlockHtml());
+      ok(/3 захиалга · 15 ш/.test(blkC) && !/data-po-recv=/.test(blkC), 'Тойм блок: CEO-д мэдээлэл харагдана, товч БАЙХГҮЙ (хүлээн авагч биш)');
+      eq(withPerm({ N: {} }, false, () => F.poRecvBlockHtml()), '', '⛔ Тойм блок: бусад ажилтанд огт гарахгүй');
+      stR.purchases = [mk('z', 1, 'received', [{ id: 'l', name: 'x', q: 1, c: 1, rcv: 1 }], [])];
+      ok(/Хүлээн аваагүй бараа алга/.test(withPerm({ N: { 'purchases.receive': true } }, false, () => F.poRecvBlockHtml())), 'Тойм блок: хоосон үед ч «алга» гэж ил хэлнэ');
+      const srcD = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+      const dash = srcD.slice(srcD.indexOf('function renderDashboard()'), srcD.indexOf('function renderDashboard()') + 4000);
+      ok(/\$\{poRecvBlockHtml\(\)\}/.test(dash) && dash.indexOf('missedBlockHtml()') < dash.indexOf('poRecvBlockHtml()') && dash.indexOf('poRecvBlockHtml()') < dash.indexOf('ordersCalendarHtml('), 'scan: Тоймд «хүлээн аваагүй бараа» блок (дуудлагын дараа, календарийн өмнө)');
+      ok(/data-po-recv/.test(srcD) && /openPoReceiveModal\(el\.dataset\.poRecv\)/.test(srcD), 'scan: Тоймоос шууд хүлээн авах цонх нээгдэнэ');
+
+      // Цонхыг ҮНЭХЭЭР ажиллуулна (хуурамч цонх): мөр бүрийн карго, дутуу ирэлт, эрхгүй хүн нээж чадахгүй
+      (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+        const S = vm.runInContext('state', sandbox);
+        const sv = { me: S.me, ceo: S.isCEO, mp: S.memberPerms, pur: S.purchases, prods: S.products };
+        const own = { open: sandbox.poOpenModal, led: sandbox.poLedgerReceived, apply: sandbox.poReceiveApply, lp: sandbox.loadPurchases, rn: sandbox.render, tt: sandbox.showToast };
+        const toasts = [], applied = [], opened = [];
+        const mkEl = () => { const el = { innerHTML: '', textContent: '', className: '', dataset: {}, onclick: null, classes: [],
+          classList: { add(c) { el.classes.push('+' + c); }, remove(c) { el.classes.push('-' + c); }, toggle(c, on) { el.classes.push((on ? '+' : '-') + c); } },
+          querySelector: () => mkEl(), querySelectorAll: () => [], scrollIntoView() {}, focus() {}, setAttribute() {} }; return el; };
+        const L = {}, els = {};
+        const fake = { m: { addEventListener: (ty, fn) => { (L[ty] = L[ty] || []).push(fn); }, querySelector: (s) => (els['m' + s] = els['m' + s] || mkEl()) }, close() { this.closed = true; }, $: (s) => (els[s] = els[s] || mkEl()) };
+        try {
+          S.me = 'N'; S.isCEO = false;
+          const po = F.poNormalize({ id: 'rc1', no: 9, status: 'ordered', supplier: 'Jimo city', fx: 540, created_by: 'U',
+            lines: [{ id: 'l1', sku: 'M-205', name: 'Босоо дугуй ширээ', q: 10, c: 201.5 }, { id: 'l2', sku: 'M-207', name: 'Босоо ширээ углаа', q: 30, c: 18.17 }] });
+          S.purchases = [po];
+          S.products = [{ sku: 'M-205', code: 'M-205', name: 'Босоо дугуй ширээ', qty_mevent: 10, cost: 103200 }, { sku: 'M-207', code: 'M-207', name: 'Босоо ширээ углаа', qty_mevent: 13, cost: 6300 }];
+          sandbox.poOpenModal = (cls, html) => { opened.push(html); return fake; };
+          sandbox.poLedgerReceived = async () => ({ sums: {}, skus: {} });
+          sandbox.poReceiveApply = async (p, rows, work, fin) => { applied.push(work.map(x => ({ id: x.row.id, get: x.get, cargo: x.cargo, short: x.short }))); return { okNames: ['x'], errs: [], complete: false }; };
+          sandbox.loadPurchases = () => {}; sandbox.render = () => {}; sandbox.showToast = (m) => { toasts.push(String(m)); };
+          const OPEN = vm.runInContext('openPoReceiveModal', sandbox);
+          // 1) томилогдоогүй хүн нээж чадахгүй
+          S.memberPerms = { N: { 'products.edit': true } };
+          await OPEN('rc1');
+          eq([opened.length, /томил|Хүлээн авагч/.test(toasts.join('|'))], [0, true], '⛔ цонх: томилогдоогүй хүн (бараа засах эрхтэй ч) нээж чадахгүй, юу хийхийг хэлнэ');
+          // 2) томилогдсон хүн
+          S.memberPerms = { N: { 'purchases.receive': true } };
+          await OPEN('rc1');
+          const html = opened[0] || '';
+          eq((html.match(/data-f="cg"/g) || []).length, 2, 'цонх: мөр бүрд карго тусдаа талбар');
+          ok(/Дахиж ирэхгүй/.test(html) && !/amo-hint|pr-cargo/.test(html), 'цонх: «Дахиж ирэхгүй» сонголт, нийт карго талбар/урт тайлбар байхгүй');
+          const cardsHtml = els['#pr-cards'] && els['#pr-cards'].innerHTML;
+          // 3) юанийн худалдан авалт: карго оруулаагүй бол хүлээн авахгүй
+          const inputEv = (f, i, value, extra) => ({ target: { dataset: { f }, value, checked: !!(extra && extra.checked), closest: (s) => s === '[data-i]' ? { dataset: { i: String(i) } } : (s === '[data-cgbox]' ? mkEl() : null) } });
+          const fire = async (ty, ev) => { for (const fn of (L[ty] || [])) await fn(ev); };
+          await els['#pr-ok'].onclick({ currentTarget: els['#pr-ok'] });
+          eq([applied.length, /карго/.test(toasts[toasts.length - 1] || '')], [0, true], '⛔ цонх: юанийн худалдан авалтад мөр бүрийн карго заавал — оруулаагүй бол хүлээн авахгүй');
+          // 4) мөр 1: 6/10 ирсэн, карго 20,000; мөр 2: 30/30, карго 0 (төлөөгүй)
+          await fire('input', inputEv('get', 0, '6'));
+          await fire('input', inputEv('cg', 0, '20000'));
+          await fire('input', inputEv('cg', 1, '0'));
+          ok(/Үлдэнэ 4 ш/.test(els['#pr-total'].innerHTML) && els['#pr-ok'].textContent === '✓ 36 ш авах', 'цонх: дутуу ирвэл «Үлдэнэ 4 ш — дараа ирнэ», товч «36 ш авах»');
+          ok(els['[data-rest="0"]'] && els['[data-rest="0"]'].classes.includes('-po-off') && els['[data-rest="1"]'].classes.includes('+po-off'), 'цонх: «үлдсэн … дараа ирнэ» нь дутуу ирсэн мөрд л гарна');
+          await els['#pr-ok'].onclick({ currentTarget: els['#pr-ok'] });
+          eq(applied[0], [{ id: 'l1', get: 6, cargo: 20000, short: false }, { id: 'l2', get: 30, cargo: 0, short: false }], '⛔ цонх: мөр бүрийн карго тусдаа poReceiveApply-д очно (6 ш + 20,000₮; 30 ш + 0₮), дутуу нь «хаагдаагүй»');
+          // 5) «Дахиж ирэхгүй» → үлдэгдэл хаагдана
+          await fire('input', inputEv('short', 0, '', { checked: true }));
+          ok(els['#pr-ok'].textContent === '✓ Хүлээн авах' && /Бүгд ирсэн/.test(els['#pr-total'].innerHTML), 'цонх: «Дахиж ирэхгүй» сонговол үлдэгдэл хаагдаж «Бүгд ирсэн» болно');
+          await els['#pr-ok'].onclick({ currentTarget: els['#pr-ok'] });
+          eq(applied[1][0].short, true, 'цонх: «Дахиж ирэхгүй» нь мөрийг хаахаар дамжина');
+        } finally {
+          sandbox.poOpenModal = own.open; sandbox.poLedgerReceived = own.led; sandbox.poReceiveApply = own.apply; sandbox.loadPurchases = own.lp; sandbox.render = own.rn; sandbox.showToast = own.tt;
+          S.me = sv.me; S.isCEO = sv.ceo; S.memberPerms = sv.mp; S.purchases = sv.pur; S.products = sv.prods;
+        }
+      });
+      // Томилох: хүлээн авагч + самбарыг харна; хасахад зөвхөн хүлээн авах эрх арилна
+      (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+        const S = vm.runInContext('state', sandbox), sv = S.memberPerms, tt = sandbox.showToast;
+        sandbox.showToast = () => {};
+        try {
+          S.memberPerms = { N: { orders: true, purchases: false } };
+          await F.setPurchaseReceiver('N', true);
+          eq([S.memberPerms.N['purchases.receive'], S.memberPerms.N.purchases, S.memberPerms.N.orders], [true, true, true], 'томилох: хүлээн авагч болмогц самбарыг ч харна (purchases:false-ыг дарна), бусад эрх хэвээр');
+          await F.setPurchaseReceiver('N', false);
+          eq(['purchases.receive' in S.memberPerms.N, S.memberPerms.N.purchases, S.memberPerms.N.orders], [false, true, true], 'томилох: хасахад зөвхөн хүлээн авах эрх арилна');
+        } finally { S.memberPerms = sv; sandbox.showToast = tt; }
+      });
+
+      // Ажилтан удирдах хэсгээс томилно (CEO л)
+      ok(/data-sc-recv/.test(srcD) && /setPurchaseReceiver\(key, e\.target\.checked\)/.test(srcD) && /<div class="sc-sec"><div class="sc-sec-t">⚙️ Ажилтан удирдах<\/div>[\s\S]{0,1800}data-sc-recv/.test(srcD), 'scan: «⚙️ Ажилтан удирдах»-д «📦 Худалдан авалтын бараа хүлээн авагч» чагт');
+    } finally { stR.me = keep.me; stR.isCEO = keep.ceo; stR.memberPerms = keep.mp; stR.purchases = keep.pur; stR._poDashReq = keep.req; }
+  }
+
   // ⑫ Самбар ҮНЭХЭЭР зурагдана (TDZ/тодорхойлогдоогүй функцийг барина)
   const st = vm.runInContext('state', sandbox);
   const saved = { p: st.purchases, miss: st._poMissing, tab: st._poTab, fin: st.financeRequests, me: st.me };
@@ -16574,7 +16687,16 @@ async function swFetchTests() {
   const html = asCeo(() => F.poBoardHtml());
   ok(/data-po-act="approve" data-po-id="a"(?![^>]*disabled)/.test(html), 'самбар: бүрэн хүсэлтэд «Батлах» идэвхтэй');
   ok(/data-po-act="approve" data-po-id="b"[^>]*disabled/.test(html), '⛔ самбар: үнэгүй/нийлүүлэгчгүй хүсэлтийн «Батлах» ХААЛТТАЙ');
-  ok(/data-po-act="receive" data-po-id="c"/.test(html), 'самбар: худалдан авсан төлөвт «Хүлээн авах» товч');
+  const asReceiver = (fn) => {
+    const sv = { ceo: !!st.isCEO, mp: st.memberPerms };
+    st.isCEO = false; st.memberPerms = { C: { 'purchases.receive': true } };
+    try { return fn(); } finally { st.isCEO = sv.ceo; st.memberPerms = sv.mp; }
+  };
+  const htmlR = asReceiver(() => F.poBoardHtml());
+  ok(/data-po-act="receive" data-po-id="c"/.test(htmlR), 'самбар: худалдан авсан төлөвт «Хүлээн авах» товч — томилогдсон хүнд');
+  ok(!/data-po-act="receive"/.test(html) && /Хүлээн авагч томилоогүй/.test(html), '⛔ самбар: CEO ч томилогдоогүй бол «Хүлээн авах» товчгүй, томилох заавар гарна');
+  const htmlO = (() => { const sv = { ceo: st.isCEO, mp: st.memberPerms }; st.isCEO = false; st.memberPerms = { C: { 'purchases.receive': false }, N: { 'purchases.receive': true } }; try { return F.poBoardHtml(); } finally { st.isCEO = sv.ceo; st.memberPerms = sv.mp; } })();
+  ok(!/data-po-act="receive"/.test(htmlO) && /Хүлээн авагч: /.test(htmlO), '⛔ самбар: бусад хүнд товч байхгүй, хэн хүлээн авахыг нэрлэнэ');
   ok(/ирсэн 1\/2/.test(html), 'самбар: хэсэгчилсэн ирэлт (1/2) харагдана');
   ok(!/⏰|po-due|Хэзээ хүртэл/.test(html), '⛔ самбар: «хэзээ хүртэл / хямдрал дуусах» сануулга УСТСАН (CEO 2026-10-27) — буцаж ирэхгүй');
   ok(!/data-po-id="d"/.test(html), 'самбар: «Идэвхтэй» табд хүлээн авсан орохгүй');
@@ -16638,7 +16760,7 @@ async function swFetchTests() {
      'scan: дэвтэр ДАВХАР бичигдэхгүй (saveProduct өөрөө бичихийг дуудагч унтраана)');
   ok(/poPatch\(po\.id, patch, 'ordered'\)/.test(rcv) && /const patch = \{ \.\.\.base, lines \}/.test(rcv), 'scan: худалдан авалтын төлөв оптимист түгжээтэй (ordered байх үед л)');
   const recvModal = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('async function openPoImportModal('));
-  ok(/canEditProducts\(\)/.test(recvModal), '⛔ scan: хүлээн авах цонх бараа засах эрхээр хаалттай (нөөц = хөрөнгө)');
+  ok(/canReceivePurchases\(\)/.test(recvModal) && !/canEditProducts\(\)/.test(recvModal), '⛔ scan: хүлээн авах цонх ЗӨВХӨН ил томилсон хүнд (purchases.receive) — бараа засах эрх хүрэлцэхгүй');
   ok(/await poLedgerReceived\(po\.id\)/.test(recvModal) && /давхар нэмэхээс/.test(recvModal), '⛔ scan: цонх нээхэд дэвтрийг ЗААВАЛ уншина, уншиж чадахгүй бол хаалттай унана');
   ok(!/showConfirm\(|showPrompt\(/.test(recvModal + src.slice(src.indexOf('function openPoPayModal('), src.indexOf('async function openPoReceiveModal('))),
      '⛔ scan: цонх доторх showConfirm/showPrompt БАЙХГҮЙ (#confirm-modal DOM-д өмнө тул цонхны ДООР хаагдана)');
@@ -16664,11 +16786,12 @@ async function swFetchTests() {
     ok(/Шилжүүлэх данс/.test(payM) && /data-copy-text/.test(payM), 'scan: «Шилжүүлсэн» цонхонд төлөх данс (хуулах товчтой) харагдана');
     ok(/poFxValid\(rate\)/.test(payM) && /patch\.fx = rate/.test(payM) && !/poFxSave/.test(payM), '⛔ scan: шилжүүлэхдээ ТЭР ӨДРИЙН Хаан банкны ханш заавал, өртгийн суурь болж PO-д хадгалагдана (app_config-д БИЧИХГҮЙ)');
     const recvM2 = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('async function openPoImportModal('));
-    ok(/id="pr-cargo"/.test(recvM2) && /cargo: cargoVal\(\)/.test(recvM2), 'scan: хүлээн авахад карго оруулна, poReceiveApply-д дамжина');
+    ok(/data-f="cg"/.test(recvM2) && /cargo: cgOf\(e\)/.test(recvM2), 'scan: хүлээн авахад мөр бүрийн карго оруулна, poReceiveApply-д дамжина');
   }
   const patchFn = src.slice(src.indexOf('async function poPatch('), src.indexOf('async function poMove('));
   ok(/status=eq\./.test(patchFn) && /Төлөв өөрчлөгдсөн/.test(patchFn), 'scan: poPatch оптимист түгжээтэй (зэрэг батлахад нэг нь л)');
-  ok(/function poCaps\(\)[\s\S]{0,400}canEditProducts\(\)/.test(src), 'scan: хүлээн авах эрх = canEditProducts()');
+  ok(/function poCaps\(\)[\s\S]{0,400}receive: canReceivePurchases\(\)/.test(src) && !/function poCaps\(\)[\s\S]{0,400}receive: canEditProducts\(\)/.test(src), '⛔ scan: хүлээн авах эрх = canReceivePurchases() (ил томилсон хүн) — canEditProducts БИШ');
+  ok(/'purchases\.receive'/.test(src.slice(src.indexOf('const DENY_DEFAULT_ACTIONS'), src.indexOf('const DENY_DEFAULT_ACTIONS') + 600)) && /key: 'purchases\.receive'/.test(src), 'scan: хүлээн авах эрх өгөгдмөлөөрөө ХОРИГЛОГДСОН, Эрх удирдах матрицад гарна');
   ok(/'purchases\.approve'/.test(src.slice(src.indexOf('const DENY_DEFAULT_ACTIONS'), src.indexOf('const DENY_DEFAULT_ACTIONS') + 500)) &&
      /'purchases\.pay'/.test(src.slice(src.indexOf('const DENY_DEFAULT_ACTIONS'), src.indexOf('const DENY_DEFAULT_ACTIONS') + 500)),
      'scan: батлах/шилжүүлэх эрх өгөгдмөлөөрөө ХОРИГЛОГДСОН (ил олгоно)');
@@ -16765,7 +16888,7 @@ async function swFetchTests() {
 
     // ✅ КАРГО: бодит төлбөр өртөгт орно, мөр хаагдахад урьдчилсан тооцоог орлоно, нийт дүн шинэчлэгдэнэ
     reset(); po = mkPo(); rows = po.lines.map(l => ({ ...l }));
-    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false, { cargo: 120000 });
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent', cargo: 120000 }], false);
     eq(res.errs, [], 'хүлээн авалт (карго): алдаагүй');
     const cgUnit = Math.round(1128 * 540 + 120000 / 2);
     const cgProd = calls.find(c => c.u.includes('products?on_conflict')).body;
@@ -16779,20 +16902,20 @@ async function swFetchTests() {
 
     // ✅ Карго оруулаагүй → карго орохгүй (нэгж өртөг = барааны үнэ), нийт дүн хөндөгдөхгүй
     reset(); po = mkPo(); rows = po.lines.map(l => ({ ...l }));
-    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false, { cargo: null });
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent', cargo: null }], false);
     const noCg = calls.find(c => c.method === 'PATCH' && c.u.includes('/purchases')).body;
     eq([noCg.lines[0].cg, 's' in noCg.lines[0], 'total_mnt' in noCg], [null, false, false], 'хүлээн авалт: карго оруулаагүй бол карго орохгүй, нийт дүн хэвээр');
 
     // ⛔ Хэсэгчлэн ирэхэд карго ирсэн хэсэгт л ногдоно (мөр бүрт хуримтлагдана)
     reset(); po = mkPo(); rows = po.lines.map(l => ({ ...l }));
-    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent' }], false, { cargo: 50000 });
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent', cargo: 50000 }], false);
     const part = calls.find(c => c.method === 'PATCH' && c.u.includes('/purchases')).body;
     eq([part.lines[0].cg, 's' in part.lines[0], part.status], [50000, false, 'ordered'], 'хүлээн авалт (карго): хэсэгчлэн ирэхэд cg хуримтлагдана, хуучин s (урьдчилсан карго) бичигдэхгүй');
 
     // ⛔ Мөр унавал түүний каргог чимээгүй алдахгүй
     reset(); failProducts = true; po = mkPo(); rows = po.lines.map(l => ({ ...l }));
-    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false, { cargo: 120000 });
-    ok(res.errs.some(e => /карго .* хуваарилагдсангүй/.test(e)) && rows[0].cg == null, '⛔ хүлээн авалт (карго): мөр унавал карго хуваарилагдаагүйг ил хэлнэ, мөрөнд бичихгүй');
+    res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent', cargo: 120000 }], false);
+    ok(res.errs.some(e => /карго .* хадгалагдсангүй/.test(e)) && rows[0].cg == null, '⛔ хүлээн авалт (карго): мөр унавал карго хадгалагдаагүйг ил хэлнэ, мөрөнд бичихгүй');
 
     // ✅ pay_to багана DB-д байгаа эсэхийг ачаалахдаа танина (SQL ажиллуулаагүй бол бичихгүй, самбар ил хэлнэ)
     {
@@ -16815,8 +16938,11 @@ async function swFetchTests() {
     {
       const asrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
       const rm = asrc2.slice(asrc2.indexOf('async function openPoReceiveModal('), asrc2.indexOf('async function openPoImportModal('));
-      ok(/const needCargo = po\.fx !== 1/.test(rm) && /if \(needCargo && cargoVal\(\) == null && work\.some\(x => x\.get > 0\)\)/.test(rm), '⛔ scan: юанийн худалдан авалтад карго ЗААВАЛ (төлөөгүй бол 0) — хоосон бол хүлээн авахгүй');
-      ok(/1 ширхэгт ≈/.test(rm) && /ширхэгт\) жигд хувааж/.test(rm) && !/урьдчилсан/.test(rm), 'scan: хүлээн авахад «1 ширхэгт ≈ …₮» ил, урьдчилсан карго алга');
+      ok(/const needCargo = po\.fx !== 1/.test(rm) && /needCargo \? ent\.find\(e => getOf\(e\) > 0 && receivable\(e\) && cgOf\(e\) == null\)/.test(rm), '⛔ scan: юанийн худалдан авалтад мөр БҮРД карго ЗААВАЛ (төлөөгүй бол 0) — хоосон мөр байвал хүлээн авахгүй');
+      ok(/data-f="cg"/.test(rm) && !/id="pr-cargo"|pr-cargo/.test(rm) && /cargo: cgOf\(e\)/.test(rm), 'scan: карго МӨР БҮРД тусдаа талбар (нийт карго нэг талбар БИШ), мөр бүрийн утга work-д дамжина');
+      ok(/1 ширхэг/.test(rm) && !/урьдчилсан/.test(rm), 'scan: хүлээн авахад «1 ширхэг = бараа + карго» ил, урьдчилсан карго алга');
+      ok(/Дахиж ирэхгүй/.test(rm) && /дараа ирнэ/.test(rm) && /data-rest=/.test(rm), 'scan: тоо дутуу бол «үлдсэн N ш дараа ирнэ» + «Дахиж ирэхгүй» сонголт ил (дутуу нь нээлттэй үлдэнэ)');
+      ok(!/<p class="amo-hint"/.test(rm), '⛔ scan: хүлээн авах цонхонд урт тайлбар догол мөр БАЙХГҮЙ (гарчгийн доорх нэг мөр л)');
     }
     // ⛔ Каталогт олдохгүй (архивлагдсан) бараа — чимээгүй нэмэхгүй
     reset(); st.products = []; po = mkPo(); rows = po.lines.map(l => ({ ...l }));

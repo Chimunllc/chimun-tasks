@@ -8268,21 +8268,21 @@ async function openStatementClassifyModal() {
     return ks.length === 1 ? empByAcct[ks[0]] : null;
   };
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
-    <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулга оруулах — орлого ба зардал</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Голомт/Хаан хуулга оруул → зардал <b>шууд орно</b>, дараа нь <b>эзэн бүр өөрийн зардлаа ангилж баталгаажуулна</b>. Зөвхөн хуулгаар л орно.<br>🙍 <b>Хувийн данс</b> (Данс&nbsp;&amp;&nbsp;Карт-д «зорилго: хувийн») хуулга оруулбал мөр бүрийг <b>компанийн / хувийн</b> гэж сонгоно — зөвхөн компанийнх нь зардал болно.</div>
-    <label for="sc-file" style="display:block;margin-bottom:12px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
+  modal.innerHTML = `<div class="modal simp-modal">
+    <div class="modal-head">🧾 Хуулга оруулах — орлого ба зардал</div>
+    <div class="simp-hint">Голомт/Хаан хуулга оруул → зардал <b>шууд орно</b>, дараа нь <b>эзэн бүр өөрийн зардлаа ангилж баталгаажуулна</b>. Зөвхөн хуулгаар л орно.<br>🙍 <b>Хувийн данс</b> (Данс&nbsp;&amp;&nbsp;Карт-д «зорилго: хувийн») хуулга оруулбал мөр бүрийг <b>компанийн / хувийн</b> гэж сонгоно — зөвхөн компанийнх нь зардал болно.</div>
+    <label for="sc-file" class="simp-drop">
       📄 <b>Хуулга(ууд) оруулах (xlsx / csv)</b>
       <input id="sc-file" type="file" accept=".xlsx,.xls,.csv" hidden multiple>
-      <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Олон дансны хуулгыг зэрэг сонгож болно</div>
+      <div id="sc-status" class="simp-status">Олон дансны хуулгыг зэрэг сонгож болно</div>
     </label>
     <div id="sc-srcaccts"></div>
     <div id="sc-income"></div>
     <div id="sc-list"></div>
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+    <div class="modal-actions">
       <button class="btn" id="sc-cancel">Хаах</button>
       <button class="btn" id="sc-undo" hidden>↩️ Энэ хуулгын импортыг буцаах</button>
-      <button class="btn btn-primary" id="sc-save" style="display:none;">Хуулга оруулах</button>
+      <button class="btn btn-primary" id="sc-save" hidden>Хуулга оруулах</button>
     </div></div>`;
   document.body.appendChild(modal);
   let rows = [], sources = [], dropped = [], settleAdd = {};
@@ -8520,7 +8520,7 @@ async function openStatementClassifyModal() {
       status.innerHTML = `✓ ${files.length} хуулга уншигдлаа — задаргааг доор харна уу`
         + (parseWarn.length ? `<div class="sc-warn">⚠ ${escapeHtml(parseWarn.join(' | '))}</div>` : '');
       status.style.color = 'var(--ok)';
-      renderSrcAccts(); render(); saveBtn.style.display = '';
+      renderSrcAccts(); render(); saveBtn.hidden = false;   // ⚠ `hidden` = `#sc-undo`-тай ИЖИЛ арга (inline `display` БИШ)
       undoBtn.hidden = !rows.some(r => r.done);   // энэ хуулгаас орсон зардал байвал буцаах боломж
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   };

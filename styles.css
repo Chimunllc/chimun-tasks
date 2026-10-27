@@ -126,6 +126,7 @@
     --oscan-modal-w: 460px;   /* 📷 Захиалгын бараа скан */
     --ec-modal-w: 640px;      /* 📄 Хөдөлмөрийн гэрээ бэлдэх — 2 баганатай форм */
     --di-modal-w: 520px;      /* 🔁 Давхар импорт — бүлэгтэй жагсаалт */
+    --simp-modal-w: 680px;    /* 🧾 Хуулга оруулах (openStatementClassifyModal) */
 
     /* 🍽 Катерингийн ажлын цонх (`openCateringJobModal`) — нэг эгнээнд 2-3 талбар */
     --kt-job-modal-w: 560px;
@@ -9991,3 +9992,30 @@ select.no-asar-len {
 .por-main { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .por-main .stk-cust { font-size: var(--fs-md); white-space: normal; }
 .por-main .stk-step { white-space: normal; }
+
+/* 🧾 Хуулга оруулах цонх — `openStatementClassifyModal` (2026-10-27, 7 inline style → класс).
+   Толгой нь нийтийн `.modal-head` (өөрийн хувилбар БҮҮ бич); зөвхөн зузаан ба доод
+   зайг `.simp-modal`-аар тохируулна (`.ex-modal .modal-head`-тэй ИЖИЛ арга).
+   ⚠ Угтвар `simp-` (statement import) ЗОРИУД: `sc-` нь ажилтны картынх
+     (`.sc-modal` = 480px өргөн, flex багана) — тэр классыг энд тавибал цонх эвдэрнэ.
+     `stc-` нь тооллогынх, `stmt-` нь хуулгын жагсаалтынх. Шинэ класс нэмэхээс ӨМНӨ
+     `grep -oE '\.<угтвар>[a-z0-9-]+' styles.css`-ээр чөлөөтэйг шалга.
+   ⛔ ХӨРВҮҮЛЭЭГҮЙ ба ЗӨВХӨН ХАСАГДСАН хуучин inline дүрмүүд (бүгд ҮХМЭЛ байсан —
+     класс болгож дахин бичвэл шинэ хүчлэгч (important) шаардана, тэр нь хориотой;
+     `.cmp-modal` / `.cx-modal` / `.ex-modal`-тай ИЖИЛ шалтгаан):
+     · `.modal-actions`-ийн `display/gap/justify-content/margin-top` — styles.css:3318
+       дээр ДӨРВҮҮЛЭЭ хүчлэгдсэн (`gap:8px`, `margin-top:16px`), тул хуучин inline
+       `margin-top:12px` хэзээ ч үйлчилж байгаагүй.
+     · Файл сонгох шошгын `margin-bottom:12px` — `.modal label`-ийн хүчлэгдсэн
+       `margin-bottom:6px` (styles.css:3210) давдаг. `display:block` нь мөн тэндээс.
+   ⚠ «Хуулга оруулах» товч нь `hidden` атрибутаар нуугдана (`#sc-undo`-тай ижил) —
+     өмнө нь inline `display:none` + JS-ээс `style.display=''` байв. Класс болговол
+     JS-ийн нээх зам үхнэ, тиймээс `saveBtn.hidden = false` болгосон. */
+.modal.simp-modal { max-width: var(--simp-modal-w); max-height: 90vh; overflow-y: auto; }
+.simp-modal .modal-head { font-weight: 800; margin-bottom: var(--space-1); }
+.simp-modal .simp-hint { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-3); }
+/* Файл чирж/сонгох хайрцаг — `.cmp-drop`-тай ижил хэлбэр, зөвхөн хүрээний өнгө өөр.
+   `var(--accent, …)` нь styles.css дахь байгаа хэлбэр (`.br-act`, `.prc-pdf`) — шинэ өнгө нэмэхгүй. */
+.simp-modal .simp-drop { border: 2px dashed var(--accent, #7c3aed); border-radius: var(--r-lg); padding: var(--space-3);
+  text-align: center; cursor: pointer; background: var(--panel-hover); }
+.simp-modal .simp-status { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); line-height: 1.5; }

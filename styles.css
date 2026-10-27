@@ -8121,8 +8121,24 @@ select.no-asar-len {
 .po-tab.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .po-tsum { font-size: var(--fs-xs); color: var(--muted); }
 .po-list { display: flex; flex-direction: column; gap: var(--space-3); }
-.po-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); min-width: 0;
-  padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.po-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); min-width: 0; overflow: hidden;
+  display: flex; flex-direction: column; }
+/* Нүүр: зураг · №+нэр · нийт + төлөв · ⌄. Дарахад бусад нь нээгдэнэ (.po-exp). */
+.po-d > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); }
+.po-d > summary::-webkit-details-marker { display: none; }
+.po-top .po-th { width: 44px; height: 44px; flex: none; }
+.po-top-b { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.po-top-l { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.po-top-l .po-title { font-size: var(--fs-md); flex: 1 1 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.po-top-m { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-width: 0; }
+.po-top-m .po-tot { font-size: var(--fs-base); flex: none; }
+.po-top-s { color: var(--muted); font-size: var(--fs-xs); flex: none; }
+.po-chev { color: var(--muted); font-size: var(--fs-lg); flex: none; transition: transform .15s; }
+.po-d[open] .po-chev { transform: rotate(180deg); }
+.po-exp { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); }
+.po-card > .po-probs { margin: 0 var(--space-3); }
+.po-top .po-th-none { font-size: var(--fs-base); opacity: .5; }
+.po-acts2 { padding: 0; }
 .po-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .po-no { color: var(--muted); }
 .po-title { font-weight: 600; font-size: var(--fs-base); flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
@@ -8161,8 +8177,11 @@ select.no-asar-len {
 .po-dot { flex: 1; height: var(--space-1); border-radius: var(--r-full); background: var(--border); }
 .po-dot.on { background: var(--primary); }
 .po-probs { font-size: var(--fs-xs); color: var(--warn); background: var(--warn-soft); border-radius: var(--r-sm); padding: var(--space-2); white-space: normal; overflow-wrap: anywhere; }
-.po-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.po-acts .po-btn { flex: 1 1 130px; }
+.po-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); }
+.po-acts .po-btn { flex: 0 0 auto; background: transparent; border-color: transparent; color: var(--muted); }
+.po-acts .po-btn.po-danger { color: var(--danger); }
+.po-acts .po-btn.po-main { flex: 1 1 140px; background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.po-acts .po-btn:disabled { opacity: .5; }
 .po-more summary { cursor: pointer; font-size: var(--fs-xs); color: var(--muted); }
 .po-lns { display: flex; flex-direction: column; margin-top: var(--space-2); }
 .po-ln { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3);

@@ -8204,7 +8204,7 @@ select.no-asar-len {
 .po-evl { font-size: var(--fs-sm); }
 .po-ev-miss { color: var(--warn); font-size: var(--fs-xs); }
 .po-cl .po-evt { width: 36px; height: 36px; }
-.po-bd .po-evt, .po-more > .po-bi-ev .po-evt, .po-edit .po-evt { width: 64px; height: 64px; }
+.po-bd .po-evt, .po-more > .po-bi-ev .po-evt, .po-edit .po-evt, .po-step .po-evt { width: 64px; height: 64px; }
 .po-bi-ev { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-2); min-width: 0; }
 .po-bi-evl { color: var(--muted); font-size: var(--fs-xs); }
 .po-edit .po-lx { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px dashed var(--border); }
@@ -8252,14 +8252,14 @@ select.no-asar-len {
 .po-edit .po-txtbtn { min-height: 0; padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-sm); background: none; color: var(--danger); font-size: var(--fs-xs); cursor: pointer; }
 .po-edit .po-line-top { display: flex; align-items: center; gap: var(--space-3); }
 .po-edit .po-phw { position: relative; flex: none; }
-.modal.po-edit .po-ph { position: relative; display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; overflow: hidden; cursor: pointer;
+.modal.po-edit .po-ph, .modal.po-step .po-ph { position: relative; display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; overflow: hidden; cursor: pointer;
   border: 1px dashed var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--muted); }
-.po-edit .po-ph.has, .po-edit .po-ph:hover { border-style: solid; }
-.modal.po-edit .po-ph > input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; opacity: 0; cursor: pointer; }   /* `<label>` БИШ: мобайлын `.modal label` нь хүчлэгдсэн margin өгч тайлыг доош түлхдэг байв */
+.po-edit .po-ph.has, .po-edit .po-ph:hover, .po-step .po-ph:hover { border-style: solid; }
+.modal.po-edit .po-ph > input[type="file"], .modal.po-step .po-ph > input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; opacity: 0; cursor: pointer; }   /* `<label>` БИШ: мобайлын `.modal label` нь хүчлэгдсэн margin өгч тайлыг доош түлхдэг байв */
 .po-edit .po-ph .po-th { width: 100%; height: 100%; border: 0; border-radius: 0; }
-.po-edit .po-ph-t { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: var(--fs-lg); line-height: 1; }
-.po-edit .po-ph-t small { font-size: var(--fs-xs); }
-.po-edit .po-ph-x { min-height: 0; min-width: 0; position: absolute; top: calc(var(--space-1) * -1); right: calc(var(--space-1) * -1); width: var(--space-5); height: var(--space-5); padding: 0;
+.po-edit .po-ph-t, .po-step .po-ph-t { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: var(--fs-lg); line-height: 1; }
+.po-edit .po-ph-t small, .po-step .po-ph-t small { font-size: var(--fs-xs); }
+.po-edit .po-ph-x, .po-step .po-ph-x { min-height: 0; min-width: 0; position: absolute; top: calc(var(--space-1) * -1); right: calc(var(--space-1) * -1); width: var(--space-5); height: var(--space-5); padding: 0;
   border: 1px solid var(--border); border-radius: var(--r-full); background: var(--panel); color: var(--muted); font-size: var(--fs-xs); line-height: 1; cursor: pointer; }
 .po-edit .po-line-nmwrap { display: flex; flex-direction: column; flex: 1 1 0; gap: var(--space-1); min-width: 0; }
 .modal.po-edit .po-line-in { width: 100%; min-height: var(--tap); font-size: var(--fs-base); font-weight: 600; }
@@ -8275,9 +8275,9 @@ select.no-asar-len {
 .po-edit .po-hit small, .po-recv .po-hit small { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
 .po-edit .po-line-row { display: grid; grid-template-columns: 1fr 1.3fr; gap: var(--space-3); align-items: end; }
 .po-edit .po-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); align-items: start; }
-.po-edit .po-fld { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.po-edit .po-lb { color: var(--muted); font-size: var(--fs-xs); font-weight: 500; }
-.po-edit .po-lb i { font-style: normal; font-weight: 400; }
+.po-edit .po-fld, .po-step .po-fld { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.po-edit .po-lb, .po-step .po-lb { color: var(--muted); font-size: var(--fs-xs); font-weight: 500; }
+.po-edit .po-lb i, .po-step .po-lb i { font-style: normal; font-weight: 400; }
 .po-edit .po-ctl { display: flex; align-items: center; min-height: var(--tap); overflow: hidden;
   border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); }
 .po-edit .po-ctl:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }

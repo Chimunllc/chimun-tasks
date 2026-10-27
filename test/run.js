@@ -15981,7 +15981,8 @@ async function swFetchTests() {
     'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poPrevAccounts', 'poAcctKey', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
-    'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poEvStripFormHtml', 'poUploadFiles']);
+    'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poEvStripFormHtml', 'poUploadFiles',
+    'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml']);
 
   // ① Дүн — карго хүсэлтэд ОРОХГҮЙ (хүлээн авахад бодитоор); хуучин `s` талбар уншигдахгүй
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -16469,6 +16470,85 @@ async function swFetchTests() {
       // Зэрэг байршсан зургууд бие биенээ ДАРДАГ байсан (браузерт барьсан): `[...l[k], await …]` нь spread-ийг await-ээс ӨМНӨ авдаг.
       ok(!/\[\.\.\.[^;\n]*?,\s*await\s/.test(mo), '⛔ scan: форм дээр массивын дотор `await` БИЧИХГҮЙ — олон зураг зэрэг орохад нэг нь л үлддэг');
       ok(/Promise\.all\(picked\.map/.test(mo) && /const url = await poUploadImage\(f\); l\[k\] = poImgList\(\[\.\.\.\(l\[k\] \|\| \[\]\), url\]\)/.test(mo), 'scan: олон зургийг зэрэг байршуулж, дуусах бүрд өмнөх жагсаалт дээр НЭМНЭ');
+    }
+
+    // «Худалдан авсан» алхам: Alipay төлбөрийн баримтын ЗУРАГ (юанийн худалдан авалтад заавал); tracking дугаар, ирэх хугацаа УСТСАН
+    {
+      const P1 = 'https://n8n.nomaadcamp.com/img/alipay1.jpg', P2 = 'https://n8n.nomaadcamp.com/img/alipay2.jpg';
+      eq(F.poPfList([P1, P1, 'javascript:alert(1)', 'data:image/png;base64,AAAA', '', null, P2]), [P1, P2], 'баримт: зөвхөн http(s) файлын хаяг, давхардалгүй (base64/javascript: орохгүй)');
+      eq(F.poPfList(Array.from({ length: 9 }, (_, i) => 'https://n8n.nomaadcamp.com/img/p' + i + '.jpg')).length, 6, 'баримт: дээд тал нь 6 зураг');
+      const advP = F.poAdvancePatch({ history: [{ at: 'a', by: 'X', to: 'paid', note: '' }] }, 'ordered', 'C', '', { pf: [P1, 'x', P2] }, '2026-10-27T04:00:00Z');
+      eq([advP.status, advP.history.length, advP.history[1].pf], ['ordered', 2, [P1, P2]], 'баримт: шилжилтийн түүхэнд (pf) хадгалагдана, хуучин түүх үлдэнэ');
+      ok(!('pf' in F.poAdvancePatch({ history: [] }, 'ordered', 'C', '', null).history[0]) && !('pf' in F.poAdvancePatch({ history: [] }, 'ordered', 'C', '', { pf: ['nope'] }).history[0]), 'баримт: зураггүй/буруу хаяг үед pf бичигдэхгүй');
+      const poY = F.poNormalize({ id: 'pf1', status: 'ordered', fx: 540, lines: [{ id: 'a', name: 'Ширээ', q: 1, c: 100 }], history: [{ to: 'paid' }, { to: 'ordered', pf: [P1] }, { to: 'ordered', pf: [P1, P2] }] });
+      eq(F.poPayProof(poY), [P1, P2], 'баримт: бүх шилжилтийн баримтыг нэгтгэнэ (давхардалгүй)');
+      eq(F.poPayProof(F.poNormalize({ id: 'pf0', status: 'paid', lines: [] })), [], 'баримт: байхгүй бол хоосон');
+      const rowY = F.poProofRowHtml(poY);
+      ok(/Alipay төлбөрийн баримт/.test(rowY) && (rowY.match(/data-lightbox=/g) || []).length === 2, 'баримт: юанийн худалдан авалтад «Alipay» гэж нэрлэж, зураг бүр томорно');
+      ok(/Төлбөрийн баримт/.test(F.poProofRowHtml(F.poNormalize({ id: 'pf2', status: 'ordered', fx: 1, lines: [], history: [{ to: 'ordered', pf: [P1] }] }))) && !/Alipay/.test(F.poProofRowHtml(F.poNormalize({ id: 'pf2', status: 'ordered', fx: 1, lines: [], history: [{ to: 'ordered', pf: [P1] }] }))), 'баримт: ₮-ийн худалдан авалтад «Alipay» гэж бичихгүй');
+      eq(F.poProofRowHtml(F.poNormalize({ id: 'pf3', status: 'paid', lines: [] })), '', 'баримт: байхгүй үед мөр гарахгүй');
+      ok(/data-lightbox=/.test(F.poCardHtml(poY, {})) && /Alipay төлбөрийн баримт/.test(F.poCardHtml(poY, {})), 'баримт: картад шууд харагдана');
+
+      const om = src.slice(src.indexOf('function openPoOrderModal('), src.indexOf('/* ─── ХҮЛЭЭН АВАХ → БАРААНД НЭМЭГДЭНЭ'));
+      ok(om.length > 200 && !/po-ordno|po-eta|tracking|Ирэх хугацаа/i.test(om), '⛔ scan: «Захиалгын / tracking дугаар», «Ирэх хугацаа» УСТСАН — буцаж ирэхгүй');
+      ok(/poUploadImage\(f\)/.test(om) && /Promise\.all\(picked\.map/.test(om) && !/\[\.\.\.[^;\n]*?,\s*await\s/.test(om), 'scan: Alipay баримтын зургийг VPS-д олон зураг ЗЭРЭГ байршуулна (массивын дотор await үгүй)');
+      ok(/yuan && !pf\.length/.test(om) && /busy > 0/.test(om), 'scan: юанийн худалдан авалтад баримт заавал, зураг байршиж байхад хадгалахгүй');
+
+      // Цонхыг ҮНЭХЭЭР ажиллуулна: хуурамч цонх (poOpenModal), хуурамч байршуулалт — дарааллыг ЭРГҮҮЛЖ шалгана
+      (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+        const saved = { open: sandbox.poOpenModal, up: sandbox.poUploadImage, mv: sandbox.poMove, rn: sandbox.render, tt: sandbox.showToast };
+        const stP = vm.runInContext('state', sandbox), prevP = stP.purchases;
+        const toasts = [], moves = [];
+        const mkModal = () => {
+          const els = {}, L = {};
+          const el = (sel) => (els[sel] = els[sel] || { innerHTML: '', onclick: null, disabled: false });
+          return { els, L, w: { m: { addEventListener: (t, fn) => { (L[t] = L[t] || []).push(fn); } }, close() { this.closed = true; }, $: el } };
+        };
+        const fire = async (L, type, target) => { for (const fn of (L[type] || [])) await fn({ target }); };
+        const run = async (poSrc, steps) => {
+          stP.purchases = [F.poNormalize(poSrc)];
+          const mm = mkModal();
+          sandbox.poOpenModal = () => mm.w;
+          sandbox.poMove = async (id, to, note, extra) => { moves.push({ id, to, note, extra }); };
+          sandbox.render = () => {}; sandbox.showToast = (m) => { toasts.push(String(m)); };
+          vm.runInContext('openPoOrderModal', sandbox)(poSrc.id);
+          await steps(mm);
+          return mm;
+        };
+        try {
+          sandbox.poUploadImage = async (f) => { await new Promise(r => setTimeout(r, f.name === 'a.png' ? 20 : 1)); return 'https://n8n.nomaadcamp.com/img/' + f.name; };
+          const base = { id: 'ord1', status: 'paid', fx: 540, supplier: 'Taobao', lines: [{ id: 'a', name: 'Ширээ', q: 1, c: 100 }] };
+          // 1) ¥: баримтгүй → татгалзана
+          await run(base, async (mm) => { await mm.els['#po-ook'].onclick({ currentTarget: mm.els['#po-ook'] }); });
+          eq([moves.length, /Alipay/.test(toasts.join('|'))], [0, true], '⛔ цонх: юанийн худалдан авалтад Alipay баримтгүй бол бүртгэхгүй, юу дутууг хэлнэ');
+          // 2) ¥: 2 зураг зэрэг + 1 PDF → зөвхөн зураг, хоёулаа үлдэнэ (нэг нь нөгөөгөө дарахгүй)
+          moves.length = 0; toasts.length = 0;
+          await run(base, async (mm) => {
+            const inp = { files: [{ name: 'a.png', type: 'image/png' }, { name: 'b.png', type: 'image/png' }, { name: 'x.pdf', type: 'application/pdf' }] };
+            await fire(mm.L, 'change', { closest: (s) => s === '#po-pf-in' ? inp : null });
+            await mm.els['#po-ook'].onclick({ currentTarget: mm.els['#po-ook'] });
+          });
+          eq(moves.length === 1 && [moves[0].to, moves[0].note, moves[0].extra.pf.slice().sort()], ['ordered', '', ['https://n8n.nomaadcamp.com/img/a.png', 'https://n8n.nomaadcamp.com/img/b.png']], '⛔ цонх: Alipay-ийн 2 зураг ЗЭРЭГ орж хоёулаа серверт илгээгдэнэ, PDF орохгүй, tracking/ирэх хугацааны тэмдэглэл үгүй');
+          // 3) ✕-ээр хасвал илгээгдэхгүй
+          moves.length = 0;
+          await run(base, async (mm) => {
+            const inp = { files: [{ name: 'b.png', type: 'image/png' }, { name: 'c.png', type: 'image/png' }] };
+            await fire(mm.L, 'change', { closest: (s) => s === '#po-pf-in' ? inp : null });
+            const first = (mm.els['#po-pf'].innerHTML.match(/data-pfdel="0"/g) || []).length;
+            await fire(mm.L, 'click', { closest: (s) => s === '[data-pfdel]' ? { dataset: { pfdel: '0' } } : null });
+            await mm.els['#po-ook'].onclick({ currentTarget: mm.els['#po-ook'] });
+            eq(first, 1, 'цонх: оруулсан зураг бүрд ✕ гарна');
+          });
+          eq(moves.length === 1 && moves[0].extra.pf.length, 1, 'цонх: ✕-ээр хассан зураг серверт илгээгдэхгүй');
+          // 4) ₮: баримтгүй ч бүртгэгдэнэ (заавал биш)
+          moves.length = 0;
+          await run({ ...base, id: 'ord2', fx: 1 }, async (mm) => { await mm.els['#po-ook'].onclick({ currentTarget: mm.els['#po-ook'] }); });
+          eq(moves.length === 1 && [moves[0].to, moves[0].extra], ['ordered', null], 'цонх: ₮-ийн худалдан авалт баримтгүй ч бүртгэгдэнэ');
+        } finally {
+          sandbox.poOpenModal = saved.open; sandbox.poUploadImage = saved.up; sandbox.poMove = saved.mv; sandbox.render = saved.rn; sandbox.showToast = saved.tt;
+          stP.purchases = prevP;
+        }
+      });
     }
   }
 

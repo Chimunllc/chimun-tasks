@@ -16038,7 +16038,8 @@ async function swFetchTests() {
   eq(A('request', CEO), 'approve,reject,edit,cancel', 'процесс: хүсэлт — захирал батлах/татгалзах/засах/цуцлах');
   eq(A('request', { me: 'U' }, 'U'), 'edit,cancel', 'процесс: хүсэлт гаргагч өөрийнхөө хүсэлтийг засч/цуцална, батлахгүй');
   eq(A('request', { me: 'V' }, 'U'), '', 'процесс: гуравдагч хүн хүсэлтэд юу ч хийхгүй');
-  eq(A('approved', CEO), 'pay,cancel', 'процесс: батлагдсан — шилжүүлэх (мөнгө хөдлөөгүй тул цуцлах боломжтой)');
+  eq(A('approved', CEO), 'pay,edit,cancel', 'процесс: батлагдсан — шилжүүлэх, засах (дэлгүүр/данс/мөр), цуцлах (мөнгө хөдлөөгүй тул)');
+  eq(A('approved', { me: 'U', pay: false, approve: true }, 'U'), 'edit,cancel', 'процесс: батлах эрхтэй ч шилжүүлэх эрхгүй хүн засч/цуцална');
   eq(A('approved', { me: 'U', pay: false, approve: false }, 'U'), '', 'процесс: шилжүүлэх эрхгүй хүн шилжүүлсэн гэж тэмдэглэхгүй');
   eq(A('paid', { me: 'U' }, 'U'), 'order', 'процесс: шилжүүлсний дараа хүсэлт гаргагч «худалдан авсан» гэж тэмдэглэнэ');
   eq(A('paid', CEO), 'order', 'процесс: шилжүүлсэн — цуцлах БАЙХГҮЙ (мөнгө гарсан)');
@@ -16225,6 +16226,26 @@ async function swFetchTests() {
     ok(/x\.get\('currency'\) != 'CNY'/.test(py) && /float\(x\['sellRate'\]\)/.test(py) && !/float\(x\['cashSellRate'\]\)\s*\n\s*\)/.test(py), 'khan_fx: бэлэн БУС зарах = sellRate');
     ok(/except Blocked:/.test(py) && /sys\.exit\(1\)/.test(py) && /BLOCK_FILE/.test(py) && !/captcha.*(solve|bypass)/i.test(py.replace(/Хамгаалалтыг тойрохгүй|тойро\w+/g, '')),
        '⛔ khan_fx: bot-хамгаалалт (captcha) хориглосон үед ЗОГСДОГ, тойрохгүй');
+  }
+
+  {
+    // Бараа бүрийн ДЭЛГҮҮР: нэг төлбөр доор өөр өөр дэлгүүрээс авч болно, олон ӨӨР дэлгүүр байвал л карт ил харуулна
+    eq([F.poLine({ shop: '  Xinrui  ' }).shop, F.poLine({}).shop, F.poLine({ shop: 'x'.repeat(300) }).shop.length], ['Xinrui', '', 120], 'дэлгүүр: мөрд хадгалагдана (тайрна), хоосон = хүсэлтийн дэлгүүр');
+    const mk = (lines, extra) => F.poNormalize({ id: 'sh', no: 9, status: 'approved', supplier: 'Jimo', fx: 541.2, created_by: 'U', pay_to: { bank: 'Хаан банк', no: '5001', name: 'Б.Бат' }, lines, ...(extra || {}) });
+    const one = mk([{ id: 'a', name: 'Ширээ', q: 1, c: 10 }, { id: 'b', name: 'Углаа', q: 1, c: 5, shop: 'jimo' }]);
+    const two = mk([{ id: 'a', name: 'Босоо дугуй ширээ', q: 10, c: 201.5 }, { id: 'b', name: 'Углаа', q: 30, c: 18.17, shop: 'Yide Lighting' }]);
+    eq([F.poShops(one), F.poShops(two), F.poLineShop(two, two.lines[0]), F.poLineShop(two, two.lines[1])], [['Jimo'], ['Jimo', 'Yide Lighting'], 'Jimo', 'Yide Lighting'], 'дэлгүүр: ижил нэр (том/жижиг) нэгтгэгдэнэ, хоосон = хүсэлтийн дэлгүүр');
+    const h1 = F.poCardHtml(one, { me: 'C' }), h2 = F.poCardHtml(two, { me: 'C' });
+    ok(!/🏪/.test(h1) && /<span>Нийлүүлэгч<\/span><b>Jimo<\/b>/.test(h1), 'карт: бүх бараа нэг дэлгүүрийнх бол дэлгүүр нүүрэнд давтагдахгүй');
+    ok((h2.match(/🏪 /g) || []).length === 2 && /🏪 Jimo · 10 ×/.test(h2) && /🏪 Yide Lighting · 30 ×/.test(h2), '⛔ карт: олон өөр дэлгүүр байвал бараа БҮРД дэлгүүр ил (өөр өөр дэлгүүрээс авч байгаа нь харагдана)');
+    ok(/<span>Дэлгүүр \(2\)<\/span><b>Jimo · Yide Lighting<\/b>/.test(h2), 'карт: Дэлгэрэнгүйд бүх дэлгүүр жагсана');
+    ok((h2.match(/<span>Дэлгүүр<\/span>/g) || []).length === 2 && !/<span>Дэлгүүр<\/span>/.test(h1), 'задаргаа: олон дэлгүүртэй үед бараа бүрд «Дэлгүүр» мөр');
+    const rp = F.poReceiptPlan({ id: 'p', no: 9, supplier: 'Jimo', fx: 540 }, F.poLine({ id: 'b', name: 'Углаа', q: 2, c: 18, shop: 'Yide Lighting' }), 2, null, { code: 'M-500', today: '2026-11-02' });
+    eq(rp.fields.supplier, 'Yide Lighting', 'хүлээн авах: шинэ барааны нийлүүлэгч = ТЭР барааны дэлгүүр (хүсэлтийнх биш)');
+    const asrcS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const moS = asrcS.slice(asrcS.indexOf('async function openPoModal('), asrcS.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
+    ok(/data-f="shop"/.test(asrcS.slice(asrcS.indexOf('function poLineCardHtml('), asrcS.indexOf('async function openPoModal('))) && /f === 'shop'\) l\.shop = e\.target\.value/.test(moS), 'scan: хүсэлтийн цонхонд бараа бүрийн «Дэлгүүр» талбар');
+    ok(/to: ex\.status, note: 'Засварласан'/.test(moS) && /\}, ex\.status\);/.test(moS), '⛔ scan: батлагдсан хүсэлтийг засахад төлөв «request» руу буцахгүй (оптимист түгжээ ч ex.status)');
   }
 
   // ⑦г КАРГО (Хятад → УБ) хүлээн авахад

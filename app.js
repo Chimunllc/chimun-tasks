@@ -27017,6 +27017,17 @@ function poFxOn(cfg, ymd) {
 }
 // Автомат ханш (Хаан банк) хүсэлтэд хүчинтэй эсэх: тухайн өдрийнх, эсвэл ≤ 5 хоногийн өмнөх (анхааруулгатай). Бусад нь гараар.
 const PO_FX_STALE_DAYS = 5;
+/* Төлөөгүй (хүсэлт / батлагдсан) юанийн худалдан авалтын ханш = ОДООГИЙН Хаан банкны ханш — Excel-ээс орсон 540 гэх мэт хуучин утга БИШ (CEO 2026-10-27:
+   «ханш орж ирэхгүй 540 хэвээрээ»). Шилжүүлсний дараа тухайн өдрийн ханшаар ТОГТООГДОНО (өртгийн суурь, `poFxOn`) — тэгэхээс өмнө л «амьд» тооцоо.
+   ⛔ DB-д БИЧИХГҮЙ (харуулах, тооцоолоход л) — хадгалсан ханш хөндөгдөхгүй. Автомат ханш огт байхгүй бол хадгалсан ханш хэвээр. */
+function poLive(po, cfg, today) {
+  if (!po || po.fx === 1 || (po.status !== 'request' && po.status !== 'approved')) return po;
+  const f = poFxAuto(cfg, today || todayStr());
+  if (!f) return po;
+  const next = { ...po, fx: f.rate, fxLive: { date: f.date, exact: f.exact, at: f.at } };
+  next.total_mnt = poTotals(next).total;
+  return next;
+}
 function poFxAuto(cfg, ymd) {
   const f = poFxOn(cfg, ymd);
   if (!f) return null;
@@ -27260,7 +27271,9 @@ function poHeaders(extra) {
   return { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', ...(extra || {}) };
 }
 function poById(id) { return (state.purchases || []).find(p => String(p.id) === String(id)) || null; }
-function poPut(po) {
+function poFxCfgNow() { return state._poFxCfg || (state.appConfig && state.appConfig[PO_FX_KEY]) || null; }
+function poPut(po0) {
+  const po = poLive(po0, poFxCfgNow());
   const list = state.purchases || (state.purchases = []);
   const i = list.findIndex(p => String(p.id) === String(po.id));
   if (i >= 0) list[i] = po; else list.unshift(po);
@@ -27284,7 +27297,9 @@ async function loadPurchases(force) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const raw = await r.json();
     if (raw.length) state._poHasPayTo = 'pay_to' in raw[0];   // багана DB-д байгаа эсэх (SQL ажиллуулаагүй бол бичихгүй, самбар ил хэлнэ)
-    state.purchases = raw.map(poNormalize);
+    const fxCfg = await loadAppConfig(PO_FX_KEY);   // унавал null (өөрөө бүртгэнэ) — хуучин ханш хэвээр
+    if (fxCfg && fxCfg.rates) state._poFxCfg = fxCfg;
+    state.purchases = raw.map(poNormalize).map(p => poLive(p, poFxCfgNow()));   // төлөөгүй хүсэлт = одоогийн Хаан банкны ханш
     state._poMissing = false;
     state._poAt = Date.now();
   } catch (e) { dataLoadFailed('loadPurchases', e); }
@@ -27570,7 +27585,7 @@ function poDetailsHtml(po) {
   return `<details class="po-more"><summary>Дэлгэрэнгүй</summary>
     ${kv('Нийлүүлэгч', escapeHtml(po.supplier || ''))}
     ${kv('Платформ', escapeHtml(po.platform || ''))}
-    ${po.fx !== 1 ? kv('Ханш', `¥1 = ${escapeHtml(String(po.fx))}₮`) : ''}
+    ${po.fx !== 1 ? kv('Ханш', `¥1 = ${escapeHtml(String(po.fx))}₮${po.fxLive ? ` <span class="po-muted">Хаан банк${po.fxLive.exact ? '' : ' · ' + escapeHtml(po.fxLive.date.slice(5)) + '-ны'} · шилжүүлэхэд тогтоогдоно</span>` : ''}`) : ''}
     ${kv('Төлөх данс', escapeHtml(poPayToText(po.pay_to)))}
     ${kv('Хэзээ хүртэл', escapeHtml(po.need_by || ''))}
     ${poBreakdownHtml(po)}

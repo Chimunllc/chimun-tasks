@@ -27080,6 +27080,69 @@ function poShops(po) {
   ((po && po.lines) || []).forEach(l => { const sh = poLineShop(po, l); if (sh && !out.some(x => x.toLowerCase() === sh.toLowerCase())) out.push(sh); });
   return out;
 }
+/* КАТАЛОГТ ИЖИЛ БАРАА БАЙГАА ЭСЭХ (CEO 2026-10-27: «босоо дугуй ширээ код зөв орсон, углаа кодгүй»). Кодгүй (холбоогүй) мөр хүлээн авахад ШИНЭ бараа болж давхардах эрсдэлтэй —
+   нэрний төстэй байдлаар (`itemNameScore`) каталогийг хайж САНАЛ болгоно. ⛔ АВТОМАТААР ХОЛБОХГҮЙ: нэр төстэй хоёр өөр бараа байж болно — хүн баталгаажуулна. */
+function poCatalogSimilar(products, name, haveSkus, limit, min) {
+  const q = String(name || '').trim();
+  if (q.length < 2) return [];
+  const have = haveSkus instanceof Set ? haveSkus : new Set(haveSkus || []);
+  return (products || []).filter(p => p && p.sku && !have.has(p.sku) && !isPackage(p))
+    .map(p => ({ p, s: itemNameScore(q, p.name) })).filter(x => x.s >= (min || 0.3))
+    .sort((a, b) => b.s - a.s).slice(0, limit || 3).map(x => x.p);
+}
+function poUnlinkedHints(po, products) {
+  const have = new Set(((po && po.lines) || []).map(l => l.sku).filter(Boolean));
+  const out = [];
+  ((po && po.lines) || []).forEach(l => {
+    if (l.sku || !String(l.name || '').trim()) return;
+    const m = poCatalogSimilar(products, l.name, have, 2, 0.3);
+    if (m.length) out.push({ line: l, matches: m });
+  });
+  return out;
+}
+/* БАРААНЫ ХУДАЛДАН АВАЛТЫН ТҮҮХ (агуулахын барааны цонхонд): хүлээн авсан мөр бүр = хэдэн ш, ямар өртгөөр (бараа + бодит карго ÷ ирсэн тоо).
+   Дундаж өртөг = Σ(тоо × өртөг) ÷ Σ тоо — зөвхөн худалдан авалтаар ОРСОН бараанаас. ⛔ Шинэ хүснэгт БАЙХГҮЙ: худалдан авалтын мөр (`rcv`, `cg`)-өөс өөрөө гарна. Нөөцийн
+   одоогийн өртөг (`products.cost`) нь өмнөх нөөцтэй жигнэсэн дундаж тул ЯЛГААТАЙ байж болно — хоёулаа ил. */
+function poReceivedAt(po) {
+  const h = ((po && po.history) || []).slice().reverse().find(x => (x.to === 'received' || x.to === 'ordered') && /ирсэн/.test(String(x.note || '')));
+  return String((h && h.at) || (po && (po.updated_at || po.created_at)) || '').slice(0, 10);
+}
+function poReceiptsOfSku(purchases, sku) {
+  const out = { rows: [], qty: 0, total: 0, avg: 0 };
+  if (!sku) return out;
+  (purchases || []).forEach(po => {
+    (po.lines || []).forEach(l => {
+      const q = Number(l.rcv) || 0;
+      if (l.sku !== sku || !(q > 0)) return;
+      const goods = Math.round((Number(l.c) || 0) * (po.fx > 0 ? po.fx : 1));
+      const real = poLineRealUnit(po, l);
+      const unit = real != null ? real : goods;
+      out.rows.push({ id: po.id, no: po.no, date: poReceivedAt(po), shop: poLineShop(po, l), qty: q, unit, goods,
+        cargo: l.cg != null ? Math.round((Number(l.cg) || 0) / q) : null });
+      out.qty += q; out.total += q * unit;
+    });
+  });
+  out.rows.sort((a, b) => String(b.date).localeCompare(String(a.date)) || (Number(b.no) || 0) - (Number(a.no) || 0));
+  out.avg = out.qty > 0 ? Math.round(out.total / out.qty) : 0;
+  out.total = Math.round(out.total);
+  return out;
+}
+function poProductHistoryHtml(sku, purchases, product) {
+  const h = poReceiptsOfSku(purchases, sku);
+  if (!h.rows.length) return '';
+  const cur = Number(product && product.cost) || 0;
+  return `<div class="pm-po"><div class="pm-po-h">🛒 Худалдан авалтаар орсон: <b>${h.qty} ш</b> · дундаж өртөг <b>${escapeHtml(fmtMoney(h.avg))}</b></div>
+    ${h.rows.slice(0, 8).map(r => `<div class="pm-po-r"><span>#${escapeHtml(String(r.no == null ? '—' : r.no))} · ${escapeHtml(r.date.slice(5))}${r.shop ? ' · ' + escapeHtml(r.shop) : ''}</span>
+      <span>${r.qty} ш × <b>${escapeHtml(fmtMoney(r.unit))}</b>${r.cargo != null ? ` <small>(бараа ${escapeHtml(fmtMoney(r.goods))} + карго ${escapeHtml(fmtMoney(r.cargo))})</small>` : ' <small>(карго оруулаагүй)</small>'}</span></div>`).join('')}
+    ${h.rows.length > 8 ? `<div class="pm-hint">…бусад ${h.rows.length - 8} худалдан авалт</div>` : ''}
+    ${cur > 0 ? `<div class="pm-hint">Нөөцийн одоогийн өртөг <b>${escapeHtml(fmtMoney(cur))}</b> — өмнөх нөөцтэй жигнэсэн дундаж (дээрх нь зөвхөн худалдан авалтаар орсон хэсэг).</div>` : ''}</div>`;
+}
+async function poFillProductHistory(root, sku, product) {
+  const box = root && root.querySelector && root.querySelector('#pm-po-hist');
+  if (!box || !sku || !canSeePurchases()) return;
+  if (!state.purchases && !state._poMissing) await loadPurchases(true);
+  if (box.isConnected) box.innerHTML = poProductHistoryHtml(sku, state.purchases, product);
+}
 function poNormalize(row) {
   const r = row || {};
   const arr = (v) => Array.isArray(v) ? v : [];
@@ -27543,7 +27606,7 @@ function poLineRowHtml(po, l) {
     ${poThumbHtml(poImgOf(l)) || '<span class="po-th po-th-none" aria-hidden="true">📷</span>'}
     <div class="po-cl-b">
       <span class="po-cl-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span>
-      <small>${shopTag}${l.q} × ${poUnitIsRounded(l.c) ? '≈' : ''}${escapeHtml(poFmtNum(l.c))}${cur}${unitMnt}${l.sku ? ' · ' + escapeHtml(l.sku) : ''}${cargo}${l.u ? ` · <a class="po-ln-a" href="${escapeHtml(l.u)}" target="_blank" rel="noopener noreferrer">линк ↗</a>` : ''}</small>
+      <small>${shopTag}${l.q} × ${poUnitIsRounded(l.c) ? '≈' : ''}${escapeHtml(poFmtNum(l.c))}${cur}${unitMnt}${l.sku ? ' · ' + escapeHtml(l.sku) : ' · 🆕 шинэ'}${cargo}${l.u ? ` · <a class="po-ln-a" href="${escapeHtml(l.u)}" target="_blank" rel="noopener noreferrer">линк ↗</a>` : ''}</small>
       ${rc}
     </div>
     <b class="po-cl-t">${escapeHtml(fmtMoney(x.total))}</b>
@@ -27585,7 +27648,7 @@ function poBreakdownHtml(po) {
       ${kv('Нэгж үнэ', cny ? `${approx}¥${escapeHtml(poFmtNum(l.c))} ≈ ${escapeHtml(fmtMoney(unitMnt))}` : `${approx}${escapeHtml(fmtMoney(unitMnt))}`)}
       ${l.cg != null ? kv('Карго (бодит)', escapeHtml(fmtMoney(l.cg))) : (cny ? kv('Карго', '<span class="po-muted">бараа ирэхэд оруулна</span>') : '')}
       ${real != null ? kv('Нэгж өртөг (карго орсон)', `≈ ${escapeHtml(fmtMoney(real))}`) : ''}
-      ${l.sku ? kv('Код', escapeHtml(l.sku)) : ''}
+      ${kv('Код', l.sku ? escapeHtml(l.sku) : '<span class="po-muted">🆕 шинэ бараа · хүлээн авахад код өгөгдөнө</span>')}
       ${kv('Салбар', escapeHtml(PO_BRANCH_LABEL[l.b] || l.b))}
       ${got}
       ${l.u ? `<div class="po-files"><a class="po-ln-a" href="${escapeHtml(l.u)}" target="_blank" rel="noopener noreferrer">🔗 линк ↗</a></div>` : ''}
@@ -27625,6 +27688,7 @@ function poCardHtml(po, caps) {
   const t = poTotals(po);
   const acts = poActions(po, caps);
   const probs = po.status === 'request' ? poProblems(po) : [];
+  const hints = (po.status === 'request' || po.status === 'approved' || po.status === 'paid' || po.status === 'ordered') ? poUnlinkedHints(po, state.products) : [];
   const dl = poIsOpen(po) ? poDaysLeft(po.need_by) : null;
   const due = po.need_by && dl != null && dl <= 7
     ? `<span class="po-due${dl < 0 ? ' late' : ''}">⏰ ${escapeHtml(po.need_by.slice(5))} хүртэл${dl >= 0 ? ` · ${dl} хоног` : ' · хэтэрсэн'}</span>` : '';
@@ -27654,6 +27718,7 @@ function poCardHtml(po, caps) {
     ${pay}
     <div class="po-sub">${[po.platform, memberName(po.created_by), fmtDateTimeUB(po.created_at)].filter(Boolean).map(escapeHtml).join(' · ')}</div>
     ${poProgressHtml(po.status)}
+    ${hints.length ? `<div class="po-hint">${hints.slice(0, 2).map(h => `ℹ «${escapeHtml(h.line.name)}» кодгүй — каталогт ${h.matches.map(p => `«${escapeHtml(p.name || p.sku)}» (${escapeHtml(String(p.code || p.sku))})`).join(', ')} байна. Давхар бараа үүсгэхгүйн тулд ${po.status === 'request' || po.status === 'approved' ? '«Засах»-аар' : 'хүлээн авахдаа'} холбоорой.`).join('<br>')}</div>` : ''}
     ${probs.length ? `<div class="po-probs">⚠ Батлахаас өмнө засах: ${escapeHtml(probs.slice(0, 3).join(' · '))}${probs.length > 3 ? ' …' : ''}</div>` : ''}
     ${btns ? `<div class="po-acts">${btns}</div>` : ''}
     ${poDetailsHtml(po)}
@@ -28279,7 +28344,16 @@ async function openPoReceiveModal(id) {
   const open = rows.filter(r => poLineLeft(r) > 0);
   const prodOf = (r) => r.sku ? (state.products || []).find(p => p.sku === r.sku) : null;
   const cats = [...new Set((state.products || []).map(p => p.category).filter(Boolean))].sort();
-  const ent = open.map(r => ({ row: r, get: poLineLeft(r), short: false, b: r.b, cat: r.cat, name: r.name }));
+  const ent = open.map(r => ({ row: r, get: poLineLeft(r), short: false, b: r.b, cat: r.cat, name: r.name, lq: '', linkedHere: false }));
+  // Кодгүй мөрт каталогоос ижил бараа санал болгоно / хайна (давхар бараа үүсэхээс сэргийлнэ). ⛔ Автоматаар холбохгүй.
+  const lnkResHtml = (e, i) => {
+    const have = new Set(rows.map(x => x.sku).filter(Boolean));
+    const q = String(e.lq || '').trim();
+    const hits = q.length >= 2 ? poCatalogMatches(state.products, q, have, 5) : poCatalogSimilar(state.products, e.name, have, 3, 0.3);
+    return hits.length
+      ? hits.map(p => `<button type="button" class="ui-raw po-hit" data-lnk="${i}" data-sku="${escapeHtml(p.sku)}"><span>${escapeHtml(p.name || p.sku)}</span><small>${escapeHtml(String(p.code || p.sku))} · одоо ${prodTotalQty(p)} ш</small></button>`).join('')
+      : `<div class="po-sug-h">${q ? 'Олдсонгүй' : 'Ижил бараа олдсонгүй'} — шинэ бараа болж код авна.</div>`;
+  };
   const cardHtml = (e, i) => {
     const r = e.row, p = prodOf(r), left = poLineLeft(r), unit = poLineTotals(r, po.fx).unit;
     return `<div class="po-rl" data-i="${i}">
@@ -28287,13 +28361,16 @@ async function openPoReceiveModal(id) {
         <span class="po-badge${p ? '' : ' new'}">${p ? escapeHtml(p.sku) + ' · одоо ' + prodTotalQty(p) + ' ш' : (r.sku ? 'олдсонгүй' : 'шинэ бараа')}</span></div>
       <div class="po-rl-info">Захиалсан ${r.q} · өмнө ирсэн ${r.rcv} · <b>үлдсэн ${left}</b> · нэгж өртөг ${escapeHtml(fmtMoney(unit))}</div>
       ${r.sku && !p ? '<div class="po-probs">⚠ Бараа каталогт олдсонгүй (архивлагдсан байж магадгүй) — энэ мөрийг хүлээж авахгүй</div>' : ''}
+      ${!r.sku ? `<div class="po-lkbox"><div class="po-sug-h">🆕 Кодгүй бараа. Каталогт байгаа бол холбоно уу (давхар бараа үүсэхгүй):</div><div data-lres="${i}">${lnkResHtml(e, i)}</div>
+        <input class="ui-raw po-line-in" data-f="lq" value="${escapeHtml(e.lq || '')}" placeholder="Каталогоос хайх (нэр, код)…" aria-label="Каталогоос хайх"></div>`
+        : (e.linkedHere ? `<div class="po-linked">✓ Каталогтой холбосон · <button type="button" class="ui-raw po-lnk" data-unl="${i}">салгах</button></div>` : '')}
       <div class="po-line-grid">
         <label>Одоо ирсэн<input class="ui-raw po-num" data-f="get" type="number" min="0" max="${left}" step="1" inputmode="numeric" value="${e.get}"></label>
         <label>Аль салбарт<select class="ui-raw po-sel" data-f="b">${Object.entries(PO_BRANCH_LABEL).map(([k, v]) => `<option value="${k}"${e.b === k ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('')}</select></label>
         ${r.sku ? '' : `<label>Барааны нэр<input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(e.name)}"></label>
         <label>Ангилал<input class="ui-raw po-line-in" data-f="cat" list="po-cat-dl" value="${escapeHtml(e.cat)}" placeholder="жишээ: Гэрэлтүүлэг"></label>`}
       </div>
-      <label class="po-chk"><input type="checkbox" data-f="short"> Үлдсэнийг хүлээхгүй (дутуу ирсэн / ирэхгүй)</label>
+      <label class="po-chk"><input type="checkbox" data-f="short"${e.short ? ' checked' : ''}> Үлдсэнийг хүлээхгүй (дутуу ирсэн / ирэхгүй)</label>
       <div class="po-line-sum" data-after="${i}"></div>
     </div>`;
   };
@@ -28307,7 +28384,7 @@ async function openPoReceiveModal(id) {
       <label class="fld">🚚 Карго / тээврийн төлбөр ₮ <span class="fld-opt">(${needCargo ? 'заавал · ' : ''}Хятад → УБ, ЭНЭ ирсэн ачаанд бодитоор төлсөн)</span><input id="pr-cargo" class="ui-raw" type="number" min="0" step="1000" inputmode="numeric" placeholder="${needCargo ? 'бодит дүн (төлөөгүй бол 0)' : 'бодит дүн'}"></label>
       <div class="po-note">Каргийг ирсэн барааны ТООНД (ширхэгт) жигд хувааж нэгж өртөгт нэмнэ — нэгж өртөг бодитоор гарна.</div>
       <datalist id="po-cat-dl">${cats.map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
-      ${open.length ? ent.map(cardHtml).join('') : '<div class="po-empty">Бүх мөр дэвтэрт бүртгэгдсэн байна. Худалдан авалтыг «Хүлээн авсан» болгож хаана.</div>'}
+      <div id="pr-cards">${open.length ? ent.map(cardHtml).join('') : '<div class="po-empty">Бүх мөр дэвтэрт бүртгэгдсэн байна. Худалдан авалтыг «Хүлээн авсан» болгож хаана.</div>'}</div>
       ${doneRows.length ? `<div class="po-note">✓ Өмнө бүртгэгдсэн: ${doneRows.map(r => escapeHtml((r.name || r.sku) + ' ×' + r.rcv)).join(', ')}</div>` : ''}
       <div id="pr-total" class="po-total"></div>
     </div>
@@ -28332,10 +28409,17 @@ async function openPoReceiveModal(id) {
     w.$('#pr-total').innerHTML = kinds ? `Нөөцөд нэмэгдэх: <b>${kinds} төрөл · ${n} ш</b>${cg != null ? ` · карго <b>${escapeHtml(fmtMoney(cg))}</b>${n > 0 ? ` · 1 ширхэгт ≈ <b>${escapeHtml(fmtMoney(Math.round(cg / n)))}</b>` : ''}` : (needCargo ? ' · <span class="po-muted">карго оруулаагүй</span>' : '')}` : '';
   };
   w.$('#pr-cargo').addEventListener('input', after);
+  const drawCards = () => { const box = w.$('#pr-cards'); if (box) box.innerHTML = ent.map(cardHtml).join(''); after(); };
+  w.m.addEventListener('click', (ev) => {
+    const lk = ev.target.closest && ev.target.closest('[data-lnk]'), un = ev.target.closest && ev.target.closest('[data-unl]');
+    if (lk) { const e = ent[+lk.dataset.lnk]; if (e) { e.row.sku = lk.dataset.sku; e.linkedHere = true; drawCards(); } return; }
+    if (un) { const e = ent[+un.dataset.unl]; if (e) { e.row.sku = ''; e.linkedHere = false; drawCards(); } }
+  });
   w.m.addEventListener('input', (ev) => {
     const f = ev.target.dataset && ev.target.dataset.f, card = ev.target.closest('[data-i]');
     if (!f || !card) return;
     const e = ent[+card.dataset.i]; if (!e) return;
+    if (f === 'lq') { e.lq = ev.target.value; const res = w.$(`[data-lres="${card.dataset.i}"]`); if (res) res.innerHTML = lnkResHtml(e, +card.dataset.i); return; }
     if (f === 'short') e.short = ev.target.checked;
     else if (f === 'get') e.get = Math.max(0, Math.round(Number(ev.target.value) || 0));
     else e[f] = ev.target.value;
@@ -28348,6 +28432,12 @@ async function openPoReceiveModal(id) {
       short: e.short, b: e.b, cat: e.cat, name: e.name })).filter(x => x.get > 0 || x.short);
     const finishOnly = !open.length && poAllReceived({ lines: rows });
     if (!work.length && !finishOnly) { showToast('Ирсэн тоогоо оруулна уу', 'warn'); return; }
+    const noCat = ent.find(e => getOf(e) > 0 && !e.row.sku && !String(e.cat || '').trim());
+    if (noCat) {   // ангилалгүй шинэ бараа сайт/тайлангаас алга болдог — ирэх үед нь заавал
+      const el = w.m.querySelector(`[data-i="${ent.indexOf(noCat)}"] [data-f="cat"]`);
+      if (el) { el.classList.add('po-bad'); if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); el.focus(); }
+      showToast(`«${noCat.name || noCat.row.name}» шинэ бараа — ангилалаа сонгоно уу (ангилалгүй бараа сайт, тайлангаас алга болдог)`, 'warn', 5000); return;
+    }
     if (needCargo && cargoVal() == null && work.some(x => x.get > 0)) {
       const c = w.$('#pr-cargo'); c.classList.add('po-bad'); if (c.scrollIntoView) c.scrollIntoView({ block: 'center' }); c.focus();
       showToast('Каргоны төлбөрөө оруулна уу (төлөөгүй бол 0) — нэгж өртөг бодитоор гарахад хэрэгтэй', 'warn', 5000); return;
@@ -30328,6 +30418,7 @@ ${_pkgMode ? `
             ${d.endYm ? `<br>Бүрэн элэгдэх: <b>${d.endYm}</b>` : '<br>⚠ Худалдан авсан огноо байхгүй — насаа дуусгасан эсэхийг мэдэх аргагүй тул элэгдүүлсээр байна. Огноог бөглөвөл зогсоно.'}
             <br>Насыг ангиллаар тогтооно (Санхүү → Тайлан → Салбар задаргаа дахь элэгдлийн мөр эндээс нийлбэрлэгдэнэ).</div>`;
         })()}
+        ${isEdit && !_isPkg0 && !asPkg && canSeePurchases() ? '<div id="pm-po-hist"></div>' : ''}
         ${isEdit && !_isPkg0 && !asPkg ? `<div class="pm-buy">
           <button type="button" class="btn ui-raw pm-buy-open" id="pm-buy-open">+ Нэмж авсан</button>
           <div class="pm-buy-form" id="pm-buy-form" hidden>
@@ -30393,6 +30484,7 @@ ${_pkgMode ? `
   // ── «+ Нэмж авсан» — жигнэсэн дундаж өртөг + нөөц нэмэх ──────────────────
   // ХАДГАЛАХГҮЙ: зөвхөн формын талбаруудыг бөглөнө. «💾 Хадгалах» нь эрхийн
   // шүүлтээр (restrictProductEdit) дамжсан хэвээр — тойрч гарах зам үүсэхгүй.
+  if (isEdit && p && p.sku) poFillProductHistory(modal, p.sku, p);   // худалдан авалтаар орсон түүх + дундаж өртөг (арын гүйдлээр)
   const buyOpen = modal.querySelector('#pm-buy-open');
   if (buyOpen) {
     const buyForm = modal.querySelector('#pm-buy-form');

@@ -16246,6 +16246,45 @@ async function swFetchTests() {
     const moS = asrcS.slice(asrcS.indexOf('async function openPoModal('), asrcS.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
     ok(/data-f="shop"/.test(asrcS.slice(asrcS.indexOf('function poLineCardHtml('), asrcS.indexOf('async function openPoModal('))) && /f === 'shop'\) l\.shop = e\.target\.value/.test(moS), 'scan: хүсэлтийн цонхонд бараа бүрийн «Дэлгүүр» талбар');
     ok(/to: ex\.status, note: 'Засварласан'/.test(moS) && /\}, ex\.status\);/.test(moS), '⛔ scan: батлагдсан хүсэлтийг засахад төлөв «request» руу буцахгүй (оптимист түгжээ ч ex.status)');
+    // КОД: кодгүй (холбоогүй) мөр ил харагдана, каталогт ижил бараа байвал санал болгоно (автоматаар холбохгүй)
+    const cat = [{ sku: 'M-205', code: 'M-205', name: 'Босоо дугуй ширээ', cost: 100000, qty_mevent: 5 }, { sku: 'M-305', code: 'M-305', name: 'Босоо ширээний углаа', cost: 9000, qty_mevent: 12 }, { sku: 'M-500', code: 'M-500', name: 'Алтан хивс', cost: 1, qty_mevent: 1 }];
+    const sim = F.poCatalogSimilar(cat, 'Босоо дугуй ширээ углаа', new Set(['M-205']), 3, 0.3);
+    eq(sim.map(p => p.sku), ['M-305'], '⛔ код: кодгүй «углаа»-д каталогийн «Босоо ширээний углаа» санал болно, аль хэдийн холбосон (M-205) ба хамааралгүй бараа орохгүй');
+    eq([F.poCatalogSimilar(cat, '', null, 3), F.poCatalogSimilar(cat, 'Огт өөр зүйл xyz', null, 3, 0.3)], [[], []], 'код: хоосон/хамааралгүй нэрэнд санал гарахгүй');
+    const pl = F.poNormalize({ id: 'h', no: 9, status: 'approved', supplier: 'Jimo', fx: 541.2, created_by: 'U', lines: [{ id: 'a', sku: 'M-205', name: 'Босоо дугуй ширээ', q: 10, c: 201.5 }, { id: 'b', name: 'Босоо дугуй ширээ углаа', q: 30, c: 18.17 }] });
+    eq(F.poUnlinkedHints(pl, cat).map(h => [h.line.id, h.matches[0].sku]), [['b', 'M-305']], 'код: холбоогүй мөр бүрт каталогийн санал');
+    const stP = vm.runInContext('state', sandbox);
+    const sv = stP.products; stP.products = cat;
+    const hc = F.poCardHtml(pl, { me: 'C' });
+    stP.products = sv;
+    ok(/ · M-205 /.test(hc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') + ' ') && /🆕 шинэ/.test(hc), '⛔ карт: холбосон бараа кодтой, холбоогүй нь «🆕 шинэ» (кодгүй нь нууцлагдахгүй)');
+    ok(/class="po-hint"/.test(hc) && /«Босоо ширээний углаа» \(M-305\)/.test(hc) && /«Засах»-аар/.test(hc), '⛔ карт: каталогт ижил бараа байвал «Давхар бараа үүсгэхгүйн тулд холбоорой» гэж сануулна');
+    ok(/🆕 шинэ бараа · хүлээн авахад код өгөгдөнө/.test(hc), 'задаргаа: кодгүй мөрт «хүлээн авахад код өгөгдөнө»');
+    const recvd = F.poNormalize({ id: 'r', no: 9, status: 'received', supplier: 'Jimo', fx: 540, created_by: 'U', lines: [{ id: 'b', sku: 'M-310', name: 'Углаа', q: 30, c: 18, rcv: 30, cg: 30000 }] });
+    ok(!/class="po-hint"/.test(F.poCardHtml(recvd, { me: 'C' })) && /· M-310 /.test(F.poCardHtml(recvd, { me: 'C' }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') + ' '), 'карт: хүлээн авсны дараа мөр код авсан, санал алга');
+  }
+  {
+    // АГУУЛАХ: худалдан авалтаар орсон түүх + дундаж өртөг (шинэ хүснэгтгүй — худалдан авалтын мөрөөс)
+    const P = [
+      F.poNormalize({ id: 'p1', no: 7, status: 'received', supplier: 'Jimo', fx: 540, updated_at: '2026-10-20T01:00:00Z', history: [{ at: '2026-10-20T01:00:00Z', to: 'received', note: 'Бүгд ирсэн: Ширээ ×10' }],
+        lines: [{ id: 'a', sku: 'M-205', name: 'Ширээ', q: 10, c: 200, rcv: 10, cg: 10000 }] }),
+      F.poNormalize({ id: 'p2', no: 9, status: 'ordered', supplier: 'Jimo', fx: 541.2, updated_at: '2026-10-27T01:00:00Z', history: [{ at: '2026-10-27T01:00:00Z', to: 'ordered', note: 'Хэсэгчлэн ирсэн: Ширээ ×5' }],
+        lines: [{ id: 'a', sku: 'M-205', name: 'Ширээ', q: 20, c: 201.5, rcv: 5 }, { id: 'z', sku: 'M-999', name: 'Өөр', q: 1, c: 5, rcv: 1 }] }),
+      F.poNormalize({ id: 'p3', no: 10, status: 'approved', supplier: 'X', fx: 540, lines: [{ id: 'a', sku: 'M-205', name: 'Ширээ', q: 3, c: 100 }] }),
+    ];
+    const h = F.poReceiptsOfSku(P, 'M-205');
+    eq(h.rows.map(r => [r.no, r.qty, r.unit, r.cargo]), [[9, 5, Math.round(201.5 * 541.2), null], [7, 10, 108000 + 1000, 1000]], '⛔ агуулах: орсон мөр бүр (хүлээн аваагүй #10 ОРОХГҮЙ), карго оруулсан/оруулаагүй нь ялгарна, сүүлийнх нь эхэнд');
+    eq([h.qty, h.avg], [15, Math.round((5 * Math.round(201.5 * 541.2) + 10 * 109000) / 15)], '⛔ агуулах: дундаж өртөг = Σ(тоо × өртөг) ÷ Σ тоо');
+    eq(F.poReceiptsOfSku(P, 'M-404').rows.length + F.poReceiptsOfSku(P, '').rows.length, 0, 'агуулах: холбоогүй/байхгүй бараа — түүх хоосон');
+    eq(F.poReceivedAt(P[0]), '2026-10-20', 'агуулах: хүлээн авсан огноо = «ирсэн» тэмдэглэлтэй түүхийн мөр');
+    const hh = F.poProductHistoryHtml('M-205', P, { cost: 105000 });
+    ok(/дундаж өртөг <b>[^<]+<\/b>/.test(hh) && /5 ш × <b>/.test(hh) && /карго оруулаагүй/.test(hh) && /Нөөцийн одоогийн өртөг <b>105,000₮<\/b>/.test(hh), 'агуулах: түүх + дундаж + нөөцийн жигнэсэн өртөг (хоёулаа ил)');
+    eq(F.poProductHistoryHtml('M-404', P, {}), '', 'агуулах: түүхгүй бараанд хоосон');
+    const asrcH = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(/id="pm-po-hist"/.test(asrcH) && /poFillProductHistory\(modal, p\.sku, p\)/.test(asrcH) && /!canSeePurchases\(\)\) return/.test(asrcH), 'scan: барааны цонхонд түүх (худалдан авалтын эрхтэй хүнд л)');
+    const rmH = asrcH.slice(asrcH.indexOf('async function openPoReceiveModal('), asrcH.indexOf('async function openPoImportModal('));
+    ok(/data-lnk=/.test(rmH) && /e\.row\.sku = lk\.dataset\.sku/.test(rmH) && /poCatalogSimilar\(state\.products, e\.name/.test(rmH), '⛔ scan: хүлээн авахад кодгүй мөрийг каталогтой холбох (давхар бараа үүсгэхгүй)');
+    ok(/const noCat = ent\.find\(e => getOf\(e\) > 0 && !e\.row\.sku && !String\(e\.cat/.test(rmH), '⛔ scan: ангилалгүй шинэ бараа үүсгэхгүй (ирэх үед ангилал заавал)');
   }
 
   // ⑦г КАРГО (Хятад → УБ) хүлээн авахад

@@ -15978,24 +15978,28 @@ async function swFetchTests() {
   need(['poLine', 'poLineTotals', 'poTotals', 'poProblems', 'poLineLeft', 'poAllReceived', 'poSummary', 'poActions',
     'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
     'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
-    'poFxValid', 'poFxOn', 'poFxMerge', 'poFxSave', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
+    'poFxValid', 'poFxOn', 'poFxAuto', 'poLineRealUnit', 'poUnitCost', 'poCargoAlloc', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded']);
 
-  // ① Дүн — PDF-ийн бодит тоо (Xinrui 3000W: ¥1,511 × 540 + 182,460 = 998,400₮)
+  // ① Дүн — карго хүсэлтэд ОРОХГҮЙ (хүлээн авахад бодитоор); хуучин `s` талбар уншигдахгүй
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
-  eq([x.item, x.ship, x.total, x.unit], [815940, 182460, 998400, 998400], 'худалдан авалт: Xinrui 3000W = 998,400₮ (PDF-тэй таарна)');
+  eq([x.item, x.ship, x.total, x.unit], [815940, 0, 815940, 815940], '⛔ худалдан авалт: хуучин урьдчилсан карго (s) дүнд ОРОХГҮЙ — зөвхөн бараа');
+  const xc = F.poLineTotals(F.poLine({ q: 1, c: 1511, cg: 182460 }), 540);
+  eq([xc.ship, xc.total, xc.unit], [182460, 998400, 998400], 'худалдан авалт: БОДИТ карго (cg) орвол нийт = бараа + карго');
   eq(F.poLineTotals(F.poLine({ q: 12, c: 80 }), 540).total, 518400, 'худалдан авалт: 12 үсэг × ¥80 × 540');
-  eq(F.poLineTotals(F.poLine({ q: 1, c: 496.85, s: 9000 }), 540).total, 277299, 'худалдан авалт: бутархай ¥ (496.85) зөв бөөрөнхийлөгдөнө');
-  eq(F.poLineTotals(F.poLine({ q: 4, c: 50000, s: 20000 }), 1).total, 220000, 'худалдан авалт: ханш 1 = ₮-өөр үнэлсэн');
-  eq(F.poLineTotals(F.poLine({ q: 4, c: 650, s: 158424 }), 540).unit, Math.round((4 * 650 * 540 + 158424) / 4), 'худалдан авалт: нэгж өртөг = (бараа+карго) ÷ тоо');
+  eq(F.poLineTotals(F.poLine({ q: 1, c: 496.85, cg: 9000 }), 540).total, 277299, 'худалдан авалт: бутархай ¥ (496.85) зөв бөөрөнхийлөгдөнө');
+  eq(F.poLineTotals(F.poLine({ q: 4, c: 50000, cg: 20000 }), 1).total, 220000, 'худалдан авалт: ханш 1 = ₮-өөр үнэлсэн');
+  eq(F.poLineTotals(F.poLine({ q: 4, c: 650, cg: 158424 }), 540).unit, Math.round((4 * 650 * 540 + 158424) / 4), 'худалдан авалт: нэгж өртөг = (бараа + БОДИТ карго) ÷ тоо');
   eq(F.poLineTotals(F.poLine({ q: 0, c: 100 }), 540).unit, 0, 'худалдан авалт: тоо 0 үед хуваахгүй');
-  const po2 = { fx: 540, lines: [F.poLine({ q: 1, c: 1511, s: 182460 }), F.poLine({ q: 1, c: 1128, s: 226500 })] };
+  const po2 = { fx: 540, lines: [F.poLine({ q: 1, c: 1511, cg: 182460 }), F.poLine({ q: 1, c: 1128, cg: 226500 })] };
   eq(F.poTotals(po2).total, 998400 + 835620, 'худалдан авалт: нийт = мөрүүдийн нийлбэр');
+  eq(F.poNormalize({ id: 'n', fx: 540, total_mnt: 1382652, lines: [{ q: 10, c: 201.5, s: 252 }, { q: 30, c: F.poUnitFromTotal(545, 30) }] }).total_mnt, 1382400,
+     '⛔ нийт дүн: хуучин урьдчилсан карго (s)-тэй хадгалагдсан дүн мөрүүдээс ДАХИН бодогдоно (252₮ гэх мэт хоцрогдол алга болно)');
 
   // ② Мөр цэвэрлэх — муу оролт нуршихгүй
   const pl = F.poLine({ q: '3.7', c: '-5', s: 'abc', b: 'зөрүү', rcv: -2 });
-  eq([pl.q, pl.c, pl.s, pl.b, pl.rcv], [4, 0, 0, 'mevent', 0], 'худалдан авалт: сөрөг/буруу оролт цэвэрлэгдэнэ, салбар M-Event');
+  eq([pl.q, pl.c, 's' in pl, pl.b, pl.rcv], [4, 0, false, 'mevent', 0], 'худалдан авалт: сөрөг/буруу оролт цэвэрлэгдэнэ, салбар M-Event, хуучин s (урьдчилсан карго) хадгалагдахгүй');
   ok(F.poLine({}).id.length > 1, 'худалдан авалт: мөр бүр өөрийн id-тай');
 
   // ③ Батлахаас өмнөх шалгалт
@@ -16053,11 +16057,11 @@ async function swFetchTests() {
 
   // ⑦ ХҮЛЭЭН АВАХ ТӨЛӨВЛӨГӨӨ (нөөцөд хүрдэг тул нарийн)
   const PO = { id: 'po1', no: 7, supplier: 'Jinnin carpets', fx: 540, url: '' };
-  const carpet = F.poLine({ id: 'l1', sku: 'M-033', name: 'Улаан хивс', q: 1, c: 1128, s: 226500, b: 'mevent' });
+  const carpet = F.poLine({ id: 'l1', sku: 'M-033', name: 'Улаан хивс', q: 1, c: 1128, b: 'mevent' });
   const prod = { sku: 'M-033', id: 'M-033', name: 'Улаан хивс', price: 15000, qty_mevent: 2, qty_nomaad: 1, stock: 3, cost: 700000, supplier: '', purchase_date: '' };
   const pn = F.poReceiptPlan(PO, carpet, 1, prod, { today: '2026-11-02', by: 'C' });
   eq([pn.fields.qty_mevent, pn.fields.qty_nomaad, pn.fields.stock], [3, 1, 4], 'хүлээн авах: тоо M-Event-д нэмэгдэнэ, бусад салбар хөдлөхгүй, нийт зөв');
-  eq(pn.fields.cost, Math.round((3 * 700000 + 835620) / 4), 'хүлээн авах: өртөг ЖИГНЭСЭН ДУНДАЖ (хуучин 3 ш + шинэ 1 ш)');
+  eq(pn.fields.cost, Math.round((3 * 700000 + 1128 * 540) / 4), 'хүлээн авах: өртөг ЖИГНЭСЭН ДУНДАЖ (хуучин 3 ш + шинэ 1 ш), карго оруулаагүй бол зөвхөн барааны үнэ');
   eq(pn.fields.purchase_date, '2026-11-02', 'хүлээн авах: огноо хоосон байсан бол бөглөгдөнө');
   eq(pn.fields.supplier, 'Jinnin carpets', 'хүлээн авах: нийлүүлэгч хоосон байсан бол бөглөгдөнө');
   eq(pn.fields.price, 15000, 'хүлээн авах: түрээсийн үнэ хөндөгдөхгүй');
@@ -16068,13 +16072,15 @@ async function swFetchTests() {
   eq([keep.fields.purchase_date, keep.fields.supplier], ['2024-03-01', 'https://item.taobao.com/x'],
      '⛔ хүлээн авах: хуучин нөөцийн огноо (элэгдэл), эх сурвалжийн линкийг ДАРАХГҮЙ');
   const noCost = F.poReceiptPlan(PO, carpet, 1, { ...prod, cost: 0 }, { today: '2026-11-02' });
-  eq(noCost.fields.cost, 835620, 'хүлээн авах: өртөггүй байсан бол шинэ өртөг');
+  eq(noCost.fields.cost, 1128 * 540, 'хүлээн авах: өртөггүй байсан бол шинэ өртөг');
   const nomaad = F.poReceiptPlan(PO, F.poLine({ id: 'l2', sku: 'M-033', q: 2, c: 10, b: 'nomaad' }), 2, prod, { today: '2026-11-02' });
   eq([nomaad.fields.qty_nomaad, nomaad.fields.qty_mevent], [3, 2], 'хүлээн авах: сонгосон салбарт (NOMAAD) нэмэгдэнэ');
-  const fresh = F.poReceiptPlan(PO, F.poLine({ id: 'l3', name: 'LED цаг', q: 5, c: 496.85, s: 9000, u: 'https://item.taobao.com/z', cat: 'Гэрэл' }), 5, null, { code: 'M-400', today: '2026-11-02', by: 'C' });
+  const fresh = F.poReceiptPlan(PO, F.poLine({ id: 'l3', name: 'LED цаг', q: 5, c: 496.85, u: 'https://item.taobao.com/z', cat: 'Гэрэл' }), 5, null, { code: 'M-400', today: '2026-11-02', by: 'C' });
   eq([fresh.isNew, fresh.fields.sku, fresh.fields.id, fresh.fields.code, fresh.fields.qty_mevent, fresh.fields.stock], [true, 'M-400', 'M-400', 'M-400', 5, 5], 'хүлээн авах: шинэ бараа M-код авч нөөцтэй үүснэ');
   eq([fresh.fields.price, fresh.fields.type], [0, 'rental'], '⛔ шинэ бараа ҮНЭГҮЙ үүснэ → public_catalog (price>0)-д орохгүй, сайтад харагдахгүй');
-  eq(fresh.fields.cost, Math.round((5 * 496.85 * 540 + 9000) / 5), 'хүлээн авах: шинэ барааны өртөг = (бараа+карго) ÷ тоо');
+  eq(fresh.fields.cost, Math.round(496.85 * 540), 'хүлээн авах: шинэ барааны өртөг = барааны үнэ (карго оруулаагүй)');
+  const freshCg = F.poReceiptPlan(PO, F.poLine({ id: 'l3', name: 'LED цаг', q: 5, c: 496.85 }), 5, null, { code: 'M-400', today: '2026-11-02', cargo: 9000 });
+  eq(freshCg.fields.cost, Math.round(496.85 * 540 + 9000 / 5), 'хүлээн авах: шинэ барааны өртөг = барааны үнэ + бодит карго ÷ ирсэн тоо');
   eq([fresh.fields.stock_opened_at, fresh.fields.stock_approved_at], [undefined, undefined], 'хүлээн авах: шинэ бараа эхний үлдэгдлийн баталгаагүй (ердийн урсгалаар батлагдана)');
   eq([fresh.moves.length, fresh.moves[0].qty_before, fresh.moves[0].delta, fresh.moves[0].sku], [1, 0, 5, 'M-400'], 'хүлээн авах: шинэ барааны дэвтрийн мөр 0 → 5');
   eq(F.poReceiptPlan(PO, carpet, 0, prod, {}), null, 'хүлээн авах: 0 ш бол төлөвлөгөө үүсэхгүй');
@@ -16135,7 +16141,7 @@ async function swFetchTests() {
     ok(/class="po-unit ok"/.test(ready) && /1 ширхэг/.test(ready) && /po-unit-n">¥25</.test(ready) && /≈ 13,500₮/.test(ready), '⛔ мөр: нэгж үнэ ТОД гарна (¥25 · ≈ 13,500₮) — хүн шууд харна');
     ok(/нэгж үнэ өөрөө гарна/.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 4 }), 0, 540, false, 1)) && !/po-unit ok/.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 4 }), 0, 540, false, 1)), 'мөр: нийт үнэгүй үед «нэгж үнэ өөрөө гарна» гэж урамшуулна, тод болохгүй');
     ok(/ханшаа оруулбал/.test(F.poLineSumHtml(F.poLine({ name: 'А', q: 1, c: 10 }), 0, false)), 'мөр: ханшгүй үед юу хийхийг хэлнэ');
-    ok(/карго ~/.test(F.poLineSumHtml(F.poLine({ name: 'А', q: 1, c: 10, s: 9000 }), 540)), 'мөр: хуучин (урьдчилсан) карго байвал ил харагдана — хаяхгүй');
+    ok(!/карго/.test(F.poLineSumHtml(F.poLine({ name: 'А', q: 1, c: 10, s: 9000 }), 540)), '⛔ мөр: форм дээр карго ХАРАГДАХГҮЙ (карго зөвхөн хүлээн авахад бодитоор)');
     // Форм юу дутууг ганц газар шийднэ
     const fOk = { lines: [{ name: 'Чийдэн', q: 2, _t: 100 }], cur: 'CNY', fx: 541, supplier: 'Xinrui', noCol: false, pay_to: { bank: 'Хаан банк', no: '5001', name: 'Бат' } };
     eq(F.poFormIssues(fOk), [], 'форм: бүгд бөглөгдсөн бол дутуу байхгүй');
@@ -16150,26 +16156,46 @@ async function swFetchTests() {
     eq(F.poIssueLabels([{ label: 'нийт үнэ' }, { label: 'нийт үнэ' }, { label: 'дэлгүүр' }]), 'нийт үнэ · дэлгүүр', 'форм: «Дутуу: …» жагсаалт давхардахгүй');
   }
 
-  // ⑦в ХААН БАНКНЫ ЮАНИЙН ХАНШ (өдөр бүр, хүн оруулна)
+  // ⑦в ХААН БАНКНЫ ЮАНИЙН ХАНШ = «бэлэн бус ЗАРАХ», автоматаар (tools/khan_fx.py → app_config['fx_cny']); апп зөвхөн уншина
   eq([F.poFxValid(541), F.poFxValid('541.2'), F.poFxValid(54.1), F.poFxValid(5410), F.poFxValid(0), F.poFxValid('abc'), F.poFxValid(null)], [true, true, false, false, false, false, false],
      '⛔ ханш: 100–2000 ₮/¥ л (таслал/тэг алдсан ханш мөнгө гажаана)');
-  const cfg0 = { rates: { '2026-10-23': { r: 538, by: 'A' }, '2026-10-24': { r: 541.2, by: 'B' }, '2026-10-26': { r: 9, by: 'X' } } };
-  eq(F.poFxOn(cfg0, '2026-10-24'), { rate: 541.2, date: '2026-10-24', by: 'B', exact: true }, 'ханш: тухайн өдрийн ханш (exact)');
-  eq(F.poFxOn(cfg0, '2026-10-25'), { rate: 541.2, date: '2026-10-24', by: 'B', exact: false }, '⛔ ханш: өдрийн ханш байхгүй бол сүүлийнхийг exact:false-аар (дуудагч өнөөдрийнхийг шаардана)');
+  const cfg0 = { rates: { '2026-10-23': { r: 538, by: 'khanbank' }, '2026-10-24': { r: 541.2, by: 'khanbank', at: '2026-10-24T05:00:00Z' }, '2026-10-26': { r: 9, by: 'X' } } };
+  eq(F.poFxOn(cfg0, '2026-10-24'), { rate: 541.2, date: '2026-10-24', by: 'khanbank', at: '2026-10-24T05:00:00Z', exact: true }, 'ханш: тухайн өдрийн ханш (exact) + татсан цаг');
+  eq(F.poFxOn(cfg0, '2026-10-25'), { rate: 541.2, date: '2026-10-24', by: 'khanbank', at: '2026-10-24T05:00:00Z', exact: false }, '⛔ ханш: өдрийн ханш байхгүй бол сүүлийнхийг exact:false-аар (дуудагч түгжихгүй, гараар оруулахыг хүснэ)');
   eq(F.poFxOn(cfg0, '2026-10-26').exact, false, 'ханш: буруу (9) ханш өдрийн ханш болохгүй');
   eq([F.poFxOn(null, '2026-10-26'), F.poFxOn({ rates: {} }, '2026-10-26')], [null, null], 'ханш: бүртгэл байхгүй → null');
-  const mg = F.poFxMerge(cfg0, '2026-10-27', 543.456, 'C', '2026-10-27T01:00:00Z');
-  eq([mg.rates['2026-10-27'].r, mg.rates['2026-10-27'].by, Object.keys(mg.rates).length], [543.46, 'C', 4], 'ханш: өдрийн ханш нэмэгдэнэ (2 орон), бусад хэвээр');
-  const big = {}; for (let i = 1; i <= 60; i++) big['2026-01-' + String(i).padStart(2, '0')] = { r: 540 };
-  eq(Object.keys(F.poFxMerge({ rates: big }, '2026-12-01', 540, 'C').rates).length, 45, 'ханш: сүүлийн 45 өдрөөс хуучныг хаяна (config томрохгүй)');
+  eq([F.poFxAuto(cfg0, '2026-10-24').exact, F.poFxAuto(cfg0, '2026-10-28').date, F.poFxAuto(cfg0, '2026-11-20'), F.poFxAuto(null, '2026-10-24')], [true, '2026-10-24', null, null],
+     'ханш: автомат = өнөөдрийнх эсвэл ≤ 5 хоногийн өмнөх; түүнээс хуучин → null (гараар)');
+  {
+    const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(!/async function poFxSave\(|function poFxMerge\(|poFxSave\(/.test(asrc), '⛔ scan: апп ханш БИЧИХГҮЙ (poFxSave/poFxMerge устсан) — ганц эх сурвалж tools/khan_fx.py, RLS-ээр зөвхөн CEO');
+    ok(/when 'fx_cny' then sec\.is_ceo\(\)/.test(fs.readFileSync(path.join(__dirname, '..', 'db', 'rls.sql'), 'utf8')), '⛔ scan: fx_cny бичихийг RLS зөвхөн CEO-д (ажилтан ханшийг гажаахгүй)');
+    const mo = asrc.slice(asrc.indexOf('async function openPoModal('), asrc.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
+    ok(/\$\{fxLocked \? ' readonly' : ''\}/.test(mo) && /inp\.readOnly = fxLocked/.test(mo), '⛔ scan: автомат ханш байвал хүсэлтийн ханшийн талбар ТҮГЖИГДЭНЭ (гараар зөвхөн татагдаагүй өдөр)');
+    ok(/автомат' : 'гараар'/.test(mo), 'scan: ханш автомат/гараар гэдэг нь хүсэлтийн түүхэнд бичигдэнэ');
+    const pm = asrc.slice(asrc.indexOf('async function openPoPayModal('), asrc.indexOf('function openPoOrderModal('));
+    ok(/inp\.readOnly = auto/.test(pm) && /'автомат' : 'гараар'/.test(pm), '⛔ scan: шилжүүлэхэд ч автомат ханш түгжигдэнэ, гараар бол тэмдэглэгдэнэ');
+  }
+  {
+    // Python скрипт өөрийн тест (Хаан банкны бэлэн бус зарах / бэлэн зарахыг андуурахгүй, captcha-д зогсоно)
+    try {
+      const out = require('child_process').execSync(`python3 ${JSON.stringify(path.join(__dirname, '..', 'tools', 'khan_fx.py'))} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      ok(/khan_fx selftest OK/.test(out), 'khan_fx: Python өөрийн тест — ' + out.trim());
+    } catch (e) { ok(false, 'khan_fx selftest: ' + String(e.stderr || e.message).slice(0, 300)); }
+    const py = fs.readFileSync(path.join(__dirname, '..', 'tools', 'khan_fx.py'), 'utf8');
+    ok(/x\.get\('currency'\) != 'CNY'/.test(py) && /float\(x\['sellRate'\]\)/.test(py) && !/float\(x\['cashSellRate'\]\)\s*\n\s*\)/.test(py), 'khan_fx: бэлэн БУС зарах = sellRate');
+    ok(/except Blocked:/.test(py) && /sys\.exit\(1\)/.test(py) && /BLOCK_FILE/.test(py) && !/captcha.*(solve|bypass)/i.test(py.replace(/Хамгаалалтыг тойрохгүй|тойро\w+/g, '')),
+       '⛔ khan_fx: bot-хамгаалалт (captcha) хориглосон үед ЗОГСДОГ, тойрохгүй');
+  }
 
   // ⑦г КАРГО (Хятад → УБ) хүлээн авахад
-  eq(F.poUnitCost(PO, carpet, 1), 835620, 'нэгж өртөг: карго оруулаагүй бол урьдчилсан (бараа+карго) ÷ тоо');
+  eq(F.poUnitCost(PO, carpet, 1), Math.round(carpet.c * 540), 'нэгж өртөг: карго оруулаагүй бол ЗӨВХӨН барааны үнэ (урьдчилсан карго ОРОХГҮЙ)');
   eq(F.poUnitCost(PO, F.poLine({ q: 4, c: 650 }), 4, 100000), Math.round(650 * 540 + 100000 / 4), 'нэгж өртөг: бодит карго → бараа ¥×ханш + карго ÷ ирсэн тоо');
   eq(F.poUnitCost(PO, F.poLine({ q: 4, c: 650, s: 999999 }), 2, 0), 650 * 540, 'нэгж өртөг: карго 0 (төлөөгүй) → зөвхөн бараа, урьдчилсан тооцоо ОРОХГҮЙ');
-  const al = F.poCargoAlloc(PO, [{ id: 'a', get: 1, c: 100 }, { id: 'b', get: 3, c: 100 }], 100001);
-  eq([al.a + al.b, al.a < al.b], [100001, true], '⛔ карго хуваарилалт: нийлбэр ЯГ карготой тэнцэнэ (үлдэгдэл сүүлийн мөрд), үнэлгээгээр');
+  const al = F.poCargoAlloc(PO, [{ id: 'a', get: 1, c: 100 }, { id: 'b', get: 3, c: 9999 }], 100001);
+  eq([al.a + al.b, al.a, al.b], [100001, 25000, 75001], '⛔ карго хуваарилалт: ТООНД жигд (үнэлгээгээр БИШ), нийлбэр ЯГ карготой тэнцэнэ (үлдэгдэл сүүлийн мөрд)');
   eq(F.poCargoAlloc(PO, [{ id: 'a', get: 2, c: 0 }, { id: 'b', get: 2, c: 0 }], 1000), { a: 500, b: 500 }, 'карго хуваарилалт: үнэгүй мөр → тоогоор');
+  eq(F.poCargoAlloc(PO, [{ id: 'a', get: 10, c: 201.5 }, { id: 'b', get: 30, c: 18.17 }], 40000), { a: 10000, b: 30000 }, 'карго хуваарилалт: ширхэгт 1,000₮ — нэг ширхэг бүрд ижил');
   eq([F.poCargoAlloc(PO, [{ id: 'a', get: 1, c: 5 }], null), F.poCargoAlloc(PO, [{ id: 'a', get: 0, c: 5 }], 500)], [{}, {}], 'карго хуваарилалт: оруулаагүй / ирсэн мөргүй → хоосон');
   const cp = F.poReceiptPlan(PO, F.poLine({ id: 'l1', sku: 'M-033', q: 2, c: 1128, s: 226500 }), 2, prod, { today: '2026-11-02', cargo: 100000 });
   eq(cp.unit, Math.round(1128 * 540 + 100000 / 2), 'хүлээн авах (карго): нэгж өртөг бодит каргогоор');
@@ -16220,7 +16246,7 @@ async function swFetchTests() {
   eq(imp.fx, 540, 'Excel: ханш толгойгоос уншигдана'); eq(imp.error, '', 'Excel: толгой олдоно');
   eq(imp.groups.length, 6, 'Excel: нийлүүлэгч бүр = нэг худалдан авалт; нийлүүлэгчгүй мөр холилдохгүй (6 бүлэг)');
   const gX = imp.groups.find(g => g.supplier === 'Xinrui lighting'), gY = imp.groups.find(g => g.supplier === 'Yide Lighting');
-  eq(gX.total_mnt, 998400, 'Excel: Xinrui нийт дүн PDF-тэй таарна'); eq(gY.lines.length, 2, 'Excel: Yide-ийн үсэг+тоо нэг худалдан авалтад');
+  eq(gX.total_mnt, 815940, 'Excel: Xinrui нийт дүн = зөвхөн бараа (Хүргэлт баганыг орхино — карго хүлээн авахад)'); eq(gY.lines.length, 2, 'Excel: Yide-ийн үсэг+тоо нэг худалдан авалтад');
   eq(gY.total_mnt, 518400 + 432000, 'Excel: Yide нийт дүн');
   const gC = imp.groups.find(g => g.supplier === 'Jinnin carpets');
   eq([gC.lines[0].sku, gC.lines[0].name], ['M-033', 'Улаан хивс (каталог)'], 'Excel: кодтой мөр каталогийн бараатай холбогдож нэр нь каталогоос');
@@ -16284,14 +16310,22 @@ async function swFetchTests() {
       // Задаргаа: нэгж үнэ, нийт ¥, карго, нэгж өртөг — дүнг дахин бодохгүй, картын нийттэй ижил
       const bd = F.poCardHtml(F.poNormalize({ id: 'bd', no: 9, status: 'approved', supplier: 'Jimo', platform: '1688', fx: 540, pay_to: ACCT, created_by: 'U',
         lines: [{ id: 'a', sku: 'M-205', name: 'Босоо дугуй ширээ', q: 10, c: 201.5, s: 252 }, { id: 'b', name: 'Углаа', q: 30, c: F.poUnitFromTotal(545, 30) }] }), { me: 'C' });
+      ok(!/карго ~|урьдчилсан/.test(bd) && /<span>Карго<\/span><b><span class="po-muted">бараа ирэхэд оруулна<\/span><\/b>/.test(bd), '⛔ задаргаа: хуучин урьдчилсан карго ХАРАГДАХГҮЙ, «бараа ирэхэд оруулна» гэж хэлнэ');
       const det = bd.slice(bd.indexOf('<details'));
       ok(/class="po-bd-h">Барааны задаргаа · 2 төрөл · 40 ш/.test(det), 'задаргаа: гарчигт төрөл, нийт ширхэг');
       ok(/<span>Нэгж үнэ<\/span><b>¥201\.5 ≈ 108,810₮<\/b>/.test(det), 'задаргаа: нэгж үнэ ¥ ба ₮-өөр');
       ok(/<span>Нийт үнэ<\/span><b>¥2,015 = 1,088,100₮<\/b>/.test(det), 'задаргаа: оруулсан нийт ¥ = ₮');
-      ok(/<span>Карго \(урьдчилсан\)<\/span><b>252₮<\/b>/.test(det) && /<span>Нэгж өртөг \(карго орсон\)<\/span><b>≈ 108,835₮<\/b>/.test(det), 'задаргаа: карго ба нэгж өртөг (карго орсон)');
+      {
+        // Хүлээн авсны дараа: бодит карго → нэгж өртөг (бараа + карго ÷ ирсэн тоо)
+        const rcvd = F.poCardHtml(F.poNormalize({ id: 'r', no: 11, status: 'received', supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'a', sku: 'M-205', name: 'Ширээ', q: 10, c: 201.5, rcv: 10, cg: 10000 }] }), { me: 'C' });
+        ok(/<span>Карго \(бодит\)<\/span><b>10,000₮<\/b>/.test(rcvd) && /<span>Нэгж өртөг \(карго орсон\)<\/span><b>≈ 109,810₮<\/b>/.test(rcvd), 'задаргаа: бодит карго ба нэгж өртөг = 108,810 + 10,000 ÷ 10');
+        const half = F.poCardHtml(F.poNormalize({ id: 'h', no: 12, status: 'ordered', supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'a', name: 'Ширээ', q: 10, c: 200, rcv: 4, cg: 4000 }] }), { me: 'C' });
+        ok(/≈ 109,000₮/.test(half), '⛔ задаргаа: хэсэгчлэн ирсэн мөрийн нэгж өртөг ИРСЭН тоонд хуваагдана (захиалсан тоонд БИШ)');
+      }
       ok(/<span>Нэгж үнэ<\/span><b>≈ ¥18\.17 ≈ 9,810₮<\/b>/.test(det), '⛔ задаргаа: 18.166667 мэт урт бутархай биш, «≈ ¥18.17 ≈ 9,810₮» гэж тоймолно');
       ok(!/18\.166667/.test(bd), '⛔ карт: нэгж үнэ 6 оронтой бутархай болж ХАРАГДАХГҮЙ');
-      ok(/<span>Бараа<\/span><b>¥2,560 × 540 = 1,382,400₮<\/b>/.test(det) && /<span>Нийт<\/span><b>1,382,652₮<\/b>/.test(det), 'задаргаа: бараа + карго = нийт (картын нийттэй ижил)');
+      ok(/<span>Бараа<\/span><b>¥2,560 × 540 = 1,382,400₮<\/b>/.test(det) && /<span>Нийт<\/span><b>1,382,400₮<\/b>/.test(det), 'задаргаа: нийт = бараа (карго орсноор нэмэгдэнэ), картын нийттэй ижил');
+      ok(/class="po-tot">1,382,400₮/.test(bd), '⛔ карт: нийт дүн мөрүүдээс бодогдоно (хуучин урьдчилсан карго 252₮ алга)');
       ok(/10 × 201\.5¥ · 108,810₮\/ш/.test(bd), 'карт: мөрд нэгж үнэ ₮-өөр ч харагдана');
       const mn = F.poCardHtml(F.poNormalize({ id: 'mn', no: 10, status: 'approved', supplier: 'S', fx: 1, created_by: 'U', lines: [{ id: 'a', name: 'Цаас', q: 4, c: 2500 }] }), { me: 'C' });
       ok(/<span>Нэгж үнэ<\/span><b>2,500₮<\/b>/.test(mn) && !/¥/.test(mn.slice(mn.indexOf('<details'))), 'задаргаа: ₮-өөр хүсэлтэд ¥ харагдахгүй');
@@ -16328,7 +16362,7 @@ async function swFetchTests() {
     const reqM = src.slice(src.indexOf('async function openPoModal('), src.indexOf('function openPoPayModal(') > 0 ? src.indexOf('async function openPoPayModal(') : 0);
     const issM = src.slice(src.indexOf('function poFormIssues('), src.indexOf('function poIssueLabels'));
     ok(/<input type="hidden" id="po-cur"/.test(reqM) && /data-seg="po-cur"/.test(reqM) && !/<select id="po-cur"/.test(reqM) && /Хаан банкны юанийн ханш/.test(reqM) && /poFxValid\(Number\(f\.fx\)\)/.test(issM), 'scan: хүсэлт юаниар (сегмент), Хаан банкны ханш заавал (poFormIssues шалгана)');
-    ok(/poFxSave\(todayStr\(\), fx\)/.test(reqM), 'scan: шинэ хүсэлтийн ханш өдрийн ханш болж хадгалагдана (дараагийн хүсэлт дахин оруулахгүй)');
+    ok(!/poFxSave|app_config/.test(reqM), '⛔ scan: хүсэлт ханшийг app_config-д БИЧИХГҮЙ (ганц эх сурвалж = tools/khan_fx.py)');
     ok(!/localStorage\.getItem\('poFx'\)/.test(reqM), '⛔ scan: ханшийг localStorage-ийн хуучин утгаас таамаглахгүй');
     ok(/poFormIssues\(formState\(\)\)/.test(reqM) && /'bank'/.test(issM) && /'acct'/.test(issM) && /'owner'/.test(issM) && /id="po-pbank"/.test(reqM) && /id="po-pno"/.test(reqM) && /id="po-pnm"/.test(reqM),
        '⛔ scan: хүсэлт гаргахдаа төлөх данс (банк, дугаар, эзэмшигч) ЗААВАЛ');
@@ -16341,7 +16375,7 @@ async function swFetchTests() {
     ok(/if \(!ex\) focusName\(0\)/.test(reqM), 'scan: шинэ хүсэлтэд барааны нэрийн талбар шууд идэвхжинэ');
     const payM = src.slice(src.indexOf('async function openPoPayModal('), src.indexOf('function openPoOrderModal('));
     ok(/Шилжүүлэх данс/.test(payM) && /data-copy-text/.test(payM), 'scan: «Шилжүүлсэн» цонхонд төлөх данс (хуулах товчтой) харагдана');
-    ok(/poFxValid\(rate\)/.test(payM) && /patch\.fx = rate/.test(payM) && /poFxSave\(date, rate\)/.test(payM), '⛔ scan: шилжүүлэхдээ ТЭР ӨДРИЙН Хаан банкны ханш заавал, өртгийн суурь болж хадгалагдана');
+    ok(/poFxValid\(rate\)/.test(payM) && /patch\.fx = rate/.test(payM) && !/poFxSave/.test(payM), '⛔ scan: шилжүүлэхдээ ТЭР ӨДРИЙН Хаан банкны ханш заавал, өртгийн суурь болж PO-д хадгалагдана (app_config-д БИЧИХГҮЙ)');
     const recvM2 = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('async function openPoImportModal('));
     ok(/id="pr-cargo"/.test(recvM2) && /cargo: cargoVal\(\)/.test(recvM2), 'scan: хүлээн авахад карго оруулна, poReceiveApply-д дамжина');
   }
@@ -16392,7 +16426,7 @@ async function swFetchTests() {
     const mv = calls[iM].body[0];
     eq([mv.sku, mv.branch, mv.delta, mv.reason, mv.ref, mv.qty_before, mv.qty_after], ['M-033', 'mevent', 2, 'purchase', 'PO:po1:l1', 2, 4], 'хүлээн авалт: дэвтрийн мөр');
     const pb = calls[iP].body;
-    const unit2 = Math.round((2 * 1128 * 540 + 226500) / 2);   // нэгж өртөг = (бараа + карго) ÷ захиалсан тоо
+    const unit2 = Math.round(1128 * 540);   // карго оруулаагүй → нэгж өртөг = зөвхөн барааны үнэ
     eq([pb.qty_mevent, pb.stock, pb.cost], [4, 4, Math.round((2 * 700000 + 2 * unit2) / 4)], 'хүлээн авалт: бараа 2 → 4 ш, өртөг жигнэсэн дундаж');
     eq(pb.price, 15000, 'хүлээн авалт: түрээсийн үнэ ХӨНДӨГДӨӨГҮЙ');
     ok(!('_moveReason' in pb) && !('_moveSkipLog' in pb), 'хүлээн авалт: дотоод тугууд DB рүү явахгүй');
@@ -16452,47 +16486,26 @@ async function swFetchTests() {
     const cgMove = calls.find(c => c.u.includes('/stock_moves')).body[0];
     ok(/карго 120000₮/.test(cgMove.note), 'хүлээн авалт (карго): дэвтэрт карго тэмдэглэгдэнэ');
     const cgPo = calls.find(c => c.method === 'PATCH' && c.u.includes('/purchases')).body;
-    eq([cgPo.lines[0].cg, cgPo.lines[0].s], [120000, 120000], 'хүлээн авалт (карго): мөр бүрэн ирэхэд бодит карго урьдчилсан тооцоог орлоно');
+    eq([cgPo.lines[0].cg, 's' in cgPo.lines[0]], [120000, false], 'хүлээн авалт (карго): бодит карго мөрөнд (cg) хадгалагдана, урьдчилсан s байхгүй');
     eq(cgPo.total_mnt, 2 * 1128 * 540 + 120000, 'хүлээн авалт (карго): худалдан авалтын нийт дүн бодит каргогоор шинэчлэгдэнэ');
     ok(/карго/.test(cgPo.history[cgPo.history.length - 1].note), 'хүлээн авалт (карго): түүхэнд карго бичигдэнэ');
 
-    // ✅ Карго оруулаагүй → хуучин зан (урьдчилсан), нийт дүн хөндөгдөхгүй
+    // ✅ Карго оруулаагүй → карго орохгүй (нэгж өртөг = барааны үнэ), нийт дүн хөндөгдөхгүй
     reset(); po = mkPo(); rows = po.lines.map(l => ({ ...l }));
     res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false, { cargo: null });
     const noCg = calls.find(c => c.method === 'PATCH' && c.u.includes('/purchases')).body;
-    eq([noCg.lines[0].cg, noCg.lines[0].s, 'total_mnt' in noCg], [null, 226500, false], 'хүлээн авалт: карго оруулаагүй бол урьдчилсан тооцоо, нийт дүн хэвээр');
+    eq([noCg.lines[0].cg, 's' in noCg.lines[0], 'total_mnt' in noCg], [null, false, false], 'хүлээн авалт: карго оруулаагүй бол карго орохгүй, нийт дүн хэвээр');
 
-    // ⛔ Хэсэгчлэн ирэхэд карго «бүрэн ирсэн» мөрийг л орлоно; үлдсэн нь урьдчилсанаараа
+    // ⛔ Хэсэгчлэн ирэхэд карго ирсэн хэсэгт л ногдоно (мөр бүрт хуримтлагдана)
     reset(); po = mkPo(); rows = po.lines.map(l => ({ ...l }));
     res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent' }], false, { cargo: 50000 });
     const part = calls.find(c => c.method === 'PATCH' && c.u.includes('/purchases')).body;
-    eq([part.lines[0].cg, part.lines[0].s, part.status], [50000, 226500, 'ordered'], 'хүлээн авалт (карго): хэсэгчлэн ирэхэд cg хуримтлагдана, s (урьдчилсан) үлдэнэ');
+    eq([part.lines[0].cg, 's' in part.lines[0], part.status], [50000, false, 'ordered'], 'хүлээн авалт (карго): хэсэгчлэн ирэхэд cg хуримтлагдана, хуучин s (урьдчилсан карго) бичигдэхгүй');
 
     // ⛔ Мөр унавал түүний каргог чимээгүй алдахгүй
     reset(); failProducts = true; po = mkPo(); rows = po.lines.map(l => ({ ...l }));
     res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false, { cargo: 120000 });
     ok(res.errs.some(e => /карго .* хуваарилагдсангүй/.test(e)) && rows[0].cg == null, '⛔ хүлээн авалт (карго): мөр унавал карго хуваарилагдаагүйг ил хэлнэ, мөрөнд бичихгүй');
-
-    // ✅ Ханш хадгалах — бусдын оруулсан ханшийг ДАРАХГҮЙ (серверээс шинээр уншина)
-    {
-      const keepCfg = st.appConfig; st.appConfig = {};
-      const origF = sandbox.fetch; const fxCalls = [];
-      sandbox.fetch = async (url, opts) => {
-        const u = String(url), method = (opts && opts.method) || 'GET';
-        fxCalls.push({ u, method, body: opts && opts.body ? JSON.parse(opts.body) : null });
-        if (method === 'GET' && u.includes('app_config')) return { ok: true, status: 200, json: async () => [{ value: { rates: { '2026-10-25': { r: 540, by: 'A' } } } }], text: async () => '' };
-        return { ok: true, status: 200, json: async () => [], text: async () => '' };
-      };
-      try {
-        await F.poFxSave('2026-10-26', 541.5);
-        const w1 = fxCalls.find(c => c.method === 'POST' && c.u.includes('app_config'));
-        eq([w1.body.key, Object.keys(w1.body.value.rates), w1.body.value.rates['2026-10-26'].r], ['fx_cny', ['2026-10-25', '2026-10-26'], 541.5], '⛔ ханш: хадгалахдаа серверийн ханшийг уншиж нэмнэ (бусдынхыг дарахгүй)');
-        eq(fxCalls[0].method, 'GET', 'ханш: бичихийн ӨМНӨ уншина');
-        eq(st.appConfig.fx_cny.rates['2026-10-26'].r, 541.5, 'ханш: санах ойд шинэчлэгдэнэ');
-        let thrown = false; try { await F.poFxSave('2026-10-26', 5.4); } catch (e) { thrown = true; }
-        ok(thrown, '⛔ ханш: буруу (5.4) ханш хадгалагдахгүй');
-      } finally { sandbox.fetch = origF; st.appConfig = keepCfg; }
-    }
 
     // ✅ pay_to багана DB-д байгаа эсэхийг ачаалахдаа танина (SQL ажиллуулаагүй бол бичихгүй, самбар ил хэлнэ)
     {
@@ -16512,6 +16525,12 @@ async function swFetchTests() {
       } finally { sandbox.fetch = origF2; st._poHasPayTo = keepFlag; st._poLoading = keepLoading; }
     }
 
+    {
+      const asrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+      const rm = asrc2.slice(asrc2.indexOf('async function openPoReceiveModal('), asrc2.indexOf('async function openPoImportModal('));
+      ok(/const needCargo = po\.fx !== 1/.test(rm) && /if \(needCargo && cargoVal\(\) == null && work\.some\(x => x\.get > 0\)\)/.test(rm), '⛔ scan: юанийн худалдан авалтад карго ЗААВАЛ (төлөөгүй бол 0) — хоосон бол хүлээн авахгүй');
+      ok(/1 ширхэгт ≈/.test(rm) && /ширхэгт\) жигд хувааж/.test(rm) && !/урьдчилсан/.test(rm), 'scan: хүлээн авахад «1 ширхэгт ≈ …₮» ил, урьдчилсан карго алга');
+    }
     // ⛔ Каталогт олдохгүй (архивлагдсан) бараа — чимээгүй нэмэхгүй
     reset(); st.products = []; po = mkPo(); rows = po.lines.map(l => ({ ...l }));
     res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent' }], false);

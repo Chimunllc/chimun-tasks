@@ -16229,6 +16229,23 @@ async function swFetchTests() {
   }
 
   {
+    // Гүйлгээний утга = «Худалдан авалт №N / бараа»: дугаар ҮРГЭЛЖ бүтэн, зөвхөн нэр тасарна; хуулгаас буцаан таниж болно
+    eq(F.poTransferMemo({ no: 9, lines: [{ name: 'Босоо дугуй ширээ' }] }), 'Худалдан авалт №9 / Босоо дугуй ширээ', 'утга: дугаар + барааны нэр');
+    eq(F.poTransferMemo({ no: 9, lines: [{ name: 'Босоо дугуй ширээ' }, { name: 'Углаа' }] }), 'Худалдан авалт №9 / Босоо дугуй ширээ +1', 'утга: олон бараа бол «+N»');
+    eq(F.poTransferMemo({ no: 12, lines: [] }), 'Худалдан авалт №12', 'утга: бараагүй бол зөвхөн дугаар');
+    const longM = F.poTransferMemo({ no: 1234, lines: [{ name: 'Маш урт барааны нэр '.repeat(10) }, { name: 'x' }] });
+    ok(longM.length <= 90 && longM.startsWith('Худалдан авалт №1234 / ') && / \+1$/.test(longM), '⛔ утга: банкны хязгаар (90) хэтэрвэл ЗӨВХӨН нэр тасарна, дугаар ба «+N» бүтэн');
+    eq(F.poTransferMemo({ no: null, lines: [] }), 'Худалдан авалт №—', 'утга: дугаар алга бол «—»');
+    eq([F.poNoFromMemo('Худалдан авалт №9 / Ширээ'), F.poNoFromMemo('худалдан авалт № 1234'), F.poNoFromMemo('Худалдан авалт №'), F.poNoFromMemo('Барьцаа буцаалт / Захиалга №1470'), F.poNoFromMemo(null)], [9, 1234, null, null, null],
+       '⛔ хуулгын утгаас худалдан авалтын дугаарыг таних (захиалгын «№»-тай андуурахгүй)');
+    eq(F.poNoFromMemo(F.poTransferMemo({ no: 57, lines: [{ name: 'Цаг' }] })), 57, 'утга: үүсгэсэн утгыг буцаан таньна (хоёр тал ИЖИЛ дүрэм)');
+    const cardM = F.poCardHtml(F.poNormalize({ id: 'm1', no: 9, status: 'approved', supplier: 'S', fx: 540, created_by: 'U', pay_to: { bank: 'Хаан банк', no: '5001', name: 'Б.Бат' }, lines: [{ id: 'a', name: 'Ширээ', q: 1, c: 10 }] }), { me: 'C', pay: true });
+    ok(/class="po-pay po-memo"/.test(cardM) && /data-copy-text="Худалдан авалт №9 \/ Ширээ"/.test(cardM) && /data-copy-label="Гүйлгээний утга хууллаа"/.test(cardM), 'карт: батлагдсан хүсэлтэд гүйлгээний утга + хуулах товч');
+    ok(!/po-memo/.test(F.poCardHtml(F.poNormalize({ id: 'm2', no: 10, status: 'request', supplier: 'S', fx: 540, created_by: 'U', lines: [] }), { me: 'C' })), 'карт: хүсэлт төлөвт утга харагдахгүй (шилжүүлэх болоогүй)');
+    const asrcM = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const pmM = asrcM.slice(asrcM.indexOf('async function openPoPayModal('), asrcM.indexOf('function openPoOrderModal('));
+    ok(/\$\{poMemoBoxHtml\(po\)\}/.test(pmM), 'scan: «Шилжүүлсэн» цонхонд гүйлгээний утга + хуулах товч');
+    ok(/poNoFromMemo\(r\.purpose\)/.test(asrcM) && /🧾 Худалдан авалт #/.test(asrcM), 'scan: банкны хуулгын мөр «Худалдан авалт №N» утгаар худалдан авалттай өөрөө таарна');
     // Бараа бүрийн ДЭЛГҮҮР: нэг төлбөр доор өөр өөр дэлгүүрээс авч болно, олон ӨӨР дэлгүүр байвал л карт ил харуулна
     eq([F.poLine({ shop: '  Xinrui  ' }).shop, F.poLine({}).shop, F.poLine({ shop: 'x'.repeat(300) }).shop.length], ['Xinrui', '', 120], 'дэлгүүр: мөрд хадгалагдана (тайрна), хоосон = хүсэлтийн дэлгүүр');
     const mk = (lines, extra) => F.poNormalize({ id: 'sh', no: 9, status: 'approved', supplier: 'Jimo', fx: 541.2, created_by: 'U', pay_to: { bank: 'Хаан банк', no: '5001', name: 'Б.Бат' }, lines, ...(extra || {}) });

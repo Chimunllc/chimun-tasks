@@ -16492,7 +16492,8 @@ async function swFetchTests() {
       const om = src.slice(src.indexOf('function openPoOrderModal('), src.indexOf('/* ─── ХҮЛЭЭН АВАХ → БАРААНД НЭМЭГДЭНЭ'));
       ok(om.length > 200 && !/po-ordno|po-eta|tracking|Ирэх хугацаа/i.test(om), '⛔ scan: «Захиалгын / tracking дугаар», «Ирэх хугацаа» УСТСАН — буцаж ирэхгүй');
       ok(/poUploadImage\(f\)/.test(om) && /Promise\.all\(picked\.map/.test(om) && !/\[\.\.\.[^;\n]*?,\s*await\s/.test(om), 'scan: Alipay баримтын зургийг VPS-д олон зураг ЗЭРЭГ байршуулна (массивын дотор await үгүй)');
-      ok(/yuan && !pf\.length/.test(om) && /busy > 0/.test(om), 'scan: юанийн худалдан авалтад баримт заавал, зураг байршиж байхад хадгалахгүй');
+      ok(/if \(!pf\.length\)/.test(om) && /busy > 0/.test(om) && !/yuan/.test(om), 'scan: төлбөрийн баримт ЗААВАЛ (₮, ¥ хоёуланд), зураг байршиж байхад хадгалахгүй');
+      ok(!/amo-hint|<i>\(/.test(om), '⛔ scan: цонхонд тайлбар бичвэр байхгүй (зөвхөн гарчиг + зураг)');
 
       // Цонхыг ҮНЭХЭЭР ажиллуулна: хуурамч цонх (poOpenModal), хуурамч байршуулалт — дарааллыг ЭРГҮҮЛЖ шалгана
       (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
@@ -16508,7 +16509,7 @@ async function swFetchTests() {
         const run = async (poSrc, steps) => {
           stP.purchases = [F.poNormalize(poSrc)];
           const mm = mkModal();
-          sandbox.poOpenModal = () => mm.w;
+          sandbox.poOpenModal = (cls, html) => { mm.html = html; return mm.w; };
           sandbox.poMove = async (id, to, note, extra) => { moves.push({ id, to, note, extra }); };
           sandbox.render = () => {}; sandbox.showToast = (m) => { toasts.push(String(m)); };
           vm.runInContext('openPoOrderModal', sandbox)(poSrc.id);
@@ -16540,10 +16541,17 @@ async function swFetchTests() {
             eq(first, 1, 'цонх: оруулсан зураг бүрд ✕ гарна');
           });
           eq(moves.length === 1 && moves[0].extra.pf.length, 1, 'цонх: ✕-ээр хассан зураг серверт илгээгдэхгүй');
-          // 4) ₮: баримтгүй ч бүртгэгдэнэ (заавал биш)
-          moves.length = 0;
+          // 4) ₮ ч мөн ЗААВАЛ: баримтгүй бол бүртгэхгүй, зурагтай бол бүртгэнэ
+          moves.length = 0; toasts.length = 0;
           await run({ ...base, id: 'ord2', fx: 1 }, async (mm) => { await mm.els['#po-ook'].onclick({ currentTarget: mm.els['#po-ook'] }); });
-          eq(moves.length === 1 && [moves[0].to, moves[0].extra], ['ordered', null], 'цонх: ₮-ийн худалдан авалт баримтгүй ч бүртгэгдэнэ');
+          eq([moves.length, /Төлбөрийн баримт/.test(toasts.join('|'))], [0, true], '⛔ цонх: ₮-ийн худалдан авалтад ч баримтгүй бол бүртгэхгүй');
+          const mm3 = await run({ ...base, id: 'ord3', fx: 1 }, async (mm) => {
+            const inp = { files: [{ name: 'b.png', type: 'image/png' }] };
+            await fire(mm.L, 'change', { closest: (s) => s === '#po-pf-in' ? inp : null });
+            await mm.els['#po-ook'].onclick({ currentTarget: mm.els['#po-ook'] });
+          });
+          eq(moves.length === 1 && [moves[0].to, moves[0].extra.pf], ['ordered', ['https://n8n.nomaadcamp.com/img/b.png']], 'цонх: ₮-ийн худалдан авалт зурагтай бол бүртгэгдэнэ');
+          ok(!/<p[ >]|amo-hint|зураг ·|<i>/.test(mm3.html), '⛔ цонх: тайлбар бичвэр гарахгүй (гарчиг + зураг л)');
         } finally {
           sandbox.poOpenModal = saved.open; sandbox.poUploadImage = saved.up; sandbox.poMove = saved.mv; sandbox.render = saved.rn; sandbox.showToast = saved.tt;
           stP.purchases = prevP;

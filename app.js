@@ -28394,14 +28394,12 @@ async function openPoPayModal(id) {
 }
 function openPoOrderModal(id) {
   const po = poById(id); if (!po || po.status !== 'paid') return;
-  const yuan = po.fx !== 1;   // юанийн худалдан авалтад Alipay-ийн баримт ЗААВАЛ (тэр л бодитоор төлсөн цорын ганц нотолгоо)
-  const pf = [];
+  const pf = [];   // төлбөрийн баримтын зураг ЗААВАЛ (юанд Alipay) — бичвэр, тайлбар хэрэггүй
   let busy = 0;
   const w = poOpenModal('po-step', `
     <div class="modal-head"><b>🛒 Худалдан авсан · #${po.no} ${escapeHtml(po.supplier)}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
-      <p class="amo-hint">Худалдагчид захиалга өгч, төлбөр баталгаажсаныг энд тэмдэглэнэ. Дараагийн алхам — бараа ирэхэд «Хүлээн авах».</p>
-      <div class="po-fld"><span class="po-lb">🧾 ${escapeHtml(poProofLabel(po))} <i>(зураг · ${yuan ? 'заавал' : 'заавал биш'} · олон зураг болно)</i></span><div class="po-evs" id="po-pf"></div></div>
+      <div class="po-fld"><span class="po-lb">🧾 ${escapeHtml(poProofLabel(po))}</span><div class="po-evs" id="po-pf"></div></div>
     </div>
     <div class="modal-actions"><button class="btn" id="po-ocancel">Болих</button><button class="btn btn-primary" id="po-ook">🛒 Худалдан авсан гэж бүртгэх</button></div>`);
   const draw = () => {
@@ -28434,7 +28432,7 @@ function openPoOrderModal(id) {
   w.$('#po-ook').onclick = async (ev) => {
     const btn = ev.currentTarget;
     if (busy > 0) { showToast('Зураг байршиж байна — түр хүлээнэ үү', 'warn'); return; }
-    if (yuan && !pf.length) { showToast('Alipay төлбөрийн баримтын зургаа оруулна уу', 'warn', 4000); return; }
+    if (!pf.length) { showToast(poProofLabel(po) + 'ын зургаа оруулна уу', 'warn', 4000); return; }
     btn.disabled = true;
     try {
       await poMove(po.id, 'ordered', '', pf.length ? { pf } : null);

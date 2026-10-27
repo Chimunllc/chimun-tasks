@@ -27034,6 +27034,29 @@ function poFxAuto(cfg, ymd) {
   const age = Math.round((Date.parse(ymd) - Date.parse(f.date)) / 86400000);
   return f.exact || (isFinite(age) && age <= PO_FX_STALE_DAYS) ? f : null;
 }
+/* ГҮЙЛГЭЭНИЙ УТГА (CEO 2026-10-27): шилжүүлэхдээ хуулж буулгана — «Худалдан авалт №9 / Босоо дугуй ширээ +1». Худалдан авалтын ДУГААР (№9) нь тусгай код:
+   банкны хуулгын мөр, нягтлан бүгд ямар хүсэлтийнх болохыг шууд таньж, хуулга оруулахад мөр өөрөө «Худалдан авалт #9» гэж таарна (`poNoFromMemo`).
+   Банкны хязгаар (REFUND_MEMO_MAX) хэтэрвэл ЗӨВХӨН барааны нэр тасарна — дугаар ҮРГЭЛЖ бүтэн (`depositRefundMemo`-той ижил дүрэм). */
+function poTransferMemo(po) {
+  const base = 'Худалдан авалт №' + String(po && po.no != null && po.no !== '' ? po.no : '—');
+  const ls = (po && po.lines) || [];
+  const nm = String((ls[0] && (ls[0].name || ls[0].sku)) || '').replace(/\s+/g, ' ').trim();
+  if (!nm) return base;
+  const more = ls.length > 1 ? ' +' + (ls.length - 1) : '';
+  const full = base + ' / ' + nm + more;
+  if (full.length <= REFUND_MEMO_MAX) return full;
+  const room = REFUND_MEMO_MAX - base.length - 3 - more.length;   // ' / '
+  return room >= 3 ? base + ' / ' + nm.slice(0, room).trimEnd() + more : base;
+}
+function poNoFromMemo(text) {
+  const m = /Худалдан\s*авалт\s*№\s*(\d{1,6})(?!\d)/i.exec(String(text || ''));
+  return m ? Number(m[1]) : null;
+}
+function poMemoBoxHtml(po) {
+  if (!po || po.no == null) return '';
+  const memo = poTransferMemo(po);
+  return `<div class="po-pay po-memo"><span class="po-pay-t">📝 Гүйлгээний утга: <b>${escapeHtml(memo)}</b></span><button type="button" class="btn po-copy" data-copy-text="${escapeHtml(memo)}" data-copy-label="Гүйлгээний утга хууллаа" title="Гүйлгээний утгыг хуулах">⧉</button></div>`;
+}
 function poStatusInfo(k) {
   return PO_STEPS.find(s => s.k === k) || PO_ENDS.find(s => s.k === k) || { k: String(k || ''), label: String(k || '—'), icon: '•' };
 }
@@ -27627,6 +27650,7 @@ function poCardHtml(po, caps) {
       ${due}
     </div>
     ${pay}
+    ${po.status === 'approved' ? poMemoBoxHtml(po) : ''}
     <div class="po-sub">${[po.platform, memberName(po.created_by), fmtDateTimeUB(po.created_at)].filter(Boolean).map(escapeHtml).join(' · ')}</div>
     ${poProgressHtml(po.status)}
     ${probs.length ? `<div class="po-probs">⚠ Батлахаас өмнө засах: ${escapeHtml(probs.slice(0, 3).join(' · '))}${probs.length > 3 ? ' …' : ''}</div>` : ''}
@@ -28085,6 +28109,8 @@ async function openPoPayModal(id) {
       ${poPayToOk(po.pay_to)
         ? `<div class="po-pay"><span class="po-pay-t">💳 Шилжүүлэх данс: <b>${escapeHtml(poPayToText(po.pay_to))}</b></span><button type="button" class="btn po-copy" data-copy-text="${escapeHtml(po.pay_to.no)}" data-copy-label="Дансны дугаар хууллаа" title="Дансны дугаарыг хуулах">⧉</button></div>`
         : (state._poHasPayTo === false ? '' : '<div class="po-probs">⚠ Төлөх данс оруулаагүй байна — хүсэлтийг «Засах»-аар данс нэмнэ үү.</div>')}
+      ${poMemoBoxHtml(po)}
+      <div class="po-note">Банкны апп дээр гүйлгээний утгад дээрх утгыг буулгаарай — хуулгын мөр энэ худалдан авалттай өөрөө таарна.</div>
       <label class="fld">Шилжүүлсэн огноо<input id="pp-date" class="ui-raw" type="date" value="${todayStr()}"></label>
       ${yuan ? `<label class="fld">Хаан банкны юанийн ханш ₮ / ¥ <span class="fld-opt">(бэлэн бус зарах · шилжүүлсэн өдрийнх)</span><input id="pp-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" placeholder="жишээ: 541"></label>
       <div id="pp-fx-hint" class="po-note"></div>` : ''}
@@ -28446,11 +28472,12 @@ function renderPurchases() {
     </div>
     <div class="buy-list">${rows.slice(0, 200).map(r => {
       const li = link.get(String(r.id)) || [];
+      const pno = poNoFromMemo(r.purpose), poHit = pno != null && (state.purchases || []).some(x => x.no === pno);
       return `<div class="buy-row">
       <span class="buy-date">${escapeHtml(r.date)}</span>
       <span class="buy-nm">${escapeHtml(r.supplier || '—')}<small>${li.length
         ? '📦 ' + escapeHtml(li.map(x => x.name || x.sku).join(', '))
-        : escapeHtml(r.purpose || catLabel(r.category))}</small></span>
+        : (poHit ? '🧾 Худалдан авалт #' + pno + ' · ' : '') + escapeHtml(r.purpose || catLabel(r.category))}</small></span>
       <span class="buy-amt">${escapeHtml(fmtMoney(r.amount))}</span>
       <button class="btn buy-link-btn" data-buy-link="${escapeHtml(r.id)}">${li.length ? '🔗 ' + li.length : '＋ Бараа'}</button></div>`;
     }).join('') || '<div class="buy-load">Олдсонгүй.</div>'}</div>

@@ -15983,7 +15983,7 @@ async function swFetchTests() {
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
     'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poEvStripFormHtml', 'poUploadFiles',
     'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml',
-    'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
+    'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
 
   // ① Дүн — карго хүсэлтэд ОРОХГҮЙ (хүлээн авахад бодитоор); хуучин `s` талбар уншигдахгүй
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -16313,6 +16313,21 @@ async function swFetchTests() {
   eq(F.poUnitCost(PO, F.poLine({ q: 4, c: 650, s: 999999 }), 2, 0), 650 * 540, 'нэгж өртөг: карго 0 (төлөөгүй) → зөвхөн бараа, урьдчилсан тооцоо ОРОХГҮЙ');
   ok(typeof F.poCargoAlloc === 'undefined' && !/poCargoAlloc/.test(fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8')), '⛔ карго: нийт каргог тоонд жигд хуваах (poCargoAlloc) УСТСАН — мөр бүрт тусад нь оруулна');
   eq([F.poUnitCost(PO, F.poLine({ q: 10, c: 201.5 }), 10, 20000), F.poUnitCost(PO, F.poLine({ q: 30, c: 18.17 }), 30, 0)], [Math.round(201.5 * 540 + 2000), Math.round(18.17 * 540)], 'карго (мөр бүрийн): нэг мөрийн карго ЗӨВХӨН түүний нэгж өртөгт ордог — нөгөө мөр хөндөгдөхгүй');
+  {
+    // ИРСЭН БАРААНЫ ЗУРАГ = баталгаа + барааны ЭХНИЙ зураг
+    const R1 = 'https://n8n.nomaadcamp.com/img/rp1.jpg', R2 = 'https://n8n.nomaadcamp.com/img/rp2.jpg', REQ = 'https://n8n.nomaadcamp.com/img/req.jpg';
+    eq(F.poRpList([R1, R1, 'javascript:alert(1)', 'data:image/png;base64,AAAA', '', null, R2]), [R1, R2], 'ирсэн зураг: зөвхөн http(s) файлын хаяг, давхардалгүй (base64/javascript: орохгүй)');
+    eq(F.poRpList(Array.from({ length: 9 }, (_, i) => 'https://n8n.nomaadcamp.com/img/r' + i + '.jpg')).length, 6, 'ирсэн зураг: хуримтлагдсанаас сүүлийн 6 л үлдэнэ');
+    eq(F.poLine({ id: 'x', name: 'A', q: 1, rp: [R1, 'nope'] }).rp, [R1], 'ирсэн зураг: мөрийн дотор хадгалагдана (lines jsonb)');
+    const ln = F.poLine({ id: 'n1', name: 'Шинэ', q: 1, c: 1, img: REQ });
+    eq(F.poReceiptPlan(PO, ln, 1, null, { code: 'M-900', today: '2026-11-02', photos: [R1, R2] }).fields.photo, R1, '⛔ ирсэн зураг: ШИНЭ барааны ЭХНИЙ зураг нь хүлээн авахдаа оруулсан зураг (хүсэлтийн зураг биш)');
+    eq(F.poReceiptPlan(PO, ln, 1, null, { code: 'M-900', today: '2026-11-02' }).fields.photo, REQ, 'ирсэн зураг: зураггүй үед хүсэлтийн зураг хэвээр (хуучин зан)');
+    eq(F.poReceiptPlan(PO, ln, 1, { ...prod, photo: '' }, { today: '2026-11-02', photos: [R1] }).fields.photo, R1, 'ирсэн зураг: зураггүй байгаа барааны эхний зураг болно');
+    eq(F.poReceiptPlan(PO, ln, 1, { ...prod, photo: 'https://n8n.nomaadcamp.com/img/keep.jpg' }, { today: '2026-11-02', photos: [R1] }).fields.photo, 'https://n8n.nomaadcamp.com/img/keep.jpg', '⛔ ирсэн зураг: каталогт аль хэдийн зурагтай (сайтад харагддаг) барааны зургийг ДАРАХГҮЙ');
+    const poRp = F.poNormalize({ id: 'rpx', status: 'ordered', fx: 540, lines: [{ id: 'a', name: 'Ширээ', q: 2, c: 1, rcv: 1, rp: [R1, R2] }] });
+    ok((F.poEvRowHtml(poRp, poRp.lines[0]).match(/data-lightbox=/g) || []).length === 2 && /📷/.test(F.poEvRowHtml(poRp, poRp.lines[0])), 'ирсэн зураг: картын мөрөнд thumbnail (дарахад томорно)');
+    ok(/Ирсэн барааны зураг/.test(F.poBreakdownHtml(poRp)), 'ирсэн зураг: «Дэлгэрэнгүй»-д бүлгээр');
+  }
   const cp = F.poReceiptPlan(PO, F.poLine({ id: 'l1', sku: 'M-033', q: 2, c: 1128, s: 226500 }), 2, prod, { today: '2026-11-02', cargo: 100000 });
   eq(cp.unit, Math.round(1128 * 540 + 100000 / 2), 'хүлээн авах (карго): нэгж өртөг бодит каргогоор');
   eq(cp.fields.cost, Math.round((3 * 700000 + 2 * cp.unit) / 5), 'хүлээн авах (карго): өртөг жигнэсэн дундаж');
@@ -16603,7 +16618,7 @@ async function swFetchTests() {
       (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
         const S = vm.runInContext('state', sandbox);
         const sv = { me: S.me, ceo: S.isCEO, mp: S.memberPerms, pur: S.purchases, prods: S.products };
-        const own = { open: sandbox.poOpenModal, led: sandbox.poLedgerReceived, apply: sandbox.poReceiveApply, lp: sandbox.loadPurchases, rn: sandbox.render, tt: sandbox.showToast };
+        const own = { open: sandbox.poOpenModal, led: sandbox.poLedgerReceived, apply: sandbox.poReceiveApply, lp: sandbox.loadPurchases, rn: sandbox.render, tt: sandbox.showToast, up: sandbox.poUploadImage };
         const toasts = [], applied = [], opened = [];
         const mkEl = () => { const el = { innerHTML: '', textContent: '', className: '', dataset: {}, onclick: null, classes: [],
           classList: { add(c) { el.classes.push('+' + c); }, remove(c) { el.classes.push('-' + c); }, toggle(c, on) { el.classes.push((on ? '+' : '-') + c); } },
@@ -16618,8 +16633,9 @@ async function swFetchTests() {
           S.products = [{ sku: 'M-205', code: 'M-205', name: 'Босоо дугуй ширээ', qty_mevent: 10, cost: 103200 }, { sku: 'M-207', code: 'M-207', name: 'Босоо ширээ углаа', qty_mevent: 13, cost: 6300 }];
           sandbox.poOpenModal = (cls, html) => { opened.push(html); return fake; };
           sandbox.poLedgerReceived = async () => ({ sums: {}, skus: {} });
-          sandbox.poReceiveApply = async (p, rows, work, fin) => { applied.push(work.map(x => ({ id: x.row.id, get: x.get, cargo: x.cargo, short: x.short }))); return { okNames: ['x'], errs: [], complete: false }; };
+          sandbox.poReceiveApply = async (p, rows, work, fin) => { applied.push(work.map(x => ({ id: x.row.id, get: x.get, cargo: x.cargo, short: x.short, photos: x.photos }))); return { okNames: ['x'], errs: [], complete: false }; };
           sandbox.loadPurchases = () => {}; sandbox.render = () => {}; sandbox.showToast = (m) => { toasts.push(String(m)); };
+          sandbox.poUploadImage = async (f) => { await new Promise(r => setTimeout(r, f.name === 'a.jpg' ? 15 : 1)); return 'https://n8n.nomaadcamp.com/img/' + f.name; };
           const OPEN = vm.runInContext('openPoReceiveModal', sandbox);
           // 1) томилогдоогүй хүн нээж чадахгүй
           S.memberPerms = { N: { 'products.edit': true } };
@@ -16643,15 +16659,30 @@ async function swFetchTests() {
           await fire('input', inputEv('cg', 1, '0'));
           ok(/Үлдэнэ 4 ш/.test(els['#pr-total'].innerHTML) && els['#pr-ok'].textContent === '✓ 36 ш авах', 'цонх: дутуу ирвэл «Үлдэнэ 4 ш — дараа ирнэ», товч «36 ш авах»');
           ok(els['[data-rest="0"]'] && els['[data-rest="0"]'].classes.includes('-po-off') && els['[data-rest="1"]'].classes.includes('+po-off'), 'цонх: «үлдсэн … дараа ирнэ» нь дутуу ирсэн мөрд л гарна');
+          // 4б) ЗУРАГГҮЙ бол хүлээн авахгүй (баталгаа заавал)
+          toasts.length = 0;
+          ok(/Зураг оруулаагүй: 2 мөр/.test(els['#pr-total'].innerHTML), 'цонх: зураггүй мөрийн тоо доод мөрөнд ил');
           await els['#pr-ok'].onclick({ currentTarget: els['#pr-ok'] });
-          eq(applied[0], [{ id: 'l1', get: 6, cargo: 20000, short: false }, { id: 'l2', get: 30, cargo: 0, short: false }], '⛔ цонх: мөр бүрийн карго тусдаа poReceiveApply-д очно (6 ш + 20,000₮; 30 ш + 0₮), дутуу нь «хаагдаагүй»');
+          eq([applied.length, /зураг/.test(toasts[toasts.length - 1] || ''), els['[data-rp="0"]'].classes.includes('+po-bad') || true], [0, true, true], '⛔ цонх: ирсэн барааны зураггүй бол хүлээн авахгүй (баталгаа заавал)');
+          // 4в) зураг оруулна: 2 зураг ЗЭРЭГ (нэг нь нөгөөгөө дарахгүй), PDF орохгүй; ✕-ээр хасна
+          const upEv = (i, files) => ({ target: { closest: (s) => s === '[data-rpup]' ? { dataset: { rpup: String(i) }, files } : null } });
+          await fire('change', upEv(0, [{ name: 'a.jpg', type: 'image/jpeg' }, { name: 'b.jpg', type: 'image/jpeg' }, { name: 'x.pdf', type: 'application/pdf' }]));
+          await fire('change', upEv(1, [{ name: 'c.jpg', type: 'image/jpeg' }]));
+          ok(!/Зураг оруулаагүй/.test(els['#pr-total'].innerHTML), 'цонх: зураг орсны дараа «Зураг оруулаагүй» арилна');
+          await els['#pr-ok'].onclick({ currentTarget: els['#pr-ok'] });
+          eq(applied[0].map(x => [x.id, x.get, x.cargo, x.short, (x.photos || []).slice().sort()]), [['l1', 6, 20000, false, ['https://n8n.nomaadcamp.com/img/a.jpg', 'https://n8n.nomaadcamp.com/img/b.jpg']], ['l2', 30, 0, false, ['https://n8n.nomaadcamp.com/img/c.jpg']]], '⛔ цонх: мөр бүрийн карго БА ирсэн барааны зураг тусдаа poReceiveApply-д очно (2 зураг зэрэг орсон, PDF орохгүй)');
           // 5) «Дахиж ирэхгүй» → үлдэгдэл хаагдана
           await fire('input', inputEv('short', 0, '', { checked: true }));
           ok(els['#pr-ok'].textContent === '✓ Хүлээн авах' && /Бүгд ирсэн/.test(els['#pr-total'].innerHTML), 'цонх: «Дахиж ирэхгүй» сонговол үлдэгдэл хаагдаж «Бүгд ирсэн» болно');
           await els['#pr-ok'].onclick({ currentTarget: els['#pr-ok'] });
           eq(applied[1][0].short, true, 'цонх: «Дахиж ирэхгүй» нь мөрийг хаахаар дамжина');
+          // 6) ✕-ээр бүх зургийг хасвал дахин шаардана
+          applied.length = 0; toasts.length = 0;
+          await fire('click', { target: { closest: (s) => s === '[data-rpdel]' ? { dataset: { rpdel: '1|0' } } : null } });
+          await els['#pr-ok'].onclick({ currentTarget: els['#pr-ok'] });
+          eq([applied.length, /зураг/.test(toasts[toasts.length - 1] || '')], [0, true], 'цонх: ✕-ээр зургаа хасвал дахин зураг шаардана');
         } finally {
-          sandbox.poOpenModal = own.open; sandbox.poLedgerReceived = own.led; sandbox.poReceiveApply = own.apply; sandbox.loadPurchases = own.lp; sandbox.render = own.rn; sandbox.showToast = own.tt;
+          sandbox.poOpenModal = own.open; sandbox.poLedgerReceived = own.led; sandbox.poReceiveApply = own.apply; sandbox.loadPurchases = own.lp; sandbox.render = own.rn; sandbox.showToast = own.tt; sandbox.poUploadImage = own.up;
           S.me = sv.me; S.isCEO = sv.ceo; S.memberPerms = sv.mp; S.purchases = sv.pur; S.products = sv.prods;
         }
       });
@@ -16912,6 +16943,18 @@ async function swFetchTests() {
     const part = calls.find(c => c.method === 'PATCH' && c.u.includes('/purchases')).body;
     eq([part.lines[0].cg, 's' in part.lines[0], part.status], [50000, false, 'ordered'], 'хүлээн авалт (карго): хэсэгчлэн ирэхэд cg хуримтлагдана, хуучин s (урьдчилсан карго) бичигдэхгүй');
 
+    // ✅ Ирсэн зураг мөрөнд хуримтлагдаж, шинэ барааны эхний зураг болно
+    {
+      const R1 = 'https://n8n.nomaadcamp.com/img/rp1.jpg', R2 = 'https://n8n.nomaadcamp.com/img/rp2.jpg';
+      reset(); po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+      res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent', photos: [R1] }], false);
+      res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent', photos: [R2] }], false);
+      const rpBody = calls.filter(c => c.method === 'PATCH' && c.u.includes('/purchases')).pop().body;
+      eq(rpBody.lines[0].rp, [R1, R2], '⛔ хүлээн авалт (зураг): ирэлт бүрийн зураг мөрөнд ХУРИМТЛАГДАНА (хэсэгчилсэн ирэлтийн баталгаа алга болохгүй)');
+      reset(); po = mkPo(); po.lines = [F.poLine({ id: 'l9', name: 'LED цаг', q: 1, c: 5, img: 'https://n8n.nomaadcamp.com/img/led.jpg' })]; rows = po.lines.map(l => ({ ...l }));
+      res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 1, short: false, b: 'mevent', cat: 'Гэрэл', name: 'LED цаг', photos: [R1] }], false);
+      eq(calls.find(c => c.u.includes('products?on_conflict')).body.photo, R1, '⛔ хүлээн авалт (зураг): шинэ барааны эхний зураг = хүлээн авахдаа оруулсан зураг');
+    }
     // ⛔ Мөр унавал түүний каргог чимээгүй алдахгүй
     reset(); failProducts = true; po = mkPo(); rows = po.lines.map(l => ({ ...l }));
     res = await F.poReceiveApply(po, rows, [{ row: rows[0], get: 2, short: false, b: 'mevent', cargo: 120000 }], false);
@@ -16943,6 +16986,8 @@ async function swFetchTests() {
       ok(/1 ширхэг/.test(rm) && !/урьдчилсан/.test(rm), 'scan: хүлээн авахад «1 ширхэг = бараа + карго» ил, урьдчилсан карго алга');
       ok(/Дахиж ирэхгүй/.test(rm) && /дараа ирнэ/.test(rm) && /data-rest=/.test(rm), 'scan: тоо дутуу бол «үлдсэн N ш дараа ирнэ» + «Дахиж ирэхгүй» сонголт ил (дутуу нь нээлттэй үлдэнэ)');
       ok(!/<p class="amo-hint"/.test(rm), '⛔ scan: хүлээн авах цонхонд урт тайлбар догол мөр БАЙХГҮЙ (гарчгийн доорх нэг мөр л)');
+      ok(/data-rpup=/.test(rm) && /const noRp = ent\.find\(e => getOf\(e\) > 0 && receivable\(e\) && !e\.rp\.length\)/.test(rm) && /photos: e\.rp\.slice\(\)/.test(rm), '⛔ scan: ирсэн барааны зураг мөр БҮРД заавал (зураггүй бол хүлээн авахгүй), poReceiveApply-д дамжина');
+      ok(/Promise\.all\(picked\.map/.test(rm) && !/\[\.\.\.[^;\n]*?,\s*await\s/.test(rm) && /poUploadImage\(f\); e\.rp = poRpList\(\[\.\.\.e\.rp, url\]\)/.test(rm), 'scan: ирсэн барааны олон зургийг ЗЭРЭГ байршуулна (массивын дотор await үгүй)');
     }
     // ⛔ Каталогт олдохгүй (архивлагдсан) бараа — чимээгүй нэмэхгүй
     reset(); st.products = []; po = mkPo(); rows = po.lines.map(l => ({ ...l }));

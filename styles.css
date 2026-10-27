@@ -9969,6 +9969,7 @@ select.no-asar-len {
   border-radius: var(--r-md); background: var(--warn-soft); color: var(--text-soft); font-size: var(--fs-sm); }
 .po-recv .po-rl-rest .po-chk { margin: 0; }
 .po-recv .po-off { display: none; }
+.po-recv .po-rp.po-bad { padding: var(--space-2); border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--danger-soft); }
 /* Тойм: хүлээн аваагүй бараа */
 .por-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--border); }
 .por-row:first-child { border-top: 0; }

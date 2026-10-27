@@ -8181,6 +8181,13 @@ select.no-asar-len {
 .po-bi-nm { flex: 1 1 0; min-width: 0; font-weight: 600; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .po-bi-t { flex: none; white-space: nowrap; font-size: var(--fs-sm); }
 .po-muted { color: var(--muted); font-weight: 400; }
+.po-hint { font-size: var(--fs-xs); color: var(--info); background: var(--info-soft); border-radius: var(--r-sm); padding: var(--space-2); white-space: normal; overflow-wrap: anywhere; }
+.po-lkbox { display: flex; flex-direction: column; gap: var(--space-2); }
+.po-recv .po-bad { border-color: var(--danger); }
+.pm-po { margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r-md); display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-sm); }
+.pm-po-h { margin-bottom: var(--space-1); }
+.pm-po-r { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-1) 0; border-top: 1px solid var(--border); }
+.pm-po-r small { color: var(--muted); font-size: var(--fs-xs); }
 .po-bd-f { border-top: 1px solid var(--border); padding-top: var(--space-1); }
 .po-bd-f .po-kv:last-child b { font-weight: 700; font-size: var(--fs-base); }
 .po-rc { font-size: var(--fs-xs); color: var(--warn); }
@@ -8240,15 +8247,15 @@ select.no-asar-len {
 .po-edit .po-line-nmwrap { display: flex; flex-direction: column; flex: 1 1 0; gap: var(--space-1); min-width: 0; }
 .modal.po-edit .po-line-in { width: 100%; min-height: var(--tap); font-size: var(--fs-base); font-weight: 600; }
 .po-edit .po-line-nm { overflow-wrap: anywhere; font-size: var(--fs-base); }
-.po-edit .po-linked { color: var(--ok); font-size: var(--fs-xs); }
-.po-edit .po-lnk { min-height: 0; padding: 0; border: 0; background: none; color: var(--primary); font-size: var(--fs-xs); text-decoration: underline; cursor: pointer; }
+.po-edit .po-linked, .po-recv .po-linked { color: var(--ok); font-size: var(--fs-xs); }
+.po-edit .po-lnk, .po-recv .po-lnk { min-height: 0; padding: 0; border: 0; background: none; color: var(--primary); font-size: var(--fs-xs); text-decoration: underline; cursor: pointer; }
 .po-edit .po-sug { display: flex; flex-direction: column; gap: var(--space-1); }
 .po-edit .po-sug:empty { display: none; }
-.po-edit .po-sug-h { color: var(--muted); font-size: var(--fs-xs); }
-.po-edit .po-hit { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--tap); padding: var(--space-2) var(--space-3);
+.po-edit .po-sug-h, .po-recv .po-sug-h { color: var(--muted); font-size: var(--fs-xs); }
+.po-edit .po-hit, .po-recv .po-hit { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--tap); padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
-.po-edit .po-hit:hover { border-color: var(--primary); }
-.po-edit .po-hit small { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.po-edit .po-hit:hover, .po-recv .po-hit:hover { border-color: var(--primary); }
+.po-edit .po-hit small, .po-recv .po-hit small { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
 .po-edit .po-line-row { display: grid; grid-template-columns: 1fr 1.3fr; gap: var(--space-3); align-items: end; }
 .po-edit .po-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); align-items: start; }
 .po-edit .po-fld { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }

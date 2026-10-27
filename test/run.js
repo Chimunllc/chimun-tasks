@@ -15976,12 +15976,12 @@ async function swFetchTests() {
 // Мөнгө/нөөцөд хүрдэг тул цэвэр логикийг ч, бичих замыг ч ҮНЭХЭЭР дуудаж шалгана.
 {
   need(['poLine', 'poLineTotals', 'poTotals', 'poProblems', 'poLineLeft', 'poAllReceived', 'poSummary', 'poActions',
-    'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves', 'poFromMatrix', 'poSafeArith',
-    'poSheetMatrix', 'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
+    'poAdvancePatch', 'poReceiptPlan', 'poLedgerSums', 'poLedgerSkus', 'poReverseMoves',
+    'poReceiveApply', 'poBoardHtml', 'poNormalize', 'poCardHtml',
     'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poPrevAccounts', 'poAcctKey', 'poLineRealUnit', 'poUnitCost', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
-    'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poEvStripFormHtml', 'poUploadFiles',
+    'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poEvStripFormHtml',
     'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml',
     'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
 
@@ -16302,7 +16302,7 @@ async function swFetchTests() {
     eq(F.poProductHistoryHtml('M-404', P, {}), '', 'агуулах: түүхгүй бараанд хоосон');
     const asrcH = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
     ok(/id="pm-po-hist"/.test(asrcH) && /poFillProductHistory\(modal, p\.sku, p\)/.test(asrcH) && /!canSeePurchases\(\)\) return/.test(asrcH), 'scan: барааны цонхонд түүх (худалдан авалтын эрхтэй хүнд л)');
-    const rmH = asrcH.slice(asrcH.indexOf('async function openPoReceiveModal('), asrcH.indexOf('async function openPoImportModal('));
+    const rmH = asrcH.slice(asrcH.indexOf('async function openPoReceiveModal('), asrcH.indexOf('/* Самбарын товчнууд'));
     ok(/data-lnk=/.test(rmH) && /e\.row\.sku = lk\.dataset\.sku/.test(rmH) && /poCatalogSimilar\(state\.products, e\.name/.test(rmH), '⛔ scan: хүлээн авахад кодгүй мөрийг каталогтой холбох (давхар бараа үүсгэхгүй)');
     ok(/const noCat = ent\.find\(e => getOf\(e\) > 0 && !e\.row\.sku && !String\(e\.cat/.test(rmH), '⛔ scan: ангилалгүй шинэ бараа үүсгэхгүй (ирэх үед ангилал заавал)');
   }
@@ -16356,52 +16356,12 @@ async function swFetchTests() {
   ok(F.poAllReceived({ lines: [{ ...ln, rcv: 5 }, { ...ln, done: true }] }), 'хүлээн авах: бүх мөр бүрэн/хаагдсан бол дууссан');
   ok(!F.poAllReceived({ lines: [] }), 'хүлээн авах: мөргүй худалдан авалт «дууссан» болохгүй');
 
-  // ⑩ Excel-ээс оруулах — бодит файлын бүтэц
-  const hdr = ['№', 'Код', 'Бараа', 'Төрөл', 'Нийлүүлэгч', 'Платформ', 'Тоо', 'Нэгж үнэ ¥', 'Нийт ¥', 'Бараа ₮', 'Хүргэлт + карго ₮', 'Нийт өртөг ₮', 'Төлөв', 'Захиалсан огноо', 'Тайлбар', 'Линк'];
-  const R = (o) => { const r = new Array(16).fill(''); Object.entries(o).forEach(([i, v]) => { r[i] = v; }); return r; };
-  const mx = [
-    ['M Event · Хөрөнгө оруулалт'],
-    ['Ханш (₮/¥)', '', 540, '← ханш өөрчлөгдвөл зөвхөн энд засна'],
-    ['Шинэ бараа нэмэх…'], [],
-    hdr,
-    R({ 2: 'Утаа-хөөсний машин 3000W', 4: 'Xinrui lighting', 5: 'Taobao', 6: 1, 7: 1511, 10: 182460, 12: 'Захиалах', 14: 'хямдрал 10.29', 15: 'https://item.taobao.com/a' }),
-    R({ 2: 'Гэрэлтэй үсэг', 4: 'Yide Lighting', 5: 'Taobao', 6: 12, 7: 80, 12: 'Захиалах', 15: 'https://item.taobao.com/y' }),
-    R({ 2: 'Гэрэлтэй тоо', 4: 'Yide Lighting', 5: 'Taobao', 6: 8, 7: 100, 12: 'Захиалах', 15: 'https://item.taobao.com/y' }),
-    R({ 1: 'M-033', 2: 'Улаан хивс 5.5号', 4: 'Jinnin carpets', 5: 'Taobao', 6: 1, 7: 1128, 10: 226500, 12: 'Захиалах' }),
-    R({ 2: 'Босоо дугуй ширээ', 5: '1688', 6: 10, 7: 197, 12: 'Захиалах', 15: 'https://detail.1688.com/offer/1.html' }),
-    R({ 2: 'Хөөсний машины шингэн', 5: '1688', 6: 12, 7: 18.33, 12: 'Захиалах', 15: 'https://detail.1688.com/offer/2.html' }),
-    R({ 2: 'Хуучин ирсэн', 4: 'Ganxin', 5: '1688', 6: 1, 7: 500, 12: 'Ирсэн' }),
-    R({ 2: 'НИЙТ' }),
-  ];
-  const imp = F.poFromMatrix(mx, { 'M-033': { sku: 'M-033', name: 'Улаан хивс (каталог)' } });
-  eq(imp.fx, 540, 'Excel: ханш толгойгоос уншигдана'); eq(imp.error, '', 'Excel: толгой олдоно');
-  eq(imp.groups.length, 6, 'Excel: нийлүүлэгч бүр = нэг худалдан авалт; нийлүүлэгчгүй мөр холилдохгүй (6 бүлэг)');
-  const gX = imp.groups.find(g => g.supplier === 'Xinrui lighting'), gY = imp.groups.find(g => g.supplier === 'Yide Lighting');
-  eq(gX.total_mnt, 815940, 'Excel: Xinrui нийт дүн = зөвхөн бараа (Хүргэлт баганыг орхино — карго хүлээн авахад)'); eq(gY.lines.length, 2, 'Excel: Yide-ийн үсэг+тоо нэг худалдан авалтад');
-  eq(gY.total_mnt, 518400 + 432000, 'Excel: Yide нийт дүн');
-  const gC = imp.groups.find(g => g.supplier === 'Jinnin carpets');
-  eq([gC.lines[0].sku, gC.lines[0].name], ['M-033', 'Улаан хивс (каталог)'], 'Excel: кодтой мөр каталогийн бараатай холбогдож нэр нь каталогоос');
-  eq(imp.groups.filter(g => !g.supplier).length, 2, 'Excel: нийлүүлэгч хоосон 2 мөр тусдаа худалдан авалт');
-  ok(imp.groups.find(g => g.supplier === 'Ganxin').sel === false, 'Excel: «Ирсэн» төлөвтэйг өгөгдмөлөөр СОНГОХГҮЙ');
-  ok(gX.sel === true && gY.sel === true, 'Excel: «Захиалах» бүлэг сонгогдсон');
-  eq(new Set(imp.groups.map(g => g.import_key)).size, 6, 'Excel: давхардлын түлхүүр бүлэг бүрд өөр');
-  eq(F.poFromMatrix(mx, {}).groups.map(g => g.import_key), imp.groups.map(g => g.import_key),
-     'Excel: ижил файлыг дахин оруулахад түлхүүр тогтвортой — каталог өөрчлөгдсөн ч (давхар орохгүй)');
-  ok(F.poFromMatrix([['тэр'], ['бусад']], {}).error.length > 0, 'Excel: толгой олдохгүй бол ил алдаа');
-  eq(gX.problems, [], 'Excel: бүрэн мөр дутуугүй');
-  ok(imp.groups.find(g => g.lines[0].name === 'Хөөсний машины шингэн').lines[0].c === 18.33, 'Excel: бутархай ¥ үнэ');
-
-  // ⑪ Томьёоны аюулгүй бодолт — eval байхгүй
-  ok(Math.abs(F.poSafeArith('=220/12') - 18.3333) < 0.001, 'Excel: =220/12');
-  eq([F.poSafeArith('=1+2*3'), F.poSafeArith('=(1+2)*3'), F.poSafeArith('=-4+10')], [7, 9, 6], 'Excel: үйлдлийн дараалал, хаалт, сөрөг');
-  eq([F.poSafeArith('=process.exit()'), F.poSafeArith('=1/0'), F.poSafeArith('=(1+'), F.poSafeArith('')], [null, null, null, null], '⛔ Excel: томьёоны код ажиллахгүй, буруу оролт null');
+  // ⑩ Excel-ээс оруулах УСТСАН (2026-10-27): 10 худалдан авалтын 10 нь Excel-ээс орсон нэг удаагийн гүүр байсан, хүсэлтийн цонх бэлэн болсон тул хаслаа
   {
-    // poSheetMatrix: кэшлээгүй томьёог (=220/12) энгийн тооцоогоор нөхнө
-    const col = (c) => String.fromCharCode(65 + c);
-    sandbox.XLSX = { utils: { decode_range: () => ({ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }), encode_cell: ({ r, c }) => col(c) + (r + 1) } };
-    const m = F.poSheetMatrix({ '!ref': 'A1:B1', A1: { v: 'Бараа' }, B1: { f: '220/12' } });
-    delete sandbox.XLSX;
-    ok(m[0][0] === 'Бараа' && Math.abs(m[0][1] - 18.3333) < 0.001, 'Excel: кэшлээгүй томьёо уншигдана');
+    const srcX = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(typeof F.poFromMatrix === 'undefined' && !/poFromMatrix|poSheetMatrix|poSafeArith|openPoImportModal|data-po-import|Excel-ээс оруулах/.test(srcX), '⛔ scan: «Excel-ээс худалдан авалт оруулах» бүх зам УСТСАН — буцааж БҮҮ нэм');
+    ok(!/po-ig/.test(fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8')), 'scan: Excel оруулах цонхны CSS (.po-ig) устсан');
+    ok(/function poUploadImage\(/.test(srcX) && /function poThumbHtml\(/.test(srcX), 'scan: Excel-ийн хажууд байсан зураг байршуулах/thumbnail функц ҮЛДСЭН (бусад газар хэрэглэгддэг)');
   }
 
   {
@@ -16452,32 +16412,18 @@ async function swFetchTests() {
     ok(!('need_by' in rr), '⛔ хадгалалт: need_by УСТСАН — DB-д бичигдэхгүй');
     ok(!/need_by/.test(src), '⛔ scan: «хэзээ хүртэл / хямдрал дуусах» (need_by) аппад БУЦАЖ ИРЭХГҮЙ');
 
-    // Хавсаргасан файл: зураг = thumbnail, бусад = холбоос; хасах ✕ зөвхөн формд
-    const fi = F.poFileItemsHtml([IMGS[0], 'https://drive.google.com/file/d/abc/view', 'javascript:alert(1)'], true);
-    ok(/data-lightbox=/.test(fi) && (fi.match(/data-fdel=/g) || []).length === 3, 'файл: зураг нь thumbnail (томорно), бүх файлд ✕ (формд)');
+    // Хавсаргасан файл: ЗӨВХӨН харуулна — зураг = thumbnail, бусад = холбоос, ✕ байхгүй
+    const fi = F.poFileItemsHtml([IMGS[0], 'https://drive.google.com/file/d/abc/view', 'javascript:alert(1)']);
+    ok(/data-lightbox=/.test(fi) && !/data-fdel/.test(fi), 'файл: зураг нь thumbnail (томорно), ✕ байхгүй (зөвхөн харуулна)');
     ok(/href="https:\/\/drive\.google\.com/.test(fi) && !/href="javascript/i.test(fi), '⛔ файл: холбоос зөвхөн http(s)');
-    ok(!/data-fdel/.test(F.poFileItemsHtml([IMGS[0]], false)), 'файл: картад ✕ байхгүй');
     eq([F.poIsImageFile(IMGS[0]), F.poIsImageFile('https://x.com/a.PNG?v=1'), F.poIsImageFile('https://drive.google.com/file/d/abc/view'), F.poIsImageFile('https://x.com/a.pdf')], [true, true, false, false], 'файл: зураг эсэхийг VPS /img/ эсвэл өргөтгөлөөр таньна (Drive-ийн хуучин хавсралт холбоос хэвээр)');
 
-    // Файл байршуулалт: зураг → VPS, PDF → Drive; нэг нь унавал ШИДНЭ (await хэрэгтэй тул late дараалалд)
-    (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
-      const upI = sandbox.poUploadImage, upR = sandbox.uploadReceipt, calls = [];
-      sandbox.poUploadImage = async (f) => { calls.push('img:' + f.name); return 'https://n8n.nomaadcamp.com/img/' + f.name; };
-      sandbox.uploadReceipt = async (f) => { calls.push('rc:' + f.name); return f.name === 'bad.pdf' ? null : 'https://drive.google.com/file/d/' + f.name + '/view'; };
-      try {
-        const urls = await F.poUploadFiles([{ name: 'a.jpg', type: 'image/jpeg' }, { name: 'b.pdf', type: 'application/pdf' }], 'po_x');
-        eq(calls, ['img:a.jpg', 'rc:b.pdf'], 'байршуулалт: зураг VPS-д (шууд харагдана), PDF Drive-д');
-        eq(urls.length, 2, 'байршуулалт: хаяг бүр буцна');
-        let err = '';
-        try { await F.poUploadFiles([{ name: 'bad.pdf', type: 'application/pdf' }], 'po_x'); } catch (e) { err = e.message; }
-        ok(/bad\.pdf/.test(err), '⛔ байршуулалт: нэг файл унавал алдаа шиднэ (чимээгүй алгасахгүй — хагас хадгалагдахгүй)');
-      } finally { sandbox.poUploadImage = upI; sandbox.uploadReceipt = upR; }
-    });
-    // Хүсэлтийн цонх: файлыг ЭХЛЭЭД байршуулна, дараа нь хадгална (унавал давхар хүсэлт үүсэхгүй)
+    // Хүсэлтийн цонх: «Судалгаа, баримт» хасагдсан (2026-10-27); засахад хуучин хавсралт ХАДГАЛАГДАНА
     {
       const mo = src.slice(src.indexOf('async function openPoModal('), src.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
-      const iU = mo.indexOf('await poUploadFiles('), iI = mo.indexOf('await poInsert('), iP = mo.indexOf('await poPatch(ex.id');
-      ok(iU > 0 && iU < iI && iU < iP, '⛔ scan: файлыг ХАДГАЛАХААС ӨМНӨ байршуулна — унавал хүсэлт хагас хадгалагдахгүй');
+      ok(!/po-files|poUploadFiles|data-fdel|Судалгаа, баримт|d\.files/.test(mo) && typeof F.poUploadFiles === 'undefined', '⛔ scan: хүсэлтийн цонхонд «Судалгаа, баримт» файл оруулах хэсэг БАЙХГҮЙ (бараа бүрийн нотлох зураг л үлдсэн)');
+      ok(/const files = ex \? ex\.files : \[\]/.test(mo) && /poRow\(\{ \.\.\.ex, \.\.\.po, files \}\)/.test(mo), '⛔ scan: хүсэлт засахад хуучин хавсралт (шилжүүлгийн баримт, хуучин файл) ХАДГАЛАГДАНА, устахгүй');
+      ok(/Хавсаргасан файл/.test(src) && !/📎 Судалгаа, баримт/.test(src), 'scan: хуучин хавсралт «Дэлгэрэнгүй»-д харагдсаар (шошго «Хавсаргасан файл»)');
       ok(/closest\('\[data-evup\]'\)/.test(mo) && /closest\('\[data-evdel\]'\)/.test(mo) && /PO_EV_MAX/.test(mo), 'scan: нотлох зураг оруулах/хасах боломж формд бий, дээд тал нь PO_EV_MAX');
       ok(!/po-need|#po-url/.test(mo), '⛔ scan: форм дээр «Хэзээ хүртэл» ба нийт «Линк» талбар байхгүй (эх сурвалж бараа тус бүр дээр)');
       // Зэрэг байршсан зургууд бие биенээ ДАРДАГ байсан (браузерт барьсан): `[...l[k], await …]` нь spread-ийг await-ээс ӨМНӨ авдаг.
@@ -16790,7 +16736,7 @@ async function swFetchTests() {
   ok(/_moveSkipLog: true/.test(rcv) && /if \(!product\._moveSkipLog\) logStockMoves\(stockMoveRows/.test(src),
      'scan: дэвтэр ДАВХАР бичигдэхгүй (saveProduct өөрөө бичихийг дуудагч унтраана)');
   ok(/poPatch\(po\.id, patch, 'ordered'\)/.test(rcv) && /const patch = \{ \.\.\.base, lines \}/.test(rcv), 'scan: худалдан авалтын төлөв оптимист түгжээтэй (ordered байх үед л)');
-  const recvModal = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('async function openPoImportModal('));
+  const recvModal = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('/* Самбарын товчнууд'));
   ok(/canReceivePurchases\(\)/.test(recvModal) && !/canEditProducts\(\)/.test(recvModal), '⛔ scan: хүлээн авах цонх ЗӨВХӨН ил томилсон хүнд (purchases.receive) — бараа засах эрх хүрэлцэхгүй');
   ok(/await poLedgerReceived\(po\.id\)/.test(recvModal) && /давхар нэмэхээс/.test(recvModal), '⛔ scan: цонх нээхэд дэвтрийг ЗААВАЛ уншина, уншиж чадахгүй бол хаалттай унана');
   ok(!/showConfirm\(|showPrompt\(/.test(recvModal + src.slice(src.indexOf('function openPoPayModal('), src.indexOf('async function openPoReceiveModal('))),
@@ -16816,7 +16762,7 @@ async function swFetchTests() {
     const payM = src.slice(src.indexOf('async function openPoPayModal('), src.indexOf('function openPoOrderModal('));
     ok(/Шилжүүлэх данс/.test(payM) && /data-copy-text/.test(payM), 'scan: «Шилжүүлсэн» цонхонд төлөх данс (хуулах товчтой) харагдана');
     ok(/poFxValid\(rate\)/.test(payM) && /patch\.fx = rate/.test(payM) && !/poFxSave/.test(payM), '⛔ scan: шилжүүлэхдээ ТЭР ӨДРИЙН Хаан банкны ханш заавал, өртгийн суурь болж PO-д хадгалагдана (app_config-д БИЧИХГҮЙ)');
-    const recvM2 = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('async function openPoImportModal('));
+    const recvM2 = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('/* Самбарын товчнууд'));
     ok(/data-f="cg"/.test(recvM2) && /cargo: cgOf\(e\)/.test(recvM2), 'scan: хүлээн авахад мөр бүрийн карго оруулна, poReceiveApply-д дамжина');
   }
   const patchFn = src.slice(src.indexOf('async function poPatch('), src.indexOf('async function poMove('));
@@ -16980,7 +16926,7 @@ async function swFetchTests() {
 
     {
       const asrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-      const rm = asrc2.slice(asrc2.indexOf('async function openPoReceiveModal('), asrc2.indexOf('async function openPoImportModal('));
+      const rm = asrc2.slice(asrc2.indexOf('async function openPoReceiveModal('), asrc2.indexOf('/* Самбарын товчнууд'));
       ok(/const needCargo = po\.fx !== 1/.test(rm) && /needCargo \? ent\.find\(e => getOf\(e\) > 0 && receivable\(e\) && cgOf\(e\) == null\)/.test(rm), '⛔ scan: юанийн худалдан авалтад мөр БҮРД карго ЗААВАЛ (төлөөгүй бол 0) — хоосон мөр байвал хүлээн авахгүй');
       ok(/data-f="cg"/.test(rm) && !/id="pr-cargo"|pr-cargo/.test(rm) && /cargo: cgOf\(e\)/.test(rm), 'scan: карго МӨР БҮРД тусдаа талбар (нийт карго нэг талбар БИШ), мөр бүрийн утга work-д дамжина');
       ok(/1 ширхэг/.test(rm) && !/урьдчилсан/.test(rm), 'scan: хүлээн авахад «1 ширхэг = бараа + карго» ил, урьдчилсан карго алга');

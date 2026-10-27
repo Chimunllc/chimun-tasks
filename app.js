@@ -26967,6 +26967,21 @@ const PO_EV_KINDS = { pr: { icon: '🧾', label: 'Үнэ тохирсон бар
 function poImgList(v) {
   return [...new Set((Array.isArray(v) ? v : []).map(poImgUrl).filter(Boolean))].slice(0, PO_EV_MAX);
 }
+/* «ХУДАЛДАН АВСАН» алхмын ТӨЛБӨРИЙН БАРИМТ (юанийн худалдан авалтад Alipay-ийн зураг, CEO 2026-10-27): шилжилтийн түүхийн `pf`-д (VPS файлын хаяг).
+   Шинэ багана ХЭРЭГГҮЙ, бүх шилжилтийн баримтыг нэгтгэнэ. */
+const PO_PF_MAX = 6;
+function poPfList(v) {
+  return [...new Set((Array.isArray(v) ? v : []).map(poImgUrl).filter(Boolean))].slice(0, PO_PF_MAX);
+}
+function poPayProof(po) {
+  return poPfList(((po && po.history) || []).flatMap(h => (h && Array.isArray(h.pf)) ? h.pf : []));
+}
+function poProofLabel(po) { return po && po.fx !== 1 ? 'Alipay төлбөрийн баримт' : 'Төлбөрийн баримт'; }
+function poProofRowHtml(po) {
+  const pf = poPayProof(po);
+  if (!pf.length) return '';
+  return `<div class="po-ev-row"><span class="po-evl">🧾 ${escapeHtml(poProofLabel(po))}</span><span class="po-evs">${poEvThumbsHtml(pf, poProofLabel(po))}</span></div>`;
+}
 // Зөвхөн http(s) холбоос `href` болно (javascript: г.м. ХЭЗЭЭ Ч); «item.taobao.com/…» мэт схемгүй бол https:// залгана. Бусад (газрын нэр г.м.) нь энгийн бичвэр.
 function poLinkHref(v) {
   const s = String(v == null ? '' : v).trim();
@@ -27343,6 +27358,7 @@ function poAdvancePatch(po, to, by, note, extra, now) {
   const at = now || new Date().toISOString();
   const entry = { at, by: String(by || ''), to, note: String(note || '') };
   if (extra && extra.d) entry.d = String(extra.d);
+  if (extra && extra.pf) { const pf = poPfList(extra.pf); if (pf.length) entry.pf = pf; }
   const patch = { status: to, history: [...((po && po.history) || []), entry], updated_at: at };
   if (extra && extra.paid_mnt != null) patch.paid_mnt = Math.round(Number(extra.paid_mnt) || 0);
   return patch;
@@ -27778,6 +27794,7 @@ function poCardHtml(po, caps) {
     </div>
     ${pay}
     ${po.status === 'approved' ? poMemoBoxHtml(po) : ''}
+    ${poProofRowHtml(po)}
     <div class="po-sub">${[po.platform, memberName(po.created_by), fmtDateTimeUB(po.created_at)].filter(Boolean).map(escapeHtml).join(' · ')}</div>
     ${poProgressHtml(po.status)}
     ${hints.length ? `<div class="po-hint">${hints.slice(0, 2).map(h => `ℹ «${escapeHtml(h.line.name)}» кодгүй — каталогт ${h.matches.map(p => `«${escapeHtml(p.name || p.sku)}» (${escapeHtml(String(p.code || p.sku))})`).join(', ')} байна. Давхар бараа үүсгэхгүйн тулд ${po.status === 'request' || po.status === 'approved' ? '«Засах»-аар' : 'хүлээн авахдаа'} холбоорой.`).join('<br>')}</div>` : ''}
@@ -28377,22 +28394,50 @@ async function openPoPayModal(id) {
 }
 function openPoOrderModal(id) {
   const po = poById(id); if (!po || po.status !== 'paid') return;
+  const yuan = po.fx !== 1;   // юанийн худалдан авалтад Alipay-ийн баримт ЗААВАЛ (тэр л бодитоор төлсөн цорын ганц нотолгоо)
+  const pf = [];
+  let busy = 0;
   const w = poOpenModal('po-step', `
     <div class="modal-head"><b>🛒 Худалдан авсан · #${po.no} ${escapeHtml(po.supplier)}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
       <p class="amo-hint">Худалдагчид захиалга өгч, төлбөр баталгаажсаныг энд тэмдэглэнэ. Дараагийн алхам — бараа ирэхэд «Хүлээн авах».</p>
-      <label class="fld">Захиалгын / tracking дугаар <span class="fld-opt">(байвал)</span><input id="po-ordno" class="ui-raw" type="text" placeholder="жишээ: Taobao 4821…"></label>
-      <label class="fld">Ирэх хугацаа <span class="fld-opt">(ойролцоо)</span><input id="po-eta" class="ui-raw" type="date"></label>
+      <div class="po-fld"><span class="po-lb">🧾 ${escapeHtml(poProofLabel(po))} <i>(зураг · ${yuan ? 'заавал' : 'заавал биш'} · олон зураг болно)</i></span><div class="po-evs" id="po-pf"></div></div>
     </div>
     <div class="modal-actions"><button class="btn" id="po-ocancel">Болих</button><button class="btn btn-primary" id="po-ook">🛒 Худалдан авсан гэж бүртгэх</button></div>`);
+  const draw = () => {
+    const tiles = pf.map((u, n) => `<div class="po-evw">${poEvThumbsHtml([u], poProofLabel(po))}<button type="button" class="ui-raw po-ph-x" data-pfdel="${n}" aria-label="Зургийг хасах" title="Хасах">✕</button></div>`).join('');
+    const wait = '<span class="po-evt po-evt-busy" aria-hidden="true">⏳</span>'.repeat(busy);
+    const room = PO_PF_MAX - pf.length - busy;
+    const add = room > 0 ? `<span class="po-ph po-ev-add" title="${escapeHtml(poProofLabel(po))} оруулах"><span class="po-ph-t">＋<small>Зураг</small></span><input class="ui-raw" type="file" accept="image/*" multiple id="po-pf-in" aria-label="${escapeHtml(poProofLabel(po))} зураг оруулах"></span>` : '';
+    w.$('#po-pf').innerHTML = tiles + wait + add;
+  };
+  draw();
   w.$('#po-ocancel').onclick = w.close;
+  w.m.addEventListener('click', (e) => {
+    const x = e.target.closest && e.target.closest('[data-pfdel]');
+    if (x) { pf.splice(+x.dataset.pfdel, 1); draw(); }
+  });
+  w.m.addEventListener('change', async (e) => {
+    const inp = e.target.closest && e.target.closest('#po-pf-in');
+    if (!inp || !inp.files || !inp.files.length) return;
+    const room = PO_PF_MAX - pf.length - busy;
+    const picked = [...inp.files].filter(f => /^image\//i.test(f.type || '')).slice(0, Math.max(0, room));
+    if (!picked.length) { showToast(room > 0 ? 'Зураг сонгоно уу' : `Дээд тал нь ${PO_PF_MAX} зураг`, 'warn'); return; }
+    busy += picked.length; draw();
+    await Promise.all(picked.map(async (f) => {
+      // ⛔ Массивын литерал ДОТОР `await` бичихгүй (spread нь await-ээс өмнө авагдаж зэрэг байршсан зургууд бие биенээ дарна).
+      try { const url = await poUploadImage(f); pf.push(url); }
+      catch (err) { showToast('⚠ ' + (err && err.message ? err.message : err), 'error', 5000); }
+      finally { busy--; draw(); }
+    }));
+  });
   w.$('#po-ook').onclick = async (ev) => {
     const btn = ev.currentTarget;
+    if (busy > 0) { showToast('Зураг байршиж байна — түр хүлээнэ үү', 'warn'); return; }
+    if (yuan && !pf.length) { showToast('Alipay төлбөрийн баримтын зургаа оруулна уу', 'warn', 4000); return; }
     btn.disabled = true;
     try {
-      const no = w.$('#po-ordno').value.trim(), eta = w.$('#po-eta').value;
-      const note = [no && ('№ ' + no), eta && ('ирэх ' + eta)].filter(Boolean).join(' · ');
-      await poMove(po.id, 'ordered', note, eta ? { d: eta } : null);
+      await poMove(po.id, 'ordered', '', pf.length ? { pf } : null);
       w.close(); showToast('🛒 Худалдан авалт бүртгэгдлээ — бараа ирэхийг хүлээнэ', 'success', 3000); render();
     } catch (e) { showToast('⚠ ' + e.message, 'error', 6000); btn.disabled = false; loadPurchases(true); }
   };

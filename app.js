@@ -27632,7 +27632,7 @@ function poLineRowHtml(po, l) {
   const cargo = l.cg != null ? ` · карго ${escapeHtml(fmtMoney(l.cg))}` : '';
   const unitMnt = po.fx !== 1 ? ` · ${escapeHtml(fmtMoney(Math.round((Number(l.c) || 0) * po.fx)))}/ш` : '';
   return `<div class="po-cl">
-    ${poThumbHtml(poImgOf(l)) || '<span class="po-th po-th-none" aria-hidden="true">📷</span>'}
+    ${poThumbHtml(poImgOf(l))}
     <div class="po-cl-b">
       <span class="po-cl-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span>
       <small>${shopTag}${l.q} × ${poUnitIsRounded(l.c) ? '≈' : ''}${escapeHtml(poFmtNum(l.c))}${cur}${unitMnt}${l.sku ? ' · ' + escapeHtml(l.sku) : ' · 🆕 шинэ'}${cargo}${l.u ? ' · 🔗 ' + poSourceHtml(l.u) : ''}</small>
@@ -27663,7 +27663,7 @@ function poBreakdownHtml(po) {
       ? kv('Ирсэн', `<span class="po-rc${poLineLeft(l) === 0 ? ' ok' : ''}">${l.rcv}/${l.q}${l.done && l.rcv < l.q ? ' (хаасан)' : ''}</span>`) : '';
     return `<div class="po-bi">
       <div class="po-bi-top">
-        ${poThumbHtml(poImgOf(l)) || '<span class="po-th po-th-none" aria-hidden="true">📷</span>'}
+        ${poThumbHtml(poImgOf(l))}
         <span class="po-bi-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span>
         <b class="po-bi-t">${escapeHtml(fmtMoney(x.total))}</b>
       </div>
@@ -27741,11 +27741,12 @@ function poCardHtml(po, caps) {
   return `<div class="po-card" data-po-card="${escapeHtml(po.id)}">
     <details class="po-d" data-po-d="${escapeHtml(po.id)}"${open ? ' open' : ''}>
       <summary class="po-top">
-        ${img ? `<img class="po-th" src="${escapeHtml(img)}" alt="" loading="lazy">` : '<span class="po-th po-th-none" aria-hidden="true">📷</span>'}
+        ${img ? `<img class="po-th" src="${escapeHtml(img)}" alt="" loading="lazy">` : ''}
         <span class="po-top-b">
           <span class="po-top-l"><b class="po-no">#${po.no == null ? '—' : po.no}</b> <span class="po-title">${poTitleHtml(po)}</span></span>
-          <span class="po-top-m"><b class="po-tot">${escapeHtml(fmtMoney(total))}</b>${meta ? `<span class="po-top-s">${meta}</span>` : ''}${poPillHtml(po.status)}</span>
+          <span class="po-top-m">${poPillHtml(po.status)}${meta ? `<span class="po-top-s">${meta}</span>` : ''}</span>
         </span>
+        <b class="po-tot">${escapeHtml(fmtMoney(total))}</b>
         <span class="po-chev" aria-hidden="true">⌄</span>
       </summary>
       <div class="po-exp">

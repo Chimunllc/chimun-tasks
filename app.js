@@ -26989,6 +26989,13 @@ const PO_PF_MAX = 6;
 function poPfList(v) {
   return [...new Set((Array.isArray(v) ? v : []).map(poImgUrl).filter(Boolean))].slice(0, PO_PF_MAX);
 }
+/* ИРСЭН БАРААНЫ ЗУРАГ (`lines[].rp`, CEO 2026-10-27: «худалдан аваад зураг оруулж баталгаажуулдаг, анхны зураг»): хүлээн авахдаа мөр бүрд ЗААВАЛ (баталгаа).
+   Нэг ирэлтэд ≤ PO_RP_MAX, хэсэгчилсэн ирэлт бүрийнх хуримтлагдана (сүүлийн 6). Барааны ЭХНИЙ зураг болно (`poReceiptPlan`): шинэ барааны `photo`, зураггүй барааны `photo` —
+   каталогт аль хэдийн зурагтай барааг ДАРАХГҮЙ (сайтад харагддаг). VPS файлын хаяг (base64 ОРОХГҮЙ). */
+const PO_RP_MAX = 3;
+function poRpList(v) {
+  return [...new Set((Array.isArray(v) ? v : []).map(poImgUrl).filter(Boolean))].slice(-2 * PO_RP_MAX);
+}
 function poPayProof(po) {
   return poPfList(((po && po.history) || []).flatMap(h => (h && Array.isArray(h.pf)) ? h.pf : []));
 }
@@ -27159,6 +27166,7 @@ function poLine(raw) {
     shop: String(r.shop || '').trim().slice(0, 120),   // ЭНЭ бараа авах дэлгүүр (өөр бол); хоосон = хүсэлтийн дэлгүүртэй ижил
     cat: String(r.cat || '').trim(),
     img: poImgUrl(r.img),
+    rp: poRpList(r.rp),   // 📷 ирсэн барааны зураг (хүлээн авахдаа оруулсан баталгаа)
     cg: r.cg == null || r.cg === '' ? null : Math.max(0, Math.round(Number(r.cg) || 0)),   // хүлээн авахад бодитоор төлсөн карго ₮ (null = оруулаагүй)
     rcv: Math.max(0, Math.round(num(r.rcv))),
     done: r.done === true,
@@ -27409,6 +27417,7 @@ function poReceiptPlan(po, line, qty, product, ctx) {
   const branch = PO_BRANCH_LABEL[line.b] ? line.b : 'mevent';
   const today = c.today || todayStr();
   const prev = product || null;
+  const ph = poRpList(c.photos);   // хүлээн авахдаа оруулсан зураг — барааны ЭХНИЙ зураг
   const before = prev ? stockQtySnapshot(prev) : stockQtySnapshot({});
   const after = { ...before, [branch]: (Number(before[branch]) || 0) + q };
   const total = STOCK_BRANCHES.reduce((n, b) => n + (Number(after[b]) || 0), 0);
@@ -27424,12 +27433,12 @@ function poReceiptPlan(po, line, qty, product, ctx) {
       supplier: String(prev.supplier || '').trim() ? prev.supplier : (line.shop || po.supplier || prev.supplier || null),
     };
     if (!String(prev.source_url || '').trim() && line.u) fields.source_url = line.u;
-    if (!String(prev.photo || '').trim() && line.img) fields.photo = line.img;   // байгаа зургийг ДАРАХГҮЙ
+    if (!String(prev.photo || '').trim() && (ph[0] || line.img)) fields.photo = ph[0] || line.img;   // байгаа зургийг ДАРАХГҮЙ; ирсэн барааны зураг хүсэлтийнхээс ЭХЭНД
   } else {
     const code = c.code || '';
     fields = {
       sku: code, id: code, code, name: String(line.name || '').trim(), category: line.cat || '',
-      type: 'rental', price: 0, deposit: 0, stock: total, photo: line.img || '', description: '',
+      type: 'rental', price: 0, deposit: 0, stock: total, photo: ph[0] || line.img || '', description: '',
       broken: 0, maintenance: 0,
       qty_mevent: after.mevent, qty_chimun: after.chimun, qty_nomaad: after.nomaad, qty_catering: after.catering,
       cost: unit, purchase_date: today, supplier: line.shop || po.supplier || null, source_url: line.u || po.url || null,
@@ -27704,7 +27713,8 @@ function poTitleHtml(po) {
 function poEvRowHtml(po, l) {
   const g = (k) => { const u = (l && l[k]) || []; return u.length ? `<span class="po-evg"><span class="po-evl" title="${escapeHtml(PO_EV_KINDS[k].label)}">${PO_EV_KINDS[k].icon}</span>${poEvThumbsHtml(u, PO_EV_KINDS[k].label)}</span>` : ''; };
   const miss = po && po.status === 'request' ? ['pr', 'cmp'].filter(k => !((l && l[k]) || []).length).map(k => `${PO_EV_KINDS[k].icon} ${k === 'pr' ? 'баримтгүй' : 'харьцуулалтгүй'}`) : [];
-  const html = g('pr') + g('cmp') + (miss.length ? `<span class="po-ev-miss">${miss.join(' · ')}</span>` : '');
+  const rp = ((l && l.rp) || []).length ? `<span class="po-evg"><span class="po-evl" title="Ирсэн барааны зураг">📷</span>${poEvThumbsHtml(l.rp, 'Ирсэн барааны зураг')}</span>` : '';
+  const html = g('pr') + g('cmp') + rp + (miss.length ? `<span class="po-ev-miss">${miss.join(' · ')}</span>` : '');
   return html ? `<div class="po-ev-row">${html}</div>` : '';
 }
 function poLineRowHtml(po, l) {
@@ -27764,6 +27774,7 @@ function poBreakdownHtml(po) {
       ${l.u ? kv('Эх сурвалж', poSourceHtml(l.u)) : ''}
       ${l.nt ? kv('Тэмдэглэл', escapeHtml(l.nt)) : ''}
       ${['pr', 'cmp'].map(k => ((l[k] || []).length ? `<div class="po-bi-ev"><span class="po-bi-evl">${PO_EV_KINDS[k].icon} ${PO_EV_KINDS[k].label}</span><div class="po-evs">${poEvThumbsHtml(l[k], PO_EV_KINDS[k].label)}</div></div>` : '')).join('')}
+      ${(l.rp || []).length ? `<div class="po-bi-ev"><span class="po-bi-evl">📷 Ирсэн барааны зураг</span><div class="po-evs">${poEvThumbsHtml(l.rp, 'Ирсэн барааны зураг')}</div></div>` : ''}
     </div>`;
   }).join('');
   const t = poTotals(po);
@@ -28474,7 +28485,7 @@ function openPoOrderModal(id) {
 
 /* ─── ХҮЛЭЭН АВАХ → БАРААНД НЭМЭГДЭНЭ ───────────────────────────────────── */
 /* Хүлээн авалтын ГОЛ ЛОГИК (цонхноос салгасан — тест үнэхээр дуудаж шалгана).
-   work = [{ row, get, short, b, cat, name, cargo }]; rows = мөрүүд (хүлээн авсан тоо дэвтрээр нөхөгдсөн).
+   work = [{ row, get, short, b, cat, name, cargo, photos }]; rows = мөрүүд (хүлээн авсан тоо дэвтрээр нөхөгдсөн).
    `cargo` = ЭНЭ мөрийн ЭНЭ ирсэн ачааны бодит карго ₮ (null = оруулаагүй → нэгж өртөг зөвхөн барааны үнэ).
    Мөр бүрд ДАРААЛАЛ (ЧУХАЛ):
      ① нөөцийн дэвтэр (await) — унавал бараа ХӨНДӨГДӨӨГҮЙ, аюулгүй дахин оролдоно
@@ -28496,7 +28507,7 @@ async function poReceiveApply(po, rows, work, finishOnly) {
         if (r.sku && !prev) throw new Error(`«${r.name}» бараа каталогт олдсонгүй`);
         if (!prev && !String(r.name || '').trim()) throw new Error('Шинэ барааны нэр хоосон байна');
         const code = prev ? '' : await nextFreeProductCode();
-        const plan = poReceiptPlan(po, r, x.get, prev, { code, by: state.me, today: todayStr(), cargo: ca == null ? undefined : ca });
+        const plan = poReceiptPlan(po, r, x.get, prev, { code, by: state.me, today: todayStr(), cargo: ca == null ? undefined : ca, photos: x.photos });
         const snap = prev ? { ...prev } : null;
         await poLogMoves(plan.moves);
         try {
@@ -28510,6 +28521,7 @@ async function poReceiveApply(po, rows, work, finishOnly) {
         }
         r.rcv += plan.qty; if (!r.sku) r.sku = plan.fields.sku;
         if (ca != null) { r.cg = (r.cg || 0) + ca; cargoSum += ca; cargoAny = true; }
+        r.rp = poRpList([...(r.rp || []), ...poRpList(x.photos)]);
         okNames.push(`${r.name} ×${plan.qty}`);
       } catch (err) { errs.push(`${r.name || r.sku}: ${err.message}`); cargoLost += (ca || 0); continue; }
     }
@@ -28552,7 +28564,7 @@ async function openPoReceiveModal(id) {
   const prodOf = (r) => r.sku ? (state.products || []).find(p => p.sku === r.sku) : null;
   const cats = [...new Set((state.products || []).map(p => p.category).filter(Boolean))].sort();
   const needCargo = po.fx !== 1;   // юанийн (Хятадаас ирэх) бараа — мөр бүрт карго заавал (төлөөгүй бол 0); ₮-өөр бол заавал биш
-  const ent = open.map(r => ({ row: r, get: poLineLeft(r), short: false, b: r.b, cat: r.cat, name: r.name, lq: '', linkedHere: false, cg: '' }));
+  const ent = open.map(r => ({ row: r, get: poLineLeft(r), short: false, b: r.b, cat: r.cat, name: r.name, lq: '', linkedHere: false, cg: '', rp: [], busy: 0 }));
   // Кодгүй мөрт каталогоос ижил бараа санал болгоно / хайна (давхар бараа үүсэхээс сэргийлнэ). ⛔ Автоматаар холбохгүй.
   const lnkResHtml = (e, i) => {
     const have = new Set(rows.map(x => x.sku).filter(Boolean));
@@ -28579,6 +28591,7 @@ async function openPoReceiveModal(id) {
         <div class="po-fld"><span class="po-lb">🚚 Карго${needCargo ? ' <i>(төлөөгүй бол 0)</i>' : ''}</span>
           <div class="po-ctl" data-cgbox><input class="ui-raw" data-f="cg" type="number" min="0" step="1000" inputmode="numeric" placeholder="0" value="${escapeHtml(String(e.cg))}" aria-label="Карго төлбөр ₮"><span class="po-suf">₮</span></div></div>
       </div>
+      <div class="po-fld" data-rpbox="${i}"><span class="po-lb">📷 Ирсэн барааны зураг <i>заавал · барааны эхний зураг болно</i></span><div class="po-evs po-rp" data-rp="${i}"></div></div>
       <div class="po-fld"><span class="po-lb">Аль салбарт</span><div class="po-chips">${brs}</div></div>
       ${r.sku ? '' : `<div class="po-row2"><div class="po-fld"><span class="po-lb">Барааны нэр</span><input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(e.name)}"></div>
         <div class="po-fld"><span class="po-lb">Ангилал <i>заавал</i></span><input class="ui-raw po-line-in" data-f="cat" list="po-cat-dl" value="${escapeHtml(e.cat)}" placeholder="жишээ: Гэрэлтүүлэг"></div></div>`}
@@ -28598,12 +28611,24 @@ async function openPoReceiveModal(id) {
   const getOf = (e) => Math.max(0, Math.min(poLineLeft(e.row), Math.round(Number(e.get) || 0)));
   const cgOf = (e) => { const v = String(e.cg == null ? '' : e.cg).trim(); return v === '' ? null : Math.max(0, Math.round(Number(v) || 0)); };
   const receivable = (e) => !e.row.sku || !!prodOf(e.row);   // каталогт олдохгүй sku-г хүлээж авахгүй
+  // Ирсэн барааны зураг (мөр бүрд ЗААВАЛ — баталгаа; барааны эхний зураг болно). Зөвхөн энэ мөрийн зурвасыг дахин зурна (карт бүтэн дахин зурагдахгүй).
+  const drawRp = (i) => {
+    const e = ent[i], box = w.$(`[data-rp="${i}"]`); if (!e || !box) return;
+    const tiles = e.rp.map((u, n) => `<div class="po-evw">${poEvThumbsHtml([u], 'Ирсэн барааны зураг')}<button type="button" class="ui-raw po-ph-x" data-rpdel="${i}|${n}" aria-label="Зургийг хасах" title="Хасах">✕</button></div>`).join('');
+    const wait = '<span class="po-evt po-evt-busy" aria-hidden="true">⏳</span>'.repeat(e.busy);
+    const room = PO_RP_MAX - e.rp.length - e.busy;
+    const add = room > 0 ? `<span class="po-ph po-ev-add" title="Ирсэн барааны зураг оруулах"><span class="po-ph-t">＋<small>Зураг</small></span><input class="ui-raw" type="file" accept="image/*" multiple data-rpup="${i}" aria-label="Ирсэн барааны зураг оруулах"></span>` : '';
+    box.innerHTML = tiles + wait + add;
+    box.classList.remove('po-bad');
+  };
   const after = () => {
-    let n = 0, kinds = 0, rest = 0, cgSum = 0, noCg = 0;
+    let n = 0, kinds = 0, rest = 0, cgSum = 0, noCg = 0, noRp = 0;
     ent.forEach((e, i) => {
       const p = prodOf(e.row), left = poLineLeft(e.row), get = receivable(e) ? getOf(e) : 0, cg = cgOf(e);
       const unit = poUnitCost(po, e.row, get, cg == null ? undefined : cg);
-      if (get > 0) { n += get; kinds++; if (cg != null) cgSum += cg; else if (needCargo) noCg++; }
+      if (get > 0) { n += get; kinds++; if (cg != null) cgSum += cg; else if (needCargo) noCg++; if (!e.rp.length) noRp++; }
+      const rb = w.$(`[data-rpbox="${i}"]`);
+      if (rb) rb.classList.toggle('po-off', !(get > 0));   // ирээгүй мөрд зураг шаардахгүй
       if (receivable(e)) rest += e.short ? 0 : Math.max(0, left - get);
       const el = w.$(`[data-after="${i}"]`);
       if (el) {
@@ -28625,16 +28650,18 @@ async function openPoReceiveModal(id) {
       }
     });
     w.$('#pr-total').innerHTML = kinds
-      ? `<div class="po-foot-top"><b class="po-foot-n">${n} ш</b><small>${kinds} төрөл нөөцөд нэмэгдэнэ${cgSum ? ` · карго ${escapeHtml(fmtMoney(cgSum))}` : ''}</small></div>${noCg ? `<span class="po-foot-miss">Карго оруулаагүй: ${noCg} мөр</span>` : (rest ? `<span class="po-foot-hint">Үлдэнэ ${rest} ш — дараа ирнэ</span>` : '<span class="po-foot-ok">Бүгд ирсэн</span>')}`
+      ? `<div class="po-foot-top"><b class="po-foot-n">${n} ш</b><small>${kinds} төрөл нөөцөд нэмэгдэнэ${cgSum ? ` · карго ${escapeHtml(fmtMoney(cgSum))}` : ''}</small></div>${(noCg || noRp) ? `<span class="po-foot-miss">${[noCg ? `Карго оруулаагүй: ${noCg} мөр` : '', noRp ? `Зураг оруулаагүй: ${noRp} мөр` : ''].filter(Boolean).join(' · ')}</span>` : ''}${rest ? `<span class="po-foot-hint">Үлдэнэ ${rest} ш — дараа ирнэ</span>` : (noCg || noRp ? '' : '<span class="po-foot-ok">Бүгд ирсэн</span>')}`
       : '<small class="po-foot-hint">Ирсэн тоогоо оруулна уу</small>';
     w.$('#pr-ok').textContent = rest && n ? `✓ ${n} ш авах` : '✓ Хүлээн авах';
   };
-  const drawCards = () => { const box = w.$('#pr-cards'); if (box) box.innerHTML = ent.map(cardHtml).join(''); after(); };
+  const drawCards = () => { const box = w.$('#pr-cards'); if (box) box.innerHTML = ent.map(cardHtml).join(''); ent.forEach((_, i) => drawRp(i)); after(); };
   w.m.addEventListener('click', (ev) => {
     const t = ev.target, card = t.closest && t.closest('[data-i]');
     const lk = t.closest && t.closest('[data-lnk]'), un = t.closest && t.closest('[data-unl]');
     if (lk) { const e = ent[+lk.dataset.lnk]; if (e) { e.row.sku = lk.dataset.sku; e.linkedHere = true; drawCards(); } return; }
     if (un) { const e = ent[+un.dataset.unl]; if (e) { e.row.sku = ''; e.linkedHere = false; drawCards(); } return; }
+    const rd = t.closest && t.closest('[data-rpdel]');
+    if (rd) { const [i, k] = String(rd.dataset.rpdel).split('|').map(Number); const e = ent[i]; if (e) { e.rp.splice(k, 1); drawRp(i); after(); } return; }
     const st = t.closest && t.closest('[data-gstep]');
     if (st && card) {
       const e = ent[+card.dataset.i]; if (!e) return;
@@ -28648,6 +28675,21 @@ async function openPoReceiveModal(id) {
       e.b = bc.dataset.bch;
       card.querySelectorAll('[data-bch]').forEach(x => { const on = x === bc; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
     }
+  });
+  w.m.addEventListener('change', async (ev) => {
+    const up = ev.target.closest && ev.target.closest('[data-rpup]');
+    if (!up || !up.files || !up.files.length) return;
+    const i = +up.dataset.rpup, e = ent[i]; if (!e) return;
+    const room = PO_RP_MAX - e.rp.length - e.busy;
+    const picked = [...up.files].filter(f => /^image\//i.test(f.type || '')).slice(0, Math.max(0, room));
+    if (!picked.length) { showToast(room > 0 ? 'Зураг сонгоно уу' : `Дээд тал нь ${PO_RP_MAX} зураг`, 'warn'); return; }
+    e.busy += picked.length; drawRp(i); after();
+    await Promise.all(picked.map(async (f) => {
+      // ⛔ Массивын литерал ДОТОР `await` бичихгүй (spread нь await-ээс өмнө авагдаж зэрэг байршсан зургууд бие биенээ дарна).
+      try { const url = await poUploadImage(f); e.rp = poRpList([...e.rp, url]); }
+      catch (err) { showToast('⚠ ' + (err && err.message ? err.message : err), 'error', 5000); }
+      finally { e.busy--; drawRp(i); after(); }
+    }));
   });
   w.m.addEventListener('input', (ev) => {
     const f = ev.target.dataset && ev.target.dataset.f, card = ev.target.closest('[data-i]');
@@ -28663,7 +28705,8 @@ async function openPoReceiveModal(id) {
   w.$('#pr-cancel').onclick = w.close;
   w.$('#pr-ok').onclick = async (ev) => {
     const btn = ev.currentTarget;
-    const work = ent.map(e => ({ row: e.row, get: getOf(e), short: e.short, b: e.b, cat: e.cat, name: e.name, cargo: cgOf(e) })).filter(x => x.get > 0 || x.short);
+    if (ent.some(e => e.busy > 0)) { showToast('Зураг байршиж байна — түр хүлээнэ үү', 'warn'); return; }
+    const work = ent.map(e => ({ row: e.row, get: getOf(e), short: e.short, b: e.b, cat: e.cat, name: e.name, cargo: cgOf(e), photos: e.rp.slice() })).filter(x => x.get > 0 || x.short);
     const finishOnly = !open.length && poAllReceived({ lines: rows });
     if (!work.length && !finishOnly) { showToast('Ирсэн тоогоо оруулна уу', 'warn'); return; }
     const noCat = ent.find(e => getOf(e) > 0 && !e.row.sku && !String(e.cat || '').trim());
@@ -28679,6 +28722,12 @@ async function openPoReceiveModal(id) {
       if (inp) inp.focus();
       showToast(`«${noCg.name || noCg.row.name}» — каргоны төлбөрөө оруулна уу (төлөөгүй бол 0)`, 'warn', 5000); return;
     }
+    const noRp = ent.find(e => getOf(e) > 0 && receivable(e) && !e.rp.length);
+    if (noRp) {
+      const bx = w.m.querySelector(`[data-rp="${ent.indexOf(noRp)}"]`);
+      if (bx) { bx.classList.add('po-bad'); if (bx.scrollIntoView) bx.scrollIntoView({ block: 'center' }); }
+      showToast(`«${noRp.name || noRp.row.name}» — ирсэн барааны зураг оруулна уу (баталгаа, барааны эхний зураг болно)`, 'warn', 5000); return;
+    }
     btn.disabled = true;
     const { okNames, errs, complete } = await poReceiveApply(po, rows, work, finishOnly);
     if (okNames.length) { state.history = null; try { await loadProductsCatalog(); } catch (_) { /* дараагийн ачаалалт */ } }
@@ -28689,6 +28738,7 @@ async function openPoReceiveModal(id) {
       loadPurchases(true); render();
     } else btn.disabled = false;
   };
+  ent.forEach((_, i) => drawRp(i));
   after();
 }
 

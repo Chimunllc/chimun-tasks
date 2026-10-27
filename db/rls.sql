@@ -283,6 +283,8 @@ create policy nomaad_payments_rw on public.nomaad_payments for all to authentica
 -- ⛔ `stock_count_pause` (тооллого түр хаах, эхний үлдэгдэл дуустал) — CEO-гийн шийдвэр, ажилтан өөрчилж болохгүй.
 -- ⛔ `pay_rules` (захиалгын бонусын хувь, тасалсан/хоцорсон/ирээгүйн торгуулийн хувь, хэзээнээс хүчинтэй) = ЦАЛИН
 --    өөрчилдөг дүрэм тул зөвхөн CEO бичнэ. Уншихыг хаагаагүй — ажилтан өөрт ямар дүрэм үйлчилдгийг мэдэх ёстой.
+-- ⛔ `fx_cny` (Хаан банкны юанийн ханш) = худалдан авалтын өртгийн суурь. ЗӨВХӨН `tools/khan_fx.py` (VPS, эзний эрхээр — RLS-ийг
+--    алгасдаг) бичнэ; апп уншина. CEO-д гараар засах боломж үлдээв (банкны сайт саатсан үед). Ажилтан гараар бичвэл өртөг гажна.
 -- ⛔ `reminder_mail` (автомат сануулга асаах/унтраах) ба `reminder_mail_text`, `reminder_mail_text_old` (харилцагчид
 --    очих имэйлийн бичвэр) нь ГАДААД имэйл тул зөвхөн CEO бичнэ. Эс бөгөөс нэвтэрсэн ажилтан
 --    бүр API-аар шууд харилцагчид очих бичвэрийг солих, сануулгыг асаах боломжтой.
@@ -302,6 +304,7 @@ create policy app_config_ins on public.app_config for insert to authenticated
                        when 'reminder_mail_text_old' then sec.is_ceo()
                        when 'stock_count_pause' then sec.is_ceo()
                        when 'pay_rules' then sec.is_ceo()
+                       when 'fx_cny' then sec.is_ceo()
                        else true end);
 drop policy if exists app_config_upd on public.app_config;
 create policy app_config_upd on public.app_config for update to authenticated
@@ -313,6 +316,7 @@ create policy app_config_upd on public.app_config for update to authenticated
                   when 'reminder_mail_text_old' then sec.is_ceo()
                   when 'stock_count_pause' then sec.is_ceo()
                   when 'pay_rules' then sec.is_ceo()
+                  when 'fx_cny' then sec.is_ceo()
                   else true end)
   with check (case key when 'coo_share' then sec.is_ceo()
                        when 'personal_settlements' then sec.fin_full()
@@ -322,6 +326,7 @@ create policy app_config_upd on public.app_config for update to authenticated
                        when 'reminder_mail_text_old' then sec.is_ceo()
                        when 'stock_count_pause' then sec.is_ceo()
                        when 'pay_rules' then sec.is_ceo()
+                       when 'fx_cny' then sec.is_ceo()
                        else true end);
 
 -- ═══ 9. ХАТУУ УСТГАЛ = БҮГДЭД ХОРИГЛОНО ═══════════════════════════════════

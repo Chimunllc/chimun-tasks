@@ -26997,37 +26997,31 @@ function poPayTo(v) {
 function poPayToOk(p) { const o = poPayTo(p); return !!(o.bank && o.no && o.name); }
 function poPayToText(p) { const o = poPayTo(p); return [o.bank, o.no, o.name].filter(Boolean).join(' · '); }
 
-/* ХААН БАНКНЫ ЮАНИЙН ХАНШ (₮ / ¥, «зарах») — өдөр бүр хүн НЭГ удаа оруулна, `app_config['fx_cny']`-д.
-   ⛔ Хаан банкны сайт ботоос хамгаалагдсан (captcha), нийтийн API БАЙХГҮЙ → автоматаар татахгүй, captcha тойроход ХЭЗЭЭ Ч оролдохгүй.
-   `{ rates: { 'YYYY-MM-DD': { r, by, at } } }`. Өдрийн ханш байхгүй бол сүүлийн мэдэгдэх ханшийг `exact:false`-аар буцаана —
-   дуудагч түүнийг ХУВААЛЦАХГҮЙ, «өнөөдрийнхийг оруулна уу» гэж шаардана. */
+/* ХААН БАНКНЫ ЮАНИЙН ХАНШ = «БЭЛЭН БУС ЗАРАХ» (₮ / ¥), CEO 2026-10-27: «тухайн өдрийн, тэндээс татдаг байх ёстой».
+   ГАНЦ ЭХ СУРВАЛЖ = `tools/khan_fx.py` (VPS cron, хоёр удаа биш өдөрт 4 удаа) → `app_config['fx_cny']`:
+   `{ rates: { 'YYYY-MM-DD': { r, cash, by:'khanbank', at } } }`. Апп ЗӨВХӨН уншина (бичих эрх RLS-ээр зөвхөн CEO).
+   ⛔ Хаан банкны сайт bot-хамгаалалттай (captcha) — скрипт хориглосон үед ЗОГСДОГ, тойроход ХЭЗЭЭ Ч оролдохгүй. Тиймээс ханш
+      татагдаагүй өдөр заавал таардаг: тэр үед ханшийн талбар гараар бөглөгдөнө (зөвхөн тэр худалдан авалтад, `⟦гараар⟧` тэмдэглэгээтэй),
+      автомат ханш байвал талбар ТҮГЖИГДЭНЭ (`readonly`). Өдрийн ханш байхгүй бол сүүлийн мэдэгдэх ханшийг `exact:false`-аар буцаана. */
 const PO_BANKS = ['Хаан банк', 'Голомт банк', 'Худалдаа хөгжлийн банк', 'Төрийн банк', 'ХасБанк', 'Капитрон банк', 'Alipay', 'WeChat Pay', 'Бусад'];
 const PO_FX_KEY = 'fx_cny';
-const PO_FX_KEEP = 45;
 function poFxValid(v) { const n = Number(v); return isFinite(n) && n >= 100 && n <= 2000; }
 function poFxOn(cfg, ymd) {
   const rates = (cfg && cfg.rates) || {};
   const ok = (d) => rates[d] && poFxValid(rates[d].r);
-  if (ok(ymd)) return { rate: Number(rates[ymd].r), date: ymd, by: rates[ymd].by || '', exact: true };
+  const out = (d, exact) => ({ rate: Number(rates[d].r), date: d, by: rates[d].by || '', at: rates[d].at || '', exact });
+  if (ok(ymd)) return out(ymd, true);
   const ds = Object.keys(rates).filter(d => d < ymd && ok(d)).sort();
   const d = ds[ds.length - 1];
-  return d ? { rate: Number(rates[d].r), date: d, by: rates[d].by || '', exact: false } : null;
+  return d ? out(d, false) : null;
 }
-function poFxMerge(cfg, ymd, rate, by, nowIso) {
-  const rates = { ...((cfg && cfg.rates) || {}) };
-  rates[ymd] = { r: Math.round(Number(rate) * 100) / 100, by: String(by || ''), at: nowIso || new Date().toISOString() };
-  const out = {};
-  Object.keys(rates).sort().slice(-PO_FX_KEEP).forEach(k => { out[k] = rates[k]; });
-  return { rates: out };
-}
-async function poFxSave(ymd, rate) {
-  if (!poFxValid(rate)) throw new Error('Ханш буруу байна (100–2000 ₮/¥)');
-  const fresh = await loadAppConfig(PO_FX_KEY);   // серверээс ШИНЭЭР — бусдын оруулсан ханшийг дарахгүй
-  const next = poFxMerge(fresh || (state.appConfig && state.appConfig[PO_FX_KEY]), ymd, rate, state.me, new Date().toISOString());
-  await saveAppConfig(PO_FX_KEY, next);
-  state.appConfig = state.appConfig || {};
-  state.appConfig[PO_FX_KEY] = next;
-  return next;
+// Автомат ханш (Хаан банк) хүсэлтэд хүчинтэй эсэх: тухайн өдрийнх, эсвэл ≤ 5 хоногийн өмнөх (анхааруулгатай). Бусад нь гараар.
+const PO_FX_STALE_DAYS = 5;
+function poFxAuto(cfg, ymd) {
+  const f = poFxOn(cfg, ymd);
+  if (!f) return null;
+  const age = Math.round((Date.parse(ymd) - Date.parse(f.date)) / 86400000);
+  return f.exact || (isFinite(age) && age <= PO_FX_STALE_DAYS) ? f : null;
 }
 function poStatusInfo(k) {
   return PO_STEPS.find(s => s.k === k) || PO_ENDS.find(s => s.k === k) || { k: String(k || ''), label: String(k || '—'), icon: '•' };
@@ -27044,7 +27038,6 @@ function poLine(raw) {
     name: String(r.name || '').trim(),
     q: Math.max(0, Math.round(num(r.q))),
     c: num(r.c),
-    s: Math.round(num(r.s)),
     b: PO_BRANCH_LABEL[r.b] ? String(r.b) : 'mevent',
     u: String(r.u || '').trim(),
     cat: String(r.cat || '').trim(),
@@ -27057,17 +27050,20 @@ function poLine(raw) {
 function poNormalize(row) {
   const r = row || {};
   const arr = (v) => Array.isArray(v) ? v : [];
+  const lines = arr(r.lines).map(poLine);
+  const fx = Number(r.fx) > 0 ? Number(r.fx) : PO_FX_DEFAULT;
   return {
     id: String(r.id || ''), no: r.no == null ? null : Number(r.no),
     status: String(r.status || 'request'),
     supplier: String(r.supplier || ''), platform: String(r.platform || ''), url: String(r.url || ''),
-    fx: Number(r.fx) > 0 ? Number(r.fx) : PO_FX_DEFAULT,
-    total_mnt: Math.round(Number(r.total_mnt) || 0),
+    fx,
+    // Нийт дүн = мөрүүд × ханш (+ БОДИТ карго). Хуучин «урьдчилсан карго»-той мөрийн хадгалсан дүнг ТАЙЛНА (карго зөвхөн хүлээн авахад).
+    total_mnt: lines.length ? poTotals({ lines, fx }).total : Math.round(Number(r.total_mnt) || 0),
     paid_mnt: r.paid_mnt == null ? null : Math.round(Number(r.paid_mnt) || 0),
     need_by: r.need_by ? String(r.need_by).slice(0, 10) : '',
     note: String(r.note || ''),
     pay_to: poPayTo(r.pay_to),
-    lines: arr(r.lines).map(poLine),
+    lines,
     files: arr(r.files).map(String).filter(Boolean),
     history: arr(r.history),
     import_key: r.import_key || null,
@@ -27075,12 +27071,15 @@ function poNormalize(row) {
   };
 }
 
-// Мөрийн дүн. fx=1 бол нэгж үнэ ₮, эс бөгөөс ¥ (× ханш). Нэгж өртөг = (бараа + хүргэлт/карго) ÷ тоо.
+/* Мөрийн дүн. fx=1 бол нэгж үнэ ₮, эс бөгөөс ¥ (× ханш).
+   ⛔ КАРГО (Хятад → УБ) = ЗӨВХӨН хүлээн авахад бодитоор төлсөн (`cg`) — хүсэлтэд «урьдчилсан карго» ОРОХГҮЙ (CEO 2026-10-27): Хятад доторх
+      тээвэр нийт үнэд аль хэдийн орсон, УБ хүртэлх каргог бараа ирсний дараа ТООНД жигд хувааж нэгж өртөгт нэмнэ.
+      Хуучин `s` талбар (урьдчилсан карго) уншигдахгүй. */
 function poLineTotals(line, fx) {
   const f = Number(fx) > 0 ? Number(fx) : 1;
   const q = Number(line && line.q) || 0;
   const item = Math.round(q * (Number(line && line.c) || 0) * f);
-  const ship = Math.round(Number(line && line.s) || 0);
+  const ship = Math.round(Number(line && line.cg) || 0);
   const total = item + ship;
   return { item, ship, total, unit: q > 0 ? Math.round(total / q) : 0 };
 }
@@ -27093,31 +27092,34 @@ function poTotals(po) {
   return t;
 }
 /* Нэгж өртөг. cargo (₮) өгөгдвөл — ЭНЭ ирсэн ачааны бодит карго (qty ширхэгт ногдох): бараа ¥×ханш + карго ÷ qty.
-   Өгөөгүй бол хүсэлтийн урьдчилсан (бараа + хүргэлт/карго) ÷ захиалсан тоо. */
+   Өгөөгүй бол ЗӨВХӨН барааны үнэ (карго оруулаагүй — урьдчилсан тооцоо ОРОХГҮЙ). */
 function poUnitCost(po, line, qty, cargo) {
-  if (cargo == null) return poLineTotals(line, po.fx).unit;
-  const q = Math.max(1, Number(qty) || 0);
   const f = po.fx > 0 ? po.fx : 1;
+  if (cargo == null) return Math.round((Number(line.c) || 0) * f);
+  const q = Math.max(1, Number(qty) || 0);
   return Math.round((Number(line.c) || 0) * f + Math.max(0, Number(cargo) || 0) / q);
 }
-/* Нэг ачааны каргог ирсэн мөрүүдэд бараа ҮНЭЛГЭЭГЭЭР (¥×ханш×тоо) хуваана; үнэлгээ байхгүй бол тоогоор.
-   Нийлбэр ЯГ cargo-той тэнцэнэ (үлдэгдэл сүүлийн мөрд). items = [{ id, get, c }]. cargo=null → {} (оруулаагүй). */
+/* Нэг ачааны каргог ирсэн барааны ТООНД жигд хуваана (CEO 2026-10-27: «барааны тоонд хуваагдаж нэгжийн үнэ бодитоор гарна»):
+   нэг ширхэгт ногдох карго бүх мөрд ИЖИЛ. Нийлбэр ЯГ cargo-той тэнцэнэ (үлдэгдэл сүүлийн мөрд). items = [{ id, get }]. cargo=null → {}. */
 function poCargoAlloc(po, items, cargo) {
   const out = {};
   if (cargo == null || !(Number(cargo) >= 0)) return out;
   const rows = (items || []).filter(x => x && x.get > 0);
   if (!rows.length) return out;
   const total = Math.round(Number(cargo));
-  const f = po && po.fx > 0 ? po.fx : 1;
-  const byVal = rows.map(x => Math.max(0, (Number(x.c) || 0) * f * x.get));
-  const weights = byVal.reduce((a, b) => a + b, 0) > 0 ? byVal : rows.map(x => x.get);
-  const wsum = weights.reduce((a, b) => a + b, 0);
+  const pcs = rows.reduce((n, x) => n + x.get, 0);
   let left = total;
   rows.forEach((x, i) => {
-    const a = i === rows.length - 1 ? left : Math.floor(total * weights[i] / wsum);
+    const a = i === rows.length - 1 ? left : Math.floor(total * x.get / pcs);
     out[x.id] = a; left -= a;
   });
   return out;
+}
+/* Мөрийн БОДИТ нэгж өртөг (карго орсон) — зөвхөн карго оруулсан, бараа ирсэн мөрд; эс бөгөөс null. */
+function poLineRealUnit(po, l) {
+  const rcv = Number(l && l.rcv) || 0;
+  if (!l || l.cg == null || !(rcv > 0)) return null;
+  return Math.round((Number(l.c) || 0) * (po.fx > 0 ? po.fx : 1) + (Number(l.cg) || 0) / rcv);
 }
 function poLineLeft(line) { return line && line.done ? 0 : Math.max(0, (Number(line && line.q) || 0) - (Number(line && line.rcv) || 0)); }
 function poAllReceived(po) { const ls = (po && po.lines) || []; return ls.length > 0 && ls.every(l => poLineLeft(l) === 0); }
@@ -27429,7 +27431,7 @@ function poFromMatrix(matrix, productsBySku) {
   const head = (m[hi] || []).map(norm);
   const col = (re) => head.findIndex(h => re.test(h));
   const ix = { code: col(/^Код$/), name: col(/^Бараа$/), kind: col(/^Төрөл$/), sup: col(/^Нийлүүлэгч$/), plat: col(/^Платформ$/),
-    qty: col(/^Тоо$/), price: col(/^Нэгж үнэ/), ship: col(/^Хүргэлт/), st: col(/^Төлөв$/), note: col(/^Тайлбар$/), url: col(/^Линк$/) };
+    qty: col(/^Тоо$/), price: col(/^Нэгж үнэ/), st: col(/^Төлөв$/), note: col(/^Тайлбар$/), url: col(/^Линк$/) };
   // Ханш — «Ханш» шошгын баруун талын эхний 1-ээс их тоо.
   let fx = PO_FX_DEFAULT;
   for (let i = 0; i < hi; i++) {
@@ -27451,7 +27453,7 @@ function poFromMatrix(matrix, productsBySku) {
     const lineUrl = ix.url >= 0 ? norm(row[ix.url]) : '';
     // ⚠ Нийлүүлэгч хоосон мөрийг ХОЛИХГҮЙ — өөр өөр худалдагч байж болно (өөр линк = өөр худалдан авалт).
     const key = supplier || ('?' + (lineUrl || name));
-    const line = poLine({ sku: prod ? prod.sku : '', name: prod ? prod.name : name, q: num('qty') || 1, c: num('price'), s: num('ship'),
+    const line = poLine({ sku: prod ? prod.sku : '', name: prod ? prod.name : name, q: num('qty') || 1, c: num('price'),
       u: lineUrl });
     // ⚠ Кодтой ч каталогт олдохгүй бол шинэ бараа — нэрийг xlsx-ээс авна.
     const g = by.get(key) || { supplier: supplier || '', platform, status: new Set(), lines: [], notes: [], url: '', ids: [] };
@@ -27497,7 +27499,7 @@ function poLineRowHtml(po, l) {
   const left = poLineLeft(l);
   const rc = (po.status === 'ordered' || po.status === 'received')
     ? `<span class="po-rc${left === 0 ? ' ok' : ''}">${l.done && l.rcv < l.q ? `ирсэн ${l.rcv}/${l.q} (хаасан)` : `ирсэн ${l.rcv}/${l.q}`}</span>` : '';
-  const cargo = x.ship ? ` · ${l.cg != null ? 'карго' : 'карго ~'}${escapeHtml(fmtMoney(x.ship))}` : '';
+  const cargo = l.cg != null ? ` · карго ${escapeHtml(fmtMoney(l.cg))}` : '';
   const unitMnt = po.fx !== 1 ? ` · ${escapeHtml(fmtMoney(Math.round((Number(l.c) || 0) * po.fx)))}/ш` : '';
   return `<div class="po-cl">
     ${poThumbHtml(poImgOf(l)) || '<span class="po-th po-th-none" aria-hidden="true">📷</span>'}
@@ -27527,6 +27529,7 @@ function poBreakdownHtml(po) {
   const kv = (k, v) => `<div class="po-kv"><span>${k}</span><b>${v}</b></div>`;
   const items = ls.map(l => {
     const x = poLineTotals(l, po.fx);
+    const real = poLineRealUnit(po, l);
     const unitMnt = Math.round((Number(l.c) || 0) * po.fx);
     const approx = poUnitIsRounded(l.c) ? '≈ ' : '';
     const got = (po.status === 'ordered' || po.status === 'received')
@@ -27540,8 +27543,8 @@ function poBreakdownHtml(po) {
       ${kv('Тоо', `${escapeHtml(String(l.q))} ш`)}
       ${kv('Нийт үнэ', cny ? `¥${escapeHtml(poFmtNum(poLineTotalCur(l)))} = ${escapeHtml(fmtMoney(x.item))}` : escapeHtml(fmtMoney(x.item)))}
       ${kv('Нэгж үнэ', cny ? `${approx}¥${escapeHtml(poFmtNum(l.c))} ≈ ${escapeHtml(fmtMoney(unitMnt))}` : `${approx}${escapeHtml(fmtMoney(unitMnt))}`)}
-      ${x.ship ? kv(l.cg != null ? 'Карго' : 'Карго (урьдчилсан)', escapeHtml(fmtMoney(x.ship))) : ''}
-      ${x.ship ? kv('Нэгж өртөг (карго орсон)', `≈ ${escapeHtml(fmtMoney(x.unit))}`) : ''}
+      ${l.cg != null ? kv('Карго (бодит)', escapeHtml(fmtMoney(l.cg))) : (cny ? kv('Карго', '<span class="po-muted">бараа ирэхэд оруулна</span>') : '')}
+      ${real != null ? kv('Нэгж өртөг (карго орсон)', `≈ ${escapeHtml(fmtMoney(real))}`) : ''}
       ${l.sku ? kv('Код', escapeHtml(l.sku)) : ''}
       ${kv('Салбар', escapeHtml(PO_BRANCH_LABEL[l.b] || l.b))}
       ${got}
@@ -27552,7 +27555,7 @@ function poBreakdownHtml(po) {
   const cnyAll = cny ? ls.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0) : 0;
   const foot = `<div class="po-bd-f">
     ${kv('Бараа', cny ? `¥${escapeHtml(poFmtNum(cnyAll))} × ${escapeHtml(String(po.fx))} = ${escapeHtml(fmtMoney(t.item))}` : escapeHtml(fmtMoney(t.item)))}
-    ${t.ship ? kv('Карго', escapeHtml(fmtMoney(t.ship))) : ''}
+    ${t.ship ? kv('Карго (бодит)', escapeHtml(fmtMoney(t.ship))) : ''}
     ${kv('Нийт', escapeHtml(fmtMoney(t.total)))}
   </div>`;
   return `<div class="po-bd"><div class="po-bd-h">Барааны задаргаа · ${ls.length} төрөл · ${t.qty} ш</div>${items}${foot}</div>`;
@@ -27746,8 +27749,7 @@ function poLineSumHtml(l, fx, mnt) {
   if (!(fx > 0)) return '<span class="po-unit-l">ханшаа оруулбал нэгж үнэ гарна</span>';
   if (!(l.c > 0)) return `<span class="po-unit-l">${l.q > 0 ? 'Нийт үнээ оруулбал' : 'Тоо, нийт үнээ оруулбал'} нэгж үнэ өөрөө гарна</span>`;
   const m = poIsMnt(fx, mnt), cur = m ? '₮' : '¥';
-  const x = poLineTotals(l, fx);
-  return `<span class="po-unit-l">1 ширхэг</span> <b class="po-unit-n">${cur}${escapeHtml(poFmtNum(l.c))}</b>${m ? '' : ` <span class="po-unit-m">≈ ${escapeHtml(fmtMoney(Math.round(l.c * fx)))}</span>`}${x.ship ? ` <span class="po-unit-m">+ карго ~${escapeHtml(fmtMoney(x.ship))} <small>(урьдчилсан)</small></span>` : ''}`;
+  return `<span class="po-unit-l">1 ширхэг</span> <b class="po-unit-n">${cur}${escapeHtml(poFmtNum(l.c))}</b>${m ? '' : ` <span class="po-unit-m">≈ ${escapeHtml(fmtMoney(Math.round(l.c * fx)))}</span>`}`;
 }
 function poLineCardHtml(l, i, fx, mnt, n) {
   const cur = poIsMnt(fx, mnt) ? '₮' : '¥';
@@ -27781,11 +27783,12 @@ async function openPoModal(id) {
   let fxCfg = null;
   try { fxCfg = await loadAppConfig(PO_FX_KEY); } catch (e) { /* кэш */ }
   if (!fxCfg) fxCfg = (state.appConfig && state.appConfig[PO_FX_KEY]) || null;
-  const fxToday = poFxOn(fxCfg, todayStr());
+  const fxToday = poFxOn(fxCfg, todayStr());   // exact:true бол Хаан банкны өнөөдрийн автомат ханш → талбар түгжигдэнэ
+  const fxLocked = !!(fxToday && fxToday.exact);
   const blankLine = () => ({ ...poLine({ name: '', q: 1, b: lastB }), _t: 0 });
   const d = ex
-    ? { supplier: ex.supplier, platform: ex.platform || 'Taobao', url: ex.url, fx: ex.fx, cur: ex.fx === 1 ? 'MNT' : 'CNY', need_by: ex.need_by, note: ex.note, pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
-    : { supplier: '', platform: 'Taobao', url: '', fx: fxToday && fxToday.exact ? fxToday.rate : 0, cur: lastCur, need_by: '', note: '', pay_to: poPayTo(null), lines: [blankLine()] };
+    ? { supplier: ex.supplier, platform: ex.platform || 'Taobao', url: ex.url, fx: fxLocked ? fxToday.rate : (poFxValid(ex.fx) ? ex.fx : (fxToday ? fxToday.rate : 0)), cur: ex.fx === 1 ? 'MNT' : 'CNY', need_by: ex.need_by, note: ex.note, pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
+    : { supplier: '', platform: 'Taobao', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, need_by: '', note: '', pay_to: poPayTo(null), lines: [blankLine()] };
   const noCol = state._poHasPayTo === false;   // DB-д pay_to багана алга — данс хадгалагдахгүй (SQL ажиллуулаагүй)
   const sups = [...new Set([...(state.purchases || []).map(p => p.supplier), ...purchaseRows(state.financeRequests || []).map(r => r.supplier)].filter(Boolean))].slice(0, 200);
   const moreOpen = !!(ex && (d.url || d.need_by || d.note || ex.files.length));
@@ -27811,8 +27814,8 @@ async function openPoModal(id) {
             <input type="hidden" id="po-plat" value="${escapeHtml(d.platform)}"></div>
         </div>
         <div id="po-fx-box"><div class="po-fld">
-          <span class="po-lb">Хаан банкны юанийн ханш <i>(зарах)</i></span>
-          <div class="po-ctl"><span class="po-pre">¥1 =</span><input id="po-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" value="${d.fx || ''}" placeholder="жишээ: 541" aria-label="Хаан банкны юанийн ханш"><span class="po-suf">₮</span></div>
+          <span class="po-lb">Хаан банкны юанийн ханш <i>(бэлэн бус зарах)</i></span>
+          <div class="po-ctl"><span class="po-pre">¥1 =</span><input id="po-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" value="${d.fx || ''}"${fxLocked ? ' readonly' : ''} placeholder="жишээ: 541" aria-label="Хаан банкны юанийн ханш"><span class="po-suf">₮</span></div>
           <div id="po-fx-hint" class="po-note"></div>
         </div></div>
       </section>
@@ -27854,19 +27857,15 @@ async function openPoModal(id) {
     const mnt = curVal() === 'MNT';
     w.$('#po-fx-box').hidden = mnt;
     if (mnt) return;
-    const h = w.$('#po-fx-hint'), day = todayStr().slice(5);
-    if (ex) {
+    const inp = w.$('#po-fx'), h = w.$('#po-fx-hint'), day = todayStr().slice(5);
+    inp.readOnly = fxLocked;
+    if (fxLocked) {
+      inp.value = fxToday.rate;
       h.className = 'po-note';
-      h.textContent = `Хүсэлтийн ханш.${fxToday && fxToday.exact ? ` Өнөөдөр (${day}) Хаан банкинд ¥1 = ${fxToday.rate}₮.` : ''}`;
-    } else if (fxToday && fxToday.exact) {
-      h.className = 'po-note';
-      h.textContent = `Хаан банк · ${day} · ${memberName(fxToday.by)} оруулсан`;
-    } else if (poFxValid(poNum(w.$('#po-fx').value))) {
-      h.className = 'po-note';
-      h.textContent = `Хаан банк · ${day} · хүсэлт илгээхэд өнөөдрийн ханш болж хадгалагдана`;
+      h.textContent = `Хаан банк · бэлэн бус зарах · ${fxToday.at ? fmtDateTimeUB(fxToday.at) : day} татсан. Шилжүүлэхэд тэр өдрийн ханшаар шинэчлэгдэнэ.`;
     } else {
       h.className = 'po-probs';
-      h.textContent = `⚠ Өнөөдрийн (${day}) Хаан банкны ханш оруулаагүй байна${fxToday ? ` (сүүлийнх ${fxToday.rate} · ${fxToday.date.slice(5)})` : ''} — Хаан банкны апп/сайтаас харж оруулна уу.`;
+      h.textContent = `⚠ Өнөөдрийн (${day}) Хаан банкны ханш автоматаар татагдсангүй${fxToday ? ` (сүүлийнх ${fxToday.rate} · ${fxToday.date.slice(5)})` : ''}. Хаан банкны «бэлэн бус зарах» ханшийг сайтаас харж оруулна уу — энэ хүсэлтэд «гараар» гэж тэмдэглэгдэнэ.`;
     }
   };
   const focusName = (n) => { const el = w.$(`[data-i="${n}"] [data-f="name"]`); if (el) { el.focus(); if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); } };
@@ -27901,7 +27900,7 @@ async function openPoModal(id) {
       else {
         const t = poTotals({ lines: d.lines, fx });
         const cny = d.lines.reduce((n, l) => n + poLineTotalCur(l), 0);
-        top = `<span class="po-foot-l">Нийт</span><b class="po-foot-n">${escapeHtml(fmtMoney(t.item))}</b>${mnt ? '' : `<small>¥${escapeHtml(poFmtNum(cny))} × ${escapeHtml(poFmtNum(fx))}</small>`}${t.ship ? `<small>+ карго ~${escapeHtml(fmtMoney(t.ship))} (урьдчилсан)</small>` : ''}`;
+        top = `<span class="po-foot-l">Нийт</span><b class="po-foot-n">${escapeHtml(fmtMoney(t.item))}</b>${mnt ? '' : `<small>¥${escapeHtml(poFmtNum(cny))} × ${escapeHtml(poFmtNum(fx))}</small>`}`;
       }
     }
     w.$('#po-total').innerHTML = `<div class="po-foot-top">${top}</div>` + (iss.length
@@ -28030,16 +28029,13 @@ async function openPoModal(id) {
     btn.disabled = true;
     try {
       try { localStorage.setItem('poCur', cur); if (lines[0]) localStorage.setItem('poBranch', lines[0].b); } catch (e) { /* хувийн цонх */ }
-      const rateNote = cur === 'MNT' ? '' : `Хаан банкны ханш ${fx} · ${todayStr().slice(5)}`;
+      const rateNote = cur === 'MNT' ? '' : `Хаан банкны ханш ${fx} · ${todayStr().slice(5)} · ${fxLocked ? 'автомат' : 'гараар'}`;
       let saved;
       if (ex) {
         saved = await poPatch(ex.id, { ...poRow({ ...ex, ...po }), history: [...ex.history, { at: new Date().toISOString(), by: state.me, to: 'request', note: 'Засварласан' + (fx !== ex.fx && rateNote ? ' · ' + rateNote : '') }] }, 'request');
       } else {
         saved = await poInsert({ ...po, id: 'po_' + uid().slice(2), status: 'request', files: [], created_by: state.me,
           history: [{ at: new Date().toISOString(), by: state.me, to: 'request', note: rateNote }] });
-        if (cur !== 'MNT' && !(fxToday && fxToday.exact && fxToday.rate === fx)) {
-          try { await poFxSave(todayStr(), fx); } catch (e) { showToast('⚠ Ханш хадгалагдсангүй: ' + e.message, 'warn', 5000); }
-        }
       }
       if (files.length) {
         const urls = await poUploadAll(files, saved.id);
@@ -28065,18 +28061,17 @@ async function openPoPayModal(id) {
   const calc = (rate) => poTotals({ lines: po.lines, fx: yuan ? rate : 1 }).total;
   // Юанийн худалдан авалтад Хятад руу шилжүүлэх нь БАРАА л — карго нь УБ-д ирэхэд хүлээн авахдаа төлөгдөнө.
   const goodsAt = (rate) => poTotals({ lines: po.lines, fx: rate }).item;
-  const estShip = poTotals(po).ship;
   const cny = po.lines.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0);
   const w = poOpenModal('po-step', `
     <div class="modal-head"><b>💸 Шилжүүлсэн · #${po.no} ${escapeHtml(po.supplier)}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
       <p class="amo-hint">Хүсэлтийн дүн <b>${escapeHtml(fmtMoney(po.total_mnt))}</b>${yuan ? ` (¥${escapeHtml(Math.round(cny).toLocaleString('en-US'))} × ${escapeHtml(String(po.fx))})` : ''}. Банк / Alipay / каргогоор бодитоор шилжүүлсэн дүнгээ оруулна.
-        Банкны зардал хуулгаас өөрөө орно — энд давхар бичихгүй.${yuan ? ` Шилжүүлэх дүн = бараа (¥ × ханш).${estShip ? ` Карго (урьдчилсан ${escapeHtml(fmtMoney(estShip))}) УБ-д ирэхэд «Хүлээн авах»-д оруулна.` : ' Карго УБ-д ирэхэд «Хүлээн авах»-д оруулна.'}` : ''}</p>
+        Банкны зардал хуулгаас өөрөө орно — энд давхар бичихгүй.${yuan ? ` Шилжүүлэх дүн = бараа (¥ × ханш). Хятад доторх тээвэр нийт үнэд орсон; УБ хүртэлх карго бараа ирэхэд «Хүлээн авах»-д оруулагдаж ширхэгт жигд хуваагдана.` : ''}</p>
       ${poPayToOk(po.pay_to)
         ? `<div class="po-pay"><span class="po-pay-t">💳 Шилжүүлэх данс: <b>${escapeHtml(poPayToText(po.pay_to))}</b></span><button type="button" class="btn po-copy" data-copy-text="${escapeHtml(po.pay_to.no)}" data-copy-label="Дансны дугаар хууллаа" title="Дансны дугаарыг хуулах">⧉</button></div>`
         : (state._poHasPayTo === false ? '' : '<div class="po-probs">⚠ Төлөх данс оруулаагүй байна — хүсэлтийг «Засах»-аар данс нэмнэ үү.</div>')}
       <label class="fld">Шилжүүлсэн огноо<input id="pp-date" class="ui-raw" type="date" value="${todayStr()}"></label>
-      ${yuan ? `<label class="fld">Хаан банкны юанийн ханш ₮ / ¥ <span class="fld-opt">(зарах · шилжүүлсэн өдрийнх)</span><input id="pp-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" placeholder="жишээ: 541"></label>
+      ${yuan ? `<label class="fld">Хаан банкны юанийн ханш ₮ / ¥ <span class="fld-opt">(бэлэн бус зарах · шилжүүлсэн өдрийнх)</span><input id="pp-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" placeholder="жишээ: 541"></label>
       <div id="pp-fx-hint" class="po-note"></div>` : ''}
       <label class="fld">Шилжүүлсэн дүн ₮<input id="pp-amt" class="ui-raw" type="number" min="1" step="1000" inputmode="numeric" value="${yuan ? '' : (po.total_mnt || '')}"></label>
       <label class="fld">Яаж шилжүүлсэн <span class="fld-opt">(данс, агент, лавлагаа)</span><input id="pp-note" class="ui-raw" type="text" placeholder="жишээ: Хаан 5xxxxx → HiCargo"></label>
@@ -28088,12 +28083,13 @@ async function openPoPayModal(id) {
   const rateOf = () => (yuan ? poNum(w.$('#pp-fx').value) : 1);
   const refresh = (fromDate) => {
     if (!yuan) return;
-    const day = dayOf(), f = poFxOn(cfg, day);
-    if (fromDate) w.$('#pp-fx').value = f && f.exact ? f.rate : '';
+    const day = dayOf(), f = poFxOn(cfg, day), auto = !!(f && f.exact), inp = w.$('#pp-fx');
+    inp.readOnly = auto;   // автомат ханш байвал ТҮГЖИГДЭНЭ (гараар зөвхөн ханш татагдаагүй өдөр)
+    if (auto) inp.value = f.rate; else if (fromDate) inp.value = f ? f.rate : '';
     const h = w.$('#pp-fx-hint'), rate = rateOf();
-    if (f && f.exact) { h.className = 'po-note'; h.textContent = `Хаан банк · ${day.slice(5)} · ${memberName(f.by)} оруулсан`; }
-    else if (poFxValid(rate)) { h.className = 'po-note'; h.textContent = `Хаан банк · ${day.slice(5)} · шилжүүлэхэд тэр өдрийн ханш болж хадгалагдана`; }
-    else { h.className = 'po-probs'; h.textContent = `⚠ ${day.slice(5)}-ны Хаан банкны ханш оруулаагүй байна${f ? ` (сүүлийнх ${f.rate} · ${f.date.slice(5)})` : ''} — Хаан банкнаас харж оруулна уу.`; }
+    if (auto) { h.className = 'po-note'; h.textContent = `Хаан банк · бэлэн бус зарах · ${f.at ? fmtDateTimeUB(f.at) + ' татсан' : day.slice(5)}`; }
+    else if (poFxValid(rate)) { h.className = 'po-probs'; h.textContent = `⚠ ${day.slice(5)}-ны Хаан банкны ханш автоматаар татагдсангүй${f ? ` (сүүлийнх ${f.rate} · ${f.date.slice(5)})` : ''} — «бэлэн бус зарах» ханшийг сайтаас харж зөв эсэхийг шалгана уу. «Гараар» гэж тэмдэглэгдэнэ.`; }
+    else { h.className = 'po-probs'; h.textContent = `⚠ ${day.slice(5)}-ны Хаан банкны ханш татагдаагүй байна — Хаан банкны сайтаас «бэлэн бус зарах» ханшийг харж оруулна уу.`; }
     if (poFxValid(rate) && !amtTouched) w.$('#pp-amt').value = goodsAt(rate);
   };
   w.$('#pp-cancel').onclick = w.close;
@@ -28113,15 +28109,12 @@ async function openPoPayModal(id) {
     btn.disabled = true;
     try {
       const urls = await poUploadAll([...(w.$('#pp-file').files || [])], po.id);
-      const note = [w.$('#pp-note').value.trim(), yuan ? `Ханш ${rate} · Хаан банк ${date.slice(5)}` : ''].filter(Boolean).join(' · ');
+      const fOn = yuan ? poFxOn(cfg, date) : null;
+      const note = [w.$('#pp-note').value.trim(), yuan ? `Ханш ${rate} · Хаан банк ${date.slice(5)} · ${fOn && fOn.exact && fOn.rate === rate ? 'автомат' : 'гараар'}` : ''].filter(Boolean).join(' · ');
       const patch = poAdvancePatch(po, 'paid', state.me, note, { paid_mnt: amt, d: date });
       if (yuan) { patch.fx = rate; patch.total_mnt = calc(rate); }   // өртгийн суурь = шилжүүлсэн өдрийн ханш
       if (urls.length) patch.files = [...po.files, ...urls];
       await poPatch(po.id, patch, po.status);
-      if (yuan && date <= todayStr()) {
-        const f = poFxOn(cfg, date);
-        if (!(f && f.exact && f.rate === rate)) { try { await poFxSave(date, rate); } catch (e) { showToast('⚠ Ханш хадгалагдсангүй: ' + e.message, 'warn', 5000); } }
-      }
       w.close(); showToast('💸 Шилжүүлэг бүртгэгдлээ', 'success', 2500); render();
     } catch (e) { showToast('⚠ ' + e.message, 'error', 6000); btn.disabled = false; loadPurchases(true); }
   };
@@ -28158,7 +28151,7 @@ function openPoOrderModal(id) {
      ③ эцэст нь худалдан авалтын мөр (оптимист түгжээтэй) — унавал нөөц нэмэгдсэн ч дэвтэр давхар нэмэхээс сэргийлнэ */
 async function poReceiveApply(po, rows, work, finishOnly, opts) {
   const okNames = [], errs = [];
-  // Хятад → УБ карго: ЭНЭ ачааны бодит төлбөр (₮). null = оруулаагүй → хүсэлтийн урьдчилсан тооцоо.
+  // Хятад → УБ карго: ЭНЭ ачааны бодит төлбөр (₮), ирсэн ТООНД жигд хуваагдана. null = оруулаагүй → нэгж өртөг зөвхөн барааны үнэ.
   const cargo = opts && opts.cargo != null && isFinite(Number(opts.cargo)) ? Math.max(0, Math.round(Number(opts.cargo))) : null;
   const alloc = poCargoAlloc(po, work.filter(x => x.get > 0).map(x => ({ id: x.row.id, get: x.get, c: x.row.c })), cargo);
   let cargoLost = 0;
@@ -28194,8 +28187,6 @@ async function poReceiveApply(po, rows, work, finishOnly, opts) {
     if (x.short) r.done = true;
   }
   if (cargoLost > 0) errs.push(`карго ${fmtMoney(cargoLost)} хуваарилагдсангүй (алдаатай мөрийнх) — дахин хүлээн авахдаа оруулна уу`);
-  // Мөр бүрэн ирсэн/хаагдсан бол карго нь БОДИТ дүнгээр (урьдчилсан тооцоог орлоно).
-  rows.forEach(r => { if (r.cg != null && poLineLeft(r) === 0) r.s = r.cg; });
   const lines = rows.map(poLine);
   const complete = poAllReceived({ lines });
   try {
@@ -28246,14 +28237,14 @@ async function openPoReceiveModal(id) {
     </div>`;
   };
   const doneRows = rows.filter(r => poLineLeft(r) === 0);
-  const estCargo = open.reduce((n, r) => n + (Number(r.s) || 0) * poLineLeft(r) / Math.max(1, Number(r.q) || 1), 0);
+  const needCargo = po.fx !== 1;   // юанийн (Хятадаас ирэх) бараа — карго заавал; ₮-өөр худалдан авалтад заавал биш
   const w = poOpenModal('po-recv', `
     <div class="modal-head"><b>📦 Хүлээн авах · #${po.no} ${escapeHtml(po.supplier)}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
       <p class="amo-hint">Ирсэн барааны тоог шалгаад баталгаажуулна. Баталгаажуулмагц <b>нөөц болон өртөг шинэчлэгдэж</b>, нөөцийн дэвтэрт бичигдэнэ.
         Шинэ бараа үнэгүй үүсэх тул сайтад харагдахгүй — үнийг дараа нь «Бараа» дээр тавина.</p>
-      <label class="fld">🚚 Карго / тээврийн төлбөр ₮ <span class="fld-opt">(Хятад → УБ, ЭНЭ ирсэн ачаанд төлсөн)</span><input id="pr-cargo" class="ui-raw" type="number" min="0" step="1000" inputmode="numeric" placeholder="${estCargo ? 'урьдчилсан ' + Math.round(estCargo) : 'бодит дүн'}"></label>
-      <div class="po-note">Каргог ирсэн барааны үнэлгээгээр хувааж нэгж өртөгт нэмнэ. Хоосон бол хүсэлтийн урьдчилсан тооцоо орно.</div>
+      <label class="fld">🚚 Карго / тээврийн төлбөр ₮ <span class="fld-opt">(${needCargo ? 'заавал · ' : ''}Хятад → УБ, ЭНЭ ирсэн ачаанд бодитоор төлсөн)</span><input id="pr-cargo" class="ui-raw" type="number" min="0" step="1000" inputmode="numeric" placeholder="${needCargo ? 'бодит дүн (төлөөгүй бол 0)' : 'бодит дүн'}"></label>
+      <div class="po-note">Каргийг ирсэн барааны ТООНД (ширхэгт) жигд хувааж нэгж өртөгт нэмнэ — нэгж өртөг бодитоор гарна.</div>
       <datalist id="po-cat-dl">${cats.map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
       ${open.length ? ent.map(cardHtml).join('') : '<div class="po-empty">Бүх мөр дэвтэрт бүртгэгдсэн байна. Худалдан авалтыг «Хүлээн авсан» болгож хаана.</div>'}
       ${doneRows.length ? `<div class="po-note">✓ Өмнө бүртгэгдсэн: ${doneRows.map(r => escapeHtml((r.name || r.sku) + ' ×' + r.rcv)).join(', ')}</div>` : ''}
@@ -28277,7 +28268,7 @@ async function openPoReceiveModal(id) {
       if (p) { const bl = blendCost(prodTotalQty(p), p.cost, get, unit); el.innerHTML = `Нэмсний дараа <b>${bl.qty} ш</b> · өртөг <b>${escapeHtml(fmtMoney(bl.cost))}</b>${Number(p.cost) > 0 ? ` <small>(дундаж, өмнө ${escapeHtml(fmtMoney(p.cost))})</small>` : ''}`; }
       else el.innerHTML = `Шинэ бараа үүснэ · <b>${get} ш</b> · өртөг <b>${escapeHtml(fmtMoney(unit))}</b>`;
     });
-    w.$('#pr-total').innerHTML = kinds ? `Нөөцөд нэмэгдэх: <b>${kinds} төрөл · ${n} ш</b>${cg != null ? ` · карго <b>${escapeHtml(fmtMoney(cg))}</b>` : ''}` : '';
+    w.$('#pr-total').innerHTML = kinds ? `Нөөцөд нэмэгдэх: <b>${kinds} төрөл · ${n} ш</b>${cg != null ? ` · карго <b>${escapeHtml(fmtMoney(cg))}</b>${n > 0 ? ` · 1 ширхэгт ≈ <b>${escapeHtml(fmtMoney(Math.round(cg / n)))}</b>` : ''}` : (needCargo ? ' · <span class="po-muted">карго оруулаагүй</span>' : '')}` : '';
   };
   w.$('#pr-cargo').addEventListener('input', after);
   w.m.addEventListener('input', (ev) => {
@@ -28296,6 +28287,10 @@ async function openPoReceiveModal(id) {
       short: e.short, b: e.b, cat: e.cat, name: e.name })).filter(x => x.get > 0 || x.short);
     const finishOnly = !open.length && poAllReceived({ lines: rows });
     if (!work.length && !finishOnly) { showToast('Ирсэн тоогоо оруулна уу', 'warn'); return; }
+    if (needCargo && cargoVal() == null && work.some(x => x.get > 0)) {
+      const c = w.$('#pr-cargo'); c.classList.add('po-bad'); if (c.scrollIntoView) c.scrollIntoView({ block: 'center' }); c.focus();
+      showToast('Каргоны төлбөрөө оруулна уу (төлөөгүй бол 0) — нэгж өртөг бодитоор гарахад хэрэгтэй', 'warn', 5000); return;
+    }
     btn.disabled = true;
     const { okNames, errs, complete } = await poReceiveApply(po, rows, work, finishOnly, { cargo: cargoVal() });
     if (okNames.length) { state.history = null; try { await loadProductsCatalog(); } catch (_) { /* дараагийн ачаалалт */ } }
@@ -28315,7 +28310,7 @@ async function openPoImportModal() {
   const w = poOpenModal('po-import', `
     <div class="modal-head"><b>📥 Excel-ээс худалдан авалт оруулах</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
-      <p class="amo-hint">Бараа · Тоо · Нэгж үнэ ¥ · Хүргэлт+карго ₮ · Нийлүүлэгч · Төлөв баганатай .xlsx файл (жишээ нь «Хөрөнгө_оруулалт_захиалга.xlsx»).
+      <p class="amo-hint">Бараа · Тоо · Нэгж үнэ ¥ · Нийлүүлэгч · Төлөв баганатай .xlsx файл (жишээ нь «Хөрөнгө_оруулалт_захиалга.xlsx»).
         Нийлүүлэгч бүр НЭГ худалдан авалт болно. Оруулсан бүгд «Хүсэлт» төлөвт орж, батлагдахыг хүлээнэ.</p>
       <input id="pi-file" class="ui-raw" type="file" accept=".xlsx,.xls">
       <div id="pi-body"></div>

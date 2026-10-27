@@ -26970,6 +26970,8 @@ function poUnitFromTotal(total, qty) {
 }
 function poLineTotalCur(l) { return Math.round((Number(l && l.q) || 0) * (Number(l && l.c) || 0) * 100) / 100; }
 const poFmtNum = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+// Нэгж үнэ нийт ÷ тооноос гарвал 18.166667 мэт урт бутархай — 2 оронд тоймолж харуулна, «≈» тэмдэгтэй.
+function poUnitIsRounded(c) { const n = Number(c) || 0; return Math.abs(n * 100 - Math.round(n * 100)) > 1e-6; }
 function poNameKey(v) { return String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, ' '); }
 /* Барааны нэр бичих үед каталогоос санал болгоно — нэр ЯГ таарсан нь эхэнд. Аль хэдийн мөрд байгаа бараа, багц орохгүй.
    ⛔ АВТОМАТААР ХОЛБОХГҮЙ (хүн сонгоно): нэр төстэй хоёр өөр бараа байж болно. Сонгохгүй бол «шинэ бараа» — ирэхэд шинээр үүснэ. */
@@ -27496,11 +27498,12 @@ function poLineRowHtml(po, l) {
   const rc = (po.status === 'ordered' || po.status === 'received')
     ? `<span class="po-rc${left === 0 ? ' ok' : ''}">${l.done && l.rcv < l.q ? `ирсэн ${l.rcv}/${l.q} (хаасан)` : `ирсэн ${l.rcv}/${l.q}`}</span>` : '';
   const cargo = x.ship ? ` · ${l.cg != null ? 'карго' : 'карго ~'}${escapeHtml(fmtMoney(x.ship))}` : '';
+  const unitMnt = po.fx !== 1 ? ` · ${escapeHtml(fmtMoney(Math.round((Number(l.c) || 0) * po.fx)))}/ш` : '';
   return `<div class="po-cl">
     ${poThumbHtml(poImgOf(l)) || '<span class="po-th po-th-none" aria-hidden="true">📷</span>'}
     <div class="po-cl-b">
       <span class="po-cl-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span>
-      <small>${l.q} × ${escapeHtml(String(l.c))}${cur}${l.sku ? ' · ' + escapeHtml(l.sku) : ''}${cargo}${l.u ? ` · <a class="po-ln-a" href="${escapeHtml(l.u)}" target="_blank" rel="noopener noreferrer">линк ↗</a>` : ''}</small>
+      <small>${l.q} × ${poUnitIsRounded(l.c) ? '≈' : ''}${escapeHtml(poFmtNum(l.c))}${cur}${unitMnt}${l.sku ? ' · ' + escapeHtml(l.sku) : ''}${cargo}${l.u ? ` · <a class="po-ln-a" href="${escapeHtml(l.u)}" target="_blank" rel="noopener noreferrer">линк ↗</a>` : ''}</small>
       ${rc}
     </div>
     <b class="po-cl-t">${escapeHtml(fmtMoney(x.total))}</b>
@@ -27515,8 +27518,46 @@ function poWhoWhen(at, by) {
   const t = fmtDateTimeUB(at);
   return `${escapeHtml(t)}${by ? ' · ' + escapeHtml(memberName(by)) : ''}`;
 }
+/* «Дэлгэрэнгүй»-д БҮХ барааны задаргаа (нүүрэнд 3 мөр л харагддаг): тоо · нийт үнэ · нэгж үнэ (¥ ба ₮) · карго · нэгж өртөг.
+   Дүнг ДАХИН БОДОХГҮЙ — `poLineTotals`/`poTotals` (картын нийт дүнтэй ижил эх сурвалж). */
+function poBreakdownHtml(po) {
+  const ls = po.lines || [];
+  if (!ls.length) return '';
+  const cny = po.fx !== 1;
+  const kv = (k, v) => `<div class="po-kv"><span>${k}</span><b>${v}</b></div>`;
+  const items = ls.map(l => {
+    const x = poLineTotals(l, po.fx);
+    const unitMnt = Math.round((Number(l.c) || 0) * po.fx);
+    const approx = poUnitIsRounded(l.c) ? '≈ ' : '';
+    const got = (po.status === 'ordered' || po.status === 'received')
+      ? kv('Ирсэн', `<span class="po-rc${poLineLeft(l) === 0 ? ' ok' : ''}">${l.rcv}/${l.q}${l.done && l.rcv < l.q ? ' (хаасан)' : ''}</span>`) : '';
+    return `<div class="po-bi">
+      <div class="po-bi-top">
+        ${poThumbHtml(poImgOf(l)) || '<span class="po-th po-th-none" aria-hidden="true">📷</span>'}
+        <span class="po-bi-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span>
+        <b class="po-bi-t">${escapeHtml(fmtMoney(x.total))}</b>
+      </div>
+      ${kv('Тоо', `${escapeHtml(String(l.q))} ш`)}
+      ${kv('Нийт үнэ', cny ? `¥${escapeHtml(poFmtNum(poLineTotalCur(l)))} = ${escapeHtml(fmtMoney(x.item))}` : escapeHtml(fmtMoney(x.item)))}
+      ${kv('Нэгж үнэ', cny ? `${approx}¥${escapeHtml(poFmtNum(l.c))} ≈ ${escapeHtml(fmtMoney(unitMnt))}` : `${approx}${escapeHtml(fmtMoney(unitMnt))}`)}
+      ${x.ship ? kv(l.cg != null ? 'Карго' : 'Карго (урьдчилсан)', escapeHtml(fmtMoney(x.ship))) : ''}
+      ${x.ship ? kv('Нэгж өртөг (карго орсон)', `≈ ${escapeHtml(fmtMoney(x.unit))}`) : ''}
+      ${l.sku ? kv('Код', escapeHtml(l.sku)) : ''}
+      ${kv('Салбар', escapeHtml(PO_BRANCH_LABEL[l.b] || l.b))}
+      ${got}
+      ${l.u ? `<div class="po-files"><a class="po-ln-a" href="${escapeHtml(l.u)}" target="_blank" rel="noopener noreferrer">🔗 линк ↗</a></div>` : ''}
+    </div>`;
+  }).join('');
+  const t = poTotals(po);
+  const cnyAll = cny ? ls.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0) : 0;
+  const foot = `<div class="po-bd-f">
+    ${kv('Бараа', cny ? `¥${escapeHtml(poFmtNum(cnyAll))} × ${escapeHtml(String(po.fx))} = ${escapeHtml(fmtMoney(t.item))}` : escapeHtml(fmtMoney(t.item)))}
+    ${t.ship ? kv('Карго', escapeHtml(fmtMoney(t.ship))) : ''}
+    ${kv('Нийт', escapeHtml(fmtMoney(t.total)))}
+  </div>`;
+  return `<div class="po-bd"><div class="po-bd-h">Барааны задаргаа · ${ls.length} төрөл · ${t.qty} ш</div>${items}${foot}</div>`;
+}
 function poDetailsHtml(po) {
-  const rest = po.lines.slice(PO_CARD_LINES).map(l => poLineRowHtml(po, l)).join('');
   const hist = (po.history || []).slice().reverse().map(h => {
     const s = poStatusInfo(h.to);
     return `<div class="po-h">${poWhoWhen(h.at, h.by)} · ${s.icon} ${escapeHtml(s.label)}${h.d ? ' · ' + escapeHtml(h.d) : ''}${h.note ? ` · <i>${escapeHtml(h.note)}</i>` : ''}</div>`;
@@ -27529,7 +27570,7 @@ function poDetailsHtml(po) {
     ${po.fx !== 1 ? kv('Ханш', `¥1 = ${escapeHtml(String(po.fx))}₮`) : ''}
     ${kv('Төлөх данс', escapeHtml(poPayToText(po.pay_to)))}
     ${kv('Хэзээ хүртэл', escapeHtml(po.need_by || ''))}
-    ${rest ? `<div class="po-lns">${rest}</div>` : ''}
+    ${poBreakdownHtml(po)}
     ${po.note ? `<div class="po-note">${escapeHtml(po.note)}</div>` : ''}
     ${files ? `<div class="po-files">${files}</div>` : ''}
     ${po.url ? `<div class="po-files"><a class="po-file" href="${escapeHtml(po.url)}" target="_blank" rel="noopener noreferrer">🔗 дэлгүүр / бараа ↗</a></div>` : ''}

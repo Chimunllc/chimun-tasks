@@ -27029,7 +27029,7 @@ function poEvThumbsHtml(urls, label) {
 // хүсэлтийн цонхны «Судалгаа, баримт» хасагдсан (2026-10-27) — хуучин хавсралт устахгүй, энд харагдсаар.
 function poFileItemsHtml(files) {
   return (files || []).map((u, i) => {
-    if (poIsImageFile(u)) return `<div class="po-evw">${poEvThumbsHtml([u], 'Зураг')}</div>`;
+    if (poIsImageFile(u) || /^https?:\/\/(drive\.google\.com|lh3\.googleusercontent\.com)\//i.test(String(u || ''))) return `<div class="po-evw">${poEvThumbsHtml([u], 'Зураг')}</div>`;
     const href = poLinkHref(u);
     return `<div class="po-evw po-evw-f">${href ? `<a class="po-file" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">📎 файл ${i + 1}</a>` : `<span class="po-file">📎 файл ${i + 1}</span>`}</div>`;
   }).join('');
@@ -27075,9 +27075,14 @@ function poAcctKey(a) { return (String(a && a.bank || '') + '|' + String(a && a.
    Банк+дугаараар давхардлыг нэгтгэнэ, СҮҮЛД ашигласан нь эхэнд (n = хэдэн удаа). ⛔ Зөвхөн БҮРЭН (банк+дугаар+нэр) данс. Шинэ хүснэгт БАЙХГҮЙ —
    худалдан авалтын мөрүүдийн `pay_to`-оос өөрөө гарна («өөрөө үүсдэг» дүрэм), гараар бүртгэх зүйлгүй. */
 // Цонхны гарчигт «хэн/юу»: дэлгүүр (хуучин хүсэлт) байвал тэр, үгүй бол эхний барааны нэр. Дэлгүүр форм дээрээс хасагдсан (2026-10-28).
+/* Хүсэлтийн нэр (цонхны гарчиг, баталгаажуулалт): дэлгүүр байвал тэр; нэг барааны хүсэлт = барааны нэр; олон бараатай = «N барааны захиалга»
+   (2026-10-28, CEO: ганц барааны нэр + «+3 бусад» гэж харагдахаа болиул). */
 function poWho(po) {
-  const l = ((po && po.lines) || [])[0];
-  return String((po && po.supplier) || '').trim() || (l ? String(l.name || l.sku || '').trim() : '');
+  const ls = (po && po.lines) || [];
+  const sup = String((po && po.supplier) || '').trim();
+  if (sup) return sup;
+  if (ls.length > 1) return `${ls.length} барааны захиалга`;
+  return ls[0] ? String(ls[0].name || ls[0].sku || '').trim() : '';
 }
 function poPrevAccounts(list, limit) {
   const by = new Map();
@@ -27665,8 +27670,7 @@ function poProgressHtml(status) {
 function poTitleHtml(po) {
   const ls = po.lines || [];
   if (!ls.length) return '<small>бараа алга</small>';
-  const first = escapeHtml(ls[0].name || ls[0].sku || 'бараа');
-  return ls.length > 1 ? `${first} <small>+${ls.length - 1} бусад</small>` : first;
+  return ls.length > 1 ? `${ls.length} барааны захиалга` : escapeHtml(ls[0].name || ls[0].sku || 'бараа');
 }
 /* Нотлох зураг (🧾 үнэ тохирсон баримт · 📊 3 дэлгүүрийн харьцуулалт) = БАТЛАХ шийдвэрийн нотолгоо → нүүрэнд ЗӨВХӨН хүсэлт төлөвт (батлагч харна).
    Батлагдсаны дараа нүүр цэвэр үлдэнэ (зураг «Задаргаа»-д хэвээр); ирсэн барааны 📷 нь ирсний дараа нүүрэнд. Дарахад апп дотор томорно.
@@ -27705,26 +27709,24 @@ function poWhoWhen(at, by) {
   return `${escapeHtml(t)}${by ? ' · ' + escapeHtml(memberName(by)) : ''}`;
 }
 /* БҮХ мөр нүүрэнд өөрсдөө харагдана (нэр · тоо × нэгж үнэ · код · линк · зураг · карго · ирсэн тоо · дүн) — «Задаргаа»-д мөрийг ДАХИН жагсаахгүй
-   (2026-10-28, CEO: «задаргаа түүх гэх мэт хэтэрхий их давтагдсан»). Энд ЗӨВХӨН нүүрэнд байхгүй нэмэлт: нэгж өртөг (карго орсон) · тэмдэглэл ·
-   хүлээн авсан салбар · батлагдсаны дараах 🧾/📊 зураг, ба бодит карго орсон бол бараа + карго = нийт. Нэмэлтгүй мөр огт гарахгүй; нэмэлт огт
-   байхгүй бол ХООСОН буцаана. «Салбар» нь хүлээн авахад л сонгогддог тул ирэхээс өмнө гаргахгүй. Дүнг ДАХИН БОДОХГҮЙ — `poLineTotals`/`poTotals`. */
+   (2026-10-28, CEO: «задаргаа түүх гэх мэт хэтэрхий их давтагдсан»). Нотлох зураг (🧾/📊) БА төлөх данс нь БАТЛАХ үед аль хэдийн харагдсан тул энд
+   ДАХИН гарахгүй (CEO: «өмнө нь батлахад аль хэдийн хараад дарчихсан»). Энд ЗӨВХӨН нүүрэнд байхгүй нэмэлт: нэгж өртөг (карго орсон) · тэмдэглэл ·
+   хүлээн авсан салбар, ба бодит карго орсон бол бараа + карго = нийт. Нэмэлт огт байхгүй бол ХООСОН буцаана. «Салбар» нь хүлээн авахад л
+   сонгогддог тул ирэхээс өмнө гаргахгүй. Дүнг ДАХИН БОДОХГҮЙ — `poLineTotals`/`poTotals`. */
 function poBreakdownHtml(po) {
   const ls = po.lines || [];
   if (!ls.length) return '';
   const cny = po.fx !== 1;
-  const faceEv = po.status === 'request';   // нүүрэнд 🧾/📊 зураг зөвхөн хүсэлт төлөвт (poEvRowHtml)
   const kv = (k, v) => `<div class="po-kv"><span>${k}</span><b>${v}</b></div>`;
   const items = ls.map(l => {
     const real = poLineRealUnit(po, l);
-    const evOf = (k) => ((l[k] || []).length ? `<div class="po-bi-ev"><span class="po-bi-evl">${PO_EV_KINDS[k].icon} ${PO_EV_KINDS[k].label}</span><div class="po-evs">${poEvThumbsHtml(l[k], PO_EV_KINDS[k].label)}</div></div>` : '');
-    const ev = faceEv ? '' : evOf('pr') + evOf('cmp');
     const rows = [
       real != null ? kv('Нэгж өртөг (карго орсон)', `≈ ${escapeHtml(fmtMoney(real))}`) : '',
       Number(l.rcv) > 0 ? kv('Салбар', escapeHtml(PO_BRANCH_LABEL[l.b] || l.b)) : '',
       l.nt ? kv('Тэмдэглэл', escapeHtml(l.nt)) : '',
     ].join('');
-    if (!rows && !ev) return '';
-    return `<div class="po-bi"><div class="po-bi-top"><span class="po-bi-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span></div>${rows}${ev}</div>`;
+    if (!rows) return '';
+    return `<div class="po-bi"><div class="po-bi-top"><span class="po-bi-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span></div>${rows}</div>`;
   }).join('');
   const t = poTotals(po);
   const cnyAll = cny ? ls.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0) : 0;
@@ -27738,20 +27740,17 @@ function poBreakdownHtml(po) {
   return `<div class="po-bd">${items}${footRows ? `<div class="po-bd-f">${footRows}</div>` : ''}</div>`;
 }
 /* «Задаргаа · түүх» нь ЗӨВХӨН нэмэлт мэдээлэл БА/ЭСВЭЛ түүх (хүсэлтээс гадна шилжилт) байвал гарна. Анхны «хэн, хэзээ» нь нүүрийн доорх мөрөнд аль
-   хэдийн байгаа тул зөвхөн нэг түүхтэй (шинэ хүсэлт) картад хоосон нугалаа гаргахгүй. */
+   хэдийн байгаа тул зөвхөн нэг түүхтэй (шинэ хүсэлт) картад хоосон нугалаа гаргахгүй. Төлөх данс, нотлох зураг, шилжүүлгийн баримт энд ДАХИН ГАРАХГҮЙ. */
 function poDetailsHtml(po) {
   const hist = (po.history || []).slice().reverse().map(h => {
     const s = poStatusInfo(h.to);
     return `<div class="po-h">${poWhoWhen(h.at, h.by)} · ${s.icon} ${escapeHtml(s.label)}${h.d ? ' · ' + escapeHtml(h.d) : ''}${h.note ? ` · <i>${escapeHtml(h.note)}</i>` : ''}</div>`;
   }).join('');
-  const files = poFileItemsHtml(po.files);
   const kv = (k, v) => v ? `<div class="po-kv"><span>${k}</span><b>${v}</b></div>` : '';
   const body = [
     poShops(po).length > 1 ? '' : kv('Нийлүүлэгч', escapeHtml(po.supplier || '')),   // олон дэлгүүр бол мөр бүрийн «🏪 дэлгүүр» нүүрэнд аль хэдийн байна
-    poPayShown(po) ? '' : kv('Төлөх данс', escapeHtml(poPayToText(po.pay_to))),
     poBreakdownHtml(po),
     po.note ? `<div class="po-note">${escapeHtml(po.note)}</div>` : '',
-    files ? `<div class="po-bi-ev"><span class="po-bi-evl">📎 Хавсаргасан файл</span><div class="po-evs">${files}</div></div>` : '',
     poLinkHref(po.url) ? `<div class="po-files"><a class="po-file" href="${escapeHtml(poLinkHref(po.url))}" target="_blank" rel="noopener noreferrer">🔗 дэлгүүр / бараа ↗</a></div>` : '',
   ].join('');
   if (!body.trim() && (po.history || []).length <= 1) return '';
@@ -27759,6 +27758,14 @@ function poDetailsHtml(po) {
     ${body}
     <div class="po-hist">${hist}</div>
   </details>`;
+}
+/* ХАВСРАЛТ / ШИЛЖҮҮЛГИЙН БАРИМТ (`po.files`) = нүүрэнд ЗУРАГ болж харагдана (дарахад апп дотор томорно), Google Drive руу гаргахгүй. «Шилжүүлсэн» цонх
+   зургийг VPS-д байршуулж энд нэмнэ. Төлсний дараа (paid+) = шилжүүлгийн баримт; хүсэлт/батлагдсан төлөвт зөвхөн хуучин «Судалгаа, баримт» хавсралт байж болно. */
+function poFilesRowHtml(po) {
+  const items = poFileItemsHtml(po.files);
+  if (!items) return '';
+  const lbl = (po.status === 'paid' || po.status === 'ordered' || po.status === 'received') ? '🧾 Шилжүүлгийн баримт' : '📎 Хавсралт';
+  return `<div class="po-ev-row"><span class="po-evl">${lbl}</span><span class="po-evs">${items}</span></div>`;
 }
 // Төлөх данс нүүрэнд ЗӨВХӨН хэрэгтэй үед: батлагч шалгах (хүсэлт) ба шилжүүлэгч төлөх (батлагдсан). Төлсний дараа «Задаргаа»-д л.
 function poPayShown(po) { return po.status === 'request' || po.status === 'approved'; }
@@ -27809,6 +27816,7 @@ function poCardHtml(po, caps) {
         ${trowNote ? `<div class="po-note">${escapeHtml(trowNote)}</div>` : ''}
         ${pay}
         ${po.status === 'approved' ? poMemoBoxHtml(po) : ''}
+        ${poFilesRowHtml(po)}
         ${poProofRowHtml(po)}
         ${po.status === 'ordered' && !caps.receive ? poReceiverHintHtml() : ''}
         <div class="po-sub">${[po.platform, memberName(po.created_by), fmtDateTimeUB(po.created_at)].filter(Boolean).map(escapeHtml).join(' · ')}</div>
@@ -27877,10 +27885,38 @@ function poOpenModal(cls, html) {
   return { m, close, $: (s) => m.querySelector(s), $$: (s) => [...m.querySelectorAll(s)] };
 }
 const poNum = (v) => { const n = Number(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n) && n > 0 ? n : 0; };
-async function poUploadAll(files, id) {
-  const urls = [];
-  for (const f of files || []) { const u = await uploadReceipt(f, id, 'purchase'); if (u) urls.push(u); }
-  return urls;
+/* Баримтын зураг сонгогч (олныг ЗЭРЭГ байршуулна, ✕-ээр хасна, зөвхөн зураг): «Шилжүүлсэн» БА «Худалдан авсан» цонхонд ИЖИЛ.
+   Зураг = VPS ФАЙЛ (`poUploadImage`), Google Drive БИШ (2026-10-28, CEO). o: { box, input, label }. Буцаах: { list, busy() }. */
+function poProofPicker(w, o) {
+  const list = [];
+  let busy = 0;
+  const draw = () => {
+    const tiles = list.map((u, n) => `<div class="po-evw">${poEvThumbsHtml([u], o.label)}<button type="button" class="ui-raw po-ph-x" data-pfdel="${n}" aria-label="Зургийг хасах" title="Хасах">✕</button></div>`).join('');
+    const wait = '<span class="po-evt po-evt-busy" aria-hidden="true">⏳</span>'.repeat(busy);
+    const room = PO_PF_MAX - list.length - busy;
+    const add = room > 0 ? `<span class="po-ph po-ev-add" title="${escapeHtml(o.label)} оруулах"><span class="po-ph-t">＋<small>Зураг</small></span><input class="ui-raw" type="file" accept="image/*" multiple id="${o.input}" aria-label="${escapeHtml(o.label)} зураг оруулах"></span>` : '';
+    w.$('#' + o.box).innerHTML = tiles + wait + add;
+  };
+  draw();
+  w.m.addEventListener('click', (e) => {
+    const x = e.target.closest && e.target.closest('[data-pfdel]');
+    if (x) { list.splice(+x.dataset.pfdel, 1); draw(); }
+  });
+  w.m.addEventListener('change', async (e) => {
+    const inp = e.target.closest && e.target.closest('#' + o.input);
+    if (!inp || !inp.files || !inp.files.length) return;
+    const room = PO_PF_MAX - list.length - busy;
+    const picked = [...inp.files].filter(f => /^image\//i.test(f.type || '')).slice(0, Math.max(0, room));
+    if (!picked.length) { showToast(room > 0 ? 'Зураг сонгоно уу' : `Дээд тал нь ${PO_PF_MAX} зураг`, 'warn'); return; }
+    busy += picked.length; draw();
+    await Promise.all(picked.map(async (f) => {
+      // ⛔ Массивын литерал ДОТОР `await` бичихгүй (spread нь await-ээс өмнө авагдаж зэрэг байршсан зургууд бие биенээ дарна).
+      try { const url = await poUploadImage(f); list.push(url); }
+      catch (err) { showToast('⚠ ' + (err && err.message ? err.message : err), 'error', 5000); }
+      finally { busy--; draw(); }
+    }));
+  });
+  return { list, busy: () => busy };
 }
 async function poHandleAction(act, id, btn) {
   const po = poById(id);
@@ -28304,9 +28340,10 @@ async function openPoPayModal(id) {
       ${yuan ? `<div id="pp-fx-box"><label class="fld">Хаан банкны юанийн ханш ₮ / ¥ <span class="fld-opt">(бэлэн бус зарах · шилжүүлсэн өдрийнх)</span><input id="pp-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" placeholder="жишээ: 541"></label></div>
       <div id="pp-fx-hint" class="po-note"></div>` : ''}
       <label class="fld">Шилжүүлсэн дүн ₮<input id="pp-amt" class="ui-raw" type="number" min="1" step="1000" inputmode="numeric" value="${yuan ? '' : (po.total_mnt || '')}"></label>
-      <label class="fld">Шилжүүлгийн баримт <span class="fld-opt">(зураг, PDF · заавал биш)</span><input id="pp-file" class="ui-raw" type="file" accept="image/*,application/pdf" multiple></label>
+      <div class="po-fld"><span class="po-lb">🧾 Шилжүүлгийн баримт <span class="fld-opt">(зураг · заавал биш)</span></span><div class="po-evs" id="pp-pf"></div></div>
     </div>
     <div class="modal-actions"><button class="btn" id="pp-cancel">Болих</button><button class="btn btn-primary" id="pp-ok">💸 Шилжүүлсэн гэж бүртгэх</button></div>`);
+  const proof = poProofPicker(w, { box: 'pp-pf', input: 'pp-pf-in', label: 'Шилжүүлгийн баримт' });
   let amtTouched = false;
   const dayOf = () => w.$('#pp-date').value || todayStr();
   const rateOf = () => (yuan ? poNum(w.$('#pp-fx').value) : 1);
@@ -28336,9 +28373,10 @@ async function openPoPayModal(id) {
     const rate = rateOf();
     if (yuan && !poFxValid(rate)) { showToast(`${date.slice(5)}-ны Хаан банкны юанийн ханшаа оруулна уу`, 'warn', 4000); return; }
     if (!amt) { showToast('Шилжүүлсэн дүнгээ оруулна уу', 'warn'); return; }
+    if (proof.busy() > 0) { showToast('Зураг байршиж байна — түр хүлээнэ үү', 'warn'); return; }
     btn.disabled = true;
     try {
-      const urls = await poUploadAll([...(w.$('#pp-file').files || [])], po.id);
+      const urls = proof.list.slice();
       const fOn = yuan ? poFxOn(cfg, date) : null;
       const note = [yuan ? `Ханш ${rate} · Хаан банк ${date.slice(5)} · ${fOn && fOn.exact && fOn.rate === rate ? 'автомат' : 'гараар'}` : ''].filter(Boolean).join(' · ');
       const patch = poAdvancePatch(po, 'paid', state.me, note, { paid_mnt: amt, d: date });
@@ -28351,44 +28389,19 @@ async function openPoPayModal(id) {
 }
 function openPoOrderModal(id) {
   const po = poById(id); if (!po || po.status !== 'paid') return;
-  const pf = [];   // төлбөрийн баримтын зураг ЗААВАЛ (юанд Alipay) — бичвэр, тайлбар хэрэггүй
-  let busy = 0;
   const w = poOpenModal('po-step', `
     <div class="modal-head"><b>🛒 Худалдан авсан · #${po.no} ${escapeHtml(poWho(po))}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
       <div class="po-fld"><span class="po-lb">🧾 ${escapeHtml(poProofLabel(po))}</span><div class="po-evs" id="po-pf"></div></div>
     </div>
     <div class="modal-actions"><button class="btn" id="po-ocancel">Болих</button><button class="btn btn-primary" id="po-ook">🛒 Худалдан авсан гэж бүртгэх</button></div>`);
-  const draw = () => {
-    const tiles = pf.map((u, n) => `<div class="po-evw">${poEvThumbsHtml([u], poProofLabel(po))}<button type="button" class="ui-raw po-ph-x" data-pfdel="${n}" aria-label="Зургийг хасах" title="Хасах">✕</button></div>`).join('');
-    const wait = '<span class="po-evt po-evt-busy" aria-hidden="true">⏳</span>'.repeat(busy);
-    const room = PO_PF_MAX - pf.length - busy;
-    const add = room > 0 ? `<span class="po-ph po-ev-add" title="${escapeHtml(poProofLabel(po))} оруулах"><span class="po-ph-t">＋<small>Зураг</small></span><input class="ui-raw" type="file" accept="image/*" multiple id="po-pf-in" aria-label="${escapeHtml(poProofLabel(po))} зураг оруулах"></span>` : '';
-    w.$('#po-pf').innerHTML = tiles + wait + add;
-  };
-  draw();
+  // төлбөрийн баримтын зураг ЗААВАЛ (юанд Alipay) — бичвэр, тайлбар хэрэггүй
+  const proof = poProofPicker(w, { box: 'po-pf', input: 'po-pf-in', label: poProofLabel(po) });
+  const pf = proof.list;
   w.$('#po-ocancel').onclick = w.close;
-  w.m.addEventListener('click', (e) => {
-    const x = e.target.closest && e.target.closest('[data-pfdel]');
-    if (x) { pf.splice(+x.dataset.pfdel, 1); draw(); }
-  });
-  w.m.addEventListener('change', async (e) => {
-    const inp = e.target.closest && e.target.closest('#po-pf-in');
-    if (!inp || !inp.files || !inp.files.length) return;
-    const room = PO_PF_MAX - pf.length - busy;
-    const picked = [...inp.files].filter(f => /^image\//i.test(f.type || '')).slice(0, Math.max(0, room));
-    if (!picked.length) { showToast(room > 0 ? 'Зураг сонгоно уу' : `Дээд тал нь ${PO_PF_MAX} зураг`, 'warn'); return; }
-    busy += picked.length; draw();
-    await Promise.all(picked.map(async (f) => {
-      // ⛔ Массивын литерал ДОТОР `await` бичихгүй (spread нь await-ээс өмнө авагдаж зэрэг байршсан зургууд бие биенээ дарна).
-      try { const url = await poUploadImage(f); pf.push(url); }
-      catch (err) { showToast('⚠ ' + (err && err.message ? err.message : err), 'error', 5000); }
-      finally { busy--; draw(); }
-    }));
-  });
   w.$('#po-ook').onclick = async (ev) => {
     const btn = ev.currentTarget;
-    if (busy > 0) { showToast('Зураг байршиж байна — түр хүлээнэ үү', 'warn'); return; }
+    if (proof.busy() > 0) { showToast('Зураг байршиж байна — түр хүлээнэ үү', 'warn'); return; }
     if (!pf.length) { showToast(poProofLabel(po) + 'ын зургаа оруулна уу', 'warn', 4000); return; }
     btn.disabled = true;
     try {

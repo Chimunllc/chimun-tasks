@@ -16137,7 +16137,11 @@ async function swFetchTests() {
     ok(/po-pre">₮</.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 1 }), 0, 1, true, 1)), 'мөр: төгрөгийн горимд ₮ угтвар');
     ok(/po-pre">¥</.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 1 }), 0, 1, false, 1)), '⛔ мөр: юаний горимд ханшийн талбарт «1» гэж бичигдэхэд валют ₮ болж ХУВИРАХГҮЙ (валютыг ханшаас таамаглахгүй)');
     const brCard = F.poLineCardHtml(F.poLine({ name: 'А', q: 1, b: 'nomaad' }), 0, 540, false, 1);
-    ok((brCard.match(/data-br="/g) || []).length === 4 && /data-br="nomaad" aria-pressed="true"/.test(brCard) && /class="ui-raw po-chip on" data-br="nomaad"/.test(brCard) && !/data-f="b"/.test(brCard), 'мөр: салбар = чип (1 даралт), сонгосон нь тодорно');
+    // ═ ХҮСЭЛТИЙН МАЯГТ МИНИМАЛ (2026-10-28, CEO: «scroll ажлахгүй, ижил төрлийн бөглөх зүйлсийг болиулвал… маш хэрэгтэй зүйлсийг л үлдээе») ═
+    ok(!/data-br=|data-f="shop"|Аль салбарт|өөр дэлгүүрээс авбал/.test(brCard), '⛔ маягт: барааны мөрд салбар, «өөр дэлгүүр» БАЙХГҮЙ (салбар хүлээн авахад сонгогдоно, нэг хүсэлт = нэг дэлгүүр)');
+    ok(/<details class="po-lx">/.test(brCard) && /＋ Нэмэлт/.test(brCard) && !/<details class="po-lx" open>/.test(brCard), 'маягт: линк · баримт · харьцуулалт · тэмдэглэл НЭГ эвхэгдсэн «＋ Нэмэлт» мөрөнд (өгөгдмөлөөр хаалттай)');
+    ok(/<details class="po-lx" open>/.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 1, u: 'item.taobao.com/a' }), 0, 540, false, 1)), 'маягт: нэмэлт мэдээлэлтэй мөр засахад «＋ Нэмэлт» нээлттэй (хуучин утга нуугдахгүй)');
+    ok(F.poLineCardHtml(F.poLine({ name: 'А', q: 1, b: 'nomaad' }), 0, 540, false, 1) !== undefined && F.poLine({ name: 'А', q: 1, b: 'nomaad' }).b === 'nomaad', 'маягт: салбарыг формд асуухаа больсон ч мөрийн `b` утга хадгалагдана (хүлээн авахад урьдчилан бөглөгдөнө)');
     ok(!/data-del=/.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 1 }), 0, 540, false, 1)) && /data-del="1"/.test(F.poLineCardHtml(F.poLine({ name: 'Б', q: 1 }), 1, 540, false, 2)) && /Бараа 2/.test(F.poLineCardHtml(F.poLine({ name: 'Б', q: 1 }), 1, 540, false, 2)), 'мөр: «Хасах» зөвхөн хэд хэдэн бараатай үед (ганц мөр хоосрохгүй)');
     const linked = F.poLineCardHtml(F.poLine({ sku: 'M-205', name: 'Босоо дугуй ширээ', q: 1, c: 10 }), 0, 540);
     ok(!/data-f="name"/.test(linked) && /data-unlink="0"/.test(linked) && /M-205/.test(linked) && !/data-sug=/.test(linked), 'мөр: каталогийн бараа = нэр уншигдахаар, «салгах» боломжтой, санал гарахгүй');
@@ -16188,7 +16192,7 @@ async function swFetchTests() {
     eq(F.poAcctKey({ bank: 'Хаан  банк', no: '83 000' }), F.poAcctKey({ bank: 'хаан банк', no: '83000' }), 'өмнөх данс: зай/том жижиг үсгийг үл тоож ижил данс гэж таньна');
     const asrcP = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
     const moP = asrcP.slice(asrcP.indexOf('async function openPoModal('), asrcP.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
-    ok(/poPrevAccounts\(state\.purchases, 6\)/.test(moP) && /data-prev=/.test(moP) && /closest\('\[data-prev\]'\)/.test(moP), 'scan: шинэ хүсэлтийн цонх өмнөх данснуудыг санал болгож, товшихоор бөглөнө');
+    ok(/poPrevAccounts\(state\.purchases, 2\)/.test(moP) && /data-prev=/.test(moP) && /closest\('\[data-prev\]'\)/.test(moP), 'scan: шинэ хүсэлтийн цонх өмнөх данснуудыг санал болгож, товшихоор бөглөнө');
     ok(!/rest\/v1\/purchases/.test(asrcP.slice(asrcP.indexOf('function poPrevAccounts('), asrcP.indexOf('function poPrevAccounts(') + 700)), '⛔ scan: өмнөх данс шинэ хүснэгт/бичлэг БАЙХГҮЙ — мөрүүдээс өөрөө гарна');
   }
   {
@@ -16264,7 +16268,9 @@ async function swFetchTests() {
     eq(rp.fields.supplier, 'Yide Lighting', 'хүлээн авах: шинэ барааны нийлүүлэгч = ТЭР барааны дэлгүүр (хүсэлтийнх биш)');
     const asrcS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
     const moS = asrcS.slice(asrcS.indexOf('async function openPoModal('), asrcS.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
-    ok(/data-f="shop"/.test(asrcS.slice(asrcS.indexOf('function poLineCardHtml('), asrcS.indexOf('async function openPoModal('))) && /f === 'shop'\) l\.shop = e\.target\.value/.test(moS), 'scan: хүсэлтийн цонхонд бараа бүрийн «Дэлгүүр» талбар');
+    ok(!/data-f="shop"/.test(asrcS.slice(asrcS.indexOf('function poLineCardHtml('), asrcS.indexOf('async function openPoModal('))) && !/f === 'shop'/.test(moS), '⛔ scan: хүсэлтийн цонхонд бараа бүрийн «Дэлгүүр» талбар БАЙХГҮЙ (2026-10-28 хасагдсан; хуучин хүсэлтийн `shop` харагдсаар)');
+    ok(!/id="po-plat"|id="po-note"|po-more2|PO_PLATFORMS/.test(asrcS), '⛔ scan: форм дээр «Платформ» ба нийт «Тэмдэглэл» БАЙХГҮЙ (хуучин утга засахад хадгалагдана)');
+    ok(/platform: ex \? ex\.platform : ''/.test(moS) && /note: ex \? ex\.note : ''/.test(moS), 'scan: хуучин хүсэлт засахад платформ, нийт тэмдэглэл ХАДГАЛАГДАНА');
     ok(/to: ex\.status, note: 'Засварласан'/.test(moS) && /\}, ex\.status\);/.test(moS), '⛔ scan: батлагдсан хүсэлтийг засахад төлөв «request» руу буцахгүй (оптимист түгжээ ч ex.status)');
     // КОД: кодгүй (холбоогүй) мөр ил харагдана, каталогт ижил бараа байвал санал болгоно (автоматаар холбохгүй)
     const cat = [{ sku: 'M-205', code: 'M-205', name: 'Босоо дугуй ширээ', cost: 100000, qty_mevent: 5 }, { sku: 'M-305', code: 'M-305', name: 'Босоо ширээний углаа', cost: 9000, qty_mevent: 12 }, { sku: 'M-500', code: 'M-500', name: 'Алтан хивс', cost: 1, qty_mevent: 1 }];
@@ -16705,7 +16711,7 @@ async function swFetchTests() {
         ok(baseBody && !/overflow|padding:\s*0/.test(baseBody), '⛔ CSS: суурь `.po-card` (цонхны хайрцагтай хуваалцдаг) overflow/padding:0-гүй');
         ok(/\.po-list > \.po-card \{[^}]*overflow: hidden/.test(css), 'CSS: самбарын картын overflow зөвхөн `.po-list > .po-card`-д');
         const srcQ = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-        ok((srcQ.match(/<section class="po-card/g) || []).length >= 4, 'scan: хүсэлтийн цонх `.po-card`-г ашигладаг (энэ нь хуваалцсан класс гэдгийг сануулна)');
+        ok((srcQ.match(/<section class="po-card/g) || []).length >= 3, 'scan: хүсэлтийн цонх `.po-card`-г ашигладаг (энэ нь хуваалцсан класс гэдгийг сануулна)');
       }
       ok(!/po-th-none|📷<\/span>/.test(mc), '⛔ минимал карт: зураггүй бараанд саарал камер хайрцаг ГАРАХГҮЙ (хоосон хайрцаг нь хог)');
       ok(/<details class="po-d" data-po-d="mc">/.test(mc) && /<div class="po-exp">/.test(mc) && mc.indexOf('class="po-cls"') > mc.indexOf('</summary>'), 'минимал карт: мөр бүр, данс, түүх нээгдэх хэсэгт (дарж нээнэ)');
@@ -16781,11 +16787,13 @@ async function swFetchTests() {
     ok(/poFormIssues\(formState\(\)\)/.test(reqM) && /'bank'/.test(issM) && /'acct'/.test(issM) && /'owner'/.test(issM) && /id="po-pbank"/.test(reqM) && /id="po-pno"/.test(reqM) && /id="po-pnm"/.test(reqM),
        '⛔ scan: хүсэлт гаргахдаа төлөх данс (банк, дугаар, эзэмшигч) ЗААВАЛ');
     ok(/const fillPay = /.test(reqM) && /poPayToOk\(p\.pay_to\)/.test(reqM), 'scan: нийлүүлэгч өмнө нь байсан бол данс өөрөө бөглөгдөнө');
-    ok(!/id="po-q"/.test(reqM) && /id="po-addline"/.test(reqM) && /Юу авах вэ\?/.test(reqM), 'scan: хүсэлтийн цонх барааны нэрээр ЭХЭЛНЭ («Юу авах вэ?»), нийлүүлэгч доор');
+    ok(!/id="po-q"/.test(reqM) && /id="po-addline"/.test(reqM) && /po-card-h"><span>Бараа/.test(reqM) && reqM.indexOf('id="po-lines"') < reqM.indexOf('id="po-sup"'), 'scan: хүсэлтийн цонх барааны нэрээр ЭХЭЛНЭ, дэлгүүр доор');
     ok(reqM.indexOf('id="po-lines"') > 0 && reqM.indexOf('id="po-lines"') < reqM.indexOf('id="po-sup"'), '⛔ scan: барааны нэр/мөр нийлүүлэгчээс ӨМНӨ');
     ok(/poCatalogMatches\(/.test(reqM) && /poUnitFromTotal\(/.test(reqM) && /'qty'/.test(issM) && /'total'/.test(issM) && /'name'/.test(issM) && /'sup'/.test(issM), 'scan: каталогийн санал, нийт→нэгж, нэр/тоо/нийт үнэ/дэлгүүр заавал');
     ok(/focusIssue\(iss\[0\]\)/.test(reqM) && /'Дутуу: '/.test(reqM) && /id="po-total"/.test(reqM) && /<div class="modal-actions po-foot">/.test(reqM), '⛔ scan: дутуу байвал эхнийг нь фокуслаж «Дутуу: …» гэнэ; нийт дүн + дутуу нь доод талд ҮРГЭЛЖ харагдана');
-    ok(/data-qstep/.test(reqM) && /data-br/.test(reqM) && !/<select/.test(reqM), 'scan: тоо степпер, салбар чип — унадаг жагсаалт (select) байхгүй');
+    ok(/w\.\$\('#po-fx-box'\)\.hidden = mnt \|\| fxLocked/.test(reqM) && /id="po-rate"/.test(reqM), 'scan: Хаан банкны автомат ханш байвал ханшийн талбар ХАРАГДАХГҮЙ, ханш толгойд жижиг бичигдэнэ');
+    ok(!/Юу авахаа бичнэ үү|Хятад доторх тээвэр нийт үнэд орсон байна/.test(reqM), 'scan: маягтын гарчгийн тайлбар догол мөр байхгүй (нийт үнэ талбарын шошго «тээвэртэй нь» гэж хэлнэ)');
+    ok(/data-qstep/.test(reqM) && !/data-br/.test(reqM) && !/<select/.test(reqM), 'scan: тоо степпер; салбар чип байхгүй; унадаг жагсаалт (select) байхгүй');
     ok(/if \(!ex\) focusName\(0\)/.test(reqM), 'scan: шинэ хүсэлтэд барааны нэрийн талбар шууд идэвхжинэ');
     const payM = src.slice(src.indexOf('async function openPoPayModal('), src.indexOf('function openPoOrderModal('));
     ok(/Шилжүүлэх данс/.test(payM) && /data-copy-text/.test(payM), 'scan: «Шилжүүлсэн» цонхонд төлөх данс (хуулах товчтой) харагдана');

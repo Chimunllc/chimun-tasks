@@ -26958,7 +26958,6 @@ const PO_ENDS = [
   { k: 'cancelled', label: 'Цуцалсан',   icon: '✕' },
 ];
 const PO_BRANCH_LABEL = { mevent: 'M-Event', nomaad: 'NOMAAD', catering: 'Катеринг', chimun: 'Чимун' };
-const PO_PLATFORMS = ['Taobao', '1688', 'Бусад'];
 const PO_FX_DEFAULT = 540;
 
 // Зургийн хаяг = зөвхөн https/http ФАЙЛ (VPS-д байршсан). base64/`data:`/`javascript:` ОРОХГҮЙ —
@@ -27890,8 +27889,12 @@ function poFormIssues(f) {
   }
   return out;
 }
-function poIssueLabels(iss) { return [...new Set((iss || []).map(x => x.label))].join(' · '); }
-const PO_BANK_QUICK = [['Хаан банк', 'Хаан'], ['Голомт банк', 'Голомт'], ['Худалдаа хөгжлийн банк', 'ХХБ'], ['Төрийн банк', 'Төрийн'], ['Alipay', 'Alipay'], ['WeChat Pay', 'WeChat']];
+function poIssueLabels(iss) {
+  const ls = [...new Set((iss || []).map(x => x.label))];
+  const acct = ['банк', 'дансны дугаар', 'данс эзэмшигч'];
+  // Данс бүхэлдээ хоосон бол гурвыг нэг үгээр («төлөх данс») — «Дутуу» мөр 2 мөр болж доод талыг эзэлдэг байв.
+  return (acct.every(a => ls.includes(a)) ? [...ls.filter(x => !acct.includes(x)), 'төлөх данс'] : ls).join(' · ');
+}
 // `mnt` — валютыг ХАНШААС таамаглахгүй (ханшийн талбарт «1» гэж эхлэн бичихэд ₮ болж гэнэт хувирахгүй). Заагаагүй бол fx === 1.
 const poIsMnt = (fx, mnt) => (mnt === undefined ? fx === 1 : !!mnt);
 function poLineUnitReady(l, fx) { return fx > 0 && Number(l && l.c) > 0; }
@@ -27904,32 +27907,30 @@ function poLineSumHtml(l, fx, mnt) {
 function poLineCardHtml(l, i, fx, mnt, n) {
   const cur = poIsMnt(fx, mnt) ? '₮' : '¥';
   const shown = poImgOf(l);
-  const tile = `<div class="po-phw"><span class="po-ph" title="Барааны зураг оруулах / солих">${l.imgBusy ? '<span class="po-ph-t">⏳</span>' : (shown ? `<img class="po-th" src="${escapeHtml(shown)}" alt="Барааны зураг" loading="lazy">` : '<span class="po-ph-t">📷<small>Зураг</small></span>')}<input class="ui-raw" type="file" accept="image/*" data-imgup="${i}" aria-label="Барааны зураг оруулах"></span>${poImgUrl(l.img) ? `<button type="button" class="ui-raw po-ph-x" data-imgdel="${i}" title="Зургийг хасах" aria-label="Зургийг хасах">✕</button>` : ''}</div>`;
+  const tile = `<div class="po-phw"><span class="po-ph" title="Барааны зураг оруулах / солих">${l.imgBusy ? '<span class="po-ph-t">⏳</span>' : (shown ? `<img class="po-th" src="${escapeHtml(shown)}" alt="Барааны зураг" loading="lazy">` : '<span class="po-ph-t">📷</span>')}<input class="ui-raw" type="file" accept="image/*" data-imgup="${i}" aria-label="Барааны зураг оруулах"></span>${poImgUrl(l.img) ? `<button type="button" class="ui-raw po-ph-x" data-imgdel="${i}" title="Зургийг хасах" aria-label="Зургийг хасах">✕</button>` : ''}</div>`;
   const nm = l.sku
     ? `<b class="po-line-nm">${escapeHtml(l.name || l.sku)}</b><span class="po-linked">✓ Каталогийн бараа <span class="po-badge">${escapeHtml(l.sku)}</span> · <button type="button" class="ui-raw po-lnk" data-unlink="${i}">салгах</button></span>`
     : `<input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(l.name)}" placeholder="Барааны нэр" autocomplete="off" aria-label="Барааны нэр">`;
   const t = l._t != null ? l._t : poLineTotalCur(l);
-  const brs = Object.entries(PO_BRANCH_LABEL).map(([k, v]) => `<button type="button" class="ui-raw po-chip${l.b === k ? ' on' : ''}" data-br="${k}" aria-pressed="${l.b === k}">${escapeHtml(v)}</button>`).join('');
+  const hasExtra = !!(l.u || l.nt || (l.pr || []).length || (l.cmp || []).length);
   return `<div class="po-line" data-i="${i}">
     ${n > 1 ? `<div class="po-line-hd"><span>Бараа ${i + 1}</span><button type="button" class="ui-raw po-txtbtn" data-del="${i}">Хасах</button></div>` : ''}
     <div class="po-line-top">${tile}<div class="po-line-nmwrap">${nm}</div></div>
     ${l.sku ? '' : `<div class="po-sug" data-sug="${i}"></div>`}
     <div class="po-line-row">
-      <div class="po-fld"><span class="po-lb">Тоо</span>
+      <div class="po-fld">
         <div class="po-ctl"><button type="button" class="ui-raw po-stp" data-qstep="-1" aria-label="Нэгээр хасах">−</button><input class="ui-raw" data-f="q" type="number" min="1" step="1" inputmode="numeric" value="${l.q || ''}" aria-label="Тоо ширхэг"><button type="button" class="ui-raw po-stp" data-qstep="1" aria-label="Нэгээр нэмэх">＋</button></div></div>
-      <div class="po-fld"><span class="po-lb">Нийт үнэ <i>тээвэртэй нь</i></span>
-        <div class="po-ctl"><span class="po-pre">${cur}</span><input class="ui-raw" data-f="t" type="number" min="0" step="0.01" inputmode="decimal" value="${t || ''}" placeholder="0" aria-label="Нийт үнэ"></div></div>
+      <div class="po-fld">
+        <div class="po-ctl"><span class="po-pre">${cur}</span><input class="ui-raw" data-f="t" type="number" min="0" step="0.01" inputmode="decimal" value="${t || ''}" placeholder="Нийт (тээвэртэй)" aria-label="Нийт үнэ, тээвэртэй нь"></div></div>
     </div>
     <div class="po-unit${poLineUnitReady(l, fx) ? ' ok' : ''}" data-sum="${i}">${poLineSumHtml(l, fx, poIsMnt(fx, mnt))}</div>
-    <div class="po-fld"><span class="po-lb">Дэлгүүр <i>өөр дэлгүүрээс авбал</i></span><input class="ui-raw po-txt" data-f="shop" list="po-sup-dl" value="${escapeHtml(l.shop || '')}" placeholder="Дээрх дэлгүүртэй ижил" autocomplete="off" aria-label="Энэ барааг авах дэлгүүр"></div>
-    <div class="po-fld"><span class="po-lb">Аль салбарт</span><div class="po-chips">${brs}</div></div>
-    <div class="po-lx">
-      <div class="po-lx-h">Нэмэлт мэдээлэл <small>энэ барааных</small></div>
+    <details class="po-lx"${hasExtra ? ' open' : ''}>
+      <summary class="po-lx-h">＋ Нэмэлт <small>линк · баримт · тэмдэглэл</small></summary>
       <div class="po-fld"><span class="po-lb">🔗 Худалдан авах эх сурвалж <i>линк эсвэл газар</i></span><input class="ui-raw po-txt" data-f="u" value="${escapeHtml(l.u || '')}" placeholder="https://item.taobao.com/… эсвэл газрын нэр" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Худалдан авах эх сурвалж"></div>
       ${poEvStripFormHtml(l, i, 'pr')}
       ${poEvStripFormHtml(l, i, 'cmp')}
       <div class="po-fld"><span class="po-lb">Тэмдэглэл <i>өнгө, хэмжээ, сонголт</i></span><input class="ui-raw po-txt" data-f="nt" value="${escapeHtml(l.nt || '')}" maxlength="300" autocomplete="off" aria-label="Барааны тэмдэглэл"></div>
-    </div>
+    </details>
   </div>`;
 }
 // Формын зургийн зурвас: орсон зураг (дарахад томорно, ✕ хасна) + ＋ нэмэх (олон зураг нэг дор). Дээд тал нь PO_EV_MAX.
@@ -27954,64 +27955,47 @@ async function openPoModal(id) {
   const fxLocked = !!(fxToday && fxToday.exact);
   const blankLine = () => ({ ...poLine({ name: '', q: 1, b: lastB }), _t: 0 });
   const d = ex
-    ? { supplier: ex.supplier, platform: ex.platform || 'Taobao', url: ex.url, fx: fxLocked ? fxToday.rate : (poFxValid(ex.fx) ? ex.fx : (fxToday ? fxToday.rate : 0)), cur: ex.fx === 1 ? 'MNT' : 'CNY', note: ex.note, pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
-    : { supplier: '', platform: 'Taobao', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, note: '', pay_to: poPayTo(null), lines: [blankLine()] };
+    ? { supplier: ex.supplier, platform: ex.platform || '', url: ex.url, fx: fxLocked ? fxToday.rate : (poFxValid(ex.fx) ? ex.fx : (fxToday ? fxToday.rate : 0)), cur: ex.fx === 1 ? 'MNT' : 'CNY', note: ex.note, pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
+    : { supplier: '', platform: '', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, note: '', pay_to: poPayTo(null), lines: [blankLine()] };
   const noCol = state._poHasPayTo === false;   // DB-д pay_to багана алга — данс хадгалагдахгүй (SQL ажиллуулаагүй)
-  const prevAccts = noCol ? [] : poPrevAccounts(state.purchases, 6);
+  const prevAccts = noCol ? [] : poPrevAccounts(state.purchases, 2);
   const sups = [...new Set([...(state.purchases || []).map(p => p.supplier), ...purchaseRows(state.financeRequests || []).map(r => r.supplier)].filter(Boolean))].slice(0, 200);
-  const moreOpen = !!(ex && d.note);
   const w = poOpenModal('po-edit', `
-    <div class="modal-head"><div class="po-head-t"><b>${ex ? `Худалдан авалт #${ex.no}` : 'Шинэ худалдан авалт'}</b><small>${ex ? 'Засаад хадгална' : 'Юу авахаа бичнэ үү. Нэгж үнийг өөрөө бодно.'}</small></div><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
+    <div class="modal-head"><b class="po-head-t">${ex ? `Худалдан авалт #${ex.no}` : 'Шинэ худалдан авалт'}</b><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
     <div class="modal-body po-form">
       <section class="po-card">
-        <div class="po-card-h">Юу авах вэ? <small>Хятад доторх тээвэр нийт үнэд орсон байна</small></div>
+        <div class="po-card-h"><span>Бараа <small id="po-rate" class="po-rate"></small></span>
+          <div class="po-seg po-seg-s" role="radiogroup" aria-label="Үнийн валют">
+            <button type="button" class="ui-raw po-seg-b${d.cur === 'CNY' ? ' on' : ''}" data-seg="po-cur" data-v="CNY" aria-pressed="${d.cur === 'CNY'}">¥ Юань</button>
+            <button type="button" class="ui-raw po-seg-b${d.cur === 'MNT' ? ' on' : ''}" data-seg="po-cur" data-v="MNT" aria-pressed="${d.cur === 'MNT'}">₮ Төгрөг</button>
+          </div>
+          <input type="hidden" id="po-cur" value="${d.cur}">
+        </div>
         <div id="po-lines" class="po-lines"></div>
         <button type="button" class="ui-raw po-add" id="po-addline">＋ Өөр бараа нэмэх</button>
-      </section>
-      <section class="po-card">
-        <div class="po-card-h">Төлбөр</div>
-        <div class="po-row2">
-          <div class="po-fld"><span class="po-lb">Үнийн валют</span>
-            <div class="po-seg" role="radiogroup" aria-label="Үнийн валют">
-              <button type="button" class="ui-raw po-seg-b${d.cur === 'CNY' ? ' on' : ''}" data-seg="po-cur" data-v="CNY" aria-pressed="${d.cur === 'CNY'}">¥ Юань</button>
-              <button type="button" class="ui-raw po-seg-b${d.cur === 'MNT' ? ' on' : ''}" data-seg="po-cur" data-v="MNT" aria-pressed="${d.cur === 'MNT'}">₮ Төгрөг</button>
-            </div>
-            <input type="hidden" id="po-cur" value="${d.cur}"></div>
-          <div class="po-fld"><span class="po-lb">Платформ</span>
-            <div class="po-chips">${PO_PLATFORMS.map(p => `<button type="button" class="ui-raw po-chip${d.platform === p ? ' on' : ''}" data-seg="po-plat" data-v="${escapeHtml(p)}" aria-pressed="${d.platform === p}">${escapeHtml(p)}</button>`).join('')}</div>
-            <input type="hidden" id="po-plat" value="${escapeHtml(d.platform)}"></div>
-        </div>
-        <div id="po-fx-box"><div class="po-fld">
+        <div id="po-fx-box"><div class="po-fld" id="po-fx-fld">
           <span class="po-lb">Хаан банкны юанийн ханш <i>(бэлэн бус зарах)</i></span>
           <div class="po-ctl"><span class="po-pre">¥1 =</span><input id="po-fx" class="ui-raw" type="number" min="100" max="2000" step="0.01" inputmode="decimal" value="${d.fx || ''}"${fxLocked ? ' readonly' : ''} placeholder="жишээ: 541" aria-label="Хаан банкны юанийн ханш"><span class="po-suf">₮</span></div>
           <div id="po-fx-hint" class="po-note"></div>
         </div></div>
       </section>
       <section class="po-card">
-        <div class="po-card-h">Дэлгүүр <small>заавал · бараа бүрийн дэлгүүр өөр бол бараа дээрээ бичнэ</small></div>
-        <input id="po-sup" class="ui-raw po-txt" list="po-sup-dl" value="${escapeHtml(d.supplier)}" placeholder="жишээ: Xinrui lighting" autocomplete="off" aria-label="Нийлүүлэгч / дэлгүүр">
+        <div class="po-fld">
+          <input id="po-sup" class="ui-raw po-txt" list="po-sup-dl" value="${escapeHtml(d.supplier)}" placeholder="Дэлгүүр (жишээ: Xinrui lighting)" autocomplete="off" aria-label="Нийлүүлэгч / дэлгүүр"></div>
         <datalist id="po-sup-dl">${sups.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
-      </section>
-      <section class="po-card">
-        <div class="po-card-h">Төлөх данс <small>хаашаа шилжүүлэх · заавал</small></div>
         ${noCol ? '<div class="po-probs">⚠ Данс хадгалагдахгүй: <code>db/purchases_account.sql</code> ажиллуулаагүй байна.</div>' : `
         <datalist id="po-bank-dl">${PO_BANKS.map(b => `<option value="${escapeHtml(b)}">`).join('')}</datalist>
-        ${prevAccts.length ? `<div class="po-fld"><span class="po-lb">Өмнө ашигласан данс <i>товшоод бөглөнө</i></span>
-          <div class="po-chips">${prevAccts.map((a, i) => `<button type="button" class="ui-raw po-chip po-acct${poAcctKey(a) === poAcctKey(d.pay_to) && a.name === d.pay_to.name ? ' on' : ''}" data-prev="${i}"><b>${escapeHtml(a.name)}</b><small>${escapeHtml(a.bank)} · ${escapeHtml(a.no)}${a.supplier ? ' · ' + escapeHtml(a.supplier) : ''}${a.n > 1 ? ' · ' + a.n + ' удаа' : ''}</small></button>`).join('')}</div></div>` : ''}
-        <div class="po-chips">${PO_BANK_QUICK.map(([full, short]) => `<button type="button" class="ui-raw po-chip${d.pay_to.bank === full ? ' on' : ''}" data-bank="${escapeHtml(full)}">${escapeHtml(short)}</button>`).join('')}</div>
-        <div class="po-row2">
-          <div class="po-fld"><span class="po-lb">Банк / систем</span><input id="po-pbank" class="ui-raw po-txt" list="po-bank-dl" value="${escapeHtml(d.pay_to.bank)}" placeholder="Хаан банк, Alipay…" autocomplete="off"></div>
-          <div class="po-fld"><span class="po-lb">Дансны дугаар / ID</span><input id="po-pno" class="ui-raw po-txt" type="text" inputmode="text" autocomplete="off" value="${escapeHtml(d.pay_to.no)}"></div>
+        <div class="po-lb po-lb-h">Төлөх данс</div>
+        ${prevAccts.length ? `<div class="po-fld">          <div class="po-chips">${prevAccts.map((a, i) => `<button type="button" class="ui-raw po-chip po-acct${poAcctKey(a) === poAcctKey(d.pay_to) && a.name === d.pay_to.name ? ' on' : ''}" data-prev="${i}"><b>${escapeHtml(a.name)}</b><small>${escapeHtml(a.bank)} · ${escapeHtml(a.no)}${a.supplier ? ' · ' + escapeHtml(a.supplier) : ''}${a.n > 1 ? ' · ' + a.n + ' удаа' : ''}</small></button>`).join('')}<button type="button" class="ui-raw po-chip" data-newacct="1">＋ Өөр данс</button></div>` : ''}
+        <div id="po-acct-fields" class="po-acct-fields"${prevAccts.length && !(d.pay_to.bank && d.pay_to.no && d.pay_to.name) ? ' hidden' : ''}>
+          <div class="po-row2">
+            <div class="po-fld"><input id="po-pbank" class="ui-raw po-txt" list="po-bank-dl" value="${escapeHtml(d.pay_to.bank)}" placeholder="Банк / систем (Хаан банк, Alipay…)" autocomplete="off" aria-label="Банк / систем"></div>
+            <div class="po-fld"><input id="po-pno" class="ui-raw po-txt" type="text" inputmode="text" autocomplete="off" value="${escapeHtml(d.pay_to.no)}" placeholder="Дансны дугаар / ID" aria-label="Дансны дугаар / ID"></div>
+          </div>
+          <div class="po-fld"><input id="po-pnm" class="ui-raw po-txt" type="text" autocomplete="off" value="${escapeHtml(d.pay_to.name)}" placeholder="Данс эзэмшигчийн нэр" aria-label="Данс эзэмшигчийн нэр"></div>
         </div>
-        <div class="po-fld"><span class="po-lb">Данс эзэмшигчийн нэр</span><input id="po-pnm" class="ui-raw po-txt" type="text" autocomplete="off" value="${escapeHtml(d.pay_to.name)}"></div>
         <div id="po-pay-hint" class="po-note"></div>`}
       </section>
-      <details class="po-more2"${moreOpen ? ' open' : ''}>
-        <summary>Нэмэлт мэдээлэл <small>нийт тэмдэглэл</small></summary>
-        <div class="po-more2-b">
-          <div class="po-fld"><span class="po-lb">Тэмдэглэл <i>яагаад хэрэгтэй, сонголт, эрсдэл</i></span><textarea id="po-note" class="ui-raw po-txt" rows="3">${escapeHtml(d.note)}</textarea></div>
-        </div>
-      </details>
     </div>
     <div class="modal-actions po-foot"><div class="po-foot-sum" id="po-total"></div><button class="btn" id="po-cancel">Болих</button><button class="btn btn-primary" id="po-save">${ex ? 'Хадгалах' : 'Хүсэлт илгээх'}</button></div>`);
   const val = (sel) => { const el = w.$(sel); return el ? el.value : ''; };
@@ -28021,18 +28005,15 @@ async function openPoModal(id) {
     pay_to: noCol ? null : { bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') } });
   const fxHint = () => {
     const mnt = curVal() === 'MNT';
-    w.$('#po-fx-box').hidden = mnt;
-    if (mnt) return;
+    // Автомат ханш (Хаан банк) бол талбар ХАРАГДАХГҮЙ — ханш толгойд жижиг бичигдэнэ; гараар оруулах үед л талбар + анхааруулга.
+    w.$('#po-fx-box').hidden = mnt || fxLocked;
+    w.$('#po-rate').textContent = !mnt && fxLocked ? `¥1 = ${fxToday.rate}₮` : '';
     const inp = w.$('#po-fx'), h = w.$('#po-fx-hint'), day = todayStr().slice(5);
     inp.readOnly = fxLocked;
-    if (fxLocked) {
-      inp.value = fxToday.rate;
-      h.className = 'po-note';
-      h.textContent = `Хаан банк · бэлэн бус зарах · ${fxToday.at ? fmtDateTimeUB(fxToday.at) : day} татсан. Шилжүүлэхэд тэр өдрийн ханшаар шинэчлэгдэнэ.`;
-    } else {
-      h.className = 'po-probs';
-      h.textContent = `⚠ Өнөөдрийн (${day}) Хаан банкны ханш автоматаар татагдсангүй${fxToday ? ` (сүүлийнх ${fxToday.rate} · ${fxToday.date.slice(5)})` : ''}. Хаан банкны «бэлэн бус зарах» ханшийг сайтаас харж оруулна уу — энэ хүсэлтэд «гараар» гэж тэмдэглэгдэнэ.`;
-    }
+    if (mnt) return;
+    if (fxLocked) { inp.value = fxToday.rate; h.textContent = ''; return; }
+    h.className = 'po-probs';
+    h.textContent = `⚠ Өнөөдрийн (${day}) Хаан банкны ханш автоматаар татагдсангүй${fxToday ? ` (сүүлийнх ${fxToday.rate} · ${fxToday.date.slice(5)})` : ''}. Хаан банкны «бэлэн бус зарах» ханшийг сайтаас харж оруулна уу — энэ хүсэлтэд «гараар» гэж тэмдэглэгдэнэ.`;
   };
   const focusName = (n) => { const el = w.$(`[data-i="${n}"] [data-f="name"]`); if (el) { el.focus(); if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); } };
   const renderSug = (i) => {
@@ -28054,8 +28035,6 @@ async function openPoModal(id) {
   // Нэгж үнэ, нийт дүн, «Дутуу: …» — бүгд нэг дор шинэчлэгдэнэ (мөр бүрийг дахин зурахгүй тул курсор алдагдахгүй).
   const sums = () => {
     const fx = curFx(), mnt = curVal() === 'MNT';
-    const mainShop = val('#po-sup').trim();
-    w.$$('[data-f="shop"]').forEach(el => { el.placeholder = mainShop ? `${mainShop} (дээрхтэй ижил)` : 'Дээрх дэлгүүртэй ижил'; });
     d.lines.forEach((l, i) => {
       const el = w.$(`[data-sum="${i}"]`); if (!el) return;
       el.innerHTML = poLineSumHtml(l, fx, mnt);
@@ -28075,9 +28054,8 @@ async function openPoModal(id) {
       ? `<div class="po-foot-miss">Дутуу: ${escapeHtml(poIssueLabels(iss))}</div>`
       : `<div class="po-foot-ok">✓ ${ex ? 'Хадгалахад' : 'Илгээхэд'} бэлэн</div>`);
   };
-  const syncBankChips = () => {
-    const v = val('#po-pbank'); w.$$('[data-bank]').forEach(b => b.classList.toggle('on', b.dataset.bank === v));
-    const cur = { bank: v, no: val('#po-pno'), name: val('#po-pnm') };
+  const syncAcctChips = () => {   // сонгосон «өмнөх данс» чип тодорно (бичсэн утга тэр дансны утгатай таарвал)
+    const cur = { bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') };
     w.$$('[data-prev]').forEach(b => { const a = prevAccts[+b.dataset.prev]; b.classList.toggle('on', !!a && poAcctKey(a) === poAcctKey(cur) && a.name === cur.name.trim()); });
   };
   const issueEl = (x) => {
@@ -28089,6 +28067,7 @@ async function openPoModal(id) {
   };
   const focusIssue = (x) => {
     const el = issueEl(x); if (!el) return;
+    const af = el.closest && el.closest('#po-acct-fields'); if (af) af.hidden = false;   // данс дутуу бол нуугдсан талбаруудыг ил гаргана
     const box = el.closest('.po-ctl') || el;
     box.classList.add('po-bad');
     if (box.scrollIntoView) box.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -28101,7 +28080,6 @@ async function openPoModal(id) {
     if (f === 'name') { l.name = e.target.value; renderSug(n); }
     else if (f === 'q') { l.q = Math.round(poNum(e.target.value)); if (l._t > 0) l.c = poUnitFromTotal(l._t, l.q); }
     else if (f === 't') { l._t = poNum(e.target.value); l.c = poUnitFromTotal(l._t, l.q); }
-    else if (f === 'shop') l.shop = e.target.value;
     else if (f === 'u') l.u = e.target.value;
     else if (f === 'nt') l.nt = e.target.value;
     sums();
@@ -28116,13 +28094,6 @@ async function openPoModal(id) {
       card.querySelector('[data-f="q"]').value = l.q;
       if (l._t > 0) l.c = poUnitFromTotal(l._t, l.q);
       sums();
-      return;
-    }
-    const br = e.target.closest('[data-br]');
-    if (br && card) {
-      const l = d.lines[+card.dataset.i]; if (!l) return;
-      l.b = br.dataset.br;
-      card.querySelectorAll('[data-br]').forEach(b => { const on = b === br; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
       return;
     }
     const pk = e.target.closest('[data-pick]');
@@ -28192,12 +28163,17 @@ async function openPoModal(id) {
       if (a) {
         [['#po-pbank', a.bank], ['#po-pno', a.no], ['#po-pnm', a.name]].forEach(([id, v]) => { const inp = w.$(id); if (inp) { inp.value = v; inp.dispatchEvent(new Event('input', { bubbles: true })); } });
         w.$('#po-pay-hint').textContent = 'Өмнө ашигласан данснаас бөглөгдлөө — зөв эсэхийг шалгаарай.';
-        syncBankChips();
+        syncAcctChips();
       }
       return;
     }
-    const bk = e.target.closest('[data-bank]');
-    if (bk) { const inp = w.$('#po-pbank'); if (inp) { inp.value = bk.dataset.bank; inp.dispatchEvent(new Event('input', { bubbles: true })); } }
+    if (e.target.closest('[data-newacct]')) {
+      ['#po-pbank', '#po-pno', '#po-pnm'].forEach(id => { const inp = w.$(id); if (inp) { inp.value = ''; inp.dispatchEvent(new Event('input', { bubbles: true })); } });
+      w.$('#po-acct-fields').hidden = false;
+      w.$$('[data-prev]').forEach(b => b.classList.remove('on'));
+      const f0 = w.$('#po-pbank'); if (f0) f0.focus();
+      return;
+    }
   });
   w.m.addEventListener('input', (e) => {
     const t = e.target; if (!t || !t.classList) return;
@@ -28207,7 +28183,7 @@ async function openPoModal(id) {
   w.$('#po-addline').onclick = () => { d.lines.push(blankLine()); draw(); focusName(d.lines.length - 1); };
   w.$('#po-fx').addEventListener('input', () => { fxHint(); sums(); });
   w.$('#po-cur').addEventListener('change', draw);
-  ['#po-sup', '#po-pbank', '#po-pno', '#po-pnm'].forEach(id => { const el = w.$(id); if (el) el.addEventListener('input', () => { syncBankChips(); sums(); }); });
+  ['#po-sup', '#po-pbank', '#po-pno', '#po-pnm'].forEach(id => { const el = w.$(id); if (el) el.addEventListener('input', () => { syncAcctChips(); sums(); }); });
   // Нийлүүлэгч өмнө нь байсан бол дансыг өмнөх худалдан авалтаас бөглөнө (бүгд хоосон үед л; хүн шалгаж засна).
   const fillPay = () => {
     if (noCol) return;
@@ -28218,7 +28194,7 @@ async function openPoModal(id) {
     if (!prev) return;
     w.$('#po-pbank').value = prev.pay_to.bank; w.$('#po-pno').value = prev.pay_to.no; w.$('#po-pnm').value = prev.pay_to.name;
     w.$('#po-pay-hint').textContent = `Өмнөх худалдан авалтаас (#${prev.no}) бөглөгдлөө — зөв эсэхийг шалгаарай.`;
-    syncBankChips(); sums();
+    syncAcctChips(); sums();
   };
   w.$('#po-sup').addEventListener('change', fillPay);
   w.$('#po-cancel').onclick = w.close;
@@ -28233,8 +28209,8 @@ async function openPoModal(id) {
     const fx = cur === 'MNT' ? 1 : poNum(val('#po-fx'));
     const pay_to = noCol ? poPayTo(null) : poPayTo({ bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') });
     // Шинэ хүсэлтийн холбоос (`url`) талбар форм дээр БАЙХГҮЙ — эх сурвалж бараа тус бүр дээр (`u`). Хуучин хүсэлтийнх хэвээр үлдэнэ.
-    const po = { supplier: val('#po-sup').trim(), platform: val('#po-plat'), url: ex ? ex.url : '', fx,
-      note: val('#po-note').trim(), pay_to, lines };
+    const po = { supplier: val('#po-sup').trim(), platform: ex ? ex.platform : '', url: ex ? ex.url : '', fx,
+      note: ex ? ex.note : '', pay_to, lines };   // платформ/нийт тэмдэглэл форм дээрээс ХАСАГДСАН (2026-10-28) — хуучин утга хадгалагдана
     po.total_mnt = poTotals({ lines, fx }).total;
     const btnText = btn.textContent;
     btn.disabled = true;
@@ -28255,7 +28231,7 @@ async function openPoModal(id) {
     } catch (e) { showToast('⚠ ' + e.message, 'error', 6000); btn.disabled = false; btn.textContent = btnText; }
   };
   draw();
-  syncBankChips();
+  syncAcctChips();
   if (!ex) focusName(0);   // шинэ хүсэлт: эхлээд барааны нэр
 }
 

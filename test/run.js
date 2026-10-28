@@ -15983,7 +15983,7 @@ async function swFetchTests() {
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
     'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poCmpFormHtml',
     'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml',
-    'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
+    'poLinkKey', 'poSameItemHits', 'poSameItemLabel', 'poUnlinkedHints', 'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
 
   // ① Дүн — карго хүсэлтэд ОРОХГҮЙ (хүлээн авахад бодитоор); хуучин `s` талбар уншигдахгүй
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -16220,6 +16220,33 @@ async function swFetchTests() {
     ok(/const needCmp = !ex \|\| ex\.status === 'request'/.test(moP) && /needCmp,/.test(moP) && /x\.k === 'cmp'\) return card && card\.querySelector\('\.po-cmp'\)/.test(moP), '⛔ scan: 3 дэлгүүрийн үнэ зөвхөн шинэ/хүлээгдэж буй хүсэлтэд ЗААВАЛ (needCmp), дутуу бол харьцуулалтын хэсэг рүү фокус');
     ok(!/poEvStripFormHtml|<details class="po-lx"|class="po-lx/.test(asrcP) && !/\.po-lx/.test(fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8')), '⛔ scan: хүсэлтийн маягтад «＋ Нэмэлт» нугалаа (po-lx) ба хуучин зургийн зурвас БУЦАЖ ИРЭХГҮЙ — харьцуулалт шууд ил (poCmpFormHtml)');
     ok(!/rest\/v1\/purchases/.test(asrcP.slice(asrcP.indexOf('function poPrevAccounts('), asrcP.indexOf('function poPrevAccounts(') + 700)), '⛔ scan: өмнөх данс шинэ хүснэгт/бичлэг БАЙХГҮЙ — мөрүүдээс өөрөө гарна');
+  }
+  {
+    // ═ ИЖИЛ БАРАА = ИЖИЛ КОД (CEO 2026-10-28: «өмнөхтэй ижил бараа авбал код ижил байх ёстой», «өмнөх бараан дээр линк байвал санал болгодог байх») ═
+    const K = F.poLinkKey;
+    eq(K('https://item.taobao.com/item.htm?id=998877&spm=a1z.1&utm_source=x'), K('item.taobao.com/item.htm?spm=zzz&id=998877'), 'линк: Taobao id ижил бол spm/utm/параметрийн дараалал, схем ялгаа биш');
+    eq(K('https://item.taobao.com/item.htm?id=998877'), 'taobao.com:998877', 'линк: Taobao/Tmall/1688 түлхүүр = сайт:id');
+    ok(K('https://item.taobao.com/item.htm?id=998877') !== K('https://item.taobao.com/item.htm?id=998878'), 'линк: өөр id = өөр бараа');
+    eq([K(''), K(null), K('https://item.taobao.com/'), K('taobao.com'), K('энэ бол линк биш')], ['', '', '', '', ''], '⛔ линк: зөвхөн хост / линк биш бол түлхүүр БИШ (өөр өөр бараа ижил болохгүй)');
+    eq(K('https://weixin.qq.com/r/abcDEF/'), K('weixin.qq.com/r/abcdef'), 'линк: том жижиг үсэг, төгсгөлийн «/», схем ялгаа биш');
+    ok(K('https://mp.weixin.qq.com/s?__biz=A&mid=1') !== K('https://mp.weixin.qq.com/s?__biz=A&mid=2'), 'линк: зам ижил ч ялгах параметртэй бол өөр бараа');
+    const PRODS = [{ sku: 'M-205', code: 'M-205', name: 'Босоо дугуй ширээ', source_url: 'https://item.taobao.com/item.htm?id=998877&spm=a' }, { sku: 'M-310', code: 'M-310', name: 'Углаа' }, { sku: 'M-400', name: 'Улаан хивс' }, { sku: 'M-PK', name: 'Углаа', type: 'package' }];
+    const PUR = [{ id: 'p1', lines: [{ sku: 'M-310', name: 'Углаа', u: 'https://weixin.qq.com/r/abcDEF' }, { name: 'Кодгүй', u: 'https://weixin.qq.com/r/zzz' }] }];
+    const W = (hits) => hits.map(x => [x.p.sku, x.why]);
+    eq(W(F.poSameItemHits(PRODS, PUR, { u: 'item.taobao.com/item.htm?id=998877', name: 'ямар ч нэр' }, null)), [['M-205', 'link']], 'ижил бараа: каталогийн source_url-тай ижил линк = өмнөх бараа (нэр өөр ч)');
+    eq(W(F.poSameItemHits(PRODS, PUR, { u: 'weixin.qq.com/r/abcdef', name: '' }, null)), [['M-310', 'link']], 'ижил бараа: өмнөх худалдан авалтын мөрийн линк + код = тэр бараа');
+    eq(F.poSameItemHits(PRODS, PUR, { u: 'weixin.qq.com/r/zzz', name: '' }, null), [], 'ижил бараа: өмнөх мөр кодгүй бол линкээр санал болгохгүй (холбох код байхгүй)');
+    eq(F.poSameItemHits(PRODS, PUR, { u: 'weixin.qq.com/r/abcdef', name: '' }, 'p1'), [], 'ижил бараа: ӨӨРИЙН худалдан авалтаа өөртэй нь тулгахгүй (exceptPoId)');
+    eq(W(F.poSameItemHits(PRODS, PUR, { u: '', name: ' углаа ' }, null)), [['M-310', 'name']], 'ижил бараа: нэр тэнцүү (том жижиг үсэг, зай ялгаа биш) = санал; багц орохгүй');
+    eq(F.poSameItemHits(PRODS, PUR, { u: 'weixin.qq.com/r/abcdef', name: 'Босоо дугуй ширээ' }, null).map(x => x.p.sku), ['M-310', 'M-205'], 'ижил бараа: линктэй таарсан нь нэрээр таарсанаас ӨМНӨ');
+    eq(F.poSameItemHits(PRODS, PUR, { u: '', name: 'У' }, null), [], 'ижил бараа: 1 үсэгтэй нэрээр таамаглахгүй');
+    const uh = F.poUnlinkedHints({ id: 'x', lines: [{ id: 'a', name: 'Шинэ нэр', u: 'item.taobao.com/item.htm?id=998877' }, { id: 'b', name: 'Хивс', sku: 'M-400' }] }, PRODS, PUR);
+    eq(uh.map(x => [x.line.id, x.matches.map(m => m.sku)]), [['a', ['M-205']]], 'карт: кодгүй мөр өмнөх бараатай ИЖИЛ ЛИНКтэй бол нэр өөр ч санал болгоно');
+    const srcS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const reqS = srcS.slice(srcS.indexOf('async function openPoModal('), srcS.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
+    ok(/poSameItemHits\(state\.products, state\.purchases, l, ex && ex\.id\)/.test(reqS) && /f === 'u'\) \{ l\.u = e\.target\.value; if \(!l\.sku\) renderSug\(n\); \}/.test(reqS) && /poLinkKey\(l\.u\)\)\) renderSug\(i\)/.test(reqS), 'scan: хүсэлтийн цонх нэр БА ЛИНК бичихэд өмнө авсан ижил барааг (код ижил) санал болгоно');
+    const rcvS = srcS.slice(srcS.indexOf('async function openPoReceiveModal('), srcS.indexOf('/* Самбарын товчнууд'));
+    ok(/poSameItemHits\(state\.products, state\.purchases, e\.row, po\.id\)/.test(rcvS) && /links\.length === 1/.test(rcvS) && /e\.auto = pick\.why/.test(rcvS) && /data-unl=/.test(rcvS), '⛔ scan: хүлээн авахад ижил линк/нэртэй НЭГ бараа таарвал ӨӨРӨӨ холбогдож (код ижил), «салгах» боломжтой; олон таарвал автоматаар БИШ');
   }
   {
     // Төлөөгүй хүсэлт = ОДООГИЙН Хаан банкны ханш (Excel-ийн 540 биш); шилжүүлсний дараа хөлдөнө

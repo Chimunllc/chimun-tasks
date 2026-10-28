@@ -16354,7 +16354,7 @@ async function swFetchTests() {
     stP.products = sv;
     ok(/ · M-205 /.test(hc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') + ' ') && /🆕 шинэ/.test(hc), '⛔ карт: холбосон бараа кодтой, холбоогүй нь «🆕 шинэ» (кодгүй нь нууцлагдахгүй)');
     ok(/class="po-hint"/.test(hc) && /«Босоо ширээний углаа» \(M-305\)/.test(hc) && /«Засах»-аар/.test(hc), '⛔ карт: каталогт ижил бараа байвал «Давхар бараа үүсгэхгүйн тулд холбоорой» гэж сануулна');
-    ok(/🆕 шинэ бараа · хүлээн авахад код өгөгдөнө/.test(hc), 'задаргаа: кодгүй мөрт «хүлээн авахад код өгөгдөнө»');
+    ok(!/хүлээн авахад код өгөгдөнө/.test(hc) && !/<span>Код<\/span>/.test(hc), '⛔ задаргаа: мөрийн код нүүрэнд аль хэдийн харагдана («🆕 шинэ») — урт тайлбар, «Код» мөр давтагдахгүй');
     const recvd = F.poNormalize({ id: 'r', no: 9, status: 'received', supplier: 'Jimo', fx: 540, created_by: 'U', lines: [{ id: 'b', sku: 'M-310', name: 'Углаа', q: 30, c: 18, rcv: 30, cg: 30000 }] });
     ok(!/class="po-hint"/.test(F.poCardHtml(recvd, { me: 'C' })) && /· M-310 /.test(F.poCardHtml(recvd, { me: 'C' }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') + ' '), 'карт: хүлээн авсны дараа мөр код авсан, санал алга');
   }
@@ -16401,7 +16401,11 @@ async function swFetchTests() {
     eq(F.poReceiptPlan(PO, ln, 1, { ...prod, photo: 'https://n8n.nomaadcamp.com/img/keep.jpg' }, { today: '2026-11-02', photos: [R1] }).fields.photo, 'https://n8n.nomaadcamp.com/img/keep.jpg', '⛔ ирсэн зураг: каталогт аль хэдийн зурагтай (сайтад харагддаг) барааны зургийг ДАРАХГҮЙ');
     const poRp = F.poNormalize({ id: 'rpx', status: 'ordered', fx: 540, lines: [{ id: 'a', name: 'Ширээ', q: 2, c: 1, rcv: 1, rp: [R1, R2] }] });
     ok((F.poEvRowHtml(poRp, poRp.lines[0]).match(/data-lightbox=/g) || []).length === 2 && /📷/.test(F.poEvRowHtml(poRp, poRp.lines[0])), 'ирсэн зураг: картын мөрөнд thumbnail (дарахад томорно)');
-    ok(/Ирсэн барааны зураг/.test(F.poBreakdownHtml(poRp)), 'ирсэн зураг: «Дэлгэрэнгүй»-д бүлгээр');
+    ok(!/Ирсэн барааны зураг/.test(F.poBreakdownHtml(poRp)), '⛔ ирсэн зураг: нүүрэнд аль хэдийн харагдаж буй зургийг «Задаргаа»-д ДАВТАХГҮЙ');
+    {
+      const rp4 = F.poNormalize({ id: 'rp4', status: 'ordered', fx: 540, lines: [1, 2, 3].map(i => ({ id: 'f' + i, name: 'Бараа' + i, q: 1, c: 1 })).concat([{ id: 'z', name: 'Дөрөв', q: 2, c: 1, rcv: 1, rp: [R1, R2] }]) });
+      ok(/Ирсэн барааны зураг/.test(F.poBreakdownHtml(rp4)), 'ирсэн зураг: нүүрэнд ороогүй (4-р) мөрийн зураг «Задаргаа»-д бүлгээр');
+    }
   }
   const cp = F.poReceiptPlan(PO, F.poLine({ id: 'l1', sku: 'M-033', q: 2, c: 1128, s: 226500 }), 2, prod, { today: '2026-11-02', cargo: 100000 });
   eq(cp.unit, Math.round(1128 * 540 + 100000 / 2), 'хүлээн авах (карго): нэгж өртөг бодит каргогоор');
@@ -16471,8 +16475,17 @@ async function swFetchTests() {
     const c1 = F.poCardHtml(rq1, { me: 'C' });
     ok(/ · 🔗 <a class="po-ln-a" href="https:\/\/item\.taobao\.com/.test(c1.slice(0, c1.indexOf('<details class="po-more"'))), 'карт: мөрд эх сурвалж (домэйн ↗) нүүрэнд');
     const d1 = c1.slice(c1.indexOf('<details class="po-more"'));
-    ok(/<span>Эх сурвалж<\/span><b><a class="po-ln-a"/.test(d1) && /<span>Тэмдэглэл<\/span><b>цагаан, 2м<\/b>/.test(d1), 'задаргаа: бараа бүрийн эх сурвалж, тэмдэглэл');
-    ok(/🧾 Үнэ тохирсон баримт/.test(d1) && /📊 Үнийн харьцуулалт/.test(d1) && (d1.match(/data-lightbox=/g) || []).length === 4, 'задаргаа: баримт ба харьцуулалтын зураг тус тусдаа бүлэгт');
+    ok(!/<span>Эх сурвалж<\/span>/.test(d1) && /<span>Тэмдэглэл<\/span><b>цагаан, 2м<\/b>/.test(d1), '⛔ задаргаа: тэмдэглэл л (эх сурвалж нүүрэнд аль хэдийн байгаа тул давтагдахгүй)');
+    ok(!/Үнэ тохирсон баримт|Үнийн харьцуулалт/.test(d1) && (d1.match(/data-lightbox=/g) || []).length === 0, '⛔ задаргаа: хүсэлт төлөвт нотлох зураг нүүрэнд байгаа тул давтагдахгүй');
+    {
+      // Батлагдсаны дараа: нүүр цэвэр (нотолгоо нь батлах шийдвэрт л хэрэгтэй), зураг «Задаргаа»-д хэвээр — тус тусдаа бүлэгт
+      const ap1 = mk('approved', { u: 'https://item.taobao.com/item.htm?id=1', nt: 'цагаан, 2м', pr: [IMGS[0]], cmp: IMGS.slice(0, 3) });
+      const ca = F.poCardHtml(ap1, { me: 'C' });
+      const caFace = ca.slice(0, ca.indexOf('<details class="po-more"')), caDet = ca.slice(ca.indexOf('<details class="po-more"'));
+      eq(F.poEvRowHtml(ap1, ap1.lines[0]), '', '⛔ нүүр: батлагдсаны дараа 🧾/📊 нотлох зураг нүүрэнд ГАРАХГҮЙ (poEvRowHtml)');
+      ok(!/🧾|📊/.test(caFace) && !/data-lightbox=/.test(caFace), '⛔ карт: батлагдсаны дараа нүүрэнд нотлох зураг ГАРАХГҮЙ (шийдвэр аль хэдийн гарсан)');
+      ok(/🧾 Үнэ тохирсон баримт/.test(caDet) && /📊 Үнийн харьцуулалт/.test(caDet) && (caDet.match(/data-lightbox=/g) || []).length === 4, 'задаргаа: батлагдсаны дараа баримт ба харьцуулалтын зураг тус тусдаа бүлэгт хэвээр (устахгүй)');
+    }
 
     // Формын зурвас: ＋ нэмэх, ✕ хасах, дээд тал нь 3, байршиж буй ⏳
     const f0 = F.poLineCardHtml(F.poLine({ name: 'А', q: 1 }), 0, 540, false, 1);
@@ -16804,7 +16817,16 @@ async function swFetchTests() {
       ok(!/карго ~|урьдчилсан/.test(bd) && /<span>Карго<\/span><b><span class="po-muted">бараа ирэхэд оруулна<\/span><\/b>/.test(bd), '⛔ задаргаа: хуучин урьдчилсан карго ХАРАГДАХГҮЙ, «бараа ирэхэд оруулна» гэж хэлнэ');
       const det = bd.slice(bd.indexOf('<details'));
       ok(/class="po-bd-h">Барааны задаргаа · 2 төрөл · 40 ш/.test(det), 'задаргаа: гарчигт төрөл, нийт ширхэг');
-      ok(/<span>Нэгж үнэ<\/span><b>¥201\.5 ≈ 108,810₮<\/b>/.test(det), 'задаргаа: нэгж үнэ ¥ ба ₮-өөр');
+      ok(/10 × 201\.5¥ · 108,810₮\/ш/.test(bd) && !/<span>Нэгж үнэ<\/span>/.test(det) && !/<span>Тоо<\/span>/.test(det) && !/<span>Код<\/span>/.test(det), '⛔ задаргаа: нүүрийн мөрөнд харагдаж буй нэгж үнэ (¥ ба ₮) · тоо · код-ыг ДАВТАХГҮЙ');
+      {
+        // Нүүрэнд ороогүй (4-р ба түүнээс хойших) мөрөнд бүгд: тоо · нэгж үнэ · код · эх сурвалж
+        const l4 = F.poNormalize({ id: 'l4', no: 40, status: 'approved', supplier: 'S', fx: 540, created_by: 'U', lines: [1, 2, 3].map(i => ({ id: 'f' + i, name: 'Бараа' + i, q: 1, c: 1 })).concat([{ id: 'z', name: 'Дөрөв', q: 30, c: F.poUnitFromTotal(545, 30), u: 'https://item.taobao.com/item.htm?id=9' }]) });
+        const d4 = F.poCardHtml(l4, { me: 'C' });
+        const det4 = d4.slice(d4.indexOf('<details class="po-more"'));
+        ok(/<span>Тоо<\/span><b>30 ш<\/b>/.test(det4) && /<span>Нэгж үнэ<\/span><b>≈ ¥18\.17 ≈ 9,810₮<\/b>/.test(det4) && /<span>Код<\/span><b><span class="po-muted">🆕 шинэ бараа<\/span><\/b>/.test(det4) && /<span>Эх сурвалж<\/span>/.test(det4),
+           'задаргаа: нүүрэнд ороогүй (4-р) мөрөнд тоо · нэгж үнэ · код · эх сурвалж БҮГД (мэдээлэл алдагдахгүй)');
+        eq((det4.match(/class="po-bi"/g) || []).length, 4, 'задаргаа: юанийн хүсэлтэд нүүрийн 3 мөр (нийт ¥) + 4-р мөр = 4 бүлэг');
+      }
       ok(/<span>Нийт үнэ<\/span><b>¥2,015 = 1,088,100₮<\/b>/.test(det), 'задаргаа: оруулсан нийт ¥ = ₮');
       {
         // Хүлээн авсны дараа: бодит карго → нэгж өртөг (бараа + карго ÷ ирсэн тоо)
@@ -16813,14 +16835,29 @@ async function swFetchTests() {
         const half = F.poCardHtml(F.poNormalize({ id: 'h', no: 12, status: 'ordered', supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'a', name: 'Ширээ', q: 10, c: 200, rcv: 4, cg: 4000 }] }), { me: 'C' });
         ok(/≈ 109,000₮/.test(half), '⛔ задаргаа: хэсэгчлэн ирсэн мөрийн нэгж өртөг ИРСЭН тоонд хуваагдана (захиалсан тоонд БИШ)');
       }
-      ok(/<span>Нэгж үнэ<\/span><b>≈ ¥18\.17 ≈ 9,810₮<\/b>/.test(det), '⛔ задаргаа: 18.166667 мэт урт бутархай биш, «≈ ¥18.17 ≈ 9,810₮» гэж тоймолно');
+      ok(/30 × ≈18\.17¥ · 9,810₮\/ш/.test(bd), '⛔ карт: 18.166667 мэт урт бутархай биш, нүүрийн мөрөнд «≈18.17¥ · 9,810₮/ш» гэж тоймолно');
       ok(!/18\.166667/.test(bd), '⛔ карт: нэгж үнэ 6 оронтой бутархай болж ХАРАГДАХГҮЙ');
-      ok(/<span>Бараа<\/span><b>¥2,560 × 540 = 1,382,400₮<\/b>/.test(det) && /<span>Нийт<\/span><b>1,382,400₮<\/b>/.test(det), 'задаргаа: нийт = бараа (карго орсноор нэмэгдэнэ), картын нийттэй ижил');
+      ok(!/<span>Бараа<\/span>/.test(det) && !/<span>Нийт<\/span>/.test(det) && (det.match(/бараа ирэхэд оруулна/g) || []).length === 1, '⛔ задаргаа: карго ороогүй үед нийт толгойн дүнтэй ижил тул давтахгүй; «карго бараа ирэхэд» нь мөр бүрд БИШ, НЭГ удаа');
+      {
+        const cg1 = F.poCardHtml(F.poNormalize({ id: 'cg1', no: 13, status: 'received', supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'a', sku: 'M-205', name: 'Ширээ', q: 10, c: 201.5, rcv: 10, cg: 10000 }] }), { me: 'C' });
+        const dcg = cg1.slice(cg1.indexOf('<details class="po-more"'));
+        ok(/<span>Бараа<\/span><b>¥2,015 × 540 = 1,088,100₮<\/b>/.test(dcg) && /<span>Нийт<\/span><b>1,098,100₮<\/b>/.test(dcg) && !/бараа ирэхэд оруулна/.test(dcg), 'задаргаа: бодит карго орсон бол бараа + карго = нийт (толгойн дүн нь зөвхөн шилжүүлсэн бараа)');
+      }
       ok(/class="po-tot">1,382,400₮/.test(bd), '⛔ карт: нийт дүн мөрүүдээс бодогдоно (хуучин урьдчилсан карго 252₮ алга)');
       ok(/10 × 201\.5¥ · 108,810₮\/ш/.test(bd), 'карт: мөрд нэгж үнэ ₮-өөр ч харагдана');
       const mn = F.poCardHtml(F.poNormalize({ id: 'mn', no: 10, status: 'approved', supplier: 'S', fx: 1, created_by: 'U', lines: [{ id: 'a', name: 'Цаас', q: 4, c: 2500 }] }), { me: 'C' });
-      ok(/<span>Нэгж үнэ<\/span><b>2,500₮<\/b>/.test(mn) && !/¥/.test(mn.slice(mn.indexOf('<details'))), 'задаргаа: ₮-өөр хүсэлтэд ¥ харагдахгүй');
+      ok(/4 × 2,?500₮/.test(mn) && !/¥/.test(mn.slice(mn.indexOf('<details'))) && F.poBreakdownHtml(F.poNormalize({ id: 'mn2', no: 10, status: 'approved', fx: 1, lines: [{ id: 'a', name: 'Цаас', q: 4, c: 2500 }] })) === '', 'задаргаа: ₮-өөр хүсэлтэд ¥ харагдахгүй; нэмэлтгүй бол задаргаа ХООСОН (давхардал үгүй)');
       eq([F.poUnitIsRounded(18.166667), F.poUnitIsRounded(201.5), F.poUnitIsRounded(197)], [true, false, false], 'poUnitIsRounded: 2 орноос урт бутархай л «≈»');
+      {
+        // ═ ШАТУУД ДАМЖИХ ТУСАМ НҮҮР ЦЭВЭР (2026-10-28, CEO: «дараагийн шатуудад гэнэт хэрэггүй мэдээлэл нэмэгддэг үү») ═
+        const mkS = (status, extra) => F.poNormalize({ id: 'st', no: 50, status, supplier: 'S', platform: 'Taobao', fx: 540, created_by: 'U', pay_to: ACCT, lines: [{ id: 'a', sku: 'M-205', name: 'Ширээ', q: 10, c: 201.5, ...(extra || {}) }] });
+        const brOf = (h) => h.slice(h.indexOf('<details class="po-more"'));
+        const faceOf = (h) => h.slice(0, h.indexOf('<details class="po-more"'));
+        ok(!/<span>Салбар<\/span>/.test(brOf(F.poCardHtml(mkS('ordered'), { me: 'C' }))) && /<span>Салбар<\/span>/.test(brOf(F.poCardHtml(mkS('ordered', { rcv: 4 }), { me: 'C' }))), '⛔ задаргаа: «Салбар» нь хүлээн авахад л сонгогддог тул ирэхээс өмнө (өгөгдмөл M-Event) харагдахгүй');
+        ['request', 'approved'].forEach(st => ok(/class="po-pay"/.test(faceOf(F.poCardHtml(mkS(st), { me: 'C' }))) && !/<span>Төлөх данс<\/span>/.test(brOf(F.poCardHtml(mkS(st), { me: 'C' }))), `⛔ карт (${st}): төлөх данс нүүрэнд ЗӨВХӨН нэг удаа (Задаргаад давтагдахгүй)`));
+        ['paid', 'ordered', 'received'].forEach(st => ok(!/class="po-pay"/.test(faceOf(F.poCardHtml(mkS(st), { me: 'C' }))) && /<span>Төлөх данс<\/span>/.test(brOf(F.poCardHtml(mkS(st), { me: 'C' }))), `⛔ карт (${st}): төлсний дараа төлөх данс нүүрэнд ГАРАХГҮЙ, түүхийн лавлагаа болж «Задаргаа»-д л`));
+        ok(!/<span>Платформ<\/span>/.test(F.poCardHtml(mkS('approved'), { me: 'C' })) && /Taobao/.test(F.poCardHtml(mkS('approved'), { me: 'C' })), 'карт: платформ нэг л удаа (нүүрийн доорх мөрөнд), Задаргаад давтагдахгүй');
+      }
     }
   }
   st._poTab = 'received';
@@ -16868,9 +16905,12 @@ async function swFetchTests() {
     ok(/if \(!ex\) focusName\(0\)/.test(reqM), 'scan: шинэ хүсэлтэд барааны нэрийн талбар шууд идэвхжинэ');
     const payM = src.slice(src.indexOf('async function openPoPayModal('), src.indexOf('function openPoOrderModal('));
     ok(/Шилжүүлэх данс/.test(payM) && /data-copy-text/.test(payM), 'scan: «Шилжүүлсэн» цонхонд төлөх данс (хуулах товчтой) харагдана');
+    ok(!/amo-hint|pp-note|каргогоор|ширхэгт жигд хуваагд/.test(payM) && /id="pp-fx-box"/.test(payM) && /#pp-fx-box'\)\.hidden = auto/.test(payM),
+       '⛔ scan: «Шилжүүлсэн» цонхонд урт тайлбар догол мөр, «Яаж шилжүүлсэн» давхар талбар, хуучирсан «ширхэгт жигд хуваагдана» мэдээлэл БАЙХГҮЙ; автомат ханш нэг мөр бичвэр болж талбар нуугдана');
     ok(/poFxValid\(rate\)/.test(payM) && /patch\.fx = rate/.test(payM) && !/poFxSave/.test(payM), '⛔ scan: шилжүүлэхдээ ТЭР ӨДРИЙН Хаан банкны ханш заавал, өртгийн суурь болж PO-д хадгалагдана (app_config-д БИЧИХГҮЙ)');
     const recvM2 = src.slice(src.indexOf('async function openPoReceiveModal('), src.indexOf('/* Самбарын товчнууд'));
     ok(/data-f="cg"/.test(recvM2) && /cargo: cgOf\(e\)/.test(recvM2), 'scan: хүлээн авахад мөр бүрийн карго оруулна, poReceiveApply-д дамжина');
+    ok(/\$\{r\.rcv > 0 \?/.test(recvM2) && /Өмнө ирсэн <b>/.test(recvM2), 'scan: хүлээн авахад «Өмнө ирсэн / Үлдсэн» нь анхны ирэлтэд (0) давтагдахгүй — өмнө ирсэн байвал л');
   }
   const patchFn = src.slice(src.indexOf('async function poPatch('), src.indexOf('async function poMove('));
   ok(/status=eq\./.test(patchFn) && /Төлөв өөрчлөгдсөн/.test(patchFn), 'scan: poPatch оптимист түгжээтэй (зэрэг батлахад нэг нь л)');

@@ -27716,63 +27716,41 @@ function poWhoWhen(at, by) {
   const t = fmtDateTimeUB(at);
   return `${escapeHtml(t)}${by ? ' · ' + escapeHtml(memberName(by)) : ''}`;
 }
-/* «Задаргаа»-д нүүрэнд АЛЬ ХЭДИЙН харагдаж буй зүйлийг (тоо × нэгж үнэ · код · линк · зураг · ирсэн тоо) ДАВТАХГҮЙ: нүүрийн эхний PO_CARD_LINES мөрөнд
-   зөвхөн НЭМЭЛТ (юанийн нийт · бодит карго · нэгж өртөг · тэмдэглэл · хүлээн авсан салбар), нүүрэнд ороогүй мөрөнд бүгдийг. Нэмэлтгүй мөр огт гарахгүй.
-   «Салбар» нь хүлээн авахад л сонгогддог тул ирэхээс өмнө гаргахгүй (өгөгдмөл M-Event нь хүн сонгоогүй утга).
-   Дүнг ДАХИН БОДОХГҮЙ — `poLineTotals`/`poTotals` (картын нийттэй ижил эх сурвалж). */
+/* БҮХ мөр нүүрэнд өөрсдөө харагдана (нэр · тоо × нэгж үнэ · код · линк · зураг · карго · ирсэн тоо · дүн) — «Задаргаа»-д мөрийг ДАХИН жагсаахгүй
+   (2026-10-28, CEO: «задаргаа түүх гэх мэт хэтэрхий их давтагдсан»). Энд ЗӨВХӨН нүүрэнд байхгүй нэмэлт: нэгж өртөг (карго орсон) · тэмдэглэл ·
+   хүлээн авсан салбар · батлагдсаны дараах 🧾/📊 зураг, ба бодит карго орсон бол бараа + карго = нийт. Нэмэлтгүй мөр огт гарахгүй; нэмэлт огт
+   байхгүй бол ХООСОН буцаана. «Салбар» нь хүлээн авахад л сонгогддог тул ирэхээс өмнө гаргахгүй. Дүнг ДАХИН БОДОХГҮЙ — `poLineTotals`/`poTotals`. */
 function poBreakdownHtml(po) {
   const ls = po.lines || [];
   if (!ls.length) return '';
   const cny = po.fx !== 1;
-  const multiShop = poShops(po).length > 1;
   const faceEv = po.status === 'request';   // нүүрэнд 🧾/📊 зураг зөвхөн хүсэлт төлөвт (poEvRowHtml)
   const kv = (k, v) => `<div class="po-kv"><span>${k}</span><b>${v}</b></div>`;
-  const items = ls.map((l, i) => {
-    const onFace = i < PO_CARD_LINES;
-    const x = poLineTotals(l, po.fx);
+  const items = ls.map(l => {
     const real = poLineRealUnit(po, l);
-    const unitMnt = Math.round((Number(l.c) || 0) * po.fx);
-    const approx = poUnitIsRounded(l.c) ? '≈ ' : '';
-    const got = (po.status === 'ordered' || po.status === 'received')
-      ? kv('Ирсэн', `<span class="po-rc${poLineLeft(l) === 0 ? ' ok' : ''}">${l.rcv}/${l.q}${l.done && l.rcv < l.q ? ' (хаасан)' : ''}</span>`) : '';
     const evOf = (k) => ((l[k] || []).length ? `<div class="po-bi-ev"><span class="po-bi-evl">${PO_EV_KINDS[k].icon} ${PO_EV_KINDS[k].label}</span><div class="po-evs">${poEvThumbsHtml(l[k], PO_EV_KINDS[k].label)}</div></div>` : '');
-    const rpEv = (l.rp || []).length ? `<div class="po-bi-ev"><span class="po-bi-evl">📷 Ирсэн барааны зураг</span><div class="po-evs">${poEvThumbsHtml(l.rp, 'Ирсэн барааны зураг')}</div></div>` : '';
-    const ev = (onFace && faceEv ? '' : evOf('pr') + evOf('cmp')) + (onFace ? '' : rpEv);
+    const ev = faceEv ? '' : evOf('pr') + evOf('cmp');
     const rows = [
-      multiShop ? kv('Дэлгүүр', escapeHtml(poLineShop(po, l)) || '—') : '',
-      onFace ? '' : kv('Тоо', `${escapeHtml(String(l.q))} ш`),
-      cny || !onFace ? kv('Нийт үнэ', cny ? `¥${escapeHtml(poFmtNum(poLineTotalCur(l)))} = ${escapeHtml(fmtMoney(x.item))}` : escapeHtml(fmtMoney(x.item))) : '',
-      onFace ? '' : kv('Нэгж үнэ', cny ? `${approx}¥${escapeHtml(poFmtNum(l.c))} ≈ ${escapeHtml(fmtMoney(unitMnt))}` : `${approx}${escapeHtml(fmtMoney(unitMnt))}`),
-      l.cg != null ? kv('Карго (бодит)', escapeHtml(fmtMoney(l.cg))) : '',
       real != null ? kv('Нэгж өртөг (карго орсон)', `≈ ${escapeHtml(fmtMoney(real))}`) : '',
-      onFace ? '' : kv('Код', l.sku ? escapeHtml(l.sku) : '<span class="po-muted">🆕 шинэ бараа</span>'),
       Number(l.rcv) > 0 ? kv('Салбар', escapeHtml(PO_BRANCH_LABEL[l.b] || l.b)) : '',
-      onFace ? '' : got,
-      onFace || !l.u ? '' : kv('Эх сурвалж', poSourceHtml(l.u)),
       l.nt ? kv('Тэмдэглэл', escapeHtml(l.nt)) : '',
     ].join('');
     if (!rows && !ev) return '';
-    return `<div class="po-bi">
-      <div class="po-bi-top">
-        ${poThumbHtml(poImgOf(l))}
-        <span class="po-bi-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span>
-        <b class="po-bi-t">${escapeHtml(fmtMoney(x.total))}</b>
-      </div>
-      ${rows}${ev}
-    </div>`;
+    return `<div class="po-bi"><div class="po-bi-top"><span class="po-bi-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span></div>${rows}${ev}</div>`;
   }).join('');
   const t = poTotals(po);
   const cnyAll = cny ? ls.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0) : 0;
-  // Бодит карго орсон бол л задаргаа (бараа + карго = нийт); эс бол нийт нь толгойн дүнтэй ижил тул давтахгүй. Карго хараахан ороогүйг НЭГ удаа хэлнэ.
-  const footRows = [
-    t.ship ? kv('Бараа', cny ? `¥${escapeHtml(poFmtNum(cnyAll))} × ${escapeHtml(String(po.fx))} = ${escapeHtml(fmtMoney(t.item))}` : escapeHtml(fmtMoney(t.item))) : '',
-    t.ship ? kv('Карго (бодит)', escapeHtml(fmtMoney(t.ship))) : '',
-    t.ship ? kv('Нийт', escapeHtml(fmtMoney(t.total))) : '',
-    !t.ship && cny && po.status !== 'received' ? kv('Карго', '<span class="po-muted">бараа ирэхэд оруулна</span>') : '',
-  ].join('');
+  // Бодит карго орсон бол л (бараа + карго = нийт); эс бол нийт нь толгойн дүнтэй ижил тул давтахгүй.
+  const footRows = t.ship ? [
+    kv('Бараа', cny ? `¥${escapeHtml(poFmtNum(cnyAll))} × ${escapeHtml(String(po.fx))} = ${escapeHtml(fmtMoney(t.item))}` : escapeHtml(fmtMoney(t.item))),
+    kv('Карго (бодит)', escapeHtml(fmtMoney(t.ship))),
+    kv('Нийт', escapeHtml(fmtMoney(t.total))),
+  ].join('') : '';
   if (!items && !footRows) return '';
-  return `<div class="po-bd"><div class="po-bd-h">Барааны задаргаа · ${ls.length} төрөл · ${t.qty} ш</div>${items}${footRows ? `<div class="po-bd-f">${footRows}</div>` : ''}</div>`;
+  return `<div class="po-bd">${items}${footRows ? `<div class="po-bd-f">${footRows}</div>` : ''}</div>`;
 }
+/* «Задаргаа · түүх» нь ЗӨВХӨН нэмэлт мэдээлэл БА/ЭСВЭЛ түүх (хүсэлтээс гадна шилжилт) байвал гарна. Анхны «хэн, хэзээ» нь нүүрийн доорх мөрөнд аль
+   хэдийн байгаа тул зөвхөн нэг түүхтэй (шинэ хүсэлт) картад хоосон нугалаа гаргахгүй. */
 function poDetailsHtml(po) {
   const hist = (po.history || []).slice().reverse().map(h => {
     const s = poStatusInfo(h.to);
@@ -27780,25 +27758,38 @@ function poDetailsHtml(po) {
   }).join('');
   const files = poFileItemsHtml(po.files);
   const kv = (k, v) => v ? `<div class="po-kv"><span>${k}</span><b>${v}</b></div>` : '';
-  return `<details class="po-more"><summary>Задаргаа · түүх</summary>
-    ${poShops(po).length > 1 ? kv(`Дэлгүүр (${poShops(po).length})`, poShops(po).map(escapeHtml).join(' · ')) : kv('Нийлүүлэгч', escapeHtml(po.supplier || ''))}
-    ${po.fx !== 1 && po.fxLive ? kv('Ханш', `¥1 = ${escapeHtml(String(po.fx))}₮${po.fxLive ? ` <span class="po-muted">Хаан банк${po.fxLive.exact ? '' : ' · ' + escapeHtml(po.fxLive.date.slice(5)) + '-ны'} · шилжүүлэхэд тогтоогдоно</span>` : ''}`) : ''}
-    ${poPayShown(po) ? '' : kv('Төлөх данс', escapeHtml(poPayToText(po.pay_to)))}
-    ${poBreakdownHtml(po)}
-    ${po.note ? `<div class="po-note">${escapeHtml(po.note)}</div>` : ''}
-    ${files ? `<div class="po-bi-ev"><span class="po-bi-evl">📎 Хавсаргасан файл</span><div class="po-evs">${files}</div></div>` : ''}
-    ${poLinkHref(po.url) ? `<div class="po-files"><a class="po-file" href="${escapeHtml(poLinkHref(po.url))}" target="_blank" rel="noopener noreferrer">🔗 дэлгүүр / бараа ↗</a></div>` : ''}
+  const body = [
+    poShops(po).length > 1 ? '' : kv('Нийлүүлэгч', escapeHtml(po.supplier || '')),   // олон дэлгүүр бол мөр бүрийн «🏪 дэлгүүр» нүүрэнд аль хэдийн байна
+    poPayShown(po) ? '' : kv('Төлөх данс', escapeHtml(poPayToText(po.pay_to))),
+    poBreakdownHtml(po),
+    po.note ? `<div class="po-note">${escapeHtml(po.note)}</div>` : '',
+    files ? `<div class="po-bi-ev"><span class="po-bi-evl">📎 Хавсаргасан файл</span><div class="po-evs">${files}</div></div>` : '',
+    poLinkHref(po.url) ? `<div class="po-files"><a class="po-file" href="${escapeHtml(poLinkHref(po.url))}" target="_blank" rel="noopener noreferrer">🔗 дэлгүүр / бараа ↗</a></div>` : '',
+  ].join('');
+  if (!body.trim() && (po.history || []).length <= 1) return '';
+  return `<details class="po-more"><summary>${body.trim() ? 'Задаргаа · түүх' : 'Түүх'}</summary>
+    ${body}
     <div class="po-hist">${hist}</div>
   </details>`;
 }
-const PO_CARD_LINES = 3;
+// Кодгүй мөрийн санал: ИЖИЛ саналтай мөрүүдийг НЭГ мөрөнд нэгтгэнэ (4 хоолойтой, 2 хоолойтой → ижил 2 бараа гэж давтахгүй). Цэвэр.
+function poHintGroups(hints) {
+  const g = new Map();
+  (hints || []).forEach(h => {
+    const k = (h.matches || []).map(p => p.sku).join('|');
+    if (!g.has(k)) g.set(k, { names: [], matches: h.matches || [] });
+    g.get(k).names.push(h.line.name);
+  });
+  return [...g.values()];
+}
 // Төлөх данс нүүрэнд ЗӨВХӨН хэрэгтэй үед: батлагч шалгах (хүсэлт) ба шилжүүлэгч төлөх (батлагдсан). Төлсний дараа «Задаргаа»-д л.
 function poPayShown(po) { return po.status === 'request' || po.status === 'approved'; }
 function poCardHtml(po, caps) {
   const t = poTotals(po);
   const acts = poActions(po, caps);
   const probs = po.status === 'request' ? poProblems(po) : [];
-  const hints = (po.status === 'request' || po.status === 'approved' || po.status === 'paid' || po.status === 'ordered') ? poUnlinkedHints(po, state.products, state.purchases) : [];
+  // Кодгүй мөрийг холбох боломж: хүсэлт/батлагдсан үед «Засах»-аар; ирсний дараа хүлээн авах цонх өөрөө санал болгоно (карт дээр давтахгүй).
+  const hints = (po.status === 'request' || po.status === 'approved') ? poUnlinkedHints(po, state.products, state.purchases) : [];
   const btnOf = (a) => {
     const blocked = a.k === 'approve' && probs.length;
     return `<button class="btn po-btn${a.main ? ' po-main' : ''}${a.danger ? ' po-danger' : ''}" data-po-act="${a.k}" data-po-id="${escapeHtml(po.id)}"${blocked ? ' disabled' : ''}>${escapeHtml(a.label)}</button>`;
@@ -27807,9 +27798,10 @@ function poCardHtml(po, caps) {
   const faceActs = acts.filter(a => a.main || a.k === 'reject'), restActs = acts.filter(a => !(a.main || a.k === 'reject'));
   const btns = faceActs.map(btnOf).join('');
   const btns2 = restActs.map(btnOf).join('');
-  const lines = po.lines.slice(0, PO_CARD_LINES).map(l => poLineRowHtml(po, l)).join('');
-  const more = po.lines.length > PO_CARD_LINES ? `<div class="po-more-n">+ ${po.lines.length - PO_CARD_LINES} мөр «Задаргаа»-д</div>` : '';
+  const lines = po.lines.map(l => poLineRowHtml(po, l)).join('');
   const cny = po.fx === 1 ? 0 : po.lines.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0);
+  // Ханш урьдчилсан (шилжүүлэхэд тогтоогдоно) ба юанийн карго хараахан ороогүйг НЭГ мөрөнд (мөр бүрд, «Задаргаа»-д давтахгүй).
+  const trowNote = [cny && po.fxLive ? 'Ханш урьдчилсан' : '', cny && !t.ship && po.status !== 'received' ? 'карго бараа ирэхэд оруулна' : ''].filter(Boolean).join(' · ');
   const pay = !poPayShown(po) ? '' : poPayToOk(po.pay_to)
     ? `<div class="po-pay"><span class="po-pay-t">💳 ${escapeHtml(poPayToText(po.pay_to))}</span><button type="button" class="btn po-copy" data-copy-text="${escapeHtml(po.pay_to.no)}" data-copy-label="Дансны дугаар хууллаа" title="Дансны дугаарыг хуулах">⧉</button></div>`
     : (po.status === 'approved' && state._poHasPayTo !== false ? '<div class="po-pay none">💳 Төлөх данс оруулаагүй — «Засах»-аар нэмнэ</div>' : '');
@@ -27833,18 +27825,19 @@ function poCardHtml(po, caps) {
         <span class="po-chev" aria-hidden="true">⌄</span>
       </summary>
       <div class="po-exp">
-        <div class="po-cls">${lines}${more}</div>
+        <div class="po-cls">${lines}</div>
         <div class="po-trow">
           <span>${t.qty} ш · ${po.lines.length} төрөл</span>
           ${cny ? `<span>¥${escapeHtml(Math.round(cny).toLocaleString('en-US'))} · ¥1 = ${escapeHtml(String(po.fx))}₮</span>` : ''}
         </div>
+        ${trowNote ? `<div class="po-note">${escapeHtml(trowNote)}</div>` : ''}
         ${pay}
         ${po.status === 'approved' ? poMemoBoxHtml(po) : ''}
         ${poProofRowHtml(po)}
         ${po.status === 'ordered' && !caps.receive ? poReceiverHintHtml() : ''}
         <div class="po-sub">${[po.platform, memberName(po.created_by), fmtDateTimeUB(po.created_at)].filter(Boolean).map(escapeHtml).join(' · ')}</div>
         ${poProgressHtml(po.status)}
-        ${hints.length ? `<div class="po-hint">${hints.slice(0, 2).map(h => `ℹ «${escapeHtml(h.line.name)}» кодгүй — каталогт ${h.matches.map(p => `«${escapeHtml(p.name || p.sku)}» (${escapeHtml(String(p.code || p.sku))})`).join(', ')} байна. Давхар бараа үүсгэхгүйн тулд ${po.status === 'request' || po.status === 'approved' ? '«Засах»-аар' : 'хүлээн авахдаа'} холбоорой.`).join('<br>')}</div>` : ''}
+        ${hints.length ? `<div class="po-hint">ℹ Каталогт ижил бараа байж магадгүй — давхар бараа үүсгэхгүйн тулд «Засах»-аар холбоорой:<br>${poHintGroups(hints).slice(0, 3).map(g => `«${g.names.map(escapeHtml).join('», «')}» → ${g.matches.map(p => `«${escapeHtml(p.name || p.sku)}» (${escapeHtml(String(p.code || p.sku))})`).join(', ')}`).join('<br>')}</div>` : ''}
         ${poDetailsHtml(po)}
         ${btns2 ? `<div class="po-acts po-acts2">${btns2}</div>` : ''}
       </div>

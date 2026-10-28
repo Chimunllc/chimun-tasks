@@ -27228,6 +27228,34 @@ function poSameItemHits(products, purchases, line, exceptPoId) {
   return out;
 }
 function poSameItemLabel(why) { return why === 'link' ? '🔗 ижил линк' : 'ижил нэр'; }
+/* ӨМНӨ АВЧ БАЙСАН БАРАА = ШУУД САНАЛ (CEO 2026-10-28: «шууд бараа захиалхад өмнө нь авч байсан … гарах ёстой биш үү, дараа нь … хэрэггүй»).
+   Хоосон мөрөнд өмнө ҮНЭХЭЭР авсан (Худалдан авсан/Хүлээн авсан) барааг сүүлд авснаар нь эхэнд санал болгоно — нэр бичих шаардлагагүй; сонговол код, нэр, ЛИНК өөрөө орно.
+   ⛔ Зөвхөн каталогт байгаа (кодтой) бараа; багц орохгүй; хүсэлт/цуцалсан/татгалзсан хүсэлт «авсан» БИШ. */
+function poRecentItems(purchases, products, limit, haveSkus) {
+  const have = haveSkus instanceof Set ? haveSkus : new Set(haveSkus || []);
+  const bySku = new Map((products || []).filter(x => x && x.sku).map(x => [x.sku, x]));
+  const out = [], seen = new Set();
+  (purchases || []).filter(po => po && (po.status === 'ordered' || po.status === 'received'))
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .forEach(po => ((po.lines) || []).forEach(l => {
+      const p = l && l.sku ? bySku.get(l.sku) : null;
+      if (!p || isPackage(p) || have.has(p.sku)) return;
+      const u = poLinkKey(l.u) ? String(l.u) : '';
+      if (seen.has(p.sku)) { const e = out.find(x => x.p.sku === p.sku); if (e && !e.u && u) e.u = u; return; }   // сүүлийн авалтад линк байхгүй бол өмнөх линктэй авалтаас
+      seen.add(p.sku);
+      out.push({ p, u });
+    }));
+  return out.slice(0, limit || 6);
+}
+/* Барааны ӨМНӨХ ЛИНК: сүүлд авсан худалдан авалтын мөрийн линк, байхгүй бол каталогийн «гарал үүсэл» (source_url) — зөвхөн линк мөн бол. */
+function poLastLink(purchases, products, sku) {
+  if (!sku) return '';
+  const hit = poRecentItems(purchases, products, 1000).find(x => x.p.sku === sku);
+  if (hit && hit.u) return hit.u;
+  const p = (products || []).find(x => x && x.sku === sku);
+  const src = p ? String(p.source_url || '').trim() : '';
+  return poLinkKey(src) ? src : '';
+}
 function poUnlinkedHints(po, products, purchases) {
   const have = new Set(((po && po.lines) || []).map(l => l.sku).filter(Boolean));
   const out = [];
@@ -28058,6 +28086,11 @@ async function openPoModal(id) {
     const el = w.$(`[data-sug="${i}"]`), l = d.lines[i];
     if (!el || !l) return;
     const have = new Set(d.lines.map(x => x.sku).filter(Boolean));
+    if (!poNameKey(l.name) && !poLinkKey(l.u) && !l.sku) {   // хоосон мөр: өмнө авсан бараанууд (нэг эгнээ, хажуу тийш гүйнэ)
+      const rec = poRecentItems(state.purchases, state.products, 6, have);
+      el.innerHTML = rec.length ? `<div class="po-sug-h po-sug-same">↩ Өмнө авсан бараа — сонговол код, линк өөрөө орно:</div><div class="po-recs">${rec.map(r => `<button type="button" class="ui-raw po-rec" data-pick="${i}" data-sku="${escapeHtml(r.p.sku)}" title="${escapeHtml(r.p.name || r.p.sku)}"><b>${escapeHtml(r.p.name || r.p.sku)}</b><small>${escapeHtml(String(r.p.code || r.p.sku))}</small></button>`).join('')}</div>` : '';
+      return;
+    }
     const same = poSameItemHits(state.products, state.purchases, l, ex && ex.id).filter(h => !have.has(h.p.sku));
     const sameSkus = new Set(same.map(h => h.p.sku));
     const hits = poCatalogMatches(state.products, l.name, have, 5).filter(p => !sameSkus.has(p.sku));
@@ -28071,7 +28104,7 @@ async function openPoModal(id) {
     d.fx = fx;
     fxHint();
     w.$('#po-lines').innerHTML = d.lines.map((l, i) => poLineCardHtml(l, i, fx, mnt, d.lines.length)).join('');
-    d.lines.forEach((l, i) => { if (!l.sku && (poNameKey(l.name).length >= 2 || poLinkKey(l.u))) renderSug(i); });
+    d.lines.forEach((l, i) => { if (!l.sku) renderSug(i); });
     sums();
   };
   // Нэгж үнэ, нийт дүн, «Дутуу: …» — бүгд нэг дор шинэчлэгдэнэ (мөр бүрийг дахин зурахгүй тул курсор алдагдахгүй).
@@ -28142,7 +28175,7 @@ async function openPoModal(id) {
     const pk = e.target.closest('[data-pick]');
     if (pk) {
       const l = d.lines[+pk.dataset.pick], p = (state.products || []).find(x => x.sku === pk.dataset.sku);
-      if (l && p) { l.sku = p.sku; l.name = p.name || p.sku; draw(); }
+      if (l && p) { l.sku = p.sku; l.name = p.name || p.sku; if (!String(l.u || '').trim()) l.u = poLastLink(state.purchases, state.products, p.sku); draw(); }   // өмнөх линк хоосон талбарт өөрөө орно
       return;
     }
     const ul = e.target.closest('[data-unlink]');

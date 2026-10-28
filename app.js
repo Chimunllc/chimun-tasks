@@ -27196,13 +27196,47 @@ function poCatalogSimilar(products, name, haveSkus, limit, min) {
     .map(p => ({ p, s: itemNameScore(q, p.name) })).filter(x => x.s >= (min || 0.3))
     .sort((a, b) => b.s - a.s).slice(0, limit || 3).map(x => x.p);
 }
-function poUnlinkedHints(po, products) {
+/* ИЖИЛ БАРАА = ИЖИЛ КОД (CEO 2026-10-28: «өмнөхтэй ижил бараа авбал код ижил байх ёстой», «өмнөх бараан дээр линк байвал санал болгодог байх»).
+   Хоёр хүчтэй дохио: ① ИЖИЛ ЛИНК — каталогийн `source_url` эсвэл өмнөх худалдан авалтын мөрийн `u` (тэр мөр код авсан бол) ② ИЖИЛ НЭР (цэвэрлэсэн нэр тэнцүү).
+   Линкийг `poLinkKey`-ээр тулгана: Taobao/Tmall/1688 = `id`/`offerId` параметр (spm, utm г.м. хөөх параметр ялгаа биш), бусад = хост + зам (+ ялгах параметр).
+   ⛔ Зөвхөн хост («taobao.com») ХЭЗЭЭ Ч түлхүүр биш — өөр өөр бараа ижил болно. */
+const PO_LINK_NOISE = /^(spm|scm|utm_.*|from|share.*|ali_.*|_u|tk|sourcetype|suid|ut_sk|un|bxsign|cpp|shareurl|app|sk|appid)$/;
+function poLinkKey(u) {
+  let s = String(u == null ? '' : u).trim().toLowerCase();
+  if (!s) return '';
+  if (!/^https?:\/\//.test(s)) { if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/|$)/.test(s)) s = 'https://' + s; else return ''; }
+  let url; try { url = new URL(s); } catch (e) { return ''; }
+  const parts = url.hostname.split('.'), site = parts.slice(-2).join('.');
+  const id = url.searchParams.get('id') || url.searchParams.get('offerid') || url.searchParams.get('itemid') || url.searchParams.get('item_id') || url.searchParams.get('skuid');
+  if (id && /^\d{5,}$/.test(id)) return site + ':' + id;
+  const path = url.pathname.replace(/\/+$/, '');
+  const q = [...url.searchParams.entries()].filter(([k]) => !PO_LINK_NOISE.test(k)).map(([k, v]) => k + '=' + v).sort().join('&');
+  if (path.length <= 1 && !q) return '';   // хост л байвал түлхүүр БИШ
+  return parts.join('.').replace(/^(www|m|detail|item|h5)\./, '') + path + (q ? '?' + q : '');
+}
+function poSameItemHits(products, purchases, line, exceptPoId) {
+  const out = [], seen = new Set();
+  const push = (p, why) => { if (p && p.sku && !seen.has(p.sku) && !isPackage(p)) { seen.add(p.sku); out.push({ p, why }); } };
+  const bySku = new Map((products || []).filter(x => x && x.sku).map(x => [x.sku, x]));
+  const k = poLinkKey(line && line.u);
+  if (k) {
+    (products || []).forEach(x => { if (x && poLinkKey(x.source_url) === k) push(x, 'link'); });
+    (purchases || []).forEach(po => { if (po && po.id !== exceptPoId) ((po.lines) || []).forEach(l => { if (l && l.sku && poLinkKey(l.u) === k) push(bySku.get(l.sku), 'link'); }); });
+  }
+  const nk = poNameKey(line && line.name);
+  if (nk.length >= 2) (products || []).forEach(x => { if (x && poNameKey(x.name) === nk) push(x, 'name'); });
+  return out;
+}
+function poSameItemLabel(why) { return why === 'link' ? '🔗 ижил линк' : 'ижил нэр'; }
+function poUnlinkedHints(po, products, purchases) {
   const have = new Set(((po && po.lines) || []).map(l => l.sku).filter(Boolean));
   const out = [];
   ((po && po.lines) || []).forEach(l => {
-    if (l.sku || !String(l.name || '').trim()) return;
-    const m = poCatalogSimilar(products, l.name, have, 2, 0.3);
-    if (m.length) out.push({ line: l, matches: m });
+    if (l.sku || (!String(l.name || '').trim() && !poLinkKey(l.u))) return;
+    const seen = new Set(), m = [];
+    poSameItemHits(products, purchases, l, po && po.id).forEach(h => { if (!have.has(h.p.sku) && !seen.has(h.p.sku)) { seen.add(h.p.sku); m.push(h.p); } });
+    poCatalogSimilar(products, l.name, have, 2, 0.3).forEach(x => { if (!seen.has(x.sku)) { seen.add(x.sku); m.push(x); } });
+    if (m.length) out.push({ line: l, matches: m.slice(0, 3) });
   });
   return out;
 }
@@ -27721,7 +27755,7 @@ function poCardHtml(po, caps) {
   const t = poTotals(po);
   const acts = poActions(po, caps);
   const probs = po.status === 'request' ? poProblems(po) : [];
-  const hints = (po.status === 'request' || po.status === 'approved' || po.status === 'paid' || po.status === 'ordered') ? poUnlinkedHints(po, state.products) : [];
+  const hints = (po.status === 'request' || po.status === 'approved' || po.status === 'paid' || po.status === 'ordered') ? poUnlinkedHints(po, state.products, state.purchases) : [];
   const btnOf = (a) => {
     const blocked = a.k === 'approve' && probs.length;
     return `<button class="btn po-btn${a.main ? ' po-main' : ''}${a.danger ? ' po-danger' : ''}" data-po-act="${a.k}" data-po-id="${escapeHtml(po.id)}"${blocked ? ' disabled' : ''}>${escapeHtml(a.label)}</button>`;
@@ -28023,17 +28057,21 @@ async function openPoModal(id) {
   const renderSug = (i) => {
     const el = w.$(`[data-sug="${i}"]`), l = d.lines[i];
     if (!el || !l) return;
-    const hits = poCatalogMatches(state.products, l.name, new Set(d.lines.map(x => x.sku).filter(Boolean)), 5);
-    el.innerHTML = hits.length
-      ? `<div class="po-sug-h">Каталогт байгаа бол сонгоно уу (давхар бараа үүсэхгүй):</div>` + hits.map(p => `<button type="button" class="ui-raw po-hit" data-pick="${i}" data-sku="${escapeHtml(p.sku)}"><span>${escapeHtml(p.name || p.sku)}</span><small>${escapeHtml(String(p.code || p.sku))} · одоо ${prodTotalQty(p)} ш</small></button>`).join('')
-      : (poNameKey(l.name).length >= 2 ? '<div class="po-sug-h">Каталогт олдсонгүй — шинэ бараа болж бүртгэгдэнэ.</div>' : '');
+    const have = new Set(d.lines.map(x => x.sku).filter(Boolean));
+    const same = poSameItemHits(state.products, state.purchases, l, ex && ex.id).filter(h => !have.has(h.p.sku));
+    const sameSkus = new Set(same.map(h => h.p.sku));
+    const hits = poCatalogMatches(state.products, l.name, have, 5).filter(p => !sameSkus.has(p.sku));
+    const btn = (p, tag) => `<button type="button" class="ui-raw po-hit" data-pick="${i}" data-sku="${escapeHtml(p.sku)}"><span>${escapeHtml(p.name || p.sku)}</span><small>${escapeHtml(String(p.code || p.sku))}${tag ? ' · ' + tag : ''} · одоо ${prodTotalQty(p)} ш</small></button>`;
+    el.innerHTML = (same.length ? `<div class="po-sug-h po-sug-same">↩ Өмнө авсан ижил бараа — сонговол код ижил байна:</div>` + same.map(h => btn(h.p, poSameItemLabel(h.why))).join('') : '')
+      + (hits.length ? `<div class="po-sug-h">Каталогт байгаа бол сонгоно уу (давхар бараа үүсэхгүй):</div>` + hits.map(p => btn(p, '')).join('') : '')
+      + (!same.length && !hits.length && poNameKey(l.name).length >= 2 ? '<div class="po-sug-h">Каталогт олдсонгүй — шинэ бараа болж бүртгэгдэнэ.</div>' : '');
   };
   const draw = () => {
     const fx = curFx(), mnt = curVal() === 'MNT';
     d.fx = fx;
     fxHint();
     w.$('#po-lines').innerHTML = d.lines.map((l, i) => poLineCardHtml(l, i, fx, mnt, d.lines.length)).join('');
-    d.lines.forEach((l, i) => { if (!l.sku && poNameKey(l.name).length >= 2) renderSug(i); });
+    d.lines.forEach((l, i) => { if (!l.sku && (poNameKey(l.name).length >= 2 || poLinkKey(l.u))) renderSug(i); });
     sums();
   };
   // Нэгж үнэ, нийт дүн, «Дутуу: …» — бүгд нэг дор шинэчлэгдэнэ (мөр бүрийг дахин зурахгүй тул курсор алдагдахгүй).
@@ -28085,7 +28123,7 @@ async function openPoModal(id) {
     if (f === 'name') { l.name = e.target.value; renderSug(n); }
     else if (f === 'q') { l.q = Math.round(poNum(e.target.value)); if (l._t > 0) l.c = poUnitFromTotal(l._t, l.q); }
     else if (f === 't') { l._t = poNum(e.target.value); l.c = poUnitFromTotal(l._t, l.q); }
-    else if (f === 'u') l.u = e.target.value;
+    else if (f === 'u') { l.u = e.target.value; if (!l.sku) renderSug(n); }   // линк бичихэд өмнө авсан ижил линктэй бараа санал болно
     else if (f === 'nt') l.nt = e.target.value;
     sums();
   });
@@ -28426,14 +28464,25 @@ async function openPoReceiveModal(id) {
   const prodOf = (r) => r.sku ? (state.products || []).find(p => p.sku === r.sku) : null;
   const needCargo = po.fx !== 1;   // юанийн (Хятадаас ирэх) бараа — мөр бүрт карго заавал (төлөөгүй бол 0); ₮-өөр бол заавал биш
   const ent = open.map(r => ({ row: r, get: poLineLeft(r), short: false, b: r.b, cat: r.cat, name: r.name, lq: '', linkedHere: false, cg: '', rp: [], busy: 0 }));
-  // Кодгүй мөрт каталогоос ижил бараа санал болгоно / хайна (давхар бараа үүсэхээс сэргийлнэ). ⛔ Автоматаар холбохгүй.
+  // ИЖИЛ БАРАА = ИЖИЛ КОД (CEO 2026-10-28): кодгүй мөр өмнө авсан бараатай ИЖИЛ ЛИНК эсвэл ИЖИЛ НЭРтэй бол ӨӨРӨӨ холбогдоно (нэг л таарвал; «салгах» боломжтой).
+  // Олон таарвал / зөвхөн нэр ТӨСТЭЙ бол автоматаар холбохгүй — санал болгоно (нэр төстэй хоёр өөр бараа байж болно).
+  const haveSkus = () => new Set(rows.map(x => x.sku).filter(Boolean));
+  ent.forEach(e => {
+    if (e.row.sku) return;
+    const hits = poSameItemHits(state.products, state.purchases, e.row, po.id).filter(h => !haveSkus().has(h.p.sku));
+    const links = hits.filter(h => h.why === 'link');
+    const pick = links.length === 1 ? links[0] : (!links.length && hits.length === 1 ? hits[0] : null);
+    if (pick) { e.row.sku = pick.p.sku; e.linkedHere = true; e.auto = pick.why; }
+  });
   const lnkResHtml = (e, i) => {
-    const have = new Set(rows.map(x => x.sku).filter(Boolean));
+    const have = haveSkus();
     const q = String(e.lq || '').trim();
-    const hits = q.length >= 2 ? poCatalogMatches(state.products, q, have, 5) : poCatalogSimilar(state.products, e.name, have, 3, 0.3);
-    return hits.length
-      ? hits.map(p => `<button type="button" class="ui-raw po-hit" data-lnk="${i}" data-sku="${escapeHtml(p.sku)}"><span>${escapeHtml(p.name || p.sku)}</span><small>${escapeHtml(String(p.code || p.sku))} · одоо ${prodTotalQty(p)} ш</small></button>`).join('')
-      : `<div class="po-sug-h">${q ? 'Олдсонгүй' : 'Ижил бараа олдсонгүй'} — шинэ бараа болж код авна.</div>`;
+    const same = q.length >= 2 ? [] : poSameItemHits(state.products, state.purchases, e.row, po.id).filter(h => !have.has(h.p.sku));
+    const seen = new Set(same.map(h => h.p.sku));
+    const rest = (q.length >= 2 ? poCatalogMatches(state.products, q, have, 5) : poCatalogSimilar(state.products, e.name, have, 3, 0.3)).filter(p => !seen.has(p.sku));
+    const btn = (p, tag) => `<button type="button" class="ui-raw po-hit" data-lnk="${i}" data-sku="${escapeHtml(p.sku)}"><span>${escapeHtml(p.name || p.sku)}</span><small>${escapeHtml(String(p.code || p.sku))}${tag ? ' · ' + tag : ''} · одоо ${prodTotalQty(p)} ш</small></button>`;
+    const html = same.map(h => btn(h.p, poSameItemLabel(h.why))).join('') + rest.map(p => btn(p, '')).join('');
+    return html || `<div class="po-sug-h">${q ? 'Олдсонгүй' : 'Ижил бараа олдсонгүй'} — шинэ бараа болж код авна.</div>`;
   };
   const cardHtml = (e, i) => {
     const r = e.row, p = prodOf(r), left = poLineLeft(r);
@@ -28445,7 +28494,7 @@ async function openPoReceiveModal(id) {
       ${r.sku && !p ? '<div class="po-probs">⚠ Бараа каталогт олдсонгүй (архивлагдсан байж магадгүй) — энэ мөрийг хүлээж авахгүй</div>' : ''}
       ${!r.sku ? `<div class="po-lkbox"><div class="po-sug-h">Каталогт байгаа бол холбоно уу (давхар бараа үүсэхгүй):</div><div data-lres="${i}">${lnkResHtml(e, i)}</div>
         <input class="ui-raw po-line-in" data-f="lq" value="${escapeHtml(e.lq || '')}" placeholder="Каталогоос хайх (нэр, код)…" aria-label="Каталогоос хайх"></div>`
-        : (e.linkedHere ? `<div class="po-linked">✓ Каталогтой холбосон · <button type="button" class="ui-raw po-lnk" data-unl="${i}">салгах</button></div>` : '')}
+        : (e.linkedHere ? `<div class="po-linked">✓ ${e.auto ? 'Өмнө авсан бараатай холбогдлоо (' + poSameItemLabel(e.auto) + ', код ижил)' : 'Каталогтой холбосон'} · <button type="button" class="ui-raw po-lnk" data-unl="${i}">салгах</button></div>` : '')}
       <div class="po-row2">
         <div class="po-fld"><span class="po-lb">Одоо ирсэн <i>ш</i></span>
           <div class="po-ctl"><button type="button" class="ui-raw po-stp" data-gstep="-1" aria-label="Нэгээр хасах">−</button><input class="ui-raw po-num" data-f="get" type="number" min="0" max="${left}" step="1" inputmode="numeric" value="${e.get}" aria-label="Одоо ирсэн тоо"><button type="button" class="ui-raw po-stp" data-gstep="1" aria-label="Нэгээр нэмэх">＋</button></div></div>

@@ -8200,7 +8200,6 @@ select.no-asar-len {
 .po-bi-nm { flex: 1 1 0; min-width: 0; font-weight: 600; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .po-bi-t { flex: none; white-space: nowrap; font-size: var(--fs-sm); }
 .po-muted { color: var(--muted); font-weight: 400; }
-.po-hint { font-size: var(--fs-xs); color: var(--info); background: var(--info-soft); border-radius: var(--r-sm); padding: var(--space-2); white-space: normal; overflow-wrap: anywhere; }
 .po-lkbox { display: flex; flex-direction: column; gap: var(--space-2); }
 .po-recv .po-bad { border-color: var(--danger); }
 .pm-po { margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r-md); display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-sm); }

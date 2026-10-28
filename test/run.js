@@ -16697,6 +16697,16 @@ async function swFetchTests() {
       const faceTxt = face.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
       ok(/#7/.test(faceTxt) && /Хурдан гар тоглоом/.test(faceTxt) && /\+1 бусад/.test(faceTxt) && /₮/.test(faceTxt) && /Хүсэлт/.test(faceTxt), '⛔ минимал карт: нүүрэнд зөвхөн №, барааны нэр, нийт дүн, төлөв');
       ok(!/Xinrui|Тэмдэглэл|Б\.Бат|5012345678|item\.taobao|¥|Батлах/.test(faceTxt), '⛔ минимал карт: нүүрэнд нийлүүлэгч, данс, линк, ¥, тэмдэглэл, товч БАЙХГҮЙ (дарж нээхэд харагдана)');
+      {
+        // ⛔ `.po-card` гурван газар хуваалцагддаг: самбарын карт + хүсэлтийн цонхны <section> + хүлээн авах цонхны карт. Самбарын картын `overflow: hidden`
+        // суурь дүрэмд орвол цонхны хайрцаг шахагдаж ТАСАРДАГ (2026-10-28 амьд дэлгэцэд «Шинэ худалдан авалт» цонх тасарсан).
+        const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+        const baseBody = (/\n\.po-card \{([^}]*)\}/.exec(css) || [])[1] || '';
+        ok(baseBody && !/overflow|padding:\s*0/.test(baseBody), '⛔ CSS: суурь `.po-card` (цонхны хайрцагтай хуваалцдаг) overflow/padding:0-гүй');
+        ok(/\.po-list > \.po-card \{[^}]*overflow: hidden/.test(css), 'CSS: самбарын картын overflow зөвхөн `.po-list > .po-card`-д');
+        const srcQ = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+        ok((srcQ.match(/<section class="po-card/g) || []).length >= 4, 'scan: хүсэлтийн цонх `.po-card`-г ашигладаг (энэ нь хуваалцсан класс гэдгийг сануулна)');
+      }
       ok(!/po-th-none|📷<\/span>/.test(mc), '⛔ минимал карт: зураггүй бараанд саарал камер хайрцаг ГАРАХГҮЙ (хоосон хайрцаг нь хог)');
       ok(/<details class="po-d" data-po-d="mc">/.test(mc) && /<div class="po-exp">/.test(mc) && mc.indexOf('class="po-cls"') > mc.indexOf('</summary>'), 'минимал карт: мөр бүр, данс, түүх нээгдэх хэсэгт (дарж нээнэ)');
       ok(mc.indexOf('class="po-acts"') > mc.indexOf('</details>'), 'минимал карт: үйлдлийн товч нүүрэн дээр үлдэнэ (нээхгүйгээр батлах/татгалзах)');

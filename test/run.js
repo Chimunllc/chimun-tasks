@@ -15983,7 +15983,7 @@ async function swFetchTests() {
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
     'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poCmpFormHtml',
     'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml',
-    'poLinkKey', 'poHintGroups', 'poRecentItems', 'poLastLink', 'poSameItemHits', 'poSameItemLabel', 'poUnlinkedHints', 'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
+    'poLinkKey', 'poRecentItems', 'poLastLink', 'poSameItemHits', 'poSameItemLabel', 'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
 
   // ① Дүн — карго хүсэлтэд ОРОХГҮЙ (хүлээн авахад бодитоор); хуучин `s` талбар уншигдахгүй
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -16255,8 +16255,6 @@ async function swFetchTests() {
       eq(F.poLastLink(PR, PRODS, 'M-400'), '', 'өмнөх линк: линк биш/байхгүй бол хоосон (таамаглахгүй)');
       eq(F.poLastLink(PR, PRODS, ''), '', 'өмнөх линк: код байхгүй бол хоосон');
     }
-    const uh = F.poUnlinkedHints({ id: 'x', lines: [{ id: 'a', name: 'Шинэ нэр', u: 'item.taobao.com/item.htm?id=998877' }, { id: 'b', name: 'Хивс', sku: 'M-400' }] }, PRODS, PUR);
-    eq(uh.map(x => [x.line.id, x.matches.map(m => m.sku)]), [['a', ['M-205']]], 'карт: кодгүй мөр өмнөх бараатай ИЖИЛ ЛИНКтэй бол нэр өөр ч санал болгоно');
     const srcS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
     const reqS = srcS.slice(srcS.indexOf('async function openPoModal('), srcS.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
     ok(/poSameItemHits\(state\.products, state\.purchases, l, ex && ex\.id\)/.test(reqS) && /f === 'u'\) \{ l\.u = e\.target\.value; if \(!l\.sku\) renderSug\(n\); \}/.test(reqS) && /d\.lines\.forEach\(\(l, i\) => \{ if \(!l\.sku\) renderSug\(i\); \}\)/.test(reqS), 'scan: хүсэлтийн цонх нэр БА ЛИНК бичихэд өмнө авсан ижил барааг (код ижил) санал болгоно, хоосон мөрд ч өмнө авсан бараа гарна');
@@ -16347,13 +16345,18 @@ async function swFetchTests() {
     eq(sim.map(p => p.sku), ['M-305'], '⛔ код: кодгүй «углаа»-д каталогийн «Босоо ширээний углаа» санал болно, аль хэдийн холбосон (M-205) ба хамааралгүй бараа орохгүй');
     eq([F.poCatalogSimilar(cat, '', null, 3), F.poCatalogSimilar(cat, 'Огт өөр зүйл xyz', null, 3, 0.3)], [[], []], 'код: хоосон/хамааралгүй нэрэнд санал гарахгүй');
     const pl = F.poNormalize({ id: 'h', no: 9, status: 'approved', supplier: 'Jimo', fx: 541.2, created_by: 'U', lines: [{ id: 'a', sku: 'M-205', name: 'Босоо дугуй ширээ', q: 10, c: 201.5 }, { id: 'b', name: 'Босоо дугуй ширээ углаа', q: 30, c: 18.17 }] });
-    eq(F.poUnlinkedHints(pl, cat).map(h => [h.line.id, h.matches[0].sku]), [['b', 'M-305']], 'код: холбоогүй мөр бүрт каталогийн санал');
     const stP = vm.runInContext('state', sandbox);
     const sv = stP.products; stP.products = cat;
     const hc = F.poCardHtml(pl, { me: 'C' });
     stP.products = sv;
     ok(/ · M-205 /.test(hc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') + ' ') && /🆕 шинэ/.test(hc), '⛔ карт: холбосон бараа кодтой, холбоогүй нь «🆕 шинэ» (кодгүй нь нууцлагдахгүй)');
-    ok(/class="po-hint"/.test(hc) && /«Босоо ширээний углаа» \(M-305\)/.test(hc) && /«Засах»-аар/.test(hc), '⛔ карт: каталогт ижил бараа байвал «Давхар бараа үүсгэхгүйн тулд холбоорой» гэж сануулна');
+    ok(!/po-hint|Каталогт ижил бараа байж магадгүй|Давхар бараа үүсгэхгүйн тулд/.test(hc), '⛔ карт: каталогт төстэй бараа байсан ч «ℹ каталогт ижил бараа» сануулга ГАРАХГҮЙ (CEO 2026-10-28: «захиалгын бараа бүгд шинэ, угаасаа мэднэ» — буруу санал хүртэл гардаг байв)');
+    ok(!/po-hint|Каталогт ижил бараа байж магадгүй/.test(F.poCardHtml({ ...pl, status: 'request' }, { me: 'C' })), '⛔ карт: хүсэлт төлөвт ч сануулга ГАРАХГҮЙ');
+    {
+      const srcNH = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+      ok(!/poUnlinkedHints|poHintGroups|class="po-hint"/.test(srcNH) && !/\.po-hint\b/.test(fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8')), '⛔ scan: картын сануулгын код/CSS (poUnlinkedHints, poHintGroups, .po-hint) буцаж ирэхгүй');
+      ok(/poCatalogSimilar\(/.test(srcNH.slice(srcNH.indexOf('async function openPoReceiveModal('))) && /poSameItemHits\(/.test(srcNH.slice(srcNH.indexOf('async function openPoModal('), srcNH.indexOf('function openPoPayModal('))), 'scan: хүн өөрөө нэр/линк бичих (хүсэлт) ба хүлээн авах үеийн каталогийн санал ХЭВЭЭР — зөвхөн картын шууд сануулга хасагдсан');
+    }
     ok(!/хүлээн авахад код өгөгдөнө/.test(hc) && !/<span>Код<\/span>/.test(hc), '⛔ задаргаа: мөрийн код нүүрэнд аль хэдийн харагдана («🆕 шинэ») — урт тайлбар, «Код» мөр давтагдахгүй');
     const recvd = F.poNormalize({ id: 'r', no: 9, status: 'received', supplier: 'Jimo', fx: 540, created_by: 'U', lines: [{ id: 'b', sku: 'M-310', name: 'Углаа', q: 30, c: 18, rcv: 30, cg: 30000 }] });
     ok(!/class="po-hint"/.test(F.poCardHtml(recvd, { me: 'C' })) && /· M-310 /.test(F.poCardHtml(recvd, { me: 'C' }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ') + ' '), 'карт: хүлээн авсны дараа мөр код авсан, санал алга');
@@ -16817,8 +16820,6 @@ async function swFetchTests() {
       ok(!/<details class="po-more"/.test(F.poCardHtml(mkH('request', [H1]), { me: 'C' })), '⛔ карт: нэмэлт ч, түүх ч (зөвхөн анхны «хүсэлт») байхгүй бол «Задаргаа · түүх» нугалаа ГАРАХГҮЙ (нүүрийн доорх мөр аль хэдийн «хэн, хэзээ» гэж хэлнэ)');
       const cmv = F.poCardHtml(mkH('approved', [H1, H2]), { me: 'C' });
       ok(/<summary>Түүх<\/summary>/.test(cmv) && !/Задаргаа · түүх/.test(cmv), 'карт: нэмэлтгүй ч шилжилт хийгдсэн бол нугалаа «Түүх» гэж нэрлэгдэнэ (хоосон «Задаргаа» биш)');
-      const hg = F.poHintGroups([{ line: { name: 'A' }, matches: [{ sku: 'M-1' }, { sku: 'M-2' }] }, { line: { name: 'B' }, matches: [{ sku: 'M-1' }, { sku: 'M-2' }] }, { line: { name: 'C' }, matches: [{ sku: 'M-3' }] }]);
-      eq(hg.map(g => g.names), [['A', 'B'], ['C']], '⛔ сануулга: ИЖИЛ саналтай мөрүүд НЭГ мөрөнд нэгтгэгдэнэ (адилхан сануулга 2 удаа давтагдахгүй)');
     }
     {
       // Задаргаа: нэгж үнэ, нийт ¥, карго, нэгж өртөг — дүнг дахин бодохгүй, картын нийттэй ижил

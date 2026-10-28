@@ -27256,18 +27256,6 @@ function poLastLink(purchases, products, sku) {
   const src = p ? String(p.source_url || '').trim() : '';
   return poLinkKey(src) ? src : '';
 }
-function poUnlinkedHints(po, products, purchases) {
-  const have = new Set(((po && po.lines) || []).map(l => l.sku).filter(Boolean));
-  const out = [];
-  ((po && po.lines) || []).forEach(l => {
-    if (l.sku || (!String(l.name || '').trim() && !poLinkKey(l.u))) return;
-    const seen = new Set(), m = [];
-    poSameItemHits(products, purchases, l, po && po.id).forEach(h => { if (!have.has(h.p.sku) && !seen.has(h.p.sku)) { seen.add(h.p.sku); m.push(h.p); } });
-    poCatalogSimilar(products, l.name, have, 2, 0.3).forEach(x => { if (!seen.has(x.sku)) { seen.add(x.sku); m.push(x); } });
-    if (m.length) out.push({ line: l, matches: m.slice(0, 3) });
-  });
-  return out;
-}
 /* БАРААНЫ ХУДАЛДАН АВАЛТЫН ТҮҮХ (агуулахын барааны цонхонд): хүлээн авсан мөр бүр = хэдэн ш, ямар өртгөөр (бараа + бодит карго ÷ ирсэн тоо).
    Дундаж өртөг = Σ(тоо × өртөг) ÷ Σ тоо — зөвхөн худалдан авалтаар ОРСОН бараанаас. ⛔ Шинэ хүснэгт БАЙХГҮЙ: худалдан авалтын мөр (`rcv`, `cg`)-өөс өөрөө гарна. Нөөцийн
    одоогийн өртөг (`products.cost`) нь өмнөх нөөцтэй жигнэсэн дундаж тул ЯЛГААТАЙ байж болно — хоёулаа ил. */
@@ -27772,24 +27760,12 @@ function poDetailsHtml(po) {
     <div class="po-hist">${hist}</div>
   </details>`;
 }
-// Кодгүй мөрийн санал: ИЖИЛ саналтай мөрүүдийг НЭГ мөрөнд нэгтгэнэ (4 хоолойтой, 2 хоолойтой → ижил 2 бараа гэж давтахгүй). Цэвэр.
-function poHintGroups(hints) {
-  const g = new Map();
-  (hints || []).forEach(h => {
-    const k = (h.matches || []).map(p => p.sku).join('|');
-    if (!g.has(k)) g.set(k, { names: [], matches: h.matches || [] });
-    g.get(k).names.push(h.line.name);
-  });
-  return [...g.values()];
-}
 // Төлөх данс нүүрэнд ЗӨВХӨН хэрэгтэй үед: батлагч шалгах (хүсэлт) ба шилжүүлэгч төлөх (батлагдсан). Төлсний дараа «Задаргаа»-д л.
 function poPayShown(po) { return po.status === 'request' || po.status === 'approved'; }
 function poCardHtml(po, caps) {
   const t = poTotals(po);
   const acts = poActions(po, caps);
   const probs = po.status === 'request' ? poProblems(po) : [];
-  // Кодгүй мөрийг холбох боломж: хүсэлт/батлагдсан үед «Засах»-аар; ирсний дараа хүлээн авах цонх өөрөө санал болгоно (карт дээр давтахгүй).
-  const hints = (po.status === 'request' || po.status === 'approved') ? poUnlinkedHints(po, state.products, state.purchases) : [];
   const btnOf = (a) => {
     const blocked = a.k === 'approve' && probs.length;
     return `<button class="btn po-btn${a.main ? ' po-main' : ''}${a.danger ? ' po-danger' : ''}" data-po-act="${a.k}" data-po-id="${escapeHtml(po.id)}"${blocked ? ' disabled' : ''}>${escapeHtml(a.label)}</button>`;
@@ -27837,7 +27813,6 @@ function poCardHtml(po, caps) {
         ${po.status === 'ordered' && !caps.receive ? poReceiverHintHtml() : ''}
         <div class="po-sub">${[po.platform, memberName(po.created_by), fmtDateTimeUB(po.created_at)].filter(Boolean).map(escapeHtml).join(' · ')}</div>
         ${poProgressHtml(po.status)}
-        ${hints.length ? `<div class="po-hint">ℹ Каталогт ижил бараа байж магадгүй — давхар бараа үүсгэхгүйн тулд «Засах»-аар холбоорой:<br>${poHintGroups(hints).slice(0, 3).map(g => `«${g.names.map(escapeHtml).join('», «')}» → ${g.matches.map(p => `«${escapeHtml(p.name || p.sku)}» (${escapeHtml(String(p.code || p.sku))})`).join(', ')}`).join('<br>')}</div>` : ''}
         ${poDetailsHtml(po)}
         ${btns2 ? `<div class="po-acts po-acts2">${btns2}</div>` : ''}
       </div>

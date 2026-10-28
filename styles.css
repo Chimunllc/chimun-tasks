@@ -8295,6 +8295,13 @@ select.no-asar-len {
 .po-edit .po-sug { display: flex; flex-direction: column; gap: var(--space-1); }
 .po-edit .po-sug:empty { display: none; }
 .po-edit .po-sug-h, .po-recv .po-sug-h { color: var(--muted); font-size: var(--fs-xs); }
+/* Өмнө авсан бараа = нэг эгнээ чип, хажуу тийш гүйнэ (хоосон мөрөнд л гарна — маягтыг уртасгахгүй) */
+.po-edit .po-recs { display: flex; gap: var(--space-2); min-width: 0; overflow-x: auto; padding-bottom: var(--space-1); }
+.po-edit .po-rec { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 0; max-width: 200px; min-height: 0; padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); text-align: left; cursor: pointer; }
+.po-edit .po-rec:hover { border-color: var(--primary); }
+.po-edit .po-rec b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 600; }
+.po-edit .po-rec small { color: var(--muted); font-size: var(--fs-xs); }
 .po-edit .po-hit, .po-recv .po-hit { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--tap); padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .po-edit .po-hit:hover, .po-recv .po-hit:hover { border-color: var(--primary); }

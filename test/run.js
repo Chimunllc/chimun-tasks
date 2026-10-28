@@ -15983,7 +15983,7 @@ async function swFetchTests() {
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
     'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poCmpFormHtml',
     'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml',
-    'poLinkKey', 'poSameItemHits', 'poSameItemLabel', 'poUnlinkedHints', 'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
+    'poLinkKey', 'poRecentItems', 'poLastLink', 'poSameItemHits', 'poSameItemLabel', 'poUnlinkedHints', 'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
 
   // ① Дүн — карго хүсэлтэд ОРОХГҮЙ (хүлээн авахад бодитоор); хуучин `s` талбар уншигдахгүй
   const x = F.poLineTotals(F.poLine({ q: 1, c: 1511, s: 182460 }), 540);
@@ -16240,11 +16240,27 @@ async function swFetchTests() {
     eq(W(F.poSameItemHits(PRODS, PUR, { u: '', name: ' углаа ' }, null)), [['M-310', 'name']], 'ижил бараа: нэр тэнцүү (том жижиг үсэг, зай ялгаа биш) = санал; багц орохгүй');
     eq(F.poSameItemHits(PRODS, PUR, { u: 'weixin.qq.com/r/abcdef', name: 'Босоо дугуй ширээ' }, null).map(x => x.p.sku), ['M-310', 'M-205'], 'ижил бараа: линктэй таарсан нь нэрээр таарсанаас ӨМНӨ');
     eq(F.poSameItemHits(PRODS, PUR, { u: '', name: 'У' }, null), [], 'ижил бараа: 1 үсэгтэй нэрээр таамаглахгүй');
+    {
+      const PR = [
+        { id: 'a', status: 'received', created_at: '2026-10-01T00:00:00Z', lines: [{ sku: 'M-310', name: 'Углаа', u: 'https://weixin.qq.com/r/abcDEF' }] },
+        { id: 'b', status: 'ordered', created_at: '2026-10-10T00:00:00Z', lines: [{ sku: 'M-205', name: 'Ширээ' }, { sku: 'M-310', name: 'Углаа', u: '' }, { sku: 'M-PK', name: 'Багц' }, { name: 'Кодгүй' }] },
+        { id: 'c', status: 'request', created_at: '2026-10-20T00:00:00Z', lines: [{ sku: 'M-400', name: 'Хивс', u: 'https://x.mn/p/1' }] },
+        { id: 'd', status: 'canceled', created_at: '2026-10-22T00:00:00Z', lines: [{ sku: 'M-400', name: 'Хивс' }] },
+      ];
+      eq(F.poRecentItems(PR, PRODS, 6).map(x => x.p.sku), ['M-205', 'M-310'], 'өмнө авсан: ЗӨВХӨН «Худалдан авсан/Хүлээн авсан», сүүлд авсан нь эхэнд; хүсэлт/цуцалсан, багц, кодгүй мөр орохгүй; нэг бараа нэг л удаа');
+      eq(F.poRecentItems(PR, PRODS, 6, new Set(['M-205'])).map(x => x.p.sku), ['M-310'], 'өмнө авсан: мөрд аль хэдийн сонгосон барааг дахин санал болгохгүй');
+      eq(F.poRecentItems(PR, PRODS, 1).length, 1, 'өмнө авсан: limit');
+      eq(F.poLastLink(PR, PRODS, 'M-310'), 'https://weixin.qq.com/r/abcDEF', 'өмнөх линк: сүүлийн авалтад линк хоосон бол өмнөх линктэй авалтаас биш — линктэй хамгийн сүүлийнх ИЖИЛ барааны линкийг ашиглана');
+      eq(F.poLastLink(PR, PRODS, 'M-205'), 'https://item.taobao.com/item.htm?id=998877&spm=a', 'өмнөх линк: худалдан авалтад линк байхгүй бол каталогийн source_url');
+      eq(F.poLastLink(PR, PRODS, 'M-400'), '', 'өмнөх линк: линк биш/байхгүй бол хоосон (таамаглахгүй)');
+      eq(F.poLastLink(PR, PRODS, ''), '', 'өмнөх линк: код байхгүй бол хоосон');
+    }
     const uh = F.poUnlinkedHints({ id: 'x', lines: [{ id: 'a', name: 'Шинэ нэр', u: 'item.taobao.com/item.htm?id=998877' }, { id: 'b', name: 'Хивс', sku: 'M-400' }] }, PRODS, PUR);
     eq(uh.map(x => [x.line.id, x.matches.map(m => m.sku)]), [['a', ['M-205']]], 'карт: кодгүй мөр өмнөх бараатай ИЖИЛ ЛИНКтэй бол нэр өөр ч санал болгоно');
     const srcS = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
     const reqS = srcS.slice(srcS.indexOf('async function openPoModal('), srcS.indexOf('/* ─── ШИЛЖҮҮЛСЭН / ХУДАЛДАН АВСАН'));
-    ok(/poSameItemHits\(state\.products, state\.purchases, l, ex && ex\.id\)/.test(reqS) && /f === 'u'\) \{ l\.u = e\.target\.value; if \(!l\.sku\) renderSug\(n\); \}/.test(reqS) && /poLinkKey\(l\.u\)\)\) renderSug\(i\)/.test(reqS), 'scan: хүсэлтийн цонх нэр БА ЛИНК бичихэд өмнө авсан ижил барааг (код ижил) санал болгоно');
+    ok(/poSameItemHits\(state\.products, state\.purchases, l, ex && ex\.id\)/.test(reqS) && /f === 'u'\) \{ l\.u = e\.target\.value; if \(!l\.sku\) renderSug\(n\); \}/.test(reqS) && /d\.lines\.forEach\(\(l, i\) => \{ if \(!l\.sku\) renderSug\(i\); \}\)/.test(reqS), 'scan: хүсэлтийн цонх нэр БА ЛИНК бичихэд өмнө авсан ижил барааг (код ижил) санал болгоно, хоосон мөрд ч өмнө авсан бараа гарна');
+    ok(/poRecentItems\(state\.purchases, state\.products, 6, have\)/.test(reqS) && /data-pick="\$\{i\}" data-sku="\$\{escapeHtml\(r\.p\.sku\)\}"/.test(reqS) && /l\.u = poLastLink\(state\.purchases, state\.products, p\.sku\)/.test(reqS), '⛔ scan: хоосон мөрд «↩ Өмнө авсан бараа» чип гарч, сонговол өмнөх ЛИНК хоосон талбарт өөрөө орно (CEO 2026-10-28)');
     const rcvS = srcS.slice(srcS.indexOf('async function openPoReceiveModal('), srcS.indexOf('/* Самбарын товчнууд'));
     ok(/poSameItemHits\(state\.products, state\.purchases, e\.row, po\.id\)/.test(rcvS) && /links\.length === 1/.test(rcvS) && /e\.auto = pick\.why/.test(rcvS) && /data-unl=/.test(rcvS), '⛔ scan: хүлээн авахад ижил линк/нэртэй НЭГ бараа таарвал ӨӨРӨӨ холбогдож (код ижил), «салгах» боломжтой; олон таарвал автоматаар БИШ');
   }

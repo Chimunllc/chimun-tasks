@@ -16487,7 +16487,7 @@ async function swFetchTests() {
       const caFace = ca.slice(0, ca.indexOf('<details class="po-more"')), caDet = ca.slice(ca.indexOf('<details class="po-more"'));
       eq(F.poEvRowHtml(ap1, ap1.lines[0]), '', '⛔ нүүр: батлагдсаны дараа 🧾/📊 нотлох зураг нүүрэнд ГАРАХГҮЙ (poEvRowHtml)');
       ok(!/🧾|📊/.test(caFace) && !/data-lightbox=/.test(caFace), '⛔ карт: батлагдсаны дараа нүүрэнд нотлох зураг ГАРАХГҮЙ (шийдвэр аль хэдийн гарсан)');
-      ok(/🧾 Үнэ тохирсон баримт/.test(caDet) && /📊 Үнийн харьцуулалт/.test(caDet) && (caDet.match(/data-lightbox=/g) || []).length === 4, 'задаргаа: батлагдсаны дараа баримт ба харьцуулалтын зураг тус тусдаа бүлэгт хэвээр (устахгүй)');
+      ok(!/Үнэ тохирсон баримт|Үнийн харьцуулалт/.test(caDet) && (caDet.match(/data-lightbox=/g) || []).length === 0, '⛔ задаргаа: батлагдсаны дараа нотлох зураг (🧾/📊) ДАВТАГДАХГҮЙ — батлах үедээ аль хэдийн хараад шийдсэн (CEO 2026-10-28)');
     }
 
     // Формын зурвас: ＋ нэмэх, ✕ хасах, дээд тал нь 3, байршиж буй ⏳
@@ -16508,7 +16508,9 @@ async function swFetchTests() {
     // Хавсаргасан файл: ЗӨВХӨН харуулна — зураг = thumbnail, бусад = холбоос, ✕ байхгүй
     const fi = F.poFileItemsHtml([IMGS[0], 'https://drive.google.com/file/d/abc/view', 'javascript:alert(1)']);
     ok(/data-lightbox=/.test(fi) && !/data-fdel/.test(fi), 'файл: зураг нь thumbnail (томорно), ✕ байхгүй (зөвхөн харуулна)');
-    ok(/href="https:\/\/drive\.google\.com/.test(fi) && !/href="javascript/i.test(fi), '⛔ файл: холбоос зөвхөн http(s)');
+    ok((fi.match(/data-lightbox=/g) || []).length === 2 && /lh3\.googleusercontent\.com\/d\/abc=w400/.test(fi) && !/href="https:\/\/drive\.google\.com/.test(fi), '⛔ файл: Google Drive-ийн (хуучин) баримт Drive руу гаргахгүй, апп дотор зураг болж харагдана (CEO 2026-10-28)');
+    const fi2 = F.poFileItemsHtml(['https://x.com/a.pdf', 'javascript:alert(1)']);
+    ok(/href="https:\/\/x\.com\/a\.pdf"/.test(fi2) && !/href="javascript/i.test(fi + fi2), '⛔ файл: зураг биш файл зөвхөн http(s) холбоос');
     eq([F.poIsImageFile(IMGS[0]), F.poIsImageFile('https://x.com/a.PNG?v=1'), F.poIsImageFile('https://drive.google.com/file/d/abc/view'), F.poIsImageFile('https://x.com/a.pdf')], [true, true, false, false], 'файл: зураг эсэхийг VPS /img/ эсвэл өргөтгөлөөр таньна (Drive-ийн хуучин хавсралт холбоос хэвээр)');
 
     // Хүсэлтийн цонх: «Судалгаа, баримт» хасагдсан (2026-10-27); засахад хуучин хавсралт ХАДГАЛАГДАНА
@@ -16543,8 +16545,9 @@ async function swFetchTests() {
 
       const om = src.slice(src.indexOf('function openPoOrderModal('), src.indexOf('/* ─── ХҮЛЭЭН АВАХ → БАРААНД НЭМЭГДЭНЭ'));
       ok(om.length > 200 && !/po-ordno|po-eta|tracking|Ирэх хугацаа/i.test(om), '⛔ scan: «Захиалгын / tracking дугаар», «Ирэх хугацаа» УСТСАН — буцаж ирэхгүй');
-      ok(/poUploadImage\(f\)/.test(om) && /Promise\.all\(picked\.map/.test(om) && !/\[\.\.\.[^;\n]*?,\s*await\s/.test(om), 'scan: Alipay баримтын зургийг VPS-д олон зураг ЗЭРЭГ байршуулна (массивын дотор await үгүй)');
-      ok(/if \(!pf\.length\)/.test(om) && /busy > 0/.test(om) && !/yuan/.test(om), 'scan: төлбөрийн баримт ЗААВАЛ (₮, ¥ хоёуланд), зураг байршиж байхад хадгалахгүй');
+      const ppk = src.slice(src.indexOf('function poProofPicker('), src.indexOf('async function poHandleAction('));
+      ok(/poProofPicker\(w,/.test(om) && /poUploadImage\(f\)/.test(ppk) && /Promise\.all\(picked\.map/.test(ppk) && !/\[\.\.\.[^;\n]*?,\s*await\s/.test(ppk) && !/uploadReceipt/.test(ppk), 'scan: баримтын зургийг (Alipay, шилжүүлгийн) VPS-д олон зураг ЗЭРЭГ байршуулна (массивын дотор await үгүй, Drive БИШ)');
+      ok(/if \(!pf\.length\)/.test(om) && /proof\.busy\(\) > 0/.test(om) && !/yuan/.test(om), 'scan: төлбөрийн баримт ЗААВАЛ (₮, ¥ хоёуланд), зураг байршиж байхад хадгалахгүй');
       ok(!/amo-hint|<i>\(/.test(om), '⛔ scan: цонхонд тайлбар бичвэр байхгүй (зөвхөн гарчиг + зураг)');
 
       // Цонхыг ҮНЭХЭЭР ажиллуулна: хуурамч цонх (poOpenModal), хуурамч байршуулалт — дарааллыг ЭРГҮҮЛЖ шалгана
@@ -16610,6 +16613,69 @@ async function swFetchTests() {
         }
       });
     }
+  }
+
+  // ═ ГАРЧИГ = «N барааны захиалга», ШИЛЖҮҮЛГИЙН БАРИМТ = ЗУРАГ (Drive-гүй) (2026-10-28, CEO) ═
+  {
+    const mk4 = (n, extra) => F.poNormalize({ id: 'tt', no: 11, status: 'paid', fx: 1, created_by: 'U', ...(extra || {}), lines: Array.from({ length: n }, (_, i) => ({ id: 'l' + i, name: 'Бараа' + i, q: 1, c: 100 })) });
+    eq([F.poWho({ supplier: '', lines: [{ name: 'А' }, { name: 'Б' }, { name: 'В' }, { name: 'Г' }] }), F.poWho({ supplier: ' Jimo ', lines: [{ name: 'А' }, { name: 'Б' }] }), F.poWho({ lines: [{ name: 'Ширээ' }] })], ['4 барааны захиалга', 'Jimo', 'Ширээ'], 'poWho: олон бараатай = «N барааны захиалга», дэлгүүр байвал дэлгүүр, нэг бараа = нэр');
+    const h4 = F.poCardHtml(mk4(4), { me: 'C' }), h1 = F.poCardHtml(mk4(1), { me: 'C' });
+    ok(/class="po-title">4 барааны захиалга</.test(h4) && !/бусад/.test(h4.slice(0, h4.indexOf('class="po-cls"'))), '⛔ карт: 4 бараатай хүсэлтийн гарчиг «4 барааны захиалга» (ганц барааны нэр + «+3 бусад» БИШ)');
+    ok(/class="po-title">Бараа0</.test(h1), 'карт: нэг бараатай хүсэлтийн гарчиг = барааны нэр');
+    const IMG1 = 'https://n8n.nomaadcamp.com/img/rcpt1.jpg', DRV = 'https://drive.google.com/file/d/abcDEF/view';
+    const hp = F.poCardHtml(mk4(2, { files: [IMG1, DRV] }), { me: 'C' });
+    const hpFace = hp.slice(0, hp.indexOf('<details class="po-more"')), hpDet = hp.slice(hp.indexOf('<details class="po-more"'));
+    ok(/🧾 Шилжүүлгийн баримт/.test(hpFace) && (hpFace.match(/data-lightbox=/g) || []).length === 2 && /lh3\.googleusercontent\.com\/d\/abcDEF=w1600/.test(hpFace), '⛔ карт (paid): шилжүүлгийн баримт нүүрэнд ЗУРАГ болж харагдана (VPS зураг ба хуучин Drive баримт хоёул), дарахад апп дотор томорно');
+    ok(!/Хавсаргасан файл|📎 файл|href="https:\/\/drive\.google\.com/.test(hp) && !/data-lightbox=/.test(hpDet), '⛔ карт: «📎 файл 1» Drive холбоос, «Хавсаргасан файл» Задаргаад БАЙХГҮЙ');
+    ok(/📎 Хавсралт/.test(F.poCardHtml(mk4(1, { status: 'approved', files: [IMG1] }), { me: 'C' })) && !/Шилжүүлгийн баримт/.test(F.poCardHtml(mk4(1, { status: 'approved', files: [IMG1] }), { me: 'C' })), 'карт (approved): төлөхөөс өмнөх файл нь хуучин хавсралт («Шилжүүлгийн баримт» гэж андуурахгүй)');
+    eq(F.poFilesRowHtml(mk4(1, { files: [] })), '', 'баримт: байхгүй үед мөр гарахгүй');
+    const pd = F.poCardHtml(mk4(4, { history: [{ at: '2026-10-28T03:00:00Z', by: 'U', to: 'request' }, { at: '2026-10-28T05:00:00Z', by: 'C', to: 'approved' }, { at: '2026-10-28T06:00:00Z', by: 'C', to: 'paid' }] }), { me: 'C' });
+    ok(/<summary>Түүх<\/summary>/.test(pd) && !/Үнийн харьцуулалт|Төлөх данс|Хавсаргасан/.test(pd.slice(pd.indexOf('<details class="po-more"'))), '⛔ карт (paid): «Задаргаа · түүх» нь ЗӨВХӨН түүх — давтагдсан зураг, данс, файл алга');
+
+    // «Шилжүүлсэн» цонхыг ҮНЭХЭЭР ажиллуулна: зураг VPS-д байршиж, PO-ийн files-д нэмэгдэнэ (Drive-д БИШ)
+    (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+      const saved = { open: sandbox.poOpenModal, up: sandbox.poUploadImage, pt: sandbox.poPatch, rn: sandbox.render, tt: sandbox.showToast, ur: sandbox.uploadReceipt };
+      const stP = vm.runInContext('state', sandbox), prevP = stP.purchases;
+      const patches = [], toasts = [], drive = [];
+      try {
+        const run = async (steps) => {
+          const els = {}, L = {};
+          const el = (sel) => (els[sel] = els[sel] || { innerHTML: '', value: sel === '#pp-date' ? '2026-10-28' : sel === '#pp-amt' ? '300' : '', hidden: false, onclick: null, disabled: false, addEventListener() {} });
+          const w = { m: { addEventListener: (t, fn) => { (L[t] = L[t] || []).push(fn); } }, close() { this.closed = true; }, $: el };
+          sandbox.poOpenModal = () => w;
+          stP.purchases = [F.poNormalize({ id: 'pay1', no: 5, status: 'approved', fx: 1, created_by: 'U', total_mnt: 300, pay_to: { bank: 'Хаан банк', no: '5001', name: 'Б.Бат' }, files: ['https://old.example/x.pdf'], lines: [{ id: 'a', name: 'Ширээ', q: 3, c: 100 }] })];
+          await vm.runInContext('openPoPayModal', sandbox)('pay1');
+          await steps({ els, L, fire: async (type, target) => { for (const fn of (L[type] || [])) await fn({ target }); } });
+          return els;
+        };
+        sandbox.poUploadImage = async (f) => { await new Promise(r => setTimeout(r, f.name === 'a.png' ? 15 : 1)); return 'https://n8n.nomaadcamp.com/img/' + f.name; };
+        sandbox.uploadReceipt = async (f) => { drive.push(f.name); return 'https://drive.google.com/file/d/x/view'; };
+        sandbox.poPatch = async (id, patch, from) => { patches.push({ id, patch, from }); };
+        sandbox.render = () => {}; sandbox.showToast = (m) => { toasts.push(String(m)); };
+        // 2 зураг + 1 PDF → зөвхөн зураг, ЗЭРЭГ, Drive руу ОГТ явахгүй, хуучин файл хадгалагдана
+        const els1 = await run(async (c) => {
+          const inp = { files: [{ name: 'a.png', type: 'image/png' }, { name: 'b.png', type: 'image/png' }, { name: 'x.pdf', type: 'application/pdf' }] };
+          await c.fire('change', { closest: (s) => s === '#pp-pf-in' ? inp : null });
+          await els_ok(c);
+        });
+        async function els_ok(c) { await c.els['#pp-ok'].onclick({ currentTarget: c.els['#pp-ok'] }); }
+        const p1 = patches[0] && patches[0].patch;
+        eq(p1 && [p1.status, p1.paid_mnt, (p1.files || []).slice(0, 1), (p1.files || []).slice(1).sort()], ['paid', 300, ['https://old.example/x.pdf'], ['https://n8n.nomaadcamp.com/img/a.png', 'https://n8n.nomaadcamp.com/img/b.png']], '⛔ цонх (Шилжүүлсэн): шилжүүлгийн 2 зураг ЗЭРЭГ VPS-д орж PO-ийн files-д нэмэгдэнэ, хуучин файл хадгалагдана, PDF орохгүй');
+        eq(drive, [], '⛔ цонх (Шилжүүлсэн): баримт Google Drive руу ОГТ явахгүй');
+        ok(/accept="image\/\*"/.test((els1['#pp-pf'] || {}).innerHTML || '') && !/pdf/i.test((els1['#pp-pf'] || {}).innerHTML || ''), 'цонх: баримт сонгох талбар зөвхөн зураг (PDF байхгүй)');
+        // баримтгүй ч бүртгэгдэнэ (заавал биш), files өөрчлөгдөхгүй
+        patches.length = 0;
+        await run(async (c) => { await els_ok(c); });
+        const p2 = patches[0] && patches[0].patch;
+        eq(p2 && (p2.files === undefined || (p2.files || []).length === 0), true, 'цонх (Шилжүүлсэн): баримтгүй ч бүртгэгдэнэ (заавал биш), files нэмэгдэхгүй');
+      } finally {
+        sandbox.poOpenModal = saved.open; sandbox.poUploadImage = saved.up; sandbox.poPatch = saved.pt; sandbox.render = saved.rn; sandbox.showToast = saved.tt; sandbox.uploadReceipt = saved.ur;
+        stP.purchases = prevP;
+      }
+    });
+    const srcPP = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const ppM = srcPP.slice(srcPP.indexOf('async function openPoPayModal('), srcPP.indexOf('function openPoOrderModal('));
+    ok(/poProofPicker\(w, \{ box: 'pp-pf'/.test(ppM) && !/poUploadAll|uploadReceipt|pp-file|application\/pdf/.test(ppM + srcPP.slice(srcPP.indexOf('function poProofPicker('), srcPP.indexOf('async function poHandleAction('))) && !/poUploadAll/.test(srcPP), '⛔ scan: «Шилжүүлсэн» цонх баримтыг VPS зургаар (poProofPicker) авна; poUploadAll/uploadReceipt (Google Drive) БУЦАЖ ИРЭХГҮЙ');
   }
 
   // ХҮЛЭЭН АВАГЧ = ИЛ ТОМИЛСОН ХҮН; мөр бүрийн карго; Тойм дээр «хүлээн аваагүй бараа» (CEO 2026-10-27)
@@ -16788,7 +16854,7 @@ async function swFetchTests() {
         pay_to: ACCT, lines: [{ id: 'a', name: 'Хурдан гар тоглоом', q: 1, c: 1220, u: 'item.taobao.com/a' }, { id: 'b', name: 'Баллон', q: 2, c: 10 }] }), { me: 'C', approve: true });
       const face = mc.slice(mc.indexOf('<summary'), mc.indexOf('</summary>'));
       const faceTxt = face.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-      ok(/#7/.test(faceTxt) && /Хурдан гар тоглоом/.test(faceTxt) && /\+1 бусад/.test(faceTxt) && /₮/.test(faceTxt) && /Хүсэлт/.test(faceTxt), '⛔ минимал карт: нүүрэнд зөвхөн №, барааны нэр, нийт дүн, төлөв');
+      ok(/#7/.test(faceTxt) && /2 барааны захиалга/.test(faceTxt) && !/Хурдан гар тоглоом|бусад/.test(faceTxt) && /₮/.test(faceTxt) && /Хүсэлт/.test(faceTxt), '⛔ минимал карт: нүүрэнд зөвхөн №, «N барааны захиалга» (олон бараа бол ганц барааны нэр + «+N бусад» БИШ), нийт дүн, төлөв');
       ok(!/Xinrui|Тэмдэглэл|Б\.Бат|5012345678|item\.taobao|¥|Батлах/.test(faceTxt), '⛔ минимал карт: нүүрэнд нийлүүлэгч, данс, линк, ¥, тэмдэглэл, товч БАЙХГҮЙ (дарж нээхэд харагдана)');
       {
         // ⛔ `.po-card` гурван газар хуваалцагддаг: самбарын карт + хүсэлтийн цонхны <section> + хүлээн авах цонхны карт. Самбарын картын `overflow: hidden`
@@ -16867,7 +16933,7 @@ async function swFetchTests() {
         const faceOf = (h) => h.slice(0, h.indexOf('<details class="po-more"'));
         ok(!/<span>Салбар<\/span>/.test(brOf(F.poCardHtml(mkS('ordered'), { me: 'C' }))) && /<span>Салбар<\/span>/.test(brOf(F.poCardHtml(mkS('ordered', { rcv: 4 }), { me: 'C' }))), '⛔ задаргаа: «Салбар» нь хүлээн авахад л сонгогддог тул ирэхээс өмнө (өгөгдмөл M-Event) харагдахгүй');
         ['request', 'approved'].forEach(st => ok(/class="po-pay"/.test(faceOf(F.poCardHtml(mkS(st), { me: 'C' }))) && !/<span>Төлөх данс<\/span>/.test(brOf(F.poCardHtml(mkS(st), { me: 'C' }))), `⛔ карт (${st}): төлөх данс нүүрэнд ЗӨВХӨН нэг удаа (Задаргаад давтагдахгүй)`));
-        ['paid', 'ordered', 'received'].forEach(st => ok(!/class="po-pay"/.test(faceOf(F.poCardHtml(mkS(st), { me: 'C' }))) && /<span>Төлөх данс<\/span>/.test(brOf(F.poCardHtml(mkS(st), { me: 'C' }))), `⛔ карт (${st}): төлсний дараа төлөх данс нүүрэнд ГАРАХГҮЙ, түүхийн лавлагаа болж «Задаргаа»-д л`));
+        ['paid', 'ordered', 'received'].forEach(st => ok(!/class="po-pay"/.test(faceOf(F.poCardHtml(mkS(st), { me: 'C' }))) && !/<span>Төлөх данс<\/span>/.test(brOf(F.poCardHtml(mkS(st), { me: 'C' }))) && !/5012345678/.test(F.poCardHtml(mkS(st), { me: 'C' })), `⛔ карт (${st}): төлсний дараа төлөх данс нүүрэнд ч, Задаргаад ч ГАРАХГҮЙ (шилжүүлэгч өмнө нь харсан; CEO 2026-10-28)`));
         ok(!/<span>Платформ<\/span>/.test(F.poCardHtml(mkS('approved'), { me: 'C' })) && /Taobao/.test(F.poCardHtml(mkS('approved'), { me: 'C' })), 'карт: платформ нэг л удаа (нүүрийн доорх мөрөнд), Задаргаад давтагдахгүй');
       }
     }

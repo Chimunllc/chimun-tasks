@@ -27072,6 +27072,11 @@ function poAcctKey(a) { return (String(a && a.bank || '') + '|' + String(a && a.
 /* Өмнөх худалдан авалтуудад ашигласан ДАНСНУУД — шинэ хүсэлтэд нэг товшилтоор бөглөнө (CEO 2026-10-27: «өмнөх данснуудыг санадаг байвал зүгээр»).
    Банк+дугаараар давхардлыг нэгтгэнэ, СҮҮЛД ашигласан нь эхэнд (n = хэдэн удаа). ⛔ Зөвхөн БҮРЭН (банк+дугаар+нэр) данс. Шинэ хүснэгт БАЙХГҮЙ —
    худалдан авалтын мөрүүдийн `pay_to`-оос өөрөө гарна («өөрөө үүсдэг» дүрэм), гараар бүртгэх зүйлгүй. */
+// Цонхны гарчигт «хэн/юу»: дэлгүүр (хуучин хүсэлт) байвал тэр, үгүй бол эхний барааны нэр. Дэлгүүр форм дээрээс хасагдсан (2026-10-28).
+function poWho(po) {
+  const l = ((po && po.lines) || [])[0];
+  return String((po && po.supplier) || '').trim() || (l ? String(l.name || l.sku || '').trim() : '');
+}
 function poPrevAccounts(list, limit) {
   const by = new Map();
   (list || []).slice().sort((a, b) => String(b && b.created_at || '').localeCompare(String(a && a.created_at || ''))).forEach(p => {
@@ -27328,7 +27333,6 @@ function poProblems(po, needPayTo) {
   const out = [];
   const ls = (po && po.lines) || [];
   if (!ls.length) out.push('бараа нэмээгүй байна');
-  if (!String((po && po.supplier) || '').trim()) out.push('нийлүүлэгчийн нэр алга');
   const wantAcct = needPayTo === undefined ? state._poHasPayTo !== false : !!needPayTo;   // багана DB-д байхгүй үед шаардахгүй
   if (wantAcct && !poPayToOk(po && po.pay_to)) out.push('төлөх данс алга');
   ls.forEach(l => {
@@ -27833,7 +27837,7 @@ async function poUploadAll(files, id) {
 async function poHandleAction(act, id, btn) {
   const po = poById(id);
   if (!po) return;
-  const label = `#${po.no == null ? '—' : po.no} · ${po.supplier || 'нийлүүлэгчгүй'} · ${fmtMoney(po.total_mnt)}`;
+  const label = `#${po.no == null ? '—' : po.no} · ${poWho(po) || 'худалдан авалт'} · ${fmtMoney(po.total_mnt)}`;
   try {
     if (act === 'edit') { await openPoModal(id); return; }
     if (act === 'pay') { openPoPayModal(id); return; }
@@ -27880,7 +27884,6 @@ function poFormIssues(f) {
     if (!(Number(l._t) > 0)) out.push({ k: 'total', i, label: 'нийт үнэ' });
   });
   if (f && f.cur !== 'MNT' && !poFxValid(Number(f.fx))) out.push({ k: 'fx', label: 'ханш' });
-  if (!String((f && f.supplier) || '').trim()) out.push({ k: 'sup', label: 'дэлгүүр' });
   if (f && !f.noCol) {
     const p = poPayTo(f.pay_to);
     if (!p.bank) out.push({ k: 'bank', label: 'банк' });
@@ -27912,7 +27915,7 @@ function poLineCardHtml(l, i, fx, mnt, n) {
     ? `<b class="po-line-nm">${escapeHtml(l.name || l.sku)}</b><span class="po-linked">✓ Каталогийн бараа <span class="po-badge">${escapeHtml(l.sku)}</span> · <button type="button" class="ui-raw po-lnk" data-unlink="${i}">салгах</button></span>`
     : `<input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(l.name)}" placeholder="Барааны нэр" autocomplete="off" aria-label="Барааны нэр">`;
   const t = l._t != null ? l._t : poLineTotalCur(l);
-  const hasExtra = !!(l.u || l.nt || (l.pr || []).length || (l.cmp || []).length);
+  const hasExtra = !!(l.nt || (l.pr || []).length || (l.cmp || []).length);
   return `<div class="po-line" data-i="${i}">
     ${n > 1 ? `<div class="po-line-hd"><span>Бараа ${i + 1}</span><button type="button" class="ui-raw po-txtbtn" data-del="${i}">Хасах</button></div>` : ''}
     <div class="po-line-top">${tile}<div class="po-line-nmwrap">${nm}</div></div>
@@ -27924,12 +27927,12 @@ function poLineCardHtml(l, i, fx, mnt, n) {
         <div class="po-ctl"><span class="po-pre">${cur}</span><input class="ui-raw" data-f="t" type="number" min="0" step="0.01" inputmode="decimal" value="${t || ''}" placeholder="Нийт (тээвэртэй)" aria-label="Нийт үнэ, тээвэртэй нь"></div></div>
     </div>
     <div class="po-unit${poLineUnitReady(l, fx) ? ' ok' : ''}" data-sum="${i}">${poLineSumHtml(l, fx, poIsMnt(fx, mnt))}</div>
+    <div class="po-fld"><input class="ui-raw po-txt" data-f="u" value="${escapeHtml(l.u || '')}" placeholder="🔗 Линк (WeChat, Taobao…)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Худалдан авсан линк"></div>
     <details class="po-lx"${hasExtra ? ' open' : ''}>
-      <summary class="po-lx-h">＋ Нэмэлт <small>линк · баримт · тэмдэглэл</small></summary>
-      <div class="po-fld"><span class="po-lb">🔗 Худалдан авах эх сурвалж <i>линк эсвэл газар</i></span><input class="ui-raw po-txt" data-f="u" value="${escapeHtml(l.u || '')}" placeholder="https://item.taobao.com/… эсвэл газрын нэр" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Худалдан авах эх сурвалж"></div>
+      <summary class="po-lx-h">＋ Нэмэлт <small>баримт · харьцуулалт · тэмдэглэл</small></summary>
       ${poEvStripFormHtml(l, i, 'pr')}
       ${poEvStripFormHtml(l, i, 'cmp')}
-      <div class="po-fld"><span class="po-lb">Тэмдэглэл <i>өнгө, хэмжээ, сонголт</i></span><input class="ui-raw po-txt" data-f="nt" value="${escapeHtml(l.nt || '')}" maxlength="300" autocomplete="off" aria-label="Барааны тэмдэглэл"></div>
+      <div class="po-fld"><span class="po-lb">Тэмдэглэл <i>хэмжээ, сонголт</i></span><input class="ui-raw po-txt" data-f="nt" value="${escapeHtml(l.nt || '')}" maxlength="300" autocomplete="off" aria-label="Барааны тэмдэглэл"></div>
     </details>
   </div>`;
 }
@@ -27959,7 +27962,6 @@ async function openPoModal(id) {
     : { supplier: '', platform: '', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, note: '', pay_to: poPayTo(null), lines: [blankLine()] };
   const noCol = state._poHasPayTo === false;   // DB-д pay_to багана алга — данс хадгалагдахгүй (SQL ажиллуулаагүй)
   const prevAccts = noCol ? [] : poPrevAccounts(state.purchases, 2);
-  const sups = [...new Set([...(state.purchases || []).map(p => p.supplier), ...purchaseRows(state.financeRequests || []).map(r => r.supplier)].filter(Boolean))].slice(0, 200);
   const w = poOpenModal('po-edit', `
     <div class="modal-head"><b class="po-head-t">${ex ? `Худалдан авалт #${ex.no}` : 'Шинэ худалдан авалт'}</b><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
     <div class="modal-body po-form">
@@ -27980,28 +27982,24 @@ async function openPoModal(id) {
         </div></div>
       </section>
       <section class="po-card">
-        <div class="po-fld">
-          <input id="po-sup" class="ui-raw po-txt" list="po-sup-dl" value="${escapeHtml(d.supplier)}" placeholder="Дэлгүүр (жишээ: Xinrui lighting)" autocomplete="off" aria-label="Нийлүүлэгч / дэлгүүр"></div>
-        <datalist id="po-sup-dl">${sups.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
         ${noCol ? '<div class="po-probs">⚠ Данс хадгалагдахгүй: <code>db/purchases_account.sql</code> ажиллуулаагүй байна.</div>' : `
         <datalist id="po-bank-dl">${PO_BANKS.map(b => `<option value="${escapeHtml(b)}">`).join('')}</datalist>
         <div class="po-lb po-lb-h">Төлөх данс</div>
-        ${prevAccts.length ? `<div class="po-fld">          <div class="po-chips">${prevAccts.map((a, i) => `<button type="button" class="ui-raw po-chip po-acct${poAcctKey(a) === poAcctKey(d.pay_to) && a.name === d.pay_to.name ? ' on' : ''}" data-prev="${i}"><b>${escapeHtml(a.name)}</b><small>${escapeHtml(a.bank)} · ${escapeHtml(a.no)}${a.supplier ? ' · ' + escapeHtml(a.supplier) : ''}${a.n > 1 ? ' · ' + a.n + ' удаа' : ''}</small></button>`).join('')}<button type="button" class="ui-raw po-chip" data-newacct="1">＋ Өөр данс</button></div>` : ''}
+        ${prevAccts.length ? `<div class="po-fld">          <div class="po-chips">${prevAccts.map((a, i) => `<button type="button" class="ui-raw po-chip po-acct${poAcctKey(a) === poAcctKey(d.pay_to) && a.name === d.pay_to.name ? ' on' : ''}" data-prev="${i}"><b>${escapeHtml(a.name)}</b><small>${escapeHtml(a.bank)} · ${escapeHtml(a.no)}</small></button>`).join('')}<button type="button" class="ui-raw po-chip" data-newacct="1">＋ Өөр данс</button></div>` : ''}
         <div id="po-acct-fields" class="po-acct-fields"${prevAccts.length && !(d.pay_to.bank && d.pay_to.no && d.pay_to.name) ? ' hidden' : ''}>
           <div class="po-row2">
-            <div class="po-fld"><input id="po-pbank" class="ui-raw po-txt" list="po-bank-dl" value="${escapeHtml(d.pay_to.bank)}" placeholder="Банк / систем (Хаан банк, Alipay…)" autocomplete="off" aria-label="Банк / систем"></div>
-            <div class="po-fld"><input id="po-pno" class="ui-raw po-txt" type="text" inputmode="text" autocomplete="off" value="${escapeHtml(d.pay_to.no)}" placeholder="Дансны дугаар / ID" aria-label="Дансны дугаар / ID"></div>
+            <div class="po-fld"><input id="po-pbank" class="ui-raw po-txt" list="po-bank-dl" value="${escapeHtml(d.pay_to.bank)}" placeholder="Банк" autocomplete="off" aria-label="Банк / систем"></div>
+            <div class="po-fld"><input id="po-pno" class="ui-raw po-txt" type="text" inputmode="text" autocomplete="off" value="${escapeHtml(d.pay_to.no)}" placeholder="Данс" aria-label="Дансны дугаар / ID"></div>
           </div>
-          <div class="po-fld"><input id="po-pnm" class="ui-raw po-txt" type="text" autocomplete="off" value="${escapeHtml(d.pay_to.name)}" placeholder="Данс эзэмшигчийн нэр" aria-label="Данс эзэмшигчийн нэр"></div>
-        </div>
-        <div id="po-pay-hint" class="po-note"></div>`}
+          <div class="po-fld"><input id="po-pnm" class="ui-raw po-txt" type="text" autocomplete="off" value="${escapeHtml(d.pay_to.name)}" placeholder="Нэр" aria-label="Данс эзэмшигчийн нэр"></div>
+        </div>`}
       </section>
     </div>
     <div class="modal-actions po-foot"><div class="po-foot-sum" id="po-total"></div><button class="btn" id="po-cancel">Болих</button><button class="btn btn-primary" id="po-save">${ex ? 'Хадгалах' : 'Хүсэлт илгээх'}</button></div>`);
   const val = (sel) => { const el = w.$(sel); return el ? el.value : ''; };
   const curVal = () => (val('#po-cur') === 'MNT' ? 'MNT' : 'CNY');
   const curFx = () => (curVal() === 'MNT' ? 1 : poNum(val('#po-fx')));
-  const formState = () => ({ lines: d.lines, cur: curVal(), fx: curFx(), supplier: val('#po-sup'), noCol,
+  const formState = () => ({ lines: d.lines, cur: curVal(), fx: curFx(), noCol,
     pay_to: noCol ? null : { bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') } });
   const fxHint = () => {
     const mnt = curVal() === 'MNT';
@@ -28063,7 +28061,7 @@ async function openPoModal(id) {
     if (x.k === 'name') return card && card.querySelector('[data-f="name"]');
     if (x.k === 'qty') return card && card.querySelector('[data-f="q"]');
     if (x.k === 'total') return card && card.querySelector('[data-f="t"]');
-    return w.$({ fx: '#po-fx', sup: '#po-sup', bank: '#po-pbank', acct: '#po-pno', owner: '#po-pnm' }[x.k]);
+    return w.$({ fx: '#po-fx', bank: '#po-pbank', acct: '#po-pno', owner: '#po-pnm' }[x.k]);
   };
   const focusIssue = (x) => {
     const el = issueEl(x); if (!el) return;
@@ -28162,7 +28160,6 @@ async function openPoModal(id) {
       const a = prevAccts[+pv.dataset.prev];
       if (a) {
         [['#po-pbank', a.bank], ['#po-pno', a.no], ['#po-pnm', a.name]].forEach(([id, v]) => { const inp = w.$(id); if (inp) { inp.value = v; inp.dispatchEvent(new Event('input', { bubbles: true })); } });
-        w.$('#po-pay-hint').textContent = 'Өмнө ашигласан данснаас бөглөгдлөө — зөв эсэхийг шалгаарай.';
         syncAcctChips();
       }
       return;
@@ -28183,20 +28180,7 @@ async function openPoModal(id) {
   w.$('#po-addline').onclick = () => { d.lines.push(blankLine()); draw(); focusName(d.lines.length - 1); };
   w.$('#po-fx').addEventListener('input', () => { fxHint(); sums(); });
   w.$('#po-cur').addEventListener('change', draw);
-  ['#po-sup', '#po-pbank', '#po-pno', '#po-pnm'].forEach(id => { const el = w.$(id); if (el) el.addEventListener('input', () => { syncAcctChips(); sums(); }); });
-  // Нийлүүлэгч өмнө нь байсан бол дансыг өмнөх худалдан авалтаас бөглөнө (бүгд хоосон үед л; хүн шалгаж засна).
-  const fillPay = () => {
-    if (noCol) return;
-    const sup = w.$('#po-sup').value.trim().toLowerCase();
-    if (!sup || ['#po-pbank', '#po-pno', '#po-pnm'].some(id => w.$(id).value.trim())) return;
-    const prev = (state.purchases || []).filter(p => String(p.supplier || '').trim().toLowerCase() === sup && poPayToOk(p.pay_to) && (!ex || p.id !== ex.id))
-      .sort((a, b2) => String(b2.created_at).localeCompare(String(a.created_at)))[0];
-    if (!prev) return;
-    w.$('#po-pbank').value = prev.pay_to.bank; w.$('#po-pno').value = prev.pay_to.no; w.$('#po-pnm').value = prev.pay_to.name;
-    w.$('#po-pay-hint').textContent = `Өмнөх худалдан авалтаас (#${prev.no}) бөглөгдлөө — зөв эсэхийг шалгаарай.`;
-    syncAcctChips(); sums();
-  };
-  w.$('#po-sup').addEventListener('change', fillPay);
+  ['#po-pbank', '#po-pno', '#po-pnm'].forEach(id => { const el = w.$(id); if (el) el.addEventListener('input', () => { syncAcctChips(); sums(); }); });
   w.$('#po-cancel').onclick = w.close;
   w.$('#po-save').onclick = async (ev) => {
     const btn = ev.currentTarget;
@@ -28209,7 +28193,7 @@ async function openPoModal(id) {
     const fx = cur === 'MNT' ? 1 : poNum(val('#po-fx'));
     const pay_to = noCol ? poPayTo(null) : poPayTo({ bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') });
     // Шинэ хүсэлтийн холбоос (`url`) талбар форм дээр БАЙХГҮЙ — эх сурвалж бараа тус бүр дээр (`u`). Хуучин хүсэлтийнх хэвээр үлдэнэ.
-    const po = { supplier: val('#po-sup').trim(), platform: ex ? ex.platform : '', url: ex ? ex.url : '', fx,
+    const po = { supplier: ex ? ex.supplier : '', platform: ex ? ex.platform : '', url: ex ? ex.url : '', fx,
       note: ex ? ex.note : '', pay_to, lines };   // платформ/нийт тэмдэглэл форм дээрээс ХАСАГДСАН (2026-10-28) — хуучин утга хадгалагдана
     po.total_mnt = poTotals({ lines, fx }).total;
     const btnText = btn.textContent;
@@ -28247,7 +28231,7 @@ async function openPoPayModal(id) {
   const goodsAt = (rate) => poTotals({ lines: po.lines, fx: rate }).item;
   const cny = po.lines.reduce((n, l) => n + (Number(l.q) || 0) * (Number(l.c) || 0), 0);
   const w = poOpenModal('po-step', `
-    <div class="modal-head"><b>💸 Шилжүүлсэн · #${po.no} ${escapeHtml(po.supplier)}</b><button class="modal-x po-x-close">✕</button></div>
+    <div class="modal-head"><b>💸 Шилжүүлсэн · #${po.no} ${escapeHtml(poWho(po))}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
       <p class="amo-hint">Хүсэлтийн дүн <b>${escapeHtml(fmtMoney(po.total_mnt))}</b>${yuan ? ` (¥${escapeHtml(Math.round(cny).toLocaleString('en-US'))} × ${escapeHtml(String(po.fx))})` : ''}. Банк / Alipay / каргогоор бодитоор шилжүүлсэн дүнгээ оруулна.
         Банкны зардал хуулгаас өөрөө орно — энд давхар бичихгүй.${yuan ? ` Шилжүүлэх дүн = бараа (¥ × ханш). Хятад доторх тээвэр нийт үнэд орсон; УБ хүртэлх карго бараа ирэхэд «Хүлээн авах»-д оруулагдаж ширхэгт жигд хуваагдана.` : ''}</p>
@@ -28310,7 +28294,7 @@ function openPoOrderModal(id) {
   const pf = [];   // төлбөрийн баримтын зураг ЗААВАЛ (юанд Alipay) — бичвэр, тайлбар хэрэггүй
   let busy = 0;
   const w = poOpenModal('po-step', `
-    <div class="modal-head"><b>🛒 Худалдан авсан · #${po.no} ${escapeHtml(po.supplier)}</b><button class="modal-x po-x-close">✕</button></div>
+    <div class="modal-head"><b>🛒 Худалдан авсан · #${po.no} ${escapeHtml(poWho(po))}</b><button class="modal-x po-x-close">✕</button></div>
     <div class="modal-body">
       <div class="po-fld"><span class="po-lb">🧾 ${escapeHtml(poProofLabel(po))}</span><div class="po-evs" id="po-pf"></div></div>
     </div>
@@ -28433,7 +28417,6 @@ async function openPoReceiveModal(id) {
   });
   const open = rows.filter(r => poLineLeft(r) > 0);
   const prodOf = (r) => r.sku ? (state.products || []).find(p => p.sku === r.sku) : null;
-  const cats = [...new Set((state.products || []).map(p => p.category).filter(Boolean))].sort();
   const needCargo = po.fx !== 1;   // юанийн (Хятадаас ирэх) бараа — мөр бүрт карго заавал (төлөөгүй бол 0); ₮-өөр бол заавал биш
   const ent = open.map(r => ({ row: r, get: poLineLeft(r), short: false, b: r.b, cat: r.cat, name: r.name, lq: '', linkedHere: false, cg: '', rp: [], busy: 0 }));
   // Кодгүй мөрт каталогоос ижил бараа санал болгоно / хайна (давхар бараа үүсэхээс сэргийлнэ). ⛔ Автоматаар холбохгүй.
@@ -28464,17 +28447,15 @@ async function openPoReceiveModal(id) {
       </div>
       <div class="po-fld" data-rpbox="${i}"><span class="po-lb">📷 Ирсэн барааны зураг <i>заавал · барааны эхний зураг болно</i></span><div class="po-evs po-rp" data-rp="${i}"></div></div>
       <div class="po-fld"><span class="po-lb">Аль салбарт</span><div class="po-chips">${brs}</div></div>
-      ${r.sku ? '' : `<div class="po-row2"><div class="po-fld"><span class="po-lb">Барааны нэр</span><input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(e.name)}"></div>
-        <div class="po-fld"><span class="po-lb">Ангилал <i>заавал</i></span><input class="ui-raw po-line-in" data-f="cat" list="po-cat-dl" value="${escapeHtml(e.cat)}" placeholder="жишээ: Гэрэлтүүлэг"></div></div>`}
+      ${r.sku ? '' : `<div class="po-fld"><span class="po-lb">Барааны нэр</span><input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(e.name)}"></div>`}
       <div class="po-unit" data-after="${i}"></div>
       <div class="po-rl-rest po-off" data-rest="${i}"><span class="po-rest-t"></span><label class="po-chk"><input type="checkbox" data-f="short"${e.short ? ' checked' : ''}> Дахиж ирэхгүй</label></div>
     </section>`;
   };
   const doneRows = rows.filter(r => poLineLeft(r) === 0);
   const w = poOpenModal('po-edit po-recv', `
-    <div class="modal-head"><div class="po-head-t"><b>📦 Хүлээн авах · #${po.no}</b><small>${escapeHtml(po.supplier)} · ирсэн тоог шалгаад баталгаажуулна</small></div><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
+    <div class="modal-head"><div class="po-head-t"><b>📦 Хүлээн авах · #${po.no}</b><small>${escapeHtml(poWho(po))} · ирсэн тоог шалгаад баталгаажуулна</small></div><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
     <div class="modal-body po-form">
-      <datalist id="po-cat-dl">${cats.map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
       <div id="pr-cards" class="po-lines">${open.length ? ent.map(cardHtml).join('') : '<div class="po-empty">Бүх мөр дэвтэрт бүртгэгдсэн байна. Худалдан авалтыг «Хүлээн авсан» болгож хаана.</div>'}</div>
       ${doneRows.length ? `<div class="po-note">✓ Өмнө ирсэн: ${doneRows.map(r => escapeHtml((r.name || r.sku) + ' ×' + r.rcv)).join(', ')}</div>` : ''}
     </div>
@@ -28580,12 +28561,6 @@ async function openPoReceiveModal(id) {
     const work = ent.map(e => ({ row: e.row, get: getOf(e), short: e.short, b: e.b, cat: e.cat, name: e.name, cargo: cgOf(e), photos: e.rp.slice() })).filter(x => x.get > 0 || x.short);
     const finishOnly = !open.length && poAllReceived({ lines: rows });
     if (!work.length && !finishOnly) { showToast('Ирсэн тоогоо оруулна уу', 'warn'); return; }
-    const noCat = ent.find(e => getOf(e) > 0 && !e.row.sku && !String(e.cat || '').trim());
-    if (noCat) {   // ангилалгүй шинэ бараа сайт/тайлангаас алга болдог — ирэх үед нь заавал
-      const el = w.m.querySelector(`[data-i="${ent.indexOf(noCat)}"] [data-f="cat"]`);
-      if (el) { el.classList.add('po-bad'); if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); el.focus(); }
-      showToast(`«${noCat.name || noCat.row.name}» шинэ бараа — ангилалаа сонгоно уу (ангилалгүй бараа сайт, тайлангаас алга болдог)`, 'warn', 5000); return;
-    }
     const noCg = needCargo ? ent.find(e => getOf(e) > 0 && receivable(e) && cgOf(e) == null) : null;
     if (noCg) {
       const i = ent.indexOf(noCg), bx = w.m.querySelector(`[data-i="${i}"] [data-cgbox]`), inp = bx && bx.querySelector('input');

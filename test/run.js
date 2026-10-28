@@ -15981,7 +15981,7 @@ async function swFetchTests() {
     'poFxValid', 'poFxOn', 'poFxAuto', 'poLive', 'poPrevAccounts', 'poAcctKey', 'poLineRealUnit', 'poUnitCost', 'poImgOf',
     'poPayTo', 'poPayToOk', 'poPayToText', 'poRow', 'poTitleHtml', 'poCardHtml',
     'poUnitFromTotal', 'poLineTotalCur', 'poCatalogMatches', 'poLineSumHtml', 'poLineCardHtml', 'poFormIssues', 'poIssueLabels', 'poLineUnitReady', 'poBreakdownHtml', 'poUnitIsRounded',
-    'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poEvStripFormHtml',
+    'poImgList', 'poLinkHref', 'poSourceHtml', 'poIsImageFile', 'poEvThumbsHtml', 'poFileItemsHtml', 'poEvRowHtml', 'poCmpFormHtml',
     'poPfList', 'poPayProof', 'poProofLabel', 'poProofRowHtml',
     'poRpList', 'poOutstanding', 'poUbDay', 'canReceivePurchases', 'poReceiverKeys', 'poReceiverNames', 'poReceiverHintHtml', 'poRecvBlockHtml', 'setPurchaseReceiver']);
 
@@ -16140,12 +16140,17 @@ async function swFetchTests() {
     const brCard = F.poLineCardHtml(F.poLine({ name: 'А', q: 1, b: 'nomaad' }), 0, 540, false, 1);
     // ═ ХҮСЭЛТИЙН МАЯГТ МИНИМАЛ (2026-10-28, CEO: «scroll ажлахгүй, ижил төрлийн бөглөх зүйлсийг болиулвал… маш хэрэгтэй зүйлсийг л үлдээе») ═
     ok(!/data-br=|data-f="shop"|Аль салбарт|өөр дэлгүүрээс авбал/.test(brCard), '⛔ маягт: барааны мөрд салбар, «өөр дэлгүүр» БАЙХГҮЙ (салбар хүлээн авахад сонгогдоно, нэг хүсэлт = нэг дэлгүүр)');
-    ok(/<details class="po-lx">/.test(brCard) && /＋ Нэмэлт/.test(brCard) && !/<details class="po-lx" open>/.test(brCard), 'маягт: линк · баримт · харьцуулалт · тэмдэглэл НЭГ эвхэгдсэн «＋ Нэмэлт» мөрөнд (өгөгдмөлөөр хаалттай)');
-    ok(/<details class="po-lx" open>/.test(F.poLineCardHtml(F.poLine({ name: 'А', q: 1, nt: 'хэмжээ L' }), 0, 540, false, 1)), 'маягт: нэмэлт мэдээлэлтэй мөр засахад «＋ Нэмэлт» нээлттэй (хуучин утга нуугдахгүй)');
+    ok(!/<details|po-lx|＋ Нэмэлт/.test(brCard) && /data-cmp="0"/.test(brCard) && /data-f="u"/.test(brCard) && /data-f="nt"/.test(brCard) && !/data-evup="0\|pr"/.test(brCard), '⛔ маягт: НУГАЛАА БАЙХГҮЙ — линк · 📊 харьцуулалт (3 хавтан) · тэмдэглэл шууд ил; 🧾 үнэ тохирсон баримт БАЙХГҮЙ (CEO 2026-10-28: «dropdown байхгүй ч багтахаар»)');
+    {
+      const edit2 = F.poLineCardHtml(F.poLine({ name: 'А', q: 1, nt: 'хэмжээ L', cmp: ['https://x.mn/1.jpg', 'https://x.mn/2.jpg'] }), 0, 540, false, 1);
+      ok(/data-f="nt"[^>]*value="хэмжээ L"/.test(edit2) && (edit2.match(/data-evdel="0\|cmp\|/g) || []).length === 2 && /po-cmp-n">2\/3</.test(edit2) && (edit2.match(/po-cmp-add/g) || []).length === 1 && /Дэлгүүр 3/.test(edit2), 'маягт: засахад хуучин тэмдэглэл, орсон 2 харьцуулалт, «2/3» ба ＋ «Дэлгүүр 3» хавтан харагдана');
+      const full3 = F.poLineCardHtml(F.poLine({ name: 'А', q: 1, cmp: ['https://x.mn/1.jpg', 'https://x.mn/2.jpg', 'https://x.mn/3.jpg'] }), 0, 540, false, 1);
+      ok(/po-cmp-n ok">3\/3</.test(full3) && !/po-cmp-add/.test(full3) && !/data-evup="0\|cmp"/.test(full3), 'маягт: 3/3 болмогц тоолуур ногооно, ＋ хавтан алга');
+    }
     {
       const withLink = F.poLineCardHtml(F.poLine({ name: 'А', q: 1, u: 'item.taobao.com/a' }), 0, 540, false, 1);
-      ok(/data-f="u"[^>]*value="https:\/\/item\.taobao\.com\/a"/.test(withLink) && withLink.indexOf('data-f="u"') < withLink.indexOf('<details class="po-lx"') && !/<details class="po-lx" open>/.test(withLink),
-        '⛔ маягт: ЛИНК нь «＋ Нэмэлт»-ээс ГАРЧ, мөр бүрд ил (CEO: «ямар линк wechat-р авсан нь л чухал») — линк ганцаараа нэмэлтийг нээхгүй');
+      ok(/data-f="u"[^>]*value="https:\/\/item\.taobao\.com\/a"/.test(withLink) && withLink.indexOf('data-f="u"') < withLink.indexOf('data-cmp="0"') && !/<details/.test(withLink),
+        '⛔ маягт: ЛИНК мөр бүрд ИЛ, харьцуулалтаас ӨМНӨ (CEO: «ямар линк wechat-р авсан нь л чухал»)');
       ok(!/өнгө/.test(brCard) && !/Худалдан авах эх сурвалж|газрын нэр|жишээ: Xinrui/.test(brCard), '⛔ маягт: «өнгө» сануулга (зураг дээр харагддаг), «эх сурвалж · линк эсвэл газар» давхар шошго БАЙХГҮЙ');
     }
     ok(F.poLineCardHtml(F.poLine({ name: 'А', q: 1, b: 'nomaad' }), 0, 540, false, 1) !== undefined && F.poLine({ name: 'А', q: 1, b: 'nomaad' }).b === 'nomaad', 'маягт: салбарыг формд асуухаа больсон ч мөрийн `b` утга хадгалагдана (хүлээн авахад урьдчилан бөглөгдөнө)');
@@ -16168,6 +16173,13 @@ async function swFetchTests() {
     eq(F.poFormIssues({ ...fOk, cur: 'MNT', fx: 1 }), [], 'форм: төгрөгийн горимд ханш шаардахгүй');
     eq(F.poFormIssues({ ...fOk, fx: 50 }).map(x => x.k), ['fx'], 'форм: ханш 100–2000-оос гадуур бол дутуу');
     eq(F.poFormIssues({ ...fOk, noCol: true, pay_to: null }), [], 'форм: данс хадгалах багана алга үед (SQL ажиллуулаагүй) данс шаардахгүй');
+    const L3 = (cmp) => [{ name: 'Чийдэн', q: 2, _t: 100, cmp }];
+    eq(F.poFormIssues({ ...fOk, needCmp: true }).map(x => x.k + x.i), ['cmp0'], '⛔ форм: 3 дэлгүүрийн үнэ (📊) ЗААВАЛ — зураггүй мөр дутуу (CEO 2026-10-28)');
+    eq(F.poFormIssues({ ...fOk, needCmp: true, lines: L3(['a', 'b']) }).map(x => x.k), ['cmp'], 'форм: 2 дэлгүүр хүрэлцэхгүй');
+    eq(F.poFormIssues({ ...fOk, needCmp: true, lines: L3(['a', 'b', 'c']) }), [], 'форм: 3 дэлгүүр орсон бол дутуугүй');
+    eq(F.poFormIssues({ ...fOk, needCmp: true, lines: [{ name: 'А', q: 1, _t: 5, cmp: ['a', 'b', 'c'] }, { name: 'Б', q: 1, _t: 5, cmp: [] }] }).map(x => x.k + x.i), ['cmp1'], 'форм: мөр бүр ӨӨРИЙН 3 дэлгүүртэй (бараа бүр өөр өөр)');
+    eq(F.poFormIssues({ ...fOk, lines: L3([]) }), [], 'форм: needCmp заагаагүй (батлагдсан хүсэлт данс г.м. засах) үед харьцуулалт шаардахгүй');
+    eq(F.poIssueLabels([{ label: '3 дэлгүүрийн үнэ' }, { label: '3 дэлгүүрийн үнэ' }]), '3 дэлгүүрийн үнэ', 'форм: олон мөрийн ижил дутууг нэг л удаа хэлнэ');
     eq(F.poIssueLabels([{ label: 'нийт үнэ' }, { label: 'нийт үнэ' }, { label: 'дэлгүүр' }]), 'нийт үнэ · дэлгүүр', 'форм: «Дутуу: …» жагсаалт давхардахгүй');
   }
 
@@ -16205,6 +16217,8 @@ async function swFetchTests() {
       ok(/<b>\$\{escapeHtml\(a\.name\)\}<\/b><small>\$\{escapeHtml\(a\.bank\)\} · \$\{escapeHtml\(a\.no\)\}<\/small>/.test(chipSrc) && !/a\.supplier|удаа/.test(chipSrc), '⛔ scan: өмнөх дансны товч = нэр + банк · данс ГАНЦ (нийлүүлэгч, «N удаа» гэх урт бичилтгүй — CEO 2026-10-28)');
       eq([F.poWho({ supplier: ' Haorizi ', lines: [{ name: 'Х' }] }), F.poWho({ supplier: '', lines: [{ name: 'Ширээ', sku: 'M-1' }] }), F.poWho({ lines: [] })], ['Haorizi', 'Ширээ', ''], 'poWho: дэлгүүр байвал тэр, үгүй бол эхний барааны нэр (цонхны гарчиг)');
     }
+    ok(/const needCmp = !ex \|\| ex\.status === 'request'/.test(moP) && /needCmp,/.test(moP) && /x\.k === 'cmp'\) return card && card\.querySelector\('\.po-cmp'\)/.test(moP), '⛔ scan: 3 дэлгүүрийн үнэ зөвхөн шинэ/хүлээгдэж буй хүсэлтэд ЗААВАЛ (needCmp), дутуу бол харьцуулалтын хэсэг рүү фокус');
+    ok(!/poEvStripFormHtml|<details class="po-lx"|class="po-lx/.test(asrcP) && !/\.po-lx/.test(fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8')), '⛔ scan: хүсэлтийн маягтад «＋ Нэмэлт» нугалаа (po-lx) ба хуучин зургийн зурвас БУЦАЖ ИРЭХГҮЙ — харьцуулалт шууд ил (poCmpFormHtml)');
     ok(!/rest\/v1\/purchases/.test(asrcP.slice(asrcP.indexOf('function poPrevAccounts('), asrcP.indexOf('function poPrevAccounts(') + 700)), '⛔ scan: өмнөх данс шинэ хүснэгт/бичлэг БАЙХГҮЙ — мөрүүдээс өөрөө гарна');
   }
   {
@@ -16403,7 +16417,9 @@ async function swFetchTests() {
     // Картын мөр: зураг ШУУД харагдана, зураггүй хүсэлтэд ил хэлнэ (бусад төлөвт хэлэхгүй)
     const mk = (status, line) => F.poNormalize({ id: 'ev', no: 31, status, supplier: 'S', fx: 540, created_by: 'U', lines: [{ id: 'a', name: 'Ширээ', q: 1, c: 10, ...line }] });
     const rq0 = mk('request', {});
-    ok(/🧾 баримтгүй/.test(F.poEvRowHtml(rq0, rq0.lines[0])) && /📊 харьцуулалтгүй/.test(F.poEvRowHtml(rq0, rq0.lines[0])), 'нотлох зураг: зураггүй хүсэлтэд «баримтгүй · харьцуулалтгүй» ил (хаахгүй, батлагчид харуулна)');
+    ok(/📊 харьцуулалтгүй/.test(F.poEvRowHtml(rq0, rq0.lines[0])) && !/баримтгүй/.test(F.poEvRowHtml(rq0, rq0.lines[0])), 'нотлох зураг: зураггүй хүсэлтэд зөвхөн «📊 харьцуулалтгүй» ил (🧾 баримт заавал биш болсон; хаахгүй, батлагчид харуулна)');
+    const rqA = mk('request', { cmp: ['https://x.mn/1.jpg'] }), rq3 = mk('request', { cmp: ['https://x.mn/1.jpg', 'https://x.mn/2.jpg', 'https://x.mn/3.jpg'] });
+    ok(/📊 харьцуулалт 1\/3/.test(F.poEvRowHtml(rqA, rqA.lines[0])) && !/po-ev-miss/.test(F.poEvRowHtml(rq3, rq3.lines[0])), 'нотлох зураг: 3 дэлгүүрээс дутуу бол «📊 харьцуулалт 1/3» ил, 3 бол анхааруулга алга');
     eq(F.poEvRowHtml(mk('ordered', {}), mk('ordered', {}).lines[0]), '', 'нотлох зураг: захиалсан/хүлээн авсан төлөвт «байхгүй» гэж шуугихгүй');
     const rq1 = mk('request', { u: 'https://item.taobao.com/item.htm?id=1', nt: 'цагаан, 2м', pr: [IMGS[0]], cmp: IMGS.slice(0, 3) });
     const e1 = F.poEvRowHtml(rq1, rq1.lines[0]);
@@ -16417,12 +16433,12 @@ async function swFetchTests() {
 
     // Формын зурвас: ＋ нэмэх, ✕ хасах, дээд тал нь 3, байршиж буй ⏳
     const f0 = F.poLineCardHtml(F.poLine({ name: 'А', q: 1 }), 0, 540, false, 1);
-    ok(/data-f="u"/.test(f0) && /data-evup="0\|pr"/.test(f0) && /data-evup="0\|cmp"/.test(f0) && /data-f="nt"/.test(f0), 'форм: бараа бүр дээр эх сурвалж · баримт · харьцуулалт · тэмдэглэл');
+    ok(/data-f="u"/.test(f0) && !/data-evup="0\|pr"/.test(f0) && (f0.match(/data-evup="0\|cmp"/g) || []).length === 3 && /data-f="nt"/.test(f0), 'форм: бараа бүр дээр линк · 📊 харьцуулалт (3 хоосон хавтан) · тэмдэглэл; 🧾 баримт БАЙХГҮЙ');
     ok(/<input[^>]*type="file"[^>]*accept="image\/\*"[^>]*multiple[^>]*data-evup="0\|cmp"/.test(f0), 'форм: олон зураг нэг дор сонгоно (multiple), зөвхөн зураг');
     const fFull = F.poLineCardHtml(F.poLine({ name: 'А', q: 1, cmp: IMGS }), 0, 540, false, 1);
-    ok(!/data-evup="0\|cmp"/.test(fFull) && /data-evup="0\|pr"/.test(fFull) && (fFull.match(/data-evdel="0\|cmp\|/g) || []).length === 3, 'форм: 3 зураг дүүрсэн төрөлд ＋ алга, зураг бүрд ✕');
+    ok(!/data-evup="0\|cmp"/.test(fFull) && (fFull.match(/data-evdel="0\|cmp\|/g) || []).length === 3, 'форм: 3 зураг дүүрсэн бол ＋ алга, зураг бүрд ✕');
     const fBusy = F.poLineCardHtml({ ...F.poLine({ name: 'А', q: 1, cmp: [IMGS[0]] }), evBusy: { cmp: 2 } }, 0, 540, false, 1);
-    ok(!/data-evup="0\|cmp"/.test(fBusy) && (fBusy.match(/po-evt-busy/g) || []).length === 2, 'форм: байршиж буй зураг ⏳ + нийт 3-аас хэтрүүлэхгүй');
+    ok(!/data-evup="0\|cmp"/.test(fBusy) && (fBusy.match(/po-cmp-busy/g) || []).length === 2, 'форм: байршиж буй зураг ⏳ + нийт 3-аас хэтрүүлэхгүй');
 
     // Хадгалалт: мөр дотор үлдэнэ (шинэ багана ХЭРЭГГҮЙ), need_by DB-д бичигдэхгүй
     const rr = F.poRow(F.poNormalize({ id: 'rr', status: 'request', fx: 540, need_by: '2026-11-01', lines: [{ id: 'a', name: 'А', q: 1, c: 1, u: 'https://x.com', pr: [IMGS[0]], cmp: [IMGS[1]], nt: 'х' }] }));

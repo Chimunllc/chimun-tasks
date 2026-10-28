@@ -26978,7 +26978,9 @@ function poImgOf(l) {
 /* БАРАА БҮРИЙН НЭМЭЛТ МЭДЭЭЛЭЛ (CEO 2026-10-27): эх сурвалж (`u`) · 🧾 үнэ тохирсон баримт (`pr`) · 📊 үнийн харьцуулалт (`cmp`, 2-3 зураг) · тэмдэглэл (`nt`).
    Зураг = VPS-д байршсан ФАЙЛЫН хаяг (`poUploadImage`), `purchases.lines` jsonb-д — шинэ багана/хүснэгт ХЭРЭГГҮЙ. Хэрэглэгч шууд оруулж, аппад шууд харна (`data-lightbox`). */
 const PO_EV_MAX = 3;
-const PO_EV_KINDS = { pr: { icon: '🧾', label: 'Үнэ тохирсон баримт', hint: 'чат, захиалгын дэлгэцийн зураг' }, cmp: { icon: '📊', label: 'Үнийн харьцуулалт', hint: 'бусад дэлгүүрийн үнэ · 2-3 зураг' } };
+const PO_EV_KINDS = { pr: { icon: '🧾', label: 'Үнэ тохирсон баримт', hint: 'хуучин хүсэлтийн хавсралт' }, cmp: { icon: '📊', label: 'Үнийн харьцуулалт', hint: 'бусад 3 дэлгүүрийн үнэ' } };
+// 📊 Үнийн харьцуулалт = ЗААВАЛ 3 дэлгүүрийн зураг (CEO 2026-10-28). 🧾 Үнэ тохирсон баримт формоос хасагдсан — хуучин хүсэлтийнх харагдсаар.
+const PO_CMP_MIN = 3;
 function poImgList(v) {
   return [...new Set((Array.isArray(v) ? v : []).map(poImgUrl).filter(Boolean))].slice(0, PO_EV_MAX);
 }
@@ -27620,7 +27622,8 @@ function poTitleHtml(po) {
    батлагчид ил хэлнэ (ҮРГЭЛЖ хаахгүй: жижиг худалдан авалтад заавал биш — зөвхөн ил харуулна). */
 function poEvRowHtml(po, l) {
   const g = (k) => { const u = (l && l[k]) || []; return u.length ? `<span class="po-evg"><span class="po-evl" title="${escapeHtml(PO_EV_KINDS[k].label)}">${PO_EV_KINDS[k].icon}</span>${poEvThumbsHtml(u, PO_EV_KINDS[k].label)}</span>` : ''; };
-  const miss = po && po.status === 'request' ? ['pr', 'cmp'].filter(k => !((l && l[k]) || []).length).map(k => `${PO_EV_KINDS[k].icon} ${k === 'pr' ? 'баримтгүй' : 'харьцуулалтгүй'}`) : [];
+  const nCmp = ((l && l.cmp) || []).length;
+  const miss = po && po.status === 'request' && nCmp < PO_CMP_MIN ? [`${PO_EV_KINDS.cmp.icon} ${nCmp ? 'харьцуулалт ' + nCmp + '/' + PO_CMP_MIN : 'харьцуулалтгүй'}`] : [];
   const rp = ((l && l.rp) || []).length ? `<span class="po-evg"><span class="po-evl" title="Ирсэн барааны зураг">📷</span>${poEvThumbsHtml(l.rp, 'Ирсэн барааны зураг')}</span>` : '';
   const html = g('pr') + g('cmp') + rp + (miss.length ? `<span class="po-ev-miss">${miss.join(' · ')}</span>` : '');
   return html ? `<div class="po-ev-row">${html}</div>` : '';
@@ -27882,6 +27885,7 @@ function poFormIssues(f) {
     if (!(String(l.name || '').trim() || l.sku)) out.push({ k: 'name', i, label: 'барааны нэр' });
     if (!(Number(l.q) > 0)) out.push({ k: 'qty', i, label: 'тоо' });
     if (!(Number(l._t) > 0)) out.push({ k: 'total', i, label: 'нийт үнэ' });
+    if (f.needCmp && (Array.isArray(l.cmp) ? l.cmp.length : 0) < PO_CMP_MIN) out.push({ k: 'cmp', i, label: PO_CMP_MIN + ' дэлгүүрийн үнэ' });
   });
   if (f && f.cur !== 'MNT' && !poFxValid(Number(f.fx))) out.push({ k: 'fx', label: 'ханш' });
   if (f && !f.noCol) {
@@ -27915,7 +27919,6 @@ function poLineCardHtml(l, i, fx, mnt, n) {
     ? `<b class="po-line-nm">${escapeHtml(l.name || l.sku)}</b><span class="po-linked">✓ Каталогийн бараа <span class="po-badge">${escapeHtml(l.sku)}</span> · <button type="button" class="ui-raw po-lnk" data-unlink="${i}">салгах</button></span>`
     : `<input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(l.name)}" placeholder="Барааны нэр" autocomplete="off" aria-label="Барааны нэр">`;
   const t = l._t != null ? l._t : poLineTotalCur(l);
-  const hasExtra = !!(l.nt || (l.pr || []).length || (l.cmp || []).length);
   return `<div class="po-line" data-i="${i}">
     ${n > 1 ? `<div class="po-line-hd"><span>Бараа ${i + 1}</span><button type="button" class="ui-raw po-txtbtn" data-del="${i}">Хасах</button></div>` : ''}
     <div class="po-line-top">${tile}<div class="po-line-nmwrap">${nm}</div></div>
@@ -27927,23 +27930,25 @@ function poLineCardHtml(l, i, fx, mnt, n) {
         <div class="po-ctl"><span class="po-pre">${cur}</span><input class="ui-raw" data-f="t" type="number" min="0" step="0.01" inputmode="decimal" value="${t || ''}" placeholder="Нийт (тээвэртэй)" aria-label="Нийт үнэ, тээвэртэй нь"></div></div>
     </div>
     <div class="po-unit${poLineUnitReady(l, fx) ? ' ok' : ''}" data-sum="${i}">${poLineSumHtml(l, fx, poIsMnt(fx, mnt))}</div>
-    <div class="po-fld"><input class="ui-raw po-txt" data-f="u" value="${escapeHtml(l.u || '')}" placeholder="🔗 Линк (WeChat, Taobao…)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Худалдан авсан линк"></div>
-    <details class="po-lx"${hasExtra ? ' open' : ''}>
-      <summary class="po-lx-h">＋ Нэмэлт <small>баримт · харьцуулалт · тэмдэглэл</small></summary>
-      ${poEvStripFormHtml(l, i, 'pr')}
-      ${poEvStripFormHtml(l, i, 'cmp')}
-      <div class="po-fld"><span class="po-lb">Тэмдэглэл <i>хэмжээ, сонголт</i></span><input class="ui-raw po-txt" data-f="nt" value="${escapeHtml(l.nt || '')}" maxlength="300" autocomplete="off" aria-label="Барааны тэмдэглэл"></div>
-    </details>
+    <div class="po-fld"><div class="po-ctl po-ctl-t"><span class="po-pre">🔗</span><input class="ui-raw" data-f="u" value="${escapeHtml(l.u || '')}" placeholder="Линк (WeChat, Taobao…)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Худалдан авсан линк"></div></div>
+    ${poCmpFormHtml(l, i)}
+    <div class="po-fld"><div class="po-ctl po-ctl-t"><span class="po-pre">📝</span><input class="ui-raw" data-f="nt" value="${escapeHtml(l.nt || '')}" maxlength="300" placeholder="Тэмдэглэл (хэмжээ, сонголт)" autocomplete="off" aria-label="Барааны тэмдэглэл"></div></div>
   </div>`;
 }
-// Формын зургийн зурвас: орсон зураг (дарахад томорно, ✕ хасна) + ＋ нэмэх (олон зураг нэг дор). Дээд тал нь PO_EV_MAX.
-function poEvStripFormHtml(l, i, k) {
-  const m = PO_EV_KINDS[k], urls = l[k] || [], busy = (l.evBusy && l.evBusy[k]) || 0;
-  const tiles = urls.map((u, n) => `<div class="po-evw">${poEvThumbsHtml([u], m.label)}<button type="button" class="ui-raw po-ph-x" data-evdel="${i}|${k}|${n}" aria-label="Зургийг хасах" title="Хасах">✕</button></div>`).join('');
-  const wait = '<span class="po-evt po-evt-busy" aria-hidden="true">⏳</span>'.repeat(busy);
-  const room = PO_EV_MAX - urls.length - busy;
-  const add = room > 0 ? `<span class="po-ph po-ev-add" title="${escapeHtml(m.label)} оруулах"><span class="po-ph-t">＋<small>Зураг</small></span><input class="ui-raw" type="file" accept="image/*" multiple data-evup="${i}|${k}" aria-label="${escapeHtml(m.label)} зураг оруулах"></span>` : '';
-  return `<div class="po-fld"><span class="po-lb">${m.icon} ${escapeHtml(m.label)} <i>${escapeHtml(m.hint)}</i></span><div class="po-evs">${tiles}${wait}${add}</div></div>`;
+// 📊 Үнийн харьцуулалт = 3 дэлгүүрийн зураг, нэг мөрөнд 3 хавтан (нугалаагүй). Орсон зураг (дарахад томорно, ✕ хасна) · ⏳ байршиж буй · ＋ «Дэлгүүр N» нэмэх.
+// Хоосон хавтан бүр олон зураг нэг дор авна (data-evup) — дээд тал нь PO_CMP_MIN, үлдсэнийг handler таслана.
+function poCmpFormHtml(l, i) {
+  const label = PO_EV_KINDS.cmp.label;
+  const urls = ((l && l.cmp) || []).slice(0, PO_CMP_MIN);
+  const busy = Math.max(0, Math.min((l && l.evBusy && l.evBusy.cmp) || 0, PO_CMP_MIN - urls.length));
+  const slots = urls.map((u, n) => `<span class="po-cmp-s"><button type="button" class="ui-raw po-cmp-th" data-lightbox="${escapeHtml(driveThumbUrl(u, 1600))}" title="${escapeHtml(label)} ${n + 1}" aria-label="${escapeHtml(label)} ${n + 1} — томруулж харах"><img src="${escapeHtml(driveThumbUrl(u, 400))}" alt="${escapeHtml(label)} ${n + 1}" loading="lazy"></button><button type="button" class="ui-raw po-ph-x" data-evdel="${i}|cmp|${n}" aria-label="Зургийг хасах" title="Хасах">✕</button></span>`);
+  for (let k = 0; k < busy; k++) slots.push('<span class="po-cmp-s po-cmp-busy" aria-hidden="true">⏳</span>');
+  while (slots.length < PO_CMP_MIN) {
+    const no = slots.length + 1;
+    slots.push(`<span class="po-cmp-s po-cmp-add" title="${escapeHtml(label)} — дэлгүүр ${no}"><span class="po-ph-t">＋<small>Дэлгүүр ${no}</small></span><input class="ui-raw" type="file" accept="image/*" multiple data-evup="${i}|cmp" aria-label="${escapeHtml(label)} — дэлгүүр ${no} зураг оруулах"></span>`);
+  }
+  const done = urls.length >= PO_CMP_MIN;
+  return `<div class="po-cmp" data-cmp="${i}"><div class="po-cmp-h"><span class="po-cmp-t">${PO_EV_KINDS.cmp.icon} Бусад дэлгүүрийн үнэ</span><b class="po-cmp-n${done ? ' ok' : ''}">${urls.length}/${PO_CMP_MIN}</b></div><div class="po-cmp-g">${slots.join('')}</div></div>`;
 }
 async function openPoModal(id) {
   const ex = id ? poById(id) : null;
@@ -27960,6 +27965,7 @@ async function openPoModal(id) {
   const d = ex
     ? { supplier: ex.supplier, platform: ex.platform || '', url: ex.url, fx: fxLocked ? fxToday.rate : (poFxValid(ex.fx) ? ex.fx : (fxToday ? fxToday.rate : 0)), cur: ex.fx === 1 ? 'MNT' : 'CNY', note: ex.note, pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
     : { supplier: '', platform: '', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, note: '', pay_to: poPayTo(null), lines: [blankLine()] };
+  const needCmp = !ex || ex.status === 'request';   // 3 дэлгүүрийн үнэ: шинэ ба хүлээгдэж буй хүсэлтэд заавал (батлагдсан хүсэлтийг данс г.м. засахад саад болохгүй)
   const noCol = state._poHasPayTo === false;   // DB-д pay_to багана алга — данс хадгалагдахгүй (SQL ажиллуулаагүй)
   const prevAccts = noCol ? [] : poPrevAccounts(state.purchases, 2);
   const w = poOpenModal('po-edit', `
@@ -27999,7 +28005,7 @@ async function openPoModal(id) {
   const val = (sel) => { const el = w.$(sel); return el ? el.value : ''; };
   const curVal = () => (val('#po-cur') === 'MNT' ? 'MNT' : 'CNY');
   const curFx = () => (curVal() === 'MNT' ? 1 : poNum(val('#po-fx')));
-  const formState = () => ({ lines: d.lines, cur: curVal(), fx: curFx(), noCol,
+  const formState = () => ({ lines: d.lines, cur: curVal(), fx: curFx(), noCol, needCmp,
     pay_to: noCol ? null : { bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') } });
   const fxHint = () => {
     const mnt = curVal() === 'MNT';
@@ -28061,6 +28067,7 @@ async function openPoModal(id) {
     if (x.k === 'name') return card && card.querySelector('[data-f="name"]');
     if (x.k === 'qty') return card && card.querySelector('[data-f="q"]');
     if (x.k === 'total') return card && card.querySelector('[data-f="t"]');
+    if (x.k === 'cmp') return card && card.querySelector('.po-cmp');
     return w.$({ fx: '#po-fx', bank: '#po-pbank', acct: '#po-pno', owner: '#po-pnm' }[x.k]);
   };
   const focusIssue = (x) => {

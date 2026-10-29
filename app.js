@@ -43639,6 +43639,13 @@ function attachReportsHandlers() {
   document.getElementById('rep-pricing')?.addEventListener('click', () => openPricingReport());
   const allXls = document.querySelector('[data-report-all-xls]'); if (allXls) allXls.onclick = exportAllReports;
   const incXls = document.querySelector('[data-income-xls]'); if (incXls) incXls.onclick = exportIncomeOrdersExcel;
+  /* `finStage` нь өнгийг токен МӨРӨӨР буцаадаг (`var(--ok)` …) тул тэмдгийн өнгийг
+     класс болгоход зураглал хэрэгтэй. Танихгүй токен → класс ОРОХГҮЙ (мөрийн өнгийг
+     наследлэнэ) — өнгө солигдоход тэмдэг алга болохоос дээр. */
+  const FIN_TX_TONE = {
+    'var(--danger)': 'danger', 'var(--warn)': 'warn',
+    'var(--ok)': 'ok', 'var(--primary)': 'primary',
+  };
   // Ангиллын мөр дээр дарахад тэр дор нь гүйлгээ задарна (хуудсаас гарахгүй, inline)
   document.querySelectorAll('[data-cat-toggle]').forEach(row => row.addEventListener('click', () => {
     const name = row.dataset.catToggle;
@@ -43650,12 +43657,13 @@ function attachReportsHandlers() {
     if (!detail.dataset.built) {
       const txs = (state._reportCatTx && state._reportCatTx[name] || []).slice().sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
       detail.innerHTML = txs.map(t => {
-        const mark = finStage(t).mark, col = finStage(t).color;
+        const st = finStage(t);
+        const mark = st.mark, tone = FIN_TX_TONE[st.color] || '';
         const who = escapeHtml(t.beneficiary || memberName(t.createdBy) || '—');
-        const purp = t.purpose ? `<span style="color:var(--muted);"> · ${escapeHtml(String(t.purpose).slice(0, 40))}</span>` : '';
-        const dt = t.requested_at ? `<span style="color:var(--muted);white-space:nowrap;">${escapeHtml(String(t.requested_at).slice(5, 10))}</span>` : '';
-        return `<div data-fin-open="${escapeHtml(t.id)}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;">
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b style="color:${col};">${mark}</b> ${who}${purp}</span>${dt}<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b></div>`;
+        const purp = t.purpose ? `<span class="fin-tx-p"> · ${escapeHtml(String(t.purpose).slice(0, 40))}</span>` : '';
+        const dt = t.requested_at ? `<span class="fin-tx-d">${escapeHtml(String(t.requested_at).slice(5, 10))}</span>` : '';
+        return `<div data-fin-open="${escapeHtml(t.id)}" class="fin-tx">
+          <span class="fin-tx-l"><b class="fin-tx-m ${tone}">${mark}</b> ${who}${purp}</span>${dt}<b class="fin-tx-a">${fmtMoney(Number(t.amount) || 0)}</b></div>`;
       }).join('');
       detail.querySelectorAll('[data-fin-open]').forEach(r => r.addEventListener('click', () => openExpenseModal(r.dataset.finOpen)));
       detail.dataset.built = '1';

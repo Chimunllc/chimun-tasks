@@ -8701,6 +8701,9 @@ need(['orderCustType']);
       showToast = () => {};
       render = () => {};
       state.sessionExpired = false; state.sessionExpiredAt = '';
+      // ⚠ Токен ИЛГЭЭГДСЭН атал хүчингүй = сесс үнэхээр дууссан. Огт илгээгдээгүй
+      //   тохиолдол нь ӨӨР дүрэмтэй (доорх fp c933fe553d64 блокийг үз).
+      localStorage.setItem('pgrstToken', 'head.body.sig');
       pgrstTokenValid = () => false;
       dataLoadFailed('Дуудлагын лог', new Error('HTTP 401'));
       dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
@@ -8711,6 +8714,7 @@ need(['orderCustType']);
     eq(vm.runInContext('state.sessionExpired', sandbox), true, '401: сесс дууссан гэж тэмдэглэнэ');
     // Токен ХҮЧИНТЭЙ атал 401 = эрхийн асуудал → хэвийн бүртгэнэ
     vm.runInContext(`
+      localStorage.removeItem('pgrstToken');
       _errLog = []; state.sessionExpired = false; pgrstTokenValid = () => true;
       dataLoadFailed('Цалин', new Error('HTTP 401'));
     `, sandbox);
@@ -8781,6 +8785,49 @@ need(['orderCustType']);
     eq(vm.runInContext('state.sessionExpired', sandbox), false,
        '401: токенгүй үед сессийг хуурамчаар дуусгахгүй');
     vm.runInContext('_load401Logged = false; state.sessionExpired = false;', sandbox);
+  }
+
+  // ── ТОКЕН ОГТ ИЛГЭЭГДЭЭГҮЙ 401 = ХҮЛЭЭГДСЭН, СЕРВЕРТ МЭДЭЭЛЭХГҮЙ ──────────
+  //   (2026-10-29, fp c933fe553d64 — 54 удаа · 11 ажилтан, 3 засварын дараа ч)
+  //   Апп токенгүй орох ХОЁР ЗОРИУДЫН зам бий: ① n8n хүрэхгүй үеийн клиент
+  //   fallback нэвтрэлт (`setUser` нь `auth`-гүй дуудагдаж ХОЁР токеныг
+  //   УСТГАНА) ② офлайн эхэлсэн сэргээлт (`navigator.onLine === false` тул
+  //   эхлэлийн `pgrstTokenValid()` шалгалт алгасагдана). Тэр үед `pgrstBearer()`
+  //   anon руу унах ба anon-д уншилтын эрх БАЙХГҮЙ тул татац бүр 401.
+  //   Энэ нь аппын ЭВДРЭЛ БИШ (хүн серверийн нэвтрэлтээ хийгээгүй) бөгөөд
+  //   `renewDbSession` ч чадахгүй — асуух сесс алга. Бүртгэвэл ЗАСАХ КОД
+  //   БАЙХГҮЙ Issue мөнхөд дахин нээгдэж жинхэнэ алдааг живүүлнэ.
+  {
+    vm.runInContext(`
+      _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      localStorage.removeItem('pgrstToken'); localStorage.removeItem('sessionToken');
+      pgrstTokenValid = () => false;
+      dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('_errLog.length', sandbox), 0,
+       '⛔ ИНВАРИАНТ: токен огт илгээгдээгүй үеийн 401-ийг серверт мэдээлэхгүй (fp c933fe553d64)');
+    eq(vm.runInContext('state.sessionExpired', sandbox), true,
+       '401: токенгүй ч ажилтанд тууз ЗААВАЛ гарна — дата шинэчлэгдэхгүйг мэдэх ёстой');
+    ok(/Дахин нэвтрэх/.test(vm.runInContext('sessionExpiredBannerHtml()', sandbox)),
+       '401: токенгүй үед ч гарц (дахин нэвтрэх товч) харагдана');
+    // ⚠ Токен ҮНЭХЭЭР илгээгдсэн атал хүчингүй бол = ЖИНХЭНЭ дохио, хэвээр бүртгэнэ
+    vm.runInContext(`
+      _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      localStorage.setItem('pgrstToken', 'head.body.sig');
+      dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('_errLog.length', sandbox), 1,
+       'ИНВАРИАНТ: хугацаа дууссан ЖИНХЭНЭ токены 401 бүртгэгдсэн хэвээр');
+    eq(vm.runInContext('_errLog[0]', sandbox), 'auth:401|Нэвтрэлт дууссан',
+       '401: сесс дууссаныг шалтгаанаар нь бүртгэнэ');
+    vm.runInContext(`
+      localStorage.removeItem('pgrstToken'); localStorage.removeItem('sessionToken');
+      pgrstTokenValid = () => true;
+      _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+    `, sandbox);
   }
   {
     ok(/id = 'sess-banner'/.test(src) && src.indexOf("id = 'sess-banner'") < src.indexOf("const wrap = document.getElementById('task-list')"),

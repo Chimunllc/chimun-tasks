@@ -9889,38 +9889,11 @@ need(['orderCustType']);
   eq(F.adsAdvice([], { by: {}, total: 0 }).length, 0, 'зар: дата байхгүй бол зөвлөгөө үүсгэхгүй');
   eq(F.adsAdvice(null, null).length, 0, 'зар: null → унахгүй');
 
-  // ── Сарын төсөв ──
-  eq(F.adsBudgetState(null, '2026-09'), 'none', 'төсөв: тавиагүй');
-  eq(F.adsBudgetState({ mnt: 0, month: '2026-09', enabled: true }, '2026-09'), 'none', 'төсөв: 0 = тавиагүй');
-  eq(F.adsBudgetState({ mnt: 5e6, month: '2026-08', enabled: true }, '2026-09'), 'stale',
-     'төсөв: өмнөх сарын төсөв автоматаар үргэлжлэхгүй (сар бүр хүн шийднэ)');
-  eq(F.adsBudgetState({ mnt: 5e6, month: '2026-09', enabled: true }, '2026-09'), 'on', 'төсөв: идэвхтэй');
-  eq(F.adsBudgetState({ mnt: 5e6, month: '2026-09', enabled: false }, '2026-09'), 'off', 'төсөв: унтраалттай');
-
-  const p1 = F.adsBudgetPlan(5000000, 2000000, 10);
-  eq(p1.left, 3000000, 'төсөв: үлдэгдэл');
-  eq(p1.daily, 300000, 'төсөв: өдрийн хуваарилалт');
-  eq(p1.over, false, 'төсөв: хэтрээгүй');
-  const p2 = F.adsBudgetPlan(1000000, 1500000, 5);
-  eq(p2.left, 0, 'төсөв: хэтэрсэн ч сөрөг болохгүй');
-  eq(p2.over, true, 'төсөв: хэтэрсэн гэж тэмдэглэнэ');
-  eq(F.adsBudgetPlan(1000000, 0, 0).daily, 1000000, 'төсөв: 0 хоног → 1-ээр хуваана (тэгд хуваахгүй)');
-
-  eq(F.adsDaysLeft('2026-09-16'), 15, 'төсөв: 9 сарын 16-нд 15 хоног үлдсэн (өнөөдрийг оруулаад)');
-  eq(F.adsDaysLeft('2026-02-28'), 1, 'төсөв: сарын сүүлийн өдөр → 1');
-  eq(F.adsDaysLeft('2026-01-01'), 31, 'төсөв: сарын эхэнд бүтэн сар');
-
-  eq(F.adsSpentInMonth([{ day: '2026-09-01', spend_mnt: 100 }, { day: '2026-08-31', spend_mnt: 999 }], '2026-09'),
-     100, 'төсөв: зөвхөн тухайн сарын зарцуулалт');
-  eq(F.adsSpentInMonth(null, '2026-09'), 0, 'төсөв: дата байхгүй → 0');
-
   // SCAN: төсвийн эрх UI ба DB дээр ИЖИЛ байх ёстой. Зөрвөл товч харагдаад
   // дарахад чимээгүй бүтэлгүйтнэ (RLS алдаа шидэхгүй, мөрийг л шүүнэ).
   {
     const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
     const rls = fs.readFileSync(path.join(__dirname, '..', 'db', 'rls.sql'), 'utf8');
-    ok(/function adsBudgetEditable\(\)\s*\{\s*return !!state\.isCEO;/.test(app),
-       'эрх: төсөв засах = зөвхөн CEO (app.js)');
     eq((rls.match(/when 'ads_budget' then sec\.is_ceo\(\)/g) || []).length, 3,
        'эрх: rls.sql-д ads_budget → CEO (insert + update-ийн using ба with check)');
     eq((rls.match(/when 'reminder_mail' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д reminder_mail (сануулга асаах) → зөвхөн CEO');
@@ -9928,8 +9901,17 @@ need(['orderCustType']);
     eq((rls.match(/when 'reminder_mail_text_old' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ эрх: rls.sql-д reminder_mail_text_old (хуучин харилцагчид очих бичвэр) → зөвхөн CEO');
     const schema = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
     eq((schema.match(/WHEN 'reminder_mail(_text|_text_old)?'::text THEN sec\.is_ceo\(\)/g) || []).length, 9, 'эрх: schema.sql rls.sql-тэй ижил (сануулгын 3 түлхүүр × 3)');
-    ok(!/data-ads-edit>/.test(app.replace(/\$\{adsBudgetEditable\(\) \? [\s\S]*?\}/g, '')),
-       'эрх: төсвийн товч adsBudgetEditable()-гүйгээр гарахгүй');
+    // ⛔ ЗАР & ҮР ДҮН = ЗӨВХӨН ҮР ДҮН (2026-10-29, CEO). Сарын төсөв тавих, бүүст хүсэх,
+    //    зар зогсоох товч/код аппад буцаж ирэхгүй — эдгээрийг Meta Ads Manager-ээс хийнэ.
+    //    (VPS-ийн fb_budget.py / fb_boost.py cron унтраалттай — `app.js` дээрх тэмдэглэлийг үз.)
+    for (const re of [/data-ads-edit/, /data-ads-toggle/, /data-ads-stop/, /data-pp-boost/,
+                      /requestBoost\b/, /requestCampaignStop\b/, /ADS_BUDGET_KEY/, /adsBudget/,
+                      /pagePostRows/, /loadPagePosts/, /adStopPending/]) {
+      ok(!re.test(app), `⛔ ЗАР = ЗӨВХӨН ҮР ДҮН: app.js-д ${re.source} байхгүй`);
+    }
+    ok(!/saveAppConfig\(\s*['"]ads_budget['"]/.test(app), '⛔ ЗАР = ЗӨВХӨН ҮР ДҮН: апп ads_budget руу бичихгүй');
+    ok(!/rest\/v1\/(fb_page_posts|fb_campaign_state)[^\n]{0,160}\n?[^\n]{0,160}method:\s*['"](PATCH|POST|PUT|DELETE)/.test(app),
+       '⛔ ЗАР = ЗӨВХӨН ҮР ДҮН: апп fb_page_posts / fb_campaign_state руу бичихгүй');
   }
 
   // ── Хариу аваагүй дуудлага ──
@@ -10773,21 +10755,7 @@ need(['orderCustType']);
   eq(F.adStateRows([]).length, 0, 'зар: хоосон → унахгүй');
   eq(F.adStateRows(null).length, 0, 'зар: null → унахгүй');
 
-  // ── Нэг зарыг зогсоох хүсэлт (2026-09-18) ──
-  ok(F.adStopPending({ status: 'ACTIVE', stop_req: '2026-09-18T01:00:00Z' }),
-     'зогсоох: хүсэлт тавьсан, зар ажилласаар → хүлээлт');
-  ok(!F.adStopPending({ status: 'ACTIVE' }), 'зогсоох: хүсэлтгүй → хүлээлт алга');
-  // ⛔ Биелсэн хойно `stop_req` цэвэрлэгддэг ч Facebook-ийн төлөв хоцорч болно —
-  //   аль хэдийн зогссон зарыг «зогсож байна» гэж харуулбал хүн дахин дарна.
-  ok(!F.adStopPending({ status: 'PAUSED', stop_req: '2026-09-18T01:00:00Z' }),
-     'зогсоох: зогссон зар дээр хүлээлт харуулахгүй');
-  ok(!F.adStopPending(null), 'зогсоох: null → унахгүй');
-
   const asrcStop = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-  // ⛔ Зогсоох нь мөнгө хөндөх бөгөөд аппаас БУЦААХ зам байхгүй тул
-  //   баталгаажуулалтгүй байж болохгүй. Хариуг ШАЛГАЖ гардаг хэлбэрийг шаардана.
-  ok(/data-ads-stop\][\s\S]{0,600}?if \(!\(await showConfirm\([\s\S]{0,400}?\)\)\) return;/.test(asrcStop),
-     'scan: зар зогсоох showConfirm-оор хаагдана');
   // ⛔ Зар АСААХ зам аппад БАЙХГҮЙ — `status: 'ACTIVE'` гэж PATCH хийвэл
   //   мөнгө гарна. Зөвхөн `stop_req` бичигдэнэ.
   ok(!/fb_campaign_state[\s\S]{0,400}?status['"]?\s*:\s*['"]ACTIVE/.test(asrcStop),
@@ -11104,7 +11072,7 @@ need(['orderCustType']);
   // ⛔ Блок бүр ЯГ НЭГ табд байх ёстой: хоёр табд тавибал аль нь шинэ болохыг
   //    хүн мэдэхгүй, хаанаас ч гаргахгүй бол блок ЧИМЭЭГҮЙ алга болно.
   {
-    const keys = ['advice', 'daily', 'cand', 'pubNote', 'pp', 'queue', 'kpi', 'budget',
+    const keys = ['advice', 'daily', 'cand', 'pubNote', 'queue', 'kpi', 'note',
       'camps', 'cmp', 'state', 'act', 'ga', 'gsc', 'chat', 'attrib', 'lead', 'capi', 'call', 'conv', 'agent', 'fup'];
     const parts = {}; keys.forEach(k => { parts[k] = '<' + k + '>'; });
     const tabs = ['todo', 'money', 'src', 'calls'];
@@ -11390,68 +11358,13 @@ need(['orderCustType']);
   }
 }
 
-// ── ХУУДАСНЫ ПОСТЫГ БҮҮСТ ХИЙХ (2026-09-17) ────────────────────────────────
-// Аппын өөрийн нийтэлсэн постыг зарын систем ХАРДАГГҮЙ (апп Development
-// горимд); CEO гараар нийтэлсэн пост харин бүүстлэгддэг — амьд туршиж
-// баталсан. Тиймээс урсгал эргэв: хүн постлоно → апп жагсаана → хүн сонгоно.
+// ── fb_boost.py (2026-09-17) — ⚠ 2026-10-29-өөс cron УНТРААЛТТАЙ, аппаас бүүст хүсэхгүй ──
+// Скрипт репод үлдсэн (буцаахад бэлэн) тул дотоод шалгалтууд хэвээр.
 {
-  const posts = [
-    { post_id: 'a', created_time: '2026-09-15T05:42:29+00:00', message: 'Сайн  байна\nуу',
-      picture: 'i.jpg', link_url: '', permalink: 'p' },
-    { post_id: 'b', created_time: '2026-09-16T05:00:00+00:00', message: 'Сайт',
-      link_url: 'https://mevent.mn/', boost: 'done' },
-    { post_id: 'c', created_time: '2026-09-10T05:00:00+00:00', message: '',
-      boost: 'error', error: 'Non-Website Ad' },
-    { no_id: 1 },
-  ];
-  const rows = F.pagePostRows(posts, 10);
-  eq(rows.length, 3, 'пост: id-гүй мөр хасагдана');
-  eq(rows[0].id, 'b', 'пост: шинэ нь эхэнд');
-  // ⛔ БҮҮСТ = ЧАТ ЗАР (2026-10-06) — захиалга авчирсан ганц төрөл. Холбоостой
-  //    ч, холбоосгүй ч бүх пост чат зар болно; сонголт өгөхгүй.
-  eq(rows[0].kind, 'chat', 'пост: холбоостой → чат');
-  eq(rows[1].kind, 'chat', 'пост: холбоосгүй → чат');
-  ok(/Чат/.test(rows[1].kindLabel), 'пост: шошго нь чат зар гэж хэлнэ');
-  eq(rows[1].msg, 'Сайн байна уу', 'пост: зай нэгтгэгдэнэ');
-  eq(rows[2].msg, '(бичвэргүй)', 'пост: бичвэргүй нь ил');
-  eq(rows[0].state, 'done', 'пост: төлөв уншигдана');
-  eq(rows[0].stateLabel, '✅ Ажиллаж байна', 'пост: төлвийн шошго');
-  eq(rows[1].state, '', 'пост: хүсэлтгүй → хоосон');
-  eq(rows[2].err, 'Non-Website Ad', 'пост: алдаа харагдана');
-  eq(rows[0].day, '09-16', 'пост: сар-өдөр');
-  // ⛔ АППААС нийтэлсэн пост — Facebook жагсаалтдаа оруулдаггүй тул
-  //    `fb_publish.py` өөрөө бүртгэнэ; хүнд аль нь болохыг ил хэлнэ.
-  const appRow = F.pagePostRows([{ post_id: 'p9', created_time: '2026-09-17T05:00:00+00:00',
-    message: 'Асар майхан', link_url: 'https://mevent.mn/products/m-007/', source: 'app' }], 5)[0];
-  eq(appRow.fromApp, true, 'пост: аппын пост тэмдэглэгдэнэ');
-  eq(appRow.kind, 'chat', 'пост: аппын пост ч чат зар');
-  eq(F.pagePostRows([{ post_id: 'p8', source: 'page' }], 5)[0].fromApp, false,
-     'пост: гараар нийтэлсэн нь тэмдэггүй');
-  eq(F.pagePostRows([{ post_id: 'p7' }], 5)[0].fromApp, false, 'пост: эх сурвалжгүй → тэмдэггүй');
-
-  eq(F.pagePostRows([], 5).length, 0, 'пост: хоосон');
-  eq(F.pagePostRows(null, 5).length, 0, 'пост: null → унахгүй');
-  eq(F.pagePostRows(posts, 1).length, 1, 'пост: хязгаар');
-
   const asrc3 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-  // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна — баталгаажуулалтгүй болохгүй.
-  // ⚠ Хамгаалалт нь БОДИТООР хаадаг байх ёстой — `await showConfirm(` гэсэн
-  //   мөр байгаад ч болохгүй (`false &&` нэмэхэд хэвээр таарч байв). Хүлээж
-  //   авсан хариуг ШАЛГАЖ, үгүй бол ГАРдаг хэлбэрийг шаардана.
-  ok(/data-pp-boost\][\s\S]{0,500}?if \(!\(await showConfirm\([\s\S]{0,300}?\)\)\) return;/.test(asrc3),
-     'scan: бүүст showConfirm-оор хаагдана');
-  ok(/data-pp-boost\][\s\S]{0,900}?await requestBoost\(/.test(asrc3),
-     'scan: бүүстын хүсэлт илгээгдэнэ');
-  ok(/loadPagePosts\(true\)/.test(asrc3), 'scan: постын жагсаалт ачаалагдана');
   // ⛔ Facebook-ийн CDN нь гадны хуудсанд 403 буцаадаг — зураг харуулбал
   //    саарал хайрцаг л гарна (амьд системд яг ингэсэн).
   ok(!/pp-img/.test(asrc3), 'scan: Facebook зураг харуулахгүй');
-  ok(/pp-link/.test(asrc3), 'scan: оронд нь постын холбоос');
-  // ⛔ Бүүст = чат зар. Сайт/хандалтын бүүст 820к₮ → 0 захиалга (2026-10-06) —
-  //    аппаас тэр төрлийг илгээх зам буцаж ирэх ёсгүй.
-  ok(/чат зар болгох уу\?/.test(asrc3), 'scan: баталгаажуулалт чат зар гэж хэлнэ');
-  ok(!/kind: site \? 'site' : 'engage'/.test(asrc3) && /ppKind \|\| 'chat'/.test(asrc3),
-     'scan: апп бүүстыг чат төрлөөр илгээнэ');
 
   // ⛔ Зорилтот бүлгийн загварыг [0]-оос авахгүй — тэр нь санамсаргүй мөр,
   //    зогссон кампанит ажлынх ч байж болно.
@@ -19170,6 +19083,44 @@ async function swFetchTests() {
   eq((rs.match(/Урьдчилгаа|SAL_ADV_TAG|SAL_REM_TAG|salaryCyclePaid|salaryLastAdvance/g) || []).length, 0,
      'scan: цалингийн мөрөнд урьдчилгаа/хуваарь байхгүй');
   ok(/owed > 0 \?/.test(rs), 'scan: үлдэгдэл зөвхөн дутуу үед гарна');
+}
+
+// ═══ ЗАР & ҮР ДҮН ДЭЛГЭЦ ҮНЭХЭЭР ЗУРАГДАНА — ЗӨВХӨН ҮР ДҮН (2026-10-29) ══════
+// ⚠ Scan-тест хэв маягийг хардаг; дэлгэц УНАХ эсэхийг ЗӨВХӨН бодитоор дуудаж л мэднэ.
+// CEO-д ч төсөв тавих, бүүст хийх, зар зогсоох товч гарахгүй.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const keep = runIn('JSON.stringify([state.fbAds, state.fbStates, state._adsTab, state.isCEO])');
+  const today = runIn('todayStr()');
+  runIn(`
+    state.isCEO = true;
+    state.fbAds = [
+      { day: '${today}', ad_id: 'a1', ad_name: 'Сандал', campaign_id: 'c1', campaign_name: 'Mevent сандал ширээ',
+        spend_mnt: 100000, impressions: 5000, clicks: 80, messages: 12, purchases: 2, revenue_mnt: 0,
+        fetched_at: new Date().toISOString() },
+    ];
+    state.fbStates = [
+      { campaign_id: 'c1', name: 'Mevent сандал ширээ', status: 'ACTIVE', effective_status: 'ACTIVE', daily_usd: 30,
+        updated_at: new Date().toISOString(), stop_req: new Date().toISOString() },
+    ];
+  `);
+  const out = {};
+  for (const tab of ['money', 'todo']) {
+    runIn(`state._adsTab = '${tab}'`);
+    let html = '', err = '';
+    try { html = runIn('renderAds()'); } catch (e) { err = e.message; }
+    out[tab] = html;
+    eq(err, '', `зар: «${tab}» таб алдаагүй зурагдана`);
+    ok(html.length > 300, `зар: «${tab}» таб HTML буцаана`);
+    for (const bad of ['data-ads-stop', '⏸', 'data-ads-edit', 'data-ads-toggle', 'data-pp-boost', '⚡ Бүүст', 'Сарын төсөв', 'Бүх зар зогсоо']) {
+      ok(!html.includes(bad), `⛔ зар: «${tab}» табд «${bad}» гарахгүй`);
+    }
+  }
+  ok(out.money.includes('Meta Ads Manager'), 'зар: мөнгө табд «төсвийг Ads Manager-ээс хийнэ» тайлбар гарна');
+  ok(out.money.includes('Mevent сандал ширээ'), 'зар: кампанит ажлын үр дүн харагдана');
+  ok(out.money.includes('Идэвхтэй зар'), 'зар: идэвхтэй зарын жагсаалт харагдана (зогсоо товчгүй)');
+  const k = JSON.parse(keep);
+  runIn(`state.fbAds = ${JSON.stringify(k[0])}; state.fbStates = ${JSON.stringify(k[1])}; state._adsTab = ${JSON.stringify(k[2])}; state.isCEO = ${JSON.stringify(k[3])};`);
 }
 
 // ═══ ЦАЛИНГИЙН САМБАР ҮНЭХЭЭР ЗУРАГДАНА (2026-10-02) ════════════════════

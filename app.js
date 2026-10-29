@@ -40076,45 +40076,13 @@ function adsAdvice(camps, rev, opts) {
   return out.sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
 }
 
-// ── САРЫН ТӨСӨВ (2026-09-16) ────────────────────────────────────────────────
-// Аппаас тавьсан төсвийг VPS-ийн `tools/fb_budget.py` 10 минут тутам уншиж
-// өдрийн төсөв болгон хувааж, үр дүнтэй зар руу шилжүүлнэ.
-// ⛔ ГУРВАН ХААЛТ: ① Meta-гийн дансны hard cap ② өдрийн төсөв ③ унтраалт.
-//    Скрипт унасан ч ① үлдэнэ — Facebook өөрөө зогсооно. Энэ дараалал ЧУХАЛ:
-//    зөвхөн манай кодод найдвал алдаа гармагц мөнгө хязгааргүй гарна.
-const ADS_BUDGET_KEY = 'ads_budget';
-// ⛔ ТӨСӨВ ТАВИХ = ЗӨВХӨН CEO. Дэлгэцийг маркетингийн хүн ХАРНА (тоо, зөвлөгөө),
-//    гэхдээ мөнгө зарцуулах шийдвэрийг ГАРГАХГҮЙ. `db/rls.sql` дээр ижил дүрэм
-//    (`ads_budget` → `sec.is_ceo()`) — UI ба DB хоёр ЗЭРЭГ зассан байх ёстой,
-//    эс бөгөөс товч харагдаад дарахад чимээгүй бүтэлгүйтнэ.
-function adsBudgetEditable() { return !!state.isCEO; }
-// Тухайн сарын төсвийн төлөв. Цэвэр функц.
-// 'stale' = өмнөх сарын төсөв үлдсэн → хуваарилагч зар АЖИЛЛУУЛАХГҮЙ (сар бүр
-// хүн шийдвэр гаргах ёстой; өнгөрсөн сарын дүнг чимээгүй давтвал төсөв хөвнө).
-function adsBudgetState(cfg, month) {
-  if (!cfg || !Number(cfg.mnt)) return 'none';
-  if (String(cfg.month || '') !== String(month || '')) return 'stale';
-  return cfg.enabled ? 'on' : 'off';
-}
-// Үлдсэн төсөв ба өдрийн хуваарилалт. daysLeft нь ӨНӨӨДРИЙГ оруулна.
-function adsBudgetPlan(mnt, spentMnt, daysLeft) {
-  const plan = Math.max(0, Number(mnt) || 0);
-  const spent = Math.max(0, Number(spentMnt) || 0);
-  const left = Math.max(0, plan - spent);
-  const d = Math.max(1, Number(daysLeft) || 1);
-  return { plan, spent, left, daysLeft: d, daily: Math.round(left / d), over: spent > plan };
-}
-// Сарын үлдсэн хоног (өнөөдрийг оруулаад).
-function adsDaysLeft(day) {
-  const s = String(day || todayStr());
-  const y = +s.slice(0, 4), m = +s.slice(5, 7), d = +s.slice(8, 10);
-  return new Date(y, m, 0).getDate() - d + 1;
-}
-// Тухайн сард зарцуулсан (аппын кэшээс — хуваарилагч нь Meta-гийн тоог хэрэглэнэ).
-function adsSpentInMonth(rows, month) {
-  return (rows || []).reduce((a, r) =>
-    a + (String((r && r.day) || '').slice(0, 7) === month ? (Number(r.spend_mnt) || 0) : 0), 0);
-}
+// ── ЗАРЫН ТӨСӨВ, БҮҮСТ, ЗОГСООЛТ АППААС ТАВИГДАХГҮЙ (2026-10-29, CEO) ─────────
+// «Зар & үр дүн» дэлгэц ЗӨВХӨН ҮР ДҮН харуулна. Сарын төсөв, бүүст, зар зогсоох/асаахыг
+// Meta Ads Manager-ээс хийнэ. VPS-ийн `tools/fb_budget.py` ба `tools/fb_boost.py`-ийн
+// cron УНТРААЛТТАЙ.
+// ⛔ Төсөв тавих, бүүст хүсэх, зар зогсоох товч/код энд БУЦАЖ БҮҮ НЭМ — `test/run.js`-ийн
+//    «ЗАР = ЗӨВХӨН ҮР ДҮН» scan-тест хаана. Буцаах бол эхлээд cron-г сэргээж, Meta
+//    дансны зарцуулалтын хязгаарыг (spend cap) шалга.
 
 // ── УТАСНЫ ДУУДЛАГА (2026-09-16) ────────────────────────────────────────────
 // Unitel PBX-ийн дуудлагын түүхээс өдөр×цагаар татагдана (`pbx_calls_hourly`,
@@ -41093,102 +41061,6 @@ async function saveAdPost(row) {
   if (!r.ok) throw new Error('HTTP ' + r.status);
 }
 
-// ── ХУУДСАНД ГАРААР НИЙТЭЛСЭН ПОСТЫГ БҮҮСТ ХИЙХ (2026-09-17) ───────────────
-// ⛔ Аппын ӨӨРИЙН нийтэлсэн постыг Facebook-ийн зарын систем ХАРДАГГҮЙ (апп
-//    Development горимд). CEO гараар нийтэлсэн пост харин бүрэн бүүстлэгддэг —
-//    амьд туршиж баталсан. Тиймээс урсгал эргэв: хүн постоо хийнэ → апп
-//    жагсаана → хүн сонгоно → VPS зар болгоно (`tools/fb_boost.py`).
-// ⚠ Жагсаалт `fb_page_posts`-оос ирнэ (VPS 15 мин тутам татна) — апп Facebook
-//   руу ШУУД ханддаггүй (токен сервер дээр, CORS ч зөвшөөрөхгүй).
-const PAGE_POST_ST = {
-  requested: { label: '⏳ Дараалалд', cls: 'pp-wait' },
-  done:      { label: '✅ Ажиллаж байна', cls: 'pp-on' },
-  error:     { label: '⚠ Бүтсэнгүй', cls: 'pp-bad' },
-};
-// Жагсаалтын мөрүүд. Цэвэр функц — тестлэгдэнэ.
-function pagePostRows(posts, limit) {
-  return (posts || [])
-    .filter(p => p && p.post_id)
-    .slice()
-    .sort((a, b) => String(b.created_time || '').localeCompare(String(a.created_time || '')))
-    .slice(0, limit || 12)
-    .map(p => {
-      const st = PAGE_POST_ST[String(p.boost || '')] || null;
-      return {
-        id: String(p.post_id),
-        day: String(p.created_time || '').slice(5, 10),
-        msg: String(p.message || '').replace(/\s+/g, ' ').trim() || '(бичвэргүй)',
-
-        // ⛔ БҮҮСТ = ЧАТ ЗАР (2026-10-06). 8/17–10/02-ны зарын дотор захиалга
-        //    авчирсан ганц төрөл нь чат (Messenger) зар; сайт руу (968 зочин →
-        //    0 lead) ба хандалтын бүүст 820к₮ → 0 захиалга. Тиймээс сонголт
-        //    өгөхгүй — бүх пост чат зар болно (`tools/fb_boost.py`).
-        // ⚠ «Зурагтай постыг чат болгох боломжгүй» гэсэн хуучин дүгнэлт БУРУУ
-        //   байв — creative-д «Мессеж илгээх» товч дутсан нь шалтгаан.
-        kind: 'chat',
-        kindLabel: '💬 Чат зар',
-        // Аппаас нийтэлсэн пост. Facebook эдгээрийг жагсаалтдаа ОРУУЛДАГГҮЙ тул
-        // `fb_publish.py` өөрөө бүртгэдэг — хүнд аль нь болохыг ил хэлнэ.
-        fromApp: String((p && p.source) || '') === 'app',
-        state: st ? String(p.boost) : '',
-        stateLabel: st ? st.label : '',
-        stateCls: st ? st.cls : '',
-        err: String(p.error || '').slice(0, 120),
-        link: String(p.permalink || ''),
-      };
-    });
-}
-async function loadPagePosts(force) {
-  if (state.pagePosts && !force) return state.pagePosts;
-  try {
-    const r = await fetchWithTimeout(
-      `${DB_URL}/rest/v1/fb_page_posts?select=*&order=created_time.desc&limit=30`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    state.pagePosts = await r.json();
-    return state.pagePosts;
-  } catch (e) {
-    dataLoadFailed('Хуудасны пост', e, 'pagePosts');
-    state.pagePosts = state.pagePosts || [];
-    return state.pagePosts;
-  }
-}
-// Бүүстын хүсэлт тавина. VPS 10 минут тутам шалгаж зар болгоно.
-async function requestBoost(postId, kind) {
-  const r = await fetchWithTimeout(
-    `${DB_URL}/rest/v1/fb_page_posts?post_id=eq.${encodeURIComponent(postId)}`, {
-      method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
-                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ boost: 'requested', boost_kind: kind,
-                             requested_by: state.me || '', requested_at: new Date().toISOString(),
-                             error: null }),
-    }, 20000);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-}
-
-// ── НЭГ ЗАРЫГ ЗОГСООХ (2026-09-18) ──────────────────────────────────────────
-// Өмнө нь зогсоох ГАНЦ зам нь «⛔ Бүх зар зогсоо» байв — үр дүнгүй нэг бүүстыг
-// унтраахын тулд БҮХ зараа унтраах, эсвэл Ads Manager руу орох хэрэгтэй болдог
-// байсан тул хэн ч зогсоодоггүй байв.
-// ⛔ Апп Facebook руу ШУУД хандахгүй (токен VPS дээр) — хүсэлтийг DB-д
-//   тэмдэглэнэ, `fb_budget.py` 10 минут тутам биелүүлнэ.
-// ⛔ ДАХИН АСААХ зам ЗОРИУД байхгүй. Мөнгө гаргах шийдвэр Ads Manager-ээс л
-//   гарна; ингэснээр энэ товч хамгийн муудаа зар зогсооно — мөнгө үрэхгүй.
-async function requestCampaignStop(cid) {
-  const r = await fetchWithTimeout(
-    `${DB_URL}/rest/v1/fb_campaign_state?campaign_id=eq.${encodeURIComponent(cid)}`, {
-      method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
-                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ stop_req: new Date().toISOString(), stop_by: state.me || '' }),
-    }, 20000);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-}
-// Зогсоох хүсэлт тавигдсан ч хараахан биелээгүй байна уу. Цэвэр функц — тестлэгдэнэ.
-// ⚠ Биелсэн хойно `stop_req` цэвэрлэгддэг тул энэ нь зөвхөн ХҮЛЭЭЛТИЙН үе.
-function adStopPending(s) { return !!(s && s.stop_req) && adIsLive(s); }
-
 function canSeeAds() { return canAccessView('ads', () => !!state.isCEO || canSeeMarketing()); }
 
 // ── GOOGLE ХАЙЛТ — «хүн биднийг ямар үгээр хайж байна» (2026-09-17) ─────────
@@ -41306,10 +41178,10 @@ const ADS_TABS = [
 //    хүн мэдэхгүй; хаанаас ч гаргахгүй бол блок чимээгүй алга болно. Тест
 //    хоёуланг нь шалгана — шинэ блок нэмбэл энд ч нэм.
 function adsTabParts(tab, p) {
-  if (tab === 'money') return [p.kpi, p.budget, p.camps, p.cmp, p.state, p.act];
+  if (tab === 'money') return [p.kpi, p.note, p.camps, p.cmp, p.state, p.act];
   if (tab === 'src') return [p.ga, p.gsc, p.chat, p.attrib, p.lead, p.capi];
   if (tab === 'calls') return [p.call, p.wd, p.conv, p.agent, p.fup];
-  return [p.advice, p.daily, p.cand, p.pubNote, p.pp, p.queue];   // 'todo' = өгөгдмөл
+  return [p.advice, p.daily, p.cand, p.pubNote, p.queue];   // 'todo' = өгөгдмөл
 }
 
 // ── ГАРАГААР — ХЭЗЭЭ ХҮН ХЭРЭГТЭЙ ВЭ (2026-09-17) ───────────────────────────
@@ -41484,28 +41356,8 @@ function renderAds() {
   const period = `<div class="ads-tabs">${[7, 30, 90].map(d =>
     `<button class="ads-tab${d === days ? ' on' : ''}" data-ads-days="${d}">${d} хоног</button>`).join('')}</div>`;
 
-  // ── Сарын төсөв ба автомат хуваарилалт ──
-  const month = todayStr().slice(0, 7);
-  const bcfg = state.adsBudget || null;
-  const bst = adsBudgetState(bcfg, month);
-  const bp = adsBudgetPlan(bcfg && bcfg.mnt, adsSpentInMonth(rows, month), adsDaysLeft());
-  const budgetHtml = `<div class="ads-budget">
-    <div class="ads-h">💰 Сарын төсөв · ${escapeHtml(month)}</div>
-    ${bst === 'on' || bst === 'off' ? `
-      <div class="ads-brow"><span>Төсөв</span><b>${fmtMoney(bp.plan)}</b></div>
-      <div class="ads-brow"><span>Зарцуулсан</span><b>${fmtMoney(bp.spent)}</b></div>
-      <div class="ads-brow"><span>Үлдсэн · ${bp.daysLeft} хоног</span><b>${fmtMoney(bp.left)}</b></div>
-      <div class="ads-brow"><span>Өдрийн төсөв</span><b>${fmtMoney(bp.daily)}</b></div>
-      ${adsBudgetEditable() ? `<div class="ads-bact">
-        <button class="btn" data-ads-edit>✎ Төсөв өөрчлөх</button>
-        <button class="btn ${bst === 'on' ? 'btn-danger' : 'btn-primary'}" data-ads-toggle="${bst === 'on' ? '0' : '1'}">${bst === 'on' ? '⛔ Бүх зар зогсоо' : '▶ Зар үргэлжлүүлэх'}</button>
-      </div>` : ''}
-      <div class="ads-note">${bst === 'on'
-        ? 'Систем 10 минут тутам шалгаж өдрийн төсвийг үр дүнтэй зар руу шилжүүлнэ. Дансны хатуу хязгаар тавигдсан — төсөв дуусмагц Facebook өөрөө зогсооно.'
-        : '⛔ Унтраалттай. Дараагийн шалгалтаар (10 минутын дотор) бүх зар зогсоно. Яаралтай бол Ads Manager-ээс шууд зогсооно уу.'}</div>`
-    : `<div class="ads-brow"><span>${bst === 'stale' ? 'Өмнөх сарын төсөв — энэ сард зар ажиллахгүй' : 'Төсөв тавиагүй — автомат хуваарилалт унтраалттай'}</span></div>
-      ${adsBudgetEditable() ? '<div class="ads-bact"><button class="btn btn-primary" data-ads-edit>＋ Сарын төсөв тавих</button></div>' : ''}`}
-  </div>`;
+  // Төсөв, бүүст, зогсоох/асаах аппаас тавигдахгүй (2026-10-29) — зөвхөн үр дүн.
+  const modeNote = `<div class="ads-note">Энэ дэлгэц зөвхөн <b>үр дүн</b> харуулна. Зарын төсөв, бүүст, зар зогсоох/асаахыг <b>Meta Ads Manager</b>-ээс хийнэ.</div>`;
 
   const kpi = `<div class="ads-kpis">
     <div class="ads-kpi"><div class="ads-kpi-l">Зарцуулсан</div><div class="ads-kpi-v">${fmtMoney(totalSpend)}</div></div>
@@ -41571,22 +41423,17 @@ function renderAds() {
   const states = adStateRows(state.fbStates || []);
   const liveN = states.filter(adIsLive).length;
   const stateHtml = !states.length ? '' : `<div class="ads-sec">Идэвхтэй зар <span class="ads-sub">(${liveN} ажиллаж байна · ${states.length} нийт)</span></div>
-    <div class="ads-list">${states.map(c => `<div class="ads-row ads-srow">
+    <div class="ads-list">${states.map(c => `<div class="ads-row">
       <span class="ads-nm">${escapeHtml(c.name || '—')}</span>
       <span class="ads-sp">${escapeHtml(adStatusLabel(c.effective_status, c.status))}</span>
       <span class="ads-ms">${c.updated_at ? escapeHtml(fmtDateTimeUB(c.updated_at)) : ''}</span>
       <b class="ads-pm${adIsLive(c) ? '' : ' ads-bad'}">${adIsLive(c) ? fmtUsd(c.daily_usd) + '/өдөр' : '—'}</b>
-      ${!adsBudgetEditable() || !adIsLive(c) ? '<span></span>' : adStopPending(c)
-        ? '<span class="ads-stopq">⏳ Зогсож байна</span>'
-        : `<button class="btn btn-danger ads-stop ui-raw" data-ads-stop="${escapeHtml(c.campaign_id)}"
-             data-ads-stop-n="${escapeHtml(c.name || '')}">⏸ Зогсоо</button>`}
-    </div>`).join('')}</div>
-    ${adsBudgetEditable() ? '<div class="ads-note">Зогсоосон зар 10 минутын дотор унтарна. Дахин асаахдаа Ads Manager ашиглана — апп зар асаадаггүй.</div>' : ''}`;
+    </div>`).join('')}</div>`;
 
   // Систем юу хийсэн. ⚠ Зөвхөн ӨӨРЧЛӨЛТ бүртгэгддэг тул мөр цөөн байх нь
   // хэвийн — «юу ч болоогүй» гэдэг нь тогтвортой ажиллаж байгааг хэлнэ.
   const acts = (state.fbActions || []).slice(0, 20);
-  const actHtml = !acts.length ? '' : `<div class="ads-sec">Систем юу хийсэн <span class="ads-sub">(зөвхөн өөрчлөлт)</span></div>
+  const actHtml = !acts.length ? '' : `<div class="ads-sec">Системийн өмнөх үйлдлүүд <span class="ads-sub">(түүх · автомат одоо ажиллахгүй)</span></div>
     <div class="ads-list">${acts.map(a => `<div class="ads-act${adActionIsBad(a) ? ' ads-act-bad' : ''}">
       <span class="ads-act-t">${escapeHtml(fmtDateTimeUB(a.at))}</span>
       <span class="ads-act-b">
@@ -41619,26 +41466,6 @@ function renderAds() {
     `<div class="ads-note">⚠ Нийтлэгч хараахан холбогдоогүй — баталсан пост дараалалд хүлээнэ. Facebook хуудасны эрх тохируулмагц автоматаар нийтлэгдэж бүүст хийгдэнэ.</div>`;
 
   const queued = posts.filter(x => x && x.status !== 'discarded').slice(0, 10);
-  // ── Таны гараар нийтэлсэн пост → бүүст ──
-  const ppRows = pagePostRows(state.pagePosts || [], 12);
-  const ppHtml = !ppRows.length ? '' : `
-    <div class="ads-sec">📣 Таны постыг бүүст хийх <span class="ads-sub">(хуудсанд нийтэлсэн сүүлийн постууд)</span></div>
-    <div class="ads-list">${ppRows.map(r => `<div class="pp-row">
-      <div class="pp-b">
-        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind">${escapeHtml(r.kindLabel)}</span>${
-          r.fromApp ? '<span class="pp-src">📱 Аппаас</span>' : ''}${
-          r.link ? `<a class="pp-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">Facebook дээр ↗</a>` : ''}</div>
-        <div class="pp-t">${escapeHtml(r.msg.slice(0, 90))}</div>
-        ${r.err ? `<div class="pp-err">${escapeHtml(r.err)}</div>` : ''}
-      </div>
-      <div class="pp-a">${r.state
-        ? `<span class="pp-st ${r.stateCls}">${escapeHtml(r.stateLabel)}</span>${
-            r.state === 'error' ? `<button class="btn" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">↻ Дахин</button>` : ''}`
-        : `<button class="btn btn-primary" data-pp-boost="${escapeHtml(r.id)}" data-pp-kind="${escapeHtml(r.kind)}">⚡ Бүүст</button>`}</div>
-    </div>`).join('')}</div>
-    <div class="ads-note">Бүүст бүр <b>чат зар</b> болно — хүн постыг хараад Messenger-ээр шууд бичнэ. Захиалга авчирсан ганц төрөл нь энэ.
-      📱 тэмдэгтэй нь аппын постер үүсгэгчээс нийтлэгдсэн пост. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.</div>`;
-
   const queueHtml = !queued.length ? '' : `<div class="ads-sec">Постын дараалал</div>
     <div class="ads-list">${queued.map(x => `<div class="ads-row">
       <span class="ads-nm">${escapeHtml(String(x.body || '').split('\n')[0])}</span>
@@ -41750,8 +41577,8 @@ function renderAds() {
     `<button class="ads-tab${t.k === tab ? ' on' : ''}" data-ads-tab="${t.k}">${t.label}${t.k === 'todo' && todoN ? ` (${todoN})` : ''}</button>`).join('')}</div>`;
 
   const body = adsTabParts(tab, {
-    advice: adviceHtml, daily: dailyHtml, cand: candHtml, pubNote, pp: ppHtml, queue: queueHtml,
-    kpi, budget: budgetHtml, camps: campsHtml, cmp: cmpHtml, state: stateHtml, act: actHtml,
+    advice: adviceHtml, daily: dailyHtml, cand: candHtml, pubNote, queue: queueHtml,
+    kpi, note: modeNote, camps: campsHtml, cmp: cmpHtml, state: stateHtml, act: actHtml,
     ga: gaHtml, gsc: gscHtml, chat: chatSectionHtml(state.fbChats === undefined ? null : state.fbChats, days), attrib: attribHtml, lead: leadHtml, capi: capiHtml,
     call: callHtml, wd: wdHtml, conv: convHtml, agent: agentHtml, fup: fupHtml,
   }).filter(x => x && String(x).trim()).join('\n');
@@ -42183,61 +42010,6 @@ function attachAdsHandlers() {
   });
   document.querySelectorAll('[data-ads-tab]').forEach(b => b.onclick = () => {
     state._adsTab = b.dataset.adsTab; render();
-  });
-  // ⛔ Бүүст = ГАДАГШ нийтлэгдэж МӨНГӨ зарцуулна тул баталгаажуулалтгүй болохгүй.
-  // ⚠ Бүүст бүр чат зар болно (`pagePostRows` → kind 'chat').
-  document.querySelectorAll('[data-pp-boost]').forEach(b => b.onclick = async () => {
-    const id = b.dataset.ppBoost, kind = b.dataset.ppKind || 'chat';
-    if (!(await showConfirm('Энэ постыг чат зар болгох уу? Хүмүүс постыг хараад Messenger-ээр шууд бичнэ. Төсөв байгаа сангаас хуваарилагдана — шинэ мөнгө гарахгүй.',
-      { okText: 'Бүүст хийх' }))) return;
-    b.disabled = true;
-    try {
-      await requestBoost(id, kind);
-      await loadPagePosts(true);
-      showToast('Дараалалд орлоо — 10 минутын дотор зар болно', 'success', 4000);
-      render();
-    } catch (e) {
-      b.disabled = false;
-      showToast('Болсонгүй: ' + e.message, 'error', 5000);
-    }
-  });
-  const save = async (cfg) => {
-    try { await saveAppConfig(ADS_BUDGET_KEY, cfg); state.adsBudget = cfg; render(); }
-    catch (e) { showToast('Хадгалагдсангүй: ' + e.message, 'error', 5000); }
-  };
-  document.querySelector('[data-ads-edit]')?.addEventListener('click', async () => {
-    const cur = state.adsBudget || {};
-    const v = await showPrompt('Энэ сард зар сурталчилгаанд хэдэн төгрөг зарцуулах вэ?', {
-      value: cur.mnt ? String(cur.mnt) : '', okText: 'Хадгалах', placeholder: 'жишээ 5000000',
-    });
-    if (!v) return;
-    const mnt = Math.round(Number(String(v).replace(/[^0-9]/g, '')) || 0);
-    if (!mnt) { showToast('Дүн оруулна уу', 'warn'); return; }
-    await save({ month: todayStr().slice(0, 7), mnt, enabled: true, by: state.me || '', at: new Date().toISOString() });
-    showToast('Төсөв тавигдлаа — 10 минутын дотор хүчинтэй болно', 'success', 4000);
-  });
-  document.querySelector('[data-ads-toggle]')?.addEventListener('click', async (e) => {
-    const on = e.currentTarget.dataset.adsToggle === '1';
-    if (!on && !(await showConfirm('Бүх зарыг зогсоох уу? Дараагийн шалгалтаар (10 минутын дотор) зогсоно.',
-      { okText: 'Зогсоо', danger: true }))) return;
-    await save(Object.assign({}, state.adsBudget || { month: todayStr().slice(0, 7), mnt: 0 }, { enabled: on }));
-  });
-  // ⛔ Нэг зарыг зогсоох нь мөнгө хөндөх ЭРГЭЖ БУЦАШГҮЙ үйлдэл (аппаас дахин
-  //   асаах зам байхгүй) тул баталгаажуулалтгүй байж БОЛОХГҮЙ.
-  document.querySelectorAll('[data-ads-stop]').forEach(b => b.onclick = async () => {
-    const nm = b.dataset.adsStopN || 'энэ зар';
-    if (!(await showConfirm(`«${nm}» зарыг зогсоох уу? 10 минутын дотор унтарна. Дахин асаахдаа Ads Manager ашиглана — аппаас асаах боломжгүй.`,
-      { okText: 'Зогсоо', danger: true }))) return;
-    b.disabled = true;
-    try {
-      await requestCampaignStop(b.dataset.adsStop);
-      await loadFbActions(true);
-      showToast('Зогсоох хүсэлт тавигдлаа — 10 минутын дотор биелнэ', 'success', 4000);
-      render();
-    } catch (e) {
-      b.disabled = false;
-      showToast('Болсонгүй: ' + e.message, 'error', 5000);
-    }
   });
 }
 
@@ -49212,10 +48984,6 @@ function refreshViewData() {
   if (v === 'ads' && canSeeAds() && state.fbActions === undefined) {
     loadFbActions().then(() => { if (state.view === 'ads') render(); });
   }
-  if (v === 'ads' && canSeeAds() && state.pagePosts === undefined) {
-    state.pagePosts = null;
-    loadPagePosts(true).then(() => { if (state.view === 'ads') render(); });
-  }
   if (v === 'ads' && canSeeAds() && state.fbCapi === undefined) {
     state.fbCapi = null;
     loadFbCapi(true).then(() => { if (state.view === 'ads') render(); });
@@ -49236,12 +49004,6 @@ function refreshViewData() {
     if (state.pbxLog === undefined) state.pbxLog = null;
     if (state.gsc === undefined) state.gsc = null;
     if (state.ga === undefined) state.ga = null;
-  }
-  if (v === 'ads' && canSeeAds()) {
-    if (state.adsBudget === undefined) {
-      state.adsBudget = null;
-      loadAppConfig(ADS_BUDGET_KEY).then(v => { state.adsBudget = v || null; if (state.view === 'ads') render(); });
-    }
   }
   // Харилцагчийн картад дуудлагын түүх гаргахад лог хэрэгтэй.
   if (v === 'customers' && canSeeCustomers() && state.pbxLog === undefined) {

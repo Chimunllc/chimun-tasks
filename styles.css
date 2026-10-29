@@ -7154,6 +7154,23 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .fin-caret { display: inline-block; transition: transform .12s; color: var(--muted); }
 .fin-caret.closed { transform: rotate(-90deg); }
 
+/* Ангиллын бүлэг нээгдэхэд дотор задардаг ГҮЙЛГЭЭНИЙ мөр (2026-10-29).
+   `.fin-grp`-ийн дэд мөр: төлөвийн тэмдэг · хүлээн авагч · утга · огноо · дүн.
+   Тэмдгийн өнгө нь `finStage`-ийн токеноос класс болж буудаг (доорх tone-ууд). */
+.fin-tx {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-3);
+  padding: 5px var(--space-2); font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.fin-tx-l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-tx-p { color: var(--muted); }
+.fin-tx-d { color: var(--muted); white-space: nowrap; }
+.fin-tx-a { white-space: nowrap; }
+.fin-tx-m.ok { color: var(--ok); }
+.fin-tx-m.warn { color: var(--warn); }
+.fin-tx-m.danger { color: var(--danger); }
+.fin-tx-m.primary { color: var(--primary); }
+
 /* ── Ирц: гарсан цагийг гараар оруулах (2026-09-06) ───────────────────────── */
 .att-fixout {
   display: inline-block; margin-top: var(--space-1);

@@ -19559,31 +19559,31 @@ function openBankAccountModal(a, onSaved) {
   // ХУВИЙН данс — компани эзэнд хэдийг өртэй вэ (зардал − буцаан төлсөн).
   const _dbt = (!isNew && String(a.purpose || '') === 'хувийн') ? personalAcctDebt(a.account_no || a.id) : null;
   const _debtBlock = _dbt ? `<div class="stmt-prsn">
-      <div style="font-weight:700;margin-bottom:5px;">🙍 Хувийн данс — компанийн өр</div>
+      <div class="stmt-prsn-h">🙍 Хувийн данс — компанийн өр</div>
       <div class="stmt-prsn-debt"><span>Компанийн зардал (${_dbt.n})</span><b>${fmtMoney(_dbt.spent)}</b></div>
       <div class="stmt-prsn-debt"><span>Буцаан төлсөн (${_dbt.pn})</span><b>−${fmtMoney(_dbt.paid)}</b></div>
       <div class="stmt-prsn-debt tot"><span>${_dbt.owed >= 0 ? 'Компани эзэнд өртэй' : 'Эзэн компанид өртэй'}</span><b>${fmtMoney(Math.abs(_dbt.owed))}</b></div>
       <div class="stmt-prsn-note">Хуулга оруулах бүрд шинэчлэгдэнэ. Буцаан төлөлт = компанийн данснаас энэ данс руу орсон шилжүүлэг.</div>
     </div>` : '';
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto;">
-    <div style="font-weight:800;font-size:16px;margin-bottom:12px;">${isNew ? '🏦 Данс нэмэх' : '🏦 Данс засах'}</div>
+  modal.innerHTML = `<div class="modal ba-modal">
+    <h2>${isNew ? '🏦 Данс нэмэх' : '🏦 Данс засах'}</h2>
     <label class="fld">Нэр<input id="ba-name" value="${escapeHtml(a.name || '')}" placeholder="жишээ: Орлого Nomaad"></label>
     <label class="fld">Банк<select id="ba-bank">${sel(BANK_LIST, a.bank, '— банк —')}</select></label>
     <label class="fld">Дансны дугаар<input id="ba-no" value="${escapeHtml(a.account_no || '')}" placeholder="3635185058" inputmode="numeric"></label>
     <label class="fld">IBAN<input id="ba-iban" value="${escapeHtml(a.iban || '')}" placeholder="MN77 0015 00 3635185058"></label>
-    <div style="display:flex;gap:8px;">
-      <label class="fld" style="flex:1;">Валют<select id="ba-cur"><option value="MNT"${(a.currency || 'MNT') === 'MNT' ? ' selected' : ''}>MNT</option><option value="USD"${a.currency === 'USD' ? ' selected' : ''}>USD</option><option value="CNY"${a.currency === 'CNY' ? ' selected' : ''}>CNY</option><option value="EUR"${a.currency === 'EUR' ? ' selected' : ''}>EUR</option></select></label>
-      <label class="fld" style="flex:1;">Зорилго<select id="ba-purpose">${sel(ACCT_PURPOSES, a.purpose, '— зорилго —')}</select></label>
+    <div class="ba-row">
+      <label class="fld">Валют<select id="ba-cur"><option value="MNT"${(a.currency || 'MNT') === 'MNT' ? ' selected' : ''}>MNT</option><option value="USD"${a.currency === 'USD' ? ' selected' : ''}>USD</option><option value="CNY"${a.currency === 'CNY' ? ' selected' : ''}>CNY</option><option value="EUR"${a.currency === 'EUR' ? ' selected' : ''}>EUR</option></select></label>
+      <label class="fld">Зорилго<select id="ba-purpose">${sel(ACCT_PURPOSES, a.purpose, '— зорилго —')}</select></label>
     </div>
     <label class="fld">Салбар<select id="ba-branch">${sel(BANK_BRANCHES, a.branch, '— салбар —')}</select></label>
-    <label class="fld">👤 Хариуцсан эзэмшигч <span style="font-weight:400;color:var(--muted);font-size:11px;">(энэ данснаас гарсан шилжүүлэг → энэ хүний зарцуулалт)</span><select id="ba-owner">${ownerOpts}</select></label>
+    <label class="fld">👤 Хариуцсан эзэмшигч <span class="pm-hint">(энэ данснаас гарсан шилжүүлэг → энэ хүний зарцуулалт)</span><select id="ba-owner">${ownerOpts}</select></label>
     <label class="fld">Тэмдэглэл<input id="ba-note" value="${escapeHtml(a.note || '')}" placeholder="сонголт"></label>
     ${_debtBlock}
     ${_spendBlock}
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:space-between;margin-top:14px;">
-      <button class="btn" id="ba-del" style="${isNew ? 'visibility:hidden;' : 'color:var(--danger);'}">Устгах</button>
-      <div style="display:flex;gap:8px;"><button class="btn" id="ba-cancel">Болих</button><button class="btn btn-primary" id="ba-save">Хадгалах</button></div>
+    <div class="modal-actions">
+      <button class="btn ba-del${isNew ? ' off' : ''}" id="ba-del">Устгах</button>
+      <div class="ba-row"><button class="btn" id="ba-cancel">Болих</button><button class="btn btn-primary" id="ba-save">Хадгалах</button></div>
     </div></div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();

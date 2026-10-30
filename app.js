@@ -13536,7 +13536,15 @@ function attManualOutCheck(inTs, outTs) {
 // огноогоор бөглөж, өнгөрсөн өдрийн засвар өнөөдөрт унаж чимээгүй алга болно.
 // Хэрэв `day` нь генерацлагдсан багана бол сервер татгалзана — тэр үед `day`-гүйгээр
 // дахин илгээнэ (ts-ээс өөрөө гарна).
+// ⛔ ХААСАН САРД ГАР ЗАСВАР ХИЙГДЭХГҮЙ (2026-10-30): цалин ирцээс тэр дор дахин бодогддог тул 11 сард 9 сарын өдрийн
+//   гарах цаг нэмбэл олгочихсон цалин чимээгүй өөрчлөгдөнө. Энэ нь ГАР засвар (`manual`) БА батлагдсан хүсэлт (`request`)
+//   хоёрын ГАНЦ бичих цэг — тиймээс шалгалт ЭНД (шинэ дэлгэц нэмэгдсэн ч өөрөө хаагдана). Шалгалт бичихээс ӨМНӨ тул
+//   «ирсэн + гарсан» хос дундаа таслагдахгүй. Шалгах сар = `day` (цалин өдрөөр тооцогддог), `ts` БИШ: 9-р сарын 30-ны
+//   шөнийн ээлж 10-р сарын 1-нд дуусвал ч 9 сарынх. DB-ийн trigger (`db/att_manual_lock.sql`) мөн дахин шалгана.
 async function attSaveManualOut(body, keepDay) {
+  const lockYm = String((body && body.day) || '').slice(0, 7);
+  if (!lockYm) throw new Error('Ирцийн өдөр тодорхойгүй — сарын түгжээг шалгаж чадахгүй тул бичихгүй');
+  await assertMonthOpenLive(lockYm, 'ирц засах');
   const post = async (payload) => {
     const r = await fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(payload) });
     return { ok: r.ok, status: r.status, text: r.ok ? '' : await r.text().catch(() => '') };
@@ -14409,6 +14417,8 @@ function openAttRequestModal(preDay) {
     errEl.hidden = true; prevEl.innerHTML = '';
     const req = build();
     if (req.closed) { errEl.textContent = '⚠ Энэ өдөр аль хэдийн бүрэн бүртгэгдсэн — хүсэлт шаардлагагүй'; errEl.hidden = false; return null; }
+    // Хаасан сарын ирцийг батлах боломжгүй тул хүсэлт илгээж хүлээлгэхгүй — ЭХЭНД хэлнэ
+    if (req.day && monthLocked(String(req.day).slice(0, 7))) { errEl.textContent = `🔒 ${String(req.day).slice(0, 7)} сар хаагдсан — тэр сарын ирцийг засах боломжгүй. Удирдлагад хандана уу`; errEl.hidden = false; return null; }
     const ex = attReqFor(myKey, req.day);
     if (ex && ex.status === 'pending') { errEl.textContent = '⚠ Энэ өдөрт хүсэлт аль хэдийн илгээгдсэн — хариу хүлээж байна'; errEl.hidden = false; return null; }
     const v = attReqValidate(req);
@@ -14423,6 +14433,8 @@ function openAttRequestModal(preDay) {
     const got = preview(); if (!got) return;
     const btn = e.currentTarget; btn.disabled = true;
     const { req, v } = got;
+    try { await assertMonthOpenLive(String(req.day).slice(0, 7), 'ирцийн засвар хүсэх'); }   // кэш хуучирсан байж болно — серверээс шинэчилж шалгана
+    catch (err) { btn.disabled = false; errEl.textContent = '⚠ ' + err.message; errEl.hidden = false; return; }
     const entry = {
       key: myKey, name: me.name || state.me || '', day: req.day,
       newIn: v.newIn, inTs: v.inTs, inTime: v.newIn ? req.inTime : attTimeUB(v.inTs), outTime: req.outTime,

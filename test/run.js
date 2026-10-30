@@ -23484,3 +23484,86 @@ async function swFetchTests() {
     ok(/cut\.count/.test(rv) && /freshPaid - sub/.test(rv), 'scan: буцаалт давтагдсан мөр бүрийн дүнг хасна');
   }
 });
+
+// ═══ ИРЦИЙН ГАР ЗАСВАР ХААСАН САРД БИЧИГДЭХГҮЙ (2026-10-30) ═════════════════════════════
+// `attSaveManualOut` нь гар засвар (manual) БА батлагдсан хүсэлт (request) хоёрын ГАНЦ бичих цэг. Хаасан сарын өдөрт гарах цаг
+// нэмбэл олгочихсон цалин чимээгүй өөрчлөгдөнө.
+// ⚠ __lateSeq: fetch-ийг stub-лах тул бусад асинх тесттэй зэрэг ажиллаж БОЛОХГҮЙ.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const appSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const sqlSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'db', 'att_manual_lock.sql'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const saved = { fetch: sandbox.fetch, toast: sandbox.showToast, render: sandbox.render, cm: st.closedMonths, cat: st.closedMonthsAt, ceo: st.isCEO, req: st.attRequests, lcm: sandbox.loadClosedMonths };
+  const posts = [], toasts = [];
+  try {
+    // Хаалттай сарыг серверээс (amp. `loadClosedMonths(true)`) уншихыг тус сервер төлөвөөр төлөөлнө
+    let serverClosed = { '2026-09': { at: 'x' } };
+    sandbox.loadClosedMonths = async () => { st.closedMonths = serverClosed; return serverClosed; };
+    sandbox.fetch = (url, opts) => { url = String(url); if (/\/rest\/v1\/attendance/.test(url) && opts && opts.method === 'POST') posts.push(JSON.parse(opts.body)); return Promise.resolve({ ok: true, status: 201, json: async () => [], text: async () => '' }); };
+    sandbox.showToast = (m) => { toasts.push(String(m)); }; sandbox.render = () => {};
+    const base = { member_key: '99001122', member_name: 'А', member_phone: '99001122', kind: 'out', token: 'manual', source: 'manual' };
+    const T = (fn) => fn().then(() => '', e => String(e.message || e));
+
+    // ① Хаасан сар (9) → бичигдэхгүй, ямар ч хүсэлт явахгүй
+    let err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-15', ts: '2026-09-15T10:00:00.000Z' }, false));
+    ok(/2026-09 сар хаагдсан/.test(err), '⛔ ирц: хаасан сарын гар засвар татгалзагдаж, шалтгааныг нэрлэнэ');
+    eq(posts.length, 0, '⛔ ирц: хаасан сард сервер рүү ЮУ Ч явахгүй');
+    // ② Нээлттэй сар (10) → бичигдэнэ
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-10-15', ts: '2026-10-15T10:00:00.000Z' }, false));
+    eq([err, posts.length], ['', 1], 'ирц: нээлттэй сарын гар засвар хэвийн бичигдэнэ');
+    // ③ Шилжилтийн хаалт (cutover) — түүнээс ӨМНӨХ бүх сар
+    serverClosed = { __cutover: { before: '2026-09' } }; posts.length = 0;
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-08-31', ts: '2026-08-31T10:00:00.000Z' }, false));
+    ok(/2026-08 сар хаагдсан/.test(err) && posts.length === 0, 'ирц: шилжилтийн хаалтаас өмнөх сар ч хаалттай');
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-01', ts: '2026-09-01T10:00:00.000Z' }, false));
+    eq(err, '', 'ирц: шилжилтийн хаалтын сар өөрөө нээлттэй');
+    // ④ Шөнийн ээлж: ts нь дараа сард ч шалгах сар = `day` (цалин өдрөөр бодогддог)
+    serverClosed = { '2026-09': { at: 'x' } }; posts.length = 0;
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-30', ts: '2026-10-01T00:30:00.000Z' }, true));   // УБ 10-01 08:30 — ts нь UTC-ээр ч 10-р сард
+    ok(/2026-09 сар хаагдсан/.test(err) && posts.length === 0, '⛔ ирц: 9-р сарын шөнийн ээлж (гарсан нь 10-р сард) 9 сарын хаалтад баригдана');
+    serverClosed = { '2026-10': { at: 'x' } };
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-30', ts: '2026-10-01T00:30:00.000Z' }, true));
+    eq(err, '', 'ирц: ээлж нь 9 сарынх тул 10-р сарын хаалт саад болохгүй');
+    // ⑤ Өдөргүй бичилт — сар тодорхойгүй тул бичихгүй
+    posts.length = 0;
+    err = await T(() => F.attSaveManualOut({ ...base, ts: '2026-10-15T10:00:00.000Z' }, false));
+    ok(/өдөр тодорхойгүй/.test(err) && posts.length === 0, 'ирц: `day`-гүй бичилт татгалзагдана (сарыг шалгаж чадахгүй)');
+    // ⑥ Түгжээ сервэрээс шинэчлэгдэнэ: кэш «нээлттэй» гэж үзэх ч сервер «хаалттай» бол татгалзана
+    st.closedMonths = {}; serverClosed = { '2026-09': { at: 'x' } }; posts.length = 0;
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-02', ts: '2026-09-02T10:00:00.000Z' }, false));
+    ok(/хаагдсан/.test(err) && posts.length === 0, '⛔ ирц: өөр сессээс тавигдсан хаалтыг хуучирсан кэшээр алгасахгүй (серверээс шинэчилнэ)');
+
+    // ⑦ Хүсэлт батлах: хаасан сарынх батлагдахгүй, хүсэлт хүлээгдэж буй хэвээр, сервер рүү юу ч явахгүй
+    st.isCEO = true; posts.length = 0; toasts.length = 0;
+    const reqs = [];
+    sandbox.fetch = (url, opts) => { url = String(url); if (/\/rest\/v1\/attendance/.test(url) && opts && opts.method === 'POST') posts.push(JSON.parse(opts.body)); if (/att_requests/.test(url) && opts && opts.method === 'POST') reqs.push(JSON.parse(opts.body)); return Promise.resolve({ ok: true, status: 201, json: async () => [], text: async () => '' }); };
+    // ⚠ Хүсэлт өөрөө «ATT_REQ_MAX_AGE_D хоногоос хуучин өдрийг» татгалздаг тул өдрийг ӨНӨӨДРӨӨС тооцно — тогтмол огноо
+    //   нь хугацаа өнгөрөхөөр хүсэлтийн шалгалтаар (хаалтаар БИШ) татгалзагдаж, тест буруу шалтгаанаар давдаг байв.
+    const rday = F.addDays(F.todayStr(), -1), rym = rday.slice(0, 7);
+    serverClosed = { [rym]: { at: 'x' } };
+    const rk = '99001122|' + rday;
+    st.attRequests = { [rk]: { key: '99001122', name: 'А', day: rday, newIn: true, inTime: '09:00', outTime: '18:00', status: 'pending' } };
+    ok(F.attReqApprovalCheck(st.attRequests[rk]).ok, 'хүсэлт: тест өгөгдөл өөрөө зөв (хаалтаас БУСАД шалтгаанаар татгалзагдахгүй)');
+    await F.attReqApprove(rk);
+    eq([posts.length, reqs.length, st.attRequests[rk].status], [0, 0, 'pending'], '⛔ хүсэлт: хаасан сарынх батлагдахгүй — ирц ч бичигдэхгүй, төлөв ч «батлагдсан» болохгүй');
+    ok(toasts.some(t => /хаагдсан/.test(t)), 'хүсэлт: татгалзсан шалтгааныг (сар хаагдсан) ил хэлнэ');
+    // Нээлттэй сарын хүсэлт батлагдана
+    serverClosed = {}; toasts.length = 0;
+    await F.attReqApprove(rk);    // ИЖИЛ хүсэлт — сарыг нээсний дараа батлагдана (хүлээгдэж байсан тул алга болоогүй)
+    eq([posts.length, posts.map(p => p.kind)], [2, ['in', 'out']], 'хүсэлт: нээлттэй сарынх батлагдаж «ирсэн + гарсан» хос бичигдэнэ');
+  } finally {
+    sandbox.fetch = saved.fetch; sandbox.showToast = saved.toast; sandbox.render = saved.render; sandbox.loadClosedMonths = saved.lcm;
+    Object.assign(st, { closedMonths: saved.cm, isCEO: saved.ceo, attRequests: saved.req });
+  }
+
+  // ── Scan: бичих цэг, хүсэлтийн цонх, DB trigger ──
+  const fnOf = (a, b) => appSrc.slice(appSrc.indexOf(a), appSrc.indexOf(b, appSrc.indexOf(a) + 10));
+  const sm = fnOf('async function attSaveManualOut', '/* ─── ИРЦИЙН ТЭМДЭГЛЭГЭЭ');
+  ok(sm.indexOf('assertMonthOpenLive(') > 0 && sm.indexOf('assertMonthOpenLive(') < sm.indexOf('await post('), 'scan: сарын түгжээ ЭХНИЙ бичилтээс өмнө шалгагдана (ирсэн+гарсан хос дундаа таслагдахгүй)');
+  eq((appSrc.match(/rest\/v1\/attendance`, \{ method: 'POST'/g) || []).length, 1, 'scan: гар/хүсэлтийн ирцийн бичилт НЭГ функцэд (attSaveManualOut) — шинэ зам нэмбэл түүгээр');
+  ok(/assertMonthOpenLive\(String\(req\.day\)\.slice\(0, 7\), 'ирцийн засвар хүсэх'\)/.test(appSrc), 'scan: ажилтны хүсэлт илгээх үед хаасан сарыг шалгана');
+  ok(/monthLocked\(String\(req\.day\)\.slice\(0, 7\)\)/.test(appSrc), 'scan: хүсэлтийн цонх хаасан сарын өдрийг ЭХЭНД хэлнэ');
+  ok(/when \(new\.source in \('manual', 'request'\)\)/.test(sqlSrc), '⛔ scan: DB trigger зөвхөн manual/request мөрөнд (киоск, скан хөндөгдөхгүй)');
+  ok(/create or replace function att_manual_lock/.test(sqlSrc) && /drop trigger if exists attendance_manual_lock_trg/.test(sqlSrc) && /notify pgrst, 'reload schema'/.test(sqlSrc), 'scan: SQL идемпотент + схем дахин ачаална');
+  ok(/closed_months/.test(sqlSrc) && /__cutover,before/.test(sqlSrc) && /coalesce\(new\.day/.test(sqlSrc), 'scan: trigger аппын хаалттай сарын дүрэм (сар + шилжилтийн хаалт)-тай ИЖИЛ, `day`-ээр шалгана');
+});

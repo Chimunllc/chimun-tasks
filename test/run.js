@@ -19105,15 +19105,20 @@ async function swFetchTests() {
     ];
   `);
   const out = {};
-  for (const tab of ['money', 'todo']) {
-    runIn(`state._adsTab = '${tab}'`);
-    let html = '', err = '';
-    try { html = runIn('renderAds()'); } catch (e) { err = e.message; }
-    out[tab] = html;
-    eq(err, '', `зар: «${tab}» таб алдаагүй зурагдана`);
-    ok(html.length > 300, `зар: «${tab}» таб HTML буцаана`);
-    for (const bad of ['data-ads-stop', '⏸', 'data-ads-edit', 'data-ads-toggle', 'data-pp-boost', '⚡ Бүүст', 'Сарын төсөв', 'Бүх зар зогсоо']) {
-      ok(!html.includes(bad), `⛔ зар: «${tab}» табд «${bad}» гарахгүй`);
+  // ⛔ Нэг ч таб, нэг ч эрхээр (CEO ч, бусад ч) удирдах товч гаргах ёсгүй.
+  for (const isCeo of [true, false]) {
+    runIn(`state.isCEO = ${isCeo}`);
+    for (const tab of ['money', 'todo', 'src', 'calls']) {
+      runIn(`state._adsTab = '${tab}'`);
+      let html = '', err = '';
+      try { html = runIn('renderAds()'); } catch (e) { err = e.message; }
+      if (isCeo) out[tab] = html;
+      const who = isCeo ? 'CEO' : 'бусад';
+      eq(err, '', `зар: «${tab}» таб (${who}) алдаагүй зурагдана`);
+      ok(html.length > 100, `зар: «${tab}» таб (${who}) HTML буцаана`);
+      for (const bad of ['data-ads-stop', '⏸', 'data-ads-edit', 'data-ads-toggle', 'data-pp-boost', '⚡ Бүүст', 'Сарын төсөв', 'Бүх зар зогсоо']) {
+        ok(!html.includes(bad), `⛔ зар: «${tab}» табд (${who}) «${bad}» гарахгүй`);
+      }
     }
   }
   ok(out.money.includes('Meta Ads Manager'), 'зар: мөнгө табд «төсвийг Ads Manager-ээс хийнэ» тайлбар гарна');

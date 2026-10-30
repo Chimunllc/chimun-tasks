@@ -23314,8 +23314,12 @@ async function swFetchTests() {
         if (m === 'GET') return S.readFail ? Promise.reject(new Error('offline')) : R(200, [{ paid_mnt: row.paid_mnt, paid_ref: row.paid_ref }]);
         if (m === 'PATCH') {
           if (S.beforePatch) { S.beforePatch(row); S.beforePatch = null; }
-          const mm = url.match(/paid_mnt=eq\.(\d+)/);
-          const casOk = mm ? Number(mm[1]) === (row.paid_mnt || 0) : (/paid_mnt\.eq\.0/.test(url) ? !row.paid_mnt : true);
+          // ⛔ PostgREST 12.2.3 (амьд баталсан 2026-10-30): `or=(…)`/`and=(…)` нөхцөл + `select=id` + return=representation нь
+          //    хариуны select-д нөхцөлийг ДАХИН хэрэглэдэг, хариуд зөвхөн `id` тул 400 42703. Энгийн нөхцөл (paid_mnt=eq.N) хэвийн.
+          if (/[?&](or|and)=\(/.test(url) && /select=id\b/.test(url)) return R(400, { code: '42703', message: 'column ' + t[1] + '.paid_mnt does not exist' });
+          const mm = url.match(/[?&]paid_mnt=eq\.(\d+)/);
+          // `eq.N` нь NULL-д таарахгүй (SQL-ийн дүрэм); `is.null` нь зөвхөн NULL-д таарна
+          const casOk = mm ? row.paid_mnt != null && Number(mm[1]) === Number(row.paid_mnt) : (/[?&]paid_mnt=is\.null/.test(url) ? row.paid_mnt == null : true);
           if (!casOk) return R(200, []);                                  // compare-and-set: 0 мөр шинэчлэгдсэн
           Object.assign(row, JSON.parse(opts.body));                       // сервер биелүүлэв
           return S.loseReply ? (S.loseReply = false, Promise.reject(new Error('timeout'))) : R(200, [{ id: decodeURIComponent(t[2]) }]);
@@ -23345,7 +23349,7 @@ async function swFetchTests() {
     let md = mkModal([rc('R1', 206800)]), btn = { disabled: false };
     await F.submitBqPayment('ao-1', md, btn);
     eq([S.tables.app_orders['ao-1'].paid_mnt, /\[#R1\]/.test(S.tables.app_orders['ao-1'].paid_ref), patches(S, 'app_orders').length, md.removed], [206800, true, 1, true], 'төлбөр: энгийн бүртгэл — нэг удаа бичигдэнэ');
-    ok(/or=\(paid_mnt\.eq\.0,paid_mnt\.is\.null\)/.test(patches(S, 'app_orders')[0].url) && /return=representation/.test('return=representation'), '⛔ төлбөр: PATCH нь өмнө уншсан paid_mnt-ээр шүүгдэнэ (compare-and-set)');
+    ok(/[?&]paid_mnt=eq\.0(&|$)/.test(patches(S, 'app_orders')[0].url) && !/[?&]or=/.test(patches(S, 'app_orders')[0].url), '⛔ төлбөр: PATCH нь өмнө уншсан paid_mnt-ээр шүүгдэнэ (compare-and-set), `or=` ХЭРЭГЛЭХГҮЙ (PostgREST 400)');
 
     // S2) ⛔ №1673/№1693: сервер биелүүлсэн ч ХАРИУ ИРЭЭГҮЙ → цонх нээлттэй → «Хадгалах» ДАХИН → давхар нэмэгдэхгүй
     S = fake({}); fresh(); o = mkOrder(); toasts.length = 0; S.loseReply = true;
@@ -23404,7 +23408,28 @@ async function swFetchTests() {
     await F.submitCateringPayment('kt-1', md, btn);
     await F.submitCateringPayment('kt-1', md, btn);
     eq([S.tables.catering_jobs['kt-1'].paid_mnt, patches(S, 'catering_jobs').length], [300000, 1], '⛔ катеринг: хариу ирээгүй үед дахин дарсан ч нэг л удаа бүртгэгдэнэ');
-    ok(/or=\(paid_mnt\.eq\.0,paid_mnt\.is\.null\)/.test(patches(S, 'catering_jobs')[0].url), 'катеринг: PATCH нь paid_mnt-ээр шүүгдэнэ (compare-and-set)');
+    ok(/[?&]paid_mnt=eq\.0(&|$)/.test(patches(S, 'catering_jobs')[0].url) && !/[?&]or=/.test(patches(S, 'catering_jobs')[0].url), 'катеринг: PATCH нь paid_mnt-ээр шүүгдэнэ (compare-and-set), `or=` ХЭРЭГЛЭХГҮЙ');
+
+    // S8b) ⛔ Амьд дээр унасан тохиолдол (2026-10-30): төлбөр огт ороогүй (paid_mnt = 0) захиалгад ЭХНИЙ баримт.
+    //      Өмнө `or=(paid_mnt.eq.0,paid_mnt.is.null)` илгээж PostgREST 400 «column … does not exist» буцаадаг байв.
+    S = fake({}); fresh(); o = mkOrder(); toasts.length = 0;
+    md = mkModal([rc('R20', 50000)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, md.removed, toasts.some(t => /алдаа|HTTP/i.test(t))], [50000, true, false], '⛔ төлбөр: төлбөргүй (0) захиалгад эхний баримт бүртгэгдэнэ (PostgREST 400 өгөхгүй)');
+    // DB-д paid_mnt = NULL байвал: eq.0 таарахгүй → is.null-оор давхар бичилтгүйгээр бүртгэгдэнэ
+    S = fake({}); fresh(); o = mkOrder(); S.tables.app_orders['ao-1'].paid_mnt = null; o.paid_mnt = null; toasts.length = 0;
+    md = mkModal([rc('R21', 70000)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, patches(S, 'app_orders').map(c => /paid_mnt=is\.null/.test(c.url) ? 'null' : 'eq0')], [70000, ['eq0', 'null']], 'төлбөр: paid_mnt NULL мөр — эхлээд eq.0 (0 мөр), дараа нь is.null-оор НЭГ л удаа бичигдэнэ');
+    // Хэсэгчилсэн төлбөртэй (≠0) захиалгад хоёр дахь баримт: нөхцөл нь `eq.<суурь>`
+    S = fake({ paid: 100000, ref: '[#R1] X · 1 · z' }); fresh(); o = mkOrder(); o.paid_mnt = 100000; o.paid_ref = S.tables.app_orders['ao-1'].paid_ref; toasts.length = 0;
+    md = mkModal([rc('R22', 106800)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, /paid_mnt=eq\.100000(&|$)/.test(patches(S, 'app_orders')[0].url)], [206800, true], 'төлбөр: хэсэгчилсэн төлбөртэй захиалгад хоёр дахь баримт нэмэгдэнэ (eq.<суурь>)');
+    // Хуурамч сервер өөрөө `or=`-д 400 өгдөг эсэхийг баталгаажуулна (загвар PostgREST-ээс хоцрохгүйн тулд)
+    S = fake({}); fresh();
+    const rOr = await sandbox.fetch(sandbox.DB_URL + '/rest/v1/app_orders?id=eq.ao-1&or=(paid_mnt.eq.0,paid_mnt.is.null)&select=id', { method: 'PATCH', body: '{}' });
+    eq(rOr.status, 400, 'загвар: PostgREST шиг `or=` + select=id хослолд 400 буцаана');
 
     // S9) ↩ Буруу бүртгэсэн: нэг баримт N удаа бүртгэгдсэн бол N удаа хасна (№1693: 2,070,000 → 0)
     S = fake({ paid: 300000, ref: '[#R1] X · 1 · z  |  [#R1] X · 1 · z  |  [#R1] X · 1 · z', rcAmt: 100000 }); fresh(); S.ledger = { R1: 'mevent:#1673' };
@@ -23436,6 +23461,7 @@ async function swFetchTests() {
     ok(!/catch \(_\) \{ \/\* сүлжээ унавал санах ойн утга дээр тооцно \*\/ \}/.test(bq), '⛔ scan: серверээс унших алдаа гарвал санах ойн хуучин утга дээр ДУРАМГАЙ нэмэхгүй');
     const kt = fnOf('async function submitCateringPayment', '/* ========================== КАТЕРИНГ модуль төгсгөл');
     ok(kt.indexOf('fetchPaidState(') > 0 && kt.indexOf('fetchPaidState(') < kt.indexOf('reserveReceipt(') && /splitNewReceipts\(/.test(kt) && /patchPaidOnce\(/.test(kt), 'scan: катеринг төлбөр — ижил хамгаалалт');
+    ok(!/paid_mnt\.is\.null\)/.test(fnOf('async function patchPaidOnce', 'async function submitBqPayment')) && /paid_mnt=is\.null/.test(fnOf('async function patchPaidOnce', 'async function submitBqPayment')), '⛔ scan: patchPaidOnce `or=(…)` logic-tree хэрэглэхгүй (PostgREST 12 хариуны select-д дахин хэрэглэж 400 өгдөг)');
     const rv = fnOf('async function reverseOrderPayment(', 'function setCustInfo(');
     ok(/cut\.count/.test(rv) && /freshPaid - sub/.test(rv), 'scan: буцаалт давтагдсан мөр бүрийн дүнг хасна');
   }

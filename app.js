@@ -36920,18 +36920,24 @@ async function fetchPaidState(table, id) {
   } catch (_) { return null; }
 }
 // PATCH-ийг зөвхөн ӨМНӨ уншсан `paid_mnt` хэвээр байвал биелүүлнэ. 'ok' | 'conflict' (өөр бичилт хооронд орсон);
-// HTTP алдаа бол шидэнэ. `paid_mnt` null байж болох тул 0 үед `is.null`-ыг ч тооцно.
+// HTTP алдаа бол шидэнэ. `paid_mnt` null байж болох тул 0 үед `is.null`-ыг тусад нь оролдоно.
+// ⛔ `or=(…)` БҮҮ хэрэглэ: PostgREST 12 нь logic-tree нөхцөлийг хариуны select-д ДАХИН хэрэглэдэг, харин хариуд зөвхөн
+//    `id` байдаг тул 400 «column app_orders.paid_mnt does not exist» гэж унаж, төлбөр ОГТ бүртгэгдэхгүй
+//    (2026-10-30 амьд дээр: төлбөргүй захиалга бүр). Энгийн `paid_mnt=eq.N` / `paid_mnt=is.null` л зөв.
 async function patchPaidOnce(table, id, basePaid, body) {
   const base = Math.round(Number(basePaid) || 0);
-  const cond = base === 0 ? '&or=(paid_mnt.eq.0,paid_mnt.is.null)' : `&paid_mnt=eq.${base}`;
-  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}${cond}&select=id`, {
-    method: 'PATCH',
-    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=representation' },
-    body: JSON.stringify(body),
-  }, 15000);
-  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
-  const rows = await r.json();
-  return Array.isArray(rows) && rows.length ? 'ok' : 'conflict';
+  const conds = base === 0 ? ['paid_mnt=eq.0', 'paid_mnt=is.null'] : [`paid_mnt=eq.${base}`];
+  for (const cond of conds) {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&${cond}&select=id`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    const rows = await r.json();
+    if (Array.isArray(rows) && rows.length) return 'ok';
+  }
+  return 'conflict';
 }
 async function submitBqPayment(oid, modal, btn) {
   const bqO = (state.bqOrders || []).find(x => String(x.id) === String(oid));

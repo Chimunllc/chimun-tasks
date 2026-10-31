@@ -490,8 +490,21 @@ function dataLoadFailed(where, err, cacheKey) {
   // ⛔ 401 нь «дата ачаалагдсангүй» БИШ — НЭВТРЭЛТ дууссан (2026-10-07, амьд логоос).
   //   Нэг дэлгэц 3 татац хийдэг тул алдааны лог нэг зочлолтод 3 бичлэгээр дүүрч,
   //   хүнд «дата алга» гэж уншигдаж байв. Жинхэнэ шалтгаан нь токен хуучирсан.
+  //   ⛔ ГЭХДЭЭ ТОКЕН ОГТ ИЛГЭЭГДЭЭГҮЙ бол СЕРВЕРТ МЭДЭЭЛЭХГҮЙ (2026-10-29,
+  //   fp c933fe553d64 — 3 засварын дараа ч 54 удаа · 11 ажилтан). Апп токенгүй
+  //   орох ХОЁР ЗОРИУДЫН зам бий: ① n8n хүрэхгүй үеийн клиент fallback нэвтрэлт
+  //   (`setUser` нь `auth`-гүй дуудагдаж хоёр токеныг УСТГАНА) ② офлайн эхэлсэн
+  //   сэргээлт (`navigator.onLine === false` тул эхлэлийн `pgrstTokenValid()`
+  //   шалгалт алгасагдана). Тэр үед `pgrstBearer()` anon руу унах ба anon-д
+  //   уншилтын эрх БАЙХГҮЙ тул татац бүр 401 ирнэ — энэ нь аппын ЭВДРЭЛ БИШ,
+  //   хүн серверийн нэвтрэлтээ хийгээгүй байна. `renewDbSession` ч чадахгүй
+  //   (асуух сесс алга). Бүртгэвэл ЗАСАХ КОД БАЙХГҮЙ Issue мөнхөд дахин
+  //   нээгдэж жинхэнэ алдааг живүүлнэ (staff-pins-ийн «хүлээгдсэн татгалзал»
+  //   дүрэмтэй ИЖИЛ).
+  // ⚠ Ажилтанд тууз + toast нь ЗААВАЛ гарна — дата шинэчлэгдэхгүйг мэдэх ёстой.
   if (_is401 && typeof pgrstTokenValid === 'function' && !pgrstTokenValid()) {
-    if (markSessionRejected()) {
+    const _sent = (typeof pgrstToken === 'function') && !!pgrstToken();
+    if (markSessionRejected() && _sent) {
       try { _reportErrToServer('Нэвтрэлт дууссан', 'auth:401', String(where || '').slice(0, 120)); } catch (e) {}
     }
     return;
@@ -13523,7 +13536,15 @@ function attManualOutCheck(inTs, outTs) {
 // огноогоор бөглөж, өнгөрсөн өдрийн засвар өнөөдөрт унаж чимээгүй алга болно.
 // Хэрэв `day` нь генерацлагдсан багана бол сервер татгалзана — тэр үед `day`-гүйгээр
 // дахин илгээнэ (ts-ээс өөрөө гарна).
+// ⛔ ХААСАН САРД ГАР ЗАСВАР ХИЙГДЭХГҮЙ (2026-10-30): цалин ирцээс тэр дор дахин бодогддог тул 11 сард 9 сарын өдрийн
+//   гарах цаг нэмбэл олгочихсон цалин чимээгүй өөрчлөгдөнө. Энэ нь ГАР засвар (`manual`) БА батлагдсан хүсэлт (`request`)
+//   хоёрын ГАНЦ бичих цэг — тиймээс шалгалт ЭНД (шинэ дэлгэц нэмэгдсэн ч өөрөө хаагдана). Шалгалт бичихээс ӨМНӨ тул
+//   «ирсэн + гарсан» хос дундаа таслагдахгүй. Шалгах сар = `day` (цалин өдрөөр тооцогддог), `ts` БИШ: 9-р сарын 30-ны
+//   шөнийн ээлж 10-р сарын 1-нд дуусвал ч 9 сарынх. DB-ийн trigger (`db/att_manual_lock.sql`) мөн дахин шалгана.
 async function attSaveManualOut(body, keepDay) {
+  const lockYm = String((body && body.day) || '').slice(0, 7);
+  if (!lockYm) throw new Error('Ирцийн өдөр тодорхойгүй — сарын түгжээг шалгаж чадахгүй тул бичихгүй');
+  await assertMonthOpenLive(lockYm, 'ирц засах');
   const post = async (payload) => {
     const r = await fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(payload) });
     return { ok: r.ok, status: r.status, text: r.ok ? '' : await r.text().catch(() => '') };
@@ -14396,6 +14417,8 @@ function openAttRequestModal(preDay) {
     errEl.hidden = true; prevEl.innerHTML = '';
     const req = build();
     if (req.closed) { errEl.textContent = '⚠ Энэ өдөр аль хэдийн бүрэн бүртгэгдсэн — хүсэлт шаардлагагүй'; errEl.hidden = false; return null; }
+    // Хаасан сарын ирцийг батлах боломжгүй тул хүсэлт илгээж хүлээлгэхгүй — ЭХЭНД хэлнэ
+    if (req.day && monthLocked(String(req.day).slice(0, 7))) { errEl.textContent = `🔒 ${String(req.day).slice(0, 7)} сар хаагдсан — тэр сарын ирцийг засах боломжгүй. Удирдлагад хандана уу`; errEl.hidden = false; return null; }
     const ex = attReqFor(myKey, req.day);
     if (ex && ex.status === 'pending') { errEl.textContent = '⚠ Энэ өдөрт хүсэлт аль хэдийн илгээгдсэн — хариу хүлээж байна'; errEl.hidden = false; return null; }
     const v = attReqValidate(req);
@@ -14410,6 +14433,8 @@ function openAttRequestModal(preDay) {
     const got = preview(); if (!got) return;
     const btn = e.currentTarget; btn.disabled = true;
     const { req, v } = got;
+    try { await assertMonthOpenLive(String(req.day).slice(0, 7), 'ирцийн засвар хүсэх'); }   // кэш хуучирсан байж болно — серверээс шинэчилж шалгана
+    catch (err) { btn.disabled = false; errEl.textContent = '⚠ ' + err.message; errEl.hidden = false; return; }
     const entry = {
       key: myKey, name: me.name || state.me || '', day: req.day,
       newIn: v.newIn, inTs: v.inTs, inTime: v.newIn ? req.inTime : attTimeUB(v.inTs), outTime: req.outTime,
@@ -17491,8 +17516,15 @@ async function submitCateringPayment(id, modal, btn) {
   const lockM = receipts.map(r => String(r.date || '').slice(0, 7)).find(m => m && monthLocked(m));
   if (lockM) { showToast(`🔒 ${lockM} сар хаагдсан — тэр сарын төлбөр бүртгэх боломжгүй`, 'error', 6000); return; }
   btn.disabled = true;
+  // Серверийн хамгийн сүүлийн төлөв ЭХЛЭЭД — баримт аль хэдийн бүртгэгдсэн бол давхар нэмэхгүй (submitBqPayment-тай ижил)
+  const st0 = await fetchPaidState('catering_jobs', id);
+  if (!st0) { btn.disabled = false; showToast('Серверээс төлбөрийг шалгаж чадсангүй — давхар бүртгэхээс сэргийлж бүртгэсэнгүй. Дахин оролдоно уу', 'error', 6000); return; }
+  const split = splitNewReceipts(receipts, st0.ref);
+  if (split.already.length) { j.paid_mnt = st0.paid; j.paid_ref = st0.ref; }
+  if (!split.fresh.length) { modal.remove(); render(); showToast('Энэ баримт аль хэдийн бүртгэгдсэн — давхар нэмсэнгүй', 'warn', 6000); return; }
+  if (split.already.length) showToast(`${split.already.length} баримт аль хэдийн бүртгэгдсэн — алгаслаа`, 'warn', 4500);
   const okR = [];
-  for (const rc of receipts) {
+  for (const rc of split.fresh) {
     const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'catering:' + j.id });
     if (rr === 'err') { showToast(`Баримтын давхцал шалгагдсангүй — алгаслаа (${fmtMoney(rc.amount)})`, 'error', 4500); continue; }
     if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
@@ -17503,28 +17535,19 @@ async function submitCateringPayment(id, modal, btn) {
   const date = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
   const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.bank && ('банк:' + r.bank), r.ref].filter(Boolean).join(' · ')).join('  |  ');
   okR.forEach(r => { if (r._file) uploadReceiptFileOrWarn(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'catering:' + j.id }, 'катеринг №' + (j.number || '')); });
-  // Серверийн СҮҮЛИЙН дүн дээр нэмнэ — зэрэгцээ бүртгэл бие биенээ дарахгүй
-  let basePaid = Number(j.paid_mnt) || 0, baseRef = String(j.paid_ref || '');
-  try {
-    const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?id=eq.${encodeURIComponent(id)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
-    if (gr.ok) { const rr = await gr.json(); if (rr && rr[0]) { basePaid = Number(rr[0].paid_mnt) || 0; baseRef = String(rr[0].paid_ref || ''); } }
-  } catch (_) {}
+  // Серверийн СҮҮЛИЙН дүн (дээр уншсан) дээр нэмнэ — зэрэгцээ бүртгэл бие биенээ дарахгүй
+  const basePaid = st0.paid, baseRef = st0.ref;
   const body = { paid_mnt: basePaid + amount, paid_ref: [baseRef.trim(), newRef].filter(Boolean).join('  |  '), paid_date: date, updated_at: new Date().toISOString() };
   if (j.status === 'planned') body.status = 'confirmed';
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?id=eq.${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify(body),
-    }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    if (await patchPaidOnce('catering_jobs', id, basePaid, body) === 'conflict') { const ce = new Error('conflict'); ce.conflict = true; throw ce; }
     Object.assign(j, body);
     modal.remove();
     showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}`, 'success', 2800);
     // Банкны хуулгын орлогын мөр баримттай өөрөө холбогдоно
     if (Array.isArray(state.bankIncome)) relinkIncomeFromReceipts().catch(() => {});
     render();
-  } catch (e) { btn.disabled = false; showToast('Алдаа: ' + e.message, 'error', 4500); }
+  } catch (e) { btn.disabled = false; showToast(e.conflict ? 'Энэ ажилд хэн нэгэн төлбөр бүртгэсэн байна — юу ч нэмэгдсэнгүй. Дахин «Хадгалах» дарвал шинэ төлөвөөр шалгана' : 'Алдаа: ' + e.message + ' (аль хэдийн бүртгэгдсэн бол давхар нэмэгдэхгүй)', 'error', 5500); }
 }
 /* ========================== КАТЕРИНГ модуль төгсгөл ========================== */
 const _PURPOSE_BADGE = { 'орлого': ['#0f7a3d', 'rgba(16,163,74,.12)'], 'зарлага': ['#b45309', 'rgba(217,119,6,.12)'], 'валют': ['#4338ca', 'rgba(79,70,229,.12)'], 'цалин': ['#9333ea', 'rgba(147,51,234,.12)'], 'татвар': ['#be123c', 'rgba(225,29,72,.12)'] };
@@ -19536,31 +19559,31 @@ function openBankAccountModal(a, onSaved) {
   // ХУВИЙН данс — компани эзэнд хэдийг өртэй вэ (зардал − буцаан төлсөн).
   const _dbt = (!isNew && String(a.purpose || '') === 'хувийн') ? personalAcctDebt(a.account_no || a.id) : null;
   const _debtBlock = _dbt ? `<div class="stmt-prsn">
-      <div style="font-weight:700;margin-bottom:5px;">🙍 Хувийн данс — компанийн өр</div>
+      <div class="stmt-prsn-h">🙍 Хувийн данс — компанийн өр</div>
       <div class="stmt-prsn-debt"><span>Компанийн зардал (${_dbt.n})</span><b>${fmtMoney(_dbt.spent)}</b></div>
       <div class="stmt-prsn-debt"><span>Буцаан төлсөн (${_dbt.pn})</span><b>−${fmtMoney(_dbt.paid)}</b></div>
       <div class="stmt-prsn-debt tot"><span>${_dbt.owed >= 0 ? 'Компани эзэнд өртэй' : 'Эзэн компанид өртэй'}</span><b>${fmtMoney(Math.abs(_dbt.owed))}</b></div>
       <div class="stmt-prsn-note">Хуулга оруулах бүрд шинэчлэгдэнэ. Буцаан төлөлт = компанийн данснаас энэ данс руу орсон шилжүүлэг.</div>
     </div>` : '';
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto;">
-    <div style="font-weight:800;font-size:16px;margin-bottom:12px;">${isNew ? '🏦 Данс нэмэх' : '🏦 Данс засах'}</div>
+  modal.innerHTML = `<div class="modal ba-modal">
+    <h2>${isNew ? '🏦 Данс нэмэх' : '🏦 Данс засах'}</h2>
     <label class="fld">Нэр<input id="ba-name" value="${escapeHtml(a.name || '')}" placeholder="жишээ: Орлого Nomaad"></label>
     <label class="fld">Банк<select id="ba-bank">${sel(BANK_LIST, a.bank, '— банк —')}</select></label>
     <label class="fld">Дансны дугаар<input id="ba-no" value="${escapeHtml(a.account_no || '')}" placeholder="3635185058" inputmode="numeric"></label>
     <label class="fld">IBAN<input id="ba-iban" value="${escapeHtml(a.iban || '')}" placeholder="MN77 0015 00 3635185058"></label>
-    <div style="display:flex;gap:8px;">
-      <label class="fld" style="flex:1;">Валют<select id="ba-cur"><option value="MNT"${(a.currency || 'MNT') === 'MNT' ? ' selected' : ''}>MNT</option><option value="USD"${a.currency === 'USD' ? ' selected' : ''}>USD</option><option value="CNY"${a.currency === 'CNY' ? ' selected' : ''}>CNY</option><option value="EUR"${a.currency === 'EUR' ? ' selected' : ''}>EUR</option></select></label>
-      <label class="fld" style="flex:1;">Зорилго<select id="ba-purpose">${sel(ACCT_PURPOSES, a.purpose, '— зорилго —')}</select></label>
+    <div class="ba-row">
+      <label class="fld">Валют<select id="ba-cur"><option value="MNT"${(a.currency || 'MNT') === 'MNT' ? ' selected' : ''}>MNT</option><option value="USD"${a.currency === 'USD' ? ' selected' : ''}>USD</option><option value="CNY"${a.currency === 'CNY' ? ' selected' : ''}>CNY</option><option value="EUR"${a.currency === 'EUR' ? ' selected' : ''}>EUR</option></select></label>
+      <label class="fld">Зорилго<select id="ba-purpose">${sel(ACCT_PURPOSES, a.purpose, '— зорилго —')}</select></label>
     </div>
     <label class="fld">Салбар<select id="ba-branch">${sel(BANK_BRANCHES, a.branch, '— салбар —')}</select></label>
-    <label class="fld">👤 Хариуцсан эзэмшигч <span style="font-weight:400;color:var(--muted);font-size:11px;">(энэ данснаас гарсан шилжүүлэг → энэ хүний зарцуулалт)</span><select id="ba-owner">${ownerOpts}</select></label>
+    <label class="fld">👤 Хариуцсан эзэмшигч <span class="pm-hint">(энэ данснаас гарсан шилжүүлэг → энэ хүний зарцуулалт)</span><select id="ba-owner">${ownerOpts}</select></label>
     <label class="fld">Тэмдэглэл<input id="ba-note" value="${escapeHtml(a.note || '')}" placeholder="сонголт"></label>
     ${_debtBlock}
     ${_spendBlock}
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:space-between;margin-top:14px;">
-      <button class="btn" id="ba-del" style="${isNew ? 'visibility:hidden;' : 'color:var(--danger);'}">Устгах</button>
-      <div style="display:flex;gap:8px;"><button class="btn" id="ba-cancel">Болих</button><button class="btn btn-primary" id="ba-save">Хадгалах</button></div>
+    <div class="modal-actions">
+      <button class="btn ba-del${isNew ? ' off' : ''}" id="ba-del">Устгах</button>
+      <div class="ba-row"><button class="btn" id="ba-cancel">Болих</button><button class="btn btn-primary" id="ba-save">Хадгалах</button></div>
     </div></div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
@@ -24489,6 +24512,10 @@ async function recordNomaadIncome(quoteNo) {
   if (!res) return;
   // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (M-Event/өөр захиалга) бүртгэсэн бол блоклоно
   const canonKey = res.canonKey || receiptIdFromRef(res.note);
+  // Энэ баримт тухайн захиалгын төлбөрийн логт АЛЬ ХЭДИЙН байвал давхар нэмэхгүй (ledger «ижил эзэн = ok» гэдэг тул  ганцаараа хүрэлцэхгүй)
+  if (canonKey && ((state.nomaadPayments && state.nomaadPayments[quoteNo]) || []).some(p => String(p.note || '').includes('[#' + canonKey + ']'))) {
+    showToast('Энэ баримт энэ захиалгад аль хэдийн бүртгэгдсэн — давхар нэмсэнгүй', 'warn', 5000); return;
+  }
   const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
   if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
@@ -33994,7 +34021,27 @@ function paidRefWithout(paid_ref, receiptId) {
   const id = String(receiptId || '');
   const keep = [], drop = [];
   list.forEach(r => (r.id === id && id ? drop : keep).push(r));
-  return { ref: keep.map(r => r.raw).join('  |  '), removed: drop.length > 0, entry: drop[0] || null };
+  return { ref: keep.map(r => r.raw).join('  |  '), removed: drop.length > 0, entry: drop[0] || null, count: drop.length };
+}
+/* ─── НЭГ БАРИМТ = НЭГ ТӨЛБӨР (2026-10-30) ───────────────────────────────────
+   Захиалга №1673 (2×), №1693 (5×) нэг баримтаар давтан бүртгэгдсэн: хадгалалт сервер дээр биелчихээд хариу нь
+   ирэхгүй (компьютер гацсан) үед цонх нээлттэй үлдэж, «Хадгалах»-ыг дахин дарахад ижил баримтын дүн дахин нэмэгддэг байв.
+   Ledger (`bank_receipts`) «ижил захиалга ижил баримтаа дахин хавсаргах = давхардал БИШ» гэж зөвшөөрдөг (зардлын хүсэлтэд
+   зөв — тэнд дүн дарж бичигддэг; захиалгад дүн НЭМЭГДДЭГ тул буруу).
+   ⛔ Тиймээс ЭЦСИЙН шийдвэр = захиалгын `paid_ref` дахь `[#id]` (СЕРВЕРЭЭС уншсан), ledger БИШ. Бичих үед мөн
+   `patchPaidOnce` — өмнө уншсан `paid_mnt` хэвээр байвал л бичнэ (зэрэг бичилт ч нэг л удаа). */
+function paidRefIds(paid_ref) { return new Set(parsePaidRef(paid_ref).map(r => r.id).filter(Boolean)); }
+/* Бүртгэх баримтуудыг салгана: `fresh` = шинээр нэмэх, `already` = захиалгад АЛЬ ХЭДИЙН байгаа (эсвэл энэ жагсаалтад
+   давтагдсан). Цэвэр функц (тесттэй). */
+function splitNewReceipts(receipts, paid_ref) {
+  const have = paidRefIds(paid_ref), seen = new Set(), fresh = [], already = [];
+  (receipts || []).forEach(r => {
+    const id = String((r && r.receiptId) || '');
+    if (id && (have.has(id) || seen.has(id))) { already.push(r); return; }
+    if (id) seen.add(id);
+    fresh.push(r);
+  });
+  return { fresh, already };
 }
 /* Хүчингүй болгосон (буцаасан) баримтын тэмдэг. Мөрийг УСТГАХГҮЙ — `used_in`-г `void:`
    болгоод түүхэнд үлдээнэ (bank_receipts-д DELETE эрх ЗОРИУД байхгүй). */
@@ -34172,17 +34219,21 @@ async function reverseOrderPayment(oid, receiptId) {
   const lockM = (rDate || String(o.paid_date || '')).slice(0, 7);
   try { await assertMonthOpenLive(lockM, 'төлбөр буцаах'); }
   catch (e) { showToast(e.message, 'error', 6000); return; }
+  // ⛔ Нэг баримт N удаа бүртгэгдсэн бол (давхар бүртгэл) paid_mnt-д N удаа нэмэгдсэн — бүгдийг нь хасна.
+  //    Нэг л удаа хасвал №1693 шиг (5×) илүү дүн үлдэнэ.
+  const times = Math.max(1, cut.count || 1), sub = amt * times;
   const ok = await showConfirm(
-    `#${o.number || ''} · ${fmtMoney(amt)}\n${cut.entry && cut.entry.sender ? cut.entry.sender : ''}\n\n`
+    `#${o.number || ''} · ${fmtMoney(amt)}${times > 1 ? ` × ${times} удаа` : ''}\n${cut.entry && cut.entry.sender ? cut.entry.sender : ''}\n\n`
+    + (times > 1 ? `⚠ Энэ баримт ${times} удаа давтагдан бүртгэгдсэн байна. ` : '')
     + 'Энэ баримтыг захиалгаас хасах уу? Төлсөн дүн '
-    + `${fmtMoney(freshPaid)} → ${fmtMoney(Math.max(0, freshPaid - amt))} болно. `
+    + `${fmtMoney(freshPaid)} → ${fmtMoney(Math.max(0, freshPaid - sub))} болно. `
     + 'Баримт чөлөөлөгдөж ЗӨВ захиалгад дахин бүртгэх боломжтой болно.',
     { title: '↩ Буруу бүртгэсэн төлбөр буцаах', okText: 'Буцаах', danger: true });
   if (!ok) return;
-  const newPaid = Math.max(0, freshPaid - amt);
+  const newPaid = Math.max(0, freshPaid - sub);
   // 4) Захиалгыг шинэчлэх (статус ХӨДЛӨХГҮЙ)
   const sm = (o.stage_meta && typeof o.stage_meta === 'object' && !Array.isArray(o.stage_meta)) ? { ...o.stage_meta } : {};
-  sm.notes = appendOrderNote(orderNotesOf(o), `↩ Төлбөр буцаав: ${fmtMoney(amt)} · баримт ${receiptId} (буруу захиалгад бүртгэгдсэн)`, state.me || '');
+  sm.notes = appendOrderNote(orderNotesOf(o), `↩ Төлбөр буцаав: ${fmtMoney(sub)} · баримт ${receiptId} (${times > 1 ? times + ' удаа давхар бүртгэгдсэн' : 'буруу захиалгад бүртгэгдсэн'})`, state.me || '');
   const body = { updated_at: new Date().toISOString(), paid_ref: cut.ref };
   if (isApp) { body.paid_mnt = newPaid; body.stage_meta = sm; } else { body.total_paid_in_cents = Math.round(newPaid * 100); }
   try {
@@ -34205,8 +34256,8 @@ async function reverseOrderPayment(oid, receiptId) {
   await loadUsedReceipts();
   render();
   showToast(freed
-    ? `↩ ${fmtMoney(amt)} буцаалаа — баримтыг зөв захиалгад дахин оруулна уу`
-    : `↩ ${fmtMoney(amt)} буцаалаа · ⚠ баримт чөлөөлөгдсөнгүй — дахин оруулахад «давхцсан» гэж гарвал дахин оролдоно уу`,
+    ? `↩ ${fmtMoney(sub)} буцаалаа — баримтыг зөв захиалгад дахин оруулна уу`
+    : `↩ ${fmtMoney(sub)} буцаалаа · ⚠ баримт чөлөөлөгдсөнгүй — дахин оруулахад «давхцсан» гэж гарвал дахин оролдоно уу`,
     freed ? 'success' : 'warn', freed ? 3500 : 6000);
 }
 function setCustInfo(note, ci) {
@@ -36856,6 +36907,38 @@ async function readIncomeReceipt(file, existing) {
   return { amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', bank: d.bank || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file };
 }
 // Төлбөр бүртгэх — bq_orders.total_paid шинэчлэх + bq_payments-д бичих (audit). Ноорог→Захиалсан.
+// Захиалга/катерингийн `paid_mnt` + `paid_ref`-ийг СЕРВЕРЭЭС шинээр уншина. Уншиж чадаагүй бол null — дуудагч
+// санах ойн хуучин утгаар ДУРАМГАЙ нэмэхгүй, бүртгэлийг зогсооно (давхар бүртгэлээс дутуу бүртгэл дээр).
+async function fetchPaidState(table, id) {
+  try {
+    const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=paid_mnt,paid_ref`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
+    if (!gr.ok) return null;
+    const rows = await gr.json();
+    if (!rows || !rows[0]) return null;
+    return { paid: Number(rows[0].paid_mnt) || 0, ref: String(rows[0].paid_ref || '') };
+  } catch (_) { return null; }
+}
+// PATCH-ийг зөвхөн ӨМНӨ уншсан `paid_mnt` хэвээр байвал биелүүлнэ. 'ok' | 'conflict' (өөр бичилт хооронд орсон);
+// HTTP алдаа бол шидэнэ. `paid_mnt` null байж болох тул 0 үед `is.null`-ыг тусад нь оролдоно.
+// ⛔ `or=(…)` БҮҮ хэрэглэ: PostgREST 12 нь logic-tree нөхцөлийг хариуны select-д ДАХИН хэрэглэдэг, харин хариуд зөвхөн
+//    `id` байдаг тул 400 «column app_orders.paid_mnt does not exist» гэж унаж, төлбөр ОГТ бүртгэгдэхгүй
+//    (2026-10-30 амьд дээр: төлбөргүй захиалга бүр). Энгийн `paid_mnt=eq.N` / `paid_mnt=is.null` л зөв.
+async function patchPaidOnce(table, id, basePaid, body) {
+  const base = Math.round(Number(basePaid) || 0);
+  const conds = base === 0 ? ['paid_mnt=eq.0', 'paid_mnt=is.null'] : [`paid_mnt=eq.${base}`];
+  for (const cond of conds) {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&${cond}&select=id`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    const rows = await r.json();
+    if (Array.isArray(rows) && rows.length) return 'ok';
+  }
+  return 'conflict';
+}
 async function submitBqPayment(oid, modal, btn) {
   const bqO = (state.bqOrders || []).find(x => String(x.id) === String(oid));
   const o = bqO || (state.appOrders || []).find(x => String(x.id) === String(oid));
@@ -36877,9 +36960,25 @@ async function submitBqPayment(oid, modal, btn) {
   }
   const method = modal.querySelector('#bqp-method')?.value || 'bank';
   btn.disabled = true;
-  // Баримт БҮРИЙГ нэгдсэн ledger-т эзэмших (давхцвал тухайныг алгасна)
+  // 1) СЕРВЕРИЙН хамгийн сүүлийн paid_mnt + paid_ref — баримт захиалгад АЛЬ ХЭДИЙН бүртгэгдсэн эсэхийг ЭХЛЭЭД шалгана.
+  //    (Өмнөх оролдлого серверт биелсэн ч хариу ирээгүй бол энд олдож давхар нэмэгдэхгүй.) Уншиж чадаагүй бол БҮРТГЭХГҮЙ.
+  let basePaid = Number(o.paid_mnt) || 0, baseRef = String(o.paid_ref || '');
+  if (isApp) {
+    const st0 = await fetchPaidState('app_orders', oid);
+    if (!st0) { showToast('Серверээс захиалгын төлбөрийг шалгаж чадсангүй — давхар бүртгэхээс сэргийлж бүртгэсэнгүй. Дахин оролдоно уу', 'error', 6000); btn.disabled = false; return; }
+    basePaid = st0.paid; baseRef = st0.ref;
+  }
+  const split = splitNewReceipts(receipts, baseRef);
+  if (split.already.length && isApp) { o.paid_mnt = basePaid; o.paid_ref = baseRef; }   // сервертэй тулгана
+  if (!split.fresh.length) {
+    modal.remove(); render();
+    showToast(`Энэ баримт захиалгад аль хэдийн бүртгэгдсэн (${fmtMoney(split.already.reduce((a, r) => a + r.amount, 0))}) — давхар нэмсэнгүй`, 'warn', 6000);
+    return;
+  }
+  if (split.already.length) showToast(`${split.already.length} баримт захиалгад аль хэдийн бүртгэгдсэн — алгаслаа`, 'warn', 4500);
+  // 2) Баримт БҮРИЙГ нэгдсэн ledger-т эзэмших (давхцвал тухайныг алгасна)
   const okR = [];
-  for (const rc of receipts) {
+  for (const rc of split.fresh) {
     const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'mevent:#' + o.number });
     if (rr === 'err') { showToast(`Баримтын давхцал шалгагдсангүй — алгаслаа (${fmtMoney(rc.amount)})`, 'error', 4500); continue; }   // C2: цагаан жагсаалт
     if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
@@ -36893,16 +36992,8 @@ async function submitBqPayment(oid, modal, btn) {
   const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.bank && ('банк:' + r.bank), r.ref].filter(Boolean).join(' · ')).join('  |  ');
   // Эх PDF-ийг серверт хадгалах (арын гүйдэлд, төлбөр бүртгэхийг гацаахгүй)
   okR.forEach(r => { if (r._file) uploadReceiptFileOrWarn(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }, '#' + o.number); });
-  // Зэрэгцээ төлбөр эсвэл хуучирсан snapshot-оос болж дүн/баримт АЛДАГДАХААС сэргийлэх: серверийн хамгийн
-  // сүүлийн paid_mnt + paid_ref-ийг уншиж, ТҮҮН дээр нэмнэ. Баримтыг ДАРЖ БИЧИХГҮЙ — append (parsePaidRef | -ээр
-  // задална) тул хэсэгчилсэн олон төлбөрийн бүх баримт хадгалагдана.
-  let basePaid = Number(o.paid_mnt) || 0, baseRef = String(o.paid_ref || '');
-  if (isApp) {
-    try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
-      if (gr.ok) { const rows = await gr.json(); if (rows && rows[0]) { if (rows[0].paid_mnt != null) basePaid = Number(rows[0].paid_mnt) || 0; if (rows[0].paid_ref != null) baseRef = String(rows[0].paid_ref); } }
-    } catch (_) { /* сүлжээ унавал санах ойн утга дээр тооцно */ }
-  }
+  // Серверийн хамгийн сүүлийн paid_mnt + paid_ref (дээр уншсан) дээр нэмнэ. Баримтыг ДАРЖ БИЧИХГҮЙ — append
+  // (parsePaidRef | -ээр задална) тул хэсэгчилсэн олон төлбөрийн бүх баримт хадгалагдана.
   const newPaid = basePaid + amount;
   const ref = [baseRef.trim(), newRef].filter(Boolean).join('  |  ');
   const newStatus = _revive ? orderReviveStatus(o) : (o.status === 'draft' ? 'reserved' : o.status);
@@ -36913,12 +37004,17 @@ async function submitBqPayment(oid, modal, btn) {
     const body = { updated_at: new Date().toISOString(), paid_ref: ref, paid_method: method, paid_date: date };
     if (isApp) body.paid_mnt = newPaid; else body.total_paid_in_cents = Math.round(newPaid * 100);
     if (newStatus !== prevStatus) body.status = newStatus;
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
-      method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify(body),
-    }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    if (isApp) {
+      // Уншсанаас хойш өөр бичилт (өөр хүн, өөр таб) орсон бол БИЧИХГҮЙ — давхар нэмэгдэхгүй
+      if (await patchPaidOnce(table, oid, basePaid, body) === 'conflict') { const ce = new Error('conflict'); ce.conflict = true; throw ce; }
+    } else {
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
+        method: 'PATCH',
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify(body),
+      }, 15000);
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    }
     // Аудит — зөвхөн түүхэн захиалгад bq_payments (баримт БҮРД нэг мөр)
     if (!isApp) for (const rc of okR) try {
       const pid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'bqp-' + Date.now() + '-' + Math.round(rc.amount);
@@ -36943,7 +37039,8 @@ async function submitBqPayment(oid, modal, btn) {
       if (state.refLessFps instanceof Set) state.refLessFps.delete(rc.fpKey);
     });
     render();
-    showToast('Засах эрх алга эсвэл алдаа: ' + e.message + ' — дахин оролдоно уу', 'error', 5000);
+    showToast(e.conflict ? 'Энэ захиалгад хэн нэгэн төлбөр бүртгэсэн байна — юу ч нэмэгдсэнгүй. «Хадгалах»-ыг дахин дарвал шинэ төлөвөөр шалгана'
+      : 'Засах эрх алга эсвэл алдаа: ' + e.message + ' — дахин оролдоно уу (аль хэдийн бүртгэгдсэн бол давхар нэмэгдэхгүй)', 'error', 6000);
     btn.disabled = false;
   }
 }
@@ -43411,6 +43508,13 @@ function attachReportsHandlers() {
   document.getElementById('rep-pricing')?.addEventListener('click', () => openPricingReport());
   const allXls = document.querySelector('[data-report-all-xls]'); if (allXls) allXls.onclick = exportAllReports;
   const incXls = document.querySelector('[data-income-xls]'); if (incXls) incXls.onclick = exportIncomeOrdersExcel;
+  /* `finStage` нь өнгийг токен МӨРӨӨР буцаадаг (`var(--ok)` …) тул тэмдгийн өнгийг
+     класс болгоход зураглал хэрэгтэй. Танихгүй токен → класс ОРОХГҮЙ (мөрийн өнгийг
+     наследлэнэ) — өнгө солигдоход тэмдэг алга болохоос дээр. */
+  const FIN_TX_TONE = {
+    'var(--danger)': 'danger', 'var(--warn)': 'warn',
+    'var(--ok)': 'ok', 'var(--primary)': 'primary',
+  };
   // Ангиллын мөр дээр дарахад тэр дор нь гүйлгээ задарна (хуудсаас гарахгүй, inline)
   document.querySelectorAll('[data-cat-toggle]').forEach(row => row.addEventListener('click', () => {
     const name = row.dataset.catToggle;
@@ -43422,12 +43526,13 @@ function attachReportsHandlers() {
     if (!detail.dataset.built) {
       const txs = (state._reportCatTx && state._reportCatTx[name] || []).slice().sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
       detail.innerHTML = txs.map(t => {
-        const mark = finStage(t).mark, col = finStage(t).color;
+        const st = finStage(t);
+        const mark = st.mark, tone = FIN_TX_TONE[st.color] || '';
         const who = escapeHtml(t.beneficiary || memberName(t.createdBy) || '—');
-        const purp = t.purpose ? `<span style="color:var(--muted);"> · ${escapeHtml(String(t.purpose).slice(0, 40))}</span>` : '';
-        const dt = t.requested_at ? `<span style="color:var(--muted);white-space:nowrap;">${escapeHtml(String(t.requested_at).slice(5, 10))}</span>` : '';
-        return `<div data-fin-open="${escapeHtml(t.id)}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;">
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b style="color:${col};">${mark}</b> ${who}${purp}</span>${dt}<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b></div>`;
+        const purp = t.purpose ? `<span class="fin-tx-p"> · ${escapeHtml(String(t.purpose).slice(0, 40))}</span>` : '';
+        const dt = t.requested_at ? `<span class="fin-tx-d">${escapeHtml(String(t.requested_at).slice(5, 10))}</span>` : '';
+        return `<div data-fin-open="${escapeHtml(t.id)}" class="fin-tx">
+          <span class="fin-tx-l"><b class="fin-tx-m ${tone}">${mark}</b> ${who}${purp}</span>${dt}<b class="fin-tx-a">${fmtMoney(Number(t.amount) || 0)}</b></div>`;
       }).join('');
       detail.querySelectorAll('[data-fin-open]').forEach(r => r.addEventListener('click', () => openExpenseModal(r.dataset.finOpen)));
       detail.dataset.built = '1';

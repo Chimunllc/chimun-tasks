@@ -127,6 +127,7 @@
     --ec-modal-w: 640px;      /* 📄 Хөдөлмөрийн гэрээ бэлдэх — 2 баганатай форм */
     --di-modal-w: 520px;      /* 🔁 Давхар импорт — бүлэгтэй жагсаалт */
     --simp-modal-w: 680px;    /* 🧾 Хуулга оруулах (openStatementClassifyModal) */
+    --ba-modal-w: 460px;      /* 🏦 Данс нэмэх / засах (openBankAccountModal) */
 
     /* 🍽 Катерингийн ажлын цонх (`openCateringJobModal`) — нэг эгнээнд 2-3 талбар */
     --kt-job-modal-w: 560px;
@@ -7096,6 +7097,8 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
   padding: var(--space-2) 11px; margin: var(--space-2) 0;
   font-size: var(--fs-sm); line-height: 1.5;
 }
+/* Блокийн гарчиг — `.stmt-prsn-note`-той ижил гэр бүл, зөвхөн зузаан (2026-10-30) */
+.stmt-prsn-h { font-weight: 700; margin-bottom: var(--space-1); }
 .stmt-prsn-acts { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-2); }
 .stmt-prsn-note { color: var(--muted); font-size: var(--fs-xs); margin-top: var(--space-1); }
 .stmt-prsn-btn {
@@ -7144,6 +7147,23 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 }
 .fin-caret { display: inline-block; transition: transform .12s; color: var(--muted); }
 .fin-caret.closed { transform: rotate(-90deg); }
+
+/* Ангиллын бүлэг нээгдэхэд дотор задардаг ГҮЙЛГЭЭНИЙ мөр (2026-10-29).
+   `.fin-grp`-ийн дэд мөр: төлөвийн тэмдэг · хүлээн авагч · утга · огноо · дүн.
+   Тэмдгийн өнгө нь `finStage`-ийн токеноос класс болж буудаг (доорх tone-ууд). */
+.fin-tx {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-3);
+  padding: 5px var(--space-2); font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.fin-tx-l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-tx-p { color: var(--muted); }
+.fin-tx-d { color: var(--muted); white-space: nowrap; }
+.fin-tx-a { white-space: nowrap; }
+.fin-tx-m.ok { color: var(--ok); }
+.fin-tx-m.warn { color: var(--warn); }
+.fin-tx-m.danger { color: var(--danger); }
+.fin-tx-m.primary { color: var(--primary); }
 
 /* ── Ирц: гарсан цагийг гараар оруулах (2026-09-06) ───────────────────────── */
 .att-fixout {
@@ -7642,6 +7662,31 @@ select.no-asar-len {
 /* `.fld` шошгын «(сонголт)» тэмдэглэл — шошгын фонтын хэмжээг хальдахгүй,
    зөвхөн зузаан/өнгөөр бүдгэрнэ (`.pm-hint` нь жижигрүүлдэг, өөр зорилготой). */
 .fld-opt { font-weight: 400; color: var(--muted); }
+
+/* ── 🏦 Данс нэмэх / засах цонх (`openBankAccountModal`) ─────────────────────
+   Өмнө нь 10 inline style= байсныг класс болгов (2026-10-30).
+   · Толгой нь нийтийн `.modal h2` (`.cmp-modal` / `.cx-modal`-тай ИЖИЛ —
+     өөрийн хувилбар БҮҮ бич; хуучин inline нь 16px/800 гэсэн масштабаас
+     гадуурх хэмжээ байв).
+   · Шошгын жижиг тайлбар нь нийтийн `.pm-hint` (жижигрүүлж бүдгэрүүлнэ —
+     `.fld-opt` нь зөвхөн зузаан/өнгө, энд хэмжээ ч багасах ёстой).
+   ⚠ `.modal-actions`-ийн хуучин inline `justify-content:space-between` ба
+     `margin-top:14px` ҮХМЭЛ байв — тэр классын хүчлэгдсэн `flex-end` / `16px`
+     давдаг. `.cmp-modal` / `.cx-modal`-тай ИЖИЛ шалтгаанаар зүгээр хасав
+     (класс болгож дахин бичвэл хүчлэгч шаардана — тэр нь хориотой).
+   ⚠ «Устгах» товч шинэ данс үүсгэхэд `visibility`-ээр нуугдана (`hidden`
+     атрибут БИШ) — товч байраа ЭЗЭЛСЭН хэвээр байх ёстой, эс бөгөөс
+     `flex-end`-ийн улмаас Болих/Хадгалах хос гэнэт баруун тийш шилжинэ.
+   ⚠ `.ba-row` нь ХОЁР газар: Валют+Зорилго эгнээ ба Болих+Хадгалах хос
+     (хоёулаа ижил `display:flex; gap` байсан). `.fld` нь `.modal label`-ийн
+     `display:block`-оос болж ХОЁР класстай хүрээлэгдсэн байх шаардлагагүй —
+     flex item болохоор blockify болно. */
+.modal.ba-modal { max-width: var(--ba-modal-w); max-height: 90vh; overflow-y: auto; }
+.ba-row { display: flex; gap: var(--space-2); }
+.ba-row .fld { flex: 1; }
+.ba-del { color: var(--danger); }
+.ba-del.off { visibility: hidden; }
+
 .orders-cxsum { margin: var(--space-2) 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: var(--fs-md); line-height: 1.7; }
 .orders-cxsum .cx-tag { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--panel-hover); font-size: var(--fs-sm); white-space: nowrap; }
 .orders-cxsum .cx-admin { color: var(--muted); font-size: var(--fs-sm); }

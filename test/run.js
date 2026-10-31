@@ -8701,6 +8701,9 @@ need(['orderCustType']);
       showToast = () => {};
       render = () => {};
       state.sessionExpired = false; state.sessionExpiredAt = '';
+      // ⚠ Токен ИЛГЭЭГДСЭН атал хүчингүй = сесс үнэхээр дууссан. Огт илгээгдээгүй
+      //   тохиолдол нь ӨӨР дүрэмтэй (доорх fp c933fe553d64 блокийг үз).
+      localStorage.setItem('pgrstToken', 'head.body.sig');
       pgrstTokenValid = () => false;
       dataLoadFailed('Дуудлагын лог', new Error('HTTP 401'));
       dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
@@ -8711,6 +8714,7 @@ need(['orderCustType']);
     eq(vm.runInContext('state.sessionExpired', sandbox), true, '401: сесс дууссан гэж тэмдэглэнэ');
     // Токен ХҮЧИНТЭЙ атал 401 = эрхийн асуудал → хэвийн бүртгэнэ
     vm.runInContext(`
+      localStorage.removeItem('pgrstToken');
       _errLog = []; state.sessionExpired = false; pgrstTokenValid = () => true;
       dataLoadFailed('Цалин', new Error('HTTP 401'));
     `, sandbox);
@@ -8781,6 +8785,49 @@ need(['orderCustType']);
     eq(vm.runInContext('state.sessionExpired', sandbox), false,
        '401: токенгүй үед сессийг хуурамчаар дуусгахгүй');
     vm.runInContext('_load401Logged = false; state.sessionExpired = false;', sandbox);
+  }
+
+  // ── ТОКЕН ОГТ ИЛГЭЭГДЭЭГҮЙ 401 = ХҮЛЭЭГДСЭН, СЕРВЕРТ МЭДЭЭЛЭХГҮЙ ──────────
+  //   (2026-10-29, fp c933fe553d64 — 54 удаа · 11 ажилтан, 3 засварын дараа ч)
+  //   Апп токенгүй орох ХОЁР ЗОРИУДЫН зам бий: ① n8n хүрэхгүй үеийн клиент
+  //   fallback нэвтрэлт (`setUser` нь `auth`-гүй дуудагдаж ХОЁР токеныг
+  //   УСТГАНА) ② офлайн эхэлсэн сэргээлт (`navigator.onLine === false` тул
+  //   эхлэлийн `pgrstTokenValid()` шалгалт алгасагдана). Тэр үед `pgrstBearer()`
+  //   anon руу унах ба anon-д уншилтын эрх БАЙХГҮЙ тул татац бүр 401.
+  //   Энэ нь аппын ЭВДРЭЛ БИШ (хүн серверийн нэвтрэлтээ хийгээгүй) бөгөөд
+  //   `renewDbSession` ч чадахгүй — асуух сесс алга. Бүртгэвэл ЗАСАХ КОД
+  //   БАЙХГҮЙ Issue мөнхөд дахин нээгдэж жинхэнэ алдааг живүүлнэ.
+  {
+    vm.runInContext(`
+      _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      localStorage.removeItem('pgrstToken'); localStorage.removeItem('sessionToken');
+      pgrstTokenValid = () => false;
+      dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('_errLog.length', sandbox), 0,
+       '⛔ ИНВАРИАНТ: токен огт илгээгдээгүй үеийн 401-ийг серверт мэдээлэхгүй (fp c933fe553d64)');
+    eq(vm.runInContext('state.sessionExpired', sandbox), true,
+       '401: токенгүй ч ажилтанд тууз ЗААВАЛ гарна — дата шинэчлэгдэхгүйг мэдэх ёстой');
+    ok(/Дахин нэвтрэх/.test(vm.runInContext('sessionExpiredBannerHtml()', sandbox)),
+       '401: токенгүй үед ч гарц (дахин нэвтрэх товч) харагдана');
+    // ⚠ Токен ҮНЭХЭЭР илгээгдсэн атал хүчингүй бол = ЖИНХЭНЭ дохио, хэвээр бүртгэнэ
+    vm.runInContext(`
+      _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+      localStorage.setItem('pgrstToken', 'head.body.sig');
+      dataLoadFailed('Дуудлагын тэмдэглэл', new Error('HTTP 401'));
+    `, sandbox);
+    eq(vm.runInContext('_errLog.length', sandbox), 1,
+       'ИНВАРИАНТ: хугацаа дууссан ЖИНХЭНЭ токены 401 бүртгэгдсэн хэвээр');
+    eq(vm.runInContext('_errLog[0]', sandbox), 'auth:401|Нэвтрэлт дууссан',
+       '401: сесс дууссаныг шалтгаанаар нь бүртгэнэ');
+    vm.runInContext(`
+      localStorage.removeItem('pgrstToken'); localStorage.removeItem('sessionToken');
+      pgrstTokenValid = () => true;
+      _errLog = []; _load401Logged = false; _dbRenewTried = false; _dbRenewP = null;
+      state.sessionExpired = false; state.sessionExpiredAt = '';
+    `, sandbox);
   }
   {
     ok(/id = 'sess-banner'/.test(src) && src.indexOf("id = 'sess-banner'") < src.indexOf("const wrap = document.getElementById('task-list')"),
@@ -23221,4 +23268,284 @@ async function swFetchTests() {
   ok(/function attPenaltyBreakdown/.test(appSrc) && /1 \+ nth \* step/.test(appSrc), 'scan: өсөлтийн томьёо = 1 + (n−1) × өсөлт');
 
   st.attMarks = saved.m; st.attMarksErr = saved.e; st.attCallins = saved.c; st.attCallinsErr = saved.ce; st.payrollCfg = saved.cfg; st.appConfig = saved.ac; st.workStart = saved.ws; st.isCEO = saved.ceo;
+});
+
+// ═══ НЭГ БАРИМТ = НЭГ ТӨЛБӨР (2026-10-30) ═══════════════════════════════════════════
+// №1673 (2×), №1693 (5×): хадгалалт серверт биелээд хариу ирээгүй үед цонх нээлттэй үлдэж, «Хадгалах»-ыг дахин дарахад
+// ижил баримтын дүн дахин нэмэгдсэн. Ledger «ижил захиалга ижил баримтаа дахин хавсаргах = ok» гэдэг тул ганцаараа хүрэлцэхгүй.
+// ⚠ __lateSeq: fetch-ийг stub-лах тул бусад асинх тесттэй зэрэг ажиллаж БОЛОХГҮЙ.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const appSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const run = (c) => vm.runInContext(c, sandbox);
+
+  // ── ① Цэвэр функцүүд ──
+  {
+    const SP = vm.runInContext('splitNewReceipts', sandbox);
+    const W = vm.runInContext('paidRefWithout', sandbox);
+    const ref = '[#A1] Бат · 5555 · а  |  [#B2] Дорж · 4444 · б';
+    const r = (id) => ({ receiptId: id, amount: 100 });
+    let x = SP([r('A1'), r('C3')], ref);
+    eq([x.fresh.map(v => v.receiptId), x.already.map(v => v.receiptId)], [['C3'], ['A1']], 'split: захиалгад байгаа баримт алгасагдаж, шинэ нь л үлдэнэ');
+    x = SP([r('C3'), r('C3')], '');
+    eq([x.fresh.length, x.already.length], [1, 1], 'split: нэг жагсаалтад давтагдсан баримт нэг л удаа');
+    x = SP([r('A1')], '[#A1] x  |  [#A1] x');
+    eq([x.fresh.length, x.already.length], [0, 1], 'split: давхар бүртгэгдсэн ref-д ч алгасна');
+    x = SP([], ref); eq([x.fresh.length, x.already.length], [0, 0], 'split: хоосон жагсаалт');
+    eq(SP([r('A1')], '').fresh.length, 1, 'split: ref хоосон бол шинэ');
+    eq(W('[#A1] a | [#A1] a | [#A1] a | [#B2] b', 'A1').count, 3, 'буцаалт: давтагдсан мөрийн тоо (count) = 3');
+    eq(W(ref, 'A1').count, 1, 'буцаалт: ганц мөр count = 1');
+  }
+
+  // ── ② Серверийн хуурамч загвар: app_orders / catering_jobs / bank_receipts ──
+  const saved = { fetch: sandbox.fetch, toast: sandbox.showToast, render: sandbox.render, confirm: sandbox.showConfirm, amo: sandbox.assertMonthOpenLive, nim: sandbox.openNomaadIncomeModal,
+    ao: st.appOrders, bq: st.bqOrders, cj: st.cateringJobs, ur: st.usedReceipts, uf: st.usedFps, rl: st.refLessFps, ro: st.receiptOwners, fo: st.fpOwners, cm: st.closedMonths, ceo: st.isCEO, np: st.nomaadPayments, no: st.nomaadOrders };
+  const toasts = [];
+  const fake = (init) => {
+    const S = { tables: { app_orders: { 'ao-1': { paid_mnt: init.paid || 0, paid_ref: init.ref || '' } }, catering_jobs: { 'kt-1': { paid_mnt: init.paid || 0, paid_ref: init.ref || '' } } },
+      ledger: {}, calls: [], loseReply: false, readFail: false, beforePatch: null };
+    sandbox.fetch = (url, opts) => {
+      url = String(url); opts = opts || {}; const m = opts.method || 'GET';
+      S.calls.push({ url, m, body: opts.body ? JSON.parse(opts.body) : null });
+      const R = (status, data) => Promise.resolve({ ok: status < 400, status, json: async () => data, text: async () => JSON.stringify(data) });
+      const t = url.match(/\/rest\/v1\/(app_orders|catering_jobs)\?id=eq\.([^&]+)/);
+      if (t) {
+        const row = S.tables[t[1]][decodeURIComponent(t[2])];
+        if (m === 'GET') return S.readFail ? Promise.reject(new Error('offline')) : R(200, [{ paid_mnt: row.paid_mnt, paid_ref: row.paid_ref }]);
+        if (m === 'PATCH') {
+          if (S.beforePatch) { S.beforePatch(row); S.beforePatch = null; }
+          // ⛔ PostgREST 12.2.3 (амьд баталсан 2026-10-30): `or=(…)`/`and=(…)` нөхцөл + `select=id` + return=representation нь
+          //    хариуны select-д нөхцөлийг ДАХИН хэрэглэдэг, хариуд зөвхөн `id` тул 400 42703. Энгийн нөхцөл (paid_mnt=eq.N) хэвийн.
+          if (/[?&](or|and)=\(/.test(url) && /select=id\b/.test(url)) return R(400, { code: '42703', message: 'column ' + t[1] + '.paid_mnt does not exist' });
+          const mm = url.match(/[?&]paid_mnt=eq\.(\d+)/);
+          // `eq.N` нь NULL-д таарахгүй (SQL-ийн дүрэм); `is.null` нь зөвхөн NULL-д таарна
+          const casOk = mm ? row.paid_mnt != null && Number(mm[1]) === Number(row.paid_mnt) : (/[?&]paid_mnt=is\.null/.test(url) ? row.paid_mnt == null : true);
+          if (!casOk) return R(200, []);                                  // compare-and-set: 0 мөр шинэчлэгдсэн
+          Object.assign(row, JSON.parse(opts.body));                       // сервер биелүүлэв
+          return S.loseReply ? (S.loseReply = false, Promise.reject(new Error('timeout'))) : R(200, [{ id: decodeURIComponent(t[2]) }]);
+        }
+      }
+      if (/\/rest\/v1\/bank_receipts/.test(url)) {
+        if (m === 'POST') { const b = JSON.parse(opts.body); if (S.ledger[b.receipt_id]) return R(409, {}); S.ledger[b.receipt_id] = b.used_in; return R(201, {}); }
+        const q = url.match(/receipt_id=eq\.([^&]+)/);
+        if (m === 'PATCH' && q) { S.ledger[decodeURIComponent(q[1])] = JSON.parse(opts.body).used_in; return R(204, {}); }
+        if (q) { const id = decodeURIComponent(q[1]); return R(200, S.ledger[id] ? [{ used_in: S.ledger[id], amount: init.rcAmt || 0, pay_date: '2026-10-28' }] : []); }
+        return R(200, []);
+      }
+      return R(200, []);
+    };
+    return S;
+  };
+  const rc = (id, amt) => ({ receiptId: id, fpKey: 'FP-' + amt + '-20261028-X', amount: amt, date: '2026-10-28', senderName: 'X', senderAcct: '1', bank: 'Голомт', ref: 'z' });
+  const mkModal = (recs) => ({ _receipts: recs.slice(), querySelector: (s) => s === '#bqp-method' ? { value: 'bank' } : null, remove() { this.removed = true; } });
+  const patches = (S, tbl) => S.calls.filter(c => c.m === 'PATCH' && new RegExp('/' + tbl + '\\?').test(c.url));
+  const fresh = () => { st.usedReceipts = new Set(); st.usedFps = new Set(); st.refLessFps = new Set(); st.receiptOwners = new Map(); st.fpOwners = new Map(); st.closedMonths = {}; };
+  const mkOrder = () => { st.bqOrders = []; st.appOrders = [{ id: 'ao-1', number: 1673, status: 'rented', total_mnt: 206800, paid_mnt: 0, paid_ref: '' }]; return st.appOrders[0]; };
+  try {
+    sandbox.showToast = (m) => { toasts.push(String(m)); }; sandbox.render = () => {};
+
+    // S1) Энгийн бүртгэл: нэг удаа бичигдэж, CAS шалгуур тавигдана
+    let S = fake({}); fresh(); let o = mkOrder(); toasts.length = 0;
+    let md = mkModal([rc('R1', 206800)]), btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, /\[#R1\]/.test(S.tables.app_orders['ao-1'].paid_ref), patches(S, 'app_orders').length, md.removed], [206800, true, 1, true], 'төлбөр: энгийн бүртгэл — нэг удаа бичигдэнэ');
+    ok(/[?&]paid_mnt=eq\.0(&|$)/.test(patches(S, 'app_orders')[0].url) && !/[?&]or=/.test(patches(S, 'app_orders')[0].url), '⛔ төлбөр: PATCH нь өмнө уншсан paid_mnt-ээр шүүгдэнэ (compare-and-set), `or=` ХЭРЭГЛЭХГҮЙ (PostgREST 400)');
+
+    // S2) ⛔ №1673/№1693: сервер биелүүлсэн ч ХАРИУ ИРЭЭГҮЙ → цонх нээлттэй → «Хадгалах» ДАХИН → давхар нэмэгдэхгүй
+    S = fake({}); fresh(); o = mkOrder(); toasts.length = 0; S.loseReply = true;
+    md = mkModal([rc('R1', 206800)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, md.removed, btn.disabled], [206800, undefined, false], 'төлбөр: хариу ирээгүй үед цонх нээлттэй үлдэж, товч дахин идэвхжинэ');
+    await F.submitBqPayment('ao-1', md, btn);          // ← хэрэглэгч дахин дарав
+    await F.submitBqPayment('ao-1', md, btn);          // ← гурав дахь
+    eq(S.tables.app_orders['ao-1'].paid_mnt, 206800, '⛔ төлбөр: дахин дарсан ч 206,800₮ ХЭВЭЭР (413,600 болохгүй)');
+    eq(patches(S, 'app_orders').length, 1, '⛔ төлбөр: дахин дарахад серверт ӨӨР PATCH явахгүй');
+    eq([o.paid_mnt, md.removed], [206800, true], 'төлбөр: захиалга серверийн төлөвөөр шинэчлэгдэж цонх хаагдана');
+    ok(toasts.some(t => /аль хэдийн бүртгэгдсэн/.test(t)), 'төлбөр: «аль хэдийн бүртгэгдсэн» гэж хэлнэ');
+
+    // S3) Хожим ӨӨР цонхоор ижил баримтыг дахин хавсаргах (ledger «ижил эзэн = ok» гэдэг) → давхар нэмэгдэхгүй
+    S = fake({}); fresh(); o = mkOrder();
+    await F.submitBqPayment('ao-1', mkModal([rc('R1', 414000)]), { disabled: false });
+    for (let i = 0; i < 4; i++) await F.submitBqPayment('ao-1', mkModal([rc('R1', 414000)]), { disabled: false });
+    eq([S.tables.app_orders['ao-1'].paid_mnt, patches(S, 'app_orders').length, (S.tables.app_orders['ao-1'].paid_ref.match(/\[#R1\]/g) || []).length], [414000, 1, 1], '⛔ төлбөр: ижил баримтыг 5 удаа оруулсан ч 414,000₮ нэг удаа (№1693-ийн 5× тохиолдол)');
+
+    // S4) Зэрэг бичилт: уншсанаас хойш ӨӨР хүн төлбөр бичсэн → манайх бичигдэхгүй
+    S = fake({}); fresh(); o = mkOrder(); toasts.length = 0;
+    S.beforePatch = (row) => { row.paid_mnt = 50000; row.paid_ref = '[#OTHER] Бат · 1 · а'; };
+    md = mkModal([rc('R1', 206800)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, S.tables.app_orders['ao-1'].paid_ref, o.paid_mnt, btn.disabled, !!md.removed], [50000, '[#OTHER] Бат · 1 · а', 0, false, false], '⛔ төлбөр: зэрэг бичилт — бусдын дүнг ДАРАХГҮЙ, өөрийнх нэмэгдэхгүй, локал буцна');
+    ok(toasts.some(t => /хэн нэгэн төлбөр бүртгэсэн/.test(t)), 'төлбөр: зэрэг бичилтийг ил хэлнэ');
+    await F.submitBqPayment('ao-1', md, btn);          // дахин дарвал ШИНЭ төлөвөөр зөв нэмэгдэнэ
+    eq(S.tables.app_orders['ao-1'].paid_mnt, 256800, 'төлбөр: зэрэг бичилтийн дараа дахин дарвал шинэ төлөв дээр нэг л удаа нэмэгдэнэ (50,000 + 206,800)');
+
+    // S5) Сервер уншигдахгүй → БҮРТГЭХГҮЙ (хуучин санах ойн дүн дээр нэмж давхардуулахгүй), ledger ч хөндөгдөхгүй
+    S = fake({}); fresh(); o = mkOrder(); toasts.length = 0; S.readFail = true;
+    md = mkModal([rc('R1', 206800)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([patches(S, 'app_orders').length, S.calls.filter(c => /bank_receipts/.test(c.url)).length, btn.disabled, !!md.removed], [0, 0, false, false], '⛔ төлбөр: серверээс шалгаж чадаагүй бол юу ч бичихгүй, ledger-т ч эзэмшихгүй');
+    ok(toasts.some(t => /шалгаж чадсангүй/.test(t)), 'төлбөр: шалгаж чадаагүйг ил хэлнэ');
+
+    // S6) Нэг цонхонд ижил баримт 2 удаа орсон ч нэг л удаа
+    S = fake({}); fresh(); o = mkOrder();
+    await F.submitBqPayment('ao-1', mkModal([rc('R1', 100000), rc('R1', 100000)]), { disabled: false });
+    eq(S.tables.app_orders['ao-1'].paid_mnt, 100000, 'төлбөр: нэг цонхонд давтагдсан баримт нэг л удаа');
+
+    // S7) Өөр өөр 2 баримт — хоёулаа бүртгэгдэнэ (зөвхөн ДАВХАРДАЛ хаагдана)
+    S = fake({}); fresh(); o = mkOrder();
+    await F.submitBqPayment('ao-1', mkModal([rc('R1', 100000), rc('R2', 106800)]), { disabled: false });
+    eq([S.tables.app_orders['ao-1'].paid_mnt, patches(S, 'app_orders').length], [206800, 1], 'төлбөр: ӨӨР 2 баримт хоёулаа бүртгэгдэнэ (нэг PATCH)');
+    // ... ба нэгийг нь аль хэдийн бүртгэсэн бол зөвхөн шинэ нь нэмэгдэнэ
+    S.tables.app_orders['ao-1'].paid_mnt = 100000; S.tables.app_orders['ao-1'].paid_ref = '[#R1] X · 1 · z'; S.ledger = { R1: 'mevent:#1673' }; fresh(); st.appOrders[0].paid_mnt = 0; st.appOrders[0].paid_ref = '';
+    await F.submitBqPayment('ao-1', mkModal([rc('R1', 100000), rc('R3', 5000)]), { disabled: false });
+    eq(S.tables.app_orders['ao-1'].paid_mnt, 105000, 'төлбөр: нэг нь аль хэдийн бүртгэгдсэн, нөгөө нь шинэ → зөвхөн шинэ нь (5,000₮) нэмэгдэнэ');
+
+    // S8) ⛔ КАТЕРИНГ — ижил нүх, ижил хамгаалалт
+    S = fake({}); fresh(); toasts.length = 0; S.loseReply = true;
+    st.cateringJobs = [{ id: 'kt-1', number: 5, status: 'planned', paid_mnt: 0, paid_ref: '' }];
+    md = { _receipts: [rc('K1', 300000)], remove() { this.removed = true; } }; btn = { disabled: false };
+    await F.submitCateringPayment('kt-1', md, btn);
+    await F.submitCateringPayment('kt-1', md, btn);
+    await F.submitCateringPayment('kt-1', md, btn);
+    eq([S.tables.catering_jobs['kt-1'].paid_mnt, patches(S, 'catering_jobs').length], [300000, 1], '⛔ катеринг: хариу ирээгүй үед дахин дарсан ч нэг л удаа бүртгэгдэнэ');
+    ok(/[?&]paid_mnt=eq\.0(&|$)/.test(patches(S, 'catering_jobs')[0].url) && !/[?&]or=/.test(patches(S, 'catering_jobs')[0].url), 'катеринг: PATCH нь paid_mnt-ээр шүүгдэнэ (compare-and-set), `or=` ХЭРЭГЛЭХГҮЙ');
+
+    // S8b) ⛔ Амьд дээр унасан тохиолдол (2026-10-30): төлбөр огт ороогүй (paid_mnt = 0) захиалгад ЭХНИЙ баримт.
+    //      Өмнө `or=(paid_mnt.eq.0,paid_mnt.is.null)` илгээж PostgREST 400 «column … does not exist» буцаадаг байв.
+    S = fake({}); fresh(); o = mkOrder(); toasts.length = 0;
+    md = mkModal([rc('R20', 50000)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, md.removed, toasts.some(t => /алдаа|HTTP/i.test(t))], [50000, true, false], '⛔ төлбөр: төлбөргүй (0) захиалгад эхний баримт бүртгэгдэнэ (PostgREST 400 өгөхгүй)');
+    // DB-д paid_mnt = NULL байвал: eq.0 таарахгүй → is.null-оор давхар бичилтгүйгээр бүртгэгдэнэ
+    S = fake({}); fresh(); o = mkOrder(); S.tables.app_orders['ao-1'].paid_mnt = null; o.paid_mnt = null; toasts.length = 0;
+    md = mkModal([rc('R21', 70000)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, patches(S, 'app_orders').map(c => /paid_mnt=is\.null/.test(c.url) ? 'null' : 'eq0')], [70000, ['eq0', 'null']], 'төлбөр: paid_mnt NULL мөр — эхлээд eq.0 (0 мөр), дараа нь is.null-оор НЭГ л удаа бичигдэнэ');
+    // Хэсэгчилсэн төлбөртэй (≠0) захиалгад хоёр дахь баримт: нөхцөл нь `eq.<суурь>`
+    S = fake({ paid: 100000, ref: '[#R1] X · 1 · z' }); fresh(); o = mkOrder(); o.paid_mnt = 100000; o.paid_ref = S.tables.app_orders['ao-1'].paid_ref; toasts.length = 0;
+    md = mkModal([rc('R22', 106800)]); btn = { disabled: false };
+    await F.submitBqPayment('ao-1', md, btn);
+    eq([S.tables.app_orders['ao-1'].paid_mnt, /paid_mnt=eq\.100000(&|$)/.test(patches(S, 'app_orders')[0].url)], [206800, true], 'төлбөр: хэсэгчилсэн төлбөртэй захиалгад хоёр дахь баримт нэмэгдэнэ (eq.<суурь>)');
+    // Хуурамч сервер өөрөө `or=`-д 400 өгдөг эсэхийг баталгаажуулна (загвар PostgREST-ээс хоцрохгүйн тулд)
+    S = fake({}); fresh();
+    const rOr = await sandbox.fetch(sandbox.DB_URL + '/rest/v1/app_orders?id=eq.ao-1&or=(paid_mnt.eq.0,paid_mnt.is.null)&select=id', { method: 'PATCH', body: '{}' });
+    eq(rOr.status, 400, 'загвар: PostgREST шиг `or=` + select=id хослолд 400 буцаана');
+
+    // S9) ↩ Буруу бүртгэсэн: нэг баримт N удаа бүртгэгдсэн бол N удаа хасна (№1693: 2,070,000 → 0)
+    S = fake({ paid: 300000, ref: '[#R1] X · 1 · z  |  [#R1] X · 1 · z  |  [#R1] X · 1 · z', rcAmt: 100000 }); fresh(); S.ledger = { R1: 'mevent:#1673' };
+    o = mkOrder(); o.paid_mnt = 300000; o.paid_ref = S.tables.app_orders['ao-1'].paid_ref; st.isCEO = true;
+    let confirmMsg = ''; sandbox.showConfirm = async (m) => { confirmMsg = String(m); return true; }; sandbox.assertMonthOpenLive = async () => {};
+    await F.reverseOrderPayment('ao-1', 'R1');
+    eq([S.tables.app_orders['ao-1'].paid_mnt, S.tables.app_orders['ao-1'].paid_ref], [0, ''], '⛔ буцаалт: 3 удаа давтагдсан баримтыг буцаавал 3 удаагийнх нь дүн хасагдана (нэг л удаа хасаж илүү үлдээхгүй)');
+    ok(/3 удаа/.test(confirmMsg), 'буцаалт: давтагдсан тоог баталгаажуулах цонхонд ил хэлнэ');
+    eq(S.ledger.R1, 'void:mevent:#1673', 'буцаалт: баримт чөлөөлөгдөнө (void), мөр устахгүй');
+
+    // S10) NOMAAD: баримт логт аль хэдийн байвал давхар нэмэхгүй
+    S = fake({}); fresh(); st.isCEO = true;
+    st.nomaadOrders = [{ quote_no: 'Q1', company: 'A' }]; st.nomaadPayments = { Q1: [{ id: 'p1', total: 1000, note: '[#N9] Бат · 1' }] };
+    sandbox.openNomaadIncomeModal = async () => ({ canonKey: 'N9', fpKey: 'FP-1000-20261028-X', amount: 1000, date: '2026-10-28', note: '[#N9] Бат · 1' });
+    toasts.length = 0;
+    await F.recordNomaadIncome('Q1');
+    eq([S.calls.length, st.nomaadPayments.Q1.length, toasts.some(t => /аль хэдийн бүртгэгдсэн/.test(t))], [0, 1, true], '⛔ NOMAAD: логт байгаа баримтыг дахин нэмэхгүй (сервер рүү юу ч явахгүй)');
+  } finally {
+    sandbox.fetch = saved.fetch; sandbox.showToast = saved.toast; sandbox.render = saved.render; sandbox.showConfirm = saved.confirm; sandbox.assertMonthOpenLive = saved.amo; sandbox.openNomaadIncomeModal = saved.nim;
+    Object.assign(st, { appOrders: saved.ao, bqOrders: saved.bq, cateringJobs: saved.cj, usedReceipts: saved.ur, usedFps: saved.uf, refLessFps: saved.rl, receiptOwners: saved.ro, fpOwners: saved.fo, closedMonths: saved.cm, isCEO: saved.ceo, nomaadPayments: saved.np, nomaadOrders: saved.no });
+  }
+
+  // ── ③ Scan: дараалал ба хамгаалалт ──
+  {
+    const fnOf = (a, b) => appSrc.slice(appSrc.indexOf(a), appSrc.indexOf(b, appSrc.indexOf(a) + 10));
+    const bq = fnOf('async function submitBqPayment', '// АВЛАГА (Receivables)');
+    ok(bq.indexOf('fetchPaidState(') > 0 && bq.indexOf('fetchPaidState(') < bq.indexOf('reserveReceipt('), 'scan: M-Event төлбөр — сервер ЭХЛЭЭД уншигдаж, дараа нь ledger эзэмшинэ');
+    ok(/splitNewReceipts\(receipts, baseRef\)/.test(bq) && /patchPaidOnce\(table, oid, basePaid, body\)/.test(bq), 'scan: M-Event төлбөр — алгасах шалгалт + compare-and-set');
+    ok(!/catch \(_\) \{ \/\* сүлжээ унавал санах ойн утга дээр тооцно \*\/ \}/.test(bq), '⛔ scan: серверээс унших алдаа гарвал санах ойн хуучин утга дээр ДУРАМГАЙ нэмэхгүй');
+    const kt = fnOf('async function submitCateringPayment', '/* ========================== КАТЕРИНГ модуль төгсгөл');
+    ok(kt.indexOf('fetchPaidState(') > 0 && kt.indexOf('fetchPaidState(') < kt.indexOf('reserveReceipt(') && /splitNewReceipts\(/.test(kt) && /patchPaidOnce\(/.test(kt), 'scan: катеринг төлбөр — ижил хамгаалалт');
+    ok(!/paid_mnt\.is\.null\)/.test(fnOf('async function patchPaidOnce', 'async function submitBqPayment')) && /paid_mnt=is\.null/.test(fnOf('async function patchPaidOnce', 'async function submitBqPayment')), '⛔ scan: patchPaidOnce `or=(…)` logic-tree хэрэглэхгүй (PostgREST 12 хариуны select-д дахин хэрэглэж 400 өгдөг)');
+    const rv = fnOf('async function reverseOrderPayment(', 'function setCustInfo(');
+    ok(/cut\.count/.test(rv) && /freshPaid - sub/.test(rv), 'scan: буцаалт давтагдсан мөр бүрийн дүнг хасна');
+  }
+});
+
+// ═══ ИРЦИЙН ГАР ЗАСВАР ХААСАН САРД БИЧИГДЭХГҮЙ (2026-10-30) ═════════════════════════════
+// `attSaveManualOut` нь гар засвар (manual) БА батлагдсан хүсэлт (request) хоёрын ГАНЦ бичих цэг. Хаасан сарын өдөрт гарах цаг
+// нэмбэл олгочихсон цалин чимээгүй өөрчлөгдөнө.
+// ⚠ __lateSeq: fetch-ийг stub-лах тул бусад асинх тесттэй зэрэг ажиллаж БОЛОХГҮЙ.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const appSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const sqlSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'db', 'att_manual_lock.sql'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const saved = { fetch: sandbox.fetch, toast: sandbox.showToast, render: sandbox.render, cm: st.closedMonths, cat: st.closedMonthsAt, ceo: st.isCEO, req: st.attRequests, lcm: sandbox.loadClosedMonths };
+  const posts = [], toasts = [];
+  try {
+    // Хаалттай сарыг серверээс (amp. `loadClosedMonths(true)`) уншихыг тус сервер төлөвөөр төлөөлнө
+    let serverClosed = { '2026-09': { at: 'x' } };
+    sandbox.loadClosedMonths = async () => { st.closedMonths = serverClosed; return serverClosed; };
+    sandbox.fetch = (url, opts) => { url = String(url); if (/\/rest\/v1\/attendance/.test(url) && opts && opts.method === 'POST') posts.push(JSON.parse(opts.body)); return Promise.resolve({ ok: true, status: 201, json: async () => [], text: async () => '' }); };
+    sandbox.showToast = (m) => { toasts.push(String(m)); }; sandbox.render = () => {};
+    const base = { member_key: '99001122', member_name: 'А', member_phone: '99001122', kind: 'out', token: 'manual', source: 'manual' };
+    const T = (fn) => fn().then(() => '', e => String(e.message || e));
+
+    // ① Хаасан сар (9) → бичигдэхгүй, ямар ч хүсэлт явахгүй
+    let err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-15', ts: '2026-09-15T10:00:00.000Z' }, false));
+    ok(/2026-09 сар хаагдсан/.test(err), '⛔ ирц: хаасан сарын гар засвар татгалзагдаж, шалтгааныг нэрлэнэ');
+    eq(posts.length, 0, '⛔ ирц: хаасан сард сервер рүү ЮУ Ч явахгүй');
+    // ② Нээлттэй сар (10) → бичигдэнэ
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-10-15', ts: '2026-10-15T10:00:00.000Z' }, false));
+    eq([err, posts.length], ['', 1], 'ирц: нээлттэй сарын гар засвар хэвийн бичигдэнэ');
+    // ③ Шилжилтийн хаалт (cutover) — түүнээс ӨМНӨХ бүх сар
+    serverClosed = { __cutover: { before: '2026-09' } }; posts.length = 0;
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-08-31', ts: '2026-08-31T10:00:00.000Z' }, false));
+    ok(/2026-08 сар хаагдсан/.test(err) && posts.length === 0, 'ирц: шилжилтийн хаалтаас өмнөх сар ч хаалттай');
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-01', ts: '2026-09-01T10:00:00.000Z' }, false));
+    eq(err, '', 'ирц: шилжилтийн хаалтын сар өөрөө нээлттэй');
+    // ④ Шөнийн ээлж: ts нь дараа сард ч шалгах сар = `day` (цалин өдрөөр бодогддог)
+    serverClosed = { '2026-09': { at: 'x' } }; posts.length = 0;
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-30', ts: '2026-10-01T00:30:00.000Z' }, true));   // УБ 10-01 08:30 — ts нь UTC-ээр ч 10-р сард
+    ok(/2026-09 сар хаагдсан/.test(err) && posts.length === 0, '⛔ ирц: 9-р сарын шөнийн ээлж (гарсан нь 10-р сард) 9 сарын хаалтад баригдана');
+    serverClosed = { '2026-10': { at: 'x' } };
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-30', ts: '2026-10-01T00:30:00.000Z' }, true));
+    eq(err, '', 'ирц: ээлж нь 9 сарынх тул 10-р сарын хаалт саад болохгүй');
+    // ⑤ Өдөргүй бичилт — сар тодорхойгүй тул бичихгүй
+    posts.length = 0;
+    err = await T(() => F.attSaveManualOut({ ...base, ts: '2026-10-15T10:00:00.000Z' }, false));
+    ok(/өдөр тодорхойгүй/.test(err) && posts.length === 0, 'ирц: `day`-гүй бичилт татгалзагдана (сарыг шалгаж чадахгүй)');
+    // ⑥ Түгжээ сервэрээс шинэчлэгдэнэ: кэш «нээлттэй» гэж үзэх ч сервер «хаалттай» бол татгалзана
+    st.closedMonths = {}; serverClosed = { '2026-09': { at: 'x' } }; posts.length = 0;
+    err = await T(() => F.attSaveManualOut({ ...base, day: '2026-09-02', ts: '2026-09-02T10:00:00.000Z' }, false));
+    ok(/хаагдсан/.test(err) && posts.length === 0, '⛔ ирц: өөр сессээс тавигдсан хаалтыг хуучирсан кэшээр алгасахгүй (серверээс шинэчилнэ)');
+
+    // ⑦ Хүсэлт батлах: хаасан сарынх батлагдахгүй, хүсэлт хүлээгдэж буй хэвээр, сервер рүү юу ч явахгүй
+    st.isCEO = true; posts.length = 0; toasts.length = 0;
+    const reqs = [];
+    sandbox.fetch = (url, opts) => { url = String(url); if (/\/rest\/v1\/attendance/.test(url) && opts && opts.method === 'POST') posts.push(JSON.parse(opts.body)); if (/att_requests/.test(url) && opts && opts.method === 'POST') reqs.push(JSON.parse(opts.body)); return Promise.resolve({ ok: true, status: 201, json: async () => [], text: async () => '' }); };
+    // ⚠ Хүсэлт өөрөө «ATT_REQ_MAX_AGE_D хоногоос хуучин өдрийг» татгалздаг тул өдрийг ӨНӨӨДРӨӨС тооцно — тогтмол огноо
+    //   нь хугацаа өнгөрөхөөр хүсэлтийн шалгалтаар (хаалтаар БИШ) татгалзагдаж, тест буруу шалтгаанаар давдаг байв.
+    const rday = F.addDays(F.todayStr(), -1), rym = rday.slice(0, 7);
+    serverClosed = { [rym]: { at: 'x' } };
+    const rk = '99001122|' + rday;
+    st.attRequests = { [rk]: { key: '99001122', name: 'А', day: rday, newIn: true, inTime: '09:00', outTime: '18:00', status: 'pending' } };
+    ok(F.attReqApprovalCheck(st.attRequests[rk]).ok, 'хүсэлт: тест өгөгдөл өөрөө зөв (хаалтаас БУСАД шалтгаанаар татгалзагдахгүй)');
+    await F.attReqApprove(rk);
+    eq([posts.length, reqs.length, st.attRequests[rk].status], [0, 0, 'pending'], '⛔ хүсэлт: хаасан сарынх батлагдахгүй — ирц ч бичигдэхгүй, төлөв ч «батлагдсан» болохгүй');
+    ok(toasts.some(t => /хаагдсан/.test(t)), 'хүсэлт: татгалзсан шалтгааныг (сар хаагдсан) ил хэлнэ');
+    // Нээлттэй сарын хүсэлт батлагдана
+    serverClosed = {}; toasts.length = 0;
+    await F.attReqApprove(rk);    // ИЖИЛ хүсэлт — сарыг нээсний дараа батлагдана (хүлээгдэж байсан тул алга болоогүй)
+    eq([posts.length, posts.map(p => p.kind)], [2, ['in', 'out']], 'хүсэлт: нээлттэй сарынх батлагдаж «ирсэн + гарсан» хос бичигдэнэ');
+  } finally {
+    sandbox.fetch = saved.fetch; sandbox.showToast = saved.toast; sandbox.render = saved.render; sandbox.loadClosedMonths = saved.lcm;
+    Object.assign(st, { closedMonths: saved.cm, isCEO: saved.ceo, attRequests: saved.req });
+  }
+
+  // ── Scan: бичих цэг, хүсэлтийн цонх, DB trigger ──
+  const fnOf = (a, b) => appSrc.slice(appSrc.indexOf(a), appSrc.indexOf(b, appSrc.indexOf(a) + 10));
+  const sm = fnOf('async function attSaveManualOut', '/* ─── ИРЦИЙН ТЭМДЭГЛЭГЭЭ');
+  ok(sm.indexOf('assertMonthOpenLive(') > 0 && sm.indexOf('assertMonthOpenLive(') < sm.indexOf('await post('), 'scan: сарын түгжээ ЭХНИЙ бичилтээс өмнө шалгагдана (ирсэн+гарсан хос дундаа таслагдахгүй)');
+  eq((appSrc.match(/rest\/v1\/attendance`, \{ method: 'POST'/g) || []).length, 1, 'scan: гар/хүсэлтийн ирцийн бичилт НЭГ функцэд (attSaveManualOut) — шинэ зам нэмбэл түүгээр');
+  ok(/assertMonthOpenLive\(String\(req\.day\)\.slice\(0, 7\), 'ирцийн засвар хүсэх'\)/.test(appSrc), 'scan: ажилтны хүсэлт илгээх үед хаасан сарыг шалгана');
+  ok(/monthLocked\(String\(req\.day\)\.slice\(0, 7\)\)/.test(appSrc), 'scan: хүсэлтийн цонх хаасан сарын өдрийг ЭХЭНД хэлнэ');
+  ok(/when \(new\.source in \('manual', 'request'\)\)/.test(sqlSrc), '⛔ scan: DB trigger зөвхөн manual/request мөрөнд (киоск, скан хөндөгдөхгүй)');
+  ok(/create or replace function att_manual_lock/.test(sqlSrc) && /drop trigger if exists attendance_manual_lock_trg/.test(sqlSrc) && /notify pgrst, 'reload schema'/.test(sqlSrc), 'scan: SQL идемпотент + схем дахин ачаална');
+  ok(/closed_months/.test(sqlSrc) && /__cutover,before/.test(sqlSrc) && /coalesce\(new\.day/.test(sqlSrc), 'scan: trigger аппын хаалттай сарын дүрэм (сар + шилжилтийн хаалт)-тай ИЖИЛ, `day`-ээр шалгана');
 });

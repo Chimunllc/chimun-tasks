@@ -128,6 +128,7 @@
     --di-modal-w: 520px;      /* 🔁 Давхар импорт — бүлэгтэй жагсаалт */
     --simp-modal-w: 680px;    /* 🧾 Хуулга оруулах (openStatementClassifyModal) */
     --ba-modal-w: 460px;      /* 🏦 Данс нэмэх / засах (openBankAccountModal) */
+    --salh-modal-w: 420px;    /* 📜 Цалингийн түүх (openSalaryHistory) — нэг баганатай жагсаалт */
 
     /* 🍽 Катерингийн ажлын цонх (`openCateringJobModal`) — нэг эгнээнд 2-3 талбар */
     --kt-job-modal-w: 560px;
@@ -10066,3 +10067,32 @@ select.no-asar-len {
 .simp-modal .simp-drop { border: 2px dashed var(--accent, #7c3aed); border-radius: var(--r-lg); padding: var(--space-3);
   text-align: center; cursor: pointer; background: var(--panel-hover); }
 .simp-modal .simp-status { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); line-height: 1.5; }
+
+/* ── 📜 Цалингийн түүх (`openSalaryHistory`) ─────────────────────────────────
+   Нэг ажилтны бүх олголт: дүн · сар · цикл · огноо · олгосон хүн. 12 inline
+   style-ыг класс болгов (2026-10-31). Мөр нь ЯГ ижил бүтэцтэй давтагддаг тул
+   `.salh-row` гэр бүл болов — хэв маяг нэг газар, засвар ч нэг газар.
+   ⚠ Угтвар `salh-` ЗОРИУД: `sh-` нь зөвхөн id-д (`#sh-close`) хэрэглэгдсэн ба
+     `_shRow` (сар шилжсэн зардлын мөр) тэр угтварыг авч магад; `.shortcut*` нь
+     товчлуурын жагсаалтынх. Шинэ класс нэмэхээс ӨМНӨ
+     `grep -oE '\.<угтвар>[a-z0-9-]+' styles.css`-ээр чөлөөтэйг шалга.
+   ⚠ Фонт: хуучин 12.5px/11px/15px → `--fs-md`/`--fs-xs`/`--fs-base` (7 шатны
+     масштаб; дунд хагас хэмжээ шинээр нэмэхгүй).
+   ⛔ ХӨРВҮҮЛЭЭГҮЙ ба ЗӨВХӨН ХАСАГДСАН хуучин inline дүрэм (ҮХМЭЛ байсан —
+     класс болгож дахин бичвэл шинэ хүчлэгч (important) шаардана, тэр нь хориотой;
+     `.simp-modal` / `.ba-modal`-тай ИЖИЛ шалтгаан):
+     · `.modal-actions`-ийн `display:flex` / `justify-content:flex-end` /
+       `margin-top:14px` — styles.css:3320 дээр ГУРВУУЛАА хүчлэгдсэн
+       (`margin-top:16px`), тул inline `margin-top:14px` хэзээ ч үйлчилж байгаагүй. */
+.modal.salh-modal { max-width: var(--salh-modal-w); max-height: 85vh; overflow-y: auto; }
+.salh-title { font-weight: 800; font-size: var(--fs-base); margin-bottom: var(--space-1); }
+.salh-sub { font-size: var(--fs-md); color: var(--muted); margin-bottom: var(--space-3); }
+.salh-sub b { color: var(--text); }
+.salh-row { display: flex; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border); font-size: var(--fs-md); }
+.salh-l { min-width: 0; }
+.salh-amt { font-variant-numeric: tabular-nums; }
+.salh-ym { color: var(--muted); }
+.salh-note { font-size: var(--fs-xs); color: var(--muted); }
+.salh-r { text-align: right; color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.salh-empty { color: var(--muted); text-align: center; padding: var(--space-4); }

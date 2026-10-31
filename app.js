@@ -20567,16 +20567,16 @@ function openSalaryHistory(personKey) {
   const total = ps.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const cyc = note => { const l = salaryPayLabel(note); return (l === 'урьдчилгаа' || l === 'үлдэгдэл') ? '· ' + l : ''; };
   const clean = note => { const l = salaryPayLabel(note); return (l === 'урьдчилгаа' || l === 'үлдэгдэл') ? '' : l; };
-  const rows = ps.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
-      <div style="min-width:0;"><b style="font-variant-numeric:tabular-nums;">${fmtMoney(p.amount)}</b> <span style="color:var(--muted);">${escapeHtml(p.ym || '')} ${cyc(p.note)}</span>${clean(p.note) ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(clean(p.note))}</div>` : ''}</div>
-      <div style="text-align:right;color:var(--muted);font-size:11px;white-space:nowrap;">${escapeHtml(String(p.paid_at || '').slice(0, 10))}<br>${escapeHtml(memberName(p.paid_by) || '')}</div>
-    </div>`).join('') || '<div style="color:var(--muted);text-align:center;padding:16px;">Түүх алга</div>';
+  const rows = ps.map(p => `<div class="salh-row">
+      <div class="salh-l"><b class="salh-amt">${fmtMoney(p.amount)}</b> <span class="salh-ym">${escapeHtml(p.ym || '')} ${cyc(p.note)}</span>${clean(p.note) ? `<div class="salh-note">${escapeHtml(clean(p.note))}</div>` : ''}</div>
+      <div class="salh-r">${escapeHtml(String(p.paid_at || '').slice(0, 10))}<br>${escapeHtml(memberName(p.paid_by) || '')}</div>
+    </div>`).join('') || '<div class="salh-empty">Түүх алга</div>';
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:420px;max-height:85vh;overflow-y:auto;">
-      <div style="font-weight:800;font-size:15px;margin-bottom:2px;">📜 Цалингийн түүх</div>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">${escapeHtml(m ? (m.name || '') : '')} · ${ps.length} олголт · нийт <b style="color:var(--text);">${fmtMoney(total)}</b></div>
+  modal.innerHTML = `<div class="modal salh-modal">
+      <div class="salh-title">📜 Цалингийн түүх</div>
+      <div class="salh-sub">${escapeHtml(m ? (m.name || '') : '')} · ${ps.length} олголт · нийт <b>${fmtMoney(total)}</b></div>
       ${rows}
-      <div class="modal-actions" style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn" id="sh-close">Хаах</button></div>
+      <div class="modal-actions"><button class="btn" id="sh-close">Хаах</button></div>
     </div>`;
   document.body.appendChild(modal);
   modal.querySelector('#sh-close').onclick = () => modal.remove();

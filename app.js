@@ -17499,7 +17499,7 @@ function openCateringPaymentModal(id) {
     const files = [...(e.target.files || [])]; e.target.value = '';
     for (const f of files) {
       st.textContent = `📄 ${f.name} уншиж байна…`;
-      try { modal._receipts.push(await readIncomeReceipt(f, modal._receipts)); st.textContent = `✓ ${f.name}`; }
+      try { modal._receipts.push(await readIncomeReceipt(f, modal._receipts, { tag: 'catering:' + j.id, paidRef: j.paid_ref })); st.textContent = `✓ ${f.name}`; }
       catch (err) { st.textContent = '⚠ ' + err.message; }
     }
     draw();
@@ -36698,7 +36698,7 @@ function openBqPaymentModal(oid) {
     for (const file of files) {
       status.textContent = `📄 ${file.name} уншиж байна…`; status.className = 'bqp-drop-note';
       try {
-        modal._receipts.push(await readIncomeReceipt(file, modal._receipts));
+        modal._receipts.push(await readIncomeReceipt(file, modal._receipts, { tag: 'mevent:#' + o.number, paidRef: o.paid_ref }));
         status.textContent = `✓ ${file.name}`; status.className = 'bqp-drop-note ok';
       } catch (err) { status.textContent = '⚠ ' + err.message; status.className = 'bqp-drop-note bad'; }
     }
@@ -36893,15 +36893,19 @@ function openRefundModal(oid) {
 
 /* Орлогын PDF баримт уншиж шалгана — M-Event ба катеринг ХОЁУЛАА үүнийг дуудна
    (шалгуур хоёр газар салбарлахгүй). Алдаа бол ТОДОРХОЙ мессежтэй шиднэ. */
-async function readIncomeReceipt(file, existing) {
+async function readIncomeReceipt(file, existing, own) {
   const d = parseBankReceipt(await extractPdfText(file));
   if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
   if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
   // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
   if (!receiptReceiverIsUs(d)) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'}${d.receiverAcct ? ' · ' + d.receiverAcct : ''})`);
   const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
-  const reason = receiptDupReason(refKey, fpKey);
+  // ⛔ `own` = {tag, paidRef} — баримтыг бүртгэх захиалга/ажил. Ledger-т эзэн нь ЭНЭ захиалга боловч захиалгын `paid_ref`-д байхгүй
+  //    баримт = өмнөх бүртгэл дундаа тасарсан (ledger эзэмшчихээд PATCH унасан, 2026-10-30: №1696/1698/1699/1700) → дахин
+  //    хавсаргана. `own`-гүйгээр дуудвал ledger-т орсон баримт бүгд татгалзагдаж, аппыг дахин нээсний дараа бүртгэх ЗАМГҮЙ болно.
+  const reason = receiptDupReason(refKey, fpKey, own && own.tag);
   if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
+  if (own && own.paidRef && paidRefIds(own.paidRef).has(receiptId)) throw new Error(`${file.name}: энэ захиалгад аль хэдийн бүртгэгдсэн`);
   if ((existing || []).some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
   const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
   return { amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', bank: d.bank || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file };

@@ -21259,7 +21259,7 @@ async function swFetchTests() {
   eq((sp.match(/method: 'DELETE'/g) || []).length, 0, 'scan: катерингт хатуу устгал алга');
   // PDF шалгуур НЭГ газар (M-Event ба катеринг)
   eq((src.match(/Чимунд ирээгүй гүйлгээ \(/g) || []).length, 1, 'scan: M-Event/катерингийн PDF шалгуур нэг газар');
-  ok(/readIncomeReceipt\(file, modal\._receipts\)/.test(src), 'scan: M-Event төлбөр нийтлэг уншигчийг ашиглана');
+  ok(/readIncomeReceipt\(file, modal\._receipts, \{ tag: 'mevent:#' \+ o\.number, paidRef: o\.paid_ref \}\)/.test(src), 'scan: M-Event төлбөр нийтлэг уншигчийг ашиглаж, эзэмшигчийн тэмдгийг (энэ захиалга) дамжуулна');
   // NOMAAD ажилд мөнгө орохгүй дүрэм ганц функцэд
   ok(/function cateringHasMoney\(j\) \{ return !!j && j\.source !== 'nomaad'; \}/.test(src), 'scan: NOMAAD ажил давхар орлого болохгүй');
   ok(/catering: jrnCateringList\(\)/.test(src), 'scan: журнал катерингийн орлогыг авна');
@@ -23447,6 +23447,46 @@ async function swFetchTests() {
     toasts.length = 0;
     await F.recordNomaadIncome('Q1');
     eq([S.calls.length, st.nomaadPayments.Q1.length, toasts.some(t => /аль хэдийн бүртгэгдсэн/.test(t))], [0, 1, true], '⛔ NOMAAD: логт байгаа баримтыг дахин нэмэхгүй (сервер рүү юу ч явахгүй)');
+
+    // S11) ⛔ 2026-10-31 «төлбөр бүртгэж болохгүй байна»: PATCH унаж баримт ledger-т ҮЛДСЭН (№1696/1698/1699/1700).
+    //      Аппыг дахин нээгээд ижил PDF-ийг оруулахад readIncomeReceipt «аль хэдийн бүртгэгдсэн» гэж ТАТГАЛЗДАГ байв —
+    //      ledger-ийн эзэн нь ЭНЭ захиалга мөн эсэхийг харгалздаггүй тул бүртгэх ЗАМГҮЙ болдог (зөвхөн нэг сессийн дотор л дахин оролдох боломжтой).
+    {
+      const svE = sandbox.extractPdfText, svP = sandbox.parseBankReceipt, svT = sandbox.ensureStageTask;
+      let cur = null;
+      const P = (id, amt) => ({ amount: amt, date: '2026-10-30', senderName: 'Б.АРИУН', senderAcct: '9999999999', bankRef: id, ref: 'захиалга 1700', bank: 'Голомт', status: 'Амжилттай', receiverName: 'Чимун ХХК', receiverAcct: '3635161180' });
+      try {
+        sandbox.extractPdfText = async () => 'x'; sandbox.parseBankReceipt = () => cur; sandbox.ensureStageTask = () => {};
+        const loadLedger = (id, amt, owner) => { fresh(); const fp = sandbox.receiptFingerprint(P(id, amt)); st.usedReceipts.add(id); st.usedFps.add(fp); st.receiptOwners.set(id, owner); st.fpOwners.set(fp, owner); };
+        const readP = async (id, amt, own) => { cur = P(id, amt); try { return { ok: await F.readIncomeReceipt({ name: id + '.pdf' }, [], own) }; } catch (e) { return { err: String(e.message || e) }; } };
+        loadLedger('GLS1', 406750, 'mevent:#1700');
+        let r = await readP('GLS1', 406750, { tag: 'mevent:#1700', paidRef: '' });
+        ok(r.ok && r.ok.amount === 406750, '⛔ төлбөр: ledger-т ЭНЭ захиалгын нэрээр орсон боловч захиалгад бичигдээгүй баримтыг дахин оруулж болно (аппыг дахин нээсний дараа)');
+        r = await readP('GLS1', 406750);
+        ok(!r.ok && /аль хэдийн бүртгэгдсэн/.test(r.err), 'эзэмшигчийн тэмдэггүй дуудлага өмнөх шигээ татгалзана (бусад дуудагч хөндөгдөөгүй)');
+        loadLedger('GLS1', 406750, 'mevent:#1111');
+        r = await readP('GLS1', 406750, { tag: 'mevent:#1700', paidRef: '' });
+        ok(!r.ok && /аль хэдийн бүртгэгдсэн/.test(r.err), '⛔ төлбөр: ӨӨР захиалгад ашиглагдсан баримтыг ТАТГАЛЗАНА (зөвхөн өөрийн захиалгынхыг дахин хавсаргана)');
+        loadLedger('GLS1', 406750, 'mevent:#1700');
+        r = await readP('GLS1', 406750, { tag: 'mevent:#1700', paidRef: '[#GLS1] Б.АРИУН · 9999999999 · банк:Голомт' });
+        ok(!r.ok && /энэ захиалгад аль хэдийн бүртгэгдсэн/.test(r.err), '⛔ төлбөр: энэ захиалгад АМЖИЛТТАЙ бүртгэгдсэн (paid_ref-д бий) баримтыг цонхонд шууд татгалзана');
+        // e2e: бүртгэл дундаа тасарсан захиалгыг ҮНЭХЭЭР бүртгэнэ (loaded=false: loadUsedReceipts дуусаагүй, ledger 409 → ижил эзэн = ok)
+        for (const loaded of [true, false]) {
+          const tag = loaded ? 'ачаалагдсан' : 'ачаалагдаагүй';
+          S = fake({}); S.ledger.GLS1 = 'mevent:#1700';
+          if (loaded) loadLedger('GLS1', 406750, 'mevent:#1700'); else fresh();
+          st.bqOrders = []; st.appOrders = [{ id: 'ao-1', number: 1700, status: 'draft', total_mnt: 406750, paid_mnt: 0, paid_ref: '' }];
+          r = await readP('GLS1', 406750, { tag: 'mevent:#1700', paidRef: '' });
+          ok(!!r.ok, `e2e (${tag}): баримт цонхонд орно`);
+          if (!r.ok) continue;
+          delete r.ok._file;
+          md = mkModal([r.ok]); btn = { disabled: false };
+          await F.submitBqPayment('ao-1', md, btn);
+          eq([S.tables.app_orders['ao-1'].paid_mnt, S.tables.app_orders['ao-1'].status, /\[#GLS1\]/.test(S.tables.app_orders['ao-1'].paid_ref), !!md.removed], [406750, 'reserved', true, true], `⛔ e2e (${tag}): №1700 төлбөр бүртгэгдэж «Захиалсан» болно`);
+          eq([Object.keys(S.ledger).length, S.ledger.GLS1], [1, 'mevent:#1700'], `e2e (${tag}): ledger-т давхар мөр нэмэгдэхгүй, эзэн нь хэвээр`);
+        }
+      } finally { sandbox.extractPdfText = svE; sandbox.parseBankReceipt = svP; sandbox.ensureStageTask = svT; }
+    }
   } finally {
     sandbox.fetch = saved.fetch; sandbox.showToast = saved.toast; sandbox.render = saved.render; sandbox.showConfirm = saved.confirm; sandbox.assertMonthOpenLive = saved.amo; sandbox.openNomaadIncomeModal = saved.nim;
     Object.assign(st, { appOrders: saved.ao, bqOrders: saved.bq, cateringJobs: saved.cj, usedReceipts: saved.ur, usedFps: saved.uf, refLessFps: saved.rl, receiptOwners: saved.ro, fpOwners: saved.fo, closedMonths: saved.cm, isCEO: saved.ceo, nomaadPayments: saved.np, nomaadOrders: saved.no });
@@ -23464,6 +23504,8 @@ async function swFetchTests() {
     ok(!/paid_mnt\.is\.null\)/.test(fnOf('async function patchPaidOnce', 'async function submitBqPayment')) && /paid_mnt=is\.null/.test(fnOf('async function patchPaidOnce', 'async function submitBqPayment')), '⛔ scan: patchPaidOnce `or=(…)` logic-tree хэрэглэхгүй (PostgREST 12 хариуны select-д дахин хэрэглэж 400 өгдөг)');
     const rv = fnOf('async function reverseOrderPayment(', 'function setCustInfo(');
     ok(/cut\.count/.test(rv) && /freshPaid - sub/.test(rv), 'scan: буцаалт давтагдсан мөр бүрийн дүнг хасна');
+    ok(/readIncomeReceipt\(f, modal\._receipts, \{ tag: 'catering:' \+ j\.id, paidRef: j\.paid_ref \}\)/.test(appSrc), '⛔ scan: катерингийн төлбөр ч эзэмшигчийн тэмдгийг дамжуулна (тасарсан бүртгэлийг дахин хийх боломжтой)');
+    ok(/receiptDupReason\(refKey, fpKey, own && own\.tag\)/.test(fnOf('async function readIncomeReceipt', 'async function fetchPaidState')), '⛔ scan: readIncomeReceipt нь ledger-ийн эзнийг (own.tag) харгалзана');
   }
 });
 

@@ -137,6 +137,45 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + ';');
 }
 
+// 0f2) Даалгаврын цонх: «⧉ Хуулбарлах» товч ШИНЭ даалгаварт харагдахгүй (2026-10-31)
+// Регресс: `dupBtn.style.display = t ? '' : 'none'` гэж эхэнд нуусан ч доор нь эрхээр
+// (`realCanEdit.all && !inViewMode && !isDone`) дахин харуулдаг байсан. Шинэ даалгаварт
+// realCanEdit.all үргэлж үнэн тул товч гарч, дарахад `t` null → «Cannot read properties
+// of null (reading 'id')» (app_errors 2026-10-31, view=orders, `dupBtn.onclick`).
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const origGet = documentMock.getElementById;
+  const els = {};
+  documentMock.getElementById = (id) => els[id] || (els[id] = stubEl());
+  const prev = runIn('[state.tasks, state.me, state.isCEO, state.editingId, state._taskViewMode]');
+  try {
+    runIn("state.isCEO = true; state.me = 'ceo'; state.tasks = []; state._taskViewMode = null;");
+    // Шинэ даалгавар: товч нуугдсан, дарсан ч алдаа шидэхгүй, даалгавар нэмэгдэхгүй
+    let openErr = '';
+    try { runIn('openTaskModal()'); } catch (e) { openErr = String((e && e.message) || e); }
+    eq(openErr, '', 'даалгаврын цонх: шинэ даалгавар нээхэд унахгүй');
+    const dup = els['t-duplicate'];
+    ok(!!dup, 'даалгаврын цонх: #t-duplicate товчийг цонх тохируулсан');
+    eq(dup && dup.style.display, 'none', '⛔ даалгаврын цонх: ШИНЭ даалгаварт «Хуулбарлах» товч нуугдсан (эрхээр дахин харагдахгүй)');
+    let clickErr = '';
+    try { if (dup && typeof dup.onclick === 'function') dup.onclick(); } catch (e) { clickErr = String((e && e.message) || e); }
+    eq(clickErr, '', '⛔ даалгаврын цонх: шинэ даалгавар дээр «Хуулбарлах» дарахад TypeError шидэхгүй (t = null)');
+    eq(runIn('state.tasks.length'), 0, 'даалгаврын цонх: шинэ даалгавар дээр хуулбар үүсэхгүй');
+    // Хадгалагдсан даалгавар (edit горим): товч харагдана, дарахад хуулбар үүснэ
+    runIn("state.tasks = [{ id: 'T1', title: 'Тест', status: 'open', createdBy: 'ceo', assignee: 'ceo', branch: 'm-event' }]; state._taskViewMode = false;");
+    openErr = '';
+    try { runIn("openTaskModal('T1')"); } catch (e) { openErr = String((e && e.message) || e); }
+    eq(openErr, '', 'даалгаврын цонх: хадгалагдсан даалгавар нээхэд унахгүй');
+    eq(els['t-duplicate'].style.display, '', 'даалгаврын цонх: хадгалагдсан даалгавар (засах горим) дээр «Хуулбарлах» товч харагдана');
+    // Scan: onclick хамгаалалттай
+    ok(/dupBtn\.onclick = \(\) => \{\s*if \(!t\) return;/.test(src), 'scan: «Хуулбарлах» onclick `t`-г шалгаж байж ажиллана');
+    ok(/dupBtnEl\.style\.display = \(t && realCanEdit\.all/.test(src), 'scan: «Хуулбарлах» товчийг эрхээр харуулахдаа даалгавар байгааг шалгана');
+  } finally {
+    documentMock.getElementById = origGet;
+    runIn('state.tasks = ' + JSON.stringify(prev[0] || []) + '; state.me = ' + JSON.stringify(prev[1]) + '; state.isCEO = ' + JSON.stringify(prev[2]) + '; state.editingId = ' + JSON.stringify(prev[3]) + '; state._taskViewMode = ' + JSON.stringify(prev[4]) + ';');
+  }
+}
+
 // 0e) SCAN — түүхий UTC огноо БАЙХГҮЙ (2026-09-04)
 // `x.toISOString().slice(0,10)` нь UTC огноо буцаана. Монгол UTC+8 тул 00:00-08:00
 // хооронд НЭГ ӨДРӨӨР хоцордог: сарын 1-нд цалин/гүйцэтгэл өмнөх сарыг үзүүлнэ,

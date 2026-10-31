@@ -47312,6 +47312,7 @@ function openTaskModal(id) {
   if (dupBtn) {
     dupBtn.style.display = t ? '' : 'none';
     dupBtn.onclick = () => {
+      if (!t) return;
       duplicateTask(t.id);
       closeTaskModal();
     };
@@ -47387,7 +47388,7 @@ function openTaskModal(id) {
     }
   }
   const dupBtnEl = document.getElementById('t-duplicate');
-  if (dupBtnEl) dupBtnEl.style.display = (realCanEdit.all && !inViewMode && !isDone) ? '' : 'none';
+  if (dupBtnEl) dupBtnEl.style.display = (t && realCanEdit.all && !inViewMode && !isDone) ? '' : 'none';
   // Дууссан үед "Болих" footer товчийг нуух — × товчоор хаана (товчгүй цэвэр тойм)
   const cancelBtn = document.getElementById('t-cancel');
   if (cancelBtn) cancelBtn.style.display = isDone ? 'none' : '';

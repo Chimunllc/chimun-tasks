@@ -10096,3 +10096,56 @@ select.no-asar-len {
 .salh-note { font-size: var(--fs-xs); color: var(--muted); }
 .salh-r { text-align: right; color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
 .salh-empty { color: var(--muted); text-align: center; padding: var(--space-4); }
+
+/* ═══ Maestro хүсэлт — Катеринг → «📨 Хүсэлт» (2026-11-01) ═══
+   Шинэ inline style, хүчлэгч, хатуу өнгө БАЙХГҮЙ: бүгд токен. Төлөв бүр өөрийн `.ld-st-*` классаар өнгөлөгдөнө.
+   ⚠ `.modal` угтвар ЗААВАЛ (цонхны шошго/талбарын нийтийн дүрмийг давна). */
+.ld-tabn { background: var(--danger); color: var(--on-primary); border-radius: var(--r-full); padding: 0 var(--space-2);
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums; margin-left: var(--space-1); }
+.ld-refresh { padding: var(--space-2) var(--space-4); font-size: var(--fs-md); }
+.ld-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.ld-chip { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-3);
+  border-radius: var(--r-full); border: 1px solid var(--border); background: var(--panel); color: var(--text-soft);
+  font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; }
+.ld-chip b { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ld-chip:hover { border-color: var(--border-strong); }
+.ld-chip.is-on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.ld-chip.is-on b { color: var(--on-primary); }
+.ld-chip.is-empty { opacity: .45; }
+.ld-empty { color: var(--muted); padding: var(--space-5); text-align: center; }
+.ld-err { color: var(--danger); background: var(--danger-soft); border-radius: var(--r-md); padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3); font-size: var(--fs-sm); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.ld-card { border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--r-xl); padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3); background: var(--panel); cursor: pointer; box-shadow: var(--shadow-xs); }
+.ld-card:hover { border-color: var(--border-strong); }
+.ld-top { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.ld-name { font-size: var(--fs-base); font-weight: 800; min-width: 0; overflow-wrap: anywhere; }
+.ld-ref { font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ld-badge { margin-left: auto; font-size: var(--fs-xs); font-weight: 700; padding: 1px var(--space-2); border-radius: var(--r-full);
+  color: var(--text-soft); background: var(--panel-hover); }
+.ld-what { margin-top: var(--space-1); font-size: var(--fs-md); font-weight: 600; overflow-wrap: anywhere; }
+.ld-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--text-soft); }
+.ld-note { margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--text-soft); background: var(--panel-hover);
+  border-radius: var(--r-md); padding: var(--space-2) var(--space-3); white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ld-contact { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); margin-top: var(--space-2);
+  padding-top: var(--space-2); border-top: 1px dashed var(--border); font-size: var(--fs-md); }
+.ld-tel { font-weight: 700; color: var(--primary); text-decoration: none; }
+.ld-mail { color: var(--primary); text-decoration: none; overflow-wrap: anywhere; }
+.ld-when { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ld-handled { margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--muted); overflow-wrap: anywhere; }
+.ld-st-new { border-left-color: var(--primary); }
+.ld-st-new .ld-badge { color: var(--primary); background: var(--primary-soft); }
+.ld-st-contacted { border-left-color: var(--info); }
+.ld-st-contacted .ld-badge { color: var(--info); background: var(--info-soft); }
+.ld-st-quoted { border-left-color: var(--warn); }
+.ld-st-quoted .ld-badge { color: var(--warn); background: var(--warn-soft); }
+.ld-st-won { border-left-color: var(--ok); }
+.ld-st-won .ld-badge { color: var(--ok); background: var(--ok-soft); }
+.ld-st-lost, .ld-st-spam, .ld-st-test { border-left-color: var(--border-strong); opacity: .8; }
+.modal.ld-modal { max-width: 460px; max-height: 92vh; overflow-y: auto; }
+.modal .ld-dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-3);
+  font-size: var(--fs-md); }
+.modal .ld-dl dt { color: var(--muted); }
+.modal .ld-dl dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.modal .ld-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-4); }

@@ -4740,11 +4740,9 @@ function renderSidebar() {
   const ktNav = document.getElementById('nav-catering');
   if (ktNav) {
     ktNav.style.display = canSeeCatering() ? '' : 'none';
-    const ktCnt = document.getElementById('cnt-catering');
-    if (ktCnt) {
-      const upcoming = (state.cateringJobs || []).filter(j => j.status !== 'cancelled' && j.status !== 'done').length;
-      ktCnt.textContent = String(upcoming); ktCnt.style.display = upcoming ? '' : 'none';
-    }
+    refreshCateringBadge();
+    // Шинэ хүсэлтийн тоо цэс дээр харагдахын тулд Катеринг нээгдээгүй ч 2 минут тутам татна.
+    if (canSeeCatering() && !state._ldLoading && (!state.maestroLeadsAt || Date.now() - state.maestroLeadsAt > 120000)) setTimeout(() => loadMaestroLeads(true), 0);
   }
   // Утасны салбар сонгогч — sidebar доторх чипс (header-ийн select утсанд нуугддаг).
   // Нэг салбарт түгжигдсэн хүнд сонголт байхгүй тул огт харуулахгүй.
@@ -17193,6 +17191,157 @@ async function saveCateringJob(j) {
 }
 function _ktMenuJson(j) { try { const a = JSON.parse(j.menu_json || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
 function _ktStatusBadge(s) { const c = CATERING_STATUS[s] || CATERING_STATUS.planned; return `<span style="font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:20px;color:${c[1]};background:${c[2]};">${c[0]}</span>`; }
+/* ═══ MAESTRO ХҮСЭЛТ (2026-11-01, CEO) ═══
+   maestro сайтын «Үнийн санал авах» form → `maestro_leads` (db/maestro_leads.sql). Катеринг → «📨 Хүсэлт».
+   ⛔ app_orders / catering_jobs-д ОРУУЛАХГҮЙ: хүсэлт баталгаажаагүй тул «төлөвлөсөн ажил», орлого болж тоологдоно.
+   ⛔ Бичих = PATCH + `return=representation` ба БУЦСАН МӨРИЙГ ТООЛНО: RLS эрхгүй хүнд 0 мөр шинэчлээд 204 өгдөг —
+      мөрийг тоолохгүй бол «хадгаллаа» гэж ХУДЛАА хэлнэ.
+   ⛔ Нэр/тайлбар = нийтийн сайтаас ирсэн ЗЭРЭМДЭГ бичвэр: ҮРГЭЛЖ escapeHtml; `tel:`/`mailto:` холбоосыг зөвхөн шалгасны дараа.
+   ⛔ Бичиж болох талбар = status / assigned_to / handled_note ГУРАВ л (сайтаас ирсэн мэдээллийг ЗАСАХГҮЙ). */
+const MAESTRO_LEAD_STATUS = {
+  new: 'Шинэ', contacted: 'Холбогдсон', quoted: 'Үнийн санал', won: 'Хожсон', lost: 'Алдсан', spam: 'Спам', test: 'Туршилт',
+};
+const MAESTRO_LEAD_OPEN = ['new', 'contacted', 'quoted'];
+const MAESTRO_LEAD_FILTERS = [['open', 'Нээлттэй'], ['new', 'Шинэ'], ['won', 'Хожсон'], ['lost', 'Алдсан'], ['spam', 'Спам'], ['test', 'Туршилт']];
+const MAESTRO_LEAD_PATCH_KEYS = ['status', 'assigned_to', 'handled_note'];
+function maestroLeadsIn(filter) {
+  const L = state.maestroLeads || [];
+  return filter === 'open' ? L.filter(l => MAESTRO_LEAD_OPEN.includes(l.status)) : L.filter(l => l.status === filter);
+}
+function maestroLeadsNewCount() { return (state.maestroLeads || []).filter(l => l.status === 'new').length; }
+// `tel:` зөвхөн цэвэр тоо (DB-д шалгагддаг ч сайтаас ирсэн мэдээлэлд итгэхгүй).
+function maestroLeadTel(p) { const d = String(p == null ? '' : p).replace(/[^\d+]/g, ''); return /^\+?\d{8,15}$/.test(d) ? 'tel:' + d : ''; }
+function maestroLeadMail(e) { const v = String(e == null ? '' : e).trim(); return /^[^@\s"'<>]+@[^@\s"'<>]+\.[^@\s"'<>]+$/.test(v) ? 'mailto:' + v : ''; }
+async function loadMaestroLeads(force) {
+  if (!DB_ANON_KEY) return;
+  if (state.maestroLeads && !force) return;
+  if (state._ldLoading) return;
+  state._ldLoading = true; state.maestroLeadsErr = '';
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/maestro_leads?select=*&order=created_at.desc&limit=500`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    state.maestroLeads = Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    console.warn('loadMaestroLeads', e);
+    state.maestroLeads = state.maestroLeads || [];
+    state.maestroLeadsErr = String((e && e.message) || e);
+  } finally {
+    state._ldLoading = false;
+    state.maestroLeadsAt = Date.now();   // алдаатай ч цагийг тэмдэглэнэ — эс бөгөөс render бүрд дахин оролдож давталтад орно
+  }
+  if (state.view === 'catering') render(); else refreshCateringBadge();
+}
+async function saveMaestroLead(id, patch) {
+  if (!DB_ANON_KEY || id == null || id === '') return null;
+  const body = {};
+  MAESTRO_LEAD_PATCH_KEYS.forEach(k => { if (patch && k in patch) body[k] = String(patch[k] == null ? '' : patch[k]); });
+  if (!Object.keys(body).length) return null;
+  if ('status' in body && !MAESTRO_LEAD_STATUS[body.status]) { showToast('Төлөв буруу байна', 'error', 3500); return null; }
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/maestro_leads?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    const rows = await r.json();
+    if (!Array.isArray(rows) || rows.length !== 1) throw new Error('хадгалагдсангүй (эрх хүрэхгүй байж болно)');
+    const i = (state.maestroLeads || []).findIndex(x => String(x.id) === String(id));
+    if (i >= 0) state.maestroLeads[i] = rows[0];
+    return rows[0];
+  } catch (e) { showToast('Хүсэлт хадгалах алдаа: ' + e.message, 'error', 4500); return null; }
+}
+// Катеринг цэсний тоо = удахгүй болох ажил + ШИНЭ хүсэлт (хариулах хүн хүлээж байгаа).
+function refreshCateringBadge() {
+  const ktCnt = document.getElementById('cnt-catering');
+  if (!ktCnt) return;
+  const upcoming = (state.cateringJobs || []).filter(j => j.status !== 'cancelled' && j.status !== 'done').length;
+  const n = upcoming + maestroLeadsNewCount();
+  ktCnt.textContent = String(n); ktCnt.style.display = n ? '' : 'none';
+}
+function maestroLeadCardHtml(l) {
+  const st = MAESTRO_LEAD_STATUS[l.status] ? l.status : 'new';
+  const what = [l.line_name, l.package_name].filter(Boolean).map(escapeHtml).join(' · ');
+  const meta = [
+    l.event_date ? '🗓 ' + escapeHtml(String(l.event_date).slice(0, 10)) : '',
+    Number(l.guests) > 0 ? '👥 ' + Number(l.guests) : '',
+    l.venue ? '📍 ' + escapeHtml(l.venue) : '',
+    Number(l.quoted_price) > 0 ? 'Сайтад: ' + fmtMoney(Number(l.quoted_price)) : '',
+  ].filter(Boolean).map(x => `<span>${x}</span>`).join('');
+  const tel = maestroLeadTel(l.phone), mail = maestroLeadMail(l.email);
+  return `<div class="ld-card ld-st-${st}" data-ld="${escapeHtml(l.id)}">
+    <div class="ld-top"><b class="ld-name">${escapeHtml(l.name)}</b><span class="ld-ref">${escapeHtml(l.ref || '')}</span><span class="ld-badge">${escapeHtml(MAESTRO_LEAD_STATUS[st])}</span></div>
+    ${what ? `<div class="ld-what">${what}</div>` : ''}
+    ${meta ? `<div class="ld-meta">${meta}</div>` : ''}
+    ${l.note ? `<div class="ld-note">💬 ${escapeHtml(l.note)}</div>` : ''}
+    <div class="ld-contact">
+      ${tel ? `<a class="ld-tel" href="${escapeHtml(tel)}">📞 ${escapeHtml(l.phone)}</a>` : `<span>📞 ${escapeHtml(l.phone)}</span>`}
+      ${mail ? `<a class="ld-mail" href="${escapeHtml(mail)}">✉ ${escapeHtml(l.email)}</a>` : ''}
+      <span class="ld-when">${escapeHtml(fmtDateTimeUB(l.created_at))}</span>
+    </div>
+    ${(l.assigned_to || l.handled_note) ? `<div class="ld-handled">${l.assigned_to ? '👤 ' + escapeHtml(l.assigned_to) : ''}${l.assigned_to && l.handled_note ? ' · ' : ''}${l.handled_note ? escapeHtml(l.handled_note) : ''}</div>` : ''}
+  </div>`;
+}
+function renderMaestroLeads() {
+  const filter = MAESTRO_LEAD_FILTERS.some(f => f[0] === state.leadsFilter) ? state.leadsFilter : 'open';
+  if (!state.maestroLeads) return '<div class="ld-empty">Ачаалж байна…</div>';
+  const chips = `<div class="ld-chips">${MAESTRO_LEAD_FILTERS.map(([k, label]) => {
+    const n = maestroLeadsIn(k).length;
+    return `<button type="button" class="ld-chip${filter === k ? ' is-on' : ''}${n ? '' : ' is-empty'}" data-ld-filter="${k}">${escapeHtml(label)} <b>${n}</b></button>`;
+  }).join('')}</div>`;
+  const err = state.maestroLeadsErr ? `<div class="ld-err">Хүсэлт ачаалж чадсангүй (${escapeHtml(state.maestroLeadsErr)}). <button type="button" class="btn" data-ld-reload="1">↻ Дахин оролдох</button></div>` : '';
+  const list = maestroLeadsIn(filter);
+  const body = list.length ? list.map(maestroLeadCardHtml).join('')
+    : `<div class="ld-empty">${filter === 'open' ? 'Нээлттэй хүсэлт алга. Сайтаас ирмэгц энд гарна.' : 'Энэ төлөвт хүсэлт алга.'}</div>`;
+  return chips + err + body;
+}
+function openMaestroLeadModal(id) {
+  const l = (state.maestroLeads || []).find(x => String(x.id) === String(id));
+  if (!l) return;
+  const opts = Object.keys(MAESTRO_LEAD_STATUS).filter(k => k !== 'test' || l.status === 'test')
+    .map(k => `<option value="${k}"${k === l.status ? ' selected' : ''}>${escapeHtml(MAESTRO_LEAD_STATUS[k])}</option>`).join('');
+  const names = (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && m.worker_type !== 'daily').map(m => m.name).filter(Boolean);
+  const dl = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+  const tel = maestroLeadTel(l.phone), mail = maestroLeadMail(l.email);
+  const row = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : '';
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal ld-modal">
+    <h2>${escapeHtml(l.ref || '')} · ${escapeHtml(l.name)}</h2>
+    <dl class="ld-dl">
+      ${row('Утас', tel ? `<a href="${escapeHtml(tel)}">${escapeHtml(l.phone)}</a>` : escapeHtml(l.phone))}
+      ${row('Имэйл', mail ? `<a href="${escapeHtml(mail)}">${escapeHtml(l.email)}</a>` : escapeHtml(l.email))}
+      ${row('Үйлчилгээ', escapeHtml(l.line_name))}
+      ${row('Багц', escapeHtml(l.package_name) + (Number(l.quoted_price) > 0 ? ' · сайтад ' + fmtMoney(Number(l.quoted_price)) : ''))}
+      ${row('Огноо', l.event_date ? escapeHtml(String(l.event_date).slice(0, 10)) : '')}
+      ${row('Хүний тоо', Number(l.guests) > 0 ? String(Number(l.guests)) : '')}
+      ${row('Байршил', escapeHtml(l.venue))}
+      ${row('Тайлбар', escapeHtml(l.note))}
+      ${row('Ирсэн', escapeHtml(fmtDateTimeUB(l.created_at)) + (l.source === 'maestro-preview' ? ' · preview' : ''))}
+    </dl>
+    <label class="fld">Төлөв<select id="ld-status">${opts}</select></label>
+    <label class="fld">Хариуцсан<input id="ld-who" list="ld-who-list" value="${escapeHtml(l.assigned_to || '')}" maxlength="80" placeholder="нэр"><datalist id="ld-who-list">${dl}</datalist></label>
+    <label class="fld">Тэмдэглэл<textarea id="ld-note" maxlength="500" placeholder="юу ярьсан, дараагийн алхам">${escapeHtml(l.handled_note || '')}</textarea></label>
+    <div class="ld-foot"><button class="btn" id="ld-cancel">Болих</button><button class="btn btn-primary" id="ld-save">Хадгалах</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#ld-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#ld-save').onclick = async () => {
+    const patch = {
+      status: modal.querySelector('#ld-status').value,
+      assigned_to: modal.querySelector('#ld-who').value.trim(),
+      handled_note: modal.querySelector('#ld-note').value.trim(),
+    };
+    if (patch.status === l.status && patch.assigned_to === (l.assigned_to || '') && patch.handled_note === (l.handled_note || '')) { close(); return; }
+    const btn = modal.querySelector('#ld-save'); btn.disabled = true;
+    const row2 = await saveMaestroLead(l.id, patch);
+    if (!row2) { btn.disabled = false; return; }
+    close(); showToast('Хүсэлт хадгаллаа', 'success', 1800);
+    if (state.view === 'catering') render(); else refreshCateringBadge();
+  };
+  modal.classList.add('open');
+}
 function renderCatering() {
   if (!state.cateringMenu) loadCateringMenu();
   if (!state.cateringJobs) loadCateringJobs();
@@ -17201,14 +17350,20 @@ function renderCatering() {
   const menu = state.cateringMenu || [];
   const jobs = (state.cateringJobs || []).filter(j => j.status !== 'cancelled' || (Number(j.paid_mnt) || 0) > 0);
   const tabBtn = (k, label) => `<button class="btn${tab === k ? ' btn-primary' : ''}" data-kt-tab="${k}" style="padding:6px 16px;font-size:13px;">${label}</button>`;
+  // Хүсэлтийн таб нээгдэх бүрд шинэ хүсэлт ирсэн эсэхийг шалгана (30 сек-ээс шинэ бол дахин татахгүй).
+  if (tab === 'leads' && (!state.maestroLeadsAt || Date.now() - state.maestroLeadsAt > 30000)) loadMaestroLeads(true);
+  const newLeads = maestroLeadsNewCount();
   // Гарчиг/дэд гарчиг нь дэлгэцийн толгойд (renderTitle → titles.catering) — энд давхардуулахгүй.
-  const header = `<div style="display:flex;gap:8px;margin:6px 0 14px;flex-wrap:wrap;">${tabBtn('jobs', '📋 Ажлууд')}${tabBtn('menu', '🍲 Цэс')}
+  const header = `<div style="display:flex;gap:8px;margin:6px 0 14px;flex-wrap:wrap;">${tabBtn('jobs', '📋 Ажлууд')}${tabBtn('menu', '🍲 Цэс')}${tabBtn('leads', '📨 Хүсэлт' + (newLeads ? ` <b class="ld-tabn">${newLeads}</b>` : ''))}
       <div style="flex:1;"></div>
       ${tab === 'jobs' ? `<button class="btn btn-primary" id="kt-new-job" style="padding:6px 16px;font-size:13px;">+ Шинэ катеринг</button>`
+        : tab === 'leads' ? `<button class="btn ld-refresh" id="ld-refresh">↻ Шинэчлэх</button>`
         : `<button class="btn btn-primary" id="kt-new-dish" style="padding:6px 16px;font-size:13px;">+ Хоол нэмэх</button>`}
     </div>`;
   let body = '';
-  if (tab === 'menu') {
+  if (tab === 'leads') {
+    body = renderMaestroLeads();
+  } else if (tab === 'menu') {
     if (!state.cateringMenu) body = '<div style="color:var(--muted);padding:20px;text-align:center;">Ачаалж байна…</div>';
     else {
       const active = menu.filter(m => m.active !== false);
@@ -17286,6 +17441,10 @@ function cateringMoneyHtml(j) {
 function attachCateringHandlers() {
   document.querySelectorAll('[data-kt-pay]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openCateringPaymentModal(b.dataset.ktPay); }));
   document.querySelectorAll('[data-kt-tab]').forEach(b => b.addEventListener('click', () => { state.cateringTab = b.dataset.ktTab; render(); }));
+  document.querySelectorAll('[data-ld-filter]').forEach(b => b.addEventListener('click', () => { state.leadsFilter = b.dataset.ldFilter; render(); }));
+  document.querySelectorAll('[data-ld]').forEach(el => el.addEventListener('click', (e) => { if (e.target.closest('a')) return; openMaestroLeadModal(el.dataset.ld); }));
+  document.querySelectorAll('[data-ld-reload]').forEach(b => b.addEventListener('click', () => loadMaestroLeads(true)));
+  document.getElementById('ld-refresh')?.addEventListener('click', () => loadMaestroLeads(true));
   document.getElementById('kt-new-job')?.addEventListener('click', () => openCateringJobModal());
   document.getElementById('kt-new-dish')?.addEventListener('click', () => openCateringMenuModal());
   document.querySelectorAll('[data-kt-dish]').forEach(el => el.addEventListener('click', () => {

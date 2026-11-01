@@ -23630,3 +23630,142 @@ async function swFetchTests() {
   ok(/create or replace function att_manual_lock/.test(sqlSrc) && /drop trigger if exists attendance_manual_lock_trg/.test(sqlSrc) && /notify pgrst, 'reload schema'/.test(sqlSrc), 'scan: SQL идемпотент + схем дахин ачаална');
   ok(/closed_months/.test(sqlSrc) && /__cutover,before/.test(sqlSrc) && /coalesce\(new\.day/.test(sqlSrc), 'scan: trigger аппын хаалттай сарын дүрэм (сар + шилжилтийн хаалт)-тай ИЖИЛ, `day`-ээр шалгана');
 });
+
+// ═══ MAESTRO ХҮСЭЛТ — Катеринг → «📨 Хүсэлт» (2026-11-01, CEO) ═════════════════════════
+// maestro сайтын хүсэлт `maestro_leads`-д орно (db/maestro_leads.sql). Дэлгэц: жагсаалт, төлвийн шүүлт, цонх, цэсний тоо.
+// «Тест ногоон ≠ ажиллаж байна»: бичих функцийг ҮНЭХЭЭР дуудаж fetch-д ГАРСАН биеийг шалгана; RLS чимээгүй 0 мөр
+// шинэчлэхийг (204/[]) «хадгаллаа» гэж худлаа хэлэхгүй байхыг тусад нь шалгана.
+// ⚠ __lateSeq: fetch-ийг stub-лах тул бусад асинх тесттэй зэрэг ажиллаж БОЛОХГҮЙ.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const appSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const saved = { fetch: sandbox.fetch, toast: sandbox.showToast, render: sandbox.render, view: st.view, tab: st.cateringTab,
+    leads: st.maestroLeads, at: st.maestroLeadsAt, err: st.maestroLeadsErr, ld: st._ldLoading, flt: st.leadsFilter,
+    menu: st.cateringMenu, jobs: st.cateringJobs, nm: st.nomaadOrders };
+  const toasts = [], calls = [];
+  const lead = (o) => Object.assign({ id: 1, ref: 'MC-0001', status: 'new', source: 'maestro-site', name: 'Бат', phone: '99112233', email: 'bat@example.com',
+    line_name: 'Байгууллагын катеринг', package_name: 'Бизнес үдийн зоог', quoted_price: 35000, event_date: '2026-12-01', guests: 40,
+    venue: 'Хан-Уул', note: 'Хоолны жагсаалт', assigned_to: '', handled_note: '', created_at: '2026-11-01T02:00:00Z' }, o || {});
+  try {
+    sandbox.showToast = (m) => { toasts.push(String(m)); }; sandbox.render = () => {};
+    const respond = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body), text: () => Promise.resolve(JSON.stringify(body)) });
+    // ── ① Унших: зөв хаяг, нэвтэрсэн токен, төлөвт хадгална ──
+    let reply = () => respond(200, [lead({ id: 1 }), lead({ id: 2, ref: 'MC-0002', status: 'contacted' }), lead({ id: 3, ref: 'MC-0003', status: 'test' }), lead({ id: 4, ref: 'MC-0004', status: 'quoted' })]);
+    sandbox.fetch = (url, opt) => { calls.push({ url: String(url), opt: opt || {} }); return reply(); };
+    st.maestroLeads = undefined; st.maestroLeadsAt = undefined; st._ldLoading = false; st.view = 'mine';
+    await F.loadMaestroLeads(true);
+    ok(/\/rest\/v1\/maestro_leads\?select=\*&order=created_at\.desc&limit=500$/.test(calls[0].url), 'хүсэлт: уншилт зөв хаяг, шинэ нь эхэнд, хязгаартай');
+    ok(/^Bearer /.test((calls[0].opt.headers || {}).Authorization || ''), 'хүсэлт: уншилт нэвтэрсэн токеноор (Authorization)');
+    eq(st.maestroLeads.length, 4, 'хүсэлт: 4 мөр төлөвт орсон');
+    eq([F.maestroLeadsIn('open').length, F.maestroLeadsIn('new').length, F.maestroLeadsIn('test').length], [3, 1, 1], 'хүсэлт: «Нээлттэй» = шинэ+холбогдсон+үнийн санал; туршилт тусдаа');
+    eq(F.maestroLeadsNewCount(), 1, 'хүсэлт: цэсний тоо зөвхөн ШИНЭ (туршилт, холбогдсон орохгүй)');
+    ok(typeof st.maestroLeadsAt === 'number', 'хүсэлт: ачаалсан цаг тэмдэглэгдэнэ');
+    // ── ② Алдаа: хуучин мөр үлдэнэ, алдаа ил, цаг тэмдэглэгдэнэ (render бүрд дахин оролдох давталтгүй) ──
+    reply = () => respond(500, { message: 'boom' }); st.maestroLeadsAt = 0;
+    await F.loadMaestroLeads(true);
+    ok(/HTTP 500/.test(st.maestroLeadsErr) && st.maestroLeads.length === 4, '⛔ хүсэлт: уншилт унавал хуучин мөр үлдэж, алдаа ил хадгалагдана');
+    ok(st.maestroLeadsAt > 0 && st._ldLoading === false, 'хүсэлт: алдаатай ч цаг тэмдэглэгдэж, «ачаалж байна» түгжээ суллагдана');
+    ok(/ачаалж чадсангүй/.test(F.renderMaestroLeads()) && /data-ld-reload/.test(F.renderMaestroLeads()), 'хүсэлт: дэлгэц алдааг «Дахин оролдох» товчтой харуулна');
+    reply = () => respond(200, [lead({ id: 1 })]); await F.loadMaestroLeads(true);
+    eq([st.maestroLeadsErr, st.maestroLeads.length], ['', 1], 'хүсэлт: дараагийн амжилттай уншилт алдааг арилгана');
+    st.maestroLeads = [lead({ id: 1 }), lead({ id: 2, ref: 'MC-0002', status: 'contacted' }), lead({ id: 3, ref: 'MC-0003', status: 'test' }), lead({ id: 4, ref: 'MC-0004', status: 'quoted' })];
+
+    // ── ③ Бичих: PATCH, ЗӨВХӨН 3 талбар, return=representation, мөр тоолно ──
+    calls.length = 0; toasts.length = 0;
+    reply = () => respond(200, [lead({ id: 1, status: 'contacted', assigned_to: 'Болд', handled_note: 'залгасан' })]);
+    const r1 = await F.saveMaestroLead(1, { status: 'contacted', assigned_to: 'Болд', handled_note: 'залгасан', name: 'ХУУРМАГ', phone: '1', note: 'x', source: 'x', ref: 'MC-9999', id: 99, created_at: '2000-01-01' });
+    eq(calls.length, 1, '⛔ хүсэлт: хадгалахад сервер рүү НЭГ дуудлага явна');
+    ok(/\/rest\/v1\/maestro_leads\?id=eq\.1$/.test(calls[0].url) && calls[0].opt.method === 'PATCH', '⛔ хүсэлт: хадгалалт = PATCH …?id=eq.1 (өөр мөр/бүгдэд хүрэхгүй)');
+    eq(JSON.parse(calls[0].opt.body), { status: 'contacted', assigned_to: 'Болд', handled_note: 'залгасан' }, '⛔ хүсэлт: илгээсэн бие ЗӨВХӨН status/assigned_to/handled_note (сайтаас ирсэн мэдээлэл засагдахгүй)');
+    eq((calls[0].opt.headers || {}).Prefer, 'return=representation', 'хүсэлт: return=representation (мөр шинэчлэгдсэнийг тоолохын тулд)');
+    ok(/^Bearer /.test((calls[0].opt.headers || {}).Authorization || ''), 'хүсэлт: бичилт нэвтэрсэн токеноор');
+    ok(r1 && r1.status === 'contacted' && st.maestroLeads.find(x => x.id === 1).assigned_to === 'Болд', 'хүсэлт: амжилттай бичсэний дараа локал төлөв сервер буцаасан мөрөөр шинэчлэгдэнэ');
+    // RLS эрхгүй: PostgREST 200 + [] (0 мөр) → «хадгаллаа» гэж ХУДЛАА хэлэхгүй
+    toasts.length = 0; reply = () => respond(200, []);
+    const r2 = await F.saveMaestroLead(2, { status: 'won' });
+    ok(r2 === null && toasts.some(t => /хадгалагдсангүй/.test(t)), '⛔ хүсэлт: эрхгүйн улмаас 0 мөр шинэчлэгдвэл АМЖИЛТГҮЙ гэж ил хэлнэ');
+    eq(st.maestroLeads.find(x => x.id === 2).status, 'contacted', '⛔ хүсэлт: 0 мөр шинэчлэгдсэн бол локал төлөв ӨӨРЧЛӨГДӨХГҮЙ');
+    // 500 → амжилтгүй
+    toasts.length = 0; reply = () => respond(500, { message: 'x' });
+    ok((await F.saveMaestroLead(2, { status: 'won' })) === null && toasts.some(t => /алдаа/.test(t)), 'хүсэлт: сервер 500 → амжилтгүй + мэдэгдэл');
+    // Буруу төлөв → сервер рүү огт явахгүй
+    calls.length = 0; toasts.length = 0;
+    ok((await F.saveMaestroLead(2, { status: 'deleted' })) === null && calls.length === 0, '⛔ хүсэлт: танигдаагүй төлөв сервер рүү ОГТ явахгүй');
+    ok((await F.saveMaestroLead(2, { name: 'x', phone: '1' })) === null && calls.length === 0, '⛔ хүсэлт: зөвшөөрөгдөөгүй талбар ганцаараа бол юу ч явахгүй');
+    ok((await F.saveMaestroLead(null, { status: 'won' })) === null && calls.length === 0, 'хүсэлт: id-гүй бол юу ч явахгүй');
+
+    // ── ④ Дэлгэц: зэрэмдэг бичвэр ESCAPE хийгдэнэ, холбоос аюулгүй ──
+    const evil = lead({ id: 9, ref: 'MC-0009', name: '<img src=x onerror=alert(1)>', note: '"><script>alert(2)</script>', venue: '<b>x</b>', line_name: '<i>l</i>',
+      package_name: "'><svg onload=1>", phone: 'javascript:alert(3)', email: '"><a href="javascript:alert(4)">z@z.zz', assigned_to: '<u>a</u>', handled_note: '<s>n</s>' });
+    const card = F.maestroLeadCardHtml(evil);
+    ok(!/<img |<script|<svg|<b>|<i>|<u>|<s>/.test(card), '⛔ хүсэлт: нэр/тайлбар/байршил/багц/тэмдэглэл дэх HTML ESCAPE хийгдсэн (XSS)');
+    ok(!/href="javascript:/i.test(card) && !/href="tel:[^"]*[a-z]/i.test(card), '⛔ хүсэлт: утас/имэйлээр javascript: холбоос үүсэхгүй');
+    ok(!/class="ld-mail"/.test(card), 'хүсэлт: хүчингүй имэйлийг холбоос болгохгүй');
+    const good = F.maestroLeadCardHtml(lead({ id: 1, phone: '+976 9911-2233', email: 'bat@example.com' }));
+    ok(/href="tel:\+97699112233"/.test(good) && /href="mailto:bat@example\.com"/.test(good), 'хүсэлт: хүчинтэй утас/имэйл нь залгах/бичих холбоос болно');
+    ok(/Бат/.test(good) && /MC-0001/.test(good) && /35,000|35 000|35000/.test(good) && /2026-12-01/.test(good) && /Хан-Уул/.test(good), 'хүсэлт: карт нэр, дугаар, үнэ, огноо, байршлыг харуулна');
+    ok(/ld-st-new/.test(good) && /Шинэ/.test(good), 'хүсэлт: шинэ хүсэлт «Шинэ» тэмдэгтэй');
+
+    // ── ⑤ Таб: renderCatering ──
+    st.cateringMenu = []; st.cateringJobs = []; st.nomaadOrders = []; st.cateringTab = 'leads'; st.leadsFilter = 'open'; st.maestroLeadsAt = Date.now(); st.maestroLeadsErr = '';
+    st.maestroLeads = [lead({ id: 1 }), lead({ id: 2, ref: 'MC-0002', status: 'contacted', name: 'Дорж' }), lead({ id: 3, ref: 'MC-0003', status: 'test', name: 'Туршигч' })];
+    const page = F.renderCatering();
+    ok(/data-kt-tab="leads"/.test(page) && /📨 Хүсэлт/.test(page), 'хүсэлт: «Хүсэлт» таб Катеринг дэлгэцэд байна');
+    ok(/class="ld-tabn">1</.test(page), 'хүсэлт: таб дээр ШИНЭ хүсэлтийн тоо (1)');
+    ok(/Бат/.test(page) && /Дорж/.test(page) && !/Туршигч/.test(page), '⛔ хүсэлт: «Нээлттэй» шүүлтэд туршилтын хүсэлт ХАРАГДАХГҮЙ');
+    ok(/data-ld-filter="open"/.test(page) && /data-ld-filter="spam"/.test(page) && /id="ld-refresh"/.test(page), 'хүсэлт: шүүлтийн чип, шинэчлэх товч байна');
+    st.leadsFilter = 'test';
+    ok(/Туршигч/.test(F.renderCatering()) && !/Дорж/.test(F.renderCatering()), 'хүсэлт: «Туршилт» шүүлтэд л туршилтын хүсэлт гарна');
+    st.leadsFilter = 'bogus'; ok(/Бат/.test(F.renderCatering()), 'хүсэлт: танигдаагүй шүүлт «Нээлттэй» болж буурна');
+    st.leadsFilter = 'won'; ok(/Энэ төлөвт хүсэлт алга/.test(F.renderCatering()), 'хүсэлт: хоосон шүүлт тайлбартай');
+    st.cateringTab = 'jobs'; ok(!/class="ld-card/.test(F.renderCatering()) && /id="kt-new-job"/.test(F.renderCatering()), 'хүсэлт: «Ажлууд» таб хуучнаараа (хүсэлтийн карт орохгүй)');
+
+    // ── ⑥ Scan: хил хязгаар ──
+    const mod = appSrc.slice(appSrc.indexOf('const MAESTRO_LEAD_STATUS'), appSrc.indexOf('function renderCatering()'));
+    ok(mod.length > 3000, 'scan: хүсэлтийн модуль олдлоо');
+    ok(!/app_orders|catering_jobs/.test(mod.replace(/\/\*[\s\S]*?\*\//g, '')), '⛔ scan: хүсэлт app_orders/catering_jobs-д ХЭЗЭЭ Ч бичигдэхгүй (кодод огт дурдагдахгүй)');
+    ok(/MAESTRO_LEAD_PATCH_KEYS = \['status', 'assigned_to', 'handled_note'\]/.test(mod), '⛔ scan: бичиж болох талбар яг 3');
+    ok(/rows\.length !== 1/.test(mod) && /return=representation/.test(mod), '⛔ scan: PATCH-ийн хариуны мөрийг тоолно');
+    // Цонх: зэрэмдэг бичвэртэй хүсэлтийг ҮНЭХЭЭР нээж, үүссэн HTML-ийг шалгана (card-тай адил escape)
+    {
+      const made = []; const origCreate = sandbox.document.createElement;
+      sandbox.document.createElement = () => { const el = origCreate(); made.push(el); return el; };
+      st.maestroLeads = [evil];
+      F.openMaestroLeadModal(9);
+      sandbox.document.createElement = origCreate;
+      const html = (made[0] && made[0].innerHTML) || '';
+      ok(html.length > 500 && /MC-0009/.test(html), 'хүсэлт: цонх нээгдэж агуулгыг үүсгэнэ');
+      ok(!/<img |<script|<svg|<b>|<i>|<u>|<s>|href="javascript:/i.test(html), '⛔ хүсэлт: цонх дахь нэр/тайлбар/байршил/багц/тэмдэглэл ESCAPE хийгдсэн (XSS)');
+      ok(/id="ld-status"/.test(html) && /id="ld-who"/.test(html) && /id="ld-note"/.test(html), 'хүсэлт: цонхонд төлөв, хариуцсан, тэмдэглэл талбар байна');
+      ok(!/value="test"/.test(html), 'хүсэлт: «Туршилт» төлвийг гараар сонгуулахгүй (зөвхөн туршилтын мөрд)');
+    }
+    ok(!/style="/.test(mod), 'scan: хүсэлтийн модульд inline style байхгүй (дизайны гэрээ)');
+    ok(/refreshCateringBadge\(\);/.test(appSrc.slice(appSrc.indexOf("getElementById('nav-catering')"), appSrc.indexOf("getElementById('nav-catering')") + 900)), 'scan: цэсний тоо refreshCateringBadge-ээр (ажил + шинэ хүсэлт)');
+    ok(/maestroLeadsNewCount\(\)/.test(appSrc.slice(appSrc.indexOf('function refreshCateringBadge'), appSrc.indexOf('function refreshCateringBadge') + 500)), 'scan: цэсний тоонд шинэ хүсэлт орно');
+    // ── DB эх бичиг ба апп хоёр ЗЭРЭГ байна (VPS сэргээх заавар + төлвийн толь) ──
+    {
+      const dbSql = (f) => require('fs').readFileSync(require('path').join(__dirname, '..', 'db', f), 'utf8');
+      const ls = dbSql('maestro_leads.sql'), lcode = ls.replace(/--[^\n]*/g, '');
+      ok(/create or replace function public\.submit_maestro_lead\(payload json\)/.test(lcode) && /security definer/.test(lcode) && /set search_path = public, pg_temp/.test(lcode), 'db: submit_maestro_lead security definer + тогтсон search_path');
+      ok(/revoke all on function public\.submit_maestro_lead\(json\) from public/.test(lcode) && /grant execute on function public\.submit_maestro_lead\(json\) to anon, authenticated/.test(lcode), 'db: функцийн эрх PUBLIC-аас хураагдаад зөвхөн anon/authenticated-д');
+      ok(/revoke all on maestro_leads\s+from anon/.test(lcode) && /revoke delete on maestro_leads\s+from authenticated/.test(lcode) && /alter table maestro_leads enable row level security/.test(lcode), '⛔ db: maestro_leads anon-д хаалттай, хатуу устгал хаалттай, RLS асаалттай');
+      ok(!/grant[^;]*on maestro_leads[^;]*to anon/.test(lcode), '⛔ db: хүсэлтийн хүснэгтийг anon-д ХЭЗЭЭ Ч нээхгүй');
+      const dbStatuses = (/status in \(([^)]*)\)/.exec(lcode)[1].match(/'([a-z]+)'/g) || []).map(x => x.replace(/'/g, '')).sort();
+      eq(dbStatuses, Object.keys(vm.runInContext('MAESTRO_LEAD_STATUS', sandbox)).sort(), '⛔ db: төлвийн жагсаалт аппын MAESTRO_LEAD_STATUS-тэй ЯГ ИЖИЛ (зөрвөл PATCH CHECK-д унана)');
+      ok(/create or replace view public\.public_maestro_menu/.test(dbSql('public_maestro_menu.sql')) && /grant select on public\.public_maestro_menu to anon/.test(dbSql('public_maestro_menu.sql')), 'db: меню харагдац нийтэд нээлттэй (хүснэгт биш)');
+      ok(!/grant[^;]*on maestro_(lines|packages|week)[^;]*to anon/.test(dbSql('maestro_menu.sql').replace(/--[^\n]*/g, '')), '⛔ db: меню хүснэгтүүд anon-д ХААЛТТАЙ');
+    }
+    // Цэсний тоо ҮНЭХЭЭР: удахгүй 1 ажил + 1 шинэ хүсэлт = 2
+    const els = {}; const origGet = sandbox.document.getElementById;
+    sandbox.document.getElementById = (id) => (els[id] = els[id] || { style: {}, textContent: '' });
+    st.cateringJobs = [{ id: 'KT-1', status: 'planned' }, { id: 'KT-2', status: 'done' }];
+    st.maestroLeads = [lead({ id: 1 }), lead({ id: 2, status: 'contacted' }), lead({ id: 3, status: 'test' })];
+    F.refreshCateringBadge();
+    sandbox.document.getElementById = origGet;
+    eq([els['cnt-catering'].textContent, els['cnt-catering'].style.display], ['2', ''], 'хүсэлт: цэсний тоо = удахгүй 1 ажил + 1 шинэ хүсэлт (туршилт/холбогдсон орохгүй)');
+  } finally {
+    sandbox.fetch = saved.fetch; sandbox.showToast = saved.toast; sandbox.render = saved.render;
+    Object.assign(st, { view: saved.view, cateringTab: saved.tab, maestroLeads: saved.leads, maestroLeadsAt: saved.at, maestroLeadsErr: saved.err, _ldLoading: saved.ld,
+      leadsFilter: saved.flt, cateringMenu: saved.menu, cateringJobs: saved.jobs, nomaadOrders: saved.nm });
+  }
+});

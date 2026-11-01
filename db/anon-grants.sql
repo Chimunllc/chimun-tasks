@@ -20,6 +20,9 @@
 --   УНШИХ:  public_catalog · public_availability · app_config_public
 --           + products-ын 26 багана (ХОЦРОГДСОН — доорх «Дараагийн алхам» үз)
 --   БИЧИХ:  app_errors (алдааны лог) · attendance (checkin.html — ирц)
+--   MAESTRO сайт (2026-11-01, mevent.mn-ээс ТУСДАА сайт): унших `public_maestro_menu` (харагдац),
+--           дуудах `submit_maestro_lead(json)` (функц, security definer). Хүснэгтүүд (maestro_*) ХААЛТТАЙ.
+--           grant мөр нь db/public_maestro_menu.sql ба db/maestro_leads.sql-д ӨӨРСДӨД НЬ байна.
 --
 --   Бусад БҮХ хүснэгт anon-д ХААЛТТАЙ. Апп бүх уншилт/бичилтээ нэвтэрсэн
 --   ажилтны токеноор (`pgrstBearer()`) хийдэг тул эвдрэхгүй.

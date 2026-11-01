@@ -719,6 +719,26 @@ NOMAAD-ийн бүх мөнгийг `income_date` сард, Орлогын та�
 - ⚠ Авлагын дэлгэц (`receivablesData`) катерингийг ОДООХОНДОО харуулахгүй —
   үлдэгдэл нь катерингийн картад.
 
+### Maestro Catering сайт ↔ ERP (2026-11-01, CEO)
+
+Шинэ салбар «Maestro Catering»-ийн сайт нь ТУСДАА репо (`Chimunllc/maestro-website`, нэг файлын `index.html`, GitHub Pages).
+Сайт зөвхөн ERP-ийн DB-тэй ярина — аппын кодтой холбогдохгүй. `tools/contract-check.js` зөвхөн mevent.mn-ийг хардаг тул Maestro-г ХАМРАХГҮЙ.
+
+- **Меню:** `db/maestro_menu.sql` (хүснэгт `maestro_lines/packages/week`, `sample` багана) + `db/public_maestro_menu.sql` (харагдац —
+  сайтад юу харагдахын ЦОРЫН ГАНЦ дүрэм). Сайт `GET /db/rest/v1/public_maestro_menu`; anon хүснэгтэд ХҮРЭХГҮЙ.
+  `sample=true` мөр жишээ — сайт `PROTOTYPE=false` үед нууна; бодит меню оруулсны дараа `delete from maestro_packages where sample` (эзний холболтоор).
+- **Хүсэлт:** `db/maestro_leads.sql` — хүснэгт `maestro_leads` (дугаар MC-0001; төлөв new/contacted/quoted/won/lost/spam/test) +
+  RPC `submit_maestro_lead(json)` (anon дуудна; шалгалт, honeypot, 15 мин давхардал, хязгаар утас 3/цаг · IP 8/цаг · нийт 60/10мин, багцын нэр/үнийг DB-ээс).
+  ⛔ Хүсэлтийг `app_orders`/`catering_jobs`-д ОРУУЛАХГҮЙ — баталгаажаагүй тул орлого/«төлөвлөсөн ажил» болж тоологдоно (дараагийн шат: хүсэлтээс ажил үүсгэх).
+  ⛔ Хүснэгт anon-д ХААЛТТАЙ, зөвхөн функц нээлттэй. Сайтаас ирсэн бичвэр (нэр, тайлбар) ЗЭРЭМДЭГ: UI-д ҮРГЭЛЖ `escapeHtml`.
+  `source='maestro-preview'` → `status='test'` (прототип сайтаас ирсэн; «Туршилт» шүүлтэд л харагдана).
+- **Дэлгэц:** Катеринг → «📨 Хүсэлт» (`renderMaestroLeads`, `openMaestroLeadModal`). Бичиж болох талбар 3: `status`/`assigned_to`/`handled_note`.
+  ⛔ Бичилт = PATCH + `return=representation` ба буцсан мөрийг ТООЛНО (RLS эрхгүй хүнд 0 мөр шинэчлээд 204 өгдөг). Цэсний тоо = удахгүй ажил + ШИНЭ хүсэлт.
+  Уншилт/бичилтийн эрх = `sec.cap('catering')` (тохируулаагүй бол CEO / түвшин ≥ 80) — «катеринг салбарын гишүүн» л гэсэн хүн хоосон жагсаалт харна.
+- **SQL ажиллуулах дараалал (VPS сэргээхэд):** `maestro_menu.sql` → `public_maestro_menu.sql` → (жишээ өгөгдөл шаардлагатай бол л) → `maestro_leads.sql`. Бүгд идемпотент.
+  Жишээ өгөгдөл (`maestro_menu_seed.sql`) ЭНЭ репод ОРООГҮЙ — зөвхөн прототипийн.
+- Үлдсэн: хүсэлт ирэхэд push/имэйл мэдэгдэл (`notified_at` багана бэлэн), хүсэлтээс катеринг ажил үүсгэх товч.
+
 ### Сар хаах = `app_config['closed_months']` (2026-09-11)
 
 Хаасан сарын тоо ХӨДӨЛӨХГҮЙ. Алдаа гарвал **дараагийн сард залруулга** бичнэ —

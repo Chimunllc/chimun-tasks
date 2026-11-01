@@ -11433,7 +11433,7 @@ need(['orderCustType']);
 // тусгаарлагчийг хасдаг — сүүлийн багана ХООСОН байхад мөр нэг талбараар дутуу
 // задарна. Амьд системд «бүүстын хүсэлт алга» гэсэн ХУДАЛ хариу ингэж гарсан.
 {
-  const files = ['fb_boost.py', 'fb_capi.py', 'pbx_notify.py'];
+  const files = ['fb_boost.py', 'fb_capi.py', 'pbx_notify.py', 'maestro_notify.py'];
   for (const f of files) {
     const fp = path.join(__dirname, '..', 'tools', f);
     if (!fs.existsSync(fp)) continue;
@@ -23769,3 +23769,60 @@ async function swFetchTests() {
       leadsFilter: saved.flt, cateringMenu: saved.menu, cateringJobs: saved.jobs, nomaadOrders: saved.nm });
   }
 });
+
+// ═══ MAESTRO ХҮСЭЛТИЙН PUSH МЭДЭГДЭЛ (2026-11-01, CEO: «мэдэгдэл хий») ═══════════════════════
+// `tools/maestro_notify.py` (VPS cron, минут бүр): ШИНЭ хүсэлт ирмэгц хариуцсан хүмүүст push. Хүсэлт ирсэн ч хэн ч Катеринг →
+// «Хүсэлт»-ийг нээхгүй бол үйлчлүүлэгч хариугүй хүлээнэ. Апп: push дарахад `./#leads` → Катеринг → «📨 Хүсэлт» таб.
+{
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const swSrc = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  const p = path.join(__dirname, '..', 'tools', 'maestro_notify.py');
+  const py = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  ok(!!py, 'хүсэлтийн мэдэгдэл: maestro_notify.py байна');
+
+  // ── Аппын тал: холбоос ба шууд шинэчлэл ──
+  const st = vm.runInContext('state', sandbox);
+  const sv = { fn: sandbox.canSeeCatering, tab: st.cateringTab };
+  try {
+    sandbox.canSeeCatering = () => true;
+    eq(F.deepLinkView('#leads'), 'leads', 'хүсэлт: `#leads` холбоос эрхтэй хүнд танигдана');
+    eq(F.deepViewTarget('leads'), 'catering', 'хүсэлт: `#leads` → Катеринг дэлгэц');
+    eq(st.cateringTab, 'leads', 'хүсэлт: `#leads` → «Хүсэлт» таб нээгдэнэ');
+    st.cateringTab = 'jobs';
+    eq(F.deepViewTarget('plan'), 'plan', 'хүсэлт: бусад холбоос өөрчлөгдөөгүй (plan)');
+    eq(st.cateringTab, 'jobs', 'хүсэлт: бусад холбоос Катерингийн табыг хөдөлгөхгүй');
+    sandbox.canSeeCatering = () => false;
+    eq(F.deepLinkView('#leads'), '', '⛔ хүсэлт: Катеринг харах эрхгүй хүнд `#leads` холбоос ажиллахгүй');
+  } finally { sandbox.canSeeCatering = sv.fn; st.cateringTab = sv.tab; }
+  ok(/state\.view = deepViewTarget\(dl\)/.test(appSrc), 'scan: апп эхлэхэд холбоос deepViewTarget-ээр');
+  ok(/state\.view = deepViewTarget\(v\)/.test(appSrc), 'scan: апп нээлттэй үед дарсан холбоос deepViewTarget-ээр');
+  ok(/ev\.data\.kind === 'leads' && canSeeCatering\(\)\) loadMaestroLeads\(true\)/.test(appSrc), 'scan: хүсэлтийн push ирэхэд нээлттэй апп жагсаалтаа шинэчилнэ (эрхтэй бол л)');
+  ok(/postMessage\(\{ type: 'push-refresh', kind \}\)/.test(swSrc), 'scan: sw.js push-ийн төрлийг аппад дамжуулдаг (хүсэлтийн шууд шинэчлэл үүнээс хамаарна)');
+
+  // ── Скрипт ──
+  try {
+    const out = require('child_process').execSync(`python3 ${JSON.stringify(p)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ MAESTRO NOTIFY OK/.test(out), 'хүсэлтийн мэдэгдэл: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'хүсэлтийн мэдэгдэл: Python тест — ' + msg.trim().slice(0, 300));
+  }
+  // ⛔ `email` шүүлтгүй илгээвэл 50 ажилтан БҮГД мэдэгдэл авна.
+  ok(/body\['email'\]\s*=\s*phone/.test(py), '⛔ хүсэлтийн мэдэгдэл: хүлээн авагч үргэлж заагдана (шүүлтгүй БҮГДЭД очдог)');
+  ok(/if not to:/.test(py) && py.indexOf('if not to:') < py.indexOf('for phone in to'), 'хүсэлтийн мэдэгдэл: хүлээн авагчгүй бол илгээхгүй');
+  // ⛔ Давхар мэдэгдэл: push АМЖИЛТТАЙ явсны дараа л тэмдэглэнэ, ЗӨВХӨН шинэ + мэдэгдээгүй + саяхных.
+  ok(/if okc:\s*\n\s*mark_notified\(/.test(py) && py.indexOf('push(secret, phone, msg)') < py.indexOf('mark_notified(id_list'), '⛔ хүсэлтийн мэдэгдэл: notified_at зөвхөн push амжилттай явсны ДАРАА');
+  ok(/status = 'new' and notified_at is null/.test(py) && /interval '\{int\(WINDOW_H\)\} hours'/.test(py), '⛔ хүсэлтийн мэдэгдэл: зөвхөн шинэ, мэдэгдээгүй, WINDOW_H дотор (test/холбогдсон/хуучин мэдэгдэхгүй)');
+  ok(/if not n:\s*\n\s*return None/.test(py), 'хүсэлтийн мэдэгдэл: хүсэлтгүй бол юу ч илгээхгүй');
+  // ⚠ Хүлээн авагч кодод хатуу бичигдээгүй, зөвхөн тохиргооноос.
+  const mainBody = py.slice(py.indexOf('def main()'));
+  ok(/cfg_json\('maestro_notify'\)/.test(mainBody) && !/\b\d{8}\b/.test(mainBody), 'хүсэлтийн мэдэгдэл: хүлээн авагч app_config-оос, кодод утас хатуу бичигдээгүй');
+  // ⚠ Цоорхой: UPDATE-д орох id зөвхөн бүхэл тоо.
+  ok(/ids = \[int\(i\) for i in ids\]/.test(py), '⛔ хүсэлтийн мэдэгдэл: UPDATE-ийн id-г бүхэл тоо болгож баталгаажуулна');
+  // Апп ба скриптийн холбоос ИЖИЛ байх ёстой (зөрвөл push дарахад өөр дэлгэц нээгдэнэ).
+  const pyUrl = (py.match(/'url': '(\.\/#[a-z]+)'/) || [])[1];
+  ok(pyUrl === './#leads' && /leads: \(\) => canSeeCatering\(\)/.test(appSrc), '⛔ хүсэлтийн мэдэгдэл: скриптийн холбоос аппын DEEP_VIEWS-тэй ижил');
+  // Бичих талбар db/-тэй ижил (notified_at багана байгаа эсэх)
+  const dbSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'maestro_leads.sql'), 'utf8');
+  ok(/notified_at\s+timestamptz/.test(dbSql), 'хүсэлтийн мэдэгдэл: db/maestro_leads.sql-д notified_at багана бий');
+}

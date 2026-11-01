@@ -65,6 +65,14 @@
     --space-6: 32px;
     --space-8: 48px;
 
+    /* Тайлангийн хэсгийн хавтангийн дотоод зай ба хавтан хоорондын зай.
+       `--space-3` (12) ба `--space-4` (16)-ийн дунд; хажуугийн «Зардлын задаргаа»
+       хавтантай ЯГ таарах ёстой тул тусдаа токен. */
+    --rep-pad: 14px;
+
+    /* Эвхэгдэх сумны (▸) тогтмол өргөн — сум эргэхэд гарчиг хөдлөхгүй. */
+    --caret-w: 12px;
+
     /* ── ЗАХИАЛГЫН ХҮСНЭГТИЙН БАГАНА (Жагсаалт) ──
        Толгой ба мөр ЯГ ижил байх ЁСТОЙ — тусад нь бичвэл зөрдөг.
        Сүүлийн багана ТОГТМОЛ: «auto» байхад «💵 Төлбөр авах» товчтой мөр
@@ -10149,3 +10157,34 @@ select.no-asar-len {
 .modal .ld-dl dt { color: var(--muted); }
 .modal .ld-dl dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .modal .ld-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-4); }
+
+/* ═══ 🔁 Сар хооронд шилжсэн зардал (Санхүү → Тайлан) ═══
+   Зардал ноогдох сараар тоологддог тул мөнгө гарсан сараас зөрнө — тэр шилжилтийг
+   ил гаргах эвхэгдэх хавтан. ⚠ Нээлттэй төрх = `.open` класс (`style.display` БИШ):
+   хаалттай нь эндээс ирдэг тул inline style-аар төлөв унших нь эхний даралтыг иднэ. */
+.fsh-panel { border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: var(--rep-pad); margin-top: var(--rep-pad); background: var(--panel); }
+.fsh-head { display: flex; justify-content: space-between; align-items: center;
+  gap: var(--space-2); cursor: pointer; user-select: none; }
+.fsh-title { font-size: var(--fs-md); font-weight: 800; }
+.fsh-caret { display: inline-block; width: var(--caret-w); color: var(--muted);
+  transition: transform .12s; }
+.fsh-head.open .fsh-caret { transform: rotate(90deg); }
+.fsh-count { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.fsh-detail { display: none; margin-top: var(--space-2); }
+.fsh-detail.open { display: block; }
+.fsh-note { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5;
+  margin-bottom: var(--space-1); }
+.fsh-note-lead { line-height: 1.55; margin-bottom: 0; }
+.fsh-note b { color: var(--text); }
+.fsh-sec { margin-top: var(--space-3); }
+.fsh-sec-h { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-1); }
+.fsh-sec-h span { color: var(--muted); font-weight: 400; }
+/* Мөр: нэр ↔ шилжсэн сар ↔ дүн. Нэр л агшина (дүн/сар тасрах ёсгүй). */
+.fsh-row { display: flex; justify-content: space-between; align-items: center;
+  gap: var(--space-2); padding: var(--space-1) var(--space-2); font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--border); cursor: pointer; }
+.fsh-row-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsh-row-n span { color: var(--muted); }
+.fsh-row-m { color: var(--muted); white-space: nowrap; }
+.fsh-row b { white-space: nowrap; }

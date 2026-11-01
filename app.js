@@ -43433,25 +43433,25 @@ function renderReports() {
   const _shRow = (x, dir) => {
     const who = escapeHtml((x.t.title || '').replace(/^💸 /, ''));
     const cat = escapeHtml(finSubName(x.t.category) || '');
-    return `<div data-fin-open="${escapeHtml(x.t.id)}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;">
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}${cat ? `<span style="color:var(--muted);"> · ${cat}</span>` : ''}</span>
-        <span style="color:var(--muted);white-space:nowrap;">${dir} ${escapeHtml(x.other)}</span>
-        <b style="white-space:nowrap;">${fmtMoney(Number(x.t.amount) || 0)}</b></div>`;
+    return `<div class="fsh-row" data-fin-open="${escapeHtml(x.t.id)}">
+        <span class="fsh-row-n">${who}${cat ? `<span> · ${cat}</span>` : ''}</span>
+        <span class="fsh-row-m">${dir} ${escapeHtml(x.other)}</span>
+        <b>${fmtMoney(Number(x.t.amount) || 0)}</b></div>`;
   };
   let shiftPanel = '';
   if (shiftOut.length || shiftIn.length) {
-    const sec = (title, arr, dir, hint) => arr.length ? `<div style="margin-top:10px;">
-        <div style="font-size:12px;font-weight:700;margin-bottom:3px;">${title} <span style="color:var(--muted);font-weight:400;">(${arr.length}) · ${fmtMoney(_shSum(arr))}</span></div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:5px;line-height:1.5;">${hint}</div>
+    const sec = (title, arr, dir, hint) => arr.length ? `<div class="fsh-sec">
+        <div class="fsh-sec-h">${title} <span>(${arr.length}) · ${fmtMoney(_shSum(arr))}</span></div>
+        <div class="fsh-note">${hint}</div>
         ${arr.slice().sort((a, b) => (Number(b.t.amount) || 0) - (Number(a.t.amount) || 0)).map(x => _shRow(x, dir)).join('')}
       </div>` : '';
-    shiftPanel = `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px;background:var(--panel);">
-        <div data-shift-toggle style="display:flex;justify-content:space-between;gap:8px;align-items:center;cursor:pointer;user-select:none;">
-          <div style="font-weight:800;font-size:13px;"><span data-shift-caret style="display:inline-block;width:12px;color:var(--muted);transition:transform .12s;">▸</span> 🔁 Сар хооронд шилжсэн зардал</div>
-          <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${shiftOut.length + shiftIn.length} гүйлгээ</span>
+    shiftPanel = `<div class="fsh-panel">
+        <div class="fsh-head" data-shift-toggle>
+          <div class="fsh-title"><span class="fsh-caret">▸</span> 🔁 Сар хооронд шилжсэн зардал</div>
+          <span class="fsh-count">${shiftOut.length + shiftIn.length} гүйлгээ</span>
         </div>
-        <div data-shift-detail style="display:none;margin-top:6px;">
-          <div style="font-size:11px;color:var(--muted);line-height:1.55;">Зардал <b style="color:var(--text);">ноогдох сараар</b> тоологддог (цалин ажилласан сард) тул мөнгө гарсан сараас зөрж болно. Гүйлгээ бүрийн сарыг «Аль сарын зардал» талбараас солино. ${month} сартай холбоотой шилжилтүүд:</div>
+        <div class="fsh-detail" data-shift-detail>
+          <div class="fsh-note fsh-note-lead">Зардал <b>ноогдох сараар</b> тоологддог (цалин ажилласан сард) тул мөнгө гарсан сараас зөрж болно. Гүйлгээ бүрийн сарыг «Аль сарын зардал» талбараас солино. ${month} сартай холбоотой шилжилтүүд:</div>
           ${sec('➡️ Энэ сард төлсөн → өөр сард ноогдсон', shiftOut, '→', month + '-д мөнгө гарсан ч энэ сарын зардалд ОРООГҮЙ — доорх сард шилжсэн.')}
           ${sec('⬅️ Өөр сард төлсөн → энэ сард ноогдсон', shiftIn, '←', 'Мөнгө өөр сард гарсан ч ' + month + '-ын зардалд НЭМЭГДСЭН.')}
         </div>
@@ -43704,13 +43704,15 @@ function attachReportsHandlers() {
     if (caret) caret.style.transform = 'rotate(90deg)';
   }));
   // 🔁 Сар хооронд шилжсэн зардал — эвх/задал + мөр дээр дарж дэлгэрэнгүй
+  /* ⚠ Эвх/задал нь `style.display`-ээр БИШ `.open` класаар — хаалттай төрх нь
+     `.fsh-detail`-ийн CSS-д байдаг тул inline style уншиж «нээлттэй эсэх»-ийг
+     тогтоох нь эхний даралтыг чимээгүй залгина. Сум нь толгойн класаас эргэнэ. */
   const shToggle = document.querySelector('[data-shift-toggle]');
   if (shToggle) shToggle.addEventListener('click', () => {
-    const d = document.querySelector('[data-shift-detail]'), c = document.querySelector('[data-shift-caret]');
+    const d = document.querySelector('[data-shift-detail]');
     if (!d) return;
-    const open = d.style.display !== 'none';
-    d.style.display = open ? 'none' : '';
-    if (c) c.style.transform = open ? '' : 'rotate(90deg)';
+    const open = d.classList.toggle('open');
+    shToggle.classList.toggle('open', open);
   });
   document.querySelectorAll('[data-shift-detail] [data-fin-open]').forEach(r => r.addEventListener('click', () => openExpenseModal(r.dataset.finOpen)));
 }

@@ -49158,11 +49158,15 @@ async function bootApp() {
     // Service Worker push-аас ирэх refresh сигналд хариу үзүүлнэ
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (ev) => {
-        if (ev.data && ev.data.type === 'push-refresh' && state.me) refreshFromServer();
+        if (ev.data && ev.data.type === 'push-refresh' && state.me) {
+          refreshFromServer();
+          // Шинэ хүсэлтийн push: апп нээлттэй байхад жагсаалт, цэсний тоо шууд шинэчлэгдэнэ.
+          if (ev.data.kind === 'leads' && canSeeCatering()) loadMaestroLeads(true);
+        }
         // Мэдэгдэл дарахад апп аль хэдийн нээлттэй бол SW холбоосыг энд дамжуулна
         if (ev.data && ev.data.type === 'open-url' && state.me) {
           const v = deepLinkView('#' + String(ev.data.url || '').split('#')[1]);
-          if (v) { state.view = v; render(); }
+          if (v) { state.view = deepViewTarget(v); render(); }
         }
       });
     }
@@ -49396,13 +49400,15 @@ function showApp() {
   // Push-ийн холбоос (`./#plan`) — тэр дэлгэц рүү шууд (эрхтэй бол л).
   const dl = deepLinkView(location.hash);
   if (dl) {
-    state.view = dl;
+    state.view = deepViewTarget(dl);
     try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
   }
 }
 // Мэдэгдлээс нээх дэлгэц. ⛔ ЗӨВХӨН энэ жагсаалт, эрх шалгаад — дурын hash-аар
 // дэлгэц нээх нь эрхгүй хүнд хаалттай дэлгэцийг гаргах нүх болно.
-const DEEP_VIEWS = { plan: () => canSeePlan(), ideas: () => true };
+const DEEP_VIEWS = { plan: () => canSeePlan(), ideas: () => true, leads: () => canSeeCatering() };
+// `./#leads` (tools/maestro_notify.py-ийн push-ийн холбоос) = Катеринг дэлгэцийн «📨 Хүсэлт» таб.
+function deepViewTarget(v) { if (v === 'leads') { state.cateringTab = 'leads'; return 'catering'; } return v; }
 function deepLinkView(hash) {
   const m = String(hash || '').match(/^#([a-z]+)$/);
   const v = m ? m[1] : '';

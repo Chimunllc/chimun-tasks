@@ -21643,8 +21643,11 @@ async function swFetchTests() {
   ok(!/style="/.test(full.replace(/<img[^>]*>/g, '')), 'дизайн: сарын тойм (нийтлэг <img>-ээс бусад) inline style-гүй');
   // Явж буй сар: хувь = өнөөдрийг хүртэлх нормоор
   const T = vm.runInContext('todayStr()', sandbox), CM = T.slice(0, 7), through = F.monthWorkdaysThrough(CM, T);
-  if (through > 0 && through < F.monthWorkdays(CM)) {
-    const cd = wd(CM).filter(d => d <= T);
+  // ⚠ Сарын ПЕРВЫЙ ажлын өдөр БҮТЭН өдөр байхгүй (бүртгэл хоосон, хувь 0) тул шалгах
+  //    юм үлдэхгүй — 2026-11-02-нд яг үүнээс CI улаан болов. Дор хаяж 1 бүтэн өдөр.
+  const _cd = wd(CM).filter(d => d <= T), _done = _cd.filter(d => d !== T).length;
+  if (through > 0 && through < F.monthWorkdays(CM) && _done > 0) {
+    const cd = _cd;
     st.attMonthKey = CM; st.attMonthRecs = [].concat(...cd.filter(d => d !== T).map(d => [R('90000011', d, 'in', '09:00'), R('90000011', d, 'out', '18:00')]));   // 9ц − 1ц цай = 8ц
     const cur = F.renderAttendanceMonth(CM);
     ok(/Норм <b>\d+×8=\d+ц<\/b> <span class="att-mo-sub">\(сар \d+×8=\d+ц · үргэлжилж байна\)/.test(cur), 'сарын тойм: явж буй сард «Норм Н×8 (сар …· үргэлжилж байна)»');
@@ -23825,4 +23828,62 @@ async function swFetchTests() {
   // Бичих талбар db/-тэй ижил (notified_at багана байгаа эсэх)
   const dbSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'maestro_leads.sql'), 'utf8');
   ok(/notified_at\s+timestamptz/.test(dbSql), 'хүсэлтийн мэдэгдэл: db/maestro_leads.sql-д notified_at багана бий');
+}
+
+// ── ЗАХИАЛГЫН КАРТЫН БАРААНЫ МӨР (2026-11-02) ───────────────────────────────
+// Хоёр алдаа: ① мөрийн дүн түрээсийн ХОНОГийг тооцдоггүй («тоо × үнэ») тул 3 хоногийн
+// захиалгад мөр бодит дүнгийнхээ 3-ны 1-ийг харуулж, мөрүүдийн нийлбэр нийт дүнтэй
+// таарахгүй байв ② `open` атрибутын дараа нэг илүү хашилт байсан тул атрибут `open"`
+// болж, нээлттэй байхыг санасан жагсаалт дахин зурагдахад ХААГДдаг байв.
+// ⛔ Booqable түүхэн мөрийн `price` нь ХУГАЦААНЫ НИЙТ дүн (амьд датаар батлагдсан) —
+//    хоногоор үржүүлбэл 40 дахин хөөрнө. Тиймээс хоногийн дүрэм ГАНЦ функцэд.
+{
+  const app3 = { source: 'app', starts_at: '2026-11-10', stops_at: '2026-11-13' };
+  eq(F.orderLineDays(app3), 3, 'картын мөр: апп захиалгын хоног (3)');
+  eq(F.orderLineDays({ source: 'm-event-website', starts_at: '2026-11-10', stops_at: '2026-11-12' }), 2, 'картын мөр: сайтын захиалга ч хоногоор');
+  eq(F.orderLineDays({ source: 'booqable', starts_at: '2026-03-01', stops_at: '2026-04-10' }), 1, '⛔ картын мөр: Booqable мөрийн үнэ = хугацааны НИЙТ дүн, хоногоор ҮРЖИХГҮЙ');
+  eq(F.orderLineDays({ source: 'app', starts_at: '', stops_at: '' }), 1, 'картын мөр: огноогүй (ноорог) захиалгад 1 хоног — мөр 0₮ болж харагдахгүй');
+  eq(F.orderLineDays(null), 1, 'картын мөр: хоосон оролт унахгүй');
+
+  eq(F.orderLineAmount(app3, { name: 'Сандал', qty: 10, price: 11000 }), 330000, '⛔ картын мөр: 10 × 11,000 × 3 хоног = 330,000');
+  eq(F.orderLineAmount({ source: 'booqable' }, { qty: 1, price: 6000000 }), 6000000, 'картын мөр: Booqable мөр нийт дүнгээрээ');
+  eq(F.orderLineAmount(app3, { qty: 1, price: 390000, bdays: 3 }), 390000, 'картын мөр: багцын N хоногийн үнэ тогтмол');
+  eq(F.orderLineAmount({ ...app3, stops_at: '2026-11-14' }, { qty: 1, price: 390000, bdays: 3 }), 520000, 'картын мөр: багц илүү хоногтой');
+  eq(F.orderLineAmount(app3, { qty: 2, price: 100, total: 777 }), 777, 'картын мөр: хадгалсан `total` ялна (мөнгөний задаргаатай ижил дүрэм)');
+}
+
+// Картыг ҮНЭХЭЭР зурж шалгана («тест ногоон ≠ ажиллаж байна» дүрэм).
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = vm.runInContext('[state.ordersItemsOpen, state.products]', sandbox);
+  runIn("state.ordersItemsOpen = new Set(['77']); state.products = [];");
+  const ord = { id: 77, _app: true, source: 'app', status: 'reserved', number: 1700,
+    starts_at: '2026-11-10', stops_at: '2026-11-13', total_mnt: 330000, paid_mnt: 0,
+    items: [{ name: 'Сандал', sku: 'M-001', qty: 10, price: 11000 }] };
+  const card = vm.runInContext('bqOrderCard', sandbox);
+  let html = '', err = '';
+  try { html = card(ord); } catch (e) { err = e.message; }
+  eq(err, '', 'карт: bqOrderCard алдаагүй ажиллана');
+  const det = (html.match(/<details class="order-items-det"[^>]*>/) || [])[0] || '';
+  ok(/ open>$/.test(det), '⛔ карт: нээлттэй гэж санасан жагсаалт ҮНЭХЭЭР `open` атрибуттай — ' + det);
+  ok(!/open"/.test(det) && !/""/.test(det), 'карт: details тагт илүү хашилт байхгүй');
+  eq((html.match(/oi-amt">([^<]*)</) || [])[1], F.fmtMoney(330000), '⛔ карт: барааны мөрийн дүн түрээсийн хоногийг тооцно');
+  runIn('state.ordersItemsOpen = new Set();');
+  const det2 = (card(ord).match(/<details class="order-items-det"[^>]*>/) || [])[0] || '';
+  ok(!/\bopen/.test(det2), 'карт: хаалттай үед `open` атрибут гарахгүй');
+  vm.runInContext('state.ordersItemsOpen = __oc[0]; state.products = __oc[1];', Object.assign(sandbox, { __oc: save }));
+}
+
+// SCAN: мөрийн дүнг гараар бодохыг хаана (хоног тооцоогүй алдаа эргэж ирэхгүй).
+{
+  const at = src.indexOf('const itemsSection = isApp');
+  ok(at > 0, 'scan: картын барааны хэсэг олдов');
+  const seg = src.slice(at, at + 1600);
+  ok(/orderLineAmount\(o, it\)/.test(seg), '⛔ scan: картын барааны мөр `orderLineAmount`-оор бодогдоно');
+  ok(!/\(Number\(it\.qty\) \|\| 0\) \* \(Number\(it\.price\) \|\| 0\)/.test(seg), '⛔ scan: картын мөрөнд гар тооцоо (тоо × үнэ) байхгүй');
+  ok(!/\? ' open' : ''\}"/.test(seg), '⛔ scan: `open` атрибутын дараа илүү хашилт байхгүй');
+  ok(/function orderLineDays/.test(src) && (src.match(/=== 'booqable'\) return 1;/g) || []).length === 1,
+    '⛔ scan: Booqable хоногийн дүрэм ГАНЦ газарт (orderLineDays) — хоёр газар бичвэл зөрнө');
+  const util = src.slice(src.indexOf('function buildProductUtilIndex'), src.indexOf('function buildProductUtilIndex') + 1800);
+  ok(/orderLineDays\(o\)/.test(util) && !/isHist \? 1/.test(util), '⛔ scan: ROI/ашиглалт ч ижил функцээр — хоногийн дүрэм давхардахгүй');
 }

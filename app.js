@@ -26806,6 +26806,7 @@ function psDeprecLine(p) {
     + `${fmtMoneyShort(d.cost)} ÷ (${d.years}×12) = ${fmtMoneyShort(Math.round(d.perUnitMonth))}/сар нэг ширхэг`
     + (d.qty > 1 ? ` · нөөц ${d.qty}ш → <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>` : '')
     + (d.endYm ? ` · бүрэн элэгдэх: ${escapeHtml(d.endYm)}`
+                + (d.deferred ? ` <span class="mut">(тооцоо ${escapeHtml(d.fromYm)}-оос эхэлсэн)</span>` : '')
                : ' · <span class="ps-dep-warn">⚠ худалдан авсан огноо байхгүй — огноог бөглөвөл элэгдэл өөрөө зогсоно</span>')
     + '</div></details>';
 }
@@ -31010,7 +31011,7 @@ ${_pkgMode ? `
           return `<div class="pm-hint">📉 <b>Элэгдэл:</b> ${escapeHtml(d.label)} → <b>${d.years} жил</b> ·
             ${fmtMoneyShort(d.cost)} ÷ (${d.years}×12) = <b>${fmtMoneyShort(Math.round(d.perUnitMonth))}/сар</b> нэг ширхэг
             ${d.qty > 1 ? `· нөөц ${d.qty}ш → <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b> (${fmtMoneyShort(Math.round(d.totalYear))}/жил)` : ''}
-            ${d.endYm ? `<br>Бүрэн элэгдэх: <b>${d.endYm}</b>` : '<br>⚠ Худалдан авсан огноо байхгүй — насаа дуусгасан эсэхийг мэдэх аргагүй тул элэгдүүлсээр байна. Огноог бөглөвөл зогсоно.'}
+            ${d.endYm ? `<br>Бүрэн элэгдэх: <b>${d.endYm}</b>${d.deferred ? ` <span class="mut">(элэгдлийн тооцоо ${d.fromYm}-оос эхэлсэн тул худалдан авсан огнооноос биш тэр сараас)</span>` : ''}` : '<br>⚠ Худалдан авсан огноо байхгүй — насаа дуусгасан эсэхийг мэдэх аргагүй тул элэгдүүлсээр байна. Огноог бөглөвөл зогсоно.'}
             <br>Насыг ангиллаар тогтооно (Санхүү → Тайлан → Салбар задаргаа дахь элэгдлийн мөр эндээс нийлбэрлэгдэнэ).</div>`;
         })()}
         ${isEdit && !_isPkg0 && !asPkg && canSeePurchases() ? '<div id="pm-po-hist"></div>' : ''}
@@ -39779,6 +39780,13 @@ const DEPREC_DEFAULT_YEARS = 5;      // ангиллаас гадуур бара
 const DEPREC_START_DEFAULT = '2026-10';
 function _deprecCfg() { return (state.appConfig && typeof state.appConfig.deprec === 'object' && state.appConfig.deprec) || {}; }
 function deprecStartMonth() { const s = String(_deprecCfg().start || ''); return /^\d{4}-\d{2}$/.test(s) ? s : DEPREC_START_DEFAULT; }
+/* 'YYYY-MM' + n сар → 'YYYY-MM'. Цэвэр функц. Хагас жил (6.5) ч зөв: нас × 12 сараар нэмнэ
+   (өмнө нь `жил + нас` гэж залгаж «2031.5-01» гэсэн буруу сар гарч байв). */
+function deprecAddMonths(ym, n) {
+  const m0 = Number(String(ym).slice(5, 7)) - 1 + Math.round(Number(n) || 0);
+  const y = Number(String(ym).slice(0, 4)) + Math.floor(m0 / 12);
+  return y + '-' + String((m0 % 12 + 12) % 12 + 1).padStart(2, '0');
+}
 // Ангиллын нас — тохиргоо байвал түүнээс (нэрээр тааруулсан regex мөр), эс бол fallback.
 function deprecLives() {
   const l = _deprecCfg().lives;
@@ -39942,12 +39950,17 @@ function deprecForProduct(p, lives) {
     : (typeof isService === 'function' && isService(p)) ? 'үйлчилгээ'
     : (typeof isPackage === 'function' && isPackage(p)) ? 'багц — бүрэлдэхүүн бүр дээрээ'
     : cost <= 0 ? 'өртөг оруулаагүй' : '';
-  // Хэзээ бүрэн элэгдэх — худалдан авсан огноотой бол л (таамаглахгүй).
-  let endYm = '';
+  /* Хэзээ бүрэн элэгдэх — худалдан авсан огноотой бол л (таамаглахгүй).
+     ⛔ ЭЛЭГДЭЛ ЭХЛЭХ САРААС ЭХЭЛНЭ (2026-11-02, CEO): `start`-аас ӨМНӨ авсан бараа худалдан авсан
+       огнооноос биш ЭХЛЭХ САРААС бүтэн наснаа элэгдэнэ. Эс бөгөөс 2023-д авсан 3 жилийн бараа
+       тооцоо эхлэхээс өмнө «дууссан» болж нэг ч сар зардал болоогүй атлаа алга болдог байв (өртөг
+       хэзээ ч хуваарилагдахгүй). `start`-аас хойш авсан нь худалдан авсан сараасаа эхэлнэ. */
+  let endYm = '', fromYm = '';
   const pd = String((p && p.purchase_date) || '').slice(0, 10);
   if (!skip && /^\d{4}-\d{2}/.test(pd)) {
-    const y = Number(pd.slice(0, 4)) + years, m = pd.slice(5, 7);
-    endYm = y + '-' + m;
+    const st = deprecStartMonth();
+    fromYm = pd.slice(0, 7) > st ? pd.slice(0, 7) : st;
+    endYm = deprecAddMonths(fromYm, years * 12);
   }
   // ⛔ НАСАА ДУУСГАСАН БАРАА ЭЛЭГДЭХГҮЙ. Элэгдэл нь өртгийг хуваарилах үйлдэл —
   //   өртөг дууссаны дараа зардал бичих нь хөрөнгийг ХОЁР удаа зардалд бичихтэй ижил.
@@ -39958,7 +39971,8 @@ function deprecForProduct(p, lives) {
   const perUnitMonth = (skip || doneYm) ? 0 : cost / (Math.max(1, years) * 12);
   return { years, label, manual: !!manualY, autoYears: auto.years, autoLabel: auto.label,
            qty, cost, skip, perUnitMonth, doneYm, noDate: !skip && !endYm,
-           totalMonth: perUnitMonth * qty, totalYear: perUnitMonth * qty * 12, endYm };
+           totalMonth: perUnitMonth * qty, totalYear: perUnitMonth * qty * 12, endYm,
+           fromYm, deferred: !!fromYm && fromYm !== pd.slice(0, 7) };
 }
 /* Тухайн сарын элэгдэл — шилжилтийн сараас хойш Л зардал болно (`active`). */
 /* ⛔ ХААСАН САРЫН ЭЛЭГДЭЛ ХӨЛДӨНӨ (2026-10-02).

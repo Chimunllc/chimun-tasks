@@ -27042,7 +27042,7 @@ function renderProductSheet(mode) {
     <div class="ps-count">${rows.length} бараа${state.psF ? ' <span class="mut">(шүүсэн)</span>' : ''}</div>
     <div class="ps-list" id="ps-list">${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🔍</div>Хайлтад тохирох бараа алга.</div>'}</div>
     ${_apartN ? `<details class="ps-apart">
-      <summary>🧩 Үйлчилгээ ${_apart.services.length} · багц ${_apart.packages.length}<span class="mut"> — ${mode === 'cost' ? 'өртөг, элэгдэл' : 'нөөц'}-д орохгүй тул барааны жагсаалтаас тусдаа</span></summary>
+      <summary>🧩 Үйлчилгээ ${_apart.services.length} · багц ${_apart.packages.length}<span class="mut"> — ${mode === 'cost' ? 'өртөг, элэгдэлд' : 'нөөцөд'} орохгүй тул барааны жагсаалтаас тусдаа</span></summary>
       <div class="ps-apart-l">${_apart.services.map(apartRow).join('')}${_apart.packages.map(apartRow).join('')}</div>
       <div class="ps-apart-h">Үнийг «${escapeHtml(PSHEET.price.label)}» дэлгэцээс, багцын бүрэлдэхүүнийг «Бараа» → «Багц» табаас засна.</div>
     </details>` : ''}

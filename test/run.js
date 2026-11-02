@@ -21210,7 +21210,7 @@ async function swFetchTests() {
   ok(nr.ready === false && nr.amount === 0, 'шилжүүлэлт: өмнөх сарын ирц ачаалагдаагүй бол ready:false (чимээгүй 0 биш)');
   runIn('state.attMarks = null;');
   const nm = ci('88001', 'null');
-  ok(nm.ready === true && nm.amount === 400000, '⛔ шилжүүлэлт: тэмдэглэгээ ачаалагдаагүй байх нь ШИЛЖҮҮЛЭЛТИЙГ ХОЦРООХГҮЙ — Амралт нормыг буулгахаа больсон тул тооцоо ижил');
+  ok(nm.ready === true && nm.amount === 400000, '⛔ шилжүүлэлт: тэмдэглэгээ ачаалагдаагүй байх нь ШИЛЖҮҮЛЭЛТИЙГ ХОЦРООХГҮЙ — тэмдэглэгээ нормыг буулгахгүй тул тооцоо ижил');
   runIn(`[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct, state.payrollCfg, state.attMarks, state.attMarksErr] = ${JSON.stringify(save)};`);
 
   // SCAN: самбар, карт, ирцийн хүснэгт гурвуулаа шилжүүлэлттэй ижил дүрмээр
@@ -22463,8 +22463,8 @@ async function swFetchTests() {
   ok(/Чимун ХХК-д ирээгүй гүйлгээ/.test(appSrc) && /\/чимун\/i\.test\(d\.receiverName \|\| ''\)\) throw new Error\(`Чимун ХХК-д/.test(appSrc), 'NOMAAD орлого өмнөх шалгуураа хэвээр (өөрийн данс)');
 })());
 
-// ═══ ИРЦИЙН ТЭМДЭГЛЭГЭЭ — Амралт / Чөлөө / Тасалсан (2026-10-26, CEO) ═══════════════════════
-// Амралт (цалинтай) = тэр хүний сарын НОРМ 8ц буурна; Чөлөө/Тасалсан = норм хэвээр (цалингүй). Торгууль БАЙХГҮЙ.
+// ═══ ИРЦИЙН ТЭМДЭГЛЭГЭЭ — Чөлөө / Тасалсан (2026-10-26, CEO; «Амралт» 2026-11-02-нд аппаас бүрэн хасагдсан) ═══
+// Чөлөө/Тасалсан = норм хэвээр, цалин ажилласан цагаар бодогдоно. Торгууль энд БАЙХГҮЙ. Хуучин `rest` мөрийг апп ТАНИХГҮЙ.
 // Хаасан сарын тэмдэглэгээ хийгдэхгүй (апп БА DB-ийн trigger). Бичих функцийг ҮНЭХЭЭР дуудаж серверт явсан биеийг шалгана.
 // ⚠ __lateSeq: fetch/fetchWithTimeout-ийг stub-лах тул БУСАД асинх тесттэй зэрэг ажиллаж БОЛОХГҮЙ (тэд fetchWithTimeout-ийг дарж бичдэг).
 (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
@@ -22481,7 +22481,7 @@ async function swFetchTests() {
   const HOURLY = BASE / (FULL / 60);
 
   // ── ① Шалгалт (цэвэр функц) ──
-  const V = (o) => run(`attMarkValidate(${JSON.stringify(Object.assign({ key: K, day: '2026-09-15', kind: 'rest' }, o))}, '2026-10-26')`);
+  const V = (o) => run(`attMarkValidate(${JSON.stringify(Object.assign({ key: K, day: '2026-09-15', kind: 'leave' }, o))}, '2026-10-26')`);
   ok(V({}).ok, 'шалгалт: энгийн ажлын өдөр, ирцгүй, нээлттэй сар → зөв');
   ok(!V({ key: '123' }).ok && /утас/.test(V({ key: '123' }).err), 'шалгалт: утасгүй ажилтан тэмдэглэгдэхгүй');
   ok(!V({ kind: 'bogus' }).ok, 'шалгалт: танихгүй төрөл татгалзана');
@@ -22496,64 +22496,66 @@ async function swFetchTests() {
   st.closedMonths = {};
 
   // ── ② Хүний норм ──
-  put(mk('2026-09-15', 'rest'), mk('2026-09-16', 'leave'), mk('2026-09-17', 'absent'),
-      mk('2026-09-18', 'rest', 'void'),           // болиулсан → тоологдохгүй
-      mk('2026-09-12', 'rest'),                    // Бямба → норм дотор байхгүй
-      mk('2026-09-22', 'rest', 'active', '99112244'),   // өөр хүн
-      mk('2026-10-05', 'rest'));                   // өөр сар
+  put(mk('2026-09-16', 'leave'), mk('2026-09-17', 'absent'),
+      mk('2026-09-18', 'leave', 'void'),           // болиулсан → тоологдохгүй
+      mk('2026-09-22', 'leave', 'active', '99112244'),   // өөр хүн
+      mk('2026-10-05', 'leave'),                   // өөр сар
+      mk('2026-09-15', 'rest'));                   // ⛔ хуучин «Амралт» мөр (DB-д үлдсэн) — апп ТАНИХГҮЙ
   let mn = run(`memberNorm('${K}', '${SEP}')`);
-  eq([mn.restDays, mn.leaveDays, mn.absentDays], [1, 1, 1], 'норм: амралт 1 (бямба/болиулсан/өөр хүн/өөр сар орохгүй), чөлөө 1, тасалсан 1');
-  eq([mn.full, mn.norm, mn.restMins], [FULL, FULL, 0], '⛔ норм: Амралт ч, чөлөө ч, тасалсан ч нормыг БУУЛГАХГҮЙ — Амралт «цалинтай амралт» БИШ (CEO 2026-11-02)');
-  eq(run(`memberNorm('991-122-33', '${SEP}')`).restDays, 1, 'норм: утсыг тэмдэгтээс цэвэрлэж тулгана');
-  eq(run(`memberNorm('${K}', '2026-10')`).restDays, 1, 'норм: сар бүр тусдаа');
-  put(...['01', '02', '03', '04', '07', '08', '09', '10', '11', '14', '15', '16', '17', '18', '21', '22', '23', '24', '25', '28', '29', '30'].map(d => mk(`2026-09-${d}`, 'rest')));
-  eq(run(`memberNorm('${K}', '${SEP}')`).norm, FULL, '⛔ норм: сар бүхэлдээ «Амралт» тэмдэглэсэн ч норм бүтэн хэвээр');
+  eq([mn.leaveDays, mn.absentDays], [1, 1], 'норм: чөлөө 1, тасалсан 1 (болиулсан/өөр хүн/өөр сар/хуучин «rest» орохгүй)');
+  eq([mn.full, mn.norm], [FULL, FULL], '⛔ норм: чөлөө ч, тасалсан ч нормыг БУУЛГАХГҮЙ');
+  ok(!('restDays' in mn) && !('restMins' in mn) && !('rest' in mn.marks), '⛔ норм: «Амралт» гэсэн ойлголт memberNorm-д ОГТ байхгүй');
+  ok(run(`attMarkOn('${K}', '2026-09-15')`) === null, '⛔ хуучин `rest` мөр: attMarkOn танихгүй (дэлгэц унахгүй, цалин/сахилгад нөлөөлөхгүй)');
+  eq(run(`attMarkSummaryText(memberNorm('${K}', '${SEP}'))`), '📝 Чөлөө 1 · 🚫 Тасалсан 1', 'норм: товч мөрөнд «Амралт» гарахгүй');
+  eq(run(`memberNorm('991-122-33', '${SEP}')`).leaveDays, 1, 'норм: утсыг тэмдэгтээс цэвэрлэж тулгана');
+  eq(run(`memberNorm('${K}', '2026-10')`).leaveDays, 1, 'норм: сар бүр тусдаа');
+  put(...['01', '02', '03', '04', '07', '08', '09', '10', '11', '14', '15', '16', '17', '18', '21', '22', '23', '24', '25', '28', '29', '30'].map(d => mk(`2026-09-${d}`, 'leave')));
+  eq(run(`memberNorm('${K}', '${SEP}')`).norm, FULL, '⛔ норм: сар бүхэлдээ «Чөлөө» тэмдэглэсэн ч норм бүтэн хэвээр');
   st.attMarks = null;
   ok(run(`memberNorm('${K}', '${SEP}')`).ready === false, 'норм: тэмдэглэгээ ачаалагдаагүй бол ready:false (торгуулийн дуудагч ил хэлнэ)');
-  // ⛔ ЖИНХЭНЭ ЗАМ: «Амралт» дарсан хүний цалин ЯГ тэмдэглээгүй хүнийхтэй адил — тэр өдөр ажиллаагүй гэж хасагдана
-  put(mk('2026-09-15', 'rest'));
+  // ⛔ ЖИНХЭНЭ ЗАМ: «Чөлөө» дарсан хүний цалин ЯГ тэмдэглээгүй хүнийхтэй адил — тэр өдөр ажиллаагүй гэж хасагдана
+  put(mk('2026-09-15', 'leave'));
   const mnR = run(`memberNorm('${K}', '${SEP}')`);
-  const payRest = run(`monthPayBreakdown(${BASE}, false, ${FULL - D}, ${mnR.norm}, 0, 1, '${SEP}', '2026-11-02', 0, ${mnR.full})`);
+  const payLeave = run(`monthPayBreakdown(${BASE}, false, ${FULL - D}, ${mnR.norm}, 0, 1, '${SEP}', '2026-11-02', 0, ${mnR.full})`);
   put();
   const mnN = run(`memberNorm('${K}', '${SEP}')`);
   const payNone = run(`monthPayBreakdown(${BASE}, false, ${FULL - D}, ${mnN.norm}, 0, 1, '${SEP}', '2026-11-02', 0, ${mnN.full})`);
-  eq([payRest.earned, payRest.shortMins, payRest.creditMins], [payNone.earned, payNone.shortMins, 0], '⛔ цалин: «Амралт» тэмдэглэсэн хүний цалин тэмдэглээгүйтэй ИЖИЛ — 8ц дутуу хасагдана, цалинтай амралт биш');
-  ok(payRest.earned < BASE && payRest.shortMins === D, 'цалин: Амралт дарсан өдрийн 1/22 суурь цалингаас хасагдсан');
-  put(mk('2026-09-15', 'rest'), mk('2026-09-16', 'leave'), mk('2026-09-17', 'absent'), mk('2026-09-12', 'rest'), mk('2026-09-22', 'rest', 'active', '99112244'), mk('2026-10-05', 'rest'));
+  eq([payLeave.earned, payLeave.shortMins, payLeave.creditMins], [payNone.earned, payNone.shortMins, 0], '⛔ цалин: «Чөлөө» тэмдэглэсэн хүний цалин тэмдэглээгүйтэй ИЖИЛ — 8ц дутуу хасагдана');
+  ok(payLeave.earned < BASE && payLeave.shortMins === D, 'цалин: чөлөө авсан өдрийн 1/22 суурь цалингаас хасагдсан');
   st.attMarks = null;
 
   // ── ③ monthPayBreakdown (ЦЭВЭР): хүний норм бүтнээс бага ӨГӨГДВӨЛ зөрүү хасалтыг арилгана. ⚠ 2026-11-02-оос ДУУДАГЧ
   //    (`memberNorm`) нормыг буулгахгүй тул энэ механизм одоо ашиглагдахгүй — функцийн нийцтэй байдлыг л шалгана ──
   const PB = (worked, norm, full) => run(`monthPayBreakdown(${BASE}, false, ${worked}, ${norm}, 0, 1, '${SEP}', '${DONE}', 0, ${full === undefined ? 'undefined' : full})`);
-  const none = PB(FULL - D, FULL);                                   // амралт тэмдэглээгүй: 1 өдөр дутуу
+  const none = PB(FULL - D, FULL);                                   // хүний норм бүтэн: 1 өдөр дутуу
   eq(none.shortMins, D, 'цалин: тэмдэглэгээгүй бол 1 өдөр (8ц) дутуу гэж хасагдана (өмнөх зан)');
   ok(none.earned < BASE, 'цалин: тэмдэглэгээгүй бол суурь хасагдсан');
-  const rest = PB(FULL - D, FULL - D, FULL);                         // 1 өдөр АМРАЛТ, бусад өдөр бүтэн
-  eq([rest.shortMins, rest.earned, rest.otMins], [0, BASE, 0], '⛔ цалин: цалинтай амралт авсан хүний суурь ХАСАГДАХГҮЙ, илүү цаг ч үүсэхгүй');
+  const rest = PB(FULL - D, FULL - D, FULL);                         // (цэвэр функц) хүний норм 8ц бага өгөгдвөл
+  eq([rest.shortMins, rest.earned, rest.otMins], [0, BASE, 0], 'цалин (цэвэр функц): хүний норм бага өгөгдвөл зөрүү хасалтыг арилгана, илүү цаг үүсэхгүй');
   const leave = PB(FULL - D, FULL, FULL);                            // 1 өдөр ЧӨЛӨӨ (норм буурахгүй)
   eq(leave.earned, none.earned, '⛔ цалин: чөлөө (цалингүй) нормыг буулгахгүй → өмнөх шигээ хасагдана');
-  const restLeave = PB(FULL - 2 * D, FULL - D, FULL);                // 1 амралт + 1 чөлөө
-  eq(restLeave.shortMins, D, 'цалин: амралт + чөлөө → зөвхөн чөлөөний өдөр дутуу');
-  eq(restLeave.earned, Math.round(BASE * (FULL - D) / FULL), 'цалин: хасалт = цагийн хөлс × чөлөөний 8ц (амралтыг хасаагүй)');
-  eq(rest.hourly, none.hourly, '⛔ цалин: амралтаас болж цагийн хөлс өөрчлөгдөхгүй (бүтэн нормоор)');
+  const restLeave = PB(FULL - 2 * D, FULL - D, FULL);                // хүний норм −1 өдөр + 1 өдөр дутуу
+  eq(restLeave.shortMins, D, 'цалин (цэвэр функц): норм −1 өдөр + 2 өдөр дутуу → зөвхөн нэг өдөр дутуу');
+  eq(restLeave.earned, Math.round(BASE * (FULL - D) / FULL), 'цалин (цэвэр функц): хасалт = цагийн хөлс × үлдсэн 8ц');
+  eq(rest.hourly, none.hourly, 'цалин (цэвэр функц): хүний норм багаснаас цагийн хөлс өөрчлөгдөхгүй (бүтэн нормоор)');
   eq(Math.abs(rest.hourly - Math.round(HOURLY)) <= 1, true, 'цалин: цагийн хөлс = суурь ÷ бүтэн сарын норм');
-  const ot = PB(FULL, FULL - D, FULL);                               // амралт авсан ч бүтэн сарын цаг ажилласан
-  eq(ot.otMins, D, 'цалин: илүү цаг = ажилласан − ХҮНИЙ норм (амралт авч бусад өдөр нөхөж ажилласан нь илүү цаг)');
+  const ot = PB(FULL, FULL - D, FULL);                               // (цэвэр функц) хүний норм бага, бүтэн цаг ажилласан
+  eq(ot.otMins, D, 'цалин (цэвэр функц): илүү цаг = ажилласан − ХҮНИЙ норм');
   eq(ot.otPay, Math.round(D / 60 * HOURLY), 'цалин: илүү цагийн хөлс бүтэн нормын цагийн хөлсөөр');
   const all = PB(0, 0, FULL);
-  eq([all.earned, all.shortMins], [BASE, 0], 'цалин: сар бүхэлдээ амралттай бол суурь бүтнээр');
+  eq([all.earned, all.shortMins], [BASE, 0], 'цалин (цэвэр функц): хүний норм 0 бол суурь бүтнээр');
   eq(PB(FULL - D, FULL), none, 'цалин: fullNorm өгөөгүй бол хуучин тооцоотой ЯГ ижил (нийцтэй)');
 
-  // ── ④ Өмнөх сарын илүү олголт ч амралтыг харгалзана ──
+  // ── ④ Өмнөх сарын илүү олголт: тэмдэглэгээнээс ХАМААРАХГҮЙ ──
   const base0 = run('[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct]');
   run(`state.salaryDeduct = { '${K}': false }; state.salaries = { '${K}': 1000000 }; state.financeRequests = [];
        state.salaryPayments = [{ person_key: '${K}', ym: '2026-09', amount: 1000000, paid_at: '2026-09-26T00:00:00Z', note: 'x' }];`);
   const carry = () => run(`salaryCarryIn('${K}', '2026-10', () => ${FULL - D})`);
   put();
   const c0 = carry();
-  ok(c0.ready && c0.amount > 0, 'шилжүүлэлт: амралт тэмдэглээгүй бол 9 сар 1 өдөр дутуу → олгосон нь илүү болж шилжинэ');
-  put(mk('2026-09-15', 'rest'));
-  eq(carry().amount, c0.amount, '⛔ шилжүүлэлт: 9 сарын «Амралт» тэмдэглэснээр цалин ӨӨРЧЛӨГДӨХГҮЙ — 1 өдөр дутуу хэвээр, илүү олголт ижил шилжинэ');
+  ok(c0.ready && c0.amount > 0, 'шилжүүлэлт: тэмдэглэгээгүй бол 9 сар 1 өдөр дутуу → олгосон нь илүү болж шилжинэ');
+  put(mk('2026-09-15', 'leave'));
+  eq(carry().amount, c0.amount, '⛔ шилжүүлэлт: 9 сарын «Чөлөө» тэмдэглэснээр цалин ӨӨРЧЛӨГДӨХГҮЙ — 1 өдөр дутуу хэвээр, илүү олголт ижил шилжинэ');
   st.attMarks = null;
   ok(carry().ready === true && carry().amount === c0.amount, 'шилжүүлэлт: тэмдэглэгээ ачаалагдаагүй байхад ч тооцоо ижил (норм тэмдэглэгээнээс хамаарахаа больсон)');
   run(`[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct] = ${JSON.stringify(base0)};`);
@@ -22573,17 +22575,21 @@ async function swFetchTests() {
   try {
     st.isCEO = true; put(); st.closedMonths = {}; cfgReply = {};
     stub();
-    const row = await run(`attMarkSet('${K}', '2026-09-15', 'rest')`);
+    const row = await run(`attMarkSet('${K}', '2026-09-15', 'leave')`);
     eq(posts.length, 1, 'бичих: 1 хүсэлт явав');
-    eq(posts[0].body, { id: `${K}|2026-09-15`, member_key: K, day: '2026-09-15', kind: 'rest', status: 'active' }, 'бичих: сервер рүү явсан бие (id=утас|өдөр)');
+    eq(posts[0].body, { id: `${K}|2026-09-15`, member_key: K, day: '2026-09-15', kind: 'leave', status: 'active' }, 'бичих: сервер рүү явсан бие (id=утас|өдөр)');
     ok(/merge-duplicates/.test(posts[0].opts.headers.Prefer) && posts[0].opts.method === 'POST', 'бичих: upsert — нэг өдөрт нэг тэмдэглэгээ (дахин дарвал солигдоно)');
     ok(/Bearer /.test(posts[0].opts.headers.Authorization), 'бичих: нэвтэрсэн токеноор');
-    ok(st.attMarks[`${K}|2026-09-15`] && st.attMarks[`${K}|2026-09-15`].kind === 'rest', 'бичих: амжилттай бол жагсаалтад шууд тусна');
-    eq(run(`memberNorm('${K}', '${SEP}')`).restDays, 1, 'бичих: тэмдэглэсний дараа норм шууд буурна');
+    ok(st.attMarks[`${K}|2026-09-15`] && st.attMarks[`${K}|2026-09-15`].kind === 'leave', 'бичих: амжилттай бол жагсаалтад шууд тусна');
+    eq(run(`memberNorm('${K}', '${SEP}')`).leaveDays, 1, 'бичих: тэмдэглэсний дараа тоолол шууд шинэчлэгдэнэ');
     // төрөл солих
     await run(`attMarkSet('${K}', '2026-09-15', 'absent')`);
-    eq(posts[1].body.kind, 'absent', 'бичих: Амралтыг Тасалсан болгож солино');
-    eq(run(`memberNorm('${K}', '${SEP}')`).restDays, 0, 'бичих: Тасалсан болгосон өдөр нормыг буулгахгүй');
+    eq(posts[1].body.kind, 'absent', 'бичих: Чөлөөг Тасалсан болгож солино');
+    eq(run(`memberNorm('${K}', '${SEP}')`).leaveDays, 0, 'бичих: Тасалсан болгосон өдөр чөлөөнд тоологдохгүй');
+    // ⛔ «Амралт» төрлөөр бичих БОЛОМЖГҮЙ — серверт хүсэлт ОГТ явахгүй
+    { const nBefore = posts.length;
+      ok(/Төрлөө сонгоно уу/.test(await T(() => run(`attMarkSet('${K}', '2026-09-15', 'rest')`))), '⛔ бичих: «rest» (Амралт) төрөл татгалзагдана');
+      eq(posts.length, nBefore, '⛔ бичих: «rest» төрлөөр серверт хүсэлт ОГТ явсангүй'); }
     // болих = мөр устахгүй, status:void
     await run(`attMarkSet('${K}', '2026-09-15', null)`);
     eq([posts[2].body.status, posts[2].body.kind], ['void', 'absent'], '⛔ болих: мөр УСТАХГҮЙ — status:void (түүх DB-д үлдэнэ)');
@@ -22600,16 +22606,16 @@ async function swFetchTests() {
 
     // DB-ийн trigger-ийн мессеж хэрэглэгчид шууд очно
     stub({ ok: false, status: 400, text: async () => JSON.stringify({ message: '🔒 2026-09 сар хаагдсан — ирцийн тэмдэглэгээ хийх боломжгүй.' }) });
-    ok(/🔒 2026-09 сар хаагдсан/.test(await T(() => run(`attMarkSet('${K}', '2026-09-17', 'rest')`))), 'бичих: DB-ийн trigger-ийн «сар хаагдсан» мессеж хэрэглэгчид очно');
+    ok(/🔒 2026-09 сар хаагдсан/.test(await T(() => run(`attMarkSet('${K}', '2026-09-17', 'leave')`))), 'бичих: DB-ийн trigger-ийн «сар хаагдсан» мессеж хэрэглэгчид очно');
     stub();
 
     // Ачаалагдаагүй байхад бичихгүй (хагас мэдээлэл дээр норм буруу бодогдоно)
     st.attMarks = null;
-    ok(/ачаалагдаагүй/.test(await T(() => run(`attMarkSet('${K}', '2026-09-17', 'rest')`))), 'бичих: жагсаалт ачаалагдаагүй үед бичихгүй');
+    ok(/ачаалагдаагүй/.test(await T(() => run(`attMarkSet('${K}', '2026-09-17', 'leave')`))), 'бичих: жагсаалт ачаалагдаагүй үед бичихгүй');
     put();
     // Эрхгүй хүн
     st.isCEO = false; st.memberPerms = {}; st.me = '99000000';
-    ok(/эрх алга/.test(await T(() => run(`attMarkSet('${K}', '2026-09-17', 'rest')`))), 'бичих: ирц засах эрхгүй хүн тэмдэглэж чадахгүй');
+    ok(/эрх алга/.test(await T(() => run(`attMarkSet('${K}', '2026-09-17', 'leave')`))), 'бичих: ирц засах эрхгүй хүн тэмдэглэж чадахгүй');
     st.isCEO = true;
     eq(posts.length, 0, 'бичих: бүх татгалзсан тохиолдолд сервер рүү юу ч явсангүй');
   } finally { sandbox.fetch = savedFetch; }
@@ -22629,7 +22635,13 @@ async function swFetchTests() {
     const h = H('2026-09-15', rec);
     ok(h.includes('Ирээгүй Хүн') && !h.includes('Ирсэн Хүн'), 'хэсэг: ирсэн хүн жагсаалтад ОРОХГҮЙ, ирээгүй хүн орно');
     ok(!h.includes('Гарсан Хүн') && !h.includes('Цагийн Хүн'), 'хэсэг: ажлаас гарсан, цагийн ажилтан орохгүй');
-    ok(/data-amk="rest"/.test(h) && /data-amk="leave"/.test(h) && /data-amk="absent"/.test(h), 'хэсэг: Амралт/Чөлөө/Тасалсан 3 товч');
+    ok(!/data-amk="rest"/.test(h) && /data-amk="leave"/.test(h) && /data-amk="absent"/.test(h) && !/Амралт/.test(h), '⛔ хэсэг: зөвхөн Чөлөө/Тасалсан 2 товч — «Амралт» товч, бичвэр БАЙХГҮЙ');
+    // хуучин `rest` мөртэй хүн: дэлгэц унахгүй, тэмдэглээгүй хүн шиг 2 товчтой гарна
+    put(mk('2026-09-16', 'leave', 'active', '99110002'), mk('2026-09-15', 'rest', 'active', '99110002'));
+    { let he = '', hr = ''; try { hr = H('2026-09-15', rec); } catch (e) { he = e.message; }
+      eq(he, '', '⛔ хэсэг: хуучин «rest» мөртэй өдөр дэлгэц УНАХГҮЙ');
+      ok(hr.includes('Ирээгүй Хүн') && /data-amk="leave"/.test(hr) && !/amk-tag-rest/.test(hr), 'хэсэг: хуучин «rest» мөртэй хүн тэмдэглээгүй хүн шиг харагдана'); }
+    put(mk('2026-09-16', 'leave', 'active', '99110002'));
     const h2 = H('2026-09-16', rec);
     ok(/amk-tag-leave/.test(h2) && /data-amk-clear/.test(h2), 'хэсэг: тэмдэглэсэн хүнд төрөл + ✕ (болих) гарна');
     ok(H('2026-09-12', rec) === '' && H('2026-09-13', rec) === '', 'хэсэг: Бямба/Ням өдөр гарахгүй');
@@ -22654,7 +22666,7 @@ async function swFetchTests() {
     const TEAM_ = run('TEAM'), tsave = TEAM_.slice();
     const keep = { k: st.attMonthKey, r: st.attMonthRecs, e: st.attMonthErr, ao: st.appOrders, sal: st.salaries, sp: st.salaryPayments, sl: st._salLoaded, ym: st.salaryYM, me: st.me, mpm: st.myPayMonth, mpr: st.myPayRecs, sd: st.salaryDeduct, spl: st._staffPinsLoaded };
     TEAM_.length = 0;
-    TEAM_.push({ name: 'А.Амралт', phone: '90000021', role: 'Нярав', status: 'идэвхтэй', worker_type: 'permanent' },
+    TEAM_.push({ name: 'А.Чөлөө', phone: '90000021', role: 'Нярав', status: 'идэвхтэй', worker_type: 'permanent' },
                { name: 'Б.Тэмдэглээгүй', phone: '90000022', role: 'Нярав', status: 'идэвхтэй', worker_type: 'permanent' });
     const weekdays = []; for (let d = 1; d <= 30; d++) { const w = new Date(Date.UTC(2026, 8, d)).getUTCDay(); if (w && w < 6) weekdays.push('2026-09-' + String(d).padStart(2, '0')); }
     const ts = (day, hh) => new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), hh - 8, 0)).toISOString();   // УБ цаг
@@ -22666,12 +22678,12 @@ async function swFetchTests() {
     st.attMonthRecs = [].concat(...['90000021', '90000022'].map(k => [].concat(...worked.map(d => [R(k, d, 'in', 9), R(k, d, 'out', 18)]))));
     st.salaries = { '90000021': 1760000, '90000022': 1760000 }; st.salaryDeduct = { '90000021': false, '90000022': false };
     st.salaryPayments = []; st.salaryYM = SEP; st.attMarksErr = null;
-    put(mk('2026-09-15', 'rest', 'active', '90000021'));
+    put(mk('2026-09-15', 'leave', 'active', '90000021'));
     const rowOf = (html, k) => { const i = html.indexOf(`data-att-mo="${k}"`); return html.slice(i, html.indexOf('</details>', i)); };
     const mHtml = run(`renderAttendanceMonth('${SEP}')`);
     const a = rowOf(mHtml, '90000021'), b = rowOf(mHtml, '90000022');
-    ok(/Амралт 1/.test(a) && /норм 176ц/.test(a) && !/норм 168ц/.test(a), '⛔ сарын тойм: «Амралт» тэмдэглэгээ ил, норм БҮТЭН 176ц хэвээр (168ц болж буурахгүй; 168ц нь ажилласан цаг)');
-    ok(/нормоос 8ц( 0м)? дутуу/.test(a), '⛔ сарын тойм: «Амралт» дарсан хүн ч 8ц дутуу гэж хасагдана (цалинтай амралт биш)');
+    ok(/Чөлөө 1/.test(a) && !/Амралт/.test(mHtml) && /норм 176ц/.test(a) && !/норм 168ц/.test(a), '⛔ сарын тойм: «Чөлөө» тэмдэглэгээ ил, «Амралт» огт байхгүй, норм БҮТЭН 176ц хэвээр (168ц болж буурахгүй; 168ц нь ажилласан цаг)');
+    ok(/нормоос 8ц( 0м)? дутуу/.test(a), '⛔ сарын тойм: «Чөлөө» дарсан хүн ч 8ц дутуу гэж хасагдана (цалинтай чөлөө биш)');
     ok(/нормоос 8ц( 0м)? дутуу/.test(b), 'сарын тойм: тэмдэглэгээгүй хүн ижил цагтай бол 8ц дутуу гэж хасагдана');
     ok(!/att-mo-pct-ok">100%/.test(a) && !/att-mo-pct-ok">100%/.test(b), 'сарын тойм: нормын хувь хоёуланд ижил (бүтэн нормоор), аль нь ч 100% биш');
     ok(!/Цалинтай амралт|цалинтай амралт/.test(mHtml), '⛔ сарын тойм: «цалинтай амралт» гэж ХЭЗЭЭ Ч бичигдэхгүй');
@@ -22681,12 +22693,12 @@ async function swFetchTests() {
     st.attMarks = {}; st.attMarksErr = 'сервер алдаа';
     ok(/ачаалж чадсангүй/.test(run(`renderAttendanceMonth('${SEP}')`)), '⛔ сарын тойм: тэмдэглэгээ татагдаагүй бол чимээгүй өнгөрөхгүй, шалтгааныг хэлнэ');
     st.attMarksErr = null;
-    put(mk('2026-09-15', 'rest', 'active', '90000021'));
+    put(mk('2026-09-15', 'leave', 'active', '90000021'));
     // Цалингийн самбар
     let sHtml = '', serr = '';
     try { sHtml = run('renderSalary()'); } catch (e) { serr = e.message; }
     eq(serr, '', 'самбар: тэмдэглэгээтэй renderSalary алдаагүй');
-    ok(/Норм буурахгүй — эдгээр өдөр ажиллаагүй гэж/.test(sHtml) && !/алтай амралт/.test(sHtml), '⛔ самбар: Амралтын тайлбар «норм буурахгүй» гэж хэлнэ, «цалинтай амралт» гэж бичигдэхгүй');
+    ok(/Норм буурахгүй — эдгээр өдөр ажиллаагүй гэж/.test(sHtml) && !/алтай амралт/.test(sHtml), '⛔ самбар: тэмдэглэгээний тайлбар «норм буурахгүй» гэж хэлнэ, «цалинтай амралт» гэж бичигдэхгүй');
     ok(/\/ 176ц/.test(sHtml) && !/\/ 168ц/.test(sHtml), 'самбар: цагийн мөр бүтэн нормоор (/ 176ц)');
     // Ажилтны өөрийн карт
     run("state.me = '90000021'; state.myPayMonth = '2026-09'; state.myPayRecs = { '2026-09': state.attMonthRecs.filter(r => r.member_key === '90000021') };");
@@ -22694,7 +22706,7 @@ async function swFetchTests() {
     try { card = run('myPayCardHtml(findMember(state.me) || {})'); } catch (e) { cerr = e.message; }
     eq(cerr, '', 'карт: тэмдэглэгээтэй myPayCardHtml алдаагүй');
     ok(/\/ 176ц/.test(card) && !/\/ 168ц/.test(card) && !/алтай амралт/.test(card), '⛔ карт: ажилтан бүтэн нормоо (/ 176ц) харна, «цалинтай амралт» гэж бичигдэхгүй');
-    ok(/Нормоос 8ц( 0м)? дутуу/.test(card), '⛔ карт: «Амралт» дарсан ажилтны карт ч 8ц дутуу гэж ХАСАГДСАН харуулна (цалинтай амралт биш)');
+    ok(/Нормоос 8ц( 0м)? дутуу/.test(card), '⛔ карт: «Чөлөө» дарсан ажилтны карт ч 8ц дутуу гэж ХАСАГДСАН харуулна');
     run("state.me = '90000022'; state.myPayRecs = { '2026-09': state.attMonthRecs.filter(r => r.member_key === '90000022') };");
     ok(/Нормоос 8ц( 0м)? дутуу/.test(run('myPayCardHtml(findMember(state.me) || {})')), 'карт: тэмдэглэгээгүй ажилтанд 8ц дутуу хасагдсан хэвээр (харьцуулалт)');
     TEAM_.length = 0; tsave.forEach(x => TEAM_.push(x));
@@ -22706,7 +22718,7 @@ async function swFetchTests() {
     const calls = [...appSrc.matchAll(/monthPayBreakdown\(([^\n]*)/g)].map(m => m[1]).filter(a => !/^base, deduct/.test(a));
     ok(calls.length >= 4, 'scan: monthPayBreakdown дуудалтууд олдов (' + calls.length + ')');
     const bad = calls.filter(a => !/\.norm\b/.test(a) || !/\.full\b/.test(a));
-    eq(bad.length, 0, '⛔ scan: monthPayBreakdown БҮХ дуудалт хүний нормоор (memberNorm .norm/.full) — бүтэн нормоор дуудвал амралт хасагдана: ' + bad.join(' | ').slice(0, 200));
+    eq(bad.length, 0, '⛔ scan: monthPayBreakdown БҮХ дуудалт хүний нормоор (memberNorm .norm/.full): ' + bad.join(' | ').slice(0, 200));
     ok(!/monthPayBreakdown\([^\n]*workNormMins\(/.test(appSrc), 'scan: цалин бодохдоо workNormMins-ийг ШУУД дамжуулахгүй');
     const fnSet = appSrc.slice(appSrc.indexOf('async function attMarkSet'), appSrc.indexOf('// Тэмдэглэх ажилтнууд'));
     ok(fnSet.indexOf('assertMonthOpenLive(') > -1 && fnSet.indexOf('assertMonthOpenLive(') < fnSet.indexOf('att_marks?on_conflict=id'), 'scan: хаасан сарын шалгалт бичихээс ӨМНӨ, амьд');
@@ -22715,14 +22727,15 @@ async function swFetchTests() {
     ok(/\['data-amk\]|\[data-amk\],\[data-amk-clear\]/.test(appSrc) && /_attListEl\.addEventListener\('click'/.test(appSrc), 'scan: товчнууд #att-list дээрх НЭГ delegation-аар (innerHTML солигдоход үхэхгүй)');
     ok(!/торгуул/i.test(appSrc.slice(appSrc.indexOf('function memberNorm'), appSrc.indexOf('function attMarkValidate'))), 'scan: норм бодолтод торгуулийн логик байхгүй (давхар хасалт — CEO шийдээгүй)');
     const normFn = appSrc.slice(appSrc.indexOf('function memberNorm'), appSrc.indexOf('// Тэмдэглэх боломжтой эсэх'));
-    ok(!/ATT_DAY_MINS|full\s*-\s*restDays/.test(normFn) && /norm:\s*full/.test(normFn), '⛔ scan: memberNorm нормыг БУУЛГАХГҮЙ (Амралт ≠ цалинтай амралт, CEO 2026-11-02)');
-    ok(/rest:\s*\{[^}]*paid:\s*false/.test(appSrc), 'scan: Амралт paid:false');
+    ok(!/ATT_DAY_MINS|restDays|restMins/.test(normFn) && /norm:\s*full/.test(normFn), '⛔ scan: memberNorm нормыг БУУЛГАХГҮЙ, «Амралт» ойлголт алга (CEO 2026-11-02)');
+    ok(/const ATT_MARK_ORDER = \['leave', 'absent'\]/.test(appSrc) && !/\brest:\s*\{\s*label/.test(appSrc), '⛔ scan: «Амралт» (rest) төрөл аппад БАЙХГҮЙ (CEO 2026-11-02: бүрэн хас)');
+    ok(!/data-amk="rest"|amk-b-rest|amk-tag-rest|kind === 'rest'/.test(appSrc) && !/amk-b-rest|amk-tag-rest/.test(fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8')), '⛔ scan: «rest» товч, класс, нөхцөл аппад ҮЛДЭХГҮЙ');
     const uiTxt = appSrc.slice(appSrc.indexOf('function attMarksWarnHtml'), appSrc.indexOf('// Тэр өдөр ирц бүртгэгдсэн хүнийг'))
       + appSrc.slice(appSrc.indexOf('// Нэг хүний тэмдэглэгээний товч мөр'), appSrc.indexOf('/* ─── АЖИЛД ДУУДАХ'));
     const uiNoComments = uiTxt.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
     ok(!/[Цц]алинтай амралт/.test(uiNoComments) && !/цалинтай, сарын норм/.test(uiNoComments) && !/амралттай хүний цалин дутуу/.test(uiNoComments), '⛔ scan: дэлгэцийн бичвэрт «цалинтай амралт», «норм 8ц буурна», «амралттай хүний цалин дутуу» гэж БИЧИГДЭХГҮЙ');
     // DB
-    ok(/create table if not exists att_marks/.test(sqlSrc) && /check \(kind in \('rest', 'leave', 'absent'\)\)/.test(sqlSrc), 'db: att_marks хүснэгт, 3 төрөл');
+    ok(/create table if not exists att_marks/.test(sqlSrc) && /check \(kind in \('rest', 'leave', 'absent'\)\)/.test(sqlSrc), 'db: att_marks хүснэгт (CHECK-д хуучин `rest` үлдсэн — өмнөх мөр устахгүй, апп танихгүй)');
     ok(/closed_months/.test(sqlSrc) && /raise exception '🔒/.test(sqlSrc), '⛔ db: хаасан сарыг trigger ч хаана (аппаас тойрч болохгүй)');
     ok(/__cutover/.test(sqlSrc), 'db: шилжилтийн хаалт (cutover) ч хаана');
     ok(/sec\.can\('attendance\.edit'\)/.test(sqlSrc.slice(sqlSrc.indexOf('att_marks_ins'))), 'db: бичих эрх = attendance.edit (өгөгдмөл хориг)');
@@ -22782,7 +22795,7 @@ async function swFetchTests() {
   ok(!V({ from: '2026-11', late: '1', grace: '500' }).ok, 'шалгалт: чөлөө 0–120 мин');
 
   // ── ② Сахилгын үйл явдал (attDiscipline) ──
-  // Дуудлага 09:30. 10-12 цагтаа, 10-13 25м хоцорсон, 10-14 ирээгүй, 10-15 амралттай ирээгүй, 10-16 чөлөөтэй ирээгүй
+  // Дуудлага 09:30. 10-12 цагтаа, 10-13 25м хоцорсон, 10-14 ирээгүй, 10-15 хуучин «rest» мөртэй ирээгүй (апп ТАНИХГҮЙ → ирээгүй), 10-16 чөлөөтэй ирээгүй
   put([mk('2026-10-15', 'rest'), mk('2026-10-16', 'leave'), mk('2026-10-08', 'absent'), mk('2026-10-09', 'absent'), mk('2026-10-19', 'absent')],
       [ci('2026-10-12', '09:30'), ci('2026-10-13', '09:30'), ci('2026-10-14', '09:30'), ci('2026-10-15', '09:30'), ci('2026-10-16', '09:30'),
        ci('2026-10-09', '09:30'), ci('2026-10-20', '09:30'), ci('2026-10-17', '09:30', 'void')]);
@@ -22791,8 +22804,8 @@ async function swFetchTests() {
                 rec(K2, '2026-10-14', 'in', '09:00')];               // өөр хүн
   const dsc = D(K, OCT, recs);
   const kinds = dsc.events.map(e => e.day.slice(8) + ':' + e.kind).join(',');
-  eq(kinds, '08:absent,13:late,14:noshow,19:absent', '⛔ үйл явдал: цагтаа=хоосон · хоцорсон · ирээгүй · тасалсан; амралт/чөлөө/void/өөр хүн/өнөөдөр орохгүй');
-  eq([dsc.lateN, dsc.absentN, dsc.noshowN, dsc.lateMins], [1, 2, 1, 25], 'үйл явдал: тоолол (хоцролт 25 минут)');
+  eq(kinds, '08:absent,13:late,14:noshow,15:noshow,19:absent', '⛔ үйл явдал: цагтаа=хоосон · хоцорсон · ирээгүй · тасалсан; чөлөө/void/өөр хүн/өнөөдөр орохгүй; хуучин «rest» мөр зөвшөөрөл БОЛОХГҮЙ (ирээгүй гэж тоологдоно)');
+  eq([dsc.lateN, dsc.absentN, dsc.noshowN, dsc.lateMins], [1, 2, 2, 25], 'үйл явдал: тоолол (хоцролт 25 минут)');
   ok(!dsc.events.some(e => e.day === '2026-10-09'), '⛔ үйл явдал: тэр өдөр ирсэн хүнийг «Тасалсан» тэмдэглэгээгээр торгохгүй (факт давуу)');
   ok(!dsc.events.some(e => e.day === '2026-10-20'), '⛔ үйл явдал: өнөөдрийн дуудлагад хараахан «ирээгүй» гэж торгохгүй (өдөр дуусаагүй)');
   eq(D(K, OCT, recs, '2026-10-21').events.filter(e => e.day === '2026-10-20').map(e => e.kind), ['noshow'], 'үйл явдал: 10-20-ны дуудлага маргааш (өдөр дуусмагц) «ирээгүй» болж тоологдоно');

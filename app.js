@@ -7382,6 +7382,20 @@ function itemsBundleSubtotal(items, days) { return (items || []).reduce((s, it) 
 function itemGrossPerDay(it, days) {
   return itemBundleDays(it) ? itemRentLine(it, days) / Math.max(1, Number(days) || 1) : (Number(it && it.qty) || 0) * (Number(it && it.price) || 0);
 }
+/* ЗАХИАЛГЫН МӨРИЙН ХОНОГ = ГАНЦ ДҮРЭМ (2026-11-02). Хоёр өөр дүрэм, амьд датаар батлагдсан:
+   · source='app' / сайт → мөрийн `price` нь каталогийн ӨДРИЙН үнэ → хоногоор үржүүлнэ.
+   · source='booqable' → мөрийн `price` нь ХУГАЦААНЫ НИЙТ дүн (жишээ №1309: 40 хоног,
+     6,000,000 = нийт) → үржүүлбэл 40 дахин хөөрнө, тиймээс 1.
+   ⛔ Хоёр газар бичвэл зөрнө — шинэ дэлгэц бүр ҮҮГЭЭР мөрийн дүн бодно.
+   ⚠ Доод тал 1: огноогүй (ноорог) захиалгад 0 болговол мөр чимээгүй 0₮ харагдана. */
+function orderLineDays(o) {
+  o = o || {};
+  if (String(o.source || '') === 'booqable') return 1;
+  return Math.max(1, (typeof orderRentalDays === 'function') ? orderRentalDays(o) : (Number(o.days) || 1));
+}
+// Мөрийн дүн ХАРУУЛАХ зам (карт/жагсаалт). Хадгалсан `total` ялна — `orderMoneyBreakdown`-ийн
+// `_line`-тэй ЯГ ижил дүрэм, тиймээс мөрүүдийн нийлбэр задаргааны subtotal-аас зөрөхгүй.
+function orderLineAmount(o, it) { return Number(it && it.total) || itemRentLine(it, orderLineDays(o)); }
 /* САЙТААС ИРСЭН БАГЦЫН «N ХОНОГИЙН ҮНЭ» (2026-10-24). n8n-ийн сайтын захиалгын бүртгэл мөр бүрээс зөвхөн
    sku/name/qty/price/deposit-ийг үлдээж бусдыг хаядаг тул `bdays` дамжихгүй. Харин `note` n8n-ээр ӨӨРЧЛӨГДӨЛГҮЙ
    дамждаг (⟦DLV⟧, ⟦RT⟧ яг ингэж явдаг) — сайт `⟦BD|sku|N⟧` токен бичнэ, апп захиалгыг АЧААЛАХ үед мөрд `bdays` болгоно.
@@ -12733,8 +12747,7 @@ function buildProductUtilIndex(orders, products) {
     //     (жишээ #1486: 27,500 = каталог 27,500) → хоногоор үржүүлнэ.
     //   source='booqable' → мөрийн price нь ХУГАЦААНЫ НИЙТ дүн (жишээ #1309:
     //     40 хоног, 6,000,000 = нийт) → үржүүлбэл 40 дахин хөөрөгдөнө.
-    const isHist = String(o.source || '') === 'booqable';
-    const d = isHist ? 1 : Math.max(1, typeof orderRentalDays === 'function' ? orderRentalDays(o) : (Number(o.days) || 1));
+    const d = orderLineDays(o);   // хоногийн дүрэм ГАНЦ газарт (booqable = нийт дүн тул 1)
     for (const it of (o.items || [])) {
       const pr = typeof productOf === 'function' ? productOf(it) : null;
       const q = Number(it.qty) || 0;
@@ -35439,7 +35452,7 @@ function bqOrderCard(o) {
   </div>` : '');
   // Бараа: app бол inline (o.items), түүхэн бол lazy toggle + баримт
   const itemsSection = isApp
-    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''}"><summary class="order-items-toggle">▸ ${o.items.length} бараа</summary><div class="order-items-list">${o.items.map(it => `<div class="order-meta oi-row"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span class="oi-amt">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta oi-dep">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
+    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''}><summary class="order-items-toggle">▸ ${o.items.length} бараа</summary><div class="order-items-list">${o.items.map(it => `<div class="order-meta oi-row"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span class="oi-amt">${fmtMoney(orderLineAmount(o, it))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta oi-dep">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
     : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>

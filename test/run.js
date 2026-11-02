@@ -17813,7 +17813,9 @@ async function swFetchTests() {
   eq(Math.round(t.perUnitMonth), 2000, 'карт: нэг ширээ 2,000₮/сар');
   eq(Math.round(t.totalMonth), 20000, 'карт: нөөц 10ш → 20,000₮/сар');
   eq(Math.round(t.totalYear), 240000, 'карт: жилийн элэгдэл');
-  eq(t.endYm, '2030-03', 'карт: бүрэн элэгдэх сар = авсан огноо + нас');
+  // 2025-03-д авсан нь тооцоо эхлэхээс (2026-10) ӨМНӨ → эхлэх сараас бүтэн 5 жил (доорх «ЭХЛЭХ САРААС» блок дэлгэрэнгүй).
+  eq(t.endYm, '2031-10', 'карт: бүрэн элэгдэх сар = (авсан огноо эсвэл эхлэх сар аль хожим нь) + нас');
+  eq(deprecForProduct({ name: 'Цагаан Ширээ 180*74см', cost: 120000, qty_mevent: 10, purchase_date: '2027-03-14' }).endYm, '2032-03', 'карт: эхлэхээс хойш авсан нь авсан сараасаа');
 
   // ⚠ Огноо байхгүй бол ТААМАГЛАХГҮЙ — хоосон.
   eq(deprecForProduct({ name: 'Ширээ', cost: 120000, qty_mevent: 1 }).endYm, '', 'карт: огноогүй бол хугацаа таамаглахгүй');
@@ -17849,6 +17851,11 @@ async function swFetchTests() {
 // хөрөнгийг ХОЁР удаа зардалд бичихтэй ижил — ашиг мөнхөд дутуу харагдана.
 {
   const { deprecForProduct, deprecByBranch } = F;
+  // Энэ блок «авсан огноо + нас»-аар ДУУССАН барааг шалгана → эхлэх сарыг 2015 болгож түр өөрчилнө
+  // (анхдагч эхлэх сар 2026-10-оор бол өмнө авсан бараа дуусахгүй — доорх «ЭХЛЭХ САРААС» блок).
+  const runInDone = (code) => vm.runInContext(code, sandbox);
+  const savedCfgDone = JSON.stringify(vm.runInContext('state.appConfig', sandbox) || {});
+  runInDone("state.appConfig = Object.assign({}, state.appConfig, { deprec: { start: '2015-01' } });");
 
   // 2015-д авсан ширээ (5 жил) → 2020-д дууссан.
   const old = deprecForProduct({ name: 'Ширээ', cost: 120000, qty_mevent: 10, purchase_date: '2015-03-14' });
@@ -17892,6 +17899,59 @@ async function swFetchTests() {
   const fn = src.slice(src.indexOf('function deprecByBranch('), src.indexOf('function deprecForProduct('));
   ok(/deprecForProduct\(p, L\)/.test(fn), 'scan: тайлан барааны элэгдлийг ганц функцээс авна');
   ok(!/cost \/ \(Math\.max\(1, years\) \* 12\)/.test(fn), 'scan: тайлан элэгдлийг дахин бодохгүй');
+  runInDone('state.appConfig = ' + savedCfgDone + ';');
+}
+
+// ═══ Элэгдэл: тооцоо эхлэхээс ӨМНӨ авсан бараа ЭХЛЭХ САРААС бүтэн наснаа элэгдэнэ (2026-11-02, CEO) ═══
+// «Худалдан авсан нь өмнө ч элэгдэл тооцож эхэлсэн сараас эхлүүл — эс бөгөөс зарим бараа элэгдэл
+// тооцоогүй атлаа элэгдэж дуусах гээд байна.» Өмнө нь 2023-д авсан 2 жилийн бүтээлэг 2025-д «дууссан»
+// болж нэг ч сар зардал болоогүй, өртөг нь хэзээ ч хуваарилагдахгүй байв.
+{
+  const { deprecForProduct, deprecByBranch, deprecAddMonths } = F;
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const savedCfg = JSON.stringify(vm.runInContext('state.appConfig', sandbox) || {});
+  runIn("state.appConfig = Object.assign({}, state.appConfig, { deprec: {} });");   // эхлэх сар = анхдагч 2026-10
+
+  // — сар нэмэх (цэвэр) —
+  eq(deprecAddMonths('2026-10', 60), '2031-10', 'сар нэмэх: 5 жил');
+  eq(deprecAddMonths('2026-10', 3), '2027-01', 'сар нэмэх: жилийн хил давна');
+  eq(deprecAddMonths('2026-12', 1), '2027-01', 'сар нэмэх: 12 → дараа оны 1');
+  eq(deprecAddMonths('2026-01', 78), '2032-07', 'сар нэмэх: хагас жил (6.5×12) зөв, «2032.5» биш');
+  eq(deprecAddMonths('2026-10', 0), '2026-10', 'сар нэмэх: 0');
+
+  // — үндсэн дүрэм —
+  const T = { name: 'Ширээний бүтээлэг', cost: 240000, qty_mevent: 10 };       // «Даавуу» 2 жил
+  const o = deprecForProduct({ ...T, purchase_date: '2023-04-10' });
+  eq([o.fromYm, o.endYm, o.deferred], ['2026-10', '2028-10', true], 'эхлэх сар: 2023-д авсан нь 2026-10-оос 2028-10 хүртэл');
+  eq(o.doneYm, '', 'эхлэх сар: тооцоо эхлэхээс өмнө «дуусч» байсан бараа одоо дуусаагүй');
+  eq(Math.round(o.perUnitMonth), 10000, 'эхлэх сар: өртөг ÷ (2×12) = 10,000₮/сар (өмнө 0 байсан)');
+  const a1 = deprecForProduct({ ...T, purchase_date: '2027-02-01' });
+  eq([a1.fromYm, a1.endYm, a1.deferred], ['2027-02', '2029-02', false], 'эхлэх сар: эхлэхээс хойш авсан нь авсан сараасаа');
+  const a2 = deprecForProduct({ ...T, purchase_date: '2026-10-15' });
+  eq([a2.fromYm, a2.deferred], ['2026-10', false], 'эхлэх сар: яг эхлэх сард авсан нь хойшлогдоогүй');
+  const nd = deprecForProduct(T);
+  ok(nd.noDate === true && nd.endYm === '' && nd.fromYm === '', 'эхлэх сар: огноогүй бол өмнөх зан (таамаглахгүй, элэгдүүлсээр)');
+  const half = deprecForProduct({ name: 'Ширээ', cost: 780000, qty_mevent: 1, dep_years: 6.5, purchase_date: '2026-01-01' });
+  eq(half.endYm, '2033-04', 'эхлэх сар: хагас жилийн нас (6.5) → 78 сар → 2033-04');
+  // тооцоо эхлэх сар өөр бол түүнийг дагана (тохиргооны `start`)
+  runIn("state.appConfig = Object.assign({}, state.appConfig, { deprec: { start: '2025-01' } });");
+  const c1 = deprecForProduct({ name: 'Ширээ', cost: 120000, qty_mevent: 1, purchase_date: '2024-06-01' });
+  eq([c1.fromYm, c1.endYm], ['2025-01', '2030-01'], 'эхлэх сар: `start` тохиргоог дагана (2025-01 → 5 жил)');
+  const c2 = deprecForProduct({ name: 'Ширээ', cost: 120000, qty_mevent: 1, purchase_date: '2025-03-01' });
+  eq([c2.fromYm, c2.endYm, c2.deferred], ['2025-03', '2030-03', false], 'эхлэх сар: start-аас хойш авсан нь авсан сараасаа');
+  runIn("state.appConfig = Object.assign({}, state.appConfig, { deprec: {} });");
+
+  // — ИНВАРИАНТ: тайлан ч ижил дүрмээр, өмнө «дууссан» бараа тайланд ОРНО —
+  const Pm = [{ ...T, purchase_date: '2023-04-10' }, { name: 'Ширээ', cost: 120000, qty_mevent: 10, purchase_date: '2015-03-14' }];
+  const dr = deprecByBranch(Pm);
+  eq(dr.doneN, 0, 'ИНВАРИАНТ: эхлэх сараас өмнө авсан бараа «бүрэн элэгдсэн» болохгүй');
+  eq(Math.round(dr.total), 10 * 10000 + 10 * 2000, 'ИНВАРИАНТ: 2023, 2015-д авсан бараа тайланд бүтэн наснаасаа орно');
+  eq(Math.round(Pm.reduce((s, x) => s + deprecForProduct(x).totalMonth, 0)), Math.round(dr.total), 'ИНВАРИАНТ: карт = тайлан (хойшлуулсан ч)');
+  // scan: дүрмийн ганц газар `deprecForProduct`, эхлэх сарыг тохиргооноос авна
+  const fnp = src.slice(src.indexOf('function deprecForProduct('), src.indexOf('function deprecForMonth('));
+  ok(/deprecStartMonth\(\)/.test(fnp) && /deprecAddMonths\(fromYm, years \* 12\)/.test(fnp), 'scan: дуусах сар эхлэх сараас (хагас жил ч зөв)');
+  ok(!/Number\(pd\.slice\(0, 4\)\) \+ years/.test(fnp), 'scan: «жил + нас» гэж залгах хуучин буруу бодолт байхгүй');
+  runIn('state.appConfig = ' + savedCfg + ';');
 }
 
 // ═══ Элэгдлийн нас: машин, генератор 5 жил БИШ (2026-09-24) ═══
@@ -17942,7 +18002,7 @@ async function swFetchTests() {
   const B = { name: 'Агуулах 18x24 сендвичин барилга', cost: 600000000, qty_chimun: 1, purchase_date: '2026-01-01' };
   const bc = deprecForProduct(B);
   eq(Math.round(bc.perUnitMonth), 3333333, 'барилга: 600сая ÷ (15×12) = 3.33сая₮/сар');
-  eq(bc.endYm, '2041-01', 'барилга: 2041-01-д бүрэн элэгдэнэ');
+  eq(bc.endYm, '2041-10', 'барилга: 2026-01-д авсан ч тооцоо эхэлсэн 2026-10-оос 15 жил → 2041-10-д бүрэн элэгдэнэ');
   // ⛔ Гурван сан (2026-11-02, CEO): Чимун ХХК-д бүртгэсэн хамтын хөрөнгө = ИВЕНТ/КЕМП/КАТЕРИНГ ⅓.
   const bd = deprecByBranch([B]);
   eq([Math.round(bd['ИВЕНТ']), Math.round(bd['КЕМП']), Math.round(bd['КАТЕРИНГ'])], [1111111, 1111111, 1111111],
@@ -18021,7 +18081,7 @@ async function swFetchTests() {
   eq(deprecYearsFor('JBL PartyBox 310').label, 'Бусад', 'ангилал: ангилалгүй бараа «Бусад»');
   const PC = { name: 'JBL PartyBox 310', category: 'Хөгжим', cost: 1200000, qty_mevent: 2, purchase_date: '2026-01-01' };
   const pcd = deprecForProduct(PC);
-  eq([pcd.label, pcd.years, Math.round(pcd.perUnitMonth), pcd.endYm], ['Хөгжим (ангилал)', 6, 16667, '2032-01'], 'ангилал: барааны карт ангиллын насаар (1.2сая ÷ 72)');
+  eq([pcd.label, pcd.years, Math.round(pcd.perUnitMonth), pcd.endYm], ['Хөгжим (ангилал)', 6, 16667, '2032-10'], 'ангилал: барааны карт ангиллын насаар (1.2сая ÷ 72)');
   eq(Math.round(deprecByBranch([PC]).byCat['Хөгжим (ангилал)']), 33333, 'ангилал: тайлан ижил насаар, «Хөгжим (ангилал)» мөрөнд');
   eq(Math.round(deprecByBranch([PC]).total), Math.round(pcd.totalMonth), 'ангилал: карт ба тайлангийн нийлбэр зөрөхгүй');
   // Засварын шалгалт: хоосон нас = тохируулаагүй, буруу нас/давхардал хаана

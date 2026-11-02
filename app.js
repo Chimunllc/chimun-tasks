@@ -25821,9 +25821,9 @@ async function openCategoryGroupsModal() {
       <button class="btn" id="cg-add" style="width:100%;margin-bottom:14px;">+ Шинэ бүлэг</button>
       <div style="font-size:11px;font-weight:700;color:var(--muted);margin:2px 0 6px;">ДЭД АНГИЛАЛ → БҮЛЭГ</div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Ангиллын нэрийг энд шууд засаж болно — тухайн ангилалтай <b>бүх бараа дагаж</b> шинэчлэгдэнэ.</p>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
-        <input id="cg-newcat" value="${escapeHtml(newCat.name)}" placeholder="Шинэ ангиллын нэр (жишээ нь Барилга)" style="flex:1 1 150px;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);">
-        <select id="cg-newcat-group" aria-label="Шинэ ангилал аль бүлэгт харагдах" style="flex:1 1 160px;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;background:var(--panel);color:var(--text);"><option value="">— бүлэг сонгох —</option>${groups.map(g => `<option value="${g.id}"${newCat.group === g.id ? ' selected' : ''}>${escapeHtml(g.name || '(нэргүй)')}</option>`).join('')}</select>
+      <div class="cg-newrow">
+        <input id="cg-newcat" class="ui-raw" value="${escapeHtml(newCat.name)}" placeholder="Шинэ ангиллын нэр (жишээ нь Барилга)">
+        <select id="cg-newcat-group" class="ui-raw" aria-label="Шинэ ангилал аль бүлэгт харагдах"><option value="">— бүлэг сонгох —</option>${groups.map(g => `<option value="${g.id}"${newCat.group === g.id ? ' selected' : ''}>${escapeHtml(g.name || '(нэргүй)')}</option>`).join('')}</select>
         <button class="btn" id="cg-newcat-add">+ Нэмэх</button>
       </div>
       <div id="cg-cats" style="max-height:38vh;overflow-y:auto;">${leafCats.map(c => `

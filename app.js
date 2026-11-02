@@ -26571,7 +26571,7 @@ function psDeprecSummary() {
     + (d.noDateN ? ` · <span class="ps-dep-warn">⚠ ${d.noDateN} бараа авсан огноогүй</span>` : '')
     + (d.doneN ? ` · ✓ ${d.doneN} бүрэн элэгдсэн` : '')
     + `<br><span class="mut">Санхүү → Тайлан дахь элэгдлийн мөр нь ЯГ энэ тоо. Доорх бараа бүрийн мөр үүнийг бүрдүүлнэ.</span>`
-    + `<br><span class="mut">M-Event ба NOMAAD нэг санг хамт ашигладаг тул тэдний элэгдэл 50/50 хуваагдана; катеринг, Чимун ХХК өөрийн тоогоор.</span>`
+    + `<br><span class="mut">M-Event + NOMAAD-д бүртгэсэн бараа 50/50; Чимун ХХК-д бүртгэсэн (барилга, машин) M-Event, NOMAAD, Катеринг 3-т тэнцүү; Катеринг-д бүртгэсэн нь зөвхөн катеринг.</span></div>`;
     // Бүлгийн нас нь тайлангийн ашиг ба COO-гийн хувийг хөдөлгөдөг тул зөвхөн CEO засна.
     + (state.isCEO ? `<br><button type="button" class="btn dpl-open ui-raw" data-dep-lives>📉 Элэгдлийн нас (бүлгээр)</button>` : '')
     + `</div>`;
@@ -39694,23 +39694,29 @@ function deprecKeywordSrc(typed, orig) {
 /* Сарын элэгдэл САЛБАРААР — хөрөнгийн сан (pool) дээр. Цэвэр функц, тестлэгдэнэ.
    ⚠ Нэгж бүрийг хөөх ШААРДЛАГАГҮЙ: нөөцийн нийт өртөг ÷ нас = сарын элэгдэл.
    ⚠ Үйлчилгээ/багц ба архивласан бараа ОРОХГҮЙ (warehouseCapital-тай ижил дүрэм).
-   ⛔ ИВЕНТ ба КЕМП нэг хөрөнгийн санг хамт ашигладаг тул (qty_mevent + qty_nomaad)-ийн
-     элэгдэл ТЭНЦҮҮ 50/50 хуваагдана (2026-11-02, CEO шийдвэр) — барааг аль салбарын
-     баганад бүртгэсэн нь зардлын хуваарьт нөлөөлөхгүй. Катеринг, Чимун ХХК нь
-     хуучнаараа өөрийн тоо ширхгээр. */
+   ⛔ ГУРВАН САН (2026-11-02, CEO шийдвэр) — барааг аль баганад бүртгэсэн нь элэгдэл
+     хэнд очихыг шийднэ:
+       · qty_mevent + qty_nomaad → ИВЕНТ ба КЕМП ТЭНЦҮҮ 50/50 (түрээсийн нөөц);
+       · qty_chimun → ИВЕНТ, КЕМП, КАТЕРИНГ ТЭНЦҮҮ ⅓ (барилга, машин — гурван салбар
+         хамт ашигладаг хөрөнгө). ХХК-ийн өөрийн элэгдэл 0;
+       · qty_catering → ЗӨВХӨН КАТЕРИНГ.
+     Дүрмийн ганц газар = `POOLS`. Нийт элэгдэл өөрчлөгдөхгүй, зөвхөн хуваарь. */
 function deprecByBranch(products, lives) {
   const out = { 'ИВЕНТ': 0, 'КЕМП': 0, 'КАТЕРИНГ': 0, 'ХХК': 0, total: 0, byCat: {}, noCost: 0,
                 doneN: 0, doneCapital: 0, noDateN: 0, noDateMonth: 0 };
   const L = lives || deprecLives();
-  const SHARED = ['qty_mevent', 'qty_nomaad'];                            // ИВЕНТ + КЕМП → 50/50
-  const OWN = [['qty_catering', 'КАТЕРИНГ'], ['qty_chimun', 'ХХК']];      // өөрийн тоо ширхгээр
+  const POOLS = [
+    { fields: ['qty_mevent', 'qty_nomaad'], to: ['ИВЕНТ', 'КЕМП'] },                // ½ + ½
+    { fields: ['qty_chimun'],               to: ['ИВЕНТ', 'КЕМП', 'КАТЕРИНГ'] },    // ⅓ × 3
+    { fields: ['qty_catering'],             to: ['КАТЕРИНГ'] },                     // дангаар
+  ];
   (products || []).forEach(p => {
     if (!p || p.archived) return;
     if (typeof isService === 'function' && isService(p)) return;
     if (typeof isPackage === 'function' && isPackage(p)) return;
     const cost = Number(p.cost) || 0;
-    const shared = SHARED.reduce((s, f) => s + (Number(p[f]) || 0), 0);
-    const qty = shared + OWN.reduce((s, b) => s + (Number(p[b[0]]) || 0), 0);
+    const poolQty = POOLS.map(pl => pl.fields.reduce((s, f) => s + (Number(p[f]) || 0), 0));
+    const qty = poolQty.reduce((s, q) => s + q, 0);
     if (qty > 0 && cost <= 0) { out.noCost++; return; }
     if (cost <= 0) return;
     // ⚠ Нэг дүрэм — барааны карт ба тайлан ИЖИЛ функцээр бодогдоно (ИНВАРИАНТ тест).
@@ -39719,15 +39725,11 @@ function deprecByBranch(products, lives) {
     const perUnitMonth = d1.perUnitMonth;
     if (d1.doneYm) { out.doneN++; out.doneCapital += cost * qty; return; }   // насаа дуусгасан
     if (d1.noDate) { out.noDateN++; out.noDateMonth += perUnitMonth * qty; }  // огноогүй — элэгдүүлсээр
-    if (shared > 0) {
-      const half = perUnitMonth * shared / 2;
-      out['ИВЕНТ'] += half; out['КЕМП'] += half; out.total += half * 2;
-      out.byCat[label] = (out.byCat[label] || 0) + half * 2;
-    }
-    OWN.forEach(([f, k]) => {
-      const q = Number(p[f]) || 0; if (q <= 0) return;
+    POOLS.forEach((pl, i) => {
+      const q = poolQty[i]; if (q <= 0) return;
       const amt = perUnitMonth * q;
-      out[k] += amt; out.total += amt;
+      pl.to.forEach(k => { out[k] += amt / pl.to.length; });
+      out.total += amt;
       out.byCat[label] = (out.byCat[label] || 0) + amt;
     });
   });
@@ -43664,7 +43666,7 @@ function renderReports() {
         const cats = Object.keys(d.byCat).sort((a, b) => d.byCat[b] - d.byCat[a]).slice(0, 3)
           .map(k => `${k} ${fmtSaya(d.byCat[k])}`).join(' · ');
         return d.active
-          ? `<div class="pnl-note">📉 Зардалд багтсан <b>элэгдэл: ${fmtSaya(d.total)}</b>/сар (M-Event ${fmtSaya(d['ИВЕНТ'])} · NOMAAD ${fmtSaya(d['КЕМП'])}) — ${cats}${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}${d.doneN ? `<br>✓ ${d.doneN} бараа бүрэн элэгдсэн (${fmtSaya(d.doneCapital)} өртөг) — зардалд орохоо больсон` : ''}${d.noDateN ? `<br>⚠ ${d.noDateN} бараа худалдан авсан огноогүй (${fmtSaya(d.noDateMonth)}/сар) — насаа дуусгасан эсэх нь тодорхойгүй` : ''}</div>`
+          ? `<div class="pnl-note">📉 Зардалд багтсан <b>элэгдэл: ${fmtSaya(d.total)}</b>/сар (M-Event ${fmtSaya(d['ИВЕНТ'])} · NOMAAD ${fmtSaya(d['КЕМП'])} · Катеринг ${fmtSaya(d['КАТЕРИНГ'])}) — ${cats}${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}${d.doneN ? `<br>✓ ${d.doneN} бараа бүрэн элэгдсэн (${fmtSaya(d.doneCapital)} өртөг) — зардалд орохоо больсон` : ''}${d.noDateN ? `<br>⚠ ${d.noDateN} бараа худалдан авсан огноогүй (${fmtSaya(d.noDateMonth)}/сар) — насаа дуусгасан эсэх нь тодорхойгүй` : ''}</div>`
           : `<div class="pnl-note is-ref">📉 Элэгдэл <b>${fmtSaya(d.total)}/сар</b> — ЛАВЛАГАА, ${d.start}-аас зардал болж хасагдана (өмнөх сарын ашиг/COO-гийн тоо хөдлөхгүйн тулд)${d.noCost ? ` · ⚠ ${d.noCost} бараа өртөггүй` : ''}</div>`;
       })()}
       ${bp.miss && bp.miss.qty ? `<div class="pnl-note is-loss">📦 Зардалд багтсан <b>нөөцийн алдагдал: ${fmtSaya(bp.miss.cost)}</b> — буцаан авахад дутсан <b>${bp.miss.qty}</b> ширхэг (${bp.miss.lines} мөр), M-Event-ийн зардал. Ашгийн хувь авдаг захирал алдагдлын хувийг автоматаар үүрнэ.</div>` : ''}

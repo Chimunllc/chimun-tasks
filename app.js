@@ -17177,15 +17177,24 @@ async function saveCateringMenuItem(it) {
     return true;
   } catch (e) { showToast('Хоол хадгалах алдаа: ' + e.message, 'error', 4500); return false; }
 }
-async function saveCateringJob(j) {
+/* opts.createOnly — ЗӨВХӨН шинээр үүсгэнэ (`ignore-duplicates`): ижил id-тай ажил байвал ӨӨРЧЛӨХГҮЙ.
+   Хүсэлтээс ажил үүсгэхэд хэрэглэнэ — хоёр хүн зэрэг дарсан/хуучин жагсаалттай байсан ч өөрчилсөн ажлыг дарж бичихгүй.
+   Амжилттай бол БАЙГАА мөрийг (дугаартай нь) буцаана; давхардсан бол false. */
+async function saveCateringJob(j, opts) {
   if (!DB_ANON_KEY || !j || !j.id) return false;
+  const createOnly = !!(opts && opts.createOnly);
   j.updated_at = new Date().toISOString();
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?on_conflict=id`, {
-      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: createOnly ? 'resolution=ignore-duplicates,return=representation' : 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(j),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    if (createOnly) {
+      const rows = await r.json();
+      if (!Array.isArray(rows) || rows.length !== 1) { showToast('Энэ хүсэлтээс ажил аль хэдийн үүссэн байна', 'warn', 4500); return false; }
+      return rows[0];
+    }
     return true;
   } catch (e) { showToast('Ажил хадгалах алдаа: ' + e.message, 'error', 4500); return false; }
 }
@@ -17193,7 +17202,8 @@ function _ktMenuJson(j) { try { const a = JSON.parse(j.menu_json || '[]'); retur
 function _ktStatusBadge(s) { const c = CATERING_STATUS[s] || CATERING_STATUS.planned; return `<span style="font-size:10.5px;font-weight:700;padding:1px 8px;border-radius:20px;color:${c[1]};background:${c[2]};">${c[0]}</span>`; }
 /* ═══ MAESTRO ХҮСЭЛТ (2026-11-01, CEO) ═══
    maestro сайтын «Үнийн санал авах» form → `maestro_leads` (db/maestro_leads.sql). Катеринг → «📨 Хүсэлт».
-   ⛔ app_orders / catering_jobs-д ОРУУЛАХГҮЙ: хүсэлт баталгаажаагүй тул «төлөвлөсөн ажил», орлого болж тоологдоно.
+   ⛔ app_orders / catering_jobs-д ӨӨРӨӨ ОРОХГҮЙ: хүсэлт баталгаажаагүй тул «төлөвлөсөн ажил», орлого болж тоологдоно.
+      Ажил болгох = хүн «Катеринг ажил үүсгэх» дарж, ажлын цонхонд шалгаад «Хадгалах» дарсны дараа л (доорх «Хүсэлт → катеринг ажил»).
    ⛔ Бичих = PATCH + `return=representation` ба БУЦСАН МӨРИЙГ ТООЛНО: RLS эрхгүй хүнд 0 мөр шинэчлээд 204 өгдөг —
       мөрийг тоолохгүй бол «хадгаллаа» гэж ХУДЛАА хэлнэ.
    ⛔ Нэр/тайлбар = нийтийн сайтаас ирсэн ЗЭРЭМДЭГ бичвэр: ҮРГЭЛЖ escapeHtml; `tel:`/`mailto:` холбоосыг зөвхөн шалгасны дараа.
@@ -17251,6 +17261,26 @@ async function saveMaestroLead(id, patch) {
     return rows[0];
   } catch (e) { showToast('Хүсэлт хадгалах алдаа: ' + e.message, 'error', 4500); return null; }
 }
+/* ═══ Хүсэлт → катеринг ажил ═══
+   ⛔ Ажил автоматаар ҮҮСЭХГҮЙ: хүн «Катеринг ажил үүсгэх» дарж, ажлын цонхонд шалгаад «Хадгалах» дарсны дараа л.
+   ⛔ Дүн (`total_mnt`) 0-ээс эхэлнэ: сайтын үнэ нь нэгжийн үнэ (хүн/долоо хоног/багц) тул хүний тоогоор үржүүлж ОРЛОГО БОЛГОХГҮЙ.
+      Бодит дүнг хүн өөрөө оруулна.
+   ⛔ Давхардал: ажлын id = 'KT-' + ref (KT-MC-0007) — нэг хүсэлтээс нэг л ажил. Жагсаалтаас хайж, мөн DB-д
+      `ignore-duplicates`-аар үүсгэнэ (saveCateringJob createOnly) — сервер талд ч давхардахгүй. Схем өөрчлөхгүй. */
+function maestroLeadJobId(l) { const ref = String((l && l.ref) || ''); return /^MC-\d{4,}$/.test(ref) ? 'KT-' + ref : ''; }
+function maestroLeadJob(l) { const id = maestroLeadJobId(l); return id ? ((state.cateringJobs || []).find(j => j.id === id) || null) : null; }
+function maestroLeadJobDraft(l) {
+  const what = [l.line_name, l.package_name].filter(Boolean).join(' · ');
+  const price = Number(l.quoted_price) > 0 ? 'сайтад ' + fmtMoney(Number(l.quoted_price)) + ' (нэгжийн үнэ)' : '';
+  return {
+    id: maestroLeadJobId(l), source: 'maestro', status: 'planned',
+    title: what || ((l.name || '') + ' · катеринг'), company: l.name || '',
+    event_date: l.event_date ? String(l.event_date).slice(0, 10) : '',
+    guests: Number(l.guests) > 0 ? Number(l.guests) : 0, location: l.venue || '',
+    phone: String(l.phone || '').replace(/\D/g, ''), total_mnt: 0, menu_json: '[]',
+    note: ['Хүсэлт ' + l.ref, price, l.note].filter(Boolean).join(' · '),
+  };
+}
 // Катеринг цэсний тоо = удахгүй болох ажил + ШИНЭ хүсэлт (хариулах хүн хүлээж байгаа).
 function refreshCateringBadge() {
   const ktCnt = document.getElementById('cnt-catering');
@@ -17279,6 +17309,7 @@ function maestroLeadCardHtml(l) {
       ${mail ? `<a class="ld-mail" href="${escapeHtml(mail)}">✉ ${escapeHtml(l.email)}</a>` : ''}
       <span class="ld-when">${escapeHtml(fmtDateTimeUB(l.created_at))}</span>
     </div>
+    ${(() => { const kj = maestroLeadJob(l); return kj ? `<div class="ld-jobline">🍽 Катеринг ажил №${escapeHtml(String(kj.number || ''))}${cateringCancelled(kj) ? ' · цуцалсан' : ''}</div>` : ''; })()}
     ${(l.assigned_to || l.handled_note) ? `<div class="ld-handled">${l.assigned_to ? '👤 ' + escapeHtml(l.assigned_to) : ''}${l.assigned_to && l.handled_note ? ' · ' : ''}${l.handled_note ? escapeHtml(l.handled_note) : ''}</div>` : ''}
   </div>`;
 }
@@ -17304,6 +17335,11 @@ function openMaestroLeadModal(id) {
   const dl = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
   const tel = maestroLeadTel(l.phone), mail = maestroLeadMail(l.email);
   const row = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : '';
+  const kJob = maestroLeadJob(l);
+  const canMkJob = !kJob && !!maestroLeadJobId(l) && l.status !== 'spam' && l.status !== 'test';
+  const jobBox = kJob
+    ? `<div class="ld-job"><span>🍽 Катеринг ажил №${escapeHtml(String(kJob.number || ''))}${cateringCancelled(kJob) ? ' (цуцалсан)' : ''}</span><button type="button" class="btn" id="ld-job-open">Ажлыг нээх</button></div>`
+    : canMkJob ? `<div class="ld-job"><span class="ld-job-hint">Үйлчлүүлэгч зөвшөөрсөн бол ажил болгоно. Дүнг та өөрөө оруулна — өөрөө орлого болохгүй.</span><button type="button" class="btn" id="ld-job-new">🍽 Катеринг ажил үүсгэх</button></div>` : '';
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal ld-modal">
     <h2>${escapeHtml(l.ref || '')} · ${escapeHtml(l.name)}</h2>
@@ -17321,12 +17357,34 @@ function openMaestroLeadModal(id) {
     <label class="fld">Төлөв<select id="ld-status">${opts}</select></label>
     <label class="fld">Хариуцсан<input id="ld-who" list="ld-who-list" value="${escapeHtml(l.assigned_to || '')}" maxlength="80" placeholder="нэр"><datalist id="ld-who-list">${dl}</datalist></label>
     <label class="fld">Тэмдэглэл<textarea id="ld-note" maxlength="500" placeholder="юу ярьсан, дараагийн алхам">${escapeHtml(l.handled_note || '')}</textarea></label>
+    ${jobBox}
     <div class="ld-foot"><button class="btn" id="ld-cancel">Болих</button><button class="btn btn-primary" id="ld-save">Хадгалах</button></div>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
   modal.querySelector('#ld-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#ld-job-open')?.addEventListener('click', () => { close(); openCateringJobModal(kJob); });
+  modal.querySelector('#ld-job-new')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget; btn.disabled = true;
+    // Хадгалаагүй байгаа «хариуцсан/тэмдэглэл»-ийг алдахгүй — ажил үүссэний дараа хамт хадгална.
+    const typed = { assigned_to: modal.querySelector('#ld-who').value.trim(), handled_note: modal.querySelector('#ld-note').value.trim() };
+    await loadCateringJobs(true);   // давхардлыг ШИНЭ мэдээллээр шалгана
+    const have = maestroLeadJob(l);
+    if (have) { close(); showToast('Энэ хүсэлтээс ажил аль хэдийн үүссэн байна', 'warn', 3500); openCateringJobModal(have); return; }
+    close();
+    openCateringJobModal(maestroLeadJobDraft(l), {
+      fromLead: true, leadRef: l.ref,
+      onCreated: async () => {
+        const patch = {};
+        if (l.status !== 'won') patch.status = 'won';
+        if (typed.assigned_to !== (l.assigned_to || '')) patch.assigned_to = typed.assigned_to;
+        if (typed.handled_note !== (l.handled_note || '')) patch.handled_note = typed.handled_note;
+        if (Object.keys(patch).length && !(await saveMaestroLead(l.id, patch))) showToast('Ажил үүслээ, гэхдээ хүсэлтийн төлөв шинэчлэгдсэнгүй — гараар «Хожсон» болгоно уу', 'warn', 7000);
+        if (state.view === 'catering') render(); else refreshCateringBadge();
+      },
+    });
+  });
   modal.querySelector('#ld-save').onclick = async () => {
     const patch = {
       status: modal.querySelector('#ld-status').value,
@@ -17525,8 +17583,12 @@ function _renderCateringServings(modal) {
   wrap.querySelectorAll('[data-kt-customadd]').forEach(el => el.onclick = () => addCustom(+el.dataset.ktCustomadd, wrap.querySelector(`[data-kt-custom="${el.dataset.ktCustomadd}"]`)));
   wrap.querySelectorAll('[data-kt-custom]').forEach(el => el.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(+el.dataset.ktCustom, el); } });
 }
-function openCateringJobModal(job) {
-  const isNew = !job; job = job || {};
+/* opts.fromLead — хүсэлтээс бэлдсэн ЖИЖИГ ноорог: id нь хүсэлтийн ref-ээс (KT-MC-0007), зөвхөн-үүсгэх горимоор хадгална.
+   opts.onCreated(мөр) — амжилттай үүссэний дараа дуудагдана (хүсэлтийн төлвийг шинэчлэх). */
+function openCateringJobModal(job, opts) {
+  opts = opts || {};
+  const fromLead = !!(opts.fromLead && job && job.id);
+  const isNew = !job || fromLead; job = job || {};
   state._ktServings = _ktMenuJson(job).map(sv => ({ slot: sv.slot || '', date: sv.date || '', time: sv.time || '', portions: sv.portions || 0, dishes: Array.isArray(sv.dishes) ? sv.dishes.map(_ktDishNorm) : [] }));
   // Зөвхөн БАТАЛГААЖСАН арга хэмжээ — урьдчилгаа төлсөн (deposit) / гэрээтэй (contract) / гүйцэтгэсэн (done).
   // Ердийн үнийн санал/илгээсэн/баталгаажуулалт хүлээж буй нь катерингт татагдахгүй.
@@ -17541,7 +17603,8 @@ function openCateringJobModal(job) {
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal kt-job-modal">
     <h2>${isNew ? '🍽 Шинэ катеринг' : '🍽 Катеринг засах'}</h2>
-    <label class="fld">NOMAAD арга хэмжээнээс татах<select id="kt-nomaad"><option value="">— гараар оруулах —</option>${noOpts}</select></label>
+    ${fromLead ? `<div class="kt-from-lead">📨 ${escapeHtml(opts.leadRef || '')} хүсэлтээс бэлдлээ. Дүн, цэсийг шалгаж оруулаад «Хадгалах» дарна уу — тэр хүртэл ажил үүсэхгүй.</div>` : ''}
+    <label class="fld"${fromLead ? ' hidden' : ''}>NOMAAD арга хэмжээнээс татах<select id="kt-nomaad"><option value="">— гараар оруулах —</option>${noOpts}</select></label>
     <label class="fld">Гарчиг<input id="kt-title" value="${escapeHtml(job.title || '')}" placeholder="жишээ: Таван Богд корпорат"></label>
     <div class="kt-row">
       <label class="fld kt-f-grow">Байгууллага<input id="kt-company" value="${escapeHtml(job.company || '')}"></label>
@@ -17595,7 +17658,7 @@ function openCateringJobModal(job) {
       if (lockM && monthLocked(lockM)) { showToast(`🔒 ${lockM} сар хаагдсан — дүн өөрчлөх боломжгүй`, 'error', 5000); return; }
     }
     const rec = {
-      id: isNew ? ('KT-' + Date.now()) : job.id,
+      id: isNew && !fromLead ? ('KT-' + Date.now()) : job.id,
       title, company, quote_no: qno, source: qno ? 'nomaad' : (job.source || 'manual'),
       event_date: g('#kt-date'), guests: Number(g('#kt-guests')) || 0, location: g('#kt-loc'),
       status: modal.querySelector('#kt-status').value,
@@ -17604,8 +17667,12 @@ function openCateringJobModal(job) {
       phone: qno ? (job.phone || '') : g('#kt-phone').replace(/\D/g, ''), total_mnt: total,
     };
     modal.querySelector('#kt-save').disabled = true;
-    if (await saveCateringJob(rec)) { close(); await loadCateringJobs(true); showToast('Катеринг ажил хадгаллаа', 'success', 2000); }
-    else modal.querySelector('#kt-save').disabled = false;
+    const saved = await saveCateringJob(rec, fromLead ? { createOnly: true } : undefined);
+    if (saved) {
+      close(); await loadCateringJobs(true);
+      showToast(fromLead && saved.number ? `Катеринг ажил №${saved.number} үүслээ` : 'Катеринг ажил хадгаллаа', 'success', 2400);
+      if (fromLead && typeof opts.onCreated === 'function') await opts.onCreated(saved);
+    } else modal.querySelector('#kt-save').disabled = false;
   };
   modal.querySelector('#kt-del').onclick = async () => {
     if (isNew) return;

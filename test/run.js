@@ -9754,6 +9754,28 @@ need(['orderCustType']);
   }
   ok(/psFilter\(state\.products, q, mode\)/.test(src) && /PS_GOODS_ONLY\[mode\] \? psApart\(/.test(src), 'scan: дэлгэц багц/үйлчилгээг горимоор салгана');
 
+  /* ⛔ МӨРИЙН НИЙТ ДҮН = САЛБАРЫН ТООНЫ НИЙЛБЭР (2026-11-02, CEO «Зас»). `stock` нь хуучин «нийт» талбар,
+     салбарын тоог гараар засахад шинэчлэгддэггүй тул зөрдөг (Гүехэн таваг Дунд: нийт 101, Катеринг 109).
+     «Өртөг ба хөрөнгө»-ний мөр өмнө нь `cost × stock` байсан → элэгдлийн (салбарын нийлбэр) тоотой зөрж байв. */
+  eq(F.psQtyTotal({ stock: 101, qty_catering: 109 }), 109, 'нийт: салбарын тоо `stock`-оос илүү (зөрсөн бараа)');
+  eq(F.psQtyTotal({ stock: 10, qty_mevent: 100, qty_nomaad: 20, qty_chimun: 3, qty_catering: 7 }), 130, 'нийт: 4 салбарын нийлбэр');
+  eq(F.psQtyTotal({ stock: 7, qty_mevent: 0, qty_nomaad: 0, qty_chimun: 0, qty_catering: 0 }), 0, 'нийт: бүх салбар 0 бол 0 (`stock` бүү ав)');
+  eq(F.psQtyTotal({ stock: 5 }), 5, 'нийт: салбарын тоо огт байхгүй хуучин мөр л `stock`-оос');
+  eq(F.psQtyTotal({ qty_mevent: '12', qty_catering: null }), 12, 'нийт: тэмдэгт тоо, null зөв');
+  eq(F.psQtyTotal(null), 0, 'нийт: бараагүй → 0');
+  {
+    const st = vm.runInContext('state', sandbox);
+    const sv = { p: st.products, q: st.psQ, f: st.psF, ceo: st.isCEO };
+    st.products = [{ sku: 'M-098', code: 'M-098', name: 'Гүехэн таваг Дунд', category: 'Ресторан хэрэгсэл', type: 'asset', cost: 8000, stock: 101, qty_catering: 109 }];
+    st.psQ = ''; st.psF = ''; st.isCEO = true;
+    const hc = vm.runInContext("renderProductSheet('cost')", sandbox);
+    const totTxt = ((hc.match(/<span class="ps-tot">([^<]*)<\/span>/) || [])[1] || '').trim();
+    eq(totTxt, vm.runInContext('fmtMoney(872000)', sandbox), 'нийт: мөрийн нийт дүн = 8,000 × салбарын 109 (872,000₮)');
+    ok(totTxt !== vm.runInContext('fmtMoney(808000)', sandbox), 'нийт: хуучин `stock` 101-ээр (808,000₮) биш');
+    st.products = sv.p; st.psQ = sv.q; st.psF = sv.f; st.isCEO = sv.ceo;
+  }
+  ok(/\* psQtyTotal\(p\);/.test(src), 'scan: «Өртөг ба хөрөнгө» мөрийн нийт дүн `psQtyTotal`-оор');
+
   // Мөнгөн утга — таслал, ₮ тэмдэгтэй бичсэн ч зөв тоо болно
   eq(F.psNum('1,800,000₮'), 1800000, 'хуудас: тасалтай мөнгө уншина');
   eq(F.psNum(''), 0, 'хуудас: хоосон → 0');

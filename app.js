@@ -26603,6 +26603,15 @@ function psVal(p, field) {
   const d = psDirty()[p && p.sku];
   return (d && Object.prototype.hasOwnProperty.call(d, field)) ? d[field] : (p ? p[field] : '');
 }
+/* Барааны нийт тоо = САЛБАРУУДЫН нийлбэр (элэгдэл, нөөцийн самбартай ИЖИЛ). `stock` нь хуучин «нийт»
+   талбар бөгөөд салбарын тоог гараар засахад (барааны засах цонх, эхний үлдэгдлийн тооллого)
+   ӨӨРЧЛӨГДДӨГГҮЙ тул зөрч болно (2026-11-02: Гүехэн таваг Дунд 101≠109, Халуун сав 2 л 10≠19 гэх 3 бараа).
+   Салбарын тоо огт байхгүй хуучин мөр л `stock`-оос уншина. Цэвэр функц (тестлэгдэнэ). */
+function psQtyTotal(p) {
+  if (!p) return 0;
+  const has = PS_QTY_FIELDS.some(k => p[k] != null);
+  return has ? PS_QTY_FIELDS.reduce((t, k) => t + (Number(p[k]) || 0), 0) : (Number(p.stock) || 0);
+}
 // Засварыг хуримтлуулна. Хадгалагдсан утга руу буцаавал «цэвэр» гэж тооцно.
 // Элэгдлийн нас: хоосон = '' (АВТО); эс бол 1–100, 0.5 алхамаар. Буруу утга (0, 101, үсэг) = АВТО.
 function psYears(v) {
@@ -26979,7 +26988,7 @@ function renderProductSheet(mode) {
       <label class="ps-f"><span>Барьцаа</span><input class="ps-in money-input ui-raw" ${d('deposit')} value="${money(psVal(p, 'deposit'))}" inputmode="numeric"></label>
       <label class="ps-f"><span>Суурилуулалт</span><input class="ps-in money-input ui-raw" ${d('setup_fee')} value="${money(psVal(p, 'setup_fee'))}" inputmode="numeric"></label>`;
     if (mode === 'cost') {
-      const total = (Number(psVal(p, 'cost')) || 0) * (Number(p.stock) || 0);
+      const total = (Number(psVal(p, 'cost')) || 0) * psQtyTotal(p);
       return `
       <label class="ps-f"><span>Нэгж өртөг</span><input class="ps-in money-input ui-raw" ${d('cost')} value="${money(psVal(p, 'cost'))}" inputmode="numeric"></label>
       <label class="ps-f"><span>Авсан огноо</span><input class="ps-in ui-raw" type="date" ${d('purchase_date')} value="${escapeHtml(String(psVal(p, 'purchase_date') || '').slice(0, 10))}"></label>

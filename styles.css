@@ -9372,6 +9372,11 @@ select.no-asar-len {
 .dpl-label-o { flex: 1 1 180px; font-size: var(--fs-sm); font-weight: 700; }
 .dpl-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-3); }
 .dpl-down { color: var(--ok); font-weight: 700; }
+/* 🗂 «Ангиллын бүлгүүд» цонхны «+ Шинэ ангилал» мөр (2026-11-02) — inline style биш (дизайны гэрээ). */
+.cg-newrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin-bottom: var(--space-3); }
+.cg-newrow input, .cg-newrow select { flex: 1 1 150px; min-width: 0; padding: 6px 8px; border: 1px solid var(--border-strong);
+  border-radius: 8px; background: var(--panel); color: var(--text); font-size: var(--fs-md); min-height: 0; }
+.cg-newrow select { flex-basis: 160px; font-size: var(--fs-sm); }
 
 /* 🔒 Эхний үлдэгдлийн 3 дахь гарын үсэг — CEO эцэслэнэ (2026-10-02). */
 .stc-open-seal { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }

@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- АЖИЛД ДУУДАХ — «хаана, хэдэн цагт ирэх» (2026-10-26)
+-- АЖЛЫН ХУВААРЬ (өмнө «ажилд дуудах») — «хаана, хэдэн цагт ирэх» (2026-10-26, хуваарь болгосон 2026-11-02)
 --
 -- ЯАГААД: ажилтныг тодорхой өдөр, тодорхой цагт, тодорхой газар дуудах (захиалгын ажил, өвлийн
 --   ээлж гэх мэт) нь одоо хаана ч БҮРТГЭГДЭХГҮЙ байв. Байсан ганц зүйл — явахдаа сонгосон «маргааш
@@ -10,7 +10,10 @@
 -- ⛔ Мөр БҮР өөрийн эрхтэй (хэнийг хаана дуудсан = ажлын хувийн мэдээлэл) — `app_config` blob БИШ.
 -- ⛔ ХОЙНО НЬ ДУУДЛАГА ҮҮСГЭХГҮЙ: өнөөдөр эсвэл ирээдүйн өдөр л. Тэгэхгүй бол «хоцорсон» гэдгийг
 --   өнгөрсөн өдрөөр зохиож, торгуулийг ХОЙНО НЬ бий болгох боломжтой болно.
--- ⛔ Өнгөрсөн өдрийн цаг/газрыг ӨӨРЧИЛЖ БОЛОХГҮЙ (болих = status 'void' л болно).
+-- ⛔ Өнгөрсөн өдрийн цаг/газрыг ӨӨРЧИЛЖ БОЛОХГҮЙ.
+-- ⛔ ЦАГ НЬ БОЛСОН ХУВААРИЙГ БОЛИХГҮЙ ЧИНЭ (2026-11-02, CEO: «уучлалт товч хэрэггүй»): өнгөрсөн өдөр, эсвэл өнөөдрийн цаг нь болсон хуваарийг
+--   'void' болгож «ирээгүй/хоцорсон»-г арилгаж болохгүй. Ирээгүй нь ФАКТ; ирсэн бол ирцийн хүсэлтээр (гар засвар) засагдана.
+--   Зөвхөн ирээдүйн (эсвэл цаг нь болоогүй) хуваарь болигдоно. Аппын `attSchedOpen`-тэй ИЖИЛ дүрэм.
 -- ⛔ Хаасан сарын дуудлагыг өөрчилж болохгүй (тэмдэглэгээтэй ИЖИЛ — `att_marks.sql`).
 -- ⛔ ХАТУУ УСТГАЛ БАЙХГҮЙ — болих = 'void', өмнөх утга `history`-д үлдэнэ.
 --
@@ -37,6 +40,7 @@ create index if not exists att_callins_day_idx on att_callins (day);
 create or replace function att_callins_guard() returns trigger
 language plpgsql security definer set search_path = public, sec, pg_temp as $$
 declare cfg jsonb; ym text; closed boolean := false; cut text; ub date := (now() at time zone 'Asia/Ulaanbaatar')::date;
+  nowhm text := to_char(now() at time zone 'Asia/Ulaanbaatar', 'HH24:MI');
 begin
   new.member_key := regexp_replace(coalesce(new.member_key, ''), '\D', '', 'g');
   if length(new.member_key) < 8 then
@@ -52,10 +56,26 @@ begin
       raise exception 'Өнгөрсөн өдрөөр дуудлага үүсгэхгүй — өнөөдөр эсвэл ирээдүйн өдрийг сонгоно уу';
     end if;
   end if;
-  -- Өнгөрсөн өдрийн цаг/газрыг өөрчлөхгүй (болих л боломжтой)
+  -- Өнгөрсөн өдрийн цаг/газрыг өөрчлөхгүй
   if tg_op = 'UPDATE' and old.day < ub
      and (new.at_time is distinct from old.at_time or new.place is distinct from old.place) then
-    raise exception 'Өнгөрсөн өдрийн дуудлагын цаг/газрыг өөрчлөхгүй — зөвхөн болино';
+    raise exception 'Өнгөрсөн өдрийн хуваарийн цаг/газрыг өөрчлөхгүй';
+  end if;
+  -- ⛔ Болиулсан хуваарийг ХОЙНО НЬ сэргээж «ирээгүй» торгууль үүсгэхгүй (өнгөрсөн өдөр)
+  if tg_op = 'UPDATE' and old.status = 'void' and new.status = 'active' and old.day < ub then
+    raise exception 'Өнгөрсөн өдрийн хуваарийг сэргээхгүй';
+  end if;
+  -- ⛔ Өнөөдрийн хуваарийн цаг аль хэдийн болсон бол ШИНЭЭР тавихгүй/цагийг нь ухраахгүй (хойно нь «хоцорсон» үүсгэх зам)
+  if new.status = 'active' and new.day = ub and new.at_time <= nowhm
+     and (tg_op = 'INSERT' or old.status is distinct from 'active' or new.at_time is distinct from old.at_time) then
+    raise exception 'Өнөөдрийн хуваарийн цаг болсон — шинээр тавихгүй, ирээдүйн цаг заана уу';
+  end if;
+
+  -- ⛔ Цаг нь болсон хуваарийг болих/өөрчлөхийг хаана (цаг/газар/төлөв өөрчлөгдөх үед; person_rekey хөндөгдөхгүй)
+  if tg_op = 'UPDATE' and old.status = 'active'
+     and (new.status = 'void' or new.at_time is distinct from old.at_time or new.place is distinct from old.place)
+     and (old.day < ub or (old.day = ub and old.at_time <= nowhm)) then
+    raise exception 'Цаг нь болсон хуваарийг болихгүй, өөрчлөхгүй — ирээгүй/хоцорсон нь фактаар бүртгэгдэнэ. Ирсэн бол ирцийн хүсэлтээр засна.';
   end if;
 
   -- Утас солигдоход (person_rekey) цаг/газар/төлөв өөрчлөгдөхгүй → түгжээнд баригдахгүй.

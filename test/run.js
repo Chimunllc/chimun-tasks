@@ -17881,6 +17881,79 @@ async function swFetchTests() {
   eq(deprecYearsFor('Аяны ор').years, 5, 'нас: ангиллаас гадуур 5 жил (өгөгдмөл)');
 }
 
+// ═══ ЭЛЭГДЛИЙН БҮЛЭГ: БАРИЛГА + ГАРААР ЗАСАХ (2026-11-02, CEO) ═══
+// Агуулахын барилга (М-956, 600сая₮) ямар ч бүлэгт таарахгүй «Бусад» 5 жилээр
+// бодогдож сард 10сая₮ (нийт элэгдлийн 39%) болж байв. Одоо «Барилга, байгууламж»
+// 15 жил (сард 3.33сая₮), мөн бүлэг бүрийн насыг CEO гараар засна.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const { deprecYearsFor, deprecForProduct, deprecByBranch, deprecRowsCheck, deprecKeywordSrc, deprecLives } = F;
+  const saved = JSON.stringify(vm.runInContext('state.appConfig', sandbox) || {});
+
+  // — Барилгын бүлэг (анхдагч) —
+  const bld = deprecYearsFor('Агуулах 18x24 сендвичин барилга');
+  eq([bld.years, bld.label], [15, 'Барилга, байгууламж'], 'барилга: «барилга» гэсэн нэр 15 жил');
+  eq(deprecYearsFor('Дулаан байгууламж').years, 15, 'барилга: «байгууламж» ч 15 жил');
+  eq(deprecYearsFor('Тавиур (агуулах)').years, 10, 'барилга: «агуулах» гэдгээр биш — тавиур 10 жил хэвээр');
+  eq(deprecYearsFor('Ширээний бүтээлэг 182×76 Цагаан').years, 2, 'барилга: бусад дүрэм эвдрээгүй');
+  const B = { name: 'Агуулах 18x24 сендвичин барилга', cost: 600000000, qty_chimun: 1, purchase_date: '2026-01-01' };
+  const bc = deprecForProduct(B);
+  eq(Math.round(bc.perUnitMonth), 3333333, 'барилга: 600сая ÷ (15×12) = 3.33сая₮/сар');
+  eq(bc.endYm, '2041-01', 'барилга: 2041-01-д бүрэн элэгдэнэ');
+  eq(Math.round(deprecByBranch([B])['ХХК']), 3333333, 'барилга: тайланд Чимун ХХК-ийн (qty_chimun) зардал болно');
+
+  // — Засварын мөрийн шалгалт —
+  const good = [{ label: 'Барилга', re: 'барилга|байгууламж', years: 20 }, { label: 'Ширээ', re: 'ширээ', years: '6.5' }];
+  const okc = deprecRowsCheck(good, 7);
+  ok(!okc.error && okc.lives.length === 2 && okc.cfgLives.length === 2, 'засвар: зөв мөр алдаагүй');
+  eq([okc.lives[0].years, okc.lives[1].years, okc.lives.defaultYears], [20, 6.5, 7], 'засвар: нас тоо болж, «Бусад»-ын нас дагана');
+  eq(okc.cfgLives[0], { re: 'барилга|байгууламж', years: 20, label: 'Барилга' }, 'засвар: тохиргооны хэлбэр {re,years,label}');
+  const bad = (rows, dy, why) => ok(!!deprecRowsCheck(rows, dy == null ? 5 : dy).error, 'засвар: хаана — ' + why);
+  bad([{ label: '', re: 'a', years: 5 }], null, 'нэр хоосон');
+  bad([{ label: 'Бусад', re: 'a', years: 5 }], null, '«Бусад» нэр нөөцлөгдсөн');
+  bad([{ label: 'А', re: 'a', years: 5 }, { label: 'А', re: 'b', years: 5 }], null, 'давхардсан нэр');
+  bad([{ label: 'А', re: 'a', years: 0 }], null, 'нас 0');
+  bad([{ label: 'А', re: 'a', years: 101 }], null, 'нас 100-аас их');
+  bad([{ label: 'А', re: 'a', years: 'гурав' }], null, 'нас тоо биш');
+  bad([{ label: 'А', re: '  ', years: 5 }], null, 'таних үг хоосон');
+  bad([{ label: 'А', re: '(', years: 5 }], null, 'таних үг буруу regex');
+  bad([{ label: 'А', re: 'a|', years: 5 }], null, 'хоосон нэртэй таарах үг бүх барааг авна');
+  bad([{ label: 'А', re: 'a', years: 5 }], 0, '«Бусад»-ын нас 0');
+  // таслалтай бичлэг → `|`; өөрчлөөгүй бол ХЭВЭЭР (`par ` төгсгөлийн хоосон зайтай)
+  eq(deprecKeywordSrc('барилга, байгууламж', null), 'барилга|байгууламж', 'үг: таслал → |');
+  eq(deprecKeywordSrc('  барилга  ', null), 'барилга', 'үг: шинэ мөрийн хоосон зай тайрагдана');
+  eq(deprecKeywordSrc('gerel|par ', 'gerel|par '), 'gerel|par ', 'үг: өөрчлөөгүй бол хэвээр (`par ` зай утгатай)');
+
+  // — Анхдагч жагсаалт засварын цонхоор БҮРЭН буцаж таарна (цонх нээгээд шууд хадгалахад юу ч өөрчлөгдөхгүй) —
+  const rt = deprecRowsCheck(deprecLives().map(x => ({ label: x.label, re: x.re.source, years: x.years })), 5);
+  ok(!rt.error, 'буцаалт: анхдагч жагсаалт шалгалтыг давна');
+  ['Агуулах 18x24 сендвичин барилга', 'HINO Ranger', 'Хөлдөөгч шкаф (9 тавиур)', 'Тавиур (агуулах)', 'Ширээний бүтээлэг', 'Цасны машин', 'LED par 64', 'Аяны ор']
+    .forEach(n => eq(deprecYearsFor(n, rt.lives), deprecYearsFor(n), 'буцаалт: «' + n + '» ижил нас'));
+
+  // — Тохиргооноос дарагдана; «Бусад»-ын нас тохиргооноос —
+  runIn("state.appConfig = Object.assign({}, state.appConfig, { deprec: { start: '2026-10', default_years: 7,"
+    + " lives: [{ re: 'барилга', years: 25, label: 'Барилга' }] } });");
+  eq(deprecYearsFor('Агуулах 18x24 сендвичин барилга').years, 25, 'тохиргоо: барилгын нас гараар 25 болсон');
+  eq(deprecYearsFor('Аяны ор').years, 7, 'тохиргоо: «Бусад»-ын нас 7 (default_years)');
+  eq(deprecYearsFor('Ширээ').label, 'Бусад', 'тохиргоо: жагсаалтад үлдээгээгүй бүлэг «Бусад» руу');
+  // урьдчилан харах: засварын жагсаалтын «Бусад»-ын нас л үйлчилнэ
+  const orPrev = deprecRowsCheck([{ label: 'Барилга', re: 'барилга', years: 25 }], 10);
+  eq(Math.round(deprecByBranch([{ name: 'Аяны ор', cost: 120000, qty_mevent: 2 }], orPrev.lives).total), 2000, 'урьдчилан харах: 120000÷(10×12)×2');
+  runIn('state.appConfig = ' + saved + ';');
+  eq(deprecYearsFor('Агуулах 18x24 сендвичин барилга').years, 15, 'тохиргоо сэргээгдсэн: анхдагч 15 жил');
+
+  // — SCAN: цонх CEO-д, бусад тохиргоог хадгалж, тайлантай ижил функцээр —
+  const md = src.slice(src.indexOf('async function openDeprecLivesModal('), src.indexOf('/* 📉 ЭЛЭГДЛИЙГ ЖАГСААЛТАД ИЛ БИЧНЭ'));
+  ok(/if \(!state\.isCEO\)/.test(md), 'scan: элэгдлийн нас засах цонх зөвхөн CEO');
+  ok(/saveAppConfig\('deprec', next\)/.test(md), 'scan: тохиргоо `app_config[deprec]`-д хадгалагдана');
+  ok(/Object\.assign\(\{\}, cfg0, \{ lives/.test(md), 'scan: хадгалахад `start` зэрэг бусад тохиргоо алдагдахгүй');
+  ok(/loadAppConfig\('deprec'\)/.test(md), 'scan: засахаас өмнө серверийн хамгийн сүүлийн утгыг авна');
+  ok(/deprecByBranch\(state\.products \|\| \[\], chk\.lives\)/.test(md), 'scan: урьдчилан харах тоо тайлантай ИЖИЛ функцээс');
+  ok(/state\.isCEO \? `<br><button[^`]*data-dep-lives/.test(src), 'scan: «Элэгдлийн нас» товч зөвхөн CEO-д харагдана');
+  ok(/\[data-dep-lives\]'\)\?\.addEventListener\('click', openDeprecLivesModal\)/.test(src), 'scan: товч цонхтой холбогдсон');
+  ok(!/const render = /.test(md), 'scan: цонхны дотоод `render` глобал render()-г далдалахгүй');
+}
+
 // ═══ ДАМЖЛАГЫН БОНУС — барааны тоогоор, хамтрагчид хувьтай (2026-09-30) ═══
 // Амьд датагаар шийдсэн: 9 сарын захиалга 1–345 бараатай (дундаж 12) тул хавтгай
 // хөлс бол сарын хамгийн том 2 ачааг татсан жолооч 20,000₮ авч байв.

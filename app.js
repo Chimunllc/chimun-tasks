@@ -25806,7 +25806,7 @@ async function openCategoryGroupsModal() {
   const render = () => {
     modal.innerHTML = `<div class="modal" style="max-width:560px;">
       <h2>🗂 Ангиллын бүлгүүд</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Сайтын (mevent.mn) цэсний том бүлэг + дэд ангилал аль бүлэгт харагдахыг тохируулна.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.55;">mevent.mn-ий цэс ингэж бүтнэ: <b>Том бүлэг</b> (жишээ нь «Асар, Майхан») → дотор нь <b>ангилал</b> (жишээ нь «Майхан») → бараа.<br>① Шинэ бүлэг хэрэгтэй бол «+ Шинэ бүлэг»-ийг дараад нэр бич. ② Доор ангилал бүрийн баруун талаас <b>аль бүлэгт харагдахыг</b> сонго. ③ 💾 Хадгал — сайт шууд шинэчлэгдэнэ.<br>«Бүлэггүй» ангилал цэсийн хамгийн доор, бүлгийн гадна ганцаараа гарна. Үнэгүй бараа сайтад гарахгүй, бараагүй бүлэг цэснээс нуугдана.</p>
       <div style="font-size:11px;font-weight:700;color:var(--muted);margin:2px 0 6px;">ТОМ БҮЛГҮҮД</div>
       <div id="cg-groups">${groups.map(g => `
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
@@ -30503,7 +30503,7 @@ function renderProducts() {
   // хуучин үлдэгдлийг ил хэлж, нэг товчоор засах зам өгнө.
   const _orphanCats = _prodMgmt ? catOrphans(allProducts, (Array.isArray(state.catGroups) && state.catGroups.length) ? state.catGroups : state.appCatGroups) : [];
   const orphanBar = _orphanCats.length
-    ? prodBar('warn', `🗂 <b>${_orphanCats.length}</b> ангилал сайтын бүлэгт ороогүй (${escapeHtml(_orphanCats.slice(0, 3).map(x => `${x.cat} ${x.count}ш`).join(' · '))}${_orphanCats.length > 3 ? ' …' : ''}) — mevent.mn дээр бүлгүүдийн доор тусдаа өлгөөтэй харагдана.`, `<button class="btn btn-primary prod-bar-b" id="prod-fix-cats">🗂 Бүлэгт оруулах</button>`)
+    ? prodBar('warn', `🗂 <b>${_orphanCats.length}</b> ангилал ямар ч бүлэгт ороогүй: ${escapeHtml(_orphanCats.slice(0, 3).map(x => `«${x.cat}» ${x.count} бараа`).join(', '))}${_orphanCats.length > 3 ? ' …' : ''}. mevent.mn-ий цэс бүлгээр зохиогддог тул ийм ангилал цэсийн хамгийн доор, бүлгийн гадна ганцаараа гарна. «Бүлэг сонгох»-оор аль бүлэгт харагдахыг сонгоно (шинэ бүлэг ч үүсгэж болно).`, `<button class="btn btn-primary prod-bar-b" id="prod-fix-cats">🗂 Бүлэг сонгох</button>`)
     : '';
   const asarBar = (_prodMgmt && !asarSetupDone())
     ? prodBar('ok', `🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү: модуль бараанууд үүсч, хуучин уртын бүртгэлүүд архивлагдаж, түүх нь шинэ бараа руу холбогдоно.`, `<button class="btn btn-primary prod-bar-b" id="prod-asar-setup">🏕 Асрыг модуль болгох</button>`)

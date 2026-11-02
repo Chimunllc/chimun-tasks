@@ -27195,6 +27195,25 @@ function psDeprecLine(p) {
                : ' · <span class="ps-dep-warn">⚠ худалдан авсан огноо байхгүй — огноог бөглөвөл элэгдэл өөрөө зогсоно</span>')
     + '</div></details>';
 }
+/* Баталгаажаагүй (2 гарын үсэггүй) хөрөнгийн ХАМГИЙН ТОМ мөрүүд — «737 сая₮ баталгаажаагүй» гэсэн ганц
+   тооны ДОТОР юу байгааг нэрээр нь харуулна (2026-11-02, CEO «Барилга 600 сая₮ харагдахгүй байна»:
+   барилга тоологдоогүй тул картын баталгаажсан дүнд ороогүй, баталгаажаагүй дүнд нэргүйгээр нуугдаж байв).
+   Шүүлт нь `warehouseCapital`-тай ИЖИЛ (архивласан, үйлчилгээ, багц, өртөггүй, нөөцгүйг алгасна; нийт тоо
+   `stock`-оор) — дүн нь картын «баталгаажаагүй» тоотой таарна. Цэвэр функц (тестлэгдэнэ). */
+function ownerCapitalUnverifiedTop(products, n) {
+  const rows = [];
+  (products || []).forEach(p => {
+    if (!p || p.archived) return;
+    if (typeof isService === 'function' && isService(p)) return;
+    if (typeof isPackage === 'function' && isPackage(p)) return;
+    const qty = Number(p.stock) || 0, c = Number(p.cost) || 0;
+    if (qty <= 0 || c <= 0) return;
+    if (typeof stockOpened === 'function' && stockOpened(p)) return;
+    rows.push({ sku: p.sku || '', name: p.name || '', qty, sum: c * qty,
+                step: (typeof stockCounted === 'function' && stockCounted(p)) ? 'counted' : 'none' });
+  });
+  return rows.sort((a, b) => b.sum - a.sum).slice(0, n == null ? 5 : n);
+}
 /* 💼 Эзний хөрөнгө оруулалтын карт — «Өртөг ба хөрөнгө» дэлгэцэд.
    ⛔ Тусдаа цэс үүсгэхгүй (хэн ч нээдэггүй дэлгэц үхдэг) — хөрөнгийн үнэ цэн
      харагддаг яг тэр дэлгэц дээр суулгана. */
@@ -27215,7 +27234,9 @@ function psOwnerCapitalHtml() {
     </div>
     ${oc.gap ? `<div class="oc-gap">📦 Тооллого дуусаагүй: <b>${fmtMoney(oc.invUnverified)}</b> баталгаажаагүй.
       Дуусгавал эзний оруулалт <b>${fmtMoney(oc.ownerTotal)}</b> болж <b>${fmtMoney(oc.gap)}</b>-аар нэмэгдэнэ.
-      <button class="btn oc-go" data-oc-count>📋 Тооллого руу</button></div>` : ''}
+      <button class="btn oc-go" data-oc-count>📋 Тооллого руу</button>
+      <div class="oc-top"><div class="oc-top-h">Баталгаажаагүй хамгийн том нь:</div>${ownerCapitalUnverifiedTop(state.products || [], 5).map(r =>
+        `<div class="oc-top-r"><span class="oc-top-n">${escapeHtml(r.name)}</span><span class="oc-top-s">${r.step === 'counted' ? '1 гарын үсэг' : 'тоолоогүй'}</span><b>${fmtMoneyShort(r.sum)}</b></div>`).join('')}</div></div>` : ''}
     <div class="oc-note">Зарчим: компани өөрөө төлснөө нотолж чадахгүй хөрөнгө = эзэн оруулсан.
       Эзэн рүү гарсан мөнгийг хасдаг нь — тэр мөнгөөр авсан бараа компанийх, хоёр удаа тоологдохгүй.</div>
     <div class="oc-act"><button class="btn btn-primary" data-oc-act>📄 Акт бэлдэх</button>

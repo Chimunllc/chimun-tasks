@@ -13568,17 +13568,16 @@ async function attSaveManualOut(body, keepDay) {
   if (!res.ok) throw new Error('HTTP ' + res.status + (res.text ? ' · ' + String(res.text).slice(0, 120) : ''));
   return true;
 }
-/* ─── ИРЦИЙН ТЭМДЭГЛЭГЭЭ — Амралт / Чөлөө / Тасалсан (2026-10-26, CEO) ──────────
+/* ─── ИРЦИЙН ТЭМДЭГЛЭГЭЭ — Чөлөө / Тасалсан (2026-10-26, CEO) ──────────
    Ирц зөвхөн «ирсэн/явсан»-ыг бүртгэдэг тул ирээгүй өдрийн ШАЛТГААН хаана ч байгаагүй.
-   Гурав нь мөнгөөр ӨӨР — нэг «ирээгүй» тэмдэг болгож БОЛОХГҮЙ:
-     rest   🏖 Амралт   — амарсан өдөр (зөвшөөрөгдсөн). НОРМЫГ БУУЛГАХГҮЙ, цалин ажилласан цагаар бодогдоно
-     leave  📝 Чөлөө    — зөвшөөрөгдсөн чөлөө. Норм буурахгүй (ажилласан цагаар бодогдох ХЭВЭЭР)
+     leave  📝 Чөлөө    — зөвшөөрөгдсөн чөлөө. Норм буурахгүй (цалин ажилласан цагаар бодогдоно), ирээгүй гэж торгохгүй
      absent 🚫 Тасалсан — зөвшөөрөлгүй, зөвхөн бүртгэнэ
-   ⛔ АМРАЛТ «ЦАЛИНТАЙ АМРАЛТ» БИШ (2026-11-02, CEO: «зүгээр л амрах өдрийг бодож байгаагаас цалинтай амралт
-     биш юм»). 10-26-д нормыг 8ц-аар буулгаж (суурь цалин хасагдахгүй) байсан нь буруу: дэлгэц «цалинтай амралт»
-     гэж харуулж, ажилтан бүрийн «норм» буурч байв. Одоо гурван төрөл ЦАЛИНД ИЖИЛ — тэр өдөр ажиллаагүй гэж
-     тооцогдоно. Ялгаа нь зөвхөн ХАРИУЦЛАГАД: Амралт/Чөлөө = зөвшөөрөгдсөн (ирээгүй гэж торгохгүй), Тасалсан = үгүй.
-     Нормыг буулгадаг ЦАЛИНТАЙ амралт хэрэгтэй болбол `memberNorm` + `rest.paid`-ыг ТУСДАА төрөл болгож нэм.
+   ⛔ «АМРАЛТ» ТӨРӨЛ АППААС БҮРЭН ХАСАГДСАН (2026-11-02, CEO: «амралт гэдгийг бүрэн хас»). Эхлээд «цалинтай амралт» гэж
+     нормыг 8ц-аар буулгадаг байсан нь буруу гэж засагдаж (CEO: «зүгээр л амрах өдрийг бодож байгаагаас цалинтай амралт
+     биш юм»), дараа нь төрөл өөрийг нь хассан: цалинд Чөлөө, Тасалсантай ИЖИЛ байсан тул тусдаа төрөл хэрэггүй болсон.
+     DB-д өмнө бичигдсэн `kind='rest'` мөр (9 ш) ба `att_marks`-ийн CHECK үлдсэн — апп тэднийг ТАНИХГҮЙ (`attMarkOn`
+     ба `attMarksOfMonth` танихгүй төрлийг алгасна), цалин/дэлгэцэд ОГТ нөлөөлөхгүй. ⛔ `rest`-ийг буцааж нэмэхгүй;
+     цалинтай амралт хэрэгтэй болбол CEO-тэй ярьж ТУСДАА төрөл (нормыг буулгадаг) болго.
    ⛔ ТОРГУУЛЬ ЭНД БАЙХГҮЙ. «Тасалбал хувиар торгох» нь давхар хасалт: суурь цалин аль хэдийн
      ажилласан цагаар бодогддог (тасалсан өдөр 1/22 хасагдсан). Аль нэгийг CEO сонгох хүртэл нэмэхгүй;
      цалингаас торгууль хасах нь хуулиар хязгаартай.
@@ -13593,26 +13592,25 @@ async function attSaveManualOut(body, keepDay) {
      байсан (цалингийн самбар аль хэдийн нэг удаа эвдэрсэн). Цалин харж чадах хүнд суурь цалинтай эсэхээр,
      харахгүй хүнд л ажилтны төрлөөр. */
 const ATT_MARK_KINDS = {
-  rest:   { label: 'Амралт',   icon: '🏖', paid: false },
   leave:  { label: 'Чөлөө',    icon: '📝', paid: false },
   absent: { label: 'Тасалсан', icon: '🚫', paid: false },
 };
-const ATT_MARK_ORDER = ['rest', 'leave', 'absent'];
-const ATT_DAY_MINS = 8 * 60;   // нэг ажлын өдрийн норм (`workNormMins` = ажлын өдөр × 8 × 60)
+const ATT_MARK_ORDER = ['leave', 'absent'];
 function attMarkKey(key) { return String(key || '').replace(/\D/g, ''); }
 function attMarkId(key, day) { return attMarkKey(key) + '|' + String(day || ''); }
 function attMarkMap() { return (state.attMarks && typeof state.attMarks === 'object') ? state.attMarks : {}; }
 // Ачаалагдсан уу. FALSE бол тэмдэглэгээ (ирээгүйд торгох эсэх) дутуу харагдана → дуудагч ил хэлнэ. Норм/цалинд нөлөөлөхгүй.
 function attMarksReady() { return !!(state.attMarks && typeof state.attMarks === 'object') && !state.attMarksErr; }
-function attMarkOn(key, day) { const m = attMarkMap()[attMarkId(key, day)]; return (m && m.status === 'active') ? m : null; }
+// Танихгүй төрөл (DB-д үлдсэн хуучин `rest`) → null: дэлгэц ATT_MARK_KINDS[kind].icon уншихад унахгүй, цалинд нөлөөлөхгүй
+function attMarkOn(key, day) { const m = attMarkMap()[attMarkId(key, day)]; return (m && m.status === 'active' && ATT_MARK_KINDS[m.kind]) ? m : null; }
 function isWeekdayIso(day) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day || ''))) return false;
   const w = new Date(day + 'T00:00:00Z').getUTCDay();
   return w !== 0 && w !== 6;
 }
-// Хүний тухайн сарын идэвхтэй тэмдэглэгээ → { rest: [өдөр], leave: [...], absent: [...] }
+// Хүний тухайн сарын идэвхтэй тэмдэглэгээ → { leave: [өдөр], absent: [...] }
 function attMarksOfMonth(key, ym) {
-  const k = attMarkKey(key), out = { rest: [], leave: [], absent: [] };
+  const k = attMarkKey(key), out = { leave: [], absent: [] };
   if (!k) return out;
   Object.keys(attMarkMap()).forEach(id => {
     const m = attMarkMap()[id];
@@ -13622,13 +13620,12 @@ function attMarksOfMonth(key, ym) {
   return out;
 }
 /* ХҮНИЙ САРЫН НОРМ — цалин, илүү цаг, нормын хувь бүгд ЭНЭ ганц функцээс.
-   ⛔ Норм = тэр сарын БҮТЭН хуанлийн норм (2026-11-02, CEO). Амралт/чөлөө/тасалсан алийг нь ч БУУЛГАХГҮЙ —
-   тэр өдөр ажиллаагүй гэж цалин ажилласан цагаар бодогдоно. `restDays` нь зөвхөн ХАРУУЛАХ тоо.
+   ⛔ Норм = тэр сарын БҮТЭН хуанлийн норм (2026-11-02, CEO). Чөлөө/тасалсан алийг нь ч БУУЛГАХГҮЙ —
+   тэр өдөр ажиллаагүй гэж цалин ажилласан цагаар бодогдоно.
    `norm` ба `full` хоёр тусдаа үлдсэн нь `monthPayBreakdown`-ийн (fullNormMins) нийцтэй байдлын төлөө. */
 function memberNorm(key, ym) {
   const full = workNormMins(ym), mk = attMarksOfMonth(key, ym);
-  const restDays = mk.rest.filter(isWeekdayIso).length;
-  return { full, norm: full, restDays, restMins: 0, leaveDays: mk.leave.length, absentDays: mk.absent.length, marks: mk, ready: attMarksReady() };
+  return { full, norm: full, leaveDays: mk.leave.length, absentDays: mk.absent.length, marks: mk, ready: attMarksReady() };
 }
 // Тэмдэглэх боломжтой эсэх. ЦЭВЭР функц — тестлэгдэнэ. `p.hasRecord` — тэр өдөр ирц бүртгэгдсэн.
 function attMarkValidate(p, today) {
@@ -13674,8 +13671,8 @@ function ensureAttMarks() {
                       () => { state._attMarksBusy = false; });
 }
 function attMarksWarnHtml() {
-  if (state.attMarksErr) return `<div class="pb-note amk-warn">⚠ Амралт/чөлөөний тэмдэглэгээ ачаалж чадсангүй (${escapeHtml(state.attMarksErr)}) — тэмдэглэгээ дутуу харагдаж болно. Цалингийн норм үүнээс хамаарахгүй. Минутын дараа өөрөө дахин оролдоно.</div>`;
-  if (!attMarksReady()) return `<div class="pb-note amk-warn">⏳ Амралт/чөлөөний тэмдэглэгээ ачаалж байна.</div>`;
+  if (state.attMarksErr) return `<div class="pb-note amk-warn">⚠ Чөлөө/тасалсан тэмдэглэгээ ачаалж чадсангүй (${escapeHtml(state.attMarksErr)}) — тэмдэглэгээ дутуу харагдаж болно. Цалингийн норм үүнээс хамаарахгүй. Минутын дараа өөрөө дахин оролдоно.</div>`;
+  if (!attMarksReady()) return `<div class="pb-note amk-warn">⏳ Чөлөө/тасалсан тэмдэглэгээ ачаалж байна.</div>`;
   return '';
 }
 // Тэр өдөр ирц бүртгэгдсэн хүнийг «ирээгүй» гэж тэмдэглэхгүй. Ачаалагдсан ирцийн жагсаалтуудаас шалгана.
@@ -13687,7 +13684,7 @@ function attDayHasRecord(key, day) {
   if (state.attMonthKey === String(day).slice(0, 7)) lists.push(state.attMonthRecs);
   return lists.some(a => Array.isArray(a) && a.some(r => r && r.day === day && attMarkKey(attCanonKey(r)) === k));
 }
-// kind = 'rest'|'leave'|'absent' → тэмдэглэнэ; kind = null → БОЛИХ (мөр устахгүй, status='void', түүх үлдэнэ)
+// kind = 'leave'|'absent' → тэмдэглэнэ; kind = null → БОЛИХ (мөр устахгүй, status='void', түүх үлдэнэ)
 async function attMarkSet(key, day, kind) {
   const k = attMarkKey(key), prev = attMarkOn(k, day);
   if (!canEditAttendance()) throw new Error('Танд ирц тэмдэглэх эрх алга');
@@ -13750,7 +13747,7 @@ function attMarkSectionHtml(day, recs) {
   };
   return `<details class="amk-sec"${open ? ' open' : ''}>
     <summary class="amk-sum">📋 Ирээгүй · тэмдэглэх <b class="amk-n">${todo.length}</b>${done.length ? `<span class="amk-sub"> · ${done.length} тэмдэглэсэн</span>` : ''}</summary>
-    <div class="amk-hint">🏖 <b>Амралт</b> · 📝 <b>Чөлөө</b> — зөвшөөрөгдсөн, торгохгүй · 🚫 <b>Тасалсан</b> — зөвшөөрөлгүй. Гурвуулаа норм буулгахгүй, цалин ажилласан цагаар бодогдоно.${day === todayStr() ? ' Өнөөдөр дуусаагүй — хараахан ирээгүй байж болно.' : ''}</div>
+    <div class="amk-hint">📝 <b>Чөлөө</b> — зөвшөөрөгдсөн, торгохгүй · 🚫 <b>Тасалсан</b> — зөвшөөрөлгүй. Хоёулаа норм буулгахгүй, цалин ажилласан цагаар бодогдоно.${day === todayStr() ? ' Өнөөдөр дуусаагүй — хараахан ирээгүй байж болно.' : ''}</div>
     ${locked ? `<div class="amk-lock">🔒 ${escapeHtml(day.slice(0, 7))} сар хаагдсан — тэмдэглэгээ өөрчлөгдөхгүй. Засах бол CEO сарыг нээнэ.</div>` : ''}
     <div class="amk-list">${todo.map(row).join('')}${done.map(row).join('')}</div>
   </details>`;
@@ -13770,12 +13767,12 @@ async function attMarkClick(btn) {
   const el = document.getElementById('att-list');
   if (el && state.view === 'attendance' && !state.attMonthMode) el.innerHTML = renderAttendanceRows();
 }
-// Нэг хүний тэмдэглэгээний товч мөр: «🏖 Амралт 2 · 🚫 Тасалсан 1» (хоосон бол '')
+// Нэг хүний тэмдэглэгээний товч мөр: «📝 Чөлөө 2 · 🚫 Тасалсан 1» (хоосон бол '')
 function attMarkSummaryText(mn) {
   return ATT_MARK_ORDER.filter(x => mn.marks[x].length)
     .map(x => `${ATT_MARK_KINDS[x].icon} ${ATT_MARK_KINDS[x].label} ${mn.marks[x].length}`).join(' · ');
 }
-// Дэлгэрэнгүй: өдрүүдийг нэрлэнэ. Гурван төрөл ЦАЛИНД ИЖИЛ (норм буурахгүй) — «цалинтай амралт» гэж БҮҮ бич.
+// Дэлгэрэнгүй: өдрүүдийг нэрлэнэ. Хоёр төрөл ЦАЛИНД ИЖИЛ (норм буурахгүй) — «цалинтай амралт» гэж БҮҮ бич.
 function attMarkDetailHtml(mn) {
   const parts = ATT_MARK_ORDER.filter(x => mn.marks[x].length).map(x =>
     `${ATT_MARK_KINDS[x].icon} ${ATT_MARK_KINDS[x].label} <b>${mn.marks[x].length}</b> өдөр (${mn.marks[x].map(d => escapeHtml(d.slice(8))).join(', ')})`);
@@ -13790,10 +13787,10 @@ function attMarkDetailHtml(mn) {
      (2026-10-26 CEO: «ердийн ажлын цагаас хоцорсон ч торгоно», «дотоод журмаар суутгаж болдог».)
    Таван тохиолдол (`attDiscipline`, ГАНЦ эх сурвалж):
      absent  — «Тасалсан» тэмдэглэгээтэй, тэр өдөр ирц ОГТ байхгүй
-     noshow  — дуудлагатай өдөр өнгөрсөн, ирц байхгүй, Амралт/Чөлөө тэмдэглэгээгүй
+     noshow  — дуудлагатай өдөр өнгөрсөн, ирц байхгүй, Чөлөө тэмдэглэгээгүй
      late    — дуудлагатай өдөр ирсэн, эхний ирсэн цаг дуудсан цаг + чөлөөнөөс хойш
      lateReg — дуудлагагүй ажлын өдөр, «ажил эхлэх цаг» тохируулсан хүн, эхний ирсэн цаг түүнээс + чөлөөнөөс хойш
-   ⛔ ФАКТ ТЭМДЭГЛЭГЭЭГ ДАРНА: тэр өдөр ирц байвал «Тасалсан» тэмдэглэгээ тоологдохгүй. Амралт/Чөлөө = зөвшөөрөгдсөн →
+   ⛔ ФАКТ ТЭМДЭГЛЭГЭЭГ ДАРНА: тэр өдөр ирц байвал «Тасалсан» тэмдэглэгээ тоологдохгүй. Чөлөө = зөвшөөрөгдсөн →
      ирээгүйд тооцохгүй. Тасалсан тэмдэглэгээ дуудлагатай өдөр давхцвал ЗӨВХӨН нэг удаа (absent) — давхар торгохгүй.
    ⛔ Торгуулийн хувь `app_config['pay_rules']` (зөвхөн CEO бичнэ, RLS) — кодод БИЧИХГҮЙ. `from` (хэзээнээс) ТАВИГДААГҮЙ
      эсвэл бүх хувь 0 бол ЮУ Ч өөрчлөгдөхгүй: олгочихсон сарын цалин чимээгүй өөрчлөгдөхөөс хамгаална.
@@ -13942,8 +13939,8 @@ function attDiscipline(key, ym, recs, today, graceMin) {
       }
     } else if (mark && mark.kind === 'absent') {
       out.events.push({ day: d, kind: 'absent' });                           // дуудлагатай ч нэг удаа л (давхар торгохгүй)
-    } else if (call && d < today && !(mark && (mark.kind === 'rest' || mark.kind === 'leave'))) {
-      out.events.push({ day: d, kind: 'noshow', time: call.at_time });       // Амралт/Чөлөө = зөвшөөрөгдсөн
+    } else if (call && d < today && !(mark && mark.kind === 'leave')) {
+      out.events.push({ day: d, kind: 'noshow', time: call.at_time });       // Чөлөө = зөвшөөрөгдсөн
     }
   });
   // ЕРДИЙН ажлын цагаас хоцролт: «ажил эхлэх цаг» тохируулсан хүнд, ажлын өдөр, ДУУДЛАГАГҮЙ өдөр (дуудлагатайг дээр хэмжсэн — ДУУДЛАГЫН цаг ялна)
@@ -14072,7 +14069,7 @@ function attCallinSectionHtml(day, recs) {
     let chip;
     if (fin) { const diff = _hmMin(hhmmUB(fin)) - _hmMin(c.at_time);
       chip = diff > grace ? `<span class="aci-chip aci-late">🔴 ${escapeHtml(hhmmUB(fin))} · ${diff}м хоцорсон</span>` : `<span class="aci-chip aci-ok">✓ ${escapeHtml(hhmmUB(fin))} цагтаа</span>`; }
-    else if (mark && (mark.kind === 'rest' || mark.kind === 'leave')) chip = `<span class="aci-chip">${ATT_MARK_KINDS[mark.kind].icon} ${ATT_MARK_KINDS[mark.kind].label}</span>`;
+    else if (mark && mark.kind === 'leave') chip = `<span class="aci-chip">${ATT_MARK_KINDS[mark.kind].icon} ${ATT_MARK_KINDS[mark.kind].label}</span>`;
     else chip = day >= today ? '<span class="aci-chip">⏳ хүлээгдэж байна</span>' : '<span class="aci-chip aci-late">❌ ирээгүй</span>';
     return `<div class="amk-row"><div class="amk-who"><span class="amk-name">${escapeHtml(m.name || c.member_key)}</span><span class="amk-role">📞 ${escapeHtml(c.at_time)}${c.place ? ' · ' + escapeHtml(c.place) : ''}</span></div>
       <div class="amk-acts">${chip}${locked ? '' : `<button class="ui-raw amk-x" data-aci-void data-amk-key="${escapeHtml(c.member_key)}" data-amk-day="${escapeHtml(day)}" aria-label="Дуудлагыг болих" title="Болих">✕</button>`}</div></div>`;
@@ -15253,8 +15250,8 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
   base = Math.max(0, Number(base) || 0);
   /* ХҮНИЙ НОРМ ≠ БҮТЭН НОРМ (2026-10-26): `normMins` нь ТЭР ХҮНИЙ норм, `fullNormMins` нь тэр сарын бүтэн
      хуанлийн норм. Цагийн хөлс (илүү цаг, хасалт) ҮРГЭЛЖ бүтэн нормоор. Хүний норм бүтнээс бага бол зөрүү
-     (`credit`) нь зөвхөн ХАСАЛТЫГ арилгана, илүү цагт ОРОХГҮЙ. ⛔ 2026-11-02-оос Амралт нормыг буулгахгүй
-     (`memberNorm` норм = бүтэн) тул одоо `credit` = 0; механизм нь цалинтай амралт буцаж хэрэгтэй болбол
+     (`credit`) нь зөвхөн ХАСАЛТЫГ арилгана, илүү цагт ОРОХГҮЙ. ⛔ 2026-11-02-оос тэмдэглэгээ нормыг буулгахгүй
+     (`memberNorm` норм = бүтэн) тул одоо `credit` = 0; механизм нь нормыг буулгадаг цалинтай чөлөө/амралт буцаж хэрэгтэй болбол
      (тусдаа төрлөөр) бэлэн. `fullNormMins` өгөөгүй бол `credit` = 0 тул хуучин тооцоотой ЯГ ИЖИЛ. */
   const fullIn = Number(fullNormMins) > 0 ? Number(fullNormMins) : 0;
   const norm = Number(normMins) > 0 ? Number(normMins)
@@ -15353,7 +15350,7 @@ function salaryCarryIn(key, ym, minsOf, recsOf) {
   const base = Number((state.salaries || {})[key]) || 0;
   const months = payCarryMonths(ym);
   if (!base || !months.length) return { amount: 0, ready: true, from: '' };
-  // (Амралт нормыг буулгахаа больсон (2026-11-02) тул тэмдэглэгээ ачаалагдаагүй байх нь шилжүүлэлтийг ХОЦРООХГҮЙ.
+  // (Тэмдэглэгээ нормыг буулгахаа больсон (2026-11-02) тул тэмдэглэгээ ачаалагдаагүй байх нь шилжүүлэлтийг ХОЦРООХГҮЙ.
   //  Торгууль идэвхтэй бол `payExtras().ready` доор өөрөө хаана.)
   const rows = [];
   for (const m of months) {
@@ -15427,7 +15424,7 @@ function renderAttendanceMonth(month) {
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
   const recs = attRecsInFence(state.attMonthRecs);
   if (!recs.length) return `<div class="att-mo-note">${month} сард ирц бүртгэгдээгүй.</div>`;
-  ensureAttMarks();   // тэмдэглэгээ (торгууль, «Амралт N» тоо) — норм/цалинд нөлөөлөхгүй
+  ensureAttMarks();   // тэмдэглэгээ (торгуулийн эх үүсвэр, «Чөлөө N» тоо) — норм/цалинд нөлөөлөхгүй
   const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
   const nowMins = workNormMinsThrough(month, todayStr()), inProgress = nowMins < normMins;   // явж буй сар: хувийг өнөөдрийг хүртэлх нормоор
   const byM = {};
@@ -15443,7 +15440,7 @@ function renderAttendanceMonth(month) {
     const mem = findMember(k) || { name: m.name, role: '' };
     // ХҮНИЙ норм (`memberNorm`) = бүтэн хуанлийн норм; хувь, илүү цаг, цалин бүгд үүнээс
     const mn = memberNorm(k, month);
-    return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays, mn, pNow: Math.max(0, nowMins - mn.restMins) };
+    return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays, mn, pNow: nowMins };
   }).sort((a, b) => b.mins - a.mins);
   const noOutPeople = rows.filter(r => r.noOutDays.length), noOutTotal = noOutPeople.reduce((t, r) => t + r.noOutDays.length, 0);
   const normTxt = inProgress
@@ -15459,7 +15456,7 @@ function renderAttendanceMonth(month) {
   if (payVis && !state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); }
   const moOpen = state.attMoOpen || {};
   const list = rows.map(r => {
-    const pct = r.pNow ? Math.round(r.mins / r.pNow * 100) : 0;   // явж буй сард өнөөдрийг хүртэлх нормоор (амралтыг хассан)
+    const pct = r.pNow ? Math.round(r.mins / r.pNow * 100) : 0;   // явж буй сард өнөөдрийг хүртэлх нормоор
     const pctCls = !r.pNow ? 'att-mo-pct-mid' : pct >= 100 ? 'att-mo-pct-ok' : pct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
     const db = driverBonus(r.k, month);
     if (db.count) anyDriver = true;
@@ -15507,7 +15504,7 @@ function renderAttendanceMonth(month) {
   }).join('');
   // ── Нийт тойм: сарын БҮХ ажилтны дүн нэг дор (хавтан). Тоог мөрүүдээс ДАХИН бодохгүй байхын тулд нэг л удаа.
   const totMins = rows.reduce((t, r) => t + r.mins, 0);
-  const sumNow = rows.reduce((t, r) => t + r.pNow, 0);   // хүн бүрийн норм (амралтыг хассан)
+  const sumNow = rows.reduce((t, r) => t + r.pNow, 0);   // хүн бүрийн норм (одоогоор бүгдэд ижил)
   const avgPct = (sumNow && rows.length) ? Math.round(totMins / sumNow * 100) : null;
   const avgCls = avgPct === null ? 'att-mo-pct-mid' : avgPct >= 100 ? 'att-mo-pct-ok' : avgPct >= 80 ? 'att-mo-pct-mid' : 'att-mo-pct-low';
   const otPeople = rows.filter(r => r.mins > r.mn.norm), otTot = otPeople.reduce((t, r) => t + (r.mins - r.mn.norm), 0);
@@ -15591,7 +15588,7 @@ function attachAttendanceHandlers() {
   // Ажилтны ирцийн хүсэлт — батлах / татгалзах
   document.querySelectorAll('[data-areq-ok]').forEach(b => b.addEventListener('click', () => { b.disabled = true; attReqApprove(b.dataset.areqOk); }));
   document.querySelectorAll('[data-areq-no]').forEach(b => b.addEventListener('click', () => attReqReject(b.dataset.areqNo)));
-  // Ирээгүй · тэмдэглэх (Амралт / Чөлөө / Тасалсан). `#att-list`-ийг 20 сек тутам innerHTML-ээр солидог тул
+  // Ирээгүй · тэмдэглэх (Чөлөө / Тасалсан). `#att-list`-ийг 20 сек тутам innerHTML-ээр солидог тул
   // товчуудад ШУУД биш, контейнерт НЭГ delegation (шууд холбовол солигдсоны дараа товч үхнэ).
   const _attListEl = document.getElementById('att-list');
   if (_attListEl) {
@@ -15702,7 +15699,7 @@ function myPayCardHtml(me) {
   const db = driverBonus(key, month);
   // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
   ensureAttMarks();
-  const mn = memberNorm(key, month);   // норм = бүтэн хуанлийн норм (амралт буулгахгүй)
+  const mn = memberNorm(key, month);   // норм = бүтэн хуанлийн норм
   const ex = payExtras(key, month, recs, base);   // торгууль + захиалгын бонус (өөрийн ирцээр)
   const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, mn.norm, db.amount, undefined, month, undefined, stagePayFor(key, month).total, mn.full, ex);
   const normH = Math.round(mn.norm / 60);
@@ -15805,7 +15802,7 @@ function myPayCardHtml(me) {
 }
 function renderMyAttend() {
   ensurePayrollCfg();   // «Миний цалин» карт түүх сарыг зөв таних
-  ensureAttMarks();     // амралт, дуудлага (өөрийнх нь мөр) — цалингийн норм, торгууль, «Танд дуудлага байна»
+  ensureAttMarks();     // чөлөө, дуудлага (өөрийнх нь мөр) — цалингийн норм, торгууль, «Танд дуудлага байна»
   const me = findMember(state.me) || {};
   if (!state._myProfileLoaded) loadMyProfile();   // данс TEAM-д байхгүй — өөрийн токеноор татна
   if (state.attRequests === undefined) { state.attRequests = null; loadAttRequests().then(() => render()); }
@@ -20408,7 +20405,7 @@ function renderSalary() {
   if (!histOnly && state.attMonthKey !== ym && state._attMonthBusy !== ym && !(state.attMonthErr && state.attMonthErr.month === ym)) setTimeout(() => loadAttendanceMonthFull(ym), 0);
   const attReady = !histOnly && state.attMonthKey === ym && Array.isArray(state.attMonthRecs);
   const attMins = attReady ? payrollAttMins(state.attMonthRecs) : {};
-  if (!histOnly) ensureAttMarks();   // тэмдэглэгээ (торгууль, «Амралт N» тоо) — норм/цалинд нөлөөлөхгүй
+  if (!histOnly) ensureAttMarks();   // тэмдэглэгээ (торгуулийн эх үүсвэр, «Чөлөө N» тоо) — норм/цалинд нөлөөлөхгүй
   const normH = workNormDays(ym) * 8;   // ⚠ норм САР БҮРЭЭР (бүтэн хуанли; хүн бүрийнх нь `memberNorm`)
   const spAll = stagePayByPerson(state.appOrders || [], ym);
   const payRows = (state.salaryPayments || []).filter(p => p && p.ym === ym);

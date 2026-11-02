@@ -9365,7 +9365,7 @@ select.no-asar-len {
   font-size: var(--fs-sm); color: var(--muted); }
 .dpl-modal .dpl-years, .dpl-modal .dpl-other-years { width: 72px; text-align: right; }
 .dpl-modal .dpl-del { flex: none; width: 34px; height: 34px; min-height: 0; padding: 0; border: 1px solid var(--border-strong);
-  border-radius: 8px; background: var(--panel); color: var(--danger); font-size: 18px; line-height: 1; cursor: pointer; }
+  border-radius: 8px; background: var(--panel); color: var(--danger); font-size: var(--fs-lg); line-height: 1; cursor: pointer; }
 .dpl-modal .dpl-m { flex: 0 0 auto; margin-left: auto; text-align: right; font-size: var(--fs-xs); white-space: nowrap; }
 .dpl-modal .dpl-add { width: 100%; margin: var(--space-2) 0; }
 .dpl-modal .dpl-other { display: flex; align-items: center; gap: var(--space-1) var(--space-2); flex-wrap: wrap;

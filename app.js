@@ -26587,7 +26587,8 @@ function psDeprecSummary() {
     + (d.noCost ? ` · <span class="ps-dep-warn">⚠ ${d.noCost} бараа өртөггүй</span>` : '')
     + (d.noDateN ? ` · <span class="ps-dep-warn">⚠ ${d.noDateN} бараа авсан огноогүй</span>` : '')
     + (d.doneN ? ` · ✓ ${d.doneN} бүрэн элэгдсэн` : '')
-    + `<br><span class="mut">Санхүү → Тайлан дахь элэгдлийн мөр нь ЯГ энэ тоо. Доорх бараа бүрийн мөр үүнийг бүрдүүлнэ.</span></div>`;
+    + `<br><span class="mut">Санхүү → Тайлан дахь элэгдлийн мөр нь ЯГ энэ тоо. Доорх бараа бүрийн мөр үүнийг бүрдүүлнэ.</span>`
+    + `<br><span class="mut">M-Event ба NOMAAD нэг санг хамт ашигладаг тул тэдний элэгдэл 50/50 хуваагдана; катеринг, Чимун ХХК өөрийн тоогоор.</span></div>`;
 }
 /* 📉 ЭЛЭГДЛИЙГ ЖАГСААЛТАД ИЛ БИЧНЭ (2026-10-02, CEO «тооцоолол зөв эсэхийг хаанаас
    харах вэ?» гэж асуув). Өмнө нь зөвхөн барааны ЦОНХ дотор байсан тул 281 барааг
@@ -39550,18 +39551,24 @@ function deprecYearsFor(name, lives) {
 }
 /* Сарын элэгдэл САЛБАРААР — хөрөнгийн сан (pool) дээр. Цэвэр функц, тестлэгдэнэ.
    ⚠ Нэгж бүрийг хөөх ШААРДЛАГАГҮЙ: нөөцийн нийт өртөг ÷ нас = сарын элэгдэл.
-   ⚠ Үйлчилгээ/багц ба архивласан бараа ОРОХГҮЙ (warehouseCapital-тай ижил дүрэм). */
+   ⚠ Үйлчилгээ/багц ба архивласан бараа ОРОХГҮЙ (warehouseCapital-тай ижил дүрэм).
+   ⛔ ИВЕНТ ба КЕМП нэг хөрөнгийн санг хамт ашигладаг тул (qty_mevent + qty_nomaad)-ийн
+     элэгдэл ТЭНЦҮҮ 50/50 хуваагдана (2026-11-02, CEO шийдвэр) — барааг аль салбарын
+     баганад бүртгэсэн нь зардлын хуваарьт нөлөөлөхгүй. Катеринг, Чимун ХХК нь
+     хуучнаараа өөрийн тоо ширхгээр. */
 function deprecByBranch(products, lives) {
   const out = { 'ИВЕНТ': 0, 'КЕМП': 0, 'КАТЕРИНГ': 0, 'ХХК': 0, total: 0, byCat: {}, noCost: 0,
                 doneN: 0, doneCapital: 0, noDateN: 0, noDateMonth: 0 };
   const L = lives || deprecLives();
-  const B = [['qty_mevent', 'ИВЕНТ'], ['qty_nomaad', 'КЕМП'], ['qty_catering', 'КАТЕРИНГ'], ['qty_chimun', 'ХХК']];
+  const SHARED = ['qty_mevent', 'qty_nomaad'];                            // ИВЕНТ + КЕМП → 50/50
+  const OWN = [['qty_catering', 'КАТЕРИНГ'], ['qty_chimun', 'ХХК']];      // өөрийн тоо ширхгээр
   (products || []).forEach(p => {
     if (!p || p.archived) return;
     if (typeof isService === 'function' && isService(p)) return;
     if (typeof isPackage === 'function' && isPackage(p)) return;
     const cost = Number(p.cost) || 0;
-    const qty = B.reduce((s, b) => s + (Number(p[b[0]]) || 0), 0);
+    const shared = SHARED.reduce((s, f) => s + (Number(p[f]) || 0), 0);
+    const qty = shared + OWN.reduce((s, b) => s + (Number(p[b[0]]) || 0), 0);
     if (qty > 0 && cost <= 0) { out.noCost++; return; }
     if (cost <= 0) return;
     // ⚠ Нэг дүрэм — барааны карт ба тайлан ИЖИЛ функцээр бодогдоно (ИНВАРИАНТ тест).
@@ -39570,7 +39577,12 @@ function deprecByBranch(products, lives) {
     const perUnitMonth = d1.perUnitMonth;
     if (d1.doneYm) { out.doneN++; out.doneCapital += cost * qty; return; }   // насаа дуусгасан
     if (d1.noDate) { out.noDateN++; out.noDateMonth += perUnitMonth * qty; }  // огноогүй — элэгдүүлсээр
-    B.forEach(([f, k]) => {
+    if (shared > 0) {
+      const half = perUnitMonth * shared / 2;
+      out['ИВЕНТ'] += half; out['КЕМП'] += half; out.total += half * 2;
+      out.byCat[label] = (out.byCat[label] || 0) + half * 2;
+    }
+    OWN.forEach(([f, k]) => {
       const q = Number(p[f]) || 0; if (q <= 0) return;
       const amt = perUnitMonth * q;
       out[k] += amt; out.total += amt;

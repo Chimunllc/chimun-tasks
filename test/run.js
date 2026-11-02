@@ -24084,6 +24084,197 @@ async function swFetchTests() {
   }
 });
 
+// ═══ ХҮСЭЛТЭЭС КАТЕРИНГ АЖИЛ ҮҮСГЭХ (2026-11-02, CEO: «Тийм, хий») ═══════════════════════════════
+// «Катеринг ажил үүсгэх» → ажлын цонх ноорогтой нээгдэнэ → хүн «Хадгалах» дарсны дараа л ажил үүснэ.
+// ⛔ Дүн 0-ээс эхэлнэ (сайтын үнэ нэгжийн үнэ — орлого болгож тоолохгүй) · ⛔ нэг хүсэлтээс НЭГ л ажил (id = 'KT-' + ref).
+// ⚠ __lateSeq: fetch/createElement-ийг stub-лах тул бусад асинх тесттэй зэрэг ажиллаж БОЛОХГҮЙ.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const st = vm.runInContext('state', sandbox);
+  const origCreate = sandbox.document.createElement;
+  const saved = { fetch: sandbox.fetch, toast: sandbox.showToast, render: sandbox.render, view: st.view, tab: st.cateringTab,
+    leads: st.maestroLeads, jobs: st.cateringJobs, menu: st.cateringMenu, nm: st.nomaadOrders, me: st.me };
+  const toasts = [], calls = [], overlays = [];
+  const lead = (o) => Object.assign({ id: 1, ref: 'MC-0001', status: 'new', source: 'maestro-site', name: 'Бат', phone: '99112233', email: 'bat@example.com',
+    line_name: 'Байгууллагын катеринг', package_name: 'Бизнес үдийн зоог', quoted_price: 35000, event_date: '2026-12-01', guests: 40,
+    venue: 'Хан-Уул', note: 'Хоолны жагсаалт', assigned_to: '', handled_note: '', created_at: '2026-11-01T02:00:00Z' }, o || {});
+  const respond = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body), text: () => Promise.resolve(JSON.stringify(body)) });
+  // Сервер: ажлын жагсаалт, үүсгэх (POST), хүсэлт шинэчлэх (PATCH)
+  let jobsOnServer = [], postReply, patchReply;
+  const resetServer = () => {
+    jobsOnServer = [];
+    postReply = (opt) => respond(201, [Object.assign(JSON.parse(opt.body), { number: 12 })]);
+    patchReply = (opt) => respond(200, [lead(JSON.parse(opt.body))]);
+    calls.length = 0; toasts.length = 0; overlays.length = 0;
+  };
+  const posts = () => calls.filter(c => c.m === 'POST'), patches = () => calls.filter(c => c.m === 'PATCH');
+  // Цонх бүр: {селектор → элемент}, элемент бүр 'click' сонсогчоо хадгална.
+  const mkEl = () => { const e = stubEl(); e.addEventListener = (t, fn) => { (e._h = e._h || {})[t] = fn; }; return e; };
+  const find = (needle) => overlays.slice().reverse().find(o => o.innerHTML.includes(needle));
+  const click = async (ov, sel) => { const e = ov._c[sel]; await e._h.click({ currentTarget: e }); };
+  try {
+    sandbox.showToast = (m) => { toasts.push(String(m)); }; sandbox.render = () => {};
+    sandbox.document.createElement = () => { const ov = stubEl(); const c = {}; ov._c = c; ov.querySelector = (sel) => c[sel] || (c[sel] = mkEl()); overlays.push(ov); return ov; };
+    sandbox.fetch = (url, opt) => {
+      const u = String(url), m = (opt && opt.method) || 'GET'; calls.push({ u, m, opt: opt || {} });
+      if (m === 'GET' && /\/catering_jobs\?select/.test(u)) return respond(200, jobsOnServer);
+      if (m === 'POST' && /\/catering_jobs\?on_conflict=id$/.test(u)) return postReply(opt);
+      if (m === 'PATCH' && /\/maestro_leads\?id=eq\./.test(u)) return patchReply(opt);
+      return respond(404, []);
+    };
+    st.me = 'Тест'; st.cateringMenu = []; st.nomaadOrders = []; st.view = 'mine';
+
+    // ── ① Давхардлын түлхүүр ба ноорог ──
+    resetServer();
+    eq(F.maestroLeadJobId({ ref: 'MC-0007' }), 'KT-MC-0007', 'хүсэлт→ажил: ажлын id = KT-<ref> (нэг хүсэлт = нэг ажил)');
+    eq([F.maestroLeadJobId({ ref: '' }), F.maestroLeadJobId({}), F.maestroLeadJobId(null), F.maestroLeadJobId({ ref: "MC-1'; drop" }), F.maestroLeadJobId({ ref: 'XX-0001' })],
+      ['', '', '', '', ''], '⛔ хүсэлт→ажил: ref буруу/хоосон бол id үүсэхгүй (ажил үүсгэх товч гарахгүй)');
+    const d = F.maestroLeadJobDraft(lead({ id: 7, ref: 'MC-0007' }));
+    eq([d.id, d.source, d.status, d.total_mnt, d.menu_json], ['KT-MC-0007', 'maestro', 'planned', 0, '[]'], '⛔ хүсэлт→ажил: ноорог = төлөвлөсөн, ДҮН 0, цэсгүй');
+    eq([d.company, d.event_date, d.guests, d.location, d.phone], ['Бат', '2026-12-01', 40, 'Хан-Уул', '99112233'], 'хүсэлт→ажил: нэр/огноо/хүний тоо/байршил/утас шилжинэ');
+    ok(/Бизнес үдийн зоог/.test(d.title) && /Байгууллагын катеринг/.test(d.title), 'хүсэлт→ажил: гарчиг = үйлчилгээ · багц');
+    ok(/Хүсэлт MC-0007/.test(d.note) && /35,000|35 000|35000/.test(d.note) && /нэгжийн үнэ/.test(d.note) && /Хоолны жагсаалт/.test(d.note), 'хүсэлт→ажил: тэмдэглэлд ref, сайтын НЭГЖИЙН үнэ, үйлчлүүлэгчийн тайлбар');
+    const d2 = F.maestroLeadJobDraft(lead({ ref: 'MC-0008', guests: null, event_date: null, venue: '', quoted_price: null, package_name: '', line_name: '', phone: '+976 9911-2233' }));
+    eq([d2.guests, d2.event_date, d2.location, d2.title, d2.phone], [0, '', '', 'Бат · катеринг', '97699112233'], 'хүсэлт→ажил: хоосон талбар унахгүй, гарчиг нэрээр, утас зөвхөн тоо');
+    ok(!/нэгжийн үнэ/.test(d2.note), 'хүсэлт→ажил: үнэгүй хүсэлтэд үнийн мөр нэмэгдэхгүй');
+
+    // ── ② saveCateringJob: createOnly нь ДАРЖ БИЧИХГҮЙ, хуучин зам хэвээр ──
+    resetServer();
+    const rec = { id: 'KT-MC-0001', title: 'x', source: 'maestro', total_mnt: 0 };
+    const rOk = await F.saveCateringJob(Object.assign({}, rec), { createOnly: true });
+    eq((posts()[0].opt.headers || {}).Prefer, 'resolution=ignore-duplicates,return=representation', '⛔ ажил: createOnly = ignore-duplicates (байгаа ажлыг ДАРЖ бичихгүй)');
+    ok(rOk && rOk.number === 12, 'ажил: createOnly амжилттай бол дугаартай мөрийг буцаана');
+    calls.length = 0; toasts.length = 0; postReply = () => respond(201, []);
+    ok((await F.saveCateringJob(Object.assign({}, rec), { createOnly: true })) === false && toasts.some(t => /аль хэдийн үүссэн/.test(t)), '⛔ ажил: давхардсан (0 мөр) бол АМЖИЛТГҮЙ гэж ил хэлнэ');
+    calls.length = 0; resetServer();
+    ok((await F.saveCateringJob(Object.assign({}, rec))) === true && (posts()[0].opt.headers || {}).Prefer === 'resolution=merge-duplicates,return=minimal', 'ажил: ердийн хадгалалт хуучнаараа (merge-duplicates, return=minimal)');
+
+    // ── ③ Хүсэлтийн цонх: товч хэнд, хэзээ гарах ──
+    resetServer(); st.cateringJobs = [];
+    const open = (l) => { overlays.length = 0; st.maestroLeads = [l]; F.openMaestroLeadModal(l.id); return overlays[0]; };
+    let ov = open(lead({ id: 1 }));
+    ok(/id="ld-job-new"/.test(ov.innerHTML) && /өөрөө орлого болохгүй/.test(ov.innerHTML) && !/id="ld-job-open"/.test(ov.innerHTML), 'хүсэлт→ажил: ажилгүй хүсэлтэд «Катеринг ажил үүсгэх» товч + орлого болохгүй гэсэн тайлбар');
+    for (const stt of ['spam', 'test']) ok(!/ld-job-new|ld-job-open/.test(open(lead({ id: 1, status: stt })).innerHTML), `⛔ хүсэлт→ажил: «${stt}» хүсэлтээс ажил үүсгэх товч ГАРАХГҮЙ`);
+    ok(/id="ld-job-new"/.test(open(lead({ id: 1, status: 'lost' })).innerHTML), 'хүсэлт→ажил: «Алдсан» хүсэлтийг сэргээж ажил болгож болно');
+    ok(!/ld-job-new/.test(open(lead({ id: 1, ref: '' })).innerHTML), 'хүсэлт→ажил: ref-гүй хүсэлтэд товч гарахгүй');
+    st.cateringJobs = [{ id: 'KT-MC-0001', number: 5, status: 'planned' }];
+    ov = open(lead({ id: 1 }));
+    ok(/id="ld-job-open"/.test(ov.innerHTML) && /Катеринг ажил №5/.test(ov.innerHTML) && !/id="ld-job-new"/.test(ov.innerHTML), '⛔ хүсэлт→ажил: ажил аль хэдийн үүссэн бол «үүсгэх» биш «нээх» товч');
+    ok(/ld-jobline">🍽 Катеринг ажил №5</.test(F.maestroLeadCardHtml(lead({ id: 1 }))) && !/ld-jobline/.test(F.maestroLeadCardHtml(lead({ id: 2, ref: 'MC-0002' }))), 'хүсэлт→ажил: картан дээр ажил үүссэн мөр (зөвхөн тухайн хүсэлтэд)');
+    st.cateringJobs = [{ id: 'KT-MC-0001', number: 5, status: 'cancelled' }];
+    ok(/цуцалсан/.test(F.maestroLeadCardHtml(lead({ id: 1 }))), 'хүсэлт→ажил: цуцалсан ажил картан дээр «цуцалсан» гэж');
+
+    // ── ④ Бүтэн урсгал: дарна → ноорог нээгдэнэ (ЮУ Ч бичигдээгүй) → «Хадгалах» → ажил → хүсэлт «Хожсон» ──
+    resetServer(); st.cateringJobs = [];
+    ov = open(lead({ id: 1, handled_note: '' }));
+    ov._c['#ld-who'] = Object.assign(mkEl(), { value: 'Болд' }); ov._c['#ld-note'] = Object.assign(mkEl(), { value: 'залгасан, баталсан' });
+    await click(ov, '#ld-job-new');
+    ok(posts().length === 0 && patches().length === 0, '⛔ хүсэлт→ажил: товч дармагц ЮУ Ч бичигдэхгүй (зөвхөн ажлын жагсаалт шалгана)');
+    ok(calls.some(c => c.m === 'GET' && /catering_jobs\?select/.test(c.u)), 'хүсэлт→ажил: давхардлыг ШИНЭ жагсаалтаар шалгана (хуучин төлөвт найдахгүй)');
+    const jm = find('kt-job-modal');
+    ok(!!jm && /kt-from-lead/.test(jm.innerHTML) && /MC-0001/.test(jm.innerHTML) && /🍽 Шинэ катеринг/.test(jm.innerHTML), 'хүсэлт→ажил: ажлын цонх ноорогтой, «хүсэлтээс бэлдлээ» сануулгатай нээгдэнэ');
+    ok(/<label class="fld" hidden>NOMAAD/.test(jm.innerHTML), 'хүсэлт→ажил: NOMAAD-аас татах талбар нуугдсан (мөнгөний дүрэм солигдохгүй)');
+    ok(/value="Байгууллагын катеринг · Бизнес үдийн зоог"/.test(jm.innerHTML) && /value="Бат"/.test(jm.innerHTML) && /value="2026-12-01"/.test(jm.innerHTML) && /value="40"/.test(jm.innerHTML) && /value="99112233"/.test(jm.innerHTML), 'хүсэлт→ажил: талбарууд хүсэлтээс нөхөгдсөн');
+    ok(/kt-del-btn kt-del-hide/.test(jm.innerHTML), 'хүсэлт→ажил: шинэ ажил тул «Устгах» нуугдсан');
+    // Хэрэглэгч шалгаад «Хадгалах» дарна (талбарын утгыг цонхноос уншина)
+    const fv = { '#kt-title': 'Бизнес үдийн зоог · Байгууллагын катеринг', '#kt-company': 'Бат', '#kt-date': '2026-12-01', '#kt-guests': '40', '#kt-loc': 'Хан-Уул',
+      '#kt-status': 'planned', '#kt-phone': '9911-2233', '#kt-total': '', '#kt-note': 'Хүсэлт MC-0001', '#kt-nomaad': '' };
+    Object.keys(fv).forEach(k => { jm._c[k] = Object.assign(mkEl(), { value: fv[k] }); });
+    await jm._c['#kt-save'].onclick();
+    eq(posts().length, 1, 'хүсэлт→ажил: «Хадгалах» дарахад НЭГ л ажил үүсгэх дуудлага');
+    const body = JSON.parse(posts()[0].opt.body);
+    eq(posts()[0].opt.headers.Prefer, 'resolution=ignore-duplicates,return=representation', '⛔ хүсэлт→ажил: үүсгэх дуудлага ignore-duplicates (давхардлаас сервер талд ч хамгаална)');
+    eq([body.id, body.source, body.status, body.total_mnt, body.created_by], ['KT-MC-0001', 'maestro', 'planned', 0, 'Тест'], '⛔ хүсэлт→ажил: id=KT-MC-0001, төлөвлөсөн, ДҮН 0 (өөрөө орлого болохгүй), үүсгэсэн хүн');
+    eq([body.company, body.event_date, body.guests, body.location, body.phone], ['Бат', '2026-12-01', 40, 'Хан-Уул', '99112233'], 'хүсэлт→ажил: илгээсэн мэдээлэл хүсэлттэй таарна, утас зөвхөн тоо');
+    ok(!('paid_mnt' in body) && !('paid_ref' in body) && !('number' in body), '⛔ хүсэлт→ажил: төлбөр/дугаарын талбар илгээгдэхгүй (сервер өөрөө өгнө)');
+    eq(patches().length, 1, 'хүсэлт→ажил: ажил үүссэний дараа хүсэлтийг ЯГ НЭГ удаа шинэчилнэ');
+    ok(/maestro_leads\?id=eq\.1$/.test(patches()[0].u), '⛔ хүсэлт→ажил: зөвхөн ТЭР хүсэлтийг шинэчилнэ');
+    eq(JSON.parse(patches()[0].opt.body), { status: 'won', assigned_to: 'Болд', handled_note: 'залгасан, баталсан' }, 'хүсэлт→ажил: хүсэлт «Хожсон» болно + цонхонд бичсэн хариуцсан/тэмдэглэл алдагдахгүй');
+    ok(toasts.includes('Катеринг ажил №12 үүслээ') && !toasts.some(t => /алдаа|аль хэдийн|гэхдээ/.test(t)), 'хүсэлт→ажил: «Катеринг ажил №12 үүслээ» (сервер өгсөн дугаартай), алдааны мэдэгдэлгүй');
+    ok(calls.indexOf(posts()[0]) < calls.indexOf(patches()[0]), '⛔ хүсэлт→ажил: хүсэлтийг ажил үүссэнээс ӨМНӨ «Хожсон» болгохгүй');
+
+    // ── ⑤ Давхардал: жагсаалтад байвал ШИНЭ ажил үүсэхгүй, байгааг нээнэ ──
+    resetServer(); st.cateringJobs = [];
+    jobsOnServer = [{ id: 'KT-MC-0001', number: 5, title: 'Өмнө үүссэн', status: 'planned' }];   // өөр хүн саяхан үүсгэсэн
+    ov = open(lead({ id: 1 }));
+    await click(ov, '#ld-job-new');
+    eq([posts().length, patches().length], [0, 0], '⛔ хүсэлт→ажил: ажил аль хэдийн байвал ЮУ Ч бичигдэхгүй (давхар ажил үүсэхгүй)');
+    ok(toasts.some(t => /аль хэдийн үүссэн/.test(t)), 'хүсэлт→ажил: «аль хэдийн үүссэн» гэж хэлнэ');
+    const ex = find('kt-job-modal');
+    ok(!!ex && /Катеринг засах/.test(ex.innerHTML) && !/kt-from-lead/.test(ex.innerHTML) && /Өмнө үүссэн/.test(ex.innerHTML), 'хүсэлт→ажил: байгаа ажлыг (засах горимоор) нээнэ, шинэ ноорог биш');
+
+    // ── ⑥ Уралдаан: жагсаалт хоосон ч сервер давхардлыг мэдэгдвэл хүсэлт ӨӨРЧЛӨГДӨХГҮЙ ──
+    resetServer(); st.cateringJobs = [];
+    postReply = () => respond(201, []);     // ignore-duplicates: өөр хүн секундын өмнө үүсгэсэн
+    ov = open(lead({ id: 1 })); await click(ov, '#ld-job-new');
+    const jm2 = find('kt-job-modal');
+    Object.keys(fv).forEach(k => { jm2._c[k] = Object.assign(mkEl(), { value: fv[k] }); });
+    await jm2._c['#kt-save'].onclick();
+    eq(patches().length, 0, '⛔ хүсэлт→ажил: давхардсан бол хүсэлтийг «Хожсон» болгохгүй');
+    ok(toasts.some(t => /аль хэдийн үүссэн/.test(t)) && jm2._c['#kt-save'].disabled === false, 'хүсэлт→ажил: давхардсан бол мэдэгдэл + «Хадгалах» товч дахин идэвхжинэ');
+
+    // ── ⑦ Сервер алдаа: ажил үүссэнгүй бол хүсэлт хөндөгдөхгүй ──
+    resetServer(); st.cateringJobs = [];
+    postReply = () => respond(500, { message: 'boom' });
+    ov = open(lead({ id: 1 })); await click(ov, '#ld-job-new');
+    const jm3 = find('kt-job-modal');
+    Object.keys(fv).forEach(k => { jm3._c[k] = Object.assign(mkEl(), { value: fv[k] }); });
+    await jm3._c['#kt-save'].onclick();
+    eq(patches().length, 0, '⛔ хүсэлт→ажил: ажил үүсгэх 500 алдаатай бол хүсэлтийг «Хожсон» болгохгүй');
+    ok(toasts.some(t => /Ажил хадгалах алдаа/.test(t)), 'хүсэлт→ажил: алдааг ил хэлнэ');
+
+    // ── ⑧ Ажил үүссэн ч хүсэлтийн шинэчлэл унавал худлаа амжилт хэлэхгүй ──
+    resetServer(); st.cateringJobs = [];
+    patchReply = () => respond(200, []);     // RLS: 0 мөр
+    ov = open(lead({ id: 1 })); await click(ov, '#ld-job-new');
+    const jm4 = find('kt-job-modal');
+    Object.keys(fv).forEach(k => { jm4._c[k] = Object.assign(mkEl(), { value: fv[k] }); });
+    await jm4._c['#kt-save'].onclick();
+    eq(posts().length, 1, 'хүсэлт→ажил: хүсэлтийн шинэчлэл унасан ч ажил үүссэн хэвээр');
+    ok(toasts.some(t => /Ажил үүслээ, гэхдээ хүсэлтийн төлөв шинэчлэгдсэнгүй/.test(t)), '⛔ хүсэлт→ажил: ажил үүссэн ч хүсэлт «Хожсон» болоогүйг ил анхааруулна');
+
+    // ── ⑨ Аль хэдийн «Хожсон», тэмдэглэл бичээгүй бол илүү шинэчлэл явуулахгүй ──
+    resetServer(); st.cateringJobs = [];
+    ov = open(lead({ id: 1, status: 'won' })); await click(ov, '#ld-job-new');
+    const jm5 = find('kt-job-modal');
+    Object.keys(fv).forEach(k => { jm5._c[k] = Object.assign(mkEl(), { value: fv[k] }); });
+    await jm5._c['#kt-save'].onclick();
+    eq([posts().length, patches().length], [1, 0], 'хүсэлт→ажил: аль хэдийн «Хожсон» + өөрчлөлтгүй бол хүсэлт рүү дахин PATCH явуулахгүй');
+    ok(!toasts.some(t => /гэхдээ/.test(t)), 'хүсэлт→ажил: энэ үед худал анхааруулга гарахгүй');
+
+    // ── ⑩ XSS: зэрэмдэг хүсэлтээс ноорог үүсгэж цонхыг нээхэд ESCAPE хийгдэнэ ──
+    resetServer();
+    const evil = lead({ id: 9, ref: 'MC-0009', name: '<img src=x onerror=alert(1)>', note: '"><script>alert(2)</script>', venue: '<b>x</b>', line_name: '<i>l</i>', package_name: "'><svg onload=1>" });
+    overlays.length = 0; F.openCateringJobModal(F.maestroLeadJobDraft(evil), { fromLead: true, leadRef: evil.ref });
+    const xm = find('kt-job-modal');
+    ok(!!xm && xm.innerHTML.length > 500, 'хүсэлт→ажил: зэрэмдэг хүсэлтийн ноорогоор ажлын цонх нээгдлээ');
+    ok(!/<img |<script|<svg|<b>|<i>|href="javascript:/i.test(xm.innerHTML), '⛔ хүсэлт→ажил: ажлын цонх дахь нэр/тайлбар/байршил/багц ESCAPE хийгдсэн (XSS)');
+
+    // ── ⑪ Ердийн «Шинэ катеринг» хуучнаараа (id Date.now, merge, устгах товчтой засах) ──
+    resetServer(); overlays.length = 0;
+    F.openCateringJobModal();
+    const nm = find('kt-job-modal');
+    ok(!/kt-from-lead/.test(nm.innerHTML) && !/<label class="fld" hidden>NOMAAD/.test(nm.innerHTML) && /🍽 Шинэ катеринг/.test(nm.innerHTML), 'ажил: ердийн «Шинэ катеринг» — хүсэлтийн сануулга байхгүй, NOMAAD талбар харагдана');
+    nm._c['#kt-title'] = Object.assign(mkEl(), { value: 'Гараар' }); nm._c['#kt-status'] = Object.assign(mkEl(), { value: 'planned' });
+    await nm._c['#kt-save'].onclick();
+    const nb = JSON.parse(posts()[0].opt.body);
+    ok(/^KT-\d+$/.test(nb.id) && posts()[0].opt.headers.Prefer === 'resolution=merge-duplicates,return=minimal', '⛔ ажил: ердийн шинэ ажил KT-<цаг> id, merge-duplicates (өмнөх зан төлөв хэвээр)');
+    eq(patches().length, 0, 'ажил: ердийн шинэ ажил хүсэлтэд хүрэхгүй');
+
+    // ── ⑫ Scan ──
+    const mod = appSrc.slice(appSrc.indexOf('const MAESTRO_LEAD_STATUS'), appSrc.indexOf('function renderCatering()'));
+    ok(/total_mnt: 0,/.test(mod) && !/quoted_price\)? *\*|\* *Number\(l\.(guests|quoted_price)/.test(mod), '⛔ scan: ноорогийн дүн 0, сайтын үнийг хүний тоогоор ҮРЖҮҮЛЖ орлого болгохгүй');
+    ok(/source: 'maestro'/.test(mod) && /ignore-duplicates/.test(appSrc.slice(appSrc.indexOf('async function saveCateringJob'), appSrc.indexOf('function _ktMenuJson'))), 'scan: ажил source=maestro, үүсгэх нь ignore-duplicates');
+    ok(/createOnly: true/.test(appSrc.slice(appSrc.indexOf('function openCateringJobModal'), appSrc.indexOf('function openCateringPaymentModal'))), 'scan: хүсэлтийн ажил createOnly замаар л хадгалагдана');
+    ok(!/style="/.test(mod), 'scan: нэмсэн код inline style-гүй (дизайны гэрээ)');
+    eq(F.cateringHasMoney({ source: 'maestro' }), true, 'ажил: source=maestro ажил мөнгөтэй (NOMAAD биш) — дүн, төлбөр ердийн дүрмээр');
+  } finally {
+    sandbox.document.createElement = origCreate;
+    sandbox.fetch = saved.fetch; sandbox.showToast = saved.toast; sandbox.render = saved.render;
+    Object.assign(st, { view: saved.view, cateringTab: saved.tab, maestroLeads: saved.leads, cateringJobs: saved.jobs, cateringMenu: saved.menu, nomaadOrders: saved.nm, me: saved.me });
+  }
+});
+
 // ═══ MAESTRO ХҮСЭЛТИЙН PUSH МЭДЭГДЭЛ (2026-11-01, CEO: «мэдэгдэл хий») ═══════════════════════
 // `tools/maestro_notify.py` (VPS cron, минут бүр): ШИНЭ хүсэлт ирмэгц хариуцсан хүмүүст push. Хүсэлт ирсэн ч хэн ч Катеринг →
 // «Хүсэлт»-ийг нээхгүй бол үйлчлүүлэгч хариугүй хүлээнэ. Апп: push дарахад `./#leads` → Катеринг → «📨 Хүсэлт» таб.

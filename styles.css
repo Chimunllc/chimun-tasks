@@ -10206,6 +10206,14 @@ select.no-asar-len {
 .modal .ld-dl dt { color: var(--muted); }
 .modal .ld-dl dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .modal .ld-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-4); }
+/* Хүсэлт → катеринг ажил: цонхны товч, картын «ажил үүссэн» мөр, ажлын цонхны сануулга */
+.modal .ld-job { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--panel-hover); border-radius: var(--r-md); font-size: var(--fs-md); }
+.modal .ld-job-hint { flex: 1 1 14rem; font-size: var(--fs-sm); color: var(--muted); }
+.ld-jobline { margin-top: var(--space-1); font-size: var(--fs-sm); font-weight: 700; color: var(--ok); }
+.modal .kt-from-lead { margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--r-md);
+  font-size: var(--fs-sm); color: var(--text-soft); background: var(--info-soft); }
+.modal .fld[hidden] { display: none; }
 
 /* ═══ 🔁 Сар хооронд шилжсэн зардал (Санхүү → Тайлан) ═══
    Зардал ноогдох сараар тоологддог тул мөнгө гарсан сараас зөрнө — тэр шилжилтийг

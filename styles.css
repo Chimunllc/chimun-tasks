@@ -9080,6 +9080,13 @@ select.no-asar-len {
   border: 1px solid var(--warn); border-radius: var(--r-md); background: var(--warn-soft);
   color: var(--warn); font-size: var(--fs-sm); line-height: 1.6; }
 .oc-go { padding: 2px 10px; font-size: var(--fs-xs); margin-left: var(--space-2); }
+/* Баталгаажаагүй хамгийн том мөрүүд — «737 сая» гэсэн ганц тоо дотор юу байгааг нэрээр нь (2026-11-02). */
+.oc-top { margin-top: var(--space-2); border-top: 1px solid var(--warn); padding-top: var(--space-2); }
+.oc-top-h { font-size: var(--fs-xs); font-weight: 700; }
+.oc-top-r { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--fs-sm); padding: 2px 0; }
+.oc-top-n { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.oc-top-s { flex: none; font-size: var(--fs-xs); opacity: .85; }
+.oc-top-r b { flex: none; min-width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
 .oc-note { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); line-height: 1.5; }
 .oc-act { margin-top: var(--space-3); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .oc-dim { font-size: var(--fs-xs); color: var(--muted); }

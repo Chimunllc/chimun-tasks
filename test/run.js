@@ -20245,6 +20245,22 @@ async function swFetchTests() {
   eq(oc.invTotal, 1300000, 'эзэн: агуулахын нийт өртөг');
   eq(oc.invVerified, 500000, 'эзэн: ЗӨВХӨН 2 гарын үсэгтэй нь баталгаажсан');
   eq(oc.invUnverified, 800000, 'эзэн: баталгаажаагүй үлдэл');
+  /* 🔎 «737 сая баталгаажаагүй» ганц тоо дотор ЮУ байгааг нэрээр нь (CEO «Барилга 600 сая харагдахгүй байна»). */
+  {
+    const top = F.ownerCapitalUnverifiedTop(prods, 5);
+    eq(top.map(r => r.sku), ['C', 'D'], 'баталгаажаагүй том: зөвхөн 2 гарын үсэггүй нь, өртгөөр буурахаар');
+    eq(top.map(r => r.step), ['counted', 'none'], 'баталгаажаагүй том: «1 гарын үсэг» ба «тоолоогүй» ялгарна');
+    eq(top.reduce((s, r) => s + r.sum, 0), oc.invUnverified, 'баталгаажаагүй том: дүн картын «баталгаажаагүй» тоотой ЯГ таарна');
+    const big = [{ sku: 'M-956', name: 'Агуулах барилга', cost: 600000000, stock: 1, qty_chimun: 1 }, ...prods,
+                 { sku: 'X', name: 'архив', cost: 9e9, stock: 1, archived: true }, { sku: 'S', name: 'үйлчилгээ', cost: 5e9, stock: 1, type: 'service' },
+                 { sku: 'PK', name: 'багц', cost: 5e9, stock: 1, type: 'package' }, { sku: 'Z', name: 'өртөггүй', cost: 0, stock: 5 }, { sku: 'N', name: 'нөөцгүй', cost: 100, stock: 0 }];
+    const t2 = F.ownerCapitalUnverifiedTop(big, 5);
+    eq([t2[0].sku, t2[0].sum, t2[0].step], ['M-956', 600000000, 'none'], 'баталгаажаагүй том: тоологдоогүй 600 сая₮-ийн барилга ЭХЭНД, нэрээр');
+    eq(t2.map(r => r.sku).filter(s => ['X', 'S', 'PK', 'Z', 'N'].includes(s)), [], 'баталгаажаагүй том: архив, үйлчилгээ, багц, өртөггүй, нөөцгүй орохгүй');
+    eq(F.ownerCapitalUnverifiedTop(big, 1).length, 1, 'баталгаажаагүй том: n хязгаар');
+    eq(F.ownerCapitalUnverifiedTop(null, 5), [], 'баталгаажаагүй том: жагсаалтгүй → унахгүй');
+    eq(F.ownerCapitalUnverifiedTop([P('V', 1000, 10, true, true)], 5), [], 'баталгаажсан бараа жагсаалтад орохгүй');
+  }
   eq(oc.coBuy, 80000, 'эзэн: компанийн хөрөнгө авалт (61xx–67xx)');
   eq(oc.coOut, 120000, 'эзэн: компанийн данснаас эзэн рүү гарсан (6900)');
   eq(oc.funded, 200000, 'эзэн: компанийн санхүүжилт нийт');
@@ -20292,6 +20308,7 @@ async function swFetchTests() {
   const card = src.slice(src.indexOf('function psOwnerCapitalHtml'), src.indexOf('function openOwnerCapitalAct'));
   ok(/state\.isCEO/.test(card), 'scan: эзний өглөг зөвхөн CEO-д');
   ok(/ownerVerified/.test(card) && /oc\.gap/.test(card), 'scan: картад баталгаажсан дүн ба цоорхой');
+  ok(/ownerCapitalUnverifiedTop\(state\.products/.test(card), 'scan: картын «баталгаажаагүй» хайрцаг хамгийн том мөрүүдийг нэрээр нь харуулна');
 
   const act = src.slice(src.indexOf('function openOwnerCapitalAct'), src.indexOf('function renderProductSheet'));
   ok(/ownerCapitalRows\(/.test(act), 'scan: акт баталгаажсан жагсаалтаас гарна');

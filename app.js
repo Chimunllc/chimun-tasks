@@ -26596,7 +26596,7 @@ function psDeprecSummary() {
     + (d.noDateN ? ` · <span class="ps-dep-warn">⚠ ${d.noDateN} бараа авсан огноогүй</span>` : '')
     + (d.doneN ? ` · ✓ ${d.doneN} бүрэн элэгдсэн` : '')
     + `<br><span class="mut">Санхүү → Тайлан дахь элэгдлийн мөр нь ЯГ энэ тоо. Доорх бараа бүрийн мөр үүнийг бүрдүүлнэ.</span>`
-    + `<br><span class="mut">M-Event + NOMAAD-д бүртгэсэн бараа 50/50; Чимун ХХК-д бүртгэсэн (барилга, машин) M-Event, NOMAAD, Катеринг 3-т тэнцүү; Катеринг-д бүртгэсэн нь зөвхөн катеринг.</span></div>`;
+    + `<br><span class="mut">M-Event + NOMAAD-д бүртгэсэн бараа 50/50; Чимун ХХК-д бүртгэсэн (барилга, машин) M-Event, NOMAAD, Катеринг 3-т тэнцүү; Катеринг-д бүртгэсэн нь зөвхөн катеринг.</span>`
     // Бүлгийн нас нь тайлангийн ашиг ба COO-гийн хувийг хөдөлгөдөг тул зөвхөн CEO засна.
     + (state.isCEO ? `<br><button type="button" class="btn dpl-open ui-raw" data-dep-lives>📉 Элэгдлийн нас (төрлөөр)</button>` : '')
     + `</div>`;

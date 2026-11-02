@@ -17989,6 +17989,23 @@ async function swFetchTests() {
   runIn('state.appConfig = ' + saved + ';');
   eq(deprecYearsFor('Агуулах 18x24 сендвичин барилга').years, 15, 'тохиргоо сэргээгдсэн: анхдагч 15 жил');
 
+  /* — ДҮРСЛЭГДЭЖ БАЙНА УУ: товч жинхэнээн гарна (2026-11-02) —
+     #912-ийг нийлүүлэхэд `</div>\`;` дунд нь үлдэж, `return` товчны мөрөөс ӨМНӨ
+     хаагдсан → товч хэзээ ч дүрслэгдээгүй, харин доорх scan шалгалт текстийг л
+     хардаг тул ногоон байсан. Тиймээс функцийг ДУУДАЖ гаралтыг шалгана. */
+  const savedPs = runIn('JSON.stringify({ isCEO: state.isCEO, products: state.products })');
+  runIn("state.products = [{ name: 'Агуулах 18x24 сендвичин барилга', cost: 600000000, qty_chimun: 1, purchase_date: '2026-01-01' }];");
+  runIn('state.isCEO = true;');
+  const sumCeo = runIn('psDeprecSummary()');
+  ok(/<button[^>]*data-dep-lives[^>]*>📉 Элэгдлийн нас/.test(sumCeo), 'товч: CEO-д «Элэгдлийн нас» товч ДҮРСЛЭГДЭНЭ');
+  eq((sumCeo.match(/<div/g) || []).length, (sumCeo.match(/<\/div>/g) || []).length, 'товч: CEO-ийн нийлбэрийн div-үүд тэнцүү хаагдсан');
+  ok(sumCeo.indexOf('data-dep-lives') >= 0 && sumCeo.indexOf('data-dep-lives') < sumCeo.lastIndexOf('</div>'), 'товч: нийлбэрийн хайрцгийн ДОТОР байна');
+  runIn('state.isCEO = false;');
+  const sumOther = runIn('psDeprecSummary()');
+  ok(!/data-dep-lives/.test(sumOther), 'товч: CEO бус хүнд харагдахгүй');
+  ok(/ps-dep-sum/.test(sumOther) && /<\/div>\s*$/.test(sumOther), 'товч: CEO бус хүнд ч нийлбэр бүтэн хаагдана');
+  { const sv = JSON.parse(savedPs); runIn('state.isCEO = ' + JSON.stringify(sv.isCEO) + '; state.products = ' + JSON.stringify(sv.products || []) + ';'); }
+
   // — SCAN: цонх CEO-д, бусад тохиргоог хадгалж, тайлантай ижил функцээр —
   const md = src.slice(src.indexOf('async function openDeprecLivesModal('), src.indexOf('/* 📉 ЭЛЭГДЛИЙГ ЖАГСААЛТАД ИЛ БИЧНЭ'));
   ok(/if \(!state\.isCEO\)/.test(md), 'scan: элэгдлийн нас засах цонх зөвхөн CEO');

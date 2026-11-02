@@ -2242,6 +2242,35 @@ function accrualMonthOptions(sel) {
   if (sel && !opts.includes(sel)) opts.push(sel);
   return opts.map(v => `<option value="${v}"${v === sel ? ' selected' : ''}>${v}</option>`).join('');
 }
+/* ─── ЦАЛИНГИЙН ГҮЙЛГЭЭ ↔ АЖИЛТАН ХОЛБООС (2026-11-02, CEO) ────────────────────
+   Цалин өөр хүний дансаар (ээж, нөхөр, найз) авагдаж болдог тул «хүлээн авагч» нь
+   ажилтны нэр БИШ байх тохиолдол олон — тэр үед цалингийн «Олгосон» дутуу харагддаг
+   байв (Э.Очбаяр: 5 гүйлгээ 1,800,000₮-ийн ганцхан нь л тоологдож, үлдэгдэл
+   3,701,104₮ гэж буруу гарсан; зөв нь 2,401,104₮).
+   ⛔ ХОЛБООС = гүйлгээний `justification` дахь ⟦EMP|ажилтны түлхүүр⟧ токен. ⟦ACCR⟧,
+     ⟦LNK⟧-тэй ИЖИЛ загвар — банкны хуулга n8n-ээр бичигддэг тул DB багана нэмбэл
+     n8n-ийн mapping хөндөгдөнө. Нэг мөрд ГАНЦ токен: `withSalaryLinkToken` хуучныг
+     заавал хасч шинийг тавина → нэг гүйлгээ = нэг ажилтан (давхар холбох боломжгүй).
+   ⛔ САР = ⟦ACCR|YYYY-MM⟧ (ноогдох сар) — ГАНЦ эх сурвалж. Сар хоёр газар хадгалбал
+     зөрнө; урьдчилж авсан цалин (9/26-нд авсан 10 сарын цалин) ч мөн ингэж 10 сард
+     тоологдоно. Хоёр сарын цалинг ганц гүйлгээгээр авсан бол мөрийг хоёр болгож хуваана.
+   ⛔ Холбосон мөр ЗӨВХӨН тэр ажилтанд тоологдоно — данс/нэрээр өөр хүнд таарсан ч биш
+     (Т.Солонгын дансаар Очбаярт явсан цалин Солонгод тоологдохгүй). */
+const SAL_LINK_CAT_RE = /^7[12]00/;
+function finIsSalaryLinkCat(category) { return SAL_LINK_CAT_RE.test(String(category || '')); }
+function salaryLinkKey(key) { return String(key == null ? '' : key).replace(/[⟦⟧|]/g, '').trim(); }
+function parseSalaryLinkToken(s) { const m = String(s || '').match(/⟦EMP\|([^⟧|]+)⟧/); return m ? m[1].trim() : ''; }
+function stripSalaryLinkToken(s) { return String(s || '').replace(/\s*⟦EMP\|[^⟧]*⟧/g, '').trim(); }
+function withSalaryLinkToken(s, key) {
+  const base = stripSalaryLinkToken(s), k = salaryLinkKey(key);
+  return k ? `${base} ⟦EMP|${k}⟧`.trim() : base;
+}
+// Ажилтны түлхүүр солигдсон (утас/мэйл) байж болно → `canonKey`-ээр ижилсүүлж тулгана
+function salaryLinkSame(a, b) {
+  const x = salaryLinkKey(a), y = salaryLinkKey(b);
+  if (!x || !y) return false;
+  return x === y || (typeof canonKey === 'function' && canonKey(x) === canonKey(y));
+}
 /* ⚡ САНХҮҮГИЙН МӨР → ДААЛГАВАР ХЭЛБЭР, САНАХ ОЙТОЙ (2026-10-05).
    Тайлан/COO дэлгэц сар бүрд БҮХ 1,600 мөрийг дахин хувиргадаг (COO: 20,709
    дуудалт = 279ms-ийн 228ms). Мөр бүрийн үр дүнг ХАДГАЛЖ, мөр өөрчлөгдөөгүй бол
@@ -2285,7 +2314,7 @@ function _financeAsTaskBuild(r) {
   return {
     id: r.id,
     title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${_mnNum(Number(r.amount || 0))}₮`,
-    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + stripSrcToken(stripCardToken(stripAccrualToken((r.justification || '').replace(/\s*⟦PENDST⟧/g, '')))),
+    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + stripSrcToken(stripCardToken(stripSalaryLinkToken(stripAccrualToken((r.justification || '').replace(/\s*⟦PENDST⟧/g, ''))))),
     branch: 'shared',
     project: 'finance',
     assignee,
@@ -8887,6 +8916,83 @@ async function classifyMyCardExpense(id, subCode, brCode, note, opts = {}) {
   try { await saveFinanceRequest(r); if (!opts.silent) showToast('Батлагдлаа ✓', 'success', 1600); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
   if (!opts.silent) render();
 }
+/* ── ЦАЛИНГИЙН ГҮЙЛГЭЭГ АЖИЛТАНД ХОЛБОХ талбар (2026-11-02) ───────────────────────
+   «Гүйлгээ засах» цонх ба цалингийн самбарын «🔗 Холбох» цонх ХОЁУЛАА ижил жагсаалт,
+   ижил санал, ижил тайлбар ашиглана. Ажилтны жагсаалт = ERP-ийн «Ажилчид» (`TEAM`). */
+function salaryEmpOptions(sel) {
+  const tm = (TEAM || []).filter(m => personKey(m));
+  const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn');
+  const opt = (m) => { const k = salaryLinkKey(personKey(m)); return `<option value="${escapeHtml(k)}"${salaryLinkSame(k, sel) ? ' selected' : ''}>${escapeHtml(m.name || k)}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`; };
+  const act = tm.filter(m => String(m.status || '') !== 'гарсан').sort(byName), left = tm.filter(m => String(m.status || '') === 'гарсан').sort(byName);
+  // Холбосон хүн багаас хасагдсан байж болно — сонголт чимээгүй алга болохгүй
+  const orphan = (sel && !tm.some(m => salaryLinkSame(personKey(m), sel))) ? `<option value="${escapeHtml(salaryLinkKey(sel))}" selected>${escapeHtml(salaryLinkKey(sel))} (багт алга)</option>` : '';
+  return '<option value="">— ажилтан сонгох —</option>' + orphan + act.map(opt).join('')
+    + (left.length ? `<optgroup label="Ажлаас гарсан">${left.map(opt).join('')}</optgroup>` : '');
+}
+// Санал ХААНАСАА гарсныг хэлнэ — хэрэглэгч шалгаж баталгаажуулах ёстой (таамаглал нуугдахгүй)
+function salaryLinkHintText(sug, chosen, cur) {
+  if (chosen && cur && salaryLinkSame(chosen, cur)) return '🔗 Энэ гүйлгээ энэ ажилтанд холбогдсон байна.';
+  const alt = sug.alt ? ` Гүйлгээний утганд «${memberName(sug.alt) || sug.alt}» гэж бичсэн байна.` : '';
+  if (chosen && sug.key && salaryLinkSame(chosen, sug.key)) {
+    const why = sug.basis === 'name' ? 'хүлээн авагчийн нэрээр' : (sug.basis === 'acct' ? 'дансаар' : 'гүйлгээний утгын нэрээр');
+    return `💡 ${why[0].toUpperCase() + why.slice(1)} таарсан санал — зөв эсэхийг шалгана уу.${alt}`;
+  }
+  if (!chosen) return 'Хүлээн авагчийн нэр ажилтантай таарсангүй (өөр хүний данс байж болно) — ажилтнаа өөрөө сонгоно уу.' + alt;
+  return alt.trim();
+}
+/* Цалингийн сар/ажилтан хадгалах — ГАНЦ газар. ⛔ Токен нэг л удаа тавигдана (давхар холбохгүй);
+   сар = ⟦ACCR⟧ (тайлан, олголт хоёулаа ижил сараар тоолно). */
+async function saveSalaryLink(r, key, ym) {
+  const prev = finAccrualMonth(r);
+  try { await loadClosedMonths(true); } catch (e) {}   // сүлжээ унасан нь хадгалахыг БҮҮ зогсоо
+  if (ym !== prev) { assertMonthOpen(prev, 'цалингийн сар солих'); assertMonthOpen(ym, 'цалингийн сар солих'); }
+  let j = stripAccrualToken(r.justification);
+  if (/^\d{4}-\d{2}$/.test(ym)) j = `${j} ⟦ACCR|${ym}⟧`.trim();
+  r.justification = withSalaryLinkToken(j, key);
+  await saveFinanceRequest(r);
+}
+function openSalaryLinkModal(id) {
+  const r = (state.financeRequests || []).find(x => x && x.id === id);
+  if (!r) { showToast('Гүйлгээ олдсонгүй — хуудсаа шинэчилнэ үү', 'warn', 3000); return; }
+  if (!(state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()))) { showToast('Танд гүйлгээ холбох эрх алга', 'warn', 3000); return; }
+  const cur = parseSalaryLinkToken(r.justification);
+  const sug = salaryLinkSuggest(r, TEAM || [], salaryFinSource());
+  const start = cur || sug.key;
+  document.getElementById('sal-link-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'sal-link-modal';
+  modal.innerHTML = `<div class="modal ex-modal">
+    <div class="modal-head"><b class="ex-t">🔗 Цалингийн гүйлгээ холбох</b><button class="modal-x" id="sl-close" aria-label="Хаах">✕</button></div>
+    <div class="ex-meta">🗓 ${escapeHtml(String(r.requested_at || '').slice(0, 10))} · 👤 ${escapeHtml(r.beneficiary || '—')}</div>
+    <div class="ex-amt">${fmtMoney(r.amount)}</div>
+    ${r.purpose ? `<div class="ex-ro">${escapeHtml(salaryPayLabel(r.purpose))}</div>` : ''}
+    <label class="fld" for="sl-emp">Аль ажилтны цалин вэ</label>
+    <select id="sl-emp">${salaryEmpOptions(start)}</select>
+    <div class="ex-hint" id="sl-hint"></div>
+    <label class="fld" for="sl-ym">Аль сарын цалин <span class="fld-opt">(урьдчилж авсан бол авах ёстой сар)</span></label>
+    <select id="sl-ym">${accrualMonthOptions(finAccrualMonth(r))}</select>
+    <div class="modal-actions"><button class="btn" id="sl-cancel">Болих</button><button class="btn btn-primary" id="sl-save">💾 Холбох</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  const empSel = modal.querySelector('#sl-emp'), hint = modal.querySelector('#sl-hint');
+  const showHint = () => { hint.textContent = salaryLinkHintText(sug, empSel.value, cur); };
+  empSel.addEventListener('change', showHint); showHint();
+  modal.querySelector('#sl-close').onclick = close;
+  modal.querySelector('#sl-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#sl-save').onclick = async () => {
+    const key = empSel.value, ym = modal.querySelector('#sl-ym').value;
+    if (!key) { showToast('Ажилтнаа сонгоно уу', 'warn', 2500); return; }
+    const other = key !== cur ? salaryLinkConflict(r, key, state.salaryPayments) : '';
+    if (other && !(await showConfirm(`Энэ гүйлгээ аль хэдийн «${other}»-ийн олголтоор бүртгэгдсэн байна. Энэ ажилтанд холбовол «${other}»-ийн олголтоос хасагдана. Үргэлжлүүлэх үү?`, { okText: 'Холбох' }))) return;
+    const btn = modal.querySelector('#sl-save'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
+    try { await saveSalaryLink(r, key, ym); showToast('Холбогдлоо ✓', 'success', 1800); }
+    catch (e) { showToast(e.message || 'Хадгалах алдаа', 'error', 4000); btn.disabled = false; btn.textContent = '💾 Холбох'; return; }
+    close(); render();
+  };
+  modal.classList.add('open');
+}
 // ── МИНИМАЛ зардлын модал — хуулга суурьтай (утга/огноо/данс + ангилал/салбар засах). Хүсэлт/урсгал байхгүй. ──
 function openExpenseModal(id) {
   const r = (state.financeRequests || []).find(x => x.id === id);
@@ -8917,9 +9023,14 @@ function openExpenseModal(id) {
       <select id="ex-main">${mainCatOptions(curMain)}</select>
       <select id="ex-sub">${subCatOptions(curMain, curSub)}</select>
     </div>
+    <div class="ex-sal" id="ex-sal" hidden>
+      <label class="fld" for="ex-emp">Аль ажилтны цалин вэ</label>
+      <select id="ex-emp">${salaryEmpOptions(parseSalaryLinkToken(r.justification))}</select>
+      <div class="ex-hint" id="ex-emp-hint"></div>
+    </div>
     <label class="fld">Салбар</label>
     <select id="ex-branch">${brOpts(curBr)}</select>
-    <label class="fld">Аль сарын зардал <span class="fld-opt">(гүйцэтгэлийн сар)</span></label>
+    <label class="fld" id="ex-accr-l">Аль сарын зардал <span class="fld-opt">(гүйцэтгэлийн сар)</span></label>
     <select id="ex-accr">${accrualMonthOptions(parseAccrualToken(r.justification) || finAccrualAuto(r.category, r.requested_at))}</select>
     <div class="modal-actions">
       ${state.isCEO ? '<button id="ex-del" class="btn ex-del">Устгах</button>' : '<span></span>'}
@@ -8935,12 +9046,34 @@ function openExpenseModal(id) {
   if (canEdit) {
     const mainSel = modal.querySelector('#ex-main'), subSel = modal.querySelector('#ex-sub'), brSel = modal.querySelector('#ex-branch');
     const syncAsset = () => { const asset = mainSel.value === '6000'; brSel.disabled = asset; brSel.style.opacity = asset ? '.45' : ''; };
-    mainSel.onchange = () => { subSel.innerHTML = subCatOptions(mainSel.value, ''); syncAsset(); };
-    syncAsset();
+    /* 🔗 Цалингийн ангилал (7100/7200) → «Ажилтан» + «Цалингийн сар». Сар нь зардлын ноогдох сартай
+       ЯГ ИЖИЛ талбар (`#ex-accr`) — хоёр сар хадгалахгүй, зөвхөн шошго нь «цалин» болно.
+       Ажилтныг хүлээн авагчийн нэрээр САНАЛ болгоно; таарахгүй бол (өөр хүний данс) гараар сонгоно. */
+    const salBox = modal.querySelector('#ex-sal'), empSel = modal.querySelector('#ex-emp'), empHint = modal.querySelector('#ex-emp-hint');
+    const accSel = modal.querySelector('#ex-accr'), accLbl = modal.querySelector('#ex-accr-l');
+    const curLink = parseSalaryLinkToken(r.justification);
+    // Санал нь цалингийн ангилал сонгогдсон үед л бодогдоно (бусад гүйлгээ бүрд 170 нэр тулгахгүй)
+    let _sug = null;
+    const getSug = () => _sug || (_sug = salaryLinkSuggest(r, TEAM || [], salaryFinSource()));
+    let accTouched = !!parseAccrualToken(r.justification), empTouched = false;
+    accSel.addEventListener('change', () => { accTouched = true; });
+    const syncSal = () => {
+      const isSal = finIsSalaryLinkCat(subSel.value);
+      salBox.hidden = !isSal;
+      accLbl.innerHTML = isSal ? 'Аль сарын цалин <span class="fld-opt">(урьдчилж авсан бол авах ёстой сар)</span>' : 'Аль сарын зардал <span class="fld-opt">(гүйцэтгэлийн сар)</span>';
+      if (!accTouched) { const auto = finAccrualAuto(subSel.value, r.requested_at); if ([...accSel.options].some(o => o.value === auto)) accSel.value = auto; }
+      if (isSal && !curLink && !empTouched && !empSel.value && getSug().key) empSel.value = getSug().key;
+      empHint.textContent = isSal ? salaryLinkHintText(getSug(), empSel.value, curLink) : '';
+    };
+    empSel.addEventListener('change', () => { empTouched = true; syncSal(); });
+    subSel.addEventListener('change', syncSal);
+    mainSel.onchange = () => { subSel.innerHTML = subCatOptions(mainSel.value, ''); syncAsset(); syncSal(); };
+    syncAsset(); syncSal();
     modal.querySelector('#ex-save').onclick = async () => {
       const sub = subSel.value; if (!sub) { showToast('Дэд ангиллаа сонгоно уу', 'warn', 2500); return; }
       const br = brSel.value; if (!br && !isAssetCat(sub)) { showToast('Салбар сонгоно уу', 'warn', 3000); return; }
       const accChosen = modal.querySelector('#ex-accr').value;
+      const empChosen = finIsSalaryLinkCat(sub) ? empSel.value : '';   // цалин биш ангилалд холбоос үлдэхгүй
       /* 🔒 Зардлын САР нь мөнгийг хөдөлгөнө (тайлан, салбарын ашиг, COO-гийн 30%)
          тул ХУУЧИН ба ШИНЭ сарыг ХОЁУЛАНГ нь шалгана — эс бөгөөс хаасан сараас
          зардлыг гаргах/оруулах зам нээлттэй үлдэнэ. */
@@ -8949,6 +9082,9 @@ function openExpenseModal(id) {
       try {
         if (accChosen !== accPrev) { assertMonthOpen(accPrev, 'зардлын сар солих'); assertMonthOpen(accChosen, 'зардлын сар солих'); }
       } catch (e) { showToast(e.message || 'Сар хаагдсан', 'warn', 6000); return; }
+      // Энэ гүйлгээ өөр хүний олголтоор аль хэдийн бүртгэгдсэн бол чимээгүй давхарлахгүй — асууна
+      const otherPaid = (empChosen && empChosen !== curLink) ? salaryLinkConflict(r, empChosen, state.salaryPayments) : '';
+      if (otherPaid && !(await showConfirm(`Энэ гүйлгээ аль хэдийн «${otherPaid}»-ийн олголтоор бүртгэгдсэн байна. Энэ ажилтанд холбовол «${otherPaid}»-ийн олголтоос хасагдана. Үргэлжлүүлэх үү?`, { okText: 'Холбох' }))) return;
       const btn = modal.querySelector('#ex-save'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
       r.category = sub; r.dept_branch = isAssetCat(sub) ? 'ХХК' : br;
       if (t) { const base = stripCardToken(r.justification); r.justification = `${base} ${encodeCardToken(t.last4, t.ownerKey || state.me, false)}`.trim(); }
@@ -8958,6 +9094,7 @@ function openExpenseModal(id) {
          ангиллын сонголт огт үлддэггүй байв. Хүний сонголт > таамаг. */
       r.justification = stripAccrualToken(r.justification);
       if (/^\d{4}-\d{2}$/.test(accChosen)) r.justification = `${r.justification} ⟦ACCR|${accChosen}⟧`.trim();
+      r.justification = withSalaryLinkToken(r.justification, empChosen);   // нэг мөрд ГАНЦ холбоос (хуучныг хасна)
       saveExpenseLearn(r.purpose || r.beneficiary || '', { cat: sub, branch: isAssetCat(sub) ? '' : br });
       saveAcctLearn(expRecAcct(r), { cat: sub, branch: isAssetCat(sub) ? '' : br });   // ДАНС-суурьтай суралцлага
       try { await saveFinanceRequest(r); showToast('Хадгаллаа ✓', 'success', 1800); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
@@ -15692,11 +15829,7 @@ function myPayCardHtml(me) {
   const paid = salaryPaidFor(key, month);
   const row = (lbl, val, cls) => `<div class="pay-row${cls ? ' ' + cls : ''}"><span class="pay-lbl">${lbl}</span><span class="pay-val">${val}</span></div>`;
   const myPays = salaryPaymentsFor(state.salaryPayments, key, month);
-  const myPayList = myPays.length
-    ? `<div class="pay-plist">${myPays.map(x => `<div class="pay-pitem">
-        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
-        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`
-    : '';
+  const myPayList = salaryPayListHtml(myPays, month);
   /* ⛔ ЭХЛЭХ САРААС ӨМНӨХ САР = ТҮҮХ (CEO шийдвэр). Тэр цалинг гараар тооцож
      олгосон тул аппын бодолт ХУДАЛ үлдэгдэл үзүүлнэ — ажилтан «надад дутуу
      олгосон» гэж гомдоно. Зөвхөн олгосон дүнг харуулна. */
@@ -15739,11 +15872,7 @@ function myPayCardHtml(me) {
   // Олголтын МӨР бүрийг ил жагсаана — «олгосон 600,000₮» гэсэн ганц тоо нь хэзээ,
   // хэдэн удаа, ямар утгаар орсныг хэлдэггүй тул ажилтан данс нь шалгаж чаддаггүй байв.
   const pays = salaryPaymentsFor(state.salaryPayments, key, month);
-  const payList = pays.length
-    ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
-        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.shifted ? ` <span class="pay-pshift" title="Банкнаас ${escapeHtml(x.bankYm)}-д гарсан, ${escapeHtml(month)}-д ноогдуулсан">⇄</span>` : ''}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
-        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`
-    : '';
+  const payList = salaryPayListHtml(pays, month);
   // ↪ Өмнөх сарын илүү олголт энэ сараас хасагдана — самбартай ИЖИЛ дүрэм (`salaryCarryIn`).
   //   Өмнөх сарын ирцийг нэг л удаа татна (алдаа гарвал давталтгүй).
   const carry = salaryCarryIn(key, month, m => {
@@ -20066,7 +20195,7 @@ function salaryPayMonth(p, finRows) {
 function salaryPaymentsFor(rows, personKey, ym, finRows) {
   const fin = finRows || salaryFinSource();
   const own = (rows || [])
-    .filter(p => p && p.person_key === personKey && salaryPayMonth(p, fin) === ym)
+    .filter(p => p && p.person_key === personKey && salaryPayMonth(p, fin) === ym && !salaryPayLinkedElsewhere(p, personKey, fin))
     .map(p => {
       const bankYm = String(p.paid_at || '').slice(0, 7);
       return { amount: Number(p.amount) || 0, at: p.paid_at || '', note: p.note || '',
@@ -20249,39 +20378,177 @@ function salaryFinPayments(finRows, key, ym, paidRows, team, owners) {
   const mm = tm.find(x => (typeof personKey === 'function' ? personKey(x) : '') === key);
   if (!mm) return [];
   const own = owners || (team ? empAcctOwners(tm, list) : empAcctOwnersCached(list));
-  const acct = String(mm.bank_account || '').replace(/\D/g, '');
-  const nm = _salNameKey(mm.name);
   const have = new Set(paid.map(p => salaryPayFp(p && p.note)).filter(Boolean));
+  // Холбосон мөр ЗӨВХӨН энэ хүний өөрийн олголтын бичлэгтэй давхцахад алгасагдана
+  const haveMine = new Set(paid.filter(p => p && salaryLinkSame(p.person_key, key)).map(p => salaryPayFp(p.note)).filter(Boolean));
   const out = [];
   for (const r of list) {
     if (!r || r.status === 'deleted') continue;
-    if (String(r.category || '').slice(0, 4) !== SALARY_FIN_CAT) continue;
-    if (salaryIsLoan(r.purpose)) continue;   // ЗЭЭЛ = олголт БИШ (доорх тайлбарыг үз)
-    const b = String(r.beneficiary || ''), bd = b.replace(/\D/g, '');
-    /* ⚠ Хуулгаас ирсэн мөрд хүлээн авагч нь НЭР («ЭНЭБИШ НИНЖДОЛГОР»), данс нь
-       IBAN хэлбэрээр `account_number`-д байдаг (MN41…5029853564) — beneficiary-ээр
-       л тулгавал 4,000,000₮-ийн олголт самбараас алга болж байв. */
-    const ad = String(r.account_number || '').replace(/\D/g, '');
-    // ⚠ Данс нь урт/цөм хоёр хэлбэртэй тул `acctSame` (суффикс) -ээр тулгана.
-    const acctHit = acct && ((bd && acctSame(bd, acct)) || (ad && acctSame(ad, acct)));
-    const guessHit = (bd && own.guess[bd] === key) || (ad && own.guess[ad] === key);
-    /* ⛔ ХҮЛЭЭН АВАГЧ НЭРЭЭР БИЧИГДСЭН МӨРИЙГ АЛДАЖ БОЛОХГҮЙ (2026-10-03).
-       Гараар бүртгэсэн олголтын `beneficiary` нь «Хишигтогтох» гэж инициалгүй
-       бичигддэг атал ажилтны нэр «Б.Хишигтогтох» — ЯГ ТЭНЦҮҮГЭЭР тулгаснаас
-       болж 5–7 сарын олголт (урьдчилгаа ч) самбарт ОГТ гарахгүй байв.
-       `nameOwner` нь бүтэн нэр → инициал+цөм → цөм гэсэн 3 шатаар, хоёрдмол бол
-       ТААХГҮЙ. ⚠ Зөвхөн ДАНС БИШ (нэр) хүлээн авагчид — дансыг дээр тулгасан. */
-    const nameHit = !bd && (own.nameOwner ? own.nameOwner(b) === key : (nm && _salNameKey(b) === nm));
-    if (!(acctHit || nameHit || guessHit)) continue;
+    const lk = parseSalaryLinkToken(r.justification);
+    if (lk) {
+      /* ⛔ ГАРААР ХОЛБОСОН МӨР: ЗӨВХӨН холбосон хүнд тоологдоно, данс/нэрээр өөр
+         хүнд таарсан ч БИШ. Ангилал 7100/7200 байх ёстой; «Цагийн цалин ·» нь цагийн
+         ажилтны модулийнх (тэнд тоологддог) тул энд давхар оруулахгүй. */
+      if (!salaryLinkSame(lk, key) || !finIsSalaryLinkCat(r.category) || salaryIsHourlyRow(r)) continue;
+    } else {
+      if (String(r.category || '').slice(0, 4) !== SALARY_FIN_CAT) continue;
+      if (salaryIsLoan(r.purpose)) continue;   // ЗЭЭЛ = олголт БИШ (доорх тайлбарыг үз)
+      if (!salaryAutoHit(r, mm, own, key)) continue;
+    }
     const fp = salaryPayFp(r.justification);
-    if (fp && have.has(fp)) continue;
+    if (fp && (lk ? haveMine.has(fp) : have.has(fp))) continue;
     if ((typeof finAccrualMonth === 'function' ? finAccrualMonth(r) : '') !== ym) continue;
     const bankYm = String(r.requested_at || '').slice(0, 7);
+    const who = String(r.beneficiary || '').trim();
     out.push({ amount: Number(r.amount) || 0, at: r.requested_at || '', note: r.purpose || '',
                label: salaryPayLabel(r.purpose), bankYm,
-               shifted: !!bankYm && bankYm !== ym, fromFin: true });
+               shifted: !!bankYm && bankYm !== ym, fromFin: true,
+               // Хүлээн авагчийн НЭР — өөр хүний дансаар авсан бол хэнд явсныг харуулна (дансны дугаар биш)
+               who: /^[\d\s-]+$/.test(who) ? '' : who, linked: !!lk });
   }
   return out;
+}
+/* Данс/нэрээр АВТОМАТААР таарсан эсэх (холбоосгүй мөрийн дүрэм — урьдын логик хэвээр).
+   ⚠ `salaryFinPayments` ба `payrollUnlinkedFin` ХОЁУЛАА үүнийг дууддаг: «холбогдоогүй»
+   анхааруулга тоолдог мөрийг олголт ч тоолдог — хоёр өөр шүүлт болохгүй. */
+function salaryAutoHit(r, mm, own, key) {
+  const acct = String(mm.bank_account || '').replace(/\D/g, '');
+  const nm = _salNameKey(mm.name);
+  const b = String(r.beneficiary || ''), bd = b.replace(/\D/g, '');
+  /* ⚠ Хуулгаас ирсэн мөрд хүлээн авагч нь НЭР («ЭНЭБИШ НИНЖДОЛГОР»), данс нь
+     IBAN хэлбэрээр `account_number`-д байдаг (MN41…5029853564) — beneficiary-ээр
+     л тулгавал 4,000,000₮-ийн олголт самбараас алга болж байв. */
+  const ad = String(r.account_number || '').replace(/\D/g, '');
+  // ⚠ Данс нь урт/цөм хоёр хэлбэртэй тул `acctSame` (суффикс) -ээр тулгана.
+  const acctHit = acct && ((bd && acctSame(bd, acct)) || (ad && acctSame(ad, acct)));
+  const guessHit = (bd && own.guess[bd] === key) || (ad && own.guess[ad] === key);
+  /* ⛔ ХҮЛЭЭН АВАГЧ НЭРЭЭР БИЧИГДСЭН МӨРИЙГ АЛДАЖ БОЛОХГҮЙ (2026-10-03).
+     Гараар бүртгэсэн олголтын `beneficiary` нь «Хишигтогтох» гэж инициалгүй
+     бичигддэг атал ажилтны нэр «Б.Хишигтогтох» — ЯГ ТЭНЦҮҮГЭЭР тулгаснаас
+     болж 5–7 сарын олголт (урьдчилгаа ч) самбарт ОГТ гарахгүй байв.
+     `nameOwner` нь бүтэн нэр → инициал+цөм → цөм гэсэн 3 шатаар, хоёрдмол бол
+     ТААХГҮЙ. ⚠ Зөвхөн ДАНС БИШ (нэр) хүлээн авагчид — дансыг дээр тулгасан. */
+  const nameHit = !bd && (own.nameOwner ? own.nameOwner(b) === key : (nm && _salNameKey(b) === nm));
+  return !!(acctHit || nameHit || guessHit);
+}
+// «Цагийн цалин ·» = цагийн ажилтны модулийн мөр (`hourlyPayouts`) — тэнд тоологддог
+function salaryIsHourlyRow(r) { return /^Цагийн цалин ·/.test(String((r && r.purpose) || '')); }
+/* Олголтын бичлэг (`salary_payments`, `[#fp]`) нь БУСАД хүнд холбосон гүйлгээг заасан бол
+   энэ хүний олголтод ОРОХГҮЙ — гүйлгээ холбосон хүнд л нэг удаа тоологдоно. */
+function salaryPayLinkedElsewhere(p, personKey, finRows) {
+  const fp = salaryPayFp(p && p.note);
+  if (!fp) return false;
+  const row = (finRows || []).find(r => r && r.status !== 'deleted' && salaryPayFp(r.justification) === fp);
+  const lk = row ? parseSalaryLinkToken(row.justification) : '';
+  return !!lk && !salaryLinkSame(lk, personKey);
+}
+/* Тухайн сард гараар холбосон ажилтнуудын түлхүүр — самбарын жагсаалтад ОРУУЛАХ
+   (суурь цалин/ирцгүй ч олголттой хүн алдагдахгүй). */
+function salaryLinkedKeys(finRows, ym) {
+  const out = new Set();
+  (finRows || []).forEach(r => {
+    if (!r || r.status === 'deleted' || !finIsSalaryLinkCat(r.category) || salaryIsHourlyRow(r)) return;
+    const lk = parseSalaryLinkToken(r.justification);
+    if (lk && finAccrualMonth(r) === ym) out.add(lk);
+  });
+  return out;
+}
+/* ⚠ «АЖИЛТАНД ХОЛБОГДООГҮЙ ЦАЛИНГИЙН ГҮЙЛГЭЭ» — тухайн сард (ноогдох сараар) 7100/7200
+   ангилалтай, гэвч ямар ч ажилтны олголтод ОРООГҮЙ мөр. Чимээгүй цоорхойг ИЛ хэлнэ:
+   хүн «бүртгэл дутуу» гэдгийг шууд харна, холбож засна.
+   Холбогдсон гэдэг нь: гараар холбосон (багт байгаа хүнд) ЭСВЭЛ олголтын бичлэгт `[#fp]`-ээр
+   орсон ЭСВЭЛ данс/нэрээр хэн нэгэнд автоматаар таарсан (7100). Зээл болон «Цагийн цалин ·» орохгүй. */
+function payrollUnlinkedFin(finRows, team, paidRows, ym, owners) {
+  const tm = (team || []).filter(m => m && (typeof personKey === 'function' ? personKey(m) : ''));
+  const list = finRows || [];
+  const own = owners || empAcctOwners(tm, list);
+  const have = new Set((paidRows || []).map(p => salaryPayFp(p && p.note)).filter(Boolean));
+  const out = [];
+  for (const r of list) {
+    if (!r || r.status === 'deleted' || !finIsSalaryLinkCat(r.category) || salaryIsHourlyRow(r)) continue;
+    if (finAccrualMonth(r) !== ym) continue;
+    const lk = parseSalaryLinkToken(r.justification);
+    if (lk) { if (tm.some(m => salaryLinkSame(lk, personKey(m)))) continue; }   // холбогдсон (багт байгаа хүнд)
+    else {
+      const fp = salaryPayFp(r.justification);
+      if (fp && have.has(fp)) continue;
+      if (salaryIsLoan(r.purpose)) continue;
+      if (String(r.category || '').slice(0, 4) === SALARY_FIN_CAT && tm.some(m => salaryAutoHit(r, m, own, personKey(m)))) continue;
+    }
+    out.push(r);
+  }
+  return out.sort((a, b) => String(a.requested_at || '').localeCompare(String(b.requested_at || '')));
+}
+/* ── ХҮЛЭЭН АВАГЧИЙН НЭРЭЭР АЖИЛТАН САНАЛ БОЛГОХ (2026-11-02) ─────────────────
+   Банк нэрийг кирилл ЭСВЭЛ ЛАТИНААР, том үсгээр бичдэг, ажилтан «Э.Очбаяр» гэж
+   инициалтай хадгалагдсан байдаг («ОЧБАЯР ЭНХТАЙВАН» ↔ «Э.Очбаяр»). Тулгахын өмнө
+   ХОЁР талыг ижил хэлбэрт хөрвүүлнэ: латин → кирилл, дараа нь ө/ү, й/и, я/а, э/е
+   зэрэг андуурагддаг үсгийг нэгтгэнэ. Таних дүрэм нь `empAcctOwners.nameOwner`
+   (бүтэн нэр → инициал+цөм → цөм; ХОЁРДМОЛ бол ТААХГҮЙ) — шинэ дүрэм зохиохгүй.
+   ⛔ Энэ нь САНАЛ — хэрэглэгч шалгаж баталгаажуулна. Хоёрдмол бол хоосон буцаана. */
+const _LAT_CYR = { sh: 'ш', ch: 'ч', kh: 'х', ts: 'ц', zh: 'ж', yo: 'ё', yu: 'ю', ya: 'я', ye: 'е', ii: 'и', 'ö': 'ө', 'ü': 'ү',
+  a: 'а', b: 'б', c: 'к', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'х', i: 'и', j: 'ж', k: 'к', l: 'л', m: 'м', n: 'н', o: 'о', p: 'п',
+  q: 'к', r: 'р', s: 'с', t: 'т', u: 'у', v: 'в', w: 'в', x: 'х', y: 'й', z: 'з' };
+const _CYR_FOLD = { 'ө': 'о', 'ү': 'у', 'ё': 'е', 'ю': 'у', 'я': 'а', 'й': 'и', 'ы': 'и', 'э': 'е', 'ъ': '', 'ь': '' };
+function foldMnName(s) {
+  return String(s || '').toLowerCase()
+    .replace(/sh|ch|kh|ts|zh|yo|yu|ya|ye|ii|ö|ü|[a-z]/g, m => _LAT_CYR[m] || m)
+    .replace(/[өүёюяйыэъь]/g, m => _CYR_FOLD[m])
+    .replace(/о/g, 'у')            // Өлзий = Олзий = Улзий: латинаар ө/ү-г «u» гэж ч бичдэг
+    .replace(/и{2,}/g, 'и');       // «ий» (Өлзийбат) = «ii» (Olziibat) = «i» (Olzibat)
+}
+function salaryNameOwnerFolded(text, team) {
+  const tm = (team || []).filter(m => m && personKey(m));
+  if (!text || !tm.length) return '';
+  // Түлхүүр нь нэр биш индекс — нэр хөрвүүлэгдэхэд түлхүүр өөрчлөгдөхгүй
+  const folded = tm.map((m, i) => ({ name: foldMnName(m.name), phone: String(100000 + i), status: m.status }));
+  const ft = foldMnName(text);
+  const k = empAcctOwners(folded, []).nameOwner(ft);
+  if (k) return personKey(tm[Number(k) - 100000]);
+  /* Нэг бичвэрт ХОЁР ажилтны нэр таарвал («ОЧБАЯР ЭНХТАЙВАН» — Э.Очбаяр ба Э.Энхтайван
+     хоёул) ИНИЦИАЛААР ялгана: «Э.Очбаяр» = Энхтайванын Очбаяр → өөрийн нэр нэг үг,
+     ИНИЦИАЛ нь БУСАД ҮГИЙН эхний үсэг байх ёстой. «Э.Энхтайван»-д ийм бусад үг алга.
+     Яг нэг хүн үлдсэн үед л таана; эс бөгөөс хоосон (гараар сонгоно). */
+  const words = ft.split(/[^а-я0-9]+/).filter(Boolean);
+  const hit = [];
+  folded.forEach((f, i) => {
+    const mi = String(f.name).match(/^\s*([а-я])[.\s]+(.+)$/);
+    const core = mi ? cooNameKey(mi[2]) : '';
+    if (!core) return;
+    const wi = words.findIndex(w => w.length >= 4 && w.toUpperCase().slice(0, 7) === core);
+    if (wi >= 0 && words.some((w, j) => j !== wi && w[0] === mi[1])) hit.push(i);
+  });
+  return hit.length === 1 ? personKey(tm[hit[0]]) : '';
+}
+function salaryLinkSuggest(r, team, finRows) {
+  const all = (team || []).filter(m => m && personKey(m));
+  const act = all.filter(m => String(m.status || '') !== 'гарсан');
+  const byName = (text) => (text && (salaryNameOwnerFolded(text, act) || salaryNameOwnerFolded(text, all))) || '';
+  const dg = (s) => String(s || '').replace(/\D/g, '');
+  const ben = String((r && r.beneficiary) || '').trim();
+  const benName = (ben && !/^[\d\s-]+$/.test(ben)) ? ben : '';
+  const memo = String((r && r.purpose) || '');
+  let key = '', basis = '';
+  if (benName) { key = byName(benName); if (key) basis = 'name'; }
+  if (!key) {
+    const acct = dg(r && r.account_number) || dg(ben);
+    if (acct.length >= 6) {
+      const own = empAcctOwners(all, finRows || []);
+      key = own.regOwner(acct) || own.guess[acct] || '';
+      if (key) basis = 'acct';
+    }
+  }
+  // Өөр хүний дансаар авсан үед гүйлгээний УТГАД ажилтны нэр бичигддэг («ЦАЛИН Э.ОЧБАЯР»)
+  const memoKey = byName(memo);
+  if (!key && memoKey) { key = memoKey; basis = 'memo'; }
+  return { key, basis, alt: (key && memoKey && memoKey !== key) ? memoKey : '' };
+}
+// Аль цалингийн олголт аль хэдийн БУСАД хүнд бүртгэгдсэн бол нэрийг нь буцаана (давхар холбохоос өмнө асууна)
+function salaryLinkConflict(r, key, paidRows) {
+  const fp = salaryPayFp(r && r.justification);
+  if (!fp) return '';
+  const hit = (paidRows || []).find(p => p && salaryPayFp(p.note) === fp && p.person_key && !salaryLinkSame(p.person_key, key));
+  return hit ? (memberName(hit.person_key) || hit.person_key) : '';
 }
 /* Олголтын мөрийн тайлбар. Цикл тэмдэг (⟦УР⟧/⟦ҮЛ⟧) байвал түүнийг, эс бөгөөс
    хуулгын гүйлгээний утгыг цэвэрлэж өгнө (хээ `[#...]` нь хүнд юу ч хэлэхгүй).
@@ -20293,6 +20560,16 @@ function salaryPayLabel(note) {
   if (t.includes(SAL_REM_TAG)) return 'үлдэгдэл';
   return t.replace(/\[#[^\]]+\]/g, '').replace(/⟦[^⟧]*⟧/g, '')
     .replace(/^\s*Хуулгаар баталгаажсан\s*·?\s*/i, '').replace(/\s+/g, ' ').trim();
+}
+/* Олгосон мөр бүр: огноо · тайлбар · ХҮЛЭЭН АВАГЧИЙН НЭР · дүн. Самбар ба ажилтны карт
+   ХОЁУЛАА үүнийг дууддаг — нэг мөрийг хоёр өөр хэлбэрээр зурахгүй.
+   ⚠ Нэр нь өөр хүний дансаар авсан цалинг таних ганц зам («ТӨМӨРБААТАР СОЛОНГО» → Э.Очбаярын цалин);
+     🔗 = гараар холбосон гүйлгээ. */
+function salaryPayListHtml(pays, ym) {
+  if (!pays || !pays.length) return '';
+  return `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
+        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.shifted ? ` <span class="pay-pshift" title="Банкнаас ${escapeHtml(x.bankYm)}-д гарсан, ${escapeHtml(ym)}-д ноогдуулсан">⇄</span>` : ''}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}${x.who ? `<span class="pay-pwho" title="${x.linked ? 'Гараар холбосон гүйлгээ · ' : ''}Хүлээн авагч">${x.linked ? '🔗 ' : ''}→ ${escapeHtml(x.who)}</span>` : ''}</span>
+        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>`;
 }
 // ── Хагас сарын цикл: Урьдчилгаа (20-нд, 1–15) + Үлдэгдэл (дараа сарын 5-нд, 16–эцэс) ──
 const SAL_ADV_TAG = '⟦УР⟧', SAL_REM_TAG = '⟦ҮЛ⟧';
@@ -20463,6 +20740,9 @@ function renderSalary() {
   const spAll = stagePayByPerson(state.appOrders || [], ym);
   const payRows = (state.salaryPayments || []).filter(p => p && p.ym === ym);
   const attSet = new Set(Object.keys(attMins)), paidSet = new Set(payRows.map(p => p.person_key));
+  // Гараар холбосон гүйлгээтэй хүн суурь цалин/ирцгүй ч жагсаалтад орно (олголт алдагдахгүй)
+  const finSrc = salaryFinSource();
+  salaryLinkedKeys(finSrc, ym).forEach(k => paidSet.add(k));
 
   const q = (state.salarySearch || '').toLowerCase().trim();
   const lens = effectiveBranchLens() || 'all';
@@ -20544,6 +20824,20 @@ function renderSalary() {
   if (T.carryWait) warnBits.push(`<div class="pb-note">⏳ Өмнөх сарын илүү олголтыг тооцож байна — тэр хүртэл үлдэгдэл <b>өндөр</b> харагдаж болно.</div>`);
   if (noAtt.length) warnBits.push(`<div class="pb-note">🕗 <b>${noAtt.length}</b> цалинтай хүн энэ сард ирц бүртгүүлээгүй: ${noAtt.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
 
+  /* ⚠ АЖИЛТАНД ХОЛБОГДООГҮЙ ЦАЛИНГИЙН ГҮЙЛГЭЭ (2026-11-02, CEO) — «бүртгэл дутуу эсэх»
+     шууд харагдана. Түүх сард ч гарна (олголтын түүх дутуу байж болно). Мөр бүрд «Холбох» товч
+     — ГЭХДЭЭ зөвхөн санхүүгийн бүрэн мөр (`state.financeRequests`) байгаа, засах эрхтэй хүнд:
+     цалингийн хязгаарлагдмал харагдацын мөрийг буцааж бичвэл бусад багана хоосорно. */
+  const unl = payrollUnlinkedFin(finSrc, TEAM || [], state.salaryPayments || [], ym, empAcctOwnersCached(finSrc));
+  const canLink = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance());
+  const fullIds = new Set(canLink ? (state.financeRequests || []).map(x => x && x.id) : []);
+  const unlHtml = unl.length
+    ? `<details class="pb-warn pb-unl" id="sal-unl"${state.salUnlOpen ? ' open' : ''}><summary>⚠ Ажилтанд холбогдоогүй цалингийн гүйлгээ (<b>${unl.length}</b>) · ${fmtMoney(unl.reduce((s, r) => s + (Number(r.amount) || 0), 0))}</summary>
+        <div class="pb-unl-hint">Эдгээр гүйлгээ ямар ч ажилтны «Олгосон» дүнд ороогүй байна — өөр хүний дансаар авсан байж болно. Ажилтнаа холбоно уу.</div>
+        ${unl.map(r => `<div class="pb-orph"><span>${escapeHtml(String(r.requested_at || '').slice(0, 10))} · <b>${escapeHtml(r.beneficiary || '—')}</b> — ${fmtMoney(Number(r.amount) || 0)}${r.purpose ? ` <span class="pb-dim">${escapeHtml(salaryPayLabel(r.purpose))}</span>` : ''}</span>${
+          fullIds.has(r.id) ? `<button class="btn pb-orph-b" data-sal-link="${escapeHtml(r.id)}">🔗 Холбох</button>` : ''}</div>`).join('')}</details>`
+    : '';
+
   const ratesBar = `<div class="pb-rates">✂️ Суутгал:
       <label>НДШ <input type="number" step="0.1" id="sal-ndsh" value="${rt.ndsh}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
       <label>ХХОАТ <input type="number" step="0.1" id="sal-pit" value="${rt.pit}" ${editable ? '' : 'disabled'} class="ui-raw pb-rate">%</label>
@@ -20593,9 +20887,7 @@ function renderSalary() {
       ? `<div class="pb-bank">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b>' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn pb-copy" data-sal-copy="${escapeHtml(acct)}">Хуулах</button>` : ''}</div>`
       : staffAcctMissingHtml();
     const histN = (state.salaryPayments || []).filter(p => p.person_key === k).length;
-    const payList = pays.length ? `<div class="pay-plist">${pays.map(x => `<div class="pay-pitem">
-        <span class="pay-pwhen">${escapeHtml(ubStamp(x.at).slice(0, 5) || '—')}${x.shifted ? ` <span class="pay-pshift" title="Банкнаас ${escapeHtml(x.bankYm)}-д гарсан, ${escapeHtml(ym)}-д ноогдуулсан">⇄</span>` : ''}${x.label ? ` · <span class="pay-pnote">${escapeHtml(x.label)}</span>` : ''}</span>
-        <span class="pay-pamt">${fmtMoney(x.amount)}</span></div>`).join('')}</div>` : '';
+    const payList = salaryPayListHtml(pays, ym);
     /* ⛔ УРЬДЧИЛГАА/ҮЛДЭГДЛИЙН ХУВААРЬ ХАРАГДАХГҮЙ (2026-10-02, CEO шийдвэр).
        Цалин нь ирц + хүргэлтээс АВТОМАТААР бодогдоно; олголт нь банкны хуулгаас
        автоматаар бүртгэгдэнэ. Хагас сарын хуваарилалтыг аппад харуулах нь хүн бүрд
@@ -20657,7 +20949,7 @@ function renderSalary() {
     : (state.isCEO ? `<div class="sp-foot">📦 Дамжлагын бонус — энэ сард бүртгэгдээгүй.${spCfgBtn}</div>` : '');
   /* ✋ Мэдүүлгийг ЗӨВХӨН ахлагч батална («Миний ирц» + захиалгын карт).
      ⛔ Цалингийн самбарт хайрцаг БУЦААЖ БҮҮ НЭМ (2026-10-05, CEO). */
-  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${histOnly ? '' : warnBits.join('') + ratesBar + payRulesCardHtml()}${searchBar}
+  return `<div style="padding:4px;">${head}${staffAcctBannerHtml()}${histNote}${kpis}${unlHtml}${histOnly ? '' : warnBits.join('') + ratesBar + payRulesCardHtml()}${searchBar}
     <div class="sal-wrap">${rows || '<div class="pb-empty">Энэ сард цалингийн мөр алга</div>'}</div>${histOnly ? '' : spFoot}</div>`;
 }
 /* ⚙️ ДАМЖЛАГЫН ОНООНЫ ТОХИРГОО (2026-10-03, CEO) ───────────────────────────
@@ -20694,6 +20986,8 @@ function attachSalaryHandlers() {
   document.getElementById('pr-save')?.addEventListener('click', payRulesSave);
   document.getElementById('pr-workstart')?.addEventListener('click', openWorkStartModal);
   document.getElementById('pr-det')?.addEventListener('toggle', (e) => { state.prOpen = e.target.open; });   // render() дахин зурахад хаагдахгүй
+  document.getElementById('sal-unl')?.addEventListener('toggle', (e) => { state.salUnlOpen = e.target.open; });
+  document.querySelectorAll('[data-sal-link]').forEach(b => b.addEventListener('click', () => openSalaryLinkModal(b.dataset.salLink)));
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
   document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); loadSalaryFinRows(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('sal-search');
@@ -45710,12 +46004,15 @@ function renderFinanceReport(wrap) {
     const _bankYm = String(t.requested_at || '').slice(0, 7);
     const shiftHtml = (_bankYm && _bankYm !== month)
       ? `<span class="fin-shift" title="Банкнаас ${escapeHtml(_bankYm)}-д гарсан · ${escapeHtml(month)} сарын зардал">⇄ ${escapeHtml(_bankYm)}</span>` : '';
+    // 🔗 Цалингийн гүйлгээ аль ажилтанд холбогдсоныг мөрөнд ил харуулна (нээлгүйгээр шалгана)
+    const _empLk = parseSalaryLinkToken(t.justification);
+    const empLinkHtml = _empLk ? `<span class="fin-emp" title="Цалингийн ажилтан">🔗 ${escapeHtml(memberName(_empLk))}</span>` : '';
     // Шилжүүлгийн баримт — мөрөнд ШУУД thumbnail (дарвал томруулна, модал нээхгүй)
     const proofHtml = (t.payment_proof_url && /^http/.test(t.payment_proof_url))
       ? `<button type="button" class="fin-proof-thumb" data-lightbox="${escapeHtml(driveThumbUrl(t.payment_proof_url, 1600))}" title="Шилжүүлгийн баримт — томруулж харах"><img src="${escapeHtml(driveThumbUrl(t.payment_proof_url, 200))}" alt="баримт" loading="lazy"></button>` : '';
     d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"${titleAttr}>`
       + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
-      + `${classBadge(t)}${shiftHtml}${timeHtml}${proofHtml}`
+      + `${classBadge(t)}${shiftHtml}${empLinkHtml}${timeHtml}${proofHtml}`
       + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
     d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openExpenseModal(t.id); });
     return d;

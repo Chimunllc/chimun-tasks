@@ -15,6 +15,10 @@
 --    Утсыг ЗӨВХӨН токеноос (`sec.phone()`) — параметр авахгүй.
 -- ⚠ Данс урт/цөм хоёр хэлбэртэй (`880004000434123912` ↔ `434123912`) тул
 --   суффиксээр тулгана — app.js-ийн `acctSame` (`ACCT_MATCH_MIN` = 9) -тай ИЖИЛ.
+-- ⚠ Цалин өөр хүний дансаар (ээж, нөхөр) очиж болно → CEO/нягтлан гүйлгээг ажилтанд ГАРААР холбодог
+--   (`db/finance_salary_link.sql`, app.js `parseSalaryLinkToken`). Тэр холбоос нь ажилтан өөрийн
+--   «Миний цалин» картад олголтыг ХАРАХ ганц зам: токен дахь утас = харж буй хүний утас бол мөр орно.
+--   Утас/мэйл солигдвол хуучин токен харагдахаа болино (ижил хязгаар: `acct_same` хуучин данс).
 -- ⚠ Харагдац эзнийхээ эрхээр ажилладаг (`security_invoker` OFF) тул `finance`-ийн
 --   RLS-ийг тойрно — шүүлт нь ДООРХ where. `security_invoker=on` болговол унана.
 
@@ -44,7 +48,10 @@ where coalesce(f.status, '') <> 'deleted'
         and sec.phone() <> ''
         and e.merged_into is null
         and (sec.acct_same(f.account_number, e.bank_account)
-             or sec.acct_same(f.beneficiary, e.bank_account))
+             or sec.acct_same(f.beneficiary, e.bank_account)
+             -- Гүйлгээг ажилтанд ГАРААР холбосон (justification дахь ⟦EMP|утас⟧ токен) —
+             -- цалин өөр хүний дансаар очсон ч ажилтан өөрийн картад харна (2026-11-02)
+             or position('⟦EMP|' || sec.phone() || '⟧' in coalesce(f.justification, '')) > 0)
     )
   );
 

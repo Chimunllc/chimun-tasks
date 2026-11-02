@@ -7148,6 +7148,13 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
   padding: 2px 7px; border-radius: 20px; color: var(--muted);
   border: 1px dashed var(--border-strong);
 }
+/* 🔗 Цалингийн гүйлгээ холбогдсон ажилтан (Гүйлгээний мөр) */
+.fin-emp {
+  white-space: nowrap; font-size: var(--fs-xs); font-weight: 700; max-width: 40%;
+  overflow: hidden; text-overflow: ellipsis;
+  padding: 2px 7px; border-radius: 20px; color: var(--primary);
+  border: 1px solid var(--primary);
+}
 .fin-grp-neutral .fin-grp-l::after {
   content: 'зардалд ОРОХГҮЙ'; margin-left: var(--space-2);
   font-size: var(--fs-xs); font-weight: 600; letter-spacing: .03em;
@@ -9162,6 +9169,9 @@ select.no-asar-len {
 .pb-orph { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   flex-wrap: wrap; margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--line); }
 .pb-orph-b { padding: 2px 10px; font-size: var(--fs-xs); flex-shrink: 0; }
+/* ⚠ Ажилтанд холбогдоогүй цалингийн гүйлгээ — эвхэгдэх жагсаалт */
+.pb-unl > summary { cursor: pointer; }
+.pb-unl-hint { margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--text-soft); }
 .orph-l { display: block; font-size: var(--fs-sm); color: var(--muted); margin: var(--space-2) 0 4px; }
 .orph-sel { width: 100%; box-sizing: border-box; padding: 8px var(--space-2); border: 1px solid var(--border);
   border-radius: var(--r-sm); background: var(--panel); color: var(--text); font-size: var(--fs-md); }
@@ -9175,6 +9185,8 @@ select.no-asar-len {
 }
 .pay-pwhen { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pay-pnote { color: var(--text-soft); }
+/* Хүлээн авагчийн нэр — өөр хүний дансаар авсан цалинг таних ганц зам; 🔗 = гараар холбосон */
+.pay-pwho { display: block; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 600; }
 /* Банкны сар ≠ ноогдох сар — яагаад өөр сард харагдаж байгааг ил хэлнэ */
 .pay-pshift { color: var(--primary); font-weight: 700; cursor: help; }
 .pay-pamt { font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--ok); }
@@ -10078,6 +10090,8 @@ select.no-asar-len {
 .ex-modal .ex-amt { margin: var(--space-2) 0 0; font-size: var(--fs-xl); font-weight: 800; font-variant-numeric: tabular-nums; }
 .ex-modal .ex-cats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .ex-modal .ex-ro { padding: var(--space-1) 0; font-size: var(--fs-md); }
+/* Цалингийн ангилал → «Ажилтан» талбар (`hidden` үед ТАЙЛБАР ҮЙЛЧИЛНЭ — display дүрэм бичихгүй). Хэмжээ/өнгө токеноор. */
+.ex-modal .ex-hint { min-height: var(--space-3); margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--muted); line-height: 1.4; }
 .ex-modal .ex-amt + .ex-ro { margin-top: var(--space-4); }
 .modal .ex-del { color: var(--danger); }
 

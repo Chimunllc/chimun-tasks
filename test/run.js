@@ -18060,6 +18060,91 @@ async function swFetchTests() {
   ok(cl.length > 300 && !/catGroups|appCatGroups|mevent_category_groups/.test(cl), 'scan: ангиллын элэгдэл сайтын цэсний бүлгээс ХАМААРАХГҮЙ');
 }
 
+// ═══ БАРАА ТУС БҮРИЙН ЭЛЭГДЛИЙН НАС (2026-11-02, CEO «бараа тус бүрээр жилийг заах нь илүү бодит») ═══
+// Нэрийн төрөл → ангилал → «Бусад» гэсэн 3 давхар таамаглал нь «Майхан 3 жил» гэж оруулсан ч 12 майханы
+// 3-д л хүрдэг байсан. `products.dep_years` заасан бол БАРАА БҮР дээр ЯЛНА; хоосон = АВТО (хуучин дүрэм).
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const { deprecManualYears, deprecForProduct, deprecByBranch, psYears, psStage, psPatchOf, psSortRows, psBulkTargets } = F;
+  const ASAR = { sku: 'A1', name: 'Асар 10м:20м', category: 'Асар', cost: 9600000, qty_mevent: 1, purchase_date: '2026-01-10' };   // авто: «Асар, майхан» 8ж
+
+  // — Заасан нас: хүчинтэй хил —
+  eq([deprecManualYears({ dep_years: 3 }), deprecManualYears({ dep_years: '7.5' }), deprecManualYears({ dep_years: 100 })], [3, 7.5, 100], 'нас: 1–100 хүчинтэй (текст ч)');
+  eq([deprecManualYears({ dep_years: 0 }), deprecManualYears({ dep_years: 101 }), deprecManualYears({ dep_years: -2 }),
+      deprecManualYears({ dep_years: 'гурав' }), deprecManualYears({ dep_years: null }), deprecManualYears({}), deprecManualYears(null)],
+     [0, 0, 0, 0, 0, 0, 0], 'нас: 0, 101, сөрөг, үсэг, хоосон = АВТО (тооцоог эвдэхгүй)');
+
+  // — Заасан нас нэрийн төрлөөс ДАВАМГАЙЛНА —
+  const auto = deprecForProduct(ASAR);
+  eq([auto.years, auto.label, auto.manual], [8, 'Асар, майхан', false], 'нас: заагаагүй бол авто (нэрийн төрөл 8ж)');
+  const man = deprecForProduct({ ...ASAR, dep_years: 3 });
+  eq([man.years, man.label, man.manual, man.autoYears, man.autoLabel], [3, 'Заасан', true, 8, 'Асар, майхан'], 'нас: заасан 3ж нь нэрийн төрлийн 8ж-ээс ялна; авто нь мэдээлэлд үлдэнэ');
+  eq(Math.round(man.perUnitMonth), Math.round(9600000 / 36), 'нас: заасан нас дээр элэгдэл = өртөг ÷ (3×12)');
+  eq(Math.round(deprecForProduct({ ...ASAR, dep_years: 0 }).years), 8, 'нас: буруу утга (0) = АВТО');
+
+  // — Ангиллын жилээс ч давамгайлна —
+  runIn("state.appConfig = Object.assign({}, state.appConfig, { deprec: { cat_lives: [{ cat: 'Бусад', years: 3 }] } });");
+  const catItem = { sku: 'B1', name: 'Хэн ч таарахгүй зүйл', category: 'Бусад', cost: 360000, qty_mevent: 1, purchase_date: '2026-06-01' };
+  eq([deprecForProduct(catItem).years, deprecForProduct(catItem).label], [3, 'Бусад (ангилал)'], 'нас: ангиллын жил (авто түвшин) хэвээр ажиллана');
+  eq([deprecForProduct({ ...catItem, dep_years: 10 }).years, deprecForProduct({ ...catItem, dep_years: 10 }).label], [10, 'Заасан'], 'нас: заасан нас ангиллын жилээс ч ялна');
+  runIn("state.appConfig = Object.assign({}, state.appConfig, { deprec: undefined });");
+
+  // — Тайлан = карт (ИНВАРИАНТ) заасан насны хамт —
+  const P = [ASAR, { ...ASAR, sku: 'A2', dep_years: 3 }, { sku: 'C1', name: 'Цагаан Ширээ', cost: 120000, qty_nomaad: 4, qty_catering: 2, qty_chimun: 3, purchase_date: '2026-03-01', dep_years: 2 }];
+  eq(Math.round(P.reduce((s, x) => s + deprecForProduct(x).totalMonth, 0)), Math.round(deprecByBranch(P).total), 'ИНВАРИАНТ: карт = тайлан заасан насны хамт');
+  const pool = deprecByBranch([{ name: 'Цагаан Ширээ', cost: 120000, qty_mevent: 4, qty_nomaad: 2, dep_years: 2 }]);
+  eq([Math.round(pool['ИВЕНТ']), Math.round(pool['КЕМП'])], [Math.round(120000 / 24 * 6 / 2), Math.round(120000 / 24 * 6 / 2)], 'нас: заасан нас ч Mevent+Nomaad 50/50 сангаар хуваагдана');
+
+  // — Засварын хуримтлал (psYears / psStage / psPatchOf) —
+  eq(['', 5, 7.5, 3, '', '', '', 100].join('|'), [psYears(''), psYears('5'), psYears('7,5'), psYears('3.2'), psYears('0'), psYears('101'), psYears('abc'), psYears(100)].join('|'), 'psYears: хоосон=авто · 0.5 алхам · хил · буруу=авто');
+  runIn('state.psDirty = {};');
+  const base = { sku: 'S1', name: 'Ширээ', cost: 1000, dep_years: null };
+  psStage(base, 'dep_years', '4');
+  eq(runIn("JSON.stringify(psDirty())"), JSON.stringify({ S1: { dep_years: 4 } }), 'засвар: нас хуримтлагдана');
+  psStage(base, 'dep_years', '');
+  eq(runIn("JSON.stringify(psDirty())"), '{}', 'засвар: хадгалагдсан (хоосон)-той ижил болбол цэвэр');
+  psStage({ ...base, dep_years: 6 }, 'dep_years', '');
+  eq(runIn("JSON.stringify(psDirty())"), JSON.stringify({ S1: { dep_years: '' } }), 'засвар: заасан насыг арилгавал «авто» болгох засвар (хоосон)');
+  eq(psPatchOf({ ...base, dep_years: 6 }, { dep_years: '' }).dep_years, '', 'засвар: хадгалах бичлэгт нас дамжина (saveProduct хоосныг NULL болгоно)');
+  runIn('state.psDirty = {};');
+
+  // — Эрэмбэ: элэгдэл ихээс —
+  const rows = [{ sku: 'x1', name: 'Б жижиг', cost: 1200, qty_mevent: 1 }, { sku: 'x2', name: 'А том', cost: 6000000, qty_mevent: 1 }, { sku: 'x3', name: 'В дунд', cost: 60000, qty_mevent: 1 }];
+  eq(psSortRows(rows, 'dep').map(r => r.sku), ['x2', 'x3', 'x1'], 'эрэмбэ: элэгдэл ихээс');
+  eq(psSortRows(rows, 'name').map(r => r.sku), ['x2', 'x1', 'x3'], 'эрэмбэ: нэрээр (А–Я)');
+  eq(psSortRows(rows).map(r => r.sku), ['x2', 'x1', 'x3'], 'эрэмбэ: өгөгдмөл = нэрээр');
+
+  // — Бөөнөөр оноох: хамрах бараа —
+  const BP = [
+    { sku: 'm1', name: 'Хатан майхан', category: 'Майхан', cost: 100, qty_mevent: 1 },
+    { sku: 'm2', name: 'Хэрэгсэл', category: 'Майхан', cost: 100, qty_mevent: 1, dep_years: 2 },
+    { sku: 'm3', name: 'Архивласан майхан', category: 'Майхан', cost: 100, qty_mevent: 1, archived: true },
+    { sku: 'm4', name: 'Хүргэлт', category: 'Майхан', type: 'service' },
+    { sku: 'a1', name: 'Асар 5м', category: 'Асар', cost: 100, qty_mevent: 1, dep_years: 3 },
+  ];
+  eq(psBulkTargets(BP, 'cat:Майхан'), ['m1', 'm2'], 'бөөнөөр: ангилалаар (архивласан, үйлчилгээ орохгүй)');
+  eq(psBulkTargets(BP, 'type:Асар, майхан'), ['m1', 'a1'], 'бөөнөөр: төрлөөр — АВТО дүрмээр (заасан нас үл тооно: a1 3ж заасан ч «Асар, майхан»-д тооцогдоно)');
+  eq([psBulkTargets(BP, ''), psBulkTargets(BP, 'cat:Байхгүй'), psBulkTargets(BP, 'хоосон'), psBulkTargets(null, 'cat:Майхан')], [[], [], [], []], 'бөөнөөр: хоосон/танихгүй сонголт = хоосон');
+
+  // — Шүүлтүүр «Нас заагаагүй» —
+  const nf = F.psApplyFilter([ASAR, { ...ASAR, sku: 'A2', dep_years: 3 }, { sku: 'N0', name: 'Өртөггүй', cost: 0, qty_mevent: 1 }], 'cost', 'noyears');
+  eq(nf.map(x => x.sku), ['A1'], 'шүүлтүүр: «Нас заагаагүй» = элэгдэх + авто (заасан, өртөггүй орохгүй)');
+
+  // — SCAN: DB-ийн багана, хадгалалт, UI —
+  ok(/state\._prodHasDepYears = rows\.length \? \('dep_years' in rows\[0\]\) : true;/.test(src), 'scan: каталог ачаалахад dep_years баганын байгааг тэмдэглэнэ');
+  ok(/product\.dep_years !== undefined && state\._prodHasDepYears !== false\) row\.dep_years = deprecManualYears\(product\) \|\| null;/.test(src),
+     'scan: saveProduct нас хадгална; хоосон/буруу = NULL; багана байхгүй бол БИЧИХГҮЙ (INSERT 400 болохоос сэргийлнэ)');
+  ok(/data-ps-f="dep_years"|\$\{d\('dep_years'\)\}/.test(src) && /Элэгдлийн нас<\/span><input class="ps-in ps-yrs ui-raw"/.test(src), 'scan: «Өртөг ба хөрөнгө» мөр бүрт «Элэгдлийн нас» хайрцаг');
+  ok(/placeholder="авто \$\{a\.years\}"/.test(src), 'scan: хоосон хайрцагт авто нас placeholder-оор харагдана');
+  ok(/data-ps-sort="\$\{k\}"/.test(src) && /document\.querySelectorAll\('\[data-ps-sort\]'\)/.test(src) && /psSortRows\(psApplyFilter\(_all, mode, state\.psF\), mode === 'cost' \? state\.psSort : 'name'\)/.test(src), 'scan: «Элэгдэл ихээс» эрэмбэ холбогдсон');
+  ok(/id="ps-bulk-go"/.test(src) && /id="ps-bulk-auto"/.test(src) && /psStage\(\(state\.products \|\| \[\]\)\.find\(x => x && x\.sku === sku\), PS_YEARS_FIELD, y\)/.test(src),
+     'scan: бөөнөөр нас тавих нь бараа бүрт хуримтлагдана (💾 Хадгалах дарж баталгаажна)');
+  const sqlDep = fs.readFileSync(path.join(__dirname, '..', 'db', 'product_dep_years.sql'), 'utf8');
+  ok(/add column if not exists dep_years numeric/.test(sqlDep) && /grant select \(dep_years\), insert \(dep_years\), update \(dep_years\)\s+on public\.products to authenticated/.test(sqlDep) && !/to anon/.test(sqlDep),
+     'scan: db/product_dep_years.sql — ганц багана, зөвхөн authenticated-д (anon-д ОГТ нээхгүй)');
+  ok(/dep_years >= 1 and dep_years <= 100/.test(sqlDep), 'scan: DB-ийн CHECK 1–100 (кодтой ижил хил)');
+}
+
 // ═══ ДАМЖЛАГЫН БОНУС — барааны тоогоор, хамтрагчид хувьтай (2026-09-30) ═══
 // Амьд датагаар шийдсэн: 9 сарын захиалга 1–345 бараатай (дундаж 12) тул хавтгай
 // хөлс бол сарын хамгийн том 2 ачааг татсан жолооч 20,000₮ авч байв.

@@ -11978,6 +11978,7 @@ async function loadProductsCatalog() {
       state._prodHasBundleDays = rows.length ? ('bundle_days' in rows[0]) : true;   // багцын «N хоногийн үнэ» (db/product_bundle_days.sql)
       state._prodHasBundleAddons = rows.length ? ('bundle_addons' in rows[0]) : true;   // багцын санал болгох нэмэлт (db/product_bundle_addons.sql)
       state._prodHasPurchaseRef = rows.length ? ('purchase_ref' in rows[0]) : true;   // хөрөнгийн зардлын мөрийн холбоос (сонголттой багана)
+      state._prodHasDepYears = rows.length ? ('dep_years' in rows[0]) : true;   // барааны элэгдлийн нас (db/product_dep_years.sql; сонголттой багана)
       state._prodHasOpening = rows.length ? ('stock_opened_at' in rows[0]) : true;   // эхний үлдэгдлийн тэмдэг (сонголттой багана)
       state._prodHasApproval = rows.length ? ('stock_approved_at' in rows[0]) : true;   // 2-р гарын үсэг (сонголттой багана)
       state._prodHasLock = rows.length ? ('stock_locked_at' in rows[0]) : true;   // 3-р гарын үсэг — CEO эцэслэл
@@ -12663,6 +12664,8 @@ async function saveProduct(product) {
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
   if (product.purchase_ref !== undefined && state._prodHasPurchaseRef !== false) row.purchase_ref = product.purchase_ref || null;   // холбосон хөрөнгийн зардлын мөр
+  // Элэгдлийн нас: хоосон/буруу (1–100-аас гадуур) = NULL = авто. DB-ийн CHECK-тэй ижил хил.
+  if (product.dep_years !== undefined && state._prodHasDepYears !== false) row.dep_years = deprecManualYears(product) || null;
   if (product.stock_opened_at !== undefined && state._prodHasOpening !== false) row.stock_opened_at = product.stock_opened_at || null;   // эхний үлдэгдэл баталгаажсан огноо
   if (product.stock_opened_by !== undefined && state._prodHasOpening !== false) row.stock_opened_by = product.stock_opened_by || null;
   if (product.stock_approved_at !== undefined && state._prodHasApproval !== false) row.stock_approved_at = product.stock_approved_at || null;   // 2-р гарын үсэг
@@ -26531,6 +26534,7 @@ const PSHEET_FILTERS = {
     { key: 'nocost', label: 'Өртөггүй', test: (p) => !(Number(p.cost) > 0) },
     { key: 'nodate', label: 'Авсан огноогүй', test: (p) => !String(p.purchase_date || '').trim() },
     { key: 'nosup', label: 'Нийлүүлэгчгүй', test: (p) => !String(p.supplier || '').trim() },
+    { key: 'noyears', label: 'Нас заагаагүй (авто)', test: (p) => { const d = deprecForProduct(p); return !d.skip && !d.manual; } },
   ],
   stock: [
     { key: 'zero', label: 'Нөөцгүй', test: (p) => !PS_QTY_FIELDS.reduce((t, k) => t + (Number(p[k]) || 0), 0) },
@@ -26541,6 +26545,29 @@ const PSHEET_FILTERS = {
 function psApplyFilter(list, mode, key) {
   const f = (PSHEET_FILTERS[mode] || []).find(x => x.key === key);
   return f ? (list || []).filter(p => { try { return !!f.test(p); } catch (_) { return false; } }) : (list || []);
+}
+/* Жагсаалтын эрэмбэ. `dep` = сарын элэгдэл ИХЭЭС — дээд 20 бараа элэгдлийн 65%-ийг бүрдүүлдэг тул
+   эхлээд тэднийг баталгаажуулна. Цэвэр функц (тестлэгдэнэ); засвар хуримтлагдахад эрэмбэ үсрэхгүй
+   (хадгалагдсан утгаар эрэмбэлнэ). */
+function psSortRows(rows, key) {
+  const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
+  if (key === 'dep') {
+    const m = new Map(); (rows || []).forEach(p => m.set(p, deprecForProduct(p).totalMonth));
+    return (rows || []).slice().sort((a, b) => (m.get(b) - m.get(a)) || byName(a, b));
+  }
+  return (rows || []).slice().sort(byName);
+}
+/* «Бөөнөөр нас оноох»-ын хамрах бараа. `cat:<ангилал>` — тэр ангилалтай бүгд; `type:<төрөл>` — АВТО
+   дүрмээр тэр төрөлд орох бүгд (заасан насыг үл тооно: `dep_years` хоослоод тооцно). Архивласан,
+   үйлчилгээ, багцыг оруулахгүй. Цэвэр функц (тестлэгдэнэ). Бичлэг нь бараа бүрт ШУУД (нуугдмал дүрэм биш). */
+function psBulkTargets(products, sel) {
+  const s = String(sel || ''); const i = s.indexOf(':');
+  if (i < 0) return [];
+  const kind = s.slice(0, i), val = s.slice(i + 1);
+  return (products || []).filter(p => p && p.sku && !p.archived && p.type !== 'service' && p.type !== 'package'
+    && ((kind === 'cat' && String(p.category || '').trim() === val)
+      || (kind === 'type' && deprecForProduct({ ...p, dep_years: null }).label === val)))
+    .map(p => p.sku);
 }
 function psFilter(list, q) {
   const s = String(q || '').trim().toLowerCase();
@@ -26562,10 +26589,19 @@ function psVal(p, field) {
   return (d && Object.prototype.hasOwnProperty.call(d, field)) ? d[field] : (p ? p[field] : '');
 }
 // Засварыг хуримтлуулна. Хадгалагдсан утга руу буцаавал «цэвэр» гэж тооцно.
+// Элэгдлийн нас: хоосон = '' (АВТО); эс бол 1–100, 0.5 алхамаар. Буруу утга (0, 101, үсэг) = АВТО.
+function psYears(v) {
+  const s = String(v == null ? '' : v).trim().replace(',', '.');
+  if (!s) return '';
+  const y = Math.round(Number(s) * 2) / 2;
+  return (y >= 1 && y <= 100) ? y : '';
+}
+const PS_YEARS_FIELD = 'dep_years';
 function psStage(p, field, raw) {
   if (!p || !p.sku) return psDirtyCount();
-  const val = PS_NUM_FIELDS.includes(field) ? psNum(raw) : String(raw == null ? '' : raw).trim();
-  const cur = PS_NUM_FIELDS.includes(field) ? psNum(p[field]) : String(p[field] == null ? '' : p[field]).trim();
+  const isYr = field === PS_YEARS_FIELD;
+  const val = isYr ? psYears(raw) : PS_NUM_FIELDS.includes(field) ? psNum(raw) : String(raw == null ? '' : raw).trim();
+  const cur = isYr ? psYears(p[field]) : PS_NUM_FIELDS.includes(field) ? psNum(p[field]) : String(p[field] == null ? '' : p[field]).trim();
   const d = psDirty();
   const row = d[p.sku] || {};
   if (String(val) === String(cur)) delete row[field]; else row[field] = val;
@@ -26766,7 +26802,7 @@ function psDeprecLine(p) {
     + ` Өртөг бүрэн хуваарилагдсан тул зардалд ОРОХГҮЙ; бараа ажиллаж байгаа нь ашиг.</div></details>`;
   return `<details class="ps-dep"><summary>📉 <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>`
     + (d.noDate ? ' <span class="ps-dep-warn" title="Худалдан авсан огноогүй — насаа дуусгасан эсэхийг мэдэх аргагүй тул элэгдүүлсээр байна">⚠</span>' : '')
-    + `</summary><div class="ps-dep-x">${escapeHtml(d.label)} → <b>${d.years} жил</b> · `
+    + `</summary><div class="ps-dep-x">${escapeHtml(d.label)} → <b>${d.years} жил</b>${d.manual ? ` <span class="mut">(авто байсан бол ${d.autoYears} жил — ${escapeHtml(d.autoLabel)})</span>` : ''} · `
     + `${fmtMoneyShort(d.cost)} ÷ (${d.years}×12) = ${fmtMoneyShort(Math.round(d.perUnitMonth))}/сар нэг ширхэг`
     + (d.qty > 1 ? ` · нөөц ${d.qty}ш → <b>${fmtMoneyShort(Math.round(d.totalMonth))}/сар</b>` : '')
     + (d.endYm ? ` · бүрэн элэгдэх: ${escapeHtml(d.endYm)}`
@@ -26875,6 +26911,31 @@ function dl(){var el=document.getElementById('sheet');
 <\/script></body></html>`);
   w.document.close();
 }
+/* «Өртөг ба хөрөнгө» самбарын хэрэгслүүд: эрэмбэ + бөөнөөр нас тавих (2026-11-02).
+   Бөөнөөр тавихад бараа бүрийн `dep_years` ХУРИМТЛАГДАНА (psStage) — «💾 Хадгалах» дарж байж
+   бичигдэнэ, нуугдмал дүрэм үүсэхгүй. Дуртай бараагаа мөр дээр нь тус тусад нь ч засна. */
+function psCostTools(ro) {
+  const sort = state.psSort === 'dep' ? 'dep' : 'name';
+  const chip = (k, lb) => `<button type="button" class="ps-fc ui-raw${sort === k ? ' is-on' : ''}" data-ps-sort="${k}">${lb}</button>`;
+  const sortBar = `<div class="ps-sortbar"><span class="ps-tool-l">Эрэмбэ:</span>${chip('name', 'А–Я')}${chip('dep', '📉 Элэгдэл ихээс')}</div>`;
+  if (ro || state._prodHasDepYears === false) return sortBar;
+  const prods = state.products || [];
+  const cats = [...new Set(prods.map(x => String((x && x.category) || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'mn'));
+  const types = deprecLives().map(x => x.label).concat(['Бусад']);
+  const selV = state.psBulkSel || '';
+  const opt = (v, lb) => `<option value="${escapeHtml(v)}"${selV === v ? ' selected' : ''}>${escapeHtml(lb)}</option>`;
+  const cnt = (v) => psBulkTargets(prods, v).length;
+  return sortBar + `<div class="ps-bulk"><span class="ps-tool-l">📉 Бөөнөөр нас тавих:</span>
+    <select id="ps-bulk-sel" class="ps-in ui-raw" aria-label="Ангилал эсвэл төрөл">
+      <option value="">— ангилал / төрөл сонгох —</option>
+      <optgroup label="Ангиллаар">${cats.map(c => opt('cat:' + c, `${c} (${cnt('cat:' + c)})`)).join('')}</optgroup>
+      <optgroup label="Төрлөөр (нэрээр)">${types.map(t => opt('type:' + t, `${t} (${cnt('type:' + t)})`)).join('')}</optgroup>
+    </select>
+    <input id="ps-bulk-y" class="ps-in ps-yrs ui-raw" type="number" min="1" max="100" step="0.5" inputmode="decimal" placeholder="жил" aria-label="Нас (жил)" value="${escapeHtml(String(state.psBulkY == null ? '' : state.psBulkY))}">
+    <button type="button" class="btn ui-raw" id="ps-bulk-go">Бүгдэд нь тавих</button>
+    <button type="button" class="btn ui-raw" id="ps-bulk-auto" title="Тэдний заасан насыг арилгаж, авто болгоно">Авто болгох</button>
+  </div>`;
+}
 function renderProductSheet(mode) {
   const cfg = PSHEET[mode];
   if (!cfg) return '';
@@ -26883,7 +26944,7 @@ function renderProductSheet(mode) {
   const ro = !(state.isCEO || can(cfg.perm));
   const q = state.psQ || '';
   const _all = psFilter(state.products, q);
-  const rows = psApplyFilter(_all, mode, state.psF).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const rows = psSortRows(psApplyFilter(_all, mode, state.psF), mode === 'cost' ? state.psSort : 'name');
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const money = (v) => moneyFmtInput(Number(v) || 0);
   const cell = (p) => {
@@ -26904,6 +26965,10 @@ function renderProductSheet(mode) {
       <label class="ps-f"><span>Нэгж өртөг</span><input class="ps-in money-input ui-raw" ${d('cost')} value="${money(psVal(p, 'cost'))}" inputmode="numeric"></label>
       <label class="ps-f"><span>Авсан огноо</span><input class="ps-in ui-raw" type="date" ${d('purchase_date')} value="${escapeHtml(String(psVal(p, 'purchase_date') || '').slice(0, 10))}"></label>
       <label class="ps-f"><span>Нийлүүлэгч</span><input class="ps-in ui-raw" ${d('supplier')} value="${escapeHtml(psVal(p, 'supplier') || '')}" placeholder="—"></label>
+      ${state._prodHasDepYears === false ? '' : (() => {
+        const a = deprecForProduct({ ...p, dep_years: null });
+        return `<label class="ps-f"><span>Элэгдлийн нас</span><input class="ps-in ps-yrs ui-raw" type="number" min="1" max="100" step="0.5" inputmode="decimal" ${d('dep_years')} value="${escapeHtml(String(psVal(p, 'dep_years') == null ? '' : psVal(p, 'dep_years')))}" placeholder="авто ${a.years}" title="Хоосон = авто (${escapeHtml(a.label)} · ${a.years} жил). Жил бичвэл тэр ялна."></label>`;
+      })()}
       <span class="ps-tot">${total > 0 ? fmtMoney(total) : '—'}</span>
       ${psDeprecLine(p)}`;
     }
@@ -26954,6 +27019,7 @@ function renderProductSheet(mode) {
         + fs2.map(f => chip(f.key, f.label, _all.filter(x => { try { return !!f.test(x); } catch (_) { return false; } }).length,
             state.psF === f.key)).join('') + '</div>';
     })()}
+    ${mode === 'cost' ? psCostTools(ro) : ''}
     <div class="ps-count">${rows.length} бараа${state.psF ? ' <span class="mut">(шүүсэн)</span>' : ''}</div>
     <div class="ps-list" id="ps-list">${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🔍</div>Хайлтад тохирох бараа алга.</div>'}</div>
     <div class="ps-savebar" id="ps-savebar"${psDirtyCount() ? '' : ' hidden'}>
@@ -26991,6 +27057,24 @@ function attachProductSheetHandlers(mode) {
     render();
   }));
   if (qEl) qEl.addEventListener('input', (e) => { state.psQ = e.target.value; clearTimeout(state._psT); state._psT = setTimeout(() => render(), 220); });
+  // Эрэмбэ (элэгдэл ихээс) ба бөөнөөр нас тавих — «Өртөг ба хөрөнгө» самбар.
+  document.querySelectorAll('[data-ps-sort]').forEach(b => b.addEventListener('click', () => {
+    state.psSort = b.dataset.psSort === 'dep' ? 'dep' : 'name'; render();
+  }));
+  const bulkApply = (auto) => {
+    const sel = (document.getElementById('ps-bulk-sel') || {}).value || '';
+    const yv = (document.getElementById('ps-bulk-y') || {}).value;
+    const skus = psBulkTargets(state.products, sel);
+    if (!skus.length) { showToast('Эхлээд ангилал эсвэл төрөл сонгоно уу', 'warn'); return; }
+    const y = auto ? '' : psYears(yv);
+    if (!auto && y === '') { showToast('Нас (1–100 жил) бичнэ үү', 'warn'); return; }
+    skus.forEach(sku => psStage((state.products || []).find(x => x && x.sku === sku), PS_YEARS_FIELD, y));
+    state.psBulkSel = sel; state.psBulkY = y;
+    render();
+    showToast(`${skus.length} бараанд ${auto ? 'авто' : y + ' жил'} тавилаа — 💾 Хадгалбал баталгаажна`, 'success', 4000);
+  };
+  document.getElementById('ps-bulk-go')?.addEventListener('click', () => bulkApply(false));
+  document.getElementById('ps-bulk-auto')?.addEventListener('click', () => bulkApply(true));
   /* ⇄ ҮНДСЭН ҮЙЛДЭЛ — одоо байгаа шилжүүлэх модалыг дуудна (`product_transfers`-д
      мөр үлдээж, нийт тоог ХАДГАЛНА). Гар засвараас ялгаатай нь: хаанаас хаашаа
      хэд гэдгийг асууж, нийлбэр хэзээ ч санамсаргүй өөрчлөгдөхгүй. */
@@ -39837,9 +39921,21 @@ function deprecByBranch(products, lives) {
 /* НЭГ барааны элэгдэл — картад «хэрхэн бодогдсоныг» харуулахад. Цэвэр функц.
    ⚠ `deprecByBranch`-тай ИЖИЛ насны хүснэгтээс бодогдоно (хоёр тоо зөрөхгүй) —
      тест хоёрыг тулгана. */
+/* ⛔ БАРАА ТУС БҮРИЙН НАС (2026-11-02, CEO «бараа тус бүрээр жилийг заах нь илүү бодит, амар»).
+   `products.dep_years` (1–100) заасан бол нэрийн төрөл ба ангиллаас ДАВАМГАЙЛНА; хоосон/буруу = АВТО
+   (нэрийн төрөл → ангилал → «Бусад»). Бодит тоо: элэгдлийн 65% нь дээд 20 бараанд — бүгдийг шивэх
+   шаардлагагүй. Дүрмийн ганц газар = ЭНЭ функц; DB-ийн CHECK (1–100)-той ижил хил. */
+function deprecManualYears(p) {
+  const raw = p && p.dep_years;
+  if (raw == null || raw === '') return 0;
+  const y = Number(raw);
+  return (y >= 1 && y <= 100) ? y : 0;
+}
 function deprecForProduct(p, lives) {
   const cost = Number(p && p.cost) || 0;
-  const { years, label } = deprecYearsFor(p && p.name, lives || deprecLives(), p && p.category);
+  const auto = deprecYearsFor(p && p.name, lives || deprecLives(), p && p.category);
+  const manualY = deprecManualYears(p);
+  const { years, label } = manualY ? { years: manualY, label: 'Заасан' } : auto;
   const qty = ['qty_mevent', 'qty_nomaad', 'qty_catering', 'qty_chimun']
     .reduce((s, f) => s + (Number(p && p[f]) || 0), 0);
   const skip = !!(p && p.archived) ? 'архивласан'
@@ -39860,7 +39956,8 @@ function deprecForProduct(p, lives) {
   //   гэж таамаглавал зардал чимээгүй алга болно. Тоо нь дэлгэцэд ил гарна.
   const doneYm = (!skip && endYm && endYm <= (typeof monthStr === 'function' ? monthStr(new Date()) : '')) ? endYm : '';
   const perUnitMonth = (skip || doneYm) ? 0 : cost / (Math.max(1, years) * 12);
-  return { years, label, qty, cost, skip, perUnitMonth, doneYm, noDate: !skip && !endYm,
+  return { years, label, manual: !!manualY, autoYears: auto.years, autoLabel: auto.label,
+           qty, cost, skip, perUnitMonth, doneYm, noDate: !skip && !endYm,
            totalMonth: perUnitMonth * qty, totalYear: perUnitMonth * qty * 12, endYm };
 }
 /* Тухайн сарын элэгдэл — шилжилтийн сараас хойш Л зардал болно (`active`). */

@@ -21210,7 +21210,7 @@ async function swFetchTests() {
   ok(nr.ready === false && nr.amount === 0, 'шилжүүлэлт: өмнөх сарын ирц ачаалагдаагүй бол ready:false (чимээгүй 0 биш)');
   runIn('state.attMarks = null;');
   const nm = ci('88001', 'null');
-  ok(nm.ready === false && nm.amount === 0, '⛔ шилжүүлэлт: амралтын тэмдэглэгээ ачаалагдаагүй бол ready:false (өмнөх сарын норм буруу байж болно)');
+  ok(nm.ready === true && nm.amount === 400000, '⛔ шилжүүлэлт: тэмдэглэгээ ачаалагдаагүй байх нь ШИЛЖҮҮЛЭЛТИЙГ ХОЦРООХГҮЙ — Амралт нормыг буулгахаа больсон тул тооцоо ижил');
   runIn(`[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct, state.payrollCfg, state.attMarks, state.attMarksErr] = ${JSON.stringify(save)};`);
 
   // SCAN: самбар, карт, ирцийн хүснэгт гурвуулаа шилжүүлэлттэй ижил дүрмээр
@@ -22503,15 +22503,27 @@ async function swFetchTests() {
       mk('2026-10-05', 'rest'));                   // өөр сар
   let mn = run(`memberNorm('${K}', '${SEP}')`);
   eq([mn.restDays, mn.leaveDays, mn.absentDays], [1, 1, 1], 'норм: амралт 1 (бямба/болиулсан/өөр хүн/өөр сар орохгүй), чөлөө 1, тасалсан 1');
-  eq([mn.full, mn.norm, mn.restMins], [FULL, FULL - D, D], 'норм: ЗӨВХӨН амралт нормыг 8ц-аар буулгана; чөлөө/тасалсан буулгахгүй');
+  eq([mn.full, mn.norm, mn.restMins], [FULL, FULL, 0], '⛔ норм: Амралт ч, чөлөө ч, тасалсан ч нормыг БУУЛГАХГҮЙ — Амралт «цалинтай амралт» БИШ (CEO 2026-11-02)');
   eq(run(`memberNorm('991-122-33', '${SEP}')`).restDays, 1, 'норм: утсыг тэмдэгтээс цэвэрлэж тулгана');
   eq(run(`memberNorm('${K}', '2026-10')`).restDays, 1, 'норм: сар бүр тусдаа');
   put(...['01', '02', '03', '04', '07', '08', '09', '10', '11', '14', '15', '16', '17', '18', '21', '22', '23', '24', '25', '28', '29', '30'].map(d => mk(`2026-09-${d}`, 'rest')));
-  eq(run(`memberNorm('${K}', '${SEP}')`).norm, 0, 'норм: сар бүхэлдээ амралттай бол 0 (сөрөг биш)');
+  eq(run(`memberNorm('${K}', '${SEP}')`).norm, FULL, '⛔ норм: сар бүхэлдээ «Амралт» тэмдэглэсэн ч норм бүтэн хэвээр');
   st.attMarks = null;
-  ok(run(`memberNorm('${K}', '${SEP}')`).ready === false, '⛔ норм: тэмдэглэгээ ачаалагдаагүй бол ready:false (дуудагч ил хэлнэ)');
+  ok(run(`memberNorm('${K}', '${SEP}')`).ready === false, 'норм: тэмдэглэгээ ачаалагдаагүй бол ready:false (торгуулийн дуудагч ил хэлнэ)');
+  // ⛔ ЖИНХЭНЭ ЗАМ: «Амралт» дарсан хүний цалин ЯГ тэмдэглээгүй хүнийхтэй адил — тэр өдөр ажиллаагүй гэж хасагдана
+  put(mk('2026-09-15', 'rest'));
+  const mnR = run(`memberNorm('${K}', '${SEP}')`);
+  const payRest = run(`monthPayBreakdown(${BASE}, false, ${FULL - D}, ${mnR.norm}, 0, 1, '${SEP}', '2026-11-02', 0, ${mnR.full})`);
+  put();
+  const mnN = run(`memberNorm('${K}', '${SEP}')`);
+  const payNone = run(`monthPayBreakdown(${BASE}, false, ${FULL - D}, ${mnN.norm}, 0, 1, '${SEP}', '2026-11-02', 0, ${mnN.full})`);
+  eq([payRest.earned, payRest.shortMins, payRest.creditMins], [payNone.earned, payNone.shortMins, 0], '⛔ цалин: «Амралт» тэмдэглэсэн хүний цалин тэмдэглээгүйтэй ИЖИЛ — 8ц дутуу хасагдана, цалинтай амралт биш');
+  ok(payRest.earned < BASE && payRest.shortMins === D, 'цалин: Амралт дарсан өдрийн 1/22 суурь цалингаас хасагдсан');
+  put(mk('2026-09-15', 'rest'), mk('2026-09-16', 'leave'), mk('2026-09-17', 'absent'), mk('2026-09-12', 'rest'), mk('2026-09-22', 'rest', 'active', '99112244'), mk('2026-10-05', 'rest'));
+  st.attMarks = null;
 
-  // ── ③ ЦАЛИН: амралт хасалтыг арилгана, чөлөө/тасалсан арилгахгүй, цагийн хөлс өөрчлөгдөхгүй ──
+  // ── ③ monthPayBreakdown (ЦЭВЭР): хүний норм бүтнээс бага ӨГӨГДВӨЛ зөрүү хасалтыг арилгана. ⚠ 2026-11-02-оос ДУУДАГЧ
+  //    (`memberNorm`) нормыг буулгахгүй тул энэ механизм одоо ашиглагдахгүй — функцийн нийцтэй байдлыг л шалгана ──
   const PB = (worked, norm, full) => run(`monthPayBreakdown(${BASE}, false, ${worked}, ${norm}, 0, 1, '${SEP}', '${DONE}', 0, ${full === undefined ? 'undefined' : full})`);
   const none = PB(FULL - D, FULL);                                   // амралт тэмдэглээгүй: 1 өдөр дутуу
   eq(none.shortMins, D, 'цалин: тэмдэглэгээгүй бол 1 өдөр (8ц) дутуу гэж хасагдана (өмнөх зан)');
@@ -22541,9 +22553,9 @@ async function swFetchTests() {
   const c0 = carry();
   ok(c0.ready && c0.amount > 0, 'шилжүүлэлт: амралт тэмдэглээгүй бол 9 сар 1 өдөр дутуу → олгосон нь илүү болж шилжинэ');
   put(mk('2026-09-15', 'rest'));
-  eq(carry().amount, 0, '⛔ шилжүүлэлт: 9 сарын амралтыг тэмдэглэвэл тэр сарын цалин бүтэн → илүү олголт шилжихгүй');
+  eq(carry().amount, c0.amount, '⛔ шилжүүлэлт: 9 сарын «Амралт» тэмдэглэснээр цалин ӨӨРЧЛӨГДӨХГҮЙ — 1 өдөр дутуу хэвээр, илүү олголт ижил шилжинэ');
   st.attMarks = null;
-  ok(carry().ready === false, 'шилжүүлэлт: тэмдэглэгээ ачаалагдаагүй бол ready:false');
+  ok(carry().ready === true && carry().amount === c0.amount, 'шилжүүлэлт: тэмдэглэгээ ачаалагдаагүй байхад ч тооцоо ижил (норм тэмдэглэгээнээс хамаарахаа больсон)');
   run(`[state.salaries, state.salaryPayments, state.financeRequests, state.salaryDeduct] = ${JSON.stringify(base0)};`);
 
   // ── ⑤ attMarkSet — серверт ҮНЭХЭЭР явна ──
@@ -22658,10 +22670,11 @@ async function swFetchTests() {
     const rowOf = (html, k) => { const i = html.indexOf(`data-att-mo="${k}"`); return html.slice(i, html.indexOf('</details>', i)); };
     const mHtml = run(`renderAttendanceMonth('${SEP}')`);
     const a = rowOf(mHtml, '90000021'), b = rowOf(mHtml, '90000022');
-    ok(/Амралт 1/.test(a) && /амралт|Амралт/.test(a) && /168ц/.test(a), 'сарын тойм: амралттай хүнд тэмдэглэгээ + норм 176 → 168ц ил гарна');
-    ok(!/нормоос[^<]*дутуу/.test(a), '⛔ сарын тойм: цалинтай амралт авсан хүний суурь цалин «дутуу» гэж ХАСАГДАХГҮЙ');
-    ok(/нормоос 8ц( 0м)? дутуу/.test(b), 'сарын тойм: тэмдэглэгээгүй хүн ижил цагтай бол 8ц дутуу гэж хасагдана (харьцуулалт)');
-    ok(/att-mo-pct-ok">100%/.test(a) && !/att-mo-pct-ok">100%/.test(b), 'сарын тойм: нормын хувь хүний нормоор (амралттай нь 100%, нөгөө нь бага)');
+    ok(/Амралт 1/.test(a) && /норм 176ц/.test(a) && !/норм 168ц/.test(a), '⛔ сарын тойм: «Амралт» тэмдэглэгээ ил, норм БҮТЭН 176ц хэвээр (168ц болж буурахгүй; 168ц нь ажилласан цаг)');
+    ok(/нормоос 8ц( 0м)? дутуу/.test(a), '⛔ сарын тойм: «Амралт» дарсан хүн ч 8ц дутуу гэж хасагдана (цалинтай амралт биш)');
+    ok(/нормоос 8ц( 0м)? дутуу/.test(b), 'сарын тойм: тэмдэглэгээгүй хүн ижил цагтай бол 8ц дутуу гэж хасагдана');
+    ok(!/att-mo-pct-ok">100%/.test(a) && !/att-mo-pct-ok">100%/.test(b), 'сарын тойм: нормын хувь хоёуланд ижил (бүтэн нормоор), аль нь ч 100% биш');
+    ok(!/Цалинтай амралт|цалинтай амралт/.test(mHtml), '⛔ сарын тойм: «цалинтай амралт» гэж ХЭЗЭЭ Ч бичигдэхгүй');
     ok(!/style="/.test(mHtml.replace(/<img[^>]*>/g, '')), 'дизайн: тэмдэглэгээ нэмсэн сарын тойм inline style-гүй');
     st.attMarks = null;
     ok(/ачаалж байна/.test(run(`renderAttendanceMonth('${SEP}')`)), '⛔ сарын тойм: тэмдэглэгээ ачаалагдаагүй үед цалин дутуу харагдахыг ИЛ хэлнэ');
@@ -22673,15 +22686,15 @@ async function swFetchTests() {
     let sHtml = '', serr = '';
     try { sHtml = run('renderSalary()'); } catch (e) { serr = e.message; }
     eq(serr, '', 'самбар: тэмдэглэгээтэй renderSalary алдаагүй');
-    ok(/Цалинтай амралт: сарын норм −8ц → <b>168ц/.test(sHtml), 'самбар: амралттай хүний нормын тайлбар гарна');
-    ok(/168ц<\/span>/.test(sHtml) || /\/ 168ц/.test(sHtml), 'самбар: цагийн мөр хүний нормоор (/ 168ц)');
+    ok(/Норм буурахгүй — эдгээр өдөр ажиллаагүй гэж/.test(sHtml) && !/алтай амралт/.test(sHtml), '⛔ самбар: Амралтын тайлбар «норм буурахгүй» гэж хэлнэ, «цалинтай амралт» гэж бичигдэхгүй');
+    ok(/\/ 176ц/.test(sHtml) && !/\/ 168ц/.test(sHtml), 'самбар: цагийн мөр бүтэн нормоор (/ 176ц)');
     // Ажилтны өөрийн карт
     run("state.me = '90000021'; state.myPayMonth = '2026-09'; state.myPayRecs = { '2026-09': state.attMonthRecs.filter(r => r.member_key === '90000021') };");
     let card = '', cerr = '';
     try { card = run('myPayCardHtml(findMember(state.me) || {})'); } catch (e) { cerr = e.message; }
     eq(cerr, '', 'карт: тэмдэглэгээтэй myPayCardHtml алдаагүй');
-    ok(/168ц/.test(card) && /Цалинтай амралт/.test(card), 'карт: ажилтан өөрийн амралт, нормоо харна');
-    ok(!/Нормоос[^<]*дутуу/.test(card), '⛔ карт: амралт авсан ажилтны карт «норм дутуу» гэж хасахгүй');
+    ok(/\/ 176ц/.test(card) && !/\/ 168ц/.test(card) && !/алтай амралт/.test(card), '⛔ карт: ажилтан бүтэн нормоо (/ 176ц) харна, «цалинтай амралт» гэж бичигдэхгүй');
+    ok(/Нормоос 8ц( 0м)? дутуу/.test(card), '⛔ карт: «Амралт» дарсан ажилтны карт ч 8ц дутуу гэж ХАСАГДСАН харуулна (цалинтай амралт биш)');
     run("state.me = '90000022'; state.myPayRecs = { '2026-09': state.attMonthRecs.filter(r => r.member_key === '90000022') };");
     ok(/Нормоос 8ц( 0м)? дутуу/.test(run('myPayCardHtml(findMember(state.me) || {})')), 'карт: тэмдэглэгээгүй ажилтанд 8ц дутуу хасагдсан хэвээр (харьцуулалт)');
     TEAM_.length = 0; tsave.forEach(x => TEAM_.push(x));
@@ -22701,6 +22714,13 @@ async function swFetchTests() {
     ok(!/method:\s*'DELETE'/.test(fnSet) && /status: kind \? 'active' : 'void'/.test(fnSet), 'scan: хатуу устгал байхгүй (болих = void)');
     ok(/\['data-amk\]|\[data-amk\],\[data-amk-clear\]/.test(appSrc) && /_attListEl\.addEventListener\('click'/.test(appSrc), 'scan: товчнууд #att-list дээрх НЭГ delegation-аар (innerHTML солигдоход үхэхгүй)');
     ok(!/торгуул/i.test(appSrc.slice(appSrc.indexOf('function memberNorm'), appSrc.indexOf('function attMarkValidate'))), 'scan: норм бодолтод торгуулийн логик байхгүй (давхар хасалт — CEO шийдээгүй)');
+    const normFn = appSrc.slice(appSrc.indexOf('function memberNorm'), appSrc.indexOf('// Тэмдэглэх боломжтой эсэх'));
+    ok(!/ATT_DAY_MINS|full\s*-\s*restDays/.test(normFn) && /norm:\s*full/.test(normFn), '⛔ scan: memberNorm нормыг БУУЛГАХГҮЙ (Амралт ≠ цалинтай амралт, CEO 2026-11-02)');
+    ok(/rest:\s*\{[^}]*paid:\s*false/.test(appSrc), 'scan: Амралт paid:false');
+    const uiTxt = appSrc.slice(appSrc.indexOf('function attMarksWarnHtml'), appSrc.indexOf('// Тэр өдөр ирц бүртгэгдсэн хүнийг'))
+      + appSrc.slice(appSrc.indexOf('// Нэг хүний тэмдэглэгээний товч мөр'), appSrc.indexOf('/* ─── АЖИЛД ДУУДАХ'));
+    const uiNoComments = uiTxt.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
+    ok(!/[Цц]алинтай амралт/.test(uiNoComments) && !/цалинтай, сарын норм/.test(uiNoComments) && !/амралттай хүний цалин дутуу/.test(uiNoComments), '⛔ scan: дэлгэцийн бичвэрт «цалинтай амралт», «норм 8ц буурна», «амралттай хүний цалин дутуу» гэж БИЧИГДЭХГҮЙ');
     // DB
     ok(/create table if not exists att_marks/.test(sqlSrc) && /check \(kind in \('rest', 'leave', 'absent'\)\)/.test(sqlSrc), 'db: att_marks хүснэгт, 3 төрөл');
     ok(/closed_months/.test(sqlSrc) && /raise exception '🔒/.test(sqlSrc), '⛔ db: хаасан сарыг trigger ч хаана (аппаас тойрч болохгүй)');

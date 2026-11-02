@@ -13571,10 +13571,14 @@ async function attSaveManualOut(body, keepDay) {
 /* ─── ИРЦИЙН ТЭМДЭГЛЭГЭЭ — Амралт / Чөлөө / Тасалсан (2026-10-26, CEO) ──────────
    Ирц зөвхөн «ирсэн/явсан»-ыг бүртгэдэг тул ирээгүй өдрийн ШАЛТГААН хаана ч байгаагүй.
    Гурав нь мөнгөөр ӨӨР — нэг «ирээгүй» тэмдэг болгож БОЛОХГҮЙ:
-     rest   🏖 Амралт   — ЦАЛИНТАЙ (гэрээгээр жилд 15 ажлын өдөр) → тэр хүний сарын НОРМ 8 цагаар
-                          буурна, суурь цалин хасагдахгүй
-     leave  📝 Чөлөө    — цалингүй → норм буурахгүй (ажилласан цагаар бодогдох ХЭВЭЭР)
-     absent 🚫 Тасалсан — цалингүй, зөвхөн бүртгэнэ
+     rest   🏖 Амралт   — амарсан өдөр (зөвшөөрөгдсөн). НОРМЫГ БУУЛГАХГҮЙ, цалин ажилласан цагаар бодогдоно
+     leave  📝 Чөлөө    — зөвшөөрөгдсөн чөлөө. Норм буурахгүй (ажилласан цагаар бодогдох ХЭВЭЭР)
+     absent 🚫 Тасалсан — зөвшөөрөлгүй, зөвхөн бүртгэнэ
+   ⛔ АМРАЛТ «ЦАЛИНТАЙ АМРАЛТ» БИШ (2026-11-02, CEO: «зүгээр л амрах өдрийг бодож байгаагаас цалинтай амралт
+     биш юм»). 10-26-д нормыг 8ц-аар буулгаж (суурь цалин хасагдахгүй) байсан нь буруу: дэлгэц «цалинтай амралт»
+     гэж харуулж, ажилтан бүрийн «норм» буурч байв. Одоо гурван төрөл ЦАЛИНД ИЖИЛ — тэр өдөр ажиллаагүй гэж
+     тооцогдоно. Ялгаа нь зөвхөн ХАРИУЦЛАГАД: Амралт/Чөлөө = зөвшөөрөгдсөн (ирээгүй гэж торгохгүй), Тасалсан = үгүй.
+     Нормыг буулгадаг ЦАЛИНТАЙ амралт хэрэгтэй болбол `memberNorm` + `rest.paid`-ыг ТУСДАА төрөл болгож нэм.
    ⛔ ТОРГУУЛЬ ЭНД БАЙХГҮЙ. «Тасалбал хувиар торгох» нь давхар хасалт: суурь цалин аль хэдийн
      ажилласан цагаар бодогддог (тасалсан өдөр 1/22 хасагдсан). Аль нэгийг CEO сонгох хүртэл нэмэхгүй;
      цалингаас торгууль хасах нь хуулиар хязгаартай.
@@ -13589,7 +13593,7 @@ async function attSaveManualOut(body, keepDay) {
      байсан (цалингийн самбар аль хэдийн нэг удаа эвдэрсэн). Цалин харж чадах хүнд суурь цалинтай эсэхээр,
      харахгүй хүнд л ажилтны төрлөөр. */
 const ATT_MARK_KINDS = {
-  rest:   { label: 'Амралт',   icon: '🏖', paid: true },
+  rest:   { label: 'Амралт',   icon: '🏖', paid: false },
   leave:  { label: 'Чөлөө',    icon: '📝', paid: false },
   absent: { label: 'Тасалсан', icon: '🚫', paid: false },
 };
@@ -13598,7 +13602,7 @@ const ATT_DAY_MINS = 8 * 60;   // нэг ажлын өдрийн норм (`work
 function attMarkKey(key) { return String(key || '').replace(/\D/g, ''); }
 function attMarkId(key, day) { return attMarkKey(key) + '|' + String(day || ''); }
 function attMarkMap() { return (state.attMarks && typeof state.attMarks === 'object') ? state.attMarks : {}; }
-// Ачаалагдсан уу. FALSE бол амралттай хүний цалин ДУТУУ харагдана (норм бүтнээрээ) → дуудагч ил хэлнэ.
+// Ачаалагдсан уу. FALSE бол тэмдэглэгээ (ирээгүйд торгох эсэх) дутуу харагдана → дуудагч ил хэлнэ. Норм/цалинд нөлөөлөхгүй.
 function attMarksReady() { return !!(state.attMarks && typeof state.attMarks === 'object') && !state.attMarksErr; }
 function attMarkOn(key, day) { const m = attMarkMap()[attMarkId(key, day)]; return (m && m.status === 'active') ? m : null; }
 function isWeekdayIso(day) {
@@ -13618,13 +13622,13 @@ function attMarksOfMonth(key, ym) {
   return out;
 }
 /* ХҮНИЙ САРЫН НОРМ — цалин, илүү цаг, нормын хувь бүгд ЭНЭ ганц функцээс.
-   `full` = тэр сарын бүтэн хуанлийн норм (цагийн хөлсийг энэ нормоор бодно), `norm` = амралтаар буурсан.
-   ЗӨВХӨН цалинтай АМРАЛТ нормыг буулгана; бямба/ням өдөр норм дотор ороогүй тул тоолохгүй. */
+   ⛔ Норм = тэр сарын БҮТЭН хуанлийн норм (2026-11-02, CEO). Амралт/чөлөө/тасалсан алийг нь ч БУУЛГАХГҮЙ —
+   тэр өдөр ажиллаагүй гэж цалин ажилласан цагаар бодогдоно. `restDays` нь зөвхөн ХАРУУЛАХ тоо.
+   `norm` ба `full` хоёр тусдаа үлдсэн нь `monthPayBreakdown`-ийн (fullNormMins) нийцтэй байдлын төлөө. */
 function memberNorm(key, ym) {
   const full = workNormMins(ym), mk = attMarksOfMonth(key, ym);
   const restDays = mk.rest.filter(isWeekdayIso).length;
-  const norm = Math.max(0, full - restDays * ATT_DAY_MINS);
-  return { full, norm, restDays, restMins: full - norm, leaveDays: mk.leave.length, absentDays: mk.absent.length, marks: mk, ready: attMarksReady() };
+  return { full, norm: full, restDays, restMins: 0, leaveDays: mk.leave.length, absentDays: mk.absent.length, marks: mk, ready: attMarksReady() };
 }
 // Тэмдэглэх боломжтой эсэх. ЦЭВЭР функц — тестлэгдэнэ. `p.hasRecord` — тэр өдөр ирц бүртгэгдсэн.
 function attMarkValidate(p, today) {
@@ -13651,7 +13655,7 @@ async function loadAttMarks() {
     (Array.isArray(rows) ? rows : []).forEach(x => { if (x && x.id) map[x.id] = x; });
     state.attMarks = map; state.attMarksErr = null;
   } catch (e) {
-    // ⚠ Алдааг ЧИМЭЭГҮЙ залгихгүй — амралттай хүний цалин дутуу харагдана. Минут тутам өөрөө дахин оролдоно.
+    // ⚠ Алдааг ЧИМЭЭГҮЙ залгихгүй — тэмдэглэгээ (торгуулийн эх үүсвэр) дутуу харагдана. Минут тутам өөрөө дахин оролдоно.
     state.attMarksErr = attFailMsg(e); state.attMarksRetryAt = Date.now() + 60000;
     dataLoadFailed('Ирцийн тэмдэглэгээ', e);
   }
@@ -13670,8 +13674,8 @@ function ensureAttMarks() {
                       () => { state._attMarksBusy = false; });
 }
 function attMarksWarnHtml() {
-  if (state.attMarksErr) return `<div class="pb-warn amk-warn">⚠ Амралт/чөлөөний тэмдэглэгээ ачаалж чадсангүй (${escapeHtml(state.attMarksErr)}) — <b>амралттай хүний цалин дутуу харагдаж болно</b>. Минутын дараа өөрөө дахин оролдоно.</div>`;
-  if (!attMarksReady()) return `<div class="pb-note amk-warn">⏳ Амралт/чөлөөний тэмдэглэгээ ачаалж байна — амралттай хүний цалин ачаалагдтал дутуу харагдана.</div>`;
+  if (state.attMarksErr) return `<div class="pb-note amk-warn">⚠ Амралт/чөлөөний тэмдэглэгээ ачаалж чадсангүй (${escapeHtml(state.attMarksErr)}) — тэмдэглэгээ дутуу харагдаж болно. Цалингийн норм үүнээс хамаарахгүй. Минутын дараа өөрөө дахин оролдоно.</div>`;
+  if (!attMarksReady()) return `<div class="pb-note amk-warn">⏳ Амралт/чөлөөний тэмдэглэгээ ачаалж байна.</div>`;
   return '';
 }
 // Тэр өдөр ирц бүртгэгдсэн хүнийг «ирээгүй» гэж тэмдэглэхгүй. Ачаалагдсан ирцийн жагсаалтуудаас шалгана.
@@ -13746,7 +13750,7 @@ function attMarkSectionHtml(day, recs) {
   };
   return `<details class="amk-sec"${open ? ' open' : ''}>
     <summary class="amk-sum">📋 Ирээгүй · тэмдэглэх <b class="amk-n">${todo.length}</b>${done.length ? `<span class="amk-sub"> · ${done.length} тэмдэглэсэн</span>` : ''}</summary>
-    <div class="amk-hint">🏖 <b>Амралт</b> — цалинтай, сарын норм 8ц буурна · 📝 <b>Чөлөө</b> — цалингүй · 🚫 <b>Тасалсан</b> — цалингүй, зөвхөн бүртгэнэ.${day === todayStr() ? ' Өнөөдөр дуусаагүй — хараахан ирээгүй байж болно.' : ''}</div>
+    <div class="amk-hint">🏖 <b>Амралт</b> · 📝 <b>Чөлөө</b> — зөвшөөрөгдсөн, торгохгүй · 🚫 <b>Тасалсан</b> — зөвшөөрөлгүй. Гурвуулаа норм буулгахгүй, цалин ажилласан цагаар бодогдоно.${day === todayStr() ? ' Өнөөдөр дуусаагүй — хараахан ирээгүй байж болно.' : ''}</div>
     ${locked ? `<div class="amk-lock">🔒 ${escapeHtml(day.slice(0, 7))} сар хаагдсан — тэмдэглэгээ өөрчлөгдөхгүй. Засах бол CEO сарыг нээнэ.</div>` : ''}
     <div class="amk-list">${todo.map(row).join('')}${done.map(row).join('')}</div>
   </details>`;
@@ -13771,12 +13775,12 @@ function attMarkSummaryText(mn) {
   return ATT_MARK_ORDER.filter(x => mn.marks[x].length)
     .map(x => `${ATT_MARK_KINDS[x].icon} ${ATT_MARK_KINDS[x].label} ${mn.marks[x].length}`).join(' · ');
 }
-// Дэлгэрэнгүй: өдрүүдийг нэрлэнэ + нормд үзүүлэх нөлөө (амралт л нормыг буулгана)
+// Дэлгэрэнгүй: өдрүүдийг нэрлэнэ. Гурван төрөл ЦАЛИНД ИЖИЛ (норм буурахгүй) — «цалинтай амралт» гэж БҮҮ бич.
 function attMarkDetailHtml(mn) {
   const parts = ATT_MARK_ORDER.filter(x => mn.marks[x].length).map(x =>
     `${ATT_MARK_KINDS[x].icon} ${ATT_MARK_KINDS[x].label} <b>${mn.marks[x].length}</b> өдөр (${mn.marks[x].map(d => escapeHtml(d.slice(8))).join(', ')})`);
   if (!parts.length) return '';
-  return `<div class="amk-line">${parts.join(' · ')}${mn.restDays ? `<br><span class="amk-line-s">Цалинтай амралт: сарын норм −${lunchHM(mn.restMins)} → <b>${lunchHM(mn.norm)}</b> (суурь цалин хасагдахгүй).${(mn.leaveDays || mn.absentDays) ? ' Чөлөө/тасалсан нормыг буулгахгүй — ажилласан цагаар бодогдоно.' : ''}</span>` : `<br><span class="amk-line-s">Чөлөө/тасалсан нормыг буулгахгүй — суурь цалин ажилласан цагаар бодогдоно.</span>`}</div>`;
+  return `<div class="amk-line">${parts.join(' · ')}<br><span class="amk-line-s">Норм буурахгүй — эдгээр өдөр ажиллаагүй гэж суурь цалин ажилласан цагаар бодогдоно.</span></div>`;
 }
 /* ─── АЖИЛД ДУУДАХ + ТОРГУУЛЬ + ЗАХИАЛГЫН БОНУС (2026-10-26, Алтансүхийн даалгавар + CEO) ───────────
    «Шаардлагатай үед хаана хэдэн цагаас гэж цаг зааж дууддаг; хоцорсон/ирээгүй/тасалсан үед хариуцлага».
@@ -15247,14 +15251,14 @@ function payProrateFrom() { return payrollStartMonth(); }
    `today`-г тест дамжуулна; дуудагч дамжуулахгүй (өнөөдөр). */
 function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate, month, today, stageBonus, fullNormMins, extra) {
   base = Math.max(0, Number(base) || 0);
-  /* ЦАЛИНТАЙ АМРАЛТ (2026-10-26): `normMins` нь ТЭР ХҮНИЙ норм (амралтын өдрөөр буурсан), `fullNormMins` нь
-     тэр сарын бүтэн хуанлийн норм. Цагийн хөлс (илүү цаг, хасалт) ҮРГЭЛЖ бүтэн нормоор — амралт авсан хүний
-     цагийн хөлс өөрчлөгдөхгүй. Цалинтай амралтын цаг (`credit`) нь зөвхөн ХАСАЛТЫГ арилгана (ажилласан
-     мэт тоологдоно), илүү цагт ОРОХГҮЙ — илүү цаг = ажилласан − хүний норм. `fullNormMins` өгөөгүй бол
-     `credit` = 0 тул хуучин тооцоотой ЯГ ИЖИЛ. */
+  /* ХҮНИЙ НОРМ ≠ БҮТЭН НОРМ (2026-10-26): `normMins` нь ТЭР ХҮНИЙ норм, `fullNormMins` нь тэр сарын бүтэн
+     хуанлийн норм. Цагийн хөлс (илүү цаг, хасалт) ҮРГЭЛЖ бүтэн нормоор. Хүний норм бүтнээс бага бол зөрүү
+     (`credit`) нь зөвхөн ХАСАЛТЫГ арилгана, илүү цагт ОРОХГҮЙ. ⛔ 2026-11-02-оос Амралт нормыг буулгахгүй
+     (`memberNorm` норм = бүтэн) тул одоо `credit` = 0; механизм нь цалинтай амралт буцаж хэрэгтэй болбол
+     (тусдаа төрлөөр) бэлэн. `fullNormMins` өгөөгүй бол `credit` = 0 тул хуучин тооцоотой ЯГ ИЖИЛ. */
   const fullIn = Number(fullNormMins) > 0 ? Number(fullNormMins) : 0;
   const norm = Number(normMins) > 0 ? Number(normMins)
-    : ((fullIn && Number(normMins) === 0) ? 0 : workNormMins(month));   // ⚠ норм = тэр сарын хуанли (сар бүхэлдээ амралттай бол 0)
+    : ((fullIn && Number(normMins) === 0) ? 0 : workNormMins(month));   // ⚠ норм = тэр сарын хуанли (хүний норм 0 өгвөл 0)
   const fullNorm = fullIn || norm;
   const credit = Math.max(0, fullNorm - norm);
   const known = workedMins !== null && workedMins !== undefined && isFinite(Number(workedMins));
@@ -15349,13 +15353,13 @@ function salaryCarryIn(key, ym, minsOf, recsOf) {
   const base = Number((state.salaries || {})[key]) || 0;
   const months = payCarryMonths(ym);
   if (!base || !months.length) return { amount: 0, ready: true, from: '' };
-  // ⛔ Амралтын тэмдэглэгээ ачаалагдаагүй бол өмнөх сарын норм буруу (бүтэн) → илүү олголт хиймлээр буурна
-  if (!attMarksReady()) return { amount: 0, ready: false, from: '' };
+  // (Амралт нормыг буулгахаа больсон (2026-11-02) тул тэмдэглэгээ ачаалагдаагүй байх нь шилжүүлэлтийг ХОЦРООХГҮЙ.
+  //  Торгууль идэвхтэй бол `payExtras().ready` доор өөрөө хаана.)
   const rows = [];
   for (const m of months) {
     const mins = minsOf(m);
     if (mins === undefined) return { amount: 0, ready: false, from: '' };
-    const mn = memberNorm(key, m);   // өмнөх сарын амралтыг ч харгалзана — тэр сарын цалин ЯГ ИЖИЛ дүрмээр
+    const mn = memberNorm(key, m);   // тэр сарын цалин ЯГ ИЖИЛ дүрмээр (норм = бүтэн хуанлийн норм)
     // Торгууль/захиалгын бонус ч ИЖИЛ: тэр сарын дүрэм идэвхтэй атлаа ирц/дуудлага ачаалагдаагүй бол ready:false
     const ex = payExtras(key, m, recsOf ? recsOf(m) : undefined, base);
     if (!ex.ready) return { amount: 0, ready: false, from: '' };
@@ -15423,7 +15427,7 @@ function renderAttendanceMonth(month) {
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
   const recs = attRecsInFence(state.attMonthRecs);
   if (!recs.length) return `<div class="att-mo-note">${month} сард ирц бүртгэгдээгүй.</div>`;
-  ensureAttMarks();   // амралттай хүний норм буурна — ачаалагдаагүй бол цалин дутуу харагдана (доор ил хэлнэ)
+  ensureAttMarks();   // тэмдэглэгээ (торгууль, «Амралт N» тоо) — норм/цалинд нөлөөлөхгүй
   const normDays = workNormDays(month), normMins = workNormMins(month);   // ⚠ норм САР БҮРЭЭР (хуанлиар)
   const nowMins = workNormMinsThrough(month, todayStr()), inProgress = nowMins < normMins;   // явж буй сар: хувийг өнөөдрийг хүртэлх нормоор
   const byM = {};
@@ -15437,7 +15441,7 @@ function renderAttendanceMonth(month) {
       if (sm.noOut) noOutDays.push(d);   // гарах бүртгэлгүй → тэр өдөр 0 цаг тоологдож байна
     });
     const mem = findMember(k) || { name: m.name, role: '' };
-    // ХҮНИЙ норм: цалинтай амралт нормыг буулгана (`memberNorm`); хувь, илүү цаг, цалин бүгд үүнээс
+    // ХҮНИЙ норм (`memberNorm`) = бүтэн хуанлийн норм; хувь, илүү цаг, цалин бүгд үүнээс
     const mn = memberNorm(k, month);
     return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays, mn, pNow: Math.max(0, nowMins - mn.restMins) };
   }).sort((a, b) => b.mins - a.mins);
@@ -15698,7 +15702,7 @@ function myPayCardHtml(me) {
   const db = driverBonus(key, month);
   // ⛔ Тэр сард огт ирцгүй = цаг МЭДЭГДЭХГҮЙ (null) — 0 цаг гэж үзэж цалинг тэглэхгүй
   ensureAttMarks();
-  const mn = memberNorm(key, month);   // цалинтай амралт нормыг буулгана
+  const mn = memberNorm(key, month);   // норм = бүтэн хуанлийн норм (амралт буулгахгүй)
   const ex = payExtras(key, month, recs, base);   // торгууль + захиалгын бонус (өөрийн ирцээр)
   const b = monthPayBreakdown(base, salaryDeductOn(key), w.days ? w.mins : null, mn.norm, db.amount, undefined, month, undefined, stagePayFor(key, month).total, mn.full, ex);
   const normH = Math.round(mn.norm / 60);
@@ -20404,7 +20408,7 @@ function renderSalary() {
   if (!histOnly && state.attMonthKey !== ym && state._attMonthBusy !== ym && !(state.attMonthErr && state.attMonthErr.month === ym)) setTimeout(() => loadAttendanceMonthFull(ym), 0);
   const attReady = !histOnly && state.attMonthKey === ym && Array.isArray(state.attMonthRecs);
   const attMins = attReady ? payrollAttMins(state.attMonthRecs) : {};
-  if (!histOnly) ensureAttMarks();   // цалинтай амралт хүн бүрийн нормыг буулгана
+  if (!histOnly) ensureAttMarks();   // тэмдэглэгээ (торгууль, «Амралт N» тоо) — норм/цалинд нөлөөлөхгүй
   const normH = workNormDays(ym) * 8;   // ⚠ норм САР БҮРЭЭР (бүтэн хуанли; хүн бүрийнх нь `memberNorm`)
   const spAll = stagePayByPerson(state.appOrders || [], ym);
   const payRows = (state.salaryPayments || []).filter(p => p && p.ym === ym);

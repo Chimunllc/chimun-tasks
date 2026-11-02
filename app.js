@@ -26569,11 +26569,26 @@ function psBulkTargets(products, sel) {
       || (kind === 'type' && deprecForProduct({ ...p, dep_years: null }).label === val)))
     .map(p => p.sku);
 }
-function psFilter(list, q) {
+/* 🧩 ҮЙЛЧИЛГЭЭ, БАГЦ = БАРАА БИШ (2026-11-02, CEO: «өртөг, элэгдэл орохгүй зүйл бараан дотор яваад
+   байна — тусд нь болгоод бараанаас холдуул»). Тэдэнд өртөг, элэгдэл, нөөц байхгүй (багц нь
+   бүрэлдэхүүнээсээ, үйлчилгээ нь хөлснөөсөө бүрддэг) → зөвхөн БАРААНЫ дэлгэцүүд (`cost`, `stock`)-ээс
+   салгаж, хэсэг доор эвхэгдсэн тусдаа хайрцагт харуулна. Үнэ/каталогт багц байх ёстой (үнээ тэнд засна).
+   «Бараа» дэлгэц нь багцыг аль хэдийн тусдаа табаар (`prodTab`) харуулдаг — ижил зарчим. */
+const PS_GOODS_ONLY = { cost: true, stock: true };
+function psFilter(list, q, mode) {
   const s = String(q || '').trim().toLowerCase();
-  const rows = (list || []).filter(p => p && p.sku && p.type !== 'service');
+  const goodsOnly = !!PS_GOODS_ONLY[mode];
+  const rows = (list || []).filter(p => p && p.sku && p.type !== 'service' && !(goodsOnly && p.type === 'package'));
   if (!s) return rows;
   return rows.filter(p => `${p.name || ''} ${p.category || ''} ${p.sku || ''} ${p.code || ''}`.toLowerCase().includes(s));
+}
+// Барааны дэлгэцээс салгасан үйлчилгээ, багц (хайлтад захирагдана). Цэвэр функц (тестлэгдэнэ).
+function psApart(list, q) {
+  const s = String(q || '').trim().toLowerCase();
+  const rows = (list || []).filter(p => p && p.sku && (p.type === 'service' || p.type === 'package')
+    && (!s || `${p.name || ''} ${p.category || ''} ${p.sku || ''} ${p.code || ''}`.toLowerCase().includes(s)));
+  const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
+  return { services: rows.filter(p => p.type === 'service').sort(byName), packages: rows.filter(p => p.type === 'package').sort(byName) };
 }
 function psNum(v) { return Math.max(0, Math.round(Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0)); }
 // ── ХҮЛЭЭГДЭЖ БУЙ ЗАСВАР ──────────────────────────────────────────────────
@@ -26944,7 +26959,10 @@ function renderProductSheet(mode) {
   if (mode === 'catalog' && state.appCatGroups === undefined) { state.appCatGroups = null; loadAppConfig('mevent_category_groups').then(v => { state.appCatGroups = Array.isArray(v) ? v : []; render(); }); }
   const ro = !(state.isCEO || can(cfg.perm));
   const q = state.psQ || '';
-  const _all = psFilter(state.products, q);
+  const _all = psFilter(state.products, q, mode);
+  const _apart = PS_GOODS_ONLY[mode] ? psApart(state.products, q) : null;
+  const _apartN = _apart ? _apart.services.length + _apart.packages.length : 0;
+  const apartRow = (p) => `<div class="ps-apart-r"><span class="ps-apart-n">${escapeHtml(p.name || '')}</span><span class="ps-apart-t">${p.type === 'package' ? 'багц' : 'үйлчилгээ'}</span><span class="ps-apart-p">${Number(p.price) > 0 ? fmtMoneyShort(Number(p.price)) : '—'}</span></div>`;
   const rows = psSortRows(psApplyFilter(_all, mode, state.psF), mode === 'cost' ? state.psSort : 'name');
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const money = (v) => moneyFmtInput(Number(v) || 0);
@@ -27023,6 +27041,11 @@ function renderProductSheet(mode) {
     ${mode === 'cost' ? psCostTools(ro) : ''}
     <div class="ps-count">${rows.length} бараа${state.psF ? ' <span class="mut">(шүүсэн)</span>' : ''}</div>
     <div class="ps-list" id="ps-list">${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🔍</div>Хайлтад тохирох бараа алга.</div>'}</div>
+    ${_apartN ? `<details class="ps-apart">
+      <summary>🧩 Үйлчилгээ ${_apart.services.length} · багц ${_apart.packages.length}<span class="mut"> — ${mode === 'cost' ? 'өртөг, элэгдэл' : 'нөөц'}-д орохгүй тул барааны жагсаалтаас тусдаа</span></summary>
+      <div class="ps-apart-l">${_apart.services.map(apartRow).join('')}${_apart.packages.map(apartRow).join('')}</div>
+      <div class="ps-apart-h">Үнийг «${escapeHtml(PSHEET.price.label)}» дэлгэцээс, багцын бүрэлдэхүүнийг «Бараа» → «Багц» табаас засна.</div>
+    </details>` : ''}
     <div class="ps-savebar" id="ps-savebar"${psDirtyCount() ? '' : ' hidden'}>
       <span><b id="ps-dirty-n">${psDirtyCount()}</b> бараа өөрчлөгдсөн — хадгалаагүй байна</span>
       <span class="ps-savebar-b">

@@ -9717,6 +9717,43 @@ need(['orderCustType']);
   eq(F.psFilter(list, 'олдохгүй').length, 0, 'хуудас: тохирохгүй → хоосон');
   eq(F.psFilter(null, 'а').length, 0, 'хуудас: жагсаалтгүй → унахгүй');
 
+  /* 🧩 ҮЙЛЧИЛГЭЭ, БАГЦ БАРАА БИШ (2026-11-02, CEO): өртөг, элэгдэл, нөөцгүй тул барааны дэлгэцүүд
+     (cost, stock)-ээс сална; үнэ/каталогт багц хэвээр (үнээ тэнд засна). */
+  const mixed = [
+    { sku: 'M-001', code: 'M-001', name: 'Асар 18м өргөн', category: 'Асар', type: 'rental', cost: 1000000, qty_mevent: 2 },
+    { sku: 'P-001', code: 'P-001', name: 'Хөгжим GOLD', category: 'Хөгжмийн багц', type: 'package', price: 2720000 },
+    { sku: 'S-001', code: 'S-001', name: 'Асар барих', category: 'Үйлчилгээ', type: 'service', price: 0 },
+    { sku: 'A-001', code: 'A-001', name: 'Агуулах барилга', category: 'Барилга байгууламж', type: 'asset', cost: 600000000, qty_chimun: 1 },
+  ];
+  eq(F.psFilter(mixed, '', 'cost').map(p => p.sku), ['M-001', 'A-001'], 'салгах: «Өртөг ба хөрөнгө»-д зөвхөн бараа (багц, үйлчилгээгүй)');
+  eq(F.psFilter(mixed, '', 'stock').map(p => p.sku), ['M-001', 'A-001'], 'салгах: «Нөөц ба салбар»-т ч зөвхөн бараа');
+  eq(F.psFilter(mixed, '', 'price').map(p => p.sku), ['M-001', 'P-001', 'A-001'], 'салгах: «Түрээсийн үнэ»-д багц хэвээр (үнээ тэнд засна)');
+  eq(F.psFilter(mixed, '', 'catalog').map(p => p.sku), ['M-001', 'P-001', 'A-001'], 'салгах: «Каталог»-д багц хэвээр');
+  eq(F.psFilter(mixed, '').map(p => p.sku), ['M-001', 'P-001', 'A-001'], 'салгах: горимгүй дуудлага хуучнаараа');
+  eq(F.psFilter(mixed, 'хөгжим', 'cost').length, 0, 'салгах: багцыг хайлтаар ч өртгийн жагсаалтад олохгүй');
+  const ap = F.psApart(mixed, '');
+  eq([ap.services.map(p => p.sku), ap.packages.map(p => p.sku)], [['S-001'], ['P-001']], 'салгах: салгасан хайрцагт үйлчилгээ ба багц тусдаа');
+  eq(F.psApart(mixed, 'хөгжим').packages.map(p => p.sku), ['P-001'], 'салгах: тусдаа хайрцаг хайлтад захирагдана');
+  eq(F.psApart(null, '').services.length + F.psApart(null, '').packages.length, 0, 'салгах: жагсаалтгүй → унахгүй');
+  eq(F.psApart([{ sku: 'X', name: 'бараа', type: 'rental' }], '').packages.length, 0, 'салгах: энгийн бараа хайрцагт орохгүй');
+
+  // Дэлгэц ЖИНХЭНЭЭР зурагдана: багц нь мөр биш, эвхэгдсэн тусдаа хайрцагт; тоо зөв.
+  {
+    const st = vm.runInContext('state', sandbox);
+    const sv = { p: st.products, q: st.psQ, f: st.psF, ceo: st.isCEO };
+    st.products = mixed.map(x => ({ ...x })); st.psQ = ''; st.psF = ''; st.isCEO = true;
+    const h = vm.runInContext("renderProductSheet('cost')", sandbox);
+    ok(!/data-ps-row="P-001"/.test(h) && !/data-ps-row="S-001"/.test(h), 'салгах: багц, үйлчилгээ «Өртөг ба хөрөнгө»-ний мөр биш');
+    ok(/data-ps-row="M-001"/.test(h) && /data-ps-row="A-001"/.test(h), 'салгах: бараа мөрөөрөө байна');
+    ok(/<details class="ps-apart">/.test(h) && /Хөгжим GOLD/.test(h) && /Асар барих/.test(h), 'салгах: багц, үйлчилгээ эвхэгдсэн тусдаа хайрцагт харагдана');
+    ok(/Үйлчилгээ 1 · багц 1/.test(h), 'салгах: хайрцгийн тоо зөв (үйлчилгээ 1, багц 1)');
+    ok(/<div class="ps-count">2 бараа/.test(h), 'салгах: «N бараа» тоо зөвхөн бараа (2)');
+    const hp = vm.runInContext("renderProductSheet('price')", sandbox);
+    ok(/data-ps-row="P-001"/.test(hp) && !/class="ps-apart"/.test(hp), 'салгах: «Түрээсийн үнэ»-д багц мөрөөрөө, тусдаа хайрцаггүй');
+    st.products = sv.p; st.psQ = sv.q; st.psF = sv.f; st.isCEO = sv.ceo;
+  }
+  ok(/psFilter\(state\.products, q, mode\)/.test(src) && /PS_GOODS_ONLY\[mode\] \? psApart\(/.test(src), 'scan: дэлгэц багц/үйлчилгээг горимоор салгана');
+
   // Мөнгөн утга — таслал, ₮ тэмдэгтэй бичсэн ч зөв тоо болно
   eq(F.psNum('1,800,000₮'), 1800000, 'хуудас: тасалтай мөнгө уншина');
   eq(F.psNum(''), 0, 'хуудас: хоосон → 0');

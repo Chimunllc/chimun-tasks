@@ -25791,6 +25791,9 @@ async function openCategoryGroupsModal() {
   (state.products || []).forEach(p => { const c = String((p && p.category) || '').trim(); if (c) catCount[c] = (catCount[c] || 0) + 1; });
   const assign = {};  // leafCat → groupId ('' = бүлэггүй)
   leafCats.forEach(c => { const g = groups0.find(x => Array.isArray(x.subs) && x.subs.includes(c)); assign[c] = g ? groups[groups0.indexOf(g)].id : ''; });
+  // «+ Шинэ ангилал» мөрийн төлөв — render() дахин зурахад бичсэн нь алдагдахгүй.
+  // ⚠ Ангилал өөр газар ҮҮСДЭГГҮЙ (барааны хэлбэрийн сонгогч гараар бичихийг хориглодог) — зөвхөн энд.
+  const newCat = { name: '', group: '' };
 
   document.getElementById('catgrp-modal')?.remove();
   const modal = document.createElement('div');
@@ -25801,12 +25804,14 @@ async function openCategoryGroupsModal() {
     modal.querySelectorAll('.cg-name').forEach(inp => { const g = groups.find(x => x.id === inp.dataset.id); if (g) g.name = inp.value; });
     modal.querySelectorAll('.cg-assign').forEach(sel => { assign[sel.dataset.cat] = sel.value; });
     modal.querySelectorAll('.cg-leaf').forEach(inp => { rename[inp.dataset.cat] = inp.value; });
+    const nc = modal.querySelector('#cg-newcat'); if (nc) newCat.name = nc.value;
+    const ng = modal.querySelector('#cg-newcat-group'); if (ng) newCat.group = ng.value;
   };
   const optsFor = (cur) => `<option value="">— Бүлэггүй —</option>` + groups.map(g => `<option value="${g.id}"${cur === g.id ? ' selected' : ''}>${escapeHtml(g.name || '(нэргүй)')}</option>`).join('');
   const render = () => {
     modal.innerHTML = `<div class="modal" style="max-width:560px;">
       <h2>🗂 Ангиллын бүлгүүд</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.55;">mevent.mn-ий цэс ингэж бүтнэ: <b>Том бүлэг</b> (жишээ нь «Асар, Майхан») → дотор нь <b>ангилал</b> (жишээ нь «Майхан») → бараа.<br>① Шинэ бүлэг хэрэгтэй бол «+ Шинэ бүлэг»-ийг дараад нэр бич. ② Доор ангилал бүрийн баруун талаас <b>аль бүлэгт харагдахыг</b> сонго. ③ 💾 Хадгал — сайт шууд шинэчлэгдэнэ.<br>«Бүлэггүй» ангилал цэсийн хамгийн доор, бүлгийн гадна ганцаараа гарна. Үнэгүй бараа сайтад гарахгүй, бараагүй бүлэг цэснээс нуугдана.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.55;">mevent.mn-ий цэс ингэж бүтнэ: <b>Том бүлэг</b> (жишээ нь «Асар, Майхан») → дотор нь <b>ангилал</b> (жишээ нь «Майхан») → бараа.<br>① Шинэ бүлэг хэрэгтэй бол «+ Шинэ бүлэг»-ийг дараад нэр бич. ② Шинэ ангилал хэрэгтэй бол доорх «Шинэ ангилал» мөрөнд нэр бичиж, бүлгээ сонгоод «+ Нэмэх» дар. ③ Байгаа ангилал бүрийн баруун талаас <b>аль бүлэгт харагдахыг</b> сонго. ④ 💾 Хадгал — сайт шууд шинэчлэгдэнэ.<br>«Бүлэггүй» ангилал цэсийн хамгийн доор, бүлгийн гадна ганцаараа гарна. Үнэгүй бараа сайтад гарахгүй, бараагүй бүлэг цэснээс нуугдана.</p>
       <div style="font-size:11px;font-weight:700;color:var(--muted);margin:2px 0 6px;">ТОМ БҮЛГҮҮД</div>
       <div id="cg-groups">${groups.map(g => `
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
@@ -25816,6 +25821,11 @@ async function openCategoryGroupsModal() {
       <button class="btn" id="cg-add" style="width:100%;margin-bottom:14px;">+ Шинэ бүлэг</button>
       <div style="font-size:11px;font-weight:700;color:var(--muted);margin:2px 0 6px;">ДЭД АНГИЛАЛ → БҮЛЭГ</div>
       <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Ангиллын нэрийг энд шууд засаж болно — тухайн ангилалтай <b>бүх бараа дагаж</b> шинэчлэгдэнэ.</p>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+        <input id="cg-newcat" value="${escapeHtml(newCat.name)}" placeholder="Шинэ ангиллын нэр (жишээ нь Барилга)" style="flex:1 1 150px;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);">
+        <select id="cg-newcat-group" aria-label="Шинэ ангилал аль бүлэгт харагдах" style="flex:1 1 160px;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;background:var(--panel);color:var(--text);"><option value="">— бүлэг сонгох —</option>${groups.map(g => `<option value="${g.id}"${newCat.group === g.id ? ' selected' : ''}>${escapeHtml(g.name || '(нэргүй)')}</option>`).join('')}</select>
+        <button class="btn" id="cg-newcat-add">+ Нэмэх</button>
+      </div>
       <div id="cg-cats" style="max-height:38vh;overflow-y:auto;">${leafCats.map(c => `
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
           <input class="cg-leaf" data-cat="${escapeHtml(c)}" value="${escapeHtml(rename[c] != null ? rename[c] : c)}" style="flex:1 1 150px;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);">
@@ -25841,6 +25851,21 @@ async function openCategoryGroupsModal() {
       render();
     });
     modal.querySelector('#cg-add').onclick = () => { syncFromDom(); groups.push({ id: 'g' + (++_cgSeq), name: 'Шинэ бүлэг' }); render(); };
+    // Шинэ ангилал: нэр + бүлэг заавал. Давхардлыг (том/жижиг үсгээс үл хамааран) хаана.
+    const addNewCat = () => {
+      syncFromDom();
+      const name = newCat.name.trim().replace(/\s+/g, ' ');
+      if (!name) { showToast('Ангиллын нэр бичнэ үү', 'warn'); return; }
+      if (!newCat.group) { showToast('Аль бүлэгт харагдахыг сонгоно уу', 'warn'); return; }
+      const taken = leafCats.map(c => String(rename[c] != null ? rename[c] : c).trim().toLowerCase());
+      if (taken.includes(name.toLowerCase())) { showToast(`«${name}» ангилал аль хэдийн байна`, 'warn'); return; }
+      leafCats.unshift(name); assign[name] = newCat.group; catCount[name] = 0;
+      newCat.name = '';
+      render();
+      showToast(`«${name}» нэмэгдлээ — 💾 Хадгалсны дараа бараа засахад сонгогдоно`, 'success', 3500);
+    };
+    modal.querySelector('#cg-newcat-add').onclick = addNewCat;
+    modal.querySelector('#cg-newcat').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addNewCat(); } };
     modal.querySelector('#cg-cancel').onclick = () => modal.remove();
     modal.querySelector('#cg-save').onclick = async (e) => {
       syncFromDom();
@@ -26573,7 +26598,7 @@ function psDeprecSummary() {
     + `<br><span class="mut">Санхүү → Тайлан дахь элэгдлийн мөр нь ЯГ энэ тоо. Доорх бараа бүрийн мөр үүнийг бүрдүүлнэ.</span>`
     + `<br><span class="mut">M-Event + NOMAAD-д бүртгэсэн бараа 50/50; Чимун ХХК-д бүртгэсэн (барилга, машин) M-Event, NOMAAD, Катеринг 3-т тэнцүү; Катеринг-д бүртгэсэн нь зөвхөн катеринг.</span></div>`;
     // Бүлгийн нас нь тайлангийн ашиг ба COO-гийн хувийг хөдөлгөдөг тул зөвхөн CEO засна.
-    + (state.isCEO ? `<br><button type="button" class="btn dpl-open ui-raw" data-dep-lives>📉 Элэгдлийн нас (бүлгээр)</button>` : '')
+    + (state.isCEO ? `<br><button type="button" class="btn dpl-open ui-raw" data-dep-lives>📉 Элэгдлийн нас (төрлөөр)</button>` : '')
     + `</div>`;
 }
 /* 📉 ЭЛЭГДЛИЙН НАС — бүлэг бүрийн жилийг гараар засах цонх (2026-11-02, CEO).
@@ -26629,23 +26654,23 @@ async function openDeprecLivesModal() {
   const draw = () => {
     modal.innerHTML = `<div class="modal dpl-modal">
       <h2>📉 Элэгдлийн нас</h2>
-      <p class="dpl-hint">Бүлэг бүрийн элэгдэх <b>жилийг</b> энд засна. Барааны нэрэнд «таних үг» орсон бол тэр бүлэгт орно; <b>дээрээс доош эхний таарсан бүлэг</b> ялна.</p>
+      <p class="dpl-hint">Төрөл бүрийн элэгдэх <b>жилийг</b> энд засна. Барааны нэрэнд «таних үг» орсон бол тэр төрөлд орно; <b>дээрээс доош эхний таарсан төрөл</b> ялна. Энэ нь mevent.mn-ий цэсний бүлэг, барааны ангилалтай холбоогүй.</p>
       <div class="ps-dep-sum" id="dpl-sum"></div>
       <div class="dpl-list">${rows.map((r, i) => `
         <div class="dpl-row" data-i="${i}">
-          <input class="dpl-label ui-raw" value="${escapeHtml(r.label)}" placeholder="Бүлгийн нэр" aria-label="Бүлгийн нэр">
+          <input class="dpl-label ui-raw" value="${escapeHtml(r.label)}" placeholder="Төрлийн нэр" aria-label="Төрлийн нэр">
           <label class="dpl-yr"><input class="dpl-years ui-raw" type="number" min="1" max="100" step="0.5" value="${escapeHtml(String(r.years))}" aria-label="Нас (жил)"> жил</label>
-          <button type="button" class="dpl-del ui-raw" data-i="${i}" title="Бүлгийг хасах — бараа «Бусад» руу орно" aria-label="Бүлэг хасах">×</button>
+          <button type="button" class="dpl-del ui-raw" data-i="${i}" title="Төрлийг хасах — бараа «Бусад» руу орно" aria-label="Төрөл хасах">×</button>
           <input class="dpl-re ui-raw" value="${escapeHtml(r.re)}" placeholder="Таних үгс: барилга, байгууламж" aria-label="Таних үгс">
           <span class="dpl-m mut"></span>
         </div>`).join('')}</div>
-      <button type="button" class="btn dpl-add" id="dpl-add">+ Шинэ бүлэг</button>
+      <button type="button" class="btn dpl-add" id="dpl-add">+ Шинэ төрөл</button>
       <div class="dpl-other">
-        <span class="dpl-label-o">Бусад <span class="mut">(ямар ч бүлэгт таарахгүй бараа)</span></span>
+        <span class="dpl-label-o">Бусад <span class="mut">(ямар ч төрөлд таарахгүй бараа)</span></span>
         <label class="dpl-yr"><input class="dpl-other-years ui-raw" type="number" min="1" max="100" step="0.5" value="${escapeHtml(String(other))}" aria-label="Бусад — нас (жил)"> жил</label>
         <span class="dpl-m dpl-other-m mut"></span>
       </div>
-      <p class="dpl-hint">Таних үгсийг таслалаар тусгаарла (жишээ нь <i>барилга, байгууламж</i>). Шинэ бүлэг жагсаалтын <b>ХАМГИЙН ДЭЭР</b> орно.
+      <p class="dpl-hint">Таних үгсийг таслалаар тусгаарла (жишээ нь <i>барилга, байгууламж</i>). Шинэ төрөл жагсаалтын <b>ХАМГИЙН ДЭЭР</b> орно.
         Хаасан сарын элэгдэл хөдлөхгүй.</p>
       <div class="dpl-foot">
         <button type="button" class="btn" id="dpl-cancel">Болих</button>
@@ -39667,12 +39692,12 @@ function deprecRowsCheck(rows, defaultYears) {
     const label = String(r.label || '').trim();
     const src = String(r.re == null ? '' : r.re);
     const years = Number(r.years);
-    if (!label) return { error: `${i + 1}-р бүлгийн нэр хоосон байна` };
+    if (!label) return { error: `${i + 1}-р төрлийн нэр хоосон байна` };
     if (label === 'Бусад') return { error: '«Бусад» нэр нөөцлөгдсөн — өөр нэр өгнө үү' };
     if (seen.has(label)) return { error: `«${label}» нэр давхцаж байна` };
     seen.add(label);
     if (!(years >= 1 && years <= 100)) return { error: `«${label}»: нас 1–100 жилийн хооронд байх ёстой` };
-    if (!src.trim()) return { error: `«${label}»: таних үг хоосон — нэрэнд аль үг орсон бараа энэ бүлэгт орохыг бичнэ үү` };
+    if (!src.trim()) return { error: `«${label}»: таних үг хоосон — нэрэнд аль үг орсон бараа энэ төрөлд орохыг бичнэ үү` };
     let re;
     try { re = new RegExp(src, 'i'); } catch (e) { return { error: `«${label}»: таних үг буруу — ${e.message}` }; }
     if (re.test('')) return { error: `«${label}»: таних үг хоосон нэртэй ч таарч байна — бүх барааг авна` };
@@ -39680,7 +39705,7 @@ function deprecRowsCheck(rows, defaultYears) {
     cfgLives.push({ re: src, years, label });
   }
   const dy = Number(defaultYears);
-  if (!(dy >= 1 && dy <= 100)) return { error: '«Бусад» бүлгийн нас 1–100 жилийн хооронд байх ёстой' };
+  if (!(dy >= 1 && dy <= 100)) return { error: '«Бусад»-ын нас 1–100 жилийн хооронд байх ёстой' };
   lives.defaultYears = dy;
   return { lives, cfgLives, defaultYears: dy };
 }

@@ -23058,6 +23058,168 @@ async function swFetchTests() {
   st.isCEO = saved.ceo; st.payrollCfg = saved.cfg; st.appConfig = saved.ac; st.appOrders = saved.ao; st.me = saved.me; st.memberPerms = saved.mp; st.workStart = saved.ws; st.nextArrival = saved.na;
 });
 
+// ═══ ХУВААРЬ/ТОРГУУЛИЙН ДҮРМИЙГ ХАДГАЛАХ ЗАМ + ДЭЛГЭЦИЙН МӨРҮҮД — ҮНЭХЭЭР (2026-11-02) ═══════════════
+// Цэвэр функц тестлээд зогсвол «хадгалахад токен/эрх/баталгаажуулалт алдагдсан» гэсэн алдааг барихгүй. Энд дүрмийг хадгалах (CEO), хуваарь болих товч,
+// дүрмийн мөр, анхааруулга, ажилтны жагсаалтыг бодит дуудалтаар шалгана. ⚠ __lateSeq: showConfirm/saveAppConfig/showToast-ийг түр stub-лана.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const K = '99116611', K2 = '99116622';
+  const saved = { ceo: st.isCEO, ac: st.appConfig, c: st.attCallins, ce: st.attCallinsErr, cm: st.closedMonths, ca: st._closedMonthsAt, ws: st.workStart, sal: st.salaries, mp: st.memberPerms, me: st.me };
+  st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallinsErr = null;
+  const RULES = (o) => { st.appConfig = Object.assign({}, st.appConfig || {}, { pay_rules: o }); };
+  const nextYm = run(`nextMonthStr(todayStr().slice(0, 7))`), thisYm = run('todayStr().slice(0, 7)'), pastYm = run(`addDays(todayStr(), -70).slice(0, 7)`);
+
+  // ── ① payRulesSave: CEO, шалгалт, баталгаажуулалтын ХАРИУ, серверт явсан бие ──
+  const doc = vm.runInContext('document', sandbox), origGet = doc.getElementById;
+  run(`globalThis.__orig = { showConfirm, saveAppConfig, showToast, render };
+       globalThis.__confirms = []; globalThis.__saves = []; globalThis.__toasts = []; globalThis.__ans = true; globalThis.__saveErr = '';
+       showConfirm = async (m) => { __confirms.push(m); return __ans; };
+       saveAppConfig = async (k, v) => { if (__saveErr) throw new Error(__saveErr); __saves.push([k, v]); };
+       showToast = (m) => { __toasts.push(String(m)); };
+       render = () => {};`);
+  const form = (vals) => { doc.getElementById = (id) => { const e = stubEl(); e.value = vals[id] === undefined ? '' : vals[id]; return e; }; };
+  const reset = () => run('__confirms.length = 0; __saves.length = 0; __toasts.length = 0; __ans = true; __saveErr = "";');
+  try {
+    st.isCEO = false; RULES(undefined); reset(); form({ 'pr-from': nextYm });
+    await run('payRulesSave()');
+    ok(/Зөвхөн CEO/.test(run('__toasts')[0] || '') && run('__confirms').length === 0 && run('__saves').length === 0, '⛔ дүрэм хадгалах: CEO биш хүн хадгалж чадахгүй — баталгаажуулалт ч, сервер рүү хүсэлт ч явахгүй');
+    st.isCEO = true; reset(); form({ 'pr-from': pastYm });
+    await run('payRulesSave()');
+    ok(/Өнгөрсөн/.test(run('__toasts')[0] || '') && run('__confirms').length === 0 && run('__saves').length === 0, '⛔ дүрэм хадгалах: өнгөрсөн сараас эхлүүлэх хүсэлт баталгаажуулалтгүй татгалзагдана (олгосон цалин өөрчлөгдөхгүй)');
+    reset(); form({ 'pr-from': nextYm, 'pr-absent': '9' });
+    await run('payRulesSave()');
+    ok(/Үржвэр/.test(run('__toasts')[0] || '') && run('__saves').length === 0, 'дүрэм хадгалах: үржвэр 1–5-аас хэтэрвэл татгалзана');
+    reset(); form({ 'pr-from': nextYm }); run('__ans = false');
+    await run('payRulesSave()');
+    eq([run('__confirms').length, run('__saves').length], [1, 0], '⛔ дүрэм хадгалах: баталгаажуулалтад «Болих» дарвал сервер рүү ЮУ Ч явахгүй (харилцах цонхны ХАРИУГ шалгана)');
+    ok(new RegExp(`^${nextYm}-аас:`).test(run('__confirms')[0]) && /ирээгүй бол 1\.5 өдрийн цалин хасагдана/.test(run('__confirms')[0]) && /хоцорсон минут бүр 2 дахин/.test(run('__confirms')[0]), 'дүрэм хадгалах: баталгаажуулах цонх дүрмийг ИЛ тайлбарлана (өгөгдмөл 1.5 / 2)');
+    ok(/Дотоод журамд тусгасан/.test(run('__confirms')[0]), 'дүрэм хадгалах: дотоод журам, ажилтанд мэдэгдсэн эсэхийг сануулна');
+    reset(); form({ 'pr-from': nextYm }); run('__ans = true');
+    await run('payRulesSave()');
+    eq(run('__saves'), [['pay_rules', { from: nextYm, order_pct: 0, absent_mult: 1.5, late_mult: 2, grace_min: 5 }]], '⛔ дүрэм хадгалах: серверт яг ингэж явна — «хэзээнээс» + өгөгдмөл 1.5 / 2 / 5м (хуучин %/cap түлхүүргүй)');
+    eq(JSON.stringify(st.appConfig.pay_rules), JSON.stringify({ from: nextYm, order_pct: 0, absent_mult: 1.5, late_mult: 2, grace_min: 5 }), 'дүрэм хадгалах: амжилттай бол санах ойд шууд тусна');
+    ok(/Дүрэм хадгалагдлаа/.test(run('__toasts').join('|')), 'дүрэм хадгалах: амжилтын мэдэгдэл');
+    reset(); form({ 'pr-from': thisYm, 'pr-absent': '2', 'pr-late': '3', 'pr-grace': '10', 'pr-order': '1.5' });
+    await run('payRulesSave()');
+    eq(run('__saves')[0][1], { from: thisYm, order_pct: 1.5, absent_mult: 2, late_mult: 3, grace_min: 10 }, 'дүрэм хадгалах: тохируулсан үржвэр, чөлөө, бонус бүгд хадгалагдана; энэ сараас эхлүүлж болно');
+    reset(); form({ 'pr-from': '' });
+    await run('payRulesSave()');
+    ok(/Бүх дүрэм унтраалттай/.test(run('__confirms')[0]) && run('__saves')[0][1].from === '', '⛔ дүрэм хадгалах: «хэзээнээс» хоосон = БҮГД унтраана (баталгаажуулах цонх «унтраалттай» гэж хэлнэ)');
+    reset(); form({ 'pr-from': nextYm }); run('__saveErr = "сервер унав"');
+    await run('payRulesSave()');
+    ok(/Хадгалж чадсангүй: сервер унав/.test(run('__toasts').join('|')), 'дүрэм хадгалах: сервер унавал алдааг ИЛ хэлнэ (чимээгүй өнгөрөхгүй)');
+  } finally { doc.getElementById = origGet; run('({ showConfirm, saveAppConfig, showToast, render } = globalThis.__orig);'); }
+
+  // ── ② Өдрийн жагсаалтын «Болих ✕» товч: үнэхээр болино / цаг нь болсон бол татгалзана ──
+  const savedFetch = sandbox.fetch;
+  const FUT = '2099-03-10', PASTD = '2020-03-10';
+  let reqs = [];
+  run(`globalThis.__orig2 = { showToast }; globalThis.__toasts2 = []; showToast = (m) => { __toasts2.push(String(m)); };`);
+  const jsonOk = (v) => Promise.resolve({ ok: true, status: 200, json: async () => v });
+  try {
+    st.isCEO = true;
+    st.attCallins = { [`${K}|${FUT}`]: { id: `${K}|${FUT}`, member_key: K, day: FUT, at_time: '09:00', place: null, status: 'active' },
+                      [`${K}|${PASTD}`]: { id: `${K}|${PASTD}`, member_key: K, day: PASTD, at_time: '09:00', place: null, status: 'active' } };
+    sandbox.fetch = (url, o) => { if (/\/att_callins/.test(url)) { reqs.push({ url, method: o.method, body: JSON.parse(o.body) }); return jsonOk([{ id: `${K}|${FUT}`, member_key: K, day: FUT, at_time: '09:00', place: null, status: 'void' }]); } return jsonOk([{ value: {} }]); };
+    const mkBtn = (day) => { const b = { dataset: { amkKey: K, amkDay: day }, disabled: false }; sandbox.__btn = b; return b; };
+    const b1 = mkBtn(FUT); await run('attCallinVoidClick(__btn)');
+    ok(b1.disabled === true && reqs.length === 1 && reqs[0].method === 'PATCH' && reqs[0].body.status === 'void', 'болих товч: ирээдүйн хуваарийг PATCH void-оор болино, товч давхар дарагдахгүй (disabled)');
+    ok(/Хуваарь болилоо/.test(run('__toasts2').join('|')) && run(`attCallinOn('${K}', '${FUT}')`) === null, 'болих товч: амжилтын мэдэгдэл, жагсаалтаас гарна');
+    reqs = []; run('__toasts2.length = 0');
+    mkBtn(PASTD); await run('attCallinVoidClick(__btn)');
+    ok(reqs.length === 0 && /Цаг нь болсон/.test(run('__toasts2').join('|')), '⛔ болих товч: өнгөрсөн өдрийн хуваарьд сервер рүү ХҮСЭЛТ ЯВАХГҮЙ, шалтгааныг хэлнэ («ирээгүй»-г арилгах гарц биш)');
+    ok(run(`attCallinOn('${K}', '${PASTD}')`) !== null, 'болих товч: татгалзсан хуваарь идэвхтэй хэвээр');
+  } finally { sandbox.fetch = savedFetch; run('({ showToast } = globalThis.__orig2);'); }
+
+  // ── ③ Үйл явдлын мөр, дүгнэлт, дэлгэрэнгүй, анхааруулга ──
+  const L = (e, pen, cap) => run(`attDisciplineLine(${JSON.stringify(e)}, ${pen === undefined ? 'undefined' : pen}, ${cap ? 'true' : 'false'})`);
+  const abs = L({ day: '2026-10-14', kind: 'absent', time: '09:30' }, 45455);
+  ok(abs.includes('10-14') && abs.includes('🚫 Тасалсан') && abs.includes('(09:30 хуваарьтай)') && abs.includes('−45,455₮'), 'мөр: тасалсан — өдөр, хуваарийн цаг, хасагдсан дүн');
+  ok(!/−/.test(L({ day: '2026-10-14', kind: 'absent', time: '09:30' }, 0)), 'мөр: дүн 0/идэвхгүй үед «−X₮» гарахгүй');
+  const lt = L({ day: '2026-10-13', kind: 'late', time: '09:30', came: '09:55', mins: 25 }, 4735);
+  ok(lt.includes('09:30 хуваарь, 09:55 ирсэн (25м хоцорсон)') && lt.includes('−4,735₮') && !/дээд хязгаар/.test(lt), 'мөр: хоцролт — хуваарь, ирсэн цаг, минут, дүн');
+  ok(/ажил эхлэх цаг, 10:00 ирсэн \(60м хоцорсон\)/.test(L({ day: '2026-10-13', kind: 'lateReg', time: '09:00', came: '10:00', mins: 60 }, 11364)), 'мөр: ердийн хоцролт «ажил эхлэх цаг» гэж ялгарна');
+  ok(/өдрийн дээд хязгаар/.test(L({ day: '2026-10-13', kind: 'late', time: '09:30', came: '16:00', mins: 400 }, 60606, true)), 'мөр: өдрийн дээд хязгаарт хүрсэн хоцролт ИЛ тэмдэглэгдэнэ');
+  ok(/<script/.test(L({ day: '2026-10-13', kind: 'late', time: '<script>', came: '09:55', mins: 25 }, 1)) === false, '⛔ мөр: хуваарийн цаг HTML-д escape хийгдэнэ');
+  eq([run(`attDisciplineSummary(null)`), run(`attDisciplineSummary({ absentN: 0, lateN: 0, lateMins: 0 })`)], ['', ''], 'дүгнэлт: хоосон/нойлтой бол хоосон');
+  eq(run(`attDisciplineSummary({ absentN: 1, lateN: 2, lateMins: 40 })`), 'тасалсан 1 · хоцорсон 2 (40м)', 'дүгнэлт: тасалсан, хоцорсон тоо + минут');
+  const cfg = { absentMult: 1.5, lateMult: 2 };
+  const exOn = { disc: { events: [{ day: '2026-10-14', kind: 'absent', time: '09:30' }] }, active: true, penalty: 45455, pen: { '2026-10-14': 45455 }, capped: {}, cfg };
+  const detOn = run(`attDisciplineDetailHtml(${JSON.stringify(exOn)})`);
+  ok(/Торгууль нийт 45,455₮/.test(detOn) && /Тасалсан 1\.5 өдөр = ажиллаагүй өдрийн цалин/.test(detOn) && /нэмэлт 0\.5 өдрийн торгууль/.test(detOn) && /ирцийн хүсэлтээр засна/.test(detOn), 'дэлгэрэнгүй: «1.5 өдөр = цагаар хасагдах + 0.5 торгууль» гэж тайлбарлаж, ирсэн бол ирцийн хүсэлтээр засахыг хэлнэ');
+  ok(/хоцорсон минут 2 дахин = минутын цалин \+ нэмэлт 1/.test(detOn), 'дэлгэрэнгүй: хоцролтын 2 дахин = минутын цалин + нэмэлт 1 гэж тайлбарлана');
+  ok(/хараахан хэрэгжээгүй/.test(run(`attDisciplineDetailHtml(${JSON.stringify(Object.assign({}, exOn, { active: false, penalty: 0, pen: {} }))})`)), 'дэлгэрэнгүй: дүрэм идэвхгүй үед «хараахан хэрэгжээгүй — зөвхөн бүртгэгдэв»');
+  ok(/нэмэлт хасалтгүй/.test(run(`attDisciplineDetailHtml(${JSON.stringify(Object.assign({}, exOn, { penalty: 0, pen: {} }))})`)), 'дэлгэрэнгүй: идэвхтэй ч үржвэр 1 (нэмэлтгүй) үед «нэмэлт хасалтгүй»');
+  eq([run(`attDisciplineDetailHtml(null)`), run(`attDisciplineDetailHtml({ disc: { events: [] }, active: true })`)], ['', ''], 'дэлгэрэнгүй: үйл явдалгүй бол хоосон');
+  ok(/⏳/.test(run(`attPayExtrasWarnHtml({ ready: false })`)) && run(`attPayExtrasWarnHtml({ ready: true })`) === '' && run(`attPayExtrasWarnHtml(null)`) === '', 'анхааруулга: ready:false үед л «ачаалагдаагүй» гарна');
+  // attCallinsWarnHtml: дүрэмгүй үед чимээгүй, дүрэмтэй үед алдаа/ачаалж байна ИЛ
+  RULES(undefined); st.attCallins = null; st.attCallinsErr = 'алдаа';
+  eq(run('attCallinsWarnHtml()'), '', 'хуваарийн анхааруулга: торгуулийн дүрэмгүй үед хуваарь нь зөвхөн мэдээлэл — чимээгүй');
+  RULES({ from: thisYm });
+  ok(/ачаалж чадсангүй \(алдаа\)/.test(run('attCallinsWarnHtml()')), '⛔ хуваарийн анхааруулга: дүрэм идэвхтэй атлаа хуваарь татагдаагүй бол шалтгааныг ИЛ хэлнэ');
+  st.attCallinsErr = null;
+  ok(/ачаалж байна/.test(run('attCallinsWarnHtml()')), 'хуваарийн анхааруулга: ачаалж байх үед «ачаалж байна»');
+  st.attCallins = {};
+  eq(run('attCallinsWarnHtml()'), '', 'хуваарийн анхааруулга: ачаалагдсан бол юу ч гарахгүй');
+  RULES(undefined);
+
+  // ── ④ «Ажил эхлэх цаг» тоо, ажилтны сонголт, цаг ──
+  const TEAM_ = run('TEAM'), tsave = TEAM_.slice();
+  TEAM_.length = 0;
+  TEAM_.push({ name: 'Я.Сүүлийн', phone: K, status: 'идэвхтэй', role: 'Нярав', worker_type: 'permanent' },
+             { name: 'А.Эхний', phone: K2, status: 'идэвхтэй', role: 'Нярав', worker_type: 'permanent' },
+             { name: 'Г.Гарсан', phone: '99116633', status: 'гарсан', role: 'Нярав', worker_type: 'permanent' },
+             { name: 'Ц.Цалингүй', phone: '99116644', status: 'идэвхтэй', role: 'Нярав', worker_type: 'permanent' },
+             { name: 'Т.Богино', phone: '1234', status: 'идэвхтэй', role: 'Нярав', worker_type: 'permanent' });
+  st.workStart = null;
+  eq(run('workStartCountText()'), 'ачаалж байна…', '«ажил эхлэх цаг» тоо: ачаалагдаагүй үед тааж бичихгүй');
+  st.workStart = { [K]: '09:00' };
+  eq(run('workStartCountText()'), '1 / 4 үндсэн ажилтан', '«ажил эхлэх цаг» тоо: цаг тохируулсан / идэвхтэй үндсэн ажилтан (гарсан орохгүй)');
+  st.salaries = { [K]: 1500000, [K2]: 1500000, '1234': 1500000, '99116633': 1500000 };
+  eq(run('attStaffCandidates()').map(m => m.name), ['А.Эхний', 'Я.Сүүлийн'], '⛔ ажилтны сонголт: цалинтай, идэвхтэй, утастай хүн л — нэрээр эрэмбэлэгдсэн (гарсан, суурь цалингүй, утасгүй орохгүй)');
+  st.salaries = {};
+  ok(run('attStaffCandidates()').every(m => m.name !== 'Г.Гарсан' && m.name !== 'Т.Богино'), 'ажилтны сонголт: цалингийн жагсаалт ачаалагдаагүй бол үндсэн ажилтнаар (гарсан, утасгүй орохгүй)');
+  ok(/^([01]\d|2[0-3]):[0-5]\d$/.test(run('nowHMUB()')), 'цаг: nowHMUB «ЦЦ:ММ» хэлбэртэй');
+  TEAM_.length = 0; tsave.forEach(x => TEAM_.push(x));
+
+  // ── ⑤ Хилийн тохиолдлууд: хоосон/буруу оролт унахгүй, норм тохиргоо дагана ──
+  const ts_ = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  st.attCallins = {}; st.workStart = {};
+  const ci_ = (day, time, key) => ({ id: (key || K) + '|' + day, member_key: key || K, day, at_time: time, place: null, status: 'active' });
+  eq(run(`attDiscipline('${K}', '2026-10', null, '2026-11-02', 5)`).events, [], 'хил: ирцийн жагсаалт null бол унахгүй, үйл явдалгүй');
+  eq(run(`attDiscipline('', '2026-10', [], '2026-11-02', 5)`).events, [], 'хил: хоосон түлхүүр унахгүй');
+  eq(run(`attPenaltyBreakdown(null, { absentMult: 1.5, lateMult: 2 }, 2000000, '2026-10')`).total, 0, 'хил: үйл явдал (disc) null бол торгууль 0');
+  st.appConfig = Object.assign({}, st.appConfig || {}, { work_norm_days: 20 });
+  eq(run(`attPenaltyBreakdown({ events: [{ day: '2026-10-14', kind: 'absent' }] }, { absentMult: 1.5, lateMult: 2 }, 2000000, '2026-10')`).total, 50000, '⛔ бодолт: сарын норм тохиргоо (work_norm_days=20) дагана — өдрийн цалин 2,000,000 ÷ 20 × 0.5 = 50,000 (цалин, норм, торгууль ижил өдрийн тоогоор)');
+  delete st.appConfig.work_norm_days;
+  eq(run(`memberNorm('${K}', '2026-10')`).norm, run(`memberNorm('${K2}', '2026-10')`).norm, 'норм: хүн бүрд ижил (тэмдэглэгээнээс хамаарахгүй)');
+  eq(run(`payRulesCfg()`).from, '', 'дүрэм: «хэзээнээс» буруу хэлбэртэй бол хоосон (унтраалттай)');
+  RULES({ from: 'abcd' }); eq(run(`payRulesCfg().from`), '', 'дүрэм: буруу «хэзээнээс» утга идэвхжүүлэхгүй'); RULES(undefined);
+  eq(run(`attLateMinutes('${K}', '2026-10-13', '')`), 0, 'шошго: ирсэн цаггүй бол хоцролт 0');
+  // 400 минут хоцорсон хүний payExtras — өдрийн дээд хязгаарт хүрсэн нь мөрд ИЛ
+  st.attCallins = { [`${K}|2026-10-13`]: ci_('2026-10-13', '09:00') }; RULES({ from: '2026-10' });
+  const exCap = run(`payExtras('${K}', '2026-10', ${JSON.stringify([{ member_key: K, member_name: 'x', kind: 'in', ts: ts_('2026-10-13', '15:40'), day: '2026-10-13', source: 'scan' }])}, 2000000)`);
+  eq([exCap.penalty, exCap.capped['2026-10-13']], [60606, true], '⛔ payExtras: 400м хоцролт — өдрийн дээд хязгаар 60,606₮, capped тэмдэг (дэлгэц «өдрийн дээд хязгаар» гэж харуулна)');
+  RULES(undefined);
+  // Өдрийн хуваарийн хэсэг: цагтаа ирсэн
+  const TEAM2 = run('TEAM'), ts2 = TEAM2.slice(); TEAM2.length = 0;
+  TEAM2.push({ name: 'Ц.Цагтаа', phone: K, status: 'идэвхтэй', role: 'Нярав', worker_type: 'permanent' });
+  st.isCEO = true; st.attCallins = { [`${K}|2026-09-15`]: ci_('2026-09-15', '09:30') }; st.attMonthMode = false;
+  const onTime = run(`attCallinSectionHtml('2026-09-15', ${JSON.stringify([{ member_key: K, member_name: 'x', kind: 'in', ts: ts_('2026-09-15', '09:33'), day: '2026-09-15', source: 'scan' }])})`);
+  ok(/aci-ok/.test(onTime) && /09:33 цагтаа/.test(onTime) && !/aci-late/.test(onTime), 'хуваарийн хэсэг: чөлөөний дотор (3м) ирсэн хүн «✓ 09:33 цагтаа»');
+  st.attMonthMode = true;
+  eq(run(`attCallinSectionHtml('2026-09-15', [])`), '', 'хуваарийн хэсэг: сарын тойм горимд гарахгүй');
+  st.attMonthMode = false; TEAM2.length = 0; ts2.forEach(x => TEAM2.push(x));
+  // Төлөвлөгөө: холимог — хүн бүр өөр төлөвтэй
+  st.__plRows = { [`${K}|2026-11-03`]: { at_time: '09:00', place: null }, [`${K2}|2026-11-03`]: { at_time: '08:00', place: 'Агуулах' } };
+  const mixPlan = run(`schedPlan({ keys: ['${K}', '${K2}', '99116699'], days: ['2026-11-03', '2026-11-04'], time: '09:00', place: '', mode: 'set', today: '2026-11-02', nowHM: '10:00', rows: (k, d) => state.__plRows[k + '|' + d] || null, locked: () => false })`);
+  eq([mixPlan.items.length, mixPlan.skip.same], [5, 1], 'төлөвлөгөө: холимог — ижил (K 11-03) 1 алгасаж, бусад 5 мөр бичигдэнэ (K2-ийн газар өөр тул шинэчилнэ)');
+  eq(mixPlan.items.filter(i => i.key === K2).length, 2, 'төлөвлөгөө: газар/цаг өөр хуваарь шинэчлэгдэнэ');
+  delete st.__plRows;
+  st.isCEO = saved.ceo; st.appConfig = saved.ac; st.attCallins = saved.c; st.attCallinsErr = saved.ce; st.closedMonths = saved.cm; st._closedMonthsAt = saved.ca; st.workStart = saved.ws; st.salaries = saved.sal; st.memberPerms = saved.mp; st.me = saved.me;
+});
+
 // ═══ НЭГ БАРИМТ = НЭГ ТӨЛБӨР (2026-10-30) ═══════════════════════════════════════════
 // №1673 (2×), №1693 (5×): хадгалалт серверт биелээд хариу ирээгүй үед цонх нээлттэй үлдэж, «Хадгалах»-ыг дахин дарахад
 // ижил баримтын дүн дахин нэмэгдсэн. Ledger «ижил захиалга ижил баримтаа дахин хавсаргах = ok» гэдэг тул ганцаараа хүрэлцэхгүй.

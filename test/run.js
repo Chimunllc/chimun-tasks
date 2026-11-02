@@ -18006,6 +18006,41 @@ async function swFetchTests() {
   ok(/ps-dep-sum/.test(sumOther) && /<\/div>\s*$/.test(sumOther), 'товч: CEO бус хүнд ч нийлбэр бүтэн хаагдана');
   { const sv = JSON.parse(savedPs); runIn('state.isCEO = ' + JSON.stringify(sv.isCEO) + '; state.products = ' + JSON.stringify(sv.products || []) + ';'); }
 
+  /* — «АНГИЛЛААР» ТҮВШИН (2026-11-02, CEO: «Бусад 137 бараа ямар ч төрөлд таарахгүй») —
+     Нэрийн үгэнд таараагүй бараа → барааны АНГИЛЛААР нас авна. Дараалал: нэрийн үг → ангилал → «Бусад». */
+  const savedCat = JSON.stringify(vm.runInContext('state.appConfig', sandbox) || {});
+  eq(deprecYearsFor('JBL PartyBox 310', undefined, 'Хөгжим'), { years: 5, label: 'Бусад' }, 'ангилал: тохиргоо байхгүй бол ангилал нөлөөлөхгүй (хуучин зан хэвээр)');
+  runIn("state.appConfig = Object.assign({}, state.appConfig, { deprec: { cat_lives: ["
+    + "{ cat: 'Хөгжим', years: 6 }, { cat: 'Эрчим хүч, цахилгаан', years: 8 }, null, { cat: '', years: 5 }, { cat: 'Х', years: 0 }, { cat: 'Зөв', years: '12' }] } });");
+  eq(F.deprecCatYears(), { 'Хөгжим': 6, 'Эрчим хүч, цахилгаан': 8, 'Зөв': 12 }, 'ангилал: тохиргооноос уншина; эвдэрсэн мөр (null, нэргүй, нас 0) алгасагдана');
+  eq(deprecYearsFor('JBL PartyBox 310', undefined, 'Хөгжим'), { years: 6, label: 'Хөгжим (ангилал)' }, 'ангилал: нэрийн үгэнд таараагүй бараа ангиллаар 6 жил');
+  eq(deprecYearsFor('EcoFlow River 2 Pro', undefined, ' Эрчим хүч, цахилгаан ').years, 8, 'ангилал: нэрний хоосон зайг тоолохгүй');
+  eq(deprecYearsFor('Тавиур (агуулах)', undefined, 'Хөгжим'), { years: 10, label: 'Агуулахын тавиур' }, 'ангилал: нэрийн үг ТҮРҮҮЛЖ ялна (тавиур ямар ангилалд ч 10)');
+  eq(deprecYearsFor('Яригч JBL 305P', undefined, 'Эрчим хүч, цахилгаан').years, 6, 'ангилал: нэрийн «яригч» 6 жил ангиллын 8-аас илүү');
+  eq(deprecYearsFor('Бариултай таваг', undefined, 'Ресторан хэрэгсэл'), { years: 5, label: 'Бусад' }, 'ангилал: тохируулаагүй ангилал «Бусад» хэвээр');
+  eq(deprecYearsFor('JBL PartyBox 310').label, 'Бусад', 'ангилал: ангилалгүй бараа «Бусад»');
+  const PC = { name: 'JBL PartyBox 310', category: 'Хөгжим', cost: 1200000, qty_mevent: 2, purchase_date: '2026-01-01' };
+  const pcd = deprecForProduct(PC);
+  eq([pcd.label, pcd.years, Math.round(pcd.perUnitMonth), pcd.endYm], ['Хөгжим (ангилал)', 6, 16667, '2032-01'], 'ангилал: барааны карт ангиллын насаар (1.2сая ÷ 72)');
+  eq(Math.round(deprecByBranch([PC]).byCat['Хөгжим (ангилал)']), 33333, 'ангилал: тайлан ижил насаар, «Хөгжим (ангилал)» мөрөнд');
+  eq(Math.round(deprecByBranch([PC]).total), Math.round(pcd.totalMonth), 'ангилал: карт ба тайлангийн нийлбэр зөрөхгүй');
+  // Засварын шалгалт: хоосон нас = тохируулаагүй, буруу нас/давхардал хаана
+  const cr = deprecRowsCheck([], 5, [{ cat: 'Хөгжим', years: '6' }, { cat: 'Тоглоом', years: '' }, { cat: 'Цахилгаан', years: 7.5 }]);
+  ok(!cr.error, 'ангилал засвар: зөв мөр алдаагүй');
+  eq(cr.catYears, { 'Хөгжим': 6, 'Цахилгаан': 7.5 }, 'ангилал засвар: хоосон нас алгасагдаж, нас тоо болно');
+  eq(cr.cfgCat, [{ cat: 'Хөгжим', years: 6 }, { cat: 'Цахилгаан', years: 7.5 }], 'ангилал засвар: тохиргооны хэлбэр [{cat, years}]');
+  [['0', 'нас 0'], ['101', 'нас 100-аас их'], ['гурав', 'нас тоо биш']].forEach(([y, why]) =>
+    ok(!!deprecRowsCheck([], 5, [{ cat: 'А', years: y }]).error, 'ангилал засвар: хаана — ' + why));
+  ok(!!deprecRowsCheck([], 5, [{ cat: 'А', years: 5 }, { cat: ' А ', years: 6 }]).error, 'ангилал засвар: хаана — давхардсан ангилал');
+  eq(deprecRowsCheck([], 5).catYears, undefined, 'ангилал засвар: catRows өгөөгүй хуучин дуудлага ангиллыг ӨӨРЧЛӨХГҮЙ');
+  eq(deprecYearsFor('JBL', deprecRowsCheck([], 5).lives, 'Хөгжим').years, 6, 'ангилал засвар: catRows өгөөгүй бол тохиргооны ангиллыг хэрэглэнэ');
+  // Урьдчилан харах: засварын утга тохиргоог ДАРНА, хоосон болговол тохиргоо ч арилна
+  eq(deprecYearsFor('JBL', deprecRowsCheck([], 5, [{ cat: 'Хөгжим', years: 3 }]).lives, 'Хөгжим').years, 3, 'урьдчилан харах: засварласан ангиллын нас тохиргоог дарна');
+  eq(deprecYearsFor('JBL', deprecRowsCheck([], 5, [{ cat: 'Хөгжим', years: '' }]).lives, 'Хөгжим'), { years: 5, label: 'Бусад' }, 'урьдчилан харах: ангиллын насыг хоосон болговол «Бусад» руу');
+  eq(Math.round(deprecByBranch([PC], deprecRowsCheck([], 5, [{ cat: 'Хөгжим', years: 3 }]).lives).total), 66667, 'урьдчилан харах: тайлантай ижил функцээр шинэ насаар бодогдоно (1.2сая÷36×2)');
+  runIn('state.appConfig = ' + savedCat + ';');
+  eq(deprecYearsFor('JBL PartyBox 310', undefined, 'Хөгжим').label, 'Бусад', 'ангилал: тохиргоо сэргээгдсэн — ангилал нөлөөлөхгүй');
+
   // — SCAN: цонх CEO-д, бусад тохиргоог хадгалж, тайлантай ижил функцээр —
   const md = src.slice(src.indexOf('async function openDeprecLivesModal('), src.indexOf('/* 📉 ЭЛЭГДЛИЙГ ЖАГСААЛТАД ИЛ БИЧНЭ'));
   ok(/if \(!state\.isCEO\)/.test(md), 'scan: элэгдлийн нас засах цонх зөвхөн CEO');
@@ -18016,6 +18051,13 @@ async function swFetchTests() {
   ok(/state\.isCEO \? `<br><button[^`]*data-dep-lives/.test(src), 'scan: «Элэгдлийн нас» товч зөвхөн CEO-д харагдана');
   ok(/\[data-dep-lives\]'\)\?\.addEventListener\('click', openDeprecLivesModal\)/.test(src), 'scan: товч цонхтой холбогдсон');
   ok(!/const render = /.test(md), 'scan: цонхны дотоод `render` глобал render()-г далдалахгүй');
+  ok(/deprecRowsCheck\(current\(\), other, currentCats\(\)\)/.test(md), 'scan: цонх ангиллын мөрүүдийг шалгалтад дамжуулна');
+  ok(/cat_lives: chk\.cfgCat/.test(md), 'scan: ангиллын нас `app_config[deprec].cat_lives`-д хадгалагдана');
+  ok(/dpl-catlist/.test(md) && /data-cat="\$\{escapeHtml\(c\)\}"/.test(md) && /dpl-cyears/.test(md), 'scan: «Ангиллаар» хэсэг цонхонд байна');
+  ok(/deprecYearsFor\(p && p\.name, lives \|\| deprecLives\(\), p && p\.category\)/.test(src), 'scan: барааны карт ба тайлан ангиллыг ИЖИЛ дамжуулна');
+  /* ⛔ САЙТЫН ЦЭСНИЙ БҮЛЭГТЭЙ ХОЛБОХГҮЙ — цэс өөрчлөгдөхөд элэгдэл чимээгүй хөдөлнө. */
+  const cl = src.slice(src.indexOf('function deprecCatYears('), src.indexOf('function deprecKeywordSrc('));
+  ok(cl.length > 300 && !/catGroups|appCatGroups|mevent_category_groups/.test(cl), 'scan: ангиллын элэгдэл сайтын цэсний бүлгээс ХАМААРАХГҮЙ');
 }
 
 // ═══ ДАМЖЛАГЫН БОНУС — барааны тоогоор, хамтрагчид хувьтай (2026-09-30) ═══

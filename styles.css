@@ -9353,7 +9353,7 @@ select.no-asar-len {
 .dpl-open { margin-top: var(--space-2); }
 .dpl-modal { max-width: 640px; }
 .dpl-hint { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-2) 0; line-height: 1.5; }
-.dpl-list { max-height: 42vh; overflow-y: auto; margin: var(--space-2) 0; }
+.dpl-list { max-height: 34vh; overflow-y: auto; margin: var(--space-2) 0; }
 .dpl-modal .dpl-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
   padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
 .dpl-modal .dpl-row:last-child { border-bottom: 0; }
@@ -9362,7 +9362,11 @@ select.no-asar-len {
 .dpl-modal .dpl-re { flex: 1 1 180px; width: auto; font-size: var(--fs-xs); }
 .dpl-modal .dpl-yr { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); margin: 0;
   font-size: var(--fs-sm); color: var(--muted); }
-.dpl-modal .dpl-years, .dpl-modal .dpl-other-years { width: 72px; text-align: right; }
+.dpl-modal .dpl-years, .dpl-modal .dpl-other-years, .dpl-modal .dpl-cyears { width: 72px; text-align: right; }
+/* «Ангиллаар» хэсэг — төрлийн жагсаалттай ижил мөр (`.dpl-row`), тусдаа гүйлгэгдэнэ */
+.dpl-modal .dpl-cats { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
+.dpl-catlist { max-height: 40vh; overflow-y: auto; margin: var(--space-1) 0; }
+.dpl-modal .dpl-cname { flex: 1 1 160px; font-size: var(--fs-sm); font-weight: 700; }
 .dpl-modal .dpl-del { flex: none; width: 34px; height: 34px; min-height: 0; padding: 0; border: 1px solid var(--border-strong);
   border-radius: 8px; background: var(--panel); color: var(--danger); font-size: var(--fs-lg); line-height: 1; cursor: pointer; }
 .dpl-modal .dpl-m { flex: 0 0 auto; margin-left: auto; text-align: right; font-size: var(--fs-xs); white-space: nowrap; }

@@ -26615,6 +26615,21 @@ async function openDeprecLivesModal() {
   const rows = deprecLives().map(x => ({ label: x.label, re: x.re.source, orig: x.re.source, years: x.years }));
   let other = deprecDefaultYears();
   const before = deprecByBranch(state.products || [], deprecLives()).total;
+  /* «Ангиллаар» жагсаалт — нэрийн үгэнд таараагүй (эсвэл аль хэдийн ангиллаар тохируулсан) бараатай
+     ангиллууд, сарын дүнгээр буурахаар. Нээхэд НЭГ удаа тогтооно: засахад мөр дундаас гарч ирэхгүй.
+     Тохиргоонд байгаа ангилал барааны жагсаалтад байхгүй ч ҮЛДЭНЭ — эс бөгөөс хадгалахад чимээгүй алдагдана. */
+  const catYears0 = deprecCatYears();
+  const fb = {};
+  (state.products || []).forEach(p => {
+    const cat = String((p && p.category) || '').trim(); if (!cat) return;
+    const x = deprecForProduct(p, deprecLives());
+    if (x.skip || x.qty <= 0) return;
+    if (x.label === 'Бусад' || x.label === cat + ' (ангилал)') fb[cat] = (fb[cat] || 0) + x.totalMonth;
+  });
+  Object.keys(catYears0).forEach(c => { if (!(c in fb)) fb[c] = 0; });
+  const cats = Object.keys(fb).sort((a, b) => fb[b] - fb[a] || a.localeCompare(b, 'mn'));
+  const catVals = {};
+  cats.forEach(c => { catVals[c] = catYears0[c] != null ? String(catYears0[c]) : ''; });
 
   document.getElementById('dpl-modal')?.remove();
   const modal = document.createElement('div');
@@ -26628,12 +26643,14 @@ async function openDeprecLivesModal() {
       r.re = el.querySelector('.dpl-re').value;
       r.years = el.querySelector('.dpl-years').value;
     });
+    modal.querySelectorAll('.dpl-catlist .dpl-crow').forEach(el => { catVals[el.dataset.cat] = el.querySelector('.dpl-cyears').value; });
     const o = modal.querySelector('.dpl-other-years'); if (o) other = o.value;
   };
   const current = () => rows.map(r => ({ label: r.label, re: deprecKeywordSrc(r.re, r.orig), years: r.years }));
+  const currentCats = () => cats.map(c => ({ cat: c, years: catVals[c] }));
   // Бүлэг бүрийн бараа тоо ба сарын дүн — засварын жагсаалтаар шууд бодно.
   const paint = () => {
-    const chk = deprecRowsCheck(current(), other);
+    const chk = deprecRowsCheck(current(), other, currentCats());
     const sum = modal.querySelector('#dpl-sum'), save = modal.querySelector('#dpl-save');
     if (chk.error) {
       sum.innerHTML = `<span class="ps-dep-warn">⚠ ${escapeHtml(chk.error)}</span>`; save.disabled = true;
@@ -26646,6 +26663,17 @@ async function openDeprecLivesModal() {
     const line = (label) => `${cnt[label] || 0} бараа · ${fmtMoneyShort(Math.round(d.byCat[label] || 0))}/сар`;
     modal.querySelectorAll('.dpl-list .dpl-row').forEach(el => { el.querySelector('.dpl-m').textContent = line(chk.lives[Number(el.dataset.i)].label); });
     modal.querySelector('.dpl-other-m').textContent = line('Бусад');
+    // Ангилал бүр: нэрийн үгэнд таараагүй бараа (нас хоосон бол «Бусад»-д тоологдсон хэвээр) ба тэдний сарын дүн.
+    modal.querySelectorAll('.dpl-catlist .dpl-crow').forEach(el => {
+      const c = el.dataset.cat; let n = 0, m = 0;
+      (state.products || []).forEach(p => {
+        if (String((p && p.category) || '').trim() !== c) return;
+        const x = deprecForProduct(p, chk.lives);
+        if (x.skip || x.qty <= 0) return;
+        if (x.label === 'Бусад' || x.label === c + ' (ангилал)') { n++; m += x.totalMonth; }
+      });
+      el.querySelector('.dpl-m').textContent = `${n} бараа · ${fmtMoneyShort(Math.round(m))}/сар`;
+    });
     const delta = Math.round(d.total - before);
     sum.innerHTML = `Нийт элэгдэл: <b>${fmtMoneyShort(Math.round(before))}</b> → <b>${fmtMoneyShort(Math.round(d.total))}/сар</b>`
       + (delta ? ` <span class="${delta > 0 ? 'ps-dep-warn' : 'dpl-down'}">(${delta > 0 ? '+' : '−'}${fmtMoneyShort(Math.abs(delta))})</span>` : ' <span class="mut">(өөрчлөлтгүй)</span>');
@@ -26654,7 +26682,7 @@ async function openDeprecLivesModal() {
   const draw = () => {
     modal.innerHTML = `<div class="modal dpl-modal">
       <h2>📉 Элэгдлийн нас</h2>
-      <p class="dpl-hint">Төрөл бүрийн элэгдэх <b>жилийг</b> энд засна. Барааны нэрэнд «таних үг» орсон бол тэр төрөлд орно; <b>дээрээс доош эхний таарсан төрөл</b> ялна. Энэ нь mevent.mn-ий цэсний бүлэг, барааны ангилалтай холбоогүй.</p>
+      <p class="dpl-hint">Төрөл бүрийн элэгдэх <b>жилийг</b> энд засна. Барааны нэрэнд «таних үг» орсон бол тэр төрөлд орно; <b>дээрээс доош эхний таарсан төрөл</b> ялна. Нэрийн үгэнд таараагүй барааг доорх «Ангиллаар» хэсэг барааны ангиллаар нь тооцно. Энэ нь mevent.mn-ий цэсний бүлэгтэй холбоогүй.</p>
       <div class="ps-dep-sum" id="dpl-sum"></div>
       <div class="dpl-list">${rows.map((r, i) => `
         <div class="dpl-row" data-i="${i}">
@@ -26665,8 +26693,18 @@ async function openDeprecLivesModal() {
           <span class="dpl-m mut"></span>
         </div>`).join('')}</div>
       <button type="button" class="btn dpl-add" id="dpl-add">+ Шинэ төрөл</button>
+      ${cats.length ? `<div class="dpl-cats">
+        <span class="dpl-label-o">Ангиллаар <span class="mut">(нэрийн үгэнд таараагүй бараа)</span></span>
+        <p class="dpl-hint">Дээрх төрлүүдийн ямар ч үгэнд таараагүй барааг <b>барааны ангиллаар</b> нь элэгдүүлнэ. Нас хоосон бол тэр ангилал доорх «Бусад»-ын насаар явна. Нэрийн үг үргэлж түрүүлж ялна (жишээ нь «тавиур» ямар ангилалд ч 10 жил).</p>
+        <div class="dpl-catlist">${cats.map(c => `
+          <div class="dpl-row dpl-crow" data-cat="${escapeHtml(c)}">
+            <span class="dpl-cname">${escapeHtml(c)}</span>
+            <label class="dpl-yr"><input class="dpl-cyears ui-raw" type="number" min="1" max="100" step="0.5" value="${escapeHtml(catVals[c])}" placeholder="—" aria-label="${escapeHtml(c)} — нас (жил)"> жил</label>
+            <span class="dpl-m mut"></span>
+          </div>`).join('')}</div>
+      </div>` : ''}
       <div class="dpl-other">
-        <span class="dpl-label-o">Бусад <span class="mut">(ямар ч төрөлд таарахгүй бараа)</span></span>
+        <span class="dpl-label-o">Бусад <span class="mut">(төрөл, ангилал аль ч таарахгүй бараа)</span></span>
         <label class="dpl-yr"><input class="dpl-other-years ui-raw" type="number" min="1" max="100" step="0.5" value="${escapeHtml(String(other))}" aria-label="Бусад — нас (жил)"> жил</label>
         <span class="dpl-m dpl-other-m mut"></span>
       </div>
@@ -26688,14 +26726,14 @@ async function openDeprecLivesModal() {
     modal.querySelector('#dpl-cancel').addEventListener('click', () => modal.remove());
     modal.querySelector('#dpl-save').addEventListener('click', async (e) => {
       collect();
-      const chk = deprecRowsCheck(current(), other);
+      const chk = deprecRowsCheck(current(), other, currentCats());
       if (chk.error) { showToast(chk.error, 'warn'); return; }
       const after = deprecByBranch(state.products || [], chk.lives).total;
       if (!(await showConfirm(`Нийт элэгдэл ${fmtMoneyShort(Math.round(before))} → ${fmtMoneyShort(Math.round(after))}/сар болно.\n\n`
         + 'Хаагаагүй сарын ашиг, COO-гийн хувь шинэ насаар бодогдоно (хаасан сар хөдлөхгүй). Хадгалах уу?', { okText: 'Хадгалах' }))) return;
       e.target.disabled = true;
       try {
-        const next = Object.assign({}, cfg0, { lives: chk.cfgLives, default_years: chk.defaultYears });
+        const next = Object.assign({}, cfg0, { lives: chk.cfgLives, default_years: chk.defaultYears, cat_lives: chk.cfgCat });
         await saveAppConfig('deprec', next);
         state.appConfig = state.appConfig || {}; state.appConfig.deprec = next;
         showToast('Элэгдлийн нас хадгалагдлаа', 'success', 3000);
@@ -39671,10 +39709,30 @@ function deprecDefaultYears() {
   const y = Number(_deprecCfg().default_years);
   return (y >= 1 && y <= 100) ? y : DEPREC_DEFAULT_YEARS;
 }
-function deprecYearsFor(name, lives) {
+/* «АНГИЛЛААР» ТҮВШИН (2026-11-02, CEO: «Бусад 137 бараа ямар ч төрөлд таарахгүй байна»).
+   Нэрийн үг нь жижиг, тодорхой онцгой тохиолдол; үгэнд таараагүй бараа «Бусад» руу унаж
+   ижил ангиллын бараа өөр өөр насанд орж байв (JBL «Бусад 5ж», бусад хөгжим 6ж).
+   Дараалал: 1) нэрийн үг (дээрээс доош) → 2) барааны АНГИЛАЛ → 3) «Бусад».
+   ⛔ САЙТЫН ЦЭСНИЙ БҮЛЭГ (`mevent_category_groups`) БИШ — тэр цэс өөрчлөгдөхөд элэгдэл
+     чимээгүй хөдөлнө. Ангилал нь бараа бүрт сонгогчоор заавал оноогддог тогтвортой талбар.
+   `app_config['deprec'].cat_lives` = [{cat, years}]; тохируулаагүй ангилал хэвээр «Бусад». */
+function deprecCatYears() {
+  const out = {};
+  const c = _deprecCfg().cat_lives;
+  if (Array.isArray(c)) c.forEach(x => {
+    const k = String((x && x.cat) || '').trim(), y = Number(x && x.years);
+    if (k && y >= 1 && y <= 100) out[k] = y;     // эвдэрсэн мөр чимээгүй алгасагдана
+  });
+  return out;
+}
+function deprecYearsFor(name, lives, category) {
   const n = String(name || '');
   const L = lives || deprecLives();
   for (const x of L) if (x.re && x.re.test(n)) return { years: x.years, label: x.label };
+  // `L.catYears` — засварын цонхны ХУВИЛБАР (хадгалахаас өмнө урьдчилан харах); эс бол тохиргооноос.
+  const cat = String(category || '').trim();
+  const cy = (L && L.catYears) || deprecCatYears();
+  if (cat && Object.prototype.hasOwnProperty.call(cy, cat)) return { years: cy[cat], label: cat + ' (ангилал)' };
   // `L.defaultYears` — засварын цонхны ХУВИЛБАРЫН тооцоо (хадгалахаас өмнө урьдчилан харах).
   return { years: (L && L.defaultYears) || deprecDefaultYears(), label: 'Бусад' };
 }
@@ -39685,7 +39743,7 @@ function deprecYearsFor(name, lives) {
    ⛔ Бүх барааг татаж авах «таних үг» (хоосон нэртэй таардаг, жишээ нь `a|`) ба
      давхардсан нэрийг ХААНА — эс бөгөөс бүх бараа нэг бүлэгт орж элэгдэл чимээгүй
      өөрчлөгдөнө. «Бусад» нэр нь анхдагч бүлгийнх тул нөөцлөгдсөн. */
-function deprecRowsCheck(rows, defaultYears) {
+function deprecRowsCheck(rows, defaultYears, catRows) {
   const lives = [], cfgLives = [], seen = new Set();
   for (let i = 0; i < (rows || []).length; i++) {
     const r = rows[i] || {};
@@ -39707,7 +39765,23 @@ function deprecRowsCheck(rows, defaultYears) {
   const dy = Number(defaultYears);
   if (!(dy >= 1 && dy <= 100)) return { error: '«Бусад»-ын нас 1–100 жилийн хооронд байх ёстой' };
   lives.defaultYears = dy;
-  return { lives, cfgLives, defaultYears: dy };
+  /* «Ангиллаар» мөр {cat, years}: нас ХООСОН бол тохируулаагүй (алгасна → «Бусад»-ын насаар).
+     `catRows` өгөөгүй (хуучин дуудлага) бол ангиллын түвшинг ӨӨРЧЛӨХГҮЙ — тохиргооноос уншина. */
+  let catYears, cfgCat;
+  if (catRows !== undefined) {
+    catYears = {}; cfgCat = [];
+    for (const r of catRows || []) {
+      const cat = String((r && r.cat) || '').trim();
+      const ys = String(r && r.years != null ? r.years : '').trim();
+      if (!cat || ys === '') continue;
+      const y = Number(ys);
+      if (!(y >= 1 && y <= 100)) return { error: `«${cat}» ангилал: нас 1–100 жилийн хооронд байх ёстой` };
+      if (Object.prototype.hasOwnProperty.call(catYears, cat)) return { error: `«${cat}» ангилал давхцаж байна` };
+      catYears[cat] = y; cfgCat.push({ cat, years: y });
+    }
+    lives.catYears = catYears;
+  }
+  return { lives, cfgLives, defaultYears: dy, catYears, cfgCat };
 }
 // Цонхонд бичсэн таних үг: «барилга, байгууламж» (таслалтай) → `барилга|байгууламж`.
 // Өөрчлөөгүй бол ХЭВЭЭР (анхдагч `par ` шиг төгсгөлийн хоосон зай утга агуулдаг).
@@ -39765,7 +39839,7 @@ function deprecByBranch(products, lives) {
      тест хоёрыг тулгана. */
 function deprecForProduct(p, lives) {
   const cost = Number(p && p.cost) || 0;
-  const { years, label } = deprecYearsFor(p && p.name, lives || deprecLives());
+  const { years, label } = deprecYearsFor(p && p.name, lives || deprecLives(), p && p.category);
   const qty = ['qty_mevent', 'qty_nomaad', 'qty_catering', 'qty_chimun']
     .reduce((s, f) => s + (Number(p && p[f]) || 0), 0);
   const skip = !!(p && p.archived) ? 'архивласан'

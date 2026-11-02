@@ -26571,7 +26571,118 @@ function psDeprecSummary() {
     + (d.noDateN ? ` · <span class="ps-dep-warn">⚠ ${d.noDateN} бараа авсан огноогүй</span>` : '')
     + (d.doneN ? ` · ✓ ${d.doneN} бүрэн элэгдсэн` : '')
     + `<br><span class="mut">Санхүү → Тайлан дахь элэгдлийн мөр нь ЯГ энэ тоо. Доорх бараа бүрийн мөр үүнийг бүрдүүлнэ.</span>`
-    + `<br><span class="mut">M-Event ба NOMAAD нэг санг хамт ашигладаг тул тэдний элэгдэл 50/50 хуваагдана; катеринг, Чимун ХХК өөрийн тоогоор.</span></div>`;
+    + `<br><span class="mut">M-Event ба NOMAAD нэг санг хамт ашигладаг тул тэдний элэгдэл 50/50 хуваагдана; катеринг, Чимун ХХК өөрийн тоогоор.</span>`
+    // Бүлгийн нас нь тайлангийн ашиг ба COO-гийн хувийг хөдөлгөдөг тул зөвхөн CEO засна.
+    + (state.isCEO ? `<br><button type="button" class="btn dpl-open ui-raw" data-dep-lives>📉 Элэгдлийн нас (бүлгээр)</button>` : '')
+    + `</div>`;
+}
+/* 📉 ЭЛЭГДЛИЙН НАС — бүлэг бүрийн жилийг гараар засах цонх (2026-11-02, CEO).
+   Нас нь `app_config['deprec'].lives`-д хадгалагдана (кодын fallback-ийг дарна).
+   Хадгалахаас өмнө «нийт элэгдэл X → Y/сар» гэж ШУУД харуулна — `deprecByBranch`-д
+   засварын жагсаалтыг дамжуулж бодно, тайлантай ИЖИЛ функц.
+   ⚠ Хаасан сарын тоо хөдлөхгүй (зурагтай); хаагаагүй сар, түүнээс хойшхи бүгд шинэ насаар. */
+async function openDeprecLivesModal() {
+  if (!state.isCEO) { showToast('Зөвхөн CEO өөрчилнө', 'warn'); return; }
+  // Өөр төхөөрөмжөөс өөрчилсөн байж болно — хамгийн сүүлийн хувилбарыг аваад засна.
+  const fresh = await loadAppConfig('deprec');
+  if (fresh && typeof fresh === 'object') { state.appConfig = state.appConfig || {}; state.appConfig.deprec = fresh; }
+  const cfg0 = Object.assign({}, _deprecCfg());
+  const rows = deprecLives().map(x => ({ label: x.label, re: x.re.source, orig: x.re.source, years: x.years }));
+  let other = deprecDefaultYears();
+  const before = deprecByBranch(state.products || [], deprecLives()).total;
+
+  document.getElementById('dpl-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'dpl-modal';
+  document.body.appendChild(modal);
+
+  const collect = () => {
+    modal.querySelectorAll('.dpl-list .dpl-row').forEach(el => {
+      const r = rows[Number(el.dataset.i)]; if (!r) return;
+      r.label = el.querySelector('.dpl-label').value;
+      r.re = el.querySelector('.dpl-re').value;
+      r.years = el.querySelector('.dpl-years').value;
+    });
+    const o = modal.querySelector('.dpl-other-years'); if (o) other = o.value;
+  };
+  const current = () => rows.map(r => ({ label: r.label, re: deprecKeywordSrc(r.re, r.orig), years: r.years }));
+  // Бүлэг бүрийн бараа тоо ба сарын дүн — засварын жагсаалтаар шууд бодно.
+  const paint = () => {
+    const chk = deprecRowsCheck(current(), other);
+    const sum = modal.querySelector('#dpl-sum'), save = modal.querySelector('#dpl-save');
+    if (chk.error) {
+      sum.innerHTML = `<span class="ps-dep-warn">⚠ ${escapeHtml(chk.error)}</span>`; save.disabled = true;
+      modal.querySelectorAll('.dpl-m').forEach(el => { el.textContent = ''; });
+      return;
+    }
+    const d = deprecByBranch(state.products || [], chk.lives);
+    const cnt = {};
+    (state.products || []).forEach(p => { const x = deprecForProduct(p, chk.lives); if (!x.skip && x.qty > 0) cnt[x.label] = (cnt[x.label] || 0) + 1; });
+    const line = (label) => `${cnt[label] || 0} бараа · ${fmtMoneyShort(Math.round(d.byCat[label] || 0))}/сар`;
+    modal.querySelectorAll('.dpl-list .dpl-row').forEach(el => { el.querySelector('.dpl-m').textContent = line(chk.lives[Number(el.dataset.i)].label); });
+    modal.querySelector('.dpl-other-m').textContent = line('Бусад');
+    const delta = Math.round(d.total - before);
+    sum.innerHTML = `Нийт элэгдэл: <b>${fmtMoneyShort(Math.round(before))}</b> → <b>${fmtMoneyShort(Math.round(d.total))}/сар</b>`
+      + (delta ? ` <span class="${delta > 0 ? 'ps-dep-warn' : 'dpl-down'}">(${delta > 0 ? '+' : '−'}${fmtMoneyShort(Math.abs(delta))})</span>` : ' <span class="mut">(өөрчлөлтгүй)</span>');
+    save.disabled = false;
+  };
+  const draw = () => {
+    modal.innerHTML = `<div class="modal dpl-modal">
+      <h2>📉 Элэгдлийн нас</h2>
+      <p class="dpl-hint">Бүлэг бүрийн элэгдэх <b>жилийг</b> энд засна. Барааны нэрэнд «таних үг» орсон бол тэр бүлэгт орно; <b>дээрээс доош эхний таарсан бүлэг</b> ялна.</p>
+      <div class="ps-dep-sum" id="dpl-sum"></div>
+      <div class="dpl-list">${rows.map((r, i) => `
+        <div class="dpl-row" data-i="${i}">
+          <input class="dpl-label ui-raw" value="${escapeHtml(r.label)}" placeholder="Бүлгийн нэр" aria-label="Бүлгийн нэр">
+          <label class="dpl-yr"><input class="dpl-years ui-raw" type="number" min="1" max="100" step="0.5" value="${escapeHtml(String(r.years))}" aria-label="Нас (жил)"> жил</label>
+          <button type="button" class="dpl-del ui-raw" data-i="${i}" title="Бүлгийг хасах — бараа «Бусад» руу орно" aria-label="Бүлэг хасах">×</button>
+          <input class="dpl-re ui-raw" value="${escapeHtml(r.re)}" placeholder="Таних үгс: барилга, байгууламж" aria-label="Таних үгс">
+          <span class="dpl-m mut"></span>
+        </div>`).join('')}</div>
+      <button type="button" class="btn dpl-add" id="dpl-add">+ Шинэ бүлэг</button>
+      <div class="dpl-other">
+        <span class="dpl-label-o">Бусад <span class="mut">(ямар ч бүлэгт таарахгүй бараа)</span></span>
+        <label class="dpl-yr"><input class="dpl-other-years ui-raw" type="number" min="1" max="100" step="0.5" value="${escapeHtml(String(other))}" aria-label="Бусад — нас (жил)"> жил</label>
+        <span class="dpl-m dpl-other-m mut"></span>
+      </div>
+      <p class="dpl-hint">Таних үгсийг таслалаар тусгаарла (жишээ нь <i>барилга, байгууламж</i>). Шинэ бүлэг жагсаалтын <b>ХАМГИЙН ДЭЭР</b> орно.
+        Хаасан сарын элэгдэл хөдлөхгүй.</p>
+      <div class="dpl-foot">
+        <button type="button" class="btn" id="dpl-cancel">Болих</button>
+        <button type="button" class="btn btn-primary" id="dpl-save">💾 Хадгалах</button>
+      </div>
+    </div>`;
+    modal.querySelectorAll('input').forEach(el => el.addEventListener('input', () => { collect(); paint(); }));
+    modal.querySelectorAll('.dpl-del').forEach(b => b.addEventListener('click', () => {
+      collect(); rows.splice(Number(b.dataset.i), 1); draw();
+    }));
+    modal.querySelector('#dpl-add').addEventListener('click', () => {
+      collect(); rows.unshift({ label: '', re: '', orig: null, years: 10 }); draw();
+      modal.querySelector('.dpl-label')?.focus();
+    });
+    modal.querySelector('#dpl-cancel').addEventListener('click', () => modal.remove());
+    modal.querySelector('#dpl-save').addEventListener('click', async (e) => {
+      collect();
+      const chk = deprecRowsCheck(current(), other);
+      if (chk.error) { showToast(chk.error, 'warn'); return; }
+      const after = deprecByBranch(state.products || [], chk.lives).total;
+      if (!(await showConfirm(`Нийт элэгдэл ${fmtMoneyShort(Math.round(before))} → ${fmtMoneyShort(Math.round(after))}/сар болно.\n\n`
+        + 'Хаагаагүй сарын ашиг, COO-гийн хувь шинэ насаар бодогдоно (хаасан сар хөдлөхгүй). Хадгалах уу?', { okText: 'Хадгалах' }))) return;
+      e.target.disabled = true;
+      try {
+        const next = Object.assign({}, cfg0, { lives: chk.cfgLives, default_years: chk.defaultYears });
+        await saveAppConfig('deprec', next);
+        state.appConfig = state.appConfig || {}; state.appConfig.deprec = next;
+        showToast('Элэгдлийн нас хадгалагдлаа', 'success', 3000);
+        modal.remove();
+        if (typeof render === 'function') render();
+      } catch (err) { showToast('Алдаа: ' + err.message, 'error'); e.target.disabled = false; }
+    });
+    paint();
+  };
+  draw();
+  modal.classList.add('open');
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 /* 📉 ЭЛЭГДЛИЙГ ЖАГСААЛТАД ИЛ БИЧНЭ (2026-10-02, CEO «тооцоолол зөв эсэхийг хаанаас
    харах вэ?» гэж асуув). Өмнө нь зөвхөн барааны ЦОНХ дотор байсан тул 281 барааг
@@ -26806,6 +26917,7 @@ async function psSaveAll() {
 }
 function attachProductSheetHandlers(mode) {
   document.querySelector('[data-oc-act]')?.addEventListener('click', openOwnerCapitalAct);
+  document.querySelector('[data-dep-lives]')?.addEventListener('click', openDeprecLivesModal);
   document.querySelector('[data-oc-count]')?.addEventListener('click', () => { state.view = 'stockcount'; render(); });
   const list = document.getElementById('ps-list');
   if (list && state._psScroll) { list.scrollTop = state._psScroll; state._psScroll = 0; }
@@ -39498,8 +39610,11 @@ function ownerCapitalRows(products) {
      · даавуу нь сандал/ширээнээс ӨМНӨ («Ширээний бүтээлэг»)
      · дуу нь техникээс ӨМНӨ (мэргэжлийн дуу 6ж, гэрэл/эффект 4ж)
      · гал тогооны тоног нь тавиураас ӨМНӨ («Хөлдөөгч шкаф (9 тавиур)»)
-     · техник нь тайзнаас ӨМНӨ («Тайзны оч шүршигч») */
+     · техник нь тайзнаас ӨМНӨ («Тайзны оч шүршигч»)
+     · барилга нь бүгдээс ӨМНӨ: «Агуулах 18x24 сендвичин барилга» → «барилга» гэдгээр
+       таньна («агуулах» гэдгээр БИШ — «Тавиур (агуулах)» тавиур хэвээр 10ж) */
 const DEPREC_LIVES = [
+  { re: /барилга|байгууламж/i,                                            years: 15, label: 'Барилга, байгууламж' },
   { re: /hino|hyundai|nissan|toyota|mitsubishi|porter|vanette|mighty/i,   years: 10, label: 'Тээврийн хэрэгсэл' },
   { re: /генератор|цэнэг хураагуур/i,                                     years: 8,  label: 'Генератор, тэжээл' },
   { re: /хөлдөөгч|жигнэгч|хөргөгч|шкаф/i,                                 years: 8,  label: 'Гал тогооны тоног' },
@@ -39523,14 +39638,58 @@ function deprecLives() {
   if (!Array.isArray(l) || !l.length) return DEPREC_LIVES;
   return l.map(x => {
     let re = null; try { re = new RegExp(String(x.re || ''), 'i'); } catch (e) { re = null; }
-    return { re, years: Number(x.years) || DEPREC_DEFAULT_YEARS, label: String(x.label || '') };
+    return { re, years: Number(x.years) || deprecDefaultYears(), label: String(x.label || '') };
   }).filter(x => x.re);
+}
+// «Бусад» (ямар ч бүлэгт таарахгүй бараа)-ын нас — тохиргоонд `default_years` байвал түүнээс.
+function deprecDefaultYears() {
+  const y = Number(_deprecCfg().default_years);
+  return (y >= 1 && y <= 100) ? y : DEPREC_DEFAULT_YEARS;
 }
 function deprecYearsFor(name, lives) {
   const n = String(name || '');
   const L = lives || deprecLives();
   for (const x of L) if (x.re && x.re.test(n)) return { years: x.years, label: x.label };
-  return { years: DEPREC_DEFAULT_YEARS, label: 'Бусад' };
+  // `L.defaultYears` — засварын цонхны ХУВИЛБАРЫН тооцоо (хадгалахаас өмнө урьдчилан харах).
+  return { years: (L && L.defaultYears) || deprecDefaultYears(), label: 'Бусад' };
+}
+/* ЭЛЭГДЛИЙН БҮЛГИЙГ ГАРААР ЗАСАХ (2026-11-02, CEO: «барилга байгууламж бүлэг алга;
+   элэгдлийн жилийг бүлэг бүлгээр нь гараар өөрчилдөг болго»).
+   Засварын мөр {label, re, years} → шалгаад тохиргооны хэлбэр руу хөрвүүлнэ. Цэвэр
+   функц (тестлэгдэнэ); цонх зөвхөн мөрүүдийг цуглуулж энийг дуудна.
+   ⛔ Бүх барааг татаж авах «таних үг» (хоосон нэртэй таардаг, жишээ нь `a|`) ба
+     давхардсан нэрийг ХААНА — эс бөгөөс бүх бараа нэг бүлэгт орж элэгдэл чимээгүй
+     өөрчлөгдөнө. «Бусад» нэр нь анхдагч бүлгийнх тул нөөцлөгдсөн. */
+function deprecRowsCheck(rows, defaultYears) {
+  const lives = [], cfgLives = [], seen = new Set();
+  for (let i = 0; i < (rows || []).length; i++) {
+    const r = rows[i] || {};
+    const label = String(r.label || '').trim();
+    const src = String(r.re == null ? '' : r.re);
+    const years = Number(r.years);
+    if (!label) return { error: `${i + 1}-р бүлгийн нэр хоосон байна` };
+    if (label === 'Бусад') return { error: '«Бусад» нэр нөөцлөгдсөн — өөр нэр өгнө үү' };
+    if (seen.has(label)) return { error: `«${label}» нэр давхцаж байна` };
+    seen.add(label);
+    if (!(years >= 1 && years <= 100)) return { error: `«${label}»: нас 1–100 жилийн хооронд байх ёстой` };
+    if (!src.trim()) return { error: `«${label}»: таних үг хоосон — нэрэнд аль үг орсон бараа энэ бүлэгт орохыг бичнэ үү` };
+    let re;
+    try { re = new RegExp(src, 'i'); } catch (e) { return { error: `«${label}»: таних үг буруу — ${e.message}` }; }
+    if (re.test('')) return { error: `«${label}»: таних үг хоосон нэртэй ч таарч байна — бүх барааг авна` };
+    lives.push({ re, years, label });
+    cfgLives.push({ re: src, years, label });
+  }
+  const dy = Number(defaultYears);
+  if (!(dy >= 1 && dy <= 100)) return { error: '«Бусад» бүлгийн нас 1–100 жилийн хооронд байх ёстой' };
+  lives.defaultYears = dy;
+  return { lives, cfgLives, defaultYears: dy };
+}
+// Цонхонд бичсэн таних үг: «барилга, байгууламж» (таслалтай) → `барилга|байгууламж`.
+// Өөрчлөөгүй бол ХЭВЭЭР (анхдагч `par ` шиг төгсгөлийн хоосон зай утга агуулдаг).
+function deprecKeywordSrc(typed, orig) {
+  const t = String(typed == null ? '' : typed);
+  if (t === orig) return t;
+  return t.includes(',') ? t.split(',').map(x => x.trim()).filter(Boolean).join('|') : t.trim();
 }
 /* Сарын элэгдэл САЛБАРААР — хөрөнгийн сан (pool) дээр. Цэвэр функц, тестлэгдэнэ.
    ⚠ Нэгж бүрийг хөөх ШААРДЛАГАГҮЙ: нөөцийн нийт өртөг ÷ нас = сарын элэгдэл.

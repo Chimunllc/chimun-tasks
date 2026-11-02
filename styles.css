@@ -9347,6 +9347,31 @@ select.no-asar-len {
   background: var(--panel-hover); border-radius: var(--r-md);
   font-size: var(--fs-sm); color: var(--text-soft);
 }
+/* 📉 Элэгдлийн нас — бүлэг бүрийн жилийг гараар засах цонх (2026-11-02, CEO).
+   ⚠ Бүх дүрэм `.dpl-modal`-оор эхэлнэ: `.modal input {width:100%}` ба `.modal label {margin:14px 0 6px}`
+   (0,1,1) нэг классын дүрмээс өндөр жинтэй тул угтваргүй бол өргөн/зай нь дарагдана. */
+.dpl-open { margin-top: var(--space-2); }
+.dpl-modal { max-width: 640px; }
+.dpl-hint { font-size: var(--fs-xs); color: var(--muted); margin: var(--space-2) 0; line-height: 1.5; }
+.dpl-list { max-height: 42vh; overflow-y: auto; margin: var(--space-2) 0; }
+.dpl-modal .dpl-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+.dpl-modal .dpl-row:last-child { border-bottom: 0; }
+.dpl-modal input { padding: 6px 9px; font-size: var(--fs-md); border-radius: 8px; min-height: 0; min-width: 0; }
+.dpl-modal .dpl-label { flex: 1 1 140px; width: auto; font-weight: 700; }
+.dpl-modal .dpl-re { flex: 1 1 180px; width: auto; font-size: var(--fs-xs); }
+.dpl-modal .dpl-yr { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); margin: 0;
+  font-size: var(--fs-sm); color: var(--muted); }
+.dpl-modal .dpl-years, .dpl-modal .dpl-other-years { width: 72px; text-align: right; }
+.dpl-modal .dpl-del { flex: none; width: 34px; height: 34px; min-height: 0; padding: 0; border: 1px solid var(--border-strong);
+  border-radius: 8px; background: var(--panel); color: var(--danger); font-size: var(--fs-lg); line-height: 1; cursor: pointer; }
+.dpl-modal .dpl-m { flex: 0 0 auto; margin-left: auto; text-align: right; font-size: var(--fs-xs); white-space: nowrap; }
+.dpl-modal .dpl-add { width: 100%; margin: var(--space-2) 0; }
+.dpl-modal .dpl-other { display: flex; align-items: center; gap: var(--space-1) var(--space-2); flex-wrap: wrap;
+  padding: var(--space-2) 0; border-top: 1px solid var(--border); }
+.dpl-label-o { flex: 1 1 180px; font-size: var(--fs-sm); font-weight: 700; }
+.dpl-foot { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-3); }
+.dpl-down { color: var(--ok); font-weight: 700; }
 
 /* 🔒 Эхний үлдэгдлийн 3 дахь гарын үсэг — CEO эцэслэнэ (2026-10-02). */
 .stc-open-seal { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }

@@ -12974,17 +12974,14 @@ function openTransferModal(pid) {
   modal.id = 'trans-modal';
   const opt = (sel) => PROD_BRANCHES.map(b => `<option value="${b.k}"${b.k === sel ? ' selected' : ''}>${b.icon} ${b.label} (${branchQty(p, b.k)})</option>`).join('');
   modal.innerHTML = `<div class="modal modal-sm">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <h2 style="margin:0;font-size:16px;">⇄ Нөөц шилжүүлэх</h2>
-      <button class="btn" id="tr-close" style="padding:4px 9px;">✕</button>
-    </div>
-    <div style="font-size:13px;font-weight:700;">${escapeHtml(p.name || '')}</div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Нийт ${Number(p.stock) || 0} · одоо: ${branchStockHtml(p)}</div>
+    <div class="modal-head"><b>⇄ Нөөц шилжүүлэх</b><button class="btn modal-x" id="tr-close" aria-label="Хаах">✕</button></div>
+    <div class="tr-name">${escapeHtml(p.name || '')}</div>
+    <div class="tr-sub">Нийт ${Number(p.stock) || 0} · одоо: ${branchStockHtml(p)}</div>
     <label class="no-lbl">Хаанаас<select id="tr-from">${opt('mevent')}</select></label>
-    <label class="no-lbl" style="margin-top:8px;">Хаашаа<select id="tr-to">${opt('nomaad')}</select></label>
-    <label class="no-lbl" style="margin-top:8px;">Тоо ширхэг<input id="tr-qty" type="number" min="1" value="1"></label>
-    <label class="no-lbl" style="margin-top:8px;">Тэмдэглэл (сонголт)<input id="tr-note" placeholder="жишээ: зуни кемп"></label>
-    <button class="btn btn-primary" id="tr-save" style="width:100%;margin-top:14px;">Шилжүүлэх</button>
+    <label class="no-lbl tr-f">Хаашаа<select id="tr-to">${opt('nomaad')}</select></label>
+    <label class="no-lbl tr-f">Тоо ширхэг<input id="tr-qty" type="number" min="1" value="1"></label>
+    <label class="no-lbl tr-f">Тэмдэглэл (сонголт)<input id="tr-note" placeholder="жишээ: зуни кемп"></label>
+    <button class="btn btn-primary tr-save" id="tr-save">Шилжүүлэх</button>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();

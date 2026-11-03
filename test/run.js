@@ -191,6 +191,39 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   eq(all - safe, 0, 'scan: түүхий UTC огноо байхгүй (todayStr/dateStr/monthStr ашигла)');
 }
 
+/* 0e0) SCAN — РЕНДЕРИЙН ГИНЖ БҮРХҮҮЛГҮЙ Ч УНАХГҮЙ (2026-11-03, fp e8f1cb62c5cf)
+   `index.html` сүлжээ дундуур таслагдаж ирэх нь ДУРЫН байт дээр тохиолддог тул
+   бүрхүүлийн ямар ч хайрцаг (`#view-title`, `#task-list`, …) байхгүй байж болно.
+   `render()`-ийн гинжин доторх функц шалгалтгүй бичвэл «Cannot set properties of
+   null» гэж унаж, түүний ДАРААХ бүх алхам (гарчиг, жагсаалт, тоолол, мэдэгдэл)
+   огт ажиллахгүй — апп бүтэн харагдаж, товч бүр үхмэл болно.
+   ⚠ Эдгээр функц бүгд `getElementById`-ийн хариуг ХУВЬСАГЧИД авч шалгана; шууд
+     `document.getElementById('x').innerHTML = …` гэж залгаж бичихийг хориглоно. */
+{
+  const fnBodyOf = (name) => {
+    const at = src.indexOf(`function ${name}(`);
+    if (at < 0) return null;
+    const open = src.indexOf('{', at);
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (!depth) return src.slice(open, i + 1); }
+    }
+    return null;
+  };
+  const CHAIN = ['render', 'renderSidebar', 'renderTitle', 'syncNavActive',
+                 'syncFilterPills', 'renderTaskList', 'renderCounts', 'renderNotifications'];
+  const bad = [];
+  for (const fn of CHAIN) {
+    const body = fnBodyOf(fn);
+    if (body == null) { bad.push(fn + ': функц олдсонгүй'); continue; }
+    const code = body.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+    const hits = code.match(/document\.(?:getElementById|querySelector)\([^)]*\)\s*\.\s*(?:innerHTML|textContent|value)\s*=/g);
+    if (hits) bad.push(fn + ': ' + hits.join(' , '));
+  }
+  eq(bad.join(' | '), '', 'scan: рендерийн гинж бүрхүүлийн хайрцгийг шалгалтгүй бичихгүй (fp e8f1cb62c5cf)');
+}
+
 // 0e2) SCAN — ирцийн хүсэлт `app_config`-д БУЦАХГҮЙ (2026-09-18)
 // Хүсэлтүүд нэг JSON blob-д байхад: зэрэг бичилт бие биенээ дарна, `app_config`
 // нэвтэрсэн бүх ажилтанд уншигддаг тул хүн бусдын хүсэлт/тайлбарыг харна, 120
@@ -8924,6 +8957,37 @@ need(['orderCustType']);
     eq(errPlan, '', '#task-list алга: Төлөвлөгөө дэлгэц унахгүй (fp e8f1cb62c5cf)');
     eq(errMine, '', '#task-list алга: ажлын жагсаалт ч унахгүй');
     eq(errDash, '', '#task-list алга: Тойм ч унахгүй');
+  }
+
+  // ── #view-title / #view-sub АЛГА БАЙХАД Ч РЕНДЕР УНАХГҮЙ (fp e8f1cb62c5cf) ──
+  //   Бүрхүүл дутуу ирэхэд (сүлжээ дундуур таслагдсан index.html) ДУРЫН байт
+  //   дээр тасардаг тул `#view-title` ч байхгүй байж болно. `renderTitle` нь
+  //   `render()`-д `renderTaskList`-ЭЭС ӨМНӨ ажилладаг бөгөөд гарчгаа
+  //   ШАЛГАЛТГҮЙ бичдэг байсан тул ЯГ ИЖИЛ «Cannot set properties of null
+  //   (setting 'innerHTML')» гэж УНАДАГ байв — хурууны хээ нь (msg|src) ижил
+  //   тул #task-list-ийн засвар «ажиллаагүй» мэт харагддаг, улмаар
+  //   `_taskHostMissingLogged` лог ч хэзээ ч бичигдэхгүй (render тэрнээс
+  //   өмнө тасарна).
+  {
+    const origGet = documentMock.getElementById, origQS = documentMock.querySelector;
+    const prevView = vm.runInContext('state.view', sandbox);
+    documentMock.querySelector = () => null;
+    const runTitle = (missing, view) => {
+      documentMock.getElementById = (id) => (missing.includes(id) ? null : stubEl());
+      vm.runInContext(`state.view = ${JSON.stringify(view)};`, sandbox);
+      try { vm.runInContext('renderTitle()', sandbox); return ''; }
+      catch (e) { return String((e && e.message) || e); }
+    };
+    const errTitle = runTitle(['view-title'], 'plan');
+    const errSub   = runTitle(['view-sub'], 'plan');
+    const errBoth  = runTitle(['view-title', 'view-sub'], 'mine');
+    documentMock.getElementById = origGet; documentMock.querySelector = origQS;
+    vm.runInContext(`state.view = ${JSON.stringify(prevView)};`, sandbox);
+    vm.runInContext('if (typeof _shellTitleMissingLogged !== "undefined") _shellTitleMissingLogged = false;'
+      + ' if (typeof _errLog !== "undefined") _errLog = [];', sandbox);
+    eq(errTitle, '', '#view-title алга: renderTitle унахгүй (fp e8f1cb62c5cf)');
+    eq(errSub, '', '#view-sub алга: renderTitle унахгүй');
+    eq(errBoth, '', 'гарчиг, тайлбар хоёул алга байхад ч унахгүй');
   }
 
   // ── СЕСС ДУУССАН ГЭЖ ТУНХАГЛАХААС ӨМНӨ pgrst ТОКЕНЫГ ШИНЭЧЛЭНЭ ─────────────

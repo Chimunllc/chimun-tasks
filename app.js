@@ -4827,6 +4827,16 @@ function renderSidebar() {
   if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Chimun ERP';
   // Төслийн жагсаалт UI-аас бүрэн хасагдсан (2026-06-06). project-list element байхгүй.
 }
+/* ⛔ ГАРЧГИЙН ХАЙРЦАГ Ч БАЙХГҮЙ БАЙЖ БОЛНО (2026-11-03, fp e8f1cb62c5cf).
+   Бүрхүүл дутуу ирэх (сүлжээ дундуур таслагдсан index.html) нь ДУРЫН байт дээр
+   тасардаг тул `#view-title` ч байхгүй байж болно. `renderTitle` нь `render()`-д
+   `renderTaskList`-ЭЭС ӨМНӨ ажилладаг бөгөөд гарчгаа ШАЛГАЛТГҮЙ бичдэг байсан тул
+   ЯГ ИЖИЛ «Cannot set properties of null (setting 'innerHTML')» гэж унаж, доорх
+   `renderTaskList`-ийн хайрцгийн шалгалт ХЭЗЭЭ Ч хүрдэггүй байв (render тэрнээс
+   өмнө тасарна). Хурууны хээ нь msg|src л тул #task-list-ийн засвар «ажиллаагүй»
+   мэт харагдаж, Issue дахин нээгдсээр байв.
+   ⚠ Шалтгааныг НЭГ удаа логт бичнэ — render() байнга дуудагддаг тул давтахгүй. */
+let _shellTitleMissingLogged = false;
 function renderTitle() {
   // [icon SVG, title text, subtitle]
   const titles = {
@@ -4881,8 +4891,16 @@ function renderTitle() {
     t = [ICONS.inbox, memberName(em), 'Энэ ажилтны бүх ажил — буцахдаа зүүн талаас цэс сонгоно уу'];
   }
   const [icon, title, sub] = t || ['', 'Бүгд', 'Бүх'];
-  document.getElementById('view-title').innerHTML = (icon || '') + escapeHtml(title);
-  document.getElementById('view-sub').textContent = sub || '';
+  const titleEl = document.getElementById('view-title');
+  const subEl = document.getElementById('view-sub');
+  if (!titleEl || !subEl) {
+    if (!_shellTitleMissingLogged) {
+      _shellTitleMissingLogged = true;
+      logAppError('Гарчгийн хайрцаг (#view-title/#view-sub) алга', 'shell', 'дэлгэц: ' + String(state.view || '-'));
+    }
+  }
+  if (titleEl) titleEl.innerHTML = (icon || '') + escapeHtml(title);
+  if (subEl) subEl.textContent = sub || '';
 }
 /* ⛔ ХАЙРЦАГ БАЙХГҮЙ БОЛ БИЧИХГҮЙ (2026-10-25, fp e8f1cb62c5cf).
    `renderTaskList` нь `#task-list`-ийг шалгалтгүй бичдэг байсан тул хайрцаг нь

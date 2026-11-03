@@ -5668,6 +5668,20 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 /* Нарийн модал (скан г.м.) — өмнө нь inline style="max-width:400px" байсан */
 .modal.modal-sm { max-width: 400px; }
 
+/* ── ⇄ Салбар хооронд нөөц шилжүүлэх цонх (openTransferModal) ──
+   Угтвар `tr-`. Өмнө нь 9 inline style= байсныг класс болгов (2026-11-03).
+   Толгой/✕ нь нийтийн `.modal-head`/`.modal-x` (өөрийн хувилбар БҮҮ бич) —
+   `<h2>` нь `<b>` болов: `.modal h2` нь `margin: 4px 0 16px` -ыг хүчээр тавьдаг
+   тул flex толгойн дотор хоосон зай үүсгэж, бусад 13 цонхтой зөрж байв.
+   ⚠ `.modal` угтвар ЗААВАЛ: `.modal label` (0,1,1) ба `.modal button` нь нэг
+     класстай дүрмээс илүү онцлогтой. Мөрийн дээд зай ≤720px-д `.modal label`-ийн
+     хүчлэгдсэн `margin`-д дарагдана — хуучин inline style ч ЯГ ингэж дарагддаг
+     байсан тул зан чанар өөрчлөгдөхгүй. */
+.tr-name { font-size: var(--fs-md); font-weight: 700; }
+.tr-sub { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--space-3); }
+.modal .tr-f { margin-top: var(--space-2); }
+.modal .tr-save { width: 100%; margin-top: var(--space-4); }
+
 /* ── 🧾 Банкны баримтын дэлгэрэнгүй (openPaidReceiptDetail) ──
    Угтвар `prc-`. Өмнө нь 13 inline style= байсныг класс болгов (2026-09-24).
    ⚠ h2 нь класс АВАХГҮЙ — `.modal h2` дүрэм хэмжээ/захыг аль хэдийн хүчээр

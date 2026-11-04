@@ -17223,6 +17223,46 @@ async function saveBankCard(c) {
     return true;
   } catch (e) { showToast('Карт хадгалах алдаа: ' + e.message, 'error', 4500); return false; }
 }
+/* M-EVENT-ИЙН ГУРВАН ДАНСЫГ «Данс & Карт» бүртгэлд НЭГ ТОВЧООР оруулна (2026-11-03, CEO).
+   Бүртгэлгүй бол (а) хуулга импортлоход данс танигдахгүй, (б) орлогын данс ↔ зарлагын данс хоорондын шилжүүлэг
+   «дотоод шилжүүлэг» гэж хасагдахгүй зардал/орлого болно, (в) M-Event салбарт автоматаар холбогдохгүй.
+   ⛔ Дансны мэдээлэл ЗӨВХӨН `MEVENT_ACCTS`-аас (давхар бичихгүй). ⛔ Бүртгэсэн (идэвхтэй) дансыг ДАХИН бичихгүй —
+   хэрэглэгчийн засварласан нэр/зорилго/эзэмшигч хэвээр. Зөвхөн захирал, `showConfirm`-ийн ХАРИУГ шалгана. */
+function meventAcctsMissing(accts) {
+  const have = (accts || []).filter(a => a && a.active !== false);
+  return MEVENT_ACCTS.filter(m => !have.some(a => acctSame(a.account_no || a.id, m.account)));
+}
+function meventAcctRecord(m, sort) {
+  return { id: m.account, bank: 'Голомт', name: m.name, account_no: m.account, iban: m.iban, currency: m.currency,
+           purpose: m.purpose, branch: 'M-Event', owner_key: '', owner_name: '', note: 'Эм Эвент Солюшн ХХК', active: true, sort };
+}
+async function registerMeventAccounts() {
+  if (!state.isCEO) { showToast('Зөвхөн захирал', 'warn', 2500); return false; }
+  if (!Array.isArray(state.bankAccounts)) { showToast('Дансны бүртгэл ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу', 'warn', 3500); return false; }
+  const miss = meventAcctsMissing(state.bankAccounts);
+  if (!miss.length) { showToast('Эм Эвент Солюшн-ийн данс аль хэдийн бүртгэлтэй', 'info', 2500); return true; }
+  const list = miss.map(m => `${m.purpose}${m.currency !== 'MNT' ? ' (' + m.currency + ')' : ''} ${m.account}`).join(', ');
+  if (!(await showConfirm(`Эм Эвент Солюшн ХХК-ийн ${miss.length} дансыг бүртгэлд оруулах уу? ${list}`, { okText: 'Бүртгэх' }))) return false;
+  let done = 0;
+  for (const m of miss) {
+    if (!(await saveBankAccount(meventAcctRecord(m, state.bankAccounts.length + 1 + done)))) break;
+    done++;
+  }
+  await loadBankAccounts(true);
+  if (done === miss.length) showToast(`✓ ${done} данс бүртгэгдлээ`, 'success', 3000);
+  else showToast(`${done}/${miss.length} данс бүртгэгдлээ — дахин оролдоно уу`, 'warn', 4500);
+  return done === miss.length;
+}
+function meventSetupHtml(accts) {
+  const miss = meventAcctsMissing(accts);
+  if (!miss.length) return '';
+  return `<div class="ba-setup">
+    <div class="ba-setup-h">🆕 Эм Эвент Солюшн ХХК: ${miss.length} данс бүртгэлд алга</div>
+    ${miss.map(m => `<div class="ba-setup-row"><span>${escapeHtml(m.purpose)}${m.currency !== 'MNT' ? ' · ' + escapeHtml(m.currency) : ''}</span><b>${escapeHtml(m.account)}</b></div>`).join('')}
+    <div class="ba-setup-note">Бүртгэсний дараа хуулга импортлох, дансны хоорондын шилжүүлгийг таних, M-Event салбарт холбох нь өөрөө ажиллана.</div>
+    <button class="btn btn-primary btn-sm" id="ba-reg-mevent">Бүртгэх</button>
+  </div>`;
+}
 /* ============================ КАТЕРИНГ модуль ============================
    Катеринг = хоол хүнсний үйлчилгээ. Ажлын карт = арга хэмжээ (NOMAAD-аас татах эсвэл
    гараар) + цэс (drop-оор сонгосон хоол) + үйлчлэх цаг + зочны тоо. Цэс нь аппд засагддаг
@@ -19007,6 +19047,7 @@ function renderBankAccounts() {
     <div class="ba-head">
       <div><div class="ba-title">🏦 Данс & Карт</div><div class="ba-sub">Компанийн банкны данс, картын бүртгэл. Хуулгаар ангилах нь эндээс данс→салбарыг таьнна.</div></div>
     </div>
+    ${state.isCEO && Array.isArray(state.bankAccounts) ? meventSetupHtml(state.bankAccounts) : ''}
     <div class="ba-sec">
       <div class="ba-sec-t">Данснууд <span class="ba-sec-n">(${accts.length})</span></div>
       <button class="btn btn-sm" id="ba-add-acct">+ Данс нэмэх</button>
@@ -19020,6 +19061,7 @@ function renderBankAccounts() {
   </div>`;
 }
 function attachBankAccountsHandlers() {
+  document.getElementById('ba-reg-mevent')?.addEventListener('click', () => registerMeventAccounts());
   document.getElementById('ba-add-acct')?.addEventListener('click', () => openBankAccountModal(null));
   document.getElementById('ba-add-card')?.addEventListener('click', () => openBankCardModal(null));
   document.querySelectorAll('[data-acct]').forEach(el => el.addEventListener('click', () => {
@@ -24043,32 +24085,71 @@ const CHIMUN_LEGAL = {
   bank: 'Голомт банк', bankEn: 'Golomt Bank', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
-/* M-EVENT-ИЙН ТӨЛБӨРИЙН данс (2026-10-20, CEO). `buildOrderQuote` (үнийн санал: имэйл, урьдчилан харах, PDF) ба
+/* M-EVENT ТУСДАА КОМПАНИ «ЭМ ЭВЕНТ СОЛЮШН» ХХК — Голомт банкин дахь ӨӨРИЙН ГУРВАН ДАНС (2026-11-03, CEO).
+   Өмнө нь M-Event-ийн төлбөр захирлын ХУВИЙН дансанд (3155107584) орж байсан. Одоо:
+   · ОРЛОГО (…6926) — харилцагч төлбөрөө ЭНД шилжүүлнэ: үнийн санал, нэхэмжлэх, имэйл (`MEVENT_PAY`)
+   · ЗАРЛАГА (…6927) — компанийн зардал, нийлүүлэгчийн төлбөр, цалин (хуулга оруулах данс)
+   · ВАЛЮТ (…6928, USD) — валют данс
+   Нэг эх сурвалж: энэ жагсаалт. «Данс & Карт» бүртгэл (`registerMeventAccounts`), баримт таних
+   (`receiptAcctIsOurs`), үнийн санал, нэхэмжлэх бүгд эндээс уншина. IBAN нь MOD-97 шалгалттай, данс = IBAN-ы
+   сүүлийн 10 орон (тест хоёуланг тулгана — цифр буруу = мөнгө өөр хүнд очно). */
+const MEVENT_ACCTS = [
+  { role: 'income',  account: '1245166926', iban: 'MN78 0015 00 1245166926', currency: 'MNT', purpose: 'орлого',  name: 'Эм Эвент Солюшн · Орлого' },
+  { role: 'expense', account: '1245166927', iban: 'MN51 0015 00 1245166927', currency: 'MNT', purpose: 'зарлага', name: 'Эм Эвент Солюшн · Зарлага' },
+  { role: 'fx',      account: '1245166928', iban: 'MN24 0015 00 1245166928', currency: 'USD', purpose: 'валют',   name: 'Эм Эвент Солюшн · Валют (USD)' },
+];
+/* M-EVENT-ИЙН ТӨЛБӨРИЙН данс = ОРЛОГЫН данс. `buildOrderQuote` (үнийн санал: имэйл, урьдчилан харах, PDF) ба
    `invoiceOrg()` (НЭХЭМЖЛЭХ, түүний имэйл) энэ дансыг ашиглана. M-Event гэрээнд дансны дугаар ОГТ байхгүй (зөвхөн
    «гүйлгээний утгад захиалгын дугаар бич»). NOMAAD нь `nomaadAcct`, `CHIMUN_LEGAL.account` нь бусад баримтад тусдаа.
-   Хүлээн авагч нь ХУВИЙН хүний нэр тул банкны баримтын нэр «Чимун» агуулдаггүй — тиймээс баримтыг ДАНСААР нь таниулдаг
-   (`receiptReceiverIsUs` / `receiptSenderIsUs`): орлого бүртгэх, буулгалт, буцаалт.
-   IBAN нь MOD-97 шалгалттай, данс = IBAN-ы сүүлийн 10 орон (тест хоёуланг тулгана). */
+   ⛔ Харилцагчид ЗӨВХӨН орлогын данс гарна (зарлага/валют данс баримтад ХЭЗЭЭ Ч орохгүй — тест хаана). */
 const MEVENT_PAY = {
-  bank: 'Голомт банк', bankEn: 'Golomt Bank', account: '3155107584', iban: 'MN14 0015 00 3155107584',
-  holder: 'Г.Мөнх-Учрал', holderEn: 'G.Munkh-Uchral',
+  bank: 'Голомт банк', bankEn: 'Golomt Bank',
+  account: MEVENT_ACCTS[0].account, iban: MEVENT_ACCTS[0].iban,
+  holder: 'Эм Эвент Солюшн ХХК', holderEn: 'M Event Solution LLC',
 };
+/* ХУУЧИН ХУВИЙН ДАНС — ЗӨВХӨН баримт ТАНИХАД (шилжилтийн хугацаа). Өмнө илгээсэн үнийн санал (14 хоног хүчинтэй),
+   нэхэмжлэх, хуучин захиалгын үлдэгдэл энэ данс руу ИРЖ БОЛЗОШГҮЙ тул хасвал тэдний PDF баримт «Чимунд ирээгүй
+   гүйлгээ» гэж татгалзагдана. ⛔ Баримтад/саналд ХЭЗЭЭ Ч хэвлэхгүй. Энэ данс руу төлбөр ирэхээ больсон гэдгийг
+   `bank_income`-оор баталсны дараа л хасна. */
+const MEVENT_PAY_LEGACY = { account: '3155107584', iban: 'MN14 0015 00 3155107584', holder: 'Г.Мөнх-Учрал' };
+/* Баримтын нэхэмжлэгч / түрээслүүлэгч тал. «Эм Эвент Солюшн» ХХК-ийн РД, хаяг, захирал энд бөглөгдтөл (ГУРВУУЛАА
+   зэрэг) баримтууд (үнийн санал, нэхэмжлэх, M-Event гэрээ) хуучнаараа ЧИМУН ХХК-ийн мэдээллээр гарна — РД-гүй
+   гэрээ, хуучин РД-тай шинэ нэр хоёулаа буруу. Бөглөмгөц ӨӨРӨӨ солигдоно (өөр газар засах шаардлагагүй). */
+const MEVENT_LEGAL = {
+  name: '"ЭМ ЭВЕНТ СОЛЮШН" ХХК', nameEn: '"M EVENT SOLUTION" LLC',
+  reg: '', address: '', addressEn: '', director: '', directorTitle: 'Гүйцэтгэх захирал', phones: '',
+};
+function meventLegal() {
+  const L = MEVENT_LEGAL;
+  if (!(L.reg && L.address && L.director)) return CHIMUN_LEGAL;   // дутуу бол хольж БОЛОХГҮЙ — бүгд хуучнаараа
+  return { name: L.name, nameEn: L.nameEn || L.name, reg: L.reg, address: L.address, addressEn: L.addressEn || L.address,
+           director: L.director, directorTitle: L.directorTitle || 'Гүйцэтгэх захирал', phones: L.phones || '' };
+}
+// Манай өөрийн байгууллагын нэр (Чимун ХХК эсвэл Эм Эвент Солюшн ХХК) — банкны баримтын гарсан/орсон талыг нэрээр таних.
+const MEVENT_NAME_RE = /эвент\s*солюшн|m\s*event\s*solution/i;
+function ourOrgName(name) { return /чимун/i.test(name || '') || MEVENT_NAME_RE.test(name || ''); }
 /* БАНКНЫ БАРИМТ МАНАЙ ДАНСНЫ ХАМААРАЛТАЙ ЭСЭХ (2026-10-20, CEO). Өмнө нь хүлээн авагч/илгээгчийн НЭРЭНД «чимун» шаарддаг байсан тул
    M-Event-ийн төлбөрийн данс (эзэмшигч нь хувь хүн) руу орсон баримтыг «Чимунд ирээгүй гүйлгээ» гэж татгалздаг, түүнээс
    гарсан буцаалтыг «Чимунээс гарсан биш» гэж татгалздаг байв.
    ⛔ ДАНС ЯГ таарна (10 оронтой ч, IBAN ч — acctSame, сүүлийн 10 орон). Нэр «чимун» бол хуучнаараа зөвшөөрнө.
    ⛔ Баримтад данс ЗААСАН бөгөөд манайх БИШ бол нэрээр НЬ ЗӨВШӨӨРӨХГҮЙ (өөр дансанд ижил нэртэй хүн). Данс уншигдаагүй
-     үед л данс эзэмшигчийн нэрээр (MEVENT_PAY.holder) тулгана. Цэвэр функц — тестлэгдэнэ. */
+     үед л нэрээр (Эм Эвент Солюшн, хуучин хувийн данс эзэмшигч) тулгана. Цэвэр функц — тестлэгдэнэ.
+   2026-11-03: манай данс = M-Event-ийн ГУРВАН шинэ данс (орлого · зарлага · валют) + ХУУЧИН хувийн данс (шилжилт) +
+     Чимун ХХК-ийн данс. Зарлагын данснаас гарсан буцаалт ч «манайх» гэж танигдана. */
 function receiptAcctIsOurs(acct) {
   const d = String(acct || '').replace(/\D/g, '');
   if (!d) return false;
-  return [MEVENT_PAY.account, MEVENT_PAY.iban, CHIMUN_LEGAL.account, CHIMUN_LEGAL.iban].some(a => a && acctSame(d, a));
+  const ours = [];
+  MEVENT_ACCTS.forEach(a => ours.push(a.account, a.iban));
+  ours.push(MEVENT_PAY_LEGACY.account, MEVENT_PAY_LEGACY.iban, CHIMUN_LEGAL.account, CHIMUN_LEGAL.iban);
+  return ours.some(a => a && acctSame(d, a));
 }
 function _receiptSideIsUs(name, acct) {
   if (/чимун/i.test(name || '')) return true;
   if (String(acct || '').replace(/\D/g, '')) return receiptAcctIsOurs(acct);   // данс заасан бол ЗӨВХӨН данс шийднэ
+  if (MEVENT_NAME_RE.test(name || '')) return true;                             // данс уншигдаагүй: «Эм Эвент Солюшн»
   const norm = (x) => String(x || '').toLowerCase().replace(/[^а-яөүё]/g, '');
-  const core = norm(String(MEVENT_PAY.holder || '').split('.').pop());     // «Г.Мөнх-Учрал» → «мөнхучрал»
+  const core = norm(String(MEVENT_PAY_LEGACY.holder || '').split('.').pop());   // «Г.Мөнх-Учрал» → «мөнхучрал» (хуучин хувийн данс)
   return !!core && norm(name).includes(core);
 }
 function receiptReceiverIsUs(d) { return _receiptSideIsUs(d && d.receiverName, d && d.receiverAcct); }
@@ -24250,7 +24331,7 @@ function _amt(n) { return `${fmtMoney(n)} (${mnNumToWords(n)})`; }
    CLAUDE.md-д «ажилладаг quote PDF = харагдах popup» гэж тэмдэглэсэн. */
 // Нэхэмжлэхийн «нэхэмжлэгч» — компанийн мэдээлэл (нэр, РД, хаяг, захирал) + M-Event-ийн ТӨЛБӨРИЙН данс.
 function invoiceOrg() {
-  return Object.assign({}, CHIMUN_LEGAL, { bank: MEVENT_PAY.bank, account: MEVENT_PAY.account, iban: MEVENT_PAY.iban, holder: MEVENT_PAY.holder });
+  return Object.assign({}, meventLegal(), { bank: MEVENT_PAY.bank, account: MEVENT_PAY.account, iban: MEVENT_PAY.iban, holder: MEVENT_PAY.holder });
 }
 async function issueInvoice(orderId, btn) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(orderId));
@@ -24618,7 +24699,7 @@ function ctTierText() {
 
 function meventContractHtml(o, opts) {
   opts = opts || {};   // { sendUrl, sendTok } — байхгүй бол (хоосон загвар) имэйл илгээх товч гарахгүй
-  const C = CHIMUN_LEGAL;
+  const C = meventLegal();
   // ⭐ ГЭРЭЭНИЙ ТАЛ — байгууллагын захиалгад ГЭРЭЭ БАЙГУУЛАГЧ НЬ БАЙГУУЛЛАГА (хувь хүн БИШ).
   // Хариуцлага (заалт 7 — нөхөн төлбөр) хэн дээр буухыг энэ тодорхойлно: байгууллагын
   // захиалгыг хувь хүний нэр дээр байгуулбал компаниас нэхэмжлэх эрх зүйн үндэс сул.
@@ -36723,7 +36804,7 @@ function orderMoneyBreakdown(o) {
   return { days, subtotal, discount, vatDisc, hasVat, delivFee, delivLbl, offFee, setupFee, deposit, rentalNet, vat, total };
 }
 async function buildOrderQuote(o, lang) {
-  const C = CHIMUN_LEGAL, QP = MEVENT_PAY, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
+  const C = meventLegal(), QP = MEVENT_PAY, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
   // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
   const days = orderRentalDays(o);
@@ -39791,7 +39872,7 @@ function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
   const itemKey = (nm) => (typeof normItemKey === 'function' && normItemKey(nm)) || normP(nm);
   const rlook = (sku, name) => (sku && rfix.bySku && rfix.bySku[String(sku).trim()]) || (rfix.byName && rfix.byName[normP(name)]) || null;
   const TAX = HIST_TAX_RE;
-  const SELF = /nomaad|кемп|\bcamp\b|чимун/i;   // компанийн ӨӨРИЙН салбар — харилцагч БИШ, хасна
+  const SELF = /nomaad|кемп|\bcamp\b|чимун|эвент\s*солюшн/i;   // компанийн ӨӨРИЙН салбар — харилцагч БИШ, хасна
   const custs = {}, prods = {}, svcs = {};
   let unknownRev = 0, unknownCnt = 0;
   // ⭐ KPI/сарын орлого — ЭНЭ ижил app_orders-оос тооцно (хуучин rh_v_* snapshot view биш).
@@ -49658,8 +49739,8 @@ function initEvents() {
       const r = (state.financeRequests || []).find(x => x.id === state.editingId);
       const req = Number(r && r.amount) || 0;
       // ЗАРЛАГА = Чимунаас ГАРСАН байх ёстой (орлогын эсрэг чиглэл)
-      const senderChimun = /чимун/i.test(d.senderName || '');
-      const receiverChimun = /чимун/i.test(d.receiverName || '');
+      const senderChimun = ourOrgName(d.senderName);
+      const receiverChimun = ourOrgName(d.receiverName);
       const wrongDirection = receiverChimun && !senderChimun;
       // Хүлээн авагч ~ хүсэлтийн хүлээн авагч (нэрийн хэсэгчилсэн тулгалт)
       const _nrm = t => String(t || '').replace(/[А-ЯЁҮӨA-Zа-яёүөa-z]\./g, '').toLowerCase().replace(/[^а-яёүөa-z0-9]/g, '');   // 'Б.Дэлгэрбат' → 'дэлгэрбат' (JS \b кириллд ажилладаггүй)

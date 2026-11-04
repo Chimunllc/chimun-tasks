@@ -6227,7 +6227,7 @@ function openOpeningCountModal(sku, preQty) {
   modal.id = 'op-count-modal';
   modal.innerHTML = `
     <div class="modal opc-modal">
-      <h2>${escapeHtml(p.name || sku)}</h2>
+      <h2 class="opc-h">${prodThumb(p, 'oi-ph')}<span>${escapeHtml(p.name || sku)}</span></h2>
       <p class="opc-hint">Агуулахад БАЙГАА нийт тоог бичнэ — эвдэрсэн нь ч тоонд орно.
         Эвдэрсэн хэсгийг нь доор ялгавал боломжит нөөцөөс хасагдана.</p>
       <label class="opc-l">Нийт тоолсон</label>
@@ -6314,7 +6314,7 @@ function openBulkSealModal() {
   const grp = (key, title, list, open) => list.length ? `<details class="bsl-g"${open ? ' open' : ''}>
       <summary><span class="bsl-gh"><span class="bsl-cb" data-bsl-g="${key}" role="checkbox" tabindex="0"></span>${title} · ${list.length}</span></summary>
       <div class="bsl-list">${list.map(x => `<div class="bsl-row" data-bsl="${escapeHtml(x.sku)}" data-bsl-k="${key}" role="checkbox" tabindex="0"><span class="bsl-cb"></span>
-        <span class="bsl-t"><span class="bsl-n">${escapeHtml(x.name)}</span><span class="bsl-q${x.d < 0 ? ' down' : x.d > 0 ? ' up' : ''}">${qtxt(x)}${x.d ? ` · ${x.d > 0 ? '+' : '−'}${Math.abs(x.d)}` : ''}${x.value && canProductPart('cost') ? ` · ${escapeHtml(fmtMoneyShort(x.value))}` : ''}</span></span></div>`).join('')}</div>
+        ${prodThumb(x)}<span class="bsl-t"><span class="bsl-n">${escapeHtml(x.name)}</span><span class="bsl-q${x.d < 0 ? ' down' : x.d > 0 ? ' up' : ''}">${qtxt(x)}${x.d ? ` · ${x.d > 0 ? '+' : '−'}${Math.abs(x.d)}` : ''}${x.value && canProductPart('cost') ? ` · ${escapeHtml(fmtMoneyShort(x.value))}` : ''}</span></span></div>`).join('')}</div>
     </details>` : '';
   document.getElementById('bsl-modal')?.remove();
   const modal = document.createElement('div');
@@ -6617,6 +6617,7 @@ function openBulkWriteoffModal(skus) {
   const rows = list.map(p => {
     const st = Number(p.stock) || 0;
     return `<div class="wo-row" data-wo-r="${escapeHtml(p.sku)}">
+      ${prodThumb(p)}
       <span class="wo-row-n">${escapeHtml(p.name || p.sku)}<span class="wo-row-m">${escapeHtml(p.sku)} · нөөц ${st} ш${costs[p.sku] ? ' · ' + fmtMoneyShort(costs[p.sku]) + '/ш' : ''}</span></span>
       <input type="number" class="wo-q ui-raw" data-wo-q="${escapeHtml(p.sku)}" min="0" max="${st}" value="${st}">
     </div>`;
@@ -7299,7 +7300,7 @@ function openOrderDamageModal(oid) {
     const sku = p ? p.sku : '';
     const maxq = Number(it.qty) || 0;
     const cur = sku ? (prevBrk[sku] || 0) : 0;
-    return `<div class="dmg-item"><span class="dmg-item-name">${escapeHtml(it.name)} <span class="dmg-item-q">(${maxq}ш)</span></span>` +
+    return `<div class="dmg-item">${prodThumb({ sku, name: it.name })}<span class="dmg-item-name">${escapeHtml(it.name)} <span class="dmg-item-q">(${maxq}ш)</span></span>` +
       `<input type="number" min="0" max="${maxq}" value="${cur}" class="ui-raw dmg-brk" data-brk-sku="${escapeHtml(sku)}" data-brk-max="${maxq}"${sku ? '' : ' disabled title="Каталогт алга — нөөц хасахгүй"'}></div>`;
   }).join('');
   document.getElementById('mev-damage-modal')?.remove();
@@ -7472,6 +7473,13 @@ function orderItemView(o, it) {
 }
 function orderItemThumb(url, cls) {
   return `<span class="oi-ph ${cls || ''}">${url ? `<img src="${escapeHtml(driveThumbUrl(url, 96))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
+}
+/* 🖼 БАРААНЫ МӨР БҮРИЙН УРД ЗУРАГ (2026-11-04, CEO «аппын түвшинд бүх барааны урд зураг»). `x` = бараа ЭСВЭЛ `{sku, name}`
+   мөр — зургийг каталогоос нөхнө (`orderItemPhoto`: мөрийн өөрийн → `productOf`). Олдохгүй/зураггүй/ачаалагдахгүй бол CSS-ийн 📦.
+   Нэг туслагч — тооллого, эхний үлдэгдэл, бөөн эцэслэл/актлалт, эвдрэл, скан, худалдан авалт, багц, шилжүүлэг ИЖИЛ харагдана.
+   Размер: `oi-ph-m` 36px (жагсаалтын мөр, өгөгдмөл), `oi-ph` 40px (цонхны гарчиг), `oi-ph-xs` 20px (мөрийн дотор). */
+function prodThumb(x, cls) {
+  return orderItemThumb(orderItemPhoto(x ? { sku: x.sku, name: x.name, photo: x.photo } : null), cls == null ? 'oi-ph-m' : cls);
 }
 function orderItemRowHtml(v) {
   return `<div class="oi-row oi-line${v.parts.length ? ' oi-pkg' : ''}">${orderItemThumb(v.photo)}
@@ -12412,7 +12420,7 @@ async function openOrderScanModal(oid) {
     progEl.innerHTML = `<b>${done}/${total}</b> ширхэг сканнердсан${done >= total ? ' · <span class="oscan-allok">✅ Бүгд бэлэн</span>' : ''}`;
     listEl.innerHTML = items.map((it, i) => {
       const ok = it.scanned >= it.qty;
-      return `<div class="oscan-row${ok ? ' ok' : ''}"><span class="oscan-name">${ok ? '✅' : '⬜'} ${escapeHtml(it.name)}</span><span class="oscan-cnt"><button type="button" data-dec="${i}">−</button> ${it.scanned}/${it.qty} <button type="button" data-inc="${i}">+</button></span></div>`;
+      return `<div class="oscan-row${ok ? ' ok' : ''}">${prodThumb(it)}<span class="oscan-name">${ok ? '✅' : '⬜'} ${escapeHtml(it.name)}</span><span class="oscan-cnt"><button type="button" data-dec="${i}">−</button> ${it.scanned}/${it.qty} <button type="button" data-inc="${i}">+</button></span></div>`;
     }).join('');
   }
   renderList();
@@ -13028,7 +13036,7 @@ function openTransferModal(pid) {
   const opt = (sel) => PROD_BRANCHES.map(b => `<option value="${b.k}"${b.k === sel ? ' selected' : ''}>${b.icon} ${b.label} (${branchQty(p, b.k)})</option>`).join('');
   modal.innerHTML = `<div class="modal modal-sm">
     <div class="modal-head"><b>⇄ Нөөц шилжүүлэх</b><button class="btn modal-x" id="tr-close" aria-label="Хаах">✕</button></div>
-    <div class="tr-name">${escapeHtml(p.name || '')}</div>
+    <div class="tr-name tr-name-ph">${prodThumb(p, 'oi-ph')}<span>${escapeHtml(p.name || '')}</span></div>
     <div class="tr-sub">Нийт ${Number(p.stock) || 0} · одоо: ${branchStockHtml(p)}</div>
     <label class="no-lbl">Хаанаас<select id="tr-from">${opt('mevent')}</select></label>
     <label class="no-lbl tr-f">Хаашаа<select id="tr-to">${opt('nomaad')}</select></label>
@@ -13137,7 +13145,7 @@ function productAge(dateStr) {
 function packageBundleHtml(pk) {
   if (!pk || !pk.parts.length) return '<div class="prod-bundle bad">⚠ Бүрэлдэхүүнгүй багц</div>';
   return `<div class="prod-bundle">${pk.parts.map(x =>
-    `<span class="pb-i${x.found ? '' : ' bad'}"><b>${x.qty}×</b> ${escapeHtml(x.name)}</span>`).join('')}</div>`;
+    `<span class="pb-i${x.found ? '' : ' bad'}"><b>${x.qty}×</b> ${prodThumb(x, 'oi-ph-xs')}${escapeHtml(x.name)}</span>`).join('')}</div>`;
 }
 // Багцын картын «➕ Нэмэлт» мөр: санал болгох нэмэлтүүд (байхгүй бол хоосон). ЦЭВЭР (каталог л уншина).
 function packageAddonsHtml(p) {
@@ -26545,7 +26553,7 @@ function openingBlockHtml(canManage) {
   const oDone = oCap(oDoneAll, 'done', 60);
 
   const countList = oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
-      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%${_split(x.sku)}</span></span>
+      ${prodThumb(x)}<span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%${_split(x.sku)}</span></span>
       <span class="stc-open-q">системд <b>${x.qty}</b></span>
       ${canOpen ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
       <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Тоолсон</button>` : ''}
@@ -26564,7 +26572,7 @@ function openingBlockHtml(canManage) {
     <div class="stc-open-list">${oWait.map(x => {
       const why = openingSignBlock(productBySku(x.sku), state.me, canApprove);
       return `<div class="stc-open-row">
-      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · ${escapeHtml(String(x.sku))}${money(x.value)}</span>${_dq(x.sku)}</span>
+      ${prodThumb(x)}<span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · ${escapeHtml(String(x.sku))}${money(x.value)}</span>${_dq(x.sku)}</span>
       <span class="stc-open-q">тоолсон <b>${x.qty}</b></span>
       ${why ? `<span class="stc-open-why">${escapeHtml(why)}</span>`
             : `<button class="btn stc-open-ok" data-op-ap="${escapeHtml(x.sku)}">Батлах</button>`}
@@ -26576,7 +26584,7 @@ function openingBlockHtml(canManage) {
   const doneList = oSt.done ? `<details class="stc-open-done">
     <summary>✓ Баталгаажсан · ${oSt.done}${showMoney ? ` · ${fmtMoney(oSt.valueDone)}` : ''}</summary>
     <div class="stc-open-list">${oDone.map(x => `<div class="stc-open-row">
-      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · батлав: ${escapeHtml(memberName(x.apBy) || x.apBy || '—')}${x.apAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.apAt)) : ''}</span>${_dq(x.sku)}</span>
+      ${prodThumb(x)}<span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · батлав: ${escapeHtml(memberName(x.apBy) || x.apBy || '—')}${x.apAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.apAt)) : ''}</span>${_dq(x.sku)}</span>
       <span class="stc-open-q">${x.qty} ш${money(x.value)}</span>
       ${x.sealed
         ? `<span class="stc-open-sealed">🔒 Эцэслэсэн${x.lkBy ? ' · ' + escapeHtml(memberName(x.lkBy) || x.lkBy) : ''}${x.lkAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.lkAt)) : ''}</span>`
@@ -26727,6 +26735,7 @@ function renderStockCount() {
       ? `<span class="stc-dmg-b">${dm.rep ? `🔧${dm.rep}` : ''}${dm.rep && dm.wo ? ' ' : ''}${dm.wo ? `🗑${dm.wo}` : ''}</span>` : '';
     return `<div class="stc-row ${x.st}"${canCount ? ` data-scpick="${escapeHtml(p.sku)}" role="button" tabindex="0"` : ''}>
       <span class="stc-row-i">${icon}</span>
+      ${prodThumb(p)}
       <span class="stc-row-n">${escapeHtml(p.name || p.sku)}<span class="stc-row-by">${sub}</span></span>
       ${dmgBadge}
       <span class="stc-row-q">${qtyTxt}${showMoney && d < 0 && countUnitCost(p.sku) > 0 ? `<em>${fmtMoneyShort(-d * countUnitCost(p.sku))}</em>` : ''}</span>
@@ -29124,7 +29133,7 @@ async function openPoModal(id) {
     const same = poSameItemHits(state.products, state.purchases, l, ex && ex.id).filter(h => !have.has(h.p.sku));
     const sameSkus = new Set(same.map(h => h.p.sku));
     const hits = poCatalogMatches(state.products, l.name, have, 5).filter(p => !sameSkus.has(p.sku));
-    const btn = (p, tag) => `<button type="button" class="ui-raw po-hit" data-pick="${i}" data-sku="${escapeHtml(p.sku)}"><span>${escapeHtml(p.name || p.sku)}</span><small>${escapeHtml(String(p.code || p.sku))}${tag ? ' · ' + tag : ''} · одоо ${prodTotalQty(p)} ш</small></button>`;
+    const btn = (p, tag) => `<button type="button" class="ui-raw po-hit" data-pick="${i}" data-sku="${escapeHtml(p.sku)}"><span class="po-hit-l">${prodThumb(p)}<span>${escapeHtml(p.name || p.sku)}</span></span><small>${escapeHtml(String(p.code || p.sku))}${tag ? ' · ' + tag : ''} · одоо ${prodTotalQty(p)} ш</small></button>`;
     el.innerHTML = (same.length ? `<div class="po-sug-h po-sug-same">↩ Өмнө авсан ижил бараа — сонговол код ижил байна:</div>` + same.map(h => btn(h.p, poSameItemLabel(h.why))).join('') : '')
       + (hits.length ? `<div class="po-sug-h">Каталогт байгаа бол сонгоно уу (давхар бараа үүсэхгүй):</div>` + hits.map(p => btn(p, '')).join('') : '')
       + (!same.length && !hits.length && poNameKey(l.name).length >= 2 ? '<div class="po-sug-h">Каталогт олдсонгүй — шинэ бараа болж бүртгэгдэнэ.</div>' : '');
@@ -29519,7 +29528,7 @@ async function openPoReceiveModal(id) {
     const same = q.length >= 2 ? [] : poSameItemHits(state.products, state.purchases, e.row, po.id).filter(h => !have.has(h.p.sku));
     const seen = new Set(same.map(h => h.p.sku));
     const rest = (q.length >= 2 ? poCatalogMatches(state.products, q, have, 5) : poCatalogSimilar(state.products, e.name, have, 3, 0.3)).filter(p => !seen.has(p.sku));
-    const btn = (p, tag) => `<button type="button" class="ui-raw po-hit" data-lnk="${i}" data-sku="${escapeHtml(p.sku)}"><span>${escapeHtml(p.name || p.sku)}</span><small>${escapeHtml(String(p.code || p.sku))}${tag ? ' · ' + tag : ''} · одоо ${prodTotalQty(p)} ш</small></button>`;
+    const btn = (p, tag) => `<button type="button" class="ui-raw po-hit" data-lnk="${i}" data-sku="${escapeHtml(p.sku)}"><span class="po-hit-l">${prodThumb(p)}<span>${escapeHtml(p.name || p.sku)}</span></span><small>${escapeHtml(String(p.code || p.sku))}${tag ? ' · ' + tag : ''} · одоо ${prodTotalQty(p)} ш</small></button>`;
     const html = same.map(h => btn(h.p, poSameItemLabel(h.why))).join('') + rest.map(p => btn(p, '')).join('');
     return html || `<div class="po-sug-h">${q ? 'Олдсонгүй' : 'Ижил бараа олдсонгүй'} — шинэ бараа болж код авна.</div>`;
   };
@@ -29812,7 +29821,7 @@ async function openPurchaseLink(id) {
     const a = purchaseAlloc(row.amount, picks);
     const box = modal.querySelector('#bl-picks');
     box.innerHTML = a.items.length ? a.items.map((x, i) => `<div class="bl-pick">
-      <span class="bl-nm">${escapeHtml(x.name || x.sku)}</span>
+      <span class="bl-nm bl-nm-ph">${prodThumb(x)}<span>${escapeHtml(x.name || x.sku)}</span></span>
       <label class="bl-f"><span>тоо</span><input class="ui-raw bl-in" type="number" min="1" step="1" data-bl-qty="${i}" value="${x.qty}"></label>
       <label class="bl-f"><span>дүн ₮</span><input class="ui-raw bl-in bl-amt" type="number" min="0" step="1000" data-bl-amt="${i}" value="${x.amount}"></label>
       <span class="bl-unit">${x.unit > 0 ? 'нэгж ' + escapeHtml(fmtMoney(x.unit)) : 'нэгж өртөг —'}</span>
@@ -29839,7 +29848,7 @@ async function openPurchaseLink(id) {
     const hits = (state.products || []).filter(p => p && !have.has(p.sku)
       && [p.name, p.code, p.sku].some(v => String(v || '').toLowerCase().includes(q))).slice(0, 12);
     res.innerHTML = hits.length ? hits.map(p => `<button class="btn bl-hit" data-bl-add="${escapeHtml(p.sku)}">
-      <span class="bl-nm">${escapeHtml(p.name || p.sku)}</span>
+      <span class="bl-nm bl-nm-ph">${prodThumb(p)}<span>${escapeHtml(p.name || p.sku)}</span></span>
       <small>${escapeHtml(String(p.code || ''))} · ${prodTotalQty(p)}ш${Number(p.cost) > 0 ? ' · одоо ' + escapeHtml(fmtMoney(Number(p.cost))) + '/ш' : ' · өртөг алга'}</small></button>`).join('')
       : '<div class="bl-empty">Олдсонгүй.</div>';
     res.querySelectorAll('[data-bl-add]').forEach(el => el.onclick = () => {

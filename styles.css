@@ -8100,6 +8100,47 @@ select.no-asar-len {
 .fin-rcpt-t { flex: 1; min-width: 0; font-weight: 800; font-size: var(--fs-md); }
 .fin-rcpt-s { color: var(--muted); font-weight: 400; font-size: var(--fs-xs); }
 .fin-rcpt-pct { flex: none; font-weight: 800; font-size: var(--fs-base); white-space: nowrap; }
+.fin-rcpt-pct.ok { color: var(--ok); }
+.fin-rcpt-pct.warn { color: var(--warn); }
+.fin-rcpt-pct.bad { color: var(--danger); }
+.fin-rcpt-sum { font-size: var(--fs-sm); color: var(--muted); margin: 2px 0 11px; }
+.fin-rcpt-sum.last { margin-bottom: 0; }   /* ангилал алга — доор зай хэрэггүй */
+.fin-rcpt-ok { font-size: var(--fs-sm); color: var(--ok); font-weight: 600; }
+
+/* ── Төлвийн чип (Нийт гарсан мөнгө / Ангилах хүлээж буй) ──
+   Өнгө нь ТОНООР (`warn`), JS-ээс hex/var бичигдэхгүй. Сонгогдсон нь `.on`. */
+.fin-st-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-bottom: var(--space-4); }
+.fin-st { cursor: pointer; text-align: left; padding: 9px var(--space-3); border-radius: 10px;
+  border: 1.5px solid var(--border); background: var(--panel); transition: all .12s; }
+.fin-st.on { background: var(--panel-hover); border-color: var(--text); }
+.fin-st.warn.on { border-color: var(--warn); }
+.fin-st-l { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fin-st-v { font-weight: 800; font-size: var(--fs-base); color: var(--text); }
+.fin-st.warn .fin-st-v { color: var(--warn); }   /* ⚠ сонгоогүй үед ч шар — анхаарал татах тоо */
+
+/* ── Хувийн мөр (шошго · хувь · зураас) — баримтын хяналтын ангилал бүрт ──
+   Зураас = `<progress>`: inline `width:%` ба inline өнгө ХЭРЭГГҮЙ болно.
+   ⚠ webkit/moz-ийн дүрмийг НЭГ сонгогчид нэгтгэж БОЛОХГҮЙ (нэг нь хүчингүй
+   болоход браузер бүгдийг хаядаг) — тон бүрт тусдаа мөр. */
+.fin-brow { margin-bottom: 7px; }
+.fin-brow-h { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--fs-sm); margin-bottom: 2px; }
+.fin-brow-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-brow-v { white-space: nowrap; color: var(--muted); }
+.fin-brow-v b.ok { color: var(--ok); }
+.fin-brow-v b.warn { color: var(--warn); }
+.fin-brow-v b.bad { color: var(--danger); }
+/* ⚠ Радиус нь ГАДНА талд + `overflow:hidden` — дүүргэлт дээр радиус тавибал хувь
+   бага үед баруун тал нь бөөрөнхийлж, хуучин харагдацаас (зөвхөн зүүн тал
+   бөөрөнхий) зөрнө. */
+.fin-bar { display: block; width: 100%; height: 5px; border: 0; border-radius: 3px; overflow: hidden;
+  appearance: none; -webkit-appearance: none; background: var(--panel-hover); }
+.fin-bar::-webkit-progress-bar { background: var(--panel-hover); }
+.fin-bar.ok::-webkit-progress-value { background: var(--ok); }
+.fin-bar.ok::-moz-progress-bar { background: var(--ok); }
+.fin-bar.warn::-webkit-progress-value { background: var(--warn); }
+.fin-bar.warn::-moz-progress-bar { background: var(--warn); }
+.fin-bar.bad::-webkit-progress-value { background: var(--danger); }
+.fin-bar.bad::-moz-progress-bar { background: var(--danger); }
 /* Ховор хэрэглэгддэг туслах хэрэгслүүд — нугалаанд */
 .fin-more { font-size: var(--fs-sm); }
 .fin-more > summary { cursor: pointer; color: var(--muted); padding: 6px 10px;

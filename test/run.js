@@ -22814,29 +22814,45 @@ async function swFetchTests() {
   eq((sch.match(/WHEN 'stock_count_pause'::text THEN sec\.is_ceo\(\)/g) || []).length, 3, 'эрх: schema.sql rls.sql-тэй ижил');
 })());
 
-// ═══ ҮНИЙН САНАЛЫН ТӨЛБӨРИЙН ДАНС (2026-10-20, CEO) ═══════════════════════════════════
-// Үнийн санал (имэйл, урьдчилан харах, PDF) шинэ данс руу; гэрээ/нэхэмжлэх CHIMUN_LEGAL-ийн дансаа хэвээр.
-// Төлбөрийн мэдээлэл — буруу цифр = мөнгө өөр хүнд очно, тиймээс шалгах цифр, хоёр хэл, хуучин данс үлдээгүй эсэхийг барина.
+// ═══ ҮНИЙН САНАЛЫН ТӨЛБӨРИЙН ДАНС (2026-10-20 → 2026-11-03, CEO: M-Event тусдаа компани) ═══════════════════
+// Үнийн санал (имэйл, урьдчилан харах, PDF) «Эм Эвент Солюшн» ХХК-ийн ОРЛОГЫН данс руу; гэрээ/нэхэмжлэх ижил эх сурвалж.
+// Төлбөрийн мэдээлэл — буруу цифр = мөнгө өөр хүнд очно, тиймээс шалгах цифр, хоёр хэл, хуучин/зарлага/валют данс
+// харилцагчид ХЭЗЭЭ Ч гарахгүй эсэхийг барина.
 (globalThis.__late = globalThis.__late || []).push((async () => {
   const run = (c) => vm.runInContext(c, sandbox);
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   const QP = run('MEVENT_PAY');
-  // IBAN-ы MOD-97 (ISO 13616): MN14 0015 00 3155107584
+  const ACCTS = run('MEVENT_ACCTS');
+  // IBAN-ы MOD-97 (ISO 13616)
   const mod97 = (iban) => { const s = iban.replace(/\s+/g, '').toUpperCase(); const r = s.slice(4) + s.slice(0, 4);
     let rem = 0; for (const ch of r.split('').map(c => /[A-Z]/.test(c) ? String(c.charCodeAt(0) - 55) : c).join('')) rem = (rem * 10 + Number(ch)) % 97; return rem; };
-  eq(mod97(QP.iban), 1, '⛔ үнийн саналын IBAN: MOD-97 шалгалт тэнцэнэ (цифр буруу бичигдээгүй)');
+  eq(ACCTS.length, 3, '⛔ M-Event-ийн ГУРВАН данс: орлого · зарлага · валют');
+  ACCTS.forEach(a => {
+    eq(mod97(a.iban), 1, `⛔ ${a.role} дансны IBAN: MOD-97 шалгалт тэнцэнэ (цифр буруу бичигдээгүй)`);
+    eq(a.iban.replace(/\s+/g, '').slice(-10), a.account, `⛔ ${a.role} данс = IBAN-ы сүүлийн 10 орон`);
+    ok(/^MN\d{2} 0015 00 \d{10}$/.test(a.iban), `${a.role}: Голомт банкны (0015) IBAN хэлбэр`);
+  });
+  eq(ACCTS.map(a => a.role + ':' + a.account + ':' + a.currency + ':' + a.purpose).join(' | '),
+     'income:1245166926:MNT:орлого | expense:1245166927:MNT:зарлага | fx:1245166928:USD:валют', '⛔ данс бүр өөрийн дугаар, валют, зорилготой (банкны жагсаалттай ЯГ таарна)');
+  eq(QP.iban, 'MN78 0015 00 1245166926', '⛔ MEVENT_PAY = ОРЛОГЫН данс (…6926)');
+  eq(mod97(QP.iban), 1, '⛔ үнийн саналын IBAN: MOD-97 шалгалт тэнцэнэ');
   eq(QP.iban.replace(/\s+/g, '').slice(-10), QP.account, '⛔ үнийн саналын данс = IBAN-ы сүүлийн 10 орон');
-  ok(QP.bank === 'Голомт банк' && QP.holder === 'Г.Мөнх-Учрал', 'үнийн саналын данс: банк, эзэмшигч');
+  ok(QP.bank === 'Голомт банк' && QP.holder === 'Эм Эвент Солюшн ХХК' && QP.holderEn === 'M Event Solution LLC', 'үнийн саналын данс: банк, эзэмшигч (компани)');
+  const NOT_SHOWN = ['3155107584', 'MN14 0015 00', '3635161180', '1245166927', '1245166928', 'MN51 0015 00', 'MN24 0015 00'];
   for (const lang of ['mn', 'en']) {
     const html = String(await run(`buildOrderQuote(docBlankMeventOrder(), '${lang}')`));
-    ok(html.includes('3155107584') && html.includes('MN14 0015 00 3155107584'), `⛔ үнийн санал (${lang}): шинэ данс ба IBAN гарна`);
-    ok(html.includes(lang === 'en' ? 'G.Munkh-Uchral' : 'Г.Мөнх-Учрал'), `үнийн санал (${lang}): данс эзэмшигчийн нэр (хүлээн авагч)`);
-    ok(!html.includes('3635161180') && !/MN24 0015 00/.test(html), `⛔ үнийн санал (${lang}): хуучин данс ҮЛДЭЭГҮЙ (хоёр данс андуурагдахгүй)`);
+    ok(html.includes('1245166926') && html.includes('MN78 0015 00 1245166926'), `⛔ үнийн санал (${lang}): орлогын данс ба IBAN гарна`);
+    ok(html.includes(lang === 'en' ? 'M Event Solution LLC' : 'Эм Эвент Солюшн ХХК'), `үнийн санал (${lang}): данс эзэмшигч (хүлээн авагч) = компани`);
+    NOT_SHOWN.forEach(x => ok(!html.includes(x), `⛔ үнийн санал (${lang}): «${x}» ГАРАХГҮЙ (хуучин хувийн / Чимун / зарлага / валют данс харилцагчид очихгүй)`));
+    ok(!/Мөнх-Учрал|Munkh-Uchral/.test(html), `⛔ үнийн санал (${lang}): хуучин дансны эзэмшигч (хувь хүн) гарахгүй`);
     ok(html.includes(lang === 'en' ? 'Golomt Bank' : 'Голомт банк'), `үнийн санал (${lang}): банкны нэр`);
   }
   // Хамрах хүрээ: үнийн санал + нэхэмжлэх. M-Event гэрээнд данс байхгүй; NOMAAD гэрээ өөрийн дансаа хэвээр.
   ok(!/MEVENT_PAY/.test(src.slice(src.indexOf('function meventContractHtml'), src.indexOf('async function openMeventContract'))), 'хамрах хүрээ: M-Event гэрээний загвар дансыг агуулахгүй (зөвхөн утгад захиалгын дугаар)');
   ok(!/MEVENT_PAY/.test(src.slice(src.indexOf('function nomaadContractHtml'), src.indexOf('function nomaadContractHtml') + 30000).split('function meventContractHtml')[0]), 'хамрах хүрээ: NOMAAD гэрээ өөрийн дансаа (nomaadAcct) хэвээр ашиглана');
+  // ⛔ Хуучин хувийн данс зөвхөн ТАНИХАД — үнийн санал/нэхэмжлэхийн кодод ХЭЗЭЭ Ч хэвлэгдэхгүй
+  ok(!/MEVENT_PAY_LEGACY/.test(src.slice(src.indexOf('async function buildOrderQuote'), src.indexOf('async function buildOrderQuote') + 14000)), '⛔ үнийн санал: хуучин хувийн данс (MEVENT_PAY_LEGACY) хэвлэгдэхгүй');
+  ok(!/MEVENT_PAY_LEGACY/.test(src.slice(src.indexOf('function invoiceOrg'), src.indexOf('async function issueInvoice'))), '⛔ нэхэмжлэх: хуучин хувийн данс хэвлэгдэхгүй');
 })());
 
 // ═══ НЭХЭМЖЛЭХИЙН ДАНС + ГЭРЭЭГ ИМЭЙЛЭЭР ИЛГЭЭДЭГ БОЛГОХ (2026-10-20, CEO) ═══════════════════════
@@ -22848,14 +22864,38 @@ async function swFetchTests() {
   // ① Нэхэмжлэх: шинэ данс, хүлээн авагч = данс эзэмшигч, нэхэмжлэгч = компани. Хуучин данс үлдэхгүй.
   const org = run('invoiceOrg()');
   ok(org.account === MP.account && org.iban === MP.iban && org.holder === MP.holder, '⛔ нэхэмжлэх: invoiceOrg() шинэ данс/IBAN/эзэмшигчтэй');
-  ok(org.name === run('CHIMUN_LEGAL.name') && org.reg === run('CHIMUN_LEGAL.reg') && org.director === run('CHIMUN_LEGAL.director'), 'нэхэмжлэх: нэхэмжлэгч (компанийн нэр, РД, захирал) өөрчлөгдөөгүй');
+  ok(org.account === '1245166926' && org.holder === 'Эм Эвент Солюшн ХХК', '⛔ нэхэмжлэх: ОРЛОГЫН данс (…6926), хүлээн авагч = Эм Эвент Солюшн ХХК');
+  // Нэхэмжлэгч тал: Эм Эвент Солюшн-ийн РД/хаяг/захирал бөглөгдтөл хуучнаараа (хольж БОЛОХГҮЙ)
+  ok(org.name === run('CHIMUN_LEGAL.name') && org.reg === run('CHIMUN_LEGAL.reg') && org.director === run('CHIMUN_LEGAL.director'), 'нэхэмжлэх: РД/хаяг/захирал бөглөгдөөгүй үед нэхэмжлэгч (нэр, РД, захирал) хуучнаараа');
   const invD = { no: 'INV-1', issuedAt: '2026-10-20', dueAt: '2026-10-27', orderNo: 1700, buyer: { name: 'Б.Ариун', email: 'a@b.mn' },
     lines: [{ name: 'Шилэн сандал', qty: 20, days: 1, total: 176000 }], t: { total: 176000, due: 176000 }, org, sendUrl: 'https://x/send', sendTok: 'tok', to: 'a@b.mn' };
   sandbox.__invD = invD;
   const invDoc = String(run('invoiceDocHtml(__invD)'));
-  ok(invDoc.includes('3155107584') && invDoc.includes('Г.Мөнх-Учрал'), '⛔ нэхэмжлэх: шинэ данс ба Хүлээн авагч: Г.Мөнх-Учрал');
-  ok(!invDoc.includes('3635161180') && !/MN24/.test(invDoc), '⛔ нэхэмжлэх: хуучин данс ҮЛДЭЭГҮЙ');
-  ok(/Хүлээн авагч: Г\.Мөнх-Учрал/.test(invDoc.replace(/\\n/g, '\n')) || invDoc.includes('Хүлээн авагч: Г.Мөнх-Учрал'), 'нэхэмжлэхийн имэйлийн бичвэр: хүлээн авагч = данс эзэмшигч');
+  ok(invDoc.includes('1245166926') && invDoc.includes('Эм Эвент Солюшн ХХК'), '⛔ нэхэмжлэх: орлогын данс ба Хүлээн авагч: Эм Эвент Солюшн ХХК');
+  for (const x of ['3155107584', '3635161180', '1245166927', '1245166928', 'Мөнх-Учрал'])
+    ok(!invDoc.includes(x), `⛔ нэхэмжлэх: «${x}» гарахгүй (хуучин хувийн / Чимун / зарлага / валют данс)`);
+  ok(invDoc.includes('Хүлээн авагч: Эм Эвент Солюшн ХХК'), 'нэхэмжлэхийн имэйлийн бичвэр: хүлээн авагч = данс эзэмшигч');
+  // ⛔ Нэхэмжлэгч талын ГАНЦ дүрэм: РД + хаяг + захирал ГУРВУУЛАА бөглөгдвөл л шинэ компани (хагас бол хуучнаараа)
+  // ⚠ ТУСДАА орчинд: нийтийн MEVENT_LEGAL-ийг өөрчилбөл зэрэг ажиллаж буй бусад async тестүүд (үнийн санал г.м.) шинэ компанийг харна.
+  const sbL = Object.assign({}, sandbox); sbL.window = sbL; sbL.self = sbL; sbL.globalThis = sbL;
+  vm.createContext(sbL); vm.runInContext(src, sbL, { filename: 'app.js' });
+  const runL = (c) => vm.runInContext(c, sbL);
+  const ML = runL('MEVENT_LEGAL'), CL = runL('CHIMUN_LEGAL'), keep = Object.assign({}, ML);
+  try {
+    ML.reg = '1234567'; ML.address = ''; ML.director = '';
+    eq(runL('meventLegal()').name, CL.name, '⛔ нэхэмжлэгч: зөвхөн РД бөглөгдсөн (хаяг, захирал дутуу) бол хуучнаараа — хольж болохгүй');
+    ML.address = 'Улаанбаатар, Баянзүрх, 1-р хороо'; ML.director = 'Б.Дорж';
+    const L2 = runL('meventLegal()');
+    ok(L2.name === '"ЭМ ЭВЕНТ СОЛЮШН" ХХК' && L2.reg === '1234567' && L2.director === 'Б.Дорж', '⛔ нэхэмжлэгч: РД+хаяг+захирал бөглөгдвөл Эм Эвент Солюшн ХХК болно');
+    ok(!JSON.stringify(L2).includes(CL.reg) && !JSON.stringify(L2).includes('Ногоон зоорь'), '⛔ нэхэмжлэгч: шинэ компани Чимун ХХК-ийн РД/хаягийг ӨВЛӨХГҮЙ');
+    ok(runL('invoiceOrg()').reg === '1234567' && runL('invoiceOrg()').account === '1245166926', 'нэхэмжлэх: нэхэмжлэгч шинэ компани, данс орлогын данс');
+    const qd = String(await runL(`buildOrderQuote(docBlankMeventOrder(), 'mn')`));
+    ok(qd.includes('1234567') && qd.includes('ЭМ ЭВЕНТ СОЛЮШН') && !qd.includes(CL.reg), 'үнийн санал: түрээслүүлэгч шинэ компани (нэр, РД), хуучин РД гарахгүй');
+    sbL.__ord2 = { id: 'ao-2', number: 1701, contract_no: 'Г-18', customer: 'Б.Ариун', phone: '99112233', items: [], total_mnt: 100000, starts_at: '2026-11-05', stops_at: '2026-11-06' };
+    const cd = String(runL('meventContractHtml(__ord2)'));
+    ok(cd.includes('1234567') && cd.includes('ЭМ ЭВЕНТ СОЛЮШН') && !cd.includes(CL.reg), 'M-Event гэрээ: түрээслүүлэгч шинэ компани (нэр, РД), хуучин РД гарахгүй');
+  } finally { Object.assign(ML, keep); }
+  eq(runL('meventLegal()').reg, CL.reg, 'нэхэмжлэгч: тохиргоо хуучин төлөвтөө (регресс)');
 
   const issue = src.slice(src.indexOf('async function issueInvoice'), src.indexOf('function invoiceDocHtml'));
   ok(/org: invoiceOrg\(\)/.test(issue) && !/org: CHIMUN_LEGAL/.test(issue), '⛔ нэхэмжлэх: issueInvoice нь шинэ дансны invoiceOrg()-ийг ашиглана (CHIMUN_LEGAL-ийг шууд биш)');
@@ -22922,6 +22962,18 @@ async function swFetchTests() {
   ok(!R('Бат', '1111111111') && !R('', '') && !R('Бат', ''), 'танихгүй хүлээн авагч татгалзагдана');
   ok(R('Мөнх-Учрал', ''), 'данс уншигдаагүй үед л данс эзэмшигчийн нэрээр тулгана');
   ok(F2('receiptSenderIsUs', { senderName: 'Г.МӨНХ-УЧРАЛ', senderAcct: '3155107584' }) && !F2('receiptSenderIsUs', { senderName: 'Бат', senderAcct: '2222222222' }), 'илгээгч (буцаалт): манай данснаас гарсан бол зөвшөөрнө');
+  // ⭐ 2026-11-03: M-Event тусдаа компани. ГУРВАН шинэ данс (орлого · зарлага · валют) + ХУУЧИН хувийн данс (шилжилт) манайх.
+  for (const a of ['1245166926', 'MN78 0015 00 1245166926', 'MN780015001245166926', ' 1245166926 ',
+                   '1245166927', 'MN51 0015 00 1245166927', '1245166928', 'MN24 0015 00 1245166928'])
+    ok(F2('receiptAcctIsOurs', a), `⛔ Эм Эвент Солюшн данс манайх: «${a}»`);
+  for (const a of ['1245166925', '1245166929', 'MN78 0015 00 1245166925', '2245166926', '124516692'])
+    ok(!F2('receiptAcctIsOurs', a), `⛔ ойролцоо данс манайх БИШ (нэг цифр зөрвөл мөнгө өөр хүнд очно): «${a}»`);
+  ok(R('ЭМ ЭВЕНТ СОЛЮШН', '1245166926') && R('Хэн нэгэн', '1245166926'), 'шинэ орлогын данс: данс таарвал нэр ямар ч байсан зөвшөөрнө');
+  ok(R('ЭМ ЭВЕНТ СОЛЮШН', '') && R('Эм Эвент Солюшн ХХК', '') && R('M EVENT SOLUTION LLC', ''), 'данс уншигдаагүй үед компанийн нэрээр танина');
+  ok(!R('ЭМ ЭВЕНТ СОЛЮШН', '9999999999'), '⛔ данс заасан бөгөөд манайх БИШ бол «Эм Эвент Солюшн» нэр ч зөвшөөрөгдөхгүй');
+  ok(F2('receiptSenderIsUs', { senderName: 'ЭМ ЭВЕНТ СОЛЮШН', senderAcct: '1245166927' }) && F2('receiptSenderIsUs', { senderName: 'Х', senderAcct: 'MN78 0015 00 1245166926' }), 'илгээгч (буцаалт): зарлагын/орлогын данснаас гарсан бол зөвшөөрнө');
+  ok(!F2('receiptSenderIsUs', { senderName: 'ЭМ ЭВЕНТ СОЛЮШН', senderAcct: '3333333333' }), '⛔ илгээгч: өөр данснаас гарсан бол нэр ч хангалтгүй');
+  ok(F2('ourOrgName', 'ЭМ ЭВЕНТ СОЛЮШН') && F2('ourOrgName', '"ЧИМУН" ХХК') && !F2('ourOrgName', 'Б.Ариун') && !F2('ourOrgName', ''), 'манай байгууллагын нэр: Чимун эсвэл Эм Эвент Солюшн');
 
   // ③ Жинхэнэ уншигч — баримтыг ҮЙЛДЛЭЭР нь (тусдаа орчинд)
   const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
@@ -22938,6 +22990,12 @@ async function swFetchTests() {
   ok(!!r.ok, 'хувийн данс: IBAN хэлбэрийн баримт бүртгэгдэнэ');
   r = await readWith({ receiverName: 'Чимун ХХК', receiverAcct: '3635161180' });
   ok(!!r.ok, 'регресс: компанийн дансны баримт өмнөх шигээ бүртгэгдэнэ');
+  r = await readWith({ receiverName: 'ЭМ ЭВЕНТ СОЛЮШН', receiverAcct: '1245166926' });
+  ok(r.ok && r.ok.amount === 50000, '⛔ ШИНЭ ОРЛОГЫН ДАНС (…6926) руу орсон баримт орлого болж бүртгэгдэнэ');
+  r = await readWith({ receiverName: 'ЭМ ЭВЕНТ СОЛЮШН', receiverAcct: 'MN78 0015 00 1245166926' });
+  ok(!!r.ok, 'шинэ орлогын данс: IBAN хэлбэрийн баримт бүртгэгдэнэ');
+  r = await readWith({ receiverName: 'ЭМ ЭВЕНТ СОЛЮШН', receiverAcct: '1245166925' });
+  ok(!r.ok && /Чимунд ирээгүй/.test(r.err || ''), '⛔ нэг цифр зөрсөн данс руу орсон баримтыг ТАТГАЛЗАНА (нэр ижил байсан ч)');
   r = await readWith({ receiverName: 'Мөнх-Учрал', receiverAcct: '5000000000' });
   ok(!r.ok && /Чимунд ирээгүй/.test(r.err || ''), '⛔ өөр дансанд ижил нэртэй хүн рүү орсон баримтыг ТАТГАЛЗАНА');
   r = await readWith({ receiverName: 'Бат', receiverAcct: '1111111111' });
@@ -22945,6 +23003,77 @@ async function swFetchTests() {
   // ④ Буулгалт/буцаалт мөн ижил шалгуурыг ашиглана; NOMAAD хөндөгдөөгүй
   ok(!/чимун\/i\.test\(d\.senderName/.test(appSrc.slice(appSrc.indexOf('Чимун нь ИЛГЭЭГЧ байх ёстой'), appSrc.indexOf('Чимун нь ИЛГЭЭГЧ байх ёстой') + 700)) && /receiptSenderIsUs\(d\)/.test(appSrc), 'буулгалт, буцаалт: илгээгчийг дансаар ч таниулна');
   ok(/Чимун ХХК-д ирээгүй гүйлгээ/.test(appSrc) && /\/чимун\/i\.test\(d\.receiverName \|\| ''\)\) throw new Error\(`Чимун ХХК-д/.test(appSrc), 'NOMAAD орлого өмнөх шалгуураа хэвээр (өөрийн данс)');
+})());
+
+// ═══ ДАНС & КАРТ: ЭМ ЭВЕНТ СОЛЮШН-ИЙН ГУРВАН ДАНСЫГ НЭГ ТОВЧООР БҮРТГЭХ (2026-11-03, CEO) ═══════════════════
+// Үүлэн сесс амьд DB-д бичиж чадахгүй тул захирал аппаас НЭГ ТОВЧООР бүртгэнэ. Үйлдлээр нь (хуурамч сервер, хуурамч
+// зөвшөөрлийн цонх) ажиллуулж шалгана: зөв 3 бичлэг, давхар бичихгүй, зөвшөөрөөгүй/захирал биш бол юу ч бичихгүй.
+(globalThis.__late = globalThis.__late || []).push((async () => {
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const sb = Object.assign({}, sandbox); sb.window = sb; sb.self = sb; sb.globalThis = sb;
+  vm.createContext(sb); vm.runInContext(appSrc, sb, { filename: 'app.js' });
+  const run = (c) => vm.runInContext(c, sb);
+  // ① Цэвэр функц: аль нь бүртгэлд алга вэ
+  eq(run('meventAcctsMissing([]).length'), 3, 'бүртгэл хоосон: 3 данс алга');
+  eq(run('meventAcctsMissing(undefined).length'), 3, 'бүртгэл ачаалагдаагүй: 3 данс алга (унахгүй)');
+  sb.__a2 = [{ id: '1245166926', account_no: '1245166926', active: true }, { id: '1245166927', account_no: '1245166927', active: false }];
+  eq(run('meventAcctsMissing(__a2).map(m => m.account).join()'), '1245166927,1245166928', '⛔ идэвхгүй (хассан) бүртгэл = алга, идэвхтэй нь = бий');
+  eq(run('meventAcctsMissing([{ id: "x", account_no: "MN78 0015 00 1245166926", active: true }]).length'), 2, 'IBAN хэлбэрээр бүртгэсэн ч таарна');
+  eq(run('meventAcctsMissing([{ id: "1245166926", account_no: "1245166926" }, { id: "1245166927", account_no: "1245166927" }, { id: "1245166928", account_no: "1245166928" }]).length'), 0, 'гурвуулаа бүртгэлтэй: юу ч алга');
+  // ② Бичих — ҮНЭХЭЭР ДУУДНА
+  const scenario = async (o) => {
+    const log = { posts: [], confirms: [], toasts: [], n: 0 };
+    Object.assign(sb, { __sc: Object.assign({ ceo: true, accts: [], confirm: true, fail: -1 }, o), __log: log });
+    run(`state.isCEO = __sc.ceo; state.bankAccounts = __sc.accts;
+      fetchWithTimeout = async (url, opts) => {
+        if (opts && opts.method === 'POST') {
+          __log.posts.push({ url, body: JSON.parse(opts.body), prefer: opts.headers.Prefer });
+          if (__log.n++ === __sc.fail) return { ok: false, status: 500, text: async () => 'boom' };
+        }
+        return { ok: true, json: async () => [], text: async () => '' };
+      };
+      showConfirm = async (m) => { __log.confirms.push(m); return __sc.confirm; };
+      showToast = (m) => { __log.toasts.push(m); }; render = () => {};
+      loadBankAccounts = async () => {}; loadPersonalSettlements = async () => {};`);
+    log.res = await run('registerMeventAccounts()');
+    return log;
+  };
+  let L = await scenario({});
+  eq(L.posts.map(x => x.body.id).join(), '1245166926,1245166927,1245166928', '⛔ бүртгэх: 3 данс ДАРААЛЛААР (орлого, зарлага, валют) серверт илгээгдэнэ');
+  ok(L.posts.every(x => /\/rest\/v1\/bank_accounts\?on_conflict=id$/.test(x.url) && /merge-duplicates/.test(x.prefer)), 'бүртгэх: bank_accounts руу upsert (id-аар)');
+  const byId = Object.fromEntries(L.posts.map(x => [x.body.id, x.body]));
+  ok(byId['1245166926'].purpose === 'орлого' && byId['1245166926'].currency === 'MNT' && byId['1245166926'].iban === 'MN78 0015 00 1245166926', '⛔ орлогын данс: зорилго=орлого, MNT, зөв IBAN');
+  ok(byId['1245166927'].purpose === 'зарлага' && byId['1245166927'].currency === 'MNT' && byId['1245166927'].iban === 'MN51 0015 00 1245166927', '⛔ зарлагын данс: зорилго=зарлага, MNT, зөв IBAN');
+  ok(byId['1245166928'].purpose === 'валют' && byId['1245166928'].currency === 'USD' && byId['1245166928'].iban === 'MN24 0015 00 1245166928', '⛔ валют данс: зорилго=валют, USD, зөв IBAN');
+  ok(L.posts.every(x => x.body.bank === 'Голомт' && x.body.branch === 'M-Event' && x.body.active === true && x.body.account_no === x.body.id), 'бүртгэх: банк=Голомт, салбар=M-Event (зардал автоматаар салбарт), идэвхтэй, дугаар=id');
+  ok(L.posts.every(x => !/хувийн/.test(x.body.purpose)), '⛔ бүртгэх: ХУВИЙН данс гэж бүртгэхгүй (компанийн данс — сар хаахад хуулга шаардана)');
+  ok(L.confirms.length === 1 && ['1245166926', '1245166927', '1245166928'].every(a => L.confirms[0].includes(a)), '⛔ бүртгэхээс өмнө showConfirm: гурван дансыг нэрлэнэ');
+  eq(L.res, true, 'бүртгэх: амжилттай → true');
+  L = await scenario({ confirm: false });
+  ok(L.posts.length === 0 && L.res === false, '⛔ зөвшөөрөөгүй бол ЮУ Ч бичихгүй');
+  L = await scenario({ ceo: false });
+  ok(L.posts.length === 0 && L.confirms.length === 0, '⛔ захирал биш бол бичихгүй, асуухгүй');
+  L = await scenario({ accts: null });
+  ok(L.posts.length === 0 && L.confirms.length === 0, '⛔ бүртгэл ачаалагдаагүй бол бичихгүй (бүртгэлтэйг дахин бичих эрсдэл)');
+  L = await scenario({ accts: [{ id: '1245166926', account_no: '1245166926', active: true, name: 'Миний нэр' }] });
+  eq(L.posts.map(x => x.body.id).join(), '1245166927,1245166928', '⛔ аль хэдийн бүртгэлтэй (идэвхтэй) дансыг ДАХИН бичихгүй — хэрэглэгчийн засвар хэвээр');
+  L = await scenario({ accts: run('MEVENT_ACCTS').map(a => ({ id: a.account, account_no: a.account, active: true })) });
+  ok(L.posts.length === 0 && L.confirms.length === 0 && L.res === true, 'гурвуулаа бүртгэлтэй: юу ч бичихгүй, асуухгүй');
+  L = await scenario({ fail: 1 });
+  ok(L.posts.length === 2 && L.res === false && L.toasts.some(t => /1\/3/.test(t)), '⛔ дунд нь унавал зогсоно, хэд бүртгэгдсэнийг (1/3) ил хэлнэ — чимээгүй хагас бүртгэл биш');
+  // ③ Дэлгэц: туг ХЭЗЭЭ Ч хоосон бүртгэлд бүү гарга (ачаалагдаагүй), зөвхөн захиралд
+  const banner = run('meventSetupHtml([])');
+  ok(/id="ba-reg-mevent"/.test(banner) && ['1245166926', '1245166927', '1245166928'].every(a => banner.includes(a)), 'туг: алга байгаа 3 дансыг нэрлэж «Бүртгэх» товчтой');
+  ok(!/3155107584|3635161180/.test(banner), 'туг: хуучин/Чимун данс гарахгүй');
+  eq(run('meventSetupHtml(MEVENT_ACCTS.map(a => ({ id: a.account, account_no: a.account })))'), '', 'туг: гурвуулаа бүртгэлтэй бол алга болно');
+  const rb = appSrc.slice(appSrc.indexOf('function renderBankAccounts'), appSrc.indexOf('function attachBankAccountsHandlers'));
+  ok(/state\.isCEO && Array\.isArray\(state\.bankAccounts\) \? meventSetupHtml\(state\.bankAccounts\)/.test(rb), '⛔ туг: захиралд, бүртгэл ачаалагдсаны ДАРАА л гарна');
+  ok(/getElementById\('ba-reg-mevent'\)\?\.addEventListener\('click', \(\) => registerMeventAccounts\(\)\)/.test(appSrc), 'туг: товч registerMeventAccounts-ийг дууддаг');
+  // ④ Scan: дансны дугаарыг ДАВХАРДУУЛАХГҮЙ, нэг бичих зам, зөвшөөрлийн хариуг шалгана
+  const fn = appSrc.slice(appSrc.indexOf('async function registerMeventAccounts'), appSrc.indexOf('function meventSetupHtml'));
+  ok(!/12451669\d\d/.test(fn) && !/12451669\d\d/.test(appSrc.slice(appSrc.indexOf('function meventAcctRecord'), appSrc.indexOf('async function registerMeventAccounts'))), '⛔ бүртгэх код дансны дугаарыг ДАВХАРДУУЛАХГҮЙ (зөвхөн MEVENT_ACCTS)');
+  ok(/if \(!\(await showConfirm\(/.test(fn) && /saveBankAccount\(meventAcctRecord\(/.test(fn) && !/fetchWithTimeout\(/.test(fn), '⛔ бүртгэх: showConfirm-ийн ХАРИУГ шалгана, бичих ганц зам = saveBankAccount');
+  ok(/state\.isCEO/.test(fn), 'бүртгэх: зөвхөн захирал');
 })());
 
 // ═══ АЖЛЫН ХУВААРЬ + ХАРИУЦЛАГА (2026-11-02, CEO) ═══════════════════════════════════════════════════════

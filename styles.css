@@ -7131,6 +7131,11 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .stmt-prsn-btn.on { border-color: var(--ok); color: var(--ok); font-weight: 700; }
 .stmt-prsn-debt { display: flex; justify-content: space-between; font-size: var(--fs-sm); padding: 2px 0; }
 .stmt-prsn-debt.tot { border-top: 1px solid var(--border); margin-top: var(--space-1); padding-top: var(--space-1); font-weight: 700; }
+/* «Данс & Карт»: Эм Эвент Солюшн-ийн дансыг нэг товчоор бүртгэх тууз (2026-11-03) */
+.ba-setup { background: var(--panel-hover); border: 1px solid var(--border); border-radius: 12px; padding: var(--space-3); margin: var(--space-2) 0 var(--space-3); }
+.ba-setup-h { font-weight: 700; font-size: var(--fs-md); margin-bottom: var(--space-1); }
+.ba-setup-row { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--fs-sm); padding: 2px 0; font-variant-numeric: tabular-nums; }
+.ba-setup-note { color: var(--muted); font-size: var(--fs-xs); margin: var(--space-1) 0 var(--space-2); }
 
 /* ── Санхүүгийн жагсаалт: эвхэгддэг ангиллын бүлэг (2026-09-07) ───────────── */
 .fin-grp {

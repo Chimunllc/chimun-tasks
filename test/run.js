@@ -4206,7 +4206,7 @@ need(['orderCustType']);
       ok(typeof html === 'string' && html.length > 2000, `загвар: Үнийн санал (${name}) хоосон датагаар үүснэ`);
       ok(String(html).indexOf('<!DOCTYPE html') === 0,        `загвар: Үнийн санал (${name}) бүтэн HTML баримт`);
       ok(String(html).indexOf('Үнийн санал') > -1,            `загвар: Үнийн санал (${name}) гарчиг`);
-      ok(String(html).indexOf('ЧИМУН') > -1,                  `загвар: Үнийн санал (${name}) компанийн мэдээлэл`);
+      ok(String(html).indexOf('ЭВЕНТ СОЛЮШН') > -1,           `загвар: Үнийн санал (${name}) компанийн мэдээлэл (Эм Эвент Солюшн)`);
     } catch (e) {
       ok(false, `загвар: Үнийн санал (${name}) — алдаа гарлаа: ${e.message}`);
     }
@@ -22865,8 +22865,10 @@ async function swFetchTests() {
   const org = run('invoiceOrg()');
   ok(org.account === MP.account && org.iban === MP.iban && org.holder === MP.holder, '⛔ нэхэмжлэх: invoiceOrg() шинэ данс/IBAN/эзэмшигчтэй');
   ok(org.account === '1245166926' && org.holder === 'Эм Эвент Солюшн ХХК', '⛔ нэхэмжлэх: ОРЛОГЫН данс (…6926), хүлээн авагч = Эм Эвент Солюшн ХХК');
-  // Нэхэмжлэгч тал: Эм Эвент Солюшн-ийн РД/хаяг/захирал бөглөгдтөл хуучнаараа (хольж БОЛОХГҮЙ)
-  ok(org.name === run('CHIMUN_LEGAL.name') && org.reg === run('CHIMUN_LEGAL.reg') && org.director === run('CHIMUN_LEGAL.director'), 'нэхэмжлэх: РД/хаяг/захирал бөглөгдөөгүй үед нэхэмжлэгч (нэр, РД, захирал) хуучнаараа');
+  // ⭐ Нэхэмжлэгч тал = Эм Эвент Солюшн ХХК (улсын бүртгэлийн гэрчилгээнээс: РД 7341577, захирал Г.Мөнхучрал) — Чимун ХХК-ийн РД ОРОХГҮЙ
+  ok(org.name === '"ЭМ ЭВЕНТ СОЛЮШН" ХХК' && org.reg === '7341577' && org.director === 'Г.МӨНХУЧРАЛ', '⛔ нэхэмжлэх: нэхэмжлэгч = Эм Эвент Солюшн ХХК (нэр, РД, захирал гэрчилгээтэй ЯГ таарна)');
+  ok(/11-р хороо/.test(org.address) && /Баянзүрх 1, 13 тоот/.test(org.address), 'нэхэмжлэх: хаяг гэрчилгээтэй таарна (Баянзүрх 11-р хороо, Баянзүрх 1, 13 тоот)');
+  ok(!JSON.stringify(org).includes(run('CHIMUN_LEGAL.reg')) && !JSON.stringify(org).includes('Ногоон зоорь'), '⛔ нэхэмжлэх: Чимун ХХК-ийн РД/хаяг ОРОХГҮЙ');
   const invD = { no: 'INV-1', issuedAt: '2026-10-20', dueAt: '2026-10-27', orderNo: 1700, buyer: { name: 'Б.Ариун', email: 'a@b.mn' },
     lines: [{ name: 'Шилэн сандал', qty: 20, days: 1, total: 176000 }], t: { total: 176000, due: 176000 }, org, sendUrl: 'https://x/send', sendTok: 'tok', to: 'a@b.mn' };
   sandbox.__invD = invD;
@@ -22875,27 +22877,34 @@ async function swFetchTests() {
   for (const x of ['3155107584', '3635161180', '1245166927', '1245166928', 'Мөнх-Учрал'])
     ok(!invDoc.includes(x), `⛔ нэхэмжлэх: «${x}» гарахгүй (хуучин хувийн / Чимун / зарлага / валют данс)`);
   ok(invDoc.includes('Хүлээн авагч: Эм Эвент Солюшн ХХК'), 'нэхэмжлэхийн имэйлийн бичвэр: хүлээн авагч = данс эзэмшигч');
-  // ⛔ Нэхэмжлэгч талын ГАНЦ дүрэм: РД + хаяг + захирал ГУРВУУЛАА бөглөгдвөл л шинэ компани (хагас бол хуучнаараа)
-  // ⚠ ТУСДАА орчинд: нийтийн MEVENT_LEGAL-ийг өөрчилбөл зэрэг ажиллаж буй бусад async тестүүд (үнийн санал г.м.) шинэ компанийг харна.
+  // ⛔ Нэхэмжлэгч талын ГАНЦ дүрэм: РД + хаяг + захирал ГУРВУУЛАА бөглөгдсөн үед л шинэ компани (хагас бол Чимун — хольж БОЛОХГҮЙ)
+  // ⚠ ТУСДАА орчинд: нийтийн MEVENT_LEGAL-ийг өөрчилбөл зэрэг ажиллаж буй бусад async тестүүд (үнийн санал г.м.) өөр компанийг харна.
   const sbL = Object.assign({}, sandbox); sbL.window = sbL; sbL.self = sbL; sbL.globalThis = sbL;
   vm.createContext(sbL); vm.runInContext(src, sbL, { filename: 'app.js' });
   const runL = (c) => vm.runInContext(c, sbL);
   const ML = runL('MEVENT_LEGAL'), CL = runL('CHIMUN_LEGAL'), keep = Object.assign({}, ML);
+  const L0 = runL('meventLegal()');
+  ok(L0.name === '"ЭМ ЭВЕНТ СОЛЮШН" ХХК' && L0.reg === '7341577' && L0.director === 'Г.МӨНХУЧРАЛ' && L0.nameEn === '"M EVENT SOLUTION" LLC', '⛔ нэхэмжлэгч: өгөгдмөлөөр Эм Эвент Солюшн ХХК (гэрчилгээнээс бөглөгдсөн)');
+  ok(L0.address === 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Баянзүрх 1, 13 тоот' && /Bayanzurkh 1, unit 13/.test(L0.addressEn), 'нэхэмжлэгч: хаяг (мн/англи) гэрчилгээтэй таарна');
+  ok(!JSON.stringify(L0).includes(CL.reg) && !JSON.stringify(L0).includes('Ногоон зоорь'), '⛔ нэхэмжлэгч: шинэ компани Чимун ХХК-ийн РД/хаягийг ӨВЛӨХГҮЙ');
   try {
-    ML.reg = '1234567'; ML.address = ''; ML.director = '';
-    eq(runL('meventLegal()').name, CL.name, '⛔ нэхэмжлэгч: зөвхөн РД бөглөгдсөн (хаяг, захирал дутуу) бол хуучнаараа — хольж болохгүй');
-    ML.address = 'Улаанбаатар, Баянзүрх, 1-р хороо'; ML.director = 'Б.Дорж';
-    const L2 = runL('meventLegal()');
-    ok(L2.name === '"ЭМ ЭВЕНТ СОЛЮШН" ХХК' && L2.reg === '1234567' && L2.director === 'Б.Дорж', '⛔ нэхэмжлэгч: РД+хаяг+захирал бөглөгдвөл Эм Эвент Солюшн ХХК болно');
-    ok(!JSON.stringify(L2).includes(CL.reg) && !JSON.stringify(L2).includes('Ногоон зоорь'), '⛔ нэхэмжлэгч: шинэ компани Чимун ХХК-ийн РД/хаягийг ӨВЛӨХГҮЙ');
-    ok(runL('invoiceOrg()').reg === '1234567' && runL('invoiceOrg()').account === '1245166926', 'нэхэмжлэх: нэхэмжлэгч шинэ компани, данс орлогын данс');
+    for (const f of ['reg', 'address', 'director']) {
+      Object.assign(ML, keep); ML[f] = '';
+      eq(runL('meventLegal()').reg, CL.reg, `⛔ нэхэмжлэгч: «${f}» хоосон бол бүгд Чимун ХХК-ийнх (хагас шинэ, хагас хуучин хольж болохгүй)`);
+    }
+    Object.assign(ML, keep);
     const qd = String(await runL(`buildOrderQuote(docBlankMeventOrder(), 'mn')`));
-    ok(qd.includes('1234567') && qd.includes('ЭМ ЭВЕНТ СОЛЮШН') && !qd.includes(CL.reg), 'үнийн санал: түрээслүүлэгч шинэ компани (нэр, РД), хуучин РД гарахгүй');
+    ok(qd.includes('7341577') && qd.includes('ЭМ ЭВЕНТ СОЛЮШН') && !qd.includes(CL.reg), '⛔ үнийн санал: түрээслүүлэгч Эм Эвент Солюшн (нэр, РД), Чимун ХХК-ийн РД гарахгүй');
+    const qe = String(await runL(`buildOrderQuote(docBlankMeventOrder(), 'en')`));
+    ok(qe.includes('7341577') && qe.includes('M EVENT SOLUTION') && qe.includes('Bayanzurkh 1, unit 13'), 'үнийн санал (en): компанийн нэр, РД, хаяг');
     sbL.__ord2 = { id: 'ao-2', number: 1701, contract_no: 'Г-18', customer: 'Б.Ариун', phone: '99112233', items: [], total_mnt: 100000, starts_at: '2026-11-05', stops_at: '2026-11-06' };
     const cd = String(runL('meventContractHtml(__ord2)'));
-    ok(cd.includes('1234567') && cd.includes('ЭМ ЭВЕНТ СОЛЮШН') && !cd.includes(CL.reg), 'M-Event гэрээ: түрээслүүлэгч шинэ компани (нэр, РД), хуучин РД гарахгүй');
+    ok(cd.includes('7341577') && cd.includes('ЭМ ЭВЕНТ СОЛЮШН') && cd.includes('Баянзүрх 1, 13 тоот') && !cd.includes(CL.reg), '⛔ M-Event гэрээ: түрээслүүлэгч Эм Эвент Солюшн (нэр, РД, хаяг), Чимун ХХК-ийн РД гарахгүй');
+    ML.reg = ''; ML.address = ''; ML.director = '';
+    const qc = String(await runL(`buildOrderQuote(docBlankMeventOrder(), 'mn')`));
+    ok(qc.includes(CL.reg) && !qc.includes('7341577'), 'нөөц: бөглөөгүй бол үнийн санал Чимун ХХК-ийн мэдээлэлтэй (хагас шинэ гарахгүй)');
   } finally { Object.assign(ML, keep); }
-  eq(runL('meventLegal()').reg, CL.reg, 'нэхэмжлэгч: тохиргоо хуучин төлөвтөө (регресс)');
+  eq(runL('meventLegal()').reg, '7341577', 'нэхэмжлэгч: тохиргоо өгөгдмөл төлөвтөө буцсан (регресс)');
 
   const issue = src.slice(src.indexOf('async function issueInvoice'), src.indexOf('function invoiceDocHtml'));
   ok(/org: invoiceOrg\(\)/.test(issue) && !/org: CHIMUN_LEGAL/.test(issue), '⛔ нэхэмжлэх: issueInvoice нь шинэ дансны invoiceOrg()-ийг ашиглана (CHIMUN_LEGAL-ийг шууд биш)');

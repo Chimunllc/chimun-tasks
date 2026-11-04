@@ -17195,6 +17195,7 @@ async function loadBankAccounts(force) {
     state.bankCards = rc.ok ? await rc.json() : [];
     syncCardMapsFromRegistry();
     if (typeof render === 'function' && state.view === 'accounts') render();
+    if (ra.ok) autoRegisterMeventAccounts().catch(e => console.warn('autoRegisterMeventAccounts', e));   // ⛔ ЗӨВХӨН уншилт амжилттай үед
   } catch (e) { console.warn('loadBankAccounts', e); }
 }
 async function saveBankAccount(a) {
@@ -17235,6 +17236,31 @@ function meventAcctsMissing(accts) {
 function meventAcctRecord(m, sort) {
   return { id: m.account, bank: 'Голомт', name: m.name, account_no: m.account, iban: m.iban, currency: m.currency,
            purpose: m.purpose, branch: 'M-Event', owner_key: '', owner_name: '', note: 'Эм Эвент Солюшн ХХК', active: true, sort };
+}
+/* ZERO-TOUCH: CEO аппаа нээмэгц Эм Эвент Солюшн-ийн дутуу данс «Данс & Карт»-д ӨӨРӨӨ бүртгэгдэнэ (2026-11-04, CEO:
+   «надаар юм хийлгэж битгий»). Товч дарах шаардлагагүй; доорх тууз + товч нь зөвхөн нөөц (авто унасан үед).
+   ⛔ ЗӨВХӨН мөр ОГТ байхгүй дансыг нэмнэ — идэвхгүй болгосон (хассан) мөрийг хөндөхгүй, захирлын засварласан нэр/зорилго
+     дарагдахгүй. Бичилт = `ignore-duplicates` (нэг мөр ч дарж бичихгүй; хоёр төхөөрөмж зэрэг нээвэл ч зөв).
+   ⛔ Бүртгэлийг УНШИЖ ЧАДААГҮЙ үед (`loadBankAccounts` ra.ok биш) ЮУ Ч бичихгүй. Нэг сессэд нэг л удаа (давталт хаана). */
+async function insertBankAccountIfAbsent(a) {
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_accounts?on_conflict=id`, {
+    method: 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
+    body: JSON.stringify(Object.assign({}, a, { updated_by: state.me, updated_at: new Date().toISOString() })),
+  }, 15000);
+  return !!r.ok;
+}
+async function autoRegisterMeventAccounts() {
+  if (!state.isCEO || state._meventAutoReg || !DB_ANON_KEY || !Array.isArray(state.bankAccounts)) return 0;
+  state._meventAutoReg = true;
+  const todo = MEVENT_ACCTS.filter(m => !state.bankAccounts.some(a => acctSame(a.account_no || a.id, m.account)));   // идэвхгүй мөр ч «бий»
+  let done = 0;
+  for (const m of todo) {
+    try { if (await insertBankAccountIfAbsent(meventAcctRecord(m, state.bankAccounts.length + 1 + done))) done++; else break; }
+    catch (e) { console.warn('autoRegisterMeventAccounts', e); break; }
+  }
+  if (done) { showToast(`✓ Эм Эвент Солюшн-ийн ${done} данс «Данс & Карт»-д бүртгэгдлээ`, 'success', 4000); await loadBankAccounts(true); }
+  return done;
 }
 async function registerMeventAccounts() {
   if (!state.isCEO) { showToast('Зөвхөн захирал', 'warn', 2500); return false; }

@@ -24720,6 +24720,50 @@ async function swFetchTests() {
   ok(/\.rc-got \{ flex: none; width: 62px;/.test(css) && /\.rc-diff \{ flex: none; width: 34px;/.test(css), 'scan: тоолсон тоо, зөрүү тогтмол өргөнтэй');
 }
 
+/* 🖼 БАРААНЫ МӨР БҮРИЙН УРД ЗУРАГ — аппын түвшинд (2026-11-04, CEO «бүх барааны урд зураг гаргадаг болго»). Нэг туслагч `prodThumb`. */
+{
+  const { prodThumb } = F;
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = vm.runInContext('state.products', sandbox);
+  runIn(`state.products = [
+    { sku: 'M-001', name: 'Сандал', photo: 'https://drive.google.com/file/d/ABC123/view' },
+    { sku: 'M-002', name: 'Яригч', photo: '' },
+    { sku: 'M-003', name: 'Нэр засагдсан', photo: 'https://x/y.jpg' },
+  ];`);
+  // — туслагч —
+  const a = prodThumb({ sku: 'M-001', name: 'Сандал' });
+  ok(/<span class="oi-ph oi-ph-m"><img src="https:\/\/lh3\.googleusercontent\.com\/d\/ABC123=w96" alt="" loading="lazy"/.test(a), 'зураг: бараа мөр (sku, нэр) → каталогийн зураг, 36px `oi-ph-m`, lazy');
+  eq(prodThumb({ sku: 'M-002', name: 'Яригч' }), '<span class="oi-ph oi-ph-m"></span>', 'зураг: зураггүй бараа → хоосон хайрцаг (CSS-ийн 📦 үлдэнэ)');
+  eq(prodThumb({ sku: 'X-9', name: 'Каталогт байхгүй' }), '<span class="oi-ph oi-ph-m"></span>', 'зураг: каталогт олдохгүй мөр → 📦');
+  eq(prodThumb(null), '<span class="oi-ph oi-ph-m"></span>', 'зураг: хоосон → унахгүй');
+  ok(/oi-ph-xs"><img/.test(prodThumb({ sku: 'M-001' }, 'oi-ph-xs')) && /class="oi-ph oi-ph"/.test(prodThumb({ sku: 'M-001' }, 'oi-ph')), 'зураг: хэмжээ (xs мөрийн дотор, 40px гарчиг) сонгогдоно');
+  ok(/img src="https:\/\/x\/y\.jpg"/.test(prodThumb({ name: 'Нэр засагдсан', photo: 'https://x/y.jpg' })), 'зураг: бараа өөрийн `photo` ялна');
+  ok(!/<img/.test(prodThumb({ sku: 'M-009', name: 'Яригч', photo: 'data:image/png;base64,AAAA' })), 'зураг: base64 зургийг DOM-д шургуулахгүй');
+  ok(/&quot;|&lt;/.test(prodThumb({ sku: 'M-005', name: 'x', photo: 'https://a/b.jpg?x="><script>' })) && !/<script>/.test(prodThumb({ sku: 'M-005', name: 'x', photo: 'https://a/b.jpg?x="><script>' })), 'зураг: URL escape хийгдэнэ (XSS)');
+  runIn('state.products = ' + JSON.stringify(save || []) + ';');
+
+  // — залгалт бүр (scan: функц бүрийн загварт `prodThumb`) —
+  const fnSrc = (name) => { const i = src.indexOf('function ' + name + '('); const j = src.indexOf('\nfunction ', i + 10); const k = src.indexOf('\nasync function ', i + 10); return src.slice(i, Math.min(...[j, k].filter(x => x > 0))); };
+  const need = [
+    ['renderStockCount', /prodThumb\(p\)\}\s*<span class="stc-row-n">/, 'Тооллого: мөр бүр'],
+    ['openingBlockHtml', /(prodThumb\(x\)\}<span class="stc-open-nm">[\s\S]*){3}/, 'Эхний үлдэгдэл: 3 жагсаалт'],
+    ['openBulkSealModal', /prodThumb\(x\)\}<span class="bsl-t">/, 'Бөөнөөр эцэслэх'],
+    ['openBulkWriteoffModal', /prodThumb\(p\)\}\s*<span class="wo-row-n">/, 'Бөөнөөр актлах'],
+    ['openOrderDamageModal', /prodThumb\(\{ sku, name: it\.name \}\)\}<span class="dmg-item-name">/, 'Захиалгын эвдрэл'],
+    ['openOrderScanModal', /prodThumb\(it\)\}<span class="oscan-name">/, 'Захиалгын скан'],
+    ['openTransferModal', /tr-name-ph">\$\{prodThumb\(p, 'oi-ph'\)\}/, 'Шилжүүлэх цонхны гарчиг'],
+    ['openOpeningCountModal', /opc-h">\$\{prodThumb\(p, 'oi-ph'\)\}/, 'Эхний тооллогын цонхны гарчиг'],
+    ['packageBundleHtml', /prodThumb\(x, 'oi-ph-xs'\)/, 'Багцын бүрэлдэхүүн'],
+  ];
+  need.forEach(([fn, re, label]) => ok(re.test(fnSrc(fn)), '⛔ scan: ' + label + ' — барааны мөр бүрийн урд зураг (`prodThumb`)'));
+  ok((src.match(/class="po-hit-l">\$\{prodThumb\(p\)\}/g) || []).length === 2, 'scan: худалдан авалтын бараа сонгох (нэхэмжлэл + хүлээн авах) хоёуланд зураг');
+  const pl = fnSrc('openPurchaseLink');
+  ok(/bl-nm bl-nm-ph">\$\{prodThumb\(x\)\}/.test(pl) && /bl-nm bl-nm-ph">\$\{prodThumb\(p\)\}/.test(pl), 'scan: худалдан авалт холбох (сонгосон, хайлтын үр дүн) хоёуланд зураг');
+  const css2 = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  ok(/\.oi-ph-m \{ width: 36px; height: 36px; \}/.test(css2) && /\.oi-ph-xs \{ width: 20px; height: 20px;/.test(css2), 'scan: зургийн хэмжээ (`oi-ph-m`, `oi-ph-xs`) тодорхойлогдсон');
+  ok(/\.wo-row \.oi-ph img \{ width: 100%; height: 100%;/.test(css2), 'scan: `.wo-row img` (46px) дүрэм шинэ хайрцгийг эвдэхгүй');
+}
+
 // SCAN: мөрийн дүнг гараар бодохыг хаана (хоног тооцоогүй алдаа эргэж ирэхгүй).
 {
   const at = src.indexOf('const itemsSection = isApp');

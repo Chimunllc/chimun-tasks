@@ -4910,6 +4910,14 @@ summary.order-items-toggle { cursor: pointer; }
 .oi-ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .oi-ph-s { width: 28px; height: 28px; }
 .oi-ph-s::before { font-size: var(--fs-md); }
+/* Бусад жагсаалтын мөрийн урд зураг (`prodThumb`): 36px мөр, 20px мөрийн дотор */
+.oi-ph-m { width: 36px; height: 36px; }
+.oi-ph-xs { width: 20px; height: 20px; border-radius: var(--r-sm); vertical-align: middle; margin-right: var(--space-1); }
+.oi-ph-xs::before { font-size: var(--fs-xs); }
+.po-hit-l { display: flex; align-items: center; gap: var(--space-2); min-width: 0; text-align: left; }
+.bl-nm-ph { display: flex; align-items: center; gap: var(--space-2); }
+.tr-name-ph, .opc-h { display: flex; align-items: center; gap: var(--space-2); }
+.wo-row .oi-ph img { width: 100%; height: 100%; border-radius: 0; }   /* `.wo-row img` (46px) дүрмийг цуцална */
 .oi-mid { flex: 1 1 0; min-width: 0; }   /* basis 0: урт нэр тоо, дүнг доод мөр рүү түлхэхгүй — нэр өөрөө мөрлөнө */
 .oi-nm { font-weight: 600; overflow-wrap: anywhere; }
 .oi-parts { flex: 0 0 calc(100% - 48px); box-sizing: border-box; margin: var(--space-1) 0 0 48px; padding-left: var(--space-2); border-left: 2px solid var(--border); }

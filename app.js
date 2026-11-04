@@ -33811,10 +33811,11 @@ function openStageAdvanceModal(oid, to) {
     <button type="button" class="btn btn-primary sa-all-btn" id="rc-all">✓ Бүгд бүрэн ${_isDispatch ? 'гарсан' : _isPickup ? 'авсан' : 'ирсэн'}</button>
     <div id="rc-list" class="rc-list">${_rcItems.map((x, i) => `
       <div class="rc-row" data-rc="${i}">
-        <span class="rc-name">${escapeHtml(x.name)}${x.pkg ? ` <em class="rc-pkg">📦 ${escapeHtml(x.pkg)}</em>` : ''}</span>
-        <span class="rc-exp">${x.qty}ш</span>
+        ${orderItemThumb(orderItemPhoto({ sku: x.sku, name: x.name }), 'rc-ph')}
+        <span class="rc-name">${escapeHtml(x.name)}${x.pkg ? ` <em class="rc-pkg" title="${escapeHtml(x.pkg)}">📦 ${escapeHtml(x.pkg)}</em>` : ''}</span>
+        <span class="rc-ctl"><span class="rc-exp">${x.qty}ш</span>
         <input class="rc-got" type="number" inputmode="numeric" min="0" max="${x.qty}" value="${x.qty}" data-rci="${i}">
-        <span class="rc-diff" data-rcd="${i}"></span>
+        <span class="rc-diff" data-rcd="${i}"></span></span>
       </div>`).join('')}</div>
     <div id="rc-warn" class="rc-warn" hidden></div>`) : '';
   const modal = document.createElement('div');

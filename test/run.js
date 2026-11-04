@@ -23076,6 +23076,58 @@ async function swFetchTests() {
   ok(/state\.isCEO/.test(fn), 'бүртгэх: зөвхөн захирал');
 })());
 
+// ═══ ЭМ ЭВЕНТ СОЛЮШН-ИЙН ДАНС ӨӨРӨӨ БҮРТГЭГДЭНЭ — ТОВЧ ДАРАХ ШААРДЛАГАГҮЙ (2026-11-04, CEO) ═══════════════════
+// CEO аппаа нээмэгц `loadBankAccounts` бүртгэлийг уншиж, мөр ОГТ байхгүй дансыг `ignore-duplicates`-ээр нэмнэ.
+// Үйлдлээр нь (хуурамч сервер) ажиллуулна: зөв бичилт, давхар/дарж бичихгүй, идэвхгүй мөрийг хөндөхгүй, уншилт унавал бичихгүй.
+(globalThis.__late = globalThis.__late || []).push((async () => {
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const sb = Object.assign({}, sandbox); sb.window = sb; sb.self = sb; sb.globalThis = sb;
+  vm.createContext(sb); vm.runInContext(appSrc, sb, { filename: 'app.js' });
+  const run = (c) => vm.runInContext(c, sb);
+  const scenario = async (o) => {
+    const log = { posts: [], toasts: [], gets: 0 };
+    Object.assign(sb, { __sc: Object.assign({ ceo: true, rows: [], readOk: true, postOk: true }, o), __log: log });
+    run(`state.isCEO = __sc.ceo; state.bankAccounts = undefined; state._meventAutoReg = false;
+      fetchWithTimeout = async (url, opts) => {
+        if (opts && opts.method === 'POST') { __log.posts.push({ url, body: JSON.parse(opts.body), prefer: opts.headers.Prefer }); return { ok: __sc.postOk, text: async () => '' }; }
+        __log.gets++;
+        if (/bank_accounts/.test(url)) return { ok: __sc.readOk, json: async () => __sc.rows };
+        return { ok: true, json: async () => [] };
+      };
+      showToast = (m) => { __log.toasts.push(m); }; render = () => {}; loadPersonalSettlements = async () => {};`);
+    await run('loadBankAccounts(true)');
+    await new Promise(r => setTimeout(r, 30));   // авто бүртгэл «галдаж орхидог» тул дуусахыг хүлээнэ
+    return log;
+  };
+  let L = await scenario({});
+  eq(L.posts.map(x => x.body.id).join(), '1245166926,1245166927,1245166928', '⛔ CEO нээмэгц: дутуу 3 данс ӨӨРӨӨ бүртгэгдэнэ (товч дарахгүй)');
+  ok(L.posts.every(x => /ignore-duplicates/.test(x.prefer) && !/merge-duplicates/.test(x.prefer) && /\/rest\/v1\/bank_accounts\?on_conflict=id$/.test(x.url)), '⛔ авто бүртгэл: ignore-duplicates (нэг мөр ч дарж бичихгүй)');
+  ok(L.posts.every(x => x.body.bank === 'Голомт' && x.body.branch === 'M-Event' && x.body.active === true && x.body.purpose !== 'хувийн'), 'авто бүртгэл: банк, салбар=M-Event, идэвхтэй, хувийн БИШ');
+  ok(L.toasts.some(t => /3 данс/.test(t)), 'авто бүртгэл: хэдэн данс бүртгэгдснийг ил хэлнэ (чимээгүй биш)');
+  L = await scenario({ ceo: false });
+  eq(L.posts.length, 0, '⛔ захирал биш бол ЮУ Ч бичихгүй');
+  L = await scenario({ readOk: false });
+  eq(L.posts.length, 0, '⛔ бүртгэлийг УНШИЖ ЧАДААГҮЙ бол бичихгүй (бүртгэлтэй мөрийг дарах эрсдэл)');
+  L = await scenario({ rows: [{ id: '1245166926', account_no: '1245166926', active: true, name: 'Миний нэр' }] });
+  eq(L.posts.map(x => x.body.id).join(), '1245166927,1245166928', '⛔ бүртгэлтэй дансыг ДАХИН бичихгүй — захирлын нэр хэвээр');
+  L = await scenario({ rows: [{ id: '1245166927', account_no: '1245166927', active: false }] });
+  eq(L.posts.map(x => x.body.id).join(), '1245166926,1245166928', '⛔ идэвхгүй болгосон (хассан) мөрийг хөндөхгүй, дахин идэвхжүүлэхгүй');
+  L = await scenario({ rows: run('MEVENT_ACCTS').map(a => ({ id: a.account, account_no: a.account, active: true })) });
+  eq(L.posts.length, 0, 'гурвуулаа бүртгэлтэй: юу ч бичихгүй');
+  L = await scenario({ postOk: false });
+  ok(L.posts.length === 1 && L.toasts.length === 0, '⛔ бичилт унавал зогсоно, худал «бүртгэгдлээ» гэж хэлэхгүй (нөөц товч үлдэнэ)');
+  // Нэг сессэд нэг л удаа (loadBankAccounts(true) дахин дуудагдахад давталт үүсэхгүй)
+  L = await scenario({});
+  const before = L.posts.length;
+  await run('loadBankAccounts(true)'); await new Promise(r => setTimeout(r, 30));
+  eq(L.posts.length, before, '⛔ нэг сессэд нэг л удаа — дахин ачаалахад давтан бичихгүй');
+  // Scan: уншилт амжилттай үед л дуудна; бичих ганц зам нь ignore-duplicates
+  const lb = appSrc.slice(appSrc.indexOf('async function loadBankAccounts'), appSrc.indexOf('async function saveBankAccount'));
+  ok(/if \(ra\.ok\) autoRegisterMeventAccounts\(\)/.test(lb), '⛔ авто бүртгэл: ЗӨВХӨН бүртгэлийг амжилттай уншсаны дараа');
+  const ar = appSrc.slice(appSrc.indexOf('async function insertBankAccountIfAbsent'), appSrc.indexOf('async function registerMeventAccounts'));
+  ok(!/12451669\d\d/.test(ar) && /MEVENT_ACCTS\.filter/.test(ar) && /Authorization: 'Bearer ' \+ pgrstBearer\(\)/.test(ar), 'авто бүртгэл: дансны дугаарыг давхардуулахгүй (MEVENT_ACCTS), нэвтэрсэн токеноор');
+})());
+
 // ═══ АЖЛЫН ХУВААРЬ + ХАРИУЦЛАГА (2026-11-02, CEO) ═══════════════════════════════════════════════════════
 // «Ажлын өдөр ирээгүй, хоцорсныг бүртгэж цалингаас хасна. Уучлалт товч хэрэггүй: тасалбал 1.5, хоцорсон минут 2 дахин. Сарын дээд хязгаар
 //  хэрэгжүүлэхгүй. Менежер өдөр/долоо хоног/сараар цаг тавина; ажилтан ирэх цагаа харна.»

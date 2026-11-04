@@ -17960,7 +17960,9 @@ async function submitCateringPayment(id, modal, btn) {
   } catch (e) { btn.disabled = false; showToast(e.conflict ? 'Энэ ажилд хэн нэгэн төлбөр бүртгэсэн байна — юу ч нэмэгдсэнгүй. Дахин «Хадгалах» дарвал шинэ төлөвөөр шалгана' : 'Алдаа: ' + e.message + ' (аль хэдийн бүртгэгдсэн бол давхар нэмэгдэхгүй)', 'error', 5500); }
 }
 /* ========================== КАТЕРИНГ модуль төгсгөл ========================== */
-const _PURPOSE_BADGE = { 'орлого': ['#0f7a3d', 'rgba(16,163,74,.12)'], 'зарлага': ['#b45309', 'rgba(217,119,6,.12)'], 'валют': ['#4338ca', 'rgba(79,70,229,.12)'], 'цалин': ['#9333ea', 'rgba(147,51,234,.12)'], 'татвар': ['#be123c', 'rgba(225,29,72,.12)'] };
+/* Дансны зорилго → шошгоны класс. ⚠ Өнгийг ЭНД БҮҮ бич — `styles.css`-ийн
+   `.acct-purp-*` дүрэмд токеноор (өмнө нь энд 10 хатуу өнгө байсан). */
+const _PURPOSE_BADGE = { 'орлого': 'in', 'зарлага': 'out', 'валют': 'fx', 'цалин': 'pay', 'татвар': 'tax' };
 function _acctByNo(no) { const d = _acctDigits(no); return (state.bankAccounts || []).find(a => _acctDigits(a.account_no || a.id) === d); }
 // Данснаас гарсан зардлын задаргаа (SRC токеноор): шилжүүлэг vs картын зарлага, тоо+дүн.
 function acctSpendStats(a) {
@@ -19021,41 +19023,41 @@ function openDocEditModal(id) {
 function renderBankAccounts() {
   const accts = (state.bankAccounts || []).filter(a => a.active !== false);
   const cards = (state.bankCards || []).filter(c => c.active !== false);
-  const purpBadge = (p) => { const c = _PURPOSE_BADGE[p]; return p ? `<span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:20px;${c ? `color:${c[0]};background:${c[1]};` : 'color:var(--muted);background:var(--panel-hover);'}">${escapeHtml(p)}</span>` : ''; };
+  const purpBadge = (p) => p ? `<span class="acct-purp${_PURPOSE_BADGE[p] ? ' acct-purp-' + _PURPOSE_BADGE[p] : ''}">${escapeHtml(p)}</span>` : '';
   const acctRow = (a) => { const aown = a.owner_key ? memberName(a.owner_key) : (a.owner_name || ''); const st = acctSpendStats(a);
-    const stLine = st && st.n ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">🏦 <b style="color:var(--text);">${st.trN}</b> шилжүүлэг${st.trSum ? ' ' + fmtMoney(st.trSum) : ''}${st.cdN ? ` · 💳 <b style="color:var(--text);">${st.cdN}</b> карт ${fmtMoney(st.cdSum)}` : ''}${st.pendN ? ` · <span style="color:var(--warn);">${st.pendN} ангилаагүй</span>` : ''}</div>` : '';
-    return `<div class="acct-card" data-acct="${escapeHtml(a.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
-      <div style="width:38px;height:38px;border-radius:9px;background:var(--panel-hover);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏦</div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:14px;">${escapeHtml(a.name || 'Нэргүй данс')}</b>${purpBadge(a.purpose)}${aown ? `<span style="font-size:10.5px;color:var(--text);">· 👤 ${escapeHtml(aown)}</span>` : ''}${a.branch ? `<span style="font-size:10.5px;color:var(--muted);">· ${escapeHtml(a.branch)}</span>` : ''}</div>
-        <div style="font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;">${escapeHtml(a.bank || '')} · ${escapeHtml(a.iban || a.account_no || '')}${a.currency && a.currency !== 'MNT' ? ' · ' + escapeHtml(a.currency) : ''}</div>
+    const stLine = st && st.n ? `<div class="acct-st">🏦 <b>${st.trN}</b> шилжүүлэг${st.trSum ? ' ' + fmtMoney(st.trSum) : ''}${st.cdN ? ` · 💳 <b>${st.cdN}</b> карт ${fmtMoney(st.cdSum)}` : ''}${st.pendN ? ` · <span class="acct-pend">${st.pendN} ангилаагүй</span>` : ''}</div>` : '';
+    return `<div class="acct-card" data-acct="${escapeHtml(a.id)}">
+      <div class="acct-ic">🏦</div>
+      <div class="acct-body">
+        <div class="acct-top"><b class="acct-name">${escapeHtml(a.name || 'Нэргүй данс')}</b>${purpBadge(a.purpose)}${aown ? `<span class="acct-who">· 👤 ${escapeHtml(aown)}</span>` : ''}${a.branch ? `<span class="acct-br">· ${escapeHtml(a.branch)}</span>` : ''}</div>
+        <div class="acct-meta acct-nums">${escapeHtml(a.bank || '')} · ${escapeHtml(a.iban || a.account_no || '')}${a.currency && a.currency !== 'MNT' ? ' · ' + escapeHtml(a.currency) : ''}</div>
         ${stLine}
       </div>
-      <span style="font-size:16px;color:var(--muted);">›</span>
+      <span class="acct-go">›</span>
     </div>`; };
-  const cardRow = (c) => { const linked = _acctByNo(c.account_id); const own = c.owner_key ? memberName(c.owner_key) : (c.owner_name || ''); return `<div class="acct-card" data-card="${escapeHtml(c.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
-      <div style="width:46px;height:30px;border-radius:6px;background:linear-gradient(135deg,#1f2430,#3a3f4b);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="width:9px;height:7px;border-radius:2px;background:#e6b800;"></span></div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:14px;font-variant-numeric:tabular-nums;">•••• ${escapeHtml(c.last4 || '????')}</b>${own ? `<span style="font-size:11px;color:var(--text);">${escapeHtml(own)}</span>` : `<span style="font-size:10.5px;color:var(--warn);">эзэн ?</span>`}${c.branch ? `<span style="font-size:10.5px;color:var(--muted);">· ${escapeHtml(c.branch)}</span>` : ''}</div>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${escapeHtml(c.bank || '')}${linked ? ' · ' + escapeHtml(linked.name) : (c.account_id ? ' · данс ' + escapeHtml(c.account_id) : '')}</div>
+  const cardRow = (c) => { const linked = _acctByNo(c.account_id); const own = c.owner_key ? memberName(c.owner_key) : (c.owner_name || ''); return `<div class="acct-card" data-card="${escapeHtml(c.id)}">
+      <div class="acct-plastic"><span class="acct-plastic-chip"></span></div>
+      <div class="acct-body">
+        <div class="acct-top"><b class="acct-name acct-nums">•••• ${escapeHtml(c.last4 || '????')}</b>${own ? `<span class="acct-who">${escapeHtml(own)}</span>` : `<span class="acct-miss">эзэн ?</span>`}${c.branch ? `<span class="acct-br">· ${escapeHtml(c.branch)}</span>` : ''}</div>
+        <div class="acct-meta">${escapeHtml(c.bank || '')}${linked ? ' · ' + escapeHtml(linked.name) : (c.account_id ? ' · данс ' + escapeHtml(c.account_id) : '')}</div>
       </div>
-      <span style="font-size:16px;color:var(--muted);">›</span>
+      <span class="acct-go">›</span>
     </div>`; };
-  return `<div style="max-width:720px;margin:0 auto;padding:4px 2px 40px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 14px;">
-      <div><div style="font-size:20px;font-weight:800;">🏦 Данс & Карт</div><div style="font-size:12px;color:var(--muted);">Компанийн банкны данс, картын бүртгэл. Хуулгаар ангилах нь эндээс данс→салбарыг таьнна.</div></div>
+  return `<div class="ba-wrap">
+    <div class="ba-head">
+      <div><div class="ba-title">🏦 Данс & Карт</div><div class="ba-sub">Компанийн банкны данс, картын бүртгэл. Хуулгаар ангилах нь эндээс данс→салбарыг таьнна.</div></div>
     </div>
     ${state.isCEO && Array.isArray(state.bankAccounts) ? meventSetupHtml(state.bankAccounts) : ''}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px;">
-      <div style="font-size:14px;font-weight:800;">Данснууд <span style="color:var(--muted);font-weight:600;">(${accts.length})</span></div>
+    <div class="ba-sec">
+      <div class="ba-sec-t">Данснууд <span class="ba-sec-n">(${accts.length})</span></div>
       <button class="btn btn-sm" id="ba-add-acct">+ Данс нэмэх</button>
     </div>
-    ${accts.length ? accts.map(acctRow).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Данс бүртгээгүй байна.</div>'}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin:22px 0 8px;">
-      <div style="font-size:14px;font-weight:800;">Картууд <span style="color:var(--muted);font-weight:600;">(${cards.length})</span></div>
+    ${accts.length ? accts.map(acctRow).join('') : '<div class="ba-empty">Данс бүртгээгүй байна.</div>'}
+    <div class="ba-sec ba-sec-2">
+      <div class="ba-sec-t">Картууд <span class="ba-sec-n">(${cards.length})</span></div>
       <button class="btn btn-sm" id="ba-add-card">+ Карт нэмэх</button>
     </div>
-    ${cards.length ? cards.map(cardRow).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Карт бүртгээгүй байна.</div>'}
+    ${cards.length ? cards.map(cardRow).join('') : '<div class="ba-empty">Карт бүртгээгүй байна.</div>'}
   </div>`;
 }
 function attachBankAccountsHandlers() {

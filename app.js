@@ -37589,7 +37589,6 @@ function openBqPaymentModal(oid) {
   const modal = document.createElement('div');
   modal.className = 'modal-bg';
   modal.id = 'bq-pay-modal';
-  const CHIMUN_ACCT = '3635185058';   // Чимун ХХК Голомт данс — баримтын хүлээн авагчтай тулгах
   modal.innerHTML = `<div class="modal bqp-modal">
     <h2>💵 Төлбөр бүртгэх — #${o.number}</h2>
     <div class="bqp-sum">
@@ -37699,7 +37698,7 @@ function openRefundModal(oid) {
     </div>` : ''}
     <label for="rf-pdf" class="rf-drop">📄 <b>Гарах гүйлгээний баримт (PDF)</b>
       <input id="rf-pdf" type="file" accept="application/pdf,.pdf" hidden>
-      <div id="rf-pdf-status" class="rf-drop-status">Чимунээс үйлчлүүлэгч рүү шилжүүлсэн баримт хавсаргана (нотолгоо)</div>
+      <div id="rf-pdf-status" class="rf-drop-status">Эм Эвент Солюшн-оос үйлчлүүлэгч рүү шилжүүлсэн баримт хавсаргана (нотолгоо)</div>
     </label>
     <label class="dmg-amt-l">Тэмдэглэл (шалтгаан)</label>
     <textarea id="rf-note" class="ui-raw" rows="2" placeholder="ж: захиалга цуцлагдсан, илүү төлөлт буцаав"></textarea>
@@ -37768,7 +37767,7 @@ function openRefundModal(oid) {
       const rcv = refundAcctDigits(d.receiverAcct);
       const okAcct = !srcAccts.length || !rcv || srcAccts.some(a => refundAcctDigits(a.acct) === rcv);
       const diff = rfAmtMismatch(moneyVal(amtEl), modal._pdfAmt);
-      statusEl.textContent = `✓ ${f.name}${d.amount ? ' · ' + fmtMoney(d.amount) : ''}${okSender ? '' : ' · ⚠ шилжүүлэгч Чимун биш?'}${okAcct ? '' : ' · ⚠ орлого орсон данс биш (' + d.receiverAcct + ')'}${diff ? ' · ⚠ бичсэн дүн ' + fmtMoney(moneyVal(amtEl)) + ' — баримттай зөрж байна' : ''}`;
+      statusEl.textContent = `✓ ${f.name}${d.amount ? ' · ' + fmtMoney(d.amount) : ''}${okSender ? '' : ' · ⚠ шилжүүлэгч Эм Эвент Солюшн биш?'}${okAcct ? '' : ' · ⚠ орлого орсон данс биш (' + d.receiverAcct + ')'}${diff ? ' · ⚠ бичсэн дүн ' + fmtMoney(moneyVal(amtEl)) + ' — баримттай зөрж байна' : ''}`;
       statusEl.style.color = (okSender && okAcct && !diff) ? 'var(--ok)' : 'var(--warn)';
       syncDiff();
     } catch (err) { modal._pdfAmt = 0; modal._rcpt = null; statusEl.textContent = `✓ ${f.name} (хавсаргав — дүн уншигдсангүй, гараар бичсэн дүнгээр бүртгэнэ)`; statusEl.style.color = 'var(--warn)'; }
@@ -37844,8 +37843,10 @@ async function readIncomeReceipt(file, existing, own) {
   const d = parseBankReceipt(await extractPdfText(file));
   if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
   if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
-  // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
-  if (!receiptReceiverIsUs(d)) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'}${d.receiverAcct ? ' · ' + d.receiverAcct : ''})`);
+  // МАНАЙ ДАНС ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = манайд ИРСЭН гүйлгээ). ⛔ Алдааны мессеж аль компанид ирээгүйг зөв нэрлэнэ:
+  //   M-Event захиалга = Эм Эвент Солюшн ХХК (тусдаа компани), катеринг = Чимун ХХК. Шалгуур өөрөө (`receiptReceiverIsUs`) ижил.
+  const _who = /^mevent:/.test((own && own.tag) || '') ? 'Эм Эвент Солюшн ХХК' : 'Чимун ХХК';
+  if (!receiptReceiverIsUs(d)) throw new Error(`${file.name}: ${_who}-д ирээгүй гүйлгээ (${d.receiverName || '?'}${d.receiverAcct ? ' · ' + d.receiverAcct : ''})`);
   const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
   // ⛔ `own` = {tag, paidRef} — баримтыг бүртгэх захиалга/ажил. Ledger-т эзэн нь ЭНЭ захиалга боловч захиалгын `paid_ref`-д байхгүй
   //    баримт = өмнөх бүртгэл дундаа тасарсан (ledger эзэмшчихээд PATCH унасан, 2026-10-30: №1696/1698/1699/1700) → дахин
@@ -49757,7 +49758,7 @@ function initEvents() {
       const dup = receiptDupReason(d.bankRef || '', fpKey, 'fin:' + state.editingId);
       const r = (state.financeRequests || []).find(x => x.id === state.editingId);
       const req = Number(r && r.amount) || 0;
-      // ЗАРЛАГА = Чимунаас ГАРСАН байх ёстой (орлогын эсрэг чиглэл)
+      // ЗАРЛАГА = манай компанийн (Чимун эсвэл Эм Эвент Солюшн) данснаас ГАРСАН байх ёстой (орлогын эсрэг чиглэл)
       const senderChimun = ourOrgName(d.senderName);
       const receiverChimun = ourOrgName(d.receiverName);
       const wrongDirection = receiverChimun && !senderChimun;
@@ -49771,9 +49772,9 @@ function initEvents() {
       else if (req) lines.push(`<div style="color:var(--danger);">⚠ Дүн ${fmtMoney(d.amount)} ≠ хүсэлтийн ${fmtMoney(req)} (зөрүү ${fmtMoney(Math.abs(d.amount - req))})</div>`);
       else lines.push(`<div style="color:var(--ok);">✓ Дүн ${fmtMoney(d.amount)}</div>`);
       if (dup) lines.push(`<div style="color:var(--danger);">⛔ Энэ баримт өөр гүйлгээнд аль хэдийн ашиглагдсан (${escapeHtml(dup)}) — гүйцэтгэх боломжгүй</div>`);
-      if (wrongDirection) lines.push(`<div style="color:var(--danger);">⚠ Чимун ХҮЛЭЭН АВАГЧ байна — энэ ОРЛОГЫН баримт, зарлагынх биш</div>`);
-      else if (d.senderName && !senderChimun) lines.push(`<div style="color:var(--warn);">⚠ Шилжүүлэгч: ${escapeHtml(d.senderName)} (Чимун биш — өөр данснаас гарсан бол зүгээр)</div>`);
-      else if (senderChimun) lines.push(`<div style="color:var(--ok);">✓ Чимун ХХК-аас гарсан</div>`);
+      if (wrongDirection) lines.push(`<div style="color:var(--danger);">⚠ Манай данс ХҮЛЭЭН АВАГЧ байна — энэ ОРЛОГЫН баримт, зарлагынх биш</div>`);
+      else if (d.senderName && !senderChimun) lines.push(`<div style="color:var(--warn);">⚠ Шилжүүлэгч: ${escapeHtml(d.senderName)} (манай данс биш — өөр данснаас гарсан бол зүгээр)</div>`);
+      else if (senderChimun) lines.push(`<div style="color:var(--ok);">✓ Манай дансаас гарсан</div>`);
       if (receiverMismatch) lines.push(`<div style="color:var(--warn);">⚠ Хүлээн авагч «${escapeHtml(d.receiverName)}» ≠ хүсэлтийн «${escapeHtml(r ? r.beneficiary : '')}»</div>`);
       else if (rcv && ben) lines.push(`<div style="color:var(--ok);">✓ Хүлээн авагч: ${escapeHtml(d.receiverName)}</div>`);
       if (d.date) lines.push(`<div style="color:var(--muted);">Огноо: ${escapeHtml(d.date)}</div>`);
@@ -49792,7 +49793,7 @@ function initEvents() {
       const r0 = (state.financeRequests || []).find(x => x.id === state.editingId);
       const warns = [];
       if (pc && r0 && Number(r0.amount) && pc.amount !== Number(r0.amount)) warns.push(`дүн зөрүүтэй (${fmtMoney(pc.amount)} ≠ ${fmtMoney(r0.amount)})`);
-      if (pc && pc.wrongDirection) warns.push('Чимун ХҮЛЭЭН АВАГЧ байна (орлогын баримт байж магадгүй)');
+      if (pc && pc.wrongDirection) warns.push('Манай данс ХҮЛЭЭН АВАГЧ байна (орлогын баримт байж магадгүй)');
       if (pc && pc.receiverMismatch) warns.push('хүлээн авагч хүсэлтийнхтэй таарахгүй');
       if (warns.length) {
         if (!(await showConfirm('⚠ ' + warns.join(' · ') + '. Зөрүүтэй ч гүйцэтгэсэн гэж тэмдэглэх үү?', { okText: 'Зөрүүтэй ч тэмдэглэ', danger: true }))) return;

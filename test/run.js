@@ -21768,7 +21768,7 @@ async function swFetchTests() {
   ok(/rr === 'err'/.test(sp), 'scan: сүлжээ унахад давхардлын хамгаалалт чимээгүй унтрахгүй');
   eq((sp.match(/method: 'DELETE'/g) || []).length, 0, 'scan: катерингт хатуу устгал алга');
   // PDF шалгуур НЭГ газар (M-Event ба катеринг)
-  eq((src.match(/Чимунд ирээгүй гүйлгээ \(/g) || []).length, 1, 'scan: M-Event/катерингийн PDF шалгуур нэг газар');
+  eq((src.match(/\$\{_who\}-д ирээгүй гүйлгээ \(/g) || []).length, 1, 'scan: M-Event/катерингийн PDF шалгуур нэг газар');
   ok(/readIncomeReceipt\(file, modal\._receipts, \{ tag: 'mevent:#' \+ o\.number, paidRef: o\.paid_ref \}\)/.test(src), 'scan: M-Event төлбөр нийтлэг уншигчийг ашиглаж, эзэмшигчийн тэмдгийг (энэ захиалга) дамжуулна');
   // NOMAAD ажилд мөнгө орохгүй дүрэм ганц функцэд
   ok(/function cateringHasMoney\(j\) \{ return !!j && j\.source !== 'nomaad'; \}/.test(src), 'scan: NOMAAD ажил давхар орлого болохгүй');
@@ -23005,11 +23005,18 @@ async function swFetchTests() {
   r = await readWith({ receiverName: 'ЭМ ЭВЕНТ СОЛЮШН', receiverAcct: 'MN78 0015 00 1245166926' });
   ok(!!r.ok, 'шинэ орлогын данс: IBAN хэлбэрийн баримт бүртгэгдэнэ');
   r = await readWith({ receiverName: 'ЭМ ЭВЕНТ СОЛЮШН', receiverAcct: '1245166925' });
-  ok(!r.ok && /Чимунд ирээгүй/.test(r.err || ''), '⛔ нэг цифр зөрсөн данс руу орсон баримтыг ТАТГАЛЗАНА (нэр ижил байсан ч)');
+  ok(!r.ok && /Чимун ХХК-д ирээгүй/.test(r.err || ''), '⛔ нэг цифр зөрсөн данс руу орсон баримтыг ТАТГАЛЗАНА (нэр ижил байсан ч)');
   r = await readWith({ receiverName: 'Мөнх-Учрал', receiverAcct: '5000000000' });
-  ok(!r.ok && /Чимунд ирээгүй/.test(r.err || ''), '⛔ өөр дансанд ижил нэртэй хүн рүү орсон баримтыг ТАТГАЛЗАНА');
+  ok(!r.ok && /Чимун ХХК-д ирээгүй/.test(r.err || ''), '⛔ өөр дансанд ижил нэртэй хүн рүү орсон баримтыг ТАТГАЛЗАНА');
   r = await readWith({ receiverName: 'Бат', receiverAcct: '1111111111' });
-  ok(!r.ok && /Чимунд ирээгүй/.test(r.err || '') && /1111111111/.test(r.err), 'танихгүй данс: татгалзаж, ямар данс байсныг мессежид хэлнэ');
+  ok(!r.ok && /Чимун ХХК-д ирээгүй/.test(r.err || '') && /1111111111/.test(r.err), 'танихгүй данс: татгалзаж, ямар данс байсныг мессежид хэлнэ');
+  // ⛔ Эм Эвент Солюшн тусдаа компани: M-Event захиалгын баримт татгалзагдахад «Чимун» гэж БУС «Эм Эвент Солюшн ХХК» гэж хэлнэ (катеринг = Чимун)
+  sb.__parsed = Object.assign({}, sb.__parsed, { receiverName: 'Бат', receiverAcct: '1111111111' });
+  const rtag = async (tag) => { try { return { ok: await vm.runInContext(`readIncomeReceipt({ name: "r.pdf" }, [], { tag: ${JSON.stringify(tag)}, paidRef: '' })`, sb) }; } catch (e) { return { err: String(e.message || e) }; } };
+  r = await rtag('mevent:#1700');
+  ok(!r.ok && /Эм Эвент Солюшн ХХК-д ирээгүй гүйлгээ/.test(r.err || '') && !/Чимун/.test(r.err || ''), '⛔ M-Event захиалгын баримт татгалзагдахад «Эм Эвент Солюшн ХХК» гэж нэрлэнэ, «Чимун» биш');
+  r = await rtag('catering:KT-1');
+  ok(!r.ok && /Чимун ХХК-д ирээгүй гүйлгээ/.test(r.err || ''), 'катерингийн баримт татгалзагдахад Чимун ХХК (катеринг = Чимун)');
   // ④ Буулгалт/буцаалт мөн ижил шалгуурыг ашиглана; NOMAAD хөндөгдөөгүй
   ok(!/чимун\/i\.test\(d\.senderName/.test(appSrc.slice(appSrc.indexOf('Чимун нь ИЛГЭЭГЧ байх ёстой'), appSrc.indexOf('Чимун нь ИЛГЭЭГЧ байх ёстой') + 700)) && /receiptSenderIsUs\(d\)/.test(appSrc), 'буулгалт, буцаалт: илгээгчийг дансаар ч таниулна');
   ok(/Чимун ХХК-д ирээгүй гүйлгээ/.test(appSrc) && /\/чимун\/i\.test\(d\.receiverName \|\| ''\)\) throw new Error\(`Чимун ХХК-д/.test(appSrc), 'NOMAAD орлого өмнөх шалгуураа хэвээр (өөрийн данс)');

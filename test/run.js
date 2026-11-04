@@ -1736,11 +1736,13 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
     eq(b.subtotal, 6600000, 'breakdown: subtotal');
     eq(b.delivFee, 150000, 'breakdown: delivFee');
     eq(b.discount, 3300000, 'breakdown: хямдрал total-аас (3.3сая, 4.62сая БИШ)');
-    eq(b.subtotal - b.discount - b.vatDisc + b.delivFee + b.offFee + b.setupFee + b.deposit, b.total, 'breakdown: задаргаа = нийт дүн (үргэлж тэнцэнэ)');
-    // НӨАТ хассан + барьцаатай кейс — мөн тэнцэнэ
+    eq(b.subtotal - b.discount + b.delivFee + b.offFee + b.setupFee + b.deposit, b.total, 'breakdown: задаргаа = нийт дүн (үргэлж тэнцэнэ)');
+    // Хуучин ⟦VAT⟧ (−5%) токентой захиалга + барьцаа — задаргаа МӨН тэнцэнэ (бууралт ердийн хөнгөлөлт болно)
     const o2 = { subtotal_mnt: 1000000, total_mnt: 1075000, deposit_mnt: 200000, note: '⟦DLV|city|0|100000⟧ ⟦VAT|25000⟧' };
     const b2 = F.orderMoneyBreakdown(o2);
-    eq(b2.subtotal - b2.discount - b2.vatDisc + b2.delivFee + b2.offFee + b2.setupFee + b2.deposit, b2.total, 'breakdown: НӨАТ+барьцаатай ч тэнцэнэ');
+    eq(b2.subtotal - b2.discount + b2.delivFee + b2.offFee + b2.setupFee + b2.deposit, b2.total, 'breakdown: хуучин ⟦VAT⟧+барьцаатай ч тэнцэнэ');
+    eq(b2.discount, 225000, 'breakdown: хуучин ⟦VAT⟧-ын бууралт (25k) ердийн хөнгөлөлтөд нэгдэж задарна');
+    ok(!('vat' in b2) && !('hasVat' in b2) && !('vatDisc' in b2), 'breakdown: НӨАТ-ын талбар ОГТ байхгүй (Эм Эвент НӨАТ төлөгч биш)');
   }
   // Тариф fallback (app_config байхгүй үед) — одоогийн утгыг цоожилно (C2, сайттай ижил байх ёстой)
   eq(F.tariffDeliveryCity(), 150000, 'Тариф fallback: хот дотор 150,000');
@@ -3860,35 +3862,26 @@ function finish() {
   st.repairs = saved.rep; st.tasks = saved.tasks;
 }
 
-// 23) Гэрээний НӨАТ мэдэгдэл — нэг хуудсан дээр зөрчилтэй мэдэгдэл ГАРАХГҮЙ
+// 23) Эм Эвент НӨАТ төлөгч БИШ — гэрээнд НӨАТ-ын үг, багана, мөр ХЭЗЭЭ Ч гарахгүй (2026-11-04, CEO)
 {
-  const mkOrder = (vatOff) => ({
+  const mkOrder = (legacyCut) => ({
     number: 1, customer: 'Тест ХХК', order_no: 'ME-1',
     starts_at: '2026-09-10', stops_at: '2026-09-12',
     total_mnt: 500000, deposit_mnt: 0,
     items: [{ name: 'Ширээ', qty: 2, price: 10000, total: 40000 }],
-    note: vatOff ? F.encodeVat(25000) : '',
+    note: legacyCut ? F.encodeVat(25000) : '',
   });
-  const withVat = F.meventContractHtml(mkOrder(false));   // НӨАТ багтсан (өгөгдмөл)
-  const noVat   = F.meventContractHtml(mkOrder(true));    // НӨАТ хасалттай
-
-  // НӨАТ БАГТСАН захиалга
-  ok(withVat.indexOf('НӨАТ багтсан болно') > -1,   'гэрээ/НӨАТ: багтсан үед «багтсан» гэж мэдэгдэнэ');
-  ok(withVat.indexOf('НӨАТ багтаагүй') === -1,     'гэрээ/НӨАТ: багтсан үед «багтаагүй» гарахгүй');
-  ok(/үүнээс НӨАТ [\d,]+₮/.test(withVat),          'гэрээ/НӨАТ: багтсан үед дүн тайлбарт гарна');
-  ok(withVat.indexOf('<td>Үүнээс НӨАТ') === -1,     'гэрээ/НӨАТ: нийлбэрийн баганад мөр болж ОРОХГҮЙ (нэмэгдэх мэт харагдана)');
-  ok(withVat.indexOf('НӨАТ хасалт') === -1,        'гэрээ/НӨАТ: багтсан үед хасалтын мөр гарахгүй');
-
-  // НӨАТ ХАСАГДСАН захиалга — гурван зөрчил давтагдахгүй
-  ok(noVat.indexOf('НӨАТ багтаагүй болно') > -1,   'гэрээ/НӨАТ: хасалттай үед «багтаагүй» гэж мэдэгдэнэ');
-  ok(noVat.indexOf('НӨАТ багтсан болно') === -1,   'гэрээ/НӨАТ: хасалттай үед «багтсан» ЗЭРЭГ гарахгүй');
-  ok(!/үүнээс НӨАТ/i.test(noVat),                  'гэрээ/НӨАТ: хасалттай үед «үүнээс НӨАТ» гарахгүй');
-  ok(noVat.indexOf('НӨАТ хасалт') > -1,            'гэрээ/НӨАТ: хасалттай үед хасалтын мөр гарна');
-
-  // Барааны мөрийн НӨАТ багана хоёр горимд ЭСРЭГ утгатай
-  ok(withVat.indexOf('>багтсан<') > -1,            'гэрээ/НӨАТ: мөрийн багана «багтсан»');
-  ok(noVat.indexOf('>багтаагүй<') > -1,            'гэрээ/НӨАТ: мөрийн багана «багтаагүй»');
-  ok(noVat.indexOf('>багтсан<') === -1,            'гэрээ/НӨАТ: хасалттай үед мөр «багтсан» гэж хэлэхгүй');
+  [['ердийн', mkOrder(false)], ['хуучин ⟦VAT⟧ токентой', mkOrder(true)]].forEach(([nm, ord]) => {
+    const h = F.meventContractHtml(ord);
+    ok(!/НӨАТ|VAT/i.test(h.replace(/<style[\s\S]*?<\/style>/g, '')), 'гэрээ/НӨАТ-гүй (' + nm + '): НӨАТ гэсэн үг ГАРАХГҮЙ');
+    ok(h.indexOf('багтсан<') === -1 && h.indexOf('багтаагүй') === -1, 'гэрээ/НӨАТ-гүй (' + nm + '): мөрийн «багтсан/багтаагүй» багана алга');
+    ok(h.indexOf('vat-note') === -1, 'гэрээ/НӨАТ-гүй (' + nm + '): НӨАТ-ын тайлбар блок алга');
+    ok(h.indexOf('<b>3.1.</b> Төлбөрийн дүнг дээрх задаргаанд тусгав.') > -1, 'гэрээ/НӨАТ-гүй (' + nm + '): 3.1 заалт НӨАТ-гүй');
+  });
+  // Хуучин ⟦VAT⟧ захиалгад бууралт нь ердийн хөнгөлөлт мөр болж, нийт дүн таарна
+  const legacyCt = F.meventContractHtml(Object.assign(mkOrder(true), { total_mnt: 35000 }));
+  ok(legacyCt.indexOf('Хөнгөлөлт:') > -1, 'гэрээ/НӨАТ-гүй: хуучин ⟦VAT⟧ бууралт «Хөнгөлөлт» мөр болно');
+  ok(!/НӨАТ|VAT/i.test(legacyCt.replace(/<style[\s\S]*?<\/style>/g, '')), 'гэрээ/НӨАТ-гүй: хуучин ⟦VAT⟧ бууралттай ч НӨАТ гэсэн үг гарахгүй');
 }
 
 // 24) Гэрээний шинэ найруулга — бүтэц, динамик тариф, батлагдсан цуцлалт
@@ -3927,11 +3920,8 @@ function finish() {
   ok(ct.indexOf('нөөцөөс хамаарна') > -1,                    'гэрээ: сунгалт нөөцөөс хамаарна');
   ok(ct.indexOf('урьдчилгаа буюу бүтэн төлбөр') > -1,        'гэрээ: урьдчилгааны зөрчил арилсан');
 
-  // НӨАТ заалт — захиалгаас хамаарч ЭСРЭГ
-  ok(ct.indexOf('татвар багтсан бөгөөд') > -1,        'гэрээ/НӨАТ: багтсан үед 3.1 «багтсан»');
-  const ctNo = F.meventContractHtml(mk(true));
-  ok(ctNo.indexOf('татвар багтаагүй болно') > -1,     'гэрээ/НӨАТ: хасалттай үед 3.1 «багтаагүй»');
-  ok(ctNo.indexOf('татвар багтсан бөгөөд') === -1,    'гэрээ/НӨАТ: хасалттай үед «багтсан» ЗЭРЭГ гарахгүй');
+  // НӨАТ заалт БАЙХГҮЙ (Эм Эвент НӨАТ төлөгч биш)
+  ok(ct.indexOf('татвар багтсан бөгөөд') === -1 && ct.indexOf('татвар багтаагүй') === -1, 'гэрээ/НӨАТ: 3.1 заалтад «татвар багтсан/багтаагүй» гарахгүй');
 
   // Тариф ДИНАМИК — app_config өөрчлөгдвөл гэрээ дагана (хатуу бичигдээгүй)
   const tierTxt = F.ctTierText();
@@ -15716,15 +15706,13 @@ async function swFetchTests() {
   const t = NT(ord), B = MB(ord);
   eq(t.total, B.total, 'ИНВАРИАНТ: нэхэмжлэхийн нийт = orderMoneyBreakdown');
   eq(t.deposit, B.deposit, 'ИНВАРИАНТ: барьцаа ижил');
-  eq(t.vat, B.vat, 'ИНВАРИАНТ: НӨАТ ижил (дахин бодохгүй)');
+  ok(!('vat' in t) && !('vatIncluded' in t), 'нэхэмжлэх: totals-д НӨАТ-ын талбар ОГТ байхгүй');
   eq(t.due, 170000, 'нэхэмжлэх: үлдэгдэл = нийт − төлсөн');
-  ok(t.vatIncluded, 'нэхэмжлэх: НӨАТ хасалтгүй бол «багтсан»');
 
-  // НӨАТ хасалттай захиалга — НӨАТ ХАРАГДАХГҮЙ
+  // Хуучин ⟦VAT⟧ токентой захиалга — мөн НӨАТ-гүй, дүн нь нийт дүнтэй таарна
   const ordNoVat = Object.assign({}, ord, { note: '⟦VAT|10000⟧' });
   const t2 = NT(ordNoVat);
-  ok(!t2.vatIncluded, 'нэхэмжлэх: НӨАТ хасалттай бол «багтаагүй»');
-  eq(t2.vat, 0, 'нэхэмжлэх: НӨАТ хасалттай захиалгад НӨАТ 0');
+  ok(!('vat' in t2) && !('vatIncluded' in t2), 'нэхэмжлэх: хуучин ⟦VAT⟧ захиалгад ч НӨАТ-ын талбар алга');
 
   // Мөрүүд
   const L = NL(ord);
@@ -15738,15 +15726,14 @@ async function swFetchTests() {
   ok(html.indexOf('НЭХ-2026-0007') > 0, 'нэхэмжлэх: дугаар гарна');
   ok(html.indexOf('Ай Ти ХХК') > 0, 'нэхэмжлэх: төлөгчийн нэр гарна');
   ok(html.indexOf('УК12345678') > 0, 'нэхэмжлэх: төлөгчийн РД гарна');
-  ok(/НӨАТ \(10%, үнэд багтсан\)/.test(html), 'нэхэмжлэх: НӨАТ мөр гарна');
+  ok(!/НӨАТ|VAT/i.test(html.replace(/<style[\s\S]*?<\/style>/g, '')), 'нэхэмжлэх: НӨАТ гэсэн үг ГАРАХГҮЙ (Эм Эвент НӨАТ төлөгч биш)');
   ok(html.indexOf('ҮЛДЭГДЭЛ') > 0, 'нэхэмжлэх: төлсөн байвал үлдэгдэл гарна');
   ok(/Дүн үсгээр/.test(html), 'нэхэмжлэх: дүн үсгээр бичигдэнэ');
   ok(html.indexOf(vm.runInContext('CHIMUN_LEGAL', sandbox).account) > 0, 'нэхэмжлэх: төлөх данс гарна');
 
   const html2 = NH({ no: 'НЭХ-2026-0008', issuedAt: '2026-09-13',
                      buyer: b3, lines: [], t: t2, org: vm.runInContext('CHIMUN_LEGAL', sandbox) });
-  ok(/НӨАТ багтаагүй/.test(html2), 'нэхэмжлэх: НӨАТ хасалттайд «багтаагүй» гэж бичнэ');
-  ok(!/10%, үнэд багтсан/.test(html2), 'нэхэмжлэх: НӨАТ хасалттайд НӨАТ-ын дүн ГАРАХГҮЙ');
+  ok(!/НӨАТ|VAT/i.test(html2.replace(/<style[\s\S]*?<\/style>/g, '')), 'нэхэмжлэх: хуучин ⟦VAT⟧ захиалгад ч НӨАТ гэсэн үг гарахгүй');
   ok(/Захиалгад бараа оруулаагүй/.test(html2), 'нэхэмжлэх: мөргүй бол тайлбар гарна');
 
   // XSS — харилцагчийн нэр escape хийгдэнэ
@@ -22853,6 +22840,20 @@ async function swFetchTests() {
   // ⛔ Хуучин хувийн данс зөвхөн ТАНИХАД — үнийн санал/нэхэмжлэхийн кодод ХЭЗЭЭ Ч хэвлэгдэхгүй
   ok(!/MEVENT_PAY_LEGACY/.test(src.slice(src.indexOf('async function buildOrderQuote'), src.indexOf('async function buildOrderQuote') + 14000)), '⛔ үнийн санал: хуучин хувийн данс (MEVENT_PAY_LEGACY) хэвлэгдэхгүй');
   ok(!/MEVENT_PAY_LEGACY/.test(src.slice(src.indexOf('function invoiceOrg'), src.indexOf('async function issueInvoice'))), '⛔ нэхэмжлэх: хуучин хувийн данс хэвлэгдэхгүй');
+
+  // ⛔ Эм Эвент Солюшн НӨАТ ТӨЛӨГЧ БИШ (2026-11-04, CEO): үнийн санал (мн/ен) дээр НӨАТ-ын үг, «багтсан/багтаагүй» ХЭЗЭЭ Ч гарахгүй
+  for (const lang of ['mn', 'en']) {
+    // data: URI (логоны base64) дотор санамсаргүй «VAT» үсэг таарахаас сэргийлж хасна
+    const html = String(await run(`buildOrderQuote(docBlankMeventOrder(), '${lang}')`)).replace(/<style[\s\S]*?<\/style>/g, '').replace(/data:[^"')\s]+/g, '');
+    ok(!/НӨАТ|\bVAT\b/i.test(html), `⛔ үнийн санал (${lang}): НӨАТ/VAT гэсэн үг ГАРАХГҮЙ (НӨАТ төлөгч биш)`);
+    ok(!/багтсан|багтаагүй|included/i.test(html), `⛔ үнийн санал (${lang}): «багтсан/багтаагүй» гэсэн үг гарахгүй`);
+  }
+  // Захиалгын цонх, жагсаалт: НӨАТ-ын сонголт, шүүлт, «баримт холбох» товч байхгүй
+  const _onoSrc = src.slice(src.indexOf('function openNewOrder'), src.indexOf('function openNewOrder') + 60000);
+  ok(!/НӨАТ хасах/.test(_onoSrc), '⛔ захиалгын цонх: «НӨАТ хасах» сонголт байхгүй');
+  ok(/isEdit && parseVat\(editOrder\.note\) != null/.test(_onoSrc), 'захиалгын цонх: хуучин ⟦VAT⟧ токентой захиалгад л −5% хэвээр үлдэнэ (дүн чимээгүй өөрчлөгдөхгүй)');
+  ok(!/orders-vat|ordersVat|НӨАТ-тэй|НӨАТ-гүй'\]/.test(src.slice(src.indexOf('function renderOrders'), src.indexOf('function renderOrders') + 12000)), '⛔ захиалгын жагсаалт: НӨАТ шүүлт байхгүй');
+  ok(/type === 'event' \? ''/.test(src.slice(src.indexOf('function vatOrderRow'), src.indexOf('function vatOrderRow') + 900)), '⛔ M-Event захиалгын карт: «НӨАТ баримт холбох» товч гарахгүй');
 })());
 
 // ═══ НЭХЭМЖЛЭХИЙН ДАНС + ГЭРЭЭГ ИМЭЙЛЭЭР ИЛГЭЭДЭГ БОЛГОХ (2026-10-20, CEO) ═══════════════════════

@@ -11271,29 +11271,27 @@ function renderOrders() {
   const _sel = (id, cur, opts) => `<select id="${id}" class="ofilt-sel">${opts.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>`;
   const yms = [...new Set(combined.map(e => e.ym).filter(Boolean))].sort().reverse();
   const ymF = state.ordersYM || '';
-  const payF = state.ordersPay || '', depF = state.ordersDep || '', custF = state.ordersCust || '', vatF = state.ordersVat || '';
+  const payF = state.ordersPay || '', depF = state.ordersDep || '', custF = state.ordersCust || '';
   const sortSelect = _sel('orders-sort', state.ordersSort, ORDER_SORT_OPTS);
   const ymSelect = _sel('orders-ym', ymF, [['', 'Бүх хугацаа']].concat(yms.map(m => [m, m])));
   const paySelect = _sel('orders-pay', payF, [['', 'Төлбөр: бүгд'], ['unpaid', 'Төлөгдөөгүй'], ['partial', 'Дутуу'], ['paid', 'Бүрэн']]);
   const depSelect = _sel('orders-dep', depF, [['', 'Барьцаа: бүгд'], ['held', 'Барьцаатай'], ['returned', 'Буцаасан'], ['none', 'Барьцаагүй']]);
   const custSelect = _sel('orders-cust', custF, [['', 'Харилцагч: бүгд'], ['person', 'Хувь хүн'], ['org', 'Байгууллага']]);
-  const vatSelect = _sel('orders-vat', vatF, [['', 'НӨАТ: бүгд'], ['vat', 'НӨАТ-тэй'], ['novat', 'НӨАТ-гүй']]);
-  const _activeF = [ymF, payF, depF, custF, vatF].filter(Boolean).length;
+  const _activeF = [ymF, payF, depF, custF].filter(Boolean).length;
   const _fOpen = !!state.ordersFiltOpen;
   const controls = `<div class="orders-controls">
     <div class="ofilt-bar">
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
       <button type="button" class="ofilt-toggle${_fOpen ? ' on' : ''}" id="orders-filt-toggle">⚙ Шүүлт${_activeF ? `<span class="ofilt-n">${_activeF}</span>` : ''}</button>
     </div>
-    <div class="ofilt-body${_fOpen ? ' on' : ''}">${sortSelect}${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect + vatSelect}${state.isCEO ? `<button type="button" class="btn ofilt-tool" id="orders-acct-fix" title="Барьцаатай захиалгуудын хадгалсан PDF-ийг дахин уншиж, дутуу дансыг нөхнө">${rowIcon('refresh')}Баримтаас данс нөхөх</button>` : ''}</div>
+    <div class="ofilt-body${_fOpen ? ' on' : ''}">${sortSelect}${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect}${state.isCEO ? `<button type="button" class="btn ofilt-tool" id="orders-acct-fix" title="Барьцаатай захиалгуудын хадгалсан PDF-ийг дахин уншиж, дутуу дансыг нөхнө">${rowIcon('refresh')}Баримтаас данс нөхөх</button>` : ''}</div>
   </div>`;
 
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
   // Фасет предикатууд — Барьцаа / Харилцагч / НӨАТ
   const depMatch = (e) => { if (!depF) return true; const amt = Number(e.o.deposit_mnt) || 0; if (depF === 'none') return amt <= 0; if (amt <= 0) return false; const ret = !!depositReturnState(e.o); return depF === 'returned' ? ret : depF === 'held' ? !ret : true; };
   const custMatch = (e) => !custF || orderCustType(e.o) === custF;
-  const vatMatch = (e) => { if (!vatF) return true; const has = (typeof vatForOrder === 'function') && vatForOrder(e.o.number).count > 0; return vatF === 'vat' ? has : !has; };
-  const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF) && depMatch(e) && custMatch(e) && vatMatch(e));
+  const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF) && depMatch(e) && custMatch(e));
   const _sortFns = {
     // ⏱ Хугацаагаар — жагсаалтын DEFAULT. Бүлгийн дараалал (хэтэрсэн→өнөөдөр→маргааш→…)
     // нь orderListHtml-ийн гарчиг мөрүүдтэй ЯГ ижил тул эрэмбэ = бүлэглэлт.
@@ -11475,7 +11473,6 @@ function attachOrdersHandlers() {
   document.getElementById('orders-pay')?.addEventListener('change', (e) => { state.ordersPay = e.target.value; render(); });
   document.getElementById('orders-dep')?.addEventListener('change', (e) => { state.ordersDep = e.target.value; render(); });
   document.getElementById('orders-cust')?.addEventListener('change', (e) => { state.ordersCust = e.target.value; render(); });
-  document.getElementById('orders-vat')?.addEventListener('change', (e) => { state.ordersVat = e.target.value; render(); });
 
   // Захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openBqPaymentModal(b.dataset.bqPay); }));
@@ -24250,7 +24247,7 @@ function invoiceBuyer(o, customer) {
 
 // Дүн — `orderMoneyBreakdown` -оос Л гарна. ⚠ Энд дахин БҮҮ бод: үнийн санал,
 // гэрээ, карт бүгд тэр функцээс уншдаг тул зөрвөл харилцагч 2 өөр тоо харна.
-// `hasVat` = НӨАТ-ын 5% хөнгөлөлт хийгдсэн → үнэд НӨАТ БАГТААГҮЙ гэсэн үг.
+// ⛔ Эм Эвент Солюшн НӨАТ төлөгч БИШ — нэхэмжлэхэд НӨАТ-ын мөр, «багтсан» гэх үг гарахгүй.
 function invoiceTotals(o) {
   const B = orderMoneyBreakdown(o || {});
   const paid = Number((o && o.paid_mnt) || 0);
@@ -24258,8 +24255,6 @@ function invoiceTotals(o) {
     subtotal: B.subtotal, discount: B.discount,
     delivFee: B.delivFee, delivLbl: B.delivLbl, offFee: B.offFee, setupFee: B.setupFee,
     rental: B.rentalNet, deposit: B.deposit, total: B.total,
-    vatIncluded: !B.hasVat,
-    vat: B.hasVat ? 0 : B.vat,
     paid, due: Math.max(0, B.total - paid),
     days: B.days,
   };
@@ -24328,9 +24323,6 @@ function invoiceHtml(d) {
     ${Number(t.delivFee) > 0 ? row('Хүргэлт' + (t.delivLbl ? ' (' + t.delivLbl + ')' : ''), t.delivFee) : ''}
     ${Number(t.offFee) > 0 ? row('Ажлын бус цагийн төлбөр', t.offFee) : ''}
     ${Number(t.setupFee) > 0 ? row('Суурилуулалт', t.setupFee) : ''}
-    ${t.vatIncluded
-      ? `<tr class="vat"><td>Үүнээс НӨАТ (10%, үнэд багтсан)</td><td class="rt">${m(t.vat)}</td></tr>`
-      : '<tr class="vat"><td colspan="2">НӨАТ багтаагүй</td></tr>'}
     ${Number(t.deposit) > 0 ? row('Барьцаа (буцаагдана)', t.deposit) : ''}
     <tr class="grand"><td>НИЙТ ТӨЛӨХ</td><td class="rt">${m(t.total)}</td></tr>
     ${Number(t.paid) > 0 ? row('Төлсөн', -Number(t.paid), 'neg') : ''}
@@ -24436,7 +24428,6 @@ function invoiceDocHtml(d) {
   .tot{width:100%;border-collapse:collapse;margin-bottom:12px;}
   .tot td{border:1px solid #bbb;padding:5px 8px;font-size:12px;}
   .tot .grand td{font-weight:700;background:#f0f0f0;font-size:13px;}
-  .tot .vat td{color:#555;font-size:11px;}
   .neg td{color:#b3261e;}
   .rt{text-align:right;white-space:nowrap;} .ctr{text-align:center;} .muted{color:#777;}
   .words{font-size:12px;margin-bottom:12px;}
@@ -24746,13 +24737,13 @@ function meventContractHtml(o, opts) {
   const uPrice = it => Number(it.price != null ? it.price : it.unit_price) || 0;
   const qty = it => Number(it.qty != null ? it.qty : it.quantity) || 0;
   const days = orderRentalDays(o);   // C10: каноны хоног тоолол (гэрээ/сайт/квот нэг дүрэм)
-  // Мөрийн түрээсийн дүн = нэгж үнэ × тоо × хоног (НӨАТ багтсан) — үнийн саналтай ЯГ ижил.
+  // Мөрийн түрээсийн дүн = нэгж үнэ × тоо × хоног — үнийн саналтай ЯГ ижил.
   const lineOf = it => Number(it.total) || itemRentLine(it, days);   // багц = N хоногийн тогтмол дүн
   // ⭐ Мөнгөний задаргаа — ГАНЦ эх сурвалж orderMoneyBreakdown (үнийн санал/картатай ЯГ ижил тоо).
   const _B = orderMoneyBreakdown(o);
-  const subtotal = _B.subtotal, discount = _B.discount, vatDisc = _B.vatDisc, hasVat = _B.hasVat,
+  const subtotal = _B.subtotal, discount = _B.discount,
     delivFee = _B.delivFee, delivLbl = _B.delivLbl, offFee = _B.offFee, setupFee = _B.setupFee,
-    deposit = _B.deposit, rentalNet = _B.rentalNet, vat = _B.vat, total = _B.total;
+    deposit = _B.deposit, rentalNet = _B.rentalNet, total = _B.total;
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/холбоо барих/газрын зураг) + хүргэлтийн хаяг
   const _ci = _ciP;   // дээр нэг л удаа задалсан (гэрээний талыг тодорхойлоход хэрэгтэй байсан)
   // ⚠ «Холбоо барих» талбар нь ДОТООД тэмдэглэл болж бичигддэг («фб холбогдсон», «viber-ээр
@@ -24766,11 +24757,11 @@ function meventContractHtml(o, opts) {
   const contractNo = escapeHtml(o.contract_no || '');
   // Хавсралтын нэр харилцагчид харагдана — «Түрээсийн гэрээ Б.Ариун 1700» (цэг хадгална: «Б.Ариун» → «БАриун» болохгүй)
   const fname = ('Түрээсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё .\-]/g, '').replace(/\s+/g, ' ').trim();
-  // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
+  // Мөр бүр бодит түрээсийн дүн — үнийн саналын "Дүн" баганатай яг таарна.
   const itemRows = items.length ? items.map((it, i) => {
     const line = lineOf(it);
-    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}${itemBundleDays(it) ? ` <span class="muted">(${bundleDaysLabel(it)})</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">${hasVat ? 'багтаагүй' : 'багтсан'}</td><td class="rt">${fmtMoney(line)}</td></tr>`;
-  }).join('') : `<tr><td colspan="6" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
+    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}${itemBundleDays(it) ? ` <span class="muted">(${bundleDaysLabel(it)})</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="rt">${fmtMoney(line)}</td></tr>`;
+  }).join('') : `<tr><td colspan="5" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
   // Нөхөн төлбөрийн үнэлгээ — products.market_value-аас. Заалт 7.3 ҮҮНИЙГ иш татна.
   // Үнэлгээгүй бараа мөрөнд «—» гарна: юу дутуу байгаа нь гэрээнээс шууд харагдана.
   // ⛔ Багц нь өөрөө үнэлгээгүй — нөхөн төлбөр БҮРЭЛДЭХҮҮН бүр дээр (`expandOrderLines`).
@@ -24794,18 +24785,16 @@ function meventContractHtml(o, opts) {
     ${mvTotal > 0 ? `<tr><td colspan="4" class="rt sum">Нийт үнэлгээ:</td><td class="rt sum">${fmtMoney(mvTotal)}</td></tr>` : ''}</table>
     ${mvMissing ? '<p class="mv-note">«—» тэмдэгтэй бараанд заалт 7.3-ын дагуу тухайн үеийн зах зээлийн ханшаар тооцно.</p>' : ''}` : '';
 
-  const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="ctr">НӨАТ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
+  const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
     <table class="totb"><tbody>
       <tr><td>Түрээсийн дүн:</td><td class="rt">${fmtMoney(subtotal)}</td></tr>
       ${discount > 0 ? `<tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
-      ${hasVat ? `<tr><td>− НӨАТ хасалт (5%):</td><td class="rt">−${fmtMoney(vatDisc)}</td></tr>` : ''}
       ${delivFee > 0 ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
       ${offFee > 0 ? `<tr><td>🌙 Ажлын бус цаг:</td><td class="rt">${fmtMoney(offFee)}</td></tr>` : ''}
       ${setupFee > 0 ? `<tr><td>🔧 Суурилуулалт / угсралт:</td><td class="rt">${fmtMoney(setupFee)}</td></tr>` : ''}
       ${deposit > 0 ? `<tr><td>Барьцаа төлбөр (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
       <tr class="tb-total"><td>Төлбөр (нийт):</td><td class="rt">${fmtMoney(total)}</td></tr>
     </tbody></table>
-    <div class="vat-note">${hasVat ? 'Дээрх үнэд НӨАТ багтаагүй болно.' : `Дээрх үнэд НӨАТ багтсан болно (үүнээс НӨАТ ${fmtMoney(vat)}).`}</div>
 `;
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -24835,7 +24824,6 @@ function meventContractHtml(o, opts) {
   .totb td{padding:3px 10px}
   .totb td.rt{text-align:right;white-space:nowrap;min-width:120px}
   .totb .tb-total td{font-weight:700;font-size:13.5px;border-top:2px solid #333}
-  .vat-note{text-align:right;font-size:12px;color:#555;margin:4px 0 0}
   .mv-h{font-weight:700;font-size:12.5px;margin:16px 0 4px}
   .mv-note{font-size:11.5px;color:#444}
   .tbwarn{margin-top:6px;font-size:12px;color:#b45309}
@@ -24876,7 +24864,7 @@ function meventContractHtml(o, opts) {
   <p><b>2.3.</b> Олон хоногийн түрээсэд гэрээ байгуулах өдөр мөрдөж буй дараах хөнгөлөлтийг түрээсийн дүнд тооцно: ${ctTierText()}.</p>
 
   <h2>ГУРАВ. ТӨЛБӨР</h2>
-  <p><b>3.1.</b> ${hasVat ? 'Гэрээнд заасан үнэд нэмэгдсэн өртгийн албан татвар багтаагүй болно.' : 'Гэрээнд заасан үнэд нэмэгдсэн өртгийн албан татвар багтсан бөгөөд Түрээслүүлэгч төлбөрийн баримтыг хууль тогтоомжийн дагуу олгоно.'}</p>
+  <p><b>3.1.</b> Төлбөрийн дүнг дээрх задаргаанд тусгав.</p>
   <p><b>3.2.</b> Талууд урьдчилгаа төлбөрөөр тохирч болно. Энэ тохиолдолд үлдэгдэл төлбөрийг бараа, төхөөрөмжийг хүлээлгэн өгөхөөс өмнө бүрэн төлнө.</p>
   <p><b>3.3.</b> Хүргэлтийн төлбөрийг хот дотор тогтмол дүнгээр, хотоос гадуур нэг талын зайн километр тутмаар тооцох бөгөөд дүнг дээрх задаргаанд тусгав.</p>
   <p><b>3.4.</b> Түрээслүүлэгчийн ажлын цаг ${_pad2(tariffWorkStart())}:00–${_pad2(tariffWorkEnd())}:00 байна. Хүлээлгэн өгөх, буцаан авах ажиллагаа ажлын бус цагт хийгдвэл эхний цагт <b>${fmtMoney(tariffOffhoursFirstFee())}</b>, цаашилбал цаг тутамд <b>${fmtMoney(tariffOffhoursFee())}</b> нэмэлт төлбөр тооцно.</p>
@@ -35378,7 +35366,7 @@ function openNewOrder(editOrder) {
       <button class="btn" id="no-close" style="padding:5px 10px;">✕</button>
     </div>
     <div class="no-hint">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
-    ${_locked ? `<div class="no-lock">🔒 <b>${escapeHtml(_lockedMonth)} сар хаагдсан</b> — мөнгөний нөхцөл (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо) өөрчлөгдөхгүй. Холбоо/РД/дуусах огноо/тэмдэглэл засагдана. Засах шаардлагатай бол CEO сарыг нээнэ.</div>`
+    ${_locked ? `<div class="no-lock">🔒 <b>${escapeHtml(_lockedMonth)} сар хаагдсан</b> — мөнгөний нөхцөл (бараа·үнэ·хөнгөлөлт·барьцаа·эхлэх огноо) өөрчлөгдөхгүй. Холбоо/РД/дуусах огноо/тэмдэглэл засагдана. Засах шаардлагатай бол CEO сарыг нээнэ.</div>`
       : (_hadPay ? `<div class="no-editwarn">✎ Төлбөр бүртгэгдсэн захиалга. Бараа/үнэ/барьцаа өөрчлөвөл <b>шалтгаан асууна</b> ба түүхэнд үлдэнэ.</div>` : '')}
     <div class="no-grid">
     <div class="no-col no-col-a">
@@ -35450,9 +35438,13 @@ function openNewOrder(editOrder) {
       <input type="checkbox" id="no-loyalty" checked style="width:17px;height:17px;flex:none;">
       <label for="no-loyalty" style="cursor:pointer;margin:0;">🎁 <b>Байнгын үйлчлүүлэгч</b> — <span id="no-loyalty-pct">10</span>% хөнгөлөлт автоматаар</label>
     </div>
-    <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:var(--fs-sm);cursor:pointer;">
-      <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
-    </label>
+    ${isEdit && parseVat(editOrder.note) != null
+      /* ⛔ Эм Эвент НӨАТ төлөгч БИШ: шинэ захиалгад НӨАТ-ын сонголт ОГТ байхгүй. Хуучин ⟦VAT⟧ токентой захиалгын −5% бууралт
+         нийт дүнд аль хэдийн орсон тул засахад дүн чимээгүй өөрчлөгдөхгүйн тулд л үлдсэн (НӨАТ гэж нэрлэхгүй). */
+      ? `<label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:var(--fs-sm);cursor:pointer;">
+      <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">Өмнө өгсөн −5% бууралт хэвээр (хуучин захиалга)
+    </label>`
+      : '<input type="checkbox" id="no-vat" hidden>'}
     ${_sec('📝 Тэмдэглэл')}
     ${_notes0.length ? `<div class="ord-note-log" style="margin-bottom:8px;">${_notes0.slice().reverse().map(n => `<div class="ord-note-item"><div class="ord-note-meta">${escapeHtml(memberName(n.by) || n.by || '?')} · ${escapeHtml(String(n.at || '').slice(0, 10))}</div><div class="ord-note-text">${escapeHtml(n.text || '')}</div></div>`).join('')}</div>` : ''}
     <textarea id="no-note" class="ui-raw" rows="2" maxlength="${ORDER_NOTE_MAX}" placeholder="Чөлөөт тэмдэглэл — бичсэн хүн, огноо автоматаар хадгалагдана" style="width:100%;box-sizing:border-box;margin-bottom:12px;"></textarea>
@@ -35464,7 +35456,7 @@ function openNewOrder(editOrder) {
       <div class="no-sum-row muted" id="no-bundlerow" hidden><span>📦 Багц (хоногийн тогтмол үнэ)</span><span id="no-bundle">0₮</span></div>
       <div class="no-sum-row"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
       <div class="no-sum-row muted"><span id="no-disc-lbl">Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
-      <div class="no-sum-row" id="no-vatrow" style="display:none;color:var(--danger);"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
+      <div class="no-sum-row" id="no-vatrow" style="display:none;color:var(--danger);"><span>− Өмнө өгсөн бууралт (5%)</span><span id="no-vat-amt">0₮</span></div>
       <div class="no-sum-row muted"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
       <div class="no-sum-row muted" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
       <div class="no-sum-row muted" id="no-offhrow" style="display:none;"><span>🌙 + Ажлын бус цаг</span><span id="no-offh">0₮</span></div>
@@ -35673,9 +35665,9 @@ function openNewOrder(editOrder) {
       ? orderDiscountAmount(subtotal, days, dtype, dval, _autoBase)   // C3: авто-хоног ба гар хямдралын их нь (сувагаар парити)
       : orderDiscountAmount(subtotal, days, 'amount', _fromFinal, _autoBase);
     const rentalNet = Math.max(0, subtotal - discount);
-    const vatDisc = vatOff ? Math.round(rentalNet * 0.05) : 0;   // НӨАТ хасалт — хямдарсан түрээсээс 5% (барьцаа/хүргэлтээс хасагдахгүй)
+    const vatDisc = vatOff ? Math.round(rentalNet * 0.05) : 0;   // зөвхөн ХУУЧИН ⟦VAT⟧ захиалгын −5% (шинэ захиалгад vatOff үргэлж false)
     _discNow = discount;   // ХАДГАЛАХАД ДАХИН БОДОХГҮЙ — дэлгэц дээр харсан тоо хадгалагдана
-    const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee + offFee + setupFee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ + АЖЛЫН БУС ЦАГ + СУУРИЛУУЛАЛТ
+    const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee + offFee + setupFee;   // Нийт = түрээс − хөнгөлөлт − (хуучин −5%) + БАРЬЦАА + ХҮРГЭЛТ + АЖЛЫН БУС ЦАГ + СУУРИЛУУЛАЛТ
     $('#no-perday').textContent = fmtMoney(perDay);
     { const _br = $('#no-bundlerow'); if (_br) { _br.hidden = !(_bundleSub > 0); $('#no-bundle').textContent = fmtMoney(_bundleSub); } }
     $('#no-days').textContent = days + ' хоног';
@@ -36722,10 +36714,10 @@ const MEV_QUOTE_T = {
     contactHead: 'Таны захиалга хариуцсан ажилтан', email: 'И-мэйл', web: 'Веб', warehouse: 'Агуулах хаяг',
     ref: (n) => `Захиалга ${n}`, days: (d) => `${d} хоног`,
     subtotal: (d) => `Түрээсийн дүн (${d} хоног)`,
-    discount: 'Хөнгөлөлт', vatCut: 'НӨАТ хасалт (−5%)', delivery: 'Хүргэлт',
-    offHours: '🌙 Ажлын бус цаг', offHoursMail: (m) => ` · Ажлын бус цаг ${m}`,
+    discount: 'Хөнгөлөлт', delivery: 'Хүргэлт',
+    offHours: '🌙 Ажлын бус цаг', offHoursMail: (m) => `Ажлын бус цаг ${m}`,
     depositRow: 'Барьцаа (буцаах)', grand: 'Нийт дүн',
-    terms: 'Нөхцөл', vatIn: 'НӨАТ багтсан', vatOut: 'НӨАТ багтаагүй',
+    terms: 'Нөхцөл',
     payConfirm: 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
     depositBack: 'Барьцаа буцаан олгогдоно.',
     subject: (n) => `M-Event · Үнийн санал №${n}`,
@@ -36734,7 +36726,7 @@ const MEV_QUOTE_T = {
     intro: 'M-Event түрээсийн үйлчилгээг сонирхож байгаад баярлалаа. Таны хүсэлтийн дагуу үнийн саналыг илгээж байна. Дэлгэрэнгүй задаргаа, нөхцөлийг хавсралт PDF файлаас үзнэ үү.',
     quoteNo: (n) => `Үнийн санал №${n}`,
     validPeriod: 'Хүчинтэй хугацаа', rentalPeriod: 'Түрээсийн хугацаа',
-    depositMail: (m) => ` · Барьцаа ${m} (буцаан олгогдоно)`,
+    depositMail: (m) => `Барьцаа ${m} (буцаан олгогдоно)`,
     confirmHead: 'Захиалга баталгаажуулах',
     bank: 'Банк', acctNo: 'Дансны дугаар',
     regards: 'Хүндэтгэсэн,', fileBase: 'Үнийн санал',
@@ -36752,10 +36744,10 @@ const MEV_QUOTE_T = {
     contactHead: 'Your order contact', email: 'E-mail', web: 'Web', warehouse: 'Warehouse address',
     ref: (n) => `Order ${n}`, days: (d) => `${d} day${d === 1 ? '' : 's'}`,
     subtotal: (d) => `Rental subtotal (${d} day${d === 1 ? '' : 's'})`,
-    discount: 'Discount', vatCut: 'VAT deduction (−5%)', delivery: 'Delivery',
-    offHours: '🌙 After-hours fee', offHoursMail: (m) => ` · After-hours ${m}`,
+    discount: 'Discount', delivery: 'Delivery',
+    offHours: '🌙 After-hours fee', offHoursMail: (m) => `After-hours ${m}`,
     depositRow: 'Deposit (refundable)', grand: 'Total',
-    terms: 'Terms', vatIn: 'VAT included', vatOut: 'VAT not included',
+    terms: 'Terms',
     payConfirm: 'The order is confirmed once payment is received.',
     depositBack: 'The deposit is refunded after return.',
     subject: (n) => `M-Event · Quotation #${n}`,
@@ -36763,7 +36755,7 @@ const MEV_QUOTE_T = {
     intro: 'Thank you for your interest in M-Event rental services. Please find our quotation below. A full breakdown and the terms are in the attached PDF.',
     quoteNo: (n) => `Quotation #${n}`,
     validPeriod: 'Valid until', rentalPeriod: 'Rental period',
-    depositMail: (m) => ` · Deposit ${m} (refundable)`,
+    depositMail: (m) => `Deposit ${m} (refundable)`,
     confirmHead: 'Confirming your order',
     bank: 'Bank', acctNo: 'Account number',
     regards: 'Best regards,', fileBase: 'Quotation',
@@ -36821,16 +36813,16 @@ function orderMoneyBreakdown(o) {
   const offFee = orderOffHoursFee(o);
   const setupFee = setupFeeOf(o.note);
   const deposit = Number(o.deposit_mnt) || 0;
-  const _vat = parseVat(o.note), hasVat = _vat != null, vatDisc = hasVat ? _vat : 0;
+  // ⛔ ЭМ ЭВЕНТ СОЛЮШН НӨАТ ТӨЛӨГЧ БИШ (2026-11-04, CEO): баримтад НӨАТ-ын мөр, «НӨАТ багтсан» гэх үг ХЭЗЭЭ Ч гарахгүй.
+  //   Хуучин ⟦VAT⟧ (−5%) токентой захиалгын бууралт нь нийт дүнд аль хэдийн орсон тул ЕРДИЙН хөнгөлөлт болж задарна
+  //   (мөрүүд нийт дүнтэй ҮРГЭЛЖ тэнцэнэ).
   const totRaw = Number(o.total_mnt) || 0;
   const discount = totRaw > 0
-    ? quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, vatDisc, totRaw)
+    ? quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, 0, totRaw)
     : (o.discount_value ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, Number(o.discount_value)) / 100) : Math.min(subtotal, Number(o.discount_value))) : 0);
   const rentalNet = totRaw > 0 ? Math.max(0, totRaw - deposit) : Math.max(0, subtotal - discount + delivFee + offFee + setupFee);
   const total = totRaw > 0 ? totRaw : (rentalNet + deposit);
-  const preVat = Math.round(rentalNet / 1.1);
-  const vat = rentalNet - preVat;
-  return { days, subtotal, discount, vatDisc, hasVat, delivFee, delivLbl, offFee, setupFee, deposit, rentalNet, vat, total };
+  return { days, subtotal, discount, delivFee, delivLbl, offFee, setupFee, deposit, rentalNet, total };
 }
 async function buildOrderQuote(o, lang) {
   const C = meventLegal(), QP = MEVENT_PAY, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
@@ -36854,8 +36846,7 @@ async function buildOrderQuote(o, lang) {
   // ⭐ Мөнгөний задаргаа — ГАНЦ эх сурвалж orderMoneyBreakdown (гэрээ/картатай ЯГ ижил тоо).
   const _B = orderMoneyBreakdown(o);
   const subtotal = _B.subtotal, total = _B.total, deposit = _B.deposit, setupFee = _B.setupFee,
-    delivFee = _B.delivFee, delivLbl = _B.delivLbl, offFee = _B.offFee, discount = _B.discount,
-    hasVat = _B.hasVat, vatDiscount = _B.vatDisc;
+    delivFee = _B.delivFee, delivLbl = _B.delivLbl, offFee = _B.offFee, discount = _B.discount;
   const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
   const period = (o.starts_at || o.stops_at) ? `${_dt(orderDateTime(o.starts_at, o.note, false))} → ${_dt(orderDateTime(o.stops_at, o.note, true))}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
@@ -36889,7 +36880,6 @@ async function buildOrderQuote(o, lang) {
     const dlvLbl = EN ? enText(delivLbl) : delivLbl;
     const itemRows = itemRowsFor(EN);
     const _cust = custName ? escapeHtml(custName) : '';
-    const _vatNote = hasVat ? T.vatOut : T.vatIn;
     const fname = (T.fileBase + ' ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
     const _sigBlock = _sName ? `<tr><td style="padding:26px 32px 0;">
 <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#17171B;">${T.regards}</p>
@@ -36932,7 +36922,7 @@ ${_erow(T.rentalPeriod, T.days(days))}
 <tr><td style="padding-top:12px;font-size:14px;font-weight:600;color:#17171B;">${T.grand}</td>
 <td align="right" style="padding-top:12px;font-family:Manrope,Arial,sans-serif;font-size:22px;font-weight:800;color:#0B1F3A;">${fmtMoney(total)}</td></tr>
 </table>
-<div style="font-size:12px;color:#4a5a50;padding-top:6px;">${_vatNote}${offFee ? T.offHoursMail(fmtMoney(offFee)) : ''}${deposit ? T.depositMail(fmtMoney(deposit)) : ''}</div>
+${(offFee || deposit) ? `<div style="font-size:12px;color:#4a5a50;padding-top:6px;">${[offFee ? T.offHoursMail(fmtMoney(offFee)) : '', deposit ? T.depositMail(fmtMoney(deposit)) : ''].filter(Boolean).join(' · ')}</div>` : ''}
 </td></tr>
 </table>
 </td></tr>
@@ -36985,7 +36975,6 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
       <div class="settle-tot"><div class="tot">
         <div class="tr"><span>${T.subtotal(days)}</span><span class="v">${fmtMoney(subtotal)}</span></div>
         ${discount ? `<div class="tr"><span>${T.discount}</span><span class="v">−${fmtMoney(discount)}</span></div>` : ''}
-        ${hasVat ? `<div class="tr"><span>${T.vatCut}</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
         ${delivFee ? `<div class="tr"><span>${T.delivery}${dlvLbl ? ' (' + escapeHtml(dlvLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
         ${offFee ? `<div class="tr"><span>${T.offHours}</span><span class="v">${fmtMoney(offFee)}</span></div>` : ''}
         ${setupFee ? `<div class="tr"><span>${EN ? 'Setup / installation' : '🔧 Суурилуулалт / угсралт'}</span><span class="v">${fmtMoney(setupFee)}</span></div>` : ''}
@@ -36999,7 +36988,7 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
       <div class="c-row">${_sPhone ? T.phone + ': <b>+976 ' + _sPhone + '</b> &nbsp;·&nbsp; ' : ''}${T.email}: hello@mevent.mn &nbsp;·&nbsp; ${T.web}: mevent.mn</div>
       <div class="c-row">${T.warehouse}: ${escapeHtml(coAddr)}</div>
     </div>` : ''}
-    <div class="cond"><b>${T.terms}:</b> ${_vatNote} · ${T.payConfirm}${deposit ? ' · ' + T.depositBack : ''} &nbsp;&nbsp; <b>${T.valid}:</b> ${fd(valid)}${T.until}</div>
+    <div class="cond"><b>${T.terms}:</b> ${T.payConfirm}${deposit ? ' · ' + T.depositBack : ''} &nbsp;&nbsp; <b>${T.valid}:</b> ${fd(valid)}${T.until}</div>
   </div>
   <div class="qfoot"><b>M-Event</b> · ${T.tagline} &nbsp;|&nbsp; 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>`;
     return { doc, mailHtml, subject: T.subject(o.number ?? ''), fname: fname + '.pdf' };
@@ -45256,7 +45245,8 @@ function vatOrderRow(orderNo, orderTotal, type) {
   const info = vatForOrder(orderNo);
   const tot = Number(orderTotal) || 0;
   const attachBtn = `<button onclick="openVatAttachFor('${type || 'nomaad'}','${escapeHtml(String(orderNo))}')" class="vat-attach-btn">🧾 НӨАТ баримт ${info.count ? 'засах' : 'холбох'}</button>`;
-  if (!info.count) return `<div class="order-meta vat-row">${attachBtn}</div>`;
+  // ⛔ Эм Эвент НӨАТ төлөгч БИШ: M-Event захиалгад «НӨАТ баримт холбох» товч гарахгүй (өмнө холбосон түүхэн баримт л харагдана).
+  if (!info.count) return type === 'event' ? '' : `<div class="order-meta vat-row">${attachBtn}</div>`;
   const tol = 0.5;
   const over = tot > 0 && info.invoiced > tot + tol;
   const full = tot > 0 && !over && info.invoiced + tol >= tot;

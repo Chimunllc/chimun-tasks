@@ -6125,7 +6125,7 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .pb-i b { color: var(--text); font-weight: 600; }
 .pb-i + .pb-i::before { content: " · "; white-space: pre; color: var(--muted-soft); }
 .pb-i.bad, .prod-bundle.bad { color: var(--danger); }
-.rc-pkg { display: block; font-style: normal; font-size: var(--fs-xs); color: var(--muted); }
+.rc-pkg { display: block; font-style: normal; font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* багцын нэр нэг мөр (бүтэн нэр нь title) — мөр өндөр болохгүй */
 .no-item-sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .pm-rentable[hidden] { display: none; }
 .pm-bundle { background: var(--panel-hover); border-radius: 8px; padding: 10px; margin: -4px 0 8px; }
@@ -6926,12 +6926,18 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 
 /* Буцаан авалтын тоолол */
 .rc-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; max-height: 260px; overflow: auto; }
-.rc-row { display: grid; grid-template-columns: 1fr auto 62px 34px; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: var(--fs-sm); }
+/* Няравын тоолох цонх: зураг | нэр | хүлээгдэх тоо | тоолсон тоо | зөрүү (2026-11-04, CEO «мөн хий» — зураг нэмэв).
+   Нэр ... гэж тасрахгүй, мөрлөнө (урт нэрийг зурагтай нь хамт таних ёстой). ⛔ ГАНЦ ГРИД МӨРӨНД БИШ: 320px дээр нэрний
+   багана ~51px болж нэр 9 мөр болж тасарсныг нүдээр барьсан. Одоо flex-wrap (media query-гүй): өргөн дэлгэцэд нэг
+   мөрөнд, нарийн дэлгэцэд нэр бүтэн өргөнөөр, тоо/оролт/зөрүү доод мөрөнд баруун талд. */
+.rc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: var(--fs-sm); }
 .rc-row.rc-bad { border-color: #E6C878; background: #FBF0DC; }
-.rc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.rc-row .rc-ph { width: 36px; height: 36px; }
+.rc-name { flex: 1 1 7em; min-width: 0; overflow-wrap: anywhere; color: var(--text); }
+.rc-ctl { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }   /* хүлээгдэх | тоолсон | зөрүү — ХАМТДАА мөрлөнө */
 .rc-exp { color: var(--muted); white-space: nowrap; }
-.rc-got { width: 100%; box-sizing: border-box; padding: 5px 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: center; }
-.rc-diff { text-align: center; font-weight: 700; }
+.rc-got { flex: none; width: 62px; height: 40px; min-height: 0; box-sizing: border-box; padding: 5px 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: center; }
+.rc-diff { flex: none; width: 34px; text-align: center; font-weight: 700; }
 .rc-diff.ok { color: var(--ok); }
 .rc-diff.bad { color: #B45309; }
 .rc-warn { padding: 8px 10px; background: #FBF0DC; border: 1px solid #E6C878; border-radius: 8px; color: #7A560F; font-size: var(--fs-sm); font-weight: 700; margin-bottom: 10px; line-height: 1.5; }

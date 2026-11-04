@@ -24701,6 +24701,25 @@ async function swFetchTests() {
   vm.runInContext('state.ordersItemsOpen = __oc[0]; state.products = __oc[1];', Object.assign(sandbox, { __oc: save }));
 }
 
+/* 🖼 НЯРАВЫН ТООЛОХ ЦОНХ (гаргах / буцаан авах): мөр бүр ЗУРАГТАЙ (2026-11-04, CEO «мөн хий»). Хүлээгдэх тоо, тоолсон тоо,
+   зөрүү аль хэдийн тусдаа багана байв — зураг л дутуу, нэр ... гэж тасардаг байв. Тоолох логикт ХҮРЭХГҮЙ. */
+{
+  const at = src.indexOf('<div id="rc-list" class="rc-list">');
+  ok(at > 0, 'scan: няравын тоолох жагсаалт олдов');
+  const rc = src.slice(at, src.indexOf('<div id="rc-warn"', at));
+  ok(/orderItemThumb\(orderItemPhoto\(\{ sku: x\.sku, name: x\.name \}\), 'rc-ph'\)/.test(rc), '⛔ scan: тооллогын мөр бүр каталогийн зурагтай (`orderItemPhoto`)');
+  ok(/class="rc-exp"/.test(rc) && /class="rc-got"/.test(rc) && /class="rc-diff"/.test(rc), 'scan: хүлээгдэх тоо, тоолсон тоо, зөрүү тусдаа баганаараа хэвээр');
+  ok(/data-rci="\$\{i\}"/.test(rc) && /max="\$\{x\.qty\}"/.test(rc), 'scan: тоолох оролт (`data-rci`, дээд хязгаар) хөндөгдөөгүй');
+  // Хадгалагдах мөрөнд зураг ОРОХГҮЙ — зөвхөн sku/name/qty/got/pkg (түүх хөнгөн, схем өөрчлөгдөхгүй)
+  ok(/entry\.items = _rcItems\.map\(\(x, i\) => \(\{ sku: x\.sku, name: x\.name, qty: x\.qty, got: rcGot\[i\]/.test(src), 'scan: хадгалах мөр өөрчлөгдөөгүй (зураг хадгалагдахгүй)');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  ok(/<span class="rc-ctl"><span class="rc-exp">/.test(rc) && /\.rc-ctl \{ flex: none; margin-left: auto; display: inline-flex;/.test(css), '⛔ scan: хүлээгдэх | тоолсон | зөрүү нэг бүлэгт — нарийн дэлгэцэд ХАМТДАА доод мөр рүү буурна');
+  ok(/\.rc-row \{ display: flex; flex-wrap: wrap;/.test(css), '⛔ scan: тооллогын мөр flex-wrap — нарийн дэлгэцэд тоо/оролт доод мөрөнд (320px-д ганц грид нэрийг 51px болгож тасалсан)');
+  ok(!/\.rc-row \{[^}]*grid-template-columns/.test(css), 'scan: тооллогын мөр хатуу грид баганагүй');
+  ok(/\.rc-name \{ flex: 1 1 7em;/.test(css) && !/\.rc-name \{[^}]*white-space: nowrap/.test(css), 'scan: нэр ... гэж тасрахгүй, бүтэн өргөнөөр мөрлөнө');
+  ok(/\.rc-got \{ flex: none; width: 62px;/.test(css) && /\.rc-diff \{ flex: none; width: 34px;/.test(css), 'scan: тоолсон тоо, зөрүү тогтмол өргөнтэй');
+}
+
 // SCAN: мөрийн дүнг гараар бодохыг хаана (хоног тооцоогүй алдаа эргэж ирэхгүй).
 {
   const at = src.indexOf('const itemsSection = isApp');

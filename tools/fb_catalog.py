@@ -62,7 +62,7 @@ def title_of(name):
 
 def desc_of(name, price, cat):
     """Тайлбар нь AI-д ЯГ юу хэлэхийг зааж өгнө."""
-    bits = ['%s — 1 хоногийн түрээсийн үнэ %s₮ (НӨАТ багтсан).'
+    bits = ['%s — 1 хоногийн түрээсийн үнэ %s₮.'
             % (' '.join(str(name or '').split()), format(int(price or 0), ','))]
     if cat:
         bits.append('Ангилал: %s.' % cat)

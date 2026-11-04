@@ -7443,6 +7443,44 @@ function orderLineDays(o) {
 // Мөрийн дүн ХАРУУЛАХ зам (карт/жагсаалт). Хадгалсан `total` ялна — `orderMoneyBreakdown`-ийн
 // `_line`-тэй ЯГ ижил дүрэм, тиймээс мөрүүдийн нийлбэр задаргааны subtotal-аас зөрөхгүй.
 function orderLineAmount(o, it) { return Number(it && it.total) || itemRentLine(it, orderLineDays(o)); }
+/* 🖼 ЗАХИАЛГЫН КАРТЫН БАРААНЫ МӨР: ЗУРАГТАЙ, ТОО ТУСДАА БАГАНА, БАГЦ ЗАДАРНА (2026-11-04, CEO, эцсийн хугацаа 11-10).
+   Өмнө «нэр × тоо» гэсэн хуурай мөр байв: зураггүй, тоо нэрэнд нийлсэн, багц («Хөгжим SILVER × 1») дотроо юу
+   байгаа нь харагдахгүй. Одоо мөр бүр = зураг | нэр (багц бол бүрэлдэхүүн: «2× Микрофон») | тоо | дүн.
+   · Зураг: мөр өөрөө (сайт илгээдэггүй) → каталогийн бараа (`productOf`, нэрээр/түүхэн толиор). Олдохгүй, зураггүй,
+     эсвэл ачаалагдахгүй бол 📦 (CSS `::before`) — тэмдэг үргэлж ард нь байна.
+   · Багцын бүрэлдэхүүний тоо = бүрэлдэхүүний тоо × мөрийн тоо (`packageInfo` — тооллого/буцаалттай ИЖИЛ задаргаа).
+   · Дүн = `orderLineAmount` (мөрийн хоногтой) — энд ДАХИН бодохгүй.
+   ⚠ Зураг ЗӨВХӨН нээгдсэн жагсаалтад ачаална: `loading="lazy"` зураг хаалттай `<details>` дотор (дүрслэгдээгүй) татагдахгүй
+     → 20 мөртэй захиалга утсанд нээхэд л дата татна. VPS-ийн зураг жижигрүүлсэн хувилбаргүй тул хайрцаг нь хатуу хэмжээтэй. */
+function orderItemPhoto(it) {
+  const p = (typeof productOf === 'function') ? productOf(it) : null;
+  const u = String((it && it.photo) || (p && p.photo) || '');
+  return /^data:/i.test(u) ? '' : u;      // base64 мөрийг DOM-д шургуулахгүй (цонх хэт хүнд болно)
+}
+function orderItemView(o, it) {
+  const qty = Math.max(1, Number(it && it.qty) || 1);
+  const p = (typeof productOf === 'function') ? productOf(it) : null;
+  const pk = (p && isPackage(p)) ? packageInfo(p) : null;
+  return {
+    name: String((it && it.name) || (p && p.name) || ''),
+    qty,
+    amount: orderLineAmount(o, it),
+    photo: orderItemPhoto(it),
+    bundleDays: itemBundleDays(it),
+    parts: pk ? pk.parts.map(x => { const cp = productBySku(x.sku); return { name: x.name, qty: x.qty * qty, photo: cp ? String(cp.photo || '').replace(/^data:.*/i, '') : '' }; }) : [],
+  };
+}
+function orderItemThumb(url, cls) {
+  return `<span class="oi-ph ${cls || ''}">${url ? `<img src="${escapeHtml(driveThumbUrl(url, 96))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
+}
+function orderItemRowHtml(v) {
+  return `<div class="oi-row oi-line${v.parts.length ? ' oi-pkg' : ''}">${orderItemThumb(v.photo)}
+    <div class="oi-mid"><div class="oi-nm">${escapeHtml(v.name)}</div>${v.parts.length && v.bundleDays ? `<div class="oi-bd">${v.bundleDays} хоногийн үнэ</div>` : ''}</div>
+    <span class="oi-qty" title="Тоо ширхэг">${v.qty}<small>ш</small></span>
+    <span class="oi-amt">${fmtMoney(v.amount)}</span>
+    ${v.parts.length ? `<div class="oi-parts">${v.parts.map(x =>
+      `<div class="oi-part">${orderItemThumb(x.photo, 'oi-ph-s')}<span class="oi-pn">${escapeHtml(x.name)}</span><span class="oi-pq">${x.qty} ш</span></div>`).join('')}</div>` : ''}</div>`;
+}
 /* САЙТААС ИРСЭН БАГЦЫН «N ХОНОГИЙН ҮНЭ» (2026-10-24). n8n-ийн сайтын захиалгын бүртгэл мөр бүрээс зөвхөн
    sku/name/qty/price/deposit-ийг үлдээж бусдыг хаядаг тул `bdays` дамжихгүй. Харин `note` n8n-ээр ӨӨРЧЛӨГДӨЛГҮЙ
    дамждаг (⟦DLV⟧, ⟦RT⟧ яг ингэж явдаг) — сайт `⟦BD|sku|N⟧` токен бичнэ, апп захиалгыг АЧААЛАХ үед мөрд `bdays` болгоно.
@@ -11518,7 +11556,7 @@ function attachOrdersHandlers() {
         box.innerHTML = '<div class="order-meta">Татаж байна…</div>';
         const items = await loadOrderItems(row.dataset.oid);
         box.innerHTML = items.length
-          ? `<table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th></tr></thead><tbody>${items.map(it => `<tr><td>${escapeHtml(it.title || '—')}</td><td class="num">${Number(it.quantity) || 0}</td><td class="num">${fmtMoney(Number(it.price_mnt) || 0)}</td></tr>`).join('')}</tbody></table>`
+          ? `<table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th></tr></thead><tbody>${items.map(it => `<tr><td class="oi-t">${orderItemThumb(orderItemPhoto({ name: it.title }))}<span class="oi-nm">${escapeHtml(it.title || '—')}</span></td><td class="num">${Number(it.quantity) || 0}</td><td class="num">${fmtMoney(Number(it.price_mnt) || 0)}</td></tr>`).join('')}</tbody></table>`
           : '<div class="order-meta">бараа алга</div>';
       }
     } else {
@@ -36230,7 +36268,7 @@ function bqOrderCard(o) {
   </div>` : '');
   // Бараа: app бол inline (o.items), түүхэн бол lazy toggle + баримт
   const itemsSection = isApp
-    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''}><summary class="order-items-toggle">▸ ${o.items.length} бараа</summary><div class="order-items-list">${o.items.map(it => `<div class="order-meta oi-row"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span class="oi-amt">${fmtMoney(orderLineAmount(o, it))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta oi-dep">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
+    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''}><summary class="order-items-toggle">▸ ${o.items.length} бараа</summary><div class="order-items-list">${o.items.map(it => orderItemRowHtml(orderItemView(o, it))).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta oi-dep">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
     : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>

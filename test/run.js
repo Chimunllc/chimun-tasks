@@ -24655,12 +24655,60 @@ async function swFetchTests() {
   vm.runInContext('state.ordersItemsOpen = __oc[0]; state.products = __oc[1];', Object.assign(sandbox, { __oc: save }));
 }
 
+/* 🖼 Захиалгын картын барааны мөр: ЗУРАГТАЙ, ТОО ТУСДАА БАГАНА, БАГЦ ЗАДАРНА (2026-11-04, CEO). */
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = vm.runInContext('[state.ordersItemsOpen, state.products]', sandbox);
+  runIn("state.ordersItemsOpen = new Set(['88']);");
+  runIn(`state.products = [
+    { sku: 'M-001', name: 'Сандал', type: 'rental', photo: 'https://drive.google.com/file/d/ABC123/view', price: 11000, stock: 50, qty_mevent: 50 },
+    { sku: 'M-002', name: 'Микрофон <b>', type: 'rental', photo: '', price: 20000, stock: 4, qty_mevent: 4 },
+    { sku: 'M-003', name: 'Яригч', type: 'rental', photo: 'data:image/png;base64,AAAA', price: 90000, stock: 4, qty_mevent: 4 },
+    { sku: 'PK-1', name: 'Хөгжим SILVER', type: 'package', price: 390000, photo: '', bundle_items: [{ sku: 'M-001', qty: 2 }, { sku: 'M-002', qty: 1 }, { sku: 'M-404', qty: 1 }] },
+  ];`);
+  const o = { id: 88, _app: true, source: 'app', status: 'reserved', number: 1701, starts_at: '2026-11-10', stops_at: '2026-11-13', total_mnt: 0, paid_mnt: 0,
+    items: [{ name: 'Сандал', sku: 'M-001', qty: 130, price: 11000 }, { name: 'Хөгжим SILVER', sku: 'PK-1', qty: 3, price: 390000, bdays: 3 },
+            { name: 'Каталогт байхгүй хуучин бараа', sku: 'X-9', qty: 2, price: 5000 }, { name: 'Яригч', sku: 'M-003', qty: 1, price: 90000 }] };
+  const { orderItemView, orderItemPhoto } = F;
+  const v0 = orderItemView(o, o.items[0]);
+  eq([v0.name, v0.qty, v0.parts.length], ['Сандал', 130, 0], 'мөр: энгийн бараа — нэр, тоо, задаргаагүй');
+  ok(/^https:\/\/drive\.google\.com/.test(v0.photo), 'мөр: зураг мөрөнд байхгүй ч КАТАЛОГООС нөхөгдөнө (сайт зураг илгээдэггүй)');
+  eq(v0.amount, F.orderLineAmount(o, o.items[0]), '⛔ мөр: дүн `orderLineAmount`-тай ЯГ ижил (хоногтой), энд дахин бодохгүй');
+  const v1 = orderItemView(o, o.items[1]);
+  eq(v1.parts.map(p => [p.name, p.qty]), [['Сандал', 6], ['Микрофон <b>', 3], ['M-404', 3]], 'багц: бүрэлдэхүүн = бүрэлдэхүүний тоо × мөрийн тоо (3 багц → 6 сандал, 3 микрофон); олдохгүй нь sku-гаар');
+  eq(v1.bundleDays, 3, 'багц: «N хоногийн үнэ» хадгалагдана');
+  ok(/drive\.google\.com/.test(v1.parts[0].photo) && v1.parts[1].photo === '', 'багц: бүрэлдэхүүний зураг каталогоос, байхгүй бол хоосон');
+  eq(orderItemPhoto(o.items[2]), '', 'мөр: каталогт олдохгүй мөр зураггүй → 📦');
+  eq(orderItemPhoto(o.items[3]), '', 'мөр: base64 зургийг DOM-д шургуулахгүй');
+  eq(orderItemPhoto({ name: 'Сандал', photo: 'https://x/y.jpg' }), 'https://x/y.jpg', 'мөр: мөрийн өөрийн зураг ялна');
+
+  const card = vm.runInContext('bqOrderCard', sandbox);
+  let html = '', err = '';
+  try { html = card(o); } catch (e) { err = e.message; }
+  eq(err, '', 'карт: зурагтай мөртэй bqOrderCard алдаагүй зурагдана');
+  const rows = html.match(/<div class="oi-row oi-line[ "]/g) || [];
+  eq(rows.length, 4, 'карт: бараа бүр нэг мөр (4)');
+  ok(/class="oi-qty" title="Тоо ширхэг">130<small>ш<\/small>/.test(html), '⛔ карт: тоо ширхэг НЭРЭНЭЭС ТУСДАА багана («130 ш»)');
+  ok(!/Сандал × 130/.test(html), 'карт: «нэр × тоо» гэж нийлсэн хуурай мөр үлдээгүй');
+  ok(/<img src="https:\/\/lh3\.googleusercontent\.com\/d\/ABC123=w96" alt="" loading="lazy"/.test(html), '⛔ карт: зураг (Drive жижиг хувилбар) `loading="lazy"` — хаалттай жагсаалтад татагдахгүй');
+  ok(/oi-part"><span class="oi-ph oi-ph-s">/.test(html) && />6 ш<\/span>/.test(html) && />3 ш<\/span>/.test(html), '⛔ карт: багц дотроо бүрэлдэхүүнээр (6 ш, 3 ш) задарна');
+  ok(/<div class="oi-bd">3 хоногийн үнэ<\/div>/.test(html), 'карт: багцын «N хоногийн үнэ» харагдана');
+  ok(!/Микрофон <b>/.test(html) && /Микрофон &lt;b&gt;/.test(html), 'карт: бүрэлдэхүүний нэр escape хийгдэнэ (XSS)');
+  const noPh = (html.match(/<span class="oi-ph "><\/span>/g) || []).length;
+  ok(noPh >= 2, 'карт: зураггүй мөр (каталогт олдохгүй, base64) хоосон `oi-ph` — CSS-ийн 📦 үлдэнэ (' + noPh + ')');
+  const amts = [...html.matchAll(/oi-amt">([^<]*)</g)].map(m => m[1]);
+  eq(amts[0], F.fmtMoney(F.orderLineAmount(o, o.items[0])), 'карт: мөрийн дүн хэвээр (хоногтой)');
+  vm.runInContext('state.ordersItemsOpen = __oc[0]; state.products = __oc[1];', Object.assign(sandbox, { __oc: save }));
+}
+
 // SCAN: мөрийн дүнг гараар бодохыг хаана (хоног тооцоогүй алдаа эргэж ирэхгүй).
 {
   const at = src.indexOf('const itemsSection = isApp');
   ok(at > 0, 'scan: картын барааны хэсэг олдов');
   const seg = src.slice(at, at + 1600);
-  ok(/orderLineAmount\(o, it\)/.test(seg), '⛔ scan: картын барааны мөр `orderLineAmount`-оор бодогдоно');
+  ok(/orderItemRowHtml\(orderItemView\(o, it\)\)/.test(seg), 'scan: картын барааны мөр ганц view-model-оос зурагдана');
+  const ivSrc = src.slice(src.indexOf('function orderItemView('), src.indexOf('function orderItemThumb('));
+  ok(/orderLineAmount\(o, it\)/.test(ivSrc), '⛔ scan: картын барааны мөр `orderLineAmount`-оор бодогдоно');
   ok(!/\(Number\(it\.qty\) \|\| 0\) \* \(Number\(it\.price\) \|\| 0\)/.test(seg), '⛔ scan: картын мөрөнд гар тооцоо (тоо × үнэ) байхгүй');
   ok(!/\? ' open' : ''\}"/.test(seg), '⛔ scan: `open` атрибутын дараа илүү хашилт байхгүй');
   ok(/function orderLineDays/.test(src) && (src.match(/=== 'booqable'\) return 1;/g) || []).length === 1,

@@ -19163,7 +19163,7 @@ function drawPoster(canvas, opts) {
     ctx.strokeStyle = 'rgba(255,255,255,.32)'; ctx.lineWidth = Math.max(1, Math.round(H * 0.0013));
     ctx.beginPath(); const hy = rowY - lh - Math.round(H * 0.026); ctx.moveTo(pad, hy); ctx.lineTo(W - pad, hy); ctx.stroke();
     if (kit._logoImg) { const lw = lh * (kit._logoImg.width / kit._logoImg.height); ctx.drawImage(kit._logoImg, pad, rowY - lh, lw, lh); }
-    else { ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.font = `800 ${Math.round(lh * 0.6)}px ${FONT}`; ctx.fillText(kit.name || 'Чимун ХХК', pad, midY); }
+    else { ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.font = `800 ${Math.round(lh * 0.6)}px ${FONT}`; ctx.fillText(kit.name || 'M-Event', pad, midY); }
     const parts = [kit.phone, kit.website].filter(Boolean).join('   ·   ');
     if (parts) { ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,.92)'; const cs = Math.round(W * 0.027); ctx.font = `600 ${cs}px ${FONT}`; ctx.fillText(parts, W - pad, midY); }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
@@ -19747,7 +19747,7 @@ function renderMarketing() {
       <div>
         <div style="font-size:14px;font-weight:800;margin-bottom:8px;">🎯 Брэнд иж бүрдэл <span style="font-weight:400;color:var(--muted);font-size:11px;">(нэг удаа — бүх ажилтанд дундлагдана)</span></div>
         <div style="margin-bottom:10px;"><button class="btn btn-sm" id="mk-preset-mevent" style="border-color:#FF6A00;color:#FF6A00;">⚡ M-Event загвар оруулах</button></div>
-        <label style="font-size:11.5px;color:var(--muted);">Брэнд нэр</label><input id="mk-name" value="${escapeHtml(k.name || '')}" placeholder="Чимун ХХК / NOMAAD / M-Event" style="${fld}">
+        <label style="font-size:11.5px;color:var(--muted);">Брэнд нэр</label><input id="mk-name" value="${escapeHtml(k.name || '')}" placeholder="M-Event / Maestro Catering / NOMAAD" style="${fld}">
         <label style="font-size:11.5px;color:var(--muted);">Уриа (сонголт)</label><input id="mk-tagline" value="${escapeHtml(k.tagline || '')}" placeholder="Мартагдашгүй эвент" style="${fld}">
         <div style="display:flex;gap:10px;">
           <div style="flex:1;"><label style="font-size:11.5px;color:var(--muted);">Утас</label><input id="mk-phone" value="${escapeHtml(k.phone || '')}" placeholder="9911 2233" style="${fld}"></div>
@@ -34790,7 +34790,7 @@ async function openOrderCmpModal(id) {
     <label for="cmp-pdf" class="cmp-drop">
       📄 <b>Буцаасан гүйлгээний баримт (PDF)</b>
       <input id="cmp-pdf" type="file" accept="application/pdf,.pdf" hidden>
-      <div id="cmp-st">Дүн, огноо автоматаар уншигдана. Чимунээс ГАРСАН гүйлгээ байх ёстой.</div>
+      <div id="cmp-st">Дүн, огноо автоматаар уншигдана. Эм Эвент Солюшн-оос ГАРСАН гүйлгээ байх ёстой.</div>
     </label>
     <div id="cmp-got"></div>
     <div class="modal-actions">
@@ -34812,7 +34812,7 @@ async function openOrderCmpModal(id) {
       const d = parseBankReceipt(await extractPdfText(file));
       if (!d.amount) throw new Error('дүн олдсонгүй');
       // ЧИМУН нь ИЛГЭЭГЧ байх ёстой — орлогын баримтыг буулгалт гэж бүртгэхээс сэргийлнэ.
-      if (!receiptSenderIsUs(d)) throw new Error(`Чимунээс гарсан гүйлгээ биш (илгээгч: ${d.senderName || '?'}${d.senderAcct ? ' · ' + d.senderAcct : ''})`);
+      if (!receiptSenderIsUs(d)) throw new Error(`Эм Эвент Солюшн-оос гарсан гүйлгээ биш (илгээгч: ${d.senderName || '?'}${d.senderAcct ? ' · ' + d.senderAcct : ''})`);
       if (d.amount > total) throw new Error(`Дүн (${fmtMoney(d.amount)}) захиалгын дүнгээс их байна`);
       const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
       const dup = receiptDupReason(refKey, fpKey, 'cmp:' + o.id);
@@ -37844,9 +37844,8 @@ async function readIncomeReceipt(file, existing, own) {
   if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
   if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
   // МАНАЙ ДАНС ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = манайд ИРСЭН гүйлгээ). ⛔ Алдааны мессеж аль компанид ирээгүйг зөв нэрлэнэ:
-  //   M-Event захиалга = Эм Эвент Солюшн ХХК (тусдаа компани), катеринг = Чимун ХХК. Шалгуур өөрөө (`receiptReceiverIsUs`) ижил.
-  const _who = /^mevent:/.test((own && own.tag) || '') ? 'Эм Эвент Солюшн ХХК' : 'Чимун ХХК';
-  if (!receiptReceiverIsUs(d)) throw new Error(`${file.name}: ${_who}-д ирээгүй гүйлгээ (${d.receiverName || '?'}${d.receiverAcct ? ' · ' + d.receiverAcct : ''})`);
+  //   M-Event ба катеринг ХОЁУЛАА Эм Эвент Солюшн ХХК-ийн (2026-11-04, CEO) — мессеж тэр компанийг нэрлэнэ. Шалгуур: `receiptReceiverIsUs`.
+  if (!receiptReceiverIsUs(d)) throw new Error(`${file.name}: Эм Эвент Солюшн ХХК-д ирээгүй гүйлгээ (${d.receiverName || '?'}${d.receiverAcct ? ' · ' + d.receiverAcct : ''})`);
   const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
   // ⛔ `own` = {tag, paidRef} — баримтыг бүртгэх захиалга/ажил. Ledger-т эзэн нь ЭНЭ захиалга боловч захиалгын `paid_ref`-д байхгүй
   //    баримт = өмнөх бүртгэл дундаа тасарсан (ledger эзэмшчихээд PATCH унасан, 2026-10-30: №1696/1698/1699/1700) → дахин

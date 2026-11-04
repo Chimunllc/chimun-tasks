@@ -45984,19 +45984,20 @@ function renderFinanceReport(wrap) {
 
   // ── Ангилсан / Ангилаагүй (хуулга суурьтай) — хуучин хүсэлт/батлах/шилжүүлэх төлвүүд хасагдсан. ──
   const isUnclassified = (t) => { const tok = parseCardToken(t.justification || ''); return (tok && tok.pend) || String(t.category || '') === CARD_PEND_CAT || !String(t.category || '').trim(); };
+  // ⚠ 4-р талбар = ӨНГӨНИЙ ТОН (класс), хатуу `var(--…)` БИШ — `.fin-st` дүрэм өнгийг шийднэ.
   const stDefs = [
-    ['all',    'Нийт гарсан мөнгө',        () => true,             'var(--text)'],
-    ['unclas', '⏳ Ангилах хүлээж буй',     t => isUnclassified(t), 'var(--warn)'],
+    ['all',    'Нийт гарсан мөнгө',        () => true,             ''],
+    ['unclas', '⏳ Ангилах хүлээж буй',     t => isUnclassified(t), 'warn'],
   ];
   const stFilter = (state.finReportStatus === 'unclas') ? 'unclas' : 'all';
   const chips = document.createElement('div');
-  chips.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;';
-  chips.innerHTML = stDefs.map(([k, l, pred, c]) => {
+  chips.className = 'fin-st-row';
+  chips.innerHTML = stDefs.map(([k, l, pred, tone]) => {
     const items = monthList.filter(pred);
     const on = stFilter === k;
-    return `<button data-fin-st="${k}" style="cursor:pointer;text-align:left;padding:9px 12px;border-radius:10px;border:1.5px solid ${on ? c : 'var(--border)'};background:${on ? 'var(--panel-hover)' : 'var(--panel)'};transition:all .12s;">`
-      + `<div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${l} · ${items.length}</div>`
-      + `<div style="font-weight:800;font-size:14px;color:${c};">${fmtMoney(sumOf(items))}</div></button>`;
+    return `<button data-fin-st="${k}" class="fin-st${tone ? ' ' + tone : ''}${on ? ' on' : ''}">`
+      + `<div class="fin-st-l">${l} · ${items.length}</div>`
+      + `<div class="fin-st-v">${fmtMoney(sumOf(items))}</div></button>`;
   }).join('');
   wrap.appendChild(chips);
   chips.querySelectorAll('[data-fin-st]').forEach(b => b.addEventListener('click', () => { state.finReportStatus = b.dataset.finSt; render(); }));
@@ -46059,20 +46060,22 @@ function renderFinanceReport(wrap) {
       const nr = sumOf(items.filter(noRcpt)); const cnt = items.filter(noRcpt).length;
       return { cat, tot, nr, cnt, pct: tot ? Math.round(nr / tot * 100) : 0 };
     }).filter(c => c.nr > 0).sort((a, b) => b.nr - a.nr);
-    const barCol = (p) => p >= 50 ? 'var(--danger)' : p >= 20 ? 'var(--warn)' : 'var(--ok)';
+    // Өнгө = ТОН (класс), хатуу `var(--…)` БИШ. Зураас = `<progress>` — inline өргөн/өнгө бичихгүй
+    // (ирцийн `.att-mo-bar`-тай ижил арга, CLAUDE.md «inline width БИШ»).
+    const barTone = (p) => p >= 50 ? 'bad' : p >= 20 ? 'warn' : 'ok';
     const panel = document.createElement('div');
     panel.className = 'fin-rcpt';
     let html = `<div class="fin-rcpt-h">`
       + `<span class="fin-rcpt-t">📝 Баримтын хяналт <span class="fin-rcpt-s">· дууссан зардал</span></span>`
-      + `<span class="fin-rcpt-pct" style="color:${barCol(pct)};">${pct}% баримтгүй</span></div>`
-      + `<div style="font-size:11.5px;color:var(--muted);margin:2px 0 ${cats.length ? '11px' : '0'};">${fmtMoney(nrTotal)} / ${fmtMoney(doneTotal)} · ${nrList.length}/${doneList.length} хүсэлт</div>`;
+      + `<span class="fin-rcpt-pct ${barTone(pct)}">${pct}% баримтгүй</span></div>`
+      + `<div class="fin-rcpt-sum${cats.length ? '' : ' last'}">${fmtMoney(nrTotal)} / ${fmtMoney(doneTotal)} · ${nrList.length}/${doneList.length} хүсэлт</div>`;
     cats.forEach(c => {
-      html += `<div style="margin-bottom:7px;">`
-        + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-bottom:2px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.cat)}</span><span style="white-space:nowrap;color:var(--muted);"><b style="color:${barCol(c.pct)};">${c.pct}%</b> · ${fmtMoney(c.nr)}</span></div>`
-        + `<div style="height:5px;border-radius:3px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${c.pct}%;background:${barCol(c.pct)};"></div></div>`
+      html += `<div class="fin-brow">`
+        + `<div class="fin-brow-h"><span class="fin-brow-l">${escapeHtml(c.cat)}</span><span class="fin-brow-v"><b class="${barTone(c.pct)}">${c.pct}%</b> · ${fmtMoney(c.nr)}</span></div>`
+        + `<progress class="fin-bar ${barTone(c.pct)}" max="100" value="${c.pct}">${c.pct}%</progress>`
         + `</div>`;
     });
-    if (!cats.length) html += `<div style="font-size:12px;color:var(--ok);font-weight:600;">✓ Бүх дууссан зардал баримттай</div>`;
+    if (!cats.length) html += `<div class="fin-rcpt-ok">✓ Бүх дууссан зардал баримттай</div>`;
     panel.innerHTML = html;
     wrap.appendChild(panel);
   })();

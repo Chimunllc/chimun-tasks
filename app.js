@@ -32321,6 +32321,15 @@ function finStage(t) {
   if (t.executed_at)       return { key: 'transferred',   label: 'Шилжүүлсэн',    mark: '💵', color: 'var(--primary)' };
   return                          { key: 'untransferred', label: 'Шилжүүлээгүй',  mark: '💸', color: 'var(--warn)' };
 }
+/* `finStage` нь өнгийг токен МӨРӨӨР буцаадаг (`var(--ok)` …) тул тэмдгийн өнгийг
+   класс болгоход зураглал хэрэгтэй. Танихгүй токен → класс ОРОХГҮЙ (мөрийн өнгийг
+   наследлэнэ) — өнгө солигдоход тэмдэг алга болохоос дээр.
+   ⚠ ГАНЦ эх сурвалж: тайлангийн ангиллын задаргаа БА Гүйлгээний жагсаалтын мөр
+   хоёул үүнээс уншина — хоёр газар бичвэл нэг тэмдэг хоёр өнгөтэй болно. */
+const FIN_TX_TONE = {
+  'var(--danger)': 'danger', 'var(--warn)': 'warn',
+  'var(--ok)': 'ok', 'var(--primary)': 'primary',
+};
 /* ШҮҮЛТҮҮРИЙН ЧИП (Ангилалгүй · Салбаргүй · Объектгүй · Баримтгүй · Хаагдаагүй) = ДУТУУ ТАЛБАР ШҮҮНЭ.
    ⛔ Чип бүр ТООТОЙ (2026-10-09, CEO-гийн «Өртөг ба хөрөнгө»-ийн дүрэмтэй ижил) — тоогүй бол ажил хаана
    байгааг хүн мэдэхгүй: 12 гүйлгээнээс хэд нь баримтгүйг мэдэхийн тулд чипийг дарж үзэх хэрэгтэй байв.
@@ -44964,13 +44973,6 @@ function attachReportsHandlers() {
   document.getElementById('rep-pricing')?.addEventListener('click', () => openPricingReport());
   const allXls = document.querySelector('[data-report-all-xls]'); if (allXls) allXls.onclick = exportAllReports;
   const incXls = document.querySelector('[data-income-xls]'); if (incXls) incXls.onclick = exportIncomeOrdersExcel;
-  /* `finStage` нь өнгийг токен МӨРӨӨР буцаадаг (`var(--ok)` …) тул тэмдгийн өнгийг
-     класс болгоход зураглал хэрэгтэй. Танихгүй токен → класс ОРОХГҮЙ (мөрийн өнгийг
-     наследлэнэ) — өнгө солигдоход тэмдэг алга болохоос дээр. */
-  const FIN_TX_TONE = {
-    'var(--danger)': 'danger', 'var(--warn)': 'warn',
-    'var(--ok)': 'ok', 'var(--primary)': 'primary',
-  };
   // Ангиллын мөр дээр дарахад тэр дор нь гүйлгээ задарна (хуудсаас гарахгүй, inline)
   document.querySelectorAll('[data-cat-toggle]').forEach(row => row.addEventListener('click', () => {
     const name = row.dataset.catToggle;
@@ -46479,7 +46481,7 @@ function renderFinanceReport(wrap) {
 
   // ── Задаргаа: Салбар → Үндсэн → Дэд → мөр (салбар бүлэг эвхэгддэг) ──
   const stMark = (t) => finStage(t).mark;
-  const stCol  = (t) => finStage(t).color;
+  const stTone = (t) => FIN_TX_TONE[finStage(t).color] || '';
   // Бүлгийн толгой = ЭВХЭГДДЭГ. Дэд бүлэг өгөгдмөлөөр ХААЛТТАЙ — эхлээд ангилал
   // бүрийн дүнг нэг харцаар үзээд, хэрэгтэйг нь дарж дэлгэнэ (өмнө нь бүх мөр
   // задарсан байсан тул 97 гүйлгээ гүйлгэж уншихад хэцүү байв).
@@ -46513,16 +46515,16 @@ function renderFinanceReport(wrap) {
     : `<span style="white-space:nowrap;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;color:var(--ok);background:var(--ok-soft,rgba(16,163,74,.12));">✓ Бүртгэсэн</span>`;
   const line = (t) => {
     const d = document.createElement('div');
-    d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;align-items:center;padding:7px 12px 7px 30px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;';
-    d.onmouseenter = () => d.style.background = 'var(--panel-hover)';
-    d.onmouseleave = () => d.style.background = '';
+    // Дизайны гэрээ: inline style биш класс. `.fin-tx` = тайлангийн задаргааны мөртэй
+    // ИЖИЛ хэлбэр, `.fin-tx-nest` = ангиллын бүлэг дотор орсон зүүн догол + hover.
+    d.className = 'fin-tx fin-tx-nest';
     const who = escapeHtml(t.beneficiary || memberName(t.createdBy) || '—');
-    const purp = t.purpose ? '<span style="color:var(--muted);"> · ' + escapeHtml(t.purpose) + '</span>' : '';
+    const purp = t.purpose ? '<span class="fin-tx-p"> · ' + escapeHtml(t.purpose) + '</span>' : '';
     // Баримтгүй/дутуу хаагдсан бол хаасан тайлбарыг мөрөнд шууд харуулна — нээлгүйгээр аудит.
     const noteHtml = (t.close_note && (stMark(t) === '📝' || stMark(t) === '⚠'))
-      ? `<span style="color:var(--warn);"> · «${escapeHtml(t.close_note)}»</span>` : '';
+      ? `<span class="fin-tx-note"> · «${escapeHtml(t.close_note)}»</span>` : '';
     const titleAttr = t.close_note ? ` title="${escapeHtml(t.close_note)}"` : '';
-    const timeHtml = t.requested_at ? `<span style="white-space:nowrap;color:var(--muted);font-size:11px;">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>` : '';
+    const timeHtml = t.requested_at ? `<span class="fin-tx-time">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>` : '';
     /* ⇄ Банкны сар ≠ ноогдох сар. Мөрийг нуухгүй, ЯЛГААГ ил хэлнэ — эс бөгөөс
        «яагаад 9-р сарын гүйлгээ 8-р сард байна вэ» гэж хүн гайхна. */
     const _bankYm = String(t.requested_at || '').slice(0, 7);
@@ -46534,10 +46536,10 @@ function renderFinanceReport(wrap) {
     // Шилжүүлгийн баримт — мөрөнд ШУУД thumbnail (дарвал томруулна, модал нээхгүй)
     const proofHtml = (t.payment_proof_url && /^http/.test(t.payment_proof_url))
       ? `<button type="button" class="fin-proof-thumb" data-lightbox="${escapeHtml(driveThumbUrl(t.payment_proof_url, 1600))}" title="Шилжүүлгийн баримт — томруулж харах"><img src="${escapeHtml(driveThumbUrl(t.payment_proof_url, 200))}" alt="баримт" loading="lazy"></button>` : '';
-    d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"${titleAttr}>`
-      + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
+    d.innerHTML = `<span class="fin-tx-l"${titleAttr}>`
+      + `<b class="fin-tx-m ${stTone(t)}">${stMark(t)}</b> ${who}${purp}${noteHtml}</span>`
       + `${classBadge(t)}${shiftHtml}${empLinkHtml}${timeHtml}${proofHtml}`
-      + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
+      + `<b class="fin-tx-a">${fmtMoney(Number(t.amount) || 0)}</b>`;
     d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openExpenseModal(t.id); });
     return d;
   };
@@ -46547,10 +46549,8 @@ function renderFinanceReport(wrap) {
     flt.forEach(t => { const k = String(t.beneficiary || '—').trim() || '—'; (agg[k] = agg[k] || []).push(t); });
     Object.entries(agg).sort((a, b) => sumOf(b[1]) - sumOf(a[1])).forEach(([name, items]) => {
       const d = document.createElement('div');
-      d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 12px;font-size:13px;border-bottom:1px solid var(--border);cursor:pointer;';
-      d.onmouseenter = () => d.style.background = 'var(--panel-hover)';
-      d.onmouseleave = () => d.style.background = '';
-      d.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">👤 <b>${escapeHtml(name)}</b> <span style="color:var(--muted);">· ${items.length} гүйлгээ</span></span><b style="white-space:nowrap;">${fmtMoney(sumOf(items))}</b>`;
+      d.className = 'fin-tx fin-tx-ben';   // мөрийн хэлбэр `line`-тэй ИЖИЛ — зөвхөн догол/фонт нь өөр
+      d.innerHTML = `<span class="fin-tx-l">👤 <b>${escapeHtml(name)}</b> <span class="fin-tx-p">· ${items.length} гүйлгээ</span></span><b class="fin-tx-a">${fmtMoney(sumOf(items))}</b>`;
       d.addEventListener('click', () => { F.ben = name; F.sort = 'amt_desc'; render(); });
       wrap.appendChild(d);
     });
@@ -46571,9 +46571,10 @@ function renderFinanceReport(wrap) {
   brs.forEach(b => {
     const collapsed = !!(state.finReportCollapsed && state.finReportCollapsed[b]);
     const bh = document.createElement('div');
-    bh.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer;padding:11px 12px;margin:14px 0 2px;background:var(--panel-hover);border-radius:10px;font-weight:800;font-size:14px;';
-    const caret = `<span data-caret style="display:inline-block;transition:transform .12s;transform:rotate(${collapsed ? -90 : 0}deg);color:var(--muted);">▾</span>`;
-    bh.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${caret} ${escapeHtml(finBranchDisplay(b))} <span style="color:var(--muted);font-weight:400;">(${byBr[b].length})</span></span><span style="color:var(--muted);font-weight:700;white-space:nowrap;">${fmtMoney(sumOf(byBr[b]))}</span>`;
+    // Салбарын толгой — бүлгийн толгойтой (`grpBlock`) ИЖИЛ бүтэц, сум нь `.fin-caret`
+    bh.className = 'fin-brh';
+    const caret = `<span data-caret class="fin-caret${collapsed ? ' closed' : ''}">▾</span>`;
+    bh.innerHTML = `<span class="fin-grp-l">${caret} ${escapeHtml(finBranchDisplay(b))} <span class="fin-grp-n">(${byBr[b].length})</span></span><span class="fin-grp-s">${fmtMoney(sumOf(byBr[b]))}</span>`;
     wrap.appendChild(bh);
     const body = document.createElement('div');
     body.style.display = collapsed ? 'none' : '';
@@ -46594,8 +46595,7 @@ function renderFinanceReport(wrap) {
       const now = body.style.display !== 'none';
       body.style.display = now ? 'none' : '';
       state.finReportCollapsed[b] = now;
-      const cr = bh.querySelector('[data-caret]');
-      if (cr) cr.style.transform = `rotate(${now ? -90 : 0}deg)`;
+      bh.querySelector('[data-caret]')?.classList.toggle('closed', now);
     });
   });
 }

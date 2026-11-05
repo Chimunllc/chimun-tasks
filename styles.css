@@ -7245,6 +7245,34 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .fin-tx-m.warn { color: var(--warn); }
 .fin-tx-m.danger { color: var(--danger); }
 .fin-tx-m.primary { color: var(--primary); }
+/* Гүйлгээний ЖАГСААЛТЫН (Санхүү → Тайлан) мөрүүд — `.fin-tx`-ийн хоёр хувилбар.
+   Хэлбэр нь нэг газар тодорхойлогдсон тул хоёр дэлгэц зөрөхгүй.
+   · `-nest`  = ангиллын бүлэг дотор задардаг мөр: зүүн догол нь шатыг хэлнэ
+   · `-ben`   = «👤 Топ хүлээн авагч» эрэмбийн нэгтгэсэн мөр (догол алга, том фонт)
+   Хоёулаа дарагддаг мөр тул hover ил (`.fin-tx` суурьт тавибал тайлангийн
+   задаргааны мөрийн төрх ч чимээгүй өөрчлөгдөнө — тиймээс хувилбар дээр). */
+/* ⚠ Догол ба зай нь 320px-д ХЭМЖИГДСЭН. Мөрд агших боломжгүй 4 зүйл (⇄ сар ·
+   🔗 ажилтан · 🕐 цаг · дүн) байдаг тул `.fin-tx`-ийн суурь `--space-3` зайг
+   хэрэглэвэл мөр 320px-ээс 24px халина (хуучин inline хувилбар 14px хальж байв).
+   `--space-2` зай + `--space-5` догол = ЯГ 320px, халихгүй — томруулахаас өмнө хэмж. */
+.fin-tx-nest {
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
+}
+.fin-tx-ben { padding: var(--space-2) var(--space-3); font-size: var(--fs-md); }
+.fin-tx-nest:hover, .fin-tx-ben:hover { background: var(--panel-hover); }
+/* Баримтгүй/дутуу хаагдсаны тайлбар — мөрөнд шууд, анхааруулгын өнгөөр */
+.fin-tx-note { color: var(--warn); }
+.fin-tx-time { white-space: nowrap; color: var(--muted); font-size: var(--fs-xs); }
+
+/* Салбарын толгой (ИВЕНТ · КЕМП · Чимун ХХК) — ангиллын бүлгүүдээс ДЭЭД шат,
+   эвхэгддэг. Дотоод шошго нь `.fin-grp-l/-n/-s`, сум нь `.fin-caret` (ижил бүтэц). */
+.fin-brh {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-2);
+  cursor: pointer; padding: var(--space-3); margin: var(--space-4) 0 var(--space-1);
+  background: var(--panel-hover); border-radius: var(--r-md);
+  font-weight: 800; font-size: var(--fs-base);
+}
 
 /* ── Ирц: гарсан цагийг гараар оруулах (2026-09-06) ───────────────────────── */
 .att-fixout {

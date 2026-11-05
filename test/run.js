@@ -22837,9 +22837,51 @@ async function swFetchTests() {
   // Хамрах хүрээ: үнийн санал + нэхэмжлэх. M-Event гэрээнд данс байхгүй; NOMAAD гэрээ өөрийн дансаа хэвээр.
   ok(!/MEVENT_PAY/.test(src.slice(src.indexOf('function meventContractHtml'), src.indexOf('async function openMeventContract'))), 'хамрах хүрээ: M-Event гэрээний загвар дансыг агуулахгүй (зөвхөн утгад захиалгын дугаар)');
   ok(!/MEVENT_PAY/.test(src.slice(src.indexOf('function nomaadContractHtml'), src.indexOf('function nomaadContractHtml') + 30000).split('function meventContractHtml')[0]), 'хамрах хүрээ: NOMAAD гэрээ өөрийн дансаа (nomaadAcct) хэвээр ашиглана');
-  // ⛔ Хуучин хувийн данс зөвхөн ТАНИХАД — үнийн санал/нэхэмжлэхийн кодод ХЭЗЭЭ Ч хэвлэгдэхгүй
-  ok(!/MEVENT_PAY_LEGACY/.test(src.slice(src.indexOf('async function buildOrderQuote'), src.indexOf('async function buildOrderQuote') + 14000)), '⛔ үнийн санал: хуучин хувийн данс (MEVENT_PAY_LEGACY) хэвлэгдэхгүй');
-  ok(!/MEVENT_PAY_LEGACY/.test(src.slice(src.indexOf('function invoiceOrg'), src.indexOf('async function issueInvoice'))), '⛔ нэхэмжлэх: хуучин хувийн данс хэвлэгдэхгүй');
+  // ⛔ Захирлын хувийн данс (MEVENT_PAY_LEGACY/PERSON) үнийн санал/нэхэмжлэхэд ЗӨВХӨН `meventPayFor`-оор орно (2026-11-05, CEO):
+  // хувь хүн → хувийн данс, байгууллага → компанийн данс. Шууд заавал дүрэм хоёр газар салбарлана.
+  const _quoteSrc = src.slice(src.indexOf('async function buildOrderQuote'), src.indexOf('async function buildOrderQuote') + 14000);
+  const _invSrc = src.slice(src.indexOf('function invoiceOrg'), src.indexOf('async function issueInvoice'));
+  ok(/QP = meventPayFor\(o\)/.test(_quoteSrc) && !/MEVENT_PAY_LEGACY|MEVENT_PAY_PERSON|QP = MEVENT_PAY\b/.test(_quoteSrc), '⛔ үнийн санал: данс = meventPayFor(o) (хувь хүн/байгууллага ГАНЦ дүрмээр), хувийн дансыг шууд заахгүй');
+  ok(/meventPayFor\(/.test(_invSrc) && !/MEVENT_PAY_LEGACY|MEVENT_PAY_PERSON|[^a-zA-Z]MEVENT_PAY\./.test(_invSrc), '⛔ нэхэмжлэх: invoiceOrg нь данс meventPayFor-оор (хувийн дансыг шууд заахгүй)');
+  ok(!/MEVENT_PAY_LEGACY|MEVENT_PAY_PERSON/.test(src.slice(src.indexOf('function meventContractHtml'), src.indexOf('async function openMeventContract'))), 'M-Event гэрээ: дансны дугаар ОГТ байхгүй (хувь хүнд ч)');
+
+  // ⭐ ХУВЬ ХҮН → захирлын хувийн данс; БАЙГУУЛЛАГА → компанийн орлогын данс (2026-11-05, CEO: «байгууллагруу авахгүй»)
+  const PP = run('MEVENT_PAY_PERSON');
+  ok(PP.account === '3155107584' && PP.iban === 'MN14 0015 00 3155107584' && PP.holder === 'Г.Мөнх-Учрал' && PP.bank === 'Голомт банк', 'хувийн данс: Голомт 3155107584 / IBAN / Г.Мөнх-Учрал');
+  eq(mod97(PP.iban), 1, '⛔ хувийн дансны IBAN: MOD-97 шалгалт тэнцэнэ');
+  eq(PP.iban.replace(/\s+/g, '').slice(-10), PP.account, '⛔ хувийн данс = IBAN-ы сүүлийн 10 орон');
+  const mkOrd = (cust, note) => Object.assign(run('docBlankMeventOrder()'), { id: 'ao-pp', number: 1801, customer: cust, phone: '99112233', note: note || '' });
+  sandbox.__oPerson = mkOrd('Б.Ариун');
+  sandbox.__oOrg = mkOrd('Б.Ариун', run(`setCustInfo('', { company: 'Тест ХХК', reg: '1234567' })`));
+  sandbox.__oPersonCt = mkOrd('Б.Ариун', run(`setCustInfo('', { ctype: 'person' })`));
+  const same = (a, b) => a.account === b.account && a.iban === b.iban;
+  ok(same(run('meventPayFor(__oPerson)'), PP), '⛔ хувь хүний захиалга → хувийн данс');
+  ok(same(run('meventPayFor(__oPersonCt)'), PP), '⛔ «хувь хүн» гэж ил сонгосон захиалга → хувийн данс');
+  ok(same(run('meventPayFor(__oOrg)'), QP), '⛔ байгууллагын захиалга → компанийн орлогын данс (хувийн данс руу авахгүй)');
+  ok(same(run('meventPayFor(docBlankMeventOrder())'), QP), 'харилцагчгүй хоосон загвар → компанийн данс');
+  ok(same(run('meventPayFor(null)'), QP) && same(run('meventPayFor(true)'), QP) && same(run('meventPayFor(false)'), PP), 'meventPayFor: null/true → компани, false → хувь хүн');
+  for (const lang of ['mn', 'en']) {
+    const hp = String(await run(`buildOrderQuote(__oPerson, '${lang}')`));
+    ok(hp.includes('3155107584') && hp.includes('MN14 0015 00 3155107584'), `⛔ үнийн санал (${lang}): хувь хүнд хувийн данс ба IBAN гарна`);
+    ok(hp.includes(lang === 'en' ? 'G.Munkh-Uchral' : 'Г.Мөнх-Учрал'), `үнийн санал (${lang}): хувь хүнд данс эзэмшигч = захирал`);
+    ['1245166926', 'MN78 0015 00', '3635161180', '1245166927', '1245166928', 'MN51 0015 00', 'MN24 0015 00'].forEach(x =>
+      ok(!hp.includes(x), `⛔ үнийн санал (${lang}, хувь хүн): «${x}» ГАРАХГҮЙ (компани/зарлага/валют данс)`));
+    const ho = String(await run(`buildOrderQuote(__oOrg, '${lang}')`));
+    ok(ho.includes('1245166926') && ho.includes('MN78 0015 00 1245166926'), `⛔ үнийн санал (${lang}): байгууллагад компанийн орлогын данс`);
+    ['3155107584', 'MN14 0015 00', 'Мөнх-Учрал', 'Munkh-Uchral', '3635161180', '1245166927', '1245166928'].forEach(x =>
+      ok(!ho.includes(x), `⛔ үнийн санал (${lang}, байгууллага): «${x}» ГАРАХГҮЙ (хувийн данс байгууллагад очихгүй)`));
+  }
+  // Нэхэмжлэх: `invoiceBuyer(o).isOrg` → invoiceOrg(isOrg)
+  const invP = run('invoiceOrg(false)'), invO = run('invoiceOrg(true)'), invU = run('invoiceOrg()');
+  ok(invP.account === '3155107584' && invP.holder === 'Г.Мөнх-Учрал' && invP.bank === 'Голомт банк', '⛔ нэхэмжлэх (хувь хүн): хувийн данс, хүлээн авагч = захирал');
+  ok(invO.account === '1245166926' && invU.account === '1245166926', '⛔ нэхэмжлэх (байгууллага/тодорхойгүй): компанийн орлогын данс');
+  ok(invP.reg === '7341577' && invP.name === '"ЭМ ЭВЕНТ СОЛЮШН" ХХК', 'нэхэмжлэх (хувь хүн): нэхэмжлэгчийн компанийн мэдээлэл хэвээр, зөвхөн данс солигдоно');
+  sandbox.__bP = run('invoiceBuyer(__oPerson, null)'); sandbox.__bO = run('invoiceBuyer(__oOrg, null)');
+  ok(sandbox.__bP.isOrg === false && sandbox.__bO.isOrg === true, 'нэхэмжлэхийн төлөгч: хувь хүн / байгууллага зөв таарна');
+  const invDocP = String(run(`invoiceDocHtml({ no: 'INV-2', issuedAt: '2026-11-05', orderNo: 1801, buyer: __bP, lines: [], t: { total: 100000, due: 100000 }, org: invoiceOrg(__bP.isOrg), to: '' })`));
+  const invDocO = String(run(`invoiceDocHtml({ no: 'INV-3', issuedAt: '2026-11-05', orderNo: 1801, buyer: __bO, lines: [], t: { total: 100000, due: 100000 }, org: invoiceOrg(__bO.isOrg), to: '' })`));
+  ok(invDocP.includes('3155107584') && invDocP.includes('Хүлээн авагч: Г.Мөнх-Учрал') && !invDocP.includes('1245166926'), '⛔ нэхэмжлэх + имэйлийн бичвэр (хувь хүн): хувийн данс, компанийн данс ГАРАХГҮЙ');
+  ok(invDocO.includes('1245166926') && !invDocO.includes('3155107584') && !invDocO.includes('Мөнх-Учрал'), '⛔ нэхэмжлэх + имэйлийн бичвэр (байгууллага): компанийн данс, хувийн данс ГАРАХГҮЙ');
 
   // ⛔ Эм Эвент Солюшн НӨАТ ТӨЛӨГЧ БИШ (2026-11-04, CEO): үнийн санал (мн/ен) дээр НӨАТ-ын үг, «багтсан/багтаагүй» ХЭЗЭЭ Ч гарахгүй
   for (const lang of ['mn', 'en']) {
@@ -22908,7 +22950,7 @@ async function swFetchTests() {
   eq(runL('meventLegal()').reg, '7341577', 'нэхэмжлэгч: тохиргоо өгөгдмөл төлөвтөө буцсан (регресс)');
 
   const issue = src.slice(src.indexOf('async function issueInvoice'), src.indexOf('function invoiceDocHtml'));
-  ok(/org: invoiceOrg\(\)/.test(issue) && !/org: CHIMUN_LEGAL/.test(issue), '⛔ нэхэмжлэх: issueInvoice нь шинэ дансны invoiceOrg()-ийг ашиглана (CHIMUN_LEGAL-ийг шууд биш)');
+  ok(/org: invoiceOrg\(buyer\.isOrg\)/.test(issue) && !/org: CHIMUN_LEGAL/.test(issue), '⛔ нэхэмжлэх: issueInvoice нь төлөгчийн төрлөөр invoiceOrg(buyer.isOrg)-ийг ашиглана (CHIMUN_LEGAL-ийг шууд биш)');
   // ② Гэрээ: имэйл илгээх товч ЗӨВХӨН илгээх сувагтай үед
   const ord = { id: 'ao-1', number: 1700, contract_no: 'Г-17', customer: 'Б.Ариун', phone: '99112233', email: 'ariun@x.mn', items: [], total_mnt: 100000, starts_at: '2026-10-25', stops_at: '2026-10-26' };
   sandbox.__ord = ord;

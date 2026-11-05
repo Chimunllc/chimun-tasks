@@ -24264,17 +24264,36 @@ const MEVENT_ACCTS = [
 /* M-EVENT-ИЙН ТӨЛБӨРИЙН данс = ОРЛОГЫН данс. `buildOrderQuote` (үнийн санал: имэйл, урьдчилан харах, PDF) ба
    `invoiceOrg()` (НЭХЭМЖЛЭХ, түүний имэйл) энэ дансыг ашиглана. M-Event гэрээнд дансны дугаар ОГТ байхгүй (зөвхөн
    «гүйлгээний утгад захиалгын дугаар бич»). NOMAAD нь `nomaadAcct`, `CHIMUN_LEGAL.account` нь бусад баримтад тусдаа.
-   ⛔ Харилцагчид ЗӨВХӨН орлогын данс гарна (зарлага/валют данс баримтад ХЭЗЭЭ Ч орохгүй — тест хаана). */
+   ⛔ БАЙГУУЛЛАГЫН харилцагчид ЗӨВХӨН орлогын данс гарна; ХУВЬ ХҮНД захирлын хувийн данс (`meventPayFor`, доор).
+   Зарлага/валют данс баримтад ХЭЗЭЭ Ч орохгүй — тест хаана. */
 const MEVENT_PAY = {
   bank: 'Голомт банк', bankEn: 'Golomt Bank',
   account: MEVENT_ACCTS[0].account, iban: MEVENT_ACCTS[0].iban,
   holder: 'Эм Эвент Солюшн ХХК', holderEn: 'M Event Solution LLC',
 };
-/* ХУУЧИН ХУВИЙН ДАНС — ЗӨВХӨН баримт ТАНИХАД (шилжилтийн хугацаа). Өмнө илгээсэн үнийн санал (14 хоног хүчинтэй),
-   нэхэмжлэх, хуучин захиалгын үлдэгдэл энэ данс руу ИРЖ БОЛЗОШГҮЙ тул хасвал тэдний PDF баримт «Чимунд ирээгүй
-   гүйлгээ» гэж татгалзагдана. ⛔ Баримтад/саналд ХЭЗЭЭ Ч хэвлэхгүй. Энэ данс руу төлбөр ирэхээ больсон гэдгийг
-   `bank_income`-оор баталсны дараа л хасна. */
+/* ЗАХИРЛЫН ХУВИЙН ДАНС (хуучин M-Event-ийн төлбөрийн данс) — хоёр үүрэгтэй:
+   ① баримт ТАНИХ (өмнө илгээсэн үнийн санал, нэхэмжлэх, хуучин захиалгын үлдэгдэл энэ данс руу орж болно);
+   ② ХУВЬ ХҮНИЙ харилцагчид төлбөр авах данс (`MEVENT_PAY_PERSON`, `meventPayFor`) — 2026-11-05, CEO:
+      «хувь хүнээр гэж сонгоход миний данс гардаг болмоор, байгууллагруу авахгүй».
+   ⛔ БАЙГУУЛЛАГЫН харилцагчид энэ данс ХЭЗЭЭ Ч гарахгүй (тест хаана). Энэ данс руу төлбөр ирэхээ больсон гэдгийг
+   `bank_income`-оор баталсны дараа л танихаас хасна. */
 const MEVENT_PAY_LEGACY = { account: '3155107584', iban: 'MN14 0015 00 3155107584', holder: 'Г.Мөнх-Учрал' };
+const MEVENT_PAY_PERSON = {
+  bank: 'Голомт банк', bankEn: 'Golomt Bank',
+  account: MEVENT_PAY_LEGACY.account, iban: MEVENT_PAY_LEGACY.iban,
+  holder: MEVENT_PAY_LEGACY.holder, holderEn: 'G.Munkh-Uchral',
+};
+/* Төлбөр хүлээн авах данс — ГАНЦ ДҮРЭМ (үнийн санал, нэхэмжлэх, имэйл бүгд үүнийг дуудна):
+   байгууллага → Эм Эвент Солюшн ХХК-ийн ОРЛОГЫН данс; хувь хүн → захирлын хувийн данс.
+   Харилцагч хараахан сонгогдоогүй (хоосон загвар) бол компанийн данс. `o` нь захиалга, эсвэл `true/false` (байгууллага эсэх). */
+function meventPayFor(o) {
+  if (o === true) return MEVENT_PAY;
+  if (o === false) return MEVENT_PAY_PERSON;
+  if (!o) return MEVENT_PAY;
+  const who = String(o.customer || '').trim() || String((custInfoOf(o.note) || {}).company || '').trim();
+  if (!who) return MEVENT_PAY;
+  return orderCustType(o) === 'org' ? MEVENT_PAY : MEVENT_PAY_PERSON;
+}
 /* Баримтын нэхэмжлэгч / түрээслүүлэгч тал = «Эм Эвент Солюшн» ХХК (үнийн санал, нэхэмжлэх, M-Event гэрээ).
    РД, хаяг, захирал ГУРВУУЛАА бөглөгдсөн үед л шинэ компани гарна; аль нэг нь хоосон бол ЧИМУН ХХК-ийн мэдээллээр
    (РД-гүй гэрээ, хуучин РД-тай шинэ нэр хоёулаа буруу — хольж БОЛОХГҮЙ). Утга нь улсын бүртгэлийн гэрчилгээнээс. */
@@ -24491,8 +24510,10 @@ function _amt(n) { return `${fmtMoney(n)} (${mnNumToWords(n)})`; }
    ХАРАГДАХ элементээс рендэрлэдэг тул `windowWidth` заах шаардлагагүй —
    CLAUDE.md-д «ажилладаг quote PDF = харагдах popup» гэж тэмдэглэсэн. */
 // Нэхэмжлэхийн «нэхэмжлэгч» — компанийн мэдээлэл (нэр, РД, хаяг, захирал) + M-Event-ийн ТӨЛБӨРИЙН данс.
-function invoiceOrg() {
-  return Object.assign({}, meventLegal(), { bank: MEVENT_PAY.bank, account: MEVENT_PAY.account, iban: MEVENT_PAY.iban, holder: MEVENT_PAY.holder });
+// `isOrg` = төлөгч байгууллага эсэх (`invoiceBuyer().isOrg`): false бол хувь хүн → захирлын хувийн данс; бусад нь компанийн орлогын данс.
+function invoiceOrg(isOrg) {
+  const P = meventPayFor(isOrg === false ? false : true);
+  return Object.assign({}, meventLegal(), { bank: P.bank, account: P.account, iban: P.iban, holder: P.holder });
 }
 async function issueInvoice(orderId, btn) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(orderId));
@@ -24526,7 +24547,7 @@ async function issueInvoice(orderId, btn) {
     // Имэйл — үнийн саналын БЭЛЭН сувгаар (`mevent-quote-send`). Тэр урсгал нь
     // ерөнхий: {to, subject, body, filename, pdf_base64} авч PDF хавсаргаж илгээнэ.
     const doc = invoiceDocHtml({ no, issuedAt: inv.issued_at, dueAt: inv.due_at, orderNo: o.number,
-                                 buyer, lines, t, org: invoiceOrg(),
+                                 buyer, lines, t, org: invoiceOrg(buyer.isOrg),
                                  sendUrl: withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL),
                                  sendTok: sessionTokenForSend(),
                                  to: buyer.email || '' });
@@ -37152,7 +37173,7 @@ function orderMoneyBreakdown(o) {
   return { days, subtotal, discount, delivFee, delivLbl, offFee, setupFee, deposit, rentalNet, total };
 }
 async function buildOrderQuote(o, lang) {
-  const C = meventLegal(), QP = MEVENT_PAY, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
+  const C = meventLegal(), QP = meventPayFor(o), now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
   // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
   const days = orderRentalDays(o);
@@ -37199,7 +37220,7 @@ async function buildOrderQuote(o, lang) {
     const coName = EN ? (C.nameEn || C.name) : C.name;
     const coAddr = EN ? (C.addressEn || C.address) : C.address;
     const coBank = EN ? (QP.bankEn || QP.bank) : QP.bank;
-    const coHolder = EN ? (QP.holderEn || QP.holder) : QP.holder;   // данс эзэмшигч (хүлээн авагч) — ХУВИЙН хүн
+    const coHolder = EN ? (QP.holderEn || QP.holder) : QP.holder;   // данс эзэмшигч (хүлээн авагч): байгууллагад компани, хувь хүнд захирал
     const custName = EN ? enProper(o.customer || '') : (o.customer || '');
     const custAddr = EN ? enText(o.delivery_address || '') : (o.delivery_address || '');
     const sName = EN ? enProper(_sName) : _sName;

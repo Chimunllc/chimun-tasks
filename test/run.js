@@ -3772,6 +3772,30 @@ function finish() {
   ok(!noise("Cannot access 'rcPaint' before initialization", 'app.js:17472'),
      'алдаа: ЖИНХЭНЭ алдааг барина (нярвын тохиолдол)');
 
+  /* fp e9dfadd9f5df — PROMISE-ийн алдаанд `src` нь ҮРГЭЛЖ 'promise' тул
+     `ERR_FOREIGN_SRC` ОГТ ажилладаггүй байв. In-app браузер/өргөтгөл native-аас
+     JS шахдаг (`evaluateJavascript`) — тэр кодын фрэйм нь `<anonymous>:9:26`
+     хэлбэртэй, URL ОГТ байхгүй. Манай код ҮРГЭЛЖ http(s)-ээр ачаалагддаг тул
+     URL-гүй/гадны схемтэй стек нь манайх БИШ. */
+  const STK_FOREIGN = "TypeError: Cannot read properties of undefined (reading 'id')\n"
+    + '    at <anonymous>:9:26\n    at <anonymous>:14:3';
+  ok(noise("Cannot read properties of undefined (reading 'id')", 'promise', STK_FOREIGN),
+     'алдаа: URL-гүй (шахсан кодын) promise алдаа тоохгүй (fp e9dfadd9f5df)');
+  ok(noise('boom', 'promise', 'Error: boom\n    at sendDataToNative (iabjs://nav_logger:1:10198)'),
+     'алдаа: гадны схемтэй стектэй promise алдаа тоохгүй');
+  // ⛔ ЖИНХЭНЭ алдаа шүүгдэх ЁСГҮЙ — стек дотор нэг ч https фрэйм бол манайх
+  ok(!noise("Cannot read properties of undefined (reading 'id')", 'promise',
+     "TypeError: x\n    at <anonymous>:9:26\n    at o (https://chimunllc.github.io/chimun-tasks/app.js:44572:12)"),
+     'алдаа: стек дотор манай app.js байвал барина');
+  ok(!noise('boom', 'promise', 'Error: boom\n    at Array.map (<anonymous>)\n'
+     + '    at https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js:1:999'),
+     'алдаа: CDN сангийн алдааг native фрэймээс болж хаяхгүй');
+  // ⚠ Стек БАЙХГҮЙ / чөлөөт тэмдэглэл бол ТААМАГЛАХГҮЙ — бүртгэнэ
+  ok(!noise('boom', 'promise', ''), 'алдаа: стекгүй promise алдааг таамаглахгүй');
+  ok(!noise('boom', 'restart', 'дэлгэц: reports'), 'алдаа: чөлөөт тэмдэглэлийг стек гэж андуурахгүй');
+  ok(!noise('boom', 'promise', 'дэлгэц: reports\nнэмэлт мэдээлэл'),
+     'алдаа: `at`-гүй олон мөрт тэмдэглэлийг стек гэж андуурахгүй');
+
   clearErrs();
   eq(getErrs().length, 0, 'алдаа: цэвэрлэсний дараа хоосон');
 
@@ -3785,10 +3809,38 @@ function finish() {
   logErr('Script error.', '');
   eq(getErrs().length, 1, 'алдаа: чимээ бүртгэлд ОРОХГҮЙ');
 
+  // fp e9dfadd9f5df — URL-гүй стектэй promise алдаа бүртгэлд ч, серверт ч ОРОХГҮЙ
+  logErr("Cannot read properties of undefined (reading 'id')", 'promise', STK_FOREIGN);
+  eq(getErrs().length, 1, 'алдаа: гадны URL-гүй promise алдаа бүртгэлд ОРОХГҮЙ (fp e9dfadd9f5df)');
+  // ⚠ Бүтэн стек ирсэн ч ХАДГАЛАХ нь эхний 3 мөр — лог хязгааргүй өсөхгүй
+  clearErrs();
+  logErr('жинхэнэ', 'promise', 'TypeError: x\n    at a (https://x/app.js:1:1)\n'
+    + '    at b (https://x/app.js:2:2)\n    at c (https://x/app.js:3:3)\n    at d (https://x/app.js:4:4)');
+  const kept = getErrs()[0].extra;
+  ok(kept.indexOf('at b') > -1 && kept.indexOf('at d') === -1, 'алдаа: стек эхний 3 мөрөөр хадгалагдана');
+  ok(kept.indexOf(' | ') > -1, 'алдаа: стекийн мөрүүд « | »-ээр нийлнэ');
+  clearErrs();
+  logErr('түр', 'app.js:1', 'stack');   // дараагийн тестүүдийн тооллогыг эвдэхгүй
+  eq(getErrs().length, 1, 'алдаа: дахин бүртгэгдэнэ');
+
   // Хязгаар — тэмдэглэл хязгааргүй өсөхгүй
   for (let i = 0; i < 40; i++) logErr('алдаа ' + i, 'app.js:1');
   ok(getErrs().length <= 20, 'алдаа: сүүлийн 20-оор хязгаарлана');
   ok(getErrs().slice(-1)[0].msg.indexOf('алдаа 39') > -1, 'алдаа: хамгийн сүүлийнх үлдэнэ');
+
+  /* ⛔ СКАН: глобал баригч стекийг БҮТНЭЭР дамжуулна (fp e9dfadd9f5df).
+     Тайрсан 3 мөрөөр шийдвэл 4-р фрэйм дэх манай `app.js` харагдахгүй үлдэж,
+     ЖИНХЭНЭ алдаа «гадны код» гэж чимээгүй хаягдана. */
+  {
+    const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const hnd = asrc.slice(asrc.indexOf("window.addEventListener('error'"),
+      asrc.indexOf("addEventListener('unhandledrejection'") + 400);
+    ok(hnd.length > 100, 'scan: глобал алдаа баригч олдов');
+    eq((hnd.match(/slice\(0, 3\)/g) || []).length, 0,
+       'scan: баригч стекийг тайрахгүй — бүтнээр logAppError руу');
+    ok(/_errIsNoise\(msg, src, extra\)/.test(asrc), 'scan: чимээний шалгалт стектэй дуудагдана');
+    ok(/_reportErrToServer\(msg, src, note\)/.test(asrc), 'scan: серверт тайрсан стек илгээнэ');
+  }
 
   // 24 цагийн шүүлт
   clearErrs();

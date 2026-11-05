@@ -285,12 +285,36 @@ const ERR_FOREIGN_SRC = /^(?!https?:)[a-z][a-z0-9+.-]*:\/\//i;
 //   (fp 0f6bea95f208). Манай код `window.webkit`-д ХЭЗЭЭ Ч хүрдэггүй.
 //   ⚠ Сайтын `errIsNoise`-тэй ИЖИЛ дүрэм — нэгийг нь заавал нөгөөтэй нь зэрэг зас.
 const ERR_FOREIGN_MSG = /webkit\.messageHandlers|messageHandlers|iabjs|__fbNative/i;
-function _errIsNoise(msg, src) {
+// ⛔ URL-ГҮЙ СТЕК = МАНАЙ КОД БИШ (2026-11-05, fp e9dfadd9f5df).
+//   PROMISE-ийн алдаанд `src` нь ҮРГЭЛЖ 'promise' тул `ERR_FOREIGN_SRC` ОГТ
+//   ажилладаггүй байв. In-app браузер (Facebook/Instagram Android) ба өргөтгөл
+//   native-аас JS шахдаг (`evaluateJavascript`) — тэр кодын фрэйм нь URL-гүй
+//   `<anonymous>:9:26` хэлбэртэй гардаг. Иймд «Cannot read properties of
+//   undefined (reading 'id')» гэсэн ГАДНЫ алдаа манайх мэт Issue үүсгэж байв.
+//   Дүрэм: манай код (ба CDN сан) ҮРГЭЛЖ http(s)-ээр ачаалагддаг тул стекийн
+//   `at` фрэйм БҮР URL-гүй эсвэл гадны схемтэй бол манайх БИШ.
+// ⚠ Стек БАЙХГҮЙ, эсвэл `at` фрэймгүй чөлөөт тэмдэглэл бол ТААМАГЛАХГҮЙ —
+//   бүртгэнэ. Нэг ч фрэйм http(s) бол ЖИНХЭНЭ алдаа (native `at Array.map
+//   (<anonymous>)` фрэйм хажуугаар орсон ч) — эс бөгөөс алдаа чимээгүй алга болно.
+// ⚠ Тиймээс шийдвэр нь БҮТЭН стек дээр гарна — `logAppError` руу тайрсан 3 мөрийг
+//   БИШ, бүтнээр дамжуулна (4-р фрэйм нь манай app.js байж болно).
+function _errFrameIsForeign(line) {
+  const u = String(line).match(/[a-z][a-z0-9+.-]*:\/\//i);
+  if (u) return !/^https?:\/\//i.test(u[0]);                     // гадны схем (iabjs://, chrome-extension://…)
+  return /<anonymous>|\[native code\]/i.test(line);              // URL огт алга — шахсан/native код
+}
+function _errStackIsForeign(stack) {
+  const frames = String(stack || '').split(/\n|\s\|\s/).filter(l => /^\s*at\s/.test(l));
+  if (!frames.length) return false;                              // стек биш — таамаглахгүй
+  return frames.every(_errFrameIsForeign);
+}
+function _errIsNoise(msg, src, stack) {
   const m = String(msg || '');
   if (!m || m === 'Script error.') return true;                  // cross-origin, дэлгэрэнгүй байхгүй
   if (/ResizeObserver loop/i.test(m)) return true;               // хор хөнөөлгүй браузерын чимээ
   if (ERR_FOREIGN_SRC.test(String(src || ''))) return true;      // өргөтгөл / in-app браузерын шахсан код
   if (ERR_FOREIGN_MSG.test(m)) return true;                      // in-app браузерын гүүрийн код (доорх тайлбар)
+  if (_errStackIsForeign(stack)) return true;                    // URL-гүй стек — native-аас шахсан код
   return false;
 }
 function appErrors() {
@@ -299,7 +323,9 @@ function appErrors() {
 }
 function clearAppErrors() { try { localStorage.removeItem(ERR_LOG_KEY); } catch (e) {} }
 function logAppError(msg, src, extra) {
-  if (_errIsNoise(msg, src)) return;
+  if (_errIsNoise(msg, src, extra)) return;
+  // Шийдвэр БҮТЭН стек дээр гарсан; хадгалах/илгээхэд эхний 3 мөр л хэрэгтэй.
+  const note = String(extra || '').split('\n').slice(0, 3).map(l => l.trim()).filter(Boolean).join(' | ');
   try {
     const list = appErrors();
     list.push({
@@ -309,7 +335,7 @@ function logAppError(msg, src, extra) {
       view: (typeof state === 'object' && state) ? String(state.view || '') : '',
       me: (typeof state === 'object' && state) ? String(state.me || '') : '',
       ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
-      extra: String(extra || '').slice(0, 300),
+      extra: note.slice(0, 300),
     });
     localStorage.setItem(ERR_LOG_KEY, JSON.stringify(list.slice(-ERR_LOG_MAX)));
   } catch (e) {}
@@ -322,7 +348,7 @@ function logAppError(msg, src, extra) {
     }
   } catch (e) {}
   try { if (typeof renderCiStatus === 'function') renderCiStatus(); } catch (e) {}
-  _reportErrToServer(msg, src, extra);
+  _reportErrToServer(msg, src, note);
 }
 // Серверт мэдээлэх — ажилтны утсан дээрх алдаа ЭЗЭНД хүрнэ (локал бүртгэл зөвхөн
 // тухайн төхөөрөмжид үлддэг тул хангалтгүй байсан).
@@ -790,14 +816,15 @@ async function setErrorStatus(fp, status, note) {
   } catch (e) { showToast('⚠ Төлөв хадгалагдсангүй', 'error', 2500); return false; }
 }
 try {
+  // ⚠ Стекийг БҮТНЭЭР дамжуулна (тайралт `logAppError` дотор) — «манай код эсэх»
+  //   шийдвэр бүх фрэйм дээр гарах ёстой (fp e9dfadd9f5df).
   window.addEventListener('error', (ev) => {
     logAppError(ev && ev.message, ev && ev.filename ? ev.filename + ':' + ev.lineno : '',
-      ev && ev.error && ev.error.stack ? String(ev.error.stack).split('\n').slice(0, 3).join(' | ') : '');
+      ev && ev.error && ev.error.stack ? String(ev.error.stack) : '');
   });
   window.addEventListener('unhandledrejection', (ev) => {
     const r = ev && ev.reason;
-    logAppError(r && r.message ? r.message : String(r), 'promise',
-      r && r.stack ? String(r.stack).split('\n').slice(0, 3).join(' | ') : '');
+    logAppError(r && r.message ? r.message : String(r), 'promise', r && r.stack ? String(r.stack) : '');
   });
 } catch (e) {}
 

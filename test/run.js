@@ -25015,3 +25015,115 @@ async function swFetchTests() {
   // Баримт
   ok(/ЦАЛИНГИЙН ГҮЙЛГЭЭ ↔ АЖИЛТАН/.test(md) && /⟦EMP\|/.test(md), 'scan: CLAUDE.md-д дүрэм бичигдсэн');
 }
+
+// ═══ БАРЬЦААНААС СУУТГАЛ — ДҮН ШИНЖИЛГЭЭНД ГАРНА (2026-11-05, CEO: «хаягдаад байна») ══════
+// 10 сард 3 захиалгад 450,000₮ суутгагдсан ч ямар ч тайланд харагдаагүй; №1671-д бүтэн барьцаа
+// буцсаны дараа 60,000₮ эвдрэл бүртгэгдээд мөнгө алдагдсан. `orderDeductions` нь ГАНЦ эх сурвалж.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const D = F.orderDeductions, di = F.orderDeductionIncome, dm = F.deductionsOfMonth;
+  ok([D, di, dm, F.renderDeductionsCard].every(f => typeof f === 'function'), 'суутгал: 4 функц бий');
+  const O = (x) => Object.assign({ id: 'o' + Math.random(), number: 1, customer: 'Т', source: 'app', status: 'returned',
+    starts_at: '2026-10-10', stops_at: '2026-10-11', created_at: '2026-10-01', total_mnt: 1000000, paid_mnt: 1000000,
+    deposit_mnt: 200000, note: '', items: [] }, x);
+  const save = runIn('[state.appOrders, state.financeRequests]');
+  runIn('state.financeRequests = [];');
+
+  // (1) Эвдрэл бүртгэсэн, барьцаа ХАРААХАН буцаагдаагүй → суутгал ОРЛОГО
+  let d = D(O({ note: '⟦DMG|60000|Бүтээлэг бохирдсон⟧' }));
+  eq([d.claim, d.held, d.receivable, d.open], [60000, 60000, 0, 0], 'суутгал: эвдрэл бүртгэсэн, барьцаа буцаагдаагүй → 60,000 суутгагдана');
+  eq(d.reason, 'Бүтээлэг бохирдсон', 'суутгал: шалтгаан хадгалагдана');
+
+  // (2) №1671 — БҮТЭН барьцаа буцсаны ДАРАА эвдрэл → суутгах юм үлдээгүй, ХАРИЛЦАГЧААС АВНА
+  d = D(O({ deposit_mnt: 236480, total_mnt: 1242960, paid_mnt: 1006480, note: '⟦RF|236480||dep|236480⟧ ⟦DMG|60000|Ширээ бүтээлэг бохирдсон⟧' }));
+  eq([d.held, d.receivable], [0, 60000], '№1671: барьцаа буцсан тул 60,000 нь «авах ёстой», орлого БИШ');
+  eq(di(O({ deposit_mnt: 236480, note: '⟦RF|236480||dep|236480⟧ ⟦DMG|60000|x⟧' }), 'accrual'), 0, '№1671: авах ёстой нь орлогод ОРОХГҮЙ');
+
+  // (3) Эвдрэл барьцаанаас ИХ → хэсгийг нь суутгаж, үлдсэнийг авна
+  d = D(O({ deposit_mnt: 100000, note: '⟦RF|40000||dep|40000⟧ ⟦DMG|100000|Ширээ хугарсан⟧' }));
+  eq([d.held, d.receivable], [60000, 40000], 'суутгал: барьцааны үлдсэнээр хязгаарлагдаж, илүү нь авах ёстой');
+
+  // (4) Шалтгаантай хэсэгчилсэн буцаалт = суутгал (№1514: «1 сандал эвдэлсэн»)
+  d = D(O({ deposit_mnt: 200000, note: '⟦RF|150000|1 сандал эвдэлсэн|dep|150000⟧' }));
+  eq([d.held, d.unexplained, d.reason], [50000, 0, '1 сандал эвдэлсэн'], 'суутгал: шалтгаантай хэсэгчилсэн буцаалт');
+
+  // (5) Шалтгаангүй хэсэгчилсэн буцаалт (№1592) — ОРЛОГО БОЛГОХГҮЙ, «тодорхойгүй» гэж ил гаргана
+  d = D(O({ deposit_mnt: 150000, note: '⟦RF|100000||dep|100000⟧' }));
+  eq([d.held, d.unexplained], [0, 50000], 'суутгал: шалтгаангүй хэсэг орлого болохгүй, тодорхойгүй');
+
+  // (6) Дууссан ч барьцаа буцаагдаагүй, суутгагдаагүй (№1694) — «буцаагаагүй»
+  d = D(O({ deposit_mnt: 200000, note: '' }));
+  eq([d.held, d.open], [0, 200000], 'суутгал: дууссан захиалгын буцаагаагүй барьцаа ил гарна');
+
+  // (7) Захиалга ДУУСААГҮЙ (түрээсэнд) — эвдрэл бүртгэсэн ч суутгал хэрэгжээгүй
+  d = D(O({ status: 'rented', note: '⟦DMG|60000|x⟧' }));
+  eq([d.held, d.receivable, d.open], [0, 0, 0], 'суутгал: дуусаагүй захиалгад орлого болохгүй');
+
+  // (8) Booqable, 08-01-ээс өмнөх, барьцаагүй — 0
+  eq(D(O({ source: 'booqable', note: '⟦DMG|60000|x⟧' })).held, 0, 'суутгал: Booqable-д барьцаа total-д ороогүй → 0');
+  eq(D(O({ starts_at: '2026-07-10', stops_at: '2026-07-11', note: '⟦DMG|60000|x⟧' })).held, 0, 'суутгал: 08-01-ээс өмнөх нь өмнө буцагдсан → 0');
+  eq(D(O({ deposit_mnt: 0, note: '⟦DMG|60000|x⟧' })).held, 0, 'суутгал: барьцаагүй захиалгад 0');
+  eq(D(O({ status: 'canceled', note: '⟦DMG|60000|x⟧' })).held, 0, 'суутгал: цуцалсан захиалгад 0');
+
+  // (9) Хуулгаар (5810) буцсан → дахин «буцаагаагүй» гэж гарахгүй
+  runIn(`state.financeRequests = [{ id:'f1', status:'done', link_type:'order', link_id:'ostmt', category:'5810', purpose:'барьцаа буцаалт', amount:150000, executed_at:'2026-10-15' }];`);
+  d = D(O({ id: 'ostmt', deposit_mnt: 200000, note: '' }));
+  eq([d.refunded, d.open, d.unexplained], [150000, 0, 50000], 'суутгал: хуулгаар хэсэгчлэн буцсан → шалтгаангүй хэсэг тодорхойгүй, «буцаагаагүй» БИШ');
+  runIn('state.financeRequests = [];');
+
+  // (10) Мөнгөн суурь: орсон мөнгөөр хязгаарлагдана
+  const oc = O({ deposit_mnt: 100000, total_mnt: 500000, paid_mnt: 400000, note: '⟦DMG|100000|x⟧' });   // түрээс 400,000 = бүгд төлсөн, барьцаа ТӨЛӨГДӨӨГҮЙ
+  eq(di(oc, 'accrual'), 100000, 'суутгал: гүйцэтгэлд бүтэн');
+  eq(di(oc, 'cash'), 0, 'суутгал: барьцаа төлөгдөөгүй бол мөнгөн суурьт орлого болохгүй');
+
+  // (11) ОРЛОГО: Тайлан (finMonthIncome) = Тренд (finAddOrderIncome) — суутгалтай ч ИЖИЛ тоо
+  runIn(`state.appOrders = ${JSON.stringify([
+    O({ id: 'a', number: 1, deposit_mnt: 200000, total_mnt: 1200000, paid_mnt: 1200000, paid_date: '2026-10-10', note: '⟦DMG|60000|Бүтээлэг⟧' }),
+    O({ id: 'b', number: 2, deposit_mnt: 150000, total_mnt: 650000, paid_mnt: 550000, paid_date: '2026-10-12', note: '⟦RF|100000||dep|100000⟧' }),
+    O({ id: 'c', number: 3, deposit_mnt: 100000, total_mnt: 600000, paid_mnt: 600000, paid_date: '2026-10-14', note: '' }),
+  ])}; state.nomaadOrders = []; state.cateringJobs = [];`);
+  for (const basis of ['accrual', 'cash']) {
+    const rep = F.finMonthIncome('2026-10', basis), inc = {};
+    F.finAddOrderIncome(inc, 'ИВЕНТ', basis);
+    eq(inc['2026-10'] || 0, rep.evInc, `ИНВАРИАНТ: суутгалтай ч Тайлан = Тренд (${basis})`);
+    eq(rep.dedInc, 60000, `суутгал: орлогод нэрээр гарна (${basis})`);
+    eq(rep.dedN, 1, `суутгал: 1 захиалга (${basis})`);
+  }
+  const rentOnly = [1000000, 500000, 500000].reduce((s, x) => s + x, 0);
+  eq(F.finMonthIncome('2026-10', 'accrual').evInc, rentOnly + 60000, 'орлого = түрээс (барьцаа хассан) + суутгал');
+
+  // (12) Сарын нэгтгэл + дэлгэцийн карт
+  const m = dm('2026-10', 'accrual');
+  eq([m.sum.income, m.sum.unexplained, m.sum.open, m.sum.receivable], [60000, 50000, 100000, 0], 'сарын нэгтгэл: суутгасан / тодорхойгүй / буцаагаагүй');
+  eq(m.rows.length, 3, 'сарын нэгтгэл: 3 захиалга ил');
+  const html = F.renderDeductionsCard('2026-10', 'accrual');
+  ok(/Барьцаа, суутгал/.test(html) && /суутгасан/.test(html) && /шалтгаангүй/.test(html) && /буцаагдаагүй/.test(html), 'карт: 3 төрөл нэрээр гарна');
+  ok(/#1/.test(html) && /Бүтээлэг/.test(html), 'карт: захиалгын дугаар + шалтгаан гарна');
+  runIn(`state.appOrders = [];`);
+  ok(/Энэ сард суутгал бүртгэгдээгүй/.test(F.renderDeductionsCard('2026-10', 'accrual')), 'карт: хоосон сард ч харагдаж, бүртгэх замыг хэлнэ');
+
+  // (13) ЖУРНАЛ тэнцэнэ, суутгал өр биш орлого
+  const ctx = { basis: 'accrual', opening: null, finance: [], income: [], deprec: [],
+    orders: [O({ id: 'j1', number: 9, deposit_mnt: 200000, total_mnt: 1200000, paid_mnt: 1200000, note: '⟦DMG|60000|x⟧' })] };
+  const ent = F.journalEntries(ctx, '2026-10');
+  const tot = F.journalTotals(ent);
+  eq(tot.dr, tot.cr, 'журнал: суутгалтай ч дебет = кредит');
+  const ln = ent[0].lines;
+  eq((ln.find(l => l.acc === 'revenue') || {}).cr, 1000000 + 60000, 'журнал: суутгал орлогод орно');
+  eq((ln.find(l => l.acc === 'deposit') || {}).cr, 140000, 'журнал: өр болох барьцаа суутгалаар буурна');
+  runIn('state.appOrders = ' + JSON.stringify(save[0] || []) + '; state.financeRequests = ' + JSON.stringify(save[1] || []) + ';');
+
+  // (14) UI холбоос: буцаан олгох цонх, эвдрэлийн цонх, карт
+  const srcR = F.openRefundModal.toString();
+  ok(/orderDeductions\(o\)/.test(srcR) && /depRefundable/.test(srcR), 'scan: буцаан олгох цонх суутгалыг барьцаанаас хасна');
+  ok(/moneyFmtInput\(Math\.min\(paid, depRefundable \+ overAmt\)\)/.test(srcR) && /depEl\.value = moneyFmtInput\(depRefundable\)/.test(srcR), 'scan: цонхны өгөгдмөл дүн = барьцаа − суутгал');
+  const srcD = F.openOrderDamageModal.toString();
+  ok(/orderRefundedDeposit\(o\)/.test(srcD) && /dmg-late/.test(srcD), 'scan: эвдрэлийн цонх барьцаа аль хэдийн буцсаныг хэлнэ');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/'returned', 'stowed', 'stopped', 'archived'\]\.includes\(st\)[\s\S]{0,260}data-app-damage/.test(appSrc), 'scan: ⚠ Эвдрэл товч дууссан/архивласан захиалгад ч бий');
+  ok(/const _dd = orderDeductions\(o\)/.test(appSrc) && /харилцагчаас \$\{fmtMoney\(_dd\.receivable\)\} авна/.test(appSrc), 'scan: картан дээр «харилцагчаас авна» гарна');
+  ok(/renderDeductionsCard\(month, finBasis\(\)\) \+ catCard/.test(appSrc), 'scan: Дүн шинжилгээний орлогын задаргаанд карт орсон');
+  ok(/суутгал \$\{fmtSaya\(_mi\.dedInc\)\} орсон/.test(appSrc), 'scan: орлогын KPI «суутгал орсон» гэж нэрлэнэ');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  for (const c of ['.dd-card', '.dd-kpis', '.dd-row', '.rf-hold', '.dmg-late']) ok(css.includes(c + ' {') || css.includes(c + ','), `scan: CSS ${c} бий`);
+}

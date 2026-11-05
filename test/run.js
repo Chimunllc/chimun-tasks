@@ -25127,3 +25127,117 @@ async function swFetchTests() {
   const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   for (const c of ['.dd-card', '.dd-kpis', '.dd-row', '.rf-hold', '.dmg-late']) ok(css.includes(c + ' {') || css.includes(c + ','), `scan: CSS ${c} бий`);
 }
+
+// ═══ ХҮЛЭЭН АВАХАД БОХИР / ЭВДЭРСЭН — МӨР БҮРЭЭР (2026-11-05, CEO: «тэмдэглэж авч байгаа ч харагдахгүй») ══════
+// Үндсэн шалтгаан: цонхны «Тэмдэглэл» (`entry.comment`) зөвхөн ★ үнэлгээтэй үед бичигддэг байсан ба ★ 10-04-нд
+// хасагдсанаас хойш нярав бичсэн тэмдэглэл ШИДЭГДЭЖ байв (10-05-аас хойших 56 хүлээн авалтын 0-д нь үлдсэн).
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const RC = F.receiveConditions, SC = F.stageCondOf, RF = F.orderReceiveFindings, FL = F.findingsLine;
+  ok([RC, SC, RF, FL, F.recordReceiveBroken, F.applyBrokenDelta].every(f => typeof f === 'function'), 'хүлээн авах: 6 функц бий');
+  const items = [{ sku: 'A', name: 'Сандал', qty: 10 }, { sku: 'B', name: 'Бүтээлэг', qty: 5 }];
+
+  // (1) receiveConditions — цэвэр, тоолсон тоогоор таглагдана
+  eq(RC(items, [0, 3], [2, 0], [10, 5]).map(x => [x.sku, x.soiled, x.broken]), [['A', 0, 2], ['B', 3, 0]], 'хүлээн авах: бохир/эвдэрсэн мөр бүрээр');
+  eq(RC(items, [0, 9], [99, 0], [10, 2]).map(x => [x.sku, x.soiled, x.broken]), [['A', 0, 10], ['B', 2, 0]], 'хүлээн авах: тоолсон тооноос илүү байж болохгүй');
+  eq(RC(items, [4, 4], [4, 4], [0, 0]), [], 'хүлээн авах: нэг ч ширхэг ирээгүй мөрд бохир/эвдэрсэн байхгүй');
+  eq(RC(items, [], [], [10, 5]), [], 'хүлээн авах: тэмдэглэгээгүй бол хоосон');
+  eq(RC(items, [-3, 'x'], [0, null], [10, 5]), [], 'хүлээн авах: сөрөг/буруу утга 0 болно');
+
+  // (2) stageCondOf — хадгалсан бичлэгээс уншина
+  const ent = { items: [{ sku: 'A', name: 'Сандал', qty: 10, got: 10, broken: 2 }, { sku: 'B', name: 'Бүтээлэг', qty: 5, got: 5, soiled: 3 }, { sku: 'C', name: 'Таваг', qty: 4, got: 4 }], condPhotos: ['u1', '', 'u2'] };
+  const c = SC(ent);
+  eq([c.brokenN, c.soiledN, c.photos], [2, 3, ['u1', 'u2']], 'мөр: нийт эвдэрсэн, бохир, зураг (хоосон хаяна)');
+  eq(c.broken, [{ name: 'Сандал', qty: 2 }], 'мөр: эвдэрсэн мөр нэрээр');
+  eq([SC(null).brokenN, SC({}).soiledN], [0, 0], 'мөр: бичлэггүй бол 0');
+
+  // (3) orderReceiveFindings — нярав (received) эцсийн үг; жолооч (retstart) нөөц
+  const recv = { items: [{ name: 'Сандал', qty: 10, got: 10, broken: 1 }], by: 'n1', at: '2026-11-03T10:00:00Z', comment: 'Хөл нь хугарсан' };
+  const rets = { items: [{ name: 'Бүтээлэг', qty: 5, got: 5, soiled: 2 }], by: 'd1' };
+  let f = RF({ stage_meta: { received: recv, retstart: rets } });
+  eq([f.stage, f.brokenN, f.soiledN, f.comment], ['received', 1, 0, 'Хөл нь хугарсан'], 'эцсийн тэмдэглэгээ: нярав хүлээн авсан бол ТЭРЭН');
+  f = RF({ stage_meta: { received: { items: [{ name: 'Сандал', qty: 10, got: 10 }] }, retstart: rets } });
+  eq(f, null, 'эцсийн тэмдэглэгээ: нярав юу ч тэмдэглээгүй бол жолоочийнхыг дарна (баталгаажуулсан)');
+  f = RF({ stage_meta: { retstart: rets } });
+  eq([f.stage, f.soiledN], ['retstart', 2], 'эцсийн тэмдэглэгээ: нярав хараахан авээгүй бол жолоочийнх');
+  f = RF({ stage_meta: { received: { skipped: true, reason: 'x' }, retstart: rets } });
+  eq(f && f.stage, 'retstart', 'эцсийн тэмдэглэгээ: алгассан хүлээн авалт тоологдохгүй');
+  eq([RF({}), RF(null), RF({ stage_meta: {} })], [null, null, null], 'эцсийн тэмдэглэгээ: stage_meta-гүй захиалга null');
+  eq(FL(RF({ stage_meta: { received: { items: [{ name: 'Сандал', qty: 10, broken: 2 }, { name: 'Бүтээлэг', qty: 5, soiled: 3 }] } } })), '🔧 Сандал ×2 · 🧼 Бүтээлэг ×3', 'тэмдэглэгээний мөр: 🔧 эхэнд, 🧼 дараа');
+  eq(FL(null), '', 'тэмдэглэгээний мөр: хоосон');
+
+  // (4) Дүн шинжилгээний карт: тэмдэглэсэн, суутгал бүртгээгүй захиалга ил гарна
+  const O = (x) => Object.assign({ id: 'o' + Math.random(), number: 1, customer: 'Т', source: 'app', status: 'returned',
+    starts_at: '2026-10-10', stops_at: '2026-10-11', created_at: '2026-10-01', total_mnt: 1000000, paid_mnt: 1000000,
+    deposit_mnt: 200000, note: '', items: [] }, x);
+  const save = runIn('[state.appOrders, state.financeRequests]');
+  runIn('state.financeRequests = [];');
+  const stm = { received: { items: [{ name: 'Сандал', qty: 10, got: 10, broken: 2 }], by: 'n1' } };
+  runIn('state.appOrders = ' + JSON.stringify([
+    O({ id: 'f1', number: 11, stage_meta: stm, note: '⟦RF|200000||dep|200000⟧' }),
+    O({ id: 'f2', number: 12, stage_meta: stm, note: '⟦DMG|50000|Сандал хугарсан⟧' }),
+    O({ id: 'f3', number: 13, stage_meta: stm, deposit_mnt: 0 }),
+    O({ id: 'f4', number: 14, note: '⟦RF|200000||dep|200000⟧', stage_meta: { received: { items: [{ name: 'Сандал', qty: 10, got: 10 }] } } }),
+  ]) + ';');
+  const dm = F.deductionsOfMonth('2026-10', 'accrual');
+  eq(dm.rows.filter(r => r.find).map(r => r.no).sort(), [11, 13], 'карт: тэмдэглэсэн ба ⟦DMG⟧-гүй захиалга (барьцаагүй ч) гарна');
+  eq(dm.sum.find, 2, 'карт: тэмдэглэсэн захиалгын тоо');
+  ok(!dm.rows.some(r => r.no === 12 && r.find), 'карт: суутгал бүртгэсэн захиалгад давхар «тэмдэглэсэн» гарахгүй');
+  ok(!dm.rows.some(r => r.no === 14), 'карт: юу ч тэмдэглээгүй хүлээн авалт мөр болохгүй');
+  eq([dm.sum.held, dm.sum.income], [50000, 50000], 'карт: тэмдэглэгээ мөнгөн дүнг ХӨНДӨХГҮЙ (зөвхөн ⟦DMG⟧ суутгана)');
+  const html = F.renderDeductionsCard('2026-10', 'accrual');
+  ok(/тэмдэглэсэн/.test(html) && /Сандал ×2/.test(html) && /суутгал бүртгээгүй/.test(html), 'карт: 🔎 тэмдэглэсэн мөр + «суутгал бүртгээгүй»');
+  ok(/барьцаагүй, харилцагчаас авах эсэхийг шийд/.test(html), 'карт: барьцаагүй захиалгад шийдвэр хэрэгтэйг хэлнэ');
+  runIn('state.appOrders = ' + JSON.stringify(save[0] || []) + '; state.financeRequests = ' + JSON.stringify(save[1] || []) + ';');
+
+  // (5) Эвдэрсэн бараа нөөцөөс ХАСАГДАЖ ⟦BRK⟧-д бичигдэнэ (⚠ Эвдрэл цонхтой давхардахгүй)
+  (globalThis.__late = globalThis.__late || []).push(new Promise(done => setTimeout(async () => {
+    const st = runIn('state');
+    const o0 = { saveProduct: sandbox.saveProduct, ens: sandbox.ensureRepairRecord, fetch: sandbox.fetch, products: st.products };
+    const saved = [], repairs = [], patches = [];
+    try {
+      st.products = [{ sku: 'S1', name: 'Сандал', broken: 1, stock: 20 }];
+      sandbox.saveProduct = async (p) => { saved.push(p); return p; };
+      sandbox.ensureRepairRecord = async (r) => { repairs.push(r); };
+      sandbox.fetch = (url, opt) => {
+        if (opt && opt.method === 'PATCH') { patches.push(JSON.parse(opt.body)); return Promise.resolve({ ok: true, status: 204, json: () => Promise.resolve([]), text: () => Promise.resolve('') }); }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ note: 'Цагаан хоолтой ⟦BRK|S1:1⟧' }]), text: () => Promise.resolve('') });
+      };
+      const o = { id: 'ao-x', number: 77, note: 'xxx' };
+      await F.recordReceiveBroken(o, [{ sku: 'S1', name: 'Сандал', soiled: 0, broken: 2 }, { sku: '', name: 'Нэргүй', soiled: 0, broken: 4 }], 'Хөл нь хугарсан');
+      eq(saved.length && saved[0].broken, 3, 'эвдэрсэн: нөөцийн broken өмнөхөд +2 нэмэгдэнэ (1 → 3)');
+      eq(repairs.map(r => [r.sku, r.qty, r.note, r.orderNumber]), [['S1', 3, 'Хөл нь хугарсан', 77]], 'эвдэрсэн: засварын бичлэг нийт тоогоор, шалтгаантай');
+      ok(patches.length === 1 && /Цагаан хоолтой/.test(patches[0].note) && /⟦BRK\|S1:3⟧/.test(patches[0].note), 'эвдэрсэн: серверийн note-д ⟦BRK|S1:3⟧ (бусад текст хэвээр)');
+      eq(o.note, patches[0].note, 'эвдэрсэн: санах ойн захиалгын note шинэчлэгдэнэ');
+      // ⚠ Дараа нь ⚠ Эвдрэл цонхоор ЯГ ИЖИЛ тоог бүртгэвэл нөөц дахин хасагдахгүй
+      saved.length = 0;
+      await F.applyBrokenDelta(o, F.parseBrokenRec(o.note), { S1: 3 }, 'x');
+      eq(saved.length, 0, 'эвдэрсэн: ⚠ Эвдрэл цонхоор ижил тоо бүртгэхэд давхар хасахгүй (дельта 0)');
+    } catch (e) { ok(false, 'эвдэрсэн: ' + (e && e.stack || e)); }
+    finally { sandbox.saveProduct = o0.saveProduct; sandbox.ensureRepairRecord = o0.ens; sandbox.fetch = o0.fetch; st.products = o0.products; done(); }
+  }, 0)));
+
+  // (6) UI холбоос (scan)
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const sa = F.openStageAdvanceModal.toString();
+  ok(/const _cmtVal = \(\(\$\('#sa-comment'\) \|\| \{\}\)\.value \|\| ''\)\.trim\(\);\s*if \(_cmtVal\) entry\.comment = _cmtVal;/.test(sa), 'scan: тэмдэглэл ҮРГЭЛЖ хадгалагдана');
+  ok(!/rateTargets\.length && ratings\.every\(r => r > 0\)\) \{\s*entry\.comment/.test(sa), 'scan: тэмдэглэл ★ үнэлгээний нөхцөлд ДАХИН орохгүй');
+  ok(/_cmtVal[\s\S]{0,200}rateTargets\.length && ratings\.every/.test(sa), 'scan: тэмдэглэлийг ★-ээс ӨМНӨ хадгална');
+  ok(/id="rc-cond-tg"/.test(sa) && /rc-list'\)|#rc-list/.test(sa), 'scan: «Бохир / эвдэрсэн бараа байна» товч мөр бүрийн сонголтыг нээнэ');
+  ok(/class="ui-raw rc-c rc-c-brk"/.test(sa) && /class="ui-raw rc-c rc-c-soil"/.test(sa), 'scan: товч нь глобал .modal button стилийг opt-out (ui-raw)');
+  ok(/data-rcc="brk"/.test(sa) && /data-rcc="soil"/.test(sa) && /🔧 Эвдэрсэн/.test(sa) && /🧼 Бохир/.test(sa), 'scan: мөр бүрд 🔧 Эвдэрсэн, 🧼 Бохир товч');
+  ok(/const _showCond = _isReceive && !_isDispatch;/.test(sa), 'scan: гаргах (dispatch) цонхонд бохир/эвдэрсэн гарахгүй');
+  ok(/_showCond && !_isPickup\) \? receiveConditions\(/.test(sa) && /recordReceiveBroken\(o, _brkRows/.test(sa), 'scan: нөөцөөс хасах нь ЗӨВХӨН агуулахад хүлээн авахад (жолоочийн авалтад биш)');
+  ok(/soiled: Math\.min\(qty, soiled\), broken: Math\.min\(qty, broken\)/.test(sa) && /pj\.soiled/.test(sa), 'scan: жолоочийн тэмдэглэгээ нярав дээр урьдчилан бөглөгдөнө');
+  ok(/entry\.condPhotos = condPhotos\.slice\(\)/.test(sa) && /id="cp-photo-input"/.test(sa), 'scan: бохир/эвдэрсэн зураг (заавал биш) хадгалагдана');
+  ok(/entry\.items = _rcItems\.map[\s\S]{0,400}soiled: _fitC[\s\S]{0,120}broken: _fitC/.test(sa), 'scan: мөр бүрийн soiled/broken items-д хадгалагдана');
+  ok(/stageCondOf\(e\)/.test(F.stageMetaHtml.toString()) && /sm-cond/.test(F.stageMetaHtml.toString()), 'scan: дамжлагын түүхэнд 🔧/🧼 харагдана');
+  ok(/orderReceiveFindings\(o\)/.test(appSrc) && /order-find/.test(appSrc) && /суутгал бүртгээгүй<\/b>/.test(appSrc), 'scan: захиалгын картан дээр «Хүлээн авахад» мөр');
+  const sd = F.openOrderDamageModal.toString();
+  ok(/orderReceiveFindings\(o\)/.test(sd) && /dmg-find/.test(sd) && /'Хүлээн авахад: '/.test(sd), 'scan: эвдрэлийн цонх тэмдэглэснийг сануулж шалтгааныг бөглөнө');
+  ok(/applyBrokenDelta\(o, prev, newBrk, userNote\)/.test(sd) && !/saveProduct\(/.test(sd), 'scan: эвдрэлийн цонх нөөцийг ЗАЙЛШГҮЙ ижил функцээр хасна');
+  ok(/applyBrokenDelta\(o, prev, next, why\)/.test(F.recordReceiveBroken.toString()), 'scan: хүлээн авах цонх ижил функцийг дуудна');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  for (const k of ['.rc-cond', '.rc-cond .rc-c', '.rc-cond .rc-c-brk.on', '.rc-cond .rc-c-soil.on', '.rc-cond .rc-cq', '.rc-list.cond-on', '.rc-cond-box', '.rc-cond-sum', '.sm-cond', '.order-find', '.dmg-find']) ok(css.includes(k + ' {') || css.includes(k + ','), `scan: CSS ${k} бий`);
+  ok(/\.rc-cond \.rc-cq\[hidden\] \{ display: none; \}/.test(css) && /\.rc-cond-box\[hidden\] \{ display: none; \}/.test(css), 'scan: hidden элемент CSS-д далдагдана');
+}

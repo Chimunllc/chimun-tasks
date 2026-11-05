@@ -5337,16 +5337,18 @@ function orderDeductionIncome(o, basis) {
 }
 /* Тухайн сарын суутгалын нэгтгэл — орлоготой ИЖИЛ сар/суурь (`orderIncomeMonth`). */
 function deductionsOfMonth(month, basis) {
-  const rows = [], sum = { held: 0, income: 0, receivable: 0, unexplained: 0, open: 0 };
+  const rows = [], sum = { held: 0, income: 0, receivable: 0, unexplained: 0, open: 0, find: 0 };
   (state.appOrders || []).forEach(o => {
     if (!o || !_orderActive(o) || orderIncomeMonth(o, basis) !== month) return;
     const d = orderDeductions(o);
-    if (!(d.held || d.receivable || d.unexplained || d.open)) return;
+    // Хүлээн авахад бохир/эвдэрсэн гэж тэмдэглэсэн ч суутгал (⟦DMG⟧) бүртгээгүй — ШИЙДВЭР хүлээж байна
+    const fnd = (typeof orderReceiveFindings === 'function' && !parseDamage(o.note)) ? orderReceiveFindings(o) : null;
+    if (!(d.held || d.receivable || d.unexplained || d.open || fnd)) return;
     const income = orderDeductionIncome(o, basis);
     const ln = (typeof lastOrderNote === 'function') ? lastOrderNote(o) : null;   // «барьцааг буцаахгүй…» гэх чөлөөт тэмдэглэл — бүртгэхэд сануулга болно
-    rows.push({ id: o.id, no: o.number, customer: o.customer || '', ...d, income, note: ln ? String(ln.text || '') : '' });
+    rows.push({ id: o.id, no: o.number, customer: o.customer || '', ...d, income, note: ln ? String(ln.text || '') : '', find: fnd ? findingsLine(fnd) : '', findDep: d.dep });
     sum.held += d.held; sum.income += income; sum.receivable += d.receivable;
-    sum.unexplained += d.unexplained; sum.open += d.open;
+    sum.unexplained += d.unexplained; sum.open += d.open; if (fnd) sum.find += 1;
   });
   rows.sort((a, b) => (b.held + b.receivable + b.unexplained + b.open) - (a.held + a.receivable + a.unexplained + a.open));
   return { rows, sum };
@@ -7360,6 +7362,21 @@ function openPricingReport() {
 
 // Идэвхтэй захиалгын БУЦААЛТ дээр эвдрэл бүртгэх — эвдэрсэн барааг нөөцөөс хасна (broken++) + барьцаанаас ₮ хасна.
 // Эвдэрсэн тоо note-д ⟦BRK⟧-ээр хадгалагдаж, барааны broken ДЕЛЬТА-гаар шинэчлэгдэнэ (дахин бүртгэвэл давхардахгүй).
+/* Эвдэрсэн барааны тоог нөөцөд ДЕЛЬТА-гаар хэрэглэнэ (prev → next: sku→ширхэг). Дахин бүртгэвэл давхардахгүй, 0 болговол
+   сэргэнэ. Засварын жагсаалтад бичлэг үүсгэнэ. ⚠ Эвдрэлийн цонх БА хүлээн авах цонх хоёулаа ЭНИЙГ дууддаг. */
+async function applyBrokenDelta(o, prev, next, note) {
+  const lines = [];
+  for (const sku of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+    const delta = (next[sku] || 0) - (prev[sku] || 0);
+    if (!delta) continue;
+    const p = productBySku(sku); if (!p) continue;
+    try { await saveProduct({ ...p, broken: Math.max(0, (Number(p.broken) || 0) + delta) }); } catch (_) {}
+    // Засварын дамжлага — эвдэрсэн бараа жагсаалтад орж, хэн зассан нь бүртгэгдэнэ
+    try { await ensureRepairRecord({ sku, name: p.name, qty: next[sku] || 0, orderNumber: o.number, note: note || '', by: state.me }); } catch (_) {}
+    if ((next[sku] || 0) > 0) lines.push(`${p.name}×${next[sku]}`);
+  }
+  return lines;
+}
 function openOrderDamageModal(oid) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const items = (o.items || []).filter(it => it && it.name);
@@ -7379,15 +7396,20 @@ function openOrderDamageModal(oid) {
   modal.className = 'modal-bg';
   modal.id = 'mev-damage-modal';
   const cleanUserNote = existingDmg ? String(existingDmg.note || '').replace(/·?\s*Эвдэрсэн:.*$/, '').trim() : '';
+  // Хүлээн авахад нярав тэмдэглэснийг энд сануулж, шалтгааныг урьдчилан бөглөнө (шинээр бичихгүй)
+  const rcvFind = orderReceiveFindings(o);
+  const rcvText = findingsLine(rcvFind);
+  const noteInit = cleanUserNote || (!existingDmg && rcvText ? 'Хүлээн авахад: ' + rcvText : '');
   modal.innerHTML = `
     <div class="modal dmg-modal">
       <h2>Буцаалт · эвдрэл — #${o.number ?? ''}</h2>
+      ${rcvText ? `<div class="dmg-find">🔎 Хүлээн авахад тэмдэглэсэн: <b>${escapeHtml(rcvText)}</b>${rcvFind.by ? ` <span class="dmg-find-by">— ${escapeHtml(memberName(rcvFind.by) || rcvFind.by)}</span>` : ''}${rcvFind.comment ? `<div class="dmg-find-c">💬 ${escapeHtml(rcvFind.comment)}</div>` : ''}</div>` : ''}
       <p class="dmg-hint">Эвдэрсэн/дутсан барааны тоог оруулна — тэр тоо нөөцөөс (боломжит хэмжээ) хасагдана. Засварласны дараа барааны хэсгээс «⚠ Эвдэрсэн» тоог буулгаж сэргээнэ.</p>
       <div class="dmg-list">${rowsHtml || '<div class="dmg-hint">Бараа алга</div>'}</div>
       <label class="dmg-amt-l">Эвдрэл/гээгдлийн дүн (₮)${deposit > 0 ? ` <span class="dmg-item-q">— барьцаа ${fmtMoney(deposit)}-аас хасна</span>` : ''}</label>
       <input id="dmg-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="${existingDmg ? moneyFmtInput(existingDmg.amount) : '0'}">
       <label class="dmg-amt-l">Тэмдэглэл</label>
-      <textarea id="dmg-note" class="ui-raw" rows="2" placeholder="ж: 1 ширээ хугарсан, 2 таваг цуурсан">${escapeHtml(cleanUserNote)}</textarea>
+      <textarea id="dmg-note" class="ui-raw" rows="2" placeholder="ж: 1 ширээ хугарсан, 2 таваг цуурсан">${escapeHtml(noteInit)}</textarea>
       <div id="dmg-ret" class="dmg-ret"></div>
       <div class="modal-actions">
         <button class="btn" id="dmg-cancel">Болих</button>
@@ -7424,15 +7446,7 @@ function openOrderDamageModal(oid) {
     btn.disabled = true;
     // Барааны broken тоог ДЕЛЬТА-гаар шинэчилнэ (өмнө бүртгэсэнтэй харьцуулж; дахин бүртгэвэл давхардахгүй, 0 болговол сэргэнэ)
     const prev = parseBrokenRec(o.note);
-    for (const sku of new Set([...Object.keys(prev), ...Object.keys(newBrk)])) {
-      const delta = (newBrk[sku] || 0) - (prev[sku] || 0);
-      if (!delta) continue;
-      const p = productBySku(sku); if (!p) continue;
-      try { await saveProduct({ ...p, broken: Math.max(0, (Number(p.broken) || 0) + delta) }); } catch (_) {}
-      // Засварын дамжлага — эвдэрсэн бараа жагсаалтад орж, хэн зассан нь бүртгэгдэнэ
-      try { await ensureRepairRecord({ sku, name: p.name, qty: newBrk[sku] || 0, orderNumber: o.number, note: userNote || '', by: state.me }); } catch (_) {}
-      if ((newBrk[sku] || 0) > 0) brokenLines.push(`${p.name}×${newBrk[sku]}`);
-    }
+    brokenLines.push(...await applyBrokenDelta(o, prev, newBrk, userNote));
     // Захиалгын note-г серверийн ХАМГИЙН СҮҮЛИЙН утга дээр шинэчилнэ (бусад токен ⟦PAY⟧/⟦SL⟧ дарагдахгүй)
     let baseNote = o.note;
     try {
@@ -33727,6 +33741,10 @@ function stageMetaHtml(o) {
     const _head = `<div class="sm-head">${_skip}${stageHistLabel(k)}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${_helpers}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
     const _cmt = e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>`
       : (e.skipped && e.reason ? `<div class="sm-comment">⏭ ${escapeHtml(e.reason)}</div>` : '');
+    // 🔧 эвдэрсэн / 🧼 бохир — хүлээн авахад мөр бүрээр тэмдэглэсэн (+ зураг)
+    const _cc = (k === 'received' || k === 'retstart') ? stageCondOf(e) : null;
+    const _cond = (_cc && (_cc.brokenN || _cc.soiledN))
+      ? `<div class="sm-cond">${_cc.brokenN ? `<div class="sm-cond-b">🔧 Эвдэрсэн ${_cc.brokenN}ш: ${_cc.broken.map(x => `${escapeHtml(x.name)} ×${x.qty}`).join(', ')}</div>` : ''}${_cc.soiledN ? `<div class="sm-cond-s">🧼 Бохир ${_cc.soiledN}ш: ${_cc.soiled.map(x => `${escapeHtml(x.name)} ×${x.qty}`).join(', ')}</div>` : ''}${_cc.photos.length ? `<div class="sm-photos">${_cc.photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : ''}</div>` : '';
     /* Өмнөх ажлын алдаа — ХЭНИЙ алдаа болохыг нэрлэнэ (нуухгүй). Шалгасан ч
        алдаагүй бол «✓ шалгасан» гэж бичнэ: «алдаагүй» ба «шалгаагүй» хоёр
        ялгагдах ёстой. */
@@ -33754,7 +33772,7 @@ function stageMetaHtml(o) {
         : `<span class="sm-pts">+${_r1(_sp.pts)} оноо</span>`) : '';
     const _penHtml = (_sp && _sp.badPts > 0)
       ? `<div class="sm-pen">⚠ ${escapeHtml(stagePenReason(_sp.bad ? { ..._sp.bad, late: _sp.late } : null, k))}. ${_sp.bad && _sp.bad.why === 'late' ? 'Цагтаа' : 'Алдаагүй'} бол <b>+${_r1(_sp.pts)} оноо</b> авах байсан.</div>` : '';
-    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_ptsTag}${_penHtml}${_cmt}${_def}${_clHtml}${_clBtn}</div></div>`;
+    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_ptsTag}${_penHtml}${_cmt}${_cond}${_def}${_clHtml}${_clBtn}</div></div>`;
   }).join('')}</div>`;
 }
 // ⛔ ЗУРАГ ХАРАХ ГАЗАР ГАНЦ — #lightbox (2026-09-19).
@@ -33797,6 +33815,70 @@ function receiveShortfalls(items, got) {
     const g = Math.max(0, Math.min(exp, Number((got || [])[i]) || 0));
     return { sku: x && x.sku, name: x && x.name, qty: exp, got: g, miss: exp - g };
   }).filter(x => x.miss > 0);
+}
+
+/* ─── ХҮЛЭЭН АВАХАД БОХИР / ЭВДЭРСЭН — МӨР БҮРЭЭР (2026-11-05, CEO) ──────────────────
+   CEO: «хүлээн авахад сандал эвдрэл, ширээний бүтээлэг бохирдол тэмдэглэж авч байгаа ч харагдахгүй».
+   Шалтгаан хоёр: (1) цонхны «Тэмдэглэл» хадгалагддаггүй байв — `entry.comment`-ыг зөвхөн ★ үнэлгээтэй үед
+   бичдэг ба ★ 10-04-нд хасагдсанаас хойш 56 хүлээн авалтын 0-д нь тэмдэглэл үлдсэн; (2) дутуу/эвдэрсэн/бохир
+   гурав нэг «дутуу» тоонд хутгагддаг, бохирдлыг тэмдэглэх талбар огт байхгүй байв.
+   Одоо мөр бүр `items[i].soiled` / `.broken` (ширхэг) хадгалж, нийт нь `entry.soiled`/`entry.broken`, зураг нь
+   `entry.condPhotos`. Эвдэрсэн нь нөөцөөс хасагдаж ⟦BRK⟧-д бичигдэнэ (⚠ Эвдрэл цонхтой ИЖИЛ, давхардахгүй).
+   Бохир нь нөөцөд нөлөөлөхгүй — картан дээр, Дүн шинжилгээнд, суутгалын цонхонд харагдана.
+   Цэвэр функцууд (DOM-гүй) тул тестлэгдэнэ. */
+function receiveConditions(items, soil, brk, got) {
+  return (items || []).map((x, i) => {
+    const g = Math.max(0, Math.round(Number((got || [])[i] != null ? got[i] : (x && x.qty)) || 0));
+    const fit = v => Math.max(0, Math.min(g, Math.round(Number(v) || 0)));
+    return { sku: x && x.sku, name: x && x.name, soiled: fit((soil || [])[i]), broken: fit((brk || [])[i]) };
+  }).filter(x => x.soiled > 0 || x.broken > 0);
+}
+// Нэг дамжлагын бичлэгээс (stage_meta.received / retstart) бохир, эвдэрсэн мөрүүд.
+function stageCondOf(e) {
+  const its = (e && Array.isArray(e.items)) ? e.items : [];
+  const pick = k => its.map(x => ({ name: String((x && x.name) || ''), qty: Math.round(Number(x && x[k]) || 0) })).filter(x => x.qty > 0 && x.name);
+  const soiled = pick('soiled'), broken = pick('broken');
+  const sum = a => a.reduce((s, x) => s + x.qty, 0);
+  return { soiled, broken, soiledN: sum(soiled), brokenN: sum(broken), photos: (e && Array.isArray(e.condPhotos) ? e.condPhotos : []).filter(Boolean) };
+}
+/* Захиалгын эцсийн тэмдэглэгээ: нярав хүлээн авсан бол ТЭРЭН (жолоочийнхыг баталгаажуулсан/засчээ),
+   эс бол жолоочийн авалтынх. Юу ч тэмдэглээгүй бол null. */
+function orderReceiveFindings(o) {
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  for (const k of ['received', 'retstart']) {
+    const e = sm[k];
+    if (!e || typeof e !== 'object' || e.skipped || !Array.isArray(e.items)) continue;
+    const c = stageCondOf(e);
+    if (c.soiledN || c.brokenN) return { ...c, stage: k, by: e.by, at: e.at, comment: String(e.comment || '') };
+    if (k === 'received') return null;
+  }
+  return null;
+}
+function findingsLine(f) {
+  if (!f) return '';
+  const part = (ico, a) => a.length ? `${ico} ${a.map(x => `${x.name} ×${x.qty}`).join(', ')}` : '';
+  return [part('🔧', f.broken), part('🧼', f.soiled)].filter(Boolean).join(' · ');
+}
+/* Хүлээн авахад эвдэрсэн гэж тэмдэглэсэн барааг нөөцөөс хасна. ⟦BRK⟧ нь ⚠ Эвдрэл цонхтой ЯГ ИЖИЛ токен —
+   дараа нь цонхоор дахин бүртгэвэл дельта 0 (давхар хасахгүй). Захиалгын note-ыг серверийн сүүлийн утгаар шинэчилнэ. */
+async function recordReceiveBroken(o, rows, why) {
+  let base = o.note;
+  try {
+    const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(o.id)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
+    if (gr.ok) { const rr = await gr.json(); if (rr && rr[0] && rr[0].note != null) base = String(rr[0].note); }
+  } catch (_) { /* сүлжээ унавал санах ойн note */ }
+  const prev = parseBrokenRec(base), next = { ...prev };
+  rows.forEach(x => { if (x.sku && x.broken > 0) next[x.sku] = (next[x.sku] || 0) + x.broken; });
+  const lines = await applyBrokenDelta(o, prev, next, why);
+  const newNote = encodeBrokenRec(base, next);
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(o.id)}`, {
+    method: 'PATCH',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify({ note: newNote, updated_at: new Date().toISOString() }),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  o.note = newNote;
+  return lines;
 }
 
 function openStageAdvanceModal(oid, to) {
@@ -33842,10 +33924,15 @@ function openStageAdvanceModal(oid, to) {
      «Хөгжим SILVER × 1» гэж биш, 2 Line Array · сабвүфер · 2 микрофон · пүльтийг
      тус тусад нь тоолно. Эс бөгөөс нэг микрофон дутвал аль нь дутсан нь мэдэгдэхгүй,
      багц өртөггүй тул алдагдал 0₮ болж, нөөцөөс ч юу ч хасагдахгүй. */
+  // Бохир/эвдэрсэн тэмдэглэгээ: жолооч хэрэглэгчээс авахдаа тэмдэглэсэн бол нярав дээр урьдчилан бөглөгдөнө (баталгаажуулна/засна)
+  const _showCond = _isReceive && !_isDispatch;
   const _rcItems = _isReceive ? expandOrderLines(o.items).map(r => {
-    let qty = r.qty;
-    if (_prevPick) { const pj = _prevPick.find(x => (x.sku && x.sku === r.sku) || x.name === r.name); if (pj) qty = Math.max(0, Number(pj.got != null ? pj.got : pj.qty) || 0); }
-    return { sku: r.sku, name: r.name, qty, pkg: r.pkg };
+    let qty = r.qty, soiled = 0, broken = 0;
+    if (_prevPick) {
+      const pj = _prevPick.find(x => (x.sku && x.sku === r.sku) || x.name === r.name);
+      if (pj) { qty = Math.max(0, Number(pj.got != null ? pj.got : pj.qty) || 0); soiled = Math.max(0, Number(pj.soiled) || 0); broken = Math.max(0, Number(pj.broken) || 0); }
+    }
+    return { sku: r.sku, name: r.name, qty, pkg: r.pkg, soiled: Math.min(qty, soiled), broken: Math.min(qty, broken) };
   }).filter(x => x.qty > 0) : [];
   const _driverBy = (_smNow.retstart && _smNow.retstart.by) || (_smNow.deliver && _smNow.deliver.by) || '';
   // Хамтрагч — олон хүн ажилласныг харуулах (сонголттой). Идэвхтэй ажилчид, өөрийгөө хасна.
@@ -33896,8 +33983,10 @@ function openStageAdvanceModal(oid, to) {
     ${hint ? `<div class="sa-sec-hint">${escapeHtml(hint)}</div>` : ''}${body}</div>`);
   const _rcHtml = (_isReceive && _rcItems.length) ? _sec('📦',
     _isDispatch ? 'Агуулахаас хэдэн ширхэг гарсан бэ?' : _isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?',
-    true, (!_isPickup && _prevPick) ? 'Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.' : '', `
+    true, [(!_isPickup && _prevPick) ? 'Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.' : '',
+      _showCond ? 'Бохир, эвдэрсэн бараа байвал доорх «Бохир / эвдэрсэн бараа байна» товчийг дарж мөр бүрээр тоог оруул.' : ''].filter(Boolean).join(' '), `
     <button type="button" class="btn btn-primary sa-all-btn" id="rc-all">✓ Бүгд бүрэн ${_isDispatch ? 'гарсан' : _isPickup ? 'авсан' : 'ирсэн'}</button>
+    ${_showCond ? '<button type="button" class="btn sa-all-btn" id="rc-cond-tg">🔧 🧼 Бохир / эвдэрсэн бараа байна</button>' : ''}
     <div id="rc-list" class="rc-list">${_rcItems.map((x, i) => `
       <div class="rc-row" data-rc="${i}">
         ${orderItemThumb(orderItemPhoto({ sku: x.sku, name: x.name }), 'rc-ph')}
@@ -33905,8 +33994,23 @@ function openStageAdvanceModal(oid, to) {
         <span class="rc-ctl"><span class="rc-exp">${x.qty}ш</span>
         <input class="rc-got" type="number" inputmode="numeric" min="0" max="${x.qty}" value="${x.qty}" data-rci="${i}">
         <span class="rc-diff" data-rcd="${i}"></span></span>
+        ${_showCond ? `<span class="rc-cond">
+          <button type="button" class="ui-raw rc-c rc-c-brk" data-rcc="brk" data-rcx="${i}">🔧 Эвдэрсэн</button><input class="ui-raw rc-cq" type="number" inputmode="numeric" min="1" max="${x.qty}" data-rcq="brk" data-rcx="${i}" aria-label="Эвдэрсэн ширхэг" hidden>
+          <button type="button" class="ui-raw rc-c rc-c-soil" data-rcc="soil" data-rcx="${i}">🧼 Бохир</button><input class="ui-raw rc-cq" type="number" inputmode="numeric" min="1" max="${x.qty}" data-rcq="soil" data-rcx="${i}" aria-label="Бохир ширхэг" hidden>
+        </span>` : ''}
       </div>`).join('')}</div>
-    <div id="rc-warn" class="rc-warn" hidden></div>`) : '';
+    <div id="rc-warn" class="rc-warn" hidden></div>
+    ${_showCond ? `<div id="rc-cond-box" class="rc-cond-box" hidden>
+      <div id="rc-cond-sum" class="rc-cond-sum"></div>
+      <div id="cp-photos" class="sa-ph-grid"></div>
+      <div class="sa-ph-row">
+        <label class="btn sa-ph-btn ui-raw" for="cp-photo-input">📷 Зураг (заавал биш)</label>
+        <label class="btn sa-ph-btn ui-raw" for="cp-photo-gallery">🖼 Галерей</label>
+      </div>
+      <input id="cp-photo-input" type="file" accept="image/*" capture="environment" hidden>
+      <input id="cp-photo-gallery" type="file" accept="image/*" hidden>
+      <div id="cp-photo-status" class="sa-ph-status"></div>
+    </div>` : ''}`) : '';
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal sa-modal">
@@ -33936,7 +34040,7 @@ function openStageAdvanceModal(oid, to) {
         <span id="sa-late-sum" class="sa-late-sum">Нэмэлт төлбөргүй</span>
       </label>
       <div class="sa-sec-hint">⛔ Товч дарсан цаг нь ирсэн цаг БИШ (багцаар бүртгэдэг) — тиймээс өгөгдмөл нь товлосон цаг, нэмэлт 0.</div>`) : ''}
-    ${_needNoteSec ? _sec('📝', 'Тэмдэглэл', false, 'Дутуу / эвдэрсэн бараа байвал ЯАГААД гэдгийг энд бич.', `
+    ${_needNoteSec ? _sec('📝', 'Тэмдэглэл', false, 'Дутуу / эвдэрсэн / бохир бараа байвал юу болсныг энд бич — захиалгын картанд харагдана.', `
       <textarea id="sa-comment" class="ui-raw sa-note" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)"></textarea>`) : ''}
     ${_helpStaff.length ? _sec('👥', stageHelpQuestion(act.key), false, 'Хамт ажилласан хүнээ дарж нэмнэ — бонусын 30% тэдэнд хуваагдана.', `
       <input id="sa-help-search" class="ui-raw sa-help-search" placeholder="Нэрээр хайх…">
@@ -33991,8 +34095,36 @@ function openStageAdvanceModal(oid, to) {
   // Буцаан авалтын зөрүү — дутсан бол шалтгаан ЗААВАЛ (эс бөгөөс алдагдал мөрдөгдөхгүй)
   const rcGot = _rcItems.map(x => x.qty);
   const rcShort = () => receiveShortfalls(_rcItems, rcGot);
+  const rcSoil = _rcItems.map(x => x.soiled || 0);   // 🧼 бохир ширхэг (мөр бүр)
+  const rcBrk = _rcItems.map(x => x.broken || 0);    // 🔧 эвдэрсэн ширхэг (мөр бүр)
+  const condPhotos = [];
+  // Хоёр товч + тоо оруулах талбар; тоолсон тооноос илүү байж болохгүй
+  const rcCondPaint = () => {
+    if (!_showCond || !_rcItems.length) return;
+    _rcItems.forEach((x, i) => {
+      rcSoil[i] = Math.min(rcSoil[i], rcGot[i]); rcBrk[i] = Math.min(rcBrk[i], rcGot[i]);
+      [['soil', rcSoil], ['brk', rcBrk]].forEach(([k, arr]) => {
+        const b = modal.querySelector(`[data-rcc="${k}"][data-rcx="${i}"]`);
+        const q = modal.querySelector(`[data-rcq="${k}"][data-rcx="${i}"]`);
+        const on = arr[i] > 0;
+        if (b) { b.classList.toggle('on', on); b.disabled = rcGot[i] <= 0; }
+        const row = modal.querySelector(`[data-rc="${i}"]`);
+        if (row) row.classList.toggle('has-cond', rcSoil[i] > 0 || rcBrk[i] > 0);   // тэмдэглэгдсэн мөр товч нээгдээгүй ч харагдана
+        if (q) { q.hidden = !on; q.max = rcGot[i]; if (on && document.activeElement !== q) q.value = arr[i]; }
+      });
+    });
+    const cs = receiveConditions(_rcItems, rcSoil, rcBrk, rcGot);
+    const box = modal.querySelector('#rc-cond-box'), sum = modal.querySelector('#rc-cond-sum');
+    if (!box || !sum) return;
+    box.hidden = !cs.length;
+    const bT = cs.reduce((a, x) => a + x.broken, 0), sT = cs.reduce((a, x) => a + x.soiled, 0);
+    const list = k => cs.filter(x => x[k] > 0).map(x => `${escapeHtml(x.name)}×${x[k]}`).join(', ');
+    sum.innerHTML = [bT ? `🔧 <b>${bT}ш эвдэрсэн</b>: ${list('broken')}` : '', sT ? `🧼 <b>${sT}ш бохир</b>: ${list('soiled')}` : ''].filter(Boolean).join('<br>')
+      + `<br><span class="rc-plain">${_isPickup ? 'Агуулахад хүлээн авахдаа нярав баталгаажуулна.' : bT ? 'Эвдэрсэн нь нөөцөөс хасагдаж засварын жагсаалтад орно. Бохир нь захиалгын картанд тэмдэглэгдэнэ.' : 'Бохир нь захиалгын картанд тэмдэглэгдэнэ.'} Доорх тэмдэглэлд юу болсныг бичнэ үү.</span>`;
+  };
   const rcPaint = () => {
     if (!_isReceive || !_rcItems.length) return;
+    rcCondPaint();
     _rcItems.forEach((x, i) => {
       const d = modal.querySelector(`[data-rcd="${i}"]`);
       const row = modal.querySelector(`[data-rc="${i}"]`);
@@ -34033,6 +34165,45 @@ function openStageAdvanceModal(oid, to) {
       rcPaint(); validate();
     };
     const _cm = $('#sa-comment'); if (_cm) _cm.addEventListener('input', validate);
+    if (_showCond) {
+      // «Бохир / эвдэрсэн бараа байна» — мөр бүрийн 🔧/🧼 товчийг нээнэ (хэвийн үед жагсаалт урт болохгүй)
+      const _tg = $('#rc-cond-tg'), _lst = $('#rc-list');
+      if (_tg) _tg.onclick = () => {
+        const on = _lst.classList.toggle('cond-on');
+        _tg.textContent = on ? '✕ Бохир / эвдэрсэн тэмдэглэхээ хаах' : '🔧 🧼 Бохир / эвдэрсэн бараа байна';
+      };
+      // 🔧 / 🧼 товч: дарахад 1 ширхэг, дахин дарвал арилна; тоог талбараас засна
+      modal.querySelectorAll('.rc-c').forEach(b => b.onclick = () => {
+        const i = +b.dataset.rcx, arr = b.dataset.rcc === 'brk' ? rcBrk : rcSoil;
+        arr[i] = arr[i] > 0 ? 0 : Math.min(1, rcGot[i]);
+        rcCondPaint(); validate();
+      });
+      modal.querySelectorAll('.rc-cq').forEach(inp => inp.oninput = () => {
+        if (inp.value === '') return;   // бичиж байх үед хоосон болгож товчийг унтраахгүй
+        const i = +inp.dataset.rcx, arr = inp.dataset.rcq === 'brk' ? rcBrk : rcSoil;
+        arr[i] = Math.max(0, Math.min(rcGot[i], Math.round(Number(inp.value) || 0)));
+        if (String(arr[i]) !== inp.value && arr[i] > 0) inp.value = arr[i];
+        rcCondPaint(); validate();
+      });
+      // Бохир/эвдэрсэн бараанд ЗУРАГ (заавал биш) — суутгалын үндэслэл болно
+      const renderCondPhotos = () => {
+        $('#cp-photos').innerHTML = condPhotos.map((u, i) => `<div class="sa-thumb"><img src="${escapeHtml(driveThumbUrl(u, 200))}"><button data-cprm="${i}" type="button" class="sa-rm">×</button></div>`).join('');
+        $('#cp-photos').querySelectorAll('[data-cprm]').forEach(b => b.onclick = () => { condPhotos.splice(+b.dataset.cprm, 1); renderCondPhotos(); });
+      };
+      const _onCondPhoto = async (e) => {
+        const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+        const st = $('#cp-photo-status');
+        st.className = 'sa-ph-status'; st.textContent = '⏳ Илгээж байна...';
+        try {
+          const url = await uploadReceipt(f, o.id, 'completion', `Захиалга #${o.number} ${act.label} — бохир/эвдэрсэн`);
+          if (!url) { st.className = 'sa-ph-status bad'; st.textContent = '⚠ Хадгалж чадсангүй'; return; }
+          condPhotos.push(url); renderCondPhotos();
+          st.className = 'sa-ph-status ok'; st.textContent = `✓ ${condPhotos.length} зураг`;
+        } catch (err) { st.className = 'sa-ph-status bad'; st.textContent = '⚠ ' + err.message; }
+      };
+      $('#cp-photo-input').onchange = _onCondPhoto;
+      $('#cp-photo-gallery').onchange = _onCondPhoto;
+    }
     rcPaint();
   }
   if (needPhoto) {
@@ -34128,8 +34299,12 @@ function openStageAdvanceModal(oid, to) {
       const bad = ds.filter(x => x.n > 0);
       if (bad.length) entry.defects = bad; else delete entry.defects;
     }
+    /* ⛔ ТЭМДЭГЛЭЛ ҮРГЭЛЖ ХАДГАЛАГДНА (2026-11-05, CEO: «тэмдэглэж авч байгаа ч харагдахгүй»). Өмнө нь энэ мөр
+       `rateTargets.length` нөхцөлд байсан ба ★ 10-04-нд хасагдсанаас хойш `rateTargets` үргэлж хоосон тул нярав
+       бичсэн тэмдэглэл ШИДЭГДЭЖ байв (10-05-аас хойших 56 хүлээн авалтын 0-д нь тэмдэглэл үлдсэн). */
+    const _cmtVal = (($('#sa-comment') || {}).value || '').trim();
+    if (_cmtVal) entry.comment = _cmtVal;
     if (rateTargets.length && ratings.every(r => r > 0)) {
-      entry.comment = (($('#sa-comment') || {}).value || '').trim();
       // Үнэлгээ бүрийг тухайн ажилтанд холбоно (олон зорилт = олон handoffRating)
       entry.handoffRatings = rateTargets.map((rt, i) => ({ ratee: rt.ratee, rating: ratings[i], q: rt.q }));
       // Хуучин нэг ★-тэй нийцэл (handoffQualityScore хоёуланг уншина)
@@ -34138,7 +34313,16 @@ function openStageAdvanceModal(oid, to) {
     // Буцаан авалтын тоо + дутсан барааг засварын урсгал руу
     let _shortLines = [];
     if (_isReceive && _rcItems.length) {
-      entry.items = _rcItems.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: rcGot[i], ...(x.pkg ? { pkg: x.pkg } : {}) }));
+      const _fitC = (v, i) => Math.max(0, Math.min(rcGot[i], Math.round(Number(v) || 0)));
+      entry.items = _rcItems.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: rcGot[i], ...(x.pkg ? { pkg: x.pkg } : {}),
+        ...(_showCond && _fitC(rcSoil[i], i) > 0 ? { soiled: _fitC(rcSoil[i], i) } : {}),
+        ...(_showCond && _fitC(rcBrk[i], i) > 0 ? { broken: _fitC(rcBrk[i], i) } : {}) }));
+      if (_showCond) {
+        const _c = stageCondOf(entry);
+        if (_c.soiledN) entry.soiled = _c.soiledN; else delete entry.soiled;
+        if (_c.brokenN) entry.broken = _c.brokenN; else delete entry.broken;
+        if ((_c.soiledN || _c.brokenN) && condPhotos.length) entry.condPhotos = condPhotos.slice(); else delete entry.condPhotos;
+      }
       /* ⛔ ГАРГАХ дамжлагад дутуу тоо нь АЛДАГДАЛ БИШ — зүгээр л цөөн бараа
          гарсан гэсэн үг. Нөөцөөс хасаж засварын бичлэг үүсгэвэл гараагүй
          бараа «эвдэрсэн» болж, нөөц ба ашиг хоёулаа гажна. Буцаалтын тулгалт
@@ -34174,6 +34358,16 @@ function openStageAdvanceModal(oid, to) {
       }
       try { await loadRepairs(); } catch (_) {}
       showToast(`⚠ ${entry.missing}ш дутуу — нөөцөөс хасаж засварын жагсаалтад нэмлээ`, 'warn', 4500);
+    }
+    /* 🔧 ЭВДЭРСЭН гэж тэмдэглэсэн = нөөцөөс хасагдаж, засварт орно (агуулахад хүлээн авахад л). Жолоочийн авалтад
+       (retstart) зөвхөн тэмдэглэгээ + зураг — бараа агуулахад ирээгүй, нярав баталгаажуулна. */
+    const _brkRows = (_showCond && !_isPickup) ? receiveConditions(_rcItems, rcSoil, rcBrk, rcGot).filter(x => x.broken > 0 && x.sku) : [];
+    if (_brkRows.length) {
+      try {
+        await recordReceiveBroken(o, _brkRows, (entry.comment || '').trim());
+        try { await loadRepairs(); } catch (_) {}
+        showToast(`🔧 ${_brkRows.reduce((a, x) => a + x.broken, 0)}ш эвдэрсэн — нөөцөөс хасаж засварын жагсаалтад нэмлээ`, 'warn', 4500);
+      } catch (err) { showToast('Эвдэрсэн бараа нөөцөөс хасагдсангүй: ' + err.message + ' — ⚠ Эвдрэл цонхоор бүртгэнэ үү', 'error', 7000); }
     }
     /* ⏰ Хожуу ирснийх — ЗАХИАЛГЫН ДҮН дээр нэмнэ. ⚠ Шалтгаан нь note-д
        `⟦LATE⟧` токеноор үлдэнэ: хожим «яагаад дүн өөрчлөгдсөн» гэдэгт
@@ -36419,6 +36613,9 @@ function bqOrderCard(o) {
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); const _dd = orderDeductions(o);
       const _ddTxt = _dd.receivable > 0 ? ` · ⛔ барьцаа буцсан — харилцагчаас ${fmtMoney(_dd.receivable)} авна` : (_dd.held > 0 ? ` · барьцаанаас ${fmtMoney(_dd.held)} суутгагдсан` : '');
       return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}${_cardMoney ? _ddTxt : ''}</div>` : ''; })()}
+    ${(() => { const _f = orderReceiveFindings(o); if (!_f) return '';   // нярав/жолооч хүлээн авахад тэмдэглэсэн бохир, эвдэрсэн
+      const _reg = parseDamage(o.note) ? ' · ✓ суутгал бүртгэсэн' : (_cardMoney ? ' · <b>суутгал бүртгээгүй</b>' : '');
+      return `<div class="order-meta order-find">🔎 Хүлээн авахад: <b>${escapeHtml(findingsLine(_f))}</b>${_f.photos.length ? ` · 📷 ${_f.photos.length}` : ''}${_reg}${_f.comment ? `<div class="order-find-c">💬 ${escapeHtml(_f.comment)}</div>` : ''}</div>`; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _dr = orderDiscountReason(o); const _dm = o.stage_meta && o.stage_meta.discount;
       return _dr ? `<div class="order-meta order-disc">🏷 Хөнгөлөлт${_dm && _dm.amount ? ' −' + fmtMoney(_dm.amount) : ''}: ${escapeHtml(_dr)}${_dm && _dm.by ? ` <span class="order-note-by">— ${escapeHtml(memberName(_dm.by) || _dm.by)}</span>` : ''}</div>` : ''; })()}
@@ -43719,8 +43916,9 @@ function renderIncomeSections(month, mi) {
 function renderDeductionsCard(month, basis) {
   const { rows, sum } = deductionsOfMonth(month, basis);
   const kpi = (cls, v, l) => `<div class="dd-k ${cls}"><b>${fmtMoney(v)}</b><span>${l}</span></div>`;
-  const line = (r, kind, amt, why) => `<div class="dd-row"><span class="dd-n"><b>#${escapeHtml(String(r.no ?? '—'))}</b> ${escapeHtml(r.customer)}${why ? ` <em class="dd-why">${escapeHtml(why)}</em>` : ''}</span><span class="dd-t dd-t-${kind[0]}">${kind[1]}</span><span class="dd-p">${fmtMoney(amt)}</span></div>`;
+  const line = (r, kind, amt, why) => `<div class="dd-row"><span class="dd-n"><b>#${escapeHtml(String(r.no ?? '—'))}</b> ${escapeHtml(r.customer)}${why ? ` <em class="dd-why">${escapeHtml(why)}</em>` : ''}</span><span class="dd-t dd-t-${kind[0]}">${kind[1]}</span><span class="dd-p">${amt == null ? '—' : fmtMoney(amt)}</span></div>`;
   const lines = rows.flatMap(r => [
+    r.find ? line(r, ['warn', 'тэмдэглэсэн'], null, '🔎 ' + r.find + (r.findDep > 0 ? ' — суутгал бүртгээгүй' : ' — барьцаагүй, харилцагчаас авах эсэхийг шийд')) : '',
     r.held ? line(r, ['ok', 'суутгасан'], r.held, r.reason) : '',
     r.receivable ? line(r, ['warn', 'авах ёстой'], r.receivable, r.reason ? r.reason + ' · барьцаа буцсан' : 'барьцаа буцсан') : '',
     r.unexplained ? line(r, ['bad', 'шалтгаангүй'], r.unexplained, 'барьцааны хэсгийг буцаагаад үлдсэнийг барьсан') : '',
@@ -43728,7 +43926,7 @@ function renderDeductionsCard(month, basis) {
   ]).filter(Boolean).join('');
   return `<div class="dd-card">
     <div class="dd-h">🔒 Барьцаа, суутгал — ${escapeHtml(month)} <span class="dd-sub">эвдрэл · бохирдол · хоногийн нэмэгдэл</span></div>
-    <div class="dd-kpis">${kpi('dd-ok', sum.income, 'Суутгасан · орлогод орсон')}${kpi('dd-warn', sum.receivable, 'Харилцагчаас авах')}${kpi('dd-bad', sum.unexplained + sum.open, 'Тодорхойгүй барьцаа')}</div>
+    <div class="dd-kpis">${kpi('dd-ok', sum.income, 'Суутгасан · орлогод орсон')}${kpi('dd-warn', sum.receivable, 'Харилцагчаас авах')}${kpi('dd-bad', sum.unexplained + sum.open, 'Тодорхойгүй барьцаа')}${sum.find ? `<div class="dd-k dd-warn"><b>${sum.find}</b><span>Хүлээн авахад тэмдэглэсэн, суутгал бүртгээгүй захиалга</span></div>` : ''}</div>
     ${lines || '<div class="dd-empty">Энэ сард суутгал бүртгэгдээгүй.</div>'}
     <div class="dd-hint">Бүртгэх: захиалгын карт → «⋯ Бусад» → ⚠ Эвдрэл (дүн + шалтгаан). Суутгасан дүн «Буцаан олгох» цонхонд барьцаанаас автоматаар хасагдаж, ашгийн орлогод орно.</div>
   </div>`;

@@ -10450,3 +10450,26 @@ select.no-asar-len {
 .rf-hold { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md);
   background: var(--panel-hover); border-left: 3px solid var(--warn); font-size: var(--fs-sm); line-height: 1.5; }
 .dmg-late { margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--danger); line-height: 1.5; }
+/* 🔧 / 🧼 Хүлээн авахад мөр бүрийн бохир, эвдэрсэн тэмдэглэгээ (2026-11-05)
+   ⚠ `.modal button:not(.ui-raw)` (глобал 48px/16px) дарахгүйн тулд `ui-raw` + `.rc-cond` угтвар. Хэвийн үед нуугдана —
+   «Бохир / эвдэрсэн бараа байна» товч нээнэ, эсвэл мөр тэмдэглэгдсэн бол өөрөө харагдана. */
+.rc-cond { display: none; flex: 1 1 100%; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
+.rc-list.cond-on .rc-cond, .rc-row.has-cond .rc-cond { display: flex; }
+.rc-list.cond-on { max-height: 60vh; }
+.rc-cond .rc-c { flex: none; min-height: 36px; padding: var(--space-1) var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--panel); color: var(--muted); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; }
+.rc-cond .rc-c:disabled { opacity: .45; cursor: default; }
+.rc-cond .rc-c-brk.on { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+.rc-cond .rc-c-soil.on { background: var(--warn-soft); border-color: var(--warn); color: var(--text); }
+.rc-cond .rc-cq { flex: none; width: 56px; height: 36px; min-height: 0; box-sizing: border-box; padding: var(--space-1); border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-sm); text-align: center; }
+.rc-cond .rc-cq[hidden] { display: none; }
+.rc-cond-box { margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--r-md); background: var(--panel-hover); border-left: 3px solid var(--warn); }
+.rc-cond-box[hidden] { display: none; }
+.rc-cond-sum { margin-bottom: var(--space-2); font-size: var(--fs-sm); line-height: 1.5; }
+.rc-cond-sum .rc-plain { font-size: var(--fs-xs); color: var(--muted); }
+.sm-cond { margin-top: var(--space-1); font-size: var(--fs-sm); line-height: 1.5; }
+.sm-cond-b { color: var(--danger); }
+.sm-cond-s { color: var(--text); }
+.order-find { color: var(--text); }
+.order-find-c { color: var(--muted); font-size: var(--fs-xs); }
+.dmg-find { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md); background: var(--panel-hover); border-left: 3px solid var(--warn); font-size: var(--fs-sm); line-height: 1.5; }
+.dmg-find-by, .dmg-find-c { font-size: var(--fs-xs); color: var(--muted); }

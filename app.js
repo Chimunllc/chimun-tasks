@@ -46413,47 +46413,11 @@ function renderFinanceReport(wrap) {
   wrap.appendChild(chips);
   chips.querySelectorAll('[data-fin-st]').forEach(b => b.addEventListener('click', () => { state.finReportStatus = b.dataset.finSt; render(); }));
 
-  // ── Мөнгөн урсгал — орлого (захиалга, accrual) vs зарлага (дууссан хүсэлт), CEO харагдац ──
-  (function renderCashflow() {
-    return;   // Мөнгөн урсгал/салбар задаргаа нь Тайлан хэсэгт төвлөрсөн (давхардал хасав). Санхүү = ажлын нүүр.
-    // eslint-disable-next-line no-unreachable
-    if (!canSeeAllFinance() || wantBr) return;
-    // M-Event орлого = app_orders (идэвхтэй захиалга), эвентийн огноогоор (accrual). bqOrders БИШ (хуучин түүхэн түүх).
-    if (state.appOrders === undefined && typeof loadAppOrders === 'function') { state.appOrders = []; loadAppOrders(); }
-    const evOrders = (state.appOrders || []).filter(o => (typeof _orderActive === 'function' ? _orderActive(o) : true) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
-    // Орлого = барьцаа ХАССАН (orderRevenue) — барьцаа P&L-д саармаг, зарлага талтай нийцүүлнэ
-    const evInc = evOrders.reduce((s, o) => s + (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : (Number(o.total_mnt) || 0)), 0);
-    const noOrders = (state.nomaadOrders || []).filter(o => String(o.date_start || '').slice(0, 7) === month && !nomaadIsCancelled(o));
-    const noInc = noOrders.reduce((s, o) => s + nomaadEffTotal(o), 0);
-    const inc = evInc + noInc;
-    // Эзний зээл(6900) ба барьцаа буцаалт(5810) = ЗАРДАЛ БИШ — цэвэр зардлаас хасна
-    const isOwnerLoan = t => finIsNonExpense(t.category);
-    const expAll = monthList.filter(t => finStage(t).key === 'fdone');
-    const ownerLoan = sumOf(expAll.filter(isOwnerLoan));
-    const depReturn = sumOf(expAll.filter(finIsDepositReturn));
-    const expList = expAll.filter(t => !isOwnerLoan(t) && !finIsDepositReturn(t));
-    const exp = sumOf(expList);
-    const byBr = groupBy(expList, t => finEffBranch(t));
-    const expEv = sumOf(byBr['ИВЕНТ'] || []), expNo = sumOf(byBr['КЕМП'] || []);
-    const expOther = exp - expEv - expNo;
-    const net = inc - exp;
-    const panel = document.createElement('div');
-    panel.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--panel);';
-    const row = (l, v, c) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;"><span style="color:var(--muted);">${l}</span><b style="color:${c || 'var(--text)'};white-space:nowrap;">${fmtMoney(v)}</b></div>`;
-    panel.innerHTML = `<div style="font-weight:800;font-size:13px;margin-bottom:6px;">💹 Мөнгөн урсгал · ${month} <span style="font-weight:400;color:var(--muted);font-size:11px;">(орлого = эвентийн огноогоор, accrual)</span></div>`
-      + row(`Орлого — M-Event · ${evOrders.length} захиалга`, evInc, 'var(--ok)')
-      + row(`Орлого — NOMAAD · ${noOrders.length} захиалга`, noInc, 'var(--ok)')
-      + row('Зарлага — M-Event', -expEv)
-      + row('Зарлага — NOMAAD', -expNo)
-      + row('Зарлага — Хөрөнгө / бусад', -expOther)
-      + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0 1px;border-top:1px solid var(--border);margin-top:4px;"><b>Цэвэр зардал</b><b>${fmtMoney(-exp)}</b></div>`
-      + (ownerLoan ? row('↩ Зардал БИШ мөнгөн хөдөлгөөн (69xx)', -ownerLoan, 'var(--muted)') : '')
-      + (depReturn ? row('↩ Барьцаа буцаалт (зардал БИШ)', -depReturn, 'var(--muted)') : '')
-      + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:7px 0 1px;border-top:1px solid var(--border);margin-top:5px;"><b>Үйл ажиллагааны үлдэгдэл</b><b style="color:${net >= 0 ? 'var(--ok)' : 'var(--danger)'};">${net >= 0 ? '+' : ''}${fmtMoney(net)}</b></div>`
-      + `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Үлдэгдэл = орлого − цэвэр зардал (эзний зээл ороогүй).</div>`
-      + ((state.bqOrders || []).length ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:4px;">⏳ Эвентийн захиалгын дата ачаалж байна…</div>`);
-    wrap.appendChild(panel);
-  })();
+  // ⛔ «💹 Мөнгөн урсгал» блокийг ЭНД ДАХИН БҮҮ НЭМ. Орлого ба салбарын задаргаа
+  //    нь Тайлан хэсэгт төвлөрсөн (2026-08-22, давхардал хасав) — Санхүү = ажлын нүүр.
+  //    Хуучин код `return;`-ээр унтраалттай 2.5 сар үлдсэн бөгөөд зардлыг шатаас
+  //    (`expenseLadderFor`) биш өөрөө бодож, орлогыг `orderIncomeMonth`-гүй авдаг
+  //    байсан тул сэргээвэл тайлантай зөрөх тоо гаргана. Хэрэгтэй бол git түүхэнд.
 
   // ── Баримтын хяналт — дууссан зардлын дотор баримтгүй (📝/⚠) хувь, үндсэн ангилал бүрээр ──
   (function renderReceiptAudit() {

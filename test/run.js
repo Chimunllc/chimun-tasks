@@ -22337,10 +22337,15 @@ async function swFetchTests() {
   const rented = F.bqOrderCard(mk('rented'));
   ok(/dep-badge dep-held/.test(rented), 'карт: барьцаатай захиалга «🔒 Барьцаа» тэмдэгтэй хэвээр');
   ok(!/Буцаах данс тодорхойгүй|dep-acct|Гүйлгээний утга/.test(rented), '⛔ карт: эвент ЯВААГҮЙ (түрээсэнд) байхад барьцаа буцаах данс/утгын заавар ГАРАХГҮЙ');
-  for (const s of ['returned', 'stowed', 'archived']) {
+  for (const s of ['returned', 'archived']) {
     const c = F.bqOrderCard(mk(s));
     ok(/Буцаах данс тодорхойгүй|dep-acct/.test(c) && /dep-memo/.test(c), `карт: ${s} → барьцаа буцаах данс + утга харагдана`);
   }
+  // «Дууссан» (stowed) = бараа тавиур дээр, гэхдээ нярав ТООЛООГҮЙ → данс гарахгүй, «хүлээн авсны дараа» мөр (2026-11-06)
+  { const c = F.bqOrderCard(mk('stowed'));
+    ok(!/dep-acct/.test(c) && /class="order-meta dep-wait"/.test(c), 'карт: stowed + хүлээн аваагүй → буцаах данс ГАРАХГҮЙ, «хүлээн авсны дараа» мөр');
+    const c2 = F.bqOrderCard(mk('stowed', { stage_meta: { received: { by: 'нярав' } } }));
+    ok(/dep-acct|Буцаах данс тодорхойгүй/.test(c2) && !/dep-wait/.test(c2), 'карт: stowed + хүлээн авсан бичлэгтэй → буцаах данс харагдана'); }
   for (const s of ['reserved', 'ready', 'delivering', 'returning']) {
     ok(!/dep-acct/.test(F.bqOrderCard(mk(s))), `карт: ${s} → буцаах заавар гарахгүй`);
   }
@@ -25334,4 +25339,107 @@ async function swFetchTests() {
   const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   for (const k of ['.rc-cond', '.rc-cond .rc-c', '.rc-cond .rc-c-brk.on', '.rc-cond .rc-c-soil.on', '.rc-cond .rc-cq', '.rc-list.cond-on', '.rc-cond-box', '.rc-cond-sum', '.sm-cond', '.order-find', '.dmg-find']) ok(css.includes(k + ' {') || css.includes(k + ','), `scan: CSS ${k} бий`);
   ok(/\.rc-cond \.rc-cq\[hidden\] \{ display: none; \}/.test(css) && /\.rc-cond-box\[hidden\] \{ display: none; \}/.test(css), 'scan: hidden элемент CSS-д далдагдана');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// БАРЬЦАА = НЯРАВ ХҮЛЭЭН АВСНЫ ДАРАА Л БУЦНА (2026-11-06)
+// Нярав агуулахад тоолж авахаас өмнө барьцаа буцвал тэр үед илэрсэн эвдрэл суутгагдахгүй, үйлчлүүлэгчээс
+// дахин нэхэх болно (№1671: 60,000₮). `depositRefundLock` нь цоожийн ГАНЦ эх сурвалж.
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const LK = F.depositRefundLock;
+  ok(typeof LK === 'function', 'барьцааны цоож: depositRefundLock бий');
+
+  // (1) Бараа гарсан ч нярав хүлээн аваагүй шатууд — цоожтой
+  for (const s of ['started', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'stowed']) {
+    const l = LK({ status: s });
+    ok(l && l.status === s && l.label, `цоож: ${s} + хүлээн аваагүй → цоожтой`);
+  }
+  // (2) Бараа гараагүй / хүлээн авсан / хаагдсан — цоожгүй
+  for (const s of ['draft', 'reserved', 'prepared', 'ready', 'returned', 'archived', 'stopped', 'done', 'canceled', 'deleted', 'preparation', 'cleaning']) {
+    eq(LK({ status: s }), null, `цоож: ${s} → цоожгүй`);
+  }
+  // (3) Хүлээн авсан бичлэгтэй бол статус юу ч байсан цоожгүй (хуучин returned>stowed урсгал)
+  eq(LK({ status: 'stowed', stage_meta: { received: { by: 'нярав', at: '2026-11-03T10:00:00Z' } } }), null, 'цоож: stowed + stage_meta.received → цоожгүй');
+  eq(LK({ status: 'rented', stage_meta: { received: { by: 'нярав' } } }), null, 'цоож: rented ч хүлээн авсан бичлэгтэй бол цоожгүй');
+  ok(LK({ status: 'stowed', stage_meta: { retstart: { by: 'жолооч' } } }), 'цоож: жолоочийн авалт (retstart) нярав хүлээн авсан гэсэн үг БИШ');
+  ok(LK({ status: 'stowed', stage_meta: [] }) && LK({ status: 'stowed', stage_meta: null }) && LK({ status: 'rented', stage_meta: 'x' }), 'цоож: stage_meta хог байвал цоожтой хэвээр');
+  eq([LK(null), LK(undefined), LK({})], [null, null, null], 'цоож: хог оролт цоожгүй (унахгүй)');
+  ok(/stowed/.test(LK({ status: 'stowed' }).label) === false && LK({ status: 'stowed' }).label === 'Дууссан', 'цоож: шошго нь картын статусын нэр');
+
+  // (4) Үндсэн сануулга: хүлээн авалтаас өмнө «Буцаан олгох» гол товч болохгүй
+  const pa = F.orderPrimaryActions;
+  ok(!pa({ status: 'stowed' }, { depOpen: true }).includes('refund'), '⛔ stowed + хүлээн аваагүй: буцаалт үндсэн эгнээнд гарахгүй');
+  ok(pa({ status: 'stowed', stage_meta: { received: { by: 'н' } } }, { depOpen: true }).includes('refund'), 'stowed + хүлээн авсан: буцаалт үндсэн');
+  ok(pa({ status: 'returned' }, { depOpen: true }).includes('refund'), 'returned: буцаалт үндсэн (хуучин дүрэм хэвээр)');
+  ok(pa({ status: 'stowed' }, { over: 50000 }).includes('refund'), 'илүү төлөлт барьцаа БИШ — цоожтой үед ч үндсэн');
+
+  // (5) Карт: цонх нээхгүйгээр товч нь хаалттай, захирал нээж чадна
+  const st = vm.runInContext('state', sandbox);
+  const keep = { ceo: st.isCEO, ao: st.appOrders, up: st.usedReceipts };
+  const T = vm.runInContext('todayStr()', sandbox);
+  const mk = (status, extra) => Object.assign({ id: 'lk1', _app: true, number: 1901, customer: 'Тест ХХК', phone: '99110000', status, source: 'app',
+    starts_at: T + 'T09:00:00+08:00', stops_at: T + 'T18:00:00+08:00', note: '⟦RT|9|18⟧', created_at: T + 'T08:00:00+08:00',
+    items: [{ name: 'Сандал', qty: 10, price: 1500, sku: 'M-1' }], total_mnt: 1000000, paid_mnt: 400000, deposit_mnt: 300000, paid_ref: '' }, extra || {});
+  st.isCEO = true; st.appOrders = [mk('stowed')];
+  const cardCeo = F.bqOrderCard(mk('stowed'));
+  ok(/data-app-refund="lk1"/.test(cardCeo), 'карт: захирал цоожтой ч «Буцаан олгох» товчтой (цонх нь баталгаажуулна)');
+  ok(/dep-wait/.test(cardCeo) && /нярав хүлээн авч/.test(cardCeo), 'карт: «нярав хүлээн авсны дараа буцаана» мөр');
+  ok(!/dep-acct|dep-memo/.test(cardCeo), 'карт: хүлээн авахаас өмнө буцаах данс/утга гарахгүй');
+  ok(!/dep-wait/.test(F.bqOrderCard(mk('rented'))), 'карт: түрээсэнд байхад хүлээх мөр гарахгүй (хэт олон мөр болохгүй)');
+  ok(!/dep-wait/.test(F.bqOrderCard(mk('returned'))), 'карт: хүлээн авсан захиалгад хүлээх мөр байхгүй');
+  ok(!/dep-wait/.test(F.bqOrderCard(mk('stowed', { paid_mnt: 400000, note: '⟦RT|9|18⟧ ⟦RF|300000||dep|300000⟧' }))), 'карт: барьцаа аль хэдийн буцсан бол хүлээх мөр гарахгүй');
+  st.isCEO = keep.ceo; st.appOrders = keep.ao; st.usedReceipts = keep.up;
+
+  // (6) Буцаалтын цонх: ажилтан хаалттай, захирал баталгаажуулж нээнэ
+  // ⚠ Mock-ийг ЗӨВХӨН хоёр микротаскийн дотор барьж шууд сэргээнэ — бусад асинх тестэд нөлөөлөхгүй.
+  const openRf = F.openRefundModal;
+  (globalThis.__late = globalThis.__late || []).push(new Promise(done => setTimeout(async () => {
+    const calls = { toast: [], confirm: [], modal: [] };
+    const saved = { can: sandbox.can, toast: sandbox.showToast, conf: sandbox.showConfirm, orf: sandbox.openRefundModal };
+    const st2 = vm.runInContext('state', sandbox);
+    const k2 = { ceo: st2.isCEO, ao: st2.appOrders };
+    try {
+      sandbox.can = () => true;
+      sandbox.showToast = (m) => calls.toast.push(String(m));
+      sandbox.showConfirm = (m, opt) => { calls.confirm.push([String(m), opt]); return Promise.resolve(true); };
+      st2.appOrders = [mk('stowed')];
+      st2.isCEO = false;
+      openRf('lk1');
+      const t1 = calls.toast.slice(), c1 = calls.confirm.length;
+      st2.isCEO = true; calls.toast.length = 0;
+      sandbox.openRefundModal = (id, force) => calls.modal.push([id, force]);   // хоёр дахь дуудлагыг барьж авна
+      openRf('lk1');
+      await Promise.resolve(); await Promise.resolve();
+      ok(t1.length === 1 && /🔒/.test(t1[0]) && /Дууссан/.test(t1[0]), 'цонх: ажилтан + хүлээн аваагүй → 🔒 мэдэгдэл, цонх нээгдэхгүй');
+      eq(c1, 0, 'цонх: ажилтанд баталгаажуулах асуулт ирэхгүй (нээж чадахгүй)');
+      ok(calls.confirm.length === 1 && /нярав хүлээн аваагүй/.test(calls.confirm[0][0]) && calls.confirm[0][1].danger === true, 'цонх: захирал → ЭРСДЭЛТЭЙ асуулт (хүлээн авалтаас өмнө буцаах уу?)');
+      eq(calls.modal, [['lk1', true]], 'цонх: захирал «Тийм» гэвэл force=true-аар л нээгдэнэ');
+      eq(calls.toast.length, 0, 'цонх: захиралд хориглох мэдэгдэл гарахгүй');
+    } finally {
+      Object.assign(sandbox, { can: saved.can, showToast: saved.toast, showConfirm: saved.conf, openRefundModal: saved.orf });
+      st2.isCEO = k2.ceo; st2.appOrders = k2.ao;
+    }
+    done();
+  }, 0)));
+
+  // (7) SCAN: цонх, товч, хадгалалт
+  const rm = openRf.toString();
+  ok(/^(async )?function openRefundModal\(oid, force\)/.test(rm), 'scan: цонх force параметртэй');
+  ok(/const lock = depositRefundLock\(o\);/.test(rm) && /const depLocked = !!lock && depLeft > 0 && !force;/.test(rm), 'scan: цонх цоожийг ганц функцээр шийднэ');
+  ok(/depLocked && overAmt <= 0/.test(rm) && /state\.isCEO/.test(rm), 'scan: зөвхөн барьцаа үлдсэн үед ажилтан хаалттай, захирал нээнэ');
+  ok(/const depRefundable = depLocked \? 0/.test(rm), 'scan: цоожтой үед барьцаа автоматаар бөглөгдөхгүй');
+  ok(/depLocked && amount > overAmt/.test(rm), '⛔ scan: барьцааг «зөрүү/илүү төлөлт» гэж оруулж цоожийг тойрохгүй (хадгалах үед дахин шалгана)');
+  ok(/\$\{depLeft > 0 && !depLocked \? `<div class="rf-split">/.test(rm), 'scan: цоожтой үед «үүнээс барьцаа» талбар гарахгүй');
+  ok(/rf-lock rf-lock-w/.test(rm) && /эвдрэл илэрвэл барьцаанаас суутгах боломжгүй/.test(rm), 'scan: захирал нээхэд аюулыг цонхонд бичнэ');
+  const bq = F.bqOrderCard.toString();
+  ok(/const _depLk = !!depositRefundLock\(o\) && !\(_over > 0\) && !state\.isCEO/.test(bq), 'scan: картын товч — зөвхөн барьцаа + хүлээн аваагүй + захирал биш үед хаалттай');
+  ok(/btn ofb btn-disabled" disabled title="Нярав хүлээн авч/.test(bq) && /🔒 Барьцаа — хүлээн авсны дараа/.test(bq), 'scan: хаалттай товч тайлбартай');
+  eq((bq.match(/data-app-refund/g) || []).length, 1, '⛔ scan: «Буцаан олгох» товч картад ЯГ НЭГ удаа бичигдсэн');
+  ok(/_depOpen = \([^;]*&& !_depLock\)/.test(bq), 'scan: буцаах данс/утга зөвхөн цоожгүй үед');
+  const appSrcLk = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  eq((appSrcLk.match(/function depositRefundLock\(/g) || []).length, 1, 'scan: цоожийн дүрэм ганц газар тодорхойлогдсон');
+  ok(/\[\.\.\.new Set\(\)\]|const DEP_LOCK_ST = new Set\(\['started', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'stowed'\]\)/.test(appSrcLk), 'scan: цоожтой шатууд: бараа гарсан → байршсан');
+  const cssLk = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  for (const k of ['.rf-lock', '.rf-lock-w', '.dep-wait']) ok(cssLk.includes(k + ' {'), `scan: CSS ${k} бий`);
 }

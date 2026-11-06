@@ -10478,6 +10478,11 @@ select.no-asar-len {
 .rf-hold { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md);
   background: var(--panel-hover); border-left: 3px solid var(--warn); font-size: var(--fs-sm); line-height: 1.5; }
 .dmg-late { margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--danger); line-height: 1.5; }
+/* 🔒 Нярав хүлээн аваагүй үед барьцаа буцаахгүй (2026-11-06) — цонхны тайлбар ба картын хүлээх мөр */
+.rf-lock { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md);
+  background: var(--panel-hover); border-left: 3px solid var(--muted); font-size: var(--fs-sm); line-height: 1.5; }
+.rf-lock-w { border-left-color: var(--danger); background: var(--danger-soft); }
+.dep-wait { color: var(--warn); font-weight: 600; }
 /* 🔧 / 🧼 Хүлээн авахад мөр бүрийн бохир, эвдэрсэн тэмдэглэгээ (2026-11-05)
    ⚠ `.modal button:not(.ui-raw)` (глобал 48px/16px) дарахгүйн тулд `ui-raw` + `.rc-cond` угтвар. Хэвийн үед нуугдана —
    «Бохир / эвдэрсэн бараа байна» товч нээнэ, эсвэл мөр тэмдэглэгдсэн бол өөрөө харагдана. */

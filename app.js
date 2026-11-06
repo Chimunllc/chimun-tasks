@@ -36587,7 +36587,14 @@ function bqOrderCard(o) {
         add('advance', advBtn);
         add('scan', ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn ofb" data-bq-scan="${id}">📷 Скан</button>` : '');
         add('damage', ['rented', 'returning', 'returned', 'stowed', 'stopped', 'archived'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn ofb" data-app-damage="${id}">⚠ Эвдрэл</button>` : '');
-        add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>` : '');
+        // 🔒 Бараа хүлээн аваагүй + буцаах зүйл зөвхөн барьцаа бол товч хаалттай (захирал цонхоор нээнэ)
+        const _depLk = !!depositRefundLock(o) && !(_over > 0) && !state.isCEO
+          && (Number(o.deposit_mnt) || 0) - orderRefundedDeposit(o) > 0;
+        add('refund', (Number(o.paid_mnt) || 0) > 0 && ((Number(o.deposit_mnt) || 0) > 0 || _over > 0) && (can('orders.pay') || state.isCEO)
+          ? (_depLk
+            ? `<button class="btn ofb btn-disabled" disabled title="Нярав хүлээн авч, эвдрэл бохирдлыг шалгасны дараа барьцааг буцаана">🔒 Барьцаа — хүлээн авсны дараа</button>`
+            : `<button class="btn ofb${_over > 0 ? ' btn-primary' : ''}" data-app-refund="${id}">↩ Буцаан олгох${_over > 0 ? ' ' + fmtMoneyShort(_over) : ''}</button>`)
+          : '');
         add('cmp', st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb" data-app-cmp="${id}">↩️ Буулгалт</button>` : '');
         add('credit', (canCreditOrder() && (Number(o.paid_mnt) || 0) <= 0 && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length))
           ? `<button class="btn ofb ord-btn-s${_cred ? '' : (st === 'draft' ? ' btn-primary' : '')}" data-app-credit="${id}" title="${_cred ? 'Төлөх огноог сунгана (зөвшөөрлийг устгах боломжгүй)' : 'Төлбөр ороогүй ч гаргахыг зөвшөөрнө — буцаах боломжгүй'}">💳 ${_cred ? 'Хугацаа сунгах' : 'Дараа төлбөрөөр зөвшөөрөх'}</button>` : '');
@@ -36630,7 +36637,11 @@ function bqOrderCard(o) {
   // ⭐ Барьцаа буцаах ДАНС — орлогын PDF-ээс уншсан шилжүүлэгчийн данс (`paid_ref`).
   // Барьцаа нь ирсэн данс руугаа буцах ёстой; ажилтан данс хайж явахгүйн тулд картад шууд.
   // Зөвхөн БУЦААГААГҮЙ барьцаанд харагдана (буцаасны дараа хэрэггүй, картыг чихэхгүй).
-  const _depOpen = (_dep > 0 && !_depRet && isApp && _cardMoney && ORDER_DONE_ST.has(st));   // буцаах ёстой барьцаа
+  const _depLock = depositRefundLock(o);
+  const _depOpen = (_dep > 0 && !_depRet && isApp && _cardMoney && ORDER_DONE_ST.has(st) && !_depLock);   // буцаах ёстой барьцаа
+  // Бараа ирж байгаа/байршсан ч нярав хараахан хүлээн аваагүй — «буцаах данс»-ын оронд хүлээх мөр
+  const _depWaitHtml = (_dep > 0 && !_depRet && isApp && _cardMoney && _depLock && (st === 'returning' || st === 'stowed'))
+    ? `<div class="order-meta dep-wait">🔒 Барьцаа ${escapeHtml(fmtMoney(_dep))} — нярав хүлээн авч, эвдрэл бохирдлыг шалгасны дараа буцаана</div>` : '';
   const _depAccts = _depOpen
     ? parsePaidRef(o.paid_ref).filter(r => refundAcctDigits(r.acct))
       .map(r => ({ acct: r.acct.trim(), sender: (r.sender || '').trim(), bank: refundBankOf(r.memo) }))
@@ -36665,7 +36676,7 @@ function bqOrderCard(o) {
     ${o.created_at ? `<div class="order-meta">📥 Ирсэн <b>${escapeHtml(String(o.created_at).slice(0, 10))}</b>${(() => { const ld = orderLeadDays(o); return ld == null ? '' : ` · эвентээс <b>${ld} хоногийн өмнө</b>${ld === 0 ? ' (тэр өдрөө!)' : ld <= 2 ? ' ⚠ хэт дөхөж' : ''}`; })()}</div>` : ''}
     ${_cardMoney ? payPanel : ''}
     ${_dep > 0 ? (_cardMoney
-      ? `<div class="dep-row">${depBadge}<span class="dep-sales" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b>${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>${depAcctHtml}`
+      ? `<div class="dep-row">${depBadge}<span class="dep-sales" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b>${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>${depAcctHtml}${_depWaitHtml}`
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); const _dd = orderDeductions(o);
       const _ddTxt = _dd.receivable > 0 ? ` · ⛔ барьцаа буцсан — харилцагчаас ${fmtMoney(_dd.receivable)} авна` : (_dd.held > 0 ? ` · барьцаанаас ${fmtMoney(_dd.held)} суутгагдсан` : '');
@@ -38044,7 +38055,7 @@ function rfAmtMismatch(typed, pdfAmt) {
   const a = Math.round(Number(typed) || 0), b = Math.round(Number(pdfAmt) || 0);
   return b > 0 && a > 0 && a !== b;
 }
-function openRefundModal(oid) {
+function openRefundModal(oid, force) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) { showToast('Зөвхөн шинэ (app) захиалгад буцаан олголт бүртгэнэ', 'warn', 3000); return; }
   if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буцаан олгох эрх олгогдоогүй', 'warn', 3000); return; }
@@ -38055,7 +38066,25 @@ function openRefundModal(oid) {
   // Эвдрэл/бохирдлын суутгал барьцаанаас ХАСАГДСАН — үйлчлүүлэгчид буцаах нь үлдсэн хэсэг л
   // (өмнө нь цонх бүтэн барьцааг бөглөдөг тул суутгал мартагдаж, 60,000₮ ингэж алдагдсан).
   const dd = orderDeductions(o);
-  const depRefundable = Math.max(0, depLeft - dd.held);
+  // 🔒 Нярав хараахан хүлээн аваагүй бол барьцаа буцаахгүй (`depositRefundLock`) — эвдрэл илэрвэл суутгах
+  // боломжгүй болно. Илүү төлөлт барьцаа биш тул буцна. Захирал л баталгаажуулаад (`force`) нээж чадна.
+  const lock = depositRefundLock(o);
+  const depLocked = !!lock && depLeft > 0 && !force;
+  if (depLocked && overAmt <= 0) {
+    if (!state.isCEO) {
+      showToast(`🔒 Барьцааг нярав хүлээн авч, эвдрэл бохирдлыг шалгасны дараа буцаана (одоо: «${lock.label}»)`, 'warn', 5000);
+      return;
+    }
+    showConfirm(
+      `Бараа нярав хүлээн аваагүй байна (одоо: «${lock.label}»).\n\nЭнэ үед буцаавал илэрсэн эвдрэл, дутагдлыг барьцаанаас суутгах боломжгүй болж, үйлчлүүлэгчээс дахин нэхэх хэрэгтэй болно.\n\nГэсэн ч барьцааг одоо буцаах уу?`,
+      { title: '🔒 Хүлээн авалтаас өмнө буцаах уу?', okText: 'Тийм, буцаана', cancelText: 'Болих', danger: true })
+      .then(go => { if (go) openRefundModal(oid, true); });
+    return;
+  }
+  const depRefundable = depLocked ? 0 : Math.max(0, depLeft - dd.held);
+  const lockHtml = !lock || depLeft <= 0 ? '' : (depLocked
+    ? `<div class="rf-lock">🔒 Барьцаа <b>${fmtMoney(depLeft)}</b> — нярав хүлээн авч, эвдрэл бохирдлыг шалгасны дараа буцаана (одоо: «${escapeHtml(lock.label)}»). Одоо зөвхөн илүү төлөлтийг буцаана.</div>`
+    : `<div class="rf-lock rf-lock-w">⚠ Бараа хараахан хүлээн аваагүй (одоо: «${escapeHtml(lock.label)}») — эвдрэл илэрвэл барьцаанаас суутгах боломжгүй</div>`);
   const prevRf = parseRefund(o.note);
   // ⭐ Мөнгө ХААНААС ирсэн — орлогын PDF задлахад шилжүүлэгчийн данс `paid_ref`-д
   // хадгалагдсан байдаг ([#id] нэр · данс · утга). Барьцааг ЯГ ТЭР данс руу буцаах нь
@@ -38078,7 +38107,8 @@ function openRefundModal(oid) {
     <label class="dmg-amt-l">Буцаах дүн (₮)</label>
     <input id="rf-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="0">
     <div id="rf-diff" class="rf-diff" hidden></div>
-    ${depLeft > 0 ? `<div class="rf-split">
+    ${lockHtml}
+    ${depLeft > 0 && !depLocked ? `<div class="rf-split">
       ${dd.held > 0 ? `<div class="rf-hold">⚠ Суутгал <b>−${fmtMoney(dd.held)}</b>${dd.reason ? ` (${escapeHtml(dd.reason)})` : ''} барьцаанаас хасагдсан — үйлчлүүлэгчид буцаах барьцаа <b>${fmtMoney(depRefundable)}</b></div>` : ''}
       <div class="rf-split-t">Энэ дүнгийн <b>үүнээс хэд нь барьцаа вэ?</b> — барьцаа нь өр биш, зөрүү төлбөр нь өрөөс хасагдана</div>
       <label class="dmg-amt-l" for="rf-dep">🔒 Үүнээс барьцаа (₮) · захиалгад ${fmtMoney(depLeft)}${dd.held > 0 ? ` − суутгал ${fmtMoney(dd.held)}` : ''}</label>
@@ -38169,6 +38199,8 @@ function openRefundModal(oid) {
     const btn = e.currentTarget;
     const amount = moneyVal(amtEl);
     if (amount <= 0) { showToast('Буцаах дүн оруулна уу', 'warn'); return; }
+    // 🔒 Барьцааг «зөрүү/илүү төлөлт» гэж оруулж цоожийг тойрохгүй — илүү төлөлтөөс хэтэрсэн хэсэг барьцаа
+    if (depLocked && amount > overAmt) { showToast(`🔒 Барьцааг хүлээн авсны дараа буцаана — одоо зөвхөн илүү төлөлт ${fmtMoney(overAmt)} хүртэл буцаана`, 'warn', 5000); return; }
     if (!modal._file) { showToast('Гарах гүйлгээний PDF баримт хавсаргана уу', 'warn'); return; }
     // 🔒 Буцаалт нь paid_mnt-ыг бууруулдаг тул тэр захиалгын орлогын сар хөдөлнө.
     const _rfM = orderIncomeMonth(o, 'cash');
@@ -43741,6 +43773,21 @@ function appendOrderNote(list, text, by, at) {
    ⛔ Цуцлах/устгах ХЭЗЭЭ Ч үндсэн эгнээнд гарахгүй — санамсаргүй дарагдах ёсгүй.
    ⚠ Цэвэр функц — тестлэгдэнэ. */
 const ORDER_DONE_ST = new Set(['returned', 'stowed', 'stopped', 'archived', 'done']);
+/* БАРЬЦАА = эвдрэл/бохирдол/дутагдлын баталгаа. Нярав агуулахад тоолж хүлээн авахаас ӨМНӨ буцаавал тэр
+   үед илэрсэн эвдрэл суутгагдахгүй, үйлчлүүлэгчээс дахин нэхэх болно (№1671: 60,000₮ ингэж алдагдсан).
+   Тиймээс бараа гарсан ч нярав хараахан хүлээн аваагүй (`stage_meta.received` үгүй) захиалгад барьцаа
+   буцаахгүй. Бараа гараагүй (ноорог…бэлэн) эсвэл цуцлагдсан захиалга цоожлогдохгүй. Илүү төлөлт
+   (захиалга багассан) барьцаа БИШ тул цоожид орохгүй. Захирал шалтгаантайгаар нээж болно.
+   ⚠ Цэвэр функц — тестлэгдэнэ. Буцаалтын цонх, товч, үндсэн сануулга бүгд ЭНЭ ганц функцийг хэрэглэнэ. */
+const DEP_LOCK_ST = new Set(['started', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'stowed']);
+function depositRefundLock(o) {
+  if (!o) return null;
+  const st = String(o.status || '');
+  if (!DEP_LOCK_ST.has(st)) return null;
+  const sm = o.stage_meta;
+  if (sm && typeof sm === 'object' && !Array.isArray(sm) && sm.received) return null;   // нярав хүлээн авсан
+  return { status: st, label: (BQ_STATUS[st] || {}).label || st };
+}
 function orderPrimaryActions(o, ctx) {
   ctx = ctx || {};
   const out = [];
@@ -43751,7 +43798,7 @@ function orderPrimaryActions(o, ctx) {
   if (ctx.creditAsk) out.push('credit');
   // Буцаалт: илүү төлөлт байвал ШУУД, эсвэл захиалга дууссан байхад барьцаа үлдсэн бол
   if ((Number(ctx.over) || 0) > 0) out.push('refund');
-  else if (ctx.depOpen && ORDER_DONE_ST.has(String((o && o.status) || ''))) out.push('refund');
+  else if (ctx.depOpen && ORDER_DONE_ST.has(String((o && o.status) || '')) && !depositRefundLock(o)) out.push('refund');
   if (ctx.editable) out.push('edit');
   return out;
 }

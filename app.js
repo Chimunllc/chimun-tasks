@@ -1677,23 +1677,25 @@ async function serverResetVerify(id, code, newPin) {
 function openPinResetModal(prefillId) {
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '10001';
-  modal.innerHTML = `<div class="modal" style="max-width:380px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;"><h2 style="margin:0;font-size:17px;">🔑 PIN сэргээх</h2><button class="btn" id="pr-x" style="padding:5px 10px;">✕</button></div>
-    <div id="pr-step1">
-      <p style="font-size:13px;color:var(--muted);margin:4px 0 12px;">Бүртгэлтэй <b>и-мэйл</b>дээ 6 оронтой код авна. Имэйлгүй бол менежер/CEO-д хандаж PIN сэргээлгэнэ үү.</p>
+  // Загвар = `.pinr-*` класс (styles.css төгсгөл). Толгой/✕ нь нийтийн
+  // `.modal-head`/`.modal-x`; шатыг `hidden` атрибутаар сольдог (inline style биш).
+  modal.innerHTML = `<div class="modal pinr-modal">
+    <div class="modal-head"><b>🔑 PIN сэргээх</b><button class="btn modal-x" id="pr-x" aria-label="Хаах">✕</button></div>
+    <div class="pinr-step" id="pr-step1">
+      <p class="pinr-hint">Бүртгэлтэй <b>и-мэйл</b>дээ 6 оронтой код авна. Имэйлгүй бол менежер/CEO-д хандаж PIN сэргээлгэнэ үү.</p>
       <label class="login-label">Утас эсвэл и-мэйл</label>
-      <input id="pr-id" type="text" value="${escapeHtml(prefillId || '')}" placeholder="99112233 эсвэл name@example.com" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin:4px 0 12px;box-sizing:border-box;">
-      <button class="btn btn-primary" id="pr-send" style="width:100%;">Код авах</button>
+      <input id="pr-id" class="pinr-in" type="text" value="${escapeHtml(prefillId || '')}" placeholder="99112233 эсвэл name@example.com">
+      <button class="btn btn-primary pinr-go" id="pr-send">Код авах</button>
     </div>
-    <div id="pr-step2" style="display:none;">
-      <p style="font-size:13px;color:var(--muted);margin:4px 0 12px;" id="pr-sent-msg"></p>
+    <div class="pinr-step" id="pr-step2" hidden>
+      <p class="pinr-hint" id="pr-sent-msg"></p>
       <label class="login-label">Имэйлээр ирсэн 6 оронтой код</label>
-      <input id="pr-code" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
+      <input id="pr-code" class="pinr-in pinr-code" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ● ● ●">
       <label class="login-label">Шинэ PIN (4-6 орон)</label>
-      <input id="pr-pin" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
-      <button class="btn btn-primary" id="pr-verify" style="width:100%;">PIN шинэчлэх</button>
+      <input id="pr-pin" class="pinr-in pinr-code" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ●">
+      <button class="btn btn-primary pinr-go" id="pr-verify">PIN шинэчлэх</button>
     </div>
-    <div id="pr-err" style="color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px;"></div>
+    <div class="pinr-err" id="pr-err"></div>
   </div>`;
   document.body.appendChild(modal);
   const $$ = s => modal.querySelector(s);
@@ -1707,7 +1709,7 @@ function openPinResetModal(prefillId) {
     e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Илгээж байна…';
     await serverResetRequest(id);   // үр дүнгээс үл хамааран ижил мессеж (аюулгүй)
     modal._id = id;
-    $$('#pr-step1').style.display = 'none'; $$('#pr-step2').style.display = '';
+    $$('#pr-step1').hidden = true; $$('#pr-step2').hidden = false;   // `.pinr-step[hidden]` — inline style БИШ
     $$('#pr-sent-msg').innerHTML = 'Хэрэв <b>' + escapeHtml(id) + '</b> бүртгэлтэй, имэйлтэй бол код илгээгдлээ. Имэйлээ (спам хавтас ч) шалгаад доор оруулна уу. Код 15 минут хүчинтэй.';
   };
   $$('#pr-verify').onclick = async (e) => {

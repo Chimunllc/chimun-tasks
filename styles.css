@@ -145,6 +145,7 @@
     --simp-modal-w: 680px;    /* 🧾 Хуулга оруулах (openStatementClassifyModal) */
     --ba-modal-w: 460px;      /* 🏦 Данс нэмэх / засах (openBankAccountModal) */
     --salh-modal-w: 420px;    /* 📜 Цалингийн түүх (openSalaryHistory) — нэг баганатай жагсаалт */
+    --pinr-modal-w: 380px;    /* 🔑 PIN сэргээх (openPinResetModal) — нэвтрэх картын (`.login-card`) өргөнтэй ЯГ ижил */
 
     /* 🍽 Катерингийн ажлын цонх (`openCateringJobModal`) — нэг эгнээнд 2-3 талбар */
     --kt-job-modal-w: 560px;
@@ -10506,3 +10507,30 @@ select.no-asar-len {
 .order-find-c { color: var(--muted); font-size: var(--fs-xs); }
 .dmg-find { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md); background: var(--panel-hover); border-left: 3px solid var(--warn); font-size: var(--fs-sm); line-height: 1.5; }
 .dmg-find-by, .dmg-find-c { font-size: var(--fs-xs); color: var(--muted); }
+
+/* ── 🔑 PIN сэргээх цонх (openPinResetModal) ──
+   Угтвар `pinr-`. Өмнө нь 13 inline style= байсныг класс болгов (2026-11-07).
+   ⚠ `pr-` угтвар АВААГҮЙ — тэр нь үнийн самбарынх (`.pr-in`, `.pr-code`, `.pr-x`
+     аль хэдийн бий). ID-ууд (`#pr-id`, `#pr-code`…) ХЭВЭЭР — өөр тэнхлэг.
+   Толгой/✕ нь нийтийн `.modal-head`/`.modal-x` (өөрийн хувилбар БҮҮ бич) —
+   `<h2>` нь `<b>` болов: `.modal h2` нь margin/хэмжээг ХҮЧЛЭГДСЭН дүрмээр
+   тавьдаг тул flex толгойн дотор хоосон зай үүсгэдэг (`.tr-`/`.prc-`-тэй ИЖИЛ).
+   ⚠ Талбарын `padding`/`border`/`border-radius`/`font-size`/`background`-ыг ЭНД
+     БИЧИХГҮЙ: `@media (max-width:720px)` ба `@media (min-width:721px)` ХОЁУЛАА
+     `.modal input:not(.ui-raw)`-д ХҮЧЛЭГДСЭН дүрэм тавьдаг тул (хоёр нь бүх
+     өргөнийг хуваадаг) хуучин inline утга ХААНА Ч хүчин төгөлдөр байгаагүй.
+     Шинээр бичвэл одоо ч дарагдах ҮХМЭЛ дүрэм болно.
+   ⚠ `.modal input.pinr-in` нь ХОЁР класс + элемент (0,2,1) — мобайлын
+     `.modal input:not(.ui-raw) { margin-bottom: 14px }` (мөн 0,2,1) -тай
+     тэнцүү тул файлын ТӨГСГӨЛД байрлаж эрэмбээрээ ялна (хуучин inline style
+     ч яг түүнийг дарж байсан тул зан чанар өөрчлөгдөхгүй). */
+.modal.pinr-modal { max-width: var(--pinr-modal-w); }
+/* Хоёр шат (код хүсэх → код батлах) — JS нь `hidden` атрибутаар сольдог.
+   Энэ дүрэм ЗААВАЛ: шат нь хожим `display:flex` авбал `hidden` үл тоогдоно. */
+.pinr-step[hidden] { display: none; }
+.pinr-hint { font-size: var(--fs-md); color: var(--muted); margin: var(--space-1) 0 var(--space-3); }
+.modal input.pinr-in { margin: var(--space-1) 0 var(--space-3); }
+/* 6 оронтой код / PIN — цифр бүр тусдаа харагдана (`#login-pin-input`-тэй ижил санаа) */
+.pinr-code { letter-spacing: var(--space-1); text-align: center; }
+.modal .pinr-go { width: 100%; }
+.pinr-err { color: var(--danger); font-size: var(--fs-sm); margin-top: var(--space-2); min-height: var(--space-4); }

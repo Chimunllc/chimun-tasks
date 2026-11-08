@@ -185,6 +185,20 @@
     --scrim-btn:    rgba(255, 255, 255, 0.15); /* давхаргын товчны дэвсгэр */
     --scrim-del:    rgba(0,0,0,.5);            /* зураг дээрх × товч — тод байх ёстой */
     --scrim-modal:  rgba(0,0,0,.5);            /* `.modal` БИШ, өөрөө үүсгэсэн попап цонхны бүрхүүл */
+    --scrim-scan-top: rgba(0,0,0,.55);         /* QR сканы дээд заавар мөрийн градиент */
+    --scrim-scan-out: rgba(0,0,0,.4);          /* QR сканы хүрээний ГАДНА талыг бүрхэх */
+
+    /* ── 📷 ИРЦИЙН QR СКАНЫ ДАВХАРГА (`.ascan-*`) ──
+       ҮРГЭЛЖ хар/цагаан (цайвар ба харанхуй горимд ИЖИЛ): дэвсгэр нь камерын
+       шууд дүрс тул гадаргуугийн токенд дагахгүй (`--card-face-*`-тай ижил санаа).
+       Хэмжээс нь бусад дэлгэцтэй хуваалцдаггүй нэг удаагийн утга тул тусдаа токен. */
+    --scan-dark:    #000;      /* давхаргын дэвсгэр ба «Зогсоох» товчны бичвэр */
+    --scan-light:   #fff;      /* камер дээрх бичвэр, хүрээ, товчны гадаргуу */
+    --scan-frame:   236px;     /* QR баригдах хүрээний тал */
+    --scan-frame-r: 22px;      /* хүрээний радиус — камерын дүрсэн дээр харагдана (--r-xl-ээс том) */
+    --scan-veil:    9999px;    /* хүрээний ГАДНАХ box-shadow-ийн зузаан */
+    --scan-toast-b: 106px;     /* toast — «Зогсоох» товчны ДЭЭР */
+    --scan-stop-b:  30px;      /* «Зогсоох» товч — доод индикатораас дээш */
 
     /* ── 📄 ХЭВЛЭХ БАРИМТЫН ТОН (гэрээ → html2pdf) ──
        Эдгээр баримт нь `<!doctype>` попап БИШ — аппын DOM-д энгийн урсгалд
@@ -10534,3 +10548,47 @@ select.no-asar-len {
 .pinr-code { letter-spacing: var(--space-1); text-align: center; }
 .modal .pinr-go { width: 100%; }
 .pinr-err { color: var(--danger); font-size: var(--fs-sm); margin-top: var(--space-2); min-height: var(--space-4); }
+
+/* ── 📷 Ирцийн QR сканы давхарга (attStartScan) ──
+   Угтвар `ascan-`. Өмнө нь 6 inline style= + `style.cssText` байсныг класс болгов (2026-11-08).
+   ⚠ `att-scan-` угтвар АВААГҮЙ — тэр нь ирцийн дэлгэц дээрх «скан хийх» КАРТынх
+     (`.att-scan`, `.att-scan-btn`, `.att-scan-hint` аль хэдийн бий). ID-ууд
+     (`#att-scan-overlay`, `#att-video`, `#att-canvas`, `#att-scan-toast`,
+     `#att-scan-stop`) ХЭВЭЭР — JS тэднээр олдог, өөр тэнхлэг.
+   ⛔ ТӨВЛҮҮЛЭХДЭЭ `transform` ХЭРЭГЛЭХГҮЙ (toast ба «Зогсоох» товч):
+     `@media (max-width:720px)`-ийн `button:active { transform: scale(.96) }` нь
+     центрлэх `translateX(-50%)`-ийг ДАРдаг тул дарах зуур товч зүүн тийш
+     шилжинэ. Өмнө нь inline style тэр дүрмийг дардаг байсан тул үл мэдэгдэв.
+     Оронд нь `left:0; right:0; width:max-content; margin:0 auto`.
+   ⚠ toast-ийн `background` ба `opacity`-г `attToast()` inline-аар бичдэг (төлвөөр
+     өнгө солино) — энд дэвсгэр БҮҮ тавь, эс бөгөөс хоёр эх сурвалж болно. */
+.ascan-ov { position: fixed; inset: 0; z-index: 99999; background: var(--scan-dark); overflow: hidden; }
+.ascan-video { width: 100%; height: 100%; object-fit: cover; }
+.ascan-canvas { display: none; }
+.ascan-top {
+  position: absolute; top: 0; left: 0; right: 0;
+  padding: var(--space-4); text-align: center;
+  color: var(--scan-light); font-size: var(--fs-base); font-weight: 600;
+  background: linear-gradient(var(--scrim-scan-top), transparent);
+}
+.ascan-frame {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -56%);
+  width: var(--scan-frame); height: var(--scan-frame);
+  border: 3px solid var(--scan-light); border-radius: var(--scan-frame-r);
+  box-shadow: 0 0 0 var(--scan-veil) var(--scrim-scan-out);
+}
+.ascan-toast {
+  position: absolute; left: 0; right: 0; bottom: var(--scan-toast-b);
+  width: max-content; max-width: 88%; margin: 0 auto;
+  padding: var(--space-3) var(--space-4); border-radius: var(--r-full);
+  color: var(--scan-light); font-size: var(--fs-base); font-weight: 700;
+  opacity: 0; transition: opacity .2s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ascan-stop {
+  position: absolute; left: 0; right: 0; bottom: var(--scan-stop-b);
+  width: max-content; margin: 0 auto;
+  padding: var(--space-3) var(--space-6); border: 0; border-radius: var(--r-xl);
+  background: var(--scan-light); color: var(--scan-dark);
+  font-size: var(--fs-lg); font-weight: 700; cursor: pointer;
+}

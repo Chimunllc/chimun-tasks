@@ -13631,14 +13631,14 @@ async function attStartScan() {
   if (document.getElementById('att-scan-overlay')) return;
   const ov = document.createElement('div');
   ov.id = 'att-scan-overlay';
-  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000;overflow:hidden;';
+  ov.className = 'ascan-ov';
   ov.innerHTML = `
-    <video id="att-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
-    <canvas id="att-canvas" style="display:none;"></canvas>
-    <div style="position:absolute;top:0;left:0;right:0;padding:18px 16px;text-align:center;color:#fff;font-size:15px;font-weight:600;background:linear-gradient(rgba(0,0,0,.55),transparent);">Ажилтны QR картыг хүрээнд барь</div>
-    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-56%);width:236px;height:236px;border:3px solid #fff;border-radius:22px;box-shadow:0 0 0 9999px rgba(0,0,0,.4);"></div>
-    <div id="att-scan-toast" style="position:absolute;left:50%;bottom:106px;transform:translateX(-50%);max-width:88%;padding:11px 18px;border-radius:24px;color:#fff;font-size:15px;font-weight:700;opacity:0;transition:opacity .2s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
-    <button id="att-scan-stop" style="position:absolute;left:50%;bottom:30px;transform:translateX(-50%);padding:13px 30px;border:none;border-radius:14px;background:#fff;color:#111;font-size:16px;font-weight:700;">⏹ Зогсоох</button>`;
+    <video id="att-video" class="ascan-video" autoplay playsinline muted></video>
+    <canvas id="att-canvas" class="ascan-canvas"></canvas>
+    <div class="ascan-top">Ажилтны QR картыг хүрээнд барь</div>
+    <div class="ascan-frame"></div>
+    <div id="att-scan-toast" class="ascan-toast">—</div>
+    <button id="att-scan-stop" class="ascan-stop">⏹ Зогсоох</button>`;
   document.body.appendChild(ov);
   document.getElementById('att-scan-stop').onclick = attStopScan;
   state._attLastScan = {};

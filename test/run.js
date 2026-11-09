@@ -25642,3 +25642,477 @@ async function swFetchTests() {
   const cssLk = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   for (const k of ['.rf-lock', '.rf-lock-w', '.dep-wait']) ok(cssLk.includes(k + ' {'), `scan: CSS ${k} бий`);
 }
+
+// ═══════════════════ ДААЛГАВРЫН ОНОО (2026-11-09, CEO) ═══════════════════
+// ГАНЦ эх сурвалж = taskPtsLedger/taskPtsByPerson. Оноо даалгаврын ФАКТААС гарна → давхар тоологдохгүй, апп нээхийг хүлээхгүй.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const st = runIn('state');
+  const H = 3600e3, DAY = 24 * H;
+  const UB8 = (d, hm) => Date.parse(d + 'T' + hm + ':00+08:00');
+  const withNow = (ms, fn) => {   // апп доторх `Date.now()` / `new Date()`-ийг тогтмол цагт гацаана
+    const Real = sandbox.Date;
+    function FakeDate(...a) { return a.length ? new Real(...a) : new Real(ms); }
+    FakeDate.now = () => ms; FakeDate.UTC = Real.UTC; FakeDate.parse = Real.parse; FakeDate.prototype = Real.prototype;
+    sandbox.Date = FakeDate;
+    try { return fn(); } finally { sandbox.Date = Real; }
+  };
+  const D = UB8('2026-11-10', '18:00');                         // эцсийн хугацаа
+  const saved = { tasks: st.tasks, evals: st.evaluations, cfg: st.appConfig, cal: st.attCallins, calErr: st.attCallinsErr, me: st.me, ceo: st.isCEO, orders: st.appOrders, mb: st.memberBranches };
+  const TEAMX = vm.runInContext('TEAM', sandbox), savedTeam = TEAMX.slice();
+  const setCfg = (o) => { st.appConfig = Object.assign({}, saved.cfg || {}, { task_points: o === null ? undefined : Object.assign({ from: '2026-11-01' }, o || {}) }); };
+  const kp = (o = {}) => '⟦DT|18:00⟧' + (o.done ? '⟦CA|' + o.done + '⟧' : '') + (o.star ? '' : '');
+  const mk = (o = {}) => {
+    const t = Object.assign({ id: 'T1', title: 'Тест', assignee: '99112233', createdBy: '88000001', status: 'open', due: '2026-11-10', priority: 'med', created: UB8('2026-11-02', '09:00'), kind: '' }, o);
+    t.kpi_code = (o.kpi_code !== undefined ? o.kpi_code : '⟦DT|18:00⟧');
+    return t;
+  };
+  const doneAt = (ms, star, extra = '') => (star ? String(star) : '') + '⟦DT|18:00⟧⟦CA|' + ms + '⟧' + (star ? '⟦RA|' + (ms + H) + '⟧' : '') + extra;
+  const led = (tasks, now, adj, offDay) => { const c = F.taskPtsCtx(now); if (offDay) c.offDay = offDay; return F.taskPtsLedger(tasks, adj || [], c); };
+  const pts = (tasks, now, adj, offDay) => led(tasks, now, adj, offDay).reduce((a, e) => a + e.pts, 0);
+  const kinds = (tasks, now, adj, offDay) => led(tasks, now, adj, offDay).map(e => e.kind + ':' + e.pts).join(',');
+  setCfg({});
+
+  // (1) Тохиргоо: from хоосон = БҮГД унтраалттай (олгочихсон цалин чимээгүй өөрчлөгдөхгүй)
+  setCfg(null);
+  eq(F.taskPtsOn(), false, 'оноо: from тавигдаагүй бол унтраалттай');
+  eq(led([mk({ status: 'done', kpi_code: doneAt(D - 2 * H, 5) })], D + DAY), [], 'оноо: унтраалттай үед ledger хоосон');
+  eq(F.taskPtsPayOn(), false, 'оноо: унтраалттай үед цалинд ордоггүй');
+  setCfg({});
+  eq(F.taskPtsOn(), true, 'оноо: from тавигдвал идэвхжинэ');
+  eq(JSON.stringify(F.taskPtsCfg().stars), JSON.stringify({ 5: 10, 4: 7, 3: 4, 2: 1, 1: 0 }), 'оноо: ★ → +10/+7/+4/+1/0 (санал болгосон тооцоо)');
+  eq(JSON.stringify(F.taskPtsCfg().mult), JSON.stringify({ high: 1.5, med: 1, low: 0.5 }), 'оноо: зэрэглэл ×1.5 / ×1 / ×0.5');
+  eq([F.taskPtsCfg().late, F.taskPtsCfg().lateDay, F.taskPtsCfg().lateDayCap, F.taskPtsCfg().cancel, F.taskPtsCfg().autoH, F.taskPtsCfg().autoStar], [5, 2, 20, 10, 48, 4], 'оноо: −5 · өдөр −2 · хязгаар 20 · цуцлал −10 · 48ц → ★4');
+  setCfg({ stars: { 5: 20 }, mult: { high: 2 }, late: 8, bogus: 1 });
+  eq([F.taskPtsCfg().stars[5], F.taskPtsCfg().stars[4], F.taskPtsCfg().mult.high, F.taskPtsCfg().late], [20, 7, 2, 8], 'оноо: тохиргооноос өөрчилнө, дутуу нь өгөгдмөл');
+  setCfg({ late: -3, stars: { 5: 'x' } });
+  eq([F.taskPtsCfg().late, F.taskPtsCfg().stars[5]], [5, 10], 'оноо: буруу утга (сөрөг, үсэг) өгөгдмөл рүү');
+  setCfg({});
+
+  // (2) ★ × зэрэглэл — цагтаа дуусгаж ★ авбал
+  const star = (n, pr, doneMs) => pts([mk({ status: 'done', priority: pr, kpi_code: doneAt(doneMs || D - 2 * H, n) })], D + 5 * DAY);
+  eq([5, 4, 3, 2, 1].map(n => star(n, 'med')), [10, 7, 4, 1, 0], '★5/4/3/2/1 × 🟡 Энгийн = +10/+7/+4/+1/0');
+  eq([5, 4, 3, 2, 1].map(n => star(n, 'high')), [15, 10.5, 6, 1.5, 0], '★ × 🔴 Яаралтай (×1.5)');
+  eq([5, 4, 3, 2, 1].map(n => star(n, 'low')), [5, 3.5, 2, 0.5, 0], '★ × ⚪ Чөлөөтэй (×0.5)');
+  eq(star(5, ''), 10, 'зэрэглэлгүй хуучин ажил ×1');
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(D - 2 * H, 1) })], D + DAY), '', '★1 = 0 оноо — хоосон мөр бичигдэхгүй');
+  // эрт дуусгалт: 24ц+ өмнө ба ★≥3 бол +2 (сонголтоор)
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(D - 30 * H, 5) })], D + DAY), 'bonus:10,early:2', 'эрт дуусгавал нэмэлт +2');
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(D - 23 * H, 5) })], D + DAY), 'bonus:10', '24ц-аас хойно бол эрт дуусгасан биш');
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(D - 30 * H, 2) })], D + DAY), 'bonus:1', '★2 бол эрт дуусгалтын нэмэлт үгүй (чанар доогуур)');
+  setCfg({ early_on: false });
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(D - 30 * H, 5) })], D + DAY), 'bonus:10', 'эрт дуусгалтын нэмэлт тохиргооноос унтардаг');
+  setCfg({});
+  // ★ хүлээгдэж байхад (48ц дотор) нэмэлт оноо ГАРАХГҮЙ
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(D - 2 * H) })], D - 2 * H + 10 * H), '', 'дууссан боловч ★ өгөөгүй, 48ц дотор — оноо хараахан гарахгүй');
+
+  // (3) 48 цагт үнэлэхгүй бол авто ★★★★ (апп нээхийг хүлээхгүй — ЦААГ ТОДОРХОЙ)
+  const dn = D - 10 * H;
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(dn) })], dn + 47 * H), '', 'авто ★: 47ц — хараахан');
+  const au = led([mk({ status: 'done', kpi_code: doneAt(dn) })], dn + 49 * H);
+  eq(au.map(e => e.kind + ':' + e.pts), ['bonus:7'], 'авто ★: 48ц өнгөрвөл ★4 = +7');
+  ok(au[0].auto === true && au[0].ts === dn + 48 * H, 'авто ★: тэмдэглэгдсэн, оноо 48-р цагийн мөчид бичигдэнэ');
+  eq(F.taskRatingEff(mk({ status: 'done', kpi_code: doneAt(dn) }), F.taskPtsCtx(dn + 49 * H)), 4, 'taskRatingEff: авто ★4');
+  eq(F.taskRatingEff(mk({ status: 'done', kpi_code: doneAt(dn) }), F.taskPtsCtx(dn + 1 * H)), 0, 'taskRatingEff: 48ц дотор 0');
+  eq(F.needsRating(mk({ status: 'done', kpi_code: doneAt(dn) })), true, 'needsRating: ★ хүлээж буй (48ц дотор)');
+  const _nowReal = Date.now;
+  // гар ★ нь авто ★-ийг ДАРНА, нэг мөр л үлдэнэ (давхар тоологдохгүй)
+  const man = led([mk({ status: 'done', kpi_code: doneAt(dn, 5) })], dn + 100 * H);
+  eq(man.map(e => e.kind + ':' + e.pts + ':' + !!e.auto), ['bonus:10:false'], 'гар ★5 нь авто ★4-ийг орлоно — НЭГ мөр');
+  // Ажлын чанар (KPI) ч авто ★-ийг ижил уншина
+  setCfg({}); st.tasks = [mk({ status: 'done', kpi_code: doneAt(Date.now() - 60 * H) })]; st.me = '99112233';
+  eq(F.taskQualityScore('99112233', '2026-11').avg, 4, 'taskQualityScore: авто ★4 орно (оноотой ижил)');
+  st.tasks = saved.tasks;
+
+  // (4) Хоцролт: −5, хэтэрсэн өдөр бүр −2, дээд хязгаар −20
+  eq(kinds([mk()], D - H), '', 'хугацаа болоогүй — хасалт үгүй');
+  eq(kinds([mk()], D + H), 'late:-5', 'хугацаа хэтэрмэгц ШУУД −5 (апп нээхийг хүлээхгүй)');
+  eq(kinds([mk()], D + 25 * H), 'late:-5,d1:-2', '24ц хэтэрвэл −2 нэмэлт');
+  eq(pts([mk()], D + 3 * DAY + H), -11, '3 өдөр хэтэрвэл −5 −2×3 = −11');
+  eq(pts([mk()], D + 10 * DAY + H), -25, '10 өдөр: −5 −20 (өдрийн хязгаар хүрсэн)');
+  eq(pts([mk()], D + 90 * DAY), -25, '90 өдөр: хязгаар −20 нэмэгдэхгүй — нийт −25 дээр тогтоно');
+  eq(led([mk()], D + 90 * DAY).length, 11, 'хязгаар: 1 + 10 мөр (дахин мөр нэмэгдэхгүй)');
+  setCfg({ late_day_cap: 6 });
+  eq(pts([mk()], D + 90 * DAY), -11, 'хязгаарыг тохиргооноос өөрчилнө (−5 −6)');
+  setCfg({});
+  // Хоцорч дууссан: хасалт дууссан цаг хүртэл, бонус ҮГҮЙ (★5 өгсөн ч)
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(D + 3 * DAY + H, 5) })], D + 30 * DAY), 'late:-5,d1:-2,d2:-2,d3:-2', 'хоцорч дууссан: хасалт дууссан цаг хүртэл, бонус үгүй');
+  eq(kinds([mk({ status: 'done', kpi_code: doneAt(D, 5) })], D + DAY), 'bonus:10', 'яг хугацаан дээр дуусгавал цагтаа');
+  // Цуцлал / огт гүйцэтгээгүй (ажилтны буруугаас) −10
+  const FL = D + 2 * H;
+  eq(kinds([mk({ status: 'declined', kpi_code: '⟦DT|18:00⟧⟦FL|' + FL + '⟧' })], D + 30 * DAY), 'late:-5,cancel:-10', 'буруугаас хаасан: хоцролт (хаасан цаг хүртэл) + −10');
+  eq(kinds([mk({ status: 'declined', kpi_code: '⟦DT|18:00⟧⟦FL|' + (D - 5 * H) + '⟧' })], D + 30 * DAY), 'cancel:-10', 'хугацаанаас өмнө хаасан бол зөвхөн −10');
+  eq(kinds([mk({ status: 'declined' })], D + 30 * DAY), '', 'ажилтан өөрөө татгалзсан (FL-гүй) — оноо тооцохгүй');
+  eq(kinds([mk({ status: 'deleted' })], D + 30 * DAY), '', 'устгасан ажил — оноо тооцохгүй');
+
+  // (5) Хугацаа сунгах: ӨМНӨ нь илгээж, өгсөн хүн батлавал хасагдахгүй
+  const xr = (req, date, time, s, prevDate, prevTime) => '⟦XR|' + req + '|' + date + '|' + time + '|' + s + '|0|' + (prevDate || '2026-11-10') + '|' + (prevTime || '18:00') + '|шалтгаан⟧';
+  const apr = mk({ due: '2026-11-12', kpi_code: '⟦DT|18:00⟧' + xr(D - 5 * H, '2026-11-12', '18:00', 'a') });
+  eq(kinds([apr], D + 3 * H), '', 'батлагдсан сунгалт: анхны хугацаа өнгөрсөн ч −5 ҮГҮЙ');
+  eq(kinds([apr], UB8('2026-11-12', '18:00') + H), 'late:-5', 'батлагдсан сунгалт: ШИНЭ хугацаанаас хойш л хасна');
+  eq(pts([mk({ due: '2026-11-12', status: 'done', kpi_code: '⟦DT|18:00⟧⟦CA|' + (D + 30 * H) + '⟧3⟦RA|' + (D + 31 * H) + '⟧' + xr(D - 5 * H, '2026-11-12', '18:00', 'a') })], D + 9 * DAY), 4, 'батлагдсан сунгалттай ажлыг шинэ хугацаанд дуусгавал бонус (★3 = +4)');
+  eq(kinds([mk({ kpi_code: '⟦DT|18:00⟧' + xr(D - 5 * H, '2026-11-12', '18:00', 'p') })], D + 3 * DAY), '', 'хүлээгдэж буй сунгалт: хасалт ЗОГСОНО');
+  eq(kinds([mk({ kpi_code: '⟦DT|18:00⟧' + xr(D - 5 * H, '2026-11-12', '18:00', 'r') })], D + H), 'late:-5', 'татгалзсан сунгалт: анхны хугацаанаас хоцролт тооцогдоно');
+  eq(kinds([mk({ kpi_code: '⟦DT|18:00⟧' + xr(D + H, '2026-11-12', '18:00', 'a') })], D + 2 * H), 'late:-5', '⛔ хугацаа ДУУССАНЫ ДАРАА ирсэн хүсэлт хүчингүй (батлагдсан ч)');
+  eq(F.taskDueChain(mk({ kpi_code: '⟦DT|18:00⟧' + xr(D - 5 * H, '2026-11-12', '18:00', 'a') + xr(UB8('2026-11-12', '10:00'), '2026-11-14', '09:00', 'a', '2026-11-12', '18:00') })).dueTs, UB8('2026-11-14', '09:00'), 'хоёр дараалсан сунгалт — хамгийн сүүлийнх');
+
+  // (6) Өөртөө өгөх хориг, хамтран гүйцэтгэгч, автомат ажил
+  eq(kinds([mk({ assignee: '88000001', createdBy: '88000001' })], D + H), '', 'өөртөө өгсөн ажил: оноо ҮГҮЙ (хасалт ч үгүй)');
+  eq(kinds([mk({ status: 'done', assignee: '88000001', createdBy: '88000001', kpi_code: doneAt(D - 2 * H, 5) })], D + DAY), '', 'өөртөө өгч ★5 өгөөд ч оноо авахгүй');
+  const co = led([mk({ co_assignees: ['77000001', '88000001'] })], D + H);
+  eq(co.map(e => e.key).sort().join(','), '77000001,99112233', 'хамтран гүйцэтгэгч: хариуцагч + хамтрагч хоёулаа; өгсөн хүн (88000001) орохгүй');
+  eq(kinds([mk({ createdBy: 'SYSTEM' })], D + H), '', 'SYSTEM үүсгэсэн ажил оноо тооцохгүй');
+  eq(kinds([mk({ id: 'ordstage__12__rented' })], D + H), '', 'захиалгын автомат дамжлага-ажил давхар тоологдохгүй');
+  eq(kinds([mk({ created: UB8('2026-10-20', '09:00') })], D + H), '', 'from-оос ӨМНӨ үүссэн ажил торгуулийн цэг болохгүй');
+  eq(kinds([mk({ due: '' })], D + H), '', 'эцсийн хугацаагүй ажил оноо тооцохгүй');
+
+  // (7) Амралт/чөлөөт өдөр хугацаа зогсоно
+  const offTue = (key, day) => day === '2026-11-10';
+  eq(kinds([mk()], D + H, [], offTue), '', 'чөлөөт өдөр: хугацаа 24ц хойшилно — −5 гарахгүй');
+  eq(kinds([mk()], D + 25 * H, [], offTue), 'late:-5', 'чөлөөт өдөр: шинэ хугацаанаас хойш −5');
+  eq(F.taskEffDueTs(D, 'k', UB8('2026-11-09', '09:00'), (k, d) => d === '2026-11-10' || d === '2026-11-11'), D + 2 * DAY, 'хоёр дараалсан чөлөөт өдөр = +48ц');
+  eq(F.taskEffDueTs(D, 'k', UB8('2026-11-09', '09:00'), (k, d) => d === '2026-11-11'), D, 'хугацаанаас ХОЙШ чөлөөт өдөр нөлөөлөхгүй (хугацаа тэр өдөрт хүрээгүй)');
+  eq(F.taskEffDueTs(D, 'k', UB8('2026-11-09', '09:00'), (k, d) => d === '2026-11-10'), D + DAY, 'чөлөөт өдөр хугацаа дотор бол +24ц');
+  eq(F.taskEffDueTs(D, 'k', D, null), D, 'хуваарь ачаалагдаагүй — зогсолт тооцохгүй (таамаглахгүй)');
+  // Хуваарь (att_callins)-аас: тухайн 7 хоногт хуваарьтай атлаа энэ өдөр хуваарьгүй
+  st.attCallinsErr = null;
+  st.attCallins = { '99112233|2026-11-09': { status: 'active' }, '99112233|2026-11-11': { status: 'active' }, '99112233|2026-11-12': { status: 'void' } };
+  const off = F.taskPtsOffFn();
+  eq([off('99112233', '2026-11-10'), off('99112233', '2026-11-09'), off('99112233', '2026-11-14'), off('55555555', '2026-11-10')], [true, false, true, false], 'чөлөөт өдөр: хуваарьтай 7 хоногийн хуваарьгүй өдөр ✓; хуваарьтай өдөр ✗; хуваарьгүй хүн ✗');
+  st.attCallins = undefined;
+  eq(F.taskPtsOffFn(), null, 'хуваарь ачаалагдаагүй бол зогсолт null (таамаглахгүй)');
+
+  // (8) Идемпотент: давтан тооцоход, давхар мөр, хожуу цагт ч өөрчлөгдөхгүй
+  const t1 = mk(), t1dup = mk();
+  const L1 = led([t1, t1dup, t1], D + 3 * DAY), L2 = led([t1], D + 3 * DAY);
+  eq(L1.map(e => e.id), L2.map(e => e.id), 'идемпотент: ижил даалгавар давхар орсон ч мөр давхардахгүй');
+  eq(new Set(L1.map(e => e.id)).size, L1.length, 'идемпотент: ledger-ийн id бүр өвөрмөц');
+  eq(pts([t1], D + 3 * DAY), pts([t1], D + 3 * DAY), 'идемпотент: дахин бодоход ижил');
+  const early = led([t1], D + 3 * DAY).filter(e => e.kind === 'late' || e.kind === 'd1');
+  const later = led([t1], D + 8 * DAY).filter(e => e.kind === 'late' || e.kind === 'd1');
+  eq(early.map(e => e.id + e.pts), later.map(e => e.id + e.pts), 'идемпотент: хожуу тооцоход өмнөх мөрүүд ЯГ ИЖИЛ (шинэ өдөр л нэмэгдэнэ)');
+  ok(early.every(e => e.id.startsWith('T1|99112233|')), 'ledger id = даалгавар|хүн|төрөл');
+
+  // (9) Сар: оноо ҮЙЛДЭЛ болсон сард бичигдэнэ
+  const t31 = mk({ due: '2026-10-31', created: UB8('2026-10-28', '09:00') });
+  st.appConfig = Object.assign({}, st.appConfig, { task_points: { from: '2026-10-01' } });
+  const bm = (m) => F.taskPtsByPerson(m, [t31], [], F.taskPtsCtx(UB8('2026-11-05', '12:00')))['99112233'];
+  eq([bm('2026-10').net, bm('2026-11').net, bm('').net], [-5, -2 * 4 - 0, -13].map((v, i) => i === 1 ? -8 : v), '10-р сарын хоцролт 10-д (−5), хэтэрсэн өдрүүд 11-д (−8), нийт −13');
+  setCfg({});
+
+  // (10) Гар засвар — ТУСДАА мөр, шалтгаантай; ledger-т орно; идэвхгүй үед үл тооцно
+  const adjRows = [
+    { id: 'tpadj|2026-11|99112233|1', type: 'tpadj', period: '2026-11', ratee: '99112233', rater: '88000001', kpi_pct: -3, note: 'буруу хасалт', ts: '2026-11-12T01:00:00Z' },
+    { id: 'tpadj|2026-11|99112233|2', type: 'tpadj', period: '2026-11', ratee: '99112233', rater: '88000001', kpi_pct: 2, note: 'нэмэлт ажил', ts: '2026-11-13T01:00:00Z' },
+    { id: 'pen|2026-11|99112233|3', type: 'penalty', period: '2026-11', ratee: '99112233', kpi_pct: 5, note: 'хуучин суутгал', ts: '2026-11-12T01:00:00Z' },
+    { id: 'tpadj|2026-11|99112233|4', type: 'tpadj', period: '2026-11', ratee: '99112233', rater: '88000001', kpi_pct: 0, note: 'тэг', ts: '2026-11-12T01:00:00Z' },
+  ];
+  const adjL = led([], D, adjRows);
+  eq(adjL.map(e => e.kind + ':' + e.pts + ':' + e.why).join('|'), 'adj:-3:буруу хасалт|adj:2:нэмэлт ажил', 'гар засвар: зөвхөн tpadj, 0 ба бусад төрөл орохгүй, шалтгаантай');
+  eq(F.taskPtsByPerson('2026-11', [], adjRows, F.taskPtsCtx(D))['99112233'].net, -1, 'гар засвар: сарын нийлбэр = −3 + 2');
+  setCfg(null); eq(led([], D, adjRows), [], 'гар засвар: оноо унтраалттай үед тооцогдохгүй'); setCfg({});
+
+  // (11) ИНВАРИАНТ: Миний ажил = Гүйцэтгэл = Тойм (Шилдэг гүйцэтгэгч) = Цалин = Excel — НЭГ тоо
+  const MON = '2026-11';
+  const tasksInv = [
+    mk({ id: 'a', status: 'done', kpi_code: doneAt(D - 30 * H, 5) }),                       // +10 +2
+    mk({ id: 'b', status: 'done', priority: 'high', due: '2026-11-11', kpi_code: doneAt(UB8('2026-11-11', '17:00'), 4) }), // +10.5
+    mk({ id: 'c', due: '2026-11-03', created: UB8('2026-11-02', '09:00'), kpi_code: '⟦DT|10:00⟧' }),        // хоцорсон
+  ];
+  const NOW = UB8('2026-11-14', '12:00');
+  const ctxI = F.taskPtsCtx(NOW);
+  const byP = F.taskPtsByPerson(MON, tasksInv, [adjRows[0]], ctxI)['99112233'];
+  ok(byP.earn > 0 && byP.pen > 0, 'инвариант: нэмэгдсэн ба хасагдсан хоёулаа бий (тест утга учиртай)');
+  eq(Math.round((byP.earn - byP.pen) * 100) / 100, byP.net, 'инвариант: net = нэмэгдсэн − хасагдсан');
+  eq(Math.round(byP.entries.reduce((a, e) => a + e.pts, 0) * 100) / 100, byP.net, 'инвариант: net = ledger мөрүүдийн нийлбэр');
+  const spI = F.stagePayByPerson([], MON, F.taskPtsByPerson(MON, tasksInv, [adjRows[0]], ctxI))['99112233'];
+  eq(Math.round((spI.taskEarn - spI.taskPen) * 100) / 100, byP.net, 'инвариант: Цалин/Шилдэг гүйцэтгэгчийн функц ижил net');
+  eq(spI.pts, byP.net, 'инвариант: stagePayByPerson.pts (дамжлагагүй) = даалгаврын net');
+  const rate = F.stagePointRate();
+  eq(spI.taskFee, Math.round(byP.earn * rate), 'цалин: даалгаврын урамшуулал = нэмэгдсэн оноо × ханш');
+  eq(spI.taskPenFee, Math.round(byP.pen * rate), 'цалин: хасалт = хасагдсан оноо × ханш');
+  eq(spI.penApplied, Math.min(spI.penFee, spI.taskFee), '⛔ цалин: хасалт нь олсон урамшуулалаар хязгаарлагдана (суурь цалингаас хасахгүй)');
+  eq(spI.total, spI.taskFee - spI.penApplied, 'цалин: total = олсон − хэрэглэсэн хасалт');
+  ok(spI.total >= 0, '⛔ цалин: сарын урамшуулал 0-ээс доош БИШ');
+  // Дамжлагын оноотой ХАМТ: нийлбэр, мөрүүд нийлбэртэйгээ таарна
+  const ordersX = [{ number: 7, stage_meta: {} }];
+  const both = F.stagePayByPerson(ordersX, MON, F.taskPtsByPerson(MON, tasksInv, [], ctxI))['99112233'];
+  eq(both.pts, Math.round((both.ledPts + both.helperPts + both.taskEarn - both.penPts - both.taskPen) * 100) / 100, 'нэгтгэл: pts = дамжлага + даалгавар');
+  // Тойм: Шилдэг гүйцэтгэгч
+  const topI = F.stageTopPerformers([], MON, ['99112233', '55555555']);
+  const topMe = topI.find(r => r.key === '99112233');
+  // (state-ээр дамжуулж: stageTopPerformers → stagePayByPerson → state.tasks)
+  st.tasks = tasksInv; st.evaluations = [adjRows[0]]; st.appOrders = [];
+  withNow(NOW, () => {
+    const topS = F.stageTopPerformers([], MON, ['99112233', '55555555']);
+    const meS = topS.find(r => r.key === '99112233');
+    eq(meS.pts, byP.net, 'ИНВАРИАНТ: Шилдэг гүйцэтгэгчийн оноо = Гүйцэтгэл/Миний ажлын net');
+    eq(meS.taskPts, byP.net, 'Шилдэг гүйцэтгэгч: даалгаврын оноо тусдаа талбар');
+    eq(topS.find(r => r.key === '55555555').pts, 0, 'Шилдэг гүйцэтгэгч: оноогүй хүн 0-ээр жагсаалтад');
+    eq(F.stagePayFor('99112233', MON, []).taskFee, spI.taskFee, 'ИНВАРИАНТ: Цалингийн (stagePayFor) даалгаврын урамшуулал = stagePayByPerson-тай ижил');
+    // Миний ажил карт
+    st.me = '99112233'; st.tpMonth = MON;
+    const card = F.taskPtsMineCardHtml();
+    ok(card.includes((byP.net > 0 ? '+' : '−') + Math.abs(byP.net) + '<small> оноо'), 'ИНВАРИАНТ: «Миний ажил» картын оноо = net (' + byP.net + ')');
+    ok(card.includes('+' + byP.earn) && card.includes('−' + byP.pen), 'Миний ажил карт: нэмэгдсэн ба хасагдсан тусдаа');
+    ok(card.includes('буруу хасалт'), 'Миний ажил карт: гар засварын шалтгаан түүхэнд ил');
+    ok(card.includes('data-tp-xls'), 'Миний ажил карт: Excel товч');
+    ok(card.includes('Цалингийн урамшуулалд'), 'Миний ажил карт: цалинд орсон дүн ил (pay асаалттай)');
+    // Гүйцэтгэл → Даалгаврын оноо таб
+    st.perfMonth = MON; st.isCEO = true;
+    const tab = F.renderPerfTasks();
+    ok(tab.includes('data-tp-key="99112233"') && tab.includes((byP.net > 0 ? '+' : '−') + Math.abs(byP.net)), 'ИНВАРИАНТ: Гүйцэтгэл табын оноо = net');
+    ok(/Цагтаа<\/span>\d+%/.test(tab) && /Хоцорсон<\/span>1/.test(tab), 'удирдлага: цагтаа %, хоцорсон тоо, дундаж харагдана');
+    const stI = F.taskPtsStats(MON, tasksInv, ctxI)['99112233'];
+    eq([stI.total, stI.ontime, stI.late, stI.onTimePct, stI.avg], [3, 2, 1, 67, 4.5], 'үзүүлэлт: 3 ажил · 2 цагтаа · 1 хоцорсон · 67% · дундаж 4.5★');
+    // Excel — НЭГ тоо
+    const rowsOut = {};
+    const fakeX = { utils: { book_new: () => ({ s: [] }), json_to_sheet: (r) => r, book_append_sheet: (wb, ws, name) => { rowsOut[name] = ws; } }, writeFile: (wb, name) => { rowsOut.__file = name; } };
+    const lsOrig = sandbox.loadSheetJS; sandbox.loadSheetJS = () => Promise.resolve(fakeX);
+    globalThis.__tpExcel = F.taskPtsExportExcel(MON, '');
+    globalThis.__tpExcelFin = () => { sandbox.loadSheetJS = lsOrig; };
+    st.__tpKeep = { net: byP.net, fee: spI.taskFee, pen: spI.taskPenFee, ents: byP.entries.length };
+    globalThis.__tpRows = rowsOut;
+  });
+  st.tasks = saved.tasks; st.evaluations = saved.evals; st.appOrders = saved.orders; st.isCEO = saved.ceo; st.me = saved.me;
+  (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+    await globalThis.__tpExcel; globalThis.__tpExcelFin();
+    const R = globalThis.__tpRows, K = st.__tpKeep; delete st.__tpKeep;
+    ok(/^Даалгаврын-оноо-2026-11\.xlsx$/.test(R.__file || ''), 'Excel: файлын нэр');
+    const me = (R['Оноо'] || []).find(r => r['Нийт оноо'] === K.net);
+    ok(!!me, 'ИНВАРИАНТ: Excel-ийн «Нийт оноо» = net (' + K.net + ')');
+    eq(me && me['Цалинд (₮)'], K.fee - K.pen, 'ИНВАРИАНТ: Excel-ийн «Цалинд (₮)» = цалингийн урамшуулал − хасалт');
+    eq((R['Түүх'] || []).filter(r => r['Ажилтан'] === me['Ажилтан']).reduce((a, r) => a + r['Оноо'], 0), K.net, 'Excel: «Түүх» хуудасны нийлбэр = нийт оноо');
+    ok((R['Түүх'] || []).some(r => /Гар засвар/.test(r['Төрөл'])), 'Excel: гар засвар түүхэнд');
+  });
+
+  // pay=false: оноо харагдана (Шилдэг гүйцэтгэгч) боловч ₮ нэмэгдэхгүй
+  setCfg({ pay: false });
+  const spNoPay = F.stagePayByPerson([], MON, F.taskPtsByPerson(MON, tasksInv, [], ctxI))['99112233'];
+  ok(spNoPay.pts !== 0 && spNoPay.taskFee === 0 && spNoPay.total === 0, 'pay=false: оноо бий, цалинд ₮ орохгүй');
+  setCfg({});
+  // Цалингийн мөр: нийлбэртэйгээ таарна (дамжлага + даалгавар − хасалт = total)
+  {
+    const rows = []; const lineFn = (l, v, c) => { rows.push([l, v, c]); return ''; };
+    const num = (v) => Number(String(v).replace(/[^\d]/g, '')) * (/^−/.test(String(v)) ? -1 : 1);
+    const sp = Object.assign({}, spI, { ledFee: 3000, helperFee: 500, taskFee: 10000, penApplied: 2000, penFee: 2000, taskN: 2, taskPenFee: 0, led: 1, helped: 0, taskLateN: 0 }); sp.total = 3500 + 10000 - 2000;
+    F.stageBonusRowsHtml(sp, sp.total, lineFn, '📦 Дамжлагын бонус');
+    eq(rows.reduce((a, r) => a + num(r[1]), 0), sp.total, 'цалингийн мөрүүд: дамжлага + даалгавар − хасалт = бонус (нийлбэртэйгээ таарна)');
+    ok(rows.some(r => /Даалгаврын оноо/.test(r[0])), 'цалингийн мөр: «Даалгаврын оноо» тусдаа мөр');
+    rows.length = 0;
+    const sp0 = { ledFee: 3000, helperFee: 500, taskFee: 0, penApplied: 0, total: 3500 };
+    F.stageBonusRowsHtml(sp0, sp0.total, lineFn, 'Дамжлагын бонус');
+    eq(rows.length, 1, 'даалгаврын оноогүй үед хуучин хэлбэр хэвээр (нэг мөр)');
+  }
+
+  // (12) Даалгавар өгөх эрх: удирдлага бүгдэд, ахлах/нярав/менежер өөрийн багт
+  TEAMX.length = 0;
+  TEAMX.push({ name: 'Захирал', phone: '99000001', level: 100, role: 'CEO', branches: ['m-event'] },
+    { name: 'Үйл ажиллагааны захирал', phone: '99000002', level: 80, role: 'Үйл ажиллагааны захирал', branches: ['m-event'] },
+    { name: 'Нярав', phone: '99000003', level: 60, role: 'Нярав', branches: ['m-event'] },
+    { name: 'Ажилтан', phone: '99000004', level: 10, role: 'Агуулахын ажилтан', branches: ['m-event'] },
+    { name: 'Кемп ажилтан', phone: '99000005', level: 10, role: 'Ажилтан', branches: ['camp'] },
+    { name: 'Салбаргүй', phone: '99000006', level: 10, role: 'Ажилтан', branches: [] });
+  st.memberBranches = {};
+  eq([F.taskCanAssign('99000001', '99000005'), F.taskCanAssign('99000002', '99000005'), F.taskCanAssign('99000002', '99000001')], [true, true, true], 'эрх: удирдлага (CEO, ҮАЗ) бүх ажилтанд');
+  eq([F.taskCanAssign('99000003', '99000004'), F.taskCanAssign('99000003', '99000005')], [true, false], 'эрх: нярав өөрийн багт ✓, өөр салбарт ✗');
+  eq(F.taskCanAssign('99000003', '99000001'), false, 'эрх: нярав удирдлагад даалгавар өгч чадахгүй');
+  eq(F.taskCanAssign('99000003', '99000006'), true, 'эрх: салбар мэдэгдэхгүй бол таамаглахгүй (зөвшөөрнө)');
+  eq(F.taskCanAssign('99000003', '99000003'), true, 'эрх: өөртөө (оноогүй)');
+  setCfg(null); eq(F.taskCanAssign('99000003', '99000005'), true, 'эрх: оноо идэвхгүй үед хуучин зан (хязгааргүй)'); setCfg({});
+  TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m)); st.memberBranches = saved.mb;
+
+  // (13) Токен: kpi_code-д олон токен зэрэгцэж, үнэлгээ эвдрэхгүй
+  eq(F.taskQualityRating({ kpi_code: '4⟦N⟧сайн⟦DT|18:00⟧⟦AK|1700000000000⟧⟦CD|2026-11-09⟧⟦CA|1⟧⟦RA|2⟧⟦XR|1|2026-11-12|18:00|a|0|2026-11-10|18:00|x⟧⟦FL|3⟧' }), 4, 'токен: бүх токентой ч ★ зөв уншигдана');
+  eq(F.taskQualityNote({ kpi_code: '4⟦N⟧сайн⟦DT|18:00⟧⟦AK|1⟧' }), 'сайн', 'токен: үнэлгээний тайлбар хэвээр');
+  const kc = F.tkSet(F.tkSet('3⟦DT|09:00⟧', 'AK', 111), 'AK', 222);
+  eq([F.tkGet(kc, 'AK'), F.tkGet(kc, 'DT'), (kc.match(/⟦AK\|/g) || []).length], ['222', '09:00', 1], 'tkSet: нэг токен солигдоно, бусад хэвээр, давхар үүсэхгүй');
+  eq(F.tkKeep('4⟦N⟧x⟦DT|09:00⟧⟦AK|1⟧'), '⟦DT|09:00⟧⟦AK|1⟧', 'tkKeep: зөвхөн токен');
+  eq(F.setCompletionCode('⟦DT|09:00⟧', '2026-11-09'), '⟦DT|09:00⟧⟦CD|2026-11-09⟧', 'setCompletionCode: бусад токенийг ХАДГАЛНА (өмнө нь устгадаг байв)');
+  eq(F.ubDay(UB8('2026-11-10', '00:30')), '2026-11-10', 'УБ өдөр: 00:30 нь шөнийн UTC-д ч зөв огноо');
+  eq(F.ubHM(UB8('2026-11-10', '18:05')), '18:05', 'УБ цаг');
+  eq(F.taskDueTs({ due: '2026-11-10', kpi_code: '⟦DT|18:00⟧' }), D, 'taskDueTs: огноо + цаг (УБ)');
+  eq(F.taskDueTs({ due: '2026-11-10', kpi_code: '' }), UB8('2026-11-10', '23:59'), 'taskDueTs: цаггүй хуучин ажил = өдрийн эцэс');
+  eq(F.taskDeepLink('#ack-t_abc123'), { act: 'ack', id: 't_abc123' }, 'холбоос: #ack-<id>');
+  eq([F.taskDeepLink('#task-t_x'), F.taskDeepLink('#plan'), F.taskDeepLink('#ack-../x'), F.taskDeepLink('#ack-')].map(x => x && x.act), ['task', null, null, null], 'холбоос: зөвхөн зөв хэлбэр (дурын hash-аар нээхгүй)');
+
+  // (14) Python сануулгын скрипт ↔ апп: хугацаа (сунгалт, чөлөөт өдрийн зогсолт) ИЖИЛ
+  try {
+    const tn = path.join(__dirname, '..', 'tools', 'task_notify.py'), cp = require('child_process');
+    const out = cp.execSync(`python3 ${JSON.stringify(tn)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/task_notify selftest OK/.test(out), 'task_notify: Python өөрийн тест — ' + out.trim());
+    const cal = [['99112233', '2026-11-09'], ['99112233', '2026-11-11']];
+    const mkP = (id, kpi, due) => ({ id, title: 'T', assignee: 'Бат', created_by: 'Сүх', status: 'open', due: due || '2026-11-10', kpi_code: kpi, created: String(UB8('2026-11-09', '09:00')), kind: '' });
+    const cases = [
+      ['base', '⟦DT|18:00⟧', '2026-11-10'],
+      ['extA', '⟦DT|18:00⟧' + xr(D - 5 * H, '2026-11-12', '18:00', 'a'), '2026-11-12'],
+      ['extP', '⟦DT|18:00⟧' + xr(D - 5 * H, '2026-11-12', '18:00', 'p'), '2026-11-10'],
+      ['extLate', '⟦DT|18:00⟧' + xr(D + H, '2026-11-12', '18:00', 'a'), '2026-11-10'],
+      ['nodt', '', '2026-11-10'],
+    ];
+    const fx = { now: D + 3 * H, from: '2026-11-01', phones: { 'Бат': '99112233', 'Сүх': '88000001' }, sent: {}, callins: cal, tasks: cases.map(c => mkP(c[0], c[1], c[2])) };
+    const tmp = path.join(require('os').tmpdir(), 'tn_fixture_' + process.pid + '.json'); fs.writeFileSync(tmp, JSON.stringify(fx));
+    const py = JSON.parse(cp.execSync(`python3 ${JSON.stringify(tn)} --plan ${JSON.stringify(tmp)}`, { encoding: 'utf8' })); fs.unlinkSync(tmp);
+    const offCal = F.taskPtsOffFn; st.attCallins = { '99112233|2026-11-09': { status: 'active' }, '99112233|2026-11-11': { status: 'active' } }; st.attCallinsErr = null;
+    const offJs = offCal();
+    for (const c of cases) {
+      const jt = mk({ id: c[0], due: c[2], kpi_code: c[1], created: UB8('2026-11-09', '09:00') });
+      const v = F.taskPtsView(jt, '99112233', Object.assign(F.taskPtsCtx(D + 3 * H), { offDay: offJs }));
+      eq(py.dues[c[0] + '|99112233'].due, v.due, 'ИНВАРИАНТ: сануулгын хугацаа (Python) = аппын хугацаа (JS) — ' + c[0]);
+      eq(py.dues[c[0] + '|99112233'].hold, v.hold, 'ИНВАРИАНТ: сунгалт хүлээгдэж буй (hold) Python = JS — ' + c[0]);
+    }
+    // Хугацаа хэтэрсэн нь аппын хасалттай ИЖИЛ цагт: Python «over» илгээх ↔ JS «late» мөр үүсэх
+    const overPy = new Set(py.messages.filter(m => m.kind === 'over').map(m => m.task));
+    for (const c of cases) {
+      const jt = mk({ id: c[0], due: c[2], kpi_code: c[1], created: UB8('2026-11-09', '09:00') });
+      const jsLate = F.taskPtsLedger([jt], [], Object.assign(F.taskPtsCtx(D + 3 * H), { offDay: offJs })).some(e => e.kind === 'late');
+      eq(overPy.has(c[0]), jsLate, 'ИНВАРИАНТ: «хугацаа хэтэрлээ» мэдэгдэл ↔ −5 оноо ижил цагт — ' + c[0]);
+    }
+    st.attCallins = saved.cal; st.attCallinsErr = saved.calErr;
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || '') + (e.message || ''));
+    ok(/No such file|not found|ENOENT/.test(msg), 'task_notify: тест — ' + msg.trim().slice(0, 400));
+  }
+
+  // (15) SCAN: давхар бодолт, schema, токен, мэдэгдэл
+  const appSrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssSrc2 = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const swSrc2 = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  const rlsSql2 = fs.readFileSync(path.join(__dirname, '..', 'db', 'rls.sql'), 'utf8');
+  eq((appSrc2.match(/^function taskPtsLedger\(/gm) || []).length, 1, 'scan: оноо тооцох ledger ГАНЦ газар тодорхойлогдсон');
+  ok(!/penalty.*late|lateDay\s*\*/.test(appSrc2.slice(appSrc2.indexOf('function renderPerfTasks'), appSrc2.indexOf('function taskPtsExportExcel'))), 'scan: Гүйцэтгэл табд оноо ӨӨР бодогдохгүй (ledger-ээс л уншина)');
+  const uiBlock = appSrc2.slice(appSrc2.indexOf('function taskPtsMineCardHtml'), appSrc2.indexOf('function taskPtsInfoHtml'));
+  ok(/taskPtsByPerson\(/.test(uiBlock) && !/cfg\.late\s*[*+-]\s*|stars\[/.test(uiBlock.replace(/cfg\.late\}|cfg\.lateDay\}/g, '')), 'scan: Миний ажил/Гүйцэтгэл/Excel оноог taskPtsByPerson-оос л авна (өөр бодолт үгүй)');
+  ok(/taskPtsByPerson\(month\) : \{\}\);/.test(appSrc2) || /taskPts !== undefined \? taskPts : \(taskPtsOn\(\) \? taskPtsByPerson\(month\)/.test(appSrc2), 'scan: Цалин/Шилдэг гүйцэтгэгч (stagePayByPerson) даалгаврын оноог taskPtsByPerson-оос авна');
+  eq((appSrc2.match(/taskPtsByPerson\(month\)/g) || []).length >= 1 && !/function stageTopPerformers[^]*?taskPtsLedger/.test(appSrc2.slice(appSrc2.indexOf('function stageTopPerformers'), appSrc2.indexOf('function stagePenWhy'))), true, 'scan: Шилдэг гүйцэтгэгч оноог тусад нь бодохгүй — stagePayByPerson-оос');
+  ok(!/stage_meta/.test(appSrc2.slice(appSrc2.indexOf('const TASK_PTS_DEFAULT'), appSrc2.indexOf('function taskPtsInfoHtml'))), '⛔ scan: даалгаврын оноо stage_meta-д хүрэхгүй (токен нь kpi_code-д)');
+  ok(!/\bby:|\bat:|\bitems:|\bphotos:/.test(appSrc2.slice(appSrc2.indexOf('function taskExtWrite'), appSrc2.indexOf('function taskDueChain'))), '⛔ scan: токенд stage_meta-ийн by/at/items/photos түлхүүр ашиглаагүй');
+  ok(/'task_points'/.test(appSrc2.slice(appSrc2.indexOf('const APP_CONFIG_KEYS'), appSrc2.indexOf('const APP_CONFIG_KEYS') + 420)), 'scan: task_points апп нээгдэхэд ачаалагдана');
+  eq((rlsSql2.match(/when 'task_points' then sec\.is_ceo\(\)/g) || []).length, 3, '⛔ db/rls.sql: task_points зөвхөн CEO (insert, update using, update with check)');
+  ok(/^function taskPtsCanAdjust\(\) \{ return !!\(state\.isCEO \|\| taskIsMgmt\(state\.me\)\); \}/m.test(appSrc2), 'scan: гар засвар зөвхөн удирдлага (CEO, ҮАЗ)');
+  const adjSrc = appSrc2.slice(appSrc2.indexOf('async function taskPtsAdjust'), appSrc2.indexOf('function taskPtsCfgRaw'));
+  ok(/type: 'tpadj'/.test(adjSrc) && /Шалтгаан шаардлагатай/.test(adjSrc) && !/\.splice|\.filter\(x => x\.id !== row\.id\);[^]*postEvalRow/.test(adjSrc.replace(/catch \(e\)[^]*/, '')), 'scan: гар засвар = шалтгаантай ШИНЭ мөр, хуучин мөр устахгүй');
+  ok(/data-act="ack"/.test(appSrc2) && /taskDeepOpen\(_dl\)/.test(appSrc2) && /actions: \/#ack-\//.test(swSrc2), 'scan: мэдэгдэл дээр 👀 Хүлээн авлаа (апп + sw.js)');
+  ok(/Танд шинэ ажил ирлээ/.test(appSrc2) && /url: '\.\/#ack-' \+ t\.id/.test(appSrc2), 'scan: шинэ ажлын push «Танд шинэ ажил ирлээ» + #ack холбоос');
+  ok(/taskNotifyDone\(task\)/.test(appSrc2) && /Дууслаа — үнэлнэ үү/.test(appSrc2), 'scan: ✅ дарахад өгсөн хүнд «үнэлнэ үү» мэдэгдэл');
+  { const css9 = cssSrc2.slice(cssSrc2.indexOf('ДААЛГАВРЫН ОНОО (2026-11-09)')); ok(!/!important/.test(css9) && !/#[0-9a-fA-F]{3,8}\b/.test(css9) && !/font-size:\s*\d+px/.test(css9), 'scan: шинэ CSS — !important, хатуу өнгө, хатуу px фонт БАЙХГҮЙ (токен л)'); }
+  ok(!/style="/.test(uiBlock) && !/style="/.test(appSrc2.slice(appSrc2.indexOf('function taskPtsInfoHtml'), appSrc2.indexOf('function taskPtsAttachInfo'))), 'scan: шинэ UI-д inline style= байхгүй (класс)');
+  ok(/class="ui-raw tp-in"|ui-raw tp-in/.test(appSrc2) && !/<input(?![^>]*ui-raw)[^>]*id="tp-/.test(appSrc2), 'scan: модал доторх шинэ input бүр ui-raw класстай');
+  ok(/if \(t\.requires_photo && !\(t\.completion_photos \|\| \[\]\)\.length && !t\.completion_photo_url\) \{ needPhoto\.push\(t\); return; \}/.test(appSrc2), '⛔ scan: бөөнөөр дуусгахад зураг шаардсан ажил ТОЙРОГДОХГҮЙ');
+  ok(/tkSet\(setCompletionCode\(task\.kpi_code, todayStr\(\)\), 'CA', task\.completed_at\)/.test(appSrc2), 'scan: дуусгахад дууссан ЦАГ (CA) токеноор хадгалагдана');
+
+  st.attCallins = saved.cal; st.attCallinsErr = saved.calErr; st.appConfig = saved.cfg; st.tasks = saved.tasks; st.evaluations = saved.evals;
+}
+
+// (16) Үйлдлүүд — серверт ҮНЭХЭЭР дуудаж шалгана (хүлээн авлаа · дуусгах · сунгалт шийдэх · форм шалгалт). `saveTask` ба push-г stub-лаж БИЕИЙГ шалгана.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const st = runIn('state'), UB8 = (d, hm) => Date.parse(d + 'T' + hm + ':00+08:00'), H = 3600e3;
+  const keep = { tasks: st.tasks, me: st.me, ceo: st.isCEO, cfg: st.appConfig, orig: {} };
+  const stub = (n, f) => { keep.orig[n] = sandbox[n]; sandbox[n] = f; };
+  const pushes = [], saves = [], toasts = [];
+  stub('pushBroadcast', (to, p) => pushes.push([to, p]));
+  stub('saveTask', async (t) => { saves.push(JSON.parse(JSON.stringify({ id: t.id, kpi_code: t.kpi_code, due: t.due, status: t.status }))); });
+  stub('showToast', (m) => toasts.push(String(m)));
+  stub('render', () => {}); stub('closeTaskModal', () => {});
+  st.appConfig = Object.assign({}, keep.cfg || {}, { task_points: { from: '2026-11-01' } });
+  const D = UB8('2026-11-10', '18:00');
+  const T = () => ({ id: 'T9', title: 'Үйлдэл', assignee: '99112233', createdBy: '88000001', status: 'open', due: '2026-11-10', priority: 'med', kpi_code: '⟦DT|18:00⟧', created: UB8('2026-11-02', '09:00'), kind: '', comments: [], activity: [] });
+  try {
+    // 👀 Хүлээн авлаа
+    let t = T(); st.tasks = [t]; st.me = '99112233';
+    eq(await F.taskAck('T9', true), true, 'хүлээн авлаа: ажилтан нэг товчоор');
+    const ak1 = F.taskAckTs(t);
+    ok(ak1 > 0 && saves.length === 1, 'хүлээн авлаа: AK токен серверт ҮНЭХЭЭР хадгалагдана — ' + (saves[0] || {}).kpi_code);
+    ok(/⟦DT\|18:00⟧/.test(saves[0].kpi_code), 'хүлээн авлаа: хугацааны токен алдагдахгүй');
+    eq(pushes.length, 1, 'хүлээн авлаа: даалгавар өгсөн хүнд мэдэгдэнэ');
+    eq(pushes[0][0], '88000001', 'хүлээн авлаа: хүлээн авагч = өгсөн хүн');
+    await F.taskAck('T9', true);
+    eq([F.taskAckTs(t) === ak1, saves.length, pushes.length], [true, 1, 1], '⛔ хүлээн авлаа: дахин дарахад эхний цаг хэвээр, давхар мэдэгдэл/хадгалалт үгүй');
+    st.me = '88000001'; t = T(); st.tasks = [t];
+    eq(await F.taskAck('T9', true), false, 'хүлээн авлаа: даалгавар өгсөн хүн өөрөө хүлээн авч чадахгүй');
+    st.me = '55555555';
+    eq(await F.taskAck('T9', true), false, 'хүлээн авлаа: оролцогч биш хүн чадахгүй');
+    // хариуцагч солигдвол хүлээн авалт шинээр (scan)
+    { const a = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8'); ok(/tkSet\(t\.kpi_code, 'AK', ''\);   \/\/ шинэ хариуцагч/.test(a) && /data\.assignee !== t\.assignee\) t\.kpi_code = tkSet\(t\.kpi_code, 'AK', ''\)/.test(a), 'scan: хариуцагч солигдоход хүлээн авсан цаг шилжихгүй (дамжуулах, засах хоёулаа)'); }
+    // SYSTEM үүсгэсэн ажлын мэдэгдэл (ordstage__) явахгүй
+    pushes.length = 0; F.taskNotifyDone({ id: 'ordstage__1__rented', createdBy: 'SYSTEM', assignee: '99112233', title: 'x' }); F.taskPush('SYSTEM', 'a', 'b', 'T9');
+    eq(pushes.length, 0, 'мэдэгдэл: SYSTEM/автомат ажлын эзэнд push явахгүй');
+    // ✅ Дууслаа → өгсөн хүнд үнэлэх мэдэгдэл + дууссан ЦАГ
+    pushes.length = 0; saves.length = 0;
+    t = T(); st.tasks = [t]; st.me = '99112233';
+    stub('promptCompletionPhoto', async () => ['p.jpg']);
+    await F.changeTaskStatus('T9', 'done');
+    ok(t.status === 'done' && F.taskDoneTs(t) > 0 && /⟦CA\|\d+⟧/.test(saves[0].kpi_code) && /⟦CD\|/.test(saves[0].kpi_code) && /⟦DT\|18:00⟧/.test(saves[0].kpi_code), 'дуусгах: CA (цаг) + CD токен хадгалагдсан, хугацааны токен алдагдаагүй — ' + saves[0].kpi_code);
+    ok(pushes.some(p => p[0] === '88000001' && /Дууслаа — үнэлнэ үү/.test(p[1].title) && p[1].url === './#task-T9'), 'дуусгах: өгсөн хүнд «үнэлнэ үү» мэдэгдэл');
+    // Зураг шаардсан ажлыг зураггүй дуусгах боломжгүй
+    t = T(); t.requires_photo = true; st.tasks = [t]; saves.length = 0; pushes.length = 0;
+    stub('promptCompletionPhoto', async () => []);
+    await F.changeTaskStatus('T9', 'done');
+    ok(t.status !== 'done' && saves.length === 0 && pushes.length === 0, '⛔ зураг шаардсан даалгаврыг зураггүй дуусгах боломжгүй (төлөв өөрчлөгдөөгүй, хадгалаагүй, мэдэгдээгүй)');
+    stub('promptCompletionPhoto', async () => null);
+    t = T(); t.requires_photo = true; st.tasks = [t]; await F.changeTaskStatus('T9', 'done');
+    ok(t.status !== 'done', 'зураг шаардсан: «Болих» дарвал дуусахгүй');
+    // Сунгалт: өгсөн хүн батлах — зөвхөн өгсөн хүн/удирдлага
+    t = T(); t.kpi_code = '⟦DT|18:00⟧' + '⟦XR|' + (D - 5 * H) + '|2026-11-12|18:00|p|0|2026-11-10|18:00|шалтгаан⟧'; st.tasks = [t];
+    st.me = '99112233'; st.isCEO = false; saves.length = 0; pushes.length = 0;
+    await F.taskExtDecide('T9', D - 5 * H, true);
+    ok(saves.length === 0 && t.due === '2026-11-10', '⛔ сунгалт: ажилтан өөрөө батлах боломжгүй');
+    st.me = '88000001';
+    await F.taskExtDecide('T9', D - 5 * H, true);
+    ok(t.due === '2026-11-12' && F.tkGet(t.kpi_code, 'DT') === '18:00' && /\|a\|/.test(saves[0].kpi_code), 'сунгалт: өгсөн хүн баталмагц шинэ хугацаа t.due-д, токен «батлагдсан»');
+    ok(pushes.some(p => p[0] === '99112233' && /сунгагдлаа/.test(p[1].title)), 'сунгалт: ажилтанд мэдэгдэнэ');
+    eq(F.taskPtsLedger([t], [], F.taskPtsCtx(D + 3 * H)).length, 0, 'сунгалт батлагдсан → хоцролт −5 гарахгүй');
+    // Хугацаа сунгах цонх: дуусахаас ХОЙШ эхлэхгүй
+    t = T(); st.tasks = [t]; st.me = '99112233'; toasts.length = 0;
+    { const Real = sandbox.Date; function FD(...a) { return a.length ? new Real(...a) : new Real(D + H); } FD.now = () => D + H; FD.UTC = Real.UTC; FD.parse = Real.parse; FD.prototype = Real.prototype;
+      sandbox.Date = FD; try { F.taskRequestExtension('T9'); } finally { sandbox.Date = Real; } }
+    ok(toasts.some(m => /ӨМНӨ илгээнэ/.test(m)), '⛔ сунгалт: хугацаа дууссаны ДАРАА хүсэлт илгээх боломжгүй (мэдэгдэл)');
+    // Буруугаас хаах
+    t = T(); st.tasks = [t]; st.me = '99112233'; saves.length = 0;
+    await F.taskFailClose('T9');
+    ok(t.status === 'open' && saves.length === 0, 'буруугаас хаах: ажилтан өөрөө хаах боломжгүй');
+    // Форм шалгалт (saveTaskFromModal): цаг, зэрэглэл заавал; багийн хязгаар; шинэ ажил push + токен
+    const fields = { 't-title': 'Шинэ ажил', 't-desc': '', 't-branch': '', 't-project': '', 't-due': '2026-11-20', 't-due-time': '', 't-priority': 'med', 't-recurrence': '', 't-assignee': '99000004' };
+    stub('getElementsByIdDummy', null);
+    const docOrig = sandbox.document.getElementById;
+    sandbox.document.getElementById = (id) => ({ value: fields[id] !== undefined ? fields[id] : '', checked: false, style: {}, classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } } });
+    const TEAMX = runIn('TEAM'), savedTeam = TEAMX.slice(), mbk = st.memberBranches;
+    TEAMX.length = 0;
+    TEAMX.push({ name: 'Захирал', phone: '99000001', level: 100, role: 'CEO', branches: ['m-event'] },
+      { name: 'Нярав', phone: '99000003', level: 60, role: 'Нярав', branches: ['m-event'] },
+      { name: 'Ажилтан', phone: '99000004', level: 10, role: 'Ажилтан', branches: ['m-event'] },
+      { name: 'Кемп', phone: '99000005', level: 10, role: 'Ажилтан', branches: ['camp'] });
+    st.memberBranches = {}; st.editingId = null; st._multiAssignees = null; st._coAssignees = null; st._taskImages = null;
+    st.me = '99000003'; st.tasks = []; toasts.length = 0;
+    try {
+      await F.saveTaskFromModal();
+      ok(st.tasks.length === 0 && toasts.some(m => /огноо ба цаг/.test(m)), 'форм: цаггүй бол хадгалахгүй («Эцсийн хугацаа (огноо ба цаг) заавал»)');
+      fields['t-due-time'] = '16:30'; fields['t-priority'] = ''; toasts.length = 0;
+      await F.saveTaskFromModal();
+      ok(st.tasks.length === 0 && toasts.some(m => /Зэрэглэл/.test(m)), 'форм: зэрэглэлгүй бол хадгалахгүй');
+      fields['t-priority'] = 'high'; fields['t-assignee'] = '99000005'; toasts.length = 0;
+      await F.saveTaskFromModal();
+      ok(st.tasks.length === 0 && toasts.some(m => /багийн гишүүн биш/.test(m)), '⛔ форм: нярав өөр салбарын ажилтанд даалгавар өгч чадахгүй');
+      fields['t-assignee'] = '99000004'; toasts.length = 0; pushes.length = 0;
+      await F.saveTaskFromModal();
+      eq(st.tasks.length, 1, 'форм: цаг + зэрэглэл + өөрийн баг → ажил үүснэ');
+      const nt = st.tasks[0];
+      eq([F.taskDueTime(nt), nt.due, nt.priority, nt.createdBy, nt.assignee], ['16:30', '2026-11-20', 'high', '99000003', '99000004'], 'форм: эцсийн хугацаа (огноо + цаг), зэрэглэл, өгсөн хүн хадгалагдсан');
+      ok(saves.length > 0 && /⟦DT\|16:30⟧/.test(saves[saves.length - 1].kpi_code), 'форм: цаг серверт ҮНЭХЭЭР явна (kpi_code токен)');
+      const np = pushes.find(p => p[0] === '99000004');
+      ok(!!np && np[1].title === 'Танд шинэ ажил ирлээ' && np[1].url === './#ack-' + nt.id && /2026-11-20 16:30/.test(np[1].body), 'форм: ажилтанд «Танд шинэ ажил ирлээ» push (#ack холбоос, хугацаатай)');
+      // CEO — бүх ажилтанд; оноо идэвхгүй үед хуучин зан (цаг заавал биш)
+      st.me = '99000001'; fields['t-assignee'] = '99000005'; st.tasks = []; await F.saveTaskFromModal();
+      eq(st.tasks.length, 1, 'форм: CEO бүх ажилтанд даалгавар өгнө');
+      st.appConfig = Object.assign({}, keep.cfg || {}, { task_points: undefined }); fields['t-due-time'] = ''; fields['t-priority'] = ''; st.tasks = []; st.me = '99000003'; fields['t-assignee'] = '99000005';
+      await F.saveTaskFromModal();
+      eq(st.tasks.length, 1, 'форм: оноо идэвхжээгүй үед хуучин зан — цаг, зэрэглэл, баг шаардахгүй');
+    } finally {
+      sandbox.document.getElementById = docOrig; TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m)); st.memberBranches = mbk;
+    }
+  } finally {
+    for (const n of Object.keys(keep.orig)) { if (keep.orig[n] === undefined) delete sandbox[n]; else sandbox[n] = keep.orig[n]; }
+    st.tasks = keep.tasks; st.me = keep.me; st.isCEO = keep.ceo; st.appConfig = keep.cfg;
+  }
+});

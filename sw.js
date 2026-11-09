@@ -75,6 +75,9 @@ self.addEventListener('push', (event) => {
         renotify: true,
         requireInteraction: kind === 'tasks',   // ажлын мэдэгдэл дарах хүртэл дэлгэцэнд үлдэнэ
         vibrate: [200, 100, 200],
+        // Шинэ ажлын мэдэгдэл (`#ack-<id>`) дээр нэг товчоор «Хүлээн авлаа». Товч дэмждэггүй төхөөрөмж (iPhone) дээр мэдэгдлийг
+        // өөрийг нь дарахад ч адил холбоосоор нээгдэж хүлээн авсанд бүртгэгдэнэ (апп `taskDeepOpen`).
+        actions: /#ack-/.test(url) ? [{ action: 'ack', title: '👀 Хүлээн авлаа' }] : [],
         data: { url },
       });
     }

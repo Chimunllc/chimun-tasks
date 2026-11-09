@@ -25136,7 +25136,9 @@ async function swFetchTests() {
   // (2) №1671 — БҮТЭН барьцаа буцсаны ДАРАА эвдрэл → суутгах юм үлдээгүй, ХАРИЛЦАГЧААС АВНА
   d = D(O({ deposit_mnt: 236480, total_mnt: 1242960, paid_mnt: 1006480, note: '⟦RF|236480||dep|236480⟧ ⟦DMG|60000|Ширээ бүтээлэг бохирдсон⟧' }));
   eq([d.held, d.receivable], [0, 60000], '№1671: барьцаа буцсан тул 60,000 нь «авах ёстой», орлого БИШ');
-  eq(di(O({ deposit_mnt: 236480, note: '⟦RF|236480||dep|236480⟧ ⟦DMG|60000|x⟧' }), 'accrual'), 0, '№1671: авах ёстой нь орлогод ОРОХГҮЙ');
+  // (2026-11-09) Нэхэмжилж Авлагад орсон тул гүйцэтгэлд орлого; мөнгөн суурьт хүлээн авсны дараа л (дэлгэрэнгүй нь «НӨХӨН ТӨЛБӨР» блокт)
+  const o1671 = O({ deposit_mnt: 236480, total_mnt: 1242960, paid_mnt: 1006480, note: '⟦RF|236480||dep|236480⟧ ⟦DMG|60000|x⟧' });
+  eq([di(o1671, 'accrual'), di(o1671, 'cash')], [60000, 0], '№1671: нэхэмжилсэн 60,000 гүйцэтгэлд орлого, мөнгөн суурьт төлөгдтөл орохгүй');
 
   // (3) Эвдрэл барьцаанаас ИХ → хэсгийг нь суутгаж, үлдсэнийг авна
   d = D(O({ deposit_mnt: 100000, note: '⟦RF|40000||dep|40000⟧ ⟦DMG|100000|Ширээ хугарсан⟧' }));
@@ -25220,11 +25222,208 @@ async function swFetchTests() {
   ok(/orderRefundedDeposit\(o\)/.test(srcD) && /dmg-late/.test(srcD), 'scan: эвдрэлийн цонх барьцаа аль хэдийн буцсаныг хэлнэ');
   const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   ok(/'returned', 'stowed', 'stopped', 'archived'\]\.includes\(st\)[\s\S]{0,260}data-app-damage/.test(appSrc), 'scan: ⚠ Эвдрэл товч дууссан/архивласан захиалгад ч бий');
-  ok(/const _dd = orderDeductions\(o\)/.test(appSrc) && /харилцагчаас \$\{fmtMoney\(_dd\.receivable\)\} авна/.test(appSrc), 'scan: картан дээр «харилцагчаас авна» гарна');
+  ok(/const _dd = orderDeductions\(o\)/.test(appSrc) && /нэмэлт төлбөр \$\{fmtMoney\(_dd\.receivable\)\}[\s\S]{0,160}Авлагад/.test(appSrc), 'scan: картан дээр «нэмэлт төлбөр … Авлагад» гарна');
   ok(/renderDeductionsCard\(month, finBasis\(\)\) \+ catCard/.test(appSrc), 'scan: Дүн шинжилгээний орлогын задаргаанд карт орсон');
-  ok(/суутгал \$\{fmtSaya\(_mi\.dedInc\)\} орсон/.test(appSrc), 'scan: орлогын KPI «суутгал орсон» гэж нэрлэнэ');
+  ok(/суутгал\/нөхөн төлбөр \$\{fmtSaya\(_mi\.dedInc\)\} орсон/.test(appSrc), 'scan: орлогын KPI «суутгал/нөхөн төлбөр орсон» гэж нэрлэнэ');
   const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   for (const c of ['.dd-card', '.dd-kpis', '.dd-row', '.rf-hold', '.dmg-late']) ok(css.includes(c + ' {') || css.includes(c + ','), `scan: CSS ${c} бий`);
+}
+
+// ═══ ЭВДРЭЛИЙН НӨХӨН ТӨЛБӨР — барьцаанаас суутгах ЭСВЭЛ нэмж нэхэх (2026-11-09, CEO) ══════════════
+// Асуудал: №1671-д «Эвдрэл −60,000₮ · барьцаа буцсан — харилцагчаас 60,000₮ авна» гэж бичигдсэн ч нэхэмжилж, төлбөрийг
+// бүртгэх товч байсангүй; барьцаагүй (≈68%) захиалгад эвдрэл бүртгэх боломжгүй байв. Одоо: бараа × нэгж үнэ → нөхөн
+// төлбөр → `orderBilled`-д орж Авлага · Төлбөр бүртгэх · жагсаалтыг өөрөө ажиллуулна; нэхэмжлэх PDF/и-мэйлээр.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const D = F.orderDeductions;
+  const O = (x) => Object.assign({ id: 'o' + Math.random(), number: 1, customer: 'Т', source: 'app', status: 'returned',
+    starts_at: '2026-10-10', stops_at: '2026-10-11', created_at: '2026-10-01', total_mnt: 1000000, paid_mnt: 1000000,
+    deposit_mnt: 200000, note: '', items: [] }, x);
+  const save = runIn('[state.appOrders, state.financeRequests, state.nomaadOrders, state.cateringJobs]');
+  runIn('state.financeRequests = [];');
+
+  // (1) Токен: горим `ext`, хуучин бичлэг = барьцаанаас суутгах
+  eq(F.parseDamage('⟦DMG|60000|Ширээ хугарсан⟧'), { amount: 60000, note: 'Ширээ хугарсан', mode: 'dep' }, 'нөхөн төлбөр: хуучин токен = барьцаанаас суутгах');
+  eq(F.parseDamage('⟦DMG|60000|Ширээ хугарсан|ext⟧'), { amount: 60000, note: 'Ширээ хугарсан', mode: 'ext' }, 'нөхөн төлбөр: |ext = нэмэлт төлбөр');
+  eq(F.parseDamage('⟦DMG|60000|ext⟧').mode, 'dep', 'нөхөн төлбөр: шалтгаан нь «ext» гэсэн 2 талбартай хуучин бичлэг горим БОЛОХГҮЙ');
+  eq(F.encodeDamageNote('a', { amount: 5000, note: 'x|y', mode: 'ext' }), 'a ⟦DMG|5000|x y|ext⟧', 'нөхөн төлбөр: бичихэд | цэвэрлэгдэж ext төгсгөлд');
+  eq(F.encodeDamageNote('a', { amount: 5000, note: 'x' }), 'a ⟦DMG|5000|x⟧', 'нөхөн төлбөр: горимгүй бол хуучин хэлбэр хэвээр');
+  eq(F.parseDamage(F.encodeDamageNote('', { amount: 7000, note: '', mode: 'ext' })), { amount: 7000, note: '', mode: 'ext' }, 'нөхөн төлбөр: хоосон шалтгаантай ext эргэж уншигдана');
+
+  // (2) Барьцаа үлдсэн + нэмэлт төлбөр → барьцаа ХӨНДӨГДӨХГҮЙ, 60,000 нэхнэ, Авлагад орно
+  let o = O({ note: '⟦DMG|60000|Бүтээлэг бохирдсон|ext⟧' });
+  let d = D(o);
+  eq([d.mode, d.plan, d.held, d.receivable, d.collected], ['ext', 0, 0, 60000, 0], 'нэмэлт төлбөр: барьцаанаас хасахгүй, 60,000 нэхнэ');
+  eq([F.orderBilled(o), F.orderOwed(o), F.orderExtraCharge(o)], [1060000, 60000, 60000], 'нэмэлт төлбөр: авах ёстой дүнд орно (total_mnt хөндөгдөхгүй)');
+  eq(o.total_mnt, 1000000, 'нэмэлт төлбөр: total_mnt өөрчлөгдөхгүй (НӨАТ/борлуулалт/түрээс)');
+  eq(F.orderRevenue(o, 'accrual'), 800000, 'нэмэлт төлбөр: түрээсийн орлого (orderRevenue) өөрчлөгдөхгүй');
+
+  // (3) Барьцаагүй захиалгад ч бүртгэгдэнэ (өмнө нь хязгаар = барьцаа тул ≈68% захиалгад боломжгүй байв)
+  o = O({ deposit_mnt: 0, total_mnt: 800000, paid_mnt: 800000, note: '⟦DMG|60000|Сандал хугарсан|ext⟧' });
+  d = D(o);
+  eq([d.dep, d.receivable, F.orderOwed(o)], [0, 60000, 60000], 'нэмэлт төлбөр: барьцаагүй захиалгад ч Авлагад орно');
+  eq(D(O({ deposit_mnt: 0, total_mnt: 800000, paid_mnt: 800000, note: '⟦DMG|60000|x⟧' })).receivable, 60000, 'нэмэлт төлбөр: хуучин (горимгүй) токен барьцаагүй захиалгад нэхэх болно');
+
+  // (4) Барьцаанаас суутгах горим: хүрэлцэхгүй хэсэг НЭМЖ нэхэгдэнэ — захиалга дуусаагүй ч
+  d = D(O({ status: 'rented', deposit_mnt: 100000, note: '⟦DMG|150000|Ширээ|⟧'.replace('|⟧', '⟧') }));
+  eq([d.plan, d.held, d.receivable], [100000, 0, 50000], 'суутгах горим: барьцаа 100,000 төлөвлөгдөнө (дуусаагүй → суутгал хараахан биш), илүү 50,000 нэхэгдэнэ');
+  d = D(O({ deposit_mnt: 100000, note: '⟦DMG|150000|Ширээ⟧' }));
+  eq([d.plan, d.held, d.receivable], [100000, 100000, 50000], 'суутгах горим: дууссан захиалгад суутгал хэрэгжинэ');
+  d = D(O({ status: 'rented', note: '⟦DMG|60000|x⟧' }));
+  eq([d.plan, d.held, d.receivable], [60000, 0, 0], 'суутгах горим: барьцаанд багтвал нэхэх юм алга (хуучин зан)');
+
+  // (5) №1671 — бүтэн барьцаа буцсан, эвдрэл дараа бүртгэгдсэн → Авлагад 60,000
+  o = O({ deposit_mnt: 236480, total_mnt: 1242960, paid_mnt: 1006480, note: '⟦RF|236480||dep|236480⟧ ⟦DMG|60000|Ширээ бүтээлэг бохирдсон⟧' });
+  eq([D(o).receivable, F.orderOwed(o)], [60000, 60000], '№1671: харилцагчаас авах 60,000 нь одоо Авлагад харагдана');
+  eq(F.orderOverpaid(o), 0, '№1671: нэмэлт төлбөр илүү төлөлт биш');
+
+  // (6) Төлбөр хүлээн авсан: төлсөн − (түрээс+барьцаа) илүү хэсэг = collected
+  eq(D(O({ paid_mnt: 1030000, note: '⟦DMG|60000|x|ext⟧' })).collected, 30000, 'хүлээн авсан: хэсэгчлэн (30,000)');
+  o = O({ paid_mnt: 1060000, note: '⟦DMG|60000|x|ext⟧' });
+  eq([D(o).collected, F.orderOwed(o), F.orderOverpaid(o)], [60000, 0, 0], 'хүлээн авсан: бүрэн төлөгдвөл үлдэгдэл 0, илүү төлөлт биш');
+  eq(D(O({ paid_mnt: 900000, note: '⟦DMG|60000|x|ext⟧' })).collected, 0, 'хүлээн авсан: түрээс бүрэн төлөгдөөгүй бол нэмэлт төлбөрт тоологдохгүй');
+  eq(D(O({ paid_mnt: 1500000, note: '⟦DMG|60000|x|ext⟧' })).collected, 60000, 'хүлээн авсан: нэмэлт төлбөрөөр хязгаарлагдана');
+
+  // (7) ⟦DMG⟧-гүй захиалгад ямар ч тооцоолол хийхгүй (жагсаалт бүрт олон удаа дуудагдана)
+  eq([F.orderExtraCharge(O({ note: '' })), F.orderBilled(O({ note: 'ямар нэг тэмдэглэл' }))], [0, 1000000], 'нэмэлт төлбөр: токенгүй бол 0, orderBilled өмнөхтэй ижил');
+  eq(F.orderExtraCharge(O({ status: 'canceled', note: '⟦DMG|60000|x|ext⟧' })), 0, 'нэмэлт төлбөр: цуцалсан захиалгад 0');
+  eq(F.orderExtraCharge(O({ source: 'booqable', note: '⟦DMG|60000|x|ext⟧' })), 0, 'нэмэлт төлбөр: Booqable-д 0');
+
+  // (8) ОРЛОГО: гүйцэтгэлд нэхэмжилсэн даруй, мөнгөн суурьт зөвхөн хүлээн авсан хэсгээр
+  const oUn = O({ note: '⟦DMG|60000|x|ext⟧' }), oPd = O({ paid_mnt: 1060000, note: '⟦DMG|60000|x|ext⟧' }), oHf = O({ paid_mnt: 1030000, note: '⟦DMG|60000|x|ext⟧' });
+  eq([F.orderExtraIncome(oUn, 'accrual'), F.orderExtraIncome(oUn, 'cash')], [60000, 0], 'орлого: нэхэмжилсэн → гүйцэтгэлд бүтэн, мөнгөн суурьт 0');
+  eq([F.orderExtraIncome(oHf, 'cash'), F.orderExtraIncome(oPd, 'cash')], [30000, 60000], 'орлого: мөнгөн суурьт хүлээн авсан хэсгээр');
+  eq(F.orderRevenue(oPd, 'cash'), 800000, 'орлого: нэмэлт төлбөрийн мөнгө түрээсийн орлогод ДАВХАР орохгүй (rental-аар хязгаарлагдана)');
+  eq(F.orderHeldIncome(O({ paid_mnt: 1060000, note: '⟦DMG|60000|x|ext⟧' }), 'cash'), 0, 'орлого: ext горимд барьцаанаас суутгасан орлого 0');
+  // Хоёр горим нэг захиалгад: суутгал + илүү → хоёулаа орлого
+  const oBoth = O({ deposit_mnt: 100000, total_mnt: 700000, paid_mnt: 700000, note: '⟦DMG|150000|x⟧' });
+  eq([F.orderHeldIncome(oBoth, 'accrual'), F.orderExtraIncome(oBoth, 'accrual'), F.orderDeductionIncome(oBoth, 'accrual')], [100000, 50000, 150000], 'орлого: суутгал 100,000 + нэмэлт 50,000 = 150,000');
+  // Тайлан = Тренд ИНВАРИАНТ (нэмэлт төлбөртэй ч)
+  runIn(`state.appOrders = ${JSON.stringify([
+    O({ id: 'x1', number: 1, paid_date: '2026-10-10', note: '⟦DMG|60000|x|ext⟧' }),
+    O({ id: 'x2', number: 2, paid_date: '2026-10-12', paid_mnt: 1060000, note: '⟦DMG|60000|y|ext⟧' }),
+    O({ id: 'x3', number: 3, paid_date: '2026-10-14', deposit_mnt: 0, total_mnt: 800000, paid_mnt: 800000, note: '⟦DMG|10000|z⟧' }),
+  ])}; state.nomaadOrders = []; state.cateringJobs = [];`);
+  for (const basis of ['accrual', 'cash']) {
+    const rep = F.finMonthIncome('2026-10', basis), inc = {};
+    F.finAddOrderIncome(inc, 'ИВЕНТ', basis);
+    eq(inc['2026-10'] || 0, rep.evInc, `ИНВАРИАНТ: нэмэлт төлбөртэй ч Тайлан = Тренд (${basis})`);
+  }
+  eq(F.finMonthIncome('2026-10', 'accrual').dedInc, 130000, 'орлого: гүйцэтгэлд 3 нэхэмжлэл (60+60+10) орлогод');
+  eq(F.finMonthIncome('2026-10', 'cash').dedInc, 60000, 'орлого: мөнгөн суурьт зөвхөн төлөгдсөн нэг (60,000)');
+
+  // (9) ЖУРНАЛ тэнцэнэ, нэмэлт төлбөр = Dr Авлага / Cr Орлого
+  const ctx = { basis: 'accrual', opening: null, finance: [], income: [], deprec: [],
+    orders: [O({ id: 'j9', number: 9, total_mnt: 1000000, paid_mnt: 1000000, note: '⟦DMG|60000|x|ext⟧' }), O({ id: 'j10', number: 10, deposit_mnt: 0, total_mnt: 500000, paid_mnt: 500000, note: '⟦DMG|20000|y⟧' })] };
+  const ent = F.journalEntries(ctx, '2026-10'), tot = F.journalTotals(ent);
+  eq(tot.dr, tot.cr, 'журнал: нэмэлт төлбөртэй ч дебет = кредит');
+  const l9 = ent.find(e => e.src === 'order:j9').lines;
+  eq([(l9.find(l => l.acc === 'recv') || {}).dr, (l9.find(l => l.acc === 'revenue') || {}).cr, (l9.find(l => l.acc === 'deposit') || {}).cr], [1060000, 860000, 200000], 'журнал: Авлага +60,000, Орлого +60,000, барьцаа бүтэн (ext)');
+  eq((ent.find(e => e.src === 'order:j10').lines.find(l => l.acc === 'revenue') || {}).cr, 500000 - 0 + 20000 - 0 > 0 ? F.orderRevenue(ctx.orders[1], 'accrual') + 20000 : 0, 'журнал: барьцаагүй захиалгын нэмэлт төлбөр ч орлогод орно');
+
+  // (10) Авлага дэлгэц: нөхөн төлбөр Авлагад гарч, `extra` нь төлөгдөөгүй хэсгийг хэлнэ
+  runIn(`state.appOrders = ${JSON.stringify([
+    O({ id: 'r1', number: 101, note: '⟦DMG|60000|x|ext⟧', paid_mnt: 1030000 }),
+    O({ id: 'r2', number: 102, note: '⟦DMG|60000|x|ext⟧', paid_mnt: 1060000 }),
+    O({ id: 'r3', number: 103, note: '' }),
+  ])}; state.nomaadOrders = [];`);
+  const rcv = F.receivablesData();
+  eq(rcv.items.map(i => [i.sub, i.balance, i.extra]), [['#101', 30000, 30000]], 'Авлага: төлөгдөөгүй нэмэлт төлбөр гарна (бүрэн төлөгдсөн/нөхөн төлбөргүй гарахгүй)');
+  runIn(`state.appOrders = ${JSON.stringify([O({ id: 'r4', number: 104, note: '⟦DMG|60000|x|ext⟧', status: 'archived' })])};`);
+  eq(F.receivablesData().items.map(i => i.balance), [60000], 'Авлага: архивласан захиалгын нэмэлт төлбөр ч Авлагад хэвээр');
+
+  // (11) Сарын нэгтгэл + дэлгэцийн карт: нэмэлт төлбөр нэрээр гарна
+  runIn(`state.appOrders = ${JSON.stringify([
+    O({ id: 'c1', number: 21, paid_date: '2026-10-10', note: '⟦DMG|60000|Бүтээлэг|ext⟧' }),
+    O({ id: 'c2', number: 22, paid_date: '2026-10-10', paid_mnt: 1060000, note: '⟦DMG|60000|Сандал|ext⟧' }),
+  ])};`);
+  const dm = F.deductionsOfMonth('2026-10', 'accrual');
+  eq([dm.sum.receivable, dm.sum.collected, dm.sum.income], [120000, 60000, 120000], 'карт: нэхэмжилсэн 120,000, хүлээн авсан 60,000, орлогод 120,000');
+  const html = F.renderDeductionsCard('2026-10', 'accrual');
+  ok(/нэхэмжилсэн/.test(html) && /төлөгдсөн/.test(html) && /Бүтээлэг/.test(html), 'карт: нэхэмжилсэн ба төлөгдсөн мөр нэрээр');
+  ok(/Харилцагчаас авах/.test(html) && /Нэмэлт төлбөр/.test(html), 'карт: KPI + бүртгэх зам тайлбарлагдсан');
+
+  // (12) Нөхөн төлбөрийн мөрүүд: нийлбэр токенд таарахгүй бол мөрийг хэрэглэхгүй
+  const cm = (items, tok) => O({ note: tok, stage_meta: { claim: { lines: items, invoices: [{ no: 'НЭХ-2026-0001', at: '2026-11-09' }] } } });
+  const its = [{ sku: 'S1', name: 'Сандал', qty: 3, price: 20000 }, { name: 'Бүтээлэг', qty: 1, price: 15000 }];
+  eq(F.claimItemsTotal(F.claimItemsClean(its)), 75000, 'мөр: 3×20,000 + 1×15,000 = 75,000');
+  eq(F.claimItemsClean([{ name: '', qty: 2, price: 5 }, { name: 'a', qty: 0, price: 5 }, { name: 'b', qty: 2, price: 0 }, { name: 'c|⟦d⟧', qty: 1.4, price: 1000.6 }]).map(x => [x.name, x.qty, x.price]), [['c d', 1, 1001]], 'мөр: хоосон/тоогүй/үнэгүй хаягдаж, токены тэмдэгт цэвэрлэгдэнэ');
+  let cl = F.orderClaimOf(cm(its, '⟦DMG|75000|x|ext⟧'));
+  eq([cl.amount, cl.mode, cl.items.length, cl.invoices.map(i => i.no)], [75000, 'ext', 2, ['НЭХ-2026-0001']], 'мөр: токентой таарвал мөр хадгалагдана');
+  cl = F.orderClaimOf(cm(its, '⟦DMG|80000|x|ext⟧'));
+  eq([cl.amount, cl.items.length], [80000, 0], 'мөр: токены дүн засагдсан бол (зөрвөл) мөр ХЭРЭГЛЭГДЭХГҮЙ');
+  eq(F.orderClaimOf(O({ note: '' })), null, 'мөр: нөхөн төлбөргүй бол null');
+
+  // (13) Нэхэмжлэх: мөр/дүн/баримт/имэйл
+  const mkO = (x) => O(Object.assign({ stage_meta: { claim: { lines: its, invoices: [] } }, note: '⟦DMG|75000|Хуримын захиалга|ext⟧' }, x));
+  let cd = F.claimInvoiceData(mkO());
+  eq([cd.t.kind, cd.t.claim, cd.t.held, cd.t.extra, cd.t.due, cd.t.total, cd.lines.length], ['claim', 75000, 0, 75000, 75000, 75000, 2], 'нэхэмжлэх: ext → 75,000 нэхнэ');
+  eq(cd.lines[0], { name: 'Сандал', qty: 3, price: 20000, total: 60000 }, 'нэхэмжлэх: мөр = тоо × нэгж үнэ');
+  cd = F.claimInvoiceData(mkO({ note: '⟦DMG|75000|Хурим⟧', deposit_mnt: 200000 }));
+  eq([cd.t.held, cd.t.extra, cd.t.depReturn, cd.t.total], [75000, 0, 125000, 0], 'мэдэгдэл: барьцаанаас суутгагдвал нэмэлт 0, буцаах барьцаа 125,000');
+  cd = F.claimInvoiceData(mkO({ note: '⟦DMG|75000|x|ext⟧', paid_mnt: 1030000 }));
+  eq([cd.t.paid, cd.t.due], [30000, 45000], 'нэхэмжлэх: хүлээн авсан 30,000 хасагдаж үлдэгдэл 45,000');
+  const lump = F.claimInvoiceData(O({ note: '⟦DMG|60000|Ширээ хугарсан|ext⟧' }));
+  eq([lump.lines.length, lump.lines[0].name, lump.lines[0].total], [1, 'Ширээ хугарсан', 60000], 'нэхэмжлэх: мөргүй хуучин бүртгэл = нэг мөр (шалтгаанаар)');
+  eq(F.claimInvoiceData(O({ note: '' })), null, 'нэхэмжлэх: нөхөн төлбөргүй бол null');
+  const org = { name: 'Эм Эвент Солюшн', reg: '123', address: 'УБ', bank: 'Голомт', account: '1234567', holder: 'ЭЭС', director: 'Д' };
+  const buyer = { name: 'Б.Болд', phone: '99112233', reg: '', address: '' };
+  const billHtml = F.invoiceHtml({ no: 'НЭХ-2026-0010', issuedAt: '2026-11-09', orderNo: 1671, buyer, lines: F.claimInvoiceData(mkO()).lines, t: F.claimInvoiceData(mkO()).t, org, reason: 'Хуримын захиалга' });
+  ok(/НӨХӨН ТӨЛБӨРИЙН НЭХЭМЖЛЭХ/.test(billHtml) && /Нэгж үнэ/.test(billHtml) && /Сандал/.test(billHtml) && /НЭМЭЛТ ТӨЛӨХ ДҮН/.test(billHtml), 'баримт: нэхэмжлэх — гарчиг, нэгж үнэ, нэмэлт төлөх дүн');
+  ok(/Гүйлгээний утга: <b>НЭХ-2026-0010<\/b>/.test(billHtml) && /Голомт/.test(billHtml) && /Хуримын захиалга/.test(billHtml), 'баримт: данс, гүйлгээний утга = нэхэмжлэхийн дугаар, шалтгаан');
+  ok(!/НӨАТ/.test(billHtml), 'баримт: НӨАТ-ын мөр байхгүй (Эм Эвент Солюшн НӨАТ төлөгч биш)');
+  const mc = F.claimInvoiceData(mkO({ note: '⟦DMG|75000|x⟧' }));
+  const noticeHtml = F.invoiceHtml({ no: 'НЭХ-2026-0011', issuedAt: '2026-11-09', buyer, lines: mc.lines, t: mc.t, org });
+  ok(/НӨХӨН ТӨЛБӨРИЙН МЭДЭГДЭЛ/.test(noticeHtml) && /барьцаанаас суутгагдсан тул нэмэлт төлбөр шаардахгүй/.test(noticeHtml) && !/Гүйлгээний утга/.test(noticeHtml), 'баримт: барьцаанаас суутгасан бол МЭДЭГДЭЛ, төлбөрийн заавар байхгүй');
+  const plainT = { subtotal: 100000, discount: 0, deposit: 0, total: 100000, paid: 0, due: 100000 };
+  ok(!/НӨХӨН/.test(F.invoiceHtml({ no: 'НЭХ-1', issuedAt: '2026-11-09', buyer, lines: [], t: plainT, org })), 'баримт: энгийн нэхэмжлэх өөрчлөгдөөгүй');
+  const mail = F.invoiceMail({ no: 'НЭХ-2026-0010', orderNo: 1671, t: cd.t, org });
+  ok(/Нөхөн төлбөрийн нэхэмжлэх/.test(mail.subject) && /Төлөх дүн: 45,000₮/.test(mail.body) && /Гүйлгээний утга: НЭХ-2026-0010/.test(mail.body) && /1234567/.test(mail.body), 'и-мэйл: сэдэв, төлөх дүн (үлдэгдэл), данс, гүйлгээний утга');
+  ok(/мэдэгдэл/i.test(F.invoiceMail({ no: 'Н', t: mc.t, org }).subject) && !/Данс:/.test(F.invoiceMail({ no: 'Н', t: mc.t, org }).body), 'и-мэйл: мэдэгдэлд төлбөрийн заавар байхгүй');
+  const plainMail = F.invoiceMail({ no: 'НЭХ-9', orderNo: 5, t: { due: 5000, total: 9000 }, org });
+  ok(/^Нэхэмжлэх НЭХ-9 · /.test(plainMail.subject) && /^Нэхэмжлэх НЭХ-9 \(Захиалга №5\)\n\nТөлөх дүн: 5,000₮\n/.test(plainMail.body), 'и-мэйл: энгийн нэхэмжлэхийн бичвэр ӨМНӨХӨӨРӨӨ');
+  const docHtml = F.invoiceDocHtml({ no: 'НЭХ-2026-0010', issuedAt: '2026-11-09', buyer, lines: F.claimInvoiceData(mkO()).lines, t: F.claimInvoiceData(mkO()).t, org, sendUrl: 'https://x/?key=K', to: 'a@b.mn' });
+  ok(/Нөхөн төлбөрийн нэхэмжлэх НЭХ-2026-0010/.test(docHtml) && /confirm\(/.test(docHtml) && /pdf_base64/.test(docHtml), 'баримтын цонх: нөхөн төлбөрийн и-мэйл + баталгаажуулалттай илгээнэ');
+
+  runIn('state.appOrders = ' + JSON.stringify(save[0] || []) + '; state.financeRequests = ' + JSON.stringify(save[1] || []) + '; state.nomaadOrders = ' + JSON.stringify(save[2] || []) + '; state.cateringJobs = ' + JSON.stringify(save[3] || []) + ';');
+
+  // (13b) ⛔ stage_meta.claim ШАТНЫ бичлэг БИШ: `by`/`at`/`items` нэртэй бол оноо, «Дамжлагагүй», шатны түүх рүү алдаж орно
+  const smClaim = { claim: { ts: '2026-11-09T04:00:00Z', who: 'm1', mode: 'ext', amount: 75000, lines: its, invoices: [{ no: 'НЭХ-1', at: '2026-11-09', by: 'm1', amount: 75000 }] } };
+  eq(F.hasStageRecord({ stage_meta: smClaim }), false, 'шат: нөхөн төлбөр «дамжлагын бичлэг» болж «Дамжлагагүй» шошгыг нуухгүй');
+  eq(F.stageMetaHtml({ id: 'z', stage_meta: smClaim }), '', 'шат: нөхөн төлбөр шатны түүхэнд «claim · хэн» гэж гарахгүй');
+  eq(F.prevStageInfoAny({ stage_meta: smClaim }), null, 'шат: нөхөн төлбөр бүртгэсэн хүн «өмнөх шатны гүйцэтгэгч» болохгүй');
+  eq(F.prevStageInfo({ stage_meta: smClaim }, 'm2'), null, 'шат: нөхөн төлбөр бүртгэсэн хүн «өмнөх шат»-д тооцогдохгүй');
+  eq(F.missingItemsCost('2026-11', [{ stage_meta: smClaim }]).lines, 0, 'шат: нөхөн төлбөрийн мөр «дутсан бараа»-д тоологдохгүй');
+  { const csrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const savePart = csrc.slice(csrc.indexOf('sm.claim = {'), csrc.indexOf('sm.claim = {') + 200);
+    ok(/ts: new Date\(\)\.toISOString\(\), who: state\.me/.test(savePart) && !/\bby: state\.me/.test(savePart) && !/\bat: new Date/.test(savePart) && /\blines: claimItems/.test(savePart), 'scan: stage_meta.claim-д by/at/items БИЧИГДЭХГҮЙ (who/ts/lines)'); }
+
+  // (14) UI холбоос (scan)
+  const src2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const css2 = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const dmgSrc = F.openOrderDamageModal.toString();
+  ok(/name="dmg-mode"/.test(dmgSrc) && /Барьцаанаас суутгах/.test(dmgSrc) && /Нэмэлт төлбөр нэхэх/.test(dmgSrc), 'scan: эвдрэлийн цонх хоёр горимтой');
+  ok(/dmg-price/.test(dmgSrc) && /data-dmg-cu/.test(dmgSrc) && /claimItemsTotal\(claimItems\)/.test(dmgSrc), 'scan: бараа × нэгж үнэ + өөр мөр, дүн мөрүүдийн нийлбэр');
+  ok(!/Math\.min\(deposit, moneyVal/.test(dmgSrc), 'scan: дүн барьцаагаар ХЯЗГААРЛАГДАХГҮЙ (барьцаагүй захиалгад ч бүртгэнэ)');
+  ok(/stage_meta: sm/.test(dmgSrc) && /select=note,stage_meta/.test(dmgSrc), 'scan: серверийн сүүлийн note+stage_meta дээр хадгална (бусдыг дарахгүй)');
+  ok(/orderLockedMonth\(o\)/.test(dmgSrc) && /state\.isCEO/.test(dmgSrc), 'scan: хаасан сард ЗӨВХӨН CEO нөхөн төлбөр бүртгэнэ');
+  ok(/issueClaimInvoice\(oid\)/.test(dmgSrc), 'scan: Авлагад орсон бол нэхэмжлэх гаргахыг санал болгоно');
+  ok(/lumpOnly/.test(dmgSrc), 'scan: мөргүй хуучин бүртгэл дахин хадгалахад ХАЯГДАХГҮЙ');
+  const issueSrc = src2.slice(src2.indexOf('async function issueClaimInvoice('), src2.indexOf('function nomaadContractHtml('));
+  ok(/window\.open\(/.test(issueSrc) && !/\.save\(\)/.test(issueSrc), 'scan: нөхөн төлбөрийн нэхэмжлэх шинэ цонхонд нээгдэнэ, шууд татахгүй');
+  ok(/org: invoiceOrg\(buyer\.isOrg\)/.test(issueSrc) && !/org: CHIMUN_LEGAL/.test(issueSrc), 'scan: нэхэмжлэгч = төлөгчийн төрлөөр invoiceOrg(buyer.isOrg)');
+  ok(/can\('orders\.pay'\) \|\| state\.isCEO/.test(issueSrc), 'scan: нэхэмжлэх гаргах эрх = төлбөр бүртгэх эрх эсвэл CEO');
+  ok(/appendClaimInvoiceRef\(o,/.test(issueSrc) && /select=stage_meta/.test(src2.slice(src2.indexOf('async function appendClaimInvoiceRef('), src2.indexOf('async function issueClaimInvoice('))), 'scan: нэхэмжлэхийн дугаар серверийн сүүлийн stage_meta дээр бичигдэнэ');
+  ok(/data-app-claim-invoice="\$\{id\}"/.test(src2) && /\[data-app-claim-invoice\]/.test(src2), 'scan: картын «🧾 Нөхөн төлбөрийн нэхэмжлэх» товч холбогдсон');
+  ok(/canSeeOrderMoney\(\) && orderClaimOf\(o\)/.test(src2), 'scan: товч `_cardMoney` (TDZ) биш canSeeOrderMoney()-г дууддаг');
+  ok(/bqp-extra/.test(src2) && /ar-extra/.test(src2), 'scan: Төлбөр бүртгэх цонх ба Авлагын мөр нөхөн төлбөрийг нэрлэнэ');
+  const payFn = src2.slice(src2.indexOf('async function submitBqPayment('), src2.indexOf('// АВЛАГА (Receivables)'));
+  ok(/extraOnly = isApp && !!o\.paid_date && orderExtraCharge\(o\) > 0 && basePaid >= orderBilledBase\(o\)/.test(payFn) && /const date = extraOnly \?/.test(payFn), 'scan: зөвхөн нэмэлт төлбөрт ирсэн мөнгө paid_date-ийг (түрээсийн орлогын сар) ХӨНДӨХГҮЙ');
+  ok(/dd\.plan/.test(F.openRefundModal.toString()) && !/dd\.held/.test(F.openRefundModal.toString()), 'scan: буцаан олгох цонх төлөвлөсөн суутгалыг (plan) хасна');
+  ok(/orderBilledBase\(o\) \+ orderExtraCharge\(o\)/.test(src2), 'scan: orderBilled = суурь + нэмэлт төлбөр (ганц томъёо)');
+  for (const c of ['.dmg-calc', '.dmg-price', '.dmg-modes', '.dmg-mode', '.dmg-total', '.dmg-add', '.dmg-bill', '.order-dmg-items', '.bqp-extra']) ok(css2.includes(c + ' ') || css2.includes(c + ',') || css2.includes(c + ':'), `scan: CSS ${c} бий`);
+  const newCss = css2.slice(css2.indexOf('/* 🧾 Нөхөн төлбөр: мөр бүр'), css2.indexOf('/* Буцаан олгох (refund) модал */'));
+  ok(newCss.length > 500 && !/#[0-9a-fA-F]{3,8}\b|rgba?\(|!important/.test(newCss), 'scan: шинэ CSS-д хатуу өнгө/хүчлэгч байхгүй');
 }
 
 // ═══ ХҮЛЭЭН АВАХАД БОХИР / ЭВДЭРСЭН — МӨР БҮРЭЭР (2026-11-05, CEO: «тэмдэглэж авч байгаа ч харагдахгүй») ══════

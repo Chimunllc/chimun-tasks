@@ -10620,3 +10620,45 @@ select.no-asar-len {
   background: var(--scan-light); color: var(--scan-dark);
   font-size: var(--fs-lg); font-weight: 700; cursor: pointer;
 }
+
+/* ═══ ДААЛГАВРЫН ОНОО (2026-11-09) — зөвхөн токен; хатуу өнгө, хатуу px фонт, давхар override БАЙХГҮЙ ═══ */
+.t-due-row { display: flex; gap: var(--space-2); }
+.t-due-row input[type="date"] { flex: 1 1 auto; min-width: 0; }
+.t-due-row input[type="time"] { flex: 0 0 120px; }
+.tp-card { margin: var(--space-3) 0; padding: var(--space-4); background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); display: flex; flex-direction: column; gap: var(--space-2); }
+.tp-card.tp-off { border-style: dashed; }
+.tp-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.tp-mnav { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-md); }
+.tp-nav { padding: var(--space-1) var(--space-3); }
+.tp-big { font-size: var(--fs-2xl); font-weight: 700; line-height: 1.1; color: var(--text); }
+.tp-big small { font-size: var(--fs-md); font-weight: 400; color: var(--muted); }
+.tp-sub { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
+.tp-pos { color: var(--ok); }
+.tp-neg { color: var(--danger); }
+.tp-pay { font-size: var(--fs-md); color: var(--text); }
+.tp-hist > summary { cursor: pointer; font-size: var(--fs-md); color: var(--text-soft, var(--muted)); padding: var(--space-1) 0; }
+.tp-ent { display: grid; grid-template-columns: 44px 1fr auto; gap: var(--space-2); align-items: center; padding: var(--space-2) 0; border-top: 1px solid var(--border); font-size: var(--fs-md); }
+.tp-ent-d { color: var(--muted); font-size: var(--fs-sm); }
+.tp-ent-w { display: flex; flex-direction: column; min-width: 0; }
+.tp-ent-w small { color: var(--muted); font-size: var(--fs-xs); }
+.tp-ent-p { font-weight: 700; }
+.tp-ent.tp-pos .tp-ent-p { color: var(--ok); }
+.tp-ent.tp-neg .tp-ent-p { color: var(--danger); }
+.tp-chip { display: inline-block; margin-left: var(--space-2); padding: var(--space-1) var(--space-2); font-size: var(--fs-xs); font-weight: 700; color: var(--accent-blue); background: var(--panel-hover); border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
+.tp-time { color: var(--muted); font-size: var(--fs-xs); }
+.tp-info { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); font-size: var(--fs-md); display: flex; flex-direction: column; gap: var(--space-1); }
+.tp-info-h { font-size: var(--fs-sm); color: var(--muted); font-weight: 700; }
+.tp-ext { padding: var(--space-2); background: var(--panel-hover); border-radius: var(--r-md); font-size: var(--fs-sm); }
+.tp-ext-btn { margin-left: var(--space-2); padding: var(--space-1) var(--space-3); }
+.tp-bar { display: flex; gap: var(--space-2); justify-content: flex-end; margin: var(--space-2) 0; }
+.tp-bg { align-items: center; justify-content: center; }
+.modal.tp-modal { max-width: 460px; max-height: 90vh; overflow: auto; }
+.tp-lbl { display: block; margin: var(--space-3) 0 var(--space-1); font-size: var(--fs-sm); color: var(--muted); }
+.modal .tp-in { width: 100%; box-sizing: border-box; }
+.modal .tp-ta { resize: vertical; }
+.tp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--space-2); }
+.tp-chk { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); font-size: var(--fs-md); }
+.modal .tp-chk input { width: auto; flex: none; }
+.tp-actions { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-4); flex-wrap: wrap; }
+.tp-list { max-height: 50vh; overflow: auto; }
+.tp-perf-line { margin-top: var(--space-2); }

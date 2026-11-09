@@ -1908,10 +1908,11 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   }
   task.status = newStatus;
   if (newStatus === 'in_progress') task.started_at = Date.now();
-  if (newStatus === 'done') { task.completed_at = Date.now(); task.kpi_code = setCompletionCode(task.kpi_code, todayStr()); }   // дуусгасан огноог ЛАВ хадгална (kpi_code персист)
+  if (newStatus === 'done') { task.completed_at = Date.now(); task.kpi_code = tkSet(setCompletionCode(task.kpi_code, todayStr()), 'CA', task.completed_at); }   // дуусгасан огноо + ЦАГИЙГ ЛАВ хадгална (kpi_code персист; оноо тооцоход цаг хэрэгтэй)
   if (newStatus === 'declined') task.decline_reason = reason || '';
   logTaskActivity(task, 'status_changed', { from: oldStatus, to: newStatus, reason });
   await saveTask(task);
+  if (newStatus === 'done') taskNotifyDone(task);   // өгсөн хүнд «үнэлнэ үү» — ажилтан ✅ дарахад
   // Дамжлагын ажил (зурагтай) дуусвал → холбоотой захиалгыг дараагийн шатанд шилжүүлнэ
   if (newStatus === 'done' && parseStageTaskId(task.id)) {
     try { await advanceOrderFromTask(task); } catch (e) { console.warn('advanceOrderFromTask', e); }
@@ -5175,9 +5176,13 @@ function renderTaskList() {
   }
   const tasks = filteredTasks();
   wrap.innerHTML = '';
+  // Мэдэгдлээс ирсэн холбоос (#ack-/#task-) — ажил ачаалагдсаны дараа нээнэ
+  if (state._pendingTaskLink && (state.tasks || []).length) { const _dl = state._pendingTaskLink; state._pendingTaskLink = null; setTimeout(() => taskDeepOpen(_dl), 0); }
+  // 🎯 «Миний ажил» — сарын оноо, нэмэгдсэн/хасагдсан түүх (Цалин/Тойм-той ижил эх сурвалж)
+  if (state.view === 'mine') { wrap.insertAdjacentHTML('beforeend', safeViewHtml(taskPtsMineCardHtml, 'Даалгаврын оноо')); attachTaskPtsHandlers(wrap); }
   if (!tasks.length) {
     // Анхны ачаалал (cache хоосон + сервер хариу хүлээж буй) — "алга" биш skeleton.
-    wrap.innerHTML = state._initialLoading ? listSkeletonHtml() : emptyStateHtml();
+    wrap.insertAdjacentHTML('beforeend', state._initialLoading ? listSkeletonHtml() : emptyStateHtml());
     return;
   }
   // Virtual scroll — 80+ task үед эхний 80-ыг харуулна,
@@ -15578,12 +15583,13 @@ function defectStats(orders, month) {
 }
 /* Сарын дамжлагын бонус — хүн тус бүрээр. ЦЭВЭР функц (state хөндөхгүй) тул тестлэгдэнэ.
    Буцаах: { key: {led, helped, qty, ledFee, helperFee, total} } */
-function stagePayByPerson(orders, month) {
+function stagePayByPerson(orders, month, taskPts) {
   const bands = stagePtBands(), lead = stageLeadWeight(), hmax = stageHelperMax(), rate = stagePointRate();
   const ctx = stagePtsCtx();
   const out = {};
   const get = k => out[k] || (out[k] = { led: 0, helped: 0, qty: 0, ledPts: 0, helperPts: 0, penPts: 0, pts: 0,
-    ledFee: 0, helperFee: 0, penFee: 0, total: 0, lateN: 0, defN: 0, penOrders: [] });
+    ledFee: 0, helperFee: 0, penFee: 0, total: 0, lateN: 0, defN: 0, penOrders: [],
+    taskEarn: 0, taskPen: 0, taskFee: 0, taskPenFee: 0, taskN: 0, taskLateN: 0 });
   for (const o of (orders || [])) {
     const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
     const qty = orderItemQty(o);
@@ -15617,14 +15623,25 @@ function stagePayByPerson(orders, month) {
       hs.forEach(h => share(h, 1, 'helperPts', 'helped'));
     }
   }
+  /* ДААЛГАВРЫН ОНОО (2026-11-09) — `taskPtsByPerson` ГАНЦ эх сурвалж. Шилдэг гүйцэтгэгч (`pts`) ба цалингийн бонус (`total`) ХОЁУЛАА энэ
+     функцээс гарах тул хоёр газар өөр тоо гарахгүй. Оноо `from` идэвхтэй үед үргэлж; ₮ нь зөвхөн `pay` асаалттай үед. */
+  const tp = taskPts !== undefined ? taskPts : (taskPtsOn() ? taskPtsByPerson(month) : {});
+  Object.keys(tp || {}).forEach(k => {
+    const x = tp[k]; if (!x || !x.entries || !x.entries.length) return;
+    const r = get(k);
+    r.taskEarn = x.earn; r.taskPen = x.pen; r.taskLateN = x.lateN;
+    r.taskN = new Set(x.entries.filter(e => e.taskId).map(e => e.taskId)).size;
+  });
+  const taskPay = taskPtsPayOn();
   Object.keys(out).forEach(k => {
     const r = out[k];
-    r.pts = Math.round((r.ledPts + r.helperPts - r.penPts) * 100) / 100;
+    r.pts = Math.round((r.ledPts + r.helperPts + r.taskEarn - r.penPts - r.taskPen) * 100) / 100;
     r.ledFee = Math.round(r.ledPts * rate); r.helperFee = Math.round(r.helperPts * rate);
-    r.penFee = Math.round(r.penPts * rate);
+    r.taskFee = taskPay ? Math.round(r.taskEarn * rate) : 0; r.taskPenFee = taskPay ? Math.round(r.taskPen * rate) : 0;
+    r.penFee = Math.round(r.penPts * rate) + r.taskPenFee;
     // ⛔ Сарын бонус 0-ээс доош БИШ — суурь цалингаас хасахгүй. Хасалт нь олсон бонусаар хязгаарлагдана.
-    r.penApplied = Math.min(r.penFee, r.ledFee + r.helperFee);
-    r.total = r.ledFee + r.helperFee - r.penApplied;
+    r.penApplied = Math.min(r.penFee, r.ledFee + r.helperFee + r.taskFee);
+    r.total = r.ledFee + r.helperFee + r.taskFee - r.penApplied;
     r.penOrders.forEach(x => { x.fee = Math.round(x.pts * rate); });
   });
   return out;
@@ -15637,7 +15654,7 @@ function stagePayByPerson(orders, month) {
 function stageTopPerformers(orders, month, roster) {
   const all = stagePayByPerson(orders || [], month);
   const keys = new Set([...(roster || []).map(String), ...Object.keys(all).filter(k => (all[k].pts || 0) > 0)]);
-  return [...keys].map(k => { const r = all[k] || {}; return { key: k, pts: r.pts || 0, led: r.led || 0, helped: r.helped || 0 }; })
+  return [...keys].map(k => { const r = all[k] || {}; return { key: k, pts: r.pts || 0, led: r.led || 0, helped: r.helped || 0, taskPts: Math.round(((r.taskEarn || 0) - (r.taskPen || 0)) * 100) / 100 }; })
     .sort((a, b) => b.pts - a.pts || b.led - a.led);
 }
 // Нэг хүний сарын дамжлагын бонус (жолооны нэмэгдэлтэй ижил хэлбэр — дуудахад хялбар).
@@ -15647,13 +15664,17 @@ function stagePenWhy(sp) {
   const po = (sp && sp.penOrders) || [];
   const lateN = new Set(po.filter(x => x.why === 'late').map(x => x.number)).size;
   const defN = po.filter(x => x.why === 'defect').length;
-  return [lateN ? `${lateN} захиалга хоцорсон` : '', defN ? `${defN} ажил чанаргүй` : ''].filter(Boolean).join(' · ');
+  const tl = sp && sp.taskPenFee ? (sp.taskLateN || 0) : 0;
+  return [lateN ? `${lateN} захиалга хоцорсон` : '', defN ? `${defN} ажил чанаргүй` : '', tl ? `${tl} даалгавар хоцорсон` : ''].filter(Boolean).join(' · ');
 }
 function stageBonusRowsHtml(sp, bonus, lineFn, label) {
   const earned = sp ? (sp.ledFee || 0) + (sp.helperFee || 0) : 0;
+  const taskEarned = sp ? (sp.taskFee || 0) : 0;
   const pen = sp ? (sp.penApplied || 0) : 0;
-  if (!pen) return bonus ? lineFn(label, `+${fmtMoney(bonus)}`, 'pay-plus') : '';
-  return (earned ? lineFn(label, `+${fmtMoney(earned)}`, 'pay-plus') : '')
+  // Даалгаврын оноо ТУСДАА мөр (нийлбэрээс өмнө) — мөрүүд нийлбэртэйгээ таарна: дамжлага + даалгавар − хасалт = бонус.
+  const taskRow = taskEarned ? lineFn(`✅ Даалгаврын оноо · ${sp.taskN || 0} даалгавар`, `+${fmtMoney(taskEarned)}`, 'pay-plus') : '';
+  if (!pen) return (taskEarned ? (earned ? lineFn(label, `+${fmtMoney(earned)}`, 'pay-plus') : '') + taskRow : (bonus ? lineFn(label, `+${fmtMoney(bonus)}`, 'pay-plus') : ''));
+  return (earned ? lineFn(label, `+${fmtMoney(earned)}`, 'pay-plus') : '') + taskRow
     + lineFn(`⚠ Хасах оноо · ${stagePenWhy(sp)}`, `−${fmtMoney(pen)}`, 'pay-minus');
 }
 // Аль ажлаас хасагдсан — захиалгаар бүлэглэсэн жагсаалт. ⛔ НЭЭЛТТЭЙ, шалтгаан нь
@@ -15673,7 +15694,8 @@ function stagePenListHtml(sp) {
 }
 function stagePayFor(key, month, orders) {
   const all = stagePayByPerson(orders || state.appOrders || [], month);
-  return all[String(key)] || { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, penFee: 0, penApplied: 0, total: 0, lateN: 0, defN: 0, penOrders: [] };
+  return all[String(key)] || { led: 0, helped: 0, qty: 0, ledFee: 0, helperFee: 0, penFee: 0, penApplied: 0, total: 0, lateN: 0, defN: 0, penOrders: [],
+    taskEarn: 0, taskPen: 0, taskFee: 0, taskPenFee: 0, taskN: 0, taskLateN: 0 };
 }
 function driverBonus(key, month, orders) {
   let deliveries = 0, pickups = 0; const trips = [];
@@ -26283,9 +26305,20 @@ const _QNOTE_SEP = '⟦N⟧';
 // Дуусгасан огноог kpi_code-д ⟦CD|огноо⟧ токеноор ЛАВ хадгална — completed_at backend-д хадгалагддаггүй,
 // reload дараа `updated`(сүүлд зассан) руу уначихдаг тул «цагтаа/хоцорсон» буруу гардаг байв.
 const _CD_RE = /⟦CD\|(\d{4}-\d{2}-\d{2})⟧/;
-function _stripCD(s) { return String(s || '').replace(/⟦CD\|[^⟧]*⟧/g, ''); }
+/* kpi_code-ийн ТОКЕН ГЭР БҮЛ (2026-11-09, даалгаврын оноо): CD дууссан огноо · DT эцсийн хугацааны цаг · AK хүлээн авсан ms ·
+   CA дууссан ms · RA үнэлсэн ms · XR сунгалтын хүсэлт · FL буруугаас хаасан ms. Шинэ багана нэмэхгүй (n8n upsert-ийн баганын жагсаалт тогтмол).
+   ⛔ Токен БҮРИЙГ `_stripCD` хасна — эс бөгөөс `Number('4⟦AK|…⟧')` NaN болж үнэлгээ 0 болно. Бичихдээ `tkSet` (бусдыг хадгална). */
+const _TK_RE_ALL = /⟦(?:CD|DT|AK|CA|RA|XR|FL)\|[^⟧]*⟧/g;
+function _stripCD(s) { return String(s || '').replace(_TK_RE_ALL, ''); }
+function tkGet(kpi, name) { const m = new RegExp('⟦' + name + '\\|([^⟧]*)⟧').exec(String(kpi || '')); return m ? m[1] : ''; }
+function tkAll(kpi, name) { const out = [], re = new RegExp('⟦' + name + '\\|([^⟧]*)⟧', 'g'); let m; const s = String(kpi || ''); while ((m = re.exec(s))) out.push(m[1]); return out; }
+function tkSet(kpi, name, val) {
+  const base = String(kpi || '').replace(new RegExp('⟦' + name + '\\|[^⟧]*⟧', 'g'), '');
+  return (val === '' || val == null) ? base : base + '⟦' + name + '|' + val + '⟧';
+}
+function tkKeep(kpi) { return (String(kpi || '').match(_TK_RE_ALL) || []).join(''); }   // үнэлгээ солиход токенуудыг хадгална
 function taskCompletionCode(t) { const m = String((t && t.kpi_code) || '').match(_CD_RE); return m ? m[1] : ''; }
-function setCompletionCode(kpi_code, date) { const base = _stripCD(kpi_code); return date ? base + '⟦CD|' + date + '⟧' : base; }
+function setCompletionCode(kpi_code, date) { return tkSet(kpi_code, 'CD', date); }
 function taskQualityRating(t) { return Number(_stripCD((t && t.kpi_code) || '').split(_QNOTE_SEP)[0]) || 0; }
 function taskQualityNote(t) { const p = _stripCD((t && t.kpi_code) || '').split(_QNOTE_SEP); return p.length > 1 ? p.slice(1).join(_QNOTE_SEP).trim() : ''; }
 function encodeQuality(rating, note) { note = String(note || '').trim(); return note ? (rating + _QNOTE_SEP + note) : String(rating); }
@@ -26295,7 +26328,7 @@ function taskQualityScore(key, month) {
     && !parseStageTaskId(t.id)   // автомат дамжлага-даалгавар ХАСНА (давхар тооллого сэргийлнэ)
     && t.createdBy && t.createdBy !== key
     && (t.due || '').slice(0, 7) === month);
-  const rated = done.map(t => taskQualityRating(t)).filter(v => v >= 1 && v <= 5);
+  const rated = done.map(t => taskRatingEff(t)).filter(v => v >= 1 && v <= 5);   // гар ★ эсвэл 48ц-ийн авто ★ — оноотой ИЖИЛ
   if (!rated.length) return { score: null, rated: 0, doneTotal: done.length };
   const avg = rated.reduce((a, b) => a + b, 0) / rated.length;
   return { score: Math.round(avg * 20), rated: rated.length, doneTotal: done.length, avg: Math.round(avg * 10) / 10 };
@@ -26307,20 +26340,527 @@ function needsRating(t) {
   if (t.kind === 'finance_request' || t.kind === 'act_parent' || t._isFinance) return false;
   if (parseStageTaskId(t.id)) return false;   // автомат дамжлага-даалгавар — дамжлагад аль хэдийн ★ өгсөн, дахин үнэлэхгүй
   if (!t.createdBy || t.createdBy === t.assignee) return false;
-  const q = taskQualityRating(t);
-  return !(q >= 1 && q <= 5);
+  return !(taskRatingEff(t) >= 1);   // 48 цагт үнэлэхгүй бол авто ★ тооцогдож «хүлээж буй» дуусна
 }
 async function saveTaskQuality(id, rating, note) {
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
-  t.kpi_code = setCompletionCode(encodeQuality(rating, note), taskCompletionCode(t));   // дуусгасан огнооны токен хадгална
+  const raFirst = taskRatedTs(t) || Date.now();   // ⛔ RA = ЭХНИЙ үнэлгээний цаг — дахин үнэлэхэд бонусын сар гулсахгүй
+  t.kpi_code = tkSet(encodeQuality(rating, note) + tkKeep(t.kpi_code), 'RA', raFirst);   // бүх токен (дууссан огноо, хугацаа, сунгалт…) хадгалагдана
   try {
     await saveTask(t);
+    if (t.assignee && t.assignee !== state.me) pushBroadcast(t.assignee, { kind: 'tasks', title: `★ Таны ажлыг ${rating}★ үнэллээ`, body: t.title, url: './#task-' + t.id, id: t.id });
     showToast(`Ажлын чанар: ${rating}★ хадгалагдлаа`, 'success', 1800);
     closeTaskModal();
     render();
   }
   catch (e) { showToast('Алдаа: ' + e.message, 'error'); }
+}
+/* ═══ ДААЛГАВРЫН ОНОО (2026-11-09, CEO) — цагтаа дуусгавал +, хоцроовол −, БҮГД НЭГ ЦЭВЭР ФУНКЦЭЭС ═══
+   ГАНЦ ЭХ СУРВАЛЖ = `taskPtsLedger` → `taskPtsByPerson`. Миний ажил · Гүйцэтгэл · Тойм (Шилдэг гүйцэтгэгч) · Цалин
+   (`stagePayByPerson`) · Excel бүгд ЭНЭ функцээс л уншина — оноог өөр газар БҮҮ бод (инвариант тест тулгана).
+   ⛔ Оноо = даалгаврын ФАКТААС гарна (эцсийн хугацаа, дууссан цаг, ★, сунгалт) — «хасалт бичсэн» тусдаа мөр БИШ.
+     Тиймээс ДАВХАР ТООЛОГДОХГҮЙ (нэг даалгавар × нэг хүн × нэг төрөл = нэг мөр, `id`-аар давхардал хасна) ба
+     хэн нэгэн апп нээхийг ХҮЛЭЭХГҮЙ: хугацаа хэтэрмэгц хасалт, дууссанаас 48ц хойш авто ★ өөрөө үүснэ.
+   ⛔ Гар засвар = ТУСДАА мөр (`evaluations` type='tpadj', шалтгаантай, УСТАХГҮЙ). Даалгаврын мөрийг хэзээ ч бүү өөрчил.
+   ⛔ `app_config['task_points']`: `from` (огноо) ХООСОН бол БҮГД УНТРААЛТТАЙ — олгочихсон цалин чимээгүй өөрчлөгдөхгүй.
+     Зөвхөн `from`-оос хойш ҮҮССЭН даалгавар тоологдоно (хуучин 400+ ажил торгуулийн цэг болохгүй).
+   ⚠ Үнэ/хасалтын тоог өөрчлөхөд тухайн сарууд дахин бодогдоно (ledger факт дээр суурилдаг). Өмнөх цалинд нөлөөлөхгүйг
+     хүсвэл `from`-ыг шинэчил. Оноо ҮЙЛДЭЛ болсон сард бичигдэнэ: нэмэлт = ★ гарсан сар, хасалт = хэтэрсэн өдрийн сар.
+   ⚠ Токены нэр: `by/at/items/photos` гэх мэт `stage_meta`-ийн түлхүүр энд БАЙХГҮЙ (kpi_code-д л бичигдэнэ). */
+const TASK_PTS_DEFAULT = Object.freeze({
+  stars: Object.freeze({ 5: 10, 4: 7, 3: 4, 2: 1, 1: 0 }),
+  mult: Object.freeze({ high: 1.5, med: 1, low: 0.5 }),
+  earlyOn: true, earlyH: 24, earlyPts: 2, earlyMinStar: 3,
+  late: 5, lateDay: 2, lateDayCap: 20, cancel: 10, autoH: 48, autoStar: 4, defaultTime: '23:59',
+});
+function taskPtsCfg() {
+  const raw = state.appConfig && state.appConfig.task_points;
+  const c = (raw && typeof raw === 'object') ? raw : {};
+  const D = TASK_PTS_DEFAULT;
+  const num = (v, d, lo, hi) => { const n = Number(v); return (v !== undefined && v !== null && v !== '' && isFinite(n) && n >= lo && n <= hi) ? n : d; };
+  const st = (c.stars && typeof c.stars === 'object') ? c.stars : {}, mu = (c.mult && typeof c.mult === 'object') ? c.mult : {};
+  return {
+    from: /^\d{4}-\d{2}-\d{2}$/.test(String(c.from || '')) ? String(c.from) : '',
+    stars: { 5: num(st[5], D.stars[5], 0, 100), 4: num(st[4], D.stars[4], 0, 100), 3: num(st[3], D.stars[3], 0, 100), 2: num(st[2], D.stars[2], 0, 100), 1: num(st[1], D.stars[1], 0, 100) },
+    mult: { high: num(mu.high, D.mult.high, 0, 5), med: num(mu.med, D.mult.med, 0, 5), low: num(mu.low, D.mult.low, 0, 5) },
+    earlyOn: c.early_on === undefined ? D.earlyOn : !!c.early_on,
+    earlyH: num(c.early_h, D.earlyH, 1, 720), earlyPts: num(c.early_pts, D.earlyPts, 0, 100), earlyMinStar: num(c.early_min_star, D.earlyMinStar, 1, 5),
+    late: num(c.late, D.late, 0, 100), lateDay: num(c.late_day, D.lateDay, 0, 100), lateDayCap: num(c.late_day_cap, D.lateDayCap, 0, 1000),
+    cancel: num(c.cancel, D.cancel, 0, 100), autoH: num(c.auto_h, D.autoH, 1, 720), autoStar: num(c.auto_star, D.autoStar, 1, 5),
+    pay: c.pay === undefined ? true : !!c.pay,   // оноо → цалингийн урамшуулал (ханш = `stagePointRate`)
+  };
+}
+function taskPtsOn() { return !!taskPtsCfg().from; }
+function taskPtsPayOn() { const c = taskPtsCfg(); return !!c.from && c.pay; }
+/* УБ-ийн цаг (UTC+8, зуны цаггүй). ⛔ Хөтчийн бүсээс БҮҮ хамаар — `Date.UTC` + UTC геттер (сар гулсахаас сэргийлнэ). */
+function _p2(n) { return String(n).padStart(2, '0'); }
+function ubDay(ms) { const d = new Date(Number(ms) + 8 * 3600e3); return d.getUTCFullYear() + '-' + _p2(d.getUTCMonth() + 1) + '-' + _p2(d.getUTCDate()); }
+function ubHM(ms) { const d = new Date(Number(ms) + 8 * 3600e3); return _p2(d.getUTCHours()) + ':' + _p2(d.getUTCMinutes()); }
+function ubTs(day, hm) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day || ''))) return null;
+  const t = Date.parse(day + 'T' + (/^\d{2}:\d{2}$/.test(String(hm || '')) ? hm : TASK_PTS_DEFAULT.defaultTime) + ':00+08:00');
+  return isFinite(t) ? t : null;
+}
+function taskDueTime(t) { const v = tkGet(t && t.kpi_code, 'DT'); return /^\d{2}:\d{2}$/.test(v) ? v : ''; }
+function taskDueTs(t) { return ubTs(String((t && t.due) || '').slice(0, 10), taskDueTime(t)); }   // цаггүй хуучин ажил = өдрийн эцэс 23:59
+function taskAckTs(t) { const n = Number(tkGet(t && t.kpi_code, 'AK')); return n > 0 ? n : 0; }
+function taskRatedTs(t) { const n = Number(tkGet(t && t.kpi_code, 'RA')); return n > 0 ? n : 0; }
+function taskFailTs(t) { const n = Number(tkGet(t && t.kpi_code, 'FL')); return (t && t.status === 'declined' && n > 0) ? n : 0; }
+function taskCreatedTs(t) { const c = t && t.created; const n = typeof c === 'number' ? c : Date.parse(c || ''); return isFinite(n) && n > 0 ? n : 0; }
+function taskDoneTs(t) {
+  if (!t || t.status !== 'done') return null;
+  const ca = Number(tkGet(t.kpi_code, 'CA')); if (ca > 0) return ca;
+  const cd = taskCompletionCode(t); if (cd) return ubTs(cd, '23:59');   // хуучин: цаггүй → өдрийн эцэс (өдөртөө дууссан хоцролт болохгүй)
+  const ms = typeof t.completed_at === 'number' ? t.completed_at : Date.parse(t.completed_at || t.updated || '');
+  return isFinite(ms) && ms > 0 ? ms : null;
+}
+/* Сунгалт = `⟦XR|хүсэлтийн ms|шинэ огноо|шинэ цаг|төлөв p/a/r|шийдсэн ms|хүсэх үеийн огноо|цаг|шалтгаан⟧`.
+   ⛔ Хүсэлт хугацаа дуусахаас ӨМНӨ ирсэн байх ёстой (`reqTs <= тухайн үеийн хугацаа`) — ledger өөрөө шалгана, UI-д найдахгүй.
+   Хүлээгдэж буй (p) хүсэлттэй үед хасалт ЗОГСОНО; татгалзвал хоцролт анхны хугацаанаас ЭХЭЛЖ буцаж тооцогдоно (факт дээр суурилсан). */
+function taskExtensions(t) {
+  return tkAll(t && t.kpi_code, 'XR').map(s => {
+    const f = s.split('|');
+    return { reqTs: Number(f[0]) || 0, date: f[1] || '', time: f[2] || '', st: f[3] || 'p', decTs: Number(f[4]) || 0, prevDate: f[5] || '', prevTime: f[6] || '', reason: f.slice(7).join('|') };
+  }).filter(x => x.reqTs && /^\d{4}-\d{2}-\d{2}$/.test(x.date)).sort((a, b) => a.reqTs - b.reqTs);
+}
+function taskExtWrite(kpi, list) {
+  let k = String(kpi || '').replace(/⟦XR\|[^⟧]*⟧/g, '');
+  list.forEach(x => { k += '⟦XR|' + [x.reqTs, x.date, x.time, x.st, x.decTs || 0, x.prevDate, x.prevTime, String(x.reason || '').replace(/[|⟦⟧]/g, ' ').slice(0, 80)].join('|') + '⟧'; });
+  return k;
+}
+function taskDueChain(t) {
+  const xs = taskExtensions(t);
+  let due = xs.length ? ubTs(xs[0].prevDate, xs[0].prevTime) : null;
+  if (due == null) due = taskDueTs(t);
+  const used = []; let hold = false;
+  if (due == null) return { dueTs: null, hold: false, ext: used };
+  for (const x of xs) {
+    if (x.reqTs > due) continue;   // хугацаа дууссаны ДАРАА ирсэн хүсэлт хүчингүй
+    if (x.st === 'a') { const nd = ubTs(x.date, x.time); if (nd != null && nd > due) { due = nd; used.push(x); } }
+    else if (x.st === 'p') hold = true;
+  }
+  return { dueTs: due, hold, ext: used };
+}
+/* Амралт/чөлөөт өдөр хугацаа ЗОГСОНО: тухайн өдөр тэр хүн чөлөөтэй (`offDay(key, 'YYYY-MM-DD')`) бол эцсийн хугацаа 24ц хойшилно.
+   `offDay` = `taskPtsOffFn()` (хуваарь) — ачаалагдаагүй бол null → зогсолт ТООЦОХГҮЙ (таамаглахгүй). */
+function taskEffDueTs(dueTs, key, startTs, offDay) {
+  if (dueTs == null || typeof offDay !== 'function') return dueTs;
+  let eff = dueTs, d = ubDay(startTs || dueTs);
+  for (let guard = 0; d <= ubDay(eff) && guard < 120; guard++) {
+    if (offDay(key, d)) eff += 86400000;
+    d = addDays(d, 1);
+  }
+  return eff;
+}
+/* Чөлөөт өдөр = ирцийн ХУВААРЬ (`att_callins`): тухайн 7 хоногт (Да–Ня) хүнд хуваарь тавигдсан атлаа ЭНЭ өдөр хуваарьгүй.
+   ⚠ «Чөлөө/Амралт» гар тэмдэглэгээ 2026-11-02-нд УСТГАГДСАН тул өөр эх сурвалж байхгүй. Хуваарь огт тавигдаагүй хүнд зогсолт үйлчлэхгүй. */
+function taskPtsOffFn() {
+  if (typeof attCallinsReady !== 'function' || !attCallinsReady()) return null;
+  return (key, day) => {
+    if (attCallinOn(key, day)) return false;
+    const wd = (new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7;   // 0 = Даваа
+    for (let i = 0; i < 7; i++) { if (i !== wd && attCallinOn(key, addDays(day, i - wd))) return true; }
+    return false;
+  };
+}
+function taskPtsCtx(now) { return { cfg: taskPtsCfg(), now: now || Date.now(), offDay: taskPtsOffFn() }; }
+function taskPtsEligible(t, cfg) {
+  if (!cfg || !cfg.from || !t) return false;
+  if (t.kind === 'act_parent' || t.kind === 'finance_request' || t._isFinance || parseStageTaskId(t.id) || isAutoTask(t)) return false;
+  if (!t.createdBy || /^(SYSTEM|Claude)$/i.test(String(t.createdBy))) return false;
+  if (t.status === 'deleted') return false;
+  if (t.status === 'declined' && !taskFailTs(t)) return false;   // ажилтан татгалзсан = оноо тооцохгүй; буруугаас хаасан л тоологдоно
+  if (!/^\d{4}-\d{2}-\d{2}/.test(String(t.due || ''))) return false;
+  const c = taskCreatedTs(t);
+  return !!c && ubDay(c) >= cfg.from;
+}
+function taskPtsPeople(t) { return taskParticipants(t).filter(p => p && p !== t.createdBy); }   // ⛔ өөртөө өгсөн ажлаар оноо авахгүй
+function taskPtsMult(t, cfg) { const m = cfg.mult[t && t.priority]; return m == null ? 1 : m; }
+// ★ — гар үнэлгээ, эс бөгөөс дууссанаас `autoH` цагийн дараа авто `autoStar`. null = хараахан үнэлэгдээгүй.
+function taskPtsRating(t, doneTs, ctx) {
+  const q = taskQualityRating(t);
+  if (q >= 1 && q <= 5) return { star: q, auto: false, ts: taskRatedTs(t) || doneTs };
+  const ts = doneTs + ctx.cfg.autoH * 3600e3;
+  return ctx.now >= ts ? { star: ctx.cfg.autoStar, auto: true, ts } : null;
+}
+function taskRatingEff(t, ctx) {
+  const q = taskQualityRating(t);
+  if (q >= 1 && q <= 5) return q;
+  ctx = ctx || taskPtsCtx();
+  if (t && t.status === 'done' && taskPtsEligible(t, ctx.cfg)) {
+    const d = taskDoneTs(t), r = d == null ? null : taskPtsRating(t, d, ctx);
+    if (r) return r.star;
+  }
+  return 0;
+}
+// Нэг (даалгавар, хүн)-ийн төлөв — оноо ба тоон үзүүлэлт ХОЁУЛАА эндээс.
+function taskPtsView(t, p, ctx) {
+  const chain = taskDueChain(t);
+  if (chain.dueTs == null) return null;
+  const due = taskEffDueTs(chain.dueTs, p, taskCreatedTs(t) || chain.dueTs, ctx.offDay);
+  const doneTs = t.status === 'done' ? (taskDoneTs(t) ?? due) : null;
+  const failTs = taskFailTs(t);
+  const endTs = doneTs != null ? doneTs : (failTs || ctx.now);
+  const late = endTs > due && !chain.hold;
+  const st = failTs ? 'cancel' : doneTs != null ? (late ? 'late' : 'ontime') : (late ? 'late' : 'open');
+  return { due, chain, doneTs, failTs, endTs, late, st, hold: chain.hold };
+}
+function taskPtsEntries(t, p, ctx) {
+  const v = taskPtsView(t, p, ctx); if (!v) return [];
+  const cfg = ctx.cfg, out = [], title = String(t.title || '');
+  const mk = (kind, pts, ts, why, x) => { const day = ubDay(ts); return Object.assign({ id: t.id + '|' + p + '|' + kind, taskId: t.id, key: p, kind, pts, ts, date: day, month: day.slice(0, 7), title, why }, x || {}); };
+  if (v.late) {
+    out.push(mk('late', -cfg.late, v.due, 'Хугацаа хэтэрсэн'));
+    const nMax = cfg.lateDay > 0 ? Math.floor(cfg.lateDayCap / cfg.lateDay + 1e-9) : 0;   // хэтэрсэн өдрийн нэмэлт: хязгаартай
+    const n = Math.min(Math.floor((v.endTs - v.due) / 86400000), nMax);
+    for (let i = 1; i <= n; i++) out.push(mk('d' + i, -cfg.lateDay, v.due + i * 86400000, i + '-р өдөр хэтэрсэн'));
+  }
+  if (v.failTs) out.push(mk('cancel', -cfg.cancel, v.failTs, 'Гүйцэтгээгүй (ажилтны буруугаас)'));
+  if (v.st === 'ontime') {
+    const r = taskPtsRating(t, v.doneTs, ctx);
+    if (r) {
+      const mu = taskPtsMult(t, cfg);
+      out.push(mk('bonus', Math.round(cfg.stars[r.star] * mu * 10) / 10, r.ts, r.star + '★' + (r.auto ? ' (автомат)' : '') + (mu !== 1 ? ' × ' + mu : ''), { star: r.star, auto: r.auto }));
+      if (cfg.earlyOn && r.star >= cfg.earlyMinStar && v.doneTs <= v.due - cfg.earlyH * 3600e3) out.push(mk('early', cfg.earlyPts, r.ts, 'Хугацаанаас ' + cfg.earlyH + 'ц+ өмнө'));
+    }
+  }
+  return out.filter(e => e.pts !== 0);
+}
+function taskPtsLedger(tasks, adjRows, ctx) {
+  ctx = ctx || taskPtsCtx();
+  if (!ctx.cfg.from) return [];
+  const out = [], seen = new Set();
+  const push = (e) => { if (!seen.has(e.id)) { seen.add(e.id); out.push(e); } };   // ⛔ давхардал = нэг id нэг л удаа
+  for (const t of (tasks || [])) {
+    if (!taskPtsEligible(t, ctx.cfg)) continue;
+    for (const p of taskPtsPeople(t)) taskPtsEntries(t, p, ctx).forEach(push);
+  }
+  for (const r of (adjRows || [])) {
+    if (!r || r.type !== 'tpadj' || !r.id || !Number(r.kpi_pct)) continue;
+    const ts = Date.parse(r.ts) || 0, mo = /^\d{4}-\d{2}$/.test(String(r.period || '')) ? r.period : (ts ? ubDay(ts).slice(0, 7) : '');
+    if (!mo) continue;
+    push({ id: String(r.id), taskId: '', key: String(r.ratee), kind: 'adj', pts: Number(r.kpi_pct), ts, date: ts ? ubDay(ts) : mo + '-01', month: mo, title: 'Гар засвар', why: String(r.note || ''), by: String(r.rater || '') });
+  }
+  return out.sort((a, b) => (a.ts - b.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+// month = 'YYYY-MM' (хоосон = бүх сар). Буцаах: { key: {earn, pen, net, adj, entries[]} } — Миний ажил/Тойм/Цалин/Excel БҮГД ЭНЭ.
+function taskPtsByPerson(month, tasks, adjRows, ctx) {
+  const out = {};
+  const led = taskPtsLedger(tasks === undefined ? state.tasks : tasks, adjRows === undefined ? state.evaluations : adjRows, ctx);
+  for (const e of led) {
+    if (month && e.month !== month) continue;
+    const r = out[e.key] || (out[e.key] = { earn: 0, pen: 0, adj: 0, net: 0, lateN: 0, entries: [] });
+    r.entries.push(e);
+    if (e.pts > 0) r.earn += e.pts; else r.pen += -e.pts;
+    if (e.kind === 'adj') r.adj += e.pts;
+    if (e.kind === 'late') r.lateN += 1;
+  }
+  Object.keys(out).forEach(k => { const r = out[k]; r.earn = Math.round(r.earn * 100) / 100; r.pen = Math.round(r.pen * 100) / 100; r.net = Math.round((r.earn - r.pen) * 100) / 100; });
+  return out;
+}
+// Тоон үзүүлэлт (даалгаврын эцсийн хугацааны САРААР): { key: {total, ontime, late, open, cancel, onTimePct, avg} }
+function taskPtsStats(month, tasks, ctx) {
+  ctx = ctx || taskPtsCtx();
+  const out = {};
+  if (!ctx.cfg.from) return out;
+  for (const t of (tasks === undefined ? state.tasks : tasks) || []) {
+    if (!taskPtsEligible(t, ctx.cfg) || (month && String(t.due || '').slice(0, 7) !== month)) continue;
+    for (const p of taskPtsPeople(t)) {
+      const v = taskPtsView(t, p, ctx); if (!v) continue;
+      const r = out[p] || (out[p] = { total: 0, ontime: 0, late: 0, open: 0, cancel: 0, starSum: 0, starN: 0, avg: null, onTimePct: null });
+      r.total++; r[v.st]++;
+      if (t.status === 'done') { const q = taskRatingEff(t, ctx); if (q >= 1) { r.starSum += q; r.starN++; } }
+    }
+  }
+  Object.keys(out).forEach(k => {
+    const r = out[k], den = r.ontime + r.late + r.cancel;
+    r.avg = r.starN ? Math.round(r.starSum / r.starN * 10) / 10 : null;
+    r.onTimePct = den ? Math.round(r.ontime / den * 100) : null;
+  });
+  return out;
+}
+/* Даалгавар өгөх эрх: удирдлага (CEO, ҮАЗ) бүгдэд; бусад (ахлах/нярав/менежер) ЗӨВХӨН өөрийн багт (= нэг салбар).
+   Салбар мэдэгдэхгүй бол таамаглахгүй (зөвшөөрнө). Оноо идэвхтэй үед л үйлчилнэ — өмнө нь хуучин зан. */
+function taskIsMgmt(key) {
+  if (!key) return false;
+  if (key === state.me && state.isCEO) return true;
+  if (key === getCEOEmail()) return true;
+  const m = findMember(key) || {};
+  return /үйл ажиллагааны захирал|үах захирал|\bcoo\b/i.test(String(m.role || '')) || (Number(m.level) || 0) >= 100;
+}
+function taskCanAssign(creator, assignee) {
+  if (!taskPtsOn() || !creator || !assignee || creator === assignee || taskIsMgmt(creator)) return true;
+  if (taskIsMgmt(assignee)) return false;
+  const a = memberBranchesOf(findMember(creator)), b = memberBranchesOf(findMember(assignee));
+  return !a.length || !b.length || a.some(x => b.includes(x));
+}
+/* ─── Даалгаврын оноо: ҮЙЛДЛҮҮД (хүлээн авлаа · сунгалт · буруугаас хаах · гар засвар · мэдэгдэл · тохиргоо) ─── */
+function taskPush(to, title, body, taskId) { if (to && to !== state.me && !/^(SYSTEM|Claude)$/i.test(String(to))) pushBroadcast(to, { kind: 'tasks', title, body, url: './#task-' + taskId, id: taskId }); }
+function taskNotifyDone(t) { if (t && t.createdBy && t.createdBy !== t.assignee && !parseStageTaskId(t.id)) taskPush(t.createdBy, '✅ Дууслаа — үнэлнэ үү', `${memberName(t.assignee)}: ${t.title}`, t.id); }
+// Мэдэгдлээс нээх холбоос: `#ack-<id>` (шинэ ажил — хүлээн авсанд тооцно) · `#task-<id>` (сануулга, үнэлгээ).
+function taskDeepLink(hash) { const m = /^#(ack|task)-([A-Za-z0-9_-]+)$/.exec(String(hash || '')); return m ? { act: m[1], id: m[2] } : null; }
+async function taskDeepOpen(dl) {
+  const t = dl && (state.tasks || []).find(x => x.id === dl.id);
+  if (!t) return;
+  if (dl.act === 'ack') await taskAck(dl.id, true);
+  openTaskModal(dl.id);
+}
+async function taskAck(id, silent) {
+  const t = (state.tasks || []).find(x => x.id === id);
+  if (!t || t.status === 'done' || !isTaskParticipant(t, state.me) || t.createdBy === state.me) return false;
+  if (taskAckTs(t)) return true;   // ⛔ эхний хүлээн авсан цаг л үлдэнэ — давхар дарахад өөрчлөгдөхгүй
+  t.kpi_code = tkSet(t.kpi_code, 'AK', Date.now());
+  logTaskActivity(t, 'acked', {});
+  await saveTask(t);
+  taskPush(t.createdBy, '👀 Хүлээн авлаа', `${memberName(state.me)}: ${t.title}`, t.id);
+  if (!silent) { showToast('👀 Хүлээн авлаа', 'success', 1800); render(); }
+  return true;
+}
+function tpModal(inner, onMount) {
+  document.getElementById('tp-modal')?.remove();
+  const bg = document.createElement('div'); bg.className = 'modal-bg tp-bg'; bg.id = 'tp-modal';
+  bg.innerHTML = `<div class="modal tp-modal">${inner}</div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener('click', e => { if (e.target === bg) bg.remove(); });
+  bg.classList.add('open');
+  if (onMount) onMount(bg);
+  return bg;
+}
+// Хугацаа сунгах хүсэлт — ЗӨВХӨН хугацаа дуусахаас ӨМНӨ. Өгсөн хүн батлавал хасалт гарахгүй (ledger `taskDueChain`).
+function taskRequestExtension(id) {
+  const t = (state.tasks || []).find(x => x.id === id);
+  if (!t || !isTaskParticipant(t, state.me) || t.status === 'done' || t.status === 'declined') return;
+  const ctx = taskPtsCtx(), v = taskPtsView(t, state.me, ctx);
+  if (!v) return;
+  if (ctx.now >= v.due) { showToast('Хугацаа хэтэрсэн — сунгах хүсэлтийг хугацаа дуусахаас ӨМНӨ илгээнэ', 'warn', 4000); return; }
+  if (taskExtensions(t).some(x => x.st === 'p')) { showToast('Өмнөх хүсэлт хариу хүлээж байна', 'warn', 2500); return; }
+  const curDay = ubDay(v.chain.dueTs), curHm = ubHM(v.chain.dueTs);
+  tpModal(`<h2>⏳ Хугацаа сунгах хүсэлт</h2>
+    <div class="tp-sub">${escapeHtml(t.title || '')} · одоогийн хугацаа <b>${escapeHtml(curDay)} ${escapeHtml(curHm)}</b></div>
+    <label class="tp-lbl">Шинэ огноо</label><input type="date" class="ui-raw tp-in" id="tp-x-date" value="${escapeHtml(addDays(curDay, 1))}">
+    <label class="tp-lbl">Шинэ цаг</label><input type="time" class="ui-raw tp-in" id="tp-x-time" value="${escapeHtml(curHm)}">
+    <label class="tp-lbl">Шалтгаан</label><textarea class="ui-raw tp-in tp-ta" id="tp-x-why" rows="2" placeholder="Яагаад сунгах хэрэгтэй вэ?"></textarea>
+    <div class="tp-sub">Өгсөн хүн батлавал оноо хасагдахгүй. Хугацаа дууссаны ДАРАА илгээсэн хүсэлт хүчингүй.</div>
+    <div class="tp-actions"><button class="btn ui-raw" id="tp-x-cancel">Болих</button><button class="btn btn-primary ui-raw" id="tp-x-send">Илгээх</button></div>`, (bg) => {
+    bg.querySelector('#tp-x-cancel').onclick = () => bg.remove();
+    bg.querySelector('#tp-x-send').onclick = async () => {
+      const date = bg.querySelector('#tp-x-date').value, time = bg.querySelector('#tp-x-time').value;
+      const nd = ubTs(date, time), why = bg.querySelector('#tp-x-why').value.trim();
+      if (nd == null || nd <= v.chain.dueTs) { showToast('Шинэ хугацаа одоогийнхоос хойно байх ёстой', 'warn', 3000); return; }
+      if (!why) { showToast('Шалтгаан бичнэ үү', 'warn', 2500); return; }
+      if (Date.now() >= v.due) { showToast('Хугацаа дууссан — хүсэлт хүчингүй', 'warn', 3000); return; }
+      const list = taskExtensions(t); list.push({ reqTs: Date.now(), date, time, st: 'p', decTs: 0, prevDate: curDay, prevTime: curHm, reason: why });
+      t.kpi_code = taskExtWrite(t.kpi_code, list);
+      logTaskActivity(t, 'extension_requested', { to: date + ' ' + time, reason: why });
+      await saveTask(t);
+      taskPush(t.createdBy, '⏳ Хугацаа сунгах хүсэлт', `${memberName(state.me)}: ${t.title} → ${date} ${time}. ${why}`, t.id);
+      bg.remove(); showToast('Хүсэлт илгээгдлээ', 'success', 2000); closeTaskModal(); render();
+    };
+  });
+}
+async function taskExtDecide(id, reqTs, approve) {
+  const t = (state.tasks || []).find(x => x.id === id);
+  if (!t) return;
+  if (!(state.me === t.createdBy || taskIsMgmt(state.me))) { showToast('Зөвхөн даалгавар өгсөн хүн шийднэ', 'warn', 2500); return; }
+  const list = taskExtensions(t), x = list.find(y => y.reqTs === Number(reqTs) && y.st === 'p');
+  if (!x) return;
+  x.st = approve ? 'a' : 'r'; x.decTs = Date.now();
+  if (approve) { t.due = x.date; t.kpi_code = tkSet(t.kpi_code, 'DT', x.time); }   // шинэ хугацаа = `t.due` (бусад дэлгэц шууд зөв харуулна)
+  t.kpi_code = taskExtWrite(t.kpi_code, list);
+  logTaskActivity(t, approve ? 'extension_approved' : 'extension_rejected', { to: x.date + ' ' + x.time });
+  await saveTask(t);
+  taskPush(t.assignee, approve ? '✅ Хугацаа сунгагдлаа' : '✕ Сунгалт татгалзагдлаа', `${t.title}${approve ? ' → ' + x.date + ' ' + x.time : ''}`, t.id);
+  showToast(approve ? 'Сунгалтыг баталлаа — оноо хасагдахгүй' : 'Татгалзлаа', approve ? 'success' : 'warn', 2500);
+  closeTaskModal(); render();
+}
+// «Гүйцэтгээгүй» гэж ажилтны буруугаас хаах — −cancel оноо. Зөвхөн өгсөн хүн/удирдлага, шалтгаантай.
+async function taskFailClose(id) {
+  const t = (state.tasks || []).find(x => x.id === id), cfg = taskPtsCfg();
+  if (!t || !(state.me === t.createdBy || taskIsMgmt(state.me))) return;
+  if (t.status === 'done' || t.status === 'declined') return;
+  if (!taskPtsEligible(t, cfg)) { showToast('Энэ ажилд оноо тооцогдохгүй', 'warn', 2500); return; }
+  const reason = await showPrompt(`Яагаад гүйцэтгээгүй гэж хаах вэ? (заавал) — ажилтанд −${cfg.cancel} оноо бичигдэнэ`, { placeholder: 'Шалтгаан...', okText: 'Хаах' });
+  if (!reason || !reason.trim()) { showToast('Шалтгаан шаардлагатай', 'warn', 2500); return; }
+  t.status = 'declined'; t.decline_reason = reason.trim();
+  t.kpi_code = tkSet(t.kpi_code, 'FL', Date.now());
+  logTaskActivity(t, 'failed_closed', { reason: reason.trim() });
+  await saveTask(t);
+  taskPush(t.assignee, `⛔ Гүйцэтгээгүй гэж хаагдлаа (−${cfg.cancel} оноо)`, `${t.title}: ${reason.trim()}`, t.id);
+  closeTaskModal(); render();
+}
+function taskPtsCanAdjust() { return !!(state.isCEO || taskIsMgmt(state.me)); }
+// Гар засвар = шинэ мөр (evaluations type='tpadj'), шалтгаантай, УСТАХГҮЙ. Буруу бол эсрэг тэмдэгтэй мөр нэм.
+async function taskPtsAdjust(key, name, month) {
+  if (!taskPtsCanAdjust()) { showToast('Зөвхөн удирдлага оноо засна', 'warn', 2500); return; }
+  const raw = await showPrompt(`${name}: оноо (нэмэх бол +5, хасах бол −5)`, { placeholder: '+5 эсвэл -5', okText: 'Үргэлжлүүлэх' });
+  if (raw == null) return;
+  const pts = Number(String(raw).replace(',', '.').replace(/[−–—]/g, '-').replace(/^\+/, ''));
+  if (!isFinite(pts) || !pts || Math.abs(pts) > 100) { showToast('Оноо буруу (0-ээс ялгаатай, ±100 хүртэл)', 'warn', 3000); return; }
+  const why = await showPrompt('Шалтгаан (заавал):', { placeholder: 'Яагаад засч байна вэ?', okText: 'Хадгалах' });
+  if (!why || !why.trim()) { showToast('Шалтгаан шаардлагатай', 'warn', 2500); return; }
+  const row = { id: `tpadj|${month}|${key}|${Date.now()}`, period: month, ratee: key, rater: state.me, type: 'tpadj', kpi_pct: pts, note: why.trim().slice(0, 200), ts: new Date().toISOString() };
+  try { await postEvalRow(row); showToast(`Оноо ${pts > 0 ? '+' : ''}${pts} бичигдлээ`, 'success', 2000); }
+  catch (e) { state.evaluations = (state.evaluations || []).filter(x => x.id !== row.id); showToast('Алдаа: ' + e.message, 'error'); render(); }
+}
+function taskPtsCfgRaw(c) {
+  return { from: c.from, stars: c.stars, mult: c.mult, early_on: c.earlyOn, early_h: c.earlyH, early_pts: c.earlyPts, early_min_star: c.earlyMinStar,
+    late: c.late, late_day: c.lateDay, late_day_cap: c.lateDayCap, cancel: c.cancel, auto_h: c.autoH, auto_star: c.autoStar, pay: c.pay };
+}
+async function taskPtsSaveCfg(raw) {
+  await saveAppConfig('task_points', raw);
+  state.appConfig = state.appConfig || {}; state.appConfig.task_points = raw;
+  render();
+}
+async function taskPtsActivate() {
+  if (!state.isCEO) { showToast('Зөвхөн захирал идэвхжүүлнэ', 'warn', 2500); return; }
+  const c = taskPtsCfg();
+  if (!(await showConfirm(`Даалгаврын оноог ӨНӨӨДРӨӨС идэвхжүүлэх үү?\n\nЭнэ өдрөөс хойш ҮҮССЭН даалгавар: цагтаа бол + оноо, хоцроовол −${c.late}, цуцалбал −${c.cancel}. Оноо цалингийн урамшуулалд орно. Өмнөх ажил хөндөгдөхгүй.`, { okText: 'Идэвхжүүлэх' }))) return;
+  try { await taskPtsSaveCfg(taskPtsCfgRaw(Object.assign(c, { from: todayStr() }))); showToast('✅ Даалгаврын оноо идэвхжлээ', 'success', 2500); }
+  catch (e) { showToast('Алдаа: ' + e.message, 'error'); }
+}
+function openTaskPtsCfgModal() {
+  if (!state.isCEO) { showToast('Зөвхөн захирал тохируулна', 'warn', 2500); return; }
+  const c = taskPtsCfg();
+  const f = (id, lbl, v, step) => `<label class="tp-lbl">${lbl}</label><input type="number" class="ui-raw tp-in" id="tp-c-${id}" value="${escapeHtml(String(v))}" step="${step || 1}" min="0">`;
+  tpModal(`<h2>⚙ Даалгаврын оноо — тохиргоо</h2>
+    <div class="tp-sub">Утга өөрчлөхөд тухайн сарууд дахин бодогдоно. Өмнөх сарын цалинд нөлөөлөхгүй байх бол «Эхлэх огноо»-г шинэчил.</div>
+    <label class="tp-lbl">Эхлэх огноо (хоосон = унтраалттай)</label><input type="date" class="ui-raw tp-in" id="tp-c-from" value="${escapeHtml(c.from)}">
+    <div class="tp-grid">${f('s5', '★★★★★', c.stars[5])}${f('s4', '★★★★', c.stars[4])}${f('s3', '★★★', c.stars[3])}${f('s2', '★★', c.stars[2])}${f('s1', '★', c.stars[1])}</div>
+    <div class="tp-grid">${f('mh', '🔴 Яаралтай ×', c.mult.high, 0.1)}${f('mm', '🟡 Энгийн ×', c.mult.med, 0.1)}${f('ml', '⚪ Чөлөөтэй ×', c.mult.low, 0.1)}</div>
+    <div class="tp-grid">${f('late', 'Хоцролт −', c.late)}${f('lday', 'Өдөр бүр −', c.lateDay)}${f('lcap', 'Өдрийн хязгаар −', c.lateDayCap)}${f('cancel', 'Цуцлал −', c.cancel)}</div>
+    <div class="tp-grid">${f('autoh', 'Авто ★ (цаг)', c.autoH)}${f('autos', 'Авто ★ утга', c.autoStar)}${f('eh', 'Эрт дуусгах (цаг)', c.earlyH)}${f('ep', 'Эрт дуусгасан +', c.earlyPts)}</div>
+    <label class="tp-chk"><input type="checkbox" class="ui-raw" id="tp-c-eon"${c.earlyOn ? ' checked' : ''}> Эрт дуусгавал нэмэлт оноо</label>
+    <label class="tp-chk"><input type="checkbox" class="ui-raw" id="tp-c-pay"${c.pay ? ' checked' : ''}> Оноо цалингийн урамшуулалд орно</label>
+    <div class="tp-actions"><button class="btn ui-raw" id="tp-c-cancel">Болих</button><button class="btn btn-primary ui-raw" id="tp-c-save">Хадгалах</button></div>`, (bg) => {
+    bg.querySelector('#tp-c-cancel').onclick = () => bg.remove();
+    bg.querySelector('#tp-c-save').onclick = async () => {
+      const g = (id) => bg.querySelector('#tp-c-' + id).value;
+      const raw = { from: g('from'), stars: { 5: +g('s5'), 4: +g('s4'), 3: +g('s3'), 2: +g('s2'), 1: +g('s1') }, mult: { high: +g('mh'), med: +g('mm'), low: +g('ml') },
+        early_on: bg.querySelector('#tp-c-eon').checked, early_h: +g('eh'), early_pts: +g('ep'), early_min_star: c.earlyMinStar,
+        late: +g('late'), late_day: +g('lday'), late_day_cap: +g('lcap'), cancel: +g('cancel'), auto_h: +g('autoh'), auto_star: +g('autos'), pay: bg.querySelector('#tp-c-pay').checked };
+      if (!(await showConfirm('Тохиргоог хадгалах уу? Оноо, цалингийн урамшуулал дахин бодогдоно.', { okText: 'Хадгалах' }))) return;
+      try { await taskPtsSaveCfg(raw); bg.remove(); showToast('Хадгалагдлаа', 'success', 1800); }
+      catch (e) { showToast('Алдаа: ' + e.message, 'error'); }
+    };
+  });
+}
+const TASK_PTS_KIND = { late: '⏰ Хугацаа хэтэрсэн', cancel: '⛔ Гүйцэтгээгүй', bonus: '★ Цагтаа дууссан', early: '🚀 Эрт дууссан', adj: '✎ Гар засвар' };
+function taskPtsKindLabel(e) { return /^d\d+$/.test(e.kind) ? '📅 Хэтэрсэн өдөр' : (TASK_PTS_KIND[e.kind] || e.kind); }
+function taskPtsEntryRowHtml(e) {
+  const pos = e.pts > 0;
+  return `<div class="tp-ent ${pos ? 'tp-pos' : 'tp-neg'}"><span class="tp-ent-d">${escapeHtml(String(e.date || '').slice(5))}</span>
+    <span class="tp-ent-w"><b>${escapeHtml(e.title || '')}</b><small>${escapeHtml(taskPtsKindLabel(e))}${e.why ? ' · ' + escapeHtml(e.why) : ''}${e.by ? ' · ' + escapeHtml(memberName(e.by)) : ''}</small></span>
+    <span class="tp-ent-p">${pos ? '+' : '−'}${Math.abs(e.pts)}</span></div>`;
+}
+function taskPtsMonthNav(month) {
+  const cur = todayStr().slice(0, 7);
+  return `<span class="tp-mnav"><button class="btn ui-raw tp-nav" data-tp-nav="-1">‹</button><b>${escapeHtml(month)}</b><button class="btn ui-raw tp-nav" data-tp-nav="1"${month >= cur ? ' disabled' : ''}>›</button></span>`;
+}
+function taskPtsShiftMonth(month, n) {
+  const [y, m] = month.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1));
+  const nx = d.getUTCFullYear() + '-' + _p2(d.getUTCMonth() + 1);
+  return nx > todayStr().slice(0, 7) ? month : nx;
+}
+// «Миний ажил» дээрх карт — ажилтан өөрийн сарын оноо, нэмэгдсэн/хасагдсан түүхээ харна. Дүн = `taskPtsByPerson` (Цалин/Тойм-той ижил).
+function taskPtsMineCardHtml() {
+  const cfg = taskPtsCfg();
+  if (!cfg.from) return state.isCEO ? `<div class="tp-card tp-off"><b>🎯 Даалгаврын оноо</b><div class="tp-sub">Цагтаа дуусгавал +, хоцроовол −, ажилтанд push мэдэгдэл. Өнөөдрөөс идэвхжүүлвэл өмнөх ажил хөндөгдөхгүй.</div>
+    <button class="btn btn-primary ui-raw" data-tp-activate>▶ Өнөөдрөөс идэвхжүүлэх</button></div>` : '';
+  ensureAttCallins();
+  const me = state.me, month = state.tpMonth || todayStr().slice(0, 7);
+  const r = taskPtsByPerson(month)[me] || { earn: 0, pen: 0, net: 0, entries: [] }, s = taskPtsStats(month)[me] || {};
+  const sp = stagePayFor(me, month);
+  const pay = (cfg.pay && (sp.taskFee || sp.taskPenFee)) ? `<div class="tp-pay">Цалингийн урамшуулалд: ${sp.taskFee ? '<b>+' + fmtMoney(sp.taskFee) + '</b>' : ''}${sp.taskPenFee ? ' <span class="tp-neg">−' + fmtMoney(sp.taskPenFee) + '</span>' : ''}</div>` : '';
+  const ents = r.entries.slice().reverse();
+  return `<div class="tp-card">
+    <div class="tp-head"><b>🎯 Даалгаврын оноо</b>${taskPtsMonthNav(month)}<button class="btn ui-raw tp-xls" data-tp-xls="${escapeHtml(month)}" data-tp-xkey="${escapeHtml(me)}">⬇ Excel</button></div>
+    <div class="tp-big ${r.net < 0 ? 'tp-neg' : r.net > 0 ? 'tp-pos' : ''}">${r.net > 0 ? '+' : r.net < 0 ? '−' : ''}${Math.abs(r.net)}<small> оноо</small></div>
+    <div class="tp-sub">Нэмэгдсэн <b class="tp-pos">+${r.earn}</b> · Хасагдсан <b class="tp-neg">−${r.pen}</b>${s.onTimePct != null ? ` · Цагтаа <b>${s.onTimePct}%</b>` : ''}${s.late ? ` · Хоцорсон <b>${s.late}</b>` : ''}${s.avg != null ? ` · Дундаж <b>${s.avg}★</b>` : ''}</div>
+    ${pay}
+    ${ents.length ? `<details class="tp-hist" open><summary>Түүх (${ents.length})</summary>${ents.slice(0, 40).map(taskPtsEntryRowHtml).join('')}</details>` : '<div class="tp-sub">Энэ сард оноо бичигдээгүй.</div>'}
+    <div class="tp-sub">Цагтаа дуусгаж ★ авбал +, хоцроовол −${cfg.late} (өдөр бүр −${cfg.lateDay}). Хугацаа сунгах бол ДУУСАХААС ӨМНӨ хүсэлт илгээнэ.</div>
+  </div>`;
+}
+function taskPtsLedgerModal(key, name, month) {
+  const r = taskPtsByPerson(month)[key] || { earn: 0, pen: 0, net: 0, entries: [] };
+  tpModal(`<div class="tp-head"><h2>${escapeHtml(name)} · ${escapeHtml(month)}</h2><button class="btn ui-raw" id="tp-l-close">✕</button></div>
+    <div class="tp-big ${r.net < 0 ? 'tp-neg' : 'tp-pos'}">${r.net > 0 ? '+' : r.net < 0 ? '−' : ''}${Math.abs(r.net)}<small> оноо</small></div>
+    <div class="tp-sub">Нэмэгдсэн <b class="tp-pos">+${r.earn}</b> · Хасагдсан <b class="tp-neg">−${r.pen}</b></div>
+    <div class="tp-list">${r.entries.length ? r.entries.slice().reverse().map(taskPtsEntryRowHtml).join('') : '<div class="tp-sub">Бичлэг алга.</div>'}</div>
+    <div class="tp-actions">${taskPtsCanAdjust() ? '<button class="btn ui-raw" id="tp-l-adj">✎ Оноо засах</button>' : ''}<button class="btn ui-raw" id="tp-l-xls">⬇ Excel</button></div>`, (bg) => {
+    bg.querySelector('#tp-l-close').onclick = () => bg.remove();
+    const adj = bg.querySelector('#tp-l-adj'); if (adj) adj.onclick = async () => { bg.remove(); await taskPtsAdjust(key, name, month); };
+    bg.querySelector('#tp-l-xls').onclick = () => taskPtsExportExcel(month, key);
+  });
+}
+// Гүйцэтгэл → «Даалгаврын оноо» таб: ажилтан бүрээр цагтаа %, хоцорсон тоо, дундаж ★, нийт оноо. Удирдлага бүгдийг, бусад зөвхөн өөрийг.
+function renderPerfTasks() {
+  const cfg = taskPtsCfg(), month = state.perfMonth;
+  if (!cfg.from) return `<div class="perf-note">Даалгаврын оноо идэвхжээгүй байна.</div>${state.isCEO ? '<button class="btn btn-primary ui-raw" data-tp-activate>▶ Өнөөдрөөс идэвхжүүлэх</button>' : ''}`;
+  ensureAttCallins();
+  const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();
+  const pts = taskPtsByPerson(month), stats = taskPtsStats(month), sp = stagePayByPerson(state.appOrders || [], month);
+  const keys = new Set([...Object.keys(pts), ...Object.keys(stats)]);
+  (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m) && memberInLens(m)).forEach(m => { if (isMgr) keys.add(personKey(m)); });
+  if (!isMgr) { [...keys].forEach(k => { if (k !== state.me) keys.delete(k); }); keys.add(state.me); }
+  const rows = [...keys].map(k => ({ k, p: pts[k] || { earn: 0, pen: 0, net: 0 }, s: stats[k] || {}, pay: sp[k] ? (sp[k].taskFee || 0) - (sp[k].taskPenFee || 0) : 0 }))
+    .sort((a, b) => b.p.net - a.p.net);
+  const list = rows.map((r, i) => `<div class="perf-row perf-row-click tp-row" data-tp-key="${escapeHtml(r.k)}" data-tp-name="${escapeHtml(memberName(r.k))}">
+      <div class="perf-rank">${i + 1}</div>
+      <div class="perf-name"><b>${escapeHtml(memberName(r.k))}</b></div>
+      <div class="perf-metrics"><span class="perf-chip"><span class="perf-chip-l">Цагтаа</span>${r.s.onTimePct == null ? '—' : r.s.onTimePct + '%'}</span><span class="perf-chip${r.s.late ? ' warn' : ''}"><span class="perf-chip-l">Хоцорсон</span>${r.s.late || 0}</span><span class="perf-chip"><span class="perf-chip-l">Дундаж</span>${r.s.avg == null ? '—' : r.s.avg + '★'}</span></div>
+      <div class="perf-score ${r.p.net < 0 ? 'tp-neg' : r.p.net > 0 ? 'tp-pos' : ''}">${r.p.net > 0 ? '+' : r.p.net < 0 ? '−' : ''}${Math.abs(r.p.net)}</div>
+      <div class="perf-bonus-cell">${cfg.pay && r.pay ? (r.pay > 0 ? '+' : '−') + fmtMoney(Math.abs(r.pay)) : '—'}</div>
+    </div>`).join('');
+  return `<div class="tp-bar">${state.isCEO ? '<button class="btn ui-raw" data-tp-cfg>⚙ Тохиргоо</button>' : ''}<button class="btn ui-raw" data-tp-xls="${escapeHtml(month)}"${isMgr ? '' : ` data-tp-xkey="${escapeHtml(state.me)}"`}>⬇ Excel</button></div>
+    <div class="perf-list"><div class="perf-row perf-row-head"><div class="perf-rank">#</div><div class="perf-name">Ажилтан</div><div class="perf-metrics">Үзүүлэлт</div><div class="perf-score">Оноо</div><div class="perf-bonus-cell">Цалинд</div></div>${list || '<div class="perf-note">Энэ сард даалгаврын оноо алга.</div>'}</div>
+    <div class="perf-note">Цагтаа % = цагтаа дууссан ÷ (цагтаа + хоцорсон). Оноо = нэмэгдсэн − хасагдсан (Цалин, Тойм-той ИЖИЛ эх сурвалж). Мөр дээр дарж түүхийг харна${taskPtsCanAdjust() ? ', ✎ оноо засна' : ''}.</div>`;
+}
+async function taskPtsExportExcel(month, onlyKey) {
+  try {
+    // ⛔ Тоог ЭХЭЛЖ (синхрон) бодно, дараа нь Excel сан ачаална — хүлээх хугацаанд өгөгдөл өөрчлөгдөж дэлгэцээс өөр тоо гарахаас сэргийлнэ.
+    const pts = taskPtsByPerson(month), stats = taskPtsStats(month), sp = stagePayByPerson(state.appOrders || [], month);
+    const keys = onlyKey ? [onlyKey] : [...new Set([...Object.keys(pts), ...Object.keys(stats)])];
+    const sum = keys.map(k => { const p = pts[k] || { earn: 0, pen: 0, net: 0 }, s = stats[k] || {}; return { 'Ажилтан': memberName(k), 'Цагтаа %': s.onTimePct == null ? '' : s.onTimePct, 'Хоцорсон': s.late || 0, 'Дундаж ★': s.avg == null ? '' : s.avg, 'Нэмэгдсэн': p.earn, 'Хасагдсан': p.pen, 'Нийт оноо': p.net, 'Цалинд (₮)': sp[k] ? (sp[k].taskFee || 0) - (sp[k].taskPenFee || 0) : 0 }; });
+    const led = []; keys.forEach(k => ((pts[k] || {}).entries || []).forEach(e => led.push({ 'Огноо': e.date, 'Ажилтан': memberName(k), 'Даалгавар': e.title, 'Төрөл': taskPtsKindLabel(e), 'Оноо': e.pts, 'Тайлбар': e.why || '' })));
+    const X = await loadSheetJS();
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sum), 'Оноо');
+    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(led), 'Түүх');
+    X.writeFile(wb, 'Даалгаврын-оноо-' + month + '.xlsx');
+  } catch (e) { showToast('Excel татаж чадсангүй: ' + e.message, 'error'); }
+}
+function attachTaskPtsHandlers(root) {
+  const scope = root || document;
+  scope.querySelectorAll('[data-tp-activate]').forEach(b => { b.onclick = taskPtsActivate; });
+  scope.querySelectorAll('[data-tp-cfg]').forEach(b => { b.onclick = openTaskPtsCfgModal; });
+  scope.querySelectorAll('[data-tp-xls]').forEach(b => { b.onclick = () => taskPtsExportExcel(b.dataset.tpXls, b.dataset.tpXkey || ''); });
+  scope.querySelectorAll('[data-tp-nav]').forEach(b => { b.onclick = () => { state.tpMonth = taskPtsShiftMonth(state.tpMonth || todayStr().slice(0, 7), Number(b.dataset.tpNav)); render(); }; });
+  scope.querySelectorAll('.tp-row[data-tp-key]').forEach(r => { r.onclick = () => taskPtsLedgerModal(r.dataset.tpKey, r.dataset.tpName, state.perfMonth); });
+}
+// Даалгаврын дэлгэрэнгүй цонхны оноо/хугацааны хэсэг: хугацаа (цагтай) · хүлээн авсан · сунгалт · авто ★ · энэ ажлаас гарсан оноо.
+function taskPtsInfoHtml(t) {
+  const cfg = taskPtsCfg();
+  if (!cfg.from || !taskPtsEligible(t, cfg)) return '';
+  const ctx = taskPtsCtx(), people = taskPtsPeople(t);
+  if (!people.length) return '';
+  const iAmCreator = state.me === t.createdBy || taskIsMgmt(state.me);
+  const v = taskPtsView(t, people.includes(state.me) ? state.me : people[0], ctx);
+  if (!v) return '';
+  const ack = taskAckTs(t), exts = taskExtensions(t), pend = exts.filter(x => x.st === 'p');
+  let h = `<div class="tp-info"><div class="tp-info-h">🎯 Оноо ба хугацаа</div>
+    <div>⏰ Эцсийн хугацаа: <b>${escapeHtml(ubDay(v.due))} ${escapeHtml(ubHM(v.due))}</b>${v.due !== v.chain.dueTs ? ' <span class="tp-sub">(чөлөөт өдрөөр зогссон)</span>' : ''}</div>
+    <div>${ack ? `👀 Хүлээн авсан: <b>${escapeHtml(ubDay(ack).slice(5))} ${escapeHtml(ubHM(ack))}</b>` : (t.status === 'done' ? '' : '⏳ Хүлээн аваагүй')}</div>`;
+  exts.forEach(x => { h += `<div class="tp-ext tp-ext-${x.st}">⏳ Сунгалт → ${escapeHtml(x.date)} ${escapeHtml(x.time)} · ${x.st === 'a' ? '✅ батлагдсан' : x.st === 'r' ? '✕ татгалзсан' : 'хариу хүлээж буй'}${x.reason ? ' · ' + escapeHtml(x.reason) : ''}${x.st === 'p' && iAmCreator ? ` <button class="btn ui-raw tp-ext-btn" data-tp-ext="${x.reqTs}" data-tp-ok="1">✓ Батлах</button><button class="btn ui-raw tp-ext-btn" data-tp-ext="${x.reqTs}" data-tp-ok="0">✕ Татгалзах</button>` : ''}</div>`; });
+  if (t.status === 'done' && !taskQualityRating(t)) { const d = taskDoneTs(t), left = d == null ? null : Math.ceil((d + cfg.autoH * 3600e3 - ctx.now) / 3600e3); h += left != null && left > 0 ? `<div class="tp-sub">⏳ ${left} цагийн дотор үнэлэхгүй бол ${'★'.repeat(cfg.autoStar)} автоматаар тооцогдоно.</div>` : '<div class="tp-sub">★ автоматаар тооцогдсон (48 цаг өнгөрсөн).</div>'; }
+  const ents = []; people.forEach(p => taskPtsEntries(t, p, ctx).forEach(e => ents.push(e)));
+  if (ents.length) h += `<div class="tp-list">${ents.map(e => taskPtsEntryRowHtml(Object.assign({}, e, { title: memberName(e.key) }))).join('')}</div>`;
+  if (pend.length && !iAmCreator) h += '<div class="tp-sub">Сунгалтын хүсэлт хариу хүлээж байна — хасалт түр зогссон.</div>';
+  return h + '</div>';
+}
+function taskPtsAttachInfo(root, t) {
+  root.querySelectorAll('[data-tp-ext]').forEach(b => { b.onclick = () => taskExtDecide(t.id, b.dataset.tpExt, b.dataset.tpOk === '1'); });
 }
 /* ─── Гүйцэтгэлийн суутгал (гар торгууль) ───
    Менежер тухайн ажилтанд тухайн сард шалтгаантай оноо хасч болно. evaluations
@@ -26517,12 +27057,12 @@ function renderPerformance() {
   const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();   // Багийн ачаалал эрхтэй удирдлага/захирал → баг харна
   const tab = (!isMgr && state.perfTab === 'all') ? 'me' : (state.perfTab || 'me');
   const cur = todayStr().slice(0, 7);
-  const tabs = [{ id: 'me', label: 'Миний оноо' }, ...(isMgr ? [{ id: 'all', label: 'Бүх ажилтан' }] : []), { id: 'rate', label: 'Үнэлэх' }];
+  const tabs = [{ id: 'me', label: 'Миний оноо' }, ...(isMgr ? [{ id: 'all', label: 'Бүх ажилтан' }] : []), { id: 'tasks', label: 'Даалгаврын оноо' }, { id: 'rate', label: 'Үнэлэх' }];
   const head = `<div class="perf-head">
     <div class="perf-month"><button class="btn perf-nav" data-perf-nav="-1">‹</button><span class="perf-month-label">${state.perfMonth}</span><button class="btn perf-nav" data-perf-nav="1"${state.perfMonth >= cur ? ' disabled' : ''}>›</button></div>
     <div class="perf-tabs">${tabs.map(t => `<button class="perf-tab${t.id === tab ? ' active' : ''}" data-perf-tab="${t.id}">${t.label}</button>`).join('')}</div>
   </div>`;
-  const body = tab === 'all' ? renderPerfAll() : tab === 'rate' ? renderPerfRate() : renderPerfMe();
+  const body = tab === 'all' ? renderPerfAll() : tab === 'rate' ? renderPerfRate() : tab === 'tasks' ? renderPerfTasks() : renderPerfMe();
   return head + attWarn + body;
 }
 
@@ -26550,6 +27090,7 @@ function renderPerfMe() {
       ${u.penalty ? `<div class="perf-penalty-list">${monthPenalties(state.me, month).map(p => `<div class="perf-penalty-item"><span>−${Number(p.kpi_pct) || 0}</span> ${escapeHtml(p.note || 'шалтгаан тэмдэглээгүй')}</div>`).join('')}</div>` : ''}
       ${u.total != null && u.partsUsed < 3 ? `<div class="perf-partial" style="color:var(--warn);font-size:12px;margin:4px 0;">⚠ Хэсэгчилсэн дата — оноо ${u.partsUsed}/3 бүрэлдэхүүнээс гарсан</div>` : ''}
       <div class="perf-note">Ажил: ${obj.total}${obj.repairs ? ` <small>(даалгавар ${obj.tasks} + засвар ${obj.repairs})</small>` : ''} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.repairs ? ` 🔧 Засвар: ${obj.repairs} удаа · ${obj.repairQty}ш${obj.repairDays != null ? ` · дундаж ${obj.repairDays} хоног` : ''}.` : ''}${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''} Чанар: ${u.qualityInfo && u.qualityInfo.rated ? `${u.qualityInfo.avg}★ (${u.qualityInfo.rated}/${u.qualityInfo.doneTotal} ажил үнэлэгдсэн)` : 'үнэлгээ хийгдээгүй'}. 360°: ${u.e360.raterCount} үнэлэгч.</div>
+      ${(() => { const c = taskPtsCfg(); if (!c.from) return ''; const r = taskPtsByPerson(month)[state.me] || { earn: 0, pen: 0, net: 0 }; return `<div class="perf-note tp-perf-line">🎯 Даалгаврын оноо: <b class="${r.net < 0 ? 'tp-neg' : 'tp-pos'}">${r.net > 0 ? '+' : r.net < 0 ? '−' : ''}${Math.abs(r.net)}</b> <small>(+${r.earn} · −${r.pen})</small> — «Даалгаврын оноо» табаас түүхийг харна.</div>`; })()}
       <details class="perf-help"><summary>ℹ️ KPI яаж бодогддог вэ?</summary>
         <div class="perf-help-body">
           <div>KPI = 5 хэсгийн дундаж, зөвхөн <b>дата байгаа</b> хэсгээр (дутуу хэсэг онооноос хасагдана).</div>
@@ -26669,6 +27210,7 @@ function openPerfDetail(key, name) {
 }
 function attachPerformanceHandlers() {
   attachPerfAttendRetry();   // ирцийн дата унасан бол «↻ Дахин» товч
+  attachTaskPtsHandlers();   // «Даалгаврын оноо» таб: идэвхжүүлэх · тохиргоо · Excel · түүх
   document.querySelectorAll('.perf-row[data-perf-key]').forEach(row => row.addEventListener('click', (e) => {
     if (e.target.closest('[data-penalty-key]')) return;   // суутгал товч дарвал дэлгэрэнгүй нээхгүй
     openPerfDetail(row.dataset.perfKey, row.dataset.perfName);
@@ -26727,7 +27269,7 @@ function attachPerformanceHandlers() {
      түлхүүрийг бичнэ.
    ⚠ Унавал `state.appConfig`-ийг ХООСЛОХГҮЙ — хуучин утга хэвээр үлдэнэ. */
 const APP_CONFIG_KEYS = ['work_norm_days', 'overtime', 'salary_rates', 'lunch', 'stage_pay',
-  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause', 'pay_rules', 'fx_cny'];
+  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause', 'pay_rules', 'fx_cny', 'task_points'];
 async function loadAppConfigAll(keys) {
   if (!DB_ANON_KEY) return;
   const list = (keys && keys.length) ? keys : APP_CONFIG_KEYS;
@@ -47260,7 +47802,7 @@ function renderDashboard() {
         <div class="dash-card dash-top">
           <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч</div>
           <div class="dash-top-head">
-            <span class="dash-top-sub">M-Event дамжлагын оноогоор</span>
+            <span class="dash-top-sub">${taskPtsOn() ? 'Дамжлага + даалгаврын оноогоор' : 'M-Event дамжлагын оноогоор'}</span>
             <input type="month" class="ui-raw dash-top-ym" id="dash-top-ym" value="${escapeHtml(topYm)}" max="${todayStr().slice(0, 7)}">
           </div>
           <div class="dash-top-scroll">
@@ -47269,7 +47811,7 @@ function renderDashboard() {
             const medal = r.pts <= 0 ? '' : i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : `${i + 1}. `;
             const w = r.pts > 0 ? Math.max(4, Math.round(r.pts / top * 100)) : 0;
             return `
-              <div class="dash-bar-row${r.pts > 0 ? '' : ' is-free'}" title="Хариуцсан ${r.led} · хамтарсан ${r.helped} дамжлага">
+              <div class="dash-bar-row${r.pts > 0 ? '' : ' is-free'}" title="Хариуцсан ${r.led} · хамтарсан ${r.helped} дамжлага${r.taskPts ? ' · даалгавар ' + (r.taskPts > 0 ? '+' : '') + r.taskPts : ''}">
                 <div class="dash-bar-label">${medal}${escapeHtml(memberName(r.key))}</div>
                 <div class="dash-bar-track"><div class="dash-bar-fill dash-top-fill" style="width:${w}%"></div></div>
                 <div class="dash-bar-count dash-top-n">${Math.round(r.pts)}</div>
@@ -47498,7 +48040,8 @@ function notifyTaskAssigned(t, title) {
   taskParticipants(t).forEach(k => {
     if (!k || k === state.me || seen.has(k)) return;
     seen.add(k);
-    pushBroadcast(k, { kind: 'tasks', title: title || 'Шинэ даалгавар', body: t.title, url: './' });
+    // `#ack-<id>`: мэдэгдэл дарахад ажил нээгдэж «Хүлээн авлаа» автоматаар бүртгэгдэнэ (sw.js-д 👀 товч ч гарна).
+    pushBroadcast(k, { kind: 'tasks', title: title || 'Танд шинэ ажил ирлээ', body: t.title + (t.due ? ' · ' + String(t.due).slice(0, 10) + (taskDueTime(t) ? ' ' + taskDueTime(t) : '') : ''), url: './#ack-' + t.id, id: t.id });
   });
 }
 function isTaskParticipant(t, key) {
@@ -48441,6 +48984,10 @@ function renderRow(t) {
       extraHtml += `<button type="button" class="fin-proof-thumb" data-act="proof" data-lightbox="${escapeHtml(driveThumbUrl(t.payment_proof_url, 1600))}" title="Шилжүүлгийн баримт — томруулж харах"><img src="${escapeHtml(driveThumbUrl(t.payment_proof_url, 200))}" alt="баримт" loading="lazy"></button>`;
     }
   }
+  // 👀 Хүлээн аваагүй ажил — ажилтан мөрөн дээрээс ШУУД нэг товшилтоор хүлээн авна (модал нээхгүй)
+  if (!isFinance && t.status !== 'done' && t.status !== 'declined' && isTaskParticipant(t, state.me) && t.createdBy !== state.me && taskPtsEligible(t, taskPtsCfg()) && !taskAckTs(t)) {
+    extraHtml += `<span class="tp-chip" data-act="ack" title="Ажлыг хүлээн авсанаа мэдэгдэнэ">👀 Хүлээн авлаа</span>`;
+  }
   // Үнэлгээ хүлээж буй — дуусаад үүсгэгч оноо өгөөгүй (хаагдаагүй) тэмдэг
   if (needsRating(t)) {
     extraHtml += t.createdBy === state.me
@@ -48484,7 +49031,7 @@ function renderRow(t) {
       </span>
     </div>
     <div class="col-due">
-      <span class="due ${dc}" data-act="open">${fmtDate(t.due) || '—'}</span>
+      <span class="due ${dc}" data-act="open">${fmtDate(t.due) || '—'}${taskDueTime(t) ? ' <small class="tp-time">' + escapeHtml(taskDueTime(t)) + '</small>' : ''}</span>
     </div>
     <div class="col-priority">
       <span class="priority ${t.priority||'none'}" data-act="open">
@@ -48509,6 +49056,7 @@ function renderRow(t) {
     const act = actEl?.dataset.act;
     // Delete + locked + menu үлдсэн — бусад бүх click модал нээнэ.
     if (act === 'proof') return;   // баримтын thumb — document-ийн lightbox handler нээнэ, модал нээхгүй
+    if (act === 'ack') { e.stopPropagation(); taskAck(t.id); return; }
     if (act === 'rate') { e.stopPropagation(); saveTaskQuality(t.id, +actEl.dataset.rateVal); return; }   // мөрөн дээр шууд ★ чанарын үнэлгээ (модал нээхгүй)
     if (act === 'menu') { e.stopPropagation(); openRowMenu(t, actEl); return; }
     if (act === 'delete') { deleteTask(t.id); return; }
@@ -48951,18 +49499,24 @@ async function bulkApply(action) {
     allowed.forEach(t => saveTask(t, true, true));           // backend hard delete — фон дээр
     return;
   } else if (action === 'done') {
-    const doneList = [];
+    const doneList = [], needPhoto = [];
     state.tasks.forEach(t => {
       if (state.bulkSelected.has(t.id)) {
+        // ⛔ Биелэлтийн зураг шаардсан ажлыг бөөнөөр дуусгаж ЗУРАГ ШААРДЛАГЫГ ТОЙРОХГҮЙ — нэг бүрчлэн дуусгана
+        if (t.requires_photo && !(t.completion_photos || []).length && !t.completion_photo_url) { needPhoto.push(t); return; }
         t.status = 'done';
         t.executed_at = new Date().toISOString();
         t.executed_by = state.me;
+        t.completed_at = Date.now();
+        t.kpi_code = tkSet(setCompletionCode(t.kpi_code, todayStr()), 'CA', t.completed_at);   // оноо тооцох цаг (changeTaskStatus-тай ижил)
         doneList.push(t);
       }
     });
     await Promise.all(doneList.map(t => saveTask(t)));
-    await flashBulkBarSuccess(`${ids.length} ажил дуусгалаа`);
-    showToast(`${ids.length} ажил дуусгасан`, 'success');
+    doneList.forEach(t => taskNotifyDone(t));
+    await flashBulkBarSuccess(`${doneList.length} ажил дуусгалаа`);
+    showToast(`${doneList.length} ажил дуусгасан`, 'success');
+    if (needPhoto.length) showToast(`⚠ ${needPhoto.length} ажил зураг шаардсан — нэг бүрчлэн дуусгана уу`, 'warn', 4500);
   } else if (action === 'restore') {
     // Архивласан task-уудыг 'open' болгож буцаан идэвхжүүлнэ.
     const restored = [];
@@ -49110,8 +49664,10 @@ function openTaskModal(id) {
     } else if (needsRating(t)) {
       info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--warn);font-weight:600;">⏳ Үүсгэгч (${escapeHtml(memberName(t.createdBy))}) үнэлгээ өгөхийг хүлээж байна — үнэлэгдтэл ажил хаагдахгүй.</div>`;
     }
+    info += taskPtsInfoHtml(t);   // 🎯 хугацаа (цагтай) · хүлээн авсан · сунгалт · авто ★ · энэ ажлаас гарсан оноо
     creatorInfo.innerHTML = info;
     creatorInfo.style.display = 'block';
+    taskPtsAttachInfo(creatorInfo, t);
     const qBlock = creatorInfo.querySelector('#t-quality-block');
     if (qBlock) {
       let pending = qVal;
@@ -49170,7 +49726,8 @@ function openTaskModal(id) {
     };
   }
   document.getElementById('t-due').value = t?.due || '';
-  document.getElementById('t-priority').value = t?.priority || 'none';
+  const _dtEl = document.getElementById('t-due-time'); if (_dtEl) _dtEl.value = t ? taskDueTime(t) : '';
+  document.getElementById('t-priority').value = t?.priority || (taskPtsOn() ? '' : 'none');   // оноо идэвхтэй үед зэрэглэлийг ЗААВАЛ сонгуулна
   const recEl = document.getElementById('t-recurrence');
   if (recEl) recEl.value = t?.recurrence || '';
   const reqPhotoEl = document.getElementById('t-requires-photo');
@@ -49192,7 +49749,7 @@ function openTaskModal(id) {
   };
 
   // Permission lock — canEdit.all биш бол бүх form-ийг НУУГААД read-only card харуулна
-  const formFieldIds = ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-priority','t-recurrence','t-requires-photo'];
+  const formFieldIds = ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-due-time','t-priority','t-recurrence','t-requires-photo'];
   // Тус бүрийн label-г label.previousLabel ашиглан олж нуух — DOM-д label > input дараалал
   const formLabelTexts = {
     't-title': 'Гарчиг *', 't-desc': 'Тайлбар',
@@ -49432,6 +49989,15 @@ function renderTaskActionButtons(t) {
   const canAct = isAssignee;
 
   const btns = [];
+  // 👀 Хүлээн авлаа — нэг товч (оноотой ажилд л); ⏳ сунгах хүсэлт; ⛔ өгсөн хүн «гүйцэтгээгүй» гэж хаах
+  const _tpCfg = taskPtsCfg(), _tpEl = taskPtsEligible(t, _tpCfg);
+  if (_tpEl && canAct && t.createdBy !== state.me && status !== 'done' && status !== 'declined') {
+    if (!taskAckTs(t)) btns.push(`<button class="btn btn-action" data-action="ack">👀 Хүлээн авлаа</button>`);
+    btns.push(`<button class="btn btn-action" data-action="extend">⏳ Хугацаа сунгах</button>`);
+  }
+  if (_tpEl && (state.me === t.createdBy || taskIsMgmt(state.me)) && status !== 'done' && status !== 'declined') {
+    btns.push(`<button class="btn btn-action" data-action="failclose">⛔ Гүйцэтгээгүй — хаах</button>`);
+  }
   // Эхлүүлэх — open эсвэл declined
   if (canAct && (status === 'open' || status === 'declined')) {
     btns.push(`<button class="btn btn-action" data-action="start">Эхлүүлэх</button>`);
@@ -49488,6 +50054,9 @@ function renderTaskActionButtons(t) {
 async function handleTaskAction(taskId, action) {
   const t = state.tasks.find(x => x.id === taskId);
   if (!t) return;
+  if (action === 'ack') { await taskAck(taskId); renderTaskActionButtons(t); return; }
+  if (action === 'extend') { taskRequestExtension(taskId); return; }
+  if (action === 'failclose') { await taskFailClose(taskId); return; }
   if (action === 'start') {
     await changeTaskStatus(taskId, 'in_progress');
     showToast('Ажил эхэлсэн', 'success');
@@ -49522,6 +50091,7 @@ async function handleTaskAction(taskId, action) {
     if (newAssignee === t.assignee) { showToast('Өөр хариуцагч сонгоно уу', 'warn'); return; }
     const prev = t.assignee;
     t.assignee = newAssignee;
+    t.kpi_code = tkSet(t.kpi_code, 'AK', '');   // шинэ хариуцагч өөрөө «Хүлээн авлаа» дарна — өмнөх хүний хүлээн авсан цаг шилжихгүй
     t.updated = new Date().toISOString();
     logTaskActivity(t, 'reassigned', { from: prev, to: newAssignee });
     await saveTask(t);
@@ -49604,12 +50174,24 @@ async function saveTaskFromModal() {
   const title = document.getElementById('t-title').value.trim();
   if (!title) { showToast('Гарчиг шаардлагатай', 'warn'); return; }
   const multi = state._multiAssignees || [];
+  // Даалгаврын оноо идэвхтэй үед: эцсийн хугацаа (огноо + цаг) ба зэрэглэл ЗААВАЛ; өгөх эрх = удирдлага бүгдэд, ахлах/нярав/менежер өөрийн багт.
+  const _tpOn = taskPtsOn(), _dueDate = document.getElementById('t-due').value || '', _dueTime = document.getElementById('t-due-time')?.value || '';
+  if (_tpOn) {
+    const _editing = state.editingId ? (state.tasks || []).find(x => x.id === state.editingId) : null;
+    if (!_editing || !_editing.status || _editing.status === 'open') {
+      if (!_dueDate || !_dueTime) { showToast('Эцсийн хугацаа (огноо ба цаг) заавал', 'warn', 3000); return; }
+      if (!document.getElementById('t-priority').value) { showToast('Зэрэглэл сонгоно уу (🔴 Яаралтай · 🟡 Энгийн · ⚪ Чөлөөтэй)', 'warn', 3000); return; }
+    }
+    const _targets = multi.length ? multi : [document.getElementById('t-assignee').value];
+    const _bad = _targets.find(a => a && !taskCanAssign(state.me, a));
+    if (_bad) { showToast(`${memberName(_bad)} таны багийн гишүүн биш — зөвхөн өөрийн багт даалгавар өгнө`, 'warn', 4000); return; }
+  }
   const baseData = {
     title,
     desc: document.getElementById('t-desc').value.trim(),
     branch: document.getElementById('t-branch').value || state.branch,
     project: document.getElementById('t-project')?.value || '',
-    due: document.getElementById('t-due').value || '',
+    due: _dueDate,
     priority: document.getElementById('t-priority').value,
     recurrence: document.getElementById('t-recurrence')?.value || '',
     requires_photo: !!document.getElementById('t-requires-photo')?.checked,
@@ -49629,6 +50211,7 @@ async function saveTaskFromModal() {
       comments: [],
       activity: [],
       ...baseData,
+      kpi_code: _dueTime ? tkSet('', 'DT', _dueTime) : '',   // эцсийн хугацааны ЦАГ (оноо тооцоход)
       assignee: asgn,
       group_id: groupId,
     }));
@@ -49639,7 +50222,7 @@ async function saveTaskFromModal() {
     // Sheet рүү тус бүрчлэн дараалуулан хадгална
     for (let i = 0; i < tasks.length; i++) {
       await saveTask(tasks[i]);
-      pushBroadcast(tasks[i].assignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: tasks[i].title, url: './' });
+      notifyTaskAssigned(tasks[i]);   // «Танд шинэ ажил ирлээ» + #ack холбоос (ганц ажилтай замтай ижил)
     }
     state._multiAssignees = null;
     state._taskImages = null;
@@ -49663,10 +50246,13 @@ async function saveTaskFromModal() {
   let t;
   if (state.editingId) {
     t = state.tasks.find(x=>x.id===state.editingId);
+    if (data.assignee !== t.assignee) t.kpi_code = tkSet(t.kpi_code, 'AK', '');   // хариуцагч солигдвол хүлээн авалт шинээр
     Object.assign(t, data);
+    if (_dueTime) t.kpi_code = tkSet(t.kpi_code, 'DT', _dueTime);   // цагийг токенд (kpi_code-ийн бусад токен хэвээр)
     saveTask(t);
   } else {
     t = { id: uid(), status: 'open', created: Date.now(), createdBy: state.me, comments: [], activity: [], ...data };
+    if (_dueTime) t.kpi_code = tkSet(t.kpi_code || '', 'DT', _dueTime);
     logTaskActivity(t, 'created', { title: t.title });
     state.tasks.unshift(t);
     saveTask(t);
@@ -49839,7 +50425,7 @@ function initEvents() {
   document.getElementById('t-cancel').onclick = closeTaskModal;
   document.getElementById('t-save').onclick = () => withBusy(document.getElementById('t-save'), saveTaskFromModal, { successText: 'Хадгалагдлаа' });
   // Шинэ даалгаврын ноорог — талбар өөрчлөгдөх бүрд localStorage-д түр хадгална
-  ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-priority','t-recurrence','t-requires-photo'].forEach(id => {
+  ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-due-time','t-priority','t-recurrence','t-requires-photo'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('input', saveTaskDraft);
@@ -50872,6 +51458,8 @@ async function bootApp() {
         if (ev.data && ev.data.type === 'open-url' && state.me) {
           const v = deepLinkView('#' + String(ev.data.url || '').split('#')[1]);
           if (v) { state.view = deepViewTarget(v); render(); }
+          const tdl = taskDeepLink('#' + String(ev.data.url || '').split('#')[1]);
+          if (tdl) { state._pendingTaskLink = tdl; state.view = 'mine'; render(); }
         }
       });
     }
@@ -51106,6 +51694,11 @@ function showApp() {
   const dl = deepLinkView(location.hash);
   if (dl) {
     state.view = deepViewTarget(dl);
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+  }
+  const tdl = taskDeepLink(location.hash);   // `./#ack-<id>` — даалгаврын мэдэгдэл: «Миний ажил» + тэр ажлыг нээнэ
+  if (tdl) {
+    state._pendingTaskLink = tdl; state.view = 'mine';
     try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
   }
 }

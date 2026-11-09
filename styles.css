@@ -5219,10 +5219,34 @@ summary.order-items-toggle { cursor: pointer; }
 /* Цонхны тайлбар мөр — эвдрэл ба бараа сканны цонх ИЖИЛ хэв маягтай, нэг дүрэм. */
 .dmg-hint, .oscan-hint { font-size: var(--fs-sm); color: var(--muted); margin: var(--space-1) 0 var(--space-3); line-height: 1.4; }
 .dmg-list { display: flex; flex-direction: column; }
-.dmg-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); }
+.dmg-item { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+.dmg-item-top, .dmg-cu-top { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .dmg-item-name { flex: 1; min-width: 0; font-size: var(--fs-md); }
 .dmg-item-q { color: var(--muted); font-weight: 400; }
 .dmg-brk { width: 64px; }
+/* 🧾 Нөхөн төлбөр: мөр бүр = тоо × нэгж үнэ = дүн (2026-11-09). 320px-д нэг мөрөнд багтана: тоо 60 · үнэ уян · дүн баруунд */
+.dmg-calc { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.dmg-calc input, .dmg-cu-name { min-height: 40px; min-width: 0; font-size: var(--fs-base); font-weight: 600; font-family: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-md); padding: 0 var(--space-2); box-sizing: border-box; }
+.dmg-calc .dmg-brk, .dmg-calc .dmg-cu-q { width: 60px; flex: none; text-align: center; }
+.dmg-calc .dmg-price { flex: 1 1 0; text-align: right; }
+.dmg-x { flex: none; font-size: var(--fs-sm); color: var(--muted); }
+.dmg-line { flex: none; min-width: 5.5em; text-align: right; font-size: var(--fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
+.dmg-ph { font-size: var(--fs-xs); color: var(--muted); }
+.dmg-cu-name { flex: 1 1 auto; font-weight: 500; }
+.dmg-cu-x { flex: none; min-width: 40px; min-height: 40px; font-size: var(--fs-base); color: var(--muted); background: transparent; border: 0; cursor: pointer; }
+.dmg-add { display: block; width: 100%; margin-top: var(--space-2); min-height: 40px; padding: 0 var(--space-3); text-align: left; font-size: var(--fs-md); font-family: inherit; font-weight: 600; color: var(--text); background: transparent; border: 1px dashed var(--border-strong); border-radius: var(--r-md); cursor: pointer; }
+.dmg-add-s { font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
+.dmg-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--border-strong); font-size: var(--fs-md); }
+.dmg-total b { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+/* Горим: барьцаанаас суутгах | нэмэлт төлбөр нэхэх */
+.dmg-modes { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.modal .dmg-mode { display: flex; align-items: flex-start; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--r-md); cursor: pointer; font-size: var(--fs-md); }
+.modal .dmg-mode:has(input:checked) { border-color: var(--accent, var(--border-strong)); background: var(--panel-hover); }
+.modal .dmg-mode:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+.modal .dmg-mode input { flex: none; width: auto; margin: 3px 0 0; padding: 0; }
+.dmg-mode span { display: flex; flex-direction: column; min-width: 0; }
+.dmg-mode small { font-size: var(--fs-xs); font-weight: 400; color: var(--muted); }
+.dmg-bill { margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--warn); line-height: 1.5; }
 .dmg-amt-l { display: block; margin-top: var(--space-3); font-size: var(--fs-sm); }
 .dmg-ret { margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--muted); }
 /* Буцаан олгох (refund) модал */
@@ -10493,6 +10517,10 @@ select.no-asar-len {
 .rf-hold { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md);
   background: var(--panel-hover); border-left: 3px solid var(--warn); font-size: var(--fs-sm); line-height: 1.5; }
 .dmg-late { margin-top: var(--space-1); font-size: var(--fs-xs); color: var(--danger); line-height: 1.5; }
+/* 🧾 Эвдрэлийн нөхөн төлбөр — картын мөр, төлбөрийн цонх, Авлагын мөр (2026-11-09) */
+.order-dmg-items { color: var(--muted); font-size: var(--fs-xs); }
+.order-dmg-inv { color: var(--text-soft); font-size: var(--fs-xs); }
+.bqp-extra, .ar-extra { font-size: var(--fs-sm); color: var(--warn); }
 /* 🔒 Нярав хүлээн аваагүй үед барьцаа буцаахгүй (2026-11-06) — цонхны тайлбар ба картын хүлээх мөр */
 .rf-lock { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md);
   background: var(--panel-hover); border-left: 3px solid var(--muted); font-size: var(--fs-sm); line-height: 1.5; }

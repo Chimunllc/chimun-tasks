@@ -5220,18 +5220,22 @@ const ORDER_FLOW = {
   'Дууссан':        { role: 'manager',                          next: null,             label: null },
   'Цуцалсан':       { role: 'manager',                          next: null,             label: null },
 };
-// Буцаалтын эвдрэл/гээгдэл — барьцаанаас хасах дүн + тэмдэглэл (note-д ⟦DMG|дүн|тэмдэглэл⟧).
+// Буцаалтын эвдрэл/гээгдэл — нөхөн төлбөрийн дүн + тэмдэглэл (note-д ⟦DMG|дүн|тэмдэглэл⟧).
+// 3-р талбар `ext` = «НЭМЭЛТ ТӨЛБӨР нэхэх» (барьцааг хөндөхгүй, харилцагчаас нэхнэ). Байхгүй = «барьцаанаас
+// суутгах» (хуучин бичлэг бүгд ингэж ойлгогдоно). Шалтгаанд `|` орохгүй (цэвэрлэдэг) тул сүүлийн талбар
+// яг `ext` бол л горим — шалтгаан нь «ext» гэсэн хоёр талбартай хуучин бичлэгтэй андуурахгүй.
 function parseDamage(note) {
   const m = String(note || '').match(/⟦DMG\|([^⟧]*)⟧/);
   if (!m) return null;
   const parts = m[1].split('|');
-  return { amount: Number(parts[0]) || 0, note: parts.slice(1).join('|') || '' };
+  const ext = parts.length >= 3 && parts[parts.length - 1] === 'ext';
+  return { amount: Number(parts[0]) || 0, note: (ext ? parts.slice(1, -1) : parts.slice(1)).join('|') || '', mode: ext ? 'ext' : 'dep' };
 }
 function encodeDamageNote(note, dmg) {
   const base = String(note || '').replace(/⟦DMG\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').trim();
   if (!dmg || !dmg.amount) return base;
   const dn = String(dmg.note || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
-  const tok = `⟦DMG|${Math.round(dmg.amount)}|${dn}⟧`;
+  const tok = `⟦DMG|${Math.round(dmg.amount)}|${dn}${dmg.mode === 'ext' ? '|ext' : ''}⟧`;
   return base ? base + ' ' + tok : tok;
 }
 
@@ -5301,9 +5305,21 @@ function orderRefundedDeposit(o) {
 function orderOverpaid(o) {
   return Math.max(0, (Number(o && o.paid_mnt) || 0) - orderBilled(o));
 }
-/* Авах ёстой НИЙТ дүн — буцаагдсан барьцаа хасагдсан. */
-function orderBilled(o) {
+/* Авах ёстой НИЙТ дүн — буцаагдсан барьцаа хасагдсан, эвдрэлийн НЭМЭЛТ төлбөр нэмэгдсэн.
+   Нэмэлт төлбөр (`orderExtraCharge`) нь `total_mnt`-д БИЧИГДЭХГҮЙ — түрээсийн дүн, НӨАТ-ын тулгалт, борлуулалт
+   хөндөгдөхгүй. Харин «авах ёстой» гэсэн ганц томъёонд орсноор Авлага · Төлбөр бүртгэх · жагсаалтын «Дутуу»
+   шошго бүгд өөрөө ажиллана (өөр газар дахин бодохгүй). */
+function orderBilledBase(o) {
   return Math.max(0, (Number(o && o.total_mnt) || 0) - orderRefundedDeposit(o));
+}
+function orderBilled(o) {
+  return orderBilledBase(o) + orderExtraCharge(o);
+}
+/* Эвдрэл/дутагдлын НЭМЭЛТ төлбөр — барьцаанаас суутгаж баршгүй, харилцагчаас нэхэх хэсэг (`orderDeductions.receivable`).
+   ⚡ `orderBilled` жагсаалт бүрт олон удаа дуудагддаг тул ⟦DMG⟧-гүй захиалгад ямар ч тооцоолол хийхгүй. */
+function orderExtraCharge(o) {
+  if (!o || typeof o.note !== 'string' || o.note.indexOf('⟦DMG|') < 0) return 0;
+  return orderDeductions(o).receivable;
 }
 /* «Хэдэн төгрөг авах үлдсэн бэ» — үлдэгдэл боддог БҮХ дэлгэц үүнийг дуудна. */
 function orderOwed(o) {
@@ -5323,50 +5339,75 @@ function orderOwed(o) {
    ⛔ held-ийг чөлөөт тэмдэглэлээс ТААМАГЛАХГҮЙ: зөвхөн ⟦DMG⟧ (дүн + шалтгаан) эсвэл
      шалтгаантай хэсэгчилсэн буцаалт (⟦RF|…|dep⟧). Шалтгаангүй нь `unexplained`.
    ⛔ Booqable-ийн барьцаа total_mnt-д ороогүй, 08-01-ээс өмнөх нь тухайн үедээ
-     буцаагдсан гэж үзсэн — хоёулаа 0. */
+     буцаагдсан гэж үзсэн — хоёулаа 0.
+
+   НЭМЭЛТ ТӨЛБӨР (2026-11-09, CEO: «эвдрэл дутсан үед нэхэх, бүртгэх хэсэг алга»):
+   · mode='dep' (өгөгдмөл, хуучин бичлэг бүгд) — барьцаанаас суутгана, барьцаанаас ИЛҮҮ хэсэг нь нэмж нэхэгдэнэ
+   · mode='ext' (⟦DMG|…|ext⟧) — барьцааг ХӨНДӨХГҮЙ, бүтнээр нь буцаана, нөхөн төлбөрийг харилцагчаас НЭМЖ нэхнэ
+   · plan       барьцаанаас суутгахаар төлөвлөсөн дүн (захиалга дуусаагүй ч) — буцаан олгох цонх үүнийг хасна
+   · receivable НЭМЖ нэхэх дүн — бичсэн даруйдаа `orderBilled`-д орно (Авлага · Төлбөр бүртгэх)
+   · collected  түүнээс хэдийг нь аль хэдийн авсан: төлсөн − (түрээс+барьцаа) илүү хэсэг, receivable-аар хязгаарлагдана
+   ⛔ Барьцаагүй захиалгад ч бүртгэгдэнэ (өмнө нь хязгаар = барьцаа байсан, ≈68% захиалга барьцаагүй). */
 function orderDeductions(o) {
-  const z = { dep: 0, refunded: 0, claim: 0, held: 0, receivable: 0, unexplained: 0, open: 0, reason: '' };
+  const z = { dep: 0, refunded: 0, claim: 0, mode: 'dep', plan: 0, held: 0, receivable: 0, collected: 0, unexplained: 0, open: 0, reason: '' };
   if (!o || String(o.source || '').toLowerCase() === 'booqable') return z;
   if (typeof _orderActive === 'function' && !_orderActive(o)) return z;
-  const dep = Math.max(0, Math.round(Number(o.deposit_mnt) || 0));
-  if (!dep) return z;
-  const ret = depositReturnState(o);
-  if (ret && ret.kind === 'pre') return { ...z, dep };
-  const stmtAmt = ret && ret.kind === 'stmt' ? Math.round(Number(ret.amount) || 0) : 0;
-  const refunded = Math.min(dep, Math.max(orderRefundedDeposit(o), stmtAmt));
-  const left = dep - refunded;
   const dmg = parseDamage(o.note);
   const claim = dmg ? Math.max(0, Math.round(dmg.amount)) : 0;
+  const mode = dmg && dmg.mode === 'ext' ? 'ext' : 'dep';
+  const dep = Math.max(0, Math.round(Number(o.deposit_mnt) || 0));
+  if (!dep && !claim) return z;
+  const ret = dep ? depositReturnState(o) : null;
+  const pre = !!(ret && ret.kind === 'pre');
+  // 08-01-ээс өмнөх барьцаа тухайн үедээ буцагдсан — «барьцаанаас суутгах» утгагүй. Нэмэлт төлбөр нь барьцаанаас хамаарахгүй.
+  if (pre && mode === 'dep') return { ...z, dep };
+  const stmtAmt = ret && ret.kind === 'stmt' ? Math.round(Number(ret.amount) || 0) : 0;
+  const refunded = pre ? 0 : Math.min(dep, Math.max(orderRefundedDeposit(o), stmtAmt));
+  const left = pre ? 0 : dep - refunded;
   const rf = parseRefund(o.note);
   const rfNote = rf && rf.kind === 'dep' ? String(rf.note || '').trim() : '';
   const done = ORDER_DONE_ST.has(String(o.status || ''));
   const settled = done || refunded > 0;   // дуусаагүй захиалгад эвдрэл бүртгэсэн ч суутгал ХАРИН хэрэгжээгүй
-  const out = { ...z, dep, refunded, claim };
-  if (claim > 0 && settled) {
-    out.held = Math.min(claim, left);
-    out.receivable = claim - out.held;
+  const out = { ...z, dep, refunded, claim, mode };
+  if (claim > 0) {
+    out.plan = mode === 'ext' ? 0 : Math.min(claim, left);
+    out.held = settled ? out.plan : 0;
+    out.receivable = claim - out.plan;
     out.reason = String((dmg && dmg.note) || '').trim();
+    const paid = Math.max(0, Number(o.paid_mnt) || 0);
+    out.collected = Math.min(out.receivable, Math.max(0, paid - orderBilledBase(o)));
   } else if (settled && refunded > 0 && left > 0) {
-    if (rfNote) { out.held = left; out.reason = rfNote; }
+    if (rfNote) { out.held = left; out.plan = left; out.reason = rfNote; }
     else out.unexplained = left;
   } else if (done && !ret && refunded === 0 && claim === 0) {
     out.open = dep;
   }
   return out;
 }
-/* Суутгал нь ашгийн тайланд ОРЛОГО болох дүн. Мөнгөн суурьт ЗӨВХӨН бодитоор
-   орсон мөнгөөр хязгаарлана (төлөгдөөгүй барьцааг орлого болгохгүй). */
-function orderDeductionIncome(o, basis) {
+/* Барьцаанаас суутгасан хэсэг ашгийн тайланд ОРЛОГО болох дүн. Мөнгөн суурьт ЗӨВХӨН бодитоор
+   орсон мөнгөөр хязгаарлана (төлөгдөөгүй барьцааг орлого болгохгүй). Нэмэлт төлбөрөөр орсон мөнгийг
+   хасч хязгаарлана — эс бөгөөс түүнийг барьцааны мөнгө гэж андуурч хоёр дахин тоолно. */
+function orderHeldIncome(o, basis) {
   const d = orderDeductions(o);
   if (!(d.held > 0)) return 0;
   if (basis !== 'cash') return d.held;
   const cmp = orderCmpAmount(o);
   const rental = Math.max(0, (Number(o.total_mnt) || 0) - d.dep - cmp);
-  return Math.min(d.held, Math.max(0, (Number(o.paid_mnt) || 0) - cmp - rental));
+  return Math.min(d.held, Math.max(0, (Number(o.paid_mnt) || 0) - d.collected - cmp - rental));
+}
+/* НЭМЭЛТ ТӨЛБӨР нь ОРЛОГО: гүйцэтгэлд нэхэмжилсэн даруйд, мөнгөн суурьт ЗӨВХӨН хүлээн авсан хэсгээр. */
+function orderExtraIncome(o, basis) {
+  const d = orderDeductions(o);
+  if (!(d.receivable > 0)) return 0;
+  return basis === 'cash' ? d.collected : d.receivable;
+}
+/* Суутгал + нэмэлт төлбөр = `finMonthIncome.dedInc` — түрээсийн (`orderRevenue`) ДЭЭР нэмэгдэх орлого. */
+function orderDeductionIncome(o, basis) {
+  return orderHeldIncome(o, basis) + orderExtraIncome(o, basis);
 }
 /* Тухайн сарын суутгалын нэгтгэл — орлоготой ИЖИЛ сар/суурь (`orderIncomeMonth`). */
 function deductionsOfMonth(month, basis) {
-  const rows = [], sum = { held: 0, income: 0, receivable: 0, unexplained: 0, open: 0, find: 0 };
+  const rows = [], sum = { held: 0, income: 0, receivable: 0, collected: 0, unexplained: 0, open: 0, find: 0 };
   (state.appOrders || []).forEach(o => {
     if (!o || !_orderActive(o) || orderIncomeMonth(o, basis) !== month) return;
     const d = orderDeductions(o);
@@ -5376,11 +5417,42 @@ function deductionsOfMonth(month, basis) {
     const income = orderDeductionIncome(o, basis);
     const ln = (typeof lastOrderNote === 'function') ? lastOrderNote(o) : null;   // «барьцааг буцаахгүй…» гэх чөлөөт тэмдэглэл — бүртгэхэд сануулга болно
     rows.push({ id: o.id, no: o.number, customer: o.customer || '', ...d, income, note: ln ? String(ln.text || '') : '', find: fnd ? findingsLine(fnd) : '', findDep: d.dep });
-    sum.held += d.held; sum.income += income; sum.receivable += d.receivable;
+    sum.held += d.held; sum.income += income; sum.receivable += d.receivable; sum.collected += d.collected;
     sum.unexplained += d.unexplained; sum.open += d.open; if (fnd) sum.find += 1;
   });
   rows.sort((a, b) => (b.held + b.receivable + b.unexplained + b.open) - (a.held + a.receivable + a.unexplained + a.open));
   return { rows, sum };
+}
+
+/* ─── НӨХӨН ТӨЛБӨРИЙН МӨРҮҮД: эвдэрсэн/дутсан бараа × нэгж үнэ (2026-11-09, CEO) ───────────────
+   Мөнгөний ГАНЦ эх сурвалж = ⟦DMG|дүн|шалтгаан[|ext]⟧ токен (`orderDeductions`). Мөрүүд (`stage_meta.claim`) нь
+   зөвхөн НЭХЭМЖЛЭХ ба картанд «юуны төлөө» гэдгийг харуулахад: { ts, who, mode, amount, lines:[{sku,name,qty,price}],
+   invoices:[{no,id,at,by,amount}] }.
+   ⛔ `stage_meta` дахь ШАТНЫ бичлэг бүр `by`/`at`/`items`/`photos` нэртэй — үнэлгээ, оноо, «Дамжлагагүй» шошго,
+     шатны түүх ТЭДГЭЭРЭЭР бүх түлхүүрийг гүйж уншина. Тиймээс нөхөн төлбөрийн талбарыг `who`/`ts`/`lines` гэж ЗОРИУД
+     өөр нэрлэсэн: `by` гэж бичвэл нөхөн төлбөр бүртгэсэн хүн «өмнөх шатны гүйцэтгэгч» болж оноо авна (scan-тест хаана).
+   ⛔ Нийлбэр нь токены дүнтэй таарахгүй бол (дүн өөр замаар засагдсан) мөрийг ХЭРЭГЛЭХГҮЙ — нэхэмжлэхэд худал
+     мөр гарахаас сэргийлж нэг мөр «Эвдрэл, дутагдлын нөхөн төлбөр» болно. */
+function claimItemsClean(items) {
+  return (Array.isArray(items) ? items : []).map(it => ({
+    sku: String((it && it.sku) || ''),
+    name: String((it && it.name) || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80),
+    qty: Math.max(0, Math.round(Number(it && it.qty) || 0)),
+    price: Math.max(0, Math.round(Number(it && it.price) || 0)),
+  })).filter(it => it.name && it.qty > 0 && it.price > 0);
+}
+function claimItemsTotal(items) { return (items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0); }
+function orderClaimOf(o) {
+  const dmg = parseDamage(o && o.note);
+  const amount = dmg ? Math.max(0, Math.round(dmg.amount)) : 0;
+  if (!(amount > 0)) return null;
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta.claim : null;
+  const cl = (sm && typeof sm === 'object' && !Array.isArray(sm)) ? sm : {};
+  let items = claimItemsClean(cl.lines);
+  if (claimItemsTotal(items) !== amount) items = [];
+  const invoices = (Array.isArray(cl.invoices) ? cl.invoices : []).filter(x => x && x.no)
+    .map(x => ({ no: String(x.no), id: String(x.id || ''), at: String(x.at || '').slice(0, 10), by: String(x.by || ''), amount: Math.round(Number(x.amount) || 0) }));
+  return { amount, reason: String(dmg.note || '').trim(), mode: dmg.mode, items, invoices, at: String(cl.ts || ''), by: String(cl.who || '') };
 }
 
 /* ─── ХАРИЛЦАГЧИЙН БҮРТГЭЛ (customers) ───────────────────────────────────
@@ -7412,14 +7484,38 @@ function openOrderDamageModal(oid) {
   const deposit = Number(o.deposit_mnt) || 0;
   const existingDmg = parseDamage(o.note);
   const prevBrk = parseBrokenRec(o.note);
+  const prevClaim = orderClaimOf(o);
+  const seeCost = !!(state.isCEO || can('orders.pay'));   // өртөг нь мөнгөн мэдээлэл — зөвхөн төлбөр харах эрхтэйд санамж болгон
+  // Өмнө бүртгэсэн нөхөн төлбөрийн мөрийг барааны мөртэй sku → нэрээр тулгана. Тулгагдаагүй нь «өөр мөр» болно.
+  const pool = (prevClaim ? prevClaim.items : []).slice();
+  const takeClaim = (sku, name) => {
+    let i = sku ? pool.findIndex(c => c.sku && c.sku === sku) : -1;
+    if (i < 0) i = pool.findIndex(c => c.name === name);
+    return i >= 0 ? pool.splice(i, 1)[0] : null;
+  };
+  const calcHtml = (qtyCls, qtyAttrs, qty, price, qtyTitle) =>
+    `<div class="dmg-calc"><input type="number" inputmode="numeric" min="0" value="${qty}" class="ui-raw ${qtyCls}" ${qtyAttrs} aria-label="Эвдэрсэн, дутсан тоо"${qtyTitle ? ` title="${escapeHtml(qtyTitle)}"` : ''}>` +
+    `<span class="dmg-x">ш ×</span>` +
+    `<input type="text" inputmode="numeric" class="ui-raw money-input dmg-price" value="${price > 0 ? moneyFmtInput(price) : ''}" placeholder="нэгж үнэ ₮" aria-label="Нэгж үнэ (₮)">` +
+    `<span class="dmg-line">—</span></div>`;
   const rowsHtml = items.map(it => {
     const p = productOf(it);   // sku → id → нэр (сайт id-г sku болгож илгээдэг)
     const sku = p ? p.sku : '';
     const maxq = Number(it.qty) || 0;
-    const cur = sku ? (prevBrk[sku] || 0) : 0;
-    return `<div class="dmg-item">${prodThumb({ sku, name: it.name })}<span class="dmg-item-name">${escapeHtml(it.name)} <span class="dmg-item-q">(${maxq}ш)</span></span>` +
-      `<input type="number" min="0" max="${maxq}" value="${cur}" class="ui-raw dmg-brk" data-brk-sku="${escapeHtml(sku)}" data-brk-max="${maxq}"${sku ? '' : ' disabled title="Каталогт алга — нөөц хасахгүй"'}></div>`;
+    const cl = takeClaim(sku, it.name);
+    const qty = Math.min(maxq, cl ? cl.qty : (sku ? (prevBrk[sku] || 0) : 0));
+    const cost = seeCost && sku ? countUnitCost(sku) : 0;
+    return `<div class="dmg-item" data-dmg-row>` +
+      `<div class="dmg-item-top">${prodThumb({ sku, name: it.name })}<span class="dmg-item-name">${escapeHtml(it.name)} <span class="dmg-item-q">(${maxq}ш)</span></span></div>` +
+      calcHtml('dmg-brk', `max="${maxq}" data-brk-sku="${escapeHtml(sku)}" data-brk-max="${maxq}" data-name="${escapeHtml(it.name)}"`, qty, cl ? cl.price : 0, sku ? '' : 'Каталогт алга — нөөц хасахгүй, зөвхөн нөхөн төлбөрт орно') +
+      (cost ? `<div class="dmg-ph">Өртөг ${fmtMoney(cost)}</div>` : '') + `</div>`;
   }).join('');
+  // Хуучин бүртгэл мөргүй (зөвхөн дүн) байвал нэг «өөр мөр» болгож хадгална — эс бөгөөс дахин хадгалахад дүн ХАЯГДАНА
+  const lumpOnly = prevClaim && !prevClaim.items.length ? [{ name: 'Эвдрэл, дутагдлын нөхөн төлбөр', qty: 1, price: prevClaim.amount }] : [];
+  const customRow = (c) => `<div class="dmg-item dmg-cu" data-dmg-cu>` +
+    `<div class="dmg-cu-top"><input type="text" class="ui-raw dmg-cu-name" maxlength="80" placeholder="ж: Хоногийн нэмэгдэл, цэвэрлэгээ" value="${escapeHtml(c.name || '')}" aria-label="Мөрийн нэр"><button type="button" class="ui-raw dmg-cu-x" aria-label="Мөр хасах">✕</button></div>` +
+    calcHtml('dmg-cu-q', 'data-cu', c.qty || 1, c.price || 0) + `</div>`;
+  const customHtml = [...pool, ...lumpOnly].map(customRow).join('');
   document.getElementById('mev-damage-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg';
@@ -7429,75 +7525,166 @@ function openOrderDamageModal(oid) {
   const rcvFind = orderReceiveFindings(o);
   const rcvText = findingsLine(rcvFind);
   const noteInit = cleanUserNote || (!existingDmg && rcvText ? 'Хүлээн авахад: ' + rcvText : '');
+  // Барьцаа АЛЬ ХЭДИЙН буцсан бол суутгах юм үлдээгүй — гэдгийг ЭНД хэлнэ (№1671: бүтэн барьцаа
+  // буцсаны дараа 60,000₮ бүртгэгдэж, мөнгө чимээгүй алдагдсан). Үлдсэн нь «нэмж нэхэх» болно.
+  const depLeft = Math.max(0, deposit - orderRefundedDeposit(o));
+  const depOk = depLeft > 0;
+  const mode0 = depOk ? (prevClaim ? prevClaim.mode : 'dep') : 'ext';
   modal.innerHTML = `
     <div class="modal dmg-modal">
-      <h2>Буцаалт · эвдрэл — #${o.number ?? ''}</h2>
+      <h2>⚠ Эвдрэл · нөхөн төлбөр — #${o.number ?? ''}</h2>
       ${rcvText ? `<div class="dmg-find">🔎 Хүлээн авахад тэмдэглэсэн: <b>${escapeHtml(rcvText)}</b>${rcvFind.by ? ` <span class="dmg-find-by">— ${escapeHtml(memberName(rcvFind.by) || rcvFind.by)}</span>` : ''}${rcvFind.comment ? `<div class="dmg-find-c">💬 ${escapeHtml(rcvFind.comment)}</div>` : ''}</div>` : ''}
-      <p class="dmg-hint">Эвдэрсэн/дутсан барааны тоог оруулна — тэр тоо нөөцөөс (боломжит хэмжээ) хасагдана. Засварласны дараа барааны хэсгээс «⚠ Эвдэрсэн» тоог буулгаж сэргээнэ.</p>
-      <div class="dmg-list">${rowsHtml || '<div class="dmg-hint">Бараа алга</div>'}</div>
-      <label class="dmg-amt-l">Эвдрэл/гээгдлийн дүн (₮)${deposit > 0 ? ` <span class="dmg-item-q">— барьцаа ${fmtMoney(deposit)}-аас хасна</span>` : ''}</label>
-      <input id="dmg-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="${existingDmg ? moneyFmtInput(existingDmg.amount) : '0'}">
+      <p class="dmg-hint">Эвдэрсэн/дутсан барааны <b>тоо</b>, <b>нэгж үнийг</b> оруулна — нөхөн төлбөр автоматаар бодогдоно. Тоо нь нөөцөөс (боломжит хэмжээ) хасагдана. Засварласны дараа барааны хэсгээс «⚠ Эвдэрсэн» тоог буулгаж сэргээнэ.</p>
+      <div class="dmg-list">${rowsHtml || '<div class="dmg-hint">Бараа алга</div>'}<div id="dmg-custom">${customHtml}</div></div>
+      <button type="button" class="ui-raw dmg-add" id="dmg-add">＋ Өөр мөр нэмэх <span class="dmg-add-s">хоногийн нэмэгдэл, цэвэрлэгээ, гээгдсэн…</span></button>
+      <div class="dmg-total">Нийт нөхөн төлбөр <b id="dmg-sum">0₮</b></div>
+      <div class="dmg-modes" role="radiogroup" aria-label="Нөхөн төлбөрийг яаж авах вэ">
+        <label class="dmg-mode"><input type="radio" class="ui-raw" name="dmg-mode" value="dep"${depOk ? '' : ' disabled'}${mode0 === 'dep' ? ' checked' : ''}><span><b>🔒 Барьцаанаас суутгах</b><small>${depOk ? `барьцаа ${fmtMoney(depLeft)} үлдсэн` : (deposit > 0 ? 'барьцаа аль хэдийн буцсан' : 'барьцаагүй захиалга')}</small></span></label>
+        <label class="dmg-mode"><input type="radio" class="ui-raw" name="dmg-mode" value="ext"${mode0 === 'ext' ? ' checked' : ''}><span><b>💵 Нэмэлт төлбөр нэхэх</b><small>барьцаа хөндөгдөхгүй · Авлагад орно</small></span></label>
+      </div>
+      <div id="dmg-ret" class="dmg-ret"></div>
       <label class="dmg-amt-l">Тэмдэглэл</label>
       <textarea id="dmg-note" class="ui-raw" rows="2" placeholder="ж: 1 ширээ хугарсан, 2 таваг цуурсан">${escapeHtml(noteInit)}</textarea>
-      <div id="dmg-ret" class="dmg-ret"></div>
       <div class="modal-actions">
         <button class="btn" id="dmg-cancel">Болих</button>
         <button class="btn btn-primary" id="dmg-save">✓ Хадгалах</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
-  const amtEl = modal.querySelector('#dmg-amount');
   const retEl = modal.querySelector('#dmg-ret');
-  // Барьцаа АЛЬ ХЭДИЙН буцсан бол суутгах юм үлдээгүй — гэдгийг ЭНД хэлнэ (№1671: бүтэн барьцаа
-  // буцсаны дараа 60,000₮ бүртгэгдэж, мөнгө чимээгүй алдагдсан). Үлдсэн нь «авах ёстой» болно.
-  const depLeft = Math.max(0, deposit - orderRefundedDeposit(o));
-  const upd = () => {
-    const d = Math.min(deposit, moneyVal(amtEl)), held = Math.min(d, depLeft), recv = d - held;
-    retEl.innerHTML = deposit > 0
-      ? `Үйлчлүүлэгчид буцаах барьцаа: <b>${fmtMoney(depLeft - held)}</b>${held ? ` · суутгал −${fmtMoney(held)}` : ''}`
-        + (recv ? `<div class="dmg-late">⚠ Барьцаа аль хэдийн буцсан — ${fmtMoney(recv)}-ийг үйлчлүүлэгчээс НЭМЖ авна (Дүн шинжилгээнд «авах ёстой» гэж гарна)</div>` : '')
-      : '';
+  const modeOf = () => depOk ? ((modal.querySelector('input[name="dmg-mode"]:checked') || {}).value || 'dep') : 'ext';
+  const rowQty = (r) => {
+    const q = r.querySelector('.dmg-brk, .dmg-cu-q'); const max = Number(q.getAttribute('max')) || Infinity;
+    return Math.max(0, Math.min(max, Math.round(Number(q.value) || 0)));
   };
-  amtEl.addEventListener('input', upd); upd();
+  // Мөр бүрийн дүн = тоо × нэгж үнэ; нийлбэр нь ⟦DMG⟧ дүн болно
+  const calc = () => {
+    let sum = 0;
+    modal.querySelectorAll('[data-dmg-row], [data-dmg-cu]').forEach(r => {
+      const amt = rowQty(r) * moneyVal(r.querySelector('.dmg-price'));
+      sum += amt;
+      r.querySelector('.dmg-line').textContent = amt ? fmtMoney(amt) : '—';
+    });
+    return sum;
+  };
+  const upd = () => {
+    const sum = calc(), mode = modeOf();
+    modal.querySelector('#dmg-sum').textContent = fmtMoney(sum);
+    const held = mode === 'dep' ? Math.min(sum, depLeft) : 0, recv = sum - held;
+    let h = '';
+    if (sum > 0) {
+      if (held) h += `Барьцаанаас суутгах: <b>−${fmtMoney(held)}</b> · үйлчлүүлэгчид буцаах барьцаа: <b>${fmtMoney(depLeft - held)}</b>`;
+      else if (depLeft > 0) h += `Барьцаа <b>${fmtMoney(depLeft)}</b> бүтнээрээ буцна`;
+      if (recv) {
+        h += deposit > 0 && !depOk
+          ? `<div class="dmg-late">⚠ Барьцаа аль хэдийн буцсан — ${fmtMoney(recv)}-ийг үйлчлүүлэгчээс НЭМЖ авна (Авлагад орно, «Төлбөр бүртгэх»-ээр хүлээн авна)</div>`
+          : mode === 'dep'
+            ? `<div class="dmg-late">⚠ Барьцаа хүрэхгүй — ${fmtMoney(recv)}-ийг үйлчлүүлэгчээс НЭМЖ нэхнэ (Авлагад орно)</div>`
+            : `<div class="dmg-bill">💵 ${fmtMoney(recv)} нэмэлт төлбөр нэхнэ — Авлагад орно, «Төлбөр бүртгэх»-ээр хүлээн авна</div>`;
+      }
+    }
+    retEl.innerHTML = h;
+  };
+  modal.addEventListener('input', upd);
+  modal.addEventListener('change', upd);
+  modal.querySelector('#dmg-add').onclick = () => {
+    modal.querySelector('#dmg-custom').insertAdjacentHTML('beforeend', customRow({ name: '', qty: 1, price: 0 }));
+    upd();
+    const nm = modal.querySelectorAll('.dmg-cu-name'); try { nm[nm.length - 1].focus(); } catch (_) {}
+  };
+  modal.addEventListener('click', (e) => {
+    const x = e.target.closest && e.target.closest('.dmg-cu-x');
+    if (x) { x.closest('[data-dmg-cu]').remove(); upd(); }
+  });
+  upd();
   const close = () => modal.remove();
   modal.querySelector('#dmg-cancel').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#dmg-save').onclick = async (e) => {
     const btn = e.currentTarget;
-    const amount = Math.min(deposit, moneyVal(amtEl));
+    const mode = modeOf();
     const userNote = modal.querySelector('#dmg-note').value.trim();
-    const newBrk = {}; const brokenLines = [];
-    modal.querySelectorAll('.dmg-brk').forEach(inp => {
-      const sku = inp.dataset.brkSku; if (!sku) return;
-      const q = Math.max(0, Math.min(Number(inp.dataset.brkMax) || 0, Number(inp.value) || 0));
-      if (q > 0) newBrk[sku] = q;
-    });
+    const newBrk = {}; const brokenLines = []; const picked = [];
+    for (const r of modal.querySelectorAll('[data-dmg-row]')) {
+      const inp = r.querySelector('.dmg-brk'), sku = inp.dataset.brkSku, q = rowQty(r), pr = moneyVal(r.querySelector('.dmg-price'));
+      if (!q) continue;
+      if (sku) newBrk[sku] = q;
+      if (pr > 0) picked.push({ sku, name: inp.dataset.name, qty: q, price: pr });
+    }
+    for (const r of modal.querySelectorAll('[data-dmg-cu]')) {
+      const name = r.querySelector('.dmg-cu-name').value.trim(), q = rowQty(r), pr = moneyVal(r.querySelector('.dmg-price'));
+      if (!(q > 0 && pr > 0)) continue;
+      if (!name) { showToast('Өөр мөрийн нэрийг бичнэ үү (ж: Хоногийн нэмэгдэл)', 'warn', 3500); r.querySelector('.dmg-cu-name').focus(); return; }
+      picked.push({ sku: '', name, qty: q, price: pr });
+    }
+    const claimItems = claimItemsClean(picked);
+    const amount = claimItemsTotal(claimItems);
+    const prevAmt = prevClaim ? prevClaim.amount : 0;
+    const prevMode = prevClaim ? prevClaim.mode : 'dep';
+    const moneyMoved = amount !== prevAmt || (amount > 0 && mode !== prevMode && (depOk || prevMode === 'ext'));
+    if (moneyMoved && prevClaim) {
+      // Нэхэмжлэх гарсан/мөнгө авсан бол дүн өөрчлөх нь тэднийг хөндөнө — ил хэлж асууна
+      const dd = orderDeductions(o);
+      const warn = [];
+      if (prevClaim.invoices.length) warn.push(`Нэхэмжлэх ${prevClaim.invoices.map(x => x.no).join(', ')} өмнөх дүнгээр гарсан — өөрчлөгдөхгүй, шинээр гаргах хэрэгтэй.`);
+      if (dd.collected > 0) warn.push(`Нэмэлт төлбөрөөс ${fmtMoney(dd.collected)} аль хэдийн хүлээн авсан.`);
+      if (warn.length && !(await showConfirm(warn.join('\n\n') + '\n\nДүнг өөрчлөх үү?', { title: 'Нөхөн төлбөр өөрчлөх', okText: 'Тийм, өөрчилнө', cancelText: 'Болих', danger: true }))) return;
+    }
+    if (moneyMoved) {
+      // 🔒 Хаасан сар — нөхөн төлбөр тэр сарын орлогыг хөдөлгөнө (барьцааны суутгалтай ижил)
+      try { await loadClosedMonths(true); } catch (_) { /* офлайн — кэшээр */ }
+      const lk = orderLockedMonth(o);
+      if (lk) {
+        if (!state.isCEO) { showToast(`🔒 ${lk} сар хаагдсан — нөхөн төлбөр тэр сарын орлогыг хөдөлгөнө. CEO сарыг нээнэ.`, 'error', 7000); return; }
+        if (!(await showConfirm(`${lk} сар хаагдсан байна. Нөхөн төлбөр тэр сарын орлогод нэмэгдэнэ.\n\nҮргэлжлүүлэх үү?`, { title: '🔒 Хаасан сар', okText: 'Тийм', cancelText: 'Болих', danger: true }))) return;
+      }
+    }
     btn.disabled = true;
     // Барааны broken тоог ДЕЛЬТА-гаар шинэчилнэ (өмнө бүртгэсэнтэй харьцуулж; дахин бүртгэвэл давхардахгүй, 0 болговол сэргэнэ)
     const prev = parseBrokenRec(o.note);
     brokenLines.push(...await applyBrokenDelta(o, prev, newBrk, userNote));
-    // Захиалгын note-г серверийн ХАМГИЙН СҮҮЛИЙН утга дээр шинэчилнэ (бусад токен ⟦PAY⟧/⟦SL⟧ дарагдахгүй)
-    let baseNote = o.note;
+    // Захиалгын note/stage_meta-г серверийн ХАМГИЙН СҮҮЛИЙН утга дээр шинэчилнэ (бусад токен ⟦PAY⟧/⟦SL⟧ дарагдахгүй)
+    let baseNote = o.note, baseSm = o.stage_meta;
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
-      if (gr.ok) { const rr = await gr.json(); if (rr && rr[0] && rr[0].note != null) baseNote = String(rr[0].note); }
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note,stage_meta`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
+      if (gr.ok) { const rr = await gr.json(); if (rr && rr[0]) { if (rr[0].note != null) baseNote = String(rr[0].note); if (rr[0].stage_meta != null) baseSm = rr[0].stage_meta; } }
     } catch (_) {}
     let newNote = encodeBrokenRec(baseNote, newBrk);
     const dmgNote = [userNote, brokenLines.length ? 'Эвдэрсэн: ' + brokenLines.join(', ') : ''].filter(Boolean).join(' · ');
-    newNote = encodeDamageNote(newNote, { amount, note: dmgNote });
-    o.note = newNote;
+    newNote = encodeDamageNote(newNote, { amount, note: dmgNote, mode });
+    // stage_meta.claim = нэхэмжлэхийн мөрүүд + нэхэмжлэхийн дугаарууд (мөнгө биш — мөнгө ⟦DMG⟧-д)
+    const sm = (baseSm && typeof baseSm === 'object' && !Array.isArray(baseSm)) ? { ...baseSm } : {};
+    const keptInv = (sm.claim && Array.isArray(sm.claim.invoices)) ? sm.claim.invoices : [];
+    if (amount > 0) sm.claim = { ts: new Date().toISOString(), who: state.me || '', mode, amount, lines: claimItems, invoices: keptInv };
+    else delete sm.claim;
+    if (moneyMoved) {
+      const txt = amount > 0
+        ? `⚠ Нөхөн төлбөр ${fmtMoney(amount)} — ${mode === 'ext' ? 'нэмэлт төлбөр нэхнэ' : 'барьцаанаас суутгана'}${prevAmt ? ` (өмнө ${fmtMoney(prevAmt)})` : ''}`
+        : `⚠ Нөхөн төлбөр цуцаллаа (өмнө ${fmtMoney(prevAmt)})`;
+      sm.notes = appendOrderNote(orderNotesOf({ stage_meta: sm }), txt, state.me || '');
+    }
+    const prevNote = o.note, prevSm = o.stage_meta;
+    o.note = newNote; o.stage_meta = sm;
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
         method: 'PATCH',
         headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ note: newNote, updated_at: new Date().toISOString() }),
+        body: JSON.stringify({ note: newNote, stage_meta: sm, updated_at: new Date().toISOString() }),
       }, 15000);
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      close();
-      const brokenTotal = Object.values(newBrk).reduce((s, q) => s + q, 0);
-      showToast(`Эвдрэл бүртгэлээ${brokenTotal ? ` · ${brokenTotal}ш нөөцөөс хасав` : ''}${amount ? ` · барьцаанаас −${fmtMoney(amount)}` : ''}`, 'success', 3500);
-      render();
-    } catch (err) { o.note = baseNote; btn.disabled = false; showToast('Note хадгалах алдаа: ' + err.message, 'error', 4500); }
+    } catch (err) { o.note = prevNote; o.stage_meta = prevSm; btn.disabled = false; showToast('Note хадгалах алдаа: ' + err.message, 'error', 4500); return; }
+    // ⚠ Хадгалагдсан — доорх зүйл (дахин зурах, нэхэмжлэх санал болгох) унасан ч «хадгалагдсангүй» гэж буцаахгүй
+    close();
+    const brokenTotal = Object.values(newBrk).reduce((s, q) => s + q, 0);
+    showToast(`Эвдрэл бүртгэлээ${brokenTotal ? ` · ${brokenTotal}ш нөөцөөс хасав` : ''}${amount ? ` · ${mode === 'ext' ? 'нэмэлт төлбөр' : 'барьцаанаас'} ${fmtMoney(amount)}` : ''}`, 'success', 3500);
+    try { render(); } catch (e2) { console.warn('render after claim', e2); }
+    // Авлагад орсон бол нэхэмжлэхийг шууд гаргахыг санал болгоно (гаргах нь дугаар авдаг тул асууна)
+    try {
+      const dd2 = orderDeductions(o);
+      if (dd2.receivable > 0 && (can('orders.pay') || state.isCEO)) {
+        if (await showConfirm(`Нэмэлт төлбөр ${fmtMoney(dd2.receivable)} Авлагад орлоо.\n\nНөхөн төлбөрийн нэхэмжлэхийг одоо гаргах уу? (PDF татах, и-мэйлээр илгээх)`, { title: '🧾 Нэхэмжлэх', okText: 'Гаргах', cancelText: 'Дараа' })) issueClaimInvoice(oid);
+      }
+    } catch (e3) { console.warn('claim invoice prompt', e3); }
   };
   modal.classList.add('open');
 }
@@ -11628,6 +11815,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-contract]').forEach(b => b.addEventListener('click', () => openMeventContract(b.dataset.appContract)));
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
   document.querySelectorAll('[data-app-invoice]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); issueInvoice(b.dataset.appInvoice, b); }));
+  document.querySelectorAll('[data-app-claim-invoice]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); issueClaimInvoice(b.dataset.appClaimInvoice, b); }));
   document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
   document.querySelectorAll('[data-app-credit]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCreditModal(b.dataset.appCredit); }));
@@ -24470,6 +24658,7 @@ function invoiceNoText(no, issuedAt) {
 // Нэхэмжлэхийн HTML — ЦЭВЭР функц (DOM хэрэггүй) тул тестээр шалгагдана.
 // d = { no, issuedAt, dueAt, orderNo, buyer, lines, t, org }
 function invoiceHtml(d) {
+  if (d && d.t && d.t.kind === 'claim') return claimInvoiceHtml(d);   // нөхөн төлбөр — өөр багана (нэгж үнэ), өөр дүн
   const e = (s) => escapeHtml(s == null ? '' : String(s));
   const m = (n) => fmtMoney(Number(n) || 0);
   const org = d.org || {}, b = d.buyer || {}, t = d.t || {};
@@ -24660,16 +24849,8 @@ function dl(){
 var SEND=${JSON.stringify(d.sendUrl || '')};
 var TOK=${JSON.stringify(d.sendTok || '')};
 var TO=${JSON.stringify(d.to || '')};
-var SUBJ=${JSON.stringify('Нэхэмжлэх ' + (d.no || '') + ' · ' + ((d.org && d.org.name) || ''))};
-var BODY=${JSON.stringify(
-  'Нэхэмжлэх ' + (d.no || '') +
-  ((d.orderNo != null && d.orderNo !== '') ? ' (Захиалга №' + d.orderNo + ')' : '') + '\n\n' +
-  'Төлөх дүн: ' + fmtMoney(Number((d.t && ((d.t.due > 0) ? d.t.due : d.t.total)) || 0)) + '\n' +
-  'Данс: ' + ((d.org && d.org.bank) || '') + ' · ' + ((d.org && d.org.account) || '') + '\n' +
-  'Хүлээн авагч: ' + ((d.org && (d.org.holder || d.org.name)) || '') + '\n' +
-  'Гүйлгээний утга: ' + (d.no || '') + '\n\n' +
-  'Дэлгэрэнгүйг хавсаргасан PDF-ээс үзнэ үү.'
-)};
+var SUBJ=${JSON.stringify(invoiceMail(d).subject)};
+var BODY=${JSON.stringify(invoiceMail(d).body)};
 function snd(){
   if(!SEND){alert('Илгээх суваг тохируулаагүй байна.');return;}
   var to=TO;
@@ -24705,6 +24886,167 @@ function snd(){
       if(btn){btn.textContent=old||'📧 Илгээх';btn.disabled=false;}});
 }
 <\/script></body></html>`;
+}
+
+/* ─── НӨХӨН ТӨЛБӨРИЙН НЭХЭМЖЛЭХ (2026-11-09, CEO) ────────────────────────────────────────────
+   Эвдэрсэн/дутсан барааны нөхөн төлбөрийг харилцагчид нэхэмжилнэ: захиалгын карт → «🧾 Нөхөн төлбөрийн нэхэмжлэх»
+   → шинэ цонхонд баримт → PDF татах / и-мэйлээр илгээх (энгийн нэхэмжлэхтэй ИЖИЛ суваг, `invoices` хүснэгт).
+   ⛔ Дүнг энд ДАХИН БОДОХГҮЙ — `orderDeductions` (мөнгө) + `orderClaimOf` (мөр)-өөс л уншина.
+   ⛔ СНАПШОТ: гаргасан үеийн мөр/дүн хөлдөнө; дараа нь нөхөн төлбөр засагдвал шинэ нэхэмжлэх гаргана.
+   · extra>0  → «НЭХЭМЖЛЭХ» (төлөх данс, гүйлгээний утга = нэхэмжлэхийн дугаар)
+   · extra=0  → «МЭДЭГДЭЛ»: барьцаанаас суутгасан тул нэмэлт төлбөр шаардахгүй (харилцагч яагаад барьцаа бага
+                буцсанаа мэднэ) */
+function claimInvoiceData(o) {
+  const cl = orderClaimOf(o);
+  if (!cl) return null;
+  const dd = orderDeductions(o);
+  const lines = cl.items.length
+    ? cl.items.map(it => ({ name: it.name, qty: it.qty, price: it.price, total: it.qty * it.price }))
+    : [{ name: cl.reason || 'Эвдрэл, дутагдлын нөхөн төлбөр', qty: 1, price: cl.amount, total: cl.amount }];
+  const depLeft = Math.max(0, dd.dep - dd.refunded);
+  const t = {
+    kind: 'claim', claim: cl.amount, held: dd.plan, extra: dd.receivable,
+    depReturn: depLeft > 0 ? Math.max(0, depLeft - dd.plan) : 0,
+    paid: dd.collected, due: Math.max(0, dd.receivable - dd.collected), total: dd.receivable,
+  };
+  return { lines, t, reason: cl.reason, claim: cl };
+}
+// Имэйлийн сэдэв/бичвэр — ЦЭВЭР. Энгийн нэхэмжлэхийн бичвэр ӨМНӨХӨӨРӨӨ хэвээр.
+function invoiceMail(d) {
+  const t = (d && d.t) || {}, org = (d && d.org) || {}, no = (d && d.no) || '';
+  const claim = t.kind === 'claim';
+  const ord = (d && d.orderNo != null && d.orderNo !== '') ? ' (Захиалга №' + d.orderNo + ')' : '';
+  if (claim && !(Number(t.extra) > 0)) {
+    return {
+      subject: 'Нөхөн төлбөрийн мэдэгдэл ' + no + ' · ' + (org.name || ''),
+      body: 'Нөхөн төлбөрийн мэдэгдэл ' + no + ord + '\n\n' +
+        'Нөхөн төлбөр ' + fmtMoney(Number(t.claim) || 0) + ' нь барьцаанаас суутгагдсан тул нэмэлт төлбөр шаардахгүй.\n' +
+        (Number(t.depReturn) > 0 ? 'Буцаах барьцаа: ' + fmtMoney(Number(t.depReturn)) + '\n' : '') +
+        '\nДэлгэрэнгүйг хавсаргасан PDF-ээс үзнэ үү.',
+    };
+  }
+  return {
+    subject: (claim ? 'Нөхөн төлбөрийн нэхэмжлэх ' : 'Нэхэмжлэх ') + no + ' · ' + (org.name || ''),
+    body: (claim ? 'Нөхөн төлбөрийн нэхэмжлэх ' : 'Нэхэмжлэх ') + no + ord + '\n\n' +
+      'Төлөх дүн: ' + fmtMoney(Number((t.due > 0) ? t.due : t.total) || 0) + '\n' +
+      'Данс: ' + (org.bank || '') + ' · ' + (org.account || '') + '\n' +
+      'Хүлээн авагч: ' + (org.holder || org.name || '') + '\n' +
+      'Гүйлгээний утга: ' + no + '\n\n' +
+      'Дэлгэрэнгүйг хавсаргасан PDF-ээс үзнэ үү.',
+  };
+}
+// Нөхөн төлбөрийн баримтын HTML — ЦЭВЭР функц (DOM хэрэггүй). `invoiceHtml` t.kind==='claim' үед үүнийг дуудна.
+function claimInvoiceHtml(d) {
+  const e = (s) => escapeHtml(s == null ? '' : String(s));
+  const m = (n) => fmtMoney(Number(n) || 0);
+  const org = d.org || {}, b = d.buyer || {}, t = d.t || {};
+  const bill = Number(t.extra) > 0;
+  const row = (l, v, cls) => `<tr class="${cls || ''}"><td>${e(l)}</td><td class="rt">${m(v)}</td></tr>`;
+  const lines = (d.lines || []).map((l, i) => `<tr><td class="ctr">${i + 1}</td><td>${e(l.name)}</td>` +
+    `<td class="ctr">${Number(l.qty) || 0}</td><td class="rt">${m(l.price)}</td><td class="rt">${m(l.total)}</td></tr>`).join('');
+  return `
+  <h1>${bill ? 'НӨХӨН ТӨЛБӨРИЙН НЭХЭМЖЛЭХ' : 'НӨХӨН ТӨЛБӨРИЙН МЭДЭГДЭЛ'}</h1>
+  <div class="no">${e(d.no)}${d.orderNo ? ' · Захиалга №' + e(d.orderNo) : ''}</div>
+  <table class="hd"><tr>
+    <td class="half">
+      <b>${bill ? 'Нэхэмжлэгч' : 'Мэдэгдэгч'}</b><br>
+      ${e(org.name)}<br>Регистр: ${e(org.reg)}<br>${e(org.address)}${bill ? `<br>${e(org.bank)} · ${e(org.account)}` : ''}
+    </td>
+    <td class="half">
+      <b>Харилцагч</b><br>
+      ${e(b.name)}<br>
+      ${b.person ? 'Төлөөлөгч: ' + e(b.person) + '<br>' : ''}
+      ${b.reg ? 'Регистр: ' + e(b.reg) + '<br>' : ''}
+      ${b.phone ? 'Утас: ' + e(b.phone) + '<br>' : ''}
+      ${b.address ? e(b.address) : ''}
+    </td>
+  </tr></table>
+  <div class="dates">Огноо: ${e(d.issuedAt)}${d.dueAt ? ' · Төлөх хугацаа: ' + e(d.dueAt) : ''}</div>
+  ${d.reason ? `<div class="dates">Шалтгаан: <b>${e(d.reason)}</b></div>` : ''}
+
+  <table class="svc">
+    <tr><th class="ctr">№</th><th>Эвдэрсэн / дутсан бараа, үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Нэгж үнэ</th><th class="rt">Дүн</th></tr>
+    ${lines}
+  </table>
+
+  <table class="tot"><tbody>
+    ${row('Нийт нөхөн төлбөр', t.claim)}
+    ${Number(t.held) > 0 ? row('Барьцаанаас суутгасан', -Number(t.held), 'neg') : ''}
+    ${bill ? `<tr class="grand"><td>НЭМЭЛТ ТӨЛӨХ ДҮН</td><td class="rt">${m(t.extra)}</td></tr>` : ''}
+    ${Number(t.paid) > 0 ? row('Төлсөн', -Number(t.paid), 'neg') : ''}
+    ${Number(t.paid) > 0 ? `<tr class="grand"><td>ҮЛДЭГДЭЛ</td><td class="rt">${m(t.due)}</td></tr>` : ''}
+  </tbody></table>
+
+  ${bill
+    ? `<div class="words">Дүн үсгээр: <b>${e(mnNumToWords(Number(t.due) > 0 ? t.due : t.extra))} төгрөг</b></div>
+  <div class="pay">Төлбөрийг дараах данс руу шилжүүлнэ үү:<br>
+    <b>${e(org.bank)} · ${e(org.account)}</b> · Хүлээн авагч: ${e(org.holder || org.name)}<br>
+    Гүйлгээний утга: <b>${e(d.no)}</b></div>`
+    : `<div class="pay">Нөхөн төлбөр <b>${m(t.claim)}</b> нь барьцаанаас суутгагдсан тул нэмэлт төлбөр шаардахгүй.${Number(t.depReturn) > 0 ? `<br>Үйлчлүүлэгчид буцаах барьцаа: <b>${m(t.depReturn)}</b>` : ''}</div>`}
+  <div class="sig"><div>${bill ? 'Нэхэмжлэгч' : 'Мэдэгдэгч'}: ${e(org.director)}<i></i></div><div>Хүлээн авсан:<i></i></div></div>`;
+}
+// Нэхэмжлэхийн дугаарыг захиалгын нөхөн төлбөрт (stage_meta.claim.invoices) нэмнэ — картад харагдана.
+// ⚠ Серверийн ХАМГИЙН СҮҮЛИЙН stage_meta дээр нэмнэ (санах ойн хуучин хувилбараар бусдын өөрчлөлтийг дарахгүй).
+// Алдаа гарсан ч нэхэмжлэх хүчинтэй (`invoices` хүснэгтэд бий) — зөвхөн картын лавлагаа дутна.
+async function appendClaimInvoiceRef(o, ref) {
+  let baseSm = o.stage_meta;
+  try {
+    const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(o.id)}&select=stage_meta`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
+    if (gr.ok) { const rr = await gr.json(); if (rr && rr[0] && rr[0].stage_meta != null) baseSm = rr[0].stage_meta; }
+  } catch (_) { /* санах ойн утгаар */ }
+  const sm = (baseSm && typeof baseSm === 'object' && !Array.isArray(baseSm)) ? { ...baseSm } : {};
+  const cl = (sm.claim && typeof sm.claim === 'object' && !Array.isArray(sm.claim)) ? { ...sm.claim } : {};
+  cl.invoices = [...(Array.isArray(cl.invoices) ? cl.invoices : []), ref];
+  sm.claim = cl;
+  await patchOrderFields(o, { stage_meta: sm });
+}
+async function issueClaimInvoice(orderId, btn) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(orderId));
+  if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  if (!(can('orders.pay') || state.isCEO)) { showToast('Танд нэхэмжлэх гаргах эрх олгогдоогүй', 'warn', 3000); return; }
+  const cd = claimInvoiceData(o);
+  if (!cd) { showToast('Нөхөн төлбөр бүртгэгдээгүй байна — эхлээд «⚠ Эвдрэл»-ээр бүртгэнэ үү', 'warn', 4500); return; }
+  // Цонхыг ДАРАЛТЫН ДОТОР нээнэ — DB-ийн хариу хүлээгээд нээвэл popup blocker хаана.
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
+  w.document.write('<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Нэхэмжлэх…</title></head><body style="font:14px system-ui,sans-serif;color:#4b5563;padding:28px;">Нэхэмжлэх бэлдэж байна…</body></html>');
+  w.document.close();
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Бэлдэж байна…'; }
+  try {
+    const cust = (state.customers || []).find(c => String(c.id) === String(o.customer_id)) || null;
+    const buyer = invoiceBuyer(o, cust);
+    const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+                'Content-Type': 'application/json', Prefer: 'return=representation' };
+    const r = await fetchWithTimeout(INVOICES_URL(), { method: 'POST', headers: H, body: JSON.stringify({
+      order_id: String(o.id), order_no: Number(o.number) || null,
+      customer_id: o.customer_id || null,
+      buyer, lines: cd.lines, totals: cd.t, total: cd.t.extra, note: 'Нөхөн төлбөр',
+      created_by: state.me || '',
+    }) }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const inv = (await r.json())[0];
+    if (!inv) throw new Error('хариу хоосон');
+    const no = invoiceNoText(inv.no, inv.issued_at);
+    try { await appendClaimInvoiceRef(o, { no, id: String(inv.id || ''), at: String(inv.issued_at || todayStr()).slice(0, 10), by: state.me || '', amount: cd.t.extra }); }
+    catch (e2) { console.warn('claim invoice ref', e2); }
+    const doc = invoiceDocHtml({ no, issuedAt: inv.issued_at, dueAt: inv.due_at, orderNo: o.number,
+                                 buyer, lines: cd.lines, t: cd.t, reason: cd.reason, org: invoiceOrg(buyer.isOrg),
+                                 sendUrl: withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL),
+                                 sendTok: sessionTokenForSend(),
+                                 to: buyer.email || '' });
+    w.document.open(); w.document.write(doc); w.document.close();
+    showToast('Нөхөн төлбөрийн нэхэмжлэх ' + no + ' бэлэн ✓', 'success', 2500);
+    render();
+  } catch (e) {
+    try {
+      w.document.open();
+      w.document.write('<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Алдаа</title></head><body style="font:14px system-ui,sans-serif;color:#b3261e;padding:28px;">Нэхэмжлэх гаргаж чадсангүй: ' + escapeHtml(e.message) + '</body></html>');
+      w.document.close();
+    } catch (_) {}
+    showToast('Нэхэмжлэх гаргаж чадсангүй: ' + e.message, 'error', 5000);
+  } finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 
 function nomaadContractHtml(o) {
@@ -36588,7 +36930,9 @@ function bqOrderCard(o) {
         add('pay', appCanPay ? `<button class="btn ofb btn-primary" data-bq-pay="${id}">💵 Төлбөр бүртгэх</button>` : '');
         add('advance', advBtn);
         add('scan', ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn ofb" data-bq-scan="${id}">📷 Скан</button>` : '');
-        add('damage', ['rented', 'returning', 'returned', 'stowed', 'stopped', 'archived'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn ofb" data-app-damage="${id}">⚠ Эвдрэл</button>` : '');
+        add('damage', ['rented', 'returning', 'returned', 'stowed', 'stopped', 'archived'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn ofb" data-app-damage="${id}" title="Эвдэрсэн/дутсан бараа, нэгж үнэ → нөхөн төлбөр (барьцаанаас суутгах эсвэл нэмж нэхэх)">⚠ Эвдрэл · нөхөн төлбөр</button>` : '');
+        // 🧾 Нөхөн төлбөрийн нэхэмжлэх/мэдэгдэл — ⚠ `_cardMoney` доор тодорхойлогддог тул ЭНД `canSeeOrderMoney()`-г шууд дууд (TDZ)
+        add('claimInv', canSeeOrderMoney() && orderClaimOf(o) && (can('orders.pay') || state.isCEO) ? `<button class="btn ofb" data-app-claim-invoice="${id}" title="Эвдрэл, дутагдлын нөхөн төлбөр — PDF татах / и-мэйлээр илгээх">🧾 Нөхөн төлбөрийн ${orderExtraCharge(o) > 0 ? 'нэхэмжлэх' : 'мэдэгдэл'}</button>` : '');
         // 🔒 Бараа хүлээн аваагүй + буцаах зүйл зөвхөн барьцаа бол товч хаалттай (захирал цонхоор нээнэ)
         const _depLk = !!depositRefundLock(o) && !(_over > 0) && !state.isCEO
           && (Number(o.deposit_mnt) || 0) - orderRefundedDeposit(o) > 0;
@@ -36681,8 +37025,15 @@ function bqOrderCard(o) {
       ? `<div class="dep-row">${depBadge}<span class="dep-sales" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b>${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>${depAcctHtml}${_depWaitHtml}`
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); const _dd = orderDeductions(o);
-      const _ddTxt = _dd.receivable > 0 ? ` · ⛔ барьцаа буцсан — харилцагчаас ${fmtMoney(_dd.receivable)} авна` : (_dd.held > 0 ? ` · барьцаанаас ${fmtMoney(_dd.held)} суутгагдсан` : '');
-      return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}${_cardMoney ? _ddTxt : ''}</div>` : ''; })()}
+      const _cl = _cardMoney ? orderClaimOf(o) : null;
+      const _open = Math.max(0, _dd.receivable - _dd.collected);
+      // Нэмэлт төлбөр = харилцагчаас НЭМЖ авах хэсэг (Авлагад орсон); барьцаанаас суутгагдсан хэсэг тусдаа
+      const _ddTxt = (_dd.receivable > 0
+        ? (_open > 0 ? ` · 💵 нэмэлт төлбөр ${fmtMoney(_dd.receivable)}${_dd.collected > 0 ? ` (төлсөн ${fmtMoney(_dd.collected)})` : ''} — Авлагад` : ` · ✓ нэмэлт төлбөр ${fmtMoney(_dd.receivable)} төлөгдсөн`)
+        : '') + (_dd.held > 0 ? ` · барьцаанаас ${fmtMoney(_dd.held)} суутгагдсан` : '');
+      const _itTxt = _cl && _cl.items.length ? `<div class="order-meta order-dmg-items">${_cl.items.map(x => `${escapeHtml(x.name)} ×${x.qty} × ${fmtMoney(x.price)}`).join(' · ')}</div>` : '';
+      const _invTxt = _cl && _cl.invoices.length ? `<div class="order-meta order-dmg-inv">🧾 ${_cl.invoices.map(x => `<b>${escapeHtml(x.no)}</b>${x.at ? ' · ' + escapeHtml(x.at.slice(5)) : ''}`).join(' · ')}</div>` : '';
+      return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? (_d.mode === 'ext' ? `Нөхөн төлбөр ${fmtMoney(_d.amount)}` : `Эвдрэл −${fmtMoney(_d.amount)}`) : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}${_cardMoney ? _ddTxt : ''}</div>${_itTxt}${_invTxt}` : ''; })()}
     ${(() => { const _f = orderReceiveFindings(o); if (!_f) return '';   // нярав/жолооч хүлээн авахад тэмдэглэсэн бохир, эвдэрсэн
       const _reg = parseDamage(o.note) ? ' · ✓ суутгал бүртгэсэн' : (_cardMoney ? ' · <b>суутгал бүртгээгүй</b>' : '');
       return `<div class="order-meta order-find">🔎 Хүлээн авахад: <b>${escapeHtml(findingsLine(_f))}</b>${_f.photos.length ? ` · 📷 ${_f.photos.length}` : ''}${_reg}${_f.comment ? `<div class="order-find-c">💬 ${escapeHtml(_f.comment)}</div>` : ''}</div>`; })()}
@@ -37990,6 +38341,7 @@ function openBqPaymentModal(oid) {
     <h2>💵 Төлбөр бүртгэх — #${o.number}</h2>
     <div class="bqp-sum">
       <div>Нийт дүн: <b>${fmtMoney(total)}</b></div>
+      ${orderExtraCharge(o) > 0 ? `<div class="bqp-extra">🧾 Үүнд эвдрэл/дутагдлын нөхөн төлбөр: <b>${fmtMoney(orderExtraCharge(o))}</b></div>` : ''}
       <div>Өмнө төлсөн: ${fmtMoney(paid)}</div>
       <div>Үлдэгдэл: <b class="bqp-bal ${bal > 0 ? 'bad' : 'ok'}">${fmtMoney(bal)}</b></div>
     </div>
@@ -38083,7 +38435,7 @@ function openRefundModal(oid, force) {
       .then(go => { if (go) openRefundModal(oid, true); });
     return;
   }
-  const depRefundable = depLocked ? 0 : Math.max(0, depLeft - dd.held);
+  const depRefundable = depLocked ? 0 : Math.max(0, depLeft - dd.plan);
   const lockHtml = !lock || depLeft <= 0 ? '' : (depLocked
     ? `<div class="rf-lock">🔒 Барьцаа <b>${fmtMoney(depLeft)}</b> — нярав хүлээн авч, эвдрэл бохирдлыг шалгасны дараа буцаана (одоо: «${escapeHtml(lock.label)}»). Одоо зөвхөн илүү төлөлтийг буцаана.</div>`
     : `<div class="rf-lock rf-lock-w">⚠ Бараа хараахан хүлээн аваагүй (одоо: «${escapeHtml(lock.label)}») — эвдрэл илэрвэл барьцаанаас суутгах боломжгүй</div>`);
@@ -38111,9 +38463,9 @@ function openRefundModal(oid, force) {
     <div id="rf-diff" class="rf-diff" hidden></div>
     ${lockHtml}
     ${depLeft > 0 && !depLocked ? `<div class="rf-split">
-      ${dd.held > 0 ? `<div class="rf-hold">⚠ Суутгал <b>−${fmtMoney(dd.held)}</b>${dd.reason ? ` (${escapeHtml(dd.reason)})` : ''} барьцаанаас хасагдсан — үйлчлүүлэгчид буцаах барьцаа <b>${fmtMoney(depRefundable)}</b></div>` : ''}
+      ${dd.plan > 0 ? `<div class="rf-hold">⚠ Суутгал <b>−${fmtMoney(dd.plan)}</b>${dd.reason ? ` (${escapeHtml(dd.reason)})` : ''} барьцаанаас хасагдсан — үйлчлүүлэгчид буцаах барьцаа <b>${fmtMoney(depRefundable)}</b></div>` : ''}
       <div class="rf-split-t">Энэ дүнгийн <b>үүнээс хэд нь барьцаа вэ?</b> — барьцаа нь өр биш, зөрүү төлбөр нь өрөөс хасагдана</div>
-      <label class="dmg-amt-l" for="rf-dep">🔒 Үүнээс барьцаа (₮) · захиалгад ${fmtMoney(depLeft)}${dd.held > 0 ? ` − суутгал ${fmtMoney(dd.held)}` : ''}</label>
+      <label class="dmg-amt-l" for="rf-dep">🔒 Үүнээс барьцаа (₮) · захиалгад ${fmtMoney(depLeft)}${dd.plan > 0 ? ` − суутгал ${fmtMoney(dd.plan)}` : ''}</label>
       <input id="rf-dep" type="text" inputmode="numeric" class="ui-raw money-input" value="0">
       <div id="rf-rest" class="rf-rest"></div>
     </div>` : ''}
@@ -38360,7 +38712,12 @@ async function submitBqPayment(oid, modal, btn) {
   }
   if (!okR.length) { showToast('Бүх баримт давхцсан — бүртгэсэнгүй', 'error', 4000); btn.disabled = false; return; }
   const amount = okR.reduce((s, r) => s + r.amount, 0);
-  const date = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
+  const latestDate = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
+  // 🧾 Зөвхөн эвдрэлийн НЭМЭЛТ ТӨЛБӨРт ирсэн мөнгө (түрээс/барьцааны үлдэгдэл аль хэдийн бүрэн төлөгдсөн): `paid_date` нь
+  // захиалгын БҮХ мөнгөний орлогын сарыг тодорхойлдог (`orderIncomeMonth`) тул шинэ огноо тавивал түрээсийн орлого
+  // (хаагдсан сар ч байж болно) бүхэлдээ шилжинэ. Тиймээс энэ тохиолдолд огноог ХӨНДӨХГҮЙ.
+  const extraOnly = isApp && !!o.paid_date && orderExtraCharge(o) > 0 && basePaid >= orderBilledBase(o);
+  const date = extraOnly ? String(o.paid_date).slice(0, 10) : latestDate;
   // ⚠ Шилжүүлэгчийн БАНКийг `банк:X` гэж утганд бичнэ — барьцаа буцаахад хэрэгтэй
   //   (дансны дугаараас банкийг таамаглаж болохгүй). Хуучин бичлэгт байхгүй.
   const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.bank && ('банк:' + r.bank), r.ref].filter(Boolean).join(' · ')).join('  |  ');
@@ -38622,11 +38979,13 @@ function journalEntries(ctx, month) {
     if (!inM(m + '-01')) return;
     const rev = Math.round(Number(typeof orderRevenue === 'function' ? orderRevenue(o, ctx.basis) : 0) || 0);
     const dep = Math.round(Number(o.deposit_mnt) || 0);
-    if (!rev && !dep) return;
+    // Нэмэлт төлбөр (эвдрэлийн нөхөн төлбөр) — барьцаанаас ГАДНА харилцагчаас авах орлого: Dr Авлага / Cr Орлого
+    const ex = Math.round(Number(typeof orderExtraIncome === 'function' ? orderExtraIncome(o, ctx.basis) : 0) || 0);
+    if (!rev && !dep && !ex) return;
     // Барьцаанаас суутгасан хэсэг өр биш ОРЛОГО (`orderDeductions`) — ашгийн тайлантай ижил
-    const ded = Math.min(dep, Math.round(Number(typeof orderDeductionIncome === 'function' ? orderDeductionIncome(o, ctx.basis) : 0) || 0));
+    const ded = Math.min(dep, Math.round(Number(typeof orderHeldIncome === 'function' ? orderHeldIncome(o, ctx.basis) : 0) || 0));
     push((o.starts_at || m + '-01'), `Захиалга №${o.number ?? '—'} · ${o.customer || ''}`.trim(), 'order:' + o.id,
-      [{ acc: 'recv', dr: rev + dep }, (rev + ded) ? { acc: 'revenue', cr: rev + ded } : null, (dep - ded) ? { acc: 'deposit', cr: dep - ded } : null]);
+      [{ acc: 'recv', dr: rev + dep + ex }, (rev + ded + ex) ? { acc: 'revenue', cr: rev + ded + ex } : null, (dep - ded) ? { acc: 'deposit', cr: dep - ded } : null]);
   });
   /* ③ Хуулгын ЗАРЛАГА.
      ⛔ ОГНООГ ЗӨӨХГҮЙ — банкны мөр жинхэнэ огноондоо үлдэнэ (эс бөгөөс дэвтэр
@@ -39227,9 +39586,11 @@ function receivablesData() {
     const bal = orderOwed(o);
     if (bal <= 0) return;
     const stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
+    // Эвдрэл/дутагдлын нэмэлт төлбөрийн ТӨЛӨГДӨӨГҮЙ хэсэг — мөрөнд «🧾 нөхөн төлбөр» гэж нэрлэж харуулна
+    const _ed = orderDeductions(o), extra = Math.min(bal, Math.max(0, _ed.receivable - _ed.collected));
     items.push({
       branch: 'bq', id: String(o.id), name: o.customer || '?', sub: '#' + (o.number ?? '—'),
-      phone: o.phone || '', status: st, total, paid, balance: bal,
+      phone: o.phone || '', status: st, total, paid, balance: bal, extra,
       dateStart: o.starts_at ? String(o.starts_at).slice(0, 10) : '', dateStop: stop,
       overdue: !!stop && stop < today,
     });
@@ -39276,6 +39637,7 @@ function arRow(i) {
     <div class="order-head"><div class="order-head-l"><span style="font-size:13px;">${brIcon}</span> <span class="order-no">${escapeHtml(i.sub)}</span> ${badge}${i.overdue ? ` <span style="color:var(--danger);font-size:10.5px;font-weight:700;">⚠ хугацаа хэтэрсэн</span>` : ''}</div><div class="order-total" style="color:var(--warn);">${fmtMoney(i.balance)}</div></div>
     <div class="order-cust"><b>${escapeHtml(i.name)}</b>${i.phone ? ` · <a href="tel:${escapeHtml(i.phone)}">${escapeHtml(i.phone)}</a>` : ''}</div>
     <div class="order-meta">Нийт ${fmtMoney(i.total)} · Төлсөн ${fmtMoney(i.paid)} · <b style="color:var(--warn);">Үлдэгдэл ${fmtMoney(i.balance)}</b></div>
+    ${i.extra > 0 ? `<div class="order-meta ar-extra">🧾 Үүнд эвдрэл/дутагдлын нөхөн төлбөр: <b>${fmtMoney(i.extra)}</b></div>` : ''}
     ${dates ? `<div class="order-meta">${dates}</div>` : ''}
     <div class="order-foot">${payBtn}</div>
   </div>`;
@@ -44026,15 +44388,16 @@ function renderDeductionsCard(month, basis) {
   const lines = rows.flatMap(r => [
     r.find ? line(r, ['warn', 'тэмдэглэсэн'], null, '🔎 ' + r.find + (r.findDep > 0 ? ' — суутгал бүртгээгүй' : ' — барьцаагүй, харилцагчаас авах эсэхийг шийд')) : '',
     r.held ? line(r, ['ok', 'суутгасан'], r.held, r.reason) : '',
-    r.receivable ? line(r, ['warn', 'авах ёстой'], r.receivable, r.reason ? r.reason + ' · барьцаа буцсан' : 'барьцаа буцсан') : '',
+    r.receivable ? line(r, [r.receivable > r.collected ? 'warn' : 'ok', r.receivable > r.collected ? 'нэхэмжилсэн' : 'төлөгдсөн'], r.receivable,
+      [r.reason, r.mode === 'ext' ? 'нэмэлт төлбөр' : 'барьцаа хүрэхгүй/буцсан', r.collected > 0 ? 'төлсөн ' + fmtMoney(r.collected) : 'Авлагад'].filter(Boolean).join(' · ')) : '',
     r.unexplained ? line(r, ['bad', 'шалтгаангүй'], r.unexplained, 'барьцааны хэсгийг буцаагаад үлдсэнийг барьсан') : '',
     r.open ? line(r, ['bad', 'буцаагдаагүй'], r.open, r.note ? '📝 ' + r.note + ' — суутгал бүртгээгүй' : 'суутгал бүртгээгүй') : '',
   ]).filter(Boolean).join('');
   return `<div class="dd-card">
     <div class="dd-h">🔒 Барьцаа, суутгал — ${escapeHtml(month)} <span class="dd-sub">эвдрэл · бохирдол · хоногийн нэмэгдэл</span></div>
-    <div class="dd-kpis">${kpi('dd-ok', sum.income, 'Суутгасан · орлогод орсон')}${kpi('dd-warn', sum.receivable, 'Харилцагчаас авах')}${kpi('dd-bad', sum.unexplained + sum.open, 'Тодорхойгүй барьцаа')}${sum.find ? `<div class="dd-k dd-warn"><b>${sum.find}</b><span>Хүлээн авахад тэмдэглэсэн, суутгал бүртгээгүй захиалга</span></div>` : ''}</div>
+    <div class="dd-kpis">${kpi('dd-ok', sum.income, 'Суутгал, нэмэлт төлбөр · орлогод орсон')}${kpi('dd-warn', Math.max(0, sum.receivable - sum.collected), 'Харилцагчаас авах (Авлагад)')}${kpi('dd-bad', sum.unexplained + sum.open, 'Тодорхойгүй барьцаа')}${sum.find ? `<div class="dd-k dd-warn"><b>${sum.find}</b><span>Хүлээн авахад тэмдэглэсэн, суутгал бүртгээгүй захиалга</span></div>` : ''}</div>
     ${lines || '<div class="dd-empty">Энэ сард суутгал бүртгэгдээгүй.</div>'}
-    <div class="dd-hint">Бүртгэх: захиалгын карт → «⋯ Бусад» → ⚠ Эвдрэл (дүн + шалтгаан). Суутгасан дүн «Буцаан олгох» цонхонд барьцаанаас автоматаар хасагдаж, ашгийн орлогод орно.</div>
+    <div class="dd-hint">Бүртгэх: захиалгын карт → «⋯ Бусад» → ⚠ Эвдрэл · нөхөн төлбөр (бараа × нэгж үнэ). «Барьцаанаас суутгах» нь «Буцаан олгох» цонхонд автоматаар хасагдана; «Нэмэлт төлбөр» нь Авлагад орж, «Төлбөр бүртгэх»-ээр хүлээн авна. Хоёул ашгийн орлогод орно.</div>
   </div>`;
 }
 
@@ -44688,7 +45051,7 @@ function renderReports() {
   else if (!wantBr) { mi = meventIncome(month); incomeLabel = `Орлого (нийт · ${bl})`; incomeSub = ktInc ? 'M-Event + NOMAAD + Катеринг' : 'M-Event + NOMAAD'; }
   else { incomeLabel = 'Орлого'; incomeSub = 'энэ салбарт захиалгын орлого бүртгэгддэггүй'; }
   // Барьцаанаас суутгасан эвдрэл/бохирдол M-Event орлогод ОРСОН — нэрээр нь хэлнэ (доорх «Барьцаа, суутгал»-д задаргаа)
-  if (inclEv && (_mi.dedInc || 0) > 0) incomeSub += ` · суутгал ${fmtSaya(_mi.dedInc)} орсон`;
+  if (inclEv && (_mi.dedInc || 0) > 0) incomeSub += ` · суутгал/нөхөн төлбөр ${fmtSaya(_mi.dedInc)} орсон`;
   // ⛔ Зардал = ЗАРДЛЫН ШАТ (`expenseLadderFor`) — COO-гийн тооцоо, сар хаахтай ИЖИЛ тоо.
   const _L = expenseLadderFor(month, wantBr);
   const expense = _L.pnl, expN = _L.txn.n - _L.vatPaid.n;

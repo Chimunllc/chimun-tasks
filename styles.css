@@ -10662,3 +10662,57 @@ select.no-asar-len {
 .tp-actions { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-4); flex-wrap: wrap; }
 .tp-list { max-height: 50vh; overflow: auto; }
 .tp-perf-line { margin-top: var(--space-2); }
+
+/* ── Чөлөө / амралтын хүсэлт + автомат ирцийн төлөв (2026-11-14) ─────────────────────────────────
+   Бүх өнгө/зай токен. Модал доторх нарийн талбар `.modal .alv-*` угтвартай (`.modal input { width:100% }`-ийг давна). */
+.alv-card { padding: var(--space-3) var(--space-4); }
+.alv-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.alv-new, .alv-cfg { padding: var(--space-1) var(--space-3); border: 1px solid var(--primary); border-radius: 999px; background: var(--panel);
+  color: var(--primary); font-size: var(--fs-sm); font-weight: 700; cursor: pointer; white-space: nowrap; min-height: var(--tap-sm); }
+.alv-cfg { border-color: var(--line); color: var(--muted); padding: 0 var(--space-2); margin-left: var(--space-2); }
+.alv-bal { font-size: var(--fs-sm); color: var(--text-soft); margin-bottom: var(--space-2); }
+.alv-none { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
+.alv-item { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2) 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
+.alv-it-t { flex: 1 1 140px; min-width: 0; font-weight: 600; }
+.alv-it-s { color: var(--warn); font-size: var(--fs-xs); font-weight: 700; }
+.alv-it-s.ok { color: var(--ok); }
+.alv-it-s.no { color: var(--danger); }
+.alv-x { border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted); min-width: var(--tap-sm); min-height: var(--tap-sm); cursor: pointer; }
+.alv-panel { border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--panel); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); }
+.alv-panel.alv-off { border-style: dashed; }
+.alv-p-t { display: flex; align-items: center; font-weight: 700; font-size: var(--fs-md); margin-bottom: var(--space-2); }
+.alv-p-s { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-2); line-height: 1.5; }
+.alv-pi { padding: var(--space-2) 0; border-top: 1px solid var(--line); }
+.alv-pi-h { font-size: var(--fs-md); }
+.alv-pi-t { font-size: var(--fs-sm); color: var(--text-soft); margin-top: 2px; }
+.alv-pi-r { font-size: var(--fs-sm); margin-top: var(--space-1); line-height: 1.5; }
+.alv-pi-a { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
+.alv-ok, .alv-no { flex: 1 1 120px; min-height: var(--tap-sm); padding: var(--space-1) var(--space-3); border-radius: 999px; font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
+.alv-ok { border: 1px solid var(--ok); background: var(--ok-soft); color: var(--ok); }
+.alv-no { border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+.alv-late { color: var(--warn); font-weight: 700; }
+.alv-ontime { color: var(--ok); }
+.alv-proof-b { padding: 0; border: 0; background: none; cursor: zoom-in; margin-top: var(--space-1); }
+.alv-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: var(--r-lg); border: 1px solid var(--line); display: block; }
+.alv-pay { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--r-lg); background: var(--panel-hover); font-size: var(--fs-sm); line-height: 1.6; color: var(--text-soft); }
+.alv-modal { max-width: 420px; }
+.alv-hint { font-size: var(--fs-sm); color: var(--text-soft); line-height: 1.6; margin: 0 0 var(--space-3); }
+.alv-kinds { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.modal .alv-kind { padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: 10px; background: var(--panel-hover);
+  color: var(--text); font-size: var(--fs-md); font-weight: 700; cursor: pointer; width: auto; flex: none; min-height: var(--tap-sm); }
+.modal .alv-kind.on { border-color: var(--primary); background: var(--panel); color: var(--primary); }
+.alv-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.alv-l { flex: 0 0 104px; font-size: var(--fs-md); color: var(--muted); }
+.alv-u { font-size: var(--fs-sm); color: var(--muted); }
+.modal .alv-date { flex: 1 1 auto; width: auto; min-height: var(--tap-sm); padding: var(--space-1) var(--space-2); }
+.modal .alv-num { width: 72px; flex: none; min-height: var(--tap-sm); padding: var(--space-1) var(--space-2); }
+.modal .alv-reason { width: 100%; box-sizing: border-box; margin: var(--space-2) 0; padding: var(--space-2); font-size: var(--fs-md); resize: vertical; }
+.alv-proof { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.alv-proof[hidden] { display: none; }
+.alv-proof-t { flex: 1 1 100%; font-size: var(--fs-sm); color: var(--muted); }
+.alv-ph { position: relative; display: inline-flex; align-items: center; padding: var(--space-2) var(--space-3); border: 1px dashed var(--primary);
+  border-radius: var(--r-lg); color: var(--primary); font-size: var(--fs-sm); font-weight: 700; min-height: var(--tap-sm); }
+.alv-ph .alv-file { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.alv-prev { font-size: var(--fs-sm); color: var(--text-soft); min-height: 20px; line-height: 1.6; margin-bottom: var(--space-2); }
+.alv-err { padding: var(--space-2) var(--space-3); border-radius: var(--r-lg); background: var(--danger-soft); color: var(--danger); font-size: var(--fs-sm); line-height: 1.5; margin-bottom: var(--space-2); }
+.alv-err[hidden] { display: none; }

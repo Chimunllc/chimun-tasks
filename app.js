@@ -14245,7 +14245,7 @@ function ensureAttCallins() {
                         () => { state._attCallinsBusy = false; });
 }
 // Цалин/ирцийн дэлгэц бүр render хийхдээ дуудна: хуваарь (торгуулийн эх сурвалж) + хүн бүрийн ердийн «ажил эхлэх цаг»
-function ensureAttDiscipline() { ensureAttCallins(); ensureWorkStart(); }
+function ensureAttDiscipline() { ensureAttCallins(); ensureWorkStart(); ensureAttLeaves(); }
 // Торгуулийн дүрэм тавигдсан атлаа хуваарь ачаалж чадаагүй үед л анхааруулна (дүрэмгүй үед хуваарь нь зөвхөн мэдээлэл)
 function attCallinsWarnHtml() {
   if (!payRulesCfg().from) return '';
@@ -14468,7 +14468,10 @@ function attDiscipline(key, ym, recs, today, graceMin) {
         const diff = _hmMin(hhmmUB(firstIn[d])) - _hmMin(c.at_time);
         if (diff > grace) out.events.push({ day: d, kind: 'late', mins: diff, time: c.at_time, came: hhmmUB(firstIn[d]) });
       }
-    } else if (d < today) out.events.push({ day: d, kind: 'absent', time: c.at_time });
+    } else if (d < today) {
+      const cv = attLeaveCover(k, d, ['approved']);   // батлагдсан чөлөө/«ирсэн» засвартай өдөр «ирээгүй» БИШ (гар «тасалсан» засвар нь үүнийг арилгахгүй)
+      if (!cv || cv.kind === 'absent') out.events.push({ day: d, kind: 'absent', time: c.at_time });
+    }
   });
   // ЕРДИЙН ажлын цагаас хоцролт: «ажил эхлэх цаг» тохируулсан хүнд, ажлын өдөр, ХУВААРЬГҮЙ өдөр (хуваарьтайг дээр хэмжсэн — ХУВААРИЙН цаг ялна)
   const start = workStartFor(k);
@@ -14521,7 +14524,12 @@ function payExtras(key, ym, recs, base) {
   const cfg = payRulesCfg(), active = !!cfg.from && String(ym) >= cfg.from;
   const dataOk = attCallinsReady() && Array.isArray(recs);
   const disc = dataOk ? attDiscipline(key, ym, recs, undefined, cfg.graceMin) : null;
-  const ex = { active, ready: true, disc, penalty: 0, pen: {}, capped: {}, orderBonus: 0, orderN: 0, cfg };
+  const ex = { active, ready: true, disc, penalty: 0, pen: {}, capped: {}, orderBonus: 0, orderN: 0, cfg, leave: null, creditMins: 0, makeupOffsetMins: 0 };
+  /* ЧӨЛӨӨ/АМРАЛТЫН нөхөлт: `att_leave` идэвхтэй сард л. Ачаалагдаагүй бол `ready:false` (чимээгүй 0 БИШ — чөлөөтэй хүн «тасалсан» болж цалин дутуу харагдана). */
+  if (attLeaveMonthActive(ym)) {
+    if (!attLeavesReady() || !Array.isArray(recs)) ex.ready = false;
+    else { ex.leave = attLeaveMonthSummary(key, ym, recs); ex.creditMins = ex.leave.creditMins; ex.makeupOffsetMins = ex.leave.makeupOffsetMins; }
+  }
   if (!active) return ex;
   if (!disc || !workStartReady()) ex.ready = false;   // «ажил эхлэх цаг» ачаалагдаагүй бол ердийн хоцролт тоологдохгүй — чимээгүй 0 БИШ
   else {
@@ -15070,6 +15078,576 @@ async function attReqReject(k) {
   showToast('Татгалзлаа', 'info', 2500);
   if (typeof render === 'function') render();
 }
+/* ═══ ЧӨЛӨӨ / АМРАЛТ + АВТОМАТ ИРЦИЙН ТӨЛӨВ (2026-11-14, ҮАЗ-ын даалгавар) ═══════════════════════════════
+   «Анхдагч төлөв = АЖИЛЛАНА»: ажлын өдөр бүр ажилтан бүр ажиллана гэж тооцогдоно. Чөлөө/амралт зөвхөн УРЬДЧИЛАН батлагдсан
+   хүсэлтээр; хүсэлтгүй, QR-гүй өдөр өөрөө «Тасалсан» болно — ГАРААР тэмдэглэх зүйлгүй. Дата = `att_leaves` (db/att_leaves.sql).
+   ⛔ ХЭЗЭЭНЭЭС = `app_config['att_leave'].from` (өдөр). ХООСОН бол БҮХЭЛДЭЭ унтраалттай — цалин, ирц хөндөгдөхгүй
+      (олгочихсон цалин чимээгүй өөрчлөгдөхөөс хамгаална; `pay_rules`-тай ижил). Зөвхөн CEO бичнэ (RLS).
+   ⛔ МӨНГӨ = ЦАГААР (`monthPayBreakdown`): тасалсан/цалингүй чөлөө өөрөө ажилласан цагаар хасагдана. Энэ модуль ЗӨВХӨН
+      (а) цалинтай чөлөө/амралт/өвчтэй/баярын өдрийг НОРМД тооцуулж (`creditMins`) хасагдахаас хамгаална,
+      (б) хасалтыг «тасалсан N, цалингүй чөлөө M өдөр» гэж ТАЙЛБАРЛАНА. Тусдаа хоёр дахь суутгал БАЙХГҮЙ (давхар хасахгүй).
+   ⛔ Тоолол/төлөв = `attDayStatus` ГАНЦ; сарын нэгтгэл = `attLeaveMonthSummary`; цалин, самбар, Excel бүгд эндээс. */
+const ATT_LEAVE_KINDS = {
+  unpaid:   { icon: '📝', label: 'Чөлөө (цалингүй)', paid: false, req: true },
+  paid:     { icon: '💼', label: 'Чөлөө (цалинтай)', paid: true,  req: true },
+  vacation: { icon: '🏖', label: 'Ээлжийн амралт',   paid: true,  req: true },
+  sick:     { icon: '🤒', label: 'Өвчтэй',           paid: true,  req: true },
+  makeup:   { icon: '🔄', label: 'Нөхөж ажилласан',  paid: true,  req: false },
+  present:  { icon: '✅', label: 'Ирсэн',            paid: true,  req: false },
+  absent:   { icon: '❌', label: 'Тасалсан',         paid: false, req: false },
+};
+const ATT_LEAVE_BACK_D = 14;       // нэг хүсэлтийн өнгөрсөн өдөр хэр хуучин байж болох вэ (хоцорсон гэж тэмдэглэгдэнэ)
+const ATT_LEAVE_SICK_LATE_D = 2;   // өвчтэй: энэ хоногоос хожуу мэдэгдвэл «хоцорсон»
+const ATT_LEAVE_MAX_D = 60;
+const ATT_LEAVE_COLS = 'id,member_key,from_day,to_day,kind,reason,proof_url,status,late,source,makeup_day,makeup_mins,decided_by,decided_at,decision_note,created_by,created_at,updated_at,history';
+const _isoDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+function attLeaveCfg() {
+  const c = (state.appConfig && state.appConfig.att_leave && typeof state.appConfig.att_leave === 'object') ? state.appConfig.att_leave : {};
+  const num = (v, d, lo, hi) => { const n = Number(v); return (v !== undefined && v !== null && v !== '' && n >= lo && n <= hi) ? Math.round(n) : d; };
+  const hol = Array.isArray(c.holidays) ? c.holidays.map(x => String(x).slice(0, 10)).filter(_isoDay) : [];
+  return {
+    from: _isoDay(c.from) ? String(c.from) : '',
+    notice1: num(c.notice1, 1, 0, 30),             // нэг өдрийн чөлөө: ӨМНӨХ ӨДӨР
+    noticeMulti: num(c.notice_multi, 7, 0, 60),    // 2+ өдөр / ээлжийн амралт: 7 хоногийн өмнө
+    vacationDays: num(c.vacation_days, 15, 0, 60), // жилийн ээлжийн амралтын ажлын өдөр
+    holidays: hol,                                  // амралтын баярын өдрүүд (ажлын өдөр биш, цалинтай)
+  };
+}
+function attLeaveActive(day) { const c = attLeaveCfg(); return !!c.from && _isoDay(day) && String(day) >= c.from; }
+function attLeaveMonthActive(ym) { const e = monthEndDay(ym); return !!e && attLeaveActive(e); }
+function attLeaveEditable() { return !!state.isCEO; }   // db/rls.sql: att_leave зөвхөн CEO (scan-тест тулгана)
+function attLeavesReady() { return !!(state.attLeaves && typeof state.attLeaves === 'object') && !state.attLeavesErr; }
+function attLeaveIndex() {
+  const src = state.attLeaves;
+  if (!src || typeof src !== 'object') return {};
+  const c = state._attLeaveIdx;
+  if (c && c.src === src) return c.by;
+  const by = {};
+  Object.keys(src).forEach(id => { const r = src[id]; if (!r || !r.member_key) return; const k = attMarkKey(r.member_key); (by[k] = by[k] || []).push(r); });
+  state._attLeaveIdx = { src, by };
+  return by;
+}
+function attLeaveRowsOf(key) { return attLeaveIndex()[attMarkKey(key)] || []; }
+// Өдрүүд (эхлэх..дуусах), ЦЭВЭР
+function attLeaveDays(from, to) {
+  const out = [];
+  if (!_isoDay(from) || !_isoDay(to) || to < from) return out;
+  for (let d = from, n = 0; d <= to && n <= 400; d = addDays(d, 1), n++) out.push(d);
+  return out;
+}
+function attLeaveIsHoliday(day, cfg) { return (cfg || attLeaveCfg()).holidays.indexOf(String(day)) >= 0; }
+// Ажлын өдөр = Да–Ня, баяр биш (CEO: баярыг нормоос хасдаггүй тул баяр нь «цалинтай амралт» болж нормд тооцогдоно)
+function attLeaveWorkdays(from, to, cfg) {
+  cfg = cfg || attLeaveCfg();
+  return attLeaveDays(from, to).filter(d => isWeekdayIso(d) && !attLeaveIsHoliday(d, cfg));
+}
+/* Тухайн өдрийг хамарсан мөр. `statuses` = аль төлөвийг авах. Гар засвар (`manual`) хүсэлтээс ӨНДӨР эрэмбэтэй,
+   ижил эх сурвалжид сүүлд шинэчлэгдсэн нь ялна. Нөхөлтийн мөр (`makeup`) энд ОРОХГҮЙ. */
+function attLeaveCover(key, day, statuses) {
+  let best = null;
+  attLeaveRowsOf(key).forEach(r => {
+    if (r.kind === 'makeup' || statuses.indexOf(r.status) < 0) return;
+    if (String(r.from_day) > day || String(r.to_day) < day) return;
+    const rank = (r.source === 'manual' ? 1 : 0), brank = best ? (best.source === 'manual' ? 1 : 0) : -1;
+    if (!best || rank > brank || (rank === brank && String(r.updated_at || r.created_at || '') > String(best.updated_at || best.created_at || ''))) best = r;
+  });
+  return best;
+}
+function attLeaveMakeupOf(key, missedDay, statuses) {
+  return attLeaveRowsOf(key).find(r => r.kind === 'makeup' && String(r.from_day) === String(missedDay) && statuses.indexOf(r.status) >= 0) || null;
+}
+// Ажилтны ажилд орсон өдөр (мэдэгдэж байвал) — түүнээс өмнөх өдөр ирээгүй гэж тооцохгүй
+function attLeaveJoined(key) {
+  const m = findMember(key); const j = m && (m.joined_at || m.joinedAt);
+  return _isoDay(String(j || '').slice(0, 10)) ? String(j).slice(0, 10) : '';
+}
+function attLeaveExpected(key, day, cfg) {
+  cfg = cfg || attLeaveCfg();
+  if (!attLeaveActive(day)) return false;
+  const j = attLeaveJoined(key); if (j && String(day) < j) return false;
+  if (attLeaveIsHoliday(day, cfg)) return false;
+  return isWeekdayIso(day) || !!attCallinOn(key, day);   // амралтын өдөр хуваарьтай бол ажиллана
+}
+/* ӨДРИЙН ТӨЛӨВ — ГАНЦ эх сурвалж. ЦЭВЭР: (хүн, өдөр, тэр өдрийн ирцийн мөрүүд, өнөөдөр) → { st, expected, deduct, credit, row? }
+   Эрэмбэ: гар засвар → ирц байвал (ирсэн/хоцорсон) → амралт/баяр → батлагдсан чөлөө → нөхөлт → хүлээгдэж буй хүсэлт
+           → ирээдүй/өнөөдөр → ТАСАЛСАН. Өнөөдөр хараахан ирээгүй бол «хүлээж байна» (өдөр дуусаагүй — тасалсан БИШ).
+   st: na · off · holiday · present · late · unpaid · paid · vacation · sick · makeup · pending · absent · waiting · planned
+   deduct = цалингаас цагаар хасагдах өдөр (тасалсан, цалингүй чөлөө); credit = НОРМД тооцогдох (цалинтай чөлөө, баяр, нөхөлт, засвар). */
+function attDayStatus(key, day, dayRecs, today) {
+  const k = attMarkKey(key); today = today || todayStr(); day = String(day || '');
+  const cfg = attLeaveCfg();
+  const res = (st, extra) => Object.assign({ st, day, expected: false, deduct: false, credit: false, row: null, manual: false }, extra || {});
+  if (!k || !attLeaveActive(day)) return res('na');
+  const expected = attLeaveExpected(k, day, cfg);
+  const ins = (Array.isArray(dayRecs) ? dayRecs : []).filter(r => r && r.kind === 'in').map(r => String(r.ts)).sort();
+  const hasRec = (Array.isArray(dayRecs) ? dayRecs : []).length > 0;
+  const man = attLeaveCover(k, day, ['approved']);
+  if (man && man.source === 'manual') {
+    const kind = ATT_LEAVE_KINDS[man.kind];
+    if (man.kind === 'absent') return res('absent', { expected, deduct: true, row: man, manual: true });
+    if (man.kind === 'present') return res('present', { expected, credit: !hasRec, row: man, manual: true });
+    return res(man.kind, { expected, deduct: !kind.paid, credit: kind.paid && !hasRec, row: man, manual: true });
+  }
+  if (ins.length) {
+    // Хоцролт: хуваарьтай бол хуваарийн цаг, үгүй бол ердийн «ажил эхлэх цаг» (ажлын өдөр) — `attDiscipline`-тай ИЖИЛ дүрэм
+    const c = attCallinOn(k, day), start = c ? c.at_time : (isWeekdayIso(day) ? workStartFor(k) : null);
+    const grace = payRulesCfg().graceMin;
+    if (start) { const diff = _hmMin(hhmmUB(ins[0])) - _hmMin(start); if (diff > grace) return res('late', { expected, mins: diff, start, came: hhmmUB(ins[0]) }); }
+    return res('present', { expected });
+  }
+  if (!expected) return res(attLeaveIsHoliday(day, cfg) ? 'holiday' : 'off', { credit: attLeaveIsHoliday(day, cfg) && isWeekdayIso(day) && !hasRec });
+  const req = attLeaveCover(k, day, ['approved']);
+  if (req) { const kind = ATT_LEAVE_KINDS[req.kind]; return res(req.kind, { expected, deduct: !kind.paid, credit: kind.paid, row: req }); }
+  const mk = attLeaveMakeupOf(k, day, ['approved']);
+  if (mk) {
+    // Нөхөлт: ТӨЛӨВ «нөхсөн». Нөхсөн өдөр нь ӨӨР САРД бол л НОРМД тооцно (ижил сард бол нөхсөн цаг өөрөө нормыг гүйцээнэ)
+    const cross = String(mk.makeup_day || '').slice(0, 7) !== day.slice(0, 7);
+    return res('makeup', { expected, credit: cross, row: mk });
+  }
+  const pend = attLeaveCover(k, day, ['pending']);
+  if (day > today) return res('planned', { expected, row: pend });
+  if (pend && day < today) return res('pending', { expected, deduct: true, row: pend });
+  if (day === today) return res('waiting', { expected, row: pend });
+  return res('absent', { expected, deduct: true });
+}
+const ATT_DAY_ST = {
+  present: { icon: '✅', label: 'Ирсэн' }, late: { icon: '⏰', label: 'Хоцорсон' }, absent: { icon: '❌', label: 'Тасалсан' },
+  unpaid: { icon: '📝', label: 'Чөлөө (цалингүй)' }, paid: { icon: '💼', label: 'Чөлөө (цалинтай)' }, vacation: { icon: '🏖', label: 'Ээлжийн амралт' },
+  sick: { icon: '🤒', label: 'Өвчтэй' }, makeup: { icon: '🔄', label: 'Нөхсөн' }, pending: { icon: '⏳', label: 'Хүсэлт хүлээгдэж буй' },
+  waiting: { icon: '⏳', label: 'Хараахан ирээгүй' }, planned: { icon: '·', label: 'Ажиллана' }, off: { icon: '·', label: 'Амралтын өдөр' },
+  holiday: { icon: '🎌', label: 'Баярын өдөр' }, na: { icon: '', label: '' },
+};
+// Хүн × сарын ирцийн мөрүүдийг өдрөөр бүлэглэнэ (ЦЭВЭР)
+function attRecsByDay(key, recs) {
+  const k = attMarkKey(key), by = {};
+  (Array.isArray(recs) ? recs : []).forEach(r => { if (r && r.day && attMarkKey(attCanonKey(r)) === k) (by[r.day] = by[r.day] || []).push(r); });
+  return by;
+}
+// Нэг өдрийн жишиг цаг (норм ÷ ажлын өдөр = 480)
+function attLeaveDayMins(ym) { return Math.round(workNormMins(ym) / Math.max(1, workNormDays(ym))); }
+/* САРЫН НЭГТГЭЛ (ЦЭВЭР): хүн × сар → тоолол + цалинд нөлөөлөх хоёр тоо.
+   creditMins = нормд тооцогдох минут (цалинтай чөлөө/амралт/өвчтэй/баяр/нөхсөн/засвар) ӨНӨӨДРИЙГ ХҮРТЭЛ.
+   makeupOffsetMins = ӨӨР САРЫН тасалсан өдрийн нөхөлтөд зарцуулагдсан цаг — энэ сарын ИЛҮҮ ЦАГААС хасна (давхар төлөхгүй). */
+function attLeaveMonthSummary(key, ym, recs, today) {
+  today = today || todayStr();
+  const k = attMarkKey(key), end = monthEndDay(ym), cfg = attLeaveCfg();
+  const out = { ym, key: k, active: false, days: [], n: { present: 0, late: 0, absent: 0, unpaid: 0, paid: 0, vacation: 0, sick: 0, makeup: 0, pending: 0, holiday: 0, expected: 0 },
+                deductDays: 0, creditMins: 0, makeupOffsetMins: 0, lateMins: 0 };
+  if (!k || !end || !attLeaveActive(end)) return out;
+  out.active = true;
+  const by = attRecsByDay(k, recs), dayMins = attLeaveDayMins(ym);
+  for (const day of attLeaveDays(ym + '-01', end)) {
+    const s = attDayStatus(k, day, by[day], today);
+    if (s.st === 'na') continue;
+    out.days.push(s);
+    if (s.expected) out.n.expected++;
+    if (out.n[s.st] !== undefined) out.n[s.st]++;
+    if (s.st === 'late') out.lateMins += s.mins || 0;
+    if (day <= today) {
+      if (s.deduct && s.st !== 'pending') out.deductDays++;
+      if (s.credit) out.creditMins += dayMins;
+    }
+  }
+  // Нөхөлтийн цагийн хасалт: нөхсөн өдөр энэ сард, тасалсан өдөр ӨӨР сард (батлагдсан, нөхсөн өдөр өнгөрсөн)
+  attLeaveRowsOf(k).forEach(r => {
+    if (r.kind !== 'makeup' || r.status !== 'approved' || !_isoDay(String(r.makeup_day || '').slice(0, 10))) return;
+    const md = String(r.makeup_day).slice(0, 10);
+    if (md.slice(0, 7) !== ym || String(r.from_day).slice(0, 7) === ym || md > today) return;
+    const worked = by[md] ? attMemberSummary(by[md].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), false).mins : (Number(r.makeup_mins) || dayMins);
+    out.makeupOffsetMins += Math.min(dayMins, Math.max(0, Math.round(worked)));
+  });
+  return out;
+}
+/* Хасалтын ТАЙЛБАР (ЦЭВЭР): сарын суурь цалингаас «тасалсан + цалингүй чөлөө» өдрийн хэмжээ. ⛔ ТУСДАА ХАСАЛТ БИШ —
+   `monthPayBreakdown`-ийн цагийн хасалт (`base − earned`)-д аль хэдийн багтсан; хэзээ ч бодит хасалтаас ИЛҮҮ гарахгүй. */
+function attLeaveDeductionInfo(base, ym, sum, shortAmt) {
+  const days = sum ? sum.deductDays : 0;
+  const nominal = Math.round(Math.max(0, Number(base) || 0) * days / Math.max(1, workNormDays(ym)));
+  const real = Math.max(0, Math.round(Number(shortAmt) || 0));
+  return { days, absent: sum ? sum.n.absent : 0, unpaid: sum ? sum.n.unpaid : 0, amount: Math.min(nominal, real), nominal };
+}
+/* ХҮСЭЛТИЙН ШАЛГАЛТ (ЦЭВЭР). p = { key, kind, from, to, reason, proof }.
+   Хугацааны дүрэм: нэг ажлын өдрийн чөлөө → ӨМНӨХ ӨДӨР; 2+ ажлын өдөр / ээлжийн амралт → 7 хоногийн өмнө; өвчтэй → тухайн өдөр (баримттай).
+   Хоцорсон хүсэлт БОЛОХГҮЙ БИШ — `late` гэж тэмдэглэгдэж ҮАЗ тусгайлан шийднэ. */
+function attLeaveCheck(p, today, cfg) {
+  p = p || {}; today = today || todayStr(); cfg = cfg || attLeaveCfg();
+  const kind = ATT_LEAVE_KINDS[p.kind], from = String(p.from || ''), to = String(p.to || p.from || '');
+  if (!kind || !kind.req) return { ok: false, err: 'Төрлөө сонгоно уу' };
+  if (!_isoDay(from) || !_isoDay(to)) return { ok: false, err: 'Огноогоо сонгоно уу' };
+  if (to < from) return { ok: false, err: 'Дуусах өдөр эхлэх өдрөөс өмнө байна' };
+  if (to > addDays(from, ATT_LEAVE_MAX_D - 1)) return { ok: false, err: ATT_LEAVE_MAX_D + ' хоногоос урт хүсэлт гаргахгүй — хувааж илгээнэ үү' };
+  if (!cfg.from) return { ok: false, err: 'Чөлөөний хүсэлт хараахан нээгдээгүй байна' };
+  if (to < cfg.from) return { ok: false, err: `Чөлөөний бүртгэл ${cfg.from}-аас эхэлсэн — өмнөх өдрийг удирдлагад хэлнэ үү` };
+  if (from < addDays(today, -ATT_LEAVE_BACK_D)) return { ok: false, err: ATT_LEAVE_BACK_D + ' хоногоос хуучин өдөр — удирдлагад шууд хандана уу' };
+  const work = attLeaveWorkdays(from, to, cfg);
+  if (!work.length) return { ok: false, err: 'Сонгосон өдрүүд бүгд амралтын/баярын өдөр — чөлөө шаардлагагүй' };
+  if (String(p.reason || '').trim().length < 3) return { ok: false, err: 'Шалтгаанаа бичнэ үү' };
+  if (p.kind === 'sick' && !p.proof) return { ok: false, err: 'Өвчтэй бол баримтын зураг хавсаргана уу' };
+  const months = {}; attLeaveDays(from, to).forEach(d => { months[d.slice(0, 7)] = 1; });
+  const locked = Object.keys(months).find(m => monthLocked(m));
+  if (locked) return { ok: false, err: `🔒 ${locked} сар хаагдсан — энэ өдрүүдэд хүсэлт гаргах боломжгүй. Удирдлагад хандана уу.` };
+  const clash = attLeaveRowsOf(p.key).find(r => r.kind !== 'makeup' && r.source === 'request' && (r.status === 'pending' || r.status === 'approved')
+    && String(r.from_day) <= to && String(r.to_day) >= from);
+  if (clash) return { ok: false, err: `Энэ өдрүүдэд өөр хүсэлт байна (${String(clash.from_day).slice(5)}${clash.to_day !== clash.from_day ? ' – ' + String(clash.to_day).slice(5) : ''}, ${clash.status === 'approved' ? 'батлагдсан' : 'хүлээгдэж буй'})` };
+  const multi = work.length >= 2 || p.kind === 'vacation';
+  let late = false, rule = '';
+  if (p.kind === 'sick') { late = from < addDays(today, -ATT_LEAVE_SICK_LATE_D); rule = 'Өвчтэй бол тухайн өдөрт нь (баримттай) мэдэгдэнэ'; }
+  else if (multi) { late = addDays(today, cfg.noticeMulti) > from; rule = `2+ өдрийн чөлөө/ээлжийн амралтыг ${cfg.noticeMulti} хоногийн өмнө илгээнэ`; }
+  else { late = addDays(today, cfg.notice1) > from; rule = 'Нэг өдрийн чөлөөг өмнөх өдөр нь илгээнэ'; }
+  const out = { ok: true, late, rule, workdays: work.length, days: attLeaveDays(from, to).length };
+  if (p.kind === 'vacation') {
+    const used = attLeaveVacationUsed(p.key, from.slice(0, 4));
+    if (used + work.length > cfg.vacationDays) out.warn = `Ээлжийн амралт ${from.slice(0, 4)} онд ${used}/${cfg.vacationDays} ажлын өдөр авсан — ${work.length} өдөр нэмбэл ${used + work.length}/${cfg.vacationDays} болно`;
+  }
+  return out;
+}
+// Тухайн онд авсан (батлагдсан + хүлээгдэж буй) ээлжийн амралтын АЖЛЫН өдөр
+function attLeaveVacationUsed(key, year) {
+  const cfg = attLeaveCfg(); let n = 0;
+  attLeaveRowsOf(key).forEach(r => {
+    if (r.kind !== 'vacation' || (r.status !== 'approved' && r.status !== 'pending')) return;
+    attLeaveWorkdays(String(r.from_day), String(r.to_day), cfg).forEach(d => { if (d.slice(0, 4) === String(year)) n++; });
+  });
+  return n;
+}
+function attLeaveVacationLeft(key, year) { const c = attLeaveCfg(); return Math.max(0, c.vacationDays - attLeaveVacationUsed(key, year)); }
+// Нэг мөрийн текст: «🏖 11-20 – 11-24 · Ээлжийн амралт»
+function attLeaveRowText(r) {
+  const k = ATT_LEAVE_KINDS[r.kind] || { icon: '', label: r.kind };
+  const span = String(r.from_day).slice(5) + (r.to_day && r.to_day !== r.from_day ? ' – ' + String(r.to_day).slice(5) : '');
+  return `${k.icon} ${span} · ${k.label}`;
+}
+// Ажилтны төлөвийн шошго (хүсэлтийн жагсаалт)
+function attLeaveStatusLabel(r) {
+  if (r.status === 'approved') return '✅ Батлагдсан';
+  if (r.status === 'rejected') return '❌ Татгалзсан' + (r.decision_note ? ' · ' + r.decision_note : '');
+  if (r.status === 'cancelled') return '↩ Болигдсон';
+  return '⏳ Хүлээгдэж буй' + (r.late ? ' · хоцорсон хүсэлт' : '');
+}
+// Чөлөөний хүсэлт батлах хүмүүс (push хүлээн авагч): CEO, ҮАЗ, `attendance.edit` ил олгосон хүн. ЦЭВЭР.
+function attLeaveApproverKeys() {
+  const out = [];
+  (TEAM || []).forEach(m => {
+    if ((m.status || 'идэвхтэй') === 'гарсан') return;
+    const k = personKey(m); if (!k) return;
+    const perms = state.memberPerms && state.memberPerms[k];
+    const explicit = (perms && Object.prototype.hasOwnProperty.call(perms, 'attendance.edit')) ? !!perms['attendance.edit'] : null;
+    const boss = (m.level || 0) >= 100 || /үйл ажиллагааны захирал|үах захирал|coo/i.test(String(m.role || ''));
+    if (explicit === true || (explicit === null && boss)) out.push(k);
+  });
+  return out;
+}
+
+// Цалингийн картын ИРЦИЙН ТАЙЛБАР (ЦЭВЭР → HTML). ТУСДАА хасалт БИШ — «нормоос дутуу» мөрийн цагаар хасагдсан дүнд багтсан.
+function attLeavePayNoteHtml(ex, b, ym, base, today) {
+  const s = ex && ex.leave; if (!s || !s.active) return '';
+  const cur = ym >= String(today || todayStr()).slice(0, 7);   // явж буй сард суурь цалин цагаар хасагдаахгүй (сар дуусмагц)
+  const info = attLeaveDeductionInfo(base, ym, s, b ? b.base - b.earned : 0);
+  const credit = s.n.paid + s.n.vacation + s.n.sick + s.n.holiday + s.n.makeup;
+  const parts = [`ирсэн ${s.n.present + s.n.late}`];
+  if (s.n.late) parts.push(`хоцорсон ${s.n.late}`);
+  if (s.n.absent) parts.push(`тасалсан ${s.n.absent}`);
+  if (s.n.unpaid) parts.push(`цалингүй чөлөө ${s.n.unpaid}`);
+  if (s.n.paid) parts.push(`цалинтай чөлөө ${s.n.paid}`);
+  if (s.n.vacation) parts.push(`амралт ${s.n.vacation}`);
+  if (s.n.sick) parts.push(`өвчтэй ${s.n.sick}`);
+  if (s.n.makeup) parts.push(`нөхсөн ${s.n.makeup}`);
+  const lines = [`🗓 ${parts.join(' · ')}`];
+  if (info.days) {
+    const what = [info.absent ? `тасалсан ${info.absent}` : '', info.unpaid ? `цалингүй чөлөө ${info.unpaid}` : ''].filter(Boolean).join(', ');
+    lines.push(cur ? `📉 Ирцийн суутгал (${what} өдөр): урьдчилсан −${fmtMoney(info.nominal)} — сар дуусмагц ажилласан цагаар хасагдана`
+                   : `📉 Ирцийн суутгал (${what} өдөр): −${fmtMoney(info.amount)} — дээрх «нормоос дутуу» мөрөнд багтсан`);
+  }
+  if (credit) lines.push(`💼 Цалинтай өдөр ${credit} нормд тооцогдсон (цагаар хасагдахгүй)`);
+  if (s.n.pending) lines.push(`⏳ ${s.n.pending} өдрийн хүсэлт шийдэгдээгүй — батлагдвал суутгал буурна`);
+  return `<div class="alv-pay">${lines.map(escapeHtml).join('<br>')}</div>`;
+}
+/* ── ЧӨЛӨӨНИЙ ДАТА: унших / бичих ─────────────────────────────────────────────────────────────── */
+async function loadAttLeaves() {
+  try {
+    const yr = todayStr().slice(0, 4) + '-01-01', ps = payrollStartMonth() + '-01';
+    const since = ps < yr ? ps : yr;   // ээлжийн амралтын жилийн үлдэгдэл + цалингийн тооцооны эхлэлээс
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/att_leaves?select=${ATT_LEAVE_COLS}&or=(to_day.gte.${since},status.eq.pending)&order=from_day.asc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
+    if (!r.ok) throw new Error(r.status === 404 ? 'хүснэгт үүсээгүй (db/att_leaves.sql ажиллуулаагүй)' : 'HTTP ' + r.status);
+    const rows = await r.json(), map = {};
+    (Array.isArray(rows) ? rows : []).forEach(x => { if (x && x.id) map[x.id] = x; });
+    state.attLeaves = map; state.attLeavesErr = null;
+  } catch (e) {
+    // ⚠ Алдааг ЧИМЭЭГҮЙ залгихгүй — чөлөө дутуу ачаалагдвал хүн «тасалсан» болж харагдана. Минут тутам өөрөө дахин оролдоно.
+    state.attLeavesErr = attFailMsg(e); state.attLeavesRetryAt = Date.now() + 60000;
+    dataLoadFailed('Чөлөөний хүсэлт', e);
+  }
+  return state.attLeaves;
+}
+// Дүрэм тохируулагдаагүй (`from` хоосон) бол ЮУ Ч ТАТАХГҮЙ — хүснэгт хараахан байхгүй байж болно
+function ensureAttLeaves() {
+  if (!attLeaveCfg().from || state._attLeavesBusy) return;
+  const retry = state.attLeavesErr && Date.now() >= (state.attLeavesRetryAt || 0);
+  if (state.attLeaves !== undefined && !retry) return;
+  state._attLeavesBusy = true;
+  if (state.attLeaves === undefined) state.attLeaves = null;
+  loadAttLeaves().then(() => { state._attLeavesBusy = false; if (typeof render === 'function') render(); },
+                       () => { state._attLeavesBusy = false; });
+}
+function attLeavesWarnHtml() {
+  if (!attLeaveCfg().from) return '';
+  if (state.attLeavesErr) return `<div class="pb-note amk-warn">⚠ Чөлөөний мэдээлэл ачаалж чадсангүй (${escapeHtml(state.attLeavesErr)}) — чөлөөтэй хүн «тасалсан» гэж харагдаж болно. Минутын дараа өөрөө дахин оролдоно.</div>`;
+  if (!attLeavesReady()) return `<div class="pb-note amk-warn">⏳ Чөлөөний мэдээлэл ачаалж байна.</div>`;
+  return '';
+}
+function _attLeaveMerge(row) {
+  const map = Object.assign({}, state.attLeaves || {});
+  if (row && row.id) map[row.id] = row;
+  state.attLeaves = map;
+  return row;
+}
+async function attLeaveRequest(method, path, body) {
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/att_leaves${path}`, {
+    method,
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify(body),
+  }, 20000);
+  if (!r.ok) throw await _schedFail(r);
+  const rows = await r.json();
+  return Array.isArray(rows) ? rows : [];
+}
+// Хүсэлт илгээх (ажилтан өөрөө). Шалгалт = `attLeaveCheck`, дүрмийн эцсийн хаалт = DB trigger.
+async function attLeaveSubmit(p) {
+  const me = findMember(state.me) || {};
+  const key = attMarkKey(personKey(me) || state.me);
+  const v = attLeaveCheck(Object.assign({}, p, { key }));
+  if (!v.ok) throw new Error(v.err);
+  if (!attLeavesReady()) throw new Error('Чөлөөний мэдээлэл ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу');
+  const from = String(p.from), to = String(p.to || p.from);
+  await assertMonthOpenLive(from.slice(0, 7), 'чөлөөний хүсэлт');
+  if (to.slice(0, 7) !== from.slice(0, 7)) await assertMonthOpenLive(to.slice(0, 7), 'чөлөөний хүсэлт');
+  const rows = await attLeaveRequest('POST', '', { member_key: key, from_day: from, to_day: to, kind: p.kind,
+    reason: String(p.reason || '').trim().slice(0, 300), proof_url: p.proof || null, status: 'pending', late: v.late, source: 'request' });
+  const saved = _attLeaveMerge(rows[0] || null);
+  if (!saved) throw new Error('Хүсэлт хадгалагдсан эсэх нь тодорхойгүй — жагсаалтаа шалгана уу');
+  attLeaveApproverKeys().forEach(k => pushBroadcast(k, { kind: 'attendance', title: (v.late ? '⚠ Хоцорсон ' : '') + 'Чөлөөний хүсэлт',
+    body: `${me.name || key} · ${attLeaveRowText(saved)}`, url: './#leaves' }));
+  return { row: saved, late: v.late };
+}
+// Ажилтан өөрийн хүлээгдэж буй хүсэлтийг болино; ҮАЗ (attendance.edit) аль ч мөрийг болиулж болно (түүх хадгалагдана)
+async function attLeaveCancel(id) {
+  const r0 = (state.attLeaves || {})[id]; if (!r0) throw new Error('Хүсэлт олдсонгүй');
+  await assertMonthOpenLive(String(r0.from_day).slice(0, 7), 'чөлөөний хүсэлт болих');
+  const rows = await attLeaveRequest('PATCH', `?id=eq.${encodeURIComponent(id)}`, { status: 'cancelled' });
+  if (!rows.length) throw new Error('Болигдсонгүй — эрх хүрэхгүй эсвэл мөр өөрчлөгдсөн байна');
+  return _attLeaveMerge(rows[0]);
+}
+// ҮАЗ: батлах / татгалзах — нэг товчоор
+async function attLeaveDecide(id, status, note) {
+  if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
+  const r0 = (state.attLeaves || {})[id];
+  if (!r0 || r0.status !== 'pending') throw new Error('Хүсэлт аль хэдийн шийдэгдсэн байна');
+  if (status !== 'approved' && status !== 'rejected') throw new Error('Буруу төлөв');
+  const mem = findMember(r0.member_key);
+  if (mem && !branchFenceAllowsMember(mem)) throw new Error('Энэ ажилтан таны салбарынх биш');
+  await assertMonthOpenLive(String(r0.from_day).slice(0, 7), 'чөлөө батлах');
+  const rows = await attLeaveRequest('PATCH', `?id=eq.${encodeURIComponent(id)}&status=eq.pending`,
+    { status, decision_note: String(note || '').trim().slice(0, 300) || null });
+  if (!rows.length) throw new Error('Шийдэгдсэнгүй — өөр хүн шийдсэн эсвэл эрх хүрэхгүй байна');
+  const saved = _attLeaveMerge(rows[0]);
+  const emp = r0.member_key;
+  pushBroadcast(emp, { kind: 'attendance', title: status === 'approved' ? '✅ Чөлөө батлагдлаа' : '❌ Чөлөөний хүсэлт татгалзагдлаа',
+    body: attLeaveRowText(saved) + (status === 'rejected' && note ? ' · ' + note : ''), url: './#myattend' });
+  return saved;
+}
+/* ── ХҮСЭЛТИЙН МОДАЛ (ажилтан өөрөө, «Миний ирц»-ээс) ──────────────────────────────────────────── */
+function openAttLeaveModal(preKind) {
+  if (!attLeaveCfg().from) { showToast('Чөлөөний хүсэлт хараахан нээгдээгүй байна', 'warn', 3500); return; }
+  document.getElementById('alv-modal')?.remove();
+  const today = todayStr(), tomorrow = addDays(today, 1);
+  let kind = ATT_LEAVE_KINDS[preKind] && ATT_LEAVE_KINDS[preKind].req ? preKind : 'unpaid', proof = '', busy = false;
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'alv-modal';
+  const kinds = Object.keys(ATT_LEAVE_KINDS).filter(k => ATT_LEAVE_KINDS[k].req);
+  modal.innerHTML = `<div class="modal alv-modal">
+    <h2>🗓 Чөлөө / амралт авах</h2>
+    <div class="alv-kinds">${kinds.map(k => `<button type="button" class="ui-raw alv-kind" data-alv-kind="${k}">${ATT_LEAVE_KINDS[k].icon} ${ATT_LEAVE_KINDS[k].label}</button>`).join('')}</div>
+    <div class="alv-row"><span class="alv-l">Эхлэх</span><input type="date" id="alv-from" class="ui-raw alv-date" value="${tomorrow}"></div>
+    <div class="alv-row"><span class="alv-l">Дуусах</span><input type="date" id="alv-to" class="ui-raw alv-date" value="${tomorrow}"></div>
+    <textarea id="alv-reason" class="ui-raw alv-reason" maxlength="300" rows="2" placeholder="Шалтгаан (заавал)"></textarea>
+    <div id="alv-proof-wrap" class="alv-proof" hidden>
+      <span class="alv-proof-t">🧾 Өвчний баримт (заавал)</span>
+      <span class="alv-ph"><input type="file" id="alv-file" accept="image/*" class="alv-file" aria-label="Баримтын зураг сонгох">📷 Зураг оруулах</span>
+      <span id="alv-proof-img"></span>
+    </div>
+    <div class="alv-prev" id="alv-prev"></div>
+    <div class="alv-err" id="alv-err" hidden></div>
+    <div class="modal-actions">
+      <button class="btn" id="alv-cancel">Болих</button>
+      <button class="btn btn-primary" id="alv-send">Илгээх</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $ = (s) => modal.querySelector(s), close = () => modal.remove();
+  const errEl = $('#alv-err'), prevEl = $('#alv-prev');
+  const read = () => ({ kind, from: $('#alv-from').value, to: $('#alv-to').value || $('#alv-from').value, reason: $('#alv-reason').value, proof });
+  const me = findMember(state.me) || {}, key = attMarkKey(personKey(me) || state.me);
+  const refresh = () => {
+    modal.querySelectorAll('[data-alv-kind]').forEach(b => b.classList.toggle('on', b.dataset.alvKind === kind));
+    $('#alv-proof-wrap').hidden = kind !== 'sick';
+    if (kind === 'sick' && $('#alv-from').value > today) { /* өвчтэй: өнөөдөр эсвэл өнгөрсөн өдөр */ }
+    const p = read(), v = attLeaveCheck(Object.assign({ key }, p));
+    errEl.hidden = true; prevEl.innerHTML = '';
+    if (!v.ok) { if (p.reason || p.from !== tomorrow) { errEl.textContent = '⚠ ' + v.err; errEl.hidden = false; } return v; }
+    prevEl.innerHTML = `${v.workdays} ажлын өдөр · ${v.late ? '<b class="alv-late">⚠ хоцорсон хүсэлт</b> — ҮАЗ тусгайлан шийднэ' : '<b class="alv-ontime">✓ хугацаандаа</b>'}<br><small>${escapeHtml(v.rule)}</small>${v.warn ? `<br><small class="alv-late">⚠ ${escapeHtml(v.warn)}</small>` : ''}`;
+    return v;
+  };
+  modal.querySelectorAll('[data-alv-kind]').forEach(b => b.addEventListener('click', () => {
+    kind = b.dataset.alvKind;
+    if (kind === 'sick') { $('#alv-from').value = today; $('#alv-to').value = today; }   // өвчтэй: тухайн өдөр
+    else if ($('#alv-from').value <= today) { $('#alv-from').value = tomorrow; $('#alv-to').value = tomorrow; }
+    refresh();
+  }));
+  $('#alv-from').addEventListener('input', () => { if ($('#alv-to').value < $('#alv-from').value) $('#alv-to').value = $('#alv-from').value; refresh(); });
+  $('#alv-to').addEventListener('input', refresh);
+  $('#alv-reason').addEventListener('input', refresh);
+  $('#alv-file').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    busy = true; $('#alv-proof-img').textContent = 'Байршуулж байна…';
+    try { proof = await poUploadImage(f); $('#alv-proof-img').innerHTML = `<img class="alv-thumb" src="${escapeHtml(proof)}" alt="баримт">`; }
+    catch (err) { proof = ''; $('#alv-proof-img').textContent = ''; errEl.textContent = '⚠ ' + err.message; errEl.hidden = false; }
+    busy = false; refresh();
+  });
+  $('#alv-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  $('#alv-send').onclick = async (e) => {
+    if (busy) return;
+    const v = refresh(); if (!v || !v.ok) return;
+    const btn = e.currentTarget; btn.disabled = true;
+    try {
+      const out = await attLeaveSubmit(read());
+      close();
+      showToast(out.late ? 'Хүсэлт илгээгдлээ — хоцорсон тул ҮАЗ тусгайлан шийднэ' : 'Хүсэлт илгээгдлээ — ҮАЗ баталсны дараа бүртгэгдэнэ', 'success', 4500);
+      if (typeof render === 'function') render();
+    } catch (err) { btn.disabled = false; errEl.textContent = '⚠ Илгээгдсэнгүй: ' + err.message; errEl.hidden = false; }
+  };
+  refresh();
+  modal.classList.add('open');
+}
+/* ── «МИНИЙ ИРЦ» ДЭЭРХ КАРТ ───────────────────────────────────────────────────────────────────── */
+function attMyLeaveCardHtml(myKey) {
+  const cfg = attLeaveCfg(); if (!cfg.from) return '';
+  const today = todayStr(), mine = attLeaveRowsOf(myKey).filter(r => r.kind !== 'makeup' && r.source === 'request' && r.status !== 'cancelled')
+    .sort((a, b) => String(b.from_day).localeCompare(String(a.from_day))).slice(0, 6);
+  const left = attLeaveVacationLeft(myKey, today.slice(0, 4));
+  const rows = mine.map(r => `<div class="alv-item"><span class="alv-it-t">${escapeHtml(attLeaveRowText(r))}</span>
+      <span class="alv-it-s${r.status === 'rejected' ? ' no' : r.status === 'approved' ? ' ok' : ''}">${escapeHtml(attLeaveStatusLabel(r))}</span>${
+      (r.status === 'pending') ? `<button class="ui-raw alv-x" data-alv-cancel="${escapeHtml(r.id)}" aria-label="Хүсэлт болих" title="Болих">✕</button>` : ''}</div>`).join('');
+  return `<div class="myatt-card alv-card">
+    <div class="alv-head"><b>🗓 Чөлөө / амралт</b><button class="ui-raw alv-new" id="my-alv-new">➕ Чөлөө авах</button></div>
+    <div class="alv-bal">🏖 Ээлжийн амралт: <b>${left}</b> / ${cfg.vacationDays} ажлын өдөр үлдсэн</div>
+    ${attLeavesWarnHtml()}
+    ${rows || '<div class="alv-none">Хүсэлт байхгүй. Ажлын өдөр бүр ажиллана гэж тооцогдоно — чөлөө авах бол өмнө нь хүсэлтээ илгээнэ.</div>'}
+  </div>`;
+}
+/* ── ҮАЗ: ХҮЛЭЭГДЭЖ БУЙ ХҮСЭЛТИЙН САМБАР ─────────────────────────────────────────────────────── */
+function attLeavePendingList() {
+  return Object.keys(state.attLeaves || {}).map(id => state.attLeaves[id])
+    .filter(r => r && r.status === 'pending' && r.source === 'request' && r.kind !== 'makeup' && branchFenceAllowsMember(findMember(r.member_key)))
+    .sort((a, b) => (b.late ? 1 : 0) - (a.late ? 1 : 0) || String(a.from_day).localeCompare(String(b.from_day)));
+}
+function renderAttLeavePanel() {
+  if (!canEditAttendance()) return '';
+  const cfg = attLeaveCfg();
+  if (!cfg.from) {
+    return attLeaveEditable() ? `<div class="alv-panel alv-off"><div class="alv-p-t">🗓 Чөлөө / амралтын бүртгэл унтраалттай</div>
+      <div class="alv-p-s">Асаавал ажлын өдөр бүр «ажиллана» гэж тооцогдож, хүсэлтгүй QR-гүй өдөр өөрөө «тасалсан» болно.</div>
+      <button class="ui-raw alv-new" data-alv-cfg>⚙️ Тохируулж асаах</button></div>` : '';
+  }
+  const list = attLeavePendingList();
+  const items = list.map(r => {
+    const m = findMember(r.member_key), name = (m && m.name) || memberName(r.member_key) || r.member_key;
+    return `<div class="alv-pi">
+      <div class="alv-pi-h"><b>${escapeHtml(name)}</b>${r.late ? ' <span class="alv-late">⚠ хоцорсон хүсэлт</span>' : ''}</div>
+      <div class="alv-pi-t">${escapeHtml(attLeaveRowText(r))}</div>
+      ${r.reason ? `<div class="alv-pi-r">${escapeHtml(r.reason)}</div>` : ''}
+      ${r.proof_url ? `<button type="button" class="ui-raw alv-proof-b" data-lightbox="${escapeHtml(r.proof_url)}" aria-label="Баримт томруулж харах"><img class="alv-thumb" src="${escapeHtml(r.proof_url)}" alt="баримт" loading="lazy"></button>` : ''}
+      <div class="alv-pi-a"><button class="ui-raw alv-ok" data-alv-ok="${escapeHtml(r.id)}">✅ Батлах</button><button class="ui-raw alv-no" data-alv-no="${escapeHtml(r.id)}">❌ Татгалзах</button></div>
+    </div>`;
+  }).join('');
+  return `<div class="alv-panel">
+    <div class="alv-p-t">🗓 Чөлөөний хүсэлт${list.length ? ` · ${list.length}` : ''}${attLeaveEditable() ? '<button class="ui-raw alv-cfg" data-alv-cfg aria-label="Чөлөөний дүрэм" title="Дүрэм">⚙️</button>' : ''}</div>
+    ${attLeavesWarnHtml()}${items || '<div class="alv-none">Хүлээгдэж буй хүсэлт алга.</div>'}
+  </div>`;
+}
+function attachAttLeaveHandlers(root) {
+  const q = (s, f) => (root || document).querySelectorAll(s).forEach(f);
+  q('[data-alv-ok]', b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try { await attLeaveDecide(b.dataset.alvOk, 'approved'); showToast('Батлагдлаа', 'success', 2500); }
+    catch (e) { b.disabled = false; showToast('Батлагдсангүй: ' + e.message, 'error', 5000); }
+    if (typeof render === 'function') render();
+  }));
+  q('[data-alv-no]', b => b.addEventListener('click', async () => {
+    const note = await showPrompt('Татгалзах шалтгаан (ажилтанд харагдана)', { placeholder: 'Жиш: тэр өдөр ажил ачаалалтай' });
+    if (note === null) return;
+    b.disabled = true;
+    try { await attLeaveDecide(b.dataset.alvNo, 'rejected', note); showToast('Татгалзлаа', 'info', 2500); }
+    catch (e) { b.disabled = false; showToast('Татгалзсангүй: ' + e.message, 'error', 5000); }
+    if (typeof render === 'function') render();
+  }));
+  q('[data-alv-cancel]', b => b.addEventListener('click', async () => {
+    if (!(await showConfirm('Энэ хүсэлтийг болих уу?', { okText: 'Болих' }))) return;
+    b.disabled = true;
+    try { await attLeaveCancel(b.dataset.alvCancel); showToast('Хүсэлт болигдлоо', 'info', 2500); }
+    catch (e) { b.disabled = false; showToast('Болигдсонгүй: ' + e.message, 'error', 5000); }
+    if (typeof render === 'function') render();
+  }));
+  q('[data-alv-cfg]', b => b.addEventListener('click', openAttLeaveCfgModal));
+  q('#my-alv-new', b => b.addEventListener('click', () => openAttLeaveModal()));
+}
+/* ── CEO: ДҮРМИЙН ЦОНХ (хэзээнээс, хугацаа, амралтын хоног, баярын өдөр) ───────────────────────── */
+function openAttLeaveCfgModal() {
+  if (!attLeaveEditable()) { showToast('Зөвхөн CEO өөрчилнө', 'warn', 3000); return; }
+  document.getElementById('alv-cfg-modal')?.remove();
+  const c = attLeaveCfg(), today = todayStr();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'alv-cfg-modal';
+  modal.innerHTML = `<div class="modal alv-modal">
+    <h2>⚙️ Чөлөө / амралтын дүрэм</h2>
+    <p class="alv-hint">Хэзээнээс хойш ажлын өдөр бүр «ажиллана» гэж тооцогдож, хүсэлтгүй QR-гүй өдөр өөрөө «тасалсан» болно. <b>Хоосон = унтраалттай</b> (цалин хөндөгдөхгүй).</p>
+    <div class="alv-row"><span class="alv-l">Хэзээнээс</span><input type="date" id="alvc-from" class="ui-raw alv-date" value="${escapeHtml(c.from)}" min="${today}"></div>
+    <div class="alv-row"><span class="alv-l">Нэг өдөр (өмнө)</span><input type="number" id="alvc-n1" class="ui-raw alv-num" min="0" max="30" value="${c.notice1}"><span class="alv-u">хоног</span></div>
+    <div class="alv-row"><span class="alv-l">2+ өдөр (өмнө)</span><input type="number" id="alvc-nm" class="ui-raw alv-num" min="0" max="60" value="${c.noticeMulti}"><span class="alv-u">хоног</span></div>
+    <div class="alv-row"><span class="alv-l">Амралт / жил</span><input type="number" id="alvc-vd" class="ui-raw alv-num" min="0" max="60" value="${c.vacationDays}"><span class="alv-u">ажлын өдөр</span></div>
+    <textarea id="alvc-hol" class="ui-raw alv-reason" rows="3" placeholder="Баярын өдрүүд (ЖЖЖЖ-СС-ӨӨ, таслалаар). Цалинтай, ажлын өдөр биш.">${escapeHtml(c.holidays.join(', '))}</textarea>
+    <div class="alv-err" id="alvc-err" hidden></div>
+    <div class="modal-actions"><button class="btn" id="alvc-cancel">Болих</button><button class="btn btn-primary" id="alvc-save">Хадгалах</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $ = (s) => modal.querySelector(s), close = () => modal.remove(), errEl = $('#alvc-err');
+  $('#alvc-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  $('#alvc-save').onclick = async (e) => {
+    const btn = e.currentTarget;   // await-ийн ӨМНӨ (дараа нь null болдог)
+    const from = $('#alvc-from').value || '';
+    const hol = String($('#alvc-hol').value || '').split(/[\s,;]+/).filter(Boolean);
+    const bad = hol.find(x => !_isoDay(x));
+    if (bad) { errEl.textContent = '⚠ Баярын өдөр буруу: ' + bad; errEl.hidden = false; return; }
+    if (from && from < today && from !== c.from) { errEl.textContent = '⚠ Өнгөрсөн өдрөөс эхлүүлэхгүй — олгочихсон цалин өөрчлөгдөнө'; errEl.hidden = false; return; }
+    const val = { from, notice1: Number($('#alvc-n1').value) || 0, notice_multi: Number($('#alvc-nm').value) || 0, vacation_days: Number($('#alvc-vd').value) || 0, holidays: hol };
+    const ok = await showConfirm(from
+      ? `${from}-аас эхлэн ажлын өдөр бүр «ажиллана» гэж тооцогдоно. QR-гүй, хүсэлтгүй өдөр «тасалсан» болж цалингаас цагаар хасагдана; цалинтай чөлөө/баяр нормд тооцогдоно.\n\nИдэвхжүүлэх үү?`
+      : 'Чөлөөний бүртгэлийг УНТРААХ уу? Цалин хуучин дүрмээр бодогдоно.', { okText: from ? 'Идэвхжүүлэх' : 'Унтраах' });
+    if (!ok) return;
+    btn.disabled = true;
+    try { await saveAppConfig('att_leave', val); }
+    catch (err) { btn.disabled = false; errEl.textContent = '⚠ Хадгалагдсангүй: ' + err.message; errEl.hidden = false; return; }
+    state.appConfig = Object.assign({}, state.appConfig || {}, { att_leave: val });
+    state.attLeaves = undefined; state.attLeavesErr = null;
+    close(); showToast(from ? 'Чөлөөний бүртгэл идэвхжлээ' : 'Унтраалаа', 'success', 3000);
+    if (typeof render === 'function') render();
+  };
+  modal.classList.add('open');
+}
+
 async function loadAttendanceToday() {
   try {
     const d = todayStr();
@@ -15281,6 +15859,7 @@ function dayLoadCardHtml() {
   </div>`;
 }
 function renderAttendance() {
+  ensureAttLeaves();   // чөлөөний хүсэлт (дүрэм тохируулагдсан бол)
   const day = state.attViewDay || todayStr();
   const isToday = day === todayStr();
   const monthMode = !!state.attMonthMode;
@@ -15331,7 +15910,7 @@ function renderAttendance() {
     </div>`;
   const body = monthMode ? renderAttendanceMonth(day.slice(0, 7)) : renderAttendanceRows();
   return `<div class="att-wrap">
-    ${loadCard}${scanCard}${renderAttReqPanel()}${dateBar}
+    ${loadCard}${scanCard}${renderAttReqPanel()}${renderAttLeavePanel()}${dateBar}
     <div id="att-list">${body}</div>
   </div>`;
 }
@@ -15848,10 +16427,16 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
   const worked = known ? Math.max(0, Number(workedMins)) : 0;
   const curM = String(today || todayStr()).slice(0, 7);
   const prorate = /^\d{4}-\d{2}$/.test(String(month || '')) && String(month) >= payProrateFrom() && String(month) < curM;
-  const shortMins = (known && prorate) ? Math.max(0, Math.round(norm - worked)) : 0;
-  const earned = shortMins > 0 ? Math.round(base * (worked + credit) / fullNorm) : base;
+  /* ЧӨЛӨӨ/АМРАЛТ (`att_leave`): цалинтай чөлөө, ээлжийн амралт, өвчтэй, баяр, нөхсөн өдрүүд НОРМД тооцогдоно — тэр өдрийн цагаар
+     хасагдахгүй. `extra.creditMins` (ЦЭВЭР `attLeaveMonthSummary`). Хоосон/байхгүй бол ЯГ хуучин тооцоо. ⛔ Илүү цагт ОРОХГҮЙ. */
+  const ex = extra || {};
+  const xCredit = Math.max(0, Math.round(Number(ex.creditMins) || 0));
+  const effNorm = Math.max(0, norm - xCredit);
+  const shortMins = (known && prorate) ? Math.max(0, Math.round(effNorm - worked)) : 0;
+  const earned = shortMins > 0 ? Math.min(base, Math.round(base * (worked + (fullNorm - effNorm)) / fullNorm)) : base;
   const d = salaryNet(earned, deduct);                     // суутгал ЗӨВХӨН (цагаар бодсон) суурьд
-  const otMins = known ? Math.max(0, Math.round(worked - norm)) : 0;
+  const makeupOff = Math.max(0, Math.round(Number(ex.makeupOffsetMins) || 0));   // өмнөх сарын тасалсан өдрийг нөхсөн цаг — давхар төлөхгүй
+  const otMins = known ? Math.max(0, Math.round(worked - norm - makeupOff)) : 0;
   const hourly = fullNorm > 0 ? base / (fullNorm / 60) : 0;
   const r = (rate === undefined || rate === null) ? overtimeRate() : (Number(rate) || 0);
   const otPay = Math.round(otMins / 60 * hourly * r);
@@ -15862,12 +16447,11 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
   const bonus = Math.max(0, Math.round(Number(stageBonus) || 0));
   /* `extra` = `payExtras()`: ТОРГУУЛЬ (хасна) ба ЗАХИАЛГЫН БОНУС (нэмнэ). ⚠ Хоёулаа суутгалын суурьд ОРОХГҮЙ — илүү цаг,
      хүргэлт, дамжлагын бонустой ижил (НДШ/ХХОАТ зөвхөн суурь цалингаас). Торгууль нийт дүнг 0-ээс доош буулгахгүй. */
-  const ex = extra || {};
   const penalty = Math.max(0, Math.round(Number(ex.penalty) || 0));
   const orderBonus = Math.max(0, Math.round(Number(ex.orderBonus) || 0));
   return {
     base, earned, shortMins, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
-    normMins: norm, creditMins: credit,
+    normMins: norm, creditMins: credit + xCredit, leaveCreditMins: xCredit, makeupOffsetMins: makeupOff,
     otMins, hourly: Math.round(hourly), otRate: r, otPay,
     delivery, bonus, orderBonus, penalty, total: Math.max(0, d.net + otPay + delivery + bonus + orderBonus - penalty),
   };
@@ -16106,7 +16690,7 @@ function renderAttendanceMonth(month) {
       : kpi('Гарах бүртгэлгүй', noOutTotal ? noOutTotal + ' өдөр' : '✓', noOutTotal ? `<b>${noOutPeople.length}</b> ажилтан · 0 цаг` : 'бүгд бүртгэлтэй', noOutTotal ? 'att-mo-pct-low' : 'att-mo-pct-ok'))   // цалин харахгүй хүнд 4-р хавтан = нэг тоо, сануулга давхцахгүй
     + `</div>`;
   // `.att-mo-head b` нь өгөгдмөлөөр --text.
-  const head = kpis + `<div class="att-mo-head">${normTxt}</div>` + attCallinsWarnHtml()
+  const head = kpis + `<div class="att-mo-head">${normTxt}</div>` + attCallinsWarnHtml() + attLeavesWarnHtml()
     // Гарах бүртгэлгүй өдөр = 0 цаг тоологдож цалин дутна → мөрүүдийг гүйлгэж хайхгүйн тулд дээд талд ИЛ.
     + ((noOutTotal && payVis && payPeople) ? `<div class="att-mo-flag">⚠ <b>${noOutPeople.length}</b> ажилтанд гарах бүртгэлгүй <b>${noOutTotal}</b> өдөр — 0 цаг тоологдсон</div>` : '');
   const liabilityNote = anyDriver ? `<div class="att-mo-liab">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
@@ -16176,6 +16760,7 @@ function attachAttendanceHandlers() {
   // Ажилтны ирцийн хүсэлт — батлах / татгалзах
   document.querySelectorAll('[data-areq-ok]').forEach(b => b.addEventListener('click', () => { b.disabled = true; attReqApprove(b.dataset.areqOk); }));
   document.querySelectorAll('[data-areq-no]').forEach(b => b.addEventListener('click', () => attReqReject(b.dataset.areqNo)));
+  attachAttLeaveHandlers();   // чөлөөний хүсэлт — батлах / татгалзах, дүрмийн цонх
   // Ирээгүй · тэмдэглэх (Чөлөө / Тасалсан). `#att-list`-ийг 20 сек тутам innerHTML-ээр солидог тул
   // товчуудад ШУУД биш, контейнерт НЭГ delegation (шууд холбовол солигдсоны дараа товч үхнэ).
   const _attListEl = document.getElementById('att-list');
@@ -16376,7 +16961,7 @@ function myPayCardHtml(me) {
       ${paidRow}
     </div>
     ${row('Ажилласан', `<b>${attHM(w.mins)}</b> / ${normH}ц · ${w.days} өдөр`, 'pay-worked')}
-    ${attDisciplineDetailHtml(ex)}${attPayExtrasWarnHtml(ex)}${attCallinsWarnHtml()}${noOutNote}${spNote}
+    ${attDisciplineDetailHtml(ex)}${attLeavePayNoteHtml(ex, b, month, base)}${attPayExtrasWarnHtml(ex)}${attCallinsWarnHtml()}${attLeavesWarnHtml()}${noOutNote}${spNote}
     <div class="pay-fine">Илүү цаг = сарын нийт цаг − ${normH}ц норм, цагийн хөлс ${fmtMoney(b.hourly)}${b.otRate !== 1 ? ` × ${b.otRate}` : ''}. ${payProrateFrom()}-аас эхлэн ${normH}ц-д хүрээгүй бол суурь цалин ажилласан цагаар бодогдоно. ${lunchNote()} Нэмэгдэлд суутгал тооцохгүй.${payRulesText() ? ' ' + escapeHtml(payRulesText()) : ''}</div>
   </div>`;
 }
@@ -16462,6 +17047,7 @@ function renderMyAttend() {
       <div id="my-qr" class="myatt-qr-box"><span class="myatt-qr-wait">QR ачаалж байна…</span></div>
       <div class="myatt-qr-s">${escapeHtml(me.name || '')} · ${escapeHtml(me.phone || '')}</div>
     </div>
+    ${attMyLeaveCardHtml(myKey)}
     <div class="myatt-tiles">
       <div class="myatt-tile">
         <div class="myatt-tile-l">Өнөөдөр</div>
@@ -16512,6 +17098,7 @@ function attachMyAttendHandlers() {
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
+  attachAttLeaveHandlers();
   document.querySelector('[data-pipeline-map]')?.addEventListener('click', openPipelineMapModal);
   document.getElementById('my-pay-ym')?.addEventListener('change', (e) => {
     const v = String(e.target.value || '').slice(0, 7);
@@ -21350,7 +21937,7 @@ function renderSalary() {
     ${orphans.map(o => `<div class="pb-orph"><span>${escapeHtml(o.key)} — <b>${fmtMoney(o.amount || o.paid)}</b>${o.amount && o.paid ? ` (цалин ${fmtMoney(o.amount)} · олголт ${fmtMoney(o.paid)})` : ''}</span>${
       o.amount > 0 && editable ? `<button class="btn pb-orph-b" data-orph-fix="${escapeHtml(o.key)}" data-orph-amt="${o.amount}">🔗 Хэнийх вэ?</button>`
         : '<span class="pb-dim">олголтын мөр — хуулгаас ирсэн, энд засагдахгүй</span>'}</div>`).join('')}</div>`);
-  if (!histOnly) { const _mw = attCallinsWarnHtml(); if (_mw) warnBits.push(_mw); }
+  if (!histOnly) { const _mw = attCallinsWarnHtml() + attLeavesWarnHtml(); if (_mw) warnBits.push(_mw); }
   if (!histOnly && calc.some(c => !c.ex.ready)) warnBits.push(attPayExtrasWarnHtml({ ready: false }));
   if (noSal.length) warnBits.push(`<div class="pb-warn">⚠ <b>${noSal.length}</b> хүн энэ сард ажилласан атлаа суурь цалин тохируулаагүй: ${noSal.map(c => escapeHtml(c.m.name || c.k)).join(', ')}</div>`);
   // ⛔ Шилжүүлэлт мэдэгдэхгүй үед ЧИМЭЭГҮЙ 0 гэж харуулахгүй — үлдэгдэл хиймлээр өснө
@@ -21465,7 +22052,7 @@ function renderSalary() {
       ? `<div class="pb-body">${money}</div>`
       : `<div class="pb-body">
         <div class="pb-top">
-          <div class="pb-who">${bankLine}${noOut}${attDisciplineDetailHtml(c.ex)}${histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 Бүх олголт (${histN})</button>` : ''}</div>
+          <div class="pb-who">${bankLine}${noOut}${attDisciplineDetailHtml(c.ex)}${attLeavePayNoteHtml(c.ex, b, ym, c.amount)}${histN ? `<button class="btn pb-hist" data-sal-hist="${escapeHtml(k)}">📜 Бүх олголт (${histN})</button>` : ''}</div>
           <div class="pb-base"><div class="pb-base-r"><span class="pb-dim">Суурь цалин</span>${baseCell}</div>${dedChk ? `<div class="pb-ded-l">${dedChk}</div>` : ''}</div>
         </div>
         ${money}${spLine}
@@ -27352,7 +27939,7 @@ function attachPerformanceHandlers() {
      түлхүүрийг бичнэ.
    ⚠ Унавал `state.appConfig`-ийг ХООСЛОХГҮЙ — хуучин утга хэвээр үлдэнэ. */
 const APP_CONFIG_KEYS = ['work_norm_days', 'overtime', 'salary_rates', 'lunch', 'stage_pay',
-  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause', 'pay_rules', 'fx_cny', 'task_points'];
+  'deprec', 'day_load', 'loyalty_pct', 'mevent_popularity', 'opening_balance', 'opening_balance_draft', 'stock_count_pause', 'pay_rules', 'fx_cny', 'task_points', 'att_leave'];
 async function loadAppConfigAll(keys) {
   if (!DB_ANON_KEY) return;
   const list = (keys && keys.length) ? keys : APP_CONFIG_KEYS;
@@ -51790,9 +52377,9 @@ function showApp() {
 }
 // Мэдэгдлээс нээх дэлгэц. ⛔ ЗӨВХӨН энэ жагсаалт, эрх шалгаад — дурын hash-аар
 // дэлгэц нээх нь эрхгүй хүнд хаалттай дэлгэцийг гаргах нүх болно.
-const DEEP_VIEWS = { plan: () => canSeePlan(), ideas: () => true, leads: () => canSeeCatering() };
+const DEEP_VIEWS = { plan: () => canSeePlan(), ideas: () => true, leads: () => canSeeCatering(), leaves: () => canEditAttendance(), myattend: () => true };
 // `./#leads` (tools/maestro_notify.py-ийн push-ийн холбоос) = Катеринг дэлгэцийн «📨 Хүсэлт» таб.
-function deepViewTarget(v) { if (v === 'leads') { state.cateringTab = 'leads'; return 'catering'; } return v; }
+function deepViewTarget(v) { if (v === 'leads') { state.cateringTab = 'leads'; return 'catering'; } if (v === 'leaves') return 'attendance'; return v; }
 function deepLinkView(hash) {
   const m = String(hash || '').match(/^#([a-z]+)$/);
   const v = m ? m[1] : '';

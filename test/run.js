@@ -26303,3 +26303,310 @@ async function swFetchTests() {
     ok(!/pendingWrites|sessionToken|pgrstToken|userEmail|teamCache|'tasks'/.test(ev), '⛔ scan: LS_EVICTABLE-д sync хүлээж буй бичилт, токен, багийн кэш, даалгавар ОРООГҮЙ');
   }
 });
+
+// ═══════════════════ ЧӨЛӨӨ / АМРАЛТ + АВТОМАТ ИРЦИЙН ТӨЛӨВ (2026-11-14, ҮАЗ-ын даалгавар) ═══════════════════
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'att_leaves.sql'), 'utf8');
+  const rlsSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'rls.sql'), 'utf8');
+  const pkSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'person_rekey.sql'), 'utf8');
+  const K = '99223344', K2 = '99223355';
+  const saved = { ac: st.appConfig, lv: st.attLeaves, lvErr: st.attLeavesErr, cal: st.attCallins, calErr: st.attCallinsErr, cm: st.closedMonths, cma: st._closedMonthsAt,
+    ceo: st.isCEO, me: st.me, mp: st.memberPerms, ws: st.workStart, pc: st.payrollCfg, fetch: sandbox.fetch };
+  const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
+  st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallinsErr = null; st.attLeavesErr = null; st.workStart = {};
+  const CFG = (o) => { st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: o }); };
+  const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
+  const callins = (rows) => { st.attCallins = {}; (rows || []).forEach(r => { st.attCallins[r.id] = r; }); };
+  let n = 0;
+  const L = (kind, from, to, status, o) => Object.assign({ id: 'L' + (++n), member_key: K, from_day: from, to_day: to || from, kind, status: status || 'approved', source: 'request', reason: 'тест', late: false, updated_at: '2026-11-01T00:00:00Z' }, o || {});
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (day, kind, hm, key) => ({ member_key: key || K, member_name: 'x', kind, ts: ts(day, hm), day, source: 'scan' });
+  const S = (day, recs, today) => run(`attDayStatus('${K}', '${day}', ${JSON.stringify(recs || [])}, '${today || '2026-11-18'}')`);
+  try {
+    // ── ① Дүрэм тавигдаагүй бол БҮХЭЛДЭЭ унтраалттай — цалин, ирц хөндөгдөхгүй ──
+    CFG(undefined); put([]); callins([]);
+    eq([run(`attLeaveActive('2026-11-10')`), run(`attLeaveMonthActive('2026-11')`)], [false, false], 'чөлөө: `att_leave.from` хоосон бол унтраалттай');
+    eq(S('2026-11-10').st, 'na', '⛔ чөлөө: унтраалттай үед өдрийн төлөв «na» — ирээгүй өдөр ч «тасалсан» БОЛОХГҮЙ');
+    ok(run(`attLeaveCheck({ key: '${K}', kind: 'unpaid', from: '2026-11-20', reason: 'тест' }, '2026-11-18')`).ok === false, 'чөлөө: унтраалттай үед хүсэлт гаргахгүй');
+    const legacy = run(`monthPayBreakdown(2100000, true, 960, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, undefined)`);
+    const withEmpty = run(`monthPayBreakdown(2100000, true, 960, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, { penalty: 0, creditMins: 0, makeupOffsetMins: 0 })`);
+    eq([legacy.earned, legacy.total, legacy.shortMins, legacy.otMins], [withEmpty.earned, withEmpty.total, withEmpty.shortMins, withEmpty.otMins], '⛔ цалин: чөлөөний нэмэлтгүй үед хуучин тооцоотой ЯГ ИЖИЛ');
+    eq(run(`payExtras('${K}', '2026-11', [], 2100000)`).leave, null, 'payExtras: унтраалттай үед `leave` хоосон');
+    CFG({ from: '2026-11-03', holidays: ['2026-11-12'] });
+    eq([run(`attLeaveActive('2026-11-02')`), run(`attLeaveActive('2026-11-03')`), run(`attLeaveMonthActive('2026-10')`), run(`attLeaveMonthActive('2026-11')`)], [false, true, false, true], 'чөлөө: `from`-оос өмнөх өдөр/сар идэвхгүй');
+    eq(run(`attLeaveWorkdays('2026-11-06', '2026-11-13')`), ['2026-11-06', '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-13'], 'ажлын өдөр: бямба/ням БА баярын өдөр (11-12) хасагдана');
+    eq(run(`attLeaveDays('2026-11-30', '2026-12-02')`), ['2026-11-30', '2026-12-01', '2026-12-02'], 'өдрүүд: сарын хилээр');
+
+    // ── ② Хүсэлтийн шалгалт: хугацааны дүрэм (нэг өдөр = өмнөх өдөр; 2+ өдөр, амралт = 7 хоногийн өмнө; өвчтэй = тухайн өдөр) ──
+    const T0 = '2026-11-04';   // Лхагва
+    const C = (o, today) => run(`attLeaveCheck(${JSON.stringify(Object.assign({ key: K, kind: 'unpaid', reason: 'тест' }, o))}, '${today || T0}')`);
+    let c = C({ from: '2026-11-05' });
+    eq([c.ok, c.late, c.workdays], [true, false, 1], 'хүсэлт: нэг өдрийн чөлөө — өмнөх өдөр илгээвэл ХУГАЦААНДАА');
+    c = C({ from: '2026-11-04' });
+    eq([c.ok, c.late], [true, true], 'хүсэлт: нэг өдрийн чөлөө — тухайн өдөр илгээвэл «ХОЦОРСОН» (хаагдахгүй, ҮАЗ шийднэ)');
+    c = C({ from: '2026-11-09', to: '2026-11-10' });
+    eq([c.ok, c.late, c.workdays], [true, true, 2], 'хүсэлт: 2 ажлын өдөр — 7 хоногоос бага өмнө бол ХОЦОРСОН');
+    c = C({ from: '2026-11-17', to: '2026-11-18' });
+    eq([c.ok, c.late], [true, false], 'хүсэлт: 2 ажлын өдөр — 7+ хоногийн өмнө бол хугацаандаа');
+    c = C({ kind: 'vacation', from: '2026-11-17' });
+    eq([c.ok, c.late], [true, false], 'хүсэлт: ээлжийн амралт нэг өдөр ч 7 хоногийн дүрэмтэй — 7+ хоног өмнө бол хугацаандаа');
+    c = C({ kind: 'vacation', from: '2026-11-06' });
+    eq([c.ok, c.late], [true, true], 'хүсэлт: ээлжийн амралт 7 хоногоос бага өмнө — ХОЦОРСОН');
+    c = C({ from: '2026-11-06', to: '2026-11-09' });
+    eq(c.workdays, 2, 'хүсэлт: баасан-даваа (бямба, ням дунд) = 2 ажлын өдөр → 7 хоногийн дүрэм');
+    c = C({ kind: 'sick', from: '2026-11-04', proof: 'https://x.test/a.jpg' });
+    eq([c.ok, c.late], [true, false], 'хүсэлт: өвчтэй — тухайн өдөр баримттай бол хугацаандаа');
+    ok(/баримт/.test(C({ kind: 'sick', from: '2026-11-04' }).err), '⛔ хүсэлт: өвчтэй — баримтгүй бол татгалзана');
+    c = C({ kind: 'sick', from: '2026-11-03', proof: 'https://x.test/a.jpg' }, '2026-11-06');
+    eq([c.ok, c.late], [true, true], 'хүсэлт: өвчтэй — 2 хоногоос хожуу мэдэгдвэл хоцорсон');
+    ok(/амралтын/.test(C({ from: '2026-11-07', to: '2026-11-08' }).err), 'хүсэлт: зөвхөн амралтын өдөр сонговол татгалзана');
+    ok(/амралтын/.test(C({ from: '2026-11-12' }).err), 'хүсэлт: баярын өдөр сонговол татгалзана (аль хэдийн цалинтай)');
+    ok(/Шалтгаан/.test(C({ from: '2026-11-05', reason: ' ' }).err), 'хүсэлт: шалтгаан заавал');
+    ok(/Дуусах/.test(C({ from: '2026-11-10', to: '2026-11-09' }).err), 'хүсэлт: дуусах нь эхлэхээс өмнө бол татгалзана');
+    ok(/60/.test(C({ from: '2026-11-05', to: '2027-02-05' }).err), 'хүсэлт: 60 хоногоос урт татгалзана');
+    ok(/хуучин/.test(C({ from: '2026-11-03' }, '2026-11-30').err), '⛔ хүсэлт: 14 хоногоос хуучин өдөр — удирдлагад шууд');
+    ok(/эхэлсэн/.test(C({ from: '2026-10-28', to: '2026-10-30' }, '2026-11-01').err), 'хүсэлт: идэвхжсэн өдрөөс өмнөх өдөр татгалзана');
+    ok(C({ kind: 'makeup', from: '2026-11-05' }).ok === false && C({ kind: 'present', from: '2026-11-05' }).ok === false, '⛔ хүсэлт: «нөхсөн»/«ирсэн» төрлийг ажилтан өөрөө хүсч болохгүй');
+    st.closedMonths = { '2026-11': { at: 'x', by: 'y' } };
+    ok(/сар хаагдсан/.test(C({ from: '2026-11-05' }).err), '⛔ хүсэлт: хаасан сарын өдөр татгалзана');
+    st.closedMonths = {};
+    put([L('unpaid', '2026-11-05', '2026-11-05', 'pending')]);
+    ok(/өөр хүсэлт/.test(C({ from: '2026-11-05' }).err), '⛔ хүсэлт: давхцсан хүсэлт татгалзана (хүлээгдэж буй)');
+    put([L('unpaid', '2026-11-05', '2026-11-05', 'rejected')]);
+    ok(C({ from: '2026-11-05' }).ok, 'хүсэлт: татгалзсан мөр дахин илгээхэд саад болохгүй');
+    put([L('vacation', '2026-11-17', '2026-11-20', 'approved', { id: 'V1' })]);
+    CFG({ from: '2026-11-03', holidays: ['2026-11-12'], vacation_days: 5 });
+    c = C({ kind: 'vacation', from: '2026-11-25', to: '2026-11-26' });
+    ok(c.ok && /4\/5/.test(c.warn || '') && /6\/5/.test(c.warn || ''), 'хүсэлт: ээлжийн амралт жилийн хоногоос хэтэрвэл ЦОЧИХГҮЙ, анхааруулна');
+    eq([run(`attLeaveVacationUsed('${K}', '2026')`), run(`attLeaveVacationLeft('${K}', '2026')`)], [4, 1], 'амралтын үлдэгдэл: авсан 4 → үлдсэн 1');
+    CFG({ from: '2026-11-03', holidays: ['2026-11-12'] });
+    put([]);
+
+    // ── ③ Өдрийн төлөв (ГАНЦ эх сурвалж): анхдагч = ажиллана, хүсэлтгүй QR-гүй өдөр = ТАСАЛСАН ──
+    eq(S('2026-11-09').st, 'absent', '⛔ төлөв: хүсэлтгүй, QR-гүй ажлын өдөр = ТАСАЛСАН (автомат)');
+    ok(S('2026-11-09').deduct === true && S('2026-11-09').credit === false, 'төлөв: тасалсан = хасагдана, нормд тооцогдохгүй');
+    eq(S('2026-11-18').st, 'waiting', 'төлөв: өнөөдөр хараахан ирээгүй = «хүлээж байна» (өдөр дуусаагүй — тасалсан БИШ)');
+    eq(S('2026-11-19').st, 'planned', 'төлөв: ирээдүйн ажлын өдөр = «ажиллана»');
+    eq(S('2026-11-14').st, 'off', 'төлөв: бямба = амралтын өдөр (тасалсан БИШ)');
+    eq([S('2026-11-12').st, S('2026-11-12').credit], ['holiday', true], 'төлөв: баярын өдөр = нормд тооцогдоно');
+    eq(S('2026-11-02').st, 'na', 'төлөв: идэвхжихээс өмнөх өдөр хөндөгдөхгүй');
+    eq(S('2026-11-10', [rec('2026-11-10', 'in', '08:55')]).st, 'present', 'төлөв: QR уншуулсан = ирсэн');
+    eq(S('2026-11-14', [rec('2026-11-14', 'in', '10:00')]).st, 'present', 'төлөв: амралтын өдөр ажилласан = ирсэн (ажилтныг торгохгүй)');
+    callins([{ id: `${K}|2026-11-10`, member_key: K, day: '2026-11-10', at_time: '09:00', status: 'active' }]);
+    let s = S('2026-11-10', [rec('2026-11-10', 'in', '09:30')]);
+    eq([s.st, s.mins], ['late', 30], 'төлөв: хуваарийн цагаас 5м-ээс хэтэрвэл ХОЦОРСОН (минутын тоотой)');
+    eq(S('2026-11-10', [rec('2026-11-10', 'in', '09:04')]).st, 'present', 'төлөв: хүлцлийн хугацаанд (5м) ирсэн = ирсэн');
+    callins([]);
+    put([L('paid', '2026-11-11'), L('unpaid', '2026-11-13'), L('sick', '2026-11-16'), L('vacation', '2026-11-17')]);
+    eq([S('2026-11-11').st, S('2026-11-11').credit, S('2026-11-11').deduct], ['paid', true, false], 'төлөв: цалинтай чөлөө = нормд тооцогдоно, хасагдахгүй');
+    eq([S('2026-11-13').st, S('2026-11-13').credit, S('2026-11-13').deduct], ['unpaid', false, true], 'төлөв: цалингүй чөлөө = цагаар хасагдана');
+    eq([S('2026-11-16').st, S('2026-11-16').credit], ['sick', true], 'төлөв: өвчтэй = нормд тооцогдоно');
+    eq([S('2026-11-17').st, S('2026-11-17').credit], ['vacation', true], 'төлөв: ээлжийн амралт = нормд тооцогдоно');
+    eq([S('2026-11-11', [rec('2026-11-11', 'in', '09:00')]).st, S('2026-11-11', [rec('2026-11-11', 'in', '09:00')]).credit], ['present', false], '⛔ төлөв: чөлөөтэй өдөр ажилласан бол цаг нь тоологдоно — нормд ДАВХАР тооцохгүй');
+    put([L('unpaid', '2026-11-16', '2026-11-16', 'pending')]);
+    eq([S('2026-11-16').st, S('2026-11-16').deduct], ['pending', true], 'төлөв: хүлээгдэж буй хүсэлт = «⏳» (шийдэгдтэл цагаар хасагдана)');
+    eq(S('2026-11-19', [], '2026-11-18').st, 'planned', 'төлөв: ирээдүйн өдрийн хүлээгдэж буй хүсэлт «тасалсан» болохгүй');
+    put([L('present', '2026-11-17', '2026-11-17', 'approved', { source: 'manual' })]);
+    eq([S('2026-11-17').st, S('2026-11-17').credit, S('2026-11-17').manual], ['present', true, true], 'төлөв: ҮАЗ-ын гар засвар «ирсэн» (QR алдсан) = нормд тооцогдоно, ✎ тэмдэгтэй');
+    put([L('absent', '2026-11-10', '2026-11-10', 'approved', { source: 'manual' })]);
+    eq(S('2026-11-10', [rec('2026-11-10', 'in', '09:00')]).st, 'absent', 'төлөв: гар засвар (тасалсан) ирцээс ӨНДӨР эрэмбэтэй');
+    put([L('paid', '2026-11-10', '2026-11-10', 'approved'), L('unpaid', '2026-11-10', '2026-11-10', 'approved', { source: 'manual', updated_at: '2026-11-02T00:00:00Z' })]);
+    eq(S('2026-11-10').st, 'unpaid', 'төлөв: гар засвар хүсэлтээс давуу');
+    // нөхөлт: тасалсан өдөр
+    put([L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-12-05' })]);
+    eq([S('2026-11-09').st, S('2026-11-09').credit], ['makeup', true], 'төлөв: нөхсөн (нөхсөн өдөр ӨӨР САРД) = тасалсан өдөр нормд тооцогдоно');
+    put([L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-11-14' })]);
+    eq([S('2026-11-09').st, S('2026-11-09').credit], ['makeup', false], '⛔ төлөв: нөхсөн өдөр ИЖИЛ САРД бол нормд ДАВХАР тооцохгүй (нөхсөн цаг өөрөө нормыг гүйцээнэ)');
+    put([L('makeup', '2026-11-09', '2026-11-09', 'pending', { makeup_day: '2026-11-14' })]);
+    eq(S('2026-11-09').st, 'absent', 'төлөв: батлагдаагүй нөхөлт нь тасалсныг арилгахгүй');
+
+    // ── ④ Сарын нэгтгэл + цалин: Түмэнжаргалын жишээ (хүсэлтгүй, QR-гүй өдрүүд автоматаар тасалсан → цалинд зөв суутгал) ──
+    CFG({ from: '2026-11-02' });
+    // 11-р сар: 21 ажлын өдөр. Ирсэн 2; цалинтай чөлөө 2; цалингүй 1; амралт 5; өвчтэй 1 → тасалсан 10
+    const recs = [rec('2026-11-02', 'in', '09:00'), rec('2026-11-02', 'out', '18:00'), rec('2026-11-03', 'in', '09:00'), rec('2026-11-03', 'out', '18:00')];
+    put([L('paid', '2026-11-04', '2026-11-05'), L('unpaid', '2026-11-06'), L('vacation', '2026-11-09', '2026-11-13'), L('sick', '2026-11-16')]);
+    const sum = run(`attLeaveMonthSummary('${K}', '2026-11', ${JSON.stringify(recs)}, '2026-12-01')`);
+    eq([sum.n.expected, sum.n.present, sum.n.paid, sum.n.unpaid, sum.n.vacation, sum.n.sick, sum.n.absent], [21, 2, 2, 1, 5, 1, 10], 'сар: тоолол — 21 ажлын өдөр = 2 ирсэн + 2 + 1 + 5 + 1 + 10 тасалсан');
+    eq([sum.deductDays, sum.creditMins], [11, 8 * 480], '⛔ сар: хасагдах өдөр = тасалсан 10 + цалингүй 1; нормд тооцогдох = цалинтай 8 өдөр');
+    const BASE = 2100000;   // өдрийн цалин 100,000
+    const worked = 2 * 480 - 2 * 60;   // 18:00-09:00 = 9ц, цайны 1ц хасагдсан → 8ц
+    const wm = run(`attMemberSummary(${JSON.stringify(recs.slice(0, 2))}, false).mins`);
+    ok(wm === 480, 'сар: 09:00–18:00 = 8ц (цайны цаг хасагдсан) — тестийн урьдчилсан нөхцөл');
+    const noCredit = run(`monthPayBreakdown(${BASE}, false, 960, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, undefined)`);
+    const withCredit = run(`monthPayBreakdown(${BASE}, false, 960, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, { creditMins: ${sum.creditMins} })`);
+    eq(noCredit.earned, 200000, 'цалин: чөлөөний нормгүй бол 2 өдрийн цалин (хуучин зан)');
+    eq([withCredit.earned, withCredit.shortMins, withCredit.creditMins], [1000000, 5280, 3840], '⛔ цалин: 2 ирсэн + 8 цалинтай өдөр = 10 өдрийн цалин; цалингүй/тасалсан 11 өдөр хасагдсан');
+    const info = run(`attLeaveDeductionInfo(${BASE}, '2026-11', ${JSON.stringify({ deductDays: 11, n: { absent: 10, unpaid: 1 } })}, ${BASE - withCredit.earned})`);
+    eq([info.days, info.absent, info.unpaid, info.amount], [11, 10, 1, 1100000], '⛔ ирцийн суутгал: 11 өдөр × 100,000 = 1,100,000₮ — хасагдсан дүнтэй ЯГ таарна');
+    eq(run(`attLeaveDeductionInfo(${BASE}, '2026-11', { deductDays: 11, n: { absent: 11, unpaid: 0 } }, 300000)`).amount, 300000, '⛔ ирцийн суутгал: бодит хасалтаас ХЭЗЭЭ Ч илүү гарахгүй (тусдаа хоёр дахь суутгал БИШ)');
+    const huge = run(`monthPayBreakdown(${BASE}, false, 960, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, { creditMins: 99999 })`);
+    eq([huge.earned, huge.shortMins], [BASE, 0], '⛔ цалин: нормд тооцсон өдөр суурь цалингаас ИЛҮҮ олгохгүй');
+    const ot = run(`monthPayBreakdown(${BASE}, false, 11000, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, { makeupOffsetMins: 480 })`);
+    eq(ot.otMins, 440, 'цалин: өмнөх сарын тасалсан өдрийг нөхсөн цаг энэ сарын илүү цагаас хасагдана (давхар төлөхгүй)');
+    const cur = run(`monthPayBreakdown(${BASE}, false, 960, 10080, 0, 1, '2026-12', '2026-12-05', 0, 10080, { creditMins: 3840 })`);
+    eq([cur.shortMins, cur.earned], [0, BASE], 'цалин: явж буй сард дутуу цагаар хасахгүй (сар дуусмагц)');
+
+    // нөхөлтийн цаг (ӨӨР САРД)
+    put([L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-12-05' })]);
+    const dec = run(`attLeaveMonthSummary('${K}', '2026-12', ${JSON.stringify([rec('2026-12-05', 'in', '09:00'), rec('2026-12-05', 'out', '17:00')])}, '2026-12-10')`);
+    eq(dec.makeupOffsetMins, 420, 'нөхөлт: нөхсөн өдрийн бодит цаг (цайны цаг хассан 7ц) энэ сарын илүү цагаас хасагдана');
+    eq(run(`attLeaveMonthSummary('${K}', '2026-11', [], '2026-12-10')`).creditMins, 480 + 0, 'нөхөлт: тасалсан өдөр (11-р сар) нормд тооцогдоно');
+    put([L('makeup', '2026-12-01', '2026-12-01', 'approved', { makeup_day: '2026-12-05' })]);
+    eq(run(`attLeaveMonthSummary('${K}', '2026-12', ${JSON.stringify([rec('2026-12-05', 'in', '09:00'), rec('2026-12-05', 'out', '17:00')])}, '2026-12-10')`).makeupOffsetMins, 0, '⛔ нөхөлт: ижил сард бол цагийн хасалт ХИЙХГҮЙ (нөхсөн цаг өөрөө нормыг гүйцээнэ)');
+
+    // payExtras: ачаалагдаагүй бол чимээгүй 0 БИШ
+    put([L('paid', '2026-11-04')]);
+    let ex = run(`payExtras('${K}', '2026-11', [], 2100000)`);
+    eq([ex.ready, ex.leave && ex.leave.n.paid, ex.creditMins], [true, 1, 480], 'payExtras: чөлөө ачаалагдсан бол нормын нөхөлт гарна');
+    st.attLeaves = null;
+    ok(run(`payExtras('${K}', '2026-11', [], 2100000)`).ready === false, '⛔ payExtras: чөлөөний дата ачаалагдаагүй бол ready:false (чөлөөтэй хүн «тасалсан» болж цалин чимээгүй дутахгүй)');
+    st.attLeaves = {}; st.attLeavesErr = 'HTTP 500';
+    ok(run(`payExtras('${K}', '2026-11', [], 2100000)`).ready === false, 'payExtras: ачаалах алдаатай үед ready:false');
+    st.attLeavesErr = null;
+    // одоогийн торгуулийн дүрэмтэй зохицол: батлагдсан чөлөөтэй өдөр хуваарьт «ирээгүй» болохгүй
+    st.appConfig = Object.assign({}, st.appConfig, { pay_rules: { from: '2026-11' } });
+    callins([{ id: `${K}|2026-11-10`, member_key: K, day: '2026-11-10', at_time: '09:00', status: 'active' }]);
+    put([]);
+    eq(run(`attDiscipline('${K}', '2026-11', [], '2026-11-20', 5)`).absentN, 1, 'торгууль: хуваарьтай өдөр ирээгүй бол хуучин дүрмээр «ирээгүй»');
+    put([L('paid', '2026-11-10')]);
+    eq(run(`attDiscipline('${K}', '2026-11', [], '2026-11-20', 5)`).absentN, 0, '⛔ торгууль: батлагдсан чөлөөтэй өдөр хуваарьт «ирээгүй» БОЛОХГҮЙ (давхар шийтгэхгүй)');
+    put([L('absent', '2026-11-10', '2026-11-10', 'approved', { source: 'manual' })]);
+    eq(run(`attDiscipline('${K}', '2026-11', [], '2026-11-20', 5)`).absentN, 1, 'торгууль: гар «тасалсан» засвар хуучин ирээгүйг арилгахгүй');
+    st.appConfig = Object.assign({}, st.appConfig, { pay_rules: undefined });
+    callins([]);
+
+    // ── ⑤ Дата давхарга: сервер рүү ҮНЭХЭЭР явна ──
+    CFG({ from: '2026-11-02' });
+    put([]); st.me = K; st.isCEO = false; st.memberPerms = {};
+    TEAMX.length = 0;
+    TEAMX.push({ name: 'Т.Эзэн', phone: '88000001', role: 'Захирал', level: 100, status: 'идэвхтэй' },
+               { name: 'Т.Хоёр', phone: '88000002', role: 'Үйл ажиллагааны захирал', level: 80, status: 'идэвхтэй' },
+               { name: 'Т.Гурав', phone: '88000003', role: 'Нярав', level: 40, status: 'идэвхтэй' },
+               { name: 'Т.Дөрөв', phone: '88000004', role: 'Нярав', level: 40, status: 'идэвхтэй' },
+               { name: 'Т.Тав', phone: '88000005', role: 'Үйл ажиллагааны захирал', level: 80, status: 'гарсан' },
+               { name: 'Т.Зургаа', phone: K, role: 'Нярав', level: 40, status: 'идэвхтэй' });
+    st.memberPerms = { '88000004': { 'attendance.edit': true }, '88000002': { 'attendance.edit': false } };
+    eq(run('attLeaveApproverKeys()').sort(), ['88000001', '88000004'], 'батлагчид: CEO + `attendance.edit` ил олгосон хүн; ҮАЗ-д эрхийг нь хассан бол ОРОХГҮЙ; гарсан орохгүй');
+    st.memberPerms = { '88000004': { 'attendance.edit': true } };
+    eq(run('attLeaveApproverKeys()').sort(), ['88000001', '88000002', '88000004'], 'батлагчид: ҮАЗ (албан тушаал) + ил олгосон');
+    let reqs = [], reply = null, cfgReply = {};
+    run('globalThis.__origPush = pushBroadcast; pushBroadcast = function (k, p) { globalThis.__lpush.push([k, p]); }; globalThis.__lpush = [];');
+    const jsonOk = (v) => Promise.resolve({ ok: true, status: 200, json: async () => v });
+    sandbox.fetch = (url, o) => {
+      if (/\/app_config\?/.test(url)) return jsonOk([{ value: cfgReply }]);
+      if (/\/att_leaves/.test(url)) {
+        const body = o.body ? JSON.parse(o.body) : null; reqs.push({ url, method: o.method, body, headers: o.headers });
+        if (reply) return Promise.resolve(reply);
+        if (o.method === 'POST') return jsonOk([Object.assign({ id: 'NEW1', updated_at: 'x', history: [] }, body)]);
+        if (o.method === 'PATCH') { const id = decodeURIComponent(/id=eq\.([^&]*)/.exec(url)[1]); return jsonOk([Object.assign({}, st.attLeaves[id], body)]); }
+      }
+      return jsonOk([]);
+    };
+    const TT = (fn) => fn().then(() => '', e => String(e.message || e));
+    const FUT = '2099-03-10';   // Мягмар → ирээдүй, хаасан сар биш
+    CFG({ from: '2026-11-02' });
+    const out = await run(`attLeaveSubmit(${JSON.stringify({ kind: 'unpaid', from: FUT, to: FUT, reason: ' Хувийн ажил ' })})`);
+    eq(reqs.length, 1, 'илгээх: нэг хүсэлт серверт явав');
+    eq([reqs[0].method, /att_leaves$/.test(reqs[0].url)], ['POST', true], 'илгээх: POST');
+    eq(reqs[0].body, { member_key: K, from_day: FUT, to_day: FUT, kind: 'unpaid', reason: 'Хувийн ажил', proof_url: null, status: 'pending', late: false, source: 'request' }, '⛔ илгээх: сервер рүү явсан бие — өөрийн утас, pending, хоцроогүй, шалтгаан цэвэрлэгдсэн');
+    ok(out.row && out.row.id === 'NEW1' && run(`attLeaveRowsOf('${K}')`).length === 1, 'илгээх: амжилттай бол жагсаалтад шууд тусна');
+    eq(run('__lpush').map(x => x[0]).sort(), ['88000001', '88000002', '88000004'], '⛔ илгээх: ҮАЗ/CEO/батлагч бүрд push явна');
+    ok(/Чөлөөний хүсэлт/.test(run('__lpush')[0][1].title) && /Хувийн/.test(run('__lpush')[0][1].body) === false && /Т\.Зургаа/.test(run('__lpush')[0][1].body), 'илгээх: push-д ажилтны нэр, чөлөөний төрөл (шалтгаан биш)');
+    ok(/#leaves/.test(run('__lpush')[0][1].url), 'илгээх: push холбоос ҮАЗ-ын самбар руу');
+    // хоцорсон хүсэлт — тэмдэглэгдэж явна
+    reqs = []; run('__lpush').length = 0; put([]);
+    const nearDay = run('addDays(todayStr(), 0)');
+    await run(`attLeaveSubmit(${JSON.stringify({ kind: 'unpaid', from: nearDay, to: nearDay, reason: 'Яаралтай' })})`).catch(e => e);
+    // (өнөөдөр амралтын өдөр байж болох тул шалгалтыг шууд цэвэр функцээр хийсэн; энд зөвхөн алдаагүй явсан эсэх)
+    // татгалзах — сервер рүү ЮУ Ч явахгүй
+    reqs = []; run('__lpush').length = 0; put([]);
+    ok(/Шалтгаан/.test(await TT(() => run(`attLeaveSubmit(${JSON.stringify({ kind: 'unpaid', from: FUT, reason: '' })})`))), 'илгээх: шалгалтад унавал татгалзана');
+    cfgReply = { '2099-03': { at: 'x', by: 'y' } };
+    ok(/сар хаагдсан/.test(await TT(() => run(`attLeaveSubmit(${JSON.stringify({ kind: 'unpaid', from: FUT, reason: 'тест' })})`))), '⛔ илгээх: хаасан сар — сервэрээс шинээр уншиж хориглоно');
+    cfgReply = {}; st.closedMonths = {};
+    st.attLeaves = null;
+    ok(/ачаалагдаагүй/.test(await TT(() => run(`attLeaveSubmit(${JSON.stringify({ kind: 'unpaid', from: FUT, reason: 'тест' })})`))), 'илгээх: чөлөөний жагсаалт ачаалагдаагүй үед бичихгүй (давхцлыг шалгаж чадахгүй)');
+    eq([reqs.length, run('__lpush').length], [0, 0], 'илгээх: бүх татгалзсан тохиолдолд сервер рүү юу ч явсангүй, push ч үгүй');
+    reply = { ok: false, status: 400, text: async () => JSON.stringify({ message: 'Хүсэлт зөвхөн өөрийнх' }) };
+    put([]);
+    ok(/өөрийнх/.test(await TT(() => run(`attLeaveSubmit(${JSON.stringify({ kind: 'unpaid', from: FUT, reason: 'тест' })})`))), 'илгээх: DB-ийн мессеж хэрэглэгчид очно');
+    reply = null;
+    // батлах
+    put([L('unpaid', FUT, FUT, 'pending', { id: 'P1', member_key: K2 })]);
+    ok(/эрх алга/.test(await TT(() => run(`attLeaveDecide('P1', 'approved')`))), 'батлах: ирц засах эрхгүй хүн батлахгүй');
+    st.isCEO = true; reqs = []; run('__lpush').length = 0;
+    await run(`attLeaveDecide('P1', 'approved')`);
+    ok(reqs[0].method === 'PATCH' && /id=eq\.P1&status=eq\.pending/.test(reqs[0].url), '⛔ батлах: PATCH + `status=eq.pending` (өөр хүн шийдсэн бол дарахгүй)');
+    eq(reqs[0].body, { status: 'approved', decision_note: null }, 'батлах: зөвхөн төлөв, шийдвэр явна (өдөр/төрөл хөндөгдөхгүй)');
+    eq(run(`attLeaveRowsOf('${K2}')`)[0].status, 'approved', 'батлах: жагсаалтад шууд тусна');
+    eq([run('__lpush')[0][0], /Чөлөө батлагдлаа/.test(run('__lpush')[0][1].title)], [K2, true], 'батлах: ажилтанд мэдэгдэл');
+    ok(/аль хэдийн шийдэгдсэн/.test(await TT(() => run(`attLeaveDecide('P1', 'rejected')`))), '⛔ батлах: шийдэгдсэн хүсэлтийг дахин шийдэхгүй');
+    put([L('unpaid', FUT, FUT, 'pending', { id: 'P2', member_key: K2 })]); run('__lpush').length = 0; reqs = [];
+    await run(`attLeaveDecide('P2', 'rejected', ' Ачаалалтай ')`);
+    eq(reqs[0].body, { status: 'rejected', decision_note: 'Ачаалалтай' }, 'татгалзах: шалтгаан цэвэрлэгдэж явна');
+    ok(/Ачаалалтай/.test(run('__lpush')[0][1].body), 'татгалзах: шалтгаан ажилтанд очно');
+    reply = { ok: true, status: 200, json: async () => [] };
+    put([L('unpaid', FUT, FUT, 'pending', { id: 'P3', member_key: K2 })]);
+    ok(/Шийдэгдсэнгүй/.test(await TT(() => run(`attLeaveDecide('P3', 'approved')`))), '⛔ батлах: 0 мөр шинэчлэгдвэл (RLS/зэрэг шийдсэн) амжилттай гэж ХУДАЛ хэлэхгүй');
+    reply = null;
+    // болих
+    put([L('unpaid', FUT, FUT, 'pending', { id: 'C1' })]); reqs = [];
+    await run(`attLeaveCancel('C1')`);
+    eq([reqs[0].method, reqs[0].body, run(`attLeaveRowsOf('${K}')`)[0].status], ['PATCH', { status: 'cancelled' }, 'cancelled'], '⛔ болих: мөр УСТАХГҮЙ — зөвхөн status:cancelled');
+    ok(!reqs.some(r => r.method === 'DELETE'), 'болих: хатуу устгал байхгүй');
+
+    // ── ⑥ Удирдлагын самбар / ажилтны карт (бодитоор зурагдана) ──
+    st.isCEO = true; st.me = '88000001';
+    put([L('unpaid', FUT, FUT, 'pending', { id: 'Q1', member_key: K, late: true, proof_url: 'https://x.test/p.jpg' }), L('paid', FUT, FUT, 'approved', { id: 'Q2', member_key: K2 })]);
+    const panel = run('renderAttLeavePanel()');
+    ok(/data-alv-ok="Q1"/.test(panel) && /data-alv-no="Q1"/.test(panel) && !/Q2/.test(panel), 'самбар: хүлээгдэж буй хүсэлт ✅/❌ товчтой, батлагдсан орохгүй');
+    ok(/хоцорсон хүсэлт/.test(panel) && /data-lightbox="https:\/\/x\.test\/p\.jpg"/.test(panel), 'самбар: хоцорсон тэмдэг + баримт томруулж харна');
+    st.isCEO = false; st.memberPerms = {}; st.me = K;
+    eq(run('renderAttLeavePanel()'), '', '⛔ самбар: ирц засах эрхгүй хүнд ХАРАГДАХГҮЙ (бусдын шалтгаан, баримт)');
+    const card = run(`attMyLeaveCardHtml('${K}')`);
+    ok(/Ээлжийн амралт/.test(card) && /data-alv-cancel="Q1"/.test(card) && /my-alv-new/.test(card) && !/data-alv-ok/.test(card), 'ажилтны карт: өөрийн хүсэлт + болих + шинээр авах; батлах товч БАЙХГҮЙ');
+    CFG(undefined);
+    eq(run(`attMyLeaveCardHtml('${K}')`), '', 'ажилтны карт: унтраалттай үед огт гарахгүй');
+    st.isCEO = true;
+    ok(/data-alv-cfg/.test(run('renderAttLeavePanel()')), 'самбар: унтраалттай үед CEO-д «асаах» товч');
+    st.isCEO = false;
+    eq(run('renderAttLeavePanel()'), '', 'самбар: унтраалттай үед CEO бус хүнд юу ч үгүй');
+    CFG({ from: '2026-11-02' });
+    ok(/ачаалж чадсангүй/.test((st.attLeavesErr = 'HTTP 500', run('attLeavesWarnHtml()'))), 'анхааруулга: чөлөөний дата ачаалж чадаагүй бол ИЛ');
+    st.attLeavesErr = null;
+    // цалингийн тайлбар
+    const pn = run(`attLeavePayNoteHtml(${JSON.stringify({ leave: JSON.parse(JSON.stringify(sum)) })}, ${JSON.stringify(withCredit)}, '2026-11', ${BASE}, '2026-12-05')`);
+    ok(/тасалсан 10/.test(pn) && /цалингүй чөлөө 1/.test(pn) && /1,100,000/.test(pn) && /багтсан/.test(pn), 'цалингийн тайлбар: «тасалсан 10, цалингүй чөлөө 1 → 1,100,000₮» + «цагаар хасагдсанд багтсан» (тусдаа суутгал БИШ)');
+    eq(run(`attLeavePayNoteHtml({ leave: null }, {}, '2026-11', 1)`), '', 'цалингийн тайлбар: унтраалттай үед хоосон');
+
+    // ── ⑦ SCAN: DB, эрх, нэг эх сурвалж ──
+    ok(/create table if not exists att_leaves/.test(sql) && /revoke delete on att_leaves/.test(sql) && /notify pgrst, 'reload schema'/.test(sql), 'db: att_leaves хүснэгт, устгах эрхгүй, schema reload');
+    ok(/check \(kind not in \('present', 'absent'\) or source = 'manual'\)/.test(sql) && /source = 'request' or from_day = to_day/.test(sql), 'db: «ирсэн/тасалсан» зөвхөн гар засвар, гар засвар нэг өдөр');
+    ok(/Зөвхөн өөрийнхөө хүсэлтийг илгээнэ/.test(sql) && /Хүсэлт зөвхөн «хүлээгдэж буй» төлөвтэй үүснэ/.test(sql) && /Хүсэлтийг батлах\/татгалзах эрхгүй/.test(sql), '⛔ db: ажилтан өөртөө батлах/өөр хүнийг нэрээр хүсэлт гаргах/гар засвар хийх боломжгүй (trigger)');
+    ok(/Өвчтэй хүсэлтэд баримтын зураг заавал/.test(sql) && /Гар засварт шалтгаан заавал/.test(sql), 'db: өвчтэй = баримттай, гар засвар = шалтгаантай');
+    ok(/closed_months/.test(sql) && /сар хаагдсан/.test(sql), '⛔ db: хаасан сарын хүсэлт/засвар/төлөв солилт хаагдана');
+    ok(/create or replace view v_att_leaves_team/.test(sql) && !/security_invoker/.test(sql.replace(/--.*$/gm, '')) && !/reason/.test(sql.slice(sql.indexOf('create or replace view v_att_leaves_team'), sql.indexOf('grant select on v_att_leaves_team'))), '⛔ db: хамт олны харагдац — шалтгаан, баримт ГАРАХГҮЙ, security_invoker АСААХГҮЙ');
+    ok(/att_leaves/.test(pkSql), 'db: утас солигдоход att_leaves дагана (person_rekey)');
+    ok((rlsSql.match(/when 'att_leave' then sec\.is_ceo\(\)/g) || []).length === 3, '⛔ db/rls.sql: `att_leave` тохиргоо зөвхөн CEO бичнэ (insert + update using + with check)');
+    ok(/function attLeaveEditable\(\) \{ return !!state\.isCEO; \}/.test(appSrc) && /'att_leave'\]/.test(appSrc.slice(appSrc.indexOf('const APP_CONFIG_KEYS'), appSrc.indexOf('async function loadAppConfigAll'))), 'scan: att_leave тохиргоо зөвхөн CEO-д засагдана, серверээс ачаалагдана');
+    const code = appSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
+    ok(!/method:\s*'DELETE'/.test(code.slice(code.indexOf('async function attLeaveRequest'), code.indexOf('async function attLeaveSubmit'))), '⛔ scan: чөлөөний хүсэлт хатуу устгадаггүй');
+    const sub = code.slice(code.indexOf('async function attLeaveSubmit'), code.indexOf('async function attLeaveCancel'));
+    ok(sub.indexOf('attLeaveCheck(') > -1 && sub.indexOf('assertMonthOpenLive(') > -1 && sub.indexOf('assertMonthOpenLive(') < sub.indexOf("attLeaveRequest('POST'"), '⛔ scan: илгээх — шалгалт + хаасан сарын шалгалт бичихээс ӨМНӨ');
+    const dec2 = code.slice(code.indexOf('async function attLeaveDecide'), code.indexOf('function openAttLeaveModal'));
+    ok(dec2.indexOf('canEditAttendance()') > -1 && dec2.indexOf('branchFenceAllowsMember(') > -1 && dec2.indexOf('assertMonthOpenLive(') < dec2.indexOf("attLeaveRequest('PATCH'") && /status=eq\.pending/.test(dec2), 'scan: батлах — эрх + салбарын хаалт + хаасан сар + pending нөхцөл');
+    ok((code.match(/attDayStatus\(/g) || []).length >= 2 && !/function attDayStatus[\s\S]*?attLeaveRowsOf\(/.test(code.slice(code.indexOf('function attDayStatus'), code.indexOf('const ATT_DAY_ST'))), 'scan: өдрийн төлөв ГАНЦ функцэд, мөр шууд уншихгүй (attLeaveCover-оор)');
+    ok(!/data-amk="|data-amk-clear|amk-b-|amk-tag/.test(code), '⛔ scan: хуучин тэмдэглэгээний (amk) товч буцаж ИРЭЭГҮЙ');
+    ok(/\.alv-modal \{/.test(cssSrc) && !/!important/.test(cssSrc.slice(cssSrc.indexOf('Чөлөө / амралтын хүсэлт + автомат ирцийн төлөв'))) && !/#[0-9a-fA-F]{3,8}\b/.test(cssSrc.slice(cssSrc.indexOf('Чөлөө / амралтын хүсэлт + автомат ирцийн төлөв'))), 'scan: шинэ CSS — !important, хатуу өнгө БАЙХГҮЙ (токен л)');
+  } finally {
+    sandbox.fetch = saved.fetch;
+    run('if (globalThis.__origPush) pushBroadcast = globalThis.__origPush;');
+    TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m));
+    Object.assign(st, { appConfig: saved.ac, attLeaves: saved.lv, attLeavesErr: saved.lvErr, attCallins: saved.cal, attCallinsErr: saved.calErr, closedMonths: saved.cm,
+      _closedMonthsAt: saved.cma, isCEO: saved.ceo, me: saved.me, memberPerms: saved.mp, workStart: saved.ws, payrollCfg: saved.pc });
+  }
+});

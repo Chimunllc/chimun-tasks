@@ -52,7 +52,8 @@ begin
     ('stock_moves','by'), ('receipt_files','uploaded_by'),
     ('member_branches','updated_by'), ('expense_learn','updated_by'),
     ('app_orders','created_by'),
-    ('att_marks','marked_by'), ('att_callins','called_by')
+    ('att_marks','marked_by'), ('att_callins','called_by'),
+    ('att_leaves','member_key'), ('att_leaves','created_by'), ('att_leaves','decided_by')
   ) v(t, c) loop
     if to_regclass('public.' || quote_ident(r.t)) is null then continue; end if;
     execute format('update %I set %I = $2 where %I = $1', r.t, r.c, r.c) using o, n;

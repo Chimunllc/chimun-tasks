@@ -285,6 +285,8 @@ create policy nomaad_payments_rw on public.nomaad_payments for all to authentica
 --    өөрчилдөг дүрэм тул зөвхөн CEO бичнэ. Уншихыг хаагаагүй — ажилтан өөрт ямар дүрэм үйлчилдгийг мэдэх ёстой.
 -- ⛔ `task_points` (даалгаврын оноо: эхлэх огноо, ★→оноо, хасалтын хэмжээ, цалинд оруулах эсэх) = ЦАЛИНГИЙН УРАМШУУЛАЛД нөлөөлөх
 --    дүрэм тул зөвхөн CEO бичнэ. Уншихыг хаагаагүй — ажилтан өөрт ямар дүрэм үйлчилдгийг мэдэх ёстой (2026-11-09).
+-- ⛔ `att_leave` (чөлөө/амралтын хүсэлтийн дүрэм: хэзээнээс идэвхжих, хүсэлтийн хугацаа, амралтын хоног, баярын өдөр) = ЦАЛИНГИЙН ТООЦОО
+--    өөрчилдөг дүрэм (цалинтай чөлөө нормд тооцогдоно) тул зөвхөн CEO бичнэ. Уншихыг хаагаагүй — ажилтан дүрмээ мэдэх ёстой (2026-11-14).
 -- ⛔ `fx_cny` (Хаан банкны юанийн ханш) = худалдан авалтын өртгийн суурь. ЗӨВХӨН `tools/khan_fx.py` (VPS, эзний эрхээр — RLS-ийг
 --    алгасдаг) бичнэ; апп уншина. CEO-д гараар засах боломж үлдээв (банкны сайт саатсан үед). Ажилтан гараар бичвэл өртөг гажна.
 -- ⛔ `reminder_mail` (автомат сануулга асаах/унтраах) ба `reminder_mail_text`, `reminder_mail_text_old` (харилцагчид
@@ -307,6 +309,7 @@ create policy app_config_ins on public.app_config for insert to authenticated
                        when 'stock_count_pause' then sec.is_ceo()
                        when 'pay_rules' then sec.is_ceo()
                        when 'task_points' then sec.is_ceo()
+                       when 'att_leave' then sec.is_ceo()
                        when 'fx_cny' then sec.is_ceo()
                        else true end);
 drop policy if exists app_config_upd on public.app_config;
@@ -320,6 +323,7 @@ create policy app_config_upd on public.app_config for update to authenticated
                   when 'stock_count_pause' then sec.is_ceo()
                   when 'pay_rules' then sec.is_ceo()
                        when 'task_points' then sec.is_ceo()
+                       when 'att_leave' then sec.is_ceo()
                   when 'fx_cny' then sec.is_ceo()
                   else true end)
   with check (case key when 'coo_share' then sec.is_ceo()
@@ -331,6 +335,7 @@ create policy app_config_upd on public.app_config for update to authenticated
                        when 'stock_count_pause' then sec.is_ceo()
                        when 'pay_rules' then sec.is_ceo()
                        when 'task_points' then sec.is_ceo()
+                       when 'att_leave' then sec.is_ceo()
                        when 'fx_cny' then sec.is_ceo()
                        else true end);
 

@@ -20166,8 +20166,8 @@ function attachEmailMarketingHandlers() {
 function renderMarketing() {
   const mkTab = state.mkTab || 'poster';
   const _mkTabBar = `<div style="display:flex;gap:6px;margin:6px 0 16px;flex-wrap:wrap;">
-    <button class="btn${mkTab === 'poster' ? ' btn-primary' : ''}" data-mk-tab="poster" style="padding:7px 14px;">🎨 Постер</button>
-    <button class="btn${mkTab === 'email' ? ' btn-primary' : ''}" data-mk-tab="email" style="padding:7px 14px;">📧 Имэйл маркетинг</button>
+    <button class="btn mk-tab-b${mkTab === 'poster' ? ' btn-primary' : ''}" data-mk-tab="poster">🎨 Постер</button>
+    <button class="btn mk-tab-b${mkTab === 'email' ? ' btn-primary' : ''}" data-mk-tab="email">📧 Имэйл маркетинг</button>
   </div>`;
   if (mkTab === 'email') {
     // Дэд сонголт: нэг удаагийн илгээлт (өмнөх) ба автомат сануулгын бичвэр (2026-10-19)
@@ -20176,14 +20176,13 @@ function renderMarketing() {
       <button class="mke-sub${sub === 'manual' ? ' on' : ''}" role="tab" aria-selected="${sub === 'manual'}" data-mke-sub="manual">📤 Нэг удаа илгээх</button>
       <button class="mke-sub${sub === 'reminder' ? ' on' : ''}" role="tab" aria-selected="${sub === 'reminder'}" data-mke-sub="reminder">🔁 Автомат сануулга</button>
     </div>`;
-    return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}${subBar}${sub === 'reminder' ? renderReminderCard() : renderEmailMarketing()}</div>`;
+    return `<div class="mk-wrap">${_mkTabBar}${subBar}${sub === 'reminder' ? renderReminderCard() : renderEmailMarketing()}</div>`;
   }
   const k = _brandKit();
   const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   if (!P.template) P.template = 'work';
-  const sizeBtns = Object.entries(POSTER_SIZES).map(([key, s]) => `<button class="btn btn-sm" data-mk-size="${key}" style="${P.size === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(s.label)}</button>`).join(' ');
-  const tplBtns = Object.entries(POSTER_TEMPLATES).map(([key, l]) => `<button class="btn btn-sm" data-mk-tpl="${key}" style="${P.template === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(l)}</button>`).join(' ');
-  const fld = 'width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);margin-bottom:10px;';
+  const sizeBtns = Object.entries(POSTER_SIZES).map(([key, s]) => `<button class="btn btn-sm${P.size === key ? ' mk-chip-on' : ''}" data-mk-size="${key}">${escapeHtml(s.label)}</button>`).join(' ');
+  const tplBtns = Object.entries(POSTER_TEMPLATES).map(([key, l]) => `<button class="btn btn-sm${P.template === key ? ' mk-chip-on' : ''}" data-mk-tpl="${key}">${escapeHtml(l)}</button>`).join(' ');
   // 🛒 Бараа сонголт — КАТЕГОРИОР бүлэглэсэн dropdown (optgroup). Бараа бүр өөрийн нэрээр.
   const _mkRent = (state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p)));
   const _mkByCat = {};
@@ -20191,25 +20190,25 @@ function renderMarketing() {
   const _mkOptLbl = p => p.name || '';
   // 🔗 Хаашаа чиглүүлэх — постын бичвэрт орох сайтын холбоос.
   const _mkLinkCur = String(P.linkSku || P.productSku || '');
-  const mkLinkSelect = `<select id="mk-link-sku" style="${fld}"><option value="">🏠 Сайтын нүүр — mevent.mn</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}"${String(p.sku) === _mkLinkCur ? ' selected' : ''}>${escapeHtml(_mkOptLbl(p))}</option>`).join('')}</optgroup>`).join('')}</select>`;
-  const mkProdSelect = `<select id="mk-prod-sel" style="${fld}"><option value="">📂 Бүлгээр сонгох (категори)…</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(_mkOptLbl(p))}${p.price ? ' · ' + fmtMoney(Number(p.price)) : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
-  return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}
+  const mkLinkSelect = `<select id="mk-link-sku" class="mk-fld"><option value="">🏠 Сайтын нүүр — mevent.mn</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}"${String(p.sku) === _mkLinkCur ? ' selected' : ''}>${escapeHtml(_mkOptLbl(p))}</option>`).join('')}</optgroup>`).join('')}</select>`;
+  const mkProdSelect = `<select id="mk-prod-sel" class="mk-fld"><option value="">📂 Бүлгээр сонгох (категори)…</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(_mkOptLbl(p))}${p.price ? ' · ' + fmtMoney(Number(p.price)) : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
+  return `<div class="mk-wrap">${_mkTabBar}
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
       <div style="font-size:12px;color:var(--muted);">Зураг оруулаад брэнд хүрээ, гарчиг тавьж PNG татна. Instagram пост/story, Facebook.</div></div>
     <div class="mk-cols">
       <div>
         <div style="font-size:14px;font-weight:800;margin-bottom:8px;">🎯 Брэнд иж бүрдэл <span style="font-weight:400;color:var(--muted);font-size:11px;">(нэг удаа — бүх ажилтанд дундлагдана)</span></div>
         <div style="margin-bottom:10px;"><button class="btn btn-sm" id="mk-preset-mevent" style="border-color:#FF6A00;color:#FF6A00;">⚡ M-Event загвар оруулах</button></div>
-        <label style="font-size:11.5px;color:var(--muted);">Брэнд нэр</label><input id="mk-name" value="${escapeHtml(k.name || '')}" placeholder="M-Event / Maestro Catering / NOMAAD" style="${fld}">
-        <label style="font-size:11.5px;color:var(--muted);">Уриа (сонголт)</label><input id="mk-tagline" value="${escapeHtml(k.tagline || '')}" placeholder="Мартагдашгүй эвент" style="${fld}">
+        <label class="mk-lbl">Брэнд нэр</label><input id="mk-name" value="${escapeHtml(k.name || '')}" placeholder="M-Event / Maestro Catering / NOMAAD" class="mk-fld">
+        <label class="mk-lbl">Уриа (сонголт)</label><input id="mk-tagline" value="${escapeHtml(k.tagline || '')}" placeholder="Мартагдашгүй эвент" class="mk-fld">
         <div style="display:flex;gap:10px;">
-          <div style="flex:1;"><label style="font-size:11.5px;color:var(--muted);">Утас</label><input id="mk-phone" value="${escapeHtml(k.phone || '')}" placeholder="9911 2233" style="${fld}"></div>
-          <div style="flex:1;"><label style="font-size:11.5px;color:var(--muted);">Вэб/хаяг</label><input id="mk-web" value="${escapeHtml(k.website || '')}" placeholder="nomaadcamp.com" style="${fld}"></div>
+          <div class="mk-f1"><label class="mk-lbl">Утас</label><input id="mk-phone" value="${escapeHtml(k.phone || '')}" placeholder="9911 2233" class="mk-fld"></div>
+          <div class="mk-f1"><label class="mk-lbl">Вэб/хаяг</label><input id="mk-web" value="${escapeHtml(k.website || '')}" placeholder="nomaadcamp.com" class="mk-fld"></div>
         </div>
         <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
-          <div><label style="font-size:11.5px;color:var(--muted);display:block;">Үндсэн өнгө</label><input id="mk-c1" type="color" value="${escapeHtml(k.color1 || '#7c3aed')}" style="width:52px;height:38px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;"></div>
-          <div><label style="font-size:11.5px;color:var(--muted);display:block;">Хоёрдогч</label><input id="mk-c2" type="color" value="${escapeHtml(k.color2 || '#0ea5e9')}" style="width:52px;height:38px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;"></div>
-          <div style="flex:1;"><label style="font-size:11.5px;color:var(--muted);display:block;">Лого</label>
+          <div><label class="mk-lbl mk-lbl-b">Үндсэн өнгө</label><input id="mk-c1" type="color" value="${escapeHtml(k.color1 || '#7c3aed')}" class="mk-color"></div>
+          <div><label class="mk-lbl mk-lbl-b">Хоёрдогч</label><input id="mk-c2" type="color" value="${escapeHtml(k.color2 || '#0ea5e9')}" class="mk-color"></div>
+          <div class="mk-f1"><label class="mk-lbl mk-lbl-b">Лого</label>
             <label for="mk-logo" style="display:inline-block;padding:8px 12px;border:1px dashed var(--accent,#7c3aed);border-radius:8px;font-size:12px;cursor:pointer;background:var(--panel-hover);">📷 ${k.logo ? 'Лого солих' : 'Лого оруулах'}<input id="mk-logo" type="file" accept="image/*" hidden></label>
             ${k.logo ? `<img src="${k.logo}" style="height:34px;vertical-align:middle;margin-left:8px;border-radius:5px;">` : ''}</div>
         </div>
@@ -20229,33 +20228,33 @@ function renderMarketing() {
           </div>`).join('')}
         </div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Хэвлэлд (вектор):
-          <a href="https://n8n.nomaadcamp.com/img/brand/mevent-logo-horizontal.pdf" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Хэвтээ PDF ↗</a> ·
-          <a href="https://n8n.nomaadcamp.com/img/brand/mevent-logo-vertical.pdf" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Босоо PDF ↗</a>
+          <a href="https://n8n.nomaadcamp.com/img/brand/mevent-logo-horizontal.pdf" target="_blank" rel="noopener" class="mk-dl">Хэвтээ PDF ↗</a> ·
+          <a href="https://n8n.nomaadcamp.com/img/brand/mevent-logo-vertical.pdf" target="_blank" rel="noopener" class="mk-dl">Босоо PDF ↗</a>
         </div>
       </div>
       <div>
         <div style="font-size:14px;font-weight:800;margin-bottom:10px;">🖼 Постер</div>
-        <label style="font-size:11.5px;color:var(--muted);">🛒 Бараанаас сонгох <span style="font-weight:400;">(зураг+үнэ+нөхцөл авто)</span></label>
+        <label class="mk-lbl">🛒 Бараанаас сонгох <span style="font-weight:400;">(зураг+үнэ+нөхцөл авто)</span></label>
         ${mkProdSelect}
         <div style="text-align:center;font-size:11px;color:var(--muted);margin:-4px 0 6px;">— эсвэл нэрээр хайх —</div>
-        <input id="mk-prod" list="mk-prod-list" placeholder="Бараа хайх (нэр / SKU)…" style="${fld}">
+        <input id="mk-prod" list="mk-prod-list" placeholder="Бараа хайх (нэр / SKU)…" class="mk-fld">
         <datalist id="mk-prod-list">${(state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p))).slice(0, 400).map(p => `<option value="${escapeHtml(p.name)}${p.sku ? ' — ' + escapeHtml(p.sku) : ''}">${p.price ? fmtMoney(Number(p.price)) : ''}</option>`).join('')}</datalist>
         <div style="text-align:center;font-size:11px;color:var(--muted);margin:2px 0 10px;">— эсвэл —</div>
         <label for="mk-img" style="display:block;margin-bottom:10px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);font-size:13px;">📷 <b>Өөрийн зураг оруулах</b><input id="mk-img" type="file" accept="image/*" hidden></label>
         ${canSeeDocuments() ? '<button type="button" class="mk-pick-btn" id="mk-doc-img">🗂 <b>Баримт бичгээс зураг сонгох</b></button>' : ''}
-        <label style="font-size:11.5px;color:var(--muted);">Загвар</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${tplBtns}</div>
-        <label style="font-size:11.5px;color:var(--muted);">Хэмжээ</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${sizeBtns}</div>
-        <label style="font-size:11.5px;color:var(--muted);">🔍 Зураг тохируулах</label>
+        <label class="mk-lbl">Загвар</label><div class="mk-chips">${tplBtns}</div>
+        <label class="mk-lbl">Хэмжээ</label><div class="mk-chips">${sizeBtns}</div>
+        <label class="mk-lbl">🔍 Зураг тохируулах</label>
         <div style="margin:4px 0 6px;display:flex;gap:6px;">
-          <button class="btn btn-sm" data-mk-fit="contain" style="flex:1;${(P.imgFit || 'contain') === 'contain' ? 'background:var(--primary);color:#fff;' : ''}">Багтаах</button>
-          <button class="btn btn-sm" data-mk-fit="cover" style="flex:1;${P.imgFit === 'cover' ? 'background:var(--primary);color:#fff;' : ''}">Дүүргэх (тайрна)</button>
+          <button class="btn btn-sm mk-f1${(P.imgFit || 'contain') === 'contain' ? ' mk-chip-on' : ''}" data-mk-fit="contain">Багтаах</button>
+          <button class="btn btn-sm mk-f1${P.imgFit === 'cover' ? ' mk-chip-on' : ''}" data-mk-fit="cover">Дүүргэх (тайрна)</button>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="font-size:11px;color:var(--muted);width:64px;">Томруулах</span><input id="mk-zoom" type="range" min="100" max="260" value="${Math.round((P.imgZoom || 1) * 100)}" style="flex:1;"></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="font-size:11px;color:var(--muted);width:64px;">Байрлал ↕</span><input id="mk-posy" type="range" min="0" max="100" value="${Math.round((P.imgY == null ? 0.5 : P.imgY) * 100)}" style="flex:1;"></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="font-size:11px;color:var(--muted);width:64px;">Байрлал ↔</span><input id="mk-posx" type="range" min="0" max="100" value="${Math.round((P.imgX == null ? 0.5 : P.imgX) * 100)}" style="flex:1;"></div>
-        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
-        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Богино уриа / hook (сонголт — хоосон бол зөвхөн нэр)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="ж: Тайзны шоуг мэргэжлийн түвшинд" style="${fld}">` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" style="${fld}">`}
-        <label style="font-size:11.5px;color:var(--muted);">🔗 Хаашаа чиглүүлэх</label>
+        <div class="mk-srow"><span class="mk-slbl">Томруулах</span><input id="mk-zoom" type="range" min="100" max="260" value="${Math.round((P.imgZoom || 1) * 100)}" class="mk-f1"></div>
+        <div class="mk-srow"><span class="mk-slbl">Байрлал ↕</span><input id="mk-posy" type="range" min="0" max="100" value="${Math.round((P.imgY == null ? 0.5 : P.imgY) * 100)}" class="mk-f1"></div>
+        <div class="mk-srow mk-srow-lg"><span class="mk-slbl">Байрлал ↔</span><input id="mk-posx" type="range" min="0" max="100" value="${Math.round((P.imgX == null ? 0.5 : P.imgX) * 100)}" class="mk-f1"></div>
+        <label class="mk-lbl">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" class="mk-fld">
+        <label class="mk-lbl">${P.template === 'product' ? 'Богино уриа / hook (сонголт — хоосон бол зөвхөн нэр)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="ж: Тайзны шоуг мэргэжлийн түвшинд" class="mk-fld">` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" class="mk-fld">`}
+        <label class="mk-lbl">🔗 Хаашаа чиглүүлэх</label>
         ${mkLinkSelect}
         <div class="mk-hint">Постын бичвэрт энэ холбоос орно: <span class="mk-url">${escapeHtml(posterSiteUrl(P, todayStr()))}</span></div>
         ${P.template === 'product' && P.productSku ? `<button class="btn btn-sm" id="mk-save-prod" style="width:100%;border-color:#16a34a;color:#16a34a;margin-top:2px;">💾 Нэр/тайлбарыг бараанд хадгалах (агуулах + сайт)</button><div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Дээрх нэр, тайлбар барааны бүртгэлд бичигдэж, агуулах болон mevent.mn сайтад шинэчлэгдэнэ.</div>` : ''}

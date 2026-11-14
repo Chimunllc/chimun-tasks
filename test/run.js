@@ -1189,6 +1189,113 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   ok(threw, 'имэйл: байхгүй функц дээр хэмжигч чимээгүй өнгөрөхгүй, алдаа шиднэ');
 }
 
+// 0j-5) SCAN — ПОПАП БАРИМТЫГ шөнийн САНАЛ ч хасна (`maskDocs`, 2026-11-14)
+// Алдаа: `measure()` нь бие даасан баримтыг `stripDocs`-оор хасдаг атал
+// `suggest()` нь ТҮҮХИЙ app.js-ийг уншдаг байв. Тиймээс попап цонхны
+// («Нэхэмжлэх бэлдэж байна…», «Алдаа») 5 inline style шөнийн агентад ажил
+// болж суггестерийн ТЭРГҮҮНД гарсан: хөрвүүлбэл хэмжигдсэн өр НЭГ Ч буурахгүй
+// (аль хэдийн хасагдсан), харин тэр хуудсууд ӨӨР browsing context-д тул
+// styles.css хүрэхгүй → класс нь нүцгэн бичвэр болж амьд баримт эвдэрнэ.
+// `EMAIL_FNS`-ийн (#0j-4) ЯГ ИЖИЛ шалтгаан.
+{
+  const D = require('../tools/debt-check.js');
+  ok(typeof D.maskDocs === 'function', 'өр: maskDocs бий');
+
+  // ① Попап баримтад inline style ҮНЭХЭЭР бий — байхгүй бол дүрэм хуучирсан
+  const rawN = (src.match(/style="/g) || []).length;
+  const maskN = (D.maskDocs(src).match(/style="/g) || []).length;
+  ok(maskN < rawN, 'өр: бие даасан баримтын inline style маскалагдана');
+
+  // ② Мөрийн дугаар БҮТЭН үлдэнэ — санал нь мөрийн дугаараар хаяг өгдөг
+  //    (`stripDocs` шиг бүтнээр хасвал агент буруу мөр руу орно)
+  eq(D.maskDocs(src).split('\n').length, src.split('\n').length, 'өр: маск мөрийн тоог хөдөлгөхгүй');
+  eq(D.maskDocs(src).length, src.length, 'өр: маск эх кодын урт хөдөлгөхгүй');
+
+  // ③ Санал болгосон функц бүрийн тоо МАСКЛАСАН эх кодоос гарна. Түүхий
+  //    app.js-ийг унших хуучин зан руу буцвал тоо зөрж ЭНЭ тест унана.
+  const DECL = /^\s{0,2}(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^\s{0,2}(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function|\()/;
+  const tally = new Map();
+  let cur = '(файлын дээд хэсэг)';
+  D.maskDocs(src).split('\n').forEach((ln) => {
+    const m = ln.match(DECL);
+    if (m) cur = m[1] || m[2];
+    const n = (ln.match(/style="/g) || []).length;
+    if (n) tally.set(cur, (tally.get(cur) || 0) + n);
+  });
+  for (const r of D.suggest().top) {
+    ok((tally.get(r.fn) || 0) > 0, `өр: «${r.fn}» ХЭМЖИГДДЭГ inline style агуулна`);
+    eq(tally.get(r.fn) || 0, r.count, `өр: «${r.fn}»-ийн тоо масклсан кодтой таарна`);
+  }
+}
+
+// 0j-6) Постер үүсгэгчийн маягт — inline style → класс (2026-11-14)
+// `renderMarketing`-ийн ДАВТАГДСАН 50 inline style классаар солигдов (82 → 32).
+// ⚠ Scan-тест хэв маягийг л хардаг, АЖИЛЛАХ эсэхийг хардаггүй: 2026-10-02-нд
+//    цалингийн дэлгэц TDZ-ээр БҮХЭЛДЭЭ унах байсныг хоёр ч тест барьсангүй.
+//    Тиймээс ЭНД функцийг ҮНЭХЭЭР дуудна (хоёр табаар).
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const save = runIn('[state.mkTab, state.products, state._mkPoster]');
+  runIn("state.products = [{ id:'M-900', sku:'M-900', name:'Тест ширээ', price:10000, category:'Ширээ', qty_mevent:4, stock:4 }];");
+  runIn("state._mkPoster = { size:'post', title:'Онцгой санал', subtitle:'', img:null, template:'work', imgFit:'contain' };");
+  runIn("state.mkTab = 'poster';");
+
+  let html = '', err = '';
+  try { html = runIn('renderMarketing()'); } catch (e) { err = e.message; }
+  eq(err, '', 'постер: renderMarketing алдаагүй ажиллана');
+  ok(html.length > 500, 'постер: HTML буцаана');
+
+  // ① Класс ҮНЭХЭЭР гарна (CSS-д тодорхойлогдсоныг styles.css-ээс шалгана)
+  for (const cl of ['mk-wrap', 'mk-fld', 'mk-lbl', 'mk-f1', 'mk-slbl', 'mk-srow',
+                    'mk-chips', 'mk-color', 'mk-dl', 'mk-tab-b']) {
+    ok(html.includes(cl), `постер: «${cl}» класс гаралтад бий`);
+    ok(new RegExp('\\.' + cl + '[^-\\w]').test(css), `постер: «${cl}» styles.css-д тодорхойлогдсон`);
+  }
+
+  // ② Хөрвүүлсэн ДАВТАМЖУУД эргэж ирэхгүй (inline style руу буцвал ЭНЭ тест унана).
+  //    ⚠ ЯГ тэр атрибутын мөрийг хардаг — `font-size:11.5px` гэсэн хэсгийг л
+  //    хайвал ХӨРВҮҮЛЭЭГҮЙ 32 нэг удаагийн хувилбарт таарч худал унана.
+  //    ⚠ Мөрийн дугаар БИШ, функцийн нэрээр хайна (код хөдөлбөл дугаар гулсана).
+  const _mkFrom = src.indexOf('function renderMarketing()');
+  ok(_mkFrom > 0, 'постер: renderMarketing эх кодоос олдов');
+  const rm = src.slice(_mkFrom, src.indexOf('\n}\n', _mkFrom));
+  const gone = ['style="font-size:11.5px;color:var(--muted);"',
+                'style="font-size:11.5px;color:var(--muted);display:block;"',
+                'style="${fld}"', 'style="flex:1;"', 'style="padding:7px 14px;"',
+                'style="max-width:900px;margin:0 auto;padding:4px 2px 40px;"',
+                'style="font-size:11px;color:var(--muted);width:64px;"'];
+  for (const pat of gone) {
+    eq(rm.includes(pat), false, `постер: «${pat}» inline хэлбэрээр эргэж ирээгүй`);
+  }
+  // `fld` тогтмол үхсэн (10 хэрэглээ нь `.mk-fld` болов) — эргэж ирвэл барина
+  eq(/\bconst fld\b/.test(rm), false, 'постер: `fld` inline мөр эргэж ирээгүй');
+
+  // ③ Сонгогдсон чип нь КЛАСС-аар тэмдэглэгдэнэ (өмнө inline background байв).
+  //    `.mk-chip-on` нь `.btn`-тэй ижил specificity тул styles.css дотор
+  //    `.btn`-ЭЭС ХОЙНО байх ЁСТОЙ — эс бөгөөс сонголт харагдахаа болино.
+  ok(html.includes('mk-chip-on'), 'постер: сонгогдсон чип класстай');
+  ok(css.indexOf('.mk-chip-on') > css.indexOf('.btn {'),
+     'постер: .mk-chip-on нь .btn-ээс ХОЙНО (эрэмбээр давна)');
+  eq(/style="[^"]*background:var\(--primary\)/.test(html), false,
+     'постер: сонголтыг inline background-аар БИШ классаар хийнэ');
+
+  // ④ Нэг элемент ХОЁР `class` атрибуттай болоогүй (товчид класс нэмэхэд гарах алдаа)
+  eq(/<button[^>]*\sclass="[^"]*"[^>]*\sclass="/.test(html), false,
+     'постер: нэг товчид хоёр class атрибут байхгүй');
+
+  // ⑤ Имэйл таб ч ажиллана (ижил `.mk-wrap` ашигладаг)
+  runIn("state.mkTab = 'email';");
+  let h2 = '', e2 = '';
+  try { h2 = runIn('renderMarketing()'); } catch (e) { e2 = e.message; }
+  eq(e2, '', 'постер: имэйл таб ч алдаагүй ажиллана');
+  ok(h2.includes('mk-wrap'), 'постер: имэйл таб `.mk-wrap`-ийг ашиглана');
+
+  runIn('state.mkTab = ' + JSON.stringify(save[0] === undefined ? null : save[0]) + ';');
+  runIn('state.products = ' + JSON.stringify(save[1] || []) + ';');
+  runIn('state._mkPoster = ' + JSON.stringify(save[2] === undefined ? null : save[2]) + ';');
+}
+
 // 0k) Захиалгын жагсаалт — хугацааны бүлэг (Өнөөдөр / Маргааш) (2026-09-04)
 // «Самбар» харагдац хасагдаж, бүлэг нь жагсаалтын дотор гарчиг мөр болов.
 // Гол дүрэм: дууссан/архив/цуцалсныг ХЭЗЭЭ Ч «өнөөдөр/маргааш» гэж бүлэглэхгүй —

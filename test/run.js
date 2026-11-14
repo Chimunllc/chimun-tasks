@@ -26610,3 +26610,81 @@ async function swFetchTests() {
       _closedMonthsAt: saved.cma, isCEO: saved.ceo, me: saved.me, memberPerms: saved.mp, workStart: saved.ws, payrollCfg: saved.pc });
   }
 });
+
+// ═══ «ӨНӨӨДРИЙН БАГ» САМБАР + ХЭН АМРАХ (2026-11-14) ═══
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
+  const saved = { ac: st.appConfig, cal: st.attCallins, me: st.me, tm: st.attTeam, tme: st.attTeamErr, fetch: sandbox.fetch, view: st.view };
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const P = [{ key: '99300001', name: 'Т.Нэг' }, { key: '99300002', name: 'Т.Хоёр' }, { key: '99300003', name: 'Т.Гурав' }, { key: '99300004', name: 'Т.Дөрөв' }];
+  const rec = (key, day, kind, hm) => ({ member_key: key, member_name: 'x', kind, ts: ts(day, hm), day });
+  const TODAY = '2026-11-18';   // Лхагва
+  const B = (recs, leaves, today) => run(`attTeamBoard(${JSON.stringify(P)}, ${JSON.stringify(recs)}, ${JSON.stringify(leaves)}, '${today || TODAY}')`);
+  try {
+    st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', holidays: ['2026-11-26'] } }); st.attCallins = {};
+    let b = B([rec('99300001', TODAY, 'in', '08:50'), rec('99300001', TODAY, 'out', '12:00'), rec('99300003', TODAY, 'in', '08:30')],
+              [{ member_key: '99300002', from_day: '2026-11-17', to_day: '2026-11-19', cls: 'vacation' }]);
+    eq(b.here.map(x => x.name + ' ' + x.time + (x.open ? '*' : '')), ['Т.Гурав 08:30*', 'Т.Нэг 08:50'], 'баг: ирсэн хүмүүс цагаар, одоо ажиллаж буй нь * (явсан бол тэмдэггүй)');
+    eq(b.off.map(x => x.name + ':' + x.cls), ['Т.Хоёр:vacation'], 'баг: батлагдсан амралттай хүн «амарсан»');
+    eq(b.waiting.map(x => x.name), ['Т.Дөрөв'], 'баг: ирээгүй, амраагүй ажлын өдрийн хүн = «хараахан ирээгүй»');
+    eq(b.working, true, 'баг: ажлын өдөр');
+    b = B([rec('99300002', TODAY, 'in', '09:00')], [{ member_key: '99300002', from_day: '2026-11-18', to_day: '2026-11-18', cls: 'leave' }]);
+    ok(b.here.some(x => x.name === 'Т.Хоёр') && !b.off.some(x => x.name === 'Т.Хоёр'), 'баг: чөлөөтэй атлаа ирсэн хүн «ирсэн» (давхар тоологдохгүй)');
+    b = B([], [], '2026-11-21');
+    eq([b.working, b.waiting.length], [false, 0], '⛔ баг: бямба гаригт хэнийг ч «хараахан ирээгүй» гэж нэрлэхгүй');
+    b = B([], [], '2026-11-26');
+    eq([b.working, b.waiting.length], [false, 0], '⛔ баг: баярын өдөр хэнийг ч «хараахан ирээгүй» гэж нэрлэхгүй');
+    b = B([], [], '2026-11-01');
+    eq(b.working, false, 'баг: дүрэм идэвхжихээс өмнөх өдөр ажлын өдөр гэж тооцохгүй');
+    // ирэх өдрүүд
+    const U = (leaves) => run(`attTeamUpcoming(${JSON.stringify(P)}, ${JSON.stringify(leaves)}, '${TODAY}', 7)`);
+    let u = U([{ member_key: '99300002', from_day: '2026-11-17', to_day: '2026-11-19', cls: 'vacation' },
+               { member_key: '99300003', from_day: '2026-11-23', to_day: '2026-11-24', cls: 'leave' },
+               { member_key: '99300004', from_day: '2026-11-18', to_day: '2026-11-18', cls: 'leave' },
+               { member_key: '99300001', from_day: '2026-12-10', to_day: '2026-12-11', cls: 'leave' },
+               { member_key: '99999999', from_day: '2026-11-19', to_day: '2026-11-19', cls: 'leave' }]);
+    eq(u.tomorrow.map(r => r.name), ['Т.Хоёр'], 'хэн амрах: маргаашийн (өнөөдөр эхэлсэн, маргааш үргэлжилж буй)');
+    eq(u.week.map(r => r.name + ' ' + r.from), ['Т.Гурав 2026-11-23'], 'хэн амрах: ирэх 7 хоногт — өнөөдрийнх, 7 хоногоос хойших, багт байхгүй хүн орохгүй');
+    // харагдах байдал
+    TEAMX.length = 0;
+    TEAMX.push(...P.map(p => ({ name: p.name, phone: p.key, role: 'Нярав', level: 40, status: 'идэвхтэй' })), { name: 'Т.Цагийн', phone: '99300009', role: 'Цагийн ажилтан', level: 10, status: 'идэвхтэй', worker_type: 'daily' });
+    st.isCEO = true;
+    const rosterNames = run('attTeamRoster()').map(p => p.name);
+    ok(rosterNames.length === 4 && !rosterNames.includes('Т.Цагийн'), 'багийн жагсаалт: идэвхтэй ҮНДСЭН ажилтан (цагийн ажилтан орохгүй)');
+    const dayN = run('todayStr()');
+    st.attTeam = { day: dayN, at: Date.now(), recs: [rec('99300001', dayN, 'in', '08:40')], leaves: [{ member_key: '99300002', from_day: dayN, to_day: dayN, cls: 'leave' }] };
+    st.attTeamErr = null; st.me = '99300001';
+    const html = run('attTeamBoardHtml(true)');
+    ok(/Өнөөдрийн баг/.test(html) && /<b>1<\/b> ирсэн/.test(html) && /<b>1<\/b> амарсан/.test(html) && /att-team-n me/.test(html), 'самбар: тоолол + өөрийн нэр тодорно');
+    ok(!/reason|шалтгаан|Өвчтэй|өвчтэй|цалин/i.test(html), '⛔ самбар: шалтгаан, өвчин, цалин ГАРАХГҮЙ (бүх ажилчин харна)');
+    ok(/details[^>]*open/.test(html) && !/details[^>]*open/.test(run('attTeamBoardHtml(false)')), 'самбар: «Миний ирц» дээр нээлттэй, Тойм дээр эвхэгдсэн');
+    st.appConfig = Object.assign({}, st.appConfig, { att_leave: undefined });
+    eq(run('attTeamBoardHtml(true)'), '', '⛔ самбар: дүрэм унтраалттай үед огт гарахгүй, ЮУ Ч татахгүй');
+    st.appConfig = Object.assign({}, st.appConfig, { att_leave: { from: '2026-11-02' } });
+    // татах: дата үнэхээр сервер рүү явна
+    const urls = [];
+    sandbox.fetch = (url) => { urls.push(String(url)); return Promise.resolve({ ok: true, status: 200, json: async () => [] }); };
+    st.attTeam = undefined; st.attTeamErr = null; st._attTeamBusy = false;
+    await run('loadAttTeam()');
+    ok(urls.some(u => /\/attendance\?day=eq\.\d{4}-\d{2}-\d{2}&select=member_key,member_name,kind,ts,day/.test(u)) && urls.some(u => /\/v_att_leaves_team\?select=member_key,from_day,to_day,cls/.test(u)), '⛔ татах: өнөөдрийн ирц + хамт олны амралтын харагдацаас (хувийн хүснэгтээс БИШ)');
+    ok(st.attTeam && st.attTeam.day === dayN && st.attTeamErr === null, 'татах: амжилттай бол хадгалагдана');
+    sandbox.fetch = (url) => Promise.resolve(/v_att_leaves_team/.test(String(url)) ? { ok: false, status: 404, json: async () => ({}) } : { ok: true, status: 200, json: async () => [] });
+    st.attTeam = undefined;
+    await run('loadAttTeam()');
+    ok(/db\/att_leaves\.sql/.test(st.attTeamErr || ''), 'татах: харагдац байхгүй (SQL ажиллуулаагүй) бол ИЛ мессеж');
+    ok(/чадсангүй/.test(run('attTeamBoardHtml(true)')), 'самбар: ачаалж чадаагүй бол чимээгүй хоосон БИШ, ил хэлнэ');
+    // scan
+    const code = appSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
+    ok(/attTeamBoardHtml\(false\)/.test(code.slice(code.indexOf('function renderDashboard'))) && /attTeamBoardHtml\(true\)/.test(code.slice(code.indexOf('function renderMyAttend'), code.indexOf('function attachMyAttendHandlers'))), 'scan: самбар Тойм БА Миний ирц хоёуланд');
+    ok(!/rest\/v1\/att_leaves/.test(code.slice(code.indexOf('async function loadAttTeam'), code.indexOf('function ensureAttTeam'))), '⛔ scan: багийн самбар `att_leaves` (шалтгаантай хүснэгт)-ийг УНШИХГҮЙ — зөвхөн харагдац');
+    ok(/\.att-team-n\.me/.test(cssSrc) && !/!important/.test(cssSrc.slice(cssSrc.indexOf('«Өнөөдрийн баг» самбар'))), 'scan: самбарын CSS токентой, !important-гүй');
+  } finally {
+    sandbox.fetch = saved.fetch;
+    TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m));
+    Object.assign(st, { appConfig: saved.ac, attCallins: saved.cal, me: saved.me, attTeam: saved.tm, attTeamErr: saved.tme, view: saved.view });
+  }
+});

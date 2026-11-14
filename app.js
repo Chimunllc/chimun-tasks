@@ -15362,6 +15362,102 @@ function attLeavePayNoteHtml(ex, b, ym, base, today) {
   if (s.n.pending) lines.push(`⏳ ${s.n.pending} өдрийн хүсэлт шийдэгдээгүй — батлагдвал суутгал буурна`);
   return `<div class="alv-pay">${lines.map(escapeHtml).join('<br>')}</div>`;
 }
+/* ── «ӨНӨӨДРИЙН БАГ» самбар (БҮХ ажилчин харна) + «хэн амрах» ────────────────────────────────────────
+   Хэн ирсэн, хэн амарсан, хэн хараахан ирээгүй — ажил төлөвлөхөд. ШАЛТГААН, өвчин, цалин, суутгал энд ГАРАХГҮЙ:
+   амралтыг `v_att_leaves_team` харагдацаас (батлагдсан, «амралт»/«чөлөө» гэсэн хоёр ангилал л) уншина. Дүрэм (`att_leave.from`)
+   тавигдаагүй бол самбар огт гарахгүй. */
+function attTeamRoster() {
+  return (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && isPermanentStaff(m) && attMarkKey(personKey(m)).length >= 8 && branchFenceAllowsMember(m))
+    .map(m => ({ key: attMarkKey(personKey(m)), name: m.name || personKey(m) }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'mn'));
+}
+function _leaveCovers(l, day) { return String(l.from_day) <= day && String(l.to_day) >= day; }
+/* ЦЭВЭР: (хүмүүс, өнөөдрийн ирц, батлагдсан амралтууд, өнөөдөр) → { here:[{name,time,open}], off:[{name,cls}], waiting:[{name}], working }.
+   `working` = өнөөдөр ажлын өдөр (Да–Ня, баяр биш) — ажлын бус өдөр «хараахан ирээгүй» гэж хэнийг ч нэрлэхгүй. */
+function attTeamBoard(people, recs, leaves, today) {
+  const cfg = attLeaveCfg();
+  const working = attLeaveActive(today) && isWeekdayIso(today) && !attLeaveIsHoliday(today, cfg);
+  const first = {}, last = {};
+  (Array.isArray(recs) ? recs : []).forEach(r => {
+    if (!r || r.day !== today) return;
+    const k = attMarkKey(attCanonKey(r));
+    if (r.kind === 'in' && (!first[k] || String(r.ts) < String(first[k]))) first[k] = r.ts;
+    if (!last[k] || String(r.ts) > String(last[k].ts)) last[k] = r;
+  });
+  const out = { here: [], off: [], waiting: [], working };
+  (people || []).forEach(p => {
+    if (first[p.key]) { out.here.push({ key: p.key, name: p.name, time: hhmmUB(first[p.key]), open: last[p.key] && last[p.key].kind === 'in' }); return; }
+    const l = (Array.isArray(leaves) ? leaves : []).find(x => attMarkKey(x.member_key) === p.key && _leaveCovers(x, today));
+    if (l) { out.off.push({ key: p.key, name: p.name, cls: l.cls === 'vacation' ? 'vacation' : 'leave' }); return; }
+    if (working || attCallinOn(p.key, today)) out.waiting.push({ key: p.key, name: p.name });
+  });
+  out.here.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  return out;
+}
+/* ЦЭВЭР: ирэх өдрүүдэд хэн амрах. tomorrow = маргаашийнх; week = маргааш ХҮРТЭЛХ 2–7 дахь өдрийн дотор эхэлж/үргэлжилж буй. */
+function attTeamUpcoming(people, leaves, today, days) {
+  const tm = addDays(today, 1), end = addDays(today, days || 7), by = {};
+  (people || []).forEach(p => { by[p.key] = p; });
+  const tomorrow = [], week = [];
+  (Array.isArray(leaves) ? leaves : []).forEach(l => {
+    const k = attMarkKey(l.member_key), p = by[k];
+    if (!p || String(l.to_day) < tm || String(l.from_day) > end) return;
+    const row = { key: k, name: p.name, from: String(l.from_day), to: String(l.to_day), cls: l.cls === 'vacation' ? 'vacation' : 'leave' };
+    if (_leaveCovers(l, tm)) tomorrow.push(row); else week.push(row);
+  });
+  const byName = (a, b) => String(a.name).localeCompare(String(b.name), 'mn') || a.from.localeCompare(b.from);
+  return { tomorrow: tomorrow.sort(byName), week: week.sort((a, b) => a.from.localeCompare(b.from) || byName(a, b)) };
+}
+async function loadAttTeam() {
+  const today = todayStr();
+  try {
+    const hdr = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
+    const [a, l] = await Promise.all([
+      fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${today}&select=member_key,member_name,kind,ts,day&order=ts.asc&limit=2000`, { headers: hdr, cache: 'no-store' }, 20000),
+      fetchWithTimeout(`${DB_URL}/rest/v1/v_att_leaves_team?select=member_key,from_day,to_day,cls&limit=2000`, { headers: hdr, cache: 'no-store' }, 20000)]);
+    if (!a.ok) throw new Error('HTTP ' + a.status);
+    if (!l.ok) throw new Error(l.status === 404 ? 'харагдац үүсээгүй (db/att_leaves.sql ажиллуулаагүй)' : 'HTTP ' + l.status);
+    const recs = await a.json(), leaves = await l.json();
+    state.attTeam = { day: today, recs: Array.isArray(recs) ? recs : [], leaves: Array.isArray(leaves) ? leaves : [], at: Date.now() };
+    state.attTeamErr = null;
+  } catch (e) {
+    state.attTeamErr = attFailMsg(e); state.attTeamAt = Date.now();   // дахин оролдохыг 1 минутын дараа
+    dataLoadFailed('Өнөөдрийн баг', e);
+  }
+  return state.attTeam;
+}
+// Нэг хуудсанд хоёр самбар байхад ч нэг л татна. Дүрэм унтраалттай бол ЮУ Ч татахгүй. 2 минутаас хуучирвал өөрөө шинэчилнэ.
+function ensureAttTeam() {
+  if (!attLeaveCfg().from || state._attTeamBusy) return;
+  const t = state.attTeam, now = Date.now();
+  const fresh = t && t.day === todayStr() && now - t.at < 120000;
+  if (state.attTeamErr ? now - (state.attTeamAt || 0) < 60000 : fresh) return;
+  state._attTeamBusy = true;
+  loadAttTeam().then(() => { state._attTeamBusy = false; if (typeof render === 'function' && (state.view === 'dashboard' || state.view === 'myattend')) render(); },
+                     () => { state._attTeamBusy = false; });
+}
+function attTeamBoardHtml(open) {
+  if (!attLeaveCfg().from) return '';
+  ensureAttTeam();
+  const today = todayStr(), t = state.attTeam;
+  if (state.attTeamErr && !t) return `<div class="dash-card att-team"><div class="dash-card-title">👥 Өнөөдрийн баг</div><div class="pb-note amk-warn">⚠ Ачаалж чадсангүй (${escapeHtml(state.attTeamErr)}). Минутын дараа өөрөө дахин оролдоно.</div></div>`;
+  if (!t || t.day !== today) return `<div class="dash-card att-team"><div class="dash-card-title">👥 Өнөөдрийн баг</div><div class="alv-none">⏳ Ачаалж байна…</div></div>`;
+  const people = attTeamRoster(), b = attTeamBoard(people, t.recs, t.leaves, today), up = attTeamUpcoming(people, t.leaves, today, 7);
+  const chips = (arr, fn) => arr.length ? arr.map(fn).join('') : '<span class="att-team-none">—</span>';
+  const nm = (p, extra) => `<span class="att-team-n${p.key === attMarkKey(state.me) ? ' me' : ''}">${escapeHtml(p.name)}${extra ? ` <small>${escapeHtml(extra)}</small>` : ''}</span>`;
+  const icon = (c) => c === 'vacation' ? '🏖' : '📝';
+  const span = (r) => r.from === r.to ? r.from.slice(5) : r.from.slice(5) + ' – ' + r.to.slice(5);
+  const sum = `<div class="att-team-sum"><span>✅ <b>${b.here.length}</b> ирсэн</span><span>${icon('vacation')} <b>${b.off.length}</b> амарсан</span>${b.working ? `<span>⏳ <b>${b.waiting.length}</b> хараахан</span>` : '<span class="att-team-none">амралтын өдөр</span>'}</div>`;
+  const groups = `<div class="att-team-g"><div class="att-team-gh">✅ Ирсэн</div><div class="att-team-ns">${chips(b.here, p => nm(p, p.time + (p.open ? '' : ' · явсан')))}</div></div>
+    <div class="att-team-g"><div class="att-team-gh">🏖 Амарсан / чөлөөтэй</div><div class="att-team-ns">${chips(b.off, p => nm(p, p.cls === 'vacation' ? 'амралт' : 'чөлөө'))}</div></div>
+    ${b.working ? `<div class="att-team-g"><div class="att-team-gh">⏳ Хараахан ирээгүй</div><div class="att-team-ns">${chips(b.waiting, p => nm(p))}</div></div>` : ''}`;
+  const upc = (up.tomorrow.length || up.week.length) ? `<div class="att-team-g"><div class="att-team-gh">📅 Хэн амрах</div>
+      ${up.tomorrow.length ? `<div class="att-team-up"><b>Маргааш:</b> ${up.tomorrow.map(r => `${icon(r.cls)} ${escapeHtml(r.name)}`).join(' · ')}</div>` : ''}
+      ${up.week.length ? `<div class="att-team-up"><b>Энэ 7 хоногт:</b> ${up.week.map(r => `${icon(r.cls)} ${escapeHtml(r.name)} <small>${escapeHtml(span(r))}</small>`).join(' · ')}</div>` : ''}</div>`
+    : `<div class="att-team-g"><div class="att-team-gh">📅 Хэн амрах</div><div class="att-team-none">Ирэх 7 хоногт амрах хүн алга</div></div>`;
+  return `<div class="dash-card att-team"><div class="dash-card-title">👥 Өнөөдрийн баг</div>${sum}
+    <details class="fin-more att-team-d"${open ? ' open' : ''}><summary>Нэрсийг харах</summary><div class="fin-more-in">${groups}${upc}</div></details></div>`;
+}
 /* ── ЧӨЛӨӨНИЙ ДАТА: унших / бичих ─────────────────────────────────────────────────────────────── */
 async function loadAttLeaves() {
   try {
@@ -17048,6 +17144,7 @@ function renderMyAttend() {
       <div class="myatt-qr-s">${escapeHtml(me.name || '')} · ${escapeHtml(me.phone || '')}</div>
     </div>
     ${attMyLeaveCardHtml(myKey)}
+    ${attTeamBoardHtml(true)}
     <div class="myatt-tiles">
       <div class="myatt-tile">
         <div class="myatt-tile-l">Өнөөдөр</div>
@@ -48466,6 +48563,7 @@ function renderDashboard() {
       ${canSeeOrderBoard() ? `<div class="dash-card dash-ocal">${ordersCalendarHtml(state.appOrders || [], { compact: true })}</div>` : ''}
       ${dispatchBlockHtml(state.appOrders || [])}
       ${reviewBlockHtml(state.appOrders || [])}
+      ${attTeamBoardHtml(false)}
       <div class="dashboard-grid">
 
         <!-- Шилдэг гүйцэтгэгч — дамжлагын оноо, сараар -->

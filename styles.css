@@ -10716,3 +10716,16 @@ select.no-asar-len {
 .alv-prev { font-size: var(--fs-sm); color: var(--text-soft); min-height: 20px; line-height: 1.6; margin-bottom: var(--space-2); }
 .alv-err { padding: var(--space-2) var(--space-3); border-radius: var(--r-lg); background: var(--danger-soft); color: var(--danger); font-size: var(--fs-sm); line-height: 1.5; margin-bottom: var(--space-2); }
 .alv-err[hidden] { display: none; }
+/* «Өнөөдрийн баг» самбар (2026-11-14) */
+.att-team { margin-bottom: var(--space-3); }
+.att-team-sum { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--fs-md); margin-bottom: var(--space-2); }
+.att-team-sum b { font-variant-numeric: tabular-nums; }
+.att-team-g { margin-top: var(--space-2); }
+.att-team-gh { font-size: var(--fs-sm); font-weight: 700; color: var(--text-soft); margin-bottom: var(--space-1); }
+.att-team-ns { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+.att-team-n { padding: 2px var(--space-2); border: 1px solid var(--line); border-radius: 999px; background: var(--panel); font-size: var(--fs-sm); }
+.att-team-n.me { border-color: var(--primary); color: var(--primary); font-weight: 700; }
+.att-team-n small { color: var(--muted); font-size: var(--fs-xs); }
+.att-team-none { color: var(--muted); font-size: var(--fs-sm); }
+.att-team-up { font-size: var(--fs-sm); line-height: 1.7; }
+.att-team-up small { color: var(--muted); }

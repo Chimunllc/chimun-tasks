@@ -26184,3 +26184,122 @@ async function swFetchTests() {
     st.tasks = keep.tasks; st.me = keep.me; st.isCEO = keep.ceo; st.appConfig = keep.cfg;
   }
 });
+
+// ═══ ЛОКАЛ САНАХ ОЙ ДҮҮРЭХЭД АПП ҮХЭХГҮЙ (2026-11-14, issue #953, fp 98a185fa06e4) ═══
+// «Даалгавар харагдахгүй, орж болохгүй»: утасны локал хадгалалт дүүрэхэд `saveLocal()` нь «quota exceeded» шидэж,
+//   ① `saveTask` серверт бичихээсээ ӨМНӨ унана (хүлээн авах, дуусгах, төлөв солих бүгд) ② `loadData`/`loadBootstrap`
+//   серверээс шинэ даалгавраа авсан ч `saveLocal()` дээр унаад catch-ээр ХУУЧИН кэш рүү буцдаг → шинэ даалгавар огт гарахгүй
+//   ③ `taskDeepOpen` нь жагсаалтад олдоогүй даалгаврыг чимээгүй орхидог. Кэш бол зөвхөн хурдны нөөц — бүтэхгүй бол апп хэвийн ажиллана.
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  const st = runIn('state');
+  const realLS = sandbox.localStorage;
+  const keep = { tasks: st.tasks, api: st.config.apiUrl, me: st.me, view: st.view };
+  sandbox.__orig = { fwt: runIn('fetchWithTimeout'), ack: runIn('taskAck'), open: runIn('openTaskModal'), load: runIn('loadData'), render: runIn('render'), toast: runIn('showToast') };
+  const restoreFns = () => runIn('fetchWithTimeout = __orig.fwt; taskAck = __orig.ack; openTaskModal = __orig.open; loadData = __orig.load; render = __orig.render; showToast = __orig.toast;');
+  // Хэмжээ хязгаартай хуурамч хадгалалт — хязгаараас хэтрэхэд жинхэнэ хөтчийн адил QuotaExceededError шиднэ.
+  const mkQuota = (limit, seed) => {
+    const m = new Map(Object.entries(seed || {}));
+    const used = () => [...m].reduce((n, [k, v]) => n + k.length + v.length, 0);
+    return {
+      getItem: (k) => (m.has(k) ? m.get(k) : null),
+      setItem(k, v) {
+        v = String(v);
+        const after = used() - (m.has(k) ? k.length + m.get(k).length : 0) + k.length + v.length;
+        if (after > limit) { const e = new Error('The quota has been exceeded.'); e.name = 'QuotaExceededError'; throw e; }
+        m.set(k, v);
+      },
+      removeItem: (k) => { m.delete(k); }, clear() { m.clear(); }, key: (i) => ([...m.keys()][i] ?? null), get length() { return m.size; },
+    };
+  };
+  const mkTask = (i, actN) => ({ id: 'q' + i, title: 'Ажил ' + i, assignee: '99000001', createdBy: '99000002', status: 'open', due: '2026-11-20', priority: 'high',
+    created: 1700000000000, comments: [], activity: Array.from({ length: actN || 0 }, (_, k) => ({ id: 'a' + k, actor: '99000001', action: 'status_changed', timestamp: 1700000000000 + k })) });
+  try {
+    // ── 1) Дүүрсэн үед `saveLocal` ШИДЭХГҮЙ; дахин үүсгэж болох кэшийг (санхүү) чөлөөлж «tasks»-ийг бүтэн бичнэ ──
+    st.tasks = [mkTask(1), mkTask(2), mkTask(3), mkTask(4)];
+    const fullJson = JSON.stringify(st.tasks);
+    let q = mkQuota(fullJson.length + 900, { financeRequests: 'x'.repeat(2500), pendingWrites: '[{"kind":"task"}]', sessionToken: 'a.b.c' });
+    sandbox.localStorage = q;
+    let threw = false; try { F.saveLocal(); } catch (e) { threw = true; }
+    eq(threw, false, 'санах ой дүүрсэн: saveLocal ШИДЭХГҮЙ');
+    eq(q.getItem('tasks'), fullJson, 'санах ой дүүрсэн: дахин үүсгэж болох кэшийг чөлөөлөөд даалгаврын кэш бүтнээрээ бичигдэнэ');
+    eq(q.getItem('financeRequests'), null, 'санах ой дүүрсэн: санхүүгийн кэш (серверээс дахин татагдана) чөлөөлөгдсөн');
+    eq([q.getItem('pendingWrites'), q.getItem('sessionToken')], ['[{"kind":"task"}]', 'a.b.c'], '⛔ санах ой дүүрсэн: sync хүлээж буй бичилт ба нэвтрэлтийн токен ХЭЗЭЭ Ч чөлөөлөгдөхгүй');
+
+    // ── 2) Бүтэн хуулбар багтахгүй бол ХӨНГӨН хуулбар (түүх/сэтгэгдэлгүй) — гарчиг, хариуцагч, хугацаа хэвээр ──
+    st.tasks = [1, 2, 3, 4, 5].map((i) => mkTask(i, 40));
+    const slimLen = JSON.stringify(st.tasks.map((t) => Object.assign({}, t, { activity: [], comments: [] }))).length;
+    q = mkQuota(slimLen + 400, { pendingWrites: '[]' });
+    sandbox.localStorage = q;
+    threw = false; try { F.saveLocal(); } catch (e) { threw = true; }
+    const slimmed = JSON.parse(q.getItem('tasks') || '[]');
+    eq(threw, false, 'бүтэн хуулбар багтахгүй: saveLocal ШИДЭХГҮЙ');
+    eq([slimmed.length, slimmed[0] && slimmed[0].title, slimmed[0] && slimmed[0].assignee, slimmed[0] && slimmed[0].due, slimmed[0] && slimmed[0].activity.length], [5, 'Ажил 1', '99000001', '2026-11-20', 0],
+      'бүтэн хуулбар багтахгүй: ХӨНГӨН хуулбар бичигдэнэ (гарчиг, хариуцагч, хугацаа хэвээр)');
+
+    // ── 3) Огт багтахгүй ч ШИДЭХГҮЙ, sync хүлээж буй бичилт хэвээр ──
+    q = mkQuota(60, { pendingWrites: '[{"kind":"task"}]' });
+    sandbox.localStorage = q;
+    threw = false; try { F.saveLocal(); } catch (e) { threw = true; }
+    eq([threw, q.getItem('pendingWrites')], [false, '[{"kind":"task"}]'], 'огт багтахгүй: ШИДЭХГҮЙ, pendingWrites хэвээр');
+
+    // ── 3б) Офлайн бичилтийн дараалал: дүүрсэн үед КЭШИЙГ чөлөөлж бичнэ; багтахгүй бол ХУУЧИН дараалал УСТАХГҮЙ ──
+    q = mkQuota(400, { financeRequests: 'y'.repeat(300), pendingWrites: '[{"id":1}]' });
+    sandbox.localStorage = q;
+    F.savePendingWrites([{ id: 1 }, { id: 2 }, { id: 3, pad: 'z'.repeat(150) }]);
+    eq([q.getItem('financeRequests'), JSON.parse(q.getItem('pendingWrites')).length], [null, 3], 'pendingWrites: дүүрсэн үед санхүүгийн кэшийг чөлөөлж шинэ дарааллыг бичнэ');
+    q = mkQuota(80, { pendingWrites: '[{"id":1}]' });
+    sandbox.localStorage = q;
+    F.savePendingWrites([{ id: 1, pad: 'z'.repeat(500) }]);
+    eq(q.getItem('pendingWrites'), '[{"id":1}]', '⛔ pendingWrites: шинэ нь багтахгүй бол ХУУЧИН дараалал устахгүй (өгөгдөл алдагдахгүй)');
+
+    // ── 4) `saveTask`: локал кэш унасан ч СЕРВЕРТ ҮНЭХЭЭР БИЧНЭ (өмнө нь saveLocal дээр унаж серверт огт очдоггүй байв) ──
+    sandbox.__posts = [];
+    runIn('fetchWithTimeout = async (url, opts) => { __posts.push({ url: String(url), body: opts && opts.body }); return { ok: true, json: async () => ({}) }; };');
+    st.config.apiUrl = 'http://test.invalid/api';
+    st.tasks = [mkTask(9)];
+    sandbox.localStorage = mkQuota(20, {});
+    threw = false; try { await F.saveTask(st.tasks[0]); } catch (e) { threw = true; }
+    eq(threw, false, 'saveTask: локал дүүрсэн ч ШИДЭХГҮЙ');
+    ok(sandbox.__posts.length === 1 && /"action":"upsert"/.test(sandbox.__posts[0].body) && /"id":"q9"/.test(sandbox.__posts[0].body), '⛔ saveTask: локал кэш унасан ч серверт ҮНЭХЭЭР илгээнэ');
+
+    // ── 5) `loadData`: локал дүүрсэн ч СЕРВЕРИЙН шинэ даалгаврыг ашиглана (хуучин кэш рүү БУЦАХГҮЙ) ──
+    runIn("fetchWithTimeout = async () => ({ ok: true, json: async () => ({ tasks: [{ id: 'srv1', title: 'Серверийн шинэ ажил', assignee: '99000001', createdBy: '99000002', status: 'open', due: '2026-11-15' }] }) });");
+    q = mkQuota(200, { tasks: JSON.stringify([{ id: 'old1', title: 'Хуучин кэш', status: 'open' }]) });
+    sandbox.localStorage = q;
+    st.tasks = [];
+    await F.loadData();
+    eq(st.tasks.map((t) => t.id), ['srv1'], '⛔ loadData: локал дүүрсэн ч серверийн шинэ даалгавар харагдана (хуучин кэш рүү буцахгүй)');
+
+    // ── 6) `taskDeepOpen`: ack унасан ч цонх НЭЭГДЭНЭ; жагсаалтад алга бол эхлээд шинэчилж дахин хайна ──
+    sandbox.localStorage = realLS;
+    sandbox.__opened = []; sandbox.__toasts = [];
+    runIn('openTaskModal = (id) => { __opened.push(id); }; showToast = (m) => { __toasts.push(m); }; render = () => {};');
+    runIn("taskAck = async () => { throw new Error('boom'); };");
+    st.tasks = [mkTask(7)];
+    await F.taskDeepOpen({ act: 'ack', id: 'q7' });
+    eq(sandbox.__opened, ['q7'], 'taskDeepOpen: «Хүлээн авлаа» унасан ч даалгаврын цонх нээгдэнэ');
+    sandbox.__opened.length = 0; st.tasks = [];
+    runIn("loadData = async () => { state.tasks = [{ id: 'q8', title: 'Шинээр ирсэн', status: 'open' }]; };");
+    await F.taskDeepOpen({ act: 'task', id: 'q8' });
+    eq(sandbox.__opened, ['q8'], '⛔ taskDeepOpen: жагсаалтад алга бол серверээс шинэчлээд дахин хайж нээнэ');
+    sandbox.__opened.length = 0; sandbox.__toasts.length = 0;
+    runIn('loadData = async () => {};');
+    await F.taskDeepOpen({ act: 'task', id: 'zz' });
+    ok(sandbox.__opened.length === 0 && sandbox.__toasts.length === 1, 'taskDeepOpen: шинэчилсэн ч олдохгүй бол чимээгүй БИШ — мэдэгдэл гарна');
+  } finally {
+    sandbox.localStorage = realLS;
+    restoreFns();
+    st.tasks = keep.tasks; st.config.apiUrl = keep.api; st.me = keep.me; st.view = keep.view;
+  }
+  // scan: кэш бичилт ганц туслахаар
+  {
+    const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const body = (asrc.match(/function saveLocal\(\) \{[\s\S]*?\n\}/) || [''])[0];
+    ok(body.length > 0 && !/localStorage\.setItem/.test(body), 'scan: saveLocal түүхий localStorage.setItem ашиглахгүй (дүүрэхэд шидэж серверийн бичилтийг тасалдаг байв)');
+    ok(/function lsWrite\(key, value(, critical)?\)/.test(asrc) && /const LS_EVICTABLE/.test(asrc), 'scan: lsWrite + LS_EVICTABLE байна');
+    ok(/function savePendingWrites\(q\) \{[^}]*lsWrite\('pendingWrites', JSON\.stringify\(q\), true\)/.test(asrc), 'scan: pendingWrites нь lsWrite(critical)-ээр бичигдэнэ (чимээгүй алдагдахгүй)');
+    const ev = (asrc.match(/const LS_EVICTABLE = \[([^\]]*)\]/) || ['', ''])[1];
+    ok(!/pendingWrites|sessionToken|pgrstToken|userEmail|teamCache|'tasks'/.test(ev), '⛔ scan: LS_EVICTABLE-д sync хүлээж буй бичилт, токен, багийн кэш, даалгавар ОРООГҮЙ');
+  }
+});

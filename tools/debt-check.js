@@ -38,6 +38,20 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
    тийм зүйл хийхгүй (бие даасан баримт л тэнд байна). */
 const stripDocs = (s) => String(s).replace(/<!doctype html[\s\S]*?<\/html>/gi, '');
 
+/* ⛔ САНАЛ ч ИЖИЛ ХАСАЛТЫГ хэрэглэнэ — `maskDocs` (2026-11-14).
+   `measure()` нь `stripDocs`-оор бие даасан баримтыг хасдаг атал `suggest()` нь
+   ТҮҮХИЙ `app.js`-ийг уншиж байв. Тиймээс попап цонхны баримт (нэхэмжлэх ·
+   үнийн саналын «бэлдэж байна…» / «Алдаа» хуудас) дахь inline style нь
+   хэмжигддэггүй мөртөө САНАЛД гарч, шөнийн агентад «5 inline style» гэсэн
+   ажил болж байв: хөрвүүлбэл (а) хэмжигдсэн өр НЭГ Ч буурахгүй, (б) тэр
+   хуудсууд ӨӨР browsing context-д тул `styles.css` хүрэхгүй → класс нь
+   нүцгэн бичвэр болж амьд баримт эвдэрнэ. Яг `EMAIL_FNS`-ийн шалтгаан.
+   ⚠ `stripDocs` шиг БҮТНЭЭР хасахгүй — МӨРИЙН ДУГААР, функцийн тодорхойлолт
+   бүтэн үлдэх ёстой (санал нь мөрийн дугаараар хаяг өгдөг). Зөвхөн блок дахь
+   `style="`-ийг таних боломжгүй болгоно (урт нь ч өөрчлөгдөхгүй). */
+const maskDocs = (s) => String(s).replace(/<!doctype html[\s\S]*?<\/html>/gi,
+  (b) => b.replace(/style="/g, 'style\u0000"'));
+
 /* ⛔ ГАДАГШ ИЛГЭЭГДЭХ ИМЭЙЛИЙН HTML-ийг ХЭМЖИХГҮЙ (2026-10-19).
    Дээрх хэвлэх баримтын ЯГ ИЖИЛ шалтгаан: эдгээр функц харилцагчийн имэйл
    хайрцагт явдаг HTML угсардаг (n8n-ээр POST болж гарна, аппад ХЭЗЭЭ Ч
@@ -160,7 +174,7 @@ function blameRecent() {
 }
 
 function suggest() {
-  const js = read('app.js');
+  const js = maskDocs(read('app.js'));
   const lines = js.split('\n');
   // Мөр бүрийн хамгийн дээд түвшний функцийн нэрийг ол.
   let fn = '(файлын дээд хэсэг)';
@@ -285,4 +299,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { measure, METRICS, suggest, SUG_MIN, SUG_MAX, EMAIL_FNS, stripFn };
+module.exports = { measure, METRICS, suggest, SUG_MIN, SUG_MAX, EMAIL_FNS, stripFn, maskDocs };

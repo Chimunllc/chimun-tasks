@@ -85,6 +85,12 @@
     --tap: 40px;
     --tap-sm: 36px;
 
+    /* ── Постер үүсгэгчийн маягт (`renderMarketing`) ── */
+    --mk-wrap-w:  900px;   /* маягтын дээд өргөн */
+    --mk-slbl-w:   64px;   /* гүйлгэгчийн шошго — 3 гүйлгэгч нэг босоо шугамд эгнэнэ */
+    --mk-sw-w:     52px;   /* өнгө сонгогчийн хэмжээ */
+    --mk-sw-h:     38px;
+
     /* NOMAAD бэлтгэлийн модалын «хүн сонгох» товчны доод өргөн — нэр багтах өргөн */
     --na-pick-w: 140px;
 
@@ -6718,6 +6724,28 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 /* Постерын «Баримт бичгээс сонгох» товч */
 .mk-pick-btn { display: block; width: 100%; margin: 0 0 10px; padding: 14px; border: 2px dashed var(--primary); border-radius: 10px; background: var(--panel-hover); color: var(--text); font-family: inherit; font-size: var(--fs-md); text-align: center; cursor: pointer; }
 .mk-pick-btn:hover { background: var(--panel); }
+/* ── Постер үүсгэгчийн маягт — `renderMarketing`-ийн 50 inline style (2026-11-14) ──
+   ⚠ Эдгээр нь `#task-list` дотор зурагддаг (модал БИШ) тул модалын input/button-ы
+     чухалчилсан flatten дүрмүүд хүрэхгүй. Утсан дээр талбарын фонтыг 16px болгодог
+     iOS-zoom дүрэм нь өмнө ч inline 13px-ийг дардаг байсан — зан чанар хөдлөөгүй.
+   ⛔ `.mk-tab-b` ба `.mk-chip-on` нь `.btn`-тэй ИЖИЛ specificity (0,1,0) тул
+     `.btn` (л. 624)-ЭЭС ХОЙНО байх ЁСТОЙ — дээш зөөвөл товчны padding, сонгосон
+     чипийн дэвсгэр чимээгүй алга болно. */
+.mk-wrap { max-width: var(--mk-wrap-w); margin: 0 auto; padding: var(--space-1) 2px 40px; }
+.mk-tab-b { padding: 7px 14px; }
+.mk-lbl { font-size: var(--fs-xs); color: var(--muted); }
+.mk-lbl-b { display: block; }
+.mk-fld { width: 100%; margin-bottom: 10px; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-md); }
+.mk-f1 { flex: 1; }
+.mk-color { width: var(--mk-sw-w); height: var(--mk-sw-h); border: 1px solid var(--border); border-radius: var(--r-md); background: none; cursor: pointer; }
+.mk-dl { color: var(--primary); font-weight: 600; }
+.mk-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: var(--space-1) 0 10px; }
+/* Сонгогдсон чип (загвар · хэмжээ · зургийн тааруулга) */
+.mk-chip-on { background: var(--primary); color: var(--on-primary); }
+/* Гүйлгэгчийн мөр — шошго ТОГТМОЛ өргөнтэй тул 3 гүйлгэгч эгнэнэ */
+.mk-srow { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+.mk-srow-lg { margin-bottom: var(--space-3); }
+.mk-slbl { width: var(--mk-slbl-w); font-size: var(--fs-xs); color: var(--muted); }
 .doc-view-page { width: 100%; max-width: 700px; height: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; }
 .doc-view-note { font-size: 13px; line-height: 1.7; padding: 20px 10px; }
 .doc-view-note.err { color: var(--danger); }

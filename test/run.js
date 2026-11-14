@@ -26823,3 +26823,128 @@ async function swFetchTests() {
       isCEO: saved.ceo, memberPerms: saved.mp, payrollCfg: saved.pc, workStart: saved.ws, myPayRecs: saved.myPay, myAttendance: saved.myAtt });
   }
 });
+
+// ═══ ГАРААР ЗАСАХ + ТҮҮХ + ТӨЛӨВИЙН ХҮСНЭГТ (2026-11-14) ═══
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'att_leaves.sql'), 'utf8');
+  const K = '99224411', K2 = '99224422';
+  const saved = { ac: st.appConfig, lv: st.attLeaves, lvErr: st.attLeavesErr, cal: st.attCallins, cm: st.closedMonths, cma: st._closedMonthsAt, me: st.me, ceo: st.isCEO,
+    mp: st.memberPerms, pc: st.payrollCfg, fetch: sandbox.fetch, ws: st.workStart, mr: st.attMonthRecs, mk: st.attMonthKey, sal: st.salaries };
+  const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
+  st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallins = {}; st.attLeavesErr = null; st.workStart = {};
+  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02' } });
+  let n = 0;
+  const L = (kind, from, to, status, o) => Object.assign({ id: 'G' + (++n), member_key: K, from_day: from, to_day: to || from, kind, status: status || 'approved', source: 'request', reason: 'тест', updated_at: '2026-11-05T00:00:00Z', created_at: '2026-11-05T00:00:00Z', created_by: K }, o || {});
+  const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (day, kind, hm, key) => ({ member_key: key || K, member_name: 'x', kind, ts: ts(day, hm), day, source: 'scan' });
+  const jsonOk = (x) => Promise.resolve({ ok: true, status: 200, json: async () => x });
+  let reqs = [], cfgReply = {}, reply = null;
+  try {
+    TEAMX.length = 0;
+    TEAMX.push({ name: 'Т.Нэг', phone: K, role: 'Нярав', level: 40, status: 'идэвхтэй' }, { name: 'Т.Хоёр', phone: K2, role: 'Нярав', level: 40, status: 'идэвхтэй' }, { name: 'Т.Засагч', phone: '88000021', role: 'Захирал', level: 100, status: 'идэвхтэй' });
+    st.salaries = { [K]: 1500000, [K2]: 1500000 };
+    run('globalThis.__origPush = pushBroadcast; pushBroadcast = function (k, p) { globalThis.__gpush.push([k, p]); }; globalThis.__gpush = [];');
+    sandbox.fetch = (url, o) => {
+      if (/\/app_config\?/.test(url)) return jsonOk([{ value: cfgReply }]);
+      if (/\/att_leaves/.test(url)) {
+        const body = JSON.parse(o.body); reqs.push({ url, method: o.method, body });
+        if (reply) return Promise.resolve(reply);
+        if (o.method === 'POST') return jsonOk([Object.assign({ id: 'GN' + reqs.length, updated_at: 'x', created_at: '2026-11-20T01:00:00Z', created_by: '88000021', history: [] }, body)]);
+        const id = decodeURIComponent(/id=eq\.([^&]*)/.exec(url)[1]); return jsonOk([Object.assign({}, st.attLeaves[id], body)]);
+      }
+      return jsonOk([]);
+    };
+    const TT = (fn) => fn().then(() => '', e => String(e.message || e));
+    const DAY = '2026-11-10';
+    st.isCEO = true; st.me = '88000021'; put([]);
+    // ── ① Гар засвар: шалтгаан заавал, сервер рүү ҮНЭХЭЭР ──
+    ok(/Шалтгаан/.test(await TT(() => run(`attLeaveManualSet('${K}', '${DAY}', 'present', ' ')`))), '⛔ гар засвар: шалтгаан ЗААВАЛ');
+    ok(/сонгоно уу/.test(await TT(() => run(`attLeaveManualSet('${K}', '${DAY}', 'makeup', 'тест')`))), 'гар засвар: зөвхөн зөвшөөрсөн төлвүүд (нөхсөн төрлийг гараар тавихгүй)');
+    ok(/эхэлсэн/.test(await TT(() => run(`attLeaveManualSet('${K}', '2026-10-20', 'present', 'тест')`))), 'гар засвар: идэвхжихээс өмнөх өдрийг хөндөхгүй');
+    eq(reqs.length, 0, 'гар засвар: шалгалтад унавал сервер рүү ЮУ Ч явахгүй');
+    await run(`attLeaveManualSet('${K}', '${DAY}', 'present', ' QR уншигдаагүй байсан ')`);
+    eq(reqs.length, 1, 'гар засвар: нэг хүсэлт');
+    eq(reqs[0].body, { member_key: K, from_day: DAY, to_day: DAY, kind: 'present', reason: 'QR уншигдаагүй байсан', status: 'approved', late: false, source: 'manual' }, '⛔ гар засвар: сервер рүү явсан бие — нэг өдөр, manual, шалтгаантай, шууд хүчинтэй');
+    eq(run(`attDayStatus('${K}', '${DAY}', [], '2026-11-20')`).st, 'present', 'гар засвар: тасалсан өдөр «ирсэн» болно');
+    eq(run(`attDayStatus('${K}', '${DAY}', [], '2026-11-20')`).manual, true, 'гар засвар: ✎ тэмдэгтэй');
+    eq([run('__gpush')[0][0], /Ирцийн төлөв засагдлаа/.test(run('__gpush')[0][1].title), /QR/.test(run('__gpush')[0][1].body)], [K, true, true], '⛔ гар засвар: ажилтанд мэдэгдэнэ (чимээгүй засахгүй)');
+    // дахин засвар: өмнөх нь болигдож, шинэ мөр бичигдэнэ (түүх үлдэнэ)
+    reqs = [];
+    await run(`attLeaveManualSet('${K}', '${DAY}', 'absent', 'Ирээгүй нь батлагдсан')`);
+    eq(reqs.map(r => r.method + ' ' + (r.body.status || '')), ['PATCH cancelled', 'POST approved'], '⛔ дахин засвар: өмнөхийг УСТГАХГҮЙ — «cancelled», дараа нь шинэ мөр (түүх үлдэнэ)');
+    ok(!reqs.some(r => r.method === 'DELETE'), 'гар засвар: хатуу устгал байхгүй');
+    eq(run(`attDayStatus('${K}', '${DAY}', [], '2026-11-20')`).st, 'absent', 'дахин засвар: шинэ төлөв хүчинтэй');
+    // автомат төлөв рүү буцаах
+    reqs = [];
+    await run(`attLeaveManualClear('${K}', '${DAY}')`);
+    eq([reqs[0].method, reqs[0].body], ['PATCH', { status: 'cancelled' }], 'буцаах: мөр УСТАХГҮЙ — зөвхөн status:cancelled');
+    eq(run(`attDayStatus('${K}', '${DAY}', [], '2026-11-20')`).manual, false, 'буцаах: автомат төлөв рүү');
+    ok(/алга/.test(await TT(() => run(`attLeaveManualClear('${K}', '${DAY}')`))), 'буцаах: гар засвар байхгүй бол татгалзана');
+    // эрх, салбар, хаасан сар
+    reqs = [];
+    st.isCEO = false; st.memberPerms = {}; st.me = K2;
+    ok(/эрх алга/.test(await TT(() => run(`attLeaveManualSet('${K}', '${DAY}', 'present', 'тест')`))), '⛔ гар засвар: ирц засах эрхгүй хүн засахгүй (өөрийнхөө ч)');
+    st.isCEO = true; st.me = '88000021';
+    st.closedMonths = { '2026-11': { at: 'x', by: 'y' } };
+    ok(/сар хаагдсан/.test(await TT(() => run(`attLeaveManualSet('${K}', '${DAY}', 'present', 'тест')`))), '⛔ гар засвар: хаасан сарыг засахгүй');
+    st.closedMonths = {}; cfgReply = { '2026-11': { at: 'x', by: 'y' } };
+    ok(/сар хаагдсан/.test(await TT(() => run(`attLeaveManualSet('${K}', '${DAY}', 'present', 'тест')`))), '⛔ гар засвар: өөр сессээс хаагдсан сарыг сервэрээс шинээр уншиж хориглоно');
+    cfgReply = {}; st.closedMonths = {};
+    eq(reqs.length, 0, 'гар засвар: бүх татгалзсан тохиолдолд сервер рүү юу ч явсангүй');
+    reply = { ok: false, status: 400, text: async () => JSON.stringify({ message: 'Гар засварт шалтгаан заавал бичнэ' }) };
+    ok(/шалтгаан/.test(await TT(() => run(`attLeaveManualSet('${K}', '${DAY}', 'present', 'тест')`))), 'гар засвар: DB-ийн мессеж хэрэглэгчид очно');
+    reply = null;
+    st.attLeaves = null;
+    ok(/ачаалагдаагүй/.test(await TT(() => run(`attLeaveManualSet('${K}', '${DAY}', 'present', 'тест')`))), 'гар засвар: чөлөөний мэдээлэл ачаалагдаагүй үед бичихгүй');
+
+    // ── ② Түүх ──
+    put([L('vacation', '2026-11-09', '2026-11-13', 'cancelled', { id: 'H1', reason: 'Ээлжийн амралт', decided_by: '88000021', decided_at: '2026-11-07T03:00:00Z', decision_note: null,
+            history: [{ status: 'approved', by: '88000021', at: '2026-11-06T03:00:00Z', note: null, saved: 'x' }, { status: 'pending', by: null, at: null, note: null, saved: 'y' }] }),
+         L('absent', DAY, DAY, 'approved', { id: 'H2', source: 'manual', reason: 'Ирээгүй нь батлагдсан', created_by: '88000021', created_at: '2026-11-11T02:00:00Z', decided_by: '88000021', decided_at: '2026-11-11T02:00:00Z' })]);
+    const h = run(`attCellHistory('${K}', '${DAY}')`);
+    eq(h.map(x => x.at), ['2026-11-11T02:00:00Z', '2026-11-07T03:00:00Z', '2026-11-06T03:00:00Z', '2026-11-05T00:00:00Z'], '⛔ түүх: шинэ нь эхэнд — гар засвар, болиулсан, батласан, хүсэлт илгээсэн (мөр бүр хэн, хэзээтэй)');
+    ok(/Гараар «Тасалсан»/.test(h[0].text) && /болигдсон/.test(h[1].text) && /батлагдсан/.test(h[2].text) && /Хүсэлт илгээсэн/.test(h[3].text), 'түүх: бичвэр — юу болсныг нэрлэнэ');
+    eq(run(`attCellHistory('${K}', '2026-11-20')`), [], 'түүх: өөр өдрийн мөр орохгүй');
+    eq(run(`attCellHistory('${K2}', '${DAY}')`), [], 'түүх: өөр хүний мөр орохгүй');
+
+    // ── ③ Хүснэгт ──
+    st.attMonthKey = '2026-11'; st.attMonthRecs = [rec('2026-11-03', 'in', '09:00', K), rec('2026-11-03', 'out', '18:00', K)];
+    put([L('paid', '2026-11-04', '2026-11-04', 'approved', { id: 'X1' }), L('present', '2026-11-05', '2026-11-05', 'approved', { id: 'X2', source: 'manual', reason: 'тест' })]);
+    const grid = run(`attLeaveGridHtml('2026-11', state.attMonthRecs)`);
+    ok(/Т\.Нэг/.test(grid) && /Т\.Хоёр/.test(grid) && /data-alv-cell="99224411\|2026-11-03"/.test(grid), 'хүснэгт: ажилтан бүр × өдөр бүр нүдтэй');
+    ok(/alv-c-present[^>]*data-alv-cell="99224411\|2026-11-03"/.test(grid) && /alv-c-paid[^>]*data-alv-cell="99224411\|2026-11-04"/.test(grid) && /alv-c-present man[^>]*data-alv-cell="99224411\|2026-11-05"/.test(grid), 'хүснэгт: ирсэн / цалинтай чөлөө / гараар засагдсан (man) нүд өөр ангилалтай');
+    ok(/alv-c-absent[^>]*data-alv-cell="99224411\|2026-11-06"/.test(grid), 'хүснэгт: хүсэлтгүй, QR-гүй өдөр автоматаар «тасалсан»');
+    ok(!/data-alv-cell="99224411\|2026-11-01"/.test(grid) && /data-alv-cell="99224411\|2026-11-02"/.test(grid), 'хүснэгт: идэвхжихээс өмнөх өдөр нүдгүй, идэвхжсэн өдрөөс эхэлнэ');
+    st.isCEO = false; st.memberPerms = {}; st.me = K2;
+    eq(run(`attLeaveGridHtml('2026-11', state.attMonthRecs)`), '', '⛔ хүснэгт: ирц засах эрхгүй хүнд ХАРАГДАХГҮЙ');
+    st.isCEO = true; st.me = '88000021';
+    st.appConfig = Object.assign({}, st.appConfig, { att_leave: undefined });
+    eq(run(`attLeaveGridHtml('2026-11', state.attMonthRecs)`), '', 'хүснэгт: унтраалттай үед огт гарахгүй');
+    st.appConfig = Object.assign({}, st.appConfig, { att_leave: { from: '2026-11-02' } });
+    // нүдний цонх бодитоор зурагдана (DOM stub дээр)
+    const bodyEl = sandbox.document.body, before = (bodyEl.__children || []).length;
+    let threw = '';
+    try { run(`openAttCellModal('${K}', '2026-11-06')`); } catch (e) { threw = String(e.message); }
+    eq(threw, '', 'нүдний цонх: алдаагүй нээгдэнэ (TDZ/тодорхойлогдоогүй функц байхгүй)');
+
+    // ── ④ SCAN ──
+    ok(/decided_by := coalesce\(sec\.phone\(\), new\.decided_by\); new\.decided_at := now\(\);   -- хэн, хэзээ тавьсан/.test(sql) && /'approved', 'rejected', 'cancelled'/.test(sql), 'db: гар засвар болон болиулсан хүн/цаг мөрөнд үлдэнэ');
+    const code = appSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
+    const set = code.slice(code.indexOf('async function attLeaveManualSet'), code.indexOf('async function attLeaveManualClear'));
+    ok(set.indexOf('canEditAttendance()') > -1 && set.indexOf('branchFenceAllowsMember(') > -1 && set.indexOf('assertMonthOpenLive(') > -1 && set.indexOf('assertMonthOpenLive(') < set.indexOf("attLeaveRequest('POST'") && set.indexOf('trim().length < 3') > -1, '⛔ scan: гар засвар — эрх + салбар + хаасан сар + шалтгаан бичихээс ӨМНӨ');
+    ok(!/method:\s*'DELETE'/.test(set) && /status: 'cancelled'/.test(set), '⛔ scan: гар засвар хатуу устгадаггүй (болих = cancelled)');
+    ok(/attLeaveGridHtml\(month, state\.attMonthRecs\)/.test(code), 'scan: хүснэгт сарын ирцийн дэлгэц дээр');
+    ok(!/!important/.test(cssSrc.slice(cssSrc.indexOf('Ажилтан × өдрийн төлөвийн хүснэгт'))) && !/#[0-9a-fA-F]{3,8}\b/.test(cssSrc.slice(cssSrc.indexOf('Ажилтан × өдрийн төлөвийн хүснэгт'))), 'scan: хүснэгтийн CSS токентой, !important-гүй');
+  } finally {
+    sandbox.fetch = saved.fetch;
+    run('if (globalThis.__origPush) pushBroadcast = globalThis.__origPush;');
+    TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m));
+    Object.assign(st, { appConfig: saved.ac, attLeaves: saved.lv, attLeavesErr: saved.lvErr, attCallins: saved.cal, closedMonths: saved.cm, _closedMonthsAt: saved.cma, me: saved.me,
+      isCEO: saved.ceo, memberPerms: saved.mp, payrollCfg: saved.pc, workStart: saved.ws, attMonthRecs: saved.mr, attMonthKey: saved.mk, salaries: saved.sal });
+  }
+});

@@ -15578,6 +15578,124 @@ function openAttMakeupModal() {
   refresh();
   modal.classList.add('open');
 }
+/* ── ГАРААР ЗАСАХ (ЗӨВХӨН онцгой үед): ажилтан × өдрийн хүснэгт дээр нүдийг дарж төлөв солино ─────────────────────────
+   Тасалсан өдөр өөрөө бүртгэгдэх тул гар ажил ЗӨВХӨН алдааг засахад: QR алдсан → «Ирсэн», ирцгүй өдрийг «Тасалсан», чөлөө/амралт гэх мэт.
+   ⛔ Шалтгаан ЗААВАЛ, хэн/хэзээ/юуг тавьсан нь мөрөнд, өмнөх нь түүхэнд үлдэнэ (устахгүй — «автомат төлөв рүү буцаах» = мөрийг болих).
+   ⛔ Хаасан сарыг хөндөхгүй (апп + DB). Өмнөх сарыг нөхөж засахад CEO сарыг түр нээнэ (Санхүү → Тайлан). Зөвхөн `attendance.edit`. */
+const ATT_MANUAL_KINDS = ['present', 'absent', 'unpaid', 'paid', 'vacation', 'sick'];
+const ATT_ST_WORD = { pending: 'хүлээгдэж буй', approved: '✅ батлагдсан', rejected: '❌ татгалзсан', cancelled: '↩ болигдсон' };
+async function attLeaveManualSet(key, day, kind, reason) {
+  const k = attMarkKey(key);
+  if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
+  if (!attLeaveActive(day)) throw new Error('Чөлөөний бүртгэл ' + (attLeaveCfg().from || 'хараахан нээгдээгүй') + '-аас эхэлсэн — тэр өдрийг засах боломжгүй');
+  if (ATT_MANUAL_KINDS.indexOf(kind) < 0) throw new Error('Төлвөө сонгоно уу');
+  if (String(reason || '').trim().length < 3) throw new Error('Шалтгаанаа бичнэ үү (заавал)');
+  if (!attLeavesReady()) throw new Error('Чөлөөний мэдээлэл ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу');
+  const mem = findMember(k);
+  if (mem && !branchFenceAllowsMember(mem)) throw new Error('Энэ ажилтан таны салбарынх биш');
+  if (monthLocked(String(day).slice(0, 7))) throw new Error(`🔒 ${String(day).slice(0, 7)} сар хаагдсан — засах боломжгүй. CEO сарыг нээх шаардлагатай (Санхүү → Тайлан).`);
+  await assertMonthOpenLive(String(day).slice(0, 7), 'ирцийн төлөв засах');
+  // Өмнөх гар засвар байвал эхлээд болино (түүхэнд үлдэнэ) — нэг өдөрт нэг л идэвхтэй гар засвар
+  const prev = attLeaveRowsOf(k).find(r => r.source === 'manual' && r.status === 'approved' && String(r.from_day) === String(day));
+  if (prev) await attLeaveRequest('PATCH', `?id=eq.${encodeURIComponent(prev.id)}`, { status: 'cancelled' }).then(rows => { if (rows[0]) _attLeaveMerge(rows[0]); });
+  const rows = await attLeaveRequest('POST', '', { member_key: k, from_day: day, to_day: day, kind, reason: String(reason).trim().slice(0, 300), status: 'approved', late: false, source: 'manual' });
+  const saved = _attLeaveMerge(rows[0] || null);
+  if (!saved) throw new Error('Хадгалагдсан эсэх нь тодорхойгүй — хүснэгтээ шалгана уу');
+  pushBroadcast(k, { kind: 'attendance', title: '✎ Ирцийн төлөв засагдлаа', body: `${String(day).slice(5)} · ${(ATT_LEAVE_KINDS[kind] || {}).label || kind} — ${String(reason).trim().slice(0, 80)}`, url: './#myattend' });
+  return saved;
+}
+async function attLeaveManualClear(key, day) {
+  const k = attMarkKey(key);
+  if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
+  const prev = attLeaveRowsOf(k).find(r => r.source === 'manual' && r.status === 'approved' && String(r.from_day) === String(day));
+  if (!prev) throw new Error('Буцаах гар засвар алга');
+  await assertMonthOpenLive(String(day).slice(0, 7), 'ирцийн төлөв буцаах');
+  const rows = await attLeaveRequest('PATCH', `?id=eq.${encodeURIComponent(prev.id)}`, { status: 'cancelled' });
+  if (!rows.length) throw new Error('Буцаагдсангүй — эрх хүрэхгүй эсвэл мөр өөрчлөгдсөн байна');
+  return _attLeaveMerge(rows[0]);
+}
+// Нэг нүдний ТҮҮХ (ЦЭВЭР): хэн, хэзээ, юуг. Шинэ нь эхэнд.
+function attCellHistory(key, day) {
+  const who = (p) => p ? (memberName(p) || p) : '—';
+  const out = [];
+  attLeaveRowsOf(key).forEach(r => {
+    const covers = String(r.from_day) <= day && String(r.to_day) >= day;
+    const mk = r.kind === 'makeup' && (String(r.from_day) === day || String(r.makeup_day || '').slice(0, 10) === day);
+    if (!covers && !mk) return;
+    const label = (ATT_LEAVE_KINDS[r.kind] || { label: r.kind }).label;
+    out.push({ at: r.created_at || '', who: who(r.created_by || r.member_key),
+      text: r.source === 'manual' ? `✎ Гараар «${label}» болгосон${r.reason ? ' — ' + r.reason : ''}` : `Хүсэлт илгээсэн: ${attLeaveRowText(r)}${r.reason ? ' — ' + r.reason : ''}` });
+    (Array.isArray(r.history) ? r.history : []).forEach(h => { if (h && h.by && h.at) out.push({ at: h.at, who: who(h.by), text: `${ATT_ST_WORD[h.status] || h.status}${h.note ? ' — ' + h.note : ''}` }); });
+    if (r.decided_at && r.source !== 'manual') out.push({ at: r.decided_at, who: who(r.decided_by), text: `${ATT_ST_WORD[r.status] || r.status}${r.decision_note ? ' — ' + r.decision_note : ''}` });
+    else if (r.decided_at && r.status === 'cancelled') out.push({ at: r.decided_at, who: who(r.decided_by), text: ATT_ST_WORD.cancelled });
+  });
+  return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+const ATT_CELL_ICON = { present: '✓', late: '⏰', absent: '✕', unpaid: '📝', paid: '💼', vacation: '🏖', sick: '🤒', makeup: '🔄', pending: '⏳', waiting: '·', planned: '', off: '', holiday: '🎌', na: '' };
+// Хүн × өдрийн хүснэгт (ЗӨВХӨН ирц засах эрхтэй). `recs` = тэр сарын ирцийн мөрүүд.
+function attLeaveGridHtml(month, recs) {
+  if (!canEditAttendance() || !attLeaveMonthActive(month)) return '';
+  if (!attLeavesReady()) return attLeavesWarnHtml();
+  const today = todayStr(), days = attLeaveDays(month + '-01', monthEndDay(month)), people = attStaffCandidates();
+  if (!people.length) return '';
+  const head = days.map(d => `<th class="alv-gd${isWeekdayIso(d) ? '' : ' we'}${d === today ? ' now' : ''}">${+d.slice(8)}</th>`).join('');
+  const body = people.map(m => {
+    const k = attMarkKey(personKey(m)), by = attRecsByDay(k, recs);
+    const cells = days.map(d => {
+      const s = attDayStatus(k, d, by[d], today), info = ATT_DAY_ST[s.st] || ATT_DAY_ST.na;
+      if (s.st === 'na') return '<td class="alv-gc"></td>';
+      return `<td class="alv-gc"><button type="button" class="ui-raw alv-cell alv-c-${s.st}${s.manual ? ' man' : ''}" data-alv-cell="${escapeHtml(k + '|' + d)}" title="${escapeHtml(d.slice(5) + ' · ' + info.label + (s.manual ? ' (гараар)' : ''))}" aria-label="${escapeHtml(d.slice(5) + ' ' + info.label)}">${ATT_CELL_ICON[s.st] || ''}</button></td>`;
+    }).join('');
+    return `<tr><th class="alv-gn">${escapeHtml(m.name || k)}</th>${cells}</tr>`;
+  }).join('');
+  return `<details class="fin-more alv-grid-d"><summary>🗓 Төлөвийн хүснэгт · нүдийг дарж засна</summary><div class="fin-more-in">
+    <div class="alv-grid-w"><table class="alv-grid"><thead><tr><th class="alv-gn"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <div class="alv-legend">✓ ирсэн · ⏰ хоцорсон · ✕ тасалсан · 📝 цалингүй · 💼 цалинтай · 🏖 амралт · 🤒 өвчтэй · 🔄 нөхсөн · ⏳ хүлээгдэж буй · 🎌 баяр · <b>✎</b> гараар засагдсан</div>
+  </div></details>`;
+}
+function openAttCellModal(key, day) {
+  if (!canEditAttendance()) { showToast('Танд ирц засах эрх алга', 'warn', 3000); return; }
+  const k = attMarkKey(key), mem = findMember(k) || {}, name = mem.name || k;
+  const recs = (state.attMonthKey === String(day).slice(0, 7) && Array.isArray(state.attMonthRecs)) ? state.attMonthRecs : [];
+  const s = attDayStatus(k, day, attRecsByDay(k, recs)[day], todayStr()), info = ATT_DAY_ST[s.st] || ATT_DAY_ST.na;
+  const locked = monthLocked(String(day).slice(0, 7));
+  document.getElementById('alv-cell-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'alv-cell-modal';
+  let kind = '';
+  const hist = attCellHistory(k, day);
+  modal.innerHTML = `<div class="modal alv-modal">
+    <h2>✎ Ирцийн төлөв засах</h2>
+    <p class="alv-hint"><b>${escapeHtml(name)}</b> · ${escapeHtml(day)}<br>Одоо: <b>${escapeHtml(info.icon + ' ' + info.label)}</b>${s.manual ? ' <span class="alv-late">(гараар засагдсан)</span>' : ' (автомат)'}</p>
+    ${locked ? `<div class="alv-err">🔒 ${escapeHtml(String(day).slice(0, 7))} сар хаагдсан — засахын тулд CEO сарыг түр нээнэ (Санхүү → Тайлан).</div>` : ''}
+    <div class="alv-kinds">${ATT_MANUAL_KINDS.map(x => `<button type="button" class="ui-raw alv-kind" data-alv-ck="${x}">${ATT_LEAVE_KINDS[x].icon} ${ATT_LEAVE_KINDS[x].label}</button>`).join('')}</div>
+    <textarea id="alv-ck-reason" class="ui-raw alv-reason" maxlength="300" rows="2" placeholder="Шалтгаан (заавал)"></textarea>
+    <div class="alv-err" id="alv-ck-err" hidden></div>
+    ${hist.length ? `<div class="alv-hist"><div class="alv-hist-t">📜 Түүх</div>${hist.slice(0, 12).map(h => `<div class="alv-hist-r">${escapeHtml(h.at ? fmtDateTimeUB(h.at) : '')} · <b>${escapeHtml(h.who)}</b> · ${escapeHtml(h.text)}</div>`).join('')}</div>` : ''}
+    <div class="modal-actions">
+      ${s.manual ? '<button class="btn" id="alv-ck-clear">↩ Автомат төлөв рүү</button>' : ''}
+      <button class="btn" id="alv-ck-cancel">Болих</button>
+      <button class="btn btn-primary" id="alv-ck-save"${locked ? ' disabled' : ''}>Хадгалах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $ = (sel) => modal.querySelector(sel), close = () => modal.remove(), errEl = $('#alv-ck-err');
+  modal.querySelectorAll('[data-alv-ck]').forEach(b => b.addEventListener('click', () => { kind = b.dataset.alvCk; modal.querySelectorAll('[data-alv-ck]').forEach(x => x.classList.toggle('on', x === b)); errEl.hidden = true; }));
+  $('#alv-ck-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const done = (msg) => { close(); showToast(msg, 'success', 2500); if (typeof render === 'function') render(); };
+  $('#alv-ck-save').onclick = async (e) => {
+    const btn = e.currentTarget; btn.disabled = true;
+    try { await attLeaveManualSet(k, day, kind, $('#alv-ck-reason').value); done('Засагдлаа'); }
+    catch (err) { btn.disabled = false; errEl.textContent = '⚠ ' + err.message; errEl.hidden = false; }
+  };
+  $('#alv-ck-clear')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget; btn.disabled = true;
+    try { await attLeaveManualClear(k, day); done('Автомат төлөв рүү буцлаа'); }
+    catch (err) { btn.disabled = false; errEl.textContent = '⚠ ' + err.message; errEl.hidden = false; }
+  });
+  modal.classList.add('open');
+}
 /* ── ЧӨЛӨӨНИЙ ДАТА: унших / бичих ─────────────────────────────────────────────────────────────── */
 async function loadAttLeaves() {
   try {
@@ -15819,6 +15937,7 @@ function attachAttLeaveHandlers(root) {
     if (typeof render === 'function') render();
   }));
   q('[data-alv-cfg]', b => b.addEventListener('click', openAttLeaveCfgModal));
+  q('[data-alv-cell]', b => b.addEventListener('click', () => { const p = String(b.dataset.alvCell).split('|'); openAttCellModal(p[0], p[1]); }));
   q('#my-alv-new', b => b.addEventListener('click', () => openAttLeaveModal()));
   q('#my-mk-new', b => b.addEventListener('click', openAttMakeupModal));
 }
@@ -16914,7 +17033,7 @@ function renderAttendanceMonth(month) {
     + ((noOutTotal && payVis && payPeople) ? `<div class="att-mo-flag">⚠ <b>${noOutPeople.length}</b> ажилтанд гарах бүртгэлгүй <b>${noOutTotal}</b> өдөр — 0 цаг тоологдсон</div>` : '');
   const liabilityNote = anyDriver ? `<div class="att-mo-liab">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
   const spFoot = spTotal ? `<div class="sp-foot">📦 Дамжлагын бонус нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил бонус болохгүй.</span></div>` : '';
-  return head + `<div>${list}</div>${spFoot}${liabilityNote}`;
+  return head + attLeaveGridHtml(month, state.attMonthRecs) + `<div>${list}</div>${spFoot}${liabilityNote}`;
 }
 // CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
 function openWorkStartModal() {

@@ -10730,3 +10730,22 @@ select.no-asar-len {
 .att-team-up { font-size: var(--fs-sm); line-height: 1.7; }
 .att-team-up small { color: var(--muted); }
 .alv-mk { margin-left: var(--space-2); }
+/* Ажилтан × өдрийн төлөвийн хүснэгт + нүдний засвар, түүх (2026-11-14) */
+.alv-grid-w { overflow-x: auto; max-width: 100%; }
+.alv-grid { border-collapse: collapse; font-size: var(--fs-xs); }
+.alv-gn { position: sticky; left: 0; z-index: 1; background: var(--panel); text-align: left; padding: 2px var(--space-2); white-space: nowrap; font-weight: 600; }
+.alv-gd { min-width: 24px; text-align: center; color: var(--muted); font-weight: 600; }
+.alv-gd.we { opacity: .55; }
+.alv-gd.now { color: var(--primary); }
+.alv-gc { padding: 1px; text-align: center; }
+.alv-cell { width: 24px; height: 24px; min-width: 0; min-height: 0; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: var(--panel);
+  color: var(--text-soft); font-size: var(--fs-xs); line-height: 1; cursor: pointer; }
+.alv-c-present { background: var(--ok-soft); color: var(--ok); }
+.alv-c-late, .alv-c-unpaid, .alv-c-pending { background: var(--warn-soft); color: var(--warn); }
+.alv-c-absent { background: var(--danger-soft); color: var(--danger); font-weight: 700; }
+.alv-c-paid, .alv-c-vacation, .alv-c-sick, .alv-c-makeup, .alv-c-holiday { background: var(--panel-hover); }
+.alv-cell.man { outline: 1px dashed var(--primary); outline-offset: 1px; }
+.alv-legend { margin-top: var(--space-2); font-size: var(--fs-xs); color: var(--muted); line-height: 1.6; }
+.alv-hist { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-lg); background: var(--panel-hover); max-height: 160px; overflow-y: auto; }
+.alv-hist-t { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-1); }
+.alv-hist-r { font-size: var(--fs-xs); color: var(--text-soft); line-height: 1.6; }

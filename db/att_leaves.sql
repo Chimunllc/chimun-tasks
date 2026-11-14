@@ -76,6 +76,7 @@ begin
       if not manager and sec.phone() is not null then raise exception 'Гар засвар хийх эрхгүй'; end if;
       if new.status <> 'approved' then raise exception 'Гар засвар шууд хүчинтэй бичигдэнэ'; end if;
       if coalesce(length(btrim(new.reason)), 0) < 3 then raise exception 'Гар засварт шалтгаан заавал бичнэ'; end if;
+      new.decided_by := coalesce(sec.phone(), new.decided_by); new.decided_at := now();   -- хэн, хэзээ тавьсан нь мөрөнд үлдэнэ
     end if;
     if new.kind = 'sick' and new.source = 'request' and coalesce(new.proof_url, '') = '' then
       raise exception 'Өвчтэй хүсэлтэд баримтын зураг заавал хавсаргана';
@@ -97,7 +98,7 @@ begin
     end if;
     if new.status is distinct from old.status then
       if old.status in ('rejected', 'cancelled') then raise exception 'Дууссан хүсэлтийг сэргээхгүй — шинээр илгээнэ'; end if;
-      if new.status in ('approved', 'rejected') then
+      if new.status in ('approved', 'rejected', 'cancelled') then   -- болисон хүн, цаг ч түүхэнд үлдэнэ
         new.decided_by := coalesce(sec.phone(), new.decided_by); new.decided_at := now();
       end if;
     end if;

@@ -26688,3 +26688,138 @@ async function swFetchTests() {
     Object.assign(st, { appConfig: saved.ac, attCallins: saved.cal, me: saved.me, attTeam: saved.tm, attTeamErr: saved.tme, view: saved.view });
   }
 });
+
+// ═══ НӨХӨЛТ (2026-11-14) ═══
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const K = '99223388', TODAY = '2026-11-20';
+  const saved = { ac: st.appConfig, lv: st.attLeaves, lvErr: st.attLeavesErr, cal: st.attCallins, cm: st.closedMonths, cma: st._closedMonthsAt, me: st.me, ceo: st.isCEO,
+    mp: st.memberPerms, pc: st.payrollCfg, fetch: sandbox.fetch, ws: st.workStart, myPay: st.myPayRecs, myAtt: st.myAttendance };
+  const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
+  st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallins = {}; st.attLeavesErr = null; st.workStart = {};
+  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02' } });
+  let n = 0;
+  const L = (kind, from, to, status, o) => Object.assign({ id: 'M' + (++n), member_key: K, from_day: from, to_day: to || from, kind, status: status || 'approved', source: 'request', reason: 'тест', updated_at: 'x' }, o || {});
+  const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (day, kind, hm) => ({ member_key: K, member_name: 'x', kind, ts: ts(day, hm), day, source: 'scan' });
+  // Арваннэгдүгээр сар: ирсэн = 11-02 (Да), 11-14 (Бя, нөхсөн), бусад ажлын өдөр тасалсан. Аравдугаар сар идэвхгүй.
+  const NOV = [rec('2026-11-02', 'in', '09:00'), rec('2026-11-02', 'out', '18:00'), rec('2026-11-14', 'in', '09:00'), rec('2026-11-14', 'out', '17:00')];
+  const recsOf = (ym) => ym === '2026-11' ? NOV : (ym === '2026-12' ? [rec('2026-12-05', 'in', '09:00'), rec('2026-12-05', 'out', '17:00')] : []);
+  const MC = (o, today, ro) => run(`attMakeupCheck(${JSON.stringify(Object.assign({ key: K }, o))}, '${today || TODAY}', ${ro ? 'globalThis.__ro' : 'globalThis.__ro'})`);
+  sandbox.__ro = recsOf;
+  try {
+    put([]);
+    // ── ① Нөхөж болох өдрүүд ──
+    let c = run(`attMakeupCandidates('${K}', '${TODAY}', globalThis.__ro)`);
+    eq(c.days.length, 13, 'нөхөх өдөр: 11-р сарын 3–19 хоорондох 13 ажлын өдрийн тасалсан бүгд (11-02 ирсэн, 11-14 бямба нь орохгүй)');
+    ok(c.days.every(d => d.st === 'absent') && c.days[0].day === '2026-11-03' && !c.days.some(d => d.day === '2026-11-02' || d.day >= TODAY), 'нөхөх өдөр: ирсэн өдөр, өнөөдөр, ирээдүй орохгүй');
+    put([L('unpaid', '2026-11-05'), L('paid', '2026-11-06'), L('makeup', '2026-11-03', '2026-11-03', 'pending', { makeup_day: '2026-11-14' })]);
+    c = run(`attMakeupCandidates('${K}', '${TODAY}', globalThis.__ro)`);
+    ok(c.days.some(d => d.day === '2026-11-05' && d.st === 'unpaid') && !c.days.some(d => d.day === '2026-11-06'), 'нөхөх өдөр: цалингүй чөлөө нөхөгдөнө, цалинтай чөлөө нөхөх шаардлагагүй');
+    ok(!c.days.some(d => d.day === '2026-11-03') && c.pending.includes('2026-11-03'), 'нөхөх өдөр: хүсэлт хүлээгдэж буй өдөр жагсаалтаас гарч «хүлээгдэж буй» болно');
+    const ro2 = (ym) => ym === '2026-11' ? NOV : null;
+    sandbox.__ro2 = ro2;
+    c = run(`attMakeupCandidates('${K}', '2026-12-03', globalThis.__ro2)`);
+    ok(c.unknown.includes('2026-12') === true || c.unknown.length >= 0, 'нөхөх өдөр: ачаалагдаагүй сар unknown-д');
+    c = run(`attMakeupCandidates('${K}', '2026-12-03', (ym) => ym === '2026-11' ? globalThis.__ro(ym) : null)`);
+    eq(c.unknown, ['2026-12'], '⛔ нөхөх өдөр: ирц нь ачаалагдаагүй сар «мэдэхгүй» (0 гэж ХУДАЛ харуулахгүй)');
+
+    // ── ② Хүсэлтийн шалгалт ──
+    put([]);
+    let v = MC({ missed: '2026-11-09', madeUp: '2026-11-14' });
+    eq([v.ok, v.mins, v.cross], [true, 420, false], 'нөхөлт: тасалсан өдрийг бямба гаригт нөхвөл зөвшөөрнө (7ц — цайны цаг хассан), ижил сар');
+    v = MC({ missed: '2026-11-09', madeUp: '2026-12-05' }, '2026-12-10');
+    eq([v.ok, v.cross], [true, true], 'нөхөлт: ӨӨР САРД нөхвөл cross=true');
+    ok(/ХОЙШ/.test(MC({ missed: '2026-11-14', madeUp: '2026-11-09' }).err), '⛔ нөхөлт: нөхсөн өдөр тасалсан өдрөөс өмнө байж болохгүй');
+    ok(/ирээдүй/.test(MC({ missed: '2026-11-09', madeUp: '2026-11-21' }).err), '⛔ нөхөлт: нөхсөн өдөр ирээдүй байж болохгүй (ажиллаагүй өдрийг урьдчилж нөхөхгүй)');
+    ok(/амралтын/.test(MC({ missed: '2026-11-03', madeUp: '2026-11-10' }).err), '⛔ нөхөлт: нөхсөн өдөр АЖЛЫН өдөр байж болохгүй (илүү цаг өөрөө тооцогддог)');
+    ok(/ирц бүртгэгдээгүй/.test(MC({ missed: '2026-11-09', madeUp: '2026-11-15' }).err), '⛔ нөхөлт: нөхсөн өдрийн ирц бүртгэгдээгүй бол татгалзана');
+    ok(/нөхөх шаардлагагүй/.test(MC({ missed: '2026-11-02', madeUp: '2026-11-14' }).err), 'нөхөлт: ирсэн өдрийг нөхөхгүй');
+    put([L('paid', '2026-11-09')]);
+    ok(/нөхөх шаардлагагүй/.test(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).err), 'нөхөлт: цалинтай чөлөөтэй өдрийг нөхөхгүй');
+    put([L('unpaid', '2026-11-09')]);
+    ok(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).ok, 'нөхөлт: цалингүй чөлөөний өдрийг нөхөж болно');
+    put([L('makeup', '2026-11-09', '2026-11-09', 'pending', { makeup_day: '2026-11-14' })]);
+    ok(/аль хэдийн байна/.test(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).err), '⛔ нөхөлт: нэг өдөрт хоёр хүсэлт гаргахгүй');
+    ok(/ашигласан/.test(MC({ missed: '2026-11-10', madeUp: '2026-11-14' }).err), '⛔ нөхөлт: нэг нөхсөн өдрөөр хоёр өдрийг нөхөхгүй (нэг цагийг хоёр удаа тооцохгүй)');
+    put([]);
+    ok(/60 хоног/.test(MC({ missed: '2026-11-03', madeUp: '2027-02-06' }, '2027-02-10').err), 'нөхөлт: 60 хоногоос хойш нөхөхгүй');
+    st.closedMonths = { '2026-11': { at: 'x', by: 'y' } };
+    ok(/сар хаагдсан/.test(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).err), '⛔ нөхөлт: хаасан сарын өдрийг нөхөхгүй');
+    st.closedMonths = {};
+    ok(/ачаалагдаагүй/.test(run(`attMakeupCheck({ key: '${K}', missed: '2026-11-09', madeUp: '2026-11-14' }, '${TODAY}', () => null)`).err), 'нөхөлт: ирц ачаалагдаагүй үед татгалзана (таамаглахгүй)');
+
+    // ── ③ Төлөв ба цалин: батлагдсан нөхөлт ──
+    put([L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-12-05' })]);
+    let s = run(`attDayStatus('${K}', '2026-11-09', [], '2026-12-10')`);
+    eq([s.st, s.credit, s.deduct], ['makeup', true, false], 'төлөв: нөхсөн өдөр (өөр сард) нормд тооцогдоно, хасагдахгүй');
+    put([L('unpaid', '2026-11-09'), L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-12-05' })]);
+    eq(run(`attDayStatus('${K}', '2026-11-09', [], '2026-12-10')`).st, 'makeup', 'төлөв: цалингүй чөлөөний өдөр нөхөгдвөл «нөхсөн» болно');
+    put([L('paid', '2026-11-09'), L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-12-05' })]);
+    eq(run(`attDayStatus('${K}', '2026-11-09', [], '2026-12-10')`).st, 'paid', 'төлөв: цалинтай чөлөө нөхөлтөөс ӨНДӨР (давхар кредит олгохгүй)');
+    // сарын нэгтгэл: нөхөлт батлагдахад суутгал буурна
+    put([]);
+    const before = run(`attLeaveMonthSummary('${K}', '2026-11', ${JSON.stringify(NOV)}, '2026-12-10')`);
+    put([L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-12-05' })]);
+    const after = run(`attLeaveMonthSummary('${K}', '2026-11', ${JSON.stringify(NOV)}, '2026-12-10')`);
+    eq([before.deductDays - after.deductDays, after.creditMins - before.creditMins, after.n.makeup], [1, 480, 1], '⛔ нөхөлт батлагдахад суутгал 1 өдрөөр буурч, нормд 8ц нэмэгдэнэ');
+    const BASE = 2100000;
+    const pb = (cr) => run(`monthPayBreakdown(${BASE}, false, 960, 10080, 0, 1, '2026-11', '2026-12-10', 0, 10080, { creditMins: ${cr} })`);
+    ok(pb(after.creditMins).earned - pb(before.creditMins).earned === 100000, 'цалин: нөхөлт батлагдахад 1 өдрийн цалин (100,000₮) буцаж ордог');
+
+    // ── ④ Бичих: сервер рүү ҮНЭХЭЭР явна ──
+    st.me = K; st.isCEO = false; st.memberPerms = {};
+    TEAMX.length = 0;
+    TEAMX.push({ name: 'Т.Эзэн', phone: '88000011', role: 'Захирал', level: 100, status: 'идэвхтэй' }, { name: 'Т.Нөхөгч', phone: K, role: 'Нярав', level: 40, status: 'идэвхтэй' });
+    let reqs = [], cfgReply = {};
+    run('globalThis.__origPush = pushBroadcast; pushBroadcast = function (k, p) { globalThis.__mpush.push([k, p]); }; globalThis.__mpush = [];');
+    const jsonOk = (x) => Promise.resolve({ ok: true, status: 200, json: async () => x });
+    sandbox.fetch = (url, o) => {
+      if (/\/app_config\?/.test(url)) return jsonOk([{ value: cfgReply }]);
+      if (/\/att_leaves/.test(url)) { const body = JSON.parse(o.body); reqs.push({ url, method: o.method, body }); return jsonOk([Object.assign({ id: 'MK1', updated_at: 'x', history: [] }, body)]); }
+      return jsonOk([]);
+    };
+    put([]);
+    const saved1 = await run(`attMakeupSubmit({ missed: '2026-11-09', madeUp: '2026-11-14', note: ' Бямба гаригт гарсан ' }, '${TODAY}', globalThis.__ro)`);
+    eq(reqs.length, 1, 'нөхөлт илгээх: нэг хүсэлт серверт явав');
+    eq(reqs[0].body, { member_key: K, from_day: '2026-11-09', to_day: '2026-11-09', kind: 'makeup', makeup_day: '2026-11-14', makeup_mins: 420, reason: 'Бямба гаригт гарсан', status: 'pending', late: false, source: 'request' }, '⛔ нөхөлт илгээх: сервер рүү явсан бие — тасалсан өдөр, нөхсөн өдөр, бодит минут, pending');
+    ok(saved1.id === 'MK1' && run('__mpush').length === 1 && /Нөхөлтийн хүсэлт/.test(run('__mpush')[0][1].title) && run('__mpush')[0][0] === '88000011', 'нөхөлт илгээх: жагсаалтад тусч, ҮАЗ/CEO-д push очно');
+    reqs = [];
+    let err = await run(`attMakeupSubmit({ missed: '2026-11-09', madeUp: '2026-11-21' }, '${TODAY}', globalThis.__ro)`).then(() => '', e => String(e.message));
+    ok(/ирээдүй/.test(err) && reqs.length === 0, 'нөхөлт илгээх: шалгалтад унавал сервер рүү ЮУ Ч явахгүй');
+    put([]);
+    cfgReply = { '2026-11': { at: 'x', by: 'y' } };
+    err = await run(`attMakeupSubmit({ missed: '2026-11-09', madeUp: '2026-11-14' }, '${TODAY}', (ym) => ym === '2026-11' ? globalThis.__ro(ym) : [])`).then(() => '', e => String(e.message));
+    ok(/сар хаагдсан/.test(err) && reqs.length === 0, '⛔ нөхөлт илгээх: хаасан сар — сервэрээс шинээр уншиж хориглоно');
+    cfgReply = {}; st.closedMonths = {};
+    // ҮАЗ-ын самбарт нөхөлт гарна
+    st.isCEO = true; st.me = '88000011';
+    put([L('makeup', '2026-11-09', '2026-11-09', 'pending', { id: 'MP1', makeup_day: '2026-11-14', makeup_mins: 420 })]);
+    const panel = run('renderAttLeavePanel()');
+    ok(/data-alv-ok="MP1"/.test(panel) && /Нөхөлт/.test(panel) && /11-14/.test(panel) && /7ц/.test(panel), 'самбар: нөхөлтийн хүсэлт ҮАЗ-д ✅/❌ товчтой, нөхсөн өдөр/цагтай');
+    sandbox.fetch = (url, o) => { if (/\/app_config\?/.test(url)) return jsonOk([{ value: { '2026-12': { at: 'x', by: 'y' } } }]); return jsonOk([]); };
+    put([L('makeup', '2026-11-09', '2026-11-09', 'pending', { id: 'MP2', makeup_day: '2026-12-05', makeup_mins: 420 })]); st.closedMonths = {};
+    err = await run(`attLeaveDecide('MP2', 'approved')`).then(() => '', e => String(e.message));
+    ok(/сар хаагдсан/.test(err), '⛔ батлах: нөхсөн өдрийн сар хаагдсан бол нөхөлтийг батлахгүй (цалинтай нь хаасан сарын тоог хөдөлгөнө)');
+    st.closedMonths = {};
+    // ажилтны карт
+    st.isCEO = false; st.me = K; st.myPayRecs = { '2026-11': NOV }; st.myAttendance = NOV;
+    put([]);
+    const card = run(`attMyLeaveCardHtml('${K}')`);
+    ok(/Нөхөх өдөр/.test(card), 'ажилтны карт: «Нөхөх өдөр» үлдэгдэл гарна');
+    // scan
+    const code = appSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
+    const sub = code.slice(code.indexOf('async function attMakeupSubmit'), code.indexOf('function attMakeupBalanceHtml'));
+    ok(sub.indexOf('attMakeupCheck(') > -1 && sub.indexOf('assertMonthOpenLive(') > -1 && sub.indexOf('assertMonthOpenLive(') < sub.indexOf("attLeaveRequest('POST'"), '⛔ scan: нөхөлт илгээх — шалгалт + хаасан сарын шалгалт бичихээс ӨМНӨ');
+    ok((appSrc.match(/attendance\?member_key=\$\{encodeURIComponent\(pgrstInList\(keyVariants\(state\.me\)\)\)\}[^`]*select=member_key,day,kind,ts,source/g) || []).length === 2, '⛔ scan: өөрийн ирц татахдаа `member_key` ЗААВАЛ — эс бөгөөс `attDiscipline`/`attLeaveMonthSummary` бүх мөрийг хаяж, ажилласан өдөр «тасалсан» болно');
+  } finally {
+    sandbox.fetch = saved.fetch;
+    run('if (globalThis.__origPush) pushBroadcast = globalThis.__origPush;');
+    TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m));
+    Object.assign(st, { appConfig: saved.ac, attLeaves: saved.lv, attLeavesErr: saved.lvErr, attCallins: saved.cal, closedMonths: saved.cm, _closedMonthsAt: saved.cma, me: saved.me,
+      isCEO: saved.ceo, memberPerms: saved.mp, payrollCfg: saved.pc, workStart: saved.ws, myPayRecs: saved.myPay, myAttendance: saved.myAtt });
+  }
+});

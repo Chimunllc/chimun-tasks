@@ -10729,3 +10729,4 @@ select.no-asar-len {
 .att-team-none { color: var(--muted); font-size: var(--fs-sm); }
 .att-team-up { font-size: var(--fs-sm); line-height: 1.7; }
 .att-team-up small { color: var(--muted); }
+.alv-mk { margin-left: var(--space-2); }

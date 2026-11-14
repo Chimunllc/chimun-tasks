@@ -49,6 +49,9 @@ const BRANCHES = [
 // бодит ажилтнуудаар дүүргэгдэнэ. Хуучин кодонд hardcoded fallback TEAM (PIN='1111')
 // байсан ч бодит PIN-ууд өөр учраас login-д хэрэг болохгүй байсан тул устгасан.
 let TEAM = [];
+// Хүн таних кэш (`personIdentity`) — TEAM-тэй хамт зарлана: TEAM-ийг ачаалах функцүүд `_pidReset()` дууддаг тул
+// өөр газар зарласан бол script дараалалд TDZ-д унана.
+const _pid = { al: null, fx: null, n: -1, map: new Map() };
 
 // n8n webhook URL — hardcoded so staff never have to configure anything.
 // Change here + push when the backend moves. Settings panel still lets the user
@@ -1044,7 +1047,7 @@ function generateNotifications() {
   if (!state.me) return;
   const today = todayStr();
   const seen = new Set(state.notifications.map(n => n.id));
-  const myTasks = state.tasks.filter(t => t.assignee === state.me && t.status !== 'deleted');
+  const myTasks = state.tasks.filter(t => isTaskParticipant(t, state.me) && t.status !== 'deleted');
   const newOnes = [];
 
   // 1. ASSIGNED — өмнө хараагүй байсан, надад оноогдсон шинэ task
@@ -1118,7 +1121,7 @@ function generateNotifications() {
   state.tasks.forEach(t => {
     if (t.status === 'deleted') return;
     const isCreator  = (t.createdBy === state.me);
-    const isAssignee = (t.assignee === state.me);
+    const isAssignee = isTaskParticipant(t, state.me);
     const involved   = isCreator || isAssignee;
     // Activity log scan — status_changed, declined үед мэдэгдэх (зөвхөн оролцогч хүнд)
     if (involved && Array.isArray(t.activity)) {
@@ -1393,6 +1396,7 @@ function loadTeamFromCache() {
     if (!Array.isArray(parsed) || !parsed.length) return false;
     TEAM.length = 0;
     parsed.forEach(m => TEAM.push(m));
+    _pidReset();
     applyWorkerTypeOverrides();   // Цагийн⇄Үндсэн override (app_config)
     applyStaffPins();             // өмнө татсан PIN-г сэргээнэ (TEAM дахин байгуулагдсан)
     return true;
@@ -1421,6 +1425,7 @@ async function loadTeamFromAPI() {
     if (!fresh || !fresh.length) throw new Error('empty team response');
     TEAM.length = 0;
     fresh.forEach(m => TEAM.push(m));
+    _pidReset();
     applyWorkerTypeOverrides();   // Цагийн⇄Үндсэн override (app_config) — серверийн worker_type-г дарна
     applyStaffPins();             // өмнө татсан PIN-г шинэ TEAM-д сэргээнэ (эс бол PIN "—" болно)
     localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
@@ -3973,14 +3978,49 @@ function pgrstInList(vals) {
   return 'in.(' + vals.map(v => '"' + String(v).replace(/"/g, '\\"') + '"').join(',') + ')';
 }
 // Ажилтныг утас / email / нэрийн аль нэгээр олох (resilient).
+// ⚠ «Гарсан» мөр ЗӨВХӨН идэвхтэй таарах хүн олдохгүй үед буцна. Буцаж ирсэн ажилтан хуучин
+//   («гарсан») мөртэй хамт ижил нэр/утасаар TEAM-д байдаг тул эхний таарсныг авбал даалгавар
+//   ГАРСАН мөрөнд холбогдож, «Миний ажил»-аас алга болдог байсан.
 function _findMemberRaw(key) {
   const k = String(key).trim().toLowerCase();
   const d = String(key).replace(/\D/g, '');
-  return TEAM.find(x =>
-    (x.email && String(x.email).trim().toLowerCase() === k) ||
-    (d && String(x.phone || '').replace(/\D/g, '') === d) ||
-    (String(x.name || '').trim().toLowerCase() === k)  // нэрийг үсгийн том/жижиг ялгахгүй тааруулна
-  ) || null;
+  let leftHit = null;
+  for (const x of TEAM) {
+    const hit = (x.email && String(x.email).trim().toLowerCase() === k) ||
+      (d && String(x.phone || '').replace(/\D/g, '') === d) ||
+      (String(x.name || '').trim().toLowerCase() === k);  // нэрийг үсгийн том/жижиг ялгахгүй тааруулна
+    if (!hit) continue;
+    if ((x.status || 'идэвхтэй') !== 'гарсан') return x;
+    if (!leftHit) leftHit = x;
+  }
+  return leftHit;
+}
+/* ── ХҮНИЙ ТАНИХ ДҮРЭМ (2026-11-14) ─────────────────────────────────────────────
+   Даалгаврын `assignee` нь утас / email / нэр аль ч хэлбэрээр хадгалагдсан байж болно
+   (TEAM-ээс түрүүлж ирсэн даалгавар нэрээ хэвээр барьдаг). Дэлгэц `memberName()`-ээр нэрийг
+   ЗӨВ гаргадаг ч «Миний ажил» нь `===`-ээр тулгадаг байсан тул нэр нь харагдаж байхад даалгавар
+   жагсаалтад ГАРДАГГҮЙ байв. `samePerson(a, b)` = хоёр утга нэг ГИШҮҮНД хөрвөх эсэх (findMember-тэй
+   ижил дүрэм). ⛔ Хүний даалгаврын харьяаллыг `===`-ээр БҮҮ тул — `isTaskParticipant` / `samePerson`.
+   ⛔ Нэр давхцсан ӨӨР ХОЁР ИДЭВХТЭЙ хүнийг нэг хүн болгохгүй (`personKey` утсаар ялгана). */
+function _pidReset() { _pid.map = new Map(); }
+function personIdentity(key) {
+  if (key == null || key === '') return '';
+  if (_pid.al !== state.empAliases || _pid.fx !== state.personFixes || _pid.n !== TEAM.length) {
+    _pid.al = state.empAliases; _pid.fx = state.personFixes; _pid.n = TEAM.length; _pidReset();
+  }
+  const raw = String(key);
+  let id = _pid.map.get(raw);
+  if (id === undefined) {
+    const m = findMember(raw);
+    id = m ? 'm:' + personKey(m) : 'r:' + raw.trim().toLowerCase();
+    _pid.map.set(raw, id);
+  }
+  return id;
+}
+function samePerson(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return personIdentity(a) === personIdentity(b);
 }
 function findMember(key) {
   if (!key) return null;
@@ -4224,10 +4264,15 @@ function attRecsInFence(recs) {
 // Active task жагсаалтаас тэдгээрийн оноосон ажлуудыг хасахад ашиглана —
 // гэхдээ "Дууссан" болон "Илгээсэн ажил" view-д үлдээж history алдагдахгүй.
 function leftStaffEmails() {
+  // ⚠ Буцаж ирсэн ажилтан хуучин («гарсан») мөртэй ИЖИЛ утастай хамт TEAM-д байдаг —
+  //   идэвхтэй мөр нь байгаа түлхүүрийг «гарсан» гэж тооцвол бүх ажил нь жагсаалтаас алга болно.
+  const active = new Set(
+    TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан').map(m => personKey(m)).filter(Boolean)
+  );
   return new Set(
     TEAM.filter(m => (m.status || 'идэвхтэй') === 'гарсан')
         .map(m => personKey(m))
-        .filter(Boolean)
+        .filter(k => k && !active.has(k))
   );
 }
 
@@ -48046,7 +48091,9 @@ function notifyTaskAssigned(t, title) {
 }
 function isTaskParticipant(t, key) {
   if (!t || !key) return false;
-  return t.assignee === key || taskCoKeys(t).includes(key);
+  if (t.assignee === key || taskCoKeys(t).includes(key)) return true;
+  // Хариуцагч утас биш хэлбэрээр (email/нэр) хадгалагдсан ч ижил гишүүн бол оролцогч — `samePerson`-ийг үз.
+  return samePerson(t.assignee, key) || taskCoKeys(t).some(k => samePerson(k, key));
 }
 function refreshCoAssigneeChips(ids) {
   const wrap = document.getElementById('t-co-chips');
@@ -49129,7 +49176,7 @@ function closeRowMenu() {
 }
 function openRowMenu(t, anchorEl) {
   closeRowMenu();
-  const isAssignee = state.me === t.assignee;
+  const isAssignee = samePerson(state.me, t.assignee);
   const canEdit = canEditTask(t);
   const status = t.status || 'open';
   const items = [];
@@ -49220,14 +49267,14 @@ function renderCounts() {
   // Apply access control to base task list — non-CEO sees only own tasks
   const accessible = state.isCEO
     ? state.tasks
-    : state.tasks.filter(t => t.assignee === state.me);
+    : state.tasks.filter(t => isTaskParticipant(t, state.me));
   // Branch filter disabled — бүх task ижилхэн тоологдоно.
   const branchTasks = accessible;
   // Helper — element байхгүй бол алгасах (cnt-all/overdue/today/done нь
   // sidebar-аас хасагдсан, зөвхөн filter pill-аар ажилладаг болсон).
   const setCount = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
   setCount('cnt-all', branchTasks.filter(t => t.status !== 'done').length);
-  setCount('cnt-mine', accessible.filter(t => t.assignee === state.me && t.status !== 'done').length);
+  setCount('cnt-mine', accessible.filter(t => isTaskParticipant(t, state.me) && t.status !== 'done').length);
   setCount('cnt-delegated', delegatedOpenCount(state.tasks, state.me));
   // Финансын хүсэлт нь state.financeRequests-ээс ирнэ (тусдаа Sheet)
   const executorId = getFinanceExecutorEmail();
@@ -49339,7 +49386,7 @@ function canEditTask(t) {
   // Үүсгэгчээс ДЭЭГҮҮР түвшинтэй
   if (myLevel > creatorLevel) return { all: true, status: true, none: false };
   // Хариуцагч — зөвхөн status солих
-  if (state.me === t.assignee) return { all: false, status: true, none: false };
+  if (samePerson(state.me, t.assignee)) return { all: false, status: true, none: false };
   // Бусад — зөвхөн харах
   return { all: false, status: false, none: true };
 }
@@ -49980,7 +50027,7 @@ function setupTaskImagePicker(t, editable) {
 /* ─── Task modal: Action товчнууд (статус өөрчлөх + татгалзах + тодруулга) ─── */
 function renderTaskActionButtons(t) {
   const bar = document.getElementById('t-action-buttons');
-  const isAssignee = (state.me === t.assignee);
+  const isAssignee = samePerson(state.me, t.assignee);
   const status     = t.status || 'open';
   // Status өөрчлөх товчнууд — ЗӨВХӨН хариуцагчид зориулсан. CEO/үүсгэгч өөрөө хариуцагч
   // биш бол харагдахгүй (өөрийн бусдад өгсөн ажил дээр Start/Done/Decline дарж хариуцагчийн

@@ -15219,10 +15219,19 @@ const ATT_DAY_ST = {
   holiday: { icon: '🎌', label: 'Баярын өдөр' }, na: { icon: '', label: '' },
 };
 // Хүн × сарын ирцийн мөрүүдийг өдрөөр бүлэглэнэ (ЦЭВЭР)
+const _attRecsIdx = new WeakMap();
+// ⚡ Нэг сарын ирцийг ХҮН БҮРЭЭР нэг л удаа индекслэнэ (50 хүн × 31 өдөр × олон дэлгэц дахин дахин `attCanonKey` дуудахгүй).
+//   Хүчинтэй байдал: мөрийн тоо + багийн тоо (ирц нэмэгдсэн/багийн жагсаалт ачаалагдсан бол дахин бүтээнэ). Буцаасан объектыг ӨӨРЧИЛЖ БОЛОХГҮЙ.
 function attRecsByDay(key, recs) {
-  const k = attMarkKey(key), by = {};
-  (Array.isArray(recs) ? recs : []).forEach(r => { if (r && r.day && attMarkKey(attCanonKey(r)) === k) (by[r.day] = by[r.day] || []).push(r); });
-  return by;
+  if (!Array.isArray(recs)) return {};
+  let c = _attRecsIdx.get(recs);
+  if (!c || c.n !== recs.length || c.t !== (TEAM || []).length) {
+    const by = {};
+    recs.forEach(r => { if (!r || !r.day) return; const k = attMarkKey(attCanonKey(r)); const m = (by[k] = by[k] || {}); (m[r.day] = m[r.day] || []).push(r); });
+    c = { n: recs.length, t: (TEAM || []).length, by };
+    _attRecsIdx.set(recs, c);
+  }
+  return c.by[attMarkKey(key)] || {};
 }
 // Нэг өдрийн жишиг цаг (норм ÷ ажлын өдөр = 480)
 function attLeaveDayMins(ym) { return Math.round(workNormMins(ym) / Math.max(1, workNormDays(ym))); }

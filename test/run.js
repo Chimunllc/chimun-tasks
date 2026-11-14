@@ -27036,3 +27036,62 @@ async function swFetchTests() {
       isCEO: saved.ceo, memberPerms: saved.mp, payrollCfg: saved.pc, workStart: saved.ws, attMonthRecs: saved.mr, attMonthKey: saved.mk, salaries: saved.sal });
   }
 });
+
+// ═══ ИРЦИЙН АВТОМАТ МЭДЭГДЭЛ: Python скрипт ↔ аппын төлөв (2026-11-14) ═══
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const cp = require('child_process'), os = require('os');
+  const script = path.join(__dirname, '..', 'tools', 'att_notify.py');
+  const out = cp.execSync(`python3 ${JSON.stringify(script)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  ok(/att_notify selftest OK/.test(out), 'att_notify: Python өөрийн тест — ' + out.trim());
+  const src = fs.readFileSync(script, 'utf8');
+  ok(/dict\(payload, internal=secret, email=phone\)/.test(src) && !/email=['"]{2}/.test(src), '⛔ att_notify: push-ийн email ЗААВАЛ тодорхой утас (хоосон = БҮГДЭД очно)');
+  ok(src.indexOf("sent[m['key']] = now") > src.indexOf('push(secret'), '⛔ att_notify: «илгээсэн» тэмдэг push амжилттай болсны ДАРАА');
+  ok(/if not cfg_of\(ctx\.get\('cfg'\)\)\['from'\]/.test(src) && /def plan\(ctx\)/.test(src), 'att_notify: `from` хоосон бол юу ч илгээхгүй');
+  ok(/COVER_KINDS = \('unpaid', 'paid', 'vacation', 'sick', 'present', 'absent'\)/.test(src), 'att_notify: чөлөөний төрлүүд аппын ATT_LEAVE_KINDS-тэй ижил (нөхөлтгүй)');
+  const kindsApp = run('Object.keys(ATT_LEAVE_KINDS).filter(k => k !== "makeup")').sort().join(',');
+  eq(kindsApp, 'absent,paid,present,sick,unpaid,vacation', 'att_notify: аппын төрлүүд (нөхөлтгүй) = скриптийн COVER_KINDS');
+  // ── Тулгалт: нэг өгөгдөл → аппын `attDayStatus` ба Python-ы «тасалсан» шийдвэр ЯГ ИЖИЛ ──
+  const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
+  const saved = { ac: st.appConfig, lv: st.attLeaves, lvErr: st.attLeavesErr, cal: st.attCallins, me: st.me, ceo: st.isCEO };
+  st.attLeavesErr = null;
+  const HOL = '2026-11-12';
+  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', holidays: [HOL] } });
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  try {
+    const PEOPLE = [
+      { phone: '99440001', name: 'Т.Нэг', joined: '' },            // ирцгүй
+      { phone: '99440002', name: 'Т.Хоёр', joined: '' },           // ирсэн
+      { phone: '99440003', name: 'Т.Гурав', joined: '' },          // цалинтай чөлөө
+      { phone: '99440004', name: 'Т.Дөрөв', joined: '2026-11-17' }, // 11-17-оос ажилд орсон
+      { phone: '99440005', name: 'Т.Тав', joined: '' },            // хуваарьтай бямба
+    ];
+    TEAMX.length = 0;
+    PEOPLE.forEach(p => TEAMX.push({ name: p.name, phone: p.phone, role: 'Нярав', level: 40, status: 'идэвхтэй', joined_at: p.joined || undefined }));
+    const days = ['2026-11-16', '2026-11-17', '2026-11-18', HOL, '2026-11-21'];   // Да · Мя · Лх · баяр · Бя
+    const att = [['99440002', '2026-11-16'], ['99440002', '2026-11-17'], ['99440002', '2026-11-18'], ['99440002', '2026-11-21']];
+    const leaves = [{ phone: '99440003', from: '2026-11-16', to: '2026-11-18', kind: 'paid' }];
+    const callins = [['99440005', '2026-11-21']];
+    st.attCallins = {}; callins.forEach(([p, d]) => { st.attCallins[p + '|' + d] = { id: p + '|' + d, member_key: p, day: d, at_time: '09:00', status: 'active' }; });
+    st.attLeaves = {}; leaves.forEach((l, i) => { st.attLeaves['T' + i] = { id: 'T' + i, member_key: l.phone, from_day: l.from, to_day: l.to, kind: l.kind, status: 'approved', source: 'request', updated_at: 'x' }; });
+    let checked = 0;
+    for (const day of days) {
+      const fx = { now: Date.parse(day + 'T19:30:00+08:00'), cfg: { from: '2026-11-02', holidays: [HOL] }, people: PEOPLE, att, leaves, callins, sent: {}, managers: [] };
+      const f = path.join(os.tmpdir(), 'att_notify_fx_' + process.pid + '.json');
+      fs.writeFileSync(f, JSON.stringify(fx));
+      const py = JSON.parse(cp.execSync(`python3 ${JSON.stringify(script)} --plan ${JSON.stringify(f)}`, { encoding: 'utf8' })).messages.filter(m => m.kind === 'absent').map(m => m.to).sort();
+      fs.unlinkSync(f);
+      const js = PEOPLE.filter(p => {
+        const dayRecs = att.filter(a => a[0] === p.phone && a[1] === day).map(() => ({ member_key: p.phone, member_name: 'x', kind: 'in', ts: ts(day, '09:00'), day }));
+        return run(`attDayStatus('${p.phone}', '${day}', ${JSON.stringify(dayRecs)}, '${run(`addDays('${day}', 1)`)}')`).st === 'absent';
+      }).map(p => p.phone).sort();
+      eq(py, js, `⛔ тулгалт ${day}: Python-ы «тасалсан» мэдэгдэл = аппын attDayStatus «absent» (нэг өгөгдөл, нэг дүгнэлт)`);
+      checked += js.length + 1;
+    }
+    ok(checked >= 8, 'тулгалт: хангалттай тохиолдол шалгагдсан (' + checked + ')');
+  } finally {
+    TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m));
+    Object.assign(st, { appConfig: saved.ac, attLeaves: saved.lv, attLeavesErr: saved.lvErr, attCallins: saved.cal, me: saved.me, isCEO: saved.ceo });
+  }
+});

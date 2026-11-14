@@ -563,12 +563,34 @@ function dataLoadFailed(where, err, cacheKey) {
 //   зөвхөн хадгалах нь бүтээгүй (амьд датаар 2 ажилтан · 11 удаа, fp 1cddeb5f6c64).
 //   Кэш бол зөвхөн хурдны туслах: бүтэхгүй бол апп хэвийн ажиллана.
 //   ⚠ Дата ҮНЭХЭЭР ирээгүй бол `dataLoadFailed()`-ыг хэвээр ашиглана.
-function cacheSet(key, value) {
-  try { localStorage.setItem(key, value); return true; } catch (e) {
-    // Хуучин утгыг нь чөлөөлөөд НЭГ дахин оролдоно — ихэнхдээ энэ хангалттай.
-    try { localStorage.removeItem(key); localStorage.setItem(key, value); return true; }
-    catch (e2) { return false; }
+function cacheSet(key, value) { return lsWrite(key, value); }
+
+/* ⛔ ЛОКАЛ ХАДГАЛАЛТ ДҮҮРЭХЭД АПП ҮХЭХГҮЙ (2026-11-14, issue 953) — «даалгавар харагдахгүй, орж болохгүй».
+   `saveLocal()` нь хамгаалалтгүй байсан тул санах ой дүүрэхэд шидэж: ① `saveTask` серверт бичихээсээ ӨМНӨ унаж (хүлээн авах,
+   дуусгах бүгд), ② `loadData`/`loadBootstrap` серверээс шинэ даалгавраа авсан ч catch-ээр ХУУЧИН кэш рүү буцаж (шинэ ажил огт
+   гарахгүй), ③ нэвтрэх үед токен бичигдэхгүй байж болзошгүй байв. Кэш бол зөвхөн хурдны нөөц — бүтэхгүй бол апп хэвийн ажиллана.
+   `lsWrite` НЭГ ГАНЦ бичих зам: шидэхгүй; бүтэхгүй бол эхлээд ӨӨРИЙН хуучин утгыг, дараа нь ДАХИН ТАТАГДАХ кэшийг (`LS_EVICTABLE`)
+   нэг нэгээр нь чөлөөлж дахин оролдоно. ⛔ `LS_EVICTABLE`-д sync хүлээж буй бичилт (`pendingWrites`), нэвтрэлтийн токен, багийн кэш,
+   даалгавар, ноорог ХЭЗЭЭ Ч орохгүй — тэдгээрийг чөлөөлвөл өгөгдөл алдагдана (scan-тест хаана). */
+const LS_EVICTABLE = ['financeRequests', 'nomaadOrders', ERR_LOG_KEY, 'notifications'];
+// `critical` = дахин үүсгэх боломжгүй өгөгдөл (sync хүлээж буй бичилт): ӨӨРИЙН хуучин утгыг ХЭЗЭЭ Ч устгахгүй — зөвхөн кэшийг чөлөөлнө.
+function lsWrite(key, value, critical) {
+  try { localStorage.setItem(key, value); return true; } catch (e) {}
+  for (const k of LS_EVICTABLE) {
+    if (k === key) continue;
+    try {
+      if (localStorage.getItem(k) == null) continue;
+      localStorage.removeItem(k);
+      localStorage.setItem(key, value);
+      return true;
+    } catch (e) { /* дараагийнхыг чөлөөлж үзнэ */ }
   }
+  if (!critical) {
+    // Кэшийн хувьд сүүлчийн арга: өөрийн хуучин (том) утгыг чөлөөлөөд дахин оролдоно.
+    try { localStorage.removeItem(key); localStorage.setItem(key, value); return true; } catch (e) {}
+  }
+  try { console.warn('Локал санах ой дүүрсэн — хадгалж чадсангүй:', key); } catch (e) {}
+  return false;
 }
 
 // ── PostgREST токены хүчинтэй хугацаа ────────────────────────────────────────
@@ -1041,7 +1063,7 @@ function loadNotifications() {
 function saveNotifications() {
   // Keep only the most recent 50 to avoid localStorage bloat
   state.notifications = state.notifications.slice(0, 50);
-  localStorage.setItem('notifications', JSON.stringify(state.notifications));
+  cacheSet('notifications', JSON.stringify(state.notifications));
 }
 function generateNotifications() {
   if (!state.me) return;
@@ -1074,7 +1096,7 @@ function generateNotifications() {
       prevAssigned.add(t.id);
     }
   });
-  localStorage.setItem(seenAssignedKey, JSON.stringify([...prevAssigned]));
+  cacheSet(seenAssignedKey, JSON.stringify([...prevAssigned]));
 
   // 2. OVERDUE — өдөрт нэг л удаа сануулга
   myTasks.forEach(t => {
@@ -1160,7 +1182,7 @@ function generateNotifications() {
       nowSeen[`act-${t.id}`] = Math.max(nowSeen[`act-${t.id}`] || 0, ...t.activity.map(a => a.timestamp || 0));
     }
   });
-  localStorage.setItem(lastSeenKey, JSON.stringify(nowSeen));
+  cacheSet(lastSeenKey, JSON.stringify(nowSeen));
 
   // 5. МИНИЙ ЗАРДАЛ — картын зардал ангилахыг хүлээж буй (хуулга суурьтай санхүү)
   if (typeof myPendingCardExpenses === 'function') {
@@ -2016,10 +2038,16 @@ function loadLocal() {
   } catch (e) { dataLoadFailed('loadLocal', e); }
   setConn('offline', 'Локал режим');
 }
+// ⛔ ШИДЭХГҮЙ (дээрх `lsWrite`-ийн тайлбарыг үз). Бүтэн хуулбар багтахгүй бол түүх/сэтгэгдэлгүй ХӨНГӨН хуулбар — гарчиг,
+//   хариуцагч, хугацаа, төлөв хэвээр (кэш зөвхөн офлайн нөөц; бүтэн дата серверт).
+function slimTaskForCache(t) { return Object.assign({}, t, { activity: [], comments: [] }); }
 function saveLocal() {
-  localStorage.setItem('tasks', JSON.stringify(state.tasks));
-  localStorage.setItem('projectsByBranch', JSON.stringify(state.projectsByBranch));
-  localStorage.setItem('branch', state.branch);
+  try {
+    const tasks = state.tasks || [];
+    if (!lsWrite('tasks', JSON.stringify(tasks))) lsWrite('tasks', JSON.stringify(tasks.map(slimTaskForCache)));
+    lsWrite('projectsByBranch', JSON.stringify(state.projectsByBranch));
+    lsWrite('branch', state.branch);
+  } catch (e) { console.warn('saveLocal', e); }
 }
 // Хуучин кодны 5 газар (project устгах, recurring spawn, swipe delete/done) `saveData()` гэж
 // дуудсан байсан ч ийм функц огт тодорхойлогдоогүй байсан тул silently throw хийдэг байсан.
@@ -2035,7 +2063,8 @@ function loadPendingWrites() {
   try { return JSON.parse(localStorage.getItem('pendingWrites') || '[]'); } catch(e) { return []; }
 }
 function savePendingWrites(q) {
-  try { localStorage.setItem('pendingWrites', JSON.stringify(q)); } catch(e) {}
+  // Офлайн дараалал нь дахин үүсгэх боломжгүй — дүүрсэн үед кэшийг чөлөөлж бичнэ, хуучин дарааллыг ХЭЗЭЭ Ч устгахгүй.
+  try { lsWrite('pendingWrites', JSON.stringify(q), true); } catch(e) {}
 }
 function enqueueWrite(write) {
   const q = loadPendingWrites();
@@ -26646,9 +26675,18 @@ function taskNotifyDone(t) { if (t && t.createdBy && t.createdBy !== t.assignee 
 // Мэдэгдлээс нээх холбоос: `#ack-<id>` (шинэ ажил — хүлээн авсанд тооцно) · `#task-<id>` (сануулга, үнэлгээ).
 function taskDeepLink(hash) { const m = /^#(ack|task)-([A-Za-z0-9_-]+)$/.exec(String(hash || '')); return m ? { act: m[1], id: m[2] } : null; }
 async function taskDeepOpen(dl) {
-  const t = dl && (state.tasks || []).find(x => x.id === dl.id);
-  if (!t) return;
-  if (dl.act === 'ack') await taskAck(dl.id, true);
+  if (!dl) return;
+  let t = (state.tasks || []).find(x => x.id === dl.id);
+  if (!t) {
+    // Жагсаалтад алга — шинэ ажил локал кэшэнд хараахан ороогүй байж болно. Серверээс шинэчлээд дахин хайна;
+    // өмнө нь чимээгүй буцдаг тул мэдэгдэл дарахад юу ч болохгүй мэт харагддаг байв (issue 953).
+    try { await loadData(); } catch (e) { console.warn('taskDeepOpen: шинэчилж чадсангүй', e); }
+    t = (state.tasks || []).find(x => x.id === dl.id);
+    if (!t) { showToast('Даалгавар олдсонгүй — устсан эсвэл танд хамааралгүй байж магадгүй', 'warn', 4000); return; }
+    render();
+  }
+  // «Хүлээн авлаа» бичигдэхгүй ч (сүлжээ/хадгалалт) цонх ЗААВАЛ нээгдэнэ — хэрэглэгч ажлаа харах ёстой.
+  if (dl.act === 'ack') { try { await taskAck(dl.id, true); } catch (e) { console.warn('taskAck', e); } }
   openTaskModal(dl.id);
 }
 async function taskAck(id, silent) {
@@ -51377,15 +51415,16 @@ function setUser(member, profile, auth) {
     state.branch = _mbs[0];
   }
   // Persist a lightweight session — утас/email/нэрийн түлхүүрээр
-  localStorage.setItem('userEmail', personKey(member));
-  localStorage.setItem('userLoginAt', String(Date.now()));
+  // ⛔ `lsWrite` — утас дүүрсэн үед түүхий setItem шидэж, нэвтрэх үйлдэл дунд нь тасалдаж (токен бичигдэхгүй) байв.
+  lsWrite('userEmail', personKey(member));
+  lsWrite('userLoginAt', String(Date.now()));
   // Серверийн токен — байвал хадгална (restore-д баталгаажина). Клиент fallback нэвтрэлт токенгүй.
-  if (auth && auth.token) localStorage.setItem('sessionToken', auth.token);
+  if (auth && auth.token) lsWrite('sessionToken', auth.token);
   else localStorage.removeItem('sessionToken');
   // Шинэ токен ирмэгц ажилтны PIN-г дахин татна (өмнөх session-д токенгүй/алдаатай гацсан бол сэргэнэ)
   if (auth && auth.token) { state._staffPinsLoaded = false; state._staffPinsErr = ''; _staffPinsTries = 0; }
   // PostgREST JWT (эмзэг бичилтэд) — байвал хадгална, эс бол хуучныг цэвэрлэнэ.
-  if (auth && auth.pgrst) localStorage.setItem('pgrstToken', auth.pgrst);
+  if (auth && auth.pgrst) lsWrite('pgrstToken', auth.pgrst);
   else localStorage.removeItem('pgrstToken');
 }
 

@@ -21204,6 +21204,70 @@ async function swFetchTests() {
   ok(/calSwitchView\(full, state\.dashCalWeek, state\.ordersCalYm/.test(src), '7 хоног: шилжилт цэвэр функцээр');
 }
 
+// ═══ МИНИЙ АЖИЛ: ХАРИУЦАГЧ УТАС БИШ ХЭЛБЭРЭЭР ХАДГАЛАГДСАН Ч ХАРАГДАНА (2026-11-14) ═════
+// Даалгаврын modal `memberName()`-ээр нэрийг зөв гаргадаг ч жагсаалт `===`-ээр тулгадаг байсан тул
+// хариуцагч email/нэрээр хадгалагдсан, эсвэл буцаж ирсэн ажилтны хуучин «гарсан» мөр TEAM-д эхэнд нь байвал
+// даалгавар «Миний ажил»-аас ХАРАГДАХГҮЙ (нэр нь харагдсаар) байв.
+// ⚠ Fixture-д ЗӨВХӨН зохиомол нэр/утас/имэйл (репо нийтийн — жинхэнэ ажилтны мэдээлэл БҮҮ бич).
+{
+  const TEAMX = vm.runInContext('TEAM', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const keep = { team: TEAMX.slice(), t: st.tasks, v: st.view, me: st.me, c: st.isCEO, f: st.statusFilter, s: st.search, lvl: st.myLevel };
+  const setTeam = (rows) => { TEAMX.length = 0; rows.forEach(m => TEAMX.push(m)); vm.runInContext('_pidReset()', sandbox); };
+  const mk = (id, assignee, extra) => Object.assign({ id, title: 'Ажил ' + id, assignee, createdBy: '99110002', status: 'open', due: '2026-11-20', priority: 'high', created: Date.now(), updated: Date.now() }, extra || {});
+  const mine = (me, isCEO, tasks) => { st.tasks = tasks; st.view = 'mine'; st.me = me; st.isCEO = isCEO; st.search = ''; st.statusFilter = 'all'; return F.filteredTasks().map(t => t.id).join(','); };
+  try {
+    setTeam([
+      { name: 'Т.Нэг', phone: '99110001', email: 'ajiltan@example.test', level: 10, status: 'идэвхтэй' },
+      { name: 'Т.Хоёр', phone: '99110002', level: 80, status: 'идэвхтэй' },
+    ]);
+    eq(mine('99110001', false, [mk('a', '99110001')]), 'a', 'Миний ажил: хариуцагч = утас → харагдана');
+    eq(mine('99110001', false, [mk('b', 'ajiltan@example.test')]), 'b', 'Миний ажил: хариуцагч email хэлбэрээр хадгалагдсан ч харагдана');
+    eq(mine('99110001', false, [mk('c', 'Т.Нэг')]), 'c', 'Миний ажил: хариуцагч нэрээр хадгалагдсан ч харагдана');
+    eq(mine('99110001', true, [mk('d', 'Т.Нэг')]), 'd', 'Миний ажил: CEO өөрийн (нэрээр хадгалагдсан) ажлаа харна');
+    eq(mine('99110002', false, [mk('e', 'ajiltan@example.test')]), '', '⛔ Миний ажил: өөр хүний ажил (email хэлбэртэй ч) харагдахгүй');
+    ok(F.isTaskParticipant(mk('p', '99110002', { co_assignees: ['ajiltan@example.test'] }), '99110001'), 'хамтран гүйцэтгэгч email хэлбэртэй ч оролцогч');
+    // Эрх: хариуцагч (email хэлбэрээр хадгалагдсан) ✓ тэмдэглэх эрхтэй, өөр хүн үгүй
+    st.me = '99110001'; st.isCEO = false; st.myLevel = 10;
+    eq(F.canEditTask(mk('g', 'ajiltan@example.test')), { all: false, status: true, none: false }, 'canEditTask: email хэлбэртэй хариуцагч ✓ эрхтэй');
+    st.me = '99110002'; st.myLevel = 10;
+    eq(F.canEditTask(mk('g2', 'ajiltan@example.test', { createdBy: '99110001' })).status, false, '⛔ canEditTask: өөр хүн ✓ эрхгүй');
+
+    // Буцаж ирсэн ажилтан: хуучин «гарсан» мөр (ижил утас) TEAM-д ЭХЭНД нь байна
+    setTeam([
+      { name: 'Т.Гурав', phone: '99220001', level: 10, status: 'гарсан' },
+      { name: 'Т.Гурав', phone: '99220001', level: 10, status: 'идэвхтэй' },
+      { name: 'Т.Хоёр', phone: '99110002', level: 80, status: 'идэвхтэй' },
+    ]);
+    eq(mine('99220001', false, [mk('r', '99220001')]), 'r', '⛔ Миний ажил: буцаж ирсэн ажилтны ажил хуучин «гарсан» мөрөөс болж алга болохгүй');
+    eq(F.findMember('Т.Гурав').status, 'идэвхтэй', 'findMember: ижил нэрээр идэвхтэй мөрийг «гарсан»-аас ӨМНӨ сонгоно');
+    eq(F.leftStaffEmails().has('99220001'), false, 'leftStaffEmails: идэвхтэй мөртэй ижил түлхүүр «гарсан» болохгүй');
+    setTeam([
+      { name: 'Т.Тав', phone: '99440001', level: 10, status: 'гарсан' },
+      { name: 'Т.Хоёр', phone: '99110002', level: 80, status: 'идэвхтэй' },
+    ]);
+    eq(F.leftStaffEmails().has('99440001'), true, 'leftStaffEmails: жинхэнэ гарсан ажилтан хэвээр «гарсан»');
+    eq(F.findMember('Т.Тав').phone, '99440001', 'findMember: идэвхтэй таарах хүн байхгүй бол «гарсан» мөрийг буцаана (түүх эвдрэхгүй)');
+
+    // ⛔ Нэр давхцсан ХОЁР ИДЭВХТЭЙ хүн — нэгнийх нь ажил нөгөөд харагдахгүй (утсаар ялгана)
+    setTeam([
+      { name: 'Т.Дөрөв', phone: '99330001', level: 10, status: 'идэвхтэй' },
+      { name: 'Т.Дөрөв', phone: '99330002', level: 10, status: 'идэвхтэй' },
+    ]);
+    eq(mine('99330002', false, [mk('f', '99330001')]), '', '⛔ Миний ажил: нэр давхцсан өөр идэвхтэй хүний ажил холилдохгүй');
+    eq(mine('99330001', false, [mk('f2', '99330001')]), 'f2', 'Миний ажил: нэр давхцсан хоёрын өөрийн ажил (утсаар) харагдана');
+    // Кэш: TEAM солигдсоны дараа хуучин таних утга үлдэхгүй
+    setTeam([{ name: 'Т.Нэг', phone: '99110001', email: 'ajiltan@example.test', level: 10, status: 'идэвхтэй' }]);
+    eq(F.samePerson('ajiltan@example.test', '99110001'), true, 'samePerson: email ↔ утас');
+    setTeam([{ name: 'Т.Нэг', phone: '99110009', email: 'ajiltan@example.test', level: 10, status: 'идэвхтэй' }]);
+    eq(F.samePerson('ajiltan@example.test', '99110001'), false, 'samePerson: TEAM солигдмогц кэш шинэчлэгдэнэ (утас солигдсон)');
+    eq([F.samePerson('', 'x'), F.samePerson(null, null)], [false, false], 'samePerson: хоосон утга хэзээ ч таарахгүй');
+  } finally {
+    setTeam(keep.team);
+    st.tasks = keep.t; st.view = keep.v; st.me = keep.me; st.isCEO = keep.c; st.statusFilter = keep.f; st.search = keep.s; st.myLevel = keep.lvl;
+  }
+}
+
 // ═══ МИНИЙ АЖИЛ: ШҮҮЛТҮҮРИЙН PILL — ТОО, ИДЭВХТЭЙ НЬ ХАРАГДАНА (2026-10-09) ═════
 // Утсанд 7 pill 334px-д багтахгүй (694px) — идэвхтэй шүүлт («Бүгд») дэлгэцээс гадуур,
 // ямар шүүлт асаалттайг хэн ч харахгүй байв; pill нь тоогүй, хүрээгүй (бичиг шиг) байв.
@@ -25714,8 +25778,12 @@ async function swFetchTests() {
   ok(au[0].auto === true && au[0].ts === dn + 48 * H, 'авто ★: тэмдэглэгдсэн, оноо 48-р цагийн мөчид бичигдэнэ');
   eq(F.taskRatingEff(mk({ status: 'done', kpi_code: doneAt(dn) }), F.taskPtsCtx(dn + 49 * H)), 4, 'taskRatingEff: авто ★4');
   eq(F.taskRatingEff(mk({ status: 'done', kpi_code: doneAt(dn) }), F.taskPtsCtx(dn + 1 * H)), 0, 'taskRatingEff: 48ц дотор 0');
-  eq(F.needsRating(mk({ status: 'done', kpi_code: doneAt(dn) })), true, 'needsRating: ★ хүлээж буй (48ц дотор)');
+  // ⚠ `needsRating` нь БОДИТ `Date.now()`-ийг уншдаг — тогтмол `dn`-тэй тулгавал бодит цаг 48ц-ийг давмагц тест унадаг байв
+  //   (2026-11-14-нд main-д улаан болсон). Цагийг dn + 1ц дээр ТҮР тогтооно.
   const _nowReal = Date.now;
+  Date.now = () => dn + 1 * H;
+  try { eq(F.needsRating(mk({ status: 'done', kpi_code: doneAt(dn) })), true, 'needsRating: ★ хүлээж буй (48ц дотор)'); }
+  finally { Date.now = _nowReal; }
   // гар ★ нь авто ★-ийг ДАРНА, нэг мөр л үлдэнэ (давхар тоологдохгүй)
   const man = led([mk({ status: 'done', kpi_code: doneAt(dn, 5) })], dn + 100 * H);
   eq(man.map(e => e.kind + ':' + e.pts + ':' + !!e.auto), ['bonus:10:false'], 'гар ★5 нь авто ★4-ийг орлоно — НЭГ мөр');

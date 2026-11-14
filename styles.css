@@ -10749,3 +10749,8 @@ select.no-asar-len {
 .alv-hist { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-lg); background: var(--panel-hover); max-height: 160px; overflow-y: auto; }
 .alv-hist-t { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-1); }
 .alv-hist-r { font-size: var(--fs-xs); color: var(--text-soft); line-height: 1.6; }
+/* Сарын нэгтгэл тайлан (2026-11-14) */
+.alv-rep .alv-rh { padding: 2px var(--space-2); font-size: var(--fs-xs); color: var(--muted); font-weight: 600; white-space: normal; text-align: center; min-width: 56px; }
+.alv-rn { padding: 2px var(--space-2); text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.alv-rn.bad { color: var(--danger); font-weight: 700; }
+.alv-xls { margin-top: var(--space-2); }

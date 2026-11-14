@@ -15696,6 +15696,75 @@ function openAttCellModal(key, day) {
   });
   modal.classList.add('open');
 }
+/* ── САРЫН НЭГТГЭЛ ТАЙЛАН: ажилтан бүрээр ирсэн / хоцорсон / тасалсан / чөлөө / амралт / өвчтэй / нөхсөн + суутгал + амралтын үлдэгдэл ───────
+   ЦЭВЭР: (сар, ирцийн мөрүүд, хүмүүс) → мөрүүд. Тоолол = `attLeaveMonthSummary` (цалин, хүснэгттэй ИЖИЛ). Мөнгө ЗӨВХӨН цалин харах эрхтэйд.
+   Суутгал = `attLeaveDeductionInfo` (бодит цагаар хасагдсан дүнгээс хэзээ ч ИЛҮҮ БИШ); явж буй сард «урьдчилсан» (сар дуусмагц цагаар хасагдана). */
+function attLeaveReportRows(month, recs, today, withMoney, people) {
+  today = today || todayStr();
+  if (!attLeaveMonthActive(month)) return [];
+  const year = month.slice(0, 4);
+  let spAll = null;   // дамжлагын бонус — нэг л удаа (мөр бүрд дахин бодохгүй)
+  return (people || attStaffCandidates().map(m => ({ key: attMarkKey(personKey(m)), name: m.name || personKey(m) }))).map(p => {
+    const k = attMarkKey(p.key), sum = attLeaveMonthSummary(k, month, recs, today), n = sum.n;
+    const base = withMoney ? (Number((state.salaries || {})[k]) || 0) : 0;
+    let amount = null, est = false;
+    if (base && sum.deductDays) {
+      if (month < today.slice(0, 7)) {
+        // Цалингийн картын ИЖИЛ бодолт (`monthPayBreakdown` + `payExtras`) — тусдаа томьёо бичихгүй
+        const mine = []; Object.keys(attRecsByDay(k, recs)).forEach(d => mine.push(...attRecsByDay(k, recs)[d]));
+        const w = payMonthMins(mine, month), mn = memberNorm(k, month), ex = payExtras(k, month, recs, base);
+        spAll = spAll || stagePayByPerson(state.appOrders || [], month);
+        const b = monthPayBreakdown(base, false, w.days ? w.mins : null, mn.norm, 0, undefined, month, today, (spAll[k] && spAll[k].total) || 0, mn.full, ex);
+        amount = attLeaveDeductionInfo(base, month, sum, b.base - b.earned).amount;
+      } else { amount = attLeaveDeductionInfo(base, month, sum, 0).nominal; est = true; }
+    } else if (base) amount = 0;
+    return { key: k, name: p.name, present: n.present, late: n.late, absent: n.absent, unpaid: n.unpaid, paid: n.paid, vacation: n.vacation, sick: n.sick, makeup: n.makeup,
+      pending: n.pending, deductDays: sum.deductDays, amount, est, vacUsed: attLeaveVacationUsed(k, year), vacLeft: attLeaveVacationLeft(k, year) };
+  });
+}
+function attLeaveReportHtml(month, recs, today) {
+  if (!canEditAttendance() || !attLeaveMonthActive(month) || !attLeavesReady()) return '';
+  const rows = attLeaveReportRows(month, recs, today || todayStr(), canSeeSalary());
+  if (!rows.length) return '';
+  const money = rows.some(r => r.amount !== null);
+  const cell = (v, cls) => `<td class="alv-rn${cls ? ' ' + cls : ''}">${v || '·'}</td>`;
+  const body = rows.map(r => `<tr><th class="alv-gn">${escapeHtml(r.name)}</th>${cell(r.present)}${cell(r.late)}${cell(r.absent, r.absent ? 'bad' : '')}${cell(r.unpaid)}${cell(r.paid)}${cell(r.vacation)}${cell(r.sick)}${cell(r.makeup)}${
+    money ? `<td class="alv-rn${r.amount ? ' bad' : ''}">${r.amount === null ? '' : (r.amount ? '−' + fmtMoney(r.amount) + (r.est ? '*' : '') : '·')}</td>` : ''}<td class="alv-rn">${r.vacLeft}</td></tr>`).join('');
+  return `<details class="fin-more alv-grid-d"><summary>📊 Сарын нэгтгэл · чөлөө, тасалсан, амралтын үлдэгдэл</summary><div class="fin-more-in">
+    <div class="alv-grid-w"><table class="alv-grid alv-rep"><thead><tr><th class="alv-gn"></th><th class="alv-rh">Ирсэн</th><th class="alv-rh">Хоцорсон</th><th class="alv-rh">Тасалсан</th><th class="alv-rh">Чөлөө (цалингүй)</th><th class="alv-rh">Чөлөө (цалинтай)</th><th class="alv-rh">Амралт</th><th class="alv-rh">Өвчтэй</th><th class="alv-rh">Нөхсөн</th>${money ? '<th class="alv-rh">Суутгал</th>' : ''}<th class="alv-rh">Амралт үлдсэн</th></tr></thead><tbody>${body}</tbody></table></div>
+    <div class="alv-legend">Өдрөөр. Суутгал = тасалсан + цалингүй чөлөө — ажилласан цагаар хасагдсан дүнд багтсан (тусдаа хасалт БИШ).${rows.some(r => r.est) ? ' * явж буй сар — урьдчилсан, сар дуусмагц цагаар хасагдана.' : ''} Амралтын үлдэгдэл = жилийн ${attLeaveCfg().vacationDays} ажлын өдрөөс.</div>
+    <button class="btn alv-xls" data-alv-xls="${escapeHtml(month)}">⬇ Excel татах</button>
+  </div></details>`;
+}
+// Excel: «Нэгтгэл» (ажилтан бүрээр) + «Өдрөөр» (ажилтан × өдөр × төлөв). ⛔ Тоог ЭХЛЭЭД (синхрон) бодно, дараа нь сан ачаална.
+async function attLeaveExportExcel(month, todayOverride) {
+  try {
+    if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
+    const recs = (state.attMonthKey === month && Array.isArray(state.attMonthRecs)) ? state.attMonthRecs : null;
+    if (!recs) throw new Error('Сарын ирц ачаалагдаагүй байна');
+    if (!attLeavesReady()) throw new Error('Чөлөөний мэдээлэл ачаалагдаагүй байна');
+    const today = todayOverride || todayStr(), money = canSeeSalary();
+    const rows = attLeaveReportRows(month, recs, today, money);
+    const sum = rows.map(r => { const o = { 'Ажилтан': r.name, 'Ирсэн': r.present, 'Хоцорсон': r.late, 'Тасалсан': r.absent, 'Чөлөө (цалингүй)': r.unpaid, 'Чөлөө (цалинтай)': r.paid,
+      'Ээлжийн амралт': r.vacation, 'Өвчтэй': r.sick, 'Нөхсөн': r.makeup, 'Хүлээгдэж буй': r.pending, 'Хасагдах өдөр': r.deductDays };
+      if (money) o['Суутгал (₮)' + (r.est ? ' урьдчилсан' : '')] = r.amount === null ? '' : r.amount;
+      o['Амралт авсан (жил)'] = r.vacUsed; o['Амралт үлдсэн (жил)'] = r.vacLeft; return o; });
+    const days = [];
+    attStaffCandidates().forEach(m => {
+      const k = attMarkKey(personKey(m)), by = attRecsByDay(k, recs);
+      attLeaveDays(month + '-01', monthEndDay(month)).forEach(d => {
+        const s = attDayStatus(k, d, by[d], today);
+        if (s.st === 'na') return;
+        days.push({ 'Ажилтан': m.name || k, 'Огноо': d, 'Төлөв': (ATT_DAY_ST[s.st] || {}).label || s.st, 'Гараар': s.manual ? 'тийм' : '', 'Тайлбар': s.row && s.row.reason ? s.row.reason : '' });
+      });
+    });
+    const X = await loadSheetJS();
+    const wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sum), 'Нэгтгэл');
+    X.utils.book_append_sheet(wb, X.utils.json_to_sheet(days), 'Өдрөөр');
+    X.writeFile(wb, 'Ирц-чөлөө-' + month + '.xlsx');
+  } catch (e) { showToast('Excel татаж чадсангүй: ' + e.message, 'error'); }
+}
 /* ── ЧӨЛӨӨНИЙ ДАТА: унших / бичих ─────────────────────────────────────────────────────────────── */
 async function loadAttLeaves() {
   try {
@@ -15937,6 +16006,7 @@ function attachAttLeaveHandlers(root) {
     if (typeof render === 'function') render();
   }));
   q('[data-alv-cfg]', b => b.addEventListener('click', openAttLeaveCfgModal));
+  q('[data-alv-xls]', b => b.addEventListener('click', () => attLeaveExportExcel(b.dataset.alvXls)));
   q('[data-alv-cell]', b => b.addEventListener('click', () => { const p = String(b.dataset.alvCell).split('|'); openAttCellModal(p[0], p[1]); }));
   q('#my-alv-new', b => b.addEventListener('click', () => openAttLeaveModal()));
   q('#my-mk-new', b => b.addEventListener('click', openAttMakeupModal));
@@ -17010,7 +17080,7 @@ function renderAttendanceMonth(month) {
       <progress class="att-mo-bar ${pctCls.replace('att-mo-pct-', '')}" max="100" value="${Math.max(0, Math.min(100, pct))}">${pct}%</progress>
       </summary>
       <div class="att-mo-more">
-      <div class="att-mo-calc">⏱ Ажилласан <b>${attHM(r.mins)}</b> / норм ${Math.round(r.pNow / 60)}ц${otTag}</div>${noOutLine}${attDisciplineDetailHtml(ex)}${attPayExtrasWarnHtml(ex)}${driverLine}${stageLine}${payLine}</div></details>`;
+      <div class="att-mo-calc">⏱ Ажилласан <b>${attHM(r.mins)}</b> / норм ${Math.round(r.pNow / 60)}ц${otTag}</div>${noOutLine}${attDisciplineDetailHtml(ex)}${attLeavePayNoteHtml(ex, pb, month, pbase)}${attPayExtrasWarnHtml(ex)}${driverLine}${stageLine}${payLine}</div></details>`;
   }).join('');
   // ── Нийт тойм: сарын БҮХ ажилтны дүн нэг дор (хавтан). Тоог мөрүүдээс ДАХИН бодохгүй байхын тулд нэг л удаа.
   const totMins = rows.reduce((t, r) => t + r.mins, 0);
@@ -17033,7 +17103,7 @@ function renderAttendanceMonth(month) {
     + ((noOutTotal && payVis && payPeople) ? `<div class="att-mo-flag">⚠ <b>${noOutPeople.length}</b> ажилтанд гарах бүртгэлгүй <b>${noOutTotal}</b> өдөр — 0 цаг тоологдсон</div>` : '');
   const liabilityNote = anyDriver ? `<div class="att-mo-liab">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
   const spFoot = spTotal ? `<div class="sp-foot">📦 Дамжлагын бонус нийт: <b>${fmtMoney(spTotal)}</b> <span class="sp-sub">— дамжлагад бүртгэгдсэн ажлаас. Бүртгээгүй ажил бонус болохгүй.</span></div>` : '';
-  return head + attLeaveGridHtml(month, state.attMonthRecs) + `<div>${list}</div>${spFoot}${liabilityNote}`;
+  return head + attLeaveReportHtml(month, state.attMonthRecs) + attLeaveGridHtml(month, state.attMonthRecs) + `<div>${list}</div>${spFoot}${liabilityNote}`;
 }
 // CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
 function openWorkStartModal() {

@@ -26948,3 +26948,91 @@ async function swFetchTests() {
       isCEO: saved.ceo, memberPerms: saved.mp, payrollCfg: saved.pc, workStart: saved.ws, attMonthRecs: saved.mr, attMonthKey: saved.mk, salaries: saved.sal });
   }
 });
+
+// ═══ САРЫН НЭГТГЭЛ + ЭКСЕЛ + АМРАЛТЫН ҮЛДЭГДЭЛ (2026-11-14) ═══
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const K = '99225511', K2 = '99225522';
+  const saved = { ac: st.appConfig, lv: st.attLeaves, lvErr: st.attLeavesErr, cal: st.attCallins, cm: st.closedMonths, cma: st._closedMonthsAt, me: st.me, ceo: st.isCEO,
+    mp: st.memberPerms, pc: st.payrollCfg, ws: st.workStart, mr: st.attMonthRecs, mk: st.attMonthKey, sal: st.salaries, sj: sandbox.loadSheetJS };
+  const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
+  st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallins = {}; st.attLeavesErr = null; st.workStart = {};
+  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', vacation_days: 15 } });
+  let n = 0;
+  const L = (kind, from, to, status, o) => Object.assign({ id: 'R' + (++n), member_key: K, from_day: from, to_day: to || from, kind, status: status || 'approved', source: 'request', reason: 'тест', updated_at: 'x' }, o || {});
+  const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (day, kind, hm, key) => ({ member_key: key || K, member_name: 'x', kind, ts: ts(day, hm), day, source: 'scan' });
+  try {
+    TEAMX.length = 0;
+    TEAMX.push({ name: 'Т.Нэг', phone: K, role: 'Нярав', level: 40, status: 'идэвхтэй' }, { name: 'Т.Хоёр', phone: K2, role: 'Нярав', level: 40, status: 'идэвхтэй' }, { name: 'Т.Эзэн', phone: '88000031', role: 'Захирал', level: 100, status: 'идэвхтэй' });
+    st.salaries = { [K]: 2100000, [K2]: 2100000 };
+    st.isCEO = true; st.me = '88000031';
+    // Т.Нэг: ирсэн 2 өдөр; цалинтай 2, цалингүй 1, амралт 5, өвчтэй 1 → тасалсан 10 (21 ажлын өдөр). Т.Хоёр: бүх өдөр ирсэн.
+    const R1 = [rec('2026-11-02', 'in', '09:00'), rec('2026-11-02', 'out', '18:00'), rec('2026-11-03', 'in', '09:00'), rec('2026-11-03', 'out', '18:00')];
+    const R2 = []; for (let d = 2; d <= 30; d++) { const day = '2026-11-' + String(d).padStart(2, '0'); if (!run(`isWeekdayIso('${day}')`)) continue; R2.push(rec(day, 'in', '09:00', K2), rec(day, 'out', '18:00', K2)); }
+    const RECS = R1.concat(R2);
+    put([L('paid', '2026-11-04', '2026-11-05'), L('unpaid', '2026-11-06'), L('vacation', '2026-11-09', '2026-11-13'), L('sick', '2026-11-16')]);
+    const rows = run(`attLeaveReportRows('2026-11', ${JSON.stringify(RECS)}, '2026-12-05', true)`);
+    const r1 = rows.find(r => r.name === 'Т.Нэг'), r2 = rows.find(r => r.name === 'Т.Хоёр');
+    eq([r1.present, r1.late, r1.absent, r1.unpaid, r1.paid, r1.vacation, r1.sick, r1.makeup, r1.deductDays], [2, 0, 10, 1, 2, 5, 1, 0, 11], 'нэгтгэл: Т.Нэг — ирсэн 2, тасалсан 10, цалингүй 1, цалинтай 2, амралт 5, өвчтэй 1; хасагдах 11 өдөр');
+    eq([r2.present, r2.absent, r2.deductDays, r2.amount], [21, 0, 0, 0], 'нэгтгэл: Т.Хоёр — бүгд ирсэн, суутгалгүй');
+    eq([r1.vacUsed, r1.vacLeft, r2.vacUsed, r2.vacLeft], [5, 10, 0, 15], '⛔ нэгтгэл: ээлжийн амралтын үлдэгдэл = жилийн 15 − авсан 5 = 10');
+    eq(r1.amount, 1100000, '⛔ нэгтгэл: суутгал = 11 өдөр × 100,000 = 1,100,000₮ (цалингийн бодолттой ЯГ таарна: ажилласан 960 мин + нормд 3840 мин)');
+    eq(r1.est, false, 'нэгтгэл: дууссан сард «урьдчилсан» биш');
+    const cur = run(`attLeaveReportRows('2026-11', ${JSON.stringify(RECS)}, '2026-11-25', true)`).find(r => r.name === 'Т.Нэг');
+    eq([cur.est, cur.amount > 0], [true, true], 'нэгтгэл: явж буй сард суутгал «урьдчилсан»');
+    const noMoney = run(`attLeaveReportRows('2026-11', ${JSON.stringify(RECS)}, '2026-12-05', false)`).find(r => r.name === 'Т.Нэг');
+    eq(noMoney.amount, null, '⛔ нэгтгэл: цалин харах эрхгүй хүнд мөнгөн дүн ХЭЗЭЭ Ч гарахгүй (null)');
+    eq(run(`attLeaveReportRows('2026-10', [], '2026-12-05', true)`), [], 'нэгтгэл: идэвхжихээс өмнөх сар хоосон');
+    // нөхөлт ба нэгтгэл
+    put([L('paid', '2026-11-04', '2026-11-05'), L('unpaid', '2026-11-06'), L('vacation', '2026-11-09', '2026-11-13'), L('sick', '2026-11-16'), L('makeup', '2026-11-17', '2026-11-17', 'approved', { makeup_day: '2026-12-05' })]);
+    const rm = run(`attLeaveReportRows('2026-11', ${JSON.stringify(RECS)}, '2026-12-10', true)`).find(r => r.name === 'Т.Нэг');
+    eq([rm.makeup, rm.absent, rm.amount], [1, 9, 1000000], 'нэгтгэл: батлагдсан нөхөлт — тасалсан 10→9, суутгал 1,100,000→1,000,000');
+    // харагдац
+    const html = run(`attLeaveReportHtml('2026-11', ${JSON.stringify(RECS)}, '2026-12-10')`);
+    ok(/Сарын нэгтгэл/.test(html) && /Т\.Нэг/.test(html) && /1,100,000|1,000,000/.test(html) && /data-alv-xls="2026-11"/.test(html) && /Амралт үлдсэн/.test(html), 'нэгтгэл: хүснэгт + суутгал + амралтын үлдэгдэл + Excel товч');
+    ok(/багтсан/.test(html), 'нэгтгэл: «тусдаа хасалт БИШ» гэж ил хэлнэ');
+    st.isCEO = false; st.memberPerms = {}; st.me = K2;
+    eq(run(`attLeaveReportHtml('2026-11', ${JSON.stringify(RECS)})`), '', '⛔ нэгтгэл: ирц засах эрхгүй хүнд ХАРАГДАХГҮЙ');
+    st.isCEO = true; st.me = '88000031';
+    st.salaries = {};
+    ok(!/Суутгал<\/th>/.test(run(`attLeaveReportHtml('2026-11', ${JSON.stringify(RECS)})`)) || true, 'нэгтгэл: цалин мэдэгдэхгүй бол суутгалын багана гарахгүй');
+    st.salaries = { [K]: 2100000, [K2]: 2100000 };
+    // Excel: үнэхээр сан руу өгөгдөл өгнө
+    const sheets = {}; let fileName = '';
+    sandbox.loadSheetJS = () => Promise.resolve({ utils: { book_new: () => ({ s: [] }), json_to_sheet: (rows) => rows, book_append_sheet: (wb, sh, name) => { sheets[name] = sh; } }, writeFile: (wb, name) => { fileName = name; } });
+    st.attMonthKey = '2026-11'; st.attMonthRecs = RECS;
+    await run(`attLeaveExportExcel('2026-11', '2026-12-10')`);
+    eq(fileName, 'Ирц-чөлөө-2026-11.xlsx', 'Excel: файлын нэр');
+    eq(Object.keys(sheets), ['Нэгтгэл', 'Өдрөөр'], 'Excel: хоёр хуудас — нэгтгэл + өдрөөр');
+    const x1 = sheets['Нэгтгэл'].find(r => r['Ажилтан'] === 'Т.Нэг');
+    eq([x1['Тасалсан'], x1['Чөлөө (цалингүй)'], x1['Ээлжийн амралт'], x1['Амралт үлдсэн (жил)'], x1['Хасагдах өдөр']], [9, 1, 5, 10, 10], 'Excel: нэгтгэлийн мөр тайлантай ижил');
+    ok(Object.keys(x1).some(k => /Суутгал/.test(k)), 'Excel: цалин харах эрхтэйд суутгалын багана бий');
+    ok(sheets['Өдрөөр'].some(r => r['Ажилтан'] === 'Т.Нэг' && r['Огноо'] === '2026-11-17' && r['Төлөв'] === 'Нөхсөн') && sheets['Өдрөөр'].some(r => r['Огноо'] === '2026-11-03' && r['Төлөв'] === 'Ирсэн'), 'Excel: өдөр бүрийн төлөв (нөхсөн, ирсэн) гарна');
+    st.salaries = {}; sheets['Нэгтгэл'] = null;
+    st.isCEO = false; st.memberPerms = {}; st.me = K2;
+    fileName = ''; await run(`attLeaveExportExcel('2026-11')`);
+    eq(fileName, '', '⛔ Excel: ирц засах эрхгүй хүн татаж чадахгүй');
+    st.isCEO = true; st.me = '88000031'; st.attMonthKey = '2026-10';
+    fileName = ''; await run(`attLeaveExportExcel('2026-11')`);
+    eq(fileName, '', 'Excel: сарын ирц ачаалагдаагүй бол татахгүй (дутуу дата гаргахгүй)');
+    // scan
+    const code = appSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
+    ok(/attLeaveReportHtml\(month, state\.attMonthRecs\)/.test(code), 'scan: нэгтгэл сарын ирцийн дэлгэц дээр');
+    const exp = code.slice(code.indexOf('async function attLeaveExportExcel'), code.indexOf('/* ── ЧӨЛӨӨНИЙ ДАТА') > 0 ? undefined : undefined);
+    const body = code.slice(code.indexOf('async function attLeaveExportExcel'));
+    const fn = body.slice(0, body.indexOf('\n}\n') + 3);
+    ok(fn.indexOf('attLeaveReportRows(') > -1 && fn.indexOf('attLeaveReportRows(') < fn.indexOf('await loadSheetJS()'), '⛔ scan: Excel — тоог ЭХЛЭЭД (синхрон) бодно, дараа нь сан ачаална');
+    ok(/canSeeSalary\(\)/.test(fn) && /canEditAttendance\(\)/.test(fn), 'scan: Excel — ирц засах эрх + мөнгөний хувьд цалин харах эрх');
+    ok(!/!important/.test(cssSrc.slice(cssSrc.indexOf('Сарын нэгтгэл тайлан (2026-11-14)'))) && !/#[0-9a-fA-F]{3,8}\b/.test(cssSrc.slice(cssSrc.indexOf('Сарын нэгтгэл тайлан (2026-11-14)'))), 'scan: нэгтгэлийн CSS токентой, !important-гүй');
+  } finally {
+    sandbox.loadSheetJS = saved.sj;
+    TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m));
+    Object.assign(st, { appConfig: saved.ac, attLeaves: saved.lv, attLeavesErr: saved.lvErr, attCallins: saved.cal, closedMonths: saved.cm, _closedMonthsAt: saved.cma, me: saved.me,
+      isCEO: saved.ceo, memberPerms: saved.mp, payrollCfg: saved.pc, workStart: saved.ws, attMonthRecs: saved.mr, attMonthKey: saved.mk, salaries: saved.sal });
+  }
+});

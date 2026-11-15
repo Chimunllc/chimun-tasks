@@ -21079,27 +21079,26 @@ function renderEmailMarketing() {
   if (S.branch === 'camp' && state.nomaadOrders === undefined) setTimeout(loadNomaadOrders, 0);
   const recs = marketingRecipients(S.branch);
   const s = MK_SENDERS[S.branch];
-  const fld = 'width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--panel);color:var(--text);margin-bottom:12px;font-family:inherit;';
-  const brBtn = (k) => `<button class="btn${S.branch === k ? ' btn-primary' : ''}" data-mkm-branch="${k}" style="padding:7px 14px;">${MK_SENDERS[k].label}</button>`;
+  const brBtn = (k) => `<button class="btn${S.branch === k ? ' btn-primary' : ''}" data-mkm-branch="${k}">${MK_SENDERS[k].label}</button>`;
   return `
-    <div style="font-size:20px;font-weight:800;">📧 Имэйл маркетинг</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Бүртгэгдсэн харилцагчид руу нэр хувьчилж илгээнэ. Илгээгч салбараар автоматаар сонгогдоно.</div>
-    <label style="font-size:12px;color:var(--muted);">Хэнд илгээх (салбар)</label>
-    <div style="display:flex;gap:8px;margin:6px 0 14px;flex-wrap:wrap;">${brBtn('m-event')}${brBtn('camp')}</div>
-    <div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
+    <div class="mkm-title">📧 Имэйл маркетинг</div>
+    <div class="mkm-sub">Бүртгэгдсэн харилцагчид руу нэр хувьчилж илгээнэ. Илгээгч салбараар автоматаар сонгогдоно.</div>
+    <label class="mkm-lbl">Хэнд илгээх (салбар)</label>
+    <div class="mkm-brow">${brBtn('m-event')}${brBtn('camp')}</div>
+    <div class="mkm-box">
       📨 Илгээгч: <b>${escapeHtml(s.from)}</b><br>
-      👥 Хүлээн авагч: <b style="font-size:16px;">${recs.length}</b> имэйл ${recs.length ? `<button class="btn btn-sm" id="mkm-list" style="margin-left:6px;">жагсаалт харах</button>` : '<span style="color:var(--muted);">(дата ачааллаж байна эсвэл имэйл алга)</span>'}
+      👥 Хүлээн авагч: <b class="mkm-n">${recs.length}</b> имэйл ${recs.length ? `<button class="btn btn-sm" id="mkm-list">жагсаалт харах</button>` : '<span class="mkm-dim">(дата ачааллаж байна эсвэл имэйл алга)</span>'}
     </div>
-    <label style="font-size:12px;color:var(--muted);">Гарчиг (subject)</label>
-    <input id="mkm-subject" value="${escapeHtml(S.subject || '')}" placeholder="Ж: Онцгой хямдрал — энэ 7 хоногт" style="${fld}">
-    <label style="font-size:12px;color:var(--muted);">Мессеж</label>
-    <textarea id="mkm-body" rows="9" placeholder="Сайн байна уу — гэсэн мэндчилгээ автоматаар орно. Энд гол мессежээ бич. Мөр таслал хадгалагдана." style="${fld}resize:vertical;">${escapeHtml(S.body || '')}</textarea>
-    <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 14px;">Хүн бүрийн нэр «Сайн байна уу [нэр]» гэж автоматаар орно. Доор нь «Жагсаалтаас хасах» холбоос автоматаар нэмэгдэнэ.</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn" id="mkm-test" style="padding:9px 16px;">✉️ Туршилт (өөр рүү)</button>
-      <button class="btn btn-primary" id="mkm-send" style="padding:9px 20px;"${recs.length ? '' : ' disabled'}>📤 Илгээх (${recs.length} хүнд)</button>
+    <label class="mkm-lbl">Гарчиг (subject)</label>
+    <input id="mkm-subject" class="mkm-fld" value="${escapeHtml(S.subject || '')}" placeholder="Ж: Онцгой хямдрал — энэ 7 хоногт">
+    <label class="mkm-lbl">Мессеж</label>
+    <textarea id="mkm-body" class="mkm-fld mkm-area" rows="9" placeholder="Сайн байна уу — гэсэн мэндчилгээ автоматаар орно. Энд гол мессежээ бич. Мөр таслал хадгалагдана.">${escapeHtml(S.body || '')}</textarea>
+    <div class="mkm-hint">Хүн бүрийн нэр «Сайн байна уу [нэр]» гэж автоматаар орно. Доор нь «Жагсаалтаас хасах» холбоос автоматаар нэмэгдэнэ.</div>
+    <div class="mkm-acts">
+      <button class="btn" id="mkm-test">✉️ Туршилт (өөр рүү)</button>
+      <button class="btn btn-primary" id="mkm-send"${recs.length ? '' : ' disabled'}>📤 Илгээх (${recs.length} хүнд)</button>
     </div>
-    <div id="mkm-status" style="margin-top:12px;font-size:13px;color:var(--muted);"></div>`;
+    <div id="mkm-status" class="mkm-status"></div>`;
 }
 async function loadEmailOptout() {
   try {

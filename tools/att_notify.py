@@ -19,6 +19,8 @@ att_notify.py — Ирцийн автомат мэдэгдэл (хэн нэгэ�
 ⛔ Push-ийн `email` талбар ЗААВАЛ тодорхой утас — хоосон бол БҮГД ажилтанд очно (`push-broadcast`).
 ⚠ Хүлээн авагч (ҮАЗ/CEO) = `app_config['att_notify']` → {"to": ["утас", …]}; байхгүй бол `pbx_notify`; байхгүй бол `level >= 100` ажилтан.
 ⚠ Хүн = `staff_salary.amount > 0` (аппын `attStaffCandidates` — цалинтай үндсэн ажилтан). Цагийн ажилтан орохгүй.
+⛔ ЗӨВХӨН ИРЦИЙН ХУВААРЬТАЙ хүн «ажиллах ёстой» (ҮАЗ, 2026-11-15 «Ирц цэс засах»): тухайн өдөр хуваарь (`att_callins`) бий, эсвэл ажлын өдөр
+   + `app_config['work_start']`-д хүнд «ажил эхлэх цаг» тохируулагдсан = аппын `attLeaveScheduled`. Хуваарьгүй хүнд сануулга/тасалсан ИЛГЭЭХГҮЙ.
 
 Тест:    python3 tools/att_notify.py --selftest
 Хуурай:  python3 tools/att_notify.py --dry          (DB уншина, ЮУ Ч илгээхгүй/бичихгүй)
@@ -70,8 +72,13 @@ def cfg_of(raw):
     return {'from': str(c.get('from')) if valid_day(c.get('from')) else '', 'holidays': hol}
 
 
-def expected(person, day, cfg, callins):
-    """Аппын `attLeaveExpected`: идэвхжсэн · ажилд орсноос хойш · баяр биш · Да–Ня эсвэл хуваарьтай."""
+def scheduled(phone, day, callins, work_start):
+    """Аппын `attLeaveScheduled`: тухайн өдөр хуваарь бий, эсвэл ажлын өдөр + «ажил эхлэх цаг» тохируулагдсан."""
+    return (phone, day) in callins or (is_weekday(day) and bool((work_start or {}).get(phone)))
+
+
+def expected(person, day, cfg, callins, work_start):
+    """Аппын `attLeaveExpected`: идэвхжсэн · ажилд орсноос хойш · баяр биш · ИРЦИЙН ХУВААРЬТАЙ."""
     if not cfg['from'] or day < cfg['from']:
         return False
     j = str(person.get('joined') or '')[:10]
@@ -79,7 +86,7 @@ def expected(person, day, cfg, callins):
         return False
     if day in cfg['holidays']:
         return False
-    return is_weekday(day) or (person['phone'], day) in callins
+    return scheduled(person['phone'], day, callins, work_start)
 
 
 def covered(phone, day, leaves):
@@ -90,19 +97,19 @@ def covered(phone, day, leaves):
     return False
 
 
-def absent_on(person, day, cfg, callins, leaves, att):
+def absent_on(person, day, cfg, callins, leaves, att, work_start):
     """Тасалсан = ажиллах өдөр, ирц БАЙХГҮЙ, хэн ч шийдээгүй."""
-    return expected(person, day, cfg, callins) and (person['phone'], day) not in att and not covered(person['phone'], day, leaves)
+    return expected(person, day, cfg, callins, work_start) and (person['phone'], day) not in att and not covered(person['phone'], day, leaves)
 
 
-def streak(person, upto, cfg, callins, leaves, att):
+def streak(person, upto, cfg, callins, leaves, att, work_start):
     """`upto` өдрөөс хойш гүйж дараалсан тасалсан АЖЛЫН өдрийн тоо. Ажлын бус өдөр (амралт, баяр) үргэлжлүүлнэ; ирсэн/чөлөөтэй өдөр таслана."""
     n, d = 0, upto
     for _ in range(LOOKBACK + 10):
         if d < cfg['from']:
             break
-        if expected(person, d, cfg, callins):
-            if absent_on(person, d, cfg, callins, leaves, att):
+        if expected(person, d, cfg, callins, work_start):
+            if absent_on(person, d, cfg, callins, leaves, att, work_start):
                 n += 1
             else:
                 break
@@ -118,7 +125,7 @@ def names_text(items, n=6):
 
 def plan(ctx):
     """→ [{key, to, kind, title, body, url}]. Цэвэр функц (DB/сүлжээгүй).
-    ctx = {now (ms), cfg, people:[{phone,name,joined}], att:[[phone,day]], leaves:[{phone,from,to,kind}], callins:[[phone,day]], sent:{}, managers:[phone]}"""
+    ctx = {now (ms), cfg, people:[{phone,name,joined}], att:[[phone,day]], leaves:[{phone,from,to,kind}], callins:[[phone,day]], work_start:{phone:'HH:MM'}, sent:{}, managers:[phone]}"""
     now = ub_now(ctx['now'])
     today, hm = now.strftime('%Y-%m-%d'), now.strftime('%H:%M')
     cfg = cfg_of(ctx.get('cfg'))
@@ -126,6 +133,7 @@ def plan(ctx):
         return []
     att = {(digits(p), d) for p, d in ctx.get('att', [])}
     callins = {(digits(p), d) for p, d in ctx.get('callins', [])}
+    work_start = {digits(k): str(v) for k, v in (ctx.get('work_start') or {}).items() if v}
     leaves = [dict(r, phone=digits(r.get('phone'))) for r in ctx.get('leaves', [])]
     people = [dict(p, phone=digits(p.get('phone'))) for p in ctx.get('people', []) if len(digits(p.get('phone'))) >= 8]
     sent, mgrs = ctx.get('sent', {}), [digits(m) for m in ctx.get('managers', []) if len(digits(m)) >= 6]
@@ -136,7 +144,7 @@ def plan(ctx):
         if key not in sent:
             out.append({'key': key, 'to': to, 'kind': kind, 'title': title, 'body': body[:160], 'url': url})
 
-    miss = [p for p in people if absent_on(p, today, cfg, callins, leaves, att)]
+    miss = [p for p in people if absent_on(p, today, cfg, callins, leaves, att, work_start)]
     if AM_FROM <= hm < AM_TO:
         for p in miss:   # ① 10:00 — өөрт нь
             add('am10', p['phone'], '⏰ Ирц бүртгэгдээгүй байна', 'Өнөөдөр ирцээ бүртгүүлээгүй байна. Чөлөөтэй бол «Миний ирц» дээр хүсэлт илгээнэ үү.', './#myattend')
@@ -148,7 +156,7 @@ def plan(ctx):
                 add('absent_mgr', m, '❌ Өнөөдөр тасалсан: %d' % len(miss), names_text([p.get('name') for p in miss]), './#leaves')
         long = []        # ③ 2+ өдөр дараалан
         for p in people:
-            n = streak(p, today, cfg, callins, leaves, att)
+            n = streak(p, today, cfg, callins, leaves, att, work_start)
             if n >= 2:
                 long.append((p.get('name') or p['phone'], n))
         if long:
@@ -223,6 +231,7 @@ def load_ctx(now):
     ctx['callins'] = psql_json(
         "select coalesce(json_agg(json_build_array(member_key, day::text)), '[]') from att_callins where status = 'active' and day >= %s - %d"
         % (ub, LOOKBACK + 10)) or []
+    ctx['work_start'] = psql_json("select value from app_config where key = 'work_start'") or {}
     mg = recipients(psql_json("select value from app_config where key = 'att_notify'")) or recipients(psql_json("select value from app_config where key = 'pbx_notify'"))
     if not mg:
         rows = psql_json("select coalesce(json_agg(regexp_replace(coalesce(phone, ''), '\\D', '', 'g')), '[]') from employees "
@@ -278,7 +287,7 @@ def selftest():
             f.append('%s: хүлээсэн %r, ирсэн %r' % (name, want, got))
 
     P = [{'phone': '99112233', 'name': 'Бат', 'joined': ''}, {'phone': '99112244', 'name': 'Сүх', 'joined': '2026-11-16'}]
-    base = {'cfg': {'from': '2026-11-02', 'holidays': ['2026-11-12']}, 'people': P, 'att': [], 'leaves': [], 'callins': [], 'sent': {}, 'managers': ['88001122']}
+    base = {'cfg': {'from': '2026-11-02', 'holidays': ['2026-11-12']}, 'people': P, 'att': [], 'leaves': [], 'callins': [], 'work_start': {'99112233': '09:00', '99112244': '09:00'}, 'sent': {}, 'managers': ['88001122']}
     T = '2026-11-18'   # Лхагва
     kinds = lambda ctx: sorted((m['kind'], m['to']) for m in plan(ctx))
     # ① 10:00
@@ -296,6 +305,13 @@ def selftest():
     eq('баярын өдөр — үгүй', plan(dict(base, now=at('2026-11-12', '10:05'))), [])
     eq('идэвхжихээс өмнө — үгүй', plan(dict(base, now=at('2026-11-01', '10:05'))), [])
     eq('from хоосон = ЮУ Ч үгүй', plan(dict(base, cfg={}, now=at(T, '19:30'))), [])
+    # ⛔ ЗӨВХӨН ИРЦИЙН ХУВААРЬТАЙ хүн (ҮАЗ 2026-11-15): хуваарь ч, ажил эхлэх цаг ч үгүй хүнд ЮУ Ч илгээхгүй
+    eq('хуваарьгүй (хуваарь ч, ажил эхлэх цаг ч үгүй) — 10:05 үгүй', plan(dict(base, work_start={}, now=at(T, '10:05'))), [])
+    eq('хуваарьгүй — 19:30 тасалсан/анхааруулга ч үгүй', plan(dict(base, work_start={}, now=at(T, '19:30'))), [])
+    eq('зөвхөн нэг хүнд «ажил эхлэх цаг» тохируулсан', [x['to'] for x in plan(dict(base, work_start={'99112233': '09:00'}, now=at(T, '10:05')))], ['99112233'])
+    eq('ажил эхлэх цаггүй ч тэр өдрийн ХУВААРЬТАЙ бол ажиллах', [x['to'] for x in plan(dict(base, work_start={}, callins=[['99112244', T]], now=at(T, '10:05')))], ['99112244'])
+    eq('хуваарь нь ӨӨР өдөр бол (ажил эхлэх цаггүй) — тэр өдөр үгүй', plan(dict(base, work_start={}, callins=[['99112244', '2026-11-17']], now=at(T, '10:05'))), [])
+    eq('дараалсан тасалсан: хуваарьтай хоёр өдөр л тоологдоно', [x['body'] for x in plan(dict(base, work_start={}, callins=[['99112233', '2026-11-17'], ['99112233', T]], people=[P[0]], now=at(T, '19:00'))) if x['kind'] == 'streak'], ['Бат (2)'])
     # хуваарьтай бямба = ажиллах өдөр
     eq('хуваарьтай бямба — ажиллах', [x['to'] for x in plan(dict(base, callins=[['99112233', '2026-11-21']], now=at('2026-11-21', '10:05')))], ['99112233'])
     # ② өдрийн төгсгөл

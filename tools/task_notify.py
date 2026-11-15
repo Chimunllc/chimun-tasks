@@ -121,14 +121,40 @@ def eff_due(due, person, created_ms, off_day):
     return eff
 
 
-def make_off_day(callins):
-    """callins = {(phone, 'YYYY-MM-DD')} идэвхтэй хуваарь. Тухайн 7 хоногт (Да–Ня) хуваарьтай атлаа ЭНЭ өдөр хуваарьгүй = чөлөөт."""
+LEAVE_REQ_KINDS = ('unpaid', 'paid', 'vacation', 'sick')   # аппын ATT_LEAVE_KINDS[*].req (гар засвар present/absent БИШ)
+
+
+def make_off_day(callins, leaves=None, leave_cfg=None):
+    """Чөлөөт өдөр (хугацаа зогсоно) = аппын `taskPtsOffFn`:
+    ① БАТЛАГДСАН чөлөө/амралт/өвчтэй (аппын `attLeaveOffOn`, ҮАЗ 2026-11-15): ердийн ажлын өдөр (Да–Ня, баяр биш) эсвэл хуваарьт өдөр.
+       leaves = [(phone, from, to, kind, source, updated)], leave_cfg = {from, holidays}. Гар засвар (`manual`) хүсэлтээс ӨНДӨР (аппын attLeaveCover).
+    ② ирцийн ХУВААРЬ: callins = {(phone, 'YYYY-MM-DD')}. Тухайн 7 хоногт (Да–Ня) хуваарьтай атлаа ЭНЭ өдөр хуваарьгүй = чөлөөт."""
     if callins is None:
         return None
     on = {(re.sub(r'\D', '', k), d) for k, d in callins}
+    lcfg = leave_cfg or {}
+    l_from = str(lcfg.get('from') or '')
+    hol = {str(x)[:10] for x in (lcfg.get('holidays') or [])}
+    rows = [(re.sub(r'\D', '', str(r[0])), str(r[1])[:10], str(r[2])[:10], r[3], r[4], str(r[5] or '')) for r in (leaves or [])]
+
+    def leave_off(p, day):
+        if not l_from or day < l_from:
+            return False
+        best = None
+        for lp, f, t, kind, src, upd in rows:
+            if lp != p or not (f <= day <= t):
+                continue
+            rank = (1 if src == 'manual' else 0, upd)
+            if best is None or rank > best[0]:
+                best = (rank, kind)
+        if best is None or best[1] not in LEAVE_REQ_KINDS:
+            return False
+        return (datetime.strptime(day, '%Y-%m-%d').weekday() < 5 and day not in hol) or (p, day) in on
 
     def off(person, day):
         p = re.sub(r'\D', '', person or '')
+        if leave_off(p, day):
+            return True
         if (p, day) in on:
             return False
         wd = datetime.strptime(day, '%Y-%m-%d').weekday()   # 0 = Даваа
@@ -177,10 +203,10 @@ def participants(task):
     return [p for p in out if p != task.get('created_by')]   # өөртөө өгсөн ажилд сануулахгүй
 
 
-def plan(tasks, now, sent, frm, phones, callins=None):
+def plan(tasks, now, sent, frm, phones, callins=None, leaves=None, leave_cfg=None):
     """→ [{key, to, kind, task, title, body}] — илгээх ёстой мэдэгдлүүд. Цэвэр функц (DB/сүлжээгүй).
     phones = {нэр: утас} (давхцсан/олдоогүй нэр орохгүй)."""
-    off = make_off_day(callins)
+    off = make_off_day(callins, leaves, leave_cfg)
     msgs, dues = [], {}
     for t in tasks:
         if not eligible(t, frm):
@@ -293,9 +319,15 @@ def main():
                       "and created_by is not null and due is not null) t") or []
     cal = psql("select member_key || '|' || day::text from att_callins where status = 'active' and day >= current_date - 60")
     callins = {tuple(x.split('|', 1)) for x in cal.splitlines() if '|' in x}
+    lcfg = psql_json("select value from app_config where key = 'att_leave'") or {}
+    leaves = []
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', str(lcfg.get('from') or '')):   # дүрэм унтраалттай бол `att_leaves`-д хүрэхгүй
+        leaves = psql_json("select coalesce(json_agg(json_build_array(regexp_replace(member_key, '\\D', '', 'g'), from_day::text, to_day::text, kind, source, "
+                           "coalesce(updated_at, created_at)::text)), '[]') from att_leaves where status = 'approved' and kind <> 'makeup' "
+                           "and to_day >= current_date - 60") or []
     phones, bad = phone_map()
     sent = psql_json("select value from app_config where key = 'task_notify_sent'") or {}
-    msgs, _ = plan(tasks, now, sent, frm, phones, callins)
+    msgs, _ = plan(tasks, now, sent, frm, phones, callins, leaves, lcfg)
     if DRY:
         print(json.dumps({'now': now, 'messages': msgs, 'ambiguous_names': sorted(bad)}, ensure_ascii=False))
         return
@@ -374,6 +406,18 @@ def selftest():
     d, _h = due_chain(mk())
     eq('чөлөөт өдөр: хугацаа +24ц', eff_due(d, '99112233', created_ms(mk()), make_off_day(cal)), d + DAY)
     eq('хуваарьгүй хүнд зогсолт үгүй', eff_due(d, '99112233', created_ms(mk()), make_off_day(set())), d)
+    # БАТЛАГДСАН чөлөө (ҮАЗ 2026-11-15): хуваарьгүй хүнд ч Мя (11-10) зогсолт
+    LC = {'from': '2026-11-02', 'holidays': ['2026-11-12']}
+    lv = [('99-11-2233', '2026-11-10', '2026-11-10', 'paid', 'request', 'u1')]
+    eq('батлагдсан чөлөө: хугацаа +24ц', eff_due(d, '99112233', created_ms(mk()), make_off_day(set(), lv, LC)), d + DAY)
+    off = make_off_day(set(), [('99112233', '2026-11-13', '2026-11-16', 'vacation', 'request', 'u1')], LC)
+    eq('чөлөөний мужид орсон бямба/ням зогсохгүй', [off('99112233', x) for x in ('2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16')], [True, False, False, True])
+    eq('баярын өдөр зогсохгүй', make_off_day(set(), [('99112233', '2026-11-12', '2026-11-12', 'paid', 'request', 'u1')], LC)('99112233', '2026-11-12'), False)
+    eq('дүрэм идэвхжихээс өмнө үйлчлэхгүй', make_off_day(set(), [('99112233', '2026-11-03', '2026-11-03', 'paid', 'request', 'u1')], {'from': '2026-11-09'})('99112233', '2026-11-03'), False)
+    eq('дүрэм унтраалттай (from хоосон) = зогсолт үгүй', make_off_day(set(), lv, {})('99112233', '2026-11-10'), False)
+    eq('гар засвар «ирсэн» нь чөлөөг дарна (аппын attLeaveCover)', make_off_day(set(), lv + [('99112233', '2026-11-10', '2026-11-10', 'present', 'manual', 'u0')], LC)('99112233', '2026-11-10'), False)
+    eq('өөр хүний чөлөө үйлчлэхгүй', make_off_day(set(), [('99000000', '2026-11-10', '2026-11-10', 'paid', 'request', 'u1')], LC)('99112233', '2026-11-10'), False)
+    eq('callins ачаалагдаагүй (None) бол зогсолт үгүй', make_off_day(None, lv, LC), None)
     if f:
         print('❌ task_notify selftest:\n  ' + '\n  '.join(f))
         sys.exit(1)
@@ -386,7 +430,7 @@ if __name__ == '__main__':
     elif '--plan' in sys.argv:
         d = json.load(open(sys.argv[sys.argv.index('--plan') + 1]))
         cal = {tuple(x) for x in d['callins']} if d.get('callins') is not None else None
-        msgs, dues = plan(d.get('tasks', []), d['now'], dict(d.get('sent', {})), d.get('from', ''), d.get('phones', {}), cal)
+        msgs, dues = plan(d.get('tasks', []), d['now'], dict(d.get('sent', {})), d.get('from', ''), d.get('phones', {}), cal, d.get('leaves'), d.get('leave_cfg'))
         print(json.dumps({'messages': msgs, 'dues': dues}, ensure_ascii=False))
     else:
         main()

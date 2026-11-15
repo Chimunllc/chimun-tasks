@@ -15079,8 +15079,10 @@ async function attReqReject(k) {
   if (typeof render === 'function') render();
 }
 /* ═══ ЧӨЛӨӨ / АМРАЛТ + АВТОМАТ ИРЦИЙН ТӨЛӨВ (2026-11-14, ҮАЗ-ын даалгавар) ═══════════════════════════════
-   «Анхдагч төлөв = АЖИЛЛАНА»: ажлын өдөр бүр ажилтан бүр ажиллана гэж тооцогдоно. Чөлөө/амралт зөвхөн УРЬДЧИЛАН батлагдсан
-   хүсэлтээр; хүсэлтгүй, QR-гүй өдөр өөрөө «Тасалсан» болно — ГАРААР тэмдэглэх зүйлгүй. Дата = `att_leaves` (db/att_leaves.sql).
+   «Анхдагч төлөв = АЖИЛЛАНА» — ЗӨВХӨН ИРЦИЙН ХУВААРЬТАЙ ажилтанд (ҮАЗ, 2026-11-15 «Ирц цэс засах»: «Зөвхөн ирцийн хуваарьтай ажилтанд
+   үйлчилнэ»): хуваарьт өдөр (`att_callins`), эсвэл «ажил эхлэх цаг» тохируулсан хүний ажлын өдөр = `attLeaveScheduled` (хоцролтын
+   торгуулийн дүрэмтэй ИЖИЛ). Хуваарьгүй хүнийг таамаглаж «тасалсан» болгохгүй. Чөлөө/амралт зөвхөн УРЬДЧИЛАН батлагдсан хүсэлтээр;
+   хүсэлтгүй, QR-гүй хуваарьт өдөр өөрөө «Тасалсан» болно — ГАРААР тэмдэглэх зүйлгүй. Дата = `att_leaves` (db/att_leaves.sql).
    ⛔ ХЭЗЭЭНЭЭС = `app_config['att_leave'].from` (өдөр). ХООСОН бол БҮХЭЛДЭЭ унтраалттай — цалин, ирц хөндөгдөхгүй
       (олгочихсон цалин чимээгүй өөрчлөгдөхөөс хамгаална; `pay_rules`-тай ижил). Зөвхөн CEO бичнэ (RLS).
    ⛔ МӨНГӨ = ЦАГААР (`monthPayBreakdown`): тасалсан/цалингүй чөлөө өөрөө ажилласан цагаар хасагдана. Энэ модуль ЗӨВХӨН
@@ -15108,7 +15110,7 @@ function attLeaveCfg() {
   return {
     from: _isoDay(c.from) ? String(c.from) : '',
     notice1: num(c.notice1, 1, 0, 30),             // нэг өдрийн чөлөө: ӨМНӨХ ӨДӨР
-    noticeMulti: num(c.notice_multi, 7, 0, 60),    // 2+ өдөр / ээлжийн амралт: 7 хоногийн өмнө
+    noticeMulti: num(c.notice_multi, 2, 0, 60),    // 2+ өдөр / ээлжийн амралт: 2 хоногийн өмнө (ҮАЗ: «1–2 хоногийн өмнө»)
     vacationDays: num(c.vacation_days, 15, 0, 60), // жилийн ээлжийн амралтын ажлын өдөр
     holidays: hol,                                  // амралтын баярын өдрүүд (ажлын өдөр биш, цалинтай)
   };
@@ -15161,12 +15163,18 @@ function attLeaveJoined(key) {
   const m = findMember(key); const j = m && (m.joined_at || m.joinedAt);
   return _isoDay(String(j || '').slice(0, 10)) ? String(j).slice(0, 10) : '';
 }
+/* «Ирцийн хуваарьтай» (ҮАЗ: «Зөвхөн ирцийн хуваарьтай ажилтанд үйлчилнэ») = `attDayStatus`-ын хоцролтын торгуулийн дүрэмтэй ИЖИЛ:
+   тухайн өдөр хуваарь (`att_callins`) бий, ЭСВЭЛ ажлын өдөр (Да–Ня) + хүнд «ажил эхлэх цаг» (`work_start`) тохируулагдсан.
+   ⛔ Хуваарь/цаг ачаалагдаагүй үед ТААМАГЛАХГҮЙ (= хуваарьгүй → «тасалсан» болохгүй). tools/att_notify.py `expected()` ИЖИЛ байх ёстой. ЦЭВЭР. */
+function attLeaveScheduled(key, day) {
+  return !!attCallinOn(key, day) || (isWeekdayIso(day) && !!workStartFor(key));
+}
 function attLeaveExpected(key, day, cfg) {
   cfg = cfg || attLeaveCfg();
   if (!attLeaveActive(day)) return false;
   const j = attLeaveJoined(key); if (j && String(day) < j) return false;
   if (attLeaveIsHoliday(day, cfg)) return false;
-  return isWeekdayIso(day) || !!attCallinOn(key, day);   // амралтын өдөр хуваарьтай бол ажиллана
+  return attLeaveScheduled(key, day);
 }
 /* ӨДРИЙН ТӨЛӨВ — ГАНЦ эх сурвалж. ЦЭВЭР: (хүн, өдөр, тэр өдрийн ирцийн мөрүүд, өнөөдөр) → { st, expected, deduct, credit, row? }
    Эрэмбэ: гар засвар → ирц байвал (ирсэн/хоцорсон) → амралт/баяр → батлагдсан чөлөө → нөхөлт → хүлээгдэж буй хүсэлт
@@ -15195,7 +15203,16 @@ function attDayStatus(key, day, dayRecs, today) {
     if (start) { const diff = _hmMin(hhmmUB(ins[0])) - _hmMin(start); if (diff > grace) return res('late', { expected, mins: diff, start, came: hhmmUB(ins[0]) }); }
     return res('present', { expected });
   }
-  if (!expected) return res(attLeaveIsHoliday(day, cfg) ? 'holiday' : 'off', { credit: attLeaveIsHoliday(day, cfg) && isWeekdayIso(day) && !hasRec });
+  if (!expected) {
+    // Хуваарьгүй хүнийг «тасалсан» болгохгүй ч БАТЛАГДСАН чөлөөгөө авна: цалин ЦАГААР тул цалинтай чөлөө/амралт/өвчтэй ажлын өдрийг НОРМД тооцохгүй бол
+    // батлагдсан амралт нь цалингаас чимээгүй хасагдана. Зөвхөн ердийн ажлын өдөр (Да–Ня, баяр биш) — бусад нь `holiday`/`off`.
+    const rq = attLeaveCover(k, day, ['approved']);
+    if (rq && ATT_LEAVE_KINDS[rq.kind] && ATT_LEAVE_KINDS[rq.kind].req && isWeekdayIso(day) && !attLeaveIsHoliday(day, cfg)) {
+      const kd = ATT_LEAVE_KINDS[rq.kind];
+      return res(rq.kind, { expected, deduct: !kd.paid, credit: kd.paid && !hasRec, row: rq });
+    }
+    return res(attLeaveIsHoliday(day, cfg) ? 'holiday' : 'off', { credit: attLeaveIsHoliday(day, cfg) && isWeekdayIso(day) && !hasRec });
+  }
   const req = attLeaveCover(k, day, ['approved']), mk = attLeaveMakeupOf(k, day, ['approved']);
   // Цалинтай чөлөө нөхөлтөөс ӨНДӨР (нөхөх шаардлагагүй); цалингүй чөлөө/тасалсан өдөр нөхөгдвөл «нөхсөн» болно
   if (req && ATT_LEAVE_KINDS[req.kind].paid) return res(req.kind, { expected, credit: true, row: req });
@@ -15277,7 +15294,7 @@ function attLeaveDeductionInfo(base, ym, sum, shortAmt) {
   return { days, absent: sum ? sum.n.absent : 0, unpaid: sum ? sum.n.unpaid : 0, amount: Math.min(nominal, real), nominal };
 }
 /* ХҮСЭЛТИЙН ШАЛГАЛТ (ЦЭВЭР). p = { key, kind, from, to, reason, proof }.
-   Хугацааны дүрэм: нэг ажлын өдрийн чөлөө → ӨМНӨХ ӨДӨР; 2+ ажлын өдөр / ээлжийн амралт → 7 хоногийн өмнө; өвчтэй → тухайн өдөр (баримттай).
+   Хугацааны дүрэм: нэг ажлын өдрийн чөлөө → ӨМНӨХ ӨДӨР; 2+ ажлын өдөр / ээлжийн амралт → `notice_multi` (өгөгдмөл 2) хоногийн өмнө; өвчтэй → тухайн өдөр (баримттай).
    Хоцорсон хүсэлт БОЛОХГҮЙ БИШ — `late` гэж тэмдэглэгдэж ҮАЗ тусгайлан шийднэ. */
 function attLeaveCheck(p, today, cfg) {
   p = p || {}; today = today || todayStr(); cfg = cfg || attLeaveCfg();
@@ -15400,7 +15417,7 @@ function attTeamBoard(people, recs, leaves, today) {
     if (first[p.key]) { out.here.push({ key: p.key, name: p.name, time: hhmmUB(first[p.key]), open: last[p.key] && last[p.key].kind === 'in' }); return; }
     const l = (Array.isArray(leaves) ? leaves : []).find(x => attMarkKey(x.member_key) === p.key && _leaveCovers(x, today));
     if (l) { out.off.push({ key: p.key, name: p.name, cls: l.cls === 'vacation' ? 'vacation' : 'leave' }); return; }
-    if (working || attCallinOn(p.key, today)) out.waiting.push({ key: p.key, name: p.name });
+    if (working && attLeaveExpected(p.key, today, cfg)) out.waiting.push({ key: p.key, name: p.name });   // зөвхөн хуваарьтай (ажиллах ёстой) хүн
   });
   out.here.sort((a, b) => String(a.time).localeCompare(String(b.time)));
   return out;
@@ -15954,11 +15971,11 @@ function attMyLeaveCardHtml(myKey) {
       <span class="alv-it-s${r.status === 'rejected' ? ' no' : r.status === 'approved' ? ' ok' : ''}">${escapeHtml(attLeaveStatusLabel(r))}</span>${
       (r.status === 'pending') ? `<button class="ui-raw alv-x" data-alv-cancel="${escapeHtml(r.id)}" aria-label="Хүсэлт болих" title="Болих">✕</button>` : ''}</div>`).join('');
   return `<div class="myatt-card alv-card">
-    <div class="alv-head"><b>🗓 Чөлөө / амралт</b><button class="ui-raw alv-new" id="my-alv-new">➕ Чөлөө авах</button></div>
+    <div class="alv-head"><b>🗓 Чөлөө / амралт</b><button class="ui-raw alv-new" id="my-alv-new">➕ Амралт хүсэх</button></div>
     <div class="alv-bal">🏖 Ээлжийн амралт: <b>${left}</b> / ${cfg.vacationDays} ажлын өдөр үлдсэн</div>
     ${attMakeupBalanceHtml(myKey)}
     ${attLeavesWarnHtml()}
-    ${rows || '<div class="alv-none">Хүсэлт байхгүй. Ажлын өдөр бүр ажиллана гэж тооцогдоно — чөлөө авах бол өмнө нь хүсэлтээ илгээнэ.</div>'}
+    ${rows || '<div class="alv-none">Хүсэлт байхгүй. Ирцийн хуваарьтай өдөр ажиллана гэж тооцогдоно — амрах бол өмнө нь хүсэлтээ илгээнэ.</div>'}
   </div>`;
 }
 /* ── ҮАЗ: ХҮЛЭЭГДЭЖ БУЙ ХҮСЭЛТИЙН САМБАР ─────────────────────────────────────────────────────── */
@@ -15972,7 +15989,7 @@ function renderAttLeavePanel() {
   const cfg = attLeaveCfg();
   if (!cfg.from) {
     return attLeaveEditable() ? `<div class="alv-panel alv-off"><div class="alv-p-t">🗓 Чөлөө / амралтын бүртгэл унтраалттай</div>
-      <div class="alv-p-s">Асаавал ажлын өдөр бүр «ажиллана» гэж тооцогдож, хүсэлтгүй QR-гүй өдөр өөрөө «тасалсан» болно.</div>
+      <div class="alv-p-s">Асаавал ирцийн хуваарьтай (хуваарь тавигдсан, эсвэл «ажил эхлэх цаг» тохируулсан) ажилтан хүсэлтгүй, QR-гүй өдөр өөрөө «тасалсан» болно.</div>
       <button class="ui-raw alv-new" data-alv-cfg>⚙️ Тохируулж асаах</button></div>` : '';
   }
   const list = attLeavePendingList();
@@ -16029,7 +16046,7 @@ function openAttLeaveCfgModal() {
   modal.className = 'modal-bg'; modal.id = 'alv-cfg-modal';
   modal.innerHTML = `<div class="modal alv-modal">
     <h2>⚙️ Чөлөө / амралтын дүрэм</h2>
-    <p class="alv-hint">Хэзээнээс хойш ажлын өдөр бүр «ажиллана» гэж тооцогдож, хүсэлтгүй QR-гүй өдөр өөрөө «тасалсан» болно. <b>Хоосон = унтраалттай</b> (цалин хөндөгдөхгүй).</p>
+    <p class="alv-hint">Хэзээнээс хойш ирцийн хуваарьтай (хуваарь тавигдсан, эсвэл «ажил эхлэх цаг» тохируулсан) ажилтан хүсэлтгүй, QR-гүй өдөр өөрөө «тасалсан» болно. <b>Хоосон = унтраалттай</b> (цалин хөндөгдөхгүй).</p>
     <div class="alv-row"><span class="alv-l">Хэзээнээс</span><input type="date" id="alvc-from" class="ui-raw alv-date" value="${escapeHtml(c.from)}" min="${today}"></div>
     <div class="alv-row"><span class="alv-l">Нэг өдөр (өмнө)</span><input type="number" id="alvc-n1" class="ui-raw alv-num" min="0" max="30" value="${c.notice1}"><span class="alv-u">хоног</span></div>
     <div class="alv-row"><span class="alv-l">2+ өдөр (өмнө)</span><input type="number" id="alvc-nm" class="ui-raw alv-num" min="0" max="60" value="${c.noticeMulti}"><span class="alv-u">хоног</span></div>
@@ -16051,7 +16068,7 @@ function openAttLeaveCfgModal() {
     if (from && from < today && from !== c.from) { errEl.textContent = '⚠ Өнгөрсөн өдрөөс эхлүүлэхгүй — олгочихсон цалин өөрчлөгдөнө'; errEl.hidden = false; return; }
     const val = { from, notice1: Number($('#alvc-n1').value) || 0, notice_multi: Number($('#alvc-nm').value) || 0, vacation_days: Number($('#alvc-vd').value) || 0, holidays: hol };
     const ok = await showConfirm(from
-      ? `${from}-аас эхлэн ажлын өдөр бүр «ажиллана» гэж тооцогдоно. QR-гүй, хүсэлтгүй өдөр «тасалсан» болж цалингаас цагаар хасагдана; цалинтай чөлөө/баяр нормд тооцогдоно.\n\nИдэвхжүүлэх үү?`
+      ? `${from}-аас эхлэн ирцийн хуваарьтай ажилтны (хуваарьт өдөр, эсвэл «ажил эхлэх цаг» тохируулсан хүний ажлын өдөр) QR-гүй, хүсэлтгүй өдөр «тасалсан» болж цалингаас цагаар хасагдана; цалинтай чөлөө/баяр нормд тооцогдоно.\n\nИдэвхжүүлэх үү?`
       : 'Чөлөөний бүртгэлийг УНТРААХ уу? Цалин хуучин дүрмээр бодогдоно.', { okText: from ? 'Идэвхжүүлэх' : 'Унтраах' });
     if (!ok) return;
     btn.disabled = true;
@@ -27532,10 +27549,22 @@ function taskEffDueTs(dueTs, key, startTs, offDay) {
   return eff;
 }
 /* Чөлөөт өдөр = ирцийн ХУВААРЬ (`att_callins`): тухайн 7 хоногт (Да–Ня) хүнд хуваарь тавигдсан атлаа ЭНЭ өдөр хуваарьгүй.
-   ⚠ «Чөлөө/Амралт» гар тэмдэглэгээ 2026-11-02-нд УСТГАГДСАН тул өөр эх сурвалж байхгүй. Хуваарь огт тавигдаагүй хүнд зогсолт үйлчлэхгүй. */
+   ⚠ «Чөлөө/Амралт» гар тэмдэглэгээ 2026-11-02-нд УСТГАГДСАН; БАТЛАГДСАН хүсэлт = `attLeaveOffOn` (2026-11-15). Хуваарь огт тавигдаагүй хүнд зогсолт үйлчлэхгүй. */
+/* Батлагдсан чөлөө/амралт/өвчтэй өдөр = даалгаврын хугацаа ЗОГСОНО (ҮАЗ, 2026-11-15 «Ирц цэс засах» 4). Гар засвар `present/absent` БИШ (`req` төрөл л).
+   Зөвхөн ердийн ажлын өдөр (Да–Ня, баяр биш) эсвэл хуваарьт өдөр — чөлөөний мужид орсон бямба/ням ЗОГСООХГҮЙ. `att_leave.from`-оос өмнө үйлчлэхгүй.
+   ⚠ `att_leaves` нь RLS-ээр зөвхөн ӨӨРИЙН мөр (болон `attendance.edit`/`salary`)-ийг харуулна → бусдын зогсолтыг энгийн хүн өөрийн дэлгэц дээр
+   харахгүй. Цалингийн тооцоо (`salary` эрхтэй) бүгдийг харна. tools/task_notify.py `make_off_day` ИЖИЛ байх ёстой. ЦЭВЭР. */
+function attLeaveOffOn(key, day) {
+  if (!attLeaveActive(day) || !attLeavesReady()) return false;
+  const r = attLeaveCover(key, day, ['approved']);
+  if (!r || !ATT_LEAVE_KINDS[r.kind] || !ATT_LEAVE_KINDS[r.kind].req) return false;
+  return (isWeekdayIso(day) && !attLeaveIsHoliday(day)) || !!attCallinOn(key, day);
+}
 function taskPtsOffFn() {
   if (typeof attCallinsReady !== 'function' || !attCallinsReady()) return null;
+  if (typeof ensureAttLeaves === 'function') ensureAttLeaves();   // дүрэм идэвхтэй бол чөлөөг нэг удаа татна (`from` хоосон бол юу ч татахгүй)
   return (key, day) => {
+    if (attLeaveOffOn(key, day)) return true;
     if (attCallinOn(key, day)) return false;
     const wd = (new Date(day + 'T00:00:00Z').getUTCDay() + 6) % 7;   // 0 = Даваа
     for (let i = 0; i < 7; i++) { if (i !== wd && attCallinOn(key, addDays(day, i - wd))) return true; }

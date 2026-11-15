@@ -10251,6 +10251,30 @@ select.no-asar-len {
 .rmt-sw { margin: 0 0 var(--space-3); }
 .rmt-oldrow { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin: 0 0 var(--space-3); }
 .rmt-segs { margin: var(--space-3) 0; }
+/* ── 📧 Имэйл маркетинг (`renderEmailMarketing`) — 2026-11-15, inline style → класс ──
+   Нэг удаагийн имэйл илгээх дэлгэц. Дээрх `.rmt-*` (автомат сануулгын
+   бичвэр) ба `.mke-*` (дэд таб)-тай НЭГ урсгалд байдаг тул ижил токен,
+   ижил хэлбэртэй. Өнгө, зай, фонт бүгд токеноор (хатуу px/hex байхгүй). */
+.mkm-title { font-size: var(--fs-xl); font-weight: 800; }
+.mkm-sub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-4); line-height: 1.5; }
+/* Гурван шошго (салбар · гарчиг · мессеж) ЯГ ИЖИЛ байсан — нэг класс.
+   ⚠ `display: block` ЗОРИУД тавиагүй: шошго inline хэвээр, дараах
+   `.mkm-fld` (блок) өөрөө шинэ мөр үүсгэнэ — байрлал хуучнаараа үлдэнэ. */
+.mkm-lbl { font-size: var(--fs-sm); color: var(--muted); }
+.mkm-brow { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-1) 0 var(--space-4); }
+.mkm-box { border: 1px solid var(--border); background: var(--panel-hover); border-radius: var(--r-lg); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); font-size: var(--fs-md); }
+.mkm-box .btn { margin-left: var(--space-2); }
+.mkm-n { font-size: var(--fs-lg); }
+.mkm-dim { color: var(--muted); }
+/* Гарчиг ба мессежийн талбар нэг хэвтэй байсан (хуучин `fld` хувьсагч) — нэг класс */
+.mkm-fld { display: block; width: 100%; box-sizing: border-box; margin-bottom: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font: inherit; font-size: var(--fs-base); }
+.mkm-area { line-height: 1.5; resize: vertical; }
+.mkm-hint { font-size: var(--fs-xs); color: var(--muted); margin: calc(var(--space-1) * -1) 0 var(--space-4); line-height: 1.5; }
+.mkm-acts { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+/* Гол үйлдлийн мөр — `.mk-acts .btn`-тай ижил загвар: товч үндсэн `.btn`-ээс том */
+.mkm-acts .btn { padding: var(--space-2) var(--space-4); }
+.mkm-acts .btn-primary { padding: var(--space-2) var(--space-5); }
+.mkm-status { margin-top: var(--space-3); font-size: var(--fs-md); color: var(--muted); }
 
 /* Тооллогын түр хаалт (2026-10-20) — анхаарал татна, гэхдээ алдааны улаан биш (зориудын хаалт) */
 .stc-pause { background: var(--warn-soft); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-3) var(--space-4); margin: 0 0 var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }

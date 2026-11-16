@@ -26688,7 +26688,19 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     st.isCEO = false; st.memberPerms = {}; st.me = K;
     eq(run('renderAttLeavePanel()'), '', '⛔ самбар: ирц засах эрхгүй хүнд ХАРАГДАХГҮЙ (бусдын шалтгаан, баримт)');
     const card = run(`attMyLeaveCardHtml('${K}')`);
-    ok(/Ээлжийн амралт/.test(card) && /data-alv-cancel="Q1"/.test(card) && /my-alv-new/.test(card) && !/data-alv-ok/.test(card), 'ажилтны карт: өөрийн хүсэлт + болих + шинээр авах; батлах товч БАЙХГҮЙ');
+    ok(/Амрах өдөр/.test(card) && !/Ээлжийн амралт|ажлын өдөр үлдсэн|Чөлөө \(цалингүй\)/.test(card) && /data-alv-cancel="Q1"/.test(card) && /my-alv-new/.test(card) && !/data-alv-ok/.test(card), 'ажилтны карт: өөрийн хүсэлт + болих + шинээр авах; батлах товч БАЙХГҮЙ');
+    // ҮАЗ 2026-11-16: хүсэлтийн цонхонд ЗӨВХӨН «Амрах өдөр» + «Өвчтэй»; цалинтай чөлөө/ээлжийн амралт товч БАЙХГҮЙ
+    eq(run('ATT_LEAVE_REQ_KINDS'), ['unpaid', 'sick'], 'хүсэлтийн цонх: зөвхөн 2 төрөл (Амрах өдөр, Өвчтэй)');
+    eq(run('ATT_LEAVE_REQ_KINDS.map(k => ATT_LEAVE_KINDS[k].label)'), ['Амрах өдөр', 'Өвчтэй'], 'хүсэлтийн цонх: товчны нэр «Амрах өдөр», «Өвчтэй»');
+    const mod = appSrc.slice(appSrc.indexOf('function openAttLeaveModal'), appSrc.indexOf('function attMyLeaveCardHtml'));
+    ok(/const kinds = ATT_LEAVE_REQ_KINDS;/.test(mod) && !/Object\.keys\(ATT_LEAVE_KINDS\)/.test(mod), '⛔ хүсэлтийн цонх: товчнууд ГАНЦ жагсаалтаас (цалинтай/ээлжийн амралт орохгүй)');
+    // Өмнө «Чөлөө (цалингүй)» гэж батлагдсан хүсэлт «Амрах өдөр» гэж харагдана (DB төрөл `unpaid` хэвээр)
+    put([L('unpaid', FUT, FUT, 'approved', { id: 'U1', member_key: K })]);
+    const card2 = run(`attMyLeaveCardHtml('${K}')`);
+    ok(/Амрах өдөр/.test(card2) && !/Чөлөө \(цалингүй\)/.test(card2), 'ажилтны карт: батлагдсан хуучин «цалингүй чөлөө» = «Амрах өдөр»');
+    ok(/Амрах өдөр/.test(run(`attLeaveRowText(${JSON.stringify(L('unpaid', FUT, FUT, 'approved', { id: 'U1', member_key: K }))})`)), 'хүсэлтийн мөр: «Амрах өдөр»');
+    eq(run("ATT_DAY_ST.unpaid.label"), 'Амрах өдөр', 'өдрийн төлөв: «Амрах өдөр»');
+    put([L('unpaid', FUT, FUT, 'pending', { id: 'Q1', member_key: K, late: true, proof_url: 'https://x.test/p.jpg' }), L('paid', FUT, FUT, 'approved', { id: 'Q2', member_key: K2 })]);
     CFG(undefined);
     eq(run(`attMyLeaveCardHtml('${K}')`), '', 'ажилтны карт: унтраалттай үед огт гарахгүй');
     st.isCEO = true;
@@ -26700,7 +26712,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     st.attLeavesErr = null;
     // цалингийн тайлбар
     const pn = run(`attLeavePayNoteHtml(${JSON.stringify({ leave: JSON.parse(JSON.stringify(sum)) })}, ${JSON.stringify(withCredit)}, '2026-11', ${BASE}, '2026-12-05')`);
-    ok(/тасалсан 10/.test(pn) && /цалингүй чөлөө 1/.test(pn) && /1,100,000/.test(pn) && /багтсан/.test(pn), 'цалингийн тайлбар: «тасалсан 10, цалингүй чөлөө 1 → 1,100,000₮» + «цагаар хасагдсанд багтсан» (тусдаа суутгал БИШ)');
+    ok(/тасалсан 10/.test(pn) && /амрах өдөр 1/.test(pn) && !/цалингүй чөлөө/.test(pn) && /1,100,000/.test(pn) && /багтсан/.test(pn), 'цалингийн тайлбар: «тасалсан 10, цалингүй чөлөө 1 → 1,100,000₮» + «цагаар хасагдсанд багтсан» (тусдаа суутгал БИШ)');
     eq(run(`attLeavePayNoteHtml({ leave: null }, {}, '2026-11', 1)`), '', 'цалингийн тайлбар: унтраалттай үед хоосон');
 
     // ── ⑦ SCAN: DB, эрх, нэг эх сурвалж ──
@@ -27138,7 +27150,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     eq(fileName, 'Ирц-чөлөө-2026-11.xlsx', 'Excel: файлын нэр');
     eq(Object.keys(sheets), ['Нэгтгэл', 'Өдрөөр'], 'Excel: хоёр хуудас — нэгтгэл + өдрөөр');
     const x1 = sheets['Нэгтгэл'].find(r => r['Ажилтан'] === 'Т.Нэг');
-    eq([x1['Тасалсан'], x1['Чөлөө (цалингүй)'], x1['Ээлжийн амралт'], x1['Амралт үлдсэн (жил)'], x1['Хасагдах өдөр']], [9, 1, 5, 10, 10], 'Excel: нэгтгэлийн мөр тайлантай ижил');
+    eq([x1['Тасалсан'], x1['Амрах өдөр'], x1['Ээлжийн амралт'], x1['Амралт үлдсэн (жил)'], x1['Хасагдах өдөр']], [9, 1, 5, 10, 10], 'Excel: нэгтгэлийн мөр тайлантай ижил');
     ok(Object.keys(x1).some(k => /Суутгал/.test(k)), 'Excel: цалин харах эрхтэйд суутгалын багана бий');
     ok(sheets['Өдрөөр'].some(r => r['Ажилтан'] === 'Т.Нэг' && r['Огноо'] === '2026-11-17' && r['Төлөв'] === 'Нөхсөн') && sheets['Өдрөөр'].some(r => r['Огноо'] === '2026-11-03' && r['Төлөв'] === 'Ирсэн'), 'Excel: өдөр бүрийн төлөв (нөхсөн, ирсэн) гарна');
     st.salaries = {}; sheets['Нэгтгэл'] = null;

@@ -15090,7 +15090,7 @@ async function attReqReject(k) {
       (б) хасалтыг «тасалсан N, цалингүй чөлөө M өдөр» гэж ТАЙЛБАРЛАНА. Тусдаа хоёр дахь суутгал БАЙХГҮЙ (давхар хасахгүй).
    ⛔ Тоолол/төлөв = `attDayStatus` ГАНЦ; сарын нэгтгэл = `attLeaveMonthSummary`; цалин, самбар, Excel бүгд эндээс. */
 const ATT_LEAVE_KINDS = {
-  unpaid:   { icon: '📝', label: 'Чөлөө (цалингүй)', paid: false, req: true },
+  unpaid:   { icon: '📝', label: 'Амрах өдөр',       paid: false, req: true },
   paid:     { icon: '💼', label: 'Чөлөө (цалинтай)', paid: true,  req: true },
   vacation: { icon: '🏖', label: 'Ээлжийн амралт',   paid: true,  req: true },
   sick:     { icon: '🤒', label: 'Өвчтэй',           paid: true,  req: true },
@@ -15098,6 +15098,8 @@ const ATT_LEAVE_KINDS = {
   present:  { icon: '✅', label: 'Ирсэн',            paid: true,  req: false },
   absent:   { icon: '❌', label: 'Тасалсан',         paid: false, req: false },
 };
+// Ажилтны хүсэлтийн цонхонд зөвхөн энэ 2 товч (ҮАЗ 2026-11-16: цалинтай чөлөө, ээлжийн амралт манайд байхгүй). Төрлүүд өгөгдөл/DB-д хэвээр — дүрэм өөрчлөгдөөгүй.
+const ATT_LEAVE_REQ_KINDS = ['unpaid', 'sick'];
 const ATT_LEAVE_BACK_D = 14;       // нэг хүсэлтийн өнгөрсөн өдөр хэр хуучин байж болох вэ (хоцорсон гэж тэмдэглэгдэнэ)
 const ATT_LEAVE_SICK_LATE_D = 2;   // өвчтэй: энэ хоногоос хожуу мэдэгдвэл «хоцорсон»
 const ATT_LEAVE_MAX_D = 60;
@@ -15230,7 +15232,7 @@ function attDayStatus(key, day, dayRecs, today) {
 }
 const ATT_DAY_ST = {
   present: { icon: '✅', label: 'Ирсэн' }, late: { icon: '⏰', label: 'Хоцорсон' }, absent: { icon: '❌', label: 'Тасалсан' },
-  unpaid: { icon: '📝', label: 'Чөлөө (цалингүй)' }, paid: { icon: '💼', label: 'Чөлөө (цалинтай)' }, vacation: { icon: '🏖', label: 'Ээлжийн амралт' },
+  unpaid: { icon: '📝', label: 'Амрах өдөр' }, paid: { icon: '💼', label: 'Чөлөө (цалинтай)' }, vacation: { icon: '🏖', label: 'Ээлжийн амралт' },
   sick: { icon: '🤒', label: 'Өвчтэй' }, makeup: { icon: '🔄', label: 'Нөхсөн' }, pending: { icon: '⏳', label: 'Хүсэлт хүлээгдэж буй' },
   waiting: { icon: '⏳', label: 'Хараахан ирээгүй' }, planned: { icon: '·', label: 'Ажиллана' }, off: { icon: '·', label: 'Амралтын өдөр' },
   holiday: { icon: '🎌', label: 'Баярын өдөр' }, na: { icon: '', label: '' },
@@ -15375,14 +15377,14 @@ function attLeavePayNoteHtml(ex, b, ym, base, today) {
   const parts = [`ирсэн ${s.n.present + s.n.late}`];
   if (s.n.late) parts.push(`хоцорсон ${s.n.late}`);
   if (s.n.absent) parts.push(`тасалсан ${s.n.absent}`);
-  if (s.n.unpaid) parts.push(`цалингүй чөлөө ${s.n.unpaid}`);
+  if (s.n.unpaid) parts.push(`амрах өдөр ${s.n.unpaid}`);
   if (s.n.paid) parts.push(`цалинтай чөлөө ${s.n.paid}`);
   if (s.n.vacation) parts.push(`амралт ${s.n.vacation}`);
   if (s.n.sick) parts.push(`өвчтэй ${s.n.sick}`);
   if (s.n.makeup) parts.push(`нөхсөн ${s.n.makeup}`);
   const lines = [`🗓 ${parts.join(' · ')}`];
   if (info.days) {
-    const what = [info.absent ? `тасалсан ${info.absent}` : '', info.unpaid ? `цалингүй чөлөө ${info.unpaid}` : ''].filter(Boolean).join(', ');
+    const what = [info.absent ? `тасалсан ${info.absent}` : '', info.unpaid ? `амрах өдөр ${info.unpaid}` : ''].filter(Boolean).join(', ');
     lines.push(cur ? `📉 Ирцийн суутгал (${what} өдөр): урьдчилсан −${fmtMoney(info.nominal)} — сар дуусмагц ажилласан цагаар хасагдана`
                    : `📉 Ирцийн суутгал (${what} өдөр): −${fmtMoney(info.amount)} — дээрх «нормоос дутуу» мөрөнд багтсан`);
   }
@@ -15529,7 +15531,7 @@ function attMakeupCheck(p, today, recsOf) {
   if (!Array.isArray(mR) || !Array.isArray(dR)) return { ok: false, err: 'Ирцийн мэдээлэл ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу' };
   const st = attDayStatus(k, missed, attRecsByDay(k, mR)[missed], today).st;
   if (st === 'makeup') return { ok: false, err: 'Энэ өдрийг аль хэдийн нөхсөн байна' };
-  if (st !== 'absent' && st !== 'unpaid') return { ok: false, err: 'Энэ өдөр тасалсан/цалингүй чөлөөтэй биш — нөхөх шаардлагагүй' };
+  if (st !== 'absent' && st !== 'unpaid') return { ok: false, err: 'Энэ өдөр тасалсан/амрах өдөртэй биш — нөхөх шаардлагагүй' };
   if (attLeaveMakeupOf(k, missed, ['pending', 'approved'])) return { ok: false, err: 'Энэ өдрийн нөхөлтийн хүсэлт аль хэдийн байна' };
   if (attLeaveExpected(k, made, cfg)) return { ok: false, err: 'Нөхсөн өдөр амралтын/баярын өдөр байх ёстой — ажлын өдрийн илүү цаг цалинд өөрөө тооцогддог' };
   const taken = attLeaveRowsOf(k).find(r => r.kind === 'makeup' && (r.status === 'pending' || r.status === 'approved') && String(r.makeup_day) === made);
@@ -15574,7 +15576,7 @@ function openAttMakeupModal() {
   modal.innerHTML = `<div class="modal alv-modal">
     <h2>🔄 Нөхөлт хүсэх</h2>
     <p class="alv-hint">Аль өдрийг нөхөж, хэзээ ажилласнаа сонго. Нөхсөн өдөр <b>амралтын/баярын өдөр</b> байх ба ирц нь <b>бүртгэгдсэн</b> байх ёстой. ҮАЗ баталмагц суутгал буурна.</p>
-    <div class="alv-kinds">${cand.days.map(d => `<button type="button" class="ui-raw alv-kind" data-alv-mk="${escapeHtml(d.day)}">${escapeHtml(d.day.slice(5))} · ${d.st === 'absent' ? '❌ тасалсан' : '📝 цалингүй'}</button>`).join('')}</div>
+    <div class="alv-kinds">${cand.days.map(d => `<button type="button" class="ui-raw alv-kind" data-alv-mk="${escapeHtml(d.day)}">${escapeHtml(d.day.slice(5))} · ${d.st === 'absent' ? '❌ тасалсан' : '📝 амрах өдөр'}</button>`).join('')}</div>
     <div class="alv-row"><span class="alv-l">Нөхсөн өдөр</span><input type="date" id="alv-mk-day" class="ui-raw alv-date" max="${today}" value="${today}"></div>
     <textarea id="alv-mk-note" class="ui-raw alv-reason" maxlength="300" rows="2" placeholder="Тайлбар (заавал биш)"></textarea>
     <div class="alv-prev" id="alv-mk-prev"></div>
@@ -15676,7 +15678,7 @@ function attLeaveGridHtml(month, recs) {
   }).join('');
   return `<details class="fin-more alv-grid-d"><summary>🗓 Төлөвийн хүснэгт · нүдийг дарж засна</summary><div class="fin-more-in">
     <div class="alv-grid-w"><table class="alv-grid"><thead><tr><th class="alv-gn"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>
-    <div class="alv-legend">✓ ирсэн · ⏰ хоцорсон · ✕ тасалсан · 📝 цалингүй · 💼 цалинтай · 🏖 амралт · 🤒 өвчтэй · 🔄 нөхсөн · ⏳ хүлээгдэж буй · 🎌 баяр · <b>✎</b> гараар засагдсан</div>
+    <div class="alv-legend">✓ ирсэн · ⏰ хоцорсон · ✕ тасалсан · 📝 амрах өдөр · 💼 цалинтай · 🏖 амралт · 🤒 өвчтэй · 🔄 нөхсөн · ⏳ хүлээгдэж буй · 🎌 баяр · <b>✎</b> гараар засагдсан</div>
   </div></details>`;
 }
 function openAttCellModal(key, day) {
@@ -15757,8 +15759,8 @@ function attLeaveReportHtml(month, recs, today) {
   const body = rows.map(r => `<tr><th class="alv-gn">${escapeHtml(r.name)}</th>${cell(r.present)}${cell(r.late)}${cell(r.absent, r.absent ? 'bad' : '')}${cell(r.unpaid)}${cell(r.paid)}${cell(r.vacation)}${cell(r.sick)}${cell(r.makeup)}${
     money ? `<td class="alv-rn${r.amount ? ' bad' : ''}">${r.amount === null ? '' : (r.amount ? '−' + fmtMoney(r.amount) + (r.est ? '*' : '') : '·')}</td>` : ''}<td class="alv-rn">${r.vacLeft}</td></tr>`).join('');
   return `<details class="fin-more alv-grid-d"><summary>📊 Сарын нэгтгэл · чөлөө, тасалсан, амралтын үлдэгдэл</summary><div class="fin-more-in">
-    <div class="alv-grid-w"><table class="alv-grid alv-rep"><thead><tr><th class="alv-gn"></th><th class="alv-rh">Ирсэн</th><th class="alv-rh">Хоцорсон</th><th class="alv-rh">Тасалсан</th><th class="alv-rh">Чөлөө (цалингүй)</th><th class="alv-rh">Чөлөө (цалинтай)</th><th class="alv-rh">Амралт</th><th class="alv-rh">Өвчтэй</th><th class="alv-rh">Нөхсөн</th>${money ? '<th class="alv-rh">Суутгал</th>' : ''}<th class="alv-rh">Амралт үлдсэн</th></tr></thead><tbody>${body}</tbody></table></div>
-    <div class="alv-legend">Өдрөөр. Суутгал = тасалсан + цалингүй чөлөө — ажилласан цагаар хасагдсан дүнд багтсан (тусдаа хасалт БИШ).${rows.some(r => r.est) ? ' * явж буй сар — урьдчилсан, сар дуусмагц цагаар хасагдана.' : ''} Амралтын үлдэгдэл = жилийн ${attLeaveCfg().vacationDays} ажлын өдрөөс.</div>
+    <div class="alv-grid-w"><table class="alv-grid alv-rep"><thead><tr><th class="alv-gn"></th><th class="alv-rh">Ирсэн</th><th class="alv-rh">Хоцорсон</th><th class="alv-rh">Тасалсан</th><th class="alv-rh">Амрах өдөр</th><th class="alv-rh">Чөлөө (цалинтай)</th><th class="alv-rh">Амралт</th><th class="alv-rh">Өвчтэй</th><th class="alv-rh">Нөхсөн</th>${money ? '<th class="alv-rh">Суутгал</th>' : ''}<th class="alv-rh">Амралт үлдсэн</th></tr></thead><tbody>${body}</tbody></table></div>
+    <div class="alv-legend">Өдрөөр. Суутгал = тасалсан + амрах өдөр — ажилласан цагаар хасагдсан дүнд багтсан (тусдаа хасалт БИШ).${rows.some(r => r.est) ? ' * явж буй сар — урьдчилсан, сар дуусмагц цагаар хасагдана.' : ''} Амралтын үлдэгдэл = жилийн ${attLeaveCfg().vacationDays} ажлын өдрөөс.</div>
     <button class="btn alv-xls" data-alv-xls="${escapeHtml(month)}">⬇ Excel татах</button>
   </div></details>`;
 }
@@ -15771,7 +15773,7 @@ async function attLeaveExportExcel(month, todayOverride) {
     if (!attLeavesReady()) throw new Error('Чөлөөний мэдээлэл ачаалагдаагүй байна');
     const today = todayOverride || todayStr(), money = canSeeSalary();
     const rows = attLeaveReportRows(month, recs, today, money);
-    const sum = rows.map(r => { const o = { 'Ажилтан': r.name, 'Ирсэн': r.present, 'Хоцорсон': r.late, 'Тасалсан': r.absent, 'Чөлөө (цалингүй)': r.unpaid, 'Чөлөө (цалинтай)': r.paid,
+    const sum = rows.map(r => { const o = { 'Ажилтан': r.name, 'Ирсэн': r.present, 'Хоцорсон': r.late, 'Тасалсан': r.absent, 'Амрах өдөр': r.unpaid, 'Чөлөө (цалинтай)': r.paid,
       'Ээлжийн амралт': r.vacation, 'Өвчтэй': r.sick, 'Нөхсөн': r.makeup, 'Хүлээгдэж буй': r.pending, 'Хасагдах өдөр': r.deductDays };
       if (money) o['Суутгал (₮)' + (r.est ? ' урьдчилсан' : '')] = r.amount === null ? '' : r.amount;
       o['Амралт авсан (жил)'] = r.vacUsed; o['Амралт үлдсэн (жил)'] = r.vacLeft; return o; });
@@ -15892,10 +15894,10 @@ function openAttLeaveModal(preKind) {
   if (!attLeaveCfg().from) { showToast('Чөлөөний хүсэлт хараахан нээгдээгүй байна', 'warn', 3500); return; }
   document.getElementById('alv-modal')?.remove();
   const today = todayStr(), tomorrow = addDays(today, 1);
-  let kind = ATT_LEAVE_KINDS[preKind] && ATT_LEAVE_KINDS[preKind].req ? preKind : 'unpaid', proof = '', busy = false;
+  let kind = ATT_LEAVE_REQ_KINDS.includes(preKind) ? preKind : 'unpaid', proof = '', busy = false;
   const modal = document.createElement('div');
   modal.className = 'modal-bg'; modal.id = 'alv-modal';
-  const kinds = Object.keys(ATT_LEAVE_KINDS).filter(k => ATT_LEAVE_KINDS[k].req);
+  const kinds = ATT_LEAVE_REQ_KINDS;
   modal.innerHTML = `<div class="modal alv-modal">
     <h2>🗓 Чөлөө / амралт авах</h2>
     <div class="alv-kinds">${kinds.map(k => `<button type="button" class="ui-raw alv-kind" data-alv-kind="${k}">${ATT_LEAVE_KINDS[k].icon} ${ATT_LEAVE_KINDS[k].label}</button>`).join('')}</div>
@@ -15964,15 +15966,13 @@ function openAttLeaveModal(preKind) {
 /* ── «МИНИЙ ИРЦ» ДЭЭРХ КАРТ ───────────────────────────────────────────────────────────────────── */
 function attMyLeaveCardHtml(myKey) {
   const cfg = attLeaveCfg(); if (!cfg.from) return '';
-  const today = todayStr(), mine = attLeaveRowsOf(myKey).filter(r => r.source === 'request' && r.status !== 'cancelled')
+  const mine = attLeaveRowsOf(myKey).filter(r => r.source === 'request' && r.status !== 'cancelled')
     .sort((a, b) => String(b.from_day).localeCompare(String(a.from_day))).slice(0, 6);
-  const left = attLeaveVacationLeft(myKey, today.slice(0, 4));
   const rows = mine.map(r => `<div class="alv-item"><span class="alv-it-t">${escapeHtml(attLeaveRowText(r))}</span>
       <span class="alv-it-s${r.status === 'rejected' ? ' no' : r.status === 'approved' ? ' ok' : ''}">${escapeHtml(attLeaveStatusLabel(r))}</span>${
       (r.status === 'pending') ? `<button class="ui-raw alv-x" data-alv-cancel="${escapeHtml(r.id)}" aria-label="Хүсэлт болих" title="Болих">✕</button>` : ''}</div>`).join('');
   return `<div class="myatt-card alv-card">
     <div class="alv-head"><b>🗓 Чөлөө / амралт</b><button class="ui-raw alv-new" id="my-alv-new">➕ Амралт хүсэх</button></div>
-    <div class="alv-bal">🏖 Ээлжийн амралт: <b>${left}</b> / ${cfg.vacationDays} ажлын өдөр үлдсэн</div>
     ${attMakeupBalanceHtml(myKey)}
     ${attLeavesWarnHtml()}
     ${rows || '<div class="alv-none">Хүсэлт байхгүй. Ирцийн хуваарьтай өдөр ажиллана гэж тооцогдоно — амрах бол өмнө нь хүсэлтээ илгээнэ.</div>'}

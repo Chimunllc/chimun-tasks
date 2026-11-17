@@ -26523,7 +26523,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     callins([]);
     put([L('paid', '2026-11-11'), L('unpaid', '2026-11-13'), L('sick', '2026-11-16'), L('vacation', '2026-11-17')]);
     eq([S('2026-11-11').st, S('2026-11-11').credit, S('2026-11-11').deduct], ['paid', true, false], 'төлөв: цалинтай чөлөө = нормд тооцогдоно, хасагдахгүй');
-    eq([S('2026-11-13').st, S('2026-11-13').credit, S('2026-11-13').deduct], ['unpaid', false, true], 'төлөв: цалингүй чөлөө = цагаар хасагдана');
+    eq([S('2026-11-13').st, S('2026-11-13').credit, S('2026-11-13').deduct], ['unpaid', true, false], '⛔ төлөв: амрах өдөр = нормд тооцогдоно, цалингаас ХАСАГДАХГҮЙ (CEO 2026-11-17)');
     eq([S('2026-11-16').st, S('2026-11-16').credit], ['sick', true], 'төлөв: өвчтэй = нормд тооцогдоно');
     eq([S('2026-11-17').st, S('2026-11-17').credit], ['vacation', true], 'төлөв: ээлжийн амралт = нормд тооцогдоно');
     eq([S('2026-11-11', [rec('2026-11-11', 'in', '09:00')]).st, S('2026-11-11', [rec('2026-11-11', 'in', '09:00')]).credit], ['present', false], '⛔ төлөв: чөлөөтэй өдөр ажилласан бол цаг нь тоологдоно — нормд ДАВХАР тооцохгүй');
@@ -26551,7 +26551,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     put([L('paid', '2026-11-04', '2026-11-05'), L('unpaid', '2026-11-06'), L('vacation', '2026-11-09', '2026-11-13'), L('sick', '2026-11-16')]);
     const sum = run(`attLeaveMonthSummary('${K}', '2026-11', ${JSON.stringify(recs)}, '2026-12-01')`);
     eq([sum.n.expected, sum.n.present, sum.n.paid, sum.n.unpaid, sum.n.vacation, sum.n.sick, sum.n.absent], [21, 2, 2, 1, 5, 1, 10], 'сар: тоолол — 21 ажлын өдөр = 2 ирсэн + 2 + 1 + 5 + 1 + 10 тасалсан');
-    eq([sum.deductDays, sum.creditMins], [11, 8 * 480], '⛔ сар: хасагдах өдөр = тасалсан 10 + цалингүй 1; нормд тооцогдох = цалинтай 8 өдөр');
+    eq([sum.deductDays, sum.creditMins], [10, 9 * 480], '⛔ сар: хасагдах өдөр = ЗӨВХӨН тасалсан 10; нормд тооцогдох = амрах 1 + цалинтай 8 өдөр');
     const BASE = 2100000;   // өдрийн цалин 100,000
     const worked = 2 * 480 - 2 * 60;   // 18:00-09:00 = 9ц, цайны 1ц хасагдсан → 8ц
     const wm = run(`attMemberSummary(${JSON.stringify(recs.slice(0, 2))}, false).mins`);
@@ -26559,10 +26559,10 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     const noCredit = run(`monthPayBreakdown(${BASE}, false, 960, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, undefined)`);
     const withCredit = run(`monthPayBreakdown(${BASE}, false, 960, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, { creditMins: ${sum.creditMins} })`);
     eq(noCredit.earned, 200000, 'цалин: чөлөөний нормгүй бол 2 өдрийн цалин (хуучин зан)');
-    eq([withCredit.earned, withCredit.shortMins, withCredit.creditMins], [1000000, 5280, 3840], '⛔ цалин: 2 ирсэн + 8 цалинтай өдөр = 10 өдрийн цалин; цалингүй/тасалсан 11 өдөр хасагдсан');
-    const info = run(`attLeaveDeductionInfo(${BASE}, '2026-11', ${JSON.stringify({ deductDays: 11, n: { absent: 10, unpaid: 1 } })}, ${BASE - withCredit.earned})`);
-    eq([info.days, info.absent, info.unpaid, info.amount], [11, 10, 1, 1100000], '⛔ ирцийн суутгал: 11 өдөр × 100,000 = 1,100,000₮ — хасагдсан дүнтэй ЯГ таарна');
-    eq(run(`attLeaveDeductionInfo(${BASE}, '2026-11', { deductDays: 11, n: { absent: 11, unpaid: 0 } }, 300000)`).amount, 300000, '⛔ ирцийн суутгал: бодит хасалтаас ХЭЗЭЭ Ч илүү гарахгүй (тусдаа хоёр дахь суутгал БИШ)');
+    eq([withCredit.earned, withCredit.shortMins, withCredit.creditMins], [1100000, 4800, 4320], '⛔ цалин: 2 ирсэн + 9 өдөр (амрах 1 + цалинтай 8) = 11 өдрийн цалин; зөвхөн тасалсан 10 өдөр хасагдсан');
+    const info = run(`attLeaveDeductionInfo(${BASE}, '2026-11', ${JSON.stringify({ deductDays: 10, n: { absent: 10, unpaid: 1 } })}, ${BASE - withCredit.earned})`);
+    eq([info.days, info.absent, info.unpaid, info.amount], [10, 10, undefined, 1000000], '⛔ ирцийн суутгал: 10 тасалсан өдөр × 100,000 = 1,000,000₮ — хасагдсан дүнтэй ЯГ таарна (амрах өдөр орохгүй)');
+    eq(run(`attLeaveDeductionInfo(${BASE}, '2026-11', { deductDays: 11, n: { absent: 11 } }, 300000)`).amount, 300000, '⛔ ирцийн суутгал: бодит хасалтаас ХЭЗЭЭ Ч илүү гарахгүй (тусдаа хоёр дахь суутгал БИШ)');
     const huge = run(`monthPayBreakdown(${BASE}, false, 960, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, { creditMins: 99999 })`);
     eq([huge.earned, huge.shortMins], [BASE, 0], '⛔ цалин: нормд тооцсон өдөр суурь цалингаас ИЛҮҮ олгохгүй');
     const ot = run(`monthPayBreakdown(${BASE}, false, 11000, 10080, 0, 1, '2026-11', '2026-12-05', 0, 10080, { makeupOffsetMins: 480 })`);
@@ -26700,6 +26700,14 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     ok(/Амрах өдөр/.test(card2) && !/Чөлөө \(цалингүй\)/.test(card2), 'ажилтны карт: батлагдсан хуучин «цалингүй чөлөө» = «Амрах өдөр»');
     ok(/Амрах өдөр/.test(run(`attLeaveRowText(${JSON.stringify(L('unpaid', FUT, FUT, 'approved', { id: 'U1', member_key: K }))})`)), 'хүсэлтийн мөр: «Амрах өдөр»');
     eq(run("ATT_DAY_ST.unpaid.label"), 'Амрах өдөр', 'өдрийн төлөв: «Амрах өдөр»');
+    // ── Хэд хоног амрах вэ — «1 өдөр» / «2 өдөр» ИЛ (ҮАЗ/CEO 2026-11-17: 11-18-нд амраад 11-19-нд ирвэл 1 өдөр) ──
+    eq(run(`attLeaveCountText('2026-11-18', '2026-11-18')`), '1 өдөр', '⛔ амрах хоног: 11-18 → 11-18 (1 өдөр амарч 11-19-нд ирнэ) = 1 өдөр');
+    eq(run(`attLeaveCountText('2026-11-18', '2026-11-19')`), '2 өдөр', '⛔ амрах хоног: 11-18 → 11-19 хоёулаа амрах өдөр = 2 өдөр');
+    eq(run(`attLeaveCountText('2026-11-20', '2026-11-23')`), '4 өдөр (ажлын 2)', 'амрах хоног: бямба/нямтай бол «4 өдөр (ажлын 2)»');
+    eq(run(`attLeaveSpanText('2026-11-18', '2026-11-18')`) + ' | ' + run(`attLeaveSpanText('2026-11-18', '2026-11-19')`), '11-18 | 11-18 – 11-19', 'амрах хоног: мужийн текст');
+    ok(/1 өдөр/.test(run(`attLeaveRowText(${JSON.stringify(L('unpaid', '2026-11-18', '2026-11-18', 'approved', { id: 'U2', member_key: K }))})`)) && /2 өдөр/.test(run(`attLeaveRowText(${JSON.stringify(L('unpaid', '2026-11-17', '2026-11-18', 'approved', { id: 'U3', member_key: K }))})`)), 'хүсэлтийн мөр: «N өдөр» ил (ҮАЗ батлахдаа 1 өдөр уу 2 өдөр үү гэдгийг харна)');
+    ok(/id="alv-back"/.test(mod) && !/id="alv-to"/.test(mod) && />Ирэх өдөр</.test(mod) && !/>Дуусах</.test(mod), '⛔ хүсэлтийн цонх: «Дуусах» биш «Ирэх өдөр» (ажилдаа эргэн ирэх өдөр)');
+    ok(/addDays\(b, -1\)/.test(mod) && /ажилдаа ирнэ/.test(mod) && /attLeaveCountText\(p\.from, p\.to\)/.test(mod), '⛔ хүсэлтийн цонх: сүүлийн амрах өдөр = ирэх өдрөөс −1; хэд хоног амрахыг ил харуулна');
     put([L('unpaid', FUT, FUT, 'pending', { id: 'Q1', member_key: K, late: true, proof_url: 'https://x.test/p.jpg' }), L('paid', FUT, FUT, 'approved', { id: 'Q2', member_key: K2 })]);
     CFG(undefined);
     eq(run(`attMyLeaveCardHtml('${K}')`), '', 'ажилтны карт: унтраалттай үед огт гарахгүй');
@@ -26712,7 +26720,8 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     st.attLeavesErr = null;
     // цалингийн тайлбар
     const pn = run(`attLeavePayNoteHtml(${JSON.stringify({ leave: JSON.parse(JSON.stringify(sum)) })}, ${JSON.stringify(withCredit)}, '2026-11', ${BASE}, '2026-12-05')`);
-    ok(/тасалсан 10/.test(pn) && /амрах өдөр 1/.test(pn) && !/цалингүй чөлөө/.test(pn) && /1,100,000/.test(pn) && /багтсан/.test(pn), 'цалингийн тайлбар: «тасалсан 10, цалингүй чөлөө 1 → 1,100,000₮» + «цагаар хасагдсанд багтсан» (тусдаа суутгал БИШ)');
+    ok(/тасалсан 10/.test(pn) && /амрах өдөр 1/.test(pn) && !/цалингүй чөлөө/.test(pn) && /1,000,000/.test(pn) && !/1,100,000/.test(pn) && /багтсан/.test(pn), 'цалингийн тайлбар: «тасалсан 10 → 1,000,000₮» + «цагаар хасагдсанд багтсан» (тусдаа суутгал БИШ)');
+    ok(/Амрах өдөр 1 — цалингаас хасагдахгүй/.test(pn) && !/суутгал \([^)]*амрах/i.test(pn), '⛔ цалингийн тайлбар: «Амрах өдөр 1 — цалингаас хасагдахгүй», суутгалын мөрөнд ОРОХГҮЙ');
     eq(run(`attLeavePayNoteHtml({ leave: null }, {}, '2026-11', 1)`), '', 'цалингийн тайлбар: унтраалттай үед хоосон');
 
     // ── ⑦ SCAN: DB, эрх, нэг эх сурвалж ──
@@ -26858,7 +26867,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     ok(c.days.every(d => d.st === 'absent') && c.days[0].day === '2026-11-03' && !c.days.some(d => d.day === '2026-11-02' || d.day >= TODAY), 'нөхөх өдөр: ирсэн өдөр, өнөөдөр, ирээдүй орохгүй');
     put([L('unpaid', '2026-11-05'), L('paid', '2026-11-06'), L('makeup', '2026-11-03', '2026-11-03', 'pending', { makeup_day: '2026-11-14' })]);
     c = run(`attMakeupCandidates('${K}', '${TODAY}', globalThis.__ro)`);
-    ok(c.days.some(d => d.day === '2026-11-05' && d.st === 'unpaid') && !c.days.some(d => d.day === '2026-11-06'), 'нөхөх өдөр: цалингүй чөлөө нөхөгдөнө, цалинтай чөлөө нөхөх шаардлагагүй');
+    ok(!c.days.some(d => d.day === '2026-11-05' || d.day === '2026-11-06'), '⛔ нөхөх өдөр: амрах өдөр, цалинтай чөлөө ХОЁУЛАА нөхөх шаардлагагүй (хасагддаггүй) — зөвхөн тасалсан нөхөгдөнө');
     ok(!c.days.some(d => d.day === '2026-11-03') && c.pending.includes('2026-11-03'), 'нөхөх өдөр: хүсэлт хүлээгдэж буй өдөр жагсаалтаас гарч «хүлээгдэж буй» болно');
     const ro2 = (ym) => ym === '2026-11' ? NOV : null;
     sandbox.__ro2 = ro2;
@@ -26881,7 +26890,9 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     put([L('paid', '2026-11-09')]);
     ok(/нөхөх шаардлагагүй/.test(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).err), 'нөхөлт: цалинтай чөлөөтэй өдрийг нөхөхгүй');
     put([L('unpaid', '2026-11-09')]);
-    ok(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).ok, 'нөхөлт: цалингүй чөлөөний өдрийг нөхөж болно');
+    ok(/нөхөх шаардлагагүй/.test(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).err), '⛔ нөхөлт: амрах өдрийг нөхөхгүй (цалингаас хасагддаггүй)');
+    put([L('absent', '2026-11-09', '2026-11-09', 'approved', { source: 'manual' })]);
+    ok(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).ok, 'нөхөлт: тасалсан өдрийг нөхөж болно');
     put([L('makeup', '2026-11-09', '2026-11-09', 'pending', { makeup_day: '2026-11-14' })]);
     ok(/аль хэдийн байна/.test(MC({ missed: '2026-11-09', madeUp: '2026-11-14' }).err), '⛔ нөхөлт: нэг өдөрт хоёр хүсэлт гаргахгүй');
     ok(/ашигласан/.test(MC({ missed: '2026-11-10', madeUp: '2026-11-14' }).err), '⛔ нөхөлт: нэг нөхсөн өдрөөр хоёр өдрийг нөхөхгүй (нэг цагийг хоёр удаа тооцохгүй)');
@@ -26897,7 +26908,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     let s = run(`attDayStatus('${K}', '2026-11-09', [], '2026-12-10')`);
     eq([s.st, s.credit, s.deduct], ['makeup', true, false], 'төлөв: нөхсөн өдөр (өөр сард) нормд тооцогдоно, хасагдахгүй');
     put([L('unpaid', '2026-11-09'), L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-12-05' })]);
-    eq(run(`attDayStatus('${K}', '2026-11-09', [], '2026-12-10')`).st, 'makeup', 'төлөв: цалингүй чөлөөний өдөр нөхөгдвөл «нөхсөн» болно');
+    eq(run(`attDayStatus('${K}', '2026-11-09', [], '2026-12-10')`).st, 'unpaid', 'төлөв: амрах өдөр нөхөлтөөс ӨНДӨР (хасагддаггүй тул нөхөлт хэрэггүй, давхар кредит олгохгүй)');
     put([L('paid', '2026-11-09'), L('makeup', '2026-11-09', '2026-11-09', 'approved', { makeup_day: '2026-12-05' })]);
     eq(run(`attDayStatus('${K}', '2026-11-09', [], '2026-12-10')`).st, 'paid', 'төлөв: цалинтай чөлөө нөхөлтөөс ӨНДӨР (давхар кредит олгохгүй)');
     // сарын нэгтгэл: нөхөлт батлагдахад суутгал буурна
@@ -27118,10 +27129,10 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     put([L('paid', '2026-11-04', '2026-11-05'), L('unpaid', '2026-11-06'), L('vacation', '2026-11-09', '2026-11-13'), L('sick', '2026-11-16')]);
     const rows = run(`attLeaveReportRows('2026-11', ${JSON.stringify(RECS)}, '2026-12-05', true)`);
     const r1 = rows.find(r => r.name === 'Т.Нэг'), r2 = rows.find(r => r.name === 'Т.Хоёр');
-    eq([r1.present, r1.late, r1.absent, r1.unpaid, r1.paid, r1.vacation, r1.sick, r1.makeup, r1.deductDays], [2, 0, 10, 1, 2, 5, 1, 0, 11], 'нэгтгэл: Т.Нэг — ирсэн 2, тасалсан 10, цалингүй 1, цалинтай 2, амралт 5, өвчтэй 1; хасагдах 11 өдөр');
+    eq([r1.present, r1.late, r1.absent, r1.unpaid, r1.paid, r1.vacation, r1.sick, r1.makeup, r1.deductDays], [2, 0, 10, 1, 2, 5, 1, 0, 10], 'нэгтгэл: Т.Нэг — ирсэн 2, тасалсан 10, амрах өдөр 1, цалинтай 2, амралт 5, өвчтэй 1; хасагдах ЗӨВХӨН 10 өдөр');
     eq([r2.present, r2.absent, r2.deductDays, r2.amount], [21, 0, 0, 0], 'нэгтгэл: Т.Хоёр — бүгд ирсэн, суутгалгүй');
     eq([r1.vacUsed, r1.vacLeft, r2.vacUsed, r2.vacLeft], [5, 10, 0, 15], '⛔ нэгтгэл: ээлжийн амралтын үлдэгдэл = жилийн 15 − авсан 5 = 10');
-    eq(r1.amount, 1100000, '⛔ нэгтгэл: суутгал = 11 өдөр × 100,000 = 1,100,000₮ (цалингийн бодолттой ЯГ таарна: ажилласан 960 мин + нормд 3840 мин)');
+    eq(r1.amount, 1000000, '⛔ нэгтгэл: суутгал = 10 тасалсан өдөр × 100,000 = 1,000,000₮ (цалингийн бодолттой ЯГ таарна: ажилласан 960 мин + нормд 4320 мин)');
     eq(r1.est, false, 'нэгтгэл: дууссан сард «урьдчилсан» биш');
     const cur = run(`attLeaveReportRows('2026-11', ${JSON.stringify(RECS)}, '2026-11-25', true)`).find(r => r.name === 'Т.Нэг');
     eq([cur.est, cur.amount > 0], [true, true], 'нэгтгэл: явж буй сард суутгал «урьдчилсан»');
@@ -27131,10 +27142,10 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     // нөхөлт ба нэгтгэл
     put([L('paid', '2026-11-04', '2026-11-05'), L('unpaid', '2026-11-06'), L('vacation', '2026-11-09', '2026-11-13'), L('sick', '2026-11-16'), L('makeup', '2026-11-17', '2026-11-17', 'approved', { makeup_day: '2026-12-05' })]);
     const rm = run(`attLeaveReportRows('2026-11', ${JSON.stringify(RECS)}, '2026-12-10', true)`).find(r => r.name === 'Т.Нэг');
-    eq([rm.makeup, rm.absent, rm.amount], [1, 9, 1000000], 'нэгтгэл: батлагдсан нөхөлт — тасалсан 10→9, суутгал 1,100,000→1,000,000');
+    eq([rm.makeup, rm.absent, rm.amount], [1, 9, 900000], 'нэгтгэл: батлагдсан нөхөлт — тасалсан 10→9, суутгал 1,000,000→900,000');
     // харагдац
     const html = run(`attLeaveReportHtml('2026-11', ${JSON.stringify(RECS)}, '2026-12-10')`);
-    ok(/Сарын нэгтгэл/.test(html) && /Т\.Нэг/.test(html) && /1,100,000|1,000,000/.test(html) && /data-alv-xls="2026-11"/.test(html) && /Амралт үлдсэн/.test(html), 'нэгтгэл: хүснэгт + суутгал + амралтын үлдэгдэл + Excel товч');
+    ok(/Сарын нэгтгэл/.test(html) && /Т\.Нэг/.test(html) && /900,000/.test(html) && /data-alv-xls="2026-11"/.test(html) && /Амралт үлдсэн/.test(html), 'нэгтгэл: хүснэгт + суутгал + амралтын үлдэгдэл + Excel товч');
     ok(/багтсан/.test(html), 'нэгтгэл: «тусдаа хасалт БИШ» гэж ил хэлнэ');
     st.isCEO = false; st.memberPerms = {}; st.me = K2;
     eq(run(`attLeaveReportHtml('2026-11', ${JSON.stringify(RECS)})`), '', '⛔ нэгтгэл: ирц засах эрхгүй хүнд ХАРАГДАХГҮЙ');
@@ -27150,7 +27161,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     eq(fileName, 'Ирц-чөлөө-2026-11.xlsx', 'Excel: файлын нэр');
     eq(Object.keys(sheets), ['Нэгтгэл', 'Өдрөөр'], 'Excel: хоёр хуудас — нэгтгэл + өдрөөр');
     const x1 = sheets['Нэгтгэл'].find(r => r['Ажилтан'] === 'Т.Нэг');
-    eq([x1['Тасалсан'], x1['Амрах өдөр'], x1['Ээлжийн амралт'], x1['Амралт үлдсэн (жил)'], x1['Хасагдах өдөр']], [9, 1, 5, 10, 10], 'Excel: нэгтгэлийн мөр тайлантай ижил');
+    eq([x1['Тасалсан'], x1['Амрах өдөр'], x1['Ээлжийн амралт'], x1['Амралт үлдсэн (жил)'], x1['Хасагдах өдөр']], [9, 1, 5, 10, 9], 'Excel: нэгтгэлийн мөр тайлантай ижил');
     ok(Object.keys(x1).some(k => /Суутгал/.test(k)), 'Excel: цалин харах эрхтэйд суутгалын багана бий');
     ok(sheets['Өдрөөр'].some(r => r['Ажилтан'] === 'Т.Нэг' && r['Огноо'] === '2026-11-17' && r['Төлөв'] === 'Нөхсөн') && sheets['Өдрөөр'].some(r => r['Огноо'] === '2026-11-03' && r['Төлөв'] === 'Ирсэн'), 'Excel: өдөр бүрийн төлөв (нөхсөн, ирсэн) гарна');
     st.salaries = {}; sheets['Нэгтгэл'] = null;
@@ -27214,7 +27225,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     put([L('paid', '2026-11-18')]);
     eq([S('2026-11-18').st, S('2026-11-18').credit, S('2026-11-18').deduct], ['paid', true, false], 'хуваарьгүй + батлагдсан цалинтай чөлөө: НОРМД тооцогдоно (амралт цалингаас хасагдахгүй)');
     put([L('unpaid', '2026-11-18')]);
-    eq([S('2026-11-18').st, S('2026-11-18').credit, S('2026-11-18').deduct], ['unpaid', false, true], 'хуваарьгүй + цалингүй чөлөө: хасагдана (цагаар)');
+    eq([S('2026-11-18').st, S('2026-11-18').credit, S('2026-11-18').deduct], ['unpaid', true, false], '⛔ хуваарьгүй + амрах өдөр: НОРМД тооцогдоно, цалингаас хасагдахгүй');
     put([L('vacation', '2026-11-20', '2026-11-23')]);
     eq(['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23'].map(d => S(d).st), ['vacation', 'off', 'off', 'vacation'], 'хуваарьгүй: амралтын мужид орсон бямба/ням «амралт» БИШ (норм биш)');
     put([L('paid', '2026-11-12')]);

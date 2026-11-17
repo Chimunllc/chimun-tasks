@@ -54,6 +54,13 @@ function tiersOf(src) {
   try { return vm.runInNewContext('(' + m[1] + ')'); } catch (e) { return undefined; }
 }
 const tierKey = (t) => (t || []).map((x) => `${Number(x.min)}:${Number(x.pct)}`).join(',');
+// Угсралт, суурилуулалтын нэгж хөлсний дүрэм (`SETUP_RATES` = [[регекс, ₮], …]) — харьцуулах тэмдэгт мөр болгоно.
+function setupRatesKey(src) {
+  const m = src.match(/(?:let|const|var)\s+SETUP_RATES\s*=\s*(\[[\s\S]*?\n\]);/);
+  if (!m) return undefined;
+  try { return vm.runInNewContext('(' + m[1] + ')').map(([re, n]) => `${re.source}/${re.flags}:${Number(n)}`).join(' | '); }
+  catch (e) { return undefined; }
+}
 
 (async () => {
   let siteSrc, cfg;
@@ -89,6 +96,21 @@ const tierKey = (t) => (t || []).map((x) => `${Number(x.min)}:${Number(x.pct)}`)
   if (!appT || !siteT) note(`Хямдралын шатлал: утга олдсонгүй (апп="${appT}", сайт="${siteT}")`);
   else if (appT !== siteT) note(`Хямдралын шатлал: апп [${appT}] ↔ сайт [${siteT}] — ЗӨРЧИЛТЭЙ`);
   else if (liveT && appT !== liveT) note(`Хямдралын шатлал: код [${appT}] ↔ амьд тохиргоо [${liveT}] — код хоцорсон`);
+
+  // ── 1b. Угсралт, суурилуулалтын хөлс: апп ↔ сайт (2026-11-17) ──────────────
+  // Сайт хөлсийг аппын `SETUP_*`-аас ХУУЛЖ бодож ⟦SET|1|хөлс⟧ token-оор илгээнэ. Ямар ч «амьд тохиргоо» байхгүй (код л эх сурвалж) —
+  // тиймээс зөвхөн апп ↔ сайт тулгана. Сайт хараахан угсралтгүй (тогтмол байхгүй) бол алгасна.
+  if (valueOf(siteSrc, 'SETUP_MIN_FEE') !== undefined || setupRatesKey(siteSrc) !== undefined) {
+    const setupChecks = [
+      ['Угсралтын доод хөлс', valueOf(appSrc, 'SETUP_MIN_FEE'), valueOf(siteSrc, 'SETUP_MIN_FEE')],
+      ['Угсралтын нэгж хөлс (default)', valueOf(appSrc, 'SETUP_RATE_DEFAULT'), valueOf(siteSrc, 'SETUP_RATE_DEFAULT')],
+      ['Угсралтын нэгж хөлсний дүрэм (SETUP_RATES)', setupRatesKey(appSrc), setupRatesKey(siteSrc)],
+    ];
+    for (const [label, app, site] of setupChecks) {
+      if (app === undefined || site === undefined) note(`${label}: утга олдсонгүй (апп=${app}, сайт=${site})`);
+      else if (app !== site) note(`${label}: апп ${app} ↔ сайт ${site} — ЗӨРЧИЛТЭЙ`);
+    }
+  }
 
   // ── 2. Сайтын өгөгдлийн сангийн гадаргуу ────────────────────────────────
   const touched = [...new Set([...siteSrc.matchAll(/rest\/v1\/([a-z_]+)/g)].map((m) => m[1]))];

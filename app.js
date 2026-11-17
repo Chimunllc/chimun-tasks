@@ -38485,6 +38485,11 @@ function bqOrderCard(o) {
     : '';
   const _offFee = isApp ? orderOffHoursFee(o) : 0;
   const offMeta = _offFee > 0 ? `<div class="order-meta">🌙 Ажлын бус цаг: <b>${fmtMoney(_offFee)}</b></div>` : '';
+  // 🔧 Суурилуулалт / угсралт — mevent.mn сайт ба захиалгын форм ⟦SET|1|хөлс⟧ token-оор оруулна. Дамжлагад «Суурилуулсан»/«Буулгасан»
+  // шат нээгдэх захиалгыг (хүргэлттэй + суурилуулалттай) картад ил харуулна — хөлс 0 бол зөвхөн «хийнэ» гэж.
+  const _setFee = isApp ? setupFeeOf(o.note) : 0;
+  const setupMeta = (isApp && _isDeliv && orderNeedsSetup(o))
+    ? `<div class="order-meta">🔧 Суурилуулалт / угсралт${_setFee > 0 ? `: <b>${fmtMoney(_setFee)}</b>` : ' хийнэ'}</div>` : '';
   // Дамжлагын явц — товч дарсан ажилтныг доор нь ангилж харуулна (картыг таб хооронд зөөхгүй)
   const slog = isApp ? parseStageLog(o.note) : {};
   // SL лог (note token) ба stage_meta нь НЭГ үйлдлийг хоёуланг нь тэмдэглэдэг.
@@ -38674,6 +38679,7 @@ function bqOrderCard(o) {
     ${ciHtml}
     ${delivMeta}
     ${offMeta}
+    ${setupMeta}
     ${isApp && o.contract_no ? `<div class="order-meta">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
     ${o.created_at ? `<div class="order-meta">📥 Ирсэн <b>${escapeHtml(String(o.created_at).slice(0, 10))}</b>${(() => { const ld = orderLeadDays(o); return ld == null ? '' : ` · эвентээс <b>${ld} хоногийн өмнө</b>${ld === 0 ? ' (тэр өдрөө!)' : ld <= 2 ? ' ⚠ хэт дөхөж' : ''}`; })()}</div>` : ''}

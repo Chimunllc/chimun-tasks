@@ -22922,16 +22922,16 @@ function openLeftStaffModal() {
   const ov = document.createElement('div'); ov.id = 'org-left-modal'; ov.className = 'org-modal-bd'; document.body.appendChild(ov);
   ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
   const rows = leftStaff.length
-    ? leftStaff.map(m => `<div data-lk="${escapeHtml(personKey(m))}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--border);cursor:pointer;">
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;">${escapeHtml(m.name || '?')}</span>
-        <span style="color:var(--muted);white-space:nowrap;font-size:12px;">${escapeHtml(m.role || '')}</span></div>`).join('')
-    : '<div style="color:var(--muted);padding:18px;text-align:center;">Гарсан ажилтан алга.</div>';
-  ov.innerHTML = `<div class="org-modal" style="max-width:440px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);">
-      <div style="font-weight:800;font-size:15px;">🚪 Гарсан ажилтан (${leftStaff.length})</div>
+    ? leftStaff.map(m => `<div class="lsm-row" data-lk="${escapeHtml(personKey(m))}">
+        <span class="lsm-n">${escapeHtml(m.name || '?')}</span>
+        <span class="lsm-r">${escapeHtml(m.role || '')}</span></div>`).join('')
+    : '<div class="lsm-empty">Гарсан ажилтан алга.</div>';
+  ov.innerHTML = `<div class="org-modal lsm-modal">
+    <div class="lsm-head">
+      <div class="lsm-t">🚪 Гарсан ажилтан (${leftStaff.length})</div>
       <button class="sc-x" data-lx>✕</button></div>
-    <div style="padding:4px 12px 14px;max-height:62vh;overflow:auto;">
-      <div style="font-size:11.5px;color:var(--muted);padding:8px 2px 6px;">Хүн дээр дарж дэлгэрэнгүй нээгээд «↩ Сэргээх» товчоор буцаана.</div>
+    <div class="lsm-body">
+      <div class="lsm-hint">Хүн дээр дарж дэлгэрэнгүй нээгээд «↩ Сэргээх» товчоор буцаана.</div>
       ${rows}</div></div>`;
   ov.querySelector('[data-lx]')?.addEventListener('click', () => ov.remove());
   ov.querySelectorAll('[data-lk]').forEach(r => r.addEventListener('click', () => { ov.remove(); openStaffCardModal(r.dataset.lk); }));

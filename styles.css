@@ -10782,6 +10782,7 @@ select.no-asar-len {
 .alv-ph { position: relative; display: inline-flex; align-items: center; padding: var(--space-2) var(--space-3); border: 1px dashed var(--primary);
   border-radius: var(--r-lg); color: var(--primary); font-size: var(--fs-sm); font-weight: 700; min-height: var(--tap-sm); }
 .alv-ph .alv-file { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.alv-cnt { font-size: var(--fs-md); color: var(--text); line-height: 1.5; min-height: 22px; margin-bottom: var(--space-1); }
 .alv-prev { font-size: var(--fs-sm); color: var(--text-soft); min-height: 20px; line-height: 1.6; margin-bottom: var(--space-2); }
 .alv-err { padding: var(--space-2) var(--space-3); border-radius: var(--r-lg); background: var(--danger-soft); color: var(--danger); font-size: var(--fs-sm); line-height: 1.5; margin-bottom: var(--space-2); }
 .alv-err[hidden] { display: none; }

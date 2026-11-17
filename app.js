@@ -15085,12 +15085,15 @@ async function attReqReject(k) {
    хүсэлтгүй, QR-гүй хуваарьт өдөр өөрөө «Тасалсан» болно — ГАРААР тэмдэглэх зүйлгүй. Дата = `att_leaves` (db/att_leaves.sql).
    ⛔ ХЭЗЭЭНЭЭС = `app_config['att_leave'].from` (өдөр). ХООСОН бол БҮХЭЛДЭЭ унтраалттай — цалин, ирц хөндөгдөхгүй
       (олгочихсон цалин чимээгүй өөрчлөгдөхөөс хамгаална; `pay_rules`-тай ижил). Зөвхөн CEO бичнэ (RLS).
-   ⛔ МӨНГӨ = ЦАГААР (`monthPayBreakdown`): тасалсан/цалингүй чөлөө өөрөө ажилласан цагаар хасагдана. Энэ модуль ЗӨВХӨН
-      (а) цалинтай чөлөө/амралт/өвчтэй/баярын өдрийг НОРМД тооцуулж (`creditMins`) хасагдахаас хамгаална,
-      (б) хасалтыг «тасалсан N, цалингүй чөлөө M өдөр» гэж ТАЙЛБАРЛАНА. Тусдаа хоёр дахь суутгал БАЙХГҮЙ (давхар хасахгүй).
+   ⛔ МӨНГӨ = ЦАГААР (`monthPayBreakdown`): ЗӨВХӨН тасалсан өдөр ажилласан цагаар хасагдана. Энэ модуль ЗӨВХӨН
+      (а) амрах өдөр (`unpaid`)/цалинтай чөлөө/амралт/өвчтэй/баярын өдрийг НОРМД тооцуулж (`creditMins`) хасагдахаас хамгаална,
+      (б) хасалтыг «тасалсан N өдөр» гэж ТАЙЛБАРЛАНА. Тусдаа хоёр дахь суутгал БАЙХГҮЙ (давхар хасахгүй).
+   ⛔ «АМРАХ ӨДӨР» (`unpaid`, батлагдсан) ЦАЛИНГААС ХАСАГДАХГҮЙ, НЭМЭГДЭХГҮЙ (CEO 2026-11-17: «амрах хүсэлт баталсан үед юу ч нэмэгдэж хасагдахгүй»).
+      Өмнө нь `paid:false` тул нэг өдөр = суурь ÷ норм хасагддаг байв. Одоо цалинтай чөлөөтэй ИЖИЛ нормд тооцогдоно (илүү цагт ОРОХГҮЙ, суурьаас илүү олгохгүй).
+      ХАСАГДАХ ГАНЦ ТӨЛӨВ = «Тасалсан» (чөлөөгүй, эсвэл гар засвараар). DB-ийн төрөл `unpaid` нэр хэвээр (хуучин мөрүүд).
    ⛔ Тоолол/төлөв = `attDayStatus` ГАНЦ; сарын нэгтгэл = `attLeaveMonthSummary`; цалин, самбар, Excel бүгд эндээс. */
 const ATT_LEAVE_KINDS = {
-  unpaid:   { icon: '📝', label: 'Амрах өдөр',       paid: false, req: true },
+  unpaid:   { icon: '📝', label: 'Амрах өдөр',       paid: true,  req: true },   // ⚠ `paid` = «цалингаас хасагдахгүй»: нэр нь `unpaid` ч Амрах өдөр хасагдахгүй (дээрх ⛔)
   paid:     { icon: '💼', label: 'Чөлөө (цалинтай)', paid: true,  req: true },
   vacation: { icon: '🏖', label: 'Ээлжийн амралт',   paid: true,  req: true },
   sick:     { icon: '🤒', label: 'Өвчтэй',           paid: true,  req: true },
@@ -15182,7 +15185,7 @@ function attLeaveExpected(key, day, cfg) {
    Эрэмбэ: гар засвар → ирц байвал (ирсэн/хоцорсон) → амралт/баяр → батлагдсан чөлөө → нөхөлт → хүлээгдэж буй хүсэлт
            → ирээдүй/өнөөдөр → ТАСАЛСАН. Өнөөдөр хараахан ирээгүй бол «хүлээж байна» (өдөр дуусаагүй — тасалсан БИШ).
    st: na · off · holiday · present · late · unpaid · paid · vacation · sick · makeup · pending · absent · waiting · planned
-   deduct = цалингаас цагаар хасагдах өдөр (тасалсан, цалингүй чөлөө); credit = НОРМД тооцогдох (цалинтай чөлөө, баяр, нөхөлт, засвар). */
+   deduct = цалингаас цагаар хасагдах өдөр (ЗӨВХӨН тасалсан); credit = НОРМД тооцогдох (амрах өдөр, цалинтай чөлөө, өвчтэй, баяр, нөхөлт, засвар). */
 function attDayStatus(key, day, dayRecs, today) {
   const k = attMarkKey(key); today = today || todayStr(); day = String(day || '');
   const cfg = attLeaveCfg();
@@ -15216,7 +15219,7 @@ function attDayStatus(key, day, dayRecs, today) {
     return res(attLeaveIsHoliday(day, cfg) ? 'holiday' : 'off', { credit: attLeaveIsHoliday(day, cfg) && isWeekdayIso(day) && !hasRec });
   }
   const req = attLeaveCover(k, day, ['approved']), mk = attLeaveMakeupOf(k, day, ['approved']);
-  // Цалинтай чөлөө нөхөлтөөс ӨНДӨР (нөхөх шаардлагагүй); цалингүй чөлөө/тасалсан өдөр нөхөгдвөл «нөхсөн» болно
+  // Амрах өдөр/цалинтай чөлөө нөхөлтөөс ӨНДӨР (нөхөх шаардлагагүй); зөвхөн тасалсан өдөр нөхөгдвөл «нөхсөн» болно
   if (req && ATT_LEAVE_KINDS[req.kind].paid) return res(req.kind, { expected, credit: true, row: req });
   if (mk) {
     // Нөхөлт: ТӨЛӨВ «нөхсөн». Нөхсөн өдөр нь ӨӨР САРД бол л НОРМД тооцно (ижил сард бол нөхсөн цаг өөрөө нормыг гүйцээнэ)
@@ -15287,13 +15290,13 @@ function attLeaveMonthSummary(key, ym, recs, today) {
   });
   return out;
 }
-/* Хасалтын ТАЙЛБАР (ЦЭВЭР): сарын суурь цалингаас «тасалсан + цалингүй чөлөө» өдрийн хэмжээ. ⛔ ТУСДАА ХАСАЛТ БИШ —
+/* Хасалтын ТАЙЛБАР (ЦЭВЭР): сарын суурь цалингаас «тасалсан» өдрийн хэмжээ (амрах өдөр ХАСАГДАХГҮЙ). ⛔ ТУСДАА ХАСАЛТ БИШ —
    `monthPayBreakdown`-ийн цагийн хасалт (`base − earned`)-д аль хэдийн багтсан; хэзээ ч бодит хасалтаас ИЛҮҮ гарахгүй. */
 function attLeaveDeductionInfo(base, ym, sum, shortAmt) {
   const days = sum ? sum.deductDays : 0;
   const nominal = Math.round(Math.max(0, Number(base) || 0) * days / Math.max(1, workNormDays(ym)));
   const real = Math.max(0, Math.round(Number(shortAmt) || 0));
-  return { days, absent: sum ? sum.n.absent : 0, unpaid: sum ? sum.n.unpaid : 0, amount: Math.min(nominal, real), nominal };
+  return { days, absent: sum ? sum.n.absent : 0, amount: Math.min(nominal, real), nominal };
 }
 /* ХҮСЭЛТИЙН ШАЛГАЛТ (ЦЭВЭР). p = { key, kind, from, to, reason, proof }.
    Хугацааны дүрэм: нэг ажлын өдрийн чөлөө → ӨМНӨХ ӨДӨР; 2+ ажлын өдөр / ээлжийн амралт → `notice_multi` (өгөгдмөл 2) хоногийн өмнө; өвчтэй → тухайн өдөр (баримттай).
@@ -15340,12 +15343,20 @@ function attLeaveVacationUsed(key, year) {
   return n;
 }
 function attLeaveVacationLeft(key, year) { const c = attLeaveCfg(); return Math.max(0, c.vacationDays - attLeaveVacationUsed(key, year)); }
-// Нэг мөрийн текст: «🏖 11-20 – 11-24 · Ээлжийн амралт»
+/* Амрах өдрийн ТОО (ЦЭВЭР): эхлэх БА сүүлийн амрах өдөр хоёулаа орно. «1 өдөр» / «4 өдөр (ажлын 2)». Хоёр огноо «хэд хоног» вэ гэдгийг ИЛ харуулна. */
+function attLeaveSpanText(from, to) {
+  const f = String(from).slice(5), t = String(to || from).slice(5);
+  return f === t ? f : f + ' – ' + t;
+}
+function attLeaveCountText(from, to) {
+  const n = attLeaveDays(String(from), String(to || from)).length, w = attLeaveWorkdays(String(from), String(to || from)).length;
+  return n + ' өдөр' + (w !== n ? ` (ажлын ${w})` : '');
+}
+// Нэг мөрийн текст: «🏖 11-20 – 11-24 · Ээлжийн амралт · 5 өдөр»
 function attLeaveRowText(r) {
   const k = ATT_LEAVE_KINDS[r.kind] || { icon: '', label: r.kind };
   if (r.kind === 'makeup') return `🔄 ${String(r.from_day).slice(5)} · Нөхөлт (${String(r.makeup_day || '').slice(5)}-нд нөхсөн${r.makeup_mins ? ', ' + attHM(r.makeup_mins) : ''})`;
-  const span = String(r.from_day).slice(5) + (r.to_day && r.to_day !== r.from_day ? ' – ' + String(r.to_day).slice(5) : '');
-  return `${k.icon} ${span} · ${k.label}`;
+  return `${k.icon} ${attLeaveSpanText(r.from_day, r.to_day)} · ${k.label} · ${attLeaveCountText(r.from_day, r.to_day || r.from_day)}`;
 }
 // Ажилтны төлөвийн шошго (хүсэлтийн жагсаалт)
 function attLeaveStatusLabel(r) {
@@ -15374,6 +15385,7 @@ function attLeavePayNoteHtml(ex, b, ym, base, today) {
   const cur = ym >= String(today || todayStr()).slice(0, 7);   // явж буй сард суурь цалин цагаар хасагдаахгүй (сар дуусмагц)
   const info = attLeaveDeductionInfo(base, ym, s, b ? b.base - b.earned : 0);
   const credit = s.n.paid + s.n.vacation + s.n.sick + s.n.holiday + s.n.makeup;
+  const leave = s.n.unpaid;   // «Амрах өдөр» — цалингаас хасагдахгүй, нэмэгдэхгүй
   const parts = [`ирсэн ${s.n.present + s.n.late}`];
   if (s.n.late) parts.push(`хоцорсон ${s.n.late}`);
   if (s.n.absent) parts.push(`тасалсан ${s.n.absent}`);
@@ -15384,10 +15396,10 @@ function attLeavePayNoteHtml(ex, b, ym, base, today) {
   if (s.n.makeup) parts.push(`нөхсөн ${s.n.makeup}`);
   const lines = [`🗓 ${parts.join(' · ')}`];
   if (info.days) {
-    const what = [info.absent ? `тасалсан ${info.absent}` : '', info.unpaid ? `амрах өдөр ${info.unpaid}` : ''].filter(Boolean).join(', ');
-    lines.push(cur ? `📉 Ирцийн суутгал (${what} өдөр): урьдчилсан −${fmtMoney(info.nominal)} — сар дуусмагц ажилласан цагаар хасагдана`
-                   : `📉 Ирцийн суутгал (${what} өдөр): −${fmtMoney(info.amount)} — дээрх «нормоос дутуу» мөрөнд багтсан`);
+    lines.push(cur ? `📉 Ирцийн суутгал (тасалсан ${info.absent} өдөр): урьдчилсан −${fmtMoney(info.nominal)} — сар дуусмагц ажилласан цагаар хасагдана`
+                   : `📉 Ирцийн суутгал (тасалсан ${info.absent} өдөр): −${fmtMoney(info.amount)} — дээрх «нормоос дутуу» мөрөнд багтсан`);
   }
+  if (leave) lines.push(`📝 Амрах өдөр ${leave} — цалингаас хасагдахгүй, нэмэгдэхгүй`);
   if (credit) lines.push(`💼 Цалинтай өдөр ${credit} нормд тооцогдсон (цагаар хасагдахгүй)`);
   if (s.n.pending) lines.push(`⏳ ${s.n.pending} өдрийн хүсэлт шийдэгдээгүй — батлагдвал суутгал буурна`);
   return `<div class="alv-pay">${lines.map(escapeHtml).join('<br>')}</div>`;
@@ -15488,7 +15500,7 @@ function attTeamBoardHtml(open) {
   return `<div class="dash-card att-team"><div class="dash-card-title">👥 Өнөөдрийн баг</div>${sum}
     <details class="fin-more att-team-d"${open ? ' open' : ''}><summary>Нэрсийг харах</summary><div class="fin-more-in">${groups}${upc}</div></details></div>`;
 }
-/* ── НӨХӨЛТ: тасалсан/цалингүй чөлөөний өдрийг нөхөж ажиллах (ҮАЗ 1 товчоор батална) ──────────────────────────────────
+/* ── НӨХӨЛТ: ТАСАЛСАН өдрийг нөхөж ажиллах · амрах өдөр хасагддаггүй тул нөхөхгүй (ҮАЗ 1 товчоор батална) ──────────────────────────────────
    «Аль өдрийг, хэзээ нөхсөн»: нөхсөн өдөр нь АМРАЛТЫН/БАЯРЫН өдөр (ажлын өдрийн илүү цаг цалинд өөрөө илүү цагаар тооцогддог) бөгөөд
    тэр өдөр ирц БОДИТООР бүртгэгдсэн байх ёстой. Батлагдвал тасалсан өдөр «🔄 нөхсөн» болж нормд тооцогдоно (суутгал буурна).
    ⛔ Ижил сард нөхвөл тусдаа тооцоо ХИЙХГҮЙ — нөхсөн цаг өөрөө нормыг гүйцээнэ; ӨӨР САРД нөхвөл тасалсан сар нормд тооцогдож, нөхсөн сарын
@@ -15503,7 +15515,7 @@ function attMyRecsOf(ym) {
   return null;
 }
 function _prevMonthOf(ym) { return addDays(String(ym) + '-01', -1).slice(0, 7); }
-/* ЦЭВЭР: нөхөж болох өдрүүд = сүүлийн 2 сарын «тасалсан»/«цалингүй чөлөө» өдөр (нөхөх хүсэлтгүй). `recsOf(ym)` = тэр сарын ирц эсвэл null. */
+/* ЦЭВЭР: нөхөж болох өдрүүд = сүүлийн 2 сарын «тасалсан» өдөр (нөхөх хүсэлтгүй). `recsOf(ym)` = тэр сарын ирц эсвэл null. */
 function attMakeupCandidates(key, today, recsOf) {
   const cfg = attLeaveCfg(), out = { days: [], unknown: [], pending: [] };
   if (!cfg.from) return out;
@@ -15512,7 +15524,7 @@ function attMakeupCandidates(key, today, recsOf) {
     const recs = recsOf(ym);
     if (!Array.isArray(recs)) { out.unknown.push(ym); return; }
     attLeaveMonthSummary(key, ym, recs, today).days.forEach(d => {
-      if (d.day >= today || (d.st !== 'absent' && d.st !== 'unpaid')) return;
+      if (d.day >= today || d.st !== 'absent') return;
       if (attLeaveMakeupOf(key, d.day, ['pending'])) out.pending.push(d.day); else out.days.push({ day: d.day, st: d.st });
     });
   });
@@ -15531,7 +15543,7 @@ function attMakeupCheck(p, today, recsOf) {
   if (!Array.isArray(mR) || !Array.isArray(dR)) return { ok: false, err: 'Ирцийн мэдээлэл ачаалагдаагүй байна — түр хүлээгээд дахин оролдоно уу' };
   const st = attDayStatus(k, missed, attRecsByDay(k, mR)[missed], today).st;
   if (st === 'makeup') return { ok: false, err: 'Энэ өдрийг аль хэдийн нөхсөн байна' };
-  if (st !== 'absent' && st !== 'unpaid') return { ok: false, err: 'Энэ өдөр тасалсан/амрах өдөртэй биш — нөхөх шаардлагагүй' };
+  if (st !== 'absent') return { ok: false, err: 'Энэ өдөр «Тасалсан» биш — нөхөх шаардлагагүй (амрах өдөр цалингаас хасагддаггүй)' };
   if (attLeaveMakeupOf(k, missed, ['pending', 'approved'])) return { ok: false, err: 'Энэ өдрийн нөхөлтийн хүсэлт аль хэдийн байна' };
   if (attLeaveExpected(k, made, cfg)) return { ok: false, err: 'Нөхсөн өдөр амралтын/баярын өдөр байх ёстой — ажлын өдрийн илүү цаг цалинд өөрөө тооцогддог' };
   const taken = attLeaveRowsOf(k).find(r => r.kind === 'makeup' && (r.status === 'pending' || r.status === 'approved') && String(r.makeup_day) === made);
@@ -15760,7 +15772,7 @@ function attLeaveReportHtml(month, recs, today) {
     money ? `<td class="alv-rn${r.amount ? ' bad' : ''}">${r.amount === null ? '' : (r.amount ? '−' + fmtMoney(r.amount) + (r.est ? '*' : '') : '·')}</td>` : ''}<td class="alv-rn">${r.vacLeft}</td></tr>`).join('');
   return `<details class="fin-more alv-grid-d"><summary>📊 Сарын нэгтгэл · чөлөө, тасалсан, амралтын үлдэгдэл</summary><div class="fin-more-in">
     <div class="alv-grid-w"><table class="alv-grid alv-rep"><thead><tr><th class="alv-gn"></th><th class="alv-rh">Ирсэн</th><th class="alv-rh">Хоцорсон</th><th class="alv-rh">Тасалсан</th><th class="alv-rh">Амрах өдөр</th><th class="alv-rh">Чөлөө (цалинтай)</th><th class="alv-rh">Амралт</th><th class="alv-rh">Өвчтэй</th><th class="alv-rh">Нөхсөн</th>${money ? '<th class="alv-rh">Суутгал</th>' : ''}<th class="alv-rh">Амралт үлдсэн</th></tr></thead><tbody>${body}</tbody></table></div>
-    <div class="alv-legend">Өдрөөр. Суутгал = тасалсан + амрах өдөр — ажилласан цагаар хасагдсан дүнд багтсан (тусдаа хасалт БИШ).${rows.some(r => r.est) ? ' * явж буй сар — урьдчилсан, сар дуусмагц цагаар хасагдана.' : ''} Амралтын үлдэгдэл = жилийн ${attLeaveCfg().vacationDays} ажлын өдрөөс.</div>
+    <div class="alv-legend">Өдрөөр. Суутгал = ЗӨВХӨН тасалсан — ажилласан цагаар хасагдсан дүнд багтсан (тусдаа хасалт БИШ). Амрах өдөр цалингаас хасагдахгүй.${rows.some(r => r.est) ? ' * явж буй сар — урьдчилсан, сар дуусмагц цагаар хасагдана.' : ''} Амралтын үлдэгдэл = жилийн ${attLeaveCfg().vacationDays} ажлын өдрөөс.</div>
     <button class="btn alv-xls" data-alv-xls="${escapeHtml(month)}">⬇ Excel татах</button>
   </div></details>`;
 }
@@ -15893,7 +15905,7 @@ async function attLeaveDecide(id, status, note) {
 function openAttLeaveModal(preKind) {
   if (!attLeaveCfg().from) { showToast('Чөлөөний хүсэлт хараахан нээгдээгүй байна', 'warn', 3500); return; }
   document.getElementById('alv-modal')?.remove();
-  const today = todayStr(), tomorrow = addDays(today, 1);
+  const today = todayStr(), tomorrow = addDays(today, 1), dayAfter = addDays(today, 2);
   let kind = ATT_LEAVE_REQ_KINDS.includes(preKind) ? preKind : 'unpaid', proof = '', busy = false;
   const modal = document.createElement('div');
   modal.className = 'modal-bg'; modal.id = 'alv-modal';
@@ -15901,8 +15913,9 @@ function openAttLeaveModal(preKind) {
   modal.innerHTML = `<div class="modal alv-modal">
     <h2>🗓 Чөлөө / амралт авах</h2>
     <div class="alv-kinds">${kinds.map(k => `<button type="button" class="ui-raw alv-kind" data-alv-kind="${k}">${ATT_LEAVE_KINDS[k].icon} ${ATT_LEAVE_KINDS[k].label}</button>`).join('')}</div>
-    <div class="alv-row"><span class="alv-l">Эхлэх</span><input type="date" id="alv-from" class="ui-raw alv-date" value="${tomorrow}"></div>
-    <div class="alv-row"><span class="alv-l">Дуусах</span><input type="date" id="alv-to" class="ui-raw alv-date" value="${tomorrow}"></div>
+    <div class="alv-row"><span class="alv-l">Эхлэх өдөр</span><input type="date" id="alv-from" class="ui-raw alv-date" value="${tomorrow}" aria-label="Амрах эхний өдөр"></div>
+    <div class="alv-row"><span class="alv-l">Ирэх өдөр</span><input type="date" id="alv-back" class="ui-raw alv-date" value="${dayAfter}" aria-label="Ажилдаа эргэн ирэх өдөр"></div>
+    <div class="alv-cnt" id="alv-cnt"></div>
     <textarea id="alv-reason" class="ui-raw alv-reason" maxlength="300" rows="2" placeholder="Шалтгаан (заавал)"></textarea>
     <div id="alv-proof-wrap" class="alv-proof" hidden>
       <span class="alv-proof-t">🧾 Өвчний баримт (заавал)</span>
@@ -15919,26 +15932,46 @@ function openAttLeaveModal(preKind) {
   document.body.appendChild(modal);
   const $ = (s) => modal.querySelector(s), close = () => modal.remove();
   const errEl = $('#alv-err'), prevEl = $('#alv-prev');
-  const read = () => ({ kind, from: $('#alv-from').value, to: $('#alv-to').value || $('#alv-from').value, reason: $('#alv-reason').value, proof });
+  /* «Ирэх өдөр» = ажилдаа эргэн ирэх өдөр (өөрөө амрахгүй). Хадгалах `to` = СҮҮЛИЙН амрах өдөр = ирэх өдрөөс 1 хоногийн өмнө (DB/тооцооны утга хэвээр).
+     Жишээ: 11-18 эхлээд 11-19-нд ирнэ → 11-18 ГАНЦ → 1 өдөр. (Өмнө «Дуусах» гэж асууж, 11-19-ийг ч амрах өдөр гэж тооцож 2 өдөр болдог байв.) */
+  const lastOff = () => { const f = $('#alv-from').value, b = $('#alv-back').value; return (_isoDay(f) && _isoDay(b) && b > f) ? addDays(b, -1) : f; };
+  const read = () => ({ kind, from: $('#alv-from').value, to: lastOff(), reason: $('#alv-reason').value, proof });
   const me = findMember(state.me) || {}, key = attMarkKey(personKey(me) || state.me);
   const refresh = () => {
     modal.querySelectorAll('[data-alv-kind]').forEach(b => b.classList.toggle('on', b.dataset.alvKind === kind));
     $('#alv-proof-wrap').hidden = kind !== 'sick';
     if (kind === 'sick' && $('#alv-from').value > today) { /* өвчтэй: өнөөдөр эсвэл өнгөрсөн өдөр */ }
-    const p = read(), v = attLeaveCheck(Object.assign({ key }, p));
-    errEl.hidden = true; prevEl.innerHTML = '';
+    const p = read(), back = $('#alv-back').value, cntEl = $('#alv-cnt');
+    errEl.hidden = true; prevEl.innerHTML = ''; cntEl.innerHTML = '';
+    if (!_isoDay(p.from) || !_isoDay(back) || back <= p.from) {
+      errEl.textContent = '⚠ Ирэх өдөр нь эхлэх өдрөөс ХОЙШ байх ёстой (ажилдаа эргэн ирэх өдрөө сонгоно уу)'; errEl.hidden = false;
+      return { ok: false, err: errEl.textContent };
+    }
+    // Хэд хоног амрахыг ЭХЭНД, алдаанаас үл хамааран харуулна (1 өдөр / 2 өдөр тодорхой байх ёстой)
+    cntEl.innerHTML = `<b>${escapeHtml(attLeaveCountText(p.from, p.to))} амарна</b> · ${escapeHtml(attLeaveSpanText(p.from, p.to))} · <b>${escapeHtml(back.slice(5))}-нд ажилдаа ирнэ</b>`;
+    const v = attLeaveCheck(Object.assign({ key }, p));
     if (!v.ok) { if (p.reason || p.from !== tomorrow) { errEl.textContent = '⚠ ' + v.err; errEl.hidden = false; } return v; }
-    prevEl.innerHTML = `${v.workdays} ажлын өдөр · ${v.late ? '<b class="alv-late">⚠ хоцорсон хүсэлт</b> — ҮАЗ тусгайлан шийднэ' : '<b class="alv-ontime">✓ хугацаандаа</b>'}<br><small>${escapeHtml(v.rule)}</small>${v.warn ? `<br><small class="alv-late">⚠ ${escapeHtml(v.warn)}</small>` : ''}`;
+    prevEl.innerHTML = `${v.late ? '<b class="alv-late">⚠ хоцорсон хүсэлт</b> — ҮАЗ тусгайлан шийднэ' : '<b class="alv-ontime">✓ хугацаандаа</b>'}<br><small>${escapeHtml(v.rule)}</small>${v.warn ? `<br><small class="alv-late">⚠ ${escapeHtml(v.warn)}</small>` : ''}`;
     return v;
   };
   modal.querySelectorAll('[data-alv-kind]').forEach(b => b.addEventListener('click', () => {
     kind = b.dataset.alvKind;
-    if (kind === 'sick') { $('#alv-from').value = today; $('#alv-to').value = today; }   // өвчтэй: тухайн өдөр
-    else if ($('#alv-from').value <= today) { $('#alv-from').value = tomorrow; $('#alv-to').value = tomorrow; }
+    if (kind === 'sick') { $('#alv-from').value = today; $('#alv-back').value = tomorrow; }   // өвчтэй: тухайн өдөр (1 өдөр)
+    else if ($('#alv-from').value <= today) { $('#alv-from').value = tomorrow; $('#alv-back').value = dayAfter; }
     refresh();
   }));
-  $('#alv-from').addEventListener('input', () => { if ($('#alv-to').value < $('#alv-from').value) $('#alv-to').value = $('#alv-from').value; refresh(); });
-  $('#alv-to').addEventListener('input', refresh);
+  // Эхлэх өдрийг зөөхөд амрах хоногийн тоо хэвээр (1 өдөр байсан бол 1 өдөр хэвээр, ирэх өдөр дагаж зөөгдөнө)
+  let prevFrom = $('#alv-from').value;
+  $('#alv-from').addEventListener('input', () => {
+    const f = $('#alv-from').value, b = $('#alv-back').value;
+    if (_isoDay(f)) {
+      const span = (_isoDay(prevFrom) && _isoDay(b) && b > prevFrom) ? Math.round((Date.parse(b) - Date.parse(prevFrom)) / 864e5) : 1;
+      $('#alv-back').value = addDays(f, Math.max(1, span));
+      prevFrom = f;
+    }
+    refresh();
+  });
+  $('#alv-back').addEventListener('input', refresh);
   $('#alv-reason').addEventListener('input', refresh);
   $('#alv-file').addEventListener('change', async (e) => {
     const f = e.target.files && e.target.files[0]; if (!f) return;

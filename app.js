@@ -15209,18 +15209,19 @@ function attDayStatus(key, day, dayRecs, today) {
     return res('present', { expected });
   }
   if (!expected) {
-    // Хуваарьгүй хүнийг «тасалсан» болгохгүй ч БАТЛАГДСАН чөлөөгөө авна: цалин ЦАГААР тул цалинтай чөлөө/амралт/өвчтэй ажлын өдрийг НОРМД тооцохгүй бол
-    // батлагдсан амралт нь цалингаас чимээгүй хасагдана. Зөвхөн ердийн ажлын өдөр (Да–Ня, баяр биш) — бусад нь `holiday`/`off`.
+    // Хуваарьгүй хүнийг «тасалсан» болгохгүй ч БАТЛАГДСАН чөлөөгөө авна: цалин ЦАГААР тул амрах өдөр/цалинтай чөлөө/өвчтэйг ажлын өдөр НОРМД тооцохгүй бол
+    // батлагдсан амралт нь цалингаас чимээгүй хасагдана. Баяр биш ямар ч өдөр (бямба/нямын чөлөө ч «Амрах өдөр» гэж харагдана — манайд амралтын өдөр байхгүй);
+    // НОРМД тооцох нь зөвхөн Да–Ня (норм = ажлын өдрүүд) — бямба/нямын чөлөө цалинд нөлөөлөхгүй (хасагдахгүй, нэмэгдэхгүй).
     const rq = attLeaveCover(k, day, ['approved']);
-    if (rq && ATT_LEAVE_KINDS[rq.kind] && ATT_LEAVE_KINDS[rq.kind].req && isWeekdayIso(day) && !attLeaveIsHoliday(day, cfg)) {
+    if (rq && ATT_LEAVE_KINDS[rq.kind] && ATT_LEAVE_KINDS[rq.kind].req && !attLeaveIsHoliday(day, cfg)) {
       const kd = ATT_LEAVE_KINDS[rq.kind];
-      return res(rq.kind, { expected, deduct: !kd.paid, credit: kd.paid && !hasRec, row: rq });
+      return res(rq.kind, { expected, deduct: !kd.paid, credit: kd.paid && !hasRec && isWeekdayIso(day), row: rq });
     }
     return res(attLeaveIsHoliday(day, cfg) ? 'holiday' : 'off', { credit: attLeaveIsHoliday(day, cfg) && isWeekdayIso(day) && !hasRec });
   }
   const req = attLeaveCover(k, day, ['approved']), mk = attLeaveMakeupOf(k, day, ['approved']);
   // Амрах өдөр/цалинтай чөлөө нөхөлтөөс ӨНДӨР (нөхөх шаардлагагүй); зөвхөн тасалсан өдөр нөхөгдвөл «нөхсөн» болно
-  if (req && ATT_LEAVE_KINDS[req.kind].paid) return res(req.kind, { expected, credit: true, row: req });
+  if (req && ATT_LEAVE_KINDS[req.kind].paid) return res(req.kind, { expected, credit: isWeekdayIso(day), row: req });   // бямба/ням норм биш → нормд тооцохгүй
   if (mk) {
     // Нөхөлт: ТӨЛӨВ «нөхсөн». Нөхсөн өдөр нь ӨӨР САРД бол л НОРМД тооцно (ижил сард бол нөхсөн цаг өөрөө нормыг гүйцээнэ)
     const cross = String(mk.makeup_day || '').slice(0, 7) !== day.slice(0, 7);
@@ -15299,7 +15300,7 @@ function attLeaveDeductionInfo(base, ym, sum, shortAmt) {
   return { days, absent: sum ? sum.n.absent : 0, amount: Math.min(nominal, real), nominal };
 }
 /* ХҮСЭЛТИЙН ШАЛГАЛТ (ЦЭВЭР). p = { key, kind, from, to, reason, proof }.
-   Хугацааны дүрэм: нэг ажлын өдрийн чөлөө → ӨМНӨХ ӨДӨР; 2+ ажлын өдөр / ээлжийн амралт → `notice_multi` (өгөгдмөл 2) хоногийн өмнө; өвчтэй → тухайн өдөр (баримттай).
+   Хугацааны дүрэм: нэг өдрийн чөлөө → ӨМНӨХ ӨДӨР; 2+ өдөр (бямба/ням ч тоологдоно) / ээлжийн амралт → `notice_multi` (өгөгдмөл 2) хоногийн өмнө; өвчтэй → тухайн өдөр (баримттай).
    Хоцорсон хүсэлт БОЛОХГҮЙ БИШ — `late` гэж тэмдэглэгдэж ҮАЗ тусгайлан шийднэ. */
 function attLeaveCheck(p, today, cfg) {
   p = p || {}; today = today || todayStr(); cfg = cfg || attLeaveCfg();
@@ -15311,8 +15312,10 @@ function attLeaveCheck(p, today, cfg) {
   if (!cfg.from) return { ok: false, err: 'Чөлөөний хүсэлт хараахан нээгдээгүй байна' };
   if (to < cfg.from) return { ok: false, err: `Чөлөөний бүртгэл ${cfg.from}-аас эхэлсэн — өмнөх өдрийг удирдлагад хэлнэ үү` };
   if (from < addDays(today, -ATT_LEAVE_BACK_D)) return { ok: false, err: ATT_LEAVE_BACK_D + ' хоногоос хуучин өдөр — удирдлагад шууд хандана уу' };
-  const work = attLeaveWorkdays(from, to, cfg);
-  if (!work.length) return { ok: false, err: 'Сонгосон өдрүүд бүгд амралтын/баярын өдөр — чөлөө шаардлагагүй' };
+  /* ⛔ МАНАЙД АМРАЛТЫН ӨДӨР (бямба/ням) БАЙХГҮЙ (CEO 2026-11-17): хүсэлтийг ХАМГИЙН ӨДӨРТ гаргана. Зөвхөн `att_leave.holidays` (баяр) хасагдана.
+     Өмнө нь зөвхөн Да–Ня тоологдож, бямба/нямын хүсэлт «бүгд амралтын өдөр» гэж татгалзагддаг, Баасан–Даваа нь «2 өдөр» гэж тоологддог байв. */
+  const leaveDays = attLeaveDays(from, to).filter(d => !attLeaveIsHoliday(d, cfg));
+  if (!leaveDays.length) return { ok: false, err: 'Сонгосон өдрүүд бүгд баярын өдөр — чөлөө шаардлагагүй' };
   if (String(p.reason || '').trim().length < 3) return { ok: false, err: 'Шалтгаанаа бичнэ үү' };
   if (p.kind === 'sick' && !p.proof) return { ok: false, err: 'Өвчтэй бол баримтын зураг хавсаргана уу' };
   const months = {}; attLeaveDays(from, to).forEach(d => { months[d.slice(0, 7)] = 1; });
@@ -15321,15 +15324,15 @@ function attLeaveCheck(p, today, cfg) {
   const clash = attLeaveRowsOf(p.key).find(r => r.kind !== 'makeup' && r.source === 'request' && (r.status === 'pending' || r.status === 'approved')
     && String(r.from_day) <= to && String(r.to_day) >= from);
   if (clash) return { ok: false, err: `Энэ өдрүүдэд өөр хүсэлт байна (${String(clash.from_day).slice(5)}${clash.to_day !== clash.from_day ? ' – ' + String(clash.to_day).slice(5) : ''}, ${clash.status === 'approved' ? 'батлагдсан' : 'хүлээгдэж буй'})` };
-  const multi = work.length >= 2 || p.kind === 'vacation';
+  const multi = leaveDays.length >= 2 || p.kind === 'vacation';
   let late = false, rule = '';
   if (p.kind === 'sick') { late = from < addDays(today, -ATT_LEAVE_SICK_LATE_D); rule = 'Өвчтэй бол тухайн өдөрт нь (баримттай) мэдэгдэнэ'; }
   else if (multi) { late = addDays(today, cfg.noticeMulti) > from; rule = `2+ өдрийн чөлөө/ээлжийн амралтыг ${cfg.noticeMulti} хоногийн өмнө илгээнэ`; }
   else { late = addDays(today, cfg.notice1) > from; rule = 'Нэг өдрийн чөлөөг өмнөх өдөр нь илгээнэ'; }
-  const out = { ok: true, late, rule, workdays: work.length, days: attLeaveDays(from, to).length };
+  const out = { ok: true, late, rule, days: leaveDays.length };
   if (p.kind === 'vacation') {
-    const used = attLeaveVacationUsed(p.key, from.slice(0, 4));
-    if (used + work.length > cfg.vacationDays) out.warn = `Ээлжийн амралт ${from.slice(0, 4)} онд ${used}/${cfg.vacationDays} ажлын өдөр авсан — ${work.length} өдөр нэмбэл ${used + work.length}/${cfg.vacationDays} болно`;
+    const used = attLeaveVacationUsed(p.key, from.slice(0, 4)), wk = attLeaveWorkdays(from, to, cfg).length;   // ээлжийн амралтын норм = АЖЛЫН өдрөөр
+    if (used + wk > cfg.vacationDays) out.warn = `Ээлжийн амралт ${from.slice(0, 4)} онд ${used}/${cfg.vacationDays} ажлын өдөр авсан — ${wk} өдөр нэмбэл ${used + wk}/${cfg.vacationDays} болно`;
   }
   return out;
 }
@@ -15343,14 +15346,14 @@ function attLeaveVacationUsed(key, year) {
   return n;
 }
 function attLeaveVacationLeft(key, year) { const c = attLeaveCfg(); return Math.max(0, c.vacationDays - attLeaveVacationUsed(key, year)); }
-/* Амрах өдрийн ТОО (ЦЭВЭР): эхлэх БА сүүлийн амрах өдөр хоёулаа орно. «1 өдөр» / «4 өдөр (ажлын 2)». Хоёр огноо «хэд хоног» вэ гэдгийг ИЛ харуулна. */
+/* Амрах өдрийн ТОО (ЦЭВЭР): эхлэх БА сүүлийн амрах өдөр хоёулаа орно, бямба/ням ч ТООЛОГДОНО (манайд амралтын өдөр байхгүй); зөвхөн баяр хасагдана. «1 өдөр» / «4 өдөр». */
 function attLeaveSpanText(from, to) {
   const f = String(from).slice(5), t = String(to || from).slice(5);
   return f === t ? f : f + ' – ' + t;
 }
 function attLeaveCountText(from, to) {
-  const n = attLeaveDays(String(from), String(to || from)).length, w = attLeaveWorkdays(String(from), String(to || from)).length;
-  return n + ' өдөр' + (w !== n ? ` (ажлын ${w})` : '');
+  const cfg = attLeaveCfg();
+  return attLeaveDays(String(from), String(to || from)).filter(d => !attLeaveIsHoliday(d, cfg)).length + ' өдөр';
 }
 // Нэг мөрийн текст: «🏖 11-20 – 11-24 · Ээлжийн амралт · 5 өдөр»
 function attLeaveRowText(r) {

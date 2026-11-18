@@ -16043,6 +16043,16 @@ function openAttLeaveModal(preKind) {
   modal.classList.add('open');
 }
 /* ── «МИНИЙ ИРЦ» ДЭЭРХ КАРТ ───────────────────────────────────────────────────────────────────── */
+/* «Хүсэлт байхгүй» үеийн тайлбар (CEO 2026-11-18: хуучин «ирцийн хуваарьтай өдөр ажиллана» нь өдөр бүр ажиллах дүрэмтэй зөрүүтэй байсан).
+   Ирц шаардах ажилтанд (`attLeaveTracked`) шинэ дүрмийг хэлнэ; бусдад (удирдлага, цагийн ажилтан, `exempt`) «тасалсан» гэж ХЭЛЭХГҮЙ (тэдэнд хамаарахгүй).
+   Дүрэм эхлээгүй (`daily_from` ирээдүйд) бол эхлэх өдрийг нэрлэнэ. Дүрэм `attDayStatus`, tools/att_notify.py-тай ижил: 18:00 (ATT_ABSENT_AT). */
+function attLeaveNoneText(key) {
+  const ask = 'Амрах бол өмнө нь хүсэлтээ илгээж батлуулна.';
+  if (!attLeaveTracked(key)) return 'Хүсэлт байхгүй. ' + ask;
+  const from = attLeaveCfg().dailyFrom;
+  const soon = String(from) > todayStr() ? String(from).slice(5) + ' өдрөөс эхлэн: ' : '';
+  return 'Хүсэлт байхгүй. ' + soon + 'Өдөр бүр ажлын өдөр. ' + ask + ' Хүсэлтгүй, ' + ATT_ABSENT_AT + ' хүртэл ирц бүртгүүлээгүй бол «Тасалсан» болно.';
+}
 function attMyLeaveCardHtml(myKey) {
   const cfg = attLeaveCfg(); if (!cfg.from) return '';
   const mine = attLeaveRowsOf(myKey).filter(r => r.source === 'request' && r.status !== 'cancelled')
@@ -16054,7 +16064,7 @@ function attMyLeaveCardHtml(myKey) {
     <div class="alv-head"><b>🗓 Чөлөө / амралт</b><button class="ui-raw alv-new" id="my-alv-new">➕ Амралт хүсэх</button></div>
     ${attMakeupBalanceHtml(myKey)}
     ${attLeavesWarnHtml()}
-    ${rows || '<div class="alv-none">Хүсэлт байхгүй. Ирцийн хуваарьтай өдөр ажиллана гэж тооцогдоно — амрах бол өмнө нь хүсэлтээ илгээнэ.</div>'}
+    ${rows || `<div class="alv-none">${escapeHtml(attLeaveNoneText(myKey))}</div>`}
   </div>`;
 }
 /* ── ҮАЗ: ХҮЛЭЭГДЭЖ БУЙ ХҮСЭЛТИЙН САМБАР ─────────────────────────────────────────────────────── */

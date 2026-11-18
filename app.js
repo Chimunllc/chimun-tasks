@@ -17640,11 +17640,11 @@ async function _fetchEmployeeDocOne(phone) {
 // CEO: ажилтны үнэмлэхийг харах модал (зөвхөн CEO/эрхтэнд UI-д гарна)
 async function openEmployeeDocModal(phone, name) {
   const ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;z-index:99992;background:rgba(0,0,0,.8);display:flex;flex-direction:column;';
-  ov.innerHTML = `<div style="padding:14px 16px;color:#fff;display:flex;justify-content:space-between;align-items:center;">
-    <div style="font-weight:700;">${escapeHtml(name || '')} · Иргэний үнэмлэх</div>
-    <button id="edoc-close" style="background:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;">Хаах</button></div>
-    <div id="edoc-body" style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:0 10px 16px;color:#fff;">Ачаалж байна…</div>`;
+  ov.className = 'edoc-ov';
+  ov.innerHTML = `<div class="edoc-head">
+    <div class="edoc-title">${escapeHtml(name || '')} · Иргэний үнэмлэх</div>
+    <button id="edoc-close" class="edoc-pill edoc-x">Хаах</button></div>
+    <div id="edoc-body" class="edoc-body">Ачаалж байна…</div>`;
   document.body.appendChild(ov);
   document.getElementById('edoc-close').onclick = () => ov.remove();
   ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
@@ -17652,10 +17652,10 @@ async function openEmployeeDocModal(phone, name) {
   const body = document.getElementById('edoc-body'); if (!body) return;
   if (!doc || !doc.id_doc) { body.textContent = 'Үнэмлэх оруулаагүй байна.'; return; }
   if (doc.doc_type === 'pdf') {
-    body.innerHTML = `<iframe src="${doc.id_doc}" style="width:100%;height:100%;border:none;background:#fff;border-radius:8px;"></iframe>
-      <a href="${doc.id_doc}" download="unemlekh.pdf" style="position:absolute;bottom:20px;background:#fff;padding:8px 16px;border-radius:8px;font-weight:700;">⬇ Татах</a>`;
+    body.innerHTML = `<iframe src="${doc.id_doc}" class="edoc-frame"></iframe>
+      <a href="${doc.id_doc}" download="unemlekh.pdf" class="edoc-pill edoc-dl">⬇ Татах</a>`;
   } else {
-    body.innerHTML = `<img src="${doc.id_doc}" style="max-width:100%;max-height:100%;border-radius:8px;object-fit:contain;">`;
+    body.innerHTML = `<img src="${doc.id_doc}" class="edoc-img">`;
   }
 }
 /* ─── Лавлагаа PDF-ээс автомат бөглөх (PDF.js, AI-гүй) ─────────────────── */

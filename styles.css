@@ -193,6 +193,10 @@
     --scrim-modal:  rgba(0,0,0,.5);            /* `.modal` БИШ, өөрөө үүсгэсэн попап цонхны бүрхүүл */
     --scrim-scan-top: rgba(0,0,0,.55);         /* QR сканы дээд заавар мөрийн градиент */
     --scrim-scan-out: rgba(0,0,0,.4);          /* QR сканы хүрээний ГАДНА талыг бүрхэх */
+    /* 🪪 Үнэмлэх/баримтыг бүтэн дэлгэцээр харах давхарга (`.edoc-ov`) — бусдаас
+       БАРААН: зураг/PDF тод уншигдах ёстой. ⚠ Шинэ хатуу өнгө бичвэл debt-check
+       «шинэ өнгө» гэж тоолдог тул утгыг `--scan-dark`-аас `color-mix`-ээр гаргав. */
+    --scrim-doc:    color-mix(in srgb, var(--scan-dark) 80%, transparent);
 
     /* ── 📷 ИРЦИЙН QR СКАНЫ ДАВХАРГА (`.ascan-*`) ──
        ҮРГЭЛЖ хар/цагаан (цайвар ба харанхуй горимд ИЖИЛ): дэвсгэр нь камерын
@@ -10689,6 +10693,50 @@ select.no-asar-len {
   background: var(--scan-light); color: var(--scan-dark);
   font-size: var(--fs-lg); font-weight: 700; cursor: pointer;
 }
+
+/* ═══ 🪪 ҮНЭМЛЭХ · БАРИМТ ХАРАХ ДАВХАРГА (`openEmployeeDocModal`, угтвар `edoc-`) ═══
+   Ажилтны иргэний үнэмлэхийн зураг эсвэл PDF-ийг бүтэн дэлгэцээр харуулна.
+   Өмнө нь `style.cssText` + 7 inline `style=` байсныг класс болгов (2026-11-18).
+   ⚠ `--scan-dark` / `--scan-light` = аппын горимоос ҮЛ ХАМААРАХ хар/цагаан токен
+     (`.ascan-*` ЯГ ингэж ашигладаг): давхаргын дэвсгэр нь баримтын дүрс тул
+     гадаргуугийн токенд ДАГАХГҮЙ — харанхуй горимд цайрвал баримт уншигдахгүй.
+   ⚠ Цагаан пилл (`.edoc-pill`) -д `color` ЗААВАЛ бич. Өмнө нь браузерын
+     анхдагчид найдаж байсан тул `color-scheme: dark` үед цайвар бичвэр цагаан
+     дэвсгэр дээр бүдгэрч, «⬇ Татах» холбоос нь анхдагч цэнхэр/зураастай болдог.
+   ⚠ ID-ууд (`#edoc-close`, `#edoc-body`) ХЭВЭЭР — JS тэднээр олдог, өөр тэнхлэг.
+   ⚠ Зай нь зайн масштабт (`--space-*`) ороогүй 14/10/6/20px байсныг хамгийн
+     ойрын токенд нааж тэгшлэв (2-4px зөрүү, нүдэнд үл мэдэгдэнэ). */
+.edoc-ov {
+  position: fixed; inset: 0; z-index: 99992;
+  background: var(--scrim-doc);
+  display: flex; flex-direction: column;
+}
+.edoc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  color: var(--scan-light);
+}
+.edoc-title { font-weight: 700; }
+.edoc-body {
+  flex: 1; overflow: auto;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 var(--space-3) var(--space-4);
+  color: var(--scan-light);
+}
+/* Давхарга дээрх цагаан пилл — «Хаах» товч ба «⬇ Татах» холбоос хуваалцана */
+.edoc-pill {
+  background: var(--scan-light); color: var(--scan-dark);
+  border: none; border-radius: var(--r-md);
+  font-weight: 700; text-decoration: none; cursor: pointer;
+}
+.edoc-x { padding: var(--space-2) var(--space-3); }
+.edoc-dl { position: absolute; bottom: var(--space-5); padding: var(--space-2) var(--space-4); }
+.edoc-frame {
+  width: 100%; height: 100%;
+  border: none; border-radius: var(--r-md);
+  background: var(--scan-light);
+}
+.edoc-img { max-width: 100%; max-height: 100%; border-radius: var(--r-md); object-fit: contain; }
 
 /* ═══ ДААЛГАВРЫН ОНОО (2026-11-09) — зөвхөн токен; хатуу өнгө, хатуу px фонт, давхар override БАЙХГҮЙ ═══ */
 .t-due-row { display: flex; gap: var(--space-2); }

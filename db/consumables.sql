@@ -84,7 +84,8 @@ group by c.id;
 
 -- anon-д ОГТ нээхгүй (дотоод мэдээлэл).
 revoke all on consumables, consumable_moves from anon;
-revoke all on public.consumable_stock from public, anon;
+-- ⚠ `authenticated` ХҮРТЭЛ хураана: эзний DEFAULT PRIVILEGES харагдац дээр ч `arwd` олгодог (унших л хэрэгтэй).
+revoke all on public.consumable_stock from public, anon, authenticated;
 grant select, insert, update on consumables to authenticated;
 grant select, insert on consumable_moves to authenticated;
 grant usage, select on sequence consumable_moves_id_seq to authenticated;

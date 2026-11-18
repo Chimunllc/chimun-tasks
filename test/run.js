@@ -26441,7 +26441,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     ceo: st.isCEO, me: st.me, mp: st.memberPerms, ws: st.workStart, pc: st.payrollCfg, fetch: sandbox.fetch };
   const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
   st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallinsErr = null; st.attLeavesErr = null; st.workStart = ALL_START;
-  const CFG = (o) => { st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: o }); };
+  const CFG = (o) => { st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: o && Object.assign({ exempt: [K, K2] }, o) }); };
   const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
   const callins = (rows) => { st.attCallins = {}; (rows || []).forEach(r => { st.attCallins[r.id] = r; }); };
   let n = 0;
@@ -26461,7 +26461,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     eq(run(`payExtras('${K}', '2026-11', [], 2100000)`).leave, null, 'payExtras: унтраалттай үед `leave` хоосон');
     CFG({ from: '2026-11-03', holidays: ['2026-11-12'] });
     eq([run(`attLeaveActive('2026-11-02')`), run(`attLeaveActive('2026-11-03')`), run(`attLeaveMonthActive('2026-10')`), run(`attLeaveMonthActive('2026-11')`)], [false, true, false, true], 'чөлөө: `from`-оос өмнөх өдөр/сар идэвхгүй');
-    eq(run(`attLeaveWorkdays('2026-11-06', '2026-11-13')`), ['2026-11-06', '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-13'], 'ажлын өдөр: бямба/ням БА баярын өдөр (11-12) хасагдана');
+    eq(run(`attLeaveWorkdays('2026-11-06', '2026-11-13')`), ['2026-11-06', '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13'], 'ажлын өдөр (ээлжийн амралтын норм): зөвхөн бямба/ням хасагдана — баяр БАЙХГҮЙ (`holidays` тохиргоо хэрэглэгдэхгүй)');
     eq(run(`attLeaveDays('2026-11-30', '2026-12-02')`), ['2026-11-30', '2026-12-01', '2026-12-02'], 'өдрүүд: сарын хилээр');
 
     // ── ② Хүсэлтийн шалгалт: хугацааны дүрэм (нэг өдөр = өмнөх өдөр; 2+ өдөр, амралт = `notice_multi` (ӨГӨГДӨЛ 2, ҮАЗ 2026-11-15; тохируулж болно); өвчтэй = тухайн өдөр) ──
@@ -26505,8 +26505,8 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     eq([c.ok, c.days], [true, 2], 'хүсэлт: бямба + ням = 2 өдөр');
     c = C({ kind: 'sick', from: '2026-11-07', proof: 'https://x.test/a.jpg' }, '2026-11-07');
     eq([c.ok, c.late], [true, false], 'хүсэлт: бямба гарагт өвчтэй — тухайн өдөр баримттай бол хугацаандаа');
-    ok(/баярын/.test(C({ from: '2026-11-12' }).err), 'хүсэлт: ГАНЦ баярын өдөр сонговол татгалзана (аль хэдийн цалинтай)');
-    eq(run(`attLeaveCountText('2026-11-11', '2026-11-13')`), '2 өдөр', 'амрах хоног: баярын өдөр (11-12) тоологдохгүй');
+    ok(C({ from: '2026-11-12' }).ok, '⛔ хүсэлт: баяр ёслол БАЙХГҮЙ — 11-12 (тохиргоонд баяр гэж бичсэн ч) хүсэлт гаргаж болно');
+    eq(run(`attLeaveCountText('2026-11-11', '2026-11-13')`), '3 өдөр', 'амрах хоног: баярын өдөр тоологдоно (баяр байхгүй)');
     ok(/Шалтгаан/.test(C({ from: '2026-11-05', reason: ' ' }).err), 'хүсэлт: шалтгаан заавал');
     ok(/Дуусах/.test(C({ from: '2026-11-10', to: '2026-11-09' }).err), 'хүсэлт: дуусах нь эхлэхээс өмнө бол татгалзана');
     ok(/60/.test(C({ from: '2026-11-05', to: '2027-02-05' }).err), 'хүсэлт: 60 хоногоос урт татгалзана');
@@ -26534,7 +26534,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     eq(S('2026-11-18').st, 'waiting', 'төлөв: өнөөдөр хараахан ирээгүй = «хүлээж байна» (өдөр дуусаагүй — тасалсан БИШ)');
     eq(S('2026-11-19').st, 'planned', 'төлөв: ирээдүйн ажлын өдөр = «ажиллана»');
     eq(S('2026-11-14').st, 'off', 'төлөв: бямба = амралтын өдөр (тасалсан БИШ)');
-    eq([S('2026-11-12').st, S('2026-11-12').credit], ['holiday', true], 'төлөв: баярын өдөр = нормд тооцогдоно');
+    eq([S('2026-11-12').st, S('2026-11-12').credit], ['absent', false], '⛔ баяр БАЙХГҮЙ: 11-12 ердийн ажлын өдөр — ирцгүй, чөлөөгүй бол тасалсан (`holidays` тохиргоо хэрэглэгдэхгүй)');
     eq(S('2026-11-02').st, 'na', 'төлөв: идэвхжихээс өмнөх өдөр хөндөгдөхгүй');
     eq(S('2026-11-10', [rec('2026-11-10', 'in', '08:55')]).st, 'present', 'төлөв: QR уншуулсан = ирсэн');
     eq(S('2026-11-14', [rec('2026-11-14', 'in', '10:00')]).st, 'present', 'төлөв: амралтын өдөр ажилласан = ирсэн (ажилтныг торгохгүй)');
@@ -26613,11 +26613,13 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     st.appConfig = Object.assign({}, st.appConfig, { pay_rules: { from: '2026-11' } });
     callins([{ id: `${K}|2026-11-10`, member_key: K, day: '2026-11-10', at_time: '09:00', status: 'active' }]);
     put([]);
+    const wsPen = st.workStart; st.workStart = {};   // хуучин хуваарийн мөрийг ТУСАД нь шалгана (ажил эхлэх цаг өдөр бүрийг «ажиллах» болгохгүй)
     eq(run(`attDiscipline('${K}', '2026-11', [], '2026-11-20', 5)`).absentN, 1, 'торгууль: хуваарьтай өдөр ирээгүй бол хуучин дүрмээр «ирээгүй»');
     put([L('paid', '2026-11-10')]);
     eq(run(`attDiscipline('${K}', '2026-11', [], '2026-11-20', 5)`).absentN, 0, '⛔ торгууль: батлагдсан чөлөөтэй өдөр хуваарьт «ирээгүй» БОЛОХГҮЙ (давхар шийтгэхгүй)');
     put([L('absent', '2026-11-10', '2026-11-10', 'approved', { source: 'manual' })]);
     eq(run(`attDiscipline('${K}', '2026-11', [], '2026-11-20', 5)`).absentN, 1, 'торгууль: гар «тасалсан» засвар хуучин ирээгүйг арилгахгүй');
+    st.workStart = wsPen;
     st.appConfig = Object.assign({}, st.appConfig, { pay_rules: undefined });
     callins([]);
 
@@ -26806,9 +26808,15 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     b = B([rec('99300002', TODAY, 'in', '09:00')], [{ member_key: '99300002', from_day: '2026-11-18', to_day: '2026-11-18', cls: 'leave' }]);
     ok(b.here.some(x => x.name === 'Т.Хоёр') && !b.off.some(x => x.name === 'Т.Хоёр'), 'баг: чөлөөтэй атлаа ирсэн хүн «ирсэн» (давхар тоологдохгүй)');
     b = B([], [], '2026-11-21');
-    eq([b.working, b.waiting.length], [false, 0], '⛔ баг: бямба гаригт хэнийг ч «хараахан ирээгүй» гэж нэрлэхгүй');
+    eq([b.working, b.waiting.length], [true, 0], 'баг: бямба = ажлын өдөр (өдөр бүр ажиллана); хуучин «ажил эхлэх цаг»-тай, үндсэн бус хүн Да–Ня л → 0');
+    const nT = TEAMX.length, acBoard = st.appConfig;
+    st.appConfig = Object.assign({}, st.appConfig, { att_leave: { from: '2026-11-02', daily_from: '2026-11-02' } });
+    TEAMX.push(...P.map(p => ({ name: p.name, phone: p.key, role: 'Нярав', level: 40, status: 'идэвхтэй' })));
+    b = B([], [], '2026-11-21');
+    eq([b.working, b.waiting.length], [true, P.length], '⛔ баг: бямба гаригт ч цалинтай ажилтан бүр «хараахан ирээгүй» (амралтын өдөр байхгүй)');
     b = B([], [], '2026-11-26');
-    eq([b.working, b.waiting.length], [false, 0], '⛔ баг: баярын өдөр хэнийг ч «хараахан ирээгүй» гэж нэрлэхгүй');
+    eq([b.working, b.waiting.length], [true, P.length], '⛔ баг: баярын өдөр ч (тохиргоонд байсан ч) ердийн ажлын өдөр — баяр байхгүй');
+    TEAMX.length = nT; st.appConfig = acBoard;
     b = B([], [], '2026-11-01');
     eq(b.working, false, 'баг: дүрэм идэвхжихээс өмнөх өдөр ажлын өдөр гэж тооцохгүй');
     // ирэх өдрүүд
@@ -26870,7 +26878,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     mp: st.memberPerms, pc: st.payrollCfg, fetch: sandbox.fetch, ws: st.workStart, myPay: st.myPayRecs, myAtt: st.myAttendance };
   const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
   st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallins = {}; st.attLeavesErr = null; st.workStart = ALL_START;
-  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02' } });
+  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', exempt: [K] } });
   let n = 0;
   const L = (kind, from, to, status, o) => Object.assign({ id: 'M' + (++n), member_key: K, from_day: from, to_day: to || from, kind, status: status || 'approved', source: 'request', reason: 'тест', updated_at: 'x' }, o || {});
   const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
@@ -26982,7 +26990,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     st.isCEO = false; st.me = K; st.myPayRecs = { '2026-11': NOV }; st.myAttendance = NOV;
     put([]);
     const card = run(`attMyLeaveCardHtml('${K}')`);
-    ok(/Нөхөх өдөр/.test(card), 'ажилтны карт: «Нөхөх өдөр» үлдэгдэл гарна');
+    ok(!/Нөхөх өдөр/.test(card) && !/my-mk-new/.test(card), '⛔ ажилтны карт: «Нөхөх өдөр»/нөхөлтийн товч ХАРАГДАХГҮЙ (өдөр бүр ажиллана — нөхөх амралтын өдөр байхгүй)');
     // scan
     const code = appSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '');
     const sub = code.slice(code.indexOf('async function attMakeupSubmit'), code.indexOf('function attMakeupBalanceHtml'));
@@ -27009,7 +27017,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     mp: st.memberPerms, pc: st.payrollCfg, fetch: sandbox.fetch, ws: st.workStart, mr: st.attMonthRecs, mk: st.attMonthKey, sal: st.salaries };
   const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
   st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallins = {}; st.attLeavesErr = null; st.workStart = ALL_START;
-  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02' } });
+  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', exempt: [K, K2] } });
   let n = 0;
   const L = (kind, from, to, status, o) => Object.assign({ id: 'G' + (++n), member_key: K, from_day: from, to_day: to || from, kind, status: status || 'approved', source: 'request', reason: 'тест', updated_at: '2026-11-05T00:00:00Z', created_at: '2026-11-05T00:00:00Z', created_by: K }, o || {});
   const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
@@ -27133,7 +27141,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     mp: st.memberPerms, pc: st.payrollCfg, ws: st.workStart, mr: st.attMonthRecs, mk: st.attMonthKey, sal: st.salaries, sj: sandbox.loadSheetJS };
   const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
   st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallins = {}; st.attLeavesErr = null; st.workStart = ALL_START;
-  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', vacation_days: 15 } });
+  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', vacation_days: 15, exempt: [K, K2] } });
   let n = 0;
   const L = (kind, from, to, status, o) => Object.assign({ id: 'R' + (++n), member_key: K, from_day: from, to_day: to || from, kind, status: status || 'approved', source: 'request', reason: 'тест', updated_at: 'x' }, o || {});
   const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
@@ -27218,7 +27226,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
   const cp = require('child_process'), os = require('os');
   const K = '99660001', K2 = '99660002';
   const saved = { ac: st.appConfig, lv: st.attLeaves, lvErr: st.attLeavesErr, cal: st.attCallins, calErr: st.attCallinsErr, ws: st.workStart };
-  const CFG = (o) => { st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: o }); };
+  const CFG = (o) => { st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: o && Object.assign({ exempt: [K, K2] }, o) }); };
   const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
   const callins = (rows) => { st.attCallins = {}; (rows || []).forEach(r => { st.attCallins[r.id] = r; }); };
   let n = 0;
@@ -27257,7 +27265,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     eq([S('2026-11-21').st, S('2026-11-21').credit, S('2026-11-21').deduct], ['unpaid', false, false], '⛔ хуваарьт бямба + батлагдсан амрах өдөр: нормд тооцогдохгүй (норм биш), хасагдахгүй');
     callins([]); st.attCallins = {}; st.workStart = {};
     put([L('paid', '2026-11-12')]);
-    eq(S('2026-11-12').st, 'holiday', 'хуваарьгүй: баярын өдөр чөлөөнөөс өмнө «баяр»');
+    eq(S('2026-11-12').st, 'paid', 'баяр БАЙХГҮЙ: 11-12 ч ердийн өдөр — батлагдсан чөлөө нь чөлөө');
     put([L('paid', '2026-11-18', '2026-11-18', 'pending')]);
     eq([S('2026-11-18').st, S('2026-11-18').credit], ['off', false], 'хуваарьгүй: ХҮЛЭЭГДЭЖ БУЙ хүсэлт нормд тооцогдохгүй');
     // ── ③ Батлагдсан чөлөө = даалгаврын хугацаа ЗОГСОНО ──
@@ -27267,7 +27275,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     put([L('sick', '2026-11-18'), L('vacation', '2026-11-20', '2026-11-23', 'approved', { id: 'NV' })]);
     eq(['2026-11-18', '2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23'].map(d => OFF(d)), [true, true, false, false, true], 'зогсолт: өвчтэй/амралт — мужид орсон бямба/ням ЗОГСООХГҮЙ');
     put([L('paid', '2026-11-11', '2026-11-13')]);
-    eq(['2026-11-11', '2026-11-12', '2026-11-13'].map(d => OFF(d)), [true, false, true], 'зогсолт: баярын өдөр (11-12) зогсохгүй');
+    eq(['2026-11-11', '2026-11-12', '2026-11-13'].map(d => OFF(d)), [true, true, true], 'зогсолт: баяр БАЙХГҮЙ — 11-12 ч батлагдсан чөлөөнд зогсоно');
     put([L('paid', '2026-11-18', '2026-11-18', 'pending'), L('paid', '2026-11-19', '2026-11-19', 'rejected'), L('paid', '2026-11-20', '2026-11-20', 'cancelled')]);
     eq(['2026-11-18', '2026-11-19', '2026-11-20'].map(d => OFF(d)), [false, false, false], 'зогсолт: хүлээгдэж буй/татгалзсан/болисон хүсэлт ЗОГСООХГҮЙ');
     put([L('paid', '2026-11-18'), L('present', '2026-11-18', '2026-11-18', 'approved', { source: 'manual', reason: 'ирсэн' })]);
@@ -27299,14 +27307,14 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     ok(/function taskPtsOffFn\(\) \{[\s\S]*?attLeaveOffOn\(key, day\)[\s\S]*?attCallinOn\(key, day\)/.test(appSrc), 'scan: taskPtsOffFn батлагдсан чөлөөг (attLeaveOffOn) ХУВААРИАС ӨМНӨ шалгана');
     // ── ④ Python сануулга (tools/task_notify.py) ↔ апп: батлагдсан чөлөөний зогсолт ИЖИЛ ──
     const tn = path.join(__dirname, '..', 'tools', 'task_notify.py');
-    CFG({ from: '2026-11-02', holidays: ['2026-11-12'] });
+    CFG({ from: '2026-11-02' });
     const phone = '99112233', created = Date.parse('2026-11-09T09:00:00+08:00'), DUE2 = Date.parse('2026-11-10T18:00:00+08:00');
     const mkT = (id, due) => ({ id, title: 'T', assignee: 'Бат', created_by: 'Сүх', status: 'open', due, kpi_code: '⟦DT|18:00⟧', created: String(created), kind: '' });
     const LV = [[phone, '2026-11-10', '2026-11-10', 'paid', 'request', 'u1']];
     const mixed = [[phone, '2026-11-12', '2026-11-12', 'paid', 'request', 'u1'], [phone, '2026-11-13', '2026-11-16', 'vacation', 'request', 'u1'], [phone, '2026-11-17', '2026-11-17', 'present', 'manual', 'u9'], [phone, '2026-11-17', '2026-11-17', 'sick', 'request', 'u1']];
     const cases = [['a', '2026-11-10', LV], ['b', '2026-11-12', mixed], ['c', '2026-11-16', mixed], ['d', '2026-11-17', mixed], ['e', '2026-11-10', []]];
     for (const [id, due, lv] of cases) {
-      const fx = { now: DUE2 + 3600000, from: '2026-11-01', phones: { 'Бат': phone, 'Сүх': '88000001' }, sent: {}, callins: [], leaves: lv, leave_cfg: { from: '2026-11-02', holidays: ['2026-11-12'] }, tasks: [mkT(id, due)] };
+      const fx = { now: DUE2 + 3600000, from: '2026-11-01', phones: { 'Бат': phone, 'Сүх': '88000001' }, sent: {}, callins: [], leaves: lv, leave_cfg: { from: '2026-11-02' }, tasks: [mkT(id, due)] };
       const f = path.join(os.tmpdir(), 'tn_leave_fx_' + process.pid + '.json'); fs.writeFileSync(f, JSON.stringify(fx));
       const py = JSON.parse(cp.execSync(`python3 ${JSON.stringify(tn)} --plan ${JSON.stringify(f)}`, { encoding: 'utf8' })); fs.unlinkSync(f);
       put(lv.map((r, i) => L(r[3], r[1], r[2], 'approved', { id: 'P' + i, member_key: phone, source: r[4], updated_at: r[5] })));
@@ -27319,9 +27327,131 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     const card = run(`attMyLeaveCardHtml('${K}')`);
     ok(/Амралт хүсэх/.test(card) && !/Чөлөө авах/.test(card), 'товч: «➕ Амралт хүсэх» (ҮАЗ), хуучин «Чөлөө авах» үгүй');
     ok(!/Чөлөө авах/.test(appSrc), 'scan: «Чөлөө авах» товчны нэр аппад үлдээгүй');
-    ok(/att_notify\.py/.test(fs.readFileSync(path.join(__dirname, '..', 'tools', 'att_notify.py'), 'utf8').slice(0, 200)) && /def scheduled\(phone, day, callins, work_start\)/.test(fs.readFileSync(path.join(__dirname, '..', 'tools', 'att_notify.py'), 'utf8')), 'scan: att_notify.py `scheduled` (аппын attLeaveScheduled-тэй ижил)');
+    ok(/att_notify\.py/.test(fs.readFileSync(path.join(__dirname, '..', 'tools', 'att_notify.py'), 'utf8').slice(0, 200)) && /def scheduled\(phone, day, callins, work_start, cfg=None\)/.test(fs.readFileSync(path.join(__dirname, '..', 'tools', 'att_notify.py'), 'utf8')), 'scan: att_notify.py `scheduled` (аппын attLeaveScheduled-тэй ижил)');
   } finally {
     Object.assign(st, { appConfig: saved.ac, attLeaves: saved.lv, attLeavesErr: saved.lvErr, attCallins: saved.cal, attCallinsErr: saved.calErr, workStart: saved.ws });
+  }
+});
+
+// ═══ ӨДӨР БҮР АЖИЛЛАНА: амралтын өдөр, баяр байхгүй; 18:00 хүртэл ирц/чөлөө байхгүй бол ШУУД «Тасалсан»; тасалсан ЯМАР ГАРАГТ Ч хасагдана (CEO 2026-11-17) ═══
+(globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+  const run = (c) => vm.runInContext(c, sandbox);
+  const st = run('state');
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const K = '99770001', KX = '99770002', KD = '99770003', KB = '99770004';
+  const saved = { ac: st.appConfig, lv: st.attLeaves, lvErr: st.attLeavesErr, cal: st.attCallins, cm: st.closedMonths, cma: st._closedMonthsAt, me: st.me, ceo: st.isCEO,
+    mp: st.memberPerms, pc: st.payrollCfg, ws: st.workStart, fetch: sandbox.fetch };
+  const TEAMX = run('TEAM'), savedTeam = TEAMX.slice();
+  st.payrollCfg = { start: '2026-09' }; st.closedMonths = {}; st._closedMonthsAt = Date.now(); st.attCallins = {}; st.attLeavesErr = null; st.workStart = {};
+  const CFG = (o) => { st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: o }); };
+  CFG({ from: '2026-11-02', daily_from: '2026-11-02', holidays: ['2026-11-12'] });
+  let n = 0;
+  const L = (kind, from, to, status, o) => Object.assign({ id: 'D' + (++n), member_key: K, from_day: from, to_day: to || from, kind, status: status || 'approved', source: 'request', reason: 'тест', updated_at: 'x' }, o || {});
+  const put = (rows) => { st.attLeaves = {}; (rows || []).forEach(r => { st.attLeaves[r.id] = r; }); };
+  const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
+  const rec = (day, kind, hm) => ({ member_key: K, member_name: 'x', kind, ts: ts(day, hm), day, source: 'scan' });
+  const SD = (key, day, recs, today, hm) => run(`attDayStatus('${key}', '${day}', ${JSON.stringify(recs || [])}, '${today}', ${hm ? `'${hm}'` : 'undefined'})`);
+  try {
+    TEAMX.length = 0;
+    TEAMX.push({ name: 'Т.Хүн', phone: K, role: 'Нярав', level: 40, status: 'идэвхтэй' },
+               { name: 'Т.Чөлөөлөгдсөн', phone: KX, role: 'Нярав', level: 40, status: 'идэвхтэй' },
+               { name: 'Т.Цагийн', phone: KD, role: 'Цагийн ажилтан', level: 40, status: 'идэвхтэй', worker_type: 'daily' },
+               { name: 'Т.Захирал', phone: KB, role: 'Үйл ажиллагааны захирал', level: 80, status: 'идэвхтэй' },
+               { name: 'Т.Эзэн', phone: '88000001', role: 'Захирал', level: 100, status: 'идэвхтэй' });
+    put([]);
+    // ── ① ЭРЭЛДЭХ: цалинтай үндсэн ажилтан ӨДӨР БҮР ажиллана (хуваарь, ажил эхлэх цаг хэрэггүй) ──
+    eq(run(`attLeaveTracked('${K}')`), true, 'ажиллах ёстой: цалинтай үндсэн ажилтан (хуваарь, ажил эхлэх цаггүй ч)');
+    eq([run(`attLeaveTracked('${KD}')`), run(`attLeaveTracked('${KB}')`), run(`attLeaveTracked('88000001')`), run(`attLeaveTracked('99770099')`)], [false, false, false, false], 'ажиллах ёстой БИШ: цагийн ажилтан, удирдлага (level ≥ 80), CEO, мэдэгдэхгүй хүн');
+    for (const [day, name] of [['2026-11-16', 'Даваа'], ['2026-11-20', 'Баасан'], ['2026-11-21', 'Бямба'], ['2026-11-22', 'Ням'], ['2026-11-12', '«баяр» гэж тохируулсан өдөр']]) {
+      eq([SD(K, day, [], '2026-11-25').st, SD(K, day, [], '2026-11-25').deduct], ['absent', true], `⛔ ${name} (${day}): ирц, чөлөө байхгүй бол ТАСАЛСАН — амралтын өдөр, баяр байхгүй`);
+    }
+    eq(SD(KD, '2026-11-21', [], '2026-11-25').st, 'off', 'цагийн ажилтан/удирдлага: ирц шаардахгүй (тасалсан БИШ)');
+    // `exempt` (CEO гараар): утасаар хасна
+    CFG({ from: '2026-11-02', daily_from: '2026-11-02', exempt: [KX] });
+    eq([run(`attLeaveTracked('${KX}')`), run(`attLeaveTracked('${K}')`)], [false, true], 'exempt: тохируулсан утас л хасагдана');
+    // ⛔ ЭХЛЭХ ӨДӨР (`daily_from`): өмнөх өдрүүдэд хуучин дүрэм (өнгөрсөн өдрийг нэг шөнийн дотор «тасалсан» болгохгүй)
+    CFG({ from: '2026-11-02' });
+    eq(run('attLeaveCfg().dailyFrom'), '2026-11-19', '`daily_from` тохируулаагүй бол өгөгдмөл (ирээдүйн өдөр) — ТЭР ӨДРӨӨС ӨМНӨ хуучин дүрэм');
+    eq([SD(K, '2026-11-15', [], '2026-11-25').st, SD(K, '2026-11-17', [], '2026-11-25').st], ['off', 'off'], '⛔ daily_from-оос ӨМНӨХ өдөр (ням 11-15 г.м.): хуваарьгүй хүн «тасалсан» БОЛОХГҮЙ — олгочихсон/явж буй цалин өөрчлөгдөхгүй');
+    eq([SD(K, '2026-11-21', [], '2026-11-25').st, SD(K, '2026-11-19', [], '2026-11-25').st], ['absent', 'absent'], 'daily_from өдрөөс (11-19) хойш: бямба ч, лхагва ч ирцгүй бол тасалсан');
+    eq(SD(K, '2026-11-18', [], '2026-11-18', '19:00').st, 'off', 'daily_from-оос өмнө: 18:00 болсон ч хуваарьгүй хүн «тасалсан» БИШ (хуучин дүрэм хэвээр)');
+    CFG({ from: '2026-11-02', daily_from: '2026-11-02', holidays: ['2026-11-12'] });
+    // ── ② 18:00: өнөөдөр ШУУД «Тасалсан» (маргааш биш) ──
+    const T = '2026-11-18';
+    eq(SD(K, T, [], T, '17:59').st, 'waiting', '⛔ 17:59 — өдөр дуусаагүй: «хүлээж байна» (тасалсан БИШ)');
+    eq([SD(K, T, [], T, '18:00').st, SD(K, T, [], T, '18:00').deduct], ['absent', true], '⛔ 18:00 — ирц, чөлөө байхгүй бол ШУУД «Тасалсан»');
+    eq(SD(K, T, [rec(T, 'in', '19:10')], T, '19:30').st, 'present', 'факт давуу: 18:00-аас хойш ч ирц бүртгэгдвэл «Ирсэн» болж засагдана');
+    eq(SD(K, T, [rec(T, 'in', '09:00')], T, '23:00').st, 'present', 'ирсэн хүн 18:00-аас хойш тасалсан БИШ');
+    put([L('unpaid', T)]);
+    eq([SD(K, T, [], T, '19:00').st, SD(K, T, [], T, '19:00').deduct], ['unpaid', false], '⛔ батлагдсан амрах хүсэлттэй өдөр 18:00-аас хойш ч тасалсан БИШ');
+    put([L('unpaid', T, T, 'pending')]);
+    eq([SD(K, T, [], T, '18:30').st, SD(K, T, [], T, '17:00').st], ['pending', 'waiting'], 'хүлээгдэж буй хүсэлт: 18:00-аас хойш «⏳» (шийдэгдтэл), өмнө «хүлээж байна»');
+    put([]);
+    eq(SD(K, '2026-11-19', [], T, '23:00').st, 'planned', 'маргааш: 18:00 болсон ч ирээдүйн өдөр «тасалсан» болохгүй');
+    eq(SD(K, '2026-11-17', [], T, '00:00').st, 'absent', 'өчигдөр: цагаас үл хамааран тасалсан');
+    // `nowHM` өгөөгүй + өнгөрсөн/ирээдүйн `today` → '00:00' (хугацаанд хамаарахгүй, тест тогтвортой)
+    eq(run(`attNowHM('2026-01-01', undefined)`), '00:00', 'attNowHM: өнгөрсөн өдөр бол цаг хамаарахгүй');
+    eq(run(`attNowHM(todayStr(), undefined)`), run('nowHMUB()'), 'attNowHM: өнөөдөр бол бодит УБ цаг');
+    // ── ③ САРЫН НЭГТГЭЛ: хэдэн тасалсан, ХЭДЭН нь норм биш (бямба/ням) ──
+    const sum = run(`attLeaveMonthSummary('${K}', '2026-11', [], '2026-12-01')`);
+    eq([sum.n.absent, sum.deductDays, sum.offAbsent], [29, 29, 8], '⛔ нэгтгэл: 11-02..11-30 = 29 өдөр БҮГД тасалсан (ирц, чөлөөгүй), үүнээс бямба/ням 8');
+    const recs = [];
+    for (let d = 2; d <= 30; d++) { const day = '2026-11-' + String(d).padStart(2, '0'); if (run(`isWeekdayIso('${day}')`)) { recs.push(rec(day, 'in', '09:00'), rec(day, 'out', '18:00')); } }
+    const sum2 = run(`attLeaveMonthSummary('${K}', '2026-11', ${JSON.stringify(recs)}, '2026-12-01')`);
+    eq([sum2.n.absent, sum2.offAbsent, sum2.deductDays], [8, 8, 8], '⛔ нэгтгэл: Даваагаас баасан бүтэн ажилласан ч бямба/нямд ирээгүй 8 өдөр = тасалсан (цагийн норм дутахгүй ч)');
+    put([L('unpaid', '2026-11-07', '2026-11-08'), L('unpaid', '2026-11-14', '2026-11-15')]);
+    const sum3 = run(`attLeaveMonthSummary('${K}', '2026-11', ${JSON.stringify(recs)}, '2026-12-01')`);
+    eq([sum3.n.absent, sum3.offAbsent, sum3.n.unpaid], [4, 4, 4], 'нэгтгэл: бямба/нямд батлагдсан амрах өдөр = тасалсан БИШ (4 өдөр хасагдахгүй)');
+    put([]);
+    // ── ④ ЦАЛИН: бямба/нямын тасалсан өдөр 1 өдрийн цалингаар ТУСАД хасагдана (Да–Ня-ийнх цагаар) ──
+    const BASE = 2100000, N = 10080;   // 11-р сар: 21 өдөр × 480
+    const mb = (extra, month, today, worked) => run(`monthPayBreakdown(${BASE}, false, ${worked === undefined ? N : worked}, ${N}, 0, 1, '${month || '2026-11'}', '${today || '2026-12-05'}', 0, ${N}, ${JSON.stringify(extra)})`);
+    const b0 = mb({});
+    eq([b0.earned, b0.offDeduct, b0.shortMins], [BASE, 0, 0], 'цалин: Даваагаас баасан бүтэн ажилласан, бямба/нямд тасалсангүй → суурь бүтэн');
+    const b2 = mb({ offAbsentDays: 2 });
+    eq([b2.earned, b2.offDeduct, b2.offAbsentDays, b2.shortMins, b2.shortCut], [BASE - 200000, 200000, 2, 0, 0], '⛔ цалин: Да–Ня бүтэн ажилласан ч бямба/нямд 2 өдөр тасалсан бол 2 өдрийн цалин (2 × 100,000) хасагдана — «норм дутахгүй» гэж алгасахгүй');
+    eq(mb({ offAbsentDays: 2 }, '2026-12', '2026-12-05').offDeduct, 0, 'цалин: явж буй сард (сар дуусаагүй) хасахгүй — сар дуусмагц');
+    const b3 = mb({ offAbsentDays: 1 }, '2026-11', '2026-12-05', N - 480);
+    eq([b3.shortMins, b3.shortCut, b3.offDeduct, b3.earned], [480, 100000, 100000, BASE - 200000], 'цалин: Да–Ня нэг өдөр тасалсан (цагаар 100,000) + бямба нэг өдөр (тусад нь 100,000) = 2 өдөр — ДАВХАР БИШ, хоёр өөр өдөр');
+    ok(b2.netBase < b0.netBase && b2.total < b0.total, 'цалин: хасагдсан суурь дээр НДШ/ХХОАТ ч буурна (цэвэр дүн багасна)');
+    const huge = mb({ offAbsentDays: 99 });
+    eq([huge.earned, huge.offDeduct], [0, BASE], 'цалин: хасалт суурьаас илүү гарахгүй (сөрөг цалин байхгүй)');
+    // payExtras → offAbsentDays (нэгтгэлээс)
+    CFG({ from: '2026-11-02', daily_from: '2026-11-02' });
+    const ex = run(`payExtras('${K}', '2026-11', ${JSON.stringify(recs)}, ${BASE})`);
+    eq(ex.offAbsentDays, run(`attLeaveMonthSummary('${K}', '2026-11', ${JSON.stringify(recs)}).offAbsent`), 'payExtras: бямба/нямын тасалсан өдрийг цалингийн бодолт руу дамжуулна');
+    // ── ⑤ ТОРГУУЛЬ: ХУВААРЬГҮЙ ч тасалсан бол 0.5 (нийт 1.5 өдөр) — өдөр бүр ──
+    const disc = run(`attDiscipline('${K}', '2026-11', ${JSON.stringify(recs)}, '2026-12-01', 5)`);
+    eq([disc.absentN, disc.events.every(e => e.kind === 'absent')], [8, true], '⛔ торгууль: хуваарь тавигдаагүй ч бямба/нямд ирээгүй 8 өдөр «ирээгүй» (нэмэлт 0.5 торгуулийн үндэс)');
+    const bd = run(`attPenaltyBreakdown(${JSON.stringify(disc)}, { absentMult: 1.5, lateMult: 2 }, ${BASE}, '2026-11')`);
+    eq(bd.total, 8 * 50000, '⛔ торгууль: тасалсан өдөр бүр (1.5 − 1) × өдрийн цалин = 50,000₮ → нийт 1.5 өдөр (1 цагаар/тусад нь + 0.5 торгууль)');
+    put([L('unpaid', '2026-11-07', '2026-11-08')]);
+    eq(run(`attDiscipline('${K}', '2026-11', ${JSON.stringify(recs)}, '2026-12-01', 5)`).absentN, 6, 'торгууль: батлагдсан амрах өдөр торгуулийн «ирээгүй» БИШ');
+    put([]);
+    st.attLeaves = null;
+    eq(run(`attDiscipline('${K}', '2026-11', ${JSON.stringify(recs)}, '2026-12-01', 5)`).absentN, 0, '⛔ торгууль: чөлөөний дата ачаалагдаагүй бол «ирээгүй» гэж ТААМАГЛАХГҮЙ (чөлөөтэй хүнийг торгохгүй)');
+    put([]);
+    // ── ⑥ БАТЛАХ: өөрийн хүсэлтийг өөрөө батлахгүй (CEO, ҮАЗ, ахлах нярв л бусдынхыг) ──
+    const FUT = '2026-12-20';
+    st.isCEO = true; st.me = K; st.memberPerms = {};
+    put([L('unpaid', FUT, FUT, 'pending', { id: 'OWN', member_key: K }), L('unpaid', FUT, FUT, 'pending', { id: 'OTH', member_key: KX })]);
+    eq(run(`attLeaveIsOwn(state.attLeaves['OWN'])`), true, 'өөрийн хүсэлт эсэх: таарна');
+    eq(run('attLeavePendingList()').map(r => r.id), ['OTH'], '⛔ батлах самбар: өөрийн хүсэлт орохгүй, бусдынх орно');
+    let err = ''; try { await run(`attLeaveDecide('OWN', 'approved')`); } catch (e) { err = e.message; }
+    ok(/өөрөө батлахгүй/.test(err), '⛔ өөрийн хүсэлтийг өөрөө батлахыг татгалзана (батлах эрхтэй ч — CEO ч)');
+    ok(/function attLeaveDecide[\s\S]*?attLeaveIsOwn\(r0\)/.test(appSrc), 'scan: attLeaveDecide өөрийн хүсэлтийг шалгана');
+    // ── ⑦ HOLIDAYS тохиргоо ХЭРЭГЛЭГДЭХГҮЙ; тохиргооны цонхонд баярын талбар байхгүй ──
+    eq(run('attLeaveCfg().holidays'), [], '⛔ баяр байхгүй: `att_leave.holidays` үргэлж хоосон (тохиргоонд бичсэн ч)');
+    ok(!/alvc-hol/.test(appSrc), 'scan: тохиргооны цонхонд «Баярын өдрүүд» талбар алга');
+    ok(/const ATT_ABSENT_AT = '18:00'/.test(appSrc), 'scan: 18:00 нь ГАНЦ тогтмол (ATT_ABSENT_AT)');
+    const py = fs.readFileSync(path.join(__dirname, '..', 'tools', 'att_notify.py'), 'utf8');
+    ok(/EVENING = '18:00'/.test(py), 'scan: att_notify.py 18:00 нь аппын ATT_ABSENT_AT-тай ИЖИЛ');
+    ok(/\* \* \* flock -n \/tmp\/att_notify\.lock/.test(py) && !/\* \* 1-5 flock -n \/tmp\/att_notify/.test(py), '⛔ scan: att_notify cron ӨДӨР БҮР (`1-5` биш) — бямба/нямд ч ажиллана');
+  } finally {
+    sandbox.fetch = saved.fetch;
+    TEAMX.length = 0; savedTeam.forEach(m => TEAMX.push(m));
+    Object.assign(st, { appConfig: saved.ac, attLeaves: saved.lv, attLeavesErr: saved.lvErr, attCallins: saved.cal, closedMonths: saved.cm, _closedMonthsAt: saved.cma, me: saved.me, isCEO: saved.ceo,
+      memberPerms: saved.mp, payrollCfg: saved.pc, workStart: saved.ws });
   }
 });
 
@@ -27348,7 +27478,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
   // ЗӨВХӨН ХУВААРЬТАЙ хүн «тасалсан» болно: Т.Нэг–Т.Тав «ажил эхлэх цаг»-тай; Т.Зургаа хуваарь ч, цаг ч үгүй (хоёр тал хоёулаа «тасалсан» БИШ гэнэ)
   const WS = { '99440001': '09:00', '99440002': '09:00', '99440003': '09:00', '99440004': '09:00', '99440005': '09:00' };
   st.workStart = WS;
-  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', holidays: [HOL] } });
+  st.appConfig = Object.assign({}, saved.ac || {}, { att_leave: { from: '2026-11-02', daily_from: '2026-11-02', holidays: [HOL], exempt: ['99440006'] } });
   const ts = (day, hm) => { const [h, m] = hm.split(':').map(Number); return new Date(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), h - 8, m)).toISOString(); };
   try {
     const PEOPLE = [
@@ -27369,7 +27499,7 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     st.attLeaves = {}; leaves.forEach((l, i) => { st.attLeaves['T' + i] = { id: 'T' + i, member_key: l.phone, from_day: l.from, to_day: l.to, kind: l.kind, status: 'approved', source: 'request', updated_at: 'x' }; });
     let checked = 0;
     for (const day of days) {
-      const fx = { now: Date.parse(day + 'T19:30:00+08:00'), cfg: { from: '2026-11-02', holidays: [HOL] }, people: PEOPLE, att, leaves, callins, work_start: WS, sent: {}, managers: [] };
+      const fx = { now: Date.parse(day + 'T19:30:00+08:00'), cfg: { from: '2026-11-02', daily_from: '2026-11-02', holidays: [HOL], exempt: ['99440006'] }, people: PEOPLE, att, leaves, callins, work_start: WS, sent: {}, managers: [] };
       const f = path.join(os.tmpdir(), 'att_notify_fx_' + process.pid + '.json');
       fs.writeFileSync(f, JSON.stringify(fx));
       const py = JSON.parse(cp.execSync(`python3 ${JSON.stringify(script)} --plan ${JSON.stringify(f)}`, { encoding: 'utf8' })).messages.filter(m => m.kind === 'absent').map(m => m.to).sort();

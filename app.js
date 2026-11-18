@@ -16124,7 +16124,7 @@ function openAttLeaveCfgModal() {
     <h2>⚙️ Чөлөө / амралтын дүрэм</h2>
     <p class="alv-hint">Хэзээнээс хойш цалинтай үндсэн ажилтан ӨДӨР БҮР (бямба/ням, баяр ч) ажиллана — хүсэлт нь батлагдаагүй өдөр 18:00 хүртэл ирц бүртгэгдээгүй бол өөрөө «тасалсан» болно. <b>Хоосон = унтраалттай</b> (цалин хөндөгдөхгүй).</p>
     <div class="alv-row"><span class="alv-l">Хэзээнээс</span><input type="date" id="alvc-from" class="ui-raw alv-date" value="${escapeHtml(c.from)}" min="${today}"></div>
-    <div class="alv-row"><span class="alv-l">Өдөр бүр ажиллах (хэзээнээс)</span><input type="date" id="alvc-daily" class="ui-raw alv-date" value="${escapeHtml(c.dailyFrom)}" min="${today}"></div>
+    <div class="alv-row"><span class="alv-l">Өдөр бүр ажиллах</span><input type="date" id="alvc-daily" class="ui-raw alv-date" value="${escapeHtml(c.dailyFrom)}" min="${today}"></div>
     <div class="alv-row"><span class="alv-l">Нэг өдөр (өмнө)</span><input type="number" id="alvc-n1" class="ui-raw alv-num" min="0" max="30" value="${c.notice1}"><span class="alv-u">хоног</span></div>
     <div class="alv-row"><span class="alv-l">2+ өдөр (өмнө)</span><input type="number" id="alvc-nm" class="ui-raw alv-num" min="0" max="60" value="${c.noticeMulti}"><span class="alv-u">хоног</span></div>
     <div class="alv-row"><span class="alv-l">Амралт / жил</span><input type="number" id="alvc-vd" class="ui-raw alv-num" min="0" max="60" value="${c.vacationDays}"><span class="alv-u">ажлын өдөр</span></div>

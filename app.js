@@ -14473,6 +14473,18 @@ function attDiscipline(key, ym, recs, today, graceMin) {
       if (!cv || cv.kind === 'absent') out.events.push({ day: d, kind: 'absent', time: c.at_time });
     }
   });
+  /* ⛔ ХУВААРЬ ШААРДАХГҮЙ (CEO 2026-11-17): ЧӨЛӨӨ/АМРАЛТЫН бүртгэл идэвхтэй өдрүүдэд ажиллах ёстой (`attLeaveTracked`: ӨДӨР БҮР) хүн, ирц ба батлагдсан чөлөөгүй, өдөр «хаагдсан» бол
+     (18:00 болсон) ТАСАЛСАН — торгуулийн 0.5 мөн ижил. Хуваарийн мөр дээрх тасалсан өдөр давхардахгүй (`seen`). Чөлөөний дата ачаалагдаагүй бол ЭНЭ хэсгийг алгасна —
+     эс бөгөөс чөлөөтэй хүн «тасалсан» болж торгуулна (`payExtras` нь `ready:false`-аар ил хэлнэ). */
+  if (attLeavesReady() && attLeaveMonthActive(ym)) {
+    const byDay = attRecsByDay(k, recs), seen = {};
+    out.events.forEach(e => { if (e.kind === 'absent') seen[e.day] = true; });
+    attLeaveDays(ym + '-01', monthEndDay(ym)).forEach(d => {
+      if (seen[d] || d > today || !attLeaveActive(d)) return;
+      const st = attDayStatus(k, d, byDay[d], today);
+      if (st.st === 'absent') out.events.push({ day: d, kind: 'absent', time: null });
+    });
+  }
   // ЕРДИЙН ажлын цагаас хоцролт: «ажил эхлэх цаг» тохируулсан хүнд, ажлын өдөр, ХУВААРЬГҮЙ өдөр (хуваарьтайг дээр хэмжсэн — ХУВААРИЙН цаг ялна)
   const start = workStartFor(k);
   if (start) Object.keys(firstIn).forEach(d => {
@@ -14524,11 +14536,11 @@ function payExtras(key, ym, recs, base) {
   const cfg = payRulesCfg(), active = !!cfg.from && String(ym) >= cfg.from;
   const dataOk = attCallinsReady() && Array.isArray(recs);
   const disc = dataOk ? attDiscipline(key, ym, recs, undefined, cfg.graceMin) : null;
-  const ex = { active, ready: true, disc, penalty: 0, pen: {}, capped: {}, orderBonus: 0, orderN: 0, cfg, leave: null, creditMins: 0, makeupOffsetMins: 0 };
+  const ex = { active, ready: true, disc, penalty: 0, pen: {}, capped: {}, orderBonus: 0, orderN: 0, cfg, leave: null, creditMins: 0, makeupOffsetMins: 0, offAbsentDays: 0 };
   /* ЧӨЛӨӨ/АМРАЛТЫН нөхөлт: `att_leave` идэвхтэй сард л. Ачаалагдаагүй бол `ready:false` (чимээгүй 0 БИШ — чөлөөтэй хүн «тасалсан» болж цалин дутуу харагдана). */
   if (attLeaveMonthActive(ym)) {
     if (!attLeavesReady() || !Array.isArray(recs)) ex.ready = false;
-    else { ex.leave = attLeaveMonthSummary(key, ym, recs); ex.creditMins = ex.leave.creditMins; ex.makeupOffsetMins = ex.leave.makeupOffsetMins; }
+    else { ex.leave = attLeaveMonthSummary(key, ym, recs); ex.creditMins = ex.leave.creditMins; ex.makeupOffsetMins = ex.leave.makeupOffsetMins; ex.offAbsentDays = ex.leave.offAbsent; }
   }
   if (!active) return ex;
   if (!disc || !workStartReady()) ex.ready = false;   // «ажил эхлэх цаг» ачаалагдаагүй бол ердийн хоцролт тоологдохгүй — чимээгүй 0 БИШ
@@ -15078,6 +15090,13 @@ async function attReqReject(k) {
   showToast('Татгалзлаа', 'info', 2500);
   if (typeof render === 'function') render();
 }
+/* ⛔⛔ 2026-11-17 CEO: МАНАЙ ТҮРЭЭСИЙН БИЗНЕС ӨДӨР БҮР АЖИЛЛАНА — амралтын өдөр, баяр ёслол, нэгдсэн амралт БАЙХГҮЙ. Хүн ЗӨВХӨН хүсэлтээ илгээж, батлуулсан өдрөө л амарна
+   (батлах = CEO, ҮАЗ, ахлах нярав). Хүсэлтгүй бол ӨДӨР БҮР (бямба/ням, баяр ч) ажлын өдөр: тухайн өдрийн 18:00 хүртэл ирц бүртгэгдээгүй бол ШУУД «Тасалсан»
+   (`ATT_ABSENT_AT`; өмнө нь маргааш нь, мөн зөвхөн ХУВААРЬТАЙ хүнд). «Ирцийн хуваарьтай»/«ажил эхлэх цаг» шаардлагагүй (`attLeaveTracked`); `holidays` тохиргоо ХЭРЭГЛЭГДЭХГҮЙ.
+   ⛔ ЭХЛЭХ ӨДӨР = `att_leave.daily_from` (өгөгдмөл `ATT_DAILY_FROM`, ирээдүйн өдөр): ӨМНӨХ өдрүүдэд хуучин дүрэм хэвээр — өнгөрсөн өдрүүдийг (жишээ нь 11-15 ням) нэг шөнийн дотор «тасалсан» болгож
+   олгочихсон/явж буй сарын цалинг чимээгүй өөрчлөхгүй (`from`-тай ижил зарчим). `exempt` (утас) = ирц шаардахгүй хүн.
+   Тасалсан өдөр ЯМАР ГАРАГТ Ч цалингаас хасагдана: Да–Ня = цагаар (1 өдөр) · бямба/ням норм биш тул `offDeduct` (1 өдөр, тусдаа мөр) + торгуулийн 0.5 (`pay_rules`).
+   Дор доорх «Хуваарьтай» гэсэн тайлбар хуучин (2026-11-15) — одоо `attLeaveTracked` ажилтан бүр. */
 /* ═══ ЧӨЛӨӨ / АМРАЛТ + АВТОМАТ ИРЦИЙН ТӨЛӨВ (2026-11-14, ҮАЗ-ын даалгавар) ═══════════════════════════════
    «Анхдагч төлөв = АЖИЛЛАНА» — ЗӨВХӨН ИРЦИЙН ХУВААРЬТАЙ ажилтанд (ҮАЗ, 2026-11-15 «Ирц цэс засах»: «Зөвхөн ирцийн хуваарьтай ажилтанд
    үйлчилнэ»): хуваарьт өдөр (`att_callins`), эсвэл «ажил эхлэх цаг» тохируулсан хүний ажлын өдөр = `attLeaveScheduled` (хоцролтын
@@ -15111,13 +15130,14 @@ const _isoDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
 function attLeaveCfg() {
   const c = (state.appConfig && state.appConfig.att_leave && typeof state.appConfig.att_leave === 'object') ? state.appConfig.att_leave : {};
   const num = (v, d, lo, hi) => { const n = Number(v); return (v !== undefined && v !== null && v !== '' && n >= lo && n <= hi) ? Math.round(n) : d; };
-  const hol = Array.isArray(c.holidays) ? c.holidays.map(x => String(x).slice(0, 10)).filter(_isoDay) : [];
   return {
     from: _isoDay(c.from) ? String(c.from) : '',
     notice1: num(c.notice1, 1, 0, 30),             // нэг өдрийн чөлөө: ӨМНӨХ ӨДӨР
     noticeMulti: num(c.notice_multi, 2, 0, 60),    // 2+ өдөр / ээлжийн амралт: 2 хоногийн өмнө (ҮАЗ: «1–2 хоногийн өмнө»)
     vacationDays: num(c.vacation_days, 15, 0, 60), // жилийн ээлжийн амралтын ажлын өдөр
-    holidays: hol,                                  // амралтын баярын өдрүүд (ажлын өдөр биш, цалинтай)
+    holidays: [],                                   // ⛔ БАЯР/НЭГДСЭН АМРАЛТ БАЙХГҮЙ (CEO 2026-11-17) — `att_leave.holidays` тохиргоо хэрэглэгдэхгүй
+    dailyFrom: _isoDay(c.daily_from) ? String(c.daily_from) : ATT_DAILY_FROM,   // «өдөр бүр ажиллана» дүрмийн эхлэх өдөр (өнгөрсөн өдрийг хөндөхгүй — олгочихсон цалин өөрчлөгдөхгүй)
+    exempt: Array.isArray(c.exempt) ? c.exempt.map(x => String(x).replace(/\D/g, '')).filter(x => x.length >= 8) : [],   // ирц шаардахгүй ажилтны утас (CEO гараар; өгөгдмөл хоосон)
   };
 }
 function attLeaveActive(day) { const c = attLeaveCfg(); return !!c.from && _isoDay(day) && String(day) >= c.from; }
@@ -15171,8 +15191,23 @@ function attLeaveJoined(key) {
 /* «Ирцийн хуваарьтай» (ҮАЗ: «Зөвхөн ирцийн хуваарьтай ажилтанд үйлчилнэ») = `attDayStatus`-ын хоцролтын торгуулийн дүрэмтэй ИЖИЛ:
    тухайн өдөр хуваарь (`att_callins`) бий, ЭСВЭЛ ажлын өдөр (Да–Ня) + хүнд «ажил эхлэх цаг» (`work_start`) тохируулагдсан.
    ⛔ Хуваарь/цаг ачаалагдаагүй үед ТААМАГЛАХГҮЙ (= хуваарьгүй → «тасалсан» болохгүй). tools/att_notify.py `expected()` ИЖИЛ байх ёстой. ЦЭВЭР. */
+/* «Ирц шаардах» ажилтан (CEO 2026-11-17: хуваарь тавих нь төвөгтэй тул ӨГӨГДМӨЛ = цалинтай үндсэн ажилтан БҮГД, ӨДӨР БҮР). Цагийн ажилтан (`daily`), удирдлага (`level` ≥ 80: CEO, ҮАЗ)
+   орохгүй. Цалингийн жагсаалт (`attStaffCandidates`, суурь цалин > 0)-тай ижил олонлог ч, цалин харах эрхгүй хүн ч нэг хариу авахын тулд цалингаас БИШ ажилтны мэдээллээс. ЦЭВЭР. */
+function attLeaveTracked(key) {
+  const m = findMember(key);
+  return !!m && (m.status || 'идэвхтэй') !== 'гарсан' && isPermanentStaff(m) && (Number(m.level) || 0) < 80 && attLeaveCfg().exempt.indexOf(attMarkKey(key)) < 0;
+}
+const ATT_DAILY_FROM = '2026-11-19';   // `att_leave.daily_from` тохируулаагүй үед: «өдөр бүр ажиллана» дүрэм ЭНЭ өдрөөс (ирэх өдөр; өнгөрсөн өдрүүдэд хэрэглэхгүй). CEO ирцийн тохиргооноос солино
+function attLeaveDailyOn(day) { return String(day) >= attLeaveCfg().dailyFrom; }
+const ATT_ABSENT_AT = '18:00';   // тухайн өдрийн энэ цагаас (УБ) хойш ирц/чөлөөгүй бол «Тасалсан» (CEO 2026-11-17)
+/* «Одоо» цаг (ЦЭВЭР-ийн тестлэх параметр): `nowHM` өгөөгүй бол өнөөдөр бол бодит УБ цаг, өнгөрсөн/ирээдүйн `today` бол '00:00' (хоногийн хил биш цаг хамаарахгүй). */
+function attNowHM(today, nowHM) {
+  if (nowHM !== undefined && nowHM !== null && nowHM !== '') return String(nowHM);
+  return String(today) === todayStr() ? nowHMUB() : '00:00';
+}
 function attLeaveScheduled(key, day) {
-  return !!attCallinOn(key, day) || (isWeekdayIso(day) && !!workStartFor(key));
+  // Тусгай хуваарь (цагийн ажилтан г.м.) ба «ажил эхлэх цаг» тохируулсан хүний ажлын өдөр өмнөх шигээ «ажиллах өдөр» (хуучин дүрэм ХЭВЭЭР, зөвхөн нэмэлт)
+  return (attLeaveDailyOn(day) && attLeaveTracked(key)) || !!attCallinOn(key, day) || (isWeekdayIso(day) && !!workStartFor(key));
 }
 function attLeaveExpected(key, day, cfg) {
   cfg = cfg || attLeaveCfg();
@@ -15183,11 +15218,12 @@ function attLeaveExpected(key, day, cfg) {
 }
 /* ӨДРИЙН ТӨЛӨВ — ГАНЦ эх сурвалж. ЦЭВЭР: (хүн, өдөр, тэр өдрийн ирцийн мөрүүд, өнөөдөр) → { st, expected, deduct, credit, row? }
    Эрэмбэ: гар засвар → ирц байвал (ирсэн/хоцорсон) → амралт/баяр → батлагдсан чөлөө → нөхөлт → хүлээгдэж буй хүсэлт
-           → ирээдүй/өнөөдөр → ТАСАЛСАН. Өнөөдөр хараахан ирээгүй бол «хүлээж байна» (өдөр дуусаагүй — тасалсан БИШ).
+           → ирээдүй/өнөөдөр → ТАСАЛСАН. Өнөөдөр 18:00 (`ATT_ABSENT_AT`) хүртэл ирээгүй бол «хүлээж байна»; 18:00 болоод ирц/чөлөө байхгүй бол «Тасалсан» (дараа нь ирц бүртгэгдвэл «Ирсэн» болж засагдана — факт давуу).
    st: na · off · holiday · present · late · unpaid · paid · vacation · sick · makeup · pending · absent · waiting · planned
    deduct = цалингаас цагаар хасагдах өдөр (ЗӨВХӨН тасалсан); credit = НОРМД тооцогдох (амрах өдөр, цалинтай чөлөө, өвчтэй, баяр, нөхөлт, засвар). */
-function attDayStatus(key, day, dayRecs, today) {
+function attDayStatus(key, day, dayRecs, today, nowHM) {
   const k = attMarkKey(key); today = today || todayStr(); day = String(day || '');
+  const closed = day < today || (day === today && attLeaveDailyOn(day) && attNowHM(today, nowHM) >= ATT_ABSENT_AT);   // өдөр «хаагдсан» = өнгөрсөн, эсвэл (өдөр бүр ажиллах дүрэмтэй өдөр) өнөөдрийн 18:00 болсон
   const cfg = attLeaveCfg();
   const res = (st, extra) => Object.assign({ st, day, expected: false, deduct: false, credit: false, row: null, manual: false }, extra || {});
   if (!k || !attLeaveActive(day)) return res('na');
@@ -15230,15 +15266,15 @@ function attDayStatus(key, day, dayRecs, today) {
   if (req) return res(req.kind, { expected, deduct: true, row: req });
   const pend = attLeaveCover(k, day, ['pending']);
   if (day > today) return res('planned', { expected, row: pend });
-  if (pend && day < today) return res('pending', { expected, deduct: true, row: pend });
-  if (day === today) return res('waiting', { expected, row: pend });
+  if (!closed) return res('waiting', { expected, row: pend });   // өнөөдөр, 18:00 болоогүй
+  if (pend) return res('pending', { expected, deduct: true, row: pend });
   return res('absent', { expected, deduct: true });
 }
 const ATT_DAY_ST = {
   present: { icon: '✅', label: 'Ирсэн' }, late: { icon: '⏰', label: 'Хоцорсон' }, absent: { icon: '❌', label: 'Тасалсан' },
   unpaid: { icon: '📝', label: 'Амрах өдөр' }, paid: { icon: '💼', label: 'Чөлөө (цалинтай)' }, vacation: { icon: '🏖', label: 'Ээлжийн амралт' },
   sick: { icon: '🤒', label: 'Өвчтэй' }, makeup: { icon: '🔄', label: 'Нөхсөн' }, pending: { icon: '⏳', label: 'Хүсэлт хүлээгдэж буй' },
-  waiting: { icon: '⏳', label: 'Хараахан ирээгүй' }, planned: { icon: '·', label: 'Ажиллана' }, off: { icon: '·', label: 'Амралтын өдөр' },
+  waiting: { icon: '⏳', label: 'Хараахан ирээгүй' }, planned: { icon: '·', label: 'Ажиллана' }, off: { icon: '·', label: 'Ирц шаардахгүй' },
   holiday: { icon: '🎌', label: 'Баярын өдөр' }, na: { icon: '', label: '' },
 };
 // Хүн × сарын ирцийн мөрүүдийг өдрөөр бүлэглэнэ (ЦЭВЭР)
@@ -15261,23 +15297,23 @@ function attLeaveDayMins(ym) { return Math.round(workNormMins(ym) / Math.max(1, 
 /* САРЫН НЭГТГЭЛ (ЦЭВЭР): хүн × сар → тоолол + цалинд нөлөөлөх хоёр тоо.
    creditMins = нормд тооцогдох минут (цалинтай чөлөө/амралт/өвчтэй/баяр/нөхсөн/засвар) ӨНӨӨДРИЙГ ХҮРТЭЛ.
    makeupOffsetMins = ӨӨР САРЫН тасалсан өдрийн нөхөлтөд зарцуулагдсан цаг — энэ сарын ИЛҮҮ ЦАГААС хасна (давхар төлөхгүй). */
-function attLeaveMonthSummary(key, ym, recs, today) {
+function attLeaveMonthSummary(key, ym, recs, today, nowHM) {
   today = today || todayStr();
   const k = attMarkKey(key), end = monthEndDay(ym), cfg = attLeaveCfg();
   const out = { ym, key: k, active: false, days: [], n: { present: 0, late: 0, absent: 0, unpaid: 0, paid: 0, vacation: 0, sick: 0, makeup: 0, pending: 0, holiday: 0, expected: 0 },
-                deductDays: 0, creditMins: 0, makeupOffsetMins: 0, lateMins: 0 };
+                deductDays: 0, offAbsent: 0, creditMins: 0, makeupOffsetMins: 0, lateMins: 0 };   // offAbsent = НОРМ БИШ өдөр (бямба/ням) дахь тасалсан — `offDeduct`-оор тусад нь хасагдана
   if (!k || !end || !attLeaveActive(end)) return out;
   out.active = true;
   const by = attRecsByDay(k, recs), dayMins = attLeaveDayMins(ym);
   for (const day of attLeaveDays(ym + '-01', end)) {
-    const s = attDayStatus(k, day, by[day], today);
+    const s = attDayStatus(k, day, by[day], today, nowHM);
     if (s.st === 'na') continue;
     out.days.push(s);
     if (s.expected) out.n.expected++;
     if (out.n[s.st] !== undefined) out.n[s.st]++;
     if (s.st === 'late') out.lateMins += s.mins || 0;
     if (day <= today) {
-      if (s.deduct && s.st !== 'pending') out.deductDays++;
+      if (s.deduct && s.st !== 'pending') { out.deductDays++; if (s.st === 'absent' && !isWeekdayIso(day)) out.offAbsent++; }
       if (s.credit) out.creditMins += dayMins;
     }
   }
@@ -15418,10 +15454,10 @@ function attTeamRoster() {
 }
 function _leaveCovers(l, day) { return String(l.from_day) <= day && String(l.to_day) >= day; }
 /* ЦЭВЭР: (хүмүүс, өнөөдрийн ирц, батлагдсан амралтууд, өнөөдөр) → { here:[{name,time,open}], off:[{name,cls}], waiting:[{name}], working }.
-   `working` = өнөөдөр ажлын өдөр (Да–Ня, баяр биш) — ажлын бус өдөр «хараахан ирээгүй» гэж хэнийг ч нэрлэхгүй. */
+   `working` = чөлөөний бүртгэл идэвхтэй өдөр; `daily_from`-оос хойш өдөр бүр (бямба/ням ч), өмнө нь Да–Ня. */
 function attTeamBoard(people, recs, leaves, today) {
   const cfg = attLeaveCfg();
-  const working = attLeaveActive(today) && isWeekdayIso(today) && !attLeaveIsHoliday(today, cfg);
+  const working = attLeaveActive(today) && (attLeaveDailyOn(today) || (isWeekdayIso(today) && !attLeaveIsHoliday(today, cfg)));   // өдөр бүр ажиллана (CEO 2026-11-17: амралтын өдөр, баяр БАЙХГҮЙ) — `daily_from`-оос
   const first = {}, last = {};
   (Array.isArray(recs) ? recs : []).forEach(r => {
     if (!r || r.day !== today) return;
@@ -15574,11 +15610,8 @@ async function attMakeupSubmit(p, today, recsOf) {
   return saved;
 }
 // «Миний ирц»: нөхөх өдрийн үлдэгдэл (ЦЭВЭР-д ойр)
-function attMakeupBalanceHtml(myKey) {
-  const c = attMakeupCandidates(myKey, todayStr(), attMyRecsOf);
-  if (c.unknown.length) c.unknown.forEach(ym => { if (ym !== todayStr().slice(0, 7) && !(state.myPayErr && state.myPayErr.month === ym)) setTimeout(() => loadMyPayMonth(ym), 0); });
-  const n = c.days.length;
-  return `<div class="alv-bal">🔄 Нөхөх өдөр: <b>${c.unknown.length ? '…' : n}</b>${c.pending.length ? ` · ⏳ ${c.pending.length} хүсэлт хүлээгдэж буй` : ''}${n ? '<button class="ui-raw alv-new alv-mk" id="my-mk-new">Нөхөлт хүсэх</button>' : ''}</div>`;
+function attMakeupBalanceHtml() {
+  return '';   // ⛔ Өдөр бүр ажиллах тул «нөхөж ажиллах» амралт/баярын өдөр БАЙХГҮЙ (CEO 2026-11-17) — нөхөлтийн товч, «Нөхөх өдөр» тоо харагдахгүй. `attMakeupCheck`/модал хэвээр, гэхдээ товчгүй тул дуудагдахгүй.
 }
 function openAttMakeupModal() {
   const me = findMember(state.me) || {}, key = attMarkKey(personKey(me) || state.me), today = todayStr();
@@ -15885,6 +15918,12 @@ async function attLeaveCancel(id) {
   if (!rows.length) throw new Error('Болигдсонгүй — эрх хүрэхгүй эсвэл мөр өөрчлөгдсөн байна');
   return _attLeaveMerge(rows[0]);
 }
+/* Өөрийн хүсэлт эсэх (ЦЭВЭР-ийн хэсэг): батлах эрхтэй хүн ч өөрийнхөө амралтыг өөрөө батлахгүй. ⚠ ЗӨВХӨН апп талын хаалт — DB trigger-т `attendance.edit` эзэн өөрийнхийг батлах боломж
+   үлдсэн (db/att_leaves.sql `manager`), VPS дээр ажиллуулсны дараа л бүрэн хаагдана. */
+function attLeaveIsOwn(r) {
+  const me = findMember(state.me);
+  return !!(r && me && attMarkKey(r.member_key) === attMarkKey(personKey(me) || state.me));
+}
 // ҮАЗ: батлах / татгалзах — нэг товчоор
 async function attLeaveDecide(id, status, note) {
   if (!canEditAttendance()) throw new Error('Танд ирц засах эрх алга');
@@ -15893,6 +15932,7 @@ async function attLeaveDecide(id, status, note) {
   if (status !== 'approved' && status !== 'rejected') throw new Error('Буруу төлөв');
   const mem = findMember(r0.member_key);
   if (mem && !branchFenceAllowsMember(mem)) throw new Error('Энэ ажилтан таны салбарынх биш');
+  if (attLeaveIsOwn(r0)) throw new Error('Өөрийнхөө хүсэлтийг өөрөө батлахгүй — CEO, ҮАЗ, ахлах нярвын нэг батлана');   // ⛔ CEO 2026-11-17
   await assertMonthOpenLive(String(r0.from_day).slice(0, 7), 'чөлөө батлах');
   if (r0.makeup_day && String(r0.makeup_day).slice(0, 7) !== String(r0.from_day).slice(0, 7)) await assertMonthOpenLive(String(r0.makeup_day).slice(0, 7), 'нөхөлт батлах');
   const rows = await attLeaveRequest('PATCH', `?id=eq.${encodeURIComponent(id)}&status=eq.pending`,
@@ -16017,7 +16057,7 @@ function attMyLeaveCardHtml(myKey) {
 /* ── ҮАЗ: ХҮЛЭЭГДЭЖ БУЙ ХҮСЭЛТИЙН САМБАР ─────────────────────────────────────────────────────── */
 function attLeavePendingList() {
   return Object.keys(state.attLeaves || {}).map(id => state.attLeaves[id])
-    .filter(r => r && r.status === 'pending' && r.source === 'request' && branchFenceAllowsMember(findMember(r.member_key)))
+    .filter(r => r && r.status === 'pending' && r.source === 'request' && !attLeaveIsOwn(r) && branchFenceAllowsMember(findMember(r.member_key)))
     .sort((a, b) => (b.late ? 1 : 0) - (a.late ? 1 : 0) || String(a.from_day).localeCompare(String(b.from_day)));
 }
 function renderAttLeavePanel() {
@@ -16025,7 +16065,7 @@ function renderAttLeavePanel() {
   const cfg = attLeaveCfg();
   if (!cfg.from) {
     return attLeaveEditable() ? `<div class="alv-panel alv-off"><div class="alv-p-t">🗓 Чөлөө / амралтын бүртгэл унтраалттай</div>
-      <div class="alv-p-s">Асаавал ирцийн хуваарьтай (хуваарь тавигдсан, эсвэл «ажил эхлэх цаг» тохируулсан) ажилтан хүсэлтгүй, QR-гүй өдөр өөрөө «тасалсан» болно.</div>
+      <div class="alv-p-s">Асаавал цалинтай үндсэн ажилтан хүсэлтгүй, 18:00 хүртэл QR-гүй өдөр (бямба/ням ч) өөрөө «тасалсан» болно.</div>
       <button class="ui-raw alv-new" data-alv-cfg>⚙️ Тохируулж асаах</button></div>` : '';
   }
   const list = attLeavePendingList();
@@ -16082,12 +16122,12 @@ function openAttLeaveCfgModal() {
   modal.className = 'modal-bg'; modal.id = 'alv-cfg-modal';
   modal.innerHTML = `<div class="modal alv-modal">
     <h2>⚙️ Чөлөө / амралтын дүрэм</h2>
-    <p class="alv-hint">Хэзээнээс хойш ирцийн хуваарьтай (хуваарь тавигдсан, эсвэл «ажил эхлэх цаг» тохируулсан) ажилтан хүсэлтгүй, QR-гүй өдөр өөрөө «тасалсан» болно. <b>Хоосон = унтраалттай</b> (цалин хөндөгдөхгүй).</p>
+    <p class="alv-hint">Хэзээнээс хойш цалинтай үндсэн ажилтан ӨДӨР БҮР (бямба/ням, баяр ч) ажиллана — хүсэлт нь батлагдаагүй өдөр 18:00 хүртэл ирц бүртгэгдээгүй бол өөрөө «тасалсан» болно. <b>Хоосон = унтраалттай</b> (цалин хөндөгдөхгүй).</p>
     <div class="alv-row"><span class="alv-l">Хэзээнээс</span><input type="date" id="alvc-from" class="ui-raw alv-date" value="${escapeHtml(c.from)}" min="${today}"></div>
+    <div class="alv-row"><span class="alv-l">Өдөр бүр ажиллах</span><input type="date" id="alvc-daily" class="ui-raw alv-date" value="${escapeHtml(c.dailyFrom)}" min="${today}"></div>
     <div class="alv-row"><span class="alv-l">Нэг өдөр (өмнө)</span><input type="number" id="alvc-n1" class="ui-raw alv-num" min="0" max="30" value="${c.notice1}"><span class="alv-u">хоног</span></div>
     <div class="alv-row"><span class="alv-l">2+ өдөр (өмнө)</span><input type="number" id="alvc-nm" class="ui-raw alv-num" min="0" max="60" value="${c.noticeMulti}"><span class="alv-u">хоног</span></div>
     <div class="alv-row"><span class="alv-l">Амралт / жил</span><input type="number" id="alvc-vd" class="ui-raw alv-num" min="0" max="60" value="${c.vacationDays}"><span class="alv-u">ажлын өдөр</span></div>
-    <textarea id="alvc-hol" class="ui-raw alv-reason" rows="3" placeholder="Баярын өдрүүд (ЖЖЖЖ-СС-ӨӨ, таслалаар). Цалинтай, ажлын өдөр биш.">${escapeHtml(c.holidays.join(', '))}</textarea>
     <div class="alv-err" id="alvc-err" hidden></div>
     <div class="modal-actions"><button class="btn" id="alvc-cancel">Болих</button><button class="btn btn-primary" id="alvc-save">Хадгалах</button></div>
   </div>`;
@@ -16098,13 +16138,12 @@ function openAttLeaveCfgModal() {
   $('#alvc-save').onclick = async (e) => {
     const btn = e.currentTarget;   // await-ийн ӨМНӨ (дараа нь null болдог)
     const from = $('#alvc-from').value || '';
-    const hol = String($('#alvc-hol').value || '').split(/[\s,;]+/).filter(Boolean);
-    const bad = hol.find(x => !_isoDay(x));
-    if (bad) { errEl.textContent = '⚠ Баярын өдөр буруу: ' + bad; errEl.hidden = false; return; }
     if (from && from < today && from !== c.from) { errEl.textContent = '⚠ Өнгөрсөн өдрөөс эхлүүлэхгүй — олгочихсон цалин өөрчлөгдөнө'; errEl.hidden = false; return; }
-    const val = { from, notice1: Number($('#alvc-n1').value) || 0, notice_multi: Number($('#alvc-nm').value) || 0, vacation_days: Number($('#alvc-vd').value) || 0, holidays: hol };
+    const dly = $('#alvc-daily').value || c.dailyFrom;
+    if (dly < today && dly !== c.dailyFrom) { errEl.textContent = '⚠ «Өдөр бүр ажиллах» өнгөрсөн өдрөөс эхлэхгүй — өнгөрсөн өдрүүд «тасалсан» болж цалин өөрчлөгдөнө'; errEl.hidden = false; return; }
+    const val = { from, notice1: Number($('#alvc-n1').value) || 0, notice_multi: Number($('#alvc-nm').value) || 0, vacation_days: Number($('#alvc-vd').value) || 0, daily_from: $('#alvc-daily').value || c.dailyFrom, exempt: c.exempt };
     const ok = await showConfirm(from
-      ? `${from}-аас эхлэн ирцийн хуваарьтай ажилтны (хуваарьт өдөр, эсвэл «ажил эхлэх цаг» тохируулсан хүний ажлын өдөр) QR-гүй, хүсэлтгүй өдөр «тасалсан» болж цалингаас цагаар хасагдана; цалинтай чөлөө/баяр нормд тооцогдоно.\n\nИдэвхжүүлэх үү?`
+      ? `${from}-аас эхлэн цалинтай үндсэн ажилтан ӨДӨР БҮР ажиллана: хүсэлт батлагдаагүй өдөр 18:00 хүртэл QR-гүй бол «тасалсан» болж цалингаас хасагдана (Да–Ня цагаар, бямба/ням тусдаа мөрөөр); батлагдсан амрах өдөр хасагдахгүй.\n\nИдэвхжүүлэх үү?`
       : 'Чөлөөний бүртгэлийг УНТРААХ уу? Цалин хуучин дүрмээр бодогдоно.', { okText: from ? 'Идэвхжүүлэх' : 'Унтраах' });
     if (!ok) return;
     btn.disabled = true;
@@ -16903,7 +16942,14 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
   const xCredit = Math.max(0, Math.round(Number(ex.creditMins) || 0));
   const effNorm = Math.max(0, norm - xCredit);
   const shortMins = (known && prorate) ? Math.max(0, Math.round(effNorm - worked)) : 0;
-  const earned = shortMins > 0 ? Math.min(base, Math.round(base * (worked + (fullNorm - effNorm)) / fullNorm)) : base;
+  const earnedHrs = shortMins > 0 ? Math.min(base, Math.round(base * (worked + (fullNorm - effNorm)) / fullNorm)) : base;
+  /* ⛔ ТАСАЛСАН ӨДӨР ЯМАР ГАРАГТ Ч ХАСАГДАНА (CEO 2026-11-17: «Даваагаас баасан бүтэн ажилласан хүн бямба/нямд ирээгүй бол цагийн норм дутахгүй тул хасалт гарахгүй гэдэг
+     бол худлаа, ингэж хийх ёсгүй»). Норм = Да–Ня тул БЯМБА/НЯМЫН тасалсан өдөр цагаар хасагдахгүй — тиймээс 1 өдрийн цалинг (суурь ÷ норм өдөр) ТУСАД нь хасна
+     (`extra.offAbsentDays` = `attLeaveMonthSummary().offAbsent`). Да–Ня-ийн тасалсан өдөр аль хэдийн цагаар хасагдсан тул энд ОРОХГҮЙ (давхар хасахгүй).
+     Явж буй сард суурьтай ИЖИЛ хасахгүй (сар дуусмагц). Торгуулийн 0.5 нь тусдаа (`pay_rules`, `payExtras`). */
+  const offDays = Math.max(0, Math.round(Number((extra || {}).offAbsentDays) || 0));
+  const offDeduct = (prorate && offDays) ? Math.min(earnedHrs, Math.round(base * offDays / Math.max(1, workNormDays(month)))) : 0;
+  const earned = earnedHrs - offDeduct;
   const d = salaryNet(earned, deduct);                     // суутгал ЗӨВХӨН (цагаар бодсон) суурьд
   const makeupOff = Math.max(0, Math.round(Number(ex.makeupOffsetMins) || 0));   // өмнөх сарын тасалсан өдрийг нөхсөн цаг — давхар төлөхгүй
   const otMins = known ? Math.max(0, Math.round(worked - norm - makeupOff)) : 0;
@@ -16920,7 +16966,7 @@ function monthPayBreakdown(base, deduct, workedMins, normMins, deliveryAmt, rate
   const penalty = Math.max(0, Math.round(Number(ex.penalty) || 0));
   const orderBonus = Math.max(0, Math.round(Number(ex.orderBonus) || 0));
   return {
-    base, earned, shortMins, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
+    base, earned, shortMins, shortCut: base - earnedHrs, offDeduct, offAbsentDays: offDays, ndsh: d.ndsh, pit: d.pit, netBase: d.net,
     normMins: norm, creditMins: credit + xCredit, leaveCreditMins: xCredit, makeupOffsetMins: makeupOff,
     otMins, hourly: Math.round(hourly), otRate: r, otPay,
     delivery, bonus, orderBonus, penalty, total: Math.max(0, d.net + otPay + delivery + bonus + orderBonus - penalty),
@@ -17131,7 +17177,7 @@ function renderAttendanceMonth(month) {
             : rBal.owed > 0 ? `<span class="att-mo-st">үлдэгдэл <b>${fmtMoney(rBal.owed)}</b></span>`
             : `<span class="att-mo-st ok">✓ олгосон</span>`)
           : `<span class="att-mo-st">олгоогүй</span>`}
-      <div class="att-mo-pay-in">цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''}${pb.orderBonus ? ` + захиалгын бонус ${fmtMoney(pb.orderBonus)}` : ''}${pb.penalty ? ` − торгууль ${fmtMoney(pb.penalty)}` : ''}${(rPaid || rCarry.amount) ? `<br>${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)}${rBal.over > 0 ? ' · илүү нь дараа сард' : ''}` : ''}</div></div>` : '';
+      <div class="att-mo-pay-in">цэвэр суурь ${fmtMoney(pb.netBase)}${pb.shortMins ? ` — нормоос ${attHM(pb.shortMins)} дутуу, цагаар` : ''}${pb.offDeduct ? ` — бямба/нямын тасалсан ${pb.offAbsentDays} өдөр −${fmtMoney(pb.offDeduct)}` : ''}${pb.otPay ? ` + илүү цаг ${fmtMoney(pb.otPay)}` : ''}${pb.delivery ? ` + хүргэлт ${fmtMoney(pb.delivery)}` : ''}${pb.bonus ? ` + дамжлагын бонус ${fmtMoney(pb.bonus)}` : ''}${pb.orderBonus ? ` + захиалгын бонус ${fmtMoney(pb.orderBonus)}` : ''}${pb.penalty ? ` − торгууль ${fmtMoney(pb.penalty)}` : ''}${(rPaid || rCarry.amount) ? `<br>${rCarry.amount ? `өмнөх сарын илүү ${fmtMoney(rCarry.amount)} · ` : ''}олгосон ${fmtMoney(rPaid)}${rBal.over > 0 ? ' · илүү нь дараа сард' : ''}` : ''}</div></div>` : '';
     /* Мөр = НЭГ ШУГАМ (нэр · хувь · цаг) + дарахад задрах дэлгэрэнгүй (2026-10-09). Өмнө нь ажилтан бүр 120-170px
        блок байсан тул «тойм» нь урт жагсаалт болж, 10 ажилтан ~1500px, нийт дүн хаана ч харагддаггүй байв. */
     return `<details class="att-mo-row" data-att-mo="${escapeHtml(r.k)}"${moOpen[r.k] ? ' open' : ''}>
@@ -17373,8 +17419,9 @@ function myPayCardHtml(me) {
     ? row('− НДШ', `−${fmtMoney(b.ndsh)}`, 'pay-minus') + row('− ХХОАТ', `−${fmtMoney(b.pit)}`, 'pay-minus')
     : row('Суутгал', 'суутгалгүй', 'pay-minus');
   // Нормоос дутуу бол суурь нь ажилласан цагаар буурна — ИЛ мөр болж харагдана
-  const shortRow = b.shortMins > 0
-    ? row(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.base - b.earned)}`, 'pay-minus') : '';
+  const shortRow = (b.shortMins > 0
+    ? row(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.shortCut)}`, 'pay-minus') : '')
+    + (b.offDeduct > 0 ? row(`🚫 Бямба/нямын тасалсан · ${b.offAbsentDays} өдөр`, `−${fmtMoney(b.offDeduct)}`, 'pay-minus') : '');
   const otRow = b.otMins > 0
     ? row(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : '';
   const dlvRow = db.count
@@ -22487,7 +22534,7 @@ function renderSalary() {
     const memoBtn = (payable && owed > 0 && !histOnly) ? `<button class="btn pb-memo" data-sal-memo="${escapeHtml(k)}" title="Гүйлгээний утга хуулах">⧉ Утга</button>` : '';
     // ⛔ Утгагүй мөр БИЧИХГҮЙ: суутгалгүй бөгөөд нэмэгдэлгүй бол «цэвэр суурь» нь
     //   «нийт олгох»-той ЯГ ижил тоо — хоёуланг бичих нь нүдийг л төөрүүлнэ.
-    const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery || b.shortMins || b.orderBonus || b.penalty;
+    const hasParts = (dOn && (b.ndsh || b.pit)) || b.otMins || b.delivery || b.shortMins || b.offDeduct || b.orderBonus || b.penalty;
     /* ⛔ ТҮҮХ САРД ЗӨВХӨН ОЛГОСОН МӨР. Бодолтын мөрүүд (суурь · суутгал · илүү
        цаг · нийт олгох · үлдэгдэл) ОГТ гарахгүй — тэр тоо хуучин сард худал. */
     const money = histOnly
@@ -22497,7 +22544,8 @@ function renderSalary() {
       : !c.amount ? `<div class="pb-nosal">⚠ Суурь цалин тохируулаагүй — илүү цаг тооцогдохгүй.</div>` : `
       <div class="pay-rows pb-rows">
         ${hasParts ? line('Суурь цалин', fmtMoney(b.base)) : ''}
-        ${b.shortMins ? line(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.base - b.earned)}`, 'pay-minus') : ''}
+        ${b.shortMins ? line(`⏱ Нормоос ${attHM(b.shortMins)} дутуу · ажилласан цагаар`, `−${fmtMoney(b.shortCut)}`, 'pay-minus') : ''}
+        ${b.offDeduct ? line(`🚫 Бямба/нямын тасалсан · ${b.offAbsentDays} өдөр`, `−${fmtMoney(b.offDeduct)}`, 'pay-minus') : ''}
         ${(dOn && (b.ndsh || b.pit)) ? line('− НДШ · ХХОАТ', `−${fmtMoney(b.ndsh + b.pit)}`, 'pay-minus') : ''}
         ${b.otMins ? line(`⏱ Илүү цаг · ${attHM(b.otMins)}`, `+${fmtMoney(b.otPay)}`, 'pay-plus') : ''}
         ${b.delivery ? line(`🚗 Хүргэлт · ${db.count} удаа`, `+${fmtMoney(b.delivery)}`, 'pay-plus') : ''}

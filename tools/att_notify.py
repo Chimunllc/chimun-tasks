@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-att_notify.py — Ирцийн автомат мэдэгдэл (хэн нэгэн апп нээхийг ХҮЛЭЭХГҮЙ). VPS cron: 10 минут тутам ажлын өдөр, `flock`.
+att_notify.py — Ирцийн автомат мэдэгдэл (хэн нэгэн апп нээхийг ХҮЛЭЭХГҮЙ). VPS cron: 10 минут тутам ӨДӨР БҮР, `flock`.
 
-  */10 8-20 * * 1-5 flock -n /tmp/att_notify.lock python3 /opt/chimun/marketing/att_notify.py >> /var/log/att_notify.log 2>&1
+  */10 8-20 * * * flock -n /tmp/att_notify.lock python3 /opt/chimun/marketing/att_notify.py >> /var/log/att_notify.log 2>&1
+  (⛔ 2026-11-17: ӨДӨР БҮР ажиллана — өмнөх `1-5` (Да–Ба) байж болохгүй, бямба/нямд ч ажиллана)
 
 Гурван мэдэгдэл (ҮАЗ-ын даалгавар, 2026-11-14):
   ① 10:00 — QR уншуулаагүй, чөлөөгүй ажилтанд ӨӨРТ нь сануулга («чөлөөтэй бол хүсэлт илгээ»). 10:00–12:00 цонхонд л (хожуу ажиллавал
      «10 цаг болсон» гэж орой илгээхгүй).
-  ② 19:00-аас — өдөр дуусахад тасалсан болсон бол ажилтанд өөрт нь + ҮАЗ/CEO-д (нэг хүнд НЭГ нэгтгэсэн мэдэгдэл).
-  ③ 19:00-аас — 2+ ажлын өдөр дараалан тасалсан хүн байвал ҮАЗ/CEO-д анхааруулга.
+  ② 18:00-аас — тухайн өдөр ирц бүртгэгдээгүй, чөлөөгүй бол «тасалсан» (CEO 2026-11-17, өмнө 19:00) — ажилтанд өөрт нь + ҮАЗ/CEO-д (нэг хүнд НЭГ нэгтгэсэн мэдэгдэл).
+  ③ 18:00-аас — 2+ өдөр дараалан тасалсан хүн байвал ҮАЗ/CEO-д анхааруулга.
 
 ⛔ ТӨЛӨВИЙГ ЭНД ЗОХИОХГҮЙ. «Ажиллах өдөр», «чөлөөтэй» гэсэн дүрэм = аппын `attLeaveExpected` / `attDayStatus` (app.js). Энэ скрипт зөвхөн
    «хэзээ, хэнд сануулах» гэдгийг шийднэ. Тиймээс `expected()` ба `covered()` апптай ИЖИЛ байх ёстой — test/run.js нэг өгөгдлийг JS ба
@@ -19,7 +20,9 @@ att_notify.py — Ирцийн автомат мэдэгдэл (хэн нэгэ�
 ⛔ Push-ийн `email` талбар ЗААВАЛ тодорхой утас — хоосон бол БҮГД ажилтанд очно (`push-broadcast`).
 ⚠ Хүлээн авагч (ҮАЗ/CEO) = `app_config['att_notify']` → {"to": ["утас", …]}; байхгүй бол `pbx_notify`; байхгүй бол `level >= 100` ажилтан.
 ⚠ Хүн = `staff_salary.amount > 0` (аппын `attStaffCandidates` — цалинтай үндсэн ажилтан). Цагийн ажилтан орохгүй.
-⛔ ЗӨВХӨН ИРЦИЙН ХУВААРЬТАЙ хүн «ажиллах ёстой» (ҮАЗ, 2026-11-15 «Ирц цэс засах»): тухайн өдөр хуваарь (`att_callins`) бий, эсвэл ажлын өдөр
+⛔ 2026-11-17 CEO: МАНАЙ БИЗНЕС ӨДӨР БҮР АЖИЛЛАНА — хуваарь шаардахгүй: цалинтай үндсэн ажилтан (`people`) ӨДӨР БҮР (бямба/ням, баяр ч) «ажиллах ёстой»; баяр, нэгдсэн амралт БАЙХГҮЙ
+   (`holidays` тохиргоо ХЭРЭГЛЭГДЭХГҮЙ); `att_leave.exempt` (утас) гэсэн хүн л хасагдана. Доорх «ИРЦИЙН ХУВААРЬТАЙ» гэсэн хуучин дүрэм зөвхөн `exempt` хүнд хамаарна.
+⛔ (ХУУЧИН, 2026-11-15) ЗӨВХӨН ИРЦИЙН ХУВААРЬТАЙ хүн «ажиллах ёстой» (ҮАЗ, «Ирц цэс засах»): тухайн өдөр хуваарь (`att_callins`) бий, эсвэл ажлын өдөр
    + `app_config['work_start']`-д хүнд «ажил эхлэх цаг» тохируулагдсан = аппын `attLeaveScheduled`. Хуваарьгүй хүнд сануулга/тасалсан ИЛГЭЭХГҮЙ.
 
 Тест:    python3 tools/att_notify.py --selftest
@@ -39,7 +42,9 @@ PUSH_URL = 'https://n8n.nomaadcamp.com/webhook/push-broadcast'
 UB = timezone(timedelta(hours=8))
 DAY_MS = 24 * 3600 * 1000
 AM_FROM, AM_TO = '10:00', '12:00'   # ① сануулгын цонх
-EVENING = '19:00'                   # ②③ өдрийн төгсгөл
+EVENING = '18:00'                   # ②③ өдрийн төгсгөл — аппын ATT_ABSENT_AT-тай ИЖИЛ (CEO 2026-11-17); `daily_from`-оос хойш
+LEGACY_EVENING = '19:00'            # `daily_from`-оос ӨМНӨХ өдрүүд (хуучин дүрэм хэвээр)
+DAILY_FROM = '2026-11-19'           # `att_leave.daily_from` тохируулаагүй үед — аппын ATT_DAILY_FROM-тай ИЖИЛ
 LOOKBACK = 14                       # дараалсан тасалсан өдрийг хэр хойш харах
 DRY = '--dry' in sys.argv
 COVER_KINDS = ('unpaid', 'paid', 'vacation', 'sick', 'present', 'absent')   # батлагдсан мөр (нөхөлт БИШ)
@@ -66,19 +71,24 @@ def valid_day(s):
 
 
 def cfg_of(raw):
-    """`att_leave` тохиргоо → {from, holidays}. Аппын `attLeaveCfg`-ийн толь."""
+    """`att_leave` тохиргоо → {from, holidays, exempt, daily_from}. Аппын `attLeaveCfg`-ийн толь. ⛔ `holidays` ХЭРЭГЛЭГДЭХГҮЙ (баяр байхгүй, CEO 2026-11-17) — үргэлж хоосон.
+    `daily_from` = «өдөр бүр ажиллана» дүрмийн эхлэх өдөр (өнгөрсөн өдрийг хөндөхгүй)."""
     c = raw if isinstance(raw, dict) else {}
-    hol = [str(x)[:10] for x in (c.get('holidays') or []) if valid_day(str(x)[:10])]
-    return {'from': str(c.get('from')) if valid_day(c.get('from')) else '', 'holidays': hol}
+    ex = [digits(x) for x in (c.get('exempt') or []) if len(digits(x)) >= 8]
+    return {'from': str(c.get('from')) if valid_day(c.get('from')) else '', 'holidays': [], 'exempt': ex,
+            'daily_from': str(c.get('daily_from')) if valid_day(c.get('daily_from')) else DAILY_FROM}
 
 
-def scheduled(phone, day, callins, work_start):
-    """Аппын `attLeaveScheduled`: тухайн өдөр хуваарь бий, эсвэл ажлын өдөр + «ажил эхлэх цаг» тохируулагдсан."""
+def scheduled(phone, day, callins, work_start, cfg=None):
+    """Аппын `attLeaveScheduled`: цалинтай үндсэн ажилтан (`people`) ӨДӨР БҮР, `exempt` биш бол (`attLeaveTracked`); эсвэл тухайн өдөр хуваарь бий;
+    эсвэл ажлын өдөр + «ажил эхлэх цаг» тохируулагдсан (хуучин дүрэм — зөвхөн нэмэлт)."""
+    if cfg is not None and day >= cfg['daily_from'] and phone not in cfg.get('exempt', []):
+        return True
     return (phone, day) in callins or (is_weekday(day) and bool((work_start or {}).get(phone)))
 
 
 def expected(person, day, cfg, callins, work_start):
-    """Аппын `attLeaveExpected`: идэвхжсэн · ажилд орсноос хойш · баяр биш · ИРЦИЙН ХУВААРЬТАЙ."""
+    """Аппын `attLeaveExpected`: идэвхжсэн · ажилд орсноос хойш · (баяр БАЙХГҮЙ) · ӨДӨР БҮР ажиллах ёстой хүн."""
     if not cfg['from'] or day < cfg['from']:
         return False
     j = str(person.get('joined') or '')[:10]
@@ -86,7 +96,7 @@ def expected(person, day, cfg, callins, work_start):
         return False
     if day in cfg['holidays']:
         return False
-    return scheduled(person['phone'], day, callins, work_start)
+    return scheduled(person['phone'], day, callins, work_start, cfg)
 
 
 def covered(phone, day, leaves):
@@ -148,7 +158,7 @@ def plan(ctx):
     if AM_FROM <= hm < AM_TO:
         for p in miss:   # ① 10:00 — өөрт нь
             add('am10', p['phone'], '⏰ Ирц бүртгэгдээгүй байна', 'Өнөөдөр ирцээ бүртгүүлээгүй байна. Чөлөөтэй бол «Миний ирц» дээр хүсэлт илгээнэ үү.', './#myattend')
-    if hm >= EVENING:
+    if hm >= (EVENING if today >= cfg['daily_from'] else LEGACY_EVENING):
         for p in miss:   # ② өөрт нь
             add('absent', p['phone'], '❌ Өнөөдөр тасалсан гэж бүртгэгдлээ', 'Ирц бүртгэгдээгүй, чөлөөний хүсэлтгүй. Алдаа бол удирдлагад хэлнэ үү.', './#myattend')
         if miss:         # ② ҮАЗ/CEO-д нэг нэгтгэсэн
@@ -287,12 +297,13 @@ def selftest():
             f.append('%s: хүлээсэн %r, ирсэн %r' % (name, want, got))
 
     P = [{'phone': '99112233', 'name': 'Бат', 'joined': ''}, {'phone': '99112244', 'name': 'Сүх', 'joined': '2026-11-16'}]
-    base = {'cfg': {'from': '2026-11-02', 'holidays': ['2026-11-12']}, 'people': P, 'att': [], 'leaves': [], 'callins': [], 'work_start': {'99112233': '09:00', '99112244': '09:00'}, 'sent': {}, 'managers': ['88001122']}
+    # ⛔ ХУВААРЬ, «АЖИЛ ЭХЛЭХ ЦАГ» ХЭРЭГГҮЙ — цалинтай ажилтан бүр ӨДӨР БҮР ажиллана (CEO 2026-11-17); `holidays` байсан ч хэрэглэгдэхгүй
+    base = {'cfg': {'from': '2026-11-02', 'daily_from': '2026-11-02', 'holidays': ['2026-11-12']}, 'people': P, 'att': [], 'leaves': [], 'callins': [], 'work_start': {}, 'sent': {}, 'managers': ['88001122']}
     T = '2026-11-18'   # Лхагва
     kinds = lambda ctx: sorted((m['kind'], m['to']) for m in plan(ctx))
     # ① 10:00
     eq('09:59 — үгүй', kinds(dict(base, now=at(T, '09:59'))), [])
-    eq('10:00 — ирээгүй хоёр ажилтанд өөрт нь', kinds(dict(base, now=at(T, '10:00'))), [('am10', '99112233'), ('am10', '99112244')])
+    eq('10:00 — ирээгүй хоёр ажилтанд өөрт нь (хуваарь, ажил эхлэх цаг хэрэггүй)', kinds(dict(base, now=at(T, '10:00'))), [('am10', '99112233'), ('am10', '99112244')])
     P2 = [{'phone': '99112233', 'name': 'Бат', 'joined': ''}, {'phone': '99112244', 'name': 'Сүх', 'joined': '2026-12-01'}]
     eq('ажилд орохоос өмнө = ажиллах өдөр биш', [x['to'] for x in plan(dict(base, people=P2, now=at(T, '10:05')))], ['99112233'])
     eq('12:00 — цонх хаагдсан (орой «10 цаг болсон» гэж илгээхгүй)', [x for x in kinds(dict(base, now=at(T, '12:00'))) if x[0] == 'am10'], [])
@@ -300,35 +311,42 @@ def selftest():
     eq('чөлөөтэй хүнд үгүй', [x['to'] for x in plan(dict(base, leaves=[{'phone': '99112233', 'from': T, 'to': T, 'kind': 'paid'}], now=at(T, '10:05')))], ['99112244'])
     eq('нөхөлтийн мөр чөлөө БИШ (аппад дамжуулдаггүй)', len(plan(dict(base, leaves=[], now=at(T, '10:05')))), 2)
     eq('давхар илгээхгүй', plan(dict(base, sent={'am10|%s|99112233' % T: 1, 'am10|%s|99112244' % T: 1}, now=at(T, '10:05'))), [])
-    # ажлын бус өдөр, баяр, идэвхжихээс өмнө
-    eq('бямба — үгүй', plan(dict(base, now=at('2026-11-21', '10:05'))), [])
-    eq('баярын өдөр — үгүй', plan(dict(base, now=at('2026-11-12', '10:05'))), [])
+    # ⛔ ӨДӨР БҮР: бямба, ням, баяр ч ажиллана (амралтын өдөр байхгүй)
+    eq('бямба ч ажиллана', [x['to'] for x in plan(dict(base, now=at('2026-11-21', '10:05')))], ['99112233', '99112244'])
+    eq('ням ч ажиллана', [x['to'] for x in plan(dict(base, now=at('2026-11-22', '10:05')))], ['99112233', '99112244'])
+    eq('⛔ баяр БАЙХГҮЙ: `holidays` тохиргоо (11-12) хэрэглэгдэхгүй (Сүх 11-16-нд орсон тул зөвхөн Бат)', [x['to'] for x in plan(dict(base, now=at('2026-11-12', '10:05')))], ['99112233'])
     eq('идэвхжихээс өмнө — үгүй', plan(dict(base, now=at('2026-11-01', '10:05'))), [])
     eq('from хоосон = ЮУ Ч үгүй', plan(dict(base, cfg={}, now=at(T, '19:30'))), [])
-    # ⛔ ЗӨВХӨН ИРЦИЙН ХУВААРЬТАЙ хүн (ҮАЗ 2026-11-15): хуваарь ч, ажил эхлэх цаг ч үгүй хүнд ЮУ Ч илгээхгүй
-    eq('хуваарьгүй (хуваарь ч, ажил эхлэх цаг ч үгүй) — 10:05 үгүй', plan(dict(base, work_start={}, now=at(T, '10:05'))), [])
-    eq('хуваарьгүй — 19:30 тасалсан/анхааруулга ч үгүй', plan(dict(base, work_start={}, now=at(T, '19:30'))), [])
-    eq('зөвхөн нэг хүнд «ажил эхлэх цаг» тохируулсан', [x['to'] for x in plan(dict(base, work_start={'99112233': '09:00'}, now=at(T, '10:05')))], ['99112233'])
-    eq('ажил эхлэх цаггүй ч тэр өдрийн ХУВААРЬТАЙ бол ажиллах', [x['to'] for x in plan(dict(base, work_start={}, callins=[['99112244', T]], now=at(T, '10:05')))], ['99112244'])
-    eq('хуваарь нь ӨӨР өдөр бол (ажил эхлэх цаггүй) — тэр өдөр үгүй', plan(dict(base, work_start={}, callins=[['99112244', '2026-11-17']], now=at(T, '10:05'))), [])
-    eq('дараалсан тасалсан: хуваарьтай хоёр өдөр л тоологдоно', [x['body'] for x in plan(dict(base, work_start={}, callins=[['99112233', '2026-11-17'], ['99112233', T]], people=[P[0]], now=at(T, '19:00'))) if x['kind'] == 'streak'], ['Бат (2)'])
-    # хуваарьтай бямба = ажиллах өдөр
-    eq('хуваарьтай бямба — ажиллах', [x['to'] for x in plan(dict(base, callins=[['99112233', '2026-11-21']], now=at('2026-11-21', '10:05')))], ['99112233'])
-    # ② өдрийн төгсгөл
-    m = plan(dict(base, now=at(T, '19:00')))
-    eq('19:00 — ажилтанд + ҮАЗ-д нэгтгэсэн (+ 11-17, 11-18 дараалан → анхааруулга)', sorted((x['kind'], x['to']) for x in m),
+    # `exempt` (CEO гараар) хүнд хуучин дүрэм: хуваарь ч, ажил эхлэх цаг ч үгүй бол ЮУ Ч үгүй
+    ex = dict(base, cfg={'from': '2026-11-02', 'daily_from': '2026-11-02', 'exempt': ['99112233', '99112244']})
+    eq('exempt (хуваарь ч, ажил эхлэх цаг ч үгүй) — 10:05 үгүй', plan(dict(ex, now=at(T, '10:05'))), [])
+    eq('exempt — 18:30 тасалсан/анхааруулга ч үгүй', plan(dict(ex, now=at(T, '18:30'))), [])
+    eq('exempt: зөвхөн нэг хүнд «ажил эхлэх цаг» тохируулсан', [x['to'] for x in plan(dict(ex, work_start={'99112233': '09:00'}, now=at(T, '10:05')))], ['99112233'])
+    eq('exempt: ажил эхлэх цаггүй ч тэр өдрийн ХУВААРЬТАЙ бол ажиллах', [x['to'] for x in plan(dict(ex, callins=[['99112244', T]], now=at(T, '10:05')))], ['99112244'])
+    eq('exempt: ажил эхлэх цагтай ч бямба — үгүй (хуучин: Да–Ня)', plan(dict(ex, work_start={'99112233': '09:00'}, now=at('2026-11-21', '10:05'))), [])
+    eq('exempt: хуваарьтай бямба — ажиллах', [x['to'] for x in plan(dict(ex, callins=[['99112233', '2026-11-21']], now=at('2026-11-21', '10:05')))], ['99112233'])
+    # `daily_from`-оос ӨМНӨХ өдрүүд: хуучин дүрэм (хуваарьгүй хүнд юу ч үгүй, орой 19:00) — өнгөрсөн өдрийг хөндөхгүй
+    pre = dict(base, cfg={'from': '2026-11-02', 'daily_from': '2026-11-19'})
+    eq('daily_from-оос ӨМНӨ (11-18) хуваарьгүй хүнд ЮУ Ч үгүй', plan(dict(pre, now=at(T, '10:05'))), [])
+    eq('daily_from-оос ӨМНӨ: 18:30 тасалсан гэж мэдэгдэхгүй (хуучин 19:00)', plan(dict(pre, now=at(T, '18:30'))), [])
+    eq('daily_from өдөр (11-19) 10:05 — ажиллана', [x['to'] for x in plan(dict(pre, now=at('2026-11-19', '10:05')))], ['99112233', '99112244'])
+    eq('daily_from тохируулаагүй бол өгөгдмөл 11-19', cfg_of({'from': '2026-11-02'})['daily_from'], '2026-11-19')
+    # ② өдрийн төгсгөл = 18:00 (өмнө 19:00)
+    m = plan(dict(base, now=at(T, '18:00')))
+    eq('18:00 — ажилтанд + ҮАЗ-д нэгтгэсэн (+ дараалан тасалсан → анхааруулга)', sorted((x['kind'], x['to']) for x in m),
        [('absent', '99112233'), ('absent', '99112244'), ('absent_mgr', '88001122'), ('streak', '88001122')])
     eq('ҮАЗ-д нэг мэдэгдэл, нэр бүгд', [x['body'] for x in m if x['kind'] == 'absent_mgr'], ['Бат, Сүх'])
-    eq('18:59 — үгүй', [x for x in kinds(dict(base, now=at(T, '18:59'))) if x[0] != 'am10'], [])
-    eq('ирсэн бол тасалсан биш', [x['to'] for x in plan(dict(base, att=[['99112233', T], ['99112244', T]], now=at(T, '19:00')))], [])
+    eq('17:59 — үгүй', [x for x in kinds(dict(base, now=at(T, '17:59'))) if x[0] != 'am10'], [])
+    eq('ирсэн бол тасалсан биш', [x['to'] for x in plan(dict(base, att=[['99112233', T], ['99112244', T]], now=at(T, '18:00')))], [])
+    eq('бямба 18:00 ч тасалсан', sorted((x['kind'], x['to']) for x in plan(dict(base, now=at('2026-11-21', '18:00'))) if x['kind'] == 'absent'), [('absent', '99112233'), ('absent', '99112244')])
     # ③ 2+ өдөр дараалан
     att1 = [['99112233', '2026-11-16']]   # Да ирсэн, Мя (17) ирээгүй, Лх (18) ирээгүй → 2
-    m = plan(dict(base, att=att1, people=[P[0]], now=at(T, '19:00')))
+    m = plan(dict(base, att=att1, people=[P[0]], now=at(T, '18:00')))
     eq('2 өдөр дараалан → ҮАЗ-д анхааруулга', [(x['kind'], x['body']) for x in m if x['kind'] == 'streak'], [('streak', 'Бат (2)')])
-    eq('1 өдөр л → анхааруулга үгүй', [x for x in plan(dict(base, att=[['99112233', '2026-11-17']], people=[P[0]], now=at(T, '19:00'))) if x['kind'] == 'streak'], [])
-    eq('чөлөөтэй өдөр дараалалыг таслана', [x for x in plan(dict(base, att=[], leaves=[{'phone': '99112233', 'from': '2026-11-17', 'to': '2026-11-17', 'kind': 'paid'}], people=[P[0]], now=at(T, '19:00'))) if x['kind'] == 'streak'], [])
-    # Лх 11-11 ирсэн; 11-12 баяр, 11-14/15 амралт — дараалалыг ТАСЛАХГҮЙ; Ба 11-13 + Да 11-16 тасалсан = 2
-    eq('амралт, баярын өдөр дараалалыг таслахгүй', [x['body'] for x in plan(dict(base, att=[['99112233', '2026-11-11']], people=[P[0]], now=at('2026-11-16', '19:00'))) if x['kind'] == 'streak'], ['Бат (2)'])
+    eq('1 өдөр л → анхааруулга үгүй', [x for x in plan(dict(base, att=[['99112233', '2026-11-17']], people=[P[0]], now=at(T, '18:00'))) if x['kind'] == 'streak'], [])
+    eq('чөлөөтэй өдөр дараалалыг таслана', [x for x in plan(dict(base, att=[], leaves=[{'phone': '99112233', 'from': '2026-11-17', 'to': '2026-11-17', 'kind': 'paid'}], people=[P[0]], now=at(T, '18:00'))) if x['kind'] == 'streak'], [])
+    # Баасан 11-13 ирсэн; бямба 14, ням 15, Да 16 тасалсан = 3 (бямба/ням ч тоологдоно — амралтын өдөр байхгүй)
+    eq('⛔ бямба/ням дараалалд ТООЛОГДОНО', [x['body'] for x in plan(dict(base, att=[['99112233', '2026-11-13']], people=[P[0]], now=at('2026-11-16', '18:00'))) if x['kind'] == 'streak'], ['Бат (3)'])
     if f:
         print('❌ att_notify selftest:\n  ' + '\n  '.join(f))
         sys.exit(1)

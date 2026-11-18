@@ -16525,7 +16525,7 @@ async function swFetchTests() {
       ok(/<b>\$\{escapeHtml\(a\.name\)\}<\/b><small>\$\{escapeHtml\(a\.bank\)\} · \$\{escapeHtml\(a\.no\)\}<\/small>/.test(chipSrc) && !/a\.supplier|удаа/.test(chipSrc), '⛔ scan: өмнөх дансны товч = нэр + банк · данс ГАНЦ (нийлүүлэгч, «N удаа» гэх урт бичилтгүй — CEO 2026-10-28)');
       eq([F.poWho({ supplier: ' Haorizi ', lines: [{ name: 'Х' }] }), F.poWho({ supplier: '', lines: [{ name: 'Ширээ', sku: 'M-1' }] }), F.poWho({ lines: [] })], ['Haorizi', 'Ширээ', ''], 'poWho: дэлгүүр байвал тэр, үгүй бол эхний барааны нэр (цонхны гарчиг)');
     }
-    ok(/const needCmp = !ex \|\| ex\.status === 'request'/.test(moP) && /needCmp,/.test(moP) && /x\.k === 'cmp'\) return card && card\.querySelector\('\.po-cmp'\)/.test(moP), '⛔ scan: 3 дэлгүүрийн үнэ зөвхөн шинэ/хүлээгдэж буй хүсэлтэд ЗААВАЛ (needCmp), дутуу бол харьцуулалтын хэсэг рүү фокус');
+    ok(/function poNeedCmp\(ex, kind\) \{ return kind !== 'c' && \(!ex \|\| ex\.status === 'request'\); \}/.test(asrcP) && /needCmp: poNeedCmp\(ex, kindNow\)/.test(moP) && /x\.k === 'cmp'\) return card && card\.querySelector\('\.po-cmp'\)/.test(moP), '⛔ scan: 3 дэлгүүрийн үнэ зөвхөн шинэ/хүлээгдэж буй РЕНТАЛ хүсэлтэд ЗААВАЛ (poNeedCmp; нэг удаагийн материалд үгүй), дутуу бол харьцуулалтын хэсэг рүү фокус');
     ok(!/poEvStripFormHtml|<details class="po-lx"|class="po-lx/.test(asrcP) && !/\.po-lx/.test(fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8')), '⛔ scan: хүсэлтийн маягтад «＋ Нэмэлт» нугалаа (po-lx) ба хуучин зургийн зурвас БУЦАЖ ИРЭХГҮЙ — харьцуулалт шууд ил (poCmpFormHtml)');
     ok(!/rest\/v1\/purchases/.test(asrcP.slice(asrcP.indexOf('function poPrevAccounts('), asrcP.indexOf('function poPrevAccounts(') + 700)), '⛔ scan: өмнөх данс шинэ хүснэгт/бичлэг БАЙХГҮЙ — мөрүүдээс өөрөө гарна');
   }
@@ -17476,6 +17476,216 @@ async function swFetchTests() {
     sandbox.fetch = origFetch; st.products = saved.products; st.me = saved.me; st.purchases = saved.purchases;
   }
 });
+
+// ═══ НЭГ УДААГИЙН (ЗАРЦУУЛАГДДАГ) МАТЕРИАЛ (2026-11-18, CEO) ═══════════════════════════════════════════
+// Утааны шингэн, хөөс, конфетти… = ЗАРДАЛ (хөрөнгө БИШ), барааны каталогт ОРОХГҮЙ, зөвхөн ҮЛДЭГДЭЛ хяналттай.
+// Үлдэгдэлд хүрдэг тул цэвэр логикийг ч, бичих замыг ч ҮНЭХЭЭР дуудаж шалгана («тест ногоон ≠ ажиллаж байна»).
+{
+  need(['poLine', 'poRow', 'poIsConsumable', 'poNeedCmp', 'poConsHintHtml', 'poNormalize', 'poCardHtml', 'poFormIssues', 'poLineCardHtml',
+    'csNormalize', 'csQty', 'csFindByName', 'csMoveRow', 'csCanUse', 'csSectionHtml', 'csFetch', 'loadConsumables', 'csCreate', 'csUse', 'csAdjust',
+    'poConsReceiveApply', 'poConsLedgerReceived', 'poLedgerSums']);
+  const stc = vm.runInContext('state', sandbox);
+
+  // ① Мөр: `k` зөвхөн 'c' байж болно, `cid` цэвэрлэгдэнэ, DB руу (lines jsonb) бичигдэнэ — purchases хүснэгтэд шинэ багана хэрэггүй
+  const cl = F.poLine({ name: 'Утааны шингэн', q: 2, c: 40, k: 'c', cid: ' cs_1 ' });
+  eq([cl.k, cl.cid], ['c', 'cs_1'], 'нэг удаагийн: мөрийн k="c", cid цэвэрлэгдэнэ');
+  eq([F.poLine({ k: 'x' }).k, F.poLine({}).k, F.poLine({}).cid], ['', '', ''], 'нэг удаагийн: k зөвхөн "c" — бусад нь түрээсийн (хоосон), cid хоосон');
+  const rowSaved = F.poRow({ id: 'p', status: 'request', fx: 1, lines: [cl] });
+  eq([rowSaved.lines[0].k, rowSaved.lines[0].cid], ['c', 'cs_1'], '⛔ нэг удаагийн: k, cid DB-д (lines jsonb) хадгалагдана');
+  eq(F.poNormalize({ id: 'p', fx: 1, lines: [{ name: 'А', q: 1, c: 5, k: 'c' }] }).lines[0].k, 'c', 'нэг удаагийн: DB-ээс уншихад k хэвээр');
+
+  // ② Төрөл = ХҮСЭЛТ БҮРД: БҮХ мөр 'c' байвал л нэг удаагийн (хольсон/хоосон/хуучин = түрээсийн)
+  const mk = (...ks) => ({ lines: ks.map(k => F.poLine({ name: 'А', q: 1, c: 5, k })) });
+  eq([F.poIsConsumable(mk('c', 'c')), F.poIsConsumable(mk('c', '')), F.poIsConsumable(mk('')), F.poIsConsumable({ lines: [] }), F.poIsConsumable(null)],
+    [true, false, false, false, false], 'нэг удаагийн: БҮХ мөр "c" байвал л хүсэлт нэг удаагийн; хольсон/хуучин/хоосон = түрээсийн');
+
+  // ③ 3 дэлгүүрийн үнэ: рентал хүсэлтэд заавал (хуучин дүрэм хэвээр), нэг удаагийн материалд шаардахгүй
+  eq([F.poNeedCmp(null, ''), F.poNeedCmp({ status: 'request' }, ''), F.poNeedCmp({ status: 'approved' }, ''), F.poNeedCmp(null, 'c'), F.poNeedCmp({ status: 'request' }, 'c')],
+    [true, true, false, false, false], '⛔ нэг удаагийн: 3 дэлгүүрийн үнэ зөвхөн шинэ/хүлээгдэж буй РЕНТАЛ хүсэлтэд заавал; материалд үгүй');
+  const okLine = { name: 'Утааны шингэн', q: 2, _t: 80, cmp: [] };
+  const base = { lines: [okLine], cur: 'MNT', fx: 1, noCol: true };
+  ok(F.poFormIssues({ ...base, needCmp: true }).some(x => x.k === 'cmp'), 'нэг удаагийн: рентал хүсэлт харьцуулалтгүй бол дутуу (хуучин дүрэм)');
+  ok(!F.poFormIssues({ ...base, needCmp: false }).some(x => x.k === 'cmp'), '⛔ нэг удаагийн: материал харьцуулалтгүй ч хүсэлт илгээгдэнэ');
+
+  // ④ Мөрийн карт: материалд каталогийн санал/харьцуулалт БАЙХГҮЙ, байгаа материалын нэрийн санал (datalist) бий
+  const lcC = F.poLineCardHtml({ ...cl, _t: 80 }, 0, 1, true, 1), lcR = F.poLineCardHtml({ ...F.poLine({ name: 'Ширээ', q: 1, c: 5 }), _t: 5 }, 0, 1, true, 1);
+  ok(/list="po-cs-dl"/.test(lcC) && !/class="po-cmp"/.test(lcC), 'нэг удаагийн: материалын мөр = нэрийн санал (datalist) байгаа, 3 дэлгүүрийн харьцуулалтгүй');
+  ok(!/list="po-cs-dl"/.test(lcR) && /class="po-cmp"/.test(lcR), 'нэг удаагийн: түрээсийн мөр хуучнаараа (харьцуулалт бий, материалын санал үгүй)');
+
+  // ⑤ Карт: 🧴 тэмдэг + нягтланд «зардлын ангилал» сануулга (хөрөнгө 6xxx биш); түрээсийн картад байхгүй; 🆕 шинэ шошго материалд гарахгүй
+  const cardOf = (k, status) => F.poCardHtml(F.poNormalize({ id: 'pc', no: 5, status, fx: 1, supplier: 'Haorizi', pay_to: { bank: 'Хаан банк', no: '5012345678', name: 'Б.Бат' },
+    lines: [{ id: 'l1', name: 'Утааны шингэн', q: 2, c: 40000, k }] }), { approve: false, pay: false, receive: false, me: '' });
+  const cc = cardOf('c', 'approved'), cr = cardOf('', 'approved');
+  ok(/po-kind-b/.test(cc) && /зардлын ангилалд/.test(cc) && /6xxx/.test(cc), '⛔ нэг удаагийн: картад 🧴 тэмдэг + нягтланд «зардлын ангилал, хөрөнгө БИШ» сануулга');
+  ok(!/po-kind-b|зардлын ангилалд/.test(cr) && /🆕 шинэ/.test(cr), 'нэг удаагийн: түрээсийн картад тэмдэг/сануулга байхгүй, «🆕 шинэ» хэвээр');
+  ok(!/🆕 шинэ/.test(cc), 'нэг удаагийн: материалын мөрөнд «🆕 шинэ (бараа)» шошго гарахгүй');
+  ok(!/зардлын ангилалд/.test(cardOf('c', 'received')) && !/зардлын ангилалд/.test(cardOf('c', 'request')), 'нэг удаагийн: сануулга зөвхөн батлагдсанаас хүлээн авахаас өмнө (шилжүүлэх/ангилах үед)');
+
+  // ⑥ Материал: нэр таних, формат, дэвтрийн мөр
+  const lst = [{ id: 'a', name: 'Утааны  шингэн', archived: false }, { id: 'b', name: 'Хөөс', archived: true }];
+  eq([F.csFindByName(lst, ' утааны шингэн ').id, F.csFindByName(lst, 'ХӨӨС'), F.csFindByName(lst, ''), F.csFindByName(null, 'а')], ['a', null, null, null],
+    'материал: нэрийг том/жижиг үсэг, давхар зайг үл тооно; архивлагдсан нь тооцогдохгүй');
+  eq([F.csQty(7), F.csQty(2.5), F.csQty(1234.5678), F.csQty('x')], ['7', '2.5', '1,234.568', '0'], 'материал: тоо форматлах (литр, бутархай)');
+  eq(F.csNormalize({ id: 'a', name: ' Хөөс ', unit: '', qty: '2.0004', archived: true }), { id: 'a', name: 'Хөөс', unit: 'ш', note: '', archived: true, qty: 2, last_use_at: null, last_purchase_at: null }, 'материал: DB мөр цэвэрлэгдэнэ (нэгж анхдагч «ш»)');
+  const mv = F.csMoveRow('cs_a', -2.00049, 'use', { note: '  Эвент   А ' + 'х'.repeat(300) });
+  eq([mv.consumable_id, mv.delta, mv.reason, mv.ref, mv.note.length], ['cs_a', -2, 'use', null, 200], 'материал: дэвтрийн мөр (тоо бөөрөнхий, тайлбар 200 тэмдэгт хүртэл, ref хоосон)');
+
+  // ⑦ Эрх: харах = худалдан авалтын эрх, зарцуулах = CEO/нярав/хүлээн авагч
+  stc.consumables = [{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: 7, archived: false }]; stc._csMissing = false;
+  const secCeo = asCeo(() => F.csSectionHtml()), secOther = F.csSectionHtml();
+  ok(/data-cs-use="cs_a"/.test(secCeo) && /data-cs-new/.test(secCeo) && /7 <small>литр/.test(secCeo), 'материал: CEO жагсаалт, үлдэгдэл, «− Зарцуулсан», «＋ Шинэ»-ийг харна');
+  ok(!/data-cs-use|data-cs-new/.test(secOther) && /data-cs-more="cs_a"/.test(secOther) && /Утааны шингэн/.test(secOther), '⛔ материал: эрхгүй хүн үлдэгдлийг харна, ГЭХДЭЭ зарцуулах/нэмэх товч байхгүй');
+  stc._csMissing = true;
+  ok(/db\/consumables\.sql/.test(F.csSectionHtml()), 'материал: хүснэгт байхгүй (SQL ажиллуулаагүй) бол самбар ил анхааруулна');
+  stc._csMissing = false; stc.consumables = null;
+  eq(F.csSectionHtml(), '', 'материал: хараахан ачаалаагүй бол юу ч зурахгүй');
+
+  // ⑧ SQL: дэвтэр append-only, anon хаалттай, эрх purchases-тай нийцнэ, харагдац эрхээр шүүнэ
+  const sqlC = fs.readFileSync(path.join(__dirname, '..', 'db', 'consumables.sql'), 'utf8');
+  ok(/revoke update on consumable_moves from authenticated/.test(sqlC) && /revoke delete on consumable_moves from authenticated/.test(sqlC) && /revoke delete on consumables from authenticated/.test(sqlC),
+     '⛔ scan: материалын дэвтэр APPEND-ONLY (update/delete хураасан), материалд delete хураасан');
+  ok(/enable row level security/.test(sqlC) && /revoke all on consumables, consumable_moves from anon/.test(sqlC) && /revoke all on public\.consumable_stock from public, anon/.test(sqlC) && /notify pgrst/.test(sqlC),
+     'scan: материал — RLS, anon хаалттай, schema reload');
+  ok(/sec\.can\('products\.edit'\)/.test(sqlC) && /sec\.fin_full\(\)/.test(sqlC) && /sec\.can\('purchases'\)/.test(sqlC), 'scan: материалын эрх purchases-тай ижил (аппаас ЧАНГА биш)');
+  ok(/reason in \('purchase', 'use', 'adjust'\)/.test(sqlC) && /delta <> 0/.test(sqlC) && /lower\(btrim\(name\)\)\) where not archived/.test(sqlC), 'scan: дэвтрийн шалтгаан/тоо шалгалттай, нэр давхцахгүй (unique индекс)');
+  ok(/where sec\.is_ceo\(\) or sec\.fin_full\(\) or sec\.can\('purchases'\) or sec\.can\('products\.edit'\)\s+group by/.test(sqlC), '⛔ scan: харагдац эзнийхээ эрхээр ажилладаг тул эрхийн шүүлт where-д (эс бөгөөс RLS тойрогдоно)');
+  ok(!/\bupdate\b[^;]*qty|qty\s+numeric/.test(sqlC.replace(/--.*$/gm, '')), '⛔ scan: үлдэгдэл хаана ч ХАДГАЛАГДАХГҮЙ (багана/шинэчлэл алга) — зөвхөн дэвтрийн нийлбэр');
+
+  // ⑨ ⛔ Нэг удаагийн материал барааны замд ХЭЗЭЭ Ч хүрэхгүй (түрээс, элэгдэл, ROI, каталог, тооллогод орохгүй)
+  const asrcC = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const noComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const regStore = noComments(asrcC.slice(asrcC.indexOf('/* ─── НЭГ УДААГИЙН МАТЕРИАЛ: үлдэгдэл = ДЭВТРИЙН НИЙЛБЭР'), asrcC.indexOf('/* Барааны зураг → VPS')));
+  const regUi = noComments(asrcC.slice(asrcC.indexOf('/* ─── НЭГ УДААГИЙН МАТЕРИАЛ: хүлээн авах цонх'), asrcC.indexOf('/* Самбарын товчнууд')));
+  ok(regStore.length > 2000 && regUi.length > 2000, 'scan: материалын хадгалалт, цонхны хэсгүүд олдов');
+  ok(!/saveProduct|STOCK_MOVES_URL|stock_moves|state\.products|loadProductsCatalog|poLogMoves|poReceiptPlan|nextFreeProductCode/.test(regStore + regUi),
+     '⛔ scan: нэг удаагийн материалын код бараа (products/stock_moves/saveProduct) руу ХҮРЭХГҮЙ');
+  const rcvM = asrcC.slice(asrcC.indexOf('async function openPoReceiveModal('), asrcC.indexOf('/* ─── НЭГ УДААГИЙН МАТЕРИАЛ: хүлээн авах цонх'));
+  ok(rcvM.indexOf('if (poIsConsumable(po)) { await openPoReceiveConsModal(po); return; }') > 0
+     && rcvM.indexOf('if (poIsConsumable(po))') < rcvM.indexOf('loadProductsCatalog'), '⛔ scan: нэг удаагийн хүсэлтийг хүлээн авахад бараа/каталогийн кодоос ӨМНӨ материалын цонх руу салгана');
+  const moC = asrcC.slice(asrcC.indexOf('async function openPoModal('), asrcC.indexOf('async function openPoPayModal('));
+  ok(/id="po-kind"/.test(moC) && /k: kindNow, sku: kindNow === 'c' \? '' : l\.sku/.test(moC) && /needCmp: poNeedCmp\(ex, kindNow\)/.test(moC),
+     '⛔ scan: хүсэлтийн цонх төрөл сонгоно, БҮХ мөрт нэг төрөл хадгална (k), материалд каталогийн sku үлдээхгүй');
+
+  // ⑩ ДЭВТЭР: ХҮЛЭЭН АВАЛТ — fetch-ийг бичиж аваад дарааллыг шалгана
+  (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+    const origFetch = sandbox.fetch;
+    const saved = { products: stc.products, me: stc.me, purchases: stc.purchases, consumables: stc.consumables, miss: stc._csMissing, load: stc._csLoading };
+    const calls = [];
+    let stockRows = [], ledgerRows = [], failMoves = false, failPoPatch = false, conflict = false, missing = false;
+    const rs = (status, data) => ({ ok: status >= 200 && status < 300, status, json: async () => data, text: async () => 'boom' });
+    sandbox.fetch = async (url, opts) => {
+      const u = String(url), method = (opts && opts.method) || 'GET';
+      const body = opts && opts.body ? JSON.parse(opts.body) : null;
+      calls.push({ u, method, body });
+      if (missing) return rs(404, {});
+      if (u.includes('/consumable_stock')) return rs(200, stockRows);
+      if (u.includes('/consumable_moves')) return method === 'GET' ? rs(200, ledgerRows) : (failMoves ? rs(500, {}) : rs(201, body));
+      if (/\/consumables(\?|$)/.test(u)) return method === 'POST' ? (conflict ? rs(409, {}) : rs(201, [body])) : rs(200, [body || {}]);
+      if (u.includes('/purchases')) return failPoPatch ? rs(500, {}) : rs(200, [{ id: 'po9', no: 12, status: body && body.status, lines: body && body.lines, history: body && body.history, supplier: 'Haorizi', fx: 540 }]);
+      return rs(200, []);
+    };
+    const mkPo = () => ({ id: 'po9', no: 12, status: 'ordered', supplier: 'Haorizi', fx: 540, url: '', history: [], files: [],
+      lines: [F.poLine({ id: 'l1', name: 'Утааны шингэн', q: 10, c: 40, k: 'c' })] });
+    const reset = (cons) => { calls.length = 0; stockRows = []; ledgerRows = []; failMoves = failPoPatch = conflict = missing = false; stc.me = 'C'; stc._csLoading = false; stc._csMissing = false; stc.consumables = cons || []; };
+    const idx = (pred) => calls.findIndex(pred);
+    const isMovePost = (c) => c.method === 'POST' && c.u.includes('/consumable_moves');
+    try {
+      // ✅ Шинэ материал: материал үүснэ → дэвтэр (+10) → худалдан авалт «received»
+      reset();
+      let po = mkPo(), rows = po.lines.map(l => ({ ...l }));
+      let res = await F.poConsReceiveApply(po, rows, [{ row: rows[0], get: 10, short: false, cid: '', name: 'Утааны шингэн', unit: 'литр' }], false);
+      eq(res.errs, [], 'нэг удаагийн хүлээн авалт (бодит дуудалт): алдаагүй');
+      ok(res.complete, 'нэг удаагийн хүлээн авалт: бүх мөр ирсэн → дууссан');
+      const iC = idx(c => c.method === 'POST' && /\/consumables$/.test(c.u)), iM = idx(isMovePost), iP = idx(c => c.method === 'PATCH' && c.u.includes('/purchases'));
+      ok(iC >= 0 && iM > iC && iP > iM, '⛔ нэг удаагийн хүлээн авалт: дараалал материал → дэвтэр → худалдан авалтын төлөв');
+      const made = calls[iC].body, mvB = calls[iM].body[0];
+      eq([/^cs_/.test(made.id), made.name, made.unit], [true, 'Утааны шингэн', 'литр'], 'нэг удаагийн хүлээн авалт: шинэ материал нэр, нэгжтэй үүснэ');
+      eq([mvB.consumable_id === made.id, mvB.delta, mvB.reason, mvB.ref], [true, 10, 'purchase', 'PO:po9:l1'], '⛔ нэг удаагийн хүлээн авалт: дэвтрийн мөр +10, шалтгаан purchase, ref PO:<id>:<мөр> (давхар нэмэхээс сэргийлэх толь)');
+      eq(calls.filter(isMovePost).length, 1, 'нэг удаагийн хүлээн авалт: дэвтэрт яг НЭГ мөр');
+      const pb = calls[iP].body;
+      eq([pb.status, pb.lines[0].rcv, pb.lines[0].cid === made.id, pb.lines[0].k, calls[iP].u.includes('status=eq.ordered')], ['received', 10, true, 'c', true], 'нэг удаагийн хүлээн авалт: төлөв received, ирсэн тоо, cid, k хэвээр, оптимист түгжээ');
+      ok(calls.every(c => !/\/products|\/stock_moves/.test(c.u)), '⛔ нэг удаагийн хүлээн авалт: products/stock_moves руу ЯМАР Ч дуудалт яваагүй (бараа биш)');
+      eq(stc.consumables.map(c => [c.name, c.unit, c.qty]), [['Утааны шингэн', 'литр', 10]], 'нэг удаагийн хүлээн авалт: санах ойн үлдэгдэл 10 литр');
+      ok(/Бүгд ирсэн: Утааны шингэн ×10/.test(pb.history[pb.history.length - 1].note), 'нэг удаагийн хүлээн авалт: түүхэнд бичигдэнэ');
+
+      // ✅ Байгаа материал + хэсэгчлэн: давхар материал үүсэхгүй, төлөв ordered хэвээр
+      reset([{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: 7, archived: false }]);
+      po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+      res = await F.poConsReceiveApply(po, rows, [{ row: rows[0], get: 4, short: false, cid: 'cs_a', name: 'Утааны шингэн', unit: 'литр' }], false);
+      ok(res.errs.length === 0 && !res.complete && calls.every(c => !(c.method === 'POST' && /\/consumables$/.test(c.u))), 'нэг удаагийн хүлээн авалт: байгаа материалд нэмэхэд шинэ материал ҮҮСЭХГҮЙ, хэсэгчлэн = дуусаагүй');
+      eq([calls.find(isMovePost).body[0].consumable_id, calls.find(isMovePost).body[0].delta, stc.consumables[0].qty], ['cs_a', 4, 11], 'нэг удаагийн хүлээн авалт: үлдэгдэл 7 → 11');
+      eq(calls.find(c => c.method === 'PATCH' && c.u.includes('/purchases')).body.status, 'ordered', 'нэг удаагийн хүлээн авалт: хэсэгчлэн үед төлөв ordered хэвээр');
+
+      // ✅ «Дахиж ирэхгүй» — үлдэгдэлд хөндөхгүй, худалдан авалт хаагдана
+      reset([{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: 7, archived: false }]);
+      po = mkPo(); rows = po.lines.map(l => ({ ...l, rcv: 6 }));
+      res = await F.poConsReceiveApply(po, rows, [{ row: rows[0], get: 0, short: true, cid: 'cs_a', name: 'Утааны шингэн', unit: 'литр' }], false);
+      ok(res.complete && calls.every(c => !isMovePost(c)) && stc.consumables[0].qty === 7, 'нэг удаагийн хүлээн авалт: «хүлээхгүй» гэж хаахад үлдэгдэл ХӨНДӨГДӨХГҮЙ, худалдан авалт дуусна');
+
+      // ⛔ Дэвтэр унавал худалдан авалт «ирсэн» болохгүй, үлдэгдэл нэмэгдэхгүй
+      reset([{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: 7, archived: false }]); failMoves = true;
+      po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+      res = await F.poConsReceiveApply(po, rows, [{ row: rows[0], get: 10, short: false, cid: 'cs_a', name: 'Утааны шингэн', unit: 'литр' }], false);
+      ok(res.errs.length === 1 && calls.every(c => !(c.method === 'PATCH' && c.u.includes('/purchases'))) && rows[0].rcv === 0 && stc.consumables[0].qty === 7,
+         '⛔ нэг удаагийн хүлээн авалт: дэвтэр унавал алдаа ил, худалдан авалт «ирсэн» болохгүй, үлдэгдэл өөрчлөгдөхгүй');
+
+      // ⛔ Худалдан авалтын төлөв унасан ч дэвтэр үнэн (дараагийн цонх дэвтрээс нөхнө → давхар нэмэгдэхгүй)
+      reset([{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: 7, archived: false }]); failPoPatch = true;
+      po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+      res = await F.poConsReceiveApply(po, rows, [{ row: rows[0], get: 10, short: false, cid: 'cs_a', name: 'Утааны шингэн', unit: 'литр' }], false);
+      ok(res.errs.some(e => /давхар нэмэхээс сэргийлнэ/.test(e)) && calls.filter(isMovePost).length === 1 && rows[0].rcv === 10,
+         '⛔ нэг удаагийн хүлээн авалт: төлөв хадгалагдахгүй унасан ч дэвтэр бичигдсэн (давхар нэмэхээс сэргийлж ил хэлнэ)');
+
+      // ✅ Өөр хүн ижил нэртэй материал үүсгэчихсэн (409) — давхар үүсгэхгүй, түүнийг ашиглана
+      reset(); conflict = true; stockRows = [{ id: 'cs_x', name: 'утааны шингэн', unit: 'литр', qty: '3' }];
+      po = mkPo(); rows = po.lines.map(l => ({ ...l }));
+      res = await F.poConsReceiveApply(po, rows, [{ row: rows[0], get: 10, short: false, cid: '', name: 'Утааны шингэн', unit: 'литр' }], false);
+      eq([res.errs, calls.find(isMovePost).body[0].consumable_id, stc.consumables.find(c => c.id === 'cs_x').qty], [[], 'cs_x', 13], 'нэг удаагийн хүлээн авалт: ижил нэртэй материал үүссэн (409) бол түүний үлдэгдэлд нэмнэ');
+
+      // ✅ Дэвтрээс сэргээх: өмнө ирсэн тоо, материал
+      reset(); ledgerRows = [{ ref: 'PO:po9:l1', delta: 6, reason: 'purchase', consumable_id: 'cs_a' }, { ref: 'PO:po9:l1', delta: 2, reason: 'purchase', consumable_id: 'cs_a' }];
+      const led = await F.poConsLedgerReceived('po9');
+      eq([led.sums['po9:l1'], led.cids['po9:l1']], [8, 'cs_a'], 'нэг удаагийн: дэвтрээс мөр бүрийн ирсэн нийт тоо ба материал сэргэнэ');
+      ok(calls[0].u.includes('/consumable_moves') && calls[0].u.includes('reason=eq.purchase') && calls[0].u.includes('ref=like.PO%3Apo9%3A*'), 'нэг удаагийн: дэвтэр зөвхөн ЭНЭ худалдан авалтын purchase мөрөөр шүүгдэнэ');
+      reset(); missing = true;
+      let thrown = '';
+      try { await F.poConsLedgerReceived('po9'); } catch (e) { thrown = e.message; }
+      ok(/db\/consumables\.sql/.test(thrown) && stc._csMissing === true, '⛔ нэг удаагийн: хүснэгт байхгүй (404) бол хүлээн авалт ХААЛТТАЙ унаж, SQL ажиллуулахыг ил хэлнэ');
+      reset(); missing = true;
+      await F.loadConsumables();
+      eq([stc._csMissing, stc.consumables], [true, []], 'материал: ачаалахад хүснэгт байхгүй бол унахгүй, самбар анхааруулна');
+
+      // ✅ ЗАРЦУУЛСАН: серверийн шинэ үлдэгдлээс хасна; үлдэгдлээс ихийг хасахгүй
+      reset(); stockRows = [{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: '7' }];
+      const after = await F.csUse('cs_a', 3, 'Эвент А');
+      const useMv = calls.find(isMovePost).body[0];
+      eq([useMv.consumable_id, useMv.delta, useMv.reason, useMv.note, after.qty], ['cs_a', -3, 'use', 'Эвент А', 4], '⛔ зарцуулсан: дэвтэрт −3 (use), үлдэгдэл 7 → 4');
+      reset(); stockRows = [{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: '7' }];
+      let errUse = '';
+      try { await F.csUse('cs_a', 8, ''); } catch (e) { errUse = e.message; }
+      ok(/Үлдэгдэл 7 литр/.test(errUse) && calls.every(c => !isMovePost(c)), '⛔ зарцуулсан: үлдэгдлээс их хасахыг хориглоно (дэвтэрт бичихгүй)');
+      for (const bad of [0, -1, 'abc']) {
+        let e2 = ''; try { await F.csUse('cs_a', bad, ''); } catch (e) { e2 = e.message; }
+        ok(/тоогоо оруулна уу/.test(e2), 'зарцуулсан: тоо буруу (' + bad + ') бол хүлээж авахгүй');
+      }
+
+      // ✅ ТОХИРУУЛАХ: бодит тоо → зөрүү дэвтэрт ±; шалтгаан заавал; өөрчлөлтгүй бол бичихгүй
+      reset(); stockRows = [{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: '7' }];
+      const adj = await F.csAdjust('cs_a', 5, 'тооллого');
+      const adjMv = calls.find(isMovePost).body[0];
+      eq([adjMv.delta, adjMv.reason, adjMv.note, adj.qty], [-2, 'adjust', 'тооллого', 5], 'тохируулах: бодит 5 → зөрүү −2 (adjust), шалтгаантай');
+      reset(); stockRows = [{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: '7' }];
+      let eAdj = ''; try { await F.csAdjust('cs_a', 5, '  '); } catch (e) { eAdj = e.message; }
+      ok(/Шалтгаанаа бичнэ үү/.test(eAdj) && calls.every(c => !isMovePost(c)), '⛔ тохируулах: шалтгаангүй бол дэвтэрт бичихгүй');
+      reset(); stockRows = [{ id: 'cs_a', name: 'Утааны шингэн', unit: 'литр', qty: '7' }];
+      let eSame = ''; try { await F.csAdjust('cs_a', 7, 'ижил'); } catch (e) { eSame = e.message; }
+      ok(/ижил байна/.test(eSame) && calls.every(c => !isMovePost(c)), 'тохируулах: үлдэгдэл ижил бол 0 зөрүүтэй мөр бичихгүй');
+    } finally {
+      sandbox.fetch = origFetch; stc.products = saved.products; stc.me = saved.me; stc.purchases = saved.purchases;
+      stc.consumables = saved.consumables; stc._csMissing = saved.miss; stc._csLoading = saved.load;
+    }
+  });
+}
 
 // scan: эхний үлдэгдлийн блок ХОЁУЛАНГ нь харагдана — идэвхтэй тооллоготой ч,
 // тооллогогүй ч. ⛔ Анх ЗӨВХӨН idle дэлгэцэд тавьсан нь алдаа байв: тооллого

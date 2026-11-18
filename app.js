@@ -5080,6 +5080,7 @@ function renderTaskList() {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
     poEnsureLoaded();
+    csEnsureLoaded();   // нэг удаагийн материалын үлдэгдэл (🧴 жагсаалт)
     ensureProductsLoaded();   // мөрийн зураг каталогоос (sku-аар) гарна
     wrap.innerHTML = safeViewHtml(renderPurchases, 'Худалдан авалт');
     attachPurchasesHandlers();
@@ -30401,6 +30402,11 @@ function poMemoBoxHtml(po) {
   const memo = poTransferMemo(po);
   return `<div class="po-pay po-memo"><span class="po-pay-t">📝 Гүйлгээний утга: <b>${escapeHtml(memo)}</b></span><button type="button" class="btn po-copy" data-copy-text="${escapeHtml(memo)}" data-copy-label="Гүйлгээний утга хууллаа" title="Гүйлгээний утгыг хуулах">⧉</button></div>`;
 }
+// Нягтланд сануулга: нэг удаагийн материалын гүйлгээ = ЗАРДАЛ (хөрөнгө 6xxx БИШ) — эс бөгөөс салбарын зардлаас хасагдаж, элэгдэлд ч орохгүй алга болно.
+function poConsHintHtml(po) {
+  if (!po || !poIsConsumable(po) || !(po.status === 'approved' || po.status === 'paid' || po.status === 'ordered')) return '';
+  return '<div class="po-pay po-kind-hint"><span class="po-pay-t">🧴 Нэг удаагийн материал — банкны хуулгад <b>зардлын ангилалд</b> (жишээ нь 1900 Бусад шууд зардал) оруулна. Хөрөнгө (6xxx) БИШ: элэгдэл тооцогдохгүй.</span></div>';
+}
 function poStatusInfo(k) {
   return PO_STEPS.find(s => s.k === k) || PO_ENDS.find(s => s.k === k) || { k: String(k || ''), label: String(k || '—'), icon: '•' };
 }
@@ -30428,8 +30434,18 @@ function poLine(raw) {
     cg: r.cg == null || r.cg === '' ? null : Math.max(0, Math.round(Number(r.cg) || 0)),   // хүлээн авахад бодитоор төлсөн карго ₮ (null = оруулаагүй)
     rcv: Math.max(0, Math.round(num(r.rcv))),
     done: r.done === true,
+    k: r.k === 'c' ? 'c' : '',   // 'c' = НЭГ УДААГИЙН материал (зардал; барааны каталогт ОРОХГҮЙ) · хоосон = түрээсийн бараа
+    cid: String(r.cid || '').trim(),   // хүлээн авсан материалын id (consumables.id) — зөвхөн нэг удаагийн мөрд
   };
 }
+/* НЭГ УДААГИЙН (ЗАРЦУУЛАГДДАГ) БАРАА (CEO 2026-11-18): утааны шингэн, хөөс, конфетти, соронзон тууз, батарей г.м. Түрээсийн бараа БИШ —
+   мөнгө нь ЗАРДАЛ, `products`-д ОРОХГҮЙ, зөвхөн ҮЛДЭГДЛИЙГ хянана (`consumable_moves` дэвтэр, db/consumables.sql).
+   Төрлийг ХҮСЭЛТ БҮРД сонгоно (мөр бүрд БИШ): банкны гүйлгээ нэг дүнтэй, нэг ангилалтай (нягтлан зардал/хөрөнгө гэж ангилна) тул хоёр төрлийг
+   нэг хүсэлтэд хольж болохгүй. Мөрийн `k: 'c'` нь `purchases.lines` (jsonb)-д хадгалагдана — purchases хүснэгтэд шинэ багана ХЭРЭГГҮЙ.
+   ⛔ Нэг удаагийн мөр ХЭЗЭЭ Ч `saveProduct`/`stock_moves`-д хүрэхгүй (scan-тест хаана). */
+function poIsConsumable(po) { const ls = (po && po.lines) || []; return ls.length > 0 && ls.every(l => l && l.k === 'c'); }
+// 3 дэлгүүрийн үнэ: шинэ ба хүлээгдэж буй РЕНТАЛ хүсэлтэд заавал; нэг удаагийн материалд (хямд, хөрөнгө биш) шаардахгүй.
+function poNeedCmp(ex, kind) { return kind !== 'c' && (!ex || ex.status === 'request'); }
 /* БАРАА БҮРИЙН ДЭЛГҮҮР (CEO 2026-10-27: «хоёр бараа өөр өөр дэлгүүрээс авч байгаа нь харагдахгүй»). Нэг хүсэлт = нэг ТӨЛБӨР (нэг данс), харин бараа бүр өөр
    дэлгүүрийнх байж болно (Taobao/1688-д нэг төлбөрөөр олон дэлгүүрээс авдаг). `l.shop` хоосон бол хүсэлтийн дэлгүүр. Олон ӨӨР дэлгүүр байвал л карт бараа бүрт дэлгүүрийг ил харуулна. */
 function poLineShop(po, l) { return String((l && l.shop) || (po && po.supplier) || '').trim(); }
@@ -30885,6 +30901,174 @@ function poLedgerSkus(rows) {
   return by;
 }
 
+/* ─── НЭГ УДААГИЙН МАТЕРИАЛ: үлдэгдэл = ДЭВТРИЙН НИЙЛБЭР (db/consumables.sql) ─────────────────────────────────
+   `consumables` (нэр, нэгж) + `consumable_moves` (append-only дэвтэр: purchase/use/adjust) + `consumable_stock` харагдац (үлдэгдэл = Σ delta).
+   Үлдэгдлийг хаана ч ХАДГАЛАХГҮЙ тул дэвтэрээс зөрөх боломжгүй. ⛔ `products`/`saveProduct`/`stock_moves`-д ХҮРЭХГҮЙ — түрээсийн нөөц, элэгдэл, ROI,
+   каталог, тооллогод нэг удаагийн материал ОРОХГҮЙ (CEO 2026-11-18). */
+const CS_URL = () => `${DB_URL}/rest/v1/consumables`;
+const CS_MOVES_URL = () => `${DB_URL}/rest/v1/consumable_moves`;
+const CS_STOCK_URL = () => `${DB_URL}/rest/v1/consumable_stock`;
+const CS_UNITS = ['ш', 'литр', 'боодол', 'хайрцаг', 'шил', 'метр', 'кг'];
+const CS_REASON = { purchase: 'Хүлээн авсан', use: 'Зарцуулсан', adjust: 'Тохируулсан' };
+const CS_MISSING = 'Материалын хүснэгт үүсээгүй байна (db/consumables.sql)';
+const csRound = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+function csQty(n) { return csRound(n).toLocaleString('en-US', { maximumFractionDigits: 3 }); }
+function csNormalize(r) {
+  const x = r || {};
+  return { id: String(x.id || ''), name: String(x.name || '').trim(), unit: String(x.unit || '').trim() || 'ш', note: String(x.note || ''),
+    archived: x.archived === true, qty: csRound(x.qty), last_use_at: x.last_use_at || null, last_purchase_at: x.last_purchase_at || null };
+}
+function csActive() { return (state.consumables || []).filter(c => c && !c.archived); }
+function csById(id) { return (state.consumables || []).find(c => c && c.id === String(id)) || null; }
+// Нэрээр таних (том/жижиг үсэг, давхар зайг үл тооно) — архивлагдсан нь тооцогдохгүй (DB-ийн unique индекстэй ИЖИЛ дүрэм).
+function csFindByName(list, name) {
+  const k = poNameKey(name);
+  return k ? ((list || []).find(c => c && !c.archived && poNameKey(c.name) === k) || null) : null;
+}
+// Зарцуулсан/тохируулах эрх: CEO · барааны засах эрхтэй (нярав) · хүлээн авагч. Харах эрх = `canSeePurchases()` (DB-ийн бодлоготой нийцнэ).
+function csCanUse() { return !!state.isCEO || canEditProducts() || canReceivePurchases(); }
+function csMoveRow(cid, delta, reason, o) {
+  const op = o || {};
+  return { consumable_id: String(cid), delta: csRound(delta), reason, ref: op.ref || null,
+    note: String(op.note || '').replace(/\s+/g, ' ').trim().slice(0, 200), by: String(op.by || state.me || '') };
+}
+async function csPost(url, body, what) {
+  const r = await fetchWithTimeout(url, { method: 'POST', headers: poHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(body) }, 15000);
+  if (r.status === 404) { state._csMissing = true; throw new Error(CS_MISSING); }
+  if (r.status === 409) { const e = new Error('Давхцсан бүртгэл'); e.code = 409; throw e; }
+  if (!r.ok) throw new Error((what || 'Бичигдсэнгүй') + ': HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+  return r.json();
+}
+// Серверээс шинэ жагсаалт (үлдэгдэлтэй). 404 = SQL ажиллуулаагүй (ил хэлнэ, унахгүй).
+async function csFetch() {
+  const r = await fetchWithTimeout(`${CS_STOCK_URL()}?select=*&order=name.asc&limit=1000`, { headers: poHeaders() }, 15000);
+  if (r.status === 404) { state._csMissing = true; return []; }
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  state._csMissing = false;
+  return (await r.json()).map(csNormalize);
+}
+async function loadConsumables() {
+  if (!DB_ANON_KEY || state._csLoading) return;
+  state._csLoading = true;
+  try { state.consumables = await csFetch(); state._csAt = Date.now(); }
+  catch (e) { dataLoadFailed('loadConsumables', e); }
+  finally { state._csLoading = false; if (state.view === 'purchases' && typeof render === 'function') render(); }
+}
+// Дэлгэц нээгдэхэд (болон 60 секунд өнгөрвөл) арын гүйдлээр шинэчилнэ. Амжилтгүй бол 30 сек хүртэл дахин оролдохгүй.
+function csEnsureLoaded() {
+  if (!DB_ANON_KEY || state._csLoading) return;
+  const now = Date.now();
+  const stale = !state.consumables || (now - (state._csAt || 0) > 60000);
+  if (!stale || now - (state._csTry || 0) < 30000) return;
+  state._csTry = now;
+  loadConsumables();
+}
+// Цонх нээхэд хүлээж татна (хүснэгт байхгүй/сүлжээ унасан ч унахгүй — жагсаалт хоосон).
+async function csLoadQuiet(force) {
+  if (state.consumables && !force && Date.now() - (state._csAt || 0) < 60000) return;
+  try { state.consumables = await csFetch(); state._csAt = Date.now(); } catch (e) { state.consumables = state.consumables || []; }
+}
+async function csLogMoves(rows) {
+  if (!rows || !rows.length) return;
+  await csPost(CS_MOVES_URL(), rows, 'Материалын дэвтэрт бичигдсэнгүй');
+}
+// Санах ойн үлдэгдлийг (дараагийн татац хүртэл) шууд шинэчилнэ.
+function csBump(cid, delta) { const c = csById(cid); if (c) c.qty = csRound(c.qty + delta); }
+async function csCreate(name, unit) {
+  const row = { id: 'cs_' + uid().slice(2), name: String(name || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+    unit: String(unit || '').trim().slice(0, 20) || 'ш', created_by: state.me || '' };
+  if (!row.name) throw new Error('Материалын нэр хоосон байна');
+  try { await csPost(CS_URL(), row, 'Материал үүссэнгүй'); }
+  catch (e) {
+    if (e.code !== 409) throw e;
+    // Ижил нэртэй материал аль хэдийн бий (өөр хүн/төхөөрөмж үүсгэсэн) — шинэчлээд ТЭРИЙГ ашиглана, давхар үүсгэхгүй.
+    state.consumables = await csFetch(); state._csAt = Date.now();
+    const ex = csFindByName(state.consumables, row.name);
+    if (ex) return ex;
+    throw e;
+  }
+  const made = csNormalize({ ...row, qty: 0 });
+  state.consumables = [...(state.consumables || []), made];
+  return made;
+}
+/* ЗАРЦУУЛСАН: үлдэгдлээс хасна (дэвтэрт −). Эхлээд серверээс шинэ үлдэгдэл авна — өөр хүн саяхан хассан байж болно. */
+async function csUse(cid, qty, note) {
+  state.consumables = await csFetch(); state._csAt = Date.now();
+  const c = csById(cid);
+  if (!c) throw new Error('Материал олдсонгүй');
+  const q = csRound(qty);
+  if (!(q > 0)) throw new Error('Зарцуулсан тоогоо оруулна уу');
+  if (q > c.qty + 1e-9) throw new Error(`Үлдэгдэл ${csQty(c.qty)} ${c.unit} — түүнээс их зарцуулах боломжгүй (тооллогоор зөрүүтэй бол «Тохируулах»)`);
+  await csLogMoves([csMoveRow(cid, -q, 'use', { note })]);
+  csBump(cid, -q);
+  return csById(cid);
+}
+/* ТОХИРУУЛАХ (тооллого): бодит тоог оруулахад зөрүүг дэвтэрт ± мөрөөр бичнэ. Шалтгаан ЗААВАЛ (дэвтэр засагддаггүй тул ул мөр үлдэнэ). */
+async function csAdjust(cid, actual, note) {
+  state.consumables = await csFetch(); state._csAt = Date.now();
+  const c = csById(cid);
+  if (!c) throw new Error('Материал олдсонгүй');
+  const a = csRound(actual);
+  if (!(a >= 0)) throw new Error('Бодит үлдэгдлээ оруулна уу');
+  if (!String(note || '').trim()) throw new Error('Шалтгаанаа бичнэ үү (жишээ: тооллого, алдагдсан)');
+  const delta = csRound(a - c.qty);
+  if (delta === 0) throw new Error('Үлдэгдэл ижил байна — өөрчлөх зүйл алга');
+  await csLogMoves([csMoveRow(cid, delta, 'adjust', { note })]);
+  csBump(cid, delta);
+  return csById(cid);
+}
+// Энэ худалдан авалтаар дэвтэрт аль хэдийн бүртгэгдсэн тоо ба материал: { sums: {'<po>:<мөр>': тоо}, cids: {'<po>:<мөр>': материалын id} }.
+// ⚠ Дэвтэр = үнэн. Худалдан авалтын мөр хоцорсон (өмнөх бичилт унасан) ч давхар нэмэгдэхгүй; `cids` нь материалыг ДАХИН үүсгэхээс сэргийлнэ.
+async function poConsLedgerReceived(poId) {
+  const r = await fetchWithTimeout(
+    `${CS_MOVES_URL()}?select=ref,delta,reason,consumable_id&reason=eq.purchase&ref=like.${encodeURIComponent('PO:' + poId + ':')}*&limit=2000`,
+    { headers: poHeaders() }, 15000);
+  if (r.status === 404) { state._csMissing = true; throw new Error(CS_MISSING); }
+  if (!r.ok) throw new Error('Материалын дэвтэр уншигдсангүй: HTTP ' + r.status);
+  const rows = await r.json();
+  const cids = {};
+  (rows || []).forEach(x => {
+    const m = /^PO:([^:]+):(.+)$/.exec(String((x && x.ref) || ''));
+    if (m && x.consumable_id && !cids[m[1] + ':' + m[2]]) cids[m[1] + ':' + m[2]] = String(x.consumable_id);
+  });
+  return { sums: poLedgerSums(rows), cids };
+}
+/* НЭГ УДААГИЙН ХҮЛЭЭН АВАЛТЫН ГОЛ ЛОГИК (цонхноос салгасан — тест үнэхээр дуудаж шалгана).
+   work = [{ row, get, short, cid, name, unit }]; rows = мөрүүд (хүлээн авсан тоо дэвтрээр нөхөгдсөн).
+   Мөр бүрд ДАРААЛАЛ: ① материал (байгаа бол сонгосон, үгүй бол ШИНЭЭР үүснэ; ижил нэртэй бол давхар үүсэхгүй) → ② дэвтэр (await, +тоо) →
+   ③ эцэст нь худалдан авалтын мөр (оптимист түгжээтэй). ③ унавал дэвтэр үнэн хэвээр — дараагийн цонх нээхэд дэвтрээс нөхөгдөнө (давхар нэмэгдэхгүй).
+   ⛔ Бараа (`products`), `stock_moves`, `saveProduct`-д ХҮРЭХГҮЙ. Карго/зураг/салбар хэрэггүй — мөнгө банкнаас зардал болж орно. */
+async function poConsReceiveApply(po, rows, work, finishOnly) {
+  const okNames = [], errs = [];
+  for (const x of work) {
+    const r = x.row;
+    if (x.get > 0) {
+      try {
+        let c = x.cid ? csById(x.cid) : null;
+        if (x.cid && !c) throw new Error('сонгосон материал олдсонгүй');
+        if (!c) c = await csCreate(x.name || r.name, x.unit);
+        await csLogMoves([csMoveRow(c.id, x.get, 'purchase', { ref: `PO:${po.id}:${r.id}`,
+          note: `${po.supplier || 'худалдан авалт'} #${po.no || ''} · ${r.name || c.name}`, by: state.me })]);
+        csBump(c.id, x.get);
+        r.rcv += x.get; r.cid = c.id;
+        okNames.push(`${c.name} ×${x.get}`);
+      } catch (err) { errs.push(`${r.name || x.name}: ${err.message}`); continue; }
+    }
+    if (x.short) r.done = true;
+  }
+  const lines = rows.map(poLine);
+  const complete = poAllReceived({ lines });
+  try {
+    if (okNames.length || work.some(x => x.short) || finishOnly) {
+      const note = complete ? `Бүгд ирсэн${okNames.length ? ': ' + okNames.join(', ') : ''}` : `Хэсэгчлэн ирсэн: ${okNames.join(', ') || 'үлдсэнийг хүлээхгүй гэж хаав'}`;
+      await poPatch(po.id, { ...poAdvancePatch(po, complete ? 'received' : 'ordered', state.me, note, null), lines }, 'ordered');
+    }
+  } catch (err) {
+    errs.push('Худалдан авалтын төлөв хадгалагдсангүй (материал нэмэгдсэн — дэвтэр давхар нэмэхээс сэргийлнэ): ' + err.message);
+  }
+  return { okNames, errs, complete, lines };
+}
+
 /* Барааны зураг → VPS (hosted URL). ⛔ `uploadProductImage`-аас ЯЛГААТАЙ: унавал base64 руу БУЦАХГҮЙ, АЛДАА шиднэ —
    base64 нь `purchases.lines` (jsonb) мөр бүрийг хөөргөж, самбарын татацыг удаашруулна. */
 async function poUploadImage(file) {
@@ -30944,7 +31128,7 @@ function poLineRowHtml(po, l) {
     ${poThumbHtml(poImgOf(l))}
     <div class="po-cl-b">
       <span class="po-cl-nm">${escapeHtml(l.name || l.sku || 'бараа')}</span>
-      <small>${shopTag}${l.q} × ${poUnitIsRounded(l.c) ? '≈' : ''}${escapeHtml(poFmtNum(l.c))}${cur}${unitMnt}${l.sku ? ' · ' + escapeHtml(l.sku) : ' · 🆕 шинэ'}${cargo}${l.u ? ' · 🔗 ' + poSourceHtml(l.u) : ''}</small>
+      <small>${shopTag}${l.q} × ${poUnitIsRounded(l.c) ? '≈' : ''}${escapeHtml(poFmtNum(l.c))}${cur}${unitMnt}${l.k === 'c' ? '' : (l.sku ? ' · ' + escapeHtml(l.sku) : ' · 🆕 шинэ')}${cargo}${l.u ? ' · 🔗 ' + poSourceHtml(l.u) : ''}</small>
       ${rc}
       ${poEvRowHtml(po, l)}
     </div>
@@ -31049,7 +31233,7 @@ function poCardHtml(po, caps) {
         ${img ? `<img class="po-th" src="${escapeHtml(img)}" alt="" loading="lazy">` : ''}
         <span class="po-top-b">
           <span class="po-top-l"><b class="po-no">#${po.no == null ? '—' : po.no}</b> <span class="po-title">${poTitleHtml(po)}</span></span>
-          <span class="po-top-m">${poPillHtml(po.status)}${meta ? `<span class="po-top-s">${meta}</span>` : ''}</span>
+          <span class="po-top-m">${poPillHtml(po.status)}${poIsConsumable(po) ? '<span class="po-kind-b" title="Нэг удаа ашиглагдаад дуусах материал — зардал, барааны каталогт орохгүй">🧴 Нэг удаагийн</span>' : ''}${meta ?`<span class="po-top-s">${meta}</span>` : ''}</span>
         </span>
         <b class="po-tot">${escapeHtml(fmtMoney(total))}</b>
         <span class="po-chev" aria-hidden="true">⌄</span>
@@ -31063,6 +31247,7 @@ function poCardHtml(po, caps) {
         ${trowNote ? `<div class="po-note">${escapeHtml(trowNote)}</div>` : ''}
         ${pay}
         ${po.status === 'approved' ? poMemoBoxHtml(po) : ''}
+        ${poConsHintHtml(po)}
         ${poFilesRowHtml(po)}
         ${poProofRowHtml(po)}
         ${po.status === 'ordered' && !caps.receive ? poReceiverHintHtml() : ''}
@@ -31245,7 +31430,9 @@ function poLineCardHtml(l, i, fx, mnt, n) {
   const tile = `<div class="po-phw"><span class="po-ph" title="Барааны зураг оруулах / солих">${l.imgBusy ? '<span class="po-ph-t">⏳</span>' : (shown ? `<img class="po-th" src="${escapeHtml(shown)}" alt="Барааны зураг" loading="lazy">` : '<span class="po-ph-t">📷</span>')}<input class="ui-raw" type="file" accept="image/*" data-imgup="${i}" aria-label="Барааны зураг оруулах"></span>${poImgUrl(l.img) ? `<button type="button" class="ui-raw po-ph-x" data-imgdel="${i}" title="Зургийг хасах" aria-label="Зургийг хасах">✕</button>` : ''}</div>`;
   const nm = l.sku
     ? `<b class="po-line-nm">${escapeHtml(l.name || l.sku)}</b><span class="po-linked">✓ Каталогийн бараа <span class="po-badge">${escapeHtml(l.sku)}</span> · <button type="button" class="ui-raw po-lnk" data-unlink="${i}">салгах</button></span>`
-    : `<input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(l.name)}" placeholder="Барааны нэр" autocomplete="off" aria-label="Барааны нэр">`;
+    : (l.k === 'c'
+      ? `<input class="ui-raw po-line-in" data-f="name" list="po-cs-dl" value="${escapeHtml(l.name)}" placeholder="Материалын нэр" autocomplete="off" aria-label="Материалын нэр">`
+      : `<input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(l.name)}" placeholder="Барааны нэр" autocomplete="off" aria-label="Барааны нэр">`);
   const t = l._t != null ? l._t : poLineTotalCur(l);
   return `<div class="po-line" data-i="${i}">
     ${n > 1 ? `<div class="po-line-hd"><span>Бараа ${i + 1}</span><button type="button" class="ui-raw po-txtbtn" data-del="${i}">Хасах</button></div>` : ''}
@@ -31259,7 +31446,7 @@ function poLineCardHtml(l, i, fx, mnt, n) {
     </div>
     <div class="po-unit${poLineUnitReady(l, fx) ? ' ok' : ''}" data-sum="${i}">${poLineSumHtml(l, fx, poIsMnt(fx, mnt))}</div>
     <div class="po-fld"><div class="po-ctl po-ctl-t"><span class="po-pre">🔗</span><input class="ui-raw" data-f="u" value="${escapeHtml(l.u || '')}" placeholder="Линк (WeChat, Taobao…)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Худалдан авсан линк"></div></div>
-    ${poCmpFormHtml(l, i)}
+    ${l.k === 'c' ? '' : poCmpFormHtml(l, i)}
     <div class="po-fld"><div class="po-ctl po-ctl-t"><span class="po-pre">📝</span><input class="ui-raw" data-f="nt" value="${escapeHtml(l.nt || '')}" maxlength="300" placeholder="Тэмдэглэл (хэмжээ, сонголт)" autocomplete="off" aria-label="Барааны тэмдэглэл"></div></div>
   </div>`;
 }
@@ -31289,16 +31476,29 @@ async function openPoModal(id) {
   if (!fxCfg) fxCfg = (state.appConfig && state.appConfig[PO_FX_KEY]) || null;
   const fxToday = poFxOn(fxCfg, todayStr());   // exact:true бол Хаан банкны өнөөдрийн автомат ханш → талбар түгжигдэнэ
   const fxLocked = !!(fxToday && fxToday.exact);
-  const blankLine = () => ({ ...poLine({ name: '', q: 1, b: lastB }), _t: 0 });
+  let kindNow = ex && poIsConsumable(ex) ? 'c' : '';   // 'c' = нэг удаагийн материал (зардал, үлдэгдэл л хяналттай) · '' = түрээсийн бараа
+  if (!state.consumables) await csLoadQuiet();   // материалын нэрийн санал (datalist); хүснэгт байхгүй/сүлжээ унасан ч цонх нээгдэнэ
+  const blankLine = () => ({ ...poLine({ name: '', q: 1, b: lastB, k: kindNow }), _t: 0 });
   const d = ex
     ? { supplier: ex.supplier, platform: ex.platform || '', url: ex.url, fx: fxLocked ? fxToday.rate : (poFxValid(ex.fx) ? ex.fx : (fxToday ? fxToday.rate : 0)), cur: ex.fx === 1 ? 'MNT' : 'CNY', note: ex.note, pay_to: poPayTo(ex.pay_to), lines: ex.lines.map(l => ({ ...l, _t: poLineTotalCur(l) })) }
     : { supplier: '', platform: '', url: '', fx: fxToday ? fxToday.rate : 0, cur: lastCur, note: '', pay_to: poPayTo(null), lines: [blankLine()] };
-  const needCmp = !ex || ex.status === 'request';   // 3 дэлгүүрийн үнэ: шинэ ба хүлээгдэж буй хүсэлтэд заавал (батлагдсан хүсэлтийг данс г.м. засахад саад болохгүй)
+  // 3 дэлгүүрийн үнэ (`poNeedCmp`): шинэ ба хүлээгдэж буй РЕНТАЛ хүсэлтэд заавал (батлагдсан хүсэлтийг данс г.м. засахад саад болохгүй); нэг удаагийн материалд үгүй.
   const noCol = state._poHasPayTo === false;   // DB-д pay_to багана алга — данс хадгалагдахгүй (SQL ажиллуулаагүй)
   const prevAccts = noCol ? [] : poPrevAccounts(state.purchases, 2);
   const w = poOpenModal('po-edit', `
     <div class="modal-head"><b class="po-head-t">${ex ? `Худалдан авалт #${ex.no}` : 'Шинэ худалдан авалт'}</b><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
     <div class="modal-body po-form">
+      <section class="po-card">
+        <div class="po-card-h"><span>Төрөл</span>
+          <div class="po-seg po-seg-s" role="radiogroup" aria-label="Худалдан авалтын төрөл">
+            <button type="button" class="ui-raw po-seg-b${kindNow === 'c' ? '' : ' on'}" data-seg="po-kind" data-v="" aria-pressed="${kindNow !== 'c'}">🎪 Түрээсийн бараа</button>
+            <button type="button" class="ui-raw po-seg-b${kindNow === 'c' ? ' on' : ''}" data-seg="po-kind" data-v="c" aria-pressed="${kindNow === 'c'}">🧴 Нэг удаагийн</button>
+          </div>
+          <input type="hidden" id="po-kind" value="${kindNow}">
+        </div>
+        <div class="po-note po-kind-note" id="po-kind-hint"></div>
+        <datalist id="po-cs-dl">${csActive().map(c => `<option value="${escapeHtml(c.name)}">`).join('')}</datalist>
+      </section>
       <section class="po-card">
         <div class="po-card-h"><span>Бараа <small id="po-rate" class="po-rate"></small></span>
           <div class="po-seg po-seg-s" role="radiogroup" aria-label="Үнийн валют">
@@ -31333,7 +31533,7 @@ async function openPoModal(id) {
   const val = (sel) => { const el = w.$(sel); return el ? el.value : ''; };
   const curVal = () => (val('#po-cur') === 'MNT' ? 'MNT' : 'CNY');
   const curFx = () => (curVal() === 'MNT' ? 1 : poNum(val('#po-fx')));
-  const formState = () => ({ lines: d.lines, cur: curVal(), fx: curFx(), noCol, needCmp,
+  const formState = () => ({ lines: d.lines, cur: curVal(), fx: curFx(), noCol, needCmp: poNeedCmp(ex, kindNow),
     pay_to: noCol ? null : { bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') } });
   const fxHint = () => {
     const mnt = curVal() === 'MNT';
@@ -31351,6 +31551,7 @@ async function openPoModal(id) {
   const renderSug = (i) => {
     const el = w.$(`[data-sug="${i}"]`), l = d.lines[i];
     if (!el || !l) return;
+    if (l.k === 'c') { el.innerHTML = ''; return; }   // нэг удаагийн материал каталогт холбогдохгүй — нэрийн санал нь datalist (байгаа материал)
     const have = new Set(d.lines.map(x => x.sku).filter(Boolean));
     if (!poNameKey(l.name) && !poLinkKey(l.u) && !l.sku) {   // хоосон мөр: өмнө авсан бараанууд (нэг эгнээ, хажуу тийш гүйнэ)
       const rec = poRecentItems(state.purchases, state.products, 6, have);
@@ -31524,6 +31725,18 @@ async function openPoModal(id) {
   w.$('#po-addline').onclick = () => { d.lines.push(blankLine()); draw(); focusName(d.lines.length - 1); };
   w.$('#po-fx').addEventListener('input', () => { fxHint(); sums(); });
   w.$('#po-cur').addEventListener('change', draw);
+  // Төрөл (түрээсийн бараа ↔ нэг удаагийн материал): БҮХ мөрт нэг л төрөл (нэг гүйлгээ = нэг ангилал). Нэг удаагийн болгоход каталогийн холбоос сална.
+  const kindHint = () => {
+    w.$('#po-kind-hint').textContent = kindNow === 'c'
+      ? '🧴 Нэг удаа ашиглагдаад дуусах зүйл (утааны шингэн, хөөс…). Үнэ нь ЗАРДАЛ — каталогт орохгүй, зөвхөн үлдэгдэл хяналттай. Түрээсийн бараатай нэг хүсэлтэд бүү хольж.'
+      : '';
+  };
+  w.$('#po-kind').addEventListener('change', () => {
+    kindNow = val('#po-kind') === 'c' ? 'c' : '';
+    d.lines.forEach(l => { l.k = kindNow; if (kindNow === 'c') l.sku = ''; });
+    kindHint(); draw();
+  });
+  kindHint();
   ['#po-pbank', '#po-pno', '#po-pnm'].forEach(id => { const el = w.$(id); if (el) el.addEventListener('input', () => { syncAcctChips(); sums(); }); });
   w.$('#po-cancel').onclick = w.close;
   w.$('#po-save').onclick = async (ev) => {
@@ -31532,7 +31745,7 @@ async function openPoModal(id) {
     d.lines.forEach(l => { if (l._t > 0) l.c = poUnitFromTotal(l._t, l.q); });
     const iss = poFormIssues(formState());
     if (iss.length) { focusIssue(iss[0]); showToast('Дутуу: ' + poIssueLabels(iss), 'warn', 4500); return; }
-    const lines = d.lines.filter(l => String(l.name || '').trim() || l.sku || l._t > 0).map(poLine);
+    const lines = d.lines.filter(l => String(l.name || '').trim() || l.sku || l._t > 0).map(l => poLine({ ...l, k: kindNow, sku: kindNow === 'c' ? '' : l.sku }));   // БҮХ мөр нэг төрөл
     const cur = curVal();
     const fx = cur === 'MNT' ? 1 : poNum(val('#po-fx'));
     const pay_to = noCol ? poPayTo(null) : poPayTo({ bank: val('#po-pbank'), no: val('#po-pno'), name: val('#po-pnm') });
@@ -31544,7 +31757,7 @@ async function openPoModal(id) {
     btn.disabled = true;
     try {
       try { localStorage.setItem('poCur', cur); if (lines[0]) localStorage.setItem('poBranch', lines[0].b); } catch (e) { /* хувийн цонх */ }
-      const rateNote = cur === 'MNT' ? '' : `Хаан банкны ханш ${fx} · ${todayStr().slice(5)} · ${fxLocked ? 'автомат' : 'гараар'}`;
+      const rateNote = [kindNow === 'c' ? '🧴 Нэг удаагийн материал (зардал)' : '', cur === 'MNT' ? '' : `Хаан банкны ханш ${fx} · ${todayStr().slice(5)} · ${fxLocked ? 'автомат' : 'гараар'}`].filter(Boolean).join(' · ');
       const newId = ex ? ex.id : 'po_' + uid().slice(2);
       const files = ex ? ex.files : [];   // хавсралтыг (шилжүүлгийн баримт г.м.) засахад ХАДГАЛНА
       if (ex) {
@@ -31726,6 +31939,7 @@ async function openPoReceiveModal(id) {
     showToast(n.length ? `Хүлээн авагчаар томилогдсон ажилтан л хүлээн авна: ${n.join(', ')}` : 'Хүлээн авагч томилоогүй байна — Ажилтны карт → ⚙️ Удирдах → «📦 Худалдан авалтын бараа хүлээн авагч»', 'warn', 5500);
     return;
   }
+  if (poIsConsumable(po)) { await openPoReceiveConsModal(po); return; }   // нэг удаагийн материал: бараа/карго/зураггүй, зөвхөн үлдэгдэлд нэмнэ
   if (!state.products || !state.products.length) { try { await loadProductsCatalog(); } catch (e) { /* доор бараа олдохгүй гэж хэлнэ */ } }
   let led;
   try { led = await poLedgerReceived(po.id); }
@@ -31919,6 +32133,290 @@ async function openPoReceiveModal(id) {
   after();
 }
 
+/* ─── НЭГ УДААГИЙН МАТЕРИАЛ: хүлээн авах цонх + үлдэгдлийн жагсаалт ─────────────────────────────────────────────
+   Хүлээн авах цонх нь ТҮРЭЭСИЙН бараатайгаас ЯЛГААТАЙ: каталог холбоос, карго, зураг, салбар БАЙХГҮЙ (мөнгө банкнаас зардал болж орно, бараа биш).
+   Нэг мөр = нэг материалын үлдэгдэлд нэмнэ: байгаа материалыг сонгоно (ижил нэр бол өөрөө таарна) эсвэл шинээр үүсгэнэ (нэр + нэгж). */
+async function openPoReceiveConsModal(po) {
+  await csLoadQuiet(true);
+  if (state._csMissing) { showToast('⚠ ' + CS_MISSING + ' — нэг удаа ажиллуулсны дараа хүлээн авна', 'error', 7000); return; }
+  let led;
+  try { led = await poConsLedgerReceived(po.id); }
+  catch (e) { showToast('⚠ ' + e.message + ' — давхар нэмэхээс сэргийлж дахин оролдоно уу', 'error', 6000); return; }   // ХААЛТТАЙ унана
+  // Дэвтэр = үнэн. Худалдан авалтын мөр хоцорсон (өмнөх бичилт унасан) ч давхар нэмэгдэхгүй.
+  const rows = po.lines.map(l => {
+    const k = po.id + ':' + l.id;
+    return { ...l, rcv: Math.max(l.rcv, Math.round(led.sums[k] || 0)), cid: l.cid || led.cids[k] || '' };
+  });
+  const open = rows.filter(r => poLineLeft(r) > 0);
+  const ent = open.map(r => {
+    const m = (r.cid && csById(r.cid)) || csFindByName(state.consumables, r.name);   // ижил нэртэй байгаа материалтай өөрөө холбогдоно
+    return { row: r, get: poLineLeft(r), short: false, cid: m ? m.id : '', name: r.name, unit: m ? m.unit : 'ш' };
+  });
+  const cardHtml = (e, i) => {
+    const r = e.row, c = e.cid ? csById(e.cid) : null, left = poLineLeft(r);
+    const opts = '<option value="">🆕 Шинэ материал үүсгэх</option>' + csActive().map(m =>
+      `<option value="${escapeHtml(m.id)}"${m.id === e.cid ? ' selected' : ''}>${escapeHtml(m.name)} · одоо ${escapeHtml(csQty(m.qty))} ${escapeHtml(m.unit)}</option>`).join('');
+    return `<section class="po-card po-rl" data-i="${i}">
+      <div class="po-line-top">${poThumbHtml(poImgOf(r))}<div class="po-line-nmwrap"><b class="po-line-nm">${escapeHtml(r.name)}</b><small class="po-rl-code">🧴 нэг удаагийн материал</small></div></div>
+      <div class="po-rl-prog"><span>Захиалсан <b>${r.q}</b></span>${r.rcv > 0 ? `<span>Өмнө ирсэн <b>${r.rcv}</b></span><span class="po-left">Үлдсэн <b>${left}</b></span>` : ''}</div>
+      <div class="po-fld"><span class="po-lb">Аль материалын үлдэгдэлд нэмэх вэ</span><select class="ui-raw po-sel" data-f="cid" aria-label="Материал сонгох">${opts}</select></div>
+      ${c ? '' : `<div class="po-row2">
+        <div class="po-fld"><span class="po-lb">Материалын нэр</span><input class="ui-raw po-line-in" data-f="name" value="${escapeHtml(e.name)}" autocomplete="off" aria-label="Материалын нэр"></div>
+        <div class="po-fld"><span class="po-lb">Нэгж</span><input class="ui-raw po-line-in" data-f="unit" list="pc-units" value="${escapeHtml(e.unit)}" autocomplete="off" aria-label="Нэгж"></div></div>`}
+      <div class="po-fld"><span class="po-lb">Одоо ирсэн <i>${escapeHtml(c ? c.unit : e.unit)}</i></span>
+        <div class="po-ctl"><button type="button" class="ui-raw po-stp" data-gstep="-1" aria-label="Нэгээр хасах">−</button><input class="ui-raw po-num" data-f="get" type="number" min="0" max="${left}" step="1" inputmode="numeric" value="${e.get}" aria-label="Одоо ирсэн тоо"><button type="button" class="ui-raw po-stp" data-gstep="1" aria-label="Нэгээр нэмэх">＋</button></div></div>
+      <div class="po-unit" data-after="${i}"></div>
+      <div class="po-rl-rest po-off" data-rest="${i}"><span class="po-rest-t"></span><label class="po-chk"><input type="checkbox" data-f="short"${e.short ? ' checked' : ''}> Дахиж ирэхгүй</label></div>
+    </section>`;
+  };
+  const doneRows = rows.filter(r => poLineLeft(r) === 0);
+  const w = poOpenModal('po-edit po-recv', `
+    <div class="modal-head"><div class="po-head-t"><b>📦 Хүлээн авах · #${po.no}</b><small>🧴 Нэг удаагийн материал · ирсэн тоог шалгаад баталгаажуулна</small></div><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
+    <div class="modal-body po-form">
+      <datalist id="pc-units">${CS_UNITS.map(u => `<option value="${escapeHtml(u)}">`).join('')}</datalist>
+      <div id="pc-cards" class="po-lines">${open.length ? ent.map(cardHtml).join('') : '<div class="po-empty">Бүх мөр дэвтэрт бүртгэгдсэн байна. Худалдан авалтыг «Хүлээн авсан» болгож хаана.</div>'}</div>
+      ${doneRows.length ? `<div class="po-note">✓ Өмнө ирсэн: ${doneRows.map(r => escapeHtml((r.name || '') + ' ×' + r.rcv)).join(', ')}</div>` : ''}
+    </div>
+    <div class="modal-actions po-foot"><div class="po-foot-sum" id="pc-total"></div><button class="btn" id="pc-cancel">Болих</button><button class="btn btn-primary" id="pc-ok">✓ Хүлээн авах</button></div>`);
+  const getOf = (e) => Math.max(0, Math.min(poLineLeft(e.row), Math.round(Number(e.get) || 0)));
+  const after = () => {
+    let kinds = 0, rest = 0;
+    ent.forEach((e, i) => {
+      const c = e.cid ? csById(e.cid) : null, left = poLineLeft(e.row), get = getOf(e), unit = c ? c.unit : (String(e.unit || '').trim() || 'ш');
+      if (get > 0) kinds++;
+      rest += e.short ? 0 : Math.max(0, left - get);
+      const el = w.$(`[data-after="${i}"]`);
+      if (el) {
+        el.className = get > 0 ? 'po-unit ok' : 'po-unit';
+        el.innerHTML = !(get > 0) ? '<span class="po-unit-m">Энэ удаад ирээгүй — үлдэгдэл өөрчлөгдөхгүй</span>'
+          : c ? `<span class="po-unit-m">үлдэгдэл ${escapeHtml(csQty(c.qty))} → <b>${escapeHtml(csQty(c.qty + get))} ${escapeHtml(unit)}</b></span>`
+            : `<span class="po-unit-m">шинэ материал үүснэ: <b>${escapeHtml(csQty(get))} ${escapeHtml(unit)}</b></span>`;
+      }
+      const rs = w.$(`[data-rest="${i}"]`);
+      if (rs) {
+        const miss = left - get;
+        rs.classList.toggle('po-off', !(miss > 0));
+        const t = rs.querySelector('.po-rest-t');
+        if (t) t.textContent = e.short ? `Үлдсэн ${miss} ирэхгүй гэж хаана` : `⏳ Үлдсэн ${miss} дараа ирнэ — худалдан авалт нээлттэй үлдэнэ`;
+      }
+    });
+    w.$('#pc-total').innerHTML = kinds
+      ? `<div class="po-foot-top"><b class="po-foot-n">${kinds} төрөл</b><small>үлдэгдэлд нэмэгдэнэ</small></div>${rest ? `<span class="po-foot-hint">Үлдэнэ ${rest} — дараа ирнэ</span>` : '<span class="po-foot-ok">Бүгд ирсэн</span>'}`
+      : '<small class="po-foot-hint">Ирсэн тоогоо оруулна уу</small>';
+    w.$('#pc-ok').textContent = rest && kinds ? '✓ Хүлээн авах (хэсэгчлэн)' : '✓ Хүлээн авах';
+  };
+  const drawCards = () => { const box = w.$('#pc-cards'); if (box) box.innerHTML = ent.map(cardHtml).join(''); after(); };
+  w.m.addEventListener('click', (ev) => {
+    const st = ev.target.closest && ev.target.closest('[data-gstep]'), card = ev.target.closest && ev.target.closest('[data-i]');
+    if (!st || !card) return;
+    const e = ent[+card.dataset.i]; if (!e) return;
+    e.get = Math.max(0, Math.min(poLineLeft(e.row), getOf(e) + Number(st.dataset.gstep)));
+    const inp = card.querySelector('[data-f="get"]'); if (inp) inp.value = e.get;
+    after();
+  });
+  w.m.addEventListener('change', (ev) => {
+    const t = ev.target;
+    if (!t || !t.dataset || t.dataset.f !== 'cid') return;
+    const card = t.closest('[data-i]'), e = card && ent[+card.dataset.i]; if (!e) return;
+    e.cid = t.value;
+    const c = e.cid ? csById(e.cid) : null;
+    if (c) e.unit = c.unit;
+    drawCards();   // сонгосон/шинэ — нэр, нэгжийн талбар солигдоно
+  });
+  w.m.addEventListener('input', (ev) => {
+    const f = ev.target.dataset && ev.target.dataset.f, card = ev.target.closest && ev.target.closest('[data-i]');
+    if (!f || !card || f === 'cid') return;
+    const e = ent[+card.dataset.i]; if (!e) return;
+    if (f === 'short') e.short = ev.target.checked;
+    else if (f === 'get') e.get = Math.max(0, Math.round(Number(ev.target.value) || 0));
+    else e[f] = ev.target.value;
+    after();
+  });
+  w.$('#pc-cancel').onclick = w.close;
+  w.$('#pc-ok').onclick = async (ev) => {
+    const btn = ev.currentTarget;
+    const work = ent.map(e => ({ row: e.row, get: getOf(e), short: e.short, cid: e.cid, name: String(e.name || '').trim(), unit: String(e.unit || '').trim() || 'ш' })).filter(x => x.get > 0 || x.short);
+    const finishOnly = !open.length && poAllReceived({ lines: rows });
+    if (!work.length && !finishOnly) { showToast('Ирсэн тоогоо оруулна уу', 'warn'); return; }
+    for (const x of work) {   // шинэ материал: нэр заавал; байгаа материалтай ИЖИЛ нэр бол ТЭРНИЙ үлдэгдэлд нэмнэ (давхар үүсгэхгүй)
+      if (x.get > 0 && !x.cid) {
+        if (!x.name) { showToast('Шинэ материалын нэрээ оруулна уу', 'warn', 4000); return; }
+        const m = csFindByName(state.consumables, x.name);
+        if (m) x.cid = m.id;
+      }
+    }
+    btn.disabled = true;
+    const { okNames, errs, complete } = await poConsReceiveApply(po, rows, work, finishOnly);
+    if (okNames.length) { try { state.consumables = await csFetch(); state._csAt = Date.now(); } catch (_) { /* дараагийн ачаалалт */ } }
+    if (errs.length) showToast('⚠ ' + errs.join(' | '), 'error', 9000);
+    if (okNames.length || !errs.length) {
+      w.close();
+      if (!errs.length) showToast(complete ? '📦 Бүгд ирлээ — материалын үлдэгдэлд нэмэгдлээ' : `📦 ${okNames.length} материал нэмэгдлээ — дутуу хэсэг нээлттэй үлдлээ`, 'success', 3500);
+      loadPurchases(true); render();
+    } else btn.disabled = false;
+  };
+  after();
+}
+
+/* «🧴 Нэг удаагийн материал» жагсаалт (Худалдан авалтын самбарын доор, эвхэгдсэн): нэр · үлдэгдэл · «− Зарцуулсан» · «⋯» (түүх, тооллогоор тохируулах, засах, архивлах). */
+function csSectionHtml() {
+  if (state._csMissing) {
+    return '<div class="po-warn">⚠ Нэг удаагийн материалын хүснэгт өгөгдлийн санд үүсээгүй байна. Нэг удаа <code>db/consumables.sql</code> ажиллуулна (db/README.md) — тэр хүртэл нэг удаагийн худалдан авалтыг хүлээн авч болохгүй.</div>';
+  }
+  if (!state.consumables) return '';
+  const list = csActive(), can = csCanUse();
+  const rows = list.map(c => {
+    const when = c.last_use_at ? 'сүүлд зарцуулсан ' + poUbDay(c.last_use_at).slice(5) : (c.last_purchase_at ? 'сүүлд авсан ' + poUbDay(c.last_purchase_at).slice(5) : '');
+    return `<div class="cs-row">
+      <span class="cs-nm">${escapeHtml(c.name)}${when ? `<small>${escapeHtml(when)}</small>` : ''}</span>
+      <b class="cs-q${c.qty <= 0 ? ' zero' : ''}">${escapeHtml(csQty(c.qty))} <small>${escapeHtml(c.unit)}</small></b>
+      ${can ? `<button type="button" class="btn cs-btn" data-cs-use="${escapeHtml(c.id)}">− Зарцуулсан</button>` : ''}
+      <button type="button" class="btn cs-btn cs-btn-g" data-cs-more="${escapeHtml(c.id)}" aria-label="Түүх, тохируулах">⋯</button>
+    </div>`;
+  }).join('');
+  return `<details class="cs-box"${state._csOpen ? ' open' : ''}><summary>🧴 Нэг удаагийн материал · ${list.length} төрөл</summary>
+    ${can ? '<div class="cs-bar"><button type="button" class="btn cs-btn" data-cs-new>＋ Шинэ материал</button></div>' : ''}
+    <div class="cs-list">${rows || '<div class="buy-load">Материал бүртгээгүй байна. Нэг удаагийн худалдан авалтыг хүлээн авахад үлдэгдэл өөрөө үүснэ.</div>'}</div>
+    <div class="buy-note">Үнэ нь ЗАРДАЛ (банкны хуулгад зардлын ангилалд) — энд зөвхөн ҮЛДЭГДЭЛ. Хэрэглэсэн бүрийг «− Зарцуулсан»-аар хасна; тооллогоор зөрвөл «⋯ → Тохируулах».</div>
+  </details>`;
+}
+function attachConsumableHandlers() {
+  const d = document.querySelector('details.cs-box');
+  if (d) d.addEventListener('toggle', () => { state._csOpen = d.open; });
+  document.querySelectorAll('[data-cs-new]').forEach(el => el.addEventListener('click', () => openCsNewModal()));
+  document.querySelectorAll('[data-cs-use]').forEach(el => el.addEventListener('click', () => openCsUseModal(el.dataset.csUse)));
+  document.querySelectorAll('[data-cs-more]').forEach(el => el.addEventListener('click', () => openCsMoreModal(el.dataset.csMore)));
+}
+async function csPatch(id, patch) {
+  const r = await fetchWithTimeout(`${CS_URL()}?id=eq.${encodeURIComponent(id)}`,
+    { method: 'PATCH', headers: poHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(patch) }, 15000);
+  if (r.status === 409) throw new Error('Ийм нэртэй материал бүртгэлтэй байна');
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+  if (!(await r.json()).length) throw new Error('Материал олдсонгүй эсвэл эрх хүрэхгүй');
+  state.consumables = await csFetch(); state._csAt = Date.now();
+}
+// Шинэ материал + (байгаа бол) эхний үлдэгдэл. Худалдан авалтаар ирэхэд үлдэгдэл өөрөө нэмэгддэг тул энд зөвхөн одоо байгаа нөөцөө оруулна.
+function openCsNewModal() {
+  if (!csCanUse()) return;
+  const w = poOpenModal('po-edit', `
+    <div class="modal-head"><b class="po-head-t">🧴 Шинэ материал</b><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
+    <div class="modal-body po-form"><section class="po-card">
+      <div class="po-fld"><span class="po-lb">Нэр</span><input id="cs-nm" class="ui-raw po-line-in" autocomplete="off" placeholder="Жишээ: Утааны шингэн" aria-label="Материалын нэр"></div>
+      <div class="po-row2">
+        <div class="po-fld"><span class="po-lb">Нэгж</span><input id="cs-un" class="ui-raw po-line-in" list="cs-units" value="ш" autocomplete="off" aria-label="Нэгж"></div>
+        <div class="po-fld"><span class="po-lb">Одоо байгаа үлдэгдэл</span><div class="po-ctl"><input id="cs-q" class="ui-raw" type="number" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Эхний үлдэгдэл"></div></div>
+      </div>
+      <datalist id="cs-units">${CS_UNITS.map(u => `<option value="${escapeHtml(u)}">`).join('')}</datalist>
+      <div class="po-note">Худалдан авалтаар ирэхэд үлдэгдэл өөрөө нэмэгдэнэ. Энд зөвхөн одоо агуулахад байгаа үлдэгдлээ (эхний үлдэгдэл) оруулна.</div>
+    </section></div>
+    <div class="modal-actions po-foot"><button class="btn" id="cs-cancel">Болих</button><button class="btn btn-primary" id="cs-ok">Нэмэх</button></div>`);
+  const f0 = w.$('#cs-nm'); if (f0) f0.focus();
+  w.$('#cs-cancel').onclick = w.close;
+  w.$('#cs-ok').onclick = async (ev) => {
+    const btn = ev.currentTarget;
+    const name = String(w.$('#cs-nm').value || '').replace(/\s+/g, ' ').trim(), unit = String(w.$('#cs-un').value || '').trim() || 'ш';
+    const q = csRound(Number(w.$('#cs-q').value));
+    if (!name) { showToast('Материалын нэрээ оруулна уу', 'warn'); return; }
+    if (csFindByName(state.consumables, name)) { showToast('Ийм нэртэй материал бүртгэлтэй байна', 'warn', 4000); return; }
+    btn.disabled = true;
+    try {
+      const c = await csCreate(name, unit);
+      if (q > 0) await csLogMoves([csMoveRow(c.id, q, 'adjust', { note: 'Эхний үлдэгдэл' })]);
+      state.consumables = await csFetch(); state._csAt = Date.now();
+      w.close(); showToast(`🧴 «${name}» нэмэгдлээ${q > 0 ? ` · ${csQty(q)} ${unit}` : ''}`, 'success', 3000); render();
+    } catch (e) { showToast('⚠ ' + e.message, 'error', 6000); btn.disabled = false; }
+  };
+}
+function openCsUseModal(id) {
+  if (!csCanUse()) return;
+  const c = csById(id); if (!c) return;
+  const w = poOpenModal('po-edit', `
+    <div class="modal-head"><div class="po-head-t"><b>− Зарцуулсан · ${escapeHtml(c.name)}</b><small>Одоо үлдэгдэл ${escapeHtml(csQty(c.qty))} ${escapeHtml(c.unit)}</small></div><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
+    <div class="modal-body po-form"><section class="po-card">
+      <div class="po-fld"><span class="po-lb">Хэдийг зарцуулсан бэ</span><div class="po-ctl"><input id="cu-q" class="ui-raw" type="number" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Зарцуулсан тоо"><span class="po-suf">${escapeHtml(c.unit)}</span></div></div>
+      <div class="po-fld"><span class="po-lb">Тайлбар <i>заавал биш — аль эвент, хэн</i></span><input id="cu-nt" class="ui-raw po-line-in" maxlength="200" autocomplete="off" aria-label="Тайлбар"></div>
+      <div id="cu-after" class="po-unit"></div>
+    </section></div>
+    <div class="modal-actions po-foot"><button class="btn" id="cu-cancel">Болих</button><button class="btn btn-primary" id="cu-ok">Хасах</button></div>`);
+  const qv = () => csRound(Number(w.$('#cu-q').value));
+  const sum = () => {
+    const q = qv(), el = w.$('#cu-after');
+    el.className = q > 0 && q <= c.qty + 1e-9 ? 'po-unit ok' : 'po-unit';
+    el.innerHTML = !(q > 0) ? '<span class="po-unit-m">Зарцуулсан тоогоо оруулна уу</span>'
+      : q > c.qty + 1e-9 ? `<span class="po-unit-m">⚠ Үлдэгдэл (${escapeHtml(csQty(c.qty))} ${escapeHtml(c.unit)})-ээс их байна</span>`
+        : `<span class="po-unit-m">үлдэгдэл ${escapeHtml(csQty(c.qty))} → <b>${escapeHtml(csQty(c.qty - q))} ${escapeHtml(c.unit)}</b></span>`;
+  };
+  w.$('#cu-q').addEventListener('input', sum);
+  sum();
+  w.$('#cu-q').focus();
+  w.$('#cu-cancel').onclick = w.close;
+  w.$('#cu-ok').onclick = async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    try {
+      const q = qv(), res = await csUse(id, q, w.$('#cu-nt').value);
+      w.close(); showToast(`🧴 ${c.name}: −${csQty(q)} ${c.unit} · үлдсэн ${csQty(res.qty)} ${c.unit}`, 'success', 3500); render();
+    } catch (e) { showToast('⚠ ' + e.message, 'error', 6000); btn.disabled = false; }
+  };
+}
+// «⋯»: сүүлийн хөдөлгөөн (түүх) + тооллогоор тохируулах + нэр/нэгж засах + архивлах (үлдэгдэл 0 үед л).
+async function openCsMoreModal(id) {
+  const c = csById(id); if (!c) return;
+  const can = csCanUse();
+  let hist = [];
+  try {
+    const r = await fetchWithTimeout(`${CS_MOVES_URL()}?select=delta,reason,note,by,at&consumable_id=eq.${encodeURIComponent(id)}&order=at.desc&limit=15`, { headers: poHeaders() }, 15000);
+    if (r.ok) hist = await r.json();
+  } catch (e) { /* түүхгүй ч цонх нээгдэнэ */ }
+  const histHtml = (hist || []).map(h => `<div class="po-h">${escapeHtml(fmtDateTimeUB(h.at))}${h.by ? ' · ' + escapeHtml(memberName(h.by)) : ''} · <b>${Number(h.delta) > 0 ? '+' : ''}${escapeHtml(csQty(h.delta))}</b> ${escapeHtml(CS_REASON[h.reason] || String(h.reason || ''))}${h.note ? ` · <i>${escapeHtml(h.note)}</i>` : ''}</div>`).join('') || '<div class="po-h">Түүх алга</div>';
+  const w = poOpenModal('po-edit', `
+    <div class="modal-head"><div class="po-head-t"><b>🧴 ${escapeHtml(c.name)}</b><small>Одоо үлдэгдэл ${escapeHtml(csQty(c.qty))} ${escapeHtml(c.unit)}</small></div><button class="modal-x po-x-close" aria-label="Хаах">✕</button></div>
+    <div class="modal-body po-form">
+      <section class="po-card"><div class="po-lb po-lb-h">Сүүлийн хөдөлгөөн</div><div class="po-hist">${histHtml}</div></section>
+      ${can ? `<section class="po-card">
+        <div class="po-lb po-lb-h">Тооллогоор тохируулах</div>
+        <div class="po-row2">
+          <div class="po-fld"><span class="po-lb">Бодит үлдэгдэл <i>${escapeHtml(c.unit)}</i></span><div class="po-ctl"><input id="cm-q" class="ui-raw" type="number" min="0" step="any" inputmode="decimal" value="${escapeHtml(String(c.qty))}" aria-label="Бодит үлдэгдэл"></div></div>
+          <div class="po-fld"><span class="po-lb">Шалтгаан <i>заавал</i></span><input id="cm-nt" class="ui-raw po-line-in" maxlength="200" autocomplete="off" placeholder="тооллого" aria-label="Шалтгаан"></div>
+        </div>
+        <button type="button" class="btn" id="cm-adj">Тохируулах</button>
+      </section>
+      <section class="po-card">
+        <div class="po-lb po-lb-h">Нэр, нэгж засах</div>
+        <div class="po-row2">
+          <div class="po-fld"><input id="cm-nm" class="ui-raw po-line-in" value="${escapeHtml(c.name)}" autocomplete="off" aria-label="Нэр"></div>
+          <div class="po-fld"><input id="cm-un" class="ui-raw po-line-in" list="cm-units" value="${escapeHtml(c.unit)}" autocomplete="off" aria-label="Нэгж"></div>
+        </div>
+        <datalist id="cm-units">${CS_UNITS.map(u => `<option value="${escapeHtml(u)}">`).join('')}</datalist>
+        <div class="cs-acts"><button type="button" class="btn" id="cm-save">Хадгалах</button><button type="button" class="btn po-danger" id="cm-arch"${c.qty !== 0 ? ' disabled title="Үлдэгдэл 0 болсны дараа архивлана"' : ''}>Архивлах</button></div>
+      </section>` : ''}
+    </div>
+    <div class="modal-actions po-foot"><button class="btn" id="cm-close">Хаах</button></div>`);
+  w.$('#cm-close').onclick = w.close;
+  const run = async (btn, fn, okMsg) => {
+    btn.disabled = true;
+    try { await fn(); w.close(); showToast(okMsg, 'success', 3000); render(); }
+    catch (e) { showToast('⚠ ' + e.message, 'error', 6000); btn.disabled = false; }
+  };
+  const adj = w.$('#cm-adj');
+  if (adj) adj.onclick = () => run(adj, () => csAdjust(id, Number(w.$('#cm-q').value), w.$('#cm-nt').value), `🧴 ${c.name}: үлдэгдэл тохирууллаа`);
+  const sv = w.$('#cm-save');
+  if (sv) sv.onclick = () => run(sv, async () => {
+    const name = String(w.$('#cm-nm').value || '').replace(/\s+/g, ' ').trim(), unit = String(w.$('#cm-un').value || '').trim() || 'ш';
+    if (!name) throw new Error('Нэр хоосон байна');
+    await csPatch(id, { name, unit });
+  }, '🧴 Хадгалагдлаа');
+  const ar = w.$('#cm-arch');
+  if (ar) {
+    // ⚠ Цонх доторх `showConfirm` хаагдаж харагдахгүй (poOpenModal-ийн тайлбар) — тиймээс товч өөрөө 2 дахь даралтаар баталгаажна.
+    let armed = false;
+    ar.onclick = () => {
+      if (!armed) { armed = true; ar.textContent = 'Дахин дарж архивлана'; return; }
+      run(ar, () => csPatch(id, { archived: true }), '🧴 Архивлагдлаа');
+    };
+  }
+}
+
 /* Самбарын товчнууд (render бүрд шинээр холбогдоно). */
 function attachPoHandlers() {
   document.querySelectorAll('[data-po-tab]').forEach(el => el.addEventListener('click', () => { state._poTab = el.dataset.poTab; render(); }));
@@ -31936,7 +32434,7 @@ function renderPurchases() {
   // ГОЛ НЬ худалдан авалтын процесс (poBoardHtml); банкны хөрөнгийн зардал доор эвхэгдсэн лавлагаа.
   const board = poBoardHtml();
   if (state.financeRequests === undefined || state.financeRequests === null) {
-    return `<div class="buy-wrap">${board}<div class="buy-load">Банкны гүйлгээ ачаалж байна…</div></div>`;
+    return `<div class="buy-wrap">${board}${csSectionHtml()}<div class="buy-load">Банкны гүйлгээ ачаалж байна…</div></div>`;
   }
   const all = purchaseRows(state.financeRequests);
   const link = purchaseLinkIndex(state.products);
@@ -31952,6 +32450,7 @@ function renderPurchases() {
 
   const kpi = (l, v) => `<div class="buy-kpi"><div class="buy-kpi-l">${l}</div><div class="buy-kpi-v">${v}</div></div>`;
   return `<div class="buy-wrap">${board}
+    ${csSectionHtml()}
     <details class="buy-bank"${state._buyBankOpen ? ' open' : ''}><summary>🏦 Банкны гүйлгээ · хөрөнгийн зардал · ${all.length} мөр · ${escapeHtml(fmtMoney(total))}</summary>
     <div class="buy-kpis">
       ${kpi('Худалдан авалт', all.length)}
@@ -31998,6 +32497,7 @@ function renderPurchases() {
 
 function attachPurchasesHandlers() {
   attachPoHandlers();
+  attachConsumableHandlers();
   const bank = document.querySelector('.buy-bank');
   if (bank) bank.addEventListener('toggle', () => { state._buyBankOpen = bank.open; });
   document.querySelectorAll('[data-buy-link]').forEach(el => {

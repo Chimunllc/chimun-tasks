@@ -4166,7 +4166,9 @@ function fmtDate(s) {
   if (diff === -1) return 'Өчигдөр';
   if (diff > 1 && diff <= 7) return `${Math.round(diff)} хоног дараа`;
   if (diff < -1 && diff >= -7) return `${Math.abs(Math.round(diff))} хоног өмнө`;
-  return d.toLocaleDateString('mn-MN', { month: 'short', day: 'numeric' });
+  // ⚠ `toLocaleDateString('mn-MN')` нь «mn» хэлний өгөгдөлгүй хөтөч/WebView дээр чимээгүй англи («Jul 5») болдог —
+  //   төхөөрөмжөөс хамаарахгүй байхын тулд сарын нэрийг өөрсдөө бичнэ.
+  return isNaN(d) ? '' : `${d.getMonth() + 1}-р сарын ${d.getDate()}`;
 }
 // Огноо + цаг — Улаанбаатарын цагаар, монгол дараалал САР/ӨДӨР цаг:мин (06/19 17:41)
 /* ⛔ ХУУЛГААС ОРСОН МӨРД ЦАГ БАЙХГҮЙ (2026-10-02). Хуулгын задлагч зөвхөн
@@ -27571,6 +27573,8 @@ function taskPtsCfg() {
   };
 }
 function taskPtsOn() { return !!taskPtsCfg().from; }
+// `app_config` серверээс ачаалагдсан эсэх (loadAppConfigAll). Ачаалагдаагүй хооронд `from` хоосон = «үл мэдэгдэх», «унтраалттай» БИШ.
+function taskPtsCfgReady() { return !!state._appConfigLoaded || !!taskPtsCfg().from; }
 function taskPtsPayOn() { const c = taskPtsCfg(); return !!c.from && c.pay; }
 /* УБ-ийн цаг (UTC+8, зуны цаггүй). ⛔ Хөтчийн бүсээс БҮҮ хамаар — `Date.UTC` + UTC геттер (сар гулсахаас сэргийлнэ). */
 function _p2(n) { return String(n).padStart(2, '0'); }
@@ -27914,6 +27918,8 @@ async function taskPtsSaveCfg(raw) {
 }
 async function taskPtsActivate() {
   if (!state.isCEO) { showToast('Зөвхөн захирал идэвхжүүлнэ', 'warn', 2500); return; }
+  // ⛔ Тохиргоо ачаалагдаагүй үед `from` хоосон харагдана — тэр үед идэвхжүүлбэл ӨМНӨ идэвхжсэн огноог (оноо тоолж эхэлсэн өдрийг) өнөөдрөөр дарна.
+  if (!taskPtsCfgReady()) { showToast('Тохиргоо ачаалж байна — түр хүлээгээд дахин оролдоно уу', 'warn', 3000); return; }
   const c = taskPtsCfg();
   if (!(await showConfirm(`Даалгаврын оноог ӨНӨӨДРӨӨС идэвхжүүлэх үү?\n\nЭнэ өдрөөс хойш ҮҮССЭН даалгавар: цагтаа бол + оноо, хоцроовол −${c.late}, цуцалбал −${c.cancel}. Оноо цалингийн урамшуулалд орно. Өмнөх ажил хөндөгдөхгүй.`, { okText: 'Идэвхжүүлэх' }))) return;
   try { await taskPtsSaveCfg(taskPtsCfgRaw(Object.assign(c, { from: todayStr() }))); showToast('✅ Даалгаврын оноо идэвхжлээ', 'success', 2500); }
@@ -27965,7 +27971,8 @@ function taskPtsShiftMonth(month, n) {
 // «Миний ажил» дээрх карт — ажилтан өөрийн сарын оноо, нэмэгдсэн/хасагдсан түүхээ харна. Дүн = `taskPtsByPerson` (Цалин/Тойм-той ижил).
 function taskPtsMineCardHtml() {
   const cfg = taskPtsCfg();
-  if (!cfg.from) return state.isCEO ? `<div class="tp-card tp-off"><b>🎯 Даалгаврын оноо</b><div class="tp-sub">Цагтаа дуусгавал +, хоцроовол −, ажилтанд push мэдэгдэл. Өнөөдрөөс идэвхжүүлвэл өмнөх ажил хөндөгдөхгүй.</div>
+  // Тохиргоо (app_config) ачаалагдаагүй хооронд `from` хоосон — «идэвхжүүлэх» санал харуулбал идэвхтэй системийг унтраасан мэт ойлгогдоно.
+  if (!cfg.from) return (state.isCEO && taskPtsCfgReady()) ? `<div class="tp-card tp-off"><b>🎯 Даалгаврын оноо</b><div class="tp-sub">Цагтаа дуусгавал +, хоцроовол −, ажилтанд push мэдэгдэл. Өнөөдрөөс идэвхжүүлвэл өмнөх ажил хөндөгдөхгүй.</div>
     <button class="btn btn-primary ui-raw" data-tp-activate>▶ Өнөөдрөөс идэвхжүүлэх</button></div>` : '';
   ensureAttCallins();
   const me = state.me, month = state.tpMonth || todayStr().slice(0, 7);
@@ -27997,6 +28004,7 @@ function taskPtsLedgerModal(key, name, month) {
 // Гүйцэтгэл → «Даалгаврын оноо» таб: ажилтан бүрээр цагтаа %, хоцорсон тоо, дундаж ★, нийт оноо. Удирдлага бүгдийг, бусад зөвхөн өөрийг.
 function renderPerfTasks() {
   const cfg = taskPtsCfg(), month = state.perfMonth;
+  if (!cfg.from && !taskPtsCfgReady()) return '<div class="perf-note">Тохиргоо ачаалж байна…</div>';
   if (!cfg.from) return `<div class="perf-note">Даалгаврын оноо идэвхжээгүй байна.</div>${state.isCEO ? '<button class="btn btn-primary ui-raw" data-tp-activate>▶ Өнөөдрөөс идэвхжүүлэх</button>' : ''}`;
   ensureAttCallins();
   const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();
@@ -39045,7 +39053,9 @@ function bqOrderCard(o) {
   const billed = orderBilled(o);   // толгойн «нийт» — буцаагдсан барьцаа хасагдсан
   const bal = orderOwed(o);
   const start = o.starts_at ? String(o.starts_at).slice(0, 10) : '', stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
-  const addr = o.delivery_address || o.customer_address || '';
+  // Сайтаас ирсэн хаяг заримдаа «,» г.м. зөвхөн тэмдэгт байдаг — үсэг/цифргүй бол хоосон мөр харуулахгүй
+  const _addrRaw = String(o.delivery_address || o.customer_address || '').trim();
+  const addr = /[\p{L}\p{N}]/u.test(_addrRaw) ? _addrRaw : '';
   const id = escapeHtml(String(o.id));
   const isApp = !!o._app;   // апп-д үүсгэсэн захиалга
   const _rt = isApp ? parseOrderTimes(o.note) : null;   // эхлэх/дуусах цаг (app захиалгад)

@@ -27727,3 +27727,81 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     Object.assign(st, { appConfig: saved.ac, attLeaves: saved.lv, attLeavesErr: saved.lvErr, attCallins: saved.cal, me: saved.me, isCEO: saved.ceo, workStart: saved.ws, attCallinsErr: saved.calErr });
   }
 });
+
+// ═══ ДИЗАЙНЫ ЖИЖИГ ЗАСВАРУУД (2026-11-18) ═══════════════════════════════════════════════════════════════
+// ① Утсанд «Миний ажил»-ын шүүлтүүрийн pill доод талаараа тасарч байв (.filter-group flex-ээр шахагдана).
+// ② Огноо «Jul 5» (англи) болдог байв — `mn-MN` өгөгдөлгүй хөтөч/WebView-д. ③ Даалгаврын оноо ИДЭВХТЭЙ ч тохиргоо
+// ачаалагдтал захиралд «Өнөөдрөөс идэвхжүүлэх» гарч, дарвал оноо тоолж эхэлсэн өдрийг өнөөдрөөр дарах эрсдэлтэй байв.
+// ④ Сайтаас ирсэн хаяг «,» бол захиалгын картад ганц таслал мөр гардаг байв.
+{
+  need(['fmtDate', 'taskPtsMineCardHtml', 'renderPerfTasks', 'taskPtsActivate', 'taskPtsCfgReady', 'bqOrderCard']);
+  const srcD = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssD = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const stD = vm.runInContext('state', sandbox);
+
+  // ① CSS
+  const fg = cssD.match(/\.filter-group:not\(\[style\*="none"\]\) \{[^}]*\}/);
+  ok(fg && /flex-shrink:\s*0/.test(fg[0]), 'CSS: утасны .filter-group шахагдахгүй (flex-shrink:0) — pill-ийн доод хэсэг тасрахгүй');
+
+  // ② Огноо: төхөөрөмжийн хэлний өгөгдлөөс ХАМААРАХГҮЙ
+  eq(F.fmtDate('2025-07-05T12:00:00'), '7-р сарын 5', 'fmtDate: «7-р сарын 5» (англи «Jul 5» биш)');
+  eq(F.fmtDate('2025-12-31T12:00:00'), '12-р сарын 31', 'fmtDate: 12-р сар');
+  eq(F.fmtDate('not-a-date'), '', 'fmtDate: буруу огноо хоосон (NaN бичихгүй)');
+  { const keepTL = vm.runInContext('Date.prototype.toLocaleDateString', sandbox);
+    vm.runInContext("Date.prototype.toLocaleDateString = function(){ return 'Jul 5'; };", sandbox);
+    try { eq(F.fmtDate('2025-07-05T12:00:00'), '7-р сарын 5', '⛔ fmtDate: хөтөч mn-MN мэдэхгүй (англи буцаадаг) байсан ч монгол хэвээр'); }
+    finally { sandbox.__tl = keepTL; vm.runInContext('Date.prototype.toLocaleDateString = globalThis.__tl;', sandbox); } }
+  const fdSrc = srcD.slice(srcD.indexOf('function fmtDate('), srcD.indexOf('\n}\n', srcD.indexOf('function fmtDate(')));
+  ok(!/toLocaleDateString/.test(fdSrc.replace(/\/\/[^\n]*/g, '')), 'scan: fmtDate runtime-ийн локалоос хамаарсан toLocaleDateString ашиглахгүй');
+
+  // ③ Даалгаврын оноо: тохиргоо ачаалагдаагүй = «үл мэдэгдэх», «унтраалттай» БИШ
+  const keepD = { ac: stD.appConfig, ld: stD._appConfigLoaded, ceo: stD.isCEO };
+  try {
+    stD.isCEO = true; stD.appConfig = {}; stD._appConfigLoaded = false;
+    eq(F.taskPtsMineCardHtml(), '', '⛔ оноо: тохиргоо ачаалагдаагүй → «идэвхжүүлэх» санал ГАРАХГҮЙ (идэвхтэй систем унтарсан мэт харагдахгүй)');
+    ok(/Тохиргоо ачаалж байна/.test(F.renderPerfTasks()) && !/data-tp-activate/.test(F.renderPerfTasks()), 'оноо: Гүйцэтгэл таб ачаалагдтал «идэвхжээгүй» ч, идэвхжүүлэх товч ч гаргахгүй');
+    eq(F.taskPtsCfgReady(), false, 'taskPtsCfgReady: ачаалаагүй, from хоосон → false');
+    stD._appConfigLoaded = true;
+    ok(/data-tp-activate/.test(F.taskPtsMineCardHtml()), 'оноо: тохиргоо ачаалагдсан, үнэхээр унтраалттай → идэвхжүүлэх санал гарна (захиралд)');
+    stD.isCEO = false;
+    eq(F.taskPtsMineCardHtml(), '', 'оноо: захирал биш хүнд идэвхжүүлэх санал гарахгүй');
+    stD._appConfigLoaded = false; stD.appConfig = { task_points: { from: '2026-11-09' } };
+    eq(F.taskPtsCfgReady(), true, 'taskPtsCfgReady: from тодорхой бол ачаалсан гэж тооцно');
+  } finally { stD.appConfig = keepD.ac; stD._appConfigLoaded = keepD.ld; stD.isCEO = keepD.ceo; }
+  (globalThis.__lateSeq = globalThis.__lateSeq || []).push(async () => {
+    const keep2 = { ac: stD.appConfig, ld: stD._appConfigLoaded, ceo: stD.isCEO, fetch: sandbox.fetch };
+    const toasts = [], calls = [];
+    const realToast = vm.runInContext('showToast', sandbox);
+    sandbox.__toasts2 = toasts;
+    vm.runInContext('showToast = function(m, k){ globalThis.__toasts2.push([m, k]); };', sandbox);
+    // showConfirm = «Тийм» — хамгаалалт алга бол бичилт ГАРНА (илэрнэ); эс бөгөөс модал хүлээж тест гацна
+    const realConfirm = vm.runInContext('showConfirm', sandbox);
+    sandbox.__realConfirm2 = realConfirm;
+    vm.runInContext('showConfirm = function(){ return Promise.resolve(true); };', sandbox);
+    sandbox.fetch = (u, o) => { calls.push([String(u), o && o.method]); return Promise.resolve({ ok: true, status: 200, json: async () => [] }); };
+    try {
+      stD.isCEO = true; stD.appConfig = {}; stD._appConfigLoaded = false;
+      await F.taskPtsActivate();
+      eq(calls.length, 0, '⛔ оноо: тохиргоо ачаалагдаагүй үед «идэвхжүүлэх» ЯМАР Ч бичилт хийхгүй (өмнөх огноог дарахгүй)');
+      ok(toasts.length === 1 && /ачаалж байна/.test(toasts[0][0]), 'оноо: хэрэглэгчид «ачаалж байна» гэж хэлнэ');
+    } finally {
+      vm.runInContext('showToast = globalThis.__realToast2; showConfirm = globalThis.__realConfirm2;', Object.assign(sandbox, { __realToast2: realToast }));
+      sandbox.fetch = keep2.fetch; stD.appConfig = keep2.ac; stD._appConfigLoaded = keep2.ld; stD.isCEO = keep2.ceo;
+    }
+  });
+
+  // ④ Хаяг: үсэг/цифргүй (зөвхөн тэмдэгт) бол мөр гаргахгүй; жинхэнэ хаяг хэвээр
+  const keepO = { ceo: stD.isCEO, ao: stD.appOrders };
+  stD.isCEO = true;
+  try {
+    const TD = vm.runInContext('todayStr()', sandbox);
+    const mkA = (addr) => ({ id: 'a1', _app: true, number: 1901, customer: 'Тест', phone: '99110000', status: 'reserved', source: 'app',
+      starts_at: TD + 'T09:00:00+08:00', stops_at: TD + 'T18:00:00+08:00', note: '⟦RT|9|18⟧', created_at: TD + 'T08:00:00+08:00',
+      items: [{ name: 'Сандал', qty: 1, price: 1500, sku: 'M-1' }], total_mnt: 1500, paid_mnt: 0, delivery_address: addr });
+    stD.appOrders = [mkA(',')];
+    ok(!/<div class="order-meta">\s*,\s*<\/div>/.test(F.bqOrderCard(mkA(','))), '⛔ карт: хаяг «,» бол ганц таслалтай мөр ГАРАХГҮЙ');
+    ok(!/<div class="order-meta">\s*[-–—.,\/ ]+\s*<\/div>/.test(F.bqOrderCard(mkA(' - '))), 'карт: хаяг зөвхөн тэмдэгт («-») бол мөр гарахгүй');
+    ok(/<div class="order-meta">Баянзүрх, 5-р хороо<\/div>/.test(F.bqOrderCard(mkA('Баянзүрх, 5-р хороо'))), 'карт: жинхэнэ хаяг хэвээр харагдана');
+    ok(/<div class="order-meta">3-р хороолол<\/div>/.test(F.bqOrderCard(mkA('3-р хороолол'))), 'карт: цифртэй хаяг хэвээр харагдана');
+  } finally { stD.isCEO = keepO.ceo; stD.appOrders = keepO.ao; }
+}

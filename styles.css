@@ -6580,6 +6580,8 @@ details.recon-fold[open] > summary::before { content: '▾'; }
     scrollbar-width: none;
     gap: 6px;
     padding-bottom: 2px;
+    /* overflow ≠ visible тул flex-ийн хамгийн бага өндөр = 0 → .toolbar (багана) дотор шахагдаж pill-ийн доод хэсэг (44px) тасардаг байв */
+    flex-shrink: 0;
   }
   .filter-group::-webkit-scrollbar { display: none; }
   /* Хайлт — өөрийн мөрөнд бүтэн өргөн */

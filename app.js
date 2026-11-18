@@ -25363,23 +25363,23 @@ function openNomaadAddonCategoryModal(onAdded, onCancel) {
   document.getElementById('na-addcat-modal')?.remove();
   const m = document.createElement('div');
   m.className = 'modal-bg'; m.id = 'na-addcat-modal';
-  m.innerHTML = `<div class="modal" style="max-width:380px;">
-    <h2 style="font-size:16px;">Нэмэлт үйлчилгээний ангилал нэмэх</h2>
-    <label style="display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;">Ангиллын нэр</label>
-    <input id="na-cat-name" placeholder="ж: Гэрэл чимэглэл" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--text);font-size:14px;">
-    <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 4px;">Эх үүсвэр</label>
-    <div style="display:flex;gap:8px;">
-      <button type="button" class="na-src-opt" data-src="Гаднаас авсан" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:12.5px;background:var(--panel);color:var(--text);">🔻 Гаднаас авсан</button>
-      <button type="button" class="na-src-opt" data-src="Дотоодоос" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:12.5px;background:var(--panel);color:var(--text);">🔺 Дотоодоос</button>
+  m.innerHTML = `<div class="modal nac-modal">
+    <h2>Нэмэлт үйлчилгээний ангилал нэмэх</h2>
+    <label>Ангиллын нэр</label>
+    <input id="na-cat-name" placeholder="ж: Гэрэл чимэглэл">
+    <label>Эх үүсвэр</label>
+    <div class="nac-srcs">
+      <button type="button" class="ui-raw na-src-opt" data-src="Гаднаас авсан">🔻 Гаднаас авсан</button>
+      <button type="button" class="ui-raw na-src-opt" data-src="Дотоодоос">🔺 Дотоодоос</button>
     </div>
-    <div style="display:flex;gap:10px;margin-top:18px;">
-      <button id="na-cat-cancel" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--panel-hover);color:var(--muted);font-weight:700;cursor:pointer;">Болих</button>
-      <button id="na-cat-save" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;">Хадгалах</button>
+    <div class="nac-acts">
+      <button type="button" id="na-cat-cancel" class="ui-raw nac-btn nac-cancel">Болих</button>
+      <button type="button" id="na-cat-save" class="ui-raw nac-btn nac-save">Хадгалах</button>
     </div></div>`;
   document.body.appendChild(m);
   requestAnimationFrame(() => m.classList.add('open'));   // .modal-bg нээх class
   let src = 'Дотоодоос';
-  const paint = () => m.querySelectorAll('.na-src-opt').forEach(b => { const on = b.dataset.src === src; b.style.background = on ? 'var(--primary)' : 'var(--panel)'; b.style.color = on ? '#fff' : 'var(--text)'; b.style.borderColor = on ? 'var(--primary)' : 'var(--border)'; });
+  const paint = () => m.querySelectorAll('.na-src-opt').forEach(b => { const on = b.dataset.src === src; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   paint();
   m.querySelectorAll('.na-src-opt').forEach(b => b.onclick = () => { src = b.dataset.src; paint(); });
   const cancel = () => { m.remove(); if (onCancel) onCancel(); };

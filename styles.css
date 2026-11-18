@@ -152,6 +152,7 @@
     --ba-modal-w: 460px;      /* 🏦 Данс нэмэх / засах (openBankAccountModal) */
     --salh-modal-w: 420px;    /* 📜 Цалингийн түүх (openSalaryHistory) — нэг баганатай жагсаалт */
     --pinr-modal-w: 380px;    /* 🔑 PIN сэргээх (openPinResetModal) — нэвтрэх картын (`.login-card`) өргөнтэй ЯГ ижил */
+    --nac-modal-w: 380px;     /* ＋ NOMAAD нэмэлт үйлчилгээний ангилал (openNomaadAddonCategoryModal) — нэг талбар + 2 сонголт */
 
     /* 🍽 Катерингийн ажлын цонх (`openCateringJobModal`) — нэг эгнээнд 2-3 талбар */
     --kt-job-modal-w: 560px;
@@ -10342,6 +10343,54 @@ select.no-asar-len {
 .modal input.nim-in { margin: var(--space-1) 0 var(--space-3); }
 .nim-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .modal .nim-btn { padding: var(--space-2) var(--space-4); }
+
+/* ＋ NOMAAD нэмэлт үйлчилгээний шинэ ангилал (`openNomaadAddonCategoryModal`,
+   2026-11-18, 11 inline style → класс). Бүх дүрэм `.nac-modal`-аар хүрээлэгдсэн
+   (0,2,0) — файл дахь дараалалаас хамаарахгүй, шинэ хүчлэгч шаардахгүй.
+
+   ⛔ ХӨРВҮҮЛЭЭГҮЙ, ЗҮГЭЭР ХАСАГДСАН хуучин inline дүрмүүд — бүгд ҮХМЭЛ байсан
+   (`.ex-modal`/`.nim-*`-тай ИЖИЛ шалтгаан: класс болгож дахин бичвэл хүчлэгч
+   шаардана, тэр нь хориотой):
+     · `<h2>`-ийн inline фонт (16px) — `.modal h2`-ийн хэмжээ ХОЁР breakpoint
+       (≤720px 19px, ≥721px 18px) ХОЁУЛАНД хүчлэгдсэн тул 16px хэзээ ч
+       үйлчилж байгаагүй.
+       ⚠ Тайлбарт `font-size:<тоо>px` гэж БИЧИХГҮЙ — tools/debt-check.js нь
+       «хатуу px фонт» метрикийг энгийн тэмдэгт мөрөөр тоолдог тул тайлбар ч
+       өрийг өсгөж CI-г унагана.
+     · Хоёр `<label>`-ийн `display/font-size/color/margin` — `.modal label` нь
+       суурь (styles.css:880) болон ХОЁР breakpoint-д хүчлэгдсэн; inline утга нь
+       суурьтай ЯГ ижил байв («Эх үүсвэр»-ийн `margin-top` ≥721px-д 14→12px
+       болов, мобайлд хүчлэгдсэн 14px хэвээр).
+     · `<input>`-ийн `width/padding/border/radius/background/color/font-size` —
+       `.modal input:not(.ui-raw)` нь ХОЁР breakpoint-д бүгдийг хүчээр тавина,
+       `width:100%` нь суурьтай ижил. Тиймээс талбар хэлбэрээ хөндөөгүй.
+
+   ⭐ Товчнууд `ui-raw` АВСАН (CLAUDE.md → `ui-raw` нь мобайлын
+   `.modal button:not(.ui-raw)` flatten дүрмээс чөлөөлнө). Яагаад: тэр flatten нь
+   `background/color/border/radius/padding/font-size`-ийг ХҮЧЭЭР тавьдаг тул
+   (а) «Хадгалах» нь `background:var(--primary)` гэж бичигдсэн ч ҮНЭНДЭЭ саарал
+   товч болж харагдаж байв, (б) сонгосон эх үүсвэрийг JS-ээс inline өнгөөр
+   будаж байсан нь мөн дарагдаж, сонголт ЯМАР Ч ТӨЛӨВТ харагддаггүй байв.
+   `ui-raw`-гийн хажуугаар хэмжээ/өнгөө ӨӨРӨӨ бичих ёстой (хүрэх өндөр
+   `--tap`, эс бөгөөс ≤720px-ийн `button { min-height: 44px }` л үлдэнэ).
+   Сонголтын төлөв = `.on` класс (`.po-chip`-тэй ИЖИЛ хэв маяг) + `aria-pressed`. */
+.modal.nac-modal { max-width: var(--nac-modal-w); }
+.nac-modal .nac-srcs { display: flex; gap: var(--space-2); }
+.nac-modal .na-src-opt {
+  flex: 1; min-height: var(--tap); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm); cursor: pointer;
+}
+.nac-modal .na-src-opt.on { border-color: var(--primary); background: var(--primary); color: var(--on-primary); font-weight: 600; }
+.nac-modal .nac-acts { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
+.nac-modal .nac-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 1; min-height: var(--tap); padding: var(--space-2) var(--space-3);
+  border: 0; border-radius: var(--r-md);
+  font-size: var(--fs-base); font-weight: 700; cursor: pointer;
+}
+.nac-modal .nac-cancel { background: var(--panel-hover); color: var(--muted); }
+.nac-modal .nac-save { background: var(--primary); color: var(--on-primary); }
 
 /* 💳 Зардлын минимал цонх — `openExpenseModal` (2026-10-26, 13 inline style → класс).
    Толгой/✕ нь нийтийн `.modal-head`/`.modal-x` (өөрийн хувилбар БҮҮ бич), «(сонголт)»

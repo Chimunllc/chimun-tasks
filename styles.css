@@ -8659,6 +8659,29 @@ select.no-asar-len {
 .buy-bank > summary { cursor: pointer; font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }
 .buy-bank[open] > summary { margin-bottom: var(--space-3); }
 .buy-bank[open] { display: flex; flex-direction: column; gap: var(--space-3); }
+/* 🧴 Нэг удаагийн материал (2026-11-18, CEO): картын тэмдэг + үлдэгдлийн жагсаалт + хүлээн авах цонхны сонгогч */
+.po-kind-b { display: inline-block; font-size: var(--fs-xs); font-weight: 600; padding: var(--space-1) var(--space-2);
+  border-radius: var(--r-full); white-space: nowrap; background: var(--panel-hover); color: var(--text-soft); }
+.po-kind-hint .po-pay-t { font-size: var(--fs-xs); color: var(--text-soft); }
+.po-kind-note:empty { display: none; }
+.po-edit .po-sel { min-height: var(--tap); padding: var(--space-2) var(--space-3); border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--panel); color: var(--text); font-size: var(--fs-base); }
+.cs-box > summary { cursor: pointer; font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }
+.cs-box[open] > summary { margin-bottom: var(--space-3); }
+.cs-box[open] { display: flex; flex-direction: column; gap: var(--space-3); }
+.cs-bar { display: flex; justify-content: flex-end; }
+.cs-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.cs-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  background: var(--panel); border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+.cs-row:last-child { border-bottom: 0; }
+.cs-nm { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.cs-nm small { display: block; color: var(--muted); font-size: var(--fs-xs); }
+.cs-q { white-space: nowrap; font-weight: 600; }
+.cs-q small { color: var(--muted); font-weight: 400; font-size: var(--fs-xs); }
+.cs-q.zero { color: var(--danger); }
+.cs-btn { font-size: var(--fs-sm); padding: var(--space-1) var(--space-3); white-space: nowrap; min-height: var(--tap-sm); }
+.cs-btn-g { color: var(--muted); }
+.cs-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .bl-pick { display: flex; gap: var(--space-2); align-items: flex-end; padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .bl-nm { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); }

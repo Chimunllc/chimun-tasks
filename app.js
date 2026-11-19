@@ -37928,8 +37928,10 @@ function orderCustName(o) {
   return String((o && o.customer) || '').trim();
 }
 // Жагсаалт/авлагын мөрийн нэр: нэргүй захиалгад «?» биш — утас байвал утас, үгүй бол «Нэргүй» (юу болохыг хүн ойлгоно)
+// ⚠ «Нэргүй» = хоосон БА үсэг/цифргүй (зөвхөн тэмдэгт) нэр: Booqable-аас импортолсон 695-р захиалгын `customer` нь шууд "?" тэмдэгт байдаг.
 function orderCustLabel(o) {
-  return orderCustName(o) || String((o && o.phone) || '').trim() || 'Нэргүй';
+  const nm = orderCustName(o);
+  return (/[\p{L}\p{N}]/u.test(nm) ? nm : '') || String((o && o.phone) || '').trim() || 'Нэргүй';
 }
 // Байгууллагын захиалгад төлөөлөх хүн (нэр нь толгойд ороогүй бол), эс бөгөөс ''
 function orderCustPerson(o) {

@@ -27830,19 +27830,24 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
   eq(F.orderCustLabel({ customer: '', phone: ' 99112233 ' }), '99112233', 'нэр: нэргүй ч утастай → утас');
   eq(F.orderCustLabel({ customer: '  ', phone: '' }), 'Нэргүй', 'нэр: нэр ч утас ч үгүй → «Нэргүй» (БИШ «?»)');
   eq(F.orderCustLabel(null), 'Нэргүй', 'нэр: null захиалгад унахгүй');
+  // ⛔ БОДИТ ХЭЛБЭР: Booqable-аас импортолсон #695-ын `customer` нь хоосон БИШ, шууд "?" тэмдэгт (11-19 live-д «?» үлдсэнээр илэрсэн)
+  eq(F.orderCustLabel({ customer: '?', phone: null }), 'Нэргүй', 'нэр: customer="?" (тэмдэгт л) → «Нэргүй»');
+  eq(F.orderCustLabel({ customer: '?', phone: '99112233' }), '99112233', 'нэр: customer="?" ба утастай → утас');
+  eq(F.orderCustLabel({ customer: ' - ', phone: '' }), 'Нэргүй', 'нэр: customer="-" → «Нэргүй»');
+  eq(F.orderCustLabel({ customer: 'Т', phone: '' }), 'Т', 'нэр: нэг үсэгтэй жинхэнэ нэр хэвээр');
+  eq(F.orderCustLabel({ customer: '3 цэнхэр', phone: '' }), '3 цэнхэр', 'нэр: цифртэй нэр хэвээр');
   eq(F.orderCustLabel({ customer: 'Б.Болд', note: '⟦CI|{"company":"Тест ХХК","ctype":"org"}⟧' }), 'Тест ХХК', 'нэр: байгууллагын захиалга = байгууллага (жагсаалттай ижил)');
 
-  // Авлагын мөр: нэргүй захиалга «?» биш
+  // Авлагын мөр: нэргүй захиалга «?» биш — #695-ын бодит хэлбэрээр (Booqable, customer "?", утасгүй, архивласан, төлбөргүй)
   { const keep = { ao: stN.appOrders, ceo: stN.isCEO };
     try {
-      const T = vm.runInContext('todayStr()', sandbox);
       stN.isCEO = true;
-      stN.appOrders = [{ id: 'n1', _app: true, number: 695, customer: '', phone: '99001122', status: 'delivered', source: 'app',
-        starts_at: '2026-10-01T09:00:00+08:00', stops_at: '2026-10-02T18:00:00+08:00', note: '', created_at: '2026-09-30T08:00:00+08:00',
-        items: [{ name: 'Сандал', qty: 1, price: 1000, sku: 'M-1' }], total_mnt: 50000, paid_mnt: 0 }];
+      stN.appOrders = [{ id: 'n1', number: 695, customer: '?', phone: null, status: 'archived', source: 'booqable',
+        starts_at: '2025-09-01T09:00:00+08:00', stops_at: '2025-09-02T18:00:00+08:00', note: '', created_at: '2025-08-29T08:47:44+00:00',
+        items: [{ name: 'Сандал', qty: 1, price: 1000, sku: 'M-1' }], total_mnt: 4500000, paid_mnt: 0 }];
       const items = F.receivablesData().items.filter(x => x.id === 'n1');
-      if (items.length) ok(items[0].name !== '?' && /99001122|Нэргүй/.test(items[0].name), 'авлага: нэргүй захиалгын нэр «?» биш (' + items[0].name + ')');
-      else ok(true, 'авлага: фикстур авлагад орсонгүй (төлөвийн дүрэм) — scan шалгана');
+      eq(items.length, 1, 'авлага: #695-ын хэлбэртэй захиалга авлагад орно (фикстур хүчинтэй)');
+      eq(items.length ? items[0].name : null, 'Нэргүй', '⛔ авлага: customer="?" → «Нэргүй» (БИШ «?»)');
     } finally { stN.appOrders = keep.ao; stN.isCEO = keep.ceo; } }
   const rdSrc = srcN.slice(srcN.indexOf('function receivablesData'), srcN.indexOf('function receivablesData') + 2600);
   ok(/name: orderCustLabel\(o\)/.test(rdSrc) && !/name: o\.customer \|\| '\?'/.test(rdSrc), 'scan: авлага нэрийг orderCustLabel-оор авна («?» нөөц байхгүй)');

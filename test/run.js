@@ -27817,3 +27817,82 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     ok(/<div class="order-meta">3-р хороолол<\/div>/.test(F.bqOrderCard(mkA('3-р хороолол'))), 'карт: цифртэй хаяг хэвээр харагдана');
   } finally { stD.isCEO = keepO.ceo; stD.appOrders = keepO.ao; }
 }
+
+// ═══ ДИЗАЙН: НЭРГҮЙ ЗАХИАЛГЫН НЭР, ОНООНЫ ТҮҮХИЙН КАРТ (2026-11-19) ═══════════════════════════════════════
+// ① Харилцагчийн нэргүй захиалга жагсаалт/авлагад «?» гэж гардаг байв (Тойм → «Авлага нэхэх» #695 «?») → утас, үгүй бол «Нэргүй».
+// ② «Миний ажил» дээрх оноогийн карт утсанд 12+ түүхийн мөрөөр дэлгэцийн хагасаас илүүг эзэлдэг байв → эхний 5 + «Бүгдийг харах».
+{
+  need(['orderCustLabel', 'orderCustName', 'taskPtsMineCardHtml', 'receivablesData']);
+  const srcN = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const stN = vm.runInContext('state', sandbox);
+
+  eq(F.orderCustLabel({ customer: 'Б.Болд', phone: '99112233' }), 'Б.Болд', 'нэр: нэртэй захиалга нэрээ хэвээр');
+  eq(F.orderCustLabel({ customer: '', phone: ' 99112233 ' }), '99112233', 'нэр: нэргүй ч утастай → утас');
+  eq(F.orderCustLabel({ customer: '  ', phone: '' }), 'Нэргүй', 'нэр: нэр ч утас ч үгүй → «Нэргүй» (БИШ «?»)');
+  eq(F.orderCustLabel(null), 'Нэргүй', 'нэр: null захиалгад унахгүй');
+  eq(F.orderCustLabel({ customer: 'Б.Болд', note: '⟦CI|{"company":"Тест ХХК","ctype":"org"}⟧' }), 'Тест ХХК', 'нэр: байгууллагын захиалга = байгууллага (жагсаалттай ижил)');
+
+  // Авлагын мөр: нэргүй захиалга «?» биш
+  { const keep = { ao: stN.appOrders, ceo: stN.isCEO };
+    try {
+      const T = vm.runInContext('todayStr()', sandbox);
+      stN.isCEO = true;
+      stN.appOrders = [{ id: 'n1', _app: true, number: 695, customer: '', phone: '99001122', status: 'delivered', source: 'app',
+        starts_at: '2026-10-01T09:00:00+08:00', stops_at: '2026-10-02T18:00:00+08:00', note: '', created_at: '2026-09-30T08:00:00+08:00',
+        items: [{ name: 'Сандал', qty: 1, price: 1000, sku: 'M-1' }], total_mnt: 50000, paid_mnt: 0 }];
+      const items = F.receivablesData().items.filter(x => x.id === 'n1');
+      if (items.length) ok(items[0].name !== '?' && /99001122|Нэргүй/.test(items[0].name), 'авлага: нэргүй захиалгын нэр «?» биш (' + items[0].name + ')');
+      else ok(true, 'авлага: фикстур авлагад орсонгүй (төлөвийн дүрэм) — scan шалгана');
+    } finally { stN.appOrders = keep.ao; stN.isCEO = keep.ceo; } }
+  const rdSrc = srcN.slice(srcN.indexOf('function receivablesData'), srcN.indexOf('function receivablesData') + 2600);
+  ok(/name: orderCustLabel\(o\)/.test(rdSrc) && !/name: o\.customer \|\| '\?'/.test(rdSrc), 'scan: авлага нэрийг orderCustLabel-оор авна («?» нөөц байхгүй)');
+  ok(/<span class="br-cust">\$\{escapeHtml\(orderCustLabel\(o\)\)\}<\/span>/.test(srcN), 'scan: жагсаалтын мөр orderCustLabel ашиглана');
+
+  // Оноогийн карт: эхний TP_HIST_CAP мөр + «Бүгдийг харах»
+  { const keep = { ac: stN.appConfig, ld: stN._appConfigLoaded, me: stN.me, tm: stN.tpMonth };
+    const realBy = vm.runInContext('taskPtsByPerson', sandbox);
+    try {
+      stN.appConfig = { task_points: { from: '2026-11-01' } }; stN._appConfigLoaded = true; stN.me = '99112233'; stN.tpMonth = '2026-11';
+      const mkE = (n) => Array.from({ length: n }, (_, i) => ({ date: '2026-11-' + String(i + 1).padStart(2, '0'), title: 'Ажил ' + (i + 1), kind: 'bonus', pts: 7 }));
+      const withN = (n) => { sandbox.__ents = mkE(n); vm.runInContext("taskPtsByPerson = function(){ return { '99112233': { earn: 7 * __ents.length, pen: 0, net: 7 * __ents.length, entries: __ents } }; };", sandbox); return F.taskPtsMineCardHtml(); };
+      const rows = (h) => (h.match(/class="tp-ent /g) || []).length;
+      const c12 = withN(12);
+      eq(rows(c12), 5, 'оноо карт: 12 түүхээс карт дээр ЭХНИЙ 5 мөр л');
+      ok(/data-tp-more="99112233"/.test(c12) && /Бүгдийг харах \(12\)/.test(c12), 'оноо карт: «Бүгдийг харах (12)» товч, хүнийхээ түлхүүртэй');
+      ok(/Ажил 12/.test(c12) && !/Ажил 1</.test(c12.replace(/Ажил 1[0-9]/g, '')), 'оноо карт: хамгийн сүүлийн бичлэг эхэнд (шинэ нь дээр)');
+      const c4 = withN(4);
+      eq(rows(c4), 4, 'оноо карт: 5-аас цөөн бол бүгдээрээ харагдана');
+      ok(!/data-tp-more/.test(c4), 'оноо карт: 5-аас цөөн бол «Бүгдийг харах» товч ГАРАХГҮЙ');
+      const c5 = withN(5);
+      ok(rows(c5) === 5 && !/data-tp-more/.test(c5), 'оноо карт: яг 5 бол товч гарахгүй (хязгаар)');
+    } finally { sandbox.__realBy = realBy; vm.runInContext('taskPtsByPerson = globalThis.__realBy;', sandbox);
+      stN.appConfig = keep.ac; stN._appConfigLoaded = keep.ld; stN.me = keep.me; stN.tpMonth = keep.tm; } }
+  ok(/\[data-tp-more\][\s\S]{0,200}taskPtsLedgerModal\(/.test(srcN), 'scan: «Бүгдийг харах» нь бүтэн түүхийн цонхыг нээнэ');
+}
+
+// Оноогийн түүх: утсанд хураасан, хүний сонголтыг санана (render бүрд буцаж хаагдахгүй)
+{
+  need(['taskPtsMineCardHtml', 'taskPtsHistOpen']);
+  const stH = vm.runInContext('state', sandbox);
+  const keepH = { ac: stH.appConfig, ld: stH._appConfigLoaded, me: stH.me, tm: stH.tpMonth, ho: stH.tpHistOpen };
+  const realByH = vm.runInContext('taskPtsByPerson', sandbox);
+  try {
+    stH.appConfig = { task_points: { from: '2026-11-01' } }; stH._appConfigLoaded = true; stH.me = '99112233'; stH.tpMonth = '2026-11';
+    sandbox.__entsH = Array.from({ length: 8 }, (_, i) => ({ date: '2026-11-0' + (i + 1), title: 'Ажил ' + (i + 1), kind: 'bonus', pts: 7 }));
+    vm.runInContext("taskPtsByPerson = function(){ return { '99112233': { earn: 56, pen: 0, net: 56, entries: __entsH } }; };", sandbox);
+    delete stH.tpHistOpen;
+    ok(/<details class="tp-hist" data-tp-hist open>/.test(F.taskPtsMineCardHtml()), 'түүх: компьютерт (matchMedia байхгүй/өргөн) НЭЭЛТТЭЙ');
+    sandbox.matchMedia = () => ({ matches: true });
+    ok(/<details class="tp-hist" data-tp-hist>/.test(F.taskPtsMineCardHtml()), 'түүх: утсанд (≤720px) анх ХУРААСАН — карт дэлгэцийг дүүргэхгүй');
+    stH.tpHistOpen = true;
+    ok(/<details class="tp-hist" data-tp-hist open>/.test(F.taskPtsMineCardHtml()), 'түүх: утсанд хүн нээсэн бол render дараа ч НЭЭЛТТЭЙ үлдэнэ');
+    stH.tpHistOpen = false; sandbox.matchMedia = undefined;
+    ok(/<details class="tp-hist" data-tp-hist>/.test(F.taskPtsMineCardHtml()), 'түүх: хүн хаасан бол компьютерт ч хаалттай үлдэнэ');
+    const srcH = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    ok(/\[data-tp-hist\]'\)\.forEach\(d => \{ d\.ontoggle = \(\) => \{ state\.tpHistOpen = d\.open; \}; \}\)/.test(srcH), 'scan: нээх/хаахыг state.tpHistOpen-д хадгална');
+  } finally {
+    sandbox.__realByH = realByH; vm.runInContext('taskPtsByPerson = globalThis.__realByH;', sandbox); delete sandbox.matchMedia;
+    stH.appConfig = keepH.ac; stH._appConfigLoaded = keepH.ld; stH.me = keepH.me; stH.tpMonth = keepH.tm;
+    if (keepH.ho === undefined) delete stH.tpHistOpen; else stH.tpHistOpen = keepH.ho;
+  }
+}

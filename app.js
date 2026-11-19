@@ -11324,7 +11324,7 @@ function orderListRow(e, k, todayStr) {
   const _custNm = orderCustName(o);   // байгууллагын захиалгад = байгууллага (гэрээний тал)
   return `<details class="olist-row${_money ? '' : ' compact'} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(_custNm)}">${escapeHtml(_avInitials(_custNm))}</span><span class="br-cust">${escapeHtml(_custNm || '?')}</span>${chips}</span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(_custNm)}">${escapeHtml(_avInitials(_custNm))}</span><span class="br-cust">${escapeHtml(orderCustLabel(o))}</span>${chips}</span>
     ${statusCell}
     <span class="br-dates"${(() => {
       const ld = orderLeadDays(o);
@@ -27978,6 +27978,14 @@ function taskPtsShiftMonth(month, n) {
   const nx = d.getUTCFullYear() + '-' + _p2(d.getUTCMonth() + 1);
   return nx > todayStr().slice(0, 7) ? month : nx;
 }
+// Түүхийн эхний 5 мөр л карт дээр — утсанд 12+ мөр картыг дэлгэцийн хагасаас илүү эзэлж, ажлын жагсаалтыг доош түлхдэг байв. Бүгд = «Бүгдийг харах» цонх.
+const TP_HIST_CAP = 5;
+// Түүх утсанд ХУРААСАН (картыг дэлгэцийн хагасаас бага болгоно), компьютерт нээлттэй. Хүн нээсэн/хаасныг `state.tpHistOpen` санана —
+// эс бөгөөс render() бүрд details анхны төлөвтөө буцаж хаагдана.
+function taskPtsHistOpen() {
+  if (state.tpHistOpen !== undefined) return !!state.tpHistOpen;
+  return !(typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches);
+}
 // «Миний ажил» дээрх карт — ажилтан өөрийн сарын оноо, нэмэгдсэн/хасагдсан түүхээ харна. Дүн = `taskPtsByPerson` (Цалин/Тойм-той ижил).
 function taskPtsMineCardHtml() {
   const cfg = taskPtsCfg();
@@ -27995,7 +28003,7 @@ function taskPtsMineCardHtml() {
     <div class="tp-big ${r.net < 0 ? 'tp-neg' : r.net > 0 ? 'tp-pos' : ''}">${r.net > 0 ? '+' : r.net < 0 ? '−' : ''}${Math.abs(r.net)}<small> оноо</small></div>
     <div class="tp-sub">Нэмэгдсэн <b class="tp-pos">+${r.earn}</b> · Хасагдсан <b class="tp-neg">−${r.pen}</b>${s.onTimePct != null ? ` · Цагтаа <b>${s.onTimePct}%</b>` : ''}${s.late ? ` · Хоцорсон <b>${s.late}</b>` : ''}${s.avg != null ? ` · Дундаж <b>${s.avg}★</b>` : ''}</div>
     ${pay}
-    ${ents.length ? `<details class="tp-hist" open><summary>Түүх (${ents.length})</summary>${ents.slice(0, 40).map(taskPtsEntryRowHtml).join('')}</details>` : '<div class="tp-sub">Энэ сард оноо бичигдээгүй.</div>'}
+    ${ents.length ? `<details class="tp-hist" data-tp-hist${taskPtsHistOpen() ? ' open' : ''}><summary>Түүх (${ents.length})</summary>${ents.slice(0, TP_HIST_CAP).map(taskPtsEntryRowHtml).join('')}${ents.length > TP_HIST_CAP ? `<button class="btn ui-raw tp-more" data-tp-more="${escapeHtml(me)}" data-tp-month="${escapeHtml(month)}">Бүгдийг харах (${ents.length}) →</button>` : ''}</details>` : '<div class="tp-sub">Энэ сард оноо бичигдээгүй.</div>'}
     <div class="tp-sub">Цагтаа дуусгаж ★ авбал +, хоцроовол −${cfg.late} (өдөр бүр −${cfg.lateDay}). Хугацаа сунгах бол ДУУСАХААС ӨМНӨ хүсэлт илгээнэ.</div>
   </div>`;
 }
@@ -28053,6 +28061,8 @@ function attachTaskPtsHandlers(root) {
   const scope = root || document;
   scope.querySelectorAll('[data-tp-activate]').forEach(b => { b.onclick = taskPtsActivate; });
   scope.querySelectorAll('[data-tp-cfg]').forEach(b => { b.onclick = openTaskPtsCfgModal; });
+  scope.querySelectorAll('[data-tp-hist]').forEach(d => { d.ontoggle = () => { state.tpHistOpen = d.open; }; });
+  scope.querySelectorAll('[data-tp-more]').forEach(b => { b.onclick = () => taskPtsLedgerModal(b.dataset.tpMore, memberName(b.dataset.tpMore), b.dataset.tpMonth); });
   scope.querySelectorAll('[data-tp-xls]').forEach(b => { b.onclick = () => taskPtsExportExcel(b.dataset.tpXls, b.dataset.tpXkey || ''); });
   scope.querySelectorAll('[data-tp-nav]').forEach(b => { b.onclick = () => { state.tpMonth = taskPtsShiftMonth(state.tpMonth || todayStr().slice(0, 7), Number(b.dataset.tpNav)); render(); }; });
   scope.querySelectorAll('.tp-row[data-tp-key]').forEach(r => { r.onclick = () => taskPtsLedgerModal(r.dataset.tpKey, r.dataset.tpName, state.perfMonth); });
@@ -37917,6 +37927,10 @@ function orderCustName(o) {
   if (co && orderCustType(o) === 'org') return co;
   return String((o && o.customer) || '').trim();
 }
+// Жагсаалт/авлагын мөрийн нэр: нэргүй захиалгад «?» биш — утас байвал утас, үгүй бол «Нэргүй» (юу болохыг хүн ойлгоно)
+function orderCustLabel(o) {
+  return orderCustName(o) || String((o && o.phone) || '').trim() || 'Нэргүй';
+}
 // Байгууллагын захиалгад төлөөлөх хүн (нэр нь толгойд ороогүй бол), эс бөгөөс ''
 function orderCustPerson(o) {
   const nm = String((o && o.customer) || '').trim();
@@ -39276,7 +39290,7 @@ function bqOrderCard(o) {
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${dispatchChipHtml(o)}${credBadge}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span class="order-src-new">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
-    <div class="order-cust"><b>${escapeHtml(orderCustName(o) || '?')}</b>${_custPerson ? ` · <span class="order-rep">👤 ${escapeHtml(_custPerson)}</span>` : ''}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
+    <div class="order-cust"><b>${escapeHtml(orderCustName(o) || 'Нэргүй')}</b>${_custPerson ? ` · <span class="order-rep">👤 ${escapeHtml(_custPerson)}</span>` : ''}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
@@ -41856,7 +41870,7 @@ function receivablesData() {
     // Эвдрэл/дутагдлын нэмэлт төлбөрийн ТӨЛӨГДӨӨГҮЙ хэсэг — мөрөнд «🧾 нөхөн төлбөр» гэж нэрлэж харуулна
     const _ed = orderDeductions(o), extra = Math.min(bal, Math.max(0, _ed.receivable - _ed.collected));
     items.push({
-      branch: 'bq', id: String(o.id), name: o.customer || '?', sub: '#' + (o.number ?? '—'),
+      branch: 'bq', id: String(o.id), name: orderCustLabel(o), sub: '#' + (o.number ?? '—'),
       phone: o.phone || '', status: st, total, paid, balance: bal, extra,
       dateStart: o.starts_at ? String(o.starts_at).slice(0, 10) : '', dateStop: stop,
       overdue: !!stop && stop < today,

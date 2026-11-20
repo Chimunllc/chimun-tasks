@@ -7135,6 +7135,19 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .hist-period-h b { color: var(--text); font-variant-numeric: tabular-nums; }
 .hist-period-all { color: var(--muted); }
 .hist-period-q { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* Хугацааны түргэн товч (Бүгд / Энэ жил / Сүүлийн 12 сар …) — `.btn`-ээс жижиг.
+   ⚠ `.btn`-ээс ДООР байх ёстой (онцлог тэнцүү тул файлын дараалал шийднэ). */
+.hist-q { padding: var(--space-1) var(--space-2); font-size: var(--fs-sm); }
+/* Түүхийн дэлгэцийн гадна хүрээ ба «Татаж байна…» — өмнө renderHistory-д
+   inline style-аар 3 (хүрээ) ба 2 (ачаалж байна) удаа давтагдаж байв. */
+.hist-view { padding: var(--space-1); }
+.hist-load { text-align: center; color: var(--muted); padding: var(--space-6) 0; }
+/* bq_* хүснэгт үүсээгүй / anon key тохируулаагүй — заавартай сэрэмжлүүлэх хайрцаг */
+.hist-err { border: 1px solid var(--warn); background: var(--warn-soft); border-radius: var(--r-lg);
+  padding: var(--space-4); font-size: var(--fs-md); line-height: 1.6; }
+.hist-err-t { font-weight: 700; margin-bottom: var(--space-1); }
+.hist-err code { font-size: var(--fs-xs); }
+.hist-err-msg { color: var(--muted); font-size: var(--fs-xs); margin-top: var(--space-2); }
 /* Хоёр бариултай муж сонгогч */
 .rng { position: relative; height: 30px; margin-top: var(--space-2); }
 .rng-track { position: absolute; top: 13px; left: 0; right: 0; height: 4px; border-radius: 2px; background: var(--panel-hover); }

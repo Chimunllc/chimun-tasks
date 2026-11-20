@@ -43633,7 +43633,7 @@ function renderHistory() {
     if (!state.histRange || state.histRange._hi !== hiIx) state.histRange = { lo: 0, hi: hiIx, _hi: hiIx };
     const r = state.histRange;
     const lbl = (i) => { const d = days[Math.max(0, Math.min(hiIx, Math.round(i)))] || ''; return d.slice(0, 7) + '/' + d.slice(8, 10); };
-    const q = (k, t) => `<button class="btn ui-raw hist-q" data-histq="${k}" style="padding:4px 10px;font-size:11.5px;">${t}</button>`;
+    const q = (k, t) => `<button class="btn ui-raw hist-q" data-histq="${k}">${t}</button>`;
     const full = r.lo <= 0 && r.hi >= hiIx;
     return `<div class="hist-period">
       <div class="hist-period-h">
@@ -43645,19 +43645,19 @@ function renderHistory() {
   }
 
   if (state._bqLoading && !bq) {
-    return `<div style="padding:4px;">${head()}<div style="text-align:center;color:var(--muted);padding:40px 0;">Татаж байна…</div></div>`;
+    return `<div class="hist-view">${head()}<div class="hist-load">Татаж байна…</div></div>`;
   }
-  if (!bq) { setTimeout(() => loadHistory(), 0); return `<div style="padding:4px;">${head()}<div style="text-align:center;color:var(--muted);padding:40px 0;">Татаж байна…</div></div>`; }
+  if (!bq) { setTimeout(() => loadHistory(), 0); return `<div class="hist-view">${head()}<div class="hist-load">Татаж байна…</div></div>`; }
 
   if (bq.error) {
     const isLoad = bq.error === 'load';
-    return `<div style="padding:4px;">${head()}
-      <div style="border:1px solid var(--warn);background:var(--warn-soft);border-radius:12px;padding:16px;font-size:13px;line-height:1.6;">
-        <div style="font-weight:700;margin-bottom:6px;">⚠ Дата ачаалагдсангүй</div>
+    return `<div class="hist-view">${head()}
+      <div class="hist-err">
+        <div class="hist-err-t">⚠ Дата ачаалагдсангүй</div>
         ${isLoad
           ? `Өгөгдлийн санд <b>bq_*</b> хүснэгт/view хараахан үүсээгүй байж магадгүй. Эхлээд <b>postgres-migration/</b> доторх SQL-уудыг дарааллаар нь ажиллуулна:<br>
-             <code style="font-size:11.5px;">bq_01_schema → bq_02_products → bq_03_customers → bq_04_orders → bq_05_payments → bq_06_order_lines → bq_07_plannings</code><br>
-             <div style="color:var(--muted);font-size:11px;margin-top:8px;">Алдаа: ${escapeHtml(bq.msg || '')}</div>`
+             <code>bq_01_schema → bq_02_products → bq_03_customers → bq_04_orders → bq_05_payments → bq_06_order_lines → bq_07_plannings</code><br>
+             <div class="hist-err-msg">Алдаа: ${escapeHtml(bq.msg || '')}</div>`
           : `Өгөгдлийн сангийн anon key тохируулагдаагүй байна.`}
       </div></div>`;
   }
@@ -44075,7 +44075,7 @@ function renderHistory() {
 
   }
 
-  return `<div style="padding:4px;">${head(tabBar)}${body}</div>`;
+  return `<div class="hist-view">${head(tabBar)}${body}</div>`;
 }
 
 function attachHistoryHandlers() {

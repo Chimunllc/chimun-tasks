@@ -153,6 +153,7 @@
     --salh-modal-w: 420px;    /* 📜 Цалингийн түүх (openSalaryHistory) — нэг баганатай жагсаалт */
     --pinr-modal-w: 380px;    /* 🔑 PIN сэргээх (openPinResetModal) — нэвтрэх картын (`.login-card`) өргөнтэй ЯГ ижил */
     --nac-modal-w: 380px;     /* ＋ NOMAAD нэмэлт үйлчилгээний ангилал (openNomaadAddonCategoryModal) — нэг талбар + 2 сонголт */
+    --nar-modal-w: 400px;     /* 🕐 «Маргааш хэдэн цагт ирэх вэ?» (openNextArrivalPicker) — 6 цагийн чип 2 эгнээнд багтана */
 
     /* 🍽 Катерингийн ажлын цонх (`openCateringJobModal`) — нэг эгнээнд 2-3 талбар */
     --kt-job-modal-w: 560px;
@@ -10780,6 +10781,55 @@ select.no-asar-len {
   background: var(--scan-light); color: var(--scan-dark);
   font-size: var(--fs-lg); font-weight: 700; cursor: pointer;
 }
+
+/* ═══ 🕐 «МАРГААШ ХЭДЭН ЦАГТ ИРЭХ ВЭ?» ЦАГ СОНГОГЧ (`openNextArrivalPicker`) ═══
+   Явах скан хийсний дараа гарна. Өмнө нь `style.cssText` + 11 inline `style=`
+   (16 хатуу өнгө) байсныг класс болгов (2026-11-20).
+   ⚠ Угтвар `nar-` — `na-` нь NOMAAD-ийн эзэмшилд (`.na-cal-*`, `.na-vt`,
+     `.na-topbar` …). Хуучин `na-chip` нь тэр мөрөнд санамсаргүй орсон, хаана ч
+     тодорхойлогдоогүй нүцгэн класс байв. ID-ууд (`#next-arr-modal`, `#na-custom`,
+     `#na-save`, `#na-skip`) ба `data-na-time` ХЭВЭЭР — JS тэднээр олдог.
+   ⚠ Энэ цонх `.modal` БИШ — `document.body`-д өөрөө үүсгэсэн бүрхүүл учир
+     `.modal input/button` дүрмүүд ХҮРЭХГҮЙ: хүрээ/дэвсгэр/фонтыг энд БҮТНЭЭР
+     бичнэ (дутуу бичвэл талбар/товч нүцгэн болно).
+   ⛔ Товчинд `min-height` БҮҮ бич — `@media (max-width:720px)`-ийн
+     `button { min-height: 44px }` нь ЭЛЕМЕНТийн сонгогч тул класс үүнийг ДАРНА:
+     бичвэл киоскийн хурууны хүрэх хэмжээ 44 → 40 болж жижгэрнэ. Хүрээ/зай л энд.
+   ⚠ `z-index` нь `.ascan-ov` (99999)-ээс ДЭЭР байх ЁСТОЙ — цаг сонгогч нь
+     скан хийгдсэнээс 350мс-ийн дараа, камерын давхарга нээлттэй байхад гарна. */
+.nar-ov { position: fixed; inset: 0; z-index: 100000; background: var(--scrim-modal);
+  display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+.nar-card { box-sizing: border-box; width: 100%; max-width: var(--nar-modal-w);
+  padding: var(--space-4); border-radius: var(--r-xl);
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow-xl); }
+.nar-title { font-size: var(--fs-lg); font-weight: 800; }
+.nar-sub { font-size: var(--fs-md); color: var(--muted);
+  margin: var(--space-1) 0 var(--space-3); }
+.nar-chips { display: flex; flex-wrap: wrap; gap: var(--space-2);
+  margin-bottom: var(--space-3); }
+/* Чип = бэлэн цаг. Сонгогдсон нь `.on` — өмнө нь дэвсгэр/бичвэрийг нөхцөлөөр
+   inline бичдэг тул харанхуй горимд түүний хуучирсан ногоон нөөц өнгө гарч байв. */
+.nar-chip { padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--panel-hover); color: var(--text);
+  font-size: var(--fs-base); font-weight: 700; cursor: pointer; }
+.nar-chip.on { background: var(--primary); color: var(--on-primary);
+  border-color: var(--primary); }
+.nar-row { display: flex; align-items: center; gap: var(--space-2);
+  margin-bottom: var(--space-4); }
+.nar-lbl { font-size: var(--fs-md); color: var(--muted); }
+.nar-time { flex: 1; min-width: 0; min-height: var(--tap); box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--panel); color: var(--text); font-size: var(--fs-base); }
+.nar-acts { display: flex; gap: var(--space-2); }
+.nar-skip { flex: 0 0 auto; padding: var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--panel-hover); color: var(--muted);
+  font-size: var(--fs-md); cursor: pointer; }
+.nar-save { flex: 1; padding: var(--space-3); border: none; border-radius: var(--r-lg);
+  background: var(--primary); color: var(--on-primary);
+  font-size: var(--fs-base); font-weight: 700; cursor: pointer; }
 
 /* ═══ 🪪 ҮНЭМЛЭХ · БАРИМТ ХАРАХ ДАВХАРГА (`openEmployeeDocModal`, угтвар `edoc-`) ═══
    Ажилтны иргэний үнэмлэхийн зураг эсвэл PDF-ийг бүтэн дэлгэцээр харуулна.

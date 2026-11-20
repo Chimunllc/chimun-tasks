@@ -13994,16 +13994,16 @@ function openNextArrivalPicker(phone, name) {
   state._attPickerOpen = true;
   document.getElementById('next-arr-modal')?.remove();
   const ov = document.createElement('div'); ov.id = 'next-arr-modal';
-  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+  ov.className = 'nar-ov';
   const chips = ['08:00', '08:30', '09:00', '09:30', '10:00', '11:00'];
-  ov.innerHTML = `<div style="background:var(--panel,#fff);color:var(--text,#111);border-radius:16px;max-width:400px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
-    <div style="font-size:16px;font-weight:800;">🕐 ${escapeHtml(name)}</div>
-    <div style="font-size:13px;color:var(--muted);margin:4px 0 14px;">Маргааш (${tomorrow}) хэдэн цагт ирэх вэ?</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">${chips.map(c => `<button class="ui-raw na-chip" data-na-time="${c}" style="padding:10px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:${c === cur ? 'var(--primary,#2f3e2f)' : 'var(--panel-hover,#f4f4f4)'};color:${c === cur ? '#fff' : 'var(--text,#111)'};font-size:15px;font-weight:700;cursor:pointer;">${c}</button>`).join('')}</div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;"><span style="font-size:13px;color:var(--muted);">Бусад:</span><input type="time" id="na-custom" value="${cur}" class="ui-raw" style="flex:1;padding:9px 11px;border:1px solid var(--line,#ddd);border-radius:8px;background:var(--panel,#fff);color:var(--text,#111);font-size:15px;"></div>
-    <div style="display:flex;gap:8px;">
-      <button class="ui-raw" id="na-skip" style="flex:0 0 auto;padding:11px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:var(--panel-hover,#f4f4f4);color:var(--muted);font-size:14px;cursor:pointer;">Тодорхойгүй</button>
-      <button class="ui-raw" id="na-save" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--primary,#2f3e2f);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">Хадгалах</button>
+  ov.innerHTML = `<div class="nar-card">
+    <div class="nar-title">🕐 ${escapeHtml(name)}</div>
+    <div class="nar-sub">Маргааш (${tomorrow}) хэдэн цагт ирэх вэ?</div>
+    <div class="nar-chips">${chips.map(c => `<button class="ui-raw nar-chip${c === cur ? ' on' : ''}" data-na-time="${c}">${c}</button>`).join('')}</div>
+    <div class="nar-row"><span class="nar-lbl">Бусад:</span><input type="time" id="na-custom" value="${cur}" class="ui-raw nar-time"></div>
+    <div class="nar-acts">
+      <button class="ui-raw nar-skip" id="na-skip">Тодорхойгүй</button>
+      <button class="ui-raw nar-save" id="na-save">Хадгалах</button>
     </div>
   </div>`;
   document.body.appendChild(ov);

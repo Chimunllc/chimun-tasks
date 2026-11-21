@@ -9841,6 +9841,29 @@ select.no-asar-len {
 /* Цэсний нэрний хажуугийн бүдэг тайлбар — «(үндсэн)», «(харах дата …)» */
 .ac-menu-hint { font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
 
+/* ── 👥 Ажилчид дэлгэцийн толгой ба өнчин нэрийн тууз (renderAccess) ──
+   inline style-аас хөрвүүлсэн. `.prod-bar`-тай ИЖИЛ хэв маяг (тон + бичвэр +
+   товч) боловч дэлгэц бүр ӨӨРИЙН угтвартай байх нь кодын гэрээ: эс бөгөөс
+   барааны дэлгэцийн зай засахад энэ тууз чимээгүй хөдөлнө.
+   ⚠ Угтвар нь `ac-` — `.ac-wrap` нь renderAccessByPerson-ийн ЖАГСААЛТЫН
+   хайрцаг бөгөөд `.ac-wrap .ac-row` гэсэн JS сонгогчтой тул ЭНД дахин
+   ашиглаж БОЛОХГҮЙ (тиймээс `.ac-view`).
+   Өнгө нь `--warn-soft`/`--warn` токен: inline дотор хатуу амбер нөөц
+   (`var(--warn-soft, …)`) бичигдсэн байсан ч токен нь цайвар/харанхуй
+   ХОЁУЛАНД тодорхойлогдсон тул тэр нөөц үхмэл код байв.
+   ⚠ Тайлбарт ч хатуу өнгө БҮҮ бич — `debt-check.js`-ийн өнгөний тоолуур
+   коммент дотроос ч уншиж «шинэ өнгө» гэж тоолно. */
+.ac-view { padding: var(--space-1); }
+.ac-hd { margin: var(--space-1) 0 var(--space-3); }
+.ac-hd-t { font-weight: 800; font-size: var(--fs-lg); }
+.ac-hd-s { font-size: var(--fs-xs); color: var(--muted); }
+.ac-unkbar { display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2) var(--space-3); flex-wrap: wrap; margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3); background: var(--warn-soft);
+  border: 1px solid var(--warn); border-radius: var(--r-lg); }
+.ac-unkbar-t { font-size: var(--fs-md); color: var(--text); }
+.ac-unkbar-b { white-space: nowrap; }
+
 /* ── NOMAAD дүн шинжилгээний шүүлтүүрийн чип ── */
 .naa-chip { padding: var(--space-1) var(--space-3); font-size: var(--fs-sm);
   border: 1px solid var(--border); border-radius: var(--r-full); cursor: pointer;

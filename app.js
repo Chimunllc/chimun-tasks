@@ -23089,16 +23089,16 @@ function renderAccess() {
   // (renderAccessByPerson шүүнэ, escalation түгжигдэнэ). Албан тушаалын загвар (role_perms) хэвээр CEO-only.
   // НЭГ харагдац = Бүтэц. Ажилтан/Эрх табыг хассан (давхардсан) — хүн бүрийг картаас удирдана
   // (openStaffCardModal: албан тушаал/салбар/төрөл/PIN/гэрээ + эрхийн матриц бүгд нэг модалд).
-  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Байгууллагын бүтэц — хүн дээр дарж удирдана</div></div>`;
+  const head = `<div class="ac-hd"><div class="ac-hd-t">👥 Ажилчид</div><div class="ac-hd-s">Байгууллагын бүтэц — хүн дээр дарж удирдана</div></div>`;
   // Танигдахгүй хүний нэр — даалгавар/санхүүгийн мөр өнчирсөн эсэхийг ИЛ хэлнэ.
   const _unk = unknownPersonRefs(state.tasks, state.finance, findMember);
   const unkBar = _unk.length
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:9px 12px;background:var(--warn-soft,rgba(217,119,6,.08));border:1px solid var(--warn);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">👤 <b>${_unk.length}</b> нэр ажилтантай тохирохгүй байна (${escapeHtml(_unk.slice(0, 3).map(x => `${x.name} ${x.tasks + x.finance}`).join(' · '))}${_unk.length > 3 ? ' …' : ''}) — эдгээр даалгавар/хүсэлт эзэнгүй болж, гүйцэтгэлд тооцогдохгүй.</span>
-        <button class="btn btn-primary" id="unk-fix" style="white-space:nowrap;">👤 Хүнтэй холбох</button>
+    ? `<div class="ac-unkbar">
+        <span class="ac-unkbar-t">👤 <b>${_unk.length}</b> нэр ажилтантай тохирохгүй байна (${escapeHtml(_unk.slice(0, 3).map(x => `${x.name} ${x.tasks + x.finance}`).join(' · '))}${_unk.length > 3 ? ' …' : ''}) — эдгээр даалгавар/хүсэлт эзэнгүй болж, гүйцэтгэлд тооцогдохгүй.</span>
+        <button class="btn btn-primary ac-unkbar-b" id="unk-fix">👤 Хүнтэй холбох</button>
       </div>`
     : '';
-  return `<div style="padding:4px;">${head}${unkBar}${renderOrgChart()}</div>`;
+  return `<div class="ac-view">${head}${unkBar}${renderOrgChart()}</div>`;
 }
 // Гишүүн сонгосон салбарт хамаарах эсэх (shared/салбаргүй = бүгдэд)
 // Ажилтан тухайн салбарын хамрах хүрээнд орох эсэх — НЭГДСЭН дүрэм (бүх view энэ логикийг хуваалцана).

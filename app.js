@@ -52353,16 +52353,15 @@ function initEvents() {
         if (!advBlock || advBlock.querySelector('.notif-perm-block')) return;
         const block = document.createElement('div');
         block.className = 'notif-perm-block';
-        block.style.cssText = 'margin-top:16px;padding:12px;background:var(--panel-hover);border-radius:8px;';
         const perm = ('Notification' in window) ? Notification.permission : 'unsupported';
         const label = perm === 'granted' ? '✓ Мэдэгдэл идэвхжсэн'
           : perm === 'denied' ? '✗ Мэдэгдэл хориглосон (Browser-аас зөвшөөрөл)'
           : perm === 'unsupported' ? 'Browser дэмжихгүй'
           : 'Идэвхжүүлэх боломжтой';
         block.innerHTML = `
-          <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Push мэдэгдэл</div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${label}</div>
-          ${perm === 'default' ? `<button type="button" id="s-enable-notif" class="btn btn-primary" style="font-size:13px;padding:8px 14px;">Идэвхжүүлэх</button>` : ''}
+          <div class="npb-title">Push мэдэгдэл</div>
+          <div class="npb-state">${label}</div>
+          ${perm === 'default' ? `<button type="button" id="s-enable-notif" class="btn btn-primary">Идэвхжүүлэх</button>` : ''}
         `;
         advBlock.parentNode.insertBefore(block, advBlock);
         document.getElementById('s-enable-notif')?.addEventListener('click', requestNotifPermission);
@@ -52659,7 +52658,7 @@ function initEvents() {
     const prev = document.getElementById('f-payment-preview');
     if (prev) {
       const url = URL.createObjectURL(f);
-      prev.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel-hover);border-radius:6px;font-size:13px;"><img src="${url}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'"/><span style="flex:1;">${f.name}</span></div>`;
+      prev.innerHTML = `<div class="file-chip"><img src="${url}" alt="" class="file-chip-th" onerror="this.style.display='none'"/><span class="file-chip-name">${f.name}</span></div>`;
     }
     showToast('Шилжүүлгийн баримт сонгогдсон — "Гүйлгээ хийгдсэн" товч дарж илгээнэ', 'info', 3000);
   });

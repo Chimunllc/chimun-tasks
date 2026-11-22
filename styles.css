@@ -94,6 +94,10 @@
     /* NOMAAD бэлтгэлийн модалын «хүн сонгох» товчны доод өргөн — нэр багтах өргөн */
     --na-pick-w: 140px;
 
+    /* Хавсаргасан файлын «чип» мөрийн жижиг зураглал (`.file-chip-th`) — нэрийн
+       хажууд мөрийн өндрийг тогтоох тул тусдаа токен (`--tap` 40-ээс том). */
+    --file-chip-th: 48px;
+
     /* Цагийн ажилтны мөрийн зураг — `.staff-row`-гийн 36px-ээс том (нэр+банк 2 мөр) */
     --hw-av: 42px;
 
@@ -11033,3 +11037,19 @@ select.no-asar-len {
 .alv-rn { padding: 2px var(--space-2); text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .alv-rn.bad { color: var(--danger); font-weight: 700; }
 .alv-xls { margin-top: var(--space-2); }
+
+/* ═══ Хавсаргасан файлын «чип» мөр (2026-11-22) ══════════════════════════
+   Санхүүгийн модалын шилжүүлгийн баримт сонгоход гарах урьдчилан харах мөр:
+   [зураглал] нэр. Ижил хэв маяг `renderFinanceFileList`-ийн файлын мөрөнд ч
+   байгаа тул ерөнхий нэртэй — тэр хэсэгт хүрэх үед дахин ашиглана. */
+.file-chip { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2);
+  background: var(--panel-hover); border-radius: var(--r-sm); font-size: var(--fs-md); }
+.file-chip-th { width: var(--file-chip-th); height: var(--file-chip-th); object-fit: cover; border-radius: var(--r-sm); }
+.file-chip-name { flex: 1; }
+
+/* ═══ Тохиргоо → Push мэдэгдлийн эрхийн хайрцаг (`notif-perm-block`) ══════
+   Товч нь `.btn.btn-primary`-гийн хэмжээг хэрэглэнэ — тусдаа дүрэм бичихгүй. */
+.notif-perm-block { margin-top: var(--space-4); padding: var(--space-3);
+  background: var(--panel-hover); border-radius: var(--r-md); }
+.notif-perm-block .npb-title { font-size: var(--fs-md); font-weight: 600; margin-bottom: var(--space-1); }
+.notif-perm-block .npb-state { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-2); }

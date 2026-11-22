@@ -27896,3 +27896,29 @@ const ALL_START = new Proxy({}, { get: (t, k) => (typeof k === 'string' ? '09:00
     if (keepH.ho === undefined) delete stH.tpHistOpen; else stH.tpHistOpen = keepH.ho;
   }
 }
+
+/* ═══ ХАВСРАЛТЫН ЧИП БА PUSH ЭРХИЙН ХАЙРЦАГ = КЛАСС, inline style БИШ (2026-11-22) ═══
+   Дизайны гэрээний #8: inline загварыг класс болгоход СУУРЬ дүрмийг ЗААВАЛ бичнэ —
+   эс бөгөөс элемент нүцгэн бичвэр болж (хайрцаг, зураглал, зай алга) амьд дэлгэц эвдэрнэ.
+   Тиймээс класс бүр `styles.css`-д тодорхойлогдсон байхыг шалгана. */
+{
+  const srcFc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const cssFc = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  // ① Шилжүүлгийн баримтын урьдчилан харах мөр — класстай, inline style-гүй
+  ok(/<div class="file-chip"><img src="\$\{url\}" alt="" class="file-chip-th"/.test(srcFc),
+    'хавсралтын чип: f-payment-preview мөр нь .file-chip/.file-chip-th класстай');
+  ok(/<span class="file-chip-name">\$\{f\.name\}<\/span>/.test(srcFc), 'хавсралтын чип: нэрийн хэсэг класстай');
+  // ② Push эрхийн хайрцаг — cssText ба inline style-гүй
+  ok(!/block\.style\.cssText/.test(srcFc), 'push эрх: block.style.cssText буцаж ирэхгүй (класс .notif-perm-block)');
+  ok(/<div class="npb-title">Push мэдэгдэл<\/div>/.test(srcFc) && /<div class="npb-state">\$\{label\}<\/div>/.test(srcFc),
+    'push эрх: гарчиг/төлөв класстай');
+  ok(/id="s-enable-notif" class="btn btn-primary">/.test(srcFc),
+    'push эрх: товч нь .btn.btn-primary-гийн хэмжээг хэрэглэнэ (inline style-гүй)');
+  // ③ СУУРЬ ДҮРЭМ — класс бүр CSS-д тодорхойлогдсон (нүцгэн бичвэр болохгүй)
+  for (const cl of ['file-chip', 'file-chip-th', 'file-chip-name', 'notif-perm-block', 'npb-title', 'npb-state']) {
+    ok(new RegExp('\\.' + cl + '[^-\\w]').test(cssFc), `CSS: «.${cl}» тодорхойлогдсон (суурь дүрэм бий)`);
+  }
+  ok(/--file-chip-th:\s*\d+px/.test(cssFc), 'токен: --file-chip-th тодорхойлогдсон');
+  // ④ Шинэ !important нэмээгүй
+  ok(!/\.(file-chip|notif-perm-block|npb-)[^{]*\{[^}]*!important/.test(cssFc), 'CSS: шинэ класст !important нэмээгүй');
+}

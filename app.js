@@ -48374,19 +48374,19 @@ function openVatAttachFor(type, no) {
 async function openVatAttachModal(order) {
   await loadVatReceipts();
   const ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto;';
+  ov.className = 'va-ov';
   const pc = document.createElement('div');
-  pc.style.cssText = 'background:#fff;border-radius:14px;max-width:600px;width:100%;margin:auto;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 30px 70px -20px rgba(0,0,0,.45);';
+  pc.className = 'va-card';
   ov.appendChild(pc); ov.addEventListener('click', e => { if (e.target === ov) { ov.remove(); render(); } });
   const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
   pc.innerHTML = `
-    <div style="padding:14px 16px;border-bottom:1px solid #eee;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b style="font-size:15px;">🧾 НӨАТ баримт холбох</b><button id="va-x" style="border:none;background:none;font-size:20px;color:#999;cursor:pointer;">×</button></div>
-      <div style="font-size:12.5px;color:#444;">${escapeHtml(order.name || '')} · <b>${fmtMoney(order.amount)}</b>${order.reg ? ' · РД ' + escapeHtml(order.reg) : ''}</div>
-      <div id="va-sum" style="font-size:12px;color:#1e7a55;margin-top:3px;"></div>
-      <input id="va-q" placeholder="худалдан авагч эсвэл дүнгээр хайх…" style="margin-top:8px;width:100%;padding:8px 11px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;">
+    <div class="va-head">
+      <div class="va-head-row"><b class="va-title">🧾 НӨАТ баримт холбох</b><button id="va-x" class="va-x">×</button></div>
+      <div class="va-sub">${escapeHtml(order.name || '')} · <b>${fmtMoney(order.amount)}</b>${order.reg ? ' · РД ' + escapeHtml(order.reg) : ''}</div>
+      <div id="va-sum" class="va-sum"></div>
+      <input id="va-q" class="va-q" placeholder="худалдан авагч эсвэл дүнгээр хайх…">
     </div>
-    <div id="va-list" style="overflow:auto;padding:6px;"></div>`;
+    <div id="va-list" class="va-list"></div>`;
   const listEl = pc.querySelector('#va-list'), sumEl = pc.querySelector('#va-sum');
   function scoreRec(r) { return vatAutoScore(r, order); }
   function renderList(q) {
@@ -48394,7 +48394,7 @@ async function openVatAttachModal(order) {
     const mineIds = all.filter(r => String(r.matched_id) === String(order.no)).map(r => r.id);
     const inv = all.filter(r => mineIds.includes(r.id)).reduce((s, r) => s + (Number(r.total) || 0), 0);
     const rem = Math.max(0, (Number(order.amount) || 0) - inv);
-    sumEl.innerHTML = `Холбосон: <b>${fmtMoney(inv)}</b> / ${fmtMoney(order.amount)}${rem > 0 ? ` · <span style="color:#c0392b;">дутуу ${fmtMoney(rem)}</span>` : ' · <b>бүрэн</b>'}`;
+    sumEl.innerHTML = `Холбосон: <b>${fmtMoney(inv)}</b> / ${fmtMoney(order.amount)}${rem > 0 ? ` · <span class="va-short">дутуу ${fmtMoney(rem)}</span>` : ' · <b>бүрэн</b>'}`;
     const ql = vatNorm(q || ''), qd = String(q || '').trim();
     const rows = all
       .filter(r => !qd || vatNorm(r.buyer_name).includes(ql) || String(Math.round(r.total)).includes(qd.replace(/\D/g, '')))
@@ -48403,11 +48403,11 @@ async function openVatAttachModal(order) {
       .slice(0, 80);
     listEl.innerHTML = rows.map(x => {
       const r = x.r; const regOk = r.buyer_reg && order.reg && vatRegNorm(r.buyer_reg) === order.reg; const amtOk = near(r.total, order.amount) || near(r.net, order.amount); const nameOk = vatNameMatch(r.buyer_name, order.name);
-      return `<div class="va-row" data-id="${escapeHtml(r.id)}" data-mine="${x.mine ? 1 : 0}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;border-bottom:1px solid #f2f2f2;background:${x.mine ? '#e8f2ec' : (x.other ? '#faf7f2' : '#fff')};padding:9px 10px;cursor:pointer;">
-        <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.buyer_name || '?')} ${regOk ? '<b style="color:#0d7a3f;font-size:10.5px;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;font-size:10.5px;">✓дүн</b>' : ''}${nameOk ? ' <b style="color:#2563EB;font-size:10.5px;">✓нэр</b>' : ''}</div><div style="font-size:11px;color:#888;">${escapeHtml(String(r.dt || '').slice(0, 10))} · НӨАТ ${fmtMoney(r.vat)}${x.other ? ' · <span style="color:#b5651d;">⚠ өөр захиалгад: ' + escapeHtml(r.matched_label || r.matched_id) + '</span>' : ''}</div></span>
-        <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(r.total)}</div><div style="font-size:11px;font-weight:700;color:${x.mine ? '#1e7a55' : (x.other ? '#b5651d' : '#2563EB')};">${x.mine ? '🔒 холбоотой · 🔓 гаргах' : '+ холбох'}</div></span>
+      return `<div class="va-row${x.mine ? ' va-mine' : (x.other ? ' va-other' : '')}" data-id="${escapeHtml(r.id)}" data-mine="${x.mine ? 1 : 0}">
+        <span class="va-l"><div class="va-name">${escapeHtml(r.buyer_name || '?')} ${regOk ? '<b class="va-ok">✓РД</b>' : ''}${amtOk ? ' <b class="va-ok">✓дүн</b>' : ''}${nameOk ? ' <b class="va-ok va-ok-name">✓нэр</b>' : ''}</div><div class="va-date">${escapeHtml(String(r.dt || '').slice(0, 10))} · НӨАТ ${fmtMoney(r.vat)}${x.other ? ' · <span class="va-warn">⚠ өөр захиалгад: ' + escapeHtml(r.matched_label || r.matched_id) + '</span>' : ''}</div></span>
+        <span class="va-r"><div class="va-amt">${fmtMoney(r.total)}</div><div class="va-act">${x.mine ? '🔒 холбоотой · 🔓 гаргах' : '+ холбох'}</div></span>
       </div>`;
-    }).join('') || '<div style="padding:24px;text-align:center;color:#999;">Баримт алга</div>';
+    }).join('') || '<div class="va-empty">Баримт алга</div>';
     listEl.querySelectorAll('.va-row').forEach(el => el.onclick = async () => {
       const id = el.dataset.id, mine = el.dataset.mine === '1';
       try {

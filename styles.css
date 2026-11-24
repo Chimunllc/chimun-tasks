@@ -31,6 +31,10 @@
     --warn:   #f59e0b;  --warn-soft:   #fffbeb;
     --ok:     #10b981;  --ok-soft:     #ecfdf5;
     --info:   #3b82f6;  --info-soft:   #eff6ff;
+    /* Амбер БИЧВЭР `--warn-soft` дэвсгэр дээр. `--warn` өөрөө цайвар дэвсгэр дээр
+       ~2:1 тул уншигдахгүй — цайвар горимд бараантуулна. Харанхуйд ЭСРЭГЭЭР:
+       бараан амбер нь бараан дэвсгэртэй нийлдэг тул `--warn` чигээрээ үлдэнэ. */
+    --warn-ink: color-mix(in srgb, var(--warn) 55%, black);
 
     /* ── Accent (модуль ялгах) ── */
     --accent-blue:   #5e6ad2;
@@ -123,6 +127,10 @@
 
     /* НӨАТ баримтыг захиалгатай «гараар тулгах» цонх — нэг баганатай жагсаалт */
     --pk-modal-w: 560px;
+
+    /* Захиалгаас НӨАТ баримт холбох цонх (реверс тулгалт) — мөр бүрт
+       худалдан авагчийн нэр + 3 таарлын тэмдэг + дүн нэг эгнээнд багтана */
+    --va-modal-w: 600px;
 
     /* 👤 Танигдахгүй нэрийг ажилтантай холбох цонх — нэр + сонгогч нэг мөрөнд.
        Хоёр доод өргөн нь мөр хэзээ хуваагдахыг шийднэ: нийлбэр нь цонхны
@@ -262,6 +270,7 @@
     --warn:   #fbbf24;  --warn-soft:   rgba(245,158,11,.15);
     --ok:     #34d399;  --ok-soft:     rgba(16,185,129,.15);
     --info:   #60a5fa;  --info-soft:   rgba(59,130,246,.15);
+    --warn-ink: var(--warn);
     --finance-bg: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.04));
     --order-bg:   linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04));
     --task-bg:    linear-gradient(135deg, rgba(94,106,210,0.12), rgba(94,106,210,0.04));
@@ -10234,6 +10243,66 @@ select.no-asar-len {
 .pk-ok { font-size: var(--fs-xs); font-weight: 700; color: var(--ok); }
 .pk-ok-name { color: var(--info); }
 .pk-empty { padding: var(--space-5); text-align: center; color: var(--muted); }
+
+/* ═══ 🧾 ЗАХИАЛГААС НӨАТ БАРИМТ ХОЛБОХ ЦОНХ (`openVatAttachModal`, угтвар `va-`) ═══
+   `.pk-*`-ийн ЭСРЭГ тал: тэр нь баримтаас захиалга хайдаг, энэ нь захиалгаас
+   баримт хайдаг (реверс тулгалт). Өмнө нь `style.cssText` + 21 inline `style=`
+   (22 хатуу өнгө) байв.
+   ⚠ Энэ цонх `.modal` БИШ — `document.body`-д өөрөө үүсгэсэн бүрхүүл учир
+     `.modal input/button` дүрмүүд ХҮРЭХГҮЙ: хүрээ/дэвсгэр/фонт зэрэг суурь
+     тунхаглалыг энд БҮТНЭЭР бичнэ (дутуу бичвэл талбар нүцгэн болно).
+   ⚠ Дэвсгэр нь хатуу цагаан байснаас болж харанхуй горимд цагаан хайрцаг гарч
+     байв — одоо `var(--panel)`/`var(--text)` тул хоёр горимд ажиллана.
+     ⚠ Тайлбарт ХАТУУ ӨНГӨ БИЧИХГҮЙ — debt-check комментыг ялгадаггүй тул
+     дурдсан өнгө «шинэ өнгө» гэж тоологдоно.
+   ⚠ ID-ууд (`#va-x`, `#va-sum`, `#va-q`, `#va-list`) ба `data-mine` ХЭВЭЭР —
+     JS тэднээр олж, мөрийг дарахад холбоно/гаргана (өөр тэнхлэг).
+   ⚠ Мөрийн төлвийг нөхцөлт inline өнгөөр БИШ, `.va-mine`/`.va-other` классаар
+     заана — баруун талын үйлдлийн бичвэр (`.va-act`) өнгөө эцгээсээ авна. */
+.va-ov { position: fixed; inset: 0; z-index: 1100; background: var(--scrim-modal);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: var(--space-5); overflow: auto; }
+.va-card { display: flex; flex-direction: column; margin: auto;
+  width: 100%; max-width: var(--va-modal-w); max-height: 88vh;
+  background: var(--panel); border-radius: var(--r-xl); box-shadow: var(--shadow-xl); }
+.va-head { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+.va-head-row { display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--space-2); }
+.va-title { font-size: var(--fs-base); }
+.va-x { flex: none; border: none; background: none; color: var(--muted-soft);
+  font-size: var(--fs-lg); line-height: 1; cursor: pointer; }
+.va-sub { font-size: var(--fs-sm); color: var(--text-soft); }
+/* «Холбосон X / Y» — захиалгын дүн хэдэн төгрөгөөр шивэгдсэнийг хэлнэ */
+.va-sum { margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--ok); }
+.va-short { color: var(--danger); }
+.va-q { box-sizing: border-box; width: 100%; margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--border-strong);
+  border-radius: var(--r-md); background: var(--panel); color: var(--text);
+  font-size: var(--fs-md); }
+.va-list { overflow: auto; padding: var(--space-1); }
+/* Мөр = баримт: зүүн талд худалдан авагч/огноо, баруун талд дүн + үйлдэл */
+.va-row { display: flex; justify-content: space-between; gap: var(--space-2);
+  align-items: center; cursor: pointer;
+  padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border);
+  background: var(--panel); color: var(--text); }
+.va-row.va-mine { background: var(--ok-soft); }     /* ЭНЭ захиалгад холбоотой */
+.va-row.va-other { background: var(--warn-soft); }  /* өөр захиалгад аль хэдийн холбоотой */
+.va-l { min-width: 0; }
+.va-r { text-align: right; white-space: nowrap; }
+.va-name { font-size: var(--fs-md); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.va-date { font-size: var(--fs-xs); color: var(--muted); }
+.va-amt { font-size: var(--fs-md); font-weight: 700; }
+/* ✓РД · ✓дүн — өмнө нь хоёр ӨӨР ногоо байсныг нэг семантик токенд нэгтгэв */
+.va-ok { font-size: var(--fs-xs); font-weight: 700; color: var(--ok); }
+.va-ok-name { color: var(--info); }
+/* «⚠ өөр захиалгад: …» — `.vat-short`-той ИЖИЛ бараан амбер (`--warn` нь
+   `--warn-soft` дэвсгэр дээр уншигдахгүй бүдэг). */
+.va-warn { color: var(--warn-ink); }
+.va-act { font-size: var(--fs-xs); font-weight: 700; color: var(--info); }
+.va-row.va-mine .va-act { color: var(--ok); }
+.va-row.va-other .va-act { color: var(--warn-ink); }
+.va-empty { padding: var(--space-5); text-align: center; color: var(--muted); }
 
 /* ═══ 👤 Танигдахгүй нэрийг ажилтантай холбох цонх (`openPersonFixModal`) ═══
    Өмнө нь 7 inline `style=` байв. Мөр бүр: нэр + мета (зүүн) → сонгогч (баруун),

@@ -98,6 +98,16 @@
     /* NOMAAD бэлтгэлийн модалын «хүн сонгох» товчны доод өргөн — нэр багтах өргөн */
     --na-pick-w: 140px;
 
+    /* ── «Хүн сонгох» picker-ийн бүлэг (`openGroupSinglePicker` ·
+          `openMemberMultiPicker`) — хоёр picker ЯГ ижил харагдана тул хэмжээ нь
+          ХУВААЛЦСАН. Зайн масштабт (`--space-*`) таарахгүй утгууд тул тусдаа. */
+    --mp-grp-pad: 11px var(--space-3);   /* бүлгийн толгойн дотоод зай */
+    --mp-grp-top: 6px;                   /* бүлэг хоорондын зай */
+    --mp-cb: 18px;                       /* мөрийн чагтын хэмжээ */
+
+    /* Суутгалын модал (`openPenaltyModal`) — агуулга нарийн тул `.naq-modal`-ийн 640-өөс нарийн */
+    --pen-modal-w: 440px;
+
     /* Хавсаргасан файлын «чип» мөрийн жижиг зураглал (`.file-chip-th`) — нэрийн
        хажууд мөрийн өндрийг тогтоох тул тусдаа токен (`--tap` 40-ээс том). */
     --file-chip-th: 48px;
@@ -4576,6 +4586,54 @@ body.role-daily #add-project { display: none !important; }
   color: var(--muted);
 }
 
+/* ── Picker-ийн бүлэг: толгой · эвхэгдэх бие · сонгосон мөр ──
+   `openGroupSinglePicker` ба `openMemberMultiPicker`-ийн `renderList` ХОЁУЛАА
+   эдгээрийг ашиглана — өмнө нь ижил markup хоёр газар inline style-аар
+   давхардаж байв (нэгийг засахад нөгөө нь хоцордог).
+   ⚠ Эдгээр мөр `.modal` дотор зурагдана:
+     · `.mp-row-ind` нь `.mp-row { padding }`-ийг давах тул түүний ДАРАА байх ЁСТОЙ.
+     · Чагт нь `.modal input.mp-cb` (0,2,1) — `.modal input { width:100% }`-аас
+       давах ёстой (дизайны гэрээний 7-р дүрэм).
+     · Товчны padding/font-size/font-weight/border-radius-ыг мобайл БА дэлгэцийн
+       `.modal button:not(.ui-raw)` flatten дүрмүүд (хүчлэгдсэн) давна —
+       inline style-ийн үед ч ингэж байсан, зан чанар өөрчлөгдөөгүй. */
+.mp-row-ind { padding-left: var(--space-4); }
+.mp-row-btn {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.mp-row-btn.is-sel { background: var(--panel-hover); }
+.mp-row-check {
+  margin-left: auto;
+  color: var(--accent-green);
+  font-weight: 700;
+}
+.modal input.mp-cb { width: var(--mp-cb); height: var(--mp-cb); }
+.mp-grp-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: var(--space-2);
+  margin-top: var(--mp-grp-top);
+  padding: var(--mp-grp-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--panel-hover);
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+.mp-grp-n { color: var(--muted); font-weight: 400; }
+.mp-grp-sel { color: var(--accent-green); font-size: var(--fs-sm); }
+.mp-grp-body { display: none; }
+.mp-grp-body.is-open { display: block; }
+.mp-empty { padding: var(--space-4); color: var(--muted); }
+
 /* ═══ Project item — устгах товчтой ═══ */
 .project-item {
   display: flex;
@@ -6390,6 +6448,10 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .pen-del { flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--danger); font-size: 17px; line-height: 1; cursor: pointer; }
 .pen-del:hover { background: var(--danger-soft); border-color: var(--danger); }
 .pen-empty { font-size: 13px; color: var(--muted); padding: 6px 2px; }
+/* ⚠ ХОЁР класс (`.modal.pen-modal`) — мобайлын `.modal { max-width:100% }`-аас давна
+   (`pm-modal`-тай ижил арга). `.naq-modal`-ийн 640-ийг дарахын тулд түүнээс ХОЙШ. */
+.modal.pen-modal { max-width: var(--pen-modal-w); }
+.pen-form { margin-top: var(--space-4); }
 .perf-kpi { padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-family: inherit; }
 
 /* ── Шинэ захиалга модал ── */

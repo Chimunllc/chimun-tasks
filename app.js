@@ -27068,22 +27068,22 @@ function openGroupSinglePicker(currentKey = '', title = 'Хүн сонгох') {
     const rowHtml = (m) => {
       const k = personKey(m);
       const sel = k === currentKey;
-      return `<button type="button" class="mp-row" data-sp-id="${escapeHtml(k)}" style="width:100%;text-align:left;border:none;background:${sel ? 'var(--panel-hover)' : 'transparent'};padding-left:16px;cursor:pointer;">
+      return `<button type="button" class="mp-row mp-row-ind mp-row-btn${sel ? ' is-sel' : ''}" data-sp-id="${escapeHtml(k)}">
         <span class="mp-avatar">${escapeHtml(memberInitials(k))}</span>
         <span class="mp-info"><span class="mp-name">${escapeHtml(m.name)}</span><span class="mp-role">${escapeHtml(m.role || '')}</span></span>
-        ${sel ? '<span style="margin-left:auto;color:var(--accent-green);font-weight:700;">✓</span>' : ''}
+        ${sel ? '<span class="mp-row-check">✓</span>' : ''}
       </button>`;
     };
     listEl.innerHTML = order.map(g => {
       const ms = byGroup[g];
       const open = autoExpand || expandedGroups.has(g);
       return `<div class="mp-group">
-        <button type="button" data-sp-group="${escapeHtml(g)}" style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;padding:11px 12px;margin-top:6px;background:var(--panel-hover);border:1px solid var(--border);border-radius:var(--r-md);font-weight:600;cursor:pointer;color:var(--text);font-size:14px;">
-          <span>${open ? '▾' : '▸'} ${escapeHtml(g)} <span style="color:var(--muted);font-weight:400;">(${ms.length})</span></span>
+        <button type="button" class="mp-grp-btn" data-sp-group="${escapeHtml(g)}">
+          <span>${open ? '▾' : '▸'} ${escapeHtml(g)} <span class="mp-grp-n">(${ms.length})</span></span>
         </button>
-        <div style="display:${open ? 'block' : 'none'};">${ms.map(rowHtml).join('')}</div>
+        <div class="mp-grp-body${open ? ' is-open' : ''}">${ms.map(rowHtml).join('')}</div>
       </div>`;
-    }).join('') || '<div style="padding:14px;color:var(--muted);">Ажилтан олдсонгүй</div>';
+    }).join('') || '<div class="mp-empty">Ажилтан олдсонгүй</div>';
     listEl.querySelectorAll('button[data-sp-group]').forEach(btn => {
       btn.addEventListener('click', () => {
         const g = btn.dataset.spGroup;
@@ -27424,11 +27424,11 @@ function openPenaltyModal(ratee, name) {
       </div>`).join('') : '<div class="pen-empty">Энэ сард суутгал алга.</div>';
   };
   modal.innerHTML = `
-    <div class="modal naq-modal" style="max-width:440px;">
+    <div class="modal naq-modal pen-modal">
       <h2>Суутгал · ${escapeHtml(name)}</h2>
       <p class="naq-sub">${month} сар · нэгдсэн гүйцэтгэлийн онооноос хасагдана</p>
       <div id="pen-list">${renderList()}</div>
-      <div class="naq-grid" style="margin-top:14px;">
+      <div class="naq-grid pen-form">
         <label>Хасах оноо<input id="pen-pts" type="number" min="1" max="100" inputmode="numeric" placeholder="жишээ: 10" /></label>
         <label class="full">Шалтгаан<input id="pen-reason" placeholder="Жишээ: 3 удаа хоцорсон" /></label>
       </div>
@@ -49694,8 +49694,8 @@ function openMultiAssigneePicker(currentAssignees = []) {
     const order = [...pref, ...others, 'Цагийн ажилтан'].filter(g => byGroup[g] && byGroup[g].length);
     const autoExpand = !!q;   // хайж байгаа үед бүх таарсан бүлгийг нээнэ
     const rowHtml = (m) => `
-      <label class="mp-row" style="padding-left:16px;">
-        <input type="checkbox" data-mp-id="${escapeHtml(personKey(m))}" ${selected.has(personKey(m)) ? 'checked' : ''} style="width:18px;height:18px;" />
+      <label class="mp-row mp-row-ind">
+        <input type="checkbox" class="mp-cb" data-mp-id="${escapeHtml(personKey(m))}" ${selected.has(personKey(m)) ? 'checked' : ''} />
         <span class="mp-avatar">${escapeHtml(memberInitials(personKey(m)))}</span>
         <span class="mp-info"><span class="mp-name">${escapeHtml(m.name)}</span><span class="mp-role">${escapeHtml(m.role || '')}</span></span>
       </label>`;
@@ -49704,13 +49704,13 @@ function openMultiAssigneePicker(currentAssignees = []) {
       const selCount = ms.filter(m => selected.has(personKey(m))).length;
       const open = autoExpand || expandedGroups.has(g);
       return `<div class="mp-group">
-        <button type="button" data-mp-group="${escapeHtml(g)}" style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;padding:11px 12px;margin-top:6px;background:var(--panel-hover);border:1px solid var(--border);border-radius:var(--r-md);font-weight:600;cursor:pointer;color:var(--text);font-size:14px;">
-          <span>${open ? '▾' : '▸'} ${escapeHtml(g)} <span style="color:var(--muted);font-weight:400;">(${ms.length})</span></span>
-          ${selCount ? `<span style="color:var(--accent-green);font-size:12px;">${selCount} ✓</span>` : ''}
+        <button type="button" class="mp-grp-btn" data-mp-group="${escapeHtml(g)}">
+          <span>${open ? '▾' : '▸'} ${escapeHtml(g)} <span class="mp-grp-n">(${ms.length})</span></span>
+          ${selCount ? `<span class="mp-grp-sel">${selCount} ✓</span>` : ''}
         </button>
-        <div style="display:${open ? 'block' : 'none'};">${ms.map(rowHtml).join('')}</div>
+        <div class="mp-grp-body${open ? ' is-open' : ''}">${ms.map(rowHtml).join('')}</div>
       </div>`;
-    }).join('') || '<div style="padding:14px;color:var(--muted);">Ажилтан олдсонгүй</div>';
+    }).join('') || '<div class="mp-empty">Ажилтан олдсонгүй</div>';
     listEl.querySelectorAll('button[data-mp-group]').forEach(btn => {
       btn.addEventListener('click', () => {
         const g = btn.dataset.mpGroup;

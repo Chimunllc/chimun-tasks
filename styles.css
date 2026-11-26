@@ -4824,6 +4824,19 @@ body.role-daily #add-project { display: none !important; }
   box-shadow: none;
 }
 
+/* ── Шилжүүлгийн баримтын (PDF) шалгалтын хайрцаг — `#f-payment-pdf-check` ──
+   Мөр бүр = НЭГ дүгнэлт (дүн · давхардал · чиглэл · хүлээн авагч · огноо), өнгө нь
+   ТОНООР: `.fin-rcpt-pct`-тэй ИЖИЛ нэршил (ok · warn · bad · muted). Тиймээс
+   JS-ээс inline `style="color:…"` ч, `.style.color` ч бичигдэхгүй.
+   ⚠ Хайрцгийн `display`-г JS нь inline-аар сольдог тул түүнийг энд БҮҮ тавь —
+   `box.style.display = ''` нь классын `display:none`-ыг арилгаж чадахгүй. */
+.fpc-wait { color: var(--muted); }
+.fpc-err  { color: var(--warn); }
+.fpc-line.ok     { color: var(--ok); }
+.fpc-line.warn   { color: var(--warn); }
+.fpc-line.bad    { color: var(--danger); }
+.fpc-line.muted  { color: var(--muted); }
+
 /* ─── M-Event Захиалга view ─────────────────────────────── */
 .orders-wrap { display: grid; gap: 14px; padding: 4px 2px 24px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
 .order-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 15px 16px; box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.04)); }

@@ -52862,7 +52862,7 @@ function initEvents() {
     const file = e.target.files[0];
     if (!file || !(/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || ''))) return;
     if (!box) return;
-    box.style.display = ''; box.style.color = 'var(--muted)'; box.textContent = '📄 Баримт уншиж байна…';
+    box.style.display = ''; box.className = 'fpc-wait'; box.textContent = '📄 Баримт уншиж байна…';
     try {
       try { await loadUsedReceipts(); } catch (e2) {}   // давхардлын шалгалтад нэгдсэн ledger-ийг шинэчилнэ
       const d = parseBankReceipt(await extractPdfText(file));
@@ -52882,19 +52882,21 @@ function initEvents() {
       const ben = _nrm(r && r.beneficiary), rcv = _nrm(d.receiverName);
       const receiverMismatch = !!(ben && rcv && ben.length >= 4 && !rcv.includes(ben.slice(0, 10)) && !ben.includes(rcv.slice(0, 10)));
       state._finPdfCheck = { amount: d.amount, date: d.date || '', sender: d.senderName || '', receiver: d.receiverName || '', canonKey, fpKey, dup: !!dup, wrongDirection, receiverMismatch };
+      // Мөр бүр = НЭГ дүгнэлт; өнгө нь ТОНООР (`.fpc-line.ok|warn|bad|muted`) — inline style БИШ
       const lines = [];
-      if (req && d.amount === req) lines.push(`<div style="color:var(--ok);">✓ Дүн ${fmtMoney(d.amount)} — хүсэлттэй таарч байна</div>`);
-      else if (req) lines.push(`<div style="color:var(--danger);">⚠ Дүн ${fmtMoney(d.amount)} ≠ хүсэлтийн ${fmtMoney(req)} (зөрүү ${fmtMoney(Math.abs(d.amount - req))})</div>`);
-      else lines.push(`<div style="color:var(--ok);">✓ Дүн ${fmtMoney(d.amount)}</div>`);
-      if (dup) lines.push(`<div style="color:var(--danger);">⛔ Энэ баримт өөр гүйлгээнд аль хэдийн ашиглагдсан (${escapeHtml(dup)}) — гүйцэтгэх боломжгүй</div>`);
-      if (wrongDirection) lines.push(`<div style="color:var(--danger);">⚠ Манай данс ХҮЛЭЭН АВАГЧ байна — энэ ОРЛОГЫН баримт, зарлагынх биш</div>`);
-      else if (d.senderName && !senderChimun) lines.push(`<div style="color:var(--warn);">⚠ Шилжүүлэгч: ${escapeHtml(d.senderName)} (манай данс биш — өөр данснаас гарсан бол зүгээр)</div>`);
-      else if (senderChimun) lines.push(`<div style="color:var(--ok);">✓ Манай дансаас гарсан</div>`);
-      if (receiverMismatch) lines.push(`<div style="color:var(--warn);">⚠ Хүлээн авагч «${escapeHtml(d.receiverName)}» ≠ хүсэлтийн «${escapeHtml(r ? r.beneficiary : '')}»</div>`);
-      else if (rcv && ben) lines.push(`<div style="color:var(--ok);">✓ Хүлээн авагч: ${escapeHtml(d.receiverName)}</div>`);
-      if (d.date) lines.push(`<div style="color:var(--muted);">Огноо: ${escapeHtml(d.date)}</div>`);
-      box.style.color = ''; box.innerHTML = lines.join('');
-    } catch (err) { box.style.color = 'var(--warn)'; box.textContent = '⚠ PDF-ээс дүн уншигдсангүй — гараар шалгана уу'; }
+      const row = (tone, html) => lines.push(`<div class="fpc-line ${tone}">${html}</div>`);
+      if (req && d.amount === req) row('ok', `✓ Дүн ${fmtMoney(d.amount)} — хүсэлттэй таарч байна`);
+      else if (req) row('bad', `⚠ Дүн ${fmtMoney(d.amount)} ≠ хүсэлтийн ${fmtMoney(req)} (зөрүү ${fmtMoney(Math.abs(d.amount - req))})`);
+      else row('ok', `✓ Дүн ${fmtMoney(d.amount)}`);
+      if (dup) row('bad', `⛔ Энэ баримт өөр гүйлгээнд аль хэдийн ашиглагдсан (${escapeHtml(dup)}) — гүйцэтгэх боломжгүй`);
+      if (wrongDirection) row('bad', '⚠ Манай данс ХҮЛЭЭН АВАГЧ байна — энэ ОРЛОГЫН баримт, зарлагынх биш');
+      else if (d.senderName && !senderChimun) row('warn', `⚠ Шилжүүлэгч: ${escapeHtml(d.senderName)} (манай данс биш — өөр данснаас гарсан бол зүгээр)`);
+      else if (senderChimun) row('ok', '✓ Манай дансаас гарсан');
+      if (receiverMismatch) row('warn', `⚠ Хүлээн авагч «${escapeHtml(d.receiverName)}» ≠ хүсэлтийн «${escapeHtml(r ? r.beneficiary : '')}»`);
+      else if (rcv && ben) row('ok', `✓ Хүлээн авагч: ${escapeHtml(d.receiverName)}`);
+      if (d.date) row('muted', `Огноо: ${escapeHtml(d.date)}`);
+      box.className = ''; box.innerHTML = lines.join('');
+    } catch (err) { box.className = 'fpc-err'; box.textContent = '⚠ PDF-ээс дүн уншигдсангүй — гараар шалгана уу'; }
   });
   document.getElementById('f-execute')?.addEventListener('click', async () => {
     if (!state.editingId) return;

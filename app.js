@@ -23194,15 +23194,15 @@ function renderAccessByPerson() {
     if (!amCeo) return '';
     if (!dailyPeople.length) return '';
     const gExp = expPerson === '__daily__';
-    const head = `<div class="ac-person-head" data-person-toggle="__daily__" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
-      <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${gExp ? '▾' : '▸'}</span> <b style="font-size:13px;">⏱ Цагийн ажилтан</b> <span style="font-size:11px;color:var(--muted);">· ${dailyPeople.length} хүн (нэг бүлэг)</span></div>
-      <span style="font-size:10px;color:var(--ok);font-weight:700;">зөвхөн Ирсэн ажил</span>
+    const head = `<div class="ac-person-head" data-person-toggle="__daily__">
+      <div class="ac-ph-main"><span class="ac-ph-dim">${gExp ? '▾' : '▸'}</span> <b class="ac-ph-name">⏱ Цагийн ажилтан</b> <span class="ac-ph-dim">· ${dailyPeople.length} хүн (нэг бүлэг)</span></div>
+      <span class="ac-ph-tag ok">зөвхөн Ирсэн ажил</span>
     </div>`;
     if (!gExp) return wrap(head);
-    const names = `<div style="font-size:11px;color:var(--muted);margin:6px 0 6px;line-height:1.6;">Багт (${dailyPeople.length}): ${dailyPeople.map(m => escapeHtml(m.name || '?')).join(', ')}</div>`;
-    const only = `<div style="display:flex;align-items:flex-start;gap:9px;background:var(--panel-hover);border-radius:10px;padding:11px 13px;">
-      <span class="ac-chip on locked" style="white-space:nowrap;">✓ Ирсэн ажил</span>
-      <span style="font-size:12px;color:var(--muted);line-height:1.55;">Цагийн ажилтан зөвхөн өөрт нь оноосон ажлыг л хардаг. Тойм, Календарь, Санхүү, Гүйцэтгэл, Захиалга, Тайлан зэрэг бусад бүх цэс хаалттай.</span>
+    const names = `<div class="ac-ph-names">Багт (${dailyPeople.length}): ${dailyPeople.map(m => escapeHtml(m.name || '?')).join(', ')}</div>`;
+    const only = `<div class="ac-only">
+      <span class="ac-chip on locked">✓ Ирсэн ажил</span>
+      <span class="ac-only-txt">Цагийн ажилтан зөвхөн өөрт нь оноосон ажлыг л хардаг. Тойм, Календарь, Санхүү, Гүйцэтгэл, Захиалга, Тайлан зэрэг бусад бүх цэс хаалттай.</span>
     </div>`;
     return wrap(head + names + only);
   })();
@@ -23213,13 +23213,13 @@ function renderAccessByPerson() {
     const pExp = expPerson === pk;
     const pov = state.memberPerms && state.memberPerms[pk];
     const hasOv = pov && Object.keys(pov).length > 0;
-    const summary = `<div class="ac-person-head" data-person-toggle="${escapeHtml(pk)}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
-      <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${pExp ? '▾' : '▸'}</span> <b style="font-size:13px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">· ${escapeHtml(m.role || '')}</span></div>
-      ${isFull ? `<span style="font-size:10px;color:var(--ok);font-weight:700;">БҮРЭН ЭРХ</span>` : hasOv ? `<span style="font-size:10px;color:var(--accent,#2563EB);font-weight:700;">тохируулсан</span>` : `<span style="font-size:10px;color:var(--muted);">default</span>`}
+    const summary = `<div class="ac-person-head" data-person-toggle="${escapeHtml(pk)}">
+      <div class="ac-ph-main"><span class="ac-ph-dim">${pExp ? '▾' : '▸'}</span> <b class="ac-ph-name">${escapeHtml(m.name || '?')}</b> <span class="ac-ph-dim">· ${escapeHtml(m.role || '')}</span></div>
+      ${isFull ? `<span class="ac-ph-tag ok">БҮРЭН ЭРХ</span>` : hasOv ? `<span class="ac-ph-tag info">тохируулсан</span>` : `<span class="ac-ph-tag dim">default</span>`}
     </div>`;
     if (!pExp) return wrap(summary);
-    if (isFull) return wrap(summary + `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>`);
-    const reset = hasOv ? `<div style="margin-top:8px;"><button class="btn" data-person-reset="${escapeHtml(pk)}" style="padding:4px 11px;font-size:11px;">↺ Анхны байдал руу</button></div>` : '';
+    if (isFull) return wrap(summary + `<div class="ac-ph-note">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>`);
+    const reset = hasOv ? `<div class="ac-ph-reset"><button class="btn btn-sm" data-person-reset="${escapeHtml(pk)}">↺ Анхны байдал руу</button></div>` : '';
     // 🏢 Салбар — дата ХАМРАХ ХҮРЭЭ. Нэг салбар сонговол тухайн хүн зөвхөн түүнийг л хардаг (захиалга/санхүү/ажилтан…). Хоосон=бүгд.
     const bs = memberBranchesOf(m);
     const brChip = (val, label) => `<label class="ac-chip${bs.includes(val) ? ' on' : ' act-off'}"><input type="checkbox" data-branch-cap="${escapeHtml(pk)}" data-branch-val="${val}" ${bs.includes(val) ? 'checked' : ''}>${label}</label>`;
@@ -23228,7 +23228,7 @@ function renderAccessByPerson() {
     return wrap(summary + branchPick + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind), grantFn) + reset);
   }).join('');
   const body = dailyCard + rows;
-  return `${note}${searchBar}<div class="ac-wrap">${body || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div>`;
+  return `${note}${searchBar}<div class="ac-wrap">${body || '<div class="ac-empty">Ажилтан алга</div>'}</div>`;
 }
 
 // Танигдахгүй нэрийг ажилтантай холбох цонх. Холбоос `app_config['person_name_fixes']`-д

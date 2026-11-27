@@ -9952,6 +9952,47 @@ select.no-asar-len {
 .ac-unkbar-t { font-size: var(--fs-md); color: var(--text); }
 .ac-unkbar-b { white-space: nowrap; }
 
+/* ── Эрхийн карт: хүн ба цагийн ажилтны бүлэг (renderAccessByPerson) ──
+   inline style-аас хөрвүүлсэн. Хоёр карт (⏱ Цагийн ажилтны БҮЛЭГ ба хувь
+   хүний мөр) ЯГ ижил толгойтой байсан ч зохион байгуулалтыг тус тусдаа
+   inline style барьдаг тул нэгийг засахад нөгөө нь хоцордог байв. Одоо
+   ХУВААЛЦСАН класс — толгойн зай/хэмжээг нэг газраас засна.
+   `.ac-person-head` нь HTML-д байсан ч CSS-д ТОДОРХОЙЛОГДООГҮЙ байв
+   (`.ac-chips`-тэй ижил тохиолдол); JS нь `data-person-toggle`-ээр
+   сонгодог тул класс нь ЦЭВЭР загварын холбоос. */
+.ac-person-head { display: flex; align-items: center;
+  justify-content: space-between; gap: var(--space-2); cursor: pointer; }
+/* Зүүн бүлэг — `min-width: 0` нь урт нэрийг flex дотор агшуулж, баруун
+   талын шошгыг картаас гаргахгүй (0 тул зайн токен хамаарахгүй). */
+.ac-ph-main { min-width: 0; }
+/* Сум (▸/▾) ба мета («· 5 хүн», «· албан тушаал») — ижил бүдэг жижиг
+   бичвэр тул НЭГ класс (хоёр өөр класс болговол зөрөх эрсдэлтэй). */
+.ac-ph-dim { font-size: var(--fs-xs); color: var(--muted); }
+.ac-ph-name { font-size: var(--fs-md); }
+/* Баруун талын төлөвийн шошго. Үндсэн нь хэмжээ, өнгө нь нэмэлт класс:
+   ok = бүрэн эрх / зөвхөн ирсэн ажил · info = гараар тохируулсан ·
+   dim = анхны байдал. ⚠ `info` нь өмнө тодорхойлогдоогүй `--accent`
+   токен дээр хатуу нөөц өнгөтэй байсан тул харанхуй горимд хэт бараан
+   гардаг байв — `--info` нь хоёр горимд тодорхойлогдсон. */
+.ac-ph-tag { font-size: var(--fs-xs); }
+.ac-ph-tag.ok { color: var(--ok); font-weight: 700; }
+.ac-ph-tag.info { color: var(--info); font-weight: 700; }
+.ac-ph-tag.dim { color: var(--muted); }
+/* Бүлгийн гишүүдийн нэрийн жагсаалт — урт мөр тул line-height сулруулсан */
+.ac-ph-names { margin: var(--space-2) 0; font-size: var(--fs-xs);
+  color: var(--muted); line-height: 1.6; }
+/* «Бүрэн эрхтэй (CEO)» тайлбар ба «↺ Анхны байдал руу» товчны мөр */
+.ac-ph-note { margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--muted); }
+.ac-ph-reset { margin-top: var(--space-2); }
+/* Цагийн ажилтны ГАНЦ нээлттэй эрхийн хайрцаг (чип + тайлбар).
+   `align-items: flex-start` — тайлбар 2-3 мөр болоход чип дээд талд үлдэнэ. */
+.ac-only { display: flex; align-items: flex-start; gap: var(--space-2);
+  padding: var(--space-3); border-radius: var(--r-lg); background: var(--panel-hover); }
+.ac-only .ac-chip { white-space: nowrap; }
+.ac-only-txt { font-size: var(--fs-sm); color: var(--muted); line-height: 1.55; }
+/* Шүүлтэнд хүн таарахгүй үеийн хоосон мөр */
+.ac-empty { padding: var(--space-6) 0; color: var(--muted); text-align: center; }
+
 /* ── NOMAAD дүн шинжилгээний шүүлтүүрийн чип ── */
 .naa-chip { padding: var(--space-1) var(--space-3); font-size: var(--fs-sm);
   border: 1px solid var(--border); border-radius: var(--r-full); cursor: pointer;

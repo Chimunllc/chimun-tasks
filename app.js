@@ -17884,15 +17884,15 @@ function renderHourly() {
     .filter(k => groups[k].length)
     .map(k => {
       groups[k].sort(cmp);
-      return `<div data-hourly-group="${escapeHtml(k)}" style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;">${k} · ${groups[k].length}</div>` + groups[k].map(rowHtml).join('');
+      return `<div class="hw-grp" data-hourly-group="${escapeHtml(k)}">${k} · ${groups[k].length}</div>` + groups[k].map(rowHtml).join('');
     })
     .join('');
   let newN = 0, activeN = 0;
   workers.forEach(m => { const s = statusOf(m); if (s === 'new') newN++; else if (s === 'active') activeN++; });
   const inactiveN = workers.length - activeN - newN;
-  const header = `<div style="margin-bottom:8px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));">
-    <div style="font-size:13px;">${money ? `Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ` : ''}${workers.length} цагийн ажилтан${newN ? ` · <b style="color:var(--primary)">🆕 ${newN} шинэ</b>` : ''}${lensLabel ? ` <span style="font-size:11px;color:var(--primary);font-weight:600;">· ${lensLabel === 'NOMAAD' ? '🏔 NOMAAD' : '⛺ M-Event'} салбар</span>` : ''}</div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px;">${money ? `Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>.` : 'Утас дээр дарж шууд залгана.'}${lensLabel ? ' Толгойн салбар сонгогчоор өөрчилнө (🏢 Бүгд = бүх салбар).' : (money ? ' Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.' : '')}</div>
+  const header = `<div class="hw-head">
+    <div class="hw-head-main">${money ? `Нийт шилжүүлсэн: <b class="hw-head-sum">${fmtMoney(totalPaid)}</b> · ` : ''}${workers.length} цагийн ажилтан${newN ? ` · <b class="hw-head-new">🆕 ${newN} шинэ</b>` : ''}${lensLabel ? ` <span class="hw-head-lens">· ${lensLabel === 'NOMAAD' ? '🏔 NOMAAD' : '⛺ M-Event'} салбар</span>` : ''}</div>
+    <div class="hw-head-sub">${money ? `Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>.` : 'Утас дээр дарж шууд залгана.'}${lensLabel ? ' Толгойн салбар сонгогчоор өөрчилнө (🏢 Бүгд = бүх салбар).' : (money ? ' Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.' : '')}</div>
   </div>`;
   // Идэвхийн таб — идэвхтэй (шинэ ажилтныг ХАМРУУЛНА) / шинэ / идэвхгүй / бүгд
   const act = state.hourlyActivity || 'active';
@@ -47358,9 +47358,9 @@ function renderReports() {
   const cmp = (label, base) => {
     if (!base) return '';
     const d = net - base.net;
-    if (Math.abs(d) < 1000) return `<span style="color:var(--muted);white-space:nowrap;">${label}: ≈</span>`;
+    if (Math.abs(d) < 1000) return `<span class="rep-cmp rep-cmp-eq">${label}: ≈</span>`;
     const up = d > 0;
-    return `<span style="color:${up ? 'var(--ok)' : 'var(--danger)'};white-space:nowrap;">${label} ${up ? '▲' : '▼'}${fmtBig(Math.abs(d))}</span>`;
+    return `<span class="rep-cmp ${up ? 'rep-cmp-up' : 'rep-cmp-dn'}">${label} ${up ? '▲' : '▼'}${fmtBig(Math.abs(d))}</span>`;
   };
   const netCompare = [cmp('өмнөх сар', prevM), cmp('өнгөрсөн он', yoyM)].filter(Boolean).join(' · ');
   const kpi = (label, val, col, sub) => `<div style="padding:16px 18px;border:1px solid var(--border);border-radius:16px;background:var(--panel);min-width:0;">

@@ -6050,6 +6050,14 @@ details.recon-fold[open] > summary::before { content: '▾'; }
 .rep-kpi b { color: var(--text); }
 .usg-fill.rep-fill { position: relative; background: var(--panel-hover); box-shadow: inset 0 0 0 1px var(--border); }
 .usg-fill.rep-fill > i { position: absolute; inset: 0 auto 0 0; background: var(--ok); border-radius: 5px; }
+
+/* Цэвэр ашгийн харьцуулалт (өмнөх сар · өнгөрсөн он) — `renderReports`-ийн `cmp`.
+   ⚠ `nowrap` ЗААВАЛ: «өмнөх сар ▲1.2сая» нь дундуураа тасарвал сум нь дүнгээсээ
+     салж, өссөн/буурсан эсэх уншигдахгүй болно. */
+.rep-cmp { white-space: nowrap; }
+.rep-cmp-eq { color: var(--muted); }
+.rep-cmp-up { color: var(--ok); }
+.rep-cmp-dn { color: var(--danger); }
 .svc-unalloc { margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px dashed var(--border);
   border-radius: var(--r-sm); font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 .svc-det > summary { font-size: var(--fs-xs); color: var(--muted); cursor: pointer; padding: var(--space-1) 0; list-style: none; }
@@ -10277,6 +10285,22 @@ select.no-asar-len {
 .hw-badge-new { color: var(--primary); font-weight: 700; }
 .hw-acts { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .hw-acts .btn { padding: var(--space-1) var(--space-4); font-size: var(--fs-sm); white-space: nowrap; }
+
+/* ── Цагийн ажилтны толгой ба салбарын бүлгийн гарчиг (renderHourly) ──
+   2026-11-28: 7 inline style-ыг класс болгов.
+   ⚠ Хавтангийн padding/радиусыг `.hw-row`-той ИЖИЛ токеноор — толгой нь
+     доорх мөрүүдийн дээр нийлж байрладаг тул зөрвөл шат шиг харагдана. */
+.hw-grp { font-size: var(--fs-sm); font-weight: 700; color: var(--text-soft);
+  text-transform: uppercase; letter-spacing: .04em;
+  margin: var(--space-4) 0 var(--space-2); }
+.hw-head { margin-bottom: var(--space-2); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--bg-soft, var(--card)); }
+.hw-head-main { font-size: var(--fs-md); }
+.hw-head-sum { color: var(--ok); }
+.hw-head-new { color: var(--primary); }
+.hw-head-lens { font-size: var(--fs-xs); color: var(--primary); font-weight: 600; }
+.hw-head-sub { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
 
 /* ═══ 📄 ХӨДӨЛМӨРИЙН ГЭРЭЭ БЭЛДЭХ цонх (`openEmployeeContract`) ═══
    Өмнө нь 21 inline `style=` байв (талбар бүрт давтагдсан `fld` мөр).
